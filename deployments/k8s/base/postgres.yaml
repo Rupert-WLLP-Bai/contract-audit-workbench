@@ -25,6 +25,11 @@ metadata:
   labels: {app.kubernetes.io/part-of: contract-audit}
 spec:
   instances: 3
+  # Operand image for new clusters. Re-check the digest on the day of rollout;
+  # do not attach a PostgreSQL 17 data directory to this major version.
+  # standard includes pgvector and is paired with the Barman Cloud plugin
+  # already declared below. Identity databases are not this cluster.
+  imageName: ghcr.io/cloudnative-pg/postgresql:18.6-standard-trixie
   enablePDB: true
   primaryUpdateStrategy: unsupervised
   primaryUpdateMethod: switchover

@@ -411,6 +411,70 @@ func TestGovernanceHistoryIsAppendOnly(t *testing.T) {
 	}
 }
 
+func TestGovernancePointerHistoryKeepsPreviousAndResultingState(t *testing.T) {
+	st := openGovernanceStore(t)
+	admin := governanceAdmin(t)
+	tenant := accounts.Tenant(admin)
+	publishGovernedPack(t, st, admin, governedManifest(t, tenant, "1", "100"), "1")
+	approved := createAndApprove(t, st, admin, governedManifest(t, tenant, "2", "200"), "2")
+	published, err := st.PublishRulePackVersion(admin, store.GovernanceInput{
+		PackID: "telecom-governed", Version: "2",
+		ExpectedRevision: approved.Pack.Revision, ExpectedPointerRevision: approved.Pack.ActivePointerRevision,
+	})
+	if err != nil {
+		t.Fatalf("publish v2: %v", err)
+	}
+	disabled, err := st.DisableRulePackVersion(admin, store.GovernanceInput{
+		PackID: "telecom-governed", Version: "2",
+		ExpectedRevision: published.Pack.Revision, ExpectedPointerRevision: published.Pack.ActivePointerRevision,
+	})
+	if err != nil {
+		t.Fatalf("disable v2: %v", err)
+	}
+	if _, err := st.RollbackRulePackVersion(admin, store.GovernanceInput{
+		PackID: "telecom-governed", Version: "1", ExpectedPointerRevision: disabled.Pack.ActivePointerRevision,
+	}); err != nil {
+		t.Fatalf("rollback to v1: %v", err)
+	}
+	history, err := st.RulePackHistory(admin, "telecom-governed")
+	if err != nil {
+		t.Fatal(err)
+	}
+	created := historyByAction(t, history.Items, store.GovernanceActionCreate, "1")
+	if created.PreviousVersion != nil || created.ResultingVersion != nil {
+		t.Fatalf("non-pointer history invented a pointer transition: %+v", created)
+	}
+	assertPointerTransition(t, historyByAction(t, history.Items, store.GovernanceActionPublish, "1"), "", false, "1", true, false)
+	assertPointerTransition(t, historyByAction(t, history.Items, store.GovernanceActionPublish, "2"), "1", true, "2", true, true)
+	assertPointerTransition(t, historyByAction(t, history.Items, store.GovernanceActionDisable, "2"), "2", true, "2", false, true)
+	assertPointerTransition(t, historyByAction(t, history.Items, store.GovernanceActionRollback, "1"), "2", false, "1", true, true)
+}
+
+func historyByAction(t *testing.T, items []store.RulePackHistoryEntry, action, version string) store.RulePackHistoryEntry {
+	t.Helper()
+	for _, item := range items {
+		if item.Action == action && item.Version == version {
+			return item
+		}
+	}
+	t.Fatalf("history has no %s for version %s", action, version)
+	return store.RulePackHistoryEntry{}
+}
+
+func assertPointerTransition(t *testing.T, entry store.RulePackHistoryEntry, previous string, previousActive bool, resulting string, resultingActive, hadPrevious bool) {
+	t.Helper()
+	if hadPrevious {
+		if entry.PreviousVersion == nil || *entry.PreviousVersion != previous || entry.PreviousActive == nil || *entry.PreviousActive != previousActive {
+			t.Fatalf("previous pointer = %+v, want %s active=%t", entry, previous, previousActive)
+		}
+	} else if entry.PreviousVersion != nil || entry.PreviousActive != nil {
+		t.Fatalf("first pointer write invented a pre-image: %+v", entry)
+	}
+	if entry.ResultingVersion == nil || *entry.ResultingVersion != resulting || entry.ResultingActive == nil || *entry.ResultingActive != resultingActive {
+		t.Fatalf("resulting pointer = %+v, want %s active=%t", entry, resulting, resultingActive)
+	}
+}
+
 // TestGovernanceRejectsNonAdmin proves a non-admin trusted identity cannot read
 // or mutate governance, independent of the HTTP session audience.
 func TestGovernanceRejectsNonAdmin(t *testing.T) {

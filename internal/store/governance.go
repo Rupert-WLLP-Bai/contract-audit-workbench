@@ -149,9 +149,11 @@ func insertGovernanceHistory(ctx context.Context, tx pgx.Tx, entry RulePackHisto
 		return errors.New("history sequence is allocated by the database")
 	}
 	var seq int64
-	if err := tx.QueryRow(ctx, `INSERT INTO rule_pack_history (tenant_id, pack_id, version, action, actor_id, content_hash, pointer_revision, created_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING seq`,
-		entry.TenantID, entry.PackID, entry.Version, entry.Action, entry.ActorID, entry.ContentHash, entry.PointerRevision, entry.CreatedAt).Scan(&seq); err != nil {
+	if err := tx.QueryRow(ctx, `INSERT INTO rule_pack_history (tenant_id, pack_id, version, action, actor_id, content_hash, pointer_revision, created_at,
+		previous_version, previous_active, resulting_version, resulting_active)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING seq`,
+		entry.TenantID, entry.PackID, entry.Version, entry.Action, entry.ActorID, entry.ContentHash, entry.PointerRevision, entry.CreatedAt,
+		entry.PreviousVersion, entry.PreviousActive, entry.ResultingVersion, entry.ResultingActive).Scan(&seq); err != nil {
 		return err
 	}
 	return nil
