@@ -434,6 +434,7 @@ var schemaStatements = []string{
 			'constraint_evaluations','decisions','run_events','activity','idempotency',
 			'review_run_snapshots','audit_events','worker_jobs','outbox_events','tool_call_ledger',
 			'business_case_profiles','business_workbench_tasks','business_case_relations','business_knowledge','business_workbench_audit',
+			'business_generations','business_remediations','business_remediation_revisions','business_reports','business_archives',
 			'business_run_events','business_audit_events','document_activity','execution_activity',
 			'model_call_leases','model_usage','execution_queue_policies','execution_queue_cursor','execution_queue_tenants',
 			'rule_pack_versions','rule_pack_pointers','rule_pack_history','rule_pack_idempotency',
