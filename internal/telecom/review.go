@@ -163,8 +163,44 @@ func parseClause(source rulepack.Source, text string, offset, index int, definit
 		}
 	}
 	fact.ID = fmt.Sprintf("%s/%s/%d", definition.id, source.ID, offset)
-	fact.Citations = []rulepack.Citation{{SourceID: source.ID, SourceVersion: source.Version, TenantID: source.TenantID, CaseID: source.CaseID, SourceDigest: source.Digest, Start: offset, End: offset + utf8.RuneCountInString(text), Quote: text}}
+	var pattern *regexp.Regexp
+	switch index {
+	case 0:
+		pattern = bandwidthRE
+	case 1:
+		pattern = slaRE
+	case 2:
+		pattern = advanceRE
+	}
+	start, end, quote := matchedClauseCitation(text, offset, pattern)
+	fact.Citations = []rulepack.Citation{{SourceID: source.ID, SourceVersion: source.Version, TenantID: source.TenantID, CaseID: source.CaseID, SourceDigest: source.Digest, Start: start, End: end, Quote: quote}}
 	return clause{fact: fact, source: source, tax: taxBasis(matchText), direction: authorityDirection(index, matchText, allowBounds)}, true
+}
+
+// matchedClauseCitation keeps the citation on the physical line where the
+// comparator match begins, including any later wrap that is still part of the
+// same sentence. Earlier lines in that sentence are preamble, not the clause.
+func matchedClauseCitation(text string, sentenceOffset int, pattern *regexp.Regexp) (int, int, string) {
+	runes := []rune(text)
+	quoteStart := 0
+	if pattern != nil && pattern.MatchString(rulepack.FoldSoftLineBreaks(text)) {
+		for i := 0; i < len(runes); i++ {
+			if runes[i] != '\n' && runes[i] != '\r' {
+				continue
+			}
+			next := i + 1
+			if runes[i] == '\r' && next < len(runes) && runes[next] == '\n' {
+				next++
+			}
+			if next >= len(runes) || next == quoteStart {
+				continue
+			}
+			if pattern.MatchString(rulepack.FoldSoftLineBreaks(string(runes[next:]))) {
+				quoteStart = next
+			}
+		}
+	}
+	return sentenceOffset + quoteStart, sentenceOffset + len(runes), string(runes[quoteStart:])
 }
 
 func authorityDirection(index int, text string, allowBounds bool) string {

@@ -291,6 +291,43 @@ func (revisionScript) Transcribe(context.Context, string, []byte) (string, error
 	return "", model.ErrUnusable
 }
 
+func TestTelecomRevisionComparesAgainstTheCaseCompiler(t *testing.T) {
+	store := &Store{}
+	caseItem := Case{ID: "case", BusinessLine: "ENT", Scenario: "telecom_dedicated_line", ContractType: "service"}
+	before, after := Run{ID: "before", CaseID: caseItem.ID}, Run{ID: "after", CaseID: caseItem.ID}
+	matched := currentSignatureFor(nil, nil, nil, telecomCompilerRefForCase(caseItem))
+	matched.RulePackCompilerRef = governedCompilerMarker
+	drifted := store.currentSignature(nil)
+	for _, snapshot := range []*RunSnapshot{&matched, &drifted} {
+		snapshot.RulePackID = "telecom-governed"
+		snapshot.RulePackVersion = "1"
+		snapshot.RulePackHash = "hash"
+		snapshot.RulePackDigest = "digest"
+	}
+	for _, tc := range []struct {
+		name    string
+		snap    RunSnapshot
+		matches bool
+	}{
+		{"live compiler", matched, true},
+		{"compiler dropped from comparator", drifted, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			prior, next := tc.snap, tc.snap
+			prior.RunID, next.RunID = before.ID, after.ID
+			data := state{Cases: []Case{caseItem}, Runs: []Run{before, after}, Snapshots: []RunSnapshot{prior, next}}
+			previousID, revisions, _, reason := store.compareRun(&data, after, nil)
+			if previousID != before.ID || len(revisions) != 0 {
+				t.Fatalf("comparison identity previous=%s revisions=%+v reason=%q", previousID, revisions, reason)
+			}
+			configMismatch := strings.Contains(reason, "规则或模型配置与当前版本不一致")
+			if configMismatch == tc.matches {
+				t.Fatalf("matches=%t reason=%q", tc.matches, reason)
+			}
+		})
+	}
+}
+
 func TestFrozenRulePackRevisionRequiresTerminalCommit(t *testing.T) {
 	for _, tc := range []struct {
 		name, state                string

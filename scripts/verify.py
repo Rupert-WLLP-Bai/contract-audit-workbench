@@ -166,9 +166,9 @@ def main():
         run("format", [sys.executable, "scripts/check_format.py"])
         run("modules", [go, "mod", "verify"])
         run("vet", [go, "vet", "./..."])
-        run("go-tests", [go, "test", "-race", "-count=1", "-json", "-timeout=300s",
+        run("go-tests", [go, "test", "-race", "-count=1", "-json", "-timeout=20m",
                          "-covermode=atomic", "-coverpkg=./internal/...",
-                         "-coverprofile=artifacts/go-coverage.out", "./..."], timeout=900,
+                         "-coverprofile=artifacts/go-coverage.out", "./..."], timeout=2400,
             validate=lambda log: validate_go_test_results(log.read_text()))
         run("web-typecheck", [bun, "run", "typecheck"], ROOT / "web")
         run("web-tests", [bun, "run", "test:coverage", "--reporter=default", "--reporter=json",

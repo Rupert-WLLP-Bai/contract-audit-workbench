@@ -119,6 +119,35 @@ func TestTelecomContractualComparisonsAndUnicodeEvidence(t *testing.T) {
 	}
 }
 
+func TestCitationOmitsPreambleBeforeTheMatchedClauseLine(t *testing.T) {
+	draft := "政企专线服务合同（待审草稿）\n甲方（客户）：测试客户\n乙方（供应商）：测试供应商\n\n电路 LINE-001：最低保障带宽 100 Mbit/s。\n电路 LINE-001：SLA 可用率 99.9%" + slaBasis
+	req := request("100 Mbit/s", "99.9%", "20%")
+	req.Sources = []rulepack.Source{source("draft", "draft_contract", draft)}
+	facts, err := telecom.Extract(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const want = "电路 LINE-001：最低保障带宽 100 Mbit/s。"
+	var quote string
+	for _, fact := range facts {
+		if fact.RuleID != "ENT-TECH-BW-001" || len(fact.Citations) != 1 {
+			continue
+		}
+		quote = fact.Citations[0].Quote
+		runes := []rune(draft)
+		cite := fact.Citations[0]
+		if cite.Start < 0 || cite.End > len(runes) || string(runes[cite.Start:cite.End]) != cite.Quote {
+			t.Fatalf("citation is not a source slice: %+v", cite)
+		}
+		if cite.Start == len("政企专线服务合同（待审草稿）\n") {
+			t.Fatal("citation start used UTF-8 bytes")
+		}
+	}
+	if quote != want {
+		t.Fatalf("bandwidth quote = %q, want the clause line only", quote)
+	}
+}
+
 func TestCloudSLALowerBoundAuthoritySupportsThresholdAndKeepsCitation(t *testing.T) {
 	req := cloudRequest("不低于", "不低于")
 	report, err := telecom.Execute(context.Background(), req)

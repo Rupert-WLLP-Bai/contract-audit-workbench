@@ -285,11 +285,17 @@ func TestFailedParsedArtifactsHaveNoTextOrLocationData(t *testing.T) {
 	if _, err := st.AddDocument(context.Background(), admin, caseID, "procurement", "empty.txt", "text/plain", nil); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := st.AddDocument(context.Background(), admin, caseID, "draft_contract", "unsupported.pdf", "application/pdf", []byte("pdf bytes")); err != nil {
+	// PDF and image uploads stay pending until an explicit reparse. A corrupt
+	// PDF must then persist a failed artifact with no text or coordinates.
+	pdfID, err := st.AddDocument(context.Background(), admin, caseID, "draft_contract", "unsupported.pdf", "application/pdf", []byte("pdf bytes"))
+	if err != nil {
 		t.Fatal(err)
 	}
 	imageID, err := st.AddDocument(context.Background(), admin, caseID, "attachment", "unavailable.png", "image/png", model.SampleWarrantyPNG)
 	if err != nil {
+		t.Fatal(err)
+	}
+	if err := st.Reparse(context.Background(), admin, caseID, pdfID); err != nil {
 		t.Fatal(err)
 	}
 	if err := st.Reparse(context.Background(), admin, caseID, imageID); err != nil {

@@ -60,6 +60,7 @@ infra-*.json
 /web/prototype/
 *.md
 !/README.md
+!/AGENTS.md
 *.pdf
 *.doc
 *.docx

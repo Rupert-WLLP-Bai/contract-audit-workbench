@@ -58,7 +58,7 @@ func (s *Store) compareRun(st *state, run Run, current []Interpreted, selectedAt
 	}
 	previousSnapshot, currentSnapshot := st.snapshotOf(prev.ID), st.snapshotOf(run.ID)
 	if !sameRunConfiguration(previousSnapshot, currentSnapshot) ||
-		!sameRunConfiguration(currentSnapshot, withFrozenGovernance(s.currentSignature(nil), currentSnapshot)) {
+		!sameRunConfiguration(currentSnapshot, withFrozenGovernance(s.comparisonSignature(st, run), currentSnapshot)) {
 		return prev.ID, []Revision{}, nil, "两次运行的规则或模型配置与当前版本不一致，无法自动归因修改稿差异；请查看两次历史记录人工比较。"
 	}
 	currentAttemptID := ""
@@ -132,6 +132,18 @@ func (s *Store) compareRun(st *state, run Run, current []Interpreted, selectedAt
 		out = append(out, item)
 	}
 	return prev.ID, out, extraDocuments(current, prevDocs), ""
+}
+
+// comparisonSignature rebuilds the live engine and model identity for one
+// frozen run. Governed acceptance stores the pack marker in
+// RulePackCompilerRef, while ComparatorRef still carries the case compiler.
+// Comparing against a compiler-free signature would mark every governed
+// revision incomparable even when the live compiler has not changed.
+func (s *Store) comparisonSignature(st *state, run Run) RunSnapshot {
+	if caseItem, ok := st.caseByID(run.CaseID); ok {
+		return currentSignatureFor(nil, nil, s.models, telecomCompilerRefForCase(caseItem))
+	}
+	return s.currentSignature(nil)
 }
 
 func ruleResultsCommitted(st *state, attemptID string) bool {
