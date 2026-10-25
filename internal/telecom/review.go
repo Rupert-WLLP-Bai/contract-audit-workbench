@@ -18,8 +18,20 @@ import (
 	"contractaudit/internal/rulepack"
 )
 
-const compilerVersion = "3"
+// compilerVersion identifies extraction behavior. v4 keeps a wrapped clause's
+// object, value, unit and basis in the citation. HistoricalCompilerRef remains
+// valid for snapshots frozen before that change; those rows are not rewritten
+// and must not be replayed as the current compiler.
+const compilerVersion = "4"
 const CompilerRef = "telecom-contract-compiler/v" + compilerVersion
+const HistoricalCompilerRef = "telecom-contract-compiler/v3"
+
+// IsSyntheticCompiler reports compiler identities produced by this package.
+// The current identity and the previous frozen identity are both readable.
+// Unknown values are not treated as this compiler.
+func IsSyntheticCompiler(ref string) bool {
+	return ref == CompilerRef || ref == HistoricalCompilerRef
+}
 
 const authorityBoundOperatorPattern = `不得低于|不得超过|不得高于|不低于|至少|不少于|不高于|不超过|不多于|至多`
 
@@ -177,13 +189,16 @@ func parseClause(source rulepack.Source, text string, offset, index int, definit
 	return clause{fact: fact, source: source, tax: taxBasis(matchText), direction: authorityDirection(index, matchText, allowBounds)}, true
 }
 
-// matchedClauseCitation keeps the citation on the physical line where the
-// comparator match begins, including any later wrap that is still part of the
-// same sentence. Earlier lines in that sentence are preamble, not the clause.
+// matchedClauseCitation drops preamble lines, then keeps the earliest remaining
+// line that still contains both the business object and the comparator match.
+// A value wrapped onto the next line stays in the quote, including later basis
+// text through the end of the sentence. fact.ID continues to use the sentence
+// offset supplied by the caller, not this narrowed start.
 func matchedClauseCitation(text string, sentenceOffset int, pattern *regexp.Regexp) (int, int, string) {
 	runes := []rune(text)
 	quoteStart := 0
-	if pattern != nil && pattern.MatchString(rulepack.FoldSoftLineBreaks(text)) {
+	folded := rulepack.FoldSoftLineBreaks(text)
+	if pattern != nil && pattern.MatchString(folded) && objectRE.MatchString(folded) {
 		for i := 0; i < len(runes); i++ {
 			if runes[i] != '\n' && runes[i] != '\r' {
 				continue
@@ -195,7 +210,8 @@ func matchedClauseCitation(text string, sentenceOffset int, pattern *regexp.Rege
 			if next >= len(runes) || next == quoteStart {
 				continue
 			}
-			if pattern.MatchString(rulepack.FoldSoftLineBreaks(string(runes[next:]))) {
+			suffix := rulepack.FoldSoftLineBreaks(string(runes[next:]))
+			if pattern.MatchString(suffix) && objectRE.MatchString(suffix) {
 				quoteStart = next
 			}
 		}

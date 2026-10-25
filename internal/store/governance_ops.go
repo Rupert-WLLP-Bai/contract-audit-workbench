@@ -984,7 +984,7 @@ func ParseFrozenGovernedRulePack(attempt Attempt, caseItem Case) (*rulepack.Pack
 		attempt.RulePackPointerRevision != 0 || attempt.RulePackHash != "" ||
 		attempt.RulePackSnapshotDigest != "" || len(attempt.RulePackSnapshot) != 0
 	switch attempt.RulePackCompilerRef {
-	case "", telecom.CompilerRef:
+	case "", telecom.CompilerRef, telecom.HistoricalCompilerRef:
 		if !hasPackIdentity {
 			if isCloudServicesCase(caseItem) {
 				return nil, errors.New("cloud review has no frozen governed RulePack")

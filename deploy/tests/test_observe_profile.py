@@ -15,7 +15,8 @@ class ObserveProfileTest(unittest.TestCase):
         self.assertNotIn("exporters: [debug]\n", collector.split("logs:", 1)[0])
 
     def test_compose_profile_pins_backends_and_refuses_a_default_grafana_password(self):
-        compose = (ROOT / "compose.app.yaml").read_text(encoding="utf-8")
+        application = (ROOT / "compose.app.yaml").read_text(encoding="utf-8")
+        compose = (ROOT / "compose.observe.yaml").read_text(encoding="utf-8")
         tempo = (ROOT / "deploy/app/observe/tempo.yaml").read_text(encoding="utf-8")
         prometheus = (ROOT / "deploy/app/observe/prometheus.yml").read_text(encoding="utf-8")
         grafana = (ROOT / "deploy/app/observe/grafana-datasources.yaml").read_text(encoding="utf-8")
@@ -25,9 +26,15 @@ class ObserveProfileTest(unittest.TestCase):
             "grafana/grafana:13.2.4",
         ):
             self.assertIn(image, compose)
+            self.assertNotIn(image, application)
+        self.assertNotIn("GRAFANA_ADMIN_PASSWORD", application)
         self.assertIn("GRAFANA_ADMIN_PASSWORD:?", compose.replace(" ", ""))
         self.assertIn('targets: ["otel-collector:8889"]', prometheus)
+        self.assertIn("audit.execution.events", prometheus)
         self.assertIn("backend: local", tempo)
+        self.assertIn("uid: prometheus", grafana)
+        self.assertIn("uid: tempo", grafana)
+        self.assertIn("datasourceUid: prometheus", grafana)
         self.assertIn("url: http://tempo:3200", grafana)
         self.assertIn("url: http://prometheus:9090", grafana)
 

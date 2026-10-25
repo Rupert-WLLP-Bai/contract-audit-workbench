@@ -269,8 +269,9 @@ func assertNoActiveGatewayLeases(t *testing.T, active int) {
 func expireGatewayJobClaim(t *testing.T, claim store.JobClaim) {
 	t.Helper()
 	dsn := strings.TrimSpace(os.Getenv("TEST_DATABASE_URL"))
-	if dsn == "" {
-		t.Skip("TEST_DATABASE_URL is required to expire the isolated worker claim")
+	schema := os.Getenv("DATABASE_SCHEMA")
+	if dsn == "" || !strings.HasPrefix(schema, "it_gateway_") {
+		t.Fatal("gateway claim expiry requires its fixture's isolated test schema")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
 	defer cancel()
@@ -279,51 +280,19 @@ func expireGatewayJobClaim(t *testing.T, claim store.JobClaim) {
 		t.Fatalf("connect to isolated PostgreSQL test database: %v", err)
 	}
 	defer pool.Close()
-	rows, err := pool.Query(ctx, `SELECT n.nspname FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
-		WHERE c.relname='worker_jobs' AND c.relkind IN ('r','p') AND n.nspname LIKE 'it_%'`)
+	// Other packages create and drop it_* schemas in the same database. A catalog
+	// scan can observe one of those schemas after it has already been removed.
+	qualified := pgx.Identifier{schema}.Sanitize()
+	tag, err := pool.Exec(ctx, `UPDATE `+qualified+`.worker_jobs
+		SET lease_until=clock_timestamp()-interval '1 second', ready_at=clock_timestamp()-interval '1 second', updated_at=clock_timestamp()::text
+		WHERE id=$1 AND tenant_id=$2 AND org_id=$3 AND case_id=$4 AND run_id=$5 AND attempt_id=$6
+			AND worker_id=$7 AND generation=$8 AND state='running'`,
+		claim.JobID, claim.TenantID, claim.OrgID, claim.CaseID, claim.RunID, claim.AttemptID, claim.WorkerID, claim.Generation)
 	if err != nil {
-		t.Fatalf("find isolated worker job schemas: %v", err)
+		t.Fatalf("expire isolated worker job %q in schema %s: %v", claim.JobID, schema, err)
 	}
-	var schemas []string
-	for rows.Next() {
-		var schema string
-		if err := rows.Scan(&schema); err != nil {
-			rows.Close()
-			t.Fatalf("read isolated worker job schema: %v", err)
-		}
-		schemas = append(schemas, schema)
-	}
-	if err := rows.Err(); err != nil {
-		rows.Close()
-		t.Fatalf("iterate isolated worker job schemas: %v", err)
-	}
-	rows.Close()
-	if len(schemas) == 0 {
-		t.Fatal("OpenTest did not create an isolated worker job schema")
-	}
-
-	var expired int64
-	for _, schema := range schemas {
-		qualified := pgx.Identifier{schema}.Sanitize()
-		var containsClaim bool
-		if err := pool.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM `+qualified+`.worker_jobs WHERE id=$1)`, claim.JobID).Scan(&containsClaim); err != nil {
-			t.Fatalf("locate isolated worker claim: %v", err)
-		}
-		if !containsClaim {
-			continue
-		}
-		tag, err := pool.Exec(ctx, `UPDATE `+qualified+`.worker_jobs
-			SET lease_until=clock_timestamp()-interval '1 second', ready_at=clock_timestamp()-interval '1 second', updated_at=clock_timestamp()::text
-			WHERE id=$1 AND tenant_id=$2 AND org_id=$3 AND case_id=$4 AND run_id=$5 AND attempt_id=$6
-				AND worker_id=$7 AND generation=$8 AND state='running'`,
-			claim.JobID, claim.TenantID, claim.OrgID, claim.CaseID, claim.RunID, claim.AttemptID, claim.WorkerID, claim.Generation)
-		if err != nil {
-			t.Fatalf("expire isolated worker job %q: %v", claim.JobID, err)
-		}
-		expired += tag.RowsAffected()
-	}
-	if expired != 1 {
-		t.Fatalf("expired %d isolated worker jobs for claim %q, want one", expired, claim.JobID)
+	if tag.RowsAffected() != 1 {
+		t.Fatalf("expired %d isolated worker jobs for claim %q in schema %s, want one", tag.RowsAffected(), claim.JobID, schema)
 	}
 }
 

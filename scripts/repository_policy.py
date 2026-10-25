@@ -2,6 +2,7 @@
 import os
 from pathlib import Path
 import re
+import subprocess
 
 REQUIRED_MARKDOWN = {"README.md", "AGENTS.md"}
 FORBIDDEN_ROOTS = {"docs", "demos", "presentation", "materials", "references", "screenshots"}
@@ -12,6 +13,9 @@ BULK_SUFFIXES = {
     ".safetensors", ".gguf", ".onnx", ".pt", ".pth",
 }
 FIXTURE_MARKERS = ("testdata",)
+# Current regression fixtures are under 100 KiB. This bound keeps a force-added
+# design dump or dataset from using the fixture exception.
+FIXTURE_MAX_BYTES = 262144
 
 
 def load_rules(root):
@@ -77,6 +81,18 @@ def is_ignored(root, relative):
     return ignored
 
 
+def tracked_files(root):
+    completed = subprocess.run(
+        ["git", "-C", str(root), "ls-files", "-z"],
+        capture_output=True,
+    )
+    if completed.returncode != 0:
+        detail = completed.stderr.decode("utf-8", "replace").strip() or "git ls-files failed"
+        return None, detail
+    paths = [item.decode("utf-8") for item in completed.stdout.split(b"\0") if item]
+    return paths, ""
+
+
 def violations(root):
     root = Path(root)
     found = []
@@ -87,15 +103,41 @@ def violations(root):
     for name in REQUIRED_MARKDOWN:
         if (root / name).is_file() and is_ignored(root, name):
             found.append(f"{name} is ignored; the repository policy must keep it")
-    for relative in iter_unignored(root):
-        path = Path(relative)
-        if path.suffix.lower() == ".md" and relative not in REQUIRED_MARKDOWN:
-            found.append(f"unignored markdown is outside the source allowlist: {relative}")
-        if path.parts and path.parts[0] in FORBIDDEN_ROOTS:
-            found.append(f"delivery material is not ignored: {relative}")
-        if path.suffix.lower() in BULK_SUFFIXES and not _fixture(path):
-            found.append(f"bulk or presentation file is not ignored: {relative}")
+    tracked, err = tracked_files(root)
+    if err:
+        found.append(f"tracked file inventory failed: {err}")
+        tracked = []
+    ordered = []
+    seen = set()
+    for relative in list(tracked) + list(iter_unignored(root)):
+        relative = relative.replace("\\", "/").lstrip("/")
+        if not relative or relative in seen:
+            continue
+        seen.add(relative)
+        ordered.append(relative)
+    for relative in ordered:
+        _append_path_violations(root, relative, found)
     return found
+
+
+def _append_path_violations(root, relative, found):
+    path = Path(relative)
+    if path.suffix.lower() == ".md" and relative not in REQUIRED_MARKDOWN:
+        found.append(f"markdown is outside the source allowlist: {relative}")
+    if path.parts and path.parts[0] in FORBIDDEN_ROOTS:
+        found.append(f"delivery material is in the source tree: {relative}")
+    if path.suffix.lower() not in BULK_SUFFIXES:
+        return
+    if not _fixture(path):
+        found.append(f"bulk or presentation file is outside the fixture exception: {relative}")
+        return
+    try:
+        size = (root / relative).stat().st_size
+    except OSError as error:
+        found.append(f"fixture could not be measured: {relative} ({error})")
+        return
+    if size > FIXTURE_MAX_BYTES:
+        found.append(f"fixture exceeds {FIXTURE_MAX_BYTES} bytes: {relative} ({size})")
 
 
 def _fixture(path):

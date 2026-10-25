@@ -141,7 +141,7 @@ func agentReviewRulePackIdentity(attempt Attempt, caseItem Case) (*agentflow.Rul
 		}
 		manifest := pack.Manifest()
 		return &agentflow.RulePackIdentity{ID: manifest.ID, Version: manifest.Version, ContentSHA256: pack.Hash()}, nil
-	case telecom.CompilerRef:
+	case telecom.CompilerRef, telecom.HistoricalCompilerRef:
 		if attempt.RulePackID != "" || attempt.RulePackVersion != "" || attempt.RulePackPointerRevision != 0 {
 			return nil, errors.New("synthetic telecom RulePack carries governed identity fields")
 		}

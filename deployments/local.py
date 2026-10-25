@@ -120,6 +120,8 @@ def compose_prefix() -> list[str]:
 		command.extend(["-f", str(ROOT / "deployments/compose.identity.yaml")])
 	elif values.get("OIDC_ISSUER", "").strip():
 		raise RuntimeError("Compose OIDC requires IDENTITY_DIRECTORY_ROOT and IDENTITY_DIRECTORY_GID")
+	if values.get("OBSERVE", "").strip().lower() in {"1", "true", "yes"}:
+		command.extend(["-f", str(ROOT / "compose.observe.yaml"), "--profile", "otel"])
 	return command
 
 

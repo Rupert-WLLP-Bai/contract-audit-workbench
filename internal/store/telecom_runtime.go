@@ -323,6 +323,9 @@ func (s *Store) executeTelecomAttempt(parent, ctx context.Context, runID, attemp
 					request.Facts = append([]rulepack.Fact(nil), request.Facts...)
 				} else if attempt.RulePackCompilerRef != "" || len(attempt.RulePackSnapshot) > 0 ||
 					attempt.RulePackHash != "" || attempt.RulePackSnapshotDigest != "" {
+					// Historical snapshots keep their original compiler ref. Replaying
+					// one with the current extractor would change citations while
+					// the frozen identity still said it was the old compiler.
 					if attempt.RulePackCompilerRef != telecom.CompilerRef {
 						return errors.New("frozen telecom compiler identity differs; start a new review run")
 					}

@@ -1,0 +1,74 @@
+# Observability overlay. Compose interpolates every file it loads, including
+# services that belong to a profile, so this file stays out of the default
+# stack. Enable it with the application files and the otel profile:
+#   docker compose -f compose.yaml -f compose.app.yaml -f compose.observe.yaml --profile otel up
+# deployments/local.py does that when OBSERVE=1. GRAFANA_ADMIN_PASSWORD is
+# required only when this file is loaded.
+
+services:
+  otel-collector:
+    image: ${OTEL_COLLECTOR_IMAGE:-otel/opentelemetry-collector-contrib:0.140.0}
+    profiles: ["otel"]
+    restart: unless-stopped
+    command: ["--config=/etc/otelcol-contrib/config.yaml"]
+    volumes:
+      - ./deploy/app/otel-collector.yaml:/etc/otelcol-contrib/config.yaml:ro
+    expose:
+      - "4317"
+      - "4318"
+      - "8889"
+    depends_on:
+      tempo:
+        condition: service_started
+    stop_grace_period: 20s
+
+  tempo:
+    image: ${TEMPO_IMAGE:-grafana/tempo:2.10.10}
+    profiles: ["otel"]
+    restart: unless-stopped
+    command: ["-config.file=/etc/tempo/tempo.yaml"]
+    volumes:
+      - ./deploy/app/observe/tempo.yaml:/etc/tempo/tempo.yaml:ro
+      - tempo-data:/var/tempo
+    ports:
+      - "127.0.0.1:${TEMPO_QUERY_PORT:-13200}:3200"
+    stop_grace_period: 20s
+
+  prometheus:
+    image: ${PROMETHEUS_IMAGE:-prom/prometheus:v3.15.1}
+    profiles: ["otel"]
+    restart: unless-stopped
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--web.listen-address=0.0.0.0:9090"
+    volumes:
+      - ./deploy/app/observe/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "127.0.0.1:${PROMETHEUS_PORT:-19090}:9090"
+    depends_on:
+      otel-collector:
+        condition: service_started
+    stop_grace_period: 20s
+
+  grafana:
+    image: ${GRAFANA_IMAGE:-grafana/grafana:13.2.4}
+    profiles: ["otel"]
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-local-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?Set GRAFANA_ADMIN_PASSWORD before starting the otel profile}
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - ./deploy/app/observe/grafana-datasources.yaml:/etc/grafana/provisioning/datasources/datasources.yaml:ro
+    ports:
+      - "127.0.0.1:${GRAFANA_PORT:-13000}:3000"
+    depends_on:
+      prometheus:
+        condition: service_started
+      tempo:
+        condition: service_started
+    stop_grace_period: 20s
+
+volumes:
+  tempo-data:

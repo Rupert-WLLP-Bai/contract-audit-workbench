@@ -23,13 +23,18 @@ func completedEvent(span, parent string) execution.Event {
 }
 
 func TestExporterPreservesTraceTreeWithoutProviderContent(t *testing.T) {
-	bodies := make(chan []byte, 4)
+	type captured struct {
+		path string
+		body []byte
+	}
+	bodies := make(chan captured, 4)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost || r.URL.Path != "/collector/v1/traces" || r.Header.Get("Content-Type") != "application/json" {
+		if r.Method != http.MethodPost || r.Header.Get("Content-Type") != "application/json" ||
+			(r.URL.Path != "/collector/v1/traces" && r.URL.Path != "/collector/v1/metrics") {
 			t.Errorf("invalid OTLP request: %s %s %s", r.Method, r.URL.Path, r.Header.Get("Content-Type"))
 		}
 		body, _ := io.ReadAll(r.Body)
-		bodies <- body
+		bodies <- captured{path: r.URL.Path, body: body}
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{}`))
 	}))
@@ -48,12 +53,17 @@ func TestExporterPreservesTraceTreeWithoutProviderContent(t *testing.T) {
 	exporter.Close()
 	close(bodies)
 	var spans []map[string]any
+	var metricBodies [][]byte
 	for body := range bodies {
-		if strings.Contains(string(body), "PRIVATE") || strings.Contains(string(body), "tokens") {
-			t.Fatalf("provider content escaped the metadata boundary: %s", body)
+		if strings.Contains(string(body.body), "PRIVATE") || strings.Contains(string(body.body), "tokens") {
+			t.Fatalf("provider content escaped the metadata boundary: %s", body.body)
+		}
+		if body.path == "/collector/v1/metrics" {
+			metricBodies = append(metricBodies, body.body)
+			continue
 		}
 		var request map[string]any
-		if err := json.Unmarshal(body, &request); err != nil {
+		if err := json.Unmarshal(body.body, &request); err != nil {
 			t.Fatal(err)
 		}
 		for _, rawResource := range request["resourceSpans"].([]any) {
@@ -65,8 +75,32 @@ func TestExporterPreservesTraceTreeWithoutProviderContent(t *testing.T) {
 			}
 		}
 	}
-	if len(spans) != 2 || exporter.Stats().Exported != 2 || exporter.Stats().Dropped != 0 {
-		t.Fatalf("lost completed spans: spans=%v stats=%+v", spans, exporter.Stats())
+	if len(spans) != 2 || exporter.Stats().Exported != 2 || exporter.Stats().Dropped != 0 || exporter.Stats().MetricsExported != 2 || exporter.Stats().MetricsFailed != 0 {
+		t.Fatalf("lost completed spans or execution metrics: spans=%v metrics=%d stats=%+v", spans, len(metricBodies), exporter.Stats())
+	}
+	var sawEvents, sawDuration bool
+	for _, body := range metricBodies {
+		var request map[string]any
+		if err := json.Unmarshal(body, &request); err != nil {
+			t.Fatal(err)
+		}
+		for _, rawResource := range request["resourceMetrics"].([]any) {
+			resource := rawResource.(map[string]any)
+			for _, rawScope := range resource["scopeMetrics"].([]any) {
+				for _, rawMetric := range rawScope.(map[string]any)["metrics"].([]any) {
+					item := rawMetric.(map[string]any)
+					switch item["name"] {
+					case "audit.execution.events":
+						sawEvents = true
+					case "audit.execution.duration_ms":
+						sawDuration = true
+					}
+				}
+			}
+		}
+	}
+	if !sawEvents || !sawDuration {
+		t.Fatalf("execution metrics were not produced: %s", metricBodies)
 	}
 	if spans[0]["traceId"] != spans[1]["traceId"] || spans[0]["parentSpanId"] != nil || spans[1]["parentSpanId"] != spans[0]["spanId"] {
 		t.Fatalf("OTLP tree differs from execution parentage: %v", spans)
@@ -115,7 +149,11 @@ func TestExporterAcknowledgementFailureAccounting(t *testing.T) {
 			exporter.Record("run", "attempt", completedEvent("span", "attempt"))
 			exporter.Close()
 			stats := exporter.Stats()
-			if calls.Load() != 1 || stats.Exported != test.exported || stats.Dropped != 1-test.exported || stats.FailedRequests != test.failed {
+			wantCalls := int64(1)
+			if test.failed == 0 {
+				wantCalls = 2
+			}
+			if calls.Load() != wantCalls || stats.Exported != test.exported || stats.Dropped != 1-test.exported || stats.FailedRequests != test.failed {
 				t.Fatalf("acknowledgement was misreported or retried: calls=%d stats=%+v", calls.Load(), stats)
 			}
 		})

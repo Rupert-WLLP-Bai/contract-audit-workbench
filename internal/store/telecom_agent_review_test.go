@@ -78,8 +78,9 @@ func TestFrozenTelecomPlannerConfigurationUsesAcceptedPayload(t *testing.T) {
 
 func TestAgentReviewRulePackIdentityRejectsIncompleteCompilerMetadata(t *testing.T) {
 	for name, attempt := range map[string]Attempt{
-		"synthetic without a compiled pack": {RulePackCompilerRef: telecom.CompilerRef},
-		"legacy absence":                    {},
+		"synthetic without a compiled pack":     {RulePackCompilerRef: telecom.CompilerRef},
+		"historical v3 without a compiled pack": {RulePackCompilerRef: telecom.HistoricalCompilerRef},
+		"legacy absence":                        {},
 	} {
 		t.Run(name, func(t *testing.T) {
 			identity, err := agentReviewRulePackIdentity(attempt, Case{})
@@ -93,6 +94,7 @@ func TestAgentReviewRulePackIdentityRejectsIncompleteCompilerMetadata(t *testing
 		"synthetic hash without bytes":  {RulePackCompilerRef: telecom.CompilerRef, RulePackHash: "content-hash"},
 		"frozen bytes without compiler": {RulePackSnapshot: []byte(`{}`)},
 		"unknown compiler":              {RulePackCompilerRef: "unknown-compiler/v1"},
+		"retired compiler":              {RulePackCompilerRef: "telecom-contract-compiler/v2"},
 		"incomplete governed identity":  {RulePackCompilerRef: governedCompilerMarker},
 	} {
 		t.Run(name, func(t *testing.T) {
