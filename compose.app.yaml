@@ -10,6 +10,32 @@ x-app-health: &app-health
   start_period: 10s
 
 services:
+  health-monitor:
+    image: contract-audit-backend:local
+    build: *backend-build
+    command: ["/app/healthmonitor"]
+    restart: unless-stopped
+    user: "0:0"
+    read_only: true
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
+    pids_limit: 64
+    environment:
+      APP_ENV: ${APP_ENV:-development}
+      SYSTEM_HEALTH_PROJECT: ${COMPOSE_PROJECT_NAME}
+      LLM_BASE_URL: ${LLM_BASE_URL:-}
+      LLM_MODEL: ${LLM_MODEL:-}
+      OCR_MODEL: ${OCR_MODEL:-}
+      MINERU_URL: ${MINERU_URL:-}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    expose: ["8092"]
+    healthcheck:
+      <<: *app-health
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8092/health"]
+
   nats:
     image: ${NATS_IMAGE:-nats:2.11.8-alpine}
     restart: unless-stopped
@@ -79,6 +105,7 @@ services:
     environment:
       APP_ENV: ${APP_ENV:-development}
       SERVICE_ROLE: core
+      SYSTEM_HEALTH_URL: http://health-monitor:8092
       CORE_DATABASE_URL: ${CORE_DATABASE_URL:?Run make app-bootstrap}
       DATABASE_SCHEMA: ${DATABASE_SCHEMA:-public}
       APP_READ_ONLY: ${APP_READ_ONLY:-false}

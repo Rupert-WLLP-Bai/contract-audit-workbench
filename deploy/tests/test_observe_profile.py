@@ -15,6 +15,7 @@ SPEC.loader.exec_module(local)
 
 OBSERVATION_SERVICES = {"otel-collector", "tempo", "prometheus", "grafana"}
 APPLICATION_SERVICES = {
+    "health-monitor",
     "gateway", "core-api", "document-service", "audit-execution", "audit-worker",
     "model-gateway", "model-gateway-fixture", "tool-gateway", "client", "admin", "portal",
 }

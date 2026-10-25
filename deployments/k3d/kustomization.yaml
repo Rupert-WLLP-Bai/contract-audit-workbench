@@ -1,0 +1,17 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: contract-audit
+resources:
+  - ../k8s/base/namespace.yaml
+  - ../k8s/base/security-accounts.yaml
+  - ../k8s/base/config.yaml
+  - ../k8s/base/workloads.yaml
+  - ../k8s/base/services-ingress.yaml
+  - ../k8s/migrate/migration-job.yaml
+  - platform.yaml
+  - health-monitor.yaml
+patches:
+  - path: workload-patch.yaml
+  - path: config-patch.yaml
+  - path: migrate/migration-patch.yaml
+  - path: remove-ingress-patch.yaml

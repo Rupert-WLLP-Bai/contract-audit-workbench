@@ -1,4 +1,9 @@
-import { useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
+import {
+  useMutation,
+  useQuery,
+  useQueryClient,
+  type QueryClient,
+} from "@tanstack/react-query";
 import * as api from "./endpoints";
 import { setSessionIdentity } from "./http";
 import type {
@@ -23,25 +28,36 @@ import type { RulePackManifestInput, RulePackTestInput } from "./rulepacks";
 
 export const queryKeys = {
   session: ["session", "client"] as const,
-  sessionFor: (audience: SessionAudience) => audience === "admin" ? ["session", "admin"] as const : queryKeys.session,
+  sessionFor: (audience: SessionAudience) =>
+    audience === "admin" ? (["session", "admin"] as const) : queryKeys.session,
   cases: ["cases"] as const,
   case: (caseId: string) => ["cases", caseId] as const,
-  reviewPrefix: (caseId: string, runId: string) => ["cases", caseId, "reviews", runId] as const,
+  reviewPrefix: (caseId: string, runId: string) =>
+    ["cases", caseId, "reviews", runId] as const,
   review: (caseId: string, runId: string, attemptId?: string | null) =>
     [...queryKeys.reviewPrefix(caseId, runId), attemptId ?? null] as const,
-  reviewHistory: (caseId: string, latestRunId: string) => ["cases", caseId, "review-history", latestRunId] as const,
+  reviewHistory: (caseId: string, latestRunId: string) =>
+    ["cases", caseId, "review-history", latestRunId] as const,
   templates: ["templates"] as const,
   settings: ["settings", "client"] as const,
-  settingsFor: (audience: SessionAudience) => audience === "admin" ? ["settings", "admin"] as const : queryKeys.settings,
+  settingsFor: (audience: SessionAudience) =>
+    audience === "admin"
+      ? (["settings", "admin"] as const)
+      : queryKeys.settings,
   rulePacks: ["admin", "rulepacks"] as const,
   rulePackList: ["admin", "rulepacks", "list"] as const,
-  rulePack: (packId: string, version: string) => ["admin", "rulepacks", "detail", packId, version] as const,
-  rulePackHistory: (packId: string) => ["admin", "rulepacks", "history", packId] as const,
+  rulePack: (packId: string, version: string) =>
+    ["admin", "rulepacks", "detail", packId, version] as const,
+  rulePackHistory: (packId: string) =>
+    ["admin", "rulepacks", "history", packId] as const,
   workbench: (period: WorkbenchPeriod) => ["workbench", period] as const,
   workbenchPrefix: ["workbench"] as const,
 };
 export function clearIdentityQueries(queryClient: QueryClient): void {
-  const filter = { predicate: (query: { queryKey: readonly unknown[] }) => query.queryKey[0] !== queryKeys.session[0] };
+  const filter = {
+    predicate: (query: { queryKey: readonly unknown[] }) =>
+      query.queryKey[0] !== queryKeys.session[0],
+  };
   void queryClient.cancelQueries(filter);
   queryClient.removeQueries(filter);
 }
@@ -58,7 +74,8 @@ export function useSession(audience: SessionAudience = "client") {
 export function useLogin(audience: SessionAudience = "client") {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (input: { username: string; password: string }) => api.login(input.username, input.password, audience),
+    mutationFn: (input: { username: string; password: string }) =>
+      api.login(input.username, input.password, audience),
     onSuccess: (actor: Actor) => {
       if (setSessionIdentity(actor)) clearIdentityQueries(queryClient);
       queryClient.setQueryData(queryKeys.sessionFor(audience), actor);
@@ -73,13 +90,18 @@ export function useLogout(audience: SessionAudience = "client") {
     onSettled: () => {
       setSessionIdentity(null);
       clearIdentityQueries(queryClient);
-      void queryClient.resetQueries({ queryKey: queryKeys.sessionFor(audience) });
+      void queryClient.resetQueries({
+        queryKey: queryKeys.sessionFor(audience),
+      });
     },
   });
 }
 
 export function useCases() {
-  return useQuery({ queryKey: queryKeys.cases, queryFn: ({ signal }) => api.listCases(signal) });
+  return useQuery({
+    queryKey: queryKeys.cases,
+    queryFn: ({ signal }) => api.listCases(signal),
+  });
 }
 export function useWorkbench(period: WorkbenchPeriod = "week") {
   return useQuery({
@@ -92,9 +114,12 @@ export function useWorkbench(period: WorkbenchPeriod = "week") {
 export function useUpdateCaseProfile(caseId: string) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (input: CaseProfileInput) => api.updateCaseProfile(caseId, input),
+    mutationFn: (input: CaseProfileInput) =>
+      api.updateCaseProfile(caseId, input),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: queryKeys.workbenchPrefix });
+      await queryClient.invalidateQueries({
+        queryKey: queryKeys.workbenchPrefix,
+      });
       await queryClient.invalidateQueries({ queryKey: queryKeys.case(caseId) });
       await queryClient.invalidateQueries({ queryKey: queryKeys.cases });
     },
@@ -104,9 +129,12 @@ export function useUpdateCaseProfile(caseId: string) {
 export function useCreateWorkbenchTask(caseId: string) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (input: WorkbenchTaskInput) => api.createWorkbenchTask(caseId, input),
+    mutationFn: (input: WorkbenchTaskInput) =>
+      api.createWorkbenchTask(caseId, input),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: queryKeys.workbenchPrefix });
+      await queryClient.invalidateQueries({
+        queryKey: queryKeys.workbenchPrefix,
+      });
     },
   });
 }
@@ -114,11 +142,18 @@ export function useCreateWorkbenchTask(caseId: string) {
 export function useUpdateWorkbenchTask() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (input: { caseId: string; taskId: string; update: WorkbenchTaskUpdateInput }) =>
-      api.updateWorkbenchTask(input.caseId, input.taskId, input.update),
+    mutationFn: (input: {
+      caseId: string;
+      taskId: string;
+      update: WorkbenchTaskUpdateInput;
+    }) => api.updateWorkbenchTask(input.caseId, input.taskId, input.update),
     onSuccess: async (_task, input) => {
-      await queryClient.invalidateQueries({ queryKey: queryKeys.workbenchPrefix });
-      await queryClient.invalidateQueries({ queryKey: queryKeys.case(input.caseId) });
+      await queryClient.invalidateQueries({
+        queryKey: queryKeys.workbenchPrefix,
+      });
+      await queryClient.invalidateQueries({
+        queryKey: queryKeys.case(input.caseId),
+      });
     },
   });
 }
@@ -126,9 +161,12 @@ export function useUpdateWorkbenchTask() {
 export function useCreateCaseRelation(caseId: string) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (input: CaseRelationInput) => api.createCaseRelation(caseId, input),
+    mutationFn: (input: CaseRelationInput) =>
+      api.createCaseRelation(caseId, input),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: queryKeys.workbenchPrefix });
+      await queryClient.invalidateQueries({
+        queryKey: queryKeys.workbenchPrefix,
+      });
     },
   });
 }
@@ -136,9 +174,12 @@ export function useCreateCaseRelation(caseId: string) {
 export function useDeleteCaseRelation(caseId: string) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (relationId: string) => api.deleteCaseRelation(caseId, relationId),
+    mutationFn: (relationId: string) =>
+      api.deleteCaseRelation(caseId, relationId),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: queryKeys.workbenchPrefix });
+      await queryClient.invalidateQueries({
+        queryKey: queryKeys.workbenchPrefix,
+      });
     },
   });
 }
@@ -148,7 +189,9 @@ export function useCreateKnowledge() {
   return useMutation({
     mutationFn: (input: KnowledgeInput) => api.createKnowledge(input),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: queryKeys.workbenchPrefix });
+      await queryClient.invalidateQueries({
+        queryKey: queryKeys.workbenchPrefix,
+      });
     },
   });
 }
@@ -187,10 +230,14 @@ export function useTemplates(enabled = true) {
   });
 }
 
-export function useCaseReviewHistory(caseId: string, latestRunId: string | null) {
+export function useCaseReviewHistory(
+  caseId: string,
+  latestRunId: string | null,
+) {
   return useQuery({
     queryKey: queryKeys.reviewHistory(caseId, latestRunId ?? ""),
-    queryFn: ({ signal }) => api.getReviewHistory(caseId, latestRunId ?? "", signal),
+    queryFn: ({ signal }) =>
+      api.getReviewHistory(caseId, latestRunId ?? "", signal),
     enabled: caseId !== "" && latestRunId !== null,
   });
 }
@@ -198,7 +245,8 @@ export function useCaseReviewHistory(caseId: string, latestRunId: string | null)
 export function useUploadDocument(caseId: string) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (input: { file: File; role: string }) => api.uploadDocument(caseId, input.file, input.role),
+    mutationFn: (input: { file: File; role: string }) =>
+      api.uploadDocument(caseId, input.file, input.role),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: queryKeys.case(caseId) });
       await queryClient.invalidateQueries({ queryKey: queryKeys.cases });
@@ -226,7 +274,11 @@ export function useStartReview(caseId: string) {
   });
 }
 
-export function useReview(caseId: string, runId: string, attemptId?: string | null) {
+export function useReview(
+  caseId: string,
+  runId: string,
+  attemptId?: string | null,
+) {
   return useQuery({
     queryKey: queryKeys.review(caseId, runId, attemptId),
     queryFn: ({ signal }) => api.getReview(caseId, runId, attemptId, signal),
@@ -243,7 +295,9 @@ export function useRetryReview(caseId: string, runId: string) {
   return useMutation({
     mutationFn: () => api.retryReview(caseId, runId),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: queryKeys.reviewPrefix(caseId, runId) });
+      await queryClient.invalidateQueries({
+        queryKey: queryKeys.reviewPrefix(caseId, runId),
+      });
       await queryClient.invalidateQueries({ queryKey: queryKeys.case(caseId) });
     },
   });
@@ -254,7 +308,9 @@ export function useCancelReview(caseId: string, runId: string) {
   return useMutation({
     mutationFn: () => api.cancelReview(caseId, runId),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: queryKeys.reviewPrefix(caseId, runId) });
+      await queryClient.invalidateQueries({
+        queryKey: queryKeys.reviewPrefix(caseId, runId),
+      });
       await queryClient.invalidateQueries({ queryKey: queryKeys.case(caseId) });
     },
   });
@@ -266,7 +322,9 @@ export function useSubmitDecision(caseId: string, runId: string) {
     mutationFn: (input: { findingId: string; decision: DecisionInput }) =>
       api.submitDecision(caseId, runId, input.findingId, input.decision),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: queryKeys.reviewPrefix(caseId, runId) });
+      await queryClient.invalidateQueries({
+        queryKey: queryKeys.reviewPrefix(caseId, runId),
+      });
       await queryClient.invalidateQueries({ queryKey: queryKeys.case(caseId) });
       await queryClient.invalidateQueries({ queryKey: queryKeys.cases });
     },
@@ -286,7 +344,8 @@ export function useCreateGeneration(caseId: string) {
 export function useCreateRemediation(caseId: string) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (input: RemediationCreateInput) => api.createRemediation(caseId, input),
+    mutationFn: (input: RemediationCreateInput) =>
+      api.createRemediation(caseId, input),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: queryKeys.case(caseId) });
       await queryClient.invalidateQueries({ queryKey: queryKeys.cases });
@@ -297,7 +356,8 @@ export function useCreateRemediation(caseId: string) {
 export function useSubmitRemediation(caseId: string, itemId: string) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (input: RemediationSubmitInput) => api.submitRemediation(caseId, itemId, input),
+    mutationFn: (input: RemediationSubmitInput) =>
+      api.submitRemediation(caseId, itemId, input),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: queryKeys.case(caseId) });
       await queryClient.invalidateQueries({ queryKey: queryKeys.cases });
@@ -308,7 +368,8 @@ export function useSubmitRemediation(caseId: string, itemId: string) {
 export function useVerifyRemediation(caseId: string, itemId: string) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (input: RemediationVerifyInput) => api.verifyRemediation(caseId, itemId, input),
+    mutationFn: (input: RemediationVerifyInput) =>
+      api.verifyRemediation(caseId, itemId, input),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: queryKeys.case(caseId) });
       await queryClient.invalidateQueries({ queryKey: queryKeys.cases });
@@ -345,7 +406,11 @@ export function useSettings(audience: SessionAudience = "client") {
   });
 }
 export function useRulePacks() {
-  return useQuery({ queryKey: queryKeys.rulePackList, queryFn: ({ signal }) => api.listRulePacks(signal), retry: false });
+  return useQuery({
+    queryKey: queryKeys.rulePackList,
+    queryFn: ({ signal }) => api.listRulePacks(signal),
+    retry: false,
+  });
 }
 
 export function useRulePack(packId: string, version: string) {
@@ -366,7 +431,9 @@ export function useRulePackHistory(packId: string) {
   });
 }
 
-function useRulePackMutation<TInput, TOutput>(mutationFn: (input: TInput) => Promise<TOutput>) {
+function useRulePackMutation<TInput, TOutput>(
+  mutationFn: (input: TInput) => Promise<TOutput>,
+) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn,
@@ -378,38 +445,85 @@ function useRulePackMutation<TInput, TOutput>(mutationFn: (input: TInput) => Pro
 }
 
 export function useCreateRulePack() {
-  return useRulePackMutation((manifest: RulePackManifestInput) => api.createRulePack(manifest));
+  return useRulePackMutation((manifest: RulePackManifestInput) =>
+    api.createRulePack(manifest),
+  );
 }
 
 export function useEditRulePack(packId: string, version: string) {
-  return useRulePackMutation((input: { expectedRevision: number; manifest: RulePackManifestInput }) =>
-    api.editRulePack(packId, version, input.expectedRevision, input.manifest));
+  return useRulePackMutation(
+    (input: { expectedRevision: number; manifest: RulePackManifestInput }) =>
+      api.editRulePack(packId, version, input.expectedRevision, input.manifest),
+  );
 }
 
 export function useValidateRulePack(packId: string, version: string) {
-  return useRulePackMutation((expectedRevision: number) => api.validateRulePack(packId, version, expectedRevision));
+  return useRulePackMutation((expectedRevision: number) =>
+    api.validateRulePack(packId, version, expectedRevision),
+  );
 }
 
 export function useApproveRulePack(packId: string, version: string) {
-  return useRulePackMutation((input: { expectedRevision: number; expectedContentHash: string }) =>
-    api.approveRulePack(packId, version, input.expectedRevision, input.expectedContentHash));
+  return useRulePackMutation(
+    (input: { expectedRevision: number; expectedContentHash: string }) =>
+      api.approveRulePack(
+        packId,
+        version,
+        input.expectedRevision,
+        input.expectedContentHash,
+      ),
+  );
 }
 
 export function usePublishRulePack(packId: string, version: string) {
-  return useRulePackMutation((input: { expectedRevision: number; expectedPointerRevision: number; idempotencyKey: string }) =>
-    api.publishRulePack(packId, version, input.expectedRevision, input.expectedPointerRevision, input.idempotencyKey));
+  return useRulePackMutation(
+    (input: {
+      expectedRevision: number;
+      expectedPointerRevision: number;
+      idempotencyKey: string;
+    }) =>
+      api.publishRulePack(
+        packId,
+        version,
+        input.expectedRevision,
+        input.expectedPointerRevision,
+        input.idempotencyKey,
+      ),
+  );
 }
 
 export function useDisableRulePack(packId: string, version: string) {
-  return useRulePackMutation((input: { expectedRevision: number; expectedPointerRevision: number }) =>
-    api.disableRulePack(packId, version, input.expectedRevision, input.expectedPointerRevision));
+  return useRulePackMutation(
+    (input: { expectedRevision: number; expectedPointerRevision: number }) =>
+      api.disableRulePack(
+        packId,
+        version,
+        input.expectedRevision,
+        input.expectedPointerRevision,
+      ),
+  );
 }
 
 export function useRollbackRulePack(packId: string) {
-  return useRulePackMutation((input: { version: string; expectedPointerRevision: number; idempotencyKey: string }) =>
-    api.rollbackRulePack(packId, input.version, input.expectedPointerRevision, input.idempotencyKey));
+  return useRulePackMutation(
+    (input: {
+      version: string;
+      expectedPointerRevision: number;
+      idempotencyKey: string;
+    }) =>
+      api.rollbackRulePack(
+        packId,
+        input.version,
+        input.expectedPointerRevision,
+        input.idempotencyKey,
+      ),
+  );
 }
 
 export function useTestRulePack(packId: string, version: string) {
-  return useMutation({ mutationFn: (input: RulePackTestInput) => api.testRulePack(packId, version, input), retry: false });
+  return useMutation({
+    mutationFn: (input: RulePackTestInput) =>
+      api.testRulePack(packId, version, input),
+    retry: false,
+  });
 }

@@ -1,0 +1,10 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: contract-audit
+resources:
+  - ../../k8s/base/namespace.yaml
+  - ../../k8s/base/security-accounts.yaml
+  - ../../k8s/base/config.yaml
+  - ../platform.yaml
+patches:
+  - path: ../config-patch.yaml

@@ -4,7 +4,13 @@ export class ApiError extends Error {
   readonly retryable: boolean;
   readonly details: unknown;
 
-  constructor(message: string, status: number, code: string, retryable: boolean, details: unknown) {
+  constructor(
+    message: string,
+    status: number,
+    code: string,
+    retryable: boolean,
+    details: unknown,
+  ) {
     super(message);
     this.name = "ApiError";
     this.status = status;
@@ -16,8 +22,19 @@ export class ApiError extends Error {
 let sessionIdentity: string | null = null;
 let sessionEpoch = 0;
 
-export function setSessionIdentity(actor: { id: string; role: string; audience?: string; tenant_id?: string; org_id?: string } | null): boolean {
-  const nextIdentity = actor === null ? null : `${actor.audience ?? "client"}\u0000${actor.id}\u0000${actor.role}\u0000${actor.tenant_id ?? ""}\u0000${actor.org_id ?? ""}`;
+export function setSessionIdentity(
+  actor: {
+    id: string;
+    role: string;
+    audience?: string;
+    tenant_id?: string;
+    org_id?: string;
+  } | null,
+): boolean {
+  const nextIdentity =
+    actor === null
+      ? null
+      : `${actor.audience ?? "client"}\u0000${actor.id}\u0000${actor.role}\u0000${actor.tenant_id ?? ""}\u0000${actor.org_id ?? ""}`;
   if (sessionIdentity === nextIdentity) return false;
   sessionIdentity = nextIdentity;
   sessionEpoch += 1;
@@ -25,16 +42,25 @@ export function setSessionIdentity(actor: { id: string; role: string; audience?:
 }
 
 export function isUnauthenticated(error: unknown): boolean {
-  return error instanceof ApiError && (error.status === 401 || error.code === "unauthenticated");
+  return (
+    error instanceof ApiError &&
+    (error.status === 401 || error.code === "unauthenticated")
+  );
 }
 
 export function isConflict(error: unknown): boolean {
-  return error instanceof ApiError && (error.status === 409 || error.code === "conflict");
+  return (
+    error instanceof ApiError &&
+    (error.status === 409 || error.code === "conflict")
+  );
 }
 
 /** A 403 is an authorisation outcome: retrying the same request cannot succeed. */
 export function isForbidden(error: unknown): boolean {
-  return error instanceof ApiError && (error.status === 403 || error.code === "forbidden");
+  return (
+    error instanceof ApiError &&
+    (error.status === 403 || error.code === "forbidden")
+  );
 }
 
 export function errorMessage(error: unknown): string {
@@ -58,11 +84,14 @@ export function parseErrorPayload(payload: unknown): ErrorFields {
   const record = asRecord(payload);
   const nested = record ? asRecord(record.error) : null;
   const source = nested ?? record;
-  if (!source) return { message: null, code: null, retryable: null, details: null };
+  if (!source)
+    return { message: null, code: null, retryable: null, details: null };
   const directMessage = typeof record?.error === "string" ? record.error : null;
-  const message = typeof source.message === "string" ? source.message : directMessage;
+  const message =
+    typeof source.message === "string" ? source.message : directMessage;
   const code = typeof source.code === "string" ? source.code : null;
-  const retryable = typeof source.retryable === "boolean" ? source.retryable : null;
+  const retryable =
+    typeof source.retryable === "boolean" ? source.retryable : null;
   return {
     message: message === null ? null : message.slice(0, 300),
     code,
@@ -98,7 +127,9 @@ export async function errorFromResponse(response: Response): Promise<ApiError> {
   }
   const parsed = parseErrorPayload(payload);
   return new ApiError(
-    parsed.message && parsed.message.trim() !== "" ? parsed.message : defaultMessage(response.status),
+    parsed.message && parsed.message.trim() !== ""
+      ? parsed.message
+      : defaultMessage(response.status),
     response.status,
     parsed.code ?? defaultCode(response.status),
     parsed.retryable ?? false,
@@ -106,9 +137,14 @@ export async function errorFromResponse(response: Response): Promise<ApiError> {
   );
 }
 
-export async function requestJson<T>(path: string, init: RequestInit, parse: (value: unknown) => T): Promise<T> {
+export async function requestJson<T>(
+  path: string,
+  init: RequestInit,
+  parse: (value: unknown) => T,
+): Promise<T> {
   const requestEpoch = sessionEpoch;
-  const isSessionRequest = path === "/api/session" || path.startsWith("/api/session?");
+  const isSessionRequest =
+    path === "/api/session" || path.startsWith("/api/session?");
   let response: Response;
   try {
     response = await fetch(path, {
@@ -124,22 +160,38 @@ export async function requestJson<T>(path: string, init: RequestInit, parse: (va
     if (error instanceof Error && error.name === "AbortError") throw error;
     throw new ApiError("无法连接审查服务", 0, "network", true, null);
   }
-  if (!isSessionRequest && requestEpoch !== sessionEpoch) throw new DOMException("Session changed", "AbortError");
+  if (!isSessionRequest && requestEpoch !== sessionEpoch)
+    throw new DOMException("Session changed", "AbortError");
   if (!response.ok) throw await errorFromResponse(response);
   if (response.status === 204) return parse(null);
   const text = await response.text();
   if (text.trim() === "") return parse(null);
   try {
     const value = JSON.parse(text) as unknown;
-    if (!isSessionRequest && requestEpoch !== sessionEpoch) throw new DOMException("Session changed", "AbortError");
+    if (!isSessionRequest && requestEpoch !== sessionEpoch)
+      throw new DOMException("Session changed", "AbortError");
     return parse(value);
   } catch (error) {
-    if (error instanceof ApiError || (error instanceof Error && error.name === "AbortError")) throw error;
-    throw new ApiError("服务返回的内容无法识别", response.status, "invalid_response", false, null);
+    if (
+      error instanceof ApiError ||
+      (error instanceof Error && error.name === "AbortError")
+    )
+      throw error;
+    throw new ApiError(
+      "服务返回的内容无法识别",
+      response.status,
+      "invalid_response",
+      false,
+      null,
+    );
   }
 }
 
-export function jsonInit(method: string, body?: unknown, headers?: Record<string, string>): RequestInit {
+export function jsonInit(
+  method: string,
+  body?: unknown,
+  headers?: Record<string, string>,
+): RequestInit {
   return {
     method,
     headers: {

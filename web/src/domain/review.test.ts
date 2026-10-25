@@ -25,19 +25,34 @@ function finding(id: string, relation: string, decided: boolean): Finding {
     unverified_reason: null,
     version: 1,
     decisions: decided
-      ? [{ id: `${id}-d`, action: "confirm_risk", reason: "已核对", actor: "甲", decided_at: "2026-10-21T01:00:00Z" }]
+      ? [
+          {
+            id: `${id}-d`,
+            action: "confirm_risk",
+            reason: "已核对",
+            actor: "甲",
+            decided_at: "2026-10-21T01:00:00Z",
+          },
+        ]
       : [],
   };
 }
 
-function item(id: string, title: string, state: string | null, pending: number): CaseSummary {
+function item(
+  id: string,
+  title: string,
+  state: string | null,
+  pending: number,
+): CaseSummary {
   return {
     id,
     title,
     contract_type: "procurement_ict",
     document_count: 2,
     pending_decisions: pending,
-    latest_run: state ? { id: `${id}-run`, state, updated_at: "2026-10-21T01:00:00Z" } : null,
+    latest_run: state
+      ? { id: `${id}-run`, state, updated_at: "2026-10-21T01:00:00Z" }
+      : null,
     updated_at: "2026-10-21T01:00:00Z",
   };
 }
@@ -51,23 +66,34 @@ describe("case filters", () => {
   ];
 
   it("matches title text and keeps an unknown filter on all", () => {
-    expect(filterCases(items, "质保", "all").map((entry) => entry.id)).toEqual(["c1"]);
+    expect(filterCases(items, "质保", "all").map((entry) => entry.id)).toEqual([
+      "c1",
+    ]);
     expect(parseRunFilter("nope")).toBe("all");
   });
 
   it("treats pending decisions as needing a person even if the run state lags", () => {
     const lagged = item("c5", "滞后", "running", 2);
     expect(filterCases([lagged], "", "needs_human")).toHaveLength(1);
-    expect(filterCases(items, "", "active").map((entry) => entry.id)).toEqual(["c2"]);
-    expect(filterCases(items, "", "failed").map((entry) => entry.id)).toEqual(["c4"]);
+    expect(filterCases(items, "", "active").map((entry) => entry.id)).toEqual([
+      "c2",
+    ]);
+    expect(filterCases(items, "", "failed").map((entry) => entry.id)).toEqual([
+      "c4",
+    ]);
   });
 });
 
 describe("findings and decisions", () => {
-  const findings = [finding("f1", "conflict", false), finding("f2", "insufficient", true)];
+  const findings = [
+    finding("f1", "conflict", false),
+    finding("f2", "insufficient", true),
+  ];
 
   it("filters undecided items and prefers them when the url has no selection", () => {
-    expect(filterFindings(findings, "undecided").map((entry) => entry.id)).toEqual(["f1"]);
+    expect(
+      filterFindings(findings, "undecided").map((entry) => entry.id),
+    ).toEqual(["f1"]);
     expect(selectedFindingId(findings, null)).toBe("f1");
     expect(selectedFindingId(findings, "f2")).toBe("f2");
   });
@@ -89,7 +115,11 @@ describe("layout and events", () => {
   it("drops events that have no sequence", () => {
     expect(parseRunEvent("not-json")).toBeNull();
     expect(parseRunEvent(JSON.stringify({ type: "run_state" }))).toBeNull();
-    expect(parseRunEvent(JSON.stringify({ seq: 4, type: "run_state", state: "running" }))).toEqual({
+    expect(
+      parseRunEvent(
+        JSON.stringify({ seq: 4, type: "run_state", state: "running" }),
+      ),
+    ).toEqual({
       seq: 4,
       type: "run_state",
       state: "running",

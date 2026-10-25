@@ -387,14 +387,6 @@ type WorkbenchTool struct {
 	LastStatus   *string  `json:"last_status"`
 }
 
-type WorkbenchHealth struct {
-	ID         string `json:"id"`
-	Name       string `json:"name"`
-	Status     string `json:"status"`
-	Detail     string `json:"detail"`
-	ObservedAt string `json:"observed_at"`
-}
-
 type WorkbenchSnapshot struct {
 	SchemaVersion string                 `json:"schema_version"`
 	GeneratedAt   string                 `json:"generated_at"`
@@ -414,7 +406,6 @@ type WorkbenchSnapshot struct {
 	Templates     []Template             `json:"templates"`
 	Model         WorkbenchModel         `json:"model"`
 	Tools         []WorkbenchTool        `json:"tools"`
-	Health        []WorkbenchHealth      `json:"health"`
 }
 
 type Actor struct {

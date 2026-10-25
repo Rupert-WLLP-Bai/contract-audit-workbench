@@ -23,6 +23,7 @@ import (
 
 	"contractaudit/internal/bootstrap"
 	"contractaudit/internal/httpapi"
+	"contractaudit/internal/systemhealth"
 )
 
 func main() {
@@ -90,7 +91,8 @@ func serveCore(ctx context.Context) error {
 
 func options(app *bootstrap.Runtime, cors []string) httpapi.Options {
 	return httpapi.Options{
-		CORSOrigins: cors, Models: app.Models, OIDC: app.OIDC,
+		SystemHealth: systemhealth.FromEnv(app.Store.Ready),
+		CORSOrigins:  cors, Models: app.Models, OIDC: app.OIDC,
 		Durable: app.Durable, SecureCookies: app.SecureCookies,
 	}
 }

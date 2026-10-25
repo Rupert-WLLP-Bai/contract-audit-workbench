@@ -15,7 +15,8 @@ RUN mkdir -p /out \
     && CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH:-amd64} go build -trimpath -ldflags="-s -w" -o /out/worker ./cmd/worker \
     && CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH:-amd64} go build -trimpath -ldflags="-s -w" -o /out/modelgateway ./cmd/modelgateway \
     && CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH:-amd64} go build -trimpath -ldflags="-s -w" -o /out/toolgateway ./cmd/toolgateway \
-    && CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH:-amd64} go build -trimpath -ldflags="-s -w" -o /out/migrate ./cmd/migrate
+    && CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH:-amd64} go build -trimpath -ldflags="-s -w" -o /out/migrate ./cmd/migrate \
+    && CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH:-amd64} go build -trimpath -ldflags="-s -w" -o /out/healthmonitor ./cmd/healthmonitor
 
 FROM oven/bun:1.4.3 AS web-build
 WORKDIR /src/web
@@ -44,6 +45,7 @@ COPY --from=go-build --chown=contractaudit:contractaudit /out/worker /app/worker
 COPY --from=go-build --chown=contractaudit:contractaudit /out/modelgateway /app/modelgateway
 COPY --from=go-build --chown=contractaudit:contractaudit /out/toolgateway /app/toolgateway
 COPY --from=go-build --chown=contractaudit:contractaudit /out/migrate /app/migrate
+COPY --from=go-build --chown=contractaudit:contractaudit /out/healthmonitor /app/healthmonitor
 COPY --chown=contractaudit:contractaudit deploy/app/entrypoint.sh /app/entrypoint
 RUN chmod 0555 /app/entrypoint
 USER contractaudit:contractaudit

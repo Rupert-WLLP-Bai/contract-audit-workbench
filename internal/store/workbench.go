@@ -757,7 +757,7 @@ func (s *Store) WorkbenchSnapshot(ctx context.Context, user accounts.User, perio
 		Cases: []WorkbenchCase{}, Profiles: []CaseProfile{}, Tasks: []WorkbenchTask{}, Relations: []CaseRelation{},
 		Knowledge: []Knowledge{}, Members: []Actor{}, Remediations: []WorkbenchRemediation{}, Reports: []WorkbenchReport{},
 		Documents: []WorkbenchDocument{}, Runs: []WorkbenchRun{}, Audit: []WorkbenchAudit{}, Templates: s.Templates(),
-		Model: model, Tools: []WorkbenchTool{}, Health: []WorkbenchHealth{},
+		Model: model, Tools: []WorkbenchTool{},
 	}
 	out.Dashboard = buildWorkbenchDashboard(st, orderedCases, current.ID, now, start, period)
 	profilesByCase := make(map[string]CaseProfile)
@@ -827,17 +827,12 @@ func (s *Store) WorkbenchSnapshot(ctx context.Context, user accounts.User, perio
 		return WorkbenchSnapshot{}, err
 	}
 	model.Name, model.OCRName = strings.TrimSpace(model.Name), strings.TrimSpace(model.OCRName)
-	modelStatus, modelDetail := "unconfigured", "未配置审查模型"
 	if model.Name != "" {
 		model.Status, model.Label = "configured", "审查模型已配置："+model.Name
-		modelStatus, modelDetail = "unknown", "已读取模型配置；本次快照未探测外部端点"
 	} else {
 		model.Status, model.Label = "unconfigured", "未配置审查模型"
 	}
 	out.Model = model
-	observedAt := now.Format(time.RFC3339Nano)
-	out.Health = append(out.Health, WorkbenchHealth{ID: "database", Name: "PostgreSQL", Status: "ready", Detail: "快照数据已从当前持久schema读取", ObservedAt: observedAt})
-	out.Health = append(out.Health, WorkbenchHealth{ID: "review_model", Name: model.Name, Status: modelStatus, Detail: modelDetail, ObservedAt: observedAt})
 	sort.Slice(out.Profiles, func(i, j int) bool { return out.Profiles[i].Number < out.Profiles[j].Number })
 	sort.Slice(out.Tasks, func(i, j int) bool { return out.Tasks[i].UpdatedAt > out.Tasks[j].UpdatedAt })
 	sort.Slice(out.Relations, func(i, j int) bool { return out.Relations[i].CreatedAt > out.Relations[j].CreatedAt })

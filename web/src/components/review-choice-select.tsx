@@ -1,5 +1,6 @@
 import type { ReviewChoice } from "../domain/workflow";
 import { runLabel } from "../domain/review";
+import { Select } from "antd";
 
 export function ReviewChoiceSelect({
   label,
@@ -17,14 +18,17 @@ export function ReviewChoiceSelect({
   return (
     <label className="field">
       {label}
-      <select aria-label={label} value={value} onChange={(event) => onChange(event.target.value)} disabled={disabled} required>
-        <option value="">选择已保存的运行和尝试</option>
-        {choices.map((choice) => (
-          <option key={choice.key} value={choice.key}>
-            {choice.runId} · 第 {choice.attempt.ordinal} 次 · {runLabel(choice.attempt.state)}
-          </option>
-        ))}
-      </select>
+      <Select
+        aria-label={label}
+        value={value || undefined}
+        onChange={onChange}
+        disabled={disabled}
+        placeholder="选择已保存的运行和尝试"
+        options={choices.map((choice) => ({
+          value: choice.key,
+          label: `${choice.runId} · 第 ${choice.attempt.ordinal} 次 · ${runLabel(choice.attempt.state)}`,
+        }))}
+      />
     </label>
   );
 }

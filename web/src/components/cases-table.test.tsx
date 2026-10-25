@@ -1,5 +1,6 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { renderWithAntd as render } from "../test/antd";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router";
 import type { CaseSummary } from "../api/types";
 import { CasesTable } from "./cases-table";
@@ -10,7 +11,11 @@ const item: CaseSummary = {
   contract_type: "network_engineering",
   document_count: 3,
   pending_decisions: 2,
-  latest_run: { id: "r1", state: "awaiting_human", updated_at: "2026-10-21T01:00:00Z" },
+  latest_run: {
+    id: "r1",
+    state: "awaiting_human",
+    updated_at: "2026-10-21T01:00:00Z",
+  },
   updated_at: "2026-10-21T01:00:00Z",
 };
 
@@ -33,7 +38,10 @@ describe("cases table", () => {
         <CasesTable items={[item]} {...tableProps} />
       </MemoryRouter>,
     );
-    expect(screen.getByRole("link", { name: "基站质保" })).toHaveAttribute("href", "/cases/c1");
+    expect(screen.getByRole("link", { name: "基站质保" })).toHaveAttribute(
+      "href",
+      "/cases/c1",
+    );
     expect(screen.getByRole("cell", { name: "待人工" })).toBeInTheDocument();
     expect(screen.getByRole("cell", { name: "2" })).toBeInTheDocument();
   });
@@ -41,19 +49,31 @@ describe("cases table", () => {
   it("says when a case has not been reviewed instead of calling it clean", () => {
     render(
       <MemoryRouter>
-        <CasesTable items={[{ ...item, latest_run: null, pending_decisions: 0 }]} {...tableProps} />
+        <CasesTable
+          items={[{ ...item, latest_run: null, pending_decisions: 0 }]}
+          {...tableProps}
+        />
       </MemoryRouter>,
     );
     expect(screen.getByText("尚未审查")).toBeInTheDocument();
   });
 
   it("exposes sorting as a keyboard-operable table action", async () => {
-    const user = userEvent.setup();
     const onSort = vi.fn();
-    render(<MemoryRouter><CasesTable items={[item]} {...tableProps} onSort={onSort} /></MemoryRouter>);
-    const sortButton = screen.getByRole("button", { name: /按案件排序/ });
-    sortButton.focus();
-    await user.keyboard("{Enter}");
+    render(
+      <MemoryRouter>
+        <CasesTable items={[item]} {...tableProps} onSort={onSort} />
+      </MemoryRouter>,
+    );
+    const header = screen.getByRole("columnheader", { name: /案件/ });
+    expect(header).toHaveAttribute("tabindex", "0");
+    header.focus();
+    fireEvent.keyDown(header, {
+      key: "Enter",
+      code: "Enter",
+      keyCode: 13,
+      which: 13,
+    });
     expect(onSort).toHaveBeenCalledWith("title");
   });
 
@@ -62,12 +82,17 @@ describe("cases table", () => {
     render(
       <MemoryRouter initialEntries={["/cases?q=network&run=needs_human"]}>
         <Routes>
-          <Route path="/cases" element={<CasesTable items={[item]} {...tableProps} />} />
+          <Route
+            path="/cases"
+            element={<CasesTable items={[item]} {...tableProps} />}
+          />
           <Route path="/cases/:caseId" element={<LocationState />} />
         </Routes>
       </MemoryRouter>,
     );
     await user.click(screen.getByRole("link", { name: "基站质保" }));
-    expect(await screen.findByText(/"selectedId":"c1"/)).toHaveTextContent('"returnTo":"/cases?q=network&run=needs_human&selected=c1"');
+    expect(await screen.findByText(/"selectedId":"c1"/)).toHaveTextContent(
+      '"returnTo":"/cases?q=network&run=needs_human&selected=c1"',
+    );
   });
 });

@@ -1,0 +1,129 @@
+.health-page {
+  padding: 24px;
+  display: grid;
+  gap: 20px;
+}
+.health-page .page-head {
+  margin: 0;
+}
+.health-eyebrow {
+  color: var(--health-muted);
+  font-size: 12px;
+  margin: 0 0 6px;
+}
+.health-refresh {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 14px;
+}
+.health-summary {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 14px;
+}
+.health-note {
+  color: var(--health-muted);
+  font-size: 12px;
+  margin: 0;
+}
+.health-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 16px;
+  margin: 4px 0 24px;
+}
+.health-toolbar > span {
+  flex: 1;
+  min-width: 180px;
+  align-self: center;
+}
+.health-toolbar label {
+  display: grid;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--health-muted);
+}
+.health-toolbar label:last-child {
+  width: min(280px, 100%);
+}
+.health-group {
+  margin-bottom: 24px;
+}
+.health-group:last-child {
+  margin-bottom: 0;
+}
+.health-group h2 {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 15px;
+  margin: 0 0 12px;
+}
+.health-group h2 span {
+  color: var(--health-muted);
+  font-size: 12px;
+  font-weight: 400;
+}
+.health-card-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+.health-service-card {
+  min-width: 0;
+}
+.health-target {
+  overflow-wrap: anywhere;
+  font-size: 12px;
+}
+.health-service-detail {
+  flex: 1;
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.8;
+  color: var(--health-muted);
+}
+.health-card-footer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border-top: 1px solid var(--health-line);
+  padding-top: 10px;
+}
+.health-card-footer > span {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--health-muted);
+  font-size: 10px;
+}
+@media (max-width: 1100px) {
+  .health-card-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .health-refresh {
+    justify-content: flex-start;
+  }
+}
+@media (max-width: 700px) {
+  .health-page {
+    padding: 14px;
+    gap: 14px;
+  }
+  .health-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+  .health-card-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .health-toolbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .health-toolbar label:last-child {
+    width: 100%;
+  }
+}

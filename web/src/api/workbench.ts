@@ -1,6 +1,11 @@
 import { ApiError } from "./http";
 import { isRecord } from "./guards";
-import { parseCaseSummary, parseExecutionUsage, parseReportRecord, parseRemediation } from "./parse";
+import {
+  parseCaseSummary,
+  parseExecutionUsage,
+  parseReportRecord,
+  parseRemediation,
+} from "./parse";
 import type {
   CaseProfile,
   CaseRelation,
@@ -22,9 +27,14 @@ import type {
 } from "./types";
 
 function invalid(message: string): never {
-  throw new ApiError(`工作台快照无效：${message}`, 500, "invalid_response", false, null);
+  throw new ApiError(
+    `工作台快照无效：${message}`,
+    500,
+    "invalid_response",
+    false,
+    null,
+  );
 }
-
 
 function object(value: unknown, name: string): Record<string, unknown> {
   if (!isRecord(value)) return invalid(`${name}不是对象`);
@@ -37,34 +47,50 @@ function string(record: Record<string, unknown>, key: string): string {
   return value;
 }
 
-function nullableString(record: Record<string, unknown>, key: string): string | null {
+function nullableString(
+  record: Record<string, unknown>,
+  key: string,
+): string | null {
   const value = record[key];
-  if (value !== null && typeof value !== "string") return invalid(`${key}不是字符串或null`);
+  if (value !== null && typeof value !== "string")
+    return invalid(`${key}不是字符串或null`);
   return value;
 }
 
 function count(record: Record<string, unknown>, key: string): number {
   const value = record[key];
-  if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0) return invalid(`${key}不是非负整数`);
+  if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0)
+    return invalid(`${key}不是非负整数`);
   return value;
 }
 
-function nullableDuration(record: Record<string, unknown>, key: string): number | null {
+function nullableDuration(
+  record: Record<string, unknown>,
+  key: string,
+): number | null {
   const value = record[key];
   if (value === null) return null;
-  if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0) return invalid(`${key}不是非负整数或null`);
+  if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0)
+    return invalid(`${key}不是非负整数或null`);
   return value;
 }
 
 function isoTime(record: Record<string, unknown>, key: string): string {
   const value = string(record, key);
-  if (!/^\d{4}-\d{2}-\d{2}T.*(?:Z|[+-]\d{2}:\d{2})$/.test(value) || Number.isNaN(Date.parse(value))) {
+  if (
+    !/^\d{4}-\d{2}-\d{2}T.*(?:Z|[+-]\d{2}:\d{2})$/.test(value) ||
+    Number.isNaN(Date.parse(value))
+  ) {
     return invalid(`${key}不是RFC3339时间`);
   }
   return value;
 }
 
-function array<T>(record: Record<string, unknown>, key: string, parse: (value: unknown) => T): T[] {
+function array<T>(
+  record: Record<string, unknown>,
+  key: string,
+  parse: (value: unknown) => T,
+): T[] {
   const value = record[key];
   if (!Array.isArray(value)) return invalid(`${key}不是数组`);
   return value.map(parse);
@@ -72,7 +98,8 @@ function array<T>(record: Record<string, unknown>, key: string, parse: (value: u
 
 function stringArray(record: Record<string, unknown>, key: string): string[] {
   const value = record[key];
-  if (!Array.isArray(value) || !value.every((item) => typeof item === "string")) return invalid(`${key}不是字符串数组`);
+  if (!Array.isArray(value) || !value.every((item) => typeof item === "string"))
+    return invalid(`${key}不是字符串数组`);
   return value;
 }
 
@@ -96,9 +123,17 @@ function task(value: unknown): WorkbenchTask {
   const kind = string(record, "kind");
   const status = string(record, "status");
   const priority = string(record, "priority");
-  if (kind !== "review" && kind !== "decision" && kind !== "remediation" && kind !== "general") return invalid("任务 kind 无效");
-  if (status !== "open" && status !== "in_progress" && status !== "completed") return invalid("任务 status 无效");
-  if (priority !== "high" && priority !== "medium" && priority !== "low") return invalid("任务 priority 无效");
+  if (
+    kind !== "review" &&
+    kind !== "decision" &&
+    kind !== "remediation" &&
+    kind !== "general"
+  )
+    return invalid("任务 kind 无效");
+  if (status !== "open" && status !== "in_progress" && status !== "completed")
+    return invalid("任务 status 无效");
+  if (priority !== "high" && priority !== "medium" && priority !== "low")
+    return invalid("任务 priority 无效");
   return {
     id: string(record, "id"),
     case_id: string(record, "case_id"),
@@ -131,7 +166,8 @@ function relation(value: unknown): CaseRelation {
 function knowledge(value: unknown): Knowledge {
   const record = object(value, "知识条目");
   const sourceType = string(record, "source_type");
-  if (sourceType !== "synthetic_policy" && sourceType !== "reference") return invalid("知识来源类型无效");
+  if (sourceType !== "synthetic_policy" && sourceType !== "reference")
+    return invalid("知识来源类型无效");
   return {
     id: string(record, "id"),
     title: string(record, "title"),
@@ -157,12 +193,23 @@ function member(value: unknown): WorkbenchMember {
 
 function workbenchCase(value: unknown): WorkbenchCase {
   const record = object(value, "案件");
-  if (!Object.hasOwn(record, "profile") || !Object.hasOwn(record, "severity") || !Object.hasOwn(record, "progress") || !Object.hasOwn(record, "latest_run")) {
+  if (
+    !Object.hasOwn(record, "profile") ||
+    !Object.hasOwn(record, "severity") ||
+    !Object.hasOwn(record, "progress") ||
+    !Object.hasOwn(record, "latest_run")
+  ) {
     return invalid("案件缺少profile、severity、progress或latest_run");
   }
   const severity = nullableString(record, "severity");
   const progress = record.progress;
-  if (progress !== null && (typeof progress !== "number" || !Number.isFinite(progress) || progress < 0 || progress > 100)) {
+  if (
+    progress !== null &&
+    (typeof progress !== "number" ||
+      !Number.isFinite(progress) ||
+      progress < 0 ||
+      progress > 100)
+  ) {
     return invalid("案件 progress 无效");
   }
   const parsed = parseCaseSummary(value);
@@ -180,14 +227,24 @@ function dashboard(value: unknown): WorkbenchDashboard {
     const item = object(entry, "进展统计");
     return { status: string(item, "status"), count: count(item, "count") };
   });
-  const risks = array<WorkbenchDashboard["risks"][number]>(record, "risks", (entry) => {
-    const item = object(entry, "风险统计");
-    const severity = string(item, "severity");
-    if (severity !== "high" && severity !== "medium" && severity !== "low" && severity !== "info" && severity !== "unrated") {
-      return invalid("风险统计 severity 无效");
-    }
-    return { severity, count: count(item, "count") };
-  });
+  const risks = array<WorkbenchDashboard["risks"][number]>(
+    record,
+    "risks",
+    (entry) => {
+      const item = object(entry, "风险统计");
+      const severity = string(item, "severity");
+      if (
+        severity !== "high" &&
+        severity !== "medium" &&
+        severity !== "low" &&
+        severity !== "info" &&
+        severity !== "unrated"
+      ) {
+        return invalid("风险统计 severity 无效");
+      }
+      return { severity, count: count(item, "count") };
+    },
+  );
   return {
     visible_cases: count(record, "visible_cases"),
     my_pending_tasks: count(record, "my_pending_tasks"),
@@ -205,7 +262,8 @@ function parsedDocument(value: unknown): ParsedDocumentMetadata | null {
   if (value === null) return null;
   const record = object(value, "解析产物");
   const status = string(record, "status");
-  if (status !== "ready" && status !== "failed") return invalid("解析产物 status 无效");
+  if (status !== "ready" && status !== "failed")
+    return invalid("解析产物 status 无效");
   return {
     id: string(record, "id"),
     document_id: string(record, "document_id"),
@@ -225,9 +283,11 @@ function parsedDocument(value: unknown): ParsedDocumentMetadata | null {
 function document(value: unknown): DocumentVersion {
   const record = object(value, "材料");
   const size = record.size;
-  if (typeof size !== "number" || !Number.isSafeInteger(size) || size < 0) return invalid("材料 size 无效");
+  if (typeof size !== "number" || !Number.isSafeInteger(size) || size < 0)
+    return invalid("材料 size 无效");
   const superseded = record.superseded;
-  if (superseded !== undefined && typeof superseded !== "boolean") return invalid("材料 superseded 无效");
+  if (superseded !== undefined && typeof superseded !== "boolean")
+    return invalid("材料 superseded 无效");
   return {
     id: string(record, "id"),
     role: string(record, "role"),
@@ -245,17 +305,28 @@ function document(value: unknown): DocumentVersion {
 
 function workbenchDocument(value: unknown): WorkbenchDocument {
   const record = object(value, "材料记录");
-  return { ...document(value), case_id: string(record, "case_id"), case_title: string(record, "case_title") };
+  return {
+    ...document(value),
+    case_id: string(record, "case_id"),
+    case_title: string(record, "case_title"),
+  };
 }
 
 function remediation(value: unknown): WorkbenchRemediation {
   const record = object(value, "整改记录");
-  return { ...parseRemediation(value), case_title: string(record, "case_title") };
+  return {
+    ...parseRemediation(value),
+    case_title: string(record, "case_title"),
+  };
 }
 
 function report(value: unknown): WorkbenchReport {
   const record = object(value, "报告记录");
-  return { ...parseReportRecord(value), case_id: string(record, "case_id"), case_title: string(record, "case_title") };
+  return {
+    ...parseReportRecord(value),
+    case_id: string(record, "case_id"),
+    case_title: string(record, "case_title"),
+  };
 }
 
 function run(value: unknown): WorkbenchRun {
@@ -292,7 +363,8 @@ function template(value: unknown): Template {
   const record = object(value, "模板");
   const fields = array(record, "fields", (fieldValue) => {
     const field = object(fieldValue, "模板字段");
-    if (typeof field.required !== "boolean") return invalid("模板字段 required 无效");
+    if (typeof field.required !== "boolean")
+      return invalid("模板字段 required 无效");
     return {
       key: string(field, "key"),
       label: string(field, "label"),
@@ -300,14 +372,25 @@ function template(value: unknown): Template {
       type: string(field, "type"),
     };
   });
-  return { id: string(record, "id"), name: string(record, "name"), version: string(record, "version"), digest: string(record, "digest"), fields };
+  return {
+    id: string(record, "id"),
+    name: string(record, "name"),
+    version: string(record, "version"),
+    digest: string(record, "digest"),
+    fields,
+  };
 }
 
-export function parseWorkbenchSnapshot(value: unknown, requestedPeriod: WorkbenchPeriod): WorkbenchSnapshot {
+export function parseWorkbenchSnapshot(
+  value: unknown,
+  requestedPeriod: WorkbenchPeriod,
+): WorkbenchSnapshot {
   const record = object(value, "响应");
-  if (record.schema_version !== "workbench/v1") return invalid("schema_version 不受支持");
+  if (record.schema_version !== "workbench/v1")
+    return invalid("schema_version 不受支持");
   const period = string(record, "period");
-  if (period !== "day" && period !== "week" && period !== "month") return invalid("period 无效");
+  if (period !== "day" && period !== "week" && period !== "month")
+    return invalid("period 无效");
   if (period !== requestedPeriod) return invalid("响应 period 与请求不一致");
   const modelRecord = object(record.model, "模型配置");
   const tools = array(record, "tools", (toolValue) => {
@@ -320,12 +403,6 @@ export function parseWorkbenchSnapshot(value: unknown, requestedPeriod: Workbenc
       calls: count(item, "calls"),
       last_status: nullableString(item, "last_status"),
     };
-  });
-  const health = array<WorkbenchSnapshot["health"][number]>(record, "health", (healthValue) => {
-    const item = object(healthValue, "健康状态");
-    const status = string(item, "status");
-    if (status !== "ready" && status !== "unavailable" && status !== "unknown") return invalid("health status 无效");
-    return { id: string(item, "id"), name: string(item, "name"), status, detail: string(item, "detail"), observed_at: isoTime(item, "observed_at") };
   });
   return {
     schema_version: "workbench/v1",
@@ -349,13 +426,13 @@ export function parseWorkbenchSnapshot(value: unknown, requestedPeriod: Workbenc
       ocr_name: string(modelRecord, "ocr_name"),
       status: (() => {
         const status = string(modelRecord, "status");
-        if (status !== "configured" && status !== "unconfigured") return invalid("model.status 无效");
+        if (status !== "configured" && status !== "unconfigured")
+          return invalid("model.status 无效");
         return status;
       })(),
       label: string(modelRecord, "label"),
     },
     tools,
-    health,
   };
 }
 

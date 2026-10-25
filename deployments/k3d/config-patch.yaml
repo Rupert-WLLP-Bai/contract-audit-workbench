@@ -1,0 +1,42 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: contract-audit-runtime
+data:
+  APP_ENV: development
+  DATABASE_SCHEMA: public
+  EXECUTION_QUEUE_POLICY: ""
+  APP_READ_ONLY: "false"
+  COOKIE_SECURE: "false"
+  CORS_ORIGIN: http://127.0.0.1:18080,http://127.0.0.1:18081,http://127.0.0.1:18082
+  OIDC_REDIRECT_URL: http://127.0.0.1:18080/api/auth/oidc/callback
+  OIDC_ADMIN_REDIRECT_URL: http://127.0.0.1:18081/api/auth/oidc/callback
+  CORE_URLS: http://core-api:8081
+  DOCUMENT_URL: http://document-service:8082
+  EXECUTION_URL: http://audit-execution:8083
+  TOOL_URLS: http://tool-gateway:8085
+  DOCUMENT_SERVICE_URL: http://document-service:8082
+  MODEL_GATEWAY_URL: http://model-gateway:8084/v1
+  TOOL_GATEWAY_URL: http://tool-gateway:8085
+  NATS_URL: nats://nats:4222
+  S3_ENDPOINT: http://rustfs:9000
+  S3_BUCKET: contract-audit-dev
+  S3_REGION: us-east-1
+  LLM_BASE_URL: ""
+  LLM_MODEL: fixture-chat
+  OCR_MODEL: fixture-ocr
+  MODEL_GATEWAY_MODE: fixture
+  # The local fixture answers only its own two identifiers and returns this
+  # explicit OCR transcription; it never calls a paid model provider.
+  MODEL_GATEWAY_FIXTURE_OCR_CONTENT: 质保期为36个月。
+  AGENT_PLANNER_MODE: deterministic
+  GATEWAY_HEALTH_INTERVAL: 1s
+  GATEWAY_HEALTH_TIMEOUT: 500ms
+  GATEWAY_HEALTH_FAILURE_THRESHOLD: "2"
+  GATEWAY_HEALTH_RECOVERY_THRESHOLD: "2"
+  AGENT_PLANNER_MAX_ROUNDS: "2"
+  AGENT_PLANNER_MAX_CALLS: "16"
+  AGENT_PLANNER_TIMEOUT: 30s
+  AGENT_PLANNER_MAX_EVIDENCE_BYTES: "2097152"
+  OTEL_EXPORTER_OTLP_ENDPOINT: ""
+  MINERU_URL: ""

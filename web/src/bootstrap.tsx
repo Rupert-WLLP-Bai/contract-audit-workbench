@@ -1,4 +1,5 @@
 import { App as AntdApp, ConfigProvider } from "antd";
+import zhCN from "antd/locale/zh_CN";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { StrictMode, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
@@ -15,7 +16,9 @@ const uiTheme = {
     colorBorder: rootStyle.getPropertyValue("--border-default").trim(),
     colorBgLayout: rootStyle.getPropertyValue("--surface-page").trim(),
     colorBgContainer: rootStyle.getPropertyValue("--surface-raised").trim(),
-    borderRadius: Number.parseFloat(rootStyle.getPropertyValue("--panel-radius")),
+    borderRadius: Number.parseFloat(
+      rootStyle.getPropertyValue("--panel-radius"),
+    ),
     fontFamily: rootStyle.getPropertyValue("--font-ui").trim(),
     fontSize: Number.parseFloat(rootStyle.getPropertyValue("--font-size-ui")),
     controlHeight: 32,
@@ -37,13 +40,24 @@ function rootElement(): HTMLElement {
   return root;
 }
 
-export function mountApplication(application: ReactNode, options: { routing?: boolean; queries?: boolean } = {}) {
+export function mountApplication(
+  application: ReactNode,
+  options: { routing?: boolean; queries?: boolean } = {},
+) {
   let content = application;
-  if (options.routing !== false) content = <BrowserRouter>{content}</BrowserRouter>;
-  if (options.queries !== false) content = <QueryClientProvider client={queryClient}>{content}</QueryClientProvider>;
+  if (options.routing !== false)
+    content = <BrowserRouter>{content}</BrowserRouter>;
+  if (options.queries !== false)
+    content = (
+      <QueryClientProvider client={queryClient}>{content}</QueryClientProvider>
+    );
   createRoot(rootElement()).render(
     <StrictMode>
-      <ConfigProvider theme={uiTheme}>
+      <ConfigProvider
+        theme={uiTheme}
+        locale={zhCN}
+        button={{ autoInsertSpace: false }}
+      >
         <AntdApp component={false}>{content}</AntdApp>
       </ConfigProvider>
     </StrictMode>,

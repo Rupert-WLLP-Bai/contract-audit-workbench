@@ -32,6 +32,7 @@ FIXTURE_CHAT_MODEL = "fixture-chat"
 FIXTURE_OCR_MODEL = "fixture-ocr"
 DATABASE_TARGETS = {"development": "DEV_DATABASE_URL", "test": "TEST_DATABASE_URL"}
 APP_SERVICES = (
+	"health-monitor",
 	"gateway", "core-api", "document-service", "audit-execution", "audit-worker",
 	"model-gateway", "model-gateway-fixture", "tool-gateway", "client", "admin", "portal",
 )
@@ -466,6 +467,7 @@ def start_apps(fixture: bool, offline_images: bool, planner_mode: str | None) ->
 		"--wait", "--wait-timeout", "180",
 		"gateway", "core-api", "document-service", "audit-execution", "audit-worker",
 		model_service, "tool-gateway", "client", "admin", "portal",
+		"health-monitor",
 		*observation_services(values),
 	], timeout=300)
 

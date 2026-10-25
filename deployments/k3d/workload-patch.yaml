@@ -1,0 +1,235 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gateway
+spec:
+  replicas: 1
+  template:
+    spec:
+      securityContext:
+        fsGroup: 10001
+        fsGroupChangePolicy: OnRootMismatch
+      volumes:
+        - name: local-data
+          emptyDir: {sizeLimit: 512Mi}
+      containers:
+        - name: gateway
+          image: contract-audit-backend:local
+          volumeMounts:
+            - {name: local-data, mountPath: /var/lib/contract-audit}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: core-api
+spec:
+  replicas: 1
+  template:
+    spec:
+      securityContext:
+        fsGroup: 10001
+        fsGroupChangePolicy: OnRootMismatch
+      volumes:
+        - name: local-data
+          emptyDir: {sizeLimit: 512Mi}
+      containers:
+        - name: core-api
+          image: contract-audit-backend:local
+          volumeMounts:
+            - {name: local-data, mountPath: /var/lib/contract-audit}
+          env:
+            - name: SYSTEM_HEALTH_URL
+              value: http://health-monitor:8092
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: document-service
+spec:
+  replicas: 1
+  template:
+    spec:
+      securityContext:
+        fsGroup: 10001
+        fsGroupChangePolicy: OnRootMismatch
+      volumes:
+        - name: local-data
+          emptyDir: {sizeLimit: 512Mi}
+      containers:
+        - name: document-service
+          image: contract-audit-backend:local
+          volumeMounts:
+            - {name: local-data, mountPath: /var/lib/contract-audit}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: audit-execution
+spec:
+  replicas: 1
+  template:
+    spec:
+      securityContext:
+        fsGroup: 10001
+        fsGroupChangePolicy: OnRootMismatch
+      volumes:
+        - name: local-data
+          emptyDir: {sizeLimit: 512Mi}
+      containers:
+        - name: audit-execution
+          image: contract-audit-backend:local
+          volumeMounts:
+            - {name: local-data, mountPath: /var/lib/contract-audit}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: audit-worker
+spec:
+  replicas: 1
+  template:
+    spec:
+      securityContext:
+        fsGroup: 10001
+        fsGroupChangePolicy: OnRootMismatch
+      volumes:
+        - name: local-data
+          emptyDir: {sizeLimit: 512Mi}
+      containers:
+        - name: audit-worker
+          image: contract-audit-backend:local
+          volumeMounts:
+            - {name: local-data, mountPath: /var/lib/contract-audit}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tool-gateway
+spec:
+  replicas: 1
+  template:
+    spec:
+      securityContext:
+        fsGroup: 10001
+        fsGroupChangePolicy: OnRootMismatch
+      volumes:
+        - name: local-data
+          emptyDir: {sizeLimit: 512Mi}
+      containers:
+        - name: tool-gateway
+          image: contract-audit-backend:local
+          volumeMounts:
+            - {name: local-data, mountPath: /var/lib/contract-audit}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: model-gateway
+spec:
+  replicas: 1
+  template:
+    spec:
+      securityContext:
+        fsGroup: 10001
+        fsGroupChangePolicy: OnRootMismatch
+      volumes:
+        - name: local-data
+          emptyDir: {sizeLimit: 512Mi}
+      containers:
+        - name: model-gateway
+          image: contract-audit-backend:local
+          volumeMounts:
+            - {name: local-data, mountPath: /var/lib/contract-audit}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: client
+spec:
+  replicas: 1
+  template:
+    spec:
+      securityContext:
+        fsGroup: 101
+        fsGroupChangePolicy: OnRootMismatch
+      initContainers:
+        - name: nginx-tempdirs
+          image: contract-audit-client:local
+          imagePullPolicy: IfNotPresent
+          command: ["/bin/sh", "-ec", "mkdir -p /tmp/nginx/client_body /tmp/nginx/proxy /tmp/nginx/fastcgi /tmp/nginx/uwsgi /tmp/nginx/scgi"]
+          volumeMounts: [{name: tmp, mountPath: /tmp/nginx}]
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 101
+            runAsGroup: 101
+            allowPrivilegeEscalation: false
+            capabilities: {drop: [ALL]}
+            seccompProfile: {type: RuntimeDefault}
+            readOnlyRootFilesystem: true
+      containers:
+        - name: nginx
+          image: contract-audit-client:local
+          volumeMounts:
+            - {name: tmp, mountPath: /tmp/nginx}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: admin
+spec:
+  replicas: 1
+  template:
+    spec:
+      securityContext:
+        fsGroup: 101
+        fsGroupChangePolicy: OnRootMismatch
+      initContainers:
+        - name: nginx-tempdirs
+          image: contract-audit-admin:local
+          imagePullPolicy: IfNotPresent
+          command: ["/bin/sh", "-ec", "mkdir -p /tmp/nginx/client_body /tmp/nginx/proxy /tmp/nginx/fastcgi /tmp/nginx/uwsgi /tmp/nginx/scgi"]
+          volumeMounts: [{name: tmp, mountPath: /tmp/nginx}]
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 101
+            runAsGroup: 101
+            allowPrivilegeEscalation: false
+            capabilities: {drop: [ALL]}
+            seccompProfile: {type: RuntimeDefault}
+            readOnlyRootFilesystem: true
+      containers:
+        - name: nginx
+          image: contract-audit-admin:local
+          volumeMounts:
+            - {name: tmp, mountPath: /tmp/nginx}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: portal
+spec:
+  replicas: 1
+  template:
+    spec:
+      securityContext:
+        fsGroup: 101
+        fsGroupChangePolicy: OnRootMismatch
+      initContainers:
+        - name: nginx-tempdirs
+          image: contract-audit-portal:local
+          imagePullPolicy: IfNotPresent
+          command: ["/bin/sh", "-ec", "mkdir -p /tmp/nginx/client_body /tmp/nginx/proxy /tmp/nginx/fastcgi /tmp/nginx/uwsgi /tmp/nginx/scgi"]
+          volumeMounts: [{name: tmp, mountPath: /tmp/nginx}]
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 101
+            runAsGroup: 101
+            allowPrivilegeEscalation: false
+            capabilities: {drop: [ALL]}
+            seccompProfile: {type: RuntimeDefault}
+            readOnlyRootFilesystem: true
+      containers:
+        - name: nginx
+          image: contract-audit-portal:local
+          volumeMounts:
+            - {name: tmp, mountPath: /tmp/nginx}

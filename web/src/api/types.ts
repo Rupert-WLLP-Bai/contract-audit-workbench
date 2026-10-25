@@ -31,7 +31,6 @@ export interface CaseSummary {
   archived_at?: string | null;
 }
 
-
 export type ParsedDocumentStatus = "ready" | "failed";
 
 export interface ParsedDocumentMetadata {
@@ -111,7 +110,11 @@ export interface BoundingBox {
   height: number;
 }
 
-export type AnchorStatus = "located" | "anchor_mismatch" | "unlocatable" | "missing";
+export type AnchorStatus =
+  | "located"
+  | "anchor_mismatch"
+  | "unlocatable"
+  | "missing";
 
 export interface EvidenceAnchor {
   id: string;
@@ -210,7 +213,6 @@ export interface ExecutionCallUsage {
   total_tokens: number | null;
 }
 
-
 export interface ExecutionEvent {
   seq: number;
   attempt_id: string;
@@ -227,19 +229,98 @@ export interface ExecutionEvent {
   usage: ExecutionCallUsage | null;
 }
 
-export type AgentReviewDomain = "compliance" | "commercial" | "technical" | "fulfillment" | "counterparty";
-export type AgentPlannerMode = "fixed_chain" | "deterministic_planner" | "model_fixture" | "model_live";
-export type AgentReviewStatus = "queued" | "planning" | "running" | "completed" | "partial" | "blocked_live" | "cancelled" | "failed" | "rejected";
-export type AgentReviewCapabilityStatus = "supported" | "completed" | "insufficient" | "partial" | "unknown" | "unsupported" | "not_applicable";
-export type AgentReviewDomainStatus = "not_requested" | AgentReviewCapabilityStatus;
-export type AgentReviewGapStatus = "open" | "resolved" | "completed" | "insufficient" | "unsupported" | "unknown";
-export type AgentReviewCallStatus = "planned" | "running" | "completed" | "failed" | "denied" | "cancelled" | "insufficient" | "unsupported";
-export type AgentReviewRoundStatus = "accepted" | "guard_rejected" | "completed" | "partial" | "no_progress" | "budget_exhausted" | "cancelled" | "failed";
-export type AgentReviewPlanStatus = "not_planned" | "accepted" | "guard_rejected" | "executing" | "completed" | "partial" | "fallback";
-export type AgentReviewEvidenceVerification = "verified" | "typed_semantic_and_frozen_quote_verified" | "unknown" | "rejected";
+export type AgentReviewDomain =
+  | "compliance"
+  | "commercial"
+  | "technical"
+  | "fulfillment"
+  | "counterparty";
+export type AgentPlannerMode =
+  | "fixed_chain"
+  | "deterministic_planner"
+  | "model_fixture"
+  | "model_live";
+export type AgentReviewStatus =
+  | "queued"
+  | "planning"
+  | "running"
+  | "completed"
+  | "partial"
+  | "blocked_live"
+  | "cancelled"
+  | "failed"
+  | "rejected";
+export type AgentReviewCapabilityStatus =
+  | "supported"
+  | "completed"
+  | "insufficient"
+  | "partial"
+  | "unknown"
+  | "unsupported"
+  | "not_applicable";
+export type AgentReviewDomainStatus =
+  | "not_requested"
+  | AgentReviewCapabilityStatus;
+export type AgentReviewGapStatus =
+  | "open"
+  | "resolved"
+  | "completed"
+  | "insufficient"
+  | "unsupported"
+  | "unknown";
+export type AgentReviewCallStatus =
+  | "planned"
+  | "running"
+  | "completed"
+  | "failed"
+  | "denied"
+  | "cancelled"
+  | "insufficient"
+  | "unsupported";
+export type AgentReviewRoundStatus =
+  | "accepted"
+  | "guard_rejected"
+  | "completed"
+  | "partial"
+  | "no_progress"
+  | "budget_exhausted"
+  | "cancelled"
+  | "failed";
+export type AgentReviewPlanStatus =
+  | "not_planned"
+  | "accepted"
+  | "guard_rejected"
+  | "executing"
+  | "completed"
+  | "partial"
+  | "fallback";
+export type AgentReviewEvidenceVerification =
+  | "verified"
+  | "typed_semantic_and_frozen_quote_verified"
+  | "unknown"
+  | "rejected";
 export type AgentReviewAnchorStatus = "located" | "unlocatable";
-export type AgentReviewEventKind = "planning" | "guard" | "tool_call" | "evidence" | "budget" | "terminal" | "authorization" | "input" | "gap_unsupported" | "plan_rejected" | "planner_fallback" | "plan" | "plan_accepted" | "tool_failed" | "tool_completed";
-export type AgentReviewRelation = "compatible" | "conflict" | "insufficient" | "not_applicable";
+export type AgentReviewEventKind =
+  | "planning"
+  | "guard"
+  | "tool_call"
+  | "evidence"
+  | "budget"
+  | "terminal"
+  | "authorization"
+  | "input"
+  | "gap_unsupported"
+  | "plan_rejected"
+  | "planner_fallback"
+  | "plan"
+  | "plan_accepted"
+  | "tool_failed"
+  | "tool_completed";
+export type AgentReviewRelation =
+  | "compatible"
+  | "conflict"
+  | "insufficient"
+  | "not_applicable";
 
 export interface AgentReviewSourceSnapshot {
   document_ids: string[];
@@ -265,7 +346,12 @@ export interface AgentReviewPlanner {
   tool_catalog_version: string;
   fallback_used: boolean;
   fallback_code: string | null;
-  limits: { max_rounds: number; max_calls: number; max_duration_ms: number; max_evidence_bytes: number };
+  limits: {
+    max_rounds: number;
+    max_calls: number;
+    max_duration_ms: number;
+    max_evidence_bytes: number;
+  };
 }
 
 export interface AgentReviewDomainScope {
@@ -372,7 +458,12 @@ export interface AgentReview {
   gaps: AgentReviewGap[];
   plan: AgentReviewPlan;
   evidence: AgentReviewEvidence[];
-  usage: { planner_calls: number; input_tokens: number | null; output_tokens: number | null; total_tokens: number | null };
+  usage: {
+    planner_calls: number;
+    input_tokens: number | null;
+    output_tokens: number | null;
+    total_tokens: number | null;
+  };
   unresolved_gap_ids: string[];
   events: AgentReviewEvent[];
 }
@@ -428,7 +519,6 @@ export interface ReviewWorkspace {
   revisions?: RevisionComparison[];
   revision_comparison_reason?: string | null;
 }
-
 
 export type DecisionAction =
   | "confirm_risk"
@@ -713,7 +803,10 @@ export interface WorkbenchDashboard {
   completed_reviews: number;
   average_duration_ms: number | null;
   progress: { status: string; count: number }[];
-  risks: { severity: "high" | "medium" | "low" | "info" | "unrated"; count: number }[];
+  risks: {
+    severity: "high" | "medium" | "low" | "info" | "unrated";
+    count: number;
+  }[];
 }
 
 export interface WorkbenchSnapshot {
@@ -733,13 +826,44 @@ export interface WorkbenchSnapshot {
   runs: WorkbenchRun[];
   audit: WorkbenchAuditEvent[];
   templates: Template[];
-  model: { name: string; ocr_name: string; status: "configured" | "unconfigured"; label: string };
-  tools: { id: string; name: string; description: string; capabilities: string[]; calls: number; last_status: string | null }[];
-  health: { id: string; name: string; status: "ready" | "unavailable" | "unknown"; detail: string; observed_at: string }[];
+  model: {
+    name: string;
+    ocr_name: string;
+    status: "configured" | "unconfigured";
+    label: string;
+  };
+  tools: {
+    id: string;
+    name: string;
+    description: string;
+    capabilities: string[];
+    calls: number;
+    last_status: string | null;
+  }[];
 }
 
-export type CaseProfileInput = Omit<CaseProfile, "case_id" | "version" | "updated_at"> & { expected_version: number };
-export type WorkbenchTaskInput = Pick<WorkbenchTask, "title" | "kind" | "assignee_id" | "due_at" | "status" | "priority" | "finding_id">;
-export type WorkbenchTaskUpdateInput = WorkbenchTaskInput & { expected_version: number };
-export type CaseRelationInput = Pick<CaseRelation, "related_case_id" | "reason">;
-export type KnowledgeInput = Pick<Knowledge, "title" | "version" | "body" | "source_type" | "effective_at"> & { id?: string };
+export type CaseProfileInput = Omit<
+  CaseProfile,
+  "case_id" | "version" | "updated_at"
+> & { expected_version: number };
+export type WorkbenchTaskInput = Pick<
+  WorkbenchTask,
+  | "title"
+  | "kind"
+  | "assignee_id"
+  | "due_at"
+  | "status"
+  | "priority"
+  | "finding_id"
+>;
+export type WorkbenchTaskUpdateInput = WorkbenchTaskInput & {
+  expected_version: number;
+};
+export type CaseRelationInput = Pick<
+  CaseRelation,
+  "related_case_id" | "reason"
+>;
+export type KnowledgeInput = Pick<
+  Knowledge,
+  "title" | "version" | "body" | "source_type" | "effective_at"
+> & { id?: string };

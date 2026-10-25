@@ -4,7 +4,7 @@
 The default Dockerfile needs `golang:1.26.7-bookworm`, `oven/bun:1.4.3` and
 `nginxinc/nginx-unprivileged:1.29-alpine` from Docker Hub, which is unreachable
 from this host. This script therefore produces the *same container contract*
-offline: the eight Go binaries are built with the host toolchain (CGO disabled,
+offline: the nine Go binaries are built with the host toolchain (CGO disabled,
 trimpath, stripped), copied into an already-cached base image, and tagged with
 the name the Compose files expect (``contract-audit-backend:local``).
 
@@ -25,7 +25,7 @@ import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-COMMANDS = ("server", "gateway", "documentservice", "auditexecution", "worker", "modelgateway", "toolgateway", "migrate")
+COMMANDS = ("server", "gateway", "documentservice", "auditexecution", "worker", "modelgateway", "toolgateway", "migrate", "healthmonitor")
 DEFAULT_BASE = "contract-audit-pdf-runtime:local"
 
 

@@ -5,9 +5,14 @@ function hash(value: string | null, missing: string): string {
   return value === null ? missing : shortDigest(value);
 }
 
-export function ParsedDocumentSummary({ document }: { document: DocumentVersion }) {
+export function ParsedDocumentSummary({
+  document,
+}: {
+  document: DocumentVersion;
+}) {
   const parsed = document.parsed_document;
-  const legacy = document.parse_status === "ready" || document.parse_status === "failed";
+  const legacy =
+    document.parse_status === "ready" || document.parse_status === "failed";
   return (
     <div
       className="parsed-document-summary"
@@ -27,17 +32,33 @@ export function ParsedDocumentSummary({ document }: { document: DocumentVersion 
       data-status={parsed?.status ?? ""}
     >
       <p className="meta">
-        原件 SHA-256 <span title={document.digest || undefined}>{hash(document.digest, "未记录")}</span>
+        原件 SHA-256{" "}
+        <span title={document.digest || undefined}>
+          {hash(document.digest, "未记录")}
+        </span>
         {parsed ? (
           <>
             {" · "}解析 <span title={parsed.id}>{shortDigest(parsed.id)}</span>
             {" · "}解析器 {parsed.parser_id}@{parsed.parser_version}
-            {" · "}配置 SHA-256 <span title={parsed.config_hash}>{shortDigest(parsed.config_hash)}</span>
+            {" · "}配置 SHA-256{" "}
+            <span title={parsed.config_hash}>
+              {shortDigest(parsed.config_hash)}
+            </span>
             {" · "}规范化 {parsed.normalization_version}
-            {" · "}正文 SHA-256 <span title={parsed.normalized_digest ?? undefined}>{hash(parsed.normalized_digest, "不可用")}</span>
-            {" · "}IR SHA-256 <span title={parsed.ir_digest ?? undefined}>{hash(parsed.ir_digest, "不可用")}</span>
-            {" · "}产物 SHA-256 <span title={parsed.artifact_digest}>{shortDigest(parsed.artifact_digest)}</span>
-            {" · "}{parsed.status === "ready" ? "解析就绪" : "解析失败"}
+            {" · "}正文 SHA-256{" "}
+            <span title={parsed.normalized_digest ?? undefined}>
+              {hash(parsed.normalized_digest, "不可用")}
+            </span>
+            {" · "}IR SHA-256{" "}
+            <span title={parsed.ir_digest ?? undefined}>
+              {hash(parsed.ir_digest, "不可用")}
+            </span>
+            {" · "}产物 SHA-256{" "}
+            <span title={parsed.artifact_digest}>
+              {shortDigest(parsed.artifact_digest)}
+            </span>
+            {" · "}
+            {parsed.status === "ready" ? "解析就绪" : "解析失败"}
             {parsed.created_at ? ` · ${formatDateTime(parsed.created_at)}` : ""}
           </>
         ) : (

@@ -851,7 +851,7 @@ func TestWorkbenchEmptySnapshotKeepsUnknownMetricsAndValidatesPeriod(t *testing.
 			snapshot.Dashboard.MyPendingTasks != 0 || snapshot.Dashboard.OverdueTasks != 0 || snapshot.Dashboard.PendingReviewCases != 0 ||
 			snapshot.Dashboard.RemediationCases != 0 || len(snapshot.Dashboard.Progress) != 0 || len(snapshot.Dashboard.Risks) != 5 ||
 			snapshot.Cases == nil || len(snapshot.Cases) != 0 || snapshot.Tasks == nil || len(snapshot.Tasks) != 0 || snapshot.Tools == nil || len(snapshot.Tools) != 0 ||
-			snapshot.Model.Status != "unconfigured" || len(snapshot.Health) != 2 || snapshot.Health[0].Status != "ready" || snapshot.Health[1].Status != "unconfigured" {
+			snapshot.Model.Status != "unconfigured" {
 			t.Fatalf("empty workbench fabricated measurements or omitted empty collections: %+v", snapshot)
 		}
 		for _, risk := range snapshot.Dashboard.Risks {

@@ -1604,6 +1604,34 @@
         }
       }
     },
+    "/api/admin/system-health": {
+      "get": {
+        "operationId": "adminSystemHealth",
+        "tags": [
+          "系统"
+        ],
+        "summary": "读取管理入口的部署架构目标与实际观测",
+        "description": "仅 admin audience 且具有 admin 角色的会话可读；由 Core 提供。architecture.state 仅表示采集器是否观察到相关服务，verification 固定为 NOT_RUN，实例观测不代表生产验收或高可用证明。",
+        "responses": {
+          "200": {
+            "description": "服务状态与架构目标对照；未知集群来源明确报告为 not_connected。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SystemHealth"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          }
+        }
+      }
+    },
     "/api/session": {
       "post": {
         "operationId": "createSession",
@@ -3288,6 +3316,31 @@
           }
         ]
       }
+    },
+    "/api/system-health": {
+      "get": {
+        "operationId": "getSystemHealth",
+        "tags": [
+          "系统"
+        ],
+        "summary": "读取当前项目服务、容器与集成健康",
+        "description": "需要业务会话；返回当前 Compose 项目的白名单容器元数据、有界健康观测及生产架构目标对照。架构观测不代表生产验收；不返回环境变量或凭据，也不执行付费推理。",
+        "responses": {
+          "200": {
+            "description": "当前部署观测，未探测状态明确保持 unknown。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SystemHealth"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -3929,40 +3982,6 @@
           }
         }
       },
-      "WorkbenchHealth": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": [
-          "id",
-          "name",
-          "status",
-          "detail",
-          "observed_at"
-        ],
-        "properties": {
-          "id": {
-            "type": "string"
-          },
-          "name": {
-            "type": "string"
-          },
-          "status": {
-            "type": "string",
-            "enum": [
-              "ready",
-              "unavailable",
-              "unknown"
-            ]
-          },
-          "detail": {
-            "type": "string"
-          },
-          "observed_at": {
-            "type": "string",
-            "format": "date-time"
-          }
-        }
-      },
       "WorkbenchRun": {
         "type": "object",
         "additionalProperties": false,
@@ -4099,7 +4118,6 @@
           "audit",
           "templates",
           "tools",
-          "health",
           "model"
         ],
         "properties": {
@@ -4198,12 +4216,6 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/WorkbenchTool"
-            }
-          },
-          "health": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/WorkbenchHealth"
             }
           },
           "model": {
@@ -4930,8 +4942,13 @@
         "properties": {
           "agent_review": {
             "oneOf": [
-              { "type": "object", "additionalProperties": true },
-              { "type": "null" }
+              {
+                "type": "object",
+                "additionalProperties": true
+              },
+              {
+                "type": "null"
+              }
             ],
             "description": "冻结时保存的同一尝试五域智能审查投影；历史尝试可能为 null。"
           },
@@ -5993,14 +6010,27 @@
         "type": "object",
         "properties": {
           "severity": {
-            "type": ["string", "null"],
-            "enum": ["high", "medium", "low", "info", null],
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "high",
+              "medium",
+              "low",
+              "info",
+              null
+            ],
             "description": "依据冻结的适用审查制度独立分级；不从规则关系或技术状态自动推导。历史未分级为null。"
           },
           "severity_source": {
             "anyOf": [
-              { "$ref": "#/components/schemas/SeveritySource" },
-              { "type": "null" }
+              {
+                "$ref": "#/components/schemas/SeveritySource"
+              },
+              {
+                "type": "null"
+              }
             ]
           },
           "id": {
@@ -7314,16 +7344,28 @@
             "type": "string"
           },
           "previous_version": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "previous_active": {
-            "type": ["boolean", "null"]
+            "type": [
+              "boolean",
+              "null"
+            ]
           },
           "resulting_version": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "resulting_active": {
-            "type": ["boolean", "null"]
+            "type": [
+              "boolean",
+              "null"
+            ]
           }
         },
         "required": [
@@ -8093,13 +8135,19 @@
             }
           },
           "new_evidence_ids": {
-            "type": ["array", "null"],
+            "type": [
+              "array",
+              "null"
+            ],
             "items": {
               "type": "string"
             }
           },
           "resolved_gap_ids": {
-            "type": ["array", "null"],
+            "type": [
+              "array",
+              "null"
+            ],
             "items": {
               "type": "string"
             }
@@ -8877,6 +8925,226 @@
           "results"
         ],
         "additionalProperties": false
+      },
+      "SystemHealth": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "schema_version",
+          "observed_at",
+          "mode",
+          "source",
+          "cluster",
+          "services",
+          "architecture"
+        ],
+        "properties": {
+          "schema_version": {
+            "type": "string",
+            "const": "system-health/v1"
+          },
+          "observed_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "mode": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
+          },
+          "cluster": {
+            "oneOf": [
+              {"type": "null"},
+              {"$ref": "#/components/schemas/SystemHealthCluster"}
+            ]
+          },
+          "services": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "id",
+                "name",
+                "category",
+                "kind",
+                "detail",
+                "target",
+                "status",
+                "depends_on",
+                "container",
+                "probe"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "category": {
+                  "type": "string"
+                },
+                "kind": {
+                  "type": "string"
+                },
+                "detail": {
+                  "type": "string"
+                },
+                "target": {
+                  "type": "string"
+                },
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "ready",
+                    "unavailable",
+                    "unknown",
+                    "unconfigured",
+                    "stopped",
+                    "starting",
+                    "completed"
+                  ]
+                },
+                "depends_on": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "container": {
+                  "oneOf": [
+                    {
+                      "type": "null"
+                    },
+                    {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "id",
+                        "name",
+                        "image",
+                        "state",
+                        "health",
+                        "started_at",
+                        "restarts"
+                      ],
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "image": {
+                          "type": "string"
+                        },
+                        "state": {
+                          "type": "string"
+                        },
+                        "health": {
+                          "type": "string"
+                        },
+                        "started_at": {
+                          "type": "string"
+                        },
+                        "restarts": {
+                          "type": "integer",
+                          "minimum": 0
+                        }
+                      }
+                    }
+                  ]
+                },
+                "probe": {
+                  "oneOf": [
+                    {
+                      "type": "null"
+                    },
+                    {
+                      "type": "object",
+                      "required": [
+                        "kind",
+                        "status",
+                        "duration_ms"
+                      ],
+                      "properties": {
+                        "kind": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "string"
+                        },
+                        "duration_ms": {
+                          "type": "integer",
+                          "minimum": 0
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "architecture": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "id",
+                "name",
+                "category",
+                "target",
+                "observed",
+                "state",
+                "verification",
+                "service_ids",
+                "reference"
+              ],
+              "properties": {
+                "id": {"type": "string"},
+                "name": {"type": "string"},
+                "category": {
+                  "type": "string",
+                  "enum": ["platform", "storage", "messaging", "identity", "observability", "application"]
+                },
+                "target": {"type": "string"},
+                "observed": {"type": "string"},
+                "state": {"type": "string", "enum": ["observed", "not_connected"]},
+                "verification": {"type": "string", "const": "NOT_RUN"},
+                "service_ids": {"type": "array", "items": {"type": "string"}},
+                "reference": {"type": "string", "format": "uri"}
+              }
+            }
+          }
+        }
+      },
+      "SystemHealthCluster": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["status", "namespace", "observed_at", "detail", "nodes"],
+        "properties": {
+          "status": {"type": "string", "enum": ["ready", "unavailable"]},
+          "namespace": {"type": "string"},
+          "observed_at": {"type": "string", "format": "date-time"},
+          "detail": {"type": "string"},
+          "nodes": {
+            "type": "array",
+            "items": {"$ref": "#/components/schemas/SystemHealthNode"}
+          }
+        }
+      },
+      "SystemHealthNode": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "status", "version"],
+        "properties": {
+          "name": {"type": "string"},
+          "status": {"type": "string", "enum": ["ready", "unavailable", "unknown"]},
+          "version": {"type": "string"}
+        }
       }
     },
     "responses": {

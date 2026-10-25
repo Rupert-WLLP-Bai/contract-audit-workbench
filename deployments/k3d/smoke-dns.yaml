@@ -1,0 +1,47 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: service-dns-smoke
+  namespace: contract-audit
+  labels: {app.kubernetes.io/part-of: contract-audit}
+spec:
+  backoffLimit: 0
+  activeDeadlineSeconds: 60
+  template:
+    metadata:
+      labels: {app.kubernetes.io/name: service-dns-smoke, app.kubernetes.io/part-of: contract-audit}
+    spec:
+      serviceAccountName: nats
+      automountServiceAccountToken: false
+      restartPolicy: Never
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: request
+          image: amazon/aws-cli:2.31.14
+          imagePullPolicy: IfNotPresent
+          command:
+            - python3
+            - -c
+            - >-
+              from urllib.request import urlopen;
+              targets=("http://core-api:8081/ready", "http://client/", "http://admin/admin/", "http://portal/portal/");
+              assert all(urlopen(url, timeout=5).status == 200 for url in targets), targets
+          env: [{name: HOME, value: /tmp}]
+          resources:
+            requests: {cpu: 25m, memory: 64Mi}
+            limits: {cpu: 250m, memory: 256Mi}
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 10001
+            runAsGroup: 10001
+            allowPrivilegeEscalation: false
+            capabilities: {drop: [ALL]}
+            seccompProfile: {type: RuntimeDefault}
+            readOnlyRootFilesystem: true
+          volumeMounts: [{name: tmp, mountPath: /tmp}]
+      volumes: [{name: tmp, emptyDir: {sizeLimit: 64Mi}}]

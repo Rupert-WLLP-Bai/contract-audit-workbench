@@ -1,0 +1,271 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: db
+  labels: {app.kubernetes.io/name: db, app.kubernetes.io/part-of: contract-audit}
+spec:
+  selector: {app.kubernetes.io/name: db}
+  ports: [{name: postgres, port: 5432, targetPort: postgres}]
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: db
+  labels: {app.kubernetes.io/name: db, app.kubernetes.io/part-of: contract-audit}
+spec:
+  serviceName: db
+  replicas: 1
+  selector:
+    matchLabels: {app.kubernetes.io/name: db}
+  template:
+    metadata:
+      labels: {app.kubernetes.io/name: db, app.kubernetes.io/part-of: contract-audit}
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 999
+        runAsGroup: 999
+        fsGroup: 999
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: postgres
+          image: postgres:18.6-bookworm
+          imagePullPolicy: IfNotPresent
+          ports: [{name: postgres, containerPort: 5432}]
+          env:
+            - {name: POSTGRES_USER, value: contractaudit}
+            - {name: POSTGRES_DB, value: contract_audit_dev}
+            - name: POSTGRES_PASSWORD
+              valueFrom: {secretKeyRef: {name: contract-audit-postgres, key: POSTGRES_PASSWORD}}
+            - {name: PGDATA, value: /var/lib/postgresql/18/docker}
+          volumeMounts:
+            - {name: data, mountPath: /var/lib/postgresql}
+          startupProbe:
+            exec: {command: [pg_isready, -U, contractaudit, -d, contract_audit_dev]}
+            periodSeconds: 5
+            failureThreshold: 30
+          readinessProbe:
+            exec: {command: [pg_isready, -U, contractaudit, -d, contract_audit_dev]}
+            periodSeconds: 5
+            timeoutSeconds: 3
+          livenessProbe:
+            exec: {command: [pg_isready, -U, contractaudit, -d, contract_audit_dev]}
+            periodSeconds: 10
+            timeoutSeconds: 3
+          resources:
+            requests: {cpu: 100m, memory: 192Mi}
+            limits: {cpu: "1", memory: 768Mi}
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 999
+            runAsGroup: 999
+            allowPrivilegeEscalation: false
+            capabilities: {drop: [ALL]}
+            seccompProfile: {type: RuntimeDefault}
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: [ReadWriteOnce]
+        resources:
+          requests: {storage: 2Gi}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: rustfs
+  labels: {app.kubernetes.io/name: rustfs, app.kubernetes.io/part-of: contract-audit}
+spec:
+  selector: {app.kubernetes.io/name: rustfs}
+  ports: [{name: s3, port: 9000, targetPort: s3}]
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: rustfs
+  labels: {app.kubernetes.io/name: rustfs, app.kubernetes.io/part-of: contract-audit}
+spec:
+  serviceName: rustfs
+  replicas: 1
+  selector:
+    matchLabels: {app.kubernetes.io/name: rustfs}
+  template:
+    metadata:
+      labels: {app.kubernetes.io/name: rustfs, app.kubernetes.io/part-of: contract-audit}
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: rustfs
+          image: rustfs/rustfs:1.0.3
+          imagePullPolicy: IfNotPresent
+          args: ["/data"]
+          ports: [{name: s3, containerPort: 9000}]
+          env:
+            - name: RUSTFS_ACCESS_KEY
+              valueFrom: {secretKeyRef: {name: contract-audit-rustfs, key: RUSTFS_ACCESS_KEY}}
+            - name: RUSTFS_SECRET_KEY
+              valueFrom: {secretKeyRef: {name: contract-audit-rustfs, key: RUSTFS_SECRET_KEY}}
+            - {name: RUSTFS_ADDRESS, value: ":9000"}
+            - {name: RUSTFS_CONSOLE_ADDRESS, value: ":9001"}
+            - {name: RUSTFS_CONSOLE_ENABLE, value: "true"}
+            - {name: RUSTFS_OBS_LOGGER_LEVEL, value: error}
+            - {name: RUSTFS_OBS_LOG_DIRECTORY, value: /var/log/rustfs}
+          volumeMounts:
+            - {name: data, mountPath: /data}
+            - {name: logs, mountPath: /var/log/rustfs}
+          resources:
+            requests: {cpu: 100m, memory: 128Mi}
+            limits: {cpu: "1", memory: 512Mi}
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 10001
+            runAsGroup: 10001
+            allowPrivilegeEscalation: false
+            capabilities: {drop: [ALL]}
+            seccompProfile: {type: RuntimeDefault}
+      volumes:
+        - {name: logs, emptyDir: {sizeLimit: 64Mi}}
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: [ReadWriteOnce]
+        resources:
+          requests: {storage: 2Gi}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: nats
+  labels: {app.kubernetes.io/name: nats, app.kubernetes.io/part-of: contract-audit}
+spec:
+  selector: {app.kubernetes.io/name: nats}
+  ports:
+    - {name: client, port: 4222, targetPort: client}
+    - {name: monitor, port: 8222, targetPort: monitor}
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: nats
+  labels: {app.kubernetes.io/name: nats, app.kubernetes.io/part-of: contract-audit}
+spec:
+  serviceName: nats
+  replicas: 1
+  selector:
+    matchLabels: {app.kubernetes.io/name: nats}
+  template:
+    metadata:
+      labels: {app.kubernetes.io/name: nats, app.kubernetes.io/part-of: contract-audit}
+    spec:
+      serviceAccountName: nats
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: nats
+          image: nats:2.11.8-alpine
+          imagePullPolicy: IfNotPresent
+          args: [--jetstream, --store_dir=/data/jetstream, --http_port=8222]
+          ports:
+            - {name: client, containerPort: 4222}
+            - {name: monitor, containerPort: 8222}
+          volumeMounts: [{name: data, mountPath: /data}]
+          startupProbe:
+            httpGet: {path: "/healthz?js-enabled-only=true", port: monitor}
+            periodSeconds: 5
+            failureThreshold: 30
+          readinessProbe:
+            httpGet: {path: "/healthz?js-enabled-only=true", port: monitor}
+            periodSeconds: 5
+            timeoutSeconds: 3
+          livenessProbe:
+            httpGet: {path: "/healthz?js-enabled-only=true", port: monitor}
+            periodSeconds: 10
+            timeoutSeconds: 3
+          resources:
+            requests: {cpu: 50m, memory: 64Mi}
+            limits: {cpu: "1", memory: 256Mi}
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 10001
+            runAsGroup: 10001
+            allowPrivilegeEscalation: false
+            capabilities: {drop: [ALL]}
+            seccompProfile: {type: RuntimeDefault}
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: [ReadWriteOnce]
+        resources:
+          requests: {storage: 1Gi}
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: rustfs-bucket-init
+  labels: {app.kubernetes.io/part-of: contract-audit}
+spec:
+  backoffLimit: 3
+  activeDeadlineSeconds: 300
+  template:
+    metadata:
+      labels: {app.kubernetes.io/name: rustfs-bucket-init, app.kubernetes.io/part-of: contract-audit}
+    spec:
+      restartPolicy: OnFailure
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: init
+          image: amazon/aws-cli:2.31.14
+          imagePullPolicy: IfNotPresent
+          command:
+            - /bin/sh
+            - -ec
+            - >-
+              aws s3api head-bucket --bucket "$S3_BUCKET" --endpoint-url "$S3_ENDPOINT"
+              || aws s3api create-bucket --bucket "$S3_BUCKET" --endpoint-url "$S3_ENDPOINT"
+          env:
+            - name: AWS_ACCESS_KEY_ID
+              valueFrom: {secretKeyRef: {name: contract-audit-rustfs, key: RUSTFS_ACCESS_KEY}}
+            - name: AWS_SECRET_ACCESS_KEY
+              valueFrom: {secretKeyRef: {name: contract-audit-rustfs, key: RUSTFS_SECRET_KEY}}
+            - {name: AWS_DEFAULT_REGION, value: us-east-1}
+            - {name: HOME, value: /tmp}
+            - {name: AWS_EC2_METADATA_DISABLED, value: "true"}
+            - {name: AWS_PAGER, value: ""}
+            - {name: S3_ENDPOINT, value: http://rustfs:9000}
+            - {name: S3_BUCKET, value: contract-audit-dev}
+          resources:
+            requests: {cpu: 25m, memory: 64Mi}
+            limits: {cpu: 250m, memory: 256Mi}
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 10001
+            runAsGroup: 10001
+            allowPrivilegeEscalation: false
+            capabilities: {drop: [ALL]}
+            seccompProfile: {type: RuntimeDefault}
+            readOnlyRootFilesystem: true
+          volumeMounts: [{name: tmp, mountPath: /tmp}]
+      volumes: [{name: tmp, emptyDir: {sizeLimit: 64Mi}}]

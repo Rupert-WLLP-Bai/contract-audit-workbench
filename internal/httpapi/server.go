@@ -20,12 +20,14 @@ import (
 	"contractaudit/internal/identity"
 	"contractaudit/internal/model"
 	"contractaudit/internal/store"
+	"contractaudit/internal/systemhealth"
 )
 
 const sessionCookie = "session"
 
 // Options configures the HTTP surface.
 type Options struct {
+	SystemHealth  systemhealth.Reader
 	CORSOrigins   []string
 	Models        *model.Client
 	OIDC          *identity.Manager
@@ -38,7 +40,10 @@ func Handler(st *store.Store, opt Options) http.Handler {
 	if len(opt.CORSOrigins) == 0 {
 		opt.CORSOrigins = []string{"http://localhost:5173", "http://127.0.0.1:5173"}
 	}
-	h := &handler{store: st, cors: opt.CORSOrigins, models: opt.Models, oidc: opt.OIDC, durable: opt.Durable, secureCookies: opt.SecureCookies}
+	if opt.SystemHealth == nil {
+		opt.SystemHealth = systemhealth.New(systemhealth.Config{DatabaseReady: st.Ready})
+	}
+	h := &handler{store: st, cors: opt.CORSOrigins, models: opt.Models, oidc: opt.OIDC, durable: opt.Durable, secureCookies: opt.SecureCookies, systemHealth: opt.SystemHealth}
 	mux := http.NewServeMux()
 	// Every binary in this repository serves the same probe surface so a manifest
 	// can never point at a path no binary answers. Readiness is the shared
@@ -50,6 +55,7 @@ func Handler(st *store.Store, opt Options) http.Handler {
 	mux.HandleFunc("DELETE /api/session", h.logout)
 	mux.HandleFunc("GET /api/settings", h.settings)
 	mux.HandleFunc("GET /api/admin/settings", h.adminSettings)
+	mux.HandleFunc("GET /api/admin/system-health", h.adminSystemHealth)
 	mux.HandleFunc("GET /api/admin/rulepacks", h.listRulePacks)
 	mux.HandleFunc("POST /api/admin/rulepacks", h.createRulePack)
 	mux.HandleFunc("GET /api/admin/rulepacks/{packID}/versions/{version}", h.getRulePackVersion)
@@ -65,6 +71,7 @@ func Handler(st *store.Store, opt Options) http.Handler {
 	mux.HandleFunc("GET /api/auth/oidc/callback", h.oidcCallback)
 	mux.HandleFunc("GET /api/templates", h.templates)
 	mux.HandleFunc("GET /api/workbench", h.workbench)
+	mux.HandleFunc("GET /api/system-health", h.healthSnapshot)
 	mux.HandleFunc("PUT /api/cases/{caseID}/profile", h.updateCaseProfile)
 	mux.HandleFunc("POST /api/cases/{caseID}/tasks", h.createWorkbenchTask)
 	mux.HandleFunc("PUT /api/cases/{caseID}/tasks/{taskID}", h.updateWorkbenchTask)
@@ -96,6 +103,7 @@ func Handler(st *store.Store, opt Options) http.Handler {
 }
 
 type handler struct {
+	systemHealth  systemhealth.Reader
 	store         *store.Store
 	cors          []string
 	models        *model.Client

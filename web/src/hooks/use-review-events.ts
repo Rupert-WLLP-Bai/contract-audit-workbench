@@ -1,7 +1,12 @@
 import { useEffect, useState } from "react";
 import { parseRunEvent, type RunEvent } from "../domain/review";
 
-export type StreamStatus = "connecting" | "live" | "reconnecting" | "closed" | "inactive";
+export type StreamStatus =
+  | "connecting"
+  | "live"
+  | "reconnecting"
+  | "closed"
+  | "inactive";
 
 /** HTML Standard EventSource readyState values. */
 const STREAM_READY_CLOSED = 2;
@@ -30,7 +35,9 @@ export function useReviewEvents(
       // A refused connect (revoked session, missing case grant) fails the stream
       // terminally: the browser stops retrying because readyState is CLOSED. Only
       // a dropped connection stays CONNECTING and retries with Last-Event-ID.
-      setStatus(source.readyState === STREAM_READY_CLOSED ? "closed" : "reconnecting");
+      setStatus(
+        source.readyState === STREAM_READY_CLOSED ? "closed" : "reconnecting",
+      );
     };
     source.onmessage = (message) => {
       const event = parseRunEvent(message.data);

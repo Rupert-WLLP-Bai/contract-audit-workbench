@@ -99,7 +99,7 @@ func OperationOwnedBy(role, method, path string) bool {
 			return role == "document" && read
 		case "cases":
 			return role == "core" && (read || post)
-		case "workbench":
+		case "workbench", "system-health":
 			return role == "core" && read
 		case "knowledge":
 			return role == "core" && post
@@ -109,6 +109,9 @@ func OperationOwnedBy(role, method, path string) bool {
 		return role == "core" && read
 	}
 	if len(parts) == 3 && parts[1] == "admin" && parts[2] == "settings" {
+		return role == "core" && read
+	}
+	if len(parts) == 3 && parts[1] == "admin" && parts[2] == "system-health" {
 		return role == "core" && read
 	}
 	// Rule governance is Core-owned: only the core service writes the lifecycle

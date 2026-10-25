@@ -92,3 +92,29 @@ func TestClientAndAdminSessionsAreIndependentAndNotInterchangeable(t *testing.T)
 		t.Fatalf("admin session survived logout: %d", status)
 	}
 }
+
+func TestAdminSystemHealthUsesAdminAudienceAndRoleGuard(t *testing.T) {
+	api := newAPI(t)
+	api.login(t, "demo-admin", "admin-demo")
+	if status, _ := api.do(t, http.MethodGet, "/api/admin/system-health", nil); status != http.StatusUnauthorized {
+		t.Fatalf("client audience accessed admin system health: status=%d", status)
+	}
+	if status, _ := api.do(t, http.MethodPost, "/api/session", map[string]any{"username": "demo-admin", "password": "admin-demo", "audience": "admin"}); status != http.StatusOK {
+		t.Fatalf("admin session status=%d", status)
+	}
+	status, body := api.do(t, http.MethodGet, "/api/admin/system-health", nil)
+	if status != http.StatusOK {
+		t.Fatalf("admin system health status=%d body=%v", status, body)
+	}
+	if body["schema_version"] != "system-health/v1" {
+		t.Fatalf("admin system health response is not a health snapshot: %v", body)
+	}
+	architecture, ok := body["architecture"].([]any)
+	if !ok || len(architecture) != 24 {
+		t.Fatalf("admin system health omitted architecture inventory: %v", body["architecture"])
+	}
+	api.do(t, http.MethodDelete, "/api/session?audience=admin", nil)
+	if status, _ := api.do(t, http.MethodPost, "/api/session", map[string]any{"username": "demo-viewer", "password": "viewer-demo", "audience": "admin"}); status != http.StatusForbidden {
+		t.Fatalf("viewer established admin session: status=%d", status)
+	}
+}

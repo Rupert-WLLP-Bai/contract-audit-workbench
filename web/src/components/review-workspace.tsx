@@ -1,4 +1,9 @@
-import type { CaseRelationInput, DecisionAction, ReviewWorkspace } from "../api/types";
+import { Button } from "antd";
+import type {
+  CaseRelationInput,
+  DecisionAction,
+  ReviewWorkspace,
+} from "../api/types";
 import type { ReviewLayout } from "../domain/review";
 import { runLabel, runTone } from "../domain/review";
 import type { StreamStatus } from "../hooks/use-review-events";
@@ -58,7 +63,12 @@ export function ReviewWorkspaceView({
   saveError: string | null;
   onSelect: (findingId: string) => void;
   onSelectAttempt: (attemptId: string) => void;
-  onDecide: (input: { findingId: string; action: DecisionAction; reason: string; expectedVersion: number }) => Promise<boolean>;
+  onDecide: (input: {
+    findingId: string;
+    action: DecisionAction;
+    reason: string;
+    expectedVersion: number;
+  }) => Promise<boolean>;
   onRetry: () => void;
   onCancel: () => void;
   caseContext?: ReviewCaseContext | null;
@@ -69,7 +79,11 @@ export function ReviewWorkspaceView({
   onDeleteRelation?: (relationId: string) => void;
 }) {
   const { run } = workspace;
-  const retryableState = run.state === "failed" || run.state === "partial" || run.state === "cancelled" || run.state === "interrupted";
+  const retryableState =
+    run.state === "failed" ||
+    run.state === "partial" ||
+    run.state === "cancelled" ||
+    run.state === "interrupted";
   return (
     <div className="workspace">
       <div className="workspace-banner">
@@ -77,9 +91,17 @@ export function ReviewWorkspaceView({
         <span>{STREAM_LABEL[streamStatus]}</span>
         {run.model_ref ? <span>模型 {run.model_ref}</span> : null}
         {retryableState ? (
-          <button className="button button-quiet" type="button" onClick={onRetry} disabled={retrying || !canRetry}>
+          <Button
+            aria-label={String(
+              retrying ? "正在受理重试" : "重新尝试未完成运行",
+            )}
+            type="text"
+            htmlType="button"
+            onClick={onRetry}
+            disabled={retrying || !canRetry}
+          >
             {retrying ? "正在受理重试" : "重新尝试未完成运行"}
-          </button>
+          </Button>
         ) : null}
       </div>
       {run.state === "partial" ? (
@@ -88,13 +110,23 @@ export function ReviewWorkspaceView({
           模型步骤未完成。已经保存的人工决定不会因为重试被重复提交。
         </p>
       ) : null}
-      {run.state === "failed" ? <p className="callout">{run.failure_message ?? "这次运行失败，已保留失败前的记录。"}</p> : null}
-      {run.state === "cancelled" ? <p className="callout">运行已取消。取消前持久化的规则发现与实际调用用量仍保留。</p> : null}
+      {run.state === "failed" ? (
+        <p className="callout">
+          {run.failure_message ?? "这次运行失败，已保留失败前的记录。"}
+        </p>
+      ) : null}
+      {run.state === "cancelled" ? (
+        <p className="callout">
+          运行已取消。取消前持久化的规则发现与实际调用用量仍保留。
+        </p>
+      ) : null}
       <div className={`workspace-grid layout-${layout}`}>
         <DocumentStage
           key={`${run.id}:${workspace.execution?.attempt.id ?? "legacy"}`}
           documents={workspace.documents}
-          finding={workspace.findings.find((item) => item.id === selectedId) ?? null}
+          finding={
+            workspace.findings.find((item) => item.id === selectedId) ?? null
+          }
           findings={workspace.findings}
           selectedFindingId={selectedId}
           onSelectFinding={onSelect}

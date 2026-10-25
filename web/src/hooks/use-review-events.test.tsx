@@ -25,8 +25,21 @@ class FakeEventSource {
   }
 }
 
-function Probe({ scope, enabled = true, onEvent }: { scope?: string; enabled?: boolean; onEvent: (event: RunEvent) => void }) {
-  const status = useReviewEvents("/api/cases/c1/reviews/r1/events", enabled, onEvent, scope);
+function Probe({
+  scope,
+  enabled = true,
+  onEvent,
+}: {
+  scope?: string;
+  enabled?: boolean;
+  onEvent: (event: RunEvent) => void;
+}) {
+  const status = useReviewEvents(
+    "/api/cases/c1/reviews/r1/events",
+    enabled,
+    onEvent,
+    scope,
+  );
   return <p>{status}</p>;
 }
 
@@ -49,10 +62,20 @@ describe("review event stream", () => {
     act(() => source?.onopen?.());
     expect(screen.getByText("live")).toBeInTheDocument();
     act(() => {
-      source?.onmessage?.({ data: JSON.stringify({ seq: 7, type: "run_state", state: "awaiting_human" }) });
+      source?.onmessage?.({
+        data: JSON.stringify({
+          seq: 7,
+          type: "run_state",
+          state: "awaiting_human",
+        }),
+      });
       source?.onmessage?.({ data: "{" });
     });
-    expect(onEvent).toHaveBeenCalledWith({ seq: 7, type: "run_state", state: "awaiting_human" });
+    expect(onEvent).toHaveBeenCalledWith({
+      seq: 7,
+      type: "run_state",
+      state: "awaiting_human",
+    });
     expect(onEvent).toHaveBeenCalledTimes(1);
     act(() => source?.onerror?.());
     expect(screen.getByText("reconnecting")).toBeInTheDocument();
@@ -65,7 +88,9 @@ describe("review event stream", () => {
   it("closes the superseded stream and subscribes again when the session scope changes", () => {
     globalThis.EventSource = FakeEventSource as unknown as typeof EventSource;
     const onEvent = vi.fn();
-    const { rerender } = render(<Probe scope={"tenant-a\u0000u1"} onEvent={onEvent} />);
+    const { rerender } = render(
+      <Probe scope={"tenant-a\u0000u1"} onEvent={onEvent} />,
+    );
     const first = FakeEventSource.latest!;
     act(() => first.onopen?.());
     expect(screen.getByText("live")).toBeInTheDocument();
@@ -79,14 +104,26 @@ describe("review event stream", () => {
 
     // A late delivery on the superseded stream must not reach the consumer.
     act(() => {
-      first.onmessage?.({ data: JSON.stringify({ seq: 9, type: "run_state", state: "failed" }) });
+      first.onmessage?.({
+        data: JSON.stringify({ seq: 9, type: "run_state", state: "failed" }),
+      });
     });
     expect(onEvent).not.toHaveBeenCalled();
     act(() => {
-      second.onmessage?.({ data: JSON.stringify({ seq: 10, type: "run_state", state: "awaiting_human" }) });
+      second.onmessage?.({
+        data: JSON.stringify({
+          seq: 10,
+          type: "run_state",
+          state: "awaiting_human",
+        }),
+      });
     });
     expect(onEvent).toHaveBeenCalledTimes(1);
-    expect(onEvent).toHaveBeenCalledWith({ seq: 10, type: "run_state", state: "awaiting_human" });
+    expect(onEvent).toHaveBeenCalledWith({
+      seq: 10,
+      type: "run_state",
+      state: "awaiting_human",
+    });
   });
 
   it("reports a terminal refused connect instead of a reconnecting stream", () => {

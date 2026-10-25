@@ -1,19 +1,40 @@
 import type { CaseSummary, DecisionAction, Finding } from "../api/types";
 
-export const DECISION_ACTIONS: readonly { action: DecisionAction; label: string }[] = [
+export const DECISION_ACTIONS: readonly {
+  action: DecisionAction;
+  label: string;
+}[] = [
   { action: "confirm_risk", label: "确认风险" },
   { action: "false_positive", label: "误报" },
   { action: "insufficient_evidence", label: "证据不足" },
   { action: "accept_residual", label: "接受残余风险" },
 ];
 
-export const RUN_FILTERS = ["all", "needs_human", "active", "partial", "completed", "failed", "cancelled", "interrupted"] as const;
+export const RUN_FILTERS = [
+  "all",
+  "needs_human",
+  "active",
+  "partial",
+  "completed",
+  "failed",
+  "cancelled",
+  "interrupted",
+] as const;
 export type RunFilter = (typeof RUN_FILTERS)[number];
 
-export type CaseSortField = "updated_at" | "title" | "pending_decisions" | "document_count";
+export type CaseSortField =
+  | "updated_at"
+  | "title"
+  | "pending_decisions"
+  | "document_count";
 export type SortDirection = "asc" | "desc";
 
-export const FINDING_FILTERS = ["all", "conflict", "insufficient", "undecided"] as const;
+export const FINDING_FILTERS = [
+  "all",
+  "conflict",
+  "insufficient",
+  "undecided",
+] as const;
 export type FindingFilter = (typeof FINDING_FILTERS)[number];
 
 export type ReviewLayout = "split" | "switch";
@@ -91,7 +112,11 @@ const CONTRACT_LABELS: Record<string, string> = {
   unspecified: "未分类",
 };
 
-export function labelOf(table: Record<string, string>, value: string, fallback: string): string {
+export function labelOf(
+  table: Record<string, string>,
+  value: string,
+  fallback: string,
+): string {
   if (value === "") return fallback;
   return table[value] ?? `${fallback}（${value}）`;
 }
@@ -100,10 +125,22 @@ export function runLabel(state: string): string {
   return labelOf(RUN_LABELS, state, "状态未识别");
 }
 export function isActiveAttemptState(state: string): boolean {
-  return state === "accepted" || state === "queued" || state === "started" || state === "running";
+  return (
+    state === "accepted" ||
+    state === "queued" ||
+    state === "started" ||
+    state === "running"
+  );
 }
 export function isTerminalAttemptState(state: string): boolean {
-  return state === "awaiting_human" || state === "partial" || state === "completed" || state === "failed" || state === "cancelled" || state === "interrupted";
+  return (
+    state === "awaiting_human" ||
+    state === "partial" ||
+    state === "completed" ||
+    state === "failed" ||
+    state === "cancelled" ||
+    state === "interrupted"
+  );
 }
 
 export function parseLabel(status: string): string {
@@ -151,7 +188,8 @@ export type StatusTone = "neutral" | "attention" | "good" | "bad" | "progress";
 export function runTone(state: string): StatusTone {
   if (state === "awaiting_human" || state === "partial") return "attention";
   if (state === "completed") return "good";
-  if (state === "failed" || state === "cancelled" || state === "interrupted") return "bad";
+  if (state === "failed" || state === "cancelled" || state === "interrupted")
+    return "bad";
   if (isActiveAttemptState(state)) return "progress";
   return "neutral";
 }
@@ -164,22 +202,36 @@ export function parseTone(status: string): StatusTone {
 }
 
 export function parseRunFilter(value: string | null): RunFilter {
-  if (value !== null && (RUN_FILTERS as readonly string[]).includes(value)) return value as RunFilter;
+  if (value !== null && (RUN_FILTERS as readonly string[]).includes(value))
+    return value as RunFilter;
   return "all";
 }
 
-export function filterCases(items: CaseSummary[], query: string, run: RunFilter, businessStatus = "all"): CaseSummary[] {
+export function filterCases(
+  items: CaseSummary[],
+  query: string,
+  run: RunFilter,
+  businessStatus = "all",
+): CaseSummary[] {
   const needle = query.trim().toLowerCase();
   return items.filter((item) => {
     if (needle !== "") {
       const haystack = `${item.title} ${item.id}`.toLowerCase();
       if (!haystack.includes(needle)) return false;
     }
-    if (businessStatus !== "all" && item.business_status !== businessStatus) return false;
+    if (businessStatus !== "all" && item.business_status !== businessStatus)
+      return false;
     const state = item.latest_run?.state ?? null;
     if (run === "all") return true;
-    if (run === "needs_human") return state === "awaiting_human" || item.pending_decisions > 0;
-    if (run === "active") return state === "queued" || state === "running" || state === "accepted" || state === "started";
+    if (run === "needs_human")
+      return state === "awaiting_human" || item.pending_decisions > 0;
+    if (run === "active")
+      return (
+        state === "queued" ||
+        state === "running" ||
+        state === "accepted" ||
+        state === "started"
+      );
     if (run === "partial") return state === "partial";
     if (run === "completed") return state === "completed";
     if (run === "cancelled") return state === "cancelled";
@@ -193,10 +245,15 @@ export function latestDecision(finding: Finding) {
   return finding.decisions[finding.decisions.length - 1] ?? null;
 }
 
-export function filterFindings(findings: Finding[], filter: FindingFilter): Finding[] {
+export function filterFindings(
+  findings: Finding[],
+  filter: FindingFilter,
+): Finding[] {
   if (filter === "all") return findings;
-  if (filter === "conflict") return findings.filter((finding) => finding.relation === "conflict");
-  if (filter === "insufficient") return findings.filter((finding) => finding.relation === "insufficient");
+  if (filter === "conflict")
+    return findings.filter((finding) => finding.relation === "conflict");
+  if (filter === "insufficient")
+    return findings.filter((finding) => finding.relation === "insufficient");
   return findings.filter((finding) => latestDecision(finding) === null);
 }
 
@@ -228,10 +285,21 @@ export function parseRunEvent(data: string): RunEvent | null {
   }
   if (typeof value !== "object" || value === null) return null;
   const record = value as Record<string, unknown>;
-  if (typeof record.seq !== "number" || !Number.isInteger(record.seq) || record.seq < 0) return null;
-  const type = typeof record.event_type === "string" ? record.event_type : record.type;
+  if (
+    typeof record.seq !== "number" ||
+    !Number.isInteger(record.seq) ||
+    record.seq < 0
+  )
+    return null;
+  const type =
+    typeof record.event_type === "string" ? record.event_type : record.type;
   if (typeof type !== "string" || type === "") return null;
-  const state = typeof record.status === "string" ? record.status : typeof record.state === "string" ? record.state : null;
+  const state =
+    typeof record.status === "string"
+      ? record.status
+      : typeof record.state === "string"
+        ? record.state
+        : null;
   return { seq: record.seq, type, state };
 }
 
@@ -273,8 +341,14 @@ export function readyDocumentCount(statuses: readonly string[]): number {
   return statuses.filter((status) => status === "ready").length;
 }
 
-export function selectedFindingId(findings: Finding[], requested: string | null): string | null {
-  if (requested && findings.some((finding) => finding.id === requested)) return requested;
-  const undecided = findings.find((finding) => latestDecision(finding) === null);
+export function selectedFindingId(
+  findings: Finding[],
+  requested: string | null,
+): string | null {
+  if (requested && findings.some((finding) => finding.id === requested))
+    return requested;
+  const undecided = findings.find(
+    (finding) => latestDecision(finding) === null,
+  );
   return undecided?.id ?? findings[0]?.id ?? null;
 }

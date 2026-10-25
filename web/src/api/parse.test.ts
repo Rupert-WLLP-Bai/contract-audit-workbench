@@ -1,4 +1,10 @@
-import { parseCaseDetail, parseCaseList, parseFinding, parseRemediation, parseReviewWorkspace } from "./parse";
+import {
+  parseCaseDetail,
+  parseCaseList,
+  parseFinding,
+  parseRemediation,
+  parseReviewWorkspace,
+} from "./parse";
 import { parseWorkbenchSnapshot } from "./workbench";
 
 const caseDefaults = {
@@ -35,7 +41,11 @@ describe("response parsers", () => {
       title: "样本",
       finding_counts: { total: 0, undecided: 0, conflict: 0, insufficient: 0 },
     });
-    const missing = parseCaseDetail({ ...caseDefaults, id: "c2", title: "样本" });
+    const missing = parseCaseDetail({
+      ...caseDefaults,
+      id: "c2",
+      title: "样本",
+    });
     expect(withZero.finding_counts?.total).toBe(0);
     expect(missing.finding_counts).toBeNull();
   });
@@ -56,39 +66,53 @@ describe("response parsers", () => {
     const detail = parseCaseDetail({
       ...caseDefaults,
       id: "legacy-case",
-      documents: [{ id: "d1", digest: "original-digest", parse_status: "ready" }],
+      documents: [
+        { id: "d1", digest: "original-digest", parse_status: "ready" },
+      ],
     });
     const finding = parseFinding({
       id: "f1",
-      evidence: [{ id: "e1", document_version_id: "d1", status: "located", quote: "三十六个月" }],
+      evidence: [
+        {
+          id: "e1",
+          document_version_id: "d1",
+          status: "located",
+          quote: "三十六个月",
+        },
+      ],
     });
     expect(detail.documents[0]?.parsed_document).toBeNull();
-    expect(finding.evidence[0]).toMatchObject({ parsed_document_id: null, normalized_digest: null });
+    expect(finding.evidence[0]).toMatchObject({
+      parsed_document_id: null,
+      normalized_digest: null,
+    });
   });
 
   it("preserves text and artifact digests separately from the original digest", () => {
     const detail = parseCaseDetail({
       ...caseDefaults,
       id: "c1",
-      documents: [{
-        id: "d1",
-        digest: "original-digest",
-        parse_status: "ready",
-        parsed_document: {
-          id: "pd1",
-          document_id: "d1",
-          original_digest: "original-digest",
-          parser_id: "text",
-          parser_version: "1",
-          config_hash: "config-digest",
-          normalization_version: "unicode-v1",
-          normalized_digest: "text-digest",
-          ir_digest: "ir-digest",
-          artifact_digest: "artifact-digest",
-          created_at: "2026-10-21T01:00:00Z",
-          status: "ready",
+      documents: [
+        {
+          id: "d1",
+          digest: "original-digest",
+          parse_status: "ready",
+          parsed_document: {
+            id: "pd1",
+            document_id: "d1",
+            original_digest: "original-digest",
+            parser_id: "text",
+            parser_version: "1",
+            config_hash: "config-digest",
+            normalization_version: "unicode-v1",
+            normalized_digest: "text-digest",
+            ir_digest: "ir-digest",
+            artifact_digest: "artifact-digest",
+            created_at: "2026-10-21T01:00:00Z",
+            status: "ready",
+          },
         },
-      }],
+      ],
     });
     expect(detail.documents[0]?.parsed_document).toMatchObject({
       original_digest: "original-digest",
@@ -102,12 +126,30 @@ describe("response parsers", () => {
     const workspace = parseReviewWorkspace({
       run: { id: "r1", state: "awaiting_human", case_id: "c1" },
       audit_events: [],
-      evaluations: [{
-        id: "eval1", domain: "technical", relation: "compatible", rule_version: "1.0.0", reason: "规则满足",
-        rule_id: "ENT-TECH-BW-001", capability_id: "dedicated_line.minimum_bandwidth", object_refs: ["LINE-001"],
-        finding_id: null, reason_code: "minimum_bandwidth_met", fact_ids: ["fact1"],
-      }],
-      documents: [{ id: "d1", filename: "采购.docx", role: "procurement", parse_status: "ready", text: "三十六个月" }],
+      evaluations: [
+        {
+          id: "eval1",
+          domain: "technical",
+          relation: "compatible",
+          rule_version: "1.0.0",
+          reason: "规则满足",
+          rule_id: "ENT-TECH-BW-001",
+          capability_id: "dedicated_line.minimum_bandwidth",
+          object_refs: ["LINE-001"],
+          finding_id: null,
+          reason_code: "minimum_bandwidth_met",
+          fact_ids: ["fact1"],
+        },
+      ],
+      documents: [
+        {
+          id: "d1",
+          filename: "采购.docx",
+          role: "procurement",
+          parse_status: "ready",
+          text: "三十六个月",
+        },
+      ],
       findings: [
         {
           id: "f1",
@@ -133,53 +175,135 @@ describe("response parsers", () => {
     expect(workspace.findings[0]?.version).toBe(2);
     expect(workspace.documents[0]?.text).toBe("三十六个月");
     expect(workspace.evaluations?.[0]).toMatchObject({
-      rule_id: "ENT-TECH-BW-001", rule_version: "1.0.0", capability_id: "dedicated_line.minimum_bandwidth",
-      object_refs: ["LINE-001"], finding_id: null, reason_code: "minimum_bandwidth_met", fact_ids: ["fact1"],
+      rule_id: "ENT-TECH-BW-001",
+      rule_version: "1.0.0",
+      capability_id: "dedicated_line.minimum_bandwidth",
+      object_refs: ["LINE-001"],
+      finding_id: null,
+      reason_code: "minimum_bandwidth_met",
+      fact_ids: ["fact1"],
     });
   });
 
   it("preserves explicit parsed document references on frozen attempts", () => {
     const attempt = {
-      id: "a1", run_id: "r1", ordinal: 1, retry_of_attempt_id: null, parsed_document_ids: ["pd1", "pd2"], state: "failed",
-      accepted_at: null, started_at: null, finished_at: null,
-      input_hash: null, output_hash: null, error_code: "provider_unavailable", history_kind: "frozen",
+      id: "a1",
+      run_id: "r1",
+      ordinal: 1,
+      retry_of_attempt_id: null,
+      parsed_document_ids: ["pd1", "pd2"],
+      state: "failed",
+      accepted_at: null,
+      started_at: null,
+      finished_at: null,
+      input_hash: null,
+      output_hash: null,
+      error_code: "provider_unavailable",
+      history_kind: "frozen",
     };
     const workspace = parseReviewWorkspace({
       run: { id: "r1", state: "failed", case_id: "c1" },
       audit_events: [],
       execution: {
-        schema_version: "audit-execution/v1", attempt, attempts: [attempt], events: [],
-        usage: null, all_attempts_usage: null, duration_ms: null, first_verified_finding_ms: null, queue_wait_ms: null,
+        schema_version: "audit-execution/v1",
+        attempt,
+        attempts: [attempt],
+        events: [],
+        usage: null,
+        all_attempts_usage: null,
+        duration_ms: null,
+        first_verified_finding_ms: null,
+        queue_wait_ms: null,
       },
     });
-    expect(workspace.execution?.attempt.parsed_document_ids).toEqual(["pd1", "pd2"]);
+    expect(workspace.execution?.attempt.parsed_document_ids).toEqual([
+      "pd1",
+      "pd2",
+    ]);
   });
   it("preserves unknown token usage and null timestamps without converting them to zero", () => {
     const attempt = {
-      id: "a1", run_id: "r1", ordinal: 1, retry_of_attempt_id: null, state: "failed",
-      accepted_at: null, started_at: null, finished_at: null,
-      input_hash: null, output_hash: null, error_code: "provider_unavailable", history_kind: "frozen",
+      id: "a1",
+      run_id: "r1",
+      ordinal: 1,
+      retry_of_attempt_id: null,
+      state: "failed",
+      accepted_at: null,
+      started_at: null,
+      finished_at: null,
+      input_hash: null,
+      output_hash: null,
+      error_code: "provider_unavailable",
+      history_kind: "frozen",
     };
     const usage = {
-      input_tokens: null, output_tokens: null, total_tokens: null, calls: 2, unknown_calls: 2,
+      input_tokens: null,
+      output_tokens: null,
+      total_tokens: null,
+      calls: 2,
+      unknown_calls: 2,
       sources: ["model_http"],
-      known_subtotals: { input_tokens: null, output_tokens: null, total_tokens: null },
+      known_subtotals: {
+        input_tokens: null,
+        output_tokens: null,
+        total_tokens: null,
+      },
       cost: null,
     };
     const workspace = parseReviewWorkspace({
       run: { id: "r1", state: "failed", case_id: "c1" },
       audit_events: [],
       execution: {
-        schema_version: "audit-execution/v1", attempt, attempts: [attempt],
+        schema_version: "audit-execution/v1",
+        attempt,
+        attempts: [attempt],
         events: [
-          { seq: 1, attempt_id: "a1", span_id: null, parent_span_id: null, node_kind: "model", phase: "model",
-            event_type: "completed", at: null, duration_ms: null, status: "completed", error_code: null,
-            model_ref: "group/auto-deepseek-v4-flash", usage: { source: "openai_response.usage", input_tokens: 183, output_tokens: 144, total_tokens: 327 } },
-          { seq: 2, attempt_id: "a1", span_id: null, parent_span_id: null, node_kind: "model", phase: "model",
-            event_type: "failed", at: null, duration_ms: null, status: "failed", error_code: "provider_unavailable",
-            model_ref: null, usage: { source: "model_http", input_tokens: null, output_tokens: null, total_tokens: null } },
+          {
+            seq: 1,
+            attempt_id: "a1",
+            span_id: null,
+            parent_span_id: null,
+            node_kind: "model",
+            phase: "model",
+            event_type: "completed",
+            at: null,
+            duration_ms: null,
+            status: "completed",
+            error_code: null,
+            model_ref: "group/auto-deepseek-v4-flash",
+            usage: {
+              source: "openai_response.usage",
+              input_tokens: 183,
+              output_tokens: 144,
+              total_tokens: 327,
+            },
+          },
+          {
+            seq: 2,
+            attempt_id: "a1",
+            span_id: null,
+            parent_span_id: null,
+            node_kind: "model",
+            phase: "model",
+            event_type: "failed",
+            at: null,
+            duration_ms: null,
+            status: "failed",
+            error_code: "provider_unavailable",
+            model_ref: null,
+            usage: {
+              source: "model_http",
+              input_tokens: null,
+              output_tokens: null,
+              total_tokens: null,
+            },
+          },
         ],
-        usage, all_attempts_usage: usage, duration_ms: null, first_verified_finding_ms: null, queue_wait_ms: null,
+        usage,
+        all_attempts_usage: usage,
+        duration_ms: null,
+        first_verified_finding_ms: null,
+        queue_wait_ms: null,
       },
     });
     expect(workspace.execution?.usage?.input_tokens).toBeNull();
@@ -190,39 +314,123 @@ describe("response parsers", () => {
     expect(workspace.execution?.attempt.input_hash).toBeNull();
     expect(workspace.execution?.attempt.parsed_document_ids).toEqual([]);
     expect(workspace.execution?.events[0]?.usage).toEqual({
-      source: "openai_response.usage", input_tokens: 183, output_tokens: 144, total_tokens: 327,
+      source: "openai_response.usage",
+      input_tokens: 183,
+      output_tokens: 144,
+      total_tokens: 327,
     });
     expect(workspace.execution?.events[1]?.usage?.total_tokens).toBeNull();
   });
   it("preserves omitted optional fields on a newly created remediation", () => {
     const remediation = parseRemediation({
-      id: "rem-1", case_id: "c1", run_id: "r1", attempt_id: "a1", finding_ids: ["f1"],
-      measure: "补充可执行的服务期限", status: "open", version: 1, document_ids: [],
-      created_at: "2026-10-22T01:00:00Z", updated_at: "2026-10-22T01:00:00Z",
+      id: "rem-1",
+      case_id: "c1",
+      run_id: "r1",
+      attempt_id: "a1",
+      finding_ids: ["f1"],
+      measure: "补充可执行的服务期限",
+      status: "open",
+      version: 1,
+      document_ids: [],
+      created_at: "2026-10-22T01:00:00Z",
+      updated_at: "2026-10-22T01:00:00Z",
     });
-    expect(remediation).toMatchObject({ assignee_id: "", due_at: "", reason: "", verification_run_id: null, verification_attempt_id: null });
+    expect(remediation).toMatchObject({
+      assignee_id: "",
+      due_at: "",
+      reason: "",
+      verification_run_id: null,
+      verification_attempt_id: null,
+    });
   });
 
   it("keeps platform audit events unlinked and parses nested document provenance", () => {
     const document = {
-      id: "d1", case_id: "c1", case_title: "云服务协议", role: "draft_contract", filename: "云服务协议.txt",
-      media_type: "text/plain", digest: "original-hash", size: 18, parse_status: "ready", parse_error: null,
-      created_at: "2026-10-24T08:00:00Z", superseded: false,
+      id: "d1",
+      case_id: "c1",
+      case_title: "云服务协议",
+      role: "draft_contract",
+      filename: "云服务协议.txt",
+      media_type: "text/plain",
+      digest: "original-hash",
+      size: 18,
+      parse_status: "ready",
+      parse_error: null,
+      created_at: "2026-10-24T08:00:00Z",
+      superseded: false,
       parsed_document: {
-        id: "pd1", document_id: "d1", original_digest: "original-hash", parser_id: "text", parser_version: "1",
-        config_hash: "config-hash", normalization_version: "unicode-v1", normalized_digest: "normalized-hash",
-        ir_digest: "ir-hash", artifact_digest: "artifact-hash", created_at: "2026-10-24T08:00:01Z", status: "ready",
+        id: "pd1",
+        document_id: "d1",
+        original_digest: "original-hash",
+        parser_id: "text",
+        parser_version: "1",
+        config_hash: "config-hash",
+        normalization_version: "unicode-v1",
+        normalized_digest: "normalized-hash",
+        ir_digest: "ir-hash",
+        artifact_digest: "artifact-hash",
+        created_at: "2026-10-24T08:00:01Z",
+        status: "ready",
       },
     };
-    const snapshot = parseWorkbenchSnapshot({
-      schema_version: "workbench/v1", generated_at: "2026-10-24T09:00:00Z", period: "day",
-      dashboard: { visible_cases: 0, my_pending_tasks: 0, overdue_tasks: 0, pending_review_cases: 0, remediation_cases: 0, completed_reviews: 0, average_duration_ms: null, progress: [], risks: [] },
-      cases: [], profiles: [], tasks: [], relations: [], knowledge: [], members: [], remediations: [], reports: [], documents: [document], runs: [],
-      audit: [{ id: "event-platform", case_id: null, case_title: null, actor_id: "actor-1", actor_name: "审查员", action: "rulepack.published", at: "2026-10-24T08:00:00Z", summary: "发布规则包" }],
-      templates: [], model: { name: "codex/gpt-6-luna", ocr_name: "ocr", status: "configured", label: "真实模型" }, tools: [], health: [],
-    }, "day");
-    expect(snapshot.audit[0]).toMatchObject({ case_id: null, case_title: null, action: "rulepack.published" });
-    expect(snapshot.documents[0]?.parsed_document).toMatchObject({ id: "pd1", normalized_digest: "normalized-hash" });
+    const snapshot = parseWorkbenchSnapshot(
+      {
+        schema_version: "workbench/v1",
+        generated_at: "2026-10-24T09:00:00Z",
+        period: "day",
+        dashboard: {
+          visible_cases: 0,
+          my_pending_tasks: 0,
+          overdue_tasks: 0,
+          pending_review_cases: 0,
+          remediation_cases: 0,
+          completed_reviews: 0,
+          average_duration_ms: null,
+          progress: [],
+          risks: [],
+        },
+        cases: [],
+        profiles: [],
+        tasks: [],
+        relations: [],
+        knowledge: [],
+        members: [],
+        remediations: [],
+        reports: [],
+        documents: [document],
+        runs: [],
+        audit: [
+          {
+            id: "event-platform",
+            case_id: null,
+            case_title: null,
+            actor_id: "actor-1",
+            actor_name: "审查员",
+            action: "rulepack.published",
+            at: "2026-10-24T08:00:00Z",
+            summary: "发布规则包",
+          },
+        ],
+        templates: [],
+        model: {
+          name: "codex/gpt-6-luna",
+          ocr_name: "ocr",
+          status: "configured",
+          label: "真实模型",
+        },
+        tools: [],
+      },
+      "day",
+    );
+    expect(snapshot.audit[0]).toMatchObject({
+      case_id: null,
+      case_title: null,
+      action: "rulepack.published",
+    });
+    expect(snapshot.documents[0]?.parsed_document).toMatchObject({
+      id: "pd1",
+      normalized_digest: "normalized-hash",
+    });
     expect(snapshot.documents[0]).not.toHaveProperty("parsed_document_id");
     expect(snapshot.documents[0]).not.toHaveProperty("normalized_text_digest");
   });

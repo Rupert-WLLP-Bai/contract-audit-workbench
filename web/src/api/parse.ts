@@ -41,7 +41,9 @@ import { ApiError } from "./http";
 import { parseAgentReview } from "./agent-review";
 function nonNegativeIntegerOrNull(value: unknown): number | null {
   const result = numberOrNull(value);
-  return result !== null && Number.isInteger(result) && result >= 0 ? result : null;
+  return result !== null && Number.isInteger(result) && result >= 0
+    ? result
+    : null;
 }
 
 function requiredCount(record: Record<string, unknown>, key: string): number {
@@ -50,43 +52,67 @@ function requiredCount(record: Record<string, unknown>, key: string): number {
   return result;
 }
 
-function nullableString(record: Record<string, unknown>, key: string): string | null {
+function nullableString(
+  record: Record<string, unknown>,
+  key: string,
+): string | null {
   const value = record[key];
   return typeof value === "string" ? value : null;
 }
 
-function stringArrayOrEmpty(record: Record<string, unknown>, key: string): string[] {
+function stringArrayOrEmpty(
+  record: Record<string, unknown>,
+  key: string,
+): string[] {
   const value = record[key];
   if (value === undefined || value === null) return [];
-  if (!Array.isArray(value) || !value.every((item) => typeof item === "string")) fail(`${key}不是字符串数组`);
+  if (!Array.isArray(value) || !value.every((item) => typeof item === "string"))
+    fail(`${key}不是字符串数组`);
   return value as string[];
 }
 
-function requiredBoolean(record: Record<string, unknown>, key: string): boolean {
+function requiredBoolean(
+  record: Record<string, unknown>,
+  key: string,
+): boolean {
   if (typeof record[key] !== "boolean") fail(`响应缺少有效的 ${key}`);
   return record[key] as boolean;
 }
 
-function requiredStringArray(record: Record<string, unknown>, key: string): string[] {
+function requiredStringArray(
+  record: Record<string, unknown>,
+  key: string,
+): string[] {
   const value = record[key];
-  if (!Array.isArray(value) || !value.every((item) => typeof item === "string")) fail(`${key}不是字符串数组`);
+  if (!Array.isArray(value) || !value.every((item) => typeof item === "string"))
+    fail(`${key}不是字符串数组`);
   return value as string[];
 }
 
-function requiredNullableString(record: Record<string, unknown>, key: string): string | null {
+function requiredNullableString(
+  record: Record<string, unknown>,
+  key: string,
+): string | null {
   if (!Object.hasOwn(record, key)) fail(`响应缺少 ${key}`);
   const value = record[key];
-  if (value !== null && typeof value !== "string") fail(`${key}不是字符串或null`);
+  if (value !== null && typeof value !== "string")
+    fail(`${key}不是字符串或null`);
   return value as string | null;
 }
 
-function optionalNullableString(record: Record<string, unknown>, key: string): string | null {
+function optionalNullableString(
+  record: Record<string, unknown>,
+  key: string,
+): string | null {
   if (!(key in record) || record[key] === null) return null;
   if (typeof record[key] !== "string") fail(`${key}不是字符串或null`);
   return record[key] as string;
 }
 
-function requiredPositiveInteger(record: Record<string, unknown>, key: string): number {
+function requiredPositiveInteger(
+  record: Record<string, unknown>,
+  key: string,
+): number {
   const value = requiredCount(record, key);
   if (value < 1) fail(`${key}必须大于0`);
   return value;
@@ -107,7 +133,10 @@ function parseUsage(value: unknown): ExecutionUsage | null {
   if (value === null || value === undefined) return null;
   const record = recordOf(value, "usage");
   const subtotals = recordOf(record.known_subtotals, "known_subtotals");
-  if (!Array.isArray(record.sources) || !record.sources.every((source) => typeof source === "string")) {
+  if (
+    !Array.isArray(record.sources) ||
+    !record.sources.every((source) => typeof source === "string")
+  ) {
     fail("usage.sources不是字符串数组");
   }
   if (record.cost !== null) fail("usage.cost必须为null");
@@ -183,13 +212,19 @@ function requiredString(record: Record<string, unknown>, key: string): string {
   if (typeof value !== "string" || value.trim() === "") fail(`响应缺少 ${key}`);
   return value;
 }
-function requiredStringValue(record: Record<string, unknown>, key: string): string {
+function requiredStringValue(
+  record: Record<string, unknown>,
+  key: string,
+): string {
   const value = record[key];
   if (typeof value !== "string") fail(`响应缺少 ${key}`);
   return value;
 }
 
-function optionalString(record: Record<string, unknown>, key: string): string | null {
+function optionalString(
+  record: Record<string, unknown>,
+  key: string,
+): string | null {
   const value = record[key];
   if (typeof value !== "string") return null;
   return value;
@@ -204,7 +239,13 @@ function parseOffset(value: unknown): TextOffset | null {
   if (!isRecord(value)) return null;
   const start = numberOrNull(value.start);
   const end = numberOrNull(value.end);
-  if (start === null || end === null || !Number.isInteger(start) || !Number.isInteger(end) || end <= start) {
+  if (
+    start === null ||
+    end === null ||
+    !Number.isInteger(start) ||
+    !Number.isInteger(end) ||
+    end <= start
+  ) {
     return null;
   }
   return { start, end };
@@ -216,7 +257,8 @@ function parseBox(value: unknown): BoundingBox | null {
   const y = numberOrNull(value.y);
   const width = numberOrNull(value.width);
   const height = numberOrNull(value.height);
-  if (x === null || y === null || width === null || height === null) return null;
+  if (x === null || y === null || width === null || height === null)
+    return null;
   return { x, y, width, height };
 }
 
@@ -256,7 +298,10 @@ export function parseCaseList(value: unknown): CaseSummary[] {
   return record.items.map(parseCaseSummary);
 }
 
-function nullableValueString(record: Record<string, unknown>, key: string): string | null {
+function nullableValueString(
+  record: Record<string, unknown>,
+  key: string,
+): string | null {
   const value = nullableString(record, key);
   return value !== null && value.trim() !== "" ? value : null;
 }
@@ -315,13 +360,25 @@ function parseCounts(value: unknown): FindingCounts | null {
   const undecided = numberOrNull(value.undecided);
   const conflict = numberOrNull(value.conflict);
   const insufficient = numberOrNull(value.insufficient);
-  if (total === null || undecided === null || conflict === null || insufficient === null) return null;
+  if (
+    total === null ||
+    undecided === null ||
+    conflict === null ||
+    insufficient === null
+  )
+    return null;
   return { total, undecided, conflict, insufficient };
 }
 
 export function parseCaseDetail(value: unknown): CaseDetail {
   const record = recordOf(value, "case");
-  if (!Array.isArray(record.members) || !Array.isArray(record.generations) || !Array.isArray(record.remediations) || !Array.isArray(record.reports) || !Array.isArray(record.archives)) {
+  if (
+    !Array.isArray(record.members) ||
+    !Array.isArray(record.generations) ||
+    !Array.isArray(record.remediations) ||
+    !Array.isArray(record.reports) ||
+    !Array.isArray(record.archives)
+  ) {
     fail("案件缺少业务记录数组");
   }
   return {
@@ -330,15 +387,25 @@ export function parseCaseDetail(value: unknown): CaseDetail {
     contract_type: optionalString(record, "contract_type") ?? "",
     created_at: optionalString(record, "created_at") ?? "",
     updated_at: optionalString(record, "updated_at") ?? "",
-    documents: Array.isArray(record.documents) ? record.documents.map(parseDocument) : [],
+    documents: Array.isArray(record.documents)
+      ? record.documents.map(parseDocument)
+      : [],
     members: record.members.map((value) => {
       const member = recordOf(value, "案件成员");
-      return { id: requiredStringValue(member, "id"), display_name: requiredStringValue(member, "display_name"), role: requiredStringValue(member, "role"), tenant_id: requiredStringValue(member, "tenant_id"), org_id: requiredStringValue(member, "org_id") };
+      return {
+        id: requiredStringValue(member, "id"),
+        display_name: requiredStringValue(member, "display_name"),
+        role: requiredStringValue(member, "role"),
+        tenant_id: requiredStringValue(member, "tenant_id"),
+        org_id: requiredStringValue(member, "org_id"),
+      };
     }),
     latest_run: parseRunSummary(record.latest_run),
     finding_counts: parseCounts(record.finding_counts),
     activity: Array.isArray(record.activity)
-      ? record.activity.map(parseActivity).filter((item): item is ActivityItem => item !== null)
+      ? record.activity
+          .map(parseActivity)
+          .filter((item): item is ActivityItem => item !== null)
       : [],
     revision_pending: record.revision_pending === true,
     configuration_pending: record.configuration_pending === true,
@@ -363,7 +430,10 @@ function parseAnchor(value: unknown): EvidenceAnchor {
     normalized_digest: nullableValueString(record, "normalized_digest"),
     quote: optionalString(record, "quote") ?? "",
     status:
-      status === "located" || status === "anchor_mismatch" || status === "unlocatable" || status === "missing"
+      status === "located" ||
+      status === "anchor_mismatch" ||
+      status === "unlocatable" ||
+      status === "missing"
         ? status
         : "missing",
     page: numberOrNull(record.page),
@@ -384,7 +454,9 @@ function parseDecision(value: unknown): HumanDecision {
   };
 }
 
-function parseFindingSeveritySource(value: unknown): FindingSeveritySource | null {
+function parseFindingSeveritySource(
+  value: unknown,
+): FindingSeveritySource | null {
   if (value === null || value === undefined) return null;
   const record = recordOf(value, "finding severity source");
   return {
@@ -398,12 +470,18 @@ function parseFindingSeveritySource(value: unknown): FindingSeveritySource | nul
 export function parseFinding(value: unknown): Finding {
   const record = recordOf(value, "finding");
   const version = numberOrNull(record.version);
-  const evidence = Array.isArray(record.evidence) ? record.evidence.map(parseAnchor) : [];
-  const verification: FindingVerification = typeof record.unverified_reason === "string"
-    ? "unverified"
-    : Object.hasOwn(record, "unverified_reason") && record.unverified_reason === null && evidence.length > 0 && evidence.every((anchor) => anchor.status === "located")
-      ? "verified"
-      : "unknown";
+  const evidence = Array.isArray(record.evidence)
+    ? record.evidence.map(parseAnchor)
+    : [];
+  const verification: FindingVerification =
+    typeof record.unverified_reason === "string"
+      ? "unverified"
+      : Object.hasOwn(record, "unverified_reason") &&
+          record.unverified_reason === null &&
+          evidence.length > 0 &&
+          evidence.every((anchor) => anchor.status === "located")
+        ? "verified"
+        : "unknown";
   return {
     id: requiredString(record, "id"),
     origin: optionalString(record, "origin") ?? "unknown",
@@ -417,7 +495,9 @@ export function parseFinding(value: unknown): Finding {
     version: version !== null && Number.isInteger(version) ? version : null,
     severity: optionalNullableString(record, "severity"),
     severity_source: parseFindingSeveritySource(record.severity_source),
-    decisions: Array.isArray(record.decisions) ? record.decisions.map(parseDecision) : [],
+    decisions: Array.isArray(record.decisions)
+      ? record.decisions.map(parseDecision)
+      : [],
   };
 }
 
@@ -427,7 +507,12 @@ function parseClause(value: unknown): ClauseNode | null {
   const heading = optionalString(value, "heading");
   const textOffset = parseOffset(value.text_offset);
   if (id === null || heading === null || textOffset === null) return null;
-  return { id, heading, text_offset: textOffset, page: numberOrNull(value.page) };
+  return {
+    id,
+    heading,
+    text_offset: textOffset,
+    page: numberOrNull(value.page),
+  };
 }
 
 function parseReviewDocument(value: unknown): ReviewDocument {
@@ -436,7 +521,9 @@ function parseReviewDocument(value: unknown): ReviewDocument {
     ...parseDocument(value),
     text: optionalString(record, "text"),
     clauses: Array.isArray(record.clauses)
-      ? record.clauses.map(parseClause).filter((item): item is ClauseNode => item !== null)
+      ? record.clauses
+          .map(parseClause)
+          .filter((item): item is ClauseNode => item !== null)
       : [],
   };
 }
@@ -458,20 +545,30 @@ function parseReviewRun(value: unknown): ReviewRun {
 function parseExecution(value: unknown): Execution | null {
   if (value === null || value === undefined) return null;
   const record = recordOf(value, "execution");
-  if (record.schema_version !== "audit-execution/v1") fail("不支持的执行记录版本");
+  if (record.schema_version !== "audit-execution/v1")
+    fail("不支持的执行记录版本");
   const attempt = parseExecutionAttempt(record.attempt);
-  const attempts = Array.isArray(record.attempts) ? record.attempts.map(parseExecutionAttempt) : [attempt];
-  const events = Array.isArray(record.events) ? record.events.map(parseExecutionEvent) : [];
+  const attempts = Array.isArray(record.attempts)
+    ? record.attempts.map(parseExecutionAttempt)
+    : [attempt];
+  const events = Array.isArray(record.events)
+    ? record.events.map(parseExecutionEvent)
+    : [];
   return {
     schema_version: "audit-execution/v1",
     attempt,
     attempts,
     events,
-    agent_review: record.agent_review === null || record.agent_review === undefined ? null : parseAgentReview(record.agent_review),
+    agent_review:
+      record.agent_review === null || record.agent_review === undefined
+        ? null
+        : parseAgentReview(record.agent_review),
     usage: parseUsage(record.usage),
     all_attempts_usage: parseUsage(record.all_attempts_usage),
     duration_ms: nonNegativeIntegerOrNull(record.duration_ms),
-    first_verified_finding_ms: nonNegativeIntegerOrNull(record.first_verified_finding_ms),
+    first_verified_finding_ms: nonNegativeIntegerOrNull(
+      record.first_verified_finding_ms,
+    ),
     queue_wait_ms: nonNegativeIntegerOrNull(record.queue_wait_ms),
   };
 }
@@ -480,15 +577,26 @@ export function parseReviewWorkspace(value: unknown): ReviewWorkspace {
   if (!Array.isArray(record.audit_events)) fail("审查工作区缺少 audit_events");
   return {
     run: parseReviewRun(record.run),
-    documents: Array.isArray(record.documents) ? record.documents.map(parseReviewDocument) : [],
-    findings: Array.isArray(record.findings) ? record.findings.map(parseFinding) : [],
+    documents: Array.isArray(record.documents)
+      ? record.documents.map(parseReviewDocument)
+      : [],
+    findings: Array.isArray(record.findings)
+      ? record.findings.map(parseFinding)
+      : [],
     execution: parseExecution(record.execution),
     snapshot: parseSnapshot(record.snapshot),
-    evaluations: Array.isArray(record.evaluations) ? record.evaluations.map(parseEvaluation) : [],
+    evaluations: Array.isArray(record.evaluations)
+      ? record.evaluations.map(parseEvaluation)
+      : [],
     audit_events: record.audit_events.map(parseAuditEvent),
     previous_run_id: optionalString(record, "previous_run_id"),
-    revisions: Array.isArray(record.revisions) ? record.revisions.map(parseRevision) : [],
-    revision_comparison_reason: optionalString(record, "revision_comparison_reason"),
+    revisions: Array.isArray(record.revisions)
+      ? record.revisions.map(parseRevision)
+      : [],
+    revision_comparison_reason: optionalString(
+      record,
+      "revision_comparison_reason",
+    ),
   };
 }
 
@@ -496,7 +604,8 @@ function parseSnapshot(value: unknown): RunSnapshot | null {
   if (!isRecord(value)) return null;
   return {
     document_ids: Array.isArray(value.document_ids)
-      ? value.document_ids.filter((id): id is string => typeof id === "string") : [],
+      ? value.document_ids.filter((id): id is string => typeof id === "string")
+      : [],
     rule_set_hash: optionalString(value, "rule_set_hash") ?? "",
     playbook_hash: optionalString(value, "playbook_hash") ?? "",
     model_ref: optionalString(value, "model_ref"),
@@ -507,16 +616,23 @@ function parseSnapshot(value: unknown): RunSnapshot | null {
 function parseEvaluation(value: unknown): ConstraintEvaluation {
   const row = recordOf(value, "evaluation");
   return {
-    id: requiredString(row, "id"), domain: optionalString(row, "domain") ?? "",
+    id: requiredString(row, "id"),
+    domain: optionalString(row, "domain") ?? "",
     relation: optionalString(row, "relation") ?? "unknown",
     rule_version: optionalString(row, "rule_version") ?? "",
     reason: optionalString(row, "reason") ?? "",
     rule_id: optionalString(row, "rule_id") ?? "",
     capability_id: optionalString(row, "capability_id") ?? "",
-    object_refs: Array.isArray(row.object_refs) ? row.object_refs.filter((item): item is string => typeof item === "string") : [],
+    object_refs: Array.isArray(row.object_refs)
+      ? row.object_refs.filter(
+          (item): item is string => typeof item === "string",
+        )
+      : [],
     finding_id: optionalString(row, "finding_id"),
     reason_code: optionalString(row, "reason_code") ?? "",
-    fact_ids: Array.isArray(row.fact_ids) ? row.fact_ids.filter((item): item is string => typeof item === "string") : [],
+    fact_ids: Array.isArray(row.fact_ids)
+      ? row.fact_ids.filter((item): item is string => typeof item === "string")
+      : [],
   };
 }
 
@@ -529,7 +645,8 @@ function parseRevision(value: unknown): RevisionComparison {
     domain: optionalString(row, "domain") ?? "",
     relation: optionalString(row, "relation") ?? "unknown",
     claim: optionalString(row, "claim") ?? "",
-    prior_decision: row.prior_decision == null ? null : parseDecision(row.prior_decision),
+    prior_decision:
+      row.prior_decision == null ? null : parseDecision(row.prior_decision),
   };
 }
 
@@ -540,7 +657,8 @@ export function parseActor(value: unknown): Actor {
   if (audience !== "client" && audience !== "admin") fail("会话 audience 无效");
   return {
     id: requiredString(actor, "id"),
-    display_name: optionalString(actor, "display_name") ?? requiredString(actor, "id"),
+    display_name:
+      optionalString(actor, "display_name") ?? requiredString(actor, "id"),
     role: optionalString(actor, "role") ?? "",
     tenant_id: requiredString(actor, "tenant_id"),
     org_id: requiredString(actor, "org_id"),
@@ -589,7 +707,8 @@ export function parseGenerationRecord(value: unknown): GenerationRecord {
 export function parseRemediation(value: unknown): Remediation {
   const record = recordOf(value, "remediation");
   const status = requiredString(record, "status");
-  if (!["open", "submitted", "closed", "reopened"].includes(status)) fail("整改状态无效");
+  if (!["open", "submitted", "closed", "reopened"].includes(status))
+    fail("整改状态无效");
   return {
     id: requiredString(record, "id"),
     case_id: requiredString(record, "case_id"),
@@ -604,7 +723,10 @@ export function parseRemediation(value: unknown): Remediation {
     document_ids: requiredStringArray(record, "document_ids"),
     reason: optionalString(record, "reason") ?? "",
     verification_run_id: optionalNullableString(record, "verification_run_id"),
-    verification_attempt_id: optionalNullableString(record, "verification_attempt_id"),
+    verification_attempt_id: optionalNullableString(
+      record,
+      "verification_attempt_id",
+    ),
     created_at: requiredString(record, "created_at"),
     updated_at: requiredString(record, "updated_at"),
   };
@@ -662,7 +784,9 @@ function parseSettingsUser(value: unknown): SettingsUser | null {
   };
 }
 
-function parseOperationalMetadata(value: unknown): ExecutionOperationalMetadata | null {
+function parseOperationalMetadata(
+  value: unknown,
+): ExecutionOperationalMetadata | null {
   if (value === null || value === undefined) return null;
   const record = recordOf(value, "execution settings");
   return {
@@ -692,14 +816,20 @@ export function parseSettings(value: unknown): SettingsView {
     },
     redaction_policy: optionalString(record, "redaction_policy") ?? "",
     users: Array.isArray(record.users)
-      ? record.users.map(parseSettingsUser).filter((item): item is SettingsUser => item !== null)
+      ? record.users
+          .map(parseSettingsUser)
+          .filter((item): item is SettingsUser => item !== null)
       : [],
     execution: parseOperationalMetadata(record.execution),
   };
 }
 
 export function parseId(value: unknown): string {
-  if (!isRecord(value) || typeof value.id !== "string" || value.id.trim() === "") {
+  if (
+    !isRecord(value) ||
+    typeof value.id !== "string" ||
+    value.id.trim() === ""
+  ) {
     fail("服务没有返回编号");
   }
   return value.id;

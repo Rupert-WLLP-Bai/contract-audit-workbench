@@ -1,0 +1,22 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: contract-audit-migrate
+  namespace: contract-audit
+spec:
+  template:
+    spec:
+      securityContext:
+        fsGroup: 10001
+        fsGroupChangePolicy: OnRootMismatch
+      volumes:
+        - name: local-data
+          emptyDir: {sizeLimit: 512Mi}
+      containers:
+        - name: migrate
+          image: contract-audit-backend:local
+          volumeMounts:
+            - {name: local-data, mountPath: /var/lib/contract-audit}
+          env:
+            - name: DEV_DATABASE_URL
+              valueFrom: {secretKeyRef: {name: contract-audit-db-urls, key: DEV_DATABASE_URL}}

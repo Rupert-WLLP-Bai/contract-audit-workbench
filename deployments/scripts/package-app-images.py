@@ -23,7 +23,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
 from source_identity import source_identity  # noqa: E402
 
-COMMANDS = ("server", "gateway", "documentservice", "auditexecution", "worker", "modelgateway", "toolgateway", "migrate")
+COMMANDS = ("server", "gateway", "documentservice", "auditexecution", "worker", "modelgateway", "toolgateway", "migrate", "healthmonitor")
 BACKEND_TAG = "contract-audit-backend:local"
 FRONTENDS = {
     "client": ("contract-audit-client:local", "index.html"),

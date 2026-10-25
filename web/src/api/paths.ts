@@ -7,17 +7,22 @@ function id(value: string): string {
 export const paths = {
   session: "/api/session",
   adminSession: "/api/session?audience=admin",
-  sessionFor: (audience: "client" | "admin") => audience === "admin" ? "/api/session?audience=admin" : "/api/session",
-  oidcLogin: (audience: "client" | "admin") => `/api/auth/oidc/login?audience=${id(audience)}`,
+  sessionFor: (audience: "client" | "admin") =>
+    audience === "admin" ? "/api/session?audience=admin" : "/api/session",
+  oidcLogin: (audience: "client" | "admin") =>
+    `/api/auth/oidc/login?audience=${id(audience)}`,
   cases: "/api/cases",
   case: (caseId: string) => `/api/cases/${id(caseId)}`,
   templates: "/api/templates",
-  workbench: (period: "day" | "week" | "month") => `/api/workbench?period=${period}`,
+  workbench: (period: "day" | "week" | "month") =>
+    `/api/workbench?period=${period}`,
   caseProfile: (caseId: string) => `/api/cases/${id(caseId)}/profile`,
   caseTasks: (caseId: string) => `/api/cases/${id(caseId)}/tasks`,
-  caseTask: (caseId: string, taskId: string) => `/api/cases/${id(caseId)}/tasks/${id(taskId)}`,
+  caseTask: (caseId: string, taskId: string) =>
+    `/api/cases/${id(caseId)}/tasks/${id(taskId)}`,
   caseRelations: (caseId: string) => `/api/cases/${id(caseId)}/relations`,
-  caseRelation: (caseId: string, relationId: string) => `/api/cases/${id(caseId)}/relations/${id(relationId)}`,
+  caseRelation: (caseId: string, relationId: string) =>
+    `/api/cases/${id(caseId)}/relations/${id(relationId)}`,
   knowledge: "/api/knowledge",
   knowledgeEntry: (knowledgeId: string) => `/api/knowledge/${id(knowledgeId)}`,
   generations: (caseId: string) => `/api/cases/${id(caseId)}/generations`,
@@ -31,13 +36,16 @@ export const paths = {
     `/api/cases/${id(caseId)}/reports/${id(reportId)}?format=${format}`,
   archive: (caseId: string) => `/api/cases/${id(caseId)}/archive`,
   documents: (caseId: string) => `/api/cases/${id(caseId)}/documents`,
-  documentOriginal: (caseId: string, documentId: string) => `/api/cases/${id(caseId)}/documents/${id(documentId)}/original`,
+  documentOriginal: (caseId: string, documentId: string) =>
+    `/api/cases/${id(caseId)}/documents/${id(documentId)}/original`,
   reparse: (caseId: string, documentId: string) =>
     `/api/cases/${id(caseId)}/documents/${id(documentId)}/parse`,
   reviews: (caseId: string) => `/api/cases/${id(caseId)}/reviews`,
   review: (caseId: string, runId: string, attemptId?: string | null) => {
     const path = `/api/cases/${id(caseId)}/reviews/${id(runId)}`;
-    return attemptId === null || attemptId === undefined ? path : `${path}?attempt_id=${id(attemptId)}`;
+    return attemptId === null || attemptId === undefined
+      ? path
+      : `${path}?attempt_id=${id(attemptId)}`;
   },
   retryReview: (caseId: string, runId: string) =>
     `/api/cases/${id(caseId)}/reviews/${id(runId)}/retry`,
@@ -50,9 +58,15 @@ export const paths = {
   settings: "/api/settings",
   adminSettings: "/api/admin/settings",
   rulePacks: "/api/admin/rulepacks",
-  rulePack: (packId: string, version: string) => `/api/admin/rulepacks/${id(packId)}/versions/${id(version)}`,
-  rulePackHistory: (packId: string) => `/api/admin/rulepacks/${id(packId)}/history`,
-  rulePackAction: (packId: string, version: string, action: "validate" | "approve" | "publish" | "disable" | "test") =>
-    `/api/admin/rulepacks/${id(packId)}/versions/${id(version)}/${action}`,
-  rulePackRollback: (packId: string) => `/api/admin/rulepacks/${id(packId)}/rollback`,
+  rulePack: (packId: string, version: string) =>
+    `/api/admin/rulepacks/${id(packId)}/versions/${id(version)}`,
+  rulePackHistory: (packId: string) =>
+    `/api/admin/rulepacks/${id(packId)}/history`,
+  rulePackAction: (
+    packId: string,
+    version: string,
+    action: "validate" | "approve" | "publish" | "disable" | "test",
+  ) => `/api/admin/rulepacks/${id(packId)}/versions/${id(version)}/${action}`,
+  rulePackRollback: (packId: string) =>
+    `/api/admin/rulepacks/${id(packId)}/rollback`,
 } as const;
