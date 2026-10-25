@@ -25,9 +25,10 @@ import (
 )
 
 const (
-	queueCapacity = 256
-	batchCapacity = 64
-	responseLimit = 64 << 10
+	queueCapacity        = 256
+	batchCapacity        = 64
+	responseLimit        = 64 << 10
+	metricSeriesCapacity = 256
 )
 
 type Config struct {
@@ -36,33 +37,42 @@ type Config struct {
 	SampleRatio float64
 }
 
+// Stats separates trace delivery from metric data-point delivery. MetricsExported
+// counts accepted data points. MetricsFailed counts rejected or unacknowledged
+// data points. Both metric counters count points, not events or requests.
 type Stats struct {
-	Exported       uint64
-	Dropped        uint64
-	FailedRequests uint64
-	SampledOut     uint64
+	Exported        uint64
+	Dropped         uint64
+	FailedRequests  uint64
+	SampledOut      uint64
+	MetricsExported uint64
+	MetricsFailed   uint64
 }
 
 type Exporter struct {
-	endpoint string
-	service  string
-	ratio    float64
-	client   *http.Client
-	queue    chan span
-	ctx      context.Context
-	cancel   context.CancelFunc
-	done     chan struct{}
-	mu       sync.Mutex
-	closed   bool
-	close    sync.Once
-	exported atomic.Uint64
-	dropped  atomic.Uint64
-	failed   atomic.Uint64
-	sampled  atomic.Uint64
+	tracesEndpoint  string
+	metricsEndpoint string
+	service         string
+	ratio           float64
+	client          *http.Client
+	queue           chan span
+	ctx             context.Context
+	cancel          context.CancelFunc
+	done            chan struct{}
+	mu              sync.Mutex
+	closed          bool
+	close           sync.Once
+	exported        atomic.Uint64
+	dropped         atomic.Uint64
+	failed          atomic.Uint64
+	sampled         atomic.Uint64
+	metricsExported atomic.Uint64
+	metricsFailed   atomic.Uint64
+	metricSeries    map[[3]string]*metricSeries
 }
 
 // New is disabled when Endpoint is empty. No network request is made at startup.
-// Endpoint is the collector base URL, with /v1/traces appended as specified by OTLP.
+// Endpoint is the collector base URL. /v1/traces and /v1/metrics are appended.
 func New(cfg Config) (*Exporter, error) {
 	if strings.TrimSpace(cfg.Endpoint) == "" {
 		return nil, nil
@@ -79,16 +89,22 @@ func New(cfg Config) (*Exporter, error) {
 	if service == "" {
 		return nil, errors.New("OTLP service identity is required")
 	}
-	u.Path = strings.TrimRight(u.Path, "/") + "/v1/traces"
-	u.RawPath = ""
+	basePath := strings.TrimRight(u.Path, "/")
+	traces := *u
+	traces.Path = basePath + "/v1/traces"
+	traces.RawPath = ""
+	metrics := *u
+	metrics.Path = basePath + "/v1/metrics"
+	metrics.RawPath = ""
 	transport := http.DefaultTransport.(*http.Transport).Clone()
 	transport.Proxy = nil
 	ctx, cancel := context.WithCancel(context.Background())
 	e := &Exporter{
-		endpoint: u.String(), service: service, ratio: cfg.SampleRatio,
+		tracesEndpoint: traces.String(), metricsEndpoint: metrics.String(), service: service, ratio: cfg.SampleRatio,
 		client: &http.Client{Transport: transport, Timeout: 2 * time.Second,
 			CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }},
 		queue: make(chan span, queueCapacity), ctx: ctx, cancel: cancel, done: make(chan struct{}),
+		metricSeries: make(map[[3]string]*metricSeries),
 	}
 	go e.run()
 	return e, nil
@@ -145,7 +161,10 @@ func (e *Exporter) Stats() Stats {
 	if e == nil {
 		return Stats{}
 	}
-	return Stats{Exported: e.exported.Load(), Dropped: e.dropped.Load(), FailedRequests: e.failed.Load(), SampledOut: e.sampled.Load()}
+	return Stats{
+		Exported: e.exported.Load(), Dropped: e.dropped.Load(), FailedRequests: e.failed.Load(), SampledOut: e.sampled.Load(),
+		MetricsExported: e.metricsExported.Load(), MetricsFailed: e.metricsFailed.Load(),
+	}
 }
 
 // Close drains within a fixed deadline, then cancels delivery and counts loss.
@@ -200,6 +219,14 @@ func (e *Exporter) run() {
 		}
 		e.exported.Add(uint64(len(batch) - rejected))
 		e.dropped.Add(uint64(rejected))
+		points, metricRejected, merr := e.sendMetrics(batch)
+		if merr != nil {
+			metricRejected = points
+		}
+		e.metricsExported.Add(uint64(points - metricRejected))
+		if metricRejected > 0 && e.metricsFailed.Add(uint64(metricRejected)) == uint64(metricRejected) {
+			log.Print("OTLP metadata metric export failed; durable business records are unaffected")
+		}
 	}
 }
 
@@ -212,7 +239,7 @@ func (e *Exporter) send(batch []span) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	req, err := http.NewRequestWithContext(e.ctx, http.MethodPost, e.endpoint, bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(e.ctx, http.MethodPost, e.tracesEndpoint, bytes.NewReader(body))
 	if err != nil {
 		return 0, err
 	}
@@ -247,6 +274,141 @@ func (e *Exporter) send(batch []span) (int, error) {
 		return 0, errors.New("OTLP rejection count was invalid")
 	}
 	return int(rejected), nil
+}
+
+// Only the delivery goroutine accesses metricSeries. Record keeps its bounded,
+// nonblocking queue path and never waits for metric aggregation or the collector.
+func (e *Exporter) sendMetrics(batch []span) (int, int, error) {
+	active := make([]*metricSeries, 0, len(batch))
+	for i := range batch {
+		item := &batch[i]
+		key := [3]string{
+			attributeValue(item.Attributes[:], "audit.phase"),
+			attributeValue(item.Attributes[:], "audit.node_kind"),
+			attributeValue(item.Attributes[:], "audit.status"),
+		}
+		series := e.metricSeries[key]
+		if series == nil {
+			// Reserve one of the 256 series for overflow. The reserved tuple
+			// retains event totals without keeping arbitrary new label values.
+			if len(e.metricSeries) >= metricSeriesCapacity-1 {
+				key = [3]string{"__overflow__", "__overflow__", "__overflow__"}
+				series = e.metricSeries[key]
+			}
+			if series == nil {
+				series = &metricSeries{attributes: metricAttributes(key), start: item.Start}
+				e.metricSeries[key] = series
+			}
+		}
+		series.count++
+		if !series.active {
+			series.active = true
+			active = append(active, series)
+		}
+		startNano, startErr := strconv.ParseInt(item.Start, 10, 64)
+		endNano, endErr := strconv.ParseInt(item.End, 10, 64)
+		if startErr == nil && endErr == nil && endNano >= startNano &&
+			(!series.hasDuration || endNano >= series.latestEnd) {
+			series.duration = (endNano - startNano) / int64(time.Millisecond)
+			series.latestEnd = endNano
+			series.hasDuration = true
+		}
+	}
+	events := make([]numberPoint, 0, len(active))
+	durations := make([]numberPoint, 0, len(active))
+	now := time.Now().UnixNano()
+	for _, series := range active {
+		series.active = false
+		// Collection timestamps advance even when events arrive out of order
+		// or a later batch has the same event timestamp as an earlier batch.
+		at := max(now, series.latestEnd, series.lastTime+1)
+		series.lastTime = at
+		events = append(events, numberPoint{Attributes: series.attributes, Start: series.start,
+			Time: strconv.FormatInt(at, 10), AsInt: strconv.FormatInt(series.count, 10)})
+		if series.hasDuration {
+			durations = append(durations, numberPoint{Attributes: series.attributes,
+				Time: strconv.FormatInt(series.latestEnd, 10), AsInt: strconv.FormatInt(series.duration, 10)})
+		}
+	}
+	points := len(events) + len(durations)
+	var payload metricsRequest
+	payload.ResourceMetrics[0].Resource.Attributes[0] = stringAttribute("service.name", e.service)
+	payload.ResourceMetrics[0].ScopeMetrics[0].Scope.Name = "contractaudit.execution"
+	payload.ResourceMetrics[0].ScopeMetrics[0].Metrics = []metric{
+		{Name: "audit.execution.events", Sum: &sumMetric{AggregationTemporality: 2, IsMonotonic: true, DataPoints: events}},
+		{Name: "audit.execution.duration_ms", Gauge: &gaugeMetric{DataPoints: durations}},
+	}
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return points, 0, err
+	}
+	req, err := http.NewRequestWithContext(e.ctx, http.MethodPost, e.metricsEndpoint, bytes.NewReader(body))
+	if err != nil {
+		return points, 0, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	response, err := e.client.Do(req)
+	if err != nil {
+		return points, 0, err
+	}
+	defer response.Body.Close()
+	data, err := io.ReadAll(io.LimitReader(response.Body, responseLimit+1))
+	media, _, _ := mime.ParseMediaType(response.Header.Get("Content-Type"))
+	if err != nil || len(data) > responseLimit || response.StatusCode != http.StatusOK || media != "application/json" {
+		return points, 0, errors.New("OTLP metric response was unsuccessful or exceeded its bound")
+	}
+	data = bytes.TrimSpace(data)
+	if len(data) == 0 || data[0] != '{' {
+		return points, 0, errors.New("OTLP metric acknowledgement must be a JSON object")
+	}
+	var result struct {
+		PartialSuccess *struct {
+			RejectedDataPoints json.Number `json:"rejectedDataPoints"`
+		} `json:"partialSuccess"`
+	}
+	if err := json.Unmarshal(data, &result); err != nil {
+		return points, 0, errors.New("OTLP response was not a JSON metric acknowledgement")
+	}
+	if result.PartialSuccess == nil || result.PartialSuccess.RejectedDataPoints == "" {
+		return points, 0, nil
+	}
+	rejected, err := result.PartialSuccess.RejectedDataPoints.Int64()
+	if err != nil || rejected < 0 || rejected > int64(points) {
+		return points, 0, errors.New("OTLP metric rejection count was invalid")
+	}
+	return points, int(rejected), nil
+}
+
+func metricAttributes(values [3]string) []attribute {
+	attrs := make([]attribute, 0, len(values))
+	for i, key := range [3]string{"audit.phase", "audit.node_kind", "audit.status"} {
+		if values[i] != "" {
+			attrs = append(attrs, stringAttribute(key, values[i]))
+		}
+	}
+	return attrs
+}
+
+func attributeValue(attrs []attribute, key string) string {
+	for i := range attrs {
+		if attrs[i].Key == key {
+			return attrs[i].Value.StringValue
+		}
+	}
+	return ""
+}
+
+// metricSeries is cumulative for the lifetime of the exporter, including after
+// rejected or unacknowledged sends. The next snapshot can recover its total.
+type metricSeries struct {
+	attributes  []attribute
+	start       string
+	count       int64
+	lastTime    int64
+	latestEnd   int64
+	duration    int64
+	hasDuration bool
+	active      bool
 }
 
 func metadata(value string) string {
@@ -306,4 +468,41 @@ type exportRequest struct {
 			Spans []span `json:"spans"`
 		} `json:"scopeSpans"`
 	} `json:"resourceSpans"`
+}
+
+type numberPoint struct {
+	Attributes []attribute `json:"attributes,omitempty"`
+	Start      string      `json:"startTimeUnixNano,omitempty"`
+	Time       string      `json:"timeUnixNano"`
+	AsInt      string      `json:"asInt"`
+}
+
+type sumMetric struct {
+	AggregationTemporality int           `json:"aggregationTemporality"`
+	IsMonotonic            bool          `json:"isMonotonic"`
+	DataPoints             []numberPoint `json:"dataPoints"`
+}
+
+type gaugeMetric struct {
+	DataPoints []numberPoint `json:"dataPoints"`
+}
+
+type metric struct {
+	Name  string       `json:"name"`
+	Sum   *sumMetric   `json:"sum,omitempty"`
+	Gauge *gaugeMetric `json:"gauge,omitempty"`
+}
+
+type metricsRequest struct {
+	ResourceMetrics [1]struct {
+		Resource struct {
+			Attributes [1]attribute `json:"attributes"`
+		} `json:"resource"`
+		ScopeMetrics [1]struct {
+			Scope struct {
+				Name string `json:"name"`
+			} `json:"scope"`
+			Metrics []metric `json:"metrics"`
+		} `json:"scopeMetrics"`
+	} `json:"resourceMetrics"`
 }

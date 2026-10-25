@@ -32,6 +32,7 @@ metadata:
   labels: {app.kubernetes.io/part-of: contract-audit}
 spec:
   instances: 1
+  imageName: ghcr.io/cloudnative-pg/postgresql:18.6-standard-trixie
   enablePDB: false
   storage: {size: 20Gi}
   walStorage: {size: 5Gi}

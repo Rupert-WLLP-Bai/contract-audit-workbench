@@ -6,6 +6,7 @@ import {
   disableRulePack,
   editRulePack,
   parseRulePackDetail,
+  parseRulePackHistory,
   parseRulePackList,
   parseRulePackMutationResult,
   parseRulePackTestResponse,
@@ -102,6 +103,28 @@ describe("RulePack API parsers", () => {
   it("accepts the documented list and detail envelopes", () => {
     expect(parseRulePackList({ items: [summary] })).toEqual([summary]);
     expect(parseRulePackDetail(detail)).toEqual(detail);
+  });
+
+  it("keeps the pointer before and after images on history entries", () => {
+    const entry = {
+      sequence: 2,
+      pack_id: "telecom-core",
+      version: "2",
+      action: "publish",
+      actor_id: "admin-test",
+      content_hash: contentHash,
+      pointer_revision: 4,
+      created_at: "2026-10-20T12:00:00Z",
+      previous_version: "1",
+      previous_active: true,
+      resulting_version: "2",
+      resulting_active: true,
+    };
+    expect(parseRulePackHistory({ items: [entry] })).toEqual([entry]);
+    const firstPublish = { ...entry, previous_version: null, previous_active: null, resulting_version: "1", resulting_active: true };
+    expect(parseRulePackHistory({ items: [firstPublish] })[0]).toMatchObject({ previous_version: null, resulting_active: true });
+    const { resulting_active: _resultingActive, ...dropped } = entry;
+    expect(() => parseRulePackHistory({ items: [dropped] })).toThrow(/history\.items\[0\]/);
   });
 
   it("accepts the documented summary response for pointer mutations", () => {

@@ -53,8 +53,19 @@ CREATE TABLE IF NOT EXISTS rule_pack_history (
 	actor_id text NOT NULL,
 	content_hash text NOT NULL CHECK (content_hash ~ '^[0-9a-f]{64}$'),
 	pointer_revision bigint NOT NULL CHECK (pointer_revision >= 0),
-	created_at text NOT NULL
+	created_at text NOT NULL,
+	previous_version text,
+	previous_active boolean,
+	resulting_version text,
+	resulting_active boolean
 );
+ALTER TABLE rule_pack_history ADD COLUMN IF NOT EXISTS previous_version text;
+ALTER TABLE rule_pack_history ADD COLUMN IF NOT EXISTS previous_active boolean;
+ALTER TABLE rule_pack_history ADD COLUMN IF NOT EXISTS resulting_version text;
+ALTER TABLE rule_pack_history ADD COLUMN IF NOT EXISTS resulting_active boolean;
+-- Different packs may share an effective window. WITHOUT OVERLAPS is not
+-- declared until a confirmed exclusion key exists: tenant, business line,
+-- and rule slot. Overlapping packs are a supported configuration.
 CREATE INDEX IF NOT EXISTS rule_pack_history_tenant_order ON rule_pack_history (tenant_id, pack_id, seq);
 
 CREATE TABLE IF NOT EXISTS rule_pack_idempotency (

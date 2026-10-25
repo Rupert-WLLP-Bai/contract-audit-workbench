@@ -423,7 +423,7 @@ def check_compose(root: Path, entrypoints: set[str], roles: set[str], dsn_keys: 
 def source_evidence(root: Path) -> tuple[str, int]:
     inputs = (
         "deployments/k8s", "deployments/local.py", "deployments/scripts/manifest-conformance.py",
-        "deploy/app/Dockerfile", "deploy/app/nginx", "compose.app.yaml", "deployments/compose.identity.yaml", "Makefile",
+        "deploy/app/Dockerfile", "deploy/app/nginx", "compose.app.yaml", "compose.observe.yaml", "deployments/compose.identity.yaml", "Makefile",
         "internal/bootstrap/services.go", "internal/bootstrap/runtime.go", "internal/httpapi/health.go",
         "internal/apidocs/openapi.json",
     )
@@ -466,7 +466,7 @@ def run_checks(root: Path) -> int:
 
 SUBTREE = (
     "deployments", "deploy", "cmd", "internal/bootstrap", "internal/httpapi/health.go",
-    "internal/apidocs/openapi.json", "compose.app.yaml", "Makefile",
+    "internal/apidocs/openapi.json", "compose.app.yaml", "compose.observe.yaml", "Makefile",
 )
 
 

@@ -54,7 +54,7 @@ from urllib.parse import urlsplit
 
 ROOT = Path(__file__).resolve().parents[2]
 CONFIRM_TOKEN = "restore-into-new-local-database-and-object-root"
-DEFAULT_POSTGRES_IMAGE = "postgres:17.9-bookworm"
+DEFAULT_POSTGRES_IMAGE = "postgres:18.6-bookworm"
 DEFAULT_AWSCLI_IMAGE = "amazon/aws-cli:2.31.14"
 DEFAULT_USER = "contractaudit"
 DEFAULT_HOST = "127.0.0.1"

@@ -280,6 +280,8 @@ func rulePackHistoryJSON(history store.RulePackHistory) map[string]any {
 			"sequence": item.Sequence, "pack_id": item.PackID, "version": item.Version,
 			"action": item.Action, "actor_id": item.ActorID, "content_hash": item.ContentHash,
 			"pointer_revision": item.PointerRevision, "created_at": item.CreatedAt,
+			"previous_version": item.PreviousVersion, "previous_active": item.PreviousActive,
+			"resulting_version": item.ResultingVersion, "resulting_active": item.ResultingActive,
 		})
 	}
 	return map[string]any{"items": items}

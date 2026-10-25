@@ -410,18 +410,6 @@ services:
       test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/portal/"]
       <<: *app-health
 
-  otel-collector:
-    image: ${OTEL_COLLECTOR_IMAGE:-otel/opentelemetry-collector-contrib:0.140.0}
-    profiles: ["otel"]
-    restart: unless-stopped
-    command: ["--config=/etc/otelcol-contrib/config.yaml"]
-    volumes:
-      - ./deploy/app/otel-collector.yaml:/etc/otelcol-contrib/config.yaml:ro
-    expose:
-      - "4317"
-      - "4318"
-    stop_grace_period: 20s
-
   migrate:
     image: contract-audit-backend:local
     build: *backend-build

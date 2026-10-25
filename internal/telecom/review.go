@@ -18,8 +18,19 @@ import (
 	"contractaudit/internal/rulepack"
 )
 
-const compilerVersion = "3"
+// compilerVersion identifies extraction behavior. v5 preserves full sentences,
+// including qualifiers before wrapped clauses. Historical snapshots remain
+// readable but cannot be replayed using a different compiler.
+const compilerVersion = "5"
 const CompilerRef = "telecom-contract-compiler/v" + compilerVersion
+const HistoricalCompilerRef = "telecom-contract-compiler/v3"
+
+// IsSyntheticCompiler reports compiler identities produced by this package.
+// The current identity and the previous frozen identity are both readable.
+// Unknown values are not treated as this compiler.
+func IsSyntheticCompiler(ref string) bool {
+	return ref == CompilerRef || ref == HistoricalCompilerRef || ref == "telecom-contract-compiler/v4"
+}
 
 const authorityBoundOperatorPattern = `不得低于|不得超过|不得高于|不低于|至少|不少于|不高于|不超过|不多于|至多`
 

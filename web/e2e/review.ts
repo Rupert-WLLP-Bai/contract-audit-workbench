@@ -274,53 +274,16 @@ try {
   if (docsLink !== "clicked") throw new Error(docsLink);
   await page.wait(session, "location.pathname === '/api-docs'");
   await page.send("Page.reload", {}, session);
-  await page.wait(session, "document.querySelector('h1')?.textContent.trim() === 'OpenAPI 接口文档' && document.querySelector('.scalar-api-reference')?.innerText.includes('合同智能审计工作台 · 当前 HTTP API')");
-  const searchOpened = await page.eval(session, `(() => {
-    const root = document.querySelector('.scalar-api-reference');
-    const button = [...root.querySelectorAll('button')].find((item) => /search|搜索/i.test(
-      [item.getAttribute('aria-label'), item.getAttribute('title'), item.innerText].filter(Boolean).join(' '),
-    ));
-    if (!button) return 'missing';
-    button.click();
-    return 'ok';
-  })()`);
-  if (searchOpened !== "ok") throw new Error(`Scalar search button missing: ${searchOpened}`);
-  await page.wait(session, "document.querySelector('[role=combobox]')");
-  await page.send("Input.insertText", { text: "/api/cases" }, session);
-  await page.wait(session, "[...document.querySelectorAll('[role=option]')].some((item) => item.innerText.includes('/api/cases'))");
-  const selected = await page.eval(session, `(() => {
-    const option = [...document.querySelectorAll('[role=option]')].find((item) => item.innerText.includes('/api/cases') && item.innerText.includes('列出可见案件'));
-    if (!option) return 'missing list-cases result';
-    option.click();
-    return 'ok';
-  })()`);
-  if (selected !== "ok") throw new Error(`Scalar search result missing: ${selected}`);
-  const expanded = await page.eval(session, `(() => {
-    const root = document.querySelector('.scalar-api-reference');
-    const section = [...root.querySelectorAll('section')].find((item) => item.querySelector('.operation-details') && item.innerText.includes('/api/cases') && item.innerText.includes('列出可见案件'));
-    if (!section) return 'missing list-cases operation';
-    const response = [...section.querySelectorAll('.operation-details button.parameter-item-trigger')].find((item) => item.innerText.trim().startsWith('200'));
-    if (!response) return 'missing 200 response';
-    if (response.getAttribute('aria-expanded') !== 'true') response.click();
-    return 'expanded';
-  })()`);
-  if (expanded !== "expanded") throw new Error(`Scalar list-cases response could not be expanded: ${expanded}`);
-  await page.wait(session, `(() => {
-    const root = document.querySelector('.scalar-api-reference');
-    const section = [...root.querySelectorAll('section')].find((item) => item.querySelector('.operation-details') && item.innerText.includes('/api/cases') && item.innerText.includes('列出可见案件'));
-    const response = [...(section?.querySelectorAll('.operation-details button.parameter-item-trigger') ?? [])].find((item) => item.innerText.trim().startsWith('200'));
-    return response?.getAttribute('aria-expanded') === 'true' && Boolean(section?.innerText.includes('application/json'));
-  })()`);
-  const forbidden = await page.eval(session, `(() => {
-    const root = document.querySelector('.scalar-api-reference');
-    return [...root.querySelectorAll('button, a')].map((item) => [item.getAttribute('aria-label'), item.getAttribute('title'), item.innerText].filter(Boolean).join(' '))
-      .filter((label) => /Test Request|Try it out|Execute|Developer tools|Generate SDK|\bMCP\b|Agent/i.test(label)).join(', ');
-  })()`);
-  if (forbidden) throw new Error(`read-only Scalar exposed disabled controls: ${forbidden}`);
+  await page.wait(session, "document.querySelector('[aria-label=\"OpenAPI 操作导航\"] input[type=search]')");
+  await fill(page, session, '[aria-label="OpenAPI 操作导航"] input[type=search]', "/api/cases");
+  await clickText(page, session, ".api-operation-link strong", "列出可见案件");
+  await page.wait(session, "document.querySelector('[aria-label=\"接口详细文档\"]')?.innerText.includes('/api/cases') && document.querySelector('[aria-label=\"接口详细文档\"]')?.innerText.includes('200')");
+  await clickText(page, session, "button", "发送真实请求");
+  await page.wait(session, "document.querySelector('.api-response-panel')?.innerText.includes('200') && document.querySelector('.api-response-body')?.innerText.includes('采购质保核对')");
   const foreign = await page.eval(session, "performance.getEntriesByType('resource').map(item => item.name).filter(url => /^https?:/.test(url) && new URL(url).origin !== location.origin).join(',')");
   if (foreign) throw new Error(`documentation used foreign browser resources: ${foreign}`);
   const localContract = await page.eval(session, "performance.getEntriesByType('resource').map(item => new URL(item.name, location.href).pathname).filter(path => path === '/openapi.json').length");
-  if (localContract === "0") throw new Error("Scalar did not load the contract from same-origin /openapi.json");
+  if (localContract === "0") throw new Error("documentation did not load same-origin /openapi.json");
   const rawContract = await fetch(`${web}/openapi.json`);
   const contract = await rawContract.json() as { openapi?: string; paths?: Record<string, Record<string, unknown>> };
   if (!rawContract.ok || contract.openapi !== "3.1.1" || !contract.paths?.["/api/cases"]?.get) {
@@ -330,16 +293,10 @@ try {
     await page.eval(session, "window.scrollTo(0, 0)");
     const shot = await page.send("Page.captureScreenshot", { format: "png", captureBeyondViewport: false }, session) as { data: string };
     await Bun.write(process.env.E2E_DOCS_SCREENSHOT, Buffer.from(shot.data, "base64"));
-    await page.eval(session, `(() => {
-      const item = [...document.querySelectorAll('.scalar-api-reference a.endpoint')].find((node) => node.innerText.includes('/api/cases'));
-      item?.click();
-    })()`);
-    const operation = await page.send("Page.captureScreenshot", { format: "png", captureBeyondViewport: false }, session) as { data: string };
-    await Bun.write(process.env.E2E_DOCS_SCREENSHOT.replace(/\.png$/, "") + "-operation.png", Buffer.from(operation.data, "base64"));
   }
   if (page.consoleErrors.length > 0) throw new Error(`browser console errors: ${page.consoleErrors.join(" | ")}`);
   console.log("browser console errors: none");
-  console.log("browser e2e ok: login/upload/parse-metadata/evidence-provenance/retry-attempt-history/revision/text-reparse/new-run/old-run-preserved/scalar-search-expand-readonly-local");
+  console.log("browser e2e ok: login/upload/parse-metadata/evidence-provenance/retry-attempt-history/revision/text-reparse/new-run/old-run-preserved/api-search-authenticated-request-local");
 } catch (error) {
   failed = true;
   console.error(error);

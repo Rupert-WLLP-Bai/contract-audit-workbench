@@ -13,18 +13,34 @@ import (
 	"contractaudit/internal/fault"
 )
 
+func templateByID(t *testing.T, items []Template, id string) Template {
+	t.Helper()
+	for _, item := range items {
+		if item.ID == id {
+			return item
+		}
+	}
+	t.Fatalf("template %s missing from catalog", id)
+	return Template{}
+}
+
 func TestTelecomTemplateIsVersionedDetachedAndBounded(t *testing.T) {
 	st := &Store{}
 	first := st.Templates()
 	second := st.Templates()
-	if len(first) != 1 || len(second) != 1 {
+	if len(first) != 2 || len(second) != 2 {
 		t.Fatalf("template catalog has %d and %d items", len(first), len(second))
 	}
-	if first[0].ID != telecomTemplateID || first[0].Version != telecomTemplateVersion || first[0].Digest == "" || len(first[0].Fields) != 10 {
-		t.Fatalf("unexpected template identity: %+v", first[0])
+	telecomTemplate := templateByID(t, first, telecomTemplateID)
+	cloudTemplate := templateByID(t, first, cloudServicesTemplateID)
+	if telecomTemplate.Version != telecomTemplateVersion || telecomTemplate.Digest == "" || len(telecomTemplate.Fields) != 10 {
+		t.Fatalf("unexpected telecom template identity: %+v", telecomTemplate)
 	}
-	first[0].Fields[0].Key = "caller-mutation"
-	if second[0].Fields[0].Key != "circuit_id" {
+	if cloudTemplate.Version != cloudServicesTemplateVersion || cloudTemplate.Digest == "" || len(cloudTemplate.Fields) != 10 || cloudTemplate.Digest == telecomTemplate.Digest {
+		t.Fatalf("unexpected cloud template identity: %+v", cloudTemplate)
+	}
+	telecomTemplate.Fields[0].Key = "caller-mutation"
+	if templateByID(t, second, telecomTemplateID).Fields[0].Key != "circuit_id" || templateByID(t, second, cloudServicesTemplateID).Fields[0].Key != "service_id" {
 		t.Fatal("template metadata was shared with a caller")
 	}
 	fields := validTelecomTemplateFields()

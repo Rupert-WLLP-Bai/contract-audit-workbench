@@ -35,6 +35,8 @@ APP_SERVICES = (
 	"gateway", "core-api", "document-service", "audit-execution", "audit-worker",
 	"model-gateway", "model-gateway-fixture", "tool-gateway", "client", "admin", "portal",
 )
+# Observation follows applications so infrastructure can run independently.
+OBSERVATION_SERVICES = ("otel-collector", "tempo", "prometheus", "grafana")
 
 SUBPROCESS_RECORDS: list[dict[str, object]] = []
 PREFLIGHT_RESULTS: dict[str, object] = {}
@@ -96,6 +98,12 @@ def infra_bootstrap() -> None:
 		environment={"INFRA_EVIDENCE_PATH": str(report_path)})
 
 
+def observation_services(values: dict[str, str]) -> tuple[str, ...]:
+	if values.get("OBSERVE", "").strip().lower() in {"1", "true", "yes"}:
+		return OBSERVATION_SERVICES
+	return ()
+
+
 def compose_prefix() -> list[str]:
 	binary = os.environ.get("COMPOSE_BIN")
 	if binary:
@@ -120,6 +128,8 @@ def compose_prefix() -> list[str]:
 		command.extend(["-f", str(ROOT / "deployments/compose.identity.yaml")])
 	elif values.get("OIDC_ISSUER", "").strip():
 		raise RuntimeError("Compose OIDC requires IDENTITY_DIRECTORY_ROOT and IDENTITY_DIRECTORY_GID")
+	if observation_services(values):
+		command.extend(["-f", str(ROOT / "compose.observe.yaml"), "--profile", "otel"])
 	return command
 
 
@@ -450,11 +460,13 @@ def start_apps(fixture: bool, offline_images: bool, planner_mode: str | None) ->
 	run(compose_prefix() + ["--profile", "migration", "run", "--rm", *migration_options, "migrate"], timeout=900)
 	profile = "model-fixture" if fixture else "real-model"
 	model_service = "model-gateway-fixture" if fixture else "model-gateway"
+	values = {**infra, **read_env(DISTRIBUTED_ENV_PATH), **os.environ}
 	run(compose_prefix() + [
 		"--profile", profile, "up", "-d", *up_options,
 		"--wait", "--wait-timeout", "180",
 		"gateway", "core-api", "document-service", "audit-execution", "audit-worker",
 		model_service, "tool-gateway", "client", "admin", "portal",
+		*observation_services(values),
 	], timeout=300)
 
 
@@ -472,7 +484,8 @@ def run_journey(confirmation: str, smoke: bool) -> None:
 	run(command)
 
 def stop_apps() -> None:
-    run(compose_prefix() + ["stop", *APP_SERVICES])
+    values = {**read_env(ENV_PATH), **read_env(DISTRIBUTED_ENV_PATH), **os.environ}
+    run(compose_prefix() + ["stop", *APP_SERVICES, *observation_services(values)])
 
 
 def stop_infrastructure(identity: bool) -> None:

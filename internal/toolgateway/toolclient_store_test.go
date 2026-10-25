@@ -159,6 +159,8 @@ func TestToolClientReadsFrozenEvidenceThroughLiveGatewayClaim(t *testing.T) {
 		OriginalDigest   string `json:"original_digest"`
 		ParsedDocumentID string `json:"parsed_document_id"`
 		Quote            string `json:"quote"`
+		Start            int    `json:"start"`
+		End              int    `json:"end"`
 	}
 	type fact struct {
 		Value     string     `json:"value"`
@@ -166,6 +168,7 @@ func TestToolClientReadsFrozenEvidenceThroughLiveGatewayClaim(t *testing.T) {
 		Citations []citation `json:"citations"`
 	}
 	var bandwidthFound bool
+	var bandwidthCitation citation
 	for _, raw := range reader.responses {
 		var evidence struct {
 			SchemaVersion string `json:"schema_version"`
@@ -192,10 +195,10 @@ func TestToolClientReadsFrozenEvidenceThroughLiveGatewayClaim(t *testing.T) {
 		}
 		cite := evidence.Facts[0].Citations
 		if evidence.Facts[0].Value != "100" || evidence.Facts[0].Unit != "Mbit/s" || len(cite) != 1 ||
-			cite[0].DocumentID != live.generation.DocumentID || cite[0].Filename == "" || cite[0].OriginalDigest == "" ||
-			cite[0].ParsedDocumentID == "" || cite[0].Quote != "电路 LINE-001：最低保障带宽 100 Mbit/s。" {
+			cite[0].DocumentID != live.generation.DocumentID {
 			t.Fatalf("bandwidth fact lost its frozen document citation: %+v", evidence.Facts[0])
 		}
+		bandwidthCitation = cite[0]
 		bandwidthFound = true
 	}
 	if !bandwidthFound {
@@ -205,6 +208,23 @@ func TestToolClientReadsFrozenEvidenceThroughLiveGatewayClaim(t *testing.T) {
 	workspace, err := st.WorkspaceAttempt(user, live.caseID, live.acceptance.RunID, live.acceptance.AttemptID)
 	if err != nil {
 		t.Fatalf("read completed worker attempt: %v", err)
+	}
+	matchedSource := false
+	for _, document := range workspace.Documents {
+		if document.Document.ID != bandwidthCitation.DocumentID {
+			continue
+		}
+		runes := []rune(document.Text)
+		if document.ParsedDocument == nil || document.ParsedDocument.ID != bandwidthCitation.ParsedDocumentID ||
+			document.Document.Digest != bandwidthCitation.OriginalDigest || document.Document.Filename != bandwidthCitation.Filename ||
+			bandwidthCitation.Start < 0 || bandwidthCitation.End <= bandwidthCitation.Start || bandwidthCitation.End > len(runes) ||
+			string(runes[bandwidthCitation.Start:bandwidthCitation.End]) != bandwidthCitation.Quote {
+			t.Fatalf("citation does not match its frozen source: %+v", bandwidthCitation)
+		}
+		matchedSource = true
+	}
+	if !matchedSource {
+		t.Fatal("citation source is absent from the frozen attempt")
 	}
 	acceptedCapabilities := make(map[string]bool)
 	if workspace.Execution != nil {

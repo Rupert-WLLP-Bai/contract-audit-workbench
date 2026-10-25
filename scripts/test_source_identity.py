@@ -89,7 +89,8 @@ class SourceIdentityRepositoryTests(unittest.TestCase):
                          "deployments/k8s/base/workloads.yaml",
                          "deployments/k8s/test/backup.yaml",
                          "deploy/app/Dockerfile",
-                         "compose.app.yaml"):
+                         "compose.app.yaml",
+                         "compose.observe.yaml"):
             self.assertIn(required, paths)
         self.assertFalse([path for path in paths if path.endswith(".pyc") or "__pycache__" in path])
         self.assertFalse([path for path in paths if path.startswith("artifacts/") or path.startswith("outputs/")])

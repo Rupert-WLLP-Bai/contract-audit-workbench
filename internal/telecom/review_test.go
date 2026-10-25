@@ -119,6 +119,84 @@ func TestTelecomContractualComparisonsAndUnicodeEvidence(t *testing.T) {
 	}
 }
 
+func TestHistoricalCompilerSnapshotsRemainReadable(t *testing.T) {
+	for _, ref := range []string{telecom.CompilerRef, telecom.HistoricalCompilerRef, "telecom-contract-compiler/v4"} {
+		if !telecom.IsSyntheticCompiler(ref) {
+			t.Fatalf("frozen compiler identity is unreadable: %s", ref)
+		}
+	}
+	for _, ref := range []string{"telecom-contract-compiler/v2", ""} {
+		if telecom.IsSyntheticCompiler(ref) {
+			t.Fatalf("unknown compiler accepted: %q", ref)
+		}
+	}
+}
+
+func TestWrappedClausesKeepObjectValueUnitAndBasis(t *testing.T) {
+	for _, newline := range []string{"\n", "\r\n"} {
+		t.Run(fmt.Sprintf("break-%q", newline), func(t *testing.T) {
+			req := request("50 Mbit/s", "99.5%", "40%")
+			replaceSource(&req, "draft", "电路 LINE-001：最低保障带宽 50 Mbit/s。", "电路 LINE-001："+newline+"最低保障带宽 50 Mbit/s。")
+			replaceSource(&req, "draft", "电路 LINE-001：SLA 可用率 99.5%", "电路 LINE-001："+newline+"SLA 可用率 99.5%")
+			replaceSource(&req, "draft", "电路 LINE-001：预付款比例 40%，预付款以合同总额为基础，含税。", "电路 LINE-001："+newline+"预付款比例 40%，"+newline+"预付款以合同总额为基础，含税。")
+			facts, err := telecom.Extract(req)
+			if err != nil {
+				t.Fatal(err)
+			}
+			draft := sourceText(t, req, "draft")
+			want := map[string][]string{
+				"ENT-TECH-BW-001":  {"LINE-001", "最低保障带宽", "50 Mbit/s"},
+				"ENT-TECH-SLA-001": {"LINE-001", "99.5%", "自然月", "gregorian", "all_service_unavailability", "无排除项"},
+				"ENT-COM-ADV-001":  {"LINE-001", "40%", "预付款以合同总额为基础"},
+			}
+			found := map[string]bool{}
+			for _, fact := range facts {
+				need, ok := want[fact.RuleID]
+				if !ok || len(fact.Citations) != 1 {
+					continue
+				}
+				found[fact.RuleID] = true
+				cite := fact.Citations[0]
+				runes := []rune(draft)
+				if cite.Start < 0 || cite.End > len(runes) || string(runes[cite.Start:cite.End]) != cite.Quote {
+					t.Fatalf("%s citation is not a source slice: %+v", fact.RuleID, cite)
+				}
+				for _, piece := range need {
+					if !strings.Contains(cite.Quote, piece) {
+						t.Fatalf("%s citation dropped %q: %q", fact.RuleID, piece, cite.Quote)
+					}
+				}
+			}
+			for id := range want {
+				if !found[id] {
+					t.Fatalf("wrapped draft did not extract %s: %+v", id, facts)
+				}
+			}
+			report, err := telecom.Execute(context.Background(), req)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, id := range []string{"ENT-TECH-BW-001", "ENT-TECH-SLA-001", "ENT-COM-ADV-001"} {
+				got := result(t, report, id)
+				if got.Relation != rulepack.RelationConflict {
+					t.Fatalf("wrapped %s = %s (%s), want conflict supported by the citation", id, got.Relation, got.ReasonCode)
+				}
+			}
+		})
+	}
+}
+
+func sourceText(t *testing.T, req rulepack.Request, id string) string {
+	t.Helper()
+	for _, source := range req.Sources {
+		if source.ID == id {
+			return source.Text
+		}
+	}
+	t.Fatalf("source %s missing", id)
+	return ""
+}
+
 func TestCloudSLALowerBoundAuthoritySupportsThresholdAndKeepsCitation(t *testing.T) {
 	req := cloudRequest("不低于", "不低于")
 	report, err := telecom.Execute(context.Background(), req)

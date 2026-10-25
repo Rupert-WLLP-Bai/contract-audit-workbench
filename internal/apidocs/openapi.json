@@ -7312,6 +7312,18 @@
           },
           "created_at": {
             "type": "string"
+          },
+          "previous_version": {
+            "type": ["string", "null"]
+          },
+          "previous_active": {
+            "type": ["boolean", "null"]
+          },
+          "resulting_version": {
+            "type": ["string", "null"]
+          },
+          "resulting_active": {
+            "type": ["boolean", "null"]
           }
         },
         "required": [
@@ -7322,7 +7334,11 @@
           "actor_id",
           "content_hash",
           "pointer_revision",
-          "created_at"
+          "created_at",
+          "previous_version",
+          "previous_active",
+          "resulting_version",
+          "resulting_active"
         ],
         "additionalProperties": false
       },

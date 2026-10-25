@@ -229,7 +229,7 @@ func (h *handler) callFrozenEvidence(parent context.Context, user accounts.User,
 	current, err := h.store.WorkspaceAttempt(user, args.caseID, args.runID, args.attemptID)
 	if err != nil {
 		logStoreFailure("workspace_recheck", err)
-		return nil, storeFailure(ctx, err)
+		return fail(storeFailure(ctx, err))
 	}
 	if failure := validateWorkspaceBinding(user, args, current); failure != nil {
 		return fail(failure)
@@ -375,7 +375,12 @@ func buildEvidencePayload(ctx context.Context, user accounts.User, args toolArgu
 	sort.Slice(sources, func(i, j int) bool { return sources[i].document.ID < sources[j].document.ID })
 	sort.Slice(ruleSources, func(i, j int) bool { return ruleSources[i].ID < ruleSources[j].ID })
 
-	facts, err := telecom.Extract(rulepack.Request{Sources: ruleSources})
+	facts, err := telecom.Extract(rulepack.Request{
+		BusinessLine: workspace.Case.BusinessLine,
+		Scenario:     workspace.Case.Scenario,
+		ContractType: workspace.Case.ContractType,
+		Sources:      ruleSources,
+	})
 	if err != nil {
 		return evidencePayload{}, err
 	}

@@ -22,9 +22,10 @@ def source_identity(root):
                 continue
             files.append(path)
     files += [root / name for name in ("go.mod", "go.sum", "quality-gates.json", "Makefile", "compose.yaml", ".env.example")]
-    application_compose = root / "compose.app.yaml"
-    if application_compose.is_file():
-        files.append(application_compose)
+    for name in ("compose.app.yaml", "compose.observe.yaml"):
+        path = root / name
+        if path.is_file():
+            files.append(path)
     records = [{"path": p.relative_to(root).as_posix(), "sha256": hashlib.sha256(p.read_bytes()).hexdigest()}
                for p in sorted(set(files))]
     payload = json.dumps(records, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()

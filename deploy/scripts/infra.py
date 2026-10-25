@@ -152,10 +152,20 @@ def validate_env(values):
 	if endpoint.scheme != "http" or endpoint.hostname not in ("127.0.0.1", "localhost") or endpoint.port != int(values["RUSTFS_PORT"]):
 		raise ValueError("S3_ENDPOINT must use the configured loopback RustFS port")
 	for key in ("POSTGRES_IMAGE", "RUSTFS_IMAGE", "AWSCLI_IMAGE", "KEYCLOAK_IMAGE"):
-		image = values.get(key, "")
-		if not image or ":latest" in image or (":" not in image.rsplit("/", 1)[-1] and "@sha256:" not in image):
-			raise ValueError(f"Pin an explicit image version or digest: {key}")
+		require_pinned_image(values, key, True)
+	if values.get("IDENTITY_POSTGRES_IMAGE"):
+		require_pinned_image(values, "IDENTITY_POSTGRES_IMAGE", False)
 	return values
+
+
+def require_pinned_image(values, key, required):
+	image = values.get(key, "")
+	if not image:
+		if required:
+			raise ValueError(f"Pin an explicit image version or digest: {key}")
+		return
+	if ":latest" in image or (":" not in image.rsplit("/", 1)[-1] and "@sha256:" not in image):
+		raise ValueError(f"Pin an explicit image version or digest: {key}")
 
 
 def bootstrap(root=ROOT):

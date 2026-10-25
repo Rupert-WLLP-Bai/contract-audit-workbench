@@ -450,7 +450,7 @@ func stateDelta(previous, next state) (state, state, error) {
 	if old.Relations, changed.Relations, err = deltaRows(previous.Relations, next.Relations, func(v caseRelationRecord) string { return v.Relation.ID }, true); err != nil {
 		return state{}, state{}, err
 	}
-	if old.Knowledge, changed.Knowledge, err = deltaRows(previous.Knowledge, next.Knowledge, func(v knowledgeRecord) itemIdentity { return itemIdentity{Parent: v.Item.ID, ID: v.Item.Version} }, false); err != nil {
+	if old.Knowledge, changed.Knowledge, err = deltaRows(previous.Knowledge, next.Knowledge, func(v knowledgeRecord) [3]string { return [3]string{v.TenantID, v.Item.ID, v.Item.Version} }, false); err != nil {
 		return state{}, state{}, err
 	}
 	if old.WorkbenchAudit, changed.WorkbenchAudit, err = deltaRows(previous.WorkbenchAudit, next.WorkbenchAudit, func(v workbenchAuditRecord) string { return v.Item.ID }, false); err != nil {

@@ -98,6 +98,10 @@ export interface RulePackHistoryEntry {
   content_hash: string;
   pointer_revision: number;
   created_at: string;
+  previous_version: string | null;
+  previous_active: boolean | null;
+  resulting_version: string | null;
+  resulting_active: boolean | null;
 }
 
 export interface RulePackTestSource {
@@ -203,6 +207,12 @@ function sha256(value: unknown, path: string): string {
 
 function boolean(value: unknown, path: string): boolean {
   return typeof value === "boolean" ? value : fail(path);
+}
+function nullableString(value: unknown, path: string): string | null {
+  return value === null ? null : string(value, path);
+}
+function nullableBoolean(value: unknown, path: string): boolean | null {
+  return value === null ? null : boolean(value, path);
 }
 
 function integer(value: unknown, path: string): number {
@@ -370,7 +380,7 @@ export function parseRulePackMutationResult(value: unknown): RulePackMutationRes
 }
 
 function parseHistoryEntry(value: unknown, path: string): RulePackHistoryEntry {
-  const keys = ["sequence", "pack_id", "version", "action", "actor_id", "content_hash", "pointer_revision", "created_at"] as const;
+  const keys = ["sequence", "pack_id", "version", "action", "actor_id", "content_hash", "pointer_revision", "created_at", "previous_version", "previous_active", "resulting_version", "resulting_active"] as const;
   const record = object(value, path, keys);
   return {
     sequence: positiveInteger(record.sequence, `${path}.sequence`),
@@ -381,6 +391,10 @@ function parseHistoryEntry(value: unknown, path: string): RulePackHistoryEntry {
     content_hash: sha256(record.content_hash, `${path}.content_hash`),
     pointer_revision: integer(record.pointer_revision, `${path}.pointer_revision`),
     created_at: string(record.created_at, `${path}.created_at`),
+    previous_version: nullableString(record.previous_version, `${path}.previous_version`),
+    previous_active: nullableBoolean(record.previous_active, `${path}.previous_active`),
+    resulting_version: nullableString(record.resulting_version, `${path}.resulting_version`),
+    resulting_active: nullableBoolean(record.resulting_active, `${path}.resulting_active`),
   };
 }
 

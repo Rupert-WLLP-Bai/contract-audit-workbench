@@ -69,15 +69,19 @@ type RulePackPointer struct {
 
 // RulePackHistoryEntry is one append-only governance record.
 type RulePackHistoryEntry struct {
-	Sequence        int64  `json:"sequence"`
-	TenantID        string `json:"tenant_id"`
-	PackID          string `json:"pack_id"`
-	Version         string `json:"version"`
-	Action          string `json:"action"`
-	ActorID         string `json:"actor_id"`
-	ContentHash     string `json:"content_hash"`
-	PointerRevision int64  `json:"pointer_revision"`
-	CreatedAt       string `json:"created_at"`
+	Sequence         int64   `json:"sequence"`
+	TenantID         string  `json:"tenant_id"`
+	PackID           string  `json:"pack_id"`
+	Version          string  `json:"version"`
+	Action           string  `json:"action"`
+	ActorID          string  `json:"actor_id"`
+	ContentHash      string  `json:"content_hash"`
+	PointerRevision  int64   `json:"pointer_revision"`
+	CreatedAt        string  `json:"created_at"`
+	PreviousVersion  *string `json:"previous_version,omitempty"`
+	PreviousActive   *bool   `json:"previous_active,omitempty"`
+	ResultingVersion *string `json:"resulting_version,omitempty"`
+	ResultingActive  *bool   `json:"resulting_active,omitempty"`
 }
 
 // GovernanceInput carries one trusted admin mutation. TenantID and ActorID are

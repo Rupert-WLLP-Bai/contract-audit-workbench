@@ -436,18 +436,17 @@ func (s *Store) PublishRulePackVersion(user accounts.User, input GovernanceInput
 			return RulePackDetail{}, err
 		}
 		pointerRevision := currentPointer + 1
-		if _, err := tx.Exec(context.Background(), `INSERT INTO rule_pack_pointers (tenant_id, pack_id, version, active, pointer_revision, updated_at, updated_by)
-			VALUES ($1,$2,$3,true,$4,$5,$6)
-			ON CONFLICT (tenant_id, pack_id) DO UPDATE SET version=EXCLUDED.version, active=true, pointer_revision=EXCLUDED.pointer_revision, updated_at=EXCLUDED.updated_at, updated_by=EXCLUDED.updated_by
-			WHERE rule_pack_pointers.pointer_revision=$7`,
-			accounts.Tenant(admin), input.PackID, input.Version, pointerRevision, now, admin.ID, currentPointer); err != nil {
+		transition, err := moveRulePackPointer(context.Background(), tx, accounts.Tenant(admin), input.PackID, input.Version, true, pointerRevision, now, admin.ID, currentPointer, false)
+		if err != nil {
 			return RulePackDetail{}, err
 		}
-		if err := insertGovernanceHistory(context.Background(), tx, RulePackHistoryEntry{
+		historyEntry := RulePackHistoryEntry{
 			TenantID: accounts.Tenant(admin), PackID: input.PackID, Version: input.Version,
 			Action: GovernanceActionPublish, ActorID: admin.ID, ContentHash: row.Version.ContentHash,
 			PointerRevision: pointerRevision, CreatedAt: now,
-		}); err != nil {
+		}
+		historyEntry.recordPointerTransition(transition)
+		if err := insertGovernanceHistory(context.Background(), tx, historyEntry); err != nil {
 			return RulePackDetail{}, err
 		}
 		updated, err := loadGovernanceRow(context.Background(), tx, accounts.Tenant(admin), input.PackID, input.Version)
@@ -499,16 +498,17 @@ func (s *Store) DisableRulePackVersion(user accounts.User, input GovernanceInput
 		pointerRevision := currentPointer + 1
 		// Tombstone, never delete: the revision keeps increasing so a stale CAS
 		// captured before this disable can never match again.
-		if _, err := tx.Exec(context.Background(), `UPDATE rule_pack_pointers SET active=false, pointer_revision=$1, updated_at=$2, updated_by=$3
-			WHERE tenant_id=$4 AND pack_id=$5 AND pointer_revision=$6 AND version=$7`,
-			pointerRevision, now, admin.ID, accounts.Tenant(admin), input.PackID, currentPointer, input.Version); err != nil {
+		transition, err := moveRulePackPointer(context.Background(), tx, accounts.Tenant(admin), input.PackID, input.Version, false, pointerRevision, now, admin.ID, currentPointer, true)
+		if err != nil {
 			return err
 		}
-		if err := insertGovernanceHistory(context.Background(), tx, RulePackHistoryEntry{
+		historyEntry := RulePackHistoryEntry{
 			TenantID: accounts.Tenant(admin), PackID: input.PackID, Version: input.Version,
 			Action: GovernanceActionDisable, ActorID: admin.ID, ContentHash: row.Version.ContentHash,
 			PointerRevision: pointerRevision, CreatedAt: now,
-		}); err != nil {
+		}
+		historyEntry.recordPointerTransition(transition)
+		if err := insertGovernanceHistory(context.Background(), tx, historyEntry); err != nil {
 			return err
 		}
 		updated, err := loadGovernanceRow(context.Background(), tx, accounts.Tenant(admin), input.PackID, input.Version)
@@ -554,18 +554,17 @@ func (s *Store) RollbackRulePackVersion(user accounts.User, input GovernanceInpu
 		}
 		now := nowUTC()
 		pointerRevision := currentPointer + 1
-		if _, err := tx.Exec(context.Background(), `INSERT INTO rule_pack_pointers (tenant_id, pack_id, version, active, pointer_revision, updated_at, updated_by)
-			VALUES ($1,$2,$3,true,$4,$5,$6)
-			ON CONFLICT (tenant_id, pack_id) DO UPDATE SET version=EXCLUDED.version, active=true, pointer_revision=EXCLUDED.pointer_revision, updated_at=EXCLUDED.updated_at, updated_by=EXCLUDED.updated_by
-			WHERE rule_pack_pointers.pointer_revision=$7`,
-			accounts.Tenant(admin), input.PackID, input.Version, pointerRevision, now, admin.ID, currentPointer); err != nil {
+		transition, err := moveRulePackPointer(context.Background(), tx, accounts.Tenant(admin), input.PackID, input.Version, true, pointerRevision, now, admin.ID, currentPointer, false)
+		if err != nil {
 			return RulePackDetail{}, err
 		}
-		if err := insertGovernanceHistory(context.Background(), tx, RulePackHistoryEntry{
+		historyEntry := RulePackHistoryEntry{
 			TenantID: accounts.Tenant(admin), PackID: input.PackID, Version: input.Version,
 			Action: GovernanceActionRollback, ActorID: admin.ID, ContentHash: row.Version.ContentHash,
 			PointerRevision: pointerRevision, CreatedAt: now,
-		}); err != nil {
+		}
+		historyEntry.recordPointerTransition(transition)
+		if err := insertGovernanceHistory(context.Background(), tx, historyEntry); err != nil {
 			return RulePackDetail{}, err
 		}
 		updated, err := loadGovernanceRow(context.Background(), tx, accounts.Tenant(admin), input.PackID, input.Version)
@@ -658,7 +657,8 @@ func (s *Store) RulePackHistory(user accounts.User, packID string) (RulePackHist
 	}
 	var history RulePackHistory
 	err = s.updateAdminAs(admin, func(tx pgx.Tx) error {
-		rows, err := tx.Query(context.Background(), `SELECT seq, tenant_id, pack_id, version, action, actor_id, content_hash, pointer_revision, created_at
+		rows, err := tx.Query(context.Background(), `SELECT seq, tenant_id, pack_id, version, action, actor_id, content_hash, pointer_revision, created_at,
+			previous_version, previous_active, resulting_version, resulting_active
 			FROM rule_pack_history WHERE tenant_id=$1 AND pack_id=$2 ORDER BY seq DESC LIMIT $3`,
 			accounts.Tenant(admin), packID, maxGovernanceHistoryEntries)
 		if err != nil {
@@ -668,7 +668,8 @@ func (s *Store) RulePackHistory(user accounts.User, packID string) (RulePackHist
 		for rows.Next() {
 			var entry RulePackHistoryEntry
 			if err := rows.Scan(&entry.Sequence, &entry.TenantID, &entry.PackID, &entry.Version, &entry.Action,
-				&entry.ActorID, &entry.ContentHash, &entry.PointerRevision, &entry.CreatedAt); err != nil {
+				&entry.ActorID, &entry.ContentHash, &entry.PointerRevision, &entry.CreatedAt,
+				&entry.PreviousVersion, &entry.PreviousActive, &entry.ResultingVersion, &entry.ResultingActive); err != nil {
 				return err
 			}
 			history.Items = append(history.Items, entry)
@@ -982,8 +983,8 @@ func ParseFrozenGovernedRulePack(attempt Attempt, caseItem Case) (*rulepack.Pack
 	hasPackIdentity := attempt.RulePackID != "" || attempt.RulePackVersion != "" ||
 		attempt.RulePackPointerRevision != 0 || attempt.RulePackHash != "" ||
 		attempt.RulePackSnapshotDigest != "" || len(attempt.RulePackSnapshot) != 0
-	switch attempt.RulePackCompilerRef {
-	case "", telecom.CompilerRef:
+	switch {
+	case attempt.RulePackCompilerRef == "" || telecom.IsSyntheticCompiler(attempt.RulePackCompilerRef):
 		if !hasPackIdentity {
 			if isCloudServicesCase(caseItem) {
 				return nil, errors.New("cloud review has no frozen governed RulePack")
@@ -991,7 +992,7 @@ func ParseFrozenGovernedRulePack(attempt Attempt, caseItem Case) (*rulepack.Pack
 			return nil, nil
 		}
 		return nil, errors.New("synthetic attempt carries governed RulePack identity")
-	case governedCompilerMarker:
+	case attempt.RulePackCompilerRef == governedCompilerMarker:
 	default:
 		return nil, errors.New("attempt has an unknown RulePack compiler identity")
 	}

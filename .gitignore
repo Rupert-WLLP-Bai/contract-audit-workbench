@@ -27,6 +27,8 @@ go.work.sum
 # Builds, runtime data and generated verification output
 /var/
 /data/
+/blobs/
+/.mineru-service.lock
 /artifacts/
 /outputs/
 /build/
@@ -60,6 +62,7 @@ infra-*.json
 /web/prototype/
 *.md
 !/README.md
+!/AGENTS.md
 *.pdf
 *.doc
 *.docx

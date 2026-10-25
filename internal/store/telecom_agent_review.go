@@ -130,8 +130,8 @@ func (s *Store) runTelecomAgentReview(ctx context.Context, runID, attemptID stri
 func agentReviewRulePackIdentity(attempt Attempt, caseItem Case) (*agentflow.RulePackIdentity, error) {
 	hasIdentityFields := attempt.RulePackID != "" || attempt.RulePackVersion != "" || attempt.RulePackPointerRevision != 0 ||
 		attempt.RulePackHash != "" || attempt.RulePackSnapshotDigest != "" || len(attempt.RulePackSnapshot) != 0
-	switch attempt.RulePackCompilerRef {
-	case governedCompilerMarker:
+	switch {
+	case attempt.RulePackCompilerRef == governedCompilerMarker:
 		pack, err := ParseFrozenGovernedRulePack(attempt, caseItem)
 		if err != nil {
 			return nil, err
@@ -141,7 +141,7 @@ func agentReviewRulePackIdentity(attempt Attempt, caseItem Case) (*agentflow.Rul
 		}
 		manifest := pack.Manifest()
 		return &agentflow.RulePackIdentity{ID: manifest.ID, Version: manifest.Version, ContentSHA256: pack.Hash()}, nil
-	case telecom.CompilerRef:
+	case telecom.IsSyntheticCompiler(attempt.RulePackCompilerRef):
 		if attempt.RulePackID != "" || attempt.RulePackVersion != "" || attempt.RulePackPointerRevision != 0 {
 			return nil, errors.New("synthetic telecom RulePack carries governed identity fields")
 		}
@@ -158,7 +158,7 @@ func agentReviewRulePackIdentity(attempt Attempt, caseItem Case) (*agentflow.Rul
 		}
 		manifest := pack.Manifest()
 		return &agentflow.RulePackIdentity{ID: manifest.ID, Version: manifest.Version, ContentSHA256: pack.Hash()}, nil
-	case "":
+	case attempt.RulePackCompilerRef == "":
 		if hasIdentityFields {
 			return nil, errors.New("frozen RulePack fields have no compiler identity")
 		}
