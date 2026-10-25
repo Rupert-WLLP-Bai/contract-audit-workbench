@@ -174,6 +174,24 @@ func TestRulePackAdminLifecycleOverHTTP(t *testing.T) {
 	if entries[0].(map[string]any)["actor_id"] != "demo-admin" {
 		t.Fatalf("history actor %v", entries[0])
 	}
+	assertWireSchema(t, openAPI(t), "RulePackHistory", history)
+	for _, raw := range entries {
+		entry := raw.(map[string]any)
+		for _, key := range []string{"previous_version", "previous_active", "resulting_version", "resulting_active"} {
+			if _, ok := entry[key]; !ok {
+				t.Fatalf("history omitted %s: %v", key, entry)
+			}
+		}
+		if entry["action"] != "publish" {
+			if entry["previous_version"] != nil || entry["previous_active"] != nil || entry["resulting_version"] != nil || entry["resulting_active"] != nil {
+				t.Fatalf("non-pointer history invented a pointer image: %v", entry)
+			}
+			continue
+		}
+		if entry["previous_version"] != nil || entry["previous_active"] != nil || entry["resulting_version"] != "1" || entry["resulting_active"] != true {
+			t.Fatalf("first publish pointer image = %v", entry)
+		}
+	}
 
 	// Sample test runs a bounded synthetic execution.
 	status, sample := api.do(t, http.MethodPost, base+"/test", map[string]any{

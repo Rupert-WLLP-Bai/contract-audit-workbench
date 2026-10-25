@@ -58,6 +58,10 @@ const history = {
     content_hash: contentHash,
     pointer_revision: 7,
     created_at: "2026-10-20T12:00:00Z",
+    previous_version: null,
+    previous_active: null,
+    resulting_version: "1",
+    resulting_active: true,
   }],
 };
 
@@ -100,6 +104,7 @@ describe("RulePack inactive published version rollback", () => {
       </QueryClientProvider>,
     );
 
+    expect(await screen.findByText(/无前值 → v1 生效/)).toBeInTheDocument();
     const target = await screen.findByRole("option", { name: "telecom-core · v1" });
     expect(target).toBeInTheDocument();
     await user.selectOptions(screen.getByLabelText("目标历史版本"), "1");

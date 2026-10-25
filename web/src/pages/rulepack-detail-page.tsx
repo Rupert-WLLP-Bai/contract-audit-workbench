@@ -12,7 +12,7 @@ import {
   useSession,
   useValidateRulePack,
 } from "../api/queries";
-import type { RulePackDetail, RulePackManifest, RulePackManifestInput, RulePackMutationResult } from "../api/rulepacks";
+import type { RulePackDetail, RulePackHistoryEntry, RulePackManifest, RulePackManifestInput, RulePackMutationResult } from "../api/rulepacks";
 import { PageStatus } from "../components/page-status";
 import { RulePackErrorSummary } from "../components/rulepack-error-summary";
 import { RulePackManifestEditor } from "../components/rulepack-manifest-editor";
@@ -26,6 +26,17 @@ function editableManifest(manifest: RulePackManifest): RulePackManifestInput {
 
 function detailFromMutation(result: RulePackMutationResult | undefined): result is RulePackDetail {
   return result !== undefined && "manifest" in result;
+}
+
+function pointerImage(version: string | null, active: boolean | null): string {
+  if (version === null && active === null) return "无前值";
+  return `v${version ?? ""}${active ? " 生效" : " 未生效"}`;
+}
+
+function pointerTransition(entry: RulePackHistoryEntry): string {
+  if (entry.previous_version === null && entry.previous_active === null && entry.resulting_version === null && entry.resulting_active === null) return "";
+  const after = entry.resulting_version === null && entry.resulting_active === null ? "无新值" : pointerImage(entry.resulting_version, entry.resulting_active);
+  return ` · ${pointerImage(entry.previous_version, entry.previous_active)} → ${after}`;
 }
 
 type PublishRequest = { expectedRevision: number; expectedPointerRevision: number; idempotencyKey: string };
@@ -296,7 +307,7 @@ export function RulePackDetailPage() {
           <ol className="rulepack-history">
             {historyEntries.map((entry) => <li key={entry.sequence}>
               <strong>#{entry.sequence} · {entry.action}</strong>
-              <span>v{entry.version} · 操作者 {entry.actor_id} · 指针修订 {entry.pointer_revision}</span>
+              <span>v{entry.version} · 操作者 {entry.actor_id} · 指针修订 {entry.pointer_revision}{pointerTransition(entry)}</span>
               <time dateTime={entry.created_at}>{entry.created_at}</time>
               <code className="digest">{entry.content_hash}</code>
             </li>)}
