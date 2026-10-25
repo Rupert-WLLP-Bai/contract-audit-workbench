@@ -1,0 +1,14 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: contract-audit
+resources:
+  - namespace.yaml
+  - config.yaml
+  - security-accounts.yaml
+  - workloads.yaml
+  - services-ingress.yaml
+  - poddisruptionbudgets.yaml
+  - network-policy.yaml
+  - postgres.yaml
+# Autoscaling objects are deliberately outside this rendered set: deployments/k8s/optional/scaling-hpa.yaml
+# must be applied per workload only after a real metrics source exists (zero HPA in the default render).

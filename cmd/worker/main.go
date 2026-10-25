@@ -1,0 +1,242 @@
+// Command worker runs the independently deployed audit worker.
+//
+// The worker owns the execution database identity through the execution
+// service role and claims persistent review jobs from PostgreSQL. It holds the
+// model gateway and document service caller credentials because it performs the
+// attempt, while the health surface stays local: liveness reports the process
+// itself, readiness reports the database plus whether this replica is still
+// accepting work, and no probe calls a model or the document service. An idle
+// worker that can still accept jobs is ready.
+package main
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"log"
+	"net"
+	"net/http"
+	"os"
+	"os/signal"
+	"strings"
+	"sync/atomic"
+	"syscall"
+	"time"
+
+	"contractaudit/internal/bootstrap"
+	"contractaudit/internal/httpapi"
+	"contractaudit/internal/outboxrelay"
+	"contractaudit/internal/store"
+
+	"github.com/jackc/pgx/v5"
+)
+
+const (
+	defaultLease     = 30 * time.Second
+	defaultHeartbeat = 10 * time.Second
+	defaultPoll      = 250 * time.Millisecond
+	shutdownTimeout  = 30 * time.Second
+)
+
+func main() {
+	if err := run(); err != nil {
+		log.Fatal(err)
+	}
+}
+
+func run() error {
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	runCtx, abort := context.WithCancel(ctx)
+	defer abort()
+
+	healthAddr, err := requiredEnv("HEALTH_ADDR")
+	if err != nil {
+		return err
+	}
+	app, err := bootstrap.OpenService(ctx, "worker")
+	if err != nil {
+		return err
+	}
+	defer app.Close()
+	if !app.Durable {
+		return errors.New("the worker requires durable execution")
+	}
+	workerID, err := configuredWorkerID()
+	if err != nil {
+		return err
+	}
+	lease, err := durationEnv("WORKER_LEASE_DURATION", defaultLease)
+	if err != nil {
+		return err
+	}
+	heartbeat, err := durationEnv("WORKER_HEARTBEAT_INTERVAL", defaultHeartbeat)
+	if err != nil || heartbeat >= lease {
+		return errors.New("WORKER_HEARTBEAT_INTERVAL must be positive and shorter than WORKER_LEASE_DURATION")
+	}
+	poll, err := durationEnv("WORKER_POLL_INTERVAL", defaultPoll)
+	if err != nil {
+		return err
+	}
+	// A broker wake-up only shortens an idle poll: the authoritative claim is
+	// always taken from PostgreSQL, so a missed notification cannot lose work.
+	relayConfig, err := outboxrelay.FromEnv()
+	if err != nil {
+		return err
+	}
+	// SubscribeLoop keeps retrying the broker in the background; a nil channel
+	// means wake-ups are disabled and the claim loop polls PostgreSQL.
+	wake := outboxrelay.SubscribeLoop(runCtx, relayConfig)
+	if wake == nil {
+		log.Printf("worker wake-up disabled: NATS_URL is not configured; polling PostgreSQL directly")
+	}
+
+	// Readiness flips to false the moment a shutdown starts, so the orchestrator
+	// removes this replica from rotation before the claim loop stops.
+	accepting := &atomic.Bool{}
+	accepting.Store(true)
+	context.AfterFunc(runCtx, func() { accepting.Store(false) })
+	mux := http.NewServeMux()
+	httpapi.MountHealth(mux, func(ctx context.Context) error {
+		if !accepting.Load() {
+			return errors.New("worker is shutting down")
+		}
+		return app.Store.Ready(ctx)
+	})
+	health := &http.Server{
+		Addr: healthAddr, Handler: mux,
+		ReadHeaderTimeout: 5 * time.Second,
+		WriteTimeout:      5 * time.Second,
+		IdleTimeout:       60 * time.Second,
+		MaxHeaderBytes:    1 << 20,
+	}
+	health.BaseContext = func(net.Listener) context.Context { return runCtx }
+	// The probe surface is the only way an orchestrator can observe this
+	// process, so a listener failure must end the process instead of leaving an
+	// unobservable worker running.
+	healthFailed := make(chan error, 1)
+	go func() {
+		err := health.ListenAndServe()
+		if errors.Is(err, http.ErrServerClosed) {
+			err = nil
+		}
+		healthFailed <- err
+		if err != nil {
+			abort()
+		}
+	}()
+
+	log.Printf("worker %s claiming jobs from %s", workerID, app.Selection.Database.Name)
+	claimErr := claimJobs(runCtx, app.Store, workerID, lease, heartbeat, poll, wake)
+
+	shutdown, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
+	defer cancel()
+	if err := health.Shutdown(shutdown); err != nil {
+		_ = health.Close()
+	}
+	if healthErr := <-healthFailed; healthErr != nil {
+		return fmt.Errorf("worker health server: %w", healthErr)
+	}
+	if claimErr != nil && !errors.Is(claimErr, context.Canceled) {
+		return claimErr
+	}
+	return nil
+}
+
+// claimJobs processes persistent review jobs until ctx is canceled. A canceled
+// attempt is left to the lease: another replica reclaims the job after the
+// lease expires, and the lease generation rejects a late commit from this one.
+func claimJobs(ctx context.Context, st *store.Store, workerID string, lease, heartbeat, poll time.Duration, wake <-chan struct{}) error {
+	for {
+		claim, err := st.ClaimNextJob(ctx, workerID, lease)
+		if errors.Is(err, pgx.ErrNoRows) {
+			if err := waitFor(ctx, poll, wake); err != nil {
+				return err
+			}
+			continue
+		}
+		if err != nil {
+			return err
+		}
+		jobCtx, cancel := context.WithCancel(ctx)
+		heartbeatDone := make(chan error, 1)
+		go func() { heartbeatDone <- renewLease(jobCtx, cancel, st, claim, lease, heartbeat) }()
+		runErr := st.RunClaimedJob(jobCtx, claim)
+		cancel()
+		heartbeatErr := <-heartbeatDone
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		if runErr != nil && !errors.Is(runErr, context.Canceled) && !errors.Is(runErr, store.ErrLeaseLost) {
+			log.Printf("job %s generation %d: %v", claim.JobID, claim.Generation, runErr)
+		}
+		if heartbeatErr != nil && !errors.Is(heartbeatErr, context.Canceled) && !errors.Is(heartbeatErr, store.ErrLeaseLost) {
+			log.Printf("job %s heartbeat: %v", claim.JobID, heartbeatErr)
+		}
+	}
+}
+
+func renewLease(ctx context.Context, cancel context.CancelFunc, st *store.Store, claim store.JobClaim, lease, interval time.Duration) error {
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-ticker.C:
+			updated, err := st.HeartbeatJob(ctx, claim, lease)
+			if err != nil {
+				cancel()
+				return err
+			}
+			claim = updated
+		}
+	}
+}
+
+func configuredWorkerID() (string, error) {
+	if id := strings.TrimSpace(os.Getenv("WORKER_ID")); id != "" {
+		return id, nil
+	}
+	host, err := os.Hostname()
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("%s-%d", host, os.Getpid()), nil
+}
+
+func requiredEnv(name string) (string, error) {
+	value := strings.TrimSpace(os.Getenv(name))
+	if value == "" {
+		return "", errors.New(name + " is required to expose the worker health surface")
+	}
+	return value, nil
+}
+
+func durationEnv(name string, fallback time.Duration) (time.Duration, error) {
+	raw := strings.TrimSpace(os.Getenv(name))
+	if raw == "" {
+		return fallback, nil
+	}
+	value, err := time.ParseDuration(raw)
+	if err != nil || value <= 0 {
+		return 0, fmt.Errorf("%s must be a positive Go duration", name)
+	}
+	return value, nil
+}
+
+// waitFor sleeps for the poll interval or until a broker wake-up arrives. The
+// notification is advisory: the next iteration still claims through PostgreSQL,
+// and a nil wake channel keeps the plain poll interval.
+func waitFor(ctx context.Context, duration time.Duration, wake <-chan struct{}) error {
+	timer := time.NewTimer(duration)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	case <-wake:
+		return nil
+	}
+}

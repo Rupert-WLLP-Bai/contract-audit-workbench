@@ -1,0 +1,89 @@
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: gateway
+  labels: {app.kubernetes.io/part-of: contract-audit}
+spec:
+  minAvailable: 1
+  selector: {matchLabels: {app.kubernetes.io/name: gateway}}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: core-api
+  labels: {app.kubernetes.io/part-of: contract-audit}
+spec:
+  minAvailable: 1
+  selector: {matchLabels: {app.kubernetes.io/name: core-api}}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: document-service
+  labels: {app.kubernetes.io/part-of: contract-audit}
+spec:
+  minAvailable: 1
+  selector: {matchLabels: {app.kubernetes.io/name: document-service}}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: audit-execution
+  labels: {app.kubernetes.io/part-of: contract-audit}
+spec:
+  minAvailable: 1
+  selector: {matchLabels: {app.kubernetes.io/name: audit-execution}}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: audit-worker
+  labels: {app.kubernetes.io/part-of: contract-audit}
+spec:
+  minAvailable: 1
+  selector: {matchLabels: {app.kubernetes.io/name: audit-worker}}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: model-gateway
+  labels: {app.kubernetes.io/part-of: contract-audit}
+spec:
+  minAvailable: 1
+  selector: {matchLabels: {app.kubernetes.io/name: model-gateway}}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: tool-gateway
+  labels: {app.kubernetes.io/part-of: contract-audit}
+spec:
+  minAvailable: 1
+  selector: {matchLabels: {app.kubernetes.io/name: tool-gateway}}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: client
+  labels: {app.kubernetes.io/part-of: contract-audit}
+spec:
+  minAvailable: 1
+  selector: {matchLabels: {app.kubernetes.io/name: client}}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: admin
+  labels: {app.kubernetes.io/part-of: contract-audit}
+spec:
+  minAvailable: 1
+  selector: {matchLabels: {app.kubernetes.io/name: admin}}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: portal
+  labels: {app.kubernetes.io/part-of: contract-audit}
+spec:
+  minAvailable: 1
+  selector: {matchLabels: {app.kubernetes.io/name: portal}}

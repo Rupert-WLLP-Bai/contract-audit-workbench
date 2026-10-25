@@ -1,0 +1,49 @@
+{
+  "schema_version": "rulepack/v1",
+  "id": "line-demo",
+  "version": "1",
+  "tenant_id": "tenant-demo",
+  "effective_from": "2026-01-01T00:00:00Z",
+  "effective_until": "2027-01-01T00:00:00Z",
+  "rules": [
+    {
+      "rule_id": "ENT-TECH-BW-001",
+      "version": "1",
+      "domain": "technical",
+      "capability_id": "dedicated_line.minimum_bandwidth",
+      "mandatory": true,
+      "business_scope": {"business_line": "enterprise", "scenario": "dedicated-line", "contract_type": "service"},
+      "tenant_id": "tenant-demo",
+      "comparator": "minimum_bandwidth",
+      "threshold": {"value": "100", "unit": "Mbit/s"},
+      "required_fact": {"dimension": "minimum_bandwidth", "source_roles": ["draft_contract"], "object_required": true, "unit_family": "bandwidth_decimal"},
+      "authority_sources": [{"id": "demo-synthetic-policy", "version": "1", "kind": "synthetic_demo"}]
+    },
+    {
+      "rule_id": "ENT-TECH-SLA-001",
+      "version": "1",
+      "domain": "technical",
+      "capability_id": "dedicated_line.monthly_availability",
+      "mandatory": true,
+      "business_scope": {"business_line": "enterprise", "scenario": "dedicated-line", "contract_type": "service"},
+      "tenant_id": "tenant-demo",
+      "comparator": "monthly_sla",
+      "threshold": {"value": "99.9", "unit": "percent"},
+      "required_fact": {"dimension": "monthly_availability", "source_roles": ["draft_contract"], "object_required": true, "unit_family": "percentage", "measurement_window": "calendar_month", "time_zone": "Asia/Shanghai", "calendar": "gregorian", "outage_definition": "all_service_unavailability", "exclusions": []},
+      "authority_sources": [{"id": "demo-synthetic-policy", "version": "1", "kind": "synthetic_demo"}]
+    },
+    {
+      "rule_id": "ENT-COM-ADV-001",
+      "version": "1",
+      "domain": "commercial",
+      "capability_id": "payment.advance_ratio.ceiling",
+      "mandatory": true,
+      "business_scope": {"business_line": "enterprise", "scenario": "dedicated-line", "contract_type": "service"},
+      "tenant_id": "tenant-demo",
+      "comparator": "advance_payment_ceiling",
+      "threshold": {"value": "1/3", "unit": "ratio", "basis": "contract_total"},
+      "required_fact": {"dimension": "advance_payment_ratio", "source_roles": ["draft_contract"], "object_required": true, "unit_family": "ratio", "basis": "contract_total"},
+      "authority_sources": [{"id": "demo-synthetic-policy", "version": "1", "kind": "synthetic_demo"}]
+    }
+  ]
+}

@@ -1,0 +1,65 @@
+global:
+  labels:
+    app.kubernetes.io/part-of: contract-audit
+config:
+  cluster:
+    enabled: true
+    replicas: 3
+  jetstream:
+    enabled: true
+    fileStore:
+      enabled: true
+      dir: /data
+      pvc:
+        enabled: true
+        size: 100Gi
+  lameDuckGracePeriod: 10s
+  lameDuckDuration: 2m
+container:
+  image:
+    repository: nats
+    tag: 2.15.1
+    pullPolicy: IfNotPresent
+  merge:
+    resources:
+      requests: {cpu: "2", memory: 8Gi}
+      limits: {cpu: "2", memory: 8Gi}
+podTemplate:
+  terminationGracePeriodSeconds: 150
+  topologySpreadConstraints:
+    kubernetes.io/hostname:
+      maxSkew: 1
+      whenUnsatisfiable: DoNotSchedule
+    topology.kubernetes.io/zone:
+      maxSkew: 1
+      whenUnsatisfiable: ScheduleAnyway
+  merge:
+    automountServiceAccountToken: false
+    affinity:
+      podAntiAffinity:
+        requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchLabels:
+                app.kubernetes.io/name: nats
+            topologyKey: kubernetes.io/hostname
+podDisruptionBudget:
+  enabled: true
+  merge:
+    spec:
+      minAvailable: 2
+natsBox:
+  enabled: false
+service:
+  enabled: true
+  ports:
+    nats:
+      enabled: true
+    cluster:
+      enabled: false
+    monitor:
+      enabled: false
+headlessService:
+  merge:
+    metadata:
+      labels:
+        app.kubernetes.io/name: nats

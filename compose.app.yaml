@@ -1,0 +1,451 @@
+x-backend-build: &backend-build
+  context: .
+  dockerfile: deploy/app/Dockerfile
+  target: backend
+
+x-app-health: &app-health
+  interval: 10s
+  timeout: 3s
+  retries: 6
+  start_period: 10s
+
+services:
+  nats:
+    image: ${NATS_IMAGE:-nats:2.11.8-alpine}
+    restart: unless-stopped
+    command: ["--jetstream", "--store_dir=/data/jetstream", "--http_port=8222"]
+    volumes:
+      - nats-data:/data
+    expose:
+      - "4222"
+      - "8222"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8222/healthz?js-enabled-only=true"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 5s
+    stop_grace_period: 30s
+
+  gateway:
+    image: contract-audit-backend:local
+    build: *backend-build
+    command: ["/app/gateway"]
+    restart: unless-stopped
+    init: true
+    environment:
+      APP_ENV: ${APP_ENV:-development}
+      ADDR: 0.0.0.0:8080
+      CORE_URLS: ${CORE_URLS:-http://core-api:8081}
+      DOCUMENT_URL: ${DOCUMENT_URL:-http://document-service:8082}
+      EXECUTION_URL: ${EXECUTION_URL:-http://audit-execution:8083}
+      TOOL_URLS: ${TOOL_URLS:-http://tool-gateway:8085}
+      GATEWAY_CORE_TOKEN: ${GATEWAY_CORE_TOKEN:?Run make app-bootstrap}
+      GATEWAY_DOCUMENT_TOKEN: ${GATEWAY_DOCUMENT_TOKEN:?Run make app-bootstrap}
+      GATEWAY_EXECUTION_TOKEN: ${GATEWAY_EXECUTION_TOKEN:?Run make app-bootstrap}
+      GATEWAY_TOOL_TOKEN: ${GATEWAY_TOOL_TOKEN:?Run make app-bootstrap}
+      GATEWAY_HEALTH_INTERVAL: ${GATEWAY_HEALTH_INTERVAL:-1s}
+      GATEWAY_HEALTH_TIMEOUT: ${GATEWAY_HEALTH_TIMEOUT:-500ms}
+      GATEWAY_HEALTH_FAILURE_THRESHOLD: ${GATEWAY_HEALTH_FAILURE_THRESHOLD:-2}
+      GATEWAY_HEALTH_RECOVERY_THRESHOLD: ${GATEWAY_HEALTH_RECOVERY_THRESHOLD:-2}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+      OTEL_EXPORTER_OTLP_PROTOCOL: ${OTEL_EXPORTER_OTLP_PROTOCOL:-http/json}
+      OTEL_TRACES_SAMPLER: ${OTEL_TRACES_SAMPLER:-always_on}
+      OTEL_TRACES_SAMPLER_ARG: ${OTEL_TRACES_SAMPLER_ARG:-1}
+    ports:
+      - "127.0.0.1:${EDGE_PORT:-8080}:8080"
+    expose:
+      - "8080"
+    depends_on:
+      core-api:
+        condition: service_healthy
+      document-service:
+        condition: service_healthy
+      audit-execution:
+        condition: service_healthy
+      tool-gateway:
+        condition: service_healthy
+    healthcheck:
+      <<: *app-health
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/ready"]
+    stop_grace_period: 20s
+
+  core-api:
+    image: contract-audit-backend:local
+    build: *backend-build
+    command: ["/app/server"]
+    restart: unless-stopped
+    init: true
+    environment:
+      APP_ENV: ${APP_ENV:-development}
+      SERVICE_ROLE: core
+      CORE_DATABASE_URL: ${CORE_DATABASE_URL:?Run make app-bootstrap}
+      DATABASE_SCHEMA: ${DATABASE_SCHEMA:-public}
+      APP_READ_ONLY: ${APP_READ_ONLY:-false}
+      ADDR: 0.0.0.0:8081
+      DATA_DIR: /var/lib/contract-audit
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://127.0.0.1:18080,http://127.0.0.1:18081,http://127.0.0.1:18082}
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      OIDC_ISSUER: ${OIDC_ISSUER:-}
+      OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-}
+      OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:-}
+      OIDC_ADMIN_CLIENT_ID: ${OIDC_ADMIN_CLIENT_ID:-}
+      OIDC_ADMIN_CLIENT_SECRET: ${OIDC_ADMIN_CLIENT_SECRET:-}
+      OIDC_REDIRECT_URL: ${OIDC_REDIRECT_URL:-}
+      OIDC_ADMIN_REDIRECT_URL: ${OIDC_ADMIN_REDIRECT_URL:-}
+      OIDC_STATE_KEY: ${OIDC_STATE_KEY:-}
+      GATEWAY_ROLE_TOKEN: ${GATEWAY_CORE_TOKEN:?Run make app-bootstrap}
+      # Workspace revision comparisons use the same frozen model identity as the worker.
+      LLM_BASE_URL: ${LLM_BASE_URL:-}
+      LLM_MODEL: ${LLM_MODEL:-}
+      OCR_MODEL: ${OCR_MODEL:-}
+      AGENT_PLANNER_MODE: ${AGENT_PLANNER_MODE:-deterministic}
+      AGENT_PLANNER_MAX_ROUNDS: ${AGENT_PLANNER_MAX_ROUNDS:-2}
+      AGENT_PLANNER_MAX_CALLS: ${AGENT_PLANNER_MAX_CALLS:-16}
+      AGENT_PLANNER_TIMEOUT: ${AGENT_PLANNER_TIMEOUT:-30s}
+      AGENT_PLANNER_MAX_EVIDENCE_BYTES: ${AGENT_PLANNER_MAX_EVIDENCE_BYTES:-2097152}
+      NATS_URL: ${NATS_URL:-nats://nats:4222}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+      OTEL_EXPORTER_OTLP_PROTOCOL: ${OTEL_EXPORTER_OTLP_PROTOCOL:-http/json}
+      OTEL_TRACES_SAMPLER: ${OTEL_TRACES_SAMPLER:-always_on}
+      OTEL_TRACES_SAMPLER_ARG: ${OTEL_TRACES_SAMPLER_ARG:-1}
+    volumes:
+      - app-data:/var/lib/contract-audit
+    expose:
+      - "8081"
+    depends_on:
+      db:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+    healthcheck:
+      <<: *app-health
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8081/ready"]
+    stop_grace_period: 20s
+
+  document-service:
+    image: contract-audit-backend:local
+    build: *backend-build
+    command: ["/app/documentservice"]
+    restart: unless-stopped
+    init: true
+    environment:
+      APP_ENV: ${APP_ENV:-development}
+      SERVICE_ROLE: document
+      DOCUMENT_DATABASE_URL: ${DOCUMENT_DATABASE_URL:?Run make app-bootstrap}
+      DATABASE_SCHEMA: ${DATABASE_SCHEMA:-public}
+      APP_READ_ONLY: ${APP_READ_ONLY:-false}
+      ADDR: 0.0.0.0:8082
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://127.0.0.1:18080,http://127.0.0.1:18081,http://127.0.0.1:18082}
+      S3_ENDPOINT: http://rustfs:9000
+      S3_BUCKET: ${S3_BUCKET:-contract-audit-dev}
+      S3_REGION: ${S3_REGION:-us-east-1}
+      S3_ACCESS_KEY: ${RUSTFS_ACCESS_KEY:?Run make infra-bootstrap}
+      S3_SECRET_KEY: ${RUSTFS_SECRET_KEY:?Run make infra-bootstrap}
+      MODEL_GATEWAY_URL: ${MODEL_GATEWAY_URL:-http://model-gateway:8084/v1}
+      # The endpoint and model identifiers are part of the run signature
+      # identity: the execution service, the worker, and this service must agree.
+      LLM_BASE_URL: ${LLM_BASE_URL:-}
+      LLM_MODEL: ${LLM_MODEL:-}
+      OCR_MODEL: ${OCR_MODEL:-}
+      DOCUMENT_MODEL_TOKEN: ${DOCUMENT_MODEL_TOKEN:?Run make app-bootstrap}
+      WORKER_DOCUMENT_TOKEN: ${WORKER_DOCUMENT_TOKEN:?Run make app-bootstrap}
+      GATEWAY_ROLE_TOKEN: ${GATEWAY_DOCUMENT_TOKEN:?Run make app-bootstrap}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+      OTEL_EXPORTER_OTLP_PROTOCOL: ${OTEL_EXPORTER_OTLP_PROTOCOL:-http/json}
+      OTEL_TRACES_SAMPLER: ${OTEL_TRACES_SAMPLER:-always_on}
+      OTEL_TRACES_SAMPLER_ARG: ${OTEL_TRACES_SAMPLER_ARG:-1}
+    expose:
+      - "8082"
+    depends_on:
+      db:
+        condition: service_healthy
+      rustfs:
+        condition: service_started
+    healthcheck:
+      <<: *app-health
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8082/health/ready"]
+    stop_grace_period: 45s
+
+  audit-execution:
+    image: contract-audit-backend:local
+    build: *backend-build
+    command: ["/app/auditexecution"]
+    restart: unless-stopped
+    init: true
+    environment:
+      APP_ENV: ${APP_ENV:-development}
+      SERVICE_ROLE: execution
+      EXECUTION_DATABASE_URL: ${EXECUTION_DATABASE_URL:?Run make app-bootstrap}
+      DATABASE_SCHEMA: ${DATABASE_SCHEMA:-public}
+      APP_READ_ONLY: ${APP_READ_ONLY:-false}
+      EXECUTION_QUEUE_POLICY: ${EXECUTION_QUEUE_POLICY:-}
+      ADDR: 0.0.0.0:8083
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://127.0.0.1:18080,http://127.0.0.1:18081,http://127.0.0.1:18082}
+      GATEWAY_ROLE_TOKEN: ${GATEWAY_EXECUTION_TOKEN:?Run make app-bootstrap}
+      # The execution service never calls a model. It computes the run signature
+      # from the same endpoint and model identifiers as the worker.
+      LLM_BASE_URL: ${LLM_BASE_URL:-}
+      LLM_MODEL: ${LLM_MODEL:-}
+      OCR_MODEL: ${OCR_MODEL:-}
+      AGENT_PLANNER_MODE: ${AGENT_PLANNER_MODE:-deterministic}
+      AGENT_PLANNER_MAX_ROUNDS: ${AGENT_PLANNER_MAX_ROUNDS:-2}
+      AGENT_PLANNER_MAX_CALLS: ${AGENT_PLANNER_MAX_CALLS:-16}
+      AGENT_PLANNER_TIMEOUT: ${AGENT_PLANNER_TIMEOUT:-30s}
+      AGENT_PLANNER_MAX_EVIDENCE_BYTES: ${AGENT_PLANNER_MAX_EVIDENCE_BYTES:-2097152}
+      NATS_URL: ${NATS_URL:-nats://nats:4222}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+      OTEL_EXPORTER_OTLP_PROTOCOL: ${OTEL_EXPORTER_OTLP_PROTOCOL:-http/json}
+      OTEL_TRACES_SAMPLER: ${OTEL_TRACES_SAMPLER:-always_on}
+      OTEL_TRACES_SAMPLER_ARG: ${OTEL_TRACES_SAMPLER_ARG:-1}
+    expose:
+      - "8083"
+    depends_on:
+      db:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+    healthcheck:
+      <<: *app-health
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8083/health/ready"]
+    stop_grace_period: 30s
+
+  audit-worker:
+    image: contract-audit-backend:local
+    build: *backend-build
+    command: ["/app/worker"]
+    restart: unless-stopped
+    init: true
+    environment:
+      APP_ENV: ${APP_ENV:-development}
+      SERVICE_ROLE: worker
+      EXECUTION_DATABASE_URL: ${EXECUTION_DATABASE_URL:?Run make app-bootstrap}
+      DATABASE_SCHEMA: ${DATABASE_SCHEMA:-public}
+      APP_READ_ONLY: ${APP_READ_ONLY:-false}
+      EXECUTION_QUEUE_POLICY: ${EXECUTION_QUEUE_POLICY:-}
+      HEALTH_ADDR: 0.0.0.0:8086
+      DOCUMENT_SERVICE_URL: ${DOCUMENT_SERVICE_URL:-http://document-service:8082}
+      MODEL_GATEWAY_URL: ${MODEL_GATEWAY_URL:-http://model-gateway:8084/v1}
+      LLM_BASE_URL: ${LLM_BASE_URL:-}
+      LLM_MODEL: ${LLM_MODEL:-}
+      OCR_MODEL: ${OCR_MODEL:-}
+      AGENT_PLANNER_MODE: ${AGENT_PLANNER_MODE:-deterministic}
+      AGENT_PLANNER_MAX_ROUNDS: ${AGENT_PLANNER_MAX_ROUNDS:-2}
+      AGENT_PLANNER_MAX_CALLS: ${AGENT_PLANNER_MAX_CALLS:-16}
+      AGENT_PLANNER_TIMEOUT: ${AGENT_PLANNER_TIMEOUT:-30s}
+      AGENT_PLANNER_MAX_EVIDENCE_BYTES: ${AGENT_PLANNER_MAX_EVIDENCE_BYTES:-2097152}
+      WORKER_DOCUMENT_TOKEN: ${WORKER_DOCUMENT_TOKEN:?Run make app-bootstrap}
+      WORKER_MODEL_TOKEN: ${WORKER_MODEL_TOKEN:?Run make app-bootstrap}
+      WORKER_TOOL_TOKEN: ${WORKER_TOOL_TOKEN:?Run make app-bootstrap}
+      TOOL_GATEWAY_URL: ${TOOL_GATEWAY_URL:-http://tool-gateway:8085}
+      NATS_URL: ${NATS_URL:-nats://nats:4222}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+      OTEL_EXPORTER_OTLP_PROTOCOL: ${OTEL_EXPORTER_OTLP_PROTOCOL:-http/json}
+      OTEL_TRACES_SAMPLER: ${OTEL_TRACES_SAMPLER:-always_on}
+      OTEL_TRACES_SAMPLER_ARG: ${OTEL_TRACES_SAMPLER_ARG:-1}
+    depends_on:
+      db:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+    healthcheck:
+      <<: *app-health
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8086/health/ready"]
+    stop_grace_period: 60s
+
+  model-gateway:
+    image: contract-audit-backend:local
+    build: *backend-build
+    command: ["/app/modelgateway"]
+    profiles: ["real-model"]
+    restart: unless-stopped
+    init: true
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      APP_ENV: ${APP_ENV:-development}
+      MODEL_GATEWAY_MODE: openai-compatible
+      SERVICE_ROLE: model
+      MODEL_DATABASE_URL: ${MODEL_DATABASE_URL:?Run make app-bootstrap}
+      DATABASE_SCHEMA: ${DATABASE_SCHEMA:-public}
+      ADDR: 0.0.0.0:8084
+      LLM_BASE_URL: ${LLM_BASE_URL:-http://host.docker.internal:3425/v1}
+      LLM_MODEL: ${LLM_MODEL:-}
+      OCR_MODEL: ${OCR_MODEL:-}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      MODEL_TENANT_MAX_INFLIGHT: ${MODEL_TENANT_MAX_INFLIGHT:-4}
+      MODEL_GLOBAL_MAX_INFLIGHT: ${MODEL_GLOBAL_MAX_INFLIGHT:-32}
+      MODEL_TENANT_CALLS_PER_MINUTE: ${MODEL_TENANT_CALLS_PER_MINUTE:-120}
+      MODEL_GLOBAL_CALLS_PER_MINUTE: ${MODEL_GLOBAL_CALLS_PER_MINUTE:-600}
+      WORKER_MODEL_TOKEN: ${WORKER_MODEL_TOKEN:?Run make app-bootstrap}
+      DOCUMENT_MODEL_TOKEN: ${DOCUMENT_MODEL_TOKEN:?Run make app-bootstrap}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+      OTEL_EXPORTER_OTLP_PROTOCOL: ${OTEL_EXPORTER_OTLP_PROTOCOL:-http/json}
+      OTEL_TRACES_SAMPLER: ${OTEL_TRACES_SAMPLER:-always_on}
+      OTEL_TRACES_SAMPLER_ARG: ${OTEL_TRACES_SAMPLER_ARG:-1}
+    expose:
+      - "8084"
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      <<: *app-health
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8084/health/ready"]
+    stop_grace_period: 30s
+
+  model-gateway-fixture:
+    image: contract-audit-backend:local
+    build: *backend-build
+    command: ["/app/modelgateway"]
+    profiles: ["model-fixture"]
+    restart: unless-stopped
+    init: true
+    environment:
+      APP_ENV: ${APP_ENV:-development}
+      MODEL_GATEWAY_MODE: fixture
+      SERVICE_ROLE: model
+      MODEL_DATABASE_URL: ${MODEL_DATABASE_URL:?Run make app-bootstrap}
+      DATABASE_SCHEMA: ${DATABASE_SCHEMA:-public}
+      ADDR: 0.0.0.0:8084
+      # Distinct identifiers: the fixture answers a chat review prompt with the
+      # material spans that prompt embeds, and returns an explicit OCR
+      # transcription for the OCR model.
+      LLM_MODEL: ${LLM_MODEL:-fixture-chat}
+      OCR_MODEL: ${OCR_MODEL:-fixture-ocr}
+      WORKER_MODEL_TOKEN: ${WORKER_MODEL_TOKEN:?Run make app-bootstrap}
+      DOCUMENT_MODEL_TOKEN: ${DOCUMENT_MODEL_TOKEN:?Run make app-bootstrap}
+      MODEL_GATEWAY_FIXTURE_OCR_CONTENT: 质保期为36个月。
+      MODEL_TENANT_MAX_INFLIGHT: ${MODEL_TENANT_MAX_INFLIGHT:-4}
+      MODEL_GLOBAL_MAX_INFLIGHT: ${MODEL_GLOBAL_MAX_INFLIGHT:-32}
+      MODEL_TENANT_CALLS_PER_MINUTE: ${MODEL_TENANT_CALLS_PER_MINUTE:-120}
+      MODEL_GLOBAL_CALLS_PER_MINUTE: ${MODEL_GLOBAL_CALLS_PER_MINUTE:-600}
+    expose:
+      - "8084"
+    networks:
+      default:
+        aliases:
+          - model-gateway
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      <<: *app-health
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8084/health/ready"]
+    stop_grace_period: 30s
+
+  tool-gateway:
+    image: contract-audit-backend:local
+    build: *backend-build
+    command: ["/app/toolgateway"]
+    restart: unless-stopped
+    init: true
+    environment:
+      APP_ENV: ${APP_ENV:-development}
+      SERVICE_ROLE: tool
+      TOOL_DATABASE_URL: ${TOOL_DATABASE_URL:?Run make app-bootstrap}
+      DATABASE_SCHEMA: ${DATABASE_SCHEMA:-public}
+      ADDR: 0.0.0.0:8085
+      GATEWAY_ROLE_TOKEN: ${GATEWAY_TOOL_TOKEN:?Run make app-bootstrap}
+      WORKER_TOOL_TOKEN: ${WORKER_TOOL_TOKEN:?Run make app-bootstrap}
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://127.0.0.1:18080,http://127.0.0.1:18081,http://127.0.0.1:18082}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+      OTEL_EXPORTER_OTLP_PROTOCOL: ${OTEL_EXPORTER_OTLP_PROTOCOL:-http/json}
+      OTEL_TRACES_SAMPLER: ${OTEL_TRACES_SAMPLER:-always_on}
+      OTEL_TRACES_SAMPLER_ARG: ${OTEL_TRACES_SAMPLER_ARG:-1}
+    expose:
+      - "8085"
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      <<: *app-health
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8085/ready"]
+    stop_grace_period: 20s
+
+  client:
+    image: contract-audit-client:local
+    build:
+      context: .
+      dockerfile: deploy/app/Dockerfile
+      target: client
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${CLIENT_PORT:-18080}:8080"
+    depends_on:
+      gateway:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/"]
+      <<: *app-health
+
+  admin:
+    image: contract-audit-admin:local
+    build:
+      context: .
+      dockerfile: deploy/app/Dockerfile
+      target: admin
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${ADMIN_PORT:-18081}:8080"
+    depends_on:
+      gateway:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/admin/"]
+      <<: *app-health
+
+  portal:
+    image: contract-audit-portal:local
+    build:
+      context: .
+      dockerfile: deploy/app/Dockerfile
+      target: portal
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${PORTAL_PORT:-18082}:8080"
+    depends_on:
+      gateway:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/portal/"]
+      <<: *app-health
+
+  otel-collector:
+    image: ${OTEL_COLLECTOR_IMAGE:-otel/opentelemetry-collector-contrib:0.140.0}
+    profiles: ["otel"]
+    restart: unless-stopped
+    command: ["--config=/etc/otelcol-contrib/config.yaml"]
+    volumes:
+      - ./deploy/app/otel-collector.yaml:/etc/otelcol-contrib/config.yaml:ro
+    expose:
+      - "4317"
+      - "4318"
+    stop_grace_period: 20s
+
+  migrate:
+    image: contract-audit-backend:local
+    build: *backend-build
+    profiles: ["migration"]
+    command: ["/app/migrate"]
+    environment:
+      APP_ENV: ${APP_ENV:-development}
+      DATABASE_SCHEMA: ${DATABASE_SCHEMA:-public}
+      SERVICE_DATABASE_ROLES: "true"
+      CORE_DATABASE_URL: ${CORE_DATABASE_URL:?Run make app-bootstrap}
+      DOCUMENT_DATABASE_URL: ${DOCUMENT_DATABASE_URL:?Run make app-bootstrap}
+      EXECUTION_DATABASE_URL: ${EXECUTION_DATABASE_URL:?Run make app-bootstrap}
+      MODEL_DATABASE_URL: ${MODEL_DATABASE_URL:?Run make app-bootstrap}
+      TOOL_DATABASE_URL: ${TOOL_DATABASE_URL:?Run make app-bootstrap}
+      MIGRATOR_DATABASE_URL: ${MIGRATOR_DATABASE_URL:?Run make app-bootstrap}
+      # The migration process must select the same database in its own APP_ENV
+      # slot (config.FromProcess); the compose default is APP_ENV=development, so
+      # only the development slot is set — setting two slots to the same database
+      # is refused as "reserved for another environment".
+      DEV_DATABASE_URL: ${MIGRATOR_DATABASE_URL:?Run make app-bootstrap}
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  app-data:
+  nats-data:

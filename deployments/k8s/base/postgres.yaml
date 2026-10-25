@@ -1,0 +1,63 @@
+apiVersion: barmancloud.cnpg.io/v1
+kind: ObjectStore
+metadata:
+  name: contract-audit-pg-backups
+  labels: {app.kubernetes.io/part-of: contract-audit}
+spec:
+  configuration:
+    destinationPath: s3://contract-audit-backups/production
+    endpointURL: https://independent-backup-s3.example.net
+    s3Credentials:
+      accessKeyId: {name: contract-audit-pg-backup-objectstore, key: ACCESS_KEY_ID}
+      secretAccessKey: {name: contract-audit-pg-backup-objectstore, key: SECRET_ACCESS_KEY}
+    data:
+      compression: gzip
+      jobs: 4
+    wal:
+      compression: gzip
+      maxParallel: 8
+  retentionPolicy: 30d
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: contract-audit-db
+  labels: {app.kubernetes.io/part-of: contract-audit}
+spec:
+  instances: 3
+  enablePDB: true
+  primaryUpdateStrategy: unsupervised
+  primaryUpdateMethod: switchover
+  storage:
+    size: 1Ti
+  walStorage:
+    size: 100Gi
+  affinity:
+    enablePodAntiAffinity: true
+    podAntiAffinityType: required
+    topologyKey: kubernetes.io/hostname
+  bootstrap:
+    initdb:
+      database: contract_audit_prod
+  resources:
+    requests: {cpu: "2", memory: 8Gi}
+    limits: {cpu: "4", memory: 16Gi}
+  plugins:
+    - name: barman-cloud.cloudnative-pg.io
+      isWALArchiver: true
+      parameters:
+        barmanObjectName: contract-audit-pg-backups
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: ScheduledBackup
+metadata:
+  name: contract-audit-db-daily
+  labels: {app.kubernetes.io/part-of: contract-audit}
+spec:
+  schedule: "0 0 3 * * *"
+  backupOwnerReference: cluster
+  cluster: contract-audit-db
+  immediate: false
+  method: plugin
+  pluginConfiguration:
+    name: barman-cloud.cloudnative-pg.io

@@ -1,0 +1,32 @@
+# Applied by deployments/local.py when IDENTITY_DIRECTORY_ROOT is configured.
+# Mount the dedicated directory, not one inode: atomic replacements must be visible.
+x-enterprise-identity: &enterprise-identity
+  environment:
+    IDENTITY_DIRECTORY_FILE: /run/contract-audit/identity/identity-directory.json
+  group_add:
+    - "${IDENTITY_DIRECTORY_GID:?Set the host identity directory read group}"
+  volumes:
+    - type: bind
+      source: ${IDENTITY_DIRECTORY_ROOT:?Set a dedicated private identity directory}
+      target: /run/contract-audit/identity
+      read_only: true
+      bind:
+        create_host_path: false
+
+services:
+  core-api:
+    <<: *enterprise-identity
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+  document-service:
+    <<: *enterprise-identity
+  audit-execution:
+    <<: *enterprise-identity
+  audit-worker:
+    <<: *enterprise-identity
+  model-gateway:
+    <<: *enterprise-identity
+  model-gateway-fixture:
+    <<: *enterprise-identity
+  tool-gateway:
+    <<: *enterprise-identity

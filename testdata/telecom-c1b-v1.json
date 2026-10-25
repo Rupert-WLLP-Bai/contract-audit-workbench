@@ -1,0 +1,130 @@
+{
+  "dataset_id": "telecom-c1b-v1",
+  "data_class": "synthetic demonstration only",
+  "template_id": "ent_telecom_dedicated_line_v1",
+  "template_version": "1.0.0",
+  "sha256_scope": "UTF-8 SHA-256 of canonical JSON for the complete dataset object without sha256 (recursively sorted object keys, compact separators, unescaped Unicode)",
+  "sha256": "6df79e105ab683a02f183d4cfd54d321a7209107d3629091560e87f19e425611",
+  "material_grammar": {
+    "encoding": "UTF-8",
+    "circuit_id": "LINE-001",
+    "sla_basis": "；统计周期：自然月；时区 Asia/Shanghai；公历 gregorian；故障口径 all_service_unavailability；无排除项。",
+    "approval_basis": "电路 LINE-001：审批依据，预付款上限 30%，预付款以合同总额为基础，含税。",
+    "amount_basis": "电路 LINE-001：合同总额 100000 元，含税。"
+  },
+  "scenarios": [
+    {
+      "id": "compatible",
+      "title": "C1-B 电信专线演示 · 符合",
+      "expected_relations": {
+        "ENT-TECH-BW-001": "compatible",
+        "ENT-TECH-SLA-001": "compatible",
+        "ENT-COM-ADV-001": "compatible"
+      },
+      "fields": {
+        "circuit_id": "LINE-001",
+        "bandwidth_mbps": "100",
+        "sla_percent": "99.9",
+        "sla_period": "calendar_month",
+        "sla_exclusions": "none",
+        "amount_cny": "100000",
+        "tax_basis": "inclusive",
+        "prepayment_percent": "20",
+        "customer": "示例政务服务中心",
+        "supplier": "示例通信服务有限公司"
+      },
+      "materials": [
+        {
+          "role": "procurement",
+          "filename": "telecom-procurement.txt",
+          "text": "政企专线采购依据\n电路 LINE-001：最低保障带宽 100 Mbit/s。\n电路 LINE-001：SLA 可用率 99.9%；统计周期：自然月；时区 Asia/Shanghai；公历 gregorian；故障口径 all_service_unavailability；无排除项。\n电路 LINE-001：合同总额 100000 元，含税。"
+        },
+        {
+          "role": "award",
+          "filename": "telecom-approval.txt",
+          "text": "电路 LINE-001：审批依据，预付款上限 30%，预付款以合同总额为基础，含税。"
+        },
+        {
+          "role": "attachment",
+          "filename": "telecom-sla-annex.txt",
+          "text": "电路 LINE-001：SLA 可用率 99.9%；统计周期：自然月；时区 Asia/Shanghai；公历 gregorian；故障口径 all_service_unavailability；无排除项。"
+        }
+      ]
+    },
+    {
+      "id": "conflict",
+      "title": "C1-B 电信专线演示 · 三项冲突",
+      "expected_relations": {
+        "ENT-TECH-BW-001": "conflict",
+        "ENT-TECH-SLA-001": "conflict",
+        "ENT-COM-ADV-001": "conflict"
+      },
+      "fields": {
+        "circuit_id": "LINE-001",
+        "bandwidth_mbps": "50",
+        "sla_percent": "99.5",
+        "sla_period": "calendar_month",
+        "sla_exclusions": "none",
+        "amount_cny": "100000",
+        "tax_basis": "inclusive",
+        "prepayment_percent": "40",
+        "customer": "示例政务服务中心",
+        "supplier": "示例通信服务有限公司"
+      },
+      "materials": [
+        {
+          "role": "procurement",
+          "filename": "telecom-procurement.txt",
+          "text": "政企专线采购依据\n电路 LINE-001：最低保障带宽 100 Mbit/s。\n电路 LINE-001：SLA 可用率 99.9%；统计周期：自然月；时区 Asia/Shanghai；公历 gregorian；故障口径 all_service_unavailability；无排除项。\n电路 LINE-001：合同总额 100000 元，含税。"
+        },
+        {
+          "role": "award",
+          "filename": "telecom-approval.txt",
+          "text": "电路 LINE-001：审批依据，预付款上限 30%，预付款以合同总额为基础，含税。"
+        },
+        {
+          "role": "attachment",
+          "filename": "telecom-sla-annex.txt",
+          "text": "电路 LINE-001：SLA 可用率 99.9%；统计周期：自然月；时区 Asia/Shanghai；公历 gregorian；故障口径 all_service_unavailability；无排除项。"
+        }
+      ]
+    },
+    {
+      "id": "insufficient",
+      "title": "C1-B 电信专线演示 · 证据不足",
+      "expected_relations": {
+        "ENT-TECH-BW-001": "insufficient",
+        "ENT-TECH-SLA-001": "insufficient",
+        "ENT-COM-ADV-001": "insufficient"
+      },
+      "fields": {
+        "circuit_id": "LINE-002",
+        "bandwidth_mbps": "50",
+        "sla_percent": "99.9",
+        "sla_period": "calendar_month",
+        "sla_exclusions": "none",
+        "amount_cny": "100000",
+        "tax_basis": "inclusive",
+        "prepayment_percent": "20",
+        "customer": "示例政务服务中心",
+        "supplier": "示例通信服务有限公司"
+      },
+      "draft_override": {
+        "filename": "telecom-insufficient-draft.txt",
+        "text": "拟签合同\n电路 LINE-002：最低保障带宽 50 Mbit/s。\n电路 LINE-002：SLA 可用率 99.9%；时区 Asia/Shanghai；公历 gregorian；故障口径 all_service_unavailability；无排除项。\n电路 LINE-002：预付款比例 20%，预付款以合同总额为基础，含税。\n电路 LINE-002：合同总额 100000 元，含税。"
+      },
+      "materials": [
+        {
+          "role": "procurement",
+          "filename": "telecom-procurement.txt",
+          "text": "政企专线采购依据\n电路 LINE-001：最低保障带宽 100 Mbit/s。\n电路 LINE-001：SLA 可用率 99.9%；统计周期：自然月；时区 Asia/Shanghai；公历 gregorian；故障口径 all_service_unavailability；无排除项。\n电路 LINE-001：合同总额 100000 元，含税。"
+        },
+        {
+          "role": "attachment",
+          "filename": "telecom-sla-annex.txt",
+          "text": "电路 LINE-001：SLA 可用率 99.9%；统计周期：自然月；时区 Asia/Shanghai；公历 gregorian；故障口径 all_service_unavailability；无排除项。"
+        }
+      ]
+    }
+  ]
+}

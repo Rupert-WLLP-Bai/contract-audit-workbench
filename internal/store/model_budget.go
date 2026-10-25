@@ -1,0 +1,297 @@
+package store
+
+import (
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"math"
+	"strings"
+	"time"
+
+	"contractaudit/internal/access"
+	"contractaudit/internal/accounts"
+	"contractaudit/internal/model"
+	"github.com/jackc/pgx/v5"
+)
+
+const modelBudgetSchemaSQL = `
+CREATE TABLE IF NOT EXISTS model_call_leases (
+	lease_id text PRIMARY KEY,
+	tenant_id text NOT NULL,
+	actor_id text NOT NULL,
+	case_id text NOT NULL,
+	run_id text NOT NULL,
+	attempt_id text NOT NULL,
+	caller_identity text NOT NULL CHECK (caller_identity IN ('worker','document')),
+	model_ref text NOT NULL,
+	attempt_number integer NOT NULL CHECK (attempt_number > 0),
+	reserved_input_tokens bigint NOT NULL CHECK (reserved_input_tokens >= 0),
+	reserved_output_tokens bigint NOT NULL CHECK (reserved_output_tokens >= 0),
+	acquired_at timestamptz NOT NULL,
+	expires_at timestamptz NOT NULL
+);
+ALTER TABLE model_call_leases ADD COLUMN IF NOT EXISTS attempt_number integer NOT NULL DEFAULT 1;
+ALTER TABLE model_call_leases ADD COLUMN IF NOT EXISTS reserved_input_tokens bigint NOT NULL DEFAULT 0;
+ALTER TABLE model_call_leases ADD COLUMN IF NOT EXISTS reserved_output_tokens bigint NOT NULL DEFAULT 0;
+CREATE INDEX IF NOT EXISTS model_call_leases_expiry ON model_call_leases (expires_at);
+CREATE INDEX IF NOT EXISTS model_call_leases_tenant_expiry ON model_call_leases (tenant_id, expires_at);
+CREATE INDEX IF NOT EXISTS model_call_leases_acquired ON model_call_leases (acquired_at);
+CREATE TABLE IF NOT EXISTS model_usage (
+	call_id text PRIMARY KEY,
+	lease_id text NOT NULL UNIQUE,
+	tenant_id text NOT NULL,
+	actor_id text NOT NULL,
+	case_id text NOT NULL,
+	run_id text NOT NULL,
+	attempt_id text NOT NULL,
+	caller_identity text NOT NULL CHECK (caller_identity IN ('worker','document')),
+	model_ref text NOT NULL,
+	attempt_number integer NOT NULL,
+	call_status text NOT NULL,
+	error_code text NOT NULL DEFAULT '',
+	usage_source text,
+	input_tokens bigint,
+	output_tokens bigint,
+	total_tokens bigint,
+	occurred_at timestamptz NOT NULL,
+	reserved_at timestamptz,
+	reserved_input_tokens bigint,
+	reserved_output_tokens bigint,
+	charged_tokens bigint,
+	budget_released boolean NOT NULL DEFAULT false,
+	settlement_fingerprint text
+);
+ALTER TABLE model_usage ADD COLUMN IF NOT EXISTS reserved_at timestamptz;
+ALTER TABLE model_usage ADD COLUMN IF NOT EXISTS reserved_input_tokens bigint;
+ALTER TABLE model_usage ADD COLUMN IF NOT EXISTS reserved_output_tokens bigint;
+ALTER TABLE model_usage ADD COLUMN IF NOT EXISTS charged_tokens bigint;
+ALTER TABLE model_usage ADD COLUMN IF NOT EXISTS budget_released boolean NOT NULL DEFAULT false;
+ALTER TABLE model_usage ADD COLUMN IF NOT EXISTS settlement_fingerprint text;
+CREATE INDEX IF NOT EXISTS model_usage_occurred ON model_usage (occurred_at);
+CREATE INDEX IF NOT EXISTS model_usage_tenant_occurred ON model_usage (tenant_id, occurred_at);
+CREATE INDEX IF NOT EXISTS model_usage_reserved_at ON model_usage (reserved_at);
+`
+
+var ErrModelBudgetExceeded = errors.New("model call budget is exhausted")
+var ErrModelScopeUnavailable = errors.New("current model execution scope is unavailable")
+var ErrModelCallSettlementConflict = errors.New("model call settlement conflicts with its first result")
+
+type ModelBudgetLimits struct {
+	GlobalMaxInFlight         int
+	TenantMaxInFlight         int
+	GlobalCallsPerMinute      int
+	TenantCallsPerMinute      int
+	GlobalTokensPerMinute     int64
+	TenantTokensPerMinute     int64
+	MaxInputTokenReservation  int64
+	MaxOutputTokenReservation int64
+	LeaseDuration             time.Duration
+}
+
+type ModelCallLease struct {
+	ID             string
+	TenantID       string
+	ActorID        string
+	CaseID         string
+	RunID          string
+	AttemptID      string
+	CallerIdentity string
+	ModelRef       string
+	AttemptNumber  int
+}
+
+type ModelCallResult struct {
+	Status             string
+	ErrorCode          string
+	Usage              *model.TokenUsage
+	PreDispatchFailure bool
+	OccurredAt         time.Time
+}
+
+// ReserveModelCall validates the delegated identity and reserves one physical
+// call, its conservative token upper bound, and global and tenant quotas in one
+// PostgreSQL transaction.
+func (s *Store) ReserveModelCall(ctx context.Context, caller string, scope model.DelegatedScope, modelRef string, attemptNumber int, inputUpperBound, outputUpperBound int64, limits ModelBudgetLimits) (ModelCallLease, error) {
+	if ctx == nil || strings.TrimSpace(modelRef) == "" || attemptNumber < 1 || limits.GlobalMaxInFlight < 1 || limits.TenantMaxInFlight < 1 ||
+		limits.GlobalCallsPerMinute < 1 || limits.TenantCallsPerMinute < 1 || limits.GlobalTokensPerMinute < 1 || limits.TenantTokensPerMinute < 1 ||
+		limits.MaxInputTokenReservation < 1 || limits.MaxOutputTokenReservation < 1 || inputUpperBound < 1 || outputUpperBound < 1 ||
+		inputUpperBound > limits.MaxInputTokenReservation || outputUpperBound > limits.MaxOutputTokenReservation || inputUpperBound > math.MaxInt64-outputUpperBound || limits.LeaseDuration <= 0 {
+		return ModelCallLease{}, errors.New("model budget configuration or token reservation is invalid")
+	}
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return ModelCallLease{}, err
+	}
+	defer tx.Rollback(ctx)
+	if err := setLocalScope(ctx, tx, dbScope{ActorID: "model-gateway", Role: "model", TenantID: scope.TenantID, OrgID: scope.OrgID}); err != nil {
+		return ModelCallLease{}, err
+	}
+	if err := authorizeModelScope(ctx, tx, caller, scope); err != nil {
+		return ModelCallLease{}, err
+	}
+	id, err := newID("ml_")
+	if err != nil {
+		return ModelCallLease{}, err
+	}
+	lease := ModelCallLease{
+		ID: id, TenantID: scope.TenantID, ActorID: scope.ActorID, CaseID: scope.CaseID,
+		RunID: scope.RunID, AttemptID: scope.AttemptID, CallerIdentity: caller, ModelRef: modelRef, AttemptNumber: attemptNumber,
+	}
+	var reserved bool
+	query := `SELECT ` + pgx.Identifier{s.schema, "model_budget_reserve"}.Sanitize() + `($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)`
+	if err := tx.QueryRow(ctx, query,
+		lease.ID, lease.TenantID, lease.ActorID, lease.CaseID, lease.RunID, lease.AttemptID,
+		lease.CallerIdentity, lease.ModelRef, lease.AttemptNumber,
+		limits.GlobalMaxInFlight, limits.TenantMaxInFlight, limits.GlobalCallsPerMinute, limits.TenantCallsPerMinute,
+		limits.GlobalTokensPerMinute, limits.TenantTokensPerMinute, inputUpperBound, outputUpperBound,
+		int64(math.Ceil(float64(limits.LeaseDuration)/float64(time.Millisecond))),
+	).Scan(&reserved); err != nil {
+		return ModelCallLease{}, err
+	}
+	if !reserved {
+		if err := tx.Commit(ctx); err != nil {
+			return ModelCallLease{}, err
+		}
+		return ModelCallLease{}, ErrModelBudgetExceeded
+	}
+	if err := authorizeModelScope(ctx, tx, caller, scope); err != nil {
+		return ModelCallLease{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return ModelCallLease{}, err
+	}
+	return lease, nil
+}
+
+// FinishModelCall writes one immutable usage result and releases its inflight
+// lease atomically. Repeating the identical result succeeds; a conflicting
+// second result is rejected. A zero-token usage remains unknown and is charged
+// at the reserved upper bound unless pre-dispatch failure is proven.
+func (s *Store) FinishModelCall(ctx context.Context, lease ModelCallLease, result ModelCallResult) error {
+	if ctx == nil || lease.ID == "" || result.Status != "completed" && result.Status != "failed" ||
+		result.PreDispatchFailure && (result.Status != "failed" || result.Usage != nil) {
+		return errors.New("model call result is invalid")
+	}
+	if result.Usage != nil {
+		for _, value := range []*int64{result.Usage.InputTokens, result.Usage.OutputTokens, result.Usage.TotalTokens} {
+			if value != nil && *value < 0 {
+				return errors.New("model call usage cannot be negative")
+			}
+		}
+	}
+	occurredAt := result.OccurredAt
+	if occurredAt.IsZero() {
+		occurredAt = time.Now().UTC()
+	}
+	var source any
+	var input, output, total any
+	if result.Usage != nil {
+		if result.Usage.Source != "" {
+			source = result.Usage.Source
+		}
+		if result.Usage.InputTokens != nil {
+			input = *result.Usage.InputTokens
+		}
+		if result.Usage.OutputTokens != nil {
+			output = *result.Usage.OutputTokens
+		}
+		if result.Usage.TotalTokens != nil {
+			total = *result.Usage.TotalTokens
+		}
+	}
+	fingerprintPayload, err := json.Marshal(struct {
+		Status             string
+		ErrorCode          string
+		Usage              *model.TokenUsage
+		PreDispatchFailure bool
+	}{result.Status, result.ErrorCode, result.Usage, result.PreDispatchFailure})
+	if err != nil {
+		return err
+	}
+	fingerprintSum := sha256.Sum256(fingerprintPayload)
+	fingerprint := hex.EncodeToString(fingerprintSum[:])
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+	if err := setLocalScope(ctx, tx, dbScope{ActorID: "model-gateway", Role: "model", TenantID: lease.TenantID}); err != nil {
+		return err
+	}
+	query := `SELECT ` + pgx.Identifier{s.schema, "model_budget_finish"}.Sanitize() + `($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)`
+	var finished bool
+	if err := tx.QueryRow(ctx, query,
+		lease.ID, lease.TenantID, lease.ActorID, lease.CaseID, lease.RunID, lease.AttemptID, lease.CallerIdentity, lease.ModelRef,
+		lease.AttemptNumber, result.Status, result.ErrorCode, source, input, output, total, occurredAt, result.PreDispatchFailure, fingerprint,
+	).Scan(&finished); err != nil {
+		return err
+	}
+	if !finished {
+		return ErrModelCallSettlementConflict
+	}
+	return tx.Commit(ctx)
+}
+
+func authorizeModelScope(ctx context.Context, tx pgx.Tx, caller string, scope model.DelegatedScope) error {
+	if (caller == "worker" && scope.Kind != "execution") || (caller == "document" && scope.Kind != "document") ||
+		(caller != "worker" && caller != "document") || scope.TenantID == "" || scope.OrgID == "" || scope.CaseID == "" || scope.ActorID == "" {
+		return ErrModelScopeUnavailable
+	}
+	var caseItem Case
+	var memberJSON string
+	if scope.JobID != "" {
+		if scope.RunID == "" || scope.AttemptID == "" || scope.WorkerID == "" || scope.Generation <= 0 ||
+			(caller == "document" && (scope.DocumentID == "" || scope.ParseSelectionID == "")) {
+			return ErrModelScopeUnavailable
+		}
+		query := `SELECT c.id,c.tenant_id,c.org_id,c.owner_id,c.member_ids
+			FROM worker_jobs j
+			JOIN review_runs r ON r.id=j.run_id
+			JOIN review_attempts a ON a.id=j.attempt_id AND a.run_id=j.run_id
+			JOIN cases c ON c.id=j.case_id
+			WHERE j.id=$1 AND j.worker_id=$2 AND j.generation=$3 AND j.tenant_id=$4 AND j.org_id=$5 AND j.case_id=$6
+			AND j.run_id=$7 AND j.attempt_id=$8 AND j.actor_id=$9 AND j.state='running' AND j.lease_until>clock_timestamp()
+			AND r.case_id=j.case_id AND r.state='running' AND a.actor_id=j.actor_id AND a.state IN ('accepted','running')`
+		args := []any{scope.JobID, scope.WorkerID, scope.Generation, scope.TenantID, scope.OrgID, scope.CaseID, scope.RunID, scope.AttemptID, scope.ActorID}
+		if caller == "document" {
+			query += ` AND EXISTS (SELECT 1 FROM review_attempt_parse_selections p
+				JOIN documents d ON d.id=p.document_id AND d.case_id=c.id AND d.tenant_id=c.tenant_id AND d.org_id=c.org_id
+				WHERE p.attempt_id=a.id AND p.run_id=r.id AND p.document_id=$10 AND p.parsed_document_id=$11)`
+			args = append(args, scope.DocumentID, scope.ParseSelectionID)
+		}
+		if err := tx.QueryRow(ctx, query, args...).Scan(&caseItem.ID, &caseItem.TenantID, &caseItem.OwnerOrgID, &caseItem.OwnerID, &memberJSON); err != nil {
+			return ErrModelScopeUnavailable
+		}
+	} else {
+		if caller != "document" || scope.DocumentID == "" || scope.RunID != "" || scope.AttemptID != "" {
+			return ErrModelScopeUnavailable
+		}
+		if err := tx.QueryRow(ctx, `SELECT c.id,c.tenant_id,c.org_id,c.owner_id,c.member_ids
+			FROM cases c JOIN documents d ON d.case_id=c.id
+			WHERE c.id=$1 AND c.tenant_id=$2 AND c.org_id=$3 AND d.id=$4 AND d.tenant_id=c.tenant_id AND d.org_id=c.org_id`,
+			scope.CaseID, scope.TenantID, scope.OrgID, scope.DocumentID).
+			Scan(&caseItem.ID, &caseItem.TenantID, &caseItem.OwnerOrgID, &caseItem.OwnerID, &memberJSON); err != nil {
+			return ErrModelScopeUnavailable
+		}
+	}
+	if caseItem.TenantID != scope.TenantID || caseItem.OwnerOrgID != scope.OrgID || caseItem.ID != scope.CaseID {
+		return ErrModelScopeUnavailable
+	}
+	if err := json.Unmarshal([]byte(memberJSON), &caseItem.MemberIDs); err != nil {
+		return ErrModelScopeUnavailable
+	}
+	user, err := trustedUser(accounts.User{ID: scope.ActorID})
+	if err != nil || accounts.Tenant(user) != scope.TenantID {
+		return ErrModelScopeUnavailable
+	}
+	action := access.Review
+	if scope.JobID == "" {
+		action = access.Manage
+	}
+	if !authorizeCase(caseItem, user, action) {
+		return ErrModelScopeUnavailable
+	}
+	return nil
+}

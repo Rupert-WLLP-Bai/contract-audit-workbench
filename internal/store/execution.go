@@ -1,0 +1,2194 @@
+package store
+
+import (
+	"context"
+	"crypto/sha256"
+	"database/sql"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"slices"
+	"sort"
+	"sync"
+	"time"
+
+	"contractaudit/internal/access"
+	"contractaudit/internal/accounts"
+	"contractaudit/internal/docir"
+	"contractaudit/internal/engine"
+	"contractaudit/internal/execution"
+	"contractaudit/internal/fault"
+	"contractaudit/internal/model"
+
+	"github.com/jackc/pgx/v5"
+)
+
+const (
+	maxConcurrentReviews = 2
+	reviewExecutionLimit = 90 * time.Second
+)
+
+var (
+	errAttemptTerminal    = errors.New("review attempt is already terminal")
+	errAttemptMissing     = errors.New("review attempt does not exist")
+	errModelNotConfigured = errors.New("model is not configured")
+)
+
+func (s *Store) StartReview(ctx context.Context, user accounts.User, caseID string) (string, error) {
+	return s.startReview(ctx, user, caseID, false)
+}
+
+func (s *Store) StartReviewAsync(ctx context.Context, user accounts.User, caseID string) (JobAcceptance, error) {
+	runID, err := s.startReview(ctx, user, caseID, true)
+	if err != nil {
+		return JobAcceptance{}, err
+	}
+	st, err := s.snapshotAs(user)
+	if err != nil {
+		return JobAcceptance{}, err
+	}
+	attempt, ok := st.latestAttempt(runID)
+	if !ok {
+		return JobAcceptance{}, fault.Conflict("审查任务缺少执行尝试")
+	}
+	for _, job := range st.Jobs {
+		if job.AttemptID == attempt.ID {
+			return JobAcceptance{RunID: runID, AttemptID: attempt.ID, JobID: job.ID}, nil
+		}
+	}
+	return JobAcceptance{}, fault.Conflict("审查任务没有持久队列记录")
+}
+
+func (s *Store) startReview(ctx context.Context, user accounts.User, caseID string, durable bool) (string, error) {
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
+	if s.ReadOnly() {
+		return "", fault.New(503, "read_only", "只读模式下不能发起审查")
+	}
+	if !accounts.CanStart(user.Role) {
+		return "", fault.Forbidden("当前角色不能发起审查")
+	}
+	seen, err := s.snapshotAs(user)
+	if err != nil {
+		return "", err
+	}
+	if _, err := s.writableCase(&seen, user, caseID, access.Review); err != nil {
+		return "", err
+	}
+	current := currentDocuments(seen.documents(caseID))
+	if len(current) < 2 {
+		return "", fault.Invalid("至少需要两份材料才能开始审查")
+	}
+	reviewDocumentIDs := documentIDs(current)
+	if err := s.acquireParseLock(ctx); err != nil {
+		return "", err
+	}
+	parseLocked := true
+	defer func() {
+		if parseLocked {
+			s.releaseParseLock()
+		}
+	}()
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
+	seen, err = s.snapshotAs(user)
+	if err != nil {
+		return "", err
+	}
+	current = currentDocuments(seen.documents(caseID))
+	if !sameDocumentSet(documentIDs(current), reviewDocumentIDs) {
+		return "", fault.Conflict("案件材料刚被更新，请重新发起审查")
+	}
+	models := s.models
+	frozenDocs, selections, err := s.acceptanceParsePlan(ctx, seen, current, models)
+	if err != nil {
+		return "", err
+	}
+	if !parsedSelectionCurrent(seen, frozenDocs) {
+		return "", fault.Conflict("材料解析选择刚被更新，请重新发起审查")
+	}
+	seen, err = s.snapshotAs(user)
+	if err != nil {
+		return "", err
+	}
+	if !sameDocumentSet(documentIDs(currentDocuments(seen.documents(caseID))), reviewDocumentIDs) || !parsedSelectionCurrent(seen, frozenDocs) {
+		return "", fault.Conflict("材料解析选择刚被更新，请重新发起审查")
+	}
+	caseItem, ok := seen.caseByID(caseID)
+	if !ok {
+		return "", fault.NotFound("没有找到对应记录")
+	}
+	if err := businessWritable(caseItem); err != nil {
+		return "", err
+	}
+	// GOV-03: the governed pack is selected inside the acceptance transaction, not
+	// in a separate read, so the pack that is frozen is the pack the acceptance
+	// write saw under its own locks. The planner configuration is frozen in the
+	// same signature so a retry can never switch prompt or limits.
+	plannerConfiguration, err := s.plannerConfigurationForAcceptance(signatureModelConfigurationID(models))
+	if err != nil {
+		return "", err
+	}
+	acceptanceTime := time.Now().UTC()
+	var activePack *ActiveRulePack
+	if isGovernedReviewCase(caseItem) {
+		activePack, err = s.selectGovernedRulePack(ctx, caseItem)
+		if err != nil {
+			return "", err
+		}
+	}
+	plannerPayload, payloadErr := json.Marshal(plannerConfiguration)
+	if payloadErr != nil {
+		return "", payloadErr
+	}
+	signature := s.currentSignatureWithRulePack(reviewDocumentIDs, frozenDocs, activePack, telecomCompilerRefForCase(caseItem), plannerConfiguration.ConfigurationID, plannerPayload)
+	signature, err = withCloudPolicySnapshot(seen, caseItem, signature)
+	if err != nil {
+		return "", err
+	}
+	if run, ok := seen.latestRun(caseID); ok {
+		previous := seen.snapshotOf(run.ID)
+		if sameRunSignature(previous, signature) && sameRunCompilerIdentity(previous, signature) && (!durable || hasJobForRun(seen, run.ID)) {
+			return run.ID, nil
+		}
+	}
+	if !durable && !s.reserveExecution() {
+		return "", &fault.Error{Status: 503, Code: "execution_capacity", Message: "审查执行容量已满，请稍后重试", Retryable: true}
+	}
+	jobID, outboxID := "", ""
+	if durable {
+		jobID, err = newID("job_")
+		if err != nil {
+			return "", err
+		}
+		outboxID, err = newID("out_")
+		if err != nil {
+			return "", err
+		}
+	}
+	runID, err := newID("run_")
+	if err != nil {
+		if !durable {
+			s.releaseExecution()
+		}
+		return "", err
+	}
+	attemptID, err := newID("att_")
+	if err != nil {
+		if !durable {
+			s.releaseExecution()
+		}
+		return "", err
+	}
+	acceptedAt := stamp()
+	attempt := Attempt{
+		ID: attemptID, RunID: runID, Ordinal: 1, ActorID: user.ID, State: "accepted", AcceptedAt: acceptedAt,
+		HistoryKind: "preparing",
+	}
+	var executionCase Case
+	created := false
+	// The hook selects the applicable governed pack inside the acceptance
+	// transaction, after the case lock, and pins exactly what this run freezes.
+	hook := func(tx pgx.Tx) error {
+		if !isGovernedReviewCase(caseItem) {
+			return nil
+		}
+		selected, err := selectActiveRulePackTx(ctx, tx, caseItem.TenantID, caseItem.BusinessLine, caseItem.Scenario, "service", acceptanceTime)
+		if err != nil {
+			return err
+		}
+		if selected == nil && isCloudServicesCase(caseItem) {
+			return fault.Conflict("云服务审查必须绑定已发布的云服务治理规则包")
+		}
+		if selected != nil {
+			if err := requireGovernedCapabilitiesForCase(caseItem, selected.Snapshot); err != nil {
+				return err
+			}
+		}
+		activePack = selected
+		signature = s.currentSignatureWithRulePack(reviewDocumentIDs, frozenDocs, activePack, telecomCompilerRefForCase(caseItem), plannerConfiguration.ConfigurationID, plannerPayload)
+		signature, err = withCloudPolicySnapshot(seen, caseItem, signature)
+		if err != nil {
+			return err
+		}
+		return nil
+	}
+	err = s.updateCaseAsWith(user, caseID, hook, func(st *state) error {
+		currentCase, err := s.writableCase(st, user, caseID, access.Review)
+		if err != nil {
+			return err
+		}
+		executionCase = *currentCase
+		if !sameDocumentSet(documentIDs(currentDocuments(st.documents(caseID))), reviewDocumentIDs) || !parsedSelectionCurrent(*st, frozenDocs) {
+			return fault.Conflict("材料解析选择刚被更新，请重新发起审查")
+		}
+		if run, ok := st.latestRun(caseID); ok {
+			previous := st.snapshotOf(run.ID)
+			if sameRunSignature(previous, signature) && sameRunCompilerIdentity(previous, signature) && (!durable || hasJobForRun(*st, run.ID)) {
+				runID = run.ID
+				return nil
+			}
+		}
+		now := acceptedAt
+		st.Runs = append(st.Runs, Run{ID: runID, CaseID: caseID, State: "accepted", ModelRef: signature.ModelRef, CreatedAt: now, UpdatedAt: now})
+		if err := sealSnapshot(st, runID, signature); err != nil {
+			return err
+		}
+		// The accepted attempt carries the exact frozen pack bytes and planner
+		// configuration, so the worker never resolves latest.
+		attempt.RulePackSnapshot = append(json.RawMessage(nil), signature.RulePackSnapshot...)
+		attempt.RulePackHash = signature.RulePackHash
+		attempt.RulePackSnapshotDigest = signature.RulePackDigest
+		attempt.RulePackCompilerRef = signature.RulePackCompilerRef
+		attempt.RulePackID = signature.RulePackID
+		attempt.RulePackVersion = signature.RulePackVersion
+		attempt.PlannerConfigurationID = signature.PlannerConfigurationID
+		attempt.PlannerConfiguration = append(json.RawMessage(nil), signature.PlannerConfiguration...)
+		if activePack != nil {
+			attempt.RulePackPointerRevision = activePack.PointerRevision
+		}
+		st.Attempts = append(st.Attempts, attempt)
+		if durable {
+			caseItem, ok := st.caseByID(caseID)
+			if !ok {
+				return fault.NotFound("没有找到对应记录")
+			}
+			acceptance := JobAcceptance{RunID: runID, AttemptID: attemptID, JobID: jobID}
+			payload, err := json.Marshal(acceptance)
+			if err != nil {
+				return err
+			}
+			st.Jobs = append(st.Jobs, Job{ID: jobID, TenantID: caseItem.TenantID, OrgID: caseItem.OwnerOrgID, CaseID: caseID, RunID: runID, AttemptID: attemptID, ActorID: user.ID, Kind: "review", State: "queued", CreatedAt: acceptedAt, UpdatedAt: acceptedAt})
+			st.Outbox = append(st.Outbox, OutboxRecord{ID: outboxID, JobID: jobID, TenantID: caseItem.TenantID, OrgID: caseItem.OwnerOrgID, CaseID: caseID, EventType: "review.accepted", Payload: string(payload), State: "pending", CreatedAt: acceptedAt})
+		}
+		for _, selection := range selections {
+			selection.AttemptID = attemptID
+			selection.RunID = runID
+			st.AttemptParseSelections = append(st.AttemptParseSelections, selection)
+		}
+		st.ExecutionEvents = append(st.ExecutionEvents, acceptedEvent(attempt))
+		if err := appendAudit(st, runID, user.ID, "review_started", []string{caseID}); err != nil {
+			return err
+		}
+		appendRunEvent(st, runID, "accepted")
+		activityID, err := newID("act_")
+		if err != nil {
+			return err
+		}
+		summary := "开始了一次审查"
+		if _, ok := st.previousRun(Run{ID: runID, CaseID: caseID}); ok {
+			summary = "开始了一次修改稿复审"
+		}
+		st.Activity = append(st.Activity, Activity{ID: activityID, CaseID: caseID, At: now, Summary: summary})
+		created = true
+		return nil
+	})
+	s.releaseParseLock()
+	parseLocked = false
+	if err != nil || !created {
+		if !durable {
+			s.releaseExecution()
+		}
+		return runID, err
+	}
+	if !durable {
+		s.launchAttempt(runID, attemptID, models, executionCase, user.ID)
+	}
+	return runID, nil
+}
+
+func (s *Store) Retry(ctx context.Context, user accounts.User, caseID, runID string) error {
+	return s.retry(ctx, user, caseID, runID, false)
+}
+
+func (s *Store) RetryAsync(ctx context.Context, user accounts.User, caseID, runID string) (JobAcceptance, error) {
+	if err := s.retry(ctx, user, caseID, runID, true); err != nil {
+		return JobAcceptance{}, err
+	}
+	st, err := s.snapshotAs(user)
+	if err != nil {
+		return JobAcceptance{}, err
+	}
+	attempt, ok := st.latestAttempt(runID)
+	if !ok {
+		return JobAcceptance{}, fault.Conflict("重试任务缺少执行尝试")
+	}
+	for _, job := range st.Jobs {
+		if job.AttemptID == attempt.ID {
+			return JobAcceptance{RunID: runID, AttemptID: attempt.ID, JobID: job.ID}, nil
+		}
+	}
+	return JobAcceptance{}, fault.Conflict("重试任务没有持久队列记录")
+}
+
+func (s *Store) retry(ctx context.Context, user accounts.User, caseID, runID string, durable bool) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if s.ReadOnly() {
+		return fault.New(503, "read_only", "只读模式下不能重试审查")
+	}
+	if !accounts.CanStart(user.Role) {
+		return fault.Forbidden("当前角色不能重试审查")
+	}
+	seen, err := s.snapshotAs(user)
+	if err != nil {
+		return err
+	}
+	if _, err := s.visibleCase(&seen, user, caseID); err != nil {
+		return err
+	}
+	run, ok := seen.latestRun(caseID)
+	if !ok || run.ID != runID {
+		return fault.NotFound("没有找到对应记录")
+	}
+	caseItem, ok := seen.caseByID(caseID)
+	if !ok {
+		return fault.NotFound("没有找到对应记录")
+	}
+	frozen := seen.snapshotOf(runID)
+	currentSignature := withFrozenGovernance(currentSignatureFor(frozen.DocumentIDs, nil, s.models, telecomCompilerRefForCase(caseItem)), frozen)
+	if !sameRunConfiguration(frozen, currentSignature) || !sameRunCompilerIdentity(frozen, currentSignature) {
+		return fault.Conflict("规则或模型配置已变更，请发起新的审查以保留原运行快照")
+	}
+	previousAttempt, ok := seen.latestAttempt(runID)
+	if !ok {
+		return fault.Conflict("历史运行没有冻结输入，不能安全重试；请发起新的审查")
+	}
+	if attemptActive(previousAttempt.State) {
+		return nil
+	}
+	input, ok := seen.attemptInput(previousAttempt.ID)
+	if !ok || previousAttempt.HistoryKind != "frozen" || !attemptSelectionsMatchFrozen(seen.parseSelectionsForAttempt(previousAttempt.ID), input.Documents) {
+		return fault.Conflict("历史运行来源不足，不能安全重试；请发起新的审查")
+	}
+	if err := s.verifyFrozenDocuments(seen, input.Documents); err != nil {
+		return fault.Conflict("冻结输入完整性校验失败，不能安全重试")
+	}
+	if !s.currentParserConfigurationMatches(seen, input.Documents) || !frozenInputMatchesSnapshot(frozen, input.Documents) {
+		return fault.Conflict("解析配置或冻结引用已变更，不能安全重试；请发起新的审查")
+	}
+	inputHash, err := frozenInputHash(frozen, input.Documents)
+	if err != nil || inputHash != input.InputHash {
+		return fault.Conflict("冻结输入摘要校验失败，不能安全重试")
+	}
+	if !durable && !s.reserveExecution() {
+		return &fault.Error{Status: 503, Code: "execution_capacity", Message: "审查执行容量已满，请稍后重试", Retryable: true}
+	}
+	jobID, outboxID := "", ""
+	if durable {
+		jobID, err = newID("job_")
+		if err != nil {
+			return err
+		}
+		outboxID, err = newID("out_")
+		if err != nil {
+			return err
+		}
+	}
+	attemptID, err := newID("att_")
+	if err != nil {
+		if !durable {
+			s.releaseExecution()
+		}
+		return err
+	}
+	acceptedAt := stamp()
+	models := s.models
+	created := false
+	var executionCase Case
+	err = s.updateCaseAs(user, caseID, func(st *state) error {
+		currentCase, err := s.writableCase(st, user, caseID, access.Review)
+		if err != nil {
+			return err
+		}
+		executionCase = *currentCase
+		latestRun, ok := st.latestRun(caseID)
+		if !ok || latestRun.ID != runID {
+			return fault.NotFound("没有找到对应记录")
+		}
+		currentSignature := withFrozenGovernance(currentSignatureFor(frozen.DocumentIDs, nil, s.models, telecomCompilerRefForCase(*currentCase)), frozen)
+		if !sameRunConfiguration(st.snapshotOf(runID), frozen) || !sameRunConfiguration(frozen, currentSignature) ||
+			!sameRunCompilerIdentity(frozen, currentSignature) || !s.currentParserConfigurationMatches(*st, input.Documents) {
+			return fault.Conflict("规则或模型配置已变更，请发起新的审查以保留原运行快照")
+		}
+		last, ok := st.latestAttempt(runID)
+		if !ok {
+			return fault.Conflict("历史运行没有冻结输入，不能安全重试；请发起新的审查")
+		}
+		if attemptActive(last.State) {
+			return nil
+		}
+		frozenInput, ok := st.attemptInput(last.ID)
+		if !ok || last.HistoryKind != "frozen" || frozenInput.InputHash != input.InputHash || !frozenInputMatchesSnapshot(frozen, frozenInput.Documents) ||
+			!attemptSelectionsMatchFrozen(st.parseSelectionsForAttempt(last.ID), frozenInput.Documents) {
+			return fault.Conflict("运行冻结输入刚被更新，不能安全重试")
+		}
+		if err := s.verifyFrozenDocuments(*st, frozenInput.Documents); err != nil {
+			return fault.Conflict("冻结输入完整性校验失败，不能安全重试")
+		}
+		retryOf := last.ID
+		attempt := Attempt{
+			ID: attemptID, RunID: runID, Ordinal: last.Ordinal + 1, ActorID: user.ID, RetryOfAttemptID: &retryOf,
+			State: "accepted", AcceptedAt: acceptedAt, HistoryKind: "frozen",
+			RulePackSnapshot: append([]byte(nil), last.RulePackSnapshot...), RulePackHash: last.RulePackHash,
+			RulePackSnapshotDigest: last.RulePackSnapshotDigest, RulePackCompilerRef: last.RulePackCompilerRef,
+			RulePackID: last.RulePackID, RulePackVersion: last.RulePackVersion,
+			RulePackPointerRevision: last.RulePackPointerRevision, PlannerConfigurationID: last.PlannerConfigurationID,
+			PlannerConfiguration: append(json.RawMessage(nil), last.PlannerConfiguration...),
+		}
+		st.Attempts = append(st.Attempts, attempt)
+		copyInput := frozenInput
+		copyInput.AttemptID = attemptID
+		st.AttemptInputs = append(st.AttemptInputs, copyInput)
+		for _, selection := range st.parseSelectionsForAttempt(last.ID) {
+			selection.AttemptID = attemptID
+			st.AttemptParseSelections = append(st.AttemptParseSelections, selection)
+		}
+		inputHash := copyInput.InputHash
+		for i := range st.Attempts {
+			if st.Attempts[i].ID == attemptID {
+				st.Attempts[i].InputHash = &inputHash
+			}
+		}
+		st.ExecutionEvents = append(st.ExecutionEvents, acceptedEvent(attempt))
+		if durable {
+			caseItem, ok := st.caseByID(caseID)
+			if !ok {
+				return fault.NotFound("没有找到对应记录")
+			}
+			payload, err := json.Marshal(JobAcceptance{RunID: runID, AttemptID: attemptID, JobID: jobID})
+			if err != nil {
+				return err
+			}
+			st.Jobs = append(st.Jobs, Job{ID: jobID, TenantID: caseItem.TenantID, OrgID: caseItem.OwnerOrgID, CaseID: caseID, RunID: runID, AttemptID: attemptID, ActorID: user.ID, Kind: "review", State: "queued", CreatedAt: acceptedAt, UpdatedAt: acceptedAt})
+			st.Outbox = append(st.Outbox, OutboxRecord{ID: outboxID, JobID: jobID, TenantID: caseItem.TenantID, OrgID: caseItem.OwnerOrgID, CaseID: caseID, EventType: "review.accepted", Payload: string(payload), State: "pending", CreatedAt: acceptedAt})
+		}
+		for i := range st.Runs {
+			if st.Runs[i].ID == runID {
+				st.Runs[i].State = "accepted"
+				st.Runs[i].PartialReason = ""
+				st.Runs[i].FailureMessage = ""
+				st.Runs[i].UpdatedAt = acceptedAt
+			}
+		}
+		if err := appendAudit(st, runID, user.ID, "review_retried", []string{caseID}); err != nil {
+			return err
+		}
+		appendRunEvent(st, runID, "accepted")
+		activityID, err := newID("act_")
+		if err != nil {
+			return err
+		}
+		st.Activity = append(st.Activity, Activity{ID: activityID, CaseID: caseID, At: acceptedAt, Summary: "按冻结输入重试了同一次审查"})
+		created = true
+		return nil
+	})
+	if err != nil || !created {
+		if !durable {
+			s.releaseExecution()
+		}
+		return err
+	}
+	if !durable {
+		s.launchAttempt(runID, attemptID, models, executionCase, user.ID)
+	}
+	return nil
+}
+
+func (s *Store) CancelReview(ctx context.Context, user accounts.User, caseID, runID string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if s.ReadOnly() {
+		return fault.New(503, "read_only", "只读模式下不能取消审查")
+	}
+	if !accounts.CanStart(user.Role) {
+		return fault.Forbidden("当前角色不能取消审查")
+	}
+	seen, err := s.snapshotAs(user)
+	if err != nil {
+		return err
+	}
+	if _, err := s.visibleCase(&seen, user, caseID); err != nil {
+		return err
+	}
+	resolve := func(st state) (Attempt, error) {
+		run, ok := st.latestRun(caseID)
+		if !ok || run.ID != runID {
+			return Attempt{}, fault.NotFound("没有找到对应记录")
+		}
+		attempt, ok := st.latestAttempt(runID)
+		if !ok {
+			return Attempt{}, fault.NotFound("没有找到对应记录")
+		}
+		return attempt, nil
+	}
+	attempt, err := resolve(seen)
+	if err != nil {
+		return err
+	}
+	if !attemptActive(attempt.State) {
+		return nil
+	}
+	// The update locks the attempt row, so it cannot interleave with a worker
+	// phase write or a late model event. A worker claim taken after the snapshot
+	// above fails the job generation CAS closed; retry once from fresh state
+	// before surfacing that conflict, because the user's cancel is still valid.
+	for retry := 0; ; retry++ {
+		if retry > 0 {
+			seen, err = s.snapshotAs(user)
+			if err != nil {
+				return err
+			}
+			attempt, err = resolve(seen)
+			if err != nil {
+				return err
+			}
+			if !attemptActive(attempt.State) {
+				return nil
+			}
+		}
+		if s.serviceOwner != "" {
+			// Distributed deployment: cancellation comes from the execution API
+			// instance, which usually shares no process with the worker, so it uses
+			// the trusted user plus fresh in-lock reads instead of a local claim.
+			err = s.cancelAttemptNarrow(context.Background(), user, caseID, runID, attempt.ID)
+			if errors.Is(err, errAttemptTerminal) {
+				err = nil
+			}
+		} else {
+			err = s.updateCaseAttemptAs(user, caseID, attempt.ID, func(st *state) error {
+				return s.cancelAttemptInState(st, user, caseID, runID, attempt)
+			})
+		}
+		if !errors.Is(err, errLeaseLost) || retry > 0 {
+			break
+		}
+	}
+	if errors.Is(err, errAttemptTerminal) {
+		latest, snapshotErr := s.snapshotAs(user)
+		if snapshotErr == nil {
+			if current, ok := latest.attemptByID(attempt.ID); ok && current.State == "cancelled" {
+				return nil
+			}
+		}
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	s.runningMu.Lock()
+	cancel := s.running[attempt.ID]
+	s.runningMu.Unlock()
+	if cancel != nil {
+		cancel()
+	}
+	return nil
+}
+
+// cancelAttemptInState applies the durable cancellation inside one state
+// transaction: the attempt and run become cancelled, an active job loses its
+// lease, and the attempt, run and audit streams record who cancelled it.
+func (s *Store) cancelAttemptInState(st *state, user accounts.User, caseID, runID string, attempt Attempt) error {
+	if _, err := s.writableCase(st, user, caseID, access.Review); err != nil {
+		return err
+	}
+	current, ok := st.latestAttempt(runID)
+	if !ok || current.ID != attempt.ID {
+		return fault.NotFound("没有找到对应记录")
+	}
+	if !attemptActive(current.State) {
+		return nil
+	}
+	finishedAt := stamp()
+	errorCode := "cancelled_by_user"
+	for i := range st.Attempts {
+		if st.Attempts[i].ID == attempt.ID {
+			st.Attempts[i].State = "cancelled"
+			st.Attempts[i].FinishedAt = &finishedAt
+			st.Attempts[i].ErrorCode = &errorCode
+		}
+	}
+	for i := range st.Runs {
+		if st.Runs[i].ID == runID {
+			st.Runs[i].State = "cancelled"
+			st.Runs[i].UpdatedAt = finishedAt
+		}
+	}
+	for i := range st.Jobs {
+		if st.Jobs[i].AttemptID != attempt.ID {
+			continue
+		}
+		if st.Jobs[i].State == "running" || st.Jobs[i].State == "queued" {
+			st.Jobs[i].State = "cancelled"
+			st.Jobs[i].LeaseUntil = nil
+			st.Jobs[i].UpdatedAt = finishedAt
+		}
+	}
+	appendExecutionEvent(st, ExecutionEvent{
+		AttemptID: attempt.ID, SpanID: stringPointer(attempt.ID), NodeKind: "attempt",
+		Phase: "cancellation", EventType: "attempt_cancelled", At: finishedAt,
+		Status: "cancelled", ErrorCode: &errorCode,
+	})
+	appendRunEvent(st, runID, "cancelled")
+	return appendAudit(st, runID, user.ID, "review_cancelled", []string{caseID})
+}
+
+func (s *Store) OperationalMetadata(user accounts.User) (map[string]any, error) {
+	if user.Role != "admin" {
+		return nil, fault.Forbidden("只有管理员可以查看运行运维元数据")
+	}
+	st := s.snapshot()
+	counts := map[string]any{
+		"total_attempts": 0, "running_attempts": 0, "completed_attempts": 0,
+		"partial_attempts": 0, "failed_attempts": 0, "cancelled_attempts": 0,
+		"model_calls": 0, "unknown_usage_calls": 0, "queue_depth": nil,
+	}
+	for _, attempt := range st.Attempts {
+		counts["total_attempts"] = counts["total_attempts"].(int) + 1
+		switch attempt.State {
+		case "accepted", "running":
+			counts["running_attempts"] = counts["running_attempts"].(int) + 1
+		case "completed":
+			counts["completed_attempts"] = counts["completed_attempts"].(int) + 1
+		case "partial":
+			counts["partial_attempts"] = counts["partial_attempts"].(int) + 1
+		case "failed", "interrupted":
+			counts["failed_attempts"] = counts["failed_attempts"].(int) + 1
+		case "cancelled":
+			counts["cancelled_attempts"] = counts["cancelled_attempts"].(int) + 1
+		}
+	}
+	usage := usageSummary(st.ExecutionEvents, nil)
+	counts["model_calls"] = usage.Calls
+	counts["unknown_usage_calls"] = usage.UnknownCalls
+	return counts, nil
+}
+
+func (s *Store) reserveExecution() bool {
+	s.executionMu.Lock()
+	defer s.executionMu.Unlock()
+	if s.closing {
+		return false
+	}
+	select {
+	case s.executionSlots <- struct{}{}:
+		s.executionWG.Add(1)
+		return true
+	default:
+		return false
+	}
+}
+
+func (s *Store) releaseExecution() {
+	<-s.executionSlots
+	s.executionWG.Done()
+}
+
+func (s *Store) launchAttempt(runID, attemptID string, models Models, caseItem Case, actorID string) {
+	claim, hasClaim := s.claimForAttempt(attemptID)
+	installedClaim := false
+	if !hasClaim {
+		claim = JobClaim{
+			TenantID: caseItem.TenantID, OrgID: caseItem.OwnerOrgID, CaseID: caseItem.ID,
+			RunID: runID, AttemptID: attemptID, ActorID: actorID, Kind: "review",
+		}
+		s.setClaim(claim)
+		installedClaim = true
+	}
+	go func() {
+		defer s.releaseExecution()
+		if installedClaim {
+			defer s.clearClaim(claim)
+		}
+		s.executeAttempt(runID, attemptID, models)
+	}()
+}
+
+func (s *Store) executeAttempt(runID, attemptID string, models Models) {
+	s.executeAttemptContext(context.Background(), runID, attemptID, models)
+}
+
+func (s *Store) executeAttemptContext(parent context.Context, runID, attemptID string, models Models) {
+	ctx, cancel := context.WithTimeout(parent, reviewExecutionLimit)
+	defer cancel()
+	if claim, ok := s.claimForAttempt(attemptID); ok {
+		ctx = model.WithDelegatedScope(ctx, model.DelegatedScope{
+			Kind: "execution", TenantID: claim.TenantID, OrgID: claim.OrgID, CaseID: claim.CaseID,
+			ActorID: claim.ActorID, JobID: claim.JobID, RunID: runID, AttemptID: attemptID,
+			WorkerID: claim.WorkerID, Generation: claim.Generation,
+		})
+	}
+	s.runningMu.Lock()
+	s.running[attemptID] = cancel
+	s.runningMu.Unlock()
+	defer func() {
+		s.runningMu.Lock()
+		delete(s.running, attemptID)
+		s.runningMu.Unlock()
+	}()
+
+	recorder := attemptRecorder{store: s, attemptID: attemptID, failure: &recorderFailure{}}
+	if err := s.markAttemptStarted(runID, attemptID); err != nil {
+		_ = s.finishAttempt(runID, attemptID, "failed", "", "execution_persistence_failed")
+		return
+	}
+	if s.telecomAttempt(s.snapshotForAttempt(attemptID), runID) {
+		telecomRecorder := recorder
+		telecomRecorder.runID = runID
+		telecomCtx := execution.WithSpan(ctx, attemptID)
+		telecomCtx = model.WithCallObserver(telecomCtx, attemptModelObserver{recorder: telecomRecorder})
+		s.executeTelecomAttempt(parent, telecomCtx, runID, attemptID, models, telecomRecorder)
+		return
+	}
+	runCtx := execution.WithSpan(ctx, attemptID)
+	runCtx = model.WithCallObserver(runCtx, attemptModelObserver{recorder: recorder})
+	var docs []Interpreted
+	var proposal model.Warranty
+	var modelErr error
+	rulesPublished := false
+	pipelineErr := execution.Run(runCtx, recorder,
+		execution.Stage{Name: "input_preparation", Run: func(stageCtx context.Context) error {
+			var err error
+			docs, err = s.prepareAttempt(stageCtx, runID, attemptID, models)
+			return err
+		}},
+		execution.Stage{Name: "deterministic_rules", Run: func(stageCtx context.Context) error {
+			if len(docs) == 0 {
+				return errors.New("frozen input is unavailable")
+			}
+			if err := s.publishRuleResults(stageCtx, runID, attemptID, docs); err != nil {
+				return err
+			}
+			rulesPublished = true
+			return nil
+		}},
+		execution.Stage{Name: "model_review", Run: func(stageCtx context.Context) error {
+			if readyCount(docs) < 2 {
+				modelErr = errors.New("insufficient_ready_documents")
+				return modelErr
+			}
+			if models == nil {
+				modelErr = errModelNotConfigured
+				return modelErr
+			}
+			materials := make([]model.Material, len(docs))
+			for i, doc := range docs {
+				materials[i] = model.Material{ID: doc.Document.ID, Role: doc.Document.Role, Text: doc.Text, Ready: doc.Ready, ParseError: doc.ParseError}
+			}
+			proposal, modelErr = models.Warranty(stageCtx, materials)
+			if recordErr := recorder.err(); recordErr != nil {
+				return recordErr
+			}
+			return modelErr
+		}},
+		execution.Stage{Name: "citation_verification", Run: func(stageCtx context.Context) error {
+			sources := sourcesOf(docs)
+			quotes := make([]engine.QuoteRef, len(proposal.Quotes))
+			for i, quote := range proposal.Quotes {
+				quotes[i] = engine.QuoteRef{DocumentID: quote.DocumentID, Quote: quote.Quote}
+			}
+			_, drafts, err := engine.AcceptWarranty(sources, engine.Proposal{
+				Claim: proposal.Claim, Relation: proposal.Relation,
+				Disposition: proposal.Disposition, Quotes: quotes,
+			})
+			if err != nil {
+				modelErr = err
+				return err
+			}
+			var added []Finding
+			if err := s.updateExecution(attemptID, func(next *state) error {
+				for _, draft := range drafts {
+					idx := -1
+					for i := range next.Findings {
+						finding := &next.Findings[i]
+						if finding.AttemptID == attemptID && finding.Origin == "rule" && finding.Domain == draft.Domain && finding.Relation == draft.Relation && finding.Claim == draft.Claim {
+							idx = i
+							break
+						}
+					}
+					if idx < 0 {
+						made, err := materialize(runIDCase(*next, runID), runID, attemptID, stamp(), []engine.Draft{draft}, docs)
+						if err != nil {
+							return err
+						}
+						next.Findings = append(next.Findings, made...)
+						added = append(added, made...)
+						continue
+					}
+					finding := &next.Findings[idx]
+					finding.DispositionSuggestion = draft.Disposition
+					finding.UnverifiedReason = draft.UnverifiedReason
+					for _, anchor := range draft.Anchors {
+						found := false
+						for _, existing := range finding.Anchors {
+							if existing.DocumentID == anchor.DocumentID && existing.ParsedDocumentID == parsedDocumentID(docs, anchor.DocumentID) && existing.Quote == anchor.Quote && existing.Status == anchor.Status && existing.Start == anchor.Start && existing.End == anchor.End {
+								found = true
+								break
+							}
+						}
+						if found {
+							continue
+						}
+						id, err := newID("ev_")
+						if err != nil {
+							return err
+						}
+						parsedID, normalizedDigest := parsedIdentity(docs, anchor.DocumentID)
+						finding.Anchors = append(finding.Anchors, Anchor{
+							ID: id, DocumentID: anchor.DocumentID, ParsedDocumentID: parsedID, NormalizedDigest: normalizedDigest,
+							Quote: anchor.Quote, Status: anchor.Status, Start: anchor.Start, End: anchor.End,
+							Reason: anchor.Reason, Page: anchor.Page, ElementID: anchor.ElementID,
+						})
+					}
+				}
+				return nil
+			}); err != nil {
+				return err
+			}
+			if hasVerifiedFinding(added) {
+				return s.recordFirstVerifiedFinding(stageCtx, recorder, attemptID)
+			}
+			return nil
+		}},
+	)
+	if parent.Err() != nil {
+		return
+	}
+	if !rulesPublished {
+		latest := s.snapshotForAttempt(attemptID)
+		rulesPublished = len(latest.findingsForAttempt(runID, attemptID)) > 0 || len(latest.evaluationsForAttempt(runID, attemptID)) > 0
+	}
+
+	partialReason := ""
+	terminalState := "completed"
+	errorCode := ""
+	if pipelineErr != nil {
+		latest := s.snapshotForAttempt(attemptID)
+		if current, ok := latest.attemptByID(attemptID); !ok || !attemptActive(current.State) {
+			return
+		}
+		if recorder.err() != nil {
+			terminalState = "failed"
+			errorCode = "execution_persistence_failed"
+		} else if modelErr != nil && rulesPublished {
+			terminalState = "partial"
+			if errors.Is(modelErr, model.ErrRequest) {
+				errorCode = "model_request_failed"
+			} else if errors.Is(modelErr, model.ErrUnusable) {
+				errorCode = "model_output_unusable"
+			} else if errors.Is(modelErr, engine.ErrRejected) {
+				errorCode = "model_evidence_rejected"
+			} else if errors.Is(modelErr, errModelNotConfigured) {
+				errorCode = "model_not_configured"
+			} else if errors.Is(modelErr, context.DeadlineExceeded) {
+				errorCode = "model_timeout"
+			} else if errors.Is(modelErr, context.Canceled) {
+				errorCode = "model_cancelled"
+			} else {
+				errorCode = "model_incomplete"
+			}
+			partialReason = publicModelError(modelErr)
+			if readyCount(docs) < len(docs) {
+				partialReason += " 有材料解析失败，结果不能当成完整审查。"
+			}
+		} else {
+			terminalState = "failed"
+			errorCode = "execution_failed"
+			if rulesPublished {
+				errorCode = "execution_persistence_failed"
+			}
+		}
+	} else if readyCount(docs) < len(docs) {
+		terminalState = "partial"
+		partialReason = "有材料解析失败，结果不能当成完整审查。"
+		errorCode = "document_parse_incomplete"
+	}
+	if err := s.finishAttempt(runID, attemptID, terminalState, partialReason, errorCode); err != nil {
+		return
+	}
+}
+
+func (s *Store) markAttemptStarted(runID, attemptID string) error {
+	// Durable worker path: the start transition runs through the bounded
+	// attempt-scope adapter (case -> attempt -> claim locks, bounded load, delta
+	// persist with the same validation) instead of the whole-state writer.
+	if claim, ok := s.claimForAttempt(attemptID); ok && claim.JobID != "" && claim.AttemptID == attemptID && claim.RunID == runID {
+		return s.scopedAttemptMutation(context.Background(), runID, attemptID, func(next *state) error {
+			return markAttemptStartedInState(next, runID, attemptID)
+		})
+	}
+	return s.updateExecution(attemptID, func(st *state) error {
+		return markAttemptStartedInState(st, runID, attemptID)
+	})
+}
+
+// markAttemptStartedInState is the shared start transition used by the durable
+// adapter and the embedded legacy writer.
+func markAttemptStartedInState(st *state, runID, attemptID string) error {
+	now := stamp()
+	for i := range st.Attempts {
+		if st.Attempts[i].ID != attemptID {
+			continue
+		}
+		if !attemptActive(st.Attempts[i].State) {
+			return errAttemptTerminal
+		}
+		st.Attempts[i].State = "running"
+		if st.Attempts[i].StartedAt == nil {
+			st.Attempts[i].StartedAt = &now
+		}
+	}
+	for i := range st.Runs {
+		if st.Runs[i].ID == runID {
+			st.Runs[i].State = "running"
+			st.Runs[i].UpdatedAt = now
+		}
+	}
+	appendRunEvent(st, runID, "running")
+	return nil
+}
+
+func (s *Store) prepareAttempt(ctx context.Context, runID, attemptID string, models Models) ([]Interpreted, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	st := s.snapshotForAttempt(attemptID)
+	snapshot := st.snapshotOf(runID)
+	if input, ok := st.attemptInput(attemptID); ok {
+		if input.RunID != runID || input.AttemptID != attemptID {
+			return nil, errors.New("attempt frozen input identity mismatch")
+		}
+		inputHash, err := frozenInputHash(snapshot, input.Documents)
+		if err != nil || inputHash != input.InputHash || !frozenInputMatchesSnapshot(snapshot, input.Documents) ||
+			!attemptSelectionsMatchFrozen(st.parseSelectionsForAttempt(attemptID), input.Documents) {
+			return nil, errors.New("attempt frozen input integrity check failed")
+		}
+		if err := s.verifyFrozenDocuments(st, input.Documents); err != nil {
+			return nil, fmt.Errorf("attempt parsed artifact integrity check failed: %w", err)
+		}
+		return interpretedFromFrozen(input.Documents), nil
+	}
+	attempt, ok := st.attemptByID(attemptID)
+	if !ok || attempt.RunID != runID || !attemptActive(attempt.State) {
+		return nil, errors.New("attempt is not active for input preparation")
+	}
+	selections := st.parseSelectionsForAttempt(attemptID)
+	if len(selections) == 0 || len(selections) != len(snapshot.DocumentIDs) {
+		return nil, errors.New("attempt has no complete pinned parse selection")
+	}
+	frozen := make([]FrozenDocument, len(selections))
+	artifacts := make([]ParsedDocument, 0, len(selections))
+	requireRemote, documentPreparer := s.remoteDocumentPreparer()
+	var claim JobClaim
+	if requireRemote {
+		if documentPreparer == nil {
+			return nil, ErrRemoteDocumentPreparationRequired
+		}
+		var hasClaim bool
+		claim, hasClaim = s.claimForAttempt(attemptID)
+		if !hasClaim || claim.JobID == "" || claim.AttemptID != attemptID || claim.RunID != runID {
+			return nil, errors.New("remote document preparation requires the current durable job claim")
+		}
+	}
+	for i, selection := range selections {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		if requireRemote {
+			prepared, err := documentPreparer.PrepareAttemptDocument(ctx, PrepareDocumentRequest{
+				TenantID: claim.TenantID, OrgID: claim.OrgID,
+				JobID: claim.JobID, WorkerID: claim.WorkerID, Generation: claim.Generation,
+				RunID: runID, AttemptID: attemptID, DocumentID: selection.DocumentID, Selection: selection,
+			})
+			if err != nil {
+				return nil, err
+			}
+			parsed := parsedDocumentFromFrozen(prepared)
+			if prepared.Document.ID != selection.DocumentID || prepared.Document.Digest != selection.OriginalDigest ||
+				prepared.Document.CaseID != claim.CaseID || prepared.Document.TenantID != claim.TenantID || prepared.Document.OrgID != claim.OrgID ||
+				prepared.OriginalHash != selection.OriginalDigest || parsed.ID != selection.ParsedDocumentID || parsed.SelectionOrder != selection.SelectionOrder ||
+				parsed.ParserID != selection.ParserID || parsed.ParserVersion != selection.ParserVersion || parsed.ConfigHash != selection.ConfigHash ||
+				parsed.NormalizationVersion != selection.NormalizationVersion || (selection.ArtifactDigest != "" && parsed.ArtifactDigest != selection.ArtifactDigest) {
+				return nil, errors.New("remote document response differs from the pinned parse selection")
+			}
+			if err := verifyParsed(parsed, prepared.Document); err != nil {
+				return nil, fmt.Errorf("remote parsed artifact integrity check failed: %w", err)
+			}
+			frozen[i] = prepared
+			continue
+		}
+		doc, ok := st.documentByIdentity(selection.DocumentID, selection.OriginalDigest)
+		if !ok || doc.CaseID != runIDCase(st, runID) {
+			return nil, errors.New("pinned parse selection original is unavailable")
+		}
+		parsed, exists := st.parsedByID(selection.ParsedDocumentID)
+		if !exists {
+			parserID, parserVersion, configHash := parserConfigurationFor(doc, models)
+			if parserID != selection.ParserID || parserVersion != selection.ParserVersion || configHash != selection.ConfigHash ||
+				selection.NormalizationVersion != docir.NormalizationVersion {
+				return nil, errors.New("pinned parser configuration is unavailable")
+			}
+			interpreted := s.interpretUnpersistedWithModels(ctx, doc, models)
+			var err error
+			parsed, err = makeParsedWithSelection(doc, interpreted, selection)
+			if err != nil {
+				return nil, err
+			}
+			artifacts = append(artifacts, parsed)
+		}
+		if parsed.ID != selection.ParsedDocumentID || parsed.SelectionOrder != selection.SelectionOrder ||
+			parsed.DocumentID != selection.DocumentID || parsed.OriginalDigest != selection.OriginalDigest ||
+			parsed.ParserID != selection.ParserID || parsed.ParserVersion != selection.ParserVersion || parsed.ConfigHash != selection.ConfigHash ||
+			parsed.NormalizationVersion != selection.NormalizationVersion ||
+			(selection.ArtifactDigest != "" && selection.ArtifactDigest != parsed.ArtifactDigest) {
+			return nil, errors.New("pinned parse selection differs from its artifact")
+		}
+		if exists {
+			if err := s.verifyParsedRecordContext(ctx, parsed, doc); err != nil {
+				return nil, fmt.Errorf("attempt parsed artifact integrity check failed: %w", err)
+			}
+		} else if err := verifyParsed(parsed, doc); err != nil {
+			return nil, fmt.Errorf("attempt parsed artifact integrity check failed: %w", err)
+		}
+		frozen[i] = frozenFromParsed(doc, parsed)
+	}
+	if !frozenInputMatchesSnapshot(snapshot, frozen) {
+		return nil, errors.New("pinned parse selection does not match the run snapshot")
+	}
+	inputHash, err := frozenInputHash(snapshot, frozen)
+	if err != nil {
+		return nil, err
+	}
+	input := AttemptInput{AttemptID: attemptID, RunID: runID, InputHash: inputHash, FrozenAt: stamp(), Documents: frozen}
+	if err := s.updateExecution(attemptID, func(next *state) error {
+		if s.telecomAttempt(*next, runID) {
+			if _, err := authorizeAttemptExecution(*next, runID, attemptID); err != nil {
+				return err
+			}
+		}
+		if !sameRunSignature(next.snapshotOf(runID), snapshot) {
+			return errors.New("run snapshot changed during input preparation")
+		}
+		currentSelections := next.parseSelectionsForAttempt(attemptID)
+		if len(currentSelections) != len(selections) {
+			return errors.New("pinned parse selection changed during input preparation")
+		}
+		// Full and claim-scoped readers may return the same pinned selections
+		// in insertion or generation order. Their immutable identities must match.
+		for _, selection := range selections {
+			if !slices.Contains(currentSelections, selection) {
+				return errors.New("pinned parse selection changed during input preparation")
+			}
+		}
+		if _, exists := next.attemptInput(attemptID); exists {
+			return errors.New("attempt input was frozen concurrently")
+		}
+		// Parsed artifacts belong to the document service. The remote preparation
+		// path above returns the frozen artifact instead of appending here, so
+		// this list is only ever populated by a service that owns parsed_documents.
+		// Fail closed rather than silently dropping an artifact if that ever
+		// changes, because a silent drop would freeze an attempt without the
+		// artifact its input hash covers.
+		if len(artifacts) > 0 && !ownedTable(s.serviceOwner, "parsed_documents") {
+			return errors.New("service cannot persist parsed artifacts it does not own")
+		}
+		for _, parsed := range artifacts {
+			if existing, exists := next.parsedByID(parsed.ID); exists {
+				if existing.ArtifactDigest != parsed.ArtifactDigest {
+					return errors.New("reserved parsed artifact identity was reused")
+				}
+				continue
+			}
+			next.ParsedDocuments = append(next.ParsedDocuments, parsed)
+		}
+		currentAttempt, exists := next.attemptByID(attemptID)
+		if !exists || currentAttempt.RunID != runID || !attemptActive(currentAttempt.State) {
+			return errAttemptTerminal
+		}
+		next.AttemptInputs = append(next.AttemptInputs, input)
+		for i := range next.Attempts {
+			if next.Attempts[i].ID == attemptID {
+				next.Attempts[i].HistoryKind = "frozen"
+				next.Attempts[i].InputHash = stringPointer(inputHash)
+			}
+		}
+		return appendAudit(next, runID, "system", "attempt_input_frozen", []string{attemptID})
+	}); err != nil {
+		return nil, err
+	}
+	latest := s.snapshotForAttempt(attemptID)
+	if err := s.verifyFrozenDocuments(latest, frozen); err != nil {
+		return nil, fmt.Errorf("attempt parsed artifact integrity check failed: %w", err)
+	}
+	return interpretedFromFrozen(frozen), nil
+}
+
+func (s *Store) publishRuleResults(ctx context.Context, runID, attemptID string, docs []Interpreted) error {
+	sources := sourcesOf(docs)
+	evaluation := engine.Evaluate(sources)
+	extras := engine.CrossFile(sources)
+	drafts := engine.Findings(evaluation)
+	for _, extra := range extras {
+		drafts = append(drafts, engine.Findings(extra)...)
+	}
+	attemptState := s.snapshotForAttempt(attemptID)
+	made, err := materialize(runIDCase(attemptState, runID), runID, attemptID, stamp(), drafts, docs)
+	if err != nil {
+		return err
+	}
+	madeByDomain := make(map[string]string, len(made))
+	for _, finding := range made {
+		madeByDomain[finding.Domain] = finding.ID
+	}
+	var evaluations []ConstraintEval
+	appendEval := func(ev engine.Evaluation, findingID string) error {
+		id, err := newID("evl_")
+		if err != nil {
+			return err
+		}
+		evaluations = append(evaluations, ConstraintEval{
+			ID: id, RunID: runID, AttemptID: attemptID, CaseID: runIDCase(attemptState, runID),
+			Domain: ev.Domain, Relation: ev.Relation, RuleVersion: ev.RuleVersion, Reason: ev.Reason, FindingID: findingID,
+		})
+		return nil
+	}
+	findingID := ""
+	if id, ok := madeByDomain[evaluation.Domain]; ok {
+		findingID = id
+	}
+	if err := appendEval(evaluation, findingID); err != nil {
+		return err
+	}
+	for _, ev := range extras {
+		id := ""
+		if mapped, ok := madeByDomain[ev.Domain]; ok {
+			id = mapped
+		}
+		if err := appendEval(ev, id); err != nil {
+			return err
+		}
+	}
+	if err := s.updateExecution(attemptID, func(st *state) error {
+		st.Findings = append(st.Findings, made...)
+		st.Evaluations = append(st.Evaluations, evaluations...)
+		return nil
+	}); err != nil {
+		return err
+	}
+	if hasVerifiedFinding(made) {
+		return s.recordFirstVerifiedFinding(ctx, attemptRecorder{store: s, attemptID: attemptID}, attemptID)
+	}
+	return nil
+}
+
+func (s *Store) recordFirstVerifiedFinding(ctx context.Context, recorder attemptRecorder, attemptID string) error {
+	st := s.snapshotForAttempt(attemptID)
+	for _, event := range st.executionEvents(attemptID) {
+		if event.EventType == "finding_verified" {
+			return nil
+		}
+	}
+	spanCtx, finish, err := execution.StartSpan(ctx, recorder, "citation_verification", "verified_finding", "")
+	if err != nil {
+		return err
+	}
+	spanID := execution.ParentSpanID(spanCtx)
+	parentID := execution.ParentSpanID(ctx)
+	verified := execution.Event{
+		SpanID: spanID, ParentSpanID: parentID, NodeKind: "citation_verification", Phase: "verified_finding",
+		EventType: "finding_verified", At: time.Now().UTC(), Status: "verified",
+	}
+	if err := recorder.RecordExecutionEvent(spanCtx, verified); err != nil {
+		_ = finish("span_failed", "failed", "event_persistence_failed", nil, "")
+		return err
+	}
+	return finish("span_completed", "completed", "", nil, "")
+}
+
+func (s *Store) finishAttempt(runID, attemptID, stateName, partialReason, errorCode string) error {
+	if claim, ok := s.claimForAttempt(attemptID); ok && claim.JobID != "" && claim.AttemptID == attemptID && claim.RunID == runID {
+		// Durable worker path: the terminal transition is committed under the
+		// shared case/attempt keys with the attempt version CAS and the claim
+		// fence, using the same canonical output hash.
+		return s.finishAttemptNarrow(context.Background(), runID, attemptID, stateName, partialReason, errorCode)
+	}
+	finishedAt := stamp()
+	return s.updateExecution(attemptID, func(st *state) error {
+		attempt, ok := st.attemptByID(attemptID)
+		if !ok || !attemptActive(attempt.State) {
+			return errAttemptTerminal
+		}
+		if s.telecomAttempt(*st, runID) {
+			if _, err := authorizeAttemptExecution(*st, runID, attemptID); errors.Is(err, errAttemptAuthorizationRevoked) {
+				stateName, partialReason, errorCode = "cancelled", "", "authorization_revoked"
+			} else if err != nil {
+				return err
+			}
+		}
+		for i := range st.Attempts {
+			if st.Attempts[i].ID == attemptID {
+				st.Attempts[i].State = stateName
+				st.Attempts[i].FinishedAt = &finishedAt
+				if errorCode != "" {
+					code := errorCode
+					st.Attempts[i].ErrorCode = &code
+				}
+				st.Attempts[i].OutputHash = nil
+			}
+		}
+		findings := findingsForAttempt(*st, runID, attemptID)
+		if stateName == "completed" && len(findings) > 0 {
+			stateName = "completed"
+		}
+		for i := range st.Runs {
+			if st.Runs[i].ID != runID {
+				continue
+			}
+			st.Runs[i].State = stateName
+			st.Runs[i].PartialReason = partialReason
+			st.Runs[i].FailureMessage = ""
+			if stateName == "failed" {
+				st.Runs[i].FailureMessage = "这次运行未能完成。"
+			}
+			if stateName == "completed" && len(findings) > 0 {
+				st.Runs[i].State = "awaiting_human"
+			}
+			st.Runs[i].UpdatedAt = finishedAt
+		}
+		reviewDigest := ""
+		if run, ok := st.runByID(runID); ok {
+			if caseItem, ok := st.caseByID(run.CaseID); ok {
+				digest, digestErr := s.agentReviewDigestFor(caseItem.TenantID, caseItem.OwnerOrgID, attemptID)
+				if digestErr != nil {
+					return digestErr
+				}
+				reviewDigest = digest
+			}
+		}
+		outputHash, err := attemptOutputHash(*st, runID, attemptID, reviewDigest)
+		if err != nil {
+			return err
+		}
+		for i := range st.Attempts {
+			if st.Attempts[i].ID == attemptID {
+				st.Attempts[i].OutputHash = &outputHash
+			}
+		}
+		var errorCodePointer *string
+		if errorCode != "" {
+			errorCodePointer = &errorCode
+		}
+		appendExecutionEvent(st, ExecutionEvent{
+			AttemptID: attemptID, SpanID: stringPointer(attemptID), NodeKind: "attempt",
+			Phase: "terminal_persistence", EventType: "attempt_finished", At: finishedAt,
+			Status: stateName, ErrorCode: errorCodePointer,
+		})
+		appendRunEvent(st, runID, stateName)
+		return nil
+	})
+}
+
+func (s *Store) updateExecution(attemptID string, fn func(*state) error) error {
+	return s.updateExecutionContext(context.Background(), attemptID, fn)
+}
+
+func (s *Store) updateExecutionContext(ctx context.Context, attemptID string, fn func(*state) error) error {
+	claim, hasClaim := s.claimForAttempt(attemptID)
+	if hasClaim && claim.JobID != "" && claim.AttemptID == attemptID {
+		// Durable worker path: every attempt mutation (freeze, preparation,
+		// results, phase updates, finalize) runs through the bounded
+		// attempt-scope adapter with the shared case/attempt locks, the claim
+		// fence and the same validation/persist path.
+		return s.scopedAttemptMutation(ctx, claim.RunID, attemptID, fn)
+	}
+	scope := dbScope{ActorID: "worker", TenantID: "local-demo", OrgID: "local-demo", Role: "worker"}
+	if hasClaim {
+		scope = claim.scope()
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.updateState(ctx, scope, attemptID, fn)
+}
+
+func insertExecutionEvent(ctx context.Context, tx pgx.Tx, event ExecutionEvent) error {
+	var usage any
+	if event.Usage != nil {
+		encoded, err := jsonText(event.Usage)
+		if err != nil {
+			return err
+		}
+		usage = encoded
+	}
+	_, err := tx.Exec(ctx, `INSERT INTO execution_events (attempt_id, event_seq, span_id, parent_span_id, node_kind, phase, event_type, occurred_at, duration_ms, status, error_code, model_ref, usage)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) ON CONFLICT (attempt_id,event_seq) DO NOTHING`,
+		event.AttemptID, event.Seq, event.SpanID, event.ParentSpanID, event.NodeKind, event.Phase,
+		event.EventType, event.At, event.DurationMS, event.Status, event.ErrorCode, event.ModelRef, usage)
+	return err
+}
+
+func (r attemptRecorder) RecordExecutionEvent(ctx context.Context, event execution.Event) error {
+	if event.At.IsZero() {
+		event.At = time.Now().UTC()
+	}
+	var parentID *string
+	if event.ParentSpanID != "" {
+		parentID = stringPointer(event.ParentSpanID)
+	}
+	var spanID *string
+	if event.SpanID != "" {
+		spanID = stringPointer(event.SpanID)
+	}
+	var modelRef *string
+	if event.ModelRef != "" {
+		modelRef = stringPointer(event.ModelRef)
+	}
+	var errorCode *string
+	if event.ErrorCode != "" {
+		errorCode = stringPointer(event.ErrorCode)
+	}
+	var usage *UsageObservation
+	if event.Usage != nil {
+		usage = &UsageObservation{
+			Source: event.Usage.Source, InputTokens: event.Usage.InputTokens,
+			OutputTokens: event.Usage.OutputTokens, TotalTokens: event.Usage.TotalTokens,
+		}
+	}
+	stored := ExecutionEvent{
+		AttemptID: r.attemptID, SpanID: spanID, ParentSpanID: parentID, NodeKind: event.NodeKind,
+		Phase: event.Phase, EventType: event.EventType, At: event.At.UTC().Format(time.RFC3339Nano),
+		DurationMS: event.DurationMS, Status: event.Status, ErrorCode: errorCode, ModelRef: modelRef, Usage: usage,
+	}
+	var err error
+	if claim, claimed := r.store.claimForAttempt(r.attemptID); claimed && r.runID != "" &&
+		claim.JobID != "" && claim.AttemptID == r.attemptID && claim.RunID == r.runID {
+		// The durable worker path appends telemetry through the fenced narrow
+		// write: attempt row + job lease + per-attempt sequence, no global lock.
+		err = r.store.appendExecutionEventFenced(ctx, r.runID, r.attemptID, stored)
+	} else if r.runID != "" {
+		err = r.store.updateAuthorizedExecution(ctx, r.runID, r.attemptID, func(st *state) error {
+			appendExecutionEvent(st, stored)
+			return nil
+		})
+	} else {
+		err = r.store.updateExecutionContext(ctx, r.attemptID, func(st *state) error {
+			appendExecutionEvent(st, stored)
+			return nil
+		})
+	}
+	if errors.Is(err, errAttemptTerminal) && event.NodeKind == "model_call" && (event.EventType == "model_completed" || event.EventType == "model_failed") {
+		err = r.store.persistLateModelEvent(r.attemptID, stored)
+	}
+	if err == nil {
+		r.store.recordTelemetry(r.runID, r.attemptID, event)
+	} else if !errors.Is(err, errAttemptTerminal) {
+		r.remember(err)
+	}
+	return err
+}
+
+func (r attemptRecorder) StartModelCall(ctx context.Context, modelRef string) (context.Context, func(model.CallObservation)) {
+	spanCtx, finish, err := execution.StartSpan(ctx, r, "model_call", "model_request", modelRef)
+	if err != nil {
+		r.remember(err)
+		cancelled, cancel := context.WithCancel(ctx)
+		cancel()
+		return cancelled, func(model.CallObservation) {}
+	}
+	return spanCtx, func(result model.CallObservation) {
+		var usage *execution.Usage
+		if result.Usage != nil {
+			usage = &execution.Usage{
+				Source: result.Usage.Source, InputTokens: result.Usage.InputTokens,
+				OutputTokens: result.Usage.OutputTokens, TotalTokens: result.Usage.TotalTokens,
+			}
+		}
+		if result.Status == "completed" {
+			r.remember(finish("model_completed", "completed", "", usage, result.ModelRef))
+			return
+		}
+		r.remember(finish("model_failed", "failed", result.ErrorCode, usage, result.ModelRef))
+	}
+}
+
+type recorderFailure struct {
+	mu  sync.Mutex
+	err error
+}
+
+func (f *recorderFailure) remember(err error) {
+	if f == nil || err == nil {
+		return
+	}
+	f.mu.Lock()
+	if f.err == nil {
+		f.err = err
+	}
+	f.mu.Unlock()
+}
+
+func (f *recorderFailure) get() error {
+	if f == nil {
+		return nil
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.err
+}
+
+type attemptRecorder struct {
+	store     *Store
+	attemptID string
+	runID     string
+	failure   *recorderFailure
+}
+
+func (r attemptRecorder) err() error         { return r.failure.get() }
+func (r attemptRecorder) remember(err error) { r.failure.remember(err) }
+
+type attemptModelObserver struct{ recorder attemptRecorder }
+
+func (o attemptModelObserver) StartModelCall(ctx context.Context, modelRef string) (context.Context, func(model.CallObservation)) {
+	return o.recorder.StartModelCall(ctx, modelRef)
+}
+
+func (s *Store) persistLateModelEvent(attemptID string, event ExecutionEvent) error {
+	if s.serviceOwner != "" {
+		return s.persistLateModelEventNarrow(attemptID, event)
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	ctx := context.Background()
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+	if err := scopedAttemptLock(ctx, tx, attemptID); err != nil {
+		return err
+	}
+	var runID, stateName string
+	var finishedAt *string
+	var errorCode *string
+	if err := tx.QueryRow(ctx, `SELECT run_id, state, finished_at, error_code FROM review_attempts WHERE id=$1 FOR UPDATE`, attemptID).Scan(&runID, &stateName, &finishedAt, &errorCode); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return errAttemptMissing
+		}
+		return err
+	}
+	if stateName != "cancelled" || event.NodeKind != "model_call" || (event.EventType != "model_completed" && event.EventType != "model_failed") {
+		return errAttemptTerminal
+	}
+	// Read the run and job rows instead of assuming their state. A cancel that
+	// committed on another process may already have moved them, and this path
+	// must never write a guess back into the shared in-memory projection.
+	var runState string
+	if err := tx.QueryRow(ctx, `SELECT state FROM review_runs WHERE id=$1`, runID).Scan(&runState); err != nil {
+		return err
+	}
+	var jobID, jobState, jobWorkerID string
+	var jobGeneration int64
+	var jobLease sql.NullTime
+	jobErr := tx.QueryRow(ctx, `SELECT id, state, worker_id, generation, lease_until FROM worker_jobs
+		WHERE attempt_id=$1 ORDER BY created_at, id LIMIT 1`, attemptID).
+		Scan(&jobID, &jobState, &jobWorkerID, &jobGeneration, &jobLease)
+	if jobErr != nil && !errors.Is(jobErr, pgx.ErrNoRows) {
+		return jobErr
+	}
+	if err := tx.QueryRow(ctx, `SELECT COALESCE(MAX(event_seq),0)+1 FROM execution_events WHERE attempt_id=$1`, attemptID).Scan(&event.Seq); err != nil {
+		return err
+	}
+	if err := insertExecutionEvent(ctx, tx, event); err != nil {
+		return err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return err
+	}
+	next, err := s.st.clone()
+	if err != nil {
+		return err
+	}
+	for i := range next.Attempts {
+		if next.Attempts[i].ID == attemptID {
+			next.Attempts[i].State = stateName
+			next.Attempts[i].FinishedAt = finishedAt
+			next.Attempts[i].ErrorCode = errorCode
+		}
+	}
+	for i := range next.Runs {
+		if next.Runs[i].ID == runID {
+			next.Runs[i].State = runState
+		}
+	}
+	if jobErr == nil {
+		for i := range next.Jobs {
+			if next.Jobs[i].ID == jobID {
+				next.Jobs[i].State = jobState
+				next.Jobs[i].WorkerID = jobWorkerID
+				next.Jobs[i].Generation = jobGeneration
+				if jobLease.Valid {
+					lease := jobLease.Time
+					next.Jobs[i].LeaseUntil = &lease
+				} else {
+					next.Jobs[i].LeaseUntil = nil
+				}
+			}
+		}
+	}
+	// The row insert above is idempotent on (attempt_id, event_seq); mirror that
+	// in the projection so a repeated late event never doubles in memory.
+	duplicate := false
+	for _, existing := range next.ExecutionEvents {
+		if existing.AttemptID == attemptID && existing.Seq == event.Seq {
+			duplicate = true
+			break
+		}
+	}
+	if !duplicate {
+		next.ExecutionEvents = append(next.ExecutionEvents, event)
+	}
+	s.st = next
+	return nil
+}
+
+func (s *Store) persistLateModelEventNarrow(attemptID string, event ExecutionEvent) error {
+	claim, ok := s.claimForAttempt(attemptID)
+	if !ok || claim.JobID == "" || claim.AttemptID != attemptID || claim.RunID == "" || claim.Generation <= 0 {
+		return errExecutionEventScope
+	}
+	if event.AttemptID != "" && event.AttemptID != attemptID {
+		return errExecutionEventScope
+	}
+	if event.NodeKind != "model_call" || (event.EventType != "model_completed" && event.EventType != "model_failed") {
+		return errAttemptTerminal
+	}
+	event.AttemptID = attemptID
+	ctx := context.Background()
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+	if err := setLocalScope(ctx, tx, claim.scope()); err != nil {
+		return err
+	}
+	if err := scopedCaseLock(ctx, tx, claim.CaseID); err != nil {
+		return err
+	}
+	if err := scopedAttemptLock(ctx, tx, attemptID); err != nil {
+		return err
+	}
+	var runID, stateName string
+	if err := tx.QueryRow(ctx, `SELECT run_id, state FROM review_attempts WHERE id=$1 FOR UPDATE`, attemptID).Scan(&runID, &stateName); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return errAttemptMissing
+		}
+		return err
+	}
+	if runID != claim.RunID {
+		return errExecutionEventScope
+	}
+	if stateName != "cancelled" {
+		return errAttemptTerminal
+	}
+	var jobState string
+	if err := tx.QueryRow(ctx, `SELECT state FROM worker_jobs
+		WHERE id=$1 AND tenant_id=$2 AND org_id=$3 AND case_id=$4 AND run_id=$5 AND attempt_id=$6
+			AND worker_id=$7 AND generation=$8
+			AND (state='cancelled' OR (state='running' AND lease_until > clock_timestamp()))
+		FOR UPDATE`, claim.JobID, claim.TenantID, claim.OrgID, claim.CaseID, claim.RunID, attemptID, claim.WorkerID, claim.Generation).Scan(&jobState); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return errLeaseLost
+		}
+		return err
+	}
+	if jobState != "cancelled" && jobState != "running" {
+		return errLeaseLost
+	}
+	if err := tx.QueryRow(ctx, `SELECT COALESCE(MAX(event_seq),0)+1 FROM execution_events WHERE attempt_id=$1`, attemptID).Scan(&event.Seq); err != nil {
+		return err
+	}
+	if err := insertExecutionEvent(ctx, tx, event); err != nil {
+		return err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return err
+	}
+	s.mu.Lock()
+	s.st.ExecutionEvents = mergeExecutionEventSlice(s.st.ExecutionEvents, []ExecutionEvent{event})
+	s.mu.Unlock()
+	return nil
+}
+
+func (s *Store) markUnfinishedInterrupted() error {
+	ids := make([]string, 0)
+	for _, attempt := range s.snapshot().Attempts {
+		if attemptActive(attempt.State) {
+			ids = append(ids, attempt.ID)
+		}
+	}
+	for _, id := range ids {
+		if err := s.interruptAttempt(context.Background(), id); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// interruptAttempt runs restart recovery for exactly one attempt in its own
+// transaction, with the shared case and attempt keys and the attempt row lock, so
+// it cannot interleave with a narrow attempt writer or a case transition. The
+// attempt is re-read under those locks; an attempt that became terminal or
+// finished in the meantime is left untouched.
+func (s *Store) interruptAttempt(ctx context.Context, attemptID string) error {
+	runID, caseID, err := s.attemptScope(ctx, attemptID)
+	if err != nil {
+		return err
+	}
+	if runID == "" {
+		return nil
+	}
+	scope := dbScope{ActorID: "system", Role: "worker", CaseID: caseID}
+	return s.updateState(ctx, scope, attemptID, func(next *state) error {
+		finishedAt := stamp()
+		code := "process_interrupted"
+		var runIDForEvent string
+		interrupted := false
+		for i := range next.Attempts {
+			if next.Attempts[i].ID != attemptID || !attemptActive(next.Attempts[i].State) {
+				continue
+			}
+			next.Attempts[i].State = "interrupted"
+			next.Attempts[i].FinishedAt = &finishedAt
+			next.Attempts[i].ErrorCode = &code
+			runIDForEvent = next.Attempts[i].RunID
+			interrupted = true
+		}
+		if !interrupted {
+			return nil
+		}
+		for i := range next.Runs {
+			if next.Runs[i].ID == runIDForEvent {
+				next.Runs[i].State = "interrupted"
+				next.Runs[i].UpdatedAt = finishedAt
+			}
+		}
+		appendExecutionEvent(next, ExecutionEvent{
+			AttemptID: attemptID, SpanID: stringPointer(attemptID), NodeKind: "attempt", Phase: "restart_recovery",
+			EventType: "attempt_interrupted", At: finishedAt, Status: "interrupted", ErrorCode: &code,
+		})
+		appendRunEvent(next, runIDForEvent, "interrupted")
+		return nil
+	})
+}
+
+// attemptScope reads only the run and case identity of one attempt, so recovery
+// can take the case key before loading anything else.
+func (s *Store) attemptScope(ctx context.Context, attemptID string) (string, string, error) {
+	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted, AccessMode: pgx.ReadOnly})
+	if err != nil {
+		return "", "", err
+	}
+	defer tx.Rollback(ctx)
+	if err := setLocalScope(ctx, tx, dbScope{ActorID: "system", Role: "worker"}); err != nil {
+		return "", "", err
+	}
+	var runID, caseID string
+	if err := tx.QueryRow(ctx, `SELECT a.run_id, r.case_id FROM review_attempts AS a
+		JOIN review_runs AS r ON r.tenant_id=a.tenant_id AND r.org_id=a.org_id AND r.id=a.run_id
+		WHERE a.id=$1`, attemptID).Scan(&runID, &caseID); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return "", "", nil
+		}
+		return "", "", err
+	}
+	return runID, caseID, tx.Commit(ctx)
+}
+
+func (st state) latestAttempt(runID string) (Attempt, bool) {
+	var latest Attempt
+	ok := false
+	for _, attempt := range st.Attempts {
+		if attempt.RunID == runID && (!ok || attempt.Ordinal > latest.Ordinal) {
+			latest, ok = attempt, true
+		}
+	}
+	return latest, ok
+}
+
+func (st state) attemptByID(attemptID string) (Attempt, bool) {
+	for _, attempt := range st.Attempts {
+		if attempt.ID == attemptID {
+			return attempt, true
+		}
+	}
+	return Attempt{}, false
+}
+
+func (st state) attemptInput(attemptID string) (AttemptInput, bool) {
+	for _, input := range st.AttemptInputs {
+		if input.AttemptID == attemptID {
+			return input, true
+		}
+	}
+	return AttemptInput{}, false
+}
+
+func (st state) runByID(runID string) (Run, bool) {
+	for _, run := range st.Runs {
+		if run.ID == runID {
+			return run, true
+		}
+	}
+	return Run{}, false
+}
+
+func (st state) executionEvents(attemptID string) []ExecutionEvent {
+	var out []ExecutionEvent
+	for _, event := range st.ExecutionEvents {
+		if event.AttemptID == attemptID {
+			out = append(out, event)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Seq < out[j].Seq })
+	return out
+}
+
+func (st state) documentsForAttempt(run Run, attemptID string) []Interpreted {
+	if input, ok := st.attemptInput(attemptID); ok {
+		return interpretedFromFrozen(input.Documents)
+	}
+	out := make([]Interpreted, 0)
+	for _, doc := range st.runDocuments(run) {
+		out = append(out, Interpreted{Document: doc})
+	}
+	return out
+}
+
+func (st state) findingsForAttempt(runID, attemptID string) []Finding {
+	var out []Finding
+	for _, finding := range st.Findings {
+		if finding.RunID == runID && finding.AttemptID == attemptID {
+			out = append(out, finding)
+		}
+	}
+	return out
+}
+
+func (st state) evaluationsForAttempt(runID, attemptID string) []ConstraintEval {
+	var out []ConstraintEval
+	for _, evaluation := range st.Evaluations {
+		if evaluation.RunID == runID && evaluation.AttemptID == attemptID {
+			out = append(out, evaluation)
+		}
+	}
+	return out
+}
+
+func findingsForAttempt(st state, runID, attemptID string) []Finding {
+	return st.findingsForAttempt(runID, attemptID)
+}
+
+func appendRunEvent(st *state, runID, stateName string) {
+	seq := 0
+	for _, event := range st.Events {
+		if event.RunID == runID && event.Seq > seq {
+			seq = event.Seq
+		}
+	}
+	st.Events = append(st.Events, Event{RunID: runID, Seq: seq + 1, Type: "state", State: stateName})
+}
+
+func appendExecutionEvent(st *state, event ExecutionEvent) {
+	maxSeq := 0
+	for _, previous := range st.ExecutionEvents {
+		if previous.AttemptID == event.AttemptID && previous.Seq > maxSeq {
+			maxSeq = previous.Seq
+		}
+	}
+	event.Seq = maxSeq + 1
+	st.ExecutionEvents = append(st.ExecutionEvents, event)
+}
+
+func acceptedEvent(attempt Attempt) ExecutionEvent {
+	return ExecutionEvent{
+		Seq: 1, AttemptID: attempt.ID, SpanID: stringPointer(attempt.ID), NodeKind: "attempt",
+		Phase: "acceptance", EventType: "attempt_accepted", At: attempt.AcceptedAt, Status: "accepted",
+	}
+}
+
+func attemptActive(state string) bool { return state == "accepted" || state == "running" }
+
+func materialize(caseID, runID, attemptID, now string, drafts []engine.Draft, sources ...[]Interpreted) ([]Finding, error) {
+	var docs []Interpreted
+	if len(sources) > 0 {
+		docs = sources[0]
+	}
+	out := make([]Finding, 0, len(drafts))
+	for _, draft := range drafts {
+		id, err := newID("find_")
+		if err != nil {
+			return nil, err
+		}
+		origin := draft.Origin
+		if origin == "" {
+			origin = "rule"
+		}
+		finding := Finding{
+			ID: id, RunID: runID, AttemptID: attemptID, CaseID: caseID, Origin: origin, Domain: draft.Domain,
+			Claim: draft.Claim, Relation: draft.Relation, DispositionSuggestion: draft.Disposition,
+			UnverifiedReason: draft.UnverifiedReason, Version: 1, CreatedAt: now,
+		}
+		for _, anchor := range draft.Anchors {
+			ev, err := newID("ev_")
+			if err != nil {
+				return nil, err
+			}
+			parsedID, normalizedDigest := parsedIdentity(docs, anchor.DocumentID)
+			finding.Anchors = append(finding.Anchors, Anchor{
+				ID: ev, DocumentID: anchor.DocumentID, ParsedDocumentID: parsedID, NormalizedDigest: normalizedDigest,
+				Quote: anchor.Quote, Status: anchor.Status, Start: anchor.Start, End: anchor.End,
+				Reason: anchor.Reason, Page: anchor.Page, ElementID: anchor.ElementID,
+			})
+		}
+		if finding.Anchors == nil {
+			finding.Anchors = []Anchor{}
+		}
+		out = append(out, finding)
+	}
+	return out, nil
+}
+
+func parsedIdentity(docs []Interpreted, documentID string) (string, string) {
+	for _, doc := range docs {
+		if doc.Document.ID == documentID && doc.ParsedDocument != nil {
+			return doc.ParsedDocument.ID, doc.ParsedDocument.NormalizedDigest
+		}
+	}
+	return "", ""
+}
+
+func parsedDocumentID(docs []Interpreted, documentID string) string {
+	id, _ := parsedIdentity(docs, documentID)
+	return id
+}
+
+func interpretedFromFrozen(frozen []FrozenDocument) []Interpreted {
+	out := make([]Interpreted, len(frozen))
+	for i, item := range frozen {
+		var parsed *ParsedDocument
+		if item.ParsedDocumentID != "" {
+			normalizedDigest := ""
+			if item.NormalizedHash != nil {
+				normalizedDigest = *item.NormalizedHash
+			}
+			parsed = &ParsedDocument{
+				ID: item.ParsedDocumentID, DocumentID: item.Document.ID, OriginalDigest: item.OriginalHash,
+				ParserID: item.ParserID, ParserVersion: item.ParserVersion, ConfigHash: item.ConfigHash,
+				NormalizationVersion: item.NormalizationVersion, NormalizedDigest: normalizedDigest,
+				IRDigest: item.IRDigest, ArtifactDigest: item.ParsedArtifactDigest, CreatedAt: item.ParsedCreatedAt,
+				Status: item.ParsedStatus, Text: item.Text, IR: item.IR, ParseError: item.ParseError, FromOCR: item.FromOCR,
+			}
+		}
+		out[i] = Interpreted{
+			Document: item.Document, Ready: item.Ready, FromOCR: item.FromOCR,
+			ParseError: item.ParseError, Text: item.Text, IR: item.IR, ParsedDocument: parsed,
+		}
+	}
+	return out
+}
+
+func frozenInputHash(snapshot RunSnapshot, docs []FrozenDocument) (string, error) {
+	snapshot.RunID = ""
+	sort.Strings(snapshot.DocumentIDs)
+	sort.Strings(snapshot.ParsedDocumentIDs)
+	raw, err := json.Marshal(struct {
+		Snapshot  RunSnapshot      `json:"snapshot"`
+		Documents []FrozenDocument `json:"documents"`
+	}{Snapshot: snapshot, Documents: docs})
+	if err != nil {
+		return "", err
+	}
+	digest := sha256.Sum256(raw)
+	return hex.EncodeToString(digest[:]), nil
+}
+
+func frozenInputMatchesSnapshot(snapshot RunSnapshot, docs []FrozenDocument) bool {
+	ids := make([]string, len(docs))
+	for i, doc := range docs {
+		ids[i] = doc.ParsedDocumentID
+	}
+	return sameDocumentSet(snapshot.ParsedDocumentIDs, ids) &&
+		snapshot.ParseSelectionHash == selectionHash(docs) &&
+		snapshot.ParserConfigurationID == frozenConfigHash(docs)
+}
+
+// attemptOutputHash derives the canonical output identity of one attempt. The
+// caller supplies the verified agent-review digest of the same attempt (empty
+// when the attempt has no agent-flow record), so a persisted projection is part
+// of the frozen output and can never be swapped afterwards.
+func attemptOutputHash(st state, runID, attemptID, agentReviewDigest string) (string, error) {
+	findings := st.findingsForAttempt(runID, attemptID)
+	attempt, _ := st.attemptByID(attemptID)
+	for i := range findings {
+		// Human decision concurrency versions are not part of the frozen rule output.
+		findings[i].Version = 0
+	}
+	raw, err := json.Marshal(struct {
+		Findings               []Finding        `json:"findings"`
+		Evaluations            []ConstraintEval `json:"evaluations"`
+		RulePackHash           string           `json:"rulepack_hash,omitempty"`
+		RulePackSnapshotDigest string           `json:"rulepack_snapshot_digest,omitempty"`
+		RulePackCompilerRef    string           `json:"rulepack_compiler_ref,omitempty"`
+		AgentReviewSHA256      string           `json:"agent_review_sha256,omitempty"`
+	}{
+		Findings: findings, Evaluations: st.evaluationsForAttempt(runID, attemptID),
+		RulePackHash:           attempt.RulePackHash,
+		RulePackSnapshotDigest: attempt.RulePackSnapshotDigest,
+		RulePackCompilerRef:    attempt.RulePackCompilerRef,
+		AgentReviewSHA256:      agentReviewDigest,
+	})
+	if err != nil {
+		return "", err
+	}
+	digest := sha256.Sum256(raw)
+	return hex.EncodeToString(digest[:]), nil
+}
+
+// agentReviewDigestFor reads the verified projection digest of one attempt
+// outside a transaction. It returns empty when the store has no pool (pure state
+// tests) or the attempt has no record.
+func (s *Store) agentReviewDigestFor(tenantID, orgID, attemptID string) (string, error) {
+	if s == nil || s.pool == nil || attemptID == "" || tenantID == "" || orgID == "" {
+		return "", nil
+	}
+	tx, err := s.pool.BeginTx(context.Background(), pgx.TxOptions{AccessMode: pgx.ReadOnly})
+	if err != nil {
+		return "", err
+	}
+	defer tx.Rollback(context.Background())
+	if err := setLocalScope(context.Background(), tx, dbScope{ActorID: "system", Role: "api", TenantID: tenantID, OrgID: orgID}); err != nil {
+		return "", err
+	}
+	return agentReviewDigestForOutput(context.Background(), tx, tenantID, orgID, attemptID)
+}
+
+func hasVerifiedFinding(findings []Finding) bool {
+	for _, finding := range findings {
+		for _, anchor := range finding.Anchors {
+			if anchor.Status == "located" {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func runIDCase(st state, runID string) string {
+	run, _ := st.runByID(runID)
+	return run.CaseID
+}
+
+func stringPointer(value string) *string { return &value }
+
+func eventAttemptIDs(st state, runID string) []string {
+	var ids []string
+	for _, attempt := range st.Attempts {
+		if attempt.RunID == runID {
+			ids = append(ids, attempt.ID)
+		}
+	}
+	return ids
+}
+
+func selectedExecution(st state, runID, selectedID string) *Execution {
+	allAttempts := make([]Attempt, 0)
+	for _, attempt := range st.Attempts {
+		if attempt.RunID == runID {
+			allAttempts = append(allAttempts, attempt)
+		}
+	}
+	if len(allAttempts) == 0 {
+		return nil
+	}
+	sort.Slice(allAttempts, func(i, j int) bool { return allAttempts[i].Ordinal < allAttempts[j].Ordinal })
+	for i := range allAttempts {
+		allAttempts[i].ParsedDocumentIDs = attemptParsedDocumentIDs(st, allAttempts[i])
+	}
+	if selectedID == "" {
+		selectedID = allAttempts[len(allAttempts)-1].ID
+	}
+	var selected *Attempt
+	for i := range allAttempts {
+		if allAttempts[i].ID == selectedID {
+			selected = &allAttempts[i]
+			break
+		}
+	}
+	if selected == nil {
+		return nil
+	}
+	events := st.executionEvents(selectedID)
+	return &Execution{
+		SchemaVersion: "audit-execution/v1", Attempt: selected, Attempts: allAttempts, Events: events,
+		AgentReview:      nil,
+		Usage:            usageSummary(st.ExecutionEvents, []string{selectedID}),
+		AllAttemptsUsage: usageSummary(st.ExecutionEvents, eventAttemptIDs(st, runID)),
+		DurationMS:       attemptDuration(*selected), FirstVerifiedFindingMS: firstVerifiedDuration(*selected, events),
+		QueueWaitMS: nil,
+	}
+}
+
+func attemptParsedDocumentIDs(st state, attempt Attempt) []string {
+	ids := []string{}
+	if attempt.HistoryKind != "frozen" {
+		return ids
+	}
+	input, ok := st.attemptInput(attempt.ID)
+	if !ok {
+		return ids
+	}
+	for _, frozen := range input.Documents {
+		if !validParsedID(frozen.ParsedDocumentID) || frozen.ParsedArtifactDigest == "" || frozen.ConfigHash == "" {
+			continue
+		}
+		parsed, ok := st.parsedByID(frozen.ParsedDocumentID)
+		if !ok || parsed.DocumentID != frozen.Document.ID || parsed.ArtifactDigest != frozen.ParsedArtifactDigest {
+			continue
+		}
+		ids = append(ids, frozen.ParsedDocumentID)
+	}
+	return ids
+}
+
+func attemptDuration(attempt Attempt) *int64 {
+	if attempt.FinishedAt == nil {
+		return nil
+	}
+	start, errStart := time.Parse(time.RFC3339Nano, attempt.AcceptedAt)
+	if errStart != nil {
+		start, errStart = time.Parse(timeLayout, attempt.AcceptedAt)
+	}
+	finish, errFinish := time.Parse(time.RFC3339Nano, *attempt.FinishedAt)
+	if errFinish != nil {
+		finish, errFinish = time.Parse(timeLayout, *attempt.FinishedAt)
+	}
+	if errStart != nil || errFinish != nil || finish.Before(start) {
+		return nil
+	}
+	value := finish.Sub(start).Milliseconds()
+	return &value
+}
+
+func firstVerifiedDuration(attempt Attempt, events []ExecutionEvent) *int64 {
+	accepted, err := time.Parse(time.RFC3339Nano, attempt.AcceptedAt)
+	if err != nil {
+		accepted, err = time.Parse(timeLayout, attempt.AcceptedAt)
+	}
+	if err != nil {
+		return nil
+	}
+	for _, event := range events {
+		if event.EventType != "finding_verified" {
+			continue
+		}
+		verified, err := time.Parse(time.RFC3339Nano, event.At)
+		if err != nil {
+			verified, err = time.Parse(timeLayout, event.At)
+		}
+		if err != nil || verified.Before(accepted) {
+			return nil
+		}
+		value := verified.Sub(accepted).Milliseconds()
+		return &value
+	}
+	return nil
+}
+
+func usageSummary(events []ExecutionEvent, attemptIDs []string) UsageSummary {
+	wanted := make(map[string]bool, len(attemptIDs))
+	for _, id := range attemptIDs {
+		wanted[id] = true
+	}
+	filter := attemptIDs != nil
+	var calls int
+	var unknown int
+	var inputSum, outputSum, totalSum int64
+	var inputKnown, outputKnown, totalKnown bool
+	var inputAny, outputAny, totalAny bool
+	sources := map[string]bool{}
+	for _, event := range events {
+		if filter && !wanted[event.AttemptID] {
+			continue
+		}
+		if event.NodeKind != "model_call" || (event.EventType != "model_completed" && event.EventType != "model_failed") {
+			continue
+		}
+		calls++
+		if calls == 1 {
+			inputKnown, outputKnown, totalKnown = true, true, true
+		}
+		usage := event.Usage
+		if usage != nil && usage.Source != "" {
+			sources[usage.Source] = true
+		}
+		if usage == nil || usage.InputTokens == nil && usage.OutputTokens == nil && usage.TotalTokens == nil {
+			unknown++
+			inputKnown, outputKnown, totalKnown = false, false, false
+			continue
+		}
+		if usage.InputTokens != nil {
+			inputAny = true
+			inputSum += *usage.InputTokens
+		} else {
+			inputKnown = false
+		}
+		if usage.OutputTokens != nil {
+			outputAny = true
+			outputSum += *usage.OutputTokens
+		} else {
+			outputKnown = false
+		}
+		if usage.TotalTokens != nil {
+			totalAny = true
+			totalSum += *usage.TotalTokens
+		} else {
+			totalKnown = false
+		}
+	}
+	var input, output, total *int64
+	if calls > 0 && inputKnown {
+		input = &inputSum
+	}
+	if calls > 0 && outputKnown {
+		output = &outputSum
+	}
+	if calls > 0 && totalKnown {
+		total = &totalSum
+	}
+	var inputSubtotal, outputSubtotal, totalSubtotal *int64
+	if inputAny {
+		inputSubtotal = &inputSum
+	}
+	if outputAny {
+		outputSubtotal = &outputSum
+	}
+	if totalAny {
+		totalSubtotal = &totalSum
+	}
+	sourceList := make([]string, 0, len(sources))
+	for source := range sources {
+		sourceList = append(sourceList, source)
+	}
+	sort.Strings(sourceList)
+	return UsageSummary{
+		InputTokens: input, OutputTokens: output, TotalTokens: total, Calls: calls, UnknownCalls: unknown,
+		Sources:        sourceList,
+		KnownSubtotals: KnownTokenSubtotals{InputTokens: inputSubtotal, OutputTokens: outputSubtotal, TotalTokens: totalSubtotal},
+		Cost:           nil,
+	}
+}

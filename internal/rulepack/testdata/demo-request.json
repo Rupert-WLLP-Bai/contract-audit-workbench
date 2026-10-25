@@ -1,0 +1,23 @@
+{
+  "principal": {
+    "user_id": "reviewer-demo",
+    "tenant_id": "tenant-demo",
+    "enabled": true,
+    "grants": [{"role": "reviewer", "scope": "case", "case_id": "case-demo"}]
+  },
+  "resource": {"tenant_id": "tenant-demo", "case_id": "case-demo", "org_id": "org-demo", "owner_id": "owner-demo"},
+  "business_line": "enterprise",
+  "scenario": "dedicated-line",
+  "contract_type": "service",
+  "at": "2026-06-01T12:00:00Z",
+  "sources": [
+	{"id": "doc-bandwidth", "version": "1", "tenant_id": "tenant-demo", "case_id": "case-demo", "role": "draft_contract", "digest": "6e6e1976dab91a0739de27fb9c756dc73890e6807af0a45ef6d1972c886c411f", "text": "专线甲最低带宽承诺为50 Mbit/s。"},
+	{"id": "doc-sla", "version": "1", "tenant_id": "tenant-demo", "case_id": "case-demo", "role": "draft_contract", "digest": "2ba30f015d5f924bc49f9a1fdea51803d84d27bff05f373fea2df2117e9d87ed", "text": "专线甲自然月可用率为99.5%，时区Asia/Shanghai，日历Gregorian，故障口径all_service_unavailability，无排除项。"},
+	{"id": "doc-advance", "version": "1", "tenant_id": "tenant-demo", "case_id": "case-demo", "role": "draft_contract", "digest": "710e466f265d7026396c9d20418e4ea0ac62ebab295fd0f12563fd0530c4b05e", "text": "专线甲合同总额为预付款计算基础，预付款比例为0.4。"}
+  ],
+  "facts": [
+	{"id": "fact-advance", "rule_id": "ENT-COM-ADV-001", "dimension": "advance_payment_ratio", "object_ref": "专线甲", "value": "0.4", "unit": "ratio", "source_role": "draft_contract", "basis": "contract_total", "citations": [{"source_id": "doc-advance", "source_version": "1", "tenant_id": "tenant-demo", "case_id": "case-demo", "source_digest": "710e466f265d7026396c9d20418e4ea0ac62ebab295fd0f12563fd0530c4b05e", "start": 0, "end": 26, "quote": "专线甲合同总额为预付款计算基础，预付款比例为0.4。"}]},
+	{"id": "fact-bandwidth", "rule_id": "ENT-TECH-BW-001", "dimension": "minimum_bandwidth", "object_ref": "专线甲", "value": "50", "unit": "Mbit/s", "source_role": "draft_contract", "citations": [{"source_id": "doc-bandwidth", "source_version": "1", "tenant_id": "tenant-demo", "case_id": "case-demo", "source_digest": "6e6e1976dab91a0739de27fb9c756dc73890e6807af0a45ef6d1972c886c411f", "start": 0, "end": 20, "quote": "专线甲最低带宽承诺为50 Mbit/s。"}]},
+	{"id": "fact-sla", "rule_id": "ENT-TECH-SLA-001", "dimension": "monthly_availability", "object_ref": "专线甲", "value": "99.5", "unit": "percent", "source_role": "draft_contract", "measurement_window": "calendar_month", "time_zone": "Asia/Shanghai", "calendar": "gregorian", "outage_definition": "all_service_unavailability", "exclusions": [], "citations": [{"source_id": "doc-sla", "source_version": "1", "tenant_id": "tenant-demo", "case_id": "case-demo", "source_digest": "2ba30f015d5f924bc49f9a1fdea51803d84d27bff05f373fea2df2117e9d87ed", "start": 0, "end": 80, "quote": "专线甲自然月可用率为99.5%，时区Asia/Shanghai，日历Gregorian，故障口径all_service_unavailability，无排除项。"}]}
+  ]
+}

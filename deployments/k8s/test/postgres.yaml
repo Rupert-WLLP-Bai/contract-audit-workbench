@@ -1,0 +1,48 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: contract-audit-test
+  labels:
+    app.kubernetes.io/part-of: contract-audit
+    environment: test
+    pod-security.kubernetes.io/enforce: restricted
+---
+apiVersion: barmancloud.cnpg.io/v1
+kind: ObjectStore
+metadata:
+  name: contract-audit-test-backups
+  namespace: contract-audit-test
+  labels: {app.kubernetes.io/part-of: contract-audit}
+spec:
+  configuration:
+    destinationPath: s3://contract-audit-test-backups/drills
+    endpointURL: https://independent-test-backup-s3.example.invalid
+    s3Credentials:
+      accessKeyId: {name: contract-audit-test-backup-objectstore, key: ACCESS_KEY_ID}
+      secretAccessKey: {name: contract-audit-test-backup-objectstore, key: SECRET_ACCESS_KEY}
+    data: {compression: gzip, jobs: 2}
+    wal: {compression: gzip, maxParallel: 2}
+  retentionPolicy: 14d
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: contract-audit-test-db
+  namespace: contract-audit-test
+  labels: {app.kubernetes.io/part-of: contract-audit}
+spec:
+  instances: 1
+  enablePDB: false
+  storage: {size: 20Gi}
+  walStorage: {size: 5Gi}
+  bootstrap:
+    initdb:
+      database: contract_audit_test
+  resources:
+    requests: {cpu: 250m, memory: 512Mi}
+    limits: {cpu: "1", memory: 2Gi}
+  plugins:
+    - name: barman-cloud.cloudnative-pg.io
+      isWALArchiver: true
+      parameters:
+        barmanObjectName: contract-audit-test-backups

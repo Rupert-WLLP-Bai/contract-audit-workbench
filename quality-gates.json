@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "go": {
+    "scope": "all internal packages, cross-package statement coverage",
+    "minimum_statement_percent": 80,
+    "packages": {
+      "contractaudit/internal/access": 95,
+      "contractaudit/internal/agentflow": 85,
+      "contractaudit/internal/decision": 90,
+      "contractaudit/internal/rulepack": 90,
+      "contractaudit/internal/audit": 85,
+      "contractaudit/internal/docir": 85,
+      "contractaudit/internal/docversion": 90,
+      "contractaudit/internal/engine": 85,
+      "contractaudit/internal/config": 85,
+      "contractaudit/internal/revise": 85,
+      "contractaudit/internal/compare": 85
+    }
+  },
+  "web": {
+    "scope": "all executable web/src TS/TSX except main.tsx bootstrap; includes unimported pages",
+    "minimum_lines_percent": 80,
+    "minimum_branches_percent": 70,
+    "minimum_functions_percent": 75
+  },
+  "notes": [
+    "Go coverage is statement coverage, not branch coverage.",
+    "Thresholds are release gates, not evidence of business accuracy.",
+    "Coverage includes failing paths. Do not lower gates or exclude production files to pass."
+  ]
+}

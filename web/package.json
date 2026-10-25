@@ -1,0 +1,47 @@
+{
+  "name": "contract-audit-web",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "packageManager": "bun@1.4.3",
+  "scripts": {
+    "dev": "vite",
+    "build": "bun run typecheck && bun run build:client && bun run build:admin && bun run build:portal",
+    "build:client": "vite build --mode client --outDir dist/client --emptyOutDir",
+    "build:admin": "vite build --mode admin --outDir dist/admin --emptyOutDir",
+    "build:portal": "vite build --mode portal --outDir dist/portal --emptyOutDir",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.test.json",
+    "test": "vitest run",
+    "test:functional": "playwright test --config playwright.functional.config.ts",
+    "preview": "vite preview",
+    "test:coverage": "vitest run --coverage",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@tanstack/react-query": "^5.90.5",
+    "antd": "6.6.7",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "react-router": "^7.9.4",
+    "@scalar/api-reference-react": "0.9.82"
+  },
+  "devDependencies": {
+    "@happy-dom/global-registrator": "^20.0.10",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.0",
+    "@testing-library/user-event": "^14.6.1",
+    "@types/react": "^19.2.2",
+    "@types/react-dom": "^19.2.2",
+    "@vitejs/plugin-react": "^5.0.4",
+    "@vitest/coverage-v8": "4.0.18",
+    "bun-types": "^1.4.3",
+    "happy-dom": "^20.0.10",
+    "playwright": "1.56.1",
+    "typescript": "^5.9.3",
+    "vite": "^7.1.10",
+    "vitest": "4.0.18"
+  },
+  "engines": {
+    "node": ">=22.12.0"
+  }
+}

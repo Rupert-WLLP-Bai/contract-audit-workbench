@@ -1,0 +1,826 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gateway
+  labels: &gateway-labels
+    app.kubernetes.io/name: gateway
+    app.kubernetes.io/part-of: contract-audit
+spec:
+  replicas: 2
+  revisionHistoryLimit: 5
+  strategy:
+    type: RollingUpdate
+    rollingUpdate: {maxUnavailable: 0, maxSurge: 1}
+  selector:
+    matchLabels: *gateway-labels
+  template:
+    metadata:
+      labels: *gateway-labels
+    spec:
+      serviceAccountName: gateway
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        seccompProfile: {type: RuntimeDefault}
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                topologyKey: kubernetes.io/hostname
+                labelSelector: {matchLabels: {app.kubernetes.io/name: gateway}}
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector: {matchLabels: {app.kubernetes.io/name: gateway}}
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector: {matchLabels: {app.kubernetes.io/name: gateway}}
+      containers:
+        - name: gateway
+          image: contract-audit-backend:release
+          imagePullPolicy: IfNotPresent
+          args: ["/app/gateway"]
+          ports: [{name: http, containerPort: 8080}]
+          envFrom: [{configMapRef: {name: contract-audit-runtime}}]
+          env:
+            - name: ADDR
+              value: ":8080"
+            - name: GATEWAY_CORE_TOKEN
+              valueFrom: {secretKeyRef: {name: contract-audit-service-tokens, key: GATEWAY_CORE_TOKEN}}
+            - name: GATEWAY_DOCUMENT_TOKEN
+              valueFrom: {secretKeyRef: {name: contract-audit-service-tokens, key: GATEWAY_DOCUMENT_TOKEN}}
+            - name: GATEWAY_EXECUTION_TOKEN
+              valueFrom: {secretKeyRef: {name: contract-audit-service-tokens, key: GATEWAY_EXECUTION_TOKEN}}
+            - name: GATEWAY_TOOL_TOKEN
+              valueFrom: {secretKeyRef: {name: contract-audit-service-tokens, key: GATEWAY_TOOL_TOKEN}}
+          startupProbe:
+            httpGet: {path: /health, port: http}
+            periodSeconds: 10
+            failureThreshold: 30
+          readinessProbe:
+            httpGet: {path: /ready, port: http}
+            periodSeconds: 5
+            timeoutSeconds: 3
+          livenessProbe:
+            httpGet: {path: /health, port: http}
+            periodSeconds: 10
+            timeoutSeconds: 3
+          resources:
+            requests: {cpu: 100m, memory: 128Mi}
+            limits: {cpu: "1", memory: 512Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          volumeMounts: [{name: tmp, mountPath: /tmp}]
+      volumes: [{name: tmp, emptyDir: {sizeLimit: 64Mi}}]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: core-api
+  labels: &core-labels
+    app.kubernetes.io/name: core-api
+    app.kubernetes.io/part-of: contract-audit
+spec:
+  replicas: 2
+  revisionHistoryLimit: 5
+  strategy:
+    type: RollingUpdate
+    rollingUpdate: {maxUnavailable: 0, maxSurge: 1}
+  selector:
+    matchLabels: *core-labels
+  template:
+    metadata:
+      labels: *core-labels
+    spec:
+      serviceAccountName: core-api
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        seccompProfile: {type: RuntimeDefault}
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                topologyKey: kubernetes.io/hostname
+                labelSelector: {matchLabels: {app.kubernetes.io/name: core-api}}
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector: {matchLabels: {app.kubernetes.io/name: core-api}}
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector: {matchLabels: {app.kubernetes.io/name: core-api}}
+      containers:
+        - name: core-api
+          image: contract-audit-backend:release
+          imagePullPolicy: IfNotPresent
+          args: ["/app/server"]
+          ports: [{name: http, containerPort: 8081}]
+          envFrom: [{configMapRef: {name: contract-audit-runtime}}]
+          env:
+            - name: SERVICE_ROLE
+              value: core
+            - name: CORE_DATABASE_URL
+              valueFrom: {secretKeyRef: {name: contract-audit-db-urls, key: CORE_DATABASE_URL}}
+            - name: ADDR
+              value: ":8081"
+            - name: GATEWAY_ROLE_TOKEN
+              valueFrom: {secretKeyRef: {name: contract-audit-service-tokens, key: GATEWAY_CORE_TOKEN}}
+            - name: OIDC_CLIENT_SECRET
+              valueFrom: {secretKeyRef: {name: contract-audit-oidc, key: OIDC_CLIENT_SECRET, optional: true}}
+            - name: OIDC_ADMIN_CLIENT_SECRET
+              valueFrom: {secretKeyRef: {name: contract-audit-oidc, key: OIDC_ADMIN_CLIENT_SECRET, optional: true}}
+            - name: OIDC_STATE_KEY
+              valueFrom: {secretKeyRef: {name: contract-audit-oidc, key: OIDC_STATE_KEY, optional: true}}
+          startupProbe:
+            httpGet: {path: /health, port: http}
+            periodSeconds: 10
+            failureThreshold: 30
+          readinessProbe:
+            httpGet: {path: /ready, port: http}
+            periodSeconds: 5
+            timeoutSeconds: 3
+          livenessProbe:
+            httpGet: {path: /health, port: http}
+            periodSeconds: 10
+            timeoutSeconds: 3
+          lifecycle:
+            preStop: {exec: {command: ["/bin/sh", "-c", "sleep 5"]}}
+          resources:
+            requests: {cpu: 250m, memory: 256Mi}
+            limits: {cpu: "1", memory: 1Gi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          volumeMounts: [{name: tmp, mountPath: /tmp}]
+      volumes: [{name: tmp, emptyDir: {sizeLimit: 64Mi}}]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: document-service
+  labels: &document-labels
+    app.kubernetes.io/name: document-service
+    app.kubernetes.io/part-of: contract-audit
+spec:
+  replicas: 2
+  revisionHistoryLimit: 5
+  strategy:
+    type: RollingUpdate
+    rollingUpdate: {maxUnavailable: 0, maxSurge: 1}
+  selector:
+    matchLabels: *document-labels
+  template:
+    metadata:
+      labels: *document-labels
+    spec:
+      serviceAccountName: document-service
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 60
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        seccompProfile: {type: RuntimeDefault}
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                topologyKey: kubernetes.io/hostname
+                labelSelector: {matchLabels: {app.kubernetes.io/name: document-service}}
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector: {matchLabels: {app.kubernetes.io/name: document-service}}
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector: {matchLabels: {app.kubernetes.io/name: document-service}}
+      containers:
+        - name: document-service
+          image: contract-audit-backend:release
+          imagePullPolicy: IfNotPresent
+          args: ["/app/documentservice"]
+          ports: [{name: http, containerPort: 8082}]
+          envFrom: [{configMapRef: {name: contract-audit-runtime}}]
+          env:
+            - name: SERVICE_ROLE
+              value: document
+            - name: DOCUMENT_DATABASE_URL
+              valueFrom: {secretKeyRef: {name: contract-audit-db-urls, key: DOCUMENT_DATABASE_URL}}
+            - name: ADDR
+              value: ":8082"
+            - name: S3_ACCESS_KEY
+              valueFrom: {secretKeyRef: {name: contract-audit-rustfs, key: RUSTFS_ACCESS_KEY}}
+            - name: S3_SECRET_KEY
+              valueFrom: {secretKeyRef: {name: contract-audit-rustfs, key: RUSTFS_SECRET_KEY}}
+            - name: DOCUMENT_MODEL_TOKEN
+              valueFrom: {secretKeyRef: {name: contract-audit-service-tokens, key: DOCUMENT_MODEL_TOKEN}}
+            - name: WORKER_DOCUMENT_TOKEN
+              valueFrom: {secretKeyRef: {name: contract-audit-service-tokens, key: WORKER_DOCUMENT_TOKEN}}
+            - name: GATEWAY_ROLE_TOKEN
+              valueFrom: {secretKeyRef: {name: contract-audit-service-tokens, key: GATEWAY_DOCUMENT_TOKEN}}
+          startupProbe:
+            httpGet: {path: /health/live, port: http}
+            periodSeconds: 10
+            failureThreshold: 30
+          readinessProbe:
+            httpGet: {path: /health/ready, port: http}
+            periodSeconds: 5
+            timeoutSeconds: 3
+          livenessProbe:
+            httpGet: {path: /health/live, port: http}
+            periodSeconds: 10
+            timeoutSeconds: 3
+          lifecycle:
+            preStop: {exec: {command: ["/bin/sh", "-c", "sleep 5"]}}
+          resources:
+            requests: {cpu: 250m, memory: 256Mi}
+            limits: {cpu: "2", memory: 2Gi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          volumeMounts: [{name: tmp, mountPath: /tmp}]
+      volumes: [{name: tmp, emptyDir: {sizeLimit: 256Mi}}]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: audit-execution
+  labels: &execution-labels
+    app.kubernetes.io/name: audit-execution
+    app.kubernetes.io/part-of: contract-audit
+spec:
+  replicas: 2
+  revisionHistoryLimit: 5
+  strategy:
+    type: RollingUpdate
+    rollingUpdate: {maxUnavailable: 0, maxSurge: 1}
+  selector:
+    matchLabels: *execution-labels
+  template:
+    metadata:
+      labels: *execution-labels
+    spec:
+      serviceAccountName: audit-execution
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 45
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        seccompProfile: {type: RuntimeDefault}
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                topologyKey: kubernetes.io/hostname
+                labelSelector: {matchLabels: {app.kubernetes.io/name: audit-execution}}
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector: {matchLabels: {app.kubernetes.io/name: audit-execution}}
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector: {matchLabels: {app.kubernetes.io/name: audit-execution}}
+      containers:
+        - name: audit-execution
+          image: contract-audit-backend:release
+          imagePullPolicy: IfNotPresent
+          args: ["/app/auditexecution"]
+          ports: [{name: http, containerPort: 8083}]
+          envFrom: [{configMapRef: {name: contract-audit-runtime}}]
+          env:
+            - name: SERVICE_ROLE
+              value: execution
+            - name: EXECUTION_DATABASE_URL
+              valueFrom: {secretKeyRef: {name: contract-audit-db-urls, key: EXECUTION_DATABASE_URL}}
+            - name: ADDR
+              value: ":8083"
+            - name: GATEWAY_ROLE_TOKEN
+              valueFrom: {secretKeyRef: {name: contract-audit-service-tokens, key: GATEWAY_EXECUTION_TOKEN}}
+          startupProbe:
+            httpGet: {path: /health/live, port: http}
+            periodSeconds: 10
+            failureThreshold: 30
+          readinessProbe:
+            httpGet: {path: /health/ready, port: http}
+            periodSeconds: 5
+            timeoutSeconds: 3
+          livenessProbe:
+            httpGet: {path: /health/live, port: http}
+            periodSeconds: 10
+            timeoutSeconds: 3
+          lifecycle:
+            preStop: {exec: {command: ["/bin/sh", "-c", "sleep 5"]}}
+          resources:
+            requests: {cpu: 250m, memory: 256Mi}
+            limits: {cpu: "1", memory: 1Gi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          volumeMounts: [{name: tmp, mountPath: /tmp}]
+      volumes: [{name: tmp, emptyDir: {sizeLimit: 64Mi}}]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: audit-worker
+  labels: &worker-labels
+    app.kubernetes.io/name: audit-worker
+    app.kubernetes.io/part-of: contract-audit
+spec:
+  replicas: 2
+  revisionHistoryLimit: 5
+  strategy:
+    type: RollingUpdate
+    rollingUpdate: {maxUnavailable: 0, maxSurge: 1}
+  selector:
+    matchLabels: *worker-labels
+  template:
+    metadata:
+      labels: *worker-labels
+    spec:
+      serviceAccountName: audit-worker
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 90
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        seccompProfile: {type: RuntimeDefault}
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                topologyKey: kubernetes.io/hostname
+                labelSelector: {matchLabels: {app.kubernetes.io/name: audit-worker}}
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector: {matchLabels: {app.kubernetes.io/name: audit-worker}}
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector: {matchLabels: {app.kubernetes.io/name: audit-worker}}
+      containers:
+        - name: audit-worker
+          image: contract-audit-backend:release
+          imagePullPolicy: IfNotPresent
+          args: ["/app/worker"]
+          ports: [{name: health, containerPort: 8086}]
+          envFrom: [{configMapRef: {name: contract-audit-runtime}}]
+          env:
+            - name: SERVICE_ROLE
+              value: worker
+            - name: EXECUTION_DATABASE_URL
+              valueFrom: {secretKeyRef: {name: contract-audit-db-urls, key: EXECUTION_DATABASE_URL}}
+            - name: HEALTH_ADDR
+              value: ":8086"
+            - name: DOCUMENT_SERVICE_URL
+              valueFrom: {configMapKeyRef: {name: contract-audit-runtime, key: DOCUMENT_SERVICE_URL}}
+            - name: MODEL_GATEWAY_URL
+              valueFrom: {configMapKeyRef: {name: contract-audit-runtime, key: MODEL_GATEWAY_URL}}
+            - name: WORKER_DOCUMENT_TOKEN
+              valueFrom: {secretKeyRef: {name: contract-audit-service-tokens, key: WORKER_DOCUMENT_TOKEN}}
+            - name: WORKER_MODEL_TOKEN
+              valueFrom: {secretKeyRef: {name: contract-audit-service-tokens, key: WORKER_MODEL_TOKEN}}
+            - name: WORKER_TOOL_TOKEN
+              valueFrom: {secretKeyRef: {name: contract-audit-service-tokens, key: WORKER_TOOL_TOKEN}}
+            - name: TOOL_GATEWAY_URL
+              valueFrom: {configMapKeyRef: {name: contract-audit-runtime, key: TOOL_GATEWAY_URL}}
+          startupProbe:
+            httpGet: {path: /health/live, port: health}
+            periodSeconds: 10
+            failureThreshold: 60
+          readinessProbe:
+            httpGet: {path: /health/ready, port: health}
+            periodSeconds: 5
+            timeoutSeconds: 3
+          livenessProbe:
+            httpGet: {path: /health/live, port: health}
+            periodSeconds: 10
+            timeoutSeconds: 3
+          lifecycle:
+            preStop: {exec: {command: ["/bin/sh", "-c", "sleep 15"]}}
+          resources:
+            requests: {cpu: 500m, memory: 512Mi}
+            limits: {cpu: "2", memory: 2Gi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          volumeMounts: [{name: tmp, mountPath: /tmp}]
+      volumes: [{name: tmp, emptyDir: {sizeLimit: 128Mi}}]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: model-gateway
+  labels: &model-labels
+    app.kubernetes.io/name: model-gateway
+    app.kubernetes.io/part-of: contract-audit
+spec:
+  replicas: 2
+  revisionHistoryLimit: 5
+  strategy:
+    type: RollingUpdate
+    rollingUpdate: {maxUnavailable: 0, maxSurge: 1}
+  selector:
+    matchLabels: *model-labels
+  template:
+    metadata:
+      labels: *model-labels
+    spec:
+      serviceAccountName: model-gateway
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 45
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        seccompProfile: {type: RuntimeDefault}
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                topologyKey: kubernetes.io/hostname
+                labelSelector: {matchLabels: {app.kubernetes.io/name: model-gateway}}
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector: {matchLabels: {app.kubernetes.io/name: model-gateway}}
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector: {matchLabels: {app.kubernetes.io/name: model-gateway}}
+      containers:
+        - name: model-gateway
+          image: contract-audit-backend:release
+          imagePullPolicy: IfNotPresent
+          args: ["/app/modelgateway"]
+          ports: [{name: http, containerPort: 8084}]
+          envFrom: [{configMapRef: {name: contract-audit-runtime}}]
+          env:
+            - name: SERVICE_ROLE
+              value: model
+            - name: MODEL_DATABASE_URL
+              valueFrom: {secretKeyRef: {name: contract-audit-db-urls, key: MODEL_DATABASE_URL}}
+            - name: ADDR
+              value: ":8084"
+            - name: LLM_API_KEY
+              valueFrom: {secretKeyRef: {name: contract-audit-model, key: LLM_API_KEY}}
+            - name: WORKER_MODEL_TOKEN
+              valueFrom: {secretKeyRef: {name: contract-audit-service-tokens, key: WORKER_MODEL_TOKEN}}
+            - name: DOCUMENT_MODEL_TOKEN
+              valueFrom: {secretKeyRef: {name: contract-audit-service-tokens, key: DOCUMENT_MODEL_TOKEN}}
+          startupProbe:
+            httpGet: {path: /health/live, port: http}
+            periodSeconds: 10
+            failureThreshold: 30
+          readinessProbe:
+            httpGet: {path: /health/ready, port: http}
+            periodSeconds: 10
+            timeoutSeconds: 5
+          livenessProbe:
+            httpGet: {path: /health/live, port: http}
+            periodSeconds: 10
+            timeoutSeconds: 3
+          lifecycle:
+            preStop: {exec: {command: ["/bin/sh", "-c", "sleep 5"]}}
+          resources:
+            requests: {cpu: 100m, memory: 128Mi}
+            limits: {cpu: "1", memory: 1Gi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          volumeMounts: [{name: tmp, mountPath: /tmp}]
+      volumes: [{name: tmp, emptyDir: {sizeLimit: 64Mi}}]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tool-gateway
+  labels: &tool-labels
+    app.kubernetes.io/name: tool-gateway
+    app.kubernetes.io/part-of: contract-audit
+spec:
+  replicas: 2
+  revisionHistoryLimit: 5
+  strategy:
+    type: RollingUpdate
+    rollingUpdate: {maxUnavailable: 0, maxSurge: 1}
+  selector:
+    matchLabels: *tool-labels
+  template:
+    metadata:
+      labels: *tool-labels
+    spec:
+      serviceAccountName: tool-gateway
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        seccompProfile: {type: RuntimeDefault}
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                topologyKey: kubernetes.io/hostname
+                labelSelector: {matchLabels: {app.kubernetes.io/name: tool-gateway}}
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector: {matchLabels: {app.kubernetes.io/name: tool-gateway}}
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector: {matchLabels: {app.kubernetes.io/name: tool-gateway}}
+      containers:
+        - name: tool-gateway
+          image: contract-audit-backend:release
+          imagePullPolicy: IfNotPresent
+          args: ["/app/toolgateway"]
+          ports: [{name: http, containerPort: 8085}]
+          envFrom: [{configMapRef: {name: contract-audit-runtime}}]
+          env:
+            - name: SERVICE_ROLE
+              value: tool
+            - name: TOOL_DATABASE_URL
+              valueFrom: {secretKeyRef: {name: contract-audit-db-urls, key: TOOL_DATABASE_URL}}
+            - name: ADDR
+              value: ":8085"
+            - name: GATEWAY_ROLE_TOKEN
+              valueFrom: {secretKeyRef: {name: contract-audit-service-tokens, key: GATEWAY_TOOL_TOKEN}}
+            - name: WORKER_TOOL_TOKEN
+              valueFrom: {secretKeyRef: {name: contract-audit-service-tokens, key: WORKER_TOOL_TOKEN}}
+          startupProbe:
+            httpGet: {path: /health, port: http}
+            periodSeconds: 10
+            failureThreshold: 30
+          readinessProbe:
+            httpGet: {path: /ready, port: http}
+            periodSeconds: 5
+            timeoutSeconds: 3
+          livenessProbe:
+            httpGet: {path: /health, port: http}
+            periodSeconds: 10
+            timeoutSeconds: 3
+          lifecycle:
+            preStop: {exec: {command: ["/bin/sh", "-c", "sleep 5"]}}
+          resources:
+            requests: {cpu: 100m, memory: 128Mi}
+            limits: {cpu: "1", memory: 512Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          volumeMounts: [{name: tmp, mountPath: /tmp}]
+      volumes: [{name: tmp, emptyDir: {sizeLimit: 64Mi}}]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: client
+  labels: &client-labels
+    app.kubernetes.io/name: client
+    app.kubernetes.io/part-of: contract-audit
+spec:
+  replicas: 2
+  revisionHistoryLimit: 5
+  strategy:
+    type: RollingUpdate
+    rollingUpdate: {maxUnavailable: 0, maxSurge: 1}
+  selector:
+    matchLabels: *client-labels
+  template:
+    metadata:
+      labels: *client-labels
+    spec:
+      serviceAccountName: client-web
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 20
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 101
+        runAsGroup: 101
+        seccompProfile: {type: RuntimeDefault}
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                topologyKey: kubernetes.io/hostname
+                labelSelector: {matchLabels: {app.kubernetes.io/name: client}}
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector: {matchLabels: {app.kubernetes.io/name: client}}
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector: {matchLabels: {app.kubernetes.io/name: client}}
+      containers:
+        - name: nginx
+          image: contract-audit-client:release
+          imagePullPolicy: IfNotPresent
+          ports: [{name: http, containerPort: 8080}]
+          startupProbe:
+            httpGet: {path: /, port: http}
+            periodSeconds: 5
+            failureThreshold: 30
+          readinessProbe:
+            httpGet: {path: /, port: http}
+            periodSeconds: 5
+          livenessProbe:
+            httpGet: {path: /, port: http}
+            periodSeconds: 10
+          resources:
+            requests: {cpu: 25m, memory: 32Mi}
+            limits: {cpu: 250m, memory: 128Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          volumeMounts:
+            - {name: tmp, mountPath: /tmp}
+            - {name: web-proxy, mountPath: /etc/nginx/snippets/backend-proxy.conf, subPath: backend-proxy.conf, readOnly: true}
+      volumes:
+        - {name: tmp, emptyDir: {sizeLimit: 32Mi}}
+        - {name: web-proxy, configMap: {name: contract-audit-web-proxy}}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: admin
+  labels: &admin-labels
+    app.kubernetes.io/name: admin
+    app.kubernetes.io/part-of: contract-audit
+spec:
+  replicas: 2
+  revisionHistoryLimit: 5
+  strategy:
+    type: RollingUpdate
+    rollingUpdate: {maxUnavailable: 0, maxSurge: 1}
+  selector:
+    matchLabels: *admin-labels
+  template:
+    metadata:
+      labels: *admin-labels
+    spec:
+      serviceAccountName: admin-web
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 20
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 101
+        runAsGroup: 101
+        seccompProfile: {type: RuntimeDefault}
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                topologyKey: kubernetes.io/hostname
+                labelSelector: {matchLabels: {app.kubernetes.io/name: admin}}
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector: {matchLabels: {app.kubernetes.io/name: admin}}
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector: {matchLabels: {app.kubernetes.io/name: admin}}
+      containers:
+        - name: nginx
+          image: contract-audit-admin:release
+          imagePullPolicy: IfNotPresent
+          ports: [{name: http, containerPort: 8080}]
+          startupProbe:
+            httpGet: {path: /admin/, port: http}
+            periodSeconds: 5
+            failureThreshold: 30
+          readinessProbe:
+            httpGet: {path: /admin/, port: http}
+            periodSeconds: 5
+          livenessProbe:
+            httpGet: {path: /admin/, port: http}
+            periodSeconds: 10
+          resources:
+            requests: {cpu: 25m, memory: 32Mi}
+            limits: {cpu: 250m, memory: 128Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          volumeMounts:
+            - {name: tmp, mountPath: /tmp}
+            - {name: web-proxy, mountPath: /etc/nginx/snippets/backend-proxy.conf, subPath: backend-proxy.conf, readOnly: true}
+      volumes:
+        - {name: tmp, emptyDir: {sizeLimit: 32Mi}}
+        - {name: web-proxy, configMap: {name: contract-audit-web-proxy}}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: portal
+  labels: &portal-labels
+    app.kubernetes.io/name: portal
+    app.kubernetes.io/part-of: contract-audit
+spec:
+  replicas: 2
+  revisionHistoryLimit: 5
+  strategy:
+    type: RollingUpdate
+    rollingUpdate: {maxUnavailable: 0, maxSurge: 1}
+  selector:
+    matchLabels: *portal-labels
+  template:
+    metadata:
+      labels: *portal-labels
+    spec:
+      serviceAccountName: portal-web
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 20
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 101
+        runAsGroup: 101
+        seccompProfile: {type: RuntimeDefault}
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                topologyKey: kubernetes.io/hostname
+                labelSelector: {matchLabels: {app.kubernetes.io/name: portal}}
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector: {matchLabels: {app.kubernetes.io/name: portal}}
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector: {matchLabels: {app.kubernetes.io/name: portal}}
+      containers:
+        - name: nginx
+          image: contract-audit-portal:release
+          imagePullPolicy: IfNotPresent
+          ports: [{name: http, containerPort: 8080}]
+          startupProbe:
+            httpGet: {path: /portal/, port: http}
+            periodSeconds: 5
+            failureThreshold: 30
+          readinessProbe:
+            httpGet: {path: /portal/, port: http}
+            periodSeconds: 5
+          livenessProbe:
+            httpGet: {path: /portal/, port: http}
+            periodSeconds: 10
+          resources:
+            requests: {cpu: 25m, memory: 32Mi}
+            limits: {cpu: 250m, memory: 128Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          volumeMounts:
+            - {name: tmp, mountPath: /tmp}
+            - {name: web-proxy, mountPath: /etc/nginx/snippets/backend-proxy.conf, subPath: backend-proxy.conf, readOnly: true}
+      volumes:
+        - {name: tmp, emptyDir: {sizeLimit: 32Mi}}
+        - {name: web-proxy, configMap: {name: contract-audit-web-proxy}}

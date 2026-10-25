@@ -1,0 +1,142 @@
+{
+  "schema": "docx-fixtures-v1",
+  "coordinate_space": "unicode_codepoint",
+  "page_policy": "no observed pages or boxes",
+  "fixtures": [
+    {
+      "file": "plain.docx",
+      "normalized_text": "第1条 合同范围😀\n\n采购带宽100Mbps，质保期36个月。",
+      "from_ocr": false
+    },
+    {
+      "file": "complex-tables.docx",
+      "normalized_text": "第1条 合成专线合同😀\n\n甲方：合成采购方\n\n服务参数\t承诺值\n专线A\t带宽\t100 Mbps\n月度可用率\t99.9%\n嵌套附件\t附件开始\n质保期\t36个月😀\n附件结束\n\n当前：新金额100元；显式可见\n\n公司网站说明\n\n校验日期：2026-10-24\n\n合成页眉：内部演示\n\n合成页脚：保留原件",
+      "from_ocr": false,
+      "absent": [
+        "旧金额999元",
+        "隐藏金额888元",
+        "样式隐藏777元",
+        "DATE"
+      ],
+      "cells": [
+        {
+          "table_id": "t-1",
+          "row": 1,
+          "col": 1,
+          "text": "服务参数"
+        },
+        {
+          "table_id": "t-1",
+          "row": 1,
+          "col": 3,
+          "text": "承诺值"
+        },
+        {
+          "table_id": "t-1",
+          "row": 2,
+          "col": 1,
+          "text": "专线A"
+        },
+        {
+          "table_id": "t-1",
+          "row": 2,
+          "col": 2,
+          "text": "带宽"
+        },
+        {
+          "table_id": "t-1",
+          "row": 2,
+          "col": 3,
+          "text": "100 Mbps"
+        },
+        {
+          "table_id": "t-1",
+          "row": 3,
+          "col": 2,
+          "text": "月度可用率"
+        },
+        {
+          "table_id": "t-1",
+          "row": 3,
+          "col": 3,
+          "text": "99.9%"
+        },
+        {
+          "table_id": "t-1",
+          "row": 4,
+          "col": 1,
+          "text": "嵌套附件"
+        },
+        {
+          "table_id": "t-2",
+          "row": 1,
+          "col": 1,
+          "text": "质保期"
+        },
+        {
+          "table_id": "t-2",
+          "row": 1,
+          "col": 2,
+          "text": "36个月😀"
+        },
+        {
+          "table_id": "t-1",
+          "row": 4,
+          "col": 2,
+          "text": "附件开始\n质保期\t36个月😀\n附件结束"
+        }
+      ]
+    },
+    {
+      "file": "embedded-image.docx",
+      "from_ocr": true,
+      "ocr_test_response": "DOCX IMAGE BANDWIDTH 100 Mbps\nWARRANTY 36 MONTHS\n质保期36个月。",
+      "visible_image_phrases": [
+        "DOCX IMAGE BANDWIDTH",
+        "100 Mbps",
+        "WARRANTY 36 MONTHS",
+        "质保期36个月"
+      ],
+      "cells": [
+        {
+          "table_id": "t-1",
+          "row": 2,
+          "col": 2,
+          "contains": [
+            "图片起始",
+            "100 Mbps",
+            "质保期36个月",
+            "图片结束"
+          ]
+        }
+      ]
+    },
+    {
+      "file": "embedded-jpeg.docx",
+      "from_ocr": true,
+      "ocr_test_response": "DOCX IMAGE BANDWIDTH 100 Mbps\nWARRANTY 36 MONTHS\n质保期36个月。",
+      "visible_image_phrases": [
+        "DOCX IMAGE BANDWIDTH",
+        "100 Mbps",
+        "WARRANTY 36 MONTHS",
+        "质保期36个月"
+      ]
+    },
+    {
+      "file": "external-image.docx",
+      "error_contains": "external resources"
+    },
+    {
+      "file": "unsupported-altchunk.docx",
+      "error_contains": "opaque relationship"
+    },
+    {
+      "file": "unsupported-footnote.docx",
+      "error_contains": "footnote/endnote"
+    },
+    {
+      "file": "corrupt.docx",
+      "error_contains": "missing part"
+    }
+  ]
+}

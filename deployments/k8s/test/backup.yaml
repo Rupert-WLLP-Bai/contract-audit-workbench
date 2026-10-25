@@ -1,0 +1,11 @@
+apiVersion: postgresql.cnpg.io/v1
+kind: Backup
+metadata:
+  generateName: contract-audit-test-backup-
+  namespace: contract-audit-test
+  labels: {app.kubernetes.io/part-of: contract-audit}
+spec:
+  method: plugin
+  pluginConfiguration:
+    name: barman-cloud.cloudnative-pg.io
+  cluster: contract-audit-test-db

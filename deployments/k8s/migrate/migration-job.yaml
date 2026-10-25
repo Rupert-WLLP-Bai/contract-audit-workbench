@@ -1,0 +1,56 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  # Kustomize requires a concrete name; delete this Job before the next migration
+  # so the new release renders and runs it again (one migration per release).
+  name: contract-audit-migrate
+  namespace: contract-audit
+  labels:
+    app.kubernetes.io/name: migration
+    app.kubernetes.io/part-of: contract-audit
+spec:
+  backoffLimit: 1
+  activeDeadlineSeconds: 900
+  template:
+    metadata:
+      labels: {app.kubernetes.io/name: migration, app.kubernetes.io/part-of: contract-audit}
+    spec:
+      serviceAccountName: migration
+      automountServiceAccountToken: false
+      restartPolicy: Never
+      terminationGracePeriodSeconds: 60
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: migrate
+          image: contract-audit-backend:release
+          imagePullPolicy: IfNotPresent
+          args: ["/app/migrate"]
+          envFrom: [{configMapRef: {name: contract-audit-runtime}}]
+          env:
+            - name: SERVICE_DATABASE_ROLES
+              value: "true"
+            - name: CORE_DATABASE_URL
+              valueFrom: {secretKeyRef: {name: contract-audit-db-urls, key: CORE_DATABASE_URL}}
+            - name: DOCUMENT_DATABASE_URL
+              valueFrom: {secretKeyRef: {name: contract-audit-db-urls, key: DOCUMENT_DATABASE_URL}}
+            - name: EXECUTION_DATABASE_URL
+              valueFrom: {secretKeyRef: {name: contract-audit-db-urls, key: EXECUTION_DATABASE_URL}}
+            - name: MODEL_DATABASE_URL
+              valueFrom: {secretKeyRef: {name: contract-audit-db-urls, key: MODEL_DATABASE_URL}}
+            - name: TOOL_DATABASE_URL
+              valueFrom: {secretKeyRef: {name: contract-audit-db-urls, key: TOOL_DATABASE_URL}}
+            - name: MIGRATOR_DATABASE_URL
+              valueFrom: {secretKeyRef: {name: contract-audit-db-urls, key: MIGRATOR_DATABASE_URL}}
+          resources:
+            requests: {cpu: 250m, memory: 256Mi}
+            limits: {cpu: "1", memory: 1Gi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          volumeMounts: [{name: tmp, mountPath: /tmp}]
+      volumes: [{name: tmp, emptyDir: {sizeLimit: 64Mi}}]

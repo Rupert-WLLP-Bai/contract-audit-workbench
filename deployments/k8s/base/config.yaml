@@ -1,0 +1,76 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: contract-audit-runtime
+  labels:
+    app.kubernetes.io/part-of: contract-audit
+data:
+  APP_ENV: production
+  DATABASE_SCHEMA: public
+  EXECUTION_QUEUE_POLICY: ""
+  APP_READ_ONLY: "false"
+  COOKIE_SECURE: "true"
+  CORS_ORIGIN: https://app.example.com,https://admin.example.com,https://portal.example.com
+  OIDC_REDIRECT_URL: https://app.example.com/api/auth/oidc/callback
+  OIDC_ADMIN_REDIRECT_URL: https://admin.example.com/api/auth/oidc/callback
+  GATEWAY_HEALTH_INTERVAL: 1s
+  GATEWAY_HEALTH_TIMEOUT: 500ms
+  GATEWAY_HEALTH_FAILURE_THRESHOLD: "2"
+  GATEWAY_HEALTH_RECOVERY_THRESHOLD: "2"
+  CORE_URLS: http://core-api:8081
+  DOCUMENT_URL: http://document-service:8082
+  EXECUTION_URL: http://audit-execution:8083
+  TOOL_URLS: http://tool-gateway:8085
+  DOCUMENT_SERVICE_URL: http://document-service:8082
+  MODEL_GATEWAY_URL: http://model-gateway:8084/v1
+  TOOL_GATEWAY_URL: http://tool-gateway:8085
+  NATS_URL: nats://nats:4222
+  S3_ENDPOINT: http://rustfs:9000
+  S3_BUCKET: contract-audit-prod
+  S3_REGION: us-east-1
+  LLM_BASE_URL: https://models.example.com/v1
+  LLM_MODEL: operator-configured-openai-compatible-model
+  OCR_MODEL: operator-configured-vision-model
+  MODEL_GATEWAY_MODE: openai-compatible
+  AGENT_PLANNER_MODE: deterministic
+  AGENT_PLANNER_MAX_ROUNDS: "2"
+  AGENT_PLANNER_MAX_CALLS: "16"
+  AGENT_PLANNER_TIMEOUT: 30s
+  AGENT_PLANNER_MAX_EVIDENCE_BYTES: "2097152"
+  OTEL_EXPORTER_OTLP_ENDPOINT: ""
+  OTEL_EXPORTER_OTLP_PROTOCOL: http/json
+  OTEL_TRACES_SAMPLER: always_on
+  OTEL_TRACES_SAMPLER_ARG: "1"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: contract-audit-web-proxy
+  labels:
+    app.kubernetes.io/part-of: contract-audit
+data:
+  backend-proxy.conf: |
+    location = /api {
+        proxy_pass http://gateway:8080;
+        include /etc/nginx/snippets/proxy-headers.conf;
+    }
+
+    location ^~ /api/ {
+        proxy_pass http://gateway:8080;
+        include /etc/nginx/snippets/proxy-headers.conf;
+    }
+
+    location = /openapi.json {
+        proxy_pass http://gateway:8080;
+        include /etc/nginx/snippets/proxy-headers.conf;
+    }
+
+    location = /mcp {
+        proxy_pass http://gateway:8080;
+        include /etc/nginx/snippets/proxy-headers.conf;
+    }
+
+    location ^~ /mcp/ {
+        proxy_pass http://gateway:8080;
+        include /etc/nginx/snippets/proxy-headers.conf;
+    }

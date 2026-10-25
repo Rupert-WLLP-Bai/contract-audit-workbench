@@ -1,0 +1,477 @@
+{
+  "schema_version": "agent-control-fixtures/v1",
+  "classification": "D0_SYNTHETIC_CONTROL_REGRESSION",
+  "scenarios": [
+    {
+      "id": "scope-two",
+      "title": "仅选商务与技术域：按范围调用两项工具",
+      "planner_mode": "scope",
+      "request": {
+        "request_id": "scope-two",
+        "principal": {
+          "user_id": "demo-alice",
+          "tenant_id": "demo-branch-a",
+          "enabled": true,
+          "grants": [
+            {
+              "role": "reviewer",
+              "scope": "case",
+              "case_id": "demo-case-ent"
+            }
+          ]
+        },
+        "case": {
+          "tenant_id": "demo-branch-a",
+          "case_id": "demo-case-ent",
+          "org_id": "demo-ent",
+          "owner_id": "demo-alice"
+        },
+        "scope": [
+          "commercial",
+          "technical"
+        ],
+        "gaps": [
+          {
+            "id": "gap-commercial",
+            "domain": "commercial",
+            "question": "核对当前范围的材料承诺并保留证据缺口",
+            "capability": "commercial_baseline"
+          },
+          {
+            "id": "gap-technical",
+            "domain": "technical",
+            "question": "核对当前范围的材料承诺并保留证据缺口",
+            "capability": "warranty_months"
+          }
+        ],
+        "evidence": [
+          {
+            "id": "req",
+            "tenant_id": "demo-branch-a",
+            "case_id": "demo-case-ent",
+            "version": "v1",
+            "role": "procurement",
+            "text": "设备质保期为36个月。采购金额为120万元。采购方案约定20%预付款、验收通过后支付70%、质保期满10%。交付后30日完成初验。",
+            "sha256": "26c7539bc443d2a5ee8827023d3ec6f3e690a8fc9f8b84296c6f2d6aa6264ff9"
+          },
+          {
+            "id": "draft",
+            "tenant_id": "demo-branch-a",
+            "case_id": "demo-case-ent",
+            "version": "v1",
+            "role": "draft_contract",
+            "text": "设备质保期为24个月。合同金额为100万元。合同约定设备到货后支付90%。交付后45日完成初验。",
+            "sha256": "e43ab058629bf54479b86c66e45b05d181c2e7a72db2feec288a052d2b9f9fdc"
+          }
+        ]
+      },
+      "expected": {
+        "status": "completed",
+        "tool_calls": 2,
+        "error_kind": "none",
+        "fallback": false,
+        "contains_relations": {
+          "commercial": [
+            "conflict"
+          ],
+          "technical": [
+            "conflict"
+          ]
+        },
+        "unresolved_gap_ids": []
+      }
+    },
+    {
+      "id": "all-five",
+      "title": "五域运行：授权与主体缺证必须可见",
+      "planner_mode": "scope",
+      "request": {
+        "request_id": "all-five",
+        "principal": {
+          "user_id": "demo-alice",
+          "tenant_id": "demo-branch-a",
+          "enabled": true,
+          "grants": [
+            {
+              "role": "reviewer",
+              "scope": "case",
+              "case_id": "demo-case-ent"
+            }
+          ]
+        },
+        "case": {
+          "tenant_id": "demo-branch-a",
+          "case_id": "demo-case-ent",
+          "org_id": "demo-ent",
+          "owner_id": "demo-alice"
+        },
+        "scope": [
+          "compliance",
+          "commercial",
+          "technical",
+          "fulfillment",
+          "counterparty"
+        ],
+        "gaps": [
+          {
+            "id": "gap-compliance",
+            "domain": "compliance",
+            "question": "核对当前范围的材料承诺并保留证据缺口",
+            "capability": "authorization_basis"
+          },
+          {
+            "id": "gap-commercial",
+            "domain": "commercial",
+            "question": "核对当前范围的材料承诺并保留证据缺口",
+            "capability": "commercial_baseline"
+          },
+          {
+            "id": "gap-technical",
+            "domain": "technical",
+            "question": "核对当前范围的材料承诺并保留证据缺口",
+            "capability": "warranty_months"
+          },
+          {
+            "id": "gap-fulfillment",
+            "domain": "fulfillment",
+            "question": "核对当前范围的材料承诺并保留证据缺口",
+            "capability": "acceptance_schedule"
+          },
+          {
+            "id": "gap-counterparty",
+            "domain": "counterparty",
+            "question": "核对当前范围的材料承诺并保留证据缺口",
+            "capability": "counterparty_record"
+          }
+        ],
+        "evidence": [
+          {
+            "id": "req",
+            "tenant_id": "demo-branch-a",
+            "case_id": "demo-case-ent",
+            "version": "v1",
+            "role": "procurement",
+            "text": "设备质保期为36个月。采购金额为120万元。采购方案约定20%预付款、验收通过后支付70%、质保期满10%。交付后30日完成初验。",
+            "sha256": "26c7539bc443d2a5ee8827023d3ec6f3e690a8fc9f8b84296c6f2d6aa6264ff9"
+          },
+          {
+            "id": "draft",
+            "tenant_id": "demo-branch-a",
+            "case_id": "demo-case-ent",
+            "version": "v1",
+            "role": "draft_contract",
+            "text": "设备质保期为24个月。合同金额为100万元。合同约定设备到货后支付90%。交付后45日完成初验。",
+            "sha256": "e43ab058629bf54479b86c66e45b05d181c2e7a72db2feec288a052d2b9f9fdc"
+          }
+        ]
+      },
+      "expected": {
+        "status": "partial",
+        "tool_calls": 5,
+        "error_kind": "none",
+        "fallback": false,
+        "contains_relations": {
+          "compliance": [
+            "insufficient"
+          ],
+          "commercial": [
+            "conflict"
+          ],
+          "technical": [
+            "conflict"
+          ],
+          "fulfillment": [
+            "conflict"
+          ],
+          "counterparty": [
+            "insufficient"
+          ]
+        },
+        "unresolved_gap_ids": [
+          "gap-compliance",
+          "gap-counterparty"
+        ]
+      }
+    },
+    {
+      "id": "tenant-denied",
+      "title": "跨分公司身份在规划前拒绝",
+      "planner_mode": "scope",
+      "request": {
+        "request_id": "tenant-denied",
+        "principal": {
+          "user_id": "demo-alice",
+          "tenant_id": "demo-branch-b",
+          "enabled": true,
+          "grants": [
+            {
+              "role": "reviewer",
+              "scope": "case",
+              "case_id": "demo-case-ent"
+            }
+          ]
+        },
+        "case": {
+          "tenant_id": "demo-branch-a",
+          "case_id": "demo-case-ent",
+          "org_id": "demo-ent",
+          "owner_id": "demo-alice"
+        },
+        "scope": [
+          "technical"
+        ],
+        "gaps": [
+          {
+            "id": "gap-technical",
+            "domain": "technical",
+            "question": "核对当前范围的材料承诺并保留证据缺口",
+            "capability": "warranty_months"
+          }
+        ],
+        "evidence": [
+          {
+            "id": "req",
+            "tenant_id": "demo-branch-a",
+            "case_id": "demo-case-ent",
+            "version": "v1",
+            "role": "procurement",
+            "text": "设备质保期为36个月。采购金额为120万元。采购方案约定20%预付款、验收通过后支付70%、质保期满10%。交付后30日完成初验。",
+            "sha256": "26c7539bc443d2a5ee8827023d3ec6f3e690a8fc9f8b84296c6f2d6aa6264ff9"
+          },
+          {
+            "id": "draft",
+            "tenant_id": "demo-branch-a",
+            "case_id": "demo-case-ent",
+            "version": "v1",
+            "role": "draft_contract",
+            "text": "设备质保期为24个月。合同金额为100万元。合同约定设备到货后支付90%。交付后45日完成初验。",
+            "sha256": "e43ab058629bf54479b86c66e45b05d181c2e7a72db2feec288a052d2b9f9fdc"
+          }
+        ]
+      },
+      "expected": {
+        "status": "rejected",
+        "tool_calls": 0,
+        "error_kind": "denied",
+        "fallback": false,
+        "contains_relations": {},
+        "unresolved_gap_ids": []
+      }
+    },
+    {
+      "id": "plan-rejected",
+      "title": "整个计划含未注册工具时零工具执行",
+      "planner_mode": "fixture_json",
+      "request": {
+        "request_id": "plan-rejected",
+        "principal": {
+          "user_id": "demo-alice",
+          "tenant_id": "demo-branch-a",
+          "enabled": true,
+          "grants": [
+            {
+              "role": "reviewer",
+              "scope": "case",
+              "case_id": "demo-case-ent"
+            }
+          ]
+        },
+        "case": {
+          "tenant_id": "demo-branch-a",
+          "case_id": "demo-case-ent",
+          "org_id": "demo-ent",
+          "owner_id": "demo-alice"
+        },
+        "scope": [
+          "technical"
+        ],
+        "gaps": [
+          {
+            "id": "gap-technical",
+            "domain": "technical",
+            "question": "核对当前范围的材料承诺并保留证据缺口",
+            "capability": "warranty_months"
+          }
+        ],
+        "evidence": [
+          {
+            "id": "req",
+            "tenant_id": "demo-branch-a",
+            "case_id": "demo-case-ent",
+            "version": "v1",
+            "role": "procurement",
+            "text": "设备质保期为36个月。采购金额为120万元。采购方案约定20%预付款、验收通过后支付70%、质保期满10%。交付后30日完成初验。",
+            "sha256": "26c7539bc443d2a5ee8827023d3ec6f3e690a8fc9f8b84296c6f2d6aa6264ff9"
+          },
+          {
+            "id": "draft",
+            "tenant_id": "demo-branch-a",
+            "case_id": "demo-case-ent",
+            "version": "v1",
+            "role": "draft_contract",
+            "text": "设备质保期为24个月。合同金额为100万元。合同约定设备到货后支付90%。交付后45日完成初验。",
+            "sha256": "e43ab058629bf54479b86c66e45b05d181c2e7a72db2feec288a052d2b9f9fdc"
+          }
+        ]
+      },
+      "expected": {
+        "status": "rejected",
+        "tool_calls": 0,
+        "error_kind": "plan",
+        "fallback": false,
+        "contains_relations": {},
+        "unresolved_gap_ids": []
+      },
+      "fixture_plan": {
+        "calls": [
+          {
+            "tool_id": "baseline.technical",
+            "domain": "technical",
+            "gap_id": "gap-technical",
+            "reason": "valid first call must not execute before full-plan validation"
+          },
+          {
+            "tool_id": "shell.exec",
+            "domain": "technical",
+            "gap_id": "gap-technical",
+            "reason": "synthetic unregistered tool attack"
+          }
+        ]
+      }
+    },
+    {
+      "id": "planner-down",
+      "title": "合成模型故障：规则保留且运行明确 partial",
+      "planner_mode": "unavailable",
+      "request": {
+        "request_id": "planner-down",
+        "principal": {
+          "user_id": "demo-alice",
+          "tenant_id": "demo-branch-a",
+          "enabled": true,
+          "grants": [
+            {
+              "role": "reviewer",
+              "scope": "case",
+              "case_id": "demo-case-ent"
+            }
+          ]
+        },
+        "case": {
+          "tenant_id": "demo-branch-a",
+          "case_id": "demo-case-ent",
+          "org_id": "demo-ent",
+          "owner_id": "demo-alice"
+        },
+        "scope": [
+          "technical"
+        ],
+        "gaps": [
+          {
+            "id": "gap-technical",
+            "domain": "technical",
+            "question": "核对当前范围的材料承诺并保留证据缺口",
+            "capability": "warranty_months"
+          }
+        ],
+        "evidence": [
+          {
+            "id": "req",
+            "tenant_id": "demo-branch-a",
+            "case_id": "demo-case-ent",
+            "version": "v1",
+            "role": "procurement",
+            "text": "设备质保期为36个月。采购金额为120万元。采购方案约定20%预付款、验收通过后支付70%、质保期满10%。交付后30日完成初验。",
+            "sha256": "26c7539bc443d2a5ee8827023d3ec6f3e690a8fc9f8b84296c6f2d6aa6264ff9"
+          },
+          {
+            "id": "draft",
+            "tenant_id": "demo-branch-a",
+            "case_id": "demo-case-ent",
+            "version": "v1",
+            "role": "draft_contract",
+            "text": "设备质保期为24个月。合同金额为100万元。合同约定设备到货后支付90%。交付后45日完成初验。",
+            "sha256": "e43ab058629bf54479b86c66e45b05d181c2e7a72db2feec288a052d2b9f9fdc"
+          }
+        ]
+      },
+      "expected": {
+        "status": "partial",
+        "tool_calls": 1,
+        "error_kind": "none",
+        "fallback": true,
+        "contains_relations": {
+          "technical": [
+            "conflict"
+          ]
+        },
+        "unresolved_gap_ids": []
+      }
+    },
+    {
+      "id": "foreign-evidence",
+      "title": "混入其他案件证据时拒绝输入",
+      "planner_mode": "scope",
+      "request": {
+        "request_id": "foreign-evidence",
+        "principal": {
+          "user_id": "demo-alice",
+          "tenant_id": "demo-branch-a",
+          "enabled": true,
+          "grants": [
+            {
+              "role": "reviewer",
+              "scope": "case",
+              "case_id": "demo-case-ent"
+            }
+          ]
+        },
+        "case": {
+          "tenant_id": "demo-branch-a",
+          "case_id": "demo-case-ent",
+          "org_id": "demo-ent",
+          "owner_id": "demo-alice"
+        },
+        "scope": [
+          "technical"
+        ],
+        "gaps": [
+          {
+            "id": "gap-technical",
+            "domain": "technical",
+            "question": "核对当前范围的材料承诺并保留证据缺口",
+            "capability": "warranty_months"
+          }
+        ],
+        "evidence": [
+          {
+            "id": "req",
+            "tenant_id": "demo-branch-a",
+            "case_id": "demo-case-other",
+            "version": "v1",
+            "role": "procurement",
+            "text": "设备质保期为36个月。采购金额为120万元。采购方案约定20%预付款、验收通过后支付70%、质保期满10%。交付后30日完成初验。",
+            "sha256": "26c7539bc443d2a5ee8827023d3ec6f3e690a8fc9f8b84296c6f2d6aa6264ff9"
+          },
+          {
+            "id": "draft",
+            "tenant_id": "demo-branch-a",
+            "case_id": "demo-case-ent",
+            "version": "v1",
+            "role": "draft_contract",
+            "text": "设备质保期为24个月。合同金额为100万元。合同约定设备到货后支付90%。交付后45日完成初验。",
+            "sha256": "e43ab058629bf54479b86c66e45b05d181c2e7a72db2feec288a052d2b9f9fdc"
+          }
+        ]
+      },
+      "expected": {
+        "status": "rejected",
+        "tool_calls": 0,
+        "error_kind": "input",
+        "fallback": false,
+        "contains_relations": {},
+        "unresolved_gap_ids": []
+      }
+    }
+  ]
+}

@@ -1,0 +1,5 @@
+# PDF cross-reference entries contain format-significant trailing spaces.
+internal/documentparse/testdata/pdf/*.pdf binary
+
+# This fixture exercises trailing-space normalization.
+internal/compare/testdata/d0/trailing-spaces.txt -whitespace

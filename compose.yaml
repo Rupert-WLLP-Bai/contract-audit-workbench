@@ -1,0 +1,117 @@
+# Local development infrastructure only. The Go API is intentionally not scaled here.
+# First: python3 deploy/scripts/infra.py bootstrap
+name: contract-audit-local
+services:
+  db:
+    image: ${POSTGRES_IMAGE:-postgres:17.9-bookworm}
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: contractaudit
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Run infra.py bootstrap first}
+      POSTGRES_DB: postgres
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U contractaudit -d postgres"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    stop_grace_period: 30s
+
+  rustfs:
+    image: ${RUSTFS_IMAGE:-rustfs/rustfs:1.0.3}
+    restart: unless-stopped
+    command: ["/data"]
+    environment:
+      RUSTFS_ACCESS_KEY: ${RUSTFS_ACCESS_KEY:?Run infra.py bootstrap first}
+      RUSTFS_SECRET_KEY: ${RUSTFS_SECRET_KEY:?Run infra.py bootstrap first}
+      RUSTFS_ADDRESS: ":9000"
+      RUSTFS_CONSOLE_ADDRESS: ":9001"
+      RUSTFS_CONSOLE_ENABLE: "true"
+      RUSTFS_OBS_LOGGER_LEVEL: error
+      RUSTFS_OBS_LOG_DIRECTORY: /var/log/rustfs/
+    ports:
+      - "127.0.0.1:${RUSTFS_PORT:-9000}:9000"
+      - "127.0.0.1:${RUSTFS_CONSOLE_PORT:-9001}:9001"
+    volumes:
+      - rustfs-data:/data
+      - rustfs-logs:/var/log/rustfs
+    stop_grace_period: 30s
+    # No assumption that curl/wget exists in this image.
+    # rustfs-init and infra.py smoke verify authenticated S3 operations.
+
+  rustfs-init:
+    image: ${AWSCLI_IMAGE:-amazon/aws-cli:2.31.14}
+    profiles: ["tools"]
+    restart: "no"
+    entrypoint: ["/bin/sh", "/opt/contract-audit/s3-init.sh"]
+    environment: &s3-client
+      AWS_ACCESS_KEY_ID: ${RUSTFS_ACCESS_KEY:?Run infra.py bootstrap first}
+      AWS_SECRET_ACCESS_KEY: ${RUSTFS_SECRET_KEY:?Run infra.py bootstrap first}
+      AWS_DEFAULT_REGION: us-east-1
+      AWS_EC2_METADATA_DISABLED: "true"
+      AWS_MAX_ATTEMPTS: "1"
+      AWS_PAGER: ""
+      S3_ENDPOINT: http://rustfs:9000
+      S3_BUCKET: ${S3_BUCKET:-contract-audit-dev}
+    volumes:
+      - ./deploy/scripts/s3-init.sh:/opt/contract-audit/s3-init.sh:ro
+    depends_on:
+      rustfs:
+        condition: service_started
+
+  s3-smoke:
+    image: ${AWSCLI_IMAGE:-amazon/aws-cli:2.31.14}
+    profiles: ["tools"]
+    restart: "no"
+    entrypoint: ["/bin/sh", "/opt/contract-audit/s3-smoke.sh"]
+    environment: *s3-client
+    volumes:
+      - ./deploy/scripts/s3-smoke.sh:/opt/contract-audit/s3-smoke.sh:ro
+    depends_on:
+      rustfs:
+        condition: service_started
+
+  identity-db:
+    image: ${POSTGRES_IMAGE:-postgres:17.9-bookworm}
+    profiles: ["identity"]
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: keycloak
+      POSTGRES_PASSWORD: ${KEYCLOAK_DB_PASSWORD:?Run infra.py bootstrap first}
+      POSTGRES_DB: keycloak
+    volumes:
+      - identity-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U keycloak -d keycloak"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  keycloak:
+    image: ${KEYCLOAK_IMAGE:-quay.io/keycloak/keycloak:26.4.0}
+    profiles: ["identity"]
+    restart: unless-stopped
+    command: ["start-dev", "--http-host=0.0.0.0"]
+    environment:
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://identity-db:5432/keycloak
+      KC_DB_USERNAME: keycloak
+      KC_DB_PASSWORD: ${KEYCLOAK_DB_PASSWORD:?Run infra.py bootstrap first}
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_ADMIN:-local-admin}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:?Run infra.py bootstrap first}
+      KC_HEALTH_ENABLED: "true"
+    ports:
+      - "127.0.0.1:${KEYCLOAK_PORT:-18080}:8080"
+    depends_on:
+      identity-db:
+        condition: service_healthy
+    # Provider only; configure realm/clients and the application identity directory separately.
+
+volumes:
+  pgdata:
+  rustfs-data:
+  rustfs-logs:
+  identity-pgdata:

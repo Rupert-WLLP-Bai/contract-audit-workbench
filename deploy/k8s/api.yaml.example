@@ -1,0 +1,126 @@
+# TARGET ONLY. C2 authorization/transactions/sessions/object storage gates must pass first.
+# The repository's current full-state Store MUST NOT be run with multiple writers.
+# This inert template is not referenced by kustomization and creates zero application Pods.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: contract-audit-api
+  namespace: contract-audit
+  annotations:
+    contract-audit/design-status: "TO-BE C3; release evidence required"
+spec:
+  replicas: 0
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: contract-audit
+      component: api
+  template:
+    metadata:
+      labels:
+        app: contract-audit
+        component: api
+    spec:
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 45
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: DoNotSchedule
+          labelSelector:
+            matchLabels:
+              app: contract-audit
+              component: api
+      containers:
+        - name: api
+          # Replace with the tested image@sha256 digest only after the release gates.
+          image: example.invalid/contract-audit/api:REQUIRES_C2_RELEASE
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+          env:
+            - name: APP_ENV
+              value: production
+            - name: ADDR
+              value: "0.0.0.0:8080"
+          envFrom:
+            - secretRef:
+                name: contract-audit-runtime
+          resources:
+            requests:
+              cpu: 250m
+              memory: 256Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          # /health is current process liveness. /ready is a PL-HA-07 target endpoint,
+          # not implemented merely by adding it to this template.
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: http
+            periodSeconds: 5
+          startupProbe:
+            httpGet:
+              path: /health
+              port: http
+            failureThreshold: 30
+            periodSeconds: 2
+          volumeMounts:
+            - name: scratch
+              mountPath: /tmp
+      volumes:
+        - name: scratch
+          emptyDir:
+            sizeLimit: 256Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: contract-audit-api
+  namespace: contract-audit
+spec:
+  type: ClusterIP
+  selector:
+    app: contract-audit
+    component: api
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+---
+# Enable together with a verified multi-node deployment. PDB covers voluntary eviction.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: contract-audit-api
+  namespace: contract-audit
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: contract-audit
+      component: api

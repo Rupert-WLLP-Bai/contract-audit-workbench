@@ -1,0 +1,12 @@
+# One-shot schema and service-role migration, rendered and applied separately
+# from the application base.
+#
+# Order (required): `kubectl apply -k deployments/k8s/migrate`, wait for the Job
+# to complete successfully, then `kubectl apply -k deployments/k8s/base`. The
+# services refuse to start against a database whose schema or service roles are
+# missing, so the migration is never part of the default base render.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: contract-audit
+resources:
+  - migration-job.yaml

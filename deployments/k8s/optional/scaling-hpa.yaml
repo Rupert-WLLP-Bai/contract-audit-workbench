@@ -1,0 +1,118 @@
+# Autoscaling specifications, deliberately outside every rendered kustomization.
+#
+# The default rendered base and the test overlay must contain zero
+# HorizontalPodAutoscaler objects: this release ships no metrics adapter or
+# exporter, so any HPA that is applied would either do nothing or scale on a
+# signal nobody produces. Apply this file explicitly, per workload, only after a
+# real metrics source exists and the service is known to be safe across replicas
+# (see the D2 preconditions). The job-depth metric contract_audit_ready_jobs is
+# SPEC_ONLY and must not be restored before its exporter ships.
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: gateway
+  labels: {app.kubernetes.io/part-of: contract-audit}
+spec:
+  scaleTargetRef: {apiVersion: apps/v1, kind: Deployment, name: gateway}
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+    - type: Resource
+      resource: {name: cpu, target: {type: Utilization, averageUtilization: 70}}
+  behavior:
+    scaleUp: {stabilizationWindowSeconds: 0, policies: [{type: Pods, value: 4, periodSeconds: 60}]}
+    scaleDown: {stabilizationWindowSeconds: 300, policies: [{type: Percent, value: 25, periodSeconds: 60}]}
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: core-api
+  labels: {app.kubernetes.io/part-of: contract-audit}
+spec:
+  scaleTargetRef: {apiVersion: apps/v1, kind: Deployment, name: core-api}
+  minReplicas: 2
+  maxReplicas: 20
+  metrics:
+    - type: Resource
+      resource: {name: cpu, target: {type: Utilization, averageUtilization: 70}}
+  behavior:
+    scaleUp: {stabilizationWindowSeconds: 0, policies: [{type: Pods, value: 6, periodSeconds: 60}]}
+    scaleDown: {stabilizationWindowSeconds: 300, policies: [{type: Percent, value: 25, periodSeconds: 60}]}
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: document-service
+  labels: {app.kubernetes.io/part-of: contract-audit}
+spec:
+  scaleTargetRef: {apiVersion: apps/v1, kind: Deployment, name: document-service}
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+    - type: Resource
+      resource: {name: cpu, target: {type: Utilization, averageUtilization: 70}}
+  behavior:
+    scaleUp: {stabilizationWindowSeconds: 0, policies: [{type: Pods, value: 3, periodSeconds: 60}]}
+    scaleDown: {stabilizationWindowSeconds: 300, policies: [{type: Percent, value: 25, periodSeconds: 60}]}
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: audit-execution
+  labels: {app.kubernetes.io/part-of: contract-audit}
+spec:
+  scaleTargetRef: {apiVersion: apps/v1, kind: Deployment, name: audit-execution}
+  minReplicas: 2
+  maxReplicas: 20
+  metrics:
+    - type: Resource
+      resource: {name: cpu, target: {type: Utilization, averageUtilization: 70}}
+  behavior:
+    scaleUp: {stabilizationWindowSeconds: 0, policies: [{type: Pods, value: 4, periodSeconds: 60}]}
+    scaleDown: {stabilizationWindowSeconds: 300, policies: [{type: Percent, value: 25, periodSeconds: 60}]}
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: audit-worker
+  labels: {app.kubernetes.io/part-of: contract-audit}
+spec:
+  scaleTargetRef: {apiVersion: apps/v1, kind: Deployment, name: audit-worker}
+  minReplicas: 2
+  maxReplicas: 30
+  metrics:
+    # CPU only: the job-depth signal (contract_audit_ready_jobs) is SPEC_ONLY.
+    - type: Resource
+      resource: {name: cpu, target: {type: Utilization, averageUtilization: 70}}
+  behavior:
+    scaleUp: {stabilizationWindowSeconds: 0, policies: [{type: Pods, value: 6, periodSeconds: 60}]}
+    scaleDown: {stabilizationWindowSeconds: 300, policies: [{type: Percent, value: 20, periodSeconds: 60}]}
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: model-gateway
+  labels: {app.kubernetes.io/part-of: contract-audit}
+spec:
+  scaleTargetRef: {apiVersion: apps/v1, kind: Deployment, name: model-gateway}
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+    - type: Resource
+      resource: {name: cpu, target: {type: Utilization, averageUtilization: 70}}
+  behavior:
+    scaleUp: {stabilizationWindowSeconds: 0, policies: [{type: Pods, value: 4, periodSeconds: 60}]}
+    scaleDown: {stabilizationWindowSeconds: 300, policies: [{type: Percent, value: 25, periodSeconds: 60}]}
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: tool-gateway
+  labels: {app.kubernetes.io/part-of: contract-audit}
+spec:
+  scaleTargetRef: {apiVersion: apps/v1, kind: Deployment, name: tool-gateway}
+  minReplicas: 2
+  maxReplicas: 20
+  metrics:
+    - type: Resource
+      resource: {name: cpu, target: {type: Utilization, averageUtilization: 70}}

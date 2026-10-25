@@ -1,0 +1,1732 @@
+{
+  "schema_version": "contract-audit-evaluation-v1",
+  "id": "synthetic-regression-v1",
+  "kind": "synthetic",
+  "description": "人工编写的中文规则回归集；覆盖五个有限规则域、证据坐标与信息不足分支。非真实业务测试集，非 ContractNLI/CUAD 论文复现，不用于宣称生产准确率。",
+  "scenarios": [
+    {
+      "id": "warranty-conflict",
+      "domain": "warranty",
+      "tags": [
+        "conflict"
+      ],
+      "documents": [
+        {
+          "id": "a",
+          "role": "procurement",
+          "parse_status": "ready",
+          "text": "质保36个月。"
+        },
+        {
+          "id": "b",
+          "role": "draft_contract",
+          "parse_status": "ready",
+          "text": "质保24个月。"
+        }
+      ],
+      "expected_relation": "conflict",
+      "expected_evidence": [
+        {
+          "document_id": "a",
+          "quote": "质保36个月"
+        },
+        {
+          "document_id": "b",
+          "quote": "质保24个月"
+        }
+      ]
+    },
+    {
+      "id": "warranty-synonym",
+      "domain": "warranty",
+      "tags": [
+        "synonym"
+      ],
+      "documents": [
+        {
+          "id": "a",
+          "role": "procurement",
+          "parse_status": "ready",
+          "text": "质保期为36个月。"
+        },
+        {
+          "id": "b",
+          "role": "draft_contract",
+          "parse_status": "ready",
+          "text": "质量保证期为36个月。"
+        }
+      ],
+      "expected_relation": "compatible",
+      "expected_evidence": [
+        {
+          "document_id": "a",
+          "quote": "质保期为36个月"
+        },
+        {
+          "document_id": "b",
+          "quote": "质量保证期为36个月"
+        }
+      ]
+    },
+    {
+      "id": "warranty-missing-side",
+      "domain": "warranty",
+      "tags": [
+        "missing-side"
+      ],
+      "documents": [
+        {
+          "id": "a",
+          "role": "procurement",
+          "parse_status": "ready",
+          "text": "质保36个月。"
+        },
+        {
+          "id": "b",
+          "role": "draft_contract",
+          "parse_status": "ready",
+          "text": "未约定保修期限。"
+        }
+      ],
+      "expected_relation": "insufficient",
+      "expected_evidence": [
+        {
+          "document_id": "a",
+          "quote": "质保36个月"
+        }
+      ]
+    },
+    {
+      "id": "warranty-failed-side",
+      "domain": "warranty",
+      "tags": [
+        "failed-side"
+      ],
+      "documents": [
+        {
+          "id": "a",
+          "role": "procurement",
+          "parse_status": "ready",
+          "text": "质保36个月。"
+        },
+        {
+          "id": "b",
+          "role": "draft_contract",
+          "parse_status": "failed",
+          "text": "质保36个月。"
+        }
+      ],
+      "expected_relation": "insufficient",
+      "expected_evidence": [
+        {
+          "document_id": "a",
+          "quote": "质保36个月"
+        }
+      ]
+    },
+    {
+      "id": "warranty-all-failed",
+      "domain": "warranty",
+      "tags": [
+        "all-failed"
+      ],
+      "documents": [
+        {
+          "id": "a",
+          "role": "procurement",
+          "parse_status": "failed",
+          "text": ""
+        },
+        {
+          "id": "b",
+          "role": "draft_contract",
+          "parse_status": "pending",
+          "text": ""
+        }
+      ],
+      "expected_relation": "insufficient",
+      "expected_evidence": []
+    },
+    {
+      "id": "warranty-empty",
+      "domain": "warranty",
+      "tags": [
+        "empty"
+      ],
+      "documents": [],
+      "expected_relation": "insufficient",
+      "expected_evidence": []
+    },
+    {
+      "id": "warranty-single-source",
+      "domain": "warranty",
+      "tags": [
+        "single-source"
+      ],
+      "documents": [
+        {
+          "id": "a",
+          "role": "procurement",
+          "parse_status": "ready",
+          "text": "质保36个月。"
+        }
+      ],
+      "expected_relation": "insufficient",
+      "expected_evidence": [
+        {
+          "document_id": "a",
+          "quote": "质保36个月"
+        }
+      ]
+    },
+    {
+      "id": "warranty-absent",
+      "domain": "warranty",
+      "tags": [
+        "absent"
+      ],
+      "documents": [
+        {
+          "id": "a",
+          "role": "procurement",
+          "parse_status": "ready",
+          "text": "采购服务器一台。"
+        },
+        {
+          "id": "b",
+          "role": "draft_contract",
+          "parse_status": "ready",
+          "text": "收货地址重庆。"
+        }
+      ],
+      "expected_relation": "not_applicable",
+      "expected_evidence": []
+    },
+    {
+      "id": "warranty-deposit",
+      "domain": "warranty",
+      "tags": [
+        "deposit"
+      ],
+      "documents": [
+        {
+          "id": "a",
+          "role": "procurement",
+          "parse_status": "ready",
+          "text": "质保金36个月后返还。"
+        },
+        {
+          "id": "b",
+          "role": "draft_contract",
+          "parse_status": "ready",
+          "text": "质保24个月。"
+        }
+      ],
+      "expected_relation": "insufficient",
+      "expected_evidence": [
+        {
+          "document_id": "b",
+          "quote": "质保24个月"
+        }
+      ]
+    },
+    {
+      "id": "warranty-observed-page",
+      "domain": "warranty",
+      "tags": [
+        "page-boundary",
+        "conflict"
+      ],
+      "documents": [
+        {
+          "id": "a",
+          "role": "procurement",
+          "parse_status": "ready",
+          "text": "封面\f质保36个月。"
+        },
+        {
+          "id": "b",
+          "role": "draft_contract",
+          "parse_status": "ready",
+          "text": "质保24个月。"
+        }
+      ],
+      "expected_relation": "conflict",
+      "expected_evidence": [
+        {
+          "document_id": "a",
+          "quote": "质保36个月"
+        },
+        {
+          "document_id": "b",
+          "quote": "质保24个月"
+        }
+      ]
+    },
+    {
+      "id": "warranty-unicode-normalization",
+      "domain": "warranty",
+      "tags": [
+        "unicode",
+        "bom",
+        "whitespace"
+      ],
+      "documents": [
+        {
+          "id": "a",
+          "role": "procurement",
+          "parse_status": "ready",
+          "text": "﻿😀设备\r\n\r\n质保36个月。   "
+        },
+        {
+          "id": "b",
+          "role": "draft_contract",
+          "parse_status": "ready",
+          "text": "保修期为36个月。"
+        }
+      ],
+      "expected_relation": "compatible",
+      "expected_evidence": [
+        {
+          "document_id": "a",
+          "quote": "质保36个月"
+        },
+        {
+          "document_id": "b",
+          "quote": "保修期为36个月"
+        }
+      ]
+    },
+    {
+      "id": "warranty-ocr-text",
+      "domain": "warranty",
+      "tags": [
+        "ocr-transcript",
+        "no-image-coordinates"
+      ],
+      "documents": [
+        {
+          "id": "a",
+          "role": "procurement",
+          "parse_status": "ready",
+          "text": "质保36个月。",
+          "from_ocr": true
+        },
+        {
+          "id": "b",
+          "role": "draft_contract",
+          "parse_status": "ready",
+          "text": "质保24个月。"
+        }
+      ],
+      "expected_relation": "conflict",
+      "expected_evidence": [
+        {
+          "document_id": "a",
+          "quote": "质保36个月"
+        },
+        {
+          "document_id": "b",
+          "quote": "质保24个月"
+        }
+      ]
+    },
+    {
+      "id": "payment_sum-total-difference",
+      "domain": "payment_sum",
+      "tags": [
+        "total-difference"
+      ],
+      "documents": [
+        {
+          "id": "a",
+          "role": "procurement",
+          "parse_status": "ready",
+          "text": "预付款20%，验收通过后支付70%，质保期满10%。"
+        },
+        {
+          "id": "b",
+          "role": "draft_contract",
+          "parse_status": "ready",
+          "text": "到货后支付90%。"
+        }
+      ],
+      "expected_relation": "conflict",
+      "expected_evidence": [
+        {
+          "document_id": "a",
+          "quote": "预付款20%"
+        },
+        {
+          "document_id": "a",
+          "quote": "验收通过后支付70%"
+        },
+        {
+          "document_id": "a",
+          "quote": "质保期满10%"
+        },
+        {
+          "document_id": "b",
+          "quote": "到货后支付90%"
+        }
+      ]
+    },
+    {
+      "id": "payment_sum-synonym",
+      "domain": "payment_sum",
+      "tags": [
+        "synonym"
+      ],
+      "documents": [
+        {
+          "id": "a",
+          "role": "procurement",
+          "parse_status": "ready",
+          "text": "预付款20%。"
+        },
+        {
+          "id": "b",
+          "role": "draft_contract",
+          "parse_status": "ready",
+          "text": "预付款百分之20。"
+        }
+      ],
+      "expected_relation": "compatible",
+      "expected_evidence": [
+        {
+          "document_id": "a",
+          "quote": "预付款20%"
+        },
+        {
+          "document_id": "b",
+          "quote": "预付款百分之20"
+        }
+      ]
+    },
+    {
+      "id": "payment_sum-missing-side",
+      "domain": "payment_sum",
+      "tags": [
+        "missing-side"
+      ],
+      "documents": [
+        {
+          "id": "a",
+          "role": "procurement",
+          "parse_status": "ready",
+          "text": "预付款20%。"
+        },
+        {
+          "id": "b",
+          "role": "draft_contract",
+          "parse_status": "ready",
+          "text": "尚未确定付款计划。"
+        }
+      ],
+      "expected_relation": "insufficient",
+      "expected_evidence": [
+        {
+          "document_id": "a",
+          "quote": "预付款20%"
+        }
+      ]
+    },
+    {
+      "id": "payment_sum-failed-side",
+      "domain": "payment_sum",
+      "tags": [
+        "failed-side"
+      ],
+      "documents": [
+        {
+          "id": "a",
+          "role": "procurement",
+          "parse_status": "ready",
+          "text": "预付款20%。"
+        },
+        {
+          "id": "b",
+          "role": "draft_contract",
+          "parse_status": "failed",
+          "text": ""
+        }
+      ],
+      "expected_relation": "insufficient",
+      "expected_evidence": [
+        {
+          "document_id": "a",
+          "quote": "预付款20%"
+        }
+      ]
+    },
+    {
+      "id": "payment_sum-all-failed",
+      "domain": "payment_sum",
+      "tags": [
+        "all-failed"
+      ],
+      "documents": [
+        {
+          "id": "a",
+          "role": "procurement",
+          "parse_status": "failed",
+          "text": ""
+        },
+        {
+          "id": "b",
+          "role": "draft_contract",
+          "parse_status": "failed",
+          "text": ""
+        }
+      ],
+      "expected_relation": "insufficient",
+      "expected_evidence": []
+    },
+    {
+      "id": "payment_sum-empty",
+      "domain": "payment_sum",
+      "tags": [
+        "empty"
+      ],
+      "documents": [],
+      "expected_relation": "insufficient",
+      "expected_evidence": []
+    },
+    {
+      "id": "payment_sum-single-source",
+      "domain": "payment_sum",
+      "tags": [
+        "single-source"
+      ],
+      "documents": [
+        {
+          "id": "a",
+          "role": "procurement",
+          "parse_status": "ready",
+          "text": "预付款20%。"
+        }
+      ],
+      "expected_relation": "insufficient",
+      "expected_evidence": [
+        {
+          "document_id": "a",
+          "quote": "预付款20%"
+        }
+      ]
+    },
+    {
+      "id": "payment_sum-absent",
+      "domain": "payment_sum",
+      "tags": [
+        "absent"
+      ],
+      "documents": [
+        {
+          "id": "a",
+          "role": "procurement",
+          "parse_status": "ready",
+          "text": "质保36个月。"
+        },
+        {
+          "id": "b",
+          "role": "draft_contract",
+          "parse_status": "ready",
+          "text": "质保24个月。"
+        }
+      ],
+      "expected_relation": "not_applicable",
+      "expected_evidence": []
+    },
+    {
+      "id": "payment_sum-reorder",
+      "domain": "payment_sum",
+      "tags": [
+        "reorder"
+      ],
+      "documents": [
+        {
+          "id": "a",
+          "role": "procurement",
+          "parse_status": "ready",
+          "text": "预付款20%，验收通过后支付80%。"
+        },
+        {
+          "id": "b",
+          "role": "draft_contract",
+          "parse_status": "ready",
+          "text": "验收通过后支付80%，20%预付款。"
+        }
+      ],
+      "expected_relation": "compatible",
+      "expected_evidence": [
+        {
+          "document_id": "a",
+          "quote": "预付款20%"
+        },
+        {
+          "document_id": "a",
+          "quote": "验收通过后支付80%"
+        },
+        {
+          "document_id": "b",
+          "quote": "验收通过后支付80%"
+        },
+        {
+          "document_id": "b",
+          "quote": "20%预付款"
+        }
+      ]
+    },
+    {
+      "id": "payment_sum-zero-prepayment",
+      "domain": "payment_sum",
+      "tags": [
+        "zero-prepayment"
+      ],
+      "documents": [
+        {
+          "id": "a",
+          "role": "procurement",
+          "parse_status": "ready",
+          "text": "预付款0%，验收通过后支付100%。"
+        },
+        {
+          "id": "b",
+          "role": "draft_contract",
+          "parse_status": "ready",
+          "text": "验收通过后支付100%。"
+        }
+      ],
+      "expected_relation": "compatible",
+      "expected_evidence": [
+        {
+          "document_id": "a",
+          "quote": "预付款0%"
+        },
+        {
+          "document_id": "a",
+          "quote": "验收通过后支付100%"
+        },
+        {
+          "document_id": "b",
+          "quote": "验收通过后支付100%"
+        }
+      ]
+    },
+    {
+      "id": "payment_condition-equal-total-different-milestone",
+      "domain": "payment_condition",
+      "tags": [
+        "equal-total-different-milestone"
+      ],
+      "documents": [
+        {
+          "id": "a",
+          "role": "procurement",
+          "parse_status": "ready",
+          "text": "预付款20%，验收通过后支付80%。"
+        },
+        {
+          "id": "b",
+          "role": "draft_contract",
+          "parse_status": "ready",
+          "text": "到货后支付100%。"
+        }
+      ],
+      "expected_relation": "conflict",
+      "expected_evidence": [
+        {
+          "document_id": "a",
+          "quote": "预付款20%"
+        },
+        {
+          "document_id": "a",
+          "quote": "验收通过后支付80%"
+        },
+        {
+          "document_id": "b",
+          "quote": "到货后支付100%"
+        }
+      ]
+    },
+    {
+      "id": "payment_condition-reorder",
+      "domain": "payment_condition",
+      "tags": [
+        "reorder"
+      ],
+      "documents": [
+        {
+          "id": "a",
+          "role": "procurement",
+          "parse_status": "ready",
+          "text": "预付款20%，验收通过后支付80%。"
+        },
+        {
+          "id": "b",
+          "role": "draft_contract",
+          "parse_status": "ready",
+          "text": "验收通过后支付80%，20%预付款。"
+        }
+      ],
+      "expected_relation": "compatible",
+      "expected_evidence": [
+        {
+          "document_id": "a",
+          "quote": "预付款20%"
+        },
+        {
+          "document_id": "a",
+          "quote": "验收通过后支付80%"
+        },
+        {
+          "document_id": "b",
+          "quote": "验收通过后支付80%"
+        },
+        {
+          "document_id": "b",
+          "quote": "20%预付款"
+        }
+      ]
+    },
+    {
+      "id": "payment_condition-synonym",
+      "domain": "payment_condition",
+      "tags": [
+        "synonym"
+      ],
+      "documents": [
+        {
+          "id": "a",
+          "role": "procurement",
+          "parse_status": "ready",
+          "text": "设备到货后支付90%。"
+        },
+        {
+          "id": "b",
+          "role": "draft_contract",
+          "parse_status": "ready",
+          "text": "到货后支付90%。"
+        }
+      ],
+      "expected_relation": "compatible",
+      "expected_evidence": [
+        {
+          "document_id": "a",
+          "quote": "设备到货后支付90%"
+        },
+        {
+          "document_id": "b",
+          "quote": "到货后支付90%"
+        }
+      ]
+    },
+    {
+      "id": "payment_condition-missing-side",
+      "domain": "payment_condition",
+      "tags": [
+        "missing-side"
+      ],
+      "documents": [
+        {
+          "id": "a",
+          "role": "procurement",
+          "parse_status": "ready",
+          "text": "质保期满后支付10%。"
+        },
+        {
+          "id": "b",
+          "role": "draft_contract",
+          "parse_status": "ready",
+          "text": "付款待定。"
+        }
+      ],
+      "expected_relation": "insufficient",
+      "expected_evidence": [
+        {
+          "document_id": "a",
+          "quote": "质保期满后支付10%"
+        }
+      ]
+    },
+    {
+      "id": "payment_condition-failed-side",
+      "domain": "payment_condition",
+      "tags": [
+        "failed-side"
+      ],
+      "documents": [
+        {
+          "id": "a",
+          "role": "procurement",
+          "parse_status": "ready",
+          "text": "预付款20%。"
+        },
+        {
+          "id": "b",
+          "role": "draft_contract",
+          "parse_status": "failed",
+          "text": ""
+        }
+      ],
+      "expected_relation": "insufficient",
+      "expected_evidence": [
+        {
+          "document_id": "a",
+          "quote": "预付款20%"
+        }
+      ]
+    },
+    {
+      "id": "payment_condition-all-failed",
+      "domain": "payment_condition",
+      "tags": [
+        "all-failed"
+      ],
+      "documents": [
+        {
+          "id": "a",
+          "role": "procurement",
+          "parse_status": "failed",
+          "text": ""
+        },
+        {
+          "id": "b",
+          "role": "draft_contract",
+          "parse_status": "pending",
+          "text": ""
+        }
+      ],
+      "expected_relation": "insufficient",
+      "expected_evidence": []
+    },
+    {
+      "id": "payment_condition-empty",
+      "domain": "payment_condition",
+      "tags": [
+        "empty"
+      ],
+      "documents": [],
+      "expected_relation": "insufficient",
+      "expected_evidence": []
+    },
+    {
+      "id": "payment_condition-single-source",
+      "domain": "payment_condition",
+      "tags": [
+        "single-source"
+      ],
+      "documents": [
+        {
+          "id": "a",
+          "role": "procurement",
+          "parse_status": "ready",
+          "text": "预付款20%。"
+        }
+      ],
+      "expected_relation": "insufficient",
+      "expected_evidence": [
+        {
+          "document_id": "a",
+          "quote": "预付款20%"
+        }
+      ]
+    },
+    {
+      "id": "payment_condition-absent",
+      "domain": "payment_condition",
+      "tags": [
+        "absent"
+      ],
+      "documents": [
+        {
+          "id": "a",
+          "role": "procurement",
+          "parse_status": "ready",
+          "text": "合同金额为120万元。"
+        },
+        {
+          "id": "b",
+          "role": "draft_contract",
+          "parse_status": "ready",
+          "text": "合同总价120万元。"
+        }
+      ],
+      "expected_relation": "not_applicable",
+      "expected_evidence": []
+    },
+    {
+      "id": "payment_condition-different-distribution",
+      "domain": "payment_condition",
+      "tags": [
+        "different-distribution"
+      ],
+      "documents": [
+        {
+          "id": "a",
+          "role": "procurement",
+          "parse_status": "ready",
+          "text": "预付款20%，验收通过后支付80%。"
+        },
+        {
+          "id": "b",
+          "role": "draft_contract",
+          "parse_status": "ready",
+          "text": "预付款30%，验收通过后支付70%。"
+        }
+      ],
+      "expected_relation": "conflict",
+      "expected_evidence": [
+        {
+          "document_id": "a",
+          "quote": "预付款20%"
+        },
+        {
+          "document_id": "a",
+          "quote": "验收通过后支付80%"
+        },
+        {
+          "document_id": "b",
+          "quote": "预付款30%"
+        },
+        {
+          "document_id": "b",
+          "quote": "验收通过后支付70%"
+        }
+      ]
+    },
+    {
+      "id": "schedule-days",
+      "domain": "schedule",
+      "tags": [
+        "days"
+      ],
+      "documents": [
+        {
+          "id": "a",
+          "role": "procurement",
+          "parse_status": "ready",
+          "text": "交付后30日完成验收。"
+        },
+        {
+          "id": "b",
+          "role": "draft_contract",
+          "parse_status": "ready",
+          "text": "交付后45日完成验收。"
+        }
+      ],
+      "expected_relation": "conflict",
+      "expected_evidence": [
+        {
+          "document_id": "a",
+          "quote": "交付后30日"
+        },
+        {
+          "document_id": "b",
+          "quote": "交付后45日"
+        }
+      ]
+    },
+    {
+      "id": "schedule-calendar-synonym",
+      "domain": "schedule",
+      "tags": [
+        "calendar-synonym"
+      ],
+      "documents": [
+        {
+          "id": "a",
+          "role": "procurement",
+          "parse_status": "ready",
+          "text": "交付后30日完成验收。"
+        },
+        {
+          "id": "b",
+          "role": "draft_contract",
+          "parse_status": "ready",
+          "text": "交付后30天完成验收。"
+        }
+      ],
+      "expected_relation": "compatible",
+      "expected_evidence": [
+        {
+          "document_id": "a",
+          "quote": "交付后30日"
+        },
+        {
+          "document_id": "b",
+          "quote": "交付后30天"
+        }
+      ]
+    },
+    {
+      "id": "schedule-working-calendar",
+      "domain": "schedule",
+      "tags": [
+        "working-calendar"
+      ],
+      "documents": [
+        {
+          "id": "a",
+          "role": "procurement",
+          "parse_status": "ready",
+          "text": "交付后30日完成验收。"
+        },
+        {
+          "id": "b",
+          "role": "draft_contract",
+          "parse_status": "ready",
+          "text": "交付后30个工作日完成验收。"
+        }
+      ],
+      "expected_relation": "conflict",
+      "expected_evidence": [
+        {
+          "document_id": "a",
+          "quote": "交付后30日"
+        },
+        {
+          "document_id": "b",
+          "quote": "交付后30个工作日"
+        }
+      ]
+    },
+    {
+      "id": "schedule-different-trigger",
+      "domain": "schedule",
+      "tags": [
+        "different-trigger"
+      ],
+      "documents": [
+        {
+          "id": "a",
+          "role": "procurement",
+          "parse_status": "ready",
+          "text": "交付后30日完成验收。"
+        },
+        {
+          "id": "b",
+          "role": "draft_contract",
+          "parse_status": "ready",
+          "text": "乙方申请后30日完成验收。"
+        }
+      ],
+      "expected_relation": "insufficient",
+      "expected_evidence": [
+        {
+          "document_id": "a",
+          "quote": "交付后30日"
+        },
+        {
+          "document_id": "b",
+          "quote": "乙方申请后30日"
+        }
+      ]
+    },
+    {
+      "id": "schedule-missing-side",
+      "domain": "schedule",
+      "tags": [
+        "missing-side"
+      ],
+      "documents": [
+        {
+          "id": "a",
+          "role": "procurement",
+          "parse_status": "ready",
+          "text": "交付后30日完成验收。"
+        },
+        {
+          "id": "b",
+          "role": "draft_contract",
+          "parse_status": "ready",
+          "text": "验收日期待定。"
+        }
+      ],
+      "expected_relation": "insufficient",
+      "expected_evidence": [
+        {
+          "document_id": "a",
+          "quote": "交付后30日"
+        }
+      ]
+    },
+    {
+      "id": "schedule-failed-side",
+      "domain": "schedule",
+      "tags": [
+        "failed-side"
+      ],
+      "documents": [
+        {
+          "id": "a",
+          "role": "procurement",
+          "parse_status": "ready",
+          "text": "交付后30日完成验收。"
+        },
+        {
+          "id": "b",
+          "role": "draft_contract",
+          "parse_status": "failed",
+          "text": ""
+        }
+      ],
+      "expected_relation": "insufficient",
+      "expected_evidence": [
+        {
+          "document_id": "a",
+          "quote": "交付后30日"
+        }
+      ]
+    },
+    {
+      "id": "schedule-all-failed",
+      "domain": "schedule",
+      "tags": [
+        "all-failed"
+      ],
+      "documents": [
+        {
+          "id": "a",
+          "role": "procurement",
+          "parse_status": "failed",
+          "text": ""
+        },
+        {
+          "id": "b",
+          "role": "draft_contract",
+          "parse_status": "failed",
+          "text": ""
+        }
+      ],
+      "expected_relation": "insufficient",
+      "expected_evidence": []
+    },
+    {
+      "id": "schedule-empty",
+      "domain": "schedule",
+      "tags": [
+        "empty"
+      ],
+      "documents": [],
+      "expected_relation": "insufficient",
+      "expected_evidence": []
+    },
+    {
+      "id": "schedule-single-source",
+      "domain": "schedule",
+      "tags": [
+        "single-source"
+      ],
+      "documents": [
+        {
+          "id": "a",
+          "role": "procurement",
+          "parse_status": "ready",
+          "text": "交付后30日完成验收。"
+        }
+      ],
+      "expected_relation": "insufficient",
+      "expected_evidence": [
+        {
+          "document_id": "a",
+          "quote": "交付后30日"
+        }
+      ]
+    },
+    {
+      "id": "schedule-absent",
+      "domain": "schedule",
+      "tags": [
+        "absent"
+      ],
+      "documents": [
+        {
+          "id": "a",
+          "role": "procurement",
+          "parse_status": "ready",
+          "text": "质保36个月。"
+        },
+        {
+          "id": "b",
+          "role": "draft_contract",
+          "parse_status": "ready",
+          "text": "质保24个月。"
+        }
+      ],
+      "expected_relation": "not_applicable",
+      "expected_evidence": []
+    },
+    {
+      "id": "schedule-observed-page",
+      "domain": "schedule",
+      "tags": [
+        "observed-page"
+      ],
+      "documents": [
+        {
+          "id": "a",
+          "role": "procurement",
+          "parse_status": "ready",
+          "text": "封面\f交付后30日完成验收。"
+        },
+        {
+          "id": "b",
+          "role": "draft_contract",
+          "parse_status": "ready",
+          "text": "交付后45日完成验收。"
+        }
+      ],
+      "expected_relation": "conflict",
+      "expected_evidence": [
+        {
+          "document_id": "a",
+          "quote": "交付后30日"
+        },
+        {
+          "document_id": "b",
+          "quote": "交付后45日"
+        }
+      ]
+    },
+    {
+      "id": "amount-amount",
+      "domain": "amount",
+      "tags": [
+        "amount"
+      ],
+      "documents": [
+        {
+          "id": "a",
+          "role": "procurement",
+          "parse_status": "ready",
+          "text": "采购金额为120万元。"
+        },
+        {
+          "id": "b",
+          "role": "draft_contract",
+          "parse_status": "ready",
+          "text": "合同金额为100万元。"
+        }
+      ],
+      "expected_relation": "conflict",
+      "expected_evidence": [
+        {
+          "document_id": "a",
+          "quote": "采购金额为120万元"
+        },
+        {
+          "document_id": "b",
+          "quote": "合同金额为100万元"
+        }
+      ]
+    },
+    {
+      "id": "amount-unit-equivalence",
+      "domain": "amount",
+      "tags": [
+        "unit-equivalence"
+      ],
+      "documents": [
+        {
+          "id": "a",
+          "role": "procurement",
+          "parse_status": "ready",
+          "text": "采购金额为120万元。"
+        },
+        {
+          "id": "b",
+          "role": "draft_contract",
+          "parse_status": "ready",
+          "text": "合同总价为1200000元。"
+        }
+      ],
+      "expected_relation": "compatible",
+      "expected_evidence": [
+        {
+          "document_id": "a",
+          "quote": "采购金额为120万元"
+        },
+        {
+          "document_id": "b",
+          "quote": "合同总价为1200000元"
+        }
+      ]
+    },
+    {
+      "id": "amount-missing-side",
+      "domain": "amount",
+      "tags": [
+        "missing-side"
+      ],
+      "documents": [
+        {
+          "id": "a",
+          "role": "procurement",
+          "parse_status": "ready",
+          "text": "采购金额为120万元。"
+        },
+        {
+          "id": "b",
+          "role": "draft_contract",
+          "parse_status": "ready",
+          "text": "总价待定。"
+        }
+      ],
+      "expected_relation": "insufficient",
+      "expected_evidence": [
+        {
+          "document_id": "a",
+          "quote": "采购金额为120万元"
+        }
+      ]
+    },
+    {
+      "id": "amount-failed-side",
+      "domain": "amount",
+      "tags": [
+        "failed-side"
+      ],
+      "documents": [
+        {
+          "id": "a",
+          "role": "procurement",
+          "parse_status": "ready",
+          "text": "采购金额为120万元。"
+        },
+        {
+          "id": "b",
+          "role": "draft_contract",
+          "parse_status": "failed",
+          "text": ""
+        }
+      ],
+      "expected_relation": "insufficient",
+      "expected_evidence": [
+        {
+          "document_id": "a",
+          "quote": "采购金额为120万元"
+        }
+      ]
+    },
+    {
+      "id": "amount-all-failed",
+      "domain": "amount",
+      "tags": [
+        "all-failed"
+      ],
+      "documents": [
+        {
+          "id": "a",
+          "role": "procurement",
+          "parse_status": "failed",
+          "text": ""
+        },
+        {
+          "id": "b",
+          "role": "draft_contract",
+          "parse_status": "failed",
+          "text": ""
+        }
+      ],
+      "expected_relation": "insufficient",
+      "expected_evidence": []
+    },
+    {
+      "id": "amount-empty",
+      "domain": "amount",
+      "tags": [
+        "empty"
+      ],
+      "documents": [],
+      "expected_relation": "insufficient",
+      "expected_evidence": []
+    },
+    {
+      "id": "amount-single-source",
+      "domain": "amount",
+      "tags": [
+        "single-source"
+      ],
+      "documents": [
+        {
+          "id": "a",
+          "role": "procurement",
+          "parse_status": "ready",
+          "text": "采购金额为120万元。"
+        }
+      ],
+      "expected_relation": "insufficient",
+      "expected_evidence": [
+        {
+          "document_id": "a",
+          "quote": "采购金额为120万元"
+        }
+      ]
+    },
+    {
+      "id": "amount-deposit-not-total",
+      "domain": "amount",
+      "tags": [
+        "deposit-not-total"
+      ],
+      "documents": [
+        {
+          "id": "a",
+          "role": "procurement",
+          "parse_status": "ready",
+          "text": "质保金为5万元。"
+        },
+        {
+          "id": "b",
+          "role": "draft_contract",
+          "parse_status": "ready",
+          "text": "质保金为3万元。"
+        }
+      ],
+      "expected_relation": "not_applicable",
+      "expected_evidence": []
+    },
+    {
+      "id": "amount-overflow",
+      "domain": "amount",
+      "tags": [
+        "overflow"
+      ],
+      "documents": [
+        {
+          "id": "a",
+          "role": "procurement",
+          "parse_status": "ready",
+          "text": "采购金额为9223372036854775807万元。"
+        },
+        {
+          "id": "b",
+          "role": "draft_contract",
+          "parse_status": "ready",
+          "text": "合同金额为120万元。"
+        }
+      ],
+      "expected_relation": "insufficient",
+      "expected_evidence": [
+        {
+          "document_id": "b",
+          "quote": "合同金额为120万元"
+        }
+      ]
+    },
+    {
+      "id": "amount-all-overflow",
+      "domain": "amount",
+      "tags": [
+        "all-overflow"
+      ],
+      "documents": [
+        {
+          "id": "a",
+          "role": "procurement",
+          "parse_status": "ready",
+          "text": "采购金额为9223372036854775807万元。"
+        },
+        {
+          "id": "b",
+          "role": "draft_contract",
+          "parse_status": "ready",
+          "text": "合同金额为9223372036854775807万元。"
+        }
+      ],
+      "expected_relation": "insufficient",
+      "expected_evidence": []
+    },
+    {
+      "id": "amount-fractional",
+      "domain": "amount",
+      "tags": [
+        "fractional"
+      ],
+      "documents": [
+        {
+          "id": "a",
+          "role": "procurement",
+          "parse_status": "ready",
+          "text": "采购金额为0.000001万元。"
+        },
+        {
+          "id": "b",
+          "role": "draft_contract",
+          "parse_status": "ready",
+          "text": "合同金额为0.01元。"
+        }
+      ],
+      "expected_relation": "compatible",
+      "expected_evidence": [
+        {
+          "document_id": "a",
+          "quote": "采购金额为0.000001万元"
+        },
+        {
+          "document_id": "b",
+          "quote": "合同金额为0.01元"
+        }
+      ]
+    },
+    {
+      "id": "amount-sub-cent-rejected",
+      "domain": "amount",
+      "tags": [
+        "sub-cent-rejected"
+      ],
+      "documents": [
+        {
+          "id": "a",
+          "role": "procurement",
+          "parse_status": "ready",
+          "text": "采购金额为0.001元。"
+        },
+        {
+          "id": "b",
+          "role": "draft_contract",
+          "parse_status": "ready",
+          "text": "合同金额为0.01元。"
+        }
+      ],
+      "expected_relation": "insufficient",
+      "expected_evidence": [
+        {
+          "document_id": "b",
+          "quote": "合同金额为0.01元"
+        }
+      ]
+    },
+    {
+      "id": "amount-fractional-conflict",
+      "domain": "amount",
+      "tags": [
+        "fractional-conflict"
+      ],
+      "documents": [
+        {
+          "id": "a",
+          "role": "procurement",
+          "parse_status": "ready",
+          "text": "采购金额为100.01元。"
+        },
+        {
+          "id": "b",
+          "role": "draft_contract",
+          "parse_status": "ready",
+          "text": "合同金额为100.02元。"
+        }
+      ],
+      "expected_relation": "conflict",
+      "expected_evidence": [
+        {
+          "document_id": "a",
+          "quote": "采购金额为100.01元"
+        },
+        {
+          "document_id": "b",
+          "quote": "合同金额为100.02元"
+        }
+      ]
+    },
+    {
+      "id": "warranty-minimum-unequal",
+      "domain": "warranty",
+      "tags": [
+        "semantic-abstention",
+        "minimum-unequal"
+      ],
+      "documents": [
+        {
+          "id": "a",
+          "role": "procurement",
+          "parse_status": "ready",
+          "text": "质保不少于24个月。"
+        },
+        {
+          "id": "b",
+          "role": "draft_contract",
+          "parse_status": "ready",
+          "text": "质保36个月。"
+        }
+      ],
+      "expected_relation": "insufficient",
+      "expected_evidence": [
+        {
+          "document_id": "a",
+          "quote": "质保不少于24个月"
+        },
+        {
+          "document_id": "b",
+          "quote": "质保36个月"
+        }
+      ]
+    },
+    {
+      "id": "warranty-minimum-equal",
+      "domain": "warranty",
+      "tags": [
+        "semantic-abstention",
+        "minimum-equal"
+      ],
+      "documents": [
+        {
+          "id": "a",
+          "role": "procurement",
+          "parse_status": "ready",
+          "text": "质保至少为36个月。"
+        },
+        {
+          "id": "b",
+          "role": "draft_contract",
+          "parse_status": "ready",
+          "text": "质保36个月。"
+        }
+      ],
+      "expected_relation": "insufficient",
+      "expected_evidence": [
+        {
+          "document_id": "a",
+          "quote": "质保至少为36个月"
+        },
+        {
+          "document_id": "b",
+          "quote": "质保36个月"
+        }
+      ]
+    },
+    {
+      "id": "warranty-maximum-prefix",
+      "domain": "warranty",
+      "tags": [
+        "semantic-abstention",
+        "maximum-prefix"
+      ],
+      "documents": [
+        {
+          "id": "a",
+          "role": "procurement",
+          "parse_status": "ready",
+          "text": "最长质保期为36个月。"
+        },
+        {
+          "id": "b",
+          "role": "draft_contract",
+          "parse_status": "ready",
+          "text": "质保24个月。"
+        }
+      ],
+      "expected_relation": "insufficient",
+      "expected_evidence": [
+        {
+          "document_id": "a",
+          "quote": "最长质保期为36个月"
+        },
+        {
+          "document_id": "b",
+          "quote": "质保24个月"
+        }
+      ]
+    },
+    {
+      "id": "warranty-negation-prefix",
+      "domain": "warranty",
+      "tags": [
+        "semantic-abstention",
+        "negation-prefix"
+      ],
+      "documents": [
+        {
+          "id": "a",
+          "role": "procurement",
+          "parse_status": "ready",
+          "text": "不提供质保24个月。"
+        },
+        {
+          "id": "b",
+          "role": "draft_contract",
+          "parse_status": "ready",
+          "text": "质保24个月。"
+        }
+      ],
+      "expected_relation": "insufficient",
+      "expected_evidence": [
+        {
+          "document_id": "a",
+          "quote": "不提供质保24个月"
+        },
+        {
+          "document_id": "b",
+          "quote": "质保24个月"
+        }
+      ]
+    },
+    {
+      "id": "warranty-exception-prefix",
+      "domain": "warranty",
+      "tags": [
+        "semantic-abstention",
+        "exception-prefix"
+      ],
+      "documents": [
+        {
+          "id": "a",
+          "role": "procurement",
+          "parse_status": "ready",
+          "text": "除电池外，质保36个月。"
+        },
+        {
+          "id": "b",
+          "role": "draft_contract",
+          "parse_status": "ready",
+          "text": "质保36个月。"
+        }
+      ],
+      "expected_relation": "insufficient",
+      "expected_evidence": [
+        {
+          "document_id": "a",
+          "quote": "除电池外，质保36个月"
+        },
+        {
+          "document_id": "b",
+          "quote": "质保36个月"
+        }
+      ]
+    },
+    {
+      "id": "warranty-exception-suffix",
+      "domain": "warranty",
+      "tags": [
+        "semantic-abstention",
+        "exception-suffix"
+      ],
+      "documents": [
+        {
+          "id": "a",
+          "role": "procurement",
+          "parse_status": "ready",
+          "text": "质保36个月，耗材除外。"
+        },
+        {
+          "id": "b",
+          "role": "draft_contract",
+          "parse_status": "ready",
+          "text": "质保36个月。"
+        }
+      ],
+      "expected_relation": "insufficient",
+      "expected_evidence": [
+        {
+          "document_id": "a",
+          "quote": "质保36个月，耗材除外"
+        },
+        {
+          "document_id": "b",
+          "quote": "质保36个月"
+        }
+      ]
+    }
+  ]
+}

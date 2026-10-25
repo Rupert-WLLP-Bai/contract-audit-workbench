@@ -1,0 +1,273 @@
+import { useMemo, useState, type FormEvent } from "react";
+import { Link } from "react-router";
+import { errorMessage } from "../api/http";
+import { useCreateWorkbenchTask, useSession, useUpdateWorkbenchTask, useWorkbench } from "../api/queries";
+import type { WorkbenchPeriod, WorkbenchTask } from "../api/types";
+import { PageStatus } from "../components/page-status";
+import { StatusText } from "../components/status-text";
+import { formatDateTime, runLabel, runTone } from "../domain/review";
+import "./home-page.css";
+
+function caseHref(caseId: string, runId: string | null): string {
+  return runId ? `/cases/${encodeURIComponent(caseId)}/reviews/${encodeURIComponent(runId)}` : `/cases/${encodeURIComponent(caseId)}`;
+}
+
+function metricIcon(name: "cases" | "tasks" | "late" | "reviews") {
+  const paths: Record<typeof name, string> = {
+    cases: "M5 3.5h14v17H5zM8 8h8M8 12h8M8 16h5",
+    tasks: "M4 5h16M4 12h10M4 19h8m2-2 2 2 4-5",
+    late: "M12 3a9 9 0 1 0 9 9M12 7v5l3 2M17 3v4h4",
+    reviews: "M4 4h16v16H4zM8 8h8M8 12h5m-5 4 2 2 5-6",
+  };
+  return <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d={paths[name]} /></svg>;
+}
+
+function barWidth(count: number, total: number): number {
+  return total === 0 ? 0 : Math.max(0, Math.min(100, Math.round(count / total * 100)));
+}
+const BUSINESS_STATUS_LABELS: Record<string, string> = { active: "未归档", archived: "已归档" };
+const FALLBACK_PROGRESS_COLORS = ["#84c6ff", "#ffbc53", "#a881ed", "#bac4d1"];
+
+function progressColor(status: string, index: number): string {
+  if (status === "active") return "#1677ff";
+  if (status === "archived") return "#8793a4";
+  return FALLBACK_PROGRESS_COLORS[index % FALLBACK_PROGRESS_COLORS.length]!;
+}
+
+function ProgressDonut({ rows, visibleCases }: { rows: { status: string; count: number }[]; visibleCases: number }) {
+  const total = rows.reduce((sum, row) => sum + row.count, 0);
+  let offset = 0;
+  const slices = rows.filter((row) => row.count > 0).map((row, index) => {
+    const start = offset;
+    offset += row.count;
+    return `${progressColor(row.status, index)} ${start / total * 100}% ${offset / total * 100}%`;
+  });
+  const background = total === 0 ? "#edf1f6" : `conic-gradient(${slices.join(", ")})`;
+  const center = total === 0 && visibleCases > 0 ? "—" : String(total);
+  const centerLabel = total === 0 && visibleCases > 0 ? "状态未报" : "案件";
+  const accessibleLabel = rows.length === 0
+    ? "打开案件中心；案件状态分布未报告"
+    : `打开案件中心；${rows.map((row) => `${BUSINESS_STATUS_LABELS[row.status] ?? (row.status || "未报告")} ${row.count} 项`).join("，")}`;
+
+  return <div className="home-progress-content">
+    <Link className="home-progress-ring" to="/cases" style={{ background }} aria-label={accessibleLabel}>
+      <div aria-hidden="true"><strong>{center}</strong><span>{centerLabel}</span></div>
+    </Link>
+    <div className="home-progress-legend" aria-label="按案件业务状态统计">
+      {rows.length === 0 ? <p>{visibleCases === 0 ? "当前身份没有可见案件。" : "案件状态统计未报告。"}</p> : rows.map((row, index) => <div key={row.status}>
+        <span><i style={{ background: progressColor(row.status, index) }} />{BUSINESS_STATUS_LABELS[row.status] ?? (row.status || "未报告")}</span>
+        <strong>{row.count}</strong>
+      </div>)}
+      {rows.length > 0 && total !== visibleCases ? <small>状态统计 {total} 项；可见案件 {visibleCases} 项。</small> : null}
+    </div>
+  </div>;
+}
+
+
+function ProgressList({ rows, total, kind }: { rows: { label: string; count: number; key: string }[]; total: number; kind: "risk" }) {
+  if (rows.length === 0) return <p className="home-empty">快照没有返回此项统计。</p>;
+  return <ul className={`home-data-bars home-data-bars-${kind}`}>
+    {rows.map((row) => <li key={row.key}>
+      <div className="home-data-bar-label"><span>{row.label}</span><strong>{row.count}</strong></div>
+      <div className="home-data-bar-track" aria-label={`${row.label} ${row.count}，占 ${barWidth(row.count, total)}%`}><span style={{ width: `${barWidth(row.count, total)}%` }} /></div>
+    </li>)}
+  </ul>;
+}
+
+function TaskRow({ task, caseTitle, assignee, pending, onComplete }: {
+  task: WorkbenchTask;
+  caseTitle: string;
+  assignee: string;
+  pending: boolean;
+  onComplete: () => void;
+}) {
+  return <li className="home-task-row">
+    <div className="home-task-copy">
+      <Link className="home-task-title" to={caseHref(task.case_id, null)}>{task.title}</Link>
+      <span className="home-task-meta">{caseTitle} · {assignee} · {task.kind}</span>
+    </div>
+    <div className="home-task-state">
+      <StatusText tone={task.priority === "high" ? "bad" : task.priority === "medium" ? "attention" : "neutral"}>{task.priority === "high" ? "高优先级" : task.priority === "medium" ? "中优先级" : "低优先级"}</StatusText>
+      <time className="home-task-time" dateTime={task.due_at ?? undefined}>{task.due_at ? formatDateTime(task.due_at) : "未设期限"}</time>
+    </div>
+    {task.status === "completed"
+      ? <span className="home-task-complete">已完成</span>
+      : <button className="home-task-complete" type="button" disabled={pending} onClick={onComplete}>{pending ? "正在保存" : "标记完成"}</button>}
+  </li>;
+}
+
+export function HomePage() {
+  const [period, setPeriod] = useState<WorkbenchPeriod>("week");
+  const [taskCaseId, setTaskCaseId] = useState("");
+  const [taskTitle, setTaskTitle] = useState("");
+  const [taskAssignee, setTaskAssignee] = useState("");
+  const [taskDue, setTaskDue] = useState("");
+  const [showTaskForm, setShowTaskForm] = useState(false);
+  const [taskFilter, setTaskFilter] = useState<"mine" | "all" | "completed">("mine");
+  const snapshot = useWorkbench(period);
+  const session = useSession();
+  const createTask = useCreateWorkbenchTask(taskCaseId);
+  const updateTask = useUpdateWorkbenchTask();
+  const caseTitles = useMemo(() => new Map((snapshot.data?.cases ?? []).map((item) => [item.id, item.title])), [snapshot.data?.cases]);
+  const members = useMemo(() => new Map((snapshot.data?.members ?? []).map((member) => [member.id, member.display_name])), [snapshot.data?.members]);
+
+  if (snapshot.isLoading) return <PageStatus kind="loading" title="正在加载工作台快照" />;
+  if (snapshot.isError || !snapshot.data) {
+    return <PageStatus kind="error" title="工作台快照没有加载" detail={errorMessage(snapshot.error)} action={<button className="button button-primary" type="button" onClick={() => void snapshot.refetch()}>重试</button>} />;
+  }
+
+  const data = snapshot.data;
+  const dashboard = data.dashboard;
+  const allTasks = [...data.tasks].sort((left, right) => (left.due_at ?? "9999").localeCompare(right.due_at ?? "9999"));
+  const tasks = allTasks.filter((task) => taskFilter === "completed"
+    ? task.status === "completed"
+    : taskFilter === "mine"
+      ? task.assignee_id === session.data?.id && task.status !== "completed"
+      : task.status !== "completed");
+  const activeTaskCount = allTasks.filter((task) => task.status !== "completed").length;
+  const cases = [...data.cases].sort((left, right) => right.updated_at.localeCompare(left.updated_at));
+  const audit = [...data.audit].sort((left, right) => right.at.localeCompare(left.at)).slice(0, 6);
+  const remediations = [...data.remediations].sort((left, right) => right.updated_at.localeCompare(left.updated_at)).slice(0, 5);
+
+  function completeTask(task: WorkbenchTask) {
+    updateTask.mutate({
+      caseId: task.case_id,
+      taskId: task.id,
+      update: {
+        title: task.title,
+        kind: task.kind,
+        assignee_id: task.assignee_id,
+        due_at: task.due_at,
+        status: "completed",
+        priority: task.priority,
+        finding_id: task.finding_id,
+        expected_version: task.version,
+      },
+    });
+  }
+
+  function submitTask(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    createTask.mutate({
+      title: taskTitle.trim(),
+      kind: "general",
+      assignee_id: taskAssignee,
+      due_at: taskDue === "" ? null : `${taskDue}T23:59:59+08:00`,
+      status: "open",
+      priority: "medium",
+      finding_id: null,
+    }, {
+      onSuccess: () => {
+        setTaskTitle("");
+        setTaskDue("");
+        setShowTaskForm(false);
+      },
+    });
+  }
+
+  const metrics = [
+    { key: "cases", label: "可见案件", value: dashboard.visible_cases, hint: "按当前身份权限统计", tone: "blue" },
+    { key: "tasks", label: "我的待办", value: dashboard.my_pending_tasks, hint: "由责任人与任务状态计算", tone: "amber" },
+    { key: "late", label: "逾期任务", value: dashboard.overdue_tasks, hint: "按已保存期限统计", tone: "red" },
+    { key: "reviews", label: "待审查案件", value: dashboard.pending_review_cases, hint: "等待审查或人工处理", tone: "green" },
+  ] as const;
+
+  return <section className="page home-page">
+    <header className="home-page-head">
+      <div className="home-welcome">
+        <p className="home-eyebrow">合同审计工作台</p>
+        <h1>你好，{session.data?.display_name ?? "当前用户"}</h1>
+        <p>案件、审查、整改与协作进度来自当前身份可见的持久业务快照。</p>
+      </div>
+      <div className="home-head-actions">
+        <label className="home-period-select">统计周期
+          <select value={period} onChange={(event) => {
+            const value = event.target.value;
+            setPeriod(value === "day" || value === "month" ? value : "week");
+          }}>
+            <option value="day">今日</option><option value="week">本周</option><option value="month">本月</option>
+          </select>
+        </label>
+        <Link className="button button-primary home-case-link" to="/cases">打开案件中心</Link>
+      </div>
+    </header>
+
+    <dl className="home-metrics" aria-label="工作台摘要">
+      {metrics.map((metric) => <div className={`home-metric home-metric-${metric.tone}`} key={metric.key}>
+        <span className="home-metric-icon">{metricIcon(metric.key)}</span>
+        <div><dt>{metric.label}</dt><dd>{metric.value}</dd><p>{metric.hint}</p></div>
+      </div>)}
+    </dl>
+
+    <div className="home-content-grid workbench-content-grid">
+      <section className="home-panel home-tasks" aria-labelledby="home-tasks-title">
+        <header className="home-panel-head">
+          <div className="home-section-title"><span aria-hidden="true" /><h2 id="home-tasks-title">任务与待办</h2><strong className="home-count-badge">{activeTaskCount}</strong></div>
+          <button className="button button-quiet" type="button" onClick={() => setShowTaskForm((current) => !current)}>{showTaskForm ? "收起" : "新建任务"}</button>
+        </header>
+        <div className="home-task-filters" role="group" aria-label="任务筛选">
+          <button type="button" aria-pressed={taskFilter === "mine"} onClick={() => setTaskFilter("mine")}>我的待办<span>{dashboard.my_pending_tasks}</span></button>
+          <button type="button" aria-pressed={taskFilter === "all"} onClick={() => setTaskFilter("all")}>全部未完成<span>{activeTaskCount}</span></button>
+          <button type="button" aria-pressed={taskFilter === "completed"} onClick={() => setTaskFilter("completed")}>已完成<span>{allTasks.length - activeTaskCount}</span></button>
+        </div>
+        {showTaskForm ? <form className="home-task-form" onSubmit={submitTask}>
+          <label>关联案件<select required value={taskCaseId} onChange={(event) => setTaskCaseId(event.target.value)}><option value="">请选择</option>{data.cases.map((item) => <option key={item.id} value={item.id}>{item.title}</option>)}</select></label>
+          <label>任务名称<input required maxLength={240} value={taskTitle} onChange={(event) => setTaskTitle(event.target.value)} /></label>
+          <label>责任人<select required value={taskAssignee} onChange={(event) => setTaskAssignee(event.target.value)}><option value="">请选择</option>{data.members.map((member) => <option key={member.id} value={member.id}>{member.display_name} · {member.role}</option>)}</select></label>
+          <label>截止日期<input type="date" value={taskDue} onChange={(event) => setTaskDue(event.target.value)} /></label>
+          {createTask.isError ? <p role="alert">{errorMessage(createTask.error)}</p> : null}
+          <button className="button button-primary" type="submit" disabled={createTask.isPending || taskCaseId === "" || taskAssignee === ""}>{createTask.isPending ? "正在保存" : "创建并保存任务"}</button>
+        </form> : null}
+        {tasks.length === 0 ? <p className="home-empty" role="status">{taskFilter === "mine" ? "当前身份没有未完成的分派任务。" : "没有符合条件的任务记录。"}</p> : <ul className="home-task-list">
+          {tasks.slice(0, 8).map((task) => <TaskRow key={task.id} task={task} caseTitle={caseTitles.get(task.case_id) ?? task.case_id} assignee={members.get(task.assignee_id) ?? task.assignee_id} onComplete={() => completeTask(task)} pending={updateTask.isPending && updateTask.variables?.taskId === task.id} />)}
+        </ul>}
+        {updateTask.isError ? <p className="home-inline-error" role="alert">{errorMessage(updateTask.error)}</p> : null}
+        {tasks.length > 8 ? <Link className="home-view-all" to="/workbench/tasks">查看全部任务 →</Link> : null}
+      </section>
+
+      <aside className="home-summary-stack" aria-label="真实审查进展与风险分布">
+        <section className="home-panel" aria-labelledby="home-progress-title">
+          <header className="home-panel-head"><div className="home-section-title"><span aria-hidden="true" /><h2 id="home-progress-title">审查进展</h2></div><span className="home-panel-meta">{period === "day" ? "今日" : period === "week" ? "本周" : "本月"}</span></header>
+          <ProgressDonut rows={dashboard.progress} visibleCases={dashboard.visible_cases} />
+          <p className="home-summary-note">环图按可见案件的互斥业务状态统计；已完成审查 {dashboard.completed_reviews} 项；平均运行时长 {dashboard.average_duration_ms === null ? "未知" : `${(dashboard.average_duration_ms / 1000).toFixed(1)} 秒`}。</p>
+        </section>
+        <section className="home-panel" aria-labelledby="home-risk-title">
+          <header className="home-panel-head"><div className="home-section-title"><span aria-hidden="true" /><h2 id="home-risk-title">案件风险分布</h2></div><span className="home-panel-meta">后端统计</span></header>
+          <ProgressList kind="risk" total={dashboard.risks.reduce((total, row) => total + row.count, 0)} rows={dashboard.risks.map((row) => ({ key: row.severity, label: row.severity === "high" ? "高风险" : row.severity === "medium" ? "中风险" : row.severity === "low" ? "低风险" : row.severity === "info" ? "提示" : "未分级", count: row.count }))} />
+          <p className="home-summary-note">风险等级仅采用持久快照中的显式分级；未分级事项保持未分级。</p>
+        </section>
+      </aside>
+
+      <section className="home-panel home-recent" aria-labelledby="home-recent-title">
+        <header className="home-panel-head"><div className="home-section-title"><span aria-hidden="true" /><h2 id="home-recent-title">最近审查与案件</h2></div><Link className="home-view-all" to="/cases">查看全部案件 →</Link></header>
+        {cases.length === 0 ? <p className="home-empty">当前身份没有可见案件。</p> : <div className="home-table-scroll"><table className="data-table home-recent-table">
+          <thead><tr><th scope="col">案件</th><th scope="col">审查状态</th><th scope="col">待决定</th><th scope="col">业务线 / 场景</th><th scope="col">更新时间</th><th scope="col">操作</th></tr></thead>
+          <tbody>{cases.slice(0, 8).map((item) => <tr key={item.id}>
+            <th scope="row"><Link to={caseHref(item.id, item.latest_run?.id ?? null)}>{item.title}</Link><span className="home-recent-id">{item.id}</span></th>
+            <td>{item.latest_run ? <StatusText tone={runTone(item.latest_run.state)}>{runLabel(item.latest_run.state)}</StatusText> : <span className="home-no-run">尚未审查</span>}</td>
+            <td>{item.pending_decisions}</td>
+            <td>{[item.business_line, item.scenario].filter(Boolean).join(" · ") || "未设置"}</td>
+            <td><time dateTime={item.updated_at}>{formatDateTime(item.updated_at)}</time></td>
+            <td><Link className="home-recent-open" to={caseHref(item.id, item.latest_run?.id ?? null)}>打开</Link></td>
+          </tr>)}</tbody>
+        </table></div>}
+      </section>
+
+      <section className="home-panel home-recent" aria-labelledby="home-remediation-title">
+        <header className="home-panel-head"><div className="home-section-title"><span aria-hidden="true" /><h2 id="home-remediation-title">整改跟踪</h2></div><Link className="home-view-all" to="/workbench/remediation">进入整改中心 →</Link></header>
+        {remediations.length === 0 ? <p className="home-empty">快照没有返回整改记录。</p> : <ul className="home-record-list">{remediations.map((item) => <li key={item.id}>
+          <Link to={caseHref(item.case_id, item.run_id)}><strong>{item.measure}</strong><span>{item.case_title} · 责任人 {members.get(item.assignee_id) ?? item.assignee_id}</span></Link>
+          <span className="home-record-status">{item.status}</span><time dateTime={item.due_at}>{formatDateTime(item.due_at)}</time>
+        </li>)}</ul>}
+      </section>
+
+      <section className="home-panel home-recent" aria-labelledby="home-audit-title">
+        <header className="home-panel-head"><div className="home-section-title"><span aria-hidden="true" /><h2 id="home-audit-title">最近业务记录</h2></div><span className="home-panel-meta">{data.audit.length} 条可见事件</span></header>
+        {audit.length === 0 ? <p className="home-empty">快照没有返回审计事件。</p> : <ol className="home-audit-list">{audit.map((event) => <li key={event.id}>
+          <time dateTime={event.at}>{formatDateTime(event.at)}</time><div>{event.case_id ? <Link to={`/cases/${encodeURIComponent(event.case_id)}`}>{event.case_title ?? event.case_id}</Link> : <span>平台级事件</span>}<p>{event.summary}</p><small>{event.actor_name} · {event.action}</small></div>
+        </li>)}</ol>}
+      </section>
+    </div>
+    <p className="home-snapshot-time">数据生成于 <time dateTime={data.generated_at}>{formatDateTime(data.generated_at)}</time></p>
+  </section>;
+}

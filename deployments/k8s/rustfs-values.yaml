@@ -1,0 +1,68 @@
+image:
+  rustfs:
+    repository: rustfs/rustfs
+    tag: 1.0.3
+    pullPolicy: IfNotPresent
+mode:
+  distributed:
+    enabled: true
+  standalone:
+    enabled: false
+replicaCount: 4
+drivesPerNode: 4
+storageclass:
+  name: ""
+  dataStorageSize: 1Ti
+  logStorageSize: 10Gi
+secret:
+  existingSecret: contract-audit-rustfs
+localEndpointHost:
+  autoInject: true
+service:
+  type: ClusterIP
+  endpoint:
+    port: 9000
+  console:
+    port: 9001
+ingress:
+  enabled: false
+gatewayApi:
+  enabled: false
+pdb:
+  create: true
+  maxUnavailable: 1
+affinity:
+  podAntiAffinity:
+    enabled: true
+    topologyKey: kubernetes.io/hostname
+topologySpreadConstraints:
+  enabled: true
+  constraints:
+    - maxSkew: 1
+      topologyKey: kubernetes.io/hostname
+      whenUnsatisfiable: DoNotSchedule
+      labelSelector:
+        matchLabels:
+          app.kubernetes.io/name: rustfs
+    - maxSkew: 1
+      topologyKey: topology.kubernetes.io/zone
+      whenUnsatisfiable: ScheduleAnyway
+      labelSelector:
+        matchLabels:
+          app.kubernetes.io/name: rustfs
+resources:
+  requests: {cpu: "2", memory: 4Gi}
+  limits: {cpu: "4", memory: 8Gi}
+containerSecurityContext:
+  runAsNonRoot: true
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop: [ALL]
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 10001
+  runAsGroup: 10001
+  fsGroup: 10001
+serviceAccount:
+  create: true
+  automount: false

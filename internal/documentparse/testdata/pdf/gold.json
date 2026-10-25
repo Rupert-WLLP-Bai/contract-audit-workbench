@@ -1,0 +1,66 @@
+{
+  "dataset_id": "synthetic-pdf-documents-20261024",
+  "provenance": "Synthetic content authored for this repository; no real contracts. Valid PDFs generated with local Cairo PDF surfaces and embedded Noto Sans CJK SC subsets. Scan PNG drawn with Pillow. Encryption fixture created with mutool clean AES-256. Resource fixtures are actual PDF page/image dictionaries.",
+  "font_license": {
+    "font": "Noto Sans CJK SC",
+    "copyright": "2010-2012 Google Corporation",
+    "license": "SIL Open Font License 1.1; document embedding permitted",
+    "source": "https://github.com/notofonts/noto-cjk"
+  },
+  "native_anchor_observation": "Observed with real pdfinfo/pdftotext -layout during TestPDFNativeExecutableExtraction; Unicode codepoint half-open spans, no bounding boxes. Live OCR offsets are recomputed from each actual transcript and are not fixed to the deterministic callback output.",
+  "valid": [
+    {
+      "file": "native-chinese-table.pdf",
+      "pages": 2,
+      "requires_ocr": false,
+      "anchors": [
+        {"quote": "第一条 带宽为100 Mbps，服务对象为合成园区。", "page": 1, "start": 16, "end": 42},
+        {"quote": "| 项目 | 合同承诺 |", "page": 1, "start": 44, "end": 57},
+        {"quote": "| 带宽 | 100 Mbps |", "page": 1, "start": 58, "end": 75},
+        {"quote": "| 质保 | 36个月 |", "page": 1, "start": 76, "end": 89},
+        {"quote": "第二条 自然月服务可用率99.95%。", "page": 2, "start": 110, "end": 129},
+        {"quote": "旋转文字：故障响应4小时。", "page": 2, "start": 150, "end": 163}
+      ],
+      "repeated_quote": {"quote": "重复证据：服务可用率99.95%。", "pages": [1, 2]},
+      "table_cells": [["项目", "合同承诺"], ["带宽", "100 Mbps"], ["质保", "36个月"]]
+    },
+    {
+      "file": "single-native.pdf",
+      "pages": 1,
+      "requires_ocr": false,
+      "anchors": [{"quote": "合成单页合同：质保36个月。", "page": 1, "start": 0, "end": 14}]
+    },
+    {
+      "file": "scanned-chinese-table.pdf",
+      "pages": 1,
+      "requires_ocr": true,
+      "image_source": "scan-source.png",
+      "visible_text": ["合成扫描合同", "扫描条款：带宽80 Mbps。", "Bandwidth 80 Mbps", "Warranty 24 months"],
+      "table_cells": [["项目", "承诺"], ["带宽", "80 Mbps"], ["质保", "24个月"]],
+      "observed_render": {"width": 1696, "height": 2400}
+    },
+    {
+      "file": "mixed-native-scan.pdf",
+      "pages": 2,
+      "requires_ocr": true,
+      "image_source": "scan-source.png",
+      "native_anchors": [
+        {"quote": "合成混合页：原生承诺100 Mbps。", "page": 1, "start": 0, "end": 19},
+        {"quote": "原生备注：图片附件也属于本页证据。", "page": 1, "start": 21, "end": 38},
+        {"quote": "第二页原生条款：质保36个月。", "page": 2}
+      ],
+      "image_visible_text": ["扫描条款：带宽80 Mbps。", "Bandwidth 80 Mbps", "Warranty 24 months"],
+      "observed_render": {"width": 1696, "height": 2400}
+    }
+  ],
+  "explicit_failures": [
+    {"file": "corrupt.pdf", "reason": "Missing real cross-reference and page tree"},
+    {"file": "encrypted.pdf", "reason": "AES-256 encrypted; no password bypass"},
+    {"file": "interactive-form.pdf", "reason": "AcroForm requires an explicitly flattened document"},
+    {"file": "javascript.pdf", "reason": "JavaScript requires an explicitly flattened document"},
+    {"file": "over-page-limit.pdf", "reason": "65 actual pages exceed 64-page bound"},
+    {"file": "over-page-size.pdf", "reason": "15000-point actual width exceeds 14400-point bound"},
+    {"file": "over-image-pixels.pdf", "reason": "65536x1024 actual embedded image exceeds 40M-pixel bound"},
+    {"file": "blank.pdf", "reason": "Empty OCR transcript cannot publish a complete text parse"}
+  ]
+}
