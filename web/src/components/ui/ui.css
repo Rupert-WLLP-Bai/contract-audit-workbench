@@ -58,39 +58,27 @@
 .caw-kpi {
   position: relative;
   display: flex;
-  flex-direction: column;
   gap: 14px;
+  align-items: flex-start;
   height: 100%;
-  padding: 20px 22px;
+  padding: 18px 20px;
   overflow: hidden;
   background: var(--surface-raised);
   border: 1px solid var(--border-default);
   border-radius: 12px;
 }
 
-.caw-kpi__head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.caw-kpi__label {
-  color: var(--text-secondary);
-  font-size: 14px;
-  font-weight: 500;
-}
-
 .caw-kpi__icon {
   display: inline-flex;
+  flex-shrink: 0;
   align-items: center;
   justify-content: center;
-  width: 40px;
-  height: 40px;
+  width: 42px;
+  height: 42px;
   color: var(--action-primary);
-  font-size: 19px;
+  font-size: 20px;
   background: var(--action-primary-soft);
-  border-radius: 10px;
+  border-radius: 11px;
 }
 
 .caw-kpi__icon--high {
@@ -108,13 +96,33 @@
   background: #ecfdf5;
 }
 
+.caw-kpi__body {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.caw-kpi__label {
+  overflow: hidden;
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .caw-kpi__value {
+  overflow: hidden;
   color: var(--text-primary);
-  font-size: 30px;
+  font-size: 28px;
   font-weight: 600;
-  line-height: 1.15;
+  line-height: 1.25;
   letter-spacing: -0.02em;
   font-variant-numeric: tabular-nums;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .caw-kpi__value small {
@@ -125,9 +133,10 @@
 }
 
 .caw-kpi__hint {
+  margin-top: 3px;
   color: var(--text-secondary);
   font-size: 12px;
-  line-height: 1.5;
+  line-height: 1.45;
 }
 
 .caw-risk-tag.ant-tag {
@@ -182,6 +191,72 @@
   padding: 16px 0;
 }
 
+.caw-quick-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.caw-quick-actions__item {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 82px;
+  padding: 14px;
+  color: var(--text-primary);
+  text-decoration: none;
+  background: #f8faff;
+  border: 1px solid var(--border-default);
+  border-radius: 10px;
+  transition:
+    border-color 160ms ease,
+    background 160ms ease;
+}
+
+.caw-quick-actions__item:hover {
+  background: #f2f7ff;
+  border-color: #c9d9f2;
+}
+
+.caw-quick-actions__item--disabled {
+  color: var(--text-secondary);
+  cursor: not-allowed;
+  opacity: 0.65;
+}
+
+.caw-quick-actions__item--disabled:hover {
+  background: #f8faff;
+  border-color: var(--border-default);
+}
+
+.caw-quick-actions__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  color: var(--action-primary);
+  font-size: 15px;
+  background: #e9f1ff;
+  border-radius: 8px;
+}
+
+.caw-quick-actions strong {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.caw-quick-actions span {
+  color: var(--text-secondary);
+  font-size: 11px;
+}
+
+@media (max-width: 640px) {
+  .caw-quick-actions {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 @media (max-width: 900px) {
   .caw-page-header {
     flex-direction: column;
@@ -199,6 +274,17 @@
   }
 
   .caw-kpi {
-    padding: 16px 18px;
+    gap: 10px;
+    padding: 14px;
+  }
+
+  .caw-kpi__icon {
+    width: 36px;
+    height: 36px;
+    font-size: 17px;
+  }
+
+  .caw-kpi__value {
+    font-size: 24px;
   }
 }

@@ -6,11 +6,13 @@ export function SectionCard({
   extra,
   children,
   className,
+  ariaLabel,
 }: {
   title?: ReactNode;
   extra?: ReactNode;
   children: ReactNode;
   className?: string;
+  ariaLabel?: string;
 }) {
   return (
     <Card
@@ -18,6 +20,8 @@ export function SectionCard({
       title={title}
       extra={extra}
       variant="outlined"
+      role={ariaLabel ? "region" : undefined}
+      aria-label={ariaLabel}
     >
       {children}
     </Card>

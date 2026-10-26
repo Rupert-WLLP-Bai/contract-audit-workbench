@@ -40,7 +40,11 @@ export function ErrorState({
       <Alert
         type="error"
         showIcon
-        title={title}
+        title={
+          <span role="heading" aria-level={2}>
+            {title}
+          </span>
+        }
         description={detail}
         action={action}
       />

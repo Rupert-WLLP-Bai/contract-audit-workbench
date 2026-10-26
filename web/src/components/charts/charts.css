@@ -1,0 +1,156 @@
+.caw-donut {
+  position: relative;
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+}
+
+.caw-donut svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.caw-donut__center {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.caw-donut__center strong {
+  color: var(--text-primary);
+  font-size: 26px;
+  font-weight: 600;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+
+.caw-donut__center span {
+  margin-top: 2px;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.caw-chart-legend {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.caw-chart-legend li {
+  display: grid;
+  grid-template-columns: 8px minmax(0, 1fr) auto auto;
+  gap: 8px;
+  align-items: center;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.caw-chart-legend__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.caw-chart-legend__label {
+  color: var(--text);
+}
+
+.caw-chart-legend__value {
+  color: var(--text);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.caw-chart-legend__percent {
+  min-width: 42px;
+  color: var(--text-tertiary, #94a3b8);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.caw-trend {
+  width: 100%;
+}
+
+.caw-trend svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.caw-trend__legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+  margin-bottom: 8px;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.caw-trend__legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.caw-trend__swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+}
+
+.caw-trend__swatch--started {
+  background: #2563eb;
+}
+
+.caw-trend__swatch--completed {
+  background: #c7d9ff;
+}
+
+.caw-trend__swatch--line {
+  width: 14px;
+  height: 2px;
+  border-radius: 1px;
+}
+
+.caw-trend__axis {
+  fill: #94a3b8;
+  font-size: 10px;
+}
+
+.caw-trend__grid {
+  stroke: #edf1f7;
+  stroke-dasharray: 3 4;
+}
+
+.caw-trend__bar-started {
+  fill: #2563eb;
+}
+
+.caw-trend__bar-completed {
+  fill: #c7d9ff;
+}
+
+.caw-trend__line {
+  fill: none;
+  stroke: #14b8a6;
+  stroke-width: 2;
+}
+
+.caw-trend__point {
+  fill: #fff;
+  stroke: #14b8a6;
+  stroke-width: 2;
+}
+
+.caw-trend__empty {
+  padding: 24px 0;
+}

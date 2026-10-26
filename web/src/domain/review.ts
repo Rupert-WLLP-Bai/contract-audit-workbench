@@ -207,12 +207,12 @@ export function parseRunFilter(value: string | null): RunFilter {
   return "all";
 }
 
-export function filterCases(
-  items: CaseSummary[],
+export function filterCases<T extends CaseSummary>(
+  items: T[],
   query: string,
   run: RunFilter,
   businessStatus = "all",
-): CaseSummary[] {
+): T[] {
   const needle = query.trim().toLowerCase();
   return items.filter((item) => {
     if (needle !== "") {

@@ -633,7 +633,7 @@ describe("application routes and API contract", () => {
     await user.clear(screen.getByLabelText("密码"));
     await user.type(screen.getByLabelText("密码"), "admin-demo");
     await user.click(screen.getByRole("button", { name: "登录" }));
-    expect(await screen.findByRole("heading", { name: "案件", level: 1 })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "案件中心", level: 1 })).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "新建案件" }));
     await user.type(screen.getByLabelText("标题"), " 新设备采购 ");
     await chooseOption(user, screen.getByLabelText("合同类型"), "服务合同");
@@ -708,8 +708,8 @@ describe("application routes and API contract", () => {
   }, 30_000);
 
   it.each([
-    ["/cases", "GET /api/session", "无法连接审查服务", "案件"],
-    ["/cases", "GET /api/cases", "案件列表没有加载", "案件"],
+    ["/cases", "GET /api/session", "无法连接审查服务", "案件中心"],
+    ["/cases", "GET /api/cases", "案件列表没有加载", "案件中心"],
     ["/cases/c1", "GET /api/cases/c1", "案件没有加载", "接入设备采购"],
     [
       "/cases/c1/reviews/r1",
@@ -1401,7 +1401,7 @@ describe("application routes and API contract", () => {
     const api = new Service();
     api.addReview("failed");
     const { user } = open(api);
-    await screen.findByRole("heading", { name: "案件", level: 1 });
+    await screen.findByRole("heading", { name: "案件中心", level: 1 });
     await user.type(
       screen.getByRole("searchbox", { name: "搜索案件" }),
       "不存在",
@@ -1442,7 +1442,7 @@ describe("application routes and API contract", () => {
     const api = new Service();
     api.fail("POST /api/cases", 503);
     const { user } = open(api);
-    await screen.findByRole("heading", { name: "案件", level: 1 });
+    await screen.findByRole("heading", { name: "案件中心", level: 1 });
     await user.click(screen.getByRole("button", { name: "新建案件" }));
     await user.type(screen.getByLabelText("标题"), "不能丢失的名称");
     await user.click(screen.getByRole("button", { name: "创建" }));
@@ -1454,7 +1454,7 @@ describe("application routes and API contract", () => {
     const api = new Service();
     api.role = "viewer";
     const { user } = open(api);
-    await screen.findByRole("heading", { name: "案件", level: 1 });
+    await screen.findByRole("heading", { name: "案件中心", level: 1 });
     expect(screen.getByRole("button", { name: "新建案件" })).toBeDisabled();
     await user.click(screen.getByRole("link", { name: "接入设备采购" }));
     await screen.findByRole("heading", { name: "接入设备采购" });
@@ -1529,7 +1529,7 @@ describe("application routes and API contract", () => {
     const fallback = new Service();
     vi.stubEnv("VITE_ADMIN_URL", "");
     open(fallback, "/cases");
-    await screen.findByRole("heading", { name: "案件", level: 1 });
+    await screen.findByRole("heading", { name: "案件中心", level: 1 });
     expect(screen.getByRole("link", { name: "规则包治理" })).toHaveAttribute(
       "href",
       "/admin/rulepacks",
@@ -1544,7 +1544,7 @@ describe("application routes and API contract", () => {
     vi.stubEnv("VITE_ADMIN_URL", "http://127.0.0.1:5175/");
     const api = new Service();
     open(api, "/cases");
-    await screen.findByRole("heading", { name: "案件", level: 1 });
+    await screen.findByRole("heading", { name: "案件中心", level: 1 });
     expect(screen.getByRole("link", { name: "规则包治理" })).toHaveAttribute(
       "href",
       "http://127.0.0.1:5175/admin/rulepacks",
@@ -1603,7 +1603,7 @@ describe("application routes and API contract", () => {
     cleanup();
     open(api, "/cases");
     expect(
-      await screen.findByRole("heading", { name: "案件", level: 1 }),
+      await screen.findByRole("heading", { name: "案件中心", level: 1 }),
     ).toBeInTheDocument();
     expect(api.requests.some((entry) => entry.key === "GET /api/session")).toBe(
       true,
@@ -1642,7 +1642,7 @@ describe("application routes and API contract", () => {
 
   it("preserves manual sidebar collapse and expansion across Compare and other routes", async () => {
     const { user } = open(new Service(), "/cases");
-    await screen.findByRole("heading", { name: "案件", level: 1 });
+    await screen.findByRole("heading", { name: "案件中心", level: 1 });
     await user.click(screen.getByRole("button", { name: "收合侧栏" }));
     expect(screen.getByRole("button", { name: "展开侧栏" })).toHaveAttribute(
       "aria-expanded",
@@ -1944,7 +1944,7 @@ describe("application routes and API contract", () => {
     ).toBeInTheDocument();
     await user.click(screen.getByRole("link", { name: "返回案件" }));
     expect(
-      await screen.findByRole("heading", { name: "案件", level: 1 }),
+      await screen.findByRole("heading", { name: "案件中心", level: 1 }),
     ).toBeInTheDocument();
   });
 });

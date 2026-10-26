@@ -77,6 +77,31 @@ describe("cases table", () => {
     expect(onSort).toHaveBeenCalledWith("title");
   });
 
+  it("shows workbench risk and owner, with an explicit loading or missing state", () => {
+    const { rerender } = render(
+      <MemoryRouter>
+        <CasesTable
+          items={[{ ...item, riskKnown: true, severity: "high", ownerName: "王审查" }]}
+          {...tableProps}
+        />
+      </MemoryRouter>,
+    );
+    expect(screen.getByText("高风险")).toBeInTheDocument();
+    expect(screen.getByText("王审查")).toBeInTheDocument();
+    rerender(
+      <MemoryRouter>
+        <CasesTable items={[item]} {...tableProps} workbenchLoading />
+      </MemoryRouter>,
+    );
+    expect(screen.getAllByText("加载中…")).toHaveLength(2);
+    rerender(
+      <MemoryRouter>
+        <CasesTable items={[item]} {...tableProps} />
+      </MemoryRouter>,
+    );
+    expect(screen.getAllByText("未报告")).toHaveLength(2);
+  });
+
   it("carries list filters, selected case and scroll position into the detail return state", async () => {
     const user = userEvent.setup();
     render(

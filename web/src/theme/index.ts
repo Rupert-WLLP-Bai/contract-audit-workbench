@@ -104,8 +104,8 @@ export const uiTheme: ThemeConfig = {
     Card: {
       headerBg: palette.card,
       headerFontSize: 16,
-      headerHeight: 56,
-      bodyPadding: 24,
+      headerHeight: 52,
+      bodyPadding: 20,
       bodyPaddingSM: 16,
       extraColor: palette.textSecondary,
     },
@@ -117,9 +117,9 @@ export const uiTheme: ThemeConfig = {
       rowHoverBg: "#F8FAFF",
       rowSelectedBg: palette.primarySoft,
       rowSelectedHoverBg: "#E4EDFF",
-      cellPaddingBlock: 14,
-      cellPaddingInline: 16,
-      cellFontSize: 14,
+      cellPaddingBlock: 12,
+      cellPaddingInline: 12,
+      cellFontSize: 13,
       headerBorderRadius: 10,
     },
     Tabs: {
