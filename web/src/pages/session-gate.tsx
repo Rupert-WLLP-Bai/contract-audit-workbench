@@ -65,7 +65,11 @@ export function SessionGate({
   }
   if (!session.isSuccess) {
     return (
-      <Navigate to={loginPath} replace state={{ from: location.pathname }} />
+      <Navigate
+        to={loginPath}
+        replace
+        state={{ from: `${location.pathname}${location.search}${location.hash}` }}
+      />
     );
   }
   return (

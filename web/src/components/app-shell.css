@@ -1,0 +1,262 @@
+.shell {
+  min-height: 100vh;
+  background: var(--surface-page);
+}
+
+.shell-sider.ant-layout-sider {
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  overflow: hidden;
+  border-right: 1px solid var(--border-default);
+  box-shadow: none;
+}
+
+.shell-sider__inner {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.shell-brand {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 10px;
+  height: 64px;
+  padding: 0 20px;
+  overflow: hidden;
+  color: var(--text-primary);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.shell-brand:hover {
+  color: var(--text-primary);
+}
+
+.shell-brand__mark {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  color: #fff;
+  font-size: 18px;
+  background: linear-gradient(145deg, #3b82f6, #1d4ed8);
+  border-radius: 10px;
+  box-shadow: 0 6px 14px rgb(37 99 235 / 24%);
+}
+
+.shell-brand__copy {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  line-height: 1.25;
+}
+
+.shell-brand__copy strong {
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.shell-brand__copy small {
+  color: var(--text-tertiary, #94a3b8);
+  font-size: 11px;
+  letter-spacing: 0.02em;
+}
+
+.shell-sider__menu {
+  flex: 1;
+  min-height: 0;
+  padding-top: 4px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
+.shell-sider__menu .ant-menu {
+  border-inline-end: 0 !important;
+}
+
+.shell-sider__menu .ant-menu-item a {
+  color: inherit;
+}
+
+.shell-sider__footer {
+  flex-shrink: 0;
+  padding: 10px 12px 14px;
+  border-top: 1px solid var(--border-default);
+}
+
+.shell-collapse {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 36px;
+  color: var(--text-secondary);
+  background: #f8fafc;
+  border: 1px solid var(--border-default);
+  border-radius: 8px;
+}
+
+.shell-header.ant-layout-header {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  border-bottom: 1px solid var(--border-default);
+}
+
+.shell-header__menu {
+  display: none;
+}
+
+.shell-search {
+  flex: 0 1 440px;
+  min-width: 180px;
+  margin: 0;
+}
+
+.shell-search .ant-input-affix-wrapper {
+  background: #f8fafc;
+  border-color: transparent;
+  border-radius: 10px;
+}
+
+.shell-search .ant-input-affix-wrapper:hover,
+.shell-search .ant-input-affix-wrapper-focused {
+  background: #fff;
+  border-color: #c7d5ea;
+}
+
+.shell-search .ant-input {
+  background: transparent;
+}
+
+.shell-header__spacer {
+  flex: 1;
+}
+
+.shell-account {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.shell-account__copy {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  line-height: 1.3;
+}
+
+.shell-account__copy strong {
+  overflow: hidden;
+  max-width: 160px;
+  color: var(--text-primary);
+  font-size: 14px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.shell-account__copy small {
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.shell-account .ant-avatar {
+  color: #fff;
+  background: linear-gradient(145deg, #60a5fa, #2563eb);
+}
+
+.shell-content-outer {
+  min-height: calc(100vh - 64px);
+  background:
+    radial-gradient(circle at 100% 0, rgb(37 99 235 / 4%), transparent 32%),
+    var(--surface-page);
+}
+
+.shell-content {
+  width: 100%;
+  max-width: 1600px;
+  margin: 0 auto;
+  padding: 20px 24px 32px;
+}
+
+.shell-breadcrumbs {
+  margin-bottom: 14px;
+}
+
+.shell-main {
+  min-width: 0;
+}
+
+.shell-drawer .ant-drawer-body {
+  padding: 0;
+}
+
+.shell-drawer .shell-sider__inner {
+  height: 100%;
+}
+
+.shell-drawer .shell-sider__footer {
+  padding-bottom: 18px;
+}
+
+@media (max-width: 991px) {
+  .shell-sider.ant-layout-sider {
+    display: none;
+  }
+
+  .shell-header__menu {
+    display: inline-flex;
+  }
+
+  .shell-account__copy {
+    display: none;
+  }
+
+  .shell-content {
+    padding: 16px;
+  }
+
+  .shell-search {
+    flex: 1;
+  }
+}
+
+@media (max-width: 640px) {
+  .shell-search {
+    min-width: 0;
+  }
+
+  .shell-account {
+    gap: 4px;
+  }
+
+  .shell-content {
+    padding: 12px;
+  }
+}
+
+@media (max-width: 560px) {
+  .shell-search {
+    display: none;
+  }
+
+  .shell-header {
+    gap: 10px;
+  }
+
+  .shell-header__spacer {
+    flex: 1;
+  }
+}

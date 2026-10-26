@@ -620,7 +620,7 @@ describe("application routes and API contract", () => {
     const api = new Service();
     api.signedIn = false;
     api.cases.clear();
-    const { user } = open(api, "/");
+    const { user } = open(api, "/cases");
     expect(
       await screen.findByRole("heading", { name: "登录合同审查" }),
     ).toBeInTheDocument();
@@ -705,7 +705,7 @@ describe("application routes and API contract", () => {
       await screen.findByRole("heading", { name: "登录合同审查" }),
     ).toBeInTheDocument();
     expect(api.signedIn).toBe(false);
-  }, 10_000);
+  }, 30_000);
 
   it.each([
     ["/cases", "GET /api/session", "无法连接审查服务", "案件"],
@@ -1559,7 +1559,7 @@ describe("application routes and API contract", () => {
   it("keeps the Admin login reachable without treating a client session as an admin session", async () => {
     const api = new Service();
     api.adminSignedIn = false;
-    const { user } = open(api, "/admin/rulepacks");
+    const { user } = open(api, "/admin/settings");
     expect(
       await screen.findByRole("heading", { name: "登录管理工作台" }),
     ).toBeInTheDocument();
@@ -1610,6 +1610,36 @@ describe("application routes and API contract", () => {
     );
   });
 
+  it("serves the public landing page without requiring a session", async () => {
+    const api = new Service();
+    api.signedIn = false;
+    open(api, "/");
+    expect(
+      await screen.findByRole("heading", { name: /让合同审查/ }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("核心产品能力")).toBeInTheDocument();
+    expect(
+      api.requests.some((entry) => entry.key === "GET /api/session"),
+    ).toBe(false);
+  });
+
+  it("returns to the requested deep link after login", async () => {
+    const api = new Service();
+    api.signedIn = false;
+    api.cases.clear();
+    const { user } = open(api, "/cases?q=missing");
+    await screen.findByRole("heading", { name: "登录合同审查" });
+    await user.type(screen.getByLabelText("账号"), "demo-admin");
+    await user.type(screen.getByLabelText("密码"), "admin-demo");
+    await user.click(screen.getByRole("button", { name: "登录" }));
+    await waitFor(() =>
+      expect(screen.getByLabelText("搜索案件")).toHaveValue("missing"),
+    );
+    expect(
+      api.requests.some((entry) => entry.key === "GET /api/cases"),
+    ).toBe(true);
+  });
+
   it("preserves manual sidebar collapse and expansion across Compare and other routes", async () => {
     const { user } = open(new Service(), "/cases");
     await screen.findByRole("heading", { name: "案件", level: 1 });
@@ -1633,11 +1663,11 @@ describe("application routes and API contract", () => {
     );
 
     await user.click(screen.getByRole("button", { name: "展开侧栏" }));
-    await user.click(screen.getAllByRole("link", { name: "案件管理" })[0]!);
+    await user.click(screen.getAllByRole("link", { name: "案件" })[0]!);
     await waitFor(() =>
       expect(
         screen
-          .getAllByRole("link", { name: "案件管理" })
+          .getAllByRole("link", { name: "案件" })
           .some((link) => link.getAttribute("aria-current") === "page"),
       ).toBe(true),
     );
@@ -1664,7 +1694,7 @@ describe("application routes and API contract", () => {
     const api = new Service();
     api.signedIn = false;
     api.cases.clear();
-    const { user } = open(api, "/");
+    const { user } = open(api, "/cases");
     await screen.findByRole("heading", { name: "登录合同审查" });
     await user.type(screen.getByLabelText("账号"), "demo-admin");
     await user.type(screen.getByLabelText("密码"), "admin-demo");

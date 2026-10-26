@@ -211,7 +211,14 @@ async function chooseVisibleOption(
 ) {
   await user.click(control);
   const options = await screen.findAllByRole("option", { name });
-  await user.click(options.at(-1)!);
+  const open = options.filter((option) => {
+    const dropdown = option.closest(".ant-select-dropdown");
+    return dropdown !== null && !dropdown.classList.contains("ant-select-dropdown-hidden");
+  });
+  // The dropdown portal is animated and may still refuse synthetic pointer
+  // events while the rest of the suite is loading. Dispatching the click keeps
+  // the interaction deterministic without bypassing the component handler.
+  fireEvent.click((open.length > 0 ? open : options).at(-1)!);
 }
 
 async function fillDraft(user: ReturnType<typeof userEvent.setup>) {

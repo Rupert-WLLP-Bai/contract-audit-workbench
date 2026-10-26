@@ -4,30 +4,30 @@
   :root {
     color-scheme: light;
     /* Primitive palette */
-    --primitive-blue-25: #f5f9ff;
-    --primitive-blue-100: #eaf3ff;
-    --primitive-blue-200: #d6e8ff;
-    --primitive-blue-700: #1677ff;
-    --primitive-blue-800: #0958b5;
-    --primitive-gray-25: #f5f8fb;
-    --primitive-gray-50: #f7f9fc;
-    --primitive-gray-100: #eef2f6;
-    --primitive-gray-150: #e9edf3;
-    --primitive-gray-200: #e5eaf1;
-    --primitive-gray-500: #b8c3d1;
-    --primitive-gray-600: #697386;
-    --primitive-gray-700: #3c4c60;
-    --primitive-gray-900: #202b40;
+    --primitive-blue-25: #f7faff;
+    --primitive-blue-100: #eff4ff;
+    --primitive-blue-200: #dbe7ff;
+    --primitive-blue-700: #2563eb;
+    --primitive-blue-800: #1d4ed8;
+    --primitive-gray-25: #f5f7fb;
+    --primitive-gray-50: #f8fafc;
+    --primitive-gray-100: #f1f5f9;
+    --primitive-gray-150: #edf1f6;
+    --primitive-gray-200: #e6ebf2;
+    --primitive-gray-500: #94a3b8;
+    --primitive-gray-600: #64748b;
+    --primitive-gray-700: #475569;
+    --primitive-gray-900: #172033;
     --primitive-white: #ffffff;
-    --primitive-red-100: #fce9e7;
-    --primitive-red-200: #e7b9b6;
-    --primitive-red-700: #9b1c1c;
-    --primitive-amber-100: #fff3d2;
-    --primitive-amber-200: #ecd79e;
-    --primitive-amber-800: #704800;
-    --primitive-green-100: #e6f3e8;
-    --primitive-green-800: #21613a;
-    --primitive-yellow-200: #ffe481;
+    --primitive-red-100: #fef2f2;
+    --primitive-red-200: #fecaca;
+    --primitive-red-700: #dc2626;
+    --primitive-amber-100: #fffbeb;
+    --primitive-amber-200: #fde68a;
+    --primitive-amber-800: #b45309;
+    --primitive-green-100: #ecfdf5;
+    --primitive-green-800: #047857;
+    --primitive-yellow-200: #fde68a;
 
     /* Semantic palette */
     --surface-page: var(--primitive-gray-25);
@@ -64,10 +64,10 @@
     --nav-item-selected: var(--action-primary-soft);
     --nav-item-selected-fg: var(--action-primary);
     --card-border: var(--border-default);
-    --panel-radius: 6px;
+    --panel-radius: 10px;
     --shadow-dialog: 0 16px 40px rgb(23 38 56 / 20%);
     --shadow-navigation: 0 12px 28px rgb(23 38 56 / 16%);
-    --shadow-panel: 0 2px 8px rgb(23 38 56 / 3%);
+    --shadow-panel: 0 1px 2px rgb(23 32 51 / 4%), 0 8px 24px rgb(23 32 51 / 3%);
     --scrim-dialog: rgb(23 38 56 / 40%);
     --space-1: 4px;
     --space-2: 8px;
@@ -78,12 +78,12 @@
     --font-ui:
       "Noto Sans SC", "Source Han Sans SC", "PingFang SC", "Microsoft YaHei",
       sans-serif;
-    --font-size-ui: 13px;
+    --font-size-ui: 14px;
     --font-size-document: 16px;
     --line-height-document: 1.8;
-    --sidebar-expanded-width: 164px;
-    --sidebar-collapsed-width: 64px;
-    --header-height: 54px;
+    --sidebar-expanded-width: 224px;
+    --sidebar-collapsed-width: 72px;
+    --header-height: 64px;
 
     font-family: var(--font-ui);
     font-size: var(--font-size-ui);
@@ -124,16 +124,16 @@
   }
   h1 {
     margin: 0;
-    font-size: 23px;
+    font-size: 26px;
     line-height: 1.4;
     letter-spacing: -0.02em;
   }
   h2 {
-    font-size: 16px;
+    font-size: 18px;
     line-height: 1.5;
   }
   h3 {
-    font-size: 14px;
+    font-size: 15px;
   }
   time,
   code,

@@ -1,11 +1,27 @@
 import { useState, type FormEvent } from "react";
 import { Button, Input } from "antd";
-import { Navigate, useNavigate } from "react-router";
+import { Navigate, useLocation, useNavigate } from "react-router";
 import { errorMessage, isUnauthenticated } from "../api/http";
 import { paths } from "../api/paths";
 import { useLogin, useSession } from "../api/queries";
 import type { SessionAudience } from "../api/types";
 import { PageStatus } from "../components/page-status";
+
+function returnPath(
+  state: unknown,
+  audience: SessionAudience,
+): string {
+  const fallback = audience === "admin" ? "/admin/settings" : "/dashboard";
+  if (typeof state !== "object" || state === null) return fallback;
+  const requested = (state as { from?: unknown }).from;
+  if (typeof requested !== "string" || !requested.startsWith("/")) return fallback;
+  if (requested.startsWith("//")) return fallback;
+  const loginPath = audience === "admin" ? "/admin/login" : "/login";
+  if (requested === loginPath) return fallback;
+  if (audience === "admin" && !requested.startsWith("/admin")) return fallback;
+  if (audience === "client" && requested.startsWith("/admin")) return fallback;
+  return requested;
+}
 
 export function LoginPage({
   audience = "client",
@@ -15,6 +31,8 @@ export function LoginPage({
   const login = useLogin(audience);
   const session = useSession(audience);
   const navigate = useNavigate();
+  const location = useLocation();
+  const from = returnPath(location.state, audience);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
 
@@ -23,10 +41,7 @@ export function LoginPage({
     login.mutate(
       { username: username.trim(), password },
       {
-        onSuccess: () =>
-          navigate(audience === "admin" ? "/admin/settings" : "/cases", {
-            replace: true,
-          }),
+        onSuccess: () => navigate(from, { replace: true }),
       },
     );
   }
@@ -51,13 +66,7 @@ export function LoginPage({
       />
     );
   }
-  if (session.isSuccess)
-    return (
-      <Navigate
-        to={audience === "admin" ? "/admin/settings" : "/cases"}
-        replace
-      />
-    );
+  if (session.isSuccess) return <Navigate to={from} replace />;
 
   return (
     <main className="login-screen" id="main">

@@ -1,5 +1,5 @@
 import { lazy, Suspense } from "react";
-import { Route, Routes, useLocation } from "react-router";
+import { Navigate, Route, Routes, useLocation } from "react-router";
 import { AppShell } from "./components/app-shell";
 import { PageStatus } from "./components/page-status";
 import { SessionGate } from "./pages/session-gate";
@@ -7,8 +7,15 @@ const AdminApp = lazy(() =>
   import("./admin-app").then((module) => ({ default: module.AdminApp })),
 );
 
-const HomePage = lazy(() =>
-  import("./pages/home-page").then((module) => ({ default: module.HomePage })),
+const LandingPage = lazy(() =>
+  import("./pages/landing-page").then((module) => ({
+    default: module.LandingPage,
+  })),
+);
+const DashboardPage = lazy(() =>
+  import("./pages/dashboard-page").then((module) => ({
+    default: module.DashboardPage,
+  })),
 );
 const ApiDocsPage = lazy(() => import("./pages/api-docs-page"));
 const CaseDetailPage = lazy(() =>
@@ -72,10 +79,12 @@ export function App() {
   return (
     <Suspense fallback={<PageStatus kind="loading" title="正在加载页面" />}>
       <Routes>
+        <Route path="/" element={<LandingPage />} />
         <Route path="/login" element={<LoginPage />} />
         <Route element={<SessionGate />}>
           <Route element={<AppShell />}>
-            <Route index element={<HomePage />} />
+            <Route path="/dashboard" element={<DashboardPage />} />
+            <Route path="/home" element={<Navigate to="/dashboard" replace />} />
             <Route path="/review" element={<ReviewEntryPage />} />
             <Route path="/cases" element={<CasesPage />} />
             <Route path="/cases/:caseId" element={<CaseDetailPage />} />

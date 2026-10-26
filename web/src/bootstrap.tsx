@@ -5,25 +5,7 @@ import { StrictMode, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter } from "react-router";
 import "./styles.css";
-
-const rootStyle = getComputedStyle(document.documentElement);
-const uiTheme = {
-  token: {
-    colorPrimary: rootStyle.getPropertyValue("--action-primary").trim(),
-    colorInfo: rootStyle.getPropertyValue("--action-primary").trim(),
-    colorText: rootStyle.getPropertyValue("--text-primary").trim(),
-    colorTextSecondary: rootStyle.getPropertyValue("--text-secondary").trim(),
-    colorBorder: rootStyle.getPropertyValue("--border-default").trim(),
-    colorBgLayout: rootStyle.getPropertyValue("--surface-page").trim(),
-    colorBgContainer: rootStyle.getPropertyValue("--surface-raised").trim(),
-    borderRadius: Number.parseFloat(
-      rootStyle.getPropertyValue("--panel-radius"),
-    ),
-    fontFamily: rootStyle.getPropertyValue("--font-ui").trim(),
-    fontSize: Number.parseFloat(rootStyle.getPropertyValue("--font-size-ui")),
-    controlHeight: 32,
-  },
-};
+import { uiTheme } from "./theme";
 
 const queryClient = new QueryClient({
   defaultOptions: {

@@ -1,0 +1,204 @@
+.caw-page-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+  margin-bottom: 24px;
+}
+
+.caw-page-header__main {
+  min-width: 0;
+}
+
+.caw-page-header__eyebrow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.caw-page-header h1 {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: 26px;
+  font-weight: 600;
+  line-height: 1.35;
+  letter-spacing: -0.02em;
+}
+
+.caw-page-header__description {
+  max-width: 760px;
+  margin: 8px 0 0;
+  color: var(--text-secondary);
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.caw-page-header__extra {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  padding-top: 4px;
+}
+
+.caw-section-card {
+  height: 100%;
+}
+
+.caw-section-card .ant-card-head-title {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.caw-kpi {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  height: 100%;
+  padding: 20px 22px;
+  overflow: hidden;
+  background: var(--surface-raised);
+  border: 1px solid var(--border-default);
+  border-radius: 12px;
+}
+
+.caw-kpi__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.caw-kpi__label {
+  color: var(--text-secondary);
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.caw-kpi__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  color: var(--action-primary);
+  font-size: 19px;
+  background: var(--action-primary-soft);
+  border-radius: 10px;
+}
+
+.caw-kpi__icon--high {
+  color: #b91c1c;
+  background: #fef2f2;
+}
+
+.caw-kpi__icon--medium {
+  color: #b45309;
+  background: #fffbeb;
+}
+
+.caw-kpi__icon--low {
+  color: #047857;
+  background: #ecfdf5;
+}
+
+.caw-kpi__value {
+  color: var(--text-primary);
+  font-size: 30px;
+  font-weight: 600;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+.caw-kpi__value small {
+  margin-left: 4px;
+  color: var(--text-secondary);
+  font-size: 14px;
+  font-weight: 400;
+}
+
+.caw-kpi__hint {
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.caw-risk-tag.ant-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-inline-end: 0;
+  padding-inline: 8px;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 22px;
+  border-radius: 6px;
+}
+
+.caw-risk-tag__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.caw-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 48px 24px;
+  text-align: center;
+}
+
+.caw-state__title {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.caw-state__detail {
+  max-width: 560px;
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.caw-error-state {
+  text-align: left;
+}
+
+.caw-loading-block {
+  padding: 16px 0;
+}
+
+@media (max-width: 900px) {
+  .caw-page-header {
+    flex-direction: column;
+    gap: 12px;
+    margin-bottom: 16px;
+  }
+
+  .caw-page-header__extra {
+    justify-content: flex-start;
+    padding-top: 0;
+  }
+
+  .caw-page-header h1 {
+    font-size: 22px;
+  }
+
+  .caw-kpi {
+    padding: 16px 18px;
+  }
+}
