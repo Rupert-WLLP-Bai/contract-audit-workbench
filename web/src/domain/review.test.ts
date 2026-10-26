@@ -107,9 +107,9 @@ describe("findings and decisions", () => {
 });
 
 describe("layout and events", () => {
-  it("splits evidence only from the 1440 breakpoint up", () => {
-    expect(reviewLayout(1439)).toBe("switch");
-    expect(reviewLayout(1440)).toBe("split");
+  it("splits evidence only from the 1100 breakpoint up", () => {
+    expect(reviewLayout(1099)).toBe("switch");
+    expect(reviewLayout(1100)).toBe("split");
   });
 
   it("drops events that have no sequence", () => {

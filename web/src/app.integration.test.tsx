@@ -667,7 +667,7 @@ describe("application routes and API contract", () => {
     );
     await user.click(screen.getByRole("button", { name: "开始审查" }));
     expect(
-      await screen.findByRole("heading", { name: "审查工作区" }),
+      await screen.findByRole("region", { name: "审查运行状态" }),
     ).toBeInTheDocument();
     expect(
       api.requests.some(
@@ -715,7 +715,7 @@ describe("application routes and API contract", () => {
       "/cases/c1/reviews/r1",
       "GET /api/cases/c1/reviews/r1",
       "审查工作区没有加载",
-      "审查工作区",
+      "接入设备采购",
     ],
   ])(
     "recovers %s after a failed request without hiding the failure",
@@ -806,7 +806,7 @@ describe("application routes and API contract", () => {
     expect(reReview).toBeEnabled();
     await user.click(reReview);
     expect(
-      await screen.findByRole("heading", { name: "审查工作区" }),
+      await screen.findByRole("region", { name: "审查运行状态" }),
     ).toBeInTheDocument();
     expect(api.reviews.size).toBe(2);
     expect(api.cases.get("c1")!.revision_pending).toBe(false);
@@ -831,7 +831,7 @@ describe("application routes and API contract", () => {
     expect(startReview).toBeEnabled();
     await user.click(startReview);
     expect(
-      await screen.findByRole("heading", { name: "审查工作区" }),
+      await screen.findByRole("region", { name: "审查运行状态" }),
     ).toBeInTheDocument();
     expect(api.reviews.size).toBe(1);
   });
@@ -880,7 +880,7 @@ describe("application routes and API contract", () => {
     expect(await screen.findByText(/规则或模型配置已更新/)).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "开始复审" }));
     expect(
-      await screen.findByRole("heading", { name: "审查工作区" }),
+      await screen.findByRole("region", { name: "审查运行状态" }),
     ).toBeInTheDocument();
     expect(api.reviews.size).toBe(2);
     expect(item.documents.map((entry) => entry.id)).toEqual(originalIds);
@@ -896,7 +896,7 @@ describe("application routes and API contract", () => {
     const api = new Service();
     const review = api.addReview();
     const { user } = open(api, "/cases/c1/reviews/r1");
-    await screen.findByRole("heading", { name: "审查工作区" });
+    await screen.findByRole("region", { name: "审查运行状态" });
     await user.click(screen.getByRole("radio", { name: "误报" }));
     await user.type(screen.getByLabelText("理由"), "重新核查引用的对象范围");
     review.findings[0]!.version = 2;
@@ -970,6 +970,7 @@ describe("application routes and API contract", () => {
     );
     expect(review.execution!.events[0]?.attempt_id).toBe(firstAttempt.id);
     await waitFor(() => expect(api.requests.some((entry) => entry.key === "GET /api/cases/c1/reviews/r1?attempt_id=attempt-r1-2")).toBe(true));
+    await user.click(screen.getByRole("button", { name: "执行诊断" }));
     await chooseOption(user, screen.getByLabelText("查看尝试"), "第 2 次 · 待人工 · 最新");
     await user.click(await screen.findByRole("radio", { name: "证据不足" }));
     expect(screen.getByRole("radio", { name: "证据不足" })).toBeEnabled();
@@ -1024,6 +1025,9 @@ describe("application routes and API contract", () => {
       },
     ];
     const { user } = open(api, "/cases/c1/reviews/r1");
+    await user.click(
+      await screen.findByRole("button", { name: "执行诊断" }),
+    );
     expect(
       await screen.findByRole("heading", { name: "执行检查器" }),
     ).toBeInTheDocument();
@@ -1040,7 +1044,7 @@ describe("application routes and API contract", () => {
     expect(within(eventDetails).getByText("model_http")).toBeVisible();
     expect(within(eventDetails).getAllByText("未知")).toHaveLength(3);
     await user.click(screen.getByRole("button", { name: "时间线" }));
-    expect(screen.getByRole("button", { name: /#1/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /序号 1/ })).toBeInTheDocument();
     expect(
       within(eventDetails).getByText("时间").parentElement,
     ).toHaveTextContent("未记录");
@@ -1092,6 +1096,9 @@ describe("application routes and API contract", () => {
       },
     ];
     const { user } = open(api, "/cases/c1/reviews/r1");
+    await user.click(
+      await screen.findByRole("button", { name: "执行诊断" }),
+    );
     expect(
       await screen.findByRole("heading", { name: "执行检查器" }),
     ).toBeInTheDocument();
@@ -1103,7 +1110,7 @@ describe("application routes and API contract", () => {
     expect(within(eventDetails).getByText("144")).toBeVisible();
     expect(within(eventDetails).getByText("327")).toBeVisible();
     await user.click(screen.getByRole("button", { name: "时间线" }));
-    expect(screen.getByRole("button", { name: /#12/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /序号 12/ })).toBeInTheDocument();
   });
 
   it("blocks decisions during execution and preserves cancellation as a terminal state", async () => {
@@ -1155,7 +1162,7 @@ describe("application routes and API contract", () => {
         "/cases/c1/reviews/r1?attempt_id=attempt-r1-1",
       );
       expect(
-        await screen.findByRole("heading", { name: "审查工作区" }),
+        await screen.findByRole("region", { name: "审查运行状态" }),
       ).toBeInTheDocument();
       expect(
         await screen.findByText("质保期限不一致", { selector: "h3" }),
@@ -1219,7 +1226,8 @@ describe("application routes and API contract", () => {
       },
     ];
     const { user } = open(api, "/cases/c1/reviews/r1");
-    await screen.findByRole("heading", { name: "审查工作区" });
+    await screen.findByRole("region", { name: "审查运行状态" });
+    await user.click(screen.getByRole("button", { name: "执行诊断" }));
     await chooseOption(
       user,
       screen.getByLabelText("查看尝试"),
@@ -1487,7 +1495,7 @@ describe("application routes and API contract", () => {
     api.role = "clerk";
     api.addReview("partial");
     open(api, "/cases/c1/reviews/r1");
-    await screen.findByRole("heading", { name: "审查工作区" });
+    await screen.findByRole("region", { name: "审查运行状态" });
     expect(
       screen.getByRole("button", { name: "重新尝试未完成运行" }),
     ).toBeEnabled();

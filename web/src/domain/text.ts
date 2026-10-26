@@ -191,6 +191,71 @@ export function segmentText(
   return segments;
 }
 
+export interface MarkedRange extends TextOffset {
+  findingId: string;
+  severity: string | null;
+  active: boolean;
+  claim?: string;
+}
+
+export interface MarkedTextSegment {
+  text: string;
+  start: number;
+  marked: MarkedRange[];
+  find: boolean;
+  anchor: boolean;
+}
+
+/**
+ * Splits text at every mark, search and clause boundary. Later rendering picks
+ * one accessible target per segment while keeping every overlapping finding id
+ * so a click never silently selects an unrelated risk.
+ */
+export function segmentMarkedText(
+  text: string,
+  ranges: MarkedRange[],
+  anchorStarts: number[],
+  findRange: TextOffset | null = null,
+): MarkedTextSegment[] {
+  const chars = codePoints(text);
+  const breaks = new Set<number>([0, chars.length]);
+  const addRange = (range: TextOffset | null) => {
+    if (
+      !range ||
+      range.start < 0 ||
+      range.end > chars.length ||
+      range.start >= range.end
+    )
+      return;
+    breaks.add(range.start);
+    breaks.add(range.end);
+  };
+  for (const range of ranges) addRange(range);
+  addRange(findRange);
+  for (const start of anchorStarts) {
+    if (start >= 0 && start < chars.length) breaks.add(start);
+  }
+  const points = [...breaks].sort((left, right) => left - right);
+  const segments: MarkedTextSegment[] = [];
+  for (let index = 0; index < points.length - 1; index += 1) {
+    const start = points[index];
+    const end = points[index + 1];
+    if (start === undefined || end === undefined || start === end) continue;
+    segments.push({
+      text: chars.slice(start, end).join(""),
+      start,
+      marked: ranges.filter(
+        (range) => start >= range.start && end <= range.end,
+      ),
+      find: Boolean(
+        findRange && start >= findRange.start && end <= findRange.end,
+      ),
+      anchor: anchorStarts.includes(start),
+    });
+  }
+  return segments;
+}
+
 export function findTextMatches(text: string, query: string): TextOffset[] {
   const needle = Array.from(query.trim().toLowerCase());
   if (needle.length === 0) return [];

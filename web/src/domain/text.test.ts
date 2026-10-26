@@ -3,6 +3,7 @@ import {
   findTextMatches,
   offsetAgrees,
   resolveAnchor,
+  segmentMarkedText,
   segmentText,
   sliceByCodePoints,
 } from "./text";
@@ -202,5 +203,40 @@ describe("segmentText and search", () => {
       { start: 0, end: 2 },
       { start: 4, end: 6 },
     ]);
+  });
+
+  it("splits overlapping finding spans without losing either mark", () => {
+    const text = "质保期为二十四个月。";
+    const segments = segmentMarkedText(
+      text,
+      [
+        {
+          start: 4,
+          end: 9,
+          findingId: "f1",
+          severity: "high",
+          active: true,
+        },
+        {
+          start: 4,
+          end: 6,
+          findingId: "f2",
+          severity: "medium",
+          active: false,
+        },
+      ],
+      [0],
+      { start: 4, end: 5 },
+    );
+    const marked = segments.filter((segment) => segment.marked.length > 0);
+    expect(segments[0]).toMatchObject({ text: "质保期为", anchor: true });
+    expect(marked.map((segment) => segment.text).join("")).toBe("二十四个月");
+    expect(marked.flatMap((segment) => segment.marked.map((r) => r.findingId))).toContain(
+      "f1",
+    );
+    expect(marked.flatMap((segment) => segment.marked.map((r) => r.findingId))).toContain(
+      "f2",
+    );
+    expect(marked.some((segment) => segment.find)).toBe(true);
   });
 });

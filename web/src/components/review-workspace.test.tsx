@@ -3,7 +3,7 @@ import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { chooseOption, renderWithAntd as render } from "../test/antd";
 import { MemoryRouter } from "react-router";
-import type { ReviewDocument, ReviewWorkspace } from "../api/types";
+import type { Finding, ReviewDocument, ReviewWorkspace } from "../api/types";
 import { ReviewWorkspaceView } from "./review-workspace";
 import { DocumentStage } from "./document-stage";
 
@@ -167,13 +167,34 @@ function WorkspaceHarness({
       onRetry={vi.fn()}
       onSelectAttempt={vi.fn()}
       onCancel={vi.fn()}
+      caseContext={{
+        caseId: "c1",
+        title: "设备采购",
+        number: null,
+        customer: null,
+        supplier: null,
+        contractType: "采购 / ICT",
+        businessLine: "ENT",
+        scenario: "dedicated_line",
+        status: "审查中",
+        ownerId: null,
+        ownerName: null,
+        dueAt: null,
+        collaborators: [],
+        relatedCases: [],
+        availableCases: [],
+      }}
     />
   );
 }
 
 function renderWorkspace(layout: "split" | "switch") {
   const onDecide = vi.fn().mockResolvedValue(true);
-  const view = render(<WorkspaceHarness layout={layout} onDecide={onDecide} />);
+  const view = render(
+    <MemoryRouter>
+      <WorkspaceHarness layout={layout} onDecide={onDecide} />
+    </MemoryRouter>,
+  );
   return { ...view, onDecide };
 }
 
@@ -214,6 +235,88 @@ describe("review workspace", () => {
     expect(
       screen.getAllByText("历史来源未记录解析身份或正文摘要"),
     ).toHaveLength(2);
+  });
+
+  it("navigates reported pages, zooms, searches and reverse-selects a source mark", async () => {
+    const user = userEvent.setup();
+    const text = "第一条 质保期为三十六个月。第二条 付款按进度支付。";
+    const source = documentOf("d1", "procurement", "采购文件.txt", text);
+    source.clauses = [
+      {
+        id: "c1",
+        heading: "第一条 质保",
+        text_offset: { start: 0, end: 6 },
+        page: 2,
+      },
+      {
+        id: "c2",
+        heading: "第二条 付款",
+        text_offset: { start: 14, end: 20 },
+        page: 5,
+      },
+    ];
+    const base = workspace().findings[0];
+    if (!base) throw new Error("test finding is missing");
+    const evidence = base.evidence[0];
+    if (!evidence) throw new Error("test evidence is missing");
+    const anchored: Finding = {
+      ...base,
+      id: "f9",
+      claim: "质保期需要复核",
+      evidence: [
+        {
+          ...evidence,
+          id: "e9",
+          quote: "质保期",
+          page: 2,
+          text_offset: { start: 4, end: 7 },
+        },
+      ],
+    };
+    const onSelectFinding = vi.fn();
+    const { container } = render(
+      <DocumentStage
+        documents={[source]}
+        finding={null}
+        findings={[anchored]}
+        selectedFindingId={null}
+        layout="split"
+        onSelectFinding={onSelectFinding}
+      />,
+    );
+
+    expect(screen.getByText("第 2 页")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "下一页" }));
+    expect(screen.getByText("第 5 页")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "上一页" }));
+    expect(screen.getByText("第 2 页")).toBeInTheDocument();
+
+    expect(screen.getByText("100%")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "放大原文" }));
+    expect(screen.getByText("110%")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "缩小原文" }));
+    expect(screen.getByText("100%")).toBeInTheDocument();
+
+    await user.type(
+      screen.getByRole("textbox", { name: "在原文中搜索" }),
+      "付款",
+    );
+    expect(screen.getByText("1 / 1")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "下一处匹配" }));
+    expect(screen.getByText("1 / 1")).toBeInTheDocument();
+
+    await chooseOption(
+      user,
+      screen.getByRole("combobox", { name: "定位条款" }),
+      "第 5 页 · 第二条 付款",
+    );
+
+    const mark = container.querySelector("mark.hit-evidence-peer");
+    expect(mark).not.toBeNull();
+    if (!(mark instanceof HTMLElement)) throw new Error("mark is missing");
+    mark.focus();
+    await user.keyboard("{Enter}");
+    expect(onSelectFinding).toHaveBeenCalledWith("f9");
   });
 
   it("keeps a same-document evidence quote unhighlighted for a different parse", () => {
@@ -314,6 +417,7 @@ describe("review workspace", () => {
   it("navigates from a material reference back to the linked finding", async () => {
     const user = userEvent.setup();
     const { container } = renderWorkspace("switch");
+    await user.click(screen.getByRole("button", { name: "案件上下文" }));
     await user.click(
       screen.getByRole("button", { name: "查看线索：付款节点缺少可定位原文" }),
     );
@@ -436,6 +540,7 @@ describe("review workspace", () => {
       </MemoryRouter>,
     );
 
+    await user.click(screen.getByRole("button", { name: "案件上下文" }));
     await user.click(screen.getByRole("tab", { name: /相关案件/ }));
     expect(
       screen.getByRole("link", { name: "云平台服务协议" }),

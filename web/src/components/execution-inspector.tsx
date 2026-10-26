@@ -261,26 +261,17 @@ export function ExecutionInspector({
     const label = `序号 ${item.seq}，${item.phase}，${item.event_type}`;
     return (
       <Button
-        aria-label={
-          "#" +
-          String(item.seq) +
-          " · " +
-          String(item.phase) +
-          String(item.event_type) +
-          String(item.status ? ` · ${item.status}` : "") +
-          String(
-            item.duration_ms !== null && maximumDuration > 0 ? (
-              <span className="execution-event-bar" aria-hidden="true">
-                <span
-                  style={{
-                    width: `${(item.duration_ms / maximumDuration) * 100}%`,
-                  }}
-                />
-              </span>
-            ) : null,
-          ) +
-          String(label)
-        }
+        aria-label={[
+          `序号 ${item.seq}`,
+          item.phase,
+          item.event_type,
+          item.status ?? "",
+          item.duration_ms !== null && maximumDuration > 0
+            ? `${item.duration_ms} 毫秒`
+            : "",
+        ]
+          .filter(Boolean)
+          .join(" · ")}
         className="execution-event-select"
         htmlType="button"
         aria-current={event?.seq === item.seq ? "true" : undefined}
@@ -512,11 +503,6 @@ export function ExecutionInspector({
                             }))}
                         />
                       </label>
-                      {selected.history_kind === "legacy_unfrozen" ? (
-                        <p className="callout">
-                          旧运行未冻结原始输入，不能补造历史阶段。
-                        </p>
-                      ) : null}
                     </div>
 
                     <dl className="execution-dl execution-summary">

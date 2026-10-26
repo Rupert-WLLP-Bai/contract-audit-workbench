@@ -1,4 +1,4 @@
-import { Button } from "antd";
+import { Alert, Button } from "antd";
 import { useCallback, useEffect, useState } from "react";
 import { useParams, useSearchParams } from "react-router";
 import { useQueryClient } from "@tanstack/react-query";
@@ -25,6 +25,7 @@ import { paths } from "../api/paths";
 import type { CaseRelationInput, DecisionAction } from "../api/types";
 import { PageStatus } from "../components/page-status";
 import { ReviewWorkspaceView } from "../components/review-workspace";
+import { PageHeader } from "../components/ui";
 import type { ReviewCaseContext } from "../components/document-stage";
 import { RunProvenance } from "../components/run-provenance";
 import { AuditProjection } from "../components/audit-projection";
@@ -326,6 +327,18 @@ export function ReviewPage() {
       ? errorMessage(deleteRelation.error)
       : null;
 
+  const caseTitle = caseContext?.title ?? caseDetail.data?.title ?? caseId;
+  const caseHeaderMeta = [
+    "AI 智能审查",
+    caseContext?.customer && caseContext?.supplier
+      ? `${caseContext.customer} ↔ ${caseContext.supplier}`
+      : null,
+    caseContext?.contractType,
+    caseContext?.number ? `案件编号 ${caseContext.number}` : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+
   async function saveRelation(input: CaseRelationInput): Promise<void> {
     await createRelation.mutateAsync(input);
   }
@@ -358,26 +371,36 @@ export function ReviewPage() {
 
   return (
     <section className="page page-review">
-      <header className="page-head">
-        <div>
-          <h1>审查工作区</h1>
-          <p>{caseDetail.data?.title ?? caseId}</p>
-        </div>
-        <Button
-          aria-label={"返回案件"}
-          href={`/cases/${encodeURIComponent(caseId)}`}
-        >
-          返回案件
-        </Button>
-      </header>
+      <PageHeader
+        title={caseTitle}
+        description={caseHeaderMeta}
+        extra={
+          <Button
+            aria-label={"返回案件"}
+            href={`/cases/${encodeURIComponent(caseId)}`}
+          >
+            返回案件
+          </Button>
+        }
+      />
       {!caseDetailReady ? (
-        <p className="callout">
-          {caseDetail.isError
-            ? "无法确认案件状态，当前仅可查看。"
-            : "正在确认案件状态，写入操作暂不可用。"}
-        </p>
+        <Alert
+          className="review-page-alert"
+          type={caseDetail.isError ? "warning" : "info"}
+          showIcon
+          title={
+            caseDetail.isError
+              ? "无法确认案件状态，当前仅可查看。"
+              : "正在确认案件状态，写入操作暂不可用。"
+          }
+        />
       ) : caseArchived ? (
-        <p className="callout">案件已归档，历史审查仅供查看。</p>
+        <Alert
+          className="review-page-alert"
+          type="warning"
+          showIcon
+          title="案件已归档，历史审查仅供查看。"
+        />
       ) : null}
       <ReviewWorkspaceView
         workspace={review.data}
