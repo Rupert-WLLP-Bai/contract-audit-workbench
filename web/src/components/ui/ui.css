@@ -96,6 +96,11 @@
   background: #ecfdf5;
 }
 
+.caw-kpi__icon--neutral {
+  color: #475569;
+  background: #f1f5f9;
+}
+
 .caw-kpi__body {
   display: flex;
   min-width: 0;

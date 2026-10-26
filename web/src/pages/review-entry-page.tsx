@@ -62,7 +62,6 @@ export function ReviewEntryPage() {
     <section className="page review-entry-page">
       <header className="page-head">
         <div>
-          <p className="module-eyebrow">工作台 / 合同审查</p>
           <h1>合同审查</h1>
           <p>选择当前身份可见的案件，进入其持久审查运行或发起新的审查。</p>
         </div>

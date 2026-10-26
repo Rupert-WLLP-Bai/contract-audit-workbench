@@ -1162,13 +1162,13 @@ describe("workbench remediation and frozen artifacts", () => {
     const rows = await list("报告中心");
     expect(rows.getAllByRole("button")).toHaveLength(3);
     expectField("报告 ID", "report/frozen-2");
-    const frozen = details().getByRole("link", { name: "打开冻结报告" });
+    const frozen = details().getByRole("link", { name: "查看报告详情" });
     expect(frozen).toHaveAttribute(
       "href",
-      "/api/cases/case%2Falpha/reports/report%2Ffrozen-2?format=html",
+      "/cases/case%2Falpha/reports/report%2Ffrozen-2",
     );
-    expect(frozen).toHaveAttribute("target", "_blank");
-    expect(frozen).toHaveAttribute("rel", "noreferrer");
+    expect(frozen).not.toHaveAttribute("target");
+    expect(frozen).not.toHaveAttribute("rel");
     expect(
       details().getByRole("link", { name: "读取冻结 JSON" }),
     ).toHaveAttribute(
@@ -1614,7 +1614,7 @@ describe("workbench snapshot boundaries", () => {
       "没有读取工作台快照的权限",
     );
     expect(
-      screen.queryByRole("link", { name: "打开冻结报告" }),
+      screen.queryByRole("link", { name: "查看报告详情" }),
     ).not.toBeInTheDocument();
     expect(screen.queryByText("专线采购案件")).not.toBeInTheDocument();
     expect(screen.queryByRole("complementary")).not.toBeInTheDocument();
@@ -1643,7 +1643,7 @@ describe("workbench snapshot boundaries", () => {
     const { user, service } = open("reports");
     await list("报告中心");
     expect(
-      details().getByRole("link", { name: "打开冻结报告" }),
+      details().getByRole("link", { name: "查看报告详情" }),
     ).toBeInTheDocument();
     service.snapshot.reports = [];
     await user.click(screen.getByRole("button", { name: "刷新快照" }));

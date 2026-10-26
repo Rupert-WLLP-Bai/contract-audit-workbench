@@ -370,6 +370,9 @@ export function AppShell() {
   const reviewMatch = location.pathname.match(
     /^\/cases\/([^/]+)\/reviews\/([^/]+)/,
   );
+  const reportMatch = location.pathname.match(
+    /^\/cases\/([^/]+)\/reports\/([^/]+)/,
+  );
 
   useEffect(() => {
     setSearch(new URLSearchParams(location.search).get("q") ?? "");
@@ -418,13 +421,16 @@ export function AppShell() {
                   { label: "案件", to: "/cases" },
                   {
                     label: caseTitle,
-                    to: reviewMatch
-                      ? `/cases/${encodeURIComponent(caseId)}`
-                      : undefined,
+                    to:
+                      reviewMatch || reportMatch
+                        ? `/cases/${encodeURIComponent(caseId)}`
+                        : undefined,
                   },
                   ...(reviewMatch
                     ? [{ label: "审查分析" }]
-                    : []),
+                    : reportMatch
+                      ? [{ label: "报告详情" }]
+                      : []),
                 ]
               : location.pathname.startsWith("/workbench/")
                 ? [

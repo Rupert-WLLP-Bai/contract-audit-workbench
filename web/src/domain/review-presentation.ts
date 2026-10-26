@@ -316,6 +316,33 @@ export function firstClauseOffsetForPage(
   return clause?.text_offset.start ?? null;
 }
 
+const SCENARIO_LABELS: Record<string, string> = {
+  telecom_dedicated_line: "政企专线",
+  cloud_services: "云服务采购",
+  network_engineering: "网络工程",
+  engineering_procurement: "工程采购",
+  network_maintenance: "网络代维",
+};
+
+const BUSINESS_STATUS_LABELS: Record<string, string> = {
+  active: "进行中",
+  archived: "已归档",
+};
+
+export function scenarioLabel(
+  scenario: string | null | undefined,
+): string | null {
+  if (!scenario) return null;
+  return SCENARIO_LABELS[scenario] ?? scenario;
+}
+
+export function businessStatusLabel(
+  status: string | null | undefined,
+): string | null {
+  if (!status) return null;
+  return BUSINESS_STATUS_LABELS[status] ?? status;
+}
+
 const DOMAIN_LABELS: Record<string, string> = {
   warranty: "质量保证",
   quality: "质量",

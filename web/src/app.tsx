@@ -43,6 +43,11 @@ const ReviewPage = lazy(() =>
     default: module.ReviewPage,
   })),
 );
+const ReportDetailPage = lazy(() =>
+  import("./pages/report-detail-page").then((module) => ({
+    default: module.ReportDetailPage,
+  })),
+);
 const ComparePage = lazy(() =>
   import("./pages/compare-page").then((module) => ({
     default: module.ComparePage,
@@ -91,6 +96,10 @@ export function App() {
             <Route
               path="/cases/:caseId/reviews/:runId"
               element={<ReviewPage />}
+            />
+            <Route
+              path="/cases/:caseId/reports/:reportId"
+              element={<ReportDetailPage />}
             />
             <Route path="/compare" element={<ComparePage />} />
             <Route path="/workbench/health" element={<SystemHealthPage />} />

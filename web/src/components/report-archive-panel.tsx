@@ -1,7 +1,9 @@
 import { Button, Input, Select } from "antd";
 import { useEffect, useRef, useState, type FormEvent } from "react";
+import { Link } from "react-router";
 import { errorMessage } from "../api/http";
 import { paths } from "../api/paths";
+import { reportPagePath } from "../domain/report";
 import { useArchiveCase, useCreateReport, useReview } from "../api/queries";
 import type { CaseDetail, ReviewHistoryEntry } from "../api/types";
 import {
@@ -288,6 +290,9 @@ export function ReportArchivePanel({
                 </dl>
                 {canReadReports ? (
                   <div className="workflow-links">
+                    <Link to={reportPagePath(caseId, report.id)}>
+                      查看报告详情
+                    </Link>
                     <a
                       type="text"
                       href={paths.report(caseId, report.id, "html")}

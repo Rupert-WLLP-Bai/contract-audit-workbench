@@ -5,6 +5,7 @@ import {
   type QueryClient,
 } from "@tanstack/react-query";
 import * as api from "./endpoints";
+import { getReport } from "./reports";
 import { setSessionIdentity } from "./http";
 import type {
   Actor,
@@ -32,6 +33,8 @@ export const queryKeys = {
     audience === "admin" ? (["session", "admin"] as const) : queryKeys.session,
   cases: ["cases"] as const,
   case: (caseId: string) => ["cases", caseId] as const,
+  report: (caseId: string, reportId: string) =>
+    ["cases", caseId, "reports", reportId] as const,
   reviewPrefix: (caseId: string, runId: string) =>
     ["cases", caseId, "reviews", runId] as const,
   review: (caseId: string, runId: string, attemptId?: string | null) =>
@@ -219,6 +222,19 @@ export function useCaseDetail(caseId: string) {
     queryKey: queryKeys.case(caseId),
     queryFn: ({ signal }) => api.getCase(caseId, signal),
     enabled: caseId !== "",
+  });
+}
+
+/**
+ * Frozen reports are immutable; keep the parsed snapshot cached for the life of
+ * the page and never refetch it in the background.
+ */
+export function useReport(caseId: string, reportId: string) {
+  return useQuery({
+    queryKey: queryKeys.report(caseId, reportId),
+    queryFn: ({ signal }) => getReport(caseId, reportId, signal),
+    enabled: caseId !== "" && reportId !== "",
+    staleTime: Infinity,
   });
 }
 

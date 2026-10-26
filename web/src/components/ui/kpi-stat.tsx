@@ -1,7 +1,7 @@
 import { Skeleton } from "antd";
 import type { ReactNode } from "react";
 
-export type KpiTone = "primary" | "high" | "medium" | "low";
+export type KpiTone = "primary" | "high" | "medium" | "low" | "neutral";
 
 export function KpiStat({
   label,
@@ -19,7 +19,11 @@ export function KpiStat({
   loading?: boolean;
 }) {
   return (
-    <article className="caw-kpi" aria-label={typeof label === "string" ? label : undefined}>
+    <article
+      className="caw-kpi"
+      data-tone={tone}
+      aria-label={typeof label === "string" ? label : undefined}
+    >
       {icon ? (
         <span
           className={`caw-kpi__icon caw-kpi__icon--${tone}`}

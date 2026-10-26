@@ -8,6 +8,7 @@ import {
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { chooseOption, renderWithAntd as render } from "./test/antd";
+import { reportEnvelope } from "./test/report-fixture";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 import { MemoryRouter } from "react-router";
@@ -171,6 +172,7 @@ class Service {
   org = "org-test";
   cases = new Map<string, CaseDetail>([["c1", caseOf()]]);
   reviews = new Map<string, ReviewWorkspace>();
+  reports = new Map<string, unknown>();
   requests: {
     key: string;
     input: unknown;
@@ -393,6 +395,14 @@ class Service {
     const item = this.cases.get(caseId);
     if (!item) return this.json({ error: "案件不存在" }, 404);
     if (parts.length === 4) return this.json(item);
+    if (parts[4] === "reports" && parts.length === 6) {
+      const report = this.reports.get(parts[5]!);
+      if (!report) return this.json({ error: "报告不存在" }, 404);
+      return this.json(report);
+    }
+    if (parts[4] === "reports") {
+      return this.json({ error: "不支持的请求" }, 405);
+    }
     if (parts[4] === "documents") {
       if (parts[6] === "parse") {
         const target = item.documents.find((entry) => entry.id === parts[5])!;
@@ -1629,6 +1639,45 @@ describe("application routes and API contract", () => {
     expect(
       api.requests.some((entry) => entry.key === "GET /api/session"),
     ).toBe(false);
+  });
+
+  it("routes a frozen report deep link with real HTML and JSON exports", async () => {
+    const api = new Service();
+    api.reports.set(
+      "report-r1",
+      reportEnvelope({
+        caseId: "c1",
+        reportId: "report-r1",
+        runId: "r1",
+        attemptId: "attempt-r1-1",
+      }),
+    );
+    open(api, "/cases/c1/reports/report-r1");
+
+    expect(
+      await screen.findByRole("heading", { name: /政企专线服务合同/ }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("报告包含 1 项高风险发现")).toBeInTheDocument();
+    expect(screen.getByText("报告详情")).toBeInTheDocument();
+    expect(
+      screen.getAllByRole("link", { name: /导出 HTML/ })[0],
+    ).toHaveAttribute(
+      "href",
+      "/api/cases/c1/reports/report-r1?format=html",
+    );
+    expect(
+      screen.getAllByRole("link", { name: /导出 JSON/ })[0],
+    ).toHaveAttribute(
+      "href",
+      "/api/cases/c1/reports/report-r1?format=json",
+    );
+    expect(api.requests.some((entry) =>
+      entry.key === "GET /api/cases/c1/reports/report-r1?format=json"
+    )).toBe(true);
+    expect(screen.queryByRole("link", { name: /PDF/ })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /分享|发送给复核人/ }),
+    ).not.toBeInTheDocument();
   });
 
   it("returns to the requested deep link after login", async () => {

@@ -20,6 +20,7 @@ import type {
 } from "../api/types";
 import { PageStatus } from "../components/page-status";
 import { StatusText } from "../components/status-text";
+import { reportPagePath } from "../domain/report";
 import { formatDateTime } from "../domain/review";
 import { SettingsPage } from "./settings-page";
 import "./workbench-module-page.css";
@@ -385,7 +386,7 @@ function buildRecords(
         updatedAt: item.created_at,
         caseId: item.case_id,
         runId: item.run_id,
-        href: paths.report(item.case_id, item.id, "html"),
+        href: reportPagePath(item.case_id, item.id),
         panels,
         task: null,
       });
@@ -1276,7 +1277,6 @@ function WorkbenchModule({ module }: { module: WorkbenchModuleKey }) {
     <section className="page module-page">
       <header className="page-head module-page-head">
         <div>
-          <p className="module-eyebrow">工作台 / 持久业务快照</p>
           <h1>
             {config.title}
             <span className="module-total">{allRecords.length}</span>
@@ -1427,26 +1427,18 @@ function WorkbenchModule({ module }: { module: WorkbenchModuleKey }) {
                   <Button
                     aria-label={String(
                       module === "reports"
-                        ? "打开冻结报告"
+                        ? "查看报告详情"
                         : module === "evidence"
                           ? "读取材料原件"
                           : "打开关联记录",
                     )}
                     type="text"
                     href={selected.href}
-                    target={
-                      module === "reports" || module === "evidence"
-                        ? "_blank"
-                        : undefined
-                    }
-                    rel={
-                      module === "reports" || module === "evidence"
-                        ? "noreferrer"
-                        : undefined
-                    }
+                    target={module === "evidence" ? "_blank" : undefined}
+                    rel={module === "evidence" ? "noreferrer" : undefined}
                   >
                     {module === "reports"
-                      ? "打开冻结报告"
+                      ? "查看报告详情"
                       : module === "evidence"
                         ? "读取材料原件"
                         : "打开关联记录"}
