@@ -18,6 +18,7 @@ import { RemediationPanel } from "../components/remediation-panel";
 import { StatusText } from "../components/status-text";
 import { TemplateGenerationPanel } from "../components/template-generation-panel";
 import {
+  businessStatusLabel,
   contractTypeLabel,
   formatBytes,
   formatDateTime,
@@ -109,7 +110,10 @@ export function CaseDetailPage() {
     (document) => document.parse_status === "pending",
   ).length;
   const preparable = ready + pendingParse;
-  const failed = current.some((document) => document.parse_status === "failed");
+  const failedCount = current.filter(
+    (document) => document.parse_status === "failed",
+  ).length;
+  const failed = failedCount > 0;
   const run = item.latest_run;
   const archived = item.archived_at !== null;
   const needsNewReview = item.revision_pending || item.configuration_pending;
@@ -137,11 +141,11 @@ export function CaseDetailPage() {
 
   return (
     <section className="page">
-      <p>
+      <nav className="page-back" aria-label="案件导航">
         <Link to={returnTo} state={{ restoreScrollY: returnScrollY }}>
           返回案件列表
         </Link>
-      </p>
+      </nav>
       <header className="page-head">
         <div>
           <h1>{item.title}</h1>
@@ -149,12 +153,12 @@ export function CaseDetailPage() {
             {[
               item.business_line,
               item.scenario,
-              item.business_status,
+              businessStatusLabel(item.business_status),
               contractTypeLabel(item.contract_type),
             ]
               .filter(Boolean)
-              .join(" · ")}{" "}
-            · 更新于 {formatDateTime(item.updated_at)}
+              .join("，")}{" "}
+          ，更新于 {formatDateTime(item.updated_at)}
           </p>
         </div>
         {run ? (
@@ -196,6 +200,33 @@ export function CaseDetailPage() {
           </Button>
         ) : null}
       </header>
+      <ol className="case-chain" aria-label="案件材料链路">
+        <li data-state={current.length > 0 ? "filled" : "open"}>
+          <span className="case-chain-mark" aria-hidden="true" />
+          <span className="case-chain-label">材料</span>
+          <strong>{current.length}</strong>
+        </li>
+        <li data-state={ready > 0 ? "filled" : "open"}>
+          <span className="case-chain-mark" aria-hidden="true" />
+          <span className="case-chain-label">已解析</span>
+          <strong>{ready}</strong>
+        </li>
+        <li data-state={pendingParse > 0 ? "open" : "filled"}>
+          <span className="case-chain-mark" aria-hidden="true" />
+          <span className="case-chain-label">待解析</span>
+          <strong>{pendingParse}</strong>
+        </li>
+        <li data-state={failed ? "open" : "filled"}>
+          <span className="case-chain-mark" aria-hidden="true" />
+          <span className="case-chain-label">解析失败</span>
+          <strong>{failedCount}</strong>
+        </li>
+        <li data-state={run ? "filled" : "open"}>
+          <span className="case-chain-mark" aria-hidden="true" />
+          <span className="case-chain-label">最新运行</span>
+          <strong>{run ? runLabel(run.state) : "尚无运行"}</strong>
+        </li>
+      </ol>
       {archived ? (
         <p className="callout">
           案件已归档，只能读取案件、运行历史和已有报告。服务端会以 HTTP 409
@@ -250,10 +281,10 @@ export function CaseDetailPage() {
               <div className="document-main">
                 <strong>{document.filename}</strong>
                 {document.superseded ? (
-                  <span className="meta"> · 历史版本</span>
+                  <span className="meta">，历史版本</span>
                 ) : null}
                 <p className="meta">
-                  {roleLabel(document.role)} · {formatBytes(document.size)}
+                  {roleLabel(document.role)}，{formatBytes(document.size)}
                 </p>
                 <ParsedDocumentSummary document={document} />
                 {document.parse_status === "failed" && document.parse_error ? (
@@ -288,7 +319,7 @@ export function CaseDetailPage() {
           <h3>登记材料</h3>
           <p className="meta">
             每案最多 4 类当前材料；同角色上传形成新版本并保留历史。单文件不超过
-            20 MiB。支持 TXT/MD、PNG/JPEG、PDF 与 DOCX
+            20 MiB。支持 txt/md、png/jpeg、pdf 与 docx
             正文解析；扫描页和内嵌图片通过已配置模型转写，最终以解析状态为准。
           </p>
           {!canUpload ? (
@@ -379,7 +410,7 @@ export function CaseDetailPage() {
             <dt>归档状态</dt>
             <dd>
               {archived
-                ? `已归档 · ${formatDateTime(item.archived_at ?? "")}`
+                ? `已归档，${formatDateTime(item.archived_at ?? "")}`
                 : "未归档"}
             </dd>
           </div>

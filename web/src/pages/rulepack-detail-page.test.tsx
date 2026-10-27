@@ -166,7 +166,7 @@ describe("RulePack inactive published version rollback", () => {
     );
 
     expect(await screen.findByText(/无前值 → v1 生效/)).toBeInTheDocument();
-    await chooseHistoryVersion(user, "telecom-core · v1");
+    await chooseHistoryVersion(user, "telecom-core， v1");
     await user.click(screen.getByRole("button", { name: "回滚到所选版本" }));
 
     await waitFor(() =>
@@ -370,7 +370,7 @@ async function chooseHistoryVersion(
   name: string,
 ) {
   await user.click(screen.getByRole("combobox", { name: "目标历史版本" }));
-  const normalized = name.replace(/\s*·\s*/, "\\s*·\\s*");
+  const normalized = name.replace(/\s*，\s*/, "\\s*，\\s*");
   const options = await screen.findAllByRole("option", {
     name: new RegExp(normalized),
   });
@@ -791,19 +791,19 @@ describe("RulePackDetailPage history and rollback", () => {
     await user.click(target);
     expect(await screen.findAllByRole("option")).toHaveLength(3);
     expect(
-      screen.getAllByRole("option", { name: /telecom-core\s*·\s*v2/ }).at(-1),
+      screen.getAllByRole("option", { name: /telecom-core\s*，\s*v2/ }).at(-1),
     ).toBeInTheDocument();
     expect(
-      screen.queryByRole("option", { name: "telecom-core · v9" }),
+      screen.queryByRole("option", { name: "telecom-core， v9" }),
     ).not.toBeInTheDocument();
     await user.click(
-      screen.getAllByRole("option", { name: /telecom-core\s*·\s*v2/ }).at(-1)!,
+      screen.getAllByRole("option", { name: /telecom-core\s*，\s*v2/ }).at(-1)!,
     );
     await user.click(screen.getByRole("button", { name: "回滚到所选版本" }));
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "Rollback outcome unknown",
     );
-    await chooseHistoryVersion(user, "telecom-core · v1");
+    await chooseHistoryVersion(user, "telecom-core， v1");
     await user.click(
       screen.getByRole("button", { name: "使用同一幂等键重试原请求" }),
     );
@@ -822,7 +822,7 @@ describe("RulePackDetailPage history and rollback", () => {
     expect(idempotencyKey(actions[1])).toBe(idempotencyKey(actions[0]));
     await user.click(screen.getByRole("combobox", { name: "目标历史版本" }));
     expect(
-      screen.getAllByRole("option", { name: /telecom-core\s*·\s*v1/ }).at(-1),
+      screen.getAllByRole("option", { name: /telecom-core\s*，\s*v1/ }).at(-1),
     ).toHaveAttribute("aria-selected", "true");
   });
 });
@@ -891,7 +891,7 @@ describe("RulePackDetailPage in-flight actions", () => {
       const user = userEvent.setup();
       await screen.findByRole("button", { name: action });
       if (rollback) {
-        await chooseHistoryVersion(user, "telecom-core · v1");
+        await chooseHistoryVersion(user, "telecom-core， v1");
       }
       await clickAction(user, action);
       const busy = await screen.findByRole("button", { name: pending });

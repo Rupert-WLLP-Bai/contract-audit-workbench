@@ -1,10 +1,10 @@
-import { Tabs } from "antd";
 import {
-  FileTextOutlined,
   CheckSquareOutlined,
   ClockCircleOutlined,
-  FileProtectOutlined,
+  FileSearchOutlined,
+  FolderOpenOutlined,
 } from "@ant-design/icons";
+import { Tabs } from "antd";
 import { Select } from "antd";
 import { Button, Input, Table, type TableProps } from "antd";
 import { useMemo, useState, type FormEvent } from "react";
@@ -19,23 +19,18 @@ import {
 import type { WorkbenchPeriod, WorkbenchTask } from "../api/types";
 import { PageStatus } from "../components/page-status";
 import { StatusText } from "../components/status-text";
-import { formatDateTime, runLabel, runTone } from "../domain/review";
+import {
+  formatDateTime,
+  runLabel,
+  runTone,
+  taskKindLabel,
+} from "../domain/review";
 import "./home-page.css";
 
 function caseHref(caseId: string, runId: string | null): string {
   return runId
     ? `/cases/${encodeURIComponent(caseId)}/reviews/${encodeURIComponent(runId)}`
     : `/cases/${encodeURIComponent(caseId)}`;
-}
-
-function metricIcon(name: "cases" | "tasks" | "late" | "reviews") {
-  const icons = {
-    cases: <FileTextOutlined />,
-    tasks: <CheckSquareOutlined />,
-    late: <ClockCircleOutlined />,
-    reviews: <FileProtectOutlined />,
-  };
-  return icons[name];
 }
 
 function barWidth(count: number, total: number): number {
@@ -47,12 +42,10 @@ const BUSINESS_STATUS_LABELS: Record<string, string> = {
   active: "未归档",
   archived: "已归档",
 };
-const FALLBACK_PROGRESS_COLORS = ["#84c6ff", "#ffbc53", "#a881ed", "#bac4d1"];
 
-function progressColor(status: string, index: number): string {
-  if (status === "active") return "#1677ff";
-  if (status === "archived") return "#8793a4";
-  return FALLBACK_PROGRESS_COLORS[index % FALLBACK_PROGRESS_COLORS.length]!;
+function progressColor(status: string): string {
+  if (status === "archived") return "var(--state-compatible)";
+  return status === "active" ? "var(--action-primary)" : "var(--state-neutral)";
 }
 
 function ProgressDonut({
@@ -66,13 +59,13 @@ function ProgressDonut({
   let offset = 0;
   const slices = rows
     .filter((row) => row.count > 0)
-    .map((row, index) => {
+    .map((row) => {
       const start = offset;
       offset += row.count;
-      return `${progressColor(row.status, index)} ${(start / total) * 100}% ${(offset / total) * 100}%`;
+      return `${progressColor(row.status)} ${(start / total) * 100}% ${(offset / total) * 100}%`;
     });
   const background =
-    total === 0 ? "#edf1f6" : `conic-gradient(${slices.join(", ")})`;
+    total === 0 ? "var(--surface-subtle)" : `conic-gradient(${slices.join(", ")})`;
   const center = total === 0 && visibleCases > 0 ? "—" : String(total);
   const centerLabel = total === 0 && visibleCases > 0 ? "状态未报" : "案件";
   const accessibleLabel =
@@ -101,10 +94,10 @@ function ProgressDonut({
               : "案件状态统计未报告。"}
           </p>
         ) : (
-          rows.map((row, index) => (
+          rows.map((row) => (
             <div key={row.status}>
               <span>
-                <i style={{ background: progressColor(row.status, index) }} />
+                <i style={{ background: progressColor(row.status) }} />
                 {BUSINESS_STATUS_LABELS[row.status] ?? (row.status || "未报告")}
               </span>
               <strong>{row.count}</strong>
@@ -152,6 +145,49 @@ function ProgressList({
   );
 }
 
+function CircuitStrip({
+  openCount,
+  nodes,
+}: {
+  openCount: number;
+  nodes: readonly { label: string; count: number; tone: "info" | "pending" | "success" }[];
+}) {
+  return (
+    <section className="circuit-panel" aria-label="审查链路">
+      <div className="circuit-head">
+        <h2>审查链路</h2>
+        <span
+          className={
+            openCount > 0
+              ? "circuit-open"
+              : "circuit-open circuit-open-closed"
+          }
+        >
+          {openCount > 0 ? `开路口 ${openCount}` : "链路闭合"}
+        </span>
+      </div>
+      <ol className="circuit">
+        {nodes.map((node) => (
+          <li
+            className="circuit-node"
+            key={node.label}
+            data-state={node.count > 0 ? "filled" : "empty"}
+            data-tone={node.tone}
+          >
+            <span className="circuit-mark" aria-hidden="true" />
+            <span className="circuit-label">{node.label}</span>
+            <strong
+              className={`circuit-count${node.count === 0 ? " circuit-count-empty" : ""}`}
+            >
+              {node.count}
+            </strong>
+          </li>
+        ))}
+      </ol>
+    </section>
+  );
+}
+
 function TaskRow({
   task,
   caseTitle,
@@ -172,7 +208,7 @@ function TaskRow({
           {task.title}
         </Link>
         <span className="home-task-meta">
-          {caseTitle} · {assignee} · {task.kind}
+          {caseTitle}，{assignee}，{taskKindLabel(task.kind)}
         </span>
       </div>
       <div className="home-task-state">
@@ -284,6 +320,20 @@ export function HomePage() {
   const cases = [...data.cases].sort((left, right) =>
     right.updated_at.localeCompare(left.updated_at),
   );
+  const openCircuits = cases.filter(
+    (item) =>
+      item.latest_run !== null &&
+      ["failed", "interrupted", "cancelled", "partial"].includes(
+        item.latest_run.state,
+      ),
+  ).length;
+  const circuitNodes = [
+    { label: "材料", count: dashboard.visible_cases, tone: "info" },
+    { label: "待审查", count: dashboard.pending_review_cases, tone: "pending" },
+    { label: "待办", count: dashboard.my_pending_tasks, tone: "pending" },
+    { label: "整改", count: dashboard.remediation_cases, tone: "pending" },
+    { label: "完成", count: dashboard.completed_reviews, tone: "success" },
+  ] as const;
   const recentCases = cases.slice(0, 8);
   const recentCaseColumns: TableProps<(typeof recentCases)[number]>["columns"] =
     [
@@ -320,7 +370,7 @@ export function HomePage() {
         title: "业务线 / 场景",
         key: "business",
         render: (_, item) =>
-          [item.business_line, item.scenario].filter(Boolean).join(" · ") ||
+          [item.business_line, item.scenario].filter(Boolean).join("，") ||
           "未设置",
       },
       {
@@ -398,27 +448,31 @@ export function HomePage() {
       value: dashboard.visible_cases,
       hint: "按当前身份权限统计",
       tone: "blue",
+      icon: <FolderOpenOutlined />,
     },
     {
       key: "tasks",
       label: "我的待办",
       value: dashboard.my_pending_tasks,
       hint: "由责任人与任务状态计算",
-      tone: "amber",
+      tone: dashboard.my_pending_tasks > 0 ? "amber" : "neutral",
+      icon: <CheckSquareOutlined />,
     },
     {
       key: "late",
       label: "逾期任务",
       value: dashboard.overdue_tasks,
       hint: "按已保存期限统计",
-      tone: "red",
+      tone: dashboard.overdue_tasks > 0 ? "red" : "neutral",
+      icon: <ClockCircleOutlined />,
     },
     {
       key: "reviews",
       label: "待审查案件",
       value: dashboard.pending_review_cases,
       hint: "等待审查或人工处理",
-      tone: "green",
+      tone: dashboard.pending_review_cases > 0 ? "amber" : "neutral",
+      icon: <FileSearchOutlined />,
     },
   ] as const;
 
@@ -426,7 +480,6 @@ export function HomePage() {
     <section className="page home-page">
       <header className="home-page-head">
         <div className="home-welcome">
-          <p className="home-eyebrow">合同审计工作台</p>
           <h1>你好，{session.data?.display_name ?? "当前用户"}</h1>
           <p>案件、审查、整改与协作进度来自当前身份可见的持久业务快照。</p>
         </div>
@@ -460,13 +513,17 @@ export function HomePage() {
         </div>
       </header>
 
+      <CircuitStrip openCount={openCircuits} nodes={circuitNodes} />
+
       <dl className="home-metrics" aria-label="工作台摘要">
         {metrics.map((metric) => (
           <div
             className={`home-metric home-metric-${metric.tone}`}
             key={metric.key}
           >
-            <span className="home-metric-icon">{metricIcon(metric.key)}</span>
+            <span className="home-metric-icon" aria-hidden="true">
+              {metric.icon}
+            </span>
             <div>
               <dt>{metric.label}</dt>
               <dd>{metric.value}</dd>
@@ -485,7 +542,7 @@ export function HomePage() {
             <div className="home-section-title">
               <span aria-hidden="true" />
               <h2 id="home-tasks-title">任务与待办</h2>
-              <strong className="home-count-badge">{activeTaskCount}</strong>
+              <strong className="home-figure-badge">{activeTaskCount}</strong>
             </div>
             <Button
               aria-label={String(showTaskForm ? "收起" : "新建任务")}
@@ -549,7 +606,7 @@ export function HomePage() {
                       value: String(member.id),
                       label: (
                         <>
-                          {member.display_name}· {member.role}
+                          {member.display_name}，{member.role}
                         </>
                       ),
                     })),
@@ -613,7 +670,7 @@ export function HomePage() {
           ) : null}
           {tasks.length > 8 ? (
             <Link className="home-view-all" to="/workbench/tasks">
-              查看全部任务 →
+              查看全部任务
             </Link>
           ) : null}
         </section>
@@ -653,7 +710,7 @@ export function HomePage() {
             <header className="home-panel-head">
               <div className="home-section-title">
                 <span aria-hidden="true" />
-                <h2 id="home-risk-title">案件风险分布</h2>
+                <h2 id="home-risk-title">审查发现分布</h2>
               </div>
               <span className="home-panel-meta">后端统计</span>
             </header>
@@ -679,7 +736,7 @@ export function HomePage() {
               }))}
             />
             <p className="home-summary-note">
-              风险等级仅采用持久快照中的显式分级；未分级事项保持未分级。
+              按可见案件最新审查的发现项分级统计；未分级事项保持未分级。
             </p>
           </section>
         </aside>
@@ -694,7 +751,7 @@ export function HomePage() {
               <h2 id="home-recent-title">最近审查与案件</h2>
             </div>
             <Link className="home-view-all" to="/cases">
-              查看全部案件 →
+              查看全部案件
             </Link>
           </header>
           {cases.length === 0 ? (
@@ -722,7 +779,7 @@ export function HomePage() {
               <h2 id="home-remediation-title">整改跟踪</h2>
             </div>
             <Link className="home-view-all" to="/workbench/remediation">
-              进入整改中心 →
+              进入整改中心
             </Link>
           </header>
           {remediations.length === 0 ? (
@@ -734,7 +791,7 @@ export function HomePage() {
                   <Link to={caseHref(item.case_id, item.run_id)}>
                     <strong>{item.measure}</strong>
                     <span>
-                      {item.case_title} · 责任人{" "}
+                      {item.case_title}，责任人{" "}
                       {members.get(item.assignee_id) ?? item.assignee_id}
                     </span>
                   </Link>
@@ -778,7 +835,7 @@ export function HomePage() {
                     )}
                     <p>{event.summary}</p>
                     <small>
-                      {event.actor_name} · {event.action}
+                      {event.actor_name}，{event.action}
                     </small>
                   </div>
                 </li>

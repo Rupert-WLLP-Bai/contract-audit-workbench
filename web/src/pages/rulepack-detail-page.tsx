@@ -59,7 +59,7 @@ function pointerTransition(entry: RulePackHistoryEntry): string {
     entry.resulting_version === null && entry.resulting_active === null
       ? "无新值"
       : pointerImage(entry.resulting_version, entry.resulting_active);
-  return ` · ${pointerImage(entry.previous_version, entry.previous_active)} → ${after}`;
+  return `，${pointerImage(entry.previous_version, entry.previous_active)} → ${after}`;
 }
 
 type PublishRequest = {
@@ -328,18 +328,18 @@ export function RulePackDetailPage() {
 
   return (
     <section className="page page-rulepack-detail">
-      <p>
+      <nav className="page-back" aria-label="规则包导航">
         <Link to="/admin/rulepacks">返回规则包</Link>
-      </p>
+      </nav>
       <header className="page-head">
         <div>
           <h1>
-            {pack.id} · v{pack.version}
+            {pack.id}，v{pack.version}
           </h1>
           <p>
-            租户 {pack.tenant_id} · 状态 {pack.status} · 行修订 {pack.revision}{" "}
-            · 指针修订 {pack.active_pointer_revision}
-            {pack.is_active ? " · 当前生效" : " · 当前未生效"}
+            租户 {pack.tenant_id}，状态 {pack.status}，行修订 {pack.revision}{" "}
+          ，指针修订 {pack.active_pointer_revision}
+            {pack.is_active ? "，当前生效" : "，当前未生效"}
           </p>
         </div>
         <Button
@@ -405,7 +405,7 @@ export function RulePackDetailPage() {
                           {manifest.lifecycle.verification.passed
                             ? "通过"
                             : "未通过"}{" "}
-                          · {manifest.lifecycle.verification.verifier_version} ·{" "}
+                        ，{manifest.lifecycle.verification.verifier_version}，
                           {manifest.lifecycle.verification.manifest_hash}
                         </dd>
                       </div>
@@ -414,7 +414,7 @@ export function RulePackDetailPage() {
                       <div>
                         <dt>批准</dt>
                         <dd>
-                          操作者 {manifest.lifecycle.approval.actor_id} · 内容{" "}
+                          操作者 {manifest.lifecycle.approval.actor_id}，内容{" "}
                           {manifest.lifecycle.approval.manifest_hash}
                         </dd>
                       </div>
@@ -463,7 +463,7 @@ export function RulePackDetailPage() {
             <div className="workflow-error" role="status">
               <p>
                 你的本地修改仍保留。服务器当前为修订 {pack.revision}
-                ，本地提交使用修订 {expectedRevision}。
+               ，本地提交使用修订 {expectedRevision}。
               </p>
               <div className="workflow-links">
                 <Button
@@ -534,10 +534,10 @@ export function RulePackDetailPage() {
                     label: (
                       <>
                         <strong>
-                          {rule.domain} · {rule.capability_id}
+                          {rule.domain}，{rule.capability_id}
                         </strong>
                         <span className="meta">
-                          {rule.rule_id} · v{rule.version} ·{" "}
+                          {rule.rule_id}，v{rule.version}，
                           {rule.mandatory ? "必检" : "非必检"}
                         </span>
                       </>
@@ -548,7 +548,7 @@ export function RulePackDetailPage() {
                           <div>
                             <dt>规则</dt>
                             <dd>
-                              {rule.rule_id} v{rule.version} ·{" "}
+                              {rule.rule_id} v{rule.version}，
                               {rule.mandatory ? "必检" : "非必检"}
                             </dd>
                           </div>
@@ -563,18 +563,18 @@ export function RulePackDetailPage() {
                           <div>
                             <dt>比较器与阈值</dt>
                             <dd>
-                              {rule.comparator} · {rule.threshold.value}{" "}
+                              {rule.comparator}，{rule.threshold.value}{" "}
                               {rule.threshold.unit}
                               {rule.threshold.basis
-                                ? ` · 基数 ${rule.threshold.basis}`
+                                ? `，基数 ${rule.threshold.basis}`
                                 : ""}
                             </dd>
                           </div>
                           <div>
                             <dt>所需事实</dt>
                             <dd>
-                              {rule.required_fact.dimension} · 角色{" "}
-                              {rule.required_fact.source_roles.join("、")} ·
+                              {rule.required_fact.dimension}，角色{" "}
+                              {rule.required_fact.source_roles.join("、")}，
                               单位族 {rule.required_fact.unit_family}
                             </dd>
                           </div>
@@ -584,7 +584,7 @@ export function RulePackDetailPage() {
                               {rule.authority_sources
                                 .map(
                                   (source) =>
-                                    `${source.id} v${source.version} · ${source.kind}`,
+                                    `${source.id} v${source.version}，${source.kind}`,
                                 )
                                 .join("；")}
                             </dd>
@@ -734,7 +734,7 @@ export function RulePackDetailPage() {
                   value: String(item),
                   label: (
                     <>
-                      {pack.id}· v{item}
+                      {pack.id}，v{item}
                     </>
                   ),
                 })),
@@ -768,10 +768,10 @@ export function RulePackDetailPage() {
             {historyEntries.map((entry) => (
               <li key={entry.sequence}>
                 <strong>
-                  #{entry.sequence} · {entry.action}
+                  #{entry.sequence}，{entry.action}
                 </strong>
                 <span>
-                  v{entry.version} · 操作者 {entry.actor_id} · 指针修订{" "}
+                  v{entry.version}，操作者 {entry.actor_id}，指针修订{" "}
                   {entry.pointer_revision}
                   {pointerTransition(entry)}
                 </span>

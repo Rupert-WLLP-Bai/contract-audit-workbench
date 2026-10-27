@@ -46,20 +46,19 @@ export function RunProvenance({ workspace }: { workspace: ReviewWorkspace }) {
                     {evaluations.map((item) => (
                       <li key={item.id}>
                         <strong>
-                          {item.domain} · {relationLabel(item.relation)}
+                          {item.domain}，{relationLabel(item.relation)}
                         </strong>
                         <p>{item.reason}</p>
                         <p className="meta">
-                          {item.rule_id || "规则身份未返回"} ·{" "}
-                          {item.rule_version || "版本未返回"} ·{" "}
+                          {item.rule_id || "规则身份未返回"}，
+                          {item.rule_version || "版本未返回"}，
                           {item.capability_id || "能力身份未返回"}
                         </p>
                         <p className="meta">
                           业务对象：
                           {item.object_refs.length === 0
                             ? "未返回"
-                            : item.object_refs.join("、")}{" "}
-                          · 规则依据：{item.reason_code || "未返回"} · 事实：
+                            : item.object_refs.join("、")}，规则依据：{item.reason_code || "未返回"}，事实：
                           {item.fact_ids.length === 0
                             ? "未返回"
                             : item.fact_ids.join("、")}
@@ -103,14 +102,14 @@ export function RunProvenance({ workspace }: { workspace: ReviewWorkspace }) {
                           key={`${item.finding_id ?? item.previous_finding_id ?? "row"}-${index}`}
                         >
                           <strong>
-                            {item.mark} · {item.domain}
+                            {item.mark}，{item.domain}
                           </strong>
                           <p>{item.claim}</p>
                           {item.prior_decision ? (
                             <p>
                               先前决定：
-                              {decisionLabel(item.prior_decision.action)} ·{" "}
-                              {item.prior_decision.actor} ·{" "}
+                              {decisionLabel(item.prior_decision.action)}，
+                              {item.prior_decision.actor}，
                               {item.prior_decision.reason}
                             </p>
                           ) : null}

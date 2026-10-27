@@ -67,7 +67,7 @@ function documentLabel(
 ): string {
   const sameVersion = documents.filter((item) => item.id === document.id);
   return sameVersion.length > 1 && document.parsed_document
-    ? `${roleLabel(document.role)} · 解析 ${shortDigest(document.parsed_document.id)}`
+    ? `${roleLabel(document.role)}，解析 ${shortDigest(document.parsed_document.id)}`
     : roleLabel(document.role);
 }
 
@@ -457,7 +457,7 @@ export function DocumentStage({
                   {caseContext.dueAt
                     ? formatDateTime(caseContext.dueAt)
                     : "未设期限"}{" "}
-                  · {caseContext.status || "未报告"}
+                ，{caseContext.status || "未报告"}
                 </dd>
               </div>
             </dl>
@@ -488,7 +488,7 @@ export function DocumentStage({
             className="review-material-context"
             aria-label="本次运行材料"
           >
-            <h2>材料</h2>
+            <h2 className="sr-only">材料</h2>
             {documents.length === 0 ? (
               <p className="meta">本次运行没有带上材料。</p>
             ) : (
@@ -554,11 +554,11 @@ export function DocumentStage({
                   {visibleClauses.map((clause) => (
                     <li key={clause.id}>
                       <Button
-                        aria-label={`${clause.page !== null ? `第 ${clause.page} 页 · ` : ""}${clause.heading}`}
+                        aria-label={`${clause.page !== null ? `第 ${clause.page} 页，` : ""}${clause.heading}`}
                         htmlType="button"
                         onClick={() => focusOffset(clause.text_offset.start)}
                       >
-                        {clause.page !== null ? `第 ${clause.page} 页 · ` : ""}
+                        {clause.page !== null ? `第 ${clause.page} 页，` : ""}
                         {clause.heading}
                       </Button>
                     </li>
@@ -601,7 +601,7 @@ export function DocumentStage({
                   <li key={member.id}>
                     <strong>{member.name}</strong>
                     <span>{actorRoleLabel(member.role)}</span>
-                    <small>{member.responsibilities.join(" · ")}</small>
+                    <small>{member.responsibilities.join("，")}</small>
                   </li>
                 ))}
               </ul>
@@ -630,7 +630,7 @@ export function DocumentStage({
                         {relation.title}
                       </Link>
                       <small>
-                        {relation.id} · {formatDateTime(relation.createdAt)}
+                        {relation.id}，{formatDateTime(relation.createdAt)}
                       </small>
                       <p>{relation.reason}</p>
                     </div>
@@ -664,7 +664,7 @@ export function DocumentStage({
                       options={[
                         { label: "选择案件", value: "" },
                         ...caseContext.availableCases.map((item) => ({
-                          label: `${item.title} · ${item.id}`,
+                          label: `${item.title}，${item.id}`,
                           value: item.id,
                         })),
                       ]}

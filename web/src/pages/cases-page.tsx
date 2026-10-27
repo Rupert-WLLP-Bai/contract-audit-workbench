@@ -7,6 +7,7 @@ import { useCases, useCreateCase, useSession } from "../api/queries";
 import { CasesTable } from "../components/cases-table";
 import { PageStatus } from "../components/page-status";
 import {
+  businessStatusLabel,
   filterCases,
   parseRunFilter,
   validateCaseTitle,
@@ -196,7 +197,7 @@ export function CasesPage() {
   }
 
   return (
-    <section className="page">
+    <section className="page cases-page">
       <header className="page-head">
         <div>
           <h1>案件</h1>
@@ -239,7 +240,7 @@ export function CasesPage() {
               { value: "all", label: "全部业务状态" },
               ...businessStatuses.map((status) => ({
                 value: String(status),
-                label: String(status ?? ""),
+                label: businessStatusLabel(status),
               })),
             ]}
           />

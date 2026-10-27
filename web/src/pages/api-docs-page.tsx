@@ -31,6 +31,7 @@ import {
   type ApiRequestBodyField,
 } from "../api/openapi-request";
 import { useSession } from "../api/queries";
+import { CircuitMark } from "../components/circuit-mark";
 import "./api-docs.css";
 
 type DocumentationSection =
@@ -63,7 +64,7 @@ const SECTIONS: { key: DocumentationSection; label: string }[] = [
 
 function methodTone(method: string): string {
   const tones: Record<string, string> = {
-    GET: "success",
+    GET: "processing",
     POST: "processing",
     PUT: "warning",
     PATCH: "warning",
@@ -173,8 +174,8 @@ function ParameterField({
         {parameter.name}
         <small>
           {parameter.location}
-          {parameter.required ? " · 必填" : " · 可选"}
-          {schemaType === "string" ? "" : ` · ${schemaType}`}
+          {parameter.required ? "，必填" : "，可选"}
+          {schemaType === "string" ? "" : `，${schemaType}`}
         </small>
       </span>
       {parameter.description ? (
@@ -287,11 +288,11 @@ function OperationReference({
       {operation.requestBody ? (
         <section className="api-contract-section">
           <h2>
-            请求体{operation.requestBody.required ? " · 必填" : " · 可选"}
+            请求体{operation.requestBody.required ? "，必填" : "，可选"}
           </h2>
           <p>
             {operation.requestBody.description || "OpenAPI 未提供请求体说明。"}{" "}
-            · {operation.requestBody.mediaType ?? "媒体类型未声明"}
+          ，{operation.requestBody.mediaType ?? "媒体类型未声明"}
           </p>
           {bodyFields.length > 0 ? (
             <div className="api-parameter-table-wrap">
@@ -541,6 +542,7 @@ function ApiExplorer({
         </label>
         <Menu
           mode="inline"
+          inlineIndent={12}
           selectedKeys={operation ? [operation.key] : []}
           onClick={({ key }) => {
             const selectedOperation = contract.operations.find(
@@ -555,9 +557,9 @@ function ApiExplorer({
             children: group.operations.map((entry) => ({
               key: entry.key,
               label: (
-                <span title={entry.path}>
+                <span className="api-operation-menu-label" title={entry.path}>
                   <Tag color={methodTone(entry.method)}>{entry.method}</Tag>
-                  {entry.summary || entry.operationId}
+                  <span>{entry.summary || entry.operationId}</span>
                 </span>
               ),
             })),
@@ -576,15 +578,11 @@ function ApiExplorer({
           <aside className="api-request-panel" aria-label="真实请求调试区">
             <header className="api-request-head">
               <div>
-                <p>同源请求</p>
                 <h2>试运行</h2>
               </div>
               <Tag color={methodTone(operation.method)}>{operation.method}</Tag>
             </header>
             <p className="api-request-route">{operation.path}</p>
-            <p className="api-request-auth">
-              使用当前登录会话。服务端按每次请求执行身份和案件权限检查。
-            </p>
             <section className="api-code-section">
               <header>
                 <div>
@@ -592,6 +590,9 @@ function ApiExplorer({
                   <p>示例随右侧真实请求参数更新，使用当前浏览器会话。</p>
                 </div>
               </header>
+              <p className="api-request-auth">
+                使用当前登录会话。服务端按每次请求执行身份和案件权限检查。
+              </p>
               {code ? (
                 <pre>
                   <code>{code}</code>
@@ -602,12 +603,12 @@ function ApiExplorer({
                 </p>
               )}
             </section>
-            {hasCookieParameter ? (
-              <p className="api-request-auth">
-                Cookie 参数由浏览器会话管理。此处不会收集或覆盖身份 Cookie。
-              </p>
-            ) : null}
             <form onSubmit={(event) => void submitRequest(event)}>
+              {hasCookieParameter ? (
+                <p className="api-request-auth">
+                  Cookie 参数由浏览器会话管理。此处不会收集或覆盖身份 Cookie。
+                </p>
+              ) : null}
               {operation.parameters.filter(
                 (parameter) => parameter.location !== "cookie",
               ).length > 0 ? (
@@ -636,7 +637,7 @@ function ApiExplorer({
                 <section className="api-request-body" aria-label="请求体编辑器">
                   <div className="api-request-body-heading">
                     <h3>
-                      请求体{requestBody.required ? " · 必填" : " · 可选"}
+                      请求体{requestBody.required ? "，必填" : "，可选"}
                     </h3>
                     <span>{requestBody.mediaType ?? "媒体类型未声明"}</span>
                   </div>
@@ -653,10 +654,10 @@ function ApiExplorer({
                               {field.required ? "必填" : "可选"}
                               {field.file
                                 ? field.multiple
-                                  ? " · 多个原件"
-                                  : " · 原件文件"
+                                  ? "，多个原件"
+                                  : "，原件文件"
                                 : typeof field.schema.type === "string"
-                                  ? ` · ${field.schema.type}`
+                                  ? `，${field.schema.type}`
                                   : ""}
                             </small>
                           </span>
@@ -872,7 +873,6 @@ function SectionContent({
   if (section === "auth")
     return (
       <section className="api-section-page">
-        <p className="api-section-eyebrow">API 平台 / 鉴权</p>
         <h1>身份与权限</h1>
         <p>
           API Explorer
@@ -902,7 +902,6 @@ function SectionContent({
   if (section === "sdk")
     return (
       <section className="api-section-page">
-        <p className="api-section-eyebrow">API 平台 / SDK</p>
         <h1>SDK 资源</h1>
         <p>
           当前 OpenAPI 契约没有声明已发布的 SDK
@@ -923,7 +922,6 @@ function SectionContent({
   if (section === "changelog")
     return (
       <section className="api-section-page">
-        <p className="api-section-eyebrow">API 平台 / 更新日志</p>
         <h1>接口版本</h1>
         <dl>
           <div>
@@ -948,7 +946,6 @@ function SectionContent({
   if (section === "community")
     return (
       <section className="api-section-page">
-        <p className="api-section-eyebrow">API 平台 / 开发者社区</p>
         <h1>开发者支持</h1>
         <p>当前没有配置可验证的公开开发者社区、论坛或发帖入口。</p>
         <p>请以服务端 OpenAPI 契约和授权后的真实响应为准。</p>
@@ -956,9 +953,6 @@ function SectionContent({
     );
   return (
     <section className="api-section-page api-docs-home">
-      <p className="api-section-eyebrow">
-        开发者资源 / OpenAPI {contract.openapi}
-      </p>
       <h1>{contract.title}</h1>
       <p>{contract.description || "服务端 OpenAPI 契约未提供总览说明。"}</p>
       <div className="api-docs-home-grid">
@@ -1024,7 +1018,7 @@ export default function ApiDocsPage() {
           aria-label="返回合同审查工作台"
         >
           <span className="api-brand-mark" aria-hidden="true">
-            CA
+            <CircuitMark size={20} />
           </span>
           <strong>合同智能审计工作台</strong>
           <span className="api-docs-platform-badge">API 开放平台</span>
@@ -1039,7 +1033,7 @@ export default function ApiDocsPage() {
         />
         <div className="api-docs-session">
           {session.data
-            ? `${session.data.display_name} · ${session.data.role}`
+            ? `${session.data.display_name}，${session.data.role}`
             : "当前会话"}
         </div>
       </header>

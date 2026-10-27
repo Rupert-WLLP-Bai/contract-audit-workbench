@@ -365,7 +365,7 @@ describe("HomePage snapshot consumers", () => {
     expect(within(rows[0]!).getByText("未设置")).toBeInTheDocument();
     expect(within(rows[1]!).getByText("尚未审查")).toBeInTheDocument();
     expect(
-      within(rows[1]!).getByText("ENT · telecom_dedicated_line"),
+      within(rows[1]!).getByText("ENT，telecom_dedicated_line"),
     ).toBeInTheDocument();
     expect(
       screen.getByRole("link", { name: /补充验收标准.*责任人 missing-member/ }),
@@ -374,7 +374,7 @@ describe("HomePage snapshot consumers", () => {
       screen.getByRole("region", { name: "最近业务记录" }),
     ).getAllByRole("listitem");
     expect(audit[0]).toHaveTextContent(
-      "平台级事件更新了平台规则陈复核 · policy.updated",
+      "平台级事件更新了平台规则陈复核，policy.updated",
     );
     expect(
       within(audit[1]!).getByRole("link", { name: "case/old" }),
@@ -467,7 +467,7 @@ describe("HomePage snapshot consumers", () => {
         }),
       ).toHaveTextContent(visible === 0 ? "0案件" : "—状态未报");
       expect(
-        within(screen.getByRole("region", { name: "案件风险分布" })).getByText(
+        within(screen.getByRole("region", { name: "审查发现分布" })).getByText(
           "快照没有返回此项统计。",
         ),
       ).toBeInTheDocument();
@@ -535,7 +535,7 @@ describe("HomePage persistent task workflow", () => {
         .map((item) => within(item).getByRole("link").textContent),
     ).toEqual(["其他人的审查", "确认质保条款", "补充附件"]);
     expect(
-      panel.getByText("专线采购合同 · 陈复核 · decision"),
+      panel.getByText("专线采购合同，陈复核，人工决定"),
     ).toBeInTheDocument();
     expect(panel.getByText("中优先级")).toBeInTheDocument();
     await user.click(panel.getByRole("tab", { name: /^已完成/ }));
@@ -580,7 +580,7 @@ describe("HomePage persistent task workflow", () => {
       await chooseOption(
         user,
         screen.getByRole("combobox", { name: "责任人" }),
-        "周审查· reviewer",
+        "周审查，reviewer",
       );
       if (due)
         fireEvent.change(screen.getByLabelText("截止日期"), {
@@ -639,7 +639,7 @@ describe("HomePage persistent task workflow", () => {
     await chooseOption(
       user,
       screen.getByRole("combobox", { name: "责任人" }),
-      "周审查· reviewer",
+      "周审查，reviewer",
     );
     await user.type(
       screen.getByRole("textbox", { name: "任务名称" }),
@@ -771,13 +771,13 @@ describe("HomePage persistent task workflow", () => {
       "/cases/unlisted-case",
     );
     expect(
-      screen.getAllByText("unlisted-case · unlisted-member · decision"),
+      screen.getAllByText("unlisted-case，unlisted-member，人工决定"),
     ).toHaveLength(8);
     expect(
       screen.queryByRole("link", { name: "协作事项 8" }),
     ).not.toBeInTheDocument();
     expect(
-      screen.getByRole("link", { name: "查看全部任务 →" }),
+      screen.getByRole("link", { name: "查看全部任务" }),
     ).toHaveAttribute("href", "/workbench/tasks");
     await user.click(within(taskPanel()).getByRole("tab", { name: /^已完成/ }));
     expect(within(taskPanel()).getByRole("status")).toHaveTextContent(

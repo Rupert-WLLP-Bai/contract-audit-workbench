@@ -261,7 +261,7 @@ function FactEditor({
               { label: "选择规则", value: "" },
               ...rules.map((rule, ruleIndex) => ({
                 value: rule.rule_id,
-                label: `${rule.rule_id || `未命名规则 ${ruleIndex + 1}`} · ${rule.capability_id || "未填写能力"}`,
+                label: `${rule.rule_id || `未命名规则 ${ruleIndex + 1}`}，${rule.capability_id || "未填写能力"}`,
               })),
             ]}
           />
@@ -477,7 +477,7 @@ function FactEditor({
                 key={`${citation.source_id}:${citation.start}:${citationIndex}`}
               >
                 <strong>
-                  {citation.source_id} v{citation.source_version} · 码点 [
+                  {citation.source_id} v{citation.source_version}，码点 [
                   {citation.start},{citation.end})
                 </strong>
                 <blockquote>{citation.quote}</blockquote>
@@ -938,8 +938,8 @@ export function RulePackTestPanel({
         >
           <h3 id="rulepack-test-result-title">测试结果</h3>
           <p role="status">
-            规则包 {test.data.report.pack_id} v{test.data.report.pack_version} ·
-            测试修订 {test.data.revision} · 内容摘要{" "}
+            规则包 {test.data.report.pack_id} v{test.data.report.pack_version}，
+            测试修订 {test.data.revision}，内容摘要{" "}
             <code className="digest">{test.data.content_hash}</code>
           </p>
           <p>
@@ -956,15 +956,15 @@ export function RulePackTestPanel({
                 <li key={`${result.rule_id}:${result.rule_version}:${index}`}>
                   <div className="workflow-panel-head">
                     <strong>
-                      {result.domain} · {result.capability_id}
+                      {result.domain}，{result.capability_id}
                     </strong>
                     <StatusText tone={RELATION_TONES[result.relation]}>
                       {RELATION_LABELS[result.relation]}
                     </StatusText>
                   </div>
                   <p>
-                    规则 {result.rule_id} v{result.rule_version} ·{" "}
-                    {result.mandatory ? "必检" : "非必检"} · 原因代码{" "}
+                    规则 {result.rule_id} v{result.rule_version}，
+                    {result.mandatory ? "必检" : "非必检"}，原因代码{" "}
                     <code>{result.reason_code}</code>
                   </p>
                   {result.fact_ids?.length ? (
@@ -977,11 +977,11 @@ export function RulePackTestPanel({
                       key={`${citation.source_id}:${citation.source_digest}:${citation.start}:${citation.end}:${citationIndex}`}
                     >
                       <blockquote>
-                        {citation.source_id} v{citation.source_version} · 码点 [
-                        {citation.start},{citation.end}) · {citation.quote}
+                        {citation.source_id} v{citation.source_version}，码点 [
+                        {citation.start},{citation.end})，{citation.quote}
                       </blockquote>
                       <figcaption>
-                        租户 {citation.tenant_id} · 案件 {citation.case_id} ·
+                        租户 {citation.tenant_id}，案件 {citation.case_id}，
                         来源 SHA-256 <code>{citation.source_digest}</code>
                       </figcaption>
                     </figure>

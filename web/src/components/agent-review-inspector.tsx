@@ -235,7 +235,7 @@ export function AgentReviewInspector({
         <div>
           <h3 id="agent-review-title">五域检查与计划</h3>
           <p className="meta">
-            当前 attempt {agentReview.attempt_id} · schema{" "}
+            当前 attempt {agentReview.attempt_id}，schema{" "}
             {agentReview.schema_version}
           </p>
         </div>
@@ -291,9 +291,9 @@ export function AgentReviewInspector({
           <div>
             <dt>计划限制</dt>
             <dd>
-              {agentReview.planner.limits.max_rounds} 轮 ·{" "}
-              {agentReview.planner.limits.max_calls} 次调用 ·{" "}
-              {agentReview.planner.limits.max_duration_ms} ms ·{" "}
+              {agentReview.planner.limits.max_rounds} 轮，
+              {agentReview.planner.limits.max_calls} 次调用，
+              {agentReview.planner.limits.max_duration_ms} ms，
               {agentReview.planner.limits.max_evidence_bytes.toLocaleString(
                 "zh-CN",
               )}{" "}
@@ -303,9 +303,9 @@ export function AgentReviewInspector({
         </dl>
         {agentReview.source_snapshot ? (
           <p className="meta">
-            冻结材料 {showIds(agentReview.source_snapshot.document_ids)} ·
+            冻结材料 {showIds(agentReview.source_snapshot.document_ids)}，
             解析版本 {showIds(agentReview.source_snapshot.parsed_document_ids)}{" "}
-            · 解析选择摘要{" "}
+          ，解析选择摘要{" "}
             <code>{agentReview.source_snapshot.parse_selection_hash}</code>
           </p>
         ) : (
@@ -316,7 +316,7 @@ export function AgentReviewInspector({
         {agentReview.rulepack ? (
           <p className="meta">
             冻结规则包 {agentReview.rulepack.id} v{agentReview.rulepack.version}{" "}
-            · SHA-256 <code>{agentReview.rulepack.content_sha256}</code>
+          ，SHA-256 <code>{agentReview.rulepack.content_sha256}</code>
           </p>
         ) : (
           <p className="meta">本次五域投影没有规则包身份。</p>
@@ -378,11 +378,11 @@ export function AgentReviewInspector({
                             {capabilityExpression(capability.capability_id)}
                           </p>
                           <p>
-                            状态：{capability.status} · 原因：
+                            状态：{capability.status}，原因：
                             {capability.reason_code || "未提供"}
                           </p>
                           <p>
-                            证据 ID：{showIds(capability.evidence_ids)} ·
+                            证据 ID：{showIds(capability.evidence_ids)}，
                             专线检查 ID：
                             {showIds(capability.canonical_evaluation_ids)}
                           </p>
@@ -398,7 +398,7 @@ export function AgentReviewInspector({
                                 if (!evidence)
                                   return (
                                     <li key={evidenceId}>
-                                      <code>{evidenceId}</code> ·
+                                      <code>{evidenceId}</code>，
                                       来源引用详情未报告
                                     </li>
                                   );
@@ -407,14 +407,14 @@ export function AgentReviewInspector({
                                   <li key={evidenceId}>
                                     <p>
                                       <strong>来源事实：</strong>
-                                      <code>{evidenceId}</code> ·{" "}
-                                      {evidence.semantic_type} ·{" "}
+                                      <code>{evidenceId}</code>，
+                                      {evidence.semantic_type}，
                                       {evidence.verification}
                                     </p>
                                     {anchor.status === "located" ? (
                                       <>
                                         <p>
-                                          材料 {anchor.document_id} ·
+                                          材料 {anchor.document_id}，
                                           码点半开区间 [{anchor.start},
                                           {anchor.end})
                                         </p>
@@ -476,7 +476,7 @@ export function AgentReviewInspector({
                 <li key={gap.gap_id}>
                   <header>
                     <strong>
-                      {DOMAIN_LABELS[gap.domain]} · {gap.capability_id}
+                      {DOMAIN_LABELS[gap.domain]}，{gap.capability_id}
                     </strong>
                     <StatusText tone={isUnresolved ? "attention" : "neutral"}>
                       {unsupported
@@ -487,7 +487,7 @@ export function AgentReviewInspector({
                     </StatusText>
                   </header>
                   <p>
-                    缺口 {gap.gap_id} · 状态 {gap.status} · 原因{" "}
+                    缺口 {gap.gap_id}，状态 {gap.status}，原因{" "}
                     {gap.reason_code}
                   </p>
                   <p>关联证据 ID：{showIds(gap.evidence_ids)}</p>
@@ -505,7 +505,7 @@ export function AgentReviewInspector({
             {unreportedGapIds.map((gapId) => (
               <li key={gapId}>
                 <header>
-                  <strong>未报告缺口详情 · {gapId}</strong>
+                  <strong>未报告缺口详情，{gapId}</strong>
                   <StatusText tone="attention">未解决</StatusText>
                 </header>
                 <p>
@@ -540,7 +540,7 @@ export function AgentReviewInspector({
             {agentReview.plan.status}
           </StatusText>
           {agentReview.plan.rejection_code
-            ? ` · 拒绝原因 ${agentReview.plan.rejection_code}`
+            ? `，拒绝原因 ${agentReview.plan.rejection_code}`
             : ""}
         </p>
         {agentReview.plan.calls.length === 0 ? (
@@ -558,12 +558,12 @@ export function AgentReviewInspector({
                   </StatusText>
                 </header>
                 <p>
-                  {DOMAIN_LABELS[call.domain]} · {call.capability_id} · 缺口{" "}
+                  {DOMAIN_LABELS[call.domain]}，{call.capability_id}，缺口{" "}
                   {call.gap_id}
                 </p>
                 <p>
-                  守卫/工具状态 {call.status} · 原因{" "}
-                  {call.reason_code ?? "无已报告原因"} · 证据 ID{" "}
+                  守卫/工具状态 {call.status}，原因{" "}
+                  {call.reason_code ?? "无已报告原因"}，证据 ID{" "}
                   {showIds(call.evidence_ids)}
                 </p>
               </li>
@@ -576,7 +576,7 @@ export function AgentReviewInspector({
               <li key={round.round}>
                 <header>
                   <strong>
-                    第 {round.round} 轮 · {round.status}
+                    第 {round.round} 轮，{round.status}
                   </strong>
                   <StatusText
                     tone={
@@ -591,8 +591,8 @@ export function AgentReviewInspector({
                   </StatusText>
                 </header>
                 <p>
-                  目标缺口：{showIds(round.gap_ids)} · 新证据：
-                  {showIds(round.new_evidence_ids)} · 已解决缺口：
+                  目标缺口：{showIds(round.gap_ids)}，新证据：
+                  {showIds(round.new_evidence_ids)}，已解决缺口：
                   {showIds(round.resolved_gap_ids)}
                 </p>
                 {round.termination_code ? (
@@ -612,7 +612,7 @@ export function AgentReviewInspector({
                 (item) =>
                   `${item.sequence}:${eventRoundLabel(item.round)}:${item.kind}/${item.code}`,
               )
-              .join(" · ")}
+              .join("，")}
           </p>
         ) : (
           <p className="meta">没有持久规划事件。</p>
@@ -634,7 +634,7 @@ export function AgentReviewInspector({
                   <strong>
                     {item.semantic_type}: {item.value}
                     {item.unit ? ` ${item.unit}` : ""}
-                    {item.currency ? ` · ${item.currency}` : ""}
+                    {item.currency ? `，${item.currency}` : ""}
                   </strong>
                   <StatusText
                     tone={
@@ -645,18 +645,18 @@ export function AgentReviewInspector({
                   </StatusText>
                 </header>
                 <p>
-                  证据 {item.evidence_id} · {item.verification}
+                  证据 {item.evidence_id}，{item.verification}
                 </p>
                 <p>
-                  材料 {item.anchor.document_id} · 解析版本{" "}
-                  {item.anchor.parsed_document_id} · 规范化摘要{" "}
+                  材料 {item.anchor.document_id}，解析版本{" "}
+                  {item.anchor.parsed_document_id}，规范化摘要{" "}
                   <code>{item.anchor.normalized_digest}</code>
                 </p>
                 <p>
                   原文码点半开区间 [{item.anchor.start},{item.anchor.end})
-                  {item.anchor.page === null ? "" : ` · 页 ${item.anchor.page}`}
+                  {item.anchor.page === null ? "" : `，页 ${item.anchor.page}`}
                   {item.anchor.element_id
-                    ? ` · 元素 ${item.anchor.element_id}`
+                    ? `，元素 ${item.anchor.element_id}`
                     : ""}
                 </p>
                 <blockquote>{item.anchor.quote}</blockquote>

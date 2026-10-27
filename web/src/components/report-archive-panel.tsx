@@ -105,7 +105,7 @@ export function ReportArchivePanel({
         </div>
         {archived ? (
           <StatusText tone="neutral">
-            已归档 ·{" "}
+            已归档，
             {detail.archived_at
               ? formatDateTime(detail.archived_at)
               : "时间未报告"}
@@ -130,8 +130,8 @@ export function ReportArchivePanel({
       ) : null}
       {archive.data ? (
         <p role="status">
-          归档记录已追加：{archive.data.id} ·{" "}
-          {formatDateTime(archive.data.archived_at)} · 报告{" "}
+          归档记录已追加：{archive.data.id}，
+          {formatDateTime(archive.data.archived_at)}，报告{" "}
           {archive.data.report_id}。
         </p>
       ) : null}
@@ -221,8 +221,8 @@ export function ReportArchivePanel({
           ) : null}
           {createReport.data ? (
             <p role="status">
-              报告已创建：{createReport.data.id} · 版本{" "}
-              {createReport.data.version} · 摘要{" "}
+              报告已创建：{createReport.data.id}，版本{" "}
+              {createReport.data.version}，摘要{" "}
               <code className="digest">{createReport.data.digest}</code>
             </p>
           ) : null}
@@ -250,10 +250,10 @@ export function ReportArchivePanel({
                 <header className="workflow-panel-head">
                   <div>
                     <strong>
-                      报告 {report.id} · 版本 {report.version}
+                      报告 {report.id}，版本 {report.version}
                     </strong>
                     <p className="meta">
-                      运行 {report.run_id} · 尝试 {report.attempt_id} · 创建于{" "}
+                      运行 {report.run_id}，尝试 {report.attempt_id}，创建于{" "}
                       {formatDateTime(report.created_at)}
                     </p>
                   </div>
@@ -327,7 +327,7 @@ export function ReportArchivePanel({
               options={[
                 { label: "选择报告版本", value: "" },
                 ...detail.reports.map((report) => ({
-                  label: `版本 ${report.version} · ${report.id} · ${report.run_id} / ${report.attempt_id}`,
+                  label: `版本 ${report.version}，${report.id}，${report.run_id} / ${report.attempt_id}`,
                   value: report.id,
                 })),
               ]}
@@ -379,7 +379,7 @@ export function ReportArchivePanel({
               {detail.archived_at
                 ? formatDateTime(detail.archived_at)
                 : "未报告"}
-              ，但服务未返回归档记录。
+             ，但服务未返回归档记录。
             </p>
           ) : (
             <p>案件尚未归档。</p>

@@ -31,7 +31,7 @@ export function AuditProjection({ runId, events }: AuditProjectionProps) {
                               key: "content",
                               label: (
                                 <>
-                                  序号 {event.seq} · {event.event_type} ·{" "}
+                                  序号 {event.seq}，{event.event_type}，{" "}
                                   {event.actor}
                                 </>
                               ),

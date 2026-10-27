@@ -970,7 +970,7 @@ describe("application routes and API contract", () => {
     );
     expect(review.execution!.events[0]?.attempt_id).toBe(firstAttempt.id);
     await waitFor(() => expect(api.requests.some((entry) => entry.key === "GET /api/cases/c1/reviews/r1?attempt_id=attempt-r1-2")).toBe(true));
-    await chooseOption(user, screen.getByLabelText("查看尝试"), "第 2 次 · 待人工 · 最新");
+    await chooseOption(user, screen.getByLabelText("查看尝试"), /第 2 次，\s*待人工，\s*最新/);
     await user.click(await screen.findByRole("radio", { name: "证据不足" }));
     expect(screen.getByRole("radio", { name: "证据不足" })).toBeEnabled();
     await user.type(screen.getByLabelText("理由"), "仍需补充附件");
@@ -1223,7 +1223,7 @@ describe("application routes and API contract", () => {
     await chooseOption(
       user,
       screen.getByLabelText("查看尝试"),
-      "第 1 次 · 失败",
+      /第 1 次，\s*失败/,
     );
     expect(
       await screen.findByText(
@@ -1267,7 +1267,7 @@ describe("application routes and API contract", () => {
     const { user } = open(api, "/cases/c1/reviews/r1");
     await user.click(await screen.findByRole("button", { name: "修改稿对照" }));
     expect(
-      screen.getByText(/先前决定：接受残余风险 · 原审查员 · 待复核/),
+      screen.getByText(/先前决定：接受残余风险，\s*原审查员，\s*待复核/),
     ).toBeInTheDocument();
     expect(
       screen.getByRole("link", { name: "查看上一轮审查" }),
@@ -1282,7 +1282,7 @@ describe("application routes and API contract", () => {
     expect(screen.getByText("typed-constraint-v1")).toBeVisible();
     expect(
       screen.getByText(
-        /ENT-TECH-BW-001 · 1\.0\.0 · dedicated_line\.minimum_bandwidth/,
+        /ENT-TECH-BW-001，\s*1\.0\.0，\s*dedicated_line\.minimum_bandwidth/,
       ),
     ).toBeVisible();
     expect(screen.getByText(/业务对象：LINE-001/)).toBeVisible();

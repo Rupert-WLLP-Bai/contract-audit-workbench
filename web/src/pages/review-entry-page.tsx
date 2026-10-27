@@ -4,7 +4,7 @@ import { useWorkbench } from "../api/queries";
 import type { WorkbenchRun } from "../api/types";
 import { PageStatus } from "../components/page-status";
 import { StatusText } from "../components/status-text";
-import { formatDateTime } from "../domain/review";
+import { businessStatusLabel, formatDateTime, runLabel } from "../domain/review";
 import "./review-entry-page.css";
 
 function runTone(state: string): "good" | "attention" | "bad" | "neutral" {
@@ -62,7 +62,6 @@ export function ReviewEntryPage() {
     <section className="page review-entry-page">
       <header className="page-head">
         <div>
-          <p className="module-eyebrow">工作台 / 合同审查</p>
           <h1>合同审查</h1>
           <p>选择当前身份可见的案件，进入其持久审查运行或发起新的审查。</p>
         </div>
@@ -70,20 +69,27 @@ export function ReviewEntryPage() {
           案件列表
         </Button>
       </header>
-      <div className="review-entry-summary" aria-label="审查工作区摘要">
-        <div>
+      <ol className="review-entry-summary" aria-label="审查工作区摘要">
+        <li data-state={snapshot.cases.length > 0 ? "filled" : "empty"}>
+          <span className="review-entry-summary-mark" aria-hidden="true" />
           <span>可见案件</span>
           <strong>{snapshot.cases.length}</strong>
-        </div>
-        <div>
+        </li>
+        <li data-state={snapshot.runs.length > 0 ? "filled" : "empty"}>
+          <span className="review-entry-summary-mark" aria-hidden="true" />
           <span>本周运行</span>
           <strong>{snapshot.runs.length}</strong>
-        </div>
-        <div>
+        </li>
+        <li
+          data-state={
+            snapshot.dashboard.pending_review_cases > 0 ? "open" : "filled"
+          }
+        >
+          <span className="review-entry-summary-mark" aria-hidden="true" />
           <span>待人工处理</span>
           <strong>{snapshot.dashboard.pending_review_cases}</strong>
-        </div>
-      </div>
+        </li>
+      </ol>
       {snapshot.cases.length === 0 ? (
         <PageStatus
           kind="empty"
@@ -105,9 +111,9 @@ export function ReviewEntryPage() {
                   <p>{item.id}</p>
                   <h2>{item.title}</h2>
                   <span>
-                    {item.business_status ??
-                      item.business_line ??
-                      "业务状态未报告"}
+                    {item.business_status
+                      ? businessStatusLabel(item.business_status)
+                      : (item.business_line ?? "业务状态未报告")}
                   </span>
                 </div>
                 <div className="review-entry-run">
@@ -117,13 +123,13 @@ export function ReviewEntryPage() {
                         最近运行 <strong>{latest.id}</strong>
                       </span>
                       <StatusText tone={runTone(latest.state)}>
-                        {latest.state}
+                        {runLabel(latest.state)}
                       </StatusText>
                       <time dateTime={latest.updated_at}>
                         {formatDateTime(latest.updated_at)}
                       </time>
                       <span>
-                        尝试 {latest.attempt_id ?? "未报告"} · 本周{" "}
+                        尝试 {latest.attempt_id ?? "未报告"}，本周{" "}
                         {runs.length} 次运行
                       </span>
                     </>

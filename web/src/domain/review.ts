@@ -100,6 +100,8 @@ const ROLE_NAME: Record<string, string> = {
 
 const MODEL_STATUS: Record<string, string> = {
   connected: "已连通",
+  configured: "已配置",
+  unconfigured: "未配置",
   disabled: "未启用",
   unreachable: "不可达",
   unknown: "未知",
@@ -108,8 +110,26 @@ const MODEL_STATUS: Record<string, string> = {
 const CONTRACT_LABELS: Record<string, string> = {
   procurement_ict: "采购 / ICT",
   network_engineering: "网络工程",
+  framework: "框架协议",
   service: "服务合同",
   unspecified: "未分类",
+};
+
+const BUSINESS_STATUS_LABELS: Record<string, string> = {
+  active: "进行中",
+  draft: "草稿",
+  pending: "待处理",
+  suspended: "已暂停",
+  closed: "已关闭",
+  archived: "已归档",
+};
+
+const TASK_KIND_LABELS: Record<string, string> = {
+  decision: "人工决定",
+  review: "审查复核",
+  remediation: "整改",
+  report: "报告",
+  general: "一般任务",
 };
 
 export function labelOf(
@@ -174,6 +194,16 @@ export function modelStatusLabel(status: string): string {
 
 export function contractTypeLabel(value: string): string {
   return labelOf(CONTRACT_LABELS, value, "合同类型");
+}
+
+export function businessStatusLabel(value: string): string {
+  if (value === "") return "业务状态未提供";
+  return BUSINESS_STATUS_LABELS[value] ?? value;
+}
+
+export function taskKindLabel(value: string): string {
+  if (value === "") return "任务";
+  return TASK_KIND_LABELS[value] ?? "任务";
 }
 
 export function decisionLabel(action: string): string {

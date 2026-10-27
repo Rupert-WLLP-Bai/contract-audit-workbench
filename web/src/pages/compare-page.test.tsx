@@ -551,11 +551,11 @@ describe("ComparePage frozen run selection", () => {
     expect(screen.getByText("质保修订继续存在")).toBeInTheDocument();
     expect(
       screen.getByText(
-        "旧发现 prior-finding · 新发现 finding-rule · 旧决定 confirm_risk",
+        /旧发现 prior-finding，\s*新发现 finding-rule，\s*旧决定 confirm_risk/,
       ),
     ).toBeInTheDocument();
     expect(
-      screen.getByText("旧发现 未报告 · 新发现 未报告 · 旧决定 未报告"),
+      screen.getByText(/旧发现 未报告，\s*新发现 未报告，\s*旧决定 未报告/),
     ).toBeInTheDocument();
   });
 
@@ -715,14 +715,14 @@ describe("ComparePage evidence and actual results", () => {
       within(body).getByText("36个月", { selector: "mark" }),
     ).toBeInTheDocument();
     expect(material("历史版本").querySelector("mark")).toBeNull();
-    expect(screen.getByText("warranty-policy v2 · 第4条")).toBeInTheDocument();
+    expect(screen.getByText(/warranty-policy v2，\s*第4条/)).toBeInTheDocument();
     expect(
       screen.getByRole("link", { name: "打开原文与人工决定" }),
     ).toHaveAttribute(
       "href",
       "/cases/case-main/reviews/run-z?finding=finding-rule",
     );
-    await user.click(within(pane).getByText("版本与来源 · ready"));
+    await user.click(within(pane).getByText(/版本与来源，\s*已解析/));
     expect(within(pane).getByText("parse-source-z")).toBeVisible();
     expect(within(pane).getByText("digest-source-z")).toBeVisible();
     expect(
@@ -877,17 +877,17 @@ describe("ComparePage evidence and actual results", () => {
       "aria-selected",
       "true",
     );
-    expect(screen.getByText("规则 WARRANTY-001 · v2.1")).toBeInTheDocument();
+    expect(screen.getByText(/规则 WARRANTY-001，\s*v2\.1/)).toBeInTheDocument();
     expect(screen.getByText("合同质保低于采购要求")).toBeInTheDocument();
     expect(screen.getByText("此运行未返回规则评估记录。")).toBeInTheDocument();
     expect(screen.queryByText("质保修订继续存在")).not.toBeInTheDocument();
     await user.click(screen.getByRole("tab", { name: "执行记录" }));
     expect(
-      screen.getByText("运行 run-z · 当前尝试 attempt-z-2 · completed"),
+      screen.getByText(/运行 run-z，\s*当前尝试 attempt-z-2，\s*completed/),
     ).toBeInTheDocument();
-    expect(screen.getByText("尝试数 2 · 事件数 1")).toBeInTheDocument();
+    expect(screen.getByText(/尝试数 2，\s*事件数 1/)).toBeInTheDocument();
     expect(
-      screen.getByText("attempt-z-1 · 第 1 次 · failed · 结束时间未报告"),
+      screen.getByText(/attempt-z-1，\s*第 1 次，\s*failed，\s*结束时间未报告/),
     ).toBeInTheDocument();
     expect(screen.getByText("此运行没有返回执行记录。")).toBeInTheDocument();
     await user.click(screen.getByRole("tab", { name: "模型用量" }));

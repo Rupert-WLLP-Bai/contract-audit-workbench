@@ -8,12 +8,10 @@ import {
   Empty,
   Input,
   Select,
-  Statistic,
   Table,
   Tabs,
   Tag,
   Tree,
-  theme,
   type TableColumnsType,
 } from "antd";
 import {
@@ -165,7 +163,7 @@ function ProductionArchitecture({
                 : "default"
           }
         >
-          {item.verification} · {VERIFICATION[item.verification]}
+          {item.verification}，{VERIFICATION[item.verification]}
         </Tag>
       ),
     },
@@ -216,7 +214,7 @@ function ProductionArchitecture({
               {
                 key: "verification",
                 label: "验收结果",
-                children: `${selected.verification} · ${VERIFICATION[selected.verification]}`,
+                children: `${selected.verification}，${VERIFICATION[selected.verification]}`,
               },
               {
                 key: "services",
@@ -237,7 +235,7 @@ function ProductionArchitecture({
                           {service.name}
                         </Button>
                       ) : (
-                        <Tag key={id}>{id} · 无观测</Tag>
+                        <Tag key={id}>{id}，无观测</Tag>
                       );
                     })
                   : "需要 Kubernetes / Operator 等独立观测源",
@@ -270,7 +268,6 @@ export function SystemHealthPage({
 }: {
   audience?: SessionAudience;
 }) {
-  const { token } = theme.useToken();
   const query = useSystemHealth(audience);
   const [tab, setTab] = useState<string>(
     audience === "admin" ? "生产架构" : TABS[0],
@@ -326,17 +323,17 @@ export function SystemHealthPage({
   const groups = tab === "生产架构" ? ARCHITECTURE_GROUPS : GROUPS;
   const selected = data.services.find((item) => item.id === selectedId);
   const pageStyle: CSSProperties & Record<`--health-${string}`, string> = {
-    background: token.colorBgLayout,
-    color: token.colorText,
-    "--health-bg": token.colorBgContainer,
-    "--health-muted": token.colorTextSecondary,
-    "--health-line": token.colorBorderSecondary,
-    "--health-primary": token.colorPrimary,
-    "--health-success": token.colorSuccess,
-    "--health-success-bg": token.colorSuccessBg,
-    "--health-error": token.colorError,
-    "--health-error-bg": token.colorErrorBg,
-    "--health-radius": `${token.borderRadiusLG}px`,
+    background: "var(--surface-page)",
+    color: "var(--text-primary)",
+    "--health-bg": "var(--surface-raised)",
+    "--health-muted": "var(--text-secondary)",
+    "--health-line": "var(--border-default)",
+    "--health-primary": "var(--action-primary)",
+    "--health-success": "var(--state-compatible)",
+    "--health-success-bg": "var(--state-compatible-bg)",
+    "--health-error": "var(--state-conflict)",
+    "--health-error-bg": "var(--state-conflict-bg)",
+    "--health-radius": "var(--panel-radius)",
   };
   const columns: TableColumnsType<HealthService> = [
     {
@@ -403,7 +400,6 @@ export function SystemHealthPage({
     <section className="page health-page" style={pageStyle}>
       <header className="page-head">
         <div>
-          <p className="health-eyebrow">运行与维护 / 当前部署</p>
           <h1>{audience === "admin" ? "基础设施与中间件" : "系统健康"}</h1>
           <p>服务、中间件与容器的实际运行状态。每 30 秒自动刷新。</p>
         </div>
@@ -439,32 +435,48 @@ export function SystemHealthPage({
           description="无法确认当前部署状态，请检查健康采集器。"
         />
       ) : null}
-      <div className="health-summary" aria-label="系统健康统计">
+      <ol className="health-summary" aria-label="系统健康统计">
         {[
-          { title: "服务与集成", value: data.services.length },
+          {
+            title: "服务与集成",
+            value: data.services.length,
+            state: data.services.length > 0 ? "filled" : "empty",
+          },
           {
             title: "实际容器",
             value: data.services.filter((item) => item.container !== null)
               .length,
+            state: data.services.some((item) => item.container !== null)
+              ? "filled"
+              : "empty",
           },
           {
             title: "已确认正常",
             value: data.services.filter((item) => item.status === "ready")
               .length,
+            state: data.services.some((item) => item.status === "ready")
+              ? "filled"
+              : "open",
           },
-          { title: "需关注", value: attentionIds.size },
+          {
+            title: "需关注",
+            value: attentionIds.size,
+            state: attentionIds.size > 0 ? "open" : "filled",
+          },
           {
             title: "未启用",
             value: data.services.filter(
               (item) => item.status === "unconfigured",
             ).length,
+            state: "empty",
           },
         ].map((item) => (
-          <Card key={item.title} size="small">
-            <Statistic title={item.title} value={item.value} />
-          </Card>
+          <li key={item.title} data-state={item.state}>
+            <span className="health-summary-label">{item.title}</span>
+            <strong>{item.value}</strong>
+          </li>
         ))}
-      </div>
+      </ol>
       {data.cluster ? (
         <Card
           role="group"
@@ -497,7 +509,7 @@ export function SystemHealthPage({
           />
         </Card>
       ) : null}
-      <Card className="health-workspace" styles={{ body: { paddingTop: 0 } }}>
+      <section className="health-workspace">
         <Tabs
           activeKey={tab}
           onChange={(key) => {
@@ -508,7 +520,7 @@ export function SystemHealthPage({
         />
         <div className="health-toolbar">
           <span className="health-note">
-            {tab === "生产架构" ? architecture.length : visible.length} 项 ·{" "}
+            {tab === "生产架构" ? architecture.length : visible.length} 项，{" "}
             {data.mode === "kubernetes"
               ? "Kubernetes 部署"
               : data.mode === "distributed"
@@ -592,15 +604,6 @@ export function SystemHealthPage({
                       key={item.id}
                       title={item.name}
                       extra={<HealthTag status={item.status} />}
-                      styles={{
-                        header: { flexWrap: "wrap", gap: token.marginXS },
-                        body: {
-                          display: "flex",
-                          flexDirection: "column",
-                          gap: token.marginSM,
-                          height: "100%",
-                        },
-                      }}
                     >
                       <code className="health-target">
                         {item.target || "未配置连接地址"}
@@ -629,7 +632,7 @@ export function SystemHealthPage({
             ) : null;
           })
         )}
-      </Card>
+      </section>
       <Drawer
         title={selected?.name ?? "服务详情"}
         open={selected !== undefined}

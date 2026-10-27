@@ -122,6 +122,32 @@ type ModuleRecord = {
   task: WorkbenchTask | null;
 };
 
+const STATUS_LABELS: Record<string, string> = {
+  open: "待处理",
+  in_progress: "处理中",
+  completed: "已完成",
+  cancelled: "已取消",
+  accepted: "已受理",
+  queued: "排队中",
+  started: "已启动",
+  running: "运行中",
+  awaiting_human: "待人工",
+  partial: "部分完成",
+  failed: "失败",
+  interrupted: "已中断",
+  ready: "已解析",
+  parsing: "解析中",
+  pending: "待解析",
+  ok: "正常",
+  error: "异常",
+  degraded: "降级",
+  unavailable: "不可用",
+};
+
+function statusLabel(status: string) {
+  return STATUS_LABELS[status] ?? status;
+}
+
 function field(label: string, value: string | number | null): DetailField {
   return {
     label,
@@ -204,8 +230,8 @@ function buildRecords(
                 .slice(0, 8)
                 .map((item) =>
                   field(
-                    `${item.actor_name} · ${item.action}`,
-                    `${formatDateTime(item.at)} · ${item.summary}`,
+                    `${item.actor_name}，${item.action}`,
+                    `${formatDateTime(item.at)}，${item.summary}`,
                   ),
                 ),
             )
@@ -215,7 +241,7 @@ function buildRecords(
               documents.map((item) =>
                 field(
                   item.filename,
-                  `${item.role} · ${item.parse_status} · ${item.id}`,
+                  `${item.role}，${item.parse_status}，${item.id}`,
                 ),
               ),
               null,
@@ -276,7 +302,7 @@ function buildRecords(
               documents.map((document) =>
                 field(
                   document.filename,
-                  `${document.role} · ${document.parse_status} · ${document.digest}`,
+                  `${document.role}，${document.parse_status}，${document.digest}`,
                 ),
               ),
               null,
@@ -312,8 +338,8 @@ function buildRecords(
                 .slice(0, 8)
                 .map((entry) =>
                   field(
-                    `${entry.actor_name} · ${entry.action}`,
-                    `${formatDateTime(entry.at)} · ${entry.summary}`,
+                    `${entry.actor_name}，${entry.action}`,
+                    `${formatDateTime(entry.at)}，${entry.summary}`,
                   ),
                 ),
             )
@@ -379,7 +405,7 @@ function buildRecords(
       };
       return make({
         id: item.id,
-        title: `${item.case_title} · 审查报告 v${item.version}`,
+        title: `${item.case_title}，审查报告 v${item.version}`,
         subtitle: item.case_id,
         status: "已冻结",
         updatedAt: item.created_at,
@@ -591,7 +617,7 @@ function buildRecords(
       return make({
         id: item.id,
         title: item.title,
-        subtitle: `${item.source_type} · ${item.version}`,
+        subtitle: `${item.source_type}，${item.version}`,
         status: item.source_type,
         updatedAt: item.created_at,
         caseId: null,
@@ -637,8 +663,8 @@ function buildRecords(
           ? panel(
               memberEvents.map((entry) =>
                 field(
-                  `${entry.action} · ${formatDateTime(entry.at)}`,
-                  `${entry.case_title ?? "平台级事件"} · ${entry.summary}`,
+                  `${entry.action}，${formatDateTime(entry.at)}`,
+                  `${entry.case_title ?? "平台级事件"}，${entry.summary}`,
                 ),
               ),
               "以下仅是快照中关联到此 actor_id 的业务审计事件，不代表登录或 HTTP 访问日志。",
@@ -649,7 +675,7 @@ function buildRecords(
       return make({
         id: item.id,
         title: item.display_name,
-        subtitle: `${item.role} · ${item.org_id}`,
+        subtitle: `${item.role}，${item.org_id}`,
         status: "当前身份可见",
         updatedAt: null,
         caseId: null,
@@ -665,7 +691,7 @@ function buildRecords(
       const fieldRows = item.fields.map((entry) =>
         field(
           entry.label,
-          `${entry.key} · ${entry.type} · ${entry.required ? "必填" : "选填"}`,
+          `${entry.key}，${entry.type}，${entry.required ? "必填" : "选填"}`,
         ),
       );
       const panels: Record<string, DetailPanel> = {
@@ -692,7 +718,7 @@ function buildRecords(
       return make({
         id: item.id,
         title: item.name,
-        subtitle: `${item.id} · ${item.version}`,
+        subtitle: `${item.id}，${item.version}`,
         status: "状态未提供",
         updatedAt: null,
         caseId: null,
@@ -755,7 +781,7 @@ function buildRecords(
         ),
         变更记录: panel(
           platformEvents.map((item) =>
-            field(`${item.action} · ${formatDateTime(item.at)}`, item.summary),
+            field(`${item.action}，${formatDateTime(item.at)}`, item.summary),
           ),
           "这里只列工作台已返回的平台级业务审计，不将规则发布等事件解释为模型专属配置变更。",
           [{ label: "打开业务审计", href: "/workbench/audit" }],
@@ -837,8 +863,8 @@ function buildRecords(
                   .slice(0, 12)
                   .map((entry) =>
                     field(
-                      `${entry.actor_name} · ${entry.action}`,
-                      `${formatDateTime(entry.at)} · ${entry.summary}`,
+                      `${entry.actor_name}，${entry.action}`,
+                      `${formatDateTime(entry.at)}，${entry.summary}`,
                     ),
                   ),
               )
@@ -1009,7 +1035,7 @@ function TaskCreateForm({
               value: String(item.id),
               label: (
                 <>
-                  {item.display_name}· {item.role}
+                  {item.display_name}，{item.role}
                 </>
               ),
             })),
@@ -1276,7 +1302,6 @@ function WorkbenchModule({ module }: { module: WorkbenchModuleKey }) {
     <section className="page module-page">
       <header className="page-head module-page-head">
         <div>
-          <p className="module-eyebrow">工作台 / 持久业务快照</p>
           <h1>
             {config.title}
             <span className="module-total">{allRecords.length}</span>
@@ -1302,28 +1327,28 @@ function WorkbenchModule({ module }: { module: WorkbenchModuleKey }) {
           {errorMessage(updateTask.error)}
         </p>
       ) : null}
-      <div className="module-stats" aria-label="真实数据摘要">
+      <dl className="module-stats" aria-label="真实数据摘要">
         <div>
-          <span>工作台集合</span>
-          <strong>{allRecords.length}</strong>
+          <dt>工作台集合</dt>
+          <dd>{allRecords.length}</dd>
         </div>
         <div>
-          <span>匹配当前标签</span>
-          <strong>{records.length}</strong>
+          <dt>匹配当前标签</dt>
+          <dd>{records.length}</dd>
         </div>
         <div>
-          <span>数据周期</span>
-          <strong>{periodLabel}</strong>
+          <dt>数据周期</dt>
+          <dd>{periodLabel}</dd>
         </div>
         <div>
-          <span>快照生成</span>
-          <strong>
+          <dt>快照生成</dt>
+          <dd>
             <time dateTime={snapshot.generated_at}>
               {formatDateTime(snapshot.generated_at)}
             </time>
-          </strong>
+          </dd>
         </div>
-      </div>
+      </dl>
       <div className="module-toolbar">
         <Tabs
           aria-label={`${config.title}分类`}
@@ -1398,7 +1423,7 @@ function WorkbenchModule({ module }: { module: WorkbenchModuleKey }) {
                   key: "status",
                   render: (_, record) => (
                     <StatusText tone={statusTone(record.status)}>
-                      {record.status}
+                      {statusLabel(record.status)}
                     </StatusText>
                   ),
                 },

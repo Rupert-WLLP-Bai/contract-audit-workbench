@@ -1,5 +1,4 @@
 import { MenuFoldOutlined, MenuUnfoldOutlined } from "@ant-design/icons";
-import { theme } from "antd";
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router";
 import { useCaseDetail, useLogout, useSession } from "../api/queries";
@@ -21,6 +20,7 @@ import {
   ToolOutlined,
 } from "@ant-design/icons";
 import type { ReactNode } from "react";
+import { CircuitMark } from "./circuit-mark";
 const MAIN_LINKS = [
   { to: "/", label: "工作台", icon: "home", end: true },
   { to: "/review", label: "合同审查", icon: "review" },
@@ -66,7 +66,6 @@ const NAV_ICONS: Record<string, ReactNode> = {
 };
 
 export function AppShell() {
-  const { token } = theme.useToken();
   const session = useSession();
   const logout = useLogout();
   const navigate = useNavigate();
@@ -148,7 +147,7 @@ export function AppShell() {
                   ...(reviewMatch
                     ? [
                         {
-                          label: `审查 · ${decodeURIComponent(reviewMatch[2] ?? "")}`,
+                          label: `审查，${decodeURIComponent(reviewMatch[2] ?? "")}`,
                           to: null,
                         },
                       ]
@@ -172,44 +171,38 @@ export function AppShell() {
       <a className="skip" href="#main">
         跳到主要内容
       </a>
-      <Layout.Header
-        style={{
-          background: token.colorBgContainer,
-          height: "auto",
-          lineHeight: 1.5,
-        }}
-        className="topbar"
-      >
+      <Layout.Header className="topbar">
         <Link className="brand" to="/" aria-label="合同审查工作台首页">
           <span className="brand-mark" aria-hidden="true">
-            <SafetyCertificateOutlined />
+            <CircuitMark />
           </span>
           <span className="brand-copy">
             <strong>合同智能审计工作台</strong>
           </span>
         </Link>
         <span className="organization-badge" title={actor?.org_id}>
-          组织 · {actor?.org_id ?? "正在确认"}
+          组织，{actor?.org_id ?? "正在确认"}
         </span>
         <form className="global-search" role="search" onSubmit={searchCases}>
           <label className="sr-only" htmlFor="global-case-search">
             全局搜索案件
           </label>
           <Input
+            className="header-search-input"
             id="global-case-search"
             type="search"
             value={search}
             onChange={(event) => setSearch(event.target.value)}
             placeholder="搜索案件标题或编号"
           />
-          <Button aria-label={"搜索"} htmlType="submit" type="primary">
+          <Button className="header-action" aria-label={"搜索"} htmlType="submit" ghost>
             搜索
           </Button>
         </form>
         <div className="who" aria-label="当前身份">
           {actor ? (
             <>
-              <Avatar>{Array.from(actor.display_name)[0]}</Avatar>
+              <Avatar className="header-avatar">{Array.from(actor.display_name)[0]}</Avatar>
               <span className="identity-copy">
                 <strong>{actor.display_name}</strong>
                 <span className="meta">{actorRoleLabel(actor.role)}</span>
@@ -219,6 +212,8 @@ export function AppShell() {
             <span>身份未知</span>
           )}
           <Button
+            className="header-action"
+            ghost
             aria-label={"退出"}
             icon={<LogoutOutlined />}
             disabled={logout.isPending}
@@ -237,12 +232,13 @@ export function AppShell() {
           trigger={
             <Button
               type="text"
+              className="nav-collapse-action"
               aria-label={collapsed ? "展开侧栏" : "收合侧栏"}
               aria-expanded={!collapsed}
               icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
             />
           }
-          theme="light"
+          theme="dark"
           id="primary-navigation"
           className="sidenav"
           aria-label="主导航"
@@ -250,11 +246,11 @@ export function AppShell() {
           collapsedWidth={72}
           collapsed={collapsed}
           collapsible
-          breakpoint="md"
           onCollapse={setCollapsed}
         >
           <Menu
             mode="inline"
+            theme="dark"
             selectedKeys={[
               location.pathname === "/"
                 ? "/"

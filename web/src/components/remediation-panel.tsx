@@ -242,7 +242,7 @@ function RemediationCard({
         <div>
           <h4>整改 {item.id}</h4>
           <p className="meta">
-            负责人 {item.assignee_id} · 截止 {formatDateTime(item.due_at)} ·
+            负责人 {item.assignee_id}，截止 {formatDateTime(item.due_at)}，
             版本 {item.version}
           </p>
         </div>
@@ -296,7 +296,7 @@ function RemediationCard({
         <div>
           <dt>创建 / 更新</dt>
           <dd>
-            {formatDateTime(item.created_at)} ·{" "}
+            {formatDateTime(item.created_at)}，
             {formatDateTime(item.updated_at)}
           </dd>
         </div>
@@ -331,7 +331,7 @@ function RemediationCard({
                     disabled={!canWrite || archived || submit.isPending}
                     onChange={() => setDocumentId(document.id)}
                   >
-                    {document.filename} · {document.id}
+                    {document.filename}，{document.id}
                   </Radio>
                 </div>
               ))}
@@ -393,11 +393,11 @@ function RemediationCard({
           {candidateWorkspace.data ? (
             <div className="verification-evidence">
               <p>
-                复核运行 {candidateWorkspace.data.run.id} · 运行状态{" "}
+                复核运行 {candidateWorkspace.data.run.id}，运行状态{" "}
                 <StatusText tone={runTone(candidateWorkspace.data.run.state)}>
                   {runLabel(candidateWorkspace.data.run.state)}
                 </StatusText>{" "}
-                · 尝试 {selectedAttempt?.id ?? "未报告"}
+              ，尝试 {selectedAttempt?.id ?? "未报告"}
               </p>
               {candidateWorkspace.data.revision_comparison_reason ? (
                 <p className="callout">
@@ -417,8 +417,8 @@ function RemediationCard({
                           className="meta"
                           key={`${revision.finding_id ?? findingId}-${index}`}
                         >
-                          {revision.mark} · {revision.domain} ·{" "}
-                          {relationLabel(revision.relation)} · {revision.claim}
+                          {revision.mark}，{revision.domain}，
+                          {relationLabel(revision.relation)}，{revision.claim}
                         </p>
                       ))
                     )}
@@ -459,7 +459,7 @@ function RemediationCard({
           {verify.data ? (
             <p role="status">
               服务端复核结果：
-              {REMEDIATION_LABELS[verify.data.status] ?? verify.data.status} ·
+              {REMEDIATION_LABELS[verify.data.status] ?? verify.data.status}，
               版本 {verify.data.version}
             </p>
           ) : null}
@@ -631,7 +631,7 @@ export function RemediationPanel({
                       toggleFinding(finding.id, event.target.checked)
                     }
                   >
-                    {finding.claim} · {finding.id} · {finding.domain}
+                    {finding.claim}，{finding.id}，{finding.domain}
                   </Checkbox>
                 </div>
               ))}

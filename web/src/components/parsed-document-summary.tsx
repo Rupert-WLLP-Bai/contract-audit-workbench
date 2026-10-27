@@ -38,33 +38,33 @@ export function ParsedDocumentSummary({
         </span>
         {parsed ? (
           <>
-            {" · "}解析 <span title={parsed.id}>{shortDigest(parsed.id)}</span>
-            {" · "}解析器 {parsed.parser_id}@{parsed.parser_version}
-            {" · "}配置 SHA-256{" "}
+            {"，"}解析 <span title={parsed.id}>{shortDigest(parsed.id)}</span>
+            {"，"}解析器 {parsed.parser_id}@{parsed.parser_version}
+            {"，"}配置 SHA-256{" "}
             <span title={parsed.config_hash}>
               {shortDigest(parsed.config_hash)}
             </span>
-            {" · "}规范化 {parsed.normalization_version}
-            {" · "}正文 SHA-256{" "}
+            {"，"}规范化 {parsed.normalization_version}
+            {"，"}正文 SHA-256{" "}
             <span title={parsed.normalized_digest ?? undefined}>
               {hash(parsed.normalized_digest, "不可用")}
             </span>
-            {" · "}IR SHA-256{" "}
+            {"，"}IR SHA-256{" "}
             <span title={parsed.ir_digest ?? undefined}>
               {hash(parsed.ir_digest, "不可用")}
             </span>
-            {" · "}产物 SHA-256{" "}
+            {"，"}产物 SHA-256{" "}
             <span title={parsed.artifact_digest}>
               {shortDigest(parsed.artifact_digest)}
             </span>
-            {" · "}
+            {"，"}
             {parsed.status === "ready" ? "解析就绪" : "解析失败"}
-            {parsed.created_at ? ` · ${formatDateTime(parsed.created_at)}` : ""}
+            {parsed.created_at ? `，${formatDateTime(parsed.created_at)}` : ""}
           </>
         ) : (
           <>
-            {" · "}解析来源 {legacy ? "未记录（历史记录）" : "尚无解析产物"}
-            {" · "}正文摘要 未记录
+            {"，"}解析来源 {legacy ? "未记录（历史记录）" : "尚无解析产物"}
+            {"，"}正文摘要 未记录
           </>
         )}
       </p>

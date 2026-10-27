@@ -1,3 +1,5 @@
+/* Hallmark · built: the project · redesign: restyle · theme: ant-monochrome (by request) · genre: modern-minimal · scope: app · surface: absolute · shape: app screen · nav: black grouped menu · footer: none */
+/* Hallmark · pre-emit critique: compact completion figures need their state labels beside them for clear review */
 .review-entry-page {
   padding: 20px 24px 28px;
 }
@@ -8,30 +10,30 @@
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
-  margin: 0 0 15px;
+  margin: 0 0 16px;
 }
 .review-entry-summary > div {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
-  padding: 14px 16px;
+  gap: 8px;
+  padding: 16px 16px;
   border: 1px solid var(--border-default);
   border-radius: 6px;
-  background: #fff;
+  background: var(--surface-raised);
 }
 .review-entry-summary span {
-  color: #7d8ca1;
+  color: var(--text-secondary);
   font-size: 12px;
 }
 .review-entry-summary strong {
-  color: #2b3a52;
+  color: var(--text-primary);
   font-size: 21px;
   font-weight: 600;
 }
 .review-entry-list {
   display: grid;
-  gap: 9px;
+  gap: 8px;
   padding: 0;
   margin: 0;
   list-style: none;
@@ -40,43 +42,43 @@
   display: grid;
   grid-template-columns: minmax(180px, 1.2fr) minmax(210px, 1fr) auto;
   align-items: center;
-  gap: 15px;
-  padding: 14px 16px;
+  gap: 16px;
+  padding: 16px 16px;
   border: 1px solid var(--border-default);
   border-radius: 6px;
-  background: #fff;
+  background: var(--surface-raised);
 }
 .review-entry-case {
   min-width: 0;
 }
 .review-entry-case p {
-  margin: 0 0 3px;
-  color: #8290a3;
+  margin: 0 0 4px;
+  color: var(--text-secondary);
   font-size: 10px;
 }
 .review-entry-case h2 {
   margin: 0 0 4px;
-  color: #2c3b53;
+  color: var(--text-primary);
   font-size: 14px;
 }
 .review-entry-case span,
 .review-entry-run > span,
 .review-entry-run time,
 .review-entry-run p {
-  color: #78889e;
+  color: var(--text-secondary);
   font-size: 11px;
 }
 .review-entry-run {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 6px 10px;
+  gap: 8px 8px;
 }
 .review-entry-run > span:first-child {
   flex-basis: 100%;
 }
 .review-entry-run > span strong {
-  color: #354761;
+  color: var(--text-primary);
 }
 .review-entry-run p {
   margin: 0;
@@ -86,7 +88,7 @@
   display: flex;
   flex-wrap: wrap;
   justify-content: flex-end;
-  gap: 7px;
+  gap: 8px;
 }
 @media (max-width: 850px) {
   .review-entry-list > li {
@@ -98,10 +100,124 @@
 }
 @media (max-width: 620px) {
   .review-entry-page {
-    padding: 14px;
+    padding: 16px;
   }
   .review-entry-summary {
     grid-template-columns: 1fr;
     gap: 8px;
+  }
+}
+
+/* Hallmark · restyle: review completion summary with case details in ruled rows */
+.review-entry-page {
+  padding: 20px 24px 40px;
+  background: var(--surface-page);
+}
+.review-entry-page .page-head {
+  margin-bottom: 16px;
+}
+.review-entry-page .page-head h1 {
+  font-size: 24px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+.review-entry-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0;
+  margin: 0 0 16px;
+  padding: 0;
+  border-block: 1px solid var(--border-strong);
+  list-style: none;
+}
+.review-entry-summary > li {
+  display: grid;
+  grid-template-columns: 10px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  border: 0;
+  border-left: 1px solid var(--border-default);
+  border-radius: 0;
+  background: transparent;
+}
+.review-entry-summary > li:first-child {
+  border-left: 0;
+  padding-left: 0;
+}
+.review-entry-summary-mark {
+  width: 7px;
+  height: 7px;
+  border: 1px solid var(--border-control);
+  background: transparent;
+}
+.review-entry-summary > li[data-state="filled"] .review-entry-summary-mark {
+  border-color: var(--state-compatible);
+  background: var(--state-compatible);
+}
+.review-entry-summary > li[data-state="open"] .review-entry-summary-mark {
+  border-color: var(--state-insufficient);
+  background: var(--state-insufficient);
+}
+.review-entry-summary span:not(.review-entry-summary-mark) {
+  color: var(--text-secondary);
+  font-size: 11px;
+}
+.review-entry-summary strong {
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 20px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+.review-entry-list {
+  gap: 0;
+  border-top: 1px solid var(--border-default);
+}
+.review-entry-list > li {
+  padding: 16px 4px;
+  border: 0;
+  border-bottom: 1px solid var(--border-default);
+  border-radius: 0;
+  background: transparent;
+}
+.review-entry-list > li:hover {
+  background: var(--surface-raised);
+}
+.review-entry-case p {
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: 10px;
+}
+.review-entry-case h2 {
+  color: var(--text-primary);
+  font-size: 15px;
+  font-weight: 600;
+}
+.review-entry-case span,
+.review-entry-run > span,
+.review-entry-run time,
+.review-entry-run p {
+  color: var(--text-secondary);
+}
+.review-entry-run > span strong {
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-weight: 500;
+}
+@media (max-width: 620px) {
+  .review-entry-page {
+    padding: 16px;
+  }
+  .review-entry-summary {
+    grid-template-columns: 1fr;
+  }
+  .review-entry-summary > li {
+    border-left: 0;
+    padding-left: 0;
+    border-top: 1px solid var(--border-default);
+  }
+  .review-entry-summary > li:first-child {
+    border-top: 0;
   }
 }

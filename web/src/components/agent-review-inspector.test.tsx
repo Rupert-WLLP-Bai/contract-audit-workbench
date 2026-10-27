@@ -403,7 +403,7 @@ describe("AgentReview Inspector", () => {
       </MemoryRouter>,
     );
     expect(
-      screen.getByText(/新证据：未记录 · 已解决缺口：未记录/),
+      screen.getByText(/新证据：未记录，\s*已解决缺口：未记录/),
     ).toBeInTheDocument();
   });
 
@@ -468,7 +468,7 @@ describe("AgentReview Inspector", () => {
       </MemoryRouter>,
     );
     expect(
-      screen.getByText("未报告缺口详情 · gap-without-details"),
+      screen.getByText(/未报告缺口详情，\s*gap-without-details/),
     ).toBeInTheDocument();
     expect(
       screen.getByText(/未提供领域、能力、原因或证据详情/),

@@ -445,7 +445,7 @@ describe("review workspace", () => {
     await chooseOption(
       user,
       screen.getByRole("combobox", { name: "关联可见案件" }),
-      "云托管服务补充协议 · c2",
+      "云托管服务补充协议，c2",
     );
     await user.type(screen.getByLabelText("关联原因"), "同一云资源范围");
     await user.click(screen.getByRole("button", { name: "建立关联" }));

@@ -449,7 +449,7 @@ describe("RulePackManifestEditor structured edits", () => {
     const changes = renderManifest(initial);
     await user.click(screen.getByRole("button", { name: "移除规则 2" }));
     const remaining = within(
-      screen.getByRole("group", { name: "规则 2 · optional-C" }),
+      screen.getByRole("group", { name: "规则 2，optional-C" }),
     );
     await user.click(remaining.getByRole("button", { name: "添加来源" }));
     fireEvent.change(remaining.getAllByLabelText("来源 ID")[1]!, {

@@ -1,8 +1,8 @@
-import { theme } from "antd";
 import { useLocation, useNavigate, NavLink, Outlet } from "react-router";
 import { useLogout, useSession } from "../api/queries";
 import { actorRoleLabel } from "../domain/review";
 import { PageStatus } from "./page-status";
+import { CircuitMark } from "./circuit-mark";
 import { Avatar, Breadcrumb, Button, Layout, Menu } from "antd";
 import {
   ApiOutlined,
@@ -12,7 +12,6 @@ import {
 } from "@ant-design/icons";
 
 export function AdminShell() {
-  const { token } = theme.useToken();
   const session = useSession("admin");
   const logout = useLogout("admin");
   const navigate = useNavigate();
@@ -44,30 +43,23 @@ export function AdminShell() {
       <a className="skip" href="#main">
         跳到主要内容
       </a>
-      <Layout.Header
-        style={{
-          background: token.colorBgContainer,
-          height: "auto",
-          lineHeight: 1.5,
-        }}
-        className="topbar admin-topbar"
-      >
+      <Layout.Header className="topbar admin-topbar">
         <NavLink className="brand" to="/admin/settings" aria-label="管理工作台">
           <span className="brand-mark" aria-hidden="true">
-            <SafetyCertificateOutlined />
+            <CircuitMark />
           </span>
           <span className="brand-copy">
             <strong>合同智能审计工作台</strong>
           </span>
         </NavLink>
         <span className="organization-badge" title={actor?.org_id}>
-          组织 · {actor?.org_id ?? "正在确认"}
+          组织，{actor?.org_id ?? "正在确认"}
         </span>
         <p className="disclaimer">此工作区不授予案件正文访问权限。</p>
         <div className="who" aria-label="当前管理身份">
           {actor ? (
             <>
-              <Avatar>{Array.from(actor.display_name)[0]}</Avatar>
+              <Avatar className="header-avatar">{Array.from(actor.display_name)[0]}</Avatar>
               <span className="identity-copy">
                 <strong>{actor.display_name}</strong>
                 <span className="meta">{actorRoleLabel(actor.role)}</span>
@@ -77,6 +69,8 @@ export function AdminShell() {
             <span>身份未知</span>
           )}
           <Button
+            className="header-action"
+            ghost
             aria-label={"退出"}
             icon={<LogoutOutlined />}
             disabled={logout.isPending}
@@ -92,16 +86,16 @@ export function AdminShell() {
       </Layout.Header>
       <Layout className="frame" hasSider>
         <Layout.Sider
-          theme="light"
+          theme="dark"
           className="sidenav admin-sidenav"
           aria-label="管理导航"
           width={248}
           collapsedWidth={72}
-          breakpoint="md"
           collapsible
         >
           <Menu
             mode="inline"
+            theme="dark"
             selectedKeys={[
               location.pathname.startsWith("/admin/infrastructure")
                 ? "/admin/infrastructure"

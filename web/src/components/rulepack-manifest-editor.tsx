@@ -299,14 +299,14 @@ export function RulePackManifestEditor({
             aria-label={
               "规则 " +
               String(ruleIndex + 1) +
-              String(rule.rule_id ? ` · ${rule.rule_id}` : "")
+              String(rule.rule_id ? `，${rule.rule_id}` : "")
             }
             className="rulepack-rule"
             key={ruleKeys[ruleIndex] ?? ruleIndex}
             title={
               <>
                 规则 {ruleIndex + 1}
-                {rule.rule_id ? ` · ${rule.rule_id}` : ""}
+                {rule.rule_id ? `，${rule.rule_id}` : ""}
               </>
             }
           >
@@ -464,7 +464,7 @@ export function RulePackManifestEditor({
                   }}
                   options={COMPARATORS.map(([id, label]) => ({
                     value: id,
-                    label: `${label} · ${id}`,
+                    label: `${label}，${id}`,
                   }))}
                 />
               </label>

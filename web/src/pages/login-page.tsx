@@ -6,6 +6,7 @@ import { paths } from "../api/paths";
 import { useLogin, useSession } from "../api/queries";
 import type { SessionAudience } from "../api/types";
 import { PageStatus } from "../components/page-status";
+import { CircuitMark } from "../components/circuit-mark";
 
 export function LoginPage({
   audience = "client",
@@ -61,6 +62,21 @@ export function LoginPage({
 
   return (
     <main className="login-screen" id="main">
+      <aside className="login-rail">
+        <div className="login-rail-brand">
+          <CircuitMark size={34} />
+          <strong>合同智能审计工作台</strong>
+        </div>
+        <p className="login-rail-copy">
+          审查输入、解析结果和规则快照按尝试冻结。每条结论都要能回到冻结原文，人工决定只追加、不覆盖。
+        </p>
+        <ol className="login-rail-circuit" aria-label="审查链路示意">
+          <li>材料</li>
+          <li>解析</li>
+          <li>引用</li>
+          <li>决定</li>
+        </ol>
+      </aside>
       <form className="login-card" onSubmit={onSubmit}>
         <h1>{audience === "admin" ? "登录管理工作台" : "登录合同审查"}</h1>
         <p>
@@ -69,6 +85,7 @@ export function LoginPage({
         <label className="field">
           账号
           <Input
+            size="large"
             name="username"
             autoComplete="username"
             value={username}
@@ -79,6 +96,7 @@ export function LoginPage({
         <label className="field">
           密码
           <Input.Password
+            size="large"
             name="password"
             type="password"
             autoComplete="current-password"
@@ -91,6 +109,7 @@ export function LoginPage({
         <Button
           aria-label={String(login.isPending ? "正在登录" : "登录")}
           type="primary"
+          size="large"
           htmlType="submit"
           disabled={login.isPending}
         >
@@ -99,6 +118,7 @@ export function LoginPage({
         <Button
           aria-label={"通过组织身份提供方登录"}
           type="text"
+          size="large"
           href={paths.oidcLogin(audience)}
         >
           通过组织身份提供方登录

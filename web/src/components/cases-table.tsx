@@ -4,6 +4,7 @@ import type { ColumnsType, TableProps } from "antd/es/table";
 import type { CaseSummary } from "../api/types";
 import type { CaseSortField, SortDirection } from "../domain/review";
 import {
+  businessStatusLabel,
   contractTypeLabel,
   formatDateTime,
   runLabel,
@@ -50,7 +51,7 @@ export function CasesTable({
             {item.title}
           </Link>
           <div className="meta">
-            {item.id} · {contractTypeLabel(item.contract_type)}
+            {item.id}，{contractTypeLabel(item.contract_type)}
           </div>
         </>
       ),
@@ -96,7 +97,7 @@ export function CasesTable({
       title: "业务线 / 场景",
       key: "business",
       render: (_, item) =>
-        [item.business_line, item.scenario].filter(Boolean).join(" · ") ||
+        [item.business_line, item.scenario].filter(Boolean).join("，") ||
         "未提供",
     },
     {
@@ -106,7 +107,7 @@ export function CasesTable({
         item.archived_at ? (
           <StatusText tone="neutral">已归档</StatusText>
         ) : (
-          item.business_status || "未提供"
+          businessStatusLabel(item.business_status ?? "")
         ),
     },
     {

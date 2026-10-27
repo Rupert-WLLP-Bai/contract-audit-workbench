@@ -99,8 +99,8 @@ function usageDetails(usage: ExecutionUsage | null) {
       <div>
         <dt>已知小计 Token</dt>
         <dd>
-          输入 {tokenCount(usage.known_subtotals.input_tokens)} · 输出{" "}
-          {tokenCount(usage.known_subtotals.output_tokens)} · 合计{" "}
+          输入 {tokenCount(usage.known_subtotals.input_tokens)}，输出{" "}
+          {tokenCount(usage.known_subtotals.output_tokens)}，合计{" "}
           {tokenCount(usage.known_subtotals.total_tokens)}
         </dd>
       </div>
@@ -264,10 +264,10 @@ export function ExecutionInspector({
         aria-label={
           "#" +
           String(item.seq) +
-          " · " +
+          "，" +
           String(item.phase) +
           String(item.event_type) +
-          String(item.status ? ` · ${item.status}` : "") +
+          String(item.status ? `，${item.status}` : "") +
           String(
             item.duration_ms !== null && maximumDuration > 0 ? (
               <span className="execution-event-bar" aria-hidden="true">
@@ -287,11 +287,11 @@ export function ExecutionInspector({
         onClick={() => setSelectedSeq(item.seq)}
       >
         <span>
-          #{item.seq} · {item.phase}
+          #{item.seq}，{item.phase}
         </span>
         <span className="meta">
           {item.event_type}
-          {item.status ? ` · ${item.status}` : ""}
+          {item.status ? `，${item.status}` : ""}
         </span>
         {item.duration_ms !== null && maximumDuration > 0 ? (
           <span className="execution-event-bar" aria-hidden="true">
@@ -310,7 +310,7 @@ export function ExecutionInspector({
   function renderTree(node: SpanGroup) {
     const titleEvent = node.events[0];
     const title = titleEvent
-      ? `${titleEvent.phase} · ${titleEvent.node_kind}`
+      ? `${titleEvent.phase}，${titleEvent.node_kind}`
       : "执行节点";
     return (
       <li key={node.key}>
@@ -323,7 +323,7 @@ export function ExecutionInspector({
                 <>
                   {title}
                   {node.spanId ? (
-                    <span className="meta"> · span {node.spanId}</span>
+                    <span className="meta">，span {node.spanId}</span>
                   ) : null}
                 </>
               ),
@@ -363,8 +363,8 @@ export function ExecutionInspector({
                   <div>
                     <h2 id="execution-inspector-title">执行检查器</h2>
                     <p className="meta">
-                      第 {selected.ordinal} 次尝试 · 最近持久阶段{" "}
-                      {events[events.length - 1]?.phase ?? "未报告"}·
+                      第 {selected.ordinal} 次尝试，最近持久阶段{" "}
+                      {events[events.length - 1]?.phase ?? "未报告"}，
                       首个已核验发现 {verified[0]?.claim || "未报告"}
                     </p>
                   </div>
@@ -384,7 +384,7 @@ export function ExecutionInspector({
                         <div>
                           <h3 id="execution-events-title">实际执行事件</h3>
                           <p className="meta">
-                            {events.length} 条事件 · 仅显示第 {selected.ordinal}{" "}
+                            {events.length} 条事件，仅显示第 {selected.ordinal}{" "}
                             次尝试的持久记录
                           </p>
                         </div>
@@ -507,7 +507,7 @@ export function ExecutionInspector({
                           options={[...attempts]
                             .sort((left, right) => right.ordinal - left.ordinal)
                             .map((attempt) => ({
-                              label: `第 ${attempt.ordinal} 次 · ${runLabel(attempt.state)}${attempt.id === latest.id ? " · 最新" : ""}`,
+                              label: `第 ${attempt.ordinal} 次，${runLabel(attempt.state)}${attempt.id === latest.id ? "，最新" : ""}`,
                               value: attempt.id,
                             }))}
                         />
@@ -588,7 +588,7 @@ export function ExecutionInspector({
                                   {finding.claim}
                                 </Button>
                                 <span className="meta">
-                                  {relationLabel(finding.relation)} ·{" "}
+                                  {relationLabel(finding.relation)}，
                                   {finding.evidence.length} 条定位引用
                                 </span>
                               </li>
@@ -631,7 +631,7 @@ export function ExecutionInspector({
                           <ul className="execution-gap-list">
                             {gaps.map((gap) => (
                               <li key={gap.id}>
-                                {gap.domain} · {gap.reason || "缺少可核验信息"}
+                                {gap.domain}，{gap.reason || "缺少可核验信息"}
                               </li>
                             ))}
                           </ul>

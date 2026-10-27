@@ -79,6 +79,13 @@ export function ReviewWorkspaceView({
   onDeleteRelation?: (relationId: string) => void;
 }) {
   const { run } = workspace;
+  const anchors = workspace.findings.flatMap((finding) => finding.evidence);
+  const locatedAnchors = anchors.filter(
+    (anchor) => anchor.status === "located",
+  ).length;
+  const decidedFindings = workspace.findings.filter(
+    (finding) => finding.decisions.length > 0,
+  ).length;
   const retryableState =
     run.state === "failed" ||
     run.state === "partial" ||
@@ -90,6 +97,30 @@ export function ReviewWorkspaceView({
         <StatusText tone={runTone(run.state)}>{runLabel(run.state)}</StatusText>
         <span>{STREAM_LABEL[streamStatus]}</span>
         {run.model_ref ? <span>模型 {run.model_ref}</span> : null}
+        <ol className="workspace-circuit" aria-label="审查链路">
+          <li data-state={workspace.documents.length > 0 ? "filled" : "open"}>
+            <span className="workspace-circuit-mark" aria-hidden="true" />
+            材料 <strong>{workspace.documents.length}</strong>
+          </li>
+          <li data-state={locatedAnchors === anchors.length ? "filled" : "open"}>
+            <span className="workspace-circuit-mark" aria-hidden="true" />
+            可定位引用{" "}
+            <strong>
+              {locatedAnchors}/{anchors.length}
+            </strong>
+          </li>
+          <li data-state={workspace.findings.length > 0 ? "filled" : "open"}>
+            <span className="workspace-circuit-mark" aria-hidden="true" />
+            线索 <strong>{workspace.findings.length}</strong>
+          </li>
+          <li data-state={decidedFindings > 0 ? "filled" : "open"}>
+            <span className="workspace-circuit-mark" aria-hidden="true" />
+            人工决定{" "}
+            <strong>
+              {decidedFindings}/{workspace.findings.length}
+            </strong>
+          </li>
+        </ol>
         {retryableState ? (
           <Button
             aria-label={String(

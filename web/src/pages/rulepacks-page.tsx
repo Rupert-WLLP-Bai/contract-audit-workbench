@@ -92,7 +92,7 @@ export function RulePacksPage() {
           <Link
             to={`/admin/rulepacks/${encodeURIComponent(pack.id)}/versions/${encodeURIComponent(pack.version)}`}
           >
-            {pack.id} · v{pack.version}
+            {pack.id}，v{pack.version}
           </Link>
           <span className="meta">租户 {pack.tenant_id}</span>
         </>

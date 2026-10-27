@@ -111,6 +111,10 @@ infra-*.json
 /.agents/
 /.omp/
 /.claude/
+/.hallmark/
+/.impeccable/
+/web/.impeccable/
+/.github/hooks/impeccable.json
 /skills-lock.json
 /.d0-smoke/
 /.c1b-rule-smoke/

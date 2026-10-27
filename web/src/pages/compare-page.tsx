@@ -9,7 +9,12 @@ import { paths } from "../api/paths";
 import { useReview, useWorkbench } from "../api/queries";
 import type { Finding, ReviewDocument, WorkbenchRun } from "../api/types";
 import { PageStatus } from "../components/page-status";
-import { formatDateTime, relationLabel, runLabel } from "../domain/review";
+import {
+  formatDateTime,
+  parseLabel,
+  relationLabel,
+  runLabel,
+} from "../domain/review";
 import {
   evidenceSourceMatches,
   resolveAnchor,
@@ -51,15 +56,28 @@ function RunSelect({
       <Select<string>
         aria-label={String(label)}
         value={String(value?.id ?? "")}
+        labelRender={() =>
+          value ? (
+            <span
+              title={`${value.id}，${runLabel(value.state)}，${formatDateTime(value.updated_at)}`}
+            >
+              {value.id}，{runLabel(value.state)}
+            </span>
+          ) : (
+            "没有可选运行"
+          )
+        }
         onChange={(selectedValue) => onChange(selectedValue)}
         options={[
           ...(runs.length === 0 ? [{ value: "", label: "没有可选运行" }] : []),
           ...runs.map((run) => ({
             value: String(run.id),
             label: (
-              <>
-                {run.id}· {run.state}· {formatDateTime(run.updated_at)}
-              </>
+              <span
+                title={`${run.id}，${runLabel(run.state)}，${formatDateTime(run.updated_at)}`}
+              >
+                {run.id}，{runLabel(run.state)}，{formatDateTime(run.updated_at)}
+              </span>
             ),
           })),
         ]}
@@ -137,7 +155,7 @@ function MaterialPane({
             items={[
               {
                 key: "content",
-                label: "版本与来源 · " + String(selected.parse_status ?? ""),
+                label: "版本与来源，" + parseLabel(selected.parse_status ?? ""),
                 children: (
                   <>
                     <dl className="compare-material-meta">
@@ -295,6 +313,9 @@ export function ComparePage() {
   const bottomTabs = ["修订证据", "规则依据", "执行记录", "模型用量"];
   const findings = leftReview.data?.findings ?? [];
   const finding = findings.find((item) => item.id === findingSelection) ?? null;
+  const decidedCount = findings.filter(
+    (item) => item.decisions.length > 0,
+  ).length;
   const visibleCases = snapshot.cases.filter((item) =>
     `${item.title} ${item.profile?.number ?? ""}`.includes(caseSearch.trim()),
   );
@@ -360,7 +381,7 @@ export function ComparePage() {
           <div className="compare-case-records">
             {visibleCases.map((item) => (
               <Button
-                aria-label={`${item.title} · ${item.profile?.customer ?? "未设置客户"} · ${item.latest_run ? runLabel(item.latest_run.state) : "待审查"} · ${formatDateTime(item.updated_at)}`}
+                aria-label={`${item.title}，${item.profile?.customer ?? "未设置客户"}，${item.latest_run ? runLabel(item.latest_run.state) : "待审查"}，${formatDateTime(item.updated_at)}`}
                 htmlType="button"
                 key={item.id}
                 aria-pressed={item.id === selectedCase?.id}
@@ -370,7 +391,7 @@ export function ComparePage() {
                 <span>{item.profile?.customer ?? "未设置客户"}</span>
                 <small>
                   {item.latest_run ? runLabel(item.latest_run.state) : "待审查"}{" "}
-                  · {formatDateTime(item.updated_at)}
+                ，{formatDateTime(item.updated_at)}
                 </small>
               </Button>
             ))}
@@ -404,6 +425,28 @@ export function ComparePage() {
               onChange={(id) => chooseRun("right_run_id", id)}
             />
           </div>
+          <ol className="compare-chain" aria-label="对照链路">
+            <li data-state={leftRun ? "filled" : "open"}>
+              <span className="compare-chain-mark" aria-hidden="true" />
+              <span className="compare-chain-label">当前版本</span>
+              <strong>{leftRun ? runLabel(leftRun.state) : "未选择"}</strong>
+            </li>
+            <li data-state={rightRun ? "filled" : "open"}>
+              <span className="compare-chain-mark" aria-hidden="true" />
+              <span className="compare-chain-label">历史版本</span>
+              <strong>{rightRun ? runLabel(rightRun.state) : "未选择"}</strong>
+            </li>
+            <li data-state={findings.length > 0 ? "filled" : "open"}>
+              <span className="compare-chain-mark" aria-hidden="true" />
+              <span className="compare-chain-label">实际发现</span>
+              <strong>{findings.length}</strong>
+            </li>
+            <li data-state={decidedCount > 0 ? "filled" : "open"}>
+              <span className="compare-chain-mark" aria-hidden="true" />
+              <span className="compare-chain-label">已有人工决定</span>
+              <strong>{decidedCount}</strong>
+            </li>
+          </ol>
           {selectedCase && caseRuns.length === 0 ? (
             <div className="compare-empty">
               <p>此案件尚无持久审查运行。</p>
@@ -461,14 +504,14 @@ export function ComparePage() {
                 data-selected={item.id === finding?.id}
               >
                 <Button
-                  aria-label={`${item.claim} · ${item.origin === "rule" ? "规则核对" : "模型建议"} · ${relationLabel(item.relation)}`}
+                  aria-label={`${item.claim}，${item.origin === "rule" ? "规则核对" : "模型建议"}，${relationLabel(item.relation)}`}
                   htmlType="button"
                   onClick={() => chooseFinding(item)}
                   aria-pressed={item.id === finding?.id}
                 >
                   <strong>{item.claim}</strong>
                   <span>
-                    {item.origin === "rule" ? "规则核对" : "模型建议"} ·{" "}
+                    {item.origin === "rule" ? "规则核对" : "模型建议"}，
                     {relationLabel(item.relation)}
                   </span>
                 </Button>
@@ -478,14 +521,14 @@ export function ComparePage() {
                       <blockquote key={anchor.id}>
                         {anchor.quote}
                         <small>
-                          {anchor.status} · {anchor.document_version_id}
+                          {anchor.status}，{anchor.document_version_id}
                         </small>
                       </blockquote>
                     ))}
                     {item.severity_source ? (
                       <p>
                         {item.severity_source.policy_id} v
-                        {item.severity_source.policy_version} ·{" "}
+                        {item.severity_source.policy_version}，
                         {item.severity_source.clause}
                       </p>
                     ) : null}
@@ -512,7 +555,6 @@ export function ComparePage() {
       >
         <header>
           <div>
-            <p className="module-eyebrow">服务端返回的运行信息</p>
             <h2 id="compare-results-title">审查与运行对照</h2>
           </div>
           <Tabs
@@ -548,12 +590,12 @@ export function ComparePage() {
                     <span>{revision.mark}</span>
                     <div>
                       <strong>
-                        {revision.domain} · {revision.relation}
+                        {revision.domain}，{revision.relation}
                       </strong>
                       <p>{revision.claim}</p>
                       <small>
-                        旧发现 {revision.previous_finding_id ?? "未报告"} ·
-                        新发现 {revision.finding_id ?? "未报告"} · 旧决定{" "}
+                        旧发现 {revision.previous_finding_id ?? "未报告"}，
+                        新发现 {revision.finding_id ?? "未报告"}，旧决定{" "}
                         {revision.prior_decision?.action ?? "未报告"}
                       </small>
                     </div>
@@ -585,10 +627,10 @@ export function ComparePage() {
                     {side.evaluations.map((item) => (
                       <li key={item.id}>
                         <strong>
-                          {item.domain} · {item.relation}
+                          {item.domain}，{item.relation}
                         </strong>
                         <span>
-                          规则 {item.rule_id} · v{item.rule_version}
+                          规则 {item.rule_id}，v{item.rule_version}
                         </span>
                         <p>{item.reason}</p>
                       </li>
@@ -609,19 +651,19 @@ export function ComparePage() {
                 {side.review?.execution ? (
                   <>
                     <p>
-                      运行 {side.review.run.id} · 当前尝试{" "}
-                      {side.review.execution.attempt.id} ·{" "}
+                      运行 {side.review.run.id}，当前尝试{" "}
+                      {side.review.execution.attempt.id}，
                       {side.review.execution.attempt.state}
                     </p>
                     <p>
-                      尝试数 {side.review.execution.attempts.length} · 事件数{" "}
+                      尝试数 {side.review.execution.attempts.length}，事件数{" "}
                       {side.review.execution.events.length}
                     </p>
                     <ol className="compare-attempt-list">
                       {side.review.execution.attempts.map((attempt) => (
                         <li key={attempt.id}>
-                          {attempt.id} · 第 {attempt.ordinal} 次 ·{" "}
-                          {attempt.state} ·{" "}
+                          {attempt.id}，第 {attempt.ordinal} 次，
+                          {attempt.state}，
                           {attempt.finished_at
                             ? formatDateTime(attempt.finished_at)
                             : "结束时间未报告"}

@@ -26,7 +26,7 @@ export function ReviewChoiceSelect({
         placeholder="选择已保存的运行和尝试"
         options={choices.map((choice) => ({
           value: choice.key,
-          label: `${choice.runId} · 第 ${choice.attempt.ordinal} 次 · ${runLabel(choice.attempt.state)}`,
+          label: `${choice.runId}，第 ${choice.attempt.ordinal} 次，${runLabel(choice.attempt.state)}`,
         }))}
       />
     </label>

@@ -124,14 +124,14 @@ export function TemplateGenerationPanel({
               onChange={selectTemplate}
               options={
                 templates.data?.map((template: Template) => ({
-                  label: `${template.name} · ${template.version}`,
+                  label: `${template.name}，${template.version}`,
                   value: template.id,
                 })) ?? []
               }
             />
           </label>
           <p className="meta">
-            模板 ID：{selectedTemplate.id} · 版本：{selectedTemplate.version} ·
+            模板 ID：{selectedTemplate.id}，版本：{selectedTemplate.version}，
             摘要：<code className="digest">{selectedTemplate.digest}</code>
           </p>
           {selectedTemplate.fields.map((field, index) => {
@@ -167,7 +167,7 @@ export function TemplateGenerationPanel({
                   )}
                 </label>
                 <p className="meta">
-                  字段：{field.key} · 类型：{field.type}
+                  字段：{field.key}，类型：{field.type}
                 </p>
               </Fragment>
             );
@@ -184,8 +184,8 @@ export function TemplateGenerationPanel({
           ) : null}
           {generate.data ? (
             <p role="status">
-              草稿已生成：文档 {generate.data.document_id} · 模板{" "}
-              {generate.data.template_id} / {generate.data.template_version} ·
+              草稿已生成：文档 {generate.data.document_id}，模板{" "}
+              {generate.data.template_id} / {generate.data.template_version}，
               摘要 <code className="digest">{generate.data.digest}</code>
             </p>
           ) : null}
@@ -210,7 +210,7 @@ export function TemplateGenerationPanel({
             {records.map((record) => (
               <li key={record.id}>
                 <strong>
-                  {record.template_id} · {record.template_version}
+                  {record.template_id}，{record.template_version}
                 </strong>
                 <dl className="execution-dl">
                   <div>

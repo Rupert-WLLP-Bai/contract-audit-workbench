@@ -718,7 +718,7 @@ describe("workbench tasks", () => {
     await chooseOption(
       user,
       screen.getByLabelText("责任人"),
-      "审查员甲· reviewer",
+      "审查员甲，reviewer",
     );
     await user.type(screen.getByLabelText("任务名称"), "  核对新合同  ");
     fireEvent.change(screen.getByLabelText("截止日期"), {
@@ -796,7 +796,7 @@ describe("workbench tasks", () => {
     await chooseOption(
       user,
       screen.getByLabelText("责任人"),
-      "审查员甲· reviewer",
+      "审查员甲，reviewer",
     );
     await user.type(screen.getByLabelText("任务名称"), "无截止日期的核对");
     await user.click(screen.getByRole("button", { name: "保存任务" }));
@@ -1091,7 +1091,7 @@ describe("workbench remediation and frozen artifacts", () => {
       details().getByRole("link", { name: "进入案件整改与复核" }),
     ).toHaveAttribute("href", "/cases/case%2Falpha");
     await detailTab(user, "材料与版本");
-    expectField("采购原件.pdf", "draft_contract · ready · original-sha256");
+    expectField("采购原件.pdf", "draft_contract，ready，original-sha256");
     expect(
       details().getByRole("link", { name: "读取 采购原件.pdf" }),
     ).toHaveAttribute(
@@ -1443,7 +1443,7 @@ describe("workbench public directory, templates and audit", () => {
       details()
         .getAllByText(/维护安全制度|创建付款核对任务/)
         .map((item) => item.textContent),
-    ).toEqual(["平台级事件 · 维护安全制度", "专线采购案件 · 创建付款核对任务"]);
+    ).toEqual(["平台级事件，维护安全制度", "专线采购案件，创建付款核对任务"]);
     expect(
       details().queryByText(/提交签章材料|发布运营商规则包/),
     ).not.toBeInTheDocument();
@@ -1473,8 +1473,8 @@ describe("workbench public directory, templates and audit", () => {
     expect(details().queryByRole("link")).not.toBeInTheDocument();
     await category(user, "模板管理", "字段配置");
     await detailTab(user, "字段定义");
-    expectField("供应商", "supplier · text · 必填");
-    expectField("备注", "note · textarea · 选填");
+    expectField("供应商", "supplier，text，必填");
+    expectField("备注", "note，textarea，选填");
     await category(user, "模板管理", "生成记录");
     await detailTab(user, "使用记录");
     expectField("当前身份可见案件", "2");

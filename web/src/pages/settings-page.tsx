@@ -33,6 +33,9 @@ export function SettingsPage({
   }
   if (!settings.data) return <PageStatus kind="empty" title="没有设置数据" />;
   const data = settings.data;
+  const queueDepth =
+    data.queue.depth === null ? "未报告" : String(data.queue.depth);
+  const oldestWait = formatWait(data.queue.oldest_wait_ms);
   const userColumns: TableProps<(typeof data.users)[number]>["columns"] = [
     { title: "姓名", dataIndex: "display_name", key: "display_name" },
     {
@@ -42,7 +45,7 @@ export function SettingsPage({
     },
   ];
   return (
-    <section className="page">
+    <section className="page settings-page">
       <header className="page-head">
         <div>
           <h1>设置</h1>
@@ -51,21 +54,70 @@ export function SettingsPage({
           </p>
         </div>
       </header>
-      <section>
-        <h2>模型连通</h2>
-        <p>
-          {modelStatusLabel(data.model.status)} · {data.model.label}
-        </p>
-      </section>
-      <section>
-        <h2>队列</h2>
-        <p>
-          等待任务 {data.queue.depth === null ? "未报告" : data.queue.depth}
-        </p>
-        <p>最老任务等待 {formatWait(data.queue.oldest_wait_ms)}</p>
-      </section>
-      <section>
-        <h2>脱敏政策</h2>
+      <ol className="case-chain settings-chain" aria-label="设置快照">
+        <li
+          data-state={
+            data.model.status === "connected" ||
+            data.model.status === "configured"
+              ? "filled"
+              : "open"
+          }
+        >
+          <span className="case-chain-mark" aria-hidden="true" />
+          <span className="case-chain-label">模型连通</span>
+          <strong>{modelStatusLabel(data.model.status)}</strong>
+        </li>
+        <li
+          data-state={
+            data.queue.depth !== null && data.queue.depth > 0 ? "open" : "filled"
+          }
+        >
+          <span className="case-chain-mark" aria-hidden="true" />
+          <span className="case-chain-label">等待任务</span>
+          <strong>{queueDepth}</strong>
+        </li>
+        <li
+          data-state={
+            data.queue.oldest_wait_ms !== null &&
+            data.queue.oldest_wait_ms > 0
+              ? "open"
+              : "filled"
+          }
+        >
+          <span className="case-chain-mark" aria-hidden="true" />
+          <span className="case-chain-label">最老等待</span>
+          <strong>{oldestWait}</strong>
+        </li>
+        <li data-state={data.users.length > 0 ? "filled" : "open"}>
+          <span className="case-chain-mark" aria-hidden="true" />
+          <span className="case-chain-label">用户</span>
+          <strong>{data.users.length}</strong>
+        </li>
+      </ol>
+      <div className="settings-grid">
+        <section className="settings-panel" aria-labelledby="settings-model-title">
+          <h2 id="settings-model-title">模型连通</h2>
+          <p className="settings-panel-value">
+            {modelStatusLabel(data.model.status)}
+          </p>
+          <p className="meta">{data.model.label}</p>
+        </section>
+        <section className="settings-panel" aria-labelledby="settings-queue-title">
+          <h2 id="settings-queue-title">队列</h2>
+          <dl className="settings-pairs">
+            <div>
+              <dt>等待任务</dt>
+              <dd>{queueDepth}</dd>
+            </div>
+            <div>
+              <dt>最老任务等待</dt>
+              <dd>{oldestWait}</dd>
+            </div>
+          </dl>
+        </section>
+      </div>
+      <section className="settings-panel" aria-labelledby="settings-redaction-title">
+        <h2 id="settings-redaction-title">脱敏政策</h2>
         <p>
           {data.redaction_policy === ""
             ? "未提供脱敏政策说明。"
@@ -73,13 +125,16 @@ export function SettingsPage({
         </p>
       </section>
       {session.data?.role === "admin" ? (
-        <section aria-labelledby="execution-operations-title">
+        <section
+          className="settings-panel"
+          aria-labelledby="execution-operations-title"
+        >
           <h2 id="execution-operations-title">执行运维统计</h2>
           <p className="meta">
             仅展示授权的汇总元数据，不包含案件正文或执行事件。
           </p>
           {data.execution ? (
-            <dl className="execution-dl">
+            <dl className="settings-figures">
               <div>
                 <dt>全部尝试</dt>
                 <dd>{data.execution.total_attempts}</dd>
@@ -126,8 +181,8 @@ export function SettingsPage({
           )}
         </section>
       ) : null}
-      <section>
-        <h2>用户与角色</h2>
+      <section className="settings-panel" aria-labelledby="settings-users-title">
+        <h2 id="settings-users-title">用户与角色</h2>
         <p className="meta">
           首版只读展示。账号的创建和停用不在这个页面里完成。
         </p>

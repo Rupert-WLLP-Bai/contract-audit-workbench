@@ -134,9 +134,9 @@ export function RulePackCreatePage() {
 
   return (
     <section className="page page-rulepack-form">
-      <p>
+      <nav className="page-back" aria-label="规则包导航">
         <Link to="/admin/rulepacks">返回规则包</Link>
-      </p>
+      </nav>
       <header className="page-head">
         <div>
           <h1>创建规则包草稿</h1>

@@ -145,11 +145,11 @@ export function FindingPanel({
                     {SEVERITY_LABELS[finding.severity ?? "unrated"] ?? "未分级"}
                   </span>
                   <span className="meta">
-                    {originLabel(finding.origin)} ·{" "}
+                    {originLabel(finding.origin)}，{" "}
                     {relationLabel(finding.relation)}
                     {decision
-                      ? ` · 已记录${decisionLabel(decision.action)}`
-                      : " · 待裁决"}
+                      ? `，已记录${decisionLabel(decision.action)}`
+                      : "，待裁决"}
                   </span>
                 </Button>
               </li>
@@ -192,7 +192,7 @@ export function FindingPanel({
                 <blockquote key={anchor.id}>
                   {anchor.quote}
                   <small>
-                    {anchor.document_version_id} · {anchor.status}
+                    {anchor.document_version_id}，{anchor.status}
                   </small>
                 </blockquote>
               ))}
@@ -228,7 +228,7 @@ export function FindingPanel({
             <section key={item.id}>
               <h3>{item.claim}</h3>
               <p>
-                {originLabel(item.origin)} · {relationLabel(item.relation)}
+                {originLabel(item.origin)}，{relationLabel(item.relation)}
               </p>
               {item.decisions.length === 0 ? (
                 <p>尚未记录人工决定。</p>
@@ -238,7 +238,7 @@ export function FindingPanel({
                     <strong>{decisionLabel(decision.action)}</strong>
                     <p>{decision.reason}</p>
                     <small>
-                      {decision.actor} · {formatDateTime(decision.decided_at)}
+                      {decision.actor}，{formatDateTime(decision.decided_at)}
                     </small>
                   </article>
                 ))
@@ -248,6 +248,55 @@ export function FindingPanel({
         </div>
       ) : null}
     </aside>
+  );
+}
+
+function FindingCircuit({ finding }: { finding: Finding }) {
+  const located = finding.evidence.filter(
+    (anchor) => anchor.status === "located",
+  ).length;
+  const decision = latestDecision(finding);
+  const sourceOpen =
+    finding.evidence.length === 0 || located !== finding.evidence.length;
+  const nodes = [
+    {
+      label: "冻结原文",
+      value: String(finding.evidence.length),
+      meta: "处引用",
+      state: sourceOpen ? "open" : "filled",
+    },
+    {
+      label: "定位",
+      value: `${located}/${finding.evidence.length}`,
+      meta: "已对上原文",
+      state: sourceOpen ? "open" : "filled",
+    },
+    {
+      label: "建议",
+      value: originLabel(finding.origin),
+      meta:
+        finding.verification_status === "verified" ? "已核验" : "未核验",
+      state:
+        finding.verification_status === "verified" ? "filled" : "open",
+    },
+    {
+      label: "人工决定",
+      value: decision ? decisionLabel(decision.action) : "待裁决",
+      meta: decision ? formatDateTime(decision.decided_at) : "尚未记录",
+      state: decision ? "filled" : "open",
+    },
+  ];
+  return (
+    <ol className="finding-circuit" aria-label="线索链路">
+      {nodes.map((node) => (
+        <li key={node.label} data-state={node.state}>
+          <span className="finding-circuit-mark" aria-hidden="true" />
+          <span className="finding-circuit-label">{node.label}</span>
+          <strong className="finding-circuit-value">{node.value}</strong>
+          <span className="finding-circuit-meta">{node.meta}</span>
+        </li>
+      ))}
+    </ol>
   );
 }
 
@@ -313,15 +362,16 @@ function FindingDetail({
 
   return (
     <article className="finding-detail" aria-live="polite">
-      <p className="meta">
-        {originLabel(finding.origin)} · {relationLabel(finding.relation)}
-        {confidence ? ` · ${confidence}` : ""}
-        {finding.domain ? ` · ${finding.domain}` : ""}
-      </p>
       <h3>{finding.claim || "未命名线索"}</h3>
+      <p className="meta">
+        {originLabel(finding.origin)}，{relationLabel(finding.relation)}
+        {confidence ? `，${confidence}` : ""}
+        {finding.domain ? `，${finding.domain}` : ""}
+      </p>
+      <FindingCircuit finding={finding} />
       {finding.severity_source ? (
         <p className="finding-grade-source">
-          {SEVERITY_LABELS[finding.severity ?? "unrated"]} ·{" "}
+          {SEVERITY_LABELS[finding.severity ?? "unrated"]}，{" "}
           {finding.severity_source.policy_id} v
           {finding.severity_source.policy_version} 第
           {finding.severity_source.clause}条：{finding.severity_source.reason}
@@ -393,7 +443,7 @@ function FindingDetail({
                         {shortDigest(anchor.parsed_document_id)}
                       </span>
                     )}
-                    {" · "}正文 SHA-256{" "}
+                    {"，"}正文 SHA-256{" "}
                     {anchor.normalized_digest === null ? (
                       "未记录"
                     ) : (
@@ -431,8 +481,8 @@ function FindingDetail({
         {finding.decisions.map((decision) => (
           <li key={decision.id}>
             <p>
-              <strong>{decisionLabel(decision.action)}</strong> ·{" "}
-              {decision.actor} ·{" "}
+              <strong>{decisionLabel(decision.action)}</strong>，{" "}
+              {decision.actor}，{" "}
               <time dateTime={decision.decided_at}>
                 {formatDateTime(decision.decided_at)}
               </time>
