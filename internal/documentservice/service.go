@@ -87,8 +87,9 @@ func New(st *store.Store, config Config) (*Service, error) {
 type publicServiceContextKey struct{}
 
 // WithPublicParse applies this document service's shared queue, parser capacity,
-// and timeout to one authenticated public mutation. The operation kind resolver
-// runs after queue admission and must use server-side or persisted metadata.
+// and timeout to one authenticated public mutation. The resolver checks current
+// authority and classifies server-side metadata before queue admission; the
+// mutation must recheck authority when it commits.
 func WithPublicParse(ctx context.Context, resolveKind func(context.Context) (string, error), work func(context.Context) error) error {
 	if ctx == nil || resolveKind == nil || work == nil {
 		return errors.New("public document parse operation is incomplete")
@@ -128,13 +129,15 @@ func (s *Service) Handler(public http.Handler) http.Handler {
 func (s *Service) withPublicParse(parent context.Context, resolveKind func(context.Context) (string, error), work func(context.Context) error) error {
 	ctx, cancel := context.WithTimeout(parent, s.config.ParseTimeout)
 	defer cancel()
-	err := s.withQueue(ctx, func(ctx context.Context) error {
-		kind, err := resolveKind(ctx)
-		if err != nil {
-			return err
-		}
-		return s.withParser(ctx, kind, work)
-	})
+	kind, err := resolveKind(ctx)
+	if err == nil && kind != "cpu" && kind != "ocr" && kind != "none" {
+		err = errors.New("public document parse kind is invalid")
+	}
+	if err == nil {
+		err = s.withQueue(ctx, func(ctx context.Context) error {
+			return s.withParser(ctx, kind, work)
+		})
+	}
 	if errors.Is(err, errParseCapacityFull) {
 		return fault.New(http.StatusServiceUnavailable, "document_capacity", "材料解析容量已满，请稍后重试")
 	}
