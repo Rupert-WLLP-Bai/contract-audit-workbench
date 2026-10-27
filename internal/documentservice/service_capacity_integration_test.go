@@ -235,6 +235,33 @@ func newServiceFixture(t *testing.T, queueCapacity int, parseTimeout time.Durati
 	}
 }
 
+func TestUploadPreservesLargeOriginalAndRejectsOversize(t *testing.T) {
+	f := newServiceFixture(t, 2, 2*time.Minute)
+	caseID, err := f.core.CreateCaseWithBusiness(f.admin, "大文件上传", "service", "ENT", "telecom_dedicated_line")
+	if err != nil {
+		t.Fatal(err)
+	}
+	original := make([]byte, 32<<20)
+	copy(original, "%PDF-1.4\n")
+	copy(original[len(original)-6:], "%%EOF\n")
+	id, result := f.upload(t, caseID, "attachment", "large.pdf", "application/pdf", original)
+	if result.err != nil || result.status != http.StatusCreated {
+		t.Fatalf("large upload: status=%d err=%v body=%s", result.status, result.err, result.body)
+	}
+	_, got, err := f.document.Original(f.admin, caseID, id)
+	if err != nil || !bytes.Equal(got, original) {
+		t.Fatalf("original differs: got %d bytes, err=%v", len(got), err)
+	}
+	_, result = f.upload(t, caseID, "attachment", "oversize.pdf", "application/pdf", make([]byte, (32<<20)+1))
+	if result.err != nil || result.status != http.StatusRequestEntityTooLarge {
+		t.Fatalf("oversize file: status=%d err=%v body=%s", result.status, result.err, result.body)
+	}
+	_, result = f.upload(t, caseID, "attachment", "oversize-request.pdf", "application/pdf", make([]byte, 33<<20))
+	if result.err != nil || result.status != http.StatusRequestEntityTooLarge {
+		t.Fatalf("oversize multipart: status=%d err=%v body=%s", result.status, result.err, result.body)
+	}
+}
+
 func (f *serviceFixture) newCaseWithDocuments(t *testing.T) (string, string) {
 	t.Helper()
 	caseID, err := f.core.CreateCaseWithBusiness(f.admin, "文档服务解析容量回归", "service", "ENT", "telecom_dedicated_line")

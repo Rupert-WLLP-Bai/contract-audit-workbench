@@ -10,7 +10,11 @@
 
 三站共用 Ant Design 主题：导航使用黑色并按功能分组，保留标准图标，不显示菜单编号；内容使用白色和浅蓝灰，主要操作与选中项使用蓝色。蓝、橙、红、绿分别表示信息与进度、警告、错误和成功状态。颜色由 `web/src/styles.css` 的语义 Token 定义，经 `web/src/bootstrap.tsx` 配置到组件；普通链接样式置于组件样式之前，保留主按钮和状态标签的对比度。
 
+主页的审查链路和业务模块标题使用 17px，统计卡片标题使用 15px，窄屏沿用相同层级。宽屏时任务窗格与右侧统计窗格上下对齐，窄屏按可用宽度重排。
+
 系统健康页按分组展示服务状态、连接目标和观测说明，支持筛选、搜索和查看详情。版本对照页在宽屏并排显示冻结正文，窄屏纵向排列；选择审查发现可定位到对应原文。
+
+审查工作区顶部可直达执行检查器，按时间线或事件树查看当前尝试的持久事件；选择事件可查看原始阶段、状态、用量和关联标识，也可切换历史尝试。未记录的数据保持未报告。
 
 独立服务按下图组织：
 
@@ -79,11 +83,61 @@ make dev
 make web
 ```
 
-默认 API 地址为 `http://127.0.0.1:8080`，前端为 `http://127.0.0.1:5173`。开发模式默认账号为 `demo-admin / admin-demo`；生产模式拒绝固定演示身份。Vite 将 `/api` 和 `/openapi.json` 代理到 API，可通过 `VITE_DEV_API_PROXY` 修改目标地址。
+默认 API 地址为 `http://127.0.0.1:8080`，前端为 `http://127.0.0.1:5173`。Vite 将 `/api` 和 `/openapi.json` 代理到 API，可通过 `VITE_DEV_API_PROXY` 修改目标地址。
+
+开发和测试模式提供以下固定演示账号；生产环境禁止使用这些账号，配置企业身份目录时本地密码登录也会停用。账号默认仅能访问自己创建或明确加入的案件，租户和组织由服务端绑定。
+
+| 账号 | 密码 | 角色 | 租户 | 组织 |
+|---|---|---|---|---|
+| `demo-admin` | `admin-demo` | 管理员 | `local-demo` | `demo-org` |
+| `demo-clerk` | `clerk-demo` | 经办 | `local-demo` | `demo-org` |
+| `demo-reviewer` | `reviewer-demo` | 审查员 | `local-demo` | `demo-org` |
+| `demo-viewer` | `viewer-demo` | 只读 | `local-demo` | `demo-org` |
+| `demo-otherorg-clerk` | `otherorg-clerk-demo` | 经办 | `local-demo` | `demo-other-org` |
+| `demo-tenant2-admin` | `tenant2-admin-demo` | 管理员 | `local-demo-2` | `demo-org-2` |
+| `demo-tenant2-clerk` | `tenant2-clerk-demo` | 经办 | `local-demo-2` | `demo-org-2` |
+| `demo-tenant2-reviewer` | `tenant2-reviewer-demo` | 审查员 | `local-demo-2` | `demo-org-2` |
+| `demo-tenant2-viewer` | `tenant2-viewer-demo` | 只读 | `local-demo-2` | `demo-org-2` |
 
 模型与 OCR 服务需自行提供，在 `.env` 中设置 `LLM_BASE_URL`、`LLM_MODEL`、`OCR_MODEL` 和 `LLM_API_KEY`。模型不可用时，相关审查会按执行结果记录失败或部分完成，不会自动产生模型结论。
 
 模型名称必须与该端点的 `/v1/models` 目录一致。代理目录可能包含提供方前缀；不要把请求能够接受的别名当作目录中的正式模型 ID。
+
+### 真实合同联调
+
+原件和运行记录放在源码仓外。在仓库外准备版本 1 的 JSON 清单，包含 `version`、`dataset_id` 和 `cases`；每个案例包含 `id`、`title`、`contract_type` 和 `materials`。每项材料需要 `role`、相对清单的 `path`、`sha256`、`source` 和 `data_class: "original"`；角色可以是 `draft_contract`、`procurement`、`award` 或 `attachment`。材料之间的关系和审查结论需要人工核验。
+
+```bash
+python3 scripts/record_model_proxy.py --upstream http://127.0.0.1:3425/v1 \
+  --listen 127.0.0.1:3426 --out ../contract-audit-delivery/model-records/real-run
+```
+
+第二个命令保持运行，并在独立服务的模型配置中将 `LLM_BASE_URL` 指向该记录器，`LLM_MODEL` 与 `OCR_MODEL` 均设为真实模型目录中的名称。记录器只监听宿主机回环地址；容器服务需要受限的宿主网络转发才能访问。计算冻结模型身份的各服务必须使用相同的地址和模型名称。记录器只转发真实上游响应，不保存请求头，但请求和响应正文可能包含合同、图片及其他敏感数据，必须保存在私有目录。上游是否转发到外部取决于实际模型服务。
+
+扫描页逐页转写。单文件上限为 32 MiB，模型网关仍按请求体字节作保守预算预留；需要根据页面大小和频率调整 `MODEL_MAX_INPUT_TOKEN_RESERVATION`、`MODEL_TENANT_TOKENS_PER_MINUTE`、`MODEL_GLOBAL_TOKENS_PER_MINUTE`。要覆盖最大 33 MiB 模型请求，单次预留至少为 34603008，全局与租户每分钟预算均须大于单次预留和输出额度之和。长文档还需按实际耗时配置 `DOCUMENT_PARSE_TIMEOUT`、`GATEWAY_REQUEST_TIMEOUT` 和 `GATEWAY_UPLOAD_TIMEOUT`；文档解析超时上限为 30 分钟。
+
+DOCX 正文中的 Adobe Symbol 字体字符按 Unicode 映射保留；不支持的符号字体、无可靠文本映射的字形或无效编码会使解析失败，不会被静默丢弃。
+
+服务就绪后执行：
+
+```bash
+python3 scripts/run_real_corpus.py \
+  --manifest ../contract-audit-delivery/real-corpus/manifest.json \
+  --base http://127.0.0.1:8080 \
+  --request-timeout 1800 --review-timeout 900 \
+  --model-record-dir ../contract-audit-delivery/model-records/real-run
+```
+
+使用 `--case-id` 指定清单中的单个案例；省略时顺序运行全部案例。每次创建新的案件，在 `contract-audit-delivery/test-runs/` 保存输入哈希、解析状态、案件及审查标识、冻结快照、执行事件和发现；失败时保留已完成的记录。必须指定已存在的记录器目录，运行期间的模型调用会复制到本次结果的 `model-calls/`。请为每次运行使用独立记录器或顺序执行，避免按时间归档时混入并发调用。模型正文可能包含敏感材料，记录器不保存凭据头。报告和人工决定不会自动创建。
+
+验证演示账号的案件授权和租户隔离，可对真实运行的 API 执行：
+
+```bash
+python3 scripts/check_real_access.py --base http://127.0.0.1:8080 \
+  --manifest ../contract-audit-delivery/real-corpus/manifest.json
+```
+
+命令创建独立验证案件，记录不同账号对案件列表、原件、成员和写操作的实际状态码；结果保存在仓库外的 `test-runs/`。
 
 本地停止基础设施可执行 `make infra-stop`，该命令保留数据卷。
 

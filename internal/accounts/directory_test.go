@@ -26,8 +26,23 @@ func TestEnterpriseDirectoryBindsSubjectAndRevokesCurrentAccess(t *testing.T) {
 	if _, ok := BySubject("https://wrong.example", "subject-a"); ok {
 		t.Fatal("issuer mismatch accepted")
 	}
-	if _, ok := Authenticate("demo-admin", "admin-demo"); ok {
-		t.Fatal("enterprise mode accepted demo password")
+	for _, demo := range []struct{ id, secret string }{
+		{"demo-admin", "admin-demo"},
+		{"demo-clerk", "clerk-demo"},
+		{"demo-reviewer", "reviewer-demo"},
+		{"demo-viewer", "viewer-demo"},
+		{"demo-otherorg-clerk", "otherorg-clerk-demo"},
+		{"demo-tenant2-admin", "tenant2-admin-demo"},
+		{"demo-tenant2-clerk", "tenant2-clerk-demo"},
+		{"demo-tenant2-reviewer", "tenant2-reviewer-demo"},
+		{"demo-tenant2-viewer", "tenant2-viewer-demo"},
+	} {
+		if _, ok := Authenticate(demo.id, demo.secret); ok {
+			t.Fatalf("enterprise mode accepted demo account %s", demo.id)
+		}
+		if _, ok := ByID(demo.id); ok {
+			t.Fatalf("enterprise directory exposed demo account %s", demo.id)
+		}
 	}
 	resource := access.Resource{TenantID: "TA", CaseID: "case-a", OrgID: "sales", OwnerID: "bob"}
 	if !access.Check(access.Review, Principal(user), resource, time.Now()).Allowed {

@@ -1951,7 +1951,7 @@
           "材料"
         ],
         "summary": "登记原件版本",
-        "description": "admin/clerk 且案件可见。每次上传记录新版本；同内容原件可以共享 blob。最多 20 MiB，完整 multipart 请求上限 21 MiB。TXT/Markdown 有文本解析，PNG/JPEG 依赖配置的图片模型；PDF/DOCX 留存不代表已解析。",
+        "description": "admin/clerk 且案件可见。每次上传记录新版本；同内容原件可以共享 blob。最多 32 MiB，完整 multipart 请求上限 33 MiB。TXT/Markdown 有文本解析，PNG/JPEG 依赖配置的图片模型；PDF/DOCX 留存不代表已解析。",
         "responses": {
           "201": {
             "description": "成功",
@@ -2019,7 +2019,7 @@
                   "file": {
                     "type": "string",
                     "format": "binary",
-                    "description": "单个原件，最大 20 MiB。"
+                    "description": "单个原件，最大 32 MiB。"
                   }
                 }
               }
@@ -9189,7 +9189,7 @@
         }
       },
       "Error413": {
-        "description": "JSON 超过 1 MiB 或文件超过 20 MiB",
+        "description": "JSON 超过 1 MiB、文件超过 32 MiB 或完整上传请求超过 33 MiB",
         "content": {
           "application/json": {
             "schema": {

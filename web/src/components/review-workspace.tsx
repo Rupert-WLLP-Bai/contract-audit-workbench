@@ -97,6 +97,9 @@ export function ReviewWorkspaceView({
         <StatusText tone={runTone(run.state)}>{runLabel(run.state)}</StatusText>
         <span>{STREAM_LABEL[streamStatus]}</span>
         {run.model_ref ? <span>模型 {run.model_ref}</span> : null}
+        <a className="workspace-trace-link" href="#execution-inspector">
+          查看运行轨迹
+        </a>
         <ol className="workspace-circuit" aria-label="审查链路">
           <li data-state={workspace.documents.length > 0 ? "filled" : "open"}>
             <span className="workspace-circuit-mark" aria-hidden="true" />

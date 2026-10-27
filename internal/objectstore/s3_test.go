@@ -200,6 +200,39 @@ func TestNewRejectsInvalidConfigurationAndKeysBeforeRequest(t *testing.T) {
 	}
 }
 
+func TestObjectAtLimitRoundTripsWithoutTruncation(t *testing.T) {
+	original := make([]byte, MaxObjectBytes)
+	original[0], original[len(original)-1] = 0x31, 0x7f
+	var stored []byte
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodPut:
+			var err error
+			stored, err = io.ReadAll(r.Body)
+			if err != nil {
+				t.Errorf("read object: %v", err)
+				http.Error(w, "read error", http.StatusBadRequest)
+			}
+		case http.MethodGet:
+			digest := sha256.Sum256(stored)
+			w.Header().Set("X-Amz-Meta-Sha256", hex.EncodeToString(digest[:]))
+			_, _ = w.Write(stored)
+		default:
+			http.Error(w, "unexpected method", http.StatusMethodNotAllowed)
+		}
+	}))
+	defer server.Close()
+	store := testStore(t, server.URL)
+	const key = "example/source"
+	if err := store.Put(context.Background(), key, original); err != nil {
+		t.Fatalf("Put at limit: %v", err)
+	}
+	got, err := store.Get(context.Background(), key)
+	if err != nil || !bytes.Equal(got, original) {
+		t.Fatalf("round trip at limit: got %d bytes, err=%v", len(got), err)
+	}
+}
+
 func TestPutRejectsOversizeInputWithoutRequest(t *testing.T) {
 	var requests atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { requests.Add(1) }))

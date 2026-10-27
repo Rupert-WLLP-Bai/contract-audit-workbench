@@ -22,7 +22,7 @@ import (
 )
 
 const (
-	maxRequestBytes  = 1 << 20
+	maxRequestBytes  = 33 << 20 // 24 MiB PNG after base64 encoding plus JSON overhead
 	maxResponseBytes = 1 << 20
 	maxScopeBytes    = 16 << 10
 )

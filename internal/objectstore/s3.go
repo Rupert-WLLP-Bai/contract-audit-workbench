@@ -22,7 +22,7 @@ import (
 )
 
 // MaxObjectBytes is the largest original object or downloaded object accepted.
-const MaxObjectBytes = 20 << 20
+const MaxObjectBytes = 32 << 20
 
 var (
 	// ErrInvalidConfig indicates that the S3 endpoint or credentials are invalid.

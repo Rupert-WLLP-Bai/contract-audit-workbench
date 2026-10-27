@@ -299,10 +299,10 @@ func (h *handler) upload(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	r.Body = http.MaxBytesReader(w, r.Body, 21<<20)
+	r.Body = http.MaxBytesReader(w, r.Body, 33<<20)
 	if err := r.ParseMultipartForm(8 << 20); err != nil {
 		if strings.Contains(err.Error(), "too large") || errors.Is(err, io.ErrUnexpectedEOF) {
-			writeErr(w, fault.TooLarge("文件超过 20MB"))
+			writeErr(w, fault.TooLarge("上传请求超过 33 MiB"))
 			return
 		}
 		writeErr(w, fault.Invalid("材料上传格式不正确"))
@@ -315,13 +315,13 @@ func (h *handler) upload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer file.Close()
-	body, err := io.ReadAll(io.LimitReader(file, 20<<20+1))
+	body, err := io.ReadAll(io.LimitReader(file, 32<<20+1))
 	if err != nil {
 		writeErr(w, err)
 		return
 	}
-	if len(body) > 20<<20 {
-		writeErr(w, fault.TooLarge("文件超过 20MB"))
+	if len(body) > 32<<20 {
+		writeErr(w, fault.TooLarge("文件超过 32 MiB"))
 		return
 	}
 	media := http.DetectContentType(body)

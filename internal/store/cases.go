@@ -406,8 +406,8 @@ func (s *Store) AddDocument(ctx context.Context, user accounts.User, caseID, rol
 	if err != nil {
 		return "", err
 	}
-	if len(body) > 20<<20 {
-		return "", fault.TooLarge("文件超过 20MB")
+	if len(body) > 32<<20 {
+		return "", fault.TooLarge("文件超过 32 MiB")
 	}
 	switch role {
 	case "procurement", "award", "draft_contract", "attachment":

@@ -85,13 +85,14 @@ func (s *Store) updateAs(user accounts.User, fn func(*state) error) error {
 	return s.updateState(context.Background(), userScope(current), "", fn)
 }
 
-// bindLocalDemoCaseGrant binds an unbound case-scope grant for a legacy local-demo
+// bindLocalDemoCaseGrant binds an unbound case-scope grant for a local demo
 // identity to the exact case it is a member of, reproducing membership-scoped
 // content authorization. Enterprise identities are returned unchanged, so this
 // never widens a real grant. Every access.Check on case content must go through the
 // returned principal, because callers such as rulepack.Execute re-check it.
 func bindLocalDemoCaseGrant(item Case, current accounts.User, principal access.Principal) access.Principal {
-	if item.TenantID != accounts.LocalDemoTenant || current.TenantID != accounts.LocalDemoTenant || current.Issuer != "" {
+	if current.Issuer != "" || item.TenantID != current.TenantID ||
+		(current.TenantID != accounts.LocalDemoTenant && current.TenantID != accounts.LocalDemoTenant2) {
 		return principal
 	}
 	for _, memberID := range item.MemberIDs {

@@ -16,4 +16,4 @@ type Result struct {
 }
 
 const PDFVersion = "pdf-poppler-v1"
-const DOCXVersion = "ooxml-docx-v1"
+const DOCXVersion = "ooxml-docx-v2"

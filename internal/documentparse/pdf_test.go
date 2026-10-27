@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"image/png"
 	"os"
 	"os/exec"
@@ -152,6 +153,32 @@ func TestPDFScannedAndMixedPagesUseRenderedPNG(t *testing.T) {
 				pdfAnchor(t, result.IR, "第二页原生条款：质保36个月。", 2)
 			}
 		})
+	}
+}
+
+func TestPDFImageInventoryAggregateLimit(t *testing.T) {
+	const header = "page num type width height\n---\n"
+	var inventory strings.Builder
+	inventory.WriteString(header)
+	for page := 1; page <= 34; page++ {
+		fmt.Fprintf(&inventory, "%d 0 image 4680 3307\n", page)
+	}
+	pages, err := pdfImagePages(inventory.String(), 34)
+	if err != nil || len(pages) != 34 {
+		t.Fatalf("34 scanned pages should fit: pages=%d err=%v", len(pages), err)
+	}
+	for page, hasImage := range pages {
+		if !hasImage {
+			t.Fatalf("page %d lost its image", page+1)
+		}
+	}
+
+	atLimit := header + strings.Repeat("1 0 image 10000 4000\n", 15)
+	if _, err := pdfImagePages(atLimit, 1); err != nil {
+		t.Fatalf("aggregate pixel limit should be inclusive: %v", err)
+	}
+	if _, err := pdfImagePages(atLimit+"1 0 image 1 1\n", 1); err == nil || !strings.Contains(err.Error(), "total pixel limit") {
+		t.Fatalf("aggregate pixel limit should reject excess: %v", err)
 	}
 }
 

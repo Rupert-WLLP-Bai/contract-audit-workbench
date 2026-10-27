@@ -319,7 +319,7 @@ export function CaseDetailPage() {
           <h3>登记材料</h3>
           <p className="meta">
             每案最多 4 类当前材料；同角色上传形成新版本并保留历史。单文件不超过
-            20 MiB。支持 txt/md、png/jpeg、pdf 与 docx
+            32 MiB。支持 txt/md、png/jpeg、pdf 与 docx
             正文解析；扫描页和内嵌图片通过已配置模型转写，最终以解析状态为准。
           </p>
           {!canUpload ? (

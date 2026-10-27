@@ -14,6 +14,9 @@ import (
 
 const LocalDemoTenant = "local-demo"
 
+// LocalDemoTenant2 identifies the second development/test demo tenant.
+const LocalDemoTenant2 = "local-demo-2"
+
 var enterpriseDirectory struct {
 	sync.Mutex
 	path     string

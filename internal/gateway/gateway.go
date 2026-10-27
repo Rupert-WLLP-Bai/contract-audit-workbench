@@ -34,7 +34,7 @@ import (
 )
 
 const (
-	defaultMaxUploadBytes    = 32 << 20
+	defaultMaxUploadBytes    = 33 << 20
 	defaultMaxInflight       = 128
 	defaultMaxUploads        = 16
 	defaultRequestTimeout    = 3 * time.Minute
@@ -643,7 +643,13 @@ func newUpstream(role string, urls []*url.URL, token string, failureThreshold, r
 		up.replicas[i] = &replica{target: target, identity: hex.EncodeToString(identity[:8])}
 	}
 	pooledTransport := upstreamTransport(upstreamHeaderTimeout, true)
-	nonReplayableTransport := upstreamTransport(upstreamHeaderTimeout, false)
+	headerTimeout := upstreamHeaderTimeout
+	if role == "document" {
+		// Document uploads and parsing can take longer than the generic header
+		// timeout. Their request contexts already enforce the configured limits.
+		headerTimeout = 0
+	}
+	nonReplayableTransport := upstreamTransport(headerTimeout, false)
 	streamTransport := upstreamTransport(streamHeaderTimeout, true)
 	up.transports = []*http.Transport{pooledTransport, nonReplayableTransport, streamTransport}
 	up.pooled = up.newProxy(pooledTransport, 0)

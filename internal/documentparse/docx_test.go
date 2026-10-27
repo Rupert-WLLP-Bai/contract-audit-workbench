@@ -187,6 +187,22 @@ func docxRewrite(t *testing.T, original []byte, replacements map[string][]byte) 
 	return out.Bytes()
 }
 
+func TestDOCXSymbolFontPreservesVisibleCharacters(t *testing.T) {
+	plain := docxFixture(t, "plain.docx")
+	document := []byte(`<w:document xmlns:w="` + docxWNS + `"><w:body><w:p><w:r><w:t>合计</w:t><w:sym w:font="Symbol" w:char="00E5"/><w:sym w:font="Symbol" w:char="F0A3"/><w:t>金额</w:t></w:r></w:p></w:body></w:document>`)
+	result, err := ParseDOCX(context.Background(), docxRewrite(t, plain, map[string][]byte{"word/document.xml": document}), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.IR.NormalizedText != "合计∑≤金额" {
+		t.Fatalf("symbol font did not preserve visible characters: %q", result.IR.NormalizedText)
+	}
+	anchor := docir.Locate(result.IR, "∑≤")
+	if anchor.Status != docir.StatusLocated {
+		t.Fatalf("symbol quote is not locatable: %+v", anchor)
+	}
+}
+
 func TestDOCXRejectsIncompleteAndUnboundedPackages(t *testing.T) {
 	plain := docxFixture(t, "plain.docx")
 	document := func(content string) []byte {

@@ -2,6 +2,8 @@ package modelgateway
 
 import (
 	"encoding/json"
+	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -10,6 +12,30 @@ import (
 )
 
 func tokenFor(role string) string { return "private-" + role + "-credential-0123456789" }
+
+func TestDecodeRequestAcceptsEncodedOCRAndRejectsOversize(t *testing.T) {
+	const prefix = `{"model":"ocr","max_tokens":1,"image":"`
+	const suffix = `"}`
+	for _, test := range []struct {
+		name string
+		size int
+		wantError bool
+	}{
+		{"encoded maximum PNG", (24 << 20) * 4 / 3, false},
+		{"at request limit", maxRequestBytes - len(prefix) - len(suffix), false},
+		{"over request limit", maxRequestBytes - len(prefix) - len(suffix) + 1, true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			body := prefix + strings.Repeat("A", test.size) + suffix
+			req := httptest.NewRequest("POST", "/v1/chat/completions", strings.NewReader(body))
+			req.Header.Set("X-Audit-Execution-Scope", "{}")
+			got, _, _, _, err := decodeRequest(httptest.NewRecorder(), req)
+			if (err != nil) != test.wantError || (!test.wantError && len(got) != len(body)) {
+				t.Fatalf("decode length=%d err=%v", len(got), err)
+			}
+		})
+	}
+}
 
 func contentOf(t *testing.T, response []byte) string {
 	t.Helper()

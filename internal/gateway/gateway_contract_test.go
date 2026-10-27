@@ -544,6 +544,42 @@ func TestRequestTimeoutCancelsUpstreamAndReturnsStable504(t *testing.T) {
 	}
 }
 
+func TestDocumentParseUsesConfiguredRequestTimeout(t *testing.T) {
+	cancelled := make(chan struct{})
+	release := make(chan struct{})
+	defer close(release)
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/health/ready" {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		_, _ = io.Copy(io.Discard, r.Body)
+		select {
+		case <-r.Context().Done():
+			close(cancelled)
+		case <-release:
+		}
+	}))
+	t.Cleanup(upstream.Close)
+	config := baseConfig()
+	config.DocumentURL = upstream.URL
+	config.RequestTimeout = 80 * time.Millisecond
+	edge := startGateway(t, config)
+	response, err := (&http.Client{Timeout: 2 * time.Second}).Post(edge.URL+"/api/cases/c/documents/d/parse", "application/json", strings.NewReader("{}"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	response.Body.Close()
+	if response.StatusCode != http.StatusGatewayTimeout {
+		t.Fatalf("document timeout returned %d", response.StatusCode)
+	}
+	select {
+	case <-cancelled:
+	case <-time.After(time.Second):
+		t.Fatal("document parse continued after the configured timeout")
+	}
+}
+
 func TestRequestCancellationReachesUpstream(t *testing.T) {
 	entered := make(chan struct{}, 1)
 	cancelled := make(chan struct{})

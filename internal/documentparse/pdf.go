@@ -28,7 +28,7 @@ const (
 	pdfMaxPNGBytes    = 24 << 20
 	pdfRenderSide     = 2400
 	pdfMaxImagePixels = 40_000_000
-	pdfMaxAllPixels   = 100_000_000
+	pdfMaxAllPixels   = 600_000_000
 	pdfMaxImages      = 4096
 	pdfToolTimeout    = 30 * time.Second
 )

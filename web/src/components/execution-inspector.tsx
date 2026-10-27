@@ -1,6 +1,6 @@
 import { Collapse } from "antd";
 import { Button, Select } from "antd";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import type {
   ConstraintEvaluation,
   Execution,
@@ -64,6 +64,70 @@ function instant(value: string | null): string {
 
 function tokenCount(value: number | null): string {
   return value === null ? "未知" : value.toLocaleString("zh-CN");
+}
+
+const phaseLabels: Record<string, string> = {
+  acceptance: "受理",
+  audit_review_execution_v1: "审查执行",
+  input_preparation: "输入准备",
+  deterministic_rules: "确定性规则审查",
+  model_review: "模型审查",
+  model_request: "模型请求",
+  citation_verification: "引用核验",
+  verified_finding: "发现核验",
+  terminal_persistence: "终态保存",
+  cancellation: "取消尝试",
+  restart_recovery: "重启恢复",
+  evidence_tool: "证据工具",
+  agent_review_result: "智能体审查结果",
+};
+
+const eventTypeLabels: Record<string, string> = {
+  attempt_accepted: "尝试已受理",
+  span_started: "开始",
+  span_completed: "完成",
+  span_failed: "失败",
+  node_started: "节点开始",
+  node_completed: "节点完成",
+  node_failed: "节点失败",
+  model_completed: "模型调用完成",
+  model_failed: "模型调用失败",
+  finding_verified: "发现已核验",
+  attempt_finished: "尝试结束",
+  attempt_cancelled: "尝试已取消",
+  attempt_interrupted: "尝试已中断",
+  tool_evidence: "证据工具结果",
+  agent_review_event: "智能体审查事件",
+};
+
+const eventStatusLabels: Record<string, string> = {
+  accepted: "已受理",
+  queued: "排队中",
+  started: "已开始",
+  running: "进行中",
+  completed: "已完成",
+  failed: "失败",
+  partial: "部分完成",
+  cancelled: "已取消",
+  interrupted: "已中断",
+};
+
+function phaseLabel(phase: string): string {
+  return Object.hasOwn(phaseLabels, phase)
+    ? (phaseLabels[phase] ?? phase)
+    : phase;
+}
+
+function eventTypeLabel(type: string): string {
+  return Object.hasOwn(eventTypeLabels, type)
+    ? (eventTypeLabels[type] ?? type)
+    : type;
+}
+
+function eventStatusLabel(status: string): string {
+  return Object.hasOwn(eventStatusLabels, status)
+    ? (eventStatusLabels[status] ?? status)
+    : status;
 }
 
 function usageDetails(usage: ExecutionUsage | null) {
@@ -198,10 +262,12 @@ export function ExecutionInspector({
 }: ExecutionInspectorProps) {
   const [view, setView] = useState<"tree" | "timeline">("timeline");
   const [selectedSeq, setSelectedSeq] = useState<number | null>(null);
+  const eventDetailRef = useRef<HTMLElement>(null);
 
   if (!execution) {
     return (
       <section
+        id="execution-inspector"
         className="execution-inspector"
         aria-labelledby="execution-inspector-title"
       >
@@ -236,10 +302,6 @@ export function ExecutionInspector({
     .filter((event) => event.attempt_id === selected.id)
     .slice()
     .sort((left, right) => left.seq - right.seq);
-  const maximumDuration = events.reduce(
-    (maximum, item) => Math.max(maximum, item.duration_ms ?? 0),
-    0,
-  );
   const event =
     events.find((item) => item.seq === selectedSeq) ?? events[0] ?? null;
   const verified = findings.filter(
@@ -257,64 +319,48 @@ export function ExecutionInspector({
       ? "运行中，尚无终态时长"
       : elapsed(execution.duration_ms);
 
+  const latestEvent = events.at(-1);
+
   function eventButton(item: ExecutionEvent) {
-    const label = `序号 ${item.seq}，${item.phase}，${item.event_type}`;
+    const typeLabel = eventTypeLabel(item.event_type);
+    const statusLabel = item.status ? eventStatusLabel(item.status) : null;
+    const label = `序号 ${item.seq}（#${item.seq}），${phaseLabel(item.phase)}，${typeLabel}${
+      statusLabel ? `，${statusLabel}` : ""
+    }`;
     return (
-      <Button
-        aria-label={
-          "#" +
-          String(item.seq) +
-          "，" +
-          String(item.phase) +
-          String(item.event_type) +
-          String(item.status ? `，${item.status}` : "") +
-          String(
-            item.duration_ms !== null && maximumDuration > 0 ? (
-              <span className="execution-event-bar" aria-hidden="true">
-                <span
-                  style={{
-                    width: `${(item.duration_ms / maximumDuration) * 100}%`,
-                  }}
-                />
-              </span>
-            ) : null,
-          ) +
-          String(label)
-        }
+      <button
+        aria-label={label}
         className="execution-event-select"
-        htmlType="button"
+        type="button"
+        data-status={item.status ?? undefined}
         aria-current={event?.seq === item.seq ? "true" : undefined}
-        onClick={() => setSelectedSeq(item.seq)}
+        onClick={() => {
+          setSelectedSeq(item.seq);
+          if (window.matchMedia?.("(max-width: 1099px)").matches) {
+            eventDetailRef.current?.scrollIntoView({ block: "start" });
+          }
+        }}
       >
-        <span>
-          #{item.seq}，{item.phase}
+        <span className="execution-event-phase">
+          #{item.seq} {phaseLabel(item.phase)}
         </span>
-        <span className="meta">
-          {item.event_type}
-          {item.status ? `，${item.status}` : ""}
+        <span className="execution-event-description">
+          {typeLabel}
+          {statusLabel ? `，${statusLabel}` : ""}
         </span>
-        {item.duration_ms !== null && maximumDuration > 0 ? (
-          <span className="execution-event-bar" aria-hidden="true">
-            <span
-              style={{
-                width: `${(item.duration_ms / maximumDuration) * 100}%`,
-              }}
-            />
-          </span>
-        ) : null}
-        <span className="sr-only">{label}</span>
-      </Button>
+      </button>
     );
   }
 
   function renderTree(node: SpanGroup) {
     const titleEvent = node.events[0];
     const title = titleEvent
-      ? `${titleEvent.phase}，${titleEvent.node_kind}`
+      ? `${phaseLabel(titleEvent.phase)}，${titleEvent.node_kind}`
       : "执行节点";
     return (
       <li key={node.key}>
         <Collapse
+          ghost
           defaultActiveKey={["content"]}
           items={[
             {
@@ -348,34 +394,86 @@ export function ExecutionInspector({
 
   return (
     <section
+      id="execution-inspector"
       className="execution-inspector"
       aria-labelledby="execution-inspector-title"
     >
       <div className="execution-inspector-top">
         <Collapse
           className="execution-inspector-disclosure"
+          ghost
           defaultActiveKey={["content"]}
           items={[
             {
               key: "content",
               label: (
-                <>
+                <div className="execution-inspector-summary">
                   <div>
                     <h2 id="execution-inspector-title">执行检查器</h2>
                     <p className="meta">
                       第 {selected.ordinal} 次尝试，最近持久阶段{" "}
-                      {events[events.length - 1]?.phase ?? "未报告"}，
+                      {latestEvent ? phaseLabel(latestEvent.phase) : "未报告"}，
                       首个已核验发现 {verified[0]?.claim || "未报告"}
                     </p>
                   </div>
                   <StatusText tone={runTone(selected.state)}>
                     {runLabel(selected.state)}
                   </StatusText>
-                </>
+                </div>
               ),
               children: (
                 <>
                   <div className="execution-inspector-body">
+                    <div className="execution-overview">
+                      <div className="execution-attempt-row">
+                        <label className="field">
+                          查看尝试
+                          <Select
+                            aria-label="查看尝试"
+                            value={selected.id}
+                            onChange={(value) => {
+                              setSelectedSeq(null);
+                              onSelectAttempt(value);
+                            }}
+                            options={[...attempts]
+                              .sort(
+                                (left, right) => right.ordinal - left.ordinal,
+                              )
+                              .map((attempt) => ({
+                                label: `第 ${attempt.ordinal} 次，${runLabel(attempt.state)}${attempt.id === latest.id ? "，最新" : ""}`,
+                                value: attempt.id,
+                              }))}
+                          />
+                        </label>
+                        {selected.history_kind === "legacy_unfrozen" ? (
+                          <p className="callout">
+                            旧运行未冻结原始输入，不能补造历史阶段。
+                          </p>
+                        ) : null}
+                      </div>
+                      <dl className="execution-overview-stats">
+                        <div>
+                          <dt>状态</dt>
+                          <dd>{runLabel(selected.state)}</dd>
+                        </div>
+                        <div>
+                          <dt>总时长</dt>
+                          <dd>{duration}</dd>
+                        </div>
+                        <div>
+                          <dt>持久事件</dt>
+                          <dd>{events.length} 条</dd>
+                        </div>
+                        <div>
+                          <dt>模型调用</dt>
+                          <dd>
+                            {execution.usage === null
+                              ? "未报告"
+                              : `${execution.usage.calls} 次`}
+                          </dd>
+                        </div>
+                      </dl>
+                    </div>
                     <section
                       className="execution-events"
                       aria-labelledby="execution-events-title"
@@ -432,6 +530,7 @@ export function ExecutionInspector({
                         </ol>
                       )}
                       <section
+                        ref={eventDetailRef}
                         className="execution-event-detail"
                         aria-labelledby="execution-event-detail-title"
                       >
@@ -447,7 +546,14 @@ export function ExecutionInspector({
                               </div>
                               <div>
                                 <dt>阶段</dt>
-                                <dd>{event.phase}</dd>
+                                <dd>
+                                  {phaseLabel(event.phase)}
+                                  {phaseLabel(event.phase) !== event.phase ? (
+                                    <span className="execution-event-code">
+                                      {event.phase}
+                                    </span>
+                                  ) : null}
+                                </dd>
                               </div>
                               <div>
                                 <dt>节点类型</dt>
@@ -455,7 +561,15 @@ export function ExecutionInspector({
                               </div>
                               <div>
                                 <dt>事件类型</dt>
-                                <dd>{event.event_type}</dd>
+                                <dd>
+                                  {eventTypeLabel(event.event_type)}
+                                  {eventTypeLabel(event.event_type) !==
+                                  event.event_type ? (
+                                    <span className="execution-event-code">
+                                      {event.event_type}
+                                    </span>
+                                  ) : null}
+                                </dd>
                               </div>
                               <div>
                                 <dt>时间</dt>
@@ -467,7 +581,17 @@ export function ExecutionInspector({
                               </div>
                               <div>
                                 <dt>状态</dt>
-                                <dd>{event.status ?? "未报告"}</dd>
+                                <dd>
+                                  {event.status
+                                    ? eventStatusLabel(event.status)
+                                    : "未报告"}
+                                  {event.status &&
+                                  eventStatusLabel(event.status) !== event.status ? (
+                                    <span className="execution-event-code">
+                                      {event.status}
+                                    </span>
+                                  ) : null}
+                                </dd>
                               </div>
                               <div>
                                 <dt>错误代码</dt>
@@ -494,30 +618,6 @@ export function ExecutionInspector({
                         )}
                       </section>
                     </section>
-                    <div className="execution-attempt-row">
-                      <label className="field">
-                        查看尝试
-                        <Select
-                          aria-label="查看尝试"
-                          value={selected.id}
-                          onChange={(value) => {
-                            setSelectedSeq(null);
-                            onSelectAttempt(value);
-                          }}
-                          options={[...attempts]
-                            .sort((left, right) => right.ordinal - left.ordinal)
-                            .map((attempt) => ({
-                              label: `第 ${attempt.ordinal} 次，${runLabel(attempt.state)}${attempt.id === latest.id ? "，最新" : ""}`,
-                              value: attempt.id,
-                            }))}
-                        />
-                      </label>
-                      {selected.history_kind === "legacy_unfrozen" ? (
-                        <p className="callout">
-                          旧运行未冻结原始输入，不能补造历史阶段。
-                        </p>
-                      ) : null}
-                    </div>
 
                     <dl className="execution-dl execution-summary">
                       <div>

@@ -103,6 +103,19 @@ func (p *docxParser) inline(node *docxNode, part string, visibility docxVisibili
 		return appendText("\u2011")
 	case node.word("softHyphen"):
 		return appendText("\u00AD")
+	case node.word("sym"):
+		if !visible {
+			return nil
+		}
+		symbol, err := docxSymbol(node)
+		if err != nil {
+			return err
+		}
+		if text.Len()+utf8.RuneLen(symbol) > docxMaxText {
+			return fmt.Errorf("DOCX: extracted text exceeds 8 MiB limit")
+		}
+		text.WriteRune(symbol)
+		return nil
 	case node.word("drawing"):
 		if !visible {
 			return nil
