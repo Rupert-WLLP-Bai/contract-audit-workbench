@@ -7,6 +7,7 @@ import { CircuitMark } from "./circuit-mark";
 import { Avatar, Breadcrumb, Button, Layout, Menu } from "antd";
 import {
   ApiOutlined,
+  BookOutlined,
   LogoutOutlined,
   SafetyCertificateOutlined,
   SettingOutlined,
@@ -19,15 +20,22 @@ export function AdminShell() {
   const location = useLocation();
   const actor = session.data;
   const rulepackRoute = location.pathname.startsWith("/admin/rulepacks");
+  const knowledgeRoute = location.pathname.startsWith("/admin/governed-knowledge");
   const breadcrumb = location.pathname.startsWith("/admin/infrastructure")
     ? "基础设施与中间件"
-    : !rulepackRoute
-      ? "设置与运行状态"
-      : location.pathname.endsWith("/new")
-        ? "创建规则包草稿"
+    : knowledgeRoute
+      ? location.pathname.endsWith("/new")
+        ? "创建知识版本"
         : location.pathname.includes("/versions/")
-          ? "规则包详情"
-          : "规则包治理";
+          ? "知识版本详情"
+          : "知识治理"
+      : !rulepackRoute
+        ? "设置与运行状态"
+        : location.pathname.endsWith("/new")
+          ? "创建规则包草稿"
+          : location.pathname.includes("/versions/")
+            ? "规则包详情"
+            : "规则包治理";
 
   if (actor && actor.role !== "admin") {
     return (
@@ -103,9 +111,11 @@ export function AdminShell() {
             selectedKeys={[
               location.pathname.startsWith("/admin/infrastructure")
                 ? "/admin/infrastructure"
-                : rulepackRoute
-                  ? "/admin/rulepacks"
-                  : "/admin/settings",
+                : knowledgeRoute
+                  ? "/admin/governed-knowledge"
+                  : rulepackRoute
+                    ? "/admin/rulepacks"
+                    : "/admin/settings",
             ]}
             items={[
               {
@@ -124,6 +134,11 @@ export function AdminShell() {
                     key: "/admin/rulepacks",
                     icon: <SafetyCertificateOutlined />,
                     label: <NavLink to="/admin/rulepacks">规则库</NavLink>,
+                  },
+                  {
+                    key: "/admin/governed-knowledge",
+                    icon: <BookOutlined />,
+                    label: <NavLink to="/admin/governed-knowledge">知识治理</NavLink>,
                   },
                   {
                     key: "/admin/infrastructure",
