@@ -113,7 +113,7 @@ func (h *handler) createReport(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
-	item, err := h.store.CreateReport(user, r.PathValue("caseID"), body.RunID, body.AttemptID)
+	item, err := h.store.CreateReportContext(r.Context(), user, r.PathValue("caseID"), body.RunID, body.AttemptID)
 	if err != nil {
 		writeErr(w, err)
 		return

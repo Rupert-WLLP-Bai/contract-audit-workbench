@@ -26,6 +26,16 @@ const (
 // attempt. Later decisions produce a different report identity and never edit
 // these bytes.
 func (s *Store) CreateReport(user accounts.User, caseID, runID, attemptID string) (ReportRecord, error) {
+	return s.CreateReportContext(context.Background(), user, caseID, runID, attemptID)
+}
+
+// CreateReportContext is the request-scoped form. It lets a caller cancel the
+// object-integrity and agent-review reads when the HTTP request is gone while
+// keeping the existing CreateReport signature for internal and test callers.
+func (s *Store) CreateReportContext(ctx context.Context, user accounts.User, caseID, runID, attemptID string) (ReportRecord, error) {
+	if err := ctx.Err(); err != nil {
+		return ReportRecord{}, err
+	}
 	if s.ReadOnly() {
 		return ReportRecord{}, fault.New(503, "read_only", "只读模式下不能创建报告")
 	}
@@ -90,7 +100,7 @@ func (s *Store) CreateReport(user accounts.User, caseID, runID, attemptID string
 		// Recorded identity is not proof of content: a read may carry an artifact
 		// whose stored payload failed verification. Re-verify against the row before
 		// freezing it into a report.
-		if err := s.verifyParsedRecordContext(context.Background(), parsed, frozen.Document); err != nil {
+		if err := s.verifyParsedRecordContext(ctx, parsed, frozen.Document); err != nil {
 			return ReportRecord{}, fault.Conflict("报告材料的解析产物完整性校验失败")
 		}
 		parsedDocs = append(parsedDocs, reportDocument{Document: frozen.Document, Parsed: parsed})
@@ -114,7 +124,7 @@ func (s *Store) CreateReport(user accounts.User, caseID, runID, attemptID string
 	}
 	// The five-domain projection is read from this attempt's persisted record only;
 	// it is never recomputed for the report, and an absent record stays null.
-	agentReviewJSON, hasAgentReview, err := s.AgentReviewForAttempt(context.Background(), currentUser, caseID, runID, attemptID)
+	agentReviewJSON, hasAgentReview, err := s.AgentReviewForAttempt(ctx, currentUser, caseID, runID, attemptID)
 	if err != nil {
 		return ReportRecord{}, err
 	}
