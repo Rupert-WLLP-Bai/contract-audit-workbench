@@ -29,6 +29,7 @@ import shutil
 import sys
 import tempfile
 from pathlib import Path
+from urllib.parse import urlsplit
 
 try:
     import yaml
@@ -45,7 +46,7 @@ SECRET_CONTRACT = {
     },
     "contract-audit-service-tokens": {
         "GATEWAY_CORE_TOKEN", "GATEWAY_DOCUMENT_TOKEN", "GATEWAY_EXECUTION_TOKEN", "GATEWAY_TOOL_TOKEN",
-        "WORKER_DOCUMENT_TOKEN", "WORKER_MODEL_TOKEN", "WORKER_TOOL_TOKEN", "DOCUMENT_MODEL_TOKEN",
+        "WORKER_DOCUMENT_TOKEN", "WORKER_MODEL_TOKEN", "WORKER_TOOL_TOKEN", "WORKER_CORE_TOKEN", "DOCUMENT_MODEL_TOKEN",
     },
     "contract-audit-oidc": {"OIDC_CLIENT_SECRET", "OIDC_ADMIN_CLIENT_SECRET", "OIDC_STATE_KEY"},
     "contract-audit-rustfs": {"RUSTFS_ACCESS_KEY", "RUSTFS_SECRET_KEY"},
@@ -53,7 +54,7 @@ SECRET_CONTRACT = {
 }
 
 REQUIRED = {
-    "core": ("CORE_DATABASE_URL", "GATEWAY_ROLE_TOKEN"),
+    "core": ("CORE_DATABASE_URL", "GATEWAY_ROLE_TOKEN", "WORKER_CORE_TOKEN"),
     "document": (
         "DOCUMENT_DATABASE_URL", "GATEWAY_ROLE_TOKEN", "MODEL_GATEWAY_URL",
         "DOCUMENT_MODEL_TOKEN", "WORKER_DOCUMENT_TOKEN",
@@ -63,7 +64,7 @@ REQUIRED = {
     "worker": (
         "EXECUTION_DATABASE_URL", "HEALTH_ADDR", "DOCUMENT_SERVICE_URL",
         "WORKER_DOCUMENT_TOKEN", "MODEL_GATEWAY_URL", "WORKER_MODEL_TOKEN",
-        "TOOL_GATEWAY_URL", "WORKER_TOOL_TOKEN",
+        "TOOL_GATEWAY_URL", "WORKER_TOOL_TOKEN", "CORE_SERVICE_URL", "WORKER_CORE_TOKEN",
     ),
     "model": ("MODEL_DATABASE_URL", "WORKER_MODEL_TOKEN", "DOCUMENT_MODEL_TOKEN", "LLM_API_KEY"),
     "tool": ("TOOL_DATABASE_URL", "GATEWAY_ROLE_TOKEN", "WORKER_TOOL_TOKEN"),
@@ -76,7 +77,7 @@ GATEWAY_ENV = (
 )
 IDENTITY_SERVICES = ("core", "document", "execution", "worker")
 IDENTITY_KEYS = ("LLM_BASE_URL", "LLM_MODEL", "OCR_MODEL")
-INTERNAL_TOKEN_KEYS = ("WORKER_MODEL_TOKEN", "WORKER_DOCUMENT_TOKEN", "WORKER_TOOL_TOKEN", "DOCUMENT_MODEL_TOKEN")
+INTERNAL_TOKEN_KEYS = ("WORKER_MODEL_TOKEN", "WORKER_DOCUMENT_TOKEN", "WORKER_TOOL_TOKEN", "WORKER_CORE_TOKEN", "DOCUMENT_MODEL_TOKEN")
 PROBES = ("startupProbe", "readinessProbe", "livenessProbe")
 HTTP_PORT_HINT = {"core": 8081, "document": 8082, "execution": 8083, "worker": 8086, "model": 8084, "tool": 8085}
 
@@ -172,6 +173,55 @@ def compose_environment(environment: object) -> dict[str, str]:
             values[key.strip()] = value.strip()
     return values
 
+def valid_service_url(value: object) -> bool:
+    try:
+        parsed = urlsplit(str(value or "").strip())
+        if parsed.scheme not in {"http", "https"} or not parsed.hostname or parsed.username is not None or parsed.query or parsed.fragment:
+            return False
+        parsed.port
+        return True
+    except ValueError:
+        return False
+
+
+def check_experience_kubernetes(name: str, role: str, container: dict, env: dict[str, object], runtime: dict[str, object]) -> None:
+    if role not in {"core", "worker"}:
+        return
+    source = env.get("WORKER_CORE_TOKEN")
+    ref = source.get("secretKeyRef") if isinstance(source, dict) else None
+    if not isinstance(ref, dict) or ref.get("name") != "contract-audit-service-tokens" or ref.get("key") != "WORKER_CORE_TOKEN" or ref.get("optional", False):
+        fail(f"{name}: {role} must use the required WORKER_CORE_TOKEN secret key shared by core and worker")
+    other_keys = ("GATEWAY_ROLE_TOKEN",) if role == "core" else ("WORKER_DOCUMENT_TOKEN", "WORKER_MODEL_TOKEN", "WORKER_TOOL_TOKEN")
+    for key in other_keys:
+        other = env.get(key)
+        other_ref = other.get("secretKeyRef") if isinstance(other, dict) else None
+        if isinstance(other_ref, dict) and other_ref.get("name") == "contract-audit-service-tokens" and other_ref.get("key") == "WORKER_CORE_TOKEN":
+            fail(f"{name}: WORKER_CORE_TOKEN must be distinct from {key}")
+    if role != "worker":
+        return
+    if "CORE_SERVICE_URL" in env:
+        source = env["CORE_SERVICE_URL"]
+        ref = source.get("configMapKeyRef") if isinstance(source, dict) else None
+        if not isinstance(ref, dict) or ref.get("name") != "contract-audit-runtime" or ref.get("key") != "CORE_SERVICE_URL" or ref.get("optional", False):
+            fail(f"{name}: worker CORE_SERVICE_URL must use the runtime ConfigMap key")
+    elif not any((item.get("configMapRef") or {}).get("name") == "contract-audit-runtime" and not (item.get("configMapRef") or {}).get("optional", False) for item in container.get("envFrom") or []):
+        fail(f"{name}: worker must import CORE_SERVICE_URL from the runtime ConfigMap")
+    if not valid_service_url(runtime.get("CORE_SERVICE_URL")):
+        fail(f"{name}: runtime CORE_SERVICE_URL must be an HTTP(S) service URL without credentials, query, or fragment")
+
+
+def check_experience_compose(name: str, role: str, environment: dict[str, str]) -> None:
+    if role not in {"core", "worker"}:
+        return
+    if not re.fullmatch(r"\$\{WORKER_CORE_TOKEN:\?[^}]*\}", environment.get("WORKER_CORE_TOKEN", "")):
+        fail(f"compose {name}: {role} must require the shared WORKER_CORE_TOKEN variable")
+    other_keys = ("GATEWAY_ROLE_TOKEN",) if role == "core" else ("WORKER_DOCUMENT_TOKEN", "WORKER_MODEL_TOKEN", "WORKER_TOOL_TOKEN")
+    for key in other_keys:
+        if re.match(r"\$\{WORKER_CORE_TOKEN(?=[:}])", environment.get(key, "")):
+            fail(f"compose {name}: WORKER_CORE_TOKEN must be distinct from {key}")
+    if role == "worker" and not re.fullmatch(r"\$\{CORE_SERVICE_URL:\?[^}]*\}", environment.get("CORE_SERVICE_URL", "")):
+        fail(f"compose {name}: worker must require the CORE_SERVICE_URL variable")
+
 
 def configmap_lookup(root: Path, objects: list[dict]) -> dict[str, set[str]]:
     configs: dict[str, set[str]] = {}
@@ -251,6 +301,8 @@ def check_gateway_env(name: str, env: dict[str, object], config_from: set[str], 
 def check_kustomize(root: Path, entrypoints: set[str], roles: set[str], dsn_keys: dict[str, str], probes: set[str]) -> None:
     base_objects, base_files = resolve_kustomization(root, root / "deployments/k8s/base/kustomization.yaml")
     configs = configmap_lookup(root, base_objects)
+    runtime = next((document.get("data") or {} for document in base_objects
+                    if document.get("kind") == "ConfigMap" and document.get("metadata", {}).get("name") == "contract-audit-runtime"), {})
     if "contract-audit-runtime" not in configs:
         fail("the rendered base does not include the contract-audit-runtime ConfigMap")
     kinds = [document.get("kind") for document in base_objects]
@@ -304,6 +356,7 @@ def check_kustomize(root: Path, entrypoints: set[str], roles: set[str], dsn_keys
                 fail(f"{name}: SERVICE_ROLE {role!r} is not accepted by bootstrap.OpenService")
                 continue
             serving_roles.add(role)
+            check_experience_kubernetes(name, role, container, env, runtime)
             dsn = dsn_keys.get(role)
             if dsn is None or dsn not in env:
                 fail(f"{name}: role {role} must declare its database identity key {dsn or '(unknown role)'}")
@@ -391,6 +444,7 @@ def check_compose(root: Path, entrypoints: set[str], roles: set[str], dsn_keys: 
         if role not in roles:
             fail(f"compose {name}: SERVICE_ROLE {role!r} is not accepted by bootstrap.OpenService")
             continue
+        check_experience_compose(name, role, environment)
         dsn = dsn_keys.get(role)
         if dsn is None or dsn not in environment:
             fail(f"compose {name}: role {role} must declare its database identity key {dsn or '(unknown role)'}")
@@ -469,22 +523,47 @@ SUBTREE = (
     "internal/apidocs/openapi.json", "compose.app.yaml", "compose.observe.yaml", "Makefile",
 )
 
+def replace_mutation(tree: Path, relative: str, old: str, new: str, last: bool = False) -> None:
+    path = tree / relative
+    content = path.read_text(encoding="utf-8")
+    if old not in content:
+        raise ValueError(f"self-test mutation anchor missing in {relative}")
+    if last:
+        before, _, after = content.rpartition(old)
+        content = before + new + after
+    else:
+        content = content.replace(old, new, 1)
+    path.write_text(content, encoding="utf-8")
+
 
 def self_test(root: Path) -> int:
     """Bounded negative cases: each injected defect must fail the checker."""
     import subprocess
 
+    workload = "deployments/k8s/base/workloads.yaml"
+    config = "deployments/k8s/base/config.yaml"
+    compose = "compose.app.yaml"
+    token_binding = ("            - name: WORKER_CORE_TOKEN\n"
+                     "              valueFrom: {secretKeyRef: {name: contract-audit-service-tokens, key: WORKER_CORE_TOKEN}}\n")
+    tool_binding = ("            - name: WORKER_TOOL_TOKEN\n"
+                    "              valueFrom: {secretKeyRef: {name: contract-audit-service-tokens, key: WORKER_TOOL_TOKEN}}\n")
+    compose_token = "${WORKER_CORE_TOKEN:?Add a distinct WORKER_CORE_TOKEN to the private distributed profile}"
+    compose_url = "${CORE_SERVICE_URL:?Add CORE_SERVICE_URL to the private distributed profile}"
     mutations = (
-        ("missing required env", lambda tree: tree.joinpath("deployments/k8s/base/workloads.yaml").write_text(
-            tree.joinpath("deployments/k8s/base/workloads.yaml").read_text(encoding="utf-8").replace(
-                "            - name: WORKER_TOOL_TOKEN\n", "", 1))),
-        ("missing probe", lambda tree: tree.joinpath("deployments/k8s/base/workloads.yaml").write_text(
-            tree.joinpath("deployments/k8s/base/workloads.yaml").read_text(encoding="utf-8").replace(
-                "          livenessProbe:\n", "          livenessProbeDisabled:\n", 1))),
-        ("HPA back in the render", lambda tree: tree.joinpath("deployments/k8s/base/kustomization.yaml").write_text(
-            tree.joinpath("deployments/k8s/base/kustomization.yaml").read_text(encoding="utf-8").replace(
-                "  - poddisruptionbudgets.yaml", "  - poddisruptionbudgets.yaml\n  - ../optional/scaling-hpa.yaml", 1))),
-        ("migration kustomization removed", lambda tree: tree.joinpath("deployments/k8s/migrate/kustomization.yaml").unlink()),
+        ("missing required env", lambda tree: replace_mutation(tree, workload, tool_binding, ""), "role worker is missing required env WORKER_TOOL_TOKEN"),
+        ("missing probe", lambda tree: replace_mutation(tree, workload, "          livenessProbe:\n", "          livenessProbeDisabled:\n"), "declares no livenessProbe"),
+        ("HPA back in the render", lambda tree: replace_mutation(tree, "deployments/k8s/base/kustomization.yaml", "  - poddisruptionbudgets.yaml", "  - poddisruptionbudgets.yaml\n  - ../optional/scaling-hpa.yaml"), "must contain zero HorizontalPodAutoscaler"),
+        ("migration kustomization removed", lambda tree: tree.joinpath("deployments/k8s/migrate/kustomization.yaml").unlink(), "missing kustomization"),
+        ("core token missing", lambda tree: replace_mutation(tree, workload, token_binding, ""), "core must use the required WORKER_CORE_TOKEN"),
+        ("worker token missing", lambda tree: replace_mutation(tree, workload, token_binding, "", last=True), "worker must use the required WORKER_CORE_TOKEN"),
+        ("worker token references another secret", lambda tree: replace_mutation(tree, workload, token_binding, token_binding.replace("key: WORKER_CORE_TOKEN", "key: WORKER_TOOL_TOKEN"), last=True), "worker must use the required WORKER_CORE_TOKEN"),
+        ("core token optional", lambda tree: replace_mutation(tree, workload, token_binding, token_binding.replace("key: WORKER_CORE_TOKEN}", "key: WORKER_CORE_TOKEN, optional: true}")), "core must use the required WORKER_CORE_TOKEN"),
+        ("worker reuses core token", lambda tree: replace_mutation(tree, workload, tool_binding, tool_binding.replace("key: WORKER_TOOL_TOKEN", "key: WORKER_CORE_TOKEN")), "WORKER_CORE_TOKEN must be distinct from WORKER_TOOL_TOKEN"),
+        ("worker endpoint absent", lambda tree: replace_mutation(tree, config, "  CORE_SERVICE_URL: http://core-api:8081\n", ""), "runtime CORE_SERVICE_URL must be an HTTP(S) service URL"),
+        ("worker endpoint blank", lambda tree: replace_mutation(tree, config, "  CORE_SERVICE_URL: http://core-api:8081\n", '  CORE_SERVICE_URL: ""\n'), "runtime CORE_SERVICE_URL must be an HTTP(S) service URL"),
+        ("compose core token optional", lambda tree: replace_mutation(tree, compose, compose_token, "${WORKER_CORE_TOKEN:-}"), "core must require the shared WORKER_CORE_TOKEN"),
+        ("compose worker token mismatch", lambda tree: replace_mutation(tree, compose, compose_token, "${WORKER_TOOL_TOKEN:?missing}", last=True), "worker must require the shared WORKER_CORE_TOKEN"),
+        ("compose worker endpoint optional", lambda tree: replace_mutation(tree, compose, compose_url, "${CORE_SERVICE_URL:-}"), "worker must require the CORE_SERVICE_URL"),
     )
     problems = 0
     with tempfile.TemporaryDirectory() as directory:
@@ -504,7 +583,7 @@ def self_test(root: Path) -> int:
         if baseline.returncode != 0:
             print(f"FAIL: the unmutated baseline does not pass: {baseline.stderr.strip()[:400]}", file=sys.stderr)
             return 1
-    for label, mutate in mutations:
+    for label, mutate, expected in mutations:
         with tempfile.TemporaryDirectory() as directory:
             tree = Path(directory) / "repo"
             for entry in SUBTREE:
@@ -520,7 +599,7 @@ def self_test(root: Path) -> int:
                 [sys.executable, "-I", str(root / "deployments/scripts/manifest-conformance.py"), "--root", str(tree)],
                 capture_output=True, text=True, cwd=tree,
             )
-            if result.returncode == 0 or "FAIL:" not in result.stderr or "Traceback" in result.stderr:
+            if result.returncode == 0 or expected not in result.stderr or "Traceback" in result.stderr:
                 print(f"FAIL: self-test case {label!r} was not detected by a checker verdict", file=sys.stderr)
                 problems += 1
             else:

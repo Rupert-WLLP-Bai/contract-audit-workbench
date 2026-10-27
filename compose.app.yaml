@@ -125,7 +125,7 @@ services:
       OIDC_ADMIN_REDIRECT_URL: ${OIDC_ADMIN_REDIRECT_URL:-}
       OIDC_STATE_KEY: ${OIDC_STATE_KEY:-}
       GATEWAY_ROLE_TOKEN: ${GATEWAY_CORE_TOKEN:?Run make app-bootstrap}
-      WORKER_CORE_TOKEN: ${WORKER_CORE_TOKEN:-}
+      WORKER_CORE_TOKEN: ${WORKER_CORE_TOKEN:?Add a distinct WORKER_CORE_TOKEN to the private distributed profile}
       # Workspace revision comparisons use the same frozen model identity as the worker.
       LLM_BASE_URL: ${LLM_BASE_URL:-}
       LLM_MODEL: ${LLM_MODEL:-}
@@ -269,8 +269,8 @@ services:
       WORKER_DOCUMENT_TOKEN: ${WORKER_DOCUMENT_TOKEN:?Run make app-bootstrap}
       WORKER_MODEL_TOKEN: ${WORKER_MODEL_TOKEN:?Run make app-bootstrap}
       WORKER_TOOL_TOKEN: ${WORKER_TOOL_TOKEN:?Run make app-bootstrap}
-      CORE_SERVICE_URL: ${CORE_SERVICE_URL:-}
-      WORKER_CORE_TOKEN: ${WORKER_CORE_TOKEN:-}
+      CORE_SERVICE_URL: ${CORE_SERVICE_URL:?Add CORE_SERVICE_URL to the private distributed profile}
+      WORKER_CORE_TOKEN: ${WORKER_CORE_TOKEN:?Add a distinct WORKER_CORE_TOKEN to the private distributed profile}
       TOOL_GATEWAY_URL: ${TOOL_GATEWAY_URL:-http://tool-gateway:8085}
       NATS_URL: ${NATS_URL:-nats://nats:4222}
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}

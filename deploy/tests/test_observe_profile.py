@@ -196,5 +196,81 @@ class ObservationLifecycleTests(unittest.TestCase):
             self.assertTrue(set(command).isdisjoint(OBSERVATION_SERVICES))
 
 
+class ExperienceDeliveryProfileTests(unittest.TestCase):
+    def setUp(self):
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        directory = Path(temporary.name)
+        self.infrastructure_env = directory / ".env"
+        self.distributed_env = directory / ".env.distributed"
+        self.infrastructure = {
+            "POSTGRES_PASSWORD": "p" * 40,
+            "DEV_DATABASE_URL": "postgres://localhost/contract_audit_dev",
+            "TEST_DATABASE_URL": "postgres://localhost/contract_audit_test",
+        }
+        self.infrastructure_env.write_text(
+            "".join(f"{key}={value}\n" for key, value in self.infrastructure.items()), encoding="utf-8"
+        )
+        for item in (
+            patch.object(local, "ENV_PATH", self.infrastructure_env),
+            patch.object(local, "DISTRIBUTED_ENV_PATH", self.distributed_env),
+            patch.object(local, "infra_bootstrap"),
+            patch.dict(local.os.environ, {"EV02_DATABASE_TARGET": "development"}, clear=True),
+        ):
+            item.start()
+            self.addCleanup(item.stop)
+        self.values = local.generated_values(self.infrastructure)
+
+    def write_profile(self, values):
+        self.distributed_env.write_text(
+            "".join(f"{key}={value}\n" for key, value in values.items()), encoding="utf-8"
+        )
+        self.distributed_env.chmod(0o600)
+
+    def test_new_profile_is_complete_and_reused_without_rewriting(self):
+        values = local.ensure_private_environment()
+        self.assertEqual(values["CORE_SERVICE_URL"], "http://core-api:8081")
+        self.assertGreaterEqual(len(values["WORKER_CORE_TOKEN"]), 32)
+        before = self.distributed_env.read_bytes()
+        self.assertEqual(self.distributed_env.stat().st_mode & 0o777, 0o600)
+        self.assertEqual(local.ensure_private_environment(), values)
+        self.assertEqual(self.distributed_env.read_bytes(), before)
+
+    def test_legacy_profile_requires_manual_upgrade_without_rewriting(self):
+        for missing in ("WORKER_CORE_TOKEN", "CORE_SERVICE_URL"):
+            with self.subTest(missing=missing):
+                values = dict(self.values)
+                del values[missing]
+                self.write_profile(values)
+                before = self.distributed_env.read_bytes()
+                with self.assertRaisesRegex(RuntimeError, missing):
+                    local.ensure_private_environment()
+                self.assertEqual(self.distributed_env.read_bytes(), before)
+
+    def test_incomplete_or_reused_delivery_credentials_are_rejected(self):
+        for key, value, expected in (
+            ("WORKER_CORE_TOKEN", "", "WORKER_CORE_TOKEN"),
+            ("WORKER_CORE_TOKEN", "short", "WORKER_CORE_TOKEN"),
+            ("WORKER_CORE_TOKEN", self.values["WORKER_TOOL_TOKEN"], "WORKER_TOOL_TOKEN"),
+            ("WORKER_CORE_TOKEN", self.values["GATEWAY_CORE_TOKEN"], "GATEWAY_CORE_TOKEN"),
+            ("CORE_SERVICE_URL", "", "CORE_SERVICE_URL"),
+            ("CORE_SERVICE_URL", "http://core-api:8081/?query=1", "CORE_SERVICE_URL"),
+        ):
+            with self.subTest(key=key, expected=expected):
+                values = dict(self.values)
+                values[key] = value
+                self.write_profile(values)
+                before = self.distributed_env.read_bytes()
+                with self.assertRaisesRegex(ValueError, expected):
+                    local.ensure_private_environment()
+                self.assertEqual(self.distributed_env.read_bytes(), before)
+
+    def test_process_environment_overrides_cannot_reuse_worker_credentials(self):
+        self.write_profile(self.values)
+        with patch.dict(local.os.environ, {"WORKER_CORE_TOKEN": self.values["WORKER_MODEL_TOKEN"]}):
+            with self.assertRaisesRegex(ValueError, "WORKER_MODEL_TOKEN"):
+                local.ensure_private_environment()
+
+
 if __name__ == "__main__":
     unittest.main()
