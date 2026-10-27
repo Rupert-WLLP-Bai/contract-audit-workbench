@@ -1,5 +1,4 @@
-import { Select } from "antd";
-import { Button, Upload } from "antd";
+import { Button, Input, Select, Upload } from "antd";
 import { useState, type FormEvent } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router";
 import { errorMessage, isForbidden } from "../api/http";
@@ -63,6 +62,7 @@ export function CaseDetailPage() {
   const start = useStartReview(caseId);
   const [role, setRole] = useState("procurement");
   const [file, setFile] = useState<File | null>(null);
+  const [businessAt, setBusinessAt] = useState("");
 
   if (detail.isLoading)
     return <PageStatus kind="loading" title="正在加载案件" />;
@@ -125,6 +125,11 @@ export function CaseDetailPage() {
   const canWriteRemediation = actorRole === "admin" || actorRole === "reviewer";
   const canCreateReport = actorRole === "admin" || actorRole === "clerk";
   const canArchive = actorRole === "admin";
+  const requiresBusinessAt =
+    item.business_line === "ENT" &&
+    (item.scenario === "telecom_dedicated_line" ||
+      (item.scenario === "cloud_services" && item.contract_type === "service"));
+  const validBusinessAt = businessAt !== "" && !Number.isNaN(new Date(businessAt).getTime());
 
   function onUpload(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -180,11 +185,12 @@ export function CaseDetailPage() {
             disabled={
               (!canUpload && actorRole !== "reviewer") ||
               preparable < 2 ||
+              (requiresBusinessAt && !validBusinessAt) ||
               start.isPending ||
               archived
             }
             onClick={() => {
-              start.mutate(undefined, {
+              start.mutate(requiresBusinessAt ? { business_at: new Date(businessAt).toISOString() } : {}, {
                 onSuccess: (accepted) => {
                   const query = new URLSearchParams({
                     attempt_id: accepted.attempt_id,
@@ -200,6 +206,19 @@ export function CaseDetailPage() {
           </Button>
         ) : null}
       </header>
+      {requiresBusinessAt && (!run || needsNewReview) ? (
+        <label className="field">
+          审查业务时间（本地时区）
+          <Input
+            aria-label="审查业务时间（本地时区）"
+            type="datetime-local"
+            required
+            value={businessAt}
+            onChange={(event) => setBusinessAt(event.target.value)}
+          />
+          <span className="meta">选择需要适用制度的业务时间。</span>
+        </label>
+      ) : null}
       <ol className="case-chain" aria-label="案件材料链路">
         <li data-state={current.length > 0 ? "filled" : "open"}>
           <span className="case-chain-mark" aria-hidden="true" />

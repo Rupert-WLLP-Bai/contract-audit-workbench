@@ -10,6 +10,7 @@ import { useReview, useWorkbench } from "../api/queries";
 import type { Finding, ReviewDocument, WorkbenchRun } from "../api/types";
 import { PageStatus } from "../components/page-status";
 import {
+  decisionLabel,
   formatDateTime,
   parseLabel,
   relationLabel,
@@ -57,28 +58,16 @@ function RunSelect({
         aria-label={String(label)}
         value={String(value?.id ?? "")}
         labelRender={() =>
-          value ? (
-            <span
-              title={`${value.id}，${runLabel(value.state)}，${formatDateTime(value.updated_at)}`}
-            >
-              {value.id}，{runLabel(value.state)}
-            </span>
-          ) : (
-            "没有可选运行"
-          )
+          value
+            ? `审查记录 ${runs.findIndex((run) => run.id === value.id) + 1}，${runLabel(value.state)}，${formatDateTime(value.updated_at)}`
+            : "没有可选运行"
         }
         onChange={(selectedValue) => onChange(selectedValue)}
         options={[
           ...(runs.length === 0 ? [{ value: "", label: "没有可选运行" }] : []),
-          ...runs.map((run) => ({
+          ...runs.map((run, index) => ({
             value: String(run.id),
-            label: (
-              <span
-                title={`${run.id}，${runLabel(run.state)}，${formatDateTime(run.updated_at)}`}
-              >
-                {run.id}，{runLabel(run.state)}，{formatDateTime(run.updated_at)}
-              </span>
-            ),
+            label: `审查记录 ${index + 1}，${runLabel(run.state)}，${formatDateTime(run.updated_at)}`,
           })),
         ]}
       />
@@ -109,12 +98,22 @@ function MaterialPane({
 }) {
   const anchor = selected
     ? finding?.evidence.find((item) =>
-        evidenceSourceMatches(item, selected.id, selected.parsed_document),
+        evidenceSourceMatches(
+          item,
+          selected.id,
+          selected.parsed_document,
+          selected.parsed_document_id,
+        ),
       )
     : null;
   const resolved =
     selected && anchor
-      ? resolveAnchor(selected.text, anchor, selected.parsed_document)
+      ? resolveAnchor(
+          selected.text,
+          anchor,
+          selected.parsed_document,
+          selected.parsed_document_id,
+        )
       : null;
   const segments =
     selected?.text == null
@@ -160,20 +159,16 @@ function MaterialPane({
                   <>
                     <dl className="compare-material-meta">
                       <div>
-                        <dt>材料 ID</dt>
-                        <dd>{selected.id}</dd>
+                        <dt>材料名称</dt>
+                        <dd>{selected.filename}</dd>
                       </div>
                       <div>
-                        <dt>解析 ID</dt>
-                        <dd>{selected.parsed_document?.id ?? "未记录"}</dd>
+                        <dt>解析状态</dt>
+                        <dd>{parseLabel(selected.parse_status)}</dd>
                       </div>
                       <div>
-                        <dt>原件摘要</dt>
-                        <dd>{selected.digest}</dd>
-                      </div>
-                      <div>
-                        <dt>审查运行</dt>
-                        <dd>{run?.id ?? "未记录"}</dd>
+                        <dt>审查状态</dt>
+                        <dd>{run ? runLabel(run.state) : "未报告"}</dd>
                       </div>
                       <div>
                         <dt>上传时间</dt>
@@ -307,8 +302,6 @@ export function ComparePage() {
   const comparisonsLinked = Boolean(
     rightRun && leftReview.data?.previous_run_id === rightRun.id,
   );
-  const leftUsage = leftReview.data?.execution?.usage ?? null;
-  const rightUsage = rightReview.data?.execution?.usage ?? null;
   const bottomTabs = ["修订证据", "规则依据", "执行记录", "模型用量"];
   const findings = leftReview.data?.findings ?? [];
   const finding = findings.find((item) => item.id === findingSelection) ?? null;
@@ -328,7 +321,12 @@ export function ComparePage() {
     setFindingSelection(item.id);
     const source = item.evidence.find((anchor) =>
       leftDocuments.some((document) =>
-        evidenceSourceMatches(anchor, document.id, document.parsed_document),
+        evidenceSourceMatches(
+          anchor,
+          document.id,
+          document.parsed_document,
+          document.parsed_document_id,
+        ),
       ),
     );
     if (source) setLeftDocumentSelection(source.document_version_id);
@@ -339,7 +337,7 @@ export function ComparePage() {
       <header className="compare-page-head">
         <div>
           <strong>{selectedCase?.title ?? "版本对照"}</strong>
-          <span>{selectedCase?.profile?.number ?? selectedCase?.id}</span>
+          <span>{selectedCase?.profile?.number ?? "合同编号未提供"}</span>
         </div>
         <nav className="compare-page-links" aria-label="版本对照导航">
           <Link to="/compare">全部合同</Link>
@@ -395,14 +393,13 @@ export function ComparePage() {
                       <blockquote key={anchor.id}>
                         {anchor.quote}
                         <small>
-                          {anchor.status}，{anchor.document_version_id}
+                          {leftDocuments.find((document) => document.id === anchor.document_version_id)?.filename ?? "引用来源未返回"}
                         </small>
                       </blockquote>
                     ))}
                     {item.severity_source ? (
                       <p>
-                        {item.severity_source.policy_id} v
-                        {item.severity_source.policy_version}，
+                        依据版本 {item.severity_source.policy_version}，
                         {item.severity_source.clause}
                       </p>
                     ) : null}
@@ -549,9 +546,10 @@ export function ComparePage() {
                       </strong>
                       <p>{revision.claim}</p>
                       <small>
-                        旧发现 {revision.previous_finding_id ?? "未报告"}，
-                        新发现 {revision.finding_id ?? "未报告"}，旧决定{" "}
-                        {revision.prior_decision?.action ?? "未报告"}
+                        旧决定{" "}
+                        {revision.prior_decision
+                          ? decisionLabel(revision.prior_decision.action)
+                          : "未报告"}
                       </small>
                     </div>
                   </li>
@@ -603,28 +601,36 @@ export function ComparePage() {
             ].map((side) => (
               <section key={side.label}>
                 <h3>{side.label}</h3>
-                {side.review?.execution ? (
+                {side.review?.review_attempts ? (
                   <>
                     <p>
-                      运行 {side.review.run.id}，当前尝试{" "}
-                      {side.review.execution.attempt.id}，
-                      {side.review.execution.attempt.state}
+                      当前第 {side.review.review_attempts.attempt.ordinal} 次审查，
+                      {runLabel(side.review.review_attempts.attempt.state)}
                     </p>
                     <p>
-                      尝试数 {side.review.execution.attempts.length}，事件数{" "}
-                      {side.review.execution.events.length}
+                      尝试数 {side.review.review_attempts.attempts.length}，事件数{" "}
+                      不可用
                     </p>
                     <ol className="compare-attempt-list">
-                      {side.review.execution.attempts.map((attempt) => (
+                      {side.review.review_attempts.attempts.map((attempt) => (
                         <li key={attempt.id}>
-                          {attempt.id}，第 {attempt.ordinal} 次，
-                          {attempt.state}，
+                          第 {attempt.ordinal} 次，
+                          {runLabel(attempt.state)}，
                           {attempt.finished_at
                             ? formatDateTime(attempt.finished_at)
                             : "结束时间未报告"}
                         </li>
                       ))}
                     </ol>
+                    <p>
+                      事件详情可由管理员在{" "}
+                      <Link
+                        to={`/cases/${encodeURIComponent(side.review.run.case_id)}/reviews/${encodeURIComponent(side.review.run.id)}?attempt_id=${encodeURIComponent(side.review.review_attempts.attempt.id)}`}
+                      >
+                        审查工作区
+                      </Link>{" "}
+                      中按需读取。
+                    </p>
                   </>
                 ) : (
                   <p className="compare-unavailable">
@@ -637,33 +643,44 @@ export function ComparePage() {
         ) : (
           <div className="compare-result-columns">
             {[
-              { label: "左侧运行", usage: leftUsage },
-              { label: "右侧运行", usage: rightUsage },
+              { label: "左侧运行", review: leftReview.data },
+              { label: "右侧运行", review: rightReview.data },
             ].map((side) => (
               <section key={side.label}>
                 <h3>{side.label}</h3>
                 <dl className="compare-usage-grid">
                   <div>
                     <dt>模型调用</dt>
-                    <dd>{side.usage?.calls ?? "未知"}</dd>
+                    <dd>不可用</dd>
                   </div>
                   <div>
                     <dt>输入 tokens</dt>
-                    <dd>{side.usage?.input_tokens ?? "未知"}</dd>
+                    <dd>不可用</dd>
                   </div>
                   <div>
                     <dt>输出 tokens</dt>
-                    <dd>{side.usage?.output_tokens ?? "未知"}</dd>
+                    <dd>不可用</dd>
                   </div>
                   <div>
                     <dt>总 tokens</dt>
-                    <dd>{side.usage?.total_tokens ?? "未知"}</dd>
+                    <dd>不可用</dd>
                   </div>
                   <div>
                     <dt>费用</dt>
-                    <dd>{side.usage?.cost ?? "未知"}</dd>
+                    <dd>不可用</dd>
                   </div>
                 </dl>
+                {side.review?.review_attempts ? (
+                  <p>
+                    模型用量可由管理员在{" "}
+                    <Link
+                      to={`/cases/${encodeURIComponent(side.review.run.case_id)}/reviews/${encodeURIComponent(side.review.run.id)}?attempt_id=${encodeURIComponent(side.review.review_attempts.attempt.id)}`}
+                    >
+                      审查工作区
+                    </Link>{" "}
+                    中按需读取。
+                  </p>
+                ) : null}
               </section>
             ))}
           </div>

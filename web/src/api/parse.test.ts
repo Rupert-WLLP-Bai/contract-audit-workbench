@@ -34,6 +34,17 @@ describe("response parsers", () => {
     expect(finding.evidence[0]?.status).toBe("missing");
   });
 
+  it("does not infer claim verification from a located citation", () => {
+    const finding = parseFinding({
+      id: "f1",
+      claim: "期限不一致",
+      unverified_reason: null,
+      evidence: [{ id: "e1", document_version_id: "d1", status: "located", quote: "三十六个月" }],
+    });
+    expect(finding.evidence[0]?.status).toBe("located");
+    expect(finding.verification_status).toBe("unknown");
+  });
+
   it("keeps an explicit zero count distinct from a missing summary", () => {
     const withZero = parseCaseDetail({
       ...caseDefaults,
@@ -174,6 +185,7 @@ describe("response parsers", () => {
     expect(workspace.run.state).toBe("awaiting_human");
     expect(workspace.findings[0]?.version).toBe(2);
     expect(workspace.documents[0]?.text).toBe("三十六个月");
+    expect(workspace.documents[0]?.parsed_document_id).toBeNull();
     expect(workspace.evaluations?.[0]).toMatchObject({
       rule_id: "ENT-TECH-BW-001",
       rule_version: "1.0.0",
@@ -183,6 +195,28 @@ describe("response parsers", () => {
       reason_code: "minimum_bandwidth_met",
       fact_ids: ["fact1"],
     });
+  });
+
+  it("reads public attempts and frozen document identity without privileged diagnostics", () => {
+    const attempt = {
+      id: "a1", run_id: "r1", ordinal: 1, retry_of_attempt_id: null,
+      state: "awaiting_human", accepted_at: "2026-10-21T06:00:00Z",
+      started_at: null, finished_at: null, history_kind: "frozen",
+      parsed_document_ids: ["parsed-1"],
+    };
+    const workspace = parseReviewWorkspace({
+      run: { id: "r1", state: "awaiting_human", case_id: "c1" },
+      documents: [{ id: "d1", filename: "合同.txt", role: "draft_contract", parse_status: "ready", parsed_document: null, parsed_document_id: "parsed-1", text: "合同正文" }],
+      findings: [], execution: null, audit_events: [],
+      review_attempts: { attempt, attempts: [attempt] },
+      business_events: [{ event_id: "event-1", run_id: "r1", actor: "u1", seq: 1, event_type: "review.started", correlation_ids: null }],
+    });
+    expect(workspace.execution).toBeNull();
+    expect(workspace.review_attempts?.attempt).toMatchObject({ id: "a1", parsed_document_ids: ["parsed-1"], input_hash: null });
+    expect(workspace.review_attempts?.attempts).toHaveLength(1);
+    expect(workspace.documents[0]).toMatchObject({ parsed_document: null, parsed_document_id: "parsed-1", text: "合同正文" });
+    expect(workspace.business_events?.[0]).toMatchObject({ event_id: "event-1", correlation_ids: [] });
+    expect(workspace.business_events?.[0]).not.toHaveProperty("hash");
   });
 
   it("preserves explicit parsed document references on frozen attempts", () => {

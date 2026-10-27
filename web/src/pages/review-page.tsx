@@ -17,6 +17,7 @@ import {
   useDeleteCaseRelation,
   useRetryReview,
   useReview,
+  useReviewDiagnostics,
   useSession,
   useSubmitDecision,
   useWorkbench,
@@ -28,6 +29,8 @@ import { ReviewWorkspaceView } from "../components/review-workspace";
 import type { ReviewCaseContext } from "../components/document-stage";
 import { RunProvenance } from "../components/run-provenance";
 import { AuditProjection } from "../components/audit-projection";
+import { EvidenceRequestPanel } from "../components/evidence-request-panel";
+import { ExperienceFeedbackPanel } from "../components/experience-feedback-panel";
 import {
   contractTypeLabel,
   isActiveAttemptState,
@@ -41,12 +44,23 @@ export function ReviewPage() {
   const { caseId = "", runId = "" } = useParams();
   const [params, setParams] = useSearchParams();
   const selectedAttemptId = params.get("attempt_id");
-  const review = useReview(caseId, runId, selectedAttemptId);
+  const [streamLive, setStreamLive] = useState(false);
+  const review = useReview(caseId, runId, selectedAttemptId, streamLive);
   const workbench = useWorkbench("week");
   const createRelation = useCreateCaseRelation(caseId);
   const deleteRelation = useDeleteCaseRelation(caseId);
   const caseDetail = useCaseDetail(caseId);
   const session = useSession();
+  const [diagnosticScope, setDiagnosticScope] = useState<string | null>(null);
+  const currentDiagnosticScope = session.data?.role === "admin"
+    ? [caseId, runId, session.data.id, session.data.tenant_id, session.data.org_id].join("\u0000")
+    : null;
+  const diagnostics = useReviewDiagnostics(
+    caseId,
+    runId,
+    selectedAttemptId,
+    currentDiagnosticScope !== null && diagnosticScope === currentDiagnosticScope && review.isSuccess,
+  );
   const retry = useRetryReview(caseId, runId);
   const cancel = useCancelReview(caseId, runId);
   const decide = useSubmitDecision(caseId, runId);
@@ -56,7 +70,7 @@ export function ReviewPage() {
   const [saveError, setSaveError] = useState<string | null>(null);
   const [conflictFinding, setConflictFinding] = useState<string | null>(null);
 
-  const execution = review.data?.execution;
+  const execution = review.data?.review_attempts;
   const selectedAttempt = execution?.attempt ?? null;
   const latestAttempt = execution
     ? execution.attempts.reduce(
@@ -151,6 +165,10 @@ export function ReviewPage() {
   );
 
   useEffect(() => {
+    setStreamLive(streamStatus === "live");
+  }, [streamStatus]);
+
+  useEffect(() => {
     if (streamStatus !== "closed") return;
     let active = true;
     void (async () => {
@@ -219,6 +237,17 @@ export function ReviewPage() {
   }
   if (!review.data) return <PageStatus kind="empty" title="没有审查数据" />;
 
+  const diagnosticData = currentDiagnosticScope !== null && diagnosticScope === currentDiagnosticScope && diagnostics.isSuccess && !diagnostics.isFetching &&
+    (!diagnostics.data.execution || diagnostics.data.execution.attempt.id === selectedAttempt?.id)
+    ? diagnostics.data
+    : null;
+  const workspace = {
+    ...review.data,
+    execution: diagnosticData?.execution ?? null,
+    snapshot: diagnosticData?.snapshot ?? review.data.snapshot,
+    audit_events: diagnosticData?.audit_events ?? review.data.audit_events,
+  };
+
   const selectedId = selectedFindingId(
     review.data.findings,
     params.get("finding"),
@@ -243,8 +272,8 @@ export function ReviewPage() {
     else
       collaboratorById.set(id, {
         id,
-        name: member?.display_name ?? id,
-        role: member?.role ?? "角色未报告",
+        name: member?.display_name ?? "姓名未返回",
+        role: member?.role ?? "",
         responsibilities: [responsibility],
       });
   };
@@ -277,7 +306,7 @@ export function ReviewPage() {
   const caseContext: ReviewCaseContext | null = snapshot
     ? {
         caseId,
-        title: caseDetail.data?.title ?? contextCase?.title ?? caseId,
+        title: caseDetail.data?.title ?? contextCase?.title ?? "案件",
         number: profile?.number ?? null,
         customer: profile?.customer ?? null,
         supplier: profile?.supplier ?? null,
@@ -307,7 +336,7 @@ export function ReviewPage() {
           return {
             relationId: relation.id,
             id: relation.related_case_id,
-            title: relatedCase?.title ?? relation.related_case_id,
+            title: relatedCase?.title ?? "关联案件",
             reason: relation.reason,
             createdAt: relation.created_at,
             runId: relatedCase?.latest_run?.id ?? null,
@@ -361,7 +390,7 @@ export function ReviewPage() {
       <header className="page-head">
         <div>
           <h1>审查工作区</h1>
-          <p>{caseDetail.data?.title ?? caseId}</p>
+          <p>{caseDetail.data?.title ?? "案件"}</p>
         </div>
         <Button
           aria-label={"返回案件"}
@@ -380,8 +409,9 @@ export function ReviewPage() {
         <p className="callout">案件已归档，历史审查仅供查看。</p>
       ) : null}
       <ReviewWorkspaceView
-        workspace={review.data}
+        workspace={workspace}
         layout={layout}
+        showDiagnostics={diagnosticData !== null}
         selectedId={selectedId}
         caseContext={caseContext}
         canEditRelations={canEditRelations}
@@ -427,11 +457,37 @@ export function ReviewPage() {
         onCreateRelation={saveRelation}
         onDeleteRelation={(relationId) => deleteRelation.mutate(relationId)}
       />
-      <RunProvenance workspace={review.data} />
+      {currentDiagnosticScope && diagnosticScope !== currentDiagnosticScope ? (
+        <Button onClick={() => setDiagnosticScope(currentDiagnosticScope)}>
+          加载审查诊断
+        </Button>
+      ) : null}
+      <EvidenceRequestPanel
+        caseId={caseId}
+        runId={runId}
+        attemptId={selectedAttempt?.id ?? null}
+        canManage={caseDetailReady && !caseArchived && roleCanManageRun}
+        evaluations={review.data.evaluations ?? []}
+        agentReview={review.data.agent_review ?? null}
+        documents={caseDetail.data?.documents ?? []}
+      />
+      <ExperienceFeedbackPanel
+        caseId={caseId}
+        runId={runId}
+        attemptId={selectedAttempt?.id ?? null}
+        finding={review.data.findings.find((item) => item.id === selectedId) ?? null}
+        documents={review.data.documents}
+        canSubmit={roleCanDecide && selectedAttempt?.history_kind === "frozen"}
+      />
+      <RunProvenance workspace={workspace} showDiagnostics={diagnosticData !== null} />
       <AuditProjection
         runId={review.data.run.id}
-        events={review.data.audit_events}
+        events={diagnosticData?.audit_events ?? review.data.business_events ?? []}
+        showDiagnostics={diagnosticData !== null}
       />
+      {currentDiagnosticScope !== null && diagnosticScope === currentDiagnosticScope && diagnostics.isError ? (
+        <p role="status">审查诊断不可用：{errorMessage(diagnostics.error)}</p>
+      ) : null}
       {retry.isError ? <p role="alert">{errorMessage(retry.error)}</p> : null}
     </section>
   );

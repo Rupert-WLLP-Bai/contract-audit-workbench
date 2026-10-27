@@ -27,6 +27,7 @@ function documentOf(
     parse_error: null,
     created_at: "2026-10-21T01:00:00Z",
     parsed_document: null,
+    parsed_document_id: null,
     text,
     clauses: [
       {
@@ -133,6 +134,7 @@ function workspace(): ReviewWorkspace {
         ],
       },
     ],
+    review_attempts: null,
     execution: null,
     audit_events: [],
   };
@@ -144,10 +146,12 @@ function WorkspaceHarness({
   layout,
   onDecide,
   workspaceValue,
+  showDiagnostics = false,
 }: {
   layout: "split" | "switch";
   onDecide: Decide;
   workspaceValue: ReviewWorkspace;
+  showDiagnostics?: boolean;
 }) {
   const [selectedId, setSelectedId] = useState("f1");
   return (
@@ -156,6 +160,7 @@ function WorkspaceHarness({
       layout={layout}
       selectedId={selectedId}
       streamStatus="live"
+      showDiagnostics={showDiagnostics}
       pending={false}
       retrying={false}
       conflictMessage={
@@ -176,6 +181,7 @@ function WorkspaceHarness({
 function renderWorkspace(
   layout: "split" | "switch",
   workspaceValue = workspace(),
+  showDiagnostics = false,
 ) {
   const onDecide = vi.fn().mockResolvedValue(true);
   const view = render(
@@ -183,6 +189,7 @@ function renderWorkspace(
       layout={layout}
       onDecide={onDecide}
       workspaceValue={workspaceValue}
+      showDiagnostics={showDiagnostics}
     />,
   );
   return { ...view, onDecide };
@@ -262,7 +269,7 @@ describe("review workspace", () => {
 
   it("shows both sources on request and does not treat the model claim as verified", async () => {
     const user = userEvent.setup();
-    const { container } = renderWorkspace("split");
+    const { container } = renderWorkspace("split", workspace(), true);
     await user.click(screen.getByRole("button", { name: "双来源对照" }));
     expect(screen.getByRole("button", { name: "双来源对照" })).toHaveAttribute(
       "aria-pressed",
@@ -296,6 +303,19 @@ describe("review workspace", () => {
     expect(
       screen.getAllByText("历史来源未记录解析身份或正文摘要"),
     ).toHaveLength(2);
+  });
+
+  it("keeps citation identities hidden and does not claim the finding was verified", () => {
+    const result = workspace();
+    result.documents[0]!.parsed_document_id = "parsed_private_source";
+    result.findings[0]!.evidence[0]!.parsed_document_id = "parsed_private_source";
+    result.findings[0]!.verification_status = "verified";
+    result.findings[0]!.unverified_reason = null;
+    const { container } = renderWorkspace("split", result);
+    expect(container.querySelector("mark.hit-evidence")).not.toBeNull();
+    expect(screen.getByText("语义待核实")).toBeInTheDocument();
+    expect(container).not.toHaveTextContent(/parsed_private_source|SHA-256|abc12345/);
+    expect(screen.queryByText("已核验")).not.toBeInTheDocument();
   });
 
   it("keeps a same-document evidence quote unhighlighted for a different parse", () => {
@@ -527,7 +547,7 @@ describe("review workspace", () => {
     await chooseOption(
       user,
       screen.getByRole("combobox", { name: "关联可见案件" }),
-      "云托管服务补充协议，c2",
+      "云托管服务补充协议",
     );
     await user.type(screen.getByLabelText("关联原因"), "同一云资源范围");
     await user.click(screen.getByRole("button", { name: "建立关联" }));

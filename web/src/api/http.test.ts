@@ -1,4 +1,4 @@
-import { getKnowledge, submitDecision } from "./endpoints";
+import { getKnowledge, getReviewDiagnostics, startReview, submitDecision } from "./endpoints";
 import { ApiError, parseErrorPayload, requestJson } from "./http";
 
 function jsonResponse(status: number, body: unknown): Response {
@@ -87,6 +87,22 @@ describe("http client", () => {
       code: "invalid_response",
       retryable: false,
     });
+  });
+
+  it("submits the chosen governed instant and omits it for ungoverned starts", async () => {
+    const fetchMock = mockFetch(async () => jsonResponse(202, { id: "r1", attempt_id: "a1" }));
+    installFetch(fetchMock);
+    await startReview("case", { business_at: "2026-10-21T08:00:00.000Z" });
+    await startReview("case");
+    expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual({ business_at: "2026-10-21T08:00:00.000Z" });
+    expect(JSON.parse(String(fetchMock.mock.calls[1]?.[1]?.body))).toEqual({});
+  });
+
+  it("rejects diagnostics belonging to another case or run", async () => {
+    installFetch(mockFetch(async () => jsonResponse(200, {
+      case_id: "other", run_id: "r1", execution: null, snapshot: null, audit_events: [],
+    })));
+    await expect(getReviewDiagnostics("c1", "r1")).rejects.toMatchObject({ code: "invalid_response" });
   });
 
   it("posts a decision with the expected version and an idempotency key", async () => {

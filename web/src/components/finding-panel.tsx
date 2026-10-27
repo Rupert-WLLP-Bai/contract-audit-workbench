@@ -12,6 +12,7 @@ import {
   formatDateTime,
   latestDecision,
   originLabel,
+  parseLabel,
   relationLabel,
   roleLabel,
   shortDigest,
@@ -38,6 +39,7 @@ export function FindingPanel({
   documents,
   selectedId,
   onSelect,
+  showDiagnostics = false,
   pending,
   canDecide = true,
   decisionDisabledReason,
@@ -50,6 +52,7 @@ export function FindingPanel({
   selectedId: string | null;
   onSelect: (findingId: string) => void;
   pending: boolean;
+  showDiagnostics?: boolean;
   canDecide?: boolean;
   decisionDisabledReason?: string | null;
   conflictMessage: string | null;
@@ -165,6 +168,7 @@ export function FindingPanel({
             finding={selected}
             documents={documents}
             pending={pending}
+            showDiagnostics={showDiagnostics}
             canDecide={canDecide}
             decisionDisabledReason={decisionDisabledReason}
             conflictMessage={conflictMessage}
@@ -192,7 +196,7 @@ export function FindingPanel({
                 <blockquote key={anchor.id}>
                   {anchor.quote}
                   <small>
-                    {anchor.document_version_id}，{anchor.status}
+                    {documents.find((document) => document.id === anchor.document_version_id)?.filename ?? "来源未对应到材料"}
                   </small>
                 </blockquote>
               ))}
@@ -209,13 +213,17 @@ export function FindingPanel({
                 <dt>材料角色</dt>
                 <dd>{roleLabel(document.role)}</dd>
                 <dt>解析状态</dt>
-                <dd>{document.parse_status}</dd>
-                <dt>原件身份</dt>
-                <dd>{document.id}</dd>
-                <dt>冻结解析</dt>
-                <dd>{document.parsed_document?.id ?? "未记录"}</dd>
-                <dt>原件 SHA-256</dt>
-                <dd>{document.digest}</dd>
+                <dd>{parseLabel(document.parse_status)}</dd>
+                {showDiagnostics ? (
+                  <>
+                    <dt>原件身份</dt>
+                    <dd>{document.id}</dd>
+                    <dt>冻结解析</dt>
+                    <dd>{document.parsed_document?.id ?? "未记录"}</dd>
+                    <dt>原件 SHA-256</dt>
+                    <dd>{document.digest}</dd>
+                  </>
+                ) : null}
               </dl>
             </section>
           ))}
@@ -274,10 +282,8 @@ function FindingCircuit({ finding }: { finding: Finding }) {
     {
       label: "建议",
       value: originLabel(finding.origin),
-      meta:
-        finding.verification_status === "verified" ? "已核验" : "未核验",
-      state:
-        finding.verification_status === "verified" ? "filled" : "open",
+      meta: finding.verification_status === "unverified" ? "尚未核验" : "语义待核实",
+      state: "open",
     },
     {
       label: "人工决定",
@@ -308,12 +314,14 @@ function FindingDetail({
   decisionDisabledReason,
   conflictMessage,
   saveError,
+  showDiagnostics,
   onDecide,
 }: {
   finding: Finding;
   documents: ReviewDocument[];
   pending: boolean;
   canDecide: boolean;
+  showDiagnostics: boolean;
   decisionDisabledReason?: string | null;
   conflictMessage: string | null;
   saveError: string | null;
@@ -372,9 +380,10 @@ function FindingDetail({
       {finding.severity_source ? (
         <p className="finding-grade-source">
           {SEVERITY_LABELS[finding.severity ?? "unrated"]}，{" "}
-          {finding.severity_source.policy_id} v
-          {finding.severity_source.policy_version} 第
-          {finding.severity_source.clause}条：{finding.severity_source.reason}
+          {showDiagnostics ? (
+            <>{finding.severity_source.policy_id} v{finding.severity_source.policy_version} 第{finding.severity_source.clause}条：</>
+          ) : null}
+          {finding.severity_source.reason}
         </p>
       ) : null}
       {finding.unverified_reason ? (
@@ -392,6 +401,7 @@ function FindingDetail({
                 anchor,
                 document.id,
                 document.parsed_document,
+                document.parsed_document_id,
               ),
             ) ??
             documents.find(
@@ -401,6 +411,7 @@ function FindingDetail({
             source?.text ?? null,
             anchor,
             source?.parsed_document ?? null,
+            source?.parsed_document_id ?? null,
           );
           const located =
             anchor.status === "located" && resolved.kind === "highlight";
@@ -422,6 +433,7 @@ function FindingDetail({
                 <span>{anchorLabel}</span>
               </header>
               {source ? <p className="meta">{source.filename}</p> : null}
+              {showDiagnostics ? (
               <p
                 className="meta"
                 data-evidence-parsed-document-id={
@@ -454,6 +466,7 @@ function FindingDetail({
                   </>
                 )}
               </p>
+              ) : null}
               {resolved.kind === "snapshot" && !anchor.mismatch_reason ? (
                 <p className="callout">{resolved.reason}</p>
               ) : null}

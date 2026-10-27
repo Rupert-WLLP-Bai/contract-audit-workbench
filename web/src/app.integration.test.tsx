@@ -44,6 +44,7 @@ function doc(
     parse_error: null,
     created_at: at,
     parsed_document: null,
+    parsed_document_id: null,
     text,
     clauses: [
       {
@@ -252,6 +253,7 @@ class Service {
       },
       documents: docs.filter((entry) => !entry.superseded),
       findings: [finding()],
+      review_attempts: { attempt, attempts: [attempt] },
       execution: {
         schema_version: "audit-execution/v1",
         attempt,
@@ -393,6 +395,26 @@ class Service {
     const item = this.cases.get(caseId);
     if (!item) return this.json({ error: "案件不存在" }, 404);
     if (parts.length === 4) return this.json(item);
+    if (parts[4] === "evidence-requests" && method === "GET")
+      return this.json({ items: [] });
+    if (parts[4] === "remediations" && parts.length === 5 && method === "POST") {
+      const submitted = body as Pick<Remediation, "run_id" | "attempt_id" | "finding_ids" | "assignee_id" | "due_at" | "measure">;
+      const remediation: Remediation = {
+        ...submitted,
+        id: "rem-created",
+        case_id: caseId,
+        status: "open",
+        version: 1,
+        document_ids: [],
+        reason: "",
+        verification_run_id: null,
+        verification_attempt_id: null,
+        created_at: at,
+        updated_at: at,
+      };
+      item.remediations.push(remediation);
+      return this.json(remediation, 201);
+    }
     if (parts[4] === "documents") {
       if (parts[6] === "parse") {
         const target = item.documents.find((entry) => entry.id === parts[5])!;
@@ -413,6 +435,12 @@ class Service {
     }
     if (parts[4] === "reviews") {
       if (parts.length === 5 && method === "POST") {
+        const start = body as { business_at?: string } | null;
+        const governed = item.business_line === "ENT" &&
+          (item.scenario === "telecom_dedicated_line" ||
+            (item.scenario === "cloud_services" && item.contract_type === "service"));
+        if (governed && !start?.business_at)
+          return this.json({ error: "必须选择业务时间" }, 422);
         const id = `r${this.reviews.size + 1}`;
         const review = this.addReview("awaiting_human", id, caseId);
         item.revision_pending = false;
@@ -503,29 +531,61 @@ class Service {
         item.finding_counts!.undecided = 0;
         return new Response(null, { status: 204 });
       }
-      if (!review.execution) return this.json(review);
       const requestedAttempt = url.searchParams.get("attempt_id");
-      const attempts = review.execution?.attempts ?? [];
-      const selectedAttempt =
-        requestedAttempt === null
-          ? attempts.reduce(
-              (latest, attempt) =>
-                attempt.ordinal > latest.ordinal ? attempt : latest,
-              review.execution!.attempt,
-            )
-          : attempts.find((attempt) => attempt.id === requestedAttempt);
-      if (!selectedAttempt) return this.json({ error: "审查尝试不存在" }, 404);
+      const execution = review.execution;
+      const attempts = execution?.attempts ?? [];
+      const selectedAttempt = !execution ? null : requestedAttempt === null
+        ? attempts.reduce(
+            (latest, attempt) => attempt.ordinal > latest.ordinal ? attempt : latest,
+            execution.attempt,
+          )
+        : attempts.find((attempt) => attempt.id === requestedAttempt);
+      if (execution && !selectedAttempt) return this.json({ error: "审查尝试不存在" }, 404);
+      if (parts[6] === "diagnostics") {
+        if (this.role !== "admin") return this.json({ error: "需要平台管理权限" }, 403);
+        return this.json({
+          case_id: caseId,
+          run_id: review.run.id,
+          execution: execution && selectedAttempt ? { ...execution, attempt: selectedAttempt } : null,
+          snapshot: review.snapshot ?? null,
+          audit_events: review.audit_events,
+          documents: [],
+          evidence: [],
+        });
+      }
       const payload = structuredClone(review);
       if (this.identity !== "u1" && payload.findings[0])
         payload.findings[0].claim = "乙账号的专属线索";
-      if (payload.execution) payload.execution.attempt = selectedAttempt;
+      const businessAttempt = (attempt: ExecutionAttempt) => ({
+        id: attempt.id,
+        run_id: attempt.run_id,
+        ordinal: attempt.ordinal,
+        retry_of_attempt_id: attempt.retry_of_attempt_id,
+        state: attempt.state,
+        accepted_at: attempt.accepted_at,
+        started_at: attempt.started_at,
+        finished_at: attempt.finished_at,
+        parsed_document_ids: attempt.parsed_document_ids,
+        history_kind: attempt.history_kind,
+      });
+      const publicPayload = {
+        ...payload,
+        execution: null,
+        review_attempts: selectedAttempt ? {
+          attempt: businessAttempt(selectedAttempt),
+          attempts: attempts.map(businessAttempt),
+        } : null,
+        snapshot: payload.snapshot ? { document_ids: payload.snapshot.document_ids } : null,
+        audit_events: [],
+        business_events: payload.business_events ?? [],
+      };
       if (this.holdNextWorkspaceRead) {
         this.holdNextWorkspaceRead = false;
         const gate = Promise.withResolvers<Response>();
-        this.releaseHeldWorkspace = () => gate.resolve(this.json(payload));
+        this.releaseHeldWorkspace = () => gate.resolve(this.json(publicPayload));
         return gate.promise;
       }
-      return this.json(payload);
+      return this.json(publicPayload);
     }
     throw new Error(`Unhandled UI request: ${key}`);
   };
@@ -615,6 +675,12 @@ afterEach(() => {
   Stream.instances = [];
 });
 
+function selectBusinessTime() {
+  fireEvent.change(screen.getByLabelText("审查业务时间（本地时区）"), {
+    target: { value: "2026-10-21T08:00" },
+  });
+}
+
 describe("application routes and API contract", () => {
   it("logs in, creates a case, uploads source versions, reviews, decides, and logs out", async () => {
     const api = new Service();
@@ -650,6 +716,7 @@ describe("application routes and API contract", () => {
       scenario: "telecom_dedicated_line",
     });
     expect(screen.getByRole("button", { name: "开始审查" })).toBeDisabled();
+    selectBusinessTime();
     await user.upload(
       screen.getByLabelText("文件"),
       new File([text], "采购.txt", { type: "text/plain" }),
@@ -666,6 +733,8 @@ describe("application routes and API contract", () => {
       expect(screen.getByRole("button", { name: "开始审查" })).toBeEnabled(),
     );
     await user.click(screen.getByRole("button", { name: "开始审查" }));
+    await waitFor(() => expect(api.requests.find((entry) => entry.key === "POST /api/cases/c1/reviews")?.input)
+      .toEqual({ business_at: new Date(2026, 9, 21, 8, 0).toISOString() }));
     expect(
       await screen.findByRole("heading", { name: "审查工作区" }),
     ).toBeInTheDocument();
@@ -678,10 +747,11 @@ describe("application routes and API contract", () => {
     expect(
       screen.getByText("质保期限不一致", { selector: "h3" }),
     ).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "加载审查诊断" }));
     await user.click(
       screen.getByRole("button", { name: "运行依据与规则评估" }),
     );
-    expect(screen.getByText("rules-sha256")).toBeVisible();
+    expect(await screen.findByText("rules-sha256")).toBeVisible();
     await user.click(screen.getByRole("radio", { name: "确认风险" }));
     await user.type(
       screen.getByLabelText("理由"),
@@ -802,6 +872,7 @@ describe("application routes and API contract", () => {
     );
     await user.click(screen.getByRole("button", { name: "上传" }));
     expect(await screen.findAllByText("修改稿.txt")).not.toHaveLength(0);
+    selectBusinessTime();
     const reReview = await screen.findByRole("button", { name: "开始复审" });
     expect(reReview).toBeEnabled();
     await user.click(reReview);
@@ -827,6 +898,8 @@ describe("application routes and API contract", () => {
     ];
     const { user } = open(api, "/cases/c1");
     expect(await screen.findByText("待转写.png")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "开始审查" })).toBeDisabled();
+    selectBusinessTime();
     const startReview = screen.getByRole("button", { name: "开始审查" });
     expect(startReview).toBeEnabled();
     await user.click(startReview);
@@ -853,6 +926,7 @@ describe("application routes and API contract", () => {
     const { user } = open(api, "/cases/c1");
     expect(await screen.findByText("无法解码")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "开始审查" })).toBeDisabled();
+    selectBusinessTime();
     await user.click(screen.getByRole("button", { name: "重新解析 d2.txt" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("受控失败 503");
     await user.click(screen.getByRole("button", { name: "重新解析 d2.txt" }));
@@ -878,6 +952,7 @@ describe("application routes and API contract", () => {
     const originalIds = item.documents.map((entry) => entry.id);
     const { user } = open(api, "/cases/c1");
     expect(await screen.findByText(/规则或模型配置已更新/)).toBeInTheDocument();
+    selectBusinessTime();
     await user.click(screen.getByRole("button", { name: "开始复审" }));
     expect(
       await screen.findByRole("heading", { name: "审查工作区" }),
@@ -1027,8 +1102,9 @@ describe("application routes and API contract", () => {
     expect(
       await screen.findByRole("heading", { name: "执行检查器" }),
     ).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "加载审查诊断" }));
     expect(
-      screen.getByRole("heading", { name: "已核验发现" }),
+      await screen.findByRole("heading", { name: "引用已定位的线索" }),
     ).toBeInTheDocument();
     const attemptUsage = screen.getByRole("region", { name: "本次尝试用量" });
     expect(within(attemptUsage).getAllByText("未知").length).toBeGreaterThan(0);
@@ -1095,7 +1171,8 @@ describe("application routes and API contract", () => {
     expect(
       await screen.findByRole("heading", { name: "执行检查器" }),
     ).toBeInTheDocument();
-    const eventDetails = screen.getByRole("region", { name: "事件详情" });
+    await user.click(screen.getByRole("button", { name: "加载审查诊断" }));
+    const eventDetails = await screen.findByRole("region", { name: "事件详情" });
     expect(
       within(eventDetails).getByText("openai_response.usage"),
     ).toBeVisible();
@@ -1276,10 +1353,11 @@ describe("application routes and API contract", () => {
     expect(
       screen.getByText("还没有人工决定。模型建议不会自动结案。"),
     ).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "加载审查诊断" }));
     await user.click(
       screen.getByRole("button", { name: "运行依据与规则评估" }),
     );
-    expect(screen.getByText("typed-constraint-v1")).toBeVisible();
+    expect(await screen.findByText("typed-constraint-v1")).toBeVisible();
     expect(
       screen.getByText(
         /ENT-TECH-BW-001，\s*1\.0\.0，\s*dedicated_line\.minimum_bandwidth/,
@@ -1325,6 +1403,79 @@ describe("application routes and API contract", () => {
     expect(screen.getByText("没有返回规则评估记录。")).toBeVisible();
   });
 
+  it("keeps navigation identities out of the business review while preserving links", async () => {
+    const api = new Service();
+    const review = api.addReview();
+    review.documents[0]!.parsed_document_id = "parsed_private_source";
+    review.findings[0]!.evidence[0]!.parsed_document_id = "parsed_private_source";
+    const { container } = open(api, "/cases/c1/reviews/r1");
+    await screen.findByRole("heading", { name: "审查工作区" });
+    const breadcrumbs = container.querySelector(".breadcrumbs")!;
+    expect(breadcrumbs).toHaveTextContent("审查工作区");
+    expect(breadcrumbs).not.toHaveTextContent(/c1|r1/);
+    expect(await within(breadcrumbs).findByRole("link", { name: "接入设备采购" })).toHaveAttribute("href", "/cases/c1");
+    expect(container.querySelector(".finding-detail")!).not.toHaveTextContent(/parsed_private_source|SHA-256|已核验/);
+    expect(screen.getByText("语义待核实")).toBeInTheDocument();
+  });
+
+  it("creates remediation from a terminal public attempt without diagnostics", async () => {
+    const api = new Service();
+    api.role = "reviewer";
+    api.addReview("completed");
+    const { user } = open(api, "/cases/c1");
+    const finding = await screen.findByRole("checkbox", { name: /质保期限不一致/ });
+    expect(screen.getByRole("button", { name: "创建整改" })).toBeDisabled();
+    await user.click(finding);
+    await waitFor(() => expect(screen.getByRole("button", { name: "创建整改" })).toBeEnabled());
+    fireEvent.change(screen.getByLabelText("负责人 ID"), { target: { value: "u1" } });
+    fireEvent.change(screen.getByLabelText("截止时间"), { target: { value: "2026-11-01T09:00" } });
+    fireEvent.change(screen.getByLabelText("整改措施"), { target: { value: "补充合同条款" } });
+    await user.click(screen.getByRole("button", { name: "创建整改" }));
+    await waitFor(() => expect(api.requests.find((entry) => entry.key === "POST /api/cases/c1/remediations")?.input).toEqual({
+      run_id: "r1",
+      attempt_id: "attempt-r1-1",
+      finding_ids: ["f1"],
+      assignee_id: "u1",
+      due_at: new Date(2026, 10, 1, 9, 0).toISOString(),
+      measure: "补充合同条款",
+    }));
+    expect(api.requests.some((entry) => entry.key.includes("/diagnostics"))).toBe(false);
+  });
+
+  it("keeps business decisions available when explicitly requested diagnostics are forbidden", async () => {
+    const api = new Service();
+    const review = api.addReview("awaiting_human");
+    review.business_events = [{ event_id: "event-1", run_id: "r1", actor: "u1", seq: 1, event_type: "review_started", correlation_ids: [] }];
+    api.fail("GET /api/cases/c1/reviews/r1/diagnostics", 403);
+    const { user } = open(api, "/cases/c1/reviews/r1");
+    await screen.findByRole("heading", { name: "审查工作区" });
+    expect(api.requests.some((entry) => entry.key.includes("/diagnostics"))).toBe(false);
+    await user.click(screen.getByRole("button", { name: "加载审查诊断" }));
+    expect(await screen.findByText(/审查诊断不可用/)).toHaveTextContent("受控失败 403");
+    await user.click(screen.getByRole("button", { name: "查看审计记录（1）" }));
+    expect(screen.getByText(/审查已发起/)).toBeInTheDocument();
+    const decision = screen.getByRole("radio", { name: "确认风险" });
+    await waitFor(() => expect(decision).toBeEnabled());
+    await user.click(decision);
+    fireEvent.change(screen.getByLabelText("理由"), { target: { value: "依据业务证据确认" } });
+    await user.click(screen.getByRole("button", { name: "保存决定" }));
+    expect(await screen.findByText("依据业务证据确认")).toBeInTheDocument();
+  });
+
+  it("starts an ungoverned case without inventing a business time", async () => {
+    const api = new Service();
+    const item = api.cases.get("c1")!;
+    item.scenario = "general";
+    item.documents = [doc("d1", "procurement"), doc("d2", "draft_contract")];
+    const { user } = open(api, "/cases/c1");
+    const start = await screen.findByRole("button", { name: "开始审查" });
+    expect(screen.queryByLabelText("审查业务时间（本地时区）")).not.toBeInTheDocument();
+    expect(start).toBeEnabled();
+    await user.click(start);
+    await waitFor(() => expect(api.requests.find((entry) => entry.key === "POST /api/cases/c1/reviews")?.input).toEqual({}));
+    expect(await screen.findByRole("heading", { name: "审查工作区" })).toBeInTheDocument();
+  });
+
   it("uses exact rule evaluations instead of a resolved presentation mark for remediation eligibility", async () => {
     const api = new Service();
     addSubmittedRemediation(api, [
@@ -1335,7 +1486,7 @@ describe("application routes and API contract", () => {
       }),
     ]);
     open(api, "/cases/c1");
-    await screen.findByText(/复核运行 r2/);
+    await screen.findByText(/复核状态/);
     const reason = screen.getByLabelText("复核理由");
     await waitFor(() => expect(reason).toBeEnabled());
     expect(screen.getByRole("button", { name: "提交复核" })).toBeEnabled();
@@ -1355,7 +1506,7 @@ describe("application routes and API contract", () => {
       "两次运行的规则或模型配置与当前版本不一致，无法自动比较。",
     );
     open(api, "/cases/c1");
-    await screen.findByText(/复核运行 r2/);
+    await screen.findByText(/复核状态/);
     expect(
       screen.getAllByText(/规则或模型配置与当前版本不一致/).length,
     ).toBeGreaterThan(0);
@@ -1391,7 +1542,7 @@ describe("application routes and API contract", () => {
       const api = new Service();
       addSubmittedRemediation(api, candidateEvaluations);
       open(api, "/cases/c1");
-      await screen.findByText(/复核运行 r2/);
+      await screen.findByText(/复核状态/);
       expect(screen.getByLabelText("复核理由")).toBeDisabled();
       expect(screen.getByRole("button", { name: "提交复核" })).toBeDisabled();
     },
@@ -1763,6 +1914,24 @@ describe("application routes and API contract", () => {
       });
     });
     await waitFor(() => expect(reviewReads()).toBe(beforeSuperseded + 1));
+  });
+
+  it("refreshes a terminal business attempt promptly on a live event", async () => {
+    const api = new Service();
+    const review = api.addReview("running");
+    open(api, "/cases/c1/reviews/r1");
+    const decision = await screen.findByRole("radio", { name: "确认风险" });
+    expect(decision).toBeDisabled();
+    const source = Stream.latest!;
+    act(() => source.onopen?.());
+    expect(await screen.findByText("运行状态已连接")).toBeInTheDocument();
+    const execution = review.execution!;
+    const terminal = { ...execution.attempt, state: "awaiting_human", finished_at: at };
+    review.execution = { ...execution, attempt: terminal, attempts: [terminal] };
+    review.run.state = "awaiting_human";
+    api.cases.get("c1")!.latest_run!.state = "awaiting_human";
+    act(() => source.onmessage?.({ data: JSON.stringify({ seq: 1, type: "run_state", state: "awaiting_human" }) }));
+    await waitFor(() => expect(decision).toBeEnabled());
   });
 
   it("keeps the run stream connected while an event refreshes case permissions", async () => {

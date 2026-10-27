@@ -1,6 +1,7 @@
 import type {
   ArchiveRecord,
   AuditEvent,
+  BusinessAuditEvent,
   GenerationRecord,
   Remediation,
   ReportRecord,
@@ -27,6 +28,8 @@ import type {
   ReviewDocument,
   ReviewRun,
   ReviewRunSummary,
+  ReviewAttempts,
+  ReviewDiagnostics,
   ReviewWorkspace,
   RunSnapshot,
   ConstraintEvaluation,
@@ -39,6 +42,7 @@ import type {
 } from "./types";
 import { ApiError } from "./http";
 import { parseAgentReview } from "./agent-review";
+import { parseBusinessAgentReview } from "./business-agent-review";
 function nonNegativeIntegerOrNull(value: unknown): number | null {
   const result = numberOrNull(value);
   return result !== null && Number.isInteger(result) && result >= 0
@@ -476,12 +480,7 @@ export function parseFinding(value: unknown): Finding {
   const verification: FindingVerification =
     typeof record.unverified_reason === "string"
       ? "unverified"
-      : Object.hasOwn(record, "unverified_reason") &&
-          record.unverified_reason === null &&
-          evidence.length > 0 &&
-          evidence.every((anchor) => anchor.status === "located")
-        ? "verified"
-        : "unknown";
+      : "unknown";
   return {
     id: requiredString(record, "id"),
     origin: optionalString(record, "origin") ?? "unknown",
@@ -519,6 +518,7 @@ function parseReviewDocument(value: unknown): ReviewDocument {
   const record = recordOf(value, "document");
   return {
     ...parseDocument(value),
+    parsed_document_id: optionalString(record, "parsed_document_id"),
     text: optionalString(record, "text"),
     clauses: Array.isArray(record.clauses)
       ? record.clauses
@@ -572,6 +572,29 @@ function parseExecution(value: unknown): Execution | null {
     queue_wait_ms: nonNegativeIntegerOrNull(record.queue_wait_ms),
   };
 }
+function parseReviewAttempts(value: unknown): ReviewAttempts | null {
+  if (value === null || value === undefined) return null;
+  const record = recordOf(value, "review_attempts");
+  if (!Array.isArray(record.attempts)) fail("审查尝试缺少 attempts");
+  if (record.attempt === null) return null;
+  return {
+    attempt: parseExecutionAttempt(record.attempt),
+    attempts: record.attempts.map(parseExecutionAttempt),
+  };
+}
+
+export function parseReviewDiagnostics(value: unknown): ReviewDiagnostics {
+  const record = recordOf(value, "review diagnostics");
+  if (!Array.isArray(record.audit_events)) fail("审查诊断缺少 audit_events");
+  return {
+    case_id: requiredString(record, "case_id"),
+    run_id: requiredString(record, "run_id"),
+    execution: parseExecution(record.execution),
+    snapshot: parseSnapshot(record.snapshot),
+    audit_events: record.audit_events.map(parseAuditEvent),
+  };
+}
+
 export function parseReviewWorkspace(value: unknown): ReviewWorkspace {
   const record = recordOf(value, "review");
   if (!Array.isArray(record.audit_events)) fail("审查工作区缺少 audit_events");
@@ -583,12 +606,17 @@ export function parseReviewWorkspace(value: unknown): ReviewWorkspace {
     findings: Array.isArray(record.findings)
       ? record.findings.map(parseFinding)
       : [],
+    review_attempts: parseReviewAttempts(record.review_attempts),
+    agent_review: parseBusinessAgentReview(record.agent_review),
     execution: parseExecution(record.execution),
     snapshot: parseSnapshot(record.snapshot),
     evaluations: Array.isArray(record.evaluations)
       ? record.evaluations.map(parseEvaluation)
       : [],
     audit_events: record.audit_events.map(parseAuditEvent),
+    business_events: Array.isArray(record.business_events)
+      ? record.business_events.map(parseBusinessAuditEvent)
+      : [],
     previous_run_id: optionalString(record, "previous_run_id"),
     revisions: Array.isArray(record.revisions)
       ? record.revisions.map(parseRevision)
@@ -755,6 +783,18 @@ export function parseArchiveRecord(value: unknown): ArchiveRecord {
     report_id: requiredString(record, "report_id"),
     reason: requiredString(record, "reason"),
     archived_at: requiredString(record, "archived_at"),
+  };
+}
+
+function parseBusinessAuditEvent(value: unknown): BusinessAuditEvent {
+  const record = recordOf(value, "business audit event");
+  return {
+    event_id: requiredString(record, "event_id"),
+    run_id: requiredString(record, "run_id"),
+    actor: requiredString(record, "actor"),
+    seq: requiredPositiveInteger(record, "seq"),
+    event_type: requiredString(record, "event_type"),
+    correlation_ids: stringArrayOrEmpty(record, "correlation_ids"),
   };
 }
 

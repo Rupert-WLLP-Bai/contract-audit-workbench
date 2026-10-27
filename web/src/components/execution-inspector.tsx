@@ -73,7 +73,7 @@ const phaseLabels: Record<string, string> = {
   model_review: "模型审查",
   model_request: "模型请求",
   citation_verification: "引用核验",
-  verified_finding: "发现核验",
+  verified_finding: "引用核验",
   terminal_persistence: "终态保存",
   cancellation: "取消尝试",
   restart_recovery: "重启恢复",
@@ -91,7 +91,7 @@ const eventTypeLabels: Record<string, string> = {
   node_failed: "节点失败",
   model_completed: "模型调用完成",
   model_failed: "模型调用失败",
-  finding_verified: "发现已核验",
+  finding_verified: "引用核验记录",
   attempt_finished: "尝试结束",
   attempt_cancelled: "尝试已取消",
   attempt_interrupted: "尝试已中断",
@@ -279,12 +279,10 @@ export function ExecutionInspector({
     .sort((left, right) => left.seq - right.seq);
   const event =
     events.find((item) => item.seq === selectedSeq) ?? events[0] ?? null;
-  const verified = findings.filter(
-    (finding) => finding.verification_status === "verified",
+  const locatedFindings = findings.filter(
+    (finding) => finding.evidence.length > 0 && finding.evidence.every((anchor) => anchor.status === "located"),
   );
-  const pendingVerification = findings.filter(
-    (finding) => finding.verification_status !== "verified",
-  );
+  const pendingCitations = findings.filter((finding) => !locatedFindings.includes(finding));
   const gaps = evaluations.filter(
     (evaluation) => evaluation.relation === "insufficient",
   );
@@ -388,7 +386,7 @@ export function ExecutionInspector({
                     <p className="meta">
                       第 {selected.ordinal} 次尝试，最近持久阶段{" "}
                       {latestEvent ? phaseLabel(latestEvent.phase) : "未报告"}，
-                      首个已核验发现 {verified[0]?.claim || "未报告"}
+                      首个引用已定位的线索 {locatedFindings[0]?.claim || "未报告"}
                     </p>
                   </div>
                   <StatusText tone={runTone(selected.state)}>
@@ -612,7 +610,7 @@ export function ExecutionInspector({
                         <dd>{duration}</dd>
                       </div>
                       <div>
-                        <dt>首次核验发现</dt>
+                        <dt>首次引用核验</dt>
                         <dd>{elapsed(execution.first_verified_finding_ms)}</dd>
                       </div>
                       <div>
@@ -643,12 +641,12 @@ export function ExecutionInspector({
 
                     <div className="execution-results">
                       <section aria-labelledby="execution-verified-title">
-                        <h3 id="execution-verified-title">已核验发现</h3>
-                        {verified.length === 0 ? (
-                          <p>当前尝试没有已明确核验的发现。</p>
+                        <h3 id="execution-verified-title">引用已定位的线索</h3>
+                        {locatedFindings.length === 0 ? (
+                          <p>当前尝试没有全部引用已定位的线索。</p>
                         ) : (
                           <ul className="execution-finding-list">
-                            {verified.map((finding) => (
+                            {locatedFindings.map((finding) => (
                               <li key={finding.id}>
                                 <Button
                                   aria-label={String(finding.claim)}
@@ -672,14 +670,14 @@ export function ExecutionInspector({
                         )}
                       </section>
                       <section aria-labelledby="execution-gaps-title">
-                        <h3 id="execution-gaps-title">待核验与缺口</h3>
-                        {pendingVerification.length === 0 &&
+                        <h3 id="execution-gaps-title">引用待定位与缺口</h3>
+                        {pendingCitations.length === 0 &&
                         gaps.length === 0 ? (
-                          <p>没有已报告的核验缺口。</p>
+                          <p>没有已报告的引用定位或规则缺口。</p>
                         ) : null}
-                        {pendingVerification.length > 0 ? (
+                        {pendingCitations.length > 0 ? (
                           <ul className="execution-finding-list">
-                            {pendingVerification.map((finding) => (
+                            {pendingCitations.map((finding) => (
                               <li key={finding.id}>
                                 <Button
                                   aria-label={String(finding.claim)}
@@ -696,7 +694,7 @@ export function ExecutionInspector({
                                 <span className="meta">
                                   {finding.verification_status === "unverified"
                                     ? finding.unverified_reason
-                                    : "核验状态未提供"}
+                                    : "引用尚未全部定位"}
                                 </span>
                               </li>
                             ))}

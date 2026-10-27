@@ -1,3 +1,5 @@
+import type { BusinessAgentReview } from "./business-agent-review";
+
 /** Client-side view of the review API. Null means the server omitted the field. */
 
 export type SessionAudience = "client" | "admin";
@@ -168,6 +170,7 @@ export interface ClauseNode {
 }
 
 export interface ReviewDocument extends DocumentVersion {
+  parsed_document_id: string | null;
   text: string | null;
   clauses: ClauseNode[];
 }
@@ -481,6 +484,20 @@ export interface Execution {
   queue_wait_ms: number | null;
 }
 
+export interface ReviewAttempts {
+  attempt: ExecutionAttempt;
+  attempts: ExecutionAttempt[];
+}
+
+export interface ReviewDiagnostics {
+  case_id: string;
+  run_id: string;
+  execution: Execution | null;
+  snapshot: RunSnapshot | null;
+  audit_events: AuditEvent[];
+}
+
+
 export interface AcceptedReview {
   id: string;
   attempt_id: string;
@@ -511,10 +528,13 @@ export interface ReviewWorkspace {
   run: ReviewRun;
   documents: ReviewDocument[];
   findings: Finding[];
+  review_attempts: ReviewAttempts | null;
+  agent_review?: BusinessAgentReview | null;
   execution: Execution | null;
   snapshot?: RunSnapshot | null;
   evaluations?: ConstraintEvaluation[];
   audit_events: AuditEvent[];
+  business_events?: BusinessAuditEvent[];
   previous_run_id?: string | null;
   revisions?: RevisionComparison[];
   revision_comparison_reason?: string | null;
@@ -638,6 +658,15 @@ export interface Template {
   version: string;
   digest: string;
   fields: TemplateField[];
+}
+
+export interface BusinessAuditEvent {
+  event_id: string;
+  run_id: string;
+  actor: string;
+  seq: number;
+  event_type: string;
+  correlation_ids: string[];
 }
 
 export interface AuditEvent {

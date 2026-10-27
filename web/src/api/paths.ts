@@ -48,6 +48,12 @@ export const paths = {
       ? path
       : `${path}?attempt_id=${id(attemptId)}`;
   },
+  reviewDiagnostics: (caseId: string, runId: string, attemptId?: string | null) => {
+    const path = `/api/cases/${id(caseId)}/reviews/${id(runId)}/diagnostics`;
+    return attemptId === null || attemptId === undefined
+      ? path
+      : `${path}?attempt_id=${id(attemptId)}`;
+  },
   retryReview: (caseId: string, runId: string) =>
     `/api/cases/${id(caseId)}/reviews/${id(runId)}/retry`,
   cancelReview: (caseId: string, runId: string) =>

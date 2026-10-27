@@ -4,7 +4,7 @@ import type { ReviewWorkspace } from "../api/types";
 import { decisionLabel, relationLabel } from "../domain/review";
 
 /** Presents existing API evidence. It does not claim frozen OCR or report exports. */
-export function RunProvenance({ workspace }: { workspace: ReviewWorkspace }) {
+export function RunProvenance({ workspace, showDiagnostics = false }: { workspace: ReviewWorkspace; showDiagnostics?: boolean }) {
   const {
     snapshot,
     evaluations = [],
@@ -20,7 +20,7 @@ export function RunProvenance({ workspace }: { workspace: ReviewWorkspace }) {
             label: "运行依据与规则评估",
             children: (
               <>
-                {snapshot ? (
+                {snapshot && showDiagnostics ? (
                   <dl>
                     <dt>本次材料版本</dt>
                     <dd>{snapshot.document_ids.join("、") || "未返回"}</dd>
@@ -33,11 +33,13 @@ export function RunProvenance({ workspace }: { workspace: ReviewWorkspace }) {
                     <dt>快照中的模型</dt>
                     <dd>{snapshot.model_ref ?? "未使用模型"}</dd>
                   </dl>
+                ) : snapshot ? (
+                  <p>请核对本次审查的材料与引用。</p>
                 ) : (
                   <p>服务未返回运行快照。</p>
                 )}
                 <p className="meta">
-                  运行快照记录原件版本与规则身份；材料区展示本次尝试实际冻结的解析来源和摘要。
+                  材料与引用以本次审查记录为准。
                 </p>
                 {evaluations.length === 0 ? (
                   <p>没有返回规则评估记录。</p>
@@ -49,6 +51,8 @@ export function RunProvenance({ workspace }: { workspace: ReviewWorkspace }) {
                           {item.domain}，{relationLabel(item.relation)}
                         </strong>
                         <p>{item.reason}</p>
+                        {showDiagnostics ? (
+                          <>
                         <p className="meta">
                           {item.rule_id || "规则身份未返回"}，
                           {item.rule_version || "版本未返回"}，
@@ -63,6 +67,8 @@ export function RunProvenance({ workspace }: { workspace: ReviewWorkspace }) {
                             ? "未返回"
                             : item.fact_ids.join("、")}
                         </p>
+                          </>
+                        ) : null}
                       </li>
                     ))}
                   </ul>

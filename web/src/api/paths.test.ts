@@ -9,6 +9,9 @@ describe("api paths", () => {
     expect(paths.reparse("c1", "d1")).toBe("/api/cases/c1/documents/d1/parse");
     expect(paths.reviews("c1")).toBe("/api/cases/c1/reviews");
     expect(paths.review("c1", "r1")).toBe("/api/cases/c1/reviews/r1");
+    expect(paths.reviewDiagnostics("a/b", "r1", "attempt/1")).toBe(
+      "/api/cases/a%2Fb/reviews/r1/diagnostics?attempt_id=attempt%2F1",
+    );
     expect(paths.retryReview("c1", "r1")).toBe(
       "/api/cases/c1/reviews/r1/retry",
     );

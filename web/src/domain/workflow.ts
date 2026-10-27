@@ -22,12 +22,12 @@ export function reviewChoiceKey(runId: string, attemptId: string): string {
 export function reviewChoices(history: ReviewHistoryEntry[]): ReviewChoice[] {
   return history
     .flatMap((entry, runOrder) => {
-      const execution = entry.workspace.execution;
-      if (!execution) return [];
+      const reviewAttempts = entry.workspace.review_attempts;
+      if (!reviewAttempts) return [];
       const attempts = new Map(
-        execution.attempts.map((attempt) => [attempt.id, attempt]),
+        reviewAttempts.attempts.map((attempt) => [attempt.id, attempt]),
       );
-      attempts.set(execution.attempt.id, execution.attempt);
+      attempts.set(reviewAttempts.attempt.id, reviewAttempts.attempt);
       return Array.from(attempts.values(), (attempt) => ({
         key: reviewChoiceKey(entry.runId, attempt.id),
         runId: entry.runId,

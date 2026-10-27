@@ -1,4 +1,4 @@
-import { Button } from "antd";
+import { Button, Select } from "antd";
 import type {
   CaseRelationInput,
   DecisionAction,
@@ -10,6 +10,7 @@ import type { StreamStatus } from "../hooks/use-review-events";
 import { DocumentStage, type ReviewCaseContext } from "./document-stage";
 import { ExecutionInspector } from "./execution-inspector";
 import { FindingPanel } from "./finding-panel";
+import { BusinessAgentReviewView } from "./business-agent-review";
 import { StatusText } from "./status-text";
 
 const STREAM_LABEL: Record<StreamStatus, string> = {
@@ -25,6 +26,7 @@ export function ReviewWorkspaceView({
   layout,
   selectedId,
   streamStatus,
+  showDiagnostics = false,
   pending,
   retrying,
   canDecide = true,
@@ -51,6 +53,7 @@ export function ReviewWorkspaceView({
   layout: ReviewLayout;
   selectedId: string | null;
   streamStatus: StreamStatus;
+  showDiagnostics?: boolean;
   pending: boolean;
   retrying: boolean;
   canDecide?: boolean;
@@ -79,6 +82,12 @@ export function ReviewWorkspaceView({
   onDeleteRelation?: (relationId: string) => void;
 }) {
   const { run } = workspace;
+  const selected = workspace.review_attempts?.attempt;
+  const attempts = workspace.review_attempts
+    ? workspace.review_attempts.attempts.some((attempt) => attempt.id === selected?.id)
+      ? workspace.review_attempts.attempts
+      : [workspace.review_attempts.attempt, ...workspace.review_attempts.attempts]
+    : [];
   const anchors = workspace.findings.flatMap((finding) => finding.evidence);
   const locatedAnchors = anchors.filter(
     (anchor) => anchor.status === "located",
@@ -169,7 +178,7 @@ export function ReviewWorkspaceView({
       ) : null}
       <div className={`workspace-grid layout-${layout}`}>
         <DocumentStage
-          key={`${run.id}:${workspace.execution?.attempt.id ?? "legacy"}`}
+          key={`${run.id}:${workspace.review_attempts?.attempt.id ?? "legacy"}`}
           documents={workspace.documents}
           finding={
             workspace.findings.find((item) => item.id === selectedId) ?? null
@@ -178,6 +187,7 @@ export function ReviewWorkspaceView({
           selectedFindingId={selectedId}
           onSelectFinding={onSelect}
           layout={layout}
+          showDiagnostics={showDiagnostics}
           caseContext={caseContext}
           canEditRelations={canEditRelations}
           relationPending={relationPending}
@@ -190,6 +200,7 @@ export function ReviewWorkspaceView({
           documents={workspace.documents}
           selectedId={selectedId}
           onSelect={onSelect}
+          showDiagnostics={showDiagnostics}
           pending={pending}
           canDecide={canDecide}
           decisionDisabledReason={decisionDisabledReason}
@@ -198,6 +209,7 @@ export function ReviewWorkspaceView({
           onDecide={onDecide}
         />
       </div>
+      <BusinessAgentReviewView review={workspace.agent_review ?? null} />
       {workspace.execution ? (
         <ExecutionInspector
           execution={workspace.execution}
@@ -222,13 +234,42 @@ export function ReviewWorkspaceView({
             <div>
               <h2 id="execution-inspector-title">执行检查器</h2>
               <p className="meta">
-                本次工作区没有持久执行快照。未采集的阶段、耗时和用量保持未报告。
+                {selected
+                  ? "详细执行诊断未提供；以下尝试状态来自业务工作区。"
+                  : "本次工作区没有持久执行快照。未采集的阶段、耗时和用量保持未报告。"}
               </p>
             </div>
             <StatusText tone={runTone(run.state)}>
               {runLabel(run.state)}
             </StatusText>
           </header>
+          {selected ? (
+            <>
+              <label className="field">
+                查看尝试
+                <Select
+                  aria-label="查看尝试"
+                  value={selected.id}
+                  onChange={onSelectAttempt}
+                  options={[...attempts]
+                    .sort((left, right) => right.ordinal - left.ordinal)
+                    .map((attempt, index) => ({
+                      value: attempt.id,
+                      label: `第 ${attempt.ordinal} 次，${runLabel(attempt.state)}${index === 0 ? "，最新" : ""}`,
+                    }))}
+                />
+              </label>
+              {selected.history_kind === "legacy_unfrozen" ? (
+                <p className="callout">旧运行未冻结原始输入，不能补造历史阶段。</p>
+              ) : null}
+              {canCancel ? (
+                <Button type="text" disabled={cancelling} onClick={onCancel}>
+                  {cancelling ? "正在取消" : "取消当前尝试"}
+                </Button>
+              ) : null}
+              {cancelError ? <p role="alert">{cancelError}</p> : null}
+            </>
+          ) : null}
         </section>
       )}
     </div>

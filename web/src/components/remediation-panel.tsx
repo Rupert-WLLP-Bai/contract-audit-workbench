@@ -87,12 +87,14 @@ function RemediationCard({
   caseId,
   item,
   documents,
+  members,
   archived,
   canWrite,
   choices,
 }: {
   caseId: string;
   item: Remediation;
+  members: CaseDetail["members"];
   documents: CaseDetail["documents"];
   archived: boolean;
   canWrite: boolean;
@@ -144,7 +146,7 @@ function RemediationCard({
   const originalFindingIds = new Set(
     source.data?.findings.map((finding) => finding.id) ?? [],
   );
-  const selectedAttempt = candidateWorkspace.data?.execution?.attempt;
+  const selectedAttempt = candidateWorkspace.data?.review_attempts?.attempt;
   const selectedRunIsExpected =
     candidateWorkspace.data?.run.id === candidate?.runId;
   const selectedAttemptIsExpected =
@@ -197,8 +199,7 @@ function RemediationCard({
     verificationBlockReason = `无法读取所选复核尝试：${errorMessage(candidateWorkspace.error)}`;
   else if (comparisonReason) verificationBlockReason = comparisonReason;
   else if (candidateWorkspace.data && !comparesSourceRun)
-    verificationBlockReason =
-      "所选复核的 previous_run_id 与整改来源运行不一致。";
+    verificationBlockReason = "所选复核并非针对这项整改的来源审查。";
   else if (candidateWorkspace.data && !everyFindingCompatible)
     verificationBlockReason =
       "复核未为每个整改发现返回唯一、同规则版本、同能力和同业务对象的兼容评估。";
@@ -240,9 +241,11 @@ function RemediationCard({
     <li className="workflow-record">
       <header className="workflow-panel-head">
         <div>
-          <h4>整改 {item.id}</h4>
+          <h4>整改记录</h4>
           <p className="meta">
-            负责人 {item.assignee_id}，截止 {formatDateTime(item.due_at)}，
+            负责人 {item.assignee_id
+              ? members.find((member) => member.id === item.assignee_id)?.display_name ?? "未返回负责人信息"
+              : "未分配"}，截止 {formatDateTime(item.due_at)}，
             版本 {item.version}
           </p>
         </div>
@@ -260,18 +263,22 @@ function RemediationCard({
       </header>
       <dl className="execution-dl">
         <div>
-          <dt>来源运行 / 尝试</dt>
+          <dt>来源审查</dt>
           <dd>
             <Link
               to={`/cases/${encodeURIComponent(caseId)}/reviews/${encodeURIComponent(item.run_id)}?attempt_id=${encodeURIComponent(item.attempt_id)}`}
             >
-              {item.run_id} / {item.attempt_id}
+              查看来源审查
             </Link>
           </dd>
         </div>
         <div>
           <dt>绑定发现</dt>
-          <dd>{item.finding_ids.join("、") || "未提供"}</dd>
+          <dd>
+            {item.finding_ids.map((id) =>
+              source.data?.findings.find((finding) => finding.id === id)?.claim || "发现详情未返回",
+            ).join("、") || "未提供"}
+          </dd>
         </div>
         <div>
           <dt>整改措施</dt>
@@ -279,18 +286,26 @@ function RemediationCard({
         </div>
         <div>
           <dt>修改稿文档</dt>
-          <dd>{item.document_ids.join("、") || "尚未绑定"}</dd>
+          <dd>
+            {item.document_ids.map((id) =>
+              documents.find((document) => document.id === id)?.filename || "材料未返回",
+            ).join("、") || "尚未绑定"}
+          </dd>
         </div>
         <div>
           <dt>最近理由</dt>
           <dd>{item.reason || "未提供"}</dd>
         </div>
         <div>
-          <dt>复核运行 / 尝试</dt>
+          <dt>复核审查</dt>
           <dd>
-            {item.verification_run_id && item.verification_attempt_id
-              ? `${item.verification_run_id} / ${item.verification_attempt_id}`
-              : "未复核"}
+            {item.verification_run_id && item.verification_attempt_id ? (
+              <Link
+                to={`/cases/${encodeURIComponent(caseId)}/reviews/${encodeURIComponent(item.verification_run_id)}?attempt_id=${encodeURIComponent(item.verification_attempt_id)}`}
+              >
+                查看复核审查
+              </Link>
+            ) : "未复核"}
           </dd>
         </div>
         <div>
@@ -331,7 +346,7 @@ function RemediationCard({
                     disabled={!canWrite || archived || submit.isPending}
                     onChange={() => setDocumentId(document.id)}
                   >
-                    {document.filename}，{document.id}
+                    {document.filename}，{formatDateTime(document.created_at)}
                   </Radio>
                 </div>
               ))}
@@ -346,8 +361,7 @@ function RemediationCard({
             />
           </label>
           <p className="meta">
-            提交会绑定当前所选 document IDs 和整改版本 {item.version}
-            ；仅上传材料不会关闭整改。
+            提交会绑定当前所选材料和整改版本 {item.version}；仅上传材料不会关闭整改。
           </p>
           {submit.error ? (
             <p
@@ -393,11 +407,11 @@ function RemediationCard({
           {candidateWorkspace.data ? (
             <div className="verification-evidence">
               <p>
-                复核运行 {candidateWorkspace.data.run.id}，运行状态{" "}
+                复核状态{" "}
                 <StatusText tone={runTone(candidateWorkspace.data.run.state)}>
                   {runLabel(candidateWorkspace.data.run.state)}
-                </StatusText>{" "}
-              ，尝试 {selectedAttempt?.id ?? "未报告"}
+                </StatusText>
+                {selectedAttempt ? `，第 ${selectedAttempt.ordinal} 次审查` : "，审查次数未返回"}
               </p>
               {candidateWorkspace.data.revision_comparison_reason ? (
                 <p className="callout">
@@ -408,9 +422,9 @@ function RemediationCard({
               <ul className="workflow-record-list">
                 {comparisonRows.map(({ findingId, rows, finding }) => (
                   <li key={findingId}>
-                    <strong>{finding?.claim ?? findingId}</strong>
+                    <strong>{finding?.claim || "来源发现未返回"}</strong>
                     {rows.length === 0 ? (
-                      <p>没有返回与该来源 finding ID 对应的比较记录。</p>
+                      <p>没有返回与该来源发现对应的比较记录。</p>
                     ) : (
                       rows.map((revision, index) => (
                         <p
@@ -557,7 +571,7 @@ export function RemediationPanel({
   }
 
   const findings = selectedReview.data?.findings ?? [];
-  const selectedAttempt = selectedReview.data?.execution?.attempt;
+  const selectedAttempt = selectedReview.data?.review_attempts?.attempt;
   const selectedAttemptMatches =
     selectedReview.data?.run.id === selectedChoice?.runId &&
     selectedAttempt?.id === selectedChoice?.attempt.id;
@@ -575,8 +589,7 @@ export function RemediationPanel({
         <div>
           <h2 id="remediation-title">整改与复核</h2>
           <p className="meta">
-            整改绑定原始
-            run/attempt/finding；关闭需单独提交新尝试的真实兼容复核。
+            整改绑定来源审查和发现；关闭需单独提交新审查的真实兼容复核。
           </p>
         </div>
       </header>
@@ -631,7 +644,7 @@ export function RemediationPanel({
                       toggleFinding(finding.id, event.target.checked)
                     }
                   >
-                    {finding.claim}，{finding.id}，{finding.domain}
+                    {finding.claim}，{finding.domain}
                   </Checkbox>
                 </div>
               ))}
@@ -703,6 +716,7 @@ export function RemediationPanel({
                 caseId={caseId}
                 item={item}
                 documents={detail.documents}
+                members={detail.members}
                 archived={archived}
                 canWrite={canWrite}
                 choices={choices}

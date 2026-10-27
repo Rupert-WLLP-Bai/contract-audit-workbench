@@ -1,12 +1,21 @@
 import { Collapse } from "antd";
-import type { AuditEvent } from "../api/types";
+import type { AuditEvent, BusinessAuditEvent } from "../api/types";
+
+const EVENT_LABELS: Record<string, string> = {
+  review_started: "审查已发起",
+  review_retried: "已重新发起尝试",
+  review_cancelled: "审查已取消",
+  attempt_input_frozen: "审查材料已冻结",
+  human_decision: "已记录人工决定",
+};
 
 interface AuditProjectionProps {
   runId: string;
-  events: AuditEvent[];
+  events: (AuditEvent | BusinessAuditEvent)[];
+  showDiagnostics?: boolean;
 }
 
-export function AuditProjection({ runId, events }: AuditProjectionProps) {
+export function AuditProjection({ runId, events, showDiagnostics = false }: AuditProjectionProps) {
   return (
     <section className="pane" aria-label="业务审计记录">
       <h2>业务审计</h2>
@@ -18,13 +27,14 @@ export function AuditProjection({ runId, events }: AuditProjectionProps) {
             label: "查看审计记录（" + String(events.length ?? "") + "）",
             children: (
               <>
-                <p className="digest">运行：{runId}</p>
+                {showDiagnostics ? <p className="digest">运行：{runId}</p> : null}
                 {events.length === 0 ? (
                   <p>当前运行尚未返回审计记录。</p>
                 ) : (
                   <ol className="workflow-record-list">
                     {events.map((event) => (
                       <li key={event.event_id}>
+                        {showDiagnostics ? (
                         <Collapse
                           items={[
                             {
@@ -46,20 +56,18 @@ export function AuditProjection({ runId, events }: AuditProjectionProps) {
                                       <dt>运行身份</dt>
                                       <dd>{event.run_id}</dd>
                                     </div>
-                                    <div>
-                                      <dt>记录摘要</dt>
-                                      <dd>
-                                        <code>{event.hash}</code>
-                                      </dd>
-                                    </div>
-                                    <div>
-                                      <dt>前序摘要</dt>
-                                      <dd>
-                                        <code>
-                                          {event.prev_hash || "起始记录"}
-                                        </code>
-                                      </dd>
-                                    </div>
+                                    {"hash" in event ? (
+                                      <>
+                                        <div>
+                                          <dt>记录摘要</dt>
+                                          <dd><code>{event.hash}</code></dd>
+                                        </div>
+                                        <div>
+                                          <dt>前序摘要</dt>
+                                          <dd><code>{event.prev_hash || "起始记录"}</code></dd>
+                                        </div>
+                                      </>
+                                    ) : null}
                                     <div>
                                       <dt>关联身份</dt>
                                       <dd>
@@ -74,6 +82,9 @@ export function AuditProjection({ runId, events }: AuditProjectionProps) {
                             },
                           ]}
                         />
+                        ) : (
+                          <p>记录 {event.seq}，{EVENT_LABELS[event.event_type] ?? "其他审查记录"}</p>
+                        )}
                       </li>
                     ))}
                   </ol>

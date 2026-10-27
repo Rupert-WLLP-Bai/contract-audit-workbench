@@ -146,7 +146,7 @@ export function AppShell() {
     void navigate(`/cases${suffix === "" ? "" : `?${suffix}`}`);
   }
 
-  const caseTitle = caseDetail.data?.title ?? caseId;
+  const caseTitle = caseDetail.data?.title ?? "案件";
   const moduleTitles: Record<string, string> = {
     tasks: "审查任务",
     remediation: "整改中心",
@@ -194,7 +194,7 @@ export function AppShell() {
                   ...(reviewMatch
                     ? [
                         {
-                          label: `审查，${decodeURIComponent(reviewMatch[2] ?? "")}`,
+                          label: "审查工作区",
                           to: null,
                         },
                       ]
