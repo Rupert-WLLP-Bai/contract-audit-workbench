@@ -32,6 +32,7 @@ func (m *Monitor) Snapshot(ctx context.Context) Snapshot {
 	ctx, cancel := context.WithTimeout(ctx, 4*time.Second)
 	defer cancel()
 	out := Snapshot{SchemaVersion: SchemaVersion, ObservedAt: time.Now().UTC().Format(time.RFC3339Nano), Mode: "embedded", Source: "process", Services: catalog()}
+	databaseTarget := safeTarget(m.config.DatabaseTarget)
 	if m.config.Kubernetes != nil {
 		out.Mode = "kubernetes"
 		out.Source = "kubernetes"
@@ -60,6 +61,15 @@ func (m *Monitor) Snapshot(ctx context.Context) Snapshot {
 					}
 					item.Probe = &Probe{Kind: "database", Status: item.Status, DurationMS: time.Since(started).Milliseconds()}
 				}
+			}
+		}
+	}
+	// The selected database identity is authoritative in every deployment mode;
+	// keep container DNS targets only when no credential-free URL was configured.
+	if databaseTarget != "" {
+		for i := range out.Services {
+			if out.Services[i].ID == "db" {
+				out.Services[i].Target = databaseTarget
 			}
 		}
 	}

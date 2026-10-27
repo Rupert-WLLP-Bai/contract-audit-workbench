@@ -10,6 +10,7 @@ package config
 
 import (
 	"errors"
+	"net"
 	"net/url"
 	"os"
 	"strings"
@@ -47,6 +48,19 @@ type Identity struct {
 	Host string
 	Port string
 	Name string
+}
+
+// URL renders this identity as a credential-free PostgreSQL target. It never
+// includes DSN credentials or query parameters.
+func (i Identity) URL() string {
+	if i.Host == "" || i.Name == "" {
+		return ""
+	}
+	port := i.Port
+	if port == "" {
+		port = defaultPort
+	}
+	return "postgres://" + net.JoinHostPort(i.Host, port) + "/" + i.Name
 }
 
 // Environ is the process configuration the selector reads.

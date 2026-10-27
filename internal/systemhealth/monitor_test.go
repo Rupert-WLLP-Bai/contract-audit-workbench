@@ -113,3 +113,22 @@ func TestUnavailableDockerDoesNotFabricateReadiness(t *testing.T) {
 		t.Fatalf("Docker observation failure omitted from architecture inventory: %+v", architecture["postgres-ha"])
 	}
 }
+
+func TestEmbeddedDatabaseTargetShowsConfiguredURL(t *testing.T) {
+	target := "postgres://db.internal:6543/contract_audit_dev"
+	monitor := New(Config{DatabaseReady: func(context.Context) error { return nil }, DatabaseTarget: target})
+	snapshot := monitor.Snapshot(context.Background())
+	for _, service := range snapshot.Services {
+		if service.ID != "db" {
+			continue
+		}
+		if service.Target != target {
+			t.Fatalf("database target %q", service.Target)
+		}
+		if service.Status != "ready" {
+			t.Fatalf("database probe %q", service.Status)
+		}
+		return
+	}
+	t.Fatal("database service missing from snapshot")
+}

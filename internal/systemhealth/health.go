@@ -60,15 +60,16 @@ type Reader interface {
 }
 
 type Config struct {
-	Project       string
-	DockerURL     string
-	Client        *http.Client
-	Kubernetes    *KubernetesConfig
-	DatabaseReady func(context.Context) error
-	ModelName     string
-	ModelEndpoint string
-	OCRName       string
-	MinerUURL     string
+	Project        string
+	DockerURL      string
+	Client         *http.Client
+	Kubernetes     *KubernetesConfig
+	DatabaseReady  func(context.Context) error
+	DatabaseTarget string
+	ModelName      string
+	ModelEndpoint  string
+	OCRName        string
+	MinerUURL      string
 }
 
 type Monitor struct{ config Config }
@@ -80,12 +81,12 @@ func New(config Config) *Monitor {
 	return &Monitor{config: config}
 }
 
-func FromEnv(ready func(context.Context) error) Reader {
+func FromEnv(ready func(context.Context) error, databaseTarget string) Reader {
 	remote := strings.TrimSpace(os.Getenv("SYSTEM_HEALTH_URL"))
 	if remote != "" {
 		return &Remote{URL: remote, Client: &http.Client{Timeout: 5 * time.Second}}
 	}
-	return New(Config{DatabaseReady: ready, ModelName: os.Getenv("LLM_MODEL"), ModelEndpoint: os.Getenv("LLM_BASE_URL"), OCRName: os.Getenv("OCR_MODEL"), MinerUURL: os.Getenv("MINERU_URL")})
+	return New(Config{DatabaseReady: ready, DatabaseTarget: databaseTarget, ModelName: os.Getenv("LLM_MODEL"), ModelEndpoint: os.Getenv("LLM_BASE_URL"), OCRName: os.Getenv("OCR_MODEL"), MinerUURL: os.Getenv("MINERU_URL")})
 }
 
 // DockerClient is used only by the isolated deployment monitor, never the API.
