@@ -1,4 +1,4 @@
-import { useState, type CSSProperties } from "react";
+import { useEffect, useState, type CSSProperties } from "react";
 import {
   Alert,
   Button,
@@ -16,18 +16,24 @@ import {
 } from "antd";
 import {
   useSystemHealth,
+  type HealthGroup,
   type HealthService,
   type HealthStatus,
   type ProductionComponent,
 } from "../api/system-health";
 import type { SessionAudience } from "../api/types";
-import { errorMessage } from "../api/http";
+import {
+  errorMessage,
+  isForbidden,
+  isUnauthenticated,
+} from "../api/http";
 import { PageStatus } from "../components/page-status";
 import { formatDateTime } from "../domain/review";
 import "./system-health-page.css";
 
 const STATUS: Record<HealthStatus, { label: string; color: string }> = {
   ready: { label: "正常", color: "success" },
+  degraded: { label: "降级", color: "warning" },
   unavailable: { label: "不可用", color: "error" },
   stopped: { label: "已停止", color: "error" },
   starting: { label: "启动中", color: "processing" },
@@ -47,6 +53,103 @@ const TABS = ["服务概览", "容器清单", "依赖拓扑", "当前异常"] as
 
 function HealthTag({ status }: { status: HealthStatus }) {
   return <Tag color={STATUS[status].color}>{STATUS[status].label}</Tag>;
+}
+
+const EXPECTED_SOURCE: Record<HealthGroup["expected_source"], string> = {
+  deployment: "Kubernetes Deployment",
+  config: "部署配置",
+  catalog: "内置服务清单",
+  unavailable: "未采集",
+};
+
+function GroupTable({
+  groups,
+  services,
+  onSelect,
+}: {
+  groups: HealthGroup[];
+  services: HealthService[];
+  onSelect: (id: string) => void;
+}) {
+  const columns: TableColumnsType<HealthGroup> = [
+    {
+      title: "逻辑服务",
+      dataIndex: "name",
+      render: (_: unknown, group) => (
+        <span>
+          {group.name} <code className="health-note">{group.id}</code>
+        </span>
+      ),
+    },
+    {
+      title: "状态",
+      key: "status",
+      width: 110,
+      render: (_: unknown, group) => <HealthTag status={group.status} />,
+    },
+    {
+      title: "就绪 / 期望",
+      key: "replicas",
+      width: 150,
+      render: (_: unknown, group) =>
+        group.expected_instances > 0
+          ? `${group.ready_instances} / ${group.expected_instances}`
+          : `${group.ready_instances} / 未采集`,
+    },
+    {
+      title: "已观测实例",
+      dataIndex: "observed_instances",
+      width: 120,
+    },
+    {
+      title: "期望来源",
+      key: "expected_source",
+      width: 180,
+      render: (_: unknown, group) => EXPECTED_SOURCE[group.expected_source],
+    },
+    {
+      title: "最近观测",
+      key: "observed_at",
+      width: 180,
+      render: (_: unknown, group) =>
+        group.observed_at ? formatDateTime(group.observed_at) : "未观测",
+    },
+    {
+      title: "实例",
+      key: "instances",
+      width: 110,
+      render: (_: unknown, group) => {
+        const instance = services.find(
+          (service) =>
+            (service.logical_id ?? service.id) === group.id &&
+            service.container !== null,
+        );
+        return instance ? (
+          <Button
+            type="link"
+            size="small"
+            aria-label={`查看 ${group.name} 的实例`}
+            onClick={() => onSelect(instance.instance_id ?? instance.id)}
+          >
+            查看实例
+          </Button>
+        ) : (
+          "无"
+        );
+      },
+    },
+  ];
+  return (
+    <Table
+      rowKey="id"
+      size="small"
+      columns={columns}
+      dataSource={groups}
+      scroll={{ x: 1100 }}
+      pagination={false}
+      locale={{ emptyText: "没有服务组观测" }}
+    />
+  );
 }
 
 function Topology({
@@ -70,7 +173,7 @@ function Topology({
                 title,
                 selectable: false,
                 children: items.map((item) => ({
-                  key: `service:${item.id}`,
+                  key: `service:${item.instance_id ?? item.id}`,
                   title: (
                     <span>
                       {item.name} <HealthTag status={item.status} />
@@ -277,6 +380,21 @@ export function SystemHealthPage({
   const [search, setSearch] = useState("");
   const [group, setGroup] = useState("all");
   const [selectedId, setSelectedId] = useState("");
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 10_000);
+    return () => clearInterval(timer);
+  }, []);
+  // A revoked session or a permission change must not leave the previous
+  // deployment snapshot on screen, even if React Query still caches it.
+  if (isUnauthenticated(query.error) || isForbidden(query.error))
+    return (
+      <PageStatus
+        kind="denied"
+        title="没有访问系统健康的权限"
+        detail={errorMessage(query.error)}
+      />
+    );
   if (query.isLoading)
     return <PageStatus kind="loading" title="正在读取系统健康" />;
   if (!query.data)
@@ -293,6 +411,27 @@ export function SystemHealthPage({
       />
     );
   const data = query.data;
+  const observedAt = Date.parse(data.observed_at);
+  const ageSeconds = Math.max(0, Math.floor((now - observedAt) / 1000));
+  const stale = ageSeconds > 75;
+  const partial =
+    data.source === "docker_partial" || data.source === "kubernetes_partial";
+  const readyInstances = data.groups.reduce(
+    (sum, item) => sum + item.ready_instances,
+    0,
+  );
+  const observedInstances = data.groups.reduce(
+    (sum, item) => sum + item.observed_instances,
+    0,
+  );
+  const attentionGroups = data.groups.filter((item) =>
+    ["degraded", "unavailable", "stopped", "starting", "unknown"].includes(
+      item.status,
+    ),
+  );
+  const unconfiguredGroups = data.groups.filter(
+    (item) => item.status === "unconfigured",
+  );
   const attentionIds = new Set(
     data.services
       .filter(
@@ -323,7 +462,10 @@ export function SystemHealthPage({
   );
   const tabs = audience === "admin" ? ["生产架构", ...TABS] : TABS;
   const groups = tab === "生产架构" ? ARCHITECTURE_GROUPS : GROUPS;
-  const selected = data.services.find((item) => item.id === selectedId);
+  const selected =
+    data.services.find(
+      (item) => (item.instance_id ?? item.id) === selectedId,
+    ) ?? data.services.find((item) => (item.logical_id ?? item.id) === selectedId);
   const pageStyle: CSSProperties & Record<`--health-${string}`, string> = {
     background: "var(--surface-page)",
     color: "var(--text-primary)",
@@ -348,7 +490,7 @@ export function SystemHealthPage({
         <Button
           aria-label={String(item.container?.name)}
           type="link"
-          onClick={() => setSelectedId(item.id)}
+          onClick={() => setSelectedId(item.instance_id ?? item.id)}
           styles={{
             content: {
               whiteSpace: "normal",
@@ -359,6 +501,20 @@ export function SystemHealthPage({
         >
           {item.container?.name}
         </Button>
+      ),
+    },
+    {
+      title: "节点",
+      key: "node",
+      width: 140,
+      render: (_: unknown, item) => item.node_name ?? "未采集",
+    },
+    {
+      title: "实例 ID",
+      key: "instance",
+      width: 180,
+      render: (_: unknown, item) => (
+        <code>{item.instance_id ?? "未采集"}</code>
       ),
     },
     {
@@ -424,7 +580,7 @@ export function SystemHealthPage({
           type="warning"
           showIcon
           title="刷新失败，保留上次观测"
-          description={errorMessage(query.error)}
+          description={`${errorMessage(query.error)}；上次观测距现在 ${ageSeconds} 秒。`}
         />
       ) : null}
       {data.source === "docker_unavailable" ||
@@ -437,12 +593,36 @@ export function SystemHealthPage({
           description="无法确认当前部署状态，请检查健康采集器。"
         />
       ) : null}
+      {partial ? (
+        <Alert
+          type="warning"
+          showIcon
+          title="部分观测不可用"
+          description="健康采集器只返回了部分节点、Pod 或容器结果；未返回的依赖保持待确认，不会按正常计算。"
+        />
+      ) : null}
+      {stale && !query.isError ? (
+        <Alert
+          type="warning"
+          showIcon
+          title="观测已过期"
+          description={`上次观测距现在 ${ageSeconds} 秒，已超过刷新周期的健康窗口；当前状态不能视为实时。`}
+        />
+      ) : null}
       <ol className="health-summary" aria-label="系统健康统计">
         {[
           {
-            title: "服务与集成",
-            value: data.services.length,
+            title: "逻辑服务",
+            value: data.groups.length,
             tone: "progress",
+          },
+          {
+            title: "实例就绪",
+            value: `${readyInstances}/${observedInstances}`,
+            tone:
+              readyInstances === observedInstances
+                ? "compatible"
+                : "insufficient",
           },
           {
             title: "实际容器",
@@ -451,21 +631,13 @@ export function SystemHealthPage({
             tone: "neutral",
           },
           {
-            title: "已确认正常",
-            value: data.services.filter((item) => item.status === "ready")
-              .length,
-            tone: "compatible",
-          },
-          {
             title: "需关注",
-            value: attentionIds.size,
-            tone: attentionIds.size > 0 ? "insufficient" : "compatible",
+            value: attentionGroups.length,
+            tone: attentionGroups.length > 0 ? "insufficient" : "compatible",
           },
           {
             title: "未启用",
-            value: data.services.filter(
-              (item) => item.status === "unconfigured",
-            ).length,
+            value: unconfiguredGroups.length,
             tone: "neutral",
           },
         ].map((item) => (
@@ -475,6 +647,22 @@ export function SystemHealthPage({
           </li>
         ))}
       </ol>
+      <Card
+        role="group"
+        aria-label={"服务组与副本"}
+        title="服务组与副本"
+        extra={
+          <Tag color={stale || partial ? "warning" : "processing"}>
+            {stale ? "观测过期" : partial ? "部分观测" : "当前观测"}
+          </Tag>
+        }
+      >
+        <GroupTable
+          groups={data.groups}
+          services={data.services}
+          onSelect={setSelectedId}
+        />
+      </Card>
       {data.cluster ? (
         <Card
           role="group"
@@ -566,7 +754,7 @@ export function SystemHealthPage({
             columns={columns}
             dataSource={visible}
             size="small"
-            scroll={{ x: 1020 }}
+            scroll={{ x: 1340 }}
             pagination={{
               defaultPageSize: 20,
               showSizeChanger: true,
@@ -618,7 +806,7 @@ export function SystemHealthPage({
                           type="link"
                           size="small"
                           aria-label={`查看 ${item.name}`}
-                          onClick={() => setSelectedId(item.id)}
+                          onClick={() => setSelectedId(item.instance_id ?? item.id)}
                         >
                           详情
                         </Button>
@@ -649,6 +837,31 @@ export function SystemHealthPage({
               items={[
                 { key: "id", label: "服务标识", children: selected.id },
                 {
+                  key: "logical",
+                  label: "逻辑服务",
+                  children: selected.logical_id ?? selected.id,
+                },
+                {
+                  key: "instance",
+                  label: "实例 ID",
+                  children: selected.instance_id ?? "仅逻辑服务",
+                },
+                {
+                  key: "node",
+                  label: "节点",
+                  children: selected.node_name ?? "未采集",
+                },
+                {
+                  key: "namespace",
+                  label: "命名空间",
+                  children: selected.namespace ?? "不适用",
+                },
+                {
+                  key: "workload",
+                  label: "工作负载",
+                  children: selected.workload ?? "不适用",
+                },
+                {
                   key: "target",
                   label: "连接目标",
                   children: <code>{selected.target || "未配置"}</code>,
@@ -656,7 +869,9 @@ export function SystemHealthPage({
                 {
                   key: "observed",
                   label: "本次观测",
-                  children: formatDateTime(data.observed_at),
+                  children: formatDateTime(
+                    selected.observed_at ?? data.observed_at,
+                  ),
                 },
                 { key: "detail", label: "状态说明", children: selected.detail },
                 {

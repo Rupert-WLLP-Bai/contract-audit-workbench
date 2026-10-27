@@ -6,6 +6,8 @@ import (
 	"net/url"
 	"strings"
 	"time"
+
+	"golang.org/x/sync/errgroup"
 )
 
 type dockerContainer struct {
@@ -33,14 +35,17 @@ func (m *Monitor) Snapshot(ctx context.Context) Snapshot {
 	defer cancel()
 	out := Snapshot{SchemaVersion: SchemaVersion, ObservedAt: time.Now().UTC().Format(time.RFC3339Nano), Mode: "embedded", Source: "process", Services: catalog()}
 	databaseTarget := safeTarget(m.config.DatabaseTarget)
+	var deploymentExpectations map[string]replicaExpectation
+	missingIsUnknown := false
 	if m.config.Kubernetes != nil {
 		out.Mode = "kubernetes"
 		out.Source = "kubernetes"
-		m.kubernetes(ctx, &out)
+		deploymentExpectations, missingIsUnknown = m.kubernetes(ctx, &out)
 	} else if m.config.Project != "" {
 		out.Mode = "distributed"
 		out.Source = "docker"
 		m.containers(ctx, &out)
+		missingIsUnknown = out.Source == "docker_unavailable"
 	} else {
 		for i := range out.Services {
 			out.Services[i].Detail = "单进程模式未配置独立服务容器。"
@@ -50,6 +55,8 @@ func (m *Monitor) Snapshot(ctx context.Context) Snapshot {
 				if out.Services[i].ID == "db" {
 					item := &out.Services[i]
 					item.Kind = "integration"
+					item.LogicalID = item.ID
+					item.ObservedAt = out.ObservedAt
 					item.Target = "当前业务数据库"
 					started := time.Now()
 					err := m.config.DatabaseReady(ctx)
@@ -74,14 +81,14 @@ func (m *Monitor) Snapshot(ctx context.Context) Snapshot {
 		}
 	}
 	for _, external := range []struct{ id, name, model string }{{"review-model", "审查模型", m.config.ModelName}, {"ocr-model", "OCR 模型", m.config.OCRName}} {
-		service := Service{ID: external.id, Name: external.name, Category: "external", Kind: "integration", Status: "unconfigured", Detail: "未配置模型。", Target: safeTarget(m.config.ModelEndpoint), DependsOn: []string{}}
+		service := Service{ID: external.id, Name: external.name, Category: "external", Kind: "integration", Status: "unconfigured", Detail: "未配置模型。", Target: safeTarget(m.config.ModelEndpoint), DependsOn: []string{}, LogicalID: external.id}
 		if external.model != "" {
 			service.Status = "unknown"
 			service.Detail = "已配置 " + external.model + "；健康刷新不发起付费推理。"
 		}
 		out.Services = append(out.Services, service)
 	}
-	miner := Service{ID: "mineru", Name: "MinerU 文档解析", Category: "external", Kind: "integration", Status: "unconfigured", Detail: "未配置 MinerU 服务地址。", Target: safeTarget(m.config.MinerUURL), DependsOn: []string{}}
+	miner := Service{ID: "mineru", Name: "MinerU 文档解析", Category: "external", Kind: "integration", Status: "unconfigured", Detail: "未配置 MinerU 服务地址。", Target: safeTarget(m.config.MinerUURL), DependsOn: []string{}, LogicalID: "mineru"}
 	if miner.Target != "" {
 		started := time.Now()
 		request, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimRight(miner.Target, "/")+"/v1/health", nil)
@@ -100,9 +107,25 @@ func (m *Monitor) Snapshot(ctx context.Context) Snapshot {
 		miner.Probe = &Probe{Kind: "http", Status: miner.Status, DurationMS: time.Since(started).Milliseconds()}
 	}
 	out.Services = append(out.Services, miner)
+	out.Groups = buildGroups(out.Services, mergeExpectations(m.config.ExpectedReplicas, deploymentExpectations), missingIsUnknown)
 	out.Architecture = architectureInventory(out.Services, out.Source, out.Cluster)
 	return out
 }
+
+type dockerTarget struct {
+	container dockerContainer
+	serviceID string
+}
+
+type dockerInspectionResult struct {
+	inspection dockerInspection
+	err        error
+}
+
+const (
+	dockerInspectTimeout = 750 * time.Millisecond
+	dockerInspectLimit   = 8
+)
 
 func (m *Monitor) containers(ctx context.Context, out *Snapshot) {
 	filters := `{"label":["com.docker.compose.project=` + m.config.Project + `"]}`
@@ -116,6 +139,7 @@ func (m *Monitor) containers(ctx context.Context, out *Snapshot) {
 		indices[out.Services[i].ID] = i
 	}
 	for i := range out.Services {
+		out.Services[i].ObservedAt = out.ObservedAt
 		if !optional(out.Services[i].ID) {
 			out.Services[i].Status = "unavailable"
 			out.Services[i].Detail = "当前项目未发现预期服务容器。"
@@ -131,41 +155,72 @@ func (m *Monitor) containers(ctx context.Context, out *Snapshot) {
 		}
 		return
 	}
-	observed := map[string]bool{}
+	// Inspect in bounded parallel batches. Each target owns one result slot, so
+	// a slow or failed inspect cannot corrupt another result or cancel the
+	// remaining probes. The overall Snapshot deadline still bounds the batch.
+	var targets []dockerTarget
 	for _, container := range containers {
 		if container.Labels["com.docker.compose.project"] != m.config.Project {
 			continue
 		}
-		id := container.Labels["com.docker.compose.service"]
-		if id == "" {
+		serviceID := container.Labels["com.docker.compose.service"]
+		if serviceID == "" {
 			continue
 		}
-		index, exists := indices[id]
-		if !exists || observed[id] {
-			name := id
-			if observed[id] {
-				id += "/" + container.ID
+		targets = append(targets, dockerTarget{container: container, serviceID: serviceID})
+	}
+	results := make([]dockerInspectionResult, len(targets))
+	var inspections errgroup.Group
+	inspections.SetLimit(dockerInspectLimit)
+	for i := range targets {
+		i := i
+		inspections.Go(func() error {
+			inspectCtx, cancel := context.WithTimeout(ctx, dockerInspectTimeout)
+			defer cancel()
+			request, requestErr := http.NewRequestWithContext(inspectCtx, http.MethodGet,
+				strings.TrimRight(m.config.DockerURL, "/")+"/containers/"+url.PathEscape(targets[i].container.ID)+"/json", nil)
+			if requestErr == nil {
+				requestErr = getJSON(m.config.Client, request, &results[i].inspection)
+			}
+			results[i].err = requestErr
+			return nil
+		})
+	}
+	_ = inspections.Wait()
+
+	observed := map[string]bool{}
+	failures := 0
+	for i, target := range targets {
+		container := target.container
+		logicalID := target.serviceID
+		index, exists := indices[logicalID]
+		if !exists || observed[logicalID] {
+			name := logicalID
+			rowID := logicalID
+			if observed[logicalID] {
+				rowID = logicalID + "/" + container.ID
 			}
 			index = len(out.Services)
-			out.Services = append(out.Services, Service{ID: id, Name: name, Category: "application", Kind: "container", DependsOn: []string{}})
+			out.Services = append(out.Services, Service{ID: rowID, Name: name, Category: "application", Kind: "container", DependsOn: []string{}, LogicalID: logicalID})
 		}
-		observed[id] = true
+		observed[logicalID] = true
 		item := &out.Services[index]
 		name := container.ID
 		if len(container.Names) > 0 {
 			name = strings.TrimPrefix(container.Names[0], "/")
 		}
+		item.LogicalID = logicalID
+		item.InstanceID = container.ID
+		item.Workload = logicalID
+		item.ObservedAt = out.ObservedAt
 		item.Container = &Container{ID: container.ID, Name: name, Image: container.Image}
 		item.Status = "unknown"
-		item.Detail = "容器元数据无法读取。"
-		request, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimRight(m.config.DockerURL, "/")+"/containers/"+url.PathEscape(container.ID)+"/json", nil)
-		var inspection dockerInspection
-		if err == nil {
-			err = getJSON(m.config.Client, request, &inspection)
-		}
-		if err != nil {
+		item.Detail = "容器元数据读取失败或超时。"
+		if results[i].err != nil {
+			failures++
 			continue
 		}
+		inspection := results[i].inspection
 		item.Container.State = inspection.State.Status
 		item.Container.StartedAt = inspection.State.StartedAt
 		item.Container.Restarts = inspection.RestartCount
@@ -189,7 +244,7 @@ func (m *Monitor) containers(ctx context.Context, out *Snapshot) {
 				item.Detail = "容器运行中，未配置 Docker 健康检查。"
 			}
 			if item.Container.Health == "" {
-				if path, ok := readinessPaths[item.ID]; ok {
+				if path, ok := readinessPaths[item.LogicalID]; ok {
 					started := time.Now()
 					request, probeErr := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimRight(item.Target, "/")+path, nil)
 					status := "unavailable"
@@ -216,7 +271,7 @@ func (m *Monitor) containers(ctx context.Context, out *Snapshot) {
 		case "exited":
 			item.Status = "stopped"
 			item.Detail = "容器已停止。"
-			if inspection.State.ExitCode == 0 && (container.Labels["com.docker.compose.service"] == "migrate" || strings.HasSuffix(container.Labels["com.docker.compose.service"], "-init")) {
+			if inspection.State.ExitCode == 0 && (logicalID == "migrate" || strings.HasSuffix(logicalID, "-init")) {
 				item.Status = "completed"
 				item.Detail = "一次性初始化任务已成功完成。"
 			}
@@ -224,5 +279,8 @@ func (m *Monitor) containers(ctx context.Context, out *Snapshot) {
 			item.Status = "stopped"
 			item.Detail = "容器未处于运行状态。"
 		}
+	}
+	if failures > 0 {
+		out.Source = "docker_partial"
 	}
 }

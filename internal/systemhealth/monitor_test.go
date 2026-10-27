@@ -5,8 +5,10 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestInventoryUsesProjectScopeAndDistinguishesContainerStates(t *testing.T) {
@@ -131,4 +133,66 @@ func TestEmbeddedDatabaseTargetShowsConfiguredURL(t *testing.T) {
 		return
 	}
 	t.Fatal("database service missing from snapshot")
+}
+
+func TestDockerInspectionIsBoundedAndKeepsPartialResults(t *testing.T) {
+	const total = 16
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/containers/json" {
+			items := make([]any, 0, total)
+			for i := 0; i < total; i++ {
+				id := "svc-" + strconv.Itoa(i)
+				items = append(items, map[string]any{
+					"Id": id + "-id", "Names": []string{"/ours-" + id + "-1"}, "Image": "image:" + id,
+					"Labels": map[string]string{"com.docker.compose.project": "ours", "com.docker.compose.service": id},
+				})
+			}
+			_ = json.NewEncoder(w).Encode(items)
+			return
+		}
+		if strings.HasPrefix(r.URL.Path, "/containers/") && strings.HasSuffix(r.URL.Path, "/json") {
+			id := strings.TrimSuffix(strings.TrimPrefix(r.URL.Path, "/containers/"), "/json")
+			delay := 200 * time.Millisecond
+			if id == "svc-0-id" {
+				delay = 2 * time.Second
+			}
+			select {
+			case <-r.Context().Done():
+				return
+			case <-time.After(delay):
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"State": map[string]any{"Status": "running", "Health": map[string]any{"Status": "healthy"}},
+			})
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer server.Close()
+	started := time.Now()
+	snapshot := New(Config{Project: "ours", DockerURL: server.URL, Client: server.Client()}).Snapshot(context.Background())
+	elapsed := time.Since(started)
+	if elapsed > 1500*time.Millisecond {
+		t.Fatalf("bounded inspection took %s; serialized inspects would exceed the budget", elapsed)
+	}
+	if snapshot.Source != "docker_partial" {
+		t.Fatalf("partial inspection failure was not reported: %s", snapshot.Source)
+	}
+	byID := map[string]Service{}
+	for _, service := range snapshot.Services {
+		byID[service.LogicalID] = service
+	}
+	if len(byID) < total {
+		t.Fatalf("missing instance observations: %d", len(byID))
+	}
+	slow := byID["svc-0"]
+	if slow.Status != "unknown" || !strings.Contains(slow.Detail, "失败或超时") || slow.InstanceID != "svc-0-id" {
+		t.Fatalf("slow probe result was lost instead of kept as partial: %+v", slow)
+	}
+	for i := 1; i < total; i++ {
+		service := byID["svc-"+strconv.Itoa(i)]
+		if service.Status != "ready" || service.Container == nil || service.InstanceID == "" || service.Workload == "" {
+			t.Fatalf("fast probe %d was not preserved: %+v", i, service)
+		}
+	}
 }
