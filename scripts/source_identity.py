@@ -3,7 +3,8 @@ import hashlib
 import json
 from pathlib import Path
 
-EXCLUDED = {"node_modules", "dist", "coverage", "__pycache__", ".vite", ".git"}
+EXCLUDED = {"node_modules", "dist", "coverage", "__pycache__", ".vite", ".git", ".impeccable"}
+EXCLUDED_FILES = {".github/hooks/impeccable.json"}
 
 
 def source_identity(root):
@@ -13,7 +14,7 @@ def source_identity(root):
                       "testdata"):
         for path in (root / directory).rglob("*"):
             relative = path.relative_to(root)
-            if (not path.is_file() or path.is_symlink() or
+            if (not path.is_file() or path.is_symlink() or relative.as_posix() in EXCLUDED_FILES or
                     any(part in EXCLUDED for part in relative.parts) or path.suffix == ".pyc"):
                 continue
             # Documentation may evolve after a code run; it is separately
