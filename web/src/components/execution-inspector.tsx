@@ -398,7 +398,15 @@ export function ExecutionInspector({
                 <>
                   <div className="execution-inspector-body">
                     <div className="execution-overview">
-                      <div className="execution-attempt-row">
+                      <div
+                        className="execution-attempt-row"
+                        data-attempt-id={selected.id}
+                        data-attempt-ordinal={selected.ordinal}
+                        data-attempt-count={attempts.length}
+                        data-parsed-document-ids={JSON.stringify(
+                          selected.parsed_document_ids,
+                        )}
+                      >
                         <label className="field">
                           查看尝试
                           <Select

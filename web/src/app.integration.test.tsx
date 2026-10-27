@@ -1410,7 +1410,7 @@ describe("application routes and API contract", () => {
     review.findings[0]!.evidence[0]!.parsed_document_id = "parsed_private_source";
     const { container } = open(api, "/cases/c1/reviews/r1");
     await screen.findByRole("heading", { name: "审查工作区" });
-    const breadcrumbs = container.querySelector(".breadcrumbs")!;
+    const breadcrumbs = container.querySelector<HTMLElement>(".breadcrumbs")!;
     expect(breadcrumbs).toHaveTextContent("审查工作区");
     expect(breadcrumbs).not.toHaveTextContent(/c1|r1/);
     expect(await within(breadcrumbs).findByRole("link", { name: "接入设备采购" })).toHaveAttribute("href", "/cases/c1");

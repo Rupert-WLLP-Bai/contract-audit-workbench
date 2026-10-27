@@ -15,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"contractaudit/internal/accounts"
 	"contractaudit/internal/httpapi"
 	"contractaudit/internal/model"
 	"contractaudit/internal/store"
@@ -38,6 +39,17 @@ func TestBrowserWarrantyConflictAndConfirm(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = st.Close() })
 	st.UseModels(&browserModels{})
+	admin, ok := accounts.ByID("demo-admin")
+	if !ok {
+		t.Fatal("demo admin missing")
+	}
+	// This journey covers the legacy warranty conflict, retry and reparse
+	// flows, which are exercised on cases whose business scope is unspecified.
+	// The ENT governed journey is covered by TestBrowserTelecomC1BFullJourney.
+	caseID, err := st.CreateCase(admin, "采购质保核对", "procurement_ict")
+	if err != nil {
+		t.Fatal(err)
+	}
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
@@ -95,6 +107,7 @@ func TestBrowserWarrantyConflictAndConfirm(t *testing.T) {
 	script.Env = append(os.Environ(),
 		"CHROMIUM_BIN="+chrome,
 		"E2E_WEB=http://127.0.0.1:"+webPort,
+		"E2E_CASE_ID="+caseID,
 		"E2E_PROCUREMENT="+procurement,
 		"E2E_DRAFT="+draft,
 		"E2E_REVISED="+revised,

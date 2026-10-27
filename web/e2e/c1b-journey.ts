@@ -3,6 +3,12 @@ import { createHash } from "node:crypto";
 import { chromium, type Locator, type Page } from "playwright";
 
 type Material = { role: string; filename: string; text: string };
+const MATERIAL_ROLE_LABELS: Record<string, string> = {
+  procurement: "采购文件",
+  award: "中标文件",
+  draft_contract: "拟签合同",
+  attachment: "技术附件",
+};
 type RulePackIdentity = { id: string; version: string; content_sha256: string };
 type Scenario = {
   id: string;
@@ -58,6 +64,24 @@ const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
 const consoleErrors: string[] = [];
 const httpErrors: string[] = [];
 const consoleErrorURLs: string[] = [];
+const reviewResponses = new Map<string, Record<string, unknown>>();
+page.on("response", async (response) => {
+  const url = response.url();
+  if (!/\/api\/cases\/[^/]+\/reviews\/[^/]+/.test(url) || response.status() !== 200) return;
+  try {
+    const data = await response.json() as Record<string, any>;
+    reviewResponses.set(url, {
+      run_id: data.run?.id,
+      run_state: data.run?.state,
+      previous_run_id: data.previous_run_id,
+      revision_comparison_reason: data.revision_comparison_reason,
+      attempt_id: data.review_attempts?.attempt?.id,
+      attempt_state: data.review_attempts?.attempt?.state,
+    });
+  } catch {
+    // Polling may abort a body mid-read; the next response replaces this entry.
+  }
+});
 page.on("console", (message) => {
   if (message.type() === "error") {
     consoleErrors.push(message.text());
@@ -91,9 +115,14 @@ try {
   await page.getByRole("button", { name: "新建案件", exact: true }).click();
   const dialog = page.getByRole("dialog");
   await dialog.getByLabel("标题", { exact: true }).fill(title);
-  await dialog.getByLabel("合同类型", { exact: true }).selectOption("service");
+  await chooseAntSelect(page, dialog.getByLabel("合同类型", { exact: true }), "服务合同");
   await dialog.getByRole("button", { name: "创建", exact: true }).click();
-  await page.waitForURL(/\/cases\/[^/]+$/);
+  try {
+    await page.waitForURL(/\/cases\/[^/]+$/);
+  } catch (error) {
+    const body = await page.locator("body").innerText();
+    throw new Error(`case creation did not navigate: url=${page.url()} body=${body.slice(0, 1200)}`);
+  }
   const caseID = new URL(page.url()).pathname.split("/").at(-1) ?? "";
   assert.ok(caseID, "created case ID was not present in the route");
   const initialDetail = await waitForCase(page, caseID, (detail) => detail.business_line === "ENT" && detail.scenario === "telecom_dedicated_line");
@@ -102,14 +131,14 @@ try {
 
   const templateResponse = await page.request.get(`${web}/api/templates`);
   assert.equal(templateResponse.status(), 200, "template listing failed");
-  const templateData = await templateResponse.json() as { items: Array<{ id: string; version: string; fields: Array<{ key: string; label: string; required: boolean }> }> };
+  const templateData = await templateResponse.json() as { items: Array<{ id: string; name: string; version: string; fields: Array<{ key: string; label: string; required: boolean }> }> };
   const template = templateData.items.find((item) => item.id === dataset.template_id);
   assert.ok(template, `template ${dataset.template_id} not returned by the API`);
   assert.equal(template.version, dataset.template_version, "template version differs from the frozen dataset");
   assert.deepEqual(new Set(template.fields.map((field) => field.key)), new Set(Object.keys(scenario.fields)));
 
   const templateSelect = page.getByLabel("模板", { exact: true });
-  await templateSelect.selectOption(dataset.template_id);
+  await chooseAntSelect(page, templateSelect, `${template.name}，${template.version}`);
   for (const field of template.fields) {
     const value: string | undefined = scenario.fields[field.key];
     if (value === undefined) throw new Error(`fixture field ${field.key} is missing`);
@@ -132,8 +161,14 @@ try {
   assert.ok(uploaded.award, "approval source was not uploaded");
   assert.ok(uploaded.attachment, "SLA annex was not uploaded");
 
+  await page.getByLabel("审查业务时间（本地时区）", { exact: true }).fill("2026-01-15T09:00");
   await page.getByRole("button", { name: "开始审查", exact: true }).click();
-  await page.waitForURL(/\/cases\/[^/]+\/reviews\/[^/]+/);
+  try {
+    await page.waitForURL(/\/cases\/[^/]+\/reviews\/[^/]+/);
+  } catch (error) {
+    const body = await page.locator("body").innerText();
+    throw new Error(`review acceptance did not navigate: url=${page.url()} http=${httpErrors.join(" | ")} body=${body.slice(0, 1600)}`);
+  }
   const firstURL = new URL(page.url());
   const firstRunID = firstURL.pathname.split("/").at(-1) ?? "";
   assert.ok(firstRunID, "initial review run ID was not in the route");
@@ -175,12 +210,12 @@ try {
 
   await page.goto(`${web}/cases/${caseID}`);
   await page.getByRole("heading", { name: title, exact: true }).waitFor();
-  await selectRunAndAttempt(page.getByLabel("冻结运行和尝试", { exact: true }), firstRunID, firstAttemptID);
+  await selectRunAndAttempt(page.getByLabel("冻结运行和尝试", { exact: true }), 1, 1);
   await page.getByRole("button", { name: "生成冻结报告", exact: true }).click();
   const firstReport = await waitForReport(page, caseID, firstRunID, firstAttemptID);
   const firstReportBytes = await readReportLinks(page, firstReport.id as string);
 
-  await selectRunAndAttempt(page.getByLabel("来源运行和尝试", { exact: true }), firstRunID, firstAttemptID);
+  await selectRunAndAttempt(page.getByLabel("来源运行和尝试", { exact: true }), 1, 1);
   const remediationGroup = page.getByRole("group", { name: "绑定发现（至少选择一项）", exact: true });
   await remediationGroup.getByRole("checkbox").first().check();
   await page.getByLabel("负责人 ID", { exact: true }).fill("demo-admin");
@@ -203,8 +238,14 @@ try {
   });
   assert.ok(revisedID, "revised draft upload returned no identity");
 
+  await page.getByLabel("审查业务时间（本地时区）", { exact: true }).fill("2026-01-15T09:00");
   await page.getByRole("button", { name: "开始复审", exact: true }).click();
-  await page.waitForURL(/\/cases\/[^/]+\/reviews\/[^/]+/);
+  try {
+    await page.waitForURL(/\/cases\/[^/]+\/reviews\/[^/]+/);
+  } catch (error) {
+    const body = await page.locator("body").innerText();
+    throw new Error(`re-review acceptance did not navigate: url=${page.url()} http=${httpErrors.join(" | ")} body=${body.slice(0, 1600)}`);
+  }
   const secondURL = new URL(page.url());
   const secondRunID = secondURL.pathname.split("/").at(-1) ?? "";
   assert.ok(secondRunID && secondRunID !== firstRunID, "re-review overwrote the original run");
@@ -217,11 +258,12 @@ try {
   await page.goto(`${web}/cases/${caseID}`);
   await page.getByRole("heading", { name: title, exact: true }).waitFor();
   const itemForm = page.getByRole("group", { name: "本案当前的拟签合同修改稿", exact: true });
-  await itemForm.getByRole("radio", { name: `telecom-revised-draft.txt · ${revisedID}`, exact: true }).check();
+  await itemForm.locator(`input[type="radio"][value="${revisedID}"]`).check();
   await page.getByLabel("提交理由", { exact: true }).fill("已按采购材料修订并生成新的审查运行。");
   await page.getByRole("button", { name: "提交修改稿", exact: true }).click();
   await page.getByLabel("复核运行和尝试", { exact: true }).waitFor();
-  await selectRunAndAttempt(page.getByLabel("复核运行和尝试", { exact: true }), secondRunID, secondAttemptID);
+  // The record list is rendered newest-first, so the latest run is record 1.
+  await selectRunAndAttempt(page.getByLabel("复核运行和尝试", { exact: true }), 1, 1);
   const verifyReason = page.getByLabel("复核理由", { exact: true });
   await verifyReason.waitFor({ state: "visible", timeout: 15000 });
   // Readiness requires matching run/attempt metadata and complete same-scope compatible rule evaluations.
@@ -291,6 +333,8 @@ try {
       evaluation_checks: evaluationChecks,
       every_finding_compatible: findingIDs.length > 0 && evaluationChecks.every((check) => check.exactly_one_compatible),
       presentation_revision_marks: revisionMarks,
+      remediations: (await page.request.get(`${web}/api/cases/${caseID}`).then((response) => response.json()).catch(() => null))?.remediations ?? null,
+      review_responses: [...reviewResponses.entries()].filter(([url]) => url.includes(firstRunID) || url.includes(secondRunID)),
       visible_callouts: await page.locator(".callout").allTextContents(),
       verification_reason_disabled: await verifyReason.isDisabled(),
     };
@@ -320,7 +364,8 @@ try {
 
   await page.goto(`${web}/cases/${caseID}`);
   await page.getByRole("heading", { name: title, exact: true }).waitFor();
-  await selectRunAndAttempt(page.getByLabel("冻结运行和尝试", { exact: true }), secondRunID, secondAttemptID);
+  // Record 1 is the newest saved run, which is the re-review after run 1.
+  await selectRunAndAttempt(page.getByLabel("冻结运行和尝试", { exact: true }), 1, 1);
   await page.getByRole("button", { name: "生成冻结报告", exact: true }).click();
   const secondReport = await waitForReport(page, caseID, secondRunID, secondAttemptID);
   const secondReportBytes = await readReportLinks(page, secondReport.id as string);
@@ -329,7 +374,7 @@ try {
   assert.deepEqual(firstReportBytesAfter.json, firstReportBytes.json, "later report creation changed frozen JSON bytes");
   assert.deepEqual(firstReportBytesAfter.html, firstReportBytes.html, "later report creation changed frozen HTML bytes");
 
-  await selectReport(page.getByLabel("归档所依据的报告", { exact: true }), String(secondReport.id));
+  await selectReport(page.getByLabel("归档所依据的报告", { exact: true }), Number(secondReport.version));
   await page.getByLabel("归档理由", { exact: true }).fill("已完成复审并归档冻结报告。");
   const archiveResponse = page.waitForResponse((response) =>
     response.request().method() === "POST" && response.url().endsWith(`/api/cases/${caseID}/archive`),
@@ -408,11 +453,37 @@ async function postFromUI(page: Page, pathPrefix: string, suffix: string, action
   return await response.json() as Record<string, any>;
 }
 
+async function chooseAntOption(
+  page: Page,
+  select: Locator,
+  matches: (label: string) => boolean,
+): Promise<void> {
+  await select.click();
+  const dropdown = page.locator(".ant-select-dropdown:visible").last();
+  await dropdown.waitFor({ state: "visible", timeout: 15000 });
+  const options = dropdown.locator(".ant-select-item-option");
+  await options.first().waitFor({ state: "visible", timeout: 15000 });
+  const labels = await options.evaluateAll((elements) => elements.map((element) => ({
+    label: element.getAttribute("title") ?? element.textContent?.trim() ?? "",
+    visible: element.getBoundingClientRect().height > 0,
+  })));
+  assert.ok(labels.length > 0, "the select rendered no options");
+  const index = labels.findIndex((option) => option.visible && matches(option.label));
+  assert.ok(index >= 0, `no visible select option matched ${labels.map((option) => option.label).join(" | ")}`);
+  await options.nth(index).click();
+}
+
+async function chooseAntSelect(page: Page, select: Locator, optionText: string): Promise<void> {
+  await chooseAntOption(page, select, (label) => label === optionText);
+}
+
 async function uploadMaterial(page: Page, material: Material): Promise<string> {
   const roleSelect = page.getByLabel("材料角色", { exact: true });
   const fileInput = page.getByLabel("文件", { exact: true });
   const uploadButton = page.getByRole("button", { name: "上传", exact: true });
-  await roleSelect.selectOption(material.role);
+  const roleLabel = MATERIAL_ROLE_LABELS[material.role];
+  assert.ok(roleLabel, `unknown material role ${material.role}`);
+  await chooseAntSelect(page, roleSelect, roleLabel);
   // The upload panel remounts its file input after a completed upload, so the
   // attach/enable cycle is retried until the submit button is actually enabled.
   for (let attempt = 0; attempt < 4; attempt++) {
@@ -501,31 +572,22 @@ function renderDraft(fields: Record<string, string>): string {
   ].join("\n");
 }
 
-async function selectRunAndAttempt(select: Locator, runID: string, attemptID: string): Promise<void> {
-  const options = await select.locator("option").evaluateAll((elements) => elements.map((element) => {
-    const option = element as HTMLOptionElement;
-    return { value: option.value, text: option.textContent ?? "" };
-  }));
-  const target = options.find((option) =>
-    option.value.includes(runID) || option.text.includes(runID) ||
-    option.value.includes(attemptID) || option.text.includes(attemptID),
+async function selectRunAndAttempt(
+  select: Locator,
+  runOrder: number,
+  attemptOrdinal: number,
+): Promise<void> {
+  const page = select.page();
+  await chooseAntOption(page, select, (label) =>
+    label.startsWith(`审查记录 ${runOrder}，第 ${attemptOrdinal} 次`),
   );
-  if (target) {
-    await select.selectOption(target.value);
-    return;
-  }
-  assert.equal(options.length, 1, `no selector option matches run ${runID} / attempt ${attemptID}: ${JSON.stringify(options)}`);
-  await select.selectOption(options[0]!.value);
 }
 
-async function selectReport(select: Locator, reportID: string): Promise<void> {
-  const options = await select.locator("option").evaluateAll((elements) => elements.map((element) => {
-    const option = element as HTMLOptionElement;
-    return { value: option.value, text: option.textContent ?? "" };
-  }));
-  const target = options.find((option) => option.value.includes(reportID) || option.text.includes(reportID));
-  assert.ok(target, `archive report ${reportID} was not available: ${JSON.stringify(options)}`);
-  await select.selectOption(target.value);
+async function selectReport(select: Locator, version: number): Promise<void> {
+  const page = select.page();
+  await chooseAntOption(page, select, (label) =>
+    label.startsWith(`版本 ${version}，`),
+  );
 }
 
 async function waitForReport(page: Page, caseID: string, runID: string, attemptID: string): Promise<Record<string, any>> {
