@@ -3,17 +3,19 @@ import { Flex } from "antd";
 import { Select } from "antd";
 import { Input, Button } from "antd";
 import { useState, type FormEvent } from "react";
-import { useParams } from "react-router";
+import { useParams, useSearchParams } from "react-router";
 import { errorMessage } from "../api/http";
 import { paths } from "../api/paths";
 import {
   useCreateKnowledge,
+  useKnowledge,
   useCreateWorkbenchTask,
   useSession,
   useUpdateWorkbenchTask,
   useWorkbench,
 } from "../api/queries";
 import type {
+  Knowledge,
   KnowledgeInput,
   WorkbenchSnapshot,
   WorkbenchTask,
@@ -52,7 +54,9 @@ export const WORKBENCH_MODULES = {
   executions: {
     title: "执行轨迹",
     description: "查看实际运行和已报告的执行用量。",
-    tabs: ["运行记录", "模型调用", "规则执行"],
+    // Model-call usage belongs to each run's detail tabs and the model service
+    // register; rule execution has no run-level projection here.
+    tabs: ["运行记录"],
     details: ["运行概览", "调用时间轴", "输入与输出", "执行日志"],
   },
   knowledge: {
@@ -110,6 +114,8 @@ type DetailPanel = {
 };
 type ModuleRecord = {
   id: string;
+  knowledgeId?: string;
+  knowledgeVersion?: string;
   title: string;
   subtitle: string;
   status: string;
@@ -171,6 +177,47 @@ function caseUrl(caseId: string, runId: string | null): string {
 
 function emptyPanel(note: string): DetailPanel {
   return panel([], note);
+}
+
+function knowledgePanels(
+  item: Knowledge,
+  memberById: Map<string, string>,
+): Record<string, DetailPanel> {
+  return {
+    文档内容: panel(
+      [
+        field("知识条目", item.id),
+        field("版本", item.version),
+        field("来源", item.source_type),
+        field("生效时间", item.effective_at),
+        field("维护人", memberById.get(item.created_by) ?? item.created_by),
+      ],
+      item.body,
+    ),
+    条目与引用: panel(
+      [
+        field("条目 ID", item.id),
+        field("版本", item.version),
+        field("来源类型", item.source_type),
+      ],
+      item.body,
+    ),
+    适用范围: panel(
+      [
+        field("来源类型", item.source_type),
+        field("生效时间", item.effective_at),
+      ],
+      "快照没有返回额外适用范围字段。",
+    ),
+    版本记录: panel(
+      [
+        field("当前版本", item.version),
+        field("创建时间", item.created_at),
+        field("创建者", memberById.get(item.created_by) ?? item.created_by),
+      ],
+      "同一知识条目的不可覆盖与版本引用由服务端维护。",
+    ),
+  };
 }
 
 function buildRecords(
@@ -579,43 +626,11 @@ function buildRecords(
 
   if (module === "knowledge")
     return snapshot.knowledge.map((item) => {
-      const panels: Record<string, DetailPanel> = {
-        文档内容: panel(
-          [
-            field("知识条目", item.id),
-            field("版本", item.version),
-            field("来源", item.source_type),
-            field("生效时间", item.effective_at),
-            field("维护人", memberById.get(item.created_by) ?? item.created_by),
-          ],
-          item.body,
-        ),
-        条目与引用: panel(
-          [
-            field("条目 ID", item.id),
-            field("版本", item.version),
-            field("来源类型", item.source_type),
-          ],
-          item.body,
-        ),
-        适用范围: panel(
-          [
-            field("来源类型", item.source_type),
-            field("生效时间", item.effective_at),
-          ],
-          "快照没有返回额外适用范围字段。",
-        ),
-        版本记录: panel(
-          [
-            field("当前版本", item.version),
-            field("创建时间", item.created_at),
-            field("创建者", memberById.get(item.created_by) ?? item.created_by),
-          ],
-          "同一知识条目的不可覆盖与版本引用由服务端维护。",
-        ),
-      };
+      const panels = knowledgePanels(item, memberById);
       return make({
-        id: item.id,
+        id: item.version_id,
+        knowledgeId: item.id,
+        knowledgeVersion: item.version,
         title: item.title,
         subtitle: `${item.source_type}，${item.version}`,
         status: item.source_type,
@@ -890,10 +905,6 @@ function tabNotice(module: WorkbenchModuleKey, tab: string): string | null {
     return "按任务的服务端创建人 ID 匹配当前身份；历史任务未记录创建人时不会出现在此列表。";
   if (module === "evidence" && tab === "引用片段")
     return "引用锚点需要结合指定 run/attempt 读取，请从材料详情进入真实审查工作区。";
-  if (module === "executions" && tab === "模型调用")
-    return "本页展示运行级统计；单次调用时间轴与输入输出需打开具体审查工作区。";
-  if (module === "executions" && tab === "规则执行")
-    return "规则执行结果记录在具体运行中，请打开审查工作区查看实际执行记录。";
   if (module === "organization" && tab === "组织架构")
     return "目录按真实 org_id 展示成员；快照没有上下级组织关系。";
   if (module === "organization" && tab === "角色权限")
@@ -1179,9 +1190,35 @@ function WorkbenchModule({ module }: { module: WorkbenchModuleKey }) {
   const [selectedId, setSelectedId] = useState("");
   const [createOpen, setCreateOpen] = useState(false);
   const [updatedTaskId, setUpdatedTaskId] = useState("");
+  const [searchParams, setSearchParams] = useSearchParams();
   const session = useSession();
   const query = useWorkbench("week");
   const updateTask = useUpdateWorkbenchTask();
+  const availableSnapshot = query.isError ? undefined : query.data;
+  const allRecords = availableSnapshot
+    ? buildRecords(availableSnapshot, module)
+    : [];
+  const queryText = search.trim().toLocaleLowerCase("zh-CN");
+  const records = availableSnapshot
+    ? allRecords.filter(
+        (record) =>
+          (module !== "knowledge" || tab !== "检索测试" || queryText !== "") &&
+          tabMatches(module, tab, record, session.data?.id, availableSnapshot) &&
+          record.searchText.includes(queryText),
+      )
+    : [];
+  const requestedVersion =
+    module === "knowledge" ? searchParams.get("version") : null;
+  const selected =
+    module === "knowledge" && requestedVersion !== null
+      ? (records.find((record) => record.id === requestedVersion) ?? null)
+      : (records.find((record) => record.id === selectedId) ??
+        records[0] ??
+        null);
+  const knowledge = useKnowledge(
+    module === "knowledge" ? (selected?.knowledgeId ?? "") : "",
+    module === "knowledge" ? (selected?.id ?? "") : "",
+  );
   const refresh = () => void query.refetch();
 
   if (query.isLoading)
@@ -1209,23 +1246,31 @@ function WorkbenchModule({ module }: { module: WorkbenchModuleKey }) {
         }
       />
     );
-
   const snapshot = query.data;
-  const allRecords = buildRecords(snapshot, module);
-  const queryText = search.trim().toLocaleLowerCase("zh-CN");
-  const records = allRecords.filter(
-    (record) =>
-      (module !== "knowledge" || tab !== "检索测试" || queryText !== "") &&
-      tabMatches(module, tab, record, session.data?.id, snapshot) &&
-      record.searchText.includes(queryText),
-  );
-  const selected =
-    records.find((record) => record.id === selectedId) ?? records[0] ?? null;
+
   const selectedTask = selected?.task ?? null;
+  const exactKnowledge =
+    module === "knowledge" &&
+    !knowledge.isError &&
+    !knowledge.isFetching &&
+    knowledge.data?.id === selected?.knowledgeId &&
+    knowledge.data?.version_id === selected?.id &&
+    knowledge.data?.version === selected?.knowledgeVersion
+      ? knowledge.data
+      : null;
   const currentPanel =
-    module === "evidence" && tab === "完整性校验"
-      ? (selected?.panels["完整性校验"] ?? null)
-      : (selected?.panels[detailTab] ?? null);
+    module === "knowledge"
+      ? exactKnowledge
+        ? (knowledgePanels(
+            exactKnowledge,
+            new Map(
+              snapshot.members.map((item) => [item.id, item.display_name]),
+            ),
+          )[detailTab] ?? null)
+        : null
+      : module === "evidence" && tab === "完整性校验"
+        ? (selected?.panels["完整性校验"] ?? null)
+        : (selected?.panels[detailTab] ?? null);
   const config = WORKBENCH_MODULES[module];
   const notice = tabNotice(module, tab);
   const periodLabel =
@@ -1242,6 +1287,16 @@ function WorkbenchModule({ module }: { module: WorkbenchModuleKey }) {
       : allRecords.length === 0
         ? "快照没有返回记录。"
         : "没有符合此分类或搜索词的记录。";
+
+  function selectRecord(id: string) {
+    if (module !== "knowledge") {
+      setSelectedId(id);
+    } else if (id !== requestedVersion) {
+      const next = new URLSearchParams(searchParams);
+      next.set("version", id);
+      setSearchParams(next);
+    }
+  }
 
   function completeTask(task: WorkbenchTask) {
     setUpdatedTaskId(task.id);
@@ -1350,15 +1405,19 @@ function WorkbenchModule({ module }: { module: WorkbenchModuleKey }) {
         </div>
       </dl>
       <div className="module-toolbar">
-        <Tabs
-          aria-label={`${config.title}分类`}
-          activeKey={tab}
-          onChange={(key) => {
-            setTab(key);
-            setSelectedId("");
-          }}
-          items={config.tabs.map((label) => ({ key: label, label }))}
-        />
+        {config.tabs.length > 1 ? (
+          <Tabs
+            aria-label={`${config.title}分类`}
+            activeKey={tab}
+            onChange={(key) => {
+              setTab(key);
+              if (module !== "knowledge") setSelectedId("");
+            }}
+            items={config.tabs.map((label) => ({ key: label, label }))}
+          />
+        ) : (
+          <h2 className="module-toolbar-title">{config.tabs[0]}</h2>
+        )}
         <label className="module-search">
           搜索当前快照
           <Input
@@ -1395,7 +1454,7 @@ function WorkbenchModule({ module }: { module: WorkbenchModuleKey }) {
               rowSelection={{
                 type: "radio",
                 selectedRowKeys: selected ? [selected.id] : [],
-                onChange: (keys) => setSelectedId(String(keys[0] ?? "")),
+                onChange: (keys) => selectRecord(String(keys[0] ?? "")),
               }}
               columns={[
                 {
@@ -1404,10 +1463,14 @@ function WorkbenchModule({ module }: { module: WorkbenchModuleKey }) {
                   render: (_, record) => (
                     <Flex vertical gap={2}>
                       <Button
-                        aria-label={String(record.title)}
+                        aria-label={
+                          module === "knowledge"
+                            ? `${record.title}，${record.subtitle}`
+                            : record.title
+                        }
                         type="link"
                         aria-pressed={selected?.id === record.id}
-                        onClick={() => setSelectedId(record.id)}
+                        onClick={() => selectRecord(record.id)}
                         styles={{
                           content: { whiteSpace: "normal", textAlign: "left" },
                         }}
@@ -1444,7 +1507,7 @@ function WorkbenchModule({ module }: { module: WorkbenchModuleKey }) {
             <>
               <header className="module-detail-head">
                 <div>
-                  <p>{selected.id}</p>
+                  <p>{selected.knowledgeId ?? selected.id}</p>
                   <h2>{selected.title}</h2>
                   <span>{selected.subtitle}</span>
                 </div>
@@ -1532,6 +1595,23 @@ function WorkbenchModule({ module }: { module: WorkbenchModuleKey }) {
                     </div>
                   ) : null}
                 </div>
+              ) : module === "knowledge" ? (
+                <p
+                  className="module-empty"
+                  role={
+                    knowledge.isError || (knowledge.data && !knowledge.isFetching)
+                      ? "alert"
+                      : "status"
+                  }
+                >
+                  {knowledge.isFetching
+                    ? "正在加载指定知识版本。"
+                    : knowledge.isError
+                      ? `知识版本详情没有加载：${errorMessage(knowledge.error)}`
+                      : knowledge.data
+                        ? "知识版本详情与所选版本不一致。"
+                        : "知识版本详情没有返回。"}
+                </p>
               ) : (
                 <p className="module-empty">当前快照没有该分类的明细。</p>
               )}
@@ -1565,7 +1645,11 @@ function WorkbenchModule({ module }: { module: WorkbenchModuleKey }) {
               ) : null}
             </>
           ) : (
-            <p className="module-empty">选择一条记录查看服务端返回的详情。</p>
+            <p className="module-empty">
+              {module === "knowledge" && requestedVersion !== null
+                ? "指定的知识版本不存在或未包含在当前筛选中。"
+                : "选择一条记录查看服务端返回的详情。"}
+            </p>
           )}
         </aside>
       </div>

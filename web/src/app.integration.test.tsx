@@ -1514,11 +1514,12 @@ describe("application routes and API contract", () => {
     expect(api.reviews.get("r1")!.execution!.attempt.id).toBe("attempt-r1-2");
   });
 
-  it("identifies a legacy run without inventing an attempt or execution measurements", async () => {
+  it("keeps absent execution history and measurements unreported", async () => {
     const api = new Service();
     api.addReview().execution = null;
     open(api, "/cases/c1/reviews/r1");
-    expect(await screen.findByText(/legacy_unfrozen/)).toBeInTheDocument();
+    expect(await screen.findByText(/本次工作区没有持久执行快照/)).toBeInTheDocument();
+    expect(screen.queryByText(/legacy_unfrozen/)).not.toBeInTheDocument();
     expect(screen.queryByLabelText("查看尝试")).not.toBeInTheDocument();
     expect(
       screen.queryByRole("button", { name: "取消当前尝试" }),

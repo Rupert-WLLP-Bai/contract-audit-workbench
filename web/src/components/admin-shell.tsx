@@ -1,5 +1,6 @@
 import { useLocation, useNavigate, NavLink, Outlet } from "react-router";
 import { useLogout, useSession } from "../api/queries";
+import { organizationName } from "../domain/organization";
 import { actorRoleLabel } from "../domain/review";
 import { PageStatus } from "./page-status";
 import { CircuitMark } from "./circuit-mark";
@@ -53,7 +54,10 @@ export function AdminShell() {
           </span>
         </NavLink>
         <span className="organization-badge" title={actor?.org_id}>
-          组织，{actor?.org_id ?? "正在确认"}
+          <span className="organization-badge-label">组织：</span>
+          <span className="organization-badge-value">
+            {organizationName(actor?.org_id)}
+          </span>
         </span>
         <p className="disclaimer">此工作区不授予案件正文访问权限。</p>
         <div className="who" aria-label="当前管理身份">

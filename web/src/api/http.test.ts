@@ -1,4 +1,4 @@
-import { submitDecision } from "./endpoints";
+import { getKnowledge, submitDecision } from "./endpoints";
 import { ApiError, parseErrorPayload, requestJson } from "./http";
 
 function jsonResponse(status: number, body: unknown): Response {
@@ -64,6 +64,28 @@ describe("http client", () => {
     });
     expect(fetchMock.mock.calls[0]?.[1]).toMatchObject({
       credentials: "include",
+    });
+  });
+
+  it("rejects a knowledge response for a different requested version", async () => {
+    installFetch(
+      mockFetch(async () =>
+        jsonResponse(200, {
+          id: "policy",
+          version_id: "version-2",
+          title: "制度",
+          version: "2",
+          body: "新版本正文",
+          source_type: "reference",
+          effective_at: null,
+          created_by: "reviewer",
+          created_at: "2026-10-27T00:00:00Z",
+        }),
+      ),
+    );
+    await expect(getKnowledge("policy", "version-1")).rejects.toMatchObject({
+      code: "invalid_response",
+      retryable: false,
     });
   });
 

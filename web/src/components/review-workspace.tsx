@@ -105,12 +105,25 @@ export function ReviewWorkspaceView({
             <span className="workspace-circuit-mark" aria-hidden="true" />
             材料 <strong>{workspace.documents.length}</strong>
           </li>
-          <li data-state={locatedAnchors === anchors.length ? "filled" : "open"}>
+          <li
+            data-state={
+              anchors.length > 0 && locatedAnchors === anchors.length
+                ? "filled"
+                : "open"
+            }
+          >
             <span className="workspace-circuit-mark" aria-hidden="true" />
             可定位引用{" "}
             <strong>
               {locatedAnchors}/{anchors.length}
-            </strong>
+            </strong>{" "}
+            {anchors.length === 0
+              ? "未提供引用"
+              : locatedAnchors === 0
+                ? "均未定位"
+                : locatedAnchors === anchors.length
+                  ? "全部定位"
+                  : "部分定位"}
           </li>
           <li data-state={workspace.findings.length > 0 ? "filled" : "open"}>
             <span className="workspace-circuit-mark" aria-hidden="true" />
@@ -185,20 +198,39 @@ export function ReviewWorkspaceView({
           onDecide={onDecide}
         />
       </div>
-      <ExecutionInspector
-        execution={workspace.execution}
-        caseId={run.case_id}
-        runState={run.state}
-        findings={workspace.findings}
-        evaluations={workspace.evaluations ?? []}
-        selectedFindingId={selectedId}
-        onSelectFinding={onSelect}
-        onSelectAttempt={onSelectAttempt}
-        canCancel={canCancel}
-        cancelling={cancelling}
-        cancelError={cancelError}
-        onCancel={onCancel}
-      />
+      {workspace.execution ? (
+        <ExecutionInspector
+          execution={workspace.execution}
+          caseId={run.case_id}
+          findings={workspace.findings}
+          evaluations={workspace.evaluations ?? []}
+          selectedFindingId={selectedId}
+          onSelectFinding={onSelect}
+          onSelectAttempt={onSelectAttempt}
+          canCancel={canCancel}
+          cancelling={cancelling}
+          cancelError={cancelError}
+          onCancel={onCancel}
+        />
+      ) : (
+        <section
+          id="execution-inspector"
+          className="execution-inspector"
+          aria-labelledby="execution-inspector-title"
+        >
+          <header className="execution-inspector-head">
+            <div>
+              <h2 id="execution-inspector-title">执行检查器</h2>
+              <p className="meta">
+                本次工作区没有持久执行快照。未采集的阶段、耗时和用量保持未报告。
+              </p>
+            </div>
+            <StatusText tone={runTone(run.state)}>
+              {runLabel(run.state)}
+            </StatusText>
+          </header>
+        </section>
+      )}
     </div>
   );
 }

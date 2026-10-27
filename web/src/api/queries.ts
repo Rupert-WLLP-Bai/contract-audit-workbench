@@ -196,11 +196,11 @@ export function useCreateKnowledge() {
   });
 }
 
-export function useKnowledge(knowledgeId: string) {
+export function useKnowledge(knowledgeId: string, versionId: string) {
   return useQuery({
-    queryKey: ["knowledge", knowledgeId] as const,
-    queryFn: ({ signal }) => api.getKnowledge(knowledgeId, signal),
-    enabled: knowledgeId !== "",
+    queryKey: ["knowledge", knowledgeId, versionId] as const,
+    queryFn: ({ signal }) => api.getKnowledge(knowledgeId, versionId, signal),
+    enabled: knowledgeId !== "" && versionId !== "",
   });
 }
 

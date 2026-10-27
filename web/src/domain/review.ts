@@ -201,6 +201,13 @@ export function businessStatusLabel(value: string): string {
   return BUSINESS_STATUS_LABELS[value] ?? value;
 }
 
+export function businessStatusTone(value: string): StatusTone {
+  if (value === "active") return "progress";
+  if (value === "pending" || value === "suspended") return "attention";
+  if (value === "closed") return "good";
+  return "neutral";
+}
+
 export function taskKindLabel(value: string): string {
   if (value === "") return "任务";
   return TASK_KIND_LABELS[value] ?? "任务";

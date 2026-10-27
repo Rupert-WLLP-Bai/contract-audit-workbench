@@ -1,0 +1,230 @@
+/* Hallmark · built: the project · redesign: restyle · theme: ant-monochrome (by request) · genre: modern-minimal · scope: app · surface: absolute · shape: app screen · nav: black grouped menu · footer: none */
+/* Hallmark · pre-emit critique: the case picker uses a white ledger under a transparent summary so comparison starts from a readable contract list */
+.compare-entry-page {
+  padding: 20px 24px 40px;
+  background: var(--surface-page);
+}
+
+.compare-entry-page .page-head {
+  margin-bottom: 16px;
+}
+
+.compare-entry-page .page-head h1 {
+  font-size: 24px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+.compare-entry-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0;
+  margin: 0 0 16px;
+  padding: 0;
+  border-block: 1px solid var(--border-strong);
+  list-style: none;
+}
+
+.compare-entry-summary > li {
+  display: grid;
+  grid-template-columns: 10px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  border: 0;
+  border-left: 1px solid var(--border-default);
+  border-radius: 0;
+  background: transparent;
+}
+
+.compare-entry-summary > li:first-child {
+  border-left: 0;
+  padding-left: 0;
+}
+
+.compare-entry-summary-mark {
+  width: 7px;
+  height: 7px;
+  border: 1px solid var(--border-control);
+  background: transparent;
+}
+
+.compare-entry-summary > li[data-state="filled"] .compare-entry-summary-mark {
+  border-color: var(--state-compatible);
+  background: var(--state-compatible);
+}
+
+.compare-entry-summary > li[data-state="open"] .compare-entry-summary-mark {
+  border-color: var(--state-insufficient);
+  background: var(--state-insufficient);
+}
+
+.compare-entry-summary span:not(.compare-entry-summary-mark) {
+  color: var(--text-secondary);
+  font-size: 11px;
+}
+
+.compare-entry-summary strong {
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 20px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+.compare-entry-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.compare-entry-toolbar label {
+  display: grid;
+  width: min(360px, 100%);
+  gap: 4px;
+  color: var(--text-secondary);
+  font-size: 11px;
+}
+
+.compare-entry-toolbar > span {
+  color: var(--text-secondary);
+  font-size: 11px;
+}
+
+.compare-entry-table {
+  overflow: hidden;
+  border: 1px solid var(--border-default);
+  border-radius: 6px;
+  background: var(--surface-raised);
+}
+
+.compare-entry-table .ant-table {
+  background: var(--surface-raised);
+}
+
+.compare-entry-table .ant-table-thead > tr > th {
+  background: var(--surface-subtle);
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.compare-entry-table .ant-table-tbody > tr > td {
+  color: var(--text-primary);
+  font-size: 13px;
+  vertical-align: top;
+}
+
+.compare-entry-table .ant-table-tbody > tr:hover > td {
+  background: var(--surface-hover);
+}
+
+.compare-entry-table .ant-table-pagination {
+  margin: 12px 16px;
+}
+
+.compare-entry-case {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+
+.compare-entry-case strong {
+  overflow-wrap: anywhere;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+.compare-entry-case span {
+  overflow-wrap: anywhere;
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.compare-entry-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.compare-entry-status code {
+  overflow-wrap: anywhere;
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.compare-entry-run {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+
+.compare-entry-run code {
+  overflow-wrap: anywhere;
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+.compare-entry-run .ant-tag {
+  justify-self: start;
+  margin-inline-end: 0;
+}
+
+.compare-entry-muted {
+  color: var(--text-secondary);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.compare-entry-table time {
+  color: var(--text-secondary);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.compare-entry-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.compare-entry-actions a {
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+@media (max-width: 850px) {
+  .compare-entry-actions {
+    justify-content: flex-start;
+  }
+}
+
+@media (max-width: 620px) {
+  .compare-entry-page {
+    padding: 16px;
+  }
+
+  .compare-entry-summary {
+    grid-template-columns: 1fr;
+  }
+
+  .compare-entry-summary > li {
+    border-left: 0;
+    padding-left: 0;
+    border-top: 1px solid var(--border-default);
+  }
+
+  .compare-entry-summary > li:first-child {
+    border-top: 0;
+  }
+}

@@ -2,6 +2,7 @@ import { MenuFoldOutlined, MenuUnfoldOutlined } from "@ant-design/icons";
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router";
 import { useCaseDetail, useLogout, useSession } from "../api/queries";
+import { organizationName } from "../domain/organization";
 import { actorRoleLabel } from "../domain/review";
 import { Avatar, Breadcrumb, Button, Input, Layout, Menu } from "antd";
 import {
@@ -20,28 +21,74 @@ import {
   ToolOutlined,
 } from "@ant-design/icons";
 import type { ReactNode } from "react";
-import { CircuitMark } from "./circuit-mark";
-const MAIN_LINKS = [
-  { to: "/", label: "工作台", icon: "home", end: true },
-  { to: "/review", label: "合同审查", icon: "review" },
-  { to: "/compare", label: "版本对照", icon: "compare" },
+import { CompetitionIdentity } from "./competition-identity";
+type NavLinkItem = {
+  to: string;
+  label: string;
+  icon: string;
+  end?: boolean;
+  external?: boolean;
+};
+
+const NAV_GROUPS: {
+  key: string;
+  label: string;
+  links: NavLinkItem[];
+}[] = [
+  {
+    key: "main",
+    label: "主要工作区",
+    links: [
+      { to: "/", label: "工作台", icon: "home", end: true },
+      { to: "/review", label: "合同审查", icon: "review" },
+      { to: "/compare", label: "版本对照", icon: "compare" },
+    ],
+  },
+  {
+    key: "business",
+    label: "业务管理",
+    links: [
+      { to: "/cases", label: "案件管理", icon: "case", end: true },
+      { to: "/workbench/tasks", label: "审查任务", icon: "tasks" },
+      { to: "/workbench/remediation", label: "整改中心", icon: "remediation" },
+      { to: "/workbench/reports", label: "报告中心", icon: "reports" },
+      { to: "/workbench/evidence", label: "证据中心", icon: "evidence" },
+      { to: "/workbench/knowledge", label: "知识库", icon: "knowledge" },
+    ],
+  },
+  {
+    key: "platform",
+    label: "平台配置",
+    links: [
+      { to: "rules", label: "规则包治理", icon: "rules", external: true },
+      {
+        to: "/workbench/organization",
+        label: "组织与权限",
+        icon: "organization",
+      },
+      { to: "/workbench/templates", label: "模板管理", icon: "templates" },
+      { to: "/workbench/models", label: "模型服务", icon: "models" },
+      { to: "/workbench/tools", label: "工具网关", icon: "tools" },
+      { to: "/workbench/settings", label: "系统设置", icon: "settings" },
+    ],
+  },
+  {
+    key: "observability",
+    label: "可观测",
+    links: [
+      { to: "/workbench/executions", label: "执行轨迹", icon: "executions" },
+      { to: "/workbench/health", label: "系统健康", icon: "health" },
+      { to: "/workbench/audit", label: "审计日志", icon: "audit" },
+    ],
+  },
+  {
+    key: "developer",
+    label: "开发者资源",
+    links: [{ to: "/api-docs", label: "API 文档", icon: "api" }],
+  },
 ];
-const AUXILIARY_LINKS = [
-  { to: "/cases", label: "案件管理", icon: "case", end: true },
-  { to: "/workbench/tasks", label: "审查任务", icon: "tasks" },
-  { to: "/workbench/remediation", label: "整改中心", icon: "remediation" },
-  { to: "/workbench/reports", label: "报告中心", icon: "reports" },
-  { to: "/workbench/evidence", label: "证据中心", icon: "evidence" },
-  { to: "/workbench/executions", label: "执行轨迹", icon: "executions" },
-  { to: "/workbench/knowledge", label: "知识库", icon: "knowledge" },
-  { to: "/workbench/organization", label: "组织与权限", icon: "organization" },
-  { to: "/workbench/templates", label: "模板管理", icon: "templates" },
-  { to: "/workbench/models", label: "模型服务", icon: "models" },
-  { to: "/workbench/tools", label: "工具网关", icon: "tools" },
-  { to: "/workbench/health", label: "系统健康", icon: "health" },
-  { to: "/workbench/audit", label: "审计日志", icon: "audit" },
-  { to: "/workbench/settings", label: "系统设置", icon: "settings" },
-];
+
+const NAV_LINKS = NAV_GROUPS.flatMap((group) => group.links);
 
 const NAV_ICONS: Record<string, ReactNode> = {
   home: <HomeOutlined />,
@@ -172,16 +219,18 @@ export function AppShell() {
         跳到主要内容
       </a>
       <Layout.Header className="topbar">
-        <Link className="brand" to="/" aria-label="合同审查工作台首页">
-          <span className="brand-mark" aria-hidden="true">
-            <CircuitMark />
-          </span>
-          <span className="brand-copy">
-            <strong>合同智能审计工作台</strong>
-          </span>
+        <Link
+          className="brand competition-brand"
+          to="/"
+          aria-label="第一届黄桷树AI智能体开发大赛，合同智能审计工作台首页"
+        >
+          <CompetitionIdentity />
         </Link>
         <span className="organization-badge" title={actor?.org_id}>
-          组织，{actor?.org_id ?? "正在确认"}
+          <span className="organization-badge-label">组织：</span>
+          <span className="organization-badge-value">
+            {organizationName(actor?.org_id)}
+          </span>
         </span>
         <form className="global-search" role="search" onSubmit={searchCases}>
           <label className="sr-only" htmlFor="global-case-search">
@@ -256,61 +305,29 @@ export function AppShell() {
                 ? "/"
                 : reviewMatch
                   ? "/review"
-                  : (AUXILIARY_LINKS.find(
+                  : (NAV_LINKS.find(
                       (item) =>
-                        location.pathname === item.to ||
-                        location.pathname.startsWith(`${item.to}/`),
+                        !item.external &&
+                        (location.pathname === item.to ||
+                          location.pathname.startsWith(`${item.to}/`)),
                     )?.to ?? location.pathname),
             ]}
-            items={[
-              {
-                key: "main",
-                type: "group",
-                label: "主要工作区",
-                children: [
-                  ...MAIN_LINKS.map((item) => ({
-                    key: item.to,
-                    icon: NAV_ICONS[item.icon],
-                    label: (
-                      <NavLink to={item.to} end={item.end}>
-                        {item.label}
-                      </NavLink>
-                    ),
-                  })),
-                  {
-                    key: "rules",
-                    icon: NAV_ICONS.rules,
-                    label: <a href={adminRulePacksUrl}>规则包治理</a>,
-                  },
-                ],
-              },
-              {
-                key: "business",
-                type: "group",
-                label: "业务管理",
-                children: AUXILIARY_LINKS.map((item) => ({
-                  key: item.to,
-                  icon: NAV_ICONS[item.icon],
-                  label: (
-                    <NavLink to={item.to} end={item.end}>
-                      {item.label}
-                    </NavLink>
-                  ),
-                })),
-              },
-              {
-                key: "developer",
-                type: "group",
-                label: "开发者资源",
-                children: [
-                  {
-                    key: "/api-docs",
-                    icon: NAV_ICONS.api,
-                    label: <NavLink to="/api-docs">API 文档</NavLink>,
-                  },
-                ],
-              },
-            ]}
+            items={NAV_GROUPS.map((group) => ({
+              key: group.key,
+              type: "group" as const,
+              label: group.label,
+              children: group.links.map((item) => ({
+                key: item.to,
+                icon: NAV_ICONS[item.icon],
+                label: item.external ? (
+                  <a href={adminRulePacksUrl}>{item.label}</a>
+                ) : (
+                  <NavLink to={item.to} end={item.end}>
+                    {item.label}
+                  </NavLink>
+                ),
+              })),
+            }))}
           />
         </Layout.Sider>
         <Layout.Content className="content-column">

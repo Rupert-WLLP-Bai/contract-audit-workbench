@@ -195,6 +195,8 @@ function ProductionArchitecture({
         title={selected?.name}
         onClose={() => setSelected(null)}
         size={600}
+        mask={false}
+        push={false}
         destroyOnHidden
       >
         {selected ? (
@@ -440,38 +442,34 @@ export function SystemHealthPage({
           {
             title: "服务与集成",
             value: data.services.length,
-            state: data.services.length > 0 ? "filled" : "empty",
+            tone: "progress",
           },
           {
             title: "实际容器",
             value: data.services.filter((item) => item.container !== null)
               .length,
-            state: data.services.some((item) => item.container !== null)
-              ? "filled"
-              : "empty",
+            tone: "neutral",
           },
           {
             title: "已确认正常",
             value: data.services.filter((item) => item.status === "ready")
               .length,
-            state: data.services.some((item) => item.status === "ready")
-              ? "filled"
-              : "open",
+            tone: "compatible",
           },
           {
             title: "需关注",
             value: attentionIds.size,
-            state: attentionIds.size > 0 ? "open" : "filled",
+            tone: attentionIds.size > 0 ? "insufficient" : "compatible",
           },
           {
             title: "未启用",
             value: data.services.filter(
               (item) => item.status === "unconfigured",
             ).length,
-            state: "empty",
+            tone: "neutral",
           },
         ].map((item) => (
-          <li key={item.title} data-state={item.state}>
+          <li key={item.title} data-tone={item.tone}>
             <span className="health-summary-label">{item.title}</span>
             <strong>{item.value}</strong>
           </li>
@@ -638,6 +636,8 @@ export function SystemHealthPage({
         open={selected !== undefined}
         onClose={() => setSelectedId("")}
         size={520}
+        mask={false}
+        push={false}
         destroyOnHidden
       >
         {selected ? (

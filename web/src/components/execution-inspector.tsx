@@ -19,9 +19,8 @@ import { StatusText } from "./status-text";
 import { AgentReviewInspector } from "./agent-review-inspector";
 
 interface ExecutionInspectorProps {
-  execution: Execution | null | undefined;
+  execution: Execution;
   caseId: string;
-  runState: string;
   findings: Finding[];
   evaluations: ConstraintEvaluation[];
   selectedFindingId: string | null;
@@ -249,7 +248,6 @@ function buildSpanTree(events: ExecutionEvent[]): SpanGroup[] {
 export function ExecutionInspector({
   execution,
   caseId,
-  runState,
   findings,
   evaluations,
   selectedFindingId,
@@ -263,29 +261,6 @@ export function ExecutionInspector({
   const [view, setView] = useState<"tree" | "timeline">("timeline");
   const [selectedSeq, setSelectedSeq] = useState<number | null>(null);
   const eventDetailRef = useRef<HTMLElement>(null);
-
-  if (!execution) {
-    return (
-      <section
-        id="execution-inspector"
-        className="execution-inspector"
-        aria-labelledby="execution-inspector-title"
-      >
-        <header className="execution-inspector-head">
-          <div>
-            <h2 id="execution-inspector-title">执行检查器</h2>
-            <p className="meta">
-              本次工作区没有持久执行快照。未采集的阶段、耗时和用量保持未报告。
-            </p>
-            <p className="callout">
-              历史记录未冻结（legacy_unfrozen），无法重放当时解析输入或补造执行阶段。
-            </p>
-          </div>
-          <StatusText tone={runTone(runState)}>{runLabel(runState)}</StatusText>
-        </header>
-      </section>
-    );
-  }
 
   const selected = execution.attempt;
   const attempts = execution.attempts.some(

@@ -16,6 +16,7 @@ import type {
   WorkbenchSnapshot,
 } from "../api/types";
 import { ComparePage } from "./compare-page";
+import { CompareEntryPage } from "./compare-entry-page";
 
 const at = "2026-10-21T06:00:00Z";
 const clients: QueryClient[] = [];
@@ -472,7 +473,10 @@ function CurrentLocation() {
   return <div aria-label="路由查询">{location.search}</div>;
 }
 
-function open(service = new CompareService(), entry = "/compare") {
+function open(
+  service = new CompareService(),
+  entry = "/compare?case_id=case-main",
+) {
   vi.stubGlobal("fetch", vi.fn(service.fetch));
   const client = new QueryClient({
     defaultOptions: {
@@ -485,6 +489,26 @@ function open(service = new CompareService(), entry = "/compare") {
     <QueryClientProvider client={client}>
       <MemoryRouter initialEntries={[entry]}>
         <ComparePage />
+        <CurrentLocation />
+      </MemoryRouter>
+    </QueryClientProvider>,
+  );
+  return { service, user: userEvent.setup() };
+}
+
+function openEntry(service = new CompareService()) {
+  vi.stubGlobal("fetch", vi.fn(service.fetch));
+  const client = new QueryClient({
+    defaultOptions: {
+      queries: { retry: false, gcTime: 0 },
+      mutations: { retry: false },
+    },
+  });
+  clients.push(client);
+  render(
+    <QueryClientProvider client={client}>
+      <MemoryRouter initialEntries={["/compare"]}>
+        <CompareEntryPage />
         <CurrentLocation />
       </MemoryRouter>
     </QueryClientProvider>,
@@ -618,66 +642,41 @@ describe("ComparePage frozen run selection", () => {
     ).toHaveAttribute("href", "/cases/case-main/reviews/run-z");
   });
 
-  it("searches case numbers and resets run and material choices when another case is selected", async () => {
-    const { user, service } = open(
-      new CompareService(),
-      "/compare?case_id=case-main&left_run_id=run-y&right_run_id=run-a",
+  it("filters the comparison entry by case number and links each contract into its own comparison", async () => {
+    const { user, service } = openEntry(new CompareService());
+    expect(await screen.findByText("专线合同修订")).toBeInTheDocument();
+    expect(screen.getByText("可对照合同").closest("li")).toHaveTextContent(
+      "可对照合同1",
     );
-    await screen.findByLabelText("当前版本材料解析正文");
-    const cases = within(
-      screen.getByRole("complementary", { name: "对照案件列表" }),
+    const search = screen.getByRole("searchbox", { name: "搜索合同" });
+    await user.type(search, " N-002 ");
+    expect(screen.getByText("专线合同修订")).toBeInTheDocument();
+    expect(screen.queryByText("暂无审查案件")).not.toBeInTheDocument();
+    const mainRow = screen.getByText("专线合同修订").closest("tr")!;
+    expect(within(mainRow).getByRole("link", { name: "开始对照" })).toHaveAttribute(
+      "href",
+      "/compare?case_id=case-main",
     );
-    await user.type(
-      cases.getByRole("searchbox", { name: "搜索案件" }),
-      " N-002 ",
+    expect(within(mainRow).getByRole("link", { name: "打开审查" })).toHaveAttribute(
+      "href",
+      "/cases/case-main/reviews/run-z?attempt_id=attempt-z-2",
     );
-    expect(cases.getAllByRole("button")).toHaveLength(1);
-    expect(cases.getByRole("button", { name: /专线合同修订/ })).toHaveAttribute(
-      "aria-pressed",
-      "true",
+    await user.clear(search);
+    await user.type(search, "没有匹配的编号");
+    expect(screen.getByText("没有匹配的合同")).toBeInTheDocument();
+    await user.clear(search);
+    const emptyRow = screen.getByText("暂无审查案件").closest("tr")!;
+    expect(within(emptyRow).getByRole("link", { name: "开始对照" })).toHaveAttribute(
+      "href",
+      "/compare?case_id=case-empty",
     );
-    await user.clear(cases.getByRole("searchbox", { name: "搜索案件" }));
-    await user.type(
-      cases.getByRole("searchbox", { name: "搜索案件" }),
-      "没有匹配的编号",
+    expect(within(emptyRow).getByRole("link", { name: "案件详情" })).toHaveAttribute(
+      "href",
+      "/cases/case-empty",
     );
-    expect(cases.queryAllByRole("button")).toHaveLength(0);
-    await user.clear(cases.getByRole("searchbox", { name: "搜索案件" }));
-    await user.click(cases.getByRole("button", { name: /暂无审查案件/ }));
-    expect(screen.getByText("此案件尚无持久审查运行。")).toBeInTheDocument();
-    expect(
-      screen.getByRole("link", { name: "打开案件并发起审查" }),
-    ).toHaveAttribute("href", "/cases/case-empty");
-    expect(screen.getByText("此案件尚无持久审查运行。")).toBeInTheDocument();
-    expect(screen.getByLabelText("路由查询")).toHaveTextContent(
-      "?case_id=case-empty",
-    );
-    expect(
-      screen
-        .getAllByRole("combobox", { name: "材料" })
-        .every((select) => (select as HTMLSelectElement).disabled),
-    ).toBe(true);
     expect(
       service.requests.some((path) => path.includes("case-empty/reviews")),
     ).toBe(false);
-    await user.click(cases.getByRole("button", { name: /单次审查案件/ }));
-    await screen.findByLabelText("当前版本材料解析正文");
-    await screen.findByLabelText("历史版本材料解析正文");
-    expect(material("当前版本")).toHaveTextContent("单次审查冻结文本。");
-    expect(material("历史版本")).toHaveTextContent("单次审查冻结文本。");
-    expect(material("当前版本")).toHaveTextContent("单次审查冻结文本。");
-    expect(material("历史版本")).toHaveTextContent("单次审查冻结文本。");
-    await user.click(cases.getByRole("button", { name: /专线合同修订/ }));
-    await waitFor(() =>
-      expect(material("当前版本")).toHaveAttribute(
-        "data-document-version-id",
-        "draft-z",
-      ),
-    );
-    expect(material("历史版本")).toHaveAttribute(
-      "data-document-version-id",
-      "draft-y",
-    );
   });
 
   it("falls back from absent URL case and run identifiers to available frozen records", async () => {
@@ -936,7 +935,10 @@ describe("ComparePage unavailable data", () => {
     service.data.cases = [];
     service.data.runs = [];
     open(service);
-    await screen.findByRole("heading", { name: /合同案件 0/ });
+    expect(await screen.findByRole("link", { name: "全部合同" })).toHaveAttribute(
+      "href",
+      "/compare",
+    );
     expect(screen.getByRole("link", { name: "案件详情" })).toHaveAttribute(
       "href",
       "/cases",

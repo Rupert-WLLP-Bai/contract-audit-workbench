@@ -733,6 +733,7 @@ export interface CaseRelation {
 
 export interface Knowledge {
   id: string;
+  version_id: string;
   title: string;
   version: string;
   body: string;

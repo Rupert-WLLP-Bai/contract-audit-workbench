@@ -324,11 +324,21 @@ export function createKnowledge(input: KnowledgeInput) {
   return requestJson(paths.knowledge, jsonInit("POST", input), parseKnowledge);
 }
 
-export function getKnowledge(knowledgeId: string, signal?: AbortSignal) {
+export function getKnowledge(
+  knowledgeId: string,
+  versionId: string,
+  signal?: AbortSignal,
+) {
   return requestJson(
-    paths.knowledgeEntry(knowledgeId),
+    paths.knowledgeVersion(knowledgeId, versionId),
     { method: "GET", signal },
-    parseKnowledge,
+    (value) => {
+      const knowledge = parseKnowledge(value);
+      if (knowledge.id !== knowledgeId || knowledge.version_id !== versionId) {
+        throw new ApiError("知识版本与请求不一致", 500, "invalid_response", false, null);
+      }
+      return knowledge;
+    },
   );
 }
 

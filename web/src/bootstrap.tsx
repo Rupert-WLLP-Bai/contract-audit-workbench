@@ -61,7 +61,7 @@ const uiTheme: ThemeConfig = {
       darkItemHoverBg: cssToken("--surface-rail-raised"),
       darkItemHoverColor: cssToken("--text-inverse"),
       itemBorderRadius: Number.parseFloat(cssToken("--radius-control")),
-      groupTitleFontSize: 12,
+      groupTitleFontSize: 14,
     },
     Table: {
       headerBg: cssToken("--surface-subtle"),

@@ -1,28 +1,17 @@
-import { Button } from "antd";
+import { Button, Table, type TableColumnsType } from "antd";
 import { errorMessage } from "../api/http";
 import { useWorkbench } from "../api/queries";
-import type { WorkbenchRun } from "../api/types";
+import type { WorkbenchCase, WorkbenchRun } from "../api/types";
 import { PageStatus } from "../components/page-status";
 import { StatusText } from "../components/status-text";
-import { businessStatusLabel, formatDateTime, runLabel } from "../domain/review";
+import {
+  businessStatusLabel,
+  businessStatusTone,
+  formatDateTime,
+  runLabel,
+  runTone,
+} from "../domain/review";
 import "./review-entry-page.css";
-
-function runTone(state: string): "good" | "attention" | "bad" | "neutral" {
-  if (state === "completed") return "good";
-  if (
-    [
-      "accepted",
-      "queued",
-      "started",
-      "running",
-      "awaiting_human",
-      "partial",
-    ].includes(state)
-  )
-    return "attention";
-  if (["failed", "cancelled", "interrupted"].includes(state)) return "bad";
-  return "neutral";
-}
 
 function latestRun(runs: WorkbenchRun[]): WorkbenchRun | null {
   return (
@@ -58,6 +47,103 @@ export function ReviewEntryPage() {
     );
 
   const snapshot = query.data;
+  const runsByCase = new Map<string, WorkbenchRun[]>();
+  for (const run of snapshot.runs) {
+    const runs = runsByCase.get(run.case_id) ?? [];
+    runs.push(run);
+    runsByCase.set(run.case_id, runs);
+  }
+  const columns: TableColumnsType<WorkbenchCase> = [
+    {
+      title: "合同",
+      key: "case",
+      render: (_, item) => (
+        <div className="review-entry-case">
+          <strong>{item.title}</strong>
+          <span>
+            {item.profile?.customer ??
+              item.business_line ??
+              "业务信息未报告"}
+          </span>
+        </div>
+      ),
+    },
+    {
+      title: "状态",
+      key: "status",
+      width: 250,
+      render: (_, item) => (
+        <div className="review-entry-status">
+          <StatusText tone={businessStatusTone(item.business_status ?? "")}>
+            {businessStatusLabel(item.business_status ?? "")}
+          </StatusText>
+          <code>{item.id}</code>
+        </div>
+      ),
+    },
+    {
+      title: "最近运行",
+      key: "run",
+      width: 235,
+      render: (_, item) => {
+        const latest = latestRun(runsByCase.get(item.id) ?? []);
+        if (!latest)
+          return <span className="review-entry-muted">尚无审查运行</span>;
+        return (
+          <div className="review-entry-run-cell">
+            <code>{latest.id}</code>
+            <StatusText tone={runTone(latest.state)}>
+              {runLabel(latest.state)}
+            </StatusText>
+            <span className="review-entry-muted">
+              {latest.attempt_id
+                ? `尝试 ${latest.attempt_id}`
+                : "尝试未报告"}
+            </span>
+          </div>
+        );
+      },
+    },
+    {
+      title: "更新时间",
+      key: "updated",
+      width: 165,
+      render: (_, item) => (
+        <time dateTime={item.updated_at}>
+          {formatDateTime(item.updated_at)}
+        </time>
+      ),
+    },
+    {
+      title: "操作",
+      key: "actions",
+      width: 200,
+      align: "right",
+      render: (_, item) => {
+        const latest = latestRun(runsByCase.get(item.id) ?? []);
+        return (
+          <div className="review-entry-actions">
+            {latest ? (
+              <Button
+                aria-label={"打开审查"}
+                type="primary"
+                href={`/cases/${encodeURIComponent(item.id)}/reviews/${encodeURIComponent(latest.id)}${latest.attempt_id ? `?attempt_id=${encodeURIComponent(latest.attempt_id)}` : ""}`}
+              >
+                打开审查
+              </Button>
+            ) : null}
+            <Button
+              aria-label={String(latest ? "案件详情" : "进入案件")}
+              href={`/cases/${encodeURIComponent(item.id)}`}
+            >
+              {latest ? "案件详情" : "进入案件"}
+            </Button>
+          </div>
+        );
+      },
+    },
+  ];
+
   return (
     <section className="page review-entry-page">
       <header className="page-head">
@@ -97,67 +183,22 @@ export function ReviewEntryPage() {
           detail="案件列表按当前服务端授权返回。"
         />
       ) : (
-        <ul className="review-entry-list">
-          {snapshot.cases.map((item) => {
-            const runs = snapshot.runs
-              .filter((run) => run.case_id === item.id)
-              .sort((left, right) =>
-                right.updated_at.localeCompare(left.updated_at),
-              );
-            const latest = latestRun(runs);
-            return (
-              <li key={item.id}>
-                <div className="review-entry-case">
-                  <p>{item.id}</p>
-                  <h2>{item.title}</h2>
-                  <span>
-                    {item.business_status
-                      ? businessStatusLabel(item.business_status)
-                      : (item.business_line ?? "业务状态未报告")}
-                  </span>
-                </div>
-                <div className="review-entry-run">
-                  {latest ? (
-                    <>
-                      <span>
-                        最近运行 <strong>{latest.id}</strong>
-                      </span>
-                      <StatusText tone={runTone(latest.state)}>
-                        {runLabel(latest.state)}
-                      </StatusText>
-                      <time dateTime={latest.updated_at}>
-                        {formatDateTime(latest.updated_at)}
-                      </time>
-                      <span>
-                        尝试 {latest.attempt_id ?? "未报告"}，本周{" "}
-                        {runs.length} 次运行
-                      </span>
-                    </>
-                  ) : (
-                    <p>尚无快照中的审查运行。进入案件可检查材料并启动审查。</p>
-                  )}
-                </div>
-                <div className="review-entry-actions">
-                  {latest ? (
-                    <Button
-                      aria-label={"打开审查"}
-                      type="primary"
-                      href={`/cases/${encodeURIComponent(item.id)}/reviews/${encodeURIComponent(latest.id)}${latest.attempt_id ? `?attempt_id=${encodeURIComponent(latest.attempt_id)}` : ""}`}
-                    >
-                      打开审查
-                    </Button>
-                  ) : null}
-                  <Button
-                    aria-label={String(latest ? "案件详情" : "进入案件")}
-                    href={`/cases/${encodeURIComponent(item.id)}`}
-                  >
-                    {latest ? "案件详情" : "进入案件"}
-                  </Button>
-                </div>
-              </li>
-            );
-          })}
-        </ul>
+        <div className="review-entry-table">
+          <Table<WorkbenchCase>
+            rowKey="id"
+            columns={columns}
+            dataSource={snapshot.cases}
+            size="middle"
+            tableLayout="fixed"
+            scroll={{ x: 980 }}
+            pagination={{
+              defaultPageSize: 5,
+              pageSizeOptions: [5, 10, 20, 50],
+              showSizeChanger: true,
+              showTotal: (total) => `共 ${total} 份合同`,
+            }}
+          />
+        </div>
       )}
     </section>
   );

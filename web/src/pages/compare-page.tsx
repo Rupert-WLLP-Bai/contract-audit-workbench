@@ -1,7 +1,7 @@
 import { Tabs } from "antd";
 import { Collapse } from "antd";
 import { Select } from "antd";
-import { Button, Input } from "antd";
+import { Button } from "antd";
 import { useState } from "react";
 import { Link, useSearchParams } from "react-router";
 import { errorMessage } from "../api/http";
@@ -240,7 +240,6 @@ export function ComparePage() {
   const [leftDocumentSelection, setLeftDocumentSelection] = useState("");
   const [rightDocumentSelection, setRightDocumentSelection] = useState("");
   const [bottomTab, setBottomTab] = useState("修订证据");
-  const [caseSearch, setCaseSearch] = useState("");
   const [findingSelection, setFindingSelection] = useState("");
 
   const snapshot = snapshotQuery.data;
@@ -316,19 +315,6 @@ export function ComparePage() {
   const decidedCount = findings.filter(
     (item) => item.decisions.length > 0,
   ).length;
-  const visibleCases = snapshot.cases.filter((item) =>
-    `${item.title} ${item.profile?.number ?? ""}`.includes(caseSearch.trim()),
-  );
-  function chooseCase(id: string) {
-    const next = new URLSearchParams(params);
-    next.set("case_id", id);
-    next.delete("left_run_id");
-    next.delete("right_run_id");
-    setParams(next);
-    setLeftDocumentSelection("");
-    setRightDocumentSelection("");
-    setFindingSelection("");
-  }
   function chooseRun(side: "left_run_id" | "right_run_id", id: string) {
     const next = new URLSearchParams(params);
     next.set(side, id);
@@ -355,46 +341,85 @@ export function ComparePage() {
           <strong>{selectedCase?.title ?? "版本对照"}</strong>
           <span>{selectedCase?.profile?.number ?? selectedCase?.id}</span>
         </div>
-        <Link to={selectedCase ? `/cases/${selectedCase.id}` : "/cases"}>
-          案件详情
-        </Link>
+        <nav className="compare-page-links" aria-label="版本对照导航">
+          <Link to="/compare">全部合同</Link>
+          <Link to={selectedCase ? `/cases/${selectedCase.id}` : "/cases"}>
+            案件详情
+          </Link>
+        </nav>
       </header>
       <div className="compare-workspace">
-        <aside className="compare-case-list" aria-label="对照案件列表">
+        <aside className="compare-risk-panel" aria-label="审查结果">
           <header>
-            <h1>
-              合同案件 <span>{snapshot.cases.length}</span>
-            </h1>
-            <Button aria-label={"案件中心"} type="primary" href="/cases">
-              案件中心
-            </Button>
+            <h2>审查结果</h2>
+            <span>{findings.length} 项实际发现</span>
           </header>
-          <label>
-            搜索案件
-            <Input
-              type="search"
-              value={caseSearch}
-              onChange={(event) => setCaseSearch(event.target.value)}
-              placeholder="案件名称、编号"
-            />
-          </label>
-          <div className="compare-case-records">
-            {visibleCases.map((item) => (
-              <Button
-                aria-label={`${item.title}，${item.profile?.customer ?? "未设置客户"}，${item.latest_run ? runLabel(item.latest_run.state) : "待审查"}，${formatDateTime(item.updated_at)}`}
-                htmlType="button"
+          <div className="compare-risk-counts">
+            {(["high", "medium", "low", "info"] as const).map(
+              (severity, index) => (
+                <span key={severity} data-severity={severity}>
+                  {
+                    findings.filter((item) => item.severity === severity)
+                      .length
+                  }
+                  <small>{["高风险", "中风险", "低风险", "提示"][index]}</small>
+                </span>
+              ),
+            )}
+          </div>
+          <p className="compare-risk-note">
+            以当前版本的实际规则、模型建议和人工决定为准。
+          </p>
+          <div className="compare-risk-records">
+            {findings.map((item) => (
+              <article
                 key={item.id}
-                aria-pressed={item.id === selectedCase?.id}
-                onClick={() => chooseCase(item.id)}
+                data-severity={item.severity ?? "unrated"}
+                data-selected={item.id === finding?.id}
               >
-                <strong>{item.title}</strong>
-                <span>{item.profile?.customer ?? "未设置客户"}</span>
-                <small>
-                  {item.latest_run ? runLabel(item.latest_run.state) : "待审查"}{" "}
-                ，{formatDateTime(item.updated_at)}
-                </small>
-              </Button>
+                <Button
+                  aria-label={`${item.claim}，${item.origin === "rule" ? "规则核对" : "模型建议"}，${relationLabel(item.relation)}`}
+                  htmlType="button"
+                  onClick={() => chooseFinding(item)}
+                  aria-pressed={item.id === finding?.id}
+                >
+                  <strong>{item.claim}</strong>
+                  <span>
+                    {item.origin === "rule" ? "规则核对" : "模型建议"}，
+                    {relationLabel(item.relation)}
+                  </span>
+                </Button>
+                {item.id === finding?.id ? (
+                  <div className="compare-risk-detail">
+                    {item.evidence.map((anchor) => (
+                      <blockquote key={anchor.id}>
+                        {anchor.quote}
+                        <small>
+                          {anchor.status}，{anchor.document_version_id}
+                        </small>
+                      </blockquote>
+                    ))}
+                    {item.severity_source ? (
+                      <p>
+                        {item.severity_source.policy_id} v
+                        {item.severity_source.policy_version}，
+                        {item.severity_source.clause}
+                      </p>
+                    ) : null}
+                    <Link
+                      to={`/cases/${selectedCase?.id}/reviews/${leftRun?.id}?finding=${item.id}`}
+                    >
+                      打开原文与人工决定
+                    </Link>
+                  </div>
+                ) : null}
+              </article>
             ))}
+            {findings.length === 0 ? (
+              <p className="compare-unavailable">
+                此运行没有返回发现；不代表合同已批准。
+              </p>
+            ) : null}
           </div>
         </aside>
         <div className="compare-reading-area">
@@ -478,76 +503,6 @@ export function ComparePage() {
             />
           </div>
         </div>
-        <aside className="compare-risk-panel">
-          <header>
-            <h2>审查结果</h2>
-            <span>{findings.length} 项实际发现</span>
-          </header>
-          <div className="compare-risk-counts">
-            {(["high", "medium", "low", "info"] as const).map(
-              (severity, index) => (
-                <span key={severity} data-severity={severity}>
-                  {findings.filter((item) => item.severity === severity).length}
-                  <small>{["高风险", "中风险", "低风险", "提示"][index]}</small>
-                </span>
-              ),
-            )}
-          </div>
-          <p className="compare-risk-note">
-            以当前版本的实际规则、模型建议和人工决定为准。
-          </p>
-          <div className="compare-risk-records">
-            {findings.map((item) => (
-              <article
-                key={item.id}
-                data-severity={item.severity ?? "unrated"}
-                data-selected={item.id === finding?.id}
-              >
-                <Button
-                  aria-label={`${item.claim}，${item.origin === "rule" ? "规则核对" : "模型建议"}，${relationLabel(item.relation)}`}
-                  htmlType="button"
-                  onClick={() => chooseFinding(item)}
-                  aria-pressed={item.id === finding?.id}
-                >
-                  <strong>{item.claim}</strong>
-                  <span>
-                    {item.origin === "rule" ? "规则核对" : "模型建议"}，
-                    {relationLabel(item.relation)}
-                  </span>
-                </Button>
-                {item.id === finding?.id ? (
-                  <div className="compare-risk-detail">
-                    {item.evidence.map((anchor) => (
-                      <blockquote key={anchor.id}>
-                        {anchor.quote}
-                        <small>
-                          {anchor.status}，{anchor.document_version_id}
-                        </small>
-                      </blockquote>
-                    ))}
-                    {item.severity_source ? (
-                      <p>
-                        {item.severity_source.policy_id} v
-                        {item.severity_source.policy_version}，
-                        {item.severity_source.clause}
-                      </p>
-                    ) : null}
-                    <Link
-                      to={`/cases/${selectedCase?.id}/reviews/${leftRun?.id}?finding=${item.id}`}
-                    >
-                      打开原文与人工决定
-                    </Link>
-                  </div>
-                ) : null}
-              </article>
-            ))}
-            {findings.length === 0 ? (
-              <p className="compare-unavailable">
-                此运行没有返回发现；不代表合同已批准。
-              </p>
-            ) : null}
-          </div>
-        </aside>
       </div>
       <section
         className="compare-results"

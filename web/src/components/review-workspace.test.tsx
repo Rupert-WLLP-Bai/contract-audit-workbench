@@ -1,5 +1,5 @@
 import { useState, type ComponentProps } from "react";
-import { screen } from "@testing-library/react";
+import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { chooseOption, renderWithAntd as render } from "../test/antd";
 import { MemoryRouter } from "react-router";
@@ -143,14 +143,16 @@ type Decide = ComponentProps<typeof ReviewWorkspaceView>["onDecide"];
 function WorkspaceHarness({
   layout,
   onDecide,
+  workspaceValue,
 }: {
   layout: "split" | "switch";
   onDecide: Decide;
+  workspaceValue: ReviewWorkspace;
 }) {
   const [selectedId, setSelectedId] = useState("f1");
   return (
     <ReviewWorkspaceView
-      workspace={workspace()}
+      workspace={workspaceValue}
       layout={layout}
       selectedId={selectedId}
       streamStatus="live"
@@ -171,13 +173,93 @@ function WorkspaceHarness({
   );
 }
 
-function renderWorkspace(layout: "split" | "switch") {
+function renderWorkspace(
+  layout: "split" | "switch",
+  workspaceValue = workspace(),
+) {
   const onDecide = vi.fn().mockResolvedValue(true);
-  const view = render(<WorkspaceHarness layout={layout} onDecide={onDecide} />);
+  const view = render(
+    <WorkspaceHarness
+      layout={layout}
+      onDecide={onDecide}
+      workspaceValue={workspaceValue}
+    />,
+  );
   return { ...view, onDecide };
 }
 
 describe("review workspace", () => {
+  it.each([
+    {
+      scenario: "no citations",
+      located: 0,
+      total: 0,
+      label: "未提供引用",
+      state: "open",
+    },
+    {
+      scenario: "none located",
+      located: 0,
+      total: 3,
+      label: "均未定位",
+      state: "open",
+    },
+    {
+      scenario: "some located",
+      located: 2,
+      total: 3,
+      label: "部分定位",
+      state: "open",
+    },
+    {
+      scenario: "all located",
+      located: 3,
+      total: 3,
+      label: "全部定位",
+      state: "filled",
+    },
+  ])(
+    "reports $scenario without implying verification",
+    ({ located, total, label, state }) => {
+      const result = workspace();
+      let index = 0;
+      for (const finding of result.findings) {
+        finding.evidence = finding.evidence.filter(() => index++ < total);
+      }
+      index = 0;
+      for (const finding of result.findings) {
+        for (const anchor of finding.evidence) {
+          anchor.status = index++ < located ? "located" : "anchor_mismatch";
+        }
+      }
+      renderWorkspace("split", result);
+      const circuit = screen.getByRole("list", { name: "审查链路" });
+      const citation = within(circuit).getByText(/可定位引用/).closest("li");
+      expect(citation).toHaveAttribute("data-state", state);
+      expect(citation).toHaveTextContent(`${located}/${total}`);
+      expect(citation).toHaveTextContent(label);
+      expect(screen.getByText("尚未核验：引用尚未复核")).toBeInTheDocument();
+    },
+  );
+
+  it("reports absent execution without inventing stages or proof", () => {
+    const result = workspace();
+    result.findings.forEach((finding) => {
+      finding.evidence = [];
+    });
+    result.execution = null;
+    renderWorkspace("split", result);
+    const circuit = screen.getByRole("list", { name: "审查链路" });
+    expect(within(circuit).getByText(/可定位引用/).closest("li")).toHaveAttribute(
+      "data-state",
+      "open",
+    );
+    expect(screen.getByText(/本次工作区没有持久执行快照/)).toBeInTheDocument();
+    expect(
+      screen.queryByText(/legacy_unfrozen|历史记录未冻结/),
+    ).not.toBeInTheDocument();
+  });
+
   it("shows both sources on request and does not treat the model claim as verified", async () => {
     const user = userEvent.setup();
     const { container } = renderWorkspace("split");

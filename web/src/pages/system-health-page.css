@@ -49,13 +49,11 @@
 .health-summary {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 1px;
-  overflow: hidden;
+  gap: 0;
   margin: 0;
   padding: 0;
-  border: 1px solid var(--border-default);
-  border-radius: var(--panel-radius);
-  background: var(--border-default);
+  border-block: 1px solid var(--border-strong);
+  background: transparent;
   list-style: none;
 }
 
@@ -64,13 +62,43 @@
   min-width: 0;
   flex-direction: column;
   gap: var(--space-2);
-  padding: var(--space-4) var(--space-6);
-  background: var(--surface-raised);
+  padding: var(--space-3) var(--space-6);
+  border-left: 1px solid var(--border-default);
+  background: transparent;
+}
+
+.health-summary > li:first-child {
+  padding-left: 0;
+  border-left: 0;
 }
 
 .health-summary-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
   color: var(--text-secondary);
   font-size: 13px;
+}
+
+.health-summary-label::before {
+  width: 7px;
+  height: 7px;
+  flex: 0 0 7px;
+  border-radius: 50%;
+  background: var(--border-control);
+  content: "";
+}
+
+.health-summary > li[data-tone="progress"] .health-summary-label::before {
+  background: var(--state-progress);
+}
+
+.health-summary > li[data-tone="compatible"] .health-summary-label::before {
+  background: var(--state-compatible);
+}
+
+.health-summary > li[data-tone="insufficient"] .health-summary-label::before {
+  background: var(--state-insufficient);
 }
 
 .health-summary strong {
@@ -80,10 +108,6 @@
   font-weight: 500;
   font-variant-numeric: tabular-nums;
   line-height: 1.2;
-}
-
-.health-summary > li[data-state="open"] strong {
-  color: var(--state-insufficient);
 }
 
 .health-workspace {
@@ -256,6 +280,15 @@
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
+  .health-summary > li:nth-child(3n + 1) {
+    padding-left: 0;
+    border-left: 0;
+  }
+
+  .health-summary > li:nth-child(n + 4) {
+    border-top: 1px solid var(--border-default);
+  }
+
   .health-refresh {
     justify-content: flex-start;
   }
@@ -276,12 +309,28 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .health-summary > li:last-child {
-    grid-column: 1 / -1;
+  .health-summary > li {
+    padding: var(--space-3) var(--space-4);
   }
 
-  .health-summary > li {
-    padding: var(--space-4);
+  .health-summary > li:nth-child(odd) {
+    padding-left: 0;
+    border-left: 0;
+  }
+
+  .health-summary > li:nth-child(even) {
+    padding-left: var(--space-4);
+    border-left: 1px solid var(--border-default);
+  }
+
+  .health-summary > li:nth-child(n + 3) {
+    border-top: 1px solid var(--border-default);
+  }
+
+  .health-summary > li:last-child {
+    grid-column: 1 / -1;
+    padding-left: 0;
+    border-left: 0;
   }
 
   .health-card-grid {

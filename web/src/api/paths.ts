@@ -24,7 +24,8 @@ export const paths = {
   caseRelation: (caseId: string, relationId: string) =>
     `/api/cases/${id(caseId)}/relations/${id(relationId)}`,
   knowledge: "/api/knowledge",
-  knowledgeEntry: (knowledgeId: string) => `/api/knowledge/${id(knowledgeId)}`,
+  knowledgeVersion: (knowledgeId: string, versionId: string) =>
+    `/api/knowledge/${id(knowledgeId)}/versions/${id(versionId)}`,
   generations: (caseId: string) => `/api/cases/${id(caseId)}/generations`,
   remediations: (caseId: string) => `/api/cases/${id(caseId)}/remediations`,
   remediationSubmit: (caseId: string, itemId: string) =>

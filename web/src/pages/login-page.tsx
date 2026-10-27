@@ -7,6 +7,7 @@ import { useLogin, useSession } from "../api/queries";
 import type { SessionAudience } from "../api/types";
 import { PageStatus } from "../components/page-status";
 import { CircuitMark } from "../components/circuit-mark";
+import { CompetitionIdentity } from "../components/competition-identity";
 
 export function LoginPage({
   audience = "client",
@@ -63,9 +64,15 @@ export function LoginPage({
   return (
     <main className="login-screen" id="main">
       <aside className="login-rail">
-        <div className="login-rail-brand">
-          <CircuitMark size={34} />
-          <strong>合同智能审计工作台</strong>
+        <div className="login-rail-brand competition-brand">
+          {audience === "client" ? (
+            <CompetitionIdentity />
+          ) : (
+            <>
+              <CircuitMark size={34} />
+              <strong>合同智能审计工作台</strong>
+            </>
+          )}
         </div>
         <p className="login-rail-copy">
           审查输入、解析结果和规则快照按尝试冻结。每条结论都要能回到冻结原文，人工决定只追加、不覆盖。
@@ -78,6 +85,11 @@ export function LoginPage({
         </ol>
       </aside>
       <form className="login-card" onSubmit={onSubmit}>
+        {audience === "client" ? (
+          <div className="login-mobile-brand competition-brand">
+            <CompetitionIdentity />
+          </div>
+        ) : null}
         <h1>{audience === "admin" ? "登录管理工作台" : "登录合同审查"}</h1>
         <p>
           使用组织分配的账号。会话按当前工作区隔离；系统不在这里创建用户，也不会显示模型密钥。

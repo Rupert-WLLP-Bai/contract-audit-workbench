@@ -1,4 +1,5 @@
 import {
+  act,
   cleanup,
   fireEvent,
   screen,
@@ -8,9 +9,10 @@ import {
 import userEvent from "@testing-library/user-event";
 import { chooseOption, renderWithAntd as render } from "../test/antd";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { MemoryRouter, Route, Routes } from "react-router";
+import { createMemoryRouter, RouterProvider } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { setSessionIdentity } from "../api/http";
+import { queryKeys } from "../api/queries";
 import type {
   KnowledgeInput,
   WorkbenchDocument,
@@ -25,6 +27,9 @@ import { WorkbenchModulePage } from "./workbench-module-page";
 
 const at = "2026-10-21T06:00:00Z";
 const later = "2026-10-21T07:00:00Z";
+const policyV1 = "1".repeat(64);
+const policyV2 = "2".repeat(64);
+const referenceVersion = "3".repeat(64);
 const clients: QueryClient[] = [];
 type User = ReturnType<typeof userEvent.setup>;
 
@@ -220,6 +225,7 @@ function snapshot(): WorkbenchSnapshot {
     knowledge: [
       {
         id: "knowledge-policy",
+        version_id: policyV2,
         title: "采购安全制度",
         version: "2.0.0",
         body: "签约前必须完成安全性评估。SPECIAL-CLAUSE 必须留存。",
@@ -230,6 +236,7 @@ function snapshot(): WorkbenchSnapshot {
       },
       {
         id: "knowledge-reference",
+        version_id: referenceVersion,
         title: "外部参考资料",
         version: "2026-10",
         body: "供应商应提供资质材料。",
@@ -461,6 +468,8 @@ class WorkbenchService {
   requests: { key: string; body: unknown }[] = [];
   failures = new Map<string, { status: number; message: string }[]>();
   taskVersions = new Map<string, number>();
+  knowledgeResponses = new Map<string, unknown>();
+  pendingKnowledge = new Map<string, Promise<Response>>();
 
   fail(key: string, status: number, message: string) {
     this.failures.set(key, [
@@ -514,6 +523,21 @@ class WorkbenchService {
     const parts = new URL(path, "http://workbench.test").pathname
       .split("/")
       .map(decodeURIComponent);
+    if (
+      method === "GET" &&
+      parts[2] === "knowledge" &&
+      parts[4] === "versions" &&
+      parts.length === 6
+    ) {
+      const pending = this.pendingKnowledge.get(key);
+      if (pending) return pending;
+      if (this.knowledgeResponses.has(key))
+        return json(this.knowledgeResponses.get(key));
+      const item = this.snapshot.knowledge.find(
+        (entry) => entry.id === parts[3] && entry.version_id === parts[5],
+      );
+      return item ? json(item) : json({ error: "知识版本不存在" }, 404);
+    }
     if (method === "POST" && parts[2] === "cases" && parts[4] === "tasks") {
       const submitted = body as WorkbenchTaskInput;
       if (
@@ -568,11 +592,18 @@ class WorkbenchService {
         !submitted.body.trim()
       )
         return json({ error: "标题、版本与全文不能为空" }, 422);
-      if (this.snapshot.knowledge.some((item) => item.id === submitted.id))
+      if (
+        this.snapshot.knowledge.some(
+          (item) => item.id === submitted.id && item.version === submitted.version,
+        )
+      )
         return json({ error: "知识条目 ID 已存在" }, 409);
       const created = {
         ...submitted,
         id: submitted.id ?? "knowledge-server-generated",
+        version_id: (this.snapshot.knowledge.length + 16)
+          .toString(16)
+          .padStart(64, "0"),
         created_by: this.actorId,
         created_at: later,
       };
@@ -583,25 +614,47 @@ class WorkbenchService {
   };
 }
 
-function open(module: string, service = new WorkbenchService()) {
+function addPolicyV1(service: WorkbenchService) {
+  const current = service.snapshot.knowledge.find(
+    (entry) => entry.version_id === policyV2,
+  );
+  if (!current) throw new Error("policy fixture is missing");
+  service.snapshot.knowledge.push({
+    ...current,
+    version_id: policyV1,
+    version: "1.0.0",
+    body: "旧版本限定：签约前核实供应商资质。",
+  });
+}
+
+function open(
+  module: string,
+  service = new WorkbenchService(),
+  search = "",
+) {
   vi.stubGlobal("fetch", vi.fn(service.handle));
   const client = new QueryClient({
     defaultOptions: {
-      queries: { retry: false, gcTime: 0 },
+      queries: { retry: false, gcTime: 300_000 },
       mutations: { retry: false },
     },
   });
   clients.push(client);
+  const router = createMemoryRouter(
+    [
+      {
+        path: "/workbench/:module",
+        element: <WorkbenchModulePage />,
+      },
+    ],
+    { initialEntries: [`/workbench/${module}${search}`] },
+  );
   const view = render(
     <QueryClientProvider client={client}>
-      <MemoryRouter initialEntries={[`/workbench/${module}`]}>
-        <Routes>
-          <Route path="/workbench/:module" element={<WorkbenchModulePage />} />
-        </Routes>
-      </MemoryRouter>
+      <RouterProvider router={router} />
     </QueryClientProvider>,
   );
-  return { ...view, service, user: userEvent.setup() };
+  return { ...view, service, router, client, user: userEvent.setup() };
 }
 
 async function list(title: string) {
@@ -911,10 +964,224 @@ describe("workbench tasks", () => {
 });
 
 describe("workbench knowledge", () => {
+  it("selects exact versions through deep links, history and refresh", async () => {
+    const service = new WorkbenchService();
+    addPolicyV1(service);
+    const { user, router, unmount } = open(
+      "knowledge",
+      service,
+      `?keep=one&version=${policyV1}`,
+    );
+    const rows = await list("知识库");
+    const oldVersion = rows.getByRole("row", { name: /采购安全制度.*1\.0\.0/ });
+    const newVersion = rows.getByRole("row", { name: /采购安全制度.*2\.0\.0/ });
+    expect(within(oldVersion).getByRole("radio")).toBeChecked();
+    expect(within(newVersion).getByRole("radio")).not.toBeChecked();
+    expect(await details().findByText(/旧版本限定/)).toBeInTheDocument();
+    expectField("版本", "1.0.0");
+
+    await user.click(within(newVersion).getByRole("button", { name: /采购安全制度/ }));
+    expect(details().queryByText(/旧版本限定/)).not.toBeInTheDocument();
+    expect(await details().findByText(/SPECIAL-CLAUSE/)).toBeInTheDocument();
+    expectField("版本", "2.0.0");
+    expect(within(newVersion).getByRole("radio")).toBeChecked();
+    expect(new URLSearchParams(router.state.location.search).get("version")).toBe(policyV2);
+    expect(new URLSearchParams(router.state.location.search).get("keep")).toBe("one");
+    await user.click(within(newVersion).getByRole("button", { name: /采购安全制度/ }));
+
+    await act(async () => { await router.navigate(-1); });
+    expect(await details().findByText(/旧版本限定/)).toBeInTheDocument();
+    expect(within(oldVersion).getByRole("radio")).toBeChecked();
+    await act(async () => { await router.navigate(1); });
+    expect(await details().findByText(/SPECIAL-CLAUSE/)).toBeInTheDocument();
+    expect(within(newVersion).getByRole("radio")).toBeChecked();
+
+    const search = router.state.location.search;
+    unmount();
+    router.dispose();
+    const reopened = open("knowledge", service, search);
+    await list("知识库");
+    expect(await details().findByText(/SPECIAL-CLAUSE/)).toBeInTheDocument();
+    expectField("版本", "2.0.0");
+    await selectRecord(reopened.user, /采购安全制度.*1\.0\.0/);
+    expect(await details().findByText(/旧版本限定/)).toBeInTheDocument();
+    expect(new URLSearchParams(reopened.router.state.location.search).get("version")).toBe(policyV1);
+    expect(service.requests.map((item) => item.key)).toEqual(
+      expect.arrayContaining([
+        `GET /api/knowledge/knowledge-policy/versions/${policyV1}`,
+        `GET /api/knowledge/knowledge-policy/versions/${policyV2}`,
+      ]),
+    );
+  });
+
+  it("keeps an explicit selection when filters temporarily hide it", async () => {
+    const service = new WorkbenchService();
+    addPolicyV1(service);
+    const { user, router } = open("knowledge", service, `?version=${policyV1}`);
+    const rows = await list("知识库");
+    expect(await details().findByText(/旧版本限定/)).toBeInTheDocument();
+
+    await user.type(screen.getByRole("searchbox"), "special-clause");
+    const visible = rows.getByRole("row", { name: /采购安全制度.*2\.0\.0/ });
+    expect(within(visible).getByRole("radio")).not.toBeChecked();
+    expect(details().getByText("指定的知识版本不存在或未包含在当前筛选中。"))
+      .toBeInTheDocument();
+    expect(details().queryByText(/SPECIAL-CLAUSE|旧版本限定/)).not.toBeInTheDocument();
+    expect(new URLSearchParams(router.state.location.search).get("version")).toBe(policyV1);
+    await user.click(within(visible).getByRole("button", { name: /采购安全制度/ }));
+    expect(await details().findByText(/SPECIAL-CLAUSE/)).toBeInTheDocument();
+    expect(new URLSearchParams(router.state.location.search).get("version")).toBe(policyV2);
+    await act(async () => { await router.navigate(-1); });
+    expect(details().getByText("指定的知识版本不存在或未包含在当前筛选中。"))
+      .toBeInTheDocument();
+    expect(details().queryByText(/SPECIAL-CLAUSE|旧版本限定/)).not.toBeInTheDocument();
+
+    await user.clear(screen.getByRole("searchbox"));
+    expect(await details().findByText(/旧版本限定/)).toBeInTheDocument();
+    await category(user, "知识库", "检索测试");
+    expect(details().queryByRole("heading")).not.toBeInTheDocument();
+    await user.type(screen.getByRole("searchbox"), "special-clause");
+    expect(details().queryByText(/SPECIAL-CLAUSE|旧版本限定/)).not.toBeInTheDocument();
+    expect(new URLSearchParams(router.state.location.search).get("version")).toBe(policyV1);
+    await user.clear(screen.getByRole("searchbox"));
+    await category(user, "知识库", "文档库");
+    expect(await details().findByText(/旧版本限定/)).toBeInTheDocument();
+  });
+
+  it("does not substitute another version after the selected one leaves the refreshed snapshot", async () => {
+    const service = new WorkbenchService();
+    addPolicyV1(service);
+    const { client, router } = open("knowledge", service, `?version=${policyV1}`);
+    const rows = await list("知识库");
+    expect(await details().findByText(/旧版本限定/)).toBeInTheDocument();
+    service.snapshot.knowledge = service.snapshot.knowledge.filter(
+      (entry) => entry.version_id !== policyV1,
+    );
+    await act(async () => {
+      await client.refetchQueries({ queryKey: queryKeys.workbench("week") });
+    });
+    await waitFor(() => expect(details().getByText("指定的知识版本不存在或未包含在当前筛选中。"))
+      .toBeInTheDocument());
+    expect(rows.getByRole("row", { name: /采购安全制度.*2\.0\.0/ })).toBeInTheDocument();
+    expect(details().queryByText(/SPECIAL-CLAUSE|旧版本限定/)).not.toBeInTheDocument();
+    expect(new URLSearchParams(router.state.location.search).get("version")).toBe(policyV1);
+  });
+
+  it.each(["unknown-version", ""])(
+    "does not fall back when the requested version is absent (%s)",
+    async (version) => {
+      const service = new WorkbenchService();
+      const { router } = open("knowledge", service, `?version=${version}`);
+      const rows = await list("知识库");
+      for (const radio of rows.getAllByRole("radio")) expect(radio).not.toBeChecked();
+      expect(details().getByText("指定的知识版本不存在或未包含在当前筛选中。"))
+        .toBeInTheDocument();
+      expect(details().queryByText(/SPECIAL-CLAUSE|供应商应提供/)).not.toBeInTheDocument();
+      expect(new URLSearchParams(router.state.location.search).get("version")).toBe(version);
+      expect(service.requests.some((item) => item.key.includes("/versions/"))).toBe(false);
+    },
+  );
+
+  it("hides the previous body while the selected exact version is loading", async () => {
+    const service = new WorkbenchService();
+    addPolicyV1(service);
+    const oldVersion = service.snapshot.knowledge.find((item) => item.version_id === policyV1);
+    if (!oldVersion) throw new Error("old policy fixture is missing");
+    const pending = Promise.withResolvers<Response>();
+    service.pendingKnowledge.set(
+      `GET /api/knowledge/knowledge-policy/versions/${policyV1}`,
+      pending.promise,
+    );
+    const { user, router } = open("knowledge", service);
+    const rows = await list("知识库");
+    expect(router.state.location.search).toBe("");
+    expect(
+      within(rows.getByRole("row", { name: /采购安全制度.*2\.0\.0/ }))
+        .getByRole("radio"),
+    ).toBeChecked();
+    expect(await details().findByText(/SPECIAL-CLAUSE/)).toBeInTheDocument();
+    await selectRecord(user, /采购安全制度.*1\.0\.0/);
+    expect(details().getByText("正在加载指定知识版本。")).toBeInTheDocument();
+    expect(details().queryByText(/SPECIAL-CLAUSE|旧版本限定/)).not.toBeInTheDocument();
+    await act(async () => { pending.resolve(json(oldVersion)); });
+    expect(await details().findByText(/旧版本限定/)).toBeInTheDocument();
+  });
+
+  it("keeps the selected version when an earlier request resolves late", async () => {
+    const service = new WorkbenchService();
+    addPolicyV1(service);
+    const oldVersion = service.snapshot.knowledge.find(
+      (item) => item.version_id === policyV1,
+    );
+    if (!oldVersion) throw new Error("old policy fixture is missing");
+    const key = `GET /api/knowledge/knowledge-policy/versions/${policyV1}`;
+    const pending = Promise.withResolvers<Response>();
+    service.pendingKnowledge.set(key, pending.promise);
+    const { user } = open("knowledge", service, `?version=${policyV1}`);
+    await list("知识库");
+    await waitFor(() =>
+      expect(service.requests.some((item) => item.key === key)).toBe(true),
+    );
+    await selectRecord(user, /采购安全制度.*2\.0\.0/);
+    expect(await details().findByText(/SPECIAL-CLAUSE/)).toBeInTheDocument();
+    await act(async () => {
+      pending.resolve(json(oldVersion));
+    });
+    expect(details().getByText(/SPECIAL-CLAUSE/)).toBeInTheDocument();
+    expect(details().queryByText(/旧版本限定/)).not.toBeInTheDocument();
+    expectField("版本", "2.0.0");
+  });
+
+  it.each(["wrong version", "wrong knowledge", "wrong version label", "missing response", "not found"])(
+    "does not display a cached or unrelated body for %s",
+    async (scenario) => {
+      const service = new WorkbenchService();
+      addPolicyV1(service);
+      const oldVersion = service.snapshot.knowledge.find((item) => item.version_id === policyV1);
+      if (!oldVersion) throw new Error("old policy fixture is missing");
+      const key = `GET /api/knowledge/knowledge-policy/versions/${policyV1}`;
+      if (scenario === "not found") service.fail(key, 404, "知识版本不存在");
+      else if (scenario === "missing response") service.knowledgeResponses.set(key, null);
+      else service.knowledgeResponses.set(key, {
+        ...oldVersion,
+        ...(scenario === "wrong version"
+          ? { version_id: policyV2 }
+          : scenario === "wrong knowledge"
+            ? { id: "other-knowledge" }
+            : { version: "2.0.0" }),
+        body: "不应展示的错误版本正文",
+      });
+      const { user } = open("knowledge", service);
+      await list("知识库");
+      expect(await details().findByText(/SPECIAL-CLAUSE/)).toBeInTheDocument();
+      await selectRecord(user, /采购安全制度.*1\.0\.0/);
+      expect(await details().findByRole("alert")).toHaveTextContent(
+        scenario === "wrong version label"
+          ? "知识版本详情与所选版本不一致"
+          : "知识版本详情没有加载",
+      );
+      expect(details().queryByText(/SPECIAL-CLAUSE|旧版本限定|不应展示/)).not.toBeInTheDocument();
+    },
+  );
+
+  it("hides a previously cached exact body if its refresh fails", async () => {
+    const service = new WorkbenchService();
+    addPolicyV1(service);
+    const { user } = open("knowledge", service);
+    await list("知识库");
+    expect(await details().findByText(/SPECIAL-CLAUSE/)).toBeInTheDocument();
+    await selectRecord(user, /采购安全制度.*1\.0\.0/);
+    expect(await details().findByText(/旧版本限定/)).toBeInTheDocument();
+    service.fail(`GET /api/knowledge/knowledge-policy/versions/${policyV2}`, 404, "知识版本不存在");
+    await selectRecord(user, /采购安全制度.*2\.0\.0/);
+    expect(await details().findByRole("alert")).toHaveTextContent("知识版本不存在");
+    expect(details().queryByText(/SPECIAL-CLAUSE|旧版本限定/)).not.toBeInTheDocument();
+  });
+
   it("searches saved body text only after a retrieval query and preserves source and version details", async () => {
     const { user } = open("knowledge");
     const rows = await list("知识库");
-    expectField("维护人", "审查员甲");
+    await waitFor(() => expectField("维护人", "审查员甲"));
     expectField("生效时间", "未报告");
     expect(details().getByText(/SPECIAL-CLAUSE 必须留存/)).toBeInTheDocument();
     await category(user, "知识库", "知识条目");
@@ -934,7 +1201,7 @@ describe("workbench knowledge", () => {
       rows.queryByRole("button", { name: /外部参考资料/ }),
     ).not.toBeInTheDocument();
     await detailTab(user, "适用范围");
-    expectField("来源类型", "synthetic_policy");
+    await waitFor(() => expectField("来源类型", "synthetic_policy"));
     expect(
       details().getByText("快照没有返回额外适用范围字段。"),
     ).toBeInTheDocument();
@@ -942,7 +1209,7 @@ describe("workbench knowledge", () => {
     await category(user, "知识库", "文档库");
     await selectRecord(user, /外部参考资料/);
     await detailTab(user, "文档内容");
-    expectField("维护人", "former-member");
+    await waitFor(() => expectField("维护人", "former-member"));
     expectField("生效时间", at);
     await detailTab(user, "版本记录");
     expectField("当前版本", "2026-10");
@@ -981,7 +1248,7 @@ describe("workbench knowledge", () => {
       expect(screen.queryByLabelText("全文")).not.toBeInTheDocument(),
     );
     await selectRecord(user, /新签约依据/);
-    expectField("知识条目", "knowledge/reference-3");
+    await waitFor(() => expectField("知识条目", "knowledge/reference-3"));
     expectField("版本", "3.1.0");
     expectField("来源", "reference");
     expect(
@@ -1027,7 +1294,7 @@ describe("workbench knowledge", () => {
     );
     expect(screen.getByLabelText("全文")).toHaveValue("   保存真实制度正文");
     await user.clear(screen.getByLabelText("版本", { exact: true }));
-    await user.type(screen.getByLabelText("版本", { exact: true }), "1.0.0");
+    await user.type(screen.getByLabelText("版本", { exact: true }), "2.0.0");
     await user.click(screen.getByRole("button", { name: "保存知识条目" }));
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "知识条目 ID 已存在",
@@ -1036,12 +1303,14 @@ describe("workbench knowledge", () => {
       "knowledge-policy",
     );
     await user.clear(screen.getByLabelText("稳定 ID（可选）"));
+    await user.clear(screen.getByLabelText("版本", { exact: true }));
+    await user.type(screen.getByLabelText("版本", { exact: true }), "1.0.0");
     await user.click(screen.getByRole("button", { name: "保存知识条目" }));
     await waitFor(() =>
       expect(screen.queryByLabelText("全文")).not.toBeInTheDocument(),
     );
     await selectRecord(user, /新增合成制度/);
-    expectField("知识条目", "knowledge-server-generated");
+    await waitFor(() => expectField("知识条目", "knowledge-server-generated"));
     expectField("来源", "synthetic_policy");
     expectField("生效时间", "未报告");
     expect(
@@ -1294,8 +1563,15 @@ describe("workbench execution and platform projections", () => {
     expect(
       details().getByRole("link", { name: "打开完整执行工作区" }),
     ).toHaveAttribute("href", "/cases/case%2Falpha/reviews/run%2Fcurrent");
-    await category(user, "执行轨迹", "模型调用");
-    expect(screen.getByRole("status")).toHaveTextContent("运行级统计");
+    expect(
+      screen.getByRole("heading", { name: "运行记录" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("tab", { name: "模型调用" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("tab", { name: "规则执行" }),
+    ).not.toBeInTheDocument();
     await detailTab(user, "调用时间轴");
     expectField("实际调用数", "7");
     expectField("用量未知调用数", "2");
@@ -1308,10 +1584,6 @@ describe("workbench execution and platform projections", () => {
     expectField("输出 tokens", "30");
     expectField("总 tokens", "150");
     expectField("成本", "未报告");
-    await category(user, "执行轨迹", "规则执行");
-    expect(screen.getByRole("status")).toHaveTextContent(
-      "规则执行结果记录在具体运行中",
-    );
     await user.type(screen.getByRole("searchbox"), " FAILED ");
     expect(rows.getAllByRole("button")).toHaveLength(1);
     expectField("输入 tokens", "未报告");
