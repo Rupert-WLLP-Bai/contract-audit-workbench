@@ -114,6 +114,7 @@ type DetailPanel = {
 };
 type ModuleRecord = {
   id: string;
+  reference?: string;
   knowledgeId?: string;
   knowledgeVersion?: string;
   title: string;
@@ -421,39 +422,32 @@ function buildRecords(
       const panels: Record<string, DetailPanel> = {
         报告预览: panel(
           [
-            field("报告 ID", item.id),
             field("案件", item.case_title),
+            field("报告版本", item.version),
             field("生成时间", item.created_at),
           ],
           "报告内容从服务端冻结快照读取。",
           links,
         ),
         发现与决定: panel(
-          [field("运行 ID", item.run_id), field("尝试 ID", item.attempt_id)],
+          [],
           "发现与决定以冻结报告正文为准；请读取冻结 HTML 或 JSON。",
           links,
         ),
-        版本与来源: panel([
-          field("报告版本", item.version),
-          field("输入摘要", item.input_hash),
-          field("输出摘要", item.output_hash),
-          field("决定快照摘要", item.decision_snapshot_hash),
-          field("报告摘要", item.digest),
-        ]),
-        导出记录: panel(
+        版本与来源: panel(
           [
-            field("生成时间", item.created_at),
-            field("运行 ID", item.run_id),
-            field("尝试 ID", item.attempt_id),
+            field("报告版本", item.version),
+            field("冻结状态", "已冻结"),
           ],
-          null,
-          links,
+          "完整性摘要保留在冻结报告正文中，不在业务视图展示。",
         ),
+        导出记录: panel([field("生成时间", item.created_at)], null, links),
       };
       return make({
         id: item.id,
+        reference: `审查报告 v${item.version}`,
         title: `${item.case_title}，审查报告 v${item.version}`,
-        subtitle: item.case_id,
+        subtitle: item.case_title,
         status: "已冻结",
         updatedAt: item.created_at,
         caseId: item.case_id,
@@ -1507,7 +1501,11 @@ function WorkbenchModule({ module }: { module: WorkbenchModuleKey }) {
             <>
               <header className="module-detail-head">
                 <div>
-                  <p>{selected.knowledgeId ?? selected.id}</p>
+                  <p>
+                    {selected.reference ??
+                      selected.knowledgeId ??
+                      selected.id}
+                  </p>
                   <h2>{selected.title}</h2>
                   <span>{selected.subtitle}</span>
                 </div>

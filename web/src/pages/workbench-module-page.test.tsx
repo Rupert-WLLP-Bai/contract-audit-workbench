@@ -1426,11 +1426,15 @@ describe("workbench remediation and frozen artifacts", () => {
     ).toBeInTheDocument();
   });
 
-  it("compares only cases with multiple reports and exposes each frozen version and digest", async () => {
+  it("shows frozen report versions without exposing raw IDs or digests in the business view", async () => {
     const { user } = open("reports");
     const rows = await list("报告中心");
     expect(rows.getAllByRole("button")).toHaveLength(3);
-    expectField("报告 ID", "report/frozen-2");
+    expect(details().queryByText("报告 ID")).not.toBeInTheDocument();
+    expect(details().queryByText("report/frozen-2")).not.toBeInTheDocument();
+    expect(details().getByText("审查报告 v2")).toBeInTheDocument();
+    expectField("案件", "专线采购案件");
+    expectField("报告版本", "2");
     const frozen = details().getByRole("link", { name: "打开冻结报告" });
     expect(frozen).toHaveAttribute(
       "href",
@@ -1445,28 +1449,38 @@ describe("workbench remediation and frozen artifacts", () => {
       "/api/cases/case%2Falpha/reports/report%2Ffrozen-2?format=json",
     );
     await detailTab(user, "发现与决定");
-    expectField("运行 ID", "run/report-2");
-    expectField("尝试 ID", "attempt/report-2");
+    expect(details().getByText(/冻结报告正文为准/)).toBeInTheDocument();
+    expect(details().queryByText("run/report-2")).not.toBeInTheDocument();
+    expect(details().queryByText("attempt/report-2")).not.toBeInTheDocument();
     await detailTab(user, "版本与来源");
     expectField("报告版本", "2");
-    expectField("输入摘要", "input-v2-sha256");
-    expectField("输出摘要", "output-v2-sha256");
-    expectField("决定快照摘要", "decision-v2-sha256");
-    expectField("报告摘要", "report-v2-sha256");
+    expectField("冻结状态", "已冻结");
+    for (const label of ["输入摘要", "输出摘要", "决定快照摘要", "报告摘要"]) {
+      expect(details().queryByText(label)).not.toBeInTheDocument();
+    }
+    for (const digest of [
+      "input-v2-sha256",
+      "output-v2-sha256",
+      "decision-v2-sha256",
+      "report-v2-sha256",
+    ]) {
+      expect(details().queryByText(digest)).not.toBeInTheDocument();
+    }
     await category(user, "报告中心", "版本对比");
     expect(rows.getAllByRole("button")).toHaveLength(2);
     expect(
       rows.queryByRole("button", { name: /独立单版案件/ }),
     ).not.toBeInTheDocument();
-    await user.type(screen.getByRole("searchbox"), "  INPUT-V1-SHA256  ");
+    await user.type(screen.getByRole("searchbox"), "  审查报告 V1  ");
     expect(rows.getAllByRole("button")).toHaveLength(1);
     expectField("报告版本", "1");
-    expectField("报告摘要", "report-v1-sha256");
+    expect(details().queryByText("report-v1-sha256")).not.toBeInTheDocument();
     await user.clear(screen.getByRole("searchbox"));
     await category(user, "报告中心", "导出记录");
     await selectRecord(user, /独立单版案件/);
     await detailTab(user, "导出记录");
-    expectField("运行 ID", "run-single");
+    expect(details().queryByText("run-single")).not.toBeInTheDocument();
+    expect(details().queryByText("attempt-single")).not.toBeInTheDocument();
     expect(
       details().getByRole("link", { name: "读取冻结 HTML" }),
     ).toHaveAttribute(
