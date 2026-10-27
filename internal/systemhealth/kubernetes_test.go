@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -87,9 +88,12 @@ func TestKubernetesReadsRotatedServiceAccountTokenPerRequest(t *testing.T) {
 	if err := os.WriteFile(tokenPath, []byte("token-one"), 0600); err != nil {
 		t.Fatal(err)
 	}
+	var mu sync.Mutex
 	var observed []string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
 		observed = append(observed, r.Header.Get("Authorization"))
+		mu.Unlock()
 		_, _ = w.Write([]byte(`{"items":[]}`))
 	}))
 	defer server.Close()
@@ -100,14 +104,17 @@ func TestKubernetesReadsRotatedServiceAccountTokenPerRequest(t *testing.T) {
 		t.Fatal(err)
 	}
 	monitor.Snapshot(context.Background())
+	mu.Lock()
+	captured := append([]string(nil), observed...)
+	mu.Unlock()
 	counts := map[string]int{}
-	for _, header := range observed {
+	for _, header := range captured {
 		counts[header]++
 	}
 	// Each snapshot reads nodes, pods and deployments; the requests are
 	// concurrent, so order is not the contract but the token generation is.
-	if len(observed) != 6 || counts["Bearer token-one"] != 3 || counts["Bearer token-two"] != 3 {
-		t.Fatalf("API requests did not use the current projected token: %v", observed)
+	if len(captured) != 6 || counts["Bearer token-one"] != 3 || counts["Bearer token-two"] != 3 {
+		t.Fatalf("API requests did not use the current projected token: %v", captured)
 	}
 }
 

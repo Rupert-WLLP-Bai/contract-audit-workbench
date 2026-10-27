@@ -18,7 +18,11 @@ import (
 func main() {
 	kubernetes := systemhealth.KubernetesConfigFromEnv()
 	project := strings.TrimSpace(os.Getenv("SYSTEM_HEALTH_PROJECT"))
-	config := systemhealth.Config{Kubernetes: kubernetes, DatabaseTarget: strings.TrimSpace(os.Getenv("SYSTEM_HEALTH_DATABASE_URL")), ModelName: os.Getenv("LLM_MODEL"), ModelEndpoint: os.Getenv("LLM_BASE_URL"), OCRName: os.Getenv("OCR_MODEL"), MinerUURL: os.Getenv("MINERU_URL")}
+	expected, err := systemhealth.ExpectedReplicasFromEnv()
+	if err != nil {
+		log.Fatal(err)
+	}
+	config := systemhealth.Config{Kubernetes: kubernetes, DatabaseTarget: strings.TrimSpace(os.Getenv("SYSTEM_HEALTH_DATABASE_URL")), ModelName: os.Getenv("LLM_MODEL"), ModelEndpoint: os.Getenv("LLM_BASE_URL"), OCRName: os.Getenv("OCR_MODEL"), MinerUURL: os.Getenv("MINERU_URL"), ExpectedReplicas: expected}
 	if kubernetes == nil {
 		if project == "" {
 			log.Fatal("SYSTEM_HEALTH_PROJECT must select one Compose project outside Kubernetes")
