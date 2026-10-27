@@ -72,7 +72,11 @@ func TestPaymentAmountAndSnapshot(t *testing.T) {
 		t.Fatal("compatible warranty became a finding")
 	}
 
-	snap, _ := ws["snapshot"].(map[string]any)
+	status, diagnostics := api.do(t, http.MethodGet, "/api/cases/"+caseID+"/reviews/"+runID+"/diagnostics", nil)
+	if status != http.StatusOK || diagnostics["case_id"] != caseID || diagnostics["run_id"] != runID {
+		t.Fatalf("diagnostics %d %v", status, diagnostics)
+	}
+	snap, _ := diagnostics["snapshot"].(map[string]any)
 	if snap == nil {
 		t.Fatal("missing snapshot")
 	}
@@ -92,7 +96,7 @@ func TestPaymentAmountAndSnapshot(t *testing.T) {
 	if snap["comparator_ref"] != engine.ComparatorRef || snap["model_ref"] != "script-model" {
 		t.Fatalf("refs %+v", snap)
 	}
-	events := checkedAuditEvents(t, ws["audit_events"])
+	events := checkedAuditEvents(t, diagnostics["audit_events"])
 	if len(events) == 0 {
 		t.Fatal("review creation did not append an audit root")
 	}
@@ -109,7 +113,11 @@ func TestPaymentAmountAndSnapshot(t *testing.T) {
 		t.Fatalf("decide %d", status)
 	}
 	_, ws = api.do(t, http.MethodGet, "/api/cases/"+caseID+"/reviews/"+runID, nil)
-	decision := requireAuditAppend(t, events, checkedAuditEvents(t, ws["audit_events"]), "human_decision")
+	status, diagnostics = api.do(t, http.MethodGet, "/api/cases/"+caseID+"/reviews/"+runID+"/diagnostics", nil)
+	if status != http.StatusOK {
+		t.Fatalf("decision diagnostics %d %v", status, diagnostics)
+	}
+	decision := requireAuditAppend(t, events, checkedAuditEvents(t, diagnostics["audit_events"]), "human_decision")
 	if decision.Actor != "demo-admin" || decision.RunID != runID {
 		t.Fatalf("decision audit %+v", decision)
 	}
@@ -129,16 +137,25 @@ func TestSnapshotIsStableAcrossRetry(t *testing.T) {
 	api.upload(t, caseID, "draft_contract", "draft.txt", "text/plain", []byte("拟签合同约定质保24个月。"))
 	_, review := api.do(t, http.MethodPost, "/api/cases/"+caseID+"/reviews", map[string]any{})
 	runID := review["id"].(string)
-	_, before := api.do(t, http.MethodGet, "/api/cases/"+caseID+"/reviews/"+runID, nil)
+	status, before := api.do(t, http.MethodGet, "/api/cases/"+caseID+"/reviews/"+runID+"/diagnostics", nil)
+	if status != http.StatusOK || before["case_id"] != caseID || before["run_id"] != runID {
+		t.Fatalf("initial diagnostics %d %v", status, before)
+	}
 	snap := before["snapshot"].(map[string]any)
 	hash := snap["rule_set_hash"]
+	if hash != engine.RuleSetHash() || snap["playbook_hash"] != engine.PlaybookHash() || snap["comparator_ref"] != engine.ComparatorRef {
+		t.Fatalf("initial snapshot identity %+v", snap)
+	}
 	ids := snap["document_ids"]
 
 	status, body := api.do(t, http.MethodPost, "/api/cases/"+caseID+"/reviews/"+runID+"/retry", map[string]any{})
 	if status != http.StatusOK {
 		t.Fatalf("retry %d %v", status, body)
 	}
-	_, after := api.do(t, http.MethodGet, "/api/cases/"+caseID+"/reviews/"+runID, nil)
+	status, after := api.do(t, http.MethodGet, "/api/cases/"+caseID+"/reviews/"+runID+"/diagnostics", nil)
+	if status != http.StatusOK || after["case_id"] != caseID || after["run_id"] != runID {
+		t.Fatalf("retry diagnostics %d %v", status, after)
+	}
 	again := after["snapshot"].(map[string]any)
 	if again["rule_set_hash"] != hash || again["playbook_hash"] != snap["playbook_hash"] || again["comparator_ref"] != snap["comparator_ref"] {
 		t.Fatalf("snapshot changed %+v", again)

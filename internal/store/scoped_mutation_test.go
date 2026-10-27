@@ -247,6 +247,8 @@ func newDurableTelecomFixture(t *testing.T) (durableFixture, bool) {
 	if !found {
 		t.Fatal("demo admin missing")
 	}
+	pack := publishSyntheticAcceptancePack(t, core, admin)
+	publishSyntheticAcceptancePolicy(t, core, admin, pack)
 	caseID, err := core.CreateCaseWithBusiness(admin, "隔离的电信报告归档", "service", "ENT", "telecom_dedicated_line")
 	if err != nil {
 		t.Fatalf("core service could not create the telecom case: %v", err)
@@ -260,7 +262,7 @@ func newDurableTelecomFixture(t *testing.T) (durableFixture, bool) {
 	execution := environment.openRole(t, "execution")
 	execution.UseDocumentPreparer(document)
 	execution.UseModels(&frozenOCRModel{})
-	accepted, err := execution.StartReviewAsync(context.Background(), admin, caseID)
+	accepted, err := execution.StartReviewAsyncAt(context.Background(), admin, caseID, acceptanceBusinessTime)
 	if err != nil {
 		t.Fatalf("durable telecom acceptance failed: %v", err)
 	}

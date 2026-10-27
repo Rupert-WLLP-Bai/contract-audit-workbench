@@ -1,7 +1,10 @@
 package httpapi
 
 import (
+	"encoding/json"
+
 	"contractaudit/internal/accounts"
+	"contractaudit/internal/agentflow"
 	"contractaudit/internal/docir"
 	"contractaudit/internal/store"
 )
@@ -115,13 +118,27 @@ func documentJSON(doc store.Interpreted, withText, superseded bool) map[string]a
 	}
 	out := map[string]any{
 		"id": doc.Document.ID, "role": doc.Document.Role, "filename": doc.Document.Filename,
-		"media_type": doc.Document.MediaType, "digest": doc.Document.Digest, "size": doc.Document.Size,
+		"media_type": doc.Document.MediaType, "size": doc.Document.Size,
 		"parse_status": status, "parse_error": parseError, "created_at": doc.Document.CreatedAt,
-		"superseded": superseded, "parsed_document": parsedDocumentJSON(doc.ParsedDocument),
+		"superseded": superseded,
+	}
+	if withText {
+		// The business workspace retains the exact parse identity for evidence
+		// matching, but does not expose the parser's technical metadata.
+		out["parsed_document"] = nil
+		out["parsed_document_id"] = nil
+		if doc.ParsedDocument != nil {
+			out["parsed_document_id"] = doc.ParsedDocument.ID
+		}
+	} else {
+		out["digest"] = doc.Document.Digest
+		out["parsed_document"] = parsedDocumentJSON(doc.ParsedDocument)
 	}
 	if doc.Ready {
 		out["coordinate_space"] = doc.IR.CoordinateSpace
-		out["normalized_text_digest"] = doc.IR.NormalizedDigest
+		if !withText {
+			out["normalized_text_digest"] = doc.IR.NormalizedDigest
+		}
 	}
 	if !withText {
 		return out
@@ -193,9 +210,19 @@ func workspaceJSON(st *store.Store, ws store.Workspace) map[string]any {
 	for i, finding := range ws.Findings {
 		findings[i] = findingJSON(st, finding, byID, markOf[finding.ID])
 	}
+	state := ws.View.State
+	actualState := ws.View.Run.State
+	if ws.Execution != nil && ws.Execution.Attempt != nil {
+		actualState = ws.Execution.Attempt.State
+	}
+	// Only a recorded completed run or attempt can be displayed as completed
+	// or as awaiting a human decision. Missing events do not imply success.
+	if actualState != "completed" && actualState != "awaiting_human" {
+		state = actualState
+	}
 	run := map[string]any{
-		"id": ws.View.Run.ID, "state": ws.View.State, "updated_at": ws.View.Run.UpdatedAt,
-		"case_id": ws.Case.ID, "started_at": ws.View.Run.CreatedAt, "model_ref": nilString(ws.View.Run.ModelRef),
+		"id": ws.View.Run.ID, "state": state, "updated_at": ws.View.Run.UpdatedAt,
+		"case_id": ws.Case.ID, "started_at": ws.View.Run.CreatedAt,
 		"partial_reason": nilString(ws.View.PartialReason), "failure_message": nilString(ws.View.FailureMessage),
 	}
 	evals := make([]any, len(ws.Evaluations))
@@ -218,19 +245,136 @@ func workspaceJSON(st *store.Store, ws store.Workspace) map[string]any {
 			"rule_id": ev.RuleID, "capability_id": ev.CapabilityID, "reason_code": ev.ReasonCode, "fact_ids": factIDs, "object_refs": objectRefs,
 		}
 	}
-	var execution any
+	var attempts, review any
 	if ws.Execution != nil {
-		execution = ws.Execution
+		attempts = businessAttemptsJSON(ws.Execution)
+		review = businessAgentReviewJSON(ws.Execution.AgentReview)
 	}
 	return map[string]any{
 		"run": run, "documents": docs, "findings": findings, "evaluations": evals,
-		"execution":                  execution,
-		"snapshot":                   snapshotJSON(ws.Snapshot),
-		"audit_events":               auditJSON(ws.Audit),
+		"review_attempts": attempts, "agent_review": review,
+		"snapshot":        map[string]any{"document_ids": ws.Snapshot.DocumentIDs},
+		"business_events": businessAuditJSON(ws.Audit),
+		// Older clients require these fields even though the detailed records are
+		// only available from the separately authorized diagnostic endpoint.
+		"execution": nil, "audit_events": []any{},
 		"previous_run_id":            nilString(ws.PreviousRunID),
 		"revision_comparison_reason": nilString(ws.RevisionComparisonReason),
 		"revisions":                  revisionsJSON(ws.Revisions, byID),
 	}
+}
+
+func businessAttemptsJSON(execution *store.Execution) map[string]any {
+	var selected any
+	if execution.Attempt != nil {
+		selected = businessAttemptJSON(*execution.Attempt)
+	}
+	attempts := make([]any, len(execution.Attempts))
+	for i, attempt := range execution.Attempts {
+		attempts[i] = businessAttemptJSON(attempt)
+	}
+	return map[string]any{"attempt": selected, "attempts": attempts}
+}
+
+func businessAttemptJSON(attempt store.Attempt) map[string]any {
+	return map[string]any{
+		"id": attempt.ID, "run_id": attempt.RunID, "ordinal": attempt.Ordinal,
+		"retry_of_attempt_id": attempt.RetryOfAttemptID, "state": attempt.State,
+		"accepted_at": attempt.AcceptedAt, "started_at": attempt.StartedAt, "finished_at": attempt.FinishedAt,
+		"history_kind": attempt.HistoryKind, "parsed_document_ids": attempt.ParsedDocumentIDs,
+	}
+}
+
+// Decode only the business fields. Unknown technical fields in a persisted
+// agent record must never become part of the workspace response.
+func businessAgentReviewJSON(raw json.RawMessage) any {
+	if len(raw) == 0 || string(raw) == "null" {
+		return nil
+	}
+	var review struct {
+		AttemptID        string                       `json:"attempt_id"`
+		Status           string                       `json:"status"`
+		RulePack         *agentflow.RulePackIdentity  `json:"rulepack"`
+		Scope            []agentflow.DomainScope      `json:"scope"`
+		Domains          []agentflow.DomainCoverage   `json:"domains"`
+		Gaps             []agentflow.GapReport        `json:"gaps"`
+		Evidence         []agentflow.VerifiedEvidence `json:"evidence"`
+		UnresolvedGapIDs []string                     `json:"unresolved_gap_ids"`
+	}
+	if err := json.Unmarshal(raw, &review); err != nil {
+		return nil
+	}
+	var rulepack any
+	if review.RulePack != nil {
+		rulepack = map[string]any{"id": review.RulePack.ID, "version": review.RulePack.Version}
+	}
+	var scope []any
+	if review.Scope != nil {
+		scope = make([]any, len(review.Scope))
+		for i, item := range review.Scope {
+			scope[i] = map[string]any{"domain": item.Domain, "capability_ids": item.CapabilityIDs, "source_ids": item.SourceIDs}
+		}
+	}
+	var domains []any
+	if review.Domains != nil {
+		domains = make([]any, len(review.Domains))
+		for i, item := range review.Domains {
+			var capabilities []any
+			if item.Capabilities != nil {
+				capabilities = make([]any, len(item.Capabilities))
+				for j, capability := range item.Capabilities {
+					capabilities[j] = map[string]any{
+						"capability_id": capability.CapabilityID, "mandatory": capability.Mandatory,
+						"status": capability.Status, "relation": capability.Relation, "reason_code": capability.ReasonCode,
+						"evidence_ids": capability.EvidenceIDs, "canonical_evaluation_ids": capability.CanonicalEvaluationIDs,
+					}
+				}
+			}
+			domains[i] = map[string]any{"domain": item.Domain, "status": item.Status, "capabilities": capabilities}
+		}
+	}
+	var gaps []any
+	if review.Gaps != nil {
+		gaps = make([]any, len(review.Gaps))
+		for i, gap := range review.Gaps {
+			gaps[i] = map[string]any{
+				"gap_id": gap.GapID, "domain": gap.Domain, "capability_id": gap.Capability,
+				"mandatory": gap.Mandatory, "status": gap.Status, "reason_code": gap.ReasonCode, "evidence_ids": gap.EvidenceIDs,
+			}
+		}
+	}
+	var evidence []any
+	if review.Evidence != nil {
+		evidence = make([]any, len(review.Evidence))
+		for i, item := range review.Evidence {
+			anchor := item.Anchor
+			evidence[i] = map[string]any{
+				"evidence_id": item.EvidenceID, "semantic_type": item.SemanticType, "value": item.Value,
+				"unit": item.Unit, "currency": item.Currency, "verification": item.Verification,
+				"anchor": map[string]any{
+					"id": anchor.ID, "document_id": anchor.DocumentID, "parsed_document_id": anchor.ParsedDocumentID,
+					"quote": anchor.Quote, "status": anchor.Status, "start": anchor.Start, "end": anchor.End,
+					"reason": anchor.Reason, "page": anchor.Page, "element_id": anchor.ElementID,
+				},
+			}
+		}
+	}
+	return map[string]any{
+		"attempt_id": nilString(review.AttemptID), "status": nilString(review.Status), "rulepack": rulepack,
+		"scope": scope, "domains": domains, "gaps": gaps, "evidence": evidence,
+		"unresolved_gap_ids": review.UnresolvedGapIDs,
+	}
+}
+
+func businessAuditJSON(events []store.AuditRecord) []any {
+	out := make([]any, len(events))
+	for i, event := range events {
+		out[i] = map[string]any{
+			"event_id": event.EventID, "run_id": event.RunID, "actor": event.Actor,
+			"seq": event.Seq, "event_type": event.EventType, "correlation_ids": event.CorrelationIDs,
+		}
+	}
+	return out
 }
 
 func reviewIdentityJSON(ws store.Workspace) map[string]any {
@@ -327,7 +471,7 @@ func anchorJSON(anchor store.Anchor, doc store.Interpreted) map[string]any {
 		"id": anchor.ID, "document_version_id": anchor.DocumentID, "quote": anchor.Quote,
 		"status": anchor.Status, "page": nil, "text_offset": nil, "bbox": nil, "element_id": nil,
 		"mismatch_reason":    nilString(anchor.Reason),
-		"parsed_document_id": nilString(anchor.ParsedDocumentID), "normalized_digest": nilString(anchor.NormalizedDigest),
+		"parsed_document_id": nilString(anchor.ParsedDocumentID),
 	}
 	if anchor.Status != "located" {
 		if anchor.Reason == "" {

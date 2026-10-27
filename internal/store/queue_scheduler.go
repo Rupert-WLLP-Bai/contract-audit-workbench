@@ -50,7 +50,7 @@ func claimScheduledJob(ctx context.Context, tx pgx.Tx, worker string, lease time
 		var claim JobClaim
 		var count, maxClaims int
 		var expired bool
-		err = tx.QueryRow(ctx, `SELECT id,tenant_id,org_id,case_id,run_id,attempt_id,actor_id,kind,claim_count,max_claims,deadline_at,deadline_at<=clock_timestamp()
+		err = tx.QueryRow(ctx, `SELECT id,tenant_id,org_id,case_id,COALESCE(run_id,''),COALESCE(attempt_id,''),actor_id,kind,claim_count,max_claims,deadline_at,deadline_at<=clock_timestamp()
 			FROM worker_jobs WHERE tenant_id=$1 AND
 			((state='queued' AND ready_at<=clock_timestamp()) OR
 			(state='running' AND lease_until<=clock_timestamp() AND (ready_at<=clock_timestamp() OR deadline_at<=clock_timestamp())))

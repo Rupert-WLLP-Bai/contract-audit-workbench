@@ -4,12 +4,14 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"mime/multipart"
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -87,8 +89,12 @@ func TestReviewFlow(t *testing.T) {
 		t.Fatalf("workspace %d %v", status, ws)
 	}
 	run := ws["run"].(map[string]any)
-	if run["state"] != "awaiting_human" || run["model_ref"] != "script-model" {
+	if run["state"] != "awaiting_human" {
 		t.Fatalf("run %+v", run)
+	}
+	diagnostics := api.reviewDiagnostics(t, "/api/cases/"+caseID+"/reviews/"+runID)
+	if snapshot := diagnostics["snapshot"].(map[string]any); snapshot["model_ref"] != "script-model" {
+		t.Fatalf("frozen model reference %+v", snapshot)
 	}
 	findings := ws["findings"].([]any)
 	if len(findings) != 1 {
@@ -171,7 +177,7 @@ func TestReviewFlow(t *testing.T) {
 	if len(history) != 2 {
 		t.Fatalf("history was replaced: %+v", history)
 	}
-	originalAttemptID := ws["execution"].(map[string]any)["attempt"].(map[string]any)["id"].(string)
+	originalAttemptID := ws["review_attempts"].(map[string]any)["attempt"].(map[string]any)["id"].(string)
 	status, retried := api.do(t, http.MethodPost, "/api/cases/"+caseID+"/reviews/"+runID+"/retry", map[string]any{})
 	if status != http.StatusOK || retried["attempt_id"] == originalAttemptID {
 		t.Fatalf("retry did not append a new attempt: %d %v", status, retried)
@@ -385,6 +391,41 @@ func TestOneReadyDocumentCannotStart(t *testing.T) {
 	}
 }
 
+func TestWaitReviewPollsUntilTerminalWithoutBusyWaiting(t *testing.T) {
+	var mu sync.Mutex
+	var requests []time.Time
+	states := []string{"accepted", "running", "completed"}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		index := len(requests)
+		requests = append(requests, time.Now())
+		mu.Unlock()
+		if index >= len(states) {
+			http.Error(w, "unexpected workspace request", http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = fmt.Fprintf(w, `{"run":{"state":%q}}`, states[index])
+	}))
+	defer srv.Close()
+
+	api := &testAPI{base: srv.URL, client: srv.Client()}
+	workspace := api.waitReview(t, "/review")
+	if got := reviewState(workspace); got != "completed" {
+		t.Fatalf("wait returned before the terminal state: %q", got)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if len(requests) != len(states) {
+		t.Fatalf("workspace requests = %d, want %d", len(requests), len(states))
+	}
+	for i := 1; i < len(requests); i++ {
+		if elapsed := requests[i].Sub(requests[i-1]); elapsed < 100*time.Millisecond {
+			t.Fatalf("workspace requests %d and %d were only %s apart", i, i+1, elapsed)
+		}
+	}
+}
+
 type testAPI struct {
 	base   string
 	client *http.Client
@@ -518,22 +559,166 @@ func (a *testAPI) do(t *testing.T, method, path string, payload any) (int, map[s
 	return status, out
 }
 
+func (a *testAPI) reviewDiagnostics(t *testing.T, reviewPath string) map[string]any {
+	t.Helper()
+	status, body := a.do(t, http.MethodGet, reviewPath+"/diagnostics", nil)
+	if status != http.StatusOK {
+		t.Fatalf("review diagnostics %s: %d %+v", reviewPath, status, body)
+	}
+	return body
+}
+
+const (
+	// A progressing asynchronous review can take longer under race/coverage and
+	// concurrent PostgreSQL tests. Still fail a stalled review and cap total time.
+	reviewWaitLimit    = 60 * time.Second
+	reviewStallLimit   = 15 * time.Second
+	reviewPollInterval = 500 * time.Millisecond
+)
+
 func (a *testAPI) waitReview(t *testing.T, path string) map[string]any {
 	t.Helper()
-	deadline := time.Now().Add(10 * time.Second)
-	for time.Now().Before(deadline) {
-		status, workspace := a.do(t, http.MethodGet, path, nil)
-		if status != http.StatusOK {
-			t.Fatalf("waiting workspace %d: %v", status, workspace)
+	start := time.Now()
+	overallDeadline := start.Add(reviewWaitLimit)
+	progressDeadline := start.Add(reviewStallLimit)
+	var last map[string]any
+	lastErr := ""
+	previous := reviewProgress{eventSeq: -1}
+	for {
+		deadline := progressDeadline
+		if overallDeadline.Before(deadline) {
+			deadline = overallDeadline
 		}
-		state := workspace["run"].(map[string]any)["state"]
-		if state != "accepted" && state != "running" && state != "queued" {
-			return workspace
+		if !time.Now().Before(deadline) {
+			break
 		}
-		time.Sleep(5 * time.Millisecond)
+		workspace, err := a.workspaceWithin(t, path, deadline)
+		if err != nil {
+			lastErr = err.Error()
+		} else {
+			last = workspace
+			state := reviewState(workspace)
+			if state == "" {
+				t.Fatalf("waiting workspace has no valid run state: %v", workspace["run"])
+			}
+			if state != "accepted" && state != "running" && state != "queued" {
+				return workspace
+			}
+			current := reviewProgressOf(workspace)
+			if current.runState != previous.runState || current.attemptID != previous.attemptID ||
+				current.attemptState != previous.attemptState || current.eventSeq > previous.eventSeq {
+				progressDeadline = time.Now().Add(reviewStallLimit)
+			}
+			if current.attemptID == previous.attemptID && current.eventSeq < previous.eventSeq {
+				current.eventSeq = previous.eventSeq
+			}
+			previous = current
+		}
+		// Do not sleep beyond either the progress or overall deadline.
+		deadline = progressDeadline
+		if overallDeadline.Before(deadline) {
+			deadline = overallDeadline
+		}
+		if wait := min(reviewPollInterval, time.Until(deadline)); wait > 0 {
+			time.Sleep(wait)
+		}
 	}
-	t.Fatalf("review did not reach terminal execution state: %s", path)
+	t.Fatalf("review did not reach terminal execution state: %s; %s", path, reviewWaitDiagnostics(last, lastErr))
 	return nil
+}
+
+// workspaceWithin reads one workspace with the review deadline attached, so a
+// stalled response cannot hang the test past its own bound. A refusal is still
+// a hard failure: only the deadline ends the wait early.
+func (a *testAPI) workspaceWithin(t *testing.T, path string, deadline time.Time) (map[string]any, error) {
+	t.Helper()
+	ctx, cancel := context.WithDeadline(context.Background(), deadline)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, a.base+path, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	res, err := a.client.Do(req)
+	if err != nil {
+		if ctx.Err() != nil {
+			return nil, fmt.Errorf("workspace read remained in flight until the wait deadline: %w", ctx.Err())
+		}
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	raw, err := io.ReadAll(res.Body)
+	if err != nil {
+		if ctx.Err() != nil {
+			return nil, fmt.Errorf("workspace body remained unread until the wait deadline: %w", ctx.Err())
+		}
+		t.Fatal(err)
+	}
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("waiting workspace %d: %s", res.StatusCode, raw)
+	}
+	var out map[string]any
+	if err := json.Unmarshal(raw, &out); err != nil {
+		t.Fatalf("json %d %s", res.StatusCode, raw)
+	}
+	return out, nil
+}
+
+func reviewState(workspace map[string]any) string {
+	run, _ := workspace["run"].(map[string]any)
+	state, _ := run["state"].(string)
+	return state
+}
+
+type reviewProgress struct {
+	runState     string
+	attemptID    string
+	attemptState string
+	eventSeq     float64
+}
+
+func reviewProgressOf(workspace map[string]any) reviewProgress {
+	progress := reviewProgress{runState: reviewState(workspace), eventSeq: -1}
+	attempts, _ := workspace["review_attempts"].(map[string]any)
+	attempt, _ := attempts["attempt"].(map[string]any)
+	progress.attemptID, _ = attempt["id"].(string)
+	progress.attemptState, _ = attempt["state"].(string)
+	if events, ok := workspace["business_events"].([]any); ok && len(events) > 0 {
+		if event, ok := events[len(events)-1].(map[string]any); ok {
+			if seq, ok := event["seq"].(float64); ok {
+				progress.eventSeq = seq
+			}
+		}
+	}
+	return progress
+}
+
+// reviewWaitDiagnostics reports the last observed business run, attempt and
+// audit event; it does not assume that execution has stopped.
+func reviewWaitDiagnostics(workspace map[string]any, lastErr string) string {
+	if workspace == nil {
+		if lastErr == "" {
+			return "no workspace response before the deadline"
+		}
+		return "no workspace response before the deadline: " + lastErr
+	}
+	detail := fmt.Sprintf("last run state=%q", reviewState(workspace))
+	attempts, _ := workspace["review_attempts"].(map[string]any)
+	if attempt, ok := attempts["attempt"].(map[string]any); ok {
+		detail += fmt.Sprintf(" attempt=%v state=%v history_kind=%v started_at=%v",
+			attempt["id"], attempt["state"], attempt["history_kind"], attempt["started_at"])
+	} else {
+		detail += " attempt=absent"
+	}
+	if events, ok := workspace["business_events"].([]any); ok && len(events) > 0 {
+		event, _ := events[len(events)-1].(map[string]any)
+		detail += fmt.Sprintf(" last_event={seq=%v event_type=%v actor=%v}", event["seq"], event["event_type"], event["actor"])
+	} else {
+		detail += " last_event=absent"
+	}
+	if lastErr != "" {
+		detail += " last_read_error=" + lastErr
+	}
+	return detail
 }
 
 func (a *testAPI) send(t *testing.T, method, path string, payload any, idem string) (int, map[string]any) {

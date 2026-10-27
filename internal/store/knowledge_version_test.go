@@ -110,29 +110,26 @@ func TestKnowledgeViewsPreserveLegacyCloudPolicyFreeze(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Adapt the existing governed fixture to the required cloud capabilities and
-	// exact synthetic policy reference, then accept a real cloud review.
-	var manifest map[string]any
-	if err := json.Unmarshal(governedPackManifest(t, owner.TenantID, "1", "1000"), &manifest); err != nil {
-		t.Fatal(err)
-	}
-	definitions := []struct{ id, capability, threshold string }{
-		{"CLOUD-TECH-BW-001", "cloud_services.minimum_bandwidth", "1000"},
-		{"CLOUD-TECH-SLA-001", "cloud_services.monthly_availability", "99.95"},
-		{"CLOUD-COM-ADV-001", "cloud_services.advance_payment_ceiling", "3/10"},
-	}
-	for i, raw := range manifest["rules"].([]any) {
-		rule := raw.(map[string]any)
-		rule["rule_id"], rule["capability_id"] = definitions[i].id, definitions[i].capability
-		rule["business_scope"].(map[string]any)["scenario"] = "cloud_services"
-		rule["threshold"].(map[string]any)["value"] = definitions[i].threshold
-		rule["authority_sources"] = []any{map[string]any{"id": "cloud-procurement-policy", "version": "1.0.0", "kind": "synthetic_demo"}}
-	}
-	rawManifest, err := json.Marshal(manifest)
+	// Insert a historical snapshot as old storage would have written it. New
+	// cloud runs use the separately published governance policy below.
+	historicalCase, err := st.CreateCaseWithBusiness(owner, "历史云审查", "service", "ENT", "cloud_services")
 	if err != nil {
 		t.Fatal(err)
 	}
-	publishGovernedPackStore(t, st, owner, "1", "1000", rawManifest)
+	const historicalRun = "legacy-cloud-snapshot"
+	if _, err := st.pool.Exec(context.Background(), `INSERT INTO review_runs
+		(id,tenant_id,org_id,case_id,state,created_at,updated_at)
+		VALUES ($1,$2,$3,$4,'completed','2020-01-01T00:00:00.000Z','2020-01-01T00:00:00.000Z')`,
+		historicalRun, owner.TenantID, owner.OrgID, historicalCase); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.pool.Exec(context.Background(), `INSERT INTO review_run_snapshots
+		(tenant_id,org_id,run_id,document_ids,rule_set_hash,playbook_hash,model_ref,comparator_ref,cloud_policy_snapshot,cloud_policy_digest)
+		VALUES ($1,$2,$3,'[]','legacy-rules','legacy-playbook','legacy-model','legacy-compiler',$4,$5)`,
+		owner.TenantID, owner.OrgID, historicalRun, []byte(legacyJSON), sha256HexOf([]byte(legacyJSON))); err != nil {
+		t.Fatal(err)
+	}
+	_, published := seedGovernedCloudPolicy(t, st, owner)
 	caseID, err := st.CreateCaseWithBusiness(owner, "云政策冻结回归", "service", "ENT", "cloud_services")
 	if err != nil {
 		t.Fatal(err)
@@ -145,14 +142,15 @@ func TestKnowledgeViewsPreserveLegacyCloudPolicyFreeze(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	runID, err := st.StartReview(context.Background(), owner, caseID)
+	runID, err := st.StartReviewAt(context.Background(), owner, caseID, acceptanceBusinessTime)
 	if err != nil {
 		t.Fatalf("accept cloud review: %v", err)
 	}
 	workspace := waitTerminalWorkspace(t, st, owner, caseID, runID)
 	frozen := workspace.Snapshot
-	if string(frozen.CloudPolicySnapshot) != legacyJSON || frozen.CloudPolicyDigest != sha256HexOf([]byte(legacyJSON)) {
-		t.Fatalf("cloud review did not freeze the legacy bytes: snapshot=%s digest=%s", frozen.CloudPolicySnapshot, frozen.CloudPolicyDigest)
+	if frozen.GovernedKnowledge == nil || len(frozen.GovernedKnowledge.RequiredPolicies) != 1 ||
+		frozen.GovernedKnowledge.RequiredPolicies[0].Ref != published.Ref || len(frozen.CloudPolicySnapshot) != 0 {
+		t.Fatalf("new cloud review did not freeze the published governed policy: %+v", frozen)
 	}
 
 	newer, err := st.CreateKnowledge(owner, KnowledgeInput{
@@ -197,7 +195,7 @@ func TestKnowledgeViewsPreserveLegacyCloudPolicyFreeze(t *testing.T) {
 		owner.TenantID, oldView.ID, oldView.Version).Scan(&preservedRow); err != nil {
 		t.Fatal(err)
 	}
-	if err := reopened.pool.QueryRow(context.Background(), `SELECT cloud_policy_snapshot,cloud_policy_digest FROM review_run_snapshots WHERE run_id=$1`, runID).
+	if err := reopened.pool.QueryRow(context.Background(), `SELECT cloud_policy_snapshot,cloud_policy_digest FROM review_run_snapshots WHERE run_id=$1`, historicalRun).
 		Scan(&preservedFreeze, &digest); err != nil {
 		t.Fatal(err)
 	}
@@ -212,7 +210,15 @@ func TestKnowledgeViewsPreserveLegacyCloudPolicyFreeze(t *testing.T) {
 	if strings.Contains(newRow, `"version_id"`) {
 		t.Fatalf("view identity was persisted with the new knowledge record: %s", newRow)
 	}
-	if !bytes.Equal(preservedFreeze, frozen.CloudPolicySnapshot) || digest != frozen.CloudPolicyDigest {
-		t.Fatalf("historical cloud freeze changed: before=%s after=%s", frozen.CloudPolicySnapshot, preservedFreeze)
+	if !bytes.Equal(preservedFreeze, []byte(legacyJSON)) || digest != sha256HexOf([]byte(legacyJSON)) {
+		t.Fatalf("historical cloud freeze changed: %s", preservedFreeze)
+	}
+	historicalWorkspace, err := reopened.Workspace(owner, historicalCase, historicalRun)
+	if err != nil {
+		t.Fatalf("read historical cloud review: %v", err)
+	}
+	legacy := historicalWorkspace.Snapshot
+	if !bytes.Equal(legacy.CloudPolicySnapshot, []byte(legacyJSON)) || legacy.CloudPolicyDigest != digest || legacy.GovernedKnowledge != nil {
+		t.Fatalf("historical cloud freeze is not readable: %+v", legacy)
 	}
 }

@@ -371,6 +371,14 @@ func (s *Service) chatCompletions(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, http.StatusBadGateway, map[string]string{"error": "model provider request failed", "code": "model_provider_failed"})
 			return
 		}
+		if err := s.store.ReauthorizeModelScope(ctx, caller, scope); err != nil {
+			if errors.Is(err, store.ErrModelScopeUnavailable) {
+				writeJSON(w, http.StatusForbidden, map[string]string{"error": "current model scope is unavailable", "code": "model_scope_unavailable"})
+			} else {
+				writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "model scope could not be rechecked", "code": "model_scope_unavailable"})
+			}
+			return
+		}
 		w.Header().Set("Content-Type", "application/json")
 		if s.config.Mode == "fixture" {
 			w.Header().Set("X-Model-Backend", "local-fixture")

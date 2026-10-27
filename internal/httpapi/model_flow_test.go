@@ -45,7 +45,8 @@ func TestMalformedModelOutputRetainsRulesAsPartialRun(t *testing.T) {
 	if status != http.StatusCreated {
 		t.Fatalf("start %d %v", status, review)
 	}
-	_, ws := api.do(t, http.MethodGet, "/api/cases/"+caseID+"/reviews/"+review["id"].(string), nil)
+	reviewPath := "/api/cases/" + caseID + "/reviews/" + review["id"].(string)
+	_, ws := api.do(t, http.MethodGet, reviewPath, nil)
 	run := ws["run"].(map[string]any)
 	if run["state"] != "partial" {
 		t.Fatalf("run %+v", run)
@@ -63,8 +64,10 @@ func TestMalformedModelOutputRetainsRulesAsPartialRun(t *testing.T) {
 	if sawAuth {
 		t.Fatal("empty key sent Authorization")
 	}
-	if run["model_ref"] != model.DefaultChatModel {
-		t.Fatalf("model_ref %+v", run["model_ref"])
+	diagnostics := api.reviewDiagnostics(t, reviewPath)
+	snapshot := diagnostics["snapshot"].(map[string]any)
+	if snapshot["model_ref"] != model.DefaultChatModel {
+		t.Fatalf("model_ref %+v", snapshot["model_ref"])
 	}
 }
 

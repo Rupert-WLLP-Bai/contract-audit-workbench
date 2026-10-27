@@ -9,10 +9,37 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// These functions operate on the existing lease and immutable usage tables in
-// the caller's transaction. The definer identity receives cross-tenant policy
-// access only on those two accounting tables; application roles do not.
+// The accounting functions operate on the existing lease and immutable usage
+// tables in the caller's transaction. The separate job lock exposes no job
+// contents or write access to the model role.
 const modelBudgetFunctionsSQL = `
+CREATE OR REPLACE FUNCTION {{SCHEMA}}.model_budget_lock_experience_job(
+	p_tenant text, p_org text, p_case text, p_actor text, p_job text, p_worker text,
+	p_generation bigint, p_input_sha256 text) RETURNS boolean
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $function$
+BEGIN
+	PERFORM 1 FROM {{SCHEMA}}.worker_jobs j
+	JOIN {{SCHEMA}}.experience_distill_inputs i ON i.job_id=j.id
+	WHERE j.id=p_job AND j.kind='experience_distill' AND j.state='running'
+		AND j.tenant_id=p_tenant AND j.org_id=p_org AND j.case_id=p_case AND j.actor_id=p_actor
+		AND j.worker_id=p_worker AND j.worker_id<>'' AND j.generation=p_generation AND j.generation>0
+		AND j.lease_until>pg_catalog.clock_timestamp()
+		AND i.tenant_id=j.tenant_id AND i.org_id=j.org_id AND i.case_id=j.case_id AND i.actor_id=j.actor_id
+		AND i.input_sha256=p_input_sha256
+		AND p_tenant=pg_catalog.current_setting('app.tenant_id',true)
+		AND p_org=pg_catalog.current_setting('app.org_id',true)
+		AND pg_catalog.current_setting('app.actor_role',true)='model'
+	FOR UPDATE OF j;
+	IF NOT FOUND THEN
+		RETURN false;
+	END IF;
+	-- A row can expire while this transaction waits for its lock.
+	RETURN EXISTS (SELECT 1 FROM {{SCHEMA}}.worker_jobs j
+		WHERE j.id=p_job AND j.lease_until>pg_catalog.clock_timestamp());
+END
+$function$;
+REVOKE ALL ON FUNCTION {{SCHEMA}}.model_budget_lock_experience_job(text,text,text,text,text,text,bigint,text) FROM PUBLIC;
+
 CREATE OR REPLACE FUNCTION {{SCHEMA}}.model_budget_reserve(
 	p_lease_id text, p_tenant text, p_actor text, p_case text, p_run text, p_attempt text,
 	p_caller text, p_model_ref text, p_attempt_number integer,
@@ -28,6 +55,10 @@ DECLARE
 	v_tenant_calls bigint;
 	v_global_tokens numeric;
 	v_tenant_tokens numeric;
+	v_purpose text := COALESCE(NULLIF(pg_catalog.current_setting('app.model_purpose',true),''),'review');
+	v_job_id text := COALESCE(pg_catalog.current_setting('app.job_id',true),'');
+	v_job_generation bigint := COALESCE(NULLIF(pg_catalog.current_setting('app.job_generation',true),''),'0')::bigint;
+	v_input_sha256 text := COALESCE(pg_catalog.current_setting('app.model_input_sha256',true),'');
 BEGIN
 	IF p_lease_id IS NULL OR p_lease_id = '' OR p_tenant IS NULL OR p_tenant = '' OR p_actor IS NULL OR p_actor = '' OR
 		p_case IS NULL OR p_case = '' OR p_run IS NULL OR p_attempt IS NULL OR p_caller IS NULL OR
@@ -40,7 +71,25 @@ BEGIN
 		p_lease_milliseconds IS NULL OR p_lease_milliseconds < 1 THEN
 		RAISE EXCEPTION 'invalid model budget reservation' USING ERRCODE = '22023';
 	END IF;
+	IF v_purpose = 'experience_distill' THEN
+		IF p_caller <> 'worker' OR p_run <> '' OR p_attempt <> '' OR v_job_id = '' OR
+			v_job_generation < 1 OR v_input_sha256 !~ '^[0-9a-f]{64}$' THEN
+			RAISE EXCEPTION 'invalid experience model purpose' USING ERRCODE = '22023';
+		END IF;
+		-- Always take the job row before the global budget lock, including for
+		-- direct SQL callers. The gateway already holds it through authorization.
+		IF NOT {{SCHEMA}}.model_budget_lock_experience_job(p_tenant,
+			pg_catalog.current_setting('app.org_id',true), p_case, p_actor, v_job_id,
+			pg_catalog.current_setting('app.worker_id',true), v_job_generation, v_input_sha256) THEN
+			RAISE EXCEPTION 'experience model execution scope is unavailable' USING ERRCODE = 'P7M01';
+		END IF;
+	END IF;
 	PERFORM pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended('{{LOCK_KEY}}', 0));
+	IF v_purpose = 'experience_distill' AND NOT {{SCHEMA}}.model_budget_lock_experience_job(p_tenant,
+		pg_catalog.current_setting('app.org_id',true), p_case, p_actor, v_job_id,
+		pg_catalog.current_setting('app.worker_id',true), v_job_generation, v_input_sha256) THEN
+		RAISE EXCEPTION 'experience model execution scope is unavailable' USING ERRCODE = 'P7M01';
+	END IF;
 	v_now := pg_catalog.clock_timestamp();
 	WITH expired AS (
 		DELETE FROM {{SCHEMA}}.model_call_leases WHERE expires_at <= v_now RETURNING *
@@ -48,11 +97,13 @@ BEGIN
 	INSERT INTO {{SCHEMA}}.model_usage
 		(call_id, lease_id, tenant_id, actor_id, case_id, run_id, attempt_id, caller_identity, model_ref,
 		 attempt_number, call_status, error_code, usage_source, input_tokens, output_tokens, total_tokens, occurred_at,
-		 reserved_at, reserved_input_tokens, reserved_output_tokens, charged_tokens, budget_released, settlement_fingerprint)
+		 reserved_at, reserved_input_tokens, reserved_output_tokens, charged_tokens, budget_released, settlement_fingerprint,
+		 purpose, job_id, job_generation, input_sha256)
 	SELECT 'mc_unknown_' || e.lease_id, e.lease_id, e.tenant_id, e.actor_id, e.case_id, e.run_id, e.attempt_id,
 		e.caller_identity, e.model_ref, e.attempt_number, 'failed', 'model_call_outcome_unknown', NULL, NULL, NULL, NULL,
 		e.expires_at, e.acquired_at, e.reserved_input_tokens, e.reserved_output_tokens,
-		e.reserved_input_tokens + e.reserved_output_tokens, false, 'expired:' || e.lease_id
+		e.reserved_input_tokens + e.reserved_output_tokens, false, 'expired:' || e.lease_id,
+		e.purpose, e.job_id, e.job_generation, e.input_sha256
 	FROM expired e
 	ON CONFLICT (lease_id) DO NOTHING;
 
@@ -83,9 +134,9 @@ BEGIN
 	END IF;
 	INSERT INTO {{SCHEMA}}.model_call_leases
 		(lease_id, tenant_id, actor_id, case_id, run_id, attempt_id, caller_identity, model_ref, attempt_number,
-		 reserved_input_tokens, reserved_output_tokens, acquired_at, expires_at)
+		 reserved_input_tokens, reserved_output_tokens, acquired_at, expires_at, purpose, job_id, job_generation, input_sha256)
 	VALUES (p_lease_id, p_tenant, p_actor, p_case, p_run, p_attempt, p_caller, p_model_ref, p_attempt_number,
-		p_input_upper, p_output_upper, v_now, v_now + p_lease_milliseconds * interval '1 millisecond');
+		p_input_upper, p_output_upper, v_now, v_now + p_lease_milliseconds * interval '1 millisecond', v_purpose, v_job_id, v_job_generation, v_input_sha256);
 	RETURN true;
 END
 $function$;
@@ -102,6 +153,10 @@ DECLARE
 	v_lease record;
 	v_usage record;
 	v_charged numeric;
+	v_purpose text := COALESCE(NULLIF(pg_catalog.current_setting('app.model_purpose',true),''),'review');
+	v_job_id text := COALESCE(pg_catalog.current_setting('app.job_id',true),'');
+	v_job_generation bigint := COALESCE(NULLIF(pg_catalog.current_setting('app.job_generation',true),''),'0')::bigint;
+	v_input_sha256 text := COALESCE(pg_catalog.current_setting('app.model_input_sha256',true),'');
 BEGIN
 	IF p_lease_id IS NULL OR p_lease_id = '' OR p_tenant IS NULL OR p_tenant = '' OR p_actor IS NULL OR p_actor = '' OR
 		p_case IS NULL OR p_case = '' OR p_run IS NULL OR p_attempt IS NULL OR p_caller IS NULL OR
@@ -117,12 +172,14 @@ BEGIN
 		RETURN COALESCE(v_usage.tenant_id = p_tenant AND v_usage.actor_id = p_actor AND v_usage.case_id = p_case AND
 			v_usage.run_id = p_run AND v_usage.attempt_id = p_attempt AND v_usage.caller_identity = p_caller AND
 			v_usage.model_ref = p_model_ref AND v_usage.attempt_number = p_attempt_number AND
-			v_usage.settlement_fingerprint = p_fingerprint, false);
+			v_usage.purpose = v_purpose AND v_usage.job_id = v_job_id AND v_usage.job_generation = v_job_generation AND
+			v_usage.input_sha256 = v_input_sha256 AND v_usage.settlement_fingerprint = p_fingerprint, false);
 	END IF;
 	SELECT * INTO v_lease FROM {{SCHEMA}}.model_call_leases l WHERE l.lease_id = p_lease_id AND l.tenant_id = p_tenant FOR UPDATE;
 	IF NOT FOUND OR v_lease.actor_id <> p_actor OR v_lease.case_id <> p_case OR v_lease.run_id <> p_run OR
 		v_lease.attempt_id <> p_attempt OR v_lease.caller_identity <> p_caller OR v_lease.model_ref <> p_model_ref OR
-		v_lease.attempt_number <> p_attempt_number THEN
+		v_lease.attempt_number <> p_attempt_number OR v_lease.purpose <> v_purpose OR v_lease.job_id <> v_job_id OR
+		v_lease.job_generation <> v_job_generation OR v_lease.input_sha256 <> v_input_sha256 THEN
 		RETURN false;
 	END IF;
 	IF p_pre_dispatch_failure THEN
@@ -145,11 +202,13 @@ BEGIN
 	INSERT INTO {{SCHEMA}}.model_usage
 		(call_id, lease_id, tenant_id, actor_id, case_id, run_id, attempt_id, caller_identity, model_ref,
 		 attempt_number, call_status, error_code, usage_source, input_tokens, output_tokens, total_tokens, occurred_at,
-		 reserved_at, reserved_input_tokens, reserved_output_tokens, charged_tokens, budget_released, settlement_fingerprint)
+		 reserved_at, reserved_input_tokens, reserved_output_tokens, charged_tokens, budget_released, settlement_fingerprint,
+		 purpose, job_id, job_generation, input_sha256)
 	VALUES ('mc_' || p_lease_id, p_lease_id, p_tenant, p_actor, p_case, p_run, p_attempt, p_caller, p_model_ref,
 		p_attempt_number, p_status, COALESCE(p_error_code,''), p_usage_source, p_input, p_output, p_total,
 		COALESCE(p_occurred_at,pg_catalog.clock_timestamp()), v_lease.acquired_at,
-		v_lease.reserved_input_tokens, v_lease.reserved_output_tokens, v_charged::bigint, p_pre_dispatch_failure, p_fingerprint);
+		v_lease.reserved_input_tokens, v_lease.reserved_output_tokens, v_charged::bigint, p_pre_dispatch_failure, p_fingerprint,
+		v_lease.purpose, v_lease.job_id, v_lease.job_generation, v_lease.input_sha256);
 	DELETE FROM {{SCHEMA}}.model_call_leases l WHERE l.lease_id = p_lease_id AND l.tenant_id = p_tenant;
 	IF NOT FOUND THEN
 		RAISE EXCEPTION 'model call lease disappeared during settlement' USING ERRCODE = '40001';

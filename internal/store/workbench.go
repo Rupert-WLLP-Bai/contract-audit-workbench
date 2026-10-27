@@ -600,18 +600,15 @@ func (s *Store) GetKnowledge(user accounts.User, knowledgeID string) (KnowledgeV
 	if knowledgeID == "" {
 		return KnowledgeView{}, fault.Invalid("制度编号不能为空")
 	}
-	st, err := s.snapshotAs(current)
+	items, err := s.knowledgeFamily(current, knowledgeID)
 	if err != nil {
 		return KnowledgeView{}, err
 	}
 	var latest *Knowledge
-	for i := range st.Knowledge {
-		item := &st.Knowledge[i]
-		if item.TenantID != current.TenantID || item.Item.ID != knowledgeID {
-			continue
-		}
-		if latest == nil || item.Item.CreatedAt > latest.CreatedAt {
-			value := item.Item
+	for i := range items {
+		item := &items[i]
+		if latest == nil || item.CreatedAt > latest.CreatedAt {
+			value := *item
 			latest = &value
 		}
 	}
@@ -631,20 +628,64 @@ func (s *Store) GetKnowledgeVersion(user accounts.User, knowledgeID, versionID s
 	if knowledgeID == "" {
 		return KnowledgeView{}, fault.Invalid("制度编号不能为空")
 	}
-	st, err := s.snapshotAs(current)
+	items, err := s.knowledgeFamily(current, knowledgeID)
 	if err != nil {
 		return KnowledgeView{}, err
 	}
-	for _, record := range st.Knowledge {
-		if record.TenantID != current.TenantID || record.Item.ID != knowledgeID {
-			continue
-		}
-		view := knowledgeView(record.TenantID, record.Item)
+	for _, item := range items {
+		view := knowledgeView(current.TenantID, item)
 		if view.VersionID == versionID {
 			return view, nil
 		}
 	}
 	return KnowledgeView{}, fault.NotFound("没有找到对应制度版本")
+}
+
+// knowledgeFamily reads only the requested tenant and knowledge family, while
+// preserving the original sequence order used to break equal creation times.
+func (s *Store) knowledgeFamily(user accounts.User, knowledgeID string) ([]Knowledge, error) {
+	ctx := context.Background()
+	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{AccessMode: pgx.ReadOnly})
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback(ctx)
+	if err := setLocalScope(ctx, tx, userScope(user)); err != nil {
+		return nil, err
+	}
+	rows, err := tx.Query(ctx, `SELECT id,version,source_type,record_json FROM business_knowledge
+		WHERE tenant_id=$1 AND id=$2 ORDER BY seq`, accounts.Tenant(user), knowledgeID)
+	if err != nil {
+		return nil, err
+	}
+	var items []Knowledge
+	for rows.Next() {
+		var id, version, sourceType string
+		var raw []byte
+		if err := rows.Scan(&id, &version, &sourceType, &raw); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		var item Knowledge
+		if err := json.Unmarshal(raw, &item); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		if item.ID != id || item.Version != version || item.SourceType != sourceType {
+			rows.Close()
+			return nil, errors.New("stored knowledge identity does not match its row")
+		}
+		items = append(items, item)
+	}
+	err = rows.Err()
+	rows.Close()
+	if err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 func knowledgeView(tenantID string, item Knowledge) KnowledgeView {

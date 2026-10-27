@@ -44,6 +44,151 @@
     }
   ],
   "paths": {
+    "/api/cases/{caseID}/evidence-requests": {
+      "get": {
+        "operationId":"listEvidenceRequests","tags":["人工复核"],"summary":"列出案件补充材料请求",
+        "description":"使用 client 会话并重新检查当前案件权限。",
+        "parameters":[{"name":"caseID","in":"path","required":true,"schema":{"type":"string"}}],
+        "responses":{"200":{"description":"案件请求列表","content":{"application/json":{"schema":{"$ref":"#/components/schemas/EvidenceRequestList"}}}},"401":{"$ref":"#/components/responses/Error401"},"403":{"$ref":"#/components/responses/Error403"},"404":{"$ref":"#/components/responses/Error404"},"500":{"$ref":"#/components/responses/Error500"}}
+      },
+      "post": {
+        "operationId":"createEvidenceRequest","tags":["人工复核"],"summary":"从冻结缺口创建补充材料请求",
+        "description":"固定来源审查、尝试、缺口或规则结果和关联任务版本；source_evaluation_id 与 source_gap_id 必须且只能提供一个。规则结果来源的 verification_condition 为 compatible 或 conflict；缺口来源为 resolved。兼容结果本身不足以完成验证；当前规则结果若缺少能证明回执参与同一能力检查的权威关联，核验返回 409，请求仍为 received。case_id 提供时必须与路径一致。幂等键由请求头或正文提供，同时提供时必须一致。",
+        "parameters":[{"name":"caseID","in":"path","required":true,"schema":{"type":"string"}},{"name":"Idempotency-Key","in":"header","required":false,"schema":{"type":"string","maxLength":80}}],
+        "requestBody":{"required":true,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/EvidenceRequestCreate"}}}},
+        "responses":{"201":{"description":"已创建请求","content":{"application/json":{"schema":{"$ref":"#/components/schemas/EvidenceRequest"}}}},"401":{"$ref":"#/components/responses/Error401"},"403":{"$ref":"#/components/responses/Error403"},"404":{"$ref":"#/components/responses/Error404"},"409":{"$ref":"#/components/responses/Error409"},"413":{"$ref":"#/components/responses/Error413"},"422":{"$ref":"#/components/responses/Error422"},"500":{"$ref":"#/components/responses/Error500"},"503":{"$ref":"#/components/responses/Error503"}}
+      }
+    },
+    "/api/cases/{caseID}/evidence-requests/{requestID}": {
+      "get": {
+        "operationId":"getEvidenceRequest","tags":["人工复核"],"summary":"读取补充材料请求",
+        "parameters":[{"name":"caseID","in":"path","required":true,"schema":{"type":"string"}},{"name":"requestID","in":"path","required":true,"schema":{"type":"string"}}],
+        "responses":{"200":{"description":"精确请求","content":{"application/json":{"schema":{"$ref":"#/components/schemas/EvidenceRequest"}}}},"401":{"$ref":"#/components/responses/Error401"},"403":{"$ref":"#/components/responses/Error403"},"404":{"$ref":"#/components/responses/Error404"},"500":{"$ref":"#/components/responses/Error500"}}
+      }
+    },
+    "/api/cases/{caseID}/evidence-requests/{requestID}/history": {
+      "get": {
+        "operationId":"listEvidenceRequestHistory","tags":["人工复核"],"summary":"读取补充材料请求历史",
+        "description":"返回有序追加事件及其请求、回执快照；重新检查当前案件权限。",
+        "parameters":[{"name":"caseID","in":"path","required":true,"schema":{"type":"string"}},{"name":"requestID","in":"path","required":true,"schema":{"type":"string"}}],
+        "responses":{"200":{"description":"事件历史","content":{"application/json":{"schema":{"$ref":"#/components/schemas/EvidenceRequestHistory"}}}},"401":{"$ref":"#/components/responses/Error401"},"403":{"$ref":"#/components/responses/Error403"},"404":{"$ref":"#/components/responses/Error404"},"500":{"$ref":"#/components/responses/Error500"}}
+      }
+    },
+    "/api/cases/{caseID}/evidence-requests/{requestID}/receipts": {
+      "post": {
+        "operationId":"submitEvidenceReceipt","tags":["人工复核"],"summary":"提交补充材料回执",
+        "description":"document_id 与 answer 必须且只能提供一个；版本与案件授权由服务器校验，提交不等于验证。可选正文 case_id 和 request_id 必须与路径一致，幂等键可由请求头或正文提供。",
+        "parameters":[{"name":"caseID","in":"path","required":true,"schema":{"type":"string"}},{"name":"requestID","in":"path","required":true,"schema":{"type":"string"}},{"name":"Idempotency-Key","in":"header","required":false,"schema":{"type":"string","maxLength":80}}],
+        "requestBody":{"required":true,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/EvidenceReceiptCreate"}}}},
+        "responses":{"201":{"description":"追加回执和更新后的请求","content":{"application/json":{"schema":{"$ref":"#/components/schemas/EvidenceReceiptResult"}}}},"401":{"$ref":"#/components/responses/Error401"},"403":{"$ref":"#/components/responses/Error403"},"404":{"$ref":"#/components/responses/Error404"},"409":{"$ref":"#/components/responses/Error409"},"413":{"$ref":"#/components/responses/Error413"},"422":{"$ref":"#/components/responses/Error422"},"500":{"$ref":"#/components/responses/Error500"},"503":{"$ref":"#/components/responses/Error503"}}
+      }
+    },
+    "/api/cases/{caseID}/evidence-requests/{requestID}/receipts/{receiptID}/verify": {
+      "post": {
+        "operationId":"verifyEvidenceRequest","tags":["人工复核"],"summary":"人工验证补充材料回执",
+        "description":"必须引用回执之后完成的精确审查尝试、与原请求对应的规则结果或缺口及其冻结证据；evaluation_id 与 gap_id 必须且只能提供一个。结果须符合原验证条件且证明回执参与同一能力检查。compatible 结果本身不足以完成验证；缺少回执与检查之间的权威关联时返回 409，请求保持 received。证据不足或未知不视为验证。正文身份提供时必须与路径一致，幂等键可由请求头或正文提供。",
+        "parameters":[{"name":"caseID","in":"path","required":true,"schema":{"type":"string"}},{"name":"requestID","in":"path","required":true,"schema":{"type":"string"}},{"name":"receiptID","in":"path","required":true,"schema":{"type":"string"}},{"name":"Idempotency-Key","in":"header","required":false,"schema":{"type":"string","maxLength":80}}],
+        "requestBody":{"required":true,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/EvidenceRequestVerify"}}}},
+        "responses":{"200":{"description":"已验证的请求","content":{"application/json":{"schema":{"$ref":"#/components/schemas/EvidenceRequest"}}}},"401":{"$ref":"#/components/responses/Error401"},"403":{"$ref":"#/components/responses/Error403"},"404":{"$ref":"#/components/responses/Error404"},"409":{"$ref":"#/components/responses/Error409"},"413":{"$ref":"#/components/responses/Error413"},"422":{"$ref":"#/components/responses/Error422"},"500":{"$ref":"#/components/responses/Error500"},"503":{"$ref":"#/components/responses/Error503"}}
+      }
+    },
+    "/api/cases/{caseID}/experience-feedback": {
+      "post": {
+        "operationId": "submitExperienceFeedback",
+        "tags": ["人工复核"],
+        "summary": "提交对人工决定的经验反馈",
+        "description": "使用 client 会话和当前案件权限。反馈引用精确的审查、尝试、发现、人工决定和冻结原文；它只追加建议，不修改决定或冻结快照。case_id 可省略，提供时必须与路径一致。幂等键可放在请求头或正文，二者同时提供时必须一致。",
+        "parameters": [
+          {"name":"caseID","in":"path","required":true,"schema":{"type":"string"}},
+          {"name":"Idempotency-Key","in":"header","required":false,"schema":{"type":"string","maxLength":80}}
+        ],
+        "requestBody": {"required":true,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/ExperienceFeedbackRequest"}}}},
+        "responses": {
+          "201":{"description":"反馈及其服务端绑定的申请人","content":{"application/json":{"schema":{"$ref":"#/components/schemas/ExperienceFeedback"}}}},
+          "401":{"$ref":"#/components/responses/Error401"},"403":{"$ref":"#/components/responses/Error403"},"404":{"$ref":"#/components/responses/Error404"},"409":{"$ref":"#/components/responses/Error409"},"413":{"$ref":"#/components/responses/Error413"},"422":{"$ref":"#/components/responses/Error422"},"500":{"$ref":"#/components/responses/Error500"},"503":{"$ref":"#/components/responses/Error503"}
+        }
+      }
+    },
+    "/api/cases/{caseID}/experience-feedback/{feedbackID}": {
+      "get": {
+        "operationId":"getExperienceFeedback","tags":["人工复核"],"summary":"读取精确反馈",
+        "description":"每次读取重新检查当前案件授权；知道反馈身份并不授予访问权。",
+        "parameters":[{"name":"caseID","in":"path","required":true,"schema":{"type":"string"}},{"name":"feedbackID","in":"path","required":true,"schema":{"type":"string"}}],
+        "responses":{"200":{"description":"反馈","content":{"application/json":{"schema":{"$ref":"#/components/schemas/ExperienceFeedback"}}}},"401":{"$ref":"#/components/responses/Error401"},"403":{"$ref":"#/components/responses/Error403"},"404":{"$ref":"#/components/responses/Error404"},"500":{"$ref":"#/components/responses/Error500"}}
+      }
+    },
+    "/api/cases/{caseID}/experience-feedback/{feedbackID}/distillations": {
+      "post": {
+        "operationId":"requestExperienceDistillation","tags":["人工复核"],"summary":"请求异步提炼经验候选",
+        "description":"只有反馈申请人且具备当前审查权限可请求；来源尝试必须具有有效的已治理制度冻结快照和必需政策，否则返回 409。模型政策上下文只来自来源尝试，候选引用只能指向其中的精确政策版本。返回任务身份，不代表模型结果、批准或发布。可选正文 case_id 和 feedback_id 必须与路径一致。修订既有候选时必须同时提供 candidate_id 和 base_version_id。幂等键可放在请求头或正文，同时提供时必须一致。Core 未配置独立 worker 结果接收凭据时拒绝受理。",
+        "parameters":[{"name":"caseID","in":"path","required":true,"schema":{"type":"string"}},{"name":"feedbackID","in":"path","required":true,"schema":{"type":"string"}},{"name":"Idempotency-Key","in":"header","required":false,"schema":{"type":"string","maxLength":80}}],
+        "requestBody":{"required":true,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/ExperienceDistillationRequest"}}}},
+        "responses":{"202":{"description":"任务已受理","content":{"application/json":{"schema":{"$ref":"#/components/schemas/ExperienceDistillationReceipt"}}}},"401":{"$ref":"#/components/responses/Error401"},"403":{"$ref":"#/components/responses/Error403"},"404":{"$ref":"#/components/responses/Error404"},"409":{"$ref":"#/components/responses/Error409"},"413":{"$ref":"#/components/responses/Error413"},"422":{"$ref":"#/components/responses/Error422"},"500":{"$ref":"#/components/responses/Error500"},"503":{"description":"只读、结果接收未配置、模型不可用、关联案件忙或队列容量不足","content":{"application/json":{"schema":{"$ref":"#/components/schemas/Error"}}}}}
+      }
+    },
+    "/api/cases/{caseID}/experience-feedback/{feedbackID}/distillations/{jobID}": {
+      "get": {
+        "operationId":"getExperienceDistillation","tags":["人工复核"],"summary":"读取提炼任务状态和候选身份",
+        "description":"检查当前案件权限和候选祖先来源权限；可返回失败代码，候选生成后返回精确候选及版本身份。完成并不代表批准或发布。",
+        "parameters":[{"name":"caseID","in":"path","required":true,"schema":{"type":"string"}},{"name":"feedbackID","in":"path","required":true,"schema":{"type":"string"}},{"name":"jobID","in":"path","required":true,"schema":{"type":"string"}}],
+        "responses":{"200":{"description":"任务状态","content":{"application/json":{"schema":{"$ref":"#/components/schemas/ExperienceDistillationStatus"}}}},"401":{"$ref":"#/components/responses/Error401"},"403":{"$ref":"#/components/responses/Error403"},"404":{"$ref":"#/components/responses/Error404"},"409":{"$ref":"#/components/responses/Error409"},"422":{"$ref":"#/components/responses/Error422"},"500":{"$ref":"#/components/responses/Error500"},"503":{"$ref":"#/components/responses/Error503"}}
+      }
+    },
+    "/api/cases/{caseID}/experience-candidates/{candidateID}/versions/{versionID}": {
+      "get": {
+        "operationId":"getExperienceCandidate","tags":["人工复核"],"summary":"读取精确的经验候选版本",
+        "description":"返回不可变草稿和任务来源；每次均检查来源案件及祖先来源的当前权限。候选不等于已批准或已发布。",
+        "parameters":[{"name":"caseID","in":"path","required":true,"schema":{"type":"string"}},{"name":"candidateID","in":"path","required":true,"schema":{"type":"string"}},{"name":"versionID","in":"path","required":true,"schema":{"type":"string"}}],
+        "responses":{"200":{"description":"候选版本","content":{"application/json":{"schema":{"$ref":"#/components/schemas/ExperienceCandidate"}}}},"401":{"$ref":"#/components/responses/Error401"},"403":{"$ref":"#/components/responses/Error403"},"404":{"$ref":"#/components/responses/Error404"},"409":{"$ref":"#/components/responses/Error409"},"500":{"$ref":"#/components/responses/Error500"},"503":{"$ref":"#/components/responses/Error503"}}
+      }
+    },
+    "/api/admin/governed-knowledge": {
+      "get": {
+        "operationId":"listGovernedKnowledgeVersions","tags":["规则治理"],"summary":"列出已治理知识版本元数据","security":[{"adminSessionCookie":[]}],
+        "description":"仅 admin audience；仅列出当前租户且当前管理员有来源案件权限的版本，不返回正文。",
+        "responses":{"200":{"description":"版本元数据","content":{"application/json":{"schema":{"$ref":"#/components/schemas/GovernedKnowledgeList"}}}},"401":{"$ref":"#/components/responses/Error401"},"403":{"$ref":"#/components/responses/Error403"},"500":{"$ref":"#/components/responses/Error500"},"503":{"$ref":"#/components/responses/Error503"}}
+      },
+      "post": {
+        "operationId":"createGovernedKnowledge","tags":["规则治理"],"summary":"创建已治理知识草稿","security":[{"adminSessionCookie":[]}],
+        "description":"从 admin 会话绑定租户和创建人；内容版本不可变，创建不会批准或发布。幂等键可放在请求头或正文，同时提供时必须一致。",
+        "parameters":[{"name":"Idempotency-Key","in":"header","required":false,"schema":{"type":"string","maxLength":80}}],
+        "requestBody":{"required":true,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/GovernedKnowledgeCreateRequest"}}}},
+        "responses":{"201":{"description":"草稿版本","content":{"application/json":{"schema":{"$ref":"#/components/schemas/GovernedKnowledgeVersion"}}}},"401":{"$ref":"#/components/responses/Error401"},"403":{"$ref":"#/components/responses/Error403"},"404":{"$ref":"#/components/responses/Error404"},"409":{"$ref":"#/components/responses/Error409"},"413":{"$ref":"#/components/responses/Error413"},"422":{"$ref":"#/components/responses/Error422"},"500":{"$ref":"#/components/responses/Error500"},"503":{"$ref":"#/components/responses/Error503"}}
+      }
+    },
+    "/api/admin/governed-knowledge/{knowledgeID}/versions/{versionID}": {
+      "get": {
+        "operationId":"getGovernedKnowledgeVersion","tags":["规则治理"],"summary":"读取精确的已治理知识版本","security":[{"adminSessionCookie":[]}],
+        "description":"读取前重新检查当前管理员、租户和来源案件权限，不回退到其他版本。",
+        "parameters":[{"name":"knowledgeID","in":"path","required":true,"schema":{"type":"string"}},{"name":"versionID","in":"path","required":true,"schema":{"type":"string"}}],
+        "responses":{"200":{"description":"精确版本","content":{"application/json":{"schema":{"$ref":"#/components/schemas/GovernedKnowledgeVersion"}}}},"401":{"$ref":"#/components/responses/Error401"},"403":{"$ref":"#/components/responses/Error403"},"404":{"$ref":"#/components/responses/Error404"},"500":{"$ref":"#/components/responses/Error500"},"503":{"$ref":"#/components/responses/Error503"}}
+      }
+    },
+    "/api/admin/governed-knowledge/{knowledgeID}/versions/{versionID}/preview": {
+      "get": {
+        "operationId":"previewGovernedPolicy","tags":["规则治理"],"summary":"预览政策正文与规则包的结构化差异","security":[{"adminSessionCookie":[]}],
+        "description":"仅 admin audience，重新检查租户和来源案件权限。对精确政策版本提取可表达的阈值及正文码点区间，逐规则比较已绑定的规则包，并报告歧义、不可表达内容和仅供语义审阅的文字。预览不批准或发布政策。",
+        "parameters":[{"name":"knowledgeID","in":"path","required":true,"schema":{"type":"string"}},{"name":"versionID","in":"path","required":true,"schema":{"type":"string"}}],
+        "responses":{"200":{"description":"政策阈值及比较结果","content":{"application/json":{"schema":{"$ref":"#/components/schemas/GovernedPolicyPreview"}}}},"401":{"$ref":"#/components/responses/Error401"},"403":{"$ref":"#/components/responses/Error403"},"404":{"$ref":"#/components/responses/Error404"},"409":{"$ref":"#/components/responses/Error409"},"422":{"$ref":"#/components/responses/Error422"},"500":{"$ref":"#/components/responses/Error500"},"503":{"$ref":"#/components/responses/Error503"}}
+      }
+    },
+    "/api/admin/governed-knowledge/{knowledgeID}/versions/{versionID}/commands": {
+      "post": {
+        "operationId":"governedKnowledgeCommand","tags":["规则治理"],"summary":"执行知识治理状态变更","security":[{"adminSessionCookie":[]}],
+        "description":"提交、校验、批准、发布、撤回或回滚精确版本；命令以内容摘要和修订校验，指针变更还校验指针修订。可选正文 knowledge_id 和 version_id 必须与路径一致。幂等键可放在请求头或正文，同时提供时必须一致。",
+        "parameters":[{"name":"knowledgeID","in":"path","required":true,"schema":{"type":"string"}},{"name":"versionID","in":"path","required":true,"schema":{"type":"string"}},{"name":"Idempotency-Key","in":"header","required":false,"schema":{"type":"string","maxLength":80}}],
+        "requestBody":{"required":true,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/GovernedKnowledgeCommandRequest"}}}},
+        "responses":{"200":{"description":"更新后的精确版本","content":{"application/json":{"schema":{"$ref":"#/components/schemas/GovernedKnowledgeVersion"}}}},"401":{"$ref":"#/components/responses/Error401"},"403":{"$ref":"#/components/responses/Error403"},"404":{"$ref":"#/components/responses/Error404"},"409":{"$ref":"#/components/responses/Error409"},"413":{"$ref":"#/components/responses/Error413"},"422":{"$ref":"#/components/responses/Error422"},"500":{"$ref":"#/components/responses/Error500"},"503":{"$ref":"#/components/responses/Error503"}}
+      }
+    },
+    "/api/admin/governed-knowledge/{knowledgeID}/history": {
+      "get": {
+        "operationId":"listGovernedKnowledgeHistory","tags":["规则治理"],"summary":"读取知识治理追加历史","security":[{"adminSessionCookie":[]}],
+        "description":"按持久序列返回历史，读取时重新检查各来源版本的当前权限。",
+        "parameters":[{"name":"knowledgeID","in":"path","required":true,"schema":{"type":"string"}}],
+        "responses":{"200":{"description":"有序历史","content":{"application/json":{"schema":{"$ref":"#/components/schemas/GovernedKnowledgeHistory"}}}},"401":{"$ref":"#/components/responses/Error401"},"403":{"$ref":"#/components/responses/Error403"},"404":{"$ref":"#/components/responses/Error404"},"500":{"$ref":"#/components/responses/Error500"},"503":{"$ref":"#/components/responses/Error503"}}
+      }
+    },
     "/api/workbench": {
       "get": {
         "operationId": "getWorkbench",
@@ -2288,7 +2433,7 @@
           "审查"
         ],
         "summary": "受理审查并后台执行",
-        "description": "需有发起角色与案件权限。持久模式在 PostgreSQL 事务中记录 run、attempt、worker_jobs 任务与 outbox 事件，返回 202 和 id、attempt_id、job_id，由独立 Worker 领取执行；同输入/配置保持幂等。非持久模式返回 201 并由当前进程后台执行。模型失败时保留规则结果并标记 partial。持久任务租约接管不代表跨故障域 HA/DR。",
+        "description": "需有发起角色与案件权限。已治理案件必须提供带时区的 RFC3339Nano business_at，用于冻结当时适用的已发布知识；非治理案件可省略。缺少或无效的业务时间返回 422，治理快照不可用或冲突返回 409，不能使用当前时间或旧制度替代。持久模式在 PostgreSQL 事务中记录 run、attempt、worker_jobs 任务与 outbox 事件，返回 202 和 id、attempt_id、job_id，由独立 Worker 领取执行；同输入/配置保持幂等。非持久模式返回 201 并由当前进程后台执行。模型失败时保留规则结果并标记 partial。持久任务租约接管不代表跨故障域 HA/DR。",
         "responses": {
           "201": {
             "description": "成功",
@@ -2340,7 +2485,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/EmptyObject"
+                "$ref": "#/components/schemas/ReviewStartRequest"
               }
             }
           }
@@ -2365,7 +2510,7 @@
           "审查"
         ],
         "summary": "读取审查工作区",
-        "description": "返回指定attempt的冻结输入、规则、人工决定与持久执行事件。省略attempt_id选择最新尝试；混拼case/run/attempt拒绝。旧未冻结记录明确legacy_unfrozen；新历史读取不调用OCR或模型。",
+        "description": "返回指定尝试的业务工作区、发现和人工决定，不暴露详细执行诊断。省略 attempt_id 选择最新尝试；混拼 case/run/attempt 拒绝。旧未冻结记录明确 legacy_unfrozen；新历史读取不调用 OCR 或模型。",
         "responses": {
           "200": {
             "description": "成功",
@@ -2416,6 +2561,14 @@
             }
           }
         ]
+      }
+    },
+    "/api/cases/{caseID}/reviews/{runID}/diagnostics": {
+      "get": {
+        "operationId":"getReviewDiagnostics","tags":["审查"],"summary":"读取审查执行诊断",
+        "description":"使用 client audience 会话，只有管理员且对当前案件有权限时可读取；可选择同一运行下的指定尝试。返回执行、冻结快照、审计以及材料和证据身份诊断。",
+        "parameters":[{"name":"caseID","in":"path","required":true,"schema":{"type":"string"}},{"name":"runID","in":"path","required":true,"schema":{"type":"string"}},{"name":"attempt_id","in":"query","required":false,"schema":{"type":"string"}}],
+        "responses":{"200":{"description":"诊断信息","content":{"application/json":{"schema":{"$ref":"#/components/schemas/ReviewDiagnostics"}}}},"401":{"$ref":"#/components/responses/Error401"},"403":{"$ref":"#/components/responses/Error403"},"404":{"$ref":"#/components/responses/Error404"},"500":{"$ref":"#/components/responses/Error500"}}
       }
     },
     "/api/cases/{caseID}/reviews/{runID}/retry": {
@@ -3452,9 +3605,110 @@
         "in": "cookie",
         "name": "session",
         "description": "由 POST /api/session 设置的 HttpOnly Cookie。浏览器管理，无需也不应在文档页粘贴。"
+      },
+      "adminSessionCookie": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "admin_session",
+        "description": "由 admin audience 会话设置的 HttpOnly Cookie。"
       }
     },
     "schemas": {
+      "EvidenceRequestCreate": {"type":"object","additionalProperties":false,"description":"compatible 结果本身不足以验证；缺少回执与同一能力检查的权威关联时，后续核验返回 409，请求保持 received。","required":["task_id","task_version","source_run_id","source_attempt_id","question","verification_condition"],"properties":{"case_id":{"type":"string"},"task_id":{"type":"string"},"task_version":{"type":"integer","minimum":1},"source_run_id":{"type":"string"},"source_attempt_id":{"type":"string"},"source_evaluation_id":{"type":"string"},"source_gap_id":{"type":"string"},"question":{"type":"string"},"material_role":{"type":"string"},"verification_condition":{"type":"string","enum":["compatible","conflict","resolved"]},"idempotency_key":{"type":"string","maxLength":80}}},
+      "EvidenceReceiptCreate": {"type":"object","additionalProperties":false,"required":["expected_version"],"properties":{"case_id":{"type":"string"},"request_id":{"type":"string"},"document_id":{"type":"string"},"answer":{"type":"string"},"expected_version":{"type":"integer","minimum":1},"idempotency_key":{"type":"string","maxLength":80}}},
+      "EvidenceRequestVerify": {"type":"object","additionalProperties":false,"description":"compatible 结果本身不足以验证；缺少回执与同一能力检查的权威关联时返回 409，请求保持 received。","required":["run_id","attempt_id","evidence","reason","expected_version"],"properties":{"case_id":{"type":"string"},"request_id":{"type":"string"},"receipt_id":{"type":"string"},"run_id":{"type":"string"},"attempt_id":{"type":"string"},"evaluation_id":{"type":"string"},"gap_id":{"type":"string"},"evidence":{"type":"array","items":{"$ref":"#/components/schemas/ExperienceEvidenceRef"}},"reason":{"type":"string"},"expected_version":{"type":"integer","minimum":1},"idempotency_key":{"type":"string","maxLength":80}}},
+      "EvidenceSourceEvaluation": {"type":"object","additionalProperties":false,"required":["id","run_id","attempt_id","case_id","domain","rule_version","relation","reason"],"properties":{"id":{"type":"string"},"run_id":{"type":"string"},"attempt_id":{"type":"string"},"case_id":{"type":"string"},"domain":{"type":"string"},"rule_id":{"type":"string"},"rule_version":{"type":"string"},"capability_id":{"type":"string"},"mandatory":{"type":"boolean"},"relation":{"type":"string"},"reason_code":{"type":"string"},"reason":{"type":"string"},"fact_ids":{"type":"array","items":{"type":"string"}},"object_refs":{"type":"array","items":{"type":"string"}},"finding_id":{"type":"string"}}},
+      "EvidenceSourceGap": {"type":"object","additionalProperties":false,"required":["gap_id","domain","capability_id","status","reason_code","evidence_ids"],"properties":{"gap_id":{"type":"string"},"domain":{"type":"string"},"capability_id":{"type":"string"},"mandatory":{"type":"boolean"},"status":{"type":"string"},"reason_code":{"type":"string"},"evidence_ids":{"type":["array","null"],"items":{"type":"string"}}}},
+      "EvidenceRequestVerification": {"type":"object","additionalProperties":false,"required":["run_id","attempt_id","receipt_id","evidence","reason","verified_by","verified_at"],"properties":{"run_id":{"type":"string"},"attempt_id":{"type":"string"},"evaluation_id":{"type":"string"},"relation":{"type":"string"},"gap_id":{"type":"string"},"gap_status":{"type":"string"},"receipt_id":{"type":"string"},"evidence":{"type":"array","items":{"$ref":"#/components/schemas/ExperienceEvidenceView"}},"reason":{"type":"string"},"verified_by":{"type":"string"},"verified_at":{"type":"string","format":"date-time"}}},
+      "EvidenceRequest": {"type":"object","additionalProperties":false,"required":["id","case_id","task_id","task_version","assignee_id","due_at","source_run_id","source_attempt_id","question","verification_condition","status","version","created_by","created_at","updated_at"],"properties":{"id":{"type":"string"},"case_id":{"type":"string"},"task_id":{"type":"string"},"task_version":{"type":"integer"},"assignee_id":{"type":"string"},"due_at":{"type":"string"},"source_run_id":{"type":"string"},"source_attempt_id":{"type":"string"},"source_evaluation":{"$ref":"#/components/schemas/EvidenceSourceEvaluation"},"source_gap":{"$ref":"#/components/schemas/EvidenceSourceGap"},"question":{"type":"string"},"material_role":{"type":"string"},"verification_condition":{"type":"string"},"status":{"type":"string"},"version":{"type":"integer"},"created_by":{"type":"string"},"created_at":{"type":"string","format":"date-time"},"updated_at":{"type":"string","format":"date-time"},"verification":{"$ref":"#/components/schemas/EvidenceRequestVerification"}}},
+      "EvidenceRequestList": {"type":"object","additionalProperties":false,"required":["items"],"properties":{"items":{"type":"array","items":{"$ref":"#/components/schemas/EvidenceRequest"}}}},
+      "EvidenceReceipt": {"type":"object","additionalProperties":false,"required":["id","request_id","case_id","submitted_by","created_at"],"properties":{"id":{"type":"string"},"request_id":{"type":"string"},"case_id":{"type":"string"},"document_id":{"type":"string"},"answer":{"type":"string"},"submitted_by":{"type":"string"},"created_at":{"type":"string","format":"date-time"}}},
+      "EvidenceReceiptResult": {"type":"object","additionalProperties":false,"required":["request","receipt"],"properties":{"request":{"$ref":"#/components/schemas/EvidenceRequest"},"receipt":{"$ref":"#/components/schemas/EvidenceReceipt"}}},
+      "EvidenceRequestEvent": {"type":"object","additionalProperties":false,"required":["type","actor_id","occurred_at","request"],"properties":{"type":{"type":"string"},"actor_id":{"type":"string"},"occurred_at":{"type":"string","format":"date-time"},"request":{"$ref":"#/components/schemas/EvidenceRequest"},"receipt":{"$ref":"#/components/schemas/EvidenceReceipt"}}},
+      "EvidenceRequestHistory": {"type":"object","additionalProperties":false,"required":["items"],"properties":{"items":{"type":"array","items":{"$ref":"#/components/schemas/EvidenceRequestEvent"}}}},
+      "ReviewStartRequest": {"type":"object","additionalProperties":false,"properties":{"business_at":{"type":"string","format":"date-time","description":"已治理案件必填，带时区的 RFC3339Nano 业务时间；非治理案件可省略。"}}},
+      "ReviewDiagnostics": {
+        "type":"object","additionalProperties":false,"required":["case_id","run_id","execution","snapshot","audit_events","documents","evidence"],
+        "properties":{"case_id":{"type":"string"},"run_id":{"type":"string"},"execution":{"anyOf":[{"$ref":"#/components/schemas/Execution"},{"type":"null"}]},"snapshot":{"$ref":"#/components/schemas/Snapshot"},"audit_events":{"type":"array","items":{"$ref":"#/components/schemas/AuditEvent"}},"documents":{"type":"array","items":{"$ref":"#/components/schemas/Document"}},"evidence":{"type":"array","items":{"type":"object","additionalProperties":false,"required":["finding_id","anchors"],"properties":{"finding_id":{"type":"string"},"anchors":{"type":"array","items":{"type":"object","additionalProperties":false,"required":["id","document_id","parsed_document_id","normalized_digest"],"properties":{"id":{"type":"string"},"document_id":{"type":"string"},"parsed_document_id":{"type":["string","null"]},"normalized_digest":{"type":["string","null"]}}}}}}}}
+      },
+      "ExperienceEvidenceRef": {
+        "type":"object","additionalProperties":false,
+        "required":["document_id","parsed_document_id","quote","start","end"],
+        "properties":{"document_id":{"type":"string"},"parsed_document_id":{"type":"string"},"normalized_digest":{"type":"string"},"quote":{"type":"string"},"start":{"type":"integer","minimum":0},"end":{"type":"integer","minimum":1}},
+        "description":"在冻结解析正文中的 Unicode 码点半开区间 [start,end)。normalized_digest 可省略，由服务端解析并校验；响应不返回该技术摘要。"
+      },
+      "ExperienceEvidenceView": {"type":"object","additionalProperties":false,"required":["document_id","parsed_document_id","quote","start","end"],"properties":{"document_id":{"type":"string"},"parsed_document_id":{"type":"string"},"quote":{"type":"string"},"start":{"type":"integer","minimum":0},"end":{"type":"integer","minimum":1}}},
+      "ExperienceFeedbackRequest": {
+        "type":"object","additionalProperties":false,"required":["run_id","attempt_id","finding_id","decision_id","reason","evidence_refs"],
+        "properties":{"case_id":{"type":"string"},"run_id":{"type":"string"},"attempt_id":{"type":"string"},"finding_id":{"type":"string"},"decision_id":{"type":"string"},"reason":{"type":"string"},"evidence_refs":{"type":"array","items":{"$ref":"#/components/schemas/ExperienceEvidenceRef"}},"idempotency_key":{"type":"string","maxLength":80}}
+      },
+      "ExperienceFeedback": {
+        "type":"object","additionalProperties":false,"required":["feedback_id","tenant_id","org_id","case_id","run_id","attempt_id","finding_id","decision_id","decision_action","decision_disposition","reason","evidence_refs","applicant_id","created_at"],
+        "properties":{"feedback_id":{"type":"string"},"tenant_id":{"type":"string"},"org_id":{"type":"string"},"case_id":{"type":"string"},"run_id":{"type":"string"},"attempt_id":{"type":"string"},"finding_id":{"type":"string"},"decision_id":{"type":"string"},"decision_action":{"type":"string"},"decision_disposition":{"type":"string"},"reason":{"type":"string"},"evidence_refs":{"type":"array","items":{"$ref":"#/components/schemas/ExperienceEvidenceView"}},"applicant_id":{"type":"string"},"created_at":{"type":"string","format":"date-time"}}
+      },
+      "ExperienceDistillationRequest": {
+        "type":"object","additionalProperties":false,
+        "properties":{"case_id":{"type":"string"},"feedback_id":{"type":"string"},"candidate_id":{"type":"string"},"base_version_id":{"type":"string"},"idempotency_key":{"type":"string","maxLength":80}}
+      },
+      "ExperienceDistillationReceipt": {"type":"object","additionalProperties":false,"required":["job_id"],"properties":{"job_id":{"type":"string"}}},
+      "ExperienceDistillationStatus": {"type":"object","additionalProperties":false,"required":["job_id","feedback_id","state"],"properties":{"job_id":{"type":"string"},"feedback_id":{"type":"string"},"state":{"type":"string"},"failure_code":{"type":"string"},"candidate_id":{"type":"string"},"version_id":{"type":"string"}}},
+      "GovernedKnowledgeRef": {"type":"object","additionalProperties":false,"required":["knowledge_id","version_id","content_sha256"],"properties":{"knowledge_id":{"type":"string"},"version_id":{"type":"string"},"content_sha256":{"type":"string"}}},
+      "PolicyThresholdCandidate": {"type":"object","additionalProperties":false,"required":["comparator","value","unit","start","end","quote"],"properties":{"comparator":{"type":"string"},"value":{"type":"string"},"unit":{"type":"string"},"basis":{"type":"string"},"start":{"type":"integer","minimum":0},"end":{"type":"integer","minimum":0},"quote":{"type":"string"}}},
+      "PolicyRuleThreshold": {"type":"object","additionalProperties":false,"required":["value","unit"],"properties":{"value":{"type":"string"},"unit":{"type":"string"},"basis":{"type":"string"}}},
+      "PolicyRuleComparison": {"type":"object","additionalProperties":false,"required":["rule_id","comparator","rule_threshold","status"],"properties":{"rule_id":{"type":"string"},"comparator":{"type":"string"},"candidate":{"$ref":"#/components/schemas/PolicyThresholdCandidate"},"rule_threshold":{"$ref":"#/components/schemas/PolicyRuleThreshold"},"status":{"type":"string","enum":["match","different","ambiguous","unexpressible"]},"reason":{"type":"string"}}},
+      "PolicyTextIssue": {"type":"object","additionalProperties":false,"required":["start","end","quote","reason"],"properties":{"start":{"type":"integer","minimum":0},"end":{"type":"integer","minimum":0},"quote":{"type":"string"},"reason":{"type":"string"}}},
+      "GovernedPolicyPreview": {"type":"object","additionalProperties":false,"required":["ref","extractor_ref","comparisons","issues","semantic_only","approvable"],"properties":{"ref":{"$ref":"#/components/schemas/GovernedKnowledgeRef"},"extractor_ref":{"type":"string"},"comparisons":{"type":"array","items":{"$ref":"#/components/schemas/PolicyRuleComparison"}},"issues":{"type":"array","items":{"$ref":"#/components/schemas/PolicyTextIssue"}},"semantic_only":{"type":"array","items":{"$ref":"#/components/schemas/PolicyTextIssue"}},"approvable":{"type":"boolean"}}},
+      "GovernedRulePackRef": {"type":"object","additionalProperties":false,"required":["pack_id","version","content_sha256","snapshot_sha256","compiler_ref","pointer_revision"],"properties":{"pack_id":{"type":"string"},"version":{"type":"string"},"content_sha256":{"type":"string"},"snapshot_sha256":{"type":"string"},"compiler_ref":{"type":"string"},"pointer_revision":{"type":"integer"}}},
+      "GovernedKnowledgeSelection": {
+        "type":"object","additionalProperties":false,"required":["ref","kind","source_type","scope","required","summary","valid_from","valid_until","applicability","exclusions","pointer_revision","binding","selection_reason"],
+        "properties":{"ref":{"$ref":"#/components/schemas/GovernedKnowledgeRef"},"kind":{"type":"string"},"source_type":{"type":"string"},"scope":{"$ref":"#/components/schemas/GovernedKnowledgeScope"},"required":{"type":"boolean"},"summary":{"type":"string"},"valid_from":{"type":"string"},"valid_until":{"type":"string"},"exception_basis":{"type":"string"},"policy_refs":{"type":"array","items":{"$ref":"#/components/schemas/GovernedKnowledgeRef"}},"applicability":{"type":["array","null"],"items":{"$ref":"#/components/schemas/GovernedKnowledgeCondition"}},"exclusions":{"type":["array","null"],"items":{"$ref":"#/components/schemas/GovernedKnowledgeCondition"}},"reviewed_applicability":{"type":"array","items":{"type":"string"}},"reviewed_exclusions":{"type":"array","items":{"type":"string"}},"check_action":{"type":"string"},"minimum_evidence":{"type":"string"},"counterexamples":{"type":"array","items":{"type":"string"}},"semantic_only":{"type":"array","items":{"$ref":"#/components/schemas/PolicyTextIssue"}},"requires_fact_evaluation":{"type":"boolean"},"pointer_revision":{"type":"integer"},"binding":{"$ref":"#/components/schemas/GovernedKnowledgeBinding"},"selection_reason":{"type":"string"}}
+      },
+      "ReviewKnowledgeSnapshot": {
+        "type":"object","additionalProperties":false,"required":["encoding","business_at","scope","authorization_revision","rule_pack","required_policies","optional_candidates","excluded","optional_truncated","snapshot_sha256"],
+        "properties":{"encoding":{"type":"string"},"business_at":{"type":"string","format":"date-time"},"scope":{"$ref":"#/components/schemas/GovernedKnowledgeScope"},"authorization_revision":{"type":"string"},"rule_pack":{"$ref":"#/components/schemas/GovernedRulePackRef"},"required_policies":{"type":["array","null"],"items":{"$ref":"#/components/schemas/GovernedKnowledgeSelection"}},"optional_candidates":{"type":["array","null"],"items":{"$ref":"#/components/schemas/GovernedKnowledgeSelection"}},"excluded":{"type":["array","null"],"items":{"type":"object","additionalProperties":false,"required":["ref","reason"],"properties":{"ref":{"$ref":"#/components/schemas/GovernedKnowledgeRef"},"reason":{"type":"string"}}}},"optional_truncated":{"type":"boolean"},"snapshot_sha256":{"type":"string"}}
+      },
+      "ExperienceCandidateContent": {
+        "type":"object","additionalProperties":false,"required":["schema_version","applicability","exclusions","check_action","minimum_evidence","counterexamples","valid_from","valid_until","policy_refs","review_diff"],
+        "properties":{"schema_version":{"type":"string"},"applicability":{"type":["array","null"],"items":{"type":"string"}},"exclusions":{"type":["array","null"],"items":{"type":"string"}},"check_action":{"type":"string"},"minimum_evidence":{"type":["array","null"],"items":{"type":"string"}},"counterexamples":{"type":["array","null"],"items":{"type":"string"}},"valid_from":{"type":"string"},"valid_until":{"type":"string"},"policy_refs":{"type":["array","null"],"items":{"$ref":"#/components/schemas/GovernedKnowledgeRef"}},"review_diff":{"type":"string"}}
+      },
+      "ExperienceCandidate": {
+        "type":"object","additionalProperties":false,"required":["tenant_id","org_id","case_id","feedback_id","candidate_id","version_id","content_sha256","job_id","generation","input_sha256","result_sha256","model_ref","template_ref","content","created_at"],
+        "properties":{"tenant_id":{"type":"string"},"org_id":{"type":"string"},"case_id":{"type":"string"},"feedback_id":{"type":"string"},"candidate_id":{"type":"string"},"version_id":{"type":"string"},"base_version_id":{"type":"string"},"content_sha256":{"type":"string"},"job_id":{"type":"string"},"generation":{"type":"integer"},"input_sha256":{"type":"string"},"result_sha256":{"type":"string"},"model_ref":{"type":"string"},"template_ref":{"type":"string"},"content":{"$ref":"#/components/schemas/ExperienceCandidateContent"},"created_at":{"type":"string","format":"date-time"}}
+      },
+      "GovernedKnowledgeScope": {
+        "type":"object","additionalProperties":false,"required":["business_line","scenario","contract_type"],
+        "properties":{"org_id":{"type":"string"},"case_id":{"type":"string"},"business_line":{"type":"string"},"scenario":{"type":"string"},"contract_type":{"type":"string"}}
+      },
+      "GovernedKnowledgeCondition": {"type":"object","additionalProperties":false,"required":["field","equals"],"properties":{"field":{"type":"string"},"equals":{"type":"string"}}},
+      "GovernedKnowledgeSourceSpan": {"type":"object","additionalProperties":false,"required":["rule_id","start","end","quote"],"properties":{"rule_id":{"type":"string"},"start":{"type":"integer"},"end":{"type":"integer"},"quote":{"type":"string"}}},
+      "GovernedKnowledgeBinding": {
+        "type":"object","additionalProperties":false,"required":["pack_id","pack_version","pack_content_hash","pack_snapshot_digest","compiler_ref","rule_ids","source_spans","candidate_diff","validation_evidence"],
+        "properties":{"pack_id":{"type":"string"},"pack_version":{"type":"string"},"pack_content_hash":{"type":"string"},"pack_snapshot_digest":{"type":"string"},"compiler_ref":{"type":"string"},"extraction_compiler_ref":{"type":"string"},"rule_ids":{"type":["array","null"],"items":{"type":"string"}},"source_spans":{"type":["array","null"],"items":{"$ref":"#/components/schemas/GovernedKnowledgeSourceSpan"}},"candidate_diff":{"type":"string"},"validation_evidence":{"type":"string"}}
+      },
+      "GovernedKnowledgeContent": {
+        "type":"object","additionalProperties":false,
+        "required":["knowledge_id","version","kind","title","body","summary","source_type","source_reference","scope","valid_from","valid_until","binding"],
+        "properties":{"encoding":{"type":"string"},"knowledge_id":{"type":"string"},"version":{"type":"string"},"kind":{"type":"string","enum":["policy","guidance","exception","experience"]},"title":{"type":"string"},"body":{"type":"string"},"summary":{"type":"string"},"source_type":{"type":"string"},"source_reference":{"type":"string"},"source_case_id":{"type":"string"},"source_org_id":{"type":"string"},"source_feedback_id":{"type":"string"},"candidate_id":{"type":"string"},"candidate_version_id":{"type":"string"},"candidate_content_sha256":{"type":"string"},"candidate_review_diff":{"type":"string"},"reviewed_applicability":{"type":"array","items":{"type":"string"}},"reviewed_exclusions":{"type":"array","items":{"type":"string"}},"scope":{"$ref":"#/components/schemas/GovernedKnowledgeScope"},"valid_from":{"type":"string","format":"date-time"},"valid_until":{"type":"string","format":"date-time"},"applicability":{"type":["array","null"],"items":{"$ref":"#/components/schemas/GovernedKnowledgeCondition"}},"exclusions":{"type":["array","null"],"items":{"$ref":"#/components/schemas/GovernedKnowledgeCondition"}},"binding":{"$ref":"#/components/schemas/GovernedKnowledgeBinding"},"exception_basis":{"type":"string"},"check_action":{"type":"string"},"minimum_evidence":{"type":"string"},"counterexamples":{"type":"array","items":{"type":"string"}},"policy_refs":{"type":"array","items":{"$ref":"#/components/schemas/GovernedKnowledgeRef"}}}
+      },
+      "GovernedKnowledgeCreateRequest": {"type":"object","additionalProperties":false,"required":["content"],"properties":{"content":{"$ref":"#/components/schemas/GovernedKnowledgeContent"},"idempotency_key":{"type":"string","maxLength":80}}},
+      "GovernedKnowledgeCommandRequest": {
+        "type":"object","additionalProperties":false,"required":["action","expected_revision","expected_content_sha256","reason"],
+        "properties":{"knowledge_id":{"type":"string"},"version_id":{"type":"string"},"action":{"type":"string","enum":["submit","validate","approve","publish","withdraw","rollback"]},"expected_revision":{"type":"integer","minimum":1},"expected_content_sha256":{"type":"string"},"expected_pointer_revision":{"type":"integer","minimum":0},"reason":{"type":"string"},"cross_case_reviewed":{"type":"boolean"},"idempotency_key":{"type":"string","maxLength":80}}
+      },
+      "GovernedKnowledgeVersion": {
+        "type":"object","additionalProperties":false,"required":["ref","content","status","revision","cross_case_reviewed","active","pointer_revision","created_by","created_at"],
+        "properties":{"ref":{"$ref":"#/components/schemas/GovernedKnowledgeRef"},"content":{"$ref":"#/components/schemas/GovernedKnowledgeContent"},"status":{"type":"string","enum":["draft","submitted","validated","approved","published","withdrawn"]},"revision":{"type":"integer"},"approved_digest":{"type":"string"},"approval_actor_id":{"type":"string"},"approval_reason":{"type":"string"},"cross_case_reviewed":{"type":"boolean"},"active":{"type":"boolean"},"pointer_revision":{"type":"integer"},"created_by":{"type":"string"},"created_at":{"type":"string","format":"date-time"}}
+      },
+      "GovernedKnowledgeSummary": {
+        "type":"object","additionalProperties":false,"required":["ref","version","title","kind","source_type","scope","valid_from","valid_until","status","revision","pointer_revision","active"],
+        "properties":{"ref":{"$ref":"#/components/schemas/GovernedKnowledgeRef"},"version":{"type":"string"},"title":{"type":"string"},"kind":{"type":"string"},"source_type":{"type":"string"},"scope":{"$ref":"#/components/schemas/GovernedKnowledgeScope"},"valid_from":{"type":"string","format":"date-time"},"valid_until":{"type":"string","format":"date-time"},"status":{"type":"string"},"revision":{"type":"integer"},"pointer_revision":{"type":"integer"},"active":{"type":"boolean"}}
+      },
+      "GovernedKnowledgeList": {"type":"object","additionalProperties":false,"required":["items"],"properties":{"items":{"type":"array","items":{"$ref":"#/components/schemas/GovernedKnowledgeSummary"}}}},
+      "GovernedKnowledgeHistoryEntry": {
+        "type":"object","additionalProperties":false,"required":["sequence","ref","action","revision","pointer_revision","actor_id","reason","previous_active","resulting_active","occurred_at"],
+        "properties":{"sequence":{"type":"integer"},"ref":{"$ref":"#/components/schemas/GovernedKnowledgeRef"},"action":{"type":"string"},"revision":{"type":"integer"},"pointer_revision":{"type":"integer"},"actor_id":{"type":"string"},"reason":{"type":"string"},"previous_version_id":{"type":"string"},"previous_active":{"type":"boolean"},"resulting_version_id":{"type":"string"},"resulting_active":{"type":"boolean"},"occurred_at":{"type":"string","format":"date-time"}}
+      },
+      "GovernedKnowledgeHistory": {"type":"object","additionalProperties":false,"required":["items"],"properties":{"items":{"type":"array","items":{"$ref":"#/components/schemas/GovernedKnowledgeHistoryEntry"}}}},
       "CaseProfile": {
         "type": "object",
         "additionalProperties": false,
@@ -5674,9 +5928,6 @@
           "media_type": {
             "type": "string"
           },
-          "digest": {
-            "type": "string"
-          },
           "size": {
             "type": "integer",
             "minimum": 0
@@ -5710,9 +5961,6 @@
             "type": "string",
             "const": "unicode_codepoint"
           },
-          "normalized_text_digest": {
-            "type": "string"
-          },
           "text": {
             "anyOf": [
               {
@@ -5729,23 +5977,14 @@
               "$ref": "#/components/schemas/Clause"
             }
           },
-          "parsed_document": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/ParsedDocument"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          }
+          "parsed_document": {"type":"null"},
+          "parsed_document_id": {"type":["string","null"]}
         },
         "required": [
           "id",
           "role",
           "filename",
           "media_type",
-          "digest",
           "size",
           "parse_status",
           "parse_error",
@@ -5753,7 +5992,8 @@
           "superseded",
           "text",
           "clauses",
-          "parsed_document"
+          "parsed_document",
+          "parsed_document_id"
         ],
         "additionalProperties": false
       },
@@ -6023,16 +6263,6 @@
                 "type": "null"
               }
             ]
-          },
-          "normalized_digest": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ]
           }
         },
         "required": [
@@ -6045,8 +6275,7 @@
           "bbox",
           "element_id",
           "mismatch_reason",
-          "parsed_document_id",
-          "normalized_digest"
+          "parsed_document_id"
         ],
         "additionalProperties": false
       },
@@ -6252,16 +6481,6 @@
             "type": "string",
             "format": "date-time"
           },
-          "model_ref": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
           "partial_reason": {
             "anyOf": [
               {
@@ -6289,7 +6508,6 @@
           "updated_at",
           "case_id",
           "started_at",
-          "model_ref",
           "partial_reason",
           "failure_message"
         ],
@@ -6329,14 +6547,16 @@
                 "type": "null"
               }
             ]
-          }
+          },
+          "governed_knowledge": {"anyOf":[{"$ref":"#/components/schemas/ReviewKnowledgeSnapshot"},{"type":"null"}]}
         },
         "required": [
           "document_ids",
           "rule_set_hash",
           "playbook_hash",
           "model_ref",
-          "comparator_ref"
+          "comparator_ref",
+          "governed_knowledge"
         ],
         "additionalProperties": false
       },
@@ -6550,7 +6770,7 @@
             }
           },
           "snapshot": {
-            "$ref": "#/components/schemas/Snapshot"
+            "$ref": "#/components/schemas/BusinessSnapshot"
           },
           "audit_events": {
             "type": "array",
@@ -6584,16 +6804,10 @@
               "$ref": "#/components/schemas/Revision"
             }
           },
-          "execution": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/Execution"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          }
+          "execution": {"type":"null"},
+          "review_attempts": {"anyOf":[{"$ref":"#/components/schemas/BusinessAttempts"},{"type":"null"}]},
+          "agent_review": {"anyOf":[{"$ref":"#/components/schemas/BusinessAgentReview"},{"type":"null"}]},
+          "business_events": {"type":"array","items":{"$ref":"#/components/schemas/BusinessAuditEvent"}}
         },
         "required": [
           "run",
@@ -6605,10 +6819,24 @@
           "previous_run_id",
           "revision_comparison_reason",
           "revisions",
-          "execution"
+          "execution",
+          "review_attempts",
+          "agent_review",
+          "business_events"
         ],
         "additionalProperties": false
       },
+      "BusinessSnapshot": {"type":"object","additionalProperties":false,"required":["document_ids"],"properties":{"document_ids":{"type":["array","null"],"items":{"type":"string"}}}},
+      "BusinessAttempt": {"type":"object","additionalProperties":false,"required":["id","run_id","ordinal","retry_of_attempt_id","state","accepted_at","started_at","finished_at","history_kind","parsed_document_ids"],"properties":{"id":{"type":"string"},"run_id":{"type":"string"},"ordinal":{"type":"integer"},"retry_of_attempt_id":{"type":["string","null"]},"state":{"type":"string"},"accepted_at":{"type":"string"},"started_at":{"type":["string","null"]},"finished_at":{"type":["string","null"]},"history_kind":{"type":"string"},"parsed_document_ids":{"type":["array","null"],"items":{"type":"string"}}}},
+      "BusinessAttempts": {"type":"object","additionalProperties":false,"required":["attempt","attempts"],"properties":{"attempt":{"anyOf":[{"$ref":"#/components/schemas/BusinessAttempt"},{"type":"null"}]},"attempts":{"type":"array","items":{"$ref":"#/components/schemas/BusinessAttempt"}}}},
+      "BusinessAuditEvent": {"type":"object","additionalProperties":false,"required":["event_id","run_id","actor","seq","event_type","correlation_ids"],"properties":{"event_id":{"type":"string"},"run_id":{"type":"string"},"actor":{"type":"string"},"seq":{"type":"integer"},"event_type":{"type":"string"},"correlation_ids":{"type":["array","null"],"items":{"type":"string"}}}},
+      "BusinessAgentScope": {"type":"object","additionalProperties":false,"required":["domain","capability_ids","source_ids"],"properties":{"domain":{"type":"string"},"capability_ids":{"type":["array","null"],"items":{"type":"string"}},"source_ids":{"type":["array","null"],"items":{"type":"string"}}}},
+      "BusinessAgentCapability": {"type":"object","additionalProperties":false,"required":["capability_id","mandatory","status","relation","reason_code","evidence_ids","canonical_evaluation_ids"],"properties":{"capability_id":{"type":"string"},"mandatory":{"type":"boolean"},"status":{"type":"string"},"relation":{"type":["string","null"]},"reason_code":{"type":"string"},"evidence_ids":{"type":["array","null"],"items":{"type":"string"}},"canonical_evaluation_ids":{"type":["array","null"],"items":{"type":"string"}}}},
+      "BusinessAgentDomain": {"type":"object","additionalProperties":false,"required":["domain","status","capabilities"],"properties":{"domain":{"type":"string"},"status":{"type":"string"},"capabilities":{"type":["array","null"],"items":{"$ref":"#/components/schemas/BusinessAgentCapability"}}}},
+      "BusinessAgentGap": {"type":"object","additionalProperties":false,"required":["gap_id","domain","capability_id","mandatory","status","reason_code","evidence_ids"],"properties":{"gap_id":{"type":"string"},"domain":{"type":"string"},"capability_id":{"type":"string"},"mandatory":{"type":"boolean"},"status":{"type":"string"},"reason_code":{"type":"string"},"evidence_ids":{"type":["array","null"],"items":{"type":"string"}}}},
+      "BusinessEvidenceAnchor": {"type":"object","additionalProperties":false,"required":["id","document_id","parsed_document_id","quote","status","start","end","reason","page","element_id"],"properties":{"id":{"type":"string"},"document_id":{"type":"string"},"parsed_document_id":{"type":"string"},"quote":{"type":"string"},"status":{"type":"string"},"start":{"type":"integer"},"end":{"type":"integer"},"reason":{"type":["string","null"]},"page":{"type":["integer","null"]},"element_id":{"type":["string","null"]}}},
+      "BusinessAgentEvidence": {"type":"object","additionalProperties":false,"required":["evidence_id","semantic_type","value","unit","currency","verification","anchor"],"properties":{"evidence_id":{"type":"string"},"semantic_type":{"type":"string"},"value":{"type":"string"},"unit":{"type":["string","null"]},"currency":{"type":["string","null"]},"verification":{"type":"string"},"anchor":{"$ref":"#/components/schemas/BusinessEvidenceAnchor"}}},
+      "BusinessAgentReview": {"type":"object","additionalProperties":false,"required":["attempt_id","status","rulepack","scope","domains","gaps","evidence","unresolved_gap_ids"],"properties":{"attempt_id":{"type":["string","null"]},"status":{"type":["string","null"]},"rulepack":{"type":["object","null"],"additionalProperties":false,"required":["id","version"],"properties":{"id":{"type":"string"},"version":{"type":"string"}}},"scope":{"type":["array","null"],"items":{"$ref":"#/components/schemas/BusinessAgentScope"}},"domains":{"type":["array","null"],"items":{"$ref":"#/components/schemas/BusinessAgentDomain"}},"gaps":{"type":["array","null"],"items":{"$ref":"#/components/schemas/BusinessAgentGap"}},"evidence":{"type":["array","null"],"items":{"$ref":"#/components/schemas/BusinessAgentEvidence"}},"unresolved_gap_ids":{"type":["array","null"],"items":{"type":"string"}}}},
       "Settings": {
         "type": "object",
         "properties": {
@@ -7130,7 +7358,7 @@
             "type": "string"
           },
           "span_id": {
-            "type": "string"
+            "type": ["string", "null"]
           },
           "parent_span_id": {
             "anyOf": [
@@ -7155,6 +7383,9 @@
             "type": "string",
             "format": "date-time"
           },
+          "recorded_at": {"type":"string","format":"date-time"},
+          "event_key": {"type":"string"},
+          "generation": {"type":"integer"},
           "duration_ms": {
             "anyOf": [
               {
@@ -7997,6 +8228,7 @@
           "capability_id": {
             "type": "string"
           },
+          "mandatory": {"type":"boolean"},
           "status": {
             "type": "string",
             "enum": [
@@ -8110,6 +8342,7 @@
           "capability_id": {
             "type": "string"
           },
+          "mandatory": {"type":"boolean"},
           "status": {
             "type": "string",
             "enum": [
@@ -8514,6 +8747,8 @@
       "AgentReviewEvent": {
         "type": "object",
         "properties": {
+          "event_id": {"type":"string"},
+          "occurred_at": {"type":"string","format":"date-time"},
           "sequence": {
             "type": "integer",
             "minimum": 1
@@ -8540,7 +8775,13 @@
               "plan",
               "plan_accepted",
               "tool_failed",
-              "tool_completed"
+              "tool_completed",
+              "tool_started",
+              "tool_observed",
+              "run_cancelled",
+              "knowledge_read_started",
+              "knowledge_read_completed",
+              "knowledge_read_failed"
             ]
           },
           "call_id": {
@@ -8589,6 +8830,19 @@
         ],
         "additionalProperties": false
       },
+      "AgentKnowledgeSelection": {
+        "type":"object","additionalProperties":false,"required":["snapshot_sha256","algorithm","policy_status","policy_reason","input","candidates","budget","planner_rounds","reads"],
+        "properties":{
+          "snapshot_sha256":{"type":"string"},"algorithm":{"type":"string"},"policy_status":{"type":"string","enum":["available","unknown"]},"policy_reason":{"type":"string"},
+          "input":{"type":"object","additionalProperties":false,"required":["business_line","scenario","contract_type","gaps","evidence"],"properties":{"business_line":{"type":"string"},"scenario":{"type":"string"},"contract_type":{"type":"string"},"gaps":{"type":"array","items":{"type":"object","additionalProperties":false,"required":["gap_id","domain","capability","question"],"properties":{"gap_id":{"type":"string"},"domain":{"type":"string"},"capability":{"type":"string"},"question":{"type":"string"}}}},"evidence":{"type":"array","items":{"type":"object","additionalProperties":false,"required":["evidence_id","role","sha256","scanned_runes","total_runes"],"properties":{"evidence_id":{"type":"string"},"role":{"type":"string"},"sha256":{"type":"string"},"scanned_runes":{"type":"integer"},"total_runes":{"type":"integer"}}}}}},
+          "candidates":{"type":"array","items":{"type":"object","additionalProperties":false,"required":["knowledge_id","version_id","content_sha256","kind","required","score","decision","reason","truncated","requires_fact_evaluation"],"properties":{"knowledge_id":{"type":"string"},"version_id":{"type":"string"},"content_sha256":{"type":"string"},"kind":{"type":"string"},"required":{"type":"boolean"},"score":{"type":"integer"},"decision":{"type":"string","enum":["selected","omitted"]},"reason":{"type":"string","enum":["required_policy","relevance","no_relevance","planner_budget","acceptance_optional_budget"]},"truncated":{"type":"boolean"},"requires_fact_evaluation":{"type":"boolean"}}}},
+          "budget":{"type":"object","additionalProperties":false,"required":["reference_limit","field_bytes","evidence_runes_per_document","required_count","optional_candidates","optional_selected","optional_omitted","acceptance_omitted","acceptance_truncated","content_bytes_limit","content_bytes_used","read_calls_limit","read_max_runes","read_max_bytes","prior_read_calls","prior_read_reserved_bytes"],"properties":{"reference_limit":{"type":"integer"},"field_bytes":{"type":"integer"},"evidence_runes_per_document":{"type":"integer"},"required_count":{"type":"integer"},"optional_candidates":{"type":"integer"},"optional_selected":{"type":"integer"},"optional_omitted":{"type":"integer"},"acceptance_omitted":{"type":"integer"},"acceptance_truncated":{"type":"boolean","description":"当 acceptance_omitted 大于零时为 true。"},"content_bytes_limit":{"type":"integer"},"content_bytes_used":{"type":"integer"},"read_calls_limit":{"type":"integer"},"read_max_runes":{"type":"integer"},"read_max_bytes":{"type":"integer"},"prior_read_calls":{"type":"integer"},"prior_read_reserved_bytes":{"type":"integer"}}},
+          "planner_rounds":{"type":"array","items":{"type":"object","additionalProperties":false,"required":["round","references_provided","read_observations_provided","outcome"],"properties":{"round":{"type":"integer"},"references_provided":{"type":"array","items":{"$ref":"#/components/schemas/GovernedKnowledgeRef"}},"read_observations_provided":{"type":"array","items":{"$ref":"#/components/schemas/KnowledgeReadIdentity"}},"outcome":{"type":"string","enum":["returned","failed"]}}}},
+          "reads":{"type":"array","items":{"$ref":"#/components/schemas/KnowledgeReadRecord"}}
+        }
+      },
+      "KnowledgeReadIdentity": {"type":"object","additionalProperties":false,"required":["knowledge_id","version_id","content_sha256","text_sha256","start","end"],"properties":{"knowledge_id":{"type":"string"},"version_id":{"type":"string"},"content_sha256":{"type":"string"},"text_sha256":{"type":"string"},"start":{"type":"integer"},"end":{"type":"integer"}}},
+      "KnowledgeReadRecord": {"type":"object","additionalProperties":false,"required":["knowledge_id","version_id","content_sha256","round","start","end","bytes","status","text_sha256"],"properties":{"knowledge_id":{"type":"string"},"version_id":{"type":"string"},"content_sha256":{"type":"string"},"round":{"type":"integer"},"start":{"type":"integer"},"end":{"type":"integer"},"bytes":{"type":"integer"},"status":{"type":"string","enum":["completed","failed"]},"text_sha256":{"type":"string"}}},
       "AgentReview": {
         "type": "object",
         "properties": {
@@ -8622,15 +8876,12 @@
               "model_live"
             ]
           },
-          "source_snapshot": {
-            "$ref": "#/components/schemas/AgentReviewSourceSnapshot"
-          },
-          "rulepack": {
-            "$ref": "#/components/schemas/AgentReviewRulePackIdentity"
-          },
+          "source_snapshot": {"anyOf":[{"$ref":"#/components/schemas/AgentReviewSourceSnapshot"},{"type":"null"}]},
+          "rulepack": {"anyOf":[{"$ref":"#/components/schemas/AgentReviewRulePackIdentity"},{"type":"null"}]},
           "planner": {
             "$ref": "#/components/schemas/AgentReviewPlanner"
           },
+          "knowledge_selection": {"$ref":"#/components/schemas/AgentKnowledgeSelection"},
           "scope": {
             "type": "array",
             "items": {
@@ -9319,7 +9570,7 @@
         }
       },
       "Error503": {
-        "description": "业务只读维护返回 code=read_only；执行容量不足返回 code=execution_capacity。恢复写入或释放容量后再发起操作，不能把拒绝当作已受理。",
+        "description": "业务只读返回 code=read_only，容量不足返回 code=execution_capacity，关联案件忙返回 code=case_busy；经验结果接收未配置返回 code=experience_delivery_unavailable。服务不可用的请求未受理。",
         "content": {
           "application/json": {
             "schema": {
@@ -9344,6 +9595,9 @@
   "x-source-files": [
     "internal/httpapi/server.go",
     "internal/httpapi/present.go",
+    "internal/httpapi/experience_routes.go",
+    "internal/httpapi/evidence_routes.go",
+    "internal/httpapi/diagnostics_routes.go",
     "internal/store/cases.go",
     "internal/store/reviews.go"
   ]

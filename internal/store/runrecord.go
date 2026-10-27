@@ -2,9 +2,7 @@ package store
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
-	"strings"
 
 	"contractaudit/internal/agentflow"
 	"contractaudit/internal/audit"
@@ -57,80 +55,11 @@ func (s *Store) currentSignatureWithRulePack(docIDs []string, selection []Frozen
 	return signature
 }
 
-func withCloudPolicySnapshot(st state, caseItem Case, signature RunSnapshot) (RunSnapshot, error) {
-	if !isCloudServicesCase(caseItem) {
-		return signature, nil
-	}
-	pack, err := rulepack.Parse(signature.RulePackSnapshot)
-	if err != nil {
-		return RunSnapshot{}, fault.Conflict("云服务治理规则包无法读取采购制度来源")
-	}
-	policyID, policyVersion := "", ""
-	for _, rule := range pack.Manifest().Rules {
-		for _, source := range rule.AuthoritySources {
-			if source.ID != "cloud-procurement-policy" || source.Version != "1.0.0" || source.Kind != "synthetic_demo" {
-				continue
-			}
-			if policyID != "" && (policyID != source.ID || policyVersion != source.Version) {
-				return RunSnapshot{}, fault.Conflict("云服务规则包引用了多个采购制度版本")
-			}
-			policyID, policyVersion = source.ID, source.Version
-		}
-	}
-	if policyID == "" {
-		return RunSnapshot{}, fault.Conflict("云服务规则包没有引用合成采购制度")
-	}
-	var selected *Knowledge
-	for _, record := range st.Knowledge {
-		if record.TenantID != caseItem.TenantID || record.OrgID != caseItem.OwnerOrgID ||
-			record.Item.ID != policyID || record.Item.Version != policyVersion || record.Item.SourceType != "synthetic_policy" {
-			continue
-		}
-		if selected != nil {
-			return RunSnapshot{}, fault.Conflict("云服务采购制度版本不唯一")
-		}
-		item := record.Item
-		selected = &item
-	}
-	if selected == nil || strings.TrimSpace(selected.Body) == "" {
-		return RunSnapshot{}, fault.Conflict("缺少规则包引用的持久化云服务采购制度")
-	}
-	raw, err := json.Marshal(selected)
-	if err != nil {
-		return RunSnapshot{}, err
-	}
-	signature.CloudPolicySnapshot = append(json.RawMessage(nil), raw...)
-	signature.CloudPolicyDigest = sha256Bytes(raw)
-	return signature, nil
-}
-
 func telecomCompilerRefForCase(item Case) string {
 	if isTelecomDedicatedLineCase(item) || isCloudServicesCase(item) {
 		return telecom.CompilerRef
 	}
 	return ""
-}
-
-// selectGovernedRulePack resolves the single applicable active published pack
-// for a governed case scope inside the acceptance transaction.
-func (s *Store) selectGovernedRulePack(ctx context.Context, caseItem Case) (*ActiveRulePack, error) {
-	if !isGovernedReviewCase(caseItem) {
-		return nil, nil
-	}
-	pack, err := s.SelectActiveRulePack(ctx, caseItem.TenantID, caseItem.BusinessLine, caseItem.Scenario, "service", stamp())
-	if err != nil {
-		return nil, fault.Conflict("选择适用规则包失败：" + err.Error())
-	}
-	if pack == nil {
-		if isCloudServicesCase(caseItem) {
-			return nil, fault.Conflict("云服务审查必须绑定已发布的云服务治理规则包")
-		}
-		return nil, nil
-	}
-	if err := requireGovernedCapabilitiesForCase(caseItem, pack.Snapshot); err != nil {
-		return nil, err
-	}
-	return pack, nil
 }
 
 func requireGovernedCapabilitiesForCase(caseItem Case, snapshot []byte) error {
@@ -199,6 +128,7 @@ func withFrozenGovernance(current, frozen RunSnapshot) RunSnapshot {
 	current.RulePackSnapshot = append([]byte(nil), frozen.RulePackSnapshot...)
 	current.CloudPolicySnapshot = append(json.RawMessage(nil), frozen.CloudPolicySnapshot...)
 	current.CloudPolicyDigest = frozen.CloudPolicyDigest
+	current.GovernedKnowledge = frozen.GovernedKnowledge
 	current.PlannerConfigurationID = frozen.PlannerConfigurationID
 	current.PlannerConfiguration = append(json.RawMessage(nil), frozen.PlannerConfiguration...)
 	return current
@@ -281,7 +211,7 @@ func sameRunConfiguration(a, b RunSnapshot) bool {
 		a.ModelRef == b.ModelRef && a.ModelConfigurationID == b.ModelConfigurationID &&
 		a.ComparatorRef == b.ComparatorRef && parserConfigurationMatches && compilerIdentityMatches &&
 		sameRunRulePackIdentity(a, b) && samePlannerConfiguration(a, b) &&
-		a.CloudPolicyDigest == b.CloudPolicyDigest
+		a.CloudPolicyDigest == b.CloudPolicyDigest && sameKnowledgeSnapshotIdentity(a.GovernedKnowledge, b.GovernedKnowledge)
 }
 
 // samePlannerConfiguration treats the absent pair as an explicit legacy state.
@@ -302,6 +232,10 @@ func sealSnapshot(st *state, runID string, input RunSnapshot) error {
 			return audit.ErrImmutable
 		}
 	}
+	knowledge, err := copyGovernedKnowledge(input)
+	if err != nil {
+		return err
+	}
 	frozen, err := audit.Freeze(snapshotValue(input))
 	if err != nil {
 		return err
@@ -316,6 +250,7 @@ func sealSnapshot(st *state, runID string, input RunSnapshot) error {
 		RulePackDigest: frozen.RulePackDigest, RulePackSnapshot: append([]byte(nil), input.RulePackSnapshot...),
 		CloudPolicySnapshot:    append(json.RawMessage(nil), input.CloudPolicySnapshot...),
 		CloudPolicyDigest:      input.CloudPolicyDigest,
+		GovernedKnowledge:      knowledge,
 		PlannerConfigurationID: frozen.PlannerConfigurationID,
 		PlannerConfiguration:   append(json.RawMessage(nil), input.PlannerConfiguration...),
 	})

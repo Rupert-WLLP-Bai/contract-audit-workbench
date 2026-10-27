@@ -3,8 +3,9 @@ package store
 import (
 	"context"
 	"errors"
-
 	"github.com/jackc/pgx/v5"
+	"strings"
+	"time"
 )
 
 // errExecutionEventScope reports that an execution event was offered without the
@@ -17,14 +18,9 @@ var errExecutionEventScope = errors.New("execution events require the current du
 // generation and a live lease, and the sequence is allocated from the attempt's
 // own event rows under that lock.
 //
-// Scope of the guarantee: this is a monotonic, gap-tolerant append per attempt.
-// The unique (attempt_id, event_seq) key only stops two writers from storing the
-// same sequence number; it is NOT exactly-once for a replayed logical event,
-// because a replay is allocated the next sequence. The recorder calls this once
-// per span event (internal/execution emits each event exactly once, no retry
-// loop), so no stable event identity is needed on this path. The late-telemetry
-// path (persistLateModelEvent) deliberately keeps its own (attempt, seq) check
-// because it can replay a model completion after the attempt went terminal.
+// Keyed runtime events are idempotent within one attempt and claim generation.
+// A replay with different contents is rejected; unkeyed observations retain the
+// existing monotonic append semantics.
 func (s *Store) appendExecutionEventFenced(ctx context.Context, runID, attemptID string, event ExecutionEvent) error {
 	if ctx == nil || runID == "" || attemptID == "" || event.AttemptID != attemptID {
 		return errExecutionEventScope
@@ -65,6 +61,43 @@ func (s *Store) appendExecutionEventFenced(ctx context.Context, runID, attemptID
 		}
 		return err
 	}
+	if event.EventKey != nil {
+		if strings.TrimSpace(*event.EventKey) != *event.EventKey || len(*event.EventKey) == 0 || len(*event.EventKey) > 160 {
+			return errors.New("invalid execution event identity")
+		}
+		generation := claim.Generation
+		event.Generation = &generation
+		var usage any
+		if event.Usage != nil {
+			usage, err = jsonText(event.Usage)
+			if err != nil {
+				return err
+			}
+		}
+		var matches bool
+		err = tx.QueryRow(ctx, `SELECT span_id IS NOT DISTINCT FROM $4 AND parent_span_id IS NOT DISTINCT FROM $5
+			AND node_kind=$6 AND phase=$7 AND event_type=$8 AND occurred_at=$9
+			AND duration_ms IS NOT DISTINCT FROM $10 AND status=$11 AND error_code IS NOT DISTINCT FROM $12
+			AND model_ref IS NOT DISTINCT FROM $13 AND usage IS NOT DISTINCT FROM $14
+			FROM execution_events WHERE attempt_id=$1 AND generation=$2 AND event_key=$3`,
+			attemptID, generation, *event.EventKey, event.SpanID, event.ParentSpanID, event.NodeKind, event.Phase,
+			event.EventType, event.At, event.DurationMS, event.Status, event.ErrorCode, event.ModelRef, usage).Scan(&matches)
+		if err == nil {
+			if !matches {
+				return errors.New("execution event identity was reused with different contents")
+			}
+			return tx.Commit(ctx)
+		}
+		if !errors.Is(err, pgx.ErrNoRows) {
+			return err
+		}
+	}
+	var recordedAt time.Time
+	if err := tx.QueryRow(ctx, `SELECT clock_timestamp()`).Scan(&recordedAt); err != nil {
+		return err
+	}
+	formattedAt := recordedAt.UTC().Format(time.RFC3339Nano)
+	event.RecordedAt = &formattedAt
 	if err := tx.QueryRow(ctx, `SELECT COALESCE(MAX(event_seq),0)+1 FROM execution_events WHERE attempt_id=$1`, attemptID).Scan(&event.Seq); err != nil {
 		return err
 	}

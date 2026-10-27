@@ -10,6 +10,7 @@ import (
 
 	"contractaudit/internal/config"
 	"contractaudit/internal/documentclient"
+	"contractaudit/internal/experienceclient"
 	"contractaudit/internal/model"
 	"contractaudit/internal/store"
 	"contractaudit/internal/toolclient"
@@ -99,6 +100,23 @@ func configuredDocumentPreparer() (store.DocumentPreparer, error) {
 		return nil, errors.New("document service endpoint and caller credential are required")
 	}
 	return documentclient.New(endpoint, credential, 2*time.Minute)
+}
+
+func configuredExperienceResultAcceptor() (store.ExperienceResultAcceptor, error) {
+	endpoint := strings.TrimSpace(os.Getenv("CORE_SERVICE_URL"))
+	credential := strings.TrimSpace(os.Getenv("WORKER_CORE_TOKEN"))
+	if endpoint == "" && credential == "" {
+		return nil, nil
+	}
+	if endpoint == "" || len(credential) < 32 {
+		return nil, errors.New("core service endpoint and private worker credential must be configured together")
+	}
+	for _, name := range []string{"WORKER_DOCUMENT_TOKEN", "WORKER_MODEL_TOKEN", "WORKER_TOOL_TOKEN"} {
+		if other := strings.TrimSpace(os.Getenv(name)); other != "" && other == credential {
+			return nil, errors.New("core result credential must differ from other worker credentials")
+		}
+	}
+	return experienceclient.New(endpoint, credential, 30*time.Second)
 }
 
 // configuredToolEvidenceReader assembles the worker's read-only tool caller. It

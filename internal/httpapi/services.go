@@ -22,9 +22,18 @@ func ServiceHandler(st *store.Store, opt Options, role, credential string) (http
 	if !opt.Durable {
 		return nil, errors.New("independent HTTP services require durable execution")
 	}
+	if role == "core" && opt.ExperienceWorkerCredential != "" {
+		if len(opt.ExperienceWorkerCredential) < 32 || subtle.ConstantTimeCompare([]byte(opt.ExperienceWorkerCredential), []byte(credential)) == 1 {
+			return nil, errors.New("experience worker credential must be private and distinct from the gateway credential")
+		}
+		opt.experienceDeliveryEnabled = true
+	}
 	api := Handler(st, opt)
 	mux := http.NewServeMux()
 	MountHealth(mux, st.Ready)
+	if opt.experienceDeliveryEnabled {
+		mux.HandleFunc("/internal/v1/experience-results", experienceResultHandler(st, opt.ExperienceWorkerCredential))
+	}
 	mux.Handle("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !OperationOwnedBy(role, r.Method, r.URL.EscapedPath()) {
 			http.NotFound(w, r)
@@ -117,6 +126,21 @@ func OperationOwnedBy(role, method, path string) bool {
 	if len(parts) == 3 && parts[1] == "admin" && parts[2] == "system-health" {
 		return role == "core" && read
 	}
+	if len(parts) >= 3 && parts[1] == "admin" && parts[2] == "governed-knowledge" {
+		switch {
+		case len(parts) == 3:
+			return role == "core" && (read || post)
+		case len(parts) == 6 && parts[4] == "versions":
+			return role == "core" && read
+		case len(parts) == 7 && parts[4] == "versions" && parts[6] == "commands":
+			return role == "core" && post
+		case len(parts) == 7 && parts[4] == "versions" && parts[6] == "preview":
+			return role == "core" && read
+		case len(parts) == 5 && parts[4] == "history":
+			return role == "core" && read
+		}
+		return false
+	}
 	// Rule governance is Core-owned: only the core service writes the lifecycle
 	// and the active pointer. The execution and worker roles read the frozen
 	// published version an acceptance transaction selects.
@@ -145,6 +169,16 @@ func OperationOwnedBy(role, method, path string) bool {
 		return role == "core" && read
 	}
 	switch parts[3] {
+	case "experience-feedback":
+		return role == "core" && (len(parts) == 4 && post || len(parts) == 5 && read ||
+			len(parts) == 6 && parts[5] == "distillations" && post ||
+			len(parts) == 7 && parts[5] == "distillations" && read)
+	case "experience-candidates":
+		return role == "core" && len(parts) == 7 && parts[5] == "versions" && read
+	case "evidence-requests":
+		return role == "core" && (len(parts) == 4 && (read || post) || len(parts) == 5 && read ||
+			len(parts) == 6 && (parts[5] == "history" && read || parts[5] == "receipts" && post) ||
+			len(parts) == 8 && parts[5] == "receipts" && parts[7] == "verify" && post)
 	case "profile":
 		return role == "core" && len(parts) == 4 && put
 	case "tasks":
@@ -159,7 +193,7 @@ func OperationOwnedBy(role, method, path string) bool {
 		if len(parts) == 8 && parts[5] == "findings" && parts[7] == "decisions" {
 			return role == "core" && post
 		}
-		return role == "execution" && (len(parts) == 4 && post || len(parts) == 5 && read || len(parts) == 6 && (parts[5] == "events" && read || (parts[5] == "retry" || parts[5] == "cancel") && post))
+		return role == "execution" && (len(parts) == 4 && post || len(parts) == 5 && read || len(parts) == 6 && ((parts[5] == "events" || parts[5] == "diagnostics") && read || (parts[5] == "retry" || parts[5] == "cancel") && post))
 	case "members", "archive":
 		return role == "core" && len(parts) == 4 && post
 	case "remediations":

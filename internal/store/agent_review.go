@@ -84,6 +84,10 @@ func (s *Store) SyncAgentReviewRecord(ctx context.Context, claim JobClaim, recor
 		return err
 	}
 	defer tx.Rollback(ctx)
+	// Knowledge publication and withdrawal use this same outer lock.
+	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended(current_schema(),0))`); err != nil {
+		return err
+	}
 	if err := setLocalScope(ctx, tx, claim.scope()); err != nil {
 		return err
 	}
@@ -106,6 +110,12 @@ func (s *Store) SyncAgentReviewRecord(ctx context.Context, claim JobClaim, recor
 		return fault.Conflict("终态尝试不能再写入智能审查记录")
 	}
 	if err := s.requireLiveClaim(ctx, tx, claim, claim.RunID, claim.AttemptID); err != nil {
+		return err
+	}
+	if err := s.reauthorizeAttempt(ctx, tx, claim.RunID, claim.AttemptID); err != nil {
+		return err
+	}
+	if err := revalidateGovernedAttemptTx(ctx, tx, claim.RunID, claim.AttemptID, claim.CaseID); err != nil {
 		return err
 	}
 	var inputHash string

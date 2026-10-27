@@ -28,26 +28,38 @@ type Runtime struct {
 }
 
 type execution struct {
-	request            Request
-	report             Report
-	gaps               map[string]Gap
-	resolved           map[string]bool
-	gapStates          map[string]string
-	callEvidenceCounts map[string]int
-	previousCallByPair map[string]PriorCall
-	gapEvidenceIDs     map[string]map[string]bool
-	findingsByGap      map[string][]Finding
-	evidenceIDs        map[string]bool
-	factsByID          map[string]SemanticFact
-	roundEvidenceIDs   []string
-	roundResolvedIDs   []string
-	activeGaps         []Gap
-	round              int
-	roundProgress      bool
-	termination        string
-	observations       PlannerUsage
-	usageIncomplete    bool
-	evidenceBytesLeft  int
+	request                Request
+	report                 Report
+	gaps                   map[string]Gap
+	resolved               map[string]bool
+	gapStates              map[string]string
+	callEvidenceCounts     map[string]int
+	previousCallByPair     map[string]PriorCall
+	gapEvidenceIDs         map[string]map[string]bool
+	findingsByGap          map[string][]Finding
+	evidenceIDs            map[string]bool
+	factsByID              map[string]SemanticFact
+	verifiedFactsByID      map[string]VerifiedFact
+	toolObservations       []ToolObservation
+	knowledgeObservations  []KnowledgeReadObservation
+	knowledgeReadAttempts  map[KnowledgeReadRequest]bool
+	plannerKnowledge       map[KnowledgeIdentity]bool
+	knowledgeReadCalls     int
+	knowledgeReaderEnabled bool
+	omittedObservations    int
+	sink                   func(context.Context, Event) error
+	sinkContext            context.Context
+	sinkErr                error
+	clock                  func() time.Time
+	roundEvidenceIDs       []string
+	roundResolvedIDs       []string
+	activeGaps             []Gap
+	round                  int
+	roundProgress          bool
+	termination            string
+	observations           PlannerUsage
+	usageIncomplete        bool
+	evidenceBytesLeft      int
 }
 
 var capabilityID = regexp.MustCompile(`^[a-z][a-z0-9_.-]{0,79}$`)
@@ -58,6 +70,8 @@ const (
 	maxCitationsPerFinding = 32
 	maxCitationsTotal      = 256
 	maxQuoteBytes          = 256 * 1024
+	maxReviewGaps          = 128
+	maxPlanningGaps        = 16
 )
 
 func New(ctx context.Context, config Config) (*Runtime, error) {
@@ -153,6 +167,9 @@ func (r *Runtime) Run(ctx context.Context, request Request) (Report, error) {
 		request: request, gaps: map[string]Gap{}, resolved: map[string]bool{}, gapStates: map[string]string{},
 		callEvidenceCounts: map[string]int{}, previousCallByPair: map[string]PriorCall{},
 		gapEvidenceIDs: map[string]map[string]bool{}, findingsByGap: map[string][]Finding{}, evidenceIDs: map[string]bool{}, factsByID: map[string]SemanticFact{},
+		verifiedFactsByID: map[string]VerifiedFact{}, knowledgeReadAttempts: map[KnowledgeReadRequest]bool{},
+		knowledgeReadCalls: request.PriorKnowledgeReadCount, knowledgeReaderEnabled: r.config.ReadKnowledge != nil,
+		sink: r.config.EventSink, sinkContext: ctx, clock: r.config.Clock,
 		report: Report{
 			SchemaVersion: "operator-flow-report/v2", RuntimeVersion: RuntimeVersion,
 			Planner: r.config.Planner.Name(), RequestID: request.RequestID, PolicyVersion: access.PolicyVersion,
@@ -169,22 +186,43 @@ func (r *Runtime) Run(ctx context.Context, request Request) (Report, error) {
 	}
 	decision := access.Check(access.Review, request.Principal, request.Case, r.config.Clock())
 	if !decision.Allowed {
-		state.event("authorization", "", "", decision.Reason, 0)
+		if err := state.event("authorization", "", "", decision.Reason, 0); err != nil {
+			return state.report, err
+		}
 		return state.report, ErrDenied
 	}
 	if err := validateRequest(request); err != nil {
-		state.event("input", "", "", "invalid_frozen_input", 0)
+		if sinkErr := state.event("input", "", "", "invalid_frozen_input", 0); sinkErr != nil {
+			return state.report, sinkErr
+		}
 		return state.report, err
 	}
 	// Deep-copy all input slices so adapters cannot mutate the caller's records.
 	totalEvidenceBytes := requestEvidenceBytes(request)
-	if totalEvidenceBytes > r.config.MaxEvidenceBytes {
-		state.event("input", "", "", "input_budget_exceeded", 0)
+	reservedKnowledgeBytes := request.PriorKnowledgeReadCount * KnowledgeReadMaxBytes
+	if reservedKnowledgeBytes > r.config.MaxEvidenceBytes || totalEvidenceBytes > r.config.MaxEvidenceBytes-reservedKnowledgeBytes {
+		if sinkErr := state.event("input", "", "", "input_budget_exceeded", 0); sinkErr != nil {
+			return state.report, sinkErr
+		}
 		return state.report, ErrInput
 	}
+	if err := validatePlannerContext(ctx, request); err != nil {
+		if sinkErr := state.event("input", "", "", "invalid_frozen_context", 0); sinkErr != nil {
+			return state.report, sinkErr
+		}
+		return state.report, err
+	}
+	if err := r.validatePriorToolResults(ctx, request); err != nil {
+		if sinkErr := state.event("input", "", "", "invalid_prior_observation", 0); sinkErr != nil {
+			return state.report, sinkErr
+		}
+		return state.report, err
+	}
 	body, err := json.Marshal(request)
-	if err != nil || len(body) > r.config.MaxEvidenceBytes+(64<<10) {
-		state.event("input", "", "", "input_budget_exceeded", 0)
+	if err != nil || len(body) > r.config.MaxEvidenceBytes+(2<<20) {
+		if sinkErr := state.event("input", "", "", "input_budget_exceeded", 0); sinkErr != nil {
+			return state.report, sinkErr
+		}
 		return state.report, ErrInput
 	}
 	var frozen Request
@@ -192,7 +230,7 @@ func (r *Runtime) Run(ctx context.Context, request Request) (Report, error) {
 		return state.report, ErrInput
 	}
 	state.request = frozen
-	state.evidenceBytesLeft = r.config.MaxEvidenceBytes - totalEvidenceBytes
+	state.evidenceBytesLeft = r.config.MaxEvidenceBytes - totalEvidenceBytes - reservedKnowledgeBytes
 	state.report.InputSHA256 = TextHash(string(body))
 	for _, domain := range Domains() {
 		status := "not_requested"
@@ -204,6 +242,9 @@ func (r *Runtime) Run(ctx context.Context, request Request) (Report, error) {
 	for _, gap := range state.request.Gaps {
 		state.gaps[gap.ID] = gap
 		state.gapStates[gap.ID] = "open"
+		if gap.IncompleteReason != "" {
+			state.gapStates[gap.ID] = "unknown:" + gap.IncompleteReason
+		}
 		state.gapEvidenceIDs[gap.ID] = map[string]bool{}
 		state.findingsByGap[gap.ID] = []Finding{}
 		supported := false
@@ -215,11 +256,29 @@ func (r *Runtime) Run(ctx context.Context, request Request) (Report, error) {
 		}
 		if !supported {
 			state.gapStates[gap.ID] = "unsupported:capability_not_registered"
-			state.event("gap_unsupported", "", gap.Domain, "capability_not_registered", 0)
+			if err := state.eventCall("gap_unsupported", "", gap.Domain, "capability_not_registered", 0, "", gap.ID); err != nil {
+				return state.report, err
+			}
 			state.domain(gap.Domain).Status = "partial"
 			state.report.Status = "partial"
 		}
 	}
+	for _, verified := range state.request.VerifiedFacts {
+		fact := cloneFact(verified.Fact)
+		verified.Fact = fact
+		state.factsByID[fact.ID] = fact
+		state.verifiedFactsByID[fact.ID] = verified
+		state.evidenceIDs[fact.ID] = true
+		state.gapEvidenceIDs[verified.GapID][fact.ID] = true
+	}
+	previousRound, err := state.acceptPriorToolResults()
+	if err != nil {
+		if sinkErr := state.event("input", "", "", "inconsistent_prior_observation", 0); sinkErr != nil {
+			return state.report, sinkErr
+		}
+		return state.report, err
+	}
+	state.report.ToolCalls += state.request.PriorKnowledgeReadCount
 	for _, evaluation := range state.request.CanonicalEvaluations {
 		findings := state.domain(evaluation.Domain)
 		finding := Finding{
@@ -230,14 +289,24 @@ func (r *Runtime) Run(ctx context.Context, request Request) (Report, error) {
 		}
 		findings.Findings = append(findings.Findings, finding)
 	}
+	state.reuseCanonicalChecks()
 
-	bounded, cancel := context.WithTimeout(ctx, r.config.Timeout)
+	remainingTime := r.config.Timeout
+	if state.request.PriorElapsedMS != nil {
+		if *state.request.PriorElapsedMS >= remainingTime.Milliseconds() {
+			remainingTime = 0
+		} else {
+			remainingTime -= time.Duration(*state.request.PriorElapsedMS) * time.Millisecond
+		}
+	}
+	bounded, cancel := context.WithTimeout(ctx, remainingTime)
 	defer cancel()
 	allCalls := make([]Call, 0, r.config.MaxCalls)
+	allReads := make([]KnowledgeReadRequest, 0, KnowledgeReadMaxCalls)
 	var runErr error
-	for round := 1; round <= r.config.MaxRounds; round++ {
+	for round := previousRound + 1; round <= r.config.MaxRounds && state.report.ToolCalls < r.config.MaxCalls && remainingTime > 0; round++ {
 		state.round = round
-		state.activeGaps = state.remainingGaps()
+		state.activeGaps = state.planningGaps()
 		if len(state.activeGaps) == 0 {
 			break
 		}
@@ -252,10 +321,19 @@ func (r *Runtime) Run(ctx context.Context, request Request) (Report, error) {
 		}
 		state.report.Rounds = append(state.report.Rounds, entry)
 		_, runErr = r.runnable.Invoke(bounded, state)
+		if state.sinkErr != nil {
+			runErr = state.sinkErr
+		}
 		index := len(state.report.Rounds) - 1
 		allCalls = append(allCalls, state.report.Plan.Calls...)
+		allReads = append(allReads, state.report.Plan.KnowledgeReads...)
 		state.report.Rounds[index].NewEvidenceIDs = slices.Clone(state.roundEvidenceIDs)
 		state.report.Rounds[index].ResolvedGapIDs = slices.Clone(state.roundResolvedIDs)
+		if runErr != nil && state.sinkErr == nil && (bounded.Err() != nil || errors.Is(runErr, context.Canceled) || errors.Is(runErr, context.DeadlineExceeded)) {
+			if sinkErr := state.event("run_cancelled", "", "", "cancelled_or_deadline", 0); sinkErr != nil {
+				runErr = errors.Join(runErr, sinkErr)
+			}
+		}
 		if runErr != nil {
 			if state.termination == "guard_rejected" {
 				state.report.Rounds[index].Status = "guard_rejected"
@@ -313,12 +391,42 @@ func (r *Runtime) Run(ctx context.Context, request Request) (Report, error) {
 			break
 		}
 	}
-	state.report.Plan = Plan{Calls: allCalls}
+	state.reconcileCanonicalChecks()
+	if len(state.report.Rounds) == 0 && (len(state.request.PriorObservations) > 0 || state.request.PriorKnowledgeReadCount > 0) {
+		reason := "max_rounds_reached"
+		if remainingTime <= 0 {
+			reason = "max_duration_reached"
+		}
+		if state.report.ToolCalls >= r.config.MaxCalls {
+			reason = "max_calls_reached"
+		}
+		state.report.Limitations = append(state.report.Limitations, "Planning stopped: "+reason)
+		for _, gap := range state.request.Gaps {
+			if state.gapStates[gap.ID] == "open" {
+				state.gapStates[gap.ID] = "unknown:" + reason
+			}
+		}
+		state.report.Status = "partial"
+	}
+	if len(state.report.Rounds) > 0 {
+		last := state.report.Rounds[len(state.report.Rounds)-1]
+		if last.TerminationCode != nil {
+			for _, gap := range state.request.Gaps {
+				if state.gapStates[gap.ID] == "open" {
+					state.gapStates[gap.ID] = "unknown:" + *last.TerminationCode
+				}
+			}
+		}
+	}
+	state.report.Plan = Plan{Calls: allCalls, KnowledgeReads: allReads}
 	state.report.UnresolvedGapIDs = make([]string, 0, len(state.request.Gaps))
 	for _, gap := range state.request.Gaps {
 		if !state.resolved[gap.ID] {
 			state.report.UnresolvedGapIDs = append(state.report.UnresolvedGapIDs, gap.ID)
 		}
+	}
+	if len(state.report.UnresolvedGapIDs) == 0 && len(state.report.Rounds) == 0 && runErr == nil {
+		state.report.Status = "completed"
 	}
 	if len(state.report.UnresolvedGapIDs) > 0 && state.report.Status == "completed" {
 		state.report.Status = "partial"
@@ -326,6 +434,7 @@ func (r *Runtime) Run(ctx context.Context, request Request) (Report, error) {
 	state.report.Projection = buildAgentReview(state, r.config)
 	if state.report.Projection != nil {
 		state.report.Status = state.report.Projection.Status
+		state.report.UnresolvedGapIDs = slices.Clone(state.report.Projection.UnresolvedGapIDs)
 	}
 	if runErr != nil {
 		return state.report, runErr
@@ -341,11 +450,38 @@ func requestEvidenceBytes(request Request) int {
 		}
 		total += len(evidence.Text)
 	}
+	for _, ref := range request.Knowledge {
+		for _, field := range []string{ref.Summary, ref.Applicability, ref.Exclusions, ref.CheckAction, ref.MinimumEvidence, ref.Counterexamples, ref.SemanticChecks, ref.SourceSpans} {
+			if len(field) > maxEvidenceBytes-total {
+				return maxEvidenceBytes + 1
+			}
+			total += len(field)
+		}
+	}
+	for _, verified := range request.VerifiedFacts {
+		for _, field := range []string{verified.Fact.Value, verified.Fact.Unit, verified.Fact.Currency, verified.Fact.Citation.Quote} {
+			if len(field) > maxEvidenceBytes-total {
+				return maxEvidenceBytes + 1
+			}
+			total += len(field)
+		}
+	}
+	for _, previous := range request.PriorObservations {
+		bytes := returnedEvidenceBytes(previous.Findings)
+		if bytes > maxEvidenceBytes-total {
+			return maxEvidenceBytes + 1
+		}
+		total += bytes
+	}
 	return total
 }
 func validateRequest(request Request) error {
-	if request.RequestID == "" || len(request.RequestID) > 128 || len(request.Scope) == 0 || len(request.Scope) > 5 ||
-		len(request.Gaps) == 0 || len(request.Gaps) > 16 || len(request.Evidence) > 40 {
+	if !boundedIdentity(request.RequestID) || len(request.Scope) == 0 || len(request.Scope) > 5 ||
+		len(request.Gaps) == 0 || len(request.Gaps) > maxReviewGaps || len(request.Evidence) > 40 ||
+		len(request.Knowledge) > MaxKnowledgeRecords || len(request.VerifiedFacts) > maxContextReferences ||
+		len(request.CanonicalEvaluations) > maxContextReferences || len(request.PriorObservations) > DefaultPlannerCalls ||
+		request.PriorKnowledgeReadCount < 0 || request.PriorKnowledgeReadCount > KnowledgeReadMaxCalls ||
+		(request.PriorKnowledgeReadCount > 0 && request.KnowledgeSelection == nil) {
 		return ErrInput
 	}
 	scopes := map[Domain]bool{}
@@ -357,9 +493,10 @@ func validateRequest(request Request) error {
 	}
 	gaps := map[string]bool{}
 	for _, gap := range request.Gaps {
-		if gap.ID == "" || len(gap.ID) > 128 || !capabilityID.MatchString(gap.Capability) ||
+		if !boundedIdentity(gap.ID) || !capabilityID.MatchString(gap.Capability) ||
 			gaps[gap.ID] || !scopes[gap.Domain] || len(strings.TrimSpace(gap.Question)) == 0 ||
-			len(gap.Question) > 4096 || !utf8.ValidString(gap.Question) {
+			len(gap.Question) > 4096 || !utf8.ValidString(gap.Question) ||
+			(gap.IncompleteReason != "" && !capabilityID.MatchString(gap.IncompleteReason)) || gap.QuestionTruncated {
 			return ErrInput
 		}
 		gaps[gap.ID] = true
@@ -384,9 +521,15 @@ func validateRequest(request Request) error {
 }
 
 func (r *Runtime) plan(ctx context.Context, state *execution) (*execution, error) {
-	input := PlanInput{
-		Scope: slices.Clone(state.request.Scope), Gaps: slices.Clone(state.activeGaps),
-		PreviouslyCalled: state.plannerHistory(), RemainingCalls: r.config.MaxCalls - state.report.ToolCalls,
+	if r.config.AuthorizePlanning != nil {
+		if err := r.config.AuthorizePlanning(ctx); err != nil {
+			return state, fmt.Errorf("%w: %w", ErrPlanningAuthorization, err)
+		}
+	}
+	input := state.plannerInput(r.config.MaxCalls - state.report.ToolCalls)
+	state.plannerKnowledge = make(map[KnowledgeIdentity]bool, len(input.Knowledge))
+	for _, ref := range input.Knowledge {
+		state.plannerKnowledge[KnowledgeIdentity{KnowledgeID: ref.KnowledgeID, VersionID: ref.VersionID, ContentSHA256: ref.ContentSHA256}] = true
 	}
 	for _, spec := range r.specs {
 		if slices.Contains(input.Scope, spec.Domain) {
@@ -404,21 +547,42 @@ func (r *Runtime) plan(ctx context.Context, state *execution) (*execution, error
 		plan, err = r.config.Planner.Plan(ctx, input)
 		state.observations.PlannerCalls++
 	}
+	if selection := state.request.KnowledgeSelection; selection != nil {
+		round := KnowledgePlanningRound{Round: state.round, ReferencesProvided: []KnowledgeIdentity{}, ReadObservationsProvided: []KnowledgeReadIdentity{}, Outcome: "returned"}
+		if err != nil {
+			round.Outcome = "failed"
+		}
+		for _, ref := range input.Knowledge {
+			round.ReferencesProvided = append(round.ReferencesProvided, KnowledgeIdentity{
+				KnowledgeID: ref.KnowledgeID, VersionID: ref.VersionID, ContentSHA256: ref.ContentSHA256,
+			})
+		}
+		for _, observation := range input.KnowledgeObservations {
+			round.ReadObservationsProvided = append(round.ReadObservationsProvided, observation.KnowledgeReadIdentity)
+		}
+		selection.PlannerRounds = append(selection.PlannerRounds, round)
+	}
 	if ctx.Err() != nil {
 		return state, ctx.Err()
 	}
 	if err != nil {
 		if errors.Is(err, ErrPlan) {
 			state.termination = "guard_rejected"
-			state.event("plan_rejected", "", "", "invalid_model_plan", 0)
+			if sinkErr := state.event("plan_rejected", "", "", "invalid_model_plan", 0); sinkErr != nil {
+				return state, sinkErr
+			}
 			return state, ErrPlan
 		}
 		state.report.FallbackUsed = true
-		state.event("planner_fallback", "", "", "planner_unavailable", 0)
+		if sinkErr := state.event("planner_fallback", "", "", "planner_unavailable", 0); sinkErr != nil {
+			return state, sinkErr
+		}
 		plan, _ = (ScopePlanner{}).Plan(ctx, input)
 	}
 	state.report.Plan = plan
-	state.event("plan", "", "", "candidate_plan", 0)
+	if sinkErr := state.event("plan", "", "", "candidate_plan", 0); sinkErr != nil {
+		return state, sinkErr
+	}
 	return state, nil
 }
 
@@ -433,9 +597,11 @@ func (r *Runtime) guard(_ context.Context, state *execution) (*execution, error)
 		active[gap.ID] = true
 	}
 	seen := make(map[string]bool, len(calls))
-	if calls == nil || state.report.ToolCalls+len(calls) > r.config.MaxCalls {
+	if calls == nil || state.report.ToolCalls+len(calls)+len(state.report.Plan.KnowledgeReads) > r.config.MaxCalls || r.validateKnowledgeReads(state) != nil {
 		state.termination = "guard_rejected"
-		state.event("plan_rejected", "", "", "allowlist_scope_or_budget", 0)
+		if sinkErr := state.event("plan_rejected", "", "", "allowlist_scope_or_budget", 0); sinkErr != nil {
+			return state, sinkErr
+		}
 		return state, ErrPlan
 	}
 	for _, call := range calls {
@@ -450,16 +616,49 @@ func (r *Runtime) guard(_ context.Context, state *execution) (*execution, error)
 			!slices.Contains(spec.Capabilities, gap.Capability) || gap.Domain != call.Domain ||
 			strings.TrimSpace(call.Reason) == "" || len(call.Reason) > 1024 {
 			state.termination = "guard_rejected"
-			state.event("plan_rejected", call.ToolID, call.Domain, "allowlist_scope_or_budget", 0)
+			if sinkErr := state.eventCall("plan_rejected", call.ToolID, call.Domain, "allowlist_scope_or_budget", 0, "", call.GapID); sinkErr != nil {
+				return state, sinkErr
+			}
 			return state, ErrPlan
 		}
 		seen[call.GapID] = true
 	}
-	state.event("plan_accepted", "", "", "all_calls_validated_before_execution", 0)
+	for _, gap := range state.activeGaps {
+		if !gap.Mandatory || seen[gap.ID] {
+			continue
+		}
+		callable := false
+		for _, spec := range r.specs {
+			pair := gap.ID + "\x00" + spec.ID
+			count, called := state.callEvidenceCounts[pair]
+			if spec.Domain == gap.Domain && slices.Contains(spec.Capabilities, gap.Capability) && (!called || len(state.gapEvidenceIDs[gap.ID]) > count) {
+				callable = true
+				break
+			}
+		}
+		if !callable {
+			continue
+		}
+		for _, call := range calls {
+			if !state.gaps[call.GapID].Mandatory {
+				state.termination = "guard_rejected"
+				if sinkErr := state.event("plan_rejected", "", "", "mandatory_gap_not_prioritized", 0); sinkErr != nil {
+					return state, sinkErr
+				}
+				return state, ErrPlan
+			}
+		}
+	}
+	if sinkErr := state.event("plan_accepted", "", "", "all_calls_validated_before_execution", 0); sinkErr != nil {
+		return state, sinkErr
+	}
 	return state, nil
 }
 
 func (r *Runtime) execute(ctx context.Context, state *execution) (*execution, error) {
+	if err := r.executeKnowledgeReads(ctx, state); err != nil {
+		return state, err
+	}
 	for _, call := range state.report.Plan.Calls {
 		callID := stableCallID(state.request.RequestID, state.round, call)
 		if ctx.Err() != nil {
@@ -468,8 +667,13 @@ func (r *Runtime) execute(ctx context.Context, state *execution) (*execution, er
 		}
 		if !access.Check(access.Review, state.request.Principal, state.request.Case, r.config.Clock()).Allowed {
 			state.updatePlannedCall(callID, "denied", "authorization_revoked", nil)
-			state.eventCall("authorization", call.ToolID, call.Domain, "grant_expired_before_tool", 0, callID)
+			if sinkErr := state.eventCall("authorization", call.ToolID, call.Domain, "grant_expired_before_tool", 0, callID, call.GapID); sinkErr != nil {
+				return state, sinkErr
+			}
 			return state, ErrDenied
+		}
+		if sinkErr := state.eventCall("tool_started", call.ToolID, call.Domain, "read_action_started", 0, callID, call.GapID); sinkErr != nil {
+			return state, sinkErr
 		}
 		state.updatePlannedCall(callID, "running", "", nil)
 		toolCtx, cancel := context.WithTimeout(ctx, r.config.ToolTimeout)
@@ -500,6 +704,17 @@ func (r *Runtime) execute(ctx context.Context, state *execution) (*execution, er
 			}
 		}
 		if err == nil {
+			clearUnverifiedLocations(findings)
+			err = state.validateFactConsistency(findings)
+		}
+		if err == nil {
+			if sinkErr := state.eventCall("tool_observed", call.ToolID, call.Domain, "validated_tool_observation", time.Since(started).Milliseconds(), callID, call.GapID); sinkErr != nil {
+				return state, sinkErr
+			}
+			state.recordToolObservations(call, callID, findings)
+			if !verifiedComparator(r.tools[call.ToolID]) {
+				markClaimsUnverified(findings)
+			}
 			err = state.recordFindings(call.GapID, findings)
 		}
 		if err != nil {
@@ -516,7 +731,9 @@ func (r *Runtime) execute(ctx context.Context, state *execution) (*execution, er
 			state.gapStates[call.GapID] = "unknown:" + code
 			state.domain(call.Domain).Status = "partial"
 			state.updatePlannedCall(callID, status, code, nil)
-			state.eventCall("tool_failed", call.ToolID, call.Domain, code, time.Since(started).Milliseconds(), callID)
+			if sinkErr := state.eventCall("tool_failed", call.ToolID, call.Domain, code, time.Since(started).Milliseconds(), callID, call.GapID); sinkErr != nil {
+				return state, sinkErr
+			}
 			if errors.Is(err, ErrDenied) {
 				return state, err
 			}
@@ -552,7 +769,13 @@ func (r *Runtime) execute(ctx context.Context, state *execution) (*execution, er
 		}
 		domain.Findings = append(domain.Findings, findings...)
 		state.updatePlannedCall(callID, "completed", "", evidenceIDs)
-		state.eventCall("tool_completed", call.ToolID, call.Domain, "verified_frozen_source_facts", time.Since(started).Milliseconds(), callID)
+		if sinkErr := state.eventCall("tool_completed", call.ToolID, call.Domain, "validated_tool_result", time.Since(started).Milliseconds(), callID, call.GapID); sinkErr != nil {
+			state.resolved[call.GapID] = false
+			state.gapStates[call.GapID] = "unknown:event_sink_failed"
+			state.domain(call.Domain).Status = "partial"
+			state.updatePlannedCall(callID, "failed", "event_sink_failed", nil)
+			return state, sinkErr
+		}
 	}
 	if ctx.Err() != nil {
 		return state, ctx.Err()
@@ -570,9 +793,22 @@ func (state *execution) remainingGaps() []Gap {
 	return out
 }
 
-func (state *execution) eventCall(kind, tool string, domain Domain, code string, milliseconds int64, callID string) {
-	state.report.Events = append(state.report.Events, Event{Sequence: len(state.report.Events) + 1,
-		Round: state.round, Kind: kind, ToolID: tool, CallID: callID, Domain: domain, Code: code, DurationMS: milliseconds})
+func (state *execution) eventCall(kind, tool string, domain Domain, code string, milliseconds int64, callID, gapID string) error {
+	sequence := len(state.report.Events) + 1
+	if state.request.PriorEventCount > 0 && state.request.PriorEventCount <= 1024 {
+		sequence += state.request.PriorEventCount
+	}
+	event := Event{EventID: "event_" + TextHash(fmt.Sprintf("%s\x00%d\x00%d\x00%s\x00%s", state.request.RequestID, sequence, state.round, kind, callID))[:24],
+		Sequence: sequence, Round: state.round, Kind: kind, ToolID: tool, CallID: callID, GapID: gapID,
+		Domain: domain, Code: code, DurationMS: milliseconds, OccurredAt: state.clock().UTC()}
+	state.report.Events = append(state.report.Events, event)
+	if state.sink != nil {
+		if err := state.sink(state.sinkContext, event); err != nil {
+			state.sinkErr = errors.Join(ErrEventSink, err)
+			return state.sinkErr
+		}
+	}
+	return nil
 }
 func (r *Runtime) plannedCalls(state *execution, calls []Call) []PlannedCall {
 	out := make([]PlannedCall, 0, len(calls))
@@ -625,19 +861,23 @@ func (state *execution) recordPlannerObservation(observation PlannerObservation)
 	*state.observations.TotalTokens += *observation.TotalTokens
 }
 
-func (state *execution) recordFindings(gapID string, findings []Finding) error {
+func (state *execution) validateFactConsistency(findings []Finding) error {
+	seen := map[string]SemanticFact{}
 	for _, finding := range findings {
 		for _, fact := range finding.Facts {
-			if prior, exists := state.factsByID[fact.ID]; exists {
-				priorJSON, _ := json.Marshal(prior)
-				factJSON, _ := json.Marshal(fact)
-				if string(priorJSON) != string(factJSON) {
-					return ErrEvidence
-				}
-				continue
+			if prior, exists := state.factsByID[fact.ID]; exists && prior != fact {
+				return ErrEvidence
 			}
+			if prior, exists := seen[fact.ID]; exists && prior != fact {
+				return ErrEvidence
+			}
+			seen[fact.ID] = fact
 		}
 	}
+	return nil
+}
+
+func (state *execution) recordFindings(gapID string, findings []Finding) error {
 	for _, finding := range findings {
 		for _, citation := range finding.Citations {
 			state.recordEvidenceReference(gapID, citation.EvidenceID)
@@ -647,6 +887,7 @@ func (state *execution) recordFindings(gapID string, findings []Finding) error {
 				continue
 			}
 			state.factsByID[fact.ID] = cloneFact(fact)
+			state.verifiedFactsByID[fact.ID] = VerifiedFact{GapID: gapID, Domain: finding.Domain, Fact: cloneFact(fact)}
 			state.evidenceIDs[fact.ID] = true
 			if state.gapEvidenceIDs[gapID] == nil {
 				state.gapEvidenceIDs[gapID] = map[string]bool{}
@@ -660,6 +901,28 @@ func (state *execution) recordFindings(gapID string, findings []Finding) error {
 		state.findingsByGap[gapID] = append(state.findingsByGap[gapID], cloneFinding(finding))
 	}
 	return nil
+}
+
+// Only the built-in deterministic comparators implement the finite semantic
+// checks this runtime can attest. Other read-only tools can supply validated
+// observations and typed facts, but a located quote cannot verify a claim.
+func verifiedComparator(tool Tool) bool {
+	switch tool.(type) {
+	case baselineTool, sourceFactTool:
+		return true
+	default:
+		return false
+	}
+}
+
+func markClaimsUnverified(findings []Finding) {
+	for i := range findings {
+		switch findings[i].Relation {
+		case "compatible", "conflict", "not_applicable":
+			findings[i].Relation = "unknown"
+			findings[i].ReasonCode = "claim_requires_semantic_verification"
+		}
+	}
 }
 
 // Count retained quote and typed-value bytes, including copies returned in later
@@ -795,16 +1058,13 @@ func cloneFact(fact SemanticFact) SemanticFact {
 }
 
 func cloneCitation(citation Citation) Citation {
-	if citation.Page != nil {
-		citation.Page = new(*citation.Page)
-	}
+	// This runtime has no frozen IR page/element map with which to verify these.
+	citation.Page = nil
+	citation.ElementID = ""
 	return citation
 }
 
 func buildAgentReview(state *execution, config Config) *AgentReview {
-	if len(state.report.Rounds) == 0 && len(state.report.Events) == 0 && state.report.ToolCalls == 0 {
-		return nil
-	}
 	configuration := config.PlannerConfiguration
 	mode := configuration.Mode
 	if mode == "" {
@@ -824,7 +1084,7 @@ func buildAgentReview(state *execution, config Config) *AgentReview {
 	projection := &AgentReview{
 		SchemaVersion: AgentReviewSchemaVersion, AttemptID: state.request.AttemptID,
 		Status: state.report.Status, Mode: mode, SourceSnapshot: cloneSourceSnapshot(state.request.SourceSnapshot),
-		RulePack: cloneRulePackIdentity(state.request.RulePack),
+		RulePack: cloneRulePackIdentity(state.request.RulePack), KnowledgeSelection: state.request.KnowledgeSelection,
 		Planner: PlannerReport{Identity: state.report.Planner, ConfigurationID: configuration.ConfigurationID,
 			ModelConfigurationID: modelID, PromptVersion: configuration.PromptVersion, PromptSHA256: configuration.PromptSHA256,
 			SchemaVersion: configuration.SchemaVersion, RuntimeVersion: configuration.RuntimeVersion,
@@ -876,7 +1136,7 @@ func buildAgentReview(state *execution, config Config) *AgentReview {
 				continue
 			}
 			gapStatus, reasonCode := projectedGapState(state.gapStates[gap.ID])
-			result := CapabilityResult{CapabilityID: gap.Capability, Status: gapStatus,
+			result := CapabilityResult{CapabilityID: gap.Capability, Mandatory: gap.Mandatory, Status: gapStatus,
 				ReasonCode: reasonCode, EvidenceIDs: []string{}, CanonicalEvaluationIDs: []string{}}
 			if gapStatus == "resolved" {
 				result.Status = "completed"
@@ -895,10 +1155,17 @@ func buildAgentReview(state *execution, config Config) *AgentReview {
 					continue
 				}
 				result.CanonicalEvaluationIDs = append(result.CanonicalEvaluationIDs, evaluation.ID)
-				result.Relation = new(evaluation.Relation)
-				result.Status = canonicalProjectionStatus(evaluation.Relation)
-				result.ReasonCode = evaluation.ReasonCode
+				result.Mandatory = result.Mandatory || evaluation.Mandatory
+				result.Status, result.ReasonCode = state.canonicalEvaluationStatus(evaluation)
+				if result.Status == "completed" || result.Status == evaluation.Relation {
+					result.Relation = new(evaluation.Relation)
+				} else {
+					result.Relation = nil
+				}
 				result.EvidenceIDs = append(result.EvidenceIDs, evaluation.EvidenceIDs...)
+			}
+			if len(result.CanonicalEvaluationIDs) > 1 {
+				result.Status, result.ReasonCode, result.Relation = "unknown", "multiple_canonical_results_require_review", nil
 			}
 			slices.Sort(result.EvidenceIDs)
 			result.EvidenceIDs = slices.Compact(result.EvidenceIDs)
@@ -911,7 +1178,7 @@ func buildAgentReview(state *execution, config Config) *AgentReview {
 				gapStatus = result.Status
 			}
 			projection.Gaps = append(projection.Gaps, GapReport{GapID: gap.ID, Domain: gap.Domain,
-				Capability: gap.Capability, Status: gapStatus, ReasonCode: result.ReasonCode,
+				Capability: gap.Capability, Mandatory: result.Mandatory, Status: gapStatus, ReasonCode: result.ReasonCode,
 				EvidenceIDs: slices.Clone(result.EvidenceIDs)})
 		}
 		for _, evaluation := range state.request.CanonicalEvaluations {
@@ -919,8 +1186,8 @@ func buildAgentReview(state *execution, config Config) *AgentReview {
 				continue
 			}
 			matched := false
-			for _, capability := range coverage.Capabilities {
-				if capability.CapabilityID == evaluation.CapabilityID {
+			for _, gap := range state.request.Gaps {
+				if gap.Domain == domain.Domain && gap.Capability == evaluation.CapabilityID {
 					matched = true
 					break
 				}
@@ -931,11 +1198,25 @@ func buildAgentReview(state *execution, config Config) *AgentReview {
 			evidenceIDs := append([]string{}, evaluation.EvidenceIDs...)
 			slices.Sort(evidenceIDs)
 			evidenceIDs = slices.Compact(evidenceIDs)
+			status, reason := state.canonicalEvaluationStatus(evaluation)
+			var relation *string
+			if status == "completed" || status == evaluation.Relation {
+				relation = new(evaluation.Relation)
+			}
 			coverage.Capabilities = append(coverage.Capabilities, CapabilityResult{
-				CapabilityID: evaluation.CapabilityID, Status: canonicalProjectionStatus(evaluation.Relation),
-				Relation: new(evaluation.Relation), ReasonCode: evaluation.ReasonCode,
+				CapabilityID: evaluation.CapabilityID, Mandatory: evaluation.Mandatory, Status: status,
+				Relation: relation, ReasonCode: reason,
 				EvidenceIDs: evidenceIDs, CanonicalEvaluationIDs: []string{evaluation.ID},
 			})
+		}
+		if domain.Domain == Compliance {
+			for _, check := range knowledgePolicyChecks(state.request.KnowledgeSelection) {
+				coverage.Capabilities = append(coverage.Capabilities, CapabilityResult{CapabilityID: check.Capability, Mandatory: true,
+					Status: check.Status, ReasonCode: check.Reason, EvidenceIDs: []string{}, CanonicalEvaluationIDs: []string{}})
+				projection.Gaps = append(projection.Gaps, GapReport{GapID: check.GapID, Domain: Compliance, Capability: check.Capability,
+					Mandatory: true, Status: check.Status, ReasonCode: check.Reason, EvidenceIDs: []string{}})
+				projection.UnresolvedGapIDs = append(projection.UnresolvedGapIDs, check.GapID)
+			}
 		}
 		if len(coverage.Capabilities) > 0 {
 			coverage.Status = "completed"
@@ -950,6 +1231,16 @@ func buildAgentReview(state *execution, config Config) *AgentReview {
 			}
 		}
 		projection.Domains = append(projection.Domains, coverage)
+	}
+	if projection.KnowledgeSelection != nil && projection.KnowledgeSelection.PolicyStatus != "available" {
+		if projection.Status == "completed" {
+			projection.Status = "partial"
+		}
+		for i := range projection.Domains {
+			if projection.Domains[i].Domain == Compliance && projection.Domains[i].Status == "completed" {
+				projection.Domains[i].Status = "partial"
+			}
+		}
 	}
 	factIDs := make([]string, 0, len(state.factsByID))
 	for id := range state.factsByID {
@@ -976,8 +1267,8 @@ func buildAgentReview(state *execution, config Config) *AgentReview {
 		if event.Domain != "" {
 			eventDomain = new(event.Domain)
 		}
-		projection.Events = append(projection.Events, AgentReviewEvent{Sequence: event.Sequence, Round: event.Round, Kind: event.Kind,
-			CallID: callID, Domain: eventDomain, Code: event.Code, DurationMS: event.DurationMS})
+		projection.Events = append(projection.Events, AgentReviewEvent{EventID: event.EventID, Sequence: event.Sequence, Round: event.Round, Kind: event.Kind,
+			CallID: callID, Domain: eventDomain, Code: event.Code, OccurredAt: new(event.OccurredAt), DurationMS: event.DurationMS})
 	}
 	return projection
 }
@@ -1138,7 +1429,8 @@ func validateFindings(ctx context.Context, findings []Finding, domain Domain, ca
 		}
 		citations += len(finding.Citations)
 		if finding.Domain != domain || finding.Capability != capability || finding.RuleID == "" ||
-			len(finding.RuleID) > 128 || finding.Summary == "" || len(finding.Summary) > 8192 ||
+			len(finding.RuleID) > 128 || finding.Summary == "" || len(finding.Summary) > 8192 || !utf8.ValidString(finding.Summary) ||
+			len(finding.ReasonCode) > 128 || !utf8.ValidString(finding.ReasonCode) ||
 			len(finding.Citations) > maxCitationsPerFinding || citations > maxCitationsTotal {
 			return ErrEvidence
 		}
@@ -1278,9 +1570,8 @@ func validCurrency(value string) bool {
 		return false
 	}
 }
-func (state *execution) event(kind, tool string, domain Domain, code string, milliseconds int64) {
-	state.report.Events = append(state.report.Events, Event{Sequence: len(state.report.Events) + 1,
-		Round: state.round, Kind: kind, ToolID: tool, Domain: domain, Code: code, DurationMS: milliseconds})
+func (state *execution) event(kind, tool string, domain Domain, code string, milliseconds int64) error {
+	return state.eventCall(kind, tool, domain, code, milliseconds, "", "")
 }
 
 func (state *execution) domain(want Domain) *DomainResult {

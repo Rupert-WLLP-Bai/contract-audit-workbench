@@ -28,6 +28,8 @@ import (
 
 const testWorkerCredential = "document-capacity-integration-worker-key-0001"
 
+const testBusinessTime = "2026-06-01T12:00:00Z"
+
 type capacityModel struct {
 	entered chan int64
 	release chan struct{}
@@ -357,9 +359,100 @@ func (f *serviceFixture) reparseAsync(caseID, documentID string) <-chan httpResu
 	return result
 }
 
+// Publish the sample rule pack and its synthetic policy through the real
+// governance lifecycles before starting a governed review.
+func (f *serviceFixture) publishGovernance(t *testing.T) {
+	t.Helper()
+	raw, err := os.ReadFile("../rulepack/testdata/demo.json")
+	if err != nil {
+		t.Fatalf("read sample rule pack: %v", err)
+	}
+	var manifest map[string]any
+	if err := json.Unmarshal(raw, &manifest); err != nil {
+		t.Fatalf("decode sample rule pack: %v", err)
+	}
+	manifest["tenant_id"] = accounts.Tenant(f.admin)
+	rules, ok := manifest["rules"].([]any)
+	if !ok || len(rules) == 0 {
+		t.Fatal("sample rule pack has no rules")
+	}
+	for _, item := range rules {
+		rule, ok := item.(map[string]any)
+		if !ok {
+			t.Fatal("sample rule pack contains an invalid rule")
+		}
+		rule["tenant_id"] = accounts.Tenant(f.admin)
+		rule["business_scope"] = map[string]any{"business_line": "ENT", "scenario": "telecom_dedicated_line", "contract_type": "service"}
+	}
+	raw, err = json.Marshal(manifest)
+	if err != nil {
+		t.Fatalf("encode sample rule pack: %v", err)
+	}
+	pack, err := f.core.CreateRulePack(f.admin, raw)
+	if err != nil {
+		t.Fatalf("create capacity rule pack: %v", err)
+	}
+	input := store.GovernanceInput{PackID: pack.Pack.ID, Version: pack.Pack.Version, ExpectedRevision: pack.Pack.Revision}
+	pack, err = f.core.ValidateRulePackVersion(f.admin, input)
+	if err != nil {
+		t.Fatalf("validate capacity rule pack: %v", err)
+	}
+	input.ExpectedRevision, input.ExpectedContentHash = pack.Pack.Revision, pack.Pack.ContentHash
+	pack, err = f.core.ApproveRulePackVersion(f.admin, input)
+	if err != nil {
+		t.Fatalf("approve capacity rule pack: %v", err)
+	}
+	input.ExpectedRevision, input.ExpectedPointerRevision = pack.Pack.Revision, pack.Pack.ActivePointerRevision
+	pack, err = f.core.PublishRulePackVersion(f.admin, input)
+	if err != nil {
+		t.Fatalf("publish capacity rule pack: %v", err)
+	}
+
+	var body string
+	var ruleIDs []string
+	var spans []store.KnowledgeSourceSpan
+	for _, rule := range []struct{ id, quote, suffix string }{
+		{"ENT-TECH-BW-001", "带宽不低于100 Mbit/s", ""},
+		{"ENT-TECH-SLA-001", "月可用率不低于99.9%", "，统计周期为自然月，时区Asia/Shanghai，公历gregorian，故障口径all_service_unavailability，无排除项"},
+		{"ENT-COM-ADV-001", "预付款比例不超过1/3", "，预付款以合同总额为基础"},
+	} {
+		start := len([]rune(body))
+		body += rule.quote + rule.suffix + "。"
+		ruleIDs = append(ruleIDs, rule.id)
+		spans = append(spans, store.KnowledgeSourceSpan{RuleID: rule.id, Start: start, End: start + len([]rune(rule.quote)), Quote: rule.quote})
+	}
+	policy, err := f.core.CreateGovernedKnowledge(f.admin, store.CreateGovernedKnowledgeInput{
+		IdempotencyKey: "capacity-policy-create",
+		Content: store.GovernedKnowledgeContent{
+			KnowledgeID: "demo-synthetic-policy", Version: "1", Kind: "policy", Title: "容量测试制度", Body: body,
+			Summary: "核验带宽、可用率和预付款比例", SourceType: "synthetic_policy", SourceReference: "容量回归合成制度",
+			Scope:     store.KnowledgeScope{BusinessLine: "ENT", Scenario: "telecom_dedicated_line", ContractType: "service"},
+			ValidFrom: pack.Pack.EffectiveFrom, ValidUntil: pack.Pack.EffectiveUntil,
+			Binding: store.PolicyRuleBinding{
+				PackID: pack.Pack.ID, PackVersion: pack.Pack.Version, PackContentHash: pack.Pack.ContentHash,
+				PackSnapshotDigest: pack.Pack.SnapshotSHA256, CompilerRef: "governed-rulepack/v1",
+				RuleIDs: ruleIDs, SourceSpans: spans, CandidateDiff: "规则差异已审阅", ValidationEvidence: "规则包校验通过",
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("create capacity policy: %v", err)
+	}
+	for _, action := range []string{"submit", "validate", "approve", "publish"} {
+		policy, err = f.core.GovernedKnowledgeCommand(f.admin, store.GovernedKnowledgeCommandInput{
+			KnowledgeID: policy.Ref.KnowledgeID, VersionID: policy.Ref.VersionID, Action: action,
+			ExpectedRevision: policy.Revision, ExpectedContentSHA256: policy.Ref.ContentSHA256,
+			ExpectedPointerRevision: policy.PointerRevision, Reason: "已核对合成制度依据", IdempotencyKey: "capacity-policy-" + action,
+		})
+		if err != nil {
+			t.Fatalf("%s capacity policy: %v", action, err)
+		}
+	}
+}
+
 func (f *serviceFixture) startWorker(t *testing.T, caseID string) (*observingPreparer, <-chan error, context.CancelFunc) {
 	t.Helper()
-	if _, err := f.core.StartReviewAsync(context.Background(), f.admin, caseID); err != nil {
+	if _, err := f.core.StartReviewAsyncAt(context.Background(), f.admin, caseID, testBusinessTime); err != nil {
 		t.Fatalf("accept durable review: %v", err)
 	}
 	claim, err := f.worker.ClaimNextJob(context.Background(), "capacity-regression-worker", time.Minute)
@@ -422,6 +515,7 @@ func TestPublicAndDelegatedDocumentWorkShareQueueAndLeaveReadsAvailable(t *testi
 	f := newServiceFixture(t, 1, 10*time.Second)
 	t.Cleanup(f.model.releaseAll)
 	caseID, imageID := f.newCaseWithDocuments(t)
+	f.publishGovernance(t)
 
 	public := f.reparseAsync(caseID, imageID)
 	if call := waitParseCall(t, f.model.entered); call != 1 {
@@ -484,6 +578,7 @@ func TestPublicAndDelegatedOCRUseOneSharedOCRPermit(t *testing.T) {
 	f := newServiceFixture(t, 4, 10*time.Second)
 	t.Cleanup(f.model.releaseAll)
 	caseID, imageID := f.newCaseWithDocuments(t)
+	f.publishGovernance(t)
 
 	public := f.reparseAsync(caseID, imageID)
 	if call := waitParseCall(t, f.model.entered); call != 1 {
@@ -561,6 +656,7 @@ func TestUnauthorizedPublicRequestsRejectBeforeCPUAndFreeCapacity(t *testing.T) 
 	f := newServiceFixture(t, 3, 10*time.Second)
 	t.Cleanup(f.model.releaseAll)
 	caseID, _ := f.newCaseWithDocuments(t)
+	f.publishGovernance(t)
 
 	objects := newBlockingObjectStore()
 	f.document.UseObjectStore(objects)

@@ -94,6 +94,7 @@ func options(app *bootstrap.Runtime, cors []string) httpapi.Options {
 		SystemHealth: systemhealth.FromEnv(app.Store.Ready, app.Selection.Database.URL()),
 		CORSOrigins:  cors, Models: app.Models, OIDC: app.OIDC,
 		Durable: app.Durable, SecureCookies: app.SecureCookies,
+		ExperienceWorkerCredential: strings.TrimSpace(os.Getenv("WORKER_CORE_TOKEN")),
 	}
 }
 

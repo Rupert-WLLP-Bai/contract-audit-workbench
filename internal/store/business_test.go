@@ -197,6 +197,8 @@ func TestRemediationReferenceSetsSurviveCloneAndReload(t *testing.T) {
 	if !ok {
 		t.Fatal("demo admin missing")
 	}
+	pack := publishSyntheticAcceptancePack(t, st, admin)
+	publishSyntheticAcceptancePolicy(t, st, admin, pack)
 	caseID, err := st.CreateCaseWithBusiness(admin, "整改引用集合回归", "service", "ENT", "telecom_dedicated_line")
 	if err != nil {
 		t.Fatal(err)
@@ -207,7 +209,7 @@ func TestRemediationReferenceSetsSurviveCloneAndReload(t *testing.T) {
 	if _, err := st.AddDocument(context.Background(), admin, caseID, "draft_contract", "draft.txt", "text/plain", []byte("拟签合同约定预付款比例 20%。")); err != nil {
 		t.Fatal(err)
 	}
-	accepted, err := st.StartReviewAsync(context.Background(), admin, caseID)
+	accepted, err := st.StartReviewAsyncAt(context.Background(), admin, caseID, acceptanceBusinessTime)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -274,6 +276,8 @@ func TestBusinessGenerationAndArchivedReportConsumers(t *testing.T) {
 	if !ok {
 		t.Fatal("demo admin missing")
 	}
+	pack := publishSyntheticAcceptancePack(t, st, admin)
+	publishSyntheticAcceptancePolicy(t, st, admin, pack)
 	caseID, err := st.CreateCaseWithBusiness(admin, "政企专线业务回归", "service", "ENT", "telecom_dedicated_line")
 	if err != nil {
 		t.Fatal(err)
@@ -302,7 +306,7 @@ func TestBusinessGenerationAndArchivedReportConsumers(t *testing.T) {
 		t.Fatalf("generated document is not retrievable as an original: %+v", document)
 	}
 
-	runID, err := st.StartReview(context.Background(), admin, caseID)
+	runID, err := st.StartReviewAt(context.Background(), admin, caseID, acceptanceBusinessTime)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -388,11 +392,11 @@ func TestBusinessGenerationAndArchivedReportConsumers(t *testing.T) {
 	}())
 	assertArchivedWrite("reparse", st.Reparse(context.Background(), admin, caseID, sourceID))
 	assertArchivedWrite("idempotent review start", func() error {
-		_, err := st.StartReview(context.Background(), admin, caseID)
+		_, err := st.StartReviewAt(context.Background(), admin, caseID, acceptanceBusinessTime)
 		return err
 	}())
 	assertArchivedWrite("durable review start", func() error {
-		_, err := st.StartReviewAsync(context.Background(), admin, caseID)
+		_, err := st.StartReviewAsyncAt(context.Background(), admin, caseID, acceptanceBusinessTime)
 		return err
 	}())
 }
@@ -407,6 +411,8 @@ func TestSubmitRemediationPinsExactDraftAndVersion(t *testing.T) {
 	if !ok {
 		t.Fatal("demo admin missing")
 	}
+	pack := publishSyntheticAcceptancePack(t, st, admin)
+	publishSyntheticAcceptancePolicy(t, st, admin, pack)
 	caseID, err := st.CreateCaseWithBusiness(admin, "整改提交回归", "service", "ENT", "telecom_dedicated_line")
 	if err != nil {
 		t.Fatal(err)
@@ -422,7 +428,7 @@ func TestSubmitRemediationPinsExactDraftAndVersion(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	accepted, err := st.StartReviewAsync(context.Background(), admin, caseID)
+	accepted, err := st.StartReviewAsyncAt(context.Background(), admin, caseID, acceptanceBusinessTime)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -482,6 +488,67 @@ func TestSubmitRemediationPinsExactDraftAndVersion(t *testing.T) {
 	}
 }
 
+// insertLegacyTelecomReportAttempt reconstructs a pending pre-governance run.
+// Its empty policy and RulePack identities are inserted at creation; no frozen
+// snapshot or input is rewritten to simulate historical evidence.
+func insertLegacyTelecomReportAttempt(t *testing.T, st *Store, user accounts.User, caseID string) string {
+	t.Helper()
+	ctx := context.Background()
+	seen, err := st.snapshotAs(user)
+	if err != nil {
+		t.Fatal(err)
+	}
+	caseItem, ok := seen.caseByID(caseID)
+	if !ok || !isTelecomDedicatedLineCase(caseItem) {
+		t.Fatal("historical telecom case is unavailable")
+	}
+	documents := currentDocuments(seen.documents(caseID))
+	if len(documents) < 2 {
+		t.Fatal("historical telecom fixture needs two documents")
+	}
+	frozen, selections, err := st.acceptanceParsePlan(ctx, seen, documents, st.models)
+	if err != nil {
+		t.Fatal(err)
+	}
+	signature := st.currentSignatureWithRulePack(documentIDs(documents), frozen, nil, telecomCompilerRefForCase(caseItem), "")
+	runID, err := newID("run_")
+	if err != nil {
+		t.Fatal(err)
+	}
+	attemptID, err := newID("att_")
+	if err != nil {
+		t.Fatal(err)
+	}
+	acceptedAt := stamp()
+	attempt := Attempt{ID: attemptID, RunID: runID, Ordinal: 1, ActorID: user.ID, State: "accepted", AcceptedAt: acceptedAt, HistoryKind: "preparing"}
+	if !st.reserveExecution() {
+		t.Fatal("could not reserve historical fixture execution")
+	}
+	err = st.updateCaseAs(user, caseID, func(next *state) error {
+		if !sameDocumentSet(documentIDs(currentDocuments(next.documents(caseID))), signature.DocumentIDs) {
+			return errors.New("historical fixture documents changed")
+		}
+		next.Runs = append(next.Runs, Run{ID: runID, CaseID: caseID, State: "accepted", ModelRef: signature.ModelRef, CreatedAt: acceptedAt, UpdatedAt: acceptedAt})
+		if err := sealSnapshot(next, runID, signature); err != nil {
+			return err
+		}
+		next.Attempts = append(next.Attempts, attempt)
+		for _, selection := range selections {
+			selection.RunID, selection.AttemptID = runID, attemptID
+			next.AttemptParseSelections = append(next.AttemptParseSelections, selection)
+		}
+		next.ExecutionEvents = append(next.ExecutionEvents, acceptedEvent(attempt))
+		appendRunEvent(next, runID, "accepted")
+		return appendAudit(next, runID, user.ID, "review_started", []string{caseID})
+	})
+	if err != nil {
+		st.releaseExecution()
+		t.Fatal(err)
+	}
+	st.launchAttempt(runID, attemptID, st.models, caseItem, user.ID)
+	return runID
+}
+
 func TestCreateReportFreezesAttemptAndDecisionBytes(t *testing.T) {
 	st, err := OpenTest(t.TempDir(), "")
 	if err != nil {
@@ -503,13 +570,21 @@ func TestCreateReportFreezesAttemptAndDecisionBytes(t *testing.T) {
 	if _, err := st.AddDocument(context.Background(), admin, caseID, "procurement", "purchase.txt", "text/plain", []byte("采购文件未提供任何合同阈值或审批依据。")); err != nil {
 		t.Fatal(err)
 	}
-	runID, err := st.StartReview(context.Background(), admin, caseID)
-	if err != nil {
-		t.Fatal(err)
-	}
+	runID := insertLegacyTelecomReportAttempt(t, st, admin, caseID)
 	workspace := waitTerminalWorkspace(t, st, admin, caseID, runID)
 	if workspace.Execution == nil || workspace.Execution.Attempt == nil || len(workspace.Findings) == 0 {
 		t.Fatalf("report test did not produce a terminal attempt and finding: %+v", workspace)
+	}
+	if workspace.Snapshot.GovernedKnowledge != nil || len(workspace.Execution.Attempt.RulePackSnapshot) != 0 || workspace.Execution.Attempt.InputHash == nil {
+		t.Fatalf("historical fixture unexpectedly acquired governed evidence: %+v", workspace.Execution.Attempt)
+	}
+	legacySnapshot := workspace.Snapshot
+	legacyInputHash := *workspace.Execution.Attempt.InputHash
+	pack := publishSyntheticAcceptancePack(t, st, admin)
+	publishSyntheticAcceptancePolicy(t, st, admin, pack)
+	restored, err := st.Workspace(admin, caseID, runID, workspace.Execution.Attempt.ID)
+	if err != nil || !reflect.DeepEqual(restored.Snapshot, legacySnapshot) || restored.Execution == nil || restored.Execution.Attempt == nil || restored.Execution.Attempt.InputHash == nil || *restored.Execution.Attempt.InputHash != legacyInputHash {
+		t.Fatalf("publication changed the historical run or its frozen input: workspace=%+v err=%v", restored, err)
 	}
 	mandatoryResults := 0
 	for _, evaluation := range workspace.Evaluations {
@@ -567,6 +642,18 @@ func TestCreateReportFreezesAttemptAndDecisionBytes(t *testing.T) {
 	if err != nil || !bytes.Contains(nextJSON, []byte(decisionReason)) {
 		t.Fatalf("new report omitted the actual human decision: err=%v", err)
 	}
+	governedRunID, err := st.StartReviewAt(context.Background(), admin, caseID, acceptanceBusinessTime)
+	if err != nil {
+		t.Fatal(err)
+	}
+	governed := waitTerminalWorkspace(t, st, admin, caseID, governedRunID)
+	if governedRunID == runID || governed.Snapshot.GovernedKnowledge == nil || governed.Snapshot.RulePackID != pack.Pack.ID {
+		t.Fatalf("new review did not freeze published governance: %+v", governed.Snapshot)
+	}
+	_, afterGovernedJSON, err := st.ReadReport(admin, caseID, first.ID, "json")
+	if err != nil || !bytes.Equal(afterGovernedJSON, originalJSON) {
+		t.Fatalf("governed review rewrote historical report JSON: %v", err)
+	}
 }
 
 func TestRemediationCannotCloseOnSameOrUncomparableAttempt(t *testing.T) {
@@ -586,6 +673,8 @@ func TestRemediationCannotCloseOnSameOrUncomparableAttempt(t *testing.T) {
 	if !ok {
 		t.Fatal("demo admin missing")
 	}
+	pack := publishSyntheticAcceptancePack(t, st, admin)
+	publishSyntheticAcceptancePolicy(t, st, admin, pack)
 	st.UseModels(&frozenOCRModel{})
 	caseID, err := st.CreateCaseWithBusiness(admin, "授权不足整改回归", "service", "ENT", "telecom_dedicated_line")
 	if err != nil {
@@ -598,7 +687,7 @@ func TestRemediationCannotCloseOnSameOrUncomparableAttempt(t *testing.T) {
 	if _, err := st.AddDocument(context.Background(), admin, caseID, "procurement", "purchase.txt", "text/plain", []byte("采购文件未提供合同依据。")); err != nil {
 		t.Fatal(err)
 	}
-	firstRunID, err := st.StartReview(context.Background(), admin, caseID)
+	firstRunID, err := st.StartReviewAt(context.Background(), admin, caseID, acceptanceBusinessTime)
 	if err != nil {
 		t.Fatal(err)
 	}

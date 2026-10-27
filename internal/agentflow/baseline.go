@@ -77,6 +77,14 @@ func (tool baselineTool) Execute(ctx context.Context, input ToolInput) ([]Findin
 	for _, evaluation := range evaluations {
 		finding := Finding{Domain: tool.domain, Capability: input.Gap.Capability, RuleID: evaluation.RuleVersion,
 			Relation: evaluation.Relation, Summary: evaluation.Reason, Citations: []Citation{}}
+		switch evaluation.Relation {
+		case engine.RelInsufficient:
+			finding.ReasonCode = "baseline_evidence_insufficient"
+		case "unsupported":
+			finding.ReasonCode = "baseline_evidence_unsupported"
+		case "unknown":
+			finding.ReasonCode = "baseline_evidence_unknown"
+		}
 		anchors := append([]engine.Anchor{}, evaluation.Uncertain...)
 		for _, fact := range evaluation.Facts {
 			anchors = append(anchors, fact.Anchor)

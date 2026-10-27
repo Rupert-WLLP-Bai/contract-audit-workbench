@@ -35,6 +35,7 @@ func TestRevisedDocumentOpensNewRun(t *testing.T) {
 		t.Fatalf("decide %d", status)
 	}
 	_, before := api.do(t, http.MethodGet, "/api/cases/"+caseID+"/reviews/"+oldID, nil)
+	beforeDiagnostics := api.reviewDiagnostics(t, "/api/cases/"+caseID+"/reviews/"+oldID)
 
 	docC := api.upload(t, caseID, "draft_contract", "draft-v2.txt", "text/plain", []byte("根据谈判，拟签合同约定质保24个月。其余义务不变。"))
 	_, detail := api.do(t, http.MethodGet, "/api/cases/"+caseID, nil)
@@ -78,8 +79,9 @@ func TestRevisedDocumentOpensNewRun(t *testing.T) {
 	assertUnlocatableWithoutPage(t, persisting["evidence"].([]any))
 
 	_, old := api.do(t, http.MethodGet, "/api/cases/"+caseID+"/reviews/"+oldID, nil)
-	if !sameWorkspaceCore(before, old) {
-		t.Fatalf("old run changed\nbefore %+v\nafter %+v", before["snapshot"], old["snapshot"])
+	oldDiagnostics := api.reviewDiagnostics(t, "/api/cases/"+caseID+"/reviews/"+oldID)
+	if !sameWorkspaceCore(before, old, beforeDiagnostics, oldDiagnostics) {
+		t.Fatalf("old run changed\nbefore %+v\nafter %+v", beforeDiagnostics["snapshot"], oldDiagnostics["snapshot"])
 	}
 	oldFinding := old["findings"].([]any)[0].(map[string]any)
 	if oldFinding["id"] != findingID || len(oldFinding["decisions"].([]any)) != 1 {
@@ -113,7 +115,8 @@ func TestRevisedDocumentOpensNewRun(t *testing.T) {
 		t.Fatalf("added finding %+v", addedFinding)
 	}
 	_, later := api.do(t, http.MethodGet, "/api/cases/"+caseID+"/reviews/"+oldID, nil)
-	if !sameWorkspaceCore(old, later) {
+	laterDiagnostics := api.reviewDiagnostics(t, "/api/cases/"+caseID+"/reviews/"+oldID)
+	if !sameWorkspaceCore(old, later, oldDiagnostics, laterDiagnostics) {
 		t.Fatal("old run changed after later revisions")
 	}
 }
@@ -171,8 +174,11 @@ func sameIDList(got []any, want ...string) bool {
 	return true
 }
 
-func sameWorkspaceCore(before, after map[string]any) bool {
-	if before["snapshot"].(map[string]any)["rule_set_hash"] != after["snapshot"].(map[string]any)["rule_set_hash"] {
+func sameWorkspaceCore(before, after, beforeDiagnostics, afterDiagnostics map[string]any) bool {
+	beforeSnapshot := beforeDiagnostics["snapshot"].(map[string]any)
+	afterSnapshot := afterDiagnostics["snapshot"].(map[string]any)
+	ruleHash, ok := beforeSnapshot["rule_set_hash"].(string)
+	if !ok || ruleHash == "" || ruleHash != afterSnapshot["rule_set_hash"] {
 		return false
 	}
 	left := before["snapshot"].(map[string]any)["document_ids"].([]any)

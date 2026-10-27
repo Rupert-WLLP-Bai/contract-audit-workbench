@@ -155,12 +155,14 @@ def generated_values(infra: dict[str, str]) -> dict[str, str]:
 		"WORKER_DOCUMENT_TOKEN": secrets.token_urlsafe(48),
 		"WORKER_MODEL_TOKEN": secrets.token_urlsafe(48),
 		"WORKER_TOOL_TOKEN": secrets.token_urlsafe(48),
+		"WORKER_CORE_TOKEN": secrets.token_urlsafe(48),
 		"DOCUMENT_MODEL_TOKEN": secrets.token_urlsafe(48),
 		"CORE_URLS": "http://core-api:8081",
 		"DOCUMENT_URL": "http://document-service:8082",
 		"EXECUTION_URL": "http://audit-execution:8083",
 		"TOOL_URLS": "http://tool-gateway:8085",
 		"DOCUMENT_SERVICE_URL": "http://document-service:8082",
+		"CORE_SERVICE_URL": "http://core-api:8081",
 		"MODEL_GATEWAY_URL": "http://model-gateway:8084/v1",
 		"NATS_URL": "nats://nats:4222",
 		"LLM_BASE_URL": _container_model_url(infra.get("LLM_BASE_URL", "http://127.0.0.1:3425/v1")),
@@ -194,6 +196,7 @@ def ensure_private_environment() -> dict[str, str]:
 	if DISTRIBUTED_ENV_PATH.exists():
 		current = read_env(DISTRIBUTED_ENV_PATH)
 		missing = sorted(set(expected) - current.keys())
+		missing = [key for key in missing if key not in {"WORKER_CORE_TOKEN", "CORE_SERVICE_URL"}]
 		if missing:
 			raise RuntimeError(
 				f"{DISTRIBUTED_ENV_PATH} already exists and is missing keys {', '.join(missing)}; "

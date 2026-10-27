@@ -219,7 +219,10 @@ func migrate(ctx context.Context, pool *pgxpool.Pool) error {
 			return fmt.Errorf("migrate: %w", err)
 		}
 	}
-	return migrateModelBudgetFunctions(ctx, pool)
+	if err := migrateModelBudgetFunctions(ctx, pool); err != nil {
+		return err
+	}
+	return migrateExperienceDistillFunctions(ctx, pool)
 }
 
 // Migrate applies the schema using MIGRATOR_DATABASE_URL. The URL must select
@@ -418,6 +421,11 @@ func loadState(ctx context.Context, q queryer, strict bool) (state, error) {
 	}
 	if st.Snapshots, err = loadSnapshots(ctx, q); err != nil {
 		return state{}, err
+	}
+	for _, attempt := range st.Attempts {
+		if err := validateGovernedAttemptSnapshot(attempt, st.snapshotOf(attempt.RunID)); err != nil {
+			return state{}, fmt.Errorf("load governed attempt %q: %w", attempt.ID, err)
+		}
 	}
 	if st.Audits, err = loadAudits(ctx, q); err != nil {
 		return state{}, err
@@ -690,9 +698,9 @@ func replaceRows(ctx context.Context, tx pgx.Tx, previous, st state, owner strin
 			}
 			raw = encoded
 		}
-		if _, err := tx.Exec(ctx, `INSERT INTO execution_events (attempt_id, event_seq, span_id, parent_span_id, node_kind, phase, event_type, occurred_at, duration_ms, status, error_code, model_ref, usage)
-			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) ON CONFLICT (attempt_id,event_seq) DO NOTHING`,
-			item.AttemptID, item.Seq, item.SpanID, item.ParentSpanID, item.NodeKind, item.Phase, item.EventType, item.At, item.DurationMS, item.Status, item.ErrorCode, item.ModelRef, raw); err != nil {
+		if _, err := tx.Exec(ctx, `INSERT INTO execution_events (attempt_id, event_seq, span_id, parent_span_id, node_kind, phase, event_type, occurred_at, duration_ms, status, error_code, model_ref, usage, recorded_at, event_key, generation)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) ON CONFLICT (attempt_id,event_seq) DO NOTHING`,
+			item.AttemptID, item.Seq, item.SpanID, item.ParentSpanID, item.NodeKind, item.Phase, item.EventType, item.At, item.DurationMS, item.Status, item.ErrorCode, item.ModelRef, raw, item.RecordedAt, item.EventKey, item.Generation); err != nil {
 			return err
 		}
 	}
@@ -733,9 +741,17 @@ func replaceRows(ctx context.Context, tx pgx.Tx, previous, st state, owner strin
 		if err != nil {
 			return err
 		}
-		if _, err := tx.Exec(ctx, `INSERT INTO constraint_evaluations (id, run_id, attempt_id, case_id, domain, relation, rule_version, reason, finding_id, rule_id, capability_id, reason_code, fact_ids, object_refs, mandatory)
-            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) ON CONFLICT (id) DO NOTHING`,
-			item.ID, item.RunID, item.AttemptID, item.CaseID, item.Domain, item.Relation, item.RuleVersion, item.Reason, item.FindingID, item.RuleID, item.CapabilityID, item.ReasonCode, factsJSON, objectsJSON, item.Mandatory); err != nil {
+		var evidenceJSON any
+		if len(item.Evidence) > 0 {
+			encoded, err := jsonText(item.Evidence)
+			if err != nil {
+				return err
+			}
+			evidenceJSON = encoded
+		}
+		if _, err := tx.Exec(ctx, `INSERT INTO constraint_evaluations (id, run_id, attempt_id, case_id, domain, relation, rule_version, reason, finding_id, rule_id, capability_id, reason_code, fact_ids, object_refs, mandatory, evidence)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) ON CONFLICT (id) DO NOTHING`,
+			item.ID, item.RunID, item.AttemptID, item.CaseID, item.Domain, item.Relation, item.RuleVersion, item.Reason, item.FindingID, item.RuleID, item.CapabilityID, item.ReasonCode, factsJSON, objectsJSON, item.Mandatory, evidenceJSON); err != nil {
 			return err
 		}
 	}
@@ -778,12 +794,22 @@ func syncSnapshots(ctx context.Context, tx pgx.Tx, items []RunSnapshot) error {
 		if err != nil {
 			return err
 		}
-		if _, err := tx.Exec(ctx, `INSERT INTO review_run_snapshots (run_id, document_ids, rule_set_hash, playbook_hash, model_ref, comparator_ref, model_configuration_id, parsed_document_ids, parse_selection_hash, parser_configuration_id, rule_pack_compiler_ref, rule_pack_id, rule_pack_version, rule_pack_hash, rule_pack_digest, rule_pack_snapshot, planner_configuration_id, planner_configuration, cloud_policy_snapshot, cloud_policy_digest) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)`,
+		var knowledge []byte
+		if item.GovernedKnowledge != nil {
+			if _, err := copyGovernedKnowledge(item); err != nil {
+				return err
+			}
+			knowledge, err = json.Marshal(item.GovernedKnowledge)
+			if err != nil {
+				return err
+			}
+		}
+		if _, err := tx.Exec(ctx, `INSERT INTO review_run_snapshots (run_id, document_ids, rule_set_hash, playbook_hash, model_ref, comparator_ref, model_configuration_id, parsed_document_ids, parse_selection_hash, parser_configuration_id, rule_pack_compiler_ref, rule_pack_id, rule_pack_version, rule_pack_hash, rule_pack_digest, rule_pack_snapshot, planner_configuration_id, planner_configuration, cloud_policy_snapshot, cloud_policy_digest, governed_knowledge) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)`,
 			item.RunID, raw, item.RuleSetHash, item.PlaybookHash, item.ModelRef, item.ComparatorRef, item.ModelConfigurationID,
 			parsedRaw, item.ParseSelectionHash, item.ParserConfigurationID, item.RulePackCompilerRef,
 			item.RulePackID, item.RulePackVersion, item.RulePackHash, item.RulePackDigest,
 			[]byte(item.RulePackSnapshot), item.PlannerConfigurationID, plannerPayloadValue(item.PlannerConfiguration),
-			[]byte(item.CloudPolicySnapshot), item.CloudPolicyDigest); err != nil {
+			[]byte(item.CloudPolicySnapshot), item.CloudPolicyDigest, knowledge); err != nil {
 			return err
 		}
 	}
@@ -1046,7 +1072,7 @@ func loadAttemptParseSelections(ctx context.Context, q queryer) ([]AttemptParseS
 }
 
 func loadExecutionEvents(ctx context.Context, q queryer) ([]ExecutionEvent, error) {
-	rows, err := q.Query(ctx, `SELECT attempt_id, event_seq, span_id, parent_span_id, node_kind, phase, event_type, occurred_at, duration_ms, status, error_code, model_ref, usage FROM execution_events ORDER BY attempt_id, event_seq`)
+	rows, err := q.Query(ctx, `SELECT attempt_id, event_seq, span_id, parent_span_id, node_kind, phase, event_type, occurred_at, duration_ms, status, error_code, model_ref, usage, recorded_at, event_key, generation FROM execution_events ORDER BY attempt_id, event_seq`)
 	if err != nil {
 		return nil, err
 	}
@@ -1055,7 +1081,7 @@ func loadExecutionEvents(ctx context.Context, q queryer) ([]ExecutionEvent, erro
 	for rows.Next() {
 		var item ExecutionEvent
 		var raw *string
-		if err := rows.Scan(&item.AttemptID, &item.Seq, &item.SpanID, &item.ParentSpanID, &item.NodeKind, &item.Phase, &item.EventType, &item.At, &item.DurationMS, &item.Status, &item.ErrorCode, &item.ModelRef, &raw); err != nil {
+		if err := rows.Scan(&item.AttemptID, &item.Seq, &item.SpanID, &item.ParentSpanID, &item.NodeKind, &item.Phase, &item.EventType, &item.At, &item.DurationMS, &item.Status, &item.ErrorCode, &item.ModelRef, &raw, &item.RecordedAt, &item.EventKey, &item.Generation); err != nil {
 			return nil, err
 		}
 		if raw != nil {
@@ -1098,7 +1124,7 @@ func loadFindings(ctx context.Context, q queryer) ([]Finding, error) {
 	return out, rows.Err()
 }
 func loadEvaluations(ctx context.Context, q queryer) ([]ConstraintEval, error) {
-	rows, err := q.Query(ctx, `SELECT id, run_id, attempt_id, case_id, domain, relation, rule_version, reason, finding_id, rule_id, capability_id, reason_code, fact_ids, object_refs, mandatory FROM constraint_evaluations ORDER BY seq`)
+	rows, err := q.Query(ctx, `SELECT id, run_id, attempt_id, case_id, domain, relation, rule_version, reason, finding_id, rule_id, capability_id, reason_code, fact_ids, object_refs, mandatory, evidence FROM constraint_evaluations ORDER BY seq`)
 	if err != nil {
 		return nil, err
 	}
@@ -1107,7 +1133,8 @@ func loadEvaluations(ctx context.Context, q queryer) ([]ConstraintEval, error) {
 	for rows.Next() {
 		var item ConstraintEval
 		var factIDs, objectRefs string
-		if err := rows.Scan(&item.ID, &item.RunID, &item.AttemptID, &item.CaseID, &item.Domain, &item.Relation, &item.RuleVersion, &item.Reason, &item.FindingID, &item.RuleID, &item.CapabilityID, &item.ReasonCode, &factIDs, &objectRefs, &item.Mandatory); err != nil {
+		var evidenceJSON []byte
+		if err := rows.Scan(&item.ID, &item.RunID, &item.AttemptID, &item.CaseID, &item.Domain, &item.Relation, &item.RuleVersion, &item.Reason, &item.FindingID, &item.RuleID, &item.CapabilityID, &item.ReasonCode, &factIDs, &objectRefs, &item.Mandatory, &evidenceJSON); err != nil {
 			return nil, err
 		}
 		if err := json.Unmarshal([]byte(factIDs), &item.FactIDs); err != nil {
@@ -1115,6 +1142,14 @@ func loadEvaluations(ctx context.Context, q queryer) ([]ConstraintEval, error) {
 		}
 		if err := json.Unmarshal([]byte(objectRefs), &item.ObjectRefs); err != nil {
 			return nil, err
+		}
+		if len(evidenceJSON) > 0 {
+			if err := json.Unmarshal(evidenceJSON, &item.Evidence); err != nil {
+				return nil, err
+			}
+		}
+		if len(item.Evidence) == 0 {
+			item.Evidence = nil
 		}
 		out = append(out, item)
 	}
@@ -1190,7 +1225,7 @@ func loadIdempotency(ctx context.Context, q queryer) ([]Idem, error) {
 }
 
 func loadSnapshots(ctx context.Context, q queryer) ([]RunSnapshot, error) {
-	rows, err := q.Query(ctx, `SELECT run_id, document_ids, rule_set_hash, playbook_hash, model_ref, comparator_ref, model_configuration_id, parsed_document_ids, parse_selection_hash, parser_configuration_id, rule_pack_compiler_ref, rule_pack_id, rule_pack_version, rule_pack_hash, rule_pack_digest, rule_pack_snapshot, planner_configuration_id, planner_configuration, cloud_policy_snapshot, cloud_policy_digest FROM review_run_snapshots ORDER BY run_id`)
+	rows, err := q.Query(ctx, `SELECT run_id, document_ids, rule_set_hash, playbook_hash, model_ref, comparator_ref, model_configuration_id, parsed_document_ids, parse_selection_hash, parser_configuration_id, rule_pack_compiler_ref, rule_pack_id, rule_pack_version, rule_pack_hash, rule_pack_digest, rule_pack_snapshot, planner_configuration_id, planner_configuration, cloud_policy_snapshot, cloud_policy_digest, governed_knowledge FROM review_run_snapshots ORDER BY run_id`)
 	if err != nil {
 		return nil, err
 	}
@@ -1199,11 +1234,11 @@ func loadSnapshots(ctx context.Context, q queryer) ([]RunSnapshot, error) {
 	for rows.Next() {
 		var item RunSnapshot
 		var raw, parsedRaw string
-		var snapshot, plannerPayload, policySnapshot []byte
+		var snapshot, plannerPayload, policySnapshot, knowledge []byte
 		if err := rows.Scan(&item.RunID, &raw, &item.RuleSetHash, &item.PlaybookHash, &item.ModelRef,
 			&item.ComparatorRef, &item.ModelConfigurationID, &parsedRaw, &item.ParseSelectionHash, &item.ParserConfigurationID, &item.RulePackCompilerRef,
 			&item.RulePackID, &item.RulePackVersion, &item.RulePackHash, &item.RulePackDigest, &snapshot, &item.PlannerConfigurationID, &plannerPayload,
-			&policySnapshot, &item.CloudPolicyDigest); err != nil {
+			&policySnapshot, &item.CloudPolicyDigest, &knowledge); err != nil {
 			return nil, err
 		}
 		if err := json.Unmarshal([]byte(raw), &item.DocumentIDs); err != nil {
@@ -1220,6 +1255,13 @@ func loadSnapshots(ctx context.Context, q queryer) ([]RunSnapshot, error) {
 		}
 		if len(policySnapshot) > 0 {
 			item.CloudPolicySnapshot = append(json.RawMessage(nil), policySnapshot...)
+		}
+		item.GovernedKnowledge, err = decodeGovernedKnowledge(knowledge)
+		if err != nil {
+			return nil, err
+		}
+		if _, err := copyGovernedKnowledge(item); err != nil {
+			return nil, err
 		}
 		out = append(out, item)
 	}

@@ -139,6 +139,8 @@ func TestAgentReviewPlannerFailurePreservesRuleFindingsAsPartial(t *testing.T) {
 func TestTelecomEmbeddedParseFailureCannotBecomeCompleted(t *testing.T) {
 	st, admin := openExecutionStore(t)
 	st.UseModels(&frozenOCRModel{})
+	pack := publishSyntheticAcceptancePack(t, st, admin)
+	publishSyntheticAcceptancePolicy(t, st, admin, pack)
 	caseID, err := st.CreateCaseWithBusiness(admin, "专线解析不完整", "service", "ENT", "telecom_dedicated_line")
 	if err != nil {
 		t.Fatal(err)
@@ -155,7 +157,7 @@ func TestTelecomEmbeddedParseFailureCannotBecomeCompleted(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	runID, err := st.StartReview(context.Background(), admin, caseID)
+	runID, err := st.StartReviewAt(context.Background(), admin, caseID, acceptanceBusinessTime)
 	if err != nil {
 		t.Fatal(err)
 	}

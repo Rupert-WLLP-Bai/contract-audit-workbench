@@ -52,7 +52,7 @@ func (s *Store) loadScopedAttemptState(ctx context.Context, tx pgx.Tx, claim Job
 	out.Findings = scope.Findings
 	out.Evaluations = scope.Evaluations
 
-	execEvents, err := tx.Query(ctx, `SELECT attempt_id, event_seq, span_id, parent_span_id, node_kind, phase, event_type, occurred_at, duration_ms, status, error_code, model_ref, usage
+	execEvents, err := tx.Query(ctx, `SELECT attempt_id, event_seq, span_id, parent_span_id, node_kind, phase, event_type, occurred_at, duration_ms, status, error_code, model_ref, usage, recorded_at, event_key, generation
 		FROM execution_events WHERE attempt_id=$1 ORDER BY event_seq`, attemptID)
 	if err != nil {
 		return state{}, err
@@ -62,7 +62,7 @@ func (s *Store) loadScopedAttemptState(ctx context.Context, tx pgx.Tx, claim Job
 		var item ExecutionEvent
 		var spanID, parentID, errorCode, modelRef, usageJSON *string
 		var duration *int64
-		if err := execEvents.Scan(&item.AttemptID, &item.Seq, &spanID, &parentID, &item.NodeKind, &item.Phase, &item.EventType, &item.At, &duration, &item.Status, &errorCode, &modelRef, &usageJSON); err != nil {
+		if err := execEvents.Scan(&item.AttemptID, &item.Seq, &spanID, &parentID, &item.NodeKind, &item.Phase, &item.EventType, &item.At, &duration, &item.Status, &errorCode, &modelRef, &usageJSON, &item.RecordedAt, &item.EventKey, &item.Generation); err != nil {
 			return state{}, err
 		}
 		item.SpanID, item.ParentSpanID, item.ErrorCode, item.ModelRef, item.DurationMS = spanID, parentID, errorCode, modelRef, duration
@@ -104,13 +104,13 @@ func (s *Store) loadScopedAttemptState(ctx context.Context, tx pgx.Tx, claim Job
 	// Snapshot of the run: the freeze and preparation callbacks read and write it.
 	var snapshot RunSnapshot
 	var documentIDs, parsedDocumentIDs string
-	var packSnapshot, plannerPayload, policySnapshot []byte
-	if err := tx.QueryRow(ctx, `SELECT run_id, document_ids, rule_set_hash, playbook_hash, model_ref, comparator_ref, model_configuration_id, parsed_document_ids, parse_selection_hash, parser_configuration_id, rule_pack_compiler_ref, rule_pack_id, rule_pack_version, rule_pack_hash, rule_pack_digest, rule_pack_snapshot, planner_configuration_id, planner_configuration, cloud_policy_snapshot, cloud_policy_digest
+	var packSnapshot, plannerPayload, policySnapshot, knowledge []byte
+	if err := tx.QueryRow(ctx, `SELECT run_id, document_ids, rule_set_hash, playbook_hash, model_ref, comparator_ref, model_configuration_id, parsed_document_ids, parse_selection_hash, parser_configuration_id, rule_pack_compiler_ref, rule_pack_id, rule_pack_version, rule_pack_hash, rule_pack_digest, rule_pack_snapshot, planner_configuration_id, planner_configuration, cloud_policy_snapshot, cloud_policy_digest, governed_knowledge
 		FROM review_run_snapshots WHERE run_id=$1`, runID).
 		Scan(&snapshot.RunID, &documentIDs, &snapshot.RuleSetHash, &snapshot.PlaybookHash, &snapshot.ModelRef, &snapshot.ComparatorRef,
 			&snapshot.ModelConfigurationID, &parsedDocumentIDs, &snapshot.ParseSelectionHash, &snapshot.ParserConfigurationID, &snapshot.RulePackCompilerRef,
 			&snapshot.RulePackID, &snapshot.RulePackVersion, &snapshot.RulePackHash, &snapshot.RulePackDigest, &packSnapshot, &snapshot.PlannerConfigurationID, &plannerPayload,
-			&policySnapshot, &snapshot.CloudPolicyDigest); err != nil {
+			&policySnapshot, &snapshot.CloudPolicyDigest, &knowledge); err != nil {
 		if !errors.Is(err, pgx.ErrNoRows) {
 			return state{}, err
 		}
@@ -130,7 +130,19 @@ func (s *Store) loadScopedAttemptState(ctx context.Context, tx pgx.Tx, claim Job
 		if len(policySnapshot) > 0 {
 			snapshot.CloudPolicySnapshot = append(json.RawMessage(nil), policySnapshot...)
 		}
+		snapshot.GovernedKnowledge, err = decodeGovernedKnowledge(knowledge)
+		if err != nil {
+			return state{}, err
+		}
+		if _, err := copyGovernedKnowledge(snapshot); err != nil {
+			return state{}, err
+		}
 		out.Snapshots = []RunSnapshot{snapshot}
+	}
+	for _, attempt := range out.Attempts {
+		if err := validateGovernedAttemptSnapshot(attempt, snapshot); err != nil {
+			return state{}, err
+		}
 	}
 
 	// Parse selections and the frozen attempt input of this attempt.
@@ -215,6 +227,20 @@ func (s *Store) loadScopedAttemptState(ctx context.Context, tx pgx.Tx, claim Job
 // persists the changed owned rows through the existing delta/persist path inside
 // the caller's transaction, and then patches only the slices the scope contains.
 func (s *Store) scopedAttemptMutation(ctx context.Context, runID, attemptID string, fn func(*state) error) error {
+	return s.scopedAttemptMutationWithGovernance(ctx, runID, attemptID, false, fn)
+}
+
+func (s *Store) scopedGovernedAttemptMutation(ctx context.Context, runID, attemptID string, fn func(*state) error) error {
+	return s.scopedAttemptMutationWithGovernance(ctx, runID, attemptID, true, fn)
+}
+
+func (s *Store) scopedAttemptMutationWithGovernance(ctx context.Context, runID, attemptID string, governance bool, fn func(*state) error) error {
+	return s.scopedAttemptMutationWithTx(ctx, runID, attemptID, governance, func(_ pgx.Tx, st *state) error {
+		return fn(st)
+	})
+}
+
+func (s *Store) scopedAttemptMutationWithTx(ctx context.Context, runID, attemptID string, governance bool, fn func(pgx.Tx, *state) error) error {
 	claim, ok := s.claimForAttempt(attemptID)
 	if !ok || claim.JobID == "" || claim.AttemptID != attemptID || claim.RunID != runID {
 		return errExecutionEventScope
@@ -224,6 +250,11 @@ func (s *Store) scopedAttemptMutation(ctx context.Context, runID, attemptID stri
 		return err
 	}
 	defer tx.Rollback(ctx)
+	if governance {
+		if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended(current_schema(),0))`); err != nil {
+			return err
+		}
+	}
 	if err := setLocalScope(ctx, tx, claim.scope()); err != nil {
 		return err
 	}
@@ -254,11 +285,16 @@ func (s *Store) scopedAttemptMutation(ctx context.Context, runID, attemptID stri
 	if err != nil {
 		return err
 	}
+	if governance {
+		if err := revalidateGovernedAttemptTx(ctx, tx, runID, attemptID, claim.CaseID); err != nil {
+			return err
+		}
+	}
 	next, err := previous.clone()
 	if err != nil {
 		return err
 	}
-	if err := fn(&next); err != nil {
+	if err := fn(tx, &next); err != nil {
 		return err
 	}
 	old, changed, err := stateDelta(previous, next)

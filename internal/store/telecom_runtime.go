@@ -5,9 +5,9 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
+	"reflect"
 	"sort"
 	"strings"
 	"time"
@@ -80,40 +80,194 @@ func isGovernedReviewCase(item Case) bool {
 	return isTelecomDedicatedLineCase(item) || isCloudServicesCase(item)
 }
 
-func cloudPolicyForReview(st state, caseItem Case, runID string) (model.CloudPolicy, error) {
-	snapshot := st.snapshotOf(runID)
-	if !isCloudServicesCase(caseItem) || len(snapshot.CloudPolicySnapshot) == 0 || sha256Bytes(snapshot.CloudPolicySnapshot) != snapshot.CloudPolicyDigest ||
-		len(snapshot.RulePackSnapshot) == 0 || telecom.ValidateCloudServicesRulePack(snapshot.RulePackSnapshot) != nil {
-		return model.CloudPolicy{}, errors.New("cloud policy or governed RulePack freeze is invalid")
-	}
-	var policy Knowledge
-	if err := json.Unmarshal(snapshot.CloudPolicySnapshot, &policy); err != nil {
-		return model.CloudPolicy{}, errors.New("frozen cloud policy cannot be decoded")
-	}
-	if policy.ID != "cloud-procurement-policy" || policy.Version != "1.0.0" || policy.SourceType != "synthetic_policy" ||
-		strings.TrimSpace(policy.Body) == "" {
-		return model.CloudPolicy{}, errors.New("frozen cloud policy identity is invalid")
-	}
-	return model.CloudPolicy{ID: policy.ID, Version: policy.Version, Body: policy.Body}, nil
+type cloudPolicyRef struct {
+	ref       KnowledgeRef
+	version   string
+	selection GovernedKnowledgeSelection
 }
 
-func cloudModelDrafts(review model.CloudReview, docs []Interpreted, policy model.CloudPolicy) ([]engine.Draft, []FindingSeveritySource, error) {
-	if len(review.Findings) > 4 || policy.ID != "cloud-procurement-policy" || policy.Version != "1.0.0" || strings.TrimSpace(policy.Body) == "" {
-		return nil, nil, engine.ErrRejected
+// validateCloudPolicyBindings requires a frozen, published policy source for
+// every mandatory cloud rule. The identity uses the display version in the
+// RulePack and the content-addressed version in the governance snapshot.
+func validateCloudPolicyBindings(snapshot RunSnapshot, knowledge ReviewKnowledgeSnapshot, tenantID string) ([]cloudPolicyRef, error) {
+	sealed, err := sealKnowledgeSnapshot(knowledge)
+	if err != nil || knowledge.Encoding != "review-knowledge-snapshot/v1" ||
+		knowledge.SnapshotSHA256 == "" || sealed.SnapshotSHA256 != knowledge.SnapshotSHA256 {
+		return nil, errors.New("cloud governance snapshot is invalid")
+	}
+	if snapshot.RulePackCompilerRef != governedCompilerMarker || len(snapshot.RulePackSnapshot) == 0 ||
+		sha256Bytes(snapshot.RulePackSnapshot) != snapshot.RulePackDigest ||
+		telecom.ValidateCloudServicesRulePack(snapshot.RulePackSnapshot) != nil {
+		return nil, errors.New("cloud governed RulePack freeze is invalid")
+	}
+	pack, err := rulepack.Parse(snapshot.RulePackSnapshot)
+	if err != nil {
+		return nil, errors.New("cloud governed RulePack cannot be decoded")
+	}
+	manifest := pack.Manifest()
+	packRef := knowledge.RulePack
+	if tenantID == "" || manifest.TenantID != tenantID || manifest.ID != snapshot.RulePackID ||
+		manifest.Version != snapshot.RulePackVersion || pack.Hash() != snapshot.RulePackHash ||
+		packRef.PackID != snapshot.RulePackID || packRef.Version != snapshot.RulePackVersion ||
+		packRef.ContentHash != snapshot.RulePackHash || packRef.SnapshotDigest != snapshot.RulePackDigest ||
+		packRef.CompilerRef != governedCompilerMarker || packRef.PointerRevision < 1 ||
+		knowledge.Scope.BusinessLine != "ENT" || knowledge.Scope.Scenario != "cloud_services" || knowledge.Scope.ContractType != "service" {
+		return nil, errors.New("cloud policy and RulePack identities differ")
+	}
+	required := make(map[string]bool, len(cloudCapabilities))
+	for _, capability := range cloudCapabilities {
+		required[capability.ruleID] = true
+	}
+	seenPolicies := make(map[KnowledgeRef]bool)
+	var policies []cloudPolicyRef
+	for _, rule := range manifest.Rules {
+		if !required[rule.RuleID] {
+			continue
+		}
+		matched := false
+		for _, source := range rule.AuthoritySources {
+			if source.Kind != "internal_policy" && source.Kind != "synthetic_demo" {
+				continue
+			}
+			var selected *GovernedKnowledgeSelection
+			for i := range knowledge.RequiredPolicies {
+				candidate := &knowledge.RequiredPolicies[i]
+				if candidate.Ref.KnowledgeID == source.ID && candidate.Ref.VersionID == knowledgeVersionID(tenantID, source.ID, source.Version) {
+					if selected != nil {
+						return nil, errors.New("cloud policy source is ambiguous")
+					}
+					selected = candidate
+				}
+			}
+			if selected == nil || !selected.Required || selected.Kind != "policy" || selected.PointerRevision < 1 ||
+				!validKnowledgeHash(selected.Ref.ContentSHA256) ||
+				(source.Kind == "internal_policy" && selected.SourceType != "reference") ||
+				(source.Kind == "synthetic_demo" && selected.SourceType != "synthetic_policy") {
+				return nil, errors.New("cloud rule source is not an exact approved policy")
+			}
+			binding := selected.Binding
+			if binding.PackID != packRef.PackID || binding.PackVersion != packRef.Version ||
+				binding.PackContentHash != packRef.ContentHash || binding.PackSnapshotDigest != packRef.SnapshotDigest ||
+				binding.CompilerRef != packRef.CompilerRef || !cloudBindingCoversRule(binding, rule.RuleID) {
+				return nil, errors.New("cloud rule has no reviewed policy source binding")
+			}
+			matched = true
+			if !seenPolicies[selected.Ref] {
+				seenPolicies[selected.Ref] = true
+				policies = append(policies, cloudPolicyRef{ref: selected.Ref, version: source.Version, selection: *selected})
+			}
+		}
+		if !matched {
+			return nil, errors.New("cloud mandatory rule has no approved policy source")
+		}
+	}
+	return policies, nil
+}
+
+func cloudBindingCoversRule(binding PolicyRuleBinding, ruleID string) bool {
+	bound := false
+	for _, id := range binding.RuleIDs {
+		if id == ruleID {
+			bound = true
+			break
+		}
+	}
+	if !bound {
+		return false
+	}
+	for _, span := range binding.SourceSpans {
+		if span.RuleID == ruleID && span.Start >= 0 && span.End > span.Start && span.Quote != "" {
+			return true
+		}
+	}
+	return false
+}
+
+func cloudPoliciesForAttempt(st state, caseItem Case, runID, attemptID string) ([]cloudPolicyRef, error) {
+	run, ok := st.runByID(runID)
+	if !ok || run.CaseID != caseItem.ID || !isCloudServicesCase(caseItem) {
+		return nil, errors.New("cloud review run or case scope changed")
+	}
+	attempt, ok := st.attemptByID(attemptID)
+	if !ok || attempt.RunID != runID || !attemptActive(attempt.State) {
+		return nil, errAttemptTerminal
+	}
+	snapshot := st.snapshotOf(runID)
+	if snapshot.GovernedKnowledge == nil {
+		return nil, errors.New("cloud review has no governed policy snapshot")
+	}
+	if _, err := ParseFrozenGovernedRulePack(attempt, caseItem); err != nil {
+		return nil, err
+	}
+	if attempt.RulePackCompilerRef != snapshot.RulePackCompilerRef || attempt.RulePackID != snapshot.RulePackID ||
+		attempt.RulePackVersion != snapshot.RulePackVersion || attempt.RulePackHash != snapshot.RulePackHash ||
+		attempt.RulePackSnapshotDigest != snapshot.RulePackDigest ||
+		attempt.RulePackPointerRevision != snapshot.GovernedKnowledge.RulePack.PointerRevision ||
+		!bytes.Equal(attempt.RulePackSnapshot, snapshot.RulePackSnapshot) {
+		return nil, errors.New("cloud attempt and governance RulePack freezes differ")
+	}
+	return validateCloudPolicyBindings(snapshot, *snapshot.GovernedKnowledge, caseItem.TenantID)
+}
+
+func (s *Store) cloudPolicyForReview(ctx context.Context, caseItem Case, runID, attemptID string, wanted cloudPolicyRef) (model.CloudPolicy, error) {
+	st := s.snapshotForAttempt(attemptID)
+	currentCase, ok := st.caseByID(caseItem.ID)
+	if !ok || !isCloudServicesCase(currentCase) {
+		return model.CloudPolicy{}, errors.New("cloud review case scope changed")
+	}
+	actor, err := authorizeAttemptExecution(st, runID, attemptID)
+	if err != nil {
+		return model.CloudPolicy{}, err
+	}
+	snapshot := st.snapshotOf(runID)
+	policies, err := cloudPoliciesForAttempt(st, currentCase, runID, attemptID)
+	if err != nil {
+		return model.CloudPolicy{}, err
+	}
+	var selected *cloudPolicyRef
+	for i := range policies {
+		if policies[i].ref == wanted.ref && policies[i].version == wanted.version {
+			selected = &policies[i]
+			break
+		}
+	}
+	if selected == nil {
+		return model.CloudPolicy{}, errors.New("cloud policy is absent from the frozen rule bindings")
+	}
+	content, err := s.ReadFrozenGovernedKnowledge(ctx, actor, currentCase.ID, *snapshot.GovernedKnowledge, selected.ref)
+	if err != nil {
+		return model.CloudPolicy{}, err
+	}
+	if content.Ref != selected.ref || content.Kind != "policy" || strings.TrimSpace(content.Body) == "" {
+		return model.CloudPolicy{}, errors.New("frozen cloud policy content is invalid")
+	}
+	body := []rune(content.Body)
+	for _, span := range selected.selection.Binding.SourceSpans {
+		if span.Start < 0 || span.End <= span.Start || span.End > len(body) || string(body[span.Start:span.End]) != span.Quote {
+			return model.CloudPolicy{}, errors.New("frozen cloud policy source span does not match its body")
+		}
+	}
+	return model.CloudPolicy{ID: selected.ref.KnowledgeID, Version: selected.version, Body: content.Body}, nil
+}
+
+func cloudModelDrafts(review model.CloudReview, docs []Interpreted, policy model.CloudPolicy) ([]engine.Draft, error) {
+	if len(review.Findings) > 4 || strings.TrimSpace(policy.ID) == "" || strings.TrimSpace(policy.Version) == "" || strings.TrimSpace(policy.Body) == "" {
+		return nil, engine.ErrRejected
 	}
 	drafts := make([]engine.Draft, 0, len(review.Findings))
-	sources := make([]FindingSeveritySource, 0, len(review.Findings))
 	seenDomains := make(map[string]bool, len(review.Findings))
 	for _, proposed := range review.Findings {
-		if seenDomains[proposed.Domain] || strings.TrimSpace(proposed.Claim) == "" || utf8.RuneCountInString(proposed.Claim) > 1000 {
-			return nil, nil, engine.ErrRejected
+		validDomain := proposed.Domain == "liability" || proposed.Domain == "data_security" || proposed.Domain == "intellectual_property" || proposed.Domain == "renewal"
+		if !validDomain || seenDomains[proposed.Domain] || strings.TrimSpace(proposed.Claim) == "" || utf8.RuneCountInString(proposed.Claim) > 1000 ||
+			strings.TrimSpace(proposed.PolicyClause) == "" || utf8.RuneCountInString(proposed.PolicyClause) > 1000 || !strings.Contains(policy.Body, proposed.PolicyClause) {
+			return nil, engine.ErrRejected
 		}
 		seenDomains[proposed.Domain] = true
 		var doc *Interpreted
 		for i := range docs {
 			if docs[i].Document.ID == proposed.DocumentID && docs[i].Document.Role == "draft_contract" {
 				if doc != nil {
-					return nil, nil, engine.ErrRejected
+					return nil, engine.ErrRejected
 				}
 				doc = &docs[i]
 			}
@@ -122,55 +276,23 @@ func cloudModelDrafts(review model.CloudReview, docs []Interpreted, policy model
 			doc.ParsedDocument.DocumentID != doc.Document.ID || doc.ParsedDocument.OriginalDigest != doc.Document.Digest ||
 			doc.ParsedDocument.NormalizedDigest == "" || doc.ParsedDocument.NormalizedDigest != doc.IR.NormalizedDigest ||
 			doc.ParsedDocument.ArtifactDigest == "" || proposed.Quote == "" || utf8.RuneCountInString(proposed.Quote) > 10000 ||
-			!strings.Contains(doc.IR.NormalizedText, proposed.Quote) || proposed.PolicyClause != cloudModelPolicyClause(proposed.Domain) {
-			return nil, nil, engine.ErrRejected
+			!strings.Contains(doc.IR.NormalizedText, proposed.Quote) {
+			return nil, engine.ErrRejected
 		}
 		byteStart := strings.Index(doc.IR.NormalizedText, proposed.Quote)
 		start := utf8.RuneCountInString(doc.IR.NormalizedText[:byteStart])
 		end := start + utf8.RuneCountInString(proposed.Quote)
 		bound := docir.Bind(doc.IR, proposed.Quote, start, end)
 		if bound.Status != docir.StatusLocated {
-			return nil, nil, engine.ErrRejected
+			return nil, engine.ErrRejected
 		}
 		anchor := engine.Anchor{DocumentID: doc.Document.ID, Quote: bound.Quote, Status: bound.Status,
 			Start: bound.Start, End: bound.End, Reason: bound.Reason, Page: bound.Page, ElementID: bound.ElementID}
-		drafts = append(drafts, engine.Draft{Domain: proposed.Domain, Origin: "model", Relation: "conflict",
-			Claim: proposed.Claim, Disposition: "confirm_risk", Anchors: []engine.Anchor{anchor}})
-		severity, clause, reason := cloudModelSeverity(proposed.Domain)
-		sources = append(sources, FindingSeveritySource{PolicyID: policy.ID, PolicyVersion: policy.Version, Clause: clause, Reason: reason})
-		if severity == "" {
-			return nil, nil, engine.ErrRejected
-		}
+		drafts = append(drafts, engine.Draft{Domain: proposed.Domain, Origin: "model", Relation: "insufficient",
+			Claim: proposed.Claim, Disposition: "insufficient_evidence", Anchors: []engine.Anchor{anchor},
+			UnverifiedReason: fmt.Sprintf("模型建议尚需人工核验；引用制度 %s 版本 %s：%s", policy.ID, policy.Version, proposed.PolicyClause)})
 	}
-	return drafts, sources, nil
-}
-
-func cloudModelPolicyClause(domain string) string {
-	switch domain {
-	case "liability":
-		return "2.4"
-	case "data_security":
-		return "2.5"
-	case "intellectual_property":
-		return "2.6"
-	case "renewal":
-		return "2.7"
-	default:
-		return ""
-	}
-}
-
-func cloudModelSeverity(domain string) (severity, clause, reason string) {
-	switch domain {
-	case "liability", "data_security":
-		return "medium", "3.2", "合成制度第3.2条将违约责任或数据安全责任要素缺口列为中风险建议。"
-	case "intellectual_property":
-		return "low", "3.3", "合成制度第3.3条将知识产权归属或许可缺口列为低风险建议。"
-	case "renewal":
-		return "info", "3.4", "合成制度第3.4条将自动续约通知或退出缺口列为提示事项。"
-	default:
-		return "", "", ""
-	}
+	return drafts, nil
 }
 
 func (s *Store) telecomAttempt(st state, runID string) bool {
@@ -237,6 +359,20 @@ func (s *Store) executeTelecomAttempt(parent, ctx context.Context, runID, attemp
 			return err
 		}
 		caseItem = authorizedCase
+		if isCloudServicesCase(caseItem) {
+			stored := s.snapshotForAttempt(attemptID)
+			if _, err := cloudPoliciesForAttempt(stored, caseItem, runID, attemptID); err != nil {
+				return err
+			}
+			actor, err := authorizeAttemptExecution(stored, runID, attemptID)
+			if err != nil {
+				return err
+			}
+			frozen := stored.snapshotOf(runID)
+			if err := s.RevalidateGovernedKnowledgeSnapshot(stageCtx, actor, caseItem.ID, *frozen.GovernedKnowledge); err != nil {
+				return err
+			}
+		}
 		docs, err = s.prepareAttempt(stageCtx, runID, attemptID, models)
 		if err != nil {
 			return err
@@ -405,7 +541,14 @@ func (s *Store) executeTelecomAttempt(parent, ctx context.Context, runID, attemp
 				return err
 			}
 			st := s.snapshotForAttempt(attemptID)
-			if hasVerifiedFinding(st.findingsForAttempt(runID, attemptID)) {
+			findings := st.findingsForAttempt(runID, attemptID)
+			if isCloudServicesCase(caseItem) {
+				for _, finding := range findings {
+					if finding.Origin == "rule" && hasVerifiedFinding([]Finding{finding}) {
+						return s.recordFirstVerifiedFinding(stageCtx, recorder, attemptID)
+					}
+				}
+			} else if hasVerifiedFinding(findings) {
 				return s.recordFirstVerifiedFinding(stageCtx, recorder, attemptID)
 			}
 			return nil
@@ -596,18 +739,19 @@ func telecomSources(docs []Interpreted) ([]rulepack.Source, error) {
 			continue
 		}
 		parsed := doc.ParsedDocument
-		if parsed == nil || parsed.ID == "" || parsed.Status != "ready" || parsed.NormalizedDigest == "" {
+		if parsed == nil || parsed.Status != "ready" {
 			return nil, errors.New("ready telecom input lacks a frozen parsed identity")
 		}
-		text := doc.IR.NormalizedText
-		digest := sha256.Sum256([]byte(text))
-		normalizedSHA := hex.EncodeToString(digest[:])
-		if normalizedSHA != parsed.NormalizedDigest || normalizedSHA != doc.IR.NormalizedDigest || doc.Text != text {
+		if err := verifyParsed(*parsed, doc.Document); err != nil {
+			return nil, fmt.Errorf("telecom parsed artifact integrity check: %w", err)
+		}
+		if doc.Text != parsed.Text || !reflect.DeepEqual(doc.IR, parsed.IR) || doc.FromOCR != parsed.FromOCR ||
+			doc.ParseError != parsed.ParseError || doc.IR.CoordinateSpace != docir.CoordinateSpace {
 			return nil, errors.New("telecom source differs from its frozen normalized parse")
 		}
 		sources = append(sources, rulepack.Source{
 			ID: doc.Document.ID, Version: parsed.ID, TenantID: doc.Document.TenantID,
-			CaseID: doc.Document.CaseID, Role: doc.Document.Role, Digest: normalizedSHA, Text: text,
+			CaseID: doc.Document.CaseID, Role: doc.Document.Role, Digest: parsed.NormalizedDigest, Text: parsed.Text,
 		})
 	}
 	return sources, nil
@@ -695,23 +839,50 @@ func guardTelecomReport(caseItem Case, runID, attemptID string, docs []Interpret
 		}
 		facts[fact.ID] = fact
 	}
-	sources := make(map[telecomSourceKey]rulepack.Source, len(request.Sources))
-	docsBySource := make(map[telecomSourceKey]Interpreted, len(docs))
-	for _, source := range request.Sources {
+	if request.Resource.TenantID != caseItem.TenantID || request.Resource.OrgID != caseItem.OwnerOrgID || request.Resource.CaseID != caseItem.ID {
+		return telecomReviewOutput{}, errors.New("telecom request differs from the authorized case")
+	}
+	verifiedSources, err := telecomSources(docs)
+	if err != nil {
+		return telecomReviewOutput{}, err
+	}
+	verified := make(map[telecomSourceKey]rulepack.Source, len(verifiedSources))
+	docsBySource := make(map[telecomSourceKey]Interpreted, len(verifiedSources))
+	seenDocuments := make(map[string]bool, len(verifiedSources))
+	for _, source := range verifiedSources {
 		key := telecomSourceKey{id: source.ID, version: source.Version}
-		if _, exists := sources[key]; exists {
+		if _, exists := verified[key]; exists {
 			return telecomReviewOutput{}, errors.New("telecom source identity is not unique")
 		}
-		sources[key] = source
-		for _, doc := range docs {
-			if doc.Document.ID == source.ID && doc.ParsedDocument != nil && doc.ParsedDocument.ID == source.Version {
-				docsBySource[key] = doc
-				break
-			}
+		verified[key] = source
+	}
+	for _, doc := range docs {
+		if !doc.Ready {
+			continue
 		}
-		if _, exists := docsBySource[key]; !exists {
+		if doc.Document.TenantID != caseItem.TenantID || doc.Document.OrgID != caseItem.OwnerOrgID || doc.Document.CaseID != caseItem.ID {
+			return telecomReviewOutput{}, errors.New("telecom parsed document is outside the authorized case")
+		}
+		if seenDocuments[doc.Document.ID] {
+			return telecomReviewOutput{}, errors.New("telecom document identity is not unique")
+		}
+		seenDocuments[doc.Document.ID] = true
+		key := telecomSourceKey{id: doc.Document.ID, version: doc.ParsedDocument.ID}
+		docsBySource[key] = doc
+	}
+	sources := make(map[telecomSourceKey]rulepack.Source, len(request.Sources))
+	for _, source := range request.Sources {
+		key := telecomSourceKey{id: source.ID, version: source.Version}
+		if trusted, exists := verified[key]; !exists || source != trusted {
 			return telecomReviewOutput{}, errors.New("telecom source is not bound to the frozen parsed document")
 		}
+		sources[key] = source
+	}
+	if len(sources) != len(verified) {
+		return telecomReviewOutput{}, errors.New("telecom request omitted a frozen source")
+	}
+	if err := rulepack.ValidateSources(request); err != nil {
+		return telecomReviewOutput{}, err
 	}
 	seenRules, seenCapabilities := map[string]bool{}, map[string]bool{}
 	output := telecomReviewOutput{
@@ -734,10 +905,16 @@ func guardTelecomReport(caseItem Case, runID, attemptID string, docs []Interpret
 		seenCapabilities[result.CapabilityID] = true
 		objectRefs := make([]string, 0, len(result.FactIDs))
 		objectSet := make(map[string]struct{}, len(result.FactIDs))
+		factCitations := make(map[rulepack.Citation][]string)
+		seenFacts := make(map[string]bool, len(result.FactIDs))
 		for _, factID := range result.FactIDs {
 			fact, exists := facts[factID]
-			if !exists || fact.RuleID != result.RuleID {
+			if !exists || fact.RuleID != result.RuleID || seenFacts[factID] {
 				return telecomReviewOutput{}, errors.New("telecom result refers to a foreign fact")
+			}
+			seenFacts[factID] = true
+			for _, citation := range fact.Citations {
+				factCitations[citation] = append(factCitations[citation], factID)
 			}
 			if fact.ObjectRef != "" {
 				objectSet[fact.ObjectRef] = struct{}{}
@@ -765,18 +942,35 @@ func guardTelecomReport(caseItem Case, runID, attemptID string, docs []Interpret
 		if evaluation.ObjectRefs == nil {
 			evaluation.ObjectRefs = []string{}
 		}
-		output.evaluations = append(output.evaluations, evaluation)
-		if result.Relation == rulepack.RelationCompatible || result.Relation == rulepack.RelationNotApplicable {
-			continue
-		}
 		anchors := make([]engine.Anchor, 0, len(result.Citations))
 		seenCitations := make(map[telecomSourceKey]map[[2]int]struct{}, len(result.Citations))
+		seenEvidence := make(map[EvaluationEvidence]struct{}, len(result.Citations))
 		for _, citation := range result.Citations {
 			key := telecomSourceKey{id: citation.SourceID, version: citation.SourceVersion}
 			source, exists := sources[key]
 			if !exists || citation.TenantID != request.Resource.TenantID || citation.CaseID != request.Resource.CaseID ||
 				citation.TenantID != source.TenantID || citation.CaseID != source.CaseID || citation.SourceDigest != source.Digest {
 				return telecomReviewOutput{}, errors.New("telecom citation identity differs from the frozen source")
+			}
+			factIDs := factCitations[citation]
+			if len(factIDs) == 0 {
+				// The compiler directly cites contractual authority and SLA
+				// annexes in the result without adding them to its fact IDs.
+				factIDs = []string{""}
+			}
+			doc := docsBySource[key]
+			bound := docir.Bind(doc.IR, citation.Quote, citation.Start, citation.End)
+			if bound.Status != docir.StatusLocated {
+				return telecomReviewOutput{}, errors.New("telecom citation does not bind to the frozen Unicode code-point span")
+			}
+			ref := ExperienceEvidenceRef{DocumentID: doc.Document.ID, ParsedDocumentID: doc.ParsedDocument.ID,
+				NormalizedDigest: doc.ParsedDocument.NormalizedDigest, Quote: bound.Quote, Start: bound.Start, End: bound.End}
+			for _, factID := range factIDs {
+				evidence := EvaluationEvidence{FactID: factID, Ref: ref}
+				if _, exists := seenEvidence[evidence]; !exists {
+					evaluation.Evidence = append(evaluation.Evidence, evidence)
+					seenEvidence[evidence] = struct{}{}
+				}
 			}
 			bySpan := seenCitations[key]
 			if bySpan == nil {
@@ -788,16 +982,15 @@ func guardTelecomReport(caseItem Case, runID, attemptID string, docs []Interpret
 				continue
 			}
 			bySpan[span] = struct{}{}
-			doc := docsBySource[key]
-			bound := docir.Bind(doc.IR, citation.Quote, citation.Start, citation.End)
-			if bound.Status != docir.StatusLocated {
-				return telecomReviewOutput{}, errors.New("telecom citation does not bind to the frozen Unicode code-point span")
-			}
 			anchors = append(anchors, engine.Anchor{
 				DocumentID: doc.Document.ID, Quote: bound.Quote, Status: bound.Status,
 				Start: bound.Start, End: bound.End, Reason: bound.Reason,
 				Page: bound.Page, ElementID: bound.ElementID,
 			})
+		}
+		output.evaluations = append(output.evaluations, evaluation)
+		if result.Relation == rulepack.RelationCompatible || result.Relation == rulepack.RelationNotApplicable {
+			continue
 		}
 		objectRef := ""
 		if len(objectRefs) == 1 {
@@ -836,12 +1029,6 @@ func guardTelecomReport(caseItem Case, runID, attemptID string, docs []Interpret
 		made[i].RuleID = output.evaluations[resultIndex].RuleID
 		made[i].CapabilityID = output.evaluations[resultIndex].CapabilityID
 		made[i].ObjectRef = draftObjectRefs[i]
-		if isCloudServicesCase(caseItem) && made[i].Relation == string(rulepack.RelationConflict) {
-			severity := "high"
-			made[i].Severity = &severity
-			made[i].SeveritySource = &FindingSeveritySource{PolicyID: "cloud-procurement-policy", PolicyVersion: "1.0.0", Clause: "3.1",
-				Reason: "合成制度第3.1条将核心SLA、保障带宽、服务承诺或审批金额约束的明确冲突列为高风险。"}
-		}
 		output.evaluations[resultIndex].FindingID = made[i].ID
 	}
 	output.findings = made
@@ -911,8 +1098,68 @@ func isAuthorityReason(reason string) bool {
 	}
 }
 
+// validateTelecomEvidenceInput binds the guarded citations to the immutable
+// input selected for this attempt before publishing the evaluation rows.
+func validateTelecomEvidenceInput(st state, attempt Attempt, caseItem Case, output telecomReviewOutput, docs []Interpreted) error {
+	input, ok := st.attemptInput(attempt.ID)
+	if !ok || attempt.HistoryKind != "frozen" || attempt.InputHash == nil || *attempt.InputHash == "" ||
+		input.AttemptID != attempt.ID || input.RunID != attempt.RunID || input.InputHash != *attempt.InputHash ||
+		!attemptSelectionsMatchFrozen(st.parseSelectionsForAttempt(attempt.ID), input.Documents) ||
+		!frozenInputMatchesSnapshot(st.snapshotOf(attempt.RunID), input.Documents) {
+		return errors.New("telecom evaluations lack the selected frozen attempt input")
+	}
+	frozenByID := make(map[string]FrozenDocument, len(input.Documents))
+	for _, frozen := range input.Documents {
+		if _, exists := frozenByID[frozen.Document.ID]; exists {
+			return errors.New("telecom frozen input contains duplicate documents")
+		}
+		frozenByID[frozen.Document.ID] = frozen
+	}
+	docsByID := make(map[string]Interpreted, len(docs))
+	for _, doc := range docs {
+		if _, exists := docsByID[doc.Document.ID]; exists {
+			return errors.New("telecom interpreted input contains duplicate documents")
+		}
+		docsByID[doc.Document.ID] = doc
+	}
+	for _, evaluation := range output.evaluations {
+		if evaluation.RunID != attempt.RunID || evaluation.AttemptID != attempt.ID || evaluation.CaseID != caseItem.ID {
+			return errors.New("telecom evaluation is outside the frozen attempt")
+		}
+		for _, evidence := range evaluation.Evidence {
+			ref := evidence.Ref
+			factPresent := evidence.FactID == ""
+			for _, factID := range evaluation.FactIDs {
+				if factID == evidence.FactID && factID != "" {
+					factPresent = true
+					break
+				}
+			}
+			frozen, found := frozenByID[ref.DocumentID]
+			doc, interpreted := docsByID[ref.DocumentID]
+			if !factPresent || !found || !interpreted || !frozen.Ready || !doc.Ready || doc.ParsedDocument == nil ||
+				frozen.Document.TenantID != caseItem.TenantID || frozen.Document.OrgID != caseItem.OwnerOrgID ||
+				frozen.Document.CaseID != caseItem.ID || frozen.OriginalHash != frozen.Document.Digest ||
+				doc.Document.ID != frozen.Document.ID || doc.Document.Digest != frozen.Document.Digest ||
+				doc.Document.TenantID != frozen.Document.TenantID || doc.Document.OrgID != frozen.Document.OrgID ||
+				doc.Document.CaseID != frozen.Document.CaseID || doc.Document.Role != frozen.Document.Role ||
+				frozen.ParsedDocumentID != ref.ParsedDocumentID || frozen.NormalizedHash == nil || *frozen.NormalizedHash != ref.NormalizedDigest {
+				return errors.New("telecom citation is outside the selected frozen document")
+			}
+			parsed := parsedDocumentFromFrozen(frozen)
+			stored, exists := st.parsedByID(parsed.ID)
+			if !exists || verifyParsed(parsed, frozen.Document) != nil || !reflect.DeepEqual(parsed, stored) ||
+				!reflect.DeepEqual(parsed, *doc.ParsedDocument) || doc.Text != parsed.Text || !reflect.DeepEqual(doc.IR, parsed.IR) ||
+				docir.Bind(parsed.IR, ref.Quote, ref.Start, ref.End).Status != docir.StatusLocated {
+				return errors.New("telecom citation differs from the verified frozen parse")
+			}
+		}
+	}
+	return nil
+}
+
 func (s *Store) persistTelecomOutput(ctx context.Context, runID, attemptID string, caseItem Case, output telecomReviewOutput, docs []Interpreted, alreadyPresent bool) error {
-	return s.updateAuthorizedExecution(ctx, runID, attemptID, func(st *state) error {
+	return s.updateAuthorizedGovernedExecution(ctx, runID, attemptID, func(st *state) error {
 		attempt, ok := st.attemptByID(attemptID)
 		if !ok || attempt.RunID != runID || !attemptActive(attempt.State) {
 			return errAttemptTerminal
@@ -927,6 +1174,11 @@ func (s *Store) persistTelecomOutput(ctx context.Context, runID, attemptID strin
 		}
 		if _, _, err := trustedTelecomReviewIdentity(*st, runID, attemptID, currentCase); err != nil {
 			return err
+		}
+		if isCloudServicesCase(currentCase) {
+			if _, err := cloudPoliciesForAttempt(*st, currentCase, runID, attemptID); err != nil {
+				return err
+			}
 		}
 		count, err := telecomEvaluationsPresent(*st, attemptID)
 		if err != nil {
@@ -949,6 +1201,9 @@ func (s *Store) persistTelecomOutput(ctx context.Context, runID, attemptID strin
 		}
 		if attempt.RulePackCompilerRef != telecom.CompilerRef && attempt.RulePackCompilerRef != governedCompilerMarker {
 			return errors.New("telecom RulePack compiler identity was not frozen before results")
+		}
+		if err := validateTelecomEvidenceInput(*st, attempt, currentCase, output, docs); err != nil {
+			return err
 		}
 		st.Findings = append(st.Findings, output.findings...)
 		st.Evaluations = append(st.Evaluations, output.evaluations...)
@@ -996,8 +1251,10 @@ func telecomEvaluationsPresent(st state, attemptID string) (int, error) {
 
 func (s *Store) runTelecomModelReview(ctx context.Context, runID, attemptID string, models Models, docs []Interpreted, caseItem Case, recorder attemptRecorder) error {
 	var proposal model.Warranty
-	var cloudProposal model.CloudReview
-	var cloudPolicy model.CloudPolicy
+	var cloudProposals []struct {
+		policy model.CloudPolicy
+		review model.CloudReview
+	}
 	var modelErr error
 	stages := []execution.Stage{
 		{Name: "model_review", Run: func(stageCtx context.Context) error {
@@ -1020,16 +1277,34 @@ func (s *Store) runTelecomModelReview(ctx context.Context, runID, attemptID stri
 					modelErr = errors.New("insufficient_ready_documents")
 					return modelErr
 				}
-				cloudPolicy, modelErr = cloudPolicyForReview(s.snapshotForAttempt(attemptID), caseItem, runID)
-				if modelErr == nil {
-					reviewer, ok := models.(interface {
-						CloudContract(context.Context, model.CloudPolicy, []model.Material) (model.CloudReview, error)
-					})
-					if !ok {
-						modelErr = errModelNotConfigured
-					} else {
-						cloudProposal, modelErr = reviewer.CloudContract(stageCtx, cloudPolicy, materials)
+				reviewer, ok := models.(interface {
+					CloudContract(context.Context, model.CloudPolicy, []model.Material) (model.CloudReview, error)
+				})
+				if !ok {
+					modelErr = errModelNotConfigured
+					return modelErr
+				}
+				stored := s.snapshotForAttempt(attemptID)
+				policies, err := cloudPoliciesForAttempt(stored, caseItem, runID, attemptID)
+				if err != nil {
+					modelErr = err
+					return err
+				}
+				for _, ref := range policies {
+					policy, err := s.cloudPolicyForReview(stageCtx, caseItem, runID, attemptID, ref)
+					if err != nil {
+						modelErr = err
+						return err
 					}
+					review, err := reviewer.CloudContract(stageCtx, policy, materials)
+					if err != nil {
+						modelErr = err
+						return err
+					}
+					cloudProposals = append(cloudProposals, struct {
+						policy model.CloudPolicy
+						review model.CloudReview
+					}{policy: policy, review: review})
 				}
 			} else {
 				if readyCount(docs) < 2 {
@@ -1053,10 +1328,16 @@ func (s *Store) runTelecomModelReview(ctx context.Context, runID, attemptID stri
 				return err
 			}
 			var drafts []engine.Draft
-			var severitySources []FindingSeveritySource
 			var err error
 			if isCloudServicesCase(caseItem) {
-				drafts, severitySources, err = cloudModelDrafts(cloudProposal, docs, cloudPolicy)
+				for _, proposed := range cloudProposals {
+					var reviewed []engine.Draft
+					reviewed, err = cloudModelDrafts(proposed.review, docs, proposed.policy)
+					if err != nil {
+						break
+					}
+					drafts = append(drafts, reviewed...)
+				}
 			} else {
 				sources := sourcesOf(docs)
 				quotes := make([]engine.QuoteRef, len(proposal.Quotes))
@@ -1077,24 +1358,8 @@ func (s *Store) runTelecomModelReview(ctx context.Context, runID, attemptID stri
 				modelErr = err
 				return err
 			}
-			if isCloudServicesCase(caseItem) {
-				if len(made) != len(severitySources) {
-					modelErr = engine.ErrRejected
-					return modelErr
-				}
-				for i := range made {
-					severity, _, _ := cloudModelSeverity(made[i].Domain)
-					if severity == "" {
-						modelErr = engine.ErrRejected
-						return modelErr
-					}
-					made[i].Severity = &severity
-					source := severitySources[i]
-					made[i].SeveritySource = &source
-				}
-			}
 			var added []Finding
-			if err := s.updateAuthorizedExecution(stageCtx, runID, attemptID, func(next *state) error {
+			if err := s.updateAuthorizedGovernedExecution(stageCtx, runID, attemptID, func(next *state) error {
 				attempt, ok := next.attemptByID(attemptID)
 				if !ok || attempt.RunID != runID || !attemptActive(attempt.State) {
 					return errAttemptTerminal
@@ -1106,11 +1371,17 @@ func (s *Store) runTelecomModelReview(ctx context.Context, runID, attemptID stri
 				if _, _, err := trustedTelecomReviewIdentity(*next, runID, attemptID, currentCase); err != nil {
 					return err
 				}
+				if isCloudServicesCase(currentCase) {
+					if _, err := cloudPoliciesForAttempt(*next, currentCase, runID, attemptID); err != nil {
+						return err
+					}
+				}
 				for _, finding := range made {
 					idx := -1
 					for i := range next.Findings {
 						current := &next.Findings[i]
-						if current.AttemptID == attemptID && current.Origin == finding.Origin && current.Domain == finding.Domain && current.Relation == finding.Relation && current.Claim == finding.Claim {
+						if current.AttemptID == attemptID && current.Origin == finding.Origin && current.Domain == finding.Domain && current.Relation == finding.Relation && current.Claim == finding.Claim &&
+							(!isCloudServicesCase(currentCase) || current.UnverifiedReason == finding.UnverifiedReason) {
 							idx = i
 							break
 						}
@@ -1145,7 +1416,7 @@ func (s *Store) runTelecomModelReview(ctx context.Context, runID, attemptID stri
 				modelErr = err
 				return err
 			}
-			if hasVerifiedFinding(added) {
+			if !isCloudServicesCase(caseItem) && hasVerifiedFinding(added) {
 				return s.recordFirstVerifiedFinding(stageCtx, recorder, attemptID)
 			}
 			return nil

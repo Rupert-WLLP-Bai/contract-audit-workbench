@@ -16,6 +16,9 @@ FIXTURE_MARKERS = ("testdata",)
 # Current regression fixtures are under 100 KiB. This bound keeps a force-added
 # design dump or dataset from using the fixture exception.
 FIXTURE_MAX_BYTES = 262144
+# Explicit runtime assets are required to render the shipped application.
+RUNTIME_ASSETS = {"web/public/huangjueshu-competition-logo.png"}
+RUNTIME_ASSET_MAX_BYTES = 1 << 20
 
 
 def load_rules(root):
@@ -139,16 +142,22 @@ def _append_path_violations(root, relative, found):
         found.append(f"delivery material is in the source tree: {relative}")
     if path.suffix.lower() not in BULK_SUFFIXES:
         return
-    if not _fixture(path):
+    if path.as_posix() in RUNTIME_ASSETS:
+        maximum = RUNTIME_ASSET_MAX_BYTES
+        category = "runtime asset"
+    elif _fixture(path):
+        maximum = FIXTURE_MAX_BYTES
+        category = "fixture"
+    else:
         found.append(f"bulk or presentation file is outside the fixture exception: {relative}")
         return
     try:
         size = (root / relative).stat().st_size
     except OSError as error:
-        found.append(f"fixture could not be measured: {relative} ({error})")
+        found.append(f"{category} could not be measured: {relative} ({error})")
         return
-    if size > FIXTURE_MAX_BYTES:
-        found.append(f"fixture exceeds {FIXTURE_MAX_BYTES} bytes: {relative} ({size})")
+    if size > maximum:
+        found.append(f"{category} exceeds {maximum} bytes: {relative} ({size})")
 
 
 def _fixture(path):

@@ -12,6 +12,8 @@ import (
 	"testing"
 )
 
+const telecomReviewBusinessAt = "2026-02-03T01:05:06Z"
+
 type telecomScenarioFixture struct {
 	ID                string            `json:"id"`
 	Title             string            `json:"title"`
@@ -37,6 +39,7 @@ type telecomDatasetFixture struct {
 
 func TestTelecomBusinessHTTPWorkflowFreezesReportsAndRejectsInsufficientClosure(t *testing.T) {
 	api := newAPI(t)
+	publishTelecomBusinessPolicy(t, api)
 	api.login(t, "demo-admin", "admin-demo")
 	dataset := readTelecomDataset(t)
 	if dataset.DatasetID != "telecom-c1b-v1" || dataset.Template != "ent_telecom_dedicated_line_v1" || dataset.TemplateVersion != "1.0.0" {
@@ -251,6 +254,7 @@ func TestTelecomBusinessHTTPWorkflowFreezesReportsAndRejectsInsufficientClosure(
 
 func TestTelecomRevisionKeepsMissingClausesUnknown(t *testing.T) {
 	api := newAPI(t)
+	publishTelecomBusinessPolicy(t, api)
 	api.login(t, "demo-admin", "admin-demo")
 	dataset := readTelecomDataset(t)
 	conflict := telecomScenario(t, dataset, "conflict")
@@ -307,6 +311,72 @@ func TestTelecomRevisionKeepsMissingClausesUnknown(t *testing.T) {
 		})
 		if t.Failed() {
 			break
+		}
+	}
+}
+
+// Publish real synthetic governance through the Admin API before exercising the
+// dedicated-line business workflow with a client-audience session.
+func publishTelecomBusinessPolicy(t *testing.T, api *testAPI) {
+	t.Helper()
+	adminLogin(t, api)
+	manifest := governedHTTPManifest("1", "100")
+	for _, raw := range manifest["rules"].([]any) {
+		rule := raw.(map[string]any)
+		rule["authority_sources"] = []any{map[string]any{"id": "telecom-business-demo-policy", "version": "1", "kind": "synthetic_demo"}}
+	}
+	status, body := api.do(t, http.MethodPost, "/api/admin/rulepacks", map[string]any{"manifest": manifest})
+	if status != http.StatusCreated {
+		t.Fatalf("create synthetic telecom pack: %d %v", status, body)
+	}
+	packPath := "/api/admin/rulepacks/telecom-governed/versions/1"
+	pack := body["pack"].(map[string]any)
+	status, body = api.do(t, http.MethodPost, packPath+"/validate", map[string]any{"expected_revision": pack["revision"]})
+	if status != http.StatusOK {
+		t.Fatalf("validate synthetic telecom pack: %d %v", status, body)
+	}
+	pack = body["pack"].(map[string]any)
+	status, body = api.do(t, http.MethodPost, packPath+"/approve", map[string]any{"expected_revision": pack["revision"], "expected_content_hash": pack["content_hash"]})
+	if status != http.StatusOK {
+		t.Fatalf("approve synthetic telecom pack: %d %v", status, body)
+	}
+	pack = body["pack"].(map[string]any)
+	status, body = api.do(t, http.MethodPost, packPath+"/publish", map[string]any{"expected_revision": pack["revision"], "expected_pointer_revision": pack["active_pointer_revision"]})
+	if status != http.StatusOK {
+		t.Fatalf("publish synthetic telecom pack: %d %v", status, body)
+	}
+	pack = body["pack"].(map[string]any)
+	var text string
+	var ruleIDs []string
+	var spans []any
+	for _, rule := range []struct{ id, quote, suffix string }{
+		{"ENT-TECH-BW-001", "带宽不低于100 Mbit/s", ""},
+		{"ENT-TECH-SLA-001", "月可用率不低于99.9%", "，统计周期为自然月，时区Asia/Shanghai，公历gregorian，故障口径all_service_unavailability，无排除项"},
+		{"ENT-COM-ADV-001", "预付款比例不超过1/3", "，预付款以合同总额为基础"},
+	} {
+		start := len([]rune(text))
+		text += rule.quote + rule.suffix + "。"
+		ruleIDs = append(ruleIDs, rule.id)
+		spans = append(spans, map[string]any{"rule_id": rule.id, "start": start, "end": start + len([]rune(rule.quote)), "quote": rule.quote})
+	}
+	content := map[string]any{
+		"knowledge_id": "telecom-business-demo-policy", "version": "1", "kind": "policy", "title": "专线合成治理制度",
+		"body": text, "summary": "核验带宽、可用率和预付款比例", "source_type": "synthetic_policy", "source_reference": "合成业务测试制度",
+		"scope":      map[string]any{"business_line": "ENT", "scenario": "telecom_dedicated_line", "contract_type": "service"},
+		"valid_from": "2020-01-01T00:00:00Z", "valid_until": "2100-01-01T00:00:00Z",
+		"binding": map[string]any{"pack_id": "telecom-governed", "pack_version": "1", "pack_content_hash": pack["content_hash"], "pack_snapshot_digest": pack["snapshot_sha256"], "compiler_ref": "governed-rulepack/v1", "rule_ids": ruleIDs, "source_spans": spans, "candidate_diff": "规则差异已审阅", "validation_evidence": "规则包校验通过"},
+	}
+	base := "/api/admin/governed-knowledge"
+	status, body = api.do(t, http.MethodPost, base, map[string]any{"content": content, "idempotency_key": "telecom-business-policy-create"})
+	if status != http.StatusCreated {
+		t.Fatalf("create synthetic telecom policy: %d %v", status, body)
+	}
+	ref := body["ref"].(map[string]any)
+	commandPath := base + "/telecom-business-demo-policy/versions/" + ref["version_id"].(string) + "/commands"
+	for _, action := range []string{"submit", "validate", "approve", "publish"} {
+		status, body = api.do(t, http.MethodPost, commandPath, map[string]any{"action": action, "expected_revision": body["revision"], "expected_content_sha256": ref["content_sha256"], "expected_pointer_revision": body["pointer_revision"], "reason": "已核对合成制度依据", "idempotency_key": "telecom-business-policy-" + action})
+		if status != http.StatusOK {
+			t.Fatalf("%s synthetic telecom policy: %d %v", action, status, body)
 		}
 	}
 }
@@ -375,7 +445,7 @@ func generateTelecomDraft(t *testing.T, api *testAPI, caseID, templateID string,
 
 func startTelecomReview(t *testing.T, api *testAPI, caseID string) (string, string, map[string]any) {
 	t.Helper()
-	status, accepted := api.do(t, http.MethodPost, "/api/cases/"+caseID+"/reviews", map[string]any{})
+	status, accepted := api.do(t, http.MethodPost, "/api/cases/"+caseID+"/reviews", map[string]any{"business_at": telecomReviewBusinessAt})
 	if status != http.StatusCreated && status != http.StatusAccepted {
 		t.Fatalf("start telecom review: status=%d body=%v", status, accepted)
 	}
@@ -389,13 +459,14 @@ func startTelecomReview(t *testing.T, api *testAPI, caseID string) (string, stri
 	if status != http.StatusOK {
 		t.Fatalf("read telecom workspace: status=%d body=%v", status, workspace)
 	}
+	reviewAttempts, _ := workspace["review_attempts"].(map[string]any)
+	selected, _ := reviewAttempts["attempt"].(map[string]any)
+	workspaceAttemptID, _ := selected["id"].(string)
 	if attemptID == "" {
-		execution, _ := workspace["execution"].(map[string]any)
-		attempt, _ := execution["attempt"].(map[string]any)
-		attemptID, _ = attempt["id"].(string)
+		attemptID = workspaceAttemptID
 	}
-	if attemptID == "" {
-		t.Fatalf("review %s has no frozen attempt identity", runID)
+	if attemptID == "" || workspaceAttemptID != attemptID {
+		t.Fatalf("review %s has inconsistent frozen attempt identity: accepted=%q workspace=%q", runID, attemptID, workspaceAttemptID)
 	}
 	return runID, attemptID, workspace
 }
