@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"encoding/json"
+	"reflect"
 	"testing"
 
 	"contractaudit/internal/accounts"
@@ -84,6 +85,16 @@ func TestWorkbenchProfileAndTaskSurviveUnrelatedWritesAndReopen(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create knowledge: %v", err)
 	}
+	newer, err := st.CreateKnowledge(owner, KnowledgeInput{
+		ID: knowledge.ID, Title: knowledge.Title, Version: "2.0.0",
+		Body: "第二版采购制度正文。", SourceType: "synthetic_policy",
+	})
+	if err != nil {
+		t.Fatalf("create newer knowledge version: %v", err)
+	}
+	if knowledge.VersionID == "" || newer.VersionID == "" || knowledge.VersionID == newer.VersionID {
+		t.Fatalf("knowledge versions lack distinct identities: %+v %+v", knowledge, newer)
+	}
 
 	reopened, err := st.Reopen()
 	if err != nil {
@@ -114,8 +125,21 @@ func TestWorkbenchProfileAndTaskSurviveUnrelatedWritesAndReopen(t *testing.T) {
 	if !relationIDs[relation.ID] || !relationIDs[relation2.ID] {
 		t.Fatalf("reopened relations = %+v, want %q and %q", snapshot.Relations, relation.ID, relation2.ID)
 	}
-	if len(snapshot.Knowledge) != 1 || snapshot.Knowledge[0].ID != knowledge.ID {
+	if len(snapshot.Knowledge) != 2 {
 		t.Fatalf("reopened knowledge = %+v", snapshot.Knowledge)
+	}
+	versions := map[string]KnowledgeView{}
+	for _, item := range snapshot.Knowledge {
+		versions[item.VersionID] = item
+	}
+	if !reflect.DeepEqual(versions[knowledge.VersionID], knowledge) || !reflect.DeepEqual(versions[newer.VersionID], newer) {
+		t.Fatalf("reopened workbench changed exact versions: %+v", snapshot.Knowledge)
+	}
+	for _, expected := range []KnowledgeView{knowledge, newer} {
+		actual, err := reopened.GetKnowledgeVersion(owner, expected.ID, expected.VersionID)
+		if err != nil || !reflect.DeepEqual(actual, expected) {
+			t.Fatalf("reopened exact version: got=%+v want=%+v err=%v", actual, expected, err)
+		}
 	}
 	platformAuditFound := false
 	for _, event := range snapshot.Audit {
@@ -130,7 +154,7 @@ func TestWorkbenchProfileAndTaskSurviveUnrelatedWritesAndReopen(t *testing.T) {
 		t.Fatal("knowledge creation audit was not persisted")
 	}
 	readKnowledge, err := reopened.GetKnowledge(owner, knowledge.ID)
-	if err != nil || readKnowledge.Body != knowledge.Body {
+	if err != nil || readKnowledge.ID != knowledge.ID {
 		t.Fatalf("read reopened knowledge = %+v, err=%v", readKnowledge, err)
 	}
 	if err := reopened.DeleteCaseRelation(owner, caseID, relation.ID); err != nil {

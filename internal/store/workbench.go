@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"math"
 	"reflect"
@@ -519,35 +520,35 @@ func (s *Store) DeleteCaseRelation(user accounts.User, caseID, relationID string
 	})
 }
 
-func (s *Store) CreateKnowledge(user accounts.User, input KnowledgeInput) (Knowledge, error) {
+func (s *Store) CreateKnowledge(user accounts.User, input KnowledgeInput) (KnowledgeView, error) {
 	if s.ReadOnly() {
-		return Knowledge{}, fault.New(503, "read_only", "只读模式下不能保存制度")
+		return KnowledgeView{}, fault.New(503, "read_only", "只读模式下不能保存制度")
 	}
 	current, err := trustedUser(user)
 	if err != nil {
-		return Knowledge{}, err
+		return KnowledgeView{}, err
 	}
 	if !accounts.CanCreate(current.Role) {
-		return Knowledge{}, fault.Forbidden("当前角色不能写入知识制度")
+		return KnowledgeView{}, fault.Forbidden("当前角色不能写入知识制度")
 	}
 	input.ID, input.Title, input.Version = strings.TrimSpace(input.ID), strings.TrimSpace(input.Title), strings.TrimSpace(input.Version)
 	if input.ID == "" {
 		input.ID, err = newID("knowledge_")
 		if err != nil {
-			return Knowledge{}, err
+			return KnowledgeView{}, err
 		}
 	}
 	if !validResourceID(input.ID) || !validBusinessText(input.Title, 200) || !validResourceID(input.Version) ||
 		!validBusinessText(input.Body, 30000) || input.SourceType != "synthetic_policy" && input.SourceType != "reference" {
-		return Knowledge{}, fault.Invalid("制度标识、标题、版本、来源或正文无效")
+		return KnowledgeView{}, fault.Invalid("制度标识、标题、版本、来源或正文无效")
 	}
 	effectiveAt, err := normalizeNullableRFC3339(input.EffectiveAt)
 	if err != nil {
-		return Knowledge{}, fault.Invalid("生效时间必须是RFC3339时间")
+		return KnowledgeView{}, fault.Invalid("生效时间必须是RFC3339时间")
 	}
 	st, err := s.snapshotAs(current)
 	if err != nil {
-		return Knowledge{}, err
+		return KnowledgeView{}, err
 	}
 	for _, record := range st.Knowledge {
 		if record.TenantID != current.TenantID || record.Item.ID != input.ID || record.Item.Version != input.Version {
@@ -556,19 +557,21 @@ func (s *Store) CreateKnowledge(user accounts.User, input KnowledgeInput) (Knowl
 		candidate := Knowledge{ID: input.ID, Title: input.Title, Version: input.Version, Body: input.Body,
 			SourceType: input.SourceType, EffectiveAt: effectiveAt, CreatedBy: current.ID}
 		if sameKnowledgeContent(record.Item, candidate) {
-			return record.Item, nil
+			return knowledgeView(record.TenantID, record.Item), nil
 		}
-		return Knowledge{}, fault.Conflict("同一制度ID和版本已经保存了不同内容")
+		return KnowledgeView{}, fault.Conflict("同一制度ID和版本已经保存了不同内容")
 	}
 	id := input.ID
 	now := stamp()
 	item := Knowledge{ID: id, Title: input.Title, Version: input.Version, Body: input.Body,
 		SourceType: input.SourceType, EffectiveAt: effectiveAt, CreatedBy: current.ID, CreatedAt: now}
 	record := knowledgeRecord{Item: item, TenantID: current.TenantID, OrgID: current.OrgID}
+	var duplicate Knowledge
 	if err := s.updateAs(current, func(next *state) error {
 		for _, existing := range next.Knowledge {
 			if existing.TenantID == current.TenantID && existing.Item.ID == item.ID && existing.Item.Version == item.Version {
 				if sameKnowledgeContent(existing.Item, item) {
+					duplicate = existing.Item
 					return errKnowledgeDuplicate
 				}
 				return fault.Conflict("同一制度ID和版本已经保存了不同内容")
@@ -578,30 +581,28 @@ func (s *Store) CreateKnowledge(user accounts.User, input KnowledgeInput) (Knowl
 		return appendWorkbenchAudit(next, current, nil, "knowledge.created", "保存制度 "+item.Title+" v"+item.Version, now)
 	}); err != nil {
 		if errors.Is(err, errKnowledgeDuplicate) {
-			latest, readErr := s.GetKnowledge(current, item.ID)
-			if readErr == nil && latest.Version == item.Version && sameKnowledgeContent(latest, item) {
-				return latest, nil
-			}
+			return knowledgeView(current.TenantID, duplicate), nil
 		}
-		return Knowledge{}, err
+		return KnowledgeView{}, err
 	}
-	return item, nil
+	return knowledgeView(current.TenantID, item), nil
 }
 
 var errKnowledgeDuplicate = errors.New("identical knowledge version already stored")
 
-func (s *Store) GetKnowledge(user accounts.User, knowledgeID string) (Knowledge, error) {
+// GetKnowledge preserves the legacy endpoint's latest-by-creation-time behavior.
+func (s *Store) GetKnowledge(user accounts.User, knowledgeID string) (KnowledgeView, error) {
 	current, err := trustedUser(user)
 	if err != nil {
-		return Knowledge{}, err
+		return KnowledgeView{}, err
 	}
 	knowledgeID = strings.TrimSpace(knowledgeID)
 	if knowledgeID == "" {
-		return Knowledge{}, fault.Invalid("制度编号不能为空")
+		return KnowledgeView{}, fault.Invalid("制度编号不能为空")
 	}
 	st, err := s.snapshotAs(current)
 	if err != nil {
-		return Knowledge{}, err
+		return KnowledgeView{}, err
 	}
 	var latest *Knowledge
 	for i := range st.Knowledge {
@@ -615,9 +616,42 @@ func (s *Store) GetKnowledge(user accounts.User, knowledgeID string) (Knowledge,
 		}
 	}
 	if latest == nil {
-		return Knowledge{}, fault.NotFound("没有找到对应制度")
+		return KnowledgeView{}, fault.NotFound("没有找到对应制度")
 	}
-	return *latest, nil
+	return knowledgeView(current.TenantID, *latest), nil
+}
+
+// GetKnowledgeVersion resolves a version only within the trusted actor's tenant.
+func (s *Store) GetKnowledgeVersion(user accounts.User, knowledgeID, versionID string) (KnowledgeView, error) {
+	current, err := trustedUser(user)
+	if err != nil {
+		return KnowledgeView{}, err
+	}
+	knowledgeID = strings.TrimSpace(knowledgeID)
+	if knowledgeID == "" {
+		return KnowledgeView{}, fault.Invalid("制度编号不能为空")
+	}
+	st, err := s.snapshotAs(current)
+	if err != nil {
+		return KnowledgeView{}, err
+	}
+	for _, record := range st.Knowledge {
+		if record.TenantID != current.TenantID || record.Item.ID != knowledgeID {
+			continue
+		}
+		view := knowledgeView(record.TenantID, record.Item)
+		if view.VersionID == versionID {
+			return view, nil
+		}
+	}
+	return KnowledgeView{}, fault.NotFound("没有找到对应制度版本")
+}
+
+func knowledgeView(tenantID string, item Knowledge) KnowledgeView {
+	// A slice of strings always marshals successfully and preserves tuple boundaries.
+	encoded, _ := json.Marshal([]string{tenantID, item.ID, item.Version})
+	digest := sha256.Sum256(encoded)
+	return KnowledgeView{Knowledge: item, VersionID: hex.EncodeToString(digest[:])}
 }
 
 func sameKnowledgeContent(left, right Knowledge) bool {
@@ -755,7 +789,7 @@ func (s *Store) WorkbenchSnapshot(ctx context.Context, user accounts.User, perio
 	out := WorkbenchSnapshot{
 		SchemaVersion: "workbench/v1", GeneratedAt: now.Format(time.RFC3339Nano), Period: period,
 		Cases: []WorkbenchCase{}, Profiles: []CaseProfile{}, Tasks: []WorkbenchTask{}, Relations: []CaseRelation{},
-		Knowledge: []Knowledge{}, Members: []Actor{}, Remediations: []WorkbenchRemediation{}, Reports: []WorkbenchReport{},
+		Knowledge: []KnowledgeView{}, Members: []Actor{}, Remediations: []WorkbenchRemediation{}, Reports: []WorkbenchReport{},
 		Documents: []WorkbenchDocument{}, Runs: []WorkbenchRun{}, Audit: []WorkbenchAudit{}, Templates: s.Templates(),
 		Model: model, Tools: []WorkbenchTool{},
 	}
@@ -783,7 +817,7 @@ func (s *Store) WorkbenchSnapshot(ctx context.Context, user accounts.User, perio
 	}
 	for _, record := range st.Knowledge {
 		if record.TenantID == current.TenantID {
-			out.Knowledge = append(out.Knowledge, record.Item)
+			out.Knowledge = append(out.Knowledge, knowledgeView(record.TenantID, record.Item))
 		}
 	}
 	for _, candidate := range accounts.List() {

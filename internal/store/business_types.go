@@ -261,6 +261,12 @@ type Knowledge struct {
 	CreatedAt   string  `json:"created_at"`
 }
 
+// KnowledgeView is an API projection; Knowledge remains the persisted and frozen record.
+type KnowledgeView struct {
+	Knowledge
+	VersionID string `json:"version_id"`
+}
+
 type KnowledgeInput struct {
 	ID          string  `json:"id"`
 	Title       string  `json:"title"`
@@ -396,7 +402,7 @@ type WorkbenchSnapshot struct {
 	Profiles      []CaseProfile          `json:"profiles"`
 	Tasks         []WorkbenchTask        `json:"tasks"`
 	Relations     []CaseRelation         `json:"relations"`
-	Knowledge     []Knowledge            `json:"knowledge"`
+	Knowledge     []KnowledgeView        `json:"knowledge"`
 	Members       []Actor                `json:"members"`
 	Remediations  []WorkbenchRemediation `json:"remediations"`
 	Reports       []WorkbenchReport      `json:"reports"`

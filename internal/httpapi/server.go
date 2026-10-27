@@ -79,6 +79,7 @@ func Handler(st *store.Store, opt Options) http.Handler {
 	mux.HandleFunc("DELETE /api/cases/{caseID}/relations/{relationID}", h.deleteCaseRelation)
 	mux.HandleFunc("POST /api/knowledge", h.createKnowledge)
 	mux.HandleFunc("GET /api/knowledge/{knowledgeID}", h.getKnowledge)
+	mux.HandleFunc("GET /api/knowledge/{knowledgeID}/versions/{versionID}", h.getKnowledgeVersion)
 	mux.HandleFunc("GET /api/cases", h.listCases)
 	mux.HandleFunc("POST /api/cases", h.createCase)
 	mux.HandleFunc("GET /api/cases/{caseID}", h.getCase)

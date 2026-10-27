@@ -150,3 +150,16 @@ func (h *handler) getKnowledge(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, item)
 }
+
+func (h *handler) getKnowledgeVersion(w http.ResponseWriter, r *http.Request) {
+	user, ok := h.actor(w, r)
+	if !ok {
+		return
+	}
+	item, err := h.store.GetKnowledgeVersion(user, r.PathValue("knowledgeID"), r.PathValue("versionID"))
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, item)
+}

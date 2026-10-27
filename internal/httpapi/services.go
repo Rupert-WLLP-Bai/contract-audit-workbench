@@ -108,6 +108,9 @@ func OperationOwnedBy(role, method, path string) bool {
 	if len(parts) == 3 && parts[1] == "knowledge" {
 		return role == "core" && read
 	}
+	if len(parts) == 5 && parts[1] == "knowledge" && parts[3] == "versions" {
+		return role == "core" && read
+	}
 	if len(parts) == 3 && parts[1] == "admin" && parts[2] == "settings" {
 		return role == "core" && read
 	}

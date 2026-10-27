@@ -515,6 +515,11 @@ func TestWorkbenchKnowledgeVersionsAreImmutableIdempotentAndTenantScoped(t *test
 		actors.owner.TenantID, actors.owner.OrgID, older.ID, older.Version, older.SourceType, body); err != nil {
 		t.Fatal(err)
 	}
+	var legacyBytes string
+	if err := st.pool.QueryRow(context.Background(), `SELECT record_json::text FROM business_knowledge WHERE tenant_id=$1 AND id=$2 AND version=$3`,
+		actors.owner.TenantID, older.ID, older.Version).Scan(&legacyBytes); err != nil {
+		t.Fatal(err)
+	}
 	input := KnowledgeInput{ID: " shared-policy ", Title: " 当前制度 ", Version: " 2.0 ", Body: "应保留采购审批依据。",
 		SourceType: "synthetic_policy", EffectiveAt: stringPointer(" 2026-11-01T08:00:00+08:00 ")}
 	created, err := st.CreateKnowledge(actors.owner, input)
@@ -522,11 +527,12 @@ func TestWorkbenchKnowledgeVersionsAreImmutableIdempotentAndTenantScoped(t *test
 		t.Fatal(err)
 	}
 	if created.ID != "shared-policy" || created.Title != "当前制度" || created.Version != "2.0" ||
+		created.VersionID != "6661823983d620b839dcde99484faf9adc49f445d2fd822f03457568355e911e" ||
 		created.EffectiveAt == nil || *created.EffectiveAt != "2026-11-01T00:00:00Z" || created.CreatedBy != actors.owner.ID {
 		t.Fatalf("knowledge normalization or provenance incorrect: %+v", created)
 	}
 	before := workbenchBoundaryState(t, st, actors.owner)
-	if len(before.Knowledge) != 2 || !reflect.DeepEqual(before.Knowledge[0].Item, older) || !reflect.DeepEqual(before.Knowledge[1].Item, created) {
+	if len(before.Knowledge) != 2 || !reflect.DeepEqual(before.Knowledge[0].Item, older) || !reflect.DeepEqual(before.Knowledge[1].Item, created.Knowledge) {
 		t.Fatalf("creating a version rewrote or lost history: %+v", before.Knowledge)
 	}
 	idempotent := input
@@ -536,6 +542,29 @@ func TestWorkbenchKnowledgeVersionsAreImmutableIdempotentAndTenantScoped(t *test
 		t.Fatalf("identical content from another author must return the original version: got=%+v err=%v", duplicate, err)
 	}
 	workbenchBoundaryUnchanged(t, st, actors.owner, before)
+	olderID := "ec6b8e8fbe8559aee0352f8d2fcf6560a763d971aaaebffc6550a28b5a2e5480"
+	olderView, err := st.GetKnowledgeVersion(actors.otherOrg, older.ID, olderID)
+	if err != nil || olderView.VersionID != olderID || !reflect.DeepEqual(olderView.Knowledge, older) {
+		t.Fatalf("exact older version not returned across the tenant: got=%+v err=%v", olderView, err)
+	}
+	newerView, err := st.GetKnowledgeVersion(actors.owner, created.ID, created.VersionID)
+	if err != nil || !reflect.DeepEqual(newerView, created) {
+		t.Fatalf("exact newer version not returned: got=%+v err=%v", newerView, err)
+	}
+	olderInput := KnowledgeInput{ID: older.ID, Title: older.Title, Version: older.Version, Body: older.Body, SourceType: older.SourceType}
+	olderDuplicate, err := st.CreateKnowledge(actors.owner, olderInput)
+	if err != nil || !reflect.DeepEqual(olderDuplicate, olderView) {
+		t.Fatalf("duplicate of an older version returned the wrong version: got=%+v err=%v", olderDuplicate, err)
+	}
+	workbenchBoundaryUnchanged(t, st, actors.owner, before)
+	for _, invalid := range []string{"", "not-a-version-id", strings.ToUpper(created.VersionID), strings.Repeat("0", 64)} {
+		_, err := st.GetKnowledgeVersion(actors.owner, created.ID, invalid)
+		workbenchBoundaryFault(t, err, 404, "not_found")
+	}
+	_, err = st.GetKnowledgeVersion(actors.owner, "other-policy", created.VersionID)
+	workbenchBoundaryFault(t, err, 404, "not_found")
+	_, err = st.GetKnowledgeVersion(actors.disabled, created.ID, created.VersionID)
+	workbenchBoundaryFault(t, err, 401, "unauthenticated")
 	for _, mutate := range []func(*KnowledgeInput){
 		func(in *KnowledgeInput) { in.Title = "不同标题" },
 		func(in *KnowledgeInput) { in.Body = "不得覆盖历史正文。" },
@@ -560,6 +589,21 @@ func TestWorkbenchKnowledgeVersionsAreImmutableIdempotentAndTenantScoped(t *test
 	if err != nil {
 		t.Fatalf("another tenant cannot use its own ID and version: %v", err)
 	}
+	if foreignKnowledge.VersionID == created.VersionID {
+		t.Fatal("the same knowledge ID and display version shared an identity across tenants")
+	}
+	_, err = st.GetKnowledgeVersion(actors.foreign, created.ID, created.VersionID)
+	workbenchBoundaryFault(t, err, 404, "not_found")
+	_, err = st.GetKnowledgeVersion(actors.owner, created.ID, foreignKnowledge.VersionID)
+	workbenchBoundaryFault(t, err, 404, "not_found")
+	foreignExact, err := st.GetKnowledgeVersion(actors.foreign, foreignKnowledge.ID, foreignKnowledge.VersionID)
+	if err != nil || !reflect.DeepEqual(foreignExact, foreignKnowledge) {
+		t.Fatalf("foreign tenant could not read its own version: got=%+v err=%v", foreignExact, err)
+	}
+	forged := actors.owner
+	forged.TenantID = actors.foreign.TenantID
+	_, err = st.GetKnowledgeVersion(forged, created.ID, foreignKnowledge.VersionID)
+	workbenchBoundaryFault(t, err, 401, "unauthenticated")
 	for _, actor := range []accounts.User{actors.owner, actors.otherOrg, actors.foreign} {
 		got, err := st.GetKnowledge(actor, created.ID)
 		want := created
@@ -577,7 +621,7 @@ func TestWorkbenchKnowledgeVersionsAreImmutableIdempotentAndTenantScoped(t *test
 			if len(snapshot.Knowledge) != 1 || !reflect.DeepEqual(snapshot.Knowledge[0], foreignKnowledge) {
 				t.Fatalf("foreign tenant snapshot leaked knowledge: %+v", snapshot.Knowledge)
 			}
-		} else if len(snapshot.Knowledge) != 2 || !reflect.DeepEqual(snapshot.Knowledge[0], created) || !reflect.DeepEqual(snapshot.Knowledge[1], older) {
+		} else if len(snapshot.Knowledge) != 2 || !reflect.DeepEqual(snapshot.Knowledge[0], created) || !reflect.DeepEqual(snapshot.Knowledge[1], olderView) {
 			t.Fatalf("knowledge history is not scoped and ordered by creation time: %+v", snapshot.Knowledge)
 		}
 	}
@@ -622,6 +666,14 @@ func TestWorkbenchKnowledgeVersionsAreImmutableIdempotentAndTenantScoped(t *test
 	}
 	if got, err := st.GetKnowledge(actors.owner, auto.ID); err != nil || !reflect.DeepEqual(got, auto) {
 		t.Fatalf("generated knowledge ID did not address persisted content: got=%+v err=%v", got, err)
+	}
+	var preservedBytes string
+	if err := st.pool.QueryRow(context.Background(), `SELECT record_json::text FROM business_knowledge WHERE tenant_id=$1 AND id=$2 AND version=$3`,
+		actors.owner.TenantID, older.ID, older.Version).Scan(&preservedBytes); err != nil {
+		t.Fatal(err)
+	}
+	if preservedBytes != legacyBytes || strings.Contains(preservedBytes, `"version_id"`) {
+		t.Fatalf("legacy knowledge JSON changed: before=%s after=%s", legacyBytes, preservedBytes)
 	}
 }
 

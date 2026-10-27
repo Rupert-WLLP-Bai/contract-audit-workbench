@@ -825,8 +825,8 @@
         "tags": [
           "系统"
         ],
-        "summary": "读取有权限的制度全文",
-        "description": "所有数据来自服务器权限范围内的实际持久记录。更新使用版本校验，失败不返回成功；归档案件拒绝写入。",
+        "summary": "读取有权限的最新制度全文",
+        "description": "按创建时间读取当前租户中该制度的最新版本。需要稳定链接时，请使用精确版本接口。",
         "responses": {
           "200": {
             "description": "成功",
@@ -912,6 +912,108 @@
         "parameters": [
           {
             "name": "knowledgeID",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        ]
+      }
+    },
+    "/api/knowledge/{knowledgeID}/versions/{versionID}": {
+      "get": {
+        "operationId": "getKnowledgeVersion",
+        "tags": [
+          "系统"
+        ],
+        "summary": "读取有权限的精确制度版本",
+        "description": "根据服务器解析的租户和版本标识读取指定版本；不存在、无权访问或版本标识无效时返回404，不回退到最新版本。",
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Knowledge"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "会话无效",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "权限不足或Origin拒绝",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "制度版本不可见或不存在",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "制度编号无效",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "读取失败",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "服务不可用",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "knowledgeID",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          {
+            "name": "versionID",
             "in": "path",
             "required": true,
             "schema": {
@@ -3716,6 +3818,7 @@
           "id",
           "title",
           "version",
+          "version_id",
           "body",
           "source_type",
           "effective_at",
@@ -3731,6 +3834,13 @@
           },
           "version": {
             "type": "string"
+          },
+          "version_id": {
+            "type": "string",
+            "minLength": 64,
+            "maxLength": 64,
+            "pattern": "^[0-9a-f]{64}$",
+            "description": "可信服务身份的租户、制度ID和展示版本组成的JSON字符串数组的SHA-256小写十六进制摘要。"
           },
           "body": {
             "type": "string"
