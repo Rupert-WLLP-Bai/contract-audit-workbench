@@ -87,6 +87,7 @@ infra-*.json
 !**/testdata/**/*.jpeg
 !web/e2e/fixtures/*.png
 !web/e2e/fixtures/*.jpeg
+!web/public/huangjueshu-competition-logo.png
 
 # Archives, model weights and executable build products
 *.zip
