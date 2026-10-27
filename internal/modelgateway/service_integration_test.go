@@ -1442,11 +1442,18 @@ func TestGatewayRejectsMalformedRequestsAndOversizedInput(t *testing.T) {
 		})
 	}
 
-	largeBody := `{"model":"fixture-chat","messages":[],"max_tokens":8,"padding":"` + strings.Repeat("x", maxRequestBytes) + `"}`
-	request, err := http.NewRequest(http.MethodPost, endpoint, strings.NewReader(largeBody))
+	const prefix = `{"model":"fixture-chat","messages":[],"max_tokens":8,"padding":"`
+	const suffix = `"}`
+	largeBody := io.MultiReader(
+		strings.NewReader(prefix),
+		io.LimitReader(gatewayPaddingReader(strings.Repeat("x", 32<<10)), maxRequestBytes),
+		strings.NewReader(suffix),
+	)
+	request, err := http.NewRequest(http.MethodPost, endpoint, largeBody)
 	if err != nil {
 		t.Fatal(err)
 	}
+	request.ContentLength = int64(len(prefix) + maxRequestBytes + len(suffix))
 	request.Header.Set("Content-Type", "application/json")
 	request.Header.Set("X-Contract-Service-Key", config.DocumentCredential)
 	request.Header.Set("X-Audit-Execution-Scope", scope)

@@ -404,6 +404,11 @@ func (s *Service) authenticate(w http.ResponseWriter, r *http.Request) (string, 
 func decodeRequest(w http.ResponseWriter, r *http.Request) ([]byte, string, int, model.DelegatedScope, error) {
 	body := http.MaxBytesReader(w, r.Body, maxRequestBytes)
 	defer body.Close()
+	// A declared oversized request is already invalid; do not buffer its body.
+	// Unknown-length requests still pass through MaxBytesReader below.
+	if r.ContentLength > maxRequestBytes {
+		return nil, "", 0, model.DelegatedScope{}, errors.New("request body is invalid")
+	}
 	payload, err := io.ReadAll(body)
 	if err != nil || len(payload) == 0 {
 		return nil, "", 0, model.DelegatedScope{}, errors.New("request body is invalid")
