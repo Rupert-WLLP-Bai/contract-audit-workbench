@@ -229,14 +229,21 @@ bun run build
 
 ## 未完成工作交接
 
-以下记录用于从 `feat/web-workbench-polish` 继续工作。当前本地候选为 `1ffe971`，工作树干净；P0 只完成了本地确定性验收，远端 GitHub Actions 尚未运行。切换机器后先拉取该分支，确认工作区状态和依赖，再按以下顺序继续；不要因测试失败删除测试、降低覆盖率或跳过数据库和浏览器验收。
+以下记录用于从 `feat/web-workbench-polish` 继续工作。当前可执行源码候选为 `f427153`；最终 README 收口提交不改变可执行源码。切换机器后先拉取该分支，确认工作区状态和依赖，再按以下顺序继续；不要因测试失败删除测试、降低覆盖率或跳过数据库和浏览器验收。
 
-1. **PASS：修复前端类型检查。** `web/src/app.integration.test.tsx` 的 breadcrumb 查询已收窄为 `HTMLElement`。2026-10-27 的本地 `make acceptance` 中 `web-typecheck` 通过（15.0s），`web-tests` 通过 368/368（46.9s），`web-build` 通过（26.5s）。
-2. **PASS（本地）：完成全量发布验收。** 在隔离 PostgreSQL 18（一次性容器 `caw-accept-pg`）上执行 `make acceptance`；`artifacts/verification.json` 为 `passed:true`，21 项检查全部返回 0，源码身份摘要 `a79dfb5744f0535c907d38ea90ce071f686d976ecf8653d11fb72e0680662c59` 与提交后的工作树一致。`browser-system` 耗时 62.7s，`TestBrowserWarrantyConflictAndConfirm` 与 `TestBrowserTelecomC1BFullJourney` 均 PASS。远端 CI 为 `NOT_RUN`/`BLOCKED`：本轮未获推送授权，且此前 `gh` token 无效，不能把本地结果当作远端 CI 通过。旧 `0cf0c13`/294 项 6 项失败的叙述已删除。
-3. **NOT_RUN：完成 M1/M2 界面闭环验收。** 对经验建议及异步提炼、知识版本审批和发布、补件请求及回执、新审查后的引用核验、历史报告不变，分别执行真实浏览器和 API 验证。复核普通案件用户与管理员的权限隔离、撤权后的访问及缓存；业务视图不得将引用定位当作主张已验证，也不得默认展示原始技术标识或哈希。`web/e2e/functional/workflows.spec.ts` 已纳入仓库但尚未执行，不能记为通过。
-4. **NOT_RUN：完成性能复测。** 活动审查的探索性 60 秒采样中，工作区请求由原基线的 31 次降至 5 次，但前端源码未在采样前完整固定，且前后后端版本不同，不能作为受控性能结论。固定源码和同类工作负载后重测审查 EventSource 的撤权、断线退避与历史快照；健康页是 30 秒轮询，不存在健康 SSE。同时测量 p95、查询、锁等待与资源占用。
+1. **PASS：修复前端类型检查。** `web/src/app.integration.test.tsx` 的 breadcrumb 查询已收窄为 `HTMLElement`。最终 `make acceptance` 中 `web-typecheck` 通过，`web-tests` 371/371 通过，`web-build` 通过。
+2. **PASS（本地）：完成全量发布验收。** 在隔离 PostgreSQL 18（一次性容器 `caw-accept-pg`）上执行 `make acceptance`；`artifacts/verification.json` 为 `passed:true`，21 项检查全部返回 0，源码身份摘要 `0285f4b2cb0d7d90ef4d6edf3f93fb2082dea969a42155d55a31e75697ff7f82` 与最终可执行工作树一致；`browser-system` 耗时 90.1s，`TestBrowserWarrantyConflictAndConfirm` 与 `TestBrowserTelecomC1BFullJourney` 均 PASS。远端 CI 在推送后另行记录，不能把本地结果当作远端通过。
+3. **PASS：M1/M2 业务闭环实机验收。** `web/e2e/functional/workflows.spec.ts` 在 5 节点集群上 4/4 PASS：经验反馈→异步蒸馏→候选（11.8s）、知识版本审批/发布（2.7s）、补件请求→回执→后续审查核验（11.4s）、报告业务视图隐藏原始标识（5.7s）。普通用户/管理员权限、撤权与浏览器缓存旅程 `identity-sse.ts`、`sessions.spec.ts` 本轮未运行（`NOT_RUN`）；报告字节不变、冻结快照和权限边界已由浏览器/API 断言覆盖。
+4. **PASS（受控小样本）：性能复测。** 隔离 Compose、fixture 模型、18 个案件、并发 1/2、3 次重复；18/18 到达机器终态（18 partial，0 failed，0 关系错误，0 refused，0 transport error），端到端 p50 1.781s / p95 2.941s，队列等待 p50 0.279s / p95 1.620s，吞吐 21.5 req/s；audit-execution RSS 22.5–31.7 MB，Worker RSS 12.4–16.4 MB，模型预算无残留。小样本不等于生产 SLA；PostgreSQL/RustFS 容器未纳入资源采样。详见仓库外交付目录的 `docs/distributed-verification-2026-10-28.md`。
 5. **BLOCKED：完成反馈收益对照。** 八组来源 A 均为 `PARTIAL`，未发现可核实的来源误报；已运行 G0/G1 各 32 个目标样本，其中 G0 完成 17 个、G1 完成 0 个。G2 的 32 个样本为 `NOT_RUN`，没有人工裁决，不能计算误报下降或宣称零漏报。只有取得可核实的来源纠正、经授权审阅并发布经验后，才能继续 G2；失败、弃权和未完成样本保留在分母中。
-6. **BLOCKED：Jeva 对照和启用。** 此前未找到可核验的模型及运行环境，G3、资源和质量测试均为 `NOT_RUN`。保持关闭；取得固定版本和运行环境后，再按已授权的可选知识重排范围评测，不得裁剪强制政策或直接决定合同结论。
+6. **NOT_APPLICABLE：Jeva 对照和启用。** 按当前决定不再接入 Jeva/Laya；仓库中既有的 Laya System One 受控适配器保持默认关闭，不进入关键路径，也不作为合同结论依据。
+
+### 分布式与 Eino 证据
+
+- **PASS**：5 逻辑节点（1 server + 4 agents）、Core 2/Worker 3/Model 2/Tool 2 实际分布到不同 agent、健康页服务组/期望副本/实例/节点、分布式 Chromium C1-B 完整旅程、Worker 接管（generation 1→2）、Core 切换（12/12 HTTP 200）、NATS 中断恢复、NATS 3 节点 Stream R=3、OTel→Tempo/Prometheus/Grafana、结构化分布式日志、RustFS 单节点对象读写、PostgreSQL 单节点权威队列与 Outbox。
+- **BLOCKED**：PostgreSQL 3 实例（缺少 CNPG operator/CRD 与镜像）、RustFS 4 节点/16 PVC（缺少 Helm chart/安装前提）、集中式日志后端（缺少 Loki/Promtail 镜像）。单节点 PostgreSQL/RustFS 已真实接入并验证，复制形态未冒充通过。
+- **Eino**：经验反馈、异步蒸馏、候选审阅在真实浏览器 PASS；候选发布为受治理经验、快照选择、撤权重验由 store 集成测试 PASS；候选的浏览器端发布/后续复用为 `NOT_RUN`（fixture 候选没有 policy_refs，未伪造）。同一 attempt 的接管恢复和失败工具观察恢复有代码与测试；成功工具输出的精确恢复受当前持久化模型限制，标 `NOT_RUN`。
+- 详细记录：`../contract-audit-delivery/implementation/2026-10-27/docs/distributed-verification-2026-10-28.md`、`.../docs/eino-memory-distillation-learning-2026-10-28.md`、`.../docs/terminology-glossary-2026-10-28.md`。
 
 此前一个合成图片样本完成真实 OCR 和冻结审查；一次独立的补件接口冒烟完成 `open → received → verified` 并确认旧快照未变。这些只是单次路径证据，不代表整体准确率。较大的图片样本转写失败，仍需调查请求大小与模型预算限制。
 
