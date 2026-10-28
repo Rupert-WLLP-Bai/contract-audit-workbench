@@ -210,11 +210,11 @@ function MaterialPane({
           ) : null}
         </>
       ) : (
-        <p className="compare-unavailable">选择实际运行后查看冻结材料。</p>
+        <p className="compare-unavailable">选择审查记录后，查看当时使用的材料。</p>
       )}
       {loading ? (
         <p role="status" className="compare-query-state">
-          正在读取冻结工作区…
+          正在读取所选审查的记录…
         </p>
       ) : null}
       {error ? (
@@ -366,7 +366,7 @@ export function ComparePage() {
             )}
           </div>
           <p className="compare-risk-note">
-            以当前版本的实际规则、模型建议和人工决定为准。
+            请以当前版本使用的规则、模型建议和审查人员的判断为准。
           </p>
           <div className="compare-risk-records">
             {findings.map((item) => (
@@ -406,7 +406,7 @@ export function ComparePage() {
                     <Link
                       to={`/cases/${selectedCase?.id}/reviews/${leftRun?.id}?finding=${item.id}`}
                     >
-                      打开原文与人工决定
+                      打开原文与审查判断
                     </Link>
                   </div>
                 ) : null}
@@ -465,13 +465,13 @@ export function ComparePage() {
             </li>
             <li data-state={decidedCount > 0 ? "filled" : "open"}>
               <span className="compare-chain-mark" aria-hidden="true" />
-              <span className="compare-chain-label">已有人工决定</span>
+              <span className="compare-chain-label">已有审查判断</span>
               <strong>{decidedCount}</strong>
             </li>
           </ol>
           {selectedCase && caseRuns.length === 0 ? (
             <div className="compare-empty">
-              <p>此案件尚无持久审查运行。</p>
+              <p>没有获取到该案件的审查记录。</p>
               <Link to={`/cases/${selectedCase.id}`}>打开案件并发起审查</Link>
             </div>
           ) : null}
@@ -573,7 +573,7 @@ export function ComparePage() {
                 <h3>{side.label}</h3>
                 {side.evaluations.length === 0 ? (
                   <p className="compare-unavailable">
-                    此运行未返回规则评估记录。
+                    没有获取到这次审查的规则检查记录。
                   </p>
                 ) : (
                   <ul className="compare-fact-list">

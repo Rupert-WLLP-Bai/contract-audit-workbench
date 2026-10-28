@@ -241,7 +241,7 @@ describe("review workspace", () => {
       }
       renderWorkspace("split", result);
       const circuit = screen.getByRole("list", { name: "审查链路" });
-      const citation = within(circuit).getByText(/可定位引用/).closest("li");
+      const citation = within(circuit).getByText(/可在原文中找到的引用/).closest("li");
       expect(citation).toHaveAttribute("data-state", state);
       expect(citation).toHaveTextContent(`${located}/${total}`);
       expect(citation).toHaveTextContent(label);
@@ -257,11 +257,11 @@ describe("review workspace", () => {
     result.execution = null;
     renderWorkspace("split", result);
     const circuit = screen.getByRole("list", { name: "审查链路" });
-    expect(within(circuit).getByText(/可定位引用/).closest("li")).toHaveAttribute(
+    expect(within(circuit).getByText(/可在原文中找到的引用/).closest("li")).toHaveAttribute(
       "data-state",
       "open",
     );
-    expect(screen.getByText(/本次工作区没有持久执行快照/)).toBeInTheDocument();
+    expect(screen.getByText(/没有获取到本次审查的执行记录/)).toBeInTheDocument();
     expect(
       screen.queryByText(/legacy_unfrozen|历史记录未冻结/),
     ).not.toBeInTheDocument();
@@ -313,7 +313,7 @@ describe("review workspace", () => {
     result.findings[0]!.unverified_reason = null;
     const { container } = renderWorkspace("split", result);
     expect(container.querySelector("mark.hit-evidence")).not.toBeNull();
-    expect(screen.getByText("语义待核实")).toBeInTheDocument();
+    expect(screen.getByText("内容含义待核实")).toBeInTheDocument();
     expect(container).not.toHaveTextContent(/parsed_private_source|SHA-256|abc12345/);
     expect(screen.queryByText("已核验")).not.toBeInTheDocument();
   });

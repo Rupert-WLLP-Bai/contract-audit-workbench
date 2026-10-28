@@ -128,18 +128,18 @@ export function ReviewPage() {
     : !caseDetailReady
       ? caseDetail.isError
         ? "无法确认案件状态，历史审查只读。"
-        : "正在确认案件状态，暂不能提交人工决定。"
+        : "正在确认案件状态，暂时不能提交审查判断。"
       : caseArchived
         ? "案件已归档，历史审查只读。"
         : !latestRun
-          ? "此运行不是案件当前最新运行，人工决定只读。"
+          ? "这不是该案件最新的审查记录，只能查看已有判断。"
           : !selectedAttemptIsLatest
-            ? "当前选择为历史尝试，只能查看，不能提交人工决定。"
+            ? "当前选择的是之前的执行记录，只能查看，不能提交审查判断。"
             : !terminal
-              ? "当前尝试仍在执行，完成后才能提交人工决定。"
+              ? "本次审查仍在执行，完成后才能提交审查判断。"
               : !roleCanDecide
-                ? "当前角色不能提交人工决定。"
-                : "当前运行状态不允许提交人工决定。";
+                ? "当前角色不能提交审查判断。"
+                : "当前审查状态不允许提交审查判断。";
   const refresh = useCallback(() => {
     void queryClient.invalidateQueries({
       queryKey: queryKeys.reviewPrefix(caseId, runId),

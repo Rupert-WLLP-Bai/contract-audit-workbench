@@ -107,7 +107,7 @@ func (s *Store) SyncAgentReviewRecord(ctx context.Context, claim JobClaim, recor
 		return err
 	}
 	if !attemptActive(currentState) {
-		return fault.Conflict("终态尝试不能再写入智能审查记录")
+		return fault.Conflict("已结束的执行记录不能再写入智能审查结果")
 	}
 	if err := s.requireLiveClaim(ctx, tx, claim, claim.RunID, claim.AttemptID); err != nil {
 		return err
@@ -122,12 +122,12 @@ func (s *Store) SyncAgentReviewRecord(ctx context.Context, claim JobClaim, recor
 	if err := tx.QueryRow(ctx, `SELECT input_hash FROM review_attempt_inputs WHERE attempt_id=$1 AND run_id=$2`,
 		claim.AttemptID, claim.RunID).Scan(&inputHash); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return fault.Conflict("尝试缺少冻结输入身份，不能写入智能审查记录")
+			return fault.Conflict("执行记录缺少已保存的输入编号，不能写入智能审查结果")
 		}
 		return err
 	}
 	if inputHash != record.AttemptInputSHA256 {
-		return fault.Conflict("智能审查记录的冻结输入身份与尝试不一致")
+		return fault.Conflict("智能审查记录的输入编号与执行记录不一致")
 	}
 
 	var existingGeneration int64

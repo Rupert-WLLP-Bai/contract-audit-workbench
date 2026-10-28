@@ -18,31 +18,31 @@ const DOMAIN_LABELS: Record<AgentReviewDomain, string> = {
 };
 const CAPABILITY_EXPRESSIONS: Record<string, string> = {
   authorization_basis:
-    "未接入有版本的制度或审批来源；该结果保持缺证。审批原文抽取只提供事实，不作合规结论。",
+    "尚未接入有版本记录的制度或审批材料，因此证据不足。提取审批原文只提供事实，不能直接得出合规结论。",
   commercial_baseline:
-    "只比较当前确定性执行器支持的金额与付款表达，不代表完整商务条款审查。",
-  warranty_months: "比较受支持材料中的质保期表达；其他技术承诺保持未覆盖。",
+    "只比较当前规则支持的金额和付款表述，不代表已审查全部商务条款。",
+  warranty_months: "比较支持的材料中关于质保期的表述；其他技术承诺尚未覆盖。",
   acceptance_schedule:
-    "比较受支持的交付、进场与验收时间表达，不代表履约已完成。",
+    "比较支持的交付、进场和验收时间表述，不代表已经完成履约。",
   counterparty_record:
-    "未接入授权登记源；登记状态/关联查询保持缺证。主体原文抽取不推断资质或关联关系。",
-  amount: "从冻结材料抽取金额原文事实；抽取结果本身不作合规或付款判断。",
-  party: "从冻结材料抽取合同主体名称，不验证主体身份。",
-  approval_authority: "从冻结材料抽取审批或授权原文，不代替有效制度核验。",
+    "尚未接入授权的登记信息来源，无法核实登记状态和关联关系。提取主体名称不会推断其资质或关联关系。",
+  amount: "从本次审查使用的材料中提取金额原文事实；抽取结果本身不作合规或付款判断。",
+  party: "从本次审查使用的材料中提取合同主体名称，不验证主体身份。",
+  approval_authority: "从本次审查使用的材料中提取审批或授权原文，不代替有效制度核验。",
   approval_validity:
-    "只比较冻结来源中明确提取并核验的审批依据生效日、失效日与合同引用日；任一日期缺失时保持缺证，不使用当前日期补值。",
-  effective_scope: "从冻结材料抽取服务或项目范围原文。",
-  scope: "从冻结材料抽取技术或服务范围原文，不判断是否已履约。",
-  milestone: "从冻结材料抽取交付、验收、进场、开工、开通或上线等里程碑原文。",
-  explicit_start_event: "从冻结材料抽取明确的启动时间表达，不推断缺失日期。",
-  subject_id: "从冻结材料抽取统一社会信用代码，不查询登记状态。",
+    "只比较本次审查材料中已提取并核实的审批依据生效日、失效日与合同引用日；缺少任何日期时，不能用当前日期代替。",
+  effective_scope: "从本次审查使用的材料中提取服务或项目范围原文。",
+  scope: "从本次审查使用的材料中提取技术或服务范围原文，不判断是否已履约。",
+  milestone: "从本次审查使用的材料中提取交付、验收、进场、开工、开通或上线等里程碑原文。",
+  explicit_start_event: "从本次审查使用的材料中提取明确的启动时间表达，不推断缺失日期。",
+  subject_id: "从本次审查使用的材料中提取统一社会信用代码，不查询登记状态。",
   signing_party:
-    "从冻结材料抽取签署方或签约方原文；名称相同不足以确认签署身份，需核验稳定主体 ID 与角色关联。",
+    "从本次审查使用的材料中提取签署方或签约方原文；名称相同不足以确认签署身份，需核验稳定主体 ID 与角色关联。",
   payee:
-    "从冻结材料抽取收款方原文；名称相同不足以确认收款资格，需核验稳定主体 ID 与收款角色关联。",
-  responsibility: "从冻结材料抽取责任、义务原文，不判断履约完成。",
+    "从本次审查使用的材料中提取收款方原文；名称相同不足以确认收款资格，需核验稳定主体 ID 与收款角色关联。",
+  responsibility: "从本次审查使用的材料中提取责任、义务原文，不判断履约完成。",
   "dedicated_line.minimum_bandwidth":
-    "比较同一电路的最低保障带宽，要求可比单位与对象身份。",
+    "比较同一电路的最低保障带宽；单位和比较对象必须对应。",
   "dedicated_line.monthly_availability":
     "比较同口径自然月可用率，测量周期、时区、日历和故障口径需一致。",
   "payment.advance_ratio.ceiling":
@@ -55,15 +55,15 @@ function capabilityExpression(capabilityId: string): string {
     : undefined;
   return (
     expression ??
-    "当前界面没有此能力的支持说明；以服务端状态与原因代码为准，未知能力不视为通过。"
+    "当前没有这一检查项目的说明，请查看系统返回的状态和原因。未知项目不能视为通过。"
   );
 }
 
 const MODE_LABELS = {
-  fixed_chain: "固定链",
-  deterministic_planner: "确定性规划器",
-  model_fixture: "模型规划器配置：fixture",
-  model_live: "模型规划器配置：live",
+  fixed_chain: "固定流程",
+  deterministic_planner: "按固定规则制定计划",
+  model_fixture: "模型计划（测试配置）",
+  model_live: "模型计划（实际模型配置）",
 } as const;
 
 const RELATION_LABELS = {
@@ -184,10 +184,9 @@ export function AgentReviewInspector({
         className="agent-review-panel"
         aria-labelledby="agent-review-title"
       >
-        <h3 id="agent-review-title">五域检查与计划</h3>
+        <h3 id="agent-review-title">五个方面的检查与计划</h3>
         <p>
-          此 attempt
-          没有持久的五域计划记录。历史输入不会补造为当前结果，未报告范围保持未知。
+          本次执行没有保存五个方面的检查计划。未记录的范围仍为未知，系统不会把旧输入补成当前结果。
         </p>
       </section>
     );
@@ -198,9 +197,9 @@ export function AgentReviewInspector({
         className="agent-review-panel"
         aria-labelledby="agent-review-title"
       >
-        <h3 id="agent-review-title">五域检查与计划</h3>
+        <h3 id="agent-review-title">五个方面的检查与计划</h3>
         <p className="workflow-error" role="alert">
-          五域记录的 attempt ID 与当前执行快照不一致；已隐藏该记录。
+          检查记录所属的执行编号与当前选择的执行记录不一致，已隐藏该记录。
         </p>
       </section>
     );
@@ -233,9 +232,9 @@ export function AgentReviewInspector({
     >
       <header className="agent-review-head">
         <div>
-          <h3 id="agent-review-title">五域检查与计划</h3>
+          <h3 id="agent-review-title">五个方面的检查与计划</h3>
           <p className="meta">
-            当前 attempt {agentReview.attempt_id}，schema{" "}
+            执行编号 {agentReview.attempt_id}，数据格式{" "}
             {agentReview.schema_version}
           </p>
         </div>
@@ -248,14 +247,14 @@ export function AgentReviewInspector({
         className="agent-review-section"
         aria-labelledby="agent-review-mode-title"
       >
-        <h4 id="agent-review-mode-title">冻结配置与来源</h4>
+        <h4 id="agent-review-mode-title">本次使用的配置和材料来源</h4>
         <dl className="agent-review-grid">
           <div>
-            <dt>规划器模式</dt>
+            <dt>计划生成方式</dt>
             <dd>{MODE_LABELS[agentReview.mode]}</dd>
           </div>
           <div>
-            <dt>Planner configuration ID</dt>
+            <dt>计划配置 ID</dt>
             <dd>
               <code>{agentReview.planner.configuration_id}</code>
             </dd>
@@ -270,7 +269,7 @@ export function AgentReviewInspector({
           </div>
           <div>
             <dt>实际模型来源</dt>
-            <dd>未知；规划器配置和模型引用不证明实际调用来源。</dd>
+            <dd>未知；计划配置和模型编号不能证明实际调用了哪个模型。</dd>
           </div>
           <div>
             <dt>执行事件中的模型引用</dt>
@@ -303,23 +302,23 @@ export function AgentReviewInspector({
         </dl>
         {agentReview.source_snapshot ? (
           <p className="meta">
-            冻结材料 {showIds(agentReview.source_snapshot.document_ids)}，
+            本次使用的材料 {showIds(agentReview.source_snapshot.document_ids)}，
             解析版本 {showIds(agentReview.source_snapshot.parsed_document_ids)}{" "}
           ，解析选择摘要{" "}
             <code>{agentReview.source_snapshot.parse_selection_hash}</code>
           </p>
         ) : (
           <p className="callout">
-            没有报告冻结来源快照；不能据此声称来源已核对。
+            未提供本次审查的材料来源记录，无法确认来源已经核对。
           </p>
         )}
         {agentReview.rulepack ? (
           <p className="meta">
-            冻结规则包 {agentReview.rulepack.id} v{agentReview.rulepack.version}{" "}
+            本次使用的规则包 {agentReview.rulepack.id} v{agentReview.rulepack.version}{" "}
           ，SHA-256 <code>{agentReview.rulepack.content_sha256}</code>
           </p>
         ) : (
-          <p className="meta">本次五域投影没有规则包身份。</p>
+          <p className="meta">这份检查记录没有提供规则包编号。</p>
         )}
       </section>
 
@@ -453,8 +452,7 @@ export function AgentReviewInspector({
             ),
         ) ? (
           <p className="callout">
-            有领域结果不在已报告 scope
-            中；请按服务端范围记录复核，不将其并入声明覆盖。
+            部分领域结果不在已报告的审查范围内。请根据系统记录复核，不要将其计入已声明的覆盖范围。
           </p>
         ) : null}
       </section>
@@ -525,7 +523,7 @@ export function AgentReviewInspector({
           </ul>
         )}
         <p className="meta">
-          添加材料会触发新的冻结运行；本页仍显示当前 attempt 的原始输入和结果。
+          补充材料后，需要发起新的审查；本页仍显示当前这次执行使用的材料和结果。
         </p>
       </section>
 
@@ -615,7 +613,7 @@ export function AgentReviewInspector({
               .join("，")}
           </p>
         ) : (
-          <p className="meta">没有持久规划事件。</p>
+          <p className="meta">没有保存计划制定过程的事件。</p>
         )}
       </section>
 
@@ -625,7 +623,7 @@ export function AgentReviewInspector({
       >
         <h4 id="agent-review-evidence-title">经核验的新证据</h4>
         {agentReview.evidence.length === 0 ? (
-          <p>没有报告新增语义事实；空结果保持未知，不推断为无风险。</p>
+          <p>没有返回新提取的事实；结果为空时仍需核实，不能视为没有风险。</p>
         ) : (
           <ul className="agent-review-list">
             {agentReview.evidence.map((item) => (

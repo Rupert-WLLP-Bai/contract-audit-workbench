@@ -58,7 +58,7 @@ describe("business agent review", () => {
     expect(screen.getByText("关联引用详情不可用。")).toBeInTheDocument();
     expect(screen.queryByText("未经核验原文")).not.toBeInTheDocument();
     expect(screen.queryByText(/doc-1|parsed-1|gap-1/)).not.toBeInTheDocument();
-    expect(screen.getByText(/来源引用核验不等于风险已确认或合同合规/)).toBeInTheDocument();
+    expect(screen.getByText(/找到原文依据，并不代表风险已确认或合同已合规/)).toBeInTheDocument();
   });
 
   it("keeps missing and unknown results separate from success", () => {
@@ -77,7 +77,7 @@ describe("business agent review", () => {
     render(<BusinessAgentReviewView review={review} />);
     expect(screen.getAllByText("状态未知").length).toBeGreaterThan(0);
     expect(screen.getByText("必查项目；比较结果未知。")).toBeInTheDocument();
-    expect(screen.getByText("部分项目暂无引用，不能据此确认已核验。")).toBeInTheDocument();
+    expect(screen.getByText("部分项目没有原文依据，不能确认这些项目已经核验。")).toBeInTheDocument();
     expect(screen.getByText("该领域已列入范围，检查结果和必查状态未知。")).toBeInTheDocument();
     expect(screen.getAllByText("是否必查：未知。")).toHaveLength(2);
     expect(screen.getByText("授权依据")).toBeInTheDocument();
@@ -99,7 +99,7 @@ describe("business agent review", () => {
 
   it("explains an absent review without claiming coverage", () => {
     render(<BusinessAgentReviewView review={null} />);
-    expect(screen.getByText("本次暂无五域结果，不能据此推断已覆盖。")).toBeInTheDocument();
+    expect(screen.getByText("本次没有返回五个方面的审查结果，不能因此认为已经全部检查。")).toBeInTheDocument();
   });
 
   it("uses one concise empty state when the projection contains no details", () => {
@@ -113,7 +113,7 @@ describe("business agent review", () => {
       unresolved_gap_ids: null,
     });
     render(<BusinessAgentReviewView review={review} />);
-    expect(screen.getByText("本次暂无领域、缺口和引用信息，不能据此推断已覆盖。")).toBeInTheDocument();
+    expect(screen.getByText("本次没有返回检查范围、待补充事项和原文依据，不能因此认为已经完成检查。")).toBeInTheDocument();
     expect(screen.getByText("状态未知")).toBeInTheDocument();
     expect(screen.queryByText(/未报告/)).not.toBeInTheDocument();
   });

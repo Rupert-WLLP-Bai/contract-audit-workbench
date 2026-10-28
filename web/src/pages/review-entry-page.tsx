@@ -98,7 +98,7 @@ export function ReviewEntryPage() {
             <span className="review-entry-muted">
               {latest.attempt_id
                 ? `尝试 ${latest.attempt_id}`
-                : "尝试未报告"}
+                : "未提供执行记录"}
             </span>
           </div>
         );
@@ -149,7 +149,7 @@ export function ReviewEntryPage() {
       <header className="page-head">
         <div>
           <h1>合同审查</h1>
-          <p>选择当前身份可见的案件，进入其持久审查运行或发起新的审查。</p>
+          <p>选择有权查看的案件，查看已有审查记录或发起新审查。</p>
         </div>
         <Button aria-label={"案件列表"} type="text" href="/cases">
           案件列表

@@ -1023,15 +1023,15 @@ describe("application routes and API contract", () => {
     const { user } = open(api, "/cases/c1/reviews/r1");
     expect(await screen.findByText("模型调用超时")).toBeInTheDocument();
     await user.click(
-      screen.getByRole("button", { name: "重新尝试未完成运行" }),
+      screen.getByRole("button", { name: "重新执行未完成的审查" }),
     );
     expect(await screen.findByRole("alert")).toHaveTextContent("受控失败 503");
     await user.click(
-      screen.getByRole("button", { name: "重新尝试未完成运行" }),
+      screen.getByRole("button", { name: "重新执行未完成的审查" }),
     );
     await waitFor(() =>
       expect(
-        screen.queryByRole("button", { name: "重新尝试未完成运行" }),
+        screen.queryByRole("button", { name: "重新执行未完成的审查" }),
       ).not.toBeInTheDocument(),
     );
     await waitFor(() => expect(review.execution!.attempts).toHaveLength(2));
@@ -1045,7 +1045,7 @@ describe("application routes and API contract", () => {
     );
     expect(review.execution!.events[0]?.attempt_id).toBe(firstAttempt.id);
     await waitFor(() => expect(api.requests.some((entry) => entry.key === "GET /api/cases/c1/reviews/r1?attempt_id=attempt-r1-2")).toBe(true));
-    await chooseOption(user, screen.getByLabelText("查看尝试"), /第 2 次，\s*待人工，\s*最新/);
+    await chooseOption(user, screen.getByLabelText("查看执行记录"), /第 2 次，\s*待人工，\s*最新/);
     await user.click(await screen.findByRole("radio", { name: "证据不足" }));
     expect(screen.getByRole("radio", { name: "证据不足" })).toBeEnabled();
     await user.type(screen.getByLabelText("理由"), "仍需补充附件");
@@ -1106,7 +1106,7 @@ describe("application routes and API contract", () => {
     expect(
       await screen.findByRole("heading", { name: "引用已定位的线索" }),
     ).toBeInTheDocument();
-    const attemptUsage = screen.getByRole("region", { name: "本次尝试用量" });
+    const attemptUsage = screen.getByRole("region", { name: "本次执行用量" });
     expect(within(attemptUsage).getAllByText("未知").length).toBeGreaterThan(0);
     expect(
       within(attemptUsage).getByText("物理调用").parentElement,
@@ -1188,10 +1188,10 @@ describe("application routes and API contract", () => {
     const review = api.addReview("running");
     const { user } = open(api, "/cases/c1/reviews/r1");
     expect(
-      await screen.findByText("当前尝试仍在执行，完成后才能提交人工决定。"),
+      await screen.findByText("本次审查仍在执行，完成后才能提交审查判断。"),
     ).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "保存决定" })).toBeDisabled();
-    await user.click(screen.getByRole("button", { name: "取消当前尝试" }));
+    await user.click(screen.getByRole("button", { name: "取消本次执行" }));
     await waitFor(() =>
       expect(review.execution!.attempt.state).toBe("cancelled"),
     );
@@ -1202,10 +1202,10 @@ describe("application routes and API contract", () => {
       ),
     ).toBe(true);
     expect(
-      screen.queryByRole("button", { name: "取消当前尝试" }),
+      screen.queryByRole("button", { name: "取消本次执行" }),
     ).not.toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: "重新尝试未完成运行" }),
+      screen.getByRole("button", { name: "重新执行未完成的审查" }),
     ).toBeEnabled();
   });
   it.each([
@@ -1248,10 +1248,10 @@ describe("application routes and API contract", () => {
       expect(screen.getByRole("button", { name: "保存决定" })).toBeDisabled();
       if (action === "retry")
         expect(
-          screen.getByRole("button", { name: "重新尝试未完成运行" }),
+          screen.getByRole("button", { name: "重新执行未完成的审查" }),
         ).toBeDisabled();
       for (const button of screen.queryAllByRole("button", {
-        name: /^(保存决定|重新尝试未完成运行|取消当前尝试)$/,
+        name: /^(保存决定|重新执行未完成的审查|取消本次执行)$/,
       })) {
         await user.click(button);
       }
@@ -1299,16 +1299,16 @@ describe("application routes and API contract", () => {
     await screen.findByRole("heading", { name: "审查工作区" });
     await chooseOption(
       user,
-      screen.getByLabelText("查看尝试"),
+      screen.getByLabelText("查看执行记录"),
       /第 1 次，\s*失败/,
     );
     expect(
       await screen.findByText(
-        "当前选择为历史尝试，只能查看，不能提交人工决定。",
+        "当前选择的是之前的执行记录，只能查看，不能提交审查判断。",
       ),
     ).toBeInTheDocument();
     expect(
-      screen.getByText("旧运行未冻结原始输入，不能补造历史阶段。"),
+      screen.getByText("较早的审查没有保存当时使用的材料版本记录，无法补回当时的执行过程。"),
     ).toBeInTheDocument();
     expect(screen.getByText("此前留存的理由")).toBeInTheDocument();
     expect(screen.getByRole("radio", { name: "确认风险" })).toBeDisabled();
@@ -1351,7 +1351,7 @@ describe("application routes and API contract", () => {
     ).toHaveAttribute("href", "/cases/c1/reviews/r0");
     expect(screen.getByText(/图片转写未完成/)).toBeInTheDocument();
     expect(
-      screen.getByText("还没有人工决定。模型建议不会自动结案。"),
+      screen.getByText("还没有审查人员的判断。模型建议不会自动结案。"),
     ).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "加载审查诊断" }));
     await user.click(
@@ -1399,7 +1399,7 @@ describe("application routes and API contract", () => {
     await user.click(
       screen.getByRole("button", { name: "运行依据与规则评估" }),
     );
-    expect(screen.getByText("服务未返回运行快照。")).toBeVisible();
+    expect(screen.getByText("未获取到本次审查的材料和规则记录。")).toBeVisible();
     expect(screen.getByText("没有返回规则评估记录。")).toBeVisible();
   });
 
@@ -1415,7 +1415,7 @@ describe("application routes and API contract", () => {
     expect(breadcrumbs).not.toHaveTextContent(/c1|r1/);
     expect(await within(breadcrumbs).findByRole("link", { name: "接入设备采购" })).toHaveAttribute("href", "/cases/c1");
     expect(container.querySelector(".finding-detail")!).not.toHaveTextContent(/parsed_private_source|SHA-256|已核验/);
-    expect(screen.getByText("语义待核实")).toBeInTheDocument();
+    expect(screen.getByText("内容含义待核实")).toBeInTheDocument();
   });
 
   it("creates remediation from a terminal public attempt without diagnostics", async () => {
@@ -1620,10 +1620,10 @@ describe("application routes and API contract", () => {
     api.addReview("partial");
     open(api, "/cases/c1/reviews/r1");
     expect(
-      await screen.findByText("当前角色不能提交人工决定。"),
+      await screen.findByText("当前角色不能提交审查判断。"),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: "重新尝试未完成运行" }),
+      screen.getByRole("button", { name: "重新执行未完成的审查" }),
     ).toBeDisabled();
     expect(screen.getByRole("radio", { name: "确认风险" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "保存决定" })).toBeDisabled();
@@ -1640,7 +1640,7 @@ describe("application routes and API contract", () => {
     open(api, "/cases/c1/reviews/r1");
     await screen.findByRole("heading", { name: "审查工作区" });
     expect(
-      screen.getByRole("button", { name: "重新尝试未完成运行" }),
+      screen.getByRole("button", { name: "重新执行未完成的审查" }),
     ).toBeEnabled();
     expect(screen.getByRole("radio", { name: "确认风险" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "保存决定" })).toBeDisabled();
@@ -1654,7 +1654,7 @@ describe("application routes and API contract", () => {
     api.addReview("interrupted");
     const { user } = open(api, "/cases/c1/reviews/r1");
     await user.click(
-      await screen.findByRole("button", { name: "重新尝试未完成运行" }),
+      await screen.findByRole("button", { name: "重新执行未完成的审查" }),
     );
     await waitFor(() =>
       expect(api.reviews.get("r1")!.execution!.attempts).toHaveLength(2),
@@ -1669,11 +1669,11 @@ describe("application routes and API contract", () => {
     const api = new Service();
     api.addReview().execution = null;
     open(api, "/cases/c1/reviews/r1");
-    expect(await screen.findByText(/本次工作区没有持久执行快照/)).toBeInTheDocument();
+    expect(await screen.findByText(/没有获取到本次审查的执行记录/)).toBeInTheDocument();
     expect(screen.queryByText(/legacy_unfrozen/)).not.toBeInTheDocument();
-    expect(screen.queryByLabelText("查看尝试")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("查看执行记录")).not.toBeInTheDocument();
     expect(
-      screen.queryByRole("button", { name: "取消当前尝试" }),
+      screen.queryByRole("button", { name: "取消本次执行" }),
     ).not.toBeInTheDocument();
   });
 
@@ -2055,7 +2055,7 @@ describe("application routes and API contract", () => {
       name: "执行运维统计",
     });
     expect(
-      within(operations).getByText("全部尝试").parentElement,
+      within(operations).getByText("全部执行记录").parentElement,
     ).toHaveTextContent("1");
     expect(
       within(operations).getByText("用量未知的调用").parentElement,

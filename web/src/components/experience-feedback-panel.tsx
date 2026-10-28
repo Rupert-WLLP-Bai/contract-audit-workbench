@@ -211,7 +211,7 @@ function FeedbackForSource(props: ExperienceFeedbackPanelProps) {
     const controller = new AbortController();
     void getExperienceFeedback(caseId, saved.feedbackId, controller.signal).then((item) => {
       if (!feedbackMatchesSource(item, props)) {
-        throw new ApiError("该反馈不属于当前审查尝试和线索", 200, "invalid_response", false, null);
+        throw new ApiError("该反馈不属于当前审查执行记录和线索", 200, "invalid_response", false, null);
       }
       if (!controller.signal.aborted) setFeedback(item);
     }).catch((error: unknown) => {
@@ -346,7 +346,7 @@ function FeedbackForSource(props: ExperienceFeedbackPanelProps) {
     try {
       const item = await getExperienceFeedback(caseId, manualFeedbackId.trim());
       if (!feedbackMatchesSource(item, props)) {
-        throw new ApiError("该反馈不属于当前审查尝试和线索", 200, "invalid_response", false, null);
+        throw new ApiError("该反馈不属于当前审查执行记录和线索", 200, "invalid_response", false, null);
       }
       const restoredJobId = manualJobId.trim() || null;
       distillKey.current = null;
@@ -387,26 +387,26 @@ function FeedbackForSource(props: ExperienceFeedbackPanelProps) {
 
   return (
     <Card title="复盘经验建议" className="workflow-panel">
-      <p>选择已记录的人工决定和本次冻结原文，说明希望复用的审查经验。提炼结果需另行审核。</p>
+      <p>选择已记录的审查判断和本次审查使用的原文，说明希望今后参考的经验。整理出的经验还需要审核。</p>
       {!finding ? <p>请选择一条审查线索。</p> : null}
-      {!attemptId ? <p>当前审查没有可用的冻结尝试身份。</p> : null}
+      {!attemptId ? <p>当前审查缺少可用的执行记录，暂时不能提交反馈。</p> : null}
       {!canSubmit ? <p>当前角色或审查尝试不能提交经验反馈；权限由服务端核验。</p> : null}
-      {finding && decisions.length === 0 ? <p>当前线索没有可用于反馈的人工决定。</p> : null}
-      {finding && sources.length === 0 ? <p>当前尝试没有可选的已解析冻结原文。</p> : null}
+      {finding && decisions.length === 0 ? <p>当前线索没有可用于反馈的审查判断。</p> : null}
+      {finding && sources.length === 0 ? <p>本次执行没有可供选择的已解析原文。</p> : null}
       {recovering ? <p role="status">正在读取已保存的反馈…</p> : null}
       <ErrorNotice error={recoveryError} />
       {!feedback && finding && attemptId ? (
         <form onSubmit={(event) => void submit(event)}>
           <label className="field">
-            人工决定
-            <Select aria-label="人工决定" value={decisionId || undefined} placeholder="选择已记录的决定"
+            审查判断
+            <Select aria-label="审查判断" value={decisionId || undefined} placeholder="选择已记录的决定"
               disabled={!canSubmit || pending || recovering}
               onChange={(value: string) => setDecisionId(value)}
               options={decisions.map((decision, index) => ({ value: decision.id, label: `第 ${index + 1} 条 · ${decisionLabel(decision.action)} · ${decision.actor} · ${formatDateTime(decision.decided_at)}` }))} />
           </label>
           <label className="field">
-            冻结材料
-            <Select aria-label="冻结材料" value={selectedSource || undefined} placeholder="选择材料"
+            本次审查材料
+            <Select aria-label="本次审查材料" value={selectedSource || undefined} placeholder="选择材料"
               disabled={!canSubmit || pending || recovering}
               onChange={(value: string) => { setSelectedSource(value); setSelection(null); setChosenEvidence(null); }}
               options={sources.map((document, index) => ({ value: sourceKey(document), label: `第 ${index + 1} 份 · ${document.filename} · ${roleLabel(document.role)}` }))} />
@@ -414,8 +414,8 @@ function FeedbackForSource(props: ExperienceFeedbackPanelProps) {
           {source && source.text !== null ? (
             <>
               <label className="field">
-                冻结原文（选择一段后点击选用）
-                <Input.TextArea aria-label="冻结原文" readOnly value={displayText} rows={6}
+                本次审查使用的原文（选择一段后点击选用）
+                <Input.TextArea aria-label="本次审查使用的原文" readOnly value={displayText} rows={6}
                   onSelect={(event: SyntheticEvent<HTMLTextAreaElement>) => setSelection(selectionFromTextArea(source, event.currentTarget))} />
               </label>
               <p className="meta">可用鼠标或键盘选择原文，最多 4096 个 Unicode 字符。</p>
@@ -423,13 +423,13 @@ function FeedbackForSource(props: ExperienceFeedbackPanelProps) {
                 onClick={() => setChosenEvidence(selection)}>选用选中原文</Button>
             </>
           ) : null}
-          {validEvidence && chosenEvidence ? <blockquote>已选证据：{chosenEvidence.evidence.quote}</blockquote> : <p>请选择一段与冻结原文一致的证据。</p>}
+          {validEvidence && chosenEvidence ? <blockquote>已选证据：{chosenEvidence.evidence.quote}</blockquote> : <p>请选择一段与本次审查使用的原文一致的内容。</p>}
           <label className="field">
             经验建议理由
             <Input.TextArea aria-label="经验建议理由" value={reason} rows={3} disabled={!canSubmit || pending || recovering}
               onChange={(event) => setReason(event.target.value)} />
           </label>
-          <p className="meta">填写 2 至 1000 个字符。提交会保留原人工决定，不会自动批准候选。</p>
+          <p className="meta">填写 2 至 1000 个字符。提交会保留原审查判断，不会自动批准候选。</p>
           <ErrorNotice error={submitError} />
           <Button type="primary" htmlType="submit" aria-label="提交经验建议并请求提炼" disabled={!ready} loading={pending}>提交经验建议并请求提炼</Button>
         </form>
@@ -437,7 +437,7 @@ function FeedbackForSource(props: ExperienceFeedbackPanelProps) {
       {feedback ? (
         <section aria-label="经验反馈进度" aria-live="polite">
           <h3>反馈已记录</h3>
-          <p>人工决定：{decisionLabel(feedback.decision_action)}。</p>
+          <p>审查判断：{decisionLabel(feedback.decision_action)}。</p>
           <p>建议理由：{feedback.reason}</p>
           {feedback.evidence_refs.map((ref, index) => <blockquote key={`${ref.document_id}:${ref.start}:${index}`}>{ref.quote}</blockquote>)}
           {distillPending ? <p role="status">正在请求经验提炼…</p> : null}
@@ -460,11 +460,11 @@ function FeedbackForSource(props: ExperienceFeedbackPanelProps) {
       ) : null}
       {finding && attemptId ? (
         <details>
-          <summary>按反馈和任务身份恢复状态</summary>
-          <p>如更换浏览器或清除会话，可输入已记录的身份；读取仍须通过当前案件授权。</p>
-          {feedback ? <p>反馈身份：{feedback.feedback_id}{jobId ? <>；任务身份：{jobId}</> : null}</p> : null}
-          <label className="field">反馈身份<Input aria-label="反馈身份" value={manualFeedbackId} onChange={(event) => setManualFeedbackId(event.target.value)} /></label>
-          <label className="field">任务身份（可选）<Input aria-label="任务身份" value={manualJobId} onChange={(event) => setManualJobId(event.target.value)} /></label>
+          <summary>用反馈编号和任务编号恢复状态</summary>
+          <p>更换浏览器或清除会话后，可以输入已记录的编号恢复状态。查看时仍需要有该案件的访问权限。</p>
+          {feedback ? <p>反馈编号：{feedback.feedback_id}{jobId ? <>；任务编号：{jobId}</> : null}</p> : null}
+          <label className="field">反馈编号<Input aria-label="反馈编号" value={manualFeedbackId} onChange={(event) => setManualFeedbackId(event.target.value)} /></label>
+          <label className="field">任务编号（可选）<Input aria-label="任务编号" value={manualJobId} onChange={(event) => setManualJobId(event.target.value)} /></label>
           <Button htmlType="button" disabled={!manualFeedbackId.trim() || recovering || pending || distillPending} loading={recovering} onClick={() => void recover()}>读取反馈和任务</Button>
         </details>
       ) : null}

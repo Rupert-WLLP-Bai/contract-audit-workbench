@@ -85,7 +85,7 @@ export function FindingPanel({
       <div hidden={panel !== "风险审查"}>
         <dl
           className="finding-counts finding-severity-counts"
-          aria-label="当前运行风险分级"
+          aria-label="本次审查风险分级"
         >
           {[
             "high",
@@ -122,7 +122,7 @@ export function FindingPanel({
           ))}
         </div>
         {findings.length === 0 ? (
-          <p>这次运行还没有形成风险线索。这不等于材料已经无风险。</p>
+          <p>本次审查还没有生成风险线索。这不代表材料没有风险。</p>
         ) : null}
         <ul className="finding-list">
           {visible.map((finding) => {
@@ -218,7 +218,7 @@ export function FindingPanel({
                   <>
                     <dt>原件身份</dt>
                     <dd>{document.id}</dd>
-                    <dt>冻结解析</dt>
+                    <dt>本次使用的解析结果</dt>
                     <dd>{document.parsed_document?.id ?? "未记录"}</dd>
                     <dt>原件 SHA-256</dt>
                     <dd>{document.digest}</dd>
@@ -231,7 +231,7 @@ export function FindingPanel({
       ) : null}
       {panel === "审查结论" ? (
         <div className="finding-tab-content">
-          <p>规则、模型建议和人工决定分别保留。运行结束不表示合同获批。</p>
+          <p>规则结果、模型建议和审查判断分别保存。审查执行结束不代表合同已获批。</p>
           {findings.map((item) => (
             <section key={item.id}>
               <h3>{item.claim}</h3>
@@ -239,7 +239,7 @@ export function FindingPanel({
                 {originLabel(item.origin)}，{relationLabel(item.relation)}
               </p>
               {item.decisions.length === 0 ? (
-                <p>尚未记录人工决定。</p>
+                <p>尚未记录审查判断。</p>
               ) : (
                 item.decisions.map((decision) => (
                   <article key={decision.id}>
@@ -268,7 +268,7 @@ function FindingCircuit({ finding }: { finding: Finding }) {
     finding.evidence.length === 0 || located !== finding.evidence.length;
   const nodes = [
     {
-      label: "冻结原文",
+      label: "本次审查原文",
       value: String(finding.evidence.length),
       meta: "处引用",
       state: sourceOpen ? "open" : "filled",
@@ -282,11 +282,11 @@ function FindingCircuit({ finding }: { finding: Finding }) {
     {
       label: "建议",
       value: originLabel(finding.origin),
-      meta: finding.verification_status === "unverified" ? "尚未核验" : "语义待核实",
+      meta: finding.verification_status === "unverified" ? "尚未核验" : "内容含义待核实",
       state: "open",
     },
     {
-      label: "人工决定",
+      label: "审查判断",
       value: decision ? decisionLabel(decision.action) : "待裁决",
       meta: decision ? formatDateTime(decision.decided_at) : "尚未记录",
       state: decision ? "filled" : "open",
@@ -447,7 +447,7 @@ function FindingDetail({
                   "历史来源未记录解析身份或正文摘要"
                 ) : (
                   <>
-                    冻结解析{" "}
+                    本次使用的解析结果{" "}
                     {anchor.parsed_document_id === null ? (
                       "未记录"
                     ) : (
@@ -480,7 +480,7 @@ function FindingDetail({
               {anchor.quote ? (
                 <blockquote>{anchor.quote}</blockquote>
               ) : (
-                <p>没有引用快照。</p>
+                <p>没有保存引用内容。</p>
               )}
             </section>
           );
@@ -488,7 +488,7 @@ function FindingDetail({
       </div>
       <h4>决定记录</h4>
       {finding.decisions.length === 0 ? (
-        <p>还没有人工决定。模型建议不会自动结案。</p>
+        <p>还没有审查人员的判断。模型建议不会自动结案。</p>
       ) : null}
       <ol className="history">
         {finding.decisions.map((decision) => (
@@ -506,17 +506,17 @@ function FindingDetail({
       </ol>
       <form onSubmit={onSubmit}>
         {!canDecide ? (
-          <p>{decisionDisabledReason ?? "当前角色不能提交人工决定。"}</p>
+          <p>{decisionDisabledReason ?? "当前角色不能提交审查判断。"}</p>
         ) : null}
         <Card
           role="group"
           aria-label={String(
-            finding.decisions.length > 0 ? "更正决定" : "人工决定",
+            finding.decisions.length > 0 ? "更正判断" : "审查判断",
           )}
-          title={<>{finding.decisions.length > 0 ? "更正决定" : "人工决定"}</>}
+          title={<>{finding.decisions.length > 0 ? "更正判断" : "审查判断"}</>}
         >
           {finding.decisions.length > 0 ? (
-            <p className="meta">更正会追加一条新记录，不会抹掉原来的决定。</p>
+            <p className="meta">修改判断时，之前的记录也会保留。</p>
           ) : null}
           {DECISION_ACTIONS.map((item) => (
             <div key={item.action} className="choice">

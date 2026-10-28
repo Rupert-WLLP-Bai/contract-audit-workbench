@@ -74,7 +74,7 @@ export function SettingsPage({
     data.model.status === "connected" || data.model.status === "configured";
   const executionFigures = data.execution
     ? [
-        { label: "全部尝试", value: data.execution.total_attempts, tone: "neutral" },
+        { label: "全部执行记录", value: data.execution.total_attempts, tone: "neutral" },
         { label: "运行中", value: data.execution.running_attempts, tone: "progress" },
         { label: "已完成", value: data.execution.completed_attempts, tone: "compatible" },
         { label: "部分完成", value: data.execution.partial_attempts, tone: "insufficient" },
@@ -119,7 +119,7 @@ export function SettingsPage({
           </p>
         </div>
       </header>
-      <section className="settings-overview" aria-label="设置快照">
+      <section className="settings-overview" aria-label="设置概览">
         <Statistic
           title="模型连通"
           value={modelStatusLabel(data.model.status)}
@@ -200,7 +200,7 @@ export function SettingsPage({
               ))}
             </dl>
           ) : (
-            <p>执行运维统计未报告。</p>
+            <p>没有获取到执行运维统计。</p>
           )}
         </section>
       ) : null}

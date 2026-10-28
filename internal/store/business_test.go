@@ -725,7 +725,7 @@ func TestRemediationCannotCloseOnSameOrUncomparableAttempt(t *testing.T) {
 	if firstVerifyErr == nil {
 		t.Fatal("the original attempt closed its own remediation")
 	}
-	assertConflict(firstVerifyErr, "新终态审查尝试")
+	assertConflict(firstVerifyErr, "已完成或部分完成的新审查执行记录")
 	detail, err := st.GetCase(admin, caseID)
 	if err != nil {
 		t.Fatal(err)
@@ -768,7 +768,7 @@ func TestRemediationCannotCloseOnSameOrUncomparableAttempt(t *testing.T) {
 	if secondVerifyErr == nil {
 		t.Fatal("an attempt without comparable authority evidence closed the remediation")
 	}
-	assertConflict(secondVerifyErr, "RulePack 能力")
+	assertConflict(secondVerifyErr, "规则包检查项目")
 	detail, err = st.GetCase(admin, caseID)
 	if err != nil {
 		t.Fatal(err)

@@ -468,14 +468,14 @@ describe("HomePage snapshot consumers", () => {
       ).toHaveTextContent(visible === 0 ? "0案件" : "—状态未报");
       expect(
         within(screen.getByRole("region", { name: "审查发现分布" })).getByText(
-          "快照没有返回此项统计。",
+          "没有获取到这项统计数据。",
         ),
       ).toBeInTheDocument();
       expect(within(taskPanel()).getByRole("status")).toHaveTextContent(
         "当前身份没有未完成的分派任务。",
       );
-      expect(screen.getByText("快照没有返回整改记录。")).toBeInTheDocument();
-      expect(screen.getByText("快照没有返回审计事件。")).toBeInTheDocument();
+      expect(screen.getByText("没有获取到整改记录。")).toBeInTheDocument();
+      expect(screen.getByText("没有获取到审计记录。")).toBeInTheDocument();
       if (visible === 0)
         expect(screen.queryByRole("table")).not.toBeInTheDocument();
       else expect(screen.getByRole("table")).toBeInTheDocument();
@@ -498,7 +498,7 @@ describe("HomePage snapshot consumers", () => {
     service.snapshotGate = Promise.withResolvers<void>();
     service.snapshotFailures.push(503);
     const { user } = open(service);
-    expect(screen.getByRole("status")).toHaveTextContent("正在加载工作台快照");
+    expect(screen.getByRole("status")).toHaveTextContent("正在加载工作台");
     service.snapshotGate.resolve();
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "快照服务暂不可用",
@@ -535,7 +535,7 @@ describe("HomePage persistent task workflow", () => {
         .map((item) => within(item).getByRole("link").textContent),
     ).toEqual(["其他人的审查", "确认质保条款", "补充附件"]);
     expect(
-      panel.getByText("专线采购合同，陈复核，人工决定"),
+      panel.getByText("专线采购合同，陈复核，审查判断"),
     ).toBeInTheDocument();
     expect(panel.getByText("中优先级")).toBeInTheDocument();
     await user.click(panel.getByRole("tab", { name: /^已完成/ }));
@@ -771,7 +771,7 @@ describe("HomePage persistent task workflow", () => {
       "/cases/unlisted-case",
     );
     expect(
-      screen.getAllByText("unlisted-case，unlisted-member，人工决定"),
+      screen.getAllByText("unlisted-case，unlisted-member，审查判断"),
     ).toHaveLength(8);
     expect(
       screen.queryByRole("link", { name: "协作事项 8" }),

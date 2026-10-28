@@ -30,13 +30,13 @@ export function RunProvenance({ workspace, showDiagnostics = false }: { workspac
                     <dd>{snapshot.playbook_hash || "未返回"}</dd>
                     <dt>比较器</dt>
                     <dd>{snapshot.comparator_ref ?? "未返回"}</dd>
-                    <dt>快照中的模型</dt>
-                    <dd>{snapshot.model_ref ?? "未使用模型"}</dd>
+                    <dt>本次审查配置的模型</dt>
+                    <dd>{snapshot.model_ref || "未记录"}</dd>
                   </dl>
                 ) : snapshot ? (
                   <p>请核对本次审查的材料与引用。</p>
                 ) : (
-                  <p>服务未返回运行快照。</p>
+                  <p>未获取到本次审查的材料和规则记录。</p>
                 )}
                 <p className="meta">
                   材料与引用以本次审查记录为准。
@@ -92,7 +92,7 @@ export function RunProvenance({ workspace, showDiagnostics = false }: { workspac
                     查看上一轮审查
                   </Link>
                   <p className="meta">
-                    对照依据是规则约束与已验证引用。旧决定供参考，不会自动应用到本轮。
+                    对照使用规则要求和已核对的原文。之前的判断仅供参考，不会自动用于本次审查。
                   </p>
                   {workspace.revision_comparison_reason ? (
                     <p className="callout">

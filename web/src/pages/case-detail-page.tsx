@@ -269,7 +269,7 @@ export function CaseDetailPage() {
       ) : null}
       {item.revision_pending ? (
         <p className="callout">
-          材料版本已更新。开始复审会建立新运行，保留旧运行和人工决定。
+          材料已更新。开始复审会创建新的审查记录，之前的审查和人工判断都会保留。
         </p>
       ) : null}
       {item.configuration_pending ? (

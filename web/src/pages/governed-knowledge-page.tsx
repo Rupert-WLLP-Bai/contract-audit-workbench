@@ -128,7 +128,7 @@ export function GovernedKnowledgeCreatePage() {
   }
   return <section className="page page-rulepack-form">
     <nav className="page-back" aria-label="知识治理导航"><Link to={fromId ? detailPath(fromId, fromVersion) : root}>返回</Link></nav>
-    <header className="page-head"><div><h1>{fromId ? "编辑并创建新版本" : "创建知识草稿"}</h1><p>{fromId ? "原版本保持不可变。填写新版本号并审阅内容，保存后创建独立草稿。" : "填写内容、适用范围、来源与规则依据。保存只创建草稿。"}</p></div></header>
+    <header className="page-head"><div><h1>{fromId ? "编辑并创建新版本" : "创建知识草稿"}</h1><p>{fromId ? "原版本会保留。填写新版本号并审阅内容，保存后会创建一份独立草稿。" : "填写内容、适用范围、来源与规则依据。保存只创建草稿。"}</p></div></header>
     <form className="workflow-form rulepack-form" noValidate onSubmit={(event) => void submit(event)}>
       {(issues.length > 0 || error != null) && <div tabIndex={-1} ref={summaryRef} role="alert"><h2>请检查以下内容</h2>{issues.length > 0 && <ul>{issues.map((issue, index) => <li key={`${issue.id}-${index}`}><a href={`#${issue.id}`}>{issue.message}</a></li>)}</ul>}<ServerError error={error} /></div>}
       <KnowledgeEditor value={draft} onChange={setDraft} issues={issues} lockedIdentity={Boolean(fromId)} disabled={create.isPending} />
@@ -140,11 +140,11 @@ export function GovernedKnowledgeCreatePage() {
 function Preview({ preview }: { preview: PolicyPreview }) {
   return <section className="rulepack-editor-section" aria-labelledby="knowledge-preview-heading">
     <h2 id="knowledge-preview-heading">政策与结构化规则差异</h2>
-    <p>{preview.approvable ? "服务端预览：当前规则绑定和可提取阈值通过检查。" : "服务端预览：当前内容尚未通过规则绑定或阈值检查。"} 此结果不代替人工语义审阅或批准。</p>
+    <p>{preview.approvable ? "预览：规则关联和可以提取的数值已通过检查。" : "预览：规则关联或数值尚未通过检查。"} 这不代表内容已经人工审核或批准。</p>
     <p className="meta">提取器：{preview.extractor_ref}</p>
     {preview.comparisons.length === 0 ? <p>没有返回规则比较项。</p> : <ul>{preview.comparisons.map((item, index) => <li key={`${item.rule_id}-${index}`}><strong>{item.rule_id} · {comparisonLabels[item.status] ?? item.status}</strong><div>比较类型：{item.comparator}</div><div>政策原文：{item.candidate ? `${item.candidate.quote}（${item.candidate.value} ${item.candidate.unit}${item.candidate.basis ? `，${item.candidate.basis}` : ""}；位置 ${item.candidate.start}–${item.candidate.end}）` : "未提取到候选"}</div><div>规则阈值：{item.rule_threshold.value} {item.rule_threshold.unit}{item.rule_threshold.basis ? `，${item.rule_threshold.basis}` : ""}</div>{item.reason && <div>原因：{item.reason}</div>}</li>)}</ul>}
     {preview.issues.length > 0 && <><h3>提取或绑定问题</h3><ul>{preview.issues.map((item, index) => <li key={index}>{item.reason}{item.quote && `：${item.quote}（${item.start}–${item.end}）`}</li>)}</ul></>}
-    {preview.semantic_only.length > 0 && <><h3>仍需人工语义审阅</h3><ul>{preview.semantic_only.map((item, index) => <li key={index}>{item.quote}（{item.start}–{item.end}）：{item.reason}</li>)}</ul></>}
+    {preview.semantic_only.length > 0 && <><h3>仍需人工核对含义</h3><ul>{preview.semantic_only.map((item, index) => <li key={index}>{item.quote}（{item.start}–{item.end}）：{item.reason}</li>)}</ul></>}
   </section>;
 }
 function actionFor(version: KnowledgeVersion): KnowledgeAction | null {
@@ -235,7 +235,7 @@ function GovernedKnowledgeDetail() {
       <h2 id="knowledge-action-heading">治理操作</h2><p>操作基于当前内容摘要、修订和生效指针修订；权限、依赖和最终状态由服务端核验。</p>
       {success && <p role="status">{success}</p>}
       {actionError != null && <div tabIndex={-1} ref={errorRef}><ServerError error={actionError} />{isConflict(actionError) && <p>服务端记录已变化，请检查重新读取的版本后再操作。</p>}</div>}
-      {replay ? <><p>上次请求的结果尚未确认。请重试同一请求，以使用原幂等键查询结果。</p><Button htmlType="button" loading={command.isPending} onClick={() => void run(replay)}>重试{display(replay.command.action)}</Button></> : action ? <form onSubmit={submit}>
+      {replay ? <><p>上次请求的结果尚未确认。请重试，系统会使用原请求标识查询结果。</p><Button htmlType="button" loading={command.isPending} onClick={() => void run(replay)}>重试{display(replay.command.action)}</Button></> : action ? <form onSubmit={submit}>
         <label className="field" htmlFor="knowledge-action-reason">{display(action)}依据<Input.TextArea id="knowledge-action-reason" value={reason} rows={3} maxLength={2000} onChange={(event) => setReason(event.target.value)} /></label>
         {crossCaseApproval && <Checkbox checked={crossCaseReviewed} onChange={(event) => setCrossCaseReviewed(event.target.checked)}>我已审阅跨案适用性并去除来源案件敏感内容</Checkbox>}
         <div className="dialog-actions"><Button type="primary" htmlType="submit" loading={command.isPending} disabled={detail.isFetching}>{display(action)}</Button></div>

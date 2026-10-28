@@ -278,8 +278,8 @@ describe("补充材料请求", () => {
     } });
     await screen.findByText("已提交，待复核");
     await chooseActiveOption(user, screen.getByRole("combobox", { name: "选择提交回执" }), /补充合同.txt/);
-    await chooseActiveOption(user, screen.getByRole("combobox", { name: "选择冻结材料" }), /补充合同.txt/);
-    const original = screen.getByLabelText("冻结原文") as HTMLTextAreaElement;
+    await chooseActiveOption(user, screen.getByRole("combobox", { name: "选择本次审查材料" }), /补充合同.txt/);
+    const original = screen.getByLabelText("本次审查使用的原文") as HTMLTextAreaElement;
     await user.click(original);
     original.setSelectionRange(2, 8);
     fireEvent.select(original);
@@ -312,8 +312,8 @@ describe("补充材料请求", () => {
     } });
     await screen.findByText(/没有唯一匹配且达到请求条件/);
     await chooseActiveOption(user, screen.getByRole("combobox", { name: "选择提交回执" }), /补充合同.txt/);
-    await chooseActiveOption(user, screen.getByRole("combobox", { name: "选择冻结材料" }), /补充合同.txt/);
-    const original = screen.getByLabelText("冻结原文") as HTMLTextAreaElement;
+    await chooseActiveOption(user, screen.getByRole("combobox", { name: "选择本次审查材料" }), /补充合同.txt/);
+    const original = screen.getByLabelText("本次审查使用的原文") as HTMLTextAreaElement;
     await user.click(original);
     original.setSelectionRange(2, 8);
     fireEvent.select(original);
@@ -353,8 +353,8 @@ describe("补充材料请求", () => {
     });
     await screen.findByText("已提交，待复核");
     await chooseActiveOption(user, screen.getByRole("combobox", { name: "选择提交回执" }), /补充合同.txt/);
-    await chooseActiveOption(user, screen.getByRole("combobox", { name: "选择冻结材料" }), /补充合同.txt/);
-    const original = screen.getByLabelText("冻结原文") as HTMLTextAreaElement;
+    await chooseActiveOption(user, screen.getByRole("combobox", { name: "选择本次审查材料" }), /补充合同.txt/);
+    const original = screen.getByLabelText("本次审查使用的原文") as HTMLTextAreaElement;
     await user.click(original);
     original.setSelectionRange(2, 8);
     fireEvent.select(original);

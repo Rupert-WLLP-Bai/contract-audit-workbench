@@ -112,7 +112,7 @@ func revalidateGovernedAttemptTx(ctx context.Context, tx pgx.Tx, runID, attemptI
 	}
 	if len(raw) == 0 {
 		if isCloudServicesCase(item) {
-			return fault.Conflict("云服务尝试缺少治理制度冻结快照")
+			return fault.Conflict("云服务审查缺少本次执行保存的制度记录")
 		}
 		return nil
 	}

@@ -134,20 +134,20 @@ func validateExperienceFeedbackInput(input *ExperienceFeedbackInput) error {
 	if !experienceIdentity(input.CaseID) || !experienceIdentity(input.RunID) || !experienceIdentity(input.AttemptID) ||
 		!experienceIdentity(input.FindingID) || !experienceIdentity(input.DecisionID) ||
 		!experienceIdentity(input.IdempotencyKey) || len(input.IdempotencyKey) > 80 {
-		return fault.Invalid("反馈缺少有效的来源身份或幂等键")
+		return fault.Invalid("反馈缺少有效的来源编号或请求标识")
 	}
 	input.Reason = strings.TrimSpace(input.Reason)
 	if runeCount(input.Reason) < 2 || runeCount(input.Reason) > 1000 || len(input.EvidenceRefs) == 0 || len(input.EvidenceRefs) > 32 {
-		return fault.Invalid("反馈需要纠正理由和冻结来源证据")
+		return fault.Invalid("反馈需要填写纠正理由，并选择本次审查使用的原文作为证据")
 	}
 	for _, ref := range input.EvidenceRefs {
 		if !experienceIdentity(ref.DocumentID) || !experienceIdentity(ref.ParsedDocumentID) ||
 			ref.Quote == "" || runeCount(ref.Quote) > 4096 || ref.Start < 0 || ref.End <= ref.Start {
-			return fault.Invalid("反馈证据定位不完整")
+			return fault.Invalid("反馈证据的原文位置不完整")
 		}
 		if ref.NormalizedDigest != "" {
 			if _, err := docversion.ParseDigest(ref.NormalizedDigest); err != nil {
-				return fault.Invalid("反馈证据摘要无效")
+				return fault.Invalid("反馈证据的摘要无效")
 			}
 		}
 	}
@@ -267,7 +267,7 @@ func (s *Store) SubmitExperienceFeedback(ctx context.Context, user accounts.User
 		WHERE tenant_id=$1 AND applicant_id=$2 AND idempotency_key=$3`, caseItem.TenantID, current.ID, input.IdempotencyKey))
 	if err == nil {
 		if stored.CaseID != caseItem.ID || existingHash != requestHash {
-			return ExperienceFeedback{}, fault.Conflict("这个幂等键已经用于另一条反馈")
+			return ExperienceFeedback{}, fault.Conflict("这个请求标识已用于另一条反馈")
 		}
 		if !authorizeCase(caseItem, current, access.Read) || !authorizeCase(caseItem, current, access.Decide) {
 			return ExperienceFeedback{}, fault.NotFound("没有找到对应记录")
@@ -298,7 +298,7 @@ func (s *Store) SubmitExperienceFeedback(ctx context.Context, user accounts.User
 		return ExperienceFeedback{}, err
 	}
 	if expected, ok := decisionActions[action]; !ok || expected != disposition {
-		return ExperienceFeedback{}, fault.Conflict("来源人工决定的类型和状态不一致")
+		return ExperienceFeedback{}, fault.Conflict("来源审查判断的类型和状态不一致")
 	}
 	var frozen []FrozenDocument
 	if err := json.Unmarshal([]byte(frozenJSON), &frozen); err != nil {
@@ -336,7 +336,7 @@ func (s *Store) SubmitExperienceFeedback(ctx context.Context, user accounts.User
 		stored, existingHash, err = scanExperienceFeedback(tx.QueryRow(ctx, `SELECT `+feedbackSelectColumns+` FROM experience_feedback
 			WHERE tenant_id=$1 AND applicant_id=$2 AND idempotency_key=$3`, caseItem.TenantID, current.ID, input.IdempotencyKey))
 		if err == nil && (stored.CaseID != caseItem.ID || existingHash != requestHash) {
-			return ExperienceFeedback{}, fault.Conflict("这个幂等键已经用于另一条反馈")
+			return ExperienceFeedback{}, fault.Conflict("这个请求标识已用于另一条反馈")
 		}
 	}
 	if err != nil {
@@ -374,7 +374,9 @@ func (s *Store) GetExperienceFeedback(ctx context.Context, user accounts.User, c
 }
 
 func verifyFeedbackEvidence(ctx context.Context, tx pgx.Tx, item Case, runID, attemptID string, frozen []FrozenDocument, ref ExperienceEvidenceRef) error {
-	invalid := func() error { return fault.Invalid("反馈证据不属于该尝试的可定位冻结原文") }
+	invalid := func() error {
+		return fault.Invalid("所选证据与本次审查使用的原文不匹配，或无法在原文中找到")
+	}
 	var source *FrozenDocument
 	for i := range frozen {
 		if frozen[i].Document.ID == ref.DocumentID {
@@ -514,7 +516,7 @@ func (candidate ExperienceCandidate) ApprovalReady(now time.Time) error {
 		!experienceIdentity(candidate.CandidateID) || !experienceIdentity(candidate.JobID) ||
 		!experienceIdentity(candidate.ModelRef) || !experienceIdentity(candidate.TemplateRef) || candidate.Generation <= 0 ||
 		candidate.ContentSHA256 != candidate.ResultSHA256 {
-		return fault.Invalid("经验候选缺少完整的来源和提炼任务身份")
+		return fault.Invalid("经验候选缺少完整的来源编号或提炼任务编号")
 	}
 	for _, digest := range []string{candidate.VersionID, candidate.ContentSHA256, candidate.InputSHA256, candidate.ResultSHA256} {
 		if _, err := docversion.ParseDigest(digest); err != nil {
@@ -539,7 +541,7 @@ func (candidate ExperienceCandidate) ApprovalReady(now time.Time) error {
 			return fault.Invalid("经验候选缺少精确政策版本")
 		}
 		if _, err := docversion.ParseDigest(ref.VersionID); err != nil {
-			return fault.Invalid("经验候选政策版本身份无效")
+			return fault.Invalid("经验候选引用的制度版本编号无效")
 		}
 		if _, err := docversion.ParseDigest(ref.ContentSHA256); err != nil {
 			return fault.Invalid("经验候选政策摘要无效")
@@ -681,7 +683,7 @@ func (s *Store) AcceptExperienceCandidate(ctx context.Context, user accounts.Use
 		return ExperienceCandidate{}, fault.Forbidden("当前服务不能接纳经验候选")
 	}
 	if !experienceIdentity(feedbackID) || !experienceIdentity(jobID) || generation <= 0 {
-		return ExperienceCandidate{}, fault.Invalid("提炼结果身份不完整")
+		return ExperienceCandidate{}, fault.Invalid("经验提炼结果的编号不完整")
 	}
 	if _, err := docversion.ParseDigest(inputSHA256); err != nil {
 		return ExperienceCandidate{}, fault.Invalid("提炼输入摘要无效")

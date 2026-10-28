@@ -294,10 +294,10 @@ describe("AgentReview Inspector", () => {
       </MemoryRouter>,
     );
     expect(
-      screen.getByText(/从冻结材料抽取审批或授权原文/),
+      screen.getByText(/从本次审查使用的材料中提取审批或授权原文/),
     ).toBeInTheDocument();
     expect(
-      screen.getByText(/当前界面没有此能力的支持说明/),
+      screen.getByText(/当前没有这一检查项目的说明/),
     ).toBeInTheDocument();
     const nextStepLinks = screen.getAllByRole("link", {
       name: "查看案件材料并补证后新建审查",
@@ -327,7 +327,7 @@ describe("AgentReview Inspector", () => {
       screen.getByRole("region", { name: "范围、支持表达与证据覆盖" }),
     );
     expect(scope.getByText("approval_validity")).toBeInTheDocument();
-    expect(scope.getByText(/不使用当前日期补值/)).toBeInTheDocument();
+    expect(scope.getByText(/不能用当前日期代替/)).toBeInTheDocument();
     expect(
       scope.getByText(/原因：approval_period_dates_unverified/),
     ).toBeInTheDocument();
@@ -513,7 +513,7 @@ describe("AgentReview Inspector", () => {
       </MemoryRouter>,
     );
     expect(
-      screen.getByText(/attempt ID 与当前执行快照不一致/),
+      screen.getByText(/检查记录所属的执行编号与当前选择的执行记录不一致/),
     ).toBeInTheDocument();
     expect(screen.queryByText(/规划器模式/)).not.toBeInTheDocument();
   });

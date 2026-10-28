@@ -28,7 +28,7 @@ import type {
 
 function invalid(message: string): never {
   throw new ApiError(
-    `工作台快照无效：${message}`,
+    `工作台数据无效：${message}`,
     500,
     "invalid_response",
     false,

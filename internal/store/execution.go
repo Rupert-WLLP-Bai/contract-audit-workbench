@@ -74,14 +74,14 @@ func (s *Store) startReviewAsync(ctx context.Context, user accounts.User, caseID
 	}
 	attempt, ok := st.latestAttempt(runID)
 	if !ok {
-		return JobAcceptance{}, fault.Conflict("审查任务缺少执行尝试")
+		return JobAcceptance{}, fault.Conflict("审查任务缺少执行记录")
 	}
 	for _, job := range st.Jobs {
 		if job.AttemptID == attempt.ID {
 			return JobAcceptance{RunID: runID, AttemptID: attempt.ID, JobID: job.ID}, nil
 		}
 	}
-	return JobAcceptance{}, fault.Conflict("审查任务没有持久队列记录")
+	return JobAcceptance{}, fault.Conflict("审查任务没有保存到任务队列")
 }
 
 func (s *Store) startReview(ctx context.Context, user accounts.User, caseID, businessAt string, durable bool) (string, error) {
@@ -137,14 +137,14 @@ func (s *Store) startReview(ctx context.Context, user accounts.User, caseID, bus
 		return "", err
 	}
 	if !parsedSelectionCurrent(seen, frozenDocs) {
-		return "", fault.Conflict("材料解析选择刚被更新，请重新发起审查")
+		return "", fault.Conflict("所选的材料解析版本刚被更新，请重新发起审查")
 	}
 	seen, err = s.snapshotAs(user)
 	if err != nil {
 		return "", err
 	}
 	if !sameDocumentSet(documentIDs(currentDocuments(seen.documents(caseID))), reviewDocumentIDs) || !parsedSelectionCurrent(seen, frozenDocs) {
-		return "", fault.Conflict("材料解析选择刚被更新，请重新发起审查")
+		return "", fault.Conflict("所选的材料解析版本刚被更新，请重新发起审查")
 	}
 	caseItem, ok := seen.caseByID(caseID)
 	if !ok {
@@ -227,7 +227,7 @@ func (s *Store) startReview(ctx context.Context, user accounts.User, caseID, bus
 			return err
 		}
 		if knowledge.RulePack != rulePackRef(selected) {
-			return fault.Conflict("治理制度与规则包身份不一致")
+			return fault.Conflict("适用制度与规则包的记录不一致")
 		}
 		activePack = selected
 		signature = s.currentSignatureWithRulePack(reviewDocumentIDs, frozenDocs, selected, telecomCompilerRefForCase(lockedCase), plannerConfiguration.ConfigurationID, plannerPayload)
@@ -246,7 +246,7 @@ func (s *Store) startReview(ctx context.Context, user accounts.User, caseID, bus
 		}
 		executionCase = *currentCase
 		if !sameDocumentSet(documentIDs(currentDocuments(st.documents(caseID))), reviewDocumentIDs) || !parsedSelectionCurrent(*st, frozenDocs) {
-			return fault.Conflict("材料解析选择刚被更新，请重新发起审查")
+			return fault.Conflict("所选的材料解析版本刚被更新，请重新发起审查")
 		}
 		if run, ok := st.latestRun(caseID); ok {
 			previous := st.snapshotOf(run.ID)
@@ -353,14 +353,14 @@ func (s *Store) RetryAsync(ctx context.Context, user accounts.User, caseID, runI
 	}
 	attempt, ok := st.latestAttempt(runID)
 	if !ok {
-		return JobAcceptance{}, fault.Conflict("重试任务缺少执行尝试")
+		return JobAcceptance{}, fault.Conflict("重试任务缺少执行记录")
 	}
 	for _, job := range st.Jobs {
 		if job.AttemptID == attempt.ID {
 			return JobAcceptance{RunID: runID, AttemptID: attempt.ID, JobID: job.ID}, nil
 		}
 	}
-	return JobAcceptance{}, fault.Conflict("重试任务没有持久队列记录")
+	return JobAcceptance{}, fault.Conflict("重试任务没有保存到任务队列")
 }
 
 func (s *Store) retry(ctx context.Context, user accounts.User, caseID, runID string, durable bool) error {
@@ -396,7 +396,7 @@ func (s *Store) retry(ctx context.Context, user accounts.User, caseID, runID str
 	frozen := seen.snapshotOf(runID)
 	currentSignature := withFrozenGovernance(currentSignatureFor(frozen.DocumentIDs, nil, s.models, telecomCompilerRefForCase(caseItem)), frozen)
 	if !sameRunConfiguration(frozen, currentSignature) || !sameRunCompilerIdentity(frozen, currentSignature) {
-		return fault.Conflict("规则或模型配置已变更，请发起新的审查以保留原运行快照")
+		return fault.Conflict("规则或模型配置已变更，请发起新的审查。原审查记录会保留")
 	}
 	reserved := false
 	jobID, outboxID := "", ""
@@ -435,11 +435,11 @@ func (s *Store) retry(ctx context.Context, user accounts.User, caseID, runID str
 		currentSignature := withFrozenGovernance(currentSignatureFor(frozen.DocumentIDs, nil, s.models, telecomCompilerRefForCase(*currentCase)), frozen)
 		if !sameRunSignature(st.snapshotOf(runID), frozen) || !sameRunConfiguration(frozen, currentSignature) ||
 			!sameRunCompilerIdentity(frozen, currentSignature) {
-			return fault.Conflict("规则或模型配置已变更，请发起新的审查以保留原运行快照")
+			return fault.Conflict("规则或模型配置已变更，请发起新的审查。原审查记录会保留")
 		}
 		if frozen.GovernedKnowledge == nil {
 			if isCloudServicesCase(*currentCase) || (isGovernedReviewCase(*currentCase) && frozen.RulePackID != "") {
-				return fault.Conflict("历史治理运行缺少制度冻结快照，不能安全重试")
+				return fault.Conflict("较早的审查缺少当时保存的制度记录，无法安全重试")
 			}
 		} else {
 			if err := RevalidateGovernedKnowledgeSnapshotTx(ctx, retryTx, user, caseID, *frozen.GovernedKnowledge); err != nil {
@@ -453,7 +453,7 @@ func (s *Store) retry(ctx context.Context, user accounts.User, caseID, runID str
 		}
 		last, ok := st.latestAttempt(runID)
 		if !ok {
-			return fault.Conflict("历史运行没有冻结输入，不能安全重试；请发起新的审查")
+			return fault.Conflict("较早的审查没有保存当时使用的输入，无法安全重试；请发起新的审查")
 		}
 		if attemptActive(last.State) {
 			return nil
@@ -462,14 +462,14 @@ func (s *Store) retry(ctx context.Context, user accounts.User, caseID, runID str
 		if !ok || last.HistoryKind != "frozen" || !frozenInputMatchesSnapshot(frozen, frozenInput.Documents) ||
 			!attemptSelectionsMatchFrozen(st.parseSelectionsForAttempt(last.ID), frozenInput.Documents) ||
 			!s.currentParserConfigurationMatches(*st, frozenInput.Documents) {
-			return fault.Conflict("运行冻结输入刚被更新，不能安全重试")
+			return fault.Conflict("本次审查保存的输入刚发生变化，无法安全重试")
 		}
 		if err := s.verifyFrozenDocuments(*st, frozenInput.Documents); err != nil {
-			return fault.Conflict("冻结输入完整性校验失败，不能安全重试")
+			return fault.Conflict("本次审查保存的输入未通过完整性校验，无法安全重试")
 		}
 		expectedHash, err := frozenInputHash(frozen, frozenInput.Documents)
 		if err != nil || expectedHash != frozenInput.InputHash || last.InputHash == nil || *last.InputHash != frozenInput.InputHash {
-			return fault.Conflict("冻结输入摘要校验失败，不能安全重试")
+			return fault.Conflict("本次审查保存的输入摘要未通过校验，无法安全重试")
 		}
 		if !durable {
 			if !s.reserveExecution() {
@@ -687,7 +687,7 @@ func (s *Store) cancelAttemptInState(st *state, user accounts.User, caseID, runI
 
 func (s *Store) OperationalMetadata(user accounts.User) (map[string]any, error) {
 	if user.Role != "admin" {
-		return nil, fault.Forbidden("只有管理员可以查看运行运维元数据")
+		return nil, fault.Forbidden("只有管理员可以查看审查运行的运维信息")
 	}
 	st := s.snapshot()
 	counts := map[string]any{

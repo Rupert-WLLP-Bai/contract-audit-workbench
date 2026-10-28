@@ -735,7 +735,7 @@ describe("workbench tasks", () => {
     expectField("案件负责人", "管理员乙");
 
     await category(user, "审查任务", "我发起的");
-    expect(screen.getByRole("status")).toHaveTextContent("服务端创建人 ID");
+    expect(screen.getByRole("status")).toHaveTextContent("由当前用户创建的任务");
     expect(
       rows.getByRole("button", { name: /我创建的复核/ }),
     ).toBeInTheDocument();
@@ -764,7 +764,7 @@ describe("workbench tasks", () => {
     service.snapshot.tasks = [];
     const { user } = open("tasks", service);
     const rows = await list("审查任务");
-    expect(rows.getByText("快照没有返回记录。")).toBeInTheDocument();
+    expect(rows.getByText("没有获取到记录。")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "分派任务" }));
     expect(screen.getByRole("button", { name: "保存任务" })).toBeDisabled();
     await chooseOption(user, screen.getByLabelText("关联案件"), "专线采购案件");
@@ -952,10 +952,10 @@ describe("workbench tasks", () => {
     ).toHaveAttribute("href", "/cases/case-missing");
     await detailTab(user, "处理记录");
     expect(
-      details().getByText("快照没有返回相关案件的业务审计事件。"),
+      details().getByText("没有获取到相关案件的业务审计记录。"),
     ).toBeInTheDocument();
     await detailTab(user, "关联材料");
-    expect(details().getByText("案件快照没有返回材料。")).toBeInTheDocument();
+    expect(details().getByText("没有获取到案件材料。")).toBeInTheDocument();
     expect(details().getAllByRole("link")).toHaveLength(1);
     await detailTab(user, "协作成员");
     expectField("当前责任人", "former-assignee");
@@ -1190,7 +1190,7 @@ describe("workbench knowledge", () => {
     expectField("版本", "2.0.0");
     await category(user, "知识库", "检索测试");
     expect(
-      rows.getByText("输入检索词，按当前快照搜索已保存的制度标题与正文。"),
+      rows.getByText("输入关键词，搜索当前工作台中已保存的制度标题与正文。"),
     ).toBeInTheDocument();
     expect(details().queryByRole("heading")).not.toBeInTheDocument();
     await user.type(screen.getByRole("searchbox"), "  special-clause  ");
@@ -1203,7 +1203,7 @@ describe("workbench knowledge", () => {
     await detailTab(user, "适用范围");
     await waitFor(() => expectField("来源类型", "synthetic_policy"));
     expect(
-      details().getByText("快照没有返回额外适用范围字段。"),
+      details().getByText("没有获取到其他适用范围信息。"),
     ).toBeInTheDocument();
     await user.clear(screen.getByRole("searchbox"));
     await category(user, "知识库", "文档库");
@@ -1418,11 +1418,11 @@ describe("workbench remediation and frozen artifacts", () => {
     expectField("最近理由", "未报告");
     await detailTab(user, "材料与版本");
     expect(
-      details().getByText("整改记录未关联快照中的材料。"),
+      details().getByText("整改记录没有关联工作台中显示的材料。"),
     ).toBeInTheDocument();
     await detailTab(user, "操作历史");
     expect(
-      details().getByText("快照没有返回相关案件的审计历史。"),
+      details().getByText("没有获取到相关案件的审计历史。"),
     ).toBeInTheDocument();
   });
 
@@ -1435,7 +1435,7 @@ describe("workbench remediation and frozen artifacts", () => {
     expect(details().getByText("审查报告 v2")).toBeInTheDocument();
     expectField("案件", "专线采购案件");
     expectField("报告版本", "2");
-    const frozen = details().getByRole("link", { name: "打开冻结报告" });
+    const frozen = details().getByRole("link", { name: "打开报告" });
     expect(frozen).toHaveAttribute(
       "href",
       "/api/cases/case%2Falpha/reports/report%2Ffrozen-2?format=html",
@@ -1443,18 +1443,18 @@ describe("workbench remediation and frozen artifacts", () => {
     expect(frozen).toHaveAttribute("target", "_blank");
     expect(frozen).toHaveAttribute("rel", "noreferrer");
     expect(
-      details().getByRole("link", { name: "读取冻结 JSON" }),
+      details().getByRole("link", { name: "查看 JSON 报告" }),
     ).toHaveAttribute(
       "href",
       "/api/cases/case%2Falpha/reports/report%2Ffrozen-2?format=json",
     );
     await detailTab(user, "发现与决定");
-    expect(details().getByText(/冻结报告正文为准/)).toBeInTheDocument();
+    expect(details().getByText(/报告正文中的发现和审查判断/)).toBeInTheDocument();
     expect(details().queryByText("run/report-2")).not.toBeInTheDocument();
     expect(details().queryByText("attempt/report-2")).not.toBeInTheDocument();
     await detailTab(user, "版本与来源");
     expectField("报告版本", "2");
-    expectField("冻结状态", "已冻结");
+    expectField("报告状态", "已生成");
     for (const label of ["输入摘要", "输出摘要", "决定快照摘要", "报告摘要"]) {
       expect(details().queryByText(label)).not.toBeInTheDocument();
     }
@@ -1482,7 +1482,7 @@ describe("workbench remediation and frozen artifacts", () => {
     expect(details().queryByText("run-single")).not.toBeInTheDocument();
     expect(details().queryByText("attempt-single")).not.toBeInTheDocument();
     expect(
-      details().getByRole("link", { name: "读取冻结 HTML" }),
+      details().getByRole("link", { name: "查看 HTML 报告" }),
     ).toHaveAttribute(
       "href",
       "/api/cases/case-empty/reports/report-single?format=html",
@@ -1505,7 +1505,7 @@ describe("workbench remediation and frozen artifacts", () => {
       "_blank",
     );
     await category(user, "证据中心", "引用片段");
-    expect(screen.getByRole("status")).toHaveTextContent("指定 run/attempt");
+    expect(screen.getByRole("status")).toHaveTextContent("具体的审查和执行记录");
     await detailTab(user, "引用片段");
     expectField("解析产物", "parsed/source");
     expect(
@@ -1539,7 +1539,7 @@ describe("workbench remediation and frozen artifacts", () => {
     expectField("原件摘要", "replaced-original-sha256");
     expectField("解析来源原件摘要", "original-sha256");
     await selectRecord(user, /尚未解析.txt/);
-    expectField("校验结果", "未生成解析产物");
+    expectField("校验结果", "尚未生成解析结果");
     expectField("解析产物 ID", "未报告");
     expectField("归一化内容摘要", "未报告");
     await category(user, "证据中心", "证据材料");
@@ -1559,7 +1559,7 @@ describe("workbench remediation and frozen artifacts", () => {
     expectField("解析版本", "未报告");
     await detailTab(user, "使用记录");
     expect(
-      details().getByText("案件尚无快照所示的审查运行。"),
+      details().getByText("工作台没有返回该案件的审查记录。"),
     ).toBeInTheDocument();
     expect(
       details().queryByRole("link", { name: "打开最近审查" }),
@@ -1630,10 +1630,10 @@ describe("workbench execution and platform projections", () => {
     expect(details().queryByRole("link")).not.toBeInTheDocument();
     await category(user, "模型服务", "调用记录");
     await detailTab(user, "调用统计");
-    expectField("快照运行记录数", "2");
+    expectField("工作台返回的审查记录数", "2");
     expectField("有用量汇总的运行", "1");
     expectField("已报告调用总数", "7");
-    expect(details().getByText(/费用保持未知/)).toBeInTheDocument();
+    expect(details().getByText(/费用仍为未知/)).toBeInTheDocument();
     await category(user, "模型服务", "预算配置");
     await detailTab(user, "能力边界");
     expectField("聊天模型", "model/configured");
@@ -1681,13 +1681,13 @@ describe("workbench execution and platform projections", () => {
     await detailTab(user, "输入与输出");
     expectField("能力", "search、read");
     expect(
-      details().getByText("快照未包含单次调用的输入输出正文。"),
+      details().getByText("工作台没有提供单次调用的输入和输出正文。"),
     ).toBeInTheDocument();
     await category(user, "工具网关", "权限策略");
     await detailTab(user, "权限与预算");
     expectField("登记能力", "search、read");
     expect(
-      details().getByText("权限与预算不在公开工具快照中返回。"),
+      details().getByText("公开的工具信息不包含权限与预算。"),
     ).toBeInTheDocument();
     await category(user, "工具网关", "调用记录");
     await detailTab(user, "调用记录");
@@ -1714,14 +1714,14 @@ describe("workbench public directory, templates and audit", () => {
     expectField("组织 ID", "org-alpha");
     await category(user, "组织与权限", "角色权限");
     expect(screen.getByRole("status")).toHaveTextContent(
-      "资源授权仍由服务端逐次判断",
+      "系统仍会逐次检查权限",
     );
     await detailTab(user, "角色与权限");
     expectField("角色", "reviewer");
     expectField("组织", "org-alpha");
     await detailTab(user, "案件授权");
     expect(
-      details().getByText(/不能从当前用户的可见案件推断此身份的授权范围/),
+      details().getByText(/不能据此推断该成员有权查看哪些案件/),
     ).toBeInTheDocument();
     expect(details().queryByText("专线采购案件")).not.toBeInTheDocument();
     await detailTab(user, "活动记录");
@@ -1738,11 +1738,11 @@ describe("workbench public directory, templates and audit", () => {
     ).toHaveAttribute("href", "/workbench/audit");
     await selectRecord(user, /未活动成员/);
     expect(
-      details().getByText("快照没有返回关联到此身份的业务审计事件。"),
+      details().getByText("没有获取到与该成员关联的业务审计记录。"),
     ).toBeInTheDocument();
     expect(details().queryByRole("link")).not.toBeInTheDocument();
     await category(user, "组织与权限", "组织架构");
-    expect(screen.getByRole("status")).toHaveTextContent("没有上下级组织关系");
+    expect(screen.getByRole("status")).toHaveTextContent("不包含组织的上下级关系");
     await user.type(screen.getByRole("searchbox"), "org-beta");
     expect(rows.getAllByRole("button")).toHaveLength(2);
     expect(
@@ -1764,7 +1764,7 @@ describe("workbench public directory, templates and audit", () => {
     await category(user, "模板管理", "生成记录");
     await detailTab(user, "使用记录");
     expectField("当前身份可见案件", "2");
-    expect(details().getByText(/不包含模板级生成日志/)).toBeInTheDocument();
+    expect(details().getByText(/不包含按模板汇总的生成日志/)).toBeInTheDocument();
     expect(
       details().getByRole("link", { name: "打开案件中心查看生成记录" }),
     ).toHaveAttribute("href", "/cases");
@@ -1825,10 +1825,10 @@ describe("workbench public directory, templates and audit", () => {
     ).toHaveAttribute("href", "/cases/case-not-in-snapshot");
     await detailTab(user, "关联事件");
     expect(
-      details().getByText("快照没有返回该案件的其他审计事件。"),
+      details().getByText("没有获取到该案件的其他审计记录。"),
     ).toBeInTheDocument();
     await category(user, "审计日志", "操作日志");
-    expect(screen.getByRole("status")).toHaveTextContent("当前身份 actor_id");
+    expect(screen.getByRole("status")).toHaveTextContent("与当前用户有关的业务审计记录");
     expect(rows.getAllByRole("button")).toHaveLength(2);
     expect(
       rows.getByRole("button", { name: /task.created/ }),
@@ -1843,7 +1843,7 @@ describe("workbench public directory, templates and audit", () => {
     ).not.toBeInTheDocument();
     await category(user, "审计日志", "访问记录");
     expect(screen.getByRole("status")).toHaveTextContent(
-      "HTTP 访问日志不在工作台业务审计快照中",
+      "工作台的业务审计记录不包含 HTTP 访问日志",
     );
     expect(rows.queryByRole("button")).not.toBeInTheDocument();
     expect(details().queryByRole("heading")).not.toBeInTheDocument();
@@ -1900,7 +1900,7 @@ describe("workbench snapshot boundaries", () => {
       "没有读取工作台快照的权限",
     );
     expect(
-      screen.queryByRole("link", { name: "打开冻结报告" }),
+      screen.queryByRole("link", { name: "打开报告" }),
     ).not.toBeInTheDocument();
     expect(screen.queryByText("专线采购案件")).not.toBeInTheDocument();
     expect(screen.queryByRole("complementary")).not.toBeInTheDocument();
@@ -1914,7 +1914,7 @@ describe("workbench snapshot boundaries", () => {
     };
     const { user } = open("evidence", service);
     expect(await screen.findByRole("alert")).toHaveTextContent(
-      "工作台快照无效：解析产物不是对象",
+      "工作台数据无效：解析产物不是对象",
     );
     expect(
       screen.queryByRole("link", { name: "读取材料原件" }),
@@ -1929,14 +1929,14 @@ describe("workbench snapshot boundaries", () => {
     const { user, service } = open("reports");
     await list("报告中心");
     expect(
-      details().getByRole("link", { name: "打开冻结报告" }),
+      details().getByRole("link", { name: "打开报告" }),
     ).toBeInTheDocument();
     service.snapshot.reports = [];
-    await user.click(screen.getByRole("button", { name: "刷新快照" }));
+    await user.click(screen.getByRole("button", { name: "刷新数据" }));
     await waitFor(() =>
       expect(details().queryByRole("link")).not.toBeInTheDocument(),
     );
-    expect(screen.getByText("快照没有返回记录。")).toBeInTheDocument();
+    expect(screen.getByText("没有获取到记录。")).toBeInTheDocument();
     expect(
       details().getByText("选择一条记录查看服务端返回的详情。"),
     ).toBeInTheDocument();

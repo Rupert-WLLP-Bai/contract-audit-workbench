@@ -557,7 +557,7 @@ export function DocumentStage({
                 ) : null}
                 <h3>条款</h3>
                 {visibleClauses.length === 0 ? (
-                  <p className="meta">当前材料没有可定位的已保存条款。</p>
+                  <p className="meta">这份材料没有可在原文中找到的已保存条款。</p>
                 ) : null}
                 <ul className="clause-list">
                   {visibleClauses.map((clause) => (

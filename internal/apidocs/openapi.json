@@ -4,7 +4,7 @@
   "info": {
     "title": "合同智能审计工作台 · 当前 HTTP API",
     "version": "0.3.0",
-    "description": "本契约来自当前 Go HTTP 路由与序列化代码，包含会话、案件与成员、材料与模板、规则与云服务审查、人工决定、任务与关联、制度知识、工作台聚合、整改、冻结报告、归档及规则治理。JSON写请求有界、单对象并拒绝未知字段或尾随内容；权限、版本与Origin由服务器执行。文档请求面板使用实际契约和当前会话发送同源请求；未实现接口不列入paths。"
+    "description": "本接口文档对应当前 Go 服务，涵盖登录、案件与成员、材料、模板、审查、人工判断、任务、制度、整改、报告和规则管理。JSON 写入请求有大小限制，只接受一个对象，并拒绝未知字段和多余内容；服务器会检查权限、版本和 Origin。文档请求面板使用当前会话发送同源请求；尚未实现的接口不列入 paths。"
   },
   "servers": [
     {
@@ -31,7 +31,7 @@
     },
     {
       "name": "人工复核",
-      "description": "带版本与幂等语义的人工决定。"
+      "description": "记录审查人员的判断。提交时检查版本，并防止同一请求重复执行。"
     },
     {
       "name": "系统",
@@ -52,8 +52,8 @@
         "responses":{"200":{"description":"案件请求列表","content":{"application/json":{"schema":{"$ref":"#/components/schemas/EvidenceRequestList"}}}},"401":{"$ref":"#/components/responses/Error401"},"403":{"$ref":"#/components/responses/Error403"},"404":{"$ref":"#/components/responses/Error404"},"500":{"$ref":"#/components/responses/Error500"}}
       },
       "post": {
-        "operationId":"createEvidenceRequest","tags":["人工复核"],"summary":"从冻结缺口创建补充材料请求",
-        "description":"固定来源审查、尝试、缺口或规则结果和关联任务版本；source_evaluation_id 与 source_gap_id 必须且只能提供一个。规则结果来源的 verification_condition 为 compatible 或 conflict；缺口来源为 resolved。兼容结果本身不足以完成验证；当前规则结果若缺少能证明回执参与同一能力检查的权威关联，核验返回 409，请求仍为 received。case_id 提供时必须与路径一致。幂等键由请求头或正文提供，同时提供时必须一致。",
+        "operationId":"createEvidenceRequest","tags":["人工复核"],"summary":"根据待补充事项创建材料请求",
+        "description":"请求记录来源审查、执行、待补充事项或规则结果，以及关联任务的版本。source_evaluation_id 和 source_gap_id 必须且只能提供一个。来源是规则结果时，verification_condition 为 compatible 或 conflict；来源是待补充事项时为 resolved。结果为 compatible 本身不足以完成核验；如果无法证明回执参与了同一检查，核验返回 409，请求保持 received。提供 case_id 时必须与路径一致。幂等键可放在请求头或正文，同时提供时必须一致。",
         "parameters":[{"name":"caseID","in":"path","required":true,"schema":{"type":"string"}},{"name":"Idempotency-Key","in":"header","required":false,"schema":{"type":"string","maxLength":80}}],
         "requestBody":{"required":true,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/EvidenceRequestCreate"}}}},
         "responses":{"201":{"description":"已创建请求","content":{"application/json":{"schema":{"$ref":"#/components/schemas/EvidenceRequest"}}}},"401":{"$ref":"#/components/responses/Error401"},"403":{"$ref":"#/components/responses/Error403"},"404":{"$ref":"#/components/responses/Error404"},"409":{"$ref":"#/components/responses/Error409"},"413":{"$ref":"#/components/responses/Error413"},"422":{"$ref":"#/components/responses/Error422"},"500":{"$ref":"#/components/responses/Error500"},"503":{"$ref":"#/components/responses/Error503"}}
@@ -69,7 +69,7 @@
     "/api/cases/{caseID}/evidence-requests/{requestID}/history": {
       "get": {
         "operationId":"listEvidenceRequestHistory","tags":["人工复核"],"summary":"读取补充材料请求历史",
-        "description":"返回有序追加事件及其请求、回执快照；重新检查当前案件权限。",
+        "description":"按顺序返回操作记录，以及当时保存的请求和回执内容；每次读取都会重新检查案件权限。",
         "parameters":[{"name":"caseID","in":"path","required":true,"schema":{"type":"string"}},{"name":"requestID","in":"path","required":true,"schema":{"type":"string"}}],
         "responses":{"200":{"description":"事件历史","content":{"application/json":{"schema":{"$ref":"#/components/schemas/EvidenceRequestHistory"}}}},"401":{"$ref":"#/components/responses/Error401"},"403":{"$ref":"#/components/responses/Error403"},"404":{"$ref":"#/components/responses/Error404"},"500":{"$ref":"#/components/responses/Error500"}}
       }
@@ -77,16 +77,16 @@
     "/api/cases/{caseID}/evidence-requests/{requestID}/receipts": {
       "post": {
         "operationId":"submitEvidenceReceipt","tags":["人工复核"],"summary":"提交补充材料回执",
-        "description":"document_id 与 answer 必须且只能提供一个；版本与案件授权由服务器校验，提交不等于验证。可选正文 case_id 和 request_id 必须与路径一致，幂等键可由请求头或正文提供。",
+        "description":"document_id 和 answer 必须且只能提供一个。服务器检查版本和案件权限；提交材料不代表已经核验。正文中的 case_id 和 request_id 可以省略，提供时必须与路径一致；幂等键可由请求头或正文提供。",
         "parameters":[{"name":"caseID","in":"path","required":true,"schema":{"type":"string"}},{"name":"requestID","in":"path","required":true,"schema":{"type":"string"}},{"name":"Idempotency-Key","in":"header","required":false,"schema":{"type":"string","maxLength":80}}],
         "requestBody":{"required":true,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/EvidenceReceiptCreate"}}}},
-        "responses":{"201":{"description":"追加回执和更新后的请求","content":{"application/json":{"schema":{"$ref":"#/components/schemas/EvidenceReceiptResult"}}}},"401":{"$ref":"#/components/responses/Error401"},"403":{"$ref":"#/components/responses/Error403"},"404":{"$ref":"#/components/responses/Error404"},"409":{"$ref":"#/components/responses/Error409"},"413":{"$ref":"#/components/responses/Error413"},"422":{"$ref":"#/components/responses/Error422"},"500":{"$ref":"#/components/responses/Error500"},"503":{"$ref":"#/components/responses/Error503"}}
+        "responses":{"201":{"description":"已保存回执和更新后的请求","content":{"application/json":{"schema":{"$ref":"#/components/schemas/EvidenceReceiptResult"}}}},"401":{"$ref":"#/components/responses/Error401"},"403":{"$ref":"#/components/responses/Error403"},"404":{"$ref":"#/components/responses/Error404"},"409":{"$ref":"#/components/responses/Error409"},"413":{"$ref":"#/components/responses/Error413"},"422":{"$ref":"#/components/responses/Error422"},"500":{"$ref":"#/components/responses/Error500"},"503":{"$ref":"#/components/responses/Error503"}}
       }
     },
     "/api/cases/{caseID}/evidence-requests/{requestID}/receipts/{receiptID}/verify": {
       "post": {
         "operationId":"verifyEvidenceRequest","tags":["人工复核"],"summary":"人工验证补充材料回执",
-        "description":"必须引用回执之后完成的精确审查尝试、与原请求对应的规则结果或缺口及其冻结证据；evaluation_id 与 gap_id 必须且只能提供一个。结果须符合原验证条件且证明回执参与同一能力检查。compatible 结果本身不足以完成验证；缺少回执与检查之间的权威关联时返回 409，请求保持 received。证据不足或未知不视为验证。正文身份提供时必须与路径一致，幂等键可由请求头或正文提供。",
+        "description":"必须指定回执提交后完成的审查执行、与原请求对应的规则结果或待补充事项，以及该次审查保存的证据。evaluation_id 和 gap_id 必须且只能提供一个。检查结果必须满足原核验条件，并证明回执参与了同一检查。结果为 compatible 本身不足以完成核验；如果缺少回执与检查之间的有效关联，返回 409，请求保持 received。证据不足或结果未知不算核验通过。正文中的编号如有提供，必须与路径一致；幂等键可由请求头或正文提供。",
         "parameters":[{"name":"caseID","in":"path","required":true,"schema":{"type":"string"}},{"name":"requestID","in":"path","required":true,"schema":{"type":"string"}},{"name":"receiptID","in":"path","required":true,"schema":{"type":"string"}},{"name":"Idempotency-Key","in":"header","required":false,"schema":{"type":"string","maxLength":80}}],
         "requestBody":{"required":true,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/EvidenceRequestVerify"}}}},
         "responses":{"200":{"description":"已验证的请求","content":{"application/json":{"schema":{"$ref":"#/components/schemas/EvidenceRequest"}}}},"401":{"$ref":"#/components/responses/Error401"},"403":{"$ref":"#/components/responses/Error403"},"404":{"$ref":"#/components/responses/Error404"},"409":{"$ref":"#/components/responses/Error409"},"413":{"$ref":"#/components/responses/Error413"},"422":{"$ref":"#/components/responses/Error422"},"500":{"$ref":"#/components/responses/Error500"},"503":{"$ref":"#/components/responses/Error503"}}
@@ -97,7 +97,7 @@
         "operationId": "submitExperienceFeedback",
         "tags": ["人工复核"],
         "summary": "提交对人工决定的经验反馈",
-        "description": "使用 client 会话和当前案件权限。反馈引用精确的审查、尝试、发现、人工决定和冻结原文；它只追加建议，不修改决定或冻结快照。case_id 可省略，提供时必须与路径一致。幂等键可放在请求头或正文，二者同时提供时必须一致。",
+        "description": "使用 client 会话并检查当前案件权限。反馈需要指定审查、执行、发现、人工判断和该次审查使用的原文。提交只新增建议，不修改原判断或之前保存的审查记录。case_id 可以省略，提供时必须与路径一致。幂等键可放在请求头或正文，同时提供时必须一致。",
         "parameters": [
           {"name":"caseID","in":"path","required":true,"schema":{"type":"string"}},
           {"name":"Idempotency-Key","in":"header","required":false,"schema":{"type":"string","maxLength":80}}
@@ -120,7 +120,7 @@
     "/api/cases/{caseID}/experience-feedback/{feedbackID}/distillations": {
       "post": {
         "operationId":"requestExperienceDistillation","tags":["人工复核"],"summary":"请求异步提炼经验候选",
-        "description":"只有反馈申请人且具备当前审查权限可请求；来源尝试必须具有有效的已治理制度冻结快照和必需政策，否则返回 409。模型政策上下文只来自来源尝试，候选引用只能指向其中的精确政策版本。返回任务身份，不代表模型结果、批准或发布。可选正文 case_id 和 feedback_id 必须与路径一致。修订既有候选时必须同时提供 candidate_id 和 base_version_id。幂等键可放在请求头或正文，同时提供时必须一致。Core 未配置独立 worker 结果接收凭据时拒绝受理。",
+        "description":"只有反馈申请人且具有当前审查权限时才能请求。来源执行记录必须保存有效的已治理制度和必需政策，否则返回 409。模型使用的制度上下文只来自该执行记录，候选引用也只能指向其中的具体政策版本。返回任务编号不代表模型已有结果，也不代表已经批准或发布。正文中的 case_id 和 feedback_id 可以省略，提供时必须与路径一致。修改已有候选时必须同时提供 candidate_id 和 base_version_id。幂等键可放在请求头或正文，同时提供时必须一致。Core 未配置独立 worker 结果接收凭据时拒绝受理。",
         "parameters":[{"name":"caseID","in":"path","required":true,"schema":{"type":"string"}},{"name":"feedbackID","in":"path","required":true,"schema":{"type":"string"}},{"name":"Idempotency-Key","in":"header","required":false,"schema":{"type":"string","maxLength":80}}],
         "requestBody":{"required":true,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/ExperienceDistillationRequest"}}}},
         "responses":{"202":{"description":"任务已受理","content":{"application/json":{"schema":{"$ref":"#/components/schemas/ExperienceDistillationReceipt"}}}},"401":{"$ref":"#/components/responses/Error401"},"403":{"$ref":"#/components/responses/Error403"},"404":{"$ref":"#/components/responses/Error404"},"409":{"$ref":"#/components/responses/Error409"},"413":{"$ref":"#/components/responses/Error413"},"422":{"$ref":"#/components/responses/Error422"},"500":{"$ref":"#/components/responses/Error500"},"503":{"description":"只读、结果接收未配置、模型不可用、关联案件忙或队列容量不足","content":{"application/json":{"schema":{"$ref":"#/components/schemas/Error"}}}}}
@@ -137,7 +137,7 @@
     "/api/cases/{caseID}/experience-candidates/{candidateID}/versions/{versionID}": {
       "get": {
         "operationId":"getExperienceCandidate","tags":["人工复核"],"summary":"读取精确的经验候选版本",
-        "description":"返回不可变草稿和任务来源；每次均检查来源案件及祖先来源的当前权限。候选不等于已批准或已发布。",
+        "description":"返回保存的草稿及其任务来源；每次读取都会检查来源案件及更早来源的当前权限。候选内容不代表已经批准或发布。",
         "parameters":[{"name":"caseID","in":"path","required":true,"schema":{"type":"string"}},{"name":"candidateID","in":"path","required":true,"schema":{"type":"string"}},{"name":"versionID","in":"path","required":true,"schema":{"type":"string"}}],
         "responses":{"200":{"description":"候选版本","content":{"application/json":{"schema":{"$ref":"#/components/schemas/ExperienceCandidate"}}}},"401":{"$ref":"#/components/responses/Error401"},"403":{"$ref":"#/components/responses/Error403"},"404":{"$ref":"#/components/responses/Error404"},"409":{"$ref":"#/components/responses/Error409"},"500":{"$ref":"#/components/responses/Error500"},"503":{"$ref":"#/components/responses/Error503"}}
       }
@@ -150,7 +150,7 @@
       },
       "post": {
         "operationId":"createGovernedKnowledge","tags":["规则治理"],"summary":"创建已治理知识草稿","security":[{"adminSessionCookie":[]}],
-        "description":"从 admin 会话绑定租户和创建人；内容版本不可变，创建不会批准或发布。幂等键可放在请求头或正文，同时提供时必须一致。",
+        "description":"从 admin 会话确定租户和创建人。保存后的内容版本不会被改写；创建草稿不会自动批准或发布。幂等键可放在请求头或正文，同时提供时必须一致。",
         "parameters":[{"name":"Idempotency-Key","in":"header","required":false,"schema":{"type":"string","maxLength":80}}],
         "requestBody":{"required":true,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/GovernedKnowledgeCreateRequest"}}}},
         "responses":{"201":{"description":"草稿版本","content":{"application/json":{"schema":{"$ref":"#/components/schemas/GovernedKnowledgeVersion"}}}},"401":{"$ref":"#/components/responses/Error401"},"403":{"$ref":"#/components/responses/Error403"},"404":{"$ref":"#/components/responses/Error404"},"409":{"$ref":"#/components/responses/Error409"},"413":{"$ref":"#/components/responses/Error413"},"422":{"$ref":"#/components/responses/Error422"},"500":{"$ref":"#/components/responses/Error500"},"503":{"$ref":"#/components/responses/Error503"}}
@@ -167,7 +167,7 @@
     "/api/admin/governed-knowledge/{knowledgeID}/versions/{versionID}/preview": {
       "get": {
         "operationId":"previewGovernedPolicy","tags":["规则治理"],"summary":"预览政策正文与规则包的结构化差异","security":[{"adminSessionCookie":[]}],
-        "description":"仅 admin audience，重新检查租户和来源案件权限。对精确政策版本提取可表达的阈值及正文码点区间，逐规则比较已绑定的规则包，并报告歧义、不可表达内容和仅供语义审阅的文字。预览不批准或发布政策。",
+        "description":"只允许 admin 会话，读取时重新检查租户和来源案件权限。系统从指定政策版本提取可表达的数值要求和原文位置，逐条与关联规则包比较，并报告有歧义、无法表达或仍需人工理解的内容。预览不会批准或发布政策。",
         "parameters":[{"name":"knowledgeID","in":"path","required":true,"schema":{"type":"string"}},{"name":"versionID","in":"path","required":true,"schema":{"type":"string"}}],
         "responses":{"200":{"description":"政策阈值及比较结果","content":{"application/json":{"schema":{"$ref":"#/components/schemas/GovernedPolicyPreview"}}}},"401":{"$ref":"#/components/responses/Error401"},"403":{"$ref":"#/components/responses/Error403"},"404":{"$ref":"#/components/responses/Error404"},"409":{"$ref":"#/components/responses/Error409"},"422":{"$ref":"#/components/responses/Error422"},"500":{"$ref":"#/components/responses/Error500"},"503":{"$ref":"#/components/responses/Error503"}}
       }
@@ -175,7 +175,7 @@
     "/api/admin/governed-knowledge/{knowledgeID}/versions/{versionID}/commands": {
       "post": {
         "operationId":"governedKnowledgeCommand","tags":["规则治理"],"summary":"执行知识治理状态变更","security":[{"adminSessionCookie":[]}],
-        "description":"提交、校验、批准、发布、撤回或回滚精确版本；命令以内容摘要和修订校验，指针变更还校验指针修订。可选正文 knowledge_id 和 version_id 必须与路径一致。幂等键可放在请求头或正文，同时提供时必须一致。",
+        "description":"提交、校验、批准、发布、撤回或回滚指定版本。操作会检查内容摘要和修订号；更改启用版本时还会检查指针修订号。正文中的 knowledge_id 和 version_id 可以省略，提供时必须与路径一致。幂等键可放在请求头或正文，同时提供时必须一致。",
         "parameters":[{"name":"knowledgeID","in":"path","required":true,"schema":{"type":"string"}},{"name":"versionID","in":"path","required":true,"schema":{"type":"string"}},{"name":"Idempotency-Key","in":"header","required":false,"schema":{"type":"string","maxLength":80}}],
         "requestBody":{"required":true,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/GovernedKnowledgeCommandRequest"}}}},
         "responses":{"200":{"description":"更新后的精确版本","content":{"application/json":{"schema":{"$ref":"#/components/schemas/GovernedKnowledgeVersion"}}}},"401":{"$ref":"#/components/responses/Error401"},"403":{"$ref":"#/components/responses/Error403"},"404":{"$ref":"#/components/responses/Error404"},"409":{"$ref":"#/components/responses/Error409"},"413":{"$ref":"#/components/responses/Error413"},"422":{"$ref":"#/components/responses/Error422"},"500":{"$ref":"#/components/responses/Error500"},"503":{"$ref":"#/components/responses/Error503"}}
@@ -183,8 +183,8 @@
     },
     "/api/admin/governed-knowledge/{knowledgeID}/history": {
       "get": {
-        "operationId":"listGovernedKnowledgeHistory","tags":["规则治理"],"summary":"读取知识治理追加历史","security":[{"adminSessionCookie":[]}],
-        "description":"按持久序列返回历史，读取时重新检查各来源版本的当前权限。",
+        "operationId":"listGovernedKnowledgeHistory","tags":["规则治理"],"summary":"查看知识版本操作历史","security":[{"adminSessionCookie":[]}],
+        "description":"按保存顺序返回历史记录；读取时重新检查各来源版本的当前权限。",
         "parameters":[{"name":"knowledgeID","in":"path","required":true,"schema":{"type":"string"}}],
         "responses":{"200":{"description":"有序历史","content":{"application/json":{"schema":{"$ref":"#/components/schemas/GovernedKnowledgeHistory"}}}},"401":{"$ref":"#/components/responses/Error401"},"403":{"$ref":"#/components/responses/Error403"},"404":{"$ref":"#/components/responses/Error404"},"500":{"$ref":"#/components/responses/Error500"},"503":{"$ref":"#/components/responses/Error503"}}
       }
@@ -195,8 +195,8 @@
         "tags": [
           "系统"
         ],
-        "summary": "读取有权限的真实工作台快照",
-        "description": "当前身份可见的工作台快照。period以Asia/Shanghai日历界定day/week/month；任务/案件/发现分母分别说明。模型状态只表示配置，不代表连通；未知usage和费用为null。",
+        "summary": "读取当前用户有权查看的工作台数据",
+        "description": "返回当前用户有权查看的工作台数据。period 按 Asia/Shanghai 的日历划分 day、week 和 month；任务、案件和发现的统计分母分别说明。模型状态只表示配置，不代表可以连接；未知用量和费用为 null。",
         "responses": {
           "200": {
             "description": "成功",
@@ -259,7 +259,7 @@
             }
           },
           "500": {
-            "description": "读取或持久化失败",
+            "description": "读取或保存失败",
             "content": {
               "application/json": {
                 "schema": {
@@ -303,7 +303,7 @@
           "案件"
         ],
         "summary": "更新案件业务资料",
-        "description": "所有数据来自服务器权限范围内的实际持久记录。更新使用版本校验，失败不返回成功；归档案件拒绝写入。",
+        "description": "数据来自当前权限范围内已保存的记录。更新时检查版本，失败不会返回成功；已归档案件不接受写入。",
         "responses": {
           "200": {
             "description": "成功",
@@ -366,7 +366,7 @@
             }
           },
           "500": {
-            "description": "读取或持久化失败",
+            "description": "读取或保存失败",
             "content": {
               "application/json": {
                 "schema": {
@@ -415,8 +415,8 @@
         "tags": [
           "案件"
         ],
-        "summary": "创建持久审查任务",
-        "description": "所有数据来自服务器权限范围内的实际持久记录。更新使用版本校验，失败不返回成功；归档案件拒绝写入。",
+        "summary": "创建并保存审查任务",
+        "description": "数据来自当前权限范围内已保存的记录。更新时检查版本，失败不会返回成功；已归档案件不接受写入。",
         "responses": {
           "201": {
             "description": "成功",
@@ -479,7 +479,7 @@
             }
           },
           "500": {
-            "description": "读取或持久化失败",
+            "description": "读取或保存失败",
             "content": {
               "application/json": {
                 "schema": {
@@ -529,7 +529,7 @@
           "案件"
         ],
         "summary": "更新任务与实际状态",
-        "description": "所有数据来自服务器权限范围内的实际持久记录。更新使用版本校验，失败不返回成功；归档案件拒绝写入。",
+        "description": "数据来自当前权限范围内已保存的记录。更新时检查版本，失败不会返回成功；已归档案件不接受写入。",
         "responses": {
           "200": {
             "description": "成功",
@@ -592,7 +592,7 @@
             }
           },
           "500": {
-            "description": "读取或持久化失败",
+            "description": "读取或保存失败",
             "content": {
               "application/json": {
                 "schema": {
@@ -651,7 +651,7 @@
           "案件"
         ],
         "summary": "保存明确的案件关联",
-        "description": "所有数据来自服务器权限范围内的实际持久记录。更新使用版本校验，失败不返回成功；归档案件拒绝写入。",
+        "description": "数据来自当前权限范围内已保存的记录。更新时检查版本，失败不会返回成功；已归档案件不接受写入。",
         "responses": {
           "201": {
             "description": "成功",
@@ -714,7 +714,7 @@
             }
           },
           "500": {
-            "description": "读取或持久化失败",
+            "description": "读取或保存失败",
             "content": {
               "application/json": {
                 "schema": {
@@ -764,7 +764,7 @@
           "案件"
         ],
         "summary": "删除已授权的案件关联",
-        "description": "所有数据来自服务器权限范围内的实际持久记录。更新使用版本校验，失败不返回成功；归档案件拒绝写入。",
+        "description": "数据来自当前权限范围内已保存的记录。更新时检查版本，失败不会返回成功；已归档案件不接受写入。",
         "responses": {
           "204": {
             "description": "成功"
@@ -820,7 +820,7 @@
             }
           },
           "500": {
-            "description": "读取或持久化失败",
+            "description": "读取或保存失败",
             "content": {
               "application/json": {
                 "schema": {
@@ -869,7 +869,7 @@
           "系统"
         ],
         "summary": "保存不可覆盖的制度版本",
-        "description": "所有数据来自服务器权限范围内的实际持久记录。更新使用版本校验，失败不返回成功；归档案件拒绝写入。",
+        "description": "数据来自当前权限范围内已保存的记录。更新时检查版本，失败不会返回成功；已归档案件不接受写入。",
         "responses": {
           "201": {
             "description": "成功",
@@ -932,7 +932,7 @@
             }
           },
           "500": {
-            "description": "读取或持久化失败",
+            "description": "读取或保存失败",
             "content": {
               "application/json": {
                 "schema": {
@@ -1034,7 +1034,7 @@
             }
           },
           "500": {
-            "description": "读取或持久化失败",
+            "description": "读取或保存失败",
             "content": {
               "application/json": {
                 "schema": {
@@ -1199,7 +1199,7 @@
           "材料"
         ],
         "summary": "列出模板",
-        "description": "返回版本化模板与字段定义；模板不可变，生成草稿按 template_id/version/digest 冻结。",
+        "description": "返回模板版本和字段定义。模板版本不会被改写；生成草稿时保存 template_id、version 和 digest。",
         "responses": {
           "200": {
             "description": "模板列表",
@@ -1256,7 +1256,7 @@
           "材料"
         ],
         "summary": "按模板生成待审草稿",
-        "description": "字段缺失或不合法返回 422；生成的草稿作为不可变 Document 与 GenerationRecord 保存。",
+        "description": "字段缺失或不合法时返回 422；生成的草稿作为不可改写的 Document 和 GenerationRecord 保存。",
         "parameters": [
           {
             "name": "caseID",
@@ -1532,8 +1532,8 @@
         "tags": [
           "案件"
         ],
-        "summary": "冻结报告快照",
-        "description": "只读冻结选定 attempt 的材料、解析、规则、发现与决定集合；JSON 与转义 HTML 按字节摘要追加保存，新决定生成新报告。",
+        "summary": "生成并保存报告",
+        "description": "根据所选执行记录保存当时的材料、解析结果、规则、发现和人工判断。JSON 和转义后的 HTML 会按字节摘要保存；有新的判断时生成新报告。",
         "parameters": [
           {
             "name": "caseID",
@@ -1557,7 +1557,7 @@
         },
         "responses": {
           "201": {
-            "description": "已冻结",
+            "description": "已保存",
             "content": {
               "application/json": {
                 "schema": {
@@ -1596,8 +1596,8 @@
         "tags": [
           "案件"
         ],
-        "summary": "下载冻结报告",
-        "description": "返回保存的冻结字节并重新鉴权；format=json|html，HTML 以附件下载且 CSP 禁用执行。",
+        "summary": "下载已保存的报告",
+        "description": "重新检查权限后返回已保存的报告内容。format 为 json 或 html；HTML 作为附件下载，并通过 CSP 禁止执行。",
         "parameters": [
           {
             "name": "caseID",
@@ -1633,7 +1633,7 @@
         ],
         "responses": {
           "200": {
-            "description": "冻结报告字节；摘要记录在 ReportRecord.digest",
+            "description": "已保存的报告内容；字节摘要记录在 ReportRecord.digest",
             "content": {
               "application/json": {
                 "schema": {
@@ -1675,7 +1675,7 @@
           "案件"
         ],
         "summary": "归档案件",
-        "description": "归档是独立追加业务记录；归档后业务写入返回 409，授权读取与旧报告保留。",
+        "description": "归档会新增一条独立的业务记录。归档后业务写入返回 409，授权读取和以前的报告仍然保留。",
         "parameters": [
           {
             "name": "caseID",
@@ -1988,7 +1988,7 @@
           "系统"
         ],
         "summary": "读取演示配置状态",
-        "description": "登录用户可读。当前不是持久任务监控，也不会返回模型密钥。",
+        "description": "登录用户可以读取。这里不是持久任务监控，也不会返回模型密钥。",
         "responses": {
           "200": {
             "description": "成功",
@@ -2134,7 +2134,7 @@
           "案件"
         ],
         "summary": "加入案件成员",
-        "description": "案件创建者或 admin 可将现有演示身份加入成员；重复加入保持幂等。成员关系不替代角色限制。",
+        "description": "案件创建者或 admin 可以将已有演示账号加入成员；重复添加不会重复创建成员。成为成员也要遵守角色权限限制。",
         "responses": {
           "200": {
             "description": "成功",
@@ -2359,8 +2359,8 @@
         "tags": [
           "材料"
         ],
-        "summary": "追加一次材料解析",
-        "description": "admin/clerk 且案件可见。追加独立不可变解析产物，成功返回材料 ID；解析失败保留失败产物，状态及来源在案件/工作区读取。后续开始审查采用新的解析选择并创建新 run，已受理尝试和历史输入不变；不返回异步解析任务。只读维护模式拒绝业务写入。",
+        "summary": "重新解析材料并保存结果",
+        "description": "需要 admin 或 clerk 角色和案件访问权限。每次解析都会保存独立结果，成功后返回材料 ID；失败时也保留失败记录，可在案件或工作区查看状态和来源。之后发起的新审查会选择新的解析结果并创建新 run；已受理执行及历史输入不变。接口不返回异步解析任务，只读维护模式拒绝业务写入。",
         "responses": {
           "200": {
             "description": "成功",
@@ -2433,7 +2433,7 @@
           "审查"
         ],
         "summary": "受理审查并后台执行",
-        "description": "需有发起角色与案件权限。已治理案件必须提供带时区的 RFC3339Nano business_at，用于冻结当时适用的已发布知识；非治理案件可省略。缺少或无效的业务时间返回 422，治理快照不可用或冲突返回 409，不能使用当前时间或旧制度替代。持久模式在 PostgreSQL 事务中记录 run、attempt、worker_jobs 任务与 outbox 事件，返回 202 和 id、attempt_id、job_id，由独立 Worker 领取执行；同输入/配置保持幂等。非持久模式返回 201 并由当前进程后台执行。模型失败时保留规则结果并标记 partial。持久任务租约接管不代表跨故障域 HA/DR。",
+        "description": "需要有权发起审查并访问案件。已治理案件必须提供带时区的 RFC3339Nano business_at，以保存该时间适用的已发布知识；其他案件可以省略。业务时间缺失或无效时返回 422；制度记录不可用或冲突时返回 409，不能用当前时间或旧制度代替。持久任务模式在 PostgreSQL 事务中保存 run、attempt、worker_jobs 和 outbox 事件，返回 202 及 id、attempt_id、job_id，再由独立 Worker 领取；相同输入和配置保持幂等。非持久模式返回 201，由当前进程在后台执行。模型失败时保留规则结果并标记 partial。任务租约支持接管，但不代表跨故障域高可用或灾难恢复。",
         "responses": {
           "201": {
             "description": "成功",
@@ -2446,7 +2446,7 @@
             }
           },
           "202": {
-            "description": "持久审查任务已在 PostgreSQL 中受理",
+            "description": "审查任务已在 PostgreSQL 中保存并受理",
             "content": {
               "application/json": {
                 "schema": {
@@ -2510,7 +2510,7 @@
           "审查"
         ],
         "summary": "读取审查工作区",
-        "description": "返回指定尝试的业务工作区、发现和人工决定，不暴露详细执行诊断。省略 attempt_id 选择最新尝试；混拼 case/run/attempt 拒绝。旧未冻结记录明确 legacy_unfrozen；新历史读取不调用 OCR 或模型。",
+        "description": "返回指定执行记录的业务工作区、发现和人工判断，不包含详细执行诊断。省略 attempt_id 时选择最新执行；case、run 和 attempt 不属于同一审查时拒绝请求。没有保存原始输入的旧记录标记为 legacy_unfrozen；读取新历史记录不会调用 OCR 或模型。",
         "responses": {
           "200": {
             "description": "成功",
@@ -2566,7 +2566,7 @@
     "/api/cases/{caseID}/reviews/{runID}/diagnostics": {
       "get": {
         "operationId":"getReviewDiagnostics","tags":["审查"],"summary":"读取审查执行诊断",
-        "description":"使用 client audience 会话，只有管理员且对当前案件有权限时可读取；可选择同一运行下的指定尝试。返回执行、冻结快照、审计以及材料和证据身份诊断。",
+        "description":"使用 client 会话，只有有权访问当前案件的管理员可以读取；可选择同一次审查中的指定执行记录。返回执行信息、当时保存的审查记录、审计信息，以及材料和证据编号的诊断信息。",
         "parameters":[{"name":"caseID","in":"path","required":true,"schema":{"type":"string"}},{"name":"runID","in":"path","required":true,"schema":{"type":"string"}},{"name":"attempt_id","in":"query","required":false,"schema":{"type":"string"}}],
         "responses":{"200":{"description":"诊断信息","content":{"application/json":{"schema":{"$ref":"#/components/schemas/ReviewDiagnostics"}}}},"401":{"$ref":"#/components/responses/Error401"},"403":{"$ref":"#/components/responses/Error403"},"404":{"$ref":"#/components/responses/Error404"},"500":{"$ref":"#/components/responses/Error500"}}
       }
@@ -2577,8 +2577,8 @@
         "tags": [
           "审查"
         ],
-        "summary": "追加一次审查尝试",
-        "description": "需有发起角色与案件权限。当前尝试仍活动时复用其受理身份；否则校验冻结输入并追加关联 retry_of 的新 attempt，原结果与事件保留。持久模式在 PostgreSQL 中记录 attempt、worker_jobs 任务和 outbox 事件后返回 202，由独立 Worker 通过租约领取；租约过期可接管，旧代次不能提交。非持久模式返回 200 并由当前进程执行。配置漂移、非最新 run 或已有决定按业务约束拒绝；租约接管不代表跨故障域 HA/DR。",
+        "summary": "重新执行审查并保留原记录",
+        "description": "需要有权发起审查并访问案件。当前执行仍在进行时，返回原受理编号；否则先校验当时保存的输入，再创建通过 retry_of 关联的新 attempt，保留原结果和事件。持久任务模式在 PostgreSQL 保存 attempt、worker_jobs 和 outbox 事件后返回 202，由独立 Worker 通过租约领取；租约过期后可接管，旧代次不能提交结果。非持久模式返回 200 并由当前进程执行。配置变化、非最新 run 或已有判断时按业务规则拒绝；租约接管不代表跨故障域高可用或灾难恢复。",
         "responses": {
           "200": {
             "description": "成功",
@@ -2591,7 +2591,7 @@
             }
           },
           "202": {
-            "description": "持久重试任务已在 PostgreSQL 中受理",
+            "description": "重试任务已在 PostgreSQL 中保存并受理",
             "content": {
               "application/json": {
                 "schema": {
@@ -2663,8 +2663,8 @@
         "tags": [
           "人工复核"
         ],
-        "summary": "追加人工决定",
-        "description": "admin/reviewer 且案件可见。expected_version 必须匹配；旧版本返回 409。相同 actor、幂等键和有效载荷重复提交返回同样结果；同键不同请求返回 409。人工决定追加历史，不覆盖规则关系或抹除技术 partial。",
+        "summary": "记录审查人员的判断",
+        "description": "需要 admin 或 reviewer 角色和案件访问权限。expected_version 必须匹配；版本过旧时返回 409。相同 actor、幂等键和请求内容重复提交时返回同样结果；同一键用于不同请求时返回 409。每次判断都会保留记录，不会覆盖规则比较结果，也不会改变执行部分完成（partial）的状态。",
         "responses": {
           "204": {
             "description": "成功，无响应正文"
@@ -2816,7 +2816,7 @@
           "审查"
         ],
         "summary": "取消当前审查尝试",
-        "description": "需有发起角色与案件成员权限。取消先提交则迟到结果不得覆盖；已发生模型调用的usage继续保存。终态请求幂等，不撤回已完成的外部调用，不删除规则结果或历史。",
+        "description": "需要有权发起审查并具有案件成员权限。如果取消先提交，之后到达的结果不能覆盖取消状态；已经发生的模型调用用量仍会保存。对已结束的执行重复取消不会重复处理；取消不会撤回已完成的外部调用，也不会删除规则结果或历史记录。",
         "responses": {
           "200": {
             "description": "成功",
@@ -2974,7 +2974,7 @@
           "规则治理"
         ],
         "summary": "规则包版本详情",
-        "description": "返回精确持久化的 manifest 与版本摘要。",
+        "description": "返回原样保存的 manifest 和版本摘要。",
         "responses": {
           "200": {
             "description": "版本详情",
@@ -3254,7 +3254,7 @@
           "规则治理"
         ],
         "summary": "发布规则包",
-        "description": "发布后字节不可变，并移动该包的启用指针；pack revision 与指针 revision 双重 CAS。",
+        "description": "发布后内容不会被改写，并会更新该规则包的启用版本。操作同时检查规则包修订和启用指针修订（CAS）。",
         "responses": {
           "200": {
             "description": "发布规则包结果",
@@ -3537,7 +3537,7 @@
           "规则治理"
         ],
         "summary": "规则包变更历史",
-        "description": "返回该包有界的追加式治理历史。",
+        "description": "返回该规则包的操作历史，结果数量有上限。",
         "responses": {
           "200": {
             "description": "变更历史",
@@ -3614,9 +3614,9 @@
       }
     },
     "schemas": {
-      "EvidenceRequestCreate": {"type":"object","additionalProperties":false,"description":"compatible 结果本身不足以验证；缺少回执与同一能力检查的权威关联时，后续核验返回 409，请求保持 received。","required":["task_id","task_version","source_run_id","source_attempt_id","question","verification_condition"],"properties":{"case_id":{"type":"string"},"task_id":{"type":"string"},"task_version":{"type":"integer","minimum":1},"source_run_id":{"type":"string"},"source_attempt_id":{"type":"string"},"source_evaluation_id":{"type":"string"},"source_gap_id":{"type":"string"},"question":{"type":"string"},"material_role":{"type":"string"},"verification_condition":{"type":"string","enum":["compatible","conflict","resolved"]},"idempotency_key":{"type":"string","maxLength":80}}},
+      "EvidenceRequestCreate": {"type":"object","additionalProperties":false,"description":"结果为 compatible 本身不足以完成核验；如果缺少回执与同一检查之间的有效关联，后续核验返回 409，请求保持 received。","required":["task_id","task_version","source_run_id","source_attempt_id","question","verification_condition"],"properties":{"case_id":{"type":"string"},"task_id":{"type":"string"},"task_version":{"type":"integer","minimum":1},"source_run_id":{"type":"string"},"source_attempt_id":{"type":"string"},"source_evaluation_id":{"type":"string"},"source_gap_id":{"type":"string"},"question":{"type":"string"},"material_role":{"type":"string"},"verification_condition":{"type":"string","enum":["compatible","conflict","resolved"]},"idempotency_key":{"type":"string","maxLength":80}}},
       "EvidenceReceiptCreate": {"type":"object","additionalProperties":false,"required":["expected_version"],"properties":{"case_id":{"type":"string"},"request_id":{"type":"string"},"document_id":{"type":"string"},"answer":{"type":"string"},"expected_version":{"type":"integer","minimum":1},"idempotency_key":{"type":"string","maxLength":80}}},
-      "EvidenceRequestVerify": {"type":"object","additionalProperties":false,"description":"compatible 结果本身不足以验证；缺少回执与同一能力检查的权威关联时返回 409，请求保持 received。","required":["run_id","attempt_id","evidence","reason","expected_version"],"properties":{"case_id":{"type":"string"},"request_id":{"type":"string"},"receipt_id":{"type":"string"},"run_id":{"type":"string"},"attempt_id":{"type":"string"},"evaluation_id":{"type":"string"},"gap_id":{"type":"string"},"evidence":{"type":"array","items":{"$ref":"#/components/schemas/ExperienceEvidenceRef"}},"reason":{"type":"string"},"expected_version":{"type":"integer","minimum":1},"idempotency_key":{"type":"string","maxLength":80}}},
+      "EvidenceRequestVerify": {"type":"object","additionalProperties":false,"description":"结果为 compatible 本身不足以完成核验；如果缺少回执与同一检查之间的有效关联，返回 409，请求保持 received。","required":["run_id","attempt_id","evidence","reason","expected_version"],"properties":{"case_id":{"type":"string"},"request_id":{"type":"string"},"receipt_id":{"type":"string"},"run_id":{"type":"string"},"attempt_id":{"type":"string"},"evaluation_id":{"type":"string"},"gap_id":{"type":"string"},"evidence":{"type":"array","items":{"$ref":"#/components/schemas/ExperienceEvidenceRef"}},"reason":{"type":"string"},"expected_version":{"type":"integer","minimum":1},"idempotency_key":{"type":"string","maxLength":80}}},
       "EvidenceSourceEvaluation": {"type":"object","additionalProperties":false,"required":["id","run_id","attempt_id","case_id","domain","rule_version","relation","reason"],"properties":{"id":{"type":"string"},"run_id":{"type":"string"},"attempt_id":{"type":"string"},"case_id":{"type":"string"},"domain":{"type":"string"},"rule_id":{"type":"string"},"rule_version":{"type":"string"},"capability_id":{"type":"string"},"mandatory":{"type":"boolean"},"relation":{"type":"string"},"reason_code":{"type":"string"},"reason":{"type":"string"},"fact_ids":{"type":"array","items":{"type":"string"}},"object_refs":{"type":"array","items":{"type":"string"}},"finding_id":{"type":"string"}}},
       "EvidenceSourceGap": {"type":"object","additionalProperties":false,"required":["gap_id","domain","capability_id","status","reason_code","evidence_ids"],"properties":{"gap_id":{"type":"string"},"domain":{"type":"string"},"capability_id":{"type":"string"},"mandatory":{"type":"boolean"},"status":{"type":"string"},"reason_code":{"type":"string"},"evidence_ids":{"type":["array","null"],"items":{"type":"string"}}}},
       "EvidenceRequestVerification": {"type":"object","additionalProperties":false,"required":["run_id","attempt_id","receipt_id","evidence","reason","verified_by","verified_at"],"properties":{"run_id":{"type":"string"},"attempt_id":{"type":"string"},"evaluation_id":{"type":"string"},"relation":{"type":"string"},"gap_id":{"type":"string"},"gap_status":{"type":"string"},"receipt_id":{"type":"string"},"evidence":{"type":"array","items":{"$ref":"#/components/schemas/ExperienceEvidenceView"}},"reason":{"type":"string"},"verified_by":{"type":"string"},"verified_at":{"type":"string","format":"date-time"}}},
@@ -3635,7 +3635,7 @@
         "type":"object","additionalProperties":false,
         "required":["document_id","parsed_document_id","quote","start","end"],
         "properties":{"document_id":{"type":"string"},"parsed_document_id":{"type":"string"},"normalized_digest":{"type":"string"},"quote":{"type":"string"},"start":{"type":"integer","minimum":0},"end":{"type":"integer","minimum":1}},
-        "description":"在冻结解析正文中的 Unicode 码点半开区间 [start,end)。normalized_digest 可省略，由服务端解析并校验；响应不返回该技术摘要。"
+        "description":"位置使用本次审查保存的解析正文中的 Unicode 码点半开区间 [start,end)。normalized_digest 可以省略，服务器会解析并校验；响应不返回该摘要。"
       },
       "ExperienceEvidenceView": {"type":"object","additionalProperties":false,"required":["document_id","parsed_document_id","quote","start","end"],"properties":{"document_id":{"type":"string"},"parsed_document_id":{"type":"string"},"quote":{"type":"string"},"start":{"type":"integer","minimum":0},"end":{"type":"integer","minimum":1}}},
       "ExperienceFeedbackRequest": {
@@ -5314,7 +5314,7 @@
                 "type": "null"
               }
             ],
-            "description": "冻结时保存的同一尝试五域智能审查投影；历史尝试可能为 null。"
+            "description": "同一次执行保存的五个方面的智能审查记录；较早的执行记录可能为 null。"
           },
           "agent_review_bytes": {
             "type": "string",
@@ -5329,7 +5329,7 @@
           }
         },
         "additionalProperties": true,
-        "description": "保存的冻结报告 JSON 原字节；其字节摘要记录在 ReportRecord.digest，字段由冻结时的报告版本决定。"
+        "description": "已保存报告的 JSON 原始字节；字节摘要记录在 ReportRecord.digest，字段由生成报告时的版本决定。"
       },
       "ArchiveRequest": {
         "type": "object",
@@ -5595,7 +5595,7 @@
           },
           "state": {
             "type": "string",
-            "description": "持久受理时运行状态为 accepted；任务在 worker_jobs 中以 queued 排队，Worker 领取后运行转为 running。之后反映尝试结果：completed、awaiting_human、partial、failed、cancelled 或 interrupted。租约过期的任务可由其他 Worker 以新代次接管，旧代次会被 fencing；这不承诺跨故障域 HA/DR。"
+            "description": "持久任务受理后，审查状态为 accepted；任务在 worker_jobs 中以 queued 排队，Worker 领取后变为 running。随后状态反映执行结果：completed、awaiting_human、partial、failed、cancelled 或 interrupted。租约过期后，其他 Worker 可以用新代次接管，旧代次的结果会被拒绝；这不代表跨故障域高可用或灾难恢复。"
           },
           "updated_at": {
             "type": "string",
@@ -5696,7 +5696,7 @@
       },
       "ParsedDocument": {
         "type": "object",
-        "description": "独立不可变解析产物的元数据。摘要分别覆盖原件、规范化文本、IR 和版本化产物；缺少历史来源时文档上的 parsed_document 为 null。",
+        "description": "每次独立保存的解析结果的元数据。摘要分别对应原件、规范化文本、IR 和解析结果版本；历史来源缺失时，文档的 parsed_document 为 null。",
         "properties": {
           "id": {
             "type": "string"
@@ -6360,7 +6360,7 @@
               "info",
               null
             ],
-            "description": "依据冻结的适用审查制度独立分级；不从规则关系或技术状态自动推导。历史未分级为null。"
+            "description": "根据本次审查保存的适用制度独立分级，不会从规则比较结果或技术状态自动推导。历史记录未分级时为 null。"
           },
           "severity_source": {
             "anyOf": [
@@ -6468,7 +6468,7 @@
           },
           "state": {
             "type": "string",
-            "description": "持久受理时运行状态为 accepted；任务在 worker_jobs 中以 queued 排队，Worker 领取后运行转为 running。之后反映尝试结果：completed、awaiting_human、partial、failed、cancelled 或 interrupted。租约过期的任务可由其他 Worker 以新代次接管，旧代次会被 fencing；这不承诺跨故障域 HA/DR。"
+            "description": "持久任务受理后，审查状态为 accepted；任务在 worker_jobs 中以 queued 排队，Worker 领取后变为 running。随后状态反映执行结果：completed、awaiting_human、partial、failed、cancelled 或 interrupted。租约过期后，其他 Worker 可以用新代次接管，旧代次的结果会被拒绝；这不代表跨故障域高可用或灾难恢复。"
           },
           "updated_at": {
             "type": "string",
@@ -7278,7 +7278,7 @@
             "items": {
               "type": "string"
             },
-            "description": "该尝试实际冻结输入的解析产物 ID，不包含修订对照额外材料；尚未准备或旧来源不足时为空。"
+            "description": "本次执行保存的输入解析结果 ID，不包含版本对照额外使用的材料；尚未准备或较早来源信息不足时为空。"
           }
         },
         "required": [
@@ -9054,7 +9054,7 @@
       },
       "RulePackManifestInput": {
         "type": "object",
-        "description": "严格 rulepack/v1 请求 manifest。创建时可省略 lifecycle 或仅给 draft；服务端绑定租户与操作者，不接受任何校验/批准/发布记录。rules[].required_fact.exclusions 对 monthly_sla 必须为字符串数组（可空），对非 SLA 比较器为 null（不适用）。响应中的持久化快照见 RulePackSnapshot。",
+        "description": "严格遵循 rulepack/v1 的请求 manifest。创建时可以省略 lifecycle 或只填写 draft；服务器确定租户和操作者，不接受客户端提交的校验、批准或发布记录。rules[].required_fact.exclusions 对 monthly_sla 必须是字符串数组（可以为空）；对非 SLA 比较器为 null（不适用）。响应中保存的版本见 RulePackSnapshot。",
         "properties": {
           "schema_version": {
             "type": "string",
@@ -9098,7 +9098,7 @@
       },
       "RulePackManifestSnapshot": {
         "type": "object",
-        "description": "持久化规则包快照。响应返回精确存储的 manifest 与生命周期证明；不是客户端可提交的请求体。rules[].required_fact.exclusions 对 monthly_sla 为字符串数组（可空），对非 SLA 比较器为 null（不适用）。",
+        "description": "已保存的规则包版本。响应返回原样保存的 manifest 和生命周期证明，不能作为客户端请求体提交。rules[].required_fact.exclusions 对 monthly_sla 是字符串数组（可以为空）；对非 SLA 比较器为 null（不适用）。",
         "properties": {
           "schema_version": {
             "type": "string",
@@ -9540,7 +9540,7 @@
         }
       },
       "Error409": {
-        "description": "版本冲突、幂等冲突或运行配置漂移",
+        "description": "版本冲突、请求标识冲突或审查配置已变化",
         "content": {
           "application/json": {
             "schema": {

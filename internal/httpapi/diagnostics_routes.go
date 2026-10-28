@@ -44,7 +44,7 @@ func (h *handler) reviewDiagnostics(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			if version.Ref != ref {
-				writeErr(w, fault.Conflict("冻结制度身份不一致"))
+				writeErr(w, fault.Conflict("本次审查保存的制度编号不一致"))
 				return
 			}
 		}

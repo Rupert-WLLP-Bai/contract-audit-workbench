@@ -63,7 +63,7 @@ const REASON_LABELS: Record<string, string> = {
   required_source_or_field_missing: "缺少必要材料或字段",
   source_fact_only_not_a_decision: "仅提取了来源事实，尚无审查结论",
   capability_not_registered: "当前能力尚不支持此项检查",
-  claim_requires_semantic_verification: "来源事实仍需语义核验",
+  claim_requires_semantic_verification: "来源内容的含义仍需核对",
   approval_period_dates_unverified: "审批有效期所需日期尚未核验",
   stable_party_role_linkage_missing: "主体与角色的关联尚未核验",
 };
@@ -123,9 +123,9 @@ function Citations({ ids, evidence }: { ids: string[] | null; evidence: Business
 export function BusinessAgentReviewView({ review }: { review: BusinessAgentReview | null }) {
   if (!review) {
     return (
-      <section className="agent-review-panel" aria-label="五域审查结果">
-        <h3>五域审查结果</h3>
-        <p>本次暂无五域结果，不能据此推断已覆盖。</p>
+      <section className="agent-review-panel" aria-label="五个方面的审查结果">
+        <h3>五个方面的审查结果</h3>
+        <p>本次没有返回五个方面的审查结果，不能因此认为已经全部检查。</p>
       </section>
     );
   }
@@ -144,29 +144,29 @@ export function BusinessAgentReviewView({ review }: { review: BusinessAgentRevie
     (review.gaps ?? []).some((gap) => !gap.evidence_ids?.length);
   if (domains.length === 0 && scopesWithoutResults.length === 0 && !review.gaps?.length && unresolved.size === 0 && !review.evidence?.length) {
     return (
-      <section className="agent-review-panel" aria-label="五域审查结果">
+      <section className="agent-review-panel" aria-label="五个方面的审查结果">
         <header className="agent-review-head">
-          <h3>五域审查结果</h3>
+          <h3>五个方面的审查结果</h3>
           <StatusText tone={statusTone(review.status)}>{statusLabel(review.status)}</StatusText>
         </header>
-        <p>本次暂无领域、缺口和引用信息，不能据此推断已覆盖。</p>
+        <p>本次没有返回检查范围、待补充事项和原文依据，不能因此认为已经完成检查。</p>
       </section>
     );
   }
 
   return (
-    <section className="agent-review-panel" aria-label="五域审查结果">
+    <section className="agent-review-panel" aria-label="五个方面的审查结果">
       <header className="agent-review-head">
-        <h3>五域审查结果</h3>
+        <h3>五个方面的审查结果</h3>
         <StatusText tone={statusTone(review.status)}>{statusLabel(review.status)}</StatusText>
       </header>
-      <p className="meta">流程状态和来源引用核验不等于风险已确认或合同合规，仍需人工判断。</p>
-      {missingCitations ? <p className="meta">部分项目暂无引用，不能据此确认已核验。</p> : null}
+      <p className="meta">流程完成或找到原文依据，并不代表风险已确认或合同已合规；仍需审查人员判断。</p>
+      {missingCitations ? <p className="meta">部分项目没有原文依据，不能确认这些项目已经核验。</p> : null}
 
       <section className="agent-review-section" aria-label="领域与检查项目">
         <h4>领域与检查项目</h4>
         {domains.length === 0 && scopesWithoutResults.length === 0 ? (
-          <p>暂无领域审查结果，不能据此推断已覆盖。</p>
+          <p>没有返回各方面的审查结果，不能因此认为已经完成检查。</p>
         ) : (
           <ul className="agent-review-grid-list">
             {domains.map((domain, domainIndex) => {

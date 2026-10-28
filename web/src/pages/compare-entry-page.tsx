@@ -168,7 +168,7 @@ export function CompareEntryPage() {
       <header className="page-head">
         <div>
           <h1>版本对照</h1>
-          <p>先选择合同，再对照两次冻结审查的文档、修订与发现。</p>
+          <p>先选择合同，再对照两次审查使用的材料、修改内容和发现的问题。</p>
         </div>
         <Button aria-label={"案件列表"} type="text" href="/cases">
           案件列表

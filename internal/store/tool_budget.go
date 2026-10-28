@@ -120,7 +120,7 @@ func (s *Store) FinishToolCall(ctx context.Context, user accounts.User, callID, 
 		return fault.New(503, "store_unavailable", "储存服务暂不可用")
 	}
 	if !validToolBudgetID(callID) {
-		return fault.Invalid("工具调用身份无效")
+		return fault.Invalid("工具调用编号无效")
 	}
 	if status != "completed" && status != "failed" && status != "cancelled" {
 		return fault.Invalid("工具调用终态无效")
@@ -179,7 +179,7 @@ func (s *Store) FinishToolCall(ctx context.Context, user accounts.User, callID, 
 
 func validateToolCallRequest(in ToolCallRequest, now time.Time) error {
 	if !validToolBudgetID(in.CaseID) || !validToolBudgetID(in.RunID) || !validToolBudgetID(in.AttemptID) {
-		return fault.Invalid("案件、运行和尝试身份必须是有界标识")
+		return fault.Invalid("案件、审查和执行编号的长度或格式不符合要求")
 	}
 	switch in.CapabilityID {
 	case "dedicated_line.minimum_bandwidth", "dedicated_line.monthly_availability", "payment.advance_ratio.ceiling":
@@ -222,24 +222,24 @@ func (s *Store) currentToolCase(user accounts.User, caseID, runID, attemptID str
 	}
 	caseItem, ok := st.caseByID(caseID)
 	if !ok || !authorizeCase(caseItem, current, access.Read) {
-		return accounts.User{}, Case{}, fault.NotFound("没有找到对应冻结尝试")
+		return accounts.User{}, Case{}, fault.NotFound("没有找到对应的审查执行记录")
 	}
 	run, ok := st.runByID(runID)
 	if !ok || run.CaseID != caseID {
-		return accounts.User{}, Case{}, fault.NotFound("没有找到对应冻结尝试")
+		return accounts.User{}, Case{}, fault.NotFound("没有找到对应的审查执行记录")
 	}
 	attempt, ok := st.attemptByID(attemptID)
 	if !ok || attempt.RunID != runID || attempt.HistoryKind != "frozen" || attempt.InputHash == nil || *attempt.InputHash == "" {
-		return accounts.User{}, Case{}, fault.NotFound("没有找到对应冻结尝试")
+		return accounts.User{}, Case{}, fault.NotFound("没有找到对应的审查执行记录")
 	}
 	input, ok := st.attemptInput(attemptID)
 	if !ok || input.AttemptID != attemptID || input.RunID != runID || input.InputHash != *attempt.InputHash ||
 		!frozenInputMatchesSnapshot(st.snapshotOf(runID), input.Documents) ||
 		!attemptSelectionsMatchFrozen(st.parseSelectionsForAttempt(attemptID), input.Documents) {
-		return accounts.User{}, Case{}, fault.Conflict("冻结尝试身份不完整或不一致")
+		return accounts.User{}, Case{}, fault.Conflict("本次执行保存的记录编号不完整或不一致")
 	}
 	if !allowCancelled && (run.State == "cancelled" || attempt.State == "cancelled") {
-		return accounts.User{}, Case{}, fault.Conflict("冻结尝试已取消")
+		return accounts.User{}, Case{}, fault.Conflict("本次审查执行已取消")
 	}
 	workspace, err := s.WorkspaceAttempt(current, caseID, runID, attemptID)
 	if err != nil {
@@ -249,7 +249,7 @@ func (s *Store) currentToolCase(user accounts.User, caseID, runID, attemptID str
 		workspace.Execution == nil || workspace.Execution.Attempt == nil || workspace.Execution.Attempt.ID != attemptID ||
 		workspace.Execution.Attempt.RunID != runID || workspace.Execution.Attempt.HistoryKind != "frozen" ||
 		workspace.Execution.Attempt.InputHash == nil || *workspace.Execution.Attempt.InputHash == "" {
-		return accounts.User{}, Case{}, fault.Conflict("冻结尝试身份在读取期间发生变化")
+		return accounts.User{}, Case{}, fault.Conflict("本次执行的记录编号在读取期间发生变化")
 	}
 	return current, caseItem, nil
 }
@@ -277,7 +277,7 @@ func lockToolAttempt(ctx context.Context, tx pgx.Tx, user accounts.User, caseID,
 		Scan(&tenantID, &orgID, &caseRowID, &ownerID, &memberJSON, &businessLine, &scenario, &businessStatus, &contractType,
 			&runCaseID, &runState, &attemptRunID, &historyKind, &attemptState, &attemptInputHash, &frozenInputHash)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return Case{}, fault.NotFound("没有找到对应冻结尝试")
+		return Case{}, fault.NotFound("没有找到对应的审查执行记录")
 	}
 	if err != nil {
 		return Case{}, err
@@ -287,7 +287,7 @@ func lockToolAttempt(ctx context.Context, tx pgx.Tx, user accounts.User, caseID,
 	// would deny a reviewer who does hold access.
 	var memberIDs []string
 	if err := json.Unmarshal([]byte(memberJSON), &memberIDs); err != nil {
-		return Case{}, fault.NotFound("没有找到对应冻结尝试")
+		return Case{}, fault.NotFound("没有找到对应的审查执行记录")
 	}
 	caseItem := Case{
 		ID: caseRowID, TenantID: tenantID, OwnerOrgID: orgID, OwnerID: ownerID, MemberIDs: memberIDs,
@@ -296,10 +296,10 @@ func lockToolAttempt(ctx context.Context, tx pgx.Tx, user accounts.User, caseID,
 	if tenantID != accounts.Tenant(current) || runCaseID != caseID || attemptRunID != runID ||
 		historyKind != "frozen" || !attemptInputHash.Valid || attemptInputHash.String == "" ||
 		!frozenInputHash.Valid || frozenInputHash.String != attemptInputHash.String || !authorizeCase(caseItem, current, access.Read) {
-		return Case{}, fault.NotFound("没有找到对应冻结尝试")
+		return Case{}, fault.NotFound("没有找到对应的审查执行记录")
 	}
 	if !allowCancelled && (runState == "cancelled" || attemptState == "cancelled") {
-		return Case{}, fault.Conflict("冻结尝试已取消")
+		return Case{}, fault.Conflict("本次审查执行已取消")
 	}
 	return caseItem, nil
 }

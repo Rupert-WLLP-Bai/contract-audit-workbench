@@ -190,9 +190,9 @@ function CreateRequest({ caseId, runId, attemptId, evaluations, agentReview, can
   return (
     <form className="workflow-form" onSubmit={(event) => void submit(event)}>
       <h3>发起补充材料请求</h3>
-      <p className="meta">选择本次冻结审查中实际存在的缺失检查，并关联有责任人和期限的案件任务。</p>
-      {!frozen ? <p className="callout">仅已完成或部分完成、且已冻结的审查尝试可以发起请求。</p> : null}
-      {frozen && options.length === 0 ? <p>本次审查未报告符合条件的缺失检查。</p> : null}
+      <p className="meta">选择本次审查中需要补充材料的检查，再关联一项有责任人和截止时间的案件任务。</p>
+      {!frozen ? <p className="callout">只有已完成或部分完成、且已保存审查材料的执行记录可以发起请求。</p> : null}
+      {frozen && options.length === 0 ? <p>本次审查没有返回符合条件的待补充检查。</p> : null}
       <label className="field">缺失检查
         <Select<string> aria-label="缺失检查" placeholder="选择缺失检查" value={source || undefined} onChange={setSource}
           options={options} disabled={!frozen || pending || options.length === 0} />
@@ -379,7 +379,7 @@ function RequestCard({ item, caseId, runId, attemptId, documents, evaluations, a
       <p>要求材料：{item.material_role ? roleLabel(item.material_role) : "不限材料类型"}；核验条件：{conditionLabels[item.verification_condition] ?? item.verification_condition}</p>
       <p>来源：{source ? `规则检查，${displayGap(source.domain, source.capability_id)}，${source.reason || "原因未报告"}` : item.source_gap ? displayGap(item.source_gap.domain, item.source_gap.capability_id) : "未报告"}。 <Link to={`/cases/${encodeURIComponent(caseId)}/reviews/${encodeURIComponent(item.source_run_id)}?attempt_id=${encodeURIComponent(item.source_attempt_id)}`}>查看来源审查</Link></p>
       {item.status === "open" ? <p>下一步：责任人或案件管理人提交材料或答复。</p> : null}
-      {item.status === "received" ? <p>下一步：在提交回执后发起新审查，并结合该审查的实际检查和冻结原文进行核验。上传和提交本身不会完成核验。</p> : null}
+      {item.status === "received" ? <p>下一步：提交回执后发起新审查，再根据新审查的检查结果和原文核验。上传或提交材料本身不代表已核验。</p> : null}
       {item.status === "verified" ? <p>下一步：查看核验审查与处理记录。</p> : null}
       {item.status === "verified" && item.verification ? <div>
         <p>核验结果：{conditionLabels[item.verification.relation ?? item.verification.gap_status ?? ""] ?? item.verification.relation ?? item.verification.gap_status ?? "未报告"}；{item.verification.reason}</p>
@@ -455,8 +455,8 @@ function RequestCard({ item, caseId, runId, attemptId, documents, evaluations, a
         </div> : null}
         <form className="workflow-form" onSubmit={submitVerification}>
           <h4>核验补充材料</h4>
-          <p className="meta">在回执之后的审查工作区操作。选择实际回执及冻结原文，服务端会核对检查、材料关联和审查规则。</p>
-          {!frozenLater ? <p className="callout">当前尝试不是可用于核验的后续冻结审查；请打开回执提交后的完成或部分完成审查。</p> : null}
+          <p className="meta">请在提交回执后的审查工作区选择回执和本次审查使用的原文。系统会核对检查结果、材料关联和审查规则。</p>
+          {!frozenLater ? <p className="callout">当前执行记录不能用于核验。请打开提交回执后已完成或部分完成、且已保存审查材料的审查。</p> : null}
           {frozenLater && !observed ? <p className="callout">当前审查没有唯一匹配且达到请求条件的实际检查，仍需补充或复审。</p> : null}
           {frozenLater && observed ? <p>当前审查的匹配检查：{source ? conditionLabels[matchingEvaluations[0]?.relation ?? ""] : gap ? `${displayGap(gap.domain, gap.capability_id)}，缺口已解决` : ""}。</p> : null}
           {history.isError ? <p>无法读取回执，不能核验。</p> : null}
@@ -465,12 +465,12 @@ function RequestCard({ item, caseId, runId, attemptId, documents, evaluations, a
               options={receipts.map((entry: EvidenceReceipt) => ({ value: entry.id, label: `${entry.document_id ? (documents.find((document) => document.id === entry.document_id)?.filename ?? "提交材料") : `答复：${entry.answer ?? ""}`} · ${formatDateTime(entry.created_at)}` }))} />
           </label>
           {receipt && frozenDocuments.length === 0 ? <p>当前审查未包含可引用的回执材料或答复原文。</p> : null}
-          <label className="field">选择冻结材料
-            <Select<string> aria-label="选择冻结材料" placeholder="选择冻结材料" value={quoteDocumentId || undefined} onChange={(value) => { setQuoteDocumentId(value); setQuote(null); }}
+          <label className="field">选择本次审查材料
+            <Select<string> aria-label="选择本次审查材料" placeholder="选择本次审查材料" value={quoteDocumentId || undefined} onChange={(value) => { setQuoteDocumentId(value); setQuote(null); }}
               options={receipt ? frozenDocuments.map((document) => ({ value: document.id, label: `${document.filename}（${roleLabel(document.role)}）` })) : []} />
           </label>
-          {frozenDocument?.text ? <label className="field">在冻结原文中选中引用内容
-            <Input.TextArea aria-label="冻结原文" readOnly rows={8} value={frozenDocument.text} onSelect={selectQuote} />
+          {frozenDocument?.text ? <label className="field">在本次审查使用的原文中选择引用内容
+            <Input.TextArea aria-label="本次审查使用的原文" readOnly rows={8} value={frozenDocument.text} onSelect={selectQuote} />
             <span className="meta">用鼠标或键盘选择覆盖该检查引用内容的完整原文，最多 4096 个字符；过短的片段可能无法通过核验。</span>
           </label> : null}
           {quote ? <div><p>已选引用：</p><blockquote>{quote.quote}</blockquote>{!quoteValid ? <p className="callout">引用过长，或未包含所提交的文字答复。</p> : null}</div> : null}

@@ -153,7 +153,7 @@ export function validateRulePackDraft(
     if (rule.authority_sources.length === 0)
       issues.push({
         fieldId: `rule-${ruleIndex}-authority-heading`,
-        message: `规则 ${ruleIndex + 1} 至少需要一个权威来源。`,
+        message: `规则 ${ruleIndex + 1} 至少需要一个规则依据来源。`,
       });
     rule.authority_sources.forEach((source, sourceIndex) => {
       addRequiredIssue(

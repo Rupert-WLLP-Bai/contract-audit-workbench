@@ -59,7 +59,7 @@ func (s *Store) compareRun(st *state, run Run, current []Interpreted, selectedAt
 	previousSnapshot, currentSnapshot := st.snapshotOf(prev.ID), st.snapshotOf(run.ID)
 	if !sameRunConfiguration(previousSnapshot, currentSnapshot) ||
 		!sameRunConfiguration(currentSnapshot, withFrozenGovernance(s.comparisonSignature(st, run), currentSnapshot)) {
-		return prev.ID, []Revision{}, nil, "两次运行的规则或模型配置与当前版本不一致，无法自动归因修改稿差异；请查看两次历史记录人工比较。"
+		return prev.ID, []Revision{}, nil, "两次审查的规则或模型配置与当前版本不一致，无法自动判断修改稿差异的原因；请查看两次记录并人工比较。"
 	}
 	currentAttemptID := ""
 	if len(selectedAttemptID) > 0 {
@@ -75,7 +75,7 @@ func (s *Store) compareRun(st *state, run Run, current []Interpreted, selectedAt
 		previousAttemptID = attempt.ID
 	}
 	if !ruleResultsCommitted(st, previousAttemptID) || !ruleResultsCommitted(st, currentAttemptID) {
-		return prev.ID, []Revision{}, nil, "两次尝试尚未都有完整提交的规则结果，不能判断修改稿风险是否已消除；请查看原始证据。"
+		return prev.ID, []Revision{}, nil, "两次执行尚未都保存完整的规则结果，无法判断修改稿的风险是否消除；请查看原始证据。"
 	}
 	prevDocs := st.documentsForAttempt(prev, previousAttemptID)
 	previousFindings := st.findings(prev.ID)
@@ -92,7 +92,7 @@ func (s *Store) compareRun(st *state, run Run, current []Interpreted, selectedAt
 		if previousAttempt.RulePackCompilerRef == "" || previousAttempt.RulePackCompilerRef != currentAttempt.RulePackCompilerRef ||
 			previousAttempt.RulePackHash == "" || previousAttempt.RulePackHash != currentAttempt.RulePackHash ||
 			previousAttempt.RulePackSnapshotDigest == "" || previousAttempt.RulePackSnapshotDigest != currentAttempt.RulePackSnapshotDigest {
-			return prev.ID, []Revision{}, nil, "两次尝试缺少一致的冻结 RulePack 身份，未能判断修改稿风险变化；请查看原始证据。"
+			return prev.ID, []Revision{}, nil, "两次执行保存的规则包版本不一致或不完整，无法判断修改稿的风险变化；请查看原始证据。"
 		}
 		out := compareRulePackRevisions(st, previousAttempt, currentAttempt, previousFindings, currentFindings)
 		return prev.ID, out, extraDocuments(current, prevDocs), ""

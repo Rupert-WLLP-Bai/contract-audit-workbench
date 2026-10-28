@@ -425,7 +425,7 @@ func validateKnowledgeContent(content GovernedKnowledgeContent) error {
 	}
 	for _, ref := range content.PolicyRefs {
 		if !validResourceID(ref.KnowledgeID) || !validKnowledgeHash(ref.VersionID) || !validKnowledgeHash(ref.ContentSHA256) {
-			return fault.Invalid("政策依赖身份无效")
+			return fault.Invalid("引用的制度编号无效")
 		}
 	}
 	if content.Kind == "exception" && (s.OrgID == "" || !validKnowledgeText(content.ExceptionBasis, 2000) || len(content.PolicyRefs) == 0) {
@@ -453,7 +453,7 @@ func validateKnowledgeContent(content GovernedKnowledgeContent) error {
 		}
 	}
 	if content.Kind != "experience" && (content.SourceFeedbackID != "" || content.CandidateID != "" || content.CandidateVersionID != "" || content.CandidateSHA256 != "") {
-		return fault.Invalid("非经验制度不能携带经验候选身份")
+		return fault.Invalid("只有经验制度可以关联经验候选编号")
 	}
 	if content.Kind != "experience" && content.SourceCaseID != "" && content.Scope.CaseID != content.SourceCaseID {
 		return fault.Invalid("包含案件来源的制度必须限定该案件")
@@ -465,7 +465,7 @@ func validateKnowledgeContent(content GovernedKnowledgeContent) error {
 		return fault.Invalid("规则包绑定或验证依据无效")
 	}
 	if content.Kind == "policy" && b.ExtractionCompilerRef != policyThresholdCompilerRef {
-		return fault.Invalid("政策阈值提取器身份无效")
+		return fault.Invalid("制度数值提取器的编号无效")
 	}
 	seen := make(map[string]bool, len(b.RuleIDs))
 	for _, id := range b.RuleIDs {
@@ -558,7 +558,7 @@ func knowledgeCandidate(ctx context.Context, tx pgx.Tx, admin accounts.User, con
 		return ExperienceCandidate{}, nil
 	}
 	if !validResourceID(content.CandidateID) || !validKnowledgeHash(content.CandidateVersionID) || !validKnowledgeHash(content.CandidateSHA256) || content.SourceCaseID == "" {
-		return ExperienceCandidate{}, fault.Invalid("经验候选身份不完整")
+		return ExperienceCandidate{}, fault.Invalid("经验候选的编号不完整")
 	}
 	if err := authorizeKnowledgeSource(ctx, tx, admin, content); err != nil {
 		return ExperienceCandidate{}, err
@@ -579,7 +579,7 @@ func knowledgeCandidate(ctx context.Context, tx pgx.Tx, admin accounts.User, con
 	identity, err := json.Marshal([]any{"experience-candidate-version/v1", source.TenantID, candidate.CandidateID, candidate.JobID, candidate.Generation, candidate.ResultSHA256})
 	if err != nil || sha256Bytes(identity) != candidate.VersionID || candidate.ContentSHA256 != content.CandidateSHA256 ||
 		(content.SourceFeedbackID != "" && content.SourceFeedbackID != candidate.FeedbackID) {
-		return ExperienceCandidate{}, fault.Conflict("经验候选身份或来源摘要不一致")
+		return ExperienceCandidate{}, fault.Conflict("经验候选的编号或来源摘要不一致")
 	}
 	var feedbackExists bool
 	if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM experience_feedback WHERE tenant_id=$1 AND org_id=$2 AND case_id=$3 AND feedback_id=$4)`,
@@ -650,7 +650,7 @@ func nullableKnowledgeID(value string) any {
 
 func knowledgeIdempotency(ctx context.Context, tx pgx.Tx, user accounts.User, key string, request any, apply func() (GovernedKnowledgeVersion, error)) (GovernedKnowledgeVersion, error) {
 	if !validKnowledgeText(key, 128) || key != strings.TrimSpace(key) {
-		return GovernedKnowledgeVersion{}, fault.Invalid("需要有效的幂等键")
+		return GovernedKnowledgeVersion{}, fault.Invalid("需要有效的请求标识（幂等键）")
 	}
 	digest, err := governanceIdempotencyKey(request)
 	if err != nil {
@@ -661,7 +661,7 @@ func knowledgeIdempotency(ctx context.Context, tx pgx.Tx, user accounts.User, ke
 	err = tx.QueryRow(ctx, `SELECT request_digest,response FROM governed_knowledge_idempotency WHERE tenant_id=$1 AND actor_id=$2 AND idem_key=$3`, accounts.Tenant(user), user.ID, key).Scan(&storedDigest, &stored)
 	if err == nil {
 		if storedDigest != digest {
-			return GovernedKnowledgeVersion{}, fault.Conflict("幂等键已用于不同命令")
+			return GovernedKnowledgeVersion{}, fault.Conflict("这个请求标识已用于其他操作")
 		}
 		var out GovernedKnowledgeVersion
 		if err := json.Unmarshal(stored, &out); err != nil {
@@ -867,7 +867,7 @@ func loadGovernedKnowledge(ctx context.Context, tx pgx.Tx, tenant, knowledgeID, 
 		out.Content.Scope.OrgID != knowledgeNullableString(scopeOrg) || out.Content.Scope.CaseID != knowledgeNullableString(scopeCase) ||
 		out.Content.SourceOrgID != knowledgeNullableString(sourceOrg) || out.Content.SourceCaseID != knowledgeNullableString(sourceCase) ||
 		out.Content.CandidateID != knowledgeNullableString(candidateID) || out.Content.CandidateVersionID != knowledgeNullableString(candidateVersionID) || out.Content.CandidateSHA256 != knowledgeNullableString(candidateDigest) {
-		return GovernedKnowledgeVersion{}, "", "", false, fault.Conflict("制度身份或作用域损坏")
+		return GovernedKnowledgeVersion{}, "", "", false, fault.Conflict("制度编号或适用范围记录已损坏")
 	}
 	if err := validateKnowledgeContent(out.Content); err != nil {
 		return GovernedKnowledgeVersion{}, "", "", false, fault.Conflict("已保存的制度内容无效")
@@ -903,7 +903,7 @@ func validateKnowledgeBinding(ctx context.Context, tx pgx.Tx, tenant string, con
 	pack, err := rulepack.Parse(raw)
 	if err != nil || status != GovernancePublished || !active || pointerVersion != b.PackVersion ||
 		hash != b.PackContentHash || digest != b.PackSnapshotDigest || sha256Bytes(raw) != digest || pack.Hash() != hash {
-		return fault.Conflict("制度规则包未启用或内容身份不一致")
+		return fault.Conflict("制度关联的规则包未启用，或内容编号不一致")
 	}
 	manifest := pack.Manifest()
 	if manifest.ID != b.PackID || manifest.Version != b.PackVersion || manifest.TenantID != tenant || manifest.Lifecycle.State != rulepack.StatePublished ||
@@ -1299,7 +1299,7 @@ func (s *Store) PreviewGovernedPolicy(user accounts.User, knowledgeID, versionID
 		}
 		pack, err := rulepack.Parse(raw)
 		if err != nil || sha256Bytes(raw) != snapshotDigest || pack.Hash() != contentHash || contentHash != binding.PackContentHash || snapshotDigest != binding.PackSnapshotDigest {
-			return fault.Conflict("制度引用的规则包身份无效")
+			return fault.Conflict("制度引用的规则包编号无效")
 		}
 		preview = compareGovernedPolicyThresholds(version.Content, pack.Manifest())
 		preview.Ref = version.Ref
@@ -1368,7 +1368,7 @@ func (s *Store) GovernedKnowledgeCommand(user accounts.User, input GovernedKnowl
 		out, inner = knowledgeIdempotency(ctx, tx, admin, input.IdempotencyKey, input, func() (GovernedKnowledgeVersion, error) {
 			if !validResourceID(input.KnowledgeID) || !validKnowledgeHash(input.VersionID) || !validKnowledgeHash(input.ExpectedContentSHA256) ||
 				input.ExpectedRevision < 1 || input.ExpectedPointerRevision < 0 || !validKnowledgeText(input.Reason, 2000) {
-				return GovernedKnowledgeVersion{}, fault.Invalid("治理命令身份、修订或依据无效")
+				return GovernedKnowledgeVersion{}, fault.Invalid("操作编号、版本或依据无效")
 			}
 			switch input.Action {
 			case "submit", "validate", "approve", "publish", "withdraw", "rollback":
@@ -1839,7 +1839,7 @@ func resolveGovernedKnowledgeTx(ctx context.Context, tx pgx.Tx, user accounts.Us
 	for _, id := range ids {
 		version, _, _, _, err := loadGovernedKnowledge(ctx, tx, item.TenantID, id.id, id.version)
 		if err != nil {
-			return ReviewKnowledgeSnapshot{}, fault.Conflict("生效制度身份或内容不可解析")
+			return ReviewKnowledgeSnapshot{}, fault.Conflict("无法解析生效制度的编号或内容")
 		}
 		applies, err := knowledgeApplies(version.Content, item, at)
 		if err != nil {
@@ -1977,11 +1977,11 @@ func (s *Store) ResolveGovernedKnowledge(ctx context.Context, user accounts.User
 // hold these locks through adoption or submission of an in-flight result.
 func RevalidateGovernedKnowledgeSnapshotTx(ctx context.Context, tx pgx.Tx, user accounts.User, caseID string, frozen ReviewKnowledgeSnapshot) error {
 	if frozen.Encoding != "review-knowledge-snapshot/v1" || !validKnowledgeHash(frozen.SnapshotSHA256) {
-		return fault.Conflict("冻结制度快照无效")
+		return fault.Conflict("本次审查保存的制度记录无效")
 	}
 	sealed, err := sealKnowledgeSnapshot(frozen)
 	if err != nil || sealed.SnapshotSHA256 != frozen.SnapshotSHA256 {
-		return fault.Conflict("冻结制度快照摘要不一致")
+		return fault.Conflict("本次审查保存的制度记录摘要不一致")
 	}
 	current, err := resolveGovernedKnowledgeTx(ctx, tx, user, caseID, frozen.BusinessAt, 1024)
 	if err != nil {
@@ -1998,7 +1998,7 @@ func RevalidateGovernedKnowledgeSnapshotTx(ctx context.Context, tx pgx.Tx, user 
 	seenOptional := make(map[KnowledgeRef]bool, len(frozen.OptionalCandidates))
 	for _, selected := range frozen.OptionalCandidates {
 		if seenOptional[selected.Ref] {
-			return fault.Conflict("冻结制度包含重复候选")
+			return fault.Conflict("本次审查保存的制度记录包含重复候选")
 		}
 		seenOptional[selected.Ref] = true
 		found := false
@@ -2009,7 +2009,7 @@ func RevalidateGovernedKnowledgeSnapshotTx(ctx context.Context, tx pgx.Tx, user 
 			}
 		}
 		if !found {
-			return fault.Conflict("冻结的可选制度已改变或撤回")
+			return fault.Conflict("本次审查选择的可选制度已发生变化或被撤回")
 		}
 	}
 	return nil
@@ -2109,11 +2109,11 @@ func (s *Store) ReadFrozenGovernedKnowledge(ctx context.Context, user accounts.U
 		}
 	}
 	if !found {
-		return GovernedKnowledgeReviewContent{}, fault.NotFound("制度不在本次冻结候选中")
+		return GovernedKnowledgeReviewContent{}, fault.NotFound("制度不在本次审查保存的候选列表中")
 	}
 	version, _, _, _, err := loadGovernedKnowledge(ctx, tx, accounts.Tenant(current), ref.KnowledgeID, ref.VersionID)
 	if err != nil || version.Ref != ref || !version.Active {
-		return GovernedKnowledgeReviewContent{}, fault.Conflict("冻结制度已撤回或身份不一致")
+		return GovernedKnowledgeReviewContent{}, fault.Conflict("本次审查使用的制度已撤回，或记录编号不一致")
 	}
 	c := version.Content
 	out := GovernedKnowledgeReviewContent{Ref: ref, Kind: c.Kind, Title: c.Title, Body: c.Body, Summary: c.Summary,

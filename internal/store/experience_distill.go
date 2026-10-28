@@ -52,7 +52,7 @@ func (s *Store) UseExperienceResultAcceptor(acceptor ExperienceResultAcceptor) {
 // lookup; the worker cannot supply the applicant or candidate content.
 func (s *Store) AcceptExperienceResult(ctx context.Context, delivery ExperienceResultDelivery) error {
 	if ctx == nil || !experienceIdentity(delivery.TenantID) || !experienceIdentity(delivery.JobID) || delivery.Generation < 1 {
-		return fault.Invalid("经验提炼结果身份无效")
+		return fault.Invalid("经验提炼结果的编号无效")
 	}
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
@@ -107,30 +107,30 @@ func experiencePolicyContext(ctx context.Context, tx pgx.Tx, item Case, feedback
 			&snapshot.ParseSelectionHash, &snapshot.ParserConfigurationID, &snapshot.PlannerConfigurationID, &plannerPayload,
 			&cloudPolicy, &snapshot.CloudPolicyDigest, &documentsJSON)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return ExperienceDistillPolicyContext{}, fault.Conflict("反馈来源缺少冻结的审查尝试")
+		return ExperienceDistillPolicyContext{}, fault.Conflict("反馈来源缺少已保存的审查执行记录")
 	}
 	if err != nil {
 		return ExperienceDistillPolicyContext{}, err
 	}
 	governed, err := decodeGovernedKnowledge(knowledge)
 	if err != nil || governed == nil {
-		return ExperienceDistillPolicyContext{}, fault.Conflict("反馈来源缺少有效的治理制度冻结快照")
+		return ExperienceDistillPolicyContext{}, fault.Conflict("反馈来源缺少本次审查保存的有效制度记录")
 	}
 	snapshot.GovernedKnowledge = governed
 	if !validKnowledgeHash(sourceInput) || governed.Scope.OrgID != item.OwnerOrgID || governed.Scope.CaseID != item.ID {
-		return ExperienceDistillPolicyContext{}, fault.Conflict("反馈来源的制度快照身份无效")
+		return ExperienceDistillPolicyContext{}, fault.Conflict("反馈来源的制度记录编号无效")
 	}
 	if _, err := copyGovernedKnowledge(snapshot); err != nil {
-		return ExperienceDistillPolicyContext{}, fault.Conflict("反馈来源的规则包与制度快照不一致")
+		return ExperienceDistillPolicyContext{}, fault.Conflict("反馈来源的规则包与保存的制度记录不一致")
 	}
 	if err := validateGovernedAttemptSnapshot(attempt, snapshot); err != nil {
-		return ExperienceDistillPolicyContext{}, fault.Conflict("反馈来源的尝试与制度快照不一致")
+		return ExperienceDistillPolicyContext{}, fault.Conflict("反馈来源的执行记录与保存的制度记录不一致")
 	}
 	var documents []FrozenDocument
 	if json.Unmarshal([]byte(documentIDsJSON), &snapshot.DocumentIDs) != nil ||
 		json.Unmarshal([]byte(parsedIDsJSON), &snapshot.ParsedDocumentIDs) != nil ||
 		json.Unmarshal([]byte(documentsJSON), &documents) != nil {
-		return ExperienceDistillPolicyContext{}, fault.Conflict("反馈来源的冻结审查输入无法读取")
+		return ExperienceDistillPolicyContext{}, fault.Conflict("无法读取反馈来源审查当时保存的输入")
 	}
 	if len(plannerPayload) > 0 {
 		snapshot.PlannerConfiguration = append(json.RawMessage(nil), plannerPayload...)
@@ -141,7 +141,7 @@ func experiencePolicyContext(ctx context.Context, tx pgx.Tx, item Case, feedback
 	inputHash, err := frozenInputHash(snapshot, documents)
 	if err != nil || inputHash != sourceInput || !frozenInputMatchesSnapshot(snapshot, documents) ||
 		!sameDocumentSet(snapshot.DocumentIDs, frozenDocumentIDs(documents)) {
-		return ExperienceDistillPolicyContext{}, fault.Conflict("反馈来源的冻结审查输入摘要不一致")
+		return ExperienceDistillPolicyContext{}, fault.Conflict("反馈来源审查当时保存的输入摘要不一致")
 	}
 	at, err := knowledgeTime(governed.BusinessAt)
 	if err != nil || len(governed.RequiredPolicies) == 0 {
@@ -163,7 +163,7 @@ func experiencePolicyContext(ctx context.Context, tx pgx.Tx, item Case, feedback
 			!until.After(from) || at.Before(from) || !at.Before(until) ||
 			binding.PackID != pack.PackID || binding.PackVersion != pack.Version ||
 			binding.PackContentHash != pack.ContentHash || binding.PackSnapshotDigest != pack.SnapshotDigest || binding.CompilerRef != pack.CompilerRef {
-			return ExperienceDistillPolicyContext{}, fault.Conflict("反馈来源的必需政策快照无效")
+			return ExperienceDistillPolicyContext{}, fault.Conflict("反馈来源保存的必需制度记录无效")
 		}
 		seen[ref] = true
 		out.RequiredPolicies = append(out.RequiredPolicies, ExperienceDistillPolicy{
@@ -179,7 +179,7 @@ func validateExperiencePolicyContext(ctx context.Context, tx pgx.Tx, item Case, 
 		return err
 	}
 	if !reflect.DeepEqual(input.PolicyContext, expected) {
-		return fault.Conflict("提炼任务的政策来源与冻结审查不一致")
+		return fault.Conflict("提炼任务的制度来源与当时保存的审查记录不一致")
 	}
 	return nil
 }
@@ -200,7 +200,7 @@ func validateExperiencePolicyRefs(content ExperienceCandidateContent, source Exp
 	for _, ref := range content.PolicyRefs {
 		policy, exists := allowed[ref]
 		if !exists || seen[ref] {
-			return fault.Conflict("经验候选政策依赖不属于来源冻结快照或重复")
+			return fault.Conflict("经验候选引用的制度不属于来源审查记录，或存在重复")
 		}
 		if fromErr == nil && untilErr == nil && until.After(from) {
 			policyFrom, errFrom := knowledgeTime(policy.ValidFrom)
@@ -241,7 +241,7 @@ func validateExperienceCandidateSource(ctx context.Context, tx pgx.Tx, item Case
 		input.CaseID != item.ID || input.FeedbackID != feedback.FeedbackID || input.DecisionID != feedback.DecisionID ||
 		input.ApplicantID != feedback.ApplicantID || input.CandidateID != candidate.CandidateID || input.BaseVersionID != candidate.BaseVersionID ||
 		!experienceIdentity(input.ModelConfigurationID) || input.TemplateRef != candidate.TemplateRef {
-		return fault.Conflict("经验候选的提炼输入身份无效")
+		return fault.Conflict("经验候选的提炼输入编号无效")
 	}
 	if err := validateExperiencePolicyContext(ctx, tx, item, feedback, input); err != nil {
 		return err
@@ -261,7 +261,7 @@ func (s *Store) RequestExperienceDistillation(ctx context.Context, user accounts
 	if !experienceIdentity(input.CaseID) || !experienceIdentity(input.FeedbackID) || !experienceIdentity(input.IdempotencyKey) || len(input.IdempotencyKey) > 80 ||
 		(input.CandidateID == "") != (input.BaseVersionID == "") ||
 		(input.CandidateID != "" && (!experienceIdentity(input.CandidateID) || !experienceIdentity(input.BaseVersionID))) {
-		return ExperienceDistillReceipt{}, fault.Invalid("经验提炼的来源或版本身份无效")
+		return ExperienceDistillReceipt{}, fault.Invalid("经验提炼的来源或版本编号无效")
 	}
 	tx, current, item, err := s.beginExperienceCase(ctx, user, input.CaseID, access.Review)
 	if err != nil {
@@ -292,7 +292,7 @@ func (s *Store) RequestExperienceDistillation(ctx context.Context, user accounts
 		Scan(&priorJob, &priorHash, &priorOrg, &priorCase, &priorFeedback)
 	if err == nil {
 		if priorHash != sha256Bytes(requestBytes) || priorOrg != item.OwnerOrgID || priorCase != item.ID || priorFeedback != feedback.FeedbackID {
-			return ExperienceDistillReceipt{}, fault.Conflict("幂等键已用于不同的经验提炼请求")
+			return ExperienceDistillReceipt{}, fault.Conflict("这个请求标识已用于其他经验提炼请求")
 		}
 		if err := authorizeExperienceAncestors(ctx, tx, current, item, input.CandidateID, input.BaseVersionID); err != nil {
 			return ExperienceDistillReceipt{}, err
@@ -373,7 +373,7 @@ func (s *Store) RequestExperienceDistillation(ctx context.Context, user accounts
 		if errors.As(err, &pgErr) {
 			switch pgErr.Code {
 			case "23505":
-				return ExperienceDistillReceipt{}, fault.Conflict("幂等键已用于不同的经验提炼请求")
+				return ExperienceDistillReceipt{}, fault.Conflict("这个请求标识已用于其他经验提炼请求")
 			case "53300", "55000":
 				problem := fault.New(503, "execution_capacity", "经验提炼队列暂不可用，请稍后重试")
 				problem.Retryable = true

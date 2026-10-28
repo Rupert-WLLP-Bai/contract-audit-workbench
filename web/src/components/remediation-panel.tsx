@@ -190,11 +190,11 @@ function RemediationCard({
   let verificationBlockReason =
     "当前复审没有返回与整改来源一致的兼容规则评估。";
   if (source.isLoading)
-    verificationBlockReason = "正在读取整改绑定的原运行和尝试。";
+    verificationBlockReason = "正在读取整改关联的原审查和执行记录。";
   else if (source.isError)
     verificationBlockReason = `无法读取整改来源：${errorMessage(source.error)}`;
   else if (candidateWorkspace.isLoading)
-    verificationBlockReason = "正在读取所选复核尝试。";
+    verificationBlockReason = "正在读取所选的复核执行记录。";
   else if (candidateWorkspace.isError)
     verificationBlockReason = `无法读取所选复核尝试：${errorMessage(candidateWorkspace.error)}`;
   else if (comparisonReason) verificationBlockReason = comparisonReason;
@@ -204,9 +204,9 @@ function RemediationCard({
     verificationBlockReason =
       "复核未为每个整改发现返回唯一、同规则版本、同能力和同业务对象的兼容评估。";
   else if (candidateWorkspace.data && !isNewAttempt)
-    verificationBlockReason = "关闭复核必须绑定不同于整改来源的新尝试。";
+    verificationBlockReason = "关闭整改时，必须选择不同于原审查执行记录的新执行记录。";
   else if (selectedAttempt && !isTerminalAttemptState(selectedAttempt.state))
-    verificationBlockReason = "所选尝试尚未结束，不能作为复核依据。";
+    verificationBlockReason = "所选执行尚未结束，不能作为复核依据。";
 
   function onSubmitChanges(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -388,9 +388,9 @@ function RemediationCard({
 
       {item.status === "submitted" ? (
         <form className="workflow-form" onSubmit={onVerify}>
-          <h5>新运行复核</h5>
+          <h5>使用新审查复核</h5>
           <ReviewChoiceSelect
-            label="复核运行和尝试"
+            label="选择复核的审查和执行记录"
             choices={choices}
             value={candidateKey}
             onChange={setCandidateKey}
@@ -411,7 +411,7 @@ function RemediationCard({
                 <StatusText tone={runTone(candidateWorkspace.data.run.state)}>
                   {runLabel(candidateWorkspace.data.run.state)}
                 </StatusText>
-                {selectedAttempt ? `，第 ${selectedAttempt.ordinal} 次审查` : "，审查次数未返回"}
+                {selectedAttempt ? `，第 ${selectedAttempt.ordinal} 次执行` : "，未获取到执行次数"}
               </p>
               {candidateWorkspace.data.revision_comparison_reason ? (
                 <p className="callout">
@@ -440,9 +440,7 @@ function RemediationCard({
                 ))}
               </ul>
               <p className="meta">
-                资格依据是来源 finding
-                对应的规则、版本、能力和对象引用，以及本轮唯一的 compatible
-                规则评估；差异标记仅供查看，服务端会独立验证。
+                能否完成复核，要看原发现对应的规则、版本、检查项目和对象，以及本轮唯一一条结果为“一致”的规则检查。差异标记仅供参考，系统会再次核对。
               </p>
             </div>
           ) : null}
@@ -601,7 +599,7 @@ export function RemediationPanel({
           案件已归档，整改创建、提交和复核写入会被服务端拒绝（HTTP 409）。
         </p>
       ) : null}
-      {historyLoading ? <p role="status">正在读取运行与尝试历史。</p> : null}
+      {historyLoading ? <p role="status">正在读取审查与执行历史。</p> : null}
       {historyError ? (
         <p className="workflow-error" role="alert">
           运行历史没有加载：{errorMessage(historyError)}
@@ -611,7 +609,7 @@ export function RemediationPanel({
         <form className="workflow-form" onSubmit={onCreate}>
           <h3>创建整改</h3>
           <ReviewChoiceSelect
-            label="来源运行和尝试"
+            label="选择原审查和执行记录"
             choices={choices}
             value={choiceKey}
             onChange={(value) => {
@@ -654,7 +652,7 @@ export function RemediationPanel({
             <p>所选尝试没有返回可绑定的发现。</p>
           ) : null}
           {choices.length === 0 && !historyLoading && !historyError ? (
-            <p>没有可选择的冻结运行尝试；旧的未冻结历史不能用于新建整改。</p>
+            <p>没有可用于新建整改的执行记录。较早的审查如果没有保存当时使用的材料版本记录，不能用于新建整改。</p>
           ) : null}
           <label className="field">
             负责人 ID

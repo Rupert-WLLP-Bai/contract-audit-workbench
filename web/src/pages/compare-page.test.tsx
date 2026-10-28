@@ -620,7 +620,7 @@ describe("ComparePage frozen run selection", () => {
       ),
     );
     expect(
-      screen.queryByRole("link", { name: "打开原文与人工决定" }),
+      screen.queryByRole("link", { name: "打开原文与审查判断" }),
     ).not.toBeInTheDocument();
     await chooseRun(user, "当前版本", /审查记录 1/);
     await waitFor(() =>
@@ -718,7 +718,7 @@ describe("ComparePage evidence and actual results", () => {
     expect(material("历史版本").querySelector("mark")).toBeNull();
     expect(screen.getByText(/依据版本 2，\s*第4条/)).toBeInTheDocument();
     expect(
-      screen.getByRole("link", { name: "打开原文与人工决定" }),
+      screen.getByRole("link", { name: "打开原文与审查判断" }),
     ).toHaveAttribute(
       "href",
       "/cases/case-main/reviews/run-z?finding=finding-rule",
@@ -849,7 +849,7 @@ describe("ComparePage evidence and actual results", () => {
         within(riskPanel()).getByText(/36个月/, { selector: "blockquote" }),
       ).toBeInTheDocument();
       expect(
-        screen.getByRole("link", { name: "打开原文与人工决定" }),
+        screen.getByRole("link", { name: "打开原文与审查判断" }),
       ).toBeInTheDocument();
     },
   );
@@ -916,7 +916,7 @@ describe("ComparePage evidence and actual results", () => {
     );
     expect(screen.getByText(/规则 WARRANTY-001，\s*v2\.1/)).toBeInTheDocument();
     expect(screen.getByText("合同质保低于采购要求")).toBeInTheDocument();
-    expect(screen.getByText("此运行未返回规则评估记录。")).toBeInTheDocument();
+    expect(screen.getByText("没有获取到这次审查的规则检查记录。")).toBeInTheDocument();
     expect(screen.queryByText("质保修订继续存在")).not.toBeInTheDocument();
     await user.click(screen.getByRole("tab", { name: "执行记录" }));
     expect(
@@ -1025,7 +1025,7 @@ describe("ComparePage unavailable data", () => {
     expect(
       screen.getByRole("link", { name: "打开审查与决定" }),
     ).toHaveAttribute("href", "/review");
-    expect(screen.getAllByText("选择实际运行后查看冻结材料。")).toHaveLength(2);
+    expect(screen.getAllByText("选择审查记录后，查看当时使用的材料。")).toHaveLength(2);
     expect(
       screen.getByText("此运行没有返回发现；不代表合同已批准。"),
     ).toBeInTheDocument();
@@ -1059,7 +1059,7 @@ describe("ComparePage unavailable data", () => {
     service.reviewGates.set("run-z", gate);
     open(service);
     await screen.findByLabelText("历史版本材料解析正文");
-    expect(screen.getByText("正在读取冻结工作区…")).toHaveAttribute(
+    expect(screen.getByText("正在读取所选审查的记录…")).toHaveAttribute(
       "role",
       "status",
     );
@@ -1071,7 +1071,7 @@ describe("ComparePage unavailable data", () => {
       await screen.findByLabelText("当前版本材料解析正文"),
     ).toHaveAttribute("data-document-version-id", "draft-z");
     await waitFor(() =>
-      expect(screen.queryByText("正在读取冻结工作区…")).not.toBeInTheDocument(),
+      expect(screen.queryByText("正在读取所选审查的记录…")).not.toBeInTheDocument(),
     );
   });
 

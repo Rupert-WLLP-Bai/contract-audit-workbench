@@ -255,7 +255,7 @@ func evidenceRequestReplay(ctx context.Context, tx pgx.Tx, item Case, actor, eve
 		return EvidenceRequestEvent{}, false, err
 	}
 	if storedHash != hash || requestID != "" && storedID != requestID {
-		return EvidenceRequestEvent{}, false, fault.Conflict("幂等键已用于其他补充材料操作")
+		return EvidenceRequestEvent{}, false, fault.Conflict("这个请求标识已用于其他补充材料操作")
 	}
 	if err := json.Unmarshal(raw, &event.Request); err != nil {
 		return EvidenceRequestEvent{}, false, err
@@ -315,7 +315,7 @@ func (s *Store) evidenceAttempt(ctx context.Context, tx pgx.Tx, item Case, runID
 	claim := JobClaim{TenantID: item.TenantID, OrgID: item.OwnerOrgID, CaseID: item.ID}
 	st, err := s.loadScopedAttemptState(ctx, tx, claim, runID, attemptID)
 	if errors.Is(err, errAttemptMissing) || errors.Is(err, errExecutionEventScope) {
-		return state{}, Attempt{}, AttemptInput{}, fault.Conflict("没有可核验的同案件审查尝试")
+		return state{}, Attempt{}, AttemptInput{}, fault.Conflict("没有找到该案件可用于核验的执行记录")
 	}
 	if err != nil {
 		return state{}, Attempt{}, AttemptInput{}, err
@@ -324,36 +324,36 @@ func (s *Store) evidenceAttempt(ctx context.Context, tx pgx.Tx, item Case, runID
 	if !ok || attempt.RunID != runID || attempt.HistoryKind != "frozen" || attempt.FinishedAt == nil ||
 		(attempt.State != "completed" && attempt.State != "partial") || attempt.InputHash == nil || *attempt.InputHash == "" ||
 		attempt.OutputHash == nil || *attempt.OutputHash == "" {
-		return state{}, Attempt{}, AttemptInput{}, fault.Conflict("审查尝试没有冻结的终态输入和输出")
+		return state{}, Attempt{}, AttemptInput{}, fault.Conflict("这次执行没有保存已完成的输入和输出记录")
 	}
 	input, ok := st.attemptInput(attemptID)
 	if !ok || input.RunID != runID || input.InputHash != *attempt.InputHash {
-		return state{}, Attempt{}, AttemptInput{}, fault.Conflict("冻结审查输入身份不一致")
+		return state{}, Attempt{}, AttemptInput{}, fault.Conflict("本次审查保存的输入编号不一致")
 	}
 	snapshot := st.snapshotOf(runID)
 	inputHash, err := frozenInputHash(snapshot, input.Documents)
 	if err != nil || inputHash != input.InputHash || !frozenInputMatchesSnapshot(snapshot, input.Documents) ||
 		!attemptSelectionsMatchFrozen(st.parseSelectionsForAttempt(attemptID), input.Documents) || s.verifyFrozenDocuments(st, input.Documents) != nil {
-		return state{}, Attempt{}, AttemptInput{}, fault.Conflict("冻结审查输入或材料校验失败")
+		return state{}, Attempt{}, AttemptInput{}, fault.Conflict("本次审查保存的输入或材料未通过校验")
 	}
 	digest, err := agentReviewDigestForOutput(ctx, tx, item.TenantID, item.OwnerOrgID, attemptID)
 	if err != nil {
-		return state{}, Attempt{}, AttemptInput{}, fault.Conflict("审查输出证据校验失败")
+		return state{}, Attempt{}, AttemptInput{}, fault.Conflict("审查结果中的证据未通过校验")
 	}
 	outputHash, err := attemptOutputHash(st, runID, attemptID, digest)
 	if err != nil || outputHash != *attempt.OutputHash {
-		return state{}, Attempt{}, AttemptInput{}, fault.Conflict("冻结审查输出摘要不一致")
+		return state{}, Attempt{}, AttemptInput{}, fault.Conflict("本次审查保存的结果摘要不一致")
 	}
 	if attempt.RulePackCompilerRef != "" || len(attempt.RulePackSnapshot) != 0 || attempt.RulePackHash != "" || attempt.RulePackSnapshotDigest != "" {
 		fullCase, ok := st.caseByID(item.ID)
 		if !ok {
-			return state{}, Attempt{}, AttemptInput{}, fault.Conflict("审查案件身份不完整")
+			return state{}, Attempt{}, AttemptInput{}, fault.Conflict("审查关联的案件信息不完整")
 		}
 		if _, err := validateRemediationRulePack(attempt, fullCase); err != nil {
-			return state{}, Attempt{}, AttemptInput{}, fault.Conflict("冻结规则包身份无效")
+			return state{}, Attempt{}, AttemptInput{}, fault.Conflict("本次审查使用的规则包编号无效")
 		}
 	} else if attempt.RulePackID != "" || attempt.RulePackVersion != "" || attempt.RulePackPointerRevision != 0 {
-		return state{}, Attempt{}, AttemptInput{}, fault.Conflict("冻结规则包身份不完整")
+		return state{}, Attempt{}, AttemptInput{}, fault.Conflict("本次审查使用的规则包编号不完整")
 	}
 	return st, attempt, input, nil
 }
@@ -414,17 +414,17 @@ func evidenceAgentReview(ctx context.Context, tx pgx.Tx, item Case, runID, attem
 		WHERE tenant_id=$1 AND org_id=$2 AND case_id=$3 AND run_id=$4 AND attempt_id=$5`,
 		item.TenantID, item.OwnerOrgID, item.ID, runID, attemptID).Scan(&raw, &digest, &storedInput)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return agentflow.AgentReview{}, fault.Conflict("审查尝试没有实际的智能审查缺失检查")
+		return agentflow.AgentReview{}, fault.Conflict("这次执行没有可用的智能审查待补充检查")
 	}
 	if err != nil {
 		return agentflow.AgentReview{}, err
 	}
 	if storedInput != inputHash || sha256Bytes(raw) != digest {
-		return agentflow.AgentReview{}, fault.Conflict("智能审查缺失检查的冻结身份无效")
+		return agentflow.AgentReview{}, fault.Conflict("已保存的智能审查待补充检查编号无效")
 	}
 	var review agentflow.AgentReview
 	if err := json.Unmarshal(raw, &review); err != nil || review.SchemaVersion != agentflow.AgentReviewSchemaVersion || review.AttemptID != attemptID {
-		return agentflow.AgentReview{}, fault.Conflict("智能审查缺失检查的格式或身份无效")
+		return agentflow.AgentReview{}, fault.Conflict("智能审查待补充检查的格式或编号无效")
 	}
 	return review, nil
 }
@@ -492,7 +492,7 @@ func (s *Store) CreateEvidenceRequest(ctx context.Context, user accounts.User, c
 		(input.SourceEvaluationID != "" && input.VerificationCondition != "compatible" && input.VerificationCondition != "conflict") ||
 		(input.SourceGapID != "" && input.VerificationCondition != "resolved") ||
 		!evidenceRequestRole(input.MaterialRole) || !evidenceRequestKey(input.IdempotencyKey) {
-		return EvidenceRequest{}, fault.Invalid("补充材料请求缺少有效任务、缺失检查、问题、核验条件或幂等键")
+		return EvidenceRequest{}, fault.Invalid("补充材料请求缺少有效的任务、待补充检查、问题、核验条件或请求标识")
 	}
 	hash, err := evidenceRequestHash("created", input)
 	if err != nil {
@@ -541,7 +541,7 @@ func (s *Store) CreateEvidenceRequest(ctx context.Context, user accounts.User, c
 		var ok bool
 		evaluation, ok = evidenceEvaluation(st, item.ID, input.SourceRunID, input.SourceAttemptID, input.SourceEvaluationID)
 		if !ok || !evidenceMissingEvaluation(evaluation) {
-			return EvidenceRequest{}, fault.Invalid("来源检查不是该尝试中缺少证据的检查")
+			return EvidenceRequest{}, fault.Invalid("所选检查不是这次执行中缺少证据的检查")
 		}
 		if task.FindingID != nil && *task.FindingID != evaluation.FindingID {
 			return EvidenceRequest{}, fault.Invalid("任务关联的风险与缺失检查不一致")
@@ -554,7 +554,7 @@ func (s *Store) CreateEvidenceRequest(ctx context.Context, user accounts.User, c
 		}
 		observed, ok := evidenceGap(review, input.SourceGapID)
 		if !ok || !evidenceMissingGap(observed) {
-			return EvidenceRequest{}, fault.Invalid("来源智能审查缺口不是未解决的实际检查")
+			return EvidenceRequest{}, fault.Invalid("所选智能审查待补充事项不是未解决的检查")
 		}
 		if task.FindingID != nil {
 			matched := false
@@ -688,7 +688,7 @@ func (s *Store) SubmitEvidenceReceipt(ctx context.Context, user accounts.User, c
 	if !experienceIdentity(requestID) || input.ExpectedVersion < 1 || !evidenceRequestKey(input.IdempotencyKey) ||
 		(input.DocumentID == "") == (input.Answer == "") || input.DocumentID != "" && !experienceIdentity(input.DocumentID) ||
 		input.Answer != "" && !validBusinessText(input.Answer, 4000) {
-		return EvidenceRequest{}, EvidenceReceipt{}, fault.Invalid("提交需要一个材料或答复、预期版本和幂等键")
+		return EvidenceRequest{}, EvidenceReceipt{}, fault.Invalid("提交时需要选择一份材料或填写答复，并提供预期版本和请求标识")
 	}
 	hash, err := evidenceRequestHash("received", input)
 	if err != nil {
@@ -944,7 +944,7 @@ func (s *Store) VerifyEvidenceRequest(ctx context.Context, user accounts.User, c
 		(input.EvaluationID == "") == (input.GapID == "") || input.EvaluationID != "" && !experienceIdentity(input.EvaluationID) ||
 		input.GapID != "" && !experienceIdentity(input.GapID) || !experienceIdentity(input.ReceiptID) || input.ExpectedVersion < 1 ||
 		!evidenceRequestKey(input.IdempotencyKey) || !validBusinessText(input.Reason, 2000) || len(input.Evidence) == 0 || len(input.Evidence) > 32 {
-		return EvidenceRequest{}, fault.Invalid("核验需要新尝试、实际检查、提交记录、理由和冻结证据")
+		return EvidenceRequest{}, fault.Invalid("核验需要新执行记录、检查结果、提交记录、理由和本次审查使用的证据")
 	}
 	for _, ref := range input.Evidence {
 		if !experienceIdentity(ref.DocumentID) || !experienceIdentity(ref.ParsedDocumentID) || ref.Quote == "" ||
@@ -994,20 +994,20 @@ func (s *Store) VerifyEvidenceRequest(ctx context.Context, user accounts.User, c
 		return EvidenceRequest{}, err
 	}
 	if input.AttemptID == request.SourceAttemptID {
-		return EvidenceRequest{}, fault.Conflict("必须使用提交之后的新审查尝试")
+		return EvidenceRequest{}, fault.Conflict("请使用提交材料之后的新审查执行记录")
 	}
 	sourceState, sourceAttempt, _, err := s.evidenceAttempt(ctx, tx, item, request.SourceRunID, request.SourceAttemptID)
 	if err != nil {
 		return EvidenceRequest{}, err
 	}
 	if *sourceAttempt.InputHash != request.SourceInputHash || *sourceAttempt.OutputHash != request.SourceOutputHash {
-		return EvidenceRequest{}, fault.Conflict("原始审查冻结身份不一致")
+		return EvidenceRequest{}, fault.Conflict("原审查保存的记录编号不一致")
 	}
 	var source ConstraintEval
 	var sourceReview agentflow.AgentReview
 	if request.SourceGap == nil {
 		if request.SourceEvaluation == nil {
-			return EvidenceRequest{}, fault.Conflict("原始缺失检查身份不完整")
+			return EvidenceRequest{}, fault.Conflict("原待补充检查的编号不完整")
 		}
 		var ok bool
 		source, ok = evidenceEvaluation(sourceState, item.ID, request.SourceRunID, request.SourceAttemptID, request.SourceEvaluation.ID)
@@ -1039,12 +1039,12 @@ func (s *Store) VerifyEvidenceRequest(ctx context.Context, user accounts.User, c
 	}
 	if laterRunSequence < receipt.ReviewWatermarkRunSequence || laterRunSequence == receipt.ReviewWatermarkRunSequence &&
 		laterAttempt.Ordinal <= receipt.ReviewWatermarkAttemptOrdinal {
-		return EvidenceRequest{}, fault.Conflict("复核尝试必须在材料提交之后受理")
+		return EvidenceRequest{}, fault.Conflict("复核执行必须在材料提交后受理")
 	}
 	before, after := sourceState.snapshotOf(request.SourceRunID), laterState.snapshotOf(input.RunID)
 	if before.RuleSetHash != after.RuleSetHash || before.PlaybookHash != after.PlaybookHash || before.ComparatorRef != after.ComparatorRef ||
 		!sameRunRulePackIdentity(before, after) || sourceAttempt.RulePackCompilerRef != laterAttempt.RulePackCompilerRef {
-		return EvidenceRequest{}, fault.Conflict("复核尝试的检查规则不可比较")
+		return EvidenceRequest{}, fault.Conflict("复核使用的检查规则与原审查无法比较")
 	}
 	var evaluation ConstraintEval
 	var observedGap agentflow.GapReport
@@ -1053,14 +1053,14 @@ func (s *Store) VerifyEvidenceRequest(ctx context.Context, user accounts.User, c
 		var ok bool
 		evaluation, ok = matchingEvidenceEvaluation(laterState, source, item.ID, input.RunID, input.AttemptID, input.EvaluationID)
 		if !ok {
-			return EvidenceRequest{}, fault.Conflict("复核尝试没有唯一匹配的实际检查")
+			return EvidenceRequest{}, fault.Conflict("复核没有找到唯一匹配的检查结果")
 		}
 		if (request.VerificationCondition != "compatible" && request.VerificationCondition != "conflict") || evaluation.Relation != request.VerificationCondition {
 			return EvidenceRequest{}, fault.Conflict("复核检查未达到请求的核验条件")
 		}
 	} else {
 		if !samePlannerConfiguration(before, after) {
-			return EvidenceRequest{}, fault.Conflict("复核尝试的智能审查配置不可比较")
+			return EvidenceRequest{}, fault.Conflict("复核的智能审查配置与原审查无法比较")
 		}
 		laterReview, err = evidenceAgentReview(ctx, tx, item, input.RunID, input.AttemptID, *laterAttempt.InputHash)
 		if err != nil {
@@ -1069,13 +1069,13 @@ func (s *Store) VerifyEvidenceRequest(ctx context.Context, user accounts.User, c
 		if sourceReview.Planner.RuntimeVersion != laterReview.Planner.RuntimeVersion ||
 			sourceReview.Planner.ToolCatalogVersion != laterReview.Planner.ToolCatalogVersion ||
 			sourceReview.Planner.SchemaVersion != laterReview.Planner.SchemaVersion {
-			return EvidenceRequest{}, fault.Conflict("复核尝试的智能审查能力不可比较")
+			return EvidenceRequest{}, fault.Conflict("复核的智能审查项目与原审查无法比较")
 		}
 		var ok bool
 		observedGap, ok = evidenceGap(laterReview, input.GapID)
 		if !ok || !sameEvidenceGap(*request.SourceGap, observedGap) ||
 			request.VerificationCondition != "resolved" || !evidenceResolvedGap(laterReview, observedGap) {
-			return EvidenceRequest{}, fault.Conflict("复核尝试没有唯一匹配的实际缺口检查")
+			return EvidenceRequest{}, fault.Conflict("复核没有找到唯一匹配的待补充检查")
 		}
 	}
 	evidence := append([]ExperienceEvidenceRef(nil), input.Evidence...)
@@ -1088,7 +1088,7 @@ func (s *Store) VerifyEvidenceRequest(ctx context.Context, user accounts.User, c
 				}
 			}
 			if ref.NormalizedDigest == "" {
-				return EvidenceRequest{}, fault.Invalid("核验证据不属于复核尝试的冻结解析")
+				return EvidenceRequest{}, fault.Invalid("核验证据不属于复核时保存的解析结果")
 			}
 		}
 		if err := verifyFeedbackEvidence(ctx, tx, item, input.RunID, input.AttemptID, laterInput.Documents, *ref); err != nil {
@@ -1105,7 +1105,7 @@ func (s *Store) VerifyEvidenceRequest(ctx context.Context, user accounts.User, c
 		matchedReceipt = observedGapReceipt(request, receipt, laterInput, observedGap, laterReview, evidence)
 	}
 	if !matchedReceipt {
-		return EvidenceRequest{}, fault.Conflict("复核检查没有使用本次提交的可定位材料或答复")
+		return EvidenceRequest{}, fault.Conflict("复核检查没有使用本次提交且能在原文中找到的材料或答复")
 	}
 	now := time.Now().UTC()
 	request.Status, request.Version, request.UpdatedAt = "verified", request.Version+1, now

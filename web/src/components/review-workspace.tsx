@@ -18,7 +18,7 @@ const STREAM_LABEL: Record<StreamStatus, string> = {
   live: "运行状态已连接",
   reconnecting: "连接中断，正在按游标重连",
   closed: "运行状态流已关闭，不会自动重连；请刷新页面或重新登录后再试。",
-  inactive: "当前尝试没有活动事件流",
+  inactive: "本次执行没有活动的事件流",
 };
 
 export function ReviewWorkspaceView({
@@ -122,7 +122,7 @@ export function ReviewWorkspaceView({
             }
           >
             <span className="workspace-circuit-mark" aria-hidden="true" />
-            可定位引用{" "}
+            可在原文中找到的引用{" "}
             <strong>
               {locatedAnchors}/{anchors.length}
             </strong>{" "}
@@ -140,7 +140,7 @@ export function ReviewWorkspaceView({
           </li>
           <li data-state={decidedFindings > 0 ? "filled" : "open"}>
             <span className="workspace-circuit-mark" aria-hidden="true" />
-            人工决定{" "}
+            审查判断{" "}
             <strong>
               {decidedFindings}/{workspace.findings.length}
             </strong>
@@ -149,31 +149,31 @@ export function ReviewWorkspaceView({
         {retryableState ? (
           <Button
             aria-label={String(
-              retrying ? "正在受理重试" : "重新尝试未完成运行",
+              retrying ? "正在受理重试" : "重新执行未完成的审查",
             )}
             type="text"
             htmlType="button"
             onClick={onRetry}
             disabled={retrying || !canRetry}
           >
-            {retrying ? "正在受理重试" : "重新尝试未完成运行"}
+            {retrying ? "正在受理重试" : "重新执行未完成的审查"}
           </Button>
         ) : null}
       </div>
       {run.state === "partial" ? (
         <p className="callout">
           {run.partial_reason ?? "部分结果已保留。"}
-          模型步骤未完成。已经保存的人工决定不会因为重试被重复提交。
+          模型步骤未完成。已经保存的审查判断不会因为重试被重复提交。
         </p>
       ) : null}
       {run.state === "failed" ? (
         <p className="callout">
-          {run.failure_message ?? "这次运行失败，已保留失败前的记录。"}
+          {run.failure_message ?? "本次审查执行失败，已保留失败前的记录。"}
         </p>
       ) : null}
       {run.state === "cancelled" ? (
         <p className="callout">
-          运行已取消。取消前持久化的规则发现与实际调用用量仍保留。
+          审查已取消。取消前保存的规则发现和实际调用用量仍会保留。
         </p>
       ) : null}
       <div className={`workspace-grid layout-${layout}`}>
@@ -235,8 +235,8 @@ export function ReviewWorkspaceView({
               <h2 id="execution-inspector-title">执行检查器</h2>
               <p className="meta">
                 {selected
-                  ? "详细执行诊断未提供；以下尝试状态来自业务工作区。"
-                  : "本次工作区没有持久执行快照。未采集的阶段、耗时和用量保持未报告。"}
+                  ? "没有提供详细执行诊断；以下执行状态来自业务工作区。"
+                  : "没有获取到本次审查的执行记录。未记录的阶段、耗时和用量不会显示为已知。"}
               </p>
             </div>
             <StatusText tone={runTone(run.state)}>
@@ -246,9 +246,9 @@ export function ReviewWorkspaceView({
           {selected ? (
             <>
               <label className="field">
-                查看尝试
+                查看执行记录
                 <Select
-                  aria-label="查看尝试"
+                  aria-label="查看执行记录"
                   value={selected.id}
                   onChange={onSelectAttempt}
                   options={[...attempts]
@@ -260,11 +260,11 @@ export function ReviewWorkspaceView({
                 />
               </label>
               {selected.history_kind === "legacy_unfrozen" ? (
-                <p className="callout">旧运行未冻结原始输入，不能补造历史阶段。</p>
+                <p className="callout">较早的审查没有保存当时使用的材料版本记录，无法补回当时的执行过程。</p>
               ) : null}
               {canCancel ? (
                 <Button type="text" disabled={cancelling} onClick={onCancel}>
-                  {cancelling ? "正在取消" : "取消当前尝试"}
+                  {cancelling ? "正在取消" : "取消本次执行"}
                 </Button>
               ) : null}
               {cancelError ? <p role="alert">{cancelError}</p> : null}

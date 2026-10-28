@@ -140,10 +140,10 @@ func withFrozenGovernance(current, frozen RunSnapshot) RunSnapshot {
 func (s *Store) plannerConfigurationForAcceptance(modelConfigurationID string) (agentflow.PlannerConfiguration, error) {
 	configuration, err := agentflow.ResolvePlannerConfiguration(modelConfigurationID)
 	if err != nil {
-		return agentflow.PlannerConfiguration{}, fault.Conflict("规划器配置不可用，不能冻结审查运行：" + err.Error())
+		return agentflow.PlannerConfiguration{}, fault.Conflict("审查计划配置不可用，无法保存本次审查信息：" + err.Error())
 	}
 	if err := configuration.Validate(); err != nil {
-		return agentflow.PlannerConfiguration{}, fault.Conflict("规划器配置校验失败，不能冻结审查运行")
+		return agentflow.PlannerConfiguration{}, fault.Conflict("审查计划配置未通过校验，无法保存本次审查信息")
 	}
 	return configuration, nil
 }

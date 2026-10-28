@@ -74,10 +74,10 @@ func (s *Store) CreateRemediation(user accounts.User, caseID string, input Remed
 	for _, findingID := range input.FindingIDs {
 		finding, ok := findings[findingID]
 		if !ok || finding.CaseID != caseID || finding.RunID != input.RunID || finding.AttemptID != input.AttemptID {
-			return Remediation{}, fault.Invalid("整改只能引用所选审查尝试中的风险")
+			return Remediation{}, fault.Invalid("整改只能关联所选执行记录中的风险")
 		}
 		if _, ok := evaluationsForFinding(st, input.RunID, input.AttemptID, findingID); !ok {
-			return Remediation{}, fault.Conflict("风险缺少冻结的规则能力证据，不能创建整改")
+			return Remediation{}, fault.Conflict("该风险缺少本次审查保存的规则检查证据，不能创建整改")
 		}
 	}
 	id, err := newID("rem_")
@@ -238,7 +238,7 @@ func (s *Store) VerifyRemediation(user accounts.User, caseID, itemID string, inp
 	itemID, input.RunID, input.AttemptID = strings.TrimSpace(itemID), strings.TrimSpace(input.RunID), strings.TrimSpace(input.AttemptID)
 	input.Reason = strings.TrimSpace(input.Reason)
 	if itemID == "" || input.ExpectedVersion < 1 || input.RunID == "" || input.AttemptID == "" || !validBusinessText(input.Reason, 2000) {
-		return Remediation{}, fault.Invalid("复核需要新审查尝试、理由和预期版本")
+		return Remediation{}, fault.Invalid("复核需要新的审查执行记录、理由和预期版本")
 	}
 	st, err := s.snapshotAs(currentUser)
 	if err != nil {
@@ -319,24 +319,24 @@ func (s *Store) VerifyRemediation(user accounts.User, caseID, itemID string, inp
 func (s *Store) assessRemediationVerification(st state, caseItem Case, remediation Remediation, input RemediationVerifyInput) (bool, bool, string) {
 	originalRun, originalAttempt, originalInput, originalManifest, err := s.validateFrozenTerminalAttempt(st, caseItem, remediation.RunID, remediation.AttemptID)
 	if err != nil || originalRun.CaseID != caseItem.ID {
-		return false, false, "整改原始审查快照不完整，不能关闭"
+		return false, false, "整改关联的原审查记录不完整，不能关闭"
 	}
 	verifyRun, verifyAttempt, verifyInput, verifyManifest, err := s.validateFrozenTerminalAttempt(st, caseItem, input.RunID, input.AttemptID)
 	if err != nil || verifyRun.CaseID != caseItem.ID || verifyAttempt.ID == originalAttempt.ID {
-		return false, false, "需要同案件的新终态审查尝试，不能关闭"
+		return false, false, "需要同一案件中已完成或部分完成的新审查执行记录，不能关闭"
 	}
 	if verifyAttempt.HistoryKind != "frozen" || originalAttempt.HistoryKind != "frozen" ||
 		verifyAttempt.RulePackHash != originalAttempt.RulePackHash || verifyAttempt.RulePackSnapshotDigest != originalAttempt.RulePackSnapshotDigest ||
 		verifyAttempt.RulePackCompilerRef != originalAttempt.RulePackCompilerRef ||
 		!sameRunConfiguration(st.snapshotOf(originalRun.ID), st.snapshotOf(verifyRun.ID)) ||
 		verifyManifest.ID != originalManifest.ID || verifyManifest.Version != originalManifest.Version || verifyManifest.TenantID != originalManifest.TenantID {
-		return false, true, "RulePack 或运行配置不可比较，不能关闭"
+		return false, true, "原审查与复核的规则包或执行配置无法比较，不能关闭"
 	}
 	if !sameRemediationSources(originalInput, verifyInput, remediation.DocumentIDs) {
 		return false, true, "提交的修改稿或原始证据缺失、已变化，不能关闭"
 	}
 	if err := s.verifyFrozenDocuments(st, verifyInput.Documents); err != nil {
-		return false, true, "复核尝试的材料解析证据无效，不能关闭"
+		return false, true, "复核所用的材料或解析证据无效，不能关闭"
 	}
 	originalRules := ruleCapabilities(originalManifest)
 	verifyRules := ruleCapabilities(verifyManifest)
@@ -344,15 +344,15 @@ func (s *Store) assessRemediationVerification(st state, caseItem Case, remediati
 	for _, findingID := range remediation.FindingIDs {
 		selected, ok := evaluationsForFinding(st, remediation.RunID, remediation.AttemptID, findingID)
 		if !ok || len(selected) != 1 {
-			return false, true, "原始风险缺少唯一的能力与对象证据，不能关闭"
+			return false, true, "原风险缺少唯一对应的检查项目和对象证据，不能关闭"
 		}
 		before := selected[0]
 		capability, ruleOK := originalRules[before.RuleID]
 		if !ruleOK || before.RuleID == "" || before.CapabilityID == "" || capability != before.CapabilityID || len(before.ObjectRefs) == 0 || !uniqueNonempty(before.ObjectRefs) {
-			return false, true, "原始风险缺少冻结的 RulePack 能力或对象身份，不能关闭"
+			return false, true, "原风险缺少当时保存的规则包检查项目或对象编号，不能关闭"
 		}
 		if verifyRules[before.RuleID] != before.CapabilityID {
-			return false, true, "复核 RulePack 未保留原风险能力，不能关闭"
+			return false, true, "复核使用的规则包没有保留原风险的检查项目，不能关闭"
 		}
 		matched := 0
 		for _, after := range verifyEvals {
@@ -364,11 +364,11 @@ func (s *Store) assessRemediationVerification(st state, caseItem Case, remediati
 			}
 			matched++
 			if after.Relation != "compatible" {
-				return false, true, "同一 RulePack 能力与对象仍不兼容，不能关闭"
+				return false, true, "相同规则包检查项目和对象的结果仍不一致，不能关闭"
 			}
 		}
 		if matched != 1 {
-			return false, true, "复核结果缺少同一 RulePack 能力与对象，不能关闭"
+			return false, true, "复核结果没有唯一匹配原风险的规则包检查项目和对象，不能关闭"
 		}
 	}
 	return true, true, ""
@@ -377,40 +377,40 @@ func (s *Store) assessRemediationVerification(st state, caseItem Case, remediati
 func (s *Store) validateFrozenTerminalAttempt(st state, caseItem Case, runID, attemptID string) (Run, Attempt, AttemptInput, rulepack.Manifest, error) {
 	run, ok := st.runByID(runID)
 	if !ok || run.CaseID != caseItem.ID {
-		return Run{}, Attempt{}, AttemptInput{}, rulepack.Manifest{}, fault.Conflict("审查尝试不属于当前案件或不存在")
+		return Run{}, Attempt{}, AttemptInput{}, rulepack.Manifest{}, fault.Conflict("执行记录不存在，或不属于当前案件")
 	}
 	attempt, ok := st.attemptByID(attemptID)
 	if !ok || attempt.RunID != runID || attempt.FinishedAt == nil ||
 		(attempt.State != "completed" && attempt.State != "partial") {
-		return Run{}, Attempt{}, AttemptInput{}, rulepack.Manifest{}, fault.Conflict("审查尝试尚未形成可比较的终态证据")
+		return Run{}, Attempt{}, AttemptInput{}, rulepack.Manifest{}, fault.Conflict("这次执行尚未形成可比较的最终证据")
 	}
 	if attempt.HistoryKind != "frozen" || attempt.InputHash == nil || *attempt.InputHash == "" || attempt.OutputHash == nil || *attempt.OutputHash == "" {
-		return Run{}, Attempt{}, AttemptInput{}, rulepack.Manifest{}, fault.Conflict("历史尝试缺少冻结的输入或输出身份")
+		return Run{}, Attempt{}, AttemptInput{}, rulepack.Manifest{}, fault.Conflict("之前的执行记录缺少保存的输入或输出编号")
 	}
 	input, ok := st.attemptInput(attemptID)
 	if !ok || input.RunID != runID || input.AttemptID != attemptID || input.InputHash != *attempt.InputHash {
-		return Run{}, Attempt{}, AttemptInput{}, rulepack.Manifest{}, fault.Conflict("审查尝试的冻结输入不存在或身份不匹配")
+		return Run{}, Attempt{}, AttemptInput{}, rulepack.Manifest{}, fault.Conflict("这次执行保存的输入不存在或编号不匹配")
 	}
 	snapshot := st.snapshotOf(runID)
 	inputHash, err := frozenInputHash(snapshot, input.Documents)
 	if err != nil || inputHash != input.InputHash || !frozenInputMatchesSnapshot(snapshot, input.Documents) ||
 		!attemptSelectionsMatchFrozen(st.parseSelectionsForAttempt(attemptID), input.Documents) {
-		return Run{}, Attempt{}, AttemptInput{}, rulepack.Manifest{}, fault.Conflict("审查尝试的冻结输入完整性校验失败")
+		return Run{}, Attempt{}, AttemptInput{}, rulepack.Manifest{}, fault.Conflict("这次执行保存的输入未通过完整性校验")
 	}
 	if err := s.verifyFrozenDocuments(st, input.Documents); err != nil {
-		return Run{}, Attempt{}, AttemptInput{}, rulepack.Manifest{}, fault.Conflict("审查尝试的原件或解析身份校验失败")
+		return Run{}, Attempt{}, AttemptInput{}, rulepack.Manifest{}, fault.Conflict("这次执行使用的原件或解析结果编号未通过校验")
 	}
 	reviewDigest, err := s.agentReviewDigestFor(caseItem.TenantID, caseItem.OwnerOrgID, attemptID)
 	if err != nil {
-		return Run{}, Attempt{}, AttemptInput{}, rulepack.Manifest{}, fault.Conflict("审查尝试的智能审查记录校验失败")
+		return Run{}, Attempt{}, AttemptInput{}, rulepack.Manifest{}, fault.Conflict("这次执行的智能审查记录未通过校验")
 	}
 	outputHash, err := attemptOutputHash(st, runID, attemptID, reviewDigest)
 	if err != nil || outputHash != *attempt.OutputHash {
-		return Run{}, Attempt{}, AttemptInput{}, rulepack.Manifest{}, fault.Conflict("审查尝试的规则输出摘要校验失败")
+		return Run{}, Attempt{}, AttemptInput{}, rulepack.Manifest{}, fault.Conflict("这次执行的规则结果摘要未通过校验")
 	}
 	manifest, err := validateRemediationRulePack(attempt, caseItem)
 	if err != nil {
-		return Run{}, Attempt{}, AttemptInput{}, rulepack.Manifest{}, fault.Conflict("历史尝试缺少有效的冻结 RulePack 快照")
+		return Run{}, Attempt{}, AttemptInput{}, rulepack.Manifest{}, fault.Conflict("之前的执行记录缺少有效的规则包记录")
 	}
 	return run, attempt, input, manifest, nil
 }

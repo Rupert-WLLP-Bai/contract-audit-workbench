@@ -90,10 +90,10 @@ func publicAttemptFailure(code string) string {
 // Decide appends a human decision. It does not delete earlier decisions.
 func (s *Store) Decide(user accounts.User, caseID, runID, findingID, key, action, reason string, expected int) error {
 	if s.ReadOnly() {
-		return fault.New(503, "read_only", "只读模式下不能作人工决定")
+		return fault.New(503, "read_only", "只读模式下不能提交审查判断")
 	}
 	if !accounts.CanDecide(user.Role) {
-		return fault.Forbidden("当前角色不能作人工决定")
+		return fault.Forbidden("当前角色不能提交审查判断")
 	}
 	reason = trimSpaceReason(reason)
 	if runeCount(reason) < 2 || runeCount(reason) > 1000 {
@@ -101,13 +101,13 @@ func (s *Store) Decide(user accounts.User, caseID, runID, findingID, key, action
 	}
 	disposition, ok := decisionActions[action]
 	if !ok {
-		return fault.Invalid("决定类型不在本版范围内")
+		return fault.Invalid("请选择支持的判断类型")
 	}
 	if expected <= 0 {
-		return fault.Invalid("缺少 expected_version")
+		return fault.Invalid("缺少要提交的记录版本（expected_version）")
 	}
 	if len(key) > 80 {
-		return fault.Invalid("幂等键过长")
+		return fault.Invalid("请求标识（幂等键）过长")
 	}
 	return s.updateCaseAs(user, caseID, func(st *state) error {
 		if _, err := s.writableCase(st, user, caseID, access.Decide); err != nil {
@@ -126,15 +126,15 @@ func (s *Store) Decide(user accounts.User, caseID, runID, findingID, key, action
 				if item.FindingID == findingID && item.Action == action && item.Reason == reason && item.ExpectedVersion == expected {
 					return nil
 				}
-				return fault.Conflict("这个幂等键已经用于另一次决定")
+				return fault.Conflict("这个请求标识已用于另一次判断")
 			}
 		}
 		latestAttempt, hasAttempt := st.latestAttempt(runID)
 		if hasAttempt && attemptActive(latestAttempt.State) {
-			return fault.Conflict("审查仍在进行，不能作人工决定")
+			return fault.Conflict("审查仍在进行，暂时不能提交审查判断")
 		}
 		if !hasAttempt && attemptActive(reviewRun.State) {
-			return fault.Conflict("审查仍在进行，不能作人工决定")
+			return fault.Conflict("审查仍在进行，暂时不能提交审查判断")
 		}
 		idx := -1
 		for i := range st.Findings {
@@ -230,7 +230,7 @@ type Workspace struct {
 
 func (s *Store) Workspace(user accounts.User, caseID, runID string, selectedAttemptID ...string) (Workspace, error) {
 	if len(selectedAttemptID) > 1 {
-		return Workspace{}, fault.Invalid("只能选择一个审查尝试")
+		return Workspace{}, fault.Invalid("只能选择一条执行记录")
 	}
 	selectedID := ""
 	if len(selectedAttemptID) == 1 {
@@ -279,11 +279,11 @@ func (s *Store) Workspace(user accounts.User, caseID, runID string, selectedAtte
 		if input, ok := st.attemptInput(attemptID); ok {
 			if attempt, exists := st.attemptByID(attemptID); exists && attempt.HistoryKind == "frozen" {
 				if input.RunID != runID || input.AttemptID != attemptID || !frozenInputMatchesSnapshot(st.snapshotOf(runID), input.Documents) {
-					return Workspace{}, fault.New(409, "parsed_artifact_corrupt", "冻结输入与运行快照不一致")
+					return Workspace{}, fault.New(409, "parsed_artifact_corrupt", "本次审查保存的输入与审查记录不一致")
 				}
 				hash, hashErr := frozenInputHash(st.snapshotOf(runID), input.Documents)
 				if hashErr != nil || hash != input.InputHash || s.verifyFrozenDocuments(st, input.Documents) != nil {
-					return Workspace{}, fault.New(409, "parsed_artifact_corrupt", "冻结解析产物完整性校验失败")
+					return Workspace{}, fault.New(409, "parsed_artifact_corrupt", "本次审查保存的解析结果未通过完整性校验")
 				}
 			}
 		}
@@ -318,7 +318,7 @@ func (s *Store) Workspace(user accounts.User, caseID, runID string, selectedAtte
 // WorkspaceAttempt reads one exact attempt after rechecking the current directory grants.
 func (s *Store) WorkspaceAttempt(user accounts.User, caseID, runID, attemptID string) (Workspace, error) {
 	if attemptID == "" {
-		return Workspace{}, fault.Invalid("审查尝试不能为空")
+		return Workspace{}, fault.Invalid("请选择一条执行记录")
 	}
 	return s.Workspace(user, caseID, runID, attemptID)
 }

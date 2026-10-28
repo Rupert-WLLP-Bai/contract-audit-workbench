@@ -135,10 +135,8 @@ func configuredToolEvidenceReader() (store.ToolEvidenceReader, error) {
 	return toolEvidenceReader{client: client}, nil
 }
 
-// toolEvidenceReader adapts the MCP tool client to the store's evidence
-// boundary: the pipeline asks for one post-input read under a frozen claim, and
-// every field is copied unchanged, so the payload the consumer sees is the tool
-// response itself and a failure stays an error.
+// toolEvidenceReader passes the worker's job claim to the read-only MCP tool.
+// It returns the tool response unchanged and reports tool failures as errors.
 type toolEvidenceReader struct{ client *toolclient.Client }
 
 func (r toolEvidenceReader) FrozenEvidence(ctx context.Context, in store.ToolEvidenceRequest) (json.RawMessage, error) {

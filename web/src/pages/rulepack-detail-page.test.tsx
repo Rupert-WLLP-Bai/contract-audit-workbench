@@ -553,7 +553,7 @@ describe("RulePackDetailPage lifecycle transitions", () => {
     expect(
       screen.getByRole("heading", { name: "规则内容（只读）" }),
     ).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "版本与来源身份" }));
+    await user.click(screen.getByRole("button", { name: "版本与来源信息" }));
     expect(screen.getByText(/verifier-3/)).toBeInTheDocument();
     expect(screen.getByText(/approver-test/)).toBeInTheDocument();
     expect(screen.getByText(/发布摘要/)).toHaveTextContent("c".repeat(64));
@@ -585,7 +585,7 @@ describe("RulePackDetailPage lifecycle transitions", () => {
       "Publish outcome unknown",
     );
     await user.click(
-      screen.getByRole("button", { name: "使用同一幂等键重试原请求" }),
+      screen.getByRole("button", { name: "重试上一次请求" }),
     );
     await waitFor(() =>
       expect(
@@ -605,7 +605,7 @@ describe("RulePackDetailPage lifecycle transitions", () => {
     expect(idempotencyKey(actions[0])).toBeTruthy();
     expect(idempotencyKey(actions[1])).toBe(idempotencyKey(actions[0]));
     expect(
-      screen.queryByRole("button", { name: "使用同一幂等键重试原请求" }),
+      screen.queryByRole("button", { name: "重试上一次请求" }),
     ).not.toBeInTheDocument();
   });
 
@@ -642,7 +642,7 @@ describe("RulePackDetailPage lifecycle transitions", () => {
     );
     await screen.findByText(/指针修订 9/);
     expect(
-      screen.queryByRole("button", { name: "使用同一幂等键重试原请求" }),
+      screen.queryByRole("button", { name: "重试上一次请求" }),
     ).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "发布此版本" }));
     await screen.findByRole("button", { name: "停用活动指针" });
@@ -805,11 +805,11 @@ describe("RulePackDetailPage history and rollback", () => {
     );
     await chooseHistoryVersion(user, "telecom-core， v1");
     await user.click(
-      screen.getByRole("button", { name: "使用同一幂等键重试原请求" }),
+      screen.getByRole("button", { name: "重试上一次请求" }),
     );
     await waitFor(() =>
       expect(
-        screen.queryByRole("button", { name: "使用同一幂等键重试原请求" }),
+        screen.queryByRole("button", { name: "重试上一次请求" }),
       ).not.toBeInTheDocument(),
     );
     const actions = mutations(requests);
@@ -918,7 +918,7 @@ describe("RulePackDetailPage in-flight actions", () => {
         expect(screen.getByRole("button", { name: action })).toBeEnabled(),
       );
       expect(
-        screen.queryByRole("button", { name: "使用同一幂等键重试原请求" }),
+        screen.queryByRole("button", { name: "重试上一次请求" }),
       ).not.toBeInTheDocument();
     },
   );

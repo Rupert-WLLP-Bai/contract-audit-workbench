@@ -105,9 +105,9 @@ export function ReportArchivePanel({
     <section className="workflow-panel" aria-labelledby="report-archive-title">
       <header className="workflow-panel-head">
         <div>
-          <h2 id="report-archive-title">冻结报告与归档</h2>
+          <h2 id="report-archive-title">审查报告与归档</h2>
           <p className="meta">
-            报告读取所选审查的冻结内容；浏览器不重新拼装报告。
+            报告保存所选审查当时的内容，生成后不会随材料更新而改变。
           </p>
         </div>
         {archived ? (
@@ -128,7 +128,7 @@ export function ReportArchivePanel({
         </p>
       ) : null}
       {historyLoading ? (
-        <p role="status">正在读取可报告的运行与尝试。</p>
+        <p role="status">正在读取可用于生成报告的审查和执行记录。</p>
       ) : null}
       {historyError ? (
         <p className="workflow-error" role="alert">
@@ -137,24 +137,24 @@ export function ReportArchivePanel({
       ) : null}
       {archive.data ? (
         <p role="status">
-          归档记录已追加：{formatDateTime(archive.data.archived_at)}。
+          已保存归档记录：{formatDateTime(archive.data.archived_at)}。
         </p>
       ) : null}
       {canCreateReport && !archived ? (
         <form className="workflow-form" onSubmit={onCreateReport}>
           <h3>生成不可变报告版本</h3>
           <ReviewChoiceSelect
-            label="冻结运行和尝试"
+            label="选择审查和执行记录"
             choices={choices}
             value={choiceKey}
             onChange={setChoiceKey}
             disabled={choices.length === 0 || createReport.isPending}
           />
           {choices.length === 0 && !historyLoading && !historyError ? (
-            <p>没有可报告的冻结尝试；服务未提供的 legacy 输入不会被补造。</p>
+            <p>没有可用于生成报告的执行记录。较早的审查如果没有保存当时使用的材料版本记录，不能用于生成报告。</p>
           ) : null}
           {selectedReview.isLoading ? (
-            <p role="status">正在读取所选尝试的冻结身份。</p>
+            <p role="status">正在读取所选执行记录。</p>
           ) : null}
           {selectedReview.isError ? (
             <p className="workflow-error" role="alert">
@@ -226,13 +226,13 @@ export function ReportArchivePanel({
           ) : null}
           <Button
             aria-label={String(
-              createReport.isPending ? "正在生成报告" : "生成冻结报告",
+              createReport.isPending ? "正在生成报告" : "生成报告",
             )}
             type="primary"
             htmlType="submit"
             disabled={!reportReady || createReport.isPending}
           >
-            {createReport.isPending ? "正在生成报告" : "生成冻结报告"}
+            {createReport.isPending ? "正在生成报告" : "生成报告"}
           </Button>
         </form>
       ) : null}
@@ -261,7 +261,7 @@ export function ReportArchivePanel({
                       target="_blank"
                       rel="noreferrer"
                     >
-                      读取冻结 HTML
+                      查看 HTML 报告
                     </a>
                     <a
                       type="text"
@@ -269,7 +269,7 @@ export function ReportArchivePanel({
                       target="_blank"
                       rel="noreferrer"
                     >
-                      读取冻结 JSON
+                      查看 JSON 报告
                     </a>
                   </div>
                 ) : (

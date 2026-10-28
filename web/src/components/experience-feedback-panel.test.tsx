@@ -85,9 +85,9 @@ function installServer(options: { failFeedbackOnce?: boolean; failDistillationOn
 }
 
 async function prepareSuggestion(user: UserEvent) {
-  await chooseOption(user, screen.getByRole("combobox", { name: "人工决定" }), /确认风险.*审查员/);
-  await chooseOption(user, screen.getByRole("combobox", { name: "冻结材料" }), /合同.txt/);
-  const text = screen.getByRole("textbox", { name: "冻结原文" }) as HTMLTextAreaElement;
+  await chooseOption(user, screen.getByRole("combobox", { name: "审查判断" }), /确认风险.*审查员/);
+  await chooseOption(user, screen.getByRole("combobox", { name: "本次审查材料" }), /合同.txt/);
+  const text = screen.getByRole("textbox", { name: "本次审查使用的原文" }) as HTMLTextAreaElement;
   await user.click(text);
   text.setSelectionRange(3, 5);
   fireEvent.select(text);
@@ -111,12 +111,12 @@ describe("experience feedback panel", () => {
     const view = render(<ExperienceFeedbackPanel {...props} canSubmit={false} />);
     expect(screen.getByRole("button", { name: "提交经验建议并请求提炼" })).toBeDisabled();
     view.rerender(<ExperienceFeedbackPanel {...props} finding={{ ...finding, decisions: [] }} />);
-    expect(screen.getByText("当前线索没有可用于反馈的人工决定。")).toBeInTheDocument();
+    expect(screen.getByText("当前线索没有可用于反馈的审查判断。")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "提交经验建议并请求提炼" })).toBeDisabled();
     view.rerender(<ExperienceFeedbackPanel {...props} documents={[{ ...document, parsed_document_id: null }]} />);
-    expect(screen.getByText("当前尝试没有可选的已解析冻结原文。")).toBeInTheDocument();
+    expect(screen.getByText("本次执行没有可供选择的已解析原文。")).toBeInTheDocument();
     view.rerender(<ExperienceFeedbackPanel {...props} />);
-    await chooseOption(user, screen.getByRole("combobox", { name: "人工决定" }), /确认风险.*审查员/);
+    await chooseOption(user, screen.getByRole("combobox", { name: "审查判断" }), /确认风险.*审查员/);
     await user.type(screen.getByRole("textbox", { name: "经验建议理由" }), "核对期限");
     expect(screen.getByRole("button", { name: "提交经验建议并请求提炼" })).toBeDisabled();
     expect(requests).toHaveLength(0);
@@ -128,17 +128,17 @@ describe("experience feedback panel", () => {
     render(<ExperienceFeedbackPanel {...props}
       finding={{ ...finding, decisions: [...finding.decisions, { ...finding.decisions[0]!, id: "decision-2" }] }}
       documents={[document, { ...document, id: "document-2", parsed_document_id: "parse-2" }]} />);
-    await user.click(screen.getByRole("combobox", { name: "人工决定" }));
+    await user.click(screen.getByRole("combobox", { name: "审查判断" }));
     const decision = await screen.findByRole("option", { name: /第 2 条.*确认风险.*审查员/ });
     expect(decision).not.toHaveTextContent(/decision-2/);
     await user.click(decision);
-    await user.click(screen.getByRole("combobox", { name: "冻结材料" }));
+    await user.click(screen.getByRole("combobox", { name: "本次审查材料" }));
     const first = await screen.findByRole("option", { name: /第 1 份.*合同.txt/ });
     const second = await screen.findByRole("option", { name: /第 2 份.*合同.txt/ });
     expect(first).not.toHaveTextContent(/document-1|parse-1/);
     expect(second).not.toHaveTextContent(/document-2|parse-2/);
     await user.click(second);
-    const text = screen.getByRole("textbox", { name: "冻结原文" }) as HTMLTextAreaElement;
+    const text = screen.getByRole("textbox", { name: "本次审查使用的原文" }) as HTMLTextAreaElement;
     await user.click(text);
     text.setSelectionRange(3, 5);
     fireEvent.select(text);
@@ -178,9 +178,9 @@ describe("experience feedback panel", () => {
     expect(Object.fromEntries(handoff.searchParams)).toEqual({ source_case: "case-1", candidate_id: "candidate-1", candidate_version_id: "version-1", candidate_content_sha256: "candidate-digest" });
     expect(screen.getByText("已引用 1 项制度版本")).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "经验反馈进度" })).not.toHaveTextContent(/case-1|run-1|attempt-1|document-1|parse-1|decision-1|candidate-1|version-1|feedback-1|job-1|policy-1|policy-digest|candidate-digest/);
-    const recoveryIds = screen.getByText(/反馈身份：feedback-1/);
+    const recoveryIds = screen.getByText(/反馈编号：feedback-1/);
     expect(recoveryIds).not.toBeVisible();
-    await user.click(screen.getByText("按反馈和任务身份恢复状态"));
+    await user.click(screen.getByText("用反馈编号和任务编号恢复状态"));
     expect(recoveryIds).toBeVisible();
     expect(screen.queryByText("candidate-digest")).not.toBeInTheDocument();
   });
@@ -189,9 +189,9 @@ describe("experience feedback panel", () => {
     const requests = installServer({ state: "queued" });
     const user = userEvent.setup();
     render(<ExperienceFeedbackPanel {...props} documents={[{ ...document, text: "甲😀\r\n证据合同" }]} />);
-    await chooseOption(user, screen.getByRole("combobox", { name: "人工决定" }), /确认风险.*审查员/);
-    await chooseOption(user, screen.getByRole("combobox", { name: "冻结材料" }), /合同.txt/);
-    const text = screen.getByRole("textbox", { name: "冻结原文" }) as HTMLTextAreaElement;
+    await chooseOption(user, screen.getByRole("combobox", { name: "审查判断" }), /确认风险.*审查员/);
+    await chooseOption(user, screen.getByRole("combobox", { name: "本次审查材料" }), /合同.txt/);
+    const text = screen.getByRole("textbox", { name: "本次审查使用的原文" }) as HTMLTextAreaElement;
     await user.click(text);
     text.setSelectionRange(1, 2);
     fireEvent.select(text);
@@ -277,9 +277,9 @@ describe("experience feedback panel", () => {
     const requests = installServer({ state: "queued" });
     const user = userEvent.setup();
     render(<ExperienceFeedbackPanel {...props} canSubmit={false} />);
-    await user.click(screen.getByText("按反馈和任务身份恢复状态"));
-    await user.type(screen.getByRole("textbox", { name: "反馈身份" }), "feedback-1");
-    await user.type(screen.getByRole("textbox", { name: "任务身份" }), "job-1");
+    await user.click(screen.getByText("用反馈编号和任务编号恢复状态"));
+    await user.type(screen.getByRole("textbox", { name: "反馈编号" }), "feedback-1");
+    await user.type(screen.getByRole("textbox", { name: "任务编号" }), "job-1");
     await user.click(screen.getByRole("button", { name: "读取反馈和任务" }));
     expect(await screen.findByText(/任务状态：排队中/)).toBeInTheDocument();
     expect(requests.map((request) => request.init.method)).toEqual(["GET", "GET"]);
@@ -292,7 +292,7 @@ describe("experience feedback panel", () => {
     sessionStorage.setItem(trackedKey, JSON.stringify({ feedbackId: "feedback-1", jobId: "job-1", distillKey: "key" }));
     const requests = installServer({ feedback: { ...savedFeedback, attempt_id: "other-attempt" } });
     render(<ExperienceFeedbackPanel {...props} />);
-    expect(await screen.findByText("该反馈不属于当前审查尝试和线索")).toBeInTheDocument();
+    expect(await screen.findByText("该反馈不属于当前审查执行记录和线索")).toBeInTheDocument();
     expect(requests).toHaveLength(1);
     expect(screen.queryByText(/任务状态：/)).not.toBeInTheDocument();
   });
@@ -304,7 +304,7 @@ describe("experience feedback panel", () => {
     expect(await screen.findByText("核对约定期限")).toBeInTheDocument();
     view.rerender(<ExperienceFeedbackPanel {...props} finding={{ ...finding, id: "finding-2", decisions: [] }} />);
     expect(screen.queryByText("核对约定期限")).not.toBeInTheDocument();
-    expect(screen.getByText("当前线索没有可用于反馈的人工决定。")).toBeInTheDocument();
+    expect(screen.getByText("当前线索没有可用于反馈的审查判断。")).toBeInTheDocument();
     expect(requests.map((request) => request.init.method)).toEqual(["GET", "GET", "GET"]);
   });
 

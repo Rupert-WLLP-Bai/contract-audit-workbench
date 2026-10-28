@@ -124,7 +124,7 @@ function ProgressList({
   kind: "risk";
 }) {
   if (rows.length === 0)
-    return <p className="home-empty">快照没有返回此项统计。</p>;
+    return <p className="home-empty">没有获取到这项统计数据。</p>;
   return (
     <ul className={`home-data-bars home-data-bars-${kind}`}>
       {rows.map((row) => (
@@ -281,12 +281,12 @@ export function HomePage() {
   );
 
   if (snapshot.isLoading)
-    return <PageStatus kind="loading" title="正在加载工作台快照" />;
+    return <PageStatus kind="loading" title="正在加载工作台" />;
   if (snapshot.isError || !snapshot.data) {
     return (
       <PageStatus
         kind="error"
-        title="工作台快照没有加载"
+        title="工作台数据没有加载"
         detail={errorMessage(snapshot.error)}
         action={
           <Button
@@ -481,7 +481,7 @@ export function HomePage() {
       <header className="home-page-head">
         <div className="home-welcome">
           <h1>你好，{session.data?.display_name ?? "当前用户"}</h1>
-          <p>案件、审查、整改与协作进度来自当前身份可见的持久业务快照。</p>
+          <p>这里展示你有权查看的案件、审查、整改和协作进度。</p>
         </div>
         <div className="home-head-actions">
           <label className="home-period-select">
@@ -783,7 +783,7 @@ export function HomePage() {
             </Link>
           </header>
           {remediations.length === 0 ? (
-            <p className="home-empty">快照没有返回整改记录。</p>
+            <p className="home-empty">没有获取到整改记录。</p>
           ) : (
             <ul className="home-record-list">
               {remediations.map((item) => (
@@ -819,7 +819,7 @@ export function HomePage() {
             </span>
           </header>
           {audit.length === 0 ? (
-            <p className="home-empty">快照没有返回审计事件。</p>
+            <p className="home-empty">没有获取到审计记录。</p>
           ) : (
             <ol className="home-audit-list">
               {audit.map((event) => (

@@ -3,10 +3,10 @@ import type { AuditEvent, BusinessAuditEvent } from "../api/types";
 
 const EVENT_LABELS: Record<string, string> = {
   review_started: "审查已发起",
-  review_retried: "已重新发起尝试",
+  review_retried: "已重新执行审查",
   review_cancelled: "审查已取消",
-  attempt_input_frozen: "审查材料已冻结",
-  human_decision: "已记录人工决定",
+  attempt_input_frozen: "已保存本次审查材料",
+  human_decision: "已记录审查判断",
 };
 
 interface AuditProjectionProps {
@@ -19,7 +19,7 @@ export function AuditProjection({ runId, events, showDiagnostics = false }: Audi
   return (
     <section className="pane" aria-label="业务审计记录">
       <h2>业务审计</h2>
-      <p>当前运行的追加记录，包含历史尝试与人工操作；顺序以服务端序号为准。</p>
+      <p>这里记录本次审查的各次执行和人工操作，按系统保存的顺序显示。</p>
       <Collapse
         items={[
           {
@@ -29,7 +29,7 @@ export function AuditProjection({ runId, events, showDiagnostics = false }: Audi
               <>
                 {showDiagnostics ? <p className="digest">运行：{runId}</p> : null}
                 {events.length === 0 ? (
-                  <p>当前运行尚未返回审计记录。</p>
+                  <p>尚未获取本次审查的审计记录。</p>
                 ) : (
                   <ol className="workflow-record-list">
                     {events.map((event) => (
@@ -49,11 +49,11 @@ export function AuditProjection({ runId, events, showDiagnostics = false }: Audi
                                 <>
                                   <dl className="execution-dl">
                                     <div>
-                                      <dt>事件身份</dt>
+                                      <dt>事件编号</dt>
                                       <dd>{event.event_id}</dd>
                                     </div>
                                     <div>
-                                      <dt>运行身份</dt>
+                                      <dt>审查编号</dt>
                                       <dd>{event.run_id}</dd>
                                     </div>
                                     {"hash" in event ? (
@@ -69,7 +69,7 @@ export function AuditProjection({ runId, events, showDiagnostics = false }: Audi
                                       </>
                                     ) : null}
                                     <div>
-                                      <dt>关联身份</dt>
+                                      <dt>关联编号</dt>
                                       <dd>
                                         {event.correlation_ids.length === 0
                                           ? "未提供"

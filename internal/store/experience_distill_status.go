@@ -24,7 +24,7 @@ type ExperienceDistillationStatus struct {
 
 func (s *Store) GetExperienceDistillation(ctx context.Context, user accounts.User, caseID, feedbackID, jobID string) (ExperienceDistillationStatus, error) {
 	if !experienceIdentity(feedbackID) || !experienceIdentity(jobID) {
-		return ExperienceDistillationStatus{}, fault.Invalid("提炼任务身份无效")
+		return ExperienceDistillationStatus{}, fault.Invalid("经验提炼任务编号无效")
 	}
 	tx, current, item, err := s.beginExperienceCase(ctx, user, caseID, access.Read)
 	if err != nil {
@@ -55,7 +55,7 @@ func (s *Store) GetExperienceDistillation(ctx context.Context, user accounts.Use
 		return ExperienceDistillationStatus{}, err
 	}
 	if candidateCount > 1 || (candidateID == nil) != (versionID == nil) {
-		return ExperienceDistillationStatus{}, fault.Conflict("提炼候选身份不完整")
+		return ExperienceDistillationStatus{}, fault.Conflict("经验候选的编号不完整")
 	}
 	if candidateID != nil {
 		base := ""

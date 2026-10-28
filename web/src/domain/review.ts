@@ -125,7 +125,7 @@ const BUSINESS_STATUS_LABELS: Record<string, string> = {
 };
 
 const TASK_KIND_LABELS: Record<string, string> = {
-  decision: "人工决定",
+  decision: "审查判断",
   review: "审查复核",
   remediation: "整改",
   report: "报告",

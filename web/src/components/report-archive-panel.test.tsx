@@ -170,7 +170,7 @@ describe("report creation with public attempt history", () => {
       await screen.findByText("第 2 次"),
     ).toBeInTheDocument();
     const form = screen
-      .getByRole("button", { name: "生成冻结报告" })
+      .getByRole("button", { name: "生成报告" })
       .closest("form")!;
     expect(within(form).queryByText("输入摘要")).not.toBeInTheDocument();
     expect(within(form).getByText("合同正文.txt")).toBeInTheDocument();
@@ -178,9 +178,9 @@ describe("report creation with public attempt history", () => {
     expect(form).not.toHaveTextContent("attempt-2");
     expect(form).not.toHaveTextContent("document-1");
     await waitFor(() =>
-      expect(within(form).getByRole("button", { name: "生成冻结报告" })).toBeEnabled(),
+      expect(within(form).getByRole("button", { name: "生成报告" })).toBeEnabled(),
     );
-    await user.click(within(form).getByRole("button", { name: "生成冻结报告" }));
+    await user.click(within(form).getByRole("button", { name: "生成报告" }));
     await waitFor(() =>
       expect(requests.some(({ init }) => init?.method === "POST")).toBe(true),
     );
@@ -215,10 +215,10 @@ describe("report creation with public attempt history", () => {
         archived_at: at,
       }],
     });
-    const panel = screen.getByRole("heading", { name: "冻结报告与归档" }).closest("section")!;
+    const panel = screen.getByRole("heading", { name: "审查报告与归档" }).closest("section")!;
     expect(within(panel).getByText("报告版本 3")).toBeInTheDocument();
     expect(within(panel).getByText("审批完成")).toBeInTheDocument();
-    expect(within(panel).getByRole("link", { name: "读取冻结 HTML" })).toHaveAttribute(
+    expect(within(panel).getByRole("link", { name: "查看 HTML 报告" })).toHaveAttribute(
       "href",
       "/api/cases/case-1/reports/report-private?format=html",
     );
@@ -241,9 +241,9 @@ describe("report creation with public attempt history", () => {
     });
     const { requests } = open(publicWorkspace(), historyWorkspace);
     expect(
-      screen.getByText("没有可报告的冻结尝试；服务未提供的 legacy 输入不会被补造。"),
+      screen.getByText("没有可用于生成报告的执行记录。较早的审查如果没有保存当时使用的材料版本记录，不能用于生成报告。"),
     ).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "生成冻结报告" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "生成报告" })).toBeDisabled();
     expect(requests).toHaveLength(0);
   });
 
@@ -283,6 +283,6 @@ describe("report creation with public attempt history", () => {
     open(response);
     const ordinal = response.review_attempts.attempt.ordinal;
     expect(await screen.findByText(`第 ${ordinal} 次`)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "生成冻结报告" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "生成报告" })).toBeDisabled();
   });
 });

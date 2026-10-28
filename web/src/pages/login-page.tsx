@@ -75,7 +75,7 @@ export function LoginPage({
           )}
         </div>
         <p className="login-rail-copy">
-          审查输入、解析结果和规则快照按尝试冻结。每条结论都要能回到冻结原文，人工决定只追加、不覆盖。
+          每次审查都会保存当时使用的材料、解析结果和规则。每项结论都需要有原文依据；审查人员修改判断时，之前的记录也会保留。
         </p>
         <ol className="login-rail-circuit" aria-label="审查链路示意">
           <li>材料</li>

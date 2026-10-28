@@ -39,7 +39,7 @@ func (identity *optionalPathIdentity) UnmarshalJSON(raw []byte) error {
 
 func governancePathIdentity(path string, body optionalPathIdentity) error {
 	if body.present && body.value != path {
-		return fault.Invalid("请求正文中的身份与路径不一致")
+		return fault.Invalid("请求正文中的编号与路径不一致")
 	}
 	return nil
 }
@@ -50,7 +50,7 @@ func governancePathIdentity(path string, body optionalPathIdentity) error {
 func governanceIdempotencyKey(r *http.Request, body string) (string, error) {
 	header := strings.TrimSpace(r.Header.Get("Idempotency-Key"))
 	if header != "" && body != "" && header != body {
-		return "", fault.Invalid("幂等键请求头与正文不一致")
+		return "", fault.Invalid("请求头和正文中的请求标识（幂等键）不一致")
 	}
 	if header != "" {
 		return header, nil
