@@ -4,7 +4,7 @@ metadata:
   name: caw-local-full
 servers: 1
 agents: 4
-image: rancher/k3s:v1.31.5-k3s1
+image: rancher/k3s:v1.33.5-k3s1
 options:
   k3d:
     wait: true

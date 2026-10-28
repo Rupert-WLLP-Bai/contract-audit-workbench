@@ -20,7 +20,8 @@ CLUSTER_CONFIG = "cluster-5node.yaml" if FULL else "cluster.yaml"
 APPS_OVERLAY = "apps-5node" if FULL else "apps"
 API_PORT = "6446" if FULL else "6445"
 SERVER_MEMORY = "1g" if FULL else "768m"
-AGENTS_MEMORY = "1200m" if FULL else "2g"
+# 2 GiB agents leave room for ztunnel/CNI and a surge pod in the full profile.
+AGENTS_MEMORY = "2g"
 NAMESPACE = "contract-audit"
 OBSERVE_IMAGES = (
     "otel/opentelemetry-collector-contrib:0.140.0",

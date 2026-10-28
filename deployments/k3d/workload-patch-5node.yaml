@@ -97,9 +97,9 @@ spec:
                   - {key: node-role.kubernetes.io/control-plane, operator: DoesNotExist}
       containers:
         - name: audit-worker
-          # The local 1.2 GiB agents cannot fit the production worker request
-          # while the previous revision drains. This is a local scheduling
-          # envelope, not a production capacity claim.
+          # The local 2 GiB agents keep the worker request below production size
+          # so a rolling update can drain the previous revision. This is a local
+          # scheduling envelope, not a production capacity claim.
           resources:
             requests: {cpu: 250m, memory: 320Mi}
             limits: {cpu: "2", memory: 2Gi}
