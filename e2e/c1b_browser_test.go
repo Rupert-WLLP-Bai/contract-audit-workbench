@@ -20,13 +20,7 @@ import (
 )
 
 func TestBrowserTelecomC1BFullJourney(t *testing.T) {
-	chrome := os.Getenv("CHROMIUM_BIN")
-	if chrome == "" {
-		chrome = "/usr/bin/chromium"
-	}
-	if _, err := os.Stat(chrome); err != nil {
-		t.Fatal("Chromium unavailable: set CHROMIUM_BIN or run make browser-install")
-	}
+	chrome := chromiumBinary(t)
 	bun, err := exec.LookPath("bun")
 	if err != nil {
 		t.Fatal("Bun unavailable: install Bun 1.4.3 and dependencies in web")

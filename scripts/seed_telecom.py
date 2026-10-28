@@ -233,6 +233,8 @@ def main() -> int:
     parser.add_argument("--template-id", help="template ID; defaults to the frozen dataset template")
     parser.add_argument("--scenario", action="append", choices=("compatible", "conflict", "insufficient"), help="scenario to seed; repeat to select several; defaults to all")
     parser.add_argument("--review-timeout", type=float, default=150)
+    parser.add_argument("--business-at", default="2026-01-15T09:00:00+08:00",
+                        help="timezone-aware review business time for governed cases")
     parser.add_argument("--out", type=Path, help="optional JSON record of actual API responses")
     args = parser.parse_args()
 
@@ -287,7 +289,8 @@ def main() -> int:
                 if created:
                     uploads.append(override["filename"])
 
-            _, accepted = api.request("POST", f"/api/cases/{case_id}/reviews", {}, timeout=60)
+            _, accepted = api.request("POST", f"/api/cases/{case_id}/reviews",
+                                      {"business_at": args.business_at}, timeout=60)
             run_id = accepted.get("id")
             if not run_id:
                 raise SeedError(f"review request for {scenario_id} returned no run id")

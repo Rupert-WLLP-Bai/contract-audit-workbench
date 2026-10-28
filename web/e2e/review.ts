@@ -1,3 +1,4 @@
+import { chromiumExecutable } from "./chromium";
 // Drives the installed Chromium against the Vite dev server.
 // The Go test starts the API and Vite, then sets the environment below.
 const web = required("E2E_WEB");
@@ -10,7 +11,7 @@ const parsingScreenshot = process.env.E2E_PARSING_SCREENSHOT;
 
 const chrome = Bun.spawn(
   [
-    process.env.CHROMIUM_BIN || "/usr/bin/chromium",
+    chromiumExecutable(),
     "--headless=new",
     "--disable-gpu",
     "--no-sandbox",
@@ -79,21 +80,21 @@ try {
   await fillReviewBusinessTime(page, session);
   await clickText(page, session, "button", "开始审查");
   await loadDiagnostics(page, session);
-  await page.wait(session, `[...document.querySelectorAll('button')].some((item) => item.textContent.trim() === '重新尝试未完成运行' && !item.disabled)`);
-  await clickText(page, session, "button", "重新尝试未完成运行");
+  await page.wait(session, `[...document.querySelectorAll('button')].some((item) => item.textContent.trim() === '重新执行未完成的审查' && !item.disabled)`);
+  await clickText(page, session, "button", "重新执行未完成的审查");
   await page.wait(session, `(() => {
     const row = document.querySelector('.execution-attempt-row');
     return row?.getAttribute('data-attempt-count') === '2' &&
       row.getAttribute('data-attempt-ordinal') === '2' &&
-      document.querySelector('.execution-inspector-summary p')?.innerText.includes('第 2 次尝试');
+      document.querySelector('.execution-inspector-summary p')?.innerText.includes('第 2 次执行');
   })()`);
   await selectAttemptNumber(page, session, 1);
-  await page.wait(session, "document.querySelector('.execution-inspector-summary p')?.innerText.includes('第 1 次尝试')");
+  await page.wait(session, "document.querySelector('.execution-inspector-summary p')?.innerText.includes('第 1 次执行')");
   const firstAttemptInputs = await readWorkspaceParseMetadata(page, session);
   const firstAttemptParsedIds = await readSelectedAttemptParseIds(page, session);
   assertAttemptParseRefsMatchDisplayed(firstAttemptParsedIds, await readWorkspaceSourceTabs(page, session), "attempt 1");
   await selectAttemptNumber(page, session, 2);
-  await page.wait(session, "document.querySelector('.execution-inspector-summary p')?.innerText.includes('第 2 次尝试')");
+  await page.wait(session, "document.querySelector('.execution-inspector-summary p')?.innerText.includes('第 2 次执行')");
   await page.wait(
     session,
     "(() => { const text = document.body.innerText.replace(/\\s/g, ''); return text.includes('质保月数不一致') && text.includes('36个月') && text.includes('24个月'); })()",
@@ -189,7 +190,7 @@ try {
   await page.wait(session, `(() => {
     const row = [...document.querySelectorAll('.document-list li')].find((item) => item.innerText.includes('draft-revised.txt'));
     const summary = row?.querySelector('.parsed-document-summary');
-    return Boolean(summary && summary.dataset.parsedDocumentId !== ${JSON.stringify(previousParse.parsedDocumentId)} && document.body.innerText.includes('材料版本已更新'));
+    return Boolean(summary && summary.dataset.parsedDocumentId !== ${JSON.stringify(previousParse.parsedDocumentId)} && document.body.innerText.includes('材料已更新'));
   })()`);
   const reparsedDocument = await readDocumentMetadata(page, session, "draft-revised.txt");
   assertReadyParseMetadata(reparsedDocument, "draft-revised.txt after explicit reparse");
@@ -839,7 +840,7 @@ async function selectAttemptNumber(page: Page, session: string, ordinal: number)
           await page.wait(
             session,
             `document.querySelector('.execution-attempt-row')?.dataset.attemptOrdinal === ${target} &&
-              document.querySelector('.execution-inspector-summary p')?.innerText.includes(${JSON.stringify(`第 ${ordinal} 次尝试`)})`,
+              document.querySelector('.execution-inspector-summary p')?.innerText.includes(${JSON.stringify(`第 ${ordinal} 次执行`)})`,
           );
           selected = true;
           continue;
@@ -868,7 +869,7 @@ async function selectAttemptNumber(page: Page, session: string, ordinal: number)
   await page.wait(
     session,
     `document.querySelector('.execution-attempt-row')?.dataset.attemptOrdinal === ${target} &&
-      document.querySelector('.execution-inspector-summary p')?.innerText.includes(${JSON.stringify(`第 ${ordinal} 次尝试`)})`,
+      document.querySelector('.execution-inspector-summary p')?.innerText.includes(${JSON.stringify(`第 ${ordinal} 次执行`)})`,
   );
   await setInspectorDisclosure(page, session, false);
 }

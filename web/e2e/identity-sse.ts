@@ -1,3 +1,4 @@
+import { chromiumExecutable } from "./chromium";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
@@ -105,7 +106,7 @@ async function capture(page: Page, name: string): Promise<void> {
 
 const browser = await chromium.launch({
   headless: true,
-  executablePath: process.env.CHROMIUM_BIN || "/usr/bin/chromium",
+  executablePath: chromiumExecutable(),
   args: ["--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu"],
 });
 const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
@@ -347,7 +348,7 @@ try {
     server_sha: serverSHA === "" ? "NOT_RECORDED" : serverSHA,
     execution_sha: executionSHA === "" ? "NOT_RECORDED" : executionSHA,
     browser: "Chromium",
-    executable: process.env.CHROMIUM_BIN || "/usr/bin/chromium",
+    executable: chromiumExecutable(),
     web,
     streams,
     observations,

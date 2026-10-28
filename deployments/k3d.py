@@ -13,8 +13,21 @@ import sys
 from urllib.parse import quote
 
 ROOT = Path(__file__).resolve().parents[1]
-CLUSTER = "caw-local"
+PROFILE = os.environ.get("CAW_K3D_PROFILE", "light").strip().lower()
+FULL = PROFILE == "full"
+CLUSTER = os.environ.get("CAW_K3D_CLUSTER", "caw-local-full" if FULL else "caw-local")
+CLUSTER_CONFIG = "cluster-5node.yaml" if FULL else "cluster.yaml"
+APPS_OVERLAY = "apps-5node" if FULL else "apps"
+API_PORT = "6446" if FULL else "6445"
+SERVER_MEMORY = "1g" if FULL else "768m"
+AGENTS_MEMORY = "1200m" if FULL else "2g"
 NAMESPACE = "contract-audit"
+OBSERVE_IMAGES = (
+    "otel/opentelemetry-collector-contrib:0.140.0",
+    "grafana/tempo:2.10.10",
+    "prom/prometheus:v3.15.1",
+    "grafana/grafana:13.2.4",
+)
 IMAGE_TAGS = (
     "contract-audit-backend:local",
     "contract-audit-client:local",
@@ -26,7 +39,8 @@ IMAGE_TAGS = (
     "amazon/aws-cli:2.31.14",
 )
 DELIVERY = Path(os.environ.get("CAW_DELIVERY_DIR", str(ROOT.parent / "contract-audit-delivery"))).expanduser().resolve()
-ARTIFACTS = Path(os.environ.get("CAW_K3D_ARTIFACT_DIR", str(DELIVERY / "k3d"))).expanduser().resolve()
+DEFAULT_ARTIFACT_DIR = "k3d-full" if FULL else "k3d"
+ARTIFACTS = Path(os.environ.get("CAW_K3D_ARTIFACT_DIR", str(DELIVERY / DEFAULT_ARTIFACT_DIR))).expanduser().resolve()
 KUBECONFIG = ARTIFACTS / "kubeconfig"
 SECRETS = ARTIFACTS / "secrets.json"
 
@@ -137,27 +151,30 @@ def up() -> None:
         print(f"Cluster {CLUSTER} already exists; reusing it without touching the default kubeconfig.")
     else:
         run([
-            "k3d", "cluster", "create", "--config", str(ROOT / "deployments/k3d/cluster.yaml"),
-            "--api-port", "127.0.0.1:6445", "--servers-memory", "768m", "--agents-memory", "2g",
+            "k3d", "cluster", "create", "--config", str(ROOT / "deployments/k3d" / CLUSTER_CONFIG),
+            "--api-port", "127.0.0.1:" + API_PORT, "--servers-memory", SERVER_MEMORY,
+            "--agents-memory", AGENTS_MEMORY,
             "--kubeconfig-update-default=false", "--kubeconfig-switch-context=false",
             "--wait", "--timeout", "180s",
         ], timeout=240)
     write_kubeconfig()
     kubectl("wait", "--for=condition=Ready", "nodes", "--all", "--timeout=120s", timeout=150)
-    print(f"Cluster: {CLUSTER} (1 server, 2 agents); kubeconfig: {KUBECONFIG}")
+    agents = 4 if FULL else 2
+    print(f"Cluster: {CLUSTER} (1 server, {agents} agents, profile={PROFILE}); kubeconfig: {KUBECONFIG}")
 
 
 def import_images() -> None:
     docker = os.environ.get("DOCKER_BIN", "docker")
     if not shutil.which(docker):
         raise RuntimeError("Docker CLI is unavailable")
+    tags = list(IMAGE_TAGS) + (list(OBSERVE_IMAGES) if FULL else [])
     missing: list[str] = []
-    for image in IMAGE_TAGS:
+    for image in tags:
         if run([docker, "image", "inspect", image], check=False, timeout=30).returncode:
             missing.append(image)
     if missing:
         raise RuntimeError("required packaged or cached platform images are missing: " + ", ".join(missing))
-    run(["k3d", "image", "import", "--cluster", CLUSTER, *IMAGE_TAGS], timeout=600)
+    run(["k3d", "image", "import", "--cluster", CLUSTER, *tags], timeout=600)
 
 
 def apply_private_secret(name: str, keys: tuple[str, ...]) -> None:
@@ -201,6 +218,26 @@ def wait_platform() -> None:
             "--timeout=180s", timeout=210)
 
 
+def apply_configmap(name: str, key: str, source: Path) -> None:
+    manifest = run([
+        "kubectl", "--kubeconfig", str(KUBECONFIG), "-n", NAMESPACE, "create", "configmap", name,
+        f"--from-file={key}={source}", "--dry-run=client", "-o", "yaml",
+    ]).stdout
+    applied = subprocess.run(
+        ["kubectl", "--kubeconfig", str(KUBECONFIG), "apply", "-f", "-"],
+        input=manifest, text=True, capture_output=True, timeout=60,
+    )
+    if applied.returncode:
+        raise RuntimeError(f"failed applying ConfigMap {name}: {applied.stderr.strip()}")
+
+
+def apply_observe_configs() -> None:
+    apply_configmap("otel-collector-config", "config.yaml", ROOT / "deploy/app/otel-collector.yaml")
+    apply_configmap("tempo-config", "tempo.yaml", ROOT / "deploy/app/observe/tempo.yaml")
+    apply_configmap("prometheus-config", "prometheus.yml", ROOT / "deploy/app/observe/prometheus.yml")
+    apply_configmap("grafana-datasources", "datasources.yaml", ROOT / "deploy/app/observe/grafana-datasources.yaml")
+
+
 def deploy() -> None:
     if not cluster_exists():
         raise RuntimeError(f"cluster {CLUSTER} does not exist; run 'up' first")
@@ -225,7 +262,9 @@ def deploy() -> None:
     apply_phase("migrate")
     kubectl("wait", "--for=condition=complete", "job/contract-audit-migrate", "-n", NAMESPACE,
             "--timeout=900s", timeout=930)
-    apply_phase("apps")
+    if FULL:
+        apply_observe_configs()
+    apply_phase(APPS_OVERLAY)
     kubectl("rollout", "restart", "deployment", "-l", "app.kubernetes.io/part-of=contract-audit",
             "-n", NAMESPACE)
     for deployment in ("gateway", "core-api", "document-service", "audit-execution", "audit-worker",
@@ -264,11 +303,22 @@ def smoke() -> None:
     kubectl("delete", "pod", "-l", "app.kubernetes.io/name=client", "-n", NAMESPACE, "--wait=true")
     kubectl("wait", "--for=condition=Ready", "pod", "-l", "app.kubernetes.io/name=client", "-n", NAMESPACE,
             "--timeout=180s")
-    # Exercise the worker controller at 1 -> 2 -> 1 and wait for each desired state.
-    kubectl("scale", "deployment/audit-worker", "-n", NAMESPACE, "--replicas=2")
-    kubectl("rollout", "status", "deployment/audit-worker", "-n", NAMESPACE, "--timeout=180s")
-    kubectl("scale", "deployment/audit-worker", "-n", NAMESPACE, "--replicas=1")
-    kubectl("rollout", "status", "deployment/audit-worker", "-n", NAMESPACE, "--timeout=180s")
+    if FULL:
+        # The full profile owns a fixed three-replica worker topology. Scaling it
+        # down here would silently turn the later distribution evidence into a
+        # single-replica result.
+        desired = kubectl("get", "deployment/audit-worker", "-n", NAMESPACE,
+                          "-o", "jsonpath={.spec.replicas}").stdout.strip()
+        ready = kubectl("get", "deployment/audit-worker", "-n", NAMESPACE,
+                        "-o", "jsonpath={.status.readyReplicas}").stdout.strip()
+        if desired != "3" or ready != "3":
+            raise RuntimeError(f"full-profile audit-worker is not 3/3: desired={desired} ready={ready}")
+    else:
+        # Exercise the worker controller at 1 -> 2 -> 1 and wait for each desired state.
+        kubectl("scale", "deployment/audit-worker", "-n", NAMESPACE, "--replicas=2")
+        kubectl("rollout", "status", "deployment/audit-worker", "-n", NAMESPACE, "--timeout=180s")
+        kubectl("scale", "deployment/audit-worker", "-n", NAMESPACE, "--replicas=1")
+        kubectl("rollout", "status", "deployment/audit-worker", "-n", NAMESPACE, "--timeout=180s")
     # Keep this intentional restart scoped to the worker deployment.
     kubectl("rollout", "restart", "deployment/audit-worker", "-n", NAMESPACE)
     kubectl("rollout", "status", "deployment/audit-worker", "-n", NAMESPACE, "--timeout=180s")
@@ -277,6 +327,9 @@ def smoke() -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
+    if PROFILE not in ("light", "full"):
+        print("BLOCKED: CAW_K3D_PROFILE must be light or full", file=sys.stderr)
+        return 2
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("action", choices=("up", "deploy", "status", "smoke"))
     args = parser.parse_args(argv)

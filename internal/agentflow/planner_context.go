@@ -339,7 +339,11 @@ func (r *Runtime) validatePriorToolResults(ctx context.Context, request Request)
 		return ErrInput
 	}
 	if len(request.PriorObservations) == 0 {
-		if request.PriorEventCount != 0 || request.PriorElapsedMS != nil {
+		// A retry can recover the prior event count and elapsed budget even when
+		// no tool output was persisted. Counts without observations are still
+		// bounded here; they only advance sequence and time accounting.
+		if request.PriorEventCount < 0 || request.PriorEventCount > 1024 ||
+			(request.PriorElapsedMS != nil && *request.PriorElapsedMS < 0) {
 			return ErrInput
 		}
 		return nil

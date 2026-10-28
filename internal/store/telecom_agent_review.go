@@ -94,6 +94,19 @@ func (s *Store) runTelecomAgentReview(ctx context.Context, runID, attemptID stri
 		Scope: agentflow.Domains(), Gaps: telecomAgentReviewGaps(), Evidence: evidence,
 		SourceSnapshot: sourceSnapshot, CanonicalEvaluations: telecomAgentReviewEvaluations(st, runID, attemptID),
 	}
+	if err := s.applyPriorAttemptRecovery(ctx, st, actor, caseItem, attempt, tools, &request); err != nil {
+		return true, err
+	}
+	// A worker takeover resumes the same attempt with a newer lease generation.
+	// Preserve the event sequence and elapsed budget already spent by the
+	// previous generation; no tool output is fabricated from those events.
+	if attempt.RetryOfAttemptID == nil && claim.Generation > 1 {
+		if recovered := st.executionEvents(attemptID); len(recovered) > 0 {
+			count, elapsed := priorAttemptUsage(recovered, attempt)
+			request.PriorEventCount = count
+			request.PriorElapsedMS = elapsed
+		}
+	}
 	rulePackIdentity, err := agentReviewRulePackIdentity(attempt, caseItem)
 	if err != nil {
 		return true, err

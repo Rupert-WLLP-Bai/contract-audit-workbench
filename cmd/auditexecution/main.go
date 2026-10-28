@@ -13,6 +13,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"log/slog"
 	"net"
 	"net/http"
 	"os"
@@ -49,6 +50,9 @@ func run() error {
 	if !app.Durable {
 		return errors.New("the execution service requires durable execution")
 	}
+	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo})).With(
+		"service", "audit-execution", "service.instance.id", bootstrap.InstanceID(),
+	))
 
 	// The service filter rejects any operation the execution role does not own,
 	// requires the edge credential, and mounts the unified probe surface, so a
@@ -63,10 +67,9 @@ func run() error {
 		return err
 	}
 
-	// The execution service hosts the outbox relay: it publishes committed outbox
-	// rows to JetStream and marks them delivered only after the broker stored
-	// them. PostgreSQL remains authoritative — without NATS_URL the relay is
-	// disabled and the worker's PG scan is the whole recovery path.
+	// Publish committed outbox rows to JetStream and mark them delivered only
+	// after the broker stores them. Workers can still find jobs in PostgreSQL
+	// when NATS_URL is unset.
 	relayConfig, err := outboxrelay.FromEnv()
 	if err != nil {
 		return err
@@ -92,7 +95,7 @@ func run() error {
 	}
 
 	addr := env("ADDR", "127.0.0.1:8083")
-	log.Printf("execution service listening on %s", addr)
+	slog.Info("execution service listening", "addr", addr)
 	server := &http.Server{
 		Addr: addr, Handler: service,
 		ReadHeaderTimeout: 5 * time.Second,

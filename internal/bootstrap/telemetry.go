@@ -10,6 +10,11 @@ import (
 	"contractaudit/internal/telemetry"
 )
 
+// InstanceID is the stable process identity used by telemetry and structured
+// logs. It is exported so service entrypoints label their logs with the same
+// identity their OTLP resource carries.
+func InstanceID() string { return telemetryInstanceID() }
+
 // telemetryInstanceID separates replicas that share one logical service name.
 // Kubernetes sets POD_UID (stable across container restarts in that pod); other
 // deployments use the runtime hostname plus the process id.

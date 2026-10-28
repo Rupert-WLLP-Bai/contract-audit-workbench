@@ -189,11 +189,21 @@ def main():
         run("coverage-gates", [sys.executable, "scripts/check_coverage.py"])
         if args.browser:
             if not env.get("CHROMIUM_BIN"):
-                executable = subprocess.run(
-                    ["node", "-e", "process.stdout.write(require('./web/node_modules/playwright').chromium.executablePath())"],
-                    cwd=ROOT, env=env, capture_output=True, text=True, check=True).stdout.strip()
-                if not Path(executable).is_file():
-                    raise RuntimeError("Chromium unavailable. Run make browser-install or set CHROMIUM_BIN.")
+                candidates: list[str] = []
+                try:
+                    candidates.append(subprocess.run(
+                        ["node", "-e", "process.stdout.write(require('./web/node_modules/playwright').chromium.executablePath())"],
+                        cwd=ROOT, env=env, capture_output=True, text=True, check=True).stdout.strip())
+                except (OSError, subprocess.SubprocessError):
+                    pass
+                candidates += ["/usr/bin/chromium", "/usr/bin/chromium-browser",
+                               "/usr/bin/google-chrome", "/usr/bin/google-chrome-stable"]
+                executable = next((item for item in candidates if item and Path(item).is_file()), "")
+                if not executable:
+                    raise RuntimeError(
+                        "Chromium unavailable. Run `cd web && bunx playwright install chromium`, "
+                        "or set CHROMIUM_BIN."
+                    )
                 env["CHROMIUM_BIN"] = executable
             # Bun must also be visible to Go's exec.LookPath in the browser test.
             bun_path = shutil.which(bun)

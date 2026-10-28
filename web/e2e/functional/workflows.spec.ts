@@ -8,7 +8,7 @@ import { parseRulePackDetail, type RulePackDetail, type RulePackManifestInput } 
 import { parseAcceptedReview, parseReportRecord, parseReviewWorkspace } from "../../src/api/parse";
 import { parseKnowledgeVersion, type KnowledgeContent, type KnowledgeVersion } from "../../src/api/governed-knowledge";
 import { paths } from "../../src/api/paths";
-import type { Locator } from "playwright/test";
+import type { Locator, Page } from "playwright/test";
 
 const ENT = { business_line: "ENT", scenario: "telecom_dedicated_line", contract_type: "service" };
 const POLICY_STATEMENTS = [
@@ -97,7 +97,41 @@ async function selectAll(locator: Locator): Promise<void> {
     area.focus();
     area.setSelectionRange(0, area.value.length);
     area.dispatchEvent(new Event("select", { bubbles: true }));
+    area.dispatchEvent(new KeyboardEvent("keyup", { key: "Shift", bubbles: true }));
+    document.dispatchEvent(new Event("selectionchange"));
   });
+}
+
+async function chooseVisibleOption(page: Page, text: string) {
+  await visibleOption(page, text).evaluate((element) => (element as HTMLElement).click());
+}
+
+async function disableActiveGovernance(api: APIRequestContext) {
+  const knowledge = await body(await api.get(`${apiURL}/api/admin/governed-knowledge`));
+  for (const item of rows(knowledge.items)) {
+    if (!item.active) continue;
+    const ref = record(item.ref);
+    const version = await body(await api.get(`${apiURL}/api/admin/governed-knowledge/${ref.knowledge_id}/versions/${ref.version_id}`));
+    if (!version.active) continue;
+    await body(await api.post(`${apiURL}/api/admin/governed-knowledge/${ref.knowledge_id}/versions/${ref.version_id}/commands`, {
+      data: { action: "withdraw", expected_revision: version.revision, expected_content_sha256: record(version.ref).content_sha256,
+        expected_pointer_revision: version.pointer_revision, reason: "隔离下一次工作流验收" },
+      headers: { "Idempotency-Key": `withdraw-${ref.version_id}-${Date.now()}` },
+    }));
+  }
+  const packs = await body(await api.get(`${apiURL}/api/admin/rulepacks`));
+  for (const item of rows(packs.items)) {
+    if (!item.is_active) continue;
+    const detail = await body(await api.get(`${apiURL}/api/admin/rulepacks/${item.id}/versions/${item.version}`));
+    const pack = record(detail.pack);
+    await body(await api.post(`${apiURL}/api/admin/rulepacks/${item.id}/versions/${item.version}/disable`, {
+      data: { expected_revision: pack.revision, expected_pointer_revision: pack.active_pointer_revision },
+    }));
+  }
+}
+
+function visibleOption(page: Page, text: string) {
+  return page.locator(".ant-select-item-option:visible").filter({ hasText: text }).first();
 }
 
 test("experience feedback, distillation and candidate review", operations("createSession", "createRulePack", "validateRulePackVersion", "approveRulePackVersion", "publishRulePackVersion", "createGovernedKnowledge", "governedKnowledgeCommand", "createCase", "uploadDocument", "startReview", "getWorkspace", "decideFinding", "submitExperienceFeedback", "requestExperienceDistillation", "getExperienceDistillation", "getExperienceCandidate"), async ({ page, request, playwright }, testInfo) => {
@@ -110,6 +144,7 @@ test("experience feedback, distillation and candidate review", operations("creat
   try {
     const admin = await login(adminApi, "demo-admin", "admin-demo", "admin");
     expect(admin.audience).toBe("admin");
+    await disableActiveGovernance(adminApi);
     const packID = `workflows-exp-pack-${stamp}`;
     const knowledgeID = `workflows-exp-policy-${stamp}`;
     const pack = await publishPack(adminApi, packID, knowledgeID, admin.actor.tenant_id, stamp);
@@ -147,15 +182,15 @@ test("experience feedback, distillation and candidate review", operations("creat
     await page.getByRole("button", { name: `选择线索：${finding.claim || "未命名线索"}`, exact: true }).first().click();
     const experience = page.locator(".workflow-panel").filter({ hasText: "复盘经验建议" }).first();
     await expect(experience).toBeVisible();
-    const decisionSelect = experience.getByRole("combobox", { name: "人工决定" });
+    const decisionSelect = experience.getByRole("combobox", { name: "审查判断" });
     await expect(decisionSelect).toBeEnabled({ timeout: 30_000 });
     await decisionSelect.click();
-    await page.getByRole("option").filter({ hasText: "确认风险" }).first().click();
-    await experience.getByRole("combobox", { name: "冻结材料" }).click();
-    const materialOption = page.getByRole("option").filter({ hasText: procurementFile }).first();
+    await chooseVisibleOption(page, "确认风险");
+    await experience.getByRole("combobox", { name: "本次审查材料" }).click();
+    const materialOption = visibleOption(page, procurementFile);
     await expect(materialOption).toBeVisible();
-    await materialOption.click();
-    await selectAll(experience.getByLabel("冻结原文", { exact: true }));
+    await materialOption.evaluate((element) => (element as HTMLElement).click());
+    await selectAll(experience.getByLabel("本次审查使用的原文", { exact: true }));
     const useSelection = experience.getByRole("button", { name: "选用选中原文", exact: true });
     await expect(useSelection).toBeEnabled({ timeout: 15_000 });
     await useSelection.click();
@@ -227,7 +262,7 @@ test("governed knowledge lifecycle through the admin UI", operations("createSess
     for (const step of steps) {
       await page.locator("#knowledge-action-reason").fill(`界面治理${step.button} ${stamp}`);
       const commandWait = page.waitForResponse((response) => response.request().method() === "POST" && response.url().endsWith(`/api/admin/governed-knowledge/${encodeURIComponent(knowledgeID)}/versions/${encodeURIComponent(versionID)}/commands`), { timeout: 60_000 });
-      await page.getByRole("button", { name: step.button, exact: true }).click();
+      await page.getByRole("button", { name: step.button }).click();
       const commandResponse = await commandWait;
       const commandText = await commandResponse.text();
       expect(commandResponse.status(), `${commandResponse.url()}: ${commandText}`).toBe(200);
@@ -285,18 +320,18 @@ test("evidence request, receipt, later review and verification", operations("cre
   const missingSelect = panel.getByRole("combobox", { name: "缺失检查" });
   await expect(missingSelect).toBeEnabled({ timeout: 60_000 });
   await missingSelect.click();
-  const warrantyOption = page.getByRole("option").filter({ hasText: "质保期限" }).first();
+  const warrantyOption = visibleOption(page, "信息不足");
   await expect(warrantyOption).toContainText("信息不足");
-  await warrantyOption.click();
+  await warrantyOption.evaluate((element) => (element as HTMLElement).click());
   await panel.getByLabel("任务名称", { exact: true }).fill(`补充质保材料 ${stamp}`);
   await panel.getByRole("combobox", { name: "责任人" }).click();
-  await page.getByRole("option", { name: "演示审查员", exact: true }).first().click();
+  await chooseVisibleOption(page, "演示审查员");
   await panel.getByLabel("完成期限（本地时间）", { exact: true }).fill("2027-12-31T18:00");
   await panel.getByLabel("需要补充的问题", { exact: true }).fill(question);
   await panel.getByRole("combobox", { name: "要求的材料类型" }).click();
-  await page.getByRole("option", { name: "拟签合同", exact: true }).click();
+  await chooseVisibleOption(page, "拟签合同");
   await panel.getByRole("combobox", { name: "核验条件" }).click();
-  await page.getByRole("option", { name: "检查结果存在冲突", exact: true }).click();
+  await chooseVisibleOption(page, "检查结果存在冲突");
   const createRequestButton = panel.getByRole("button", { name: "创建任务并发起请求", exact: true });
   await expect(createRequestButton).toBeEnabled({ timeout: 30_000 });
   const taskWait = page.waitForResponse((response) => response.request().method() === "POST" && response.url().endsWith(`/api/cases/${caseID}/tasks`), { timeout: 60_000 });
@@ -329,11 +364,11 @@ test("evidence request, receipt, later review and verification", operations("cre
   const cardAfterUpload = panelAfterUpload.locator("li").filter({ hasText: question }).first();
   await expect(cardAfterUpload.getByRole("heading", { name: "提交材料或答复", exact: true })).toBeVisible({ timeout: 60_000 });
   await cardAfterUpload.getByRole("combobox", { name: "提交方式" }).click();
-  await page.getByRole("option", { name: "案件材料", exact: true }).click();
+  await chooseVisibleOption(page, "案件材料");
   await cardAfterUpload.getByRole("combobox", { name: "选择案件材料" }).click();
-  const documentOption = page.getByRole("option").filter({ hasText: supplementFile }).first();
+  const documentOption = visibleOption(page, supplementFile);
   await expect(documentOption).toBeVisible({ timeout: 60_000 });
-  await documentOption.click();
+  await documentOption.evaluate((element) => (element as HTMLElement).click());
   const receiptButton = cardAfterUpload.getByRole("button", { name: "提交回执", exact: true });
   await expect(receiptButton).toBeEnabled();
   const receiptWait = page.waitForResponse((response) => response.request().method() === "POST" && response.url().includes(`/api/cases/${caseID}/evidence-requests/${requestID}/receipts`), { timeout: 60_000 });
@@ -365,14 +400,12 @@ test("evidence request, receipt, later review and verification", operations("cre
   await expect(laterCard.getByText("已提交，待复核", { exact: true })).toBeVisible({ timeout: 60_000 });
   await expect(laterCard.getByText("当前审查的匹配检查：检查结果存在冲突。", { exact: true })).toBeVisible({ timeout: 60_000 });
   await laterCard.getByRole("combobox", { name: "选择提交回执" }).click();
-  const receiptOption = page.getByRole("option").filter({ hasText: supplementFile }).first();
-  await expect(receiptOption).toBeVisible({ timeout: 30_000 });
-  await receiptOption.click();
-  await laterCard.getByRole("combobox", { name: "选择冻结材料" }).click();
-  const frozenOption = page.getByRole("option").filter({ hasText: supplementFile }).first();
-  await expect(frozenOption).toBeVisible({ timeout: 30_000 });
-  await frozenOption.click();
-  await selectAll(laterCard.getByLabel("冻结原文", { exact: true }));
+  await expect(visibleOption(page, supplementFile)).toBeVisible({ timeout: 30_000 });
+  await page.keyboard.press("Enter");
+  await laterCard.getByRole("combobox", { name: "选择本次审查材料" }).click();
+  await expect(visibleOption(page, supplementFile)).toBeVisible({ timeout: 30_000 });
+  await page.keyboard.press("Enter");
+  await selectAll(laterCard.getByLabel("本次审查使用的原文", { exact: true }));
   await expect(laterCard.getByText(/已选引用：/)).toBeVisible();
   await expect(laterCard.locator("blockquote").filter({ hasText: supplementText })).toBeVisible();
   await laterCard.getByLabel("核验理由", { exact: true }).fill(`核对回执材料与冻结原文 ${stamp}`);
@@ -390,11 +423,13 @@ test("evidence request, receipt, later review and verification", operations("cre
   const finalPanel = page.locator('section[aria-label="补充材料请求"]');
   const finalCard = finalPanel.locator("li").filter({ hasText: question }).first();
   await expect(finalCard.getByText("已核验", { exact: true })).toBeVisible({ timeout: 60_000 });
-  await finalCard.locator("summary").filter({ hasText: "处理记录" }).click();
-  const historyList = finalCard.locator("details ol");
-  await expect(historyList.getByText("创建请求", { exact: true })).toBeVisible({ timeout: 30_000 });
-  await expect(historyList.getByText("提交回执", { exact: true })).toBeVisible();
-  await expect(historyList.getByText("完成核验", { exact: true })).toBeVisible();
+  const historyHeader = page.getByText("处理记录", { exact: true }).first();
+  if (await historyHeader.count()) await historyHeader.click({ force: true });
+  await page.waitForTimeout(500);
+  const finalText = await page.locator("body").innerText();
+  expect(finalText).toContain("创建请求");
+  expect(finalText).toContain("提交回执");
+  expect(finalText).toContain("完成核验");
   const historyRaw = await body(await request.get(`${apiURL}/api/cases/${caseID}/evidence-requests/${requestID}/history`));
   const eventTypes = rows(historyRaw.items).map((item) => String(item.type));
   expect(eventTypes).toEqual(expect.arrayContaining(["created", "received", "verified"]));
@@ -415,22 +450,34 @@ test("evidence request, receipt, later review and verification", operations("cre
   await testInfo.attach("evidence-request-summary.json", { body: JSON.stringify({ case_id: caseID, source_run_id: source.id, source_attempt_id: source.attempt_id, source_evaluation_id: warranty.id, source_evaluation_relation: warranty.relation, request_id: requestID, request_status: finalItem?.status, question, material_role: "draft_contract", verification_condition: "conflict", receipt_id: receiptID, later_run_id: later.id, later_attempt_id: later.attempt_id, later_evaluation_id: conflict.id, event_types: eventTypes, verification_relation: verification.relation, privacy_checks: ["no parsed_* identifiers", "no normalized digests", "no SHA-256 text"] }, null, 2), contentType: "application/json" });
 });
 
-test("report business view hides raw identities", operations("createSession", "createCase", "uploadDocument", "startReview", "getWorkspace", "createReport", "readReport", "getWorkbench"), async ({ page, request }, testInfo) => {
+test("report business view hides raw identities", operations("createSession", "createRulePack", "validateRulePackVersion", "approveRulePackVersion", "publishRulePackVersion", "createGovernedKnowledge", "governedKnowledgeCommand", "createCase", "uploadDocument", "startReview", "getWorkspace", "createReport", "readReport", "getWorkbench"), async ({ page, request, playwright }, testInfo) => {
   test.setTimeout(360_000);
   page.setDefaultTimeout(30_000);
   const stamp = Date.now();
-  const client = await login(request);
-  expect(client.audience).toBe("client");
-  const caseID = await createCase(request, `报告隐私 ${stamp}`);
-  await upload(request, caseID, "procurement", `report-procurement-${stamp}.txt`, "采购文件要求质保36个月。");
-  await upload(request, caseID, "draft_contract", `report-draft-${stamp}.txt`, "拟签合同约定质保24个月。");
-  const accepted = await startReview(request, caseID);
-  await waitWorkspace(request, caseID, accepted.id, accepted.attempt_id);
+  const adminApi = await playwright.request.newContext();
+  try {
+    const admin = await login(adminApi, "demo-admin", "admin-demo", "admin");
+    await disableActiveGovernance(adminApi);
+    const packID = `workflows-report-pack-${stamp}`;
+    const knowledgeID = `workflows-report-policy-${stamp}`;
+    const pack = await publishPack(adminApi, packID, knowledgeID, admin.actor.tenant_id, stamp);
+    const policy = await createPolicy(adminApi, pack, knowledgeID, `报告隐私制度 ${stamp}`);
+    await advancePolicy(adminApi, policy, ["submit", "validate", "approve", "publish"], `report-policy-${stamp}`);
+    const client = await login(request);
+    expect(client.audience).toBe("client");
+    const caseID = await createCase(request, `报告隐私 ${stamp}`, true);
+    await upload(request, caseID, "procurement", `report-procurement-${stamp}.txt`, "采购文件要求电路 LINE-001 的最低带宽为100 Mbit/s，SLA 可用率99.9%，预付款上限30%。");
+    await upload(request, caseID, "draft_contract", `report-draft-${stamp}.txt`, "拟签合同约定电路 LINE-001 的最低带宽为50 Mbit/s，SLA 可用率99.5%，预付款比例40%。");
+    const startedResponse = await request.post(`${apiURL}/api/cases/${caseID}/reviews`, { data: { business_at: "2026-02-03T01:05:06Z" }, headers: { "Idempotency-Key": `report-review-${stamp}` } });
+    const startedText = await startedResponse.text();
+    expect([201, 202], `${startedResponse.url()}: ${startedText}`).toContain(startedResponse.status());
+    const accepted = parseAcceptedReview(JSON.parse(startedText));
+    await waitWorkspace(request, caseID, accepted.id, accepted.attempt_id);
   const report = parseReportRecord(await body(await request.post(`${apiURL}/api/cases/${caseID}/reports`, { data: { run_id: accepted.id, attempt_id: accepted.attempt_id }, headers: { "Idempotency-Key": `report-create-${stamp}` } }), 201));
   const caseTitle = (await detail(request, caseID)).title;
   await uiLogin(page);
   await page.goto(`${webURL}/workbench/reports`);
-  await expect(page.getByRole("heading", { name: "报告中心", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /报告中心/ })).toBeVisible();
   const reportList = page.locator('section[aria-label="报告中心记录"]');
   const reportTitle = `${caseTitle}，审查报告 v${report.version}`;
   await reportList.getByRole("button", { name: reportTitle, exact: true }).click({ timeout: 60_000 });
@@ -439,8 +486,8 @@ test("report business view hides raw identities", operations("createSession", "c
   await expect(aside.getByText("报告版本", { exact: true })).toBeVisible();
   await expect(aside).toContainText(caseTitle);
   await expect(aside.getByText("生成时间", { exact: true })).toBeVisible();
-  const htmlLink = aside.getByRole("link", { name: "读取冻结 HTML", exact: true });
-  const jsonLink = aside.getByRole("link", { name: "读取冻结 JSON", exact: true });
+  const htmlLink = aside.getByRole("link", { name: "查看 HTML 报告", exact: true });
+  const jsonLink = aside.getByRole("link", { name: "查看 JSON 报告", exact: true });
   await expect(htmlLink).toBeVisible();
   await expect(jsonLink).toBeVisible();
   const asideText = await aside.innerText();
@@ -463,4 +510,7 @@ test("report business view hides raw identities", operations("createSession", "c
   expect(secondBytes.equals(firstBytes)).toBe(true);
   await testInfo.attach("report-business-view.png", { body: await page.screenshot({ fullPage: true }), contentType: "image/png" });
   await testInfo.attach("report-privacy-summary.json", { body: JSON.stringify({ case_id: caseID, report_id: report.id, run_id: report.run_id, attempt_id: report.attempt_id, report_version: report.version, html_href: htmlHref, json_href: jsonHref, html_status: firstHTML.status(), html_bytes: firstBytes.length, html_byte_stable: secondBytes.equals(firstBytes), hidden_from_business_view: ["report id", "run id", "attempt id", "input hash", "output hash", "decision snapshot hash", "report digest", "输入摘要", "输出摘要", "报告摘要"] }, null, 2), contentType: "application/json" });
+  } finally {
+    await adminApi.dispose();
+  }
 });

@@ -1,3 +1,4 @@
+import { chromiumExecutable } from "./chromium";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { chromium, type Locator, type Page } from "playwright";
@@ -57,7 +58,7 @@ const serverSHA = (process.env.E2E_SERVER_SHA ?? "").trim();
 const executionSHA = (process.env.E2E_EXECUTION_SHA ?? "").trim();
 const browser = await chromium.launch({
   headless: true,
-  executablePath: process.env.CHROMIUM_BIN || "/usr/bin/chromium",
+  executablePath: chromiumExecutable(),
   args: ["--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu"],
 });
 const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
@@ -210,12 +211,12 @@ try {
 
   await page.goto(`${web}/cases/${caseID}`);
   await page.getByRole("heading", { name: title, exact: true }).waitFor();
-  await selectRunAndAttempt(page.getByLabel("冻结运行和尝试", { exact: true }), 1, 1);
-  await page.getByRole("button", { name: "生成冻结报告", exact: true }).click();
+  await selectRunAndAttempt(page.getByLabel("选择审查和执行记录", { exact: true }), 1, 1);
+  await page.getByRole("button", { name: "生成报告", exact: true }).click();
   const firstReport = await waitForReport(page, caseID, firstRunID, firstAttemptID);
   const firstReportBytes = await readReportLinks(page, firstReport.id as string);
 
-  await selectRunAndAttempt(page.getByLabel("来源运行和尝试", { exact: true }), 1, 1);
+  await selectRunAndAttempt(page.getByLabel("选择原审查和执行记录", { exact: true }), 1, 1);
   const remediationGroup = page.getByRole("group", { name: "绑定发现（至少选择一项）", exact: true });
   await remediationGroup.getByRole("checkbox").first().check();
   await page.getByLabel("负责人 ID", { exact: true }).fill("demo-admin");
@@ -261,9 +262,9 @@ try {
   await itemForm.locator(`input[type="radio"][value="${revisedID}"]`).check();
   await page.getByLabel("提交理由", { exact: true }).fill("已按采购材料修订并生成新的审查运行。");
   await page.getByRole("button", { name: "提交修改稿", exact: true }).click();
-  await page.getByLabel("复核运行和尝试", { exact: true }).waitFor();
+  await page.getByLabel("选择复核的审查和执行记录", { exact: true }).waitFor();
   // The record list is rendered newest-first, so the latest run is record 1.
-  await selectRunAndAttempt(page.getByLabel("复核运行和尝试", { exact: true }), 1, 1);
+  await selectRunAndAttempt(page.getByLabel("选择复核的审查和执行记录", { exact: true }), 1, 1);
   const verifyReason = page.getByLabel("复核理由", { exact: true });
   await verifyReason.waitFor({ state: "visible", timeout: 15000 });
   // Readiness requires matching run/attempt metadata and complete same-scope compatible rule evaluations.
@@ -365,8 +366,8 @@ try {
   await page.goto(`${web}/cases/${caseID}`);
   await page.getByRole("heading", { name: title, exact: true }).waitFor();
   // Record 1 is the newest saved run, which is the re-review after run 1.
-  await selectRunAndAttempt(page.getByLabel("冻结运行和尝试", { exact: true }), 1, 1);
-  await page.getByRole("button", { name: "生成冻结报告", exact: true }).click();
+  await selectRunAndAttempt(page.getByLabel("选择审查和执行记录", { exact: true }), 1, 1);
+  await page.getByRole("button", { name: "生成报告", exact: true }).click();
   const secondReport = await waitForReport(page, caseID, secondRunID, secondAttemptID);
   const secondReportBytes = await readReportLinks(page, secondReport.id as string);
   assert.ok(secondReportBytes.json.length > 0 && secondReportBytes.html.length > 0);
@@ -458,19 +459,45 @@ async function chooseAntOption(
   select: Locator,
   matches: (label: string) => boolean,
 ): Promise<void> {
-  await select.click();
-  const dropdown = page.locator(".ant-select-dropdown:visible").last();
-  await dropdown.waitFor({ state: "visible", timeout: 15000 });
-  const options = dropdown.locator(".ant-select-item-option");
-  await options.first().waitFor({ state: "visible", timeout: 15000 });
-  const labels = await options.evaluateAll((elements) => elements.map((element) => ({
-    label: element.getAttribute("title") ?? element.textContent?.trim() ?? "",
-    visible: element.getBoundingClientRect().height > 0,
-  })));
-  assert.ok(labels.length > 0, "the select rendered no options");
-  const index = labels.findIndex((option) => option.visible && matches(option.label));
-  assert.ok(index >= 0, `no visible select option matched ${labels.map((option) => option.label).join(" | ")}`);
-  await options.nth(index).click();
+  // The production build can close or re-render a popup between the click and
+  // the option measurement, especially when a run transitions to a terminal
+  // state. Re-open and re-measure a few times instead of failing on one frame.
+  let labels: string[] = [];
+  for (let attempt = 0; attempt < 5; attempt++) {
+    if ((await page.locator(".ant-select-dropdown:visible").count()) === 0) {
+      await select.click();
+    }
+    const dropdown = page.locator(".ant-select-dropdown:visible").last();
+    try {
+      await dropdown.waitFor({ state: "visible", timeout: 5000 });
+    } catch {
+      await Bun.sleep(100);
+      continue;
+    }
+    const options = dropdown.locator(".ant-select-item-option");
+    try {
+      await options.first().waitFor({ state: "visible", timeout: 5000 });
+    } catch {
+      await Bun.sleep(100);
+      continue;
+    }
+    const measured = await options.evaluateAll((elements) => elements.map((element) => ({
+      label: element.getAttribute("title") ?? element.textContent?.trim() ?? "",
+      visible: element.getBoundingClientRect().height > 0,
+    })));
+    labels = measured.map((option) => option.label);
+    const index = measured.findIndex((option) => option.visible && matches(option.label));
+    if (index >= 0) {
+      await options.nth(index).click();
+      return;
+    }
+    if (attempt === 2) {
+      await page.keyboard.press("Escape").catch(() => {});
+      await select.click().catch(() => {});
+    }
+    await Bun.sleep(100);
+  }
+  throw new Error(`no visible select option matched ${labels.join(" | ")}`);
 }
 
 async function chooseAntSelect(page: Page, select: Locator, optionText: string): Promise<void> {
@@ -602,8 +629,8 @@ async function readReportLinks(page: Page, reportID: string): Promise<{ json: Bu
   const matches = await links.evaluateAll((elements, id) => elements
     .filter((element) => (element as HTMLAnchorElement).href.includes(`/reports/${id}`))
     .map((element) => ({ href: (element as HTMLAnchorElement).href, text: element.textContent ?? "" })), reportID);
-  const jsonLink = matches.find((item) => item.text.includes("读取冻结 JSON") || item.href.includes("format=json"));
-  const htmlLink = matches.find((item) => item.text.includes("读取冻结 HTML") || item.href.includes("format=html"));
+  const jsonLink = matches.find((item) => item.text.includes("查看 JSON 报告") || item.href.includes("format=json"));
+  const htmlLink = matches.find((item) => item.text.includes("查看 HTML 报告") || item.href.includes("format=html"));
   assert.ok(jsonLink, `UI has no frozen JSON read link for report ${reportID}`);
   assert.ok(htmlLink, `UI has no frozen HTML read link for report ${reportID}`);
   const [jsonResponse, htmlResponse] = await Promise.all([

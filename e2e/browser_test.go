@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"syscall"
 	"testing"
 	"time"
@@ -22,13 +23,7 @@ import (
 )
 
 func TestBrowserWarrantyConflictAndConfirm(t *testing.T) {
-	chrome := os.Getenv("CHROMIUM_BIN")
-	if chrome == "" {
-		chrome = "/usr/bin/chromium"
-	}
-	if _, err := os.Stat(chrome); err != nil {
-		t.Fatal("Chromium unavailable: set CHROMIUM_BIN or run make browser-install")
-	}
+	chrome := chromiumBinary(t)
 	if _, err := exec.LookPath("bun"); err != nil {
 		t.Fatal(err)
 	}
@@ -179,4 +174,38 @@ func stopGroup(cmd *exec.Cmd) {
 	}
 	_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
 	_, _ = cmd.Process.Wait()
+}
+
+// chromiumBinary resolves the browser without baking in one workstation path:
+// CHROMIUM_BIN wins, then the Playwright-managed Chromium in the web workspace,
+// then a conventional system package. The Go test itself only needs the path;
+// the Bun journey receives it through the environment.
+func chromiumBinary(t *testing.T) string {
+	t.Helper()
+	if value := strings.TrimSpace(os.Getenv("CHROMIUM_BIN")); value != "" {
+		if _, err := os.Stat(value); err != nil {
+			t.Fatalf("CHROMIUM_BIN is not an executable file: %s", value)
+		}
+		return value
+	}
+	discover := exec.Command("bun", "-e",
+		`import { chromium } from "playwright"; process.stdout.write(chromium.executablePath())`)
+	discover.Dir = filepath.Clean(filepath.Join("..", "web"))
+	if output, err := discover.Output(); err == nil {
+		if value := strings.TrimSpace(string(output)); value != "" {
+			if _, statErr := os.Stat(value); statErr == nil {
+				return value
+			}
+		}
+	}
+	for _, candidate := range []string{
+		"/usr/bin/chromium", "/usr/bin/chromium-browser",
+		"/usr/bin/google-chrome", "/usr/bin/google-chrome-stable",
+	} {
+		if _, err := os.Stat(candidate); err == nil {
+			return candidate
+		}
+	}
+	t.Fatal("Chromium unavailable: run `cd web && bunx playwright install chromium`, or set CHROMIUM_BIN")
+	return ""
 }

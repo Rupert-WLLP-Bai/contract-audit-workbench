@@ -365,3 +365,22 @@ func TestPriorResultsFailClosedAndCannotResetLimits(t *testing.T) {
 		})
 	}
 }
+
+func TestPriorEventBudgetWithoutObservationsIsAccepted(t *testing.T) {
+	runtime := &Runtime{config: Config{MaxCalls: DefaultPlannerCalls, MaxRounds: DefaultPlannerRounds}}
+	elapsed := int64(12)
+	request := Request{RequestID: "retry-with-counts", PriorEventCount: 5, PriorElapsedMS: &elapsed}
+	if err := runtime.validatePriorToolResults(context.Background(), request); err != nil {
+		t.Fatalf("prior event budget without observations was rejected: %v", err)
+	}
+	request.PriorEventCount = 1025
+	if err := runtime.validatePriorToolResults(context.Background(), request); err == nil {
+		t.Fatal("unbounded prior event count was accepted")
+	}
+	negative := int64(-1)
+	request.PriorEventCount = 1
+	request.PriorElapsedMS = &negative
+	if err := runtime.validatePriorToolResults(context.Background(), request); err == nil {
+		t.Fatal("negative prior elapsed time was accepted")
+	}
+}
