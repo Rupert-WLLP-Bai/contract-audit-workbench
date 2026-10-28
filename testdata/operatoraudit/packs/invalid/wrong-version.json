@@ -1,0 +1,32 @@
+{
+  "schema_version": "audit-capability-pack/v1",
+  "pack_id": "operator.wrong_version",
+  "version": "1.0.0",
+  "host_contract_version": "auditext/v2",
+  "display_name": "错误宿主版本反例（合成）",
+  "scenario": "telecom_dedicated_line",
+  "required_material_roles": [
+    "draft_contract"
+  ],
+  "rule_pack_ref": {
+    "id": "telecom-contractual",
+    "version": "5"
+  },
+  "capabilities": [],
+  "checks": [
+    {
+      "id": "line.wrong_version",
+      "comparator_ref": "builtin.configured_bandwidth_at_least/v1",
+      "contract_field": "minimum_bandwidth",
+      "external_field": "configured_bandwidth"
+    }
+  ],
+  "ui": {
+    "view": "field_comparison",
+    "fields": [
+      "minimum_bandwidth"
+    ]
+  },
+  "fixture_suite": "operatoraudit.invalid.wrong_version",
+  "data_class": "synthetic"
+}

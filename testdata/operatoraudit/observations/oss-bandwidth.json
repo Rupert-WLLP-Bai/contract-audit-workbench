@@ -1,0 +1,29 @@
+{
+  "schema_version": "external-observation/v1",
+  "snapshot_id": "fixture-snapshot-connector-v1",
+  "tenant_id": "fixture-tenant-a",
+  "case_id": "fixture-case-001",
+  "connector_id": "fixture.oss",
+  "source_system": "fixture-oss-east",
+  "object_binding_version": "fixture-binding-v1",
+  "external_object_id": "fixture-line-001",
+  "record_id": "fixture-line-001",
+  "record_version": "fixture-source-v1",
+  "observed_at": "2026-10-28T08:00:00Z",
+  "source_updated_at": "2026-10-19T23:55:00Z",
+  "effective_from": "2026-10-01T00:00:00Z",
+  "effective_until": "2026-11-01T00:00:00Z",
+  "availability": "available",
+  "reason_code": "read_succeeded",
+  "payload_ref": "fixture://oss/fixture-snapshot-connector-v1",
+  "fields": [
+    {
+      "name": "configured_bandwidth",
+      "value": "80",
+      "unit": "Mbit/s",
+      "source_pointer": "/serviceCharacteristic/1/value",
+      "semantic_kind": "configured_value"
+    }
+  ],
+  "data_class": "synthetic"
+}

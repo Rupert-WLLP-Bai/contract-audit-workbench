@@ -1,0 +1,1036 @@
+{
+  "schema": "operatoraudit.golden/v1",
+  "data_class": "synthetic",
+  "notice": "Synthetic contract fixtures for black-box verification. Every value here is fabricated; none of it is a measured result, a production OSS response or a claim of real-world accuracy. Inputs and expected values are kept in separate objects so the test oracle is independent of any implementation internals.",
+  "cases": [
+    {
+      "id": "G01",
+      "title": "同对象带宽配置小于合同",
+      "data_class": "synthetic",
+      "input": {
+        "scope": {"tenant_id": "fixture-tenant-a", "case_id": "fixture-case-001", "actor_id": "fixture-actor-q", "grant_version": "fixture-grant-v1"},
+        "pack": {"id": "operator.dedicated_line", "version": "1.0.0"},
+        "contract_version": "fixture-contract-v1",
+        "rule_pack_version": "5",
+        "binding_status": "confirmed",
+        "binding_version": "fixture-binding-v1",
+        "snapshot_set_id": "fixture-snapshot-set-v1",
+        "external_object_id": "fixture-line-001",
+        "source_system": "fixture-oss-east",
+        "model_configuration_id": "fixture-model-v1",
+        "planner_configuration_id": "fixture-planner-v1",
+        "parser_configuration_id": "fixture-parser-v1",
+        "business_at": "2026-10-21T00:00:00Z",
+        "facts": [
+          {
+            "name": "minimum_bandwidth",
+            "value": {"value": "100", "unit": "Mbit/s"},
+            "evidence": [
+              {"kind": "document", "document_version_id": "fixture-doc-v1", "parsed_version_id": "fixture-parse-v1", "start": 0, "end": 32, "quote": "专线 LINE-001 最低保障带宽不低于100 Mbit/s。"}
+            ],
+            "uncertain": false,
+            "out_of_scope": false,
+            "semantic_kind": "configured_value"
+          }
+        ],
+        "observations": [
+          {
+            "schema_version": "external-observation/v1",
+            "snapshot_id": "fixture-snapshot-g01",
+            "tenant_id": "fixture-tenant-a",
+            "case_id": "fixture-case-001",
+            "connector_id": "fixture.oss",
+            "source_system": "fixture-oss-east",
+            "object_binding_version": "fixture-binding-v1",
+            "external_object_id": "fixture-line-001",
+            "record_id": "fixture-record-001",
+            "record_version": "fixture-source-v1",
+            "observed_at": "2026-10-20T00:00:00Z",
+            "source_updated_at": "2026-10-19T23:55:00Z",
+            "effective_from": "2026-10-01T00:00:00Z",
+            "effective_until": "2026-11-01T00:00:00Z",
+            "availability": "available",
+            "reason_code": "read_succeeded",
+            "payload_ref": "fixture://oss/fixture-record-001",
+            "fields": [
+              {"name": "configured_bandwidth", "value": "80", "unit": "Mbit/s", "source_pointer": "/serviceCharacteristic/0/value", "semantic_kind": "configured_value"}
+            ],
+            "data_class": "synthetic"
+          }
+        ]
+      },
+      "expected": {
+        "access": "allow",
+        "relation": "conflict",
+        "reason_code": "configured_bandwidth_below_contract",
+        "machine_status": "completed",
+        "requires_human_review": true,
+        "evidence_kinds": ["document", "external_snapshot"],
+        "auto_confirm": false
+      }
+    },
+    {
+      "id": "G02",
+      "title": "相同配置",
+      "data_class": "synthetic",
+      "input": {
+        "scope": {"tenant_id": "fixture-tenant-a", "case_id": "fixture-case-001", "actor_id": "fixture-actor-q", "grant_version": "fixture-grant-v1"},
+        "pack": {"id": "operator.dedicated_line", "version": "1.0.0"},
+        "contract_version": "fixture-contract-v1",
+        "rule_pack_version": "5",
+        "binding_status": "confirmed",
+        "binding_version": "fixture-binding-v1",
+        "snapshot_set_id": "fixture-snapshot-set-v1",
+        "external_object_id": "fixture-line-001",
+        "source_system": "fixture-oss-east",
+        "model_configuration_id": "fixture-model-v1",
+        "planner_configuration_id": "fixture-planner-v1",
+        "parser_configuration_id": "fixture-parser-v1",
+        "business_at": "2026-10-21T00:00:00Z",
+        "facts": [
+          {
+            "name": "minimum_bandwidth",
+            "value": {"value": "100", "unit": "Mbit/s"},
+            "evidence": [
+              {"kind": "document", "document_version_id": "fixture-doc-v1", "parsed_version_id": "fixture-parse-v1", "start": 0, "end": 32, "quote": "专线 LINE-001 最低保障带宽不低于100 Mbit/s。"}
+            ],
+            "uncertain": false,
+            "out_of_scope": false,
+            "semantic_kind": "configured_value"
+          }
+        ],
+        "observations": [
+          {
+            "schema_version": "external-observation/v1",
+            "snapshot_id": "fixture-snapshot-g02",
+            "tenant_id": "fixture-tenant-a",
+            "case_id": "fixture-case-001",
+            "connector_id": "fixture.oss",
+            "source_system": "fixture-oss-east",
+            "object_binding_version": "fixture-binding-v1",
+            "external_object_id": "fixture-line-001",
+            "record_id": "fixture-record-001",
+            "record_version": "fixture-source-v1",
+            "observed_at": "2026-10-20T00:00:00Z",
+            "source_updated_at": "2026-10-19T23:55:00Z",
+            "effective_from": "2026-10-01T00:00:00Z",
+            "effective_until": "2026-11-01T00:00:00Z",
+            "availability": "available",
+            "reason_code": "read_succeeded",
+            "payload_ref": "fixture://oss/fixture-record-001",
+            "fields": [
+              {"name": "configured_bandwidth", "value": "100", "unit": "Mbit/s", "source_pointer": "/serviceCharacteristic/0/value", "semantic_kind": "configured_value"}
+            ],
+            "data_class": "synthetic"
+          }
+        ]
+      },
+      "expected": {
+        "access": "allow",
+        "relation": "compatible",
+        "reason_code": "configured_bandwidth_meets_contract",
+        "machine_status": "completed",
+        "requires_human_review": true,
+        "evidence_kinds": ["document", "external_snapshot"],
+        "auto_confirm": false
+      }
+    },
+    {
+      "id": "G03",
+      "title": "不同单位归一",
+      "data_class": "synthetic",
+      "input": {
+        "scope": {"tenant_id": "fixture-tenant-a", "case_id": "fixture-case-001", "actor_id": "fixture-actor-q", "grant_version": "fixture-grant-v1"},
+        "pack": {"id": "operator.dedicated_line", "version": "1.0.0"},
+        "contract_version": "fixture-contract-v1",
+        "rule_pack_version": "5",
+        "binding_status": "confirmed",
+        "binding_version": "fixture-binding-v1",
+        "snapshot_set_id": "fixture-snapshot-set-v1",
+        "external_object_id": "fixture-line-001",
+        "source_system": "fixture-oss-east",
+        "model_configuration_id": "fixture-model-v1",
+        "planner_configuration_id": "fixture-planner-v1",
+        "parser_configuration_id": "fixture-parser-v1",
+        "business_at": "2026-10-21T00:00:00Z",
+        "facts": [
+          {
+            "name": "minimum_bandwidth",
+            "value": {"value": "100", "unit": "Mbit/s"},
+            "evidence": [
+              {"kind": "document", "document_version_id": "fixture-doc-v1", "parsed_version_id": "fixture-parse-v1", "start": 0, "end": 32, "quote": "专线 LINE-001 最低保障带宽不低于100 Mbit/s。"}
+            ],
+            "uncertain": false,
+            "out_of_scope": false,
+            "semantic_kind": "configured_value"
+          }
+        ],
+        "observations": [
+          {
+            "schema_version": "external-observation/v1",
+            "snapshot_id": "fixture-snapshot-g03",
+            "tenant_id": "fixture-tenant-a",
+            "case_id": "fixture-case-001",
+            "connector_id": "fixture.oss",
+            "source_system": "fixture-oss-east",
+            "object_binding_version": "fixture-binding-v1",
+            "external_object_id": "fixture-line-001",
+            "record_id": "fixture-record-001",
+            "record_version": "fixture-source-v1",
+            "observed_at": "2026-10-20T00:00:00Z",
+            "source_updated_at": "2026-10-19T23:55:00Z",
+            "effective_from": "2026-10-01T00:00:00Z",
+            "effective_until": "2026-11-01T00:00:00Z",
+            "availability": "available",
+            "reason_code": "read_succeeded",
+            "payload_ref": "fixture://oss/fixture-record-001",
+            "fields": [
+              {"name": "configured_bandwidth", "value": "0.1", "unit": "Gbit/s", "source_pointer": "/serviceCharacteristic/0/value", "semantic_kind": "configured_value"}
+            ],
+            "data_class": "synthetic"
+          }
+        ]
+      },
+      "expected": {
+        "access": "allow",
+        "relation": "compatible",
+        "reason_code": "configured_bandwidth_meets_contract",
+        "machine_status": "completed",
+        "requires_human_review": true,
+        "evidence_kinds": ["document", "external_snapshot"],
+        "auto_confirm": false
+      }
+    },
+    {
+      "id": "G04",
+      "title": "没有授权对象映射",
+      "data_class": "synthetic",
+      "input": {
+        "scope": {"tenant_id": "fixture-tenant-a", "case_id": "fixture-case-001", "actor_id": "fixture-actor-q", "grant_version": "fixture-grant-v1"},
+        "pack": {"id": "operator.dedicated_line", "version": "1.0.0"},
+        "contract_version": "fixture-contract-v1",
+        "rule_pack_version": "5",
+        "binding_status": "missing",
+        "binding_version": "",
+        "snapshot_set_id": "fixture-snapshot-set-v1",
+        "external_object_id": "",
+        "source_system": "",
+        "model_configuration_id": "fixture-model-v1",
+        "planner_configuration_id": "fixture-planner-v1",
+        "parser_configuration_id": "fixture-parser-v1",
+        "business_at": "2026-10-21T00:00:00Z",
+        "facts": [
+          {
+            "name": "minimum_bandwidth",
+            "value": {"value": "100", "unit": "Mbit/s"},
+            "evidence": [
+              {"kind": "document", "document_version_id": "fixture-doc-v1", "parsed_version_id": "fixture-parse-v1", "start": 0, "end": 32, "quote": "专线 LINE-001 最低保障带宽不低于100 Mbit/s。"}
+            ],
+            "uncertain": false,
+            "out_of_scope": false,
+            "semantic_kind": "configured_value"
+          }
+        ],
+        "observations": [
+          {
+            "schema_version": "external-observation/v1",
+            "snapshot_id": "fixture-snapshot-g04",
+            "tenant_id": "fixture-tenant-a",
+            "case_id": "fixture-case-001",
+            "connector_id": "fixture.oss",
+            "source_system": "fixture-oss-east",
+            "object_binding_version": "fixture-binding-v1",
+            "external_object_id": "fixture-line-001",
+            "record_id": "fixture-record-001",
+            "record_version": "fixture-source-v1",
+            "observed_at": "2026-10-20T00:00:00Z",
+            "source_updated_at": "2026-10-19T23:55:00Z",
+            "effective_from": "2026-10-01T00:00:00Z",
+            "effective_until": "2026-11-01T00:00:00Z",
+            "availability": "available",
+            "reason_code": "read_succeeded",
+            "payload_ref": "fixture://oss/fixture-record-001",
+            "fields": [
+              {"name": "configured_bandwidth", "value": "80", "unit": "Mbit/s", "source_pointer": "/serviceCharacteristic/0/value", "semantic_kind": "configured_value"}
+            ],
+            "data_class": "synthetic"
+          }
+        ]
+      },
+      "expected": {
+        "access": "allow",
+        "relation": "insufficient",
+        "reason_code": "object_binding_missing",
+        "machine_status": "completed",
+        "requires_human_review": true,
+        "evidence_kinds": ["document"],
+        "auto_confirm": false
+      }
+    },
+    {
+      "id": "G05",
+      "title": "映射歧义",
+      "data_class": "synthetic",
+      "input": {
+        "scope": {"tenant_id": "fixture-tenant-a", "case_id": "fixture-case-001", "actor_id": "fixture-actor-q", "grant_version": "fixture-grant-v1"},
+        "pack": {"id": "operator.dedicated_line", "version": "1.0.0"},
+        "contract_version": "fixture-contract-v1",
+        "rule_pack_version": "5",
+        "binding_status": "ambiguous",
+        "binding_version": "",
+        "snapshot_set_id": "fixture-snapshot-set-v1",
+        "external_object_id": "",
+        "source_system": "",
+        "model_configuration_id": "fixture-model-v1",
+        "planner_configuration_id": "fixture-planner-v1",
+        "parser_configuration_id": "fixture-parser-v1",
+        "business_at": "2026-10-21T00:00:00Z",
+        "facts": [
+          {
+            "name": "minimum_bandwidth",
+            "value": {"value": "100", "unit": "Mbit/s"},
+            "evidence": [
+              {"kind": "document", "document_version_id": "fixture-doc-v1", "parsed_version_id": "fixture-parse-v1", "start": 0, "end": 32, "quote": "专线 LINE-001 最低保障带宽不低于100 Mbit/s。"}
+            ],
+            "uncertain": false,
+            "out_of_scope": false,
+            "semantic_kind": "configured_value"
+          }
+        ],
+        "observations": [
+          {
+            "schema_version": "external-observation/v1",
+            "snapshot_id": "fixture-snapshot-g05",
+            "tenant_id": "fixture-tenant-a",
+            "case_id": "fixture-case-001",
+            "connector_id": "fixture.oss",
+            "source_system": "fixture-oss-east",
+            "object_binding_version": "fixture-binding-v1",
+            "external_object_id": "fixture-line-001",
+            "record_id": "fixture-record-001",
+            "record_version": "fixture-source-v1",
+            "observed_at": "2026-10-20T00:00:00Z",
+            "source_updated_at": "2026-10-19T23:55:00Z",
+            "effective_from": "2026-10-01T00:00:00Z",
+            "effective_until": "2026-11-01T00:00:00Z",
+            "availability": "available",
+            "reason_code": "read_succeeded",
+            "payload_ref": "fixture://oss/fixture-record-001",
+            "fields": [
+              {"name": "configured_bandwidth", "value": "80", "unit": "Mbit/s", "source_pointer": "/serviceCharacteristic/0/value", "semantic_kind": "configured_value"}
+            ],
+            "data_class": "synthetic"
+          }
+        ]
+      },
+      "expected": {
+        "access": "allow",
+        "relation": "insufficient",
+        "reason_code": "object_binding_ambiguous",
+        "machine_status": "completed",
+        "requires_human_review": true,
+        "evidence_kinds": ["document"],
+        "auto_confirm": false
+      }
+    },
+    {
+      "id": "G06",
+      "title": "来源过期",
+      "data_class": "synthetic",
+      "input": {
+        "scope": {"tenant_id": "fixture-tenant-a", "case_id": "fixture-case-001", "actor_id": "fixture-actor-q", "grant_version": "fixture-grant-v1"},
+        "pack": {"id": "operator.dedicated_line", "version": "1.0.0"},
+        "contract_version": "fixture-contract-v1",
+        "rule_pack_version": "5",
+        "binding_status": "confirmed",
+        "binding_version": "fixture-binding-v1",
+        "snapshot_set_id": "fixture-snapshot-set-v1",
+        "external_object_id": "fixture-line-001",
+        "source_system": "fixture-oss-east",
+        "model_configuration_id": "fixture-model-v1",
+        "planner_configuration_id": "fixture-planner-v1",
+        "parser_configuration_id": "fixture-parser-v1",
+        "business_at": "2026-10-21T00:00:00Z",
+        "facts": [
+          {
+            "name": "minimum_bandwidth",
+            "value": {"value": "100", "unit": "Mbit/s"},
+            "evidence": [
+              {"kind": "document", "document_version_id": "fixture-doc-v1", "parsed_version_id": "fixture-parse-v1", "start": 0, "end": 32, "quote": "专线 LINE-001 最低保障带宽不低于100 Mbit/s。"}
+            ],
+            "uncertain": false,
+            "out_of_scope": false,
+            "semantic_kind": "configured_value"
+          }
+        ],
+        "observations": [
+          {
+            "schema_version": "external-observation/v1",
+            "snapshot_id": "fixture-snapshot-g06",
+            "tenant_id": "fixture-tenant-a",
+            "case_id": "fixture-case-001",
+            "connector_id": "fixture.oss",
+            "source_system": "fixture-oss-east",
+            "object_binding_version": "fixture-binding-v1",
+            "external_object_id": "fixture-line-001",
+            "record_id": "fixture-record-001",
+            "record_version": "fixture-source-v1",
+            "observed_at": "2026-10-20T00:00:00Z",
+            "source_updated_at": "2026-09-01T00:00:00Z",
+            "effective_from": "2026-10-01T00:00:00Z",
+            "effective_until": "2026-11-01T00:00:00Z",
+            "availability": "stale",
+            "reason_code": "source_stale",
+            "payload_ref": "fixture://oss/fixture-record-001",
+            "fields": [
+              {"name": "configured_bandwidth", "value": "100", "unit": "Mbit/s", "source_pointer": "/serviceCharacteristic/0/value", "semantic_kind": "configured_value"}
+            ],
+            "data_class": "synthetic"
+          }
+        ]
+      },
+      "expected": {
+        "access": "allow",
+        "relation": "insufficient",
+        "reason_code": "source_stale",
+        "machine_status": "completed",
+        "requires_human_review": true,
+        "evidence_kinds": ["document"],
+        "auto_confirm": false
+      }
+    },
+    {
+      "id": "G07",
+      "title": "连接器不可用",
+      "data_class": "synthetic",
+      "input": {
+        "scope": {"tenant_id": "fixture-tenant-a", "case_id": "fixture-case-001", "actor_id": "fixture-actor-q", "grant_version": "fixture-grant-v1"},
+        "pack": {"id": "operator.dedicated_line", "version": "1.0.0"},
+        "contract_version": "fixture-contract-v1",
+        "rule_pack_version": "5",
+        "binding_status": "confirmed",
+        "binding_version": "fixture-binding-v1",
+        "snapshot_set_id": "fixture-snapshot-set-v1",
+        "external_object_id": "fixture-line-001",
+        "source_system": "fixture-oss-east",
+        "model_configuration_id": "fixture-model-v1",
+        "planner_configuration_id": "fixture-planner-v1",
+        "parser_configuration_id": "fixture-parser-v1",
+        "business_at": "2026-10-21T00:00:00Z",
+        "facts": [
+          {
+            "name": "minimum_bandwidth",
+            "value": {"value": "100", "unit": "Mbit/s"},
+            "evidence": [
+              {"kind": "document", "document_version_id": "fixture-doc-v1", "parsed_version_id": "fixture-parse-v1", "start": 0, "end": 32, "quote": "专线 LINE-001 最低保障带宽不低于100 Mbit/s。"}
+            ],
+            "uncertain": false,
+            "out_of_scope": false,
+            "semantic_kind": "configured_value"
+          }
+        ],
+        "observations": [
+          {
+            "schema_version": "external-observation/v1",
+            "snapshot_id": "fixture-snapshot-g07",
+            "tenant_id": "fixture-tenant-a",
+            "case_id": "fixture-case-001",
+            "connector_id": "fixture.oss",
+            "source_system": "fixture-oss-east",
+            "object_binding_version": "fixture-binding-v1",
+            "external_object_id": "fixture-line-001",
+            "record_id": "fixture-line-001",
+            "record_version": null,
+            "observed_at": "2026-10-20T00:00:00Z",
+            "source_updated_at": null,
+            "effective_from": "2026-10-01T00:00:00Z",
+            "effective_until": "2026-11-01T00:00:00Z",
+            "availability": "unavailable",
+            "reason_code": "source_unavailable",
+            "payload_ref": null,
+            "fields": [],
+            "data_class": "synthetic"
+          }
+        ]
+      },
+      "expected": {
+        "access": "allow",
+        "relation": "insufficient",
+        "reason_code": "source_unavailable",
+        "machine_status": "completed",
+        "requires_human_review": true,
+        "evidence_kinds": ["document"],
+        "forbidden_evidence_kinds": ["external_snapshot"],
+        "auto_confirm": false
+      }
+    },
+    {
+      "id": "G08",
+      "title": "字段缺失",
+      "data_class": "synthetic",
+      "input": {
+        "scope": {"tenant_id": "fixture-tenant-a", "case_id": "fixture-case-001", "actor_id": "fixture-actor-q", "grant_version": "fixture-grant-v1"},
+        "pack": {"id": "operator.dedicated_line", "version": "1.0.0"},
+        "contract_version": "fixture-contract-v1",
+        "rule_pack_version": "5",
+        "binding_status": "confirmed",
+        "binding_version": "fixture-binding-v1",
+        "snapshot_set_id": "fixture-snapshot-set-v1",
+        "external_object_id": "fixture-line-001",
+        "source_system": "fixture-oss-east",
+        "model_configuration_id": "fixture-model-v1",
+        "planner_configuration_id": "fixture-planner-v1",
+        "parser_configuration_id": "fixture-parser-v1",
+        "business_at": "2026-10-21T00:00:00Z",
+        "facts": [
+          {
+            "name": "minimum_bandwidth",
+            "value": {"value": "100", "unit": "Mbit/s"},
+            "evidence": [
+              {"kind": "document", "document_version_id": "fixture-doc-v1", "parsed_version_id": "fixture-parse-v1", "start": 0, "end": 32, "quote": "专线 LINE-001 最低保障带宽不低于100 Mbit/s。"}
+            ],
+            "uncertain": false,
+            "out_of_scope": false,
+            "semantic_kind": "configured_value"
+          }
+        ],
+        "observations": [
+          {
+            "schema_version": "external-observation/v1",
+            "snapshot_id": "fixture-snapshot-g08",
+            "tenant_id": "fixture-tenant-a",
+            "case_id": "fixture-case-001",
+            "connector_id": "fixture.oss",
+            "source_system": "fixture-oss-east",
+            "object_binding_version": "fixture-binding-v1",
+            "external_object_id": "fixture-line-001",
+            "record_id": "fixture-record-001",
+            "record_version": "fixture-source-v1",
+            "observed_at": "2026-10-20T00:00:00Z",
+            "source_updated_at": "2026-10-19T23:55:00Z",
+            "effective_from": "2026-10-01T00:00:00Z",
+            "effective_until": "2026-11-01T00:00:00Z",
+            "availability": "available",
+            "reason_code": "read_succeeded",
+            "payload_ref": "fixture://oss/fixture-record-001",
+            "fields": [
+              {"name": "provisioned_bandwidth", "value": "100", "unit": "Mbit/s", "source_pointer": "/serviceCharacteristic/1/value", "semantic_kind": "configured_value"}
+            ],
+            "data_class": "synthetic"
+          }
+        ]
+      },
+      "expected": {
+        "access": "allow",
+        "relation": "insufficient",
+        "reason_code": "required_field_missing",
+        "machine_status": "completed",
+        "requires_human_review": true,
+        "evidence_kinds": ["document"],
+        "auto_confirm": false
+      }
+    },
+    {
+      "id": "G09",
+      "title": "业务时间不在有效区间",
+      "data_class": "synthetic",
+      "input": {
+        "scope": {"tenant_id": "fixture-tenant-a", "case_id": "fixture-case-001", "actor_id": "fixture-actor-q", "grant_version": "fixture-grant-v1"},
+        "pack": {"id": "operator.dedicated_line", "version": "1.0.0"},
+        "contract_version": "fixture-contract-v1",
+        "rule_pack_version": "5",
+        "binding_status": "confirmed",
+        "binding_version": "fixture-binding-v1",
+        "snapshot_set_id": "fixture-snapshot-set-v1",
+        "external_object_id": "fixture-line-001",
+        "source_system": "fixture-oss-east",
+        "model_configuration_id": "fixture-model-v1",
+        "planner_configuration_id": "fixture-planner-v1",
+        "parser_configuration_id": "fixture-parser-v1",
+        "business_at": "2026-10-20T00:00:00Z",
+        "facts": [
+          {
+            "name": "minimum_bandwidth",
+            "value": {"value": "100", "unit": "Mbit/s"},
+            "evidence": [
+              {"kind": "document", "document_version_id": "fixture-doc-v1", "parsed_version_id": "fixture-parse-v1", "start": 0, "end": 32, "quote": "专线 LINE-001 最低保障带宽不低于100 Mbit/s。"}
+            ],
+            "uncertain": false,
+            "out_of_scope": false,
+            "semantic_kind": "configured_value"
+          }
+        ],
+        "observations": [
+          {
+            "schema_version": "external-observation/v1",
+            "snapshot_id": "fixture-snapshot-g09",
+            "tenant_id": "fixture-tenant-a",
+            "case_id": "fixture-case-001",
+            "connector_id": "fixture.oss",
+            "source_system": "fixture-oss-east",
+            "object_binding_version": "fixture-binding-v1",
+            "external_object_id": "fixture-line-001",
+            "record_id": "fixture-record-001",
+            "record_version": "fixture-source-v1",
+            "observed_at": "2026-10-10T00:00:00Z",
+            "source_updated_at": "2026-10-09T00:00:00Z",
+            "effective_from": "2026-10-01T00:00:00Z",
+            "effective_until": "2026-10-15T00:00:00Z",
+            "availability": "available",
+            "reason_code": "read_succeeded",
+            "payload_ref": "fixture://oss/fixture-record-001",
+            "fields": [
+              {"name": "configured_bandwidth", "value": "100", "unit": "Mbit/s", "source_pointer": "/serviceCharacteristic/0/value", "semantic_kind": "configured_value"}
+            ],
+            "data_class": "synthetic"
+          }
+        ]
+      },
+      "expected": {
+        "access": "allow",
+        "relation": "insufficient",
+        "reason_code": "effective_time_mismatch",
+        "machine_status": "completed",
+        "requires_human_review": true,
+        "evidence_kinds": ["document"],
+        "auto_confirm": false
+      }
+    },
+    {
+      "id": "G10",
+      "title": "有否定词的合同约定不能直接抽取",
+      "data_class": "synthetic",
+      "input": {
+        "scope": {"tenant_id": "fixture-tenant-a", "case_id": "fixture-case-001", "actor_id": "fixture-actor-q", "grant_version": "fixture-grant-v1"},
+        "pack": {"id": "operator.dedicated_line", "version": "1.0.0"},
+        "contract_version": "fixture-contract-v1",
+        "rule_pack_version": "5",
+        "binding_status": "confirmed",
+        "binding_version": "fixture-binding-v1",
+        "snapshot_set_id": "fixture-snapshot-set-v1",
+        "external_object_id": "fixture-line-001",
+        "source_system": "fixture-oss-east",
+        "model_configuration_id": "fixture-model-v1",
+        "planner_configuration_id": "fixture-planner-v1",
+        "parser_configuration_id": "fixture-parser-v1",
+        "business_at": "2026-10-21T00:00:00Z",
+        "facts": [
+          {
+            "name": "minimum_bandwidth",
+            "value": {"value": "100", "unit": "Mbit/s"},
+            "evidence": [
+              {"kind": "document", "document_version_id": "fixture-doc-v1", "parsed_version_id": "fixture-parse-v1", "start": 0, "end": 36, "quote": "专线 LINE-001 最低保障带宽并非100 Mbit/s。"}
+            ],
+            "uncertain": true,
+            "out_of_scope": false,
+            "semantic_kind": "configured_value"
+          }
+        ],
+        "observations": [
+          {
+            "schema_version": "external-observation/v1",
+            "snapshot_id": "fixture-snapshot-g10",
+            "tenant_id": "fixture-tenant-a",
+            "case_id": "fixture-case-001",
+            "connector_id": "fixture.oss",
+            "source_system": "fixture-oss-east",
+            "object_binding_version": "fixture-binding-v1",
+            "external_object_id": "fixture-line-001",
+            "record_id": "fixture-record-001",
+            "record_version": "fixture-source-v1",
+            "observed_at": "2026-10-20T00:00:00Z",
+            "source_updated_at": "2026-10-19T23:55:00Z",
+            "effective_from": "2026-10-01T00:00:00Z",
+            "effective_until": "2026-11-01T00:00:00Z",
+            "availability": "available",
+            "reason_code": "read_succeeded",
+            "payload_ref": "fixture://oss/fixture-record-001",
+            "fields": [
+              {"name": "configured_bandwidth", "value": "80", "unit": "Mbit/s", "source_pointer": "/serviceCharacteristic/0/value", "semantic_kind": "configured_value"}
+            ],
+            "data_class": "synthetic"
+          }
+        ]
+      },
+      "expected": {
+        "access": "allow",
+        "relation": "insufficient",
+        "reason_code": "contract_fact_uncertain",
+        "machine_status": "completed",
+        "requires_human_review": true,
+        "evidence_kinds": ["document"],
+        "auto_confirm": false
+      }
+    },
+    {
+      "id": "G11",
+      "title": "撤权必须拒绝",
+      "data_class": "synthetic",
+      "input": {
+        "scope": {"tenant_id": "fixture-tenant-a", "case_id": "fixture-case-001", "actor_id": "fixture-actor-q", "grant_version": "fixture-grant-v1"},
+        "pack": {"id": "operator.dedicated_line", "version": "1.0.0"},
+        "contract_version": "fixture-contract-v1",
+        "rule_pack_version": "5",
+        "binding_status": "confirmed",
+        "binding_version": "fixture-binding-v1",
+        "snapshot_set_id": "fixture-snapshot-set-v1",
+        "external_object_id": "fixture-line-001",
+        "source_system": "fixture-oss-east",
+        "model_configuration_id": "fixture-model-v1",
+        "planner_configuration_id": "fixture-planner-v1",
+        "parser_configuration_id": "fixture-parser-v1",
+        "business_at": "2026-10-21T00:00:00Z",
+        "facts": [
+          {
+            "name": "minimum_bandwidth",
+            "value": {"value": "100", "unit": "Mbit/s"},
+            "evidence": [
+              {"kind": "document", "document_version_id": "fixture-doc-v1", "parsed_version_id": "fixture-parse-v1", "start": 0, "end": 32, "quote": "专线 LINE-001 最低保障带宽不低于100 Mbit/s。"}
+            ],
+            "uncertain": false,
+            "out_of_scope": false,
+            "semantic_kind": "configured_value"
+          }
+        ],
+        "observations": [
+          {
+            "schema_version": "external-observation/v1",
+            "snapshot_id": "fixture-snapshot-g11",
+            "tenant_id": "fixture-tenant-a",
+            "case_id": "fixture-case-001",
+            "connector_id": "fixture.oss",
+            "source_system": "fixture-oss-east",
+            "object_binding_version": "fixture-binding-v1",
+            "external_object_id": "fixture-line-001",
+            "record_id": "fixture-record-001",
+            "record_version": "fixture-source-v1",
+            "observed_at": "2026-10-20T00:00:00Z",
+            "source_updated_at": "2026-10-19T23:55:00Z",
+            "effective_from": "2026-10-01T00:00:00Z",
+            "effective_until": "2026-11-01T00:00:00Z",
+            "availability": "available",
+            "reason_code": "read_succeeded",
+            "payload_ref": "fixture://oss/fixture-record-001",
+            "fields": [
+              {"name": "configured_bandwidth", "value": "80", "unit": "Mbit/s", "source_pointer": "/serviceCharacteristic/0/value", "semantic_kind": "configured_value"}
+            ],
+            "data_class": "synthetic"
+          }
+        ]
+      },
+      "expected": {
+        "access": "deny",
+        "reason_code": "access_denied",
+        "error": true,
+        "auto_confirm": false
+      }
+    },
+    {
+      "id": "G12",
+      "title": "配置值不能冒充实际吞吐测量",
+      "data_class": "synthetic",
+      "input": {
+        "scope": {"tenant_id": "fixture-tenant-a", "case_id": "fixture-case-001", "actor_id": "fixture-actor-q", "grant_version": "fixture-grant-v1"},
+        "pack": {"id": "operator.dedicated_line", "version": "1.0.0"},
+        "contract_version": "fixture-contract-v1",
+        "rule_pack_version": "5",
+        "binding_status": "confirmed",
+        "binding_version": "fixture-binding-v1",
+        "snapshot_set_id": "fixture-snapshot-set-v1",
+        "external_object_id": "fixture-line-001",
+        "source_system": "fixture-oss-east",
+        "model_configuration_id": "fixture-model-v1",
+        "planner_configuration_id": "fixture-planner-v1",
+        "parser_configuration_id": "fixture-parser-v1",
+        "business_at": "2026-10-21T00:00:00Z",
+        "facts": [
+          {
+            "name": "minimum_bandwidth",
+            "value": {"value": "100", "unit": "Mbit/s"},
+            "evidence": [
+              {"kind": "document", "document_version_id": "fixture-doc-v1", "parsed_version_id": "fixture-parse-v1", "start": 0, "end": 32, "quote": "专线 LINE-001 最低保障带宽不低于100 Mbit/s。"}
+            ],
+            "uncertain": false,
+            "out_of_scope": false,
+            "semantic_kind": "measured_throughput"
+          }
+        ],
+        "observations": [
+          {
+            "schema_version": "external-observation/v1",
+            "snapshot_id": "fixture-snapshot-g12",
+            "tenant_id": "fixture-tenant-a",
+            "case_id": "fixture-case-001",
+            "connector_id": "fixture.oss",
+            "source_system": "fixture-oss-east",
+            "object_binding_version": "fixture-binding-v1",
+            "external_object_id": "fixture-line-001",
+            "record_id": "fixture-record-001",
+            "record_version": "fixture-source-v1",
+            "observed_at": "2026-10-20T00:00:00Z",
+            "source_updated_at": "2026-10-19T23:55:00Z",
+            "effective_from": "2026-10-01T00:00:00Z",
+            "effective_until": "2026-11-01T00:00:00Z",
+            "availability": "available",
+            "reason_code": "read_succeeded",
+            "payload_ref": "fixture://oss/fixture-record-001",
+            "fields": [
+              {"name": "configured_bandwidth", "value": "80", "unit": "Mbit/s", "source_pointer": "/serviceCharacteristic/0/value", "semantic_kind": "configured_value"}
+            ],
+            "data_class": "synthetic"
+          }
+        ]
+      },
+      "expected": {
+        "access": "allow",
+        "relation": "insufficient",
+        "reason_code": "measurement_semantics_mismatch",
+        "machine_status": "completed",
+        "requires_human_review": true,
+        "evidence_kinds": ["document"],
+        "forbidden_evidence_kinds": ["external_snapshot"],
+        "auto_confirm": false
+      }
+    },
+    {
+      "id": "G13",
+      "title": "同名但不同来源对象",
+      "data_class": "synthetic",
+      "input": {
+        "scope": {"tenant_id": "fixture-tenant-a", "case_id": "fixture-case-001", "actor_id": "fixture-actor-q", "grant_version": "fixture-grant-v1"},
+        "pack": {"id": "operator.dedicated_line", "version": "1.0.0"},
+        "contract_version": "fixture-contract-v1",
+        "rule_pack_version": "5",
+        "binding_status": "confirmed",
+        "binding_version": "fixture-binding-v1",
+        "snapshot_set_id": "fixture-snapshot-set-v1",
+        "external_object_id": "fixture-line-001",
+        "source_system": "fixture-oss-east",
+        "model_configuration_id": "fixture-model-v1",
+        "planner_configuration_id": "fixture-planner-v1",
+        "parser_configuration_id": "fixture-parser-v1",
+        "business_at": "2026-10-21T00:00:00Z",
+        "facts": [
+          {
+            "name": "minimum_bandwidth",
+            "value": {"value": "100", "unit": "Mbit/s"},
+            "evidence": [
+              {"kind": "document", "document_version_id": "fixture-doc-v1", "parsed_version_id": "fixture-parse-v1", "start": 0, "end": 32, "quote": "专线 LINE-001 最低保障带宽不低于100 Mbit/s。"}
+            ],
+            "uncertain": false,
+            "out_of_scope": false,
+            "semantic_kind": "configured_value"
+          }
+        ],
+        "observations": [
+          {
+            "schema_version": "external-observation/v1",
+            "snapshot_id": "fixture-snapshot-g13",
+            "tenant_id": "fixture-tenant-a",
+            "case_id": "fixture-case-001",
+            "connector_id": "fixture.oss",
+            "source_system": "fixture-oss-east",
+            "object_binding_version": "fixture-binding-v1",
+            "external_object_id": "fixture-line-999",
+            "record_id": "fixture-record-999",
+            "record_version": "fixture-source-v1",
+            "observed_at": "2026-10-20T00:00:00Z",
+            "source_updated_at": "2026-10-19T23:55:00Z",
+            "effective_from": "2026-10-01T00:00:00Z",
+            "effective_until": "2026-11-01T00:00:00Z",
+            "availability": "available",
+            "reason_code": "read_succeeded",
+            "payload_ref": "fixture://oss/fixture-record-999",
+            "fields": [
+              {"name": "configured_bandwidth", "value": "80", "unit": "Mbit/s", "source_pointer": "/serviceCharacteristic/0/value", "semantic_kind": "configured_value"}
+            ],
+            "data_class": "synthetic"
+          }
+        ]
+      },
+      "expected": {
+        "access": "allow",
+        "relation": "insufficient",
+        "reason_code": "external_object_mismatch",
+        "machine_status": "completed",
+        "requires_human_review": true,
+        "evidence_kinds": ["document"],
+        "auto_confirm": false
+      }
+    },
+    {
+      "id": "G14",
+      "title": "证据字段与抽取值不匹配",
+      "data_class": "synthetic",
+      "input": {
+        "scope": {"tenant_id": "fixture-tenant-a", "case_id": "fixture-case-001", "actor_id": "fixture-actor-q", "grant_version": "fixture-grant-v1"},
+        "pack": {"id": "operator.dedicated_line", "version": "1.0.0"},
+        "contract_version": "fixture-contract-v1",
+        "rule_pack_version": "5",
+        "binding_status": "confirmed",
+        "binding_version": "fixture-binding-v1",
+        "snapshot_set_id": "fixture-snapshot-set-v1",
+        "external_object_id": "fixture-line-001",
+        "source_system": "fixture-oss-east",
+        "model_configuration_id": "fixture-model-v1",
+        "planner_configuration_id": "fixture-planner-v1",
+        "parser_configuration_id": "fixture-parser-v1",
+        "business_at": "2026-10-21T00:00:00Z",
+        "facts": [
+          {
+            "name": "minimum_bandwidth",
+            "value": {"value": "80", "unit": "Mbit/s"},
+            "evidence": [
+              {"kind": "document", "document_version_id": "fixture-doc-v1", "parsed_version_id": "fixture-parse-v1", "start": 0, "end": 32, "quote": "专线 LINE-001 最低保障带宽不低于100 Mbit/s。"}
+            ],
+            "uncertain": false,
+            "out_of_scope": false,
+            "semantic_kind": "configured_value"
+          }
+        ],
+        "observations": [
+          {
+            "schema_version": "external-observation/v1",
+            "snapshot_id": "fixture-snapshot-g14",
+            "tenant_id": "fixture-tenant-a",
+            "case_id": "fixture-case-001",
+            "connector_id": "fixture.oss",
+            "source_system": "fixture-oss-east",
+            "object_binding_version": "fixture-binding-v1",
+            "external_object_id": "fixture-line-001",
+            "record_id": "fixture-record-001",
+            "record_version": "fixture-source-v1",
+            "observed_at": "2026-10-20T00:00:00Z",
+            "source_updated_at": "2026-10-19T23:55:00Z",
+            "effective_from": "2026-10-01T00:00:00Z",
+            "effective_until": "2026-11-01T00:00:00Z",
+            "availability": "available",
+            "reason_code": "read_succeeded",
+            "payload_ref": "fixture://oss/fixture-record-001",
+            "fields": [
+              {"name": "configured_bandwidth", "value": "80", "unit": "Mbit/s", "source_pointer": "/serviceCharacteristic/0/value", "semantic_kind": "configured_value"}
+            ],
+            "data_class": "synthetic"
+          }
+        ]
+      },
+      "expected": {
+        "access": "allow",
+        "relation": "insufficient",
+        "reason_code": "evidence_field_mismatch",
+        "machine_status": "completed",
+        "requires_human_review": true,
+        "evidence_kinds": ["document"],
+        "auto_confirm": false
+      }
+    },
+    {
+      "id": "G15",
+      "title": "未来观测不证明过去配置",
+      "data_class": "synthetic",
+      "input": {
+        "scope": {"tenant_id": "fixture-tenant-a", "case_id": "fixture-case-001", "actor_id": "fixture-actor-q", "grant_version": "fixture-grant-v1"},
+        "pack": {"id": "operator.dedicated_line", "version": "1.0.0"},
+        "contract_version": "fixture-contract-v1",
+        "rule_pack_version": "5",
+        "binding_status": "confirmed",
+        "binding_version": "fixture-binding-v1",
+        "snapshot_set_id": "fixture-snapshot-set-v1",
+        "external_object_id": "fixture-line-001",
+        "source_system": "fixture-oss-east",
+        "model_configuration_id": "fixture-model-v1",
+        "planner_configuration_id": "fixture-planner-v1",
+        "parser_configuration_id": "fixture-parser-v1",
+        "business_at": "2026-10-20T00:00:00Z",
+        "facts": [
+          {
+            "name": "minimum_bandwidth",
+            "value": {"value": "100", "unit": "Mbit/s"},
+            "evidence": [
+              {"kind": "document", "document_version_id": "fixture-doc-v1", "parsed_version_id": "fixture-parse-v1", "start": 0, "end": 32, "quote": "专线 LINE-001 最低保障带宽不低于100 Mbit/s。"}
+            ],
+            "uncertain": false,
+            "out_of_scope": false,
+            "semantic_kind": "configured_value"
+          }
+        ],
+        "observations": [
+          {
+            "schema_version": "external-observation/v1",
+            "snapshot_id": "fixture-snapshot-g15",
+            "tenant_id": "fixture-tenant-a",
+            "case_id": "fixture-case-001",
+            "connector_id": "fixture.oss",
+            "source_system": "fixture-oss-east",
+            "object_binding_version": "fixture-binding-v1",
+            "external_object_id": "fixture-line-001",
+            "record_id": "fixture-record-001",
+            "record_version": "fixture-source-v1",
+            "observed_at": "2026-10-28T00:00:00Z",
+            "source_updated_at": "2026-10-27T00:00:00Z",
+            "effective_from": "2026-10-01T00:00:00Z",
+            "effective_until": "2026-11-01T00:00:00Z",
+            "availability": "available",
+            "reason_code": "read_succeeded",
+            "payload_ref": "fixture://oss/fixture-record-001",
+            "fields": [
+              {"name": "configured_bandwidth", "value": "80", "unit": "Mbit/s", "source_pointer": "/serviceCharacteristic/0/value", "semantic_kind": "configured_value"}
+            ],
+            "data_class": "synthetic"
+          }
+        ]
+      },
+      "expected": {
+        "access": "allow",
+        "relation": "insufficient",
+        "reason_code": "observation_time_mismatch",
+        "machine_status": "completed",
+        "requires_human_review": true,
+        "evidence_kinds": ["document"],
+        "auto_confirm": false
+      }
+    },
+    {
+      "id": "G16",
+      "title": "明确业务不适用且有依据",
+      "data_class": "synthetic",
+      "input": {
+        "scope": {"tenant_id": "fixture-tenant-a", "case_id": "fixture-case-001", "actor_id": "fixture-actor-q", "grant_version": "fixture-grant-v1"},
+        "pack": {"id": "operator.dedicated_line", "version": "1.0.0"},
+        "contract_version": "fixture-contract-v1",
+        "rule_pack_version": "5",
+        "binding_status": "confirmed",
+        "binding_version": "fixture-binding-v1",
+        "snapshot_set_id": "fixture-snapshot-set-v1",
+        "external_object_id": "fixture-line-001",
+        "source_system": "fixture-oss-east",
+        "model_configuration_id": "fixture-model-v1",
+        "planner_configuration_id": "fixture-planner-v1",
+        "parser_configuration_id": "fixture-parser-v1",
+        "business_at": "2026-10-21T00:00:00Z",
+        "facts": [
+          {
+            "name": "minimum_bandwidth",
+            "value": {"value": "0", "unit": "Mbit/s"},
+            "evidence": [
+              {"kind": "document", "document_version_id": "fixture-doc-v1", "parsed_version_id": "fixture-parse-v1", "start": 0, "end": 36, "quote": "经采购确认，本电路不设带宽保障条款，不适用。"}
+            ],
+            "uncertain": false,
+            "out_of_scope": true,
+            "semantic_kind": "scope_exclusion"
+          }
+        ],
+        "observations": []
+      },
+      "expected": {
+        "access": "allow",
+        "relation": "not_applicable",
+        "reason_code": "proven_out_of_scope",
+        "machine_status": "completed",
+        "requires_human_review": true,
+        "evidence_kinds": ["document"],
+        "auto_confirm": false
+      }
+    }
+  ]
+}

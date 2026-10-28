@@ -1,0 +1,579 @@
+{
+  "schema": "operatoraudit.changes/v1",
+  "data_class": "synthetic",
+  "notice": "Synthetic change-injection fixtures for the conservative impact planner. Every input and result is fabricated; reuse_candidate is a prediction only and never a business result. Cases apply the listed overrides on top of defaults; omitted fields are unchanged.",
+  "defaults": {
+    "frozen": {
+      "scope": {"tenant_id": "fixture-tenant-a", "case_id": "fixture-case-001", "actor_id": "fixture-actor-q", "grant_version": "fixture-grant-v1"},
+      "pack": {"id": "operator.dedicated_line", "version": "1.0.0"},
+      "contract_version": "fixture-contract-v1",
+      "rule_pack_version": "5",
+      "binding_status": "confirmed",
+      "binding_version": "fixture-binding-v1",
+      "snapshot_set_id": "fixture-snapshot-set-v1",
+      "external_object_id": "fixture-line-001",
+      "source_system": "fixture-oss-east",
+      "model_configuration_id": "fixture-model-v1",
+      "planner_configuration_id": "fixture-planner-v1",
+      "parser_configuration_id": "fixture-parser-v1",
+      "business_at": "2026-10-21T00:00:00Z",
+      "facts": [
+        {
+          "name": "minimum_bandwidth",
+          "value": {"value": "100", "unit": "Mbit/s"},
+          "evidence": [
+            {"kind": "document", "document_version_id": "fixture-doc-v1", "parsed_version_id": "fixture-parse-v1", "start": 0, "end": 32, "quote": "专线 LINE-001 最低保障带宽不低于100 Mbit/s。"}
+          ],
+          "uncertain": false,
+          "out_of_scope": false,
+          "semantic_kind": "configured_value"
+        }
+      ]
+    },
+    "checks": [
+      {
+        "check_id": "line.configured_bandwidth",
+        "relation": "compatible",
+        "reason_code": "configured_bandwidth_meets_contract",
+        "machine_status": "completed",
+        "evidence": [
+          {"kind": "document", "document_version_id": "fixture-doc-v1", "parsed_version_id": "fixture-parse-v1", "start": 0, "end": 32, "quote": "专线 LINE-001 最低保障带宽不低于100 Mbit/s。"}
+        ],
+        "requires_human_review": true,
+        "dependencies": {
+          "complete": true,
+          "items": [
+            {"kind": "field", "ref": "external.configured_bandwidth", "version": "fixture-source-v1", "present": true},
+            {"kind": "record_set", "ref": "external.records", "version": "fixture-snapshot-set-v1", "present": true},
+            {"kind": "mapping", "ref": "object.binding", "version": "fixture-binding-v1", "present": true},
+            {"kind": "rule_pack", "ref": "rule_pack", "version": "5", "present": true},
+            {"kind": "capability_pack", "ref": "capability_pack", "version": "1.0.0", "present": true},
+            {"kind": "document", "ref": "fixture-contract-v1", "version": "", "present": true},
+            {"kind": "parser", "ref": "parser", "version": "fixture-parser-v1", "present": true},
+            {"kind": "model", "ref": "model", "version": "fixture-model-v1", "present": true},
+            {"kind": "policy", "ref": "policy", "version": "fixture-planner-v1", "present": true}
+          ]
+        }
+      },
+      {
+        "check_id": "line.contract_authority",
+        "relation": "compatible",
+        "reason_code": "contractual_authority_present",
+        "machine_status": "completed",
+        "evidence": [
+          {"kind": "document", "document_version_id": "fixture-doc-v1", "parsed_version_id": "fixture-parse-v1", "start": 0, "end": 32, "quote": "专线 LINE-001 最低保障带宽不低于100 Mbit/s。"}
+        ],
+        "requires_human_review": true,
+        "dependencies": {
+          "complete": true,
+          "items": [
+            {"kind": "mapping", "ref": "object.binding", "version": "fixture-binding-v1", "present": true},
+            {"kind": "rule_pack", "ref": "rule_pack", "version": "5", "present": true},
+            {"kind": "capability_pack", "ref": "capability_pack", "version": "1.0.0", "present": true},
+            {"kind": "document", "ref": "fixture-contract-v1", "version": "", "present": true},
+            {"kind": "parser", "ref": "parser", "version": "fixture-parser-v1", "present": true},
+            {"kind": "model", "ref": "model", "version": "fixture-model-v1", "present": true},
+            {"kind": "policy", "ref": "policy", "version": "fixture-planner-v1", "present": true}
+          ]
+        }
+      }
+    ]
+  },
+  "cases": [
+    {
+      "id": "D01",
+      "title": "外部配置带宽变化",
+      "data_class": "synthetic",
+      "change": "The configured_bandwidth field and the external record set move to a new snapshot.",
+      "base": {},
+      "target": {"snapshot_set_id": "fixture-snapshot-set-v2"},
+      "target_checks": [
+        {
+          "check_id": "line.configured_bandwidth",
+          "relation": "compatible",
+          "reason_code": "configured_bandwidth_meets_contract",
+          "machine_status": "completed",
+          "requires_human_review": true,
+          "dependencies": {
+            "complete": true,
+            "items": [
+              {"kind": "field", "ref": "external.configured_bandwidth", "version": "fixture-source-v2", "present": true},
+              {"kind": "record_set", "ref": "external.records", "version": "fixture-snapshot-set-v2", "present": true},
+              {"kind": "mapping", "ref": "object.binding", "version": "fixture-binding-v1", "present": true},
+              {"kind": "rule_pack", "ref": "rule_pack", "version": "5", "present": true},
+              {"kind": "capability_pack", "ref": "capability_pack", "version": "1.0.0", "present": true},
+              {"kind": "document", "ref": "fixture-contract-v1", "version": "", "present": true},
+              {"kind": "parser", "ref": "parser", "version": "fixture-parser-v1", "present": true},
+              {"kind": "model", "ref": "model", "version": "fixture-model-v1", "present": true},
+              {"kind": "policy", "ref": "policy", "version": "fixture-planner-v1", "present": true}
+            ]
+          }
+        }
+      ],
+      "expected": {
+        "kit_action": "recompute_dependents",
+        "fallback": "none",
+        "dependency_complete": true,
+        "actions": {"line.configured_bandwidth": "recompute", "line.contract_authority": "reuse_candidate"},
+        "changed_inputs_include": ["external.snapshot_set", "external.configured_bandwidth"],
+        "business_result_source": "full"
+      }
+    },
+    {
+      "id": "D02",
+      "title": "已声明不参与计算的展示字段变化",
+      "data_class": "synthetic",
+      "change": "A new snapshot only changes a display-only field that no deterministic check declares as a dependency.",
+      "base": {},
+      "target": {"snapshot_set_id": "fixture-snapshot-set-v2"},
+      "base_checks": [
+        {
+          "check_id": "line.configured_bandwidth",
+          "relation": "compatible",
+          "reason_code": "configured_bandwidth_meets_contract",
+          "machine_status": "completed",
+          "requires_human_review": true,
+          "dependencies": {
+            "complete": true,
+            "items": [
+              {"kind": "field", "ref": "external.configured_bandwidth", "version": "fixture-source-v1", "present": true},
+              {"kind": "mapping", "ref": "object.binding", "version": "fixture-binding-v1", "present": true},
+              {"kind": "rule_pack", "ref": "rule_pack", "version": "5", "present": true},
+              {"kind": "capability_pack", "ref": "capability_pack", "version": "1.0.0", "present": true},
+              {"kind": "document", "ref": "fixture-contract-v1", "version": "", "present": true},
+              {"kind": "parser", "ref": "parser", "version": "fixture-parser-v1", "present": true},
+              {"kind": "model", "ref": "model", "version": "fixture-model-v1", "present": true},
+              {"kind": "policy", "ref": "policy", "version": "fixture-planner-v1", "present": true}
+            ]
+          }
+        }
+      ],
+      "target_checks": [
+        {
+          "check_id": "line.configured_bandwidth",
+          "relation": "compatible",
+          "reason_code": "configured_bandwidth_meets_contract",
+          "machine_status": "completed",
+          "requires_human_review": true,
+          "dependencies": {
+            "complete": true,
+            "items": [
+              {"kind": "field", "ref": "external.configured_bandwidth", "version": "fixture-source-v1", "present": true},
+              {"kind": "mapping", "ref": "object.binding", "version": "fixture-binding-v1", "present": true},
+              {"kind": "rule_pack", "ref": "rule_pack", "version": "5", "present": true},
+              {"kind": "capability_pack", "ref": "capability_pack", "version": "1.0.0", "present": true},
+              {"kind": "document", "ref": "fixture-contract-v1", "version": "", "present": true},
+              {"kind": "parser", "ref": "parser", "version": "fixture-parser-v1", "present": true},
+              {"kind": "model", "ref": "model", "version": "fixture-model-v1", "present": true},
+              {"kind": "policy", "ref": "policy", "version": "fixture-planner-v1", "present": true}
+            ]
+          }
+        }
+      ],
+      "expected": {
+        "kit_action": "candidate_reuse",
+        "fallback": "none",
+        "dependency_complete": true,
+        "actions": {"line.configured_bandwidth": "reuse_candidate"},
+        "changed_inputs_include": ["external.snapshot_set"],
+        "business_result_source": "full"
+      }
+    },
+    {
+      "id": "D03",
+      "title": "合同文本/否定词变化",
+      "data_class": "synthetic",
+      "change": "The frozen contract version and the contract fact evidence move; no text-diff safety assumption is made.",
+      "base": {},
+      "target": {
+        "contract_version": "fixture-contract-v2",
+        "facts": [
+          {
+            "name": "minimum_bandwidth",
+            "value": {"value": "100", "unit": "Mbit/s"},
+            "evidence": [
+              {"kind": "document", "document_version_id": "fixture-doc-v2", "parsed_version_id": "fixture-parse-v2", "start": 0, "end": 40, "quote": "专线 LINE-001 最低保障带宽不得低于100 Mbit/s（修订版）。"}
+            ],
+            "uncertain": false,
+            "out_of_scope": false,
+            "semantic_kind": "configured_value"
+          }
+        ]
+      },
+      "expected": {
+        "kit_action": "full",
+        "fallback": "full",
+        "dependency_complete": false,
+        "all_actions": "recompute",
+        "changed_inputs_include": ["contract.version", "contract.fact.minimum_bandwidth"],
+        "business_result_source": "full"
+      }
+    },
+    {
+      "id": "D04",
+      "title": "依赖清单缺失",
+      "data_class": "synthetic",
+      "change": "A base check has an incomplete dependency declaration.",
+      "base": {},
+      "target": {},
+      "base_checks": [
+        {
+          "check_id": "line.configured_bandwidth",
+          "relation": "compatible",
+          "reason_code": "configured_bandwidth_meets_contract",
+          "machine_status": "completed",
+          "requires_human_review": true,
+          "dependencies": {
+            "complete": false,
+            "items": [
+              {"kind": "field", "ref": "external.configured_bandwidth", "version": "fixture-source-v1", "present": true}
+            ]
+          }
+        },
+        {
+          "check_id": "line.contract_authority",
+          "relation": "compatible",
+          "reason_code": "contractual_authority_present",
+          "machine_status": "completed",
+          "requires_human_review": true,
+          "dependencies": {
+            "complete": false,
+            "items": []
+          }
+        }
+      ],
+      "expected": {
+        "kit_action": "full",
+        "fallback": "full",
+        "dependency_complete": false,
+        "all_actions": "recompute",
+        "business_result_source": "full"
+      }
+    },
+    {
+      "id": "D05",
+      "title": "政策或规则包版本变化",
+      "data_class": "synthetic",
+      "change": "The pinned rule pack version moves.",
+      "base": {},
+      "target": {"rule_pack_version": "6"},
+      "expected": {
+        "kit_action": "full",
+        "fallback": "full",
+        "dependency_complete": false,
+        "all_actions": "recompute",
+        "changed_inputs_include": ["rule_pack.version"],
+        "business_result_source": "full"
+      }
+    },
+    {
+      "id": "D06",
+      "title": "新增记录使原先空集合不再为空",
+      "data_class": "synthetic",
+      "change": "A negative record-set dependency (empty at base) becomes non-empty.",
+      "base": {},
+      "target": {"snapshot_set_id": "fixture-snapshot-set-v2"},
+      "base_checks": [
+        {
+          "check_id": "line.configured_bandwidth",
+          "relation": "compatible",
+          "reason_code": "configured_bandwidth_meets_contract",
+          "machine_status": "completed",
+          "requires_human_review": true,
+          "dependencies": {
+            "complete": true,
+            "items": [
+              {"kind": "field", "ref": "external.configured_bandwidth", "version": "fixture-source-v1", "present": true},
+              {"kind": "record_set", "ref": "external.records", "version": "fixture-snapshot-set-v1", "present": false},
+              {"kind": "mapping", "ref": "object.binding", "version": "fixture-binding-v1", "present": true},
+              {"kind": "rule_pack", "ref": "rule_pack", "version": "5", "present": true},
+              {"kind": "capability_pack", "ref": "capability_pack", "version": "1.0.0", "present": true},
+              {"kind": "document", "ref": "fixture-contract-v1", "version": "", "present": true},
+              {"kind": "parser", "ref": "parser", "version": "fixture-parser-v1", "present": true},
+              {"kind": "model", "ref": "model", "version": "fixture-model-v1", "present": true},
+              {"kind": "policy", "ref": "policy", "version": "fixture-planner-v1", "present": true}
+            ]
+          }
+        },
+        {
+          "check_id": "line.contract_authority",
+          "relation": "compatible",
+          "reason_code": "contractual_authority_present",
+          "machine_status": "completed",
+          "requires_human_review": true,
+          "dependencies": {
+            "complete": true,
+            "items": [
+              {"kind": "mapping", "ref": "object.binding", "version": "fixture-binding-v1", "present": true},
+              {"kind": "rule_pack", "ref": "rule_pack", "version": "5", "present": true},
+              {"kind": "capability_pack", "ref": "capability_pack", "version": "1.0.0", "present": true},
+              {"kind": "document", "ref": "fixture-contract-v1", "version": "", "present": true},
+              {"kind": "parser", "ref": "parser", "version": "fixture-parser-v1", "present": true},
+              {"kind": "model", "ref": "model", "version": "fixture-model-v1", "present": true},
+              {"kind": "policy", "ref": "policy", "version": "fixture-planner-v1", "present": true}
+            ]
+          }
+        }
+      ],
+      "target_checks": [
+        {
+          "check_id": "line.configured_bandwidth",
+          "relation": "compatible",
+          "reason_code": "configured_bandwidth_meets_contract",
+          "machine_status": "completed",
+          "requires_human_review": true,
+          "dependencies": {
+            "complete": true,
+            "items": [
+              {"kind": "field", "ref": "external.configured_bandwidth", "version": "fixture-source-v1", "present": true},
+              {"kind": "record_set", "ref": "external.records", "version": "fixture-snapshot-set-v2", "present": true},
+              {"kind": "mapping", "ref": "object.binding", "version": "fixture-binding-v1", "present": true},
+              {"kind": "rule_pack", "ref": "rule_pack", "version": "5", "present": true},
+              {"kind": "capability_pack", "ref": "capability_pack", "version": "1.0.0", "present": true},
+              {"kind": "document", "ref": "fixture-contract-v1", "version": "", "present": true},
+              {"kind": "parser", "ref": "parser", "version": "fixture-parser-v1", "present": true},
+              {"kind": "model", "ref": "model", "version": "fixture-model-v1", "present": true},
+              {"kind": "policy", "ref": "policy", "version": "fixture-planner-v1", "present": true}
+            ]
+          }
+        },
+        {
+          "check_id": "line.contract_authority",
+          "relation": "compatible",
+          "reason_code": "contractual_authority_present",
+          "machine_status": "completed",
+          "requires_human_review": true,
+          "dependencies": {
+            "complete": true,
+            "items": [
+              {"kind": "mapping", "ref": "object.binding", "version": "fixture-binding-v1", "present": true},
+              {"kind": "rule_pack", "ref": "rule_pack", "version": "5", "present": true},
+              {"kind": "capability_pack", "ref": "capability_pack", "version": "1.0.0", "present": true},
+              {"kind": "document", "ref": "fixture-contract-v1", "version": "", "present": true},
+              {"kind": "parser", "ref": "parser", "version": "fixture-parser-v1", "present": true},
+              {"kind": "model", "ref": "model", "version": "fixture-model-v1", "present": true},
+              {"kind": "policy", "ref": "policy", "version": "fixture-planner-v1", "present": true}
+            ]
+          }
+        }
+      ],
+      "expected": {
+        "kit_action": "full",
+        "fallback": "full",
+        "dependency_complete": false,
+        "all_actions": "recompute",
+        "changed_inputs_include": ["external.records", "external.snapshot_set"],
+        "business_result_source": "full"
+      }
+    },
+    {
+      "id": "D07",
+      "title": "观测时间越过新鲜度窗口",
+      "data_class": "synthetic",
+      "change": "The business instant moves beyond the freshness window of the collected snapshot.",
+      "base": {},
+      "target": {"business_at": "2026-12-01T00:00:00Z"},
+      "expected": {
+        "kit_action": "refresh_or_insufficient",
+        "fallback": "full",
+        "dependency_complete": false,
+        "all_actions": "recompute",
+        "changed_inputs_include": ["business_at"],
+        "business_result_source": "full"
+      }
+    },
+    {
+      "id": "D08",
+      "title": "访问撤销",
+      "data_class": "synthetic",
+      "change": "The case grant version changes between the two frozen evaluations.",
+      "base": {},
+      "target": {"scope": {"grant_version": "fixture-grant-v2"}},
+      "expected": {
+        "kit_action": "deny",
+        "fallback": "deny",
+        "dependency_complete": false,
+        "all_actions": "deny",
+        "changed_inputs_include": ["access.grant_version"],
+        "business_result_source": "full"
+      }
+    },
+    {
+      "id": "D09",
+      "title": "对象映射版本变化",
+      "data_class": "synthetic",
+      "change": "The human-confirmed object binding version moves.",
+      "base": {},
+      "target": {"binding_version": "fixture-binding-v2"},
+      "expected": {
+        "kit_action": "full",
+        "fallback": "full",
+        "dependency_complete": false,
+        "all_actions": "recompute",
+        "changed_inputs_include": ["external.object_binding"],
+        "business_result_source": "full"
+      }
+    },
+    {
+      "id": "D10",
+      "title": "模型或 planner 配置变化",
+      "data_class": "synthetic",
+      "change": "The model and planner configuration identities move.",
+      "base": {},
+      "target": {"model_configuration_id": "fixture-model-v2", "planner_configuration_id": "fixture-planner-v2"},
+      "expected": {
+        "kit_action": "full",
+        "fallback": "full",
+        "dependency_complete": false,
+        "all_actions": "recompute",
+        "changed_inputs_include": ["model.configuration", "planner.configuration"],
+        "business_result_source": "full"
+      }
+    },
+    {
+      "id": "D11",
+      "title": "旧结果引用不能在目标输入重绑定",
+      "data_class": "synthetic",
+      "change": "The target snapshot set moved, but the target check still carries evidence from the old snapshot.",
+      "base": {},
+      "target": {"snapshot_set_id": "fixture-snapshot-set-v2"},
+      "base_checks": [
+        {
+          "check_id": "line.configured_bandwidth",
+          "relation": "compatible",
+          "reason_code": "configured_bandwidth_meets_contract",
+          "machine_status": "completed",
+          "requires_human_review": true,
+          "evidence": [
+            {"kind": "external_snapshot", "snapshot_id": "fixture-snapshot-old", "record_id": "fixture-record-001", "field_pointer": "/serviceCharacteristic/0/value", "display_value": "100 Mbit/s", "observed_at": "2026-10-20T00:00:00Z"}
+          ],
+          "dependencies": {
+            "complete": true,
+            "items": [
+              {"kind": "field", "ref": "external.configured_bandwidth", "version": "fixture-source-v1", "present": true},
+              {"kind": "record_set", "ref": "external.records", "version": "fixture-snapshot-set-v1", "present": true},
+              {"kind": "mapping", "ref": "object.binding", "version": "fixture-binding-v1", "present": true},
+              {"kind": "rule_pack", "ref": "rule_pack", "version": "5", "present": true},
+              {"kind": "capability_pack", "ref": "capability_pack", "version": "1.0.0", "present": true},
+              {"kind": "document", "ref": "fixture-contract-v1", "version": "", "present": true},
+              {"kind": "parser", "ref": "parser", "version": "fixture-parser-v1", "present": true},
+              {"kind": "model", "ref": "model", "version": "fixture-model-v1", "present": true},
+              {"kind": "policy", "ref": "policy", "version": "fixture-planner-v1", "present": true}
+            ]
+          }
+        },
+        {
+          "check_id": "line.contract_authority",
+          "relation": "compatible",
+          "reason_code": "contractual_authority_present",
+          "machine_status": "completed",
+          "requires_human_review": true,
+          "dependencies": {
+            "complete": true,
+            "items": [
+              {"kind": "mapping", "ref": "object.binding", "version": "fixture-binding-v1", "present": true},
+              {"kind": "rule_pack", "ref": "rule_pack", "version": "5", "present": true},
+              {"kind": "capability_pack", "ref": "capability_pack", "version": "1.0.0", "present": true},
+              {"kind": "document", "ref": "fixture-contract-v1", "version": "", "present": true},
+              {"kind": "parser", "ref": "parser", "version": "fixture-parser-v1", "present": true},
+              {"kind": "model", "ref": "model", "version": "fixture-model-v1", "present": true},
+              {"kind": "policy", "ref": "policy", "version": "fixture-planner-v1", "present": true}
+            ]
+          }
+        }
+      ],
+      "target_checks": [
+        {
+          "check_id": "line.configured_bandwidth",
+          "relation": "compatible",
+          "reason_code": "configured_bandwidth_meets_contract",
+          "machine_status": "completed",
+          "requires_human_review": true,
+          "evidence": [
+            {"kind": "external_snapshot", "snapshot_id": "fixture-snapshot-old", "record_id": "fixture-record-001", "field_pointer": "/serviceCharacteristic/0/value", "display_value": "100 Mbit/s", "observed_at": "2026-10-20T00:00:00Z"}
+          ],
+          "dependencies": {
+            "complete": true,
+            "items": [
+              {"kind": "field", "ref": "external.configured_bandwidth", "version": "fixture-source-v1", "present": true},
+              {"kind": "record_set", "ref": "external.records", "version": "fixture-snapshot-set-v1", "present": true},
+              {"kind": "mapping", "ref": "object.binding", "version": "fixture-binding-v1", "present": true},
+              {"kind": "rule_pack", "ref": "rule_pack", "version": "5", "present": true},
+              {"kind": "capability_pack", "ref": "capability_pack", "version": "1.0.0", "present": true},
+              {"kind": "document", "ref": "fixture-contract-v1", "version": "", "present": true},
+              {"kind": "parser", "ref": "parser", "version": "fixture-parser-v1", "present": true},
+              {"kind": "model", "ref": "model", "version": "fixture-model-v1", "present": true},
+              {"kind": "policy", "ref": "policy", "version": "fixture-planner-v1", "present": true}
+            ]
+          }
+        },
+        {
+          "check_id": "line.contract_authority",
+          "relation": "compatible",
+          "reason_code": "contractual_authority_present",
+          "machine_status": "completed",
+          "requires_human_review": true,
+          "dependencies": {
+            "complete": true,
+            "items": [
+              {"kind": "mapping", "ref": "object.binding", "version": "fixture-binding-v1", "present": true},
+              {"kind": "rule_pack", "ref": "rule_pack", "version": "5", "present": true},
+              {"kind": "capability_pack", "ref": "capability_pack", "version": "1.0.0", "present": true},
+              {"kind": "document", "ref": "fixture-contract-v1", "version": "", "present": true},
+              {"kind": "parser", "ref": "parser", "version": "fixture-parser-v1", "present": true},
+              {"kind": "model", "ref": "model", "version": "fixture-model-v1", "present": true},
+              {"kind": "policy", "ref": "policy", "version": "fixture-planner-v1", "present": true}
+            ]
+          }
+        }
+      ],
+      "expected": {
+        "kit_action": "full",
+        "fallback": "full",
+        "dependency_complete": false,
+        "all_actions": "recompute",
+        "changed_inputs_include": ["external.snapshot_set"],
+        "business_result_source": "full"
+      }
+    },
+    {
+      "id": "D12",
+      "title": "增量候选与全量不一致",
+      "data_class": "synthetic",
+      "change": "Dependencies look unchanged, but the target full result differs from the base result.",
+      "base": {},
+      "target": {},
+      "target_checks": [
+        {
+          "check_id": "line.configured_bandwidth",
+          "relation": "conflict",
+          "reason_code": "configured_bandwidth_below_contract",
+          "machine_status": "completed",
+          "requires_human_review": true,
+          "dependencies": {
+            "complete": true,
+            "items": [
+              {"kind": "field", "ref": "external.configured_bandwidth", "version": "fixture-source-v1", "present": true},
+              {"kind": "record_set", "ref": "external.records", "version": "fixture-snapshot-set-v1", "present": true},
+              {"kind": "mapping", "ref": "object.binding", "version": "fixture-binding-v1", "present": true},
+              {"kind": "rule_pack", "ref": "rule_pack", "version": "5", "present": true},
+              {"kind": "capability_pack", "ref": "capability_pack", "version": "1.0.0", "present": true},
+              {"kind": "document", "ref": "fixture-contract-v1", "version": "", "present": true},
+              {"kind": "parser", "ref": "parser", "version": "fixture-parser-v1", "present": true},
+              {"kind": "model", "ref": "model", "version": "fixture-model-v1", "present": true},
+              {"kind": "policy", "ref": "policy", "version": "fixture-planner-v1", "present": true}
+            ]
+          }
+        }
+      ],
+      "expected": {
+        "kit_action": "keep_full_and_disable_reuse",
+        "fallback": "full",
+        "dependency_complete": false,
+        "all_actions": "recompute",
+        "forbid_reuse": true,
+        "business_result_source": "full"
+      }
+    }
+  ]
+}
