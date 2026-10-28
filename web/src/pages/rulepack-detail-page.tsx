@@ -370,7 +370,7 @@ export function RulePackDetailPage() {
               key: "content",
               label: (
                 <>
-                  <h2 id="rulepack-provenance-title">版本与来源身份</h2>
+                  <h2 id="rulepack-provenance-title">版本与来源信息</h2>
                 </>
               ),
               children: (
@@ -383,7 +383,7 @@ export function RulePackDetailPage() {
                       </dd>
                     </div>
                     <div>
-                      <dt>快照 SHA-256</dt>
+                      <dt>保存版本的 SHA-256</dt>
                       <dd>
                         <code className="digest">{pack.snapshot_sha256}</code>
                       </dd>
@@ -395,7 +395,7 @@ export function RulePackDetailPage() {
                       </dd>
                     </div>
                     <div>
-                      <dt>规则权威来源</dt>
+                      <dt>规则依据来源</dt>
                       <dd>{pack.authority_sources.join("；") || "无"}</dd>
                     </div>
                     {manifest.lifecycle.verification ? (
@@ -579,7 +579,7 @@ export function RulePackDetailPage() {
                             </dd>
                           </div>
                           <div>
-                            <dt>权威来源</dt>
+                            <dt>规则依据来源</dt>
                             <dd>
                               {rule.authority_sources
                                 .map(
@@ -626,8 +626,7 @@ export function RulePackDetailPage() {
           <div>
             <h2 id="rulepack-lifecycle-title">生命周期操作</h2>
             <p className="meta">
-              每个操作都使用服务端返回的行修订和活动指针
-              CAS。发布和回滚使用幂等键。
+              每次操作都会检查规则版本和启用状态是否已被他人修改。发布和回滚使用请求标识，避免重复执行。
             </p>
           </div>
         </header>
@@ -690,19 +689,18 @@ export function RulePackDetailPage() {
           ) : null}
           {replay ? (
             <Button
-              aria-label={"使用同一幂等键重试原请求"}
+              aria-label={"重试上一次请求"}
               htmlType="button"
               disabled={actionPending}
               onClick={retryExactRequest}
             >
-              使用同一幂等键重试原请求
+              重试上一次请求
             </Button>
           ) : null}
         </div>
         {pack.status === "approved" ? (
           <p className="meta">
-            发布只影响后续新受理案件的版本选择；已冻结 run、attempt
-            与报告继续引用原快照。
+            发布只影响之后新受理案件的规则版本。已有审查、执行记录和报告仍使用当时保存的版本。
           </p>
         ) : null}
       </section>
@@ -757,7 +755,7 @@ export function RulePackDetailPage() {
         >
           {rollback.isPending ? "正在回滚" : "回滚到所选版本"}
         </Button>
-        {history.isLoading ? <p>正在读取追加历史。</p> : null}
+        {history.isLoading ? <p>正在读取操作历史。</p> : null}
         {history.isError ? (
           <p className="workflow-error" role="alert">
             历史记录无法读取：{errorMessage(history.error)}

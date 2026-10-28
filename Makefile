@@ -1,4 +1,4 @@
-.PHONY: help setup db-up db-down dev worker tool-gateway migrate web web-client web-admin web-portal test-unit verify acceptance browser-distributed test-live evaluate browser-install infra-bootstrap infra-config infra-up infra-down infra-smoke infra-stop app-bootstrap app-config app-preflight app-images-offline apps-up apps-up-fixture apps-down agent-demo rule-shadow decision-baseline
+.PHONY: help setup db-up db-down dev worker tool-gateway migrate web web-client web-admin web-portal test-unit verify acceptance browser-distributed test-live evaluate browser-install infra-bootstrap infra-config infra-up infra-down infra-smoke infra-stop app-bootstrap app-config app-preflight app-images-offline apps-up apps-up-fixture apps-down agent-demo rule-shadow decision-baseline decision-baseline-jev
 PYTHON ?= python3
 GO ?= go
 BUN ?= bun
@@ -109,7 +109,7 @@ web:
 	cd web && $(BUN) run dev --host 127.0.0.1
 
 test-unit:
-	$(GO) test -race -count=1 ./internal/access ./internal/agentflow ./internal/decision ./internal/rulepack ./internal/telecom ./internal/identity ./internal/objectstore ./internal/accounts ./internal/audit ./internal/config ./internal/docir ./internal/docversion ./internal/engine ./internal/fault ./internal/labels ./internal/model ./internal/revise ./internal/compare ./cmd/eval ./cmd/agentdemo
+	TYPESAFE_JEV_MODE=off $(GO) test -race -count=1 ./internal/access ./internal/advisory ./internal/agentflow ./internal/decision ./internal/jev ./internal/modelgateway ./internal/rulepack ./internal/systemhealth ./internal/telecom ./internal/identity ./internal/objectstore ./internal/accounts ./internal/audit ./internal/config ./internal/docir ./internal/docversion ./internal/engine ./internal/fault ./internal/labels ./internal/model ./internal/revise ./internal/compare ./cmd/eval ./cmd/agentdemo ./cmd/ruleshadow
 
 verify:
 	$(PYTHON) scripts/verify.py
@@ -141,3 +141,7 @@ rule-shadow:
 
 decision-baseline:
 	$(GO) run ./cmd/ruleshadow -publish-demo -mode shadow -backend chat -chat-url http://127.0.0.1:3425/v1 -out artifacts/ruleshadow-chat.json
+
+decision-baseline-jev:
+	@test -n "$$TYPESAFE_API_KEY" || (echo "TYPESAFE_API_KEY is required for the Jev shadow benchmark; run: set -a; source .env; set +a" >&2; exit 2)
+	$(GO) run ./cmd/ruleshadow -publish-demo -mode shadow -backend jev -out artifacts/ruleshadow-jev.json

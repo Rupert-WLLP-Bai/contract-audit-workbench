@@ -16,6 +16,7 @@ import (
 )
 
 const toolGatewayTestCredential = "tool-gateway-test-credential-with-more-than-32-bytes"
+const gatewayTestBusinessTime = "2026-02-03T01:05:06Z"
 
 type gatewayConsumerModels struct{}
 
@@ -26,6 +27,114 @@ func (gatewayConsumerModels) Warranty(context.Context, []model.Material) (model.
 }
 func (gatewayConsumerModels) Transcribe(context.Context, string, []byte) (string, error) {
 	return "", model.ErrUnusable
+}
+
+// seedGatewayGovernance publishes the exact rules and policy used by each
+// isolated gateway store before any review is accepted.
+func seedGatewayGovernance(t *testing.T, st *store.Store, admin accounts.User) {
+	t.Helper()
+	const packID, policyID, version = "gateway-telecom", "gateway-demo-policy", "1"
+	tenantID := accounts.Tenant(admin)
+	scope := map[string]any{"business_line": "ENT", "scenario": "telecom_dedicated_line", "contract_type": "service"}
+	authority := []any{map[string]any{"id": policyID, "version": version, "kind": "synthetic_demo"}}
+	manifest, err := json.Marshal(map[string]any{
+		"schema_version": "rulepack/v1", "id": packID, "version": version, "tenant_id": tenantID,
+		"effective_from": "2020-01-01T00:00:00Z", "effective_until": "2100-01-01T00:00:00Z",
+		"rules": []any{
+			map[string]any{
+				"rule_id": "ENT-TECH-BW-001", "version": "1", "domain": "technical",
+				"capability_id": "dedicated_line.minimum_bandwidth", "mandatory": true,
+				"business_scope": scope, "tenant_id": tenantID, "comparator": "minimum_bandwidth",
+				"threshold":         map[string]any{"value": "100", "unit": "Mbit/s"},
+				"required_fact":     map[string]any{"dimension": "minimum_bandwidth", "source_roles": []string{"draft_contract"}, "object_required": true, "unit_family": "bandwidth_decimal"},
+				"authority_sources": authority,
+			},
+			map[string]any{
+				"rule_id": "ENT-TECH-SLA-001", "version": "1", "domain": "technical",
+				"capability_id": "dedicated_line.monthly_availability", "mandatory": true,
+				"business_scope": scope, "tenant_id": tenantID, "comparator": "monthly_sla",
+				"threshold": map[string]any{"value": "99.9", "unit": "percent"},
+				"required_fact": map[string]any{"dimension": "monthly_availability", "source_roles": []string{"draft_contract"}, "object_required": true,
+					"unit_family": "percentage", "measurement_window": "calendar_month", "time_zone": "Asia/Shanghai",
+					"calendar": "gregorian", "outage_definition": "all_service_unavailability", "exclusions": []string{}},
+				"authority_sources": authority,
+			},
+			map[string]any{
+				"rule_id": "ENT-COM-ADV-001", "version": "1", "domain": "commercial",
+				"capability_id": "payment.advance_ratio.ceiling", "mandatory": true,
+				"business_scope": scope, "tenant_id": tenantID, "comparator": "advance_payment_ceiling",
+				"threshold":         map[string]any{"value": "1/3", "unit": "ratio", "basis": "contract_total"},
+				"required_fact":     map[string]any{"dimension": "advance_payment_ratio", "source_roles": []string{"draft_contract"}, "object_required": true, "unit_family": "ratio", "basis": "contract_total"},
+				"authority_sources": authority,
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("marshal gateway rule pack: %v", err)
+	}
+	pack, err := st.CreateRulePack(admin, manifest)
+	if err != nil {
+		t.Fatalf("create gateway rule pack: %v", err)
+	}
+	pack, err = st.ValidateRulePackVersion(admin, store.GovernanceInput{
+		PackID: packID, Version: version, ExpectedRevision: pack.Pack.Revision,
+	})
+	if err != nil {
+		t.Fatalf("validate gateway rule pack: %v", err)
+	}
+	pack, err = st.ApproveRulePackVersion(admin, store.GovernanceInput{
+		PackID: packID, Version: version, ExpectedRevision: pack.Pack.Revision, ExpectedContentHash: pack.Pack.ContentHash,
+	})
+	if err != nil {
+		t.Fatalf("approve gateway rule pack: %v", err)
+	}
+	pack, err = st.PublishRulePackVersion(admin, store.GovernanceInput{
+		PackID: packID, Version: version, ExpectedRevision: pack.Pack.Revision, ExpectedPointerRevision: pack.Pack.ActivePointerRevision,
+	})
+	if err != nil {
+		t.Fatalf("publish gateway rule pack: %v", err)
+	}
+
+	var body string
+	var ruleIDs []string
+	var spans []store.KnowledgeSourceSpan
+	for _, rule := range []struct{ id, quote, suffix string }{
+		{"ENT-TECH-BW-001", "带宽不低于100 Mbit/s", ""},
+		{"ENT-TECH-SLA-001", "月可用率不低于99.9%", "，统计周期为自然月，时区Asia/Shanghai，公历gregorian，故障口径all_service_unavailability，无排除项"},
+		{"ENT-COM-ADV-001", "预付款比例不超过1/3", "，预付款以合同总额为基础"},
+	} {
+		start := len([]rune(body))
+		body += rule.quote + rule.suffix + "。"
+		ruleIDs = append(ruleIDs, rule.id)
+		spans = append(spans, store.KnowledgeSourceSpan{RuleID: rule.id, Start: start, End: start + len([]rune(rule.quote)), Quote: rule.quote})
+	}
+	policy, err := st.CreateGovernedKnowledge(admin, store.CreateGovernedKnowledgeInput{
+		Content: store.GovernedKnowledgeContent{
+			KnowledgeID: policyID, Version: version, Kind: "policy", Title: "网关测试专线制度", Body: body,
+			Summary: "核验带宽、可用率和预付款比例", SourceType: "synthetic_policy", SourceReference: "网关测试合成制度",
+			Scope:     store.KnowledgeScope{BusinessLine: "ENT", Scenario: "telecom_dedicated_line", ContractType: "service"},
+			ValidFrom: "2020-01-01T00:00:00Z", ValidUntil: "2100-01-01T00:00:00Z",
+			Binding: store.PolicyRuleBinding{
+				PackID: packID, PackVersion: version, PackContentHash: pack.Pack.ContentHash,
+				PackSnapshotDigest: pack.Pack.SnapshotSHA256, CompilerRef: "governed-rulepack/v1",
+				RuleIDs: ruleIDs, SourceSpans: spans, CandidateDiff: "规则差异已审阅", ValidationEvidence: "规则包校验通过",
+			},
+		},
+		IdempotencyKey: "gateway-policy-create",
+	})
+	if err != nil {
+		t.Fatalf("create gateway policy: %v", err)
+	}
+	for _, action := range []string{"submit", "validate", "approve", "publish"} {
+		policy, err = st.GovernedKnowledgeCommand(admin, store.GovernedKnowledgeCommandInput{
+			KnowledgeID: policy.Ref.KnowledgeID, VersionID: policy.Ref.VersionID, Action: action,
+			ExpectedRevision: policy.Revision, ExpectedContentSHA256: policy.Ref.ContentSHA256,
+			ExpectedPointerRevision: policy.PointerRevision, Reason: "已核对政策依据", IdempotencyKey: "gateway-policy-" + action,
+		})
+		if err != nil {
+			t.Fatalf("%s gateway policy: %v", action, err)
+		}
+	}
 }
 
 type gatewayToolClientReader struct {
@@ -72,7 +181,7 @@ func createGatewayClaimFixture(t *testing.T, st *store.Store, user accounts.User
 	if _, err := st.AddDocument(context.Background(), user, caseID, "procurement", "purchase.txt", "text/plain", []byte("采购文件未提供合同阈值或审批依据。")); err != nil {
 		t.Fatalf("add procurement material: %v", err)
 	}
-	accepted, err := st.StartReviewAsync(context.Background(), user, caseID)
+	accepted, err := st.StartReviewAsyncAt(context.Background(), user, caseID, gatewayTestBusinessTime)
 	if err != nil {
 		t.Fatalf("accept review: %v", err)
 	}
@@ -126,6 +235,7 @@ func TestToolClientReadsFrozenEvidenceThroughLiveGatewayClaim(t *testing.T) {
 		t.Fatal("demo admin is unavailable")
 	}
 	st.UseModels(gatewayConsumerModels{})
+	seedGatewayGovernance(t, st, user)
 
 	server := httptest.NewServer(NewHandler(st, Options{WorkerCredential: toolGatewayTestCredential}))
 	defer server.Close()

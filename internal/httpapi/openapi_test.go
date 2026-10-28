@@ -45,8 +45,16 @@ func TestOpenAPITracksAllRegisteredRoutesAndJSONFields(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	governance, err := parser.ParseFile(token.NewFileSet(), "experience_routes.go", nil, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	evidence, err := parser.ParseFile(token.NewFileSet(), "evidence_routes.go", nil, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
 	routes := map[string]string{}
-	for _, parsed := range []*ast.File{file, health} {
+	for _, parsed := range []*ast.File{file, health, governance, evidence} {
 		ast.Inspect(parsed, func(node ast.Node) bool {
 			call, ok := node.(*ast.CallExpr)
 			if !ok || len(call.Args) != 2 {
@@ -77,32 +85,34 @@ func TestOpenAPITracksAllRegisteredRoutesAndJSONFields(t *testing.T) {
 	}
 	schemas := spec["components"].(map[string]any)["schemas"].(map[string]any)
 	jsonFields := map[string][]string{}
-	for _, decl := range file.Decls {
-		fn, ok := decl.(*ast.FuncDecl)
-		if !ok {
-			continue
-		}
-		ast.Inspect(fn, func(node ast.Node) bool {
-			value, ok := node.(*ast.ValueSpec)
-			if !ok || len(value.Names) != 1 || value.Names[0].Name != "body" {
-				return true
-			}
-			body, ok := value.Type.(*ast.StructType)
+	for _, parsed := range []*ast.File{file, governance, evidence} {
+		for _, decl := range parsed.Decls {
+			fn, ok := decl.(*ast.FuncDecl)
 			if !ok {
-				return true
+				continue
 			}
-			fields := []string{}
-			for _, field := range body.Fields.List {
-				tag, err := strconv.Unquote(field.Tag.Value)
-				if err != nil {
-					t.Fatal(err)
+			ast.Inspect(fn, func(node ast.Node) bool {
+				value, ok := node.(*ast.ValueSpec)
+				if !ok || len(value.Names) != 1 || value.Names[0].Name != "body" {
+					return true
 				}
-				fields = append(fields, reflect.StructTag(tag).Get("json"))
-			}
-			sort.Strings(fields)
-			jsonFields[fn.Name.Name] = fields
-			return true
-		})
+				body, ok := value.Type.(*ast.StructType)
+				if !ok {
+					return true
+				}
+				fields := []string{}
+				for _, field := range body.Fields.List {
+					tag, err := strconv.Unquote(field.Tag.Value)
+					if err != nil {
+						t.Fatal(err)
+					}
+					fields = append(fields, strings.Split(reflect.StructTag(tag).Get("json"), ",")[0])
+				}
+				sort.Strings(fields)
+				jsonFields[fn.Name.Name] = fields
+				return true
+			})
+		}
 	}
 	seenIDs := map[string]bool{}
 	seenRoutes := map[string]bool{}

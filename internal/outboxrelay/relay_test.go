@@ -90,7 +90,8 @@ func (f *fakeBroker) Close() error { return nil }
 
 func testConfig() Config {
 	return Config{URL: "nats://127.0.0.1:4222", Owner: "relay-test", Batch: 4, Lease: 30 * time.Second,
-		Poll: 50 * time.Millisecond, PublishTimeout: 2 * time.Second, MaxBackoff: time.Minute, Subject: Subject, Stream: Stream}
+		Poll: 50 * time.Millisecond, PublishTimeout: 2 * time.Second, MaxBackoff: time.Minute,
+		Subject: Subject, Stream: Stream, Replicas: 1}
 }
 
 func claim(id string, lease time.Duration) store.OutboxClaim {
@@ -304,5 +305,23 @@ func TestConfigValidation(t *testing.T) {
 	}
 	if _, err := New(nil, &fakeBroker{}, testConfig()); err == nil {
 		t.Fatal("a missing store must be refused")
+	}
+}
+
+func TestStreamReplicationFactorIsExplicit(t *testing.T) {
+	config := testConfig()
+	config.Replicas = 3
+	if got := streamConfig(config).Replicas; got != 3 {
+		t.Fatalf("stream replication factor lost: %d", got)
+	}
+	t.Setenv("NATS_URL", "nats://127.0.0.1:4222")
+	t.Setenv("NATS_STREAM_REPLICAS", "3")
+	parsed, err := FromEnv()
+	if err != nil || parsed.Replicas != 3 {
+		t.Fatalf("replication factor not parsed: %+v err=%v", parsed, err)
+	}
+	t.Setenv("NATS_STREAM_REPLICAS", "0")
+	if _, err := FromEnv(); err == nil {
+		t.Fatal("zero stream replication must be refused")
 	}
 }

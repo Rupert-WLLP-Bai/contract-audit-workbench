@@ -178,6 +178,21 @@ describe("text offsets", () => {
     ).toBe(false);
   });
 
+  it("matches a public frozen parse without inventing diagnostic metadata", () => {
+    const frozen = anchor({
+      parsed_document_id: "pd1",
+      quote: "三十六个月",
+      text_offset: { start: 4, end: 9 },
+    });
+    const text = "质保期为三十六个月。";
+    expect(evidenceSourceMatches(frozen, "d1", null, "pd1")).toBe(true);
+    expect(evidenceSourceMatches(frozen, "d1", null, "pd2")).toBe(false);
+    expect(evidenceSourceMatches(frozen, "d2", null, "pd1")).toBe(false);
+    expect(resolveAnchor(text, frozen, null, "pd1").kind).toBe("highlight");
+    expect(resolveAnchor(text, frozen, null, "pd2").kind).toBe("snapshot");
+    expect(resolveAnchor(text, { ...frozen, normalized_digest: "withheld" }, null, "pd1").kind).toBe("snapshot");
+  });
+
   it("treats a missing status as unavailable evidence", () => {
     const resolved = resolveAnchor(
       "正文",

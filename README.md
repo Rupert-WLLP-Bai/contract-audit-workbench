@@ -2,7 +2,15 @@
 
 基于 Go 和 React 的合同审计工作台，用于组织合同材料、执行规则核对、查看带引用的模型建议，并记录人工复核、整改和复审。
 
-审查引用保留跨行的否定与限定语，并绑定冻结原文的位置。制度版本以租户、制度标识和版本号区分；不同租户可以独立保存同名制度，已有版本保持不可变。
+业务工作台展示“第一届黄桷树AI智能体开发大赛”标题及赛事 Logo，产品名称为合同智能审计工作台。
+
+审查结果引用材料时，系统会保留跨行的否定词和限制条件，并记录引用在本次审查原文中的位置。制度按租户、制度标识和版本号区分；不同租户可以各自保存同名制度，已有版本不会被改写。知识库可以选择和读取指定版本，也支持版本链接；旧的单 ID 接口仍读取最新记录。
+
+制度、操作指引、例外和经审阅的经验都有版本记录；提交、校验、审批和发布也会留下历史。发起审查时，系统根据业务时间、租户、案件权限和规则包版本选择可用知识，并保存本次执行使用的版本和内容摘要。之后更新或撤回知识，不会改变之前的审查记录。系统支持的制度数值要求必须能从原文提取并与规则包一致；无法核实时会保留待补充事项。
+
+审查人员可以针对发现的问题提交反馈，并引用本次审查使用的原文，作为整理经验的依据。这些经验需要审阅、授权和发布，之后符合适用范围的案件才能选择使用。模型和智能体给出的内容只是建议；找到原文引用与按规则比较是两个不同步骤。无法核实的结果会保持待核实或信息不足，不会自动成为已确认结论。
+
+发现材料不足时，可以根据已保存的规则检查或审查待补充事项发起补充材料请求，并关联案件任务、材料和回执。收到材料后，需要重新发起审查，核对新的检查结果和原文引用，才能完成核验。之前的执行记录、人工判断和请求历史都会保留。
 
 ## 项目架构
 
@@ -12,9 +20,9 @@
 
 主页的审查链路和业务模块标题使用 17px，统计卡片标题使用 15px，窄屏沿用相同层级。宽屏时任务窗格与右侧统计窗格上下对齐，窄屏按可用宽度重排。
 
-系统健康页按分组展示服务状态、连接目标和观测说明，支持筛选、搜索和查看详情。版本对照页在宽屏并排显示冻结正文，窄屏纵向排列；选择审查发现可定位到对应原文。
+系统健康页按分组展示服务状态、连接目标和观测说明，支持筛选、搜索和查看详情。版本对照页在宽屏并排显示各次审查使用的原文，窄屏纵向排列；选择审查发现后，可以找到对应的原文。
 
-审查工作区顶部可直达执行检查器，按时间线或事件树查看当前尝试的持久事件；选择事件可查看原始阶段、状态、用量和关联标识，也可切换历史尝试。未记录的数据保持未报告。
+审查工作区顶部可以打开执行检查器，按时间线或事件树查看本次执行保存的事件。选择事件后，可以查看阶段、状态、用量和关联编号，也可以切换到之前的执行记录。没有记录的数据会显示为未知。
 
 独立服务按下图组织：
 
@@ -28,12 +36,14 @@ flowchart LR
     Document --> PG
     Document --> S3[(RustFS / S3)]
     Execution --> PG
-    Worker[Worker / Outbox Relay] --> PG
+    Worker[Worker] --> PG
+    Worker --> Document
     Worker --> Model[Model Gateway]
     Worker --> Tool[Tool Gateway]
+    Document --> Model
     Model --> Provider[模型 / OCR 接口]
-    Worker --> NATS[NATS JetStream]
-    NATS --> Core
+    Execution -->|Outbox 通知| NATS[NATS JetStream]
+    NATS -->|唤醒| Worker
 ```
 
 本地开发默认使用 `cmd/server` 的单进程模式，将 API 和审查执行放在同一进程中；独立服务模式使用各自的启动入口和数据库角色。
@@ -115,6 +125,10 @@ python3 scripts/record_model_proxy.py --upstream http://127.0.0.1:3425/v1 \
 第二个命令保持运行，并在独立服务的模型配置中将 `LLM_BASE_URL` 指向该记录器，`LLM_MODEL` 与 `OCR_MODEL` 均设为真实模型目录中的名称。记录器只监听宿主机回环地址；容器服务需要受限的宿主网络转发才能访问。计算冻结模型身份的各服务必须使用相同的地址和模型名称。记录器只转发真实上游响应，不保存请求头，但请求和响应正文可能包含合同、图片及其他敏感数据，必须保存在私有目录。上游是否转发到外部取决于实际模型服务。
 
 扫描页逐页转写。单文件上限为 32 MiB，模型网关仍按请求体字节作保守预算预留；需要根据页面大小和频率调整 `MODEL_MAX_INPUT_TOKEN_RESERVATION`、`MODEL_TENANT_TOKENS_PER_MINUTE`、`MODEL_GLOBAL_TOKENS_PER_MINUTE`。要覆盖最大 33 MiB 模型请求，单次预留至少为 34603008，全局与租户每分钟预算均须大于单次预留和输出额度之和。长文档还需按实际耗时配置 `DOCUMENT_PARSE_TIMEOUT`、`GATEWAY_REQUEST_TIMEOUT` 和 `GATEWAY_UPLOAD_TIMEOUT`；文档解析超时上限为 30 分钟。
+
+模型网关对已声明超过 33 MiB 的请求在读取正文前拒绝；未声明长度的流仍在读取时按相同字节上限限制。
+
+材料上传、重新解析和草稿生成在进入解析队列前检查角色与案件权限，提交时再次检查；队列满时仅对已授权请求返回容量不足。
 
 DOCX 正文中的 Adobe Symbol 字体字符按 Unicode 映射保留；不支持的符号字体、无可靠文本映射的字形或无效编码会使解析失败，不会被静默丢弃。
 
@@ -212,6 +226,55 @@ bun run build
 ```
 
 需要数据库的集成测试使用隔离的 `TEST_DATABASE_URL`，`MIGRATOR_DATABASE_URL` 指向同一测试库的迁移角色；`MODEL_DATABASE_URL` 指向同库的独立非特权登录角色。专用角色不能是超级用户、表所有者或具有 `BYPASSRLS`，配置示例见 CI 的数据库角色准备步骤。`make verify` 执行确定性检查，`make acceptance` 进一步执行浏览器旅程；真实模型/OCR 联调由 `make test-live` 单独启用。
+
+## 开发状态与验收记录
+
+以下历史记录分别对应当时的源码候选与摘要，其中 `f427153` 是 Jev 建议层接入前的候选。当前版本以对应提交的 PR / CI 验收为准。切换机器后先确认工作区状态和依赖，再按以下顺序继续；不要因测试失败删除测试、降低覆盖率或跳过数据库和浏览器验收。
+
+1. **PASS：修复前端类型检查。** `web/src/app.integration.test.tsx` 的 breadcrumb 查询已收窄为 `HTMLElement`。最终 `make acceptance` 中 `web-typecheck` 通过，`web-tests` 371/371 通过，`web-build` 通过。
+2. **PASS（本地）：完成全量发布验收。** 在隔离 PostgreSQL 18（一次性容器 `caw-accept-pg`）上执行 `make acceptance`；`artifacts/verification.json` 为 `passed:true`，21 项检查全部返回 0，源码身份摘要 `0285f4b2cb0d7d90ef4d6edf3f93fb2082dea969a42155d55a31e75697ff7f82` 与最终可执行工作树一致；`browser-system` 耗时 90.1s，`TestBrowserWarrantyConflictAndConfirm` 与 `TestBrowserTelecomC1BFullJourney` 均 PASS。远端 CI 在推送后另行记录，不能把本地结果当作远端通过。
+3. **PASS：M1/M2 业务闭环实机验收。** `web/e2e/functional/workflows.spec.ts` 在 5 节点集群上 4/4 PASS：经验反馈→异步蒸馏→候选（11.8s）、知识版本审批/发布（2.7s）、补件请求→回执→后续审查核验（11.4s）、报告业务视图隐藏原始标识（5.7s）。普通用户/管理员权限、撤权与浏览器缓存旅程 `identity-sse.ts`、`sessions.spec.ts` 本轮未运行（`NOT_RUN`）；报告字节不变、冻结快照和权限边界已由浏览器/API 断言覆盖。
+4. **PASS（受控小样本）：性能复测。** 隔离 Compose、fixture 模型、18 个案件、并发 1/2、3 次重复；18/18 到达机器终态（18 partial，0 failed，0 关系错误，0 refused，0 transport error），端到端 p50 1.781s / p95 2.941s，队列等待 p50 0.279s / p95 1.620s，吞吐 21.5 req/s；audit-execution RSS 22.5–31.7 MB，Worker RSS 12.4–16.4 MB，模型预算无残留。小样本不等于生产 SLA；PostgreSQL/RustFS 容器未纳入资源采样。详见仓库外交付目录的 `docs/distributed-verification-2026-10-28.md`。
+5. **BLOCKED：完成反馈收益对照。** 八组来源 A 均为 `PARTIAL`，未发现可核实的来源误报；已运行 G0/G1 各 32 个目标样本，其中 G0 完成 17 个、G1 完成 0 个。G2 的 32 个样本为 `NOT_RUN`，没有人工裁决，不能计算误报下降或宣称零漏报。只有取得可核实的来源纠正、经授权审阅并发布经验后，才能继续 G2；失败、弃权和未完成样本保留在分母中。
+6. **NOT_APPLICABLE：本地 Jeva/Laya。** 适配器与 provider 已删除，仓库不再包含本地 System One 调用路径；仅保留 `internal/jev` 的 TypeSafe 托管调用。
+7. **PASS（代码与测试）：TypeSafe Jev 建议层。** Jev 默认以 `advisory` 配置进入受治理知识 rerank，只重排 optional 候选；结论、引用、算术、证据、状态和人工决定仍由确定性代码负责。全量 `make verify` 在本工作树 20/20 检查 PASS，`artifacts/verification.json` 为 `passed:true`，源码身份摘要 `4c675b22cc5178866d00874f36aa200940f5f8815d329107e81469c54a22fff9`，数据库集成测试 0 跳过、0 失败。浏览器验收和真实托管评测为 `NOT_RUN`。托管端点只接收 `minimized` 元数据，不得发送冻结合同原文。
+
+### TypeSafe Jev：默认开启的建议层，规则拥有结论
+
+Jev 有两条路径，二者不共用结论权：
+
+1. **审查路径（默认开启的建议层）**：`TYPESAFE_JEV_MODE=advisory` 时，worker 从审查接受时冻结的 `PlannerConfiguration.Advisory` 读取配置，通过 model-gateway 的 `/v1/systemone` 对受治理知识的 optional 候选做相关性 rerank。它只影响 optional 候选的先后；required 候选、确定性分数、候选全集、预算、`AcceptedRules`、引用定位、关系、缺口状态、严重度和人工决定都不变。0.70/0.30 三档，中间值进入 `uncertain`；失败、超时、预算不足、模型版本不一致或非法响应一律回退到确定性顺序，并记录 `unavailable` 等状态。判断先写入不可变 `advisory_judgments`，再用于排序；同一 run 的同一冻结输入复用已有判断。
+2. **影子评测（默认关闭）**：`cmd/ruleshadow -backend jev` 继续只用于 D0 合成 `review_focus` 对照，不进入审查路径。2026-10-28 的单次运行结果仍是 40/40 强制规则输出不变、39/40 标签一致、p50 300ms / p95 427ms；该结果只证明建议层可用，不是生产准确率。
+
+```text
+TYPESAFE_JEV_MODE=off|fixture|advisory   # 未设置时按 off；部署清单显式写 advisory
+TYPESAFE_JEV_EGRESS=minimized            # Phase 1 只实现 minimized
+TYPESAFE_JEV_FEATURES=knowledge_rerank
+TYPESAFE_JEV_MODEL=jev-1.14.0            # advisory 必须固定版本，拒绝 jev-latest 等 alias
+TYPESAFE_JEV_PROVIDER=model-gateway      # 分布式默认；单进程本地开发可用 direct
+TYPESAFE_JEV_TIMEOUT=3s
+TYPESAFE_JEV_MAX_CANDIDATES=16
+TYPESAFE_API_KEY=                        # 只放 model-gateway 的 secret
+```
+
+- **默认开启的含义是部署默认，不是每次审查必调**：没有 optional 候选、字段无法安全最小化、预算耗尽、feature 未启用或数据审批未完成时都不调用；这些情况在冻结记录和健康页显示为 `not_applicable`/`unavailable`，不能静默当成“不相关”。
+- **数据边界**：`minimized` 只发送业务线/场景/合同类型、gap 的 domain/capability/reason 标签、治理知识的 kind/summary/check_action/minimum_evidence 等治理元数据；不发送合同原文、文件名、案件/当事方标识或引用。发送前对 URL、邮箱、电话、日期、金额和长标识做确定性脱敏；治理知识本身也不得写入当事方名称等案件信息。`approved_text` 尚未实现，客户端和网关都会拒绝。冻结合同原文在数据出境/第三方处理审批完成前不得发送。
+- **失败回退**：Jev 关闭、缺 key、超时、429/5xx、非法 JSON、越界概率或观测模型与冻结版本不一致时，审查继续使用确定性结果；Jev 故障不影响 chat/OCR readiness。
+- **密钥位置**：分布式部署只有 `model-gateway` 持有 `TYPESAFE_API_KEY`；worker 只拿 `WORKER_MODEL_TOKEN`，health-monitor 通过网关的 `/health/jev` 读取非秘密状态。单进程本地开发和 `cmd/ruleshadow` 合成评测可直接从环境读取 key。
+- **生产门槛**：仓库清单默认写 `advisory`，但数据出境审批未完成时必须覆盖为 `off`，并在健康页明确显示关闭。健康页只报告 mode/model/egress/feature 和 key 是否存在，不返回 key、state 或答案。
+
+`make verify` 和单元测试显式设置 `TYPESAFE_JEV_MODE=off` 并移除继承的 `TYPESAFE_API_KEY`；CI 不访问 `api.typesafe.ai`。k3d/Compose fixture profile 用 `TYPESAFE_JEV_MODE=fixture` 的网关返回确定性答案，worker 仍走 advisory→gateway 路径，用于验证预算、审计和回退，不能当作模型质量证据。
+
+### 分布式与 Eino 证据
+
+- **PASS**：5 逻辑节点（1 server + 4 agents）、Core 2/Worker 3/Model 2/Tool 2 实际分布到不同 agent、健康页服务组/期望副本/实例/节点、分布式 Chromium C1-B 完整旅程、Worker 接管（generation 1→2）、Core 切换（12/12 HTTP 200）、NATS 中断恢复、NATS 3 节点 Stream R=3、OTel→Tempo/Prometheus/Grafana、结构化分布式日志、RustFS 单节点对象读写、PostgreSQL 单节点权威队列与 Outbox。
+- **BLOCKED**：PostgreSQL 3 实例（缺少 CNPG operator/CRD 与镜像）、RustFS 4 节点/16 PVC（缺少 Helm chart/安装前提）、集中式日志后端（缺少 Loki/Promtail 镜像）。单节点 PostgreSQL/RustFS 已真实接入并验证，复制形态未冒充通过。
+- **Eino**：经验反馈、异步蒸馏、候选审阅在真实浏览器 PASS；候选发布为受治理经验、快照选择、撤权重验由 store 集成测试 PASS；候选的浏览器端发布/后续复用为 `NOT_RUN`（fixture 候选没有 policy_refs，未伪造）。同一 attempt 的接管恢复和失败工具观察恢复有代码与测试；成功工具输出的精确恢复受当前持久化模型限制，标 `NOT_RUN`。
+- 详细记录：`../contract-audit-delivery/implementation/2026-10-27/docs/distributed-verification-2026-10-28.md`、`.../docs/eino-memory-distillation-learning-2026-10-28.md`、`.../docs/terminology-glossary-2026-10-28.md`。
+
+此前一个合成图片样本完成真实 OCR 和冻结审查；一次独立的补件接口冒烟完成 `open → received → verified` 并确认旧快照未变。这些只是单次路径证据，不代表整体准确率。较大的图片样本转写失败，仍需调查请求大小与模型预算限制。
+
+按仓库边界，试点脚本、合成语料、逐项报告、模型调用记录和验收产物位于本机仓库外的 `../contract-audit-delivery/implementation/2026-10-27/`，没有推送到源码仓。换机器如需复用历史证据或继续试点，须单独迁移该交付目录中的必要文件；不要复制私有凭据。独立服务的 Core/Worker 结果回传需要配置不同于其他服务凭据的 `WORKER_CORE_TOKEN` 和 `CORE_SERVICE_URL`；旧本地配置缺项时须补齐后再启动。
 
 ## 分支工作方式
 

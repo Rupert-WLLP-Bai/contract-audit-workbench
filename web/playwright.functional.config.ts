@@ -1,4 +1,5 @@
 import { defineConfig } from "playwright/test";
+import { chromiumExecutable } from "./e2e/chromium";
 
 const runID = process.env.E2E_RUN_ID ||= `run-${Date.now()}`;
 
@@ -16,7 +17,7 @@ export default defineConfig({
     browserName: "chromium",
     headless: true,
     viewport: { width: 1440, height: 1000 },
-    launchOptions: { executablePath: process.env.CHROMIUM_BIN || "/usr/bin/chromium", args: ["--no-sandbox", "--disable-dev-shm-usage"] },
+    launchOptions: { executablePath: chromiumExecutable(), args: ["--no-sandbox", "--disable-dev-shm-usage"] },
     trace: "retain-on-failure",
     screenshot: "only-on-failure",
   },

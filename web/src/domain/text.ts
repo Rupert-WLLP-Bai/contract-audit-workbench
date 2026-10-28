@@ -62,6 +62,7 @@ export function resolveAnchor(
   text: string | null,
   anchor: EvidenceAnchor,
   parsedDocument: ParsedDocumentMetadata | null = null,
+  publicParsedDocumentId: string | null = null,
 ): ResolvedAnchor {
   const page = anchor.page;
   if (anchor.status === "missing") {
@@ -80,8 +81,13 @@ export function resolveAnchor(
   }
   const hasParseProvenance =
     anchor.parsed_document_id !== null || anchor.normalized_digest !== null;
+  const publicParseMatches =
+    parsedDocument === null &&
+    publicParsedDocumentId !== null &&
+    anchor.parsed_document_id === publicParsedDocumentId &&
+    anchor.normalized_digest === null;
   if (
-    hasParseProvenance &&
+    hasParseProvenance && !publicParseMatches &&
     (parsedDocument === null ||
       parsedDocument.status !== "ready" ||
       parsedDocument.document_id !== anchor.document_version_id ||
@@ -124,12 +130,17 @@ export function evidenceSourceMatches(
   anchor: EvidenceAnchor,
   documentId: string,
   parsedDocument: ParsedDocumentMetadata | null,
+  publicParsedDocumentId: string | null = null,
 ): boolean {
   if (documentId !== anchor.document_version_id) return false;
   if (anchor.parsed_document_id === null && anchor.normalized_digest === null)
     return true;
-  if (parsedDocument === null || parsedDocument.document_id !== documentId)
-    return false;
+  if (parsedDocument === null) {
+    return publicParsedDocumentId !== null &&
+      anchor.parsed_document_id === publicParsedDocumentId &&
+      anchor.normalized_digest === null;
+  }
+  if (parsedDocument.document_id !== documentId) return false;
   return (
     (anchor.parsed_document_id === null ||
       parsedDocument.id === anchor.parsed_document_id) &&

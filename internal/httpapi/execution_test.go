@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -80,7 +81,11 @@ func TestAcceptedExecutionCancellationRetryAndHistoricalAuthorizationHTTP(t *tes
 	if len(findings) != 1 || findings[0].(map[string]any)["relation"] != "conflict" {
 		t.Fatalf("verified rules unavailable during model call: %v", findings)
 	}
-	execution := live["execution"].(map[string]any)
+	status, diagnostics := api.do(t, http.MethodGet, path+"/diagnostics?attempt_id="+attemptID, nil)
+	if status != http.StatusOK || diagnostics["case_id"] != caseID || diagnostics["run_id"] != runID {
+		t.Fatalf("live diagnostics %d %v", status, diagnostics)
+	}
+	execution := diagnostics["execution"].(map[string]any)
 	if execution["attempt"].(map[string]any)["id"] != attemptID || execution["queue_wait_ms"] != nil {
 		t.Fatalf("execution identity/timing %v", execution)
 	}
@@ -93,23 +98,45 @@ func TestAcceptedExecutionCancellationRetryAndHistoricalAuthorizationHTTP(t *tes
 	if cancelled["run"].(map[string]any)["state"] != "cancelled" {
 		t.Fatalf("late model overwrote cancellation: %v", cancelled["run"])
 	}
+	status, cancelledDiagnostics := api.do(t, http.MethodGet, path+"/diagnostics?attempt_id="+attemptID, nil)
+	if status != http.StatusOK {
+		t.Fatalf("cancelled diagnostics %d %v", status, cancelledDiagnostics)
+	}
+	cancelledAttempt := cancelledDiagnostics["execution"].(map[string]any)["attempt"].(map[string]any)
+	if cancelledAttempt["id"] != attemptID || cancelledAttempt["state"] != "cancelled" {
+		t.Fatalf("cancelled attempt identity %v", cancelledAttempt)
+	}
 	status, retried := api.do(t, http.MethodPost, path+"/retry", map[string]any{})
 	if status != http.StatusOK || retried["attempt_id"] == attemptID {
 		t.Fatalf("retry did not append identity %d %v", status, retried)
 	}
-	_, historical := api.do(t, http.MethodGet, path+"?attempt_id="+attemptID, nil)
+	status, historical := api.do(t, http.MethodGet, path+"/diagnostics?attempt_id="+attemptID, nil)
+	if status != http.StatusOK || historical["case_id"] != caseID || historical["run_id"] != runID {
+		t.Fatalf("historical diagnostics %d %v", status, historical)
+	}
 	old := historical["execution"].(map[string]any)["attempt"].(map[string]any)
 	if old["id"] != attemptID || old["state"] != "cancelled" {
 		t.Fatalf("historical attempt overwritten: %v", old)
+	}
+	if !reflect.DeepEqual(old, cancelledAttempt) {
+		t.Fatalf("retry rewrote the cancelled attempt: before %v after %v", cancelledAttempt, old)
 	}
 	status, _ = api.do(t, http.MethodGet, path+"?attempt_id=not-from-this-run", nil)
 	if status != http.StatusNotFound {
 		t.Fatalf("mixed attempt accepted: %d", status)
 	}
+	status, _ = api.do(t, http.MethodGet, path+"/diagnostics?attempt_id=not-from-this-run", nil)
+	if status != http.StatusNotFound {
+		t.Fatalf("mixed diagnostic attempt accepted: %d", status)
+	}
 	api.login(t, "demo-clerk", "clerk-demo")
 	status, _ = api.do(t, http.MethodGet, path+"?attempt_id="+attemptID, nil)
 	if status != http.StatusNotFound {
 		t.Fatalf("nonmember history visible: %d", status)
+	}
+	status, _ = api.do(t, http.MethodGet, path+"/diagnostics?attempt_id="+attemptID, nil)
+	if status != http.StatusForbidden {
+		t.Fatalf("nonadmin diagnostic history visible: %d", status)
 	}
 	_, settings := api.do(t, http.MethodGet, "/api/settings", nil)
 	if _, visible := settings["execution"]; visible {
@@ -141,7 +168,11 @@ func TestIncompleteProviderUsageSurvivesHTTPRetry(t *testing.T) {
 	if workspace["run"].(map[string]any)["state"] != "partial" {
 		t.Fatalf("incomplete model was not partial: %v", workspace["run"])
 	}
-	execution := workspace["execution"].(map[string]any)
+	status, diagnostics := api.do(t, http.MethodGet, path+"/diagnostics", nil)
+	if status != http.StatusOK {
+		t.Fatalf("usage diagnostics %d %v", status, diagnostics)
+	}
+	execution := diagnostics["execution"].(map[string]any)
 	total := execution["all_attempts_usage"].(map[string]any)
 	if total["calls"] != 2.0 || total["unknown_calls"] != 0.0 || total["input_tokens"] != 154.0 || total["output_tokens"] != 18.0 || total["total_tokens"] != 172.0 || total["cost"] != nil {
 		t.Fatalf("failed invocation usage was lost or invented: %v", total)
@@ -150,6 +181,7 @@ func TestIncompleteProviderUsageSurvivesHTTPRetry(t *testing.T) {
 		t.Fatal("usage has no response source")
 	}
 	assertWireSchema(t, openAPI(t), "Workspace", workspace)
+	assertWireSchema(t, openAPI(t), "ReviewDiagnostics", diagnostics)
 }
 
 func TestAdministratorMetadataDoesNotAuthorizeContractBody(t *testing.T) {

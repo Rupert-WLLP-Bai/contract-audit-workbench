@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -62,7 +63,12 @@ func TestProcurementWarrantyConflictAndConfirm(t *testing.T) {
 		t.Fatalf("review %d %v", status, review)
 	}
 	runID := review["id"].(string)
-	status, ws := do(t, client, srv.URL, http.MethodGet, "/api/cases/"+caseID+"/reviews/"+runID, nil, "")
+	attemptID, ok := review["attempt_id"].(string)
+	if !ok || attemptID == "" {
+		t.Fatalf("review missing attempt identity: %v", review)
+	}
+	reviewPath := "/api/cases/" + caseID + "/reviews/" + runID
+	status, ws := do(t, client, srv.URL, http.MethodGet, reviewPath, nil, "")
 	if status != http.StatusOK {
 		t.Fatalf("workspace %d %v", status, ws)
 	}
@@ -78,8 +84,14 @@ func TestProcurementWarrantyConflictAndConfirm(t *testing.T) {
 	if len(evidence) != 2 {
 		t.Fatalf("evidence %+v", evidence)
 	}
+	unseenDocuments := map[string]bool{docA: true, docB: true}
 	for _, item := range evidence {
 		anchor := item.(map[string]any)
+		docID, ok := anchor["document_version_id"].(string)
+		if !ok || !unseenDocuments[docID] {
+			t.Fatalf("evidence does not identify both original documents: %+v", evidence)
+		}
+		delete(unseenDocuments, docID)
 		if anchor["status"] != "located" || anchor["page"] != nil || anchor["bbox"] != nil || anchor["text_offset"] == nil {
 			t.Fatalf("anchor %+v", anchor)
 		}
@@ -98,18 +110,44 @@ func TestProcurementWarrantyConflictAndConfirm(t *testing.T) {
 			t.Fatalf("quote %q slice %q", anchor["quote"], quote)
 		}
 	}
-	snap := ws["snapshot"].(map[string]any)
-	if snap["comparator_ref"] != engine.ComparatorRef || snap["rule_set_hash"] != engine.RuleSetHash() {
-		t.Fatalf("snapshot %+v", snap)
+	publicSnapshot, ok := ws["snapshot"].(map[string]any)
+	if !ok || len(publicSnapshot) != 1 {
+		t.Fatalf("business snapshot exposed unexpected fields: %+v", ws["snapshot"])
+	}
+	ids, ok := publicSnapshot["document_ids"].([]any)
+	if !ok || len(ids) != 2 || !((ids[0] == docA && ids[1] == docB) || (ids[0] == docB && ids[1] == docA)) {
+		t.Fatalf("business snapshot documents %v, want %s and %s", publicSnapshot["document_ids"], docA, docB)
+	}
+	diagnosticPath := reviewPath + "/diagnostics?attempt_id=" + attemptID
+	status, diagnostics := do(t, client, srv.URL, http.MethodGet, diagnosticPath, nil, "")
+	if status != http.StatusOK || diagnostics["case_id"] != caseID || diagnostics["run_id"] != runID {
+		t.Fatalf("authorized diagnostics %d %v", status, diagnostics)
+	}
+	execution, ok := diagnostics["execution"].(map[string]any)
+	if !ok {
+		t.Fatalf("diagnostics missing execution: %v", diagnostics)
+	}
+	attempt, ok := execution["attempt"].(map[string]any)
+	if !ok || attempt["id"] != attemptID {
+		t.Fatalf("diagnostics selected wrong attempt: %v", execution["attempt"])
+	}
+	snap, ok := diagnostics["snapshot"].(map[string]any)
+	if !ok || snap["comparator_ref"] != engine.ComparatorRef || snap["rule_set_hash"] != engine.RuleSetHash() ||
+		snap["playbook_hash"] != engine.PlaybookHash() || snap["model_ref"] != (e2eModels{}).Name() ||
+		!reflect.DeepEqual(snap["document_ids"], publicSnapshot["document_ids"]) {
+		t.Fatalf("diagnostic snapshot %+v", diagnostics["snapshot"])
 	}
 
-	status, _ = do(t, client, srv.URL, http.MethodPost, "/api/cases/"+caseID+"/reviews/"+runID+"/findings/"+finding["id"].(string)+"/decisions", map[string]any{
+	status, _ = do(t, client, srv.URL, http.MethodPost, reviewPath+"/findings/"+finding["id"].(string)+"/decisions", map[string]any{
 		"action": "confirm_risk", "reason": "两份材料写明的质保月数不同", "expected_version": 1,
 	}, "e2e-1")
 	if status != http.StatusNoContent {
 		t.Fatalf("decide %d", status)
 	}
-	_, ws = do(t, client, srv.URL, http.MethodGet, "/api/cases/"+caseID+"/reviews/"+runID, nil, "")
+	status, ws = do(t, client, srv.URL, http.MethodGet, reviewPath, nil, "")
+	if status != http.StatusOK {
+		t.Fatalf("workspace after decision %d %v", status, ws)
+	}
 	finding = ws["findings"].([]any)[0].(map[string]any)
 	history := finding["decisions"].([]any)
 	if len(history) != 1 || history[0].(map[string]any)["action"] != "confirm_risk" {
@@ -117,6 +155,24 @@ func TestProcurementWarrantyConflictAndConfirm(t *testing.T) {
 	}
 	if ws["run"].(map[string]any)["state"] != "completed" {
 		t.Fatalf("state %+v", ws["run"])
+	}
+
+	revisedDoc := upload(t, client, srv.URL, caseID, "draft_contract", "draft-v2.txt", []byte("拟签合同约定质保36个月。"))
+	if revisedDoc == docA || revisedDoc == docB {
+		t.Fatal("revised document was not distinct")
+	}
+	status, detail := do(t, client, srv.URL, http.MethodGet, "/api/cases/"+caseID, nil, "")
+	if status != http.StatusOK || detail["revision_pending"] != true {
+		t.Fatalf("revised document not reflected in case: %d %v", status, detail)
+	}
+	status, oldWorkspace := do(t, client, srv.URL, http.MethodGet, reviewPath+"?attempt_id="+attemptID, nil, "")
+	if status != http.StatusOK || !reflect.DeepEqual(oldWorkspace["snapshot"], publicSnapshot) {
+		t.Fatalf("business snapshot changed after document revision: %d %v", status, oldWorkspace)
+	}
+	status, afterDiagnostics := do(t, client, srv.URL, http.MethodGet, diagnosticPath, nil, "")
+	if status != http.StatusOK || afterDiagnostics["case_id"] != caseID || afterDiagnostics["run_id"] != runID ||
+		!reflect.DeepEqual(afterDiagnostics["snapshot"], snap) {
+		t.Fatalf("diagnostic snapshot changed after decision and document revision: %d %v", status, afterDiagnostics)
 	}
 }
 

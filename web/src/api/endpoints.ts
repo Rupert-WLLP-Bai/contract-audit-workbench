@@ -27,6 +27,7 @@ import {
   parseId,
   parseRemediation,
   parseReportRecord,
+  parseReviewDiagnostics,
   parseReviewWorkspace,
   parseSettings,
   parseTemplateList,
@@ -178,10 +179,10 @@ export function reparseDocument(caseId: string, documentId: string) {
   );
 }
 
-export function startReview(caseId: string) {
+export function startReview(caseId: string, input: { business_at?: string } = {}) {
   return requestJson(
     paths.reviews(caseId),
-    jsonInit("POST", {}),
+    jsonInit("POST", input),
     parseAcceptedReview,
   );
 }
@@ -197,6 +198,24 @@ export function getReview(
     { method: "GET", signal },
     parseReviewWorkspace,
   );
+}
+
+export async function getReviewDiagnostics(
+  caseId: string,
+  runId: string,
+  attemptId?: string | null,
+  signal?: AbortSignal,
+) {
+  const diagnostics = await requestJson(
+    paths.reviewDiagnostics(caseId, runId, attemptId),
+    { method: "GET", signal },
+    parseReviewDiagnostics,
+  );
+  if (diagnostics.case_id !== caseId || diagnostics.run_id !== runId ||
+      (attemptId && diagnostics.execution && diagnostics.execution.attempt.id !== attemptId)) {
+    throw new ApiError("审查诊断身份不匹配", 500, "invalid_response", false, null);
+  }
+  return diagnostics;
 }
 
 export async function getReviewHistory(
@@ -324,11 +343,21 @@ export function createKnowledge(input: KnowledgeInput) {
   return requestJson(paths.knowledge, jsonInit("POST", input), parseKnowledge);
 }
 
-export function getKnowledge(knowledgeId: string, signal?: AbortSignal) {
+export function getKnowledge(
+  knowledgeId: string,
+  versionId: string,
+  signal?: AbortSignal,
+) {
   return requestJson(
-    paths.knowledgeEntry(knowledgeId),
+    paths.knowledgeVersion(knowledgeId, versionId),
     { method: "GET", signal },
-    parseKnowledge,
+    (value) => {
+      const knowledge = parseKnowledge(value);
+      if (knowledge.id !== knowledgeId || knowledge.version_id !== versionId) {
+        throw new ApiError("知识版本与请求不一致", 500, "invalid_response", false, null);
+      }
+      return knowledge;
+    },
   );
 }
 

@@ -131,7 +131,7 @@ export function RulePacksPage() {
       ),
     },
     {
-      title: "权威来源",
+      title: "规则依据来源",
       key: "authority",
       render: (_, pack) => pack.authority_sources.join("；") || "无",
     },
@@ -199,7 +199,7 @@ export function RulePacksPage() {
               查找规则包
               <Input
                 type="search"
-                placeholder="名称、版本或权威来源"
+                placeholder="名称、版本或规则依据来源"
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
               />
@@ -228,7 +228,7 @@ export function RulePacksPage() {
             <PageStatus
               kind="empty"
               title="还没有规则包"
-              detail="创建一个新草稿，再填写适用范围、有效期、比较参数和权威来源。"
+              detail="创建一个新草稿，再填写适用范围、有效期、比较参数和规则依据来源。"
             />
           ) : filtered.length === 0 ? (
             <PageStatus
@@ -301,7 +301,7 @@ export function RulePacksPage() {
                 ))}
               </ul>
             ) : (
-              <p className="meta">尚未填写权威来源。</p>
+              <p className="meta">尚未填写规则依据来源。</p>
             )}
             <Button
               aria-label={"管理此版本"}

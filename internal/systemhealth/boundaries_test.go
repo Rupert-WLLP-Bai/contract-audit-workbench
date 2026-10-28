@@ -36,7 +36,7 @@ func TestLocalIntegrationsKeepConfigurationDistinctFromReachability(t *testing.T
 		if failure {
 			expected = "unavailable"
 		}
-		if byID["db"].Status != expected || byID["review-model"].Status != "unknown" || byID["ocr-model"].Status != "unconfigured" || byID["mineru"].Status != "ready" {
+		if byID["db"].Status != expected || byID["review-model"].Status != "unknown" || byID["ocr-model"].Status != "unconfigured" || byID["jev-model"].Status != "unconfigured" || byID["mineru"].Status != "ready" {
 			t.Fatalf("configuration asserted as observation: %+v", byID)
 		}
 		raw, _ := json.Marshal(snapshot)

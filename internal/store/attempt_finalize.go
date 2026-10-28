@@ -80,7 +80,7 @@ func loadAttemptOutputScope(ctx context.Context, tx pgx.Tx, runID, attemptID str
 		return state{}, err
 	}
 
-	evaluations, err := tx.Query(ctx, `SELECT id, run_id, attempt_id, case_id, domain, relation, rule_version, reason, finding_id, rule_id, capability_id, reason_code, fact_ids, object_refs, mandatory
+	evaluations, err := tx.Query(ctx, `SELECT id, run_id, attempt_id, case_id, domain, relation, rule_version, reason, finding_id, rule_id, capability_id, reason_code, fact_ids, object_refs, mandatory, evidence
 		FROM constraint_evaluations WHERE attempt_id=$1 AND run_id=$2 ORDER BY seq`, attemptID, runID)
 	if err != nil {
 		return state{}, err
@@ -89,7 +89,8 @@ func loadAttemptOutputScope(ctx context.Context, tx pgx.Tx, runID, attemptID str
 	for evaluations.Next() {
 		var item ConstraintEval
 		var factIDs, objectRefs string
-		if err := evaluations.Scan(&item.ID, &item.RunID, &item.AttemptID, &item.CaseID, &item.Domain, &item.Relation, &item.RuleVersion, &item.Reason, &item.FindingID, &item.RuleID, &item.CapabilityID, &item.ReasonCode, &factIDs, &objectRefs, &item.Mandatory); err != nil {
+		var evidence []byte
+		if err := evaluations.Scan(&item.ID, &item.RunID, &item.AttemptID, &item.CaseID, &item.Domain, &item.Relation, &item.RuleVersion, &item.Reason, &item.FindingID, &item.RuleID, &item.CapabilityID, &item.ReasonCode, &factIDs, &objectRefs, &item.Mandatory, &evidence); err != nil {
 			return state{}, err
 		}
 		if err := json.Unmarshal([]byte(factIDs), &item.FactIDs); err != nil {
@@ -97,6 +98,14 @@ func loadAttemptOutputScope(ctx context.Context, tx pgx.Tx, runID, attemptID str
 		}
 		if err := json.Unmarshal([]byte(objectRefs), &item.ObjectRefs); err != nil {
 			return state{}, err
+		}
+		if len(evidence) > 0 {
+			if err := json.Unmarshal(evidence, &item.Evidence); err != nil {
+				return state{}, err
+			}
+		}
+		if len(item.Evidence) == 0 {
+			item.Evidence = nil
 		}
 		scope.Evaluations = append(scope.Evaluations, item)
 	}

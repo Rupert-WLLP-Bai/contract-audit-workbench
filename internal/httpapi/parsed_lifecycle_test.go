@@ -29,8 +29,9 @@ func TestHTTPReparseKeepsFrozenProvenanceAndCreatesNewRun(t *testing.T) {
 		t.Fatalf("old workspace %d: %v", status, old)
 	}
 	assertWireSchema(t, openAPI(t), "Workspace", old)
+	diagnostics := api.reviewDiagnostics(t, oldPath)
 	byDocument := map[string]map[string]any{}
-	for _, raw := range old["documents"].([]any) {
+	for _, raw := range diagnostics["documents"].([]any) {
 		doc := raw.(map[string]any)
 		parsed, ok := doc["parsed_document"].(map[string]any)
 		if !ok || parsed["document_id"] != doc["id"] || parsed["original_digest"] != doc["digest"] || parsed["normalized_digest"] != doc["normalized_text_digest"] {
@@ -39,7 +40,7 @@ func TestHTTPReparseKeepsFrozenProvenanceAndCreatesNewRun(t *testing.T) {
 		byDocument[doc["id"].(string)] = parsed
 	}
 	firstParse := byDocument[docID]
-	inputIDs := old["execution"].(map[string]any)["attempt"].(map[string]any)["parsed_document_ids"].([]any)
+	inputIDs := old["review_attempts"].(map[string]any)["attempt"].(map[string]any)["parsed_document_ids"].([]any)
 	selectedIDs := map[any]bool{}
 	for _, id := range inputIDs {
 		if selectedIDs[id] {
@@ -58,13 +59,26 @@ func TestHTTPReparseKeepsFrozenProvenanceAndCreatesNewRun(t *testing.T) {
 	if firstParse["original_digest"] != docversion.Hash(original).String() || firstParse["normalized_digest"] == firstParse["original_digest"] {
 		t.Fatalf("original and normalized identities were conflated: %+v", firstParse)
 	}
+	diagnosticAnchors := map[string]map[string]map[string]any{}
+	for _, raw := range diagnostics["evidence"].([]any) {
+		finding := raw.(map[string]any)
+		anchors := map[string]map[string]any{}
+		for _, rawAnchor := range finding["anchors"].([]any) {
+			anchor := rawAnchor.(map[string]any)
+			anchors[anchor["id"].(string)] = anchor
+		}
+		diagnosticAnchors[finding["finding_id"].(string)] = anchors
+	}
 	for _, rawFinding := range old["findings"].([]any) {
 		finding := rawFinding.(map[string]any)
 		for _, rawAnchor := range finding["evidence"].([]any) {
 			anchor := rawAnchor.(map[string]any)
 			parsed := byDocument[anchor["document_version_id"].(string)]
-			if anchor["status"] != "located" || anchor["parsed_document_id"] != parsed["id"] || anchor["normalized_digest"] != parsed["normalized_digest"] {
-				t.Fatalf("evidence is not bound to its frozen parse: %+v", anchor)
+			diagnostic := diagnosticAnchors[finding["id"].(string)][anchor["id"].(string)]
+			if parsed == nil || diagnostic == nil || anchor["status"] != "located" ||
+				anchor["parsed_document_id"] != parsed["id"] || diagnostic["document_id"] != anchor["document_version_id"] ||
+				diagnostic["parsed_document_id"] != anchor["parsed_document_id"] || diagnostic["normalized_digest"] != parsed["normalized_digest"] {
+				t.Fatalf("evidence is not bound to its frozen parse: anchor=%+v diagnostic=%+v", anchor, diagnostic)
 			}
 		}
 	}
@@ -85,6 +99,13 @@ func TestHTTPReparseKeepsFrozenProvenanceAndCreatesNewRun(t *testing.T) {
 		t.Fatalf("history %d: %v", status, history)
 	}
 	for _, raw := range history["documents"].([]any) {
+		doc := raw.(map[string]any)
+		if doc["id"] == docID && doc["parsed_document_id"] != firstParse["id"] {
+			t.Fatalf("reparse replaced historical parse identity: %+v", doc)
+		}
+	}
+	historyDiagnostics := api.reviewDiagnostics(t, oldPath)
+	for _, raw := range historyDiagnostics["documents"].([]any) {
 		doc := raw.(map[string]any)
 		if doc["id"] == docID && doc["parsed_document"].(map[string]any)["artifact_digest"] != firstParse["artifact_digest"] {
 			t.Fatalf("reparse replaced historical provenance: %+v", doc)

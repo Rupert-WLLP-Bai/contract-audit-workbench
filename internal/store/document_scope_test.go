@@ -22,7 +22,8 @@ func TestCrossOrganizationGenerationPreservesCaseIdentity(t *testing.T) {
 	core, document := environment.openRole(t, "core"), environment.openRole(t, "document")
 	owner := accounts.User{ID: "org-owner", DisplayName: "案件所属部门", Role: "clerk", TenantID: "shared-tenant", OrgID: "branch-sales", Enabled: true, Issuer: "https://directory.invalid", Subject: "org-owner", Grants: []access.Grant{{Role: "case_owner", Scope: "self"}}}
 	collaborator := accounts.User{ID: "org-collaborator", DisplayName: "跨部门经办", Role: "clerk", TenantID: owner.TenantID, OrgID: "central-office", Enabled: true, Issuer: owner.Issuer, Subject: "org-collaborator", Grants: []access.Grant{{Role: "case_owner", Scope: "org_subtree", ResolvedOrgIDs: []string{owner.OrgID}}}}
-	body, err := json.Marshal(map[string]any{"users": []accounts.User{owner, collaborator}})
+	governanceAdmin := accounts.User{ID: "org-governance-admin", DisplayName: "制度管理员", Role: "admin", TenantID: owner.TenantID, OrgID: owner.OrgID, Enabled: true, Issuer: owner.Issuer, Subject: "org-governance-admin"}
+	body, err := json.Marshal(map[string]any{"users": []accounts.User{owner, collaborator, governanceAdmin}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -38,6 +39,8 @@ func TestCrossOrganizationGenerationPreservesCaseIdentity(t *testing.T) {
 			t.Error(err)
 		}
 	})
+	pack := publishSyntheticAcceptancePack(t, core, governanceAdmin)
+	publishSyntheticAcceptancePolicy(t, core, governanceAdmin, pack)
 	caseID, err := core.CreateCaseWithBusiness(owner, "跨部门专线生成", "service", "ENT", "telecom_dedicated_line")
 	if err != nil {
 		t.Fatal(err)
@@ -95,7 +98,7 @@ func TestCrossOrganizationGenerationPreservesCaseIdentity(t *testing.T) {
 		}
 		workerContext, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
-		accepted, err := execution.StartReviewAsync(workerContext, collaborator, reviewCaseID)
+		accepted, err := execution.StartReviewAsyncAt(workerContext, collaborator, reviewCaseID, acceptanceBusinessTime)
 		if err != nil {
 			t.Fatalf("accept cross-organization review: %v", err)
 		}
@@ -137,7 +140,7 @@ func TestCrossOrganizationGenerationPreservesCaseIdentity(t *testing.T) {
 		}
 		revoked := collaborator
 		revoked.Grants = nil
-		revokedBody, err := json.Marshal(map[string]any{"users": []accounts.User{owner, revoked}})
+		revokedBody, err := json.Marshal(map[string]any{"users": []accounts.User{owner, revoked, governanceAdmin}})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -165,7 +168,7 @@ func TestCrossOrganizationGenerationPreservesCaseIdentity(t *testing.T) {
 		gate := newHeldReviewModel(1)
 		execution.UseModels(gate)
 		workerContext, stop := context.WithTimeout(context.Background(), 20*time.Second)
-		accepted, err := execution.StartReviewAsync(workerContext, collaborator, caseID)
+		accepted, err := execution.StartReviewAsyncAt(workerContext, collaborator, caseID, acceptanceBusinessTime)
 		if err != nil {
 			stop()
 			t.Fatalf("accept authorized cross-organization review: %v", err)
@@ -205,7 +208,7 @@ func TestCrossOrganizationGenerationPreservesCaseIdentity(t *testing.T) {
 			t.Fatalf("actor home organization replaced the authoritative case organization: %v", err)
 		}
 		collaborator.Grants = nil
-		revoked, err := json.Marshal(map[string]any{"users": []accounts.User{owner, collaborator}})
+		revoked, err := json.Marshal(map[string]any{"users": []accounts.User{owner, collaborator, governanceAdmin}})
 		if err != nil {
 			t.Fatal(err)
 		}

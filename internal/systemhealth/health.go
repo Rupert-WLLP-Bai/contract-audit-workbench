@@ -10,8 +10,12 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"time"
+
+	"contractaudit/internal/agentflow"
+	"contractaudit/internal/jev"
 )
 
 const SchemaVersion = "system-health/v1"
@@ -43,6 +47,33 @@ type Service struct {
 	DependsOn []string   `json:"depends_on"`
 	Container *Container `json:"container"`
 	Probe     *Probe     `json:"probe"`
+	// LogicalID is the stable service identity. InstanceID is the stable
+	// runtime identity (Pod UID or container ID) and is what a client must use
+	// when it keeps one instance selected across refreshes. ID remains the
+	// unique display key for this row.
+	LogicalID  string `json:"logical_id,omitempty"`
+	InstanceID string `json:"instance_id,omitempty"`
+	Namespace  string `json:"namespace,omitempty"`
+	NodeName   string `json:"node_name,omitempty"`
+	Workload   string `json:"workload,omitempty"`
+	ObservedAt string `json:"observed_at,omitempty"`
+}
+
+// ServiceGroup separates a logical service from its observed instances and
+// carries controller-derived replica expectations. ExpectedSource is
+// "deployment" when Kubernetes reported it, "catalog" for an explicit static
+// deployment definition, and "unavailable" when no controller data exists.
+type ServiceGroup struct {
+	ID                string `json:"id"`
+	Name              string `json:"name"`
+	Category          string `json:"category"`
+	Status            string `json:"status"`
+	Detail            string `json:"detail"`
+	ExpectedInstances int    `json:"expected_instances"`
+	ObservedInstances int    `json:"observed_instances"`
+	ReadyInstances    int    `json:"ready_instances"`
+	ExpectedSource    string `json:"expected_source"`
+	ObservedAt        string `json:"observed_at,omitempty"`
 }
 
 type Snapshot struct {
@@ -52,6 +83,7 @@ type Snapshot struct {
 	Source        string              `json:"source"`
 	Cluster       *Cluster            `json:"cluster"`
 	Services      []Service           `json:"services"`
+	Groups        []ServiceGroup      `json:"groups"`
 	Architecture  []ArchitectureEntry `json:"architecture"`
 }
 
@@ -59,19 +91,166 @@ type Reader interface {
 	Snapshot(context.Context) Snapshot
 }
 
+// JevConfig is a credential-free summary of the optional TypeSafe provider.
+// KeyConfigured reports only whether a key is present; the key itself never
+// enters a Snapshot.
+type JevConfig struct {
+	Name          string
+	Endpoint      string
+	Mode          string
+	Provider      string
+	Egress        string
+	Features      []string
+	KeyConfigured bool
+	Valid         bool
+	Reason        string
+	// GatewayStatus and GatewayReason come from the model gateway's
+	// credential-free status route. They are empty for a single-process
+	// deployment where the health process is the only observer.
+	GatewayStatus string
+	GatewayReason string
+	GatewayURL    string
+}
+
 type Config struct {
-	Project       string
-	DockerURL     string
-	Client        *http.Client
-	Kubernetes    *KubernetesConfig
-	DatabaseReady func(context.Context) error
-	ModelName     string
-	ModelEndpoint string
-	OCRName       string
-	MinerUURL     string
+	Project          string
+	DockerURL        string
+	Client           *http.Client
+	Kubernetes       *KubernetesConfig
+	DatabaseReady    func(context.Context) error
+	DatabaseTarget   string
+	ModelName        string
+	ModelEndpoint    string
+	OCRName          string
+	MinerUURL        string
+	Jev              JevConfig
+	ExpectedReplicas map[string]int
+}
+
+// JevFromEnv reads the TypeSafe model configuration for health reporting. It
+// keeps the API key out of the returned value; only its presence is exposed.
+func JevFromEnv() JevConfig {
+	state := jev.FromEnv().State()
+	mode := strings.ToLower(strings.TrimSpace(os.Getenv("TYPESAFE_JEV_MODE")))
+	if mode == "" {
+		mode = "off"
+	}
+	egress := strings.ToLower(strings.TrimSpace(os.Getenv("TYPESAFE_JEV_EGRESS")))
+	if egress == "" {
+		egress = "minimized"
+	}
+	features := []string{}
+	for _, item := range strings.Split(os.Getenv("TYPESAFE_JEV_FEATURES"), ",") {
+		if feature := strings.TrimSpace(item); feature != "" {
+			features = append(features, feature)
+		}
+	}
+	if len(features) == 0 {
+		features = []string{"knowledge_rerank"}
+	}
+	provider := strings.ToLower(strings.TrimSpace(os.Getenv("TYPESAFE_JEV_PROVIDER")))
+	if provider == "" {
+		if mode == "fixture" {
+			provider = "local-fixture"
+		} else {
+			provider = "model-gateway"
+		}
+	}
+	config := JevConfig{
+		Name: state.Model, Endpoint: state.Endpoint, Mode: mode, Provider: provider,
+		Egress: egress, Features: features, KeyConfigured: state.KeyConfigured,
+		Valid: true, GatewayURL: gatewayBaseURL(os.Getenv("MODEL_GATEWAY_URL")),
+	}
+	if mode == "off" {
+		config.Reason = "disabled"
+		return config
+	}
+	resolved, reason := agentflow.ResolveAdvisoryConfiguration()
+	if resolved == nil {
+		config.Valid = false
+		config.Reason = reason
+		return config
+	}
+	config.Name = resolved.Model
+	config.Mode = resolved.Mode
+	config.Provider = resolved.Provider
+	config.Egress = resolved.Egress
+	config.Features = append([]string(nil), resolved.Features...)
+	return config
+}
+
+// gatewayBaseURL removes the API prefix from MODEL_GATEWAY_URL. The model
+// client uses .../v1, while the gateway's credential-free Jev status route is
+// mounted at the service root.
+func gatewayBaseURL(raw string) string {
+	return strings.TrimSuffix(strings.TrimRight(strings.TrimSpace(raw), "/"), "/v1")
+}
+
+// JevGatewayStatus is the credential-free status published by the model
+// gateway. The health collector never holds TYPESAFE_API_KEY; it learns whether
+// the gateway has one from this route.
+type JevGatewayStatus struct {
+	Mode     string   `json:"mode"`
+	Status   string   `json:"status"`
+	Model    string   `json:"model"`
+	Features []string `json:"features"`
+	Egress   string   `json:"egress"`
+	Reason   string   `json:"reason"`
+}
+
+func FetchJevGatewayStatus(ctx context.Context, endpoint string) (JevGatewayStatus, bool) {
+	endpoint = strings.TrimRight(strings.TrimSpace(endpoint), "/")
+	if endpoint == "" {
+		return JevGatewayStatus{}, false
+	}
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint+"/health/jev", nil)
+	if err != nil {
+		return JevGatewayStatus{}, false
+	}
+	var status JevGatewayStatus
+	if err := getJSON(endpointClient, request, &status); err != nil {
+		return JevGatewayStatus{}, false
+	}
+	return status, true
 }
 
 type Monitor struct{ config Config }
+
+// ParseExpectedReplicas reads an explicit deployment declaration such as
+// "core-api=2,audit-worker=3". It is not derived from observed Pods.
+func ParseExpectedReplicas(raw string) (map[string]int, error) {
+	result := map[string]int{}
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return result, nil
+	}
+	for _, item := range strings.Split(raw, ",") {
+		item = strings.TrimSpace(item)
+		id, count, ok := strings.Cut(item, "=")
+		id, count = strings.TrimSpace(id), strings.TrimSpace(count)
+		if !ok || id == "" || len(id) > 64 || count == "" {
+			return nil, errors.New("SYSTEM_HEALTH_EXPECTED_REPLICAS must be id=count pairs")
+		}
+		for _, c := range id {
+			if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_' || c == '-' || c == '.') {
+				return nil, errors.New("SYSTEM_HEALTH_EXPECTED_REPLICAS contains an invalid service id")
+			}
+		}
+		value, err := strconv.Atoi(count)
+		if err != nil || value < 0 || value > 99 {
+			return nil, errors.New("SYSTEM_HEALTH_EXPECTED_REPLICAS count must be an integer in 0..99")
+		}
+		result[id] = value
+	}
+	return result, nil
+}
+
+// ExpectedReplicasFromEnv is the deployment-side declaration consumed by the
+// standalone health monitor. Invalid values fail startup instead of silently
+// producing a misleading health page.
+func ExpectedReplicasFromEnv() (map[string]int, error) {
+	return ParseExpectedReplicas(os.Getenv("SYSTEM_HEALTH_EXPECTED_REPLICAS"))
+}
 
 func New(config Config) *Monitor {
 	if config.Client == nil {
@@ -80,12 +259,12 @@ func New(config Config) *Monitor {
 	return &Monitor{config: config}
 }
 
-func FromEnv(ready func(context.Context) error) Reader {
+func FromEnv(ready func(context.Context) error, databaseTarget string) Reader {
 	remote := strings.TrimSpace(os.Getenv("SYSTEM_HEALTH_URL"))
 	if remote != "" {
 		return &Remote{URL: remote, Client: &http.Client{Timeout: 5 * time.Second}}
 	}
-	return New(Config{DatabaseReady: ready, ModelName: os.Getenv("LLM_MODEL"), ModelEndpoint: os.Getenv("LLM_BASE_URL"), OCRName: os.Getenv("OCR_MODEL"), MinerUURL: os.Getenv("MINERU_URL")})
+	return New(Config{DatabaseReady: ready, DatabaseTarget: databaseTarget, ModelName: os.Getenv("LLM_MODEL"), ModelEndpoint: os.Getenv("LLM_BASE_URL"), OCRName: os.Getenv("OCR_MODEL"), MinerUURL: os.Getenv("MINERU_URL"), Jev: JevFromEnv()})
 }
 
 // DockerClient is used only by the isolated deployment monitor, never the API.

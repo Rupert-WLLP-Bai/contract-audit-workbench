@@ -77,9 +77,11 @@ func TestPendingImageIsAcceptedBeforeOCRAndDetailsDoNotParse(t *testing.T) {
 	if status != http.StatusOK {
 		t.Fatalf("preparing workspace %d: %+v", status, preparing)
 	}
-	attempt := preparing["execution"].(map[string]any)["attempt"].(map[string]any)
-	if attempt["history_kind"] != "preparing" || attempt["input_hash"] != nil {
-		t.Fatalf("unfinished OCR was advertised as a frozen input: %+v", attempt)
+	attempt := preparing["review_attempts"].(map[string]any)["attempt"].(map[string]any)
+	preparingDiagnostics := api.reviewDiagnostics(t, path)
+	preparingDiagnosticAttempt := preparingDiagnostics["execution"].(map[string]any)["attempt"].(map[string]any)
+	if attempt["history_kind"] != "preparing" || preparingDiagnosticAttempt["input_hash"] != nil {
+		t.Fatalf("unfinished OCR was advertised as a frozen input: attempt=%+v diagnostics=%+v", attempt, preparingDiagnosticAttempt)
 	}
 	status, preparingCase := api.do(t, http.MethodGet, base, nil)
 	if status != http.StatusOK || preparingCase["revision_pending"] != false {
@@ -87,9 +89,11 @@ func TestPendingImageIsAcceptedBeforeOCRAndDetailsDoNotParse(t *testing.T) {
 	}
 	parser.release <- struct{}{}
 	finished := api.waitReview(t, path)
-	attempt = finished["execution"].(map[string]any)["attempt"].(map[string]any)
-	if attempt["history_kind"] != "frozen" || attempt["input_hash"] == nil || len(attempt["parsed_document_ids"].([]any)) != 2 {
-		t.Fatalf("completed preparation did not freeze exact references: %+v", attempt)
+	attempt = finished["review_attempts"].(map[string]any)["attempt"].(map[string]any)
+	finishedDiagnostics := api.reviewDiagnostics(t, path)
+	finishedDiagnosticAttempt := finishedDiagnostics["execution"].(map[string]any)["attempt"].(map[string]any)
+	if attempt["history_kind"] != "frozen" || finishedDiagnosticAttempt["input_hash"] == nil || len(attempt["parsed_document_ids"].([]any)) != 2 {
+		t.Fatalf("completed preparation did not freeze exact references: attempt=%+v diagnostics=%+v", attempt, finishedDiagnosticAttempt)
 	}
 	if finished["run"].(map[string]any)["state"] != "partial" || len(finished["findings"].([]any)) != 1 || parser.calls.Load() != 1 {
 		t.Fatalf("model failure lost rules or repeated OCR: state=%v calls=%d", finished["run"], parser.calls.Load())

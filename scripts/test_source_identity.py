@@ -65,11 +65,16 @@ class SourceIdentityScopeTests(unittest.TestCase):
         self.write("deployments/scripts/__pycache__/journey-local.cpython-314.pyc", "cache\n")
         self.write("web/node_modules/left-pad/index.js", "module.exports = 1\n")
         self.write("web/dist/assets/app.js", "built\n")
+        self.write("web/.impeccable/config.json", "{}\n")
+        self.write("web/.impeccable/hook.cache.json", "{\"generated\": true}\n")
+        self.write(".github/hooks/impeccable.json", "{}\n")
         unchanged = source_identity(self.root)
         self.assertEqual(self.baseline["digest"], unchanged["digest"])
         excluded = {record["path"] for record in unchanged["files"]}
         self.assertFalse([path for path in excluded if path.endswith(".pyc") or "__pycache__" in path])
         self.assertFalse([path for path in excluded if path.startswith("web/node_modules/") or path.startswith("web/dist/")])
+        self.assertFalse([path for path in excluded if path.startswith("web/.impeccable/")])
+        self.assertNotIn(".github/hooks/impeccable.json", excluded)
 
 
 class SourceIdentityRepositoryTests(unittest.TestCase):

@@ -14,7 +14,7 @@ import (
 // after the current case has been resolved inside the state transaction.
 func businessWritable(item Case) error {
 	if item.BusinessStatus == "archived" || item.ArchivedAt != nil {
-		return fault.Conflict("案件已归档，业务写入已冻结")
+		return fault.Conflict("案件已归档，不能再修改业务记录")
 	}
 	return nil
 }

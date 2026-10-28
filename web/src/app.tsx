@@ -1,5 +1,5 @@
 import { lazy, Suspense } from "react";
-import { Route, Routes, useLocation } from "react-router";
+import { Route, Routes, useLocation, useSearchParams } from "react-router";
 import { AppShell } from "./components/app-shell";
 import { PageStatus } from "./components/page-status";
 import { SessionGate } from "./pages/session-gate";
@@ -41,6 +41,11 @@ const ComparePage = lazy(() =>
     default: module.ComparePage,
   })),
 );
+const CompareEntryPage = lazy(() =>
+  import("./pages/compare-entry-page").then((module) => ({
+    default: module.CompareEntryPage,
+  })),
+);
 const ReviewEntryPage = lazy(() =>
   import("./pages/review-entry-page").then((module) => ({
     default: module.ReviewEntryPage,
@@ -56,6 +61,11 @@ const SystemHealthPage = lazy(() =>
     default: module.SystemHealthPage,
   })),
 );
+
+function CompareRoute() {
+  const [params] = useSearchParams();
+  return params.get("case_id") ? <ComparePage /> : <CompareEntryPage />;
+}
 
 export function App() {
   const pathname = useLocation().pathname;
@@ -83,7 +93,7 @@ export function App() {
               path="/cases/:caseId/reviews/:runId"
               element={<ReviewPage />}
             />
-            <Route path="/compare" element={<ComparePage />} />
+            <Route path="/compare" element={<CompareRoute />} />
             <Route path="/workbench/health" element={<SystemHealthPage />} />
             <Route
               path="/workbench/:module"

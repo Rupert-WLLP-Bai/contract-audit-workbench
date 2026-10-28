@@ -1,3 +1,4 @@
+import { chromiumExecutable } from "./chromium";
 import assert from "node:assert/strict";
 import { mkdir, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
@@ -60,7 +61,7 @@ const username = process.env.E2E_USERNAME || "demo-admin";
 const password = process.env.E2E_PASSWORD || "admin-demo";
 const browser = await chromium.launch({
   headless: true,
-  executablePath: process.env.CHROMIUM_BIN || "/usr/bin/chromium",
+  executablePath: chromiumExecutable(),
   args: ["--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu"],
 });
 const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
@@ -206,9 +207,9 @@ try {
 
     await page.goto(`${web}/cases/${caseID}`);
     await page.getByRole("heading", { name: title, exact: true }).waitFor();
-    await selectRunAndAttempt(page.getByLabel("冻结运行和尝试", { exact: true }), runID, attemptID);
+    await selectRunAndAttempt(page.getByLabel("选择审查和执行记录", { exact: true }), runID, attemptID);
     const reportResponse = page.waitForResponse((response) => response.request().method() === "POST" && response.url().endsWith("/reports"));
-    await page.getByRole("button", { name: "生成冻结报告", exact: true }).click();
+    await page.getByRole("button", { name: "生成报告", exact: true }).click();
     const createdReport = await reportResponse;
     assert.ok(createdReport.status() === 200 || createdReport.status() === 201, `report creation returned HTTP ${createdReport.status()}`);
     const reportDetail = await waitForCase(page, caseID, (detail) => detail.reports.some((report) => report.run_id === runID && report.attempt_id === attemptID));
@@ -443,9 +444,9 @@ async function finishExistingInsufficientScenario(
   let currentDetail = await waitForCase(currentPage, initialDetail.id, (detail) => detail.id === initialDetail.id);
   let report = currentDetail.reports.find((item) => item.run_id === runID && item.attempt_id === attemptID);
   if (!report) {
-    await selectRunAndAttempt(currentPage.getByLabel("冻结运行和尝试", { exact: true }), runID, attemptID);
+    await selectRunAndAttempt(currentPage.getByLabel("选择审查和执行记录", { exact: true }), runID, attemptID);
     const reportResponse = currentPage.waitForResponse((response) => response.request().method() === "POST" && response.url().endsWith("/reports"));
-    await currentPage.getByRole("button", { name: "生成冻结报告", exact: true }).click();
+    await currentPage.getByRole("button", { name: "生成报告", exact: true }).click();
     const createdReport = await reportResponse;
     assert.ok(createdReport.status() === 200 || createdReport.status() === 201, `insufficient report creation returned HTTP ${createdReport.status()}`);
     currentDetail = await waitForCase(currentPage, initialDetail.id, (detail) => detail.reports.some((item) => item.run_id === runID && item.attempt_id === attemptID));
@@ -497,7 +498,7 @@ async function assertArchivedReviewWriteControls(currentPage: Page, scenarioID: 
   } else {
     assert.equal(await decisionButton.count(), 0, `${scenarioID} compatible review exposed a decision control`);
   }
-  for (const name of ["重新尝试未完成运行", "取消当前尝试"]) {
+  for (const name of ["重新执行未完成的审查", "取消本次执行"]) {
     const actionButton = currentPage.getByRole("button", { name, exact: true });
     if (await actionButton.count() > 0) {
       assert.equal(await actionButton.isEnabled(), false, `${scenarioID} archived review still permits ${name}`);

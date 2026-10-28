@@ -35,12 +35,36 @@ var (
 	errModelNotConfigured = errors.New("model is not configured")
 )
 
+// StartReview retains the existing ungoverned entry point. Governed cases must
+// use StartReviewAt with the business instant being reviewed.
 func (s *Store) StartReview(ctx context.Context, user accounts.User, caseID string) (string, error) {
-	return s.startReview(ctx, user, caseID, false)
+	return s.startReview(ctx, user, caseID, "", false)
+}
+
+// StartReviewAt accepts an explicit RFC3339 business instant, including a time
+// zone. The caller supplies the time relevant to the contract; the store derives
+// tenant, organization, actor and all knowledge identities from trusted state.
+func (s *Store) StartReviewAt(ctx context.Context, user accounts.User, caseID, businessAt string) (string, error) {
+	if _, err := knowledgeTime(businessAt); err != nil {
+		return "", err
+	}
+	return s.startReview(ctx, user, caseID, businessAt, false)
 }
 
 func (s *Store) StartReviewAsync(ctx context.Context, user accounts.User, caseID string) (JobAcceptance, error) {
-	runID, err := s.startReview(ctx, user, caseID, true)
+	return s.startReviewAsync(ctx, user, caseID, "")
+}
+
+// StartReviewAsyncAt is the durable counterpart of StartReviewAt.
+func (s *Store) StartReviewAsyncAt(ctx context.Context, user accounts.User, caseID, businessAt string) (JobAcceptance, error) {
+	if _, err := knowledgeTime(businessAt); err != nil {
+		return JobAcceptance{}, err
+	}
+	return s.startReviewAsync(ctx, user, caseID, businessAt)
+}
+
+func (s *Store) startReviewAsync(ctx context.Context, user accounts.User, caseID, businessAt string) (JobAcceptance, error) {
+	runID, err := s.startReview(ctx, user, caseID, businessAt, true)
 	if err != nil {
 		return JobAcceptance{}, err
 	}
@@ -50,23 +74,28 @@ func (s *Store) StartReviewAsync(ctx context.Context, user accounts.User, caseID
 	}
 	attempt, ok := st.latestAttempt(runID)
 	if !ok {
-		return JobAcceptance{}, fault.Conflict("审查任务缺少执行尝试")
+		return JobAcceptance{}, fault.Conflict("审查任务缺少执行记录")
 	}
 	for _, job := range st.Jobs {
 		if job.AttemptID == attempt.ID {
 			return JobAcceptance{RunID: runID, AttemptID: attempt.ID, JobID: job.ID}, nil
 		}
 	}
-	return JobAcceptance{}, fault.Conflict("审查任务没有持久队列记录")
+	return JobAcceptance{}, fault.Conflict("审查任务没有保存到任务队列")
 }
 
-func (s *Store) startReview(ctx context.Context, user accounts.User, caseID string, durable bool) (string, error) {
+func (s *Store) startReview(ctx context.Context, user accounts.User, caseID, businessAt string, durable bool) (string, error) {
 	if err := ctx.Err(); err != nil {
 		return "", err
 	}
 	if s.ReadOnly() {
 		return "", fault.New(503, "read_only", "只读模式下不能发起审查")
 	}
+	currentUser, err := trustedUser(user)
+	if err != nil {
+		return "", err
+	}
+	user = currentUser
 	if !accounts.CanStart(user.Role) {
 		return "", fault.Forbidden("当前角色不能发起审查")
 	}
@@ -108,14 +137,14 @@ func (s *Store) startReview(ctx context.Context, user accounts.User, caseID stri
 		return "", err
 	}
 	if !parsedSelectionCurrent(seen, frozenDocs) {
-		return "", fault.Conflict("材料解析选择刚被更新，请重新发起审查")
+		return "", fault.Conflict("所选的材料解析版本刚被更新，请重新发起审查")
 	}
 	seen, err = s.snapshotAs(user)
 	if err != nil {
 		return "", err
 	}
 	if !sameDocumentSet(documentIDs(currentDocuments(seen.documents(caseID))), reviewDocumentIDs) || !parsedSelectionCurrent(seen, frozenDocs) {
-		return "", fault.Conflict("材料解析选择刚被更新，请重新发起审查")
+		return "", fault.Conflict("所选的材料解析版本刚被更新，请重新发起审查")
 	}
 	caseItem, ok := seen.caseByID(caseID)
 	if !ok {
@@ -132,32 +161,13 @@ func (s *Store) startReview(ctx context.Context, user accounts.User, caseID stri
 	if err != nil {
 		return "", err
 	}
-	acceptanceTime := time.Now().UTC()
 	var activePack *ActiveRulePack
-	if isGovernedReviewCase(caseItem) {
-		activePack, err = s.selectGovernedRulePack(ctx, caseItem)
-		if err != nil {
-			return "", err
-		}
-	}
 	plannerPayload, payloadErr := json.Marshal(plannerConfiguration)
 	if payloadErr != nil {
 		return "", payloadErr
 	}
-	signature := s.currentSignatureWithRulePack(reviewDocumentIDs, frozenDocs, activePack, telecomCompilerRefForCase(caseItem), plannerConfiguration.ConfigurationID, plannerPayload)
-	signature, err = withCloudPolicySnapshot(seen, caseItem, signature)
-	if err != nil {
-		return "", err
-	}
-	if run, ok := seen.latestRun(caseID); ok {
-		previous := seen.snapshotOf(run.ID)
-		if sameRunSignature(previous, signature) && sameRunCompilerIdentity(previous, signature) && (!durable || hasJobForRun(seen, run.ID)) {
-			return run.ID, nil
-		}
-	}
-	if !durable && !s.reserveExecution() {
-		return "", &fault.Error{Status: 503, Code: "execution_capacity", Message: "审查执行容量已满，请稍后重试", Retryable: true}
-	}
+	signature := s.currentSignatureWithRulePack(reviewDocumentIDs, frozenDocs, nil, telecomCompilerRefForCase(caseItem), plannerConfiguration.ConfigurationID, plannerPayload)
+	reserved := false
 	jobID, outboxID := "", ""
 	if durable {
 		jobID, err = newID("job_")
@@ -171,16 +181,10 @@ func (s *Store) startReview(ctx context.Context, user accounts.User, caseID stri
 	}
 	runID, err := newID("run_")
 	if err != nil {
-		if !durable {
-			s.releaseExecution()
-		}
 		return "", err
 	}
 	attemptID, err := newID("att_")
 	if err != nil {
-		if !durable {
-			s.releaseExecution()
-		}
 		return "", err
 	}
 	acceptedAt := stamp()
@@ -190,29 +194,48 @@ func (s *Store) startReview(ctx context.Context, user accounts.User, caseID stri
 	}
 	var executionCase Case
 	created := false
-	// The hook selects the applicable governed pack inside the acceptance
-	// transaction, after the case lock, and pins exactly what this run freezes.
+	// The same schema-then-case locked transaction resolves the case, active
+	// pack and approved knowledge, and commits the resulting snapshot with the
+	// run, attempt and durable job. Nothing is selected from a client identity.
+	var acceptanceTx pgx.Tx
 	hook := func(tx pgx.Tx) error {
-		if !isGovernedReviewCase(caseItem) {
+		acceptanceTx = tx
+		lockedCase, err := loadKnowledgeCase(ctx, tx, user, caseID)
+		if err != nil {
+			return err
+		}
+		if !isGovernedReviewCase(lockedCase) {
+			signature = s.currentSignatureWithRulePack(reviewDocumentIDs, frozenDocs, nil, telecomCompilerRefForCase(lockedCase), plannerConfiguration.ConfigurationID, plannerPayload)
 			return nil
 		}
-		selected, err := selectActiveRulePackTx(ctx, tx, caseItem.TenantID, caseItem.BusinessLine, caseItem.Scenario, "service", acceptanceTime)
+		at, err := knowledgeTime(businessAt)
 		if err != nil {
 			return err
 		}
-		if selected == nil && isCloudServicesCase(caseItem) {
-			return fault.Conflict("云服务审查必须绑定已发布的云服务治理规则包")
+		selected, err := selectActiveRulePackTx(ctx, tx, lockedCase.TenantID, lockedCase.BusinessLine, lockedCase.Scenario, lockedCase.ContractType, at)
+		if err != nil {
+			return err
 		}
-		if selected != nil {
-			if err := requireGovernedCapabilitiesForCase(caseItem, selected.Snapshot); err != nil {
-				return err
-			}
+		if selected == nil {
+			return fault.Conflict("案件没有适用的已发布规则包")
+		}
+		if err := requireGovernedCapabilitiesForCase(lockedCase, selected.Snapshot); err != nil {
+			return err
+		}
+		knowledge, err := resolveGovernedKnowledgeTx(ctx, tx, user, caseID, businessAt, acceptanceOptionalKnowledgeLimit)
+		if err != nil {
+			return err
+		}
+		if knowledge.RulePack != rulePackRef(selected) {
+			return fault.Conflict("适用制度与规则包的记录不一致")
 		}
 		activePack = selected
-		signature = s.currentSignatureWithRulePack(reviewDocumentIDs, frozenDocs, activePack, telecomCompilerRefForCase(caseItem), plannerConfiguration.ConfigurationID, plannerPayload)
-		signature, err = withCloudPolicySnapshot(seen, caseItem, signature)
-		if err != nil {
-			return err
+		signature = s.currentSignatureWithRulePack(reviewDocumentIDs, frozenDocs, selected, telecomCompilerRefForCase(lockedCase), plannerConfiguration.ConfigurationID, plannerPayload)
+		signature.GovernedKnowledge = &knowledge
+		if isCloudServicesCase(lockedCase) {
+			if _, err := validateCloudPolicyBindings(signature, knowledge, lockedCase.TenantID); err != nil {
+				return fault.Conflict("云服务治理制度绑定无效：" + err.Error())
+			}
 		}
 		return nil
 	}
@@ -223,14 +246,30 @@ func (s *Store) startReview(ctx context.Context, user accounts.User, caseID stri
 		}
 		executionCase = *currentCase
 		if !sameDocumentSet(documentIDs(currentDocuments(st.documents(caseID))), reviewDocumentIDs) || !parsedSelectionCurrent(*st, frozenDocs) {
-			return fault.Conflict("材料解析选择刚被更新，请重新发起审查")
+			return fault.Conflict("所选的材料解析版本刚被更新，请重新发起审查")
 		}
 		if run, ok := st.latestRun(caseID); ok {
 			previous := st.snapshotOf(run.ID)
 			if sameRunSignature(previous, signature) && sameRunCompilerIdentity(previous, signature) && (!durable || hasJobForRun(*st, run.ID)) {
+				if previous.GovernedKnowledge != nil {
+					if err := RevalidateGovernedKnowledgeSnapshotTx(ctx, acceptanceTx, user, caseID, *previous.GovernedKnowledge); err != nil {
+						return err
+					}
+					if isCloudServicesCase(*currentCase) {
+						if _, err := validateCloudPolicyBindings(previous, *previous.GovernedKnowledge, currentCase.TenantID); err != nil {
+							return fault.Conflict("云服务治理制度绑定无效：" + err.Error())
+						}
+					}
+				}
 				runID = run.ID
 				return nil
 			}
+		}
+		if !durable {
+			if !s.reserveExecution() {
+				return &fault.Error{Status: 503, Code: "execution_capacity", Message: "审查执行容量已满，请稍后重试", Retryable: true}
+			}
+			reserved = true
 		}
 		now := acceptedAt
 		st.Runs = append(st.Runs, Run{ID: runID, CaseID: caseID, State: "accepted", ModelRef: signature.ModelRef, CreatedAt: now, UpdatedAt: now})
@@ -289,7 +328,7 @@ func (s *Store) startReview(ctx context.Context, user accounts.User, caseID stri
 	s.releaseParseLock()
 	parseLocked = false
 	if err != nil || !created {
-		if !durable {
+		if reserved {
 			s.releaseExecution()
 		}
 		return runID, err
@@ -314,14 +353,14 @@ func (s *Store) RetryAsync(ctx context.Context, user accounts.User, caseID, runI
 	}
 	attempt, ok := st.latestAttempt(runID)
 	if !ok {
-		return JobAcceptance{}, fault.Conflict("重试任务缺少执行尝试")
+		return JobAcceptance{}, fault.Conflict("重试任务缺少执行记录")
 	}
 	for _, job := range st.Jobs {
 		if job.AttemptID == attempt.ID {
 			return JobAcceptance{RunID: runID, AttemptID: attempt.ID, JobID: job.ID}, nil
 		}
 	}
-	return JobAcceptance{}, fault.Conflict("重试任务没有持久队列记录")
+	return JobAcceptance{}, fault.Conflict("重试任务没有保存到任务队列")
 }
 
 func (s *Store) retry(ctx context.Context, user accounts.User, caseID, runID string, durable bool) error {
@@ -331,6 +370,11 @@ func (s *Store) retry(ctx context.Context, user accounts.User, caseID, runID str
 	if s.ReadOnly() {
 		return fault.New(503, "read_only", "只读模式下不能重试审查")
 	}
+	currentUser, err := trustedUser(user)
+	if err != nil {
+		return err
+	}
+	user = currentUser
 	if !accounts.CanStart(user.Role) {
 		return fault.Forbidden("当前角色不能重试审查")
 	}
@@ -352,32 +396,9 @@ func (s *Store) retry(ctx context.Context, user accounts.User, caseID, runID str
 	frozen := seen.snapshotOf(runID)
 	currentSignature := withFrozenGovernance(currentSignatureFor(frozen.DocumentIDs, nil, s.models, telecomCompilerRefForCase(caseItem)), frozen)
 	if !sameRunConfiguration(frozen, currentSignature) || !sameRunCompilerIdentity(frozen, currentSignature) {
-		return fault.Conflict("规则或模型配置已变更，请发起新的审查以保留原运行快照")
+		return fault.Conflict("规则或模型配置已变更，请发起新的审查。原审查记录会保留")
 	}
-	previousAttempt, ok := seen.latestAttempt(runID)
-	if !ok {
-		return fault.Conflict("历史运行没有冻结输入，不能安全重试；请发起新的审查")
-	}
-	if attemptActive(previousAttempt.State) {
-		return nil
-	}
-	input, ok := seen.attemptInput(previousAttempt.ID)
-	if !ok || previousAttempt.HistoryKind != "frozen" || !attemptSelectionsMatchFrozen(seen.parseSelectionsForAttempt(previousAttempt.ID), input.Documents) {
-		return fault.Conflict("历史运行来源不足，不能安全重试；请发起新的审查")
-	}
-	if err := s.verifyFrozenDocuments(seen, input.Documents); err != nil {
-		return fault.Conflict("冻结输入完整性校验失败，不能安全重试")
-	}
-	if !s.currentParserConfigurationMatches(seen, input.Documents) || !frozenInputMatchesSnapshot(frozen, input.Documents) {
-		return fault.Conflict("解析配置或冻结引用已变更，不能安全重试；请发起新的审查")
-	}
-	inputHash, err := frozenInputHash(frozen, input.Documents)
-	if err != nil || inputHash != input.InputHash {
-		return fault.Conflict("冻结输入摘要校验失败，不能安全重试")
-	}
-	if !durable && !s.reserveExecution() {
-		return &fault.Error{Status: 503, Code: "execution_capacity", Message: "审查执行容量已满，请稍后重试", Retryable: true}
-	}
+	reserved := false
 	jobID, outboxID := "", ""
 	if durable {
 		jobID, err = newID("job_")
@@ -391,16 +412,17 @@ func (s *Store) retry(ctx context.Context, user accounts.User, caseID, runID str
 	}
 	attemptID, err := newID("att_")
 	if err != nil {
-		if !durable {
-			s.releaseExecution()
-		}
 		return err
 	}
 	acceptedAt := stamp()
 	models := s.models
 	created := false
 	var executionCase Case
-	err = s.updateCaseAs(user, caseID, func(st *state) error {
+	var retryTx pgx.Tx
+	err = s.updateCaseAsWith(user, caseID, func(tx pgx.Tx) error {
+		retryTx = tx
+		return nil
+	}, func(st *state) error {
 		currentCase, err := s.writableCase(st, user, caseID, access.Review)
 		if err != nil {
 			return err
@@ -411,24 +433,49 @@ func (s *Store) retry(ctx context.Context, user accounts.User, caseID, runID str
 			return fault.NotFound("没有找到对应记录")
 		}
 		currentSignature := withFrozenGovernance(currentSignatureFor(frozen.DocumentIDs, nil, s.models, telecomCompilerRefForCase(*currentCase)), frozen)
-		if !sameRunConfiguration(st.snapshotOf(runID), frozen) || !sameRunConfiguration(frozen, currentSignature) ||
-			!sameRunCompilerIdentity(frozen, currentSignature) || !s.currentParserConfigurationMatches(*st, input.Documents) {
-			return fault.Conflict("规则或模型配置已变更，请发起新的审查以保留原运行快照")
+		if !sameRunSignature(st.snapshotOf(runID), frozen) || !sameRunConfiguration(frozen, currentSignature) ||
+			!sameRunCompilerIdentity(frozen, currentSignature) {
+			return fault.Conflict("规则或模型配置已变更，请发起新的审查。原审查记录会保留")
+		}
+		if frozen.GovernedKnowledge == nil {
+			if isCloudServicesCase(*currentCase) || (isGovernedReviewCase(*currentCase) && frozen.RulePackID != "") {
+				return fault.Conflict("较早的审查缺少当时保存的制度记录，无法安全重试")
+			}
+		} else {
+			if err := RevalidateGovernedKnowledgeSnapshotTx(ctx, retryTx, user, caseID, *frozen.GovernedKnowledge); err != nil {
+				return err
+			}
+			if isCloudServicesCase(*currentCase) {
+				if _, err := validateCloudPolicyBindings(frozen, *frozen.GovernedKnowledge, currentCase.TenantID); err != nil {
+					return fault.Conflict("云服务治理制度绑定无效：" + err.Error())
+				}
+			}
 		}
 		last, ok := st.latestAttempt(runID)
 		if !ok {
-			return fault.Conflict("历史运行没有冻结输入，不能安全重试；请发起新的审查")
+			return fault.Conflict("较早的审查没有保存当时使用的输入，无法安全重试；请发起新的审查")
 		}
 		if attemptActive(last.State) {
 			return nil
 		}
 		frozenInput, ok := st.attemptInput(last.ID)
-		if !ok || last.HistoryKind != "frozen" || frozenInput.InputHash != input.InputHash || !frozenInputMatchesSnapshot(frozen, frozenInput.Documents) ||
-			!attemptSelectionsMatchFrozen(st.parseSelectionsForAttempt(last.ID), frozenInput.Documents) {
-			return fault.Conflict("运行冻结输入刚被更新，不能安全重试")
+		if !ok || last.HistoryKind != "frozen" || !frozenInputMatchesSnapshot(frozen, frozenInput.Documents) ||
+			!attemptSelectionsMatchFrozen(st.parseSelectionsForAttempt(last.ID), frozenInput.Documents) ||
+			!s.currentParserConfigurationMatches(*st, frozenInput.Documents) {
+			return fault.Conflict("本次审查保存的输入刚发生变化，无法安全重试")
 		}
 		if err := s.verifyFrozenDocuments(*st, frozenInput.Documents); err != nil {
-			return fault.Conflict("冻结输入完整性校验失败，不能安全重试")
+			return fault.Conflict("本次审查保存的输入未通过完整性校验，无法安全重试")
+		}
+		expectedHash, err := frozenInputHash(frozen, frozenInput.Documents)
+		if err != nil || expectedHash != frozenInput.InputHash || last.InputHash == nil || *last.InputHash != frozenInput.InputHash {
+			return fault.Conflict("本次审查保存的输入摘要未通过校验，无法安全重试")
+		}
+		if !durable {
+			if !s.reserveExecution() {
+				return &fault.Error{Status: 503, Code: "execution_capacity", Message: "审查执行容量已满，请稍后重试", Retryable: true}
+			}
+			reserved = true
 		}
 		retryOf := last.ID
 		attempt := Attempt{
@@ -488,7 +535,7 @@ func (s *Store) retry(ctx context.Context, user accounts.User, caseID, runID str
 		return nil
 	})
 	if err != nil || !created {
-		if !durable {
+		if reserved {
 			s.releaseExecution()
 		}
 		return err
@@ -640,7 +687,7 @@ func (s *Store) cancelAttemptInState(st *state, user accounts.User, caseID, runI
 
 func (s *Store) OperationalMetadata(user accounts.User) (map[string]any, error) {
 	if user.Role != "admin" {
-		return nil, fault.Forbidden("只有管理员可以查看运行运维元数据")
+		return nil, fault.Forbidden("只有管理员可以查看审查运行的运维信息")
 	}
 	st := s.snapshot()
 	counts := map[string]any{
@@ -914,42 +961,95 @@ func (s *Store) executeAttemptContext(parent context.Context, runID, attemptID s
 }
 
 func (s *Store) markAttemptStarted(runID, attemptID string) error {
-	// Durable worker path: the start transition runs through the bounded
-	// attempt-scope adapter (case -> attempt -> claim locks, bounded load, delta
-	// persist with the same validation) instead of the whole-state writer.
-	if claim, ok := s.claimForAttempt(attemptID); ok && claim.JobID != "" && claim.AttemptID == attemptID && claim.RunID == runID {
-		return s.scopedAttemptMutation(context.Background(), runID, attemptID, func(next *state) error {
-			return markAttemptStartedInState(next, runID, attemptID)
+	ctx := context.Background()
+	claim, hasClaim := s.claimForAttempt(attemptID)
+	if hasClaim && claim.JobID != "" {
+		if claim.AttemptID != attemptID || claim.RunID != runID || claim.Generation <= 0 || claim.stopReason != "" {
+			return errExecutionEventScope
+		}
+		generation := claim.Generation
+		return s.scopedAttemptMutationWithTx(ctx, runID, attemptID, false, func(tx pgx.Tx, next *state) error {
+			occurred, recorded, err := attemptStartTimestamps(ctx, tx)
+			if err != nil {
+				return err
+			}
+			return markAttemptStartedInState(next, runID, attemptID, &generation, occurred, recorded)
 		})
 	}
-	return s.updateExecution(attemptID, func(st *state) error {
-		return markAttemptStartedInState(st, runID, attemptID)
+	scope := dbScope{ActorID: "worker", TenantID: "local-demo", OrgID: "local-demo", Role: "worker"}
+	if hasClaim {
+		scope = claim.scope()
+	}
+	var occurred, recorded string
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.updateStateWith(ctx, scope, attemptID, func(tx pgx.Tx) error {
+		var err error
+		occurred, recorded, err = attemptStartTimestamps(ctx, tx)
+		return err
+	}, func(st *state) error {
+		return markAttemptStartedInState(st, runID, attemptID, nil, occurred, recorded)
 	})
 }
 
-// markAttemptStartedInState is the shared start transition used by the durable
-// adapter and the embedded legacy writer.
-func markAttemptStartedInState(st *state, runID, attemptID string) error {
-	now := stamp()
+func attemptStartTimestamps(ctx context.Context, tx pgx.Tx) (string, string, error) {
+	occurred := time.Now().UTC().Format(time.RFC3339Nano)
+	var recorded time.Time
+	if err := tx.QueryRow(ctx, `SELECT clock_timestamp()`).Scan(&recorded); err != nil {
+		return "", "", err
+	}
+	return occurred, recorded.UTC().Format(time.RFC3339Nano), nil
+}
+
+// A live durable generation records at most one start observation. A takeover
+// gets its own generation-bound event while preserving the original StartedAt.
+func markAttemptStartedInState(st *state, runID, attemptID string, generation *int64, occurred, recorded string) error {
+	attemptIndex, runIndex := -1, -1
 	for i := range st.Attempts {
-		if st.Attempts[i].ID != attemptID {
-			continue
-		}
-		if !attemptActive(st.Attempts[i].State) {
-			return errAttemptTerminal
-		}
-		st.Attempts[i].State = "running"
-		if st.Attempts[i].StartedAt == nil {
-			st.Attempts[i].StartedAt = &now
+		if st.Attempts[i].ID == attemptID && st.Attempts[i].RunID == runID {
+			attemptIndex = i
+			break
 		}
 	}
 	for i := range st.Runs {
 		if st.Runs[i].ID == runID {
-			st.Runs[i].State = "running"
-			st.Runs[i].UpdatedAt = now
+			runIndex = i
+			break
 		}
 	}
-	appendRunEvent(st, runID, "running")
+	if attemptIndex < 0 || runIndex < 0 {
+		return errAttemptMissing
+	}
+	attempt := &st.Attempts[attemptIndex]
+	if !attemptActive(attempt.State) {
+		return errAttemptTerminal
+	}
+	const eventKey = "attempt/started"
+	for _, event := range st.ExecutionEvents {
+		if event.AttemptID != attemptID || event.EventType != "attempt_started" || event.EventKey == nil || *event.EventKey != eventKey {
+			continue
+		}
+		if generation == nil && event.Generation == nil || generation != nil && event.Generation != nil && *generation == *event.Generation {
+			if attempt.State != "running" || attempt.StartedAt == nil {
+				return errors.New("attempt start event and state differ")
+			}
+			return nil
+		}
+	}
+	attempt.State = "running"
+	if attempt.StartedAt == nil {
+		attempt.StartedAt = stringPointer(occurred)
+	}
+	if st.Runs[runIndex].State != "running" {
+		st.Runs[runIndex].State = "running"
+		st.Runs[runIndex].UpdatedAt = occurred
+		appendRunEvent(st, runID, "running")
+	}
+	appendExecutionEvent(st, ExecutionEvent{
+		AttemptID: attemptID, SpanID: stringPointer(attemptID), NodeKind: "attempt", Phase: "execution",
+		EventType: "attempt_started", At: occurred, RecordedAt: stringPointer(recorded), EventKey: stringPointer(eventKey),
+		Generation: generation, Status: "running",
+	})
 	return nil
 }
 
@@ -1324,10 +1424,10 @@ func insertExecutionEvent(ctx context.Context, tx pgx.Tx, event ExecutionEvent) 
 		}
 		usage = encoded
 	}
-	_, err := tx.Exec(ctx, `INSERT INTO execution_events (attempt_id, event_seq, span_id, parent_span_id, node_kind, phase, event_type, occurred_at, duration_ms, status, error_code, model_ref, usage)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) ON CONFLICT (attempt_id,event_seq) DO NOTHING`,
+	_, err := tx.Exec(ctx, `INSERT INTO execution_events (attempt_id, event_seq, span_id, parent_span_id, node_kind, phase, event_type, occurred_at, duration_ms, status, error_code, model_ref, usage, recorded_at, event_key, generation)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) ON CONFLICT (attempt_id,event_seq) DO NOTHING`,
 		event.AttemptID, event.Seq, event.SpanID, event.ParentSpanID, event.NodeKind, event.Phase,
-		event.EventType, event.At, event.DurationMS, event.Status, event.ErrorCode, event.ModelRef, usage)
+		event.EventType, event.At, event.DurationMS, event.Status, event.ErrorCode, event.ModelRef, usage, event.RecordedAt, event.EventKey, event.Generation)
 	return err
 }
 
@@ -1362,6 +1462,9 @@ func (r attemptRecorder) RecordExecutionEvent(ctx context.Context, event executi
 		AttemptID: r.attemptID, SpanID: spanID, ParentSpanID: parentID, NodeKind: event.NodeKind,
 		Phase: event.Phase, EventType: event.EventType, At: event.At.UTC().Format(time.RFC3339Nano),
 		DurationMS: event.DurationMS, Status: event.Status, ErrorCode: errorCode, ModelRef: modelRef, Usage: usage,
+	}
+	if event.EventKey != "" {
+		stored.EventKey = stringPointer(event.EventKey)
 	}
 	var err error
 	if claim, claimed := r.store.claimForAttempt(r.attemptID); claimed && r.runID != "" &&
@@ -1888,7 +1991,7 @@ func interpretedFromFrozen(frozen []FrozenDocument) []Interpreted {
 			}
 			parsed = &ParsedDocument{
 				ID: item.ParsedDocumentID, DocumentID: item.Document.ID, OriginalDigest: item.OriginalHash,
-				ParserID: item.ParserID, ParserVersion: item.ParserVersion, ConfigHash: item.ConfigHash,
+				ParserID: item.ParserID, ParserVersion: item.ParserVersion, ConfigHash: item.ConfigHash, SelectionOrder: item.SelectionOrder,
 				NormalizationVersion: item.NormalizationVersion, NormalizedDigest: normalizedDigest,
 				IRDigest: item.IRDigest, ArtifactDigest: item.ParsedArtifactDigest, CreatedAt: item.ParsedCreatedAt,
 				Status: item.ParsedStatus, Text: item.Text, IR: item.IR, ParseError: item.ParseError, FromOCR: item.FromOCR,

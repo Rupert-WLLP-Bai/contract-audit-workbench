@@ -63,7 +63,7 @@ export function ParsedDocumentSummary({
           </>
         ) : (
           <>
-            {"，"}解析来源 {legacy ? "未记录（历史记录）" : "尚无解析产物"}
+            {"，"}解析来源 {legacy ? "未记录（历史记录）" : "尚无解析结果"}
             {"，"}正文摘要 未记录
           </>
         )}

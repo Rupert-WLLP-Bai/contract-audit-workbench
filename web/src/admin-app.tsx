@@ -30,6 +30,21 @@ const RulePackDetailPage = lazy(() =>
     default: module.RulePackDetailPage,
   })),
 );
+const GovernedKnowledgeListPage = lazy(() =>
+  import("./pages/governed-knowledge-page").then((module) => ({
+    default: module.GovernedKnowledgeListPage,
+  })),
+);
+const GovernedKnowledgeCreatePage = lazy(() =>
+  import("./pages/governed-knowledge-page").then((module) => ({
+    default: module.GovernedKnowledgeCreatePage,
+  })),
+);
+const GovernedKnowledgeDetailPage = lazy(() =>
+  import("./pages/governed-knowledge-page").then((module) => ({
+    default: module.GovernedKnowledgeDetailPage,
+  })),
+);
 
 export function AdminApp() {
   return (
@@ -64,6 +79,9 @@ export function AdminApp() {
               path="/admin/rulepacks/:packId/versions/:version"
               element={<RulePackDetailPage />}
             />
+            <Route path="/admin/governed-knowledge" element={<GovernedKnowledgeListPage />} />
+            <Route path="/admin/governed-knowledge/new" element={<GovernedKnowledgeCreatePage />} />
+            <Route path="/admin/governed-knowledge/:knowledgeId/versions/:versionId" element={<GovernedKnowledgeDetailPage />} />
             <Route
               path="*"
               element={<PageStatus kind="empty" title="没有这个管理页面" />}

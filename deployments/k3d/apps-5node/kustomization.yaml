@@ -1,0 +1,12 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: contract-audit
+resources:
+  - ../../k8s/base/workloads.yaml
+  - ../../k8s/base/services-ingress.yaml
+  - ../health-monitor.yaml
+  - ../observe.yaml
+patches:
+  - path: ../workload-patch.yaml
+  - path: ../workload-patch-5node.yaml
+  - path: ../remove-ingress-patch.yaml

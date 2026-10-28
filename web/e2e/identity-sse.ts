@@ -1,3 +1,4 @@
+import { chromiumExecutable } from "./chromium";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
@@ -105,7 +106,7 @@ async function capture(page: Page, name: string): Promise<void> {
 
 const browser = await chromium.launch({
   headless: true,
-  executablePath: process.env.CHROMIUM_BIN || "/usr/bin/chromium",
+  executablePath: chromiumExecutable(),
   args: ["--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu"],
 });
 const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
@@ -149,9 +150,10 @@ try {
     data: { username: admin.username, password: admin.password, audience: "client" },
   });
   assert.equal(session.status(), 200, `admin session returned HTTP ${session.status()}`);
+  // This journey isolates session revocation and identity switching. It uses an
+  // ungoverned case so it does not depend on a published telecom rule pack.
   const created = await page.request.post(`${web}/api/cases`, {
-    data: { title: `D2-7b identity/SSE ${Date.now()}`, contract_type: "service",
-            business_line: "ENT", scenario: "telecom_dedicated_line" },
+    data: { title: `D2-7b identity/SSE ${Date.now()}`, contract_type: "procurement_ict" },
   });
   assert.equal(created.status(), 201, `case creation returned HTTP ${created.status()}`);
   const caseID = String((await created.json()).id);
@@ -217,8 +219,7 @@ try {
 
   // 2c. Per-resource authorization: a case without the viewer grant stays private.
   const privateCase = await page.request.post(`${web}/api/cases`, {
-    data: { title: `D2-7b private ${Date.now()}`, contract_type: "service",
-            business_line: "ENT", scenario: "telecom_dedicated_line" },
+    data: { title: `D2-7b private ${Date.now()}`, contract_type: "procurement_ict" },
   });
   assert.equal(privateCase.status(), 201, `private case creation returned HTTP ${privateCase.status()}`);
   const privateCaseID = String((await privateCase.json()).id);
@@ -347,7 +348,7 @@ try {
     server_sha: serverSHA === "" ? "NOT_RECORDED" : serverSHA,
     execution_sha: executionSHA === "" ? "NOT_RECORDED" : executionSHA,
     browser: "Chromium",
-    executable: process.env.CHROMIUM_BIN || "/usr/bin/chromium",
+    executable: chromiumExecutable(),
     web,
     streams,
     observations,

@@ -37,16 +37,21 @@ func (ScopePlanner) Plan(_ context.Context, input PlanInput) (Plan, error) {
 	if input.RemainingCalls <= 0 {
 		return plan, nil
 	}
-	for _, gap := range input.Gaps {
-		if len(plan.Calls) >= input.RemainingCalls {
-			break
-		}
-		for _, tool := range input.Tools {
-			if tool.Domain == gap.Domain && slices.Contains(tool.Capabilities, gap.Capability) &&
-				!called[gap.ID+"\x00"+tool.ID] {
-				plan.Calls = append(plan.Calls, Call{ToolID: tool.ID, Domain: gap.Domain,
-					GapID: gap.ID, Reason: "registered tool for a requested evidence gap"})
+	for _, mandatory := range []bool{true, false} {
+		for _, gap := range input.Gaps {
+			if gap.Mandatory != mandatory {
+				continue
+			}
+			if len(plan.Calls) >= input.RemainingCalls {
 				break
+			}
+			for _, tool := range input.Tools {
+				if tool.Domain == gap.Domain && slices.Contains(tool.Capabilities, gap.Capability) &&
+					!called[gap.ID+"\x00"+tool.ID] {
+					plan.Calls = append(plan.Calls, Call{ToolID: tool.ID, Domain: gap.Domain,
+						GapID: gap.ID, Reason: "registered tool for a requested evidence gap"})
+					break
+				}
 			}
 		}
 	}

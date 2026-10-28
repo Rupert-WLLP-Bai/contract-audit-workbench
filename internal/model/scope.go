@@ -17,6 +17,7 @@ type DelegatedScope struct {
 	AttemptID        string `json:"attempt_id,omitempty"`
 	WorkerID         string `json:"worker_id,omitempty"`
 	Generation       int64  `json:"generation,omitempty"`
+	InputSHA256      string `json:"input_sha256,omitempty"`
 	ParseSelectionID string `json:"parse_selection_id,omitempty"`
 }
 

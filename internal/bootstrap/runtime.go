@@ -94,6 +94,13 @@ func openConfigured(ctx context.Context, includeOIDC bool, service string) (*Run
 	if err != nil {
 		return nil, err
 	}
+	var experienceAcceptor store.ExperienceResultAcceptor
+	if service == "worker" {
+		experienceAcceptor, err = configuredExperienceResultAcceptor()
+		if err != nil {
+			return nil, err
+		}
+	}
 	var oidcConfig identity.Config
 	var oidcConfigured bool
 	if includeOIDC {
@@ -130,7 +137,7 @@ func openConfigured(ctx context.Context, includeOIDC bool, service string) (*Run
 		return closeOnFailure(err)
 	}
 	st.UseReadOnly(readOnly)
-	if service == "execution" || service == "worker" || service == "" {
+	if service == "core" || service == "execution" || service == "worker" || service == "" {
 		policy, err := configuredQueuePolicy()
 		if err != nil {
 			return closeOnFailure(err)
@@ -157,6 +164,9 @@ func openConfigured(ctx context.Context, includeOIDC bool, service string) (*Run
 	}
 	models := model.New(modelConfig)
 	st.UseModels(models)
+	if provider := configuredAdvisoryProvider(service, models); provider != nil {
+		st.UseAdvisory(provider)
+	}
 	if service == "worker" {
 		preparer, err := configuredDocumentPreparer()
 		if err != nil {
@@ -169,6 +179,9 @@ func openConfigured(ctx context.Context, includeOIDC bool, service string) (*Run
 		}
 		if err := st.UseToolEvidenceReader(reader); err != nil {
 			return closeOnFailure(err)
+		}
+		if experienceAcceptor != nil {
+			st.UseExperienceResultAcceptor(experienceAcceptor)
 		}
 	}
 

@@ -265,7 +265,7 @@ func (s *Store) ValidateRulePackVersion(user accounts.User, input GovernanceInpu
 			return err
 		}
 		if sha256Bytes(draftSnapshot) != row.Version.SnapshotDigest {
-			return fault.Conflict("规则包快照摘要与记录不一致，不能校验")
+			return fault.Conflict("保存的规则包摘要与记录不一致，无法校验")
 		}
 		snapshot, err := validated.Snapshot()
 		if err != nil {

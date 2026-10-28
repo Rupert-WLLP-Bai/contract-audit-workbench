@@ -6,6 +6,11 @@ export default defineConfig({
   test: {
     environment: "happy-dom",
     globals: true,
+    // V8 coverage instrumentation and parallel test files push the heaviest
+    // form journeys past the 5s default even when they pass without coverage.
+    // Keep the checks and the coverage gates unchanged; only allow those
+    // journeys to finish on a loaded machine.
+    testTimeout: 30_000,
     setupFiles: ["./src/test/setup.ts"],
     include: ["src/**/*.test.{ts,tsx}"],
     clearMocks: true,

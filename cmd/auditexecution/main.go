@@ -11,7 +11,9 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log"
+	"log/slog"
 	"net"
 	"net/http"
 	"os"
@@ -48,6 +50,9 @@ func run() error {
 	if !app.Durable {
 		return errors.New("the execution service requires durable execution")
 	}
+	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo})).With(
+		"service", "audit-execution", "service.instance.id", bootstrap.InstanceID(),
+	))
 
 	// The service filter rejects any operation the execution role does not own,
 	// requires the edge credential, and mounts the unified probe surface, so a
@@ -62,32 +67,35 @@ func run() error {
 		return err
 	}
 
-	// The execution service hosts the outbox relay: it publishes committed outbox
-	// rows to JetStream and marks them delivered only after the broker stored
-	// them. PostgreSQL remains authoritative — without NATS_URL the relay is
-	// disabled and the worker's PG scan is the whole recovery path.
+	// Publish committed outbox rows to JetStream and mark them delivered only
+	// after the broker stores them. Workers can still find jobs in PostgreSQL
+	// when NATS_URL is unset.
 	relayConfig, err := outboxrelay.FromEnv()
 	if err != nil {
 		return err
 	}
+	relayCtx, stopRelay := context.WithCancel(ctx)
+	defer stopRelay()
+	var relayDone <-chan error
 	if relayConfig.Enabled() {
 		// Serve keeps retrying the broker with bounded backoff, so a broker that
-		// starts after this service still drains the pending backlog, and the
-		// goroutine ends with the process context.
+		// starts after this service still drains the pending backlog. The relay
+		// gets its own cancel function so an early listener failure also stops
+		// it, and shutdown waits for it before the deferred Store.Close runs.
+		done := make(chan error, 1)
+		relayDone = done
 		go func() {
 			dial := func(dialCtx context.Context, cfg outboxrelay.Config) (outboxrelay.Broker, error) {
 				return outboxrelay.Dial(dialCtx, cfg)
 			}
-			if runErr := outboxrelay.Serve(ctx, app.Store, relayConfig, dial); runErr != nil && !errors.Is(runErr, context.Canceled) {
-				log.Printf("outbox relay stopped: %v", runErr)
-			}
+			done <- outboxrelay.Serve(relayCtx, app.Store, relayConfig, dial)
 		}()
 	} else {
 		log.Printf("outbox relay disabled: NATS_URL is not configured; PostgreSQL scanning remains the recovery path")
 	}
 
 	addr := env("ADDR", "127.0.0.1:8083")
-	log.Printf("execution service listening on %s", addr)
+	slog.Info("execution service listening", "addr", addr)
 	server := &http.Server{
 		Addr: addr, Handler: service,
 		ReadHeaderTimeout: 5 * time.Second,
@@ -98,7 +106,29 @@ func run() error {
 		// stream, and the request context ends when the process is asked to stop.
 	}
 	server.BaseContext = func(net.Listener) context.Context { return ctx }
-	return serve(ctx, server, shutdownTimeout)
+	serveErr := serve(ctx, server, shutdownTimeout)
+	stopRelay()
+	return errors.Join(serveErr, waitRelay(relayDone, shutdownTimeout))
+}
+
+// waitRelay bounds how long shutdown waits for the background publisher. The
+// relay's normal cancellation is not an error; an unexpected non-context error
+// or an unresponsive relay is surfaced after the HTTP server has drained.
+func waitRelay(done <-chan error, timeout time.Duration) error {
+	if done == nil {
+		return nil
+	}
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+	select {
+	case err := <-done:
+		if err == nil || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return nil
+		}
+		return fmt.Errorf("outbox relay: %w", err)
+	case <-timer.C:
+		return errors.New("outbox relay did not stop within the shutdown timeout")
+	}
 }
 
 // serve runs server until ctx is canceled or the listener fails, then drains

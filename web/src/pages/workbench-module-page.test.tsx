@@ -1,4 +1,5 @@
 import {
+  act,
   cleanup,
   fireEvent,
   screen,
@@ -8,9 +9,10 @@ import {
 import userEvent from "@testing-library/user-event";
 import { chooseOption, renderWithAntd as render } from "../test/antd";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { MemoryRouter, Route, Routes } from "react-router";
+import { createMemoryRouter, RouterProvider } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { setSessionIdentity } from "../api/http";
+import { queryKeys } from "../api/queries";
 import type {
   KnowledgeInput,
   WorkbenchDocument,
@@ -25,6 +27,9 @@ import { WorkbenchModulePage } from "./workbench-module-page";
 
 const at = "2026-10-21T06:00:00Z";
 const later = "2026-10-21T07:00:00Z";
+const policyV1 = "1".repeat(64);
+const policyV2 = "2".repeat(64);
+const referenceVersion = "3".repeat(64);
 const clients: QueryClient[] = [];
 type User = ReturnType<typeof userEvent.setup>;
 
@@ -220,6 +225,7 @@ function snapshot(): WorkbenchSnapshot {
     knowledge: [
       {
         id: "knowledge-policy",
+        version_id: policyV2,
         title: "采购安全制度",
         version: "2.0.0",
         body: "签约前必须完成安全性评估。SPECIAL-CLAUSE 必须留存。",
@@ -230,6 +236,7 @@ function snapshot(): WorkbenchSnapshot {
       },
       {
         id: "knowledge-reference",
+        version_id: referenceVersion,
         title: "外部参考资料",
         version: "2026-10",
         body: "供应商应提供资质材料。",
@@ -461,6 +468,8 @@ class WorkbenchService {
   requests: { key: string; body: unknown }[] = [];
   failures = new Map<string, { status: number; message: string }[]>();
   taskVersions = new Map<string, number>();
+  knowledgeResponses = new Map<string, unknown>();
+  pendingKnowledge = new Map<string, Promise<Response>>();
 
   fail(key: string, status: number, message: string) {
     this.failures.set(key, [
@@ -514,6 +523,21 @@ class WorkbenchService {
     const parts = new URL(path, "http://workbench.test").pathname
       .split("/")
       .map(decodeURIComponent);
+    if (
+      method === "GET" &&
+      parts[2] === "knowledge" &&
+      parts[4] === "versions" &&
+      parts.length === 6
+    ) {
+      const pending = this.pendingKnowledge.get(key);
+      if (pending) return pending;
+      if (this.knowledgeResponses.has(key))
+        return json(this.knowledgeResponses.get(key));
+      const item = this.snapshot.knowledge.find(
+        (entry) => entry.id === parts[3] && entry.version_id === parts[5],
+      );
+      return item ? json(item) : json({ error: "知识版本不存在" }, 404);
+    }
     if (method === "POST" && parts[2] === "cases" && parts[4] === "tasks") {
       const submitted = body as WorkbenchTaskInput;
       if (
@@ -568,11 +592,18 @@ class WorkbenchService {
         !submitted.body.trim()
       )
         return json({ error: "标题、版本与全文不能为空" }, 422);
-      if (this.snapshot.knowledge.some((item) => item.id === submitted.id))
+      if (
+        this.snapshot.knowledge.some(
+          (item) => item.id === submitted.id && item.version === submitted.version,
+        )
+      )
         return json({ error: "知识条目 ID 已存在" }, 409);
       const created = {
         ...submitted,
         id: submitted.id ?? "knowledge-server-generated",
+        version_id: (this.snapshot.knowledge.length + 16)
+          .toString(16)
+          .padStart(64, "0"),
         created_by: this.actorId,
         created_at: later,
       };
@@ -583,25 +614,47 @@ class WorkbenchService {
   };
 }
 
-function open(module: string, service = new WorkbenchService()) {
+function addPolicyV1(service: WorkbenchService) {
+  const current = service.snapshot.knowledge.find(
+    (entry) => entry.version_id === policyV2,
+  );
+  if (!current) throw new Error("policy fixture is missing");
+  service.snapshot.knowledge.push({
+    ...current,
+    version_id: policyV1,
+    version: "1.0.0",
+    body: "旧版本限定：签约前核实供应商资质。",
+  });
+}
+
+function open(
+  module: string,
+  service = new WorkbenchService(),
+  search = "",
+) {
   vi.stubGlobal("fetch", vi.fn(service.handle));
   const client = new QueryClient({
     defaultOptions: {
-      queries: { retry: false, gcTime: 0 },
+      queries: { retry: false, gcTime: 300_000 },
       mutations: { retry: false },
     },
   });
   clients.push(client);
+  const router = createMemoryRouter(
+    [
+      {
+        path: "/workbench/:module",
+        element: <WorkbenchModulePage />,
+      },
+    ],
+    { initialEntries: [`/workbench/${module}${search}`] },
+  );
   const view = render(
     <QueryClientProvider client={client}>
-      <MemoryRouter initialEntries={[`/workbench/${module}`]}>
-        <Routes>
-          <Route path="/workbench/:module" element={<WorkbenchModulePage />} />
-        </Routes>
-      </MemoryRouter>
+      <RouterProvider router={router} />
     </QueryClientProvider>,
   );
-  return { ...view, service, user: userEvent.setup() };
+  return { ...view, service, router, client, user: userEvent.setup() };
 }
 
 async function list(title: string) {
@@ -682,7 +735,7 @@ describe("workbench tasks", () => {
     expectField("案件负责人", "管理员乙");
 
     await category(user, "审查任务", "我发起的");
-    expect(screen.getByRole("status")).toHaveTextContent("服务端创建人 ID");
+    expect(screen.getByRole("status")).toHaveTextContent("由当前用户创建的任务");
     expect(
       rows.getByRole("button", { name: /我创建的复核/ }),
     ).toBeInTheDocument();
@@ -711,7 +764,7 @@ describe("workbench tasks", () => {
     service.snapshot.tasks = [];
     const { user } = open("tasks", service);
     const rows = await list("审查任务");
-    expect(rows.getByText("快照没有返回记录。")).toBeInTheDocument();
+    expect(rows.getByText("没有获取到记录。")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "分派任务" }));
     expect(screen.getByRole("button", { name: "保存任务" })).toBeDisabled();
     await chooseOption(user, screen.getByLabelText("关联案件"), "专线采购案件");
@@ -899,10 +952,10 @@ describe("workbench tasks", () => {
     ).toHaveAttribute("href", "/cases/case-missing");
     await detailTab(user, "处理记录");
     expect(
-      details().getByText("快照没有返回相关案件的业务审计事件。"),
+      details().getByText("没有获取到相关案件的业务审计记录。"),
     ).toBeInTheDocument();
     await detailTab(user, "关联材料");
-    expect(details().getByText("案件快照没有返回材料。")).toBeInTheDocument();
+    expect(details().getByText("没有获取到案件材料。")).toBeInTheDocument();
     expect(details().getAllByRole("link")).toHaveLength(1);
     await detailTab(user, "协作成员");
     expectField("当前责任人", "former-assignee");
@@ -911,10 +964,224 @@ describe("workbench tasks", () => {
 });
 
 describe("workbench knowledge", () => {
+  it("selects exact versions through deep links, history and refresh", async () => {
+    const service = new WorkbenchService();
+    addPolicyV1(service);
+    const { user, router, unmount } = open(
+      "knowledge",
+      service,
+      `?keep=one&version=${policyV1}`,
+    );
+    const rows = await list("知识库");
+    const oldVersion = rows.getByRole("row", { name: /采购安全制度.*1\.0\.0/ });
+    const newVersion = rows.getByRole("row", { name: /采购安全制度.*2\.0\.0/ });
+    expect(within(oldVersion).getByRole("radio")).toBeChecked();
+    expect(within(newVersion).getByRole("radio")).not.toBeChecked();
+    expect(await details().findByText(/旧版本限定/)).toBeInTheDocument();
+    expectField("版本", "1.0.0");
+
+    await user.click(within(newVersion).getByRole("button", { name: /采购安全制度/ }));
+    expect(details().queryByText(/旧版本限定/)).not.toBeInTheDocument();
+    expect(await details().findByText(/SPECIAL-CLAUSE/)).toBeInTheDocument();
+    expectField("版本", "2.0.0");
+    expect(within(newVersion).getByRole("radio")).toBeChecked();
+    expect(new URLSearchParams(router.state.location.search).get("version")).toBe(policyV2);
+    expect(new URLSearchParams(router.state.location.search).get("keep")).toBe("one");
+    await user.click(within(newVersion).getByRole("button", { name: /采购安全制度/ }));
+
+    await act(async () => { await router.navigate(-1); });
+    expect(await details().findByText(/旧版本限定/)).toBeInTheDocument();
+    expect(within(oldVersion).getByRole("radio")).toBeChecked();
+    await act(async () => { await router.navigate(1); });
+    expect(await details().findByText(/SPECIAL-CLAUSE/)).toBeInTheDocument();
+    expect(within(newVersion).getByRole("radio")).toBeChecked();
+
+    const search = router.state.location.search;
+    unmount();
+    router.dispose();
+    const reopened = open("knowledge", service, search);
+    await list("知识库");
+    expect(await details().findByText(/SPECIAL-CLAUSE/)).toBeInTheDocument();
+    expectField("版本", "2.0.0");
+    await selectRecord(reopened.user, /采购安全制度.*1\.0\.0/);
+    expect(await details().findByText(/旧版本限定/)).toBeInTheDocument();
+    expect(new URLSearchParams(reopened.router.state.location.search).get("version")).toBe(policyV1);
+    expect(service.requests.map((item) => item.key)).toEqual(
+      expect.arrayContaining([
+        `GET /api/knowledge/knowledge-policy/versions/${policyV1}`,
+        `GET /api/knowledge/knowledge-policy/versions/${policyV2}`,
+      ]),
+    );
+  });
+
+  it("keeps an explicit selection when filters temporarily hide it", async () => {
+    const service = new WorkbenchService();
+    addPolicyV1(service);
+    const { user, router } = open("knowledge", service, `?version=${policyV1}`);
+    const rows = await list("知识库");
+    expect(await details().findByText(/旧版本限定/)).toBeInTheDocument();
+
+    await user.type(screen.getByRole("searchbox"), "special-clause");
+    const visible = rows.getByRole("row", { name: /采购安全制度.*2\.0\.0/ });
+    expect(within(visible).getByRole("radio")).not.toBeChecked();
+    expect(details().getByText("指定的知识版本不存在或未包含在当前筛选中。"))
+      .toBeInTheDocument();
+    expect(details().queryByText(/SPECIAL-CLAUSE|旧版本限定/)).not.toBeInTheDocument();
+    expect(new URLSearchParams(router.state.location.search).get("version")).toBe(policyV1);
+    await user.click(within(visible).getByRole("button", { name: /采购安全制度/ }));
+    expect(await details().findByText(/SPECIAL-CLAUSE/)).toBeInTheDocument();
+    expect(new URLSearchParams(router.state.location.search).get("version")).toBe(policyV2);
+    await act(async () => { await router.navigate(-1); });
+    expect(details().getByText("指定的知识版本不存在或未包含在当前筛选中。"))
+      .toBeInTheDocument();
+    expect(details().queryByText(/SPECIAL-CLAUSE|旧版本限定/)).not.toBeInTheDocument();
+
+    await user.clear(screen.getByRole("searchbox"));
+    expect(await details().findByText(/旧版本限定/)).toBeInTheDocument();
+    await category(user, "知识库", "检索测试");
+    expect(details().queryByRole("heading")).not.toBeInTheDocument();
+    await user.type(screen.getByRole("searchbox"), "special-clause");
+    expect(details().queryByText(/SPECIAL-CLAUSE|旧版本限定/)).not.toBeInTheDocument();
+    expect(new URLSearchParams(router.state.location.search).get("version")).toBe(policyV1);
+    await user.clear(screen.getByRole("searchbox"));
+    await category(user, "知识库", "文档库");
+    expect(await details().findByText(/旧版本限定/)).toBeInTheDocument();
+  });
+
+  it("does not substitute another version after the selected one leaves the refreshed snapshot", async () => {
+    const service = new WorkbenchService();
+    addPolicyV1(service);
+    const { client, router } = open("knowledge", service, `?version=${policyV1}`);
+    const rows = await list("知识库");
+    expect(await details().findByText(/旧版本限定/)).toBeInTheDocument();
+    service.snapshot.knowledge = service.snapshot.knowledge.filter(
+      (entry) => entry.version_id !== policyV1,
+    );
+    await act(async () => {
+      await client.refetchQueries({ queryKey: queryKeys.workbench("week") });
+    });
+    await waitFor(() => expect(details().getByText("指定的知识版本不存在或未包含在当前筛选中。"))
+      .toBeInTheDocument());
+    expect(rows.getByRole("row", { name: /采购安全制度.*2\.0\.0/ })).toBeInTheDocument();
+    expect(details().queryByText(/SPECIAL-CLAUSE|旧版本限定/)).not.toBeInTheDocument();
+    expect(new URLSearchParams(router.state.location.search).get("version")).toBe(policyV1);
+  });
+
+  it.each(["unknown-version", ""])(
+    "does not fall back when the requested version is absent (%s)",
+    async (version) => {
+      const service = new WorkbenchService();
+      const { router } = open("knowledge", service, `?version=${version}`);
+      const rows = await list("知识库");
+      for (const radio of rows.getAllByRole("radio")) expect(radio).not.toBeChecked();
+      expect(details().getByText("指定的知识版本不存在或未包含在当前筛选中。"))
+        .toBeInTheDocument();
+      expect(details().queryByText(/SPECIAL-CLAUSE|供应商应提供/)).not.toBeInTheDocument();
+      expect(new URLSearchParams(router.state.location.search).get("version")).toBe(version);
+      expect(service.requests.some((item) => item.key.includes("/versions/"))).toBe(false);
+    },
+  );
+
+  it("hides the previous body while the selected exact version is loading", async () => {
+    const service = new WorkbenchService();
+    addPolicyV1(service);
+    const oldVersion = service.snapshot.knowledge.find((item) => item.version_id === policyV1);
+    if (!oldVersion) throw new Error("old policy fixture is missing");
+    const pending = Promise.withResolvers<Response>();
+    service.pendingKnowledge.set(
+      `GET /api/knowledge/knowledge-policy/versions/${policyV1}`,
+      pending.promise,
+    );
+    const { user, router } = open("knowledge", service);
+    const rows = await list("知识库");
+    expect(router.state.location.search).toBe("");
+    expect(
+      within(rows.getByRole("row", { name: /采购安全制度.*2\.0\.0/ }))
+        .getByRole("radio"),
+    ).toBeChecked();
+    expect(await details().findByText(/SPECIAL-CLAUSE/)).toBeInTheDocument();
+    await selectRecord(user, /采购安全制度.*1\.0\.0/);
+    expect(details().getByText("正在加载指定知识版本。")).toBeInTheDocument();
+    expect(details().queryByText(/SPECIAL-CLAUSE|旧版本限定/)).not.toBeInTheDocument();
+    await act(async () => { pending.resolve(json(oldVersion)); });
+    expect(await details().findByText(/旧版本限定/)).toBeInTheDocument();
+  });
+
+  it("keeps the selected version when an earlier request resolves late", async () => {
+    const service = new WorkbenchService();
+    addPolicyV1(service);
+    const oldVersion = service.snapshot.knowledge.find(
+      (item) => item.version_id === policyV1,
+    );
+    if (!oldVersion) throw new Error("old policy fixture is missing");
+    const key = `GET /api/knowledge/knowledge-policy/versions/${policyV1}`;
+    const pending = Promise.withResolvers<Response>();
+    service.pendingKnowledge.set(key, pending.promise);
+    const { user } = open("knowledge", service, `?version=${policyV1}`);
+    await list("知识库");
+    await waitFor(() =>
+      expect(service.requests.some((item) => item.key === key)).toBe(true),
+    );
+    await selectRecord(user, /采购安全制度.*2\.0\.0/);
+    expect(await details().findByText(/SPECIAL-CLAUSE/)).toBeInTheDocument();
+    await act(async () => {
+      pending.resolve(json(oldVersion));
+    });
+    expect(details().getByText(/SPECIAL-CLAUSE/)).toBeInTheDocument();
+    expect(details().queryByText(/旧版本限定/)).not.toBeInTheDocument();
+    expectField("版本", "2.0.0");
+  });
+
+  it.each(["wrong version", "wrong knowledge", "wrong version label", "missing response", "not found"])(
+    "does not display a cached or unrelated body for %s",
+    async (scenario) => {
+      const service = new WorkbenchService();
+      addPolicyV1(service);
+      const oldVersion = service.snapshot.knowledge.find((item) => item.version_id === policyV1);
+      if (!oldVersion) throw new Error("old policy fixture is missing");
+      const key = `GET /api/knowledge/knowledge-policy/versions/${policyV1}`;
+      if (scenario === "not found") service.fail(key, 404, "知识版本不存在");
+      else if (scenario === "missing response") service.knowledgeResponses.set(key, null);
+      else service.knowledgeResponses.set(key, {
+        ...oldVersion,
+        ...(scenario === "wrong version"
+          ? { version_id: policyV2 }
+          : scenario === "wrong knowledge"
+            ? { id: "other-knowledge" }
+            : { version: "2.0.0" }),
+        body: "不应展示的错误版本正文",
+      });
+      const { user } = open("knowledge", service);
+      await list("知识库");
+      expect(await details().findByText(/SPECIAL-CLAUSE/)).toBeInTheDocument();
+      await selectRecord(user, /采购安全制度.*1\.0\.0/);
+      expect(await details().findByRole("alert")).toHaveTextContent(
+        scenario === "wrong version label"
+          ? "知识版本详情与所选版本不一致"
+          : "知识版本详情没有加载",
+      );
+      expect(details().queryByText(/SPECIAL-CLAUSE|旧版本限定|不应展示/)).not.toBeInTheDocument();
+    },
+  );
+
+  it("hides a previously cached exact body if its refresh fails", async () => {
+    const service = new WorkbenchService();
+    addPolicyV1(service);
+    const { user } = open("knowledge", service);
+    await list("知识库");
+    expect(await details().findByText(/SPECIAL-CLAUSE/)).toBeInTheDocument();
+    await selectRecord(user, /采购安全制度.*1\.0\.0/);
+    expect(await details().findByText(/旧版本限定/)).toBeInTheDocument();
+    service.fail(`GET /api/knowledge/knowledge-policy/versions/${policyV2}`, 404, "知识版本不存在");
+    await selectRecord(user, /采购安全制度.*2\.0\.0/);
+    expect(await details().findByRole("alert")).toHaveTextContent("知识版本不存在");
+    expect(details().queryByText(/SPECIAL-CLAUSE|旧版本限定/)).not.toBeInTheDocument();
+  });
+
   it("searches saved body text only after a retrieval query and preserves source and version details", async () => {
     const { user } = open("knowledge");
     const rows = await list("知识库");
-    expectField("维护人", "审查员甲");
+    await waitFor(() => expectField("维护人", "审查员甲"));
     expectField("生效时间", "未报告");
     expect(details().getByText(/SPECIAL-CLAUSE 必须留存/)).toBeInTheDocument();
     await category(user, "知识库", "知识条目");
@@ -923,7 +1190,7 @@ describe("workbench knowledge", () => {
     expectField("版本", "2.0.0");
     await category(user, "知识库", "检索测试");
     expect(
-      rows.getByText("输入检索词，按当前快照搜索已保存的制度标题与正文。"),
+      rows.getByText("输入关键词，搜索当前工作台中已保存的制度标题与正文。"),
     ).toBeInTheDocument();
     expect(details().queryByRole("heading")).not.toBeInTheDocument();
     await user.type(screen.getByRole("searchbox"), "  special-clause  ");
@@ -934,15 +1201,15 @@ describe("workbench knowledge", () => {
       rows.queryByRole("button", { name: /外部参考资料/ }),
     ).not.toBeInTheDocument();
     await detailTab(user, "适用范围");
-    expectField("来源类型", "synthetic_policy");
+    await waitFor(() => expectField("来源类型", "synthetic_policy"));
     expect(
-      details().getByText("快照没有返回额外适用范围字段。"),
+      details().getByText("没有获取到其他适用范围信息。"),
     ).toBeInTheDocument();
     await user.clear(screen.getByRole("searchbox"));
     await category(user, "知识库", "文档库");
     await selectRecord(user, /外部参考资料/);
     await detailTab(user, "文档内容");
-    expectField("维护人", "former-member");
+    await waitFor(() => expectField("维护人", "former-member"));
     expectField("生效时间", at);
     await detailTab(user, "版本记录");
     expectField("当前版本", "2026-10");
@@ -981,7 +1248,7 @@ describe("workbench knowledge", () => {
       expect(screen.queryByLabelText("全文")).not.toBeInTheDocument(),
     );
     await selectRecord(user, /新签约依据/);
-    expectField("知识条目", "knowledge/reference-3");
+    await waitFor(() => expectField("知识条目", "knowledge/reference-3"));
     expectField("版本", "3.1.0");
     expectField("来源", "reference");
     expect(
@@ -1027,7 +1294,7 @@ describe("workbench knowledge", () => {
     );
     expect(screen.getByLabelText("全文")).toHaveValue("   保存真实制度正文");
     await user.clear(screen.getByLabelText("版本", { exact: true }));
-    await user.type(screen.getByLabelText("版本", { exact: true }), "1.0.0");
+    await user.type(screen.getByLabelText("版本", { exact: true }), "2.0.0");
     await user.click(screen.getByRole("button", { name: "保存知识条目" }));
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "知识条目 ID 已存在",
@@ -1036,12 +1303,14 @@ describe("workbench knowledge", () => {
       "knowledge-policy",
     );
     await user.clear(screen.getByLabelText("稳定 ID（可选）"));
+    await user.clear(screen.getByLabelText("版本", { exact: true }));
+    await user.type(screen.getByLabelText("版本", { exact: true }), "1.0.0");
     await user.click(screen.getByRole("button", { name: "保存知识条目" }));
     await waitFor(() =>
       expect(screen.queryByLabelText("全文")).not.toBeInTheDocument(),
     );
     await selectRecord(user, /新增合成制度/);
-    expectField("知识条目", "knowledge-server-generated");
+    await waitFor(() => expectField("知识条目", "knowledge-server-generated"));
     expectField("来源", "synthetic_policy");
     expectField("生效时间", "未报告");
     expect(
@@ -1149,20 +1418,24 @@ describe("workbench remediation and frozen artifacts", () => {
     expectField("最近理由", "未报告");
     await detailTab(user, "材料与版本");
     expect(
-      details().getByText("整改记录未关联快照中的材料。"),
+      details().getByText("整改记录没有关联工作台中显示的材料。"),
     ).toBeInTheDocument();
     await detailTab(user, "操作历史");
     expect(
-      details().getByText("快照没有返回相关案件的审计历史。"),
+      details().getByText("没有获取到相关案件的审计历史。"),
     ).toBeInTheDocument();
   });
 
-  it("compares only cases with multiple reports and exposes each frozen version and digest", async () => {
+  it("shows frozen report versions without exposing raw IDs or digests in the business view", async () => {
     const { user } = open("reports");
     const rows = await list("报告中心");
     expect(rows.getAllByRole("button")).toHaveLength(3);
-    expectField("报告 ID", "report/frozen-2");
-    const frozen = details().getByRole("link", { name: "打开冻结报告" });
+    expect(details().queryByText("报告 ID")).not.toBeInTheDocument();
+    expect(details().queryByText("report/frozen-2")).not.toBeInTheDocument();
+    expect(details().getByText("审查报告 v2")).toBeInTheDocument();
+    expectField("案件", "专线采购案件");
+    expectField("报告版本", "2");
+    const frozen = details().getByRole("link", { name: "打开报告" });
     expect(frozen).toHaveAttribute(
       "href",
       "/api/cases/case%2Falpha/reports/report%2Ffrozen-2?format=html",
@@ -1170,36 +1443,46 @@ describe("workbench remediation and frozen artifacts", () => {
     expect(frozen).toHaveAttribute("target", "_blank");
     expect(frozen).toHaveAttribute("rel", "noreferrer");
     expect(
-      details().getByRole("link", { name: "读取冻结 JSON" }),
+      details().getByRole("link", { name: "查看 JSON 报告" }),
     ).toHaveAttribute(
       "href",
       "/api/cases/case%2Falpha/reports/report%2Ffrozen-2?format=json",
     );
     await detailTab(user, "发现与决定");
-    expectField("运行 ID", "run/report-2");
-    expectField("尝试 ID", "attempt/report-2");
+    expect(details().getByText(/报告正文中的发现和审查判断/)).toBeInTheDocument();
+    expect(details().queryByText("run/report-2")).not.toBeInTheDocument();
+    expect(details().queryByText("attempt/report-2")).not.toBeInTheDocument();
     await detailTab(user, "版本与来源");
     expectField("报告版本", "2");
-    expectField("输入摘要", "input-v2-sha256");
-    expectField("输出摘要", "output-v2-sha256");
-    expectField("决定快照摘要", "decision-v2-sha256");
-    expectField("报告摘要", "report-v2-sha256");
+    expectField("报告状态", "已生成");
+    for (const label of ["输入摘要", "输出摘要", "决定快照摘要", "报告摘要"]) {
+      expect(details().queryByText(label)).not.toBeInTheDocument();
+    }
+    for (const digest of [
+      "input-v2-sha256",
+      "output-v2-sha256",
+      "decision-v2-sha256",
+      "report-v2-sha256",
+    ]) {
+      expect(details().queryByText(digest)).not.toBeInTheDocument();
+    }
     await category(user, "报告中心", "版本对比");
     expect(rows.getAllByRole("button")).toHaveLength(2);
     expect(
       rows.queryByRole("button", { name: /独立单版案件/ }),
     ).not.toBeInTheDocument();
-    await user.type(screen.getByRole("searchbox"), "  INPUT-V1-SHA256  ");
+    await user.type(screen.getByRole("searchbox"), "  审查报告 V1  ");
     expect(rows.getAllByRole("button")).toHaveLength(1);
     expectField("报告版本", "1");
-    expectField("报告摘要", "report-v1-sha256");
+    expect(details().queryByText("report-v1-sha256")).not.toBeInTheDocument();
     await user.clear(screen.getByRole("searchbox"));
     await category(user, "报告中心", "导出记录");
     await selectRecord(user, /独立单版案件/);
     await detailTab(user, "导出记录");
-    expectField("运行 ID", "run-single");
+    expect(details().queryByText("run-single")).not.toBeInTheDocument();
+    expect(details().queryByText("attempt-single")).not.toBeInTheDocument();
     expect(
-      details().getByRole("link", { name: "读取冻结 HTML" }),
+      details().getByRole("link", { name: "查看 HTML 报告" }),
     ).toHaveAttribute(
       "href",
       "/api/cases/case-empty/reports/report-single?format=html",
@@ -1222,7 +1505,7 @@ describe("workbench remediation and frozen artifacts", () => {
       "_blank",
     );
     await category(user, "证据中心", "引用片段");
-    expect(screen.getByRole("status")).toHaveTextContent("指定 run/attempt");
+    expect(screen.getByRole("status")).toHaveTextContent("具体的审查和执行记录");
     await detailTab(user, "引用片段");
     expectField("解析产物", "parsed/source");
     expect(
@@ -1256,7 +1539,7 @@ describe("workbench remediation and frozen artifacts", () => {
     expectField("原件摘要", "replaced-original-sha256");
     expectField("解析来源原件摘要", "original-sha256");
     await selectRecord(user, /尚未解析.txt/);
-    expectField("校验结果", "未生成解析产物");
+    expectField("校验结果", "尚未生成解析结果");
     expectField("解析产物 ID", "未报告");
     expectField("归一化内容摘要", "未报告");
     await category(user, "证据中心", "证据材料");
@@ -1276,7 +1559,7 @@ describe("workbench remediation and frozen artifacts", () => {
     expectField("解析版本", "未报告");
     await detailTab(user, "使用记录");
     expect(
-      details().getByText("案件尚无快照所示的审查运行。"),
+      details().getByText("工作台没有返回该案件的审查记录。"),
     ).toBeInTheDocument();
     expect(
       details().queryByRole("link", { name: "打开最近审查" }),
@@ -1294,8 +1577,15 @@ describe("workbench execution and platform projections", () => {
     expect(
       details().getByRole("link", { name: "打开完整执行工作区" }),
     ).toHaveAttribute("href", "/cases/case%2Falpha/reviews/run%2Fcurrent");
-    await category(user, "执行轨迹", "模型调用");
-    expect(screen.getByRole("status")).toHaveTextContent("运行级统计");
+    expect(
+      screen.getByRole("heading", { name: "运行记录" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("tab", { name: "模型调用" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("tab", { name: "规则执行" }),
+    ).not.toBeInTheDocument();
     await detailTab(user, "调用时间轴");
     expectField("实际调用数", "7");
     expectField("用量未知调用数", "2");
@@ -1308,10 +1598,6 @@ describe("workbench execution and platform projections", () => {
     expectField("输出 tokens", "30");
     expectField("总 tokens", "150");
     expectField("成本", "未报告");
-    await category(user, "执行轨迹", "规则执行");
-    expect(screen.getByRole("status")).toHaveTextContent(
-      "规则执行结果记录在具体运行中",
-    );
     await user.type(screen.getByRole("searchbox"), " FAILED ");
     expect(rows.getAllByRole("button")).toHaveLength(1);
     expectField("输入 tokens", "未报告");
@@ -1344,10 +1630,10 @@ describe("workbench execution and platform projections", () => {
     expect(details().queryByRole("link")).not.toBeInTheDocument();
     await category(user, "模型服务", "调用记录");
     await detailTab(user, "调用统计");
-    expectField("快照运行记录数", "2");
+    expectField("工作台返回的审查记录数", "2");
     expectField("有用量汇总的运行", "1");
     expectField("已报告调用总数", "7");
-    expect(details().getByText(/费用保持未知/)).toBeInTheDocument();
+    expect(details().getByText(/费用仍为未知/)).toBeInTheDocument();
     await category(user, "模型服务", "预算配置");
     await detailTab(user, "能力边界");
     expectField("聊天模型", "model/configured");
@@ -1395,13 +1681,13 @@ describe("workbench execution and platform projections", () => {
     await detailTab(user, "输入与输出");
     expectField("能力", "search、read");
     expect(
-      details().getByText("快照未包含单次调用的输入输出正文。"),
+      details().getByText("工作台没有提供单次调用的输入和输出正文。"),
     ).toBeInTheDocument();
     await category(user, "工具网关", "权限策略");
     await detailTab(user, "权限与预算");
     expectField("登记能力", "search、read");
     expect(
-      details().getByText("权限与预算不在公开工具快照中返回。"),
+      details().getByText("公开的工具信息不包含权限与预算。"),
     ).toBeInTheDocument();
     await category(user, "工具网关", "调用记录");
     await detailTab(user, "调用记录");
@@ -1428,14 +1714,14 @@ describe("workbench public directory, templates and audit", () => {
     expectField("组织 ID", "org-alpha");
     await category(user, "组织与权限", "角色权限");
     expect(screen.getByRole("status")).toHaveTextContent(
-      "资源授权仍由服务端逐次判断",
+      "系统仍会逐次检查权限",
     );
     await detailTab(user, "角色与权限");
     expectField("角色", "reviewer");
     expectField("组织", "org-alpha");
     await detailTab(user, "案件授权");
     expect(
-      details().getByText(/不能从当前用户的可见案件推断此身份的授权范围/),
+      details().getByText(/不能据此推断该成员有权查看哪些案件/),
     ).toBeInTheDocument();
     expect(details().queryByText("专线采购案件")).not.toBeInTheDocument();
     await detailTab(user, "活动记录");
@@ -1452,11 +1738,11 @@ describe("workbench public directory, templates and audit", () => {
     ).toHaveAttribute("href", "/workbench/audit");
     await selectRecord(user, /未活动成员/);
     expect(
-      details().getByText("快照没有返回关联到此身份的业务审计事件。"),
+      details().getByText("没有获取到与该成员关联的业务审计记录。"),
     ).toBeInTheDocument();
     expect(details().queryByRole("link")).not.toBeInTheDocument();
     await category(user, "组织与权限", "组织架构");
-    expect(screen.getByRole("status")).toHaveTextContent("没有上下级组织关系");
+    expect(screen.getByRole("status")).toHaveTextContent("不包含组织的上下级关系");
     await user.type(screen.getByRole("searchbox"), "org-beta");
     expect(rows.getAllByRole("button")).toHaveLength(2);
     expect(
@@ -1478,7 +1764,7 @@ describe("workbench public directory, templates and audit", () => {
     await category(user, "模板管理", "生成记录");
     await detailTab(user, "使用记录");
     expectField("当前身份可见案件", "2");
-    expect(details().getByText(/不包含模板级生成日志/)).toBeInTheDocument();
+    expect(details().getByText(/不包含按模板汇总的生成日志/)).toBeInTheDocument();
     expect(
       details().getByRole("link", { name: "打开案件中心查看生成记录" }),
     ).toHaveAttribute("href", "/cases");
@@ -1539,10 +1825,10 @@ describe("workbench public directory, templates and audit", () => {
     ).toHaveAttribute("href", "/cases/case-not-in-snapshot");
     await detailTab(user, "关联事件");
     expect(
-      details().getByText("快照没有返回该案件的其他审计事件。"),
+      details().getByText("没有获取到该案件的其他审计记录。"),
     ).toBeInTheDocument();
     await category(user, "审计日志", "操作日志");
-    expect(screen.getByRole("status")).toHaveTextContent("当前身份 actor_id");
+    expect(screen.getByRole("status")).toHaveTextContent("与当前用户有关的业务审计记录");
     expect(rows.getAllByRole("button")).toHaveLength(2);
     expect(
       rows.getByRole("button", { name: /task.created/ }),
@@ -1557,7 +1843,7 @@ describe("workbench public directory, templates and audit", () => {
     ).not.toBeInTheDocument();
     await category(user, "审计日志", "访问记录");
     expect(screen.getByRole("status")).toHaveTextContent(
-      "HTTP 访问日志不在工作台业务审计快照中",
+      "工作台的业务审计记录不包含 HTTP 访问日志",
     );
     expect(rows.queryByRole("button")).not.toBeInTheDocument();
     expect(details().queryByRole("heading")).not.toBeInTheDocument();
@@ -1614,7 +1900,7 @@ describe("workbench snapshot boundaries", () => {
       "没有读取工作台快照的权限",
     );
     expect(
-      screen.queryByRole("link", { name: "打开冻结报告" }),
+      screen.queryByRole("link", { name: "打开报告" }),
     ).not.toBeInTheDocument();
     expect(screen.queryByText("专线采购案件")).not.toBeInTheDocument();
     expect(screen.queryByRole("complementary")).not.toBeInTheDocument();
@@ -1628,7 +1914,7 @@ describe("workbench snapshot boundaries", () => {
     };
     const { user } = open("evidence", service);
     expect(await screen.findByRole("alert")).toHaveTextContent(
-      "工作台快照无效：解析产物不是对象",
+      "工作台数据无效：解析产物不是对象",
     );
     expect(
       screen.queryByRole("link", { name: "读取材料原件" }),
@@ -1643,14 +1929,14 @@ describe("workbench snapshot boundaries", () => {
     const { user, service } = open("reports");
     await list("报告中心");
     expect(
-      details().getByRole("link", { name: "打开冻结报告" }),
+      details().getByRole("link", { name: "打开报告" }),
     ).toBeInTheDocument();
     service.snapshot.reports = [];
-    await user.click(screen.getByRole("button", { name: "刷新快照" }));
+    await user.click(screen.getByRole("button", { name: "刷新数据" }));
     await waitFor(() =>
       expect(details().queryByRole("link")).not.toBeInTheDocument(),
     );
-    expect(screen.getByText("快照没有返回记录。")).toBeInTheDocument();
+    expect(screen.getByText("没有获取到记录。")).toBeInTheDocument();
     expect(
       details().getByText("选择一条记录查看服务端返回的详情。"),
     ).toBeInTheDocument();

@@ -41,65 +41,28 @@
   flex-shrink: 0;
   font-size: 12px;
 }
+.compare-page-links {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 16px;
+}
 .compare-workspace {
   display: grid;
   min-width: 0;
-  grid-template-columns: minmax(210px, 240px) minmax(0, 1fr);
-  grid-template-rows: minmax(0, 260px) minmax(0, 1fr);
+  grid-template-columns: minmax(280px, 320px) minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
   height: max(560px, calc(100dvh - var(--header-height) - 44px));
   min-height: 0;
   border-bottom: 1px solid var(--border-default);
 }
-.compare-case-list {
-  display: flex;
-  flex-direction: column;
+.compare-risk-panel {
   grid-column: 1;
   grid-row: 1;
   min-height: 0;
-  min-width: 0;
-  overflow: hidden;
   padding: 12px;
-  border-right: 1px solid var(--border-default);
-}
-.compare-case-list > header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  margin-bottom: 12px;
-}
-.compare-case-list h1 {
-  margin: 0;
-  font-size: 15px;
-}
-.compare-case-list h1 span {
-  margin-left: var(--space-1);
-  color: inherit;
-  font-family: var(--font-mono);
-  font-size: 11px;
-}
-.compare-case-list > label {
-  display: grid;
-  gap: 4px;
-  margin-bottom: 8px;
-  color: var(--text-secondary);
-  font-size: 11px;
-}
-.compare-case-records {
-  min-height: 0;
-  overflow: auto;
-}
-.compare-case-records strong {
-  font-size: 12px;
-  line-height: 1.6;
-}
-.compare-case-records span,
-.compare-case-records small {
   overflow: hidden;
-  color: var(--text-secondary);
-  font-size: 10px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  border-right: 1px solid var(--border-default);
 }
 .compare-reading-area {
   display: flex;
@@ -234,15 +197,11 @@
 }
 .compare-risk-panel {
   display: flex;
-  flex-direction: column;
-  grid-column: 1;
-  grid-row: 2;
   min-width: 0;
   min-height: 0;
+  flex: 1;
+  flex-direction: column;
   overflow: hidden;
-  border-top: 1px solid var(--border-default);
-  border-right: 1px solid var(--border-default);
-  padding: 12px;
 }
 .compare-risk-panel > header {
   display: flex;
@@ -298,6 +257,7 @@
 }
 .compare-risk-records {
   min-height: 0;
+  flex: 1;
   overflow: auto;
   scrollbar-width: thin;
 }
@@ -454,38 +414,33 @@
   font-size: 12px;
   overflow-wrap: anywhere;
 }
-@media (max-width: 1300px) {
+@media (max-width: 1080px) {
   .compare-workspace {
     grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: auto auto auto;
+    grid-template-rows: auto auto;
     height: auto;
   }
-  .compare-case-list {
+  .compare-risk-panel {
     grid-column: 1;
     grid-row: 1;
-    max-height: 220px;
+    height: auto;
+    max-height: min(460px, 54vh);
     border-right: 0;
     border-bottom: 1px solid var(--border-default);
+  }
+  .compare-risk-counts {
+    grid-template-columns: repeat(4, minmax(90px, 132px));
+    justify-content: start;
   }
   .compare-reading-area {
     grid-column: 1;
     grid-row: 2;
     height: max(560px, calc(100dvh - var(--header-height) - 44px));
   }
-  .compare-risk-panel {
-    grid-column: 1;
-    grid-row: 3;
-    max-height: 400px;
-    border-right: 0;
-  }
 }
 @media (max-width: 760px) {
-  .compare-case-list {
-    max-height: 260px;
-  }
-  .compare-case-records {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+  .compare-risk-panel {
+    max-height: min(420px, 58vh);
   }
   .compare-selectors,
   .compare-result-columns {
@@ -498,9 +453,6 @@
   .compare-materials,
   .compare-material-pane {
     overflow: visible;
-  }
-  .compare-risk-panel {
-    grid-column: 1;
   }
 }
 
@@ -692,37 +644,7 @@
   color: var(--text-secondary);
   font-size: 10px;
 }
-.compare-case-records {
-  align-content: start;
-  grid-auto-rows: min-content;
-}
-.compare-case-records > .ant-btn {
-  display: grid;
-  height: auto;
-  min-height: 0;
-  justify-content: stretch;
-  justify-items: stretch;
-  gap: 2px;
-  padding: 8px 8px;
-  line-height: 1.45;
-  text-align: left;
-  white-space: normal;
-}
-.compare-case-records > .ant-btn strong,
-.compare-case-records > .ant-btn span,
-.compare-case-records > .ant-btn small {
-  max-width: 100%;
-  justify-self: start;
-  text-align: left;
-}
 @media (max-width: 760px) {
-  .compare-case-list {
-    max-height: none;
-    overflow: visible;
-  }
-  .compare-case-records {
-    overflow: visible;
-  }
   .compare-materials {
     grid-template-columns: minmax(0, 1fr);
     overflow: visible;
@@ -733,9 +655,6 @@
   }
   .compare-reading-area {
     min-height: 0;
-  }
-  .compare-case-records {
-    grid-template-columns: minmax(0, 1fr);
   }
   .compare-chain li {
     flex: 1 1 auto;

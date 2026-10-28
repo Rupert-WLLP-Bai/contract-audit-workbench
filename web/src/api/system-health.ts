@@ -5,6 +5,7 @@ import type { SessionAudience } from "./types";
 
 export type HealthStatus =
   | "ready"
+  | "degraded"
   | "unavailable"
   | "unknown"
   | "unconfigured"
@@ -30,6 +31,24 @@ export type HealthService = {
     restarts: number;
   } | null;
   probe: { kind: string; status: string; duration_ms: number } | null;
+  logical_id?: string;
+  instance_id?: string;
+  namespace?: string;
+  node_name?: string;
+  workload?: string;
+  observed_at?: string;
+};
+export type HealthGroup = {
+  id: string;
+  name: string;
+  category: string;
+  status: HealthStatus;
+  detail: string;
+  expected_instances: number;
+  observed_instances: number;
+  ready_instances: number;
+  expected_source: "deployment" | "config" | "catalog" | "unavailable";
+  observed_at?: string;
 };
 export type ProductionComponent = {
   id: string;
@@ -59,6 +78,7 @@ export type SystemHealth = {
   mode: string;
   source: string;
   services: HealthService[];
+  groups: HealthGroup[];
   architecture: ProductionComponent[];
   cluster: HealthCluster | null;
 };
@@ -80,9 +100,28 @@ function counter(value: unknown): number {
     return invalid();
   return value;
 }
+function optionalText(value: unknown): string | undefined {
+  if (value === undefined || value === null || value === "") return undefined;
+  return text(value);
+}
+function healthStatus(value: unknown): HealthStatus {
+  const status = text(value);
+  if (
+    status !== "ready" &&
+    status !== "degraded" &&
+    status !== "unavailable" &&
+    status !== "unknown" &&
+    status !== "unconfigured" &&
+    status !== "stopped" &&
+    status !== "starting" &&
+    status !== "completed"
+  )
+    return invalid();
+  return status;
+}
 function parseService(value: unknown): HealthService {
   if (!isRecord(value) || !Array.isArray(value.depends_on)) return invalid();
-  const status = text(value.status);
+  const status = healthStatus(value.status);
   let container: HealthService["container"] = null;
   if (value.container !== null) {
     if (!isRecord(value.container)) return invalid();
@@ -106,16 +145,6 @@ function parseService(value: unknown): HealthService {
       duration_ms: counter(value.probe.duration_ms),
     };
   }
-  if (
-    status !== "ready" &&
-    status !== "unavailable" &&
-    status !== "unknown" &&
-    status !== "unconfigured" &&
-    status !== "stopped" &&
-    status !== "starting" &&
-    status !== "completed"
-  )
-    return invalid();
   return {
     id: text(value.id),
     name: text(value.name),
@@ -127,8 +156,38 @@ function parseService(value: unknown): HealthService {
     depends_on: value.depends_on.map(text),
     container,
     probe,
+    logical_id: optionalText(value.logical_id),
+    instance_id: optionalText(value.instance_id),
+    namespace: optionalText(value.namespace),
+    node_name: optionalText(value.node_name),
+    workload: optionalText(value.workload),
+    observed_at: optionalText(value.observed_at),
   };
 }
+function parseGroup(value: unknown): HealthGroup {
+  if (!isRecord(value)) return invalid();
+  const expectedSource = text(value.expected_source);
+  if (
+    expectedSource !== "deployment" &&
+    expectedSource !== "config" &&
+    expectedSource !== "catalog" &&
+    expectedSource !== "unavailable"
+  )
+    return invalid();
+  return {
+    id: text(value.id),
+    name: text(value.name),
+    category: text(value.category),
+    status: healthStatus(value.status),
+    detail: text(value.detail),
+    expected_instances: counter(value.expected_instances),
+    observed_instances: counter(value.observed_instances),
+    ready_instances: counter(value.ready_instances),
+    expected_source: expectedSource,
+    observed_at: optionalText(value.observed_at),
+  };
+}
+
 export function parseSystemHealth(value: unknown): SystemHealth {
   if (
     !isRecord(value) ||
@@ -208,12 +267,18 @@ export function parseSystemHealth(value: unknown): SystemHealth {
   );
   if (new Set(architecture.map((item) => item.id)).size !== architecture.length)
     return invalid();
+  const groups = Array.isArray(value.groups)
+    ? value.groups.map(parseGroup)
+    : [];
+  if (new Set(groups.map((item) => item.id)).size !== groups.length)
+    return invalid();
   return {
     schema_version: value.schema_version,
     observed_at: observed,
     mode: text(value.mode),
     source: text(value.source),
     services,
+    groups,
     architecture,
     cluster,
   };

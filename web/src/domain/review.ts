@@ -125,7 +125,7 @@ const BUSINESS_STATUS_LABELS: Record<string, string> = {
 };
 
 const TASK_KIND_LABELS: Record<string, string> = {
-  decision: "人工决定",
+  decision: "审查判断",
   review: "审查复核",
   remediation: "整改",
   report: "报告",
@@ -199,6 +199,13 @@ export function contractTypeLabel(value: string): string {
 export function businessStatusLabel(value: string): string {
   if (value === "") return "业务状态未提供";
   return BUSINESS_STATUS_LABELS[value] ?? value;
+}
+
+export function businessStatusTone(value: string): StatusTone {
+  if (value === "active") return "progress";
+  if (value === "pending" || value === "suspended") return "attention";
+  if (value === "closed") return "good";
+  return "neutral";
 }
 
 export function taskKindLabel(value: string): string {

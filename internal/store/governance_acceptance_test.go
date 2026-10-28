@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"contractaudit/internal/accounts"
@@ -33,12 +34,14 @@ func TestAcceptanceFreezesGovernedPackIdentity(t *testing.T) {
 		}
 	}
 
-	published := publishGovernedPackStore(t, st, admin, "1", "100")
+	published := publishSyntheticAcceptancePack(t, st, admin)
+	publishSyntheticAcceptancePolicy(t, st, admin, published)
 
-	runID, err := st.StartReview(context.Background(), admin, caseID)
+	accepted, err := st.StartReviewAsyncAt(context.Background(), admin, caseID, acceptanceBusinessTime)
 	if err != nil {
 		t.Fatalf("start review with a governed pack: %v", err)
 	}
+	runID := accepted.RunID
 	snapshot := snapshotState(st).snapshotOf(runID)
 	if snapshot.RulePackID != "telecom-governed" || snapshot.RulePackVersion != "1" {
 		t.Fatalf("run snapshot did not freeze the governed pack identity: %+v", snapshot)
@@ -201,15 +204,17 @@ func TestAcceptanceFreezesGovernedPackIdentity(t *testing.T) {
 	if err := st.Retry(context.Background(), admin, caseID, runID); err != nil {
 		t.Fatalf("idempotent retry of an active run failed: %v", err)
 	}
+	if latest, ok := snapshotState(st).latestAttempt(runID); !ok || latest.ID != accepted.AttemptID {
+		t.Fatalf("active retry changed the accepted attempt: %+v", latest)
+	}
 	if got := snapshotState(st).snapshotOf(runID); got.RulePackVersion != "1" || got.RulePackHash != published.Pack.ContentHash {
 		t.Fatalf("idempotent retry changed the frozen governed identity: %+v", got)
 	}
 }
 
-// TestAcceptanceKeepsSyntheticBaselineWhenNoPackApplies proves the baseline
-// synthetic adapter still runs when no governed pack matches, so governance can
-// never be required for the existing deterministic chain.
-func TestAcceptanceKeepsSyntheticBaselineWhenNoPackApplies(t *testing.T) {
+// TestAcceptanceRejectsDedicatedLineBaselineWithoutApprovedGovernance proves
+// that a new dedicated-line review cannot use an ungoverned synthetic baseline.
+func TestAcceptanceRejectsDedicatedLineBaselineWithoutApprovedGovernance(t *testing.T) {
 	st, admin := openExecutionStore(t)
 	st.UseModels(&frozenOCRModel{})
 	caseID, err := st.CreateCaseWithBusiness(admin, "无适用治理包", "service", "ENT", "telecom_dedicated_line")
@@ -224,26 +229,33 @@ func TestAcceptanceKeepsSyntheticBaselineWhenNoPackApplies(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	runID, err := st.StartReview(context.Background(), admin, caseID)
+	before := acceptanceCounts(t, st, caseID)
+	_, err = st.StartReview(context.Background(), admin, caseID)
+	requireKnowledgeFault(t, err, 422)
+	_, err = st.StartReviewAt(context.Background(), admin, caseID, acceptanceBusinessTime)
+	requireKnowledgeFault(t, err, 409)
+	if !strings.Contains(err.Error(), "没有适用的已发布规则包") {
+		t.Fatalf("missing pack failed for an unrelated reason: %v", err)
+	}
+	pack := publishSyntheticAcceptancePack(t, st, admin)
+	_, err = st.StartReviewAt(context.Background(), admin, caseID, acceptanceBusinessTime)
+	requireKnowledgeFault(t, err, 409)
+	if !strings.Contains(err.Error(), "强制规则缺少适用的已发布政策绑定") {
+		t.Fatalf("missing approved policy failed for an unrelated reason: %v", err)
+	}
+	if after := acceptanceCounts(t, st, caseID); after != before {
+		t.Fatalf("failed baseline acceptance persisted run state: before=%v after=%v", before, after)
+	}
+	policy := publishSyntheticAcceptancePolicy(t, st, admin, pack)
+	accepted, err := st.StartReviewAsyncAt(context.Background(), admin, caseID, acceptanceBusinessTime)
 	if err != nil {
-		t.Fatalf("baseline start review: %v", err)
+		t.Fatalf("acceptance with approved synthetic governance: %v", err)
 	}
-	snapshot := snapshotState(st).snapshotOf(runID)
-	if snapshot.RulePackID != "" || snapshot.RulePackVersion != "" || len(snapshot.RulePackSnapshot) != 0 {
-		t.Fatalf("baseline run froze a governed pack: %+v", snapshot)
-	}
-	// The baseline path leaves the compiler identity empty at acceptance: the
-	// existing synthetic compiler records its own identity when the attempt runs,
-	// and acceptance must not pre-empt it.
-	if snapshot.RulePackCompilerRef != "" {
-		t.Fatalf("baseline acceptance pre-set a compiler ref %q", snapshot.RulePackCompilerRef)
-	}
-	workspace, err := st.Workspace(admin, caseID, runID, "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if workspace.Execution == nil || workspace.Execution.Attempt == nil || workspace.Execution.Attempt.RulePackID != "" {
-		t.Fatalf("baseline attempt froze a governed pack: %+v", workspace.Execution)
+	snapshot := snapshotState(st).snapshotOf(accepted.RunID)
+	if snapshot.RulePackID != pack.Pack.ID || snapshot.RulePackHash != pack.Pack.ContentHash ||
+		snapshot.GovernedKnowledge == nil || len(snapshot.GovernedKnowledge.RequiredPolicies) != 1 ||
+		snapshot.GovernedKnowledge.RequiredPolicies[0].Ref != policy.Ref {
+		t.Fatalf("approved governance was not frozen in the accepted run: %+v", snapshot)
 	}
 }
 
@@ -273,14 +285,37 @@ func TestGovernedPackCannotRemoveMandatoryCapability(t *testing.T) {
 	}
 	rules := parsed["rules"].([]any)
 	parsed["rules"] = rules[:1]
+	rules[0].(map[string]any)["authority_sources"] = []any{map[string]any{"id": "acceptance-demo-policy", "version": "1", "kind": "synthetic_demo"}}
 	partial, err := json.Marshal(parsed)
 	if err != nil {
 		t.Fatal(err)
 	}
-	publishGovernedPackStore(t, st, admin, "1", "100", partial)
-
-	if _, err := st.StartReview(context.Background(), admin, caseID); err == nil {
-		t.Fatal("acceptance used a governed pack that removed mandatory capabilities")
+	pack := publishGovernedPackStore(t, st, admin, "1", "100", partial)
+	content := knowledgeFixtureContent(pack, "acceptance-demo-policy", "1", "policy")
+	content.SourceType = "synthetic_policy"
+	content.SourceReference = "approved synthetic acceptance fixture"
+	content.Binding.RuleIDs = content.Binding.RuleIDs[:1]
+	content.Binding.SourceSpans = content.Binding.SourceSpans[:1]
+	content.Body = content.Binding.SourceSpans[0].Quote + "。"
+	draft := createKnowledgeDraft(t, st, admin, content, "partial-policy-create")
+	preview, err := st.PreviewGovernedPolicy(admin, draft.Ref.KnowledgeID, draft.Ref.VersionID)
+	if err != nil || !preview.Approvable || len(preview.Issues) != 0 || len(preview.Comparisons) != 1 ||
+		preview.Comparisons[0].RuleID != "ENT-TECH-BW-001" || preview.Comparisons[0].Status != "match" {
+		t.Fatalf("partial policy does not prove its bandwidth rule: %+v %v", preview, err)
+	}
+	policy := publishKnowledge(t, st, admin, draft, "partial-policy")
+	resolved, err := st.ResolveGovernedKnowledge(context.Background(), admin, caseID, acceptanceBusinessTime, 0)
+	if err != nil || len(resolved.RequiredPolicies) != 1 || resolved.RequiredPolicies[0].Ref != policy.Ref {
+		t.Fatalf("partial pack did not have a published and applicable policy: %+v %v", resolved.RequiredPolicies, err)
+	}
+	before := acceptanceCounts(t, st, caseID)
+	_, err = st.StartReviewAt(context.Background(), admin, caseID, acceptanceBusinessTime)
+	requireKnowledgeFault(t, err, 409)
+	if !strings.Contains(err.Error(), "缺少强制能力") {
+		t.Fatalf("partial pack failed for a reason other than missing mandatory capabilities: %v", err)
+	}
+	if after := acceptanceCounts(t, st, caseID); after != before {
+		t.Fatalf("partial pack acceptance persisted run state: before=%v after=%v", before, after)
 	}
 }
 
@@ -392,6 +427,8 @@ func snapshotState(st *Store) *state {
 func TestAcceptanceFreezesFullPlannerPayload(t *testing.T) {
 	st, admin := openExecutionStore(t)
 	st.UseModels(&frozenOCRModel{})
+	pack := publishSyntheticAcceptancePack(t, st, admin)
+	publishSyntheticAcceptancePolicy(t, st, admin, pack)
 	caseID, err := st.CreateCaseWithBusiness(admin, "规划器配置冻结", "service", "ENT", "telecom_dedicated_line")
 	if err != nil {
 		t.Fatal(err)
@@ -404,7 +441,7 @@ func TestAcceptanceFreezesFullPlannerPayload(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	runID, err := st.StartReview(context.Background(), admin, caseID)
+	runID, err := st.StartReviewAt(context.Background(), admin, caseID, acceptanceBusinessTime)
 	if err != nil {
 		t.Fatal(err)
 	}

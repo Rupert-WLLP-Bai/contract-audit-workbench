@@ -1,20 +1,49 @@
 #!/usr/bin/env python3
 """Reproducible deterministic acceptance; optional real-browser release gate."""
+from __future__ import annotations
+
 import argparse
 import datetime as dt
 import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import sys
 import time
+from dataclasses import dataclass
+from typing import Callable
 
 from source_identity import source_identity
 
 ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "artifacts"
+
+STAGES = ("static", "go", "web", "coverage", "browser")
+# Only the outputs a stage owns are removed before it runs. The coverage stage
+# consumes files produced by the go and web jobs, so it must never clean them.
+STAGE_OUTPUTS = {
+    "static": (),
+    "go": ("artifacts/go-coverage.out", "artifacts/evaluation.json",
+           "artifacts/agent-demo.json", "artifacts/ruleshadow-disabled.json"),
+    "web": ("artifacts/vitest-results.json", "web/coverage"),
+    "coverage": ("artifacts/coverage-summary.json",),
+    "browser": ("artifacts/screenshots",),
+}
+
+
+@dataclass(frozen=True)
+class Check:
+    name: str
+    stage: str
+    cmd: tuple[str, ...]
+    cwd: Path = ROOT
+    timeout: int = 300
+    jsonl: bool = False
+    validate: Callable[[Path], dict] | None = None
+    continue_on_failure: bool = False
 
 
 def validate_go_test_results(text):
@@ -101,121 +130,338 @@ def validate_rule_shadow(value):
     return {"mandatory_conflicts": 3, "invariance_cases": len(rows), "network": "disabled"}
 
 
+def decode_go_test_log(text):
+    """Render go test -json output as readable lines; keep non-JSON input as-is."""
+    lines = []
+    for line in text.splitlines():
+        try:
+            row = json.loads(line)
+        except json.JSONDecodeError:
+            lines.append(line)
+            continue
+        if not isinstance(row, dict):
+            lines.append(line)
+            continue
+        action = row.get("Action")
+        if action == "output":
+            lines.append(str(row.get("Output", "")).rstrip("\n"))
+        elif action == "fail" and not row.get("Test"):
+            lines.append(f"FAIL\t{row.get('Package', '')}")
+    return "\n".join(lines)
+
+
+def workflow_escape(value, property_value=False):
+    value = value.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
+    if property_value:
+        value = value.replace(":", "%3A").replace(",", "%2C")
+    return value
+
+
+def workflow_error(title, message):
+    if os.environ.get("GITHUB_ACTIONS") != "true":
+        return
+    print(f"::error title={workflow_escape(title, True)}::{workflow_escape(message)}")
+
+
+def emit_failure_annotations(name, display):
+    """Surface a failure as a check annotation, including a file/line when found."""
+    if os.environ.get("GITHUB_ACTIONS") != "true":
+        return
+    workspace = os.environ.get("GITHUB_WORKSPACE", "").rstrip("/")
+    if workspace:
+        display = display.replace(workspace + "/", "")
+    emitted = 0
+    file_annotated = False
+    for raw in display.splitlines():
+        line = raw.strip()
+        if line.startswith(("::error ", "::warning ", "::notice ")):
+            print(line)
+            emitted += 1
+            if "file=" in line:
+                file_annotated = True
+        elif line.startswith("--- FAIL:"):
+            workflow_error(name, line)
+            emitted += 1
+        if emitted >= 20:
+            break
+    if file_annotated:
+        return
+    frame = re.search(r"(?<![\w/.-])((?:web/e2e|internal|e2e|cmd)/[^\s:()]+?\.(?:ts|tsx|go)):(\d+)(?::(\d+))?",
+                      display)
+    if frame:
+        filename, line, column = frame.group(1), frame.group(2), frame.group(3)
+        suffix = f",col={column}" if column else ""
+        print(f"::error file={workflow_escape(filename, True)},line={line}{suffix},"
+              f"title={workflow_escape(name, True)}::{workflow_escape(name + ' failed')}")
+        return
+    if emitted:
+        return
+    workflow_error(name, f"{name} failed; see artifacts/logs/{name}.txt")
+
+
+def write_step_summary(report):
+    destination = os.environ.get("GITHUB_STEP_SUMMARY")
+    if not destination:
+        return
+    status = "PASS" if report.get("passed") else "FAIL"
+    lines = [f"## {report.get('stage', 'all')} gate: {status}", ""]
+    digest = report.get("source_identity", {}).get("digest")
+    if digest:
+        lines.extend([f"source identity: `{digest}`", ""])
+    lines.extend(["| check | result | seconds | log |", "| --- | --- | --- | --- |"])
+    for check in report.get("checks", []):
+        lines.append(f"| {check['name']} | {check.get('status', 'FAIL')} | "
+                     f"{check.get('seconds', 0)} | `{check.get('log', '')}` |")
+    if report.get("error"):
+        lines.extend(["", f"error: {report['error']}"])
+    with open(destination, "a", encoding="utf-8") as handle:
+        handle.write("\n".join(lines) + "\n")
+
+
+def report_path(stage):
+    if stage == "all":
+        return OUT / "verification.json"
+    return OUT / f"verification-{stage}.json"
+
+
+def save_report(report):
+    report_path(report.get("stage", "all")).write_text(
+        json.dumps(report, ensure_ascii=False, indent=2) + "\n")
+
+
+def clean_outputs(paths):
+    for relative in paths:
+        path = ROOT / relative
+        if path.is_dir() and not path.is_symlink():
+            shutil.rmtree(path)
+        else:
+            path.unlink(missing_ok=True)
+
+
+def selected_check(check, stage, browser):
+    if stage == "all":
+        return check.stage != "browser" or browser
+    return check.stage == stage
+
+
+def prepare_browser(env):
+    if not env.get("CHROMIUM_BIN"):
+        candidates = []
+        try:
+            candidates.append(subprocess.run(
+                ["node", "-e",
+                 "process.stdout.write(require('./web/node_modules/playwright').chromium.executablePath())"],
+                cwd=ROOT, env=env, capture_output=True, text=True, check=True).stdout.strip())
+        except (OSError, subprocess.SubprocessError):
+            pass
+        candidates += ["/usr/bin/chromium", "/usr/bin/chromium-browser",
+                       "/usr/bin/google-chrome", "/usr/bin/google-chrome-stable"]
+        executable = next((item for item in candidates if item and Path(item).is_file()), "")
+        if not executable:
+            raise RuntimeError(
+                "Chromium unavailable. Run `cd web && bunx playwright install chromium`, "
+                "or set CHROMIUM_BIN."
+            )
+        env["CHROMIUM_BIN"] = executable
+    # Bun must also be visible to Go's exec.LookPath in the browser test.
+    bun_path = shutil.which(env.get("BUN", "bun"))
+    if bun_path:
+        env["PATH"] = str(Path(bun_path).parent) + os.pathsep + env.get("PATH", "")
+
+
+def build_checks(go, bun):
+    return (
+        Check("go-version", "all", (go, "version")),
+        Check("bun-version", "all", (bun, "--version")),
+        Check("node-version", "all", ("node", "--version")),
+        Check("quality-tests", "static",
+              (sys.executable, "-m", "unittest", "discover", "-s", "scripts", "-p", "test_*.py")),
+        Check("infra-tests", "static",
+              (sys.executable, "-m", "unittest", "discover", "-s", "deploy/tests", "-v")),
+        Check("format", "static", (sys.executable, "scripts/check_format.py")),
+        Check("modules", "static", (go, "mod", "verify")),
+        Check("vet", "static", (go, "vet", "./...")),
+        Check("go-tests", "go",
+              (go, "test", "-race", "-count=1", "-json", "-timeout=20m",
+               "-covermode=atomic", "-coverpkg=./internal/...",
+               "-coverprofile=artifacts/go-coverage.out", "./..."),
+              timeout=2400, jsonl=True,
+              validate=lambda path: validate_go_test_results(path.read_text())),
+        Check("web-typecheck", "web", (bun, "run", "typecheck"), cwd=ROOT / "web"),
+        Check("web-tests", "web",
+              (bun, "run", "test:coverage", "--reporter=default", "--reporter=json",
+               "--outputFile=../artifacts/vitest-results.json"), cwd=ROOT / "web",
+              validate=lambda _: validate_web_test_results(
+                  json.loads((OUT / "vitest-results.json").read_text()))),
+        Check("web-build", "web", (bun, "run", "build"), cwd=ROOT / "web"),
+        Check("backend-build", "go",
+              (go, "build", "-buildvcs=false", "-trimpath",
+               "-o", "artifacts/contractaudit", "./cmd/server")),
+        Check("backend-build-worker", "go",
+              (go, "build", "-buildvcs=false", "-trimpath",
+               "-o", "artifacts/contractaudit-worker", "./cmd/worker")),
+        Check("backend-build-toolgateway", "go",
+              (go, "build", "-buildvcs=false", "-trimpath",
+               "-o", "artifacts/contractaudit-toolgateway", "./cmd/toolgateway")),
+        Check("backend-build-migrate", "go",
+              (go, "build", "-buildvcs=false", "-trimpath",
+               "-o", "artifacts/contractaudit-migrate", "./cmd/migrate")),
+        Check("evaluate", "go",
+              (go, "run", "./cmd/eval", "-out", "artifacts/evaluation.json")),
+        Check("agent-demo", "go",
+              (go, "run", "./cmd/agentdemo", "-out", "artifacts/agent-demo.json"),
+              validate=lambda _: validate_agent_demo(
+                  json.loads((OUT / "agent-demo.json").read_text()))),
+        Check("rule-shadow", "go",
+              (go, "run", "./cmd/ruleshadow", "-publish-demo",
+               "-out", "artifacts/ruleshadow-disabled.json"),
+              validate=lambda _: validate_rule_shadow(
+                  json.loads((OUT / "ruleshadow-disabled.json").read_text()))),
+        Check("coverage-gates", "coverage", (sys.executable, "scripts/check_coverage.py")),
+        Check("browser-warranty", "browser",
+              (go, "test", "-tags", "browser", "-count=1", "-json", "-timeout=150s",
+               "./e2e", "-run", "^TestBrowserWarrantyConflictAndConfirm$"),
+              timeout=180, jsonl=True, continue_on_failure=True,
+              validate=lambda path: validate_go_test_results(path.read_text())),
+        Check("browser-telecom", "browser",
+              (go, "test", "-tags", "browser", "-count=1", "-json", "-timeout=330s",
+               "./e2e", "-run", "^TestBrowserTelecomC1BFullJourney$"),
+              timeout=360, jsonl=True, continue_on_failure=True,
+              validate=lambda path: validate_go_test_results(path.read_text())),
+    )
+
+
+def run_check(check, env, report, logs):
+    print(f"[{check.name}] {' '.join(check.cmd)}", flush=True)
+    before = time.monotonic()
+    raw = logs / (check.name + (".jsonl" if check.jsonl else ".txt"))
+    display_path = logs / (check.name + ".txt")
+    try:
+        with raw.open("w") as handle:
+            result = subprocess.run(list(check.cmd), cwd=check.cwd, env=env, stdout=handle,
+                                    stderr=subprocess.STDOUT, timeout=check.timeout, check=False)
+        code = result.returncode
+    except (OSError, subprocess.TimeoutExpired) as error:
+        with raw.open("a") as handle:
+            handle.write(str(error) + "\n")
+        code = 127
+    raw_text = raw.read_text(errors="replace")
+    if check.jsonl:
+        display = decode_go_test_log(raw_text)
+        display_path.write_text(display + ("\n" if display else ""))
+    else:
+        display = raw_text
+    evidence = None
+    failure = None
+    if code == 0 and check.validate is not None:
+        try:
+            evidence = check.validate(raw)
+        except (OSError, ValueError, KeyError, TypeError) as error:
+            failure = f"EVIDENCE CHECK FAILED: {error}"
+            with display_path.open("a") as handle:
+                handle.write(f"\n{failure}\n")
+            display += f"\n{failure}"
+            code = 1
+    record = {
+        "name": check.name,
+        "stage": check.stage,
+        "status": "PASS" if code == 0 else "FAIL",
+        "returncode": code,
+        "seconds": round(time.monotonic() - before, 3),
+        "log": str(display_path.relative_to(ROOT)),
+    }
+    if check.jsonl:
+        record["raw_log"] = str(raw.relative_to(ROOT))
+    if evidence is not None:
+        record["evidence"] = evidence
+    if failure:
+        record["failure"] = failure
+    report["checks"].append(record)
+    save_report(report)
+    if code:
+        emit_failure_annotations(check.name, display)
+        print(display[-6000:], file=sys.stderr)
+        return False
+    return True
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--browser", action="store_true", help="require a real Chromium user journey")
+    parser.add_argument("--browser", action="store_true",
+                        help="require a real Chromium user journey")
+    parser.add_argument("--stage", choices=(*STAGES, "all"), default="all",
+                        help="run only one gate stage (default: all)")
     args = parser.parse_args()
     OUT.mkdir(exist_ok=True)
     logs = OUT / "logs"
     logs.mkdir(exist_ok=True)
-    # Remove only generated gate inputs so a failed step cannot reuse a green report.
-    for path in (OUT / "go-coverage.out", OUT / "coverage-summary.json", OUT / "evaluation.json",
-                 OUT / "vitest-results.json", OUT / "agent-demo.json", OUT / "ruleshadow-disabled.json"):
-        path.unlink(missing_ok=True)
-    web_coverage = ROOT / "web/coverage"
-    if web_coverage.exists():
-        shutil.rmtree(web_coverage)
+    stages = STAGE_OUTPUTS if args.stage == "all" else (args.stage,)
+    for stage in stages:
+        clean_outputs(STAGE_OUTPUTS[stage])
     go, bun = os.environ.get("GO", "go"), os.environ.get("BUN", "bun")
-    env = dict(os.environ, APP_ENV="test")
-    report = {"started_at": dt.datetime.now(dt.timezone.utc).isoformat(),
-              "browser_requested": args.browser, "live_model": "NOT_RUN: explicit opt-in required",
-              "checks": [], "passed": False}
+    # Verification never calls a hosted model. The fixture tests set their own
+    # mode explicitly, so an inherited developer shell cannot turn this into a
+    # paid external run.
+    env = dict(os.environ, APP_ENV="test", TYPESAFE_JEV_MODE="off")
+    env.pop("TYPESAFE_API_KEY", None)
+    browser_selected = args.browser or args.stage == "browser"
+    report = {
+        "started_at": dt.datetime.now(dt.timezone.utc).isoformat(),
+        "stage": args.stage,
+        "browser_requested": browser_selected,
+        "live_model": "NOT_RUN: explicit opt-in required",
+        "checks": [],
+        "passed": False,
+    }
     report["source_identity"] = source_identity(ROOT)
-
-    def save():
-        (OUT / "verification.json").write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n")
-
-    def run(name, cmd, cwd=ROOT, timeout=300, validate=None):
-        print(f"[{name}] {' '.join(cmd)}", flush=True)
-        before = time.monotonic()
-        log = logs / f"{name}.txt"
-        try:
-            with log.open("w") as handle:
-                result = subprocess.run(cmd, cwd=cwd, env=env, stdout=handle, stderr=subprocess.STDOUT,
-                                        timeout=timeout, check=False)
-            code = result.returncode
-        except (OSError, subprocess.TimeoutExpired) as error:
-            with log.open("a") as handle:
-                handle.write(str(error) + "\n")
-            code = 127
-        evidence = None
-        if code == 0 and validate is not None:
-            try:
-                evidence = validate(log)
-            except (OSError, ValueError, KeyError, TypeError) as error:
-                with log.open("a") as handle:
-                    handle.write(f"\nEVIDENCE CHECK FAILED: {error}\n")
-                code = 1
-        check = {"name": name, "returncode": code,
-                                  "seconds": round(time.monotonic() - before, 3),
-                                  "log": str(log.relative_to(ROOT))}
-        if evidence is not None:
-            check["evidence"] = evidence
-        report["checks"].append(check)
-        save()
-        if code:
-            print(log.read_text()[-6000:], file=sys.stderr)
-            raise RuntimeError(f"{name} failed; see {log.relative_to(ROOT)}")
-
+    checks = build_checks(go, bun)
+    selected = [check for check in checks
+                if selected_check(check, args.stage, args.browser)]
+    if not selected:
+        print(f"FAIL: stage {args.stage} selected no checks", file=sys.stderr)
+        return 2
+    browser_selected = any(check.stage == "browser" for check in selected)
+    report["browser_requested"] = browser_selected
+    report["browser"] = "NOT_RUN: use make acceptance for release gate"
+    executed = set()
+    failures = []
     try:
-        run("go-version", [go, "version"])
-        run("bun-version", [bun, "--version"])
-        run("node-version", ["node", "--version"])
-        run("quality-tests", [sys.executable, "-m", "unittest", "discover", "-s", "scripts", "-p", "test_*.py"])
-        run("infra-tests", [sys.executable, "-m", "unittest", "discover", "-s", "deploy/tests", "-v"])
-        run("format", [sys.executable, "scripts/check_format.py"])
-        run("modules", [go, "mod", "verify"])
-        run("vet", [go, "vet", "./..."])
-        run("go-tests", [go, "test", "-race", "-count=1", "-json", "-timeout=20m",
-                         "-covermode=atomic", "-coverpkg=./internal/...",
-                         "-coverprofile=artifacts/go-coverage.out", "./..."], timeout=2400,
-            validate=lambda log: validate_go_test_results(log.read_text()))
-        run("web-typecheck", [bun, "run", "typecheck"], ROOT / "web")
-        run("web-tests", [bun, "run", "test:coverage", "--reporter=default", "--reporter=json",
-                          "--outputFile=../artifacts/vitest-results.json"], ROOT / "web",
-            validate=lambda _: validate_web_test_results(json.loads((OUT / "vitest-results.json").read_text())))
-        run("web-build", [bun, "run", "build"], ROOT / "web")
-        # The deliverable is a source ZIP without Git metadata; parent checkout
-        # state must not change whether this archive can be built.
-        run("backend-build", [go, "build", "-buildvcs=false", "-trimpath", "-o", "artifacts/contractaudit", "./cmd/server"])
-        for binary in ("worker", "toolgateway", "migrate"):
-            run("backend-build-" + binary, [go, "build", "-buildvcs=false", "-trimpath",
-                "-o", str(OUT / ("contractaudit-" + binary)), "./cmd/" + binary])
-        run("evaluate", [go, "run", "./cmd/eval", "-out", "artifacts/evaluation.json"])
-        run("agent-demo", [go, "run", "./cmd/agentdemo", "-out", "artifacts/agent-demo.json"],
-            validate=lambda _: validate_agent_demo(json.loads((OUT / "agent-demo.json").read_text())))
-        run("rule-shadow", [go, "run", "./cmd/ruleshadow", "-publish-demo", "-out", "artifacts/ruleshadow-disabled.json"],
-            validate=lambda _: validate_rule_shadow(json.loads((OUT / "ruleshadow-disabled.json").read_text())))
-        run("coverage-gates", [sys.executable, "scripts/check_coverage.py"])
-        if args.browser:
-            if not env.get("CHROMIUM_BIN"):
-                executable = subprocess.run(
-                    ["node", "-e", "process.stdout.write(require('./web/node_modules/playwright').chromium.executablePath())"],
-                    cwd=ROOT, env=env, capture_output=True, text=True, check=True).stdout.strip()
-                if not Path(executable).is_file():
-                    raise RuntimeError("Chromium unavailable. Run make browser-install or set CHROMIUM_BIN.")
-                env["CHROMIUM_BIN"] = executable
-            # Bun must also be visible to Go's exec.LookPath in the browser test.
-            bun_path = shutil.which(bun)
-            if bun_path:
-                env["PATH"] = str(Path(bun_path).parent) + os.pathsep + env.get("PATH", "")
-            run("browser-system", [go, "test", "-tags", "browser", "-count=1", "-json",
-                                   "-timeout=150s", "./e2e", "-run", "^TestBrowser"], timeout=180,
-                validate=lambda log: validate_go_test_results(log.read_text()))
-        else:
-            report["browser"] = "NOT_RUN: use make acceptance for release gate"
+        if browser_selected:
+            prepare_browser(env)
+        for check in selected:
+            executed.add(check.name)
+            if not run_check(check, env, report, logs):
+                if not check.continue_on_failure:
+                    raise RuntimeError(
+                        f"{check.name} failed; see artifacts/logs/{check.name}.txt")
+                failures.append(check.name)
+        report["browser"] = ("PASS" if browser_selected else
+                             "NOT_RUN: use make acceptance for release gate")
+        if failures:
+            report["browser"] = "FAIL"
+            raise RuntimeError(
+                f"{', '.join(failures)} failed; see artifacts/logs/")
         if source_identity(ROOT) != report["source_identity"]:
-            raise RuntimeError("Executable source changed during verification; rerun on a stable tree.")
+            raise RuntimeError(
+                "Executable source changed during verification; rerun on a stable tree.")
         report["passed"] = True
-        print("PASS: deterministic acceptance" + (" including Chromium" if args.browser else " (browser not requested)"))
+        print("PASS: deterministic acceptance"
+              + (" including Chromium" if browser_selected else ""))
         return 0
     except (RuntimeError, subprocess.CalledProcessError) as error:
         report["error"] = str(error)
         print(f"FAIL: {error}", file=sys.stderr)
         return 1
     finally:
+        for check in selected:
+            if check.name not in executed:
+                report["checks"].append({
+                    "name": check.name, "stage": check.stage, "status": "NOT_RUN",
+                    "returncode": None, "seconds": 0, "log": "",
+                })
         report["finished_at"] = dt.datetime.now(dt.timezone.utc).isoformat()
-        save()
+        save_report(report)
+        write_step_summary(report)
 
 
 if __name__ == "__main__":

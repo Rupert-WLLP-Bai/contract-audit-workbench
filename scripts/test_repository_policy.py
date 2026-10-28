@@ -29,6 +29,8 @@ class RepositoryPolicyTest(unittest.TestCase):
             self.assertTrue(repository_policy.is_ignored(ROOT, relative), relative)
         self.assertFalse(repository_policy.is_ignored(ROOT, "internal/documentparse/testdata/pdf/gold.json"))
         self.assertFalse(repository_policy.is_ignored(ROOT, "testdata/decision-zh-v1.json"))
+        self.assertFalse(repository_policy.is_ignored(ROOT, "web/public/huangjueshu-competition-logo.png"))
+        self.assertTrue(repository_policy.is_ignored(ROOT, "web/public/unapproved-design.png"))
 
     def test_matcher_agrees_with_git(self):
         samples = [
@@ -54,6 +56,17 @@ class RepositoryPolicyTest(unittest.TestCase):
                 )
                 self.assertIn(git.returncode, (0, 1), relative)
                 self.assertEqual(repository_policy.is_ignored(root, relative), git.returncode == 0, relative)
+
+    def test_runtime_logo_is_bounded_without_allowing_other_bulk_assets(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "source"
+            self._write_source_tree(root)
+            logo = root / "web/public/huangjueshu-competition-logo.png"
+            logo.parent.mkdir(parents=True)
+            logo.write_bytes(b"image")
+            self.assertEqual(repository_policy.violations(root), [])
+            logo.write_bytes(b"x" * (repository_policy.RUNTIME_ASSET_MAX_BYTES + 1))
+            self.assertTrue(any("runtime asset exceeds" in issue for issue in repository_policy.violations(root)))
 
     def test_current_tree_has_no_policy_violations(self):
         self.assertEqual(repository_policy.violations(ROOT), [])

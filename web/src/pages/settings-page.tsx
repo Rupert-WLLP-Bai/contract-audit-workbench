@@ -1,8 +1,42 @@
 import { errorMessage } from "../api/http";
-import { Button, Table, type TableProps } from "antd";
+import { Button, Statistic, Table, type TableProps } from "antd";
 import { useSession, useSettings } from "../api/queries";
 import { PageStatus } from "../components/page-status";
 import { actorRoleLabel, formatWait, modelStatusLabel } from "../domain/review";
+
+type ModelFact = {
+  term: string;
+  detail: string;
+  tone?: "attention" | "danger";
+  mono?: boolean;
+};
+
+// The service reports the model summary as one readable sentence. Split it into
+// labelled rows so the panel does not present a comma-joined paragraph. Unknown
+// shapes stay on one line instead of hiding information.
+function modelFacts(label: string): ModelFact[] {
+  const parts = label
+    .split(/[，。]/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+  if (parts.length === 0) return [{ term: "", detail: "未报告" }];
+  return parts.map((part) => {
+    const cut = part.indexOf(" ");
+    const head = cut > 0 ? part.slice(0, cut) : "";
+    const pair = head !== "" && head.length <= 8 && !/[：:]/.test(head);
+    const detail = pair ? part.slice(cut + 1).trim() : part;
+    return {
+      term: pair ? head : "",
+      detail,
+      tone: /不可达|没有配置的模型/.test(detail)
+        ? "danger"
+        : /未配置/.test(detail)
+          ? "attention"
+          : undefined,
+      mono: /^https?:\/\//.test(detail),
+    };
+  });
+}
 
 export function SettingsPage({
   audience = "admin",
@@ -36,11 +70,42 @@ export function SettingsPage({
   const queueDepth =
     data.queue.depth === null ? "未报告" : String(data.queue.depth);
   const oldestWait = formatWait(data.queue.oldest_wait_ms);
+  const modelConnected =
+    data.model.status === "connected" || data.model.status === "configured";
+  const executionFigures = data.execution
+    ? [
+        { label: "全部执行记录", value: data.execution.total_attempts, tone: "neutral" },
+        { label: "运行中", value: data.execution.running_attempts, tone: "progress" },
+        { label: "已完成", value: data.execution.completed_attempts, tone: "compatible" },
+        { label: "部分完成", value: data.execution.partial_attempts, tone: "insufficient" },
+        { label: "失败", value: data.execution.failed_attempts, tone: "conflict" },
+        { label: "已取消", value: data.execution.cancelled_attempts, tone: "neutral" },
+        { label: "模型调用", value: data.execution.model_calls, tone: "progress" },
+        {
+          label: "用量未知的调用",
+          value: data.execution.unknown_usage_calls,
+          tone: "insufficient",
+        },
+        {
+          label: "队列深度",
+          value:
+            data.execution.queue_depth === null
+              ? "未报告"
+              : data.execution.queue_depth,
+          tone:
+            data.execution.queue_depth !== null &&
+            data.execution.queue_depth > 0
+              ? "insufficient"
+              : "neutral",
+        },
+      ]
+    : [];
   const userColumns: TableProps<(typeof data.users)[number]>["columns"] = [
     { title: "姓名", dataIndex: "display_name", key: "display_name" },
     {
       title: "角色",
       key: "role",
+      width: 160,
       render: (_, user) => actorRoleLabel(user.role),
     },
   ];
@@ -54,55 +119,44 @@ export function SettingsPage({
           </p>
         </div>
       </header>
-      <ol className="case-chain settings-chain" aria-label="设置快照">
-        <li
-          data-state={
-            data.model.status === "connected" ||
-            data.model.status === "configured"
-              ? "filled"
-              : "open"
-          }
-        >
-          <span className="case-chain-mark" aria-hidden="true" />
-          <span className="case-chain-label">模型连通</span>
-          <strong>{modelStatusLabel(data.model.status)}</strong>
-        </li>
-        <li
-          data-state={
-            data.queue.depth !== null && data.queue.depth > 0 ? "open" : "filled"
-          }
-        >
-          <span className="case-chain-mark" aria-hidden="true" />
-          <span className="case-chain-label">等待任务</span>
-          <strong>{queueDepth}</strong>
-        </li>
-        <li
-          data-state={
-            data.queue.oldest_wait_ms !== null &&
-            data.queue.oldest_wait_ms > 0
-              ? "open"
-              : "filled"
-          }
-        >
-          <span className="case-chain-mark" aria-hidden="true" />
-          <span className="case-chain-label">最老等待</span>
-          <strong>{oldestWait}</strong>
-        </li>
-        <li data-state={data.users.length > 0 ? "filled" : "open"}>
-          <span className="case-chain-mark" aria-hidden="true" />
-          <span className="case-chain-label">用户</span>
-          <strong>{data.users.length}</strong>
-        </li>
-      </ol>
+      <section className="settings-overview" aria-label="设置概览">
+        <Statistic
+          title="模型连通"
+          value={modelStatusLabel(data.model.status)}
+        />
+        <Statistic title="等待任务" value={queueDepth} />
+        <Statistic title="最长等待" value={oldestWait} />
+        <Statistic title="用户" value={data.users.length} />
+      </section>
       <div className="settings-grid">
-        <section className="settings-panel" aria-labelledby="settings-model-title">
-          <h2 id="settings-model-title">模型连通</h2>
-          <p className="settings-panel-value">
-            {modelStatusLabel(data.model.status)}
-          </p>
-          <p className="meta">{data.model.label}</p>
+        <section
+          className="settings-panel"
+          aria-labelledby="settings-model-title"
+        >
+          <header className="settings-panel-head">
+            <h2 id="settings-model-title">模型连通</h2>
+            <span
+              className="settings-badge"
+              data-tone={modelConnected ? "good" : "attention"}
+            >
+              {modelStatusLabel(data.model.status)}
+            </span>
+          </header>
+          <dl className="settings-facts">
+            {modelFacts(data.model.label).map((fact, index) => (
+              <div key={`${fact.detail}-${index}`} data-tone={fact.tone}>
+                {fact.term ? <dt>{fact.term}</dt> : null}
+                <dd className={fact.mono ? "is-code" : undefined}>
+                  {fact.detail}
+                </dd>
+              </div>
+            ))}
+          </dl>
         </section>
-        <section className="settings-panel" aria-labelledby="settings-queue-title">
+        <section
+          className="settings-panel"
+          aria-labelledby="settings-queue-title"
+        >
           <h2 id="settings-queue-title">队列</h2>
           <dl className="settings-pairs">
             <div>
@@ -110,15 +164,18 @@ export function SettingsPage({
               <dd>{queueDepth}</dd>
             </div>
             <div>
-              <dt>最老任务等待</dt>
+              <dt>最长等待</dt>
               <dd>{oldestWait}</dd>
             </div>
           </dl>
         </section>
       </div>
-      <section className="settings-panel" aria-labelledby="settings-redaction-title">
+      <section
+        className="settings-panel"
+        aria-labelledby="settings-redaction-title"
+      >
         <h2 id="settings-redaction-title">脱敏政策</h2>
-        <p>
+        <p className="settings-policy">
           {data.redaction_policy === ""
             ? "未提供脱敏政策说明。"
             : data.redaction_policy}
@@ -133,51 +190,17 @@ export function SettingsPage({
           <p className="meta">
             仅展示授权的汇总元数据，不包含案件正文或执行事件。
           </p>
-          {data.execution ? (
+          {executionFigures.length > 0 ? (
             <dl className="settings-figures">
-              <div>
-                <dt>全部尝试</dt>
-                <dd>{data.execution.total_attempts}</dd>
-              </div>
-              <div>
-                <dt>运行中</dt>
-                <dd>{data.execution.running_attempts}</dd>
-              </div>
-              <div>
-                <dt>已完成</dt>
-                <dd>{data.execution.completed_attempts}</dd>
-              </div>
-              <div>
-                <dt>部分完成</dt>
-                <dd>{data.execution.partial_attempts}</dd>
-              </div>
-              <div>
-                <dt>失败</dt>
-                <dd>{data.execution.failed_attempts}</dd>
-              </div>
-              <div>
-                <dt>已取消</dt>
-                <dd>{data.execution.cancelled_attempts}</dd>
-              </div>
-              <div>
-                <dt>模型调用</dt>
-                <dd>{data.execution.model_calls}</dd>
-              </div>
-              <div>
-                <dt>用量未知的调用</dt>
-                <dd>{data.execution.unknown_usage_calls}</dd>
-              </div>
-              <div>
-                <dt>队列深度</dt>
-                <dd>
-                  {data.execution.queue_depth === null
-                    ? "未报告"
-                    : data.execution.queue_depth}
-                </dd>
-              </div>
+              {executionFigures.map((item) => (
+                <div key={item.label} data-tone={item.tone}>
+                  <dt>{item.label}</dt>
+                  <dd>{item.value}</dd>
+                </div>
+              ))}
             </dl>
           ) : (
-            <p>执行运维统计未报告。</p>
+            <p>没有获取到执行运维统计。</p>
           )}
         </section>
       ) : null}
@@ -192,6 +215,8 @@ export function SettingsPage({
           columns={userColumns}
           dataSource={data.users}
           rowKey="id"
+          size="small"
+          tableLayout="fixed"
           pagination={false}
         />
       </section>

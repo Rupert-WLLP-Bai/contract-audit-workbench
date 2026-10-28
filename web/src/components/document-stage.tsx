@@ -16,7 +16,6 @@ import {
   parseLabel,
   parseTone,
   roleLabel,
-  shortDigest,
 } from "../domain/review";
 import {
   evidenceSourceMatches,
@@ -58,7 +57,7 @@ export interface ReviewCaseContext {
 }
 
 function documentKey(document: ReviewDocument): string {
-  return `${document.id}\u0000${document.parsed_document?.id ?? "legacy"}`;
+  return `${document.id}\u0000${document.parsed_document?.id ?? document.parsed_document_id ?? "legacy"}`;
 }
 
 function documentLabel(
@@ -66,8 +65,8 @@ function documentLabel(
   documents: ReviewDocument[],
 ): string {
   const sameVersion = documents.filter((item) => item.id === document.id);
-  return sameVersion.length > 1 && document.parsed_document
-    ? `${roleLabel(document.role)}，解析 ${shortDigest(document.parsed_document.id)}`
+  return sameVersion.length > 1
+    ? `${roleLabel(document.role)}，来源 ${sameVersion.findIndex((item) => documentKey(item) === documentKey(document)) + 1}`
     : roleLabel(document.role);
 }
 
@@ -80,7 +79,7 @@ function documentForAnchor(
   );
   return (
     candidates.find((document) =>
-      evidenceSourceMatches(anchor, document.id, document.parsed_document),
+      evidenceSourceMatches(anchor, document.id, document.parsed_document, document.parsed_document_id),
     ) ??
     candidates[0] ??
     null
@@ -92,11 +91,13 @@ function DocumentBody({
   finding,
   findRange,
   activeSource,
+  showDiagnostics,
 }: {
   document: ReviewDocument;
   finding: Finding | null;
   findRange: { start: number; end: number } | null;
   activeSource: boolean;
+  showDiagnostics: boolean;
 }) {
   const anchors =
     finding?.evidence.filter(
@@ -104,12 +105,12 @@ function DocumentBody({
     ) ?? [];
   const anchor =
     anchors.find((item) =>
-      evidenceSourceMatches(item, document.id, document.parsed_document),
+      evidenceSourceMatches(item, document.id, document.parsed_document, document.parsed_document_id),
     ) ??
     anchors[0] ??
     null;
   const resolved = anchor
-    ? resolveAnchor(document.text, anchor, document.parsed_document)
+    ? resolveAnchor(document.text, anchor, document.parsed_document, document.parsed_document_id)
     : null;
 
   if (document.parse_status === "failed") {
@@ -117,13 +118,14 @@ function DocumentBody({
       <div
         className="doc-pane"
         data-document-version-id={document.id}
-        data-parsed-document-id={document.parsed_document?.id ?? ""}
+        data-parsed-document-id={document.parsed_document?.id ?? document.parsed_document_id ?? ""}
         data-active-source={activeSource ? "true" : "false"}
       >
         <header className="doc-pane-head">
           <strong>{document.filename}</strong>
           <StatusText tone="bad">解析失败</StatusText>
         </header>
+        {showDiagnostics ? (
         <Collapse
           className="doc-source-details"
           items={[
@@ -138,6 +140,7 @@ function DocumentBody({
             },
           ]}
         />
+        ) : null}
         <p className="callout">这份材料解析失败，不能据此给出无风险结论。</p>
         {document.parse_error ? <p>{document.parse_error}</p> : null}
         {resolved?.kind === "snapshot" ? (
@@ -158,7 +161,7 @@ function DocumentBody({
       <div
         className="doc-pane"
         data-document-version-id={document.id}
-        data-parsed-document-id={document.parsed_document?.id ?? ""}
+        data-parsed-document-id={document.parsed_document?.id ?? document.parsed_document_id ?? ""}
         data-active-source={activeSource ? "true" : "false"}
       >
         <header className="doc-pane-head">
@@ -166,6 +169,7 @@ function DocumentBody({
           <span>{roleLabel(document.role)}</span>
           {resolved.page !== null ? <span>第 {resolved.page} 页</span> : null}
         </header>
+        {showDiagnostics ? (
         <Collapse
           className="doc-source-details"
           items={[
@@ -180,6 +184,7 @@ function DocumentBody({
             },
           ]}
         />
+        ) : null}
         <div className="doc-text">
           {segments.map((segment) =>
             segment.highlighted === "evidence" ? (
@@ -215,7 +220,7 @@ function DocumentBody({
     <div
       className="doc-pane"
       data-document-version-id={document.id}
-      data-parsed-document-id={document.parsed_document?.id ?? ""}
+      data-parsed-document-id={document.parsed_document?.id ?? document.parsed_document_id ?? ""}
       data-active-source={activeSource ? "true" : "false"}
     >
       <header className="doc-pane-head">
@@ -225,6 +230,7 @@ function DocumentBody({
           {parseLabel(document.parse_status)}
         </StatusText>
       </header>
+      {showDiagnostics ? (
       <Collapse
         className="doc-source-details"
         items={[
@@ -239,6 +245,7 @@ function DocumentBody({
           },
         ]}
       />
+      ) : null}
       {resolved?.kind === "snapshot" ? (
         <div className="callout">
           <p>{resolved.reason}</p>
@@ -284,6 +291,7 @@ export function DocumentStage({
   selectedFindingId,
   layout,
   onSelectFinding,
+  showDiagnostics = false,
   caseContext = null,
   canEditRelations = false,
   relationPending = false,
@@ -296,6 +304,7 @@ export function DocumentStage({
   findings: Finding[];
   selectedFindingId: string | null;
   layout: ReviewLayout;
+  showDiagnostics?: boolean;
   onSelectFinding: (findingId: string) => void;
   caseContext?: ReviewCaseContext | null;
   canEditRelations?: boolean;
@@ -375,7 +384,7 @@ export function DocumentStage({
       '.col-doc [data-active-source="true"] .hit-evidence',
     );
     if (mark instanceof HTMLElement) mark.scrollIntoView({ block: "nearest" });
-  }, [finding?.id, active?.id, active?.parsed_document?.id]);
+  }, [finding?.id, active?.id, active?.parsed_document?.id, active?.parsed_document_id]);
   const visibleClauses =
     active?.clauses.filter(
       (clause) => query.trim() === "" || clause.heading.includes(query.trim()),
@@ -415,7 +424,7 @@ export function DocumentStage({
               <div>
                 <p>案件上下文</p>
                 <h2>{caseContext.title}</h2>
-                <span>{caseContext.number ?? caseContext.caseId}</span>
+                {caseContext.number ? <span>{caseContext.number}</span> : null}
               </div>
               <Link
                 className="review-case-open"
@@ -448,7 +457,7 @@ export function DocumentStage({
               <div>
                 <dt>负责人</dt>
                 <dd>
-                  {caseContext.ownerName || caseContext.ownerId || "未分配"}
+                  {caseContext.ownerName || (caseContext.ownerId ? "姓名未返回" : "未分配")}
                 </dd>
               </div>
               <div>
@@ -505,7 +514,7 @@ export function DocumentStage({
                       aria-label={documentLabel(item, documents)}
                       title={item.filename}
                       data-document-version-id={item.id}
-                      data-parsed-document-id={item.parsed_document?.id ?? ""}
+                      data-parsed-document-id={item.parsed_document?.id ?? item.parsed_document_id ?? ""}
                     >
                       {documentLabel(item, documents)}
                     </span>
@@ -548,7 +557,7 @@ export function DocumentStage({
                 ) : null}
                 <h3>条款</h3>
                 {visibleClauses.length === 0 ? (
-                  <p className="meta">当前材料没有可定位的已保存条款。</p>
+                  <p className="meta">这份材料没有可在原文中找到的已保存条款。</p>
                 ) : null}
                 <ul className="clause-list">
                   {visibleClauses.map((clause) => (
@@ -573,13 +582,13 @@ export function DocumentStage({
                       <li key={item.id}>
                         <Button
                           aria-label={
-                            "查看线索：" + String(item.claim || item.id)
+                            "查看线索：" + String(item.claim || "未命名线索")
                           }
                           htmlType="button"
                           aria-pressed={selectedFindingId === item.id}
                           onClick={() => onSelectFinding(item.id)}
                         >
-                          查看线索：{item.claim || item.id}
+                          查看线索：{item.claim || "未命名线索"}
                         </Button>
                       </li>
                     ))}
@@ -629,9 +638,7 @@ export function DocumentStage({
                       >
                         {relation.title}
                       </Link>
-                      <small>
-                        {relation.id}，{formatDateTime(relation.createdAt)}
-                      </small>
+                      <small>{formatDateTime(relation.createdAt)}</small>
                       <p>{relation.reason}</p>
                     </div>
                     {canEditRelations && onDeleteRelation ? (
@@ -664,7 +671,7 @@ export function DocumentStage({
                       options={[
                         { label: "选择案件", value: "" },
                         ...caseContext.availableCases.map((item) => ({
-                          label: `${item.title}，${item.id}`,
+                          label: item.title,
                           value: item.id,
                         })),
                       ]}
@@ -744,7 +751,7 @@ export function DocumentStage({
                   active !== null && documentKey(active) === documentKey(item)
                 }
                 data-document-version-id={item.id}
-                data-parsed-document-id={item.parsed_document?.id ?? ""}
+                data-parsed-document-id={item.parsed_document?.id ?? item.parsed_document_id ?? ""}
                 onClick={() => setActiveKey(documentKey(item))}
               >
                 {documentLabel(item, documents)}
@@ -761,6 +768,7 @@ export function DocumentStage({
                 document={item}
                 finding={finding}
                 findRange={item === active ? currentMatch : null}
+                showDiagnostics={showDiagnostics}
                 activeSource={item === active}
               />
             ))}
@@ -770,6 +778,7 @@ export function DocumentStage({
             document={active}
             finding={finding}
             findRange={currentMatch}
+            showDiagnostics={showDiagnostics}
             activeSource
           />
         ) : null}

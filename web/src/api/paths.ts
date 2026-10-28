@@ -24,7 +24,8 @@ export const paths = {
   caseRelation: (caseId: string, relationId: string) =>
     `/api/cases/${id(caseId)}/relations/${id(relationId)}`,
   knowledge: "/api/knowledge",
-  knowledgeEntry: (knowledgeId: string) => `/api/knowledge/${id(knowledgeId)}`,
+  knowledgeVersion: (knowledgeId: string, versionId: string) =>
+    `/api/knowledge/${id(knowledgeId)}/versions/${id(versionId)}`,
   generations: (caseId: string) => `/api/cases/${id(caseId)}/generations`,
   remediations: (caseId: string) => `/api/cases/${id(caseId)}/remediations`,
   remediationSubmit: (caseId: string, itemId: string) =>
@@ -43,6 +44,12 @@ export const paths = {
   reviews: (caseId: string) => `/api/cases/${id(caseId)}/reviews`,
   review: (caseId: string, runId: string, attemptId?: string | null) => {
     const path = `/api/cases/${id(caseId)}/reviews/${id(runId)}`;
+    return attemptId === null || attemptId === undefined
+      ? path
+      : `${path}?attempt_id=${id(attemptId)}`;
+  },
+  reviewDiagnostics: (caseId: string, runId: string, attemptId?: string | null) => {
+    const path = `/api/cases/${id(caseId)}/reviews/${id(runId)}/diagnostics`;
     return attemptId === null || attemptId === undefined
       ? path
       : `${path}?attempt_id=${id(attemptId)}`;

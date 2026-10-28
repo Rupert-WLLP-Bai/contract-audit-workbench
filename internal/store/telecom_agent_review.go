@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"sort"
 	"time"
 
@@ -51,6 +52,27 @@ func (s *Store) runTelecomAgentReview(ctx context.Context, runID, attemptID stri
 	if err != nil {
 		return true, err
 	}
+	actor, err := authorizeAttemptExecution(st, runID, attemptID)
+	if err != nil || actor.ID != principal.UserID {
+		if err == nil {
+			err = errAttemptAuthorizationRevoked
+		}
+		return true, err
+	}
+	frozenKnowledge, err := copyGovernedKnowledge(st.snapshotOf(runID))
+	if err != nil {
+		return true, err
+	}
+	authorizePlanning := func(ctx context.Context) error {
+		return s.revalidateAgentPlannerKnowledge(ctx, runID, attemptID, resource, actor.ID, frozenKnowledge)
+	}
+	if err := authorizePlanning(ctx); err != nil {
+		return true, err
+	}
+	selectedKnowledge := map[KnowledgeRef]bool{}
+	readKnowledge := func(ctx context.Context, read agentflow.KnowledgeReadRequest) (string, error) {
+		return s.readAgentPlannerKnowledge(ctx, runID, attemptID, resource, actor.ID, frozenKnowledge, selectedKnowledge, read)
+	}
 	planner, err := frozenAgentPlanner(configuration, models, recorder)
 	if err != nil {
 		return true, err
@@ -58,6 +80,7 @@ func (s *Store) runTelecomAgentReview(ctx context.Context, runID, attemptID stri
 	tools := append(agentflow.BaselineTools(), agentflow.SourceFactTools()...)
 	runtime, err := agentflow.New(ctx, agentflow.Config{
 		Planner: planner, Tools: tools, PlannerConfiguration: configuration,
+		EventSink: agentReviewEventSink(recorder), AuthorizePlanning: authorizePlanning, ReadKnowledge: readKnowledge,
 	})
 	if err != nil {
 		return true, err
@@ -71,45 +94,72 @@ func (s *Store) runTelecomAgentReview(ctx context.Context, runID, attemptID stri
 		Scope: agentflow.Domains(), Gaps: telecomAgentReviewGaps(), Evidence: evidence,
 		SourceSnapshot: sourceSnapshot, CanonicalEvaluations: telecomAgentReviewEvaluations(st, runID, attemptID),
 	}
+	if err := s.applyPriorAttemptRecovery(ctx, st, actor, caseItem, attempt, tools, &request); err != nil {
+		return true, err
+	}
+	// A worker takeover resumes the same attempt with a newer lease generation.
+	// Preserve the event sequence and elapsed budget already spent by the
+	// previous generation; no tool output is fabricated from those events.
+	if attempt.RetryOfAttemptID == nil && claim.Generation > 1 {
+		if recovered := st.executionEvents(attemptID); len(recovered) > 0 {
+			count, elapsed := priorAttemptUsage(recovered, attempt)
+			request.PriorEventCount = count
+			request.PriorElapsedMS = elapsed
+		}
+	}
 	rulePackIdentity, err := agentReviewRulePackIdentity(attempt, caseItem)
 	if err != nil {
 		return true, err
 	}
 	request.RulePack = rulePackIdentity
+	for _, event := range st.executionEvents(attemptID) {
+		if event.NodeKind == "agent_review" && event.EventType == "agent_review_event" && event.Phase == "knowledge_read_started" && event.Status == "running" {
+			request.PriorKnowledgeReadCount++
+		}
+	}
+	if request.PriorKnowledgeReadCount > agentflow.KnowledgeReadMaxCalls {
+		return true, errors.New("governed knowledge read budget exceeded")
+	}
+	reserved := request.PriorKnowledgeReadCount * agentflow.KnowledgeReadMaxBytes
+	contextBudget := max(0, configuration.Limits.MaxEvidenceBytes-reserved)
+	var evaluator advisoryEvaluator
+	if configuration.Advisory != nil && frozenKnowledge != nil {
+		if provider := s.advisoryProviderForRun(); provider != nil {
+			if built, buildErr := newStoreAdvisoryEvaluator(s, claim, *configuration.Advisory, input.InputHash,
+				frozenKnowledge.SnapshotSHA256, configuration.ConfigurationID, provider); buildErr == nil {
+				evaluator = built
+			}
+		}
+	}
+	request.Knowledge, request.KnowledgeSelection, err = governedPlannerKnowledgeWithAdvisory(ctx, frozenKnowledge, request.Gaps, request.Evidence,
+		contextBudget, configuration.Advisory, configuration.ConfigurationID, evaluator)
+	if err != nil {
+		return true, err
+	}
+	for _, ref := range request.Knowledge {
+		selectedKnowledge[KnowledgeRef{KnowledgeID: ref.KnowledgeID, VersionID: ref.VersionID, ContentSHA256: ref.ContentSHA256}] = true
+	}
+	request.KnowledgeSelection.Budget.PriorReadCalls = request.PriorKnowledgeReadCount
+	request.KnowledgeSelection.Budget.PriorReadReservedBytes = reserved
 	report, runErr := runtime.Run(ctx, request)
+	if errors.Is(runErr, agentflow.ErrEventSink) || errors.Is(runErr, agentflow.ErrPlanningAuthorization) || errors.Is(runErr, agentflow.ErrKnowledgeRead) {
+		return true, runErr
+	}
+	if errors.Is(runErr, agentflow.ErrDenied) {
+		return true, rulepack.ErrUnauthorized
+	}
 	if ctx.Err() != nil {
 		return true, ctx.Err()
 	}
 	if report.Projection == nil {
-		if errors.Is(runErr, agentflow.ErrDenied) {
-			return true, rulepack.ErrUnauthorized
+		if runErr != nil {
+			return true, runErr
 		}
 		return true, errors.New("agent review did not produce a persistable projection")
 	}
 	projectionBytes, err := json.Marshal(report.Projection)
 	if err != nil {
 		return true, err
-	}
-	for _, event := range report.Events {
-		status := "completed"
-		switch event.Kind {
-		case "tool_failed", "plan_rejected", "gap_unsupported":
-			status = "failed"
-		case "planner_fallback":
-			status = "partial"
-		}
-		var duration *int64
-		if event.DurationMS > 0 {
-			value := event.DurationMS
-			duration = &value
-		}
-		if err := recorder.RecordExecutionEvent(ctx, execution.Event{
-			ParentSpanID: execution.ParentSpanID(ctx), NodeKind: "agent_review", Phase: event.Kind,
-			EventType: "agent_review_event", At: time.Now().UTC(), DurationMS: duration, Status: status,
-			ErrorCode: event.Code,
-		}); err != nil {
-			return true, err
-		}
 	}
 	if ctx.Err() != nil {
 		return true, ctx.Err()
@@ -125,6 +175,35 @@ func (s *Store) runTelecomAgentReview(ctx context.Context, runID, attemptID stri
 	}
 	incomplete := report.Status != "completed" || runErr != nil || caseItem.ID != resource.CaseID
 	return incomplete, nil
+}
+
+// The recorder owns transaction, lease and generation fencing. The callback
+// blocks runtime progress until the event has been committed or rejected.
+func agentReviewEventSink(recorder attemptRecorder) func(context.Context, agentflow.Event) error {
+	return func(ctx context.Context, event agentflow.Event) error {
+		status := "completed"
+		switch event.Kind {
+		case "tool_started", "knowledge_read_started":
+			status = "running"
+		case "tool_failed", "knowledge_read_failed", "plan_rejected", "gap_unsupported":
+			status = "failed"
+		case "planner_fallback":
+			status = "partial"
+		case "run_cancelled":
+			status = "cancelled"
+		}
+		var duration *int64
+		if event.DurationMS > 0 {
+			value := event.DurationMS
+			duration = &value
+		}
+		return recorder.RecordExecutionEvent(ctx, execution.Event{
+			EventKey:     fmt.Sprintf("agent-review/%d", event.Sequence),
+			ParentSpanID: execution.ParentSpanID(ctx), NodeKind: "agent_review", Phase: event.Kind,
+			EventType: "agent_review_event", At: event.OccurredAt, DurationMS: duration, Status: status,
+			ErrorCode: event.Code,
+		})
+	}
 }
 
 func agentReviewRulePackIdentity(attempt Attempt, caseItem Case) (*agentflow.RulePackIdentity, error) {
@@ -234,6 +313,69 @@ func (s *Store) authorizeAgentReviewStage(runID, attemptID string) (Case, access
 	return caseItem, principal, resource, nil
 }
 
+// A fresh actor and stored snapshot are resolved for each planner round. The
+// later adoption transaction must repeat this check under its own locks.
+func (s *Store) revalidateAgentPlannerKnowledge(ctx context.Context, runID, attemptID string, resource access.Resource, actorID string, expected *ReviewKnowledgeSnapshot) error {
+	actor, current, err := s.agentPlannerAuthority(runID, attemptID, resource, actorID, expected)
+	if err != nil {
+		return err
+	}
+	if current != nil {
+		return s.RevalidateGovernedKnowledgeSnapshot(ctx, actor, resource.CaseID, *current)
+	}
+	return nil
+}
+
+func (s *Store) agentPlannerAuthority(runID, attemptID string, resource access.Resource, actorID string, expected *ReviewKnowledgeSnapshot) (accounts.User, *ReviewKnowledgeSnapshot, error) {
+	st := s.snapshotForAttempt(attemptID)
+	actor, err := authorizeAttemptExecution(st, runID, attemptID)
+	if err != nil {
+		return accounts.User{}, nil, err
+	}
+	if actor.ID != actorID {
+		return accounts.User{}, nil, errAttemptAuthorizationRevoked
+	}
+	run, ok := st.runByID(runID)
+	if !ok || run.CaseID != resource.CaseID {
+		return accounts.User{}, nil, errAgentReviewScopeChanged
+	}
+	item, ok := st.caseByID(run.CaseID)
+	if !ok || item.TenantID != resource.TenantID || item.OwnerOrgID != resource.OrgID || item.OwnerID != resource.OwnerID {
+		return accounts.User{}, nil, errAgentReviewScopeChanged
+	}
+	current, err := copyGovernedKnowledge(st.snapshotOf(runID))
+	if err != nil {
+		return accounts.User{}, nil, err
+	}
+	if !sameKnowledgeSnapshotIdentity(expected, current) {
+		return accounts.User{}, nil, errors.New("governed planner snapshot changed")
+	}
+	return actor, current, nil
+}
+
+func (s *Store) readAgentPlannerKnowledge(ctx context.Context, runID, attemptID string, resource access.Resource, actorID string,
+	expected *ReviewKnowledgeSnapshot, selected map[KnowledgeRef]bool, read agentflow.KnowledgeReadRequest) (string, error) {
+	ref := KnowledgeRef{KnowledgeID: read.KnowledgeID, VersionID: read.VersionID, ContentSHA256: read.ContentSHA256}
+	if !selected[ref] {
+		return "", errors.New("knowledge reference was not selected")
+	}
+	if read.Start < 0 || read.End <= read.Start || read.End-read.Start > agentflow.KnowledgeReadMaxRunes {
+		return "", errors.New("invalid governed knowledge span")
+	}
+	actor, current, err := s.agentPlannerAuthority(runID, attemptID, resource, actorID, expected)
+	if err != nil {
+		return "", err
+	}
+	if current == nil {
+		return "", errors.New("governed knowledge snapshot is unavailable")
+	}
+	content, err := s.ReadFrozenGovernedKnowledge(ctx, actor, resource.CaseID, *current, ref)
+	if err != nil {
+		return "", err
+	}
+	return governedKnowledgeSpan(content.Body, read.Start, read.End)
+}
+
 func agentReviewEvidence(st state, input AttemptInput, docs []Interpreted) (*agentflow.SourceSnapshot, []agentflow.Evidence, error) {
 	snapshot := st.snapshotOf(input.RunID)
 	inputHash, hashErr := frozenInputHash(snapshot, input.Documents)
@@ -305,7 +447,7 @@ func frozenParsedDocumentIDs(documents []FrozenDocument) []string {
 }
 
 func telecomAgentReviewGaps() []agentflow.Gap {
-	gaps := make([]agentflow.Gap, 0, 16)
+	gaps := make([]agentflow.Gap, 0, 18)
 	add := func(domain agentflow.Domain, capability string) {
 		gaps = append(gaps, agentflow.Gap{ID: "gap_" + string(domain) + "_" + capability,
 			Domain: domain, Capability: capability, Question: "比较冻结材料中的受支持字段并保留来源缺口"})
@@ -313,9 +455,10 @@ func telecomAgentReviewGaps() []agentflow.Gap {
 	for _, domain := range agentflow.Domains() {
 		add(domain, agentflow.BaselineCapability(domain))
 	}
-	for _, capability := range []string{"amount", "party", "approval_authority", "effective_scope"} {
+	for _, capability := range []string{"amount", "party", "approval_authority", "effective_scope", "approval_validity"} {
 		add(agentflow.Compliance, capability)
 	}
+	add(agentflow.Commercial, "amount")
 	add(agentflow.Technical, "scope")
 	add(agentflow.Fulfillment, "milestone")
 	add(agentflow.Fulfillment, "explicit_start_event")
@@ -334,7 +477,7 @@ func telecomAgentReviewEvaluations(st state, runID, attemptID string) []agentflo
 			continue
 		}
 		item := agentflow.CanonicalEvaluation{
-			ID: evaluation.ID, Domain: agentflow.Domain(evaluation.Domain), CapabilityID: evaluation.CapabilityID,
+			ID: evaluation.ID, Domain: agentflow.Domain(evaluation.Domain), CapabilityID: evaluation.CapabilityID, Mandatory: evaluation.Mandatory,
 			Relation: evaluation.Relation, ReasonCode: evaluation.ReasonCode, EvidenceIDs: []string{},
 		}
 		for _, finding := range findings {

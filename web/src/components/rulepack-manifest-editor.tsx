@@ -711,7 +711,7 @@ export function RulePackManifestEditor({
             >
               <header className="workflow-panel-head">
                 <h3 id={`rule-${ruleIndex}-authority-heading`} tabIndex={-1}>
-                  权威来源
+                  规则依据来源
                 </h3>
                 <Button
                   aria-label={"添加来源"}

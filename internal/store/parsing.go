@@ -642,7 +642,11 @@ func (s *Store) acceptanceParsePlan(ctx context.Context, st state, docs []Docume
 				_, _, configHash := parserConfigurationFor(doc, models)
 				configuration[i].ConfigHash = configHash
 			}
-			candidate := currentSignatureFor(documentIDs(docs), configuration, models)
+			compilerRef := ""
+			if item, exists := st.caseByID(docs[0].CaseID); exists {
+				compilerRef = telecomCompilerRefForCase(item)
+			}
+			candidate := currentSignatureFor(documentIDs(docs), configuration, models, compilerRef)
 			// Reuse is decided against the full run configuration, which now includes
 			// the frozen governed pack and planner identity. Compare those from the
 			// previous snapshot itself so an unchanged pending start stays idempotent.

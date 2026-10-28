@@ -74,8 +74,8 @@ test("UI generation, remediation revision, frozen reports and read-only archive 
   await page.getByRole("button", { name: "保存决定", exact: true }).click();
   await expect(page.getByText("专线带宽低于100 Mbit/s，必须整改。", { exact: true })).toBeVisible();
   await page.getByRole("link", { name: "返回案件", exact: true }).click();
-  await page.getByLabel("冻结运行和尝试", { exact: true }).selectOption(reviewChoiceKey(runID, attemptID));
-  await page.getByRole("button", { name: "生成冻结报告", exact: true }).click();
+  await page.getByLabel("选择审查和执行记录", { exact: true }).selectOption(reviewChoiceKey(runID, attemptID));
+  await page.getByRole("button", { name: "生成报告", exact: true }).click();
   let report = (await detail(api, caseID)).reports[0];
   await expect.poll(async () => { report = (await detail(api, caseID)).reports[0]; return report?.id; }).toBeTruthy();
   const reportBase = `${apiURL}/api/cases/${caseID}/reports/${report.id}`;
@@ -83,7 +83,7 @@ test("UI generation, remediation revision, frozen reports and read-only archive 
   const frozenHTML = await (await api.get(reportBase+"?format=html")).body();
   expect(frozenJSON.toString()).toContain("100 Mbit/s");
   expect(frozenHTML.toString()).toContain("专线带宽低于100 Mbit/s");
-  await page.getByLabel("来源运行和尝试", { exact: true }).selectOption(reviewChoiceKey(runID, attemptID));
+  await page.getByLabel("选择原审查和执行记录", { exact: true }).selectOption(reviewChoiceKey(runID, attemptID));
   const group = page.getByRole("group", { name: "绑定发现（至少选择一项）", exact: true });
   await group.getByRole("checkbox", { name: new RegExp(finding.claim.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")) }).check();
   await page.getByLabel("负责人 ID", { exact: true }).fill("demo-admin");
@@ -106,7 +106,7 @@ test("UI generation, remediation revision, frozen reports and read-only archive 
   await page.getByLabel("提交理由", { exact: true }).fill("已修订带宽并提交真实新版本");
   await page.getByRole("button", { name: "提交修改稿", exact: true }).click();
   await expect.poll(async () => (await detail(api, caseID)).remediations[0].status).toBe("submitted");
-  await page.getByLabel("复核运行和尝试", { exact: true }).selectOption(reviewChoiceKey(next.id, next.attempt_id));
+  await page.getByLabel("选择复核的审查和执行记录", { exact: true }).selectOption(reviewChoiceKey(next.id, next.attempt_id));
   await expect(page.getByLabel("复核理由", { exact: true })).toBeEnabled();
   await page.getByLabel("复核理由", { exact: true }).fill("同对象新冻结审查带宽符合，关闭整改。");
   await page.getByRole("button", { name: "提交复核", exact: true }).click();
@@ -119,8 +119,8 @@ test("UI generation, remediation revision, frozen reports and read-only archive 
   const old = await waitWorkspace(api, caseID, runID, attemptID);
   expect(evaluation(old, "ENT-TECH-BW-001").relation).toBe("conflict");
   expect(old.findings.find(item => item.id === findingID)?.decisions[0].reason).toBe("专线带宽低于100 Mbit/s，必须整改。");
-  await page.getByLabel("冻结运行和尝试", { exact: true }).selectOption(reviewChoiceKey(next.id, next.attempt_id));
-  await page.getByRole("button", { name: "生成冻结报告", exact: true }).click();
+  await page.getByLabel("选择审查和执行记录", { exact: true }).selectOption(reviewChoiceKey(next.id, next.attempt_id));
+  await page.getByRole("button", { name: "生成报告", exact: true }).click();
   await expect.poll(async () => (await detail(api, caseID)).reports.length).toBe(2);
   const finalReport = (await detail(api, caseID)).reports[1];
   await page.getByLabel("归档所依据的报告", { exact: true }).selectOption(finalReport.id);

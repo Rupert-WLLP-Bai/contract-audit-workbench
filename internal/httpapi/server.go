@@ -27,12 +27,14 @@ const sessionCookie = "session"
 
 // Options configures the HTTP surface.
 type Options struct {
-	SystemHealth  systemhealth.Reader
-	CORSOrigins   []string
-	Models        *model.Client
-	OIDC          *identity.Manager
-	Durable       bool
-	SecureCookies bool
+	SystemHealth               systemhealth.Reader
+	CORSOrigins                []string
+	Models                     *model.Client
+	OIDC                       *identity.Manager
+	Durable                    bool
+	SecureCookies              bool
+	ExperienceWorkerCredential string
+	experienceDeliveryEnabled  bool
 }
 
 // Handler serves the review API the web client calls.
@@ -43,7 +45,7 @@ func Handler(st *store.Store, opt Options) http.Handler {
 	if opt.SystemHealth == nil {
 		opt.SystemHealth = systemhealth.New(systemhealth.Config{DatabaseReady: st.Ready})
 	}
-	h := &handler{store: st, cors: opt.CORSOrigins, models: opt.Models, oidc: opt.OIDC, durable: opt.Durable, secureCookies: opt.SecureCookies, systemHealth: opt.SystemHealth}
+	h := &handler{store: st, cors: opt.CORSOrigins, models: opt.Models, oidc: opt.OIDC, durable: opt.Durable, secureCookies: opt.SecureCookies, systemHealth: opt.SystemHealth, experienceDeliveryEnabled: opt.experienceDeliveryEnabled}
 	mux := http.NewServeMux()
 	// Every binary in this repository serves the same probe surface so a manifest
 	// can never point at a path no binary answers. Readiness is the shared
@@ -67,6 +69,8 @@ func Handler(st *store.Store, opt Options) http.Handler {
 	mux.HandleFunc("POST /api/admin/rulepacks/{packID}/versions/{version}/test", h.testRulePackVersion)
 	mux.HandleFunc("POST /api/admin/rulepacks/{packID}/rollback", h.rollbackRulePackVersion)
 	mux.HandleFunc("GET /api/admin/rulepacks/{packID}/history", h.rulePackHistory)
+	registerGovernanceRoutes(mux, h)
+	registerEvidenceRoutes(mux, h)
 	mux.HandleFunc("GET /api/auth/oidc/login", h.oidcLogin)
 	mux.HandleFunc("GET /api/auth/oidc/callback", h.oidcCallback)
 	mux.HandleFunc("GET /api/templates", h.templates)
@@ -79,6 +83,7 @@ func Handler(st *store.Store, opt Options) http.Handler {
 	mux.HandleFunc("DELETE /api/cases/{caseID}/relations/{relationID}", h.deleteCaseRelation)
 	mux.HandleFunc("POST /api/knowledge", h.createKnowledge)
 	mux.HandleFunc("GET /api/knowledge/{knowledgeID}", h.getKnowledge)
+	mux.HandleFunc("GET /api/knowledge/{knowledgeID}/versions/{versionID}", h.getKnowledgeVersion)
 	mux.HandleFunc("GET /api/cases", h.listCases)
 	mux.HandleFunc("POST /api/cases", h.createCase)
 	mux.HandleFunc("GET /api/cases/{caseID}", h.getCase)
@@ -95,6 +100,7 @@ func Handler(st *store.Store, opt Options) http.Handler {
 	mux.HandleFunc("POST /api/cases/{caseID}/archive", h.archive)
 	mux.HandleFunc("POST /api/cases/{caseID}/reviews", h.startReview)
 	mux.HandleFunc("GET /api/cases/{caseID}/reviews/{runID}", h.workspace)
+	mux.HandleFunc("GET /api/cases/{caseID}/reviews/{runID}/diagnostics", h.reviewDiagnostics)
 	mux.HandleFunc("POST /api/cases/{caseID}/reviews/{runID}/retry", h.retry)
 	mux.HandleFunc("POST /api/cases/{caseID}/reviews/{runID}/cancel", h.cancelReview)
 	mux.HandleFunc("POST /api/cases/{caseID}/reviews/{runID}/findings/{findingID}/decisions", h.decide)
@@ -103,13 +109,14 @@ func Handler(st *store.Store, opt Options) http.Handler {
 }
 
 type handler struct {
-	systemHealth  systemhealth.Reader
-	store         *store.Store
-	cors          []string
-	models        *model.Client
-	oidc          *identity.Manager
-	durable       bool
-	secureCookies bool
+	systemHealth              systemhealth.Reader
+	store                     *store.Store
+	cors                      []string
+	models                    *model.Client
+	oidc                      *identity.Manager
+	durable                   bool
+	secureCookies             bool
+	experienceDeliveryEnabled bool
 }
 
 func (h *handler) login(w http.ResponseWriter, r *http.Request) {
@@ -410,13 +417,21 @@ func (h *handler) startReview(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	var body struct{}
+	var body struct {
+		BusinessAt string `json:"business_at,omitempty"`
+	}
 	if err := readJSON(w, r, &body); err != nil {
 		writeErr(w, err)
 		return
 	}
 	if h.durable {
-		accepted, err := h.store.StartReviewAsync(r.Context(), user, r.PathValue("caseID"))
+		var accepted store.JobAcceptance
+		var err error
+		if body.BusinessAt == "" {
+			accepted, err = h.store.StartReviewAsync(r.Context(), user, r.PathValue("caseID"))
+		} else {
+			accepted, err = h.store.StartReviewAsyncAt(r.Context(), user, r.PathValue("caseID"), body.BusinessAt)
+		}
 		if err != nil {
 			writeErr(w, err)
 			return
@@ -424,7 +439,13 @@ func (h *handler) startReview(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusAccepted, accepted)
 		return
 	}
-	id, err := h.store.StartReview(r.Context(), user, r.PathValue("caseID"))
+	var id string
+	var err error
+	if body.BusinessAt == "" {
+		id, err = h.store.StartReview(r.Context(), user, r.PathValue("caseID"))
+	} else {
+		id, err = h.store.StartReviewAt(r.Context(), user, r.PathValue("caseID"), body.BusinessAt)
+	}
 	if err != nil {
 		writeErr(w, err)
 		return

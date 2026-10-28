@@ -22,6 +22,8 @@ func TestSyncJobsRejectsSupersededGeneration(t *testing.T) {
 	if !ok {
 		t.Fatal("demo admin missing")
 	}
+	pack := publishSyntheticAcceptancePack(t, st, admin)
+	publishSyntheticAcceptancePolicy(t, st, admin, pack)
 	st.UseModels(&frozenOCRModel{})
 	caseID, err := st.CreateCaseWithBusiness(admin, "队列代际回归", "service", "ENT", "telecom_dedicated_line")
 	if err != nil {
@@ -33,7 +35,7 @@ func TestSyncJobsRejectsSupersededGeneration(t *testing.T) {
 	if _, err := st.AddDocument(context.Background(), admin, caseID, "procurement", "purchase.txt", "text/plain", []byte("采购文件未提供任何合同阈值或审批依据。")); err != nil {
 		t.Fatal(err)
 	}
-	accepted, err := st.StartReviewAsync(context.Background(), admin, caseID)
+	accepted, err := st.StartReviewAsyncAt(context.Background(), admin, caseID, acceptanceBusinessTime)
 	if err != nil {
 		t.Fatal(err)
 	}

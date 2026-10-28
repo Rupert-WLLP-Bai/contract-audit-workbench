@@ -12,6 +12,7 @@ import (
 	"unicode/utf8"
 
 	"contractaudit/internal/accounts"
+	"contractaudit/internal/advisory"
 	"contractaudit/internal/config"
 	"contractaudit/internal/docir"
 	"contractaudit/internal/docversion"
@@ -38,10 +39,12 @@ type Store struct {
 	dir                    string
 	st                     state
 	models                 Models
+	advisoryProvider       advisory.Provider
 	objects                ObjectStore
 	documentPreparer       DocumentPreparer
 	requireRemoteDocuments bool
 	toolEvidence           ToolEvidenceReader
+	experienceAcceptor     ExperienceResultAcceptor
 	telemetry              *telemetry.Exporter
 	serviceOwner           string
 	queuePolicy            *queueConfiguration
@@ -385,6 +388,9 @@ type ExecutionEvent struct {
 	Phase        string            `json:"phase"`
 	EventType    string            `json:"event_type"`
 	At           string            `json:"at"`
+	RecordedAt   *string           `json:"recorded_at,omitempty"`
+	EventKey     *string           `json:"event_key,omitempty"`
+	Generation   *int64            `json:"generation,omitempty"`
 	DurationMS   *int64            `json:"duration_ms"`
 	Status       string            `json:"status"`
 	ErrorCode    *string           `json:"error_code"`
@@ -442,23 +448,33 @@ type Anchor struct {
 	ElementID        string `json:"element_id,omitempty"`
 }
 
+// EvaluationEvidence records an exact citation used by a canonical evaluation.
+// FactID identifies a cited result fact when one exists; compiler-added
+// authority and annex citations are direct result citations without a FactID.
+// Ref points into that attempt's verified frozen parse.
+type EvaluationEvidence struct {
+	FactID string                `json:"fact_id,omitempty"`
+	Ref    ExperienceEvidenceRef `json:"ref"`
+}
+
 // ConstraintEval is the rule result for one run. It is not a human decision.
 type ConstraintEval struct {
-	ID           string   `json:"id"`
-	RunID        string   `json:"run_id"`
-	AttemptID    string   `json:"attempt_id"`
-	CaseID       string   `json:"case_id"`
-	Domain       string   `json:"domain"`
-	RuleID       string   `json:"rule_id,omitempty"`
-	RuleVersion  string   `json:"rule_version"`
-	CapabilityID string   `json:"capability_id,omitempty"`
-	Mandatory    bool     `json:"mandatory,omitempty"`
-	Relation     string   `json:"relation"`
-	ReasonCode   string   `json:"reason_code,omitempty"`
-	Reason       string   `json:"reason"`
-	FactIDs      []string `json:"fact_ids,omitempty"`
-	ObjectRefs   []string `json:"object_refs,omitempty"`
-	FindingID    string   `json:"finding_id,omitempty"`
+	ID           string               `json:"id"`
+	RunID        string               `json:"run_id"`
+	AttemptID    string               `json:"attempt_id"`
+	CaseID       string               `json:"case_id"`
+	Domain       string               `json:"domain"`
+	RuleID       string               `json:"rule_id,omitempty"`
+	RuleVersion  string               `json:"rule_version"`
+	CapabilityID string               `json:"capability_id,omitempty"`
+	Mandatory    bool                 `json:"mandatory,omitempty"`
+	Relation     string               `json:"relation"`
+	ReasonCode   string               `json:"reason_code,omitempty"`
+	Reason       string               `json:"reason"`
+	FactIDs      []string             `json:"fact_ids,omitempty"`
+	ObjectRefs   []string             `json:"object_refs,omitempty"`
+	Evidence     []EvaluationEvidence `json:"evidence,omitempty"`
+	FindingID    string               `json:"finding_id,omitempty"`
 }
 
 // Finding is a proposal, not a human decision.
@@ -536,15 +552,18 @@ type RunSnapshot struct {
 	RulePackCompilerRef   string   `json:"rule_pack_compiler_ref,omitempty"`
 	// RulePack identity frozen at acceptance. PackID and PackVersion are empty
 	// when no governed pack applied and the synthetic baseline compiler ran.
-	RulePackID             string          `json:"rule_pack_id,omitempty"`
-	RulePackVersion        string          `json:"rule_pack_version,omitempty"`
-	RulePackHash           string          `json:"rule_pack_hash,omitempty"`
-	RulePackDigest         string          `json:"rule_pack_digest,omitempty"`
-	RulePackSnapshot       []byte          `json:"-"`
-	CloudPolicySnapshot    json.RawMessage `json:"cloud_policy_snapshot,omitempty"`
-	CloudPolicyDigest      string          `json:"cloud_policy_digest,omitempty"`
-	PlannerConfigurationID string          `json:"planner_configuration_id,omitempty"`
-	PlannerConfiguration   json.RawMessage `json:"-"`
+	RulePackID          string          `json:"rule_pack_id,omitempty"`
+	RulePackVersion     string          `json:"rule_pack_version,omitempty"`
+	RulePackHash        string          `json:"rule_pack_hash,omitempty"`
+	RulePackDigest      string          `json:"rule_pack_digest,omitempty"`
+	RulePackSnapshot    []byte          `json:"-"`
+	CloudPolicySnapshot json.RawMessage `json:"cloud_policy_snapshot,omitempty"`
+	CloudPolicyDigest   string          `json:"cloud_policy_digest,omitempty"`
+	// GovernedKnowledge is the server-resolved acceptance snapshot. Older runs
+	// omit it entirely, preserving their historical frozen input identity.
+	GovernedKnowledge      *ReviewKnowledgeSnapshot `json:"governed_knowledge,omitempty"`
+	PlannerConfigurationID string                   `json:"planner_configuration_id,omitempty"`
+	PlannerConfiguration   json.RawMessage          `json:"-"`
 }
 
 // AuditRecord is one append-only business event. It is not the SSE notice.

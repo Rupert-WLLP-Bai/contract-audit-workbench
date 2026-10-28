@@ -17,8 +17,8 @@ func TestDecodeRequestAcceptsEncodedOCRAndRejectsOversize(t *testing.T) {
 	const prefix = `{"model":"ocr","max_tokens":1,"image":"`
 	const suffix = `"}`
 	for _, test := range []struct {
-		name string
-		size int
+		name      string
+		size      int
 		wantError bool
 	}{
 		{"encoded maximum PNG", (24 << 20) * 4 / 3, false},

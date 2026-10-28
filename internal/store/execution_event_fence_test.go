@@ -22,7 +22,7 @@ func TestExecutionEventAppendIsFencedAcrossInstances(t *testing.T) {
 		t.Fatalf("acceptance event history is missing: %+v", before)
 	}
 	recorder := attemptRecorder{store: fixture.execution, attemptID: fixture.attemptID, runID: fixture.runID}
-	event := execution.Event{NodeKind: "phase", Phase: "evidence", EventType: "node_completed", Status: "completed"}
+	event := execution.Event{EventKey: "agent-review/1", NodeKind: "phase", Phase: "evidence", EventType: "node_completed", Status: "completed", At: time.Now().UTC()}
 	if err := recorder.RecordExecutionEvent(ctx, event); err != nil {
 		t.Fatal(err)
 	}
@@ -34,6 +34,21 @@ func TestExecutionEventAppendIsFencedAcrossInstances(t *testing.T) {
 	durable := durableSnapshot(t, reader, fixture.claim).executionEvents(fixture.attemptID)
 	if len(durable) != len(events) || durable[len(durable)-1].Seq != events[len(events)-1].Seq {
 		t.Fatalf("event append was not durable for a second store: local=%+v durable=%+v", events, durable)
+	}
+	last := durable[len(durable)-1]
+	if last.RecordedAt == nil || last.EventKey == nil || *last.EventKey != event.EventKey || last.Generation == nil || *last.Generation != fixture.claim.Generation {
+		t.Fatalf("event occurrence, recording and generation identities were not retained: %+v", last)
+	}
+	if err := recorder.RecordExecutionEvent(ctx, event); err != nil {
+		t.Fatalf("identical event replay failed: %v", err)
+	}
+	conflicting := event
+	conflicting.Phase = "different"
+	if err := recorder.RecordExecutionEvent(ctx, conflicting); err == nil {
+		t.Fatal("event identity reuse with different contents was accepted")
+	}
+	if replayed := durableSnapshot(t, reader, fixture.claim).executionEvents(fixture.attemptID); len(replayed) != len(durable) {
+		t.Fatalf("event replay created another event: before=%d after=%d", len(durable), len(replayed))
 	}
 	if err := reader.CancelReview(ctx, fixture.admin, fixture.caseID, fixture.runID); err != nil {
 		t.Fatal(err)

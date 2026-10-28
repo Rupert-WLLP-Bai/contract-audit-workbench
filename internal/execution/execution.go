@@ -23,6 +23,7 @@ type Usage struct {
 
 // Event is one execution observation. Recorder assigns durable attempt and sequence identities.
 type Event struct {
+	EventKey     string
 	SpanID       string
 	ParentSpanID string
 	NodeKind     string

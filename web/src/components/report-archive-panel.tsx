@@ -1,4 +1,5 @@
 import { Button, Input, Select } from "antd";
+import { Link } from "react-router";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { errorMessage } from "../api/http";
 import { paths } from "../api/paths";
@@ -83,7 +84,13 @@ export function ReportArchivePanel({
     );
   }
 
-  const selectedAttempt = selectedReview.data?.execution?.attempt;
+  const selectedAttempt = selectedReview.data?.review_attempts?.attempt;
+  const snapshotDocuments =
+    selectedReview.data?.snapshot?.document_ids.map(
+      (id) =>
+        selectedReview.data?.documents.find((document) => document.id === id)
+          ?.filename || "材料信息未返回",
+    ) ?? [];
   const reportReady =
     canCreateReport &&
     !archived &&
@@ -98,9 +105,9 @@ export function ReportArchivePanel({
     <section className="workflow-panel" aria-labelledby="report-archive-title">
       <header className="workflow-panel-head">
         <div>
-          <h2 id="report-archive-title">冻结报告与归档</h2>
+          <h2 id="report-archive-title">审查报告与归档</h2>
           <p className="meta">
-            报告只读选定 run/attempt 的冻结字节；浏览器不重新拼装报告内容。
+            报告保存所选审查当时的内容，生成后不会随材料更新而改变。
           </p>
         </div>
         {archived ? (
@@ -121,7 +128,7 @@ export function ReportArchivePanel({
         </p>
       ) : null}
       {historyLoading ? (
-        <p role="status">正在读取可报告的运行与尝试。</p>
+        <p role="status">正在读取可用于生成报告的审查和执行记录。</p>
       ) : null}
       {historyError ? (
         <p className="workflow-error" role="alert">
@@ -130,26 +137,24 @@ export function ReportArchivePanel({
       ) : null}
       {archive.data ? (
         <p role="status">
-          归档记录已追加：{archive.data.id}，
-          {formatDateTime(archive.data.archived_at)}，报告{" "}
-          {archive.data.report_id}。
+          已保存归档记录：{formatDateTime(archive.data.archived_at)}。
         </p>
       ) : null}
       {canCreateReport && !archived ? (
         <form className="workflow-form" onSubmit={onCreateReport}>
           <h3>生成不可变报告版本</h3>
           <ReviewChoiceSelect
-            label="冻结运行和尝试"
+            label="选择审查和执行记录"
             choices={choices}
             value={choiceKey}
             onChange={setChoiceKey}
             disabled={choices.length === 0 || createReport.isPending}
           />
           {choices.length === 0 && !historyLoading && !historyError ? (
-            <p>没有可报告的冻结尝试；服务未提供的 legacy 输入不会被补造。</p>
+            <p>没有可用于生成报告的执行记录。较早的审查如果没有保存当时使用的材料版本记录，不能用于生成报告。</p>
           ) : null}
           {selectedReview.isLoading ? (
-            <p role="status">正在读取所选尝试的冻结身份。</p>
+            <p role="status">正在读取所选执行记录。</p>
           ) : null}
           {selectedReview.isError ? (
             <p className="workflow-error" role="alert">
@@ -159,10 +164,9 @@ export function ReportArchivePanel({
           {selectedReview.data ? (
             <dl className="execution-dl">
               <div>
-                <dt>运行 / 尝试</dt>
+                <dt>审查次数</dt>
                 <dd>
-                  {selectedReview.data.run.id} /{" "}
-                  {selectedReview.data.execution?.attempt.id ?? "未冻结"}
+                  {selectedAttempt ? `第 ${selectedAttempt.ordinal} 次` : "未返回"}
                 </dd>
               </div>
               <div>
@@ -170,39 +174,35 @@ export function ReportArchivePanel({
                 <dd>
                   <StatusText
                     tone={runTone(
-                      selectedReview.data.execution?.attempt.state ??
+                      selectedAttempt?.state ??
                         selectedReview.data.run.state,
                     )}
                   >
                     {runLabel(
-                      selectedReview.data.execution?.attempt.state ??
+                      selectedAttempt?.state ??
                         selectedReview.data.run.state,
                     )}
                   </StatusText>
                 </dd>
               </div>
               <div>
-                <dt>输入摘要</dt>
-                <dd>
-                  {selectedReview.data.execution?.attempt.input_hash ??
-                    "未记录"}
-                </dd>
-              </div>
-              <div>
-                <dt>输出摘要</dt>
-                <dd>
-                  {selectedReview.data.execution?.attempt.output_hash ??
-                    "未记录"}
-                </dd>
-              </div>
-              <div>
                 <dt>材料版本</dt>
                 <dd>
-                  {selectedReview.data.snapshot?.document_ids.join("、") ||
-                    "未返回"}
+                  {snapshotDocuments.join("、") || "未返回"}
                 </dd>
               </div>
             </dl>
+          ) : null}
+          {selectedReview.data && selectedAttempt ? (
+            <p className="meta">
+              审查的技术信息可由管理员在{" "}
+              <Link
+                to={`/cases/${encodeURIComponent(caseId)}/reviews/${encodeURIComponent(selectedReview.data.run.id)}?attempt_id=${encodeURIComponent(selectedAttempt.id)}`}
+              >
+                审查工作区
+              </Link>{" "}
+              中按需读取。
+            </p>
           ) : null}
           {selectedAttempt && !isTerminalAttemptState(selectedAttempt.state) ? (
             <p className="callout">
@@ -221,20 +221,18 @@ export function ReportArchivePanel({
           ) : null}
           {createReport.data ? (
             <p role="status">
-              报告已创建：{createReport.data.id}，版本{" "}
-              {createReport.data.version}，摘要{" "}
-              <code className="digest">{createReport.data.digest}</code>
+              报告已创建，版本 {createReport.data.version}。
             </p>
           ) : null}
           <Button
             aria-label={String(
-              createReport.isPending ? "正在生成报告" : "生成冻结报告",
+              createReport.isPending ? "正在生成报告" : "生成报告",
             )}
             type="primary"
             htmlType="submit"
             disabled={!reportReady || createReport.isPending}
           >
-            {createReport.isPending ? "正在生成报告" : "生成冻结报告"}
+            {createReport.isPending ? "正在生成报告" : "生成报告"}
           </Button>
         </form>
       ) : null}
@@ -249,43 +247,12 @@ export function ReportArchivePanel({
               <li key={report.id}>
                 <header className="workflow-panel-head">
                   <div>
-                    <strong>
-                      报告 {report.id}，版本 {report.version}
-                    </strong>
+                    <strong>报告版本 {report.version}</strong>
                     <p className="meta">
-                      运行 {report.run_id}，尝试 {report.attempt_id}，创建于{" "}
-                      {formatDateTime(report.created_at)}
+                      创建于 {formatDateTime(report.created_at)}
                     </p>
                   </div>
                 </header>
-                <dl className="execution-dl">
-                  <div>
-                    <dt>输入摘要</dt>
-                    <dd>
-                      <code className="digest">{report.input_hash}</code>
-                    </dd>
-                  </div>
-                  <div>
-                    <dt>输出摘要</dt>
-                    <dd>
-                      <code className="digest">{report.output_hash}</code>
-                    </dd>
-                  </div>
-                  <div>
-                    <dt>决定快照摘要</dt>
-                    <dd>
-                      <code className="digest">
-                        {report.decision_snapshot_hash}
-                      </code>
-                    </dd>
-                  </div>
-                  <div>
-                    <dt>报告摘要</dt>
-                    <dd>
-                      <code className="digest">{report.digest}</code>
-                    </dd>
-                  </div>
-                </dl>
                 {canReadReports ? (
                   <div className="workflow-links">
                     <a
@@ -294,7 +261,7 @@ export function ReportArchivePanel({
                       target="_blank"
                       rel="noreferrer"
                     >
-                      读取冻结 HTML
+                      查看 HTML 报告
                     </a>
                     <a
                       type="text"
@@ -302,7 +269,7 @@ export function ReportArchivePanel({
                       target="_blank"
                       rel="noreferrer"
                     >
-                      读取冻结 JSON
+                      查看 JSON 报告
                     </a>
                   </div>
                 ) : (
@@ -327,7 +294,7 @@ export function ReportArchivePanel({
               options={[
                 { label: "选择报告版本", value: "" },
                 ...detail.reports.map((report) => ({
-                  label: `版本 ${report.version}，${report.id}，${report.run_id} / ${report.attempt_id}`,
+                  label: `版本 ${report.version}，创建于 ${formatDateTime(report.created_at)}`,
                   value: report.id,
                 })),
               ]}
@@ -388,11 +355,13 @@ export function ReportArchivePanel({
           <ul className="workflow-record-list">
             {archiveRecords.map((record) => (
               <li key={record.id}>
-                <strong>归档记录 {record.id}</strong>
+                <strong>归档记录</strong>
                 <dl className="execution-dl">
                   <div>
-                    <dt>报告</dt>
-                    <dd>{record.report_id}</dd>
+                    <dt>报告版本</dt>
+                    <dd>
+                      {detail.reports.find((report) => report.id === record.report_id)?.version ?? "未返回"}
+                    </dd>
                   </div>
                   <div>
                     <dt>归档理由</dt>
@@ -404,7 +373,7 @@ export function ReportArchivePanel({
                   </div>
                   <div>
                     <dt>案件</dt>
-                    <dd>{record.case_id}</dd>
+                    <dd>{detail.title}</dd>
                   </div>
                 </dl>
               </li>

@@ -348,7 +348,8 @@ def observed_relations(scenario: dict, workspace: dict) -> tuple[dict[str, str |
 
 
 def run_repetition(journey, base_url: str, dataset: dict, scenario: dict, level: int, repeat: int,
-                   timeout: float, rows: list[dict[str, object]], authenticate) -> dict[str, object]:
+                   timeout: float, rows: list[dict[str, object]], authenticate,
+                   business_at: str) -> dict[str, object]:
     """One create-to-machine-finished repetition following the seed workflow."""
     stamp = dt.datetime.now(dt.timezone.utc).strftime("%Y%m%dT%H%M%S") + "-" + secrets.token_hex(3)
     context = {"scenario": scenario["id"], "level": level, "repeat": repeat}
@@ -383,7 +384,8 @@ def run_repetition(journey, base_url: str, dataset: dict, scenario: dict, level:
             record["draft_override_uploaded"] = False
         for document in documents:
             client.call("POST", f"/api/cases/{case_id}/documents/{document}/parse", {}, expected={200})
-        status, review, _ = client.call("POST", f"/api/cases/{case_id}/reviews", {}, expected={200, 201, 202})
+        status, review, _ = client.call("POST", f"/api/cases/{case_id}/reviews",
+                                       {"business_at": business_at}, expected={200, 201, 202})
         record["accepted_client_ts"] = dt.datetime.now(dt.timezone.utc).isoformat()
         if status == 202 and not (review or {}).get("job_id"):
             raise Failure("durable review acceptance returned HTTP 202 without a persistent job id")
@@ -412,9 +414,9 @@ def run_repetition(journey, base_url: str, dataset: dict, scenario: dict, level:
     return record
 
 def measured_repetition(journey, base_url: str, dataset: dict, scenario: dict, level: int, repeat: int,
-                        timeout: float, authenticate) -> tuple[dict[str, object], list[dict[str, object]]]:
+                        timeout: float, authenticate, business_at: str) -> tuple[dict[str, object], list[dict[str, object]]]:
     request_rows: list[dict[str, object]] = []
-    job = run_repetition(journey, base_url, dataset, scenario, level, repeat, timeout, request_rows, authenticate)
+    job = run_repetition(journey, base_url, dataset, scenario, level, repeat, timeout, request_rows, authenticate, business_at)
     return job, request_rows
 
 
@@ -660,7 +662,7 @@ def runtime_identity(app: dict[str, str], dataset: dict) -> dict[str, object]:
     return identity
 
 
-def prove_fixture_gateway(stack, args) -> dict[str, object]:
+def prove_fixture_gateway(stack, args, fault) -> dict[str, object]:
     """Every gateway selected for Worker calls must prove the frozen fixture identity."""
     observations: list[dict[str, str]] = []
     if args.control == "host":
@@ -749,6 +751,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--env", default=str(DISTRIBUTED_ENV_PATH),
                         help="private dotenv profile of the isolated stack")
     parser.add_argument("--confirm", default="", help="the isolated database every stack service must target")
+    parser.add_argument("--database-target", choices=("development", "test"), default="test",
+                        help="named database profile the confirmation must match")
     parser.add_argument("--dataset", default=str(DEFAULT_DATASET))
     parser.add_argument("--scenarios", default="", help="default: every scenario in the frozen dataset")
     parser.add_argument("--concurrency", default="1,2", help="finite concurrency levels, default 1,2")
@@ -758,6 +762,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--control-file", default="", help="host control: JSON naming each instance pid and log")
     parser.add_argument("--oidc-env-file", default="", help="private local provider profile for authorization-code login")
     parser.add_argument("--sample-interval", type=float, default=1.0)
+    parser.add_argument("--business-at", default="2026-01-15T09:00:00+08:00",
+                        help="timezone-aware business time for governed reviews")
     parser.add_argument("--artifact-dir", default="")
     parser.add_argument("--plan", action="store_true", help="guards and dataset only; no HTTP or database call")
     parser.add_argument("--run", action="store_true", help="execute the bounded load")
@@ -779,7 +785,7 @@ def main(argv: list[str] | None = None) -> int:
         print("REFUSED: --env must be the dotenv profile compose consumes", file=sys.stderr)
         return 2
     try:
-        infra, app = journey.require_isolated_stack(env_path, args.confirm)
+        infra, app = journey.require_isolated_stack(env_path, args.confirm, args.database_target)
     except journey.Failure as error:
         print(f"REFUSED: {error}", file=sys.stderr)
         return 2
@@ -854,7 +860,7 @@ def main(argv: list[str] | None = None) -> int:
         oidc_setup = fault.load_oidc_setup(Path(args.oidc_env_file), recorder) if args.oidc_env_file else None
         stack = fault.Stack(recorder, env_path, args.confirm, app, args.control,
                             Path(args.control_file) if args.control_file else None)
-        fixture_gateway = prove_fixture_gateway(stack, args)
+        fixture_gateway = prove_fixture_gateway(stack, args, fault)
         targets = sampling_targets(stack, args)
         processes = {service: stack.process_facts(service)
                      for service in sorted({str(target["service"]) for target in targets})}
@@ -904,7 +910,7 @@ def main(argv: list[str] | None = None) -> int:
                 for scenario in scenarios:
                     for repeat in range(1, args.repeats + 1):
                         future = pool.submit(measured_repetition, journey, base_url, dataset, scenario, level,
-                                             repeat, args.timeout, authenticate)
+                                             repeat, args.timeout, authenticate, args.business_at)
                         futures[future] = (scenario["id"], level, repeat)
                 for future in concurrent.futures.as_completed(futures):
                     scenario_id, level_done, repeat = futures[future]

@@ -43,7 +43,7 @@ var architectureTargets = []architectureTarget{
 	{"tempo", "Tempo", "observability", "使用 Grafana Tempo 存储和查询分布式链路", "https://grafana.com/docs/tempo/latest/", []string{"tempo"}},
 	{"grafana", "Grafana", "observability", "使用 Grafana 查询并展示指标与链路", "https://grafana.com/docs/grafana/latest/", []string{"grafana"}},
 	{"parser-ocr-workers", "Parser / OCR Worker", "application", "由解析与 OCR Worker 执行文档解析任务", "https://docs.nats.io/nats-concepts/jetstream/consumers", []string{"parser-worker", "ocr-worker", "audit-worker", "mineru", "ocr-model"}},
-	{"outbox-relay", "Outbox Relay", "application", "由 Outbox Relay 从 PostgreSQL 持久化 Outbox 发布通知", "https://docs.nats.io/using-nats/developer/develop_jetstream/model_deep_dive", []string{"outbox-relay"}},
+	{"outbox-relay", "Outbox Relay", "application", "由 audit-execution 内置的 Outbox Relay 从 PostgreSQL 持久化 Outbox 发布通知", "https://docs.nats.io/using-nats/developer/develop_jetstream/model_deep_dive", []string{"audit-execution"}},
 	{"postgres-recovery", "PostgreSQL PITR / 对象备份恢复", "storage", "提供 PostgreSQL 时间点恢复（PITR）及对象存储备份恢复", "https://cloudnative-pg.io/documentation/current/backup/", []string{"postgres-backup", "object-backup"}},
 	{"pgbouncer", "PgBouncer（可选）", "storage", "可选部署 PgBouncer 连接池", "https://www.pgbouncer.org/", []string{"pgbouncer"}},
 	{"audit-workers", "审查 Worker 并发", "application", "部署 6–20 个审查 Worker，每个 Worker 并行处理 3–5 个案件", "https://kubernetes.io/docs/concepts/workloads/autoscaling/horizontal-pod-autoscale/", []string{"audit-worker"}},
@@ -94,7 +94,7 @@ func architectureInventory(services []Service, source string, cluster *Cluster) 
 			}
 		}
 		if target.id == "kubernetes" {
-			if source == "kubernetes" && cluster != nil {
+			if (source == "kubernetes" || source == "kubernetes_partial") && cluster != nil {
 				readyNodes := 0
 				for _, node := range cluster.Nodes {
 					if node.Status == "ready" {
@@ -103,6 +103,9 @@ func architectureInventory(services []Service, source string, cluster *Cluster) 
 				}
 				entry.State = "observed"
 				entry.Observed = fmt.Sprintf("Kubernetes API 观察到 %d 个 Ready 节点（共 %d 个节点）；单机集群观测不证明物理高可用，验收未运行。", readyNodes, len(cluster.Nodes))
+				if source == "kubernetes_partial" {
+					entry.Observed += "当前有部分 Kubernetes 观测源不可用。"
+				}
 			} else {
 				entry.Observed = "当前采集器没有 Kubernetes 集群观测源；无法判断集群是否存在或连接状态。"
 				if source == "kubernetes_unavailable" {

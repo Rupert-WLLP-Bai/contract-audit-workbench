@@ -4,12 +4,17 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"log"
 	"os"
 	"strings"
 	"time"
 
+	"contractaudit/internal/advisory"
+	"contractaudit/internal/agentflow"
 	"contractaudit/internal/config"
 	"contractaudit/internal/documentclient"
+	"contractaudit/internal/experienceclient"
+	"contractaudit/internal/jev"
 	"contractaudit/internal/model"
 	"contractaudit/internal/store"
 	"contractaudit/internal/toolclient"
@@ -92,6 +97,49 @@ func serviceModelConfig(role string) (model.Config, error) {
 	return cfg, nil
 }
 
+// configuredAdvisoryProvider installs the suggestion-layer transport for the
+// processes that execute review attempts. A missing or invalid advisory
+// configuration leaves the provider nil: review acceptance and execution must
+// continue on the deterministic path with an explicit unavailable record, not
+// fail startup.
+func configuredAdvisoryProvider(service string, models *model.Client) advisory.Provider {
+	if service != "" && service != "worker" {
+		return nil
+	}
+	configuration, reason := agentflow.ResolveAdvisoryConfiguration()
+	if configuration == nil {
+		if reason != "" && reason != "disabled" {
+			log.Printf("advisory provider disabled: %s", reason)
+		}
+		return nil
+	}
+	switch configuration.Provider {
+	case agentflow.AdvisoryProviderFixture:
+		return advisory.FixtureProvider{}
+	case agentflow.AdvisoryProviderGateway:
+		provider, err := advisory.NewGatewayProvider(models)
+		if err != nil {
+			log.Printf("advisory gateway provider unavailable: %v", err)
+			return nil
+		}
+		return provider
+	case agentflow.AdvisoryProviderDirect:
+		if service != "" {
+			log.Printf("advisory direct provider is only available to the single-process development mode")
+			return nil
+		}
+		provider, err := advisory.NewDirectProvider(jev.FromEnv())
+		if err != nil {
+			log.Printf("advisory direct provider unavailable: %v", err)
+			return nil
+		}
+		return provider
+	default:
+		log.Printf("advisory provider %q is not implemented", configuration.Provider)
+		return nil
+	}
+}
+
 func configuredDocumentPreparer() (store.DocumentPreparer, error) {
 	endpoint := strings.TrimRight(strings.TrimSpace(os.Getenv("DOCUMENT_SERVICE_URL")), "/")
 	credential := strings.TrimSpace(os.Getenv("WORKER_DOCUMENT_TOKEN"))
@@ -99,6 +147,23 @@ func configuredDocumentPreparer() (store.DocumentPreparer, error) {
 		return nil, errors.New("document service endpoint and caller credential are required")
 	}
 	return documentclient.New(endpoint, credential, 2*time.Minute)
+}
+
+func configuredExperienceResultAcceptor() (store.ExperienceResultAcceptor, error) {
+	endpoint := strings.TrimSpace(os.Getenv("CORE_SERVICE_URL"))
+	credential := strings.TrimSpace(os.Getenv("WORKER_CORE_TOKEN"))
+	if endpoint == "" && credential == "" {
+		return nil, nil
+	}
+	if endpoint == "" || len(credential) < 32 {
+		return nil, errors.New("core service endpoint and private worker credential must be configured together")
+	}
+	for _, name := range []string{"WORKER_DOCUMENT_TOKEN", "WORKER_MODEL_TOKEN", "WORKER_TOOL_TOKEN"} {
+		if other := strings.TrimSpace(os.Getenv(name)); other != "" && other == credential {
+			return nil, errors.New("core result credential must differ from other worker credentials")
+		}
+	}
+	return experienceclient.New(endpoint, credential, 30*time.Second)
 }
 
 // configuredToolEvidenceReader assembles the worker's read-only tool caller. It
@@ -117,10 +182,8 @@ func configuredToolEvidenceReader() (store.ToolEvidenceReader, error) {
 	return toolEvidenceReader{client: client}, nil
 }
 
-// toolEvidenceReader adapts the MCP tool client to the store's evidence
-// boundary: the pipeline asks for one post-input read under a frozen claim, and
-// every field is copied unchanged, so the payload the consumer sees is the tool
-// response itself and a failure stays an error.
+// toolEvidenceReader passes the worker's job claim to the read-only MCP tool.
+// It returns the tool response unchanged and reports tool failures as errors.
 type toolEvidenceReader struct{ client *toolclient.Client }
 
 func (r toolEvidenceReader) FrozenEvidence(ctx context.Context, in store.ToolEvidenceRequest) (json.RawMessage, error) {

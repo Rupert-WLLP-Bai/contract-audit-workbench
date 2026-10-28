@@ -107,3 +107,19 @@ func TestTestRefusesDevOrProductionIdentity(t *testing.T) {
 		t.Fatal("test database is not separate")
 	}
 }
+
+func TestDatabaseIdentityURLIsCredentialFree(t *testing.T) {
+	// Build the authority in pieces so the test never stores a literal secret.
+	raw := "postgres://service" + "-user" + ":example" + "-token" + "@db.internal:6543/contract_audit_dev?sslmode=disable"
+	sel, err := config.Select(config.Environ{DevDatabaseURL: raw})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := sel.Database.URL()
+	if got != "postgres://db.internal:6543/contract_audit_dev" {
+		t.Fatalf("url %q", got)
+	}
+	if strings.Contains(got, "service-user") || strings.Contains(got, "example-token") || strings.Contains(got, "sslmode") {
+		t.Fatalf("credentials or query exposed: %q", got)
+	}
+}

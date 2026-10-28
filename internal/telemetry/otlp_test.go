@@ -494,3 +494,55 @@ func TestExporterMetricsBoundsSeriesWithoutLosingEvents(t *testing.T) {
 		t.Fatalf("metric cardinality must stay bounded without losing events: series=%d total=%d stats=%+v", len(counts), total, exporter.Stats())
 	}
 }
+
+func TestExporterResourceIdentifiesServiceInstance(t *testing.T) {
+	bodies := make(chan []byte, 4)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/v1/traces" {
+			body, _ := io.ReadAll(r.Body)
+			bodies <- body
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{}`)
+	}))
+	defer server.Close()
+	exporter, err := telemetry.New(telemetry.Config{
+		Endpoint: server.URL, Service: "audit.worker", InstanceID: "worker-7", SampleRatio: 1,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	exporter.Record("run", "attempt", completedEvent("root", "attempt"))
+	var body []byte
+	select {
+	case body = <-bodies:
+	case <-time.After(2 * time.Second):
+		t.Fatal("trace export did not arrive")
+	}
+	exporter.Close()
+	var request struct {
+		ResourceSpans []struct {
+			Resource struct {
+				Attributes []struct {
+					Key   string `json:"key"`
+					Value struct {
+						String string `json:"stringValue"`
+					} `json:"value"`
+				} `json:"attributes"`
+			} `json:"resource"`
+		} `json:"resourceSpans"`
+	}
+	if err := json.Unmarshal(body, &request); err != nil {
+		t.Fatal(err)
+	}
+	if len(request.ResourceSpans) != 1 {
+		t.Fatalf("resource spans missing: %s", body)
+	}
+	attributes := map[string]string{}
+	for _, item := range request.ResourceSpans[0].Resource.Attributes {
+		attributes[item.Key] = item.Value.String
+	}
+	if attributes["service.name"] != "audit.worker" || attributes["service.instance.id"] != "worker-7" {
+		t.Fatalf("replica identity missing from OTLP resource: %v", attributes)
+	}
+}

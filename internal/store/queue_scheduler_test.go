@@ -60,7 +60,7 @@ func queueTestAcceptance(t *testing.T, core, document, execution *Store, user ac
 	if _, err := document.AddDocument(context.Background(), user, caseID, "procurement", "purchase.txt", "text/plain", []byte("采购文件缺少阈值，审查须明确缺证。")); err != nil {
 		t.Fatal(err)
 	}
-	accepted, err := execution.StartReviewAsync(context.Background(), user, caseID)
+	accepted, err := execution.StartReviewAsyncAt(context.Background(), user, caseID, acceptanceBusinessTime)
 	return caseID, accepted, err
 }
 
@@ -72,6 +72,10 @@ func TestTenantFairnessAcrossWorkers(t *testing.T) {
 	users := queueTestActors(t)
 	core, document := environment.openRole(t, "core"), environment.openRole(t, "document")
 	workers := []*Store{environment.openRole(t, "execution"), environment.openRole(t, "execution")}
+	for _, user := range users {
+		pack := publishSyntheticAcceptancePack(t, core, user)
+		publishSyntheticAcceptancePolicy(t, core, user, pack)
+	}
 	policy := DefaultQueuePolicy()
 	policy.GlobalInFlight, policy.TenantInFlight = 1, 1
 	policy.Weights = map[string]int{users[0].TenantID: 2, users[1].TenantID: 1}
@@ -120,6 +124,10 @@ func TestQueueTenantCapacitySkipsSaturatedTenant(t *testing.T) {
 	users := queueTestActors(t)
 	core, document := environment.openRole(t, "core"), environment.openRole(t, "document")
 	workers := []*Store{environment.openRole(t, "execution"), environment.openRole(t, "execution")}
+	for _, user := range users {
+		pack := publishSyntheticAcceptancePack(t, core, user)
+		publishSyntheticAcceptancePolicy(t, core, user, pack)
+	}
 	policy := DefaultQueuePolicy()
 	policy.GlobalInFlight = 2
 	policy.TenantInFlight = 1
@@ -191,6 +199,8 @@ func TestQueueFullRollsBackAcceptanceAndKeepsIdempotency(t *testing.T) {
 	if err != nil || repeated != accepted {
 		t.Fatalf("full queue broke idempotent acceptance: %+v %v", repeated, err)
 	}
+	pack := publishSyntheticAcceptancePack(t, setup.core, setup.admin)
+	publishSyntheticAcceptancePolicy(t, setup.core, setup.admin, pack)
 	caseID, _, err := queueTestAcceptance(t, setup.core, setup.document, execution, setup.admin)
 	var failure *fault.Error
 	if !errors.As(err, &failure) || failure.Code != "execution_capacity" {

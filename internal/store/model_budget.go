@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"math"
+	"strconv"
 	"strings"
 	"time"
 
@@ -34,6 +35,10 @@ CREATE TABLE IF NOT EXISTS model_call_leases (
 );
 ALTER TABLE model_call_leases ADD COLUMN IF NOT EXISTS attempt_number integer NOT NULL DEFAULT 1;
 ALTER TABLE model_call_leases ADD COLUMN IF NOT EXISTS reserved_input_tokens bigint NOT NULL DEFAULT 0;
+ALTER TABLE model_call_leases ADD COLUMN IF NOT EXISTS purpose text NOT NULL DEFAULT 'review';
+ALTER TABLE model_call_leases ADD COLUMN IF NOT EXISTS job_id text NOT NULL DEFAULT '';
+ALTER TABLE model_call_leases ADD COLUMN IF NOT EXISTS job_generation bigint NOT NULL DEFAULT 0;
+ALTER TABLE model_call_leases ADD COLUMN IF NOT EXISTS input_sha256 text NOT NULL DEFAULT '';
 ALTER TABLE model_call_leases ADD COLUMN IF NOT EXISTS reserved_output_tokens bigint NOT NULL DEFAULT 0;
 CREATE INDEX IF NOT EXISTS model_call_leases_expiry ON model_call_leases (expires_at);
 CREATE INDEX IF NOT EXISTS model_call_leases_tenant_expiry ON model_call_leases (tenant_id, expires_at);
@@ -69,6 +74,10 @@ ALTER TABLE model_usage ADD COLUMN IF NOT EXISTS reserved_output_tokens bigint;
 ALTER TABLE model_usage ADD COLUMN IF NOT EXISTS charged_tokens bigint;
 ALTER TABLE model_usage ADD COLUMN IF NOT EXISTS budget_released boolean NOT NULL DEFAULT false;
 ALTER TABLE model_usage ADD COLUMN IF NOT EXISTS settlement_fingerprint text;
+ALTER TABLE model_usage ADD COLUMN IF NOT EXISTS purpose text NOT NULL DEFAULT 'review';
+ALTER TABLE model_usage ADD COLUMN IF NOT EXISTS job_id text NOT NULL DEFAULT '';
+ALTER TABLE model_usage ADD COLUMN IF NOT EXISTS job_generation bigint NOT NULL DEFAULT 0;
+ALTER TABLE model_usage ADD COLUMN IF NOT EXISTS input_sha256 text NOT NULL DEFAULT '';
 CREATE INDEX IF NOT EXISTS model_usage_occurred ON model_usage (occurred_at);
 CREATE INDEX IF NOT EXISTS model_usage_tenant_occurred ON model_usage (tenant_id, occurred_at);
 CREATE INDEX IF NOT EXISTS model_usage_reserved_at ON model_usage (reserved_at);
@@ -100,6 +109,10 @@ type ModelCallLease struct {
 	CallerIdentity string
 	ModelRef       string
 	AttemptNumber  int
+	Purpose        string
+	JobID          string
+	Generation     int64
+	InputSHA256    string
 }
 
 type ModelCallResult struct {
@@ -125,8 +138,31 @@ func (s *Store) ReserveModelCall(ctx context.Context, caller string, scope model
 		return ModelCallLease{}, err
 	}
 	defer tx.Rollback(ctx)
-	if err := setLocalScope(ctx, tx, dbScope{ActorID: "model-gateway", Role: "model", TenantID: scope.TenantID, OrgID: scope.OrgID}); err != nil {
+	if err := setLocalScope(ctx, tx, dbScope{ActorID: "model-gateway", Role: "model", TenantID: scope.TenantID, OrgID: scope.OrgID, WorkerID: scope.WorkerID}); err != nil {
 		return ModelCallLease{}, err
+	}
+	if err := setModelLedgerIdentity(ctx, tx, scope.Kind, scope.JobID, scope.Generation, scope.InputSHA256); err != nil {
+		return ModelCallLease{}, err
+	}
+	if scope.Kind == "experience_distill" {
+		if caller != "worker" || scope.TenantID == "" || scope.OrgID == "" || scope.CaseID == "" || scope.ActorID == "" ||
+			scope.JobID == "" || scope.WorkerID == "" || scope.Generation <= 0 || scope.RunID != "" || scope.AttemptID != "" || len(scope.InputSHA256) != 64 {
+			return ModelCallLease{}, ErrModelScopeUnavailable
+		}
+		// The job row is the outer lock: reclamation and recovery must see this
+		// reservation before they can advance or inspect the next generation.
+		query := `SELECT ` + pgx.Identifier{s.schema, "model_budget_lock_experience_job"}.Sanitize() + `($1,$2,$3,$4,$5,$6,$7,$8)`
+		var locked bool
+		if err := tx.QueryRow(ctx, query, scope.TenantID, scope.OrgID, scope.CaseID, scope.ActorID,
+			scope.JobID, scope.WorkerID, scope.Generation, scope.InputSHA256).Scan(&locked); err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return ModelCallLease{}, ErrModelScopeUnavailable
+			}
+			return ModelCallLease{}, err
+		}
+		if !locked {
+			return ModelCallLease{}, ErrModelScopeUnavailable
+		}
 	}
 	if err := authorizeModelScope(ctx, tx, caller, scope); err != nil {
 		return ModelCallLease{}, err
@@ -138,6 +174,7 @@ func (s *Store) ReserveModelCall(ctx context.Context, caller string, scope model
 	lease := ModelCallLease{
 		ID: id, TenantID: scope.TenantID, ActorID: scope.ActorID, CaseID: scope.CaseID,
 		RunID: scope.RunID, AttemptID: scope.AttemptID, CallerIdentity: caller, ModelRef: modelRef, AttemptNumber: attemptNumber,
+		Purpose: scope.Kind, JobID: scope.JobID, Generation: scope.Generation, InputSHA256: scope.InputSHA256,
 	}
 	var reserved bool
 	query := `SELECT ` + pgx.Identifier{s.schema, "model_budget_reserve"}.Sanitize() + `($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)`
@@ -148,6 +185,10 @@ func (s *Store) ReserveModelCall(ctx context.Context, caller string, scope model
 		limits.GlobalTokensPerMinute, limits.TenantTokensPerMinute, inputUpperBound, outputUpperBound,
 		int64(math.Ceil(float64(limits.LeaseDuration)/float64(time.Millisecond))),
 	).Scan(&reserved); err != nil {
+		var state interface{ SQLState() string }
+		if scope.Kind == "experience_distill" && errors.As(err, &state) && state.SQLState() == "P7M01" {
+			return ModelCallLease{}, ErrModelScopeUnavailable
+		}
 		return ModelCallLease{}, err
 	}
 	if !reserved {
@@ -220,6 +261,9 @@ func (s *Store) FinishModelCall(ctx context.Context, lease ModelCallLease, resul
 	if err := setLocalScope(ctx, tx, dbScope{ActorID: "model-gateway", Role: "model", TenantID: lease.TenantID}); err != nil {
 		return err
 	}
+	if err := setModelLedgerIdentity(ctx, tx, lease.Purpose, lease.JobID, lease.Generation, lease.InputSHA256); err != nil {
+		return err
+	}
 	query := `SELECT ` + pgx.Identifier{s.schema, "model_budget_finish"}.Sanitize() + `($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)`
 	var finished bool
 	if err := tx.QueryRow(ctx, query,
@@ -235,13 +279,31 @@ func (s *Store) FinishModelCall(ctx context.Context, lease ModelCallLease, resul
 }
 
 func authorizeModelScope(ctx context.Context, tx pgx.Tx, caller string, scope model.DelegatedScope) error {
-	if (caller == "worker" && scope.Kind != "execution") || (caller == "document" && scope.Kind != "document") ||
+	if (caller == "worker" && scope.Kind != "execution" && scope.Kind != "experience_distill") || (caller == "document" && scope.Kind != "document") ||
 		(caller != "worker" && caller != "document") || scope.TenantID == "" || scope.OrgID == "" || scope.CaseID == "" || scope.ActorID == "" {
 		return ErrModelScopeUnavailable
 	}
 	var caseItem Case
 	var memberJSON string
-	if scope.JobID != "" {
+	if scope.Kind == "experience_distill" {
+		if caller != "worker" || scope.JobID == "" || scope.WorkerID == "" || scope.Generation <= 0 ||
+			scope.RunID != "" || scope.AttemptID != "" || len(scope.InputSHA256) != 64 {
+			return ErrModelScopeUnavailable
+		}
+		err := tx.QueryRow(ctx, `SELECT c.id,c.tenant_id,c.org_id,c.owner_id,c.member_ids
+			FROM worker_jobs j JOIN experience_distill_inputs i ON i.job_id=j.id
+			JOIN experience_feedback f ON f.tenant_id=i.tenant_id AND f.org_id=i.org_id AND f.case_id=i.case_id AND f.feedback_id=i.feedback_id
+			JOIN cases c ON c.id=j.case_id AND c.tenant_id=j.tenant_id AND c.org_id=j.org_id
+			WHERE j.id=$1 AND j.kind='experience_distill' AND j.worker_id=$2 AND j.generation=$3
+			AND j.tenant_id=$4 AND j.org_id=$5 AND j.case_id=$6 AND j.actor_id=$7
+			AND j.state='running' AND j.lease_until>clock_timestamp() AND i.actor_id=j.actor_id
+			AND i.tenant_id=j.tenant_id AND i.org_id=j.org_id AND i.case_id=j.case_id AND i.input_sha256=$8`,
+			scope.JobID, scope.WorkerID, scope.Generation, scope.TenantID, scope.OrgID, scope.CaseID, scope.ActorID, scope.InputSHA256).
+			Scan(&caseItem.ID, &caseItem.TenantID, &caseItem.OwnerOrgID, &caseItem.OwnerID, &memberJSON)
+		if err != nil {
+			return ErrModelScopeUnavailable
+		}
+	} else if scope.JobID != "" {
 		if scope.RunID == "" || scope.AttemptID == "" || scope.WorkerID == "" || scope.Generation <= 0 ||
 			(caller == "document" && (scope.DocumentID == "" || scope.ParseSelectionID == "")) {
 			return ErrModelScopeUnavailable
@@ -294,4 +356,28 @@ func authorizeModelScope(ctx context.Context, tx pgx.Tx, caller string, scope mo
 		return ErrModelScopeUnavailable
 	}
 	return nil
+}
+
+func setModelLedgerIdentity(ctx context.Context, tx pgx.Tx, purpose, jobID string, generation int64, inputSHA256 string) error {
+	_, err := tx.Exec(ctx, `SELECT set_config('app.model_purpose',$1,true),set_config('app.job_id',$2,true),
+		set_config('app.job_generation',$3,true),set_config('app.model_input_sha256',$4,true)`,
+		purpose, jobID, strconv.FormatInt(generation, 10), inputSHA256)
+	return err
+}
+
+// ReauthorizeModelScope checks current case permission and, for durable jobs,
+// the live lease. It is called only after the actual model charge is settled.
+func (s *Store) ReauthorizeModelScope(ctx context.Context, caller string, scope model.DelegatedScope) error {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+	if err := setLocalScope(ctx, tx, dbScope{ActorID: "model-gateway", Role: "model", TenantID: scope.TenantID, OrgID: scope.OrgID}); err != nil {
+		return err
+	}
+	if err := authorizeModelScope(ctx, tx, caller, scope); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
 }

@@ -143,7 +143,7 @@ export function RulePackCreatePage() {
           <p>
             {sourceInitialized
               ? `已复制 ${sourcePack} v${sourceVersion} 的规则内容。填写一个新的版本号后编辑并保存；原版本继续保留。`
-              : "填写规则的适用范围、有限比较器参数、事实来源角色与权威来源。保存只创建草稿，不会批准或发布。"}
+              : "填写规则的适用范围、比较条件、事实来源和依据材料。保存后只会创建草稿，不会自动批准或发布。"}
           </p>
         </div>
       </header>

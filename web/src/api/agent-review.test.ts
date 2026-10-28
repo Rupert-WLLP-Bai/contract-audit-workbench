@@ -177,4 +177,131 @@ describe("AgentReview API parser", () => {
     delete (review.events[0] as Partial<(typeof review.events)[0]>).round;
     expect(() => parseAgentReview(review)).toThrow(/events\[0\]/);
   });
+
+  it("reads knowledge advisory suggestions without presenting them as conclusions", () => {
+    const review = {
+      ...structuredClone(validReview),
+      knowledge_selection: {
+        snapshot_sha256: "a".repeat(64),
+        algorithm: "chinese-bigram-label/v1",
+        policy_status: "available",
+        policy_reason: "",
+        input: {},
+        candidates: [],
+        budget: {},
+        planner_rounds: [],
+        reads: [],
+        advisory: {
+          mode: "advisory",
+          feature: "knowledge_rerank",
+          provider: "model-gateway",
+          configuration_id: "b".repeat(64),
+          model_requested: "jev-1.14.0",
+          model_observed: "jev-1.14.0",
+          question_set_version: "knowledge-relevance/v1",
+          egress: "minimized",
+          request_sha256: "c".repeat(64),
+          judgment_id: "d".repeat(64),
+          status: "completed",
+          truncated: false,
+          candidates: [
+            {
+              knowledge_id: "guide-a",
+              version_id: "v1",
+              content_sha256: "e".repeat(64),
+              alias: "candidate_0",
+              probability: 0.82,
+              band: "relevant",
+              rank_before: 2,
+              rank_after: 1,
+            },
+            {
+              knowledge_id: "guide-b",
+              version_id: "v1",
+              content_sha256: "f".repeat(64),
+              alias: "candidate_1",
+              band: "unknown",
+              rank_before: 1,
+              rank_after: 2,
+            },
+          ],
+        },
+      },
+    };
+    const parsed = parseAgentReview(review);
+    expect(parsed.knowledge_selection?.advisory).toMatchObject({
+      status: "completed",
+      model_observed: "jev-1.14.0",
+      candidates: [
+        {
+          knowledge_id: "guide-a",
+          probability: 0.82,
+          band: "relevant",
+          rank_before: 2,
+          rank_after: 1,
+          reason: null,
+        },
+        { knowledge_id: "guide-b", probability: null, band: "unknown" },
+      ],
+    });
+    expect(parsed.knowledge_selection?.advisory?.error_code).toBeNull();
+    expect(parsed.knowledge_selection?.policy_status).toBe("available");
+  });
+
+  it("keeps old reviews without knowledge selection compatible", () => {
+    expect(parseAgentReview(validReview).knowledge_selection).toBeNull();
+  });
+
+  it("rejects unknown advisory fields and out-of-range probabilities", () => {
+    const review = {
+      ...structuredClone(validReview),
+      knowledge_selection: {
+        snapshot_sha256: "a".repeat(64),
+        algorithm: "chinese-bigram-label/v1",
+        policy_status: "available",
+        policy_reason: "",
+        input: {},
+        candidates: [],
+        budget: {},
+        planner_rounds: [],
+        reads: [],
+        advisory: {
+          mode: "advisory",
+          feature: "knowledge_rerank",
+          provider: "model-gateway",
+          configuration_id: "b".repeat(64),
+          question_set_version: "knowledge-relevance/v1",
+          egress: "minimized",
+          status: "completed",
+          candidates: [] as unknown[],
+        },
+      },
+    };
+    expect(() => parseAgentReview(review)).not.toThrow();
+    const withUnknown = structuredClone(review);
+    (
+      withUnknown.knowledge_selection.advisory as typeof withUnknown.knowledge_selection.advisory & {
+        provider_note?: string;
+      }
+    ).provider_note = "unreviewed";
+    expect(() => parseAgentReview(withUnknown)).toThrow(
+      /knowledge_selection\.advisory/,
+    );
+    const withProbability = structuredClone(review);
+    withProbability.knowledge_selection.advisory.candidates = [
+      {
+        knowledge_id: "guide-a",
+        version_id: "v1",
+        content_sha256: "e".repeat(64),
+        alias: "candidate_0",
+        probability: 1.2,
+        band: "relevant",
+        rank_before: 1,
+        rank_after: 1,
+      },
+    ];
+    expect(() => parseAgentReview(withProbability)).toThrow(
+      /candidates\[0\]\.probability/,
+    );
+  });
 });

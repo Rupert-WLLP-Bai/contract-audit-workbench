@@ -45,12 +45,12 @@ func TestParseWarrantyRejectsMalformedOutput(t *testing.T) {
 }
 
 func TestParseCloudContractAcceptsExactPolicyCitations(t *testing.T) {
-	raw := `{"findings":[{"domain":"liability","policy_clause":"2.4","claim":"服务中断赔偿责任缺少累计上限","document_id":"contract-1","quote":"服务中断的赔偿按照损失计算"}]}`
+	raw := `{"findings":[{"domain":"liability","policy_clause":"应明确服务中断赔偿责任","claim":"服务中断赔偿责任缺少累计上限","document_id":"contract-1","quote":"服务中断的赔偿按照损失计算"}]}`
 	got, err := ParseCloudContract(raw)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(got.Findings) != 1 || got.Findings[0].Domain != "liability" || got.Findings[0].PolicyClause != "2.4" ||
+	if len(got.Findings) != 1 || got.Findings[0].Domain != "liability" || got.Findings[0].PolicyClause != "应明确服务中断赔偿责任" ||
 		got.Findings[0].DocumentID != "contract-1" || got.Findings[0].Quote != "服务中断的赔偿按照损失计算" {
 		t.Fatalf("unexpected cloud review: %+v", got)
 	}
@@ -58,7 +58,7 @@ func TestParseCloudContractAcceptsExactPolicyCitations(t *testing.T) {
 
 func TestParseCloudContractRejectsInvalidDomainClauseOrEvidence(t *testing.T) {
 	cases := []string{
-		`{"findings":[{"domain":"liability","policy_clause":"2.5","claim":"责任缺口","document_id":"contract-1","quote":"合同原文"}]}`,
+		`{"findings":[{"domain":"liability","policy_clause":"","claim":"责任缺口","document_id":"contract-1","quote":"合同原文"}]}`,
 		`{"findings":[{"domain":"security","policy_clause":"2.5","claim":"安全缺口","document_id":"contract-1","quote":"合同原文"}]}`,
 		`{"findings":[{"domain":"renewal","policy_clause":"2.7","claim":"续约缺口","document_id":"contract-1","quote":""}]}`,
 		`{"findings":[{"domain":"liability","policy_clause":"2.4","claim":"责任缺口","document_id":"contract-1","quote":"原文","severity":"high"}]}`,

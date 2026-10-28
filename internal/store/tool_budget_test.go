@@ -53,7 +53,7 @@ func createFrozenToolBudgetAttempt(t *testing.T, fixture durableFixture, index i
 	if _, err := fixture.document.AddDocument(context.Background(), fixture.admin, caseID, "procurement", "purchase.txt", "text/plain", []byte("采购文件未提供合同阈值或审批依据。")); err != nil {
 		t.Fatalf("add procurement document %d: %v", index, err)
 	}
-	accepted, err := fixture.execution.StartReviewAsync(context.Background(), fixture.admin, caseID)
+	accepted, err := fixture.execution.StartReviewAsyncAt(context.Background(), fixture.admin, caseID, acceptanceBusinessTime)
 	if err != nil {
 		t.Fatalf("accept telecom review %d: %v", index, err)
 	}

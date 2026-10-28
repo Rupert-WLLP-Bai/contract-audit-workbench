@@ -144,7 +144,16 @@ func TestPublicOperationsUseOnlyTheirOwningServiceCredential(t *testing.T) {
 	config.DocumentURL = servers["document"].URL
 	config.ExecutionURL = servers["execution"].URL
 	config.ToolURLs = []string{servers["tool"].URL}
+	// This test asserts credential routing, not health transitions. Under a
+	// loaded race run, the default 50 ms probe timeout can fail three times and
+	// quarantine a live in-process server mid-test. Keep probes infrequent and
+	// tolerant so only the routing decision is under test.
+	config.HealthInterval = time.Second
+	config.HealthTimeout = 500 * time.Millisecond
+	config.HealthFailureThreshold = 10
+	config.HealthRecoveryThreshold = 1
 	edge := startGateway(t, config)
+	waitGatewayReady(t, edge)
 	expectedOwner := make(map[string]string, 7)
 	for _, request := range []struct {
 		method, path, owner string

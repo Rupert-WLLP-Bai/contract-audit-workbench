@@ -1,0 +1,181 @@
+# Full local profile: one control-plane node and four agents, with the
+# critical services spread across agents. This is still one machine; it proves
+# scheduling, replica failover and instance identity, not physical HA.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gateway
+spec:
+  replicas: 1
+  template:
+    spec:
+      containers:
+        - name: gateway
+          env:
+            - name: POD_UID
+              valueFrom: {fieldRef: {fieldPath: metadata.uid}}
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: http://otel-collector:4318
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: core-api
+spec:
+  replicas: 2
+  template:
+    spec:
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: DoNotSchedule
+          labelSelector: {matchLabels: {app.kubernetes.io/name: core-api}}
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - {key: node-role.kubernetes.io/control-plane, operator: DoesNotExist}
+      containers:
+        - name: core-api
+          env:
+            - name: POD_UID
+              valueFrom: {fieldRef: {fieldPath: metadata.uid}}
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: http://otel-collector:4318
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: document-service
+spec:
+  replicas: 1
+  template:
+    spec:
+      containers:
+        - name: document-service
+          env:
+            - name: POD_UID
+              valueFrom: {fieldRef: {fieldPath: metadata.uid}}
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: http://otel-collector:4318
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: audit-execution
+spec:
+  replicas: 1
+  template:
+    spec:
+      containers:
+        - name: audit-execution
+          env:
+            - name: POD_UID
+              valueFrom: {fieldRef: {fieldPath: metadata.uid}}
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: http://otel-collector:4318
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: audit-worker
+spec:
+  replicas: 3
+  template:
+    spec:
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: DoNotSchedule
+          labelSelector: {matchLabels: {app.kubernetes.io/name: audit-worker}}
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - {key: node-role.kubernetes.io/control-plane, operator: DoesNotExist}
+      containers:
+        - name: audit-worker
+          # The local 2 GiB agents keep the worker request below production size
+          # so a rolling update can drain the previous revision. This is a local
+          # scheduling envelope, not a production capacity claim.
+          resources:
+            requests: {cpu: 250m, memory: 320Mi}
+            limits: {cpu: "2", memory: 2Gi}
+          env:
+            - name: POD_UID
+              valueFrom: {fieldRef: {fieldPath: metadata.uid}}
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: http://otel-collector:4318
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: model-gateway
+spec:
+  replicas: 2
+  template:
+    spec:
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: DoNotSchedule
+          labelSelector: {matchLabels: {app.kubernetes.io/name: model-gateway}}
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - {key: node-role.kubernetes.io/control-plane, operator: DoesNotExist}
+      containers:
+        - name: model-gateway
+          env:
+            - name: POD_UID
+              valueFrom: {fieldRef: {fieldPath: metadata.uid}}
+            # Deterministic test double for experience distillation only. The
+            # review planner remains deterministic and does not use this route.
+            - name: MODEL_GATEWAY_FIXTURE_CHAT_CONTENT
+              value: '{"schema_version":"experience-candidate/v1","applicability":["付款发生在验收后"],"exclusions":["验收前付款"],"check_action":"核对验收日期与付款条款","minimum_evidence":["验收记录"],"counterexamples":["验收前付款仍需核查"],"valid_from":"2020-01-01T00:00:00Z","valid_until":"2100-01-01T00:00:00Z","policy_refs":[],"review_diff":""}'
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: http://otel-collector:4318
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tool-gateway
+spec:
+  replicas: 2
+  template:
+    spec:
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: DoNotSchedule
+          labelSelector: {matchLabels: {app.kubernetes.io/name: tool-gateway}}
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - {key: node-role.kubernetes.io/control-plane, operator: DoesNotExist}
+      containers:
+        - name: tool-gateway
+          env:
+            - name: POD_UID
+              valueFrom: {fieldRef: {fieldPath: metadata.uid}}
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: http://otel-collector:4318
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: health-monitor
+spec:
+  template:
+    spec:
+      containers:
+        - name: health-monitor
+          env:
+            - name: SYSTEM_HEALTH_EXPECTED_REPLICAS
+              value: core-api=2,audit-worker=3,model-gateway=2,tool-gateway=2,gateway=1,document-service=1,audit-execution=1,otel-collector=1,tempo=1,prometheus=1,grafana=1

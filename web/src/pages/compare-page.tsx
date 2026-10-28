@@ -1,7 +1,7 @@
 import { Tabs } from "antd";
 import { Collapse } from "antd";
 import { Select } from "antd";
-import { Button, Input } from "antd";
+import { Button } from "antd";
 import { useState } from "react";
 import { Link, useSearchParams } from "react-router";
 import { errorMessage } from "../api/http";
@@ -10,6 +10,7 @@ import { useReview, useWorkbench } from "../api/queries";
 import type { Finding, ReviewDocument, WorkbenchRun } from "../api/types";
 import { PageStatus } from "../components/page-status";
 import {
+  decisionLabel,
   formatDateTime,
   parseLabel,
   relationLabel,
@@ -57,28 +58,16 @@ function RunSelect({
         aria-label={String(label)}
         value={String(value?.id ?? "")}
         labelRender={() =>
-          value ? (
-            <span
-              title={`${value.id}，${runLabel(value.state)}，${formatDateTime(value.updated_at)}`}
-            >
-              {value.id}，{runLabel(value.state)}
-            </span>
-          ) : (
-            "没有可选运行"
-          )
+          value
+            ? `审查记录 ${runs.findIndex((run) => run.id === value.id) + 1}，${runLabel(value.state)}，${formatDateTime(value.updated_at)}`
+            : "没有可选运行"
         }
         onChange={(selectedValue) => onChange(selectedValue)}
         options={[
           ...(runs.length === 0 ? [{ value: "", label: "没有可选运行" }] : []),
-          ...runs.map((run) => ({
+          ...runs.map((run, index) => ({
             value: String(run.id),
-            label: (
-              <span
-                title={`${run.id}，${runLabel(run.state)}，${formatDateTime(run.updated_at)}`}
-              >
-                {run.id}，{runLabel(run.state)}，{formatDateTime(run.updated_at)}
-              </span>
-            ),
+            label: `审查记录 ${index + 1}，${runLabel(run.state)}，${formatDateTime(run.updated_at)}`,
           })),
         ]}
       />
@@ -109,12 +98,22 @@ function MaterialPane({
 }) {
   const anchor = selected
     ? finding?.evidence.find((item) =>
-        evidenceSourceMatches(item, selected.id, selected.parsed_document),
+        evidenceSourceMatches(
+          item,
+          selected.id,
+          selected.parsed_document,
+          selected.parsed_document_id,
+        ),
       )
     : null;
   const resolved =
     selected && anchor
-      ? resolveAnchor(selected.text, anchor, selected.parsed_document)
+      ? resolveAnchor(
+          selected.text,
+          anchor,
+          selected.parsed_document,
+          selected.parsed_document_id,
+        )
       : null;
   const segments =
     selected?.text == null
@@ -160,20 +159,16 @@ function MaterialPane({
                   <>
                     <dl className="compare-material-meta">
                       <div>
-                        <dt>材料 ID</dt>
-                        <dd>{selected.id}</dd>
+                        <dt>材料名称</dt>
+                        <dd>{selected.filename}</dd>
                       </div>
                       <div>
-                        <dt>解析 ID</dt>
-                        <dd>{selected.parsed_document?.id ?? "未记录"}</dd>
+                        <dt>解析状态</dt>
+                        <dd>{parseLabel(selected.parse_status)}</dd>
                       </div>
                       <div>
-                        <dt>原件摘要</dt>
-                        <dd>{selected.digest}</dd>
-                      </div>
-                      <div>
-                        <dt>审查运行</dt>
-                        <dd>{run?.id ?? "未记录"}</dd>
+                        <dt>审查状态</dt>
+                        <dd>{run ? runLabel(run.state) : "未报告"}</dd>
                       </div>
                       <div>
                         <dt>上传时间</dt>
@@ -215,11 +210,11 @@ function MaterialPane({
           ) : null}
         </>
       ) : (
-        <p className="compare-unavailable">选择实际运行后查看冻结材料。</p>
+        <p className="compare-unavailable">选择审查记录后，查看当时使用的材料。</p>
       )}
       {loading ? (
         <p role="status" className="compare-query-state">
-          正在读取冻结工作区…
+          正在读取所选审查的记录…
         </p>
       ) : null}
       {error ? (
@@ -240,7 +235,6 @@ export function ComparePage() {
   const [leftDocumentSelection, setLeftDocumentSelection] = useState("");
   const [rightDocumentSelection, setRightDocumentSelection] = useState("");
   const [bottomTab, setBottomTab] = useState("修订证据");
-  const [caseSearch, setCaseSearch] = useState("");
   const [findingSelection, setFindingSelection] = useState("");
 
   const snapshot = snapshotQuery.data;
@@ -308,27 +302,12 @@ export function ComparePage() {
   const comparisonsLinked = Boolean(
     rightRun && leftReview.data?.previous_run_id === rightRun.id,
   );
-  const leftUsage = leftReview.data?.execution?.usage ?? null;
-  const rightUsage = rightReview.data?.execution?.usage ?? null;
   const bottomTabs = ["修订证据", "规则依据", "执行记录", "模型用量"];
   const findings = leftReview.data?.findings ?? [];
   const finding = findings.find((item) => item.id === findingSelection) ?? null;
   const decidedCount = findings.filter(
     (item) => item.decisions.length > 0,
   ).length;
-  const visibleCases = snapshot.cases.filter((item) =>
-    `${item.title} ${item.profile?.number ?? ""}`.includes(caseSearch.trim()),
-  );
-  function chooseCase(id: string) {
-    const next = new URLSearchParams(params);
-    next.set("case_id", id);
-    next.delete("left_run_id");
-    next.delete("right_run_id");
-    setParams(next);
-    setLeftDocumentSelection("");
-    setRightDocumentSelection("");
-    setFindingSelection("");
-  }
   function chooseRun(side: "left_run_id" | "right_run_id", id: string) {
     const next = new URLSearchParams(params);
     next.set(side, id);
@@ -342,7 +321,12 @@ export function ComparePage() {
     setFindingSelection(item.id);
     const source = item.evidence.find((anchor) =>
       leftDocuments.some((document) =>
-        evidenceSourceMatches(anchor, document.id, document.parsed_document),
+        evidenceSourceMatches(
+          anchor,
+          document.id,
+          document.parsed_document,
+          document.parsed_document_id,
+        ),
       ),
     );
     if (source) setLeftDocumentSelection(source.document_version_id);
@@ -353,48 +337,86 @@ export function ComparePage() {
       <header className="compare-page-head">
         <div>
           <strong>{selectedCase?.title ?? "版本对照"}</strong>
-          <span>{selectedCase?.profile?.number ?? selectedCase?.id}</span>
+          <span>{selectedCase?.profile?.number ?? "合同编号未提供"}</span>
         </div>
-        <Link to={selectedCase ? `/cases/${selectedCase.id}` : "/cases"}>
-          案件详情
-        </Link>
+        <nav className="compare-page-links" aria-label="版本对照导航">
+          <Link to="/compare">全部合同</Link>
+          <Link to={selectedCase ? `/cases/${selectedCase.id}` : "/cases"}>
+            案件详情
+          </Link>
+        </nav>
       </header>
       <div className="compare-workspace">
-        <aside className="compare-case-list" aria-label="对照案件列表">
+        <aside className="compare-risk-panel" aria-label="审查结果">
           <header>
-            <h1>
-              合同案件 <span>{snapshot.cases.length}</span>
-            </h1>
-            <Button aria-label={"案件中心"} type="primary" href="/cases">
-              案件中心
-            </Button>
+            <h2>审查结果</h2>
+            <span>{findings.length} 项实际发现</span>
           </header>
-          <label>
-            搜索案件
-            <Input
-              type="search"
-              value={caseSearch}
-              onChange={(event) => setCaseSearch(event.target.value)}
-              placeholder="案件名称、编号"
-            />
-          </label>
-          <div className="compare-case-records">
-            {visibleCases.map((item) => (
-              <Button
-                aria-label={`${item.title}，${item.profile?.customer ?? "未设置客户"}，${item.latest_run ? runLabel(item.latest_run.state) : "待审查"}，${formatDateTime(item.updated_at)}`}
-                htmlType="button"
+          <div className="compare-risk-counts">
+            {(["high", "medium", "low", "info"] as const).map(
+              (severity, index) => (
+                <span key={severity} data-severity={severity}>
+                  {
+                    findings.filter((item) => item.severity === severity)
+                      .length
+                  }
+                  <small>{["高风险", "中风险", "低风险", "提示"][index]}</small>
+                </span>
+              ),
+            )}
+          </div>
+          <p className="compare-risk-note">
+            请以当前版本使用的规则、模型建议和审查人员的判断为准。
+          </p>
+          <div className="compare-risk-records">
+            {findings.map((item) => (
+              <article
                 key={item.id}
-                aria-pressed={item.id === selectedCase?.id}
-                onClick={() => chooseCase(item.id)}
+                data-severity={item.severity ?? "unrated"}
+                data-selected={item.id === finding?.id}
               >
-                <strong>{item.title}</strong>
-                <span>{item.profile?.customer ?? "未设置客户"}</span>
-                <small>
-                  {item.latest_run ? runLabel(item.latest_run.state) : "待审查"}{" "}
-                ，{formatDateTime(item.updated_at)}
-                </small>
-              </Button>
+                <Button
+                  aria-label={`${item.claim}，${item.origin === "rule" ? "规则核对" : "模型建议"}，${relationLabel(item.relation)}`}
+                  htmlType="button"
+                  onClick={() => chooseFinding(item)}
+                  aria-pressed={item.id === finding?.id}
+                >
+                  <strong>{item.claim}</strong>
+                  <span>
+                    {item.origin === "rule" ? "规则核对" : "模型建议"}，
+                    {relationLabel(item.relation)}
+                  </span>
+                </Button>
+                {item.id === finding?.id ? (
+                  <div className="compare-risk-detail">
+                    {item.evidence.map((anchor) => (
+                      <blockquote key={anchor.id}>
+                        {anchor.quote}
+                        <small>
+                          {leftDocuments.find((document) => document.id === anchor.document_version_id)?.filename ?? "引用来源未返回"}
+                        </small>
+                      </blockquote>
+                    ))}
+                    {item.severity_source ? (
+                      <p>
+                        依据版本 {item.severity_source.policy_version}，
+                        {item.severity_source.clause}
+                      </p>
+                    ) : null}
+                    <Link
+                      to={`/cases/${selectedCase?.id}/reviews/${leftRun?.id}?finding=${item.id}`}
+                    >
+                      打开原文与审查判断
+                    </Link>
+                  </div>
+                ) : null}
+              </article>
             ))}
+            {findings.length === 0 ? (
+              <p className="compare-unavailable">
+                此运行没有返回发现；不代表合同已批准。
+              </p>
+            ) : null}
           </div>
         </aside>
         <div className="compare-reading-area">
@@ -443,13 +465,13 @@ export function ComparePage() {
             </li>
             <li data-state={decidedCount > 0 ? "filled" : "open"}>
               <span className="compare-chain-mark" aria-hidden="true" />
-              <span className="compare-chain-label">已有人工决定</span>
+              <span className="compare-chain-label">已有审查判断</span>
               <strong>{decidedCount}</strong>
             </li>
           </ol>
           {selectedCase && caseRuns.length === 0 ? (
             <div className="compare-empty">
-              <p>此案件尚无持久审查运行。</p>
+              <p>没有获取到该案件的审查记录。</p>
               <Link to={`/cases/${selectedCase.id}`}>打开案件并发起审查</Link>
             </div>
           ) : null}
@@ -478,76 +500,6 @@ export function ComparePage() {
             />
           </div>
         </div>
-        <aside className="compare-risk-panel">
-          <header>
-            <h2>审查结果</h2>
-            <span>{findings.length} 项实际发现</span>
-          </header>
-          <div className="compare-risk-counts">
-            {(["high", "medium", "low", "info"] as const).map(
-              (severity, index) => (
-                <span key={severity} data-severity={severity}>
-                  {findings.filter((item) => item.severity === severity).length}
-                  <small>{["高风险", "中风险", "低风险", "提示"][index]}</small>
-                </span>
-              ),
-            )}
-          </div>
-          <p className="compare-risk-note">
-            以当前版本的实际规则、模型建议和人工决定为准。
-          </p>
-          <div className="compare-risk-records">
-            {findings.map((item) => (
-              <article
-                key={item.id}
-                data-severity={item.severity ?? "unrated"}
-                data-selected={item.id === finding?.id}
-              >
-                <Button
-                  aria-label={`${item.claim}，${item.origin === "rule" ? "规则核对" : "模型建议"}，${relationLabel(item.relation)}`}
-                  htmlType="button"
-                  onClick={() => chooseFinding(item)}
-                  aria-pressed={item.id === finding?.id}
-                >
-                  <strong>{item.claim}</strong>
-                  <span>
-                    {item.origin === "rule" ? "规则核对" : "模型建议"}，
-                    {relationLabel(item.relation)}
-                  </span>
-                </Button>
-                {item.id === finding?.id ? (
-                  <div className="compare-risk-detail">
-                    {item.evidence.map((anchor) => (
-                      <blockquote key={anchor.id}>
-                        {anchor.quote}
-                        <small>
-                          {anchor.status}，{anchor.document_version_id}
-                        </small>
-                      </blockquote>
-                    ))}
-                    {item.severity_source ? (
-                      <p>
-                        {item.severity_source.policy_id} v
-                        {item.severity_source.policy_version}，
-                        {item.severity_source.clause}
-                      </p>
-                    ) : null}
-                    <Link
-                      to={`/cases/${selectedCase?.id}/reviews/${leftRun?.id}?finding=${item.id}`}
-                    >
-                      打开原文与人工决定
-                    </Link>
-                  </div>
-                ) : null}
-              </article>
-            ))}
-            {findings.length === 0 ? (
-              <p className="compare-unavailable">
-                此运行没有返回发现；不代表合同已批准。
-              </p>
-            ) : null}
-          </div>
-        </aside>
       </div>
       <section
         className="compare-results"
@@ -594,9 +546,10 @@ export function ComparePage() {
                       </strong>
                       <p>{revision.claim}</p>
                       <small>
-                        旧发现 {revision.previous_finding_id ?? "未报告"}，
-                        新发现 {revision.finding_id ?? "未报告"}，旧决定{" "}
-                        {revision.prior_decision?.action ?? "未报告"}
+                        旧决定{" "}
+                        {revision.prior_decision
+                          ? decisionLabel(revision.prior_decision.action)
+                          : "未报告"}
                       </small>
                     </div>
                   </li>
@@ -620,7 +573,7 @@ export function ComparePage() {
                 <h3>{side.label}</h3>
                 {side.evaluations.length === 0 ? (
                   <p className="compare-unavailable">
-                    此运行未返回规则评估记录。
+                    没有获取到这次审查的规则检查记录。
                   </p>
                 ) : (
                   <ul className="compare-fact-list">
@@ -648,28 +601,36 @@ export function ComparePage() {
             ].map((side) => (
               <section key={side.label}>
                 <h3>{side.label}</h3>
-                {side.review?.execution ? (
+                {side.review?.review_attempts ? (
                   <>
                     <p>
-                      运行 {side.review.run.id}，当前尝试{" "}
-                      {side.review.execution.attempt.id}，
-                      {side.review.execution.attempt.state}
+                      当前第 {side.review.review_attempts.attempt.ordinal} 次审查，
+                      {runLabel(side.review.review_attempts.attempt.state)}
                     </p>
                     <p>
-                      尝试数 {side.review.execution.attempts.length}，事件数{" "}
-                      {side.review.execution.events.length}
+                      尝试数 {side.review.review_attempts.attempts.length}，事件数{" "}
+                      不可用
                     </p>
                     <ol className="compare-attempt-list">
-                      {side.review.execution.attempts.map((attempt) => (
+                      {side.review.review_attempts.attempts.map((attempt) => (
                         <li key={attempt.id}>
-                          {attempt.id}，第 {attempt.ordinal} 次，
-                          {attempt.state}，
+                          第 {attempt.ordinal} 次，
+                          {runLabel(attempt.state)}，
                           {attempt.finished_at
                             ? formatDateTime(attempt.finished_at)
                             : "结束时间未报告"}
                         </li>
                       ))}
                     </ol>
+                    <p>
+                      事件详情可由管理员在{" "}
+                      <Link
+                        to={`/cases/${encodeURIComponent(side.review.run.case_id)}/reviews/${encodeURIComponent(side.review.run.id)}?attempt_id=${encodeURIComponent(side.review.review_attempts.attempt.id)}`}
+                      >
+                        审查工作区
+                      </Link>{" "}
+                      中按需读取。
+                    </p>
                   </>
                 ) : (
                   <p className="compare-unavailable">
@@ -682,33 +643,44 @@ export function ComparePage() {
         ) : (
           <div className="compare-result-columns">
             {[
-              { label: "左侧运行", usage: leftUsage },
-              { label: "右侧运行", usage: rightUsage },
+              { label: "左侧运行", review: leftReview.data },
+              { label: "右侧运行", review: rightReview.data },
             ].map((side) => (
               <section key={side.label}>
                 <h3>{side.label}</h3>
                 <dl className="compare-usage-grid">
                   <div>
                     <dt>模型调用</dt>
-                    <dd>{side.usage?.calls ?? "未知"}</dd>
+                    <dd>不可用</dd>
                   </div>
                   <div>
                     <dt>输入 tokens</dt>
-                    <dd>{side.usage?.input_tokens ?? "未知"}</dd>
+                    <dd>不可用</dd>
                   </div>
                   <div>
                     <dt>输出 tokens</dt>
-                    <dd>{side.usage?.output_tokens ?? "未知"}</dd>
+                    <dd>不可用</dd>
                   </div>
                   <div>
                     <dt>总 tokens</dt>
-                    <dd>{side.usage?.total_tokens ?? "未知"}</dd>
+                    <dd>不可用</dd>
                   </div>
                   <div>
                     <dt>费用</dt>
-                    <dd>{side.usage?.cost ?? "未知"}</dd>
+                    <dd>不可用</dd>
                   </div>
                 </dl>
+                {side.review?.review_attempts ? (
+                  <p>
+                    模型用量可由管理员在{" "}
+                    <Link
+                      to={`/cases/${encodeURIComponent(side.review.run.case_id)}/reviews/${encodeURIComponent(side.review.run.id)}?attempt_id=${encodeURIComponent(side.review.review_attempts.attempt.id)}`}
+                    >
+                      审查工作区
+                    </Link>{" "}
+                    中按需读取。
+                  </p>
+                ) : null}
               </section>
             ))}
           </div>

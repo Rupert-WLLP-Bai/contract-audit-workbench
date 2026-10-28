@@ -3,17 +3,19 @@ import { Flex } from "antd";
 import { Select } from "antd";
 import { Input, Button } from "antd";
 import { useState, type FormEvent } from "react";
-import { useParams } from "react-router";
+import { useParams, useSearchParams } from "react-router";
 import { errorMessage } from "../api/http";
 import { paths } from "../api/paths";
 import {
   useCreateKnowledge,
+  useKnowledge,
   useCreateWorkbenchTask,
   useSession,
   useUpdateWorkbenchTask,
   useWorkbench,
 } from "../api/queries";
 import type {
+  Knowledge,
   KnowledgeInput,
   WorkbenchSnapshot,
   WorkbenchTask,
@@ -33,13 +35,13 @@ export const WORKBENCH_MODULES = {
   },
   remediation: {
     title: "整改中心",
-    description: "跟踪真实整改事项、材料和复核状态。",
+    description: "跟踪整改事项、相关材料和复核进度。",
     tabs: ["待整改", "待复核", "已关闭"],
     details: ["整改详情", "材料与版本", "复核记录", "操作历史"],
   },
   reports: {
     title: "报告中心",
-    description: "查看服务端冻结的报告版本与摘要。",
+    description: "查看已保存的报告版本与摘要。",
     tabs: ["审查报告", "版本对比", "导出记录"],
     details: ["报告预览", "发现与决定", "版本与来源", "导出记录"],
   },
@@ -52,18 +54,20 @@ export const WORKBENCH_MODULES = {
   executions: {
     title: "执行轨迹",
     description: "查看实际运行和已报告的执行用量。",
-    tabs: ["运行记录", "模型调用", "规则执行"],
+    // Model-call usage belongs to each run's detail tabs and the model service
+    // register; rule execution has no run-level projection here.
+    tabs: ["运行记录"],
     details: ["运行概览", "调用时间轴", "输入与输出", "执行日志"],
   },
   knowledge: {
     title: "知识库",
-    description: "检索和维护已持久化的制度与审查依据。",
+    description: "查找和维护已保存的制度与审查依据。",
     tabs: ["文档库", "知识条目", "检索测试"],
     details: ["文档内容", "条目与引用", "适用范围", "版本记录"],
   },
   organization: {
     title: "组织与权限",
-    description: "查看当前身份可见的公开成员身份信息。",
+    description: "查看你有权查看的公开成员信息。",
     tabs: ["成员管理", "组织架构", "角色权限"],
     details: ["成员信息", "角色与权限", "案件授权", "活动记录"],
   },
@@ -75,20 +79,20 @@ export const WORKBENCH_MODULES = {
   },
   models: {
     title: "模型服务",
-    description: "查看真实模型配置与快照报告状态。",
+    description: "查看模型配置和工作台记录的状态。",
     tabs: ["模型服务", "调用记录", "预算配置"],
     details: ["服务配置", "调用统计", "能力边界", "变更记录"],
   },
   tools: {
     title: "工具网关",
-    description: "查看实际注册工具及快照记录的调用状态。",
+    description: "查看已注册工具和工作台记录的调用状态。",
     tabs: ["工具目录", "调用记录", "权限策略"],
     details: ["工具信息", "输入与输出", "权限与预算", "调用记录"],
   },
 
   audit: {
     title: "审计日志",
-    description: "查看工作台快照内返回的业务审计事件。",
+    description: "查看工作台返回的业务审计记录。",
     tabs: ["业务审计", "操作日志", "访问记录"],
     details: ["事件详情", "变更内容", "来源上下文", "关联事件"],
   },
@@ -110,6 +114,9 @@ type DetailPanel = {
 };
 type ModuleRecord = {
   id: string;
+  reference?: string;
+  knowledgeId?: string;
+  knowledgeVersion?: string;
   title: string;
   subtitle: string;
   status: string;
@@ -171,6 +178,47 @@ function caseUrl(caseId: string, runId: string | null): string {
 
 function emptyPanel(note: string): DetailPanel {
   return panel([], note);
+}
+
+function knowledgePanels(
+  item: Knowledge,
+  memberById: Map<string, string>,
+): Record<string, DetailPanel> {
+  return {
+    文档内容: panel(
+      [
+        field("知识条目", item.id),
+        field("版本", item.version),
+        field("来源", item.source_type),
+        field("生效时间", item.effective_at),
+        field("维护人", memberById.get(item.created_by) ?? item.created_by),
+      ],
+      item.body,
+    ),
+    条目与引用: panel(
+      [
+        field("条目 ID", item.id),
+        field("版本", item.version),
+        field("来源类型", item.source_type),
+      ],
+      item.body,
+    ),
+    适用范围: panel(
+      [
+        field("来源类型", item.source_type),
+        field("生效时间", item.effective_at),
+      ],
+      "没有获取到其他适用范围信息。",
+    ),
+    版本记录: panel(
+      [
+        field("当前版本", item.version),
+        field("创建时间", item.created_at),
+        field("创建者", memberById.get(item.created_by) ?? item.created_by),
+      ],
+      "同一知识条目的不可覆盖与版本引用由服务端维护。",
+    ),
+  };
 }
 
 function buildRecords(
@@ -235,7 +283,7 @@ function buildRecords(
                   ),
                 ),
             )
-          : emptyPanel("快照没有返回相关案件的业务审计事件。"),
+          : emptyPanel("没有获取到相关案件的业务审计记录。"),
         关联材料: documents.length
           ? panel(
               documents.map((item) =>
@@ -250,7 +298,7 @@ function buildRecords(
                 href: paths.documentOriginal(item.case_id, item.id),
               })),
             )
-          : emptyPanel("案件快照没有返回材料。"),
+          : emptyPanel("没有获取到案件材料。"),
         协作成员: panel([
           field(
             "当前责任人",
@@ -311,7 +359,7 @@ function buildRecords(
                 href: paths.documentOriginal(document.case_id, document.id),
               })),
             )
-          : emptyPanel("整改记录未关联快照中的材料。"),
+          : emptyPanel("整改记录没有关联工作台中显示的材料。"),
         复核记录: panel(
           [
             field("复核运行", item.verification_run_id),
@@ -343,7 +391,7 @@ function buildRecords(
                   ),
                 ),
             )
-          : emptyPanel("快照没有返回相关案件的审计历史。"),
+          : emptyPanel("没有获取到相关案件的审计历史。"),
       };
       return make({
         id: item.id,
@@ -363,51 +411,44 @@ function buildRecords(
     return snapshot.reports.map((item) => {
       const links = [
         {
-          label: "读取冻结 HTML",
+          label: "查看 HTML 报告",
           href: paths.report(item.case_id, item.id, "html"),
         },
         {
-          label: "读取冻结 JSON",
+          label: "查看 JSON 报告",
           href: paths.report(item.case_id, item.id, "json"),
         },
       ];
       const panels: Record<string, DetailPanel> = {
         报告预览: panel(
           [
-            field("报告 ID", item.id),
             field("案件", item.case_title),
+            field("报告版本", item.version),
             field("生成时间", item.created_at),
           ],
-          "报告内容从服务端冻结快照读取。",
+          "报告显示生成时保存的内容，不会随材料更新而改变。",
           links,
         ),
         发现与决定: panel(
-          [field("运行 ID", item.run_id), field("尝试 ID", item.attempt_id)],
-          "发现与决定以冻结报告正文为准；请读取冻结 HTML 或 JSON。",
+          [],
+          "查看报告正文中的发现和审查判断，请打开 HTML 或 JSON 报告。",
           links,
         ),
-        版本与来源: panel([
-          field("报告版本", item.version),
-          field("输入摘要", item.input_hash),
-          field("输出摘要", item.output_hash),
-          field("决定快照摘要", item.decision_snapshot_hash),
-          field("报告摘要", item.digest),
-        ]),
-        导出记录: panel(
+        版本与来源: panel(
           [
-            field("生成时间", item.created_at),
-            field("运行 ID", item.run_id),
-            field("尝试 ID", item.attempt_id),
+            field("报告版本", item.version),
+            field("报告状态", "已生成"),
           ],
-          null,
-          links,
+          "报告正文保留了用于校验完整性的摘要，业务视图不显示该摘要。",
         ),
+        导出记录: panel([field("生成时间", item.created_at)], null, links),
       };
       return make({
         id: item.id,
+        reference: `审查报告 v${item.version}`,
         title: `${item.case_title}，审查报告 v${item.version}`,
-        subtitle: item.case_id,
-        status: "已冻结",
+        subtitle: item.case_title,
+        status: "已生成",
         updatedAt: item.created_at,
         caseId: item.case_id,
         runId: item.run_id,
@@ -422,7 +463,7 @@ function buildRecords(
       const parsed = item.parsed_document;
       const integrity =
         parsed === null
-          ? "未生成解析产物"
+          ? "尚未生成解析结果"
           : parsed.original_digest === item.digest
             ? "原件摘要与解析来源一致"
             : "原件摘要与解析来源不一致";
@@ -449,7 +490,7 @@ function buildRecords(
             field("案件", item.case_title),
             field("解析产物", parsed?.id ?? null),
           ],
-          "材料引用锚点随具体审查运行返回。打开实际审查工作区查看被引用原文。",
+          "原文引用属于具体的审查记录。请打开审查工作区查看被引用的内容。",
           relatedCase?.latest_run
             ? [
                 {
@@ -474,7 +515,7 @@ function buildRecords(
                 field("最新状态", relatedCase.latest_run.state),
                 field("更新时间", relatedCase.latest_run.updated_at),
               ],
-              "完整历史引用需进入各次持久审查工作区。",
+              "查看完整的历史引用，请打开各次审查的工作区。",
               [
                 {
                   label: "打开最近审查",
@@ -482,7 +523,7 @@ function buildRecords(
                 },
               ],
             )
-          : emptyPanel("案件尚无快照所示的审查运行。"),
+          : emptyPanel("工作台没有返回该案件的审查记录。"),
         完整性校验: panel(
           [
             field("材料 ID", item.id),
@@ -492,7 +533,7 @@ function buildRecords(
             field("归一化内容摘要", parsed?.normalized_digest ?? null),
             field("校验结果", integrity),
           ],
-          "校验结果逐字比较同一材料记录的原件摘要与持久解析来源摘要；解析产物 ID 和归一化摘要来自已保存的 DocumentVersion 投影。未生成解析产物时保持未校验。",
+          "这里比较原件摘要与已保存的解析来源摘要。解析结果编号和正文摘要也来自已保存的材料版本；没有解析结果时，状态为未校验。",
         ),
       };
       return make({
@@ -538,7 +579,7 @@ function buildRecords(
             field("用量未知调用数", usage?.unknown_calls ?? null),
             field("已报告来源", usage?.sources.join("、") ?? null),
           ],
-          "快照没有返回单次调用事件；详细持久事件在审查工作区的执行检查器中查看。",
+          "工作台没有返回单次调用记录；请在审查工作区的执行检查器中查看已保存的详细事件。",
           [{ label: "查看执行事件", href: caseUrl(item.case_id, item.id) }],
         ),
         输入与输出: panel(
@@ -551,7 +592,7 @@ function buildRecords(
               usage?.cost === null || usage === null ? null : usage.cost,
             ),
           ],
-          "未返回的用量保持未报告，不作推算。",
+          "没有返回的用量保持未知，不会推算。",
         ),
         执行日志: panel(
           [
@@ -559,7 +600,7 @@ function buildRecords(
             field("开始时间", item.started_at),
             field("结束时间", item.finished_at),
           ],
-          "打开审查工作区以读取该运行实际冻结的执行事件。",
+          "打开审查工作区，查看这次审查保存的执行事件。",
           [{ label: "查看运行记录", href: caseUrl(item.case_id, item.id) }],
         ),
       };
@@ -579,43 +620,11 @@ function buildRecords(
 
   if (module === "knowledge")
     return snapshot.knowledge.map((item) => {
-      const panels: Record<string, DetailPanel> = {
-        文档内容: panel(
-          [
-            field("知识条目", item.id),
-            field("版本", item.version),
-            field("来源", item.source_type),
-            field("生效时间", item.effective_at),
-            field("维护人", memberById.get(item.created_by) ?? item.created_by),
-          ],
-          item.body,
-        ),
-        条目与引用: panel(
-          [
-            field("条目 ID", item.id),
-            field("版本", item.version),
-            field("来源类型", item.source_type),
-          ],
-          item.body,
-        ),
-        适用范围: panel(
-          [
-            field("来源类型", item.source_type),
-            field("生效时间", item.effective_at),
-          ],
-          "快照没有返回额外适用范围字段。",
-        ),
-        版本记录: panel(
-          [
-            field("当前版本", item.version),
-            field("创建时间", item.created_at),
-            field("创建者", memberById.get(item.created_by) ?? item.created_by),
-          ],
-          "同一知识条目的不可覆盖与版本引用由服务端维护。",
-        ),
-      };
+      const panels = knowledgePanels(item, memberById);
       return make({
-        id: item.id,
+        id: item.version_id,
+        knowledgeId: item.id,
+        knowledgeVersion: item.version,
         title: item.title,
         subtitle: `${item.source_type}，${item.version}`,
         status: item.source_type,
@@ -648,7 +657,7 @@ function buildRecords(
             field("租户", item.tenant_id),
             field("组织", item.org_id),
           ],
-          "服务端只在公开成员目录中返回这些身份字段；案件资源仍按每次请求授权。",
+          "这些信息来自公开成员目录。访问案件时，系统仍会逐次检查权限。",
         ),
         案件授权: panel(
           [
@@ -657,7 +666,7 @@ function buildRecords(
             field("租户", item.tenant_id),
             field("组织", item.org_id),
           ],
-          "成员快照不包含逐案件 ACL；不能从当前用户的可见案件推断此身份的授权范围。",
+          "成员信息不包含每个案件的授权明细，不能据此推断该成员有权查看哪些案件。",
         ),
         活动记录: memberEvents.length
           ? panel(
@@ -667,10 +676,10 @@ function buildRecords(
                   `${entry.case_title ?? "平台级事件"}，${entry.summary}`,
                 ),
               ),
-              "以下仅是快照中关联到此 actor_id 的业务审计事件，不代表登录或 HTTP 访问日志。",
+              "以下是工作台中与该成员关联的业务审计记录，不包含登录或 HTTP 访问日志。",
               [{ label: "查看审计事件", href: "/workbench/audit" }],
             )
-          : emptyPanel("快照没有返回关联到此身份的业务审计事件。"),
+          : emptyPanel("没有获取到与该成员关联的业务审计记录。"),
       };
       return make({
         id: item.id,
@@ -707,12 +716,12 @@ function buildRecords(
         字段定义: panel(fieldRows),
         使用记录: panel(
           [field("当前身份可见案件", snapshot.cases.length)],
-          "工作台快照不包含模板级生成日志；案件详情页展示各案件真实保存的生成记录。",
+          "工作台不包含按模板汇总的生成日志；案件详情页展示该案件保存的生成记录。",
           [{ label: "打开案件中心查看生成记录", href: "/cases" }],
         ),
         版本记录: panel(
           [field("当前版本", item.version), field("内容摘要", item.digest)],
-          "快照仅返回当前模板版本。",
+          "工作台只返回当前模板版本。",
         ),
       };
       return make({
@@ -754,11 +763,11 @@ function buildRecords(
             ),
             field("显示标签", model.label),
           ],
-          "配置状态不代表端点连通；工作台快照不调用外部探测。",
+          "已配置不代表服务可以连接；工作台不会主动检测外部服务。",
         ),
         调用统计: panel(
           [
-            field("快照运行记录数", snapshot.runs.length),
+            field("工作台返回的审查记录数", snapshot.runs.length),
             field(
               "有用量汇总的运行",
               snapshot.runs.filter((item) => item.usage !== null).length,
@@ -773,11 +782,11 @@ function buildRecords(
                 : null,
             ),
           ],
-          "快照没有返回费用或模型连接地址。费用保持未知。",
+          "没有获取到费用或模型连接地址，费用仍为未知。",
         ),
         能力边界: panel(
           [field("聊天模型", model.name), field("OCR 模型", model.ocr_name)],
-          "此快照未声明额外能力或端点探测结果。",
+          "工作台没有提供其他能力或服务连接检测结果。",
         ),
         变更记录: panel(
           platformEvents.map((item) =>
@@ -803,18 +812,18 @@ function buildRecords(
         ]),
         输入与输出: panel(
           [field("能力", item.capabilities.join("、") || null)],
-          "快照未包含单次调用的输入输出正文。",
+          "工作台没有提供单次调用的输入和输出正文。",
         ),
         权限与预算: panel(
           [field("登记能力", item.capabilities.join("、") || null)],
-          "权限与预算不在公开工具快照中返回。",
+          "公开的工具信息不包含权限与预算。",
         ),
         调用记录: panel(
           [
             field("已统计调用", item.calls),
             field("最近状态", item.last_status),
           ],
-          "快照不含调用明细；进入相关审查运行查看已持久化执行事件。",
+          "工作台没有提供调用明细；请打开相关审查，查看已保存的执行事件。",
         ),
       };
       return make({
@@ -868,7 +877,7 @@ function buildRecords(
                     ),
                   ),
               )
-            : emptyPanel("快照没有返回该案件的其他审计事件。"),
+            : emptyPanel("没有获取到该案件的其他审计记录。"),
     };
     return make({
       id: item.id,
@@ -887,24 +896,20 @@ function buildRecords(
 
 function tabNotice(module: WorkbenchModuleKey, tab: string): string | null {
   if (module === "tasks" && tab === "我发起的")
-    return "按任务的服务端创建人 ID 匹配当前身份；历史任务未记录创建人时不会出现在此列表。";
+    return "这里显示由当前用户创建的任务；较早的任务如果没有记录创建人，不会出现在列表中。";
   if (module === "evidence" && tab === "引用片段")
-    return "引用锚点需要结合指定 run/attempt 读取，请从材料详情进入真实审查工作区。";
-  if (module === "executions" && tab === "模型调用")
-    return "本页展示运行级统计；单次调用时间轴与输入输出需打开具体审查工作区。";
-  if (module === "executions" && tab === "规则执行")
-    return "规则执行结果记录在具体运行中，请打开审查工作区查看实际执行记录。";
+    return "原文引用属于具体的审查和执行记录。请从材料详情进入对应的审查工作区。";
   if (module === "organization" && tab === "组织架构")
-    return "目录按真实 org_id 展示成员；快照没有上下级组织关系。";
+    return "目录按成员所属组织展示；当前数据不包含组织的上下级关系。";
   if (module === "organization" && tab === "角色权限")
-    return "显示服务端公开角色与组织字段；资源授权仍由服务端逐次判断。";
+    return "这里显示公开的角色和组织信息；访问资源时，系统仍会逐次检查权限。";
   if (module === "audit" && tab === "操作日志")
-    return "按当前身份 actor_id 筛选工作台返回的业务审计事件；不是 HTTP 访问日志。";
+    return "这里显示与当前用户有关的业务审计记录，不是 HTTP 访问日志。";
   if (module === "audit" && tab === "访问记录")
-    return "HTTP 访问日志不在工作台业务审计快照中。";
+    return "工作台的业务审计记录不包含 HTTP 访问日志。";
 
   if (module === "knowledge" && tab === "检索测试")
-    return "输入检索词后匹配工作台快照中的持久标题与全文；这是本地快照子串检索，不调用模型。";
+    return "输入关键词后，在当前工作台数据中按标题和正文进行文字匹配，不调用模型。";
   return null;
 }
 
@@ -1179,9 +1184,35 @@ function WorkbenchModule({ module }: { module: WorkbenchModuleKey }) {
   const [selectedId, setSelectedId] = useState("");
   const [createOpen, setCreateOpen] = useState(false);
   const [updatedTaskId, setUpdatedTaskId] = useState("");
+  const [searchParams, setSearchParams] = useSearchParams();
   const session = useSession();
   const query = useWorkbench("week");
   const updateTask = useUpdateWorkbenchTask();
+  const availableSnapshot = query.isError ? undefined : query.data;
+  const allRecords = availableSnapshot
+    ? buildRecords(availableSnapshot, module)
+    : [];
+  const queryText = search.trim().toLocaleLowerCase("zh-CN");
+  const records = availableSnapshot
+    ? allRecords.filter(
+        (record) =>
+          (module !== "knowledge" || tab !== "检索测试" || queryText !== "") &&
+          tabMatches(module, tab, record, session.data?.id, availableSnapshot) &&
+          record.searchText.includes(queryText),
+      )
+    : [];
+  const requestedVersion =
+    module === "knowledge" ? searchParams.get("version") : null;
+  const selected =
+    module === "knowledge" && requestedVersion !== null
+      ? (records.find((record) => record.id === requestedVersion) ?? null)
+      : (records.find((record) => record.id === selectedId) ??
+        records[0] ??
+        null);
+  const knowledge = useKnowledge(
+    module === "knowledge" ? (selected?.knowledgeId ?? "") : "",
+    module === "knowledge" ? (selected?.id ?? "") : "",
+  );
   const refresh = () => void query.refetch();
 
   if (query.isLoading)
@@ -1209,23 +1240,31 @@ function WorkbenchModule({ module }: { module: WorkbenchModuleKey }) {
         }
       />
     );
-
   const snapshot = query.data;
-  const allRecords = buildRecords(snapshot, module);
-  const queryText = search.trim().toLocaleLowerCase("zh-CN");
-  const records = allRecords.filter(
-    (record) =>
-      (module !== "knowledge" || tab !== "检索测试" || queryText !== "") &&
-      tabMatches(module, tab, record, session.data?.id, snapshot) &&
-      record.searchText.includes(queryText),
-  );
-  const selected =
-    records.find((record) => record.id === selectedId) ?? records[0] ?? null;
+
   const selectedTask = selected?.task ?? null;
+  const exactKnowledge =
+    module === "knowledge" &&
+    !knowledge.isError &&
+    !knowledge.isFetching &&
+    knowledge.data?.id === selected?.knowledgeId &&
+    knowledge.data?.version_id === selected?.id &&
+    knowledge.data?.version === selected?.knowledgeVersion
+      ? knowledge.data
+      : null;
   const currentPanel =
-    module === "evidence" && tab === "完整性校验"
-      ? (selected?.panels["完整性校验"] ?? null)
-      : (selected?.panels[detailTab] ?? null);
+    module === "knowledge"
+      ? exactKnowledge
+        ? (knowledgePanels(
+            exactKnowledge,
+            new Map(
+              snapshot.members.map((item) => [item.id, item.display_name]),
+            ),
+          )[detailTab] ?? null)
+        : null
+      : module === "evidence" && tab === "完整性校验"
+        ? (selected?.panels["完整性校验"] ?? null)
+        : (selected?.panels[detailTab] ?? null);
   const config = WORKBENCH_MODULES[module];
   const notice = tabNotice(module, tab);
   const periodLabel =
@@ -1238,10 +1277,20 @@ function WorkbenchModule({ module }: { module: WorkbenchModuleKey }) {
   const canCreateKnowledge = module === "knowledge";
   const emptyMessage =
     module === "knowledge" && tab === "检索测试" && queryText === ""
-      ? "输入检索词，按当前快照搜索已保存的制度标题与正文。"
+      ? "输入关键词，搜索当前工作台中已保存的制度标题与正文。"
       : allRecords.length === 0
-        ? "快照没有返回记录。"
+        ? "没有获取到记录。"
         : "没有符合此分类或搜索词的记录。";
+
+  function selectRecord(id: string) {
+    if (module !== "knowledge") {
+      setSelectedId(id);
+    } else if (id !== requestedVersion) {
+      const next = new URLSearchParams(searchParams);
+      next.set("version", id);
+      setSearchParams(next);
+    }
+  }
 
   function completeTask(task: WorkbenchTask) {
     setUpdatedTaskId(task.id);
@@ -1266,13 +1315,13 @@ function WorkbenchModule({ module }: { module: WorkbenchModuleKey }) {
 
   let headerAction = (
     <Button
-      aria-label={String(query.isFetching ? "正在更新" : "刷新快照")}
+      aria-label={String(query.isFetching ? "正在更新" : "刷新数据")}
       type="text"
       htmlType="button"
       onClick={refresh}
       disabled={query.isFetching}
     >
-      {query.isFetching ? "正在更新" : "刷新快照"}
+      {query.isFetching ? "正在更新" : "刷新数据"}
     </Button>
   );
   if (canCreateTask)
@@ -1307,7 +1356,7 @@ function WorkbenchModule({ module }: { module: WorkbenchModuleKey }) {
             <span className="module-total">{allRecords.length}</span>
           </h1>
           <p>
-            {config.description} 快照生成于{" "}
+            {config.description} 数据更新时间：{" "}
             {formatDateTime(snapshot.generated_at)}。
           </p>
         </div>
@@ -1341,7 +1390,7 @@ function WorkbenchModule({ module }: { module: WorkbenchModuleKey }) {
           <dd>{periodLabel}</dd>
         </div>
         <div>
-          <dt>快照生成</dt>
+          <dt>数据更新时间</dt>
           <dd>
             <time dateTime={snapshot.generated_at}>
               {formatDateTime(snapshot.generated_at)}
@@ -1350,17 +1399,21 @@ function WorkbenchModule({ module }: { module: WorkbenchModuleKey }) {
         </div>
       </dl>
       <div className="module-toolbar">
-        <Tabs
-          aria-label={`${config.title}分类`}
-          activeKey={tab}
-          onChange={(key) => {
-            setTab(key);
-            setSelectedId("");
-          }}
-          items={config.tabs.map((label) => ({ key: label, label }))}
-        />
+        {config.tabs.length > 1 ? (
+          <Tabs
+            aria-label={`${config.title}分类`}
+            activeKey={tab}
+            onChange={(key) => {
+              setTab(key);
+              if (module !== "knowledge") setSelectedId("");
+            }}
+            items={config.tabs.map((label) => ({ key: label, label }))}
+          />
+        ) : (
+          <h2 className="module-toolbar-title">{config.tabs[0]}</h2>
+        )}
         <label className="module-search">
-          搜索当前快照
+          搜索当前数据
           <Input
             type="search"
             value={search}
@@ -1395,7 +1448,7 @@ function WorkbenchModule({ module }: { module: WorkbenchModuleKey }) {
               rowSelection={{
                 type: "radio",
                 selectedRowKeys: selected ? [selected.id] : [],
-                onChange: (keys) => setSelectedId(String(keys[0] ?? "")),
+                onChange: (keys) => selectRecord(String(keys[0] ?? "")),
               }}
               columns={[
                 {
@@ -1404,10 +1457,14 @@ function WorkbenchModule({ module }: { module: WorkbenchModuleKey }) {
                   render: (_, record) => (
                     <Flex vertical gap={2}>
                       <Button
-                        aria-label={String(record.title)}
+                        aria-label={
+                          module === "knowledge"
+                            ? `${record.title}，${record.subtitle}`
+                            : record.title
+                        }
                         type="link"
                         aria-pressed={selected?.id === record.id}
-                        onClick={() => setSelectedId(record.id)}
+                        onClick={() => selectRecord(record.id)}
                         styles={{
                           content: { whiteSpace: "normal", textAlign: "left" },
                         }}
@@ -1444,7 +1501,11 @@ function WorkbenchModule({ module }: { module: WorkbenchModuleKey }) {
             <>
               <header className="module-detail-head">
                 <div>
-                  <p>{selected.id}</p>
+                  <p>
+                    {selected.reference ??
+                      selected.knowledgeId ??
+                      selected.id}
+                  </p>
                   <h2>{selected.title}</h2>
                   <span>{selected.subtitle}</span>
                 </div>
@@ -1452,7 +1513,7 @@ function WorkbenchModule({ module }: { module: WorkbenchModuleKey }) {
                   <Button
                     aria-label={String(
                       module === "reports"
-                        ? "打开冻结报告"
+                        ? "打开报告"
                         : module === "evidence"
                           ? "读取材料原件"
                           : "打开关联记录",
@@ -1471,7 +1532,7 @@ function WorkbenchModule({ module }: { module: WorkbenchModuleKey }) {
                     }
                   >
                     {module === "reports"
-                      ? "打开冻结报告"
+                      ? "打开报告"
                       : module === "evidence"
                         ? "读取材料原件"
                         : "打开关联记录"}
@@ -1532,8 +1593,25 @@ function WorkbenchModule({ module }: { module: WorkbenchModuleKey }) {
                     </div>
                   ) : null}
                 </div>
+              ) : module === "knowledge" ? (
+                <p
+                  className="module-empty"
+                  role={
+                    knowledge.isError || (knowledge.data && !knowledge.isFetching)
+                      ? "alert"
+                      : "status"
+                  }
+                >
+                  {knowledge.isFetching
+                    ? "正在加载指定知识版本。"
+                    : knowledge.isError
+                      ? `知识版本详情没有加载：${errorMessage(knowledge.error)}`
+                      : knowledge.data
+                        ? "知识版本详情与所选版本不一致。"
+                        : "知识版本详情没有返回。"}
+                </p>
               ) : (
-                <p className="module-empty">当前快照没有该分类的明细。</p>
+                <p className="module-empty">当前数据没有返回该分类的明细。</p>
               )}
               {selectedTask && selectedTask.status !== "completed" ? (
                 <Button
@@ -1565,7 +1643,11 @@ function WorkbenchModule({ module }: { module: WorkbenchModuleKey }) {
               ) : null}
             </>
           ) : (
-            <p className="module-empty">选择一条记录查看服务端返回的详情。</p>
+            <p className="module-empty">
+              {module === "knowledge" && requestedVersion !== null
+                ? "指定的知识版本不存在或未包含在当前筛选中。"
+                : "选择一条记录查看服务端返回的详情。"}
+            </p>
           )}
         </aside>
       </div>

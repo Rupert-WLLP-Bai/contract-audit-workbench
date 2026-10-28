@@ -1,8 +1,18 @@
+import { chromiumExecutable } from "./chromium";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
+import { mkdir } from "node:fs/promises";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { chromium, type Locator, type Page } from "playwright";
 
 type Material = { role: string; filename: string; text: string };
+const MATERIAL_ROLE_LABELS: Record<string, string> = {
+  procurement: "采购文件",
+  award: "中标文件",
+  draft_contract: "拟签合同",
+  attachment: "技术附件",
+};
 type RulePackIdentity = { id: string; version: string; content_sha256: string };
 type Scenario = {
   id: string;
@@ -51,13 +61,31 @@ const serverSHA = (process.env.E2E_SERVER_SHA ?? "").trim();
 const executionSHA = (process.env.E2E_EXECUTION_SHA ?? "").trim();
 const browser = await chromium.launch({
   headless: true,
-  executablePath: process.env.CHROMIUM_BIN || "/usr/bin/chromium",
+  executablePath: chromiumExecutable(),
   args: ["--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu"],
 });
 const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
 const consoleErrors: string[] = [];
 const httpErrors: string[] = [];
 const consoleErrorURLs: string[] = [];
+const reviewResponses = new Map<string, Record<string, unknown>>();
+page.on("response", async (response) => {
+  const url = response.url();
+  if (!/\/api\/cases\/[^/]+\/reviews\/[^/]+/.test(url) || response.status() !== 200) return;
+  try {
+    const data = await response.json() as Record<string, any>;
+    reviewResponses.set(url, {
+      run_id: data.run?.id,
+      run_state: data.run?.state,
+      previous_run_id: data.previous_run_id,
+      revision_comparison_reason: data.revision_comparison_reason,
+      attempt_id: data.review_attempts?.attempt?.id,
+      attempt_state: data.review_attempts?.attempt?.state,
+    });
+  } catch {
+    // Polling may abort a body mid-read; the next response replaces this entry.
+  }
+});
 page.on("console", (message) => {
   if (message.type() === "error") {
     consoleErrors.push(message.text());
@@ -91,9 +119,14 @@ try {
   await page.getByRole("button", { name: "新建案件", exact: true }).click();
   const dialog = page.getByRole("dialog");
   await dialog.getByLabel("标题", { exact: true }).fill(title);
-  await dialog.getByLabel("合同类型", { exact: true }).selectOption("service");
+  await chooseAntSelect(page, dialog.getByLabel("合同类型", { exact: true }), "服务合同");
   await dialog.getByRole("button", { name: "创建", exact: true }).click();
-  await page.waitForURL(/\/cases\/[^/]+$/);
+  try {
+    await page.waitForURL(/\/cases\/[^/]+$/);
+  } catch (error) {
+    const body = await page.locator("body").innerText();
+    throw new Error(`case creation did not navigate: url=${page.url()} body=${body.slice(0, 1200)}`);
+  }
   const caseID = new URL(page.url()).pathname.split("/").at(-1) ?? "";
   assert.ok(caseID, "created case ID was not present in the route");
   const initialDetail = await waitForCase(page, caseID, (detail) => detail.business_line === "ENT" && detail.scenario === "telecom_dedicated_line");
@@ -102,14 +135,14 @@ try {
 
   const templateResponse = await page.request.get(`${web}/api/templates`);
   assert.equal(templateResponse.status(), 200, "template listing failed");
-  const templateData = await templateResponse.json() as { items: Array<{ id: string; version: string; fields: Array<{ key: string; label: string; required: boolean }> }> };
+  const templateData = await templateResponse.json() as { items: Array<{ id: string; name: string; version: string; fields: Array<{ key: string; label: string; required: boolean }> }> };
   const template = templateData.items.find((item) => item.id === dataset.template_id);
   assert.ok(template, `template ${dataset.template_id} not returned by the API`);
   assert.equal(template.version, dataset.template_version, "template version differs from the frozen dataset");
   assert.deepEqual(new Set(template.fields.map((field) => field.key)), new Set(Object.keys(scenario.fields)));
 
   const templateSelect = page.getByLabel("模板", { exact: true });
-  await templateSelect.selectOption(dataset.template_id);
+  await chooseAntSelect(page, templateSelect, `${template.name}，${template.version}`);
   for (const field of template.fields) {
     const value: string | undefined = scenario.fields[field.key];
     if (value === undefined) throw new Error(`fixture field ${field.key} is missing`);
@@ -132,8 +165,14 @@ try {
   assert.ok(uploaded.award, "approval source was not uploaded");
   assert.ok(uploaded.attachment, "SLA annex was not uploaded");
 
+  await page.getByLabel("审查业务时间（本地时区）", { exact: true }).fill("2026-01-15T09:00");
   await page.getByRole("button", { name: "开始审查", exact: true }).click();
-  await page.waitForURL(/\/cases\/[^/]+\/reviews\/[^/]+/);
+  try {
+    await page.waitForURL(/\/cases\/[^/]+\/reviews\/[^/]+/);
+  } catch (error) {
+    const body = await page.locator("body").innerText();
+    throw new Error(`review acceptance did not navigate: url=${page.url()} http=${httpErrors.join(" | ")} body=${body.slice(0, 1600)}`);
+  }
   const firstURL = new URL(page.url());
   const firstRunID = firstURL.pathname.split("/").at(-1) ?? "";
   assert.ok(firstRunID, "initial review run ID was not in the route");
@@ -156,6 +195,9 @@ try {
 
   const findingButton = page.getByRole("button", { name: `选择线索：${claim}`, exact: true });
   await findingButton.click();
+  // The URL changes before React finishes rendering the selected finding.
+  // Wait for the business selection before inspecting evidence or deciding.
+  await findingButton.and(page.locator('[aria-current="true"]')).waitFor();
   await page.getByRole("button", { name: "双来源对照", exact: true }).click();
   await page.locator(".document-split mark.hit-evidence").nth(1).waitFor();
   const highlighted = await page.locator(".document-split mark.hit-evidence").allTextContents();
@@ -163,24 +205,27 @@ try {
   const referencesHeading = page.getByRole("heading", { name: "引用该材料的线索", exact: true });
   await referencesHeading.waitFor();
   await page.getByRole("button", { name: `查看线索：${claim}`, exact: true }).click();
+  await findingButton.and(page.locator('[aria-current="true"]')).waitFor();
   await page.locator(".document-split mark.hit-evidence").nth(1).waitFor();
 
-  await page.locator('input[type="radio"][value="confirm_risk"]').first().check();
+  await page.locator(`input[type="radio"][name="decision-${findingID}"][value="confirm_risk"]`).check();
   await page.getByLabel("理由", { exact: true }).fill(`采购材料要求 ${baselineBandwidth}，拟签合同为 ${originalDraftBandwidth}。`);
-  const decisionResponse = page.waitForResponse((response) =>
-    response.request().method() === "POST" && response.url().includes(`/reviews/${firstRunID}/findings/${findingID}/decisions`),
-  );
-  await page.getByRole("button", { name: "保存决定", exact: true }).click();
-  assert.equal((await decisionResponse).status(), 204, "human decision was not recorded");
+  const [decisionResponse] = await Promise.all([
+    page.waitForResponse((response) =>
+      response.request().method() === "POST" && response.url().includes(`/reviews/${firstRunID}/findings/${findingID}/decisions`),
+    ),
+    page.getByRole("button", { name: "保存决定", exact: true }).click(),
+  ]);
+  assert.equal(decisionResponse.status(), 204, "human decision was not recorded");
 
   await page.goto(`${web}/cases/${caseID}`);
   await page.getByRole("heading", { name: title, exact: true }).waitFor();
-  await selectRunAndAttempt(page.getByLabel("冻结运行和尝试", { exact: true }), firstRunID, firstAttemptID);
-  await page.getByRole("button", { name: "生成冻结报告", exact: true }).click();
+  await selectRunAndAttempt(page.getByLabel("选择审查和执行记录", { exact: true }), 1, 1);
+  await page.getByRole("button", { name: "生成报告", exact: true }).click();
   const firstReport = await waitForReport(page, caseID, firstRunID, firstAttemptID);
   const firstReportBytes = await readReportLinks(page, firstReport.id as string);
 
-  await selectRunAndAttempt(page.getByLabel("来源运行和尝试", { exact: true }), firstRunID, firstAttemptID);
+  await selectRunAndAttempt(page.getByLabel("选择原审查和执行记录", { exact: true }), 1, 1);
   const remediationGroup = page.getByRole("group", { name: "绑定发现（至少选择一项）", exact: true });
   await remediationGroup.getByRole("checkbox").first().check();
   await page.getByLabel("负责人 ID", { exact: true }).fill("demo-admin");
@@ -203,8 +248,14 @@ try {
   });
   assert.ok(revisedID, "revised draft upload returned no identity");
 
+  await page.getByLabel("审查业务时间（本地时区）", { exact: true }).fill("2026-01-15T09:00");
   await page.getByRole("button", { name: "开始复审", exact: true }).click();
-  await page.waitForURL(/\/cases\/[^/]+\/reviews\/[^/]+/);
+  try {
+    await page.waitForURL(/\/cases\/[^/]+\/reviews\/[^/]+/);
+  } catch (error) {
+    const body = await page.locator("body").innerText();
+    throw new Error(`re-review acceptance did not navigate: url=${page.url()} http=${httpErrors.join(" | ")} body=${body.slice(0, 1600)}`);
+  }
   const secondURL = new URL(page.url());
   const secondRunID = secondURL.pathname.split("/").at(-1) ?? "";
   assert.ok(secondRunID && secondRunID !== firstRunID, "re-review overwrote the original run");
@@ -217,11 +268,12 @@ try {
   await page.goto(`${web}/cases/${caseID}`);
   await page.getByRole("heading", { name: title, exact: true }).waitFor();
   const itemForm = page.getByRole("group", { name: "本案当前的拟签合同修改稿", exact: true });
-  await itemForm.getByRole("radio", { name: `telecom-revised-draft.txt · ${revisedID}`, exact: true }).check();
+  await itemForm.locator(`input[type="radio"][value="${revisedID}"]`).check();
   await page.getByLabel("提交理由", { exact: true }).fill("已按采购材料修订并生成新的审查运行。");
   await page.getByRole("button", { name: "提交修改稿", exact: true }).click();
-  await page.getByLabel("复核运行和尝试", { exact: true }).waitFor();
-  await selectRunAndAttempt(page.getByLabel("复核运行和尝试", { exact: true }), secondRunID, secondAttemptID);
+  await page.getByLabel("选择复核的审查和执行记录", { exact: true }).waitFor();
+  // The record list is rendered newest-first, so the latest run is record 1.
+  await selectRunAndAttempt(page.getByLabel("选择复核的审查和执行记录", { exact: true }), 1, 1);
   const verifyReason = page.getByLabel("复核理由", { exact: true });
   await verifyReason.waitFor({ state: "visible", timeout: 15000 });
   // Readiness requires matching run/attempt metadata and complete same-scope compatible rule evaluations.
@@ -291,17 +343,21 @@ try {
       evaluation_checks: evaluationChecks,
       every_finding_compatible: findingIDs.length > 0 && evaluationChecks.every((check) => check.exactly_one_compatible),
       presentation_revision_marks: revisionMarks,
+      remediations: (await page.request.get(`${web}/api/cases/${caseID}`).then((response) => response.json()).catch(() => null))?.remediations ?? null,
+      review_responses: [...reviewResponses.entries()].filter(([url]) => url.includes(firstRunID) || url.includes(secondRunID)),
       visible_callouts: await page.locator(".callout").allTextContents(),
       verification_reason_disabled: await verifyReason.isDisabled(),
     };
     throw new Error(`remediation verification readiness failed: ${JSON.stringify(diagnostics)}; ${error instanceof Error ? error.message : String(error)}`);
   }
   await verifyReason.fill("新尝试在相同能力和电路对象下均为 compatible。");
-  const verifyResponse = page.waitForResponse((response) =>
-    response.request().method() === "POST" && response.url().includes(`/remediations/${remediationID}/verify`),
-  );
-  await page.getByRole("button", { name: "提交复核", exact: true }).click();
-  assert.equal((await verifyResponse).status(), 200, "compatible re-review did not close remediation");
+  const [verifyResponse] = await Promise.all([
+    page.waitForResponse((response) =>
+      response.request().method() === "POST" && response.url().includes(`/remediations/${remediationID}/verify`),
+    ),
+    page.getByRole("button", { name: "提交复核", exact: true }).click(),
+  ]);
+  assert.equal(verifyResponse.status(), 200, "compatible re-review did not close remediation");
   const verifiedDetail = await waitForCase(page, caseID, (detail) => detail.remediations.some((item) => item.id === remediationID && item.status === "closed"));
   assert.equal(verifiedDetail.remediations.find((item) => item.id === remediationID)?.status, "closed");
 
@@ -309,6 +365,7 @@ try {
   await page.getByRole("heading", { name: "审查工作区", exact: true }).waitFor();
   await page.getByText("已记录确认风险", { exact: false }).waitFor();
   await page.getByRole("button", { name: `选择线索：${claim}`, exact: true }).click();
+  await findingButton.and(page.locator('[aria-current="true"]')).waitFor();
   await page.getByRole("button", { name: "双来源对照", exact: true }).click();
   await page.locator(".document-split").waitFor({ state: "visible" });
   await page.locator(`.document-split .doc-pane[data-document-version-id="${uploaded.procurement}"]`).waitFor({ state: "visible" });
@@ -320,8 +377,9 @@ try {
 
   await page.goto(`${web}/cases/${caseID}`);
   await page.getByRole("heading", { name: title, exact: true }).waitFor();
-  await selectRunAndAttempt(page.getByLabel("冻结运行和尝试", { exact: true }), secondRunID, secondAttemptID);
-  await page.getByRole("button", { name: "生成冻结报告", exact: true }).click();
+  // Record 1 is the newest saved run, which is the re-review after run 1.
+  await selectRunAndAttempt(page.getByLabel("选择审查和执行记录", { exact: true }), 1, 1);
+  await page.getByRole("button", { name: "生成报告", exact: true }).click();
   const secondReport = await waitForReport(page, caseID, secondRunID, secondAttemptID);
   const secondReportBytes = await readReportLinks(page, secondReport.id as string);
   assert.ok(secondReportBytes.json.length > 0 && secondReportBytes.html.length > 0);
@@ -329,13 +387,15 @@ try {
   assert.deepEqual(firstReportBytesAfter.json, firstReportBytes.json, "later report creation changed frozen JSON bytes");
   assert.deepEqual(firstReportBytesAfter.html, firstReportBytes.html, "later report creation changed frozen HTML bytes");
 
-  await selectReport(page.getByLabel("归档所依据的报告", { exact: true }), String(secondReport.id));
+  await selectReport(page.getByLabel("归档所依据的报告", { exact: true }), Number(secondReport.version));
   await page.getByLabel("归档理由", { exact: true }).fill("已完成复审并归档冻结报告。");
-  const archiveResponse = page.waitForResponse((response) =>
-    response.request().method() === "POST" && response.url().endsWith(`/api/cases/${caseID}/archive`),
-  );
-  await page.getByRole("button", { name: "归档案件", exact: true }).click();
-  assert.equal((await archiveResponse).status(), 200, "archive action was not accepted");
+  const [archiveResponse] = await Promise.all([
+    page.waitForResponse((response) =>
+      response.request().method() === "POST" && response.url().endsWith(`/api/cases/${caseID}/archive`),
+    ),
+    page.getByRole("button", { name: "归档案件", exact: true }).click(),
+  ]);
+  assert.equal(archiveResponse.status(), 200, "archive action was not accepted");
   const archived = await waitForCase(page, caseID, (detail) => Boolean(detail.archived_at) && detail.archives.length > 0);
   assert.ok(archived.archived_at, "archive timestamp was not retained");
 
@@ -399,20 +459,120 @@ function required(name: string): string {
 }
 
 async function postFromUI(page: Page, pathPrefix: string, suffix: string, action: () => Promise<void>): Promise<Record<string, any>> {
-  const responsePromise = page.waitForResponse((response) =>
-    response.request().method() === "POST" && response.url().includes(pathPrefix) && response.url().endsWith(suffix),
-  );
-  await action();
-  const response = await responsePromise;
+  const [response] = await Promise.all([
+    page.waitForResponse((response) =>
+      response.request().method() === "POST" && response.url().includes(pathPrefix) && response.url().endsWith(suffix),
+    ),
+    action(),
+  ]);
   assert.equal(response.status(), 201, `${suffix} response returned HTTP ${response.status()}`);
   return await response.json() as Record<string, any>;
+}
+
+// page.getByLabel() resolves to antd's inner input[role=combobox], not the
+// .ant-select root, so selected-value lookups must walk up to the ancestor.
+function antSelectRoot(select: Locator): Locator {
+  return select.locator(
+    "xpath=ancestor-or-self::*[contains(concat(' ', normalize-space(@class), ' '), ' ant-select ')][1]",
+  );
+}
+
+async function selectedAntLabel(select: Locator): Promise<string> {
+  const item = antSelectRoot(select).locator(".ant-select-content").first();
+  if ((await item.count()) === 0) return "";
+  const title = await item.getAttribute("title");
+  return (title ?? (await item.textContent()) ?? "").replace(/\s+/g, " ").trim();
+}
+
+async function selectionApplied(
+  select: Locator,
+  matches: (label: string) => boolean,
+): Promise<boolean> {
+  const deadline = Date.now() + 2000;
+  do {
+    const label = await selectedAntLabel(select);
+    if (label && matches(label)) return true;
+    await Bun.sleep(50);
+  } while (Date.now() < deadline);
+  return false;
+}
+
+async function captureAntSelectFailure(page: Page, labels: string[]): Promise<void> {
+  const directory = process.env.E2E_SCREENSHOT_DIR?.trim()
+    || fileURLToPath(new URL("../../artifacts/screenshots/", import.meta.url));
+  const slug = labels.join("-").replace(/[^\p{L}\p{N}-]+/gu, "_").slice(0, 60) || "unknown";
+  try {
+    await mkdir(directory, { recursive: true });
+    await page.screenshot({ path: join(directory, `ant-select-${slug}-${Date.now()}.png`) });
+  } catch {
+    // Screenshots are diagnostic; they must never mask the original failure.
+  }
+}
+
+async function chooseAntOption(
+  page: Page,
+  select: Locator,
+  matches: (label: string) => boolean,
+): Promise<void> {
+  // The production build can close or re-render a popup between the click and
+  // the option measurement, especially when a run transitions to a terminal
+  // state. Re-open and re-measure a few times instead of failing on one frame.
+  let labels: string[] = [];
+  for (let attempt = 0; attempt < 5; attempt++) {
+    // antd may already hold the target value. Clicking it again races the
+    // dropdown closing and burns Playwright's 30s actionability timeout.
+    if (matches(await selectedAntLabel(select))) return;
+    if ((await page.locator(".ant-select-dropdown:visible").count()) === 0) {
+      await select.click();
+    }
+    const dropdown = page.locator(".ant-select-dropdown:visible").last();
+    try {
+      await dropdown.waitFor({ state: "visible", timeout: 5000 });
+    } catch {
+      await Bun.sleep(100);
+      continue;
+    }
+    const options = dropdown.locator(".ant-select-item-option");
+    try {
+      await options.first().waitFor({ state: "visible", timeout: 5000 });
+    } catch {
+      await Bun.sleep(100);
+      continue;
+    }
+    const measured = await options.evaluateAll((elements) => elements.map((element) => ({
+      label: element.getAttribute("title") ?? element.textContent?.trim() ?? "",
+      visible: element.getBoundingClientRect().height > 0,
+    })));
+    labels = measured.map((option) => option.label);
+    const index = measured.findIndex((option) => option.visible && matches(option.label));
+    if (index >= 0) {
+      await options.nth(index).click({ timeout: 2000 }).catch(() => {});
+      if (await selectionApplied(select, matches)) return;
+      await page.keyboard.press("Escape").catch(() => {});
+      await Bun.sleep(100);
+      continue;
+    }
+    if (attempt === 2) {
+      await page.keyboard.press("Escape").catch(() => {});
+      await select.click().catch(() => {});
+    }
+    await Bun.sleep(100);
+  }
+  await captureAntSelectFailure(page, labels);
+  throw new Error(`no visible select option matched ${labels.join(" | ")}`);
+}
+
+async function chooseAntSelect(page: Page, select: Locator, optionText: string): Promise<void> {
+  await chooseAntOption(page, select, (label) => label === optionText);
 }
 
 async function uploadMaterial(page: Page, material: Material): Promise<string> {
   const roleSelect = page.getByLabel("材料角色", { exact: true });
   const fileInput = page.getByLabel("文件", { exact: true });
   const uploadButton = page.getByRole("button", { name: "上传", exact: true });
-  await roleSelect.selectOption(material.role);
+  const roleLabel = MATERIAL_ROLE_LABELS[material.role];
+  assert.ok(roleLabel, `unknown material role ${material.role}`);
+  await chooseAntSelect(page, roleSelect, roleLabel);
   // The upload panel remounts its file input after a completed upload, so the
   // attach/enable cycle is retried until the submit button is actually enabled.
   for (let attempt = 0; attempt < 4; attempt++) {
@@ -424,13 +584,14 @@ async function uploadMaterial(page: Page, material: Material): Promise<string> {
     await page.waitForTimeout(150);
     if (!(await uploadButton.isDisabled().catch(() => true))) break;
   }
-  const responsePromise = page.waitForResponse((response) =>
-    response.request().method() === "POST" && response.url().endsWith("/documents"),
-  );
   await uploadButton.waitFor({ state: "visible", timeout: 15000 });
   await uploadButton.scrollIntoViewIfNeeded();
-  await uploadButton.click();
-  const response = await responsePromise;
+  const [response] = await Promise.all([
+    page.waitForResponse((response) =>
+      response.request().method() === "POST" && response.url().endsWith("/documents"),
+    ),
+    uploadButton.click(),
+  ]);
   assert.equal(response.status(), 201, `upload ${material.filename} returned HTTP ${response.status()}`);
   const result = await response.json() as { id?: string };
   assert.ok(result.id, `upload ${material.filename} returned no document ID`);
@@ -501,31 +662,22 @@ function renderDraft(fields: Record<string, string>): string {
   ].join("\n");
 }
 
-async function selectRunAndAttempt(select: Locator, runID: string, attemptID: string): Promise<void> {
-  const options = await select.locator("option").evaluateAll((elements) => elements.map((element) => {
-    const option = element as HTMLOptionElement;
-    return { value: option.value, text: option.textContent ?? "" };
-  }));
-  const target = options.find((option) =>
-    option.value.includes(runID) || option.text.includes(runID) ||
-    option.value.includes(attemptID) || option.text.includes(attemptID),
+async function selectRunAndAttempt(
+  select: Locator,
+  runOrder: number,
+  attemptOrdinal: number,
+): Promise<void> {
+  const page = select.page();
+  await chooseAntOption(page, select, (label) =>
+    label.startsWith(`审查记录 ${runOrder}，第 ${attemptOrdinal} 次`),
   );
-  if (target) {
-    await select.selectOption(target.value);
-    return;
-  }
-  assert.equal(options.length, 1, `no selector option matches run ${runID} / attempt ${attemptID}: ${JSON.stringify(options)}`);
-  await select.selectOption(options[0]!.value);
 }
 
-async function selectReport(select: Locator, reportID: string): Promise<void> {
-  const options = await select.locator("option").evaluateAll((elements) => elements.map((element) => {
-    const option = element as HTMLOptionElement;
-    return { value: option.value, text: option.textContent ?? "" };
-  }));
-  const target = options.find((option) => option.value.includes(reportID) || option.text.includes(reportID));
-  assert.ok(target, `archive report ${reportID} was not available: ${JSON.stringify(options)}`);
-  await select.selectOption(target.value);
+async function selectReport(select: Locator, version: number): Promise<void> {
+  const page = select.page();
+  await chooseAntOption(page, select, (label) =>
+    label.startsWith(`版本 ${version}，`),
+  );
 }
 
 async function waitForReport(page: Page, caseID: string, runID: string, attemptID: string): Promise<Record<string, any>> {
@@ -540,8 +692,8 @@ async function readReportLinks(page: Page, reportID: string): Promise<{ json: Bu
   const matches = await links.evaluateAll((elements, id) => elements
     .filter((element) => (element as HTMLAnchorElement).href.includes(`/reports/${id}`))
     .map((element) => ({ href: (element as HTMLAnchorElement).href, text: element.textContent ?? "" })), reportID);
-  const jsonLink = matches.find((item) => item.text.includes("读取冻结 JSON") || item.href.includes("format=json"));
-  const htmlLink = matches.find((item) => item.text.includes("读取冻结 HTML") || item.href.includes("format=html"));
+  const jsonLink = matches.find((item) => item.text.includes("查看 JSON 报告") || item.href.includes("format=json"));
+  const htmlLink = matches.find((item) => item.text.includes("查看 HTML 报告") || item.href.includes("format=html"));
   assert.ok(jsonLink, `UI has no frozen JSON read link for report ${reportID}`);
   assert.ok(htmlLink, `UI has no frozen HTML read link for report ${reportID}`);
   const [jsonResponse, htmlResponse] = await Promise.all([

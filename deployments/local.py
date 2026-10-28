@@ -155,12 +155,14 @@ def generated_values(infra: dict[str, str]) -> dict[str, str]:
 		"WORKER_DOCUMENT_TOKEN": secrets.token_urlsafe(48),
 		"WORKER_MODEL_TOKEN": secrets.token_urlsafe(48),
 		"WORKER_TOOL_TOKEN": secrets.token_urlsafe(48),
+		"WORKER_CORE_TOKEN": secrets.token_urlsafe(48),
 		"DOCUMENT_MODEL_TOKEN": secrets.token_urlsafe(48),
 		"CORE_URLS": "http://core-api:8081",
 		"DOCUMENT_URL": "http://document-service:8082",
 		"EXECUTION_URL": "http://audit-execution:8083",
 		"TOOL_URLS": "http://tool-gateway:8085",
 		"DOCUMENT_SERVICE_URL": "http://document-service:8082",
+		"CORE_SERVICE_URL": "http://core-api:8081",
 		"MODEL_GATEWAY_URL": "http://model-gateway:8084/v1",
 		"NATS_URL": "nats://nats:4222",
 		"LLM_BASE_URL": _container_model_url(infra.get("LLM_BASE_URL", "http://127.0.0.1:3425/v1")),
@@ -187,6 +189,25 @@ def _container_model_url(value: str) -> str:
     return value
 
 
+def validate_experience_delivery(values: dict[str, str]) -> None:
+	endpoint = values.get("CORE_SERVICE_URL", "").strip()
+	credential = values.get("WORKER_CORE_TOKEN", "").strip()
+	try:
+		parsed = urlsplit(endpoint)
+		if (parsed.scheme not in {"http", "https"} or not parsed.hostname or parsed.username is not None or
+				parsed.query or parsed.fragment):
+			raise ValueError("invalid endpoint")
+		parsed.port  # Reject malformed or out-of-range ports before invoking Compose.
+	except ValueError as error:
+		raise ValueError("CORE_SERVICE_URL must be an HTTP(S) service URL without credentials, query, or fragment") from error
+	if len(credential) < 32:
+		raise ValueError("WORKER_CORE_TOKEN must contain at least 32 characters")
+	for name in ("GATEWAY_CORE_TOKEN", "WORKER_DOCUMENT_TOKEN", "WORKER_MODEL_TOKEN", "WORKER_TOOL_TOKEN"):
+		if credential == values.get(name, "").strip():
+			raise ValueError(f"WORKER_CORE_TOKEN must differ from {name}")
+
+
+
 def ensure_private_environment() -> dict[str, str]:
 	infra_bootstrap()
 	infra = read_env(ENV_PATH)
@@ -194,6 +215,7 @@ def ensure_private_environment() -> dict[str, str]:
 	if DISTRIBUTED_ENV_PATH.exists():
 		current = read_env(DISTRIBUTED_ENV_PATH)
 		missing = sorted(set(expected) - current.keys())
+		# Existing profiles are never rewritten; missing delivery settings must be added manually.
 		if missing:
 			raise RuntimeError(
 				f"{DISTRIBUTED_ENV_PATH} already exists and is missing keys {', '.join(missing)}; "
@@ -208,8 +230,10 @@ def ensure_private_environment() -> dict[str, str]:
 		for key in ("EDGE_PORT", "CLIENT_PORT", "ADMIN_PORT", "PORTAL_PORT", "CORS_ORIGIN"):
 			if current[key] != expected[key]:
 				raise RuntimeError(f"{DISTRIBUTED_ENV_PATH} has a {key} value that does not match {ENV_PATH}")
+		validate_experience_delivery({**infra, **current, **os.environ})
 		return current
 	values = expected
+	validate_experience_delivery({**infra, **values, **os.environ})
 	body = "# Private local distributed profile. Keep mode 0600; never commit.\n"
 	body += "".join(f"{key}={value}\n" for key, value in values.items())
 	DISTRIBUTED_ENV_PATH.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
@@ -450,6 +474,14 @@ def start_apps(fixture: bool, offline_images: bool, planner_mode: str | None) ->
 		# signature identity must agree across Execution, Worker, and Document.
 		os.environ["LLM_MODEL"] = FIXTURE_CHAT_MODEL
 		os.environ["OCR_MODEL"] = FIXTURE_OCR_MODEL
+		# The worker still takes the advisory/gateway path and records the
+		# frozen suggestion trace; only the gateway answers deterministically.
+		# Keep the worker and gateway model identities identical.
+		os.environ["TYPESAFE_JEV_MODE"] = "advisory"
+		os.environ["TYPESAFE_JEV_MODEL"] = "jev-fixture"
+		os.environ["TYPESAFE_JEV_PROVIDER"] = "model-gateway"
+		os.environ["TYPESAFE_JEV_EGRESS"] = "minimized"
+		os.environ["TYPESAFE_JEV_FEATURES"] = "knowledge_rerank"
 	if planner_mode:
 		os.environ["AGENT_PLANNER_MODE"] = planner_mode
 	if offline_images:

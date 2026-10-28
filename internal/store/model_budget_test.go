@@ -480,3 +480,388 @@ func TestModelBudgetRoleIsolationAndFunctionPrivileges(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// waitForBudgetBlocker observes an actual PostgreSQL lock wait, so the race
+// tests advance only after the competing transaction reaches the intended seam.
+func waitForBudgetBlocker(t *testing.T, ctx context.Context, st *Store, blocker int32) int32 {
+	t.Helper()
+	ticker := time.NewTicker(5 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		var pid *int32
+		if err := st.pool.QueryRow(ctx, `SELECT (SELECT pid FROM pg_stat_activity
+			WHERE $1::int = ANY(pg_blocking_pids(pid)) LIMIT 1)`, blocker).Scan(&pid); err != nil {
+			t.Fatal(err)
+		}
+		if pid != nil {
+			return *pid
+		}
+		select {
+		case <-ctx.Done():
+			t.Fatalf("transaction %d did not block a competing transaction: %v", blocker, ctx.Err())
+		case <-ticker.C:
+		}
+	}
+}
+
+func TestExperienceBudgetReservationSerializesWithReclamation(t *testing.T) {
+	st, user, source, _ := feedbackFixture(t, "false_positive")
+	feedback, err := st.SubmitExperienceFeedback(context.Background(), user, source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	st.UseModels(&distillPolicyTestModel{frozenOCRModel: &frozenOCRModel{}})
+	receipt, err := st.RequestExperienceDistillation(context.Background(), user, ExperienceDistillRequest{
+		CaseID: source.CaseID, FeedbackID: feedback.FeedbackID, IdempotencyKey: "budget-fence-race",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, err := st.ClaimNextJob(context.Background(), "budget-first-worker", time.Minute)
+	if err != nil || first.JobID != receipt.JobID {
+		t.Fatalf("first claim: %+v, %v", first, err)
+	}
+	work, err := st.loadExperienceDistillWork(context.Background(), first)
+	if err != nil {
+		t.Fatal(err)
+	}
+	scope := model.DelegatedScope{Kind: "experience_distill", TenantID: first.TenantID, OrgID: first.OrgID,
+		CaseID: first.CaseID, ActorID: first.ActorID, JobID: first.JobID, WorkerID: first.WorkerID,
+		Generation: first.Generation, InputSHA256: work.InputSHA256}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	// Each parameter and both transaction scope settings are part of the lock
+	// boundary. A mismatched identity must not lock some other job.
+	mutations := []struct {
+		name   string
+		change func(*model.DelegatedScope, *dbScope)
+	}{
+		{"tenant", func(s *model.DelegatedScope, _ *dbScope) { s.TenantID += "-other" }},
+		{"org", func(s *model.DelegatedScope, _ *dbScope) { s.OrgID += "-other" }},
+		{"case", func(s *model.DelegatedScope, _ *dbScope) { s.CaseID += "-other" }},
+		{"actor", func(s *model.DelegatedScope, _ *dbScope) { s.ActorID += "-other" }},
+		{"job", func(s *model.DelegatedScope, _ *dbScope) { s.JobID += "-other" }},
+		{"worker", func(s *model.DelegatedScope, _ *dbScope) { s.WorkerID += "-other" }},
+		{"generation", func(s *model.DelegatedScope, _ *dbScope) { s.Generation++ }},
+		{"input", func(s *model.DelegatedScope, _ *dbScope) { s.InputSHA256 = sha256Bytes([]byte("different input")) }},
+		{"session tenant", func(_ *model.DelegatedScope, s *dbScope) { s.TenantID += "-other" }},
+		{"session org", func(_ *model.DelegatedScope, s *dbScope) { s.OrgID += "-other" }},
+		{"session role", func(_ *model.DelegatedScope, s *dbScope) { s.Role = "worker" }},
+	}
+	lockQuery := `SELECT ` + pgx.Identifier{st.schema, "model_budget_lock_experience_job"}.Sanitize() + `($1,$2,$3,$4,$5,$6,$7,$8)`
+	for _, mutation := range mutations {
+		t.Run("reject "+mutation.name, func(t *testing.T) {
+			candidate := scope
+			session := dbScope{ActorID: "model-gateway", Role: "model", TenantID: scope.TenantID, OrgID: scope.OrgID}
+			mutation.change(&candidate, &session)
+			tx, err := st.pool.Begin(ctx)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer tx.Rollback(context.Background())
+			if err := setLocalScope(ctx, tx, session); err != nil {
+				t.Fatal(err)
+			}
+			var locked bool
+			if err := tx.QueryRow(ctx, lockQuery, candidate.TenantID, candidate.OrgID, candidate.CaseID, candidate.ActorID,
+				candidate.JobID, candidate.WorkerID, candidate.Generation, candidate.InputSHA256).Scan(&locked); err != nil || locked {
+				t.Fatalf("mismatched identity acquired a job lock: locked=%t err=%v", locked, err)
+			}
+		})
+	}
+
+	budgetBlocker, err := st.pool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer budgetBlocker.Rollback(context.Background())
+	var budgetPID int32
+	if err := budgetBlocker.QueryRow(ctx, `SELECT pg_backend_pid()`).Scan(&budgetPID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := budgetBlocker.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1,0))`, st.schema+":model-budget:global"); err != nil {
+		t.Fatal(err)
+	}
+	type reservation struct {
+		lease ModelCallLease
+		err   error
+	}
+	reservationDone := make(chan reservation, 1)
+	go func() {
+		lease, err := st.ReserveModelCall(ctx, "worker", scope, "race-model", 1, 20, 20, modelBudgetTestLimits())
+		reservationDone <- reservation{lease: lease, err: err}
+	}()
+	reservationPID := waitForBudgetBlocker(t, ctx, st, budgetPID)
+
+	// The request has authorized and is waiting for the budget mutex. Its job
+	// must already be locked, so a queue claimant cannot skip ahead of it.
+	probe, err := st.pool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := setLocalScope(ctx, probe, first.scope()); err != nil {
+		_ = probe.Rollback(context.Background())
+		t.Fatal(err)
+	}
+	var jobID string
+	err = probe.QueryRow(ctx, `SELECT id FROM worker_jobs WHERE id=$1 FOR UPDATE SKIP LOCKED`, first.JobID).Scan(&jobID)
+	_ = probe.Rollback(context.Background())
+	if !errors.Is(err, pgx.ErrNoRows) {
+		t.Fatalf("reclamation could lock the job before the reservation committed: id=%q err=%v", jobID, err)
+	}
+
+	expireDone := make(chan error, 1)
+	go func() {
+		tx, err := st.pool.Begin(ctx)
+		if err != nil {
+			expireDone <- err
+			return
+		}
+		defer tx.Rollback(context.Background())
+		if err := setLocalScope(ctx, tx, first.scope()); err != nil {
+			expireDone <- err
+			return
+		}
+		tag, err := tx.Exec(ctx, `UPDATE worker_jobs SET lease_until=clock_timestamp()-interval '1 second',
+			ready_at=clock_timestamp()-interval '1 second' WHERE id=$1 AND generation=$2`, first.JobID, first.Generation)
+		if err == nil && tag.RowsAffected() != 1 {
+			err = errors.New("the original generation was not expired")
+		}
+		if err == nil {
+			err = tx.Commit(ctx)
+		}
+		expireDone <- err
+	}()
+	waitForBudgetBlocker(t, ctx, st, reservationPID)
+	if err := budgetBlocker.Commit(ctx); err != nil {
+		t.Fatal(err)
+	}
+	var reserved reservation
+	select {
+	case reserved = <-reservationDone:
+	case <-ctx.Done():
+		t.Fatal(ctx.Err())
+	}
+	if reserved.err != nil {
+		t.Fatalf("reservation failed before reclamation: %v", reserved.err)
+	}
+	select {
+	case err := <-expireDone:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-ctx.Done():
+		t.Fatal(ctx.Err())
+	}
+	second, err := st.ClaimNextJob(ctx, "budget-second-worker", time.Minute)
+	if err != nil || second.JobID != first.JobID || second.Generation <= first.Generation {
+		t.Fatalf("reclaimed job: %+v, %v", second, err)
+	}
+	recovery, err := st.recoverExperienceDistill(ctx, second, work)
+	if err != nil || !recovery.ModelOutcomeUnknown {
+		t.Fatalf("new generation missed the older possible dispatch: recovery=%+v err=%v", recovery, err)
+	}
+
+	// Reverse the ordering: a takeover owns the row while an old generation is
+	// requesting a reservation. The waiter must recheck the committed identity.
+	takeover, err := st.pool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer takeover.Rollback(context.Background())
+	if err := setLocalScope(ctx, takeover, second.scope()); err != nil {
+		t.Fatal(err)
+	}
+	var takeoverPID int32
+	if err := takeover.QueryRow(ctx, `SELECT pg_backend_pid()`).Scan(&takeoverPID); err != nil {
+		t.Fatal(err)
+	}
+	tag, err := takeover.Exec(ctx, `UPDATE worker_jobs SET generation=generation+1,worker_id='budget-third-worker',
+		lease_until=clock_timestamp()+interval '1 minute' WHERE id=$1 AND generation=$2`, second.JobID, second.Generation)
+	if err != nil || tag.RowsAffected() != 1 {
+		t.Fatalf("prepare takeover: rows=%d err=%v", tag.RowsAffected(), err)
+	}
+	stale := scope
+	stale.WorkerID, stale.Generation = second.WorkerID, second.Generation
+	staleDone := make(chan reservation, 1)
+	go func() {
+		lease, err := st.ReserveModelCall(ctx, "worker", stale, "race-model", 1, 20, 20, modelBudgetTestLimits())
+		staleDone <- reservation{lease: lease, err: err}
+	}()
+	waitForBudgetBlocker(t, ctx, st, takeoverPID)
+	if err := takeover.Commit(ctx); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case result := <-staleDone:
+		if !errors.Is(result.err, ErrModelScopeUnavailable) {
+			t.Fatalf("superseded generation reserved a model call: %+v", result)
+		}
+	case <-ctx.Done():
+		t.Fatal(ctx.Err())
+	}
+
+	// The exposed accounting function cannot bypass the fence either.
+	direct, err := st.pool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer direct.Rollback(context.Background())
+	if err := setLocalScope(ctx, direct, dbScope{ActorID: "model-gateway", Role: "model", TenantID: stale.TenantID,
+		OrgID: stale.OrgID, WorkerID: stale.WorkerID}); err != nil {
+		t.Fatal(err)
+	}
+	if err := setModelLedgerIdentity(ctx, direct, stale.Kind, stale.JobID, stale.Generation, stale.InputSHA256); err != nil {
+		t.Fatal(err)
+	}
+	directLease := ModelCallLease{ID: "ml_stale_direct", TenantID: stale.TenantID, ActorID: stale.ActorID,
+		CaseID: stale.CaseID, CallerIdentity: "worker", ModelRef: "race-model", AttemptNumber: 1}
+	_, err = reserveModelBudgetDirect(ctx, direct, st.schema, directLease, modelBudgetTestLimits(), 20, 20)
+	var state interface{ SQLState() string }
+	if !errors.As(err, &state) || state.SQLState() != "P7M01" {
+		t.Fatalf("direct stale SQL reservation was not fenced: %v", err)
+	}
+	if err := direct.Rollback(ctx); err != nil {
+		t.Fatal(err)
+	}
+	check, err := st.pool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer check.Rollback(context.Background())
+	if err := setLocalScope(ctx, check, second.scope()); err != nil {
+		t.Fatal(err)
+	}
+	var count int
+	if err := check.QueryRow(ctx, `SELECT count(*) FROM model_call_leases WHERE tenant_id=$1 AND job_id=$2
+		AND purpose='experience_distill'`, first.TenantID, first.JobID).Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if count != 1 {
+		t.Fatalf("expected only the committed first-generation reservation, got %d", count)
+	}
+	var generation int64
+	var inputHash string
+	if err := check.QueryRow(ctx, `SELECT job_generation,input_sha256 FROM model_call_leases WHERE lease_id=$1`, reserved.lease.ID).
+		Scan(&generation, &inputHash); err != nil || generation != first.Generation || inputHash != work.InputSHA256 {
+		t.Fatalf("reservation lost its recovery identity: generation=%d input=%q err=%v", generation, inputHash, err)
+	}
+}
+
+func TestExperienceBudgetFenceRolePrivileges(t *testing.T) {
+	environment, ok := newDurableRoleEnvironment(t)
+	if !ok {
+		t.Skip("TEST_DATABASE_URL and MIGRATOR_DATABASE_URL are required for dedicated service-role checks")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	st := environment.harness
+	function := pgx.Identifier{st.schema}.Sanitize() + `.model_budget_lock_experience_job(text,text,text,text,text,text,bigint,text)`
+	jobs := pgx.Identifier{st.schema, "worker_jobs"}.Sanitize()
+	var securityDefiner, public, fixedPath bool
+	if err := st.pool.QueryRow(ctx, `SELECT p.prosecdef,
+		EXISTS (SELECT 1 FROM aclexplode(COALESCE(p.proacl,acldefault('f',p.proowner))) a
+			WHERE a.grantee=0 AND a.privilege_type='EXECUTE'),
+		COALESCE(p.proconfig @> ARRAY['search_path=pg_catalog, pg_temp'],false)
+		FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+		WHERE n.nspname=$1 AND p.proname='model_budget_lock_experience_job'`, st.schema).
+		Scan(&securityDefiner, &public, &fixedPath); err != nil {
+		t.Fatal(err)
+	}
+	if !securityDefiner || public || !fixedPath {
+		t.Fatalf("job fence privilege settings: security definer=%t public=%t fixed path=%t", securityDefiner, public, fixedPath)
+	}
+	for _, service := range []string{"core", "document", "execution", "model", "tool"} {
+		config, err := pgxpool.ParseConfig(environment.roleDSNs[service])
+		if err != nil {
+			t.Fatal(err)
+		}
+		var executable bool
+		if err := st.pool.QueryRow(ctx, `SELECT has_function_privilege($1,$2,'EXECUTE')`, config.ConnConfig.User, function).Scan(&executable); err != nil {
+			t.Fatal(err)
+		}
+		if executable != (service == "model") {
+			t.Fatalf("service %s has unexpected fence execute privilege: %t", service, executable)
+		}
+	}
+	modelConfig, err := pgxpool.ParseConfig(environment.roleDSNs["model"])
+	if err != nil {
+		t.Fatal(err)
+	}
+	var canUpdate bool
+	if err := st.pool.QueryRow(ctx, `SELECT has_table_privilege($1,$2,'UPDATE')`, modelConfig.ConnConfig.User, jobs).Scan(&canUpdate); err != nil {
+		t.Fatal(err)
+	}
+	if canUpdate {
+		t.Fatal("model role has direct worker job UPDATE privilege")
+	}
+	modelPool, err := newPool(ctx, environment.roleDSNs["model"], st.schema)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer modelPool.Close()
+	for _, statement := range []string{
+		`UPDATE worker_jobs SET worker_id=worker_id WHERE false`,
+		`SELECT id FROM worker_jobs WHERE false FOR UPDATE`,
+	} {
+		tx, err := modelPool.Begin(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, err = tx.Exec(ctx, statement)
+		_ = tx.Rollback(context.Background())
+		var state interface{ SQLState() string }
+		if !errors.As(err, &state) || state.SQLState() != "42501" {
+			t.Fatalf("model role unexpectedly obtained direct job write/lock access: statement=%q err=%v", statement, err)
+		}
+	}
+	// Exercise the fence against an actual live job using the provisioned model
+	// role. Its bounded definer lock must work without direct job privileges.
+	owner := revisionAdmin(t)
+	st.UseModels(&frozenOCRModel{})
+	pack := publishSyntheticAcceptancePack(t, st, owner)
+	publishSyntheticAcceptancePolicy(t, st, owner, pack)
+	source := createGovernedFeedbackSource(t, st, owner, owner, "false_positive", "model-role-fence")
+	feedback, err := st.SubmitExperienceFeedback(ctx, owner, source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	st.UseModels(&distillPolicyTestModel{frozenOCRModel: &frozenOCRModel{}})
+	receipt, err := st.RequestExperienceDistillation(ctx, owner, ExperienceDistillRequest{
+		CaseID: source.CaseID, FeedbackID: feedback.FeedbackID, IdempotencyKey: "model-role-fence",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	claim, err := st.ClaimNextJob(ctx, "model-role-worker", time.Minute)
+	if err != nil || claim.JobID != receipt.JobID {
+		t.Fatalf("claim for model role: %+v, %v", claim, err)
+	}
+	work, err := st.loadExperienceDistillWork(ctx, claim)
+	if err != nil {
+		t.Fatal(err)
+	}
+	scope := model.DelegatedScope{Kind: "experience_distill", TenantID: claim.TenantID, OrgID: claim.OrgID,
+		CaseID: claim.CaseID, ActorID: claim.ActorID, JobID: claim.JobID, WorkerID: claim.WorkerID,
+		Generation: claim.Generation, InputSHA256: work.InputSHA256}
+	modelStore := &Store{pool: modelPool, schema: st.schema}
+	lease, err := modelStore.ReserveModelCall(ctx, "worker", scope, "role-fence-model", 1, 20, 20, modelBudgetTestLimits())
+	if err != nil {
+		t.Fatalf("dedicated model role could not reserve its live job: %v", err)
+	}
+	settlePredispatch(t, ctx, modelStore, lease)
+	tx, err := modelPool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback(context.Background())
+	if err := setLocalScope(ctx, tx, dbScope{ActorID: "model-gateway", Role: "model", TenantID: "missing-tenant", OrgID: "missing-org"}); err != nil {
+		t.Fatal(err)
+	}
+	var locked bool
+	query := `SELECT ` + pgx.Identifier{st.schema, "model_budget_lock_experience_job"}.Sanitize() + `($1,$2,$3,$4,$5,$6,$7,$8)`
+	if err := tx.QueryRow(ctx, query, "missing-tenant", "missing-org", "missing-case", "missing-actor", "missing-job", "missing-worker", int64(1), sha256Bytes([]byte("missing"))).Scan(&locked); err != nil || locked {
+		t.Fatalf("model role could not safely call the bounded lock: locked=%t err=%v", locked, err)
+	}
+}

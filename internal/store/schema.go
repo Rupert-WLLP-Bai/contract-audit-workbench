@@ -129,6 +129,10 @@ var schemaStatements = []string{
 		usage text,
 		PRIMARY KEY (attempt_id, event_seq)
 	)`,
+	`ALTER TABLE execution_events ADD COLUMN IF NOT EXISTS recorded_at text`,
+	`ALTER TABLE execution_events ADD COLUMN IF NOT EXISTS event_key text`,
+	`ALTER TABLE execution_events ADD COLUMN IF NOT EXISTS generation bigint`,
+	`CREATE UNIQUE INDEX IF NOT EXISTS execution_events_logical_identity ON execution_events (attempt_id, generation, event_key) WHERE event_key IS NOT NULL`,
 	`CREATE TABLE IF NOT EXISTS findings (
 		seq bigserial PRIMARY KEY,
 		id text NOT NULL UNIQUE,
@@ -425,6 +429,13 @@ var schemaStatements = []string{
 	serviceRoleSchemaSQL,
 	modelBudgetSchemaSQL,
 	queueSchedulerSchemaSQL,
+	ExperienceFeedbackSchemaSQL,
+	knowledgeGovernanceSchemaSQL,
+	knowledgeAcceptanceSchemaSQL,
+	EvidenceRequestSchemaSQL,
+	EvaluationProvenanceSchemaSQL,
+	experienceDistillSchemaSQL,
+	advisoryJudgmentSchemaSQL,
 	`DO $$
 	DECLARE table_name text;
 	BEGIN
@@ -438,7 +449,12 @@ var schemaStatements = []string{
 			'business_run_events','business_audit_events','document_activity','execution_activity',
 			'model_call_leases','model_usage','execution_queue_policies','execution_queue_cursor','execution_queue_tenants',
 			'rule_pack_versions','rule_pack_pointers','rule_pack_history','rule_pack_idempotency',
-			'execution_agent_reviews'
+			'execution_agent_reviews','experience_feedback','experience_candidate_versions',
+			'governed_knowledge_versions','governed_knowledge_state','governed_knowledge_pointers',
+			'governed_knowledge_history','governed_knowledge_idempotency','governed_policy_rule_bindings',
+			'experience_distill_inputs','experience_distill_results','experience_distill_failures',
+			'advisory_judgments',
+			'evidence_requests','evidence_receipts','evidence_request_events'
 		] LOOP
 			EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY', table_name);
 			EXECUTE format('ALTER TABLE %I FORCE ROW LEVEL SECURITY', table_name);

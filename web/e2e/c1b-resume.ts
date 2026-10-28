@@ -1,3 +1,4 @@
+import { chromiumExecutable } from "./chromium";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
@@ -66,7 +67,7 @@ const username = process.env.E2E_USERNAME || "demo-admin";
 const password = process.env.E2E_PASSWORD || "admin-demo";
 const browser = await chromium.launch({
   headless: true,
-  executablePath: process.env.CHROMIUM_BIN || "/usr/bin/chromium",
+  executablePath: chromiumExecutable(),
   args: ["--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu"],
 });
 const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
@@ -132,7 +133,7 @@ try {
   observations.evaluation_eligibility = eligibility;
   await page.goto(`${web}/cases/${caseID}`);
   await page.getByRole("heading", { name: detail.title, exact: true }).waitFor();
-  await selectRunAndAttempt(page.getByLabel("复核运行和尝试", { exact: true }), candidateRunID, candidateAttemptID);
+  await selectRunAndAttempt(page.getByLabel("选择复核的审查和执行记录", { exact: true }), candidateRunID, candidateAttemptID);
   const verifyReason = page.getByLabel("复核理由", { exact: true });
   await verifyReason.waitFor({ state: "visible", timeout: 15000 });
   try {
@@ -252,7 +253,7 @@ try {
   await writeFile(resolve(outDir, "resume.json"), `${JSON.stringify({
     captured_at: new Date().toISOString(),
     browser: "Chromium",
-    executable: process.env.CHROMIUM_BIN || "/usr/bin/chromium",
+    executable: chromiumExecutable(),
     web,
     source_sha: sourceSHA === "" ? "NOT_RECORDED" : sourceSHA,
     server_sha: serverSHA === "" ? "NOT_RECORDED" : serverSHA,
@@ -288,11 +289,11 @@ async function ensureReport(runID: string, attemptID: string): Promise<Report> {
   let detail = await waitForCase((value) => value.id === caseID);
   let report = detail.reports.find((item) => item.run_id === runID && item.attempt_id === attemptID);
   if (!report) {
-    await selectRunAndAttempt(page.getByLabel("冻结运行和尝试", { exact: true }), runID, attemptID);
+    await selectRunAndAttempt(page.getByLabel("选择审查和执行记录", { exact: true }), runID, attemptID);
     const responsePromise = page.waitForResponse((response) =>
       response.request().method() === "POST" && response.url().endsWith(`/api/cases/${caseID}/reports`),
     );
-    await page.getByRole("button", { name: "生成冻结报告", exact: true }).click();
+    await page.getByRole("button", { name: "生成报告", exact: true }).click();
     const response = await responsePromise;
     assert.ok([200, 201].includes(response.status()), `report ${runID}/${attemptID} returned HTTP ${response.status()}`);
     detail = await waitForCase((value) => value.reports.some((item) => item.run_id === runID && item.attempt_id === attemptID));
@@ -306,8 +307,8 @@ async function readReportLinks(currentPage: Page, reportID: string): Promise<{ j
   const matches = await currentPage.locator("a").evaluateAll((elements, id) => elements
     .filter((element) => (element as HTMLAnchorElement).href.includes(`/reports/${id}`))
     .map((element) => ({ href: (element as HTMLAnchorElement).href, text: element.textContent ?? "" })), reportID);
-  const jsonLink = matches.find((item) => item.text.includes("读取冻结 JSON") || item.href.includes("format=json"));
-  const htmlLink = matches.find((item) => item.text.includes("读取冻结 HTML") || item.href.includes("format=html"));
+  const jsonLink = matches.find((item) => item.text.includes("查看 JSON 报告") || item.href.includes("format=json"));
+  const htmlLink = matches.find((item) => item.text.includes("查看 HTML 报告") || item.href.includes("format=html"));
   assert.ok(jsonLink, `UI has no frozen JSON link for report ${reportID}`);
   assert.ok(htmlLink, `UI has no frozen HTML link for report ${reportID}`);
   const [jsonResponse, htmlResponse] = await Promise.all([

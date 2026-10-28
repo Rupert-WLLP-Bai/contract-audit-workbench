@@ -12,7 +12,7 @@ import (
 )
 
 func loadJobs(ctx context.Context, q queryer) ([]Job, error) {
-	rows, err := q.Query(ctx, `SELECT id, tenant_id, org_id, case_id, run_id, attempt_id, actor_id, kind, state, generation, worker_id, lease_until, heartbeat_at, created_at, updated_at FROM worker_jobs ORDER BY created_at, id`)
+	rows, err := q.Query(ctx, `SELECT id, tenant_id, org_id, case_id, COALESCE(run_id,''), COALESCE(attempt_id,''), actor_id, kind, state, generation, worker_id, lease_until, heartbeat_at, created_at, updated_at FROM worker_jobs ORDER BY created_at, id`)
 	if err != nil {
 		return nil, err
 	}
@@ -117,12 +117,18 @@ func (s *Store) claimForAttempt(attemptID string) (JobClaim, bool) {
 }
 
 func (s *Store) setClaim(claim JobClaim) {
+	if claim.AttemptID == "" {
+		return
+	}
 	s.claimMu.Lock()
 	s.claims[claim.AttemptID] = claim
 	s.claimMu.Unlock()
 }
 
 func (s *Store) clearClaim(claim JobClaim) {
+	if claim.AttemptID == "" {
+		return
+	}
 	s.claimMu.Lock()
 	if current, ok := s.claims[claim.AttemptID]; ok && current.Generation == claim.Generation && current.WorkerID == claim.WorkerID {
 		delete(s.claims, claim.AttemptID)
@@ -175,7 +181,7 @@ func (s *Store) HeartbeatJob(ctx context.Context, claim JobClaim, lease time.Dur
 	err = tx.QueryRow(ctx, `UPDATE worker_jobs SET
 		ready_at=clock_timestamp()+($7::bigint*interval '1 microsecond')+greatest(ready_at-lease_until,interval '0'),
 		lease_until=clock_timestamp()+($7::bigint*interval '1 microsecond'), heartbeat_at=clock_timestamp(), updated_at=$8
-		WHERE id=$1 AND tenant_id=$2 AND org_id=$3 AND attempt_id=$4 AND worker_id=$5 AND generation=$6 AND state='running' AND lease_until > clock_timestamp()
+		WHERE id=$1 AND tenant_id=$2 AND org_id=$3 AND attempt_id IS NOT DISTINCT FROM NULLIF($4,'') AND worker_id=$5 AND generation=$6 AND state='running' AND lease_until > clock_timestamp()
 		RETURNING lease_until`, claim.JobID, claim.TenantID, claim.OrgID, claim.AttemptID, claim.WorkerID, claim.Generation, lease.Microseconds(), stamp()).Scan(&expiry)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return JobClaim{}, errLeaseLost
@@ -195,8 +201,29 @@ func (s *Store) HeartbeatJob(ctx context.Context, claim JobClaim, lease time.Dur
 }
 
 func (s *Store) RunClaimedJob(ctx context.Context, claim JobClaim) error {
-	if claim.JobID == "" || claim.AttemptID == "" || claim.WorkerID == "" || claim.Generation <= 0 {
+	if claim.JobID == "" || claim.WorkerID == "" || claim.Generation <= 0 {
 		return errors.New("incomplete worker claim")
+	}
+	if claim.Kind == "experience_distill" {
+		if claim.RunID != "" || claim.AttemptID != "" {
+			return errors.New("experience task cannot use a review attempt identity")
+		}
+		if claim.stopReason != "" {
+			// A claim can be terminal because its deadline or attempts were exhausted.
+			// Give it a bounded window to reconcile an already accepted result or
+			// persist the terminal failure under its current lease.
+			var cancel context.CancelFunc
+			ctx, cancel = context.WithTimeout(ctx, 30*time.Second)
+			defer cancel()
+		} else if !claim.deadline.IsZero() {
+			var cancel context.CancelFunc
+			ctx, cancel = context.WithDeadline(ctx, claim.deadline)
+			defer cancel()
+		}
+		return s.runExperienceDistill(ctx, claim)
+	}
+	if claim.Kind != "review" || claim.RunID == "" || claim.AttemptID == "" {
+		return errors.New("unsupported or incomplete worker job")
 	}
 	s.setClaim(claim)
 	defer s.clearClaim(claim)
@@ -253,7 +280,7 @@ func (s *Store) finishClaim(ctx context.Context, claim JobClaim, state string) e
 		return err
 	}
 	tag, err := tx.Exec(ctx, `UPDATE worker_jobs SET state=$7, lease_until=NULL, updated_at=$8
-		WHERE id=$1 AND tenant_id=$2 AND org_id=$3 AND attempt_id=$4 AND worker_id=$5 AND generation=$6 AND state='running' AND lease_until > clock_timestamp()`,
+		WHERE id=$1 AND tenant_id=$2 AND org_id=$3 AND attempt_id IS NOT DISTINCT FROM NULLIF($4,'') AND worker_id=$5 AND generation=$6 AND state='running' AND lease_until > clock_timestamp()`,
 		claim.JobID, claim.TenantID, claim.OrgID, claim.AttemptID, claim.WorkerID, claim.Generation, state, stamp())
 	if err != nil {
 		return err

@@ -31,14 +31,14 @@ func catalog() []Service {
 	}
 	out := make([]Service, 0, len(definitions)+3)
 	for _, d := range definitions {
-		out = append(out, Service{ID: d.id, Name: d.name, Category: d.category, Kind: "container", Status: "unconfigured", Detail: "当前部署未发现此服务容器。", Target: d.target, DependsOn: d.dependencies})
+		out = append(out, Service{ID: d.id, Name: d.name, Category: d.category, Kind: "container", Status: "unconfigured", Detail: "当前部署未发现此服务容器。", Target: d.target, DependsOn: d.dependencies, LogicalID: d.id})
 	}
 	return out
 }
 
 func optional(id string) bool {
 	switch id {
-	case "keycloak", "identity-db", "otel-collector", "tempo", "prometheus", "grafana":
+	case "keycloak", "identity-db", "otel-collector", "tempo", "prometheus", "grafana", "jev-model":
 		return true
 	}
 	return false

@@ -16,6 +16,7 @@ import type {
   WorkbenchSnapshot,
 } from "../api/types";
 import { ComparePage } from "./compare-page";
+import { CompareEntryPage } from "./compare-entry-page";
 
 const at = "2026-10-21T06:00:00Z";
 const clients: QueryClient[] = [];
@@ -44,6 +45,7 @@ function document(
     parse_error: null,
     superseded: false,
     created_at: at,
+    parsed_document_id: null,
     text,
     clauses: [],
     parsed_document: {
@@ -205,6 +207,7 @@ function review(
     },
     documents,
     findings: [],
+    review_attempts: null,
     execution: null,
     snapshot: null,
     audit_events: [],
@@ -356,6 +359,12 @@ class CompareService {
       finished_at: null,
     });
     const second = attempt("attempt-z-2", 2);
+    const publicFirst = { ...first, input_hash: null, output_hash: null };
+    const publicSecond = { ...second, input_hash: null, output_hash: null };
+    current.review_attempts = {
+      attempt: publicSecond,
+      attempts: [publicFirst, publicSecond],
+    };
     current.execution = {
       schema_version: "audit-execution/v1",
       attempt: second,
@@ -472,7 +481,10 @@ function CurrentLocation() {
   return <div aria-label="路由查询">{location.search}</div>;
 }
 
-function open(service = new CompareService(), entry = "/compare") {
+function open(
+  service = new CompareService(),
+  entry = "/compare?case_id=case-main",
+) {
   vi.stubGlobal("fetch", vi.fn(service.fetch));
   const client = new QueryClient({
     defaultOptions: {
@@ -485,6 +497,26 @@ function open(service = new CompareService(), entry = "/compare") {
     <QueryClientProvider client={client}>
       <MemoryRouter initialEntries={[entry]}>
         <ComparePage />
+        <CurrentLocation />
+      </MemoryRouter>
+    </QueryClientProvider>,
+  );
+  return { service, user: userEvent.setup() };
+}
+
+function openEntry(service = new CompareService()) {
+  vi.stubGlobal("fetch", vi.fn(service.fetch));
+  const client = new QueryClient({
+    defaultOptions: {
+      queries: { retry: false, gcTime: 0 },
+      mutations: { retry: false },
+    },
+  });
+  clients.push(client);
+  render(
+    <QueryClientProvider client={client}>
+      <MemoryRouter initialEntries={["/compare"]}>
+        <CompareEntryPage />
         <CurrentLocation />
       </MemoryRouter>
     </QueryClientProvider>,
@@ -549,14 +581,8 @@ describe("ComparePage frozen run selection", () => {
         .closest("article"),
     ).toHaveAttribute("data-severity", "unrated");
     expect(screen.getByText("质保修订继续存在")).toBeInTheDocument();
-    expect(
-      screen.getByText(
-        /旧发现 prior-finding，\s*新发现 finding-rule，\s*旧决定 confirm_risk/,
-      ),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText(/旧发现 未报告，\s*新发现 未报告，\s*旧决定 未报告/),
-    ).toBeInTheDocument();
+    expect(screen.getByText(/旧决定\s*确认风险/)).toBeInTheDocument();
+    expect(screen.getByText(/旧决定\s*未报告/)).toBeInTheDocument();
   });
 
   it("honors URL run choices, changes each side independently and clears a previous finding selection", async () => {
@@ -578,7 +604,7 @@ describe("ComparePage frozen run selection", () => {
     expect(
       screen.getByText(/当前运行未将所选历史运行声明为前序/),
     ).toBeInTheDocument();
-    await chooseRun(user, "当前版本", /run-z/);
+    await chooseRun(user, "当前版本", /审查记录 1/);
     await user.click(
       await screen.findByRole("button", { name: /质保期限低于采购要求/ }),
     );
@@ -586,7 +612,7 @@ describe("ComparePage frozen run selection", () => {
       "data-document-version-id",
       "source-z",
     );
-    await chooseRun(user, "当前版本", /run-y/);
+    await chooseRun(user, "当前版本", /审查记录 2/);
     await waitFor(() =>
       expect(material("当前版本")).toHaveAttribute(
         "data-document-version-id",
@@ -594,9 +620,9 @@ describe("ComparePage frozen run selection", () => {
       ),
     );
     expect(
-      screen.queryByRole("link", { name: "打开原文与人工决定" }),
+      screen.queryByRole("link", { name: "打开原文与审查判断" }),
     ).not.toBeInTheDocument();
-    await chooseRun(user, "当前版本", /run-z/);
+    await chooseRun(user, "当前版本", /审查记录 1/);
     await waitFor(() =>
       expect(material("当前版本")).toHaveAttribute(
         "data-document-version-id",
@@ -606,7 +632,7 @@ describe("ComparePage frozen run selection", () => {
     expect(
       screen.getByRole("button", { name: /质保期限低于采购要求/ }),
     ).toHaveAttribute("aria-pressed", "false");
-    await chooseRun(user, "历史版本", /run-z/);
+    await chooseRun(user, "历史版本", /审查记录 1/);
     await waitFor(() =>
       expect(material("历史版本")).toHaveAttribute(
         "data-document-version-id",
@@ -618,66 +644,41 @@ describe("ComparePage frozen run selection", () => {
     ).toHaveAttribute("href", "/cases/case-main/reviews/run-z");
   });
 
-  it("searches case numbers and resets run and material choices when another case is selected", async () => {
-    const { user, service } = open(
-      new CompareService(),
-      "/compare?case_id=case-main&left_run_id=run-y&right_run_id=run-a",
+  it("filters the comparison entry by case number and links each contract into its own comparison", async () => {
+    const { user, service } = openEntry(new CompareService());
+    expect(await screen.findByText("专线合同修订")).toBeInTheDocument();
+    expect(screen.getByText("可对照合同").closest("li")).toHaveTextContent(
+      "可对照合同1",
     );
-    await screen.findByLabelText("当前版本材料解析正文");
-    const cases = within(
-      screen.getByRole("complementary", { name: "对照案件列表" }),
+    const search = screen.getByRole("searchbox", { name: "搜索合同" });
+    await user.type(search, " N-002 ");
+    expect(screen.getByText("专线合同修订")).toBeInTheDocument();
+    expect(screen.queryByText("暂无审查案件")).not.toBeInTheDocument();
+    const mainRow = screen.getByText("专线合同修订").closest("tr")!;
+    expect(within(mainRow).getByRole("link", { name: "开始对照" })).toHaveAttribute(
+      "href",
+      "/compare?case_id=case-main",
     );
-    await user.type(
-      cases.getByRole("searchbox", { name: "搜索案件" }),
-      " N-002 ",
+    expect(within(mainRow).getByRole("link", { name: "打开审查" })).toHaveAttribute(
+      "href",
+      "/cases/case-main/reviews/run-z?attempt_id=attempt-z-2",
     );
-    expect(cases.getAllByRole("button")).toHaveLength(1);
-    expect(cases.getByRole("button", { name: /专线合同修订/ })).toHaveAttribute(
-      "aria-pressed",
-      "true",
+    await user.clear(search);
+    await user.type(search, "没有匹配的编号");
+    expect(screen.getByText("没有匹配的合同")).toBeInTheDocument();
+    await user.clear(search);
+    const emptyRow = screen.getByText("暂无审查案件").closest("tr")!;
+    expect(within(emptyRow).getByRole("link", { name: "开始对照" })).toHaveAttribute(
+      "href",
+      "/compare?case_id=case-empty",
     );
-    await user.clear(cases.getByRole("searchbox", { name: "搜索案件" }));
-    await user.type(
-      cases.getByRole("searchbox", { name: "搜索案件" }),
-      "没有匹配的编号",
+    expect(within(emptyRow).getByRole("link", { name: "案件详情" })).toHaveAttribute(
+      "href",
+      "/cases/case-empty",
     );
-    expect(cases.queryAllByRole("button")).toHaveLength(0);
-    await user.clear(cases.getByRole("searchbox", { name: "搜索案件" }));
-    await user.click(cases.getByRole("button", { name: /暂无审查案件/ }));
-    expect(screen.getByText("此案件尚无持久审查运行。")).toBeInTheDocument();
-    expect(
-      screen.getByRole("link", { name: "打开案件并发起审查" }),
-    ).toHaveAttribute("href", "/cases/case-empty");
-    expect(screen.getByText("此案件尚无持久审查运行。")).toBeInTheDocument();
-    expect(screen.getByLabelText("路由查询")).toHaveTextContent(
-      "?case_id=case-empty",
-    );
-    expect(
-      screen
-        .getAllByRole("combobox", { name: "材料" })
-        .every((select) => (select as HTMLSelectElement).disabled),
-    ).toBe(true);
     expect(
       service.requests.some((path) => path.includes("case-empty/reviews")),
     ).toBe(false);
-    await user.click(cases.getByRole("button", { name: /单次审查案件/ }));
-    await screen.findByLabelText("当前版本材料解析正文");
-    await screen.findByLabelText("历史版本材料解析正文");
-    expect(material("当前版本")).toHaveTextContent("单次审查冻结文本。");
-    expect(material("历史版本")).toHaveTextContent("单次审查冻结文本。");
-    expect(material("当前版本")).toHaveTextContent("单次审查冻结文本。");
-    expect(material("历史版本")).toHaveTextContent("单次审查冻结文本。");
-    await user.click(cases.getByRole("button", { name: /专线合同修订/ }));
-    await waitFor(() =>
-      expect(material("当前版本")).toHaveAttribute(
-        "data-document-version-id",
-        "draft-z",
-      ),
-    );
-    expect(material("历史版本")).toHaveAttribute(
-      "data-document-version-id",
-      "draft-y",
-    );
   });
 
   it("falls back from absent URL case and run identifiers to available frozen records", async () => {
@@ -715,16 +716,17 @@ describe("ComparePage evidence and actual results", () => {
       within(body).getByText("36个月", { selector: "mark" }),
     ).toBeInTheDocument();
     expect(material("历史版本").querySelector("mark")).toBeNull();
-    expect(screen.getByText(/warranty-policy v2，\s*第4条/)).toBeInTheDocument();
+    expect(screen.getByText(/依据版本 2，\s*第4条/)).toBeInTheDocument();
     expect(
-      screen.getByRole("link", { name: "打开原文与人工决定" }),
+      screen.getByRole("link", { name: "打开原文与审查判断" }),
     ).toHaveAttribute(
       "href",
       "/cases/case-main/reviews/run-z?finding=finding-rule",
     );
     await user.click(within(pane).getByText(/版本与来源，\s*已解析/));
-    expect(within(pane).getByText("parse-source-z")).toBeVisible();
-    expect(within(pane).getByText("digest-source-z")).toBeVisible();
+    expect(within(pane).getByText("材料名称").nextElementSibling).toHaveTextContent("source-z.txt");
+    expect(within(pane).queryByText("parse-source-z")).not.toBeInTheDocument();
+    expect(within(pane).queryByText("digest-source-z")).not.toBeInTheDocument();
     expect(
       within(pane).getByRole("link", { name: "读取原件" }),
     ).toHaveAttribute(
@@ -748,6 +750,41 @@ describe("ComparePage evidence and actual results", () => {
       screen.getByRole("button", { name: /质保期限低于采购要求/ }),
     ).toHaveAttribute("aria-pressed", "false");
   });
+
+  it.each([
+    ["matching", "parse-source-z", true],
+    ["different", "parse-other", false],
+  ] as const)(
+    "uses the %s public parse identity without technical metadata",
+    async (_label, parsedDocumentId, matches) => {
+      const service = new CompareService();
+      const workspace = service.reviews.get("run-z")!;
+      const source = workspace.documents.find((item) => item.id === "source-z")!;
+      source.parsed_document = null;
+      source.parsed_document_id = parsedDocumentId;
+      source.digest = "";
+      workspace.findings[0]!.evidence[0]!.normalized_digest = null;
+      const { user } = open(service);
+      await user.click(
+        await screen.findByRole("button", { name: /质保期限低于采购要求/ }),
+      );
+      const body = material("当前版本");
+      expect(body).toHaveAttribute(
+        "data-document-version-id",
+        matches ? "source-z" : "draft-z",
+      );
+      if (matches) {
+        expect(
+          within(body).getByText("36个月", { selector: "mark" }),
+        ).toBeInTheDocument();
+        const pane = body.closest("article")!;
+        await user.click(within(pane).getByText(/版本与来源，\s*已解析/));
+        expect(within(pane).queryByText("parse-source-z")).not.toBeInTheDocument();
+        expect(within(pane).getByText("材料名称").nextElementSibling).toHaveTextContent("source-z.txt");
+        expect(within(pane).queryByText("原件摘要")).not.toBeInTheDocument();
+      } else expect(body.querySelector("mark")).toBeNull();
+    },
+  );
 
   it("preserves mismatching quote snapshots and lets the reader choose other material on both sides", async () => {
     const { user } = open();
@@ -812,7 +849,7 @@ describe("ComparePage evidence and actual results", () => {
         within(riskPanel()).getByText(/36个月/, { selector: "blockquote" }),
       ).toBeInTheDocument();
       expect(
-        screen.getByRole("link", { name: "打开原文与人工决定" }),
+        screen.getByRole("link", { name: "打开原文与审查判断" }),
       ).toBeInTheDocument();
     },
   );
@@ -869,7 +906,7 @@ describe("ComparePage evidence and actual results", () => {
     },
   );
 
-  it("shows rule, execution and usage facts for each selected side without inventing missing values", async () => {
+  it("shows rule and public attempt facts while keeping diagnostics unavailable", async () => {
     const { user } = open();
     await screen.findByText("质保修订继续存在");
     await user.click(screen.getByRole("tab", { name: "规则依据" }));
@@ -879,17 +916,20 @@ describe("ComparePage evidence and actual results", () => {
     );
     expect(screen.getByText(/规则 WARRANTY-001，\s*v2\.1/)).toBeInTheDocument();
     expect(screen.getByText("合同质保低于采购要求")).toBeInTheDocument();
-    expect(screen.getByText("此运行未返回规则评估记录。")).toBeInTheDocument();
+    expect(screen.getByText("没有获取到这次审查的规则检查记录。")).toBeInTheDocument();
     expect(screen.queryByText("质保修订继续存在")).not.toBeInTheDocument();
     await user.click(screen.getByRole("tab", { name: "执行记录" }));
     expect(
-      screen.getByText(/运行 run-z，\s*当前尝试 attempt-z-2，\s*completed/),
+      screen.getByText(/当前第 2 次审查，\s*执行完成/),
     ).toBeInTheDocument();
-    expect(screen.getByText(/尝试数 2，\s*事件数 1/)).toBeInTheDocument();
+    expect(screen.getByText(/尝试数 2，\s*事件数 不可用/)).toBeInTheDocument();
     expect(
-      screen.getByText(/attempt-z-1，\s*第 1 次，\s*failed，\s*结束时间未报告/),
+      screen.getByText(/第 1 次，\s*失败，\s*结束时间未报告/),
     ).toBeInTheDocument();
     expect(screen.getByText("此运行没有返回执行记录。")).toBeInTheDocument();
+    const page = screen.getByLabelText("审查结果").closest("section")!;
+    for (const id of ["run-z", "attempt-z-1", "attempt-z-2", "case-main"])
+      expect(page).not.toHaveTextContent(id);
     await user.click(screen.getByRole("tab", { name: "模型用量" }));
     const left = screen
       .getByRole("heading", { name: "左侧运行" })
@@ -901,15 +941,53 @@ describe("ComparePage evidence and actual results", () => {
       within(left)
         .getAllByRole("definition")
         .map((item) => item.textContent),
-    ).toEqual(["2", "120", "30", "150", "未知"]);
+    ).toEqual(["不可用", "不可用", "不可用", "不可用", "不可用"]);
     expect(
       within(right)
         .getAllByRole("definition")
         .map((item) => item.textContent),
-    ).toEqual(["未知", "未知", "未知", "未知", "未知"]);
+    ).toEqual(["不可用", "不可用", "不可用", "不可用", "不可用"]);
+    expect(within(left).getByRole("link", { name: "审查工作区" })).toHaveAttribute(
+      "href",
+      "/cases/case-main/reviews/run-z?attempt_id=attempt-z-2",
+    );
     await user.click(screen.getByRole("tab", { name: "修订证据" }));
     expect(screen.getByText("质保修订继续存在")).toBeInTheDocument();
   });
+
+  it.each(["unavailable", "for another attempt"] as const)(
+    "shows public attempt history when diagnostics are %s",
+    async (diagnostics) => {
+      const service = new CompareService();
+      const current = service.reviews.get("run-z")!;
+      if (diagnostics === "unavailable") current.execution = null;
+      else current.execution!.attempt = attempt("attempt-other", 3);
+      const { user } = open(service);
+      await screen.findByText("质保修订继续存在");
+      await user.click(screen.getByRole("tab", { name: "执行记录" }));
+      const left = screen
+        .getByRole("heading", { name: "左侧运行" })
+        .closest("section")!;
+      expect(
+        within(left).getByText(/当前第 2 次审查，\s*执行完成/),
+      ).toBeInTheDocument();
+      expect(
+        within(left).getByText(/尝试数 2，\s*事件数 不可用/),
+      ).toBeInTheDocument();
+      expect(
+        within(left).getByText(/第 1 次，\s*失败/),
+      ).toBeInTheDocument();
+      await user.click(screen.getByRole("tab", { name: "模型用量" }));
+      const usage = screen
+        .getByRole("heading", { name: "左侧运行" })
+        .closest("section")!;
+      expect(
+        within(usage)
+          .getAllByRole("definition")
+          .map((item) => item.textContent),
+      ).toEqual(["不可用", "不可用", "不可用", "不可用", "不可用"]);
+    },
+  );
 
   it.each([
     {
@@ -936,7 +1014,10 @@ describe("ComparePage unavailable data", () => {
     service.data.cases = [];
     service.data.runs = [];
     open(service);
-    await screen.findByRole("heading", { name: /合同案件 0/ });
+    expect(await screen.findByRole("link", { name: "全部合同" })).toHaveAttribute(
+      "href",
+      "/compare",
+    );
     expect(screen.getByRole("link", { name: "案件详情" })).toHaveAttribute(
       "href",
       "/cases",
@@ -944,7 +1025,7 @@ describe("ComparePage unavailable data", () => {
     expect(
       screen.getByRole("link", { name: "打开审查与决定" }),
     ).toHaveAttribute("href", "/review");
-    expect(screen.getAllByText("选择实际运行后查看冻结材料。")).toHaveLength(2);
+    expect(screen.getAllByText("选择审查记录后，查看当时使用的材料。")).toHaveLength(2);
     expect(
       screen.getByText("此运行没有返回发现；不代表合同已批准。"),
     ).toBeInTheDocument();
@@ -978,7 +1059,7 @@ describe("ComparePage unavailable data", () => {
     service.reviewGates.set("run-z", gate);
     open(service);
     await screen.findByLabelText("历史版本材料解析正文");
-    expect(screen.getByText("正在读取冻结工作区…")).toHaveAttribute(
+    expect(screen.getByText("正在读取所选审查的记录…")).toHaveAttribute(
       "role",
       "status",
     );
@@ -990,7 +1071,7 @@ describe("ComparePage unavailable data", () => {
       await screen.findByLabelText("当前版本材料解析正文"),
     ).toHaveAttribute("data-document-version-id", "draft-z");
     await waitFor(() =>
-      expect(screen.queryByText("正在读取冻结工作区…")).not.toBeInTheDocument(),
+      expect(screen.queryByText("正在读取所选审查的记录…")).not.toBeInTheDocument(),
     );
   });
 
@@ -1010,7 +1091,7 @@ describe("ComparePage unavailable data", () => {
     await chooseOption(
       user,
       screen.getByRole("combobox", { name: "当前版本" }),
-      /run-y/,
+      /审查记录 2/,
     );
     expect(
       await screen.findByLabelText("当前版本材料解析正文"),

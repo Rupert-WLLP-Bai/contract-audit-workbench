@@ -28,7 +28,7 @@ import type {
 
 function invalid(message: string): never {
   throw new ApiError(
-    `工作台快照无效：${message}`,
+    `工作台数据无效：${message}`,
     500,
     "invalid_response",
     false,
@@ -168,8 +168,11 @@ function knowledge(value: unknown): Knowledge {
   const sourceType = string(record, "source_type");
   if (sourceType !== "synthetic_policy" && sourceType !== "reference")
     return invalid("知识来源类型无效");
+  const versionId = string(record, "version_id");
+  if (!versionId) return invalid("知识版本标识为空");
   return {
     id: string(record, "id"),
+    version_id: versionId,
     title: string(record, "title"),
     version: string(record, "version"),
     body: string(record, "body"),

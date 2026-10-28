@@ -56,6 +56,7 @@ type Config struct {
 	MaxBackoff     time.Duration
 	Subject        string
 	Stream         string
+	Replicas       int
 }
 
 // FromEnv reads the relay configuration. It returns a disabled configuration
@@ -66,7 +67,7 @@ func FromEnv() (Config, error) {
 		Owner: strings.TrimSpace(os.Getenv("OUTBOX_RELAY_OWNER")),
 		Batch: defaultBatch, Lease: defaultLease, Poll: defaultPoll,
 		PublishTimeout: defaultPublishTimeout, MaxBackoff: defaultMaxBackoff,
-		Subject: Subject, Stream: Stream,
+		Subject: Subject, Stream: Stream, Replicas: 1,
 	}
 	if config.Owner == "" {
 		host, err := os.Hostname()
@@ -81,6 +82,16 @@ func FromEnv() (Config, error) {
 			return Config{}, errors.New("OUTBOX_RELAY_BATCH must be an integer in 1..512")
 		}
 		config.Batch = value
+	}
+	// Replicas is the JetStream stream replication factor, not the number of
+	// broker servers. Leave it at 1 for a single-node local broker and set 3
+	// only after the peer set exists.
+	if raw := strings.TrimSpace(os.Getenv("NATS_STREAM_REPLICAS")); raw != "" {
+		value, err := strconv.Atoi(raw)
+		if err != nil || value < 1 || value > 5 {
+			return Config{}, errors.New("NATS_STREAM_REPLICAS must be an integer in 1..5")
+		}
+		config.Replicas = value
 	}
 	for _, item := range []struct {
 		name   string
@@ -147,7 +158,8 @@ func New(st Store, broker Broker, config Config) (*Relay, error) {
 		return nil, errors.New("outbox relay requires a broker URL")
 	}
 	if config.Batch < 1 || config.Lease <= leaseSafetyMargin || config.Poll <= 0 || config.PublishTimeout <= 0 ||
-		config.MaxBackoff <= 0 || config.PublishTimeout > config.Lease-leaseSafetyMargin || config.Subject == "" {
+		config.MaxBackoff <= 0 || config.PublishTimeout > config.Lease-leaseSafetyMargin || config.Subject == "" ||
+		config.Replicas < 1 || config.Replicas > 5 {
 		return nil, errors.New("outbox relay configuration is incomplete or invalid")
 	}
 	return &Relay{store: st, broker: broker, config: config, backoff: map[string]time.Duration{}}, nil

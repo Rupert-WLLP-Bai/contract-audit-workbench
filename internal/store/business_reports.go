@@ -19,13 +19,23 @@ import (
 
 const (
 	businessReportSchema = "case-report/v1"
-	businessReportHTML   = `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'"><meta name="viewport" content="width=device-width, initial-scale=1"><title>{{.CaseTitle}}</title><style>body{font-family:system-ui,sans-serif;max-width:72rem;margin:2rem auto;padding:0 1rem;color:#17212b}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#f4f6f8;padding:1rem;border-radius:.5rem}</style></head><body><h1>{{.CaseTitle}}</h1><p>本报告记录技术审查快照，不构成法律意见或业务审批。</p><pre>{{.ReportJSON}}</pre></body></html>`
+	businessReportHTML   = `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'"><meta name="viewport" content="width=device-width, initial-scale=1"><title>{{.CaseTitle}}</title><style>body{font-family:system-ui,sans-serif;max-width:72rem;margin:2rem auto;padding:0 1rem;color:#17212b}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#f4f6f8;padding:1rem;border-radius:.5rem}</style></head><body><h1>{{.CaseTitle}}</h1><p>本报告记录本次技术审查的内容，不构成法律意见或业务审批。</p><pre>{{.ReportJSON}}</pre></body></html>`
 )
 
 // CreateReport appends immutable JSON and escaped HTML for one exact terminal
 // attempt. Later decisions produce a different report identity and never edit
 // these bytes.
 func (s *Store) CreateReport(user accounts.User, caseID, runID, attemptID string) (ReportRecord, error) {
+	return s.CreateReportContext(context.Background(), user, caseID, runID, attemptID)
+}
+
+// CreateReportContext is the request-scoped form. It lets a caller cancel the
+// object-integrity and agent-review reads when the HTTP request is gone while
+// keeping the existing CreateReport signature for internal and test callers.
+func (s *Store) CreateReportContext(ctx context.Context, user accounts.User, caseID, runID, attemptID string) (ReportRecord, error) {
+	if err := ctx.Err(); err != nil {
+		return ReportRecord{}, err
+	}
 	if s.ReadOnly() {
 		return ReportRecord{}, fault.New(503, "read_only", "只读模式下不能创建报告")
 	}
@@ -35,7 +45,7 @@ func (s *Store) CreateReport(user accounts.User, caseID, runID, attemptID string
 	}
 	caseID, runID, attemptID = strings.TrimSpace(caseID), strings.TrimSpace(runID), strings.TrimSpace(attemptID)
 	if caseID == "" || runID == "" || attemptID == "" {
-		return ReportRecord{}, fault.Invalid("报告需要明确的案件、运行和尝试")
+		return ReportRecord{}, fault.Invalid("生成报告需要指定案件、审查和执行记录")
 	}
 	st, err := s.snapshotAs(currentUser)
 	if err != nil {
@@ -60,7 +70,7 @@ func (s *Store) CreateReport(user accounts.User, caseID, runID, attemptID string
 	}
 	executionView := selectedExecution(st, runID, attemptID)
 	if executionView == nil {
-		return ReportRecord{}, fault.Conflict("选定尝试缺少执行快照")
+		return ReportRecord{}, fault.Conflict("所选执行记录缺少已保存的执行信息")
 	}
 	execution := reportExecution{
 		SchemaVersion: executionView.SchemaVersion, Events: append([]ExecutionEvent{}, executionView.Events...),
@@ -85,13 +95,13 @@ func (s *Store) CreateReport(user accounts.User, caseID, runID, attemptID string
 		parsed, ok := st.parsedByID(frozen.ParsedDocumentID)
 		if !ok || parsed.DocumentID != frozen.Document.ID || parsed.OriginalDigest != frozen.Document.Digest ||
 			parsed.ArtifactDigest != frozen.ParsedArtifactDigest {
-			return ReportRecord{}, fault.Conflict("报告材料与选定尝试的冻结解析身份不匹配")
+			return ReportRecord{}, fault.Conflict("报告材料与所选执行记录保存的解析结果不一致")
 		}
 		// Recorded identity is not proof of content: a read may carry an artifact
 		// whose stored payload failed verification. Re-verify against the row before
 		// freezing it into a report.
-		if err := s.verifyParsedRecordContext(context.Background(), parsed, frozen.Document); err != nil {
-			return ReportRecord{}, fault.Conflict("报告材料的解析产物完整性校验失败")
+		if err := s.verifyParsedRecordContext(ctx, parsed, frozen.Document); err != nil {
+			return ReportRecord{}, fault.Conflict("报告材料的解析结果未通过完整性校验")
 		}
 		parsedDocs = append(parsedDocs, reportDocument{Document: frozen.Document, Parsed: parsed})
 	}
@@ -109,12 +119,12 @@ func (s *Store) CreateReport(user accounts.User, caseID, runID, attemptID string
 	} else {
 		manifestBytes, err = manifestSnapshot(attempt.RulePackSnapshot)
 		if err != nil {
-			return ReportRecord{}, fault.Conflict("选定尝试的 RulePack 快照损坏")
+			return ReportRecord{}, fault.Conflict("所选执行记录保存的规则包已损坏")
 		}
 	}
 	// The five-domain projection is read from this attempt's persisted record only;
 	// it is never recomputed for the report, and an absent record stays null.
-	agentReviewJSON, hasAgentReview, err := s.AgentReviewForAttempt(context.Background(), currentUser, caseID, runID, attemptID)
+	agentReviewJSON, hasAgentReview, err := s.AgentReviewForAttempt(ctx, currentUser, caseID, runID, attemptID)
 	if err != nil {
 		return ReportRecord{}, err
 	}
@@ -166,7 +176,7 @@ func (s *Store) CreateReport(user accounts.User, caseID, runID, attemptID string
 			*currentAttempt.InputHash != record.InputHash || *currentAttempt.OutputHash != record.OutputHash ||
 			currentAttempt.RulePackHash != attempt.RulePackHash || currentAttempt.RulePackSnapshotDigest != attempt.RulePackSnapshotDigest ||
 			currentAttempt.RulePackCompilerRef != attempt.RulePackCompilerRef {
-			return fault.Conflict("选定尝试在报告创建期间发生变化")
+			return fault.Conflict("所选执行记录在生成报告期间发生变化")
 		}
 		currentFindings := next.findingsForAttempt(runID, attemptID)
 		currentDecisionHash, err := canonicalHash(decisionsForFindings(*next, currentFindings))
@@ -213,7 +223,7 @@ func (s *Store) ReadReport(user accounts.User, caseID, reportID, format string) 
 			continue
 		}
 		if reportDigest(report.JSONBytes, report.HTMLBytes) != report.Record.Digest {
-			return ReportRecord{}, nil, fault.Conflict("冻结报告摘要校验失败")
+			return ReportRecord{}, nil, fault.Conflict("保存的报告未通过摘要校验")
 		}
 		body := report.JSONBytes
 		if format == "html" {
@@ -351,7 +361,7 @@ func manifestSnapshot(raw []byte) (json.RawMessage, error) {
 	}
 	encoded, err := pack.Snapshot()
 	if err != nil || !bytes.Equal(raw, encoded) {
-		return nil, fault.Conflict("RulePack 快照不是规范化冻结字节")
+		return nil, fault.Conflict("保存的规则包内容不符合规范格式")
 	}
 	return append(json.RawMessage(nil), raw...), nil
 }

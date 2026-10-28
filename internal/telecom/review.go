@@ -533,6 +533,9 @@ func validateFrozenTelecomPack(request rulepack.Request, pack *rulepack.Pack) er
 	for _, rule := range manifest.Rules {
 		definition, mandatory := required[rule.RuleID]
 		if !mandatory {
+			if request.Scenario == "cloud_services" {
+				return rulepack.ErrInvalidManifest
+			}
 			continue
 		}
 		if !rule.Mandatory || rule.Comparator != definition.comparator || rule.Domain != definition.domain || rule.CapabilityID != definition.capability ||
@@ -565,21 +568,7 @@ func ValidateCloudServicesRulePack(snapshot []byte) error {
 }
 
 func validCloudRule(rule rulepack.Rule) bool {
-	wantValue, wantUnit, wantBasis := "", "", ""
-	switch rule.RuleID {
-	case "CLOUD-TECH-BW-001":
-		wantValue, wantUnit = "1000", "Mbit/s"
-	case "CLOUD-TECH-SLA-001":
-		wantValue, wantUnit = "9995/100", "percent"
-	case "CLOUD-COM-ADV-001":
-		wantValue, wantUnit, wantBasis = "3/10", "ratio", "contract_total"
-	default:
-		return false
-	}
-	value, valueOK := new(big.Rat).SetString(rule.Threshold.Value)
-	want, wantOK := new(big.Rat).SetString(wantValue)
-	if !valueOK || !wantOK || value.Cmp(want) != 0 || rule.Threshold.Unit != wantUnit || rule.Threshold.Basis != wantBasis ||
-		rule.RequiredFact.SourceRoles == nil || len(rule.RequiredFact.SourceRoles) != 1 || rule.RequiredFact.SourceRoles[0] != "draft_contract" ||
+	if len(rule.RequiredFact.SourceRoles) != 1 || rule.RequiredFact.SourceRoles[0] != "draft_contract" ||
 		!rule.RequiredFact.ObjectRequired || rule.RequiredFact.Dimension == "" || rule.RequiredFact.UnitFamily == "" {
 		return false
 	}
@@ -602,7 +591,7 @@ func validCloudRule(rule rulepack.Rule) bool {
 		}
 	}
 	for _, source := range rule.AuthoritySources {
-		if source.ID == "cloud-procurement-policy" && source.Version == "1.0.0" && source.Kind == "synthetic_demo" {
+		if source.Kind == "internal_policy" || source.Kind == "synthetic_demo" {
 			return true
 		}
 	}

@@ -294,10 +294,10 @@ describe("AgentReview Inspector", () => {
       </MemoryRouter>,
     );
     expect(
-      screen.getByText(/从冻结材料抽取审批或授权原文/),
+      screen.getByText(/从本次审查使用的材料中提取审批或授权原文/),
     ).toBeInTheDocument();
     expect(
-      screen.getByText(/当前界面没有此能力的支持说明/),
+      screen.getByText(/当前没有这一检查项目的说明/),
     ).toBeInTheDocument();
     const nextStepLinks = screen.getAllByRole("link", {
       name: "查看案件材料并补证后新建审查",
@@ -327,7 +327,7 @@ describe("AgentReview Inspector", () => {
       screen.getByRole("region", { name: "范围、支持表达与证据覆盖" }),
     );
     expect(scope.getByText("approval_validity")).toBeInTheDocument();
-    expect(scope.getByText(/不使用当前日期补值/)).toBeInTheDocument();
+    expect(scope.getByText(/不能用当前日期代替/)).toBeInTheDocument();
     expect(
       scope.getByText(/原因：approval_period_dates_unverified/),
     ).toBeInTheDocument();
@@ -513,8 +513,126 @@ describe("AgentReview Inspector", () => {
       </MemoryRouter>,
     );
     expect(
-      screen.getByText(/attempt ID 与当前执行快照不一致/),
+      screen.getByText(/检查记录所属的执行编号与当前选择的执行记录不一致/),
     ).toBeInTheDocument();
     expect(screen.queryByText(/规划器模式/)).not.toBeInTheDocument();
+  });
+
+  it("shows ordering suggestions without turning them into conclusions", () => {
+    const review = reviewWithUnsupportedCapability();
+    review.knowledge_selection = {
+      snapshot_sha256: "a".repeat(64),
+      algorithm: "chinese-bigram-label/v1",
+      policy_status: "available",
+      policy_reason: "",
+      advisory: {
+        mode: "advisory",
+        feature: "knowledge_rerank",
+        provider: "model-gateway",
+        configuration_id: "b".repeat(64),
+        model_requested: "jev-1.14.0",
+        model_observed: "jev-1.14.0",
+        question_set_version: "knowledge-relevance/v1",
+        egress: "minimized",
+        request_sha256: "c".repeat(64),
+        judgment_id: "d".repeat(64),
+        status: "completed",
+        error_code: null,
+        truncated: false,
+        candidates: [
+          {
+            knowledge_id: "guide-b",
+            version_id: "v1",
+            content_sha256: "e".repeat(64),
+            alias: "candidate_0",
+            probability: 0.9,
+            band: "relevant",
+            rank_before: 2,
+            rank_after: 1,
+            reason: null,
+          },
+          {
+            knowledge_id: "guide-a",
+            version_id: "v1",
+            content_sha256: "f".repeat(64),
+            alias: "candidate_1",
+            probability: 0.1,
+            band: "not_relevant",
+            rank_before: 1,
+            rank_after: 2,
+            reason: null,
+          },
+        ],
+      },
+    };
+    render(
+      <MemoryRouter>
+        <AgentReviewInspector
+          agentReview={review}
+          caseId="case-1"
+          attemptId="attempt-1"
+          executionEvents={[]}
+        />
+      </MemoryRouter>,
+    );
+    const region = within(
+      screen.getByRole("region", { name: "治理知识与排序建议" }),
+    );
+    expect(
+      region.getByText(/Jev 建议排序，不改变结论/),
+    ).toBeInTheDocument();
+    expect(region.getByText("建议已生成")).toBeInTheDocument();
+    expect(region.getByText("guide-b")).toBeInTheDocument();
+    expect(
+      region.getByText(/确定性排序第 2 位，建议排序第 1 位/),
+    ).toBeInTheDocument();
+    expect(region.getByText(/不是正确率，也不是风险结论/)).toBeInTheDocument();
+  });
+
+  it("shows the deterministic fallback when the advisory is unavailable", () => {
+    const review = reviewWithUnsupportedCapability();
+    review.knowledge_selection = {
+      snapshot_sha256: "a".repeat(64),
+      algorithm: "chinese-bigram-label/v1",
+      policy_status: "unknown",
+      policy_reason: "policy_missing",
+      advisory: {
+        mode: "advisory",
+        feature: "knowledge_rerank",
+        provider: "model-gateway",
+        configuration_id: "b".repeat(64),
+        model_requested: "jev-1.14.0",
+        model_observed: null,
+        question_set_version: "knowledge-relevance/v1",
+        egress: "minimized",
+        request_sha256: null,
+        judgment_id: null,
+        status: "unavailable",
+        error_code: "provider_timeout",
+        truncated: false,
+        candidates: [],
+      },
+    };
+    render(
+      <MemoryRouter>
+        <AgentReviewInspector
+          agentReview={review}
+          caseId="case-1"
+          attemptId="attempt-1"
+          executionEvents={[]}
+        />
+      </MemoryRouter>,
+    );
+    const region = within(
+      screen.getByRole("region", { name: "治理知识与排序建议" }),
+    );
+    expect(region.getByText("建议不可用")).toBeInTheDocument();
+    expect(region.getByText("provider_timeout")).toBeInTheDocument();
+    expect(
+      region.getByText(/按确定性顺序回退/),
+    ).toBeInTheDocument();
+    expect(
+      region.getByText(/排序保持确定性顺序/),
+    ).toBeInTheDocument();
   });
 });

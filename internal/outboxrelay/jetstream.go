@@ -41,21 +41,33 @@ func Dial(ctx context.Context, config Config) (*JetStreamBroker, error) {
 		conn.Close()
 		return nil, err
 	}
-	stream, err := js.CreateOrUpdateStream(ctx, jetstream.StreamConfig{
-		Name:        config.Stream,
-		Subjects:    []string{config.Subject},
-		Retention:   jetstream.LimitsPolicy,
-		Storage:     jetstream.FileStorage,
-		MaxAge:      24 * time.Hour,
-		MaxMsgs:     100_000,
-		Duplicates:  2 * time.Minute,
-		Description: "contract-audit outbox notifications (advisory wake-ups; PostgreSQL is authoritative)",
-	})
+	stream, err := js.CreateOrUpdateStream(ctx, streamConfig(config))
 	if err != nil {
 		conn.Close()
 		return nil, err
 	}
 	return &JetStreamBroker{conn: conn, js: js, stream: stream}, nil
+}
+
+// streamConfig keeps the stream's replication factor explicit. A three-server
+// NATS cluster does not make the stream replicated by itself; Replicas must be
+// set to 3 on a cluster with three peers.
+func streamConfig(config Config) jetstream.StreamConfig {
+	replicas := config.Replicas
+	if replicas < 1 {
+		replicas = 1
+	}
+	return jetstream.StreamConfig{
+		Name:        config.Stream,
+		Subjects:    []string{config.Subject},
+		Retention:   jetstream.LimitsPolicy,
+		Storage:     jetstream.FileStorage,
+		Replicas:    replicas,
+		MaxAge:      24 * time.Hour,
+		MaxMsgs:     100_000,
+		Duplicates:  2 * time.Minute,
+		Description: "contract-audit outbox notifications (advisory wake-ups; PostgreSQL is authoritative)",
+	}
 }
 
 // Publish stores one notification with the outbox row id as its message id, so

@@ -1,3 +1,4 @@
+import { useRef } from "react";
 import {
   useMutation,
   useQuery,
@@ -5,7 +6,7 @@ import {
   type QueryClient,
 } from "@tanstack/react-query";
 import * as api from "./endpoints";
-import { setSessionIdentity } from "./http";
+import { isForbidden, isUnauthenticated, setSessionIdentity } from "./http";
 import type {
   Actor,
   ArchiveInput,
@@ -22,6 +23,7 @@ import type {
   WorkbenchTaskUpdateInput,
   CaseRelationInput,
   KnowledgeInput,
+  ReviewWorkspace,
 } from "./types";
 import { isActiveAttemptState } from "../domain/review";
 import type { RulePackManifestInput, RulePackTestInput } from "./rulepacks";
@@ -36,6 +38,8 @@ export const queryKeys = {
     ["cases", caseId, "reviews", runId] as const,
   review: (caseId: string, runId: string, attemptId?: string | null) =>
     [...queryKeys.reviewPrefix(caseId, runId), attemptId ?? null] as const,
+  reviewDiagnostics: (caseId: string, runId: string, attemptId?: string | null) =>
+    [...queryKeys.reviewPrefix(caseId, runId), "diagnostics", attemptId ?? null] as const,
   reviewHistory: (caseId: string, latestRunId: string) =>
     ["cases", caseId, "review-history", latestRunId] as const,
   templates: ["templates"] as const,
@@ -196,11 +200,11 @@ export function useCreateKnowledge() {
   });
 }
 
-export function useKnowledge(knowledgeId: string) {
+export function useKnowledge(knowledgeId: string, versionId: string) {
   return useQuery({
-    queryKey: ["knowledge", knowledgeId] as const,
-    queryFn: ({ signal }) => api.getKnowledge(knowledgeId, signal),
-    enabled: knowledgeId !== "",
+    queryKey: ["knowledge", knowledgeId, versionId] as const,
+    queryFn: ({ signal }) => api.getKnowledge(knowledgeId, versionId, signal),
+    enabled: knowledgeId !== "" && versionId !== "",
   });
 }
 
@@ -267,7 +271,7 @@ export function useReparse(caseId: string) {
 export function useStartReview(caseId: string) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: () => api.startReview(caseId),
+    mutationFn: (input: { business_at?: string }) => api.startReview(caseId, input),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: queryKeys.case(caseId) });
     },
@@ -278,15 +282,63 @@ export function useReview(
   caseId: string,
   runId: string,
   attemptId?: string | null,
+  streamLive = false,
 ) {
+  const polling = useRef<{
+    scope: string;
+    data: ReviewWorkspace | undefined;
+    updateCount: number;
+    unchanged: number;
+    wasLive: boolean;
+  }>({ scope: "", data: undefined, updateCount: 0, unchanged: 0, wasLive: false });
   return useQuery({
     queryKey: queryKeys.review(caseId, runId, attemptId),
     queryFn: ({ signal }) => api.getReview(caseId, runId, attemptId, signal),
     enabled: caseId !== "" && runId !== "",
     refetchInterval: (query) => {
-      const attempt = query.state.data?.execution?.attempt;
-      return attempt && isActiveAttemptState(attempt.state) ? 2_000 : false;
+      if (isForbidden(query.state.error) || isUnauthenticated(query.state.error)) return false;
+      const data = query.state.data;
+      const state = data?.review_attempts?.attempt.state ?? data?.run.state;
+      if (!state || !isActiveAttemptState(state)) return false;
+      const scope = JSON.stringify([caseId, runId, attemptId ?? null]);
+      if (polling.current.scope !== scope) {
+        polling.current = { scope, data: undefined, updateCount: 0, unchanged: 0, wasLive: false };
+      }
+      const previous = polling.current;
+      if (streamLive) {
+        polling.current = { scope, data, updateCount: query.state.dataUpdateCount, unchanged: 0, wasLive: true };
+        // A live stream drives immediate refreshes; this is only a safety read.
+        return 30_000;
+      }
+      if (previous.wasLive) {
+        polling.current = { scope, data, updateCount: query.state.dataUpdateCount, unchanged: 0, wasLive: false };
+      } else if (previous.updateCount !== query.state.dataUpdateCount) {
+        // React Query retains the data reference for structurally identical reads.
+        // Only completed unchanged reads advance the bounded 2/4/8s backoff.
+        polling.current = {
+          scope,
+          data,
+          updateCount: query.state.dataUpdateCount,
+          unchanged: previous.data === data ? Math.min(previous.unchanged + 1, 2) : 0,
+          wasLive: false,
+        };
+      }
+      return 2_000 * 2 ** polling.current.unchanged;
     },
+  });
+}
+
+export function useReviewDiagnostics(
+  caseId: string,
+  runId: string,
+  attemptId: string | null,
+  enabled: boolean,
+) {
+  return useQuery({
+    queryKey: queryKeys.reviewDiagnostics(caseId, runId, attemptId),
+    queryFn: ({ signal }) => api.getReviewDiagnostics(caseId, runId, attemptId, signal),
+    enabled: enabled && caseId !== "" && runId !== "",
+    retry: false,
   });
 }
 

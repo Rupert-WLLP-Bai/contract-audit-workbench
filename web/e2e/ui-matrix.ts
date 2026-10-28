@@ -1,3 +1,4 @@
+import { chromiumExecutable } from "./chromium";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
@@ -135,7 +136,7 @@ const targets: Target[] = [
         await inspector.locator(":scope > summary.execution-inspector-summary").click();
       }
       await page.locator(".execution-inspector-body").waitFor({ state: "visible", timeout: readyTimeout });
-      await page.locator('.execution-inspector-body select[aria-label="查看尝试"]').waitFor({ state: "visible", timeout: readyTimeout });
+      await page.locator('.execution-inspector-body select[aria-label="查看执行记录"]').waitFor({ state: "visible", timeout: readyTimeout });
     },
   },
   {
@@ -333,7 +334,7 @@ async function persistManifest(): Promise<void> {
     server_sha: serverSHA === "" ? "NOT_RECORDED" : serverSHA,
     execution_sha: executionSHA === "" ? "NOT_RECORDED" : executionSHA,
     browser: "Chromium",
-    executable: process.env.CHROMIUM_BIN || "/usr/bin/chromium",
+    executable: chromiumExecutable(),
     web,
     admin: adminSite === "" ? "NOT_RUN" : adminSite,
     portal: portalSite === "" ? "NOT_RUN" : portalSite,
@@ -347,7 +348,7 @@ async function persistManifest(): Promise<void> {
 }
 const browser = await chromium.launch({
   headless: true,
-  executablePath: process.env.CHROMIUM_BIN || "/usr/bin/chromium",
+  executablePath: chromiumExecutable(),
   args: ["--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu"],
 });
 const page = await browser.newPage({ viewport: { width: VIEWPORTS[0].width, height: VIEWPORTS[0].height } });

@@ -14,6 +14,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"log/slog"
 	"net"
 	"net/http"
 	"os"
@@ -66,6 +67,10 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo})).With(
+		"service", "audit-worker", "service.instance.id", bootstrap.InstanceID(), "worker_id", workerID,
+	))
+	slog.Info("worker starting", "database", app.Selection.Database.Name)
 	lease, err := durationEnv("WORKER_LEASE_DURATION", defaultLease)
 	if err != nil {
 		return err
@@ -78,8 +83,8 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	// A broker wake-up only shortens an idle poll: the authoritative claim is
-	// always taken from PostgreSQL, so a missed notification cannot lose work.
+	// NATS only wakes an idle worker. Jobs are always claimed from PostgreSQL,
+	// so a missed notification cannot lose work.
 	relayConfig, err := outboxrelay.FromEnv()
 	if err != nil {
 		return err
@@ -158,6 +163,8 @@ func claimJobs(ctx context.Context, st *store.Store, workerID string, lease, hea
 		if err != nil {
 			return err
 		}
+		slog.Info("review job claimed", "job_id", claim.JobID, "run_id", claim.RunID,
+			"attempt_id", claim.AttemptID, "generation", claim.Generation)
 		jobCtx, cancel := context.WithCancel(ctx)
 		heartbeatDone := make(chan error, 1)
 		go func() { heartbeatDone <- renewLease(jobCtx, cancel, st, claim, lease, heartbeat) }()
@@ -168,10 +175,15 @@ func claimJobs(ctx context.Context, st *store.Store, workerID string, lease, hea
 			return ctx.Err()
 		}
 		if runErr != nil && !errors.Is(runErr, context.Canceled) && !errors.Is(runErr, store.ErrLeaseLost) {
-			log.Printf("job %s generation %d: %v", claim.JobID, claim.Generation, runErr)
+			slog.Error("review job failed", "job_id", claim.JobID, "run_id", claim.RunID,
+				"attempt_id", claim.AttemptID, "generation", claim.Generation, "error", runErr)
+		} else {
+			slog.Info("review job finished", "job_id", claim.JobID, "run_id", claim.RunID,
+				"attempt_id", claim.AttemptID, "generation", claim.Generation)
 		}
 		if heartbeatErr != nil && !errors.Is(heartbeatErr, context.Canceled) && !errors.Is(heartbeatErr, store.ErrLeaseLost) {
-			log.Printf("job %s heartbeat: %v", claim.JobID, heartbeatErr)
+			slog.Error("review job heartbeat failed", "job_id", claim.JobID, "run_id", claim.RunID,
+				"attempt_id", claim.AttemptID, "generation", claim.Generation, "error", heartbeatErr)
 		}
 	}
 }

@@ -13,7 +13,6 @@ import (
 
 	"contractaudit/internal/accounts"
 	"contractaudit/internal/rulepack"
-	"contractaudit/internal/telecom"
 )
 
 // agentReviewFixture opens one durable execution-owned attempt ready to receive
@@ -22,6 +21,8 @@ func agentReviewFixture(t *testing.T) (*Store, JobClaim, string, string) {
 	t.Helper()
 	st, admin := openExecutionStore(t)
 	st.UseModels(&frozenOCRModel{})
+	pack := publishSyntheticAcceptancePack(t, st, admin)
+	publishSyntheticAcceptancePolicy(t, st, admin, pack)
 	caseID, err := st.CreateCaseWithBusiness(admin, "智能审查记录", "service", "ENT", "telecom_dedicated_line")
 	if err != nil {
 		t.Fatal(err)
@@ -34,7 +35,7 @@ func agentReviewFixture(t *testing.T) (*Store, JobClaim, string, string) {
 			t.Fatal(err)
 		}
 	}
-	accepted, err := st.StartReviewAsync(context.Background(), admin, caseID)
+	accepted, err := st.StartReviewAsyncAt(context.Background(), admin, caseID, acceptanceBusinessTime)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -251,6 +252,8 @@ func sha256HexString(raw []byte) string {
 func TestFrozenPlannerConfigurationReconstructsApprovedPayload(t *testing.T) {
 	st, admin := openExecutionStore(t)
 	st.UseModels(&frozenOCRModel{})
+	pack := publishSyntheticAcceptancePack(t, st, admin)
+	publishSyntheticAcceptancePolicy(t, st, admin, pack)
 	caseID, err := st.CreateCaseWithBusiness(admin, "冻结规划器重建", "service", "ENT", "telecom_dedicated_line")
 	if err != nil {
 		t.Fatal(err)
@@ -263,7 +266,7 @@ func TestFrozenPlannerConfigurationReconstructsApprovedPayload(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	runID, err := st.StartReview(context.Background(), admin, caseID)
+	runID, err := st.StartReviewAt(context.Background(), admin, caseID, acceptanceBusinessTime)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -426,13 +429,13 @@ func TestReportEmbedsPersistedAgentReview(t *testing.T) {
 		t.Fatal(err)
 	}
 	frozenAttempt := workspace.Execution.Attempt
-	if frozenAttempt.RulePackCompilerRef != telecom.CompilerRef || frozenAttempt.RulePackID != "" ||
-		frozenAttempt.RulePackVersion != "" || frozenAttempt.RulePackPointerRevision != 0 {
-		t.Fatalf("synthetic fixture carried governed RulePack identity: %+v", frozenAttempt)
+	if frozenAttempt.RulePackCompilerRef != governedCompilerMarker || frozenAttempt.RulePackID != "telecom-governed" ||
+		frozenAttempt.RulePackVersion != "1" || frozenAttempt.RulePackPointerRevision != 1 {
+		t.Fatalf("fixture did not retain the published governed RulePack identity: %+v", frozenAttempt)
 	}
 	frozenPack, err := rulepack.Parse(frozenAttempt.RulePackSnapshot)
 	if err != nil {
-		t.Fatalf("parse frozen synthetic RulePack manifest: %v", err)
+		t.Fatalf("parse frozen governed RulePack manifest: %v", err)
 	}
 	manifest := frozenPack.Manifest()
 	if frozenPack.Hash() != frozenAttempt.RulePackHash || sha256Bytes(frozenAttempt.RulePackSnapshot) != frozenAttempt.RulePackSnapshotDigest {

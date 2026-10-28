@@ -16,6 +16,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"golang.org/x/sync/errgroup"
 )
 
 const (
@@ -95,12 +97,15 @@ func KubernetesConfigFromEnv() *KubernetesConfig {
 	return config
 }
 
-func (m *Monitor) kubernetes(ctx context.Context, out *Snapshot) {
+func (m *Monitor) kubernetes(ctx context.Context, out *Snapshot) (map[string]replicaExpectation, bool) {
 	config := m.config.Kubernetes
-	out.Cluster = &Cluster{Status: "unavailable", Namespace: config.Namespace, ObservedAt: time.Now().UTC().Format(time.RFC3339Nano), Detail: "Kubernetes 状态采集不可用。", Nodes: []ClusterNode{}}
+	observedAt := time.Now().UTC().Format(time.RFC3339Nano)
+	out.Cluster = &Cluster{Status: "unavailable", Namespace: config.Namespace, ObservedAt: observedAt, Detail: "Kubernetes 状态采集不可用。", Nodes: []ClusterNode{}}
 	indices := make(map[string]int, len(out.Services))
 	for i := range out.Services {
 		indices[out.Services[i].ID] = i
+		out.Services[i].LogicalID = out.Services[i].ID
+		out.Services[i].ObservedAt = observedAt
 		if !optional(out.Services[i].ID) {
 			out.Services[i].Status = "unavailable"
 			out.Services[i].Detail = "当前命名空间未发现预期服务 Pod。"
@@ -109,78 +114,146 @@ func (m *Monitor) kubernetes(ctx context.Context, out *Snapshot) {
 	if config.initErr != nil || config.APIURL == "" || config.Namespace == "" {
 		out.Source = "kubernetes_unavailable"
 		markKubernetesUnavailable(out)
-		return
+		return nil, true
 	}
 	client := config.Client
 	if client == nil {
 		client = &http.Client{Timeout: 2 * time.Second}
 	}
+	// The three metadata reads are independent. Each result is recorded on its
+	// own goroutine and merged after Wait; one failing call never cancels the
+	// others, so the page can still show nodes or pods that were observed.
 	var nodes kubernetesNodeList
-	err := m.kubernetesGet(ctx, client, config, "/api/v1/nodes", &nodes)
-	if err != nil {
-		out.Source = "kubernetes_unavailable"
-		markKubernetesUnavailable(out)
-		return
-	}
 	var pods kubernetesPodList
-	path := "/api/v1/namespaces/" + url.PathEscape(config.Namespace) + "/pods"
-	if err = m.kubernetesGet(ctx, client, config, path, &pods); err != nil {
+	var deployments kubernetesDeploymentList
+	var nodesErr, podsErr, deploymentsErr error
+	var requests errgroup.Group
+	requests.SetLimit(3)
+	requests.Go(func() error {
+		nodesErr = m.kubernetesGet(ctx, client, config, "/api/v1/nodes", &nodes)
+		return nil
+	})
+	requests.Go(func() error {
+		path := "/api/v1/namespaces/" + url.PathEscape(config.Namespace) + "/pods"
+		podsErr = m.kubernetesGet(ctx, client, config, path, &pods)
+		return nil
+	})
+	requests.Go(func() error {
+		path := "/apis/apps/v1/namespaces/" + url.PathEscape(config.Namespace) + "/deployments"
+		deploymentsErr = m.kubernetesGet(ctx, client, config, path, &deployments)
+		return nil
+	})
+	_ = requests.Wait()
+
+	if nodesErr == nil {
+		out.Cluster.Nodes = make([]ClusterNode, 0, len(nodes.Items))
+		readyNodes := 0
+		for _, node := range nodes.Items {
+			item := ClusterNode{Name: node.Metadata.Name, Status: "unknown", Version: node.Status.NodeInfo.KubeletVersion}
+			for _, condition := range node.Status.Conditions {
+				if condition.Type == "Ready" {
+					switch condition.Status {
+					case "True":
+						item.Status = "ready"
+						readyNodes++
+					case "False":
+						item.Status = "unavailable"
+					}
+					break
+				}
+			}
+			out.Cluster.Nodes = append(out.Cluster.Nodes, item)
+		}
+		if len(nodes.Items) > 0 && readyNodes == len(nodes.Items) {
+			out.Cluster.Status = "ready"
+			out.Cluster.Detail = fmt.Sprintf("观察到 %d/%d 个 Ready Kubernetes 节点；节点数量不证明物理高可用。", readyNodes, len(nodes.Items))
+		} else {
+			out.Cluster.Detail = fmt.Sprintf("观察到 %d/%d 个 Ready Kubernetes 节点；集群未完全就绪。", readyNodes, len(nodes.Items))
+		}
+	} else {
+		out.Cluster.Detail = "Kubernetes 节点观测不可用；服务 Pod 观测按可用结果呈现。"
+	}
+	if nodesErr != nil && podsErr != nil {
 		out.Source = "kubernetes_unavailable"
 		markKubernetesUnavailable(out)
-		return
+		return nil, true
 	}
-	out.Cluster.Nodes = make([]ClusterNode, 0, len(nodes.Items))
-	readyNodes := 0
-	for _, node := range nodes.Items {
-		item := ClusterNode{Name: node.Metadata.Name, Status: "unknown", Version: node.Status.NodeInfo.KubeletVersion}
-		for _, condition := range node.Status.Conditions {
-			if condition.Type == "Ready" {
-				switch condition.Status {
-				case "True":
-					item.Status = "ready"
-					readyNodes++
-				case "False":
-					item.Status = "unavailable"
-				}
-				break
-			}
-		}
-		out.Cluster.Nodes = append(out.Cluster.Nodes, item)
-	}
-	if len(nodes.Items) > 0 && readyNodes == len(nodes.Items) {
-		out.Cluster.Status = "ready"
-		out.Cluster.Detail = fmt.Sprintf("观察到 %d/%d 个 Ready Kubernetes 节点；节点数量不证明物理高可用。", readyNodes, len(nodes.Items))
+	if podsErr != nil {
+		out.Source = "kubernetes_partial"
+		markKubernetesPodsUnknown(out)
 	} else {
-		out.Cluster.Detail = fmt.Sprintf("观察到 %d/%d 个 Ready Kubernetes 节点；集群未完全就绪。", readyNodes, len(nodes.Items))
+		seenPods := make(map[string]int)
+		for _, pod := range pods.Items {
+			name := pod.Metadata.Labels["app.kubernetes.io/name"]
+			if name == "" {
+				continue
+			}
+			index, expected := indices[name]
+			count := seenPods[name]
+			var service Service
+			if expected {
+				service = out.Services[index]
+			} else {
+				service = Service{ID: name, Name: name, Category: "application", Kind: "container", Status: "unknown", Detail: "Kubernetes Pod 已发现，尚未确认就绪状态。", DependsOn: []string{}}
+			}
+			if count > 0 {
+				service.ID = name + "/" + pod.Metadata.Name
+				service.Name = name + " / " + pod.Metadata.Name
+			}
+			instanceID := pod.Metadata.UID
+			if instanceID == "" {
+				instanceID = pod.Metadata.Name
+			}
+			namespace := pod.Metadata.Namespace
+			if namespace == "" {
+				namespace = config.Namespace
+			}
+			service.LogicalID = name
+			service.InstanceID = instanceID
+			service.Namespace = namespace
+			service.NodeName = pod.Spec.NodeName
+			service.Workload = podWorkload(pod, name)
+			service.ObservedAt = observedAt
+			service.Status, service.Detail = podReadiness(pod)
+			container := podContainerMetadata(pod, service.Status)
+			service.Container = &container
+			service.Kind = "container"
+			if count == 0 && expected {
+				out.Services[index] = service
+			} else {
+				out.Services = append(out.Services, service)
+			}
+			seenPods[name] = count + 1
+		}
 	}
-	seenPods := make(map[string]int)
-	for _, pod := range pods.Items {
-		name := pod.Metadata.Labels["app.kubernetes.io/name"]
-		if name == "" {
-			continue
+	expectations := make(map[string]replicaExpectation, len(deployments.Items))
+	if deploymentsErr == nil {
+		for _, deployment := range deployments.Items {
+			logical := deployment.Metadata.Labels["app.kubernetes.io/name"]
+			if logical == "" {
+				logical = deployment.Metadata.Name
+			}
+			desired := 1
+			if deployment.Spec.Replicas != nil {
+				desired = *deployment.Spec.Replicas
+			}
+			expectations[logical] = replicaExpectation{desired: desired, source: "deployment"}
 		}
-		index, expected := indices[name]
-		count := seenPods[name]
-		var service Service
-		if expected {
-			service = out.Services[index]
-		} else {
-			service = Service{ID: name, Name: name, Category: "application", Kind: "container", Status: "unknown", Detail: "Kubernetes Pod 已发现，尚未确认就绪状态。", DependsOn: []string{}}
+	}
+	if nodesErr != nil || podsErr != nil || deploymentsErr != nil {
+		out.Source = "kubernetes_partial"
+	} else {
+		out.Source = "kubernetes"
+	}
+	return expectations, podsErr != nil
+}
+
+func markKubernetesPodsUnknown(out *Snapshot) {
+	for i := range out.Services {
+		if out.Services[i].Container == nil && !optional(out.Services[i].ID) {
+			out.Services[i].Status = "unknown"
+			out.Services[i].Detail = "Kubernetes Pod 观测不可用，无法确认服务是否存在。"
 		}
-		if count > 0 {
-			service.ID = name + "/" + pod.Metadata.Name
-			service.Name = name + " / " + pod.Metadata.Name
-		}
-		container := podContainerMetadata(pod)
-		service.Container = &container
-		service.Kind = "container"
-		service.Status, service.Detail = podReadiness(pod)
-		if count == 0 && expected {
-			out.Services[index] = service
-		} else {
-			out.Services = append(out.Services, service)
-		}
-		seenPods[name] = count + 1
 	}
 }
 
@@ -249,13 +322,34 @@ type kubernetesPodList struct {
 	Items []kubernetesPod `json:"items"`
 }
 
+type kubernetesDeploymentList struct {
+	Items []struct {
+		Metadata struct {
+			Name   string            `json:"name"`
+			Labels map[string]string `json:"labels"`
+		} `json:"metadata"`
+		Spec struct {
+			Replicas *int `json:"replicas"`
+		} `json:"spec"`
+		Status struct {
+			ReadyReplicas int `json:"readyReplicas"`
+		} `json:"status"`
+	} `json:"items"`
+}
+
 type kubernetesPod struct {
 	Metadata struct {
-		Name   string            `json:"name"`
-		UID    string            `json:"uid"`
-		Labels map[string]string `json:"labels"`
+		Name            string            `json:"name"`
+		Namespace       string            `json:"namespace"`
+		UID             string            `json:"uid"`
+		Labels          map[string]string `json:"labels"`
+		OwnerReferences []struct {
+			Kind string `json:"kind"`
+			Name string `json:"name"`
+		} `json:"ownerReferences"`
 	} `json:"metadata"`
 	Spec struct {
+		NodeName   string `json:"nodeName"`
 		Containers []struct {
 			Name string `json:"name"`
 		} `json:"containers"`
@@ -328,8 +422,23 @@ func podReadiness(pod kubernetesPod) (string, string) {
 	return "unknown", "Kubernetes Pod 就绪状态未知。"
 }
 
-func podContainerMetadata(pod kubernetesPod) Container {
-	item := Container{ID: pod.Metadata.UID, Name: pod.Metadata.Name, State: pod.Status.Phase, Health: "unknown"}
+func podContainerMetadata(pod kubernetesPod, readiness string) Container {
+	health := "unknown"
+	switch readiness {
+	case "ready":
+		health = "healthy"
+	case "starting":
+		health = "starting"
+	case "unavailable":
+		health = "unhealthy"
+	case "completed":
+		health = "completed"
+	}
+	containerID := pod.Metadata.UID
+	if containerID == "" {
+		containerID = pod.Metadata.Name
+	}
+	item := Container{ID: containerID, Name: pod.Metadata.Name, State: pod.Status.Phase, Health: health}
 	for _, container := range pod.Status.ContainerStatuses {
 		item.Restarts += container.RestartCount
 		if item.Image == "" {
@@ -345,4 +454,14 @@ func podContainerMetadata(pod kubernetesPod) Container {
 		}
 	}
 	return item
+}
+
+func podWorkload(pod kubernetesPod, fallback string) string {
+	for _, owner := range pod.Metadata.OwnerReferences {
+		switch owner.Kind {
+		case "StatefulSet", "DaemonSet", "Job":
+			return owner.Name
+		}
+	}
+	return fallback
 }

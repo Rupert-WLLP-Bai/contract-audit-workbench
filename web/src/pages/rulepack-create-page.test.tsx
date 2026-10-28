@@ -210,8 +210,15 @@ async function chooseVisibleOption(
   name: string | RegExp,
 ) {
   await user.click(control);
-  const options = await screen.findAllByRole("option", { name });
-  await user.click(options.at(-1)!);
+  const listbox = await waitFor(() => {
+    expect(control).toHaveAttribute("aria-expanded", "true");
+    const listboxId = control.getAttribute("aria-controls");
+    expect(listboxId).toBeTruthy();
+    const controlledListbox = document.getElementById(listboxId!);
+    expect(controlledListbox).toHaveAttribute("role", "listbox");
+    return controlledListbox!;
+  });
+  await user.click(await within(listbox).findByRole("option", { name }));
 }
 
 async function fillDraft(user: ReturnType<typeof userEvent.setup>) {

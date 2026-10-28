@@ -57,6 +57,27 @@ func startGateway(t *testing.T, config Config) *httptest.Server {
 	return server
 }
 
+// waitGatewayReady waits for the first health sweep to mark every configured
+// upstream healthy. Tests that use startGateway with live upstreams must call
+// this before asserting on routed requests: the probe loop starts
+// asynchronously, so an immediate request can legitimately see no healthy
+// replica and answer 503.
+func waitGatewayReady(t *testing.T, edge *httptest.Server) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		response, err := http.Get(edge.URL + "/health/ready")
+		if err == nil {
+			response.Body.Close()
+			if response.StatusCode == http.StatusOK {
+				return
+			}
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatal("gateway did not report every configured upstream ready")
+}
+
 type captured struct {
 	method string
 	path   string

@@ -18,9 +18,9 @@ const serviceRoleSchemaSQL = `CREATE TABLE IF NOT EXISTS service_database_roles 
 )`
 
 var serviceOwnedTables = map[string][]string{
-	"core":      {"sessions", "cases", "decisions", "idempotency", "activity", "business_remediations", "business_remediation_revisions", "business_reports", "business_archives", "business_run_events", "business_audit_events", "business_case_profiles", "business_workbench_tasks", "business_case_relations", "business_knowledge", "business_workbench_audit", "rule_pack_versions", "rule_pack_pointers", "rule_pack_history", "rule_pack_idempotency"},
+	"core":      {"sessions", "cases", "decisions", "idempotency", "activity", "business_remediations", "business_remediation_revisions", "business_reports", "business_archives", "business_run_events", "business_audit_events", "business_case_profiles", "business_workbench_tasks", "business_case_relations", "business_knowledge", "business_workbench_audit", "rule_pack_versions", "rule_pack_pointers", "rule_pack_history", "rule_pack_idempotency", "experience_feedback", "experience_candidate_versions", "governed_knowledge_versions", "governed_knowledge_state", "governed_knowledge_pointers", "governed_knowledge_history", "governed_knowledge_idempotency", "governed_policy_rule_bindings", "evidence_requests", "evidence_receipts", "evidence_request_events"},
 	"document":  {"documents", "parsed_documents", "business_generations", "document_activity"},
-	"execution": {"review_runs", "review_attempts", "review_attempt_inputs", "review_attempt_parse_selections", "execution_events", "findings", "constraint_evaluations", "run_events", "review_run_snapshots", "audit_events", "worker_jobs", "outbox_events", "execution_activity", "execution_queue_policies", "execution_queue_cursor", "execution_queue_tenants", "execution_agent_reviews"},
+	"execution": {"review_runs", "review_attempts", "review_attempt_inputs", "review_attempt_parse_selections", "execution_events", "findings", "constraint_evaluations", "run_events", "review_run_snapshots", "audit_events", "worker_jobs", "outbox_events", "execution_activity", "execution_queue_policies", "execution_queue_cursor", "execution_queue_tenants", "execution_agent_reviews", "advisory_judgments", "experience_distill_inputs", "experience_distill_results", "experience_distill_failures"},
 	"model":     {"model_call_leases", "model_usage"},
 	"tool":      {"tool_call_ledger"},
 }
@@ -202,7 +202,14 @@ func MigrateServiceRoles(ctx context.Context) error {
 		for _, table := range serviceOwnedTables[service] {
 			qualified := pgx.Identifier{schema, table}.Sanitize()
 			if service != "model" {
-				if _, err := tx.Exec(ctx, `GRANT INSERT,UPDATE,DELETE ON TABLE `+qualified+` TO `+quotedRole); err != nil {
+				privileges := "INSERT,UPDATE,DELETE"
+				switch table {
+				case "experience_feedback", "experience_candidate_versions", "experience_distill_inputs", "experience_distill_results", "experience_distill_failures", "advisory_judgments", "governed_knowledge_versions", "governed_knowledge_history", "evidence_receipts", "evidence_request_events":
+					privileges = "INSERT"
+				case "evidence_requests":
+					privileges = "INSERT,UPDATE"
+				}
+				if _, err := tx.Exec(ctx, `GRANT `+privileges+` ON TABLE `+qualified+` TO `+quotedRole); err != nil {
 					return fmt.Errorf("cannot configure %s table ownership", service)
 				}
 			}
@@ -221,12 +228,24 @@ func MigrateServiceRoles(ctx context.Context) error {
 				}
 			}
 		}
+		if service == "core" {
+			functions := []string{
+				"experience_distill_lock_result(text,bigint,text,text)",
+				"experience_distill_enqueue(text,text,text,text,text,text,text,text,text,text,bytea,text,text,integer,integer,integer,integer)",
+			}
+			for _, fn := range functions {
+				if _, err := tx.Exec(ctx, `GRANT EXECUTE ON FUNCTION `+pgx.Identifier{schema}.Sanitize()+`.`+fn+` TO `+quotedRole); err != nil {
+					return fmt.Errorf("cannot grant experience task function to core: %w", err)
+				}
+			}
+		}
 		if service == "model" {
 			// Cross-tenant accounting is available only through the atomic budget
 			// functions; the model role has no direct write access to these tables.
 			functions := []string{
 				"model_budget_reserve(text,text,text,text,text,text,text,text,integer,integer,integer,integer,integer,bigint,bigint,bigint,bigint,bigint)",
 				"model_budget_finish(text,text,text,text,text,text,text,text,integer,text,text,text,bigint,bigint,bigint,timestamptz,boolean,text)",
+				"model_budget_lock_experience_job(text,text,text,text,text,text,bigint,text)",
 			}
 			for _, fn := range functions {
 				if _, err := tx.Exec(ctx, `GRANT EXECUTE ON FUNCTION `+pgx.Identifier{schema}.Sanitize()+`.`+fn+` TO `+quotedRole); err != nil {

@@ -66,7 +66,7 @@ func TestEinoScopePlanReusesRulesAndPreservesInput(t *testing.T) {
 		report.Domains[0].Status != "not_requested" || len(report.UnresolvedGapIDs) != 0 {
 		t.Fatalf("domain results = %+v", report.Domains)
 	}
-	if report.InputSHA256 != TextHash(string(before)) || len(report.Events) != 3 {
+	if report.InputSHA256 != TextHash(string(before)) || len(report.Events) != 5 {
 		t.Fatalf("missing provenance: %+v", report)
 	}
 	if report.Projection == nil || report.Projection.Gaps[0].Status != "resolved" ||
@@ -81,6 +81,38 @@ func TestEinoScopePlanReusesRulesAndPreservesInput(t *testing.T) {
 	after, _ := json.Marshal(request)
 	if string(before) != string(after) {
 		t.Fatal("input was mutated")
+	}
+}
+
+func TestBaselineInsufficientResultRemainsAValidObservation(t *testing.T) {
+	request := requestFixture()
+	request.Evidence = request.Evidence[:1]
+	var inputs []PlanInput
+	planner := plannerFunc(func(ctx context.Context, input PlanInput) (Plan, error) {
+		inputs = append(inputs, input)
+		return (ScopePlanner{}).Plan(ctx, input)
+	})
+	report, err := runtimeFixture(t, planner, BaselineTools(), 2).Run(context.Background(), request)
+	if err != nil || report.Status != "partial" || report.ToolCalls != 1 ||
+		!slices.Contains(report.UnresolvedGapIDs, "g-tech") || len(report.Domains[2].Findings) != 1 || len(inputs) != 2 {
+		t.Fatalf("insufficient baseline result was not retained: %+v / %v", report, err)
+	}
+	finding := report.Domains[2].Findings[0]
+	wantReason := "仅有一份独立材料写明质保月数，无法完成跨文件比对，这条比对是信息不足。"
+	if finding.Relation != "insufficient" || finding.ReasonCode != "baseline_evidence_insufficient" ||
+		finding.Summary != wantReason || len(finding.Citations) != 1 || finding.Citations[0].EvidenceID != "req" ||
+		finding.Citations[0].Quote == "" || report.Projection == nil ||
+		report.Projection.Gaps[0].Status != "insufficient" || report.Projection.Gaps[0].ReasonCode != finding.ReasonCode {
+		t.Fatalf("baseline finding lost its reason or citation: %+v", finding)
+	}
+	if len(inputs[1].Observations) != 1 || inputs[1].Observations[0].Relation != "insufficient" ||
+		inputs[1].Observations[0].ReasonCode != finding.ReasonCode || inputs[1].Observations[0].Summary != wantReason {
+		t.Fatalf("later planning did not receive the valid observation: %+v", inputs[1].Observations)
+	}
+	for _, event := range report.Events {
+		if event.Kind == "tool_failed" || event.Code == "tool_error_or_unverified_result" {
+			t.Fatalf("insufficient result was recorded as a tool error: %+v", report.Events)
+		}
 	}
 }
 
@@ -519,11 +551,12 @@ func TestRuntimeUsesVerifiedNewEvidenceAcrossPlannerRounds(t *testing.T) {
 		t.Fatal(err)
 	}
 	report, err := runtime.Run(context.Background(), request)
-	if err != nil || report.Status != "completed" || report.ToolCalls != 2 || len(report.Rounds) != 2 ||
+	if err != nil || report.Status != "partial" || report.ToolCalls != 2 || len(report.Rounds) != 2 ||
 		len(report.Rounds[0].Calls) != 1 || len(report.Rounds[1].Calls) != 1 ||
 		report.Rounds[0].Calls[0].ToolID != "candidate.scope" || report.Rounds[1].Calls[0].ToolID != "compare.scope" ||
 		!slices.Contains(report.Rounds[0].NewEvidenceIDs, "fact-scope-candidate") || !priorFactSeen.Load() ||
-		report.Projection == nil || len(report.Projection.Evidence) != 1 || report.Projection.Evidence[0].Value != "专线A" {
+		report.Projection == nil || len(report.Projection.Evidence) != 1 || report.Projection.Evidence[0].Value != "专线A" ||
+		report.Projection.Gaps[0].Status != "unknown" || report.Projection.Gaps[0].ReasonCode != "claim_requires_semantic_verification" {
 		t.Fatalf("verified source candidate did not progress through both rounds: %+v / %v", report, err)
 	}
 }
@@ -744,14 +777,19 @@ func TestCanonicalCoverageRetainsEveryCheckAndCannotHideMissingEvidence(t *testi
 			request := requestFixture()
 			request.Scope = []Domain{Technical, Commercial}
 			request.CanonicalEvaluations = []CanonicalEvaluation{
-				{ID: "bandwidth", Domain: Technical, CapabilityID: "dedicated_line.bandwidth", Relation: "insufficient", ReasonCode: "required_fact_missing", EvidenceIDs: []string{"req"}},
-				{ID: "availability", Domain: Technical, CapabilityID: "dedicated_line.monthly_availability", Relation: "compatible", ReasonCode: "minimum_met", EvidenceIDs: []string{"draft", "req"}},
-				{ID: "advance", Domain: Commercial, CapabilityID: "payment.advance_ratio.ceiling", Relation: "conflict", ReasonCode: "ceiling_exceeded", EvidenceIDs: []string{"draft"}},
+				{ID: "bandwidth", Domain: Technical, CapabilityID: "dedicated_line.bandwidth", Mandatory: true, Relation: "insufficient", ReasonCode: "required_fact_missing", EvidenceIDs: []string{"req"}},
+				{ID: "availability", Domain: Technical, CapabilityID: "dedicated_line.monthly_availability", Mandatory: true, Relation: "compatible", ReasonCode: "minimum_met", EvidenceIDs: []string{"draft", "req"}},
+				{ID: "advance", Domain: Commercial, CapabilityID: "payment.advance_ratio.ceiling", Mandatory: true, Relation: "conflict", ReasonCode: "ceiling_exceeded", EvidenceIDs: []string{"draft"}},
 			}
 			if reverse {
 				slices.Reverse(request.CanonicalEvaluations)
 			}
-			report, err := runtimeFixture(t, ScopePlanner{}, BaselineTools(), 5).Run(context.Background(), request)
+			var plannerInput PlanInput
+			planner := plannerFunc(func(ctx context.Context, input PlanInput) (Plan, error) {
+				plannerInput = input
+				return (ScopePlanner{}).Plan(ctx, input)
+			})
+			report, err := runtimeFixture(t, planner, BaselineTools(), 5).Run(context.Background(), request)
 			if err != nil || report.Projection == nil {
 				t.Fatalf("canonical review: %+v, %v", report, err)
 			}
@@ -766,13 +804,18 @@ func TestCanonicalCoverageRetainsEveryCheckAndCannotHideMissingEvidence(t *testi
 				found := false
 				for _, domain := range projection.Domains {
 					for _, capability := range domain.Capabilities {
-						if capability.CapabilityID == evaluation.CapabilityID && slices.Contains(capability.CanonicalEvaluationIDs, evaluation.ID) && capability.Relation != nil && *capability.Relation == evaluation.Relation && slices.Equal(capability.EvidenceIDs, evaluation.EvidenceIDs) {
+						if capability.CapabilityID == evaluation.CapabilityID && capability.Mandatory && slices.Contains(capability.CanonicalEvaluationIDs, evaluation.ID) && capability.Relation != nil && *capability.Relation == evaluation.Relation && slices.Equal(capability.EvidenceIDs, evaluation.EvidenceIDs) {
 							found = true
 						}
 					}
 				}
 				if !found {
 					t.Fatalf("canonical identity, relation, or evidence lost: %+v", evaluation)
+				}
+				if !slices.ContainsFunc(plannerInput.MandatoryChecks, func(check MandatoryCheck) bool {
+					return check.GapID == evaluation.ID && check.Domain == evaluation.Domain && check.Capability == evaluation.CapabilityID
+				}) {
+					t.Fatalf("mandatory canonical check missing from planner context: %+v", evaluation)
 				}
 			}
 			if report.ToolCalls != 1 || len(report.Plan.Calls) != 1 || report.Plan.Calls[0].GapID != "g-tech" {
@@ -786,6 +829,33 @@ func TestCanonicalCoverageRetainsEveryCheckAndCannotHideMissingEvidence(t *testi
 				}
 			}
 		})
+	}
+}
+
+func TestOptionalCanonicalCheckIsNotMadeMandatory(t *testing.T) {
+	request := requestFixture()
+	request.CanonicalEvaluations = []CanonicalEvaluation{{ID: "optional-check", Domain: Technical,
+		CapabilityID: "optional.guidance", Relation: "insufficient", ReasonCode: "required_fact_missing", EvidenceIDs: []string{"req"}}}
+	var plannerInput PlanInput
+	planner := plannerFunc(func(ctx context.Context, input PlanInput) (Plan, error) {
+		plannerInput = input
+		return (ScopePlanner{}).Plan(ctx, input)
+	})
+	report, err := runtimeFixture(t, planner, BaselineTools(), 2).Run(context.Background(), request)
+	if err != nil || report.Projection == nil {
+		t.Fatalf("optional canonical check: %+v / %v", report, err)
+	}
+	var found bool
+	for _, capability := range report.Projection.Domains[2].Capabilities {
+		if slices.Contains(capability.CanonicalEvaluationIDs, "optional-check") {
+			found = true
+			if capability.Mandatory || capability.Status != "insufficient" || capability.Relation == nil || *capability.Relation != "insufficient" {
+				t.Fatalf("optional check lost its original status: %+v", capability)
+			}
+		}
+	}
+	if !found || slices.ContainsFunc(plannerInput.MandatoryChecks, func(check MandatoryCheck) bool { return check.GapID == "optional-check" }) {
+		t.Fatalf("optional check missing or incorrectly mandatory: %+v / %+v", report.Projection, plannerInput.MandatoryChecks)
 	}
 }
 

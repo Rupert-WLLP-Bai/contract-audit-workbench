@@ -2,15 +2,45 @@ name: deterministic-quality
 on:
   push:
   pull_request:
+  workflow_dispatch:
 permissions:
   contents: read
 concurrency:
   group: quality-${{ github.ref }}
   cancel-in-progress: true
+env:
+  APP_ENV: test
 jobs:
-  acceptance:
+  static:
+    name: static checks
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    timeout-minutes: 15
+    env:
+      GOFLAGS: -mod=readonly
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Download Go modules
+        run: go mod download
+      - name: Static gate
+        run: python3 scripts/verify.py --stage static
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: evidence-static
+          path: |
+            artifacts/verification-static.json
+            artifacts/logs/
+          if-no-files-found: warn
+          retention-days: 14
+
+  go:
+    name: go tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
     services:
       postgres:
         image: postgres:18.6-bookworm
@@ -23,60 +53,226 @@ jobs:
           --health-cmd "pg_isready -U contractaudit -d postgres"
           --health-interval 2s --health-timeout 3s --health-retries 30
     env:
-      APP_ENV: test
+      GOFLAGS: -mod=readonly
       TEST_DATABASE_URL: postgres://contractaudit:contractaudit@127.0.0.1:5432/contract_audit_test?sslmode=disable
       MIGRATOR_DATABASE_URL: postgres://contractaudit:contractaudit@127.0.0.1:5432/contract_audit_test?sslmode=disable
       MODEL_DATABASE_URL: postgres://contract_audit_model:contractaudit@127.0.0.1:5432/contract_audit_test?sslmode=disable
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
-          go-version: '1.26.10'
+          go-version-file: go.mod
           cache: true
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '24'
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: '1.4.3'
-      - run: make setup
-      - name: Install browser, Poppler, and database client
-        working-directory: web
+      - name: Download Go modules
+        run: go mod download
+      - name: Install PostgreSQL client and Poppler
         run: |
           sudo apt-get update
-          sudo apt-get install -y poppler-utils poppler-data postgresql-client
+          sudo apt-get install -y postgresql-client poppler-utils poppler-data
           command -v pdfinfo
           command -v pdftotext
           command -v pdfimages
           command -v pdftoppm
           test -d /usr/share/poppler/cMap
-          bun x playwright install --with-deps chromium
-      - name: Provision acceptance database roles
+      - name: Provision test database role
         env:
+          PGHOST: 127.0.0.1
+          PGPORT: "5432"
+          PGUSER: contractaudit
           PGPASSWORD: contractaudit
-        run: |
-          psql -h 127.0.0.1 -U contractaudit -d postgres -v ON_ERROR_STOP=1 <<'SQL'
-          SELECT 'CREATE DATABASE contract_audit_test'
-            WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'contract_audit_test')\gexec
-          DO $$
-          BEGIN
-            IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'contract_audit_model') THEN
-              CREATE ROLE contract_audit_model LOGIN PASSWORD 'contractaudit'
-                NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE;
-            END IF;
-          END $$;
-          GRANT CONNECT ON DATABASE contract_audit_test TO contract_audit_model;
-          SQL
-      - name: Full deterministic acceptance
-        run: make acceptance
-      - uses: actions/upload-artifact@v4
+        run: bash scripts/provision_test_db.sh
+      - name: Go gate
+        run: python3 scripts/verify.py --stage go
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
-          name: verification-evidence
+          name: evidence-go
           path: |
-            artifacts/*.json
-            artifacts/*.out
+            artifacts/verification-go.json
             artifacts/logs/
-            web/coverage/
-          if-no-files-found: error
+            artifacts/evaluation.json
+            artifacts/agent-demo.json
+            artifacts/ruleshadow-disabled.json
+          if-no-files-found: warn
           retention-days: 14
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: coverage-go
+          path: artifacts/go-coverage.out
+          if-no-files-found: warn
+          retention-days: 14
+
+  web:
+    name: web tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: '1.4.3'
+      - name: Install web dependencies
+        working-directory: web
+        run: bun install --frozen-lockfile
+      - name: Web gate
+        run: python3 scripts/verify.py --stage web
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: evidence-web
+          path: |
+            artifacts/verification-web.json
+            artifacts/logs/
+            artifacts/vitest-results.json
+          if-no-files-found: warn
+          retention-days: 14
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: coverage-web
+          path: web/coverage/
+          if-no-files-found: warn
+          retention-days: 14
+
+  coverage:
+    name: coverage gates
+    needs: [go, web]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      GOFLAGS: -mod=readonly
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Download Go modules
+        run: go mod download
+      - uses: actions/download-artifact@v8
+        with:
+          name: coverage-go
+          path: artifacts
+      - uses: actions/download-artifact@v8
+        with:
+          name: coverage-web
+          path: web/coverage
+      - name: Verify coverage inputs
+        run: |
+          test -s artifacts/go-coverage.out
+          test -s web/coverage/coverage-summary.json
+      - name: Coverage gate
+        run: python3 scripts/verify.py --stage coverage
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: evidence-coverage
+          path: |
+            artifacts/verification-coverage.json
+            artifacts/coverage-summary.json
+            artifacts/logs/
+          if-no-files-found: warn
+          retention-days: 14
+
+  browser:
+    name: browser acceptance
+    needs: [static]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: postgres:18.6-bookworm
+        env:
+          POSTGRES_USER: contractaudit
+          POSTGRES_PASSWORD: contractaudit
+          POSTGRES_DB: postgres
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U contractaudit -d postgres"
+          --health-interval 2s --health-timeout 3s --health-retries 30
+    env:
+      GOFLAGS: -mod=readonly
+      TEST_DATABASE_URL: postgres://contractaudit:contractaudit@127.0.0.1:5432/contract_audit_test?sslmode=disable
+      MIGRATOR_DATABASE_URL: postgres://contractaudit:contractaudit@127.0.0.1:5432/contract_audit_test?sslmode=disable
+      MODEL_DATABASE_URL: postgres://contract_audit_model:contractaudit@127.0.0.1:5432/contract_audit_test?sslmode=disable
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: '1.4.3'
+      - name: Download Go modules
+        run: go mod download
+      - name: Install web dependencies
+        working-directory: web
+        run: bun install --frozen-lockfile
+      - name: Install PostgreSQL client and Chromium
+        working-directory: web
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client
+          bun x playwright install --with-deps chromium
+      - name: Provision test database role
+        env:
+          PGHOST: 127.0.0.1
+          PGPORT: "5432"
+          PGUSER: contractaudit
+          PGPASSWORD: contractaudit
+        run: bash scripts/provision_test_db.sh
+      - name: Browser gate
+        run: python3 scripts/verify.py --stage browser
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: evidence-browser
+          path: |
+            artifacts/verification-browser.json
+            artifacts/logs/
+            artifacts/screenshots/
+          if-no-files-found: warn
+          retention-days: 14
+
+  quality-gate:
+    name: quality gate
+    if: always()
+    needs: [static, go, web, coverage, browser]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Require every gate
+        env:
+          RESULT_STATIC: ${{ needs.static.result }}
+          RESULT_GO: ${{ needs.go.result }}
+          RESULT_WEB: ${{ needs.web.result }}
+          RESULT_COVERAGE: ${{ needs.coverage.result }}
+          RESULT_BROWSER: ${{ needs.browser.result }}
+        run: |
+          set -euo pipefail
+          failed=0
+          {
+            echo "| gate | result |"
+            echo "| --- | --- |"
+          } >> "$GITHUB_STEP_SUMMARY"
+          for entry in "static=$RESULT_STATIC" "go=$RESULT_GO" "web=$RESULT_WEB" \
+                       "coverage=$RESULT_COVERAGE" "browser=$RESULT_BROWSER"; do
+            name="${entry%%=*}"
+            result="${entry#*=}"
+            echo "| $name | $result |" >> "$GITHUB_STEP_SUMMARY"
+            if [ "$result" != "success" ]; then
+              failed=1
+            fi
+          done
+          if [ "$failed" -ne 0 ]; then
+            echo "::error title=quality gate::one or more required gates did not succeed; see the per-gate jobs above"
+            exit 1
+          fi

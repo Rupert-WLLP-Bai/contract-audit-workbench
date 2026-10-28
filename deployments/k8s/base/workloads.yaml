@@ -140,6 +140,8 @@ spec:
               value: ":8081"
             - name: GATEWAY_ROLE_TOKEN
               valueFrom: {secretKeyRef: {name: contract-audit-service-tokens, key: GATEWAY_CORE_TOKEN}}
+            - name: WORKER_CORE_TOKEN
+              valueFrom: {secretKeyRef: {name: contract-audit-service-tokens, key: WORKER_CORE_TOKEN}}
             - name: OIDC_CLIENT_SECRET
               valueFrom: {secretKeyRef: {name: contract-audit-oidc, key: OIDC_CLIENT_SECRET, optional: true}}
             - name: OIDC_ADMIN_CLIENT_SECRET
@@ -411,6 +413,8 @@ spec:
               valueFrom: {secretKeyRef: {name: contract-audit-service-tokens, key: WORKER_MODEL_TOKEN}}
             - name: WORKER_TOOL_TOKEN
               valueFrom: {secretKeyRef: {name: contract-audit-service-tokens, key: WORKER_TOOL_TOKEN}}
+            - name: WORKER_CORE_TOKEN
+              valueFrom: {secretKeyRef: {name: contract-audit-service-tokens, key: WORKER_CORE_TOKEN}}
             - name: TOOL_GATEWAY_URL
               valueFrom: {configMapKeyRef: {name: contract-audit-runtime, key: TOOL_GATEWAY_URL}}
           startupProbe:
@@ -496,6 +500,10 @@ spec:
               value: ":8084"
             - name: LLM_API_KEY
               valueFrom: {secretKeyRef: {name: contract-audit-model, key: LLM_API_KEY}}
+            # Only the gateway holds the TypeSafe credential. Missing key leaves
+            # Jev unconfigured without affecting chat/OCR readiness.
+            - name: TYPESAFE_API_KEY
+              valueFrom: {secretKeyRef: {name: contract-audit-model, key: TYPESAFE_API_KEY, optional: true}}
             - name: WORKER_MODEL_TOKEN
               valueFrom: {secretKeyRef: {name: contract-audit-service-tokens, key: WORKER_MODEL_TOKEN}}
             - name: DOCUMENT_MODEL_TOKEN

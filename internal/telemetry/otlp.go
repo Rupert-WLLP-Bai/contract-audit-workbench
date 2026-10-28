@@ -34,6 +34,7 @@ const (
 type Config struct {
 	Endpoint    string
 	Service     string
+	InstanceID  string
 	SampleRatio float64
 }
 
@@ -53,6 +54,7 @@ type Exporter struct {
 	tracesEndpoint  string
 	metricsEndpoint string
 	service         string
+	instance        string
 	ratio           float64
 	client          *http.Client
 	queue           chan span
@@ -89,6 +91,13 @@ func New(cfg Config) (*Exporter, error) {
 	if service == "" {
 		return nil, errors.New("OTLP service identity is required")
 	}
+	// service.instance.id separates replicas behind one logical service. An
+	// unset/invalid value falls back to the service identity so a misconfigured
+	// deployment stays exportable instead of silently dropping telemetry.
+	instance := metadata(cfg.InstanceID)
+	if instance == "" {
+		instance = service
+	}
 	basePath := strings.TrimRight(u.Path, "/")
 	traces := *u
 	traces.Path = basePath + "/v1/traces"
@@ -100,7 +109,7 @@ func New(cfg Config) (*Exporter, error) {
 	transport.Proxy = nil
 	ctx, cancel := context.WithCancel(context.Background())
 	e := &Exporter{
-		tracesEndpoint: traces.String(), metricsEndpoint: metrics.String(), service: service, ratio: cfg.SampleRatio,
+		tracesEndpoint: traces.String(), metricsEndpoint: metrics.String(), service: service, instance: instance, ratio: cfg.SampleRatio,
 		client: &http.Client{Transport: transport, Timeout: 2 * time.Second,
 			CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }},
 		queue: make(chan span, queueCapacity), ctx: ctx, cancel: cancel, done: make(chan struct{}),
@@ -233,6 +242,7 @@ func (e *Exporter) run() {
 func (e *Exporter) send(batch []span) (int, error) {
 	var payload exportRequest
 	payload.ResourceSpans[0].Resource.Attributes[0] = stringAttribute("service.name", e.service)
+	payload.ResourceSpans[0].Resource.Attributes[1] = stringAttribute("service.instance.id", e.instance)
 	payload.ResourceSpans[0].ScopeSpans[0].Scope.Name = "contractaudit.execution"
 	payload.ResourceSpans[0].ScopeSpans[0].Spans = batch
 	body, err := json.Marshal(payload)
@@ -333,6 +343,7 @@ func (e *Exporter) sendMetrics(batch []span) (int, int, error) {
 	points := len(events) + len(durations)
 	var payload metricsRequest
 	payload.ResourceMetrics[0].Resource.Attributes[0] = stringAttribute("service.name", e.service)
+	payload.ResourceMetrics[0].Resource.Attributes[1] = stringAttribute("service.instance.id", e.instance)
 	payload.ResourceMetrics[0].ScopeMetrics[0].Scope.Name = "contractaudit.execution"
 	payload.ResourceMetrics[0].ScopeMetrics[0].Metrics = []metric{
 		{Name: "audit.execution.events", Sum: &sumMetric{AggregationTemporality: 2, IsMonotonic: true, DataPoints: events}},
@@ -459,7 +470,7 @@ type span struct {
 type exportRequest struct {
 	ResourceSpans [1]struct {
 		Resource struct {
-			Attributes [1]attribute `json:"attributes"`
+			Attributes [2]attribute `json:"attributes"`
 		} `json:"resource"`
 		ScopeSpans [1]struct {
 			Scope struct {
@@ -496,7 +507,7 @@ type metric struct {
 type metricsRequest struct {
 	ResourceMetrics [1]struct {
 		Resource struct {
-			Attributes [1]attribute `json:"attributes"`
+			Attributes [2]attribute `json:"attributes"`
 		} `json:"resource"`
 		ScopeMetrics [1]struct {
 			Scope struct {

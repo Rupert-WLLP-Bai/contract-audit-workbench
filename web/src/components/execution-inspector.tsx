@@ -19,9 +19,8 @@ import { StatusText } from "./status-text";
 import { AgentReviewInspector } from "./agent-review-inspector";
 
 interface ExecutionInspectorProps {
-  execution: Execution | null | undefined;
+  execution: Execution;
   caseId: string;
-  runState: string;
   findings: Finding[];
   evaluations: ConstraintEvaluation[];
   selectedFindingId: string | null;
@@ -74,16 +73,16 @@ const phaseLabels: Record<string, string> = {
   model_review: "模型审查",
   model_request: "模型请求",
   citation_verification: "引用核验",
-  verified_finding: "发现核验",
+  verified_finding: "引用核验",
   terminal_persistence: "终态保存",
-  cancellation: "取消尝试",
+  cancellation: "取消执行",
   restart_recovery: "重启恢复",
   evidence_tool: "证据工具",
   agent_review_result: "智能体审查结果",
 };
 
 const eventTypeLabels: Record<string, string> = {
-  attempt_accepted: "尝试已受理",
+  attempt_accepted: "执行已受理",
   span_started: "开始",
   span_completed: "完成",
   span_failed: "失败",
@@ -92,10 +91,10 @@ const eventTypeLabels: Record<string, string> = {
   node_failed: "节点失败",
   model_completed: "模型调用完成",
   model_failed: "模型调用失败",
-  finding_verified: "发现已核验",
-  attempt_finished: "尝试结束",
-  attempt_cancelled: "尝试已取消",
-  attempt_interrupted: "尝试已中断",
+  finding_verified: "引用核验记录",
+  attempt_finished: "执行结束",
+  attempt_cancelled: "执行已取消",
+  attempt_interrupted: "执行已中断",
   tool_evidence: "证据工具结果",
   agent_review_event: "智能体审查事件",
 };
@@ -249,7 +248,6 @@ function buildSpanTree(events: ExecutionEvent[]): SpanGroup[] {
 export function ExecutionInspector({
   execution,
   caseId,
-  runState,
   findings,
   evaluations,
   selectedFindingId,
@@ -263,29 +261,6 @@ export function ExecutionInspector({
   const [view, setView] = useState<"tree" | "timeline">("timeline");
   const [selectedSeq, setSelectedSeq] = useState<number | null>(null);
   const eventDetailRef = useRef<HTMLElement>(null);
-
-  if (!execution) {
-    return (
-      <section
-        id="execution-inspector"
-        className="execution-inspector"
-        aria-labelledby="execution-inspector-title"
-      >
-        <header className="execution-inspector-head">
-          <div>
-            <h2 id="execution-inspector-title">执行检查器</h2>
-            <p className="meta">
-              本次工作区没有持久执行快照。未采集的阶段、耗时和用量保持未报告。
-            </p>
-            <p className="callout">
-              历史记录未冻结（legacy_unfrozen），无法重放当时解析输入或补造执行阶段。
-            </p>
-          </div>
-          <StatusText tone={runTone(runState)}>{runLabel(runState)}</StatusText>
-        </header>
-      </section>
-    );
-  }
 
   const selected = execution.attempt;
   const attempts = execution.attempts.some(
@@ -304,12 +279,10 @@ export function ExecutionInspector({
     .sort((left, right) => left.seq - right.seq);
   const event =
     events.find((item) => item.seq === selectedSeq) ?? events[0] ?? null;
-  const verified = findings.filter(
-    (finding) => finding.verification_status === "verified",
+  const locatedFindings = findings.filter(
+    (finding) => finding.evidence.length > 0 && finding.evidence.every((anchor) => anchor.status === "located"),
   );
-  const pendingVerification = findings.filter(
-    (finding) => finding.verification_status !== "verified",
-  );
+  const pendingCitations = findings.filter((finding) => !locatedFindings.includes(finding));
   const gaps = evaluations.filter(
     (evaluation) => evaluation.relation === "insufficient",
   );
@@ -411,9 +384,9 @@ export function ExecutionInspector({
                   <div>
                     <h2 id="execution-inspector-title">执行检查器</h2>
                     <p className="meta">
-                      第 {selected.ordinal} 次尝试，最近持久阶段{" "}
+                      第 {selected.ordinal} 次执行，最近保存的阶段{" "}
                       {latestEvent ? phaseLabel(latestEvent.phase) : "未报告"}，
-                      首个已核验发现 {verified[0]?.claim || "未报告"}
+                      第一条能在原文中找到引用的线索 {locatedFindings[0]?.claim || "未报告"}
                     </p>
                   </div>
                   <StatusText tone={runTone(selected.state)}>
@@ -425,11 +398,19 @@ export function ExecutionInspector({
                 <>
                   <div className="execution-inspector-body">
                     <div className="execution-overview">
-                      <div className="execution-attempt-row">
+                      <div
+                        className="execution-attempt-row"
+                        data-attempt-id={selected.id}
+                        data-attempt-ordinal={selected.ordinal}
+                        data-attempt-count={attempts.length}
+                        data-parsed-document-ids={JSON.stringify(
+                          selected.parsed_document_ids,
+                        )}
+                      >
                         <label className="field">
-                          查看尝试
+                          查看执行记录
                           <Select
-                            aria-label="查看尝试"
+                            aria-label="查看执行记录"
                             value={selected.id}
                             onChange={(value) => {
                               setSelectedSeq(null);
@@ -447,7 +428,7 @@ export function ExecutionInspector({
                         </label>
                         {selected.history_kind === "legacy_unfrozen" ? (
                           <p className="callout">
-                            旧运行未冻结原始输入，不能补造历史阶段。
+                            较早的审查没有保存当时使用的材料版本记录，无法补回当时的执行过程。
                           </p>
                         ) : null}
                       </div>
@@ -461,7 +442,7 @@ export function ExecutionInspector({
                           <dd>{duration}</dd>
                         </div>
                         <div>
-                          <dt>持久事件</dt>
+                          <dt>已保存的事件</dt>
                           <dd>{events.length} 条</dd>
                         </div>
                         <div>
@@ -483,7 +464,7 @@ export function ExecutionInspector({
                           <h3 id="execution-events-title">实际执行事件</h3>
                           <p className="meta">
                             {events.length} 条事件，仅显示第 {selected.ordinal}{" "}
-                            次尝试的持久记录
+                            次执行保存的记录
                           </p>
                         </div>
                         <div
@@ -509,7 +490,7 @@ export function ExecutionInspector({
                         </div>
                       </header>
                       {events.length === 0 ? (
-                        <p>当前尝试尚无持久事件。</p>
+                        <p>本次执行尚无已保存的事件。</p>
                       ) : view === "tree" ? (
                         <ul className="execution-tree">
                           {trees.map(renderTree)}
@@ -637,7 +618,7 @@ export function ExecutionInspector({
                         <dd>{duration}</dd>
                       </div>
                       <div>
-                        <dt>首次核验发现</dt>
+                        <dt>首次引用核验</dt>
                         <dd>{elapsed(execution.first_verified_finding_ms)}</dd>
                       </div>
                       <div>
@@ -653,7 +634,7 @@ export function ExecutionInspector({
                         <dd>{selected.output_hash ?? "未记录"}</dd>
                       </div>
                       <div>
-                        <dt>本次解析产物</dt>
+                        <dt>本次解析结果</dt>
                         <dd>
                           {selected.parsed_document_ids.length === 0
                             ? "未记录或尚未准备"
@@ -668,12 +649,12 @@ export function ExecutionInspector({
 
                     <div className="execution-results">
                       <section aria-labelledby="execution-verified-title">
-                        <h3 id="execution-verified-title">已核验发现</h3>
-                        {verified.length === 0 ? (
-                          <p>当前尝试没有已明确核验的发现。</p>
+                        <h3 id="execution-verified-title">引用已定位的线索</h3>
+                        {locatedFindings.length === 0 ? (
+                          <p>当前尝试没有全部引用已定位的线索。</p>
                         ) : (
                           <ul className="execution-finding-list">
-                            {verified.map((finding) => (
+                            {locatedFindings.map((finding) => (
                               <li key={finding.id}>
                                 <Button
                                   aria-label={String(finding.claim)}
@@ -697,14 +678,14 @@ export function ExecutionInspector({
                         )}
                       </section>
                       <section aria-labelledby="execution-gaps-title">
-                        <h3 id="execution-gaps-title">待核验与缺口</h3>
-                        {pendingVerification.length === 0 &&
+                        <h3 id="execution-gaps-title">引用待定位与缺口</h3>
+                        {pendingCitations.length === 0 &&
                         gaps.length === 0 ? (
-                          <p>没有已报告的核验缺口。</p>
+                          <p>没有已报告的引用定位或规则缺口。</p>
                         ) : null}
-                        {pendingVerification.length > 0 ? (
+                        {pendingCitations.length > 0 ? (
                           <ul className="execution-finding-list">
-                            {pendingVerification.map((finding) => (
+                            {pendingCitations.map((finding) => (
                               <li key={finding.id}>
                                 <Button
                                   aria-label={String(finding.claim)}
@@ -721,7 +702,7 @@ export function ExecutionInspector({
                                 <span className="meta">
                                   {finding.verification_status === "unverified"
                                     ? finding.unverified_reason
-                                    : "核验状态未提供"}
+                                    : "引用尚未全部定位"}
                                 </span>
                               </li>
                             ))}
@@ -747,7 +728,7 @@ export function ExecutionInspector({
 
                     <div className="execution-usage-grid">
                       <section aria-labelledby="execution-attempt-usage-title">
-                        <h3 id="execution-attempt-usage-title">本次尝试用量</h3>
+                        <h3 id="execution-attempt-usage-title">本次执行用量</h3>
                         {usageDetails(execution.usage)}
                       </section>
                       <section aria-labelledby="execution-all-usage-title">
@@ -763,13 +744,13 @@ export function ExecutionInspector({
         />
         {canCancel ? (
           <Button
-            aria-label={String(cancelling ? "正在取消" : "取消当前尝试")}
+            aria-label={String(cancelling ? "正在取消" : "取消本次执行")}
             type="text"
             htmlType="button"
             disabled={cancelling}
             onClick={onCancel}
           >
-            {cancelling ? "正在取消" : "取消当前尝试"}
+            {cancelling ? "正在取消" : "取消本次执行"}
           </Button>
         ) : null}
       </div>

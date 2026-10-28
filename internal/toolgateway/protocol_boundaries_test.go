@@ -1156,6 +1156,7 @@ func TestProtocolBoundaryReplayedHTTPRequestsConsumeSharedBudgetAndHonorSessionR
 		t.Fatal("demo admin is unavailable")
 	}
 	st.UseModels(gatewayConsumerModels{})
+	seedGatewayGovernance(t, st, user)
 	fixture := createGatewayClaimFixture(t, st, user, "protocol-budget-worker")
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()

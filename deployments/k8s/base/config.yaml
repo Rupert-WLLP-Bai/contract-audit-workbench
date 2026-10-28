@@ -22,6 +22,7 @@ data:
   EXECUTION_URL: http://audit-execution:8083
   TOOL_URLS: http://tool-gateway:8085
   DOCUMENT_SERVICE_URL: http://document-service:8082
+  CORE_SERVICE_URL: http://core-api:8081
   MODEL_GATEWAY_URL: http://model-gateway:8084/v1
   TOOL_GATEWAY_URL: http://tool-gateway:8085
   NATS_URL: nats://nats:4222
@@ -32,6 +33,17 @@ data:
   LLM_MODEL: operator-configured-openai-compatible-model
   OCR_MODEL: operator-configured-vision-model
   MODEL_GATEWAY_MODE: openai-compatible
+  # The default-on suggestion layer. Set TYPESAFE_JEV_MODE=off until the
+  # third-party processing/data-egress approval for the deployment is complete.
+  # The resolver accepts only a pinned model version, never a floating alias.
+  TYPESAFE_JEV_MODE: advisory
+  TYPESAFE_JEV_EGRESS: minimized
+  TYPESAFE_JEV_FEATURES: knowledge_rerank
+  TYPESAFE_JEV_MODEL: jev-1.14.0
+  TYPESAFE_JEV_PROVIDER: model-gateway
+  TYPESAFE_JEV_BASE_URL: https://api.typesafe.ai
+  TYPESAFE_JEV_TIMEOUT: 3s
+  TYPESAFE_JEV_MAX_CANDIDATES: "16"
   AGENT_PLANNER_MODE: deterministic
   AGENT_PLANNER_MAX_ROUNDS: "2"
   AGENT_PLANNER_MAX_CALLS: "16"
