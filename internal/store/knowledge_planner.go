@@ -1,13 +1,16 @@
 package store
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"sort"
+	"strconv"
 	"strings"
 	"unicode"
 	"unicode/utf8"
 
+	"contractaudit/internal/advisory"
 	"contractaudit/internal/agentflow"
 )
 
@@ -18,7 +21,29 @@ const (
 
 // governedPlannerKnowledge operates only on the copied, reauthorized acceptance
 // snapshot and the verified frozen review inputs. It never fetches newer versions.
+// advisoryOutcome is one reusable or freshly persisted judgment batch. The
+// store evaluator owns persistence; this planner only applies bands.
+type advisoryOutcome struct {
+	Result     advisory.KnowledgeResult
+	JudgmentID string
+	Cached     bool
+}
+
+type advisoryEvaluator interface {
+	Evaluate(context.Context, advisory.KnowledgeRequest) (advisoryOutcome, error)
+}
+
+// governedPlannerKnowledge is the deterministic baseline. It is kept as the
+// exact no-Jev entry point so tests and fallback paths can compare bytes.
 func governedPlannerKnowledge(snapshot *ReviewKnowledgeSnapshot, gaps []agentflow.Gap, evidence []agentflow.Evidence, maxEvidenceBytes int) ([]agentflow.KnowledgeReference, *agentflow.KnowledgeSelectionRecord, error) {
+	return governedPlannerKnowledgeWithAdvisory(context.Background(), snapshot, gaps, evidence, maxEvidenceBytes, nil, "", nil)
+}
+
+// governedPlannerKnowledgeWithAdvisory selects required policies first and
+// optional candidates by the existing deterministic budget. A completed Jev
+// batch may change only the optional ordering; it cannot change scores, the
+// candidate set, required policies or the reference budget.
+func governedPlannerKnowledgeWithAdvisory(ctx context.Context, snapshot *ReviewKnowledgeSnapshot, gaps []agentflow.Gap, evidence []agentflow.Evidence, maxEvidenceBytes int, advisoryConfiguration *agentflow.AdvisoryConfiguration, plannerConfigurationID string, evaluator advisoryEvaluator) ([]agentflow.KnowledgeReference, *agentflow.KnowledgeSelectionRecord, error) {
 	record := &agentflow.KnowledgeSelectionRecord{
 		Algorithm: governedPlannerAlgorithm, PolicyStatus: "unknown", PolicyReason: "policy_snapshot_missing",
 		Input:      agentflow.KnowledgeSelectionInput{Gaps: []agentflow.KnowledgeInputGap{}, Evidence: []agentflow.KnowledgeInputEvidence{}},
@@ -26,6 +51,15 @@ func governedPlannerKnowledge(snapshot *ReviewKnowledgeSnapshot, gaps []agentflo
 		Budget: agentflow.KnowledgeSelectionBudget{ReferenceLimit: agentflow.PlannerKnowledgeReferenceBudget,
 			FieldBytes: agentflow.PlannerKnowledgeFieldBytes, EvidenceRunesPerDocument: governedPlannerEvidenceRunes,
 			ReadCallsLimit: agentflow.KnowledgeReadMaxCalls, ReadMaxRunes: agentflow.KnowledgeReadMaxRunes, ReadMaxBytes: agentflow.KnowledgeReadMaxBytes},
+	}
+	if advisoryConfiguration != nil {
+		record.Advisory = &agentflow.KnowledgeAdvisoryRecord{
+			Mode: advisoryConfiguration.Mode, Feature: agentflow.AdvisoryFeatureKnowledgeRerank,
+			Provider: advisoryConfiguration.Provider, ConfigurationID: plannerConfigurationID,
+			ModelRequested: advisoryConfiguration.Model, QuestionSetVersion: advisoryConfiguration.QuestionSetVersion,
+			Egress: advisoryConfiguration.Egress, Status: "not_applicable",
+			Candidates: []agentflow.KnowledgeAdvisoryCandidate{},
+		}
 	}
 	labels, query := map[string]bool{}, map[string]bool{}
 	addLabel := func(value string) {
@@ -112,17 +146,129 @@ func governedPlannerKnowledge(snapshot *ReviewKnowledgeSnapshot, gaps []agentflo
 		}
 		return lessIdentity(optional[i].selection.Ref, optional[j].selection.Ref)
 	})
+	deterministicRank := map[KnowledgeRef]int{}
+	advisoryKeys := []KnowledgeRef{}
+	for _, item := range optional {
+		if item.score > 0 {
+			deterministicRank[item.selection.Ref] = len(advisoryKeys) + 1
+			advisoryKeys = append(advisoryKeys, item.selection.Ref)
+		}
+	}
+	advisoryByKey := map[KnowledgeRef]agentflow.KnowledgeAdvisoryCandidate{}
+	advisoryCompleted := false
+	if record.Advisory != nil && len(advisoryKeys) > 0 && advisoryConfiguration.Supports(agentflow.AdvisoryFeatureKnowledgeRerank) {
+		inputCandidates := make([]advisory.KnowledgeCandidate, 0, len(advisoryKeys))
+		for _, key := range advisoryKeys {
+			for _, item := range optional {
+				if item.selection.Ref == key {
+					inputCandidates = append(inputCandidates, advisory.KnowledgeCandidate{
+						Kind: item.selection.Kind, Summary: item.selection.Summary,
+						CheckAction: item.selection.CheckAction, MinimumEvidence: item.selection.MinimumEvidence,
+					})
+					break
+				}
+			}
+		}
+		scope := advisory.KnowledgeScope{BusinessLine: snapshot.Scope.BusinessLine, Scenario: snapshot.Scope.Scenario, ContractType: snapshot.Scope.ContractType}
+		gapLabels := make([]advisory.KnowledgeGap, 0, len(gaps))
+		for _, gap := range gaps {
+			gapLabels = append(gapLabels, advisory.KnowledgeGap{Domain: string(gap.Domain), Capability: gap.Capability, Reason: gap.IncompleteReason})
+		}
+		request, buildErr := advisory.BuildKnowledgeRequest(*advisoryConfiguration, scope, gapLabels, inputCandidates)
+		switch {
+		case errors.Is(buildErr, advisory.ErrNotApplicable):
+			record.Advisory.Status = "not_applicable"
+		case buildErr != nil:
+			record.Advisory.Status = "unavailable"
+			record.Advisory.ErrorCode = "invalid_request"
+		default:
+			record.Advisory.RequestSHA256 = request.RequestSHA256
+			record.Advisory.Truncated = request.Truncated
+			record.Advisory.Status = "unavailable"
+			if evaluator == nil {
+				record.Advisory.ErrorCode = "provider_unavailable"
+			} else if ctx != nil && ctx.Err() != nil {
+				record.Advisory.ErrorCode = "cancelled"
+			} else {
+				outcome, evaluateErr := evaluator.Evaluate(ctx, request)
+				if evaluateErr != nil {
+					record.Advisory.ErrorCode = advisoryErrorCode(evaluateErr)
+				} else if len(outcome.Result.Bands) != len(request.Candidates) {
+					record.Advisory.ErrorCode = "invalid_response"
+				} else {
+					advisoryCompleted = true
+					record.Advisory.Status = "completed"
+					record.Advisory.ModelObserved = outcome.Result.Model
+					record.Advisory.JudgmentID = outcome.JudgmentID
+					for _, candidate := range request.Candidates {
+						index, ok := advisoryCandidateIndex(candidate.Alias)
+						if !ok || index >= len(advisoryKeys) {
+							continue
+						}
+						value := outcome.Result.Probabilities[candidate.Alias]
+						band := outcome.Result.Bands[candidate.Alias]
+						advisoryByKey[advisoryKeys[index]] = agentflow.KnowledgeAdvisoryCandidate{
+							KnowledgeID: advisoryKeys[index].KnowledgeID, VersionID: advisoryKeys[index].VersionID,
+							ContentSHA256: advisoryKeys[index].ContentSHA256, Alias: candidate.Alias,
+							Probability: &value, Band: string(band), RankBefore: deterministicRank[advisoryKeys[index]],
+						}
+					}
+				}
+			}
+			// A failed or partially omitted batch still records the attempted
+			// candidates as unknown; it must never look like a negative answer.
+			for _, candidate := range request.Candidates {
+				index, ok := advisoryCandidateIndex(candidate.Alias)
+				if !ok || index >= len(advisoryKeys) {
+					continue
+				}
+				if _, exists := advisoryByKey[advisoryKeys[index]]; exists {
+					continue
+				}
+				advisoryByKey[advisoryKeys[index]] = agentflow.KnowledgeAdvisoryCandidate{
+					KnowledgeID: advisoryKeys[index].KnowledgeID, VersionID: advisoryKeys[index].VersionID,
+					ContentSHA256: advisoryKeys[index].ContentSHA256, Alias: candidate.Alias,
+					Band: string(advisory.BandUnknown), RankBefore: deterministicRank[advisoryKeys[index]],
+				}
+			}
+			for _, omission := range request.Omitted {
+				index, ok := advisoryCandidateIndex(omission.Alias)
+				if !ok || index >= len(advisoryKeys) {
+					continue
+				}
+				advisoryByKey[advisoryKeys[index]] = agentflow.KnowledgeAdvisoryCandidate{
+					KnowledgeID: advisoryKeys[index].KnowledgeID, VersionID: advisoryKeys[index].VersionID,
+					ContentSHA256: advisoryKeys[index].ContentSHA256, Alias: omission.Alias,
+					Band: string(advisory.BandUnknown), RankBefore: deterministicRank[advisoryKeys[index]],
+					Reason: "advisory_" + omission.Reason,
+				}
+			}
+		}
+	}
+	if advisoryCompleted {
+		sort.SliceStable(optional, func(i, j int) bool {
+			left, right := advisory.BandUnknown, advisory.BandUnknown
+			if item, ok := advisoryByKey[optional[i].selection.Ref]; ok {
+				left = advisory.Band(item.Band)
+			}
+			if item, ok := advisoryByKey[optional[j].selection.Ref]; ok {
+				right = advisory.Band(item.Band)
+			}
+			return advisory.BandRank(left) < advisory.BandRank(right)
+		})
+	}
 	refs := make([]agentflow.KnowledgeReference, 0, len(policies)+min(len(optional), agentflow.PlannerKnowledgeReferenceBudget))
 	remaining := maxEvidenceBytes
-	appendSelected := func(item ranked, reason string) {
+	appendSelected := func(item ranked, reason string, advice *agentflow.KnowledgeAdvisoryCandidate) {
 		ref := plannerKnowledgeReference(item.selection, &remaining)
 		refs = append(refs, ref)
 		record.Candidates = append(record.Candidates, agentflow.KnowledgeCandidate{KnowledgeID: ref.KnowledgeID, VersionID: ref.VersionID,
 			ContentSHA256: ref.ContentSHA256, Kind: ref.Kind, Required: ref.Required, Score: item.score,
-			Decision: "selected", Reason: reason, Truncated: ref.Truncated, RequiresFactEvaluation: ref.RequiresFactEvaluation})
+			Decision: "selected", Reason: reason, Truncated: ref.Truncated, RequiresFactEvaluation: ref.RequiresFactEvaluation,
+			Advisory: advice})
 	}
 	for _, item := range policies {
-		appendSelected(item, "required_policy")
+		appendSelected(item, "required_policy", nil)
 	}
 	if len(policies) > 0 {
 		record.PolicyStatus, record.PolicyReason = "available", ""
@@ -136,22 +282,47 @@ func governedPlannerKnowledge(snapshot *ReviewKnowledgeSnapshot, gaps []agentflo
 			break
 		}
 	}
+	finalRank := 0
 	for _, item := range optional {
+		if item.score > 0 {
+			finalRank++
+		}
 		reason := "relevance"
 		if item.score == 0 {
 			reason = "no_relevance"
 		} else if len(refs) >= agentflow.PlannerKnowledgeReferenceBudget {
 			reason = "planner_budget"
 		}
+		var advice *agentflow.KnowledgeAdvisoryCandidate
+		if value, ok := advisoryByKey[item.selection.Ref]; ok {
+			value.RankAfter = finalRank
+			copy := value
+			advice = &copy
+			advisoryByKey[item.selection.Ref] = value
+		}
 		if reason == "relevance" {
-			appendSelected(item, reason)
+			appendSelected(item, reason, advice)
 			record.Budget.OptionalSelected++
 		} else {
 			ref := item.selection.Ref
 			record.Candidates = append(record.Candidates, agentflow.KnowledgeCandidate{KnowledgeID: ref.KnowledgeID, VersionID: ref.VersionID,
-				ContentSHA256: ref.ContentSHA256, Kind: item.selection.Kind, Score: item.score, Decision: "omitted", Reason: reason, RequiresFactEvaluation: item.selection.RequiresFactEvaluation})
+				ContentSHA256: ref.ContentSHA256, Kind: item.selection.Kind, Score: item.score, Decision: "omitted", Reason: reason,
+				RequiresFactEvaluation: item.selection.RequiresFactEvaluation, Advisory: advice})
 			record.Budget.OptionalOmitted++
 		}
+	}
+	if record.Advisory != nil && len(advisoryByKey) > 0 {
+		for _, key := range advisoryKeys {
+			if value, ok := advisoryByKey[key]; ok {
+				record.Advisory.Candidates = append(record.Advisory.Candidates, value)
+			}
+		}
+		sort.Slice(record.Advisory.Candidates, func(i, j int) bool {
+			if record.Advisory.Candidates[i].RankAfter != record.Advisory.Candidates[j].RankAfter {
+				return record.Advisory.Candidates[i].RankAfter < record.Advisory.Candidates[j].RankAfter
+			}
+			return record.Advisory.Candidates[i].KnowledgeID < record.Advisory.Candidates[j].KnowledgeID
+		})
 	}
 	for _, excluded := range snapshot.Excluded {
 		if excluded.Reason != "optional_budget" {
@@ -305,4 +476,13 @@ func governedKnowledgeSpan(body string, start, end int) (string, error) {
 		return "", errors.New("governed knowledge span exceeds the source or byte limit")
 	}
 	return body[first:last], nil
+}
+
+func advisoryCandidateIndex(alias string) (int, bool) {
+	const prefix = "candidate_"
+	if !strings.HasPrefix(alias, prefix) {
+		return 0, false
+	}
+	index, err := strconv.Atoi(strings.TrimPrefix(alias, prefix))
+	return index, err == nil && index >= 0
 }

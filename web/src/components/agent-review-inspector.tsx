@@ -1,10 +1,15 @@
 import { Button } from "antd";
 import type {
   AgentReview,
+  AgentReviewAdvisoryBand,
+  AgentReviewAdvisoryMode,
+  AgentReviewAdvisoryProvider,
+  AgentReviewAdvisoryStatus,
   AgentReviewCallStatus,
   AgentReviewCapability,
   AgentReviewDomain,
   AgentReviewDomainStatus,
+  AgentReviewKnowledgeAdvisory,
   ExecutionEvent,
 } from "../api/types";
 import { StatusText } from "./status-text";
@@ -72,6 +77,35 @@ const RELATION_LABELS = {
   insufficient: "证据不足",
   not_applicable: "不适用",
 } as const;
+
+const ADVISORY_STATUS_LABELS: Record<AgentReviewAdvisoryStatus, string> = {
+  completed: "建议已生成",
+  unavailable: "建议不可用",
+  not_applicable: "无需建议",
+  model_mismatch: "模型版本不一致",
+  invalid_response: "响应无效",
+  budget_exhausted: "模型预算不足",
+  persistence_failed: "建议记录未写入",
+  config_mismatch: "冻结配置不一致",
+};
+
+const ADVISORY_BAND_LABELS: Record<AgentReviewAdvisoryBand, string> = {
+  relevant: "建议前列",
+  uncertain: "建议不确定",
+  not_relevant: "建议后置",
+  unknown: "无可用建议",
+};
+
+const ADVISORY_MODE_LABELS: Record<AgentReviewAdvisoryMode, string> = {
+  advisory: "默认建议模式",
+  fixture: "本地 fixture",
+};
+
+const ADVISORY_PROVIDER_LABELS: Record<AgentReviewAdvisoryProvider, string> = {
+  "model-gateway": "模型网关",
+  "local-fixture": "本地 fixture",
+  direct: "直接调用",
+};
 
 function reviewTone(
   status: AgentReview["status"],
@@ -165,6 +199,119 @@ function showIds(values: string[] | null): string {
     : values.length === 0
       ? "无已报告 ID"
       : values.join("、");
+}
+
+function knowledgeAdvisoryTone(
+  status: AgentReviewAdvisoryStatus,
+): "neutral" | "attention" {
+  return status === "completed" || status === "not_applicable"
+    ? "neutral"
+    : "attention";
+}
+
+function KnowledgeAdvisoryDetails({
+  advisory,
+}: {
+  advisory: AgentReviewKnowledgeAdvisory;
+}) {
+  const failed =
+    advisory.status !== "completed" && advisory.status !== "not_applicable";
+  return (
+    <>
+      <p className="callout">
+        <strong>Jev 建议排序，不改变结论。</strong>
+        建议只影响可选治理知识的先后；规则、引用、证据核验、缺口状态和人工决定仍由确定性流程负责。失败或不可用时按确定性顺序回退。
+      </p>
+      <dl className="agent-review-grid">
+        <div>
+          <dt>建议状态</dt>
+          <dd>
+            <StatusText tone={knowledgeAdvisoryTone(advisory.status)}>
+              {ADVISORY_STATUS_LABELS[advisory.status]}
+            </StatusText>
+            <span className="meta">（{advisory.status}）</span>
+          </dd>
+        </div>
+        <div>
+          <dt>提供方与模式</dt>
+          <dd>
+            {ADVISORY_PROVIDER_LABELS[advisory.provider]}，{" "}
+            {ADVISORY_MODE_LABELS[advisory.mode]}
+          </dd>
+        </div>
+        <div>
+          <dt>请求模型 / 观测模型</dt>
+          <dd>
+            <code>{advisory.model_requested ?? "未请求"}</code> /{" "}
+            <code>{advisory.model_observed ?? "未观测"}</code>
+          </dd>
+        </div>
+        <div>
+          <dt>数据边界</dt>
+          <dd>仅发送最小化元数据，不发送合同原文</dd>
+        </div>
+        <div>
+          <dt>问题集版本</dt>
+          <dd>
+            <code>{advisory.question_set_version}</code>
+          </dd>
+        </div>
+        {advisory.error_code ? (
+          <div>
+            <dt>失败原因</dt>
+            <dd>
+              <code>{advisory.error_code}</code>
+            </dd>
+          </div>
+        ) : null}
+        {advisory.truncated ? (
+          <div>
+            <dt>候选范围</dt>
+            <dd>候选过多，本次仅评估了部分可选知识。</dd>
+          </div>
+        ) : null}
+      </dl>
+      {advisory.candidates.length === 0 ? (
+        <p className="meta">
+          没有可选知识候选获得建议；排序保持确定性顺序。
+        </p>
+      ) : (
+        <ul className="agent-review-list">
+          {advisory.candidates.map((candidate) => (
+            <li
+              key={`${candidate.knowledge_id}\u0000${candidate.version_id}\u0000${candidate.content_sha256}`}
+            >
+              <header>
+                <strong>
+                  <code>{candidate.knowledge_id}</code> v{candidate.version_id}
+                </strong>
+                <StatusText tone="neutral">
+                  {ADVISORY_BAND_LABELS[candidate.band]}
+                </StatusText>
+              </header>
+              <p>
+                建议概率{" "}
+                {candidate.probability === null
+                  ? "未返回"
+                  : `${(candidate.probability * 100).toFixed(1)}%`}
+                ，确定性排序第 {candidate.rank_before} 位，建议排序第{" "}
+                {candidate.rank_after} 位
+                {candidate.reason ? `，原因 ${candidate.reason}` : ""}
+              </p>
+            </li>
+          ))}
+        </ul>
+      )}
+      <p className="meta">
+        概率表示模型对相关性的判断，不是正确率，也不是风险结论；候选身份与概率来自冻结审查记录。
+      </p>
+      {failed ? (
+        <p className="callout">
+          建议不可用时，审查使用确定性排序继续完成；该失败本身不构成审查结论。
+        </p>
+      ) : null}
+    </>
+  );
 }
 
 export function AgentReviewInspector({
@@ -321,6 +468,32 @@ export function AgentReviewInspector({
           <p className="meta">这份检查记录没有提供规则包编号。</p>
         )}
       </section>
+
+      {agentReview.knowledge_selection ? (
+        <section
+          className="agent-review-section"
+          aria-labelledby="agent-review-knowledge-advisory-title"
+        >
+          <h4 id="agent-review-knowledge-advisory-title">
+            治理知识与排序建议
+          </h4>
+          <p className="meta">
+            治理知识策略状态：
+            {agentReview.knowledge_selection.policy_status}
+            {agentReview.knowledge_selection.policy_reason
+              ? `（${agentReview.knowledge_selection.policy_reason}）`
+              : ""}
+            。该状态由确定性规则判定；模型建议不能把它改为可用。
+          </p>
+          {agentReview.knowledge_selection.advisory ? (
+            <KnowledgeAdvisoryDetails
+              advisory={agentReview.knowledge_selection.advisory}
+            />
+          ) : (
+            <p>本次审查没有记录模型排序建议；治理知识按确定性规则排序。</p>
+          )}
+        </section>
+      ) : null}
 
       <section
         className="agent-review-section"

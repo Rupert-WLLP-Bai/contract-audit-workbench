@@ -12,6 +12,7 @@ import (
 	"unicode/utf8"
 
 	"contractaudit/internal/accounts"
+	"contractaudit/internal/advisory"
 	"contractaudit/internal/config"
 	"contractaudit/internal/docir"
 	"contractaudit/internal/docversion"
@@ -38,6 +39,7 @@ type Store struct {
 	dir                    string
 	st                     state
 	models                 Models
+	advisoryProvider       advisory.Provider
 	objects                ObjectStore
 	documentPreparer       DocumentPreparer
 	requireRemoteDocuments bool

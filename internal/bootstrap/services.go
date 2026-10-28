@@ -4,13 +4,17 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"log"
 	"os"
 	"strings"
 	"time"
 
+	"contractaudit/internal/advisory"
+	"contractaudit/internal/agentflow"
 	"contractaudit/internal/config"
 	"contractaudit/internal/documentclient"
 	"contractaudit/internal/experienceclient"
+	"contractaudit/internal/jev"
 	"contractaudit/internal/model"
 	"contractaudit/internal/store"
 	"contractaudit/internal/toolclient"
@@ -91,6 +95,49 @@ func serviceModelConfig(role string) (model.Config, error) {
 	}
 	cfg.ProviderURL, cfg.BaseURL, cfg.APIKey, cfg.Gateway = cfg.BaseURL, gateway, credential, true
 	return cfg, nil
+}
+
+// configuredAdvisoryProvider installs the suggestion-layer transport for the
+// processes that execute review attempts. A missing or invalid advisory
+// configuration leaves the provider nil: review acceptance and execution must
+// continue on the deterministic path with an explicit unavailable record, not
+// fail startup.
+func configuredAdvisoryProvider(service string, models *model.Client) advisory.Provider {
+	if service != "" && service != "worker" {
+		return nil
+	}
+	configuration, reason := agentflow.ResolveAdvisoryConfiguration()
+	if configuration == nil {
+		if reason != "" && reason != "disabled" {
+			log.Printf("advisory provider disabled: %s", reason)
+		}
+		return nil
+	}
+	switch configuration.Provider {
+	case agentflow.AdvisoryProviderFixture:
+		return advisory.FixtureProvider{}
+	case agentflow.AdvisoryProviderGateway:
+		provider, err := advisory.NewGatewayProvider(models)
+		if err != nil {
+			log.Printf("advisory gateway provider unavailable: %v", err)
+			return nil
+		}
+		return provider
+	case agentflow.AdvisoryProviderDirect:
+		if service != "" {
+			log.Printf("advisory direct provider is only available to the single-process development mode")
+			return nil
+		}
+		provider, err := advisory.NewDirectProvider(jev.FromEnv())
+		if err != nil {
+			log.Printf("advisory direct provider unavailable: %v", err)
+			return nil
+		}
+		return provider
+	default:
+		log.Printf("advisory provider %q is not implemented", configuration.Provider)
+		return nil
+	}
 }
 
 func configuredDocumentPreparer() (store.DocumentPreparer, error) {

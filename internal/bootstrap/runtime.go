@@ -164,6 +164,9 @@ func openConfigured(ctx context.Context, includeOIDC bool, service string) (*Run
 	}
 	models := model.New(modelConfig)
 	st.UseModels(models)
+	if provider := configuredAdvisoryProvider(service, models); provider != nil {
+		st.UseAdvisory(provider)
+	}
 	if service == "worker" {
 		preparer, err := configuredDocumentPreparer()
 		if err != nil {

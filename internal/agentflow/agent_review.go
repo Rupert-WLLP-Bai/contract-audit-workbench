@@ -59,15 +59,16 @@ type PlannerLimits struct {
 // PlannerConfiguration identifies all request behavior that can change a plan.
 // The caller persists ConfigurationID alongside the existing model config ID.
 type PlannerConfiguration struct {
-	Mode                 string        `json:"mode"`
-	ModelConfigurationID string        `json:"model_configuration_id,omitempty"`
-	ConfigurationID      string        `json:"configuration_id"`
-	PromptVersion        string        `json:"prompt_version"`
-	PromptSHA256         string        `json:"prompt_sha256"`
-	SchemaVersion        string        `json:"schema_version"`
-	RuntimeVersion       string        `json:"runtime_version"`
-	ToolCatalogVersion   string        `json:"tool_catalog_version"`
-	Limits               PlannerLimits `json:"limits"`
+	Mode                 string                 `json:"mode"`
+	ModelConfigurationID string                 `json:"model_configuration_id,omitempty"`
+	ConfigurationID      string                 `json:"configuration_id"`
+	PromptVersion        string                 `json:"prompt_version"`
+	PromptSHA256         string                 `json:"prompt_sha256"`
+	SchemaVersion        string                 `json:"schema_version"`
+	RuntimeVersion       string                 `json:"runtime_version"`
+	ToolCatalogVersion   string                 `json:"tool_catalog_version"`
+	Limits               PlannerLimits          `json:"limits"`
+	Advisory             *AdvisoryConfiguration `json:"advisory,omitempty"`
 }
 
 // ResolvePlannerConfiguration is safe to call at acceptance time. It reads the
@@ -130,6 +131,10 @@ func ResolvePlannerConfiguration(modelConfigurationID string) (PlannerConfigurat
 	if outputMode == ModeModelFixture || outputMode == ModeModelLive {
 		configuration.ModelConfigurationID = strings.TrimSpace(modelConfigurationID)
 	}
+	// An invalid advisory configuration freezes as absent rather than blocking
+	// acceptance. The worker then uses deterministic order, and health reports
+	// the reason from the same resolver.
+	configuration.Advisory, _ = ResolveAdvisoryConfiguration()
 	identity, err := plannerConfigurationID(configuration)
 	if err != nil {
 		return PlannerConfiguration{}, err
@@ -396,6 +401,11 @@ func (configuration PlannerConfiguration) Validate() error {
 		configuration.Limits.MaxDurationMS < 1_000 || configuration.Limits.MaxDurationMS > MaxPlannerTimeout.Milliseconds() ||
 		configuration.Limits.MaxEvidenceBytes < 1 || configuration.Limits.MaxEvidenceBytes > MaxPlannerEvidenceBytes {
 		return errors.New("planner limits exceed fixed bounds")
+	}
+	if configuration.Advisory != nil {
+		if err := configuration.Advisory.Validate(); err != nil {
+			return errors.New("planner advisory configuration is invalid")
+		}
 	}
 	identity, err := plannerConfigurationID(configuration)
 	if err != nil || configuration.ConfigurationID != identity {

@@ -50,7 +50,7 @@ SECRET_CONTRACT = {
     },
     "contract-audit-oidc": {"OIDC_CLIENT_SECRET", "OIDC_ADMIN_CLIENT_SECRET", "OIDC_STATE_KEY"},
     "contract-audit-rustfs": {"RUSTFS_ACCESS_KEY", "RUSTFS_SECRET_KEY"},
-    "contract-audit-model": {"LLM_API_KEY"},
+    "contract-audit-model": {"LLM_API_KEY", "TYPESAFE_API_KEY"},
 }
 
 REQUIRED = {
@@ -77,6 +77,11 @@ GATEWAY_ENV = (
 )
 IDENTITY_SERVICES = ("core", "document", "execution", "worker")
 IDENTITY_KEYS = ("LLM_BASE_URL", "LLM_MODEL", "OCR_MODEL")
+JEV_ADVISORY_KEYS = (
+    "TYPESAFE_JEV_MODE", "TYPESAFE_JEV_EGRESS", "TYPESAFE_JEV_FEATURES",
+    "TYPESAFE_JEV_MODEL", "TYPESAFE_JEV_PROVIDER",
+)
+JEV_MODEL_KEYS = JEV_ADVISORY_KEYS + ("TYPESAFE_JEV_BASE_URL",)
 INTERNAL_TOKEN_KEYS = ("WORKER_MODEL_TOKEN", "WORKER_DOCUMENT_TOKEN", "WORKER_TOOL_TOKEN", "WORKER_CORE_TOKEN", "DOCUMENT_MODEL_TOKEN")
 PROBES = ("startupProbe", "readinessProbe", "livenessProbe")
 HTTP_PORT_HINT = {"core": 8081, "document": 8082, "execution": 8083, "worker": 8086, "model": 8084, "tool": 8085}
@@ -298,6 +303,39 @@ def check_gateway_env(name: str, env: dict[str, object], config_from: set[str], 
             fail(f"{name}: {key} is not part of the edge contract")
 
 
+def check_jev_kubernetes(name: str, role: str, env: dict[str, object], config_from: set[str]) -> None:
+    if role in {"core", "execution", "worker"}:
+        for key in JEV_ADVISORY_KEYS:
+            if key not in env and key not in config_from:
+                fail(f"{name}: role {role} is missing Jev configuration {key}")
+        if "TYPESAFE_API_KEY" in env:
+            fail(f"{name}: only model-gateway may hold TYPESAFE_API_KEY")
+    if role == "model":
+        keys = JEV_ADVISORY_KEYS + (("TYPESAFE_JEV_BASE_URL",) if name == "model-gateway" else ())
+        for key in keys:
+            if key not in env and key not in config_from:
+                fail(f"{name}: role model is missing Jev configuration {key}")
+        source = env.get("TYPESAFE_API_KEY")
+        reference = source.get("secretKeyRef") if isinstance(source, dict) else None
+        if not isinstance(reference, dict) or reference.get("name") != "contract-audit-model" or \
+                reference.get("key") != "TYPESAFE_API_KEY" or not reference.get("optional", False):
+            fail(f"{name}: model-gateway must read an optional TYPESAFE_API_KEY secret")
+
+
+def check_jev_compose(name: str, role: str, environment: dict[str, str]) -> None:
+    if role in {"core", "execution", "worker"}:
+        for key in JEV_ADVISORY_KEYS:
+            if key not in environment:
+                fail(f"compose {name}: role {role} is missing Jev configuration {key}")
+    if role == "model":
+        keys = JEV_ADVISORY_KEYS + (("TYPESAFE_JEV_BASE_URL",) if name == "model-gateway" else ())
+        for key in keys:
+            if key not in environment:
+                fail(f"compose {name}: role model is missing Jev configuration {key}")
+    if name not in {"model-gateway", "model-gateway-fixture"} and "TYPESAFE_API_KEY" in environment:
+        fail(f"compose {name}: only the model gateway may hold TYPESAFE_API_KEY")
+
+
 def check_kustomize(root: Path, entrypoints: set[str], roles: set[str], dsn_keys: dict[str, str], probes: set[str]) -> None:
     base_objects, base_files = resolve_kustomization(root, root / "deployments/k8s/base/kustomization.yaml")
     configs = configmap_lookup(root, base_objects)
@@ -305,6 +343,12 @@ def check_kustomize(root: Path, entrypoints: set[str], roles: set[str], dsn_keys
                     if document.get("kind") == "ConfigMap" and document.get("metadata", {}).get("name") == "contract-audit-runtime"), {})
     if "contract-audit-runtime" not in configs:
         fail("the rendered base does not include the contract-audit-runtime ConfigMap")
+    if str(runtime.get("APP_ENV", "")).strip() == "production":
+        if str(runtime.get("TYPESAFE_JEV_MODE", "")).strip() == "fixture" or \
+                str(runtime.get("TYPESAFE_JEV_MODEL", "")).strip() == "jev-fixture":
+            fail("production runtime must not enable the Jev fixture")
+        if "TYPESAFE_API_KEY" in runtime:
+            fail("TYPESAFE_API_KEY must not be stored in the runtime ConfigMap")
     kinds = [document.get("kind") for document in base_objects]
     if "HorizontalPodAutoscaler" in kinds:
         fail("the rendered base must contain zero HorizontalPodAutoscaler objects")
@@ -356,6 +400,7 @@ def check_kustomize(root: Path, entrypoints: set[str], roles: set[str], dsn_keys
                 fail(f"{name}: SERVICE_ROLE {role!r} is not accepted by bootstrap.OpenService")
                 continue
             serving_roles.add(role)
+            check_jev_kubernetes(name, role, env, config_from)
             check_experience_kubernetes(name, role, container, env, runtime)
             dsn = dsn_keys.get(role)
             if dsn is None or dsn not in env:
@@ -432,6 +477,12 @@ def check_compose(root: Path, entrypoints: set[str], roles: set[str], dsn_keys: 
             if token.startswith("/app/") and token not in entrypoints:
                 fail(f"compose {name}: entrypoint {token} is not copied into the backend stage by deploy/app/Dockerfile")
         environment = compose_environment(service.get("environment"))
+        if name == "health-monitor":
+            for key in ("MODEL_GATEWAY_URL", *JEV_ADVISORY_KEYS):
+                if key not in environment:
+                    fail(f"compose health-monitor: missing non-secret Jev status {key}")
+            if "TYPESAFE_API_KEY" in environment:
+                fail("compose health-monitor: must not hold TYPESAFE_API_KEY")
         role = environment.get("SERVICE_ROLE")
         healthcheck = " ".join(service.get("healthcheck", {}).get("test", []))
         if role is not None or name == "gateway":
@@ -445,6 +496,7 @@ def check_compose(root: Path, entrypoints: set[str], roles: set[str], dsn_keys: 
             fail(f"compose {name}: SERVICE_ROLE {role!r} is not accepted by bootstrap.OpenService")
             continue
         check_experience_compose(name, role, environment)
+        check_jev_compose(name, role, environment)
         dsn = dsn_keys.get(role)
         if dsn is None or dsn not in environment:
             fail(f"compose {name}: role {role} must declare its database identity key {dsn or '(unknown role)'}")

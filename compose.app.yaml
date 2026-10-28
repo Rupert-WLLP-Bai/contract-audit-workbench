@@ -9,6 +9,21 @@ x-app-health: &app-health
   retries: 6
   start_period: 10s
 
+# The advisory layer is default-on only in deployments that opt into these
+# values. The code default stays off so tests and accidental starts never call
+# an external provider. Workers freeze this configuration at review acceptance;
+# the model-gateway owns the only copy of TYPESAFE_API_KEY.
+x-jev-advisory: &jev-advisory
+  TYPESAFE_JEV_MODE: ${TYPESAFE_JEV_MODE:-advisory}
+  TYPESAFE_JEV_EGRESS: ${TYPESAFE_JEV_EGRESS:-minimized}
+  TYPESAFE_JEV_FEATURES: ${TYPESAFE_JEV_FEATURES:-knowledge_rerank}
+  TYPESAFE_JEV_MODEL: ${TYPESAFE_JEV_MODEL:-jev-1.14.0}
+  # The distributed path always uses the gateway; a developer .env may set
+  # TYPESAFE_JEV_PROVIDER=direct for the single-process server instead.
+  TYPESAFE_JEV_PROVIDER: model-gateway
+  TYPESAFE_JEV_TIMEOUT: ${TYPESAFE_JEV_TIMEOUT:-3s}
+  TYPESAFE_JEV_MAX_CANDIDATES: ${TYPESAFE_JEV_MAX_CANDIDATES:-16}
+
 services:
   health-monitor:
     image: contract-audit-backend:local
@@ -27,6 +42,9 @@ services:
       LLM_MODEL: ${LLM_MODEL:-}
       OCR_MODEL: ${OCR_MODEL:-}
       MINERU_URL: ${MINERU_URL:-}
+      MODEL_GATEWAY_URL: ${MODEL_GATEWAY_URL:-http://model-gateway:8084/v1}
+      TYPESAFE_JEV_BASE_URL: ${TYPESAFE_JEV_BASE_URL:-https://api.typesafe.ai}
+      <<: *jev-advisory
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
@@ -135,6 +153,7 @@ services:
       AGENT_PLANNER_MAX_CALLS: ${AGENT_PLANNER_MAX_CALLS:-16}
       AGENT_PLANNER_TIMEOUT: ${AGENT_PLANNER_TIMEOUT:-30s}
       AGENT_PLANNER_MAX_EVIDENCE_BYTES: ${AGENT_PLANNER_MAX_EVIDENCE_BYTES:-2097152}
+      <<: *jev-advisory
       NATS_URL: ${NATS_URL:-nats://nats:4222}
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
       OTEL_EXPORTER_OTLP_PROTOCOL: ${OTEL_EXPORTER_OTLP_PROTOCOL:-http/json}
@@ -225,6 +244,7 @@ services:
       AGENT_PLANNER_MAX_CALLS: ${AGENT_PLANNER_MAX_CALLS:-16}
       AGENT_PLANNER_TIMEOUT: ${AGENT_PLANNER_TIMEOUT:-30s}
       AGENT_PLANNER_MAX_EVIDENCE_BYTES: ${AGENT_PLANNER_MAX_EVIDENCE_BYTES:-2097152}
+      <<: *jev-advisory
       NATS_URL: ${NATS_URL:-nats://nats:4222}
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
       OTEL_EXPORTER_OTLP_PROTOCOL: ${OTEL_EXPORTER_OTLP_PROTOCOL:-http/json}
@@ -266,6 +286,7 @@ services:
       AGENT_PLANNER_MAX_CALLS: ${AGENT_PLANNER_MAX_CALLS:-16}
       AGENT_PLANNER_TIMEOUT: ${AGENT_PLANNER_TIMEOUT:-30s}
       AGENT_PLANNER_MAX_EVIDENCE_BYTES: ${AGENT_PLANNER_MAX_EVIDENCE_BYTES:-2097152}
+      <<: *jev-advisory
       WORKER_DOCUMENT_TOKEN: ${WORKER_DOCUMENT_TOKEN:?Run make app-bootstrap}
       WORKER_MODEL_TOKEN: ${WORKER_MODEL_TOKEN:?Run make app-bootstrap}
       WORKER_TOOL_TOKEN: ${WORKER_TOOL_TOKEN:?Run make app-bootstrap}
@@ -315,6 +336,10 @@ services:
       MODEL_GLOBAL_TOKENS_PER_MINUTE: ${MODEL_GLOBAL_TOKENS_PER_MINUTE:-2000000}
       MODEL_TENANT_TOKENS_PER_MINUTE: ${MODEL_TENANT_TOKENS_PER_MINUTE:-400000}
       MODEL_REQUEST_TIMEOUT: ${MODEL_REQUEST_TIMEOUT:-120s}
+      <<: *jev-advisory
+      TYPESAFE_JEV_BASE_URL: ${TYPESAFE_JEV_BASE_URL:-https://api.typesafe.ai}
+      # The gateway is the only process that receives the provider credential.
+      TYPESAFE_API_KEY: ${TYPESAFE_API_KEY:-}
       WORKER_MODEL_TOKEN: ${WORKER_MODEL_TOKEN:?Run make app-bootstrap}
       DOCUMENT_MODEL_TOKEN: ${DOCUMENT_MODEL_TOKEN:?Run make app-bootstrap}
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
@@ -343,6 +368,13 @@ services:
       MODEL_GATEWAY_MODE: fixture
       SERVICE_ROLE: model
       MODEL_DATABASE_URL: ${MODEL_DATABASE_URL:?Run make app-bootstrap}
+      <<: *jev-advisory
+      # Deterministic local answers; this profile never contacts TypeSafe and
+      # deliberately receives no TYPESAFE_API_KEY.
+      TYPESAFE_JEV_MODE: fixture
+      TYPESAFE_JEV_MODEL: jev-fixture
+      TYPESAFE_JEV_EGRESS: minimized
+      TYPESAFE_JEV_FEATURES: knowledge_rerank
       DATABASE_SCHEMA: ${DATABASE_SCHEMA:-public}
       ADDR: 0.0.0.0:8084
       # Distinct identifiers: the fixture answers a chat review prompt with the

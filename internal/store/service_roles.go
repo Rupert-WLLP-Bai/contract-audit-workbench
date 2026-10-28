@@ -20,7 +20,7 @@ const serviceRoleSchemaSQL = `CREATE TABLE IF NOT EXISTS service_database_roles 
 var serviceOwnedTables = map[string][]string{
 	"core":      {"sessions", "cases", "decisions", "idempotency", "activity", "business_remediations", "business_remediation_revisions", "business_reports", "business_archives", "business_run_events", "business_audit_events", "business_case_profiles", "business_workbench_tasks", "business_case_relations", "business_knowledge", "business_workbench_audit", "rule_pack_versions", "rule_pack_pointers", "rule_pack_history", "rule_pack_idempotency", "experience_feedback", "experience_candidate_versions", "governed_knowledge_versions", "governed_knowledge_state", "governed_knowledge_pointers", "governed_knowledge_history", "governed_knowledge_idempotency", "governed_policy_rule_bindings", "evidence_requests", "evidence_receipts", "evidence_request_events"},
 	"document":  {"documents", "parsed_documents", "business_generations", "document_activity"},
-	"execution": {"review_runs", "review_attempts", "review_attempt_inputs", "review_attempt_parse_selections", "execution_events", "findings", "constraint_evaluations", "run_events", "review_run_snapshots", "audit_events", "worker_jobs", "outbox_events", "execution_activity", "execution_queue_policies", "execution_queue_cursor", "execution_queue_tenants", "execution_agent_reviews", "experience_distill_inputs", "experience_distill_results", "experience_distill_failures"},
+	"execution": {"review_runs", "review_attempts", "review_attempt_inputs", "review_attempt_parse_selections", "execution_events", "findings", "constraint_evaluations", "run_events", "review_run_snapshots", "audit_events", "worker_jobs", "outbox_events", "execution_activity", "execution_queue_policies", "execution_queue_cursor", "execution_queue_tenants", "execution_agent_reviews", "advisory_judgments", "experience_distill_inputs", "experience_distill_results", "experience_distill_failures"},
 	"model":     {"model_call_leases", "model_usage"},
 	"tool":      {"tool_call_ledger"},
 }
@@ -204,7 +204,7 @@ func MigrateServiceRoles(ctx context.Context) error {
 			if service != "model" {
 				privileges := "INSERT,UPDATE,DELETE"
 				switch table {
-				case "experience_feedback", "experience_candidate_versions", "experience_distill_inputs", "experience_distill_results", "experience_distill_failures", "governed_knowledge_versions", "governed_knowledge_history", "evidence_receipts", "evidence_request_events":
+				case "experience_feedback", "experience_candidate_versions", "experience_distill_inputs", "experience_distill_results", "experience_distill_failures", "advisory_judgments", "governed_knowledge_versions", "governed_knowledge_history", "evidence_receipts", "evidence_request_events":
 					privileges = "INSERT"
 				case "evidence_requests":
 					privileges = "INSERT,UPDATE"

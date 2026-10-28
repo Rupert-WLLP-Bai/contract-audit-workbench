@@ -17,6 +17,7 @@ import (
 	"sync"
 	"time"
 
+	"contractaudit/internal/jev"
 	"contractaudit/internal/model"
 	"contractaudit/internal/store"
 )
@@ -44,6 +45,7 @@ type Config struct {
 	CircuitFailureThreshold int
 	CircuitCooldown         time.Duration
 	Budget                  store.ModelBudgetLimits
+	Jev                     JevConfig
 }
 
 // FromEnv reads an explicit real-provider or local-only deterministic fixture
@@ -145,6 +147,7 @@ func FromEnv() (Config, error) {
 		*item.target = value
 	}
 	config.Budget.LeaseDuration = config.RequestTimeout + 30*time.Second
+	config.Jev = jevConfigFromEnv()
 	return config, nil
 }
 
@@ -158,6 +161,14 @@ type Service struct {
 	catalogMu   sync.Mutex
 	catalogAt   time.Time
 	catalogIDs  []string
+
+	jev        JevConfig
+	jevClient  *jev.Client
+	jevQueue   chan struct{}
+	jevSlots   chan struct{}
+	jevCircuit circuitBreaker
+	jevStatus  string
+	jevReason  string
 }
 
 func New(st *store.Store, config Config) (*Service, error) {
@@ -187,11 +198,15 @@ func New(st *store.Store, config Config) (*Service, error) {
 			return nil, errors.New("LLM_BASE_URL must be an HTTP(S) base URL without credentials or query")
 		}
 	}
-	return &Service{
+	service := &Service{
 		store: st, config: config, client: &http.Client{Timeout: config.RequestTimeout},
 		queue: make(chan struct{}, config.QueueCapacity), concurrency: make(chan struct{}, config.MaxConcurrency),
 		circuit: circuitBreaker{threshold: config.CircuitFailureThreshold, cooldown: config.CircuitCooldown},
-	}, nil
+		jev:     config.Jev, jevQueue: make(chan struct{}, jevQueueCapacity), jevSlots: make(chan struct{}, jevMaxConcurrency),
+		jevCircuit: circuitBreaker{threshold: config.CircuitFailureThreshold, cooldown: config.CircuitCooldown},
+	}
+	service.jevStatus, service.jevReason, service.jevClient = normalizeJev(&service.jev, config.Budget)
+	return service, nil
 }
 
 func (s *Service) Handler() http.Handler {
@@ -202,6 +217,8 @@ func (s *Service) Handler() http.Handler {
 	mux.HandleFunc("/ready", s.ready)
 	mux.HandleFunc("/v1/models", s.models)
 	mux.HandleFunc("/v1/chat/completions", s.chatCompletions)
+	mux.HandleFunc("/v1/systemone", s.systemOne)
+	mux.HandleFunc("/health/jev", s.jevHealth)
 	return mux
 }
 
@@ -429,17 +446,25 @@ func decodeRequest(w http.ResponseWriter, r *http.Request) ([]byte, string, int,
 	if err := json.Unmarshal(payload, &request); err != nil || strings.TrimSpace(request.Model) == "" || request.Stream || request.MaxTokens < 1 {
 		return nil, "", 0, model.DelegatedScope{}, errors.New("request model, stream mode, or max_tokens is invalid")
 	}
+	scope, err := decodeDelegatedScope(r)
+	if err != nil {
+		return nil, "", 0, model.DelegatedScope{}, err
+	}
+	return payload, strings.TrimSpace(request.Model), request.MaxTokens, scope, nil
+}
+
+func decodeDelegatedScope(r *http.Request) (model.DelegatedScope, error) {
 	values := r.Header.Values("X-Audit-Execution-Scope")
 	if len(values) != 1 || len(values[0]) > maxScopeBytes {
-		return nil, "", 0, model.DelegatedScope{}, errors.New("delegated model scope is missing")
+		return model.DelegatedScope{}, errors.New("delegated model scope is missing")
 	}
 	var scope model.DelegatedScope
 	decoder := json.NewDecoder(strings.NewReader(values[0]))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&scope); err != nil || decoder.Decode(new(any)) != io.EOF {
-		return nil, "", 0, model.DelegatedScope{}, errors.New("delegated model scope is invalid")
+		return model.DelegatedScope{}, errors.New("delegated model scope is invalid")
 	}
-	return payload, strings.TrimSpace(request.Model), request.MaxTokens, scope, nil
+	return scope, nil
 }
 
 func (s *Service) allowedModel(requested string) bool {

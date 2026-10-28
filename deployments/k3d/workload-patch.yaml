@@ -138,6 +138,12 @@ spec:
       containers:
         - name: model-gateway
           image: contract-audit-backend:local
+          env:
+            # The shared runtime ConfigMap tells workers to use the advisory
+            # gateway path with the reserved fixture model. Only this deployment
+            # answers deterministically and never calls TypeSafe.
+            - {name: TYPESAFE_JEV_MODE, value: fixture}
+            - {name: TYPESAFE_JEV_MODEL, value: jev-fixture}
           volumeMounts:
             - {name: local-data, mountPath: /var/lib/contract-audit}
 ---

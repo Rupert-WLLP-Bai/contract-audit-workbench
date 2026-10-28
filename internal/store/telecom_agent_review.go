@@ -122,7 +122,17 @@ func (s *Store) runTelecomAgentReview(ctx context.Context, runID, attemptID stri
 	}
 	reserved := request.PriorKnowledgeReadCount * agentflow.KnowledgeReadMaxBytes
 	contextBudget := max(0, configuration.Limits.MaxEvidenceBytes-reserved)
-	request.Knowledge, request.KnowledgeSelection, err = governedPlannerKnowledge(frozenKnowledge, request.Gaps, request.Evidence, contextBudget)
+	var evaluator advisoryEvaluator
+	if configuration.Advisory != nil && frozenKnowledge != nil {
+		if provider := s.advisoryProviderForRun(); provider != nil {
+			if built, buildErr := newStoreAdvisoryEvaluator(s, claim, *configuration.Advisory, input.InputHash,
+				frozenKnowledge.SnapshotSHA256, configuration.ConfigurationID, provider); buildErr == nil {
+				evaluator = built
+			}
+		}
+	}
+	request.Knowledge, request.KnowledgeSelection, err = governedPlannerKnowledgeWithAdvisory(ctx, frozenKnowledge, request.Gaps, request.Evidence,
+		contextBudget, configuration.Advisory, configuration.ConfigurationID, evaluator)
 	if err != nil {
 		return true, err
 	}

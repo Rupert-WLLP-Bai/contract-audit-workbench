@@ -145,6 +145,52 @@ func TestDiagnosticsPreservesFrozenGovernedKnowledge(t *testing.T) {
 	}
 }
 
+func TestDiagnosticsKeepKnowledgeAdvisoryOutOfTheBusinessProjection(t *testing.T) {
+	review := json.RawMessage(`{
+		"attempt_id":"attempt-1","status":"completed",
+		"knowledge_selection":{
+			"snapshot_sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+			"algorithm":"chinese-bigram-label/v1","policy_status":"available","policy_reason":"",
+			"input":{},"candidates":[],"budget":{},"planner_rounds":[],"reads":[],
+			"advisory":{
+				"mode":"advisory","feature":"knowledge_rerank","provider":"model-gateway",
+				"configuration_id":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+				"model_requested":"jev-1.14.0","model_observed":"jev-1.14.0",
+				"question_set_version":"knowledge-relevance/v1","egress":"minimized",
+				"request_sha256":"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+				"judgment_id":"dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+				"status":"completed","candidates":[]
+			}
+		}
+	}`)
+	business, ok := businessAgentReviewJSON(review).(map[string]any)
+	if !ok {
+		t.Fatal("business review projection is unavailable")
+	}
+	if _, present := business["knowledge_selection"]; present {
+		t.Fatal("knowledge advisory leaked into the business workspace")
+	}
+	diagnostics := diagnosticTestObject(t, reviewDiagnosticsJSON(store.Workspace{
+		Execution: &store.Execution{AgentReview: review},
+	}))
+	execution, ok := diagnostics["execution"].(map[string]any)
+	if !ok {
+		t.Fatal("diagnostic execution projection is unavailable")
+	}
+	rawReview, ok := execution["agent_review"].(map[string]any)
+	if !ok {
+		t.Fatal("diagnostic agent review is unavailable")
+	}
+	selection, ok := rawReview["knowledge_selection"].(map[string]any)
+	if !ok {
+		t.Fatal("diagnostic knowledge selection is missing")
+	}
+	advisory, ok := selection["advisory"].(map[string]any)
+	if !ok || advisory["status"] != "completed" || advisory["model_observed"] != "jev-1.14.0" {
+		t.Fatalf("diagnostic advisory = %v", selection["advisory"])
+	}
+}
+
 func TestBusinessWorkspaceNeverInfersSuccessFromMissingEvents(t *testing.T) {
 	for _, state := range []string{"accepted", "queued", "running", "partial", "failed", "cancelled", "interrupted", "unknown", ""} {
 		t.Run("state="+state, func(t *testing.T) {

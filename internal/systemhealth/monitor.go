@@ -88,6 +88,56 @@ func (m *Monitor) Snapshot(ctx context.Context) Snapshot {
 		}
 		out.Services = append(out.Services, service)
 	}
+	// Jev is an optional suggestion layer. Report only its configuration: a
+	// health refresh must not send state or spend provider tokens. The API key
+	// is never copied into the snapshot. In a distributed deployment the
+	// gateway is the only process that holds the key, so its credential-free
+	// status route distinguishes "enabled but unconfigured" honestly.
+	jevConfig := m.config.Jev
+	if jevConfig.GatewayURL != "" {
+		if status, ok := FetchJevGatewayStatus(ctx, jevConfig.GatewayURL); ok {
+			jevConfig.GatewayStatus = status.Status
+			jevConfig.GatewayReason = status.Reason
+			if jevConfig.Name == "" {
+				jevConfig.Name = status.Model
+			}
+			if jevConfig.Egress == "" {
+				jevConfig.Egress = status.Egress
+			}
+			if len(jevConfig.Features) == 0 {
+				jevConfig.Features = status.Features
+			}
+		}
+	}
+	jevService := Service{ID: "jev-model", Name: "TypeSafe Jev 决策模型", Category: "external", Kind: "integration", Status: "unconfigured", Detail: "Jev 已关闭；审查使用确定性结果。", Target: safeTarget(jevConfig.Endpoint), DependsOn: []string{}, LogicalID: "jev-model"}
+	jevSummary := strings.TrimSpace(strings.Join([]string{jevConfig.Name, jevConfig.Mode, jevConfig.Egress, strings.Join(jevConfig.Features, ",")}, "，"))
+	switch {
+	case jevConfig.Mode == "" || jevConfig.Mode == "off":
+		jevService.Status = "unconfigured"
+		jevService.Detail = "Jev 已关闭；审查使用确定性结果。"
+	case !jevConfig.Valid:
+		jevService.Status = "unavailable"
+		jevService.Detail = "TypeSafe Jev 配置无效（" + jevConfig.Reason + "）；审查使用确定性回退。"
+	case jevConfig.Provider == "direct" && !jevConfig.KeyConfigured:
+		jevService.Status = "unconfigured"
+		jevService.Detail = "默认开启但未配置 TYPESAFE_API_KEY；审查使用确定性回退。"
+	case jevConfig.GatewayStatus == "unconfigured":
+		jevService.Status = "unconfigured"
+		jevService.Detail = "默认开启，但 model-gateway 未配置 TYPESAFE_API_KEY；审查使用确定性回退。"
+	case jevConfig.GatewayStatus == "unavailable":
+		jevService.Status = "unavailable"
+		jevService.Detail = "model-gateway 报告 Jev 不可用（" + jevConfig.GatewayReason + "）；审查使用确定性回退。"
+	case jevConfig.GatewayStatus == "off":
+		jevService.Status = "unconfigured"
+		jevService.Detail = "默认开启，但 model-gateway 报告 Jev 已关闭；审查使用确定性回退。"
+	case jevConfig.Name == "jev-fixture" || jevConfig.Mode == "fixture":
+		jevService.Status = "unknown"
+		jevService.Detail = "Jev 使用确定性 fixture（" + jevSummary + "）；不发起外部推理。"
+	default:
+		jevService.Status = "unknown"
+		jevService.Detail = "默认启用 TypeSafe Jev（" + jevSummary + "）；健康刷新不发起付费推理。"
+	}
+	out.Services = append(out.Services, jevService)
 	miner := Service{ID: "mineru", Name: "MinerU 文档解析", Category: "external", Kind: "integration", Status: "unconfigured", Detail: "未配置 MinerU 服务地址。", Target: safeTarget(m.config.MinerUURL), DependsOn: []string{}, LogicalID: "mineru"}
 	if miner.Target != "" {
 		started := time.Now()

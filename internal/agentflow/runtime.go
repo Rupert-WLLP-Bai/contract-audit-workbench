@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"math/big"
 	"regexp"
 	"slices"
@@ -208,6 +209,12 @@ func (r *Runtime) Run(ctx context.Context, request Request) (Report, error) {
 	}
 	if err := validatePlannerContext(ctx, request); err != nil {
 		if sinkErr := state.event("input", "", "", "invalid_frozen_context", 0); sinkErr != nil {
+			return state.report, sinkErr
+		}
+		return state.report, err
+	}
+	if err := validateAdvisoryAgainstConfiguration(request.KnowledgeSelection, r.config.PlannerConfiguration); err != nil {
+		if sinkErr := state.event("input", "", "", "invalid_frozen_advisory", 0); sinkErr != nil {
 			return state.report, sinkErr
 		}
 		return state.report, err
@@ -1581,4 +1588,54 @@ func (state *execution) domain(want Domain) *DomainResult {
 		}
 	}
 	panic(fmt.Sprintf("validated domain missing: %s", want))
+}
+
+// validateAdvisoryAgainstConfiguration keeps a trace from claiming a different
+// advisory model, threshold or feature than the accepted run. A nil frozen
+// configuration is the legacy deterministic path; it must not carry an
+// advisory trace.
+func validateAdvisoryAgainstConfiguration(selection *KnowledgeSelectionRecord, planner PlannerConfiguration) error {
+	if selection == nil || selection.Advisory == nil {
+		return nil
+	}
+	advisory := selection.Advisory
+	configuration := planner.Advisory
+	if configuration == nil || !configuration.Supports(AdvisoryFeatureKnowledgeRerank) ||
+		advisory.ConfigurationID != planner.ConfigurationID || advisory.Mode != configuration.Mode ||
+		advisory.Provider != configuration.Provider || advisory.QuestionSetVersion != configuration.QuestionSetVersion ||
+		advisory.Egress != configuration.Egress || (advisory.ModelRequested != "" && advisory.ModelRequested != configuration.Model) {
+		return ErrInput
+	}
+	if advisory.Status == "completed" {
+		if advisory.ModelObserved != configuration.Model {
+			return ErrInput
+		}
+		for _, candidate := range advisory.Candidates {
+			if candidate.Probability == nil {
+				if candidate.Band != "unknown" {
+					return ErrInput
+				}
+				continue
+			}
+			band, err := advisoryBandFor(*candidate.Probability, configuration.ThresholdHigh, configuration.ThresholdLow)
+			if err != nil || candidate.Band != band {
+				return ErrInput
+			}
+		}
+	}
+	return nil
+}
+
+func advisoryBandFor(probability, high, low float64) (string, error) {
+	if math.IsNaN(probability) || math.IsInf(probability, 0) || probability < 0 || probability > 1 || low <= 0 || high >= 1 || low >= high {
+		return "", ErrInput
+	}
+	switch {
+	case probability >= high:
+		return "relevant", nil
+	case probability <= low:
+		return "not_relevant", nil
+	default:
+		return "uncertain", nil
+	}
 }

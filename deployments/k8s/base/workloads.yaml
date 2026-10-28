@@ -500,6 +500,10 @@ spec:
               value: ":8084"
             - name: LLM_API_KEY
               valueFrom: {secretKeyRef: {name: contract-audit-model, key: LLM_API_KEY}}
+            # Only the gateway holds the TypeSafe credential. Missing key leaves
+            # Jev unconfigured without affecting chat/OCR readiness.
+            - name: TYPESAFE_API_KEY
+              valueFrom: {secretKeyRef: {name: contract-audit-model, key: TYPESAFE_API_KEY, optional: true}}
             - name: WORKER_MODEL_TOKEN
               valueFrom: {secretKeyRef: {name: contract-audit-service-tokens, key: WORKER_MODEL_TOKEN}}
             - name: DOCUMENT_MODEL_TOKEN

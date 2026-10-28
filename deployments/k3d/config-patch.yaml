@@ -25,6 +25,17 @@ data:
   LLM_BASE_URL: ""
   LLM_MODEL: fixture-chat
   OCR_MODEL: fixture-ocr
+  # The local cluster exercises the same advisory/gateway path as production.
+  # Workers freeze advisory/jev-fixture; the model-gateway deployment overrides
+  # its own mode to fixture and never receives a provider key.
+  TYPESAFE_JEV_BASE_URL: https://api.typesafe.ai
+  TYPESAFE_JEV_MODE: advisory
+  TYPESAFE_JEV_EGRESS: minimized
+  TYPESAFE_JEV_FEATURES: knowledge_rerank
+  TYPESAFE_JEV_MODEL: jev-fixture
+  TYPESAFE_JEV_PROVIDER: model-gateway
+  TYPESAFE_JEV_TIMEOUT: 3s
+  TYPESAFE_JEV_MAX_CANDIDATES: "16"
   MODEL_GATEWAY_MODE: fixture
   # The local fixture answers only its own two identifiers and returns this
   # explicit OCR transcription; it never calls a paid model provider.

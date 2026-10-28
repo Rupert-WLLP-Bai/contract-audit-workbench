@@ -9,7 +9,14 @@ import type {
   AgentReviewDomainStatus,
   AgentReviewEventKind,
   AgentReviewEvidenceVerification,
+  AgentReviewAdvisoryBand,
+  AgentReviewAdvisoryMode,
+  AgentReviewAdvisoryProvider,
+  AgentReviewAdvisoryStatus,
   AgentReviewGapStatus,
+  AgentReviewKnowledgeAdvisory,
+  AgentReviewKnowledgeAdvisoryCandidate,
+  AgentReviewKnowledgeSelection,
   AgentReviewPlanStatus,
   AgentReviewRelation,
   AgentReviewRoundStatus,
@@ -37,6 +44,25 @@ function record(
   if (
     Object.keys(object).some((key) => !keys.includes(key)) ||
     keys.some((key) => !Object.hasOwn(object, key))
+  )
+    return invalid(path);
+  return object;
+}
+
+function optionalRecord(
+  value: unknown,
+  path: string,
+  required: readonly string[],
+  optional: readonly string[],
+): Record<string, unknown> {
+  if (typeof value !== "object" || value === null || Array.isArray(value))
+    return invalid(path);
+  const object = value as Record<string, unknown>;
+  if (
+    Object.keys(object).some(
+      (key) => !required.includes(key) && !optional.includes(key),
+    ) ||
+    required.some((key) => !Object.hasOwn(object, key))
   )
     return invalid(path);
   return object;
@@ -166,6 +192,191 @@ function rulePack(value: unknown): AgentReview["rulepack"] {
     id: text(item.id, "rulepack.id"),
     version: text(item.version, "rulepack.version"),
     content_sha256: text(item.content_sha256, "rulepack.content_sha256"),
+  };
+}
+
+const advisoryStatuses: readonly AgentReviewAdvisoryStatus[] = [
+  "completed",
+  "unavailable",
+  "not_applicable",
+  "model_mismatch",
+  "invalid_response",
+  "budget_exhausted",
+  "persistence_failed",
+  "config_mismatch",
+];
+
+const advisoryBands: readonly AgentReviewAdvisoryBand[] = [
+  "relevant",
+  "uncertain",
+  "not_relevant",
+  "unknown",
+];
+
+const advisoryModes: readonly AgentReviewAdvisoryMode[] = [
+  "advisory",
+  "fixture",
+];
+
+const advisoryProviders: readonly AgentReviewAdvisoryProvider[] = [
+  "model-gateway",
+  "local-fixture",
+  "direct",
+];
+
+function probability(value: unknown, path: string): number | null {
+  if (value === undefined) return null;
+  if (
+    typeof value !== "number" ||
+    !Number.isFinite(value) ||
+    value < 0 ||
+    value > 1
+  )
+    return invalid(path);
+  return value;
+}
+
+function advisoryCandidate(
+  value: unknown,
+  path: string,
+): AgentReviewKnowledgeAdvisoryCandidate {
+  const item = optionalRecord(
+    value,
+    path,
+    [
+      "knowledge_id",
+      "version_id",
+      "content_sha256",
+      "alias",
+      "band",
+      "rank_before",
+      "rank_after",
+    ],
+    ["probability", "reason"],
+  );
+  return {
+    knowledge_id: text(item.knowledge_id, `${path}.knowledge_id`),
+    version_id: text(item.version_id, `${path}.version_id`),
+    content_sha256: text(item.content_sha256, `${path}.content_sha256`),
+    alias: text(item.alias, `${path}.alias`),
+    probability: probability(item.probability, `${path}.probability`),
+    band: enumValue(item.band, `${path}.band`, advisoryBands),
+    rank_before: boundedInteger(item.rank_before, `${path}.rank_before`, 1),
+    rank_after: boundedInteger(item.rank_after, `${path}.rank_after`, 1),
+    reason: item.reason === undefined ? null : text(item.reason, `${path}.reason`),
+  };
+}
+
+function knowledgeAdvisory(
+  value: unknown,
+  path: string,
+): AgentReviewKnowledgeAdvisory {
+  const item = optionalRecord(
+    value,
+    path,
+    [
+      "mode",
+      "feature",
+      "provider",
+      "configuration_id",
+      "question_set_version",
+      "egress",
+      "status",
+      "candidates",
+    ],
+    [
+      "model_requested",
+      "model_observed",
+      "request_sha256",
+      "judgment_id",
+      "error_code",
+      "truncated",
+    ],
+  );
+  if (!Array.isArray(item.candidates)) return invalid(`${path}.candidates`);
+  if (item.truncated !== undefined && typeof item.truncated !== "boolean")
+    return invalid(`${path}.truncated`);
+  if (item.feature !== "knowledge_rerank") return invalid(`${path}.feature`);
+  if (item.egress !== "minimized") return invalid(`${path}.egress`);
+  return {
+    mode: enumValue(item.mode, `${path}.mode`, advisoryModes),
+    feature: "knowledge_rerank",
+    provider: enumValue(item.provider, `${path}.provider`, advisoryProviders),
+    configuration_id: text(item.configuration_id, `${path}.configuration_id`),
+    model_requested:
+      item.model_requested === undefined
+        ? null
+        : text(item.model_requested, `${path}.model_requested`),
+    model_observed:
+      item.model_observed === undefined
+        ? null
+        : text(item.model_observed, `${path}.model_observed`),
+    question_set_version: text(
+      item.question_set_version,
+      `${path}.question_set_version`,
+    ),
+    egress: "minimized",
+    request_sha256:
+      item.request_sha256 === undefined
+        ? null
+        : text(item.request_sha256, `${path}.request_sha256`),
+    judgment_id:
+      item.judgment_id === undefined
+        ? null
+        : text(item.judgment_id, `${path}.judgment_id`),
+    status: enumValue(item.status, `${path}.status`, advisoryStatuses),
+    error_code:
+      item.error_code === undefined
+        ? null
+        : text(item.error_code, `${path}.error_code`),
+    truncated: item.truncated === true,
+    candidates: item.candidates.map((candidate, index) =>
+      advisoryCandidate(candidate, `${path}.candidates[${index}]`),
+    ),
+  };
+}
+
+function knowledgeSelection(
+  value: unknown,
+): AgentReviewKnowledgeSelection | null {
+  if (value === undefined || value === null) return null;
+  const item = optionalRecord(
+    value,
+    "knowledge_selection",
+    [
+      "snapshot_sha256",
+      "algorithm",
+      "policy_status",
+      "policy_reason",
+      "input",
+      "candidates",
+      "budget",
+      "planner_rounds",
+      "reads",
+    ],
+    ["advisory"],
+  );
+  return {
+    snapshot_sha256: text(
+      item.snapshot_sha256,
+      "knowledge_selection.snapshot_sha256",
+    ),
+    algorithm: text(item.algorithm, "knowledge_selection.algorithm"),
+    policy_status: text(
+      item.policy_status,
+      "knowledge_selection.policy_status",
+    ),
+    policy_reason: text(
+      item.policy_reason,
+      "knowledge_selection.policy_reason",
+    ),
+    advisory:
+      item.advisory === undefined
+        ? null
+        : knowledgeAdvisory(
+            item.advisory,
+            "knowledge_selection.advisory",
+          ),
   };
 }
 
@@ -550,23 +761,28 @@ function event(value: unknown, path: string): AgentReview["events"][number] {
 }
 
 export function parseAgentReview(value: unknown): AgentReview {
-  const item = record(value, "agent_review", [
-    "schema_version",
-    "attempt_id",
-    "status",
-    "mode",
-    "source_snapshot",
-    "rulepack",
-    "planner",
-    "scope",
-    "domains",
-    "gaps",
-    "plan",
-    "evidence",
-    "usage",
-    "unresolved_gap_ids",
-    "events",
-  ]);
+  const item = optionalRecord(
+    value,
+    "agent_review",
+    [
+      "schema_version",
+      "attempt_id",
+      "status",
+      "mode",
+      "source_snapshot",
+      "rulepack",
+      "planner",
+      "scope",
+      "domains",
+      "gaps",
+      "plan",
+      "evidence",
+      "usage",
+      "unresolved_gap_ids",
+      "events",
+    ],
+    ["knowledge_selection"],
+  );
   if (item.schema_version !== "five-domain-review/v1")
     return invalid("schema_version");
   const usage = record(item.usage, "usage", [
@@ -590,6 +806,7 @@ export function parseAgentReview(value: unknown): AgentReview {
     mode: mode(item.mode, "mode"),
     source_snapshot: sourceSnapshot(item.source_snapshot),
     rulepack: rulePack(item.rulepack),
+    knowledge_selection: knowledgeSelection(item.knowledge_selection),
     planner: planner(item.planner),
     scope: item.scope.map((entry, index) =>
       scopeItem(entry, `scope[${index}]`),

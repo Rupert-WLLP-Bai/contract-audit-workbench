@@ -144,6 +144,7 @@ type KnowledgeSelectionRecord struct {
 	Budget         KnowledgeSelectionBudget `json:"budget"`
 	PlannerRounds  []KnowledgePlanningRound `json:"planner_rounds"`
 	Reads          []KnowledgeReadRecord    `json:"reads"`
+	Advisory       *KnowledgeAdvisoryRecord `json:"advisory,omitempty"`
 }
 
 type KnowledgeSelectionInput struct {
@@ -176,16 +177,51 @@ type KnowledgeIdentity struct {
 }
 
 type KnowledgeCandidate struct {
-	KnowledgeID            string `json:"knowledge_id"`
-	VersionID              string `json:"version_id"`
-	ContentSHA256          string `json:"content_sha256"`
-	Kind                   string `json:"kind"`
-	Required               bool   `json:"required"`
-	Score                  int    `json:"score"`
-	Decision               string `json:"decision"`
-	Reason                 string `json:"reason"`
-	Truncated              bool   `json:"truncated"`
-	RequiresFactEvaluation bool   `json:"requires_fact_evaluation"`
+	KnowledgeID            string                      `json:"knowledge_id"`
+	VersionID              string                      `json:"version_id"`
+	ContentSHA256          string                      `json:"content_sha256"`
+	Kind                   string                      `json:"kind"`
+	Required               bool                        `json:"required"`
+	Score                  int                         `json:"score"`
+	Decision               string                      `json:"decision"`
+	Reason                 string                      `json:"reason"`
+	Truncated              bool                        `json:"truncated"`
+	RequiresFactEvaluation bool                        `json:"requires_fact_evaluation"`
+	Advisory               *KnowledgeAdvisoryCandidate `json:"advisory,omitempty"`
+}
+
+// KnowledgeAdvisoryRecord is the audit trace of one optional rerank. It never
+// carries state or provider answers; only bounded probabilities, bands and
+// code-owned consequences are kept.
+type KnowledgeAdvisoryRecord struct {
+	Mode               string                       `json:"mode"`
+	Feature            string                       `json:"feature"`
+	Provider           string                       `json:"provider"`
+	ConfigurationID    string                       `json:"configuration_id"`
+	ModelRequested     string                       `json:"model_requested,omitempty"`
+	ModelObserved      string                       `json:"model_observed,omitempty"`
+	QuestionSetVersion string                       `json:"question_set_version"`
+	Egress             string                       `json:"egress"`
+	RequestSHA256      string                       `json:"request_sha256,omitempty"`
+	JudgmentID         string                       `json:"judgment_id,omitempty"`
+	Status             string                       `json:"status"`
+	ErrorCode          string                       `json:"error_code,omitempty"`
+	Truncated          bool                         `json:"truncated,omitempty"`
+	Candidates         []KnowledgeAdvisoryCandidate `json:"candidates"`
+}
+
+// KnowledgeAdvisoryCandidate describes the suggestion for one optional
+// candidate. Probability is nil when no usable judgment exists.
+type KnowledgeAdvisoryCandidate struct {
+	KnowledgeID   string   `json:"knowledge_id"`
+	VersionID     string   `json:"version_id"`
+	ContentSHA256 string   `json:"content_sha256"`
+	Alias         string   `json:"alias"`
+	Probability   *float64 `json:"probability,omitempty"`
+	Band          string   `json:"band"`
+	RankBefore    int      `json:"rank_before"`
+	RankAfter     int      `json:"rank_after"`
+	Reason        string   `json:"reason,omitempty"`
 }
 
 type KnowledgeSelectionBudget struct {

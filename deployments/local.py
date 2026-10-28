@@ -474,6 +474,14 @@ def start_apps(fixture: bool, offline_images: bool, planner_mode: str | None) ->
 		# signature identity must agree across Execution, Worker, and Document.
 		os.environ["LLM_MODEL"] = FIXTURE_CHAT_MODEL
 		os.environ["OCR_MODEL"] = FIXTURE_OCR_MODEL
+		# The worker still takes the advisory/gateway path and records the
+		# frozen suggestion trace; only the gateway answers deterministically.
+		# Keep the worker and gateway model identities identical.
+		os.environ["TYPESAFE_JEV_MODE"] = "advisory"
+		os.environ["TYPESAFE_JEV_MODEL"] = "jev-fixture"
+		os.environ["TYPESAFE_JEV_PROVIDER"] = "model-gateway"
+		os.environ["TYPESAFE_JEV_EGRESS"] = "minimized"
+		os.environ["TYPESAFE_JEV_FEATURES"] = "knowledge_rerank"
 	if planner_mode:
 		os.environ["AGENT_PLANNER_MODE"] = planner_mode
 	if offline_images:

@@ -38,7 +38,7 @@ func catalog() []Service {
 
 func optional(id string) bool {
 	switch id {
-	case "keycloak", "identity-db", "otel-collector", "tempo", "prometheus", "grafana":
+	case "keycloak", "identity-db", "otel-collector", "tempo", "prometheus", "grafana", "jev-model":
 		return true
 	}
 	return false

@@ -448,6 +448,72 @@ export interface AgentReviewEvent {
   duration_ms: number;
 }
 
+export type AgentReviewAdvisoryStatus =
+  | "completed"
+  | "unavailable"
+  | "not_applicable"
+  | "model_mismatch"
+  | "invalid_response"
+  | "budget_exhausted"
+  | "persistence_failed"
+  | "config_mismatch";
+
+export type AgentReviewAdvisoryBand =
+  | "relevant"
+  | "uncertain"
+  | "not_relevant"
+  | "unknown";
+
+export type AgentReviewAdvisoryMode = "advisory" | "fixture";
+
+export type AgentReviewAdvisoryProvider =
+  | "model-gateway"
+  | "local-fixture"
+  | "direct";
+
+export interface AgentReviewKnowledgeAdvisoryCandidate {
+  knowledge_id: string;
+  version_id: string;
+  content_sha256: string;
+  alias: string;
+  probability: number | null;
+  band: AgentReviewAdvisoryBand;
+  rank_before: number;
+  rank_after: number;
+  reason: string | null;
+}
+
+/** Suggestion-only evidence for one governed knowledge rerank. */
+export interface AgentReviewKnowledgeAdvisory {
+  mode: AgentReviewAdvisoryMode;
+  feature: "knowledge_rerank";
+  provider: AgentReviewAdvisoryProvider;
+  configuration_id: string;
+  model_requested: string | null;
+  model_observed: string | null;
+  question_set_version: string;
+  egress: "minimized";
+  request_sha256: string | null;
+  judgment_id: string | null;
+  status: AgentReviewAdvisoryStatus;
+  error_code: string | null;
+  truncated: boolean;
+  candidates: AgentReviewKnowledgeAdvisoryCandidate[];
+}
+
+/**
+ * The diagnostic projection of governed knowledge selection. Only fields used
+ * to explain the advisory are typed here; candidate identities and provider
+ * input stay in the frozen audit record and are not rendered as conclusions.
+ */
+export interface AgentReviewKnowledgeSelection {
+  snapshot_sha256: string;
+  algorithm: string;
+  policy_status: string;
+  policy_reason: string;
+  advisory: AgentReviewKnowledgeAdvisory | null;
+}
+
 export interface AgentReview {
   schema_version: "five-domain-review/v1";
   attempt_id: string;
@@ -455,6 +521,7 @@ export interface AgentReview {
   mode: AgentPlannerMode;
   source_snapshot: AgentReviewSourceSnapshot | null;
   rulepack: AgentReviewRulePackIdentity | null;
+  knowledge_selection: AgentReviewKnowledgeSelection | null;
   planner: AgentReviewPlanner;
   scope: AgentReviewDomainScope[];
   domains: AgentReviewDomainCoverage[];

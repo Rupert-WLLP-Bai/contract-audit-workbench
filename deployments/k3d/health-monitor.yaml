@@ -103,6 +103,20 @@ spec:
               valueFrom: {configMapKeyRef: {name: contract-audit-runtime, key: OCR_MODEL}}
             - name: MINERU_URL
               valueFrom: {configMapKeyRef: {name: contract-audit-runtime, key: MINERU_URL}}
+            - name: MODEL_GATEWAY_URL
+              valueFrom: {configMapKeyRef: {name: contract-audit-runtime, key: MODEL_GATEWAY_URL}}
+            - name: TYPESAFE_JEV_BASE_URL
+              valueFrom: {configMapKeyRef: {name: contract-audit-runtime, key: TYPESAFE_JEV_BASE_URL}}
+            - name: TYPESAFE_JEV_MODE
+              valueFrom: {configMapKeyRef: {name: contract-audit-runtime, key: TYPESAFE_JEV_MODE}}
+            - name: TYPESAFE_JEV_EGRESS
+              valueFrom: {configMapKeyRef: {name: contract-audit-runtime, key: TYPESAFE_JEV_EGRESS}}
+            - name: TYPESAFE_JEV_FEATURES
+              valueFrom: {configMapKeyRef: {name: contract-audit-runtime, key: TYPESAFE_JEV_FEATURES}}
+            - name: TYPESAFE_JEV_MODEL
+              valueFrom: {configMapKeyRef: {name: contract-audit-runtime, key: TYPESAFE_JEV_MODEL}}
+            - name: TYPESAFE_JEV_PROVIDER
+              valueFrom: {configMapKeyRef: {name: contract-audit-runtime, key: TYPESAFE_JEV_PROVIDER}}
           startupProbe:
             httpGet: {path: /health, port: http}
             periodSeconds: 5
