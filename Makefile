@@ -109,7 +109,8 @@ web:
 	cd web && $(BUN) run dev --host 127.0.0.1
 
 test-unit:
-	TYPESAFE_JEV_MODE=off $(GO) test -race -count=1 ./internal/access ./internal/advisory ./internal/agentflow ./internal/decision ./internal/jev ./internal/modelgateway ./internal/rulepack ./internal/systemhealth ./internal/telecom ./internal/identity ./internal/objectstore ./internal/accounts ./internal/audit ./internal/config ./internal/docir ./internal/docversion ./internal/engine ./internal/fault ./internal/labels ./internal/model ./internal/revise ./internal/compare ./cmd/eval ./cmd/agentdemo ./cmd/ruleshadow
+	TYPESAFE_JEV_MODE=off $(GO) test -race -count=1 ./internal/access ./internal/advisory ./internal/agentflow ./internal/auditext ./internal/capabilitypack ./internal/decision ./internal/externalread ./internal/fulfillment ./internal/jev ./internal/modelgateway ./internal/reviewimpact ./internal/rulepack ./internal/systemhealth ./internal/telecom ./internal/identity ./internal/objectstore ./internal/accounts ./internal/audit ./internal/config ./internal/docir ./internal/docversion ./internal/engine ./internal/fault ./internal/labels ./internal/model ./internal/revise ./internal/compare ./cmd/eval ./cmd/agentdemo ./cmd/ruleshadow
+	TYPESAFE_JEV_MODE=off $(GO) test -race -count=1 ./e2e -run '^TestOperator'
 
 verify:
 	$(PYTHON) scripts/verify.py
