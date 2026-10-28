@@ -195,6 +195,9 @@ try {
 
   const findingButton = page.getByRole("button", { name: `选择线索：${claim}`, exact: true });
   await findingButton.click();
+  // The URL changes before React finishes rendering the selected finding.
+  // Wait for the business selection before inspecting evidence or deciding.
+  await findingButton.and(page.locator('[aria-current="true"]')).waitFor();
   await page.getByRole("button", { name: "双来源对照", exact: true }).click();
   await page.locator(".document-split mark.hit-evidence").nth(1).waitFor();
   const highlighted = await page.locator(".document-split mark.hit-evidence").allTextContents();
@@ -202,15 +205,18 @@ try {
   const referencesHeading = page.getByRole("heading", { name: "引用该材料的线索", exact: true });
   await referencesHeading.waitFor();
   await page.getByRole("button", { name: `查看线索：${claim}`, exact: true }).click();
+  await findingButton.and(page.locator('[aria-current="true"]')).waitFor();
   await page.locator(".document-split mark.hit-evidence").nth(1).waitFor();
 
-  await page.locator('input[type="radio"][value="confirm_risk"]').first().check();
+  await page.locator(`input[type="radio"][name="decision-${findingID}"][value="confirm_risk"]`).check();
   await page.getByLabel("理由", { exact: true }).fill(`采购材料要求 ${baselineBandwidth}，拟签合同为 ${originalDraftBandwidth}。`);
-  const decisionResponse = page.waitForResponse((response) =>
-    response.request().method() === "POST" && response.url().includes(`/reviews/${firstRunID}/findings/${findingID}/decisions`),
-  );
-  await page.getByRole("button", { name: "保存决定", exact: true }).click();
-  assert.equal((await decisionResponse).status(), 204, "human decision was not recorded");
+  const [decisionResponse] = await Promise.all([
+    page.waitForResponse((response) =>
+      response.request().method() === "POST" && response.url().includes(`/reviews/${firstRunID}/findings/${findingID}/decisions`),
+    ),
+    page.getByRole("button", { name: "保存决定", exact: true }).click(),
+  ]);
+  assert.equal(decisionResponse.status(), 204, "human decision was not recorded");
 
   await page.goto(`${web}/cases/${caseID}`);
   await page.getByRole("heading", { name: title, exact: true }).waitFor();
@@ -345,11 +351,13 @@ try {
     throw new Error(`remediation verification readiness failed: ${JSON.stringify(diagnostics)}; ${error instanceof Error ? error.message : String(error)}`);
   }
   await verifyReason.fill("新尝试在相同能力和电路对象下均为 compatible。");
-  const verifyResponse = page.waitForResponse((response) =>
-    response.request().method() === "POST" && response.url().includes(`/remediations/${remediationID}/verify`),
-  );
-  await page.getByRole("button", { name: "提交复核", exact: true }).click();
-  assert.equal((await verifyResponse).status(), 200, "compatible re-review did not close remediation");
+  const [verifyResponse] = await Promise.all([
+    page.waitForResponse((response) =>
+      response.request().method() === "POST" && response.url().includes(`/remediations/${remediationID}/verify`),
+    ),
+    page.getByRole("button", { name: "提交复核", exact: true }).click(),
+  ]);
+  assert.equal(verifyResponse.status(), 200, "compatible re-review did not close remediation");
   const verifiedDetail = await waitForCase(page, caseID, (detail) => detail.remediations.some((item) => item.id === remediationID && item.status === "closed"));
   assert.equal(verifiedDetail.remediations.find((item) => item.id === remediationID)?.status, "closed");
 
@@ -357,6 +365,7 @@ try {
   await page.getByRole("heading", { name: "审查工作区", exact: true }).waitFor();
   await page.getByText("已记录确认风险", { exact: false }).waitFor();
   await page.getByRole("button", { name: `选择线索：${claim}`, exact: true }).click();
+  await findingButton.and(page.locator('[aria-current="true"]')).waitFor();
   await page.getByRole("button", { name: "双来源对照", exact: true }).click();
   await page.locator(".document-split").waitFor({ state: "visible" });
   await page.locator(`.document-split .doc-pane[data-document-version-id="${uploaded.procurement}"]`).waitFor({ state: "visible" });
@@ -380,11 +389,13 @@ try {
 
   await selectReport(page.getByLabel("归档所依据的报告", { exact: true }), Number(secondReport.version));
   await page.getByLabel("归档理由", { exact: true }).fill("已完成复审并归档冻结报告。");
-  const archiveResponse = page.waitForResponse((response) =>
-    response.request().method() === "POST" && response.url().endsWith(`/api/cases/${caseID}/archive`),
-  );
-  await page.getByRole("button", { name: "归档案件", exact: true }).click();
-  assert.equal((await archiveResponse).status(), 200, "archive action was not accepted");
+  const [archiveResponse] = await Promise.all([
+    page.waitForResponse((response) =>
+      response.request().method() === "POST" && response.url().endsWith(`/api/cases/${caseID}/archive`),
+    ),
+    page.getByRole("button", { name: "归档案件", exact: true }).click(),
+  ]);
+  assert.equal(archiveResponse.status(), 200, "archive action was not accepted");
   const archived = await waitForCase(page, caseID, (detail) => Boolean(detail.archived_at) && detail.archives.length > 0);
   assert.ok(archived.archived_at, "archive timestamp was not retained");
 
@@ -448,11 +459,12 @@ function required(name: string): string {
 }
 
 async function postFromUI(page: Page, pathPrefix: string, suffix: string, action: () => Promise<void>): Promise<Record<string, any>> {
-  const responsePromise = page.waitForResponse((response) =>
-    response.request().method() === "POST" && response.url().includes(pathPrefix) && response.url().endsWith(suffix),
-  );
-  await action();
-  const response = await responsePromise;
+  const [response] = await Promise.all([
+    page.waitForResponse((response) =>
+      response.request().method() === "POST" && response.url().includes(pathPrefix) && response.url().endsWith(suffix),
+    ),
+    action(),
+  ]);
   assert.equal(response.status(), 201, `${suffix} response returned HTTP ${response.status()}`);
   return await response.json() as Record<string, any>;
 }
@@ -572,13 +584,14 @@ async function uploadMaterial(page: Page, material: Material): Promise<string> {
     await page.waitForTimeout(150);
     if (!(await uploadButton.isDisabled().catch(() => true))) break;
   }
-  const responsePromise = page.waitForResponse((response) =>
-    response.request().method() === "POST" && response.url().endsWith("/documents"),
-  );
   await uploadButton.waitFor({ state: "visible", timeout: 15000 });
   await uploadButton.scrollIntoViewIfNeeded();
-  await uploadButton.click();
-  const response = await responsePromise;
+  const [response] = await Promise.all([
+    page.waitForResponse((response) =>
+      response.request().method() === "POST" && response.url().endsWith("/documents"),
+    ),
+    uploadButton.click(),
+  ]);
   assert.equal(response.status(), 201, `upload ${material.filename} returned HTTP ${response.status()}`);
   const result = await response.json() as { id?: string };
   assert.ok(result.id, `upload ${material.filename} returned no document ID`);

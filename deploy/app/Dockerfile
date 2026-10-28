@@ -23,6 +23,7 @@ WORKDIR /src/web
 COPY web/package.json web/bun.lock web/index.html web/admin.html web/portal.html web/vite.config.ts web/tsconfig.json web/tsconfig.test.json ./
 RUN bun install --frozen-lockfile
 COPY web/src/ ./src/
+COPY web/public/ ./public/
 RUN bun run typecheck \
     && bun run build:client \
     && bun run build:admin \
