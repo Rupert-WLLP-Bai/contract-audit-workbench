@@ -466,7 +466,7 @@ function antSelectRoot(select: Locator): Locator {
 }
 
 async function selectedAntLabel(select: Locator): Promise<string> {
-  const item = antSelectRoot(select).locator(".ant-select-selection-item").first();
+  const item = antSelectRoot(select).locator(".ant-select-content").first();
   if ((await item.count()) === 0) return "";
   const title = await item.getAttribute("title");
   return (title ?? (await item.textContent()) ?? "").replace(/\s+/g, " ").trim();

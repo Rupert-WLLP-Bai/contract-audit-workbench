@@ -11,6 +11,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"contractaudit/internal/agentflow"
 	"contractaudit/internal/jev"
@@ -172,10 +173,17 @@ func EvaluateKnowledge(ctx context.Context, provider Provider, configuration age
 		len(request.Candidates) > configuration.MaxCandidates {
 		return KnowledgeResult{}, fmt.Errorf("%w: frozen advisory request is invalid", ErrNotApplicable)
 	}
-	response, err := provider.AskNouls(ctx, ProviderRequest{
+	// Apply the accepted timeout even if the transport was configured with a
+	// different value after this review was frozen. The parent may end sooner.
+	callCtx, cancel := context.WithTimeout(ctx, time.Duration(configuration.TimeoutMS)*time.Millisecond)
+	defer cancel()
+	response, err := provider.AskNouls(callCtx, ProviderRequest{
 		Feature: request.Feature, Egress: request.Egress, Model: request.Model,
 		State: request.State, Questions: request.Questions,
 	})
+	if contextErr := callCtx.Err(); contextErr != nil {
+		return KnowledgeResult{}, fmt.Errorf("%w: %w", ErrUnavailable, contextErr)
+	}
 	if err != nil {
 		return KnowledgeResult{}, fmt.Errorf("%w: %w", ErrUnavailable, err)
 	}

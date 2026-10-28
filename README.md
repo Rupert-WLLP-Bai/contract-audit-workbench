@@ -227,9 +227,9 @@ bun run build
 
 需要数据库的集成测试使用隔离的 `TEST_DATABASE_URL`，`MIGRATOR_DATABASE_URL` 指向同一测试库的迁移角色；`MODEL_DATABASE_URL` 指向同库的独立非特权登录角色。专用角色不能是超级用户、表所有者或具有 `BYPASSRLS`，配置示例见 CI 的数据库角色准备步骤。`make verify` 执行确定性检查，`make acceptance` 进一步执行浏览器旅程；真实模型/OCR 联调由 `make test-live` 单独启用。
 
-## 未完成工作交接
+## 开发状态与验收记录
 
-以下记录用于从 `feat/web-workbench-polish` 继续工作。当前可执行源码候选为 `f427153`；最终 README 收口提交不改变可执行源码。切换机器后先拉取该分支，确认工作区状态和依赖，再按以下顺序继续；不要因测试失败删除测试、降低覆盖率或跳过数据库和浏览器验收。
+以下历史记录分别对应当时的源码候选与摘要，其中 `f427153` 是 Jev 建议层接入前的候选。当前版本以对应提交的 PR / CI 验收为准。切换机器后先确认工作区状态和依赖，再按以下顺序继续；不要因测试失败删除测试、降低覆盖率或跳过数据库和浏览器验收。
 
 1. **PASS：修复前端类型检查。** `web/src/app.integration.test.tsx` 的 breadcrumb 查询已收窄为 `HTMLElement`。最终 `make acceptance` 中 `web-typecheck` 通过，`web-tests` 371/371 通过，`web-build` 通过。
 2. **PASS（本地）：完成全量发布验收。** 在隔离 PostgreSQL 18（一次性容器 `caw-accept-pg`）上执行 `make acceptance`；`artifacts/verification.json` 为 `passed:true`，21 项检查全部返回 0，源码身份摘要 `0285f4b2cb0d7d90ef4d6edf3f93fb2082dea969a42155d55a31e75697ff7f82` 与最终可执行工作树一致；`browser-system` 耗时 90.1s，`TestBrowserWarrantyConflictAndConfirm` 与 `TestBrowserTelecomC1BFullJourney` 均 PASS。远端 CI 在推送后另行记录，不能把本地结果当作远端通过。

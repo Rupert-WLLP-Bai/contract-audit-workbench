@@ -132,7 +132,7 @@ func BuildKnowledgeRequest(configuration agentflow.AdvisoryConfiguration, scope 
 	canonicalQuestions := make([]knowledgeQuestion, 0, len(included))
 	for _, candidate := range included {
 		questionID := candidate.Alias + "_relevance"
-		instruction := "Does the governance item at `candidates." + candidate.Alias +
+		instruction := "Does the governance item in `candidates` whose `id` is `" + candidate.Alias +
 			"` directly regulate the capability and scenario named in `gaps`?"
 		trueCriterion := "It directly states a check, requirement, or exception that applies to that capability in this business line and scenario."
 		falseCriterion := "It addresses a different capability, only cites related material, or its stated scope excludes this contract."

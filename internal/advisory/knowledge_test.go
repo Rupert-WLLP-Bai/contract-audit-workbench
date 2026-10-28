@@ -2,10 +2,13 @@ package advisory
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 	"testing"
+	"time"
 	"unicode/utf8"
 
 	"contractaudit/internal/agentflow"
@@ -137,6 +140,55 @@ func TestBuildKnowledgeRequestOmitsUnsafeOrOversizedCandidates(t *testing.T) {
 	}
 }
 
+func TestBuildKnowledgeQuestionsLocateCandidatesByIDAfterOmission(t *testing.T) {
+	configuration := testConfiguration()
+	request, err := BuildKnowledgeRequest(configuration, testScope(), testGaps(), []KnowledgeCandidate{
+		{Kind: "guidance"},
+		{Kind: "guidance", Summary: "compare the warranty with procurement requirements"},
+		{Kind: "experience", Summary: "check the acceptance record before payment"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var state struct {
+		Candidates []struct {
+			ID string `json:"id"`
+		} `json:"candidates"`
+	}
+	if err := json.Unmarshal([]byte(request.State), &state); err != nil {
+		t.Fatal(err)
+	}
+	if len(state.Candidates) != 2 || state.Candidates[0].ID != "candidate_1" {
+		t.Fatalf("expected a gap in candidate ids after omission: %+v", state.Candidates)
+	}
+	legacyQuestions := make([]knowledgeQuestion, 0, len(state.Candidates))
+	for _, candidate := range state.Candidates {
+		questionID := candidate.ID + "_relevance"
+		question, ok := request.Questions[questionID]
+		if !ok || !strings.Contains(question.Instructions, "in `candidates` whose `id` is `"+candidate.ID+"`") {
+			t.Fatalf("question does not identify an existing array item's id: %+v", question)
+		}
+		legacyQuestions = append(legacyQuestions, knowledgeQuestion{
+			Alias: candidate.ID, QuestionID: questionID,
+			Instructions: "Does the governance item at `candidates." + candidate.ID +
+				"` directly regulate the capability and scenario named in `gaps`?",
+			True: question.Criteria.True, False: question.Criteria.False,
+		})
+	}
+	sort.Slice(legacyQuestions, func(i, j int) bool { return legacyQuestions[i].Alias < legacyQuestions[j].Alias })
+	legacyIdentity, err := json.Marshal(knowledgeIdentity{
+		Feature: request.Feature, QuestionSetVersion: request.QuestionSetVersion,
+		Egress: request.Egress, Model: request.Model, State: request.State,
+		Questions: legacyQuestions, ThresholdHigh: configuration.ThresholdHigh, ThresholdLow: configuration.ThresholdLow,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if request.RequestSHA256 == digestBytes(legacyIdentity) {
+		t.Fatal("corrected questions reused the legacy request's cache identity")
+	}
+}
+
 func TestBuildKnowledgeRequestStaysWithinTheStateBudget(t *testing.T) {
 	configuration := testConfiguration()
 	configuration.MaxCandidates = 16
@@ -220,6 +272,68 @@ func TestEvaluateKnowledgeAppliesTheTruthTable(t *testing.T) {
 	}
 	if BandRank(BandRelevant) >= BandRank(BandUncertain) || BandRank(BandUncertain) >= BandRank(BandNotRelevant) {
 		t.Fatalf("band ranks do not order relevant before uncertain before not_relevant")
+	}
+}
+
+func TestEvaluateKnowledgeHonorsFrozenTimeout(t *testing.T) {
+	configuration := testConfiguration()
+	configuration.TimeoutMS = agentflow.MinAdvisoryTimeout.Milliseconds()
+	request := builtRequest(t)
+	parent, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	provider := providerFunc(func(ctx context.Context, _ ProviderRequest) (ProviderResponse, error) {
+		deadline, ok := ctx.Deadline()
+		if !ok || time.Until(deadline) > agentflow.MinAdvisoryTimeout {
+			t.Fatal("provider did not receive the frozen advisory timeout")
+		}
+		<-ctx.Done()
+		return ProviderResponse{}, ctx.Err()
+	})
+	result, err := EvaluateKnowledge(parent, provider, configuration, request)
+	if !errors.Is(err, context.DeadlineExceeded) || !errors.Is(err, ErrUnavailable) || len(result.Bands) != 0 {
+		t.Fatalf("expired advisory call produced result=%+v err=%v", result, err)
+	}
+	if parent.Err() != nil {
+		t.Fatalf("advisory timeout cancelled the review context: %v", parent.Err())
+	}
+}
+
+func TestEvaluateKnowledgeRejectsAnswerReturnedAfterDeadline(t *testing.T) {
+	configuration := testConfiguration()
+	configuration.TimeoutMS = agentflow.MinAdvisoryTimeout.Milliseconds()
+	request := builtRequest(t)
+	parent, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	provider := providerFunc(func(ctx context.Context, input ProviderRequest) (ProviderResponse, error) {
+		deadline, ok := ctx.Deadline()
+		if !ok || time.Until(deadline) > agentflow.MinAdvisoryTimeout {
+			t.Fatal("provider did not receive the frozen advisory timeout")
+		}
+		<-ctx.Done()
+		return fakeProvider(map[string]float64{
+			"candidate_0": 0.9, "candidate_1": 0.1, "candidate_2": 0.5,
+		}, request.Model).AskNouls(ctx, input)
+	})
+	result, err := EvaluateKnowledge(parent, provider, configuration, request)
+	if !errors.Is(err, context.DeadlineExceeded) || !errors.Is(err, ErrUnavailable) || len(result.Bands) != 0 {
+		t.Fatalf("late response was accepted: result=%+v err=%v", result, err)
+	}
+}
+
+func TestEvaluateKnowledgePreservesEarlierReviewDeadline(t *testing.T) {
+	request := builtRequest(t)
+	deadline := time.Now().Add(50 * time.Millisecond)
+	parent, cancel := context.WithDeadline(context.Background(), deadline)
+	defer cancel()
+	provider := providerFunc(func(ctx context.Context, _ ProviderRequest) (ProviderResponse, error) {
+		if actual, ok := ctx.Deadline(); !ok || !actual.Equal(deadline) {
+			t.Fatalf("review deadline was extended: got %v want %v", actual, deadline)
+		}
+		<-ctx.Done()
+		return ProviderResponse{}, ctx.Err()
+	})
+	if _, err := EvaluateKnowledge(parent, provider, testConfiguration(), request); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("review deadline was not preserved: %v", err)
 	}
 }
 
