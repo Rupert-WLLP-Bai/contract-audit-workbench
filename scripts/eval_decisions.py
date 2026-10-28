@@ -33,9 +33,9 @@ def main():
               "dataset_sha256": hashlib.sha256(raw).hexdigest(), "configured_model": args.model,
               "started_at": dt.datetime.now(dt.timezone.utc).isoformat(), "rows": [],
               "limitations": ["D0 synthetic developer-visible cases; not independent business validation",
-                              "Chat returns a choice; Laya returns a categorical distribution; no invented LLM confidence",
+                              "Chat returns a choice; no invented LLM confidence",
                               "Sequential HTTP wall time includes local gateway and any upstream routing",
-                              "No claim that the local gateway model runs on the same CPU as Laya",
+                              "No claim about TypeSafe Jev latency or accuracy from this chat-only baseline",
                               "No automatic contract disposition or mandatory-rule suppression"]}
     output = Path(args.out)
     output.parent.mkdir(parents=True, exist_ok=True)

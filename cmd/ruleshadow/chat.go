@@ -26,21 +26,13 @@ func chatShadow(ctx context.Context, client *model.Client, input decision.Input,
 		result.Status, result.Event.FailureReason = decision.StatusDenied, decision.FailureAuthorization
 		return result, nil
 	}
-	if input.Capability != decision.CapabilityChoice || input.PolicyVersion != access.PolicyVersion || timeout <= 0 || timeout > 30*time.Second {
+	if timeout <= 0 || timeout > 30*time.Second || !decision.ValidInput(input) {
 		result.Status, result.Event.FailureReason = decision.StatusInvalidInput, decision.FailureInvalidInput
 		return result, nil
 	}
 	criteria := make(map[string]string, len(input.AllowedCandidates))
 	for _, candidate := range input.AllowedCandidates {
-		if _, duplicate := criteria[candidate.ID]; duplicate {
-			result.Status, result.Event.FailureReason = decision.StatusInvalidInput, decision.FailureInvalidInput
-			return result, nil
-		}
 		criteria[candidate.ID] = candidate.Description
-	}
-	if _, manual := criteria["manual_review"]; !manual {
-		result.Status, result.Event.FailureReason = decision.StatusInvalidInput, decision.FailureInvalidInput
-		return result, nil
 	}
 	callCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()

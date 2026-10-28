@@ -18,6 +18,7 @@ import (
 	"contractaudit/internal/access"
 
 	"contractaudit/internal/decision"
+	"contractaudit/internal/jev"
 	"contractaudit/internal/model"
 	"contractaudit/internal/rulepack"
 
@@ -41,6 +42,7 @@ type execution struct {
 	Input          decision.Input
 	Decision       decision.Result
 	Chat           *model.ChoiceResult
+	Jev            *jev.Answer
 	Rules          rulepack.Report
 	RuleDurationMS float64
 }
@@ -50,6 +52,7 @@ type row struct {
 	Expected         string              `json:"expected"`
 	Decision         decision.Result     `json:"decision"`
 	Chat             *model.ChoiceResult `json:"chat,omitempty"`
+	Jev              *jev.Answer         `json:"jev,omitempty"`
 	DurationMS       float64             `json:"duration_ms"`
 	RuleDurationMS   float64             `json:"rule_duration_ms"`
 	RuleOutputSHA256 string              `json:"rule_output_sha256"`
@@ -106,19 +109,19 @@ func run() error {
 	requestPath := flag.String("request", "internal/rulepack/testdata/demo-request.json", "trusted local synthetic identity, sources and typed facts")
 	datasetPath := flag.String("dataset", "testdata/decision-zh-v1.json", "fixed Chinese focus-classification dataset")
 	outPath := flag.String("out", "artifacts/ruleshadow.json", "machine evidence output")
-	mode := flag.String("mode", "disabled", "disabled or shadow; CLI never enables assist")
-	backend := flag.String("backend", "laya", "shadow backend: laya or chat")
+	mode := flag.String("mode", "disabled", "disabled or shadow")
+	backend := flag.String("backend", "chat", "shadow backend: chat or jev")
 	chatURL := flag.String("chat-url", "", "explicit OpenAI-compatible chat base URL")
 	chatModel := flag.String("chat-model", "group/auto-deepseek-v4-flash", "configured chat route for synthetic comparison")
-	endpoint := flag.String("laya-url", "", "explicit loopback Laya base URL")
-	revision := flag.String("model-revision", "", "expected deployment revision, distinct from observed runtime provenance")
+	jevURL := flag.String("jev-url", "", "override TypeSafe Jev base URL; defaults to TYPESAFE_JEV_BASE_URL")
+	jevModel := flag.String("jev-model", "", "override TypeSafe Jev model alias; defaults to TYPESAFE_JEV_MODEL")
 	timeout := flag.Duration("timeout", 10*time.Second, "bounded individual decision timeout")
 	publishDemo := flag.Bool("publish-demo", false, "explicitly simulate lifecycle only for synthetic_demo authorities")
 	flag.Parse()
 	if *mode != "disabled" && *mode != "shadow" {
 		return errors.New("CLI supports disabled or shadow only")
 	}
-	if *backend != "laya" && *backend != "chat" {
+	if *backend != "chat" && *backend != "jev" {
 		return errors.New("unknown shadow backend")
 	}
 	if *mode == "shadow" && *backend == "chat" && *chatURL == "" {
@@ -166,16 +169,22 @@ func run() error {
 	if data.SchemaVersion != "decision-benchmark/v1" || len(data.Cases) == 0 || len(data.Cases) > 200 {
 		return errors.New("invalid bounded decision dataset")
 	}
-	layaMode := decision.Mode(*mode)
-	if *backend == "chat" {
-		layaMode = decision.ModeDisabled
-	}
-	provider, err := decision.NewProvider(decision.Config{Mode: layaMode, Endpoint: *endpoint,
-		Timeout: *timeout, ModelRevision: *revision})
-	if err != nil {
-		return err
-	}
 	chatClient := model.New(model.Config{BaseURL: *chatURL, ChatModel: *chatModel})
+	var jevClient *jev.Client
+	if *mode == "shadow" && *backend == "jev" {
+		config := jev.FromEnv()
+		config.Timeout = *timeout
+		if *jevURL != "" {
+			config.BaseURL = *jevURL
+		}
+		if *jevModel != "" {
+			config.Model = *jevModel
+		}
+		jevClient, err = jev.New(config)
+		if err != nil {
+			return err
+		}
+	}
 	ctx := context.Background()
 	baseline, err := pack.Execute(ctx, request)
 	if err != nil {
@@ -197,18 +206,27 @@ func run() error {
 		Limitations: []string{"D0 developer-visible synthetic cases; not independent business validation",
 			"Typed facts are explicitly supplied fixtures, not free-text extraction",
 			"Choice accuracy and deterministic numerical relations are different tasks",
-			"Expected model revision is not proof of observed runtime revision",
+			"An observed response model label is not a reviewed checkpoint pin",
 			"In-memory Eino execution only; no case HTTP, persistent attempts or business approvals",
 			"Passed means mandatory RulePack output invariance; model availability and quality are reported separately"}}
+	if *backend == "jev" && *mode == "shadow" {
+		report.Limitations = append(report.Limitations,
+			"Jev is a hosted TypeSafe service; this benchmark sends only the synthetic D0 states and never contract text",
+			"Jev returns calibrated choice probabilities; they remain suggestions, not audit conclusions",
+			"The Jev backend is default-off and does not use the model gateway budget ledger")
+	}
 	if *mode == "disabled" {
 		report.Backend = "rules_only"
 	}
 	chain := compose.NewChain[*execution, *execution]()
 	chain.AppendLambda(compose.InvokableLambda(func(ctx context.Context, state *execution) (*execution, error) {
-		if *mode == "shadow" && *backend == "chat" {
+		switch {
+		case *mode == "shadow" && *backend == "chat":
 			state.Decision, state.Chat = chatShadow(ctx, chatClient, state.Input, *chatModel, *timeout)
-		} else {
-			state.Decision = provider.Evaluate(ctx, state.Input)
+		case *mode == "shadow" && *backend == "jev":
+			state.Decision, state.Jev = jevShadow(ctx, jevClient, state.Input, *timeout)
+		default:
+			state.Decision = decision.DisabledResult(state.Input)
 		}
 		return state, nil
 	}), compose.WithNodeName("decision_choice_shadow"))
@@ -246,7 +264,7 @@ func run() error {
 		}
 		unchanged := bytes.Equal(body, baselineJSON) && len(state.Decision.AcceptedRules) == 0
 		report.Passed = report.Passed && unchanged
-		report.Rows = append(report.Rows, row{ID: item.ID, Expected: item.Expected, Decision: state.Decision, Chat: state.Chat,
+		report.Rows = append(report.Rows, row{ID: item.ID, Expected: item.Expected, Decision: state.Decision, Chat: state.Chat, Jev: state.Jev,
 			DurationMS: durationMS, RuleDurationMS: state.RuleDurationMS, RuleOutputSHA256: digest(body), RulesUnchanged: unchanged})
 	}
 	body, err := json.MarshalIndent(report, "", "  ")

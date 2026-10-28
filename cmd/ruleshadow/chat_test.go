@@ -112,7 +112,7 @@ func TestChatShadowUnavailableResponsesRetainObservedUsage(t *testing.T) {
 			}))
 			defer server.Close()
 
-			input := chatShadowTestInput(t, test.name)
+			input := chatShadowTestInput(t, strings.ReplaceAll(test.name, " ", "-"))
 			result, chat := chatShadow(context.Background(), model.New(model.Config{BaseURL: server.URL, ChatModel: "configured-model"}), input, "configured-model", time.Second)
 			requireUnavailable(t, result)
 			if result.Event.FailureReason != test.wantReason {
