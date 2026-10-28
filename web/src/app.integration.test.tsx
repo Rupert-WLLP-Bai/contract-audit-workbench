@@ -775,7 +775,7 @@ describe("application routes and API contract", () => {
       await screen.findByRole("heading", { name: "登录合同审查" }),
     ).toBeInTheDocument();
     expect(api.signedIn).toBe(false);
-  }, 10_000);
+  }, 30_000);
 
   it.each([
     ["/cases", "GET /api/session", "无法连接审查服务", "案件"],

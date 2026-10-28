@@ -1,6 +1,9 @@
 import { chromiumExecutable } from "./chromium";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
+import { mkdir } from "node:fs/promises";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { chromium, type Locator, type Page } from "playwright";
 
 type Material = { role: string; filename: string; text: string };
@@ -454,6 +457,46 @@ async function postFromUI(page: Page, pathPrefix: string, suffix: string, action
   return await response.json() as Record<string, any>;
 }
 
+// page.getByLabel() resolves to antd's inner input[role=combobox], not the
+// .ant-select root, so selected-value lookups must walk up to the ancestor.
+function antSelectRoot(select: Locator): Locator {
+  return select.locator(
+    "xpath=ancestor-or-self::*[contains(concat(' ', normalize-space(@class), ' '), ' ant-select ')][1]",
+  );
+}
+
+async function selectedAntLabel(select: Locator): Promise<string> {
+  const item = antSelectRoot(select).locator(".ant-select-selection-item").first();
+  if ((await item.count()) === 0) return "";
+  const title = await item.getAttribute("title");
+  return (title ?? (await item.textContent()) ?? "").replace(/\s+/g, " ").trim();
+}
+
+async function selectionApplied(
+  select: Locator,
+  matches: (label: string) => boolean,
+): Promise<boolean> {
+  const deadline = Date.now() + 2000;
+  do {
+    const label = await selectedAntLabel(select);
+    if (label && matches(label)) return true;
+    await Bun.sleep(50);
+  } while (Date.now() < deadline);
+  return false;
+}
+
+async function captureAntSelectFailure(page: Page, labels: string[]): Promise<void> {
+  const directory = process.env.E2E_SCREENSHOT_DIR?.trim()
+    || fileURLToPath(new URL("../../artifacts/screenshots/", import.meta.url));
+  const slug = labels.join("-").replace(/[^\p{L}\p{N}-]+/gu, "_").slice(0, 60) || "unknown";
+  try {
+    await mkdir(directory, { recursive: true });
+    await page.screenshot({ path: join(directory, `ant-select-${slug}-${Date.now()}.png`) });
+  } catch {
+    // Screenshots are diagnostic; they must never mask the original failure.
+  }
+}
+
 async function chooseAntOption(
   page: Page,
   select: Locator,
@@ -464,6 +507,9 @@ async function chooseAntOption(
   // state. Re-open and re-measure a few times instead of failing on one frame.
   let labels: string[] = [];
   for (let attempt = 0; attempt < 5; attempt++) {
+    // antd may already hold the target value. Clicking it again races the
+    // dropdown closing and burns Playwright's 30s actionability timeout.
+    if (matches(await selectedAntLabel(select))) return;
     if ((await page.locator(".ant-select-dropdown:visible").count()) === 0) {
       await select.click();
     }
@@ -488,8 +534,11 @@ async function chooseAntOption(
     labels = measured.map((option) => option.label);
     const index = measured.findIndex((option) => option.visible && matches(option.label));
     if (index >= 0) {
-      await options.nth(index).click();
-      return;
+      await options.nth(index).click({ timeout: 2000 }).catch(() => {});
+      if (await selectionApplied(select, matches)) return;
+      await page.keyboard.press("Escape").catch(() => {});
+      await Bun.sleep(100);
+      continue;
     }
     if (attempt === 2) {
       await page.keyboard.press("Escape").catch(() => {});
@@ -497,6 +546,7 @@ async function chooseAntOption(
     }
     await Bun.sleep(100);
   }
+  await captureAntSelectFailure(page, labels);
   throw new Error(`no visible select option matched ${labels.join(" | ")}`);
 }
 
