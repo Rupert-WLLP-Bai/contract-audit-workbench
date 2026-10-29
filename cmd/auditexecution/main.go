@@ -17,14 +17,13 @@ import (
 	"net"
 	"net/http"
 	"os"
-	"os/signal"
 	"strings"
-	"syscall"
 	"time"
 
 	"contractaudit/internal/bootstrap"
 	"contractaudit/internal/httpapi"
 	"contractaudit/internal/outboxrelay"
+	"contractaudit/internal/process"
 )
 
 // shutdownTimeout drains in-flight requests after SIGTERM. The deployment
@@ -33,13 +32,11 @@ import (
 const shutdownTimeout = 25 * time.Second
 
 func main() {
-	if err := run(); err != nil {
-		log.Fatal(err)
-	}
+	process.Main(run)
 }
 
 func run() error {
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	ctx, stop := process.SignalContext()
 	defer stop()
 
 	app, err := bootstrap.OpenService(ctx, "execution")
@@ -94,7 +91,7 @@ func run() error {
 		log.Printf("outbox relay disabled: NATS_URL is not configured; PostgreSQL scanning remains the recovery path")
 	}
 
-	addr := env("ADDR", "127.0.0.1:8083")
+	addr := process.Env("ADDR", "127.0.0.1:8083")
 	slog.Info("execution service listening", "addr", addr)
 	server := &http.Server{
 		Addr: addr, Handler: service,
@@ -106,7 +103,7 @@ func run() error {
 		// stream, and the request context ends when the process is asked to stop.
 	}
 	server.BaseContext = func(net.Listener) context.Context { return ctx }
-	serveErr := serve(ctx, server, shutdownTimeout)
+	serveErr := process.Serve(ctx, server, shutdownTimeout)
 	stopRelay()
 	return errors.Join(serveErr, waitRelay(relayDone, shutdownTimeout))
 }
@@ -134,36 +131,6 @@ func waitRelay(done <-chan error, timeout time.Duration) error {
 // serve runs server until ctx is canceled or the listener fails, then drains
 // in-flight requests within timeout. It mirrors the lifecycle of the other
 // process entrypoints in this repository.
-func serve(ctx context.Context, server *http.Server, timeout time.Duration) error {
-	finished := make(chan error, 1)
-	go func() { finished <- server.ListenAndServe() }()
-	select {
-	case err := <-finished:
-		if errors.Is(err, http.ErrServerClosed) {
-			return nil
-		}
-		return err
-	case <-ctx.Done():
-		shutdown, cancel := context.WithTimeout(context.Background(), timeout)
-		defer cancel()
-		if err := server.Shutdown(shutdown); err != nil {
-			_ = server.Close()
-			return err
-		}
-		if err := <-finished; !errors.Is(err, http.ErrServerClosed) {
-			return err
-		}
-		return nil
-	}
-}
-
-func env(key, fallback string) string {
-	if value := strings.TrimSpace(os.Getenv(key)); value != "" {
-		return value
-	}
-	return fallback
-}
-
 // origins reads the extra browser origins the deployment allows, using the same
 // convention as the core service: an empty CORS_ORIGIN keeps the handler's
 // development defaults. The browser sends its Origin through the edge, so this

@@ -16,18 +16,14 @@ package main
 
 import (
 	"context"
-	"errors"
 	"log"
 	"net"
 	"net/http"
-	"os"
-	"os/signal"
-	"strings"
-	"syscall"
 	"time"
 
 	"contractaudit/internal/bootstrap"
 	"contractaudit/internal/modelgateway"
+	"contractaudit/internal/process"
 )
 
 // shutdownTimeout drains in-flight requests after SIGTERM. The deployment
@@ -36,13 +32,11 @@ import (
 const shutdownTimeout = 25 * time.Second
 
 func main() {
-	if err := run(); err != nil {
-		log.Fatal(err)
-	}
+	process.Main(run)
 }
 
 func run() error {
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	ctx, stop := process.SignalContext()
 	defer stop()
 
 	app, err := bootstrap.OpenService(ctx, "model")
@@ -60,7 +54,7 @@ func run() error {
 		return err
 	}
 
-	addr := env("ADDR", "127.0.0.1:8084")
+	addr := process.Env("ADDR", "127.0.0.1:8084")
 	log.Printf("model gateway listening on %s (mode %s, chat %s, ocr %s)", addr, config.Mode, config.ChatModel, config.OCRModel)
 	server := &http.Server{
 		Addr: addr, Handler: service.Handler(),
@@ -73,38 +67,9 @@ func run() error {
 		// ends when the process is asked to stop.
 	}
 	server.BaseContext = func(net.Listener) context.Context { return ctx }
-	return serve(ctx, server, shutdownTimeout)
+	return process.Serve(ctx, server, shutdownTimeout)
 }
 
 // serve runs server until ctx is canceled or the listener fails, then drains
 // in-flight requests within timeout. It mirrors the lifecycle of the other
 // process entrypoints in this repository.
-func serve(ctx context.Context, server *http.Server, timeout time.Duration) error {
-	finished := make(chan error, 1)
-	go func() { finished <- server.ListenAndServe() }()
-	select {
-	case err := <-finished:
-		if errors.Is(err, http.ErrServerClosed) {
-			return nil
-		}
-		return err
-	case <-ctx.Done():
-		shutdown, cancel := context.WithTimeout(context.Background(), timeout)
-		defer cancel()
-		if err := server.Shutdown(shutdown); err != nil {
-			_ = server.Close()
-			return err
-		}
-		if err := <-finished; !errors.Is(err, http.ErrServerClosed) {
-			return err
-		}
-		return nil
-	}
-}
-
-func env(key, fallback string) string {
-	if value := strings.TrimSpace(os.Getenv(key)); value != "" {
-		return value
-	}
-	return fallback
-}

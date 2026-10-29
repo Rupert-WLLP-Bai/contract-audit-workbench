@@ -18,10 +18,8 @@ import (
 	"net"
 	"net/http"
 	"os"
-	"os/signal"
 	"strings"
 	"sync/atomic"
-	"syscall"
 	"time"
 
 	"contractaudit/internal/bootstrap"
@@ -29,6 +27,7 @@ import (
 	"contractaudit/internal/outboxrelay"
 	"contractaudit/internal/store"
 
+	"contractaudit/internal/process"
 	"github.com/jackc/pgx/v5"
 )
 
@@ -40,13 +39,11 @@ const (
 )
 
 func main() {
-	if err := run(); err != nil {
-		log.Fatal(err)
-	}
+	process.Main(run)
 }
 
 func run() error {
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	ctx, stop := process.SignalContext()
 	defer stop()
 	runCtx, abort := context.WithCancel(ctx)
 	defer abort()

@@ -50,17 +50,6 @@ func TestUnknownServiceRoleIsRefused(t *testing.T) {
 	}
 }
 
-func TestServerEnvironmentDefaultIsLoopback(t *testing.T) {
-	t.Setenv("ADDR", "")
-	if addr := env("ADDR", "127.0.0.1:8080"); addr != "127.0.0.1:8080" {
-		t.Fatalf("default address %q", addr)
-	}
-	t.Setenv("ADDR", " :8080 ")
-	if addr := env("ADDR", "127.0.0.1:8080"); addr != ":8080" {
-		t.Fatalf("explicit address %q", addr)
-	}
-}
-
 func TestInvalidReadOnlySettingStopsBeforeOpeningStorage(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "must-not-be-created")
 	t.Setenv("APP_ENV", "test")

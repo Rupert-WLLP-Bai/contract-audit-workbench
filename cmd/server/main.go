@@ -17,10 +17,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"os/signal"
 	"strconv"
 	"strings"
-	"syscall"
 	"time"
 
 	capabilitypacks "contractaudit/capability-packs"
@@ -30,17 +28,16 @@ import (
 	"contractaudit/internal/config"
 	"contractaudit/internal/externalread"
 	"contractaudit/internal/httpapi"
+	"contractaudit/internal/process"
 	"contractaudit/internal/systemhealth"
 )
 
 func main() {
-	if err := run(); err != nil {
-		log.Fatal(err)
-	}
+	process.Main(run)
 }
 
 func run() error {
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	ctx, stop := process.SignalContext()
 	defer stop()
 	switch role := strings.TrimSpace(os.Getenv("SERVICE_ROLE")); role {
 	case "core":
@@ -155,11 +152,11 @@ func operatorAuditConfig(mode string) (bool, *capabilitypack.Registry, map[strin
 	if evidenceMode == "" || evidenceMode == "off" {
 		return true, registry, connectors, nil
 	}
-	connectorID := env("EXTERNAL_EVIDENCE_CONNECTOR_ID", "fixture.oss")
-	sourceSystem := env("EXTERNAL_EVIDENCE_SOURCE_SYSTEM", "fixture-oss-east")
+	connectorID := process.Env("EXTERNAL_EVIDENCE_CONNECTOR_ID", "fixture.oss")
+	sourceSystem := process.Env("EXTERNAL_EVIDENCE_SOURCE_SYSTEM", "fixture-oss-east")
 	baseURL := strings.TrimSpace(os.Getenv("EXTERNAL_EVIDENCE_BASE_URL"))
 	allowed := splitList(os.Getenv("EXTERNAL_EVIDENCE_ALLOWED_OBJECTS"))
-	payloadPrefix := env("EXTERNAL_EVIDENCE_PAYLOAD_PREFIX", "fixture://oss/")
+	payloadPrefix := process.Env("EXTERNAL_EVIDENCE_PAYLOAD_PREFIX", "fixture://oss/")
 	switch evidenceMode {
 	case "fixture":
 		if mode != config.ModeDevelopment && mode != config.ModeTest {
@@ -169,7 +166,7 @@ func operatorAuditConfig(mode string) (bool, *capabilitypack.Registry, map[strin
 		if len(allowed) == 0 {
 			allowed = []string{"fixture-line-001"}
 		}
-		path := env("EXTERNAL_EVIDENCE_FIXTURE_FILE", "testdata/operatoraudit/raw/oss-bandwidth.json")
+		path := process.Env("EXTERNAL_EVIDENCE_FIXTURE_FILE", "testdata/operatoraudit/raw/oss-bandwidth.json")
 		raw, err := os.ReadFile(path)
 		if err != nil {
 			log.Printf("operator audit disabled: fixture file: %v", err)
@@ -239,7 +236,7 @@ func logStartup(app *bootstrap.Runtime) {
 }
 
 func listen(ctx context.Context, handler http.Handler) error {
-	addr := env("ADDR", "127.0.0.1:8080")
+	addr := process.Env("ADDR", "127.0.0.1:8080")
 	log.Printf("listening on %s", addr)
 	server := &http.Server{
 		Addr: addr, Handler: handler,
@@ -268,11 +265,4 @@ func listen(ctx context.Context, handler http.Handler) error {
 		}
 		return nil
 	}
-}
-
-func env(key, fallback string) string {
-	if value := strings.TrimSpace(os.Getenv(key)); value != "" {
-		return value
-	}
-	return fallback
 }
