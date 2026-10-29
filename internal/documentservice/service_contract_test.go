@@ -96,6 +96,51 @@ func TestFromEnvDefaultsAndAcceptsInclusiveBounds(t *testing.T) {
 	}
 }
 
+func TestFromEnvDefaultsAndAcceptsInclusiveBounds(t *testing.T) {
+	for _, name := range []string{
+		"WORKER_DOCUMENT_TOKEN", "DOCUMENT_CPU_CONCURRENCY", "DOCUMENT_OCR_CONCURRENCY",
+		"DOCUMENT_QUEUE_CAPACITY", "DOCUMENT_PARSE_TIMEOUT",
+	} {
+		t.Setenv(name, "")
+	}
+	t.Setenv("WORKER_DOCUMENT_TOKEN", "  "+strings.Repeat("d", 32)+"  ")
+	defaults, err := FromEnv()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if defaults.WorkerCredential != strings.Repeat("d", 32) || defaults.CPUConcurrency != 4 ||
+		defaults.OCRConcurrency != 1 || defaults.QueueCapacity != 32 || defaults.ParseTimeout != 2*time.Minute {
+		t.Fatalf("default config = %+v", defaults)
+	}
+
+	for _, tc := range []struct {
+		name  string
+		value string
+		check func(Config) bool
+	}{
+		{"DOCUMENT_CPU_CONCURRENCY", "1", func(c Config) bool { return c.CPUConcurrency == 1 }},
+		{"DOCUMENT_CPU_CONCURRENCY", "1024", func(c Config) bool { return c.CPUConcurrency == 1024 }},
+		{"DOCUMENT_OCR_CONCURRENCY", "1", func(c Config) bool { return c.OCRConcurrency == 1 }},
+		{"DOCUMENT_OCR_CONCURRENCY", "1024", func(c Config) bool { return c.OCRConcurrency == 1024 }},
+		{"DOCUMENT_QUEUE_CAPACITY", "1", func(c Config) bool { return c.QueueCapacity == 1 }},
+		{"DOCUMENT_QUEUE_CAPACITY", "1024", func(c Config) bool { return c.QueueCapacity == 1024 }},
+		{"DOCUMENT_PARSE_TIMEOUT", "1ns", func(c Config) bool { return c.ParseTimeout == time.Nanosecond }},
+		{"DOCUMENT_PARSE_TIMEOUT", "30m", func(c Config) bool { return c.ParseTimeout == 30*time.Minute }},
+	} {
+		t.Run(tc.name+"="+tc.value, func(t *testing.T) {
+			for _, name := range []string{"DOCUMENT_CPU_CONCURRENCY", "DOCUMENT_OCR_CONCURRENCY", "DOCUMENT_QUEUE_CAPACITY", "DOCUMENT_PARSE_TIMEOUT"} {
+				t.Setenv(name, "")
+			}
+			t.Setenv("WORKER_DOCUMENT_TOKEN", strings.Repeat("d", 32))
+			t.Setenv(tc.name, tc.value)
+			got, err := FromEnv()
+			if err != nil || !tc.check(got) {
+				t.Fatalf("FromEnv = %+v, %v; requested %s=%s", got, err, tc.name, tc.value)
+			}
+		})
+	}
+}
+
 func TestNewRequiresAStorePrivateCredentialAndPositiveCapacities(t *testing.T) {
 	valid := Config{WorkerCredential: strings.Repeat("d", 32), CPUConcurrency: 2, OCRConcurrency: 1, QueueCapacity: 3, ParseTimeout: time.Second}
 	cases := []struct {
