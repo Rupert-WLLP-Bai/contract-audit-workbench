@@ -29,11 +29,12 @@ function sortOrderFor(
   return direction === "asc" ? "ascend" : "descend";
 }
 
-function sortFieldOf(
+export function sortFieldOf(
   sorter: Parameters<NonNullable<TableProps<CaseSummary>["onChange"]>>[2],
 ): CaseSortField | null {
   const selected = Array.isArray(sorter) ? sorter[0] : sorter;
-  const field = selected?.columnKey;
+  if (!selected) return null;
+  const field = selected.columnKey;
   if (typeof field !== "string") return null;
   return SORT_FIELDS.includes(field as CaseSortField)
     ? (field as CaseSortField)
@@ -55,7 +56,7 @@ function CaseTitleCell({
         to={`/cases/${encodeURIComponent(item.id)}`}
         state={{
           returnTo: `${location.pathname}?${params.toString()}`,
-          scrollY: typeof window === "undefined" ? 0 : window.scrollY,
+          scrollY: window.scrollY,
           selectedId: item.id,
         }}
       >
@@ -78,7 +79,9 @@ function CaseStatusCell({ item }: { item: CaseSummary }) {
   return item.archived_at ? (
     <StatusText tone="neutral">已归档</StatusText>
   ) : (
-    businessStatusLabel(item.business_status ?? "")
+    businessStatusLabel(
+      item.business_status === undefined ? "" : item.business_status,
+    )
   );
 }
 

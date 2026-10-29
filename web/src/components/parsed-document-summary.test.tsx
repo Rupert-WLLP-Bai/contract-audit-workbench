@@ -114,6 +114,30 @@ describe("parsed document summary", () => {
     expect(summary).toHaveTextContent("IR SHA-256 摘要缺失");
   });
 
+  it("keeps titles for empty optional digests but omits the title for a null digest", () => {
+    const view = render(
+      <ParsedDocumentSummary
+        document={document({
+          digest: "",
+          parsed_document: { ...parsed, normalized_digest: "", ir_digest: null },
+        })}
+      />,
+    );
+    expect(
+      screen.getAllByText("摘要缺失", { selector: "span" })[0],
+    ).not.toHaveAttribute("title");
+    const summary = screen.getByLabelText("解析来源与摘要");
+    const titles = summary.querySelectorAll("span[title]");
+    expect([...titles].map((span) => span.getAttribute("title"))).toContain("");
+    view.unmount();
+    render(
+      <ParsedDocumentSummary
+        document={document({ parsed_document: { ...parsed, ir_digest: null } })}
+      />,
+    );
+    expect(screen.getAllByText("不可用")[0]).not.toHaveAttribute("title");
+  });
+
   it("marks an unavailable original digest as unrecorded", () => {
     render(
       <ParsedDocumentSummary

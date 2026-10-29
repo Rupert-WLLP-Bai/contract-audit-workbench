@@ -8,6 +8,7 @@ import type {
   AgentReviewCallStatus,
   AgentReviewCapability,
   AgentReviewDomain,
+  AgentReviewDomainCoverage,
   AgentReviewDomainStatus,
   AgentReviewEvidence,
   AgentReviewKnowledgeAdvisory,
@@ -62,10 +63,9 @@ function capabilityExpression(capabilityId: string): string {
   const expression = Object.hasOwn(CAPABILITY_EXPRESSIONS, capabilityId)
     ? CAPABILITY_EXPRESSIONS[capabilityId]
     : undefined;
-  return (
-    expression ??
-    "当前没有这一检查项目的说明，请查看系统返回的状态和原因。未知项目不能视为通过。"
-  );
+  return expression === undefined
+    ? "当前没有这一检查项目的说明，请查看系统返回的状态和原因。未知项目不能视为通过。"
+    : expression;
 }
 
 const MODE_LABELS = {
@@ -295,8 +295,8 @@ function KnowledgeAdvisoryDetails({
         <div>
           <dt>请求模型 / 观测模型</dt>
           <dd>
-            <code>{advisory.model_requested ?? "未请求"}</code> /{" "}
-            <code>{advisory.model_observed ?? "未观测"}</code>
+            <code>{advisory.model_requested === null ? "未请求" : advisory.model_requested}</code> /{" "}
+            <code>{advisory.model_observed === null ? "未观测" : advisory.model_observed}</code>
           </dd>
         </div>
         <div>
@@ -402,7 +402,11 @@ function ConfigurationSection({
         <div>
           <dt>模型配置 ID</dt>
           <dd>
-            <code>{review.planner.model_configuration_id ?? "未记录"}</code>
+            <code>
+              {review.planner.model_configuration_id === null
+                ? "未记录"
+                : review.planner.model_configuration_id}
+            </code>
           </dd>
         </div>
         <div>
@@ -421,7 +425,7 @@ function ConfigurationSection({
           <dt>回退</dt>
           <dd>
             {review.planner.fallback_used
-              ? `已回退：${review.planner.fallback_code ?? "原因未报告"}`
+              ? `已回退：${review.planner.fallback_code === null ? "原因未报告" : review.planner.fallback_code}`
               : "未报告回退"}
           </dd>
         </div>
@@ -521,7 +525,7 @@ function EvidenceCitationRow({
         </>
       ) : (
         <p>
-          引用未定位：{anchor.reason ?? "未提供原因"}
+          引用未定位：{anchor.reason === null ? "未提供原因" : anchor.reason}
         </p>
       )}
     </li>
@@ -577,6 +581,18 @@ function CoverageCapabilityRow({
   );
 }
 
+function coverageStatusCode(
+  coverage: AgentReviewDomainCoverage | undefined,
+): AgentReviewDomainStatus {
+  return coverage === undefined ? "unknown" : coverage.status;
+}
+
+function coverageStatusLabel(
+  coverage: AgentReviewDomainCoverage | undefined,
+): string {
+  return coverage === undefined ? "未报告" : coverage.status;
+}
+
 function ScopeCard({
   scope,
   review,
@@ -591,8 +607,8 @@ function ScopeCard({
     <li className="agent-review-card">
       <header>
         <strong>{DOMAIN_LABELS[scope.domain]}</strong>
-        <StatusText tone={domainTone(coverage?.status ?? "unknown")}>
-          {coverage?.status ?? "未报告"}
+        <StatusText tone={domainTone(coverageStatusCode(coverage))}>
+          {coverageStatusLabel(coverage)}
         </StatusText>
       </header>
       <p>
@@ -770,7 +786,7 @@ function PlanCallRow({ call }: { call: AgentReviewPlan["calls"][number] }) {
       </p>
       <p>
         守卫/工具状态 {call.status}，原因{" "}
-        {call.reason_code ?? "无已报告原因"}，证据 ID{" "}
+        {call.reason_code === null ? "无已报告原因" : call.reason_code}，证据 ID{" "}
         {showIds(call.evidence_ids)}
       </p>
     </li>
@@ -962,7 +978,7 @@ function modelSourcesOf(events: ExecutionEvent[]): string[] {
   return [
     ...new Set(
       events
-        .map((event) => event.usage?.source ?? null)
+        .map((event) => (event.usage === null ? null : event.usage.source))
         .filter((value): value is string => value !== null),
     ),
   ];

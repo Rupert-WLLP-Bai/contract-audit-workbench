@@ -6,7 +6,11 @@ function hash(value: string | null, missing: string): string {
 }
 
 function attribute(value: string | null | undefined): string {
-  return value ?? "";
+  return value === null || value === undefined ? "" : value;
+}
+
+function titleOf(value: string | null): string | undefined {
+  return value === null ? undefined : value;
 }
 
 function parsedSummaryAttributes(
@@ -50,11 +54,11 @@ function ParsedMetadata({ parsed }: { parsed: ParsedDocumentMetadata }) {
       <span title={parsed.config_hash}>{shortDigest(parsed.config_hash)}</span>
       {"，"}规范化 {parsed.normalization_version}
       {"，"}正文 SHA-256{" "}
-      <span title={parsed.normalized_digest ?? undefined}>
+      <span title={titleOf(parsed.normalized_digest)}>
         {hash(parsed.normalized_digest, "不可用")}
       </span>
       {"，"}IR SHA-256{" "}
-      <span title={parsed.ir_digest ?? undefined}>
+      <span title={titleOf(parsed.ir_digest)}>
         {hash(parsed.ir_digest, "不可用")}
       </span>
       {"，"}产物 SHA-256{" "}
@@ -96,7 +100,7 @@ export function ParsedDocumentSummary({
     >
       <p className="meta">
         原件 SHA-256{" "}
-        <span title={document.digest || undefined}>
+        <span title={document.digest === "" ? undefined : document.digest}>
           {hash(document.digest, "未记录")}
         </span>
         {parsed ? (

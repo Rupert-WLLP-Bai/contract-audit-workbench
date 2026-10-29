@@ -86,7 +86,11 @@ const NEUTRAL_STATUSES = new Set([
 ]);
 
 function label(labels: Record<string, string>, value: string, fallback: string): string {
-  return Object.hasOwn(labels, value) ? labels[value] ?? fallback : fallback;
+  return Object.hasOwn(labels, value) ? labels[value]! : fallback;
+}
+
+function arrayOr<T>(value: T[] | null | undefined): T[] {
+  return value === null || value === undefined ? [] : value;
 }
 
 function domainLabel(value: string): string {
@@ -156,7 +160,7 @@ function Citations({ ids, evidence }: { ids: string[] | null; evidence: Business
   return (
     <ul className="agent-review-capability-citations" aria-label="来源引用">
       {ids.map((id, index) => (
-        <li key={`${id}-${index}`}><Citation item={evidence?.find((item) => item.evidence_id === id)} /></li>
+        <li key={`${id}-${index}`}><Citation item={evidence === null ? undefined : evidence.find((item) => item.evidence_id === id)} /></li>
       ))}
     </ul>
   );
@@ -166,10 +170,10 @@ function missingCapabilityIds(
   review: BusinessAgentReview,
   domain: BusinessAgentDomain,
 ): string[] {
-  const capabilities = domain.capabilities ?? [];
-  return [...new Set((review.scope ?? [])
+  const capabilities = arrayOr(domain.capabilities);
+  return [...new Set(arrayOr(review.scope)
     .filter((scope) => scope.domain === domain.domain)
-    .flatMap((scope) => scope.capability_ids ?? [])
+    .flatMap((scope) => arrayOr(scope.capability_ids))
     .filter((id) => !capabilities.some((capability) => capability.capability_id === id)))];
 }
 
@@ -211,7 +215,7 @@ function DomainCard({
   missingCapabilities: string[];
   evidence: BusinessAgentEvidence[] | null;
 }) {
-  const capabilities = domain.capabilities ?? [];
+  const capabilities = arrayOr(domain.capabilities);
   return (
     <li className="agent-review-card">
       <header>
@@ -320,8 +324,8 @@ function referencedEvidenceOf(
   gaps: BusinessAgentGap[] | null,
 ): Set<string> {
   return new Set([
-    ...domains.flatMap((domain) => (domain.capabilities ?? []).flatMap((capability) => capability.evidence_ids ?? [])),
-    ...(gaps ?? []).flatMap((gap) => gap.evidence_ids ?? []),
+    ...domains.flatMap((domain) => arrayOr(domain.capabilities).flatMap((capability) => arrayOr(capability.evidence_ids))),
+    ...arrayOr(gaps).flatMap((gap) => arrayOr(gap.evidence_ids)),
   ]);
 }
 
@@ -329,15 +333,15 @@ function hasMissingCitations(
   domains: BusinessAgentDomain[],
   gaps: BusinessAgentGap[] | null,
 ): boolean {
-  return domains.some((domain) => (domain.capabilities ?? []).some((capability) => !capability.evidence_ids?.length)) ||
-    (gaps ?? []).some((gap) => !gap.evidence_ids?.length);
+  return domains.some((domain) => arrayOr(domain.capabilities).some((capability) => !arrayOr(capability.evidence_ids).length)) ||
+    arrayOr(gaps).some((gap) => !arrayOr(gap.evidence_ids).length);
 }
 
 function scopesWithoutResultsOf(
   scope: BusinessAgentScope[] | null,
   domains: BusinessAgentDomain[],
 ): BusinessAgentScope[] {
-  return (scope ?? []).filter((item) => !domains.some((domain) => domain.domain === item.domain));
+  return arrayOr(scope).filter((item) => !domains.some((domain) => domain.domain === item.domain));
 }
 
 function isEmptyReview(
@@ -349,7 +353,7 @@ function isEmptyReview(
     domains.length === 0 &&
     scopesWithoutResults.length === 0 &&
     !review.gaps?.length &&
-    (review.unresolved_gap_ids ?? []).length === 0 &&
+    arrayOr(review.unresolved_gap_ids).length === 0 &&
     !review.evidence?.length
   );
 }
@@ -376,12 +380,12 @@ function EmptyReviewWithStatus({ review }: { review: BusinessAgentReview }) {
 }
 
 function reviewFacts(review: BusinessAgentReview, domains: BusinessAgentDomain[]) {
-  const unresolved = new Set(review.unresolved_gap_ids ?? []);
-  const gaps = review.gaps ?? [];
+  const unresolved = new Set(arrayOr(review.unresolved_gap_ids));
+  const gaps = arrayOr(review.gaps);
   const reportedGaps = new Set(gaps.map((gap) => gap.gap_id));
   const missingGaps = [...unresolved].filter((id) => !reportedGaps.has(id));
   const referencedEvidence = referencedEvidenceOf(domains, review.gaps);
-  const otherEvidence = (review.evidence ?? []).filter(
+  const otherEvidence = arrayOr(review.evidence).filter(
     (item) => !referencedEvidence.has(item.evidence_id),
   );
   return {
@@ -489,7 +493,7 @@ function ReviewSections({
 
 export function BusinessAgentReviewView({ review }: { review: BusinessAgentReview | null }) {
   if (!review) return <EmptyReview />;
-  const domains = review.domains ?? [];
+  const domains = arrayOr(review.domains);
   const scopesWithoutResults = scopesWithoutResultsOf(review.scope, domains);
   if (isEmptyReview(review, domains, scopesWithoutResults)) {
     return <EmptyReviewWithStatus review={review} />;

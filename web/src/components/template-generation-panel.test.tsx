@@ -156,6 +156,27 @@ describe("template generation panel", () => {
     expect(screen.getByText("字段：note，类型：multiline")).toBeInTheDocument();
   });
 
+  it("lists every available template as a selectable option", async () => {
+    const second: Template = {
+      id: "template-2",
+      name: "服务合同模板",
+      version: "1",
+      digest: "second-digest",
+      fields: [],
+    };
+    mocks.useTemplates.mockReturnValue(
+      templatesState({ isSuccess: true, data: [template, second] }),
+    );
+    const user = userEvent.setup();
+    renderPanel();
+    await user.click(screen.getByRole("combobox", { name: "模板" }));
+    const options = await screen.findAllByRole("option");
+    expect(options.map((option) => option.textContent)).toEqual([
+      "采购合同模板，3",
+      "服务合同模板，1",
+    ]);
+  });
+
   it("submits typed values for every template field and clears them on success", async () => {
     const mutate = vi.fn();
     mocks.useCreateGeneration.mockReturnValue(generationState({ mutate }));
@@ -220,6 +241,8 @@ describe("template generation panel", () => {
     await waitFor(() =>
       expect(screen.getByRole("alert")).toHaveTextContent("请求没有完成"),
     );
+    expect(screen.getByRole("alert")).toHaveAttribute("tabindex", "-1");
+    expect(screen.getByRole("alert")).toHaveFocus();
     mocks.useCreateGeneration.mockReturnValue(
       generationState({
         data: {

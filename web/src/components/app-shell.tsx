@@ -177,12 +177,18 @@ function caseBreadcrumbs(
   ];
 }
 
+function moduleTitle(moduleKey: string): string {
+  return Object.hasOwn(MODULE_TITLES, moduleKey)
+    ? MODULE_TITLES[moduleKey]!
+    : "工作区";
+}
+
 function workbenchBreadcrumbs(pathname: string): Crumb[] {
-  const moduleKey = pathname.split("/")[2] ?? "";
+  const moduleKey = pathname.slice("/workbench/".length).split("/")[0]!;
   return [
     { label: "工作台", to: "/" },
     { label: "业务管理", to: null },
-    { label: MODULE_TITLES[moduleKey] ?? "工作区", to: null },
+    { label: moduleTitle(moduleKey), to: null },
   ];
 }
 
@@ -208,13 +214,21 @@ function selectedMenuKey(
 ): string {
   if (pathname === "/") return "/";
   if (inReview) return "/review";
-  return (
-    NAV_LINKS.find(
-      (item) =>
-        !item.external &&
-        (pathname === item.to || pathname.startsWith(`${item.to}/`)),
-    )?.to ?? pathname
+  const match = NAV_LINKS.find(
+    (item) =>
+      !item.external &&
+      (pathname === item.to || pathname.startsWith(`${item.to}/`)),
   );
+  return match ? match.to : pathname;
+}
+
+function searchFromLocation(search: string): string {
+  const query = new URLSearchParams(search).get("q");
+  return query === null ? "" : query;
+}
+
+function caseTitleOf(title: string | undefined): string {
+  return title === undefined ? "案件" : title;
 }
 
 function navigateSearch(
@@ -410,12 +424,12 @@ export function AppShell() {
   const caseId = caseIdOf(location.pathname);
   const caseDetail = useCaseDetail(caseId);
   useEffect(() => {
-    setSearch(new URLSearchParams(location.search).get("q") ?? "");
+    setSearch(searchFromLocation(location.search));
   }, [location.pathname, location.search]);
   const reviewMatch = location.pathname.match(
     /^\/cases\/([^/]+)\/reviews\/([^/]+)/,
   );
-  const caseTitle = caseDetail.data?.title ?? "案件";
+  const caseTitle = caseTitleOf(caseDetail.data?.title);
   const breadcrumbs = breadcrumbsFor(
     location.pathname,
     caseId,

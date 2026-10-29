@@ -168,6 +168,32 @@ describe("run provenance", () => {
     ).toBeInTheDocument();
   });
 
+  it("renders an empty comparator as reported instead of substituting a fallback", async () => {
+    const user = userEvent.setup();
+    render(
+      <MemoryRouter>
+        <RunProvenance
+          workspace={workspace({
+            snapshot: {
+              document_ids: ["document-1"],
+              rule_set_hash: "rule-set-hash",
+              playbook_hash: "playbook-hash",
+              model_ref: "model-v1",
+              comparator_ref: "",
+            },
+          })}
+          showDiagnostics
+        />
+      </MemoryRouter>,
+    );
+    await open(user, "运行依据与规则评估");
+    const region = screen.getByRole("region", { name: "运行依据与复审" });
+    expect(within(region).queryByText("未返回")).not.toBeInTheDocument();
+    expect(
+      within(region).getByText("比较器").nextElementSibling,
+    ).toHaveTextContent("");
+  });
+
   it("links back to the previous run and compares revisions", async () => {
     const user = userEvent.setup();
     render(

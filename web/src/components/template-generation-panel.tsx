@@ -111,12 +111,15 @@ function selectedTemplateOf(
 }
 
 function templateOptions(data: Template[] | undefined) {
-  return (
-    data?.map((template: Template) => ({
-      label: `${template.name}，${template.version}`,
-      value: template.id,
-    })) ?? []
-  );
+  if (data === undefined) return [];
+  return data.map((template: Template) => ({
+    label: `${template.name}，${template.version}`,
+    value: template.id,
+  }));
+}
+
+function fieldValue(values: Record<string, string>, key: string): string {
+  return Object.hasOwn(values, key) ? values[key]! : "";
 }
 
 function TemplateReadState({
@@ -191,7 +194,7 @@ function TemplateForm({
           field={field}
           index={index}
           caseId={caseId}
-          value={values[field.key] ?? ""}
+          value={fieldValue(values, field.key)}
           onChange={(value) => onUpdateField(field.key, value)}
         />
       ))}
@@ -238,7 +241,7 @@ function TemplateGenerationBody({
   );
 
   useEffect(() => {
-    if (generate.error) errorRef.current?.focus();
+    if (generate.error && errorRef.current) errorRef.current.focus();
   }, [generate.error]);
 
   function selectTemplate(templateId: string) {
@@ -256,7 +259,7 @@ function TemplateGenerationBody({
     const fields = Object.fromEntries(
       selectedTemplate.fields.map((field) => [
         field.key,
-        values[field.key] ?? "",
+        fieldValue(values, field.key),
       ]),
     );
     generate.mutate(

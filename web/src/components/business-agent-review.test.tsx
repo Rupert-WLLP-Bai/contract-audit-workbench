@@ -1,4 +1,4 @@
-import { screen } from "@testing-library/react";
+import { screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { parseBusinessAgentReview } from "../api/business-agent-review";
 import { renderWithAntd as render } from "../test/antd";
@@ -297,5 +297,213 @@ describe("business agent review", () => {
     expect(screen.getByText("本次没有返回检查范围、待补充事项和原文依据，不能因此认为已经完成检查。")).toBeInTheDocument();
     expect(screen.getByText("状态未知")).toBeInTheDocument();
     expect(screen.queryByText(/未报告/)).not.toBeInTheDocument();
+  });
+});
+
+describe("business agent review citation and gap matrices", () => {
+  const citation = (id: string, overrides: Record<string, unknown> = {}) => ({
+    evidence_id: id,
+    semantic_type: "warranty",
+    value: "36",
+    unit: "month",
+    currency: null,
+    verification: "verified",
+    anchor: { ...anchor, ...overrides },
+  });
+
+  it("shows a page only when it is a positive number, including page one", () => {
+    const review = parseBusinessAgentReview({
+      ...projection,
+      scope: [{ domain: "technical", capability_ids: ["warranty_months"], source_ids: null }],
+      domains: [{
+        domain: "technical",
+        status: "partial",
+        capabilities: [{ ...warranty, evidence_ids: ["page-one", "page-zero"] }],
+      }],
+      gaps: [],
+      unresolved_gap_ids: [],
+      evidence: [citation("page-one", { page: 1 }), citation("page-zero", { page: 0 })],
+    });
+    render(<BusinessAgentReviewView review={review} />);
+    expect(screen.getByText("来源材料中的引用已核验，第 1 页")).toBeInTheDocument();
+    expect(screen.getByText("来源材料中的引用已核验")).toBeInTheDocument();
+  });
+
+  it("rejects negative ranges and empty spans", () => {
+    const review = parseBusinessAgentReview({
+      ...projection,
+      scope: [{ domain: "technical", capability_ids: ["warranty_months"], source_ids: null }],
+      domains: [{
+        domain: "technical",
+        status: "partial",
+        capabilities: [{ ...warranty, evidence_ids: ["negative", "empty-span"] }],
+      }],
+      gaps: [],
+      unresolved_gap_ids: [],
+      evidence: [
+        citation("negative", { start: -1, end: 2 }),
+        citation("empty-span", { start: 2, end: 2 }),
+      ],
+    });
+    render(<BusinessAgentReviewView review={review} />);
+    expect(
+      screen.getAllByText("核验引用的信息不完整，需进一步核对。"),
+    ).toHaveLength(2);
+  });
+
+  it("renders a single citation and handles missing evidence details", () => {
+    const review = parseBusinessAgentReview({
+      ...projection,
+      scope: [{ domain: "technical", capability_ids: ["warranty_months"], source_ids: null }],
+      domains: [{
+        domain: "technical",
+        status: "partial",
+        capabilities: [{ ...warranty, evidence_ids: ["only"] }],
+      }],
+      gaps: [],
+      unresolved_gap_ids: [],
+      evidence: [citation("only")],
+    });
+    render(<BusinessAgentReviewView review={review} />);
+    expect(screen.getAllByText("来源材料中的引用已核验")).toHaveLength(1);
+    const nullEvidence = parseBusinessAgentReview({
+      ...projection,
+      scope: [{ domain: "technical", capability_ids: ["warranty_months"], source_ids: null }],
+      domains: [{
+        domain: "technical",
+        status: "partial",
+        capabilities: [{ ...warranty, evidence_ids: ["ghost"] }],
+      }],
+      gaps: [],
+      unresolved_gap_ids: [],
+      evidence: null,
+    });
+    render(<BusinessAgentReviewView review={nullEvidence} />);
+    expect(screen.getByText("关联引用详情不可用。")).toBeInTheDocument();
+  });
+
+  it("separates referenced evidence from the other-source section", () => {
+    render(
+      <BusinessAgentReviewView
+        review={parseBusinessAgentReview({
+          ...projection,
+          scope: [{ domain: "technical", capability_ids: ["warranty_months"], source_ids: null }],
+          domains: [{
+            domain: "technical",
+            status: "partial",
+            capabilities: [{ ...warranty, evidence_ids: ["used"] }],
+          }],
+          gaps: [],
+          unresolved_gap_ids: [],
+          evidence: [
+            citation("used", { quote: "已引用原文" }),
+            citation("other", { quote: "未被引用的原文" }),
+          ],
+        })}
+      />,
+    );
+    const others = screen.getByRole("region", { name: "其他来源引用" });
+    expect(within(others).getByText("未被引用的原文")).toBeInTheDocument();
+    expect(within(others).queryByText("已引用原文")).not.toBeInTheDocument();
+  });
+
+  it("lists a single scoped capability and a single capability result", () => {
+    const view = render(
+      <BusinessAgentReviewView
+        review={parseBusinessAgentReview({
+          ...projection,
+          scope: [
+            { domain: "technical", capability_ids: ["warranty_months"], source_ids: null },
+            { domain: "commercial", capability_ids: ["warranty_months"], source_ids: null },
+          ],
+          domains: [{
+            domain: "technical",
+            status: "completed",
+            capabilities: [{ ...warranty, evidence_ids: ["used"] }],
+          }],
+          gaps: [],
+          unresolved_gap_ids: [],
+          evidence: [citation("used")],
+        })}
+      />,
+    );
+    expect(screen.getByText("范围中的项目：质保期限。")).toBeInTheDocument();
+    expect(screen.getAllByText("质保期限").length).toBeGreaterThan(0);
+    expect(screen.queryByText("暂无检查明细。")).not.toBeInTheDocument();
+    view.unmount();
+  });
+
+  it("keeps a resolved gap neutral and a completed gap pending", () => {
+    render(
+      <BusinessAgentReviewView
+        review={parseBusinessAgentReview({
+          ...projection,
+          domains: [],
+          scope: null,
+          evidence: [],
+          gaps: [
+            { gap_id: "resolved", domain: "technical", capability_id: "warranty_months", mandatory: false, status: "resolved", reason_code: "required_source_or_field_missing", evidence_ids: ["used"] },
+            { gap_id: "completed", domain: "technical", capability_id: "warranty_months", mandatory: false, status: "completed", reason_code: "required_source_or_field_missing", evidence_ids: ["used"] },
+          ],
+          unresolved_gap_ids: [],
+        })}
+      />,
+    );
+    expect(screen.getByText("已解决")).toBeInTheDocument();
+    expect(screen.getByText("已处理，解决状态待核对")).toBeInTheDocument();
+    expect(screen.getByText("已解决").className).toContain("ant-tag-default");
+    expect(
+      screen.getByText("已处理，解决状态待核对").className,
+    ).toContain("ant-tag-warning");
+  });
+
+  it("treats null evidence id lists as unverified and reports missing gap details", () => {
+    render(
+      <BusinessAgentReviewView
+        review={parseBusinessAgentReview({
+          ...projection,
+          scope: [{ domain: "technical", capability_ids: null, source_ids: null }],
+          domains: [{
+            domain: "technical",
+            status: "partial",
+            capabilities: [{ ...warranty, evidence_ids: null }],
+          }],
+          gaps: [],
+          evidence: [],
+          unresolved_gap_ids: ["missing-detail"],
+        })}
+      />,
+    );
+    expect(
+      screen.getByText("部分项目没有原文依据，不能确认这些项目已经核验。"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("有 1 项未解决缺口缺少详情，请进一步核对。"),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText("没有报告缺口记录；这不等同于合同没有风险。"),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText(/^有 0 项/)).not.toBeInTheDocument();
+  });
+
+  it("keeps scope-only domains visible with an empty capability list", () => {
+    render(
+      <BusinessAgentReviewView
+        review={parseBusinessAgentReview({
+          ...projection,
+          scope: [{ domain: "commercial", capability_ids: null, source_ids: null }],
+          domains: [],
+          gaps: [],
+          evidence: [],
+          unresolved_gap_ids: [],
+        })}
+      />,
+    );
+    expect(
+      screen.getByText("该领域已列入范围，检查结果和必查状态未知。"),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText("没有返回各方面的审查结果，不能因此认为已经完成检查。"),
+    ).not.toBeInTheDocument();
   });
 });

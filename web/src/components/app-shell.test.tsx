@@ -1,6 +1,12 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter, Route, Routes, useLocation } from "react-router";
+import {
+  MemoryRouter,
+  Route,
+  Routes,
+  useLocation,
+  useNavigationType,
+} from "react-router";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Actor } from "../api/types";
 import { renderWithAntd as render } from "../test/antd";
@@ -31,10 +37,11 @@ const actor: Actor = {
 
 function LocationEcho() {
   const location = useLocation();
+  const navigationType = useNavigationType();
   return (
     <output data-testid="location">
       {location.pathname}
-      {location.search}
+      {location.search}|{navigationType}
     </output>
   );
 }
@@ -82,6 +89,7 @@ describe("app shell", () => {
     const who = screen.getByLabelText("当前身份");
     expect(within(who).getByText("审查员甲")).toBeInTheDocument();
     expect(within(who).getByText("审查员")).toBeInTheDocument();
+    expect(within(who).getByText("审")).toHaveClass("ant-avatar-string");
     expect(screen.getByText("两江新区分公司")).toBeInTheDocument();
     expect(screen.getByText("页面内容")).toBeInTheDocument();
     expect(screen.getByText("跳到主要内容")).toBeInTheDocument();
@@ -182,6 +190,27 @@ describe("app shell", () => {
     expect(document.querySelector(".app")).toHaveClass(className);
   });
 
+  it("selects the parent navigation entry for nested module routes", () => {
+    renderShell("/workbench/tasks/123");
+    expect(
+      screen.getByRole("link", { name: "审查任务" }).closest("li"),
+    ).toHaveClass("ant-menu-item-selected");
+  });
+
+  it("keeps unknown module and external paths unselected but readable", () => {
+    renderShell("/workbench/unknown");
+    expect(
+      within(screen.getByLabelText("主导航"))
+        .getByRole("link", { name: "工作台" })
+        .closest("li"),
+    ).not.toHaveClass("ant-menu-item-selected");
+  });
+
+  it("keeps the main landmark programmatically focusable", () => {
+    renderShell();
+    expect(document.querySelector("#main")).toHaveAttribute("tabindex", "-1");
+  });
+
   it("collapses and expands the side navigation", async () => {
     const user = userEvent.setup();
     renderShell();
@@ -222,7 +251,9 @@ describe("app shell", () => {
     await user.click(screen.getByRole("button", { name: "退出" }));
     expect(mutateAsync).toHaveBeenCalledTimes(1);
     await waitFor(() =>
-      expect(screen.getByTestId("location")).toHaveTextContent("/login"),
+      expect(screen.getByTestId("location")).toHaveTextContent(
+        "/login|REPLACE",
+      ),
     );
   });
 

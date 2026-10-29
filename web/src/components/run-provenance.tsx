@@ -8,6 +8,10 @@ import type {
 } from "../api/types";
 import { decisionLabel, relationLabel } from "../domain/review";
 
+function orFallback(value: string | null, fallback: string): string {
+  return value === null ? fallback : value;
+}
+
 function SnapshotDetails({ snapshot }: { snapshot: RunSnapshot }) {
   return (
     <dl>
@@ -18,7 +22,7 @@ function SnapshotDetails({ snapshot }: { snapshot: RunSnapshot }) {
       <dt>审查清单摘要</dt>
       <dd>{snapshot.playbook_hash || "未返回"}</dd>
       <dt>比较器</dt>
-      <dd>{snapshot.comparator_ref ?? "未返回"}</dd>
+      <dd>{orFallback(snapshot.comparator_ref, "未返回")}</dd>
       <dt>本次审查配置的模型</dt>
       <dd>{snapshot.model_ref || "未记录"}</dd>
     </dl>

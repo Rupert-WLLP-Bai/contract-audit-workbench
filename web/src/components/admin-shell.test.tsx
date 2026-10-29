@@ -1,6 +1,6 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter, Route, Routes, useLocation } from "react-router";
+import { MemoryRouter, Route, Routes, useLocation, useNavigationType } from "react-router";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Actor } from "../api/types";
 import { renderWithAntd as render } from "../test/antd";
@@ -29,7 +29,12 @@ const admin: Actor = {
 
 function LocationEcho() {
   const location = useLocation();
-  return <output data-testid="location">{location.pathname}</output>;
+  const navigationType = useNavigationType();
+  return (
+    <output data-testid="location">
+      {location.pathname}|{navigationType}
+    </output>
+  );
 }
 
 function renderShell(path = "/admin/settings") {
@@ -79,6 +84,7 @@ describe("admin shell", () => {
     ).toBeInTheDocument();
     const who = screen.getByLabelText("当前管理身份");
     expect(within(who).getByText("管理员甲")).toBeInTheDocument();
+    expect(within(who).getByText("管")).toHaveClass("ant-avatar-string");
     expect(within(who).getByText("管理员")).toBeInTheDocument();
     expect(
       screen.getByRole("link", { name: "规则库" }),
@@ -135,8 +141,15 @@ describe("admin shell", () => {
     await user.click(screen.getByRole("button", { name: "退出" }));
     expect(mutateAsync).toHaveBeenCalledTimes(1);
     await waitFor(() =>
-      expect(screen.getByTestId("location")).toHaveTextContent("/admin/login"),
+      expect(screen.getByTestId("location")).toHaveTextContent(
+        "/admin/login|REPLACE",
+      ),
     );
+  });
+
+  it("keeps the main landmark programmatically focusable", () => {
+    renderShell();
+    expect(document.querySelector("#main")).toHaveAttribute("tabindex", "-1");
   });
 
   it("disables the logout action while it is pending", () => {

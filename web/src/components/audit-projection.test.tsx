@@ -50,6 +50,18 @@ describe("audit projection", () => {
     expect(screen.getByText("尚未获取本次审查的审计记录。")).toBeInTheDocument();
   });
 
+  it("does not treat prototype keys as known audit labels", async () => {
+    const user = userEvent.setup();
+    render(
+      <AuditProjection
+        runId="run-1"
+        events={[{ ...businessEvent, event_type: "constructor" }]}
+      />,
+    );
+    await openPanel(user, 1);
+    expect(screen.getByText("记录 1，其他审查记录")).toBeInTheDocument();
+  });
+
   it("lists business event labels with a neutral fallback", async () => {
     const user = userEvent.setup();
     render(

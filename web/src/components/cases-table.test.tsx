@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { renderWithAntd as render } from "../test/antd";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router";
 import type { CaseSummary } from "../api/types";
-import { CasesTable } from "./cases-table";
+import { CasesTable, sortFieldOf } from "./cases-table";
 
 const item: CaseSummary = {
   id: "c1",
@@ -200,5 +200,63 @@ describe("cases table", () => {
     expect(
       screen.getByRole("columnheader", { name: /材料/ }),
     ).toHaveAttribute("aria-sort", "descending");
+  });
+});
+
+describe("cases table sorting helper and scroll", () => {
+  it("reads a single sorter, the first of an array, and rejects missing or unknown columns", () => {
+    expect(sortFieldOf(undefined)).toBeNull();
+    expect(sortFieldOf({ columnKey: "title" })).toBe("title");
+    expect(
+      sortFieldOf([
+        { columnKey: "document_count" },
+        { columnKey: "updated_at" },
+      ]),
+    ).toBe("document_count");
+    expect(sortFieldOf({ columnKey: "business" })).toBeNull();
+    expect(sortFieldOf({ columnKey: undefined })).toBeNull();
+  });
+
+  it("carries the real scroll position into the detail state", async () => {
+    const user = userEvent.setup();
+    Object.defineProperty(window, "scrollY", { value: 321, configurable: true });
+    render(
+      <MemoryRouter initialEntries={["/cases"]}>
+        <Routes>
+          <Route path="/cases" element={<CasesTable items={[item]} {...tableProps} />} />
+          <Route path="/cases/:caseId" element={<LocationState />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    await user.click(screen.getByRole("link", { name: "基站质保" }));
+    expect(await screen.findByText(/"scrollY":321/)).toBeInTheDocument();
+    Object.defineProperty(window, "scrollY", { value: 0, configurable: true });
+  });
+
+  it("paginates large result sets instead of hiding rows", () => {
+    const items = Array.from({ length: 12 }, (_, index) => ({
+      ...item,
+      id: `case-${index}`,
+      title: `案件 ${index}`,
+    }));
+    render(
+      <MemoryRouter>
+        <CasesTable items={items} {...tableProps} />
+      </MemoryRouter>,
+    );
+    expect(screen.getByText("案件 0")).toBeInTheDocument();
+    expect(screen.getByText("案件 11")).toBeInTheDocument();
+  });
+
+  it("labels a missing business status without inventing a value", () => {
+    render(
+      <MemoryRouter>
+        <CasesTable
+          items={[{ ...item, business_status: undefined }]}
+          {...tableProps}
+        />
+      </MemoryRouter>,
+    );
+    expect(screen.getByRole("cell", { name: "业务状态未提供" })).toBeInTheDocument();
   });
 });
