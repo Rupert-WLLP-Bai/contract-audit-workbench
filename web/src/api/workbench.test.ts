@@ -315,3 +315,225 @@ describe("workbench snapshot parsing", () => {
     ).toThrow("工作台数据无效：capabilities不是字符串数组");
   });
 });
+
+const documentBase = {
+  id: "d1",
+  role: "draft_contract",
+  filename: "合同.txt",
+  media_type: "text/plain",
+  digest: "original-hash",
+  size: 1,
+  parse_status: "ready",
+  parse_error: null,
+  created_at: "2026-10-04T00:00:00Z",
+  parsed_document: null,
+};
+
+const parsedDocumentBase = {
+  id: "pd1",
+  document_id: "d1",
+  original_digest: "original-hash",
+  parser_id: "text",
+  parser_version: "1",
+  config_hash: "config-hash",
+  normalization_version: "unicode-v1",
+  normalized_digest: "text-hash",
+  ir_digest: "ir-hash",
+  artifact_digest: "artifact-hash",
+  created_at: "2026-10-04T00:00:01Z",
+  status: "ready",
+};
+
+const workbenchDocument = {
+  ...documentBase,
+  case_id: "case-1",
+  case_title: "专线合同",
+};
+
+describe("workbench boundary values", () => {
+  it("accepts zero and rejects invalid dashboard durations", () => {
+    const parsed = parseWorkbenchSnapshot(
+      snapshot({ dashboard: { ...dashboard, average_duration_ms: 0 } }),
+      "week",
+    );
+    expect(parsed.dashboard.average_duration_ms).toBe(0);
+    for (const value of [-1, 1.5, "x"]) {
+      expect(() =>
+        parseWorkbenchSnapshot(
+          snapshot({ dashboard: { ...dashboard, average_duration_ms: value } }),
+          "week",
+        ),
+      ).toThrow("工作台数据无效：average_duration_ms不是非负整数或null");
+    }
+  });
+
+  it("accepts every documented risk severity and rejects unknown ones", () => {
+    const severities = ["high", "medium", "low", "info", "unrated"];
+    const parsed = parseWorkbenchSnapshot(
+      snapshot({
+        dashboard: {
+          ...dashboard,
+          risks: severities.map((severity) => ({ severity, count: 1 })),
+        },
+      }),
+      "week",
+    );
+    expect(parsed.dashboard.risks.map((risk) => risk.severity)).toEqual(
+      severities,
+    );
+    expect(() =>
+      parseWorkbenchSnapshot(
+        snapshot({
+          dashboard: {
+            ...dashboard,
+            risks: [{ severity: "bogus", count: 1 }],
+          },
+        }),
+        "week",
+      ),
+    ).toThrow("工作台数据无效：风险统计 severity 无效");
+  });
+
+  it("accepts both knowledge source types", () => {
+    const knowledge = {
+      id: "kb-1",
+      version_id: "v1",
+      title: "制度",
+      version: "1",
+      body: "正文",
+      source_type: "synthetic_policy",
+      effective_at: null,
+      created_by: "user-1",
+      created_at: "2026-10-04T00:00:00Z",
+    };
+    expect(parseKnowledge(knowledge).source_type).toBe("synthetic_policy");
+    expect(
+      parseKnowledge({ ...knowledge, source_type: "reference" }).source_type,
+    ).toBe("reference");
+    expect(() =>
+      parseKnowledge({ ...knowledge, source_type: "other" }),
+    ).toThrow("工作台数据无效：知识来源类型无效");
+    expect(() => parseKnowledge({ ...knowledge, version_id: "" })).toThrow(
+      "工作台数据无效：知识版本标识为空",
+    );
+  });
+
+  it("accepts zero document sizes and rejects invalid ones", () => {
+    const zero = parseWorkbenchSnapshot(
+      snapshot({ documents: [{ ...workbenchDocument, size: 0 }] }),
+      "week",
+    );
+    expect(zero.documents[0]?.size).toBe(0);
+    for (const value of [-1, 1.5, "x"]) {
+      expect(() =>
+        parseWorkbenchSnapshot(
+          snapshot({ documents: [{ ...workbenchDocument, size: value }] }),
+          "week",
+        ),
+      ).toThrow("工作台数据无效：材料 size 无效");
+    }
+  });
+
+  it("keeps the superseded flag absent unless the server sends it", () => {
+    const parsed = parseWorkbenchSnapshot(
+      snapshot({ documents: [workbenchDocument] }),
+      "week",
+    );
+    expect(parsed.documents[0]).not.toHaveProperty("superseded");
+    const flagged = parseWorkbenchSnapshot(
+      snapshot({
+        documents: [{ ...workbenchDocument, superseded: true }],
+      }),
+      "week",
+    );
+    expect(flagged.documents[0]).toMatchObject({ superseded: true });
+    expect(() =>
+      parseWorkbenchSnapshot(
+        snapshot({
+          documents: [{ ...workbenchDocument, superseded: "yes" }],
+        }),
+        "week",
+      ),
+    ).toThrow("工作台数据无效：材料 superseded 无效");
+  });
+
+  it("parses document metadata and validates its status", () => {
+    const parsed = parseWorkbenchSnapshot(
+      snapshot({
+        documents: [
+          {
+            ...workbenchDocument,
+            parsed_document: parsedDocumentBase,
+          },
+          {
+            ...workbenchDocument,
+            id: "d2",
+            parsed_document: { ...parsedDocumentBase, status: "failed" },
+          },
+        ],
+      }),
+      "week",
+    );
+    expect(parsed.documents[0]?.parsed_document).toMatchObject({
+      id: "pd1",
+      status: "ready",
+    });
+    expect(parsed.documents[1]?.parsed_document).toMatchObject({
+      status: "failed",
+    });
+    expect(() =>
+      parseWorkbenchSnapshot(
+        snapshot({
+          documents: [
+            {
+              ...workbenchDocument,
+              parsed_document: { ...parsedDocumentBase, status: "pending" },
+            },
+          ],
+        }),
+        "week",
+      ),
+    ).toThrow("工作台数据无效：解析产物 status 无效");
+  });
+
+  it("parses template fields with a boolean required flag", () => {
+    const parsed = parseWorkbenchSnapshot(
+      snapshot({
+        templates: [
+          {
+            id: "t1",
+            name: "模板",
+            version: "1",
+            digest: "digest-1",
+            fields: [
+              { key: "title", label: "标题", required: true, type: "text" },
+            ],
+          },
+        ],
+      }),
+      "week",
+    );
+    expect(parsed.templates[0]?.fields[0]).toEqual({
+      key: "title",
+      label: "标题",
+      required: true,
+      type: "text",
+    });
+    expect(() =>
+      parseWorkbenchSnapshot(
+        snapshot({
+          templates: [
+            {
+              id: "t1",
+              name: "模板",
+              version: "1",
+              digest: "digest-1",
+              fields: [{ key: "title", label: "标题", type: "text" }],
+            },
+          ],
+        }),
+        "week",
+      ),
+    ).toThrow("工作台数据无效：模板字段 required 无效");
+  });
+});
