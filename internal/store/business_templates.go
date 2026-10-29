@@ -89,6 +89,27 @@ func renderCloudServicesTemplate(templateID string, input map[string]string) ([]
 }
 
 func renderConfiguredTemplate(templateID, expectedID string, fields []TemplateField, source, objectField, objectName string, input map[string]string) ([]byte, error) {
+	values, err := collectTemplateValues(templateID, expectedID, fields, input)
+	if err != nil {
+		return nil, err
+	}
+	if err := validateTemplateObject(values, objectField, objectName); err != nil {
+		return nil, err
+	}
+	if err := validateTemplateServiceTerms(values); err != nil {
+		return nil, err
+	}
+	if err := validateTemplateCommercialTerms(values); err != nil {
+		return nil, err
+	}
+	if err := validateTemplateParties(values); err != nil {
+		return nil, err
+	}
+	localizeTemplateValues(values)
+	return renderTemplateSource(source, values)
+}
+
+func collectTemplateValues(templateID, expectedID string, fields []TemplateField, input map[string]string) (map[string]string, error) {
 	if templateID != expectedID {
 		return nil, faultInvalidTemplate()
 	}
@@ -110,33 +131,50 @@ func renderConfiguredTemplate(templateID, expectedID string, fields []TemplateFi
 		}
 		values[key] = value
 	}
+	return requireTemplateFields(values, fields)
+}
+
+func requireTemplateFields(values map[string]string, fields []TemplateField) (map[string]string, error) {
 	for _, field := range fields {
 		if _, exists := values[field.Key]; !exists {
 			return nil, fault.Invalid("缺少必填模板字段：" + field.Key)
 		}
 	}
+	return values, nil
+}
+
+func validateTemplateObject(values map[string]string, objectField, objectName string) error {
 	objectID := values[objectField]
 	if len(objectID) > 64 || !validCircuitID(objectID) {
-		return nil, fault.Invalid(objectName + "编号格式无效")
+		return fault.Invalid(objectName + "编号格式无效")
 	}
+	return nil
+}
+
+func validateTemplateServiceTerms(values map[string]string) error {
 	var err error
 	values["bandwidth_mbps"], err = normalizeBoundedDecimal(values["bandwidth_mbps"], 6, "0.001", "1000000")
 	if err != nil {
-		return nil, fault.Invalid("最低保障带宽格式或范围无效")
+		return fault.Invalid("最低保障带宽格式或范围无效")
 	}
 	values["sla_percent"], err = normalizeBoundedDecimal(values["sla_percent"], 4, "0.01", "100")
 	if err != nil {
-		return nil, fault.Invalid("SLA 可用率格式或范围无效")
+		return fault.Invalid("SLA 可用率格式或范围无效")
 	}
 	if values["sla_period"] != "calendar_month" {
-		return nil, fault.Invalid("当前模板只支持自然月统计周期")
+		return fault.Invalid("当前模板只支持自然月统计周期")
 	}
 	if values["sla_exclusions"] != "none" && values["sla_exclusions"] != "planned_maintenance" {
-		return nil, fault.Invalid("SLA 排除项不在模板范围内")
+		return fault.Invalid("SLA 排除项不在模板范围内")
 	}
+	return nil
+}
+
+func validateTemplateCommercialTerms(values map[string]string) error {
+	var err error
 	values["amount_cny"], err = normalizeBoundedDecimal(values["amount_cny"], 2, "0.01", "1000000000000")
 	if err != nil {
-		return nil, fault.Invalid("合同总额格式或范围无效")
+		return fault.Invalid("合同总额格式或范围无效")
 	}
 	switch values["tax_basis"] {
 	case "inclusive":
@@ -144,21 +182,32 @@ func renderConfiguredTemplate(templateID, expectedID string, fields []TemplateFi
 	case "exclusive":
 		values["tax_basis"] = "不含税"
 	default:
-		return nil, fault.Invalid("税口径无效")
+		return fault.Invalid("税口径无效")
 	}
 	values["prepayment_percent"], err = normalizeBoundedDecimal(values["prepayment_percent"], 4, "0", "100")
 	if err != nil {
-		return nil, fault.Invalid("预付款比例格式或范围无效")
+		return fault.Invalid("预付款比例格式或范围无效")
 	}
+	return nil
+}
+
+func validateTemplateParties(values map[string]string) error {
 	for _, key := range []string{"customer", "supplier"} {
 		if !validSingleLineName(values[key], 120) {
-			return nil, fault.Invalid("客户或供应商名称格式无效")
+			return fault.Invalid("客户或供应商名称格式无效")
 		}
 	}
+	return nil
+}
+
+func localizeTemplateValues(values map[string]string) {
 	values["sla_period"] = "自然月"
 	if values["sla_exclusions"] == "none" {
 		values["sla_exclusions"] = "无排除项"
 	}
+}
+
+func renderTemplateSource(source string, values map[string]string) ([]byte, error) {
 	var builder strings.Builder
 	builder.Grow(len(source) + 128)
 	for i := 0; i < len(source); {
@@ -209,20 +258,53 @@ func isASCIILetterOrDigit(c byte) bool {
 }
 
 func normalizeBoundedDecimal(value string, scale int, minimum, maximum string) (string, error) {
-	if value == "" || len(value) > 32 {
+	parts, ok := decimalParts(value, scale)
+	if !ok {
 		return "", errBusinessDecimal
+	}
+	canonical := canonicalDecimal(parts)
+	if !decimalWithinBounds(canonical, minimum, maximum) {
+		return "", errBusinessDecimal
+	}
+	return canonical, nil
+}
+
+func decimalParts(value string, scale int) ([]string, bool) {
+	if value == "" || len(value) > 32 {
+		return nil, false
 	}
 	parts := strings.Split(value, ".")
-	if len(parts) > 2 || parts[0] == "" || len(parts) == 2 && (parts[1] == "" || len(parts[1]) > scale) {
-		return "", errBusinessDecimal
+	if !validDecimalShape(parts, scale) {
+		return nil, false
 	}
 	for _, part := range parts {
-		for i := range part {
-			if part[i] < '0' || part[i] > '9' {
-				return "", errBusinessDecimal
-			}
+		if !asciiDigits(part) {
+			return nil, false
 		}
 	}
+	return parts, true
+}
+
+func validDecimalShape(parts []string, scale int) bool {
+	if len(parts) > 2 || parts[0] == "" {
+		return false
+	}
+	if len(parts) == 1 {
+		return true
+	}
+	return parts[1] != "" && len(parts[1]) <= scale
+}
+
+func asciiDigits(value string) bool {
+	for i := range value {
+		if value[i] < '0' || value[i] > '9' {
+			return false
+		}
+	}
+	return true
+}
+
+func canonicalDecimal(parts []string) string {
 	integer := strings.TrimLeft(parts[0], "0")
 	if integer == "" {
 		integer = "0"
@@ -231,20 +313,23 @@ func normalizeBoundedDecimal(value string, scale int, minimum, maximum string) (
 	if len(parts) == 2 {
 		fraction = strings.TrimRight(parts[1], "0")
 	}
-	canonical := integer
-	if fraction != "" {
-		canonical += "." + fraction
+	if fraction == "" {
+		return integer
 	}
+	return integer + "." + fraction
+}
+
+func decimalWithinBounds(canonical, minimum, maximum string) bool {
 	number, ok := new(big.Rat).SetString(canonical)
 	if !ok {
-		return "", errBusinessDecimal
+		return false
 	}
 	min, _ := new(big.Rat).SetString(minimum)
 	max, _ := new(big.Rat).SetString(maximum)
 	if number.Cmp(min) < 0 || number.Cmp(max) > 0 {
-		return "", errBusinessDecimal
+		return false
 	}
-	return canonical, nil
+	return true
 }
 
 func validSingleLineName(value string, maxRunes int) bool {
