@@ -487,3 +487,203 @@ describe("AgentReview API parser", () => {
     );
   });
 });
+
+function reviewWithAdvisoryCandidate(candidate: Record<string, unknown>) {
+  return {
+    ...structuredClone(validReview),
+    knowledge_selection: {
+      snapshot_sha256: "a".repeat(64),
+      algorithm: "chinese-bigram-label/v1",
+      policy_status: "available",
+      policy_reason: "",
+      input: {},
+      candidates: [],
+      budget: {},
+      planner_rounds: [],
+      reads: [],
+      advisory: {
+        mode: "advisory",
+        feature: "knowledge_rerank",
+        provider: "model-gateway",
+        configuration_id: "b".repeat(64),
+        question_set_version: "v1",
+        egress: "minimized",
+        status: "completed",
+        candidates: [
+          {
+            knowledge_id: "k1",
+            version_id: "v1",
+            content_sha256: "e".repeat(64),
+            alias: "candidate_0",
+            band: "relevant",
+            rank_before: 1,
+            rank_after: 1,
+            ...candidate,
+          },
+        ],
+      },
+    },
+  };
+}
+
+function reviewWithAnchor(anchor: Record<string, unknown>) {
+  return {
+    ...structuredClone(validReview),
+    evidence: [
+      {
+        evidence_id: "e1",
+        semantic_type: "amount",
+        value: "1",
+        unit: null,
+        currency: null,
+        verification: "verified",
+        anchor: {
+          id: "a1",
+          document_id: "d1",
+          parsed_document_id: "pd1",
+          normalized_digest: "digest",
+          quote: "q",
+          status: "located",
+          start: 0,
+          end: 1,
+          reason: null,
+          page: null,
+          element_id: null,
+          ...anchor,
+        },
+      },
+    ],
+  };
+}
+
+function reviewWithRound(round: Record<string, unknown>) {
+  const review = structuredClone(validReview);
+  review.plan.rounds = [
+    {
+      round: 1,
+      status: "accepted",
+      gap_ids: [],
+      calls: [],
+      new_evidence_ids: null,
+      resolved_gap_ids: null,
+      termination_code: null,
+      ...round,
+    },
+  ] as typeof review.plan.rounds;
+  return review;
+}
+
+describe("AgentReview boundary values", () => {
+  it("accepts bounded planner limits at their maxima", () => {
+    const review = structuredClone(validReview);
+    review.planner.limits.max_rounds = 3;
+    review.planner.limits.max_calls = 16;
+    review.planner.limits.max_duration_ms = 120000;
+    review.planner.limits.max_evidence_bytes = 8388608;
+    expect(parseAgentReview(review).planner.limits).toEqual({
+      max_rounds: 3,
+      max_calls: 16,
+      max_duration_ms: 120000,
+      max_evidence_bytes: 8388608,
+    });
+  });
+
+  it.each(["max_rounds", "max_calls", "max_evidence_bytes"])(
+    "rejects planner limit %s below its minimum",
+    (key) => {
+      const review = structuredClone(validReview);
+      (review.planner.limits as unknown as Record<string, number>)[key] = 0;
+      expect(() => parseAgentReview(review)).toThrow(
+        new RegExp(`planner\\.limits\\.${key}`),
+      );
+    },
+  );
+
+  it("accepts a probability of one and rejects NaN and negative values", () => {
+    expect(
+      parseAgentReview(reviewWithAdvisoryCandidate({ probability: 1 }))
+        .knowledge_selection?.advisory?.candidates[0]?.probability,
+    ).toBe(1);
+    for (const probability of [Number.NaN, -0.5]) {
+      expect(() =>
+        parseAgentReview(reviewWithAdvisoryCandidate({ probability })),
+      ).toThrow(/candidates\[0\]\.probability/);
+    }
+  });
+
+  it("rejects a candidate rank after below one", () => {
+    expect(() =>
+      parseAgentReview(reviewWithAdvisoryCandidate({ rank_after: 0 })),
+    ).toThrow(/candidates\[0\]\.rank_after/);
+  });
+
+  it("rejects a planning round below one", () => {
+    expect(() => parseAgentReview(reviewWithRound({ round: 0 }))).toThrow(
+      /plan\.rounds\[0\]\.round/,
+    );
+  });
+
+  it("keeps resolved gap ids null or parses the list", () => {
+    expect(
+      parseAgentReview(reviewWithRound({ resolved_gap_ids: ["g1"] })).plan
+        .rounds[0]?.resolved_gap_ids,
+    ).toEqual(["g1"]);
+    expect(
+      parseAgentReview(reviewWithRound({ resolved_gap_ids: null })).plan
+        .rounds[0]?.resolved_gap_ids,
+    ).toBeNull();
+  });
+
+  it("rejects a plan whose calls or rounds are not arrays", () => {
+    for (const key of ["calls", "rounds"]) {
+      const review = structuredClone(validReview);
+      (review.plan as unknown as Record<string, unknown>)[key] = "none";
+      expect(() => parseAgentReview(review)).toThrow(/plan\.calls\/rounds/);
+    }
+  });
+
+  it("accepts a zero-based anchor span and rejects an empty one", () => {
+    expect(
+      parseAgentReview(reviewWithAnchor({ start: 0, end: 1 })).evidence[0]
+        ?.anchor,
+    ).toMatchObject({ start: 0, end: 1 });
+    expect(() =>
+      parseAgentReview(reviewWithAnchor({ start: 0, end: 0 })),
+    ).toThrow(/anchor\.end/);
+  });
+
+  it("enforces event sequence and accepts a zero duration", () => {
+    const zero = structuredClone(validReview);
+    zero.events[0]!.duration_ms = 0;
+    expect(parseAgentReview(zero).events[0]?.duration_ms).toBe(0);
+    const badSequence = structuredClone(validReview);
+    badSequence.events[0]!.sequence = 0;
+    expect(() => parseAgentReview(badSequence)).toThrow(
+      /events\[0\]\.sequence/,
+    );
+  });
+
+  it("keeps a nullable event domain", () => {
+    expect(
+      parseAgentReview(structuredClone(validReview)).events[0]?.domain,
+    ).toBe("technical");
+    const withNull = structuredClone(validReview);
+    (withNull.events[0] as unknown as Record<string, unknown>).domain = null;
+    expect(parseAgentReview(withNull).events[0]?.domain).toBeNull();
+  });
+
+  it.each(["scope", "domains", "gaps", "evidence", "events"])(
+    "rejects non-array collection field %s",
+    (key) => {
+      const review: Record<string, unknown> = structuredClone(validReview);
+      review[key] = "none";
+      expect(() => parseAgentReview(review)).toThrow(/collection fields/);
+    },
+  );
+
+  it("accepts zero planner calls", () => {
+    const review = structuredClone(validReview);
+    review.usage.planner_calls = 0;
+    expect(parseAgentReview(review).usage.planner_calls).toBe(0);
+  });
+});
