@@ -3,6 +3,7 @@ import { ApiError } from "./http";
 import {
   getExperienceCandidate,
   getExperienceDistillation,
+  getExperienceFeedback,
   requestExperienceDistillation,
   submitExperienceFeedback,
   type ExperienceFeedbackInput,
@@ -91,5 +92,103 @@ describe("experience feedback API", () => {
       job_id: "job-1", feedback_id: "feedback-1", state: "queued", failure_code: null, candidate_id: null, version_id: null,
     });
     expect((await getExperienceCandidate("case/1", "feedback-1", "job-1", "candidate-1", "version-1")).content.exclusions).toBeNull();
+  });
+
+  it("accepts zero-based evidence spans", async () => {
+    const zeroStart: ExperienceFeedbackInput = {
+      ...input,
+      evidence_refs: [
+        { ...input.evidence_refs[0], start: 0, end: 3, quote: "😀证据" },
+      ],
+    };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        Response.json({ ...feedback, evidence_refs: zeroStart.evidence_refs }, { status: 201 }),
+      ),
+    );
+    await expect(
+      submitExperienceFeedback("case/1", zeroStart, "zero"),
+    ).resolves.toMatchObject({ evidence_refs: zeroStart.evidence_refs });
+  });
+
+  it("rejects evidence whose quote length does not match its span", async () => {
+    const malformed: ExperienceFeedbackInput = {
+      ...input,
+      evidence_refs: [
+        { ...input.evidence_refs[0], start: 0, end: 3, quote: "ab" },
+      ],
+    };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        Response.json({ ...feedback, evidence_refs: malformed.evidence_refs }, { status: 201 }),
+      ),
+    );
+    await expect(
+      submitExperienceFeedback("case/1", malformed, "bad"),
+    ).rejects.toMatchObject({ code: "invalid_response" });
+  });
+
+  it("rejects a response without evidence and padded identities", async () => {
+    const withoutEvidence = { ...feedback } as Record<string, unknown>;
+    delete withoutEvidence.evidence_refs;
+    vi.stubGlobal("fetch", vi.fn()
+      .mockResolvedValueOnce(Response.json(withoutEvidence, { status: 201 }))
+      .mockResolvedValueOnce(Response.json({ ...feedback, feedback_id: "" }, { status: 201 }))
+      .mockResolvedValueOnce(Response.json({ ...feedback, feedback_id: " feedback-1" }, { status: 201 })));
+    await expect(
+      submitExperienceFeedback("case/1", input, "no-evidence"),
+    ).rejects.toMatchObject({
+      code: "invalid_response",
+      message: "经验反馈响应中的 evidence_refs 无法识别",
+    });
+    for (const key of ["empty-id", "padded-id"]) {
+      await expect(
+        submitExperienceFeedback("case/1", input, key),
+      ).rejects.toMatchObject({
+        code: "invalid_response",
+        message: "经验反馈响应中的 feedback_id 无法识别",
+      });
+    }
+  });
+
+  it("rejects feedback returned for another case", async () => {
+    vi.stubGlobal("fetch", vi.fn()
+      .mockResolvedValueOnce(Response.json({ ...feedback, case_id: "case/2" }))
+      .mockResolvedValueOnce(Response.json(feedback)));
+    await expect(
+      getExperienceFeedback("case/1", "feedback-1"),
+    ).rejects.toMatchObject({ code: "invalid_response" });
+    await expect(
+      getExperienceFeedback("case/1", "feedback-1"),
+    ).resolves.toMatchObject({ feedback_id: "feedback-1" });
+  });
+
+  it("keeps candidate policy references", async () => {
+    const policyRefs = [
+      {
+        knowledge_id: "knowledge-1",
+        version_id: "version-1",
+        content_sha256: "sha256",
+      },
+    ];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        Response.json({
+          ...candidate,
+          content: { ...candidate.content, policy_refs: policyRefs },
+        }),
+      ),
+    );
+    const parsed = await getExperienceCandidate(
+      "case/1",
+      "feedback-1",
+      "job-1",
+      "candidate-1",
+      "version-1",
+    );
+    expect(parsed.content.policy_refs).toEqual(policyRefs);
   });
 });
