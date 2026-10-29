@@ -34,52 +34,67 @@ func (m *Monitor) Snapshot(ctx context.Context) Snapshot {
 	ctx, cancel := context.WithTimeout(ctx, 4*time.Second)
 	defer cancel()
 	out := Snapshot{SchemaVersion: SchemaVersion, ObservedAt: time.Now().UTC().Format(time.RFC3339Nano), Mode: "embedded", Source: "process", Services: catalog()}
-	databaseTarget := safeTarget(m.config.DatabaseTarget)
-	var deploymentExpectations map[string]replicaExpectation
-	missingIsUnknown := false
+	expected, missingIsUnknown := m.deploymentSnapshot(ctx, &out)
+	m.setDatabaseTarget(&out)
+	m.appendModels(&out)
+	out.Services = append(out.Services, jevService(m.observedJevConfig(ctx)), m.minerService(ctx))
+	out.Groups = buildGroups(out.Services, mergeExpectations(m.config.ExpectedReplicas, expected), missingIsUnknown)
+	out.Architecture = architectureInventory(out.Services, out.Source, out.Cluster)
+	return out
+}
+
+func (m *Monitor) deploymentSnapshot(ctx context.Context, out *Snapshot) (map[string]replicaExpectation, bool) {
 	if m.config.Kubernetes != nil {
-		out.Mode = "kubernetes"
-		out.Source = "kubernetes"
-		deploymentExpectations, missingIsUnknown = m.kubernetes(ctx, &out)
-	} else if m.config.Project != "" {
-		out.Mode = "distributed"
-		out.Source = "docker"
-		m.containers(ctx, &out)
-		missingIsUnknown = out.Source == "docker_unavailable"
-	} else {
-		for i := range out.Services {
-			out.Services[i].Detail = "单进程模式未配置独立服务容器。"
-		}
-		if m.config.DatabaseReady != nil {
-			for i := range out.Services {
-				if out.Services[i].ID == "db" {
-					item := &out.Services[i]
-					item.Kind = "integration"
-					item.LogicalID = item.ID
-					item.ObservedAt = out.ObservedAt
-					item.Target = "当前业务数据库"
-					started := time.Now()
-					err := m.config.DatabaseReady(ctx)
-					item.Status = "ready"
-					item.Detail = "当前数据库连接探测成功。"
-					if err != nil {
-						item.Status = "unavailable"
-						item.Detail = "当前数据库连接探测失败。"
-					}
-					item.Probe = &Probe{Kind: "database", Status: item.Status, DurationMS: time.Since(started).Milliseconds()}
-				}
-			}
-		}
+		out.Mode, out.Source = "kubernetes", "kubernetes"
+		return m.kubernetes(ctx, out)
 	}
-	// The selected database identity is authoritative in every deployment mode;
-	// keep container DNS targets only when no credential-free URL was configured.
-	if databaseTarget != "" {
+	if m.config.Project != "" {
+		out.Mode, out.Source = "distributed", "docker"
+		m.containers(ctx, out)
+		return nil, out.Source == "docker_unavailable"
+	}
+	m.embeddedServices(ctx, out)
+	return nil, false
+}
+
+func (m *Monitor) embeddedServices(ctx context.Context, out *Snapshot) {
+	for i := range out.Services {
+		out.Services[i].Detail = "单进程模式未配置独立服务容器。"
+	}
+	if m.config.DatabaseReady != nil {
 		for i := range out.Services {
 			if out.Services[i].ID == "db" {
-				out.Services[i].Target = databaseTarget
+				item := &out.Services[i]
+				item.Kind = "integration"
+				item.LogicalID = item.ID
+				item.ObservedAt = out.ObservedAt
+				item.Target = "当前业务数据库"
+				started := time.Now()
+				err := m.config.DatabaseReady(ctx)
+				item.Status = "ready"
+				item.Detail = "当前数据库连接探测成功。"
+				if err != nil {
+					item.Status = "unavailable"
+					item.Detail = "当前数据库连接探测失败。"
+				}
+				item.Probe = &Probe{Kind: "database", Status: item.Status, DurationMS: time.Since(started).Milliseconds()}
 			}
 		}
 	}
+}
+
+// A configured database URL is authoritative in every deployment mode.
+func (m *Monitor) setDatabaseTarget(out *Snapshot) {
+	if target := safeTarget(m.config.DatabaseTarget); target != "" {
+		for i := range out.Services {
+			if out.Services[i].ID == "db" {
+				out.Services[i].Target = target
+			}
+		}
+	}
+}
+
+func (m *Monitor) appendModels(out *Snapshot) {
 	for _, external := range []struct{ id, name, model string }{{"review-model", "审查模型", m.config.ModelName}, {"ocr-model", "OCR 模型", m.config.OCRName}} {
 		service := Service{ID: external.id, Name: external.name, Category: "external", Kind: "integration", Status: "unconfigured", Detail: "未配置模型。", Target: safeTarget(m.config.ModelEndpoint), DependsOn: []string{}, LogicalID: external.id}
 		if external.model != "" {
@@ -88,11 +103,10 @@ func (m *Monitor) Snapshot(ctx context.Context) Snapshot {
 		}
 		out.Services = append(out.Services, service)
 	}
-	// Jev is an optional suggestion layer. Report only its configuration: a
-	// health refresh must not send state or spend provider tokens. The API key
-	// is never copied into the snapshot. In a distributed deployment the
-	// gateway is the only process that holds the key, so its credential-free
-	// status route distinguishes "enabled but unconfigured" honestly.
+}
+
+// This reads only the credential-free status route; it never starts inference.
+func (m *Monitor) observedJevConfig(ctx context.Context) JevConfig {
 	jevConfig := m.config.Jev
 	if jevConfig.GatewayURL != "" {
 		if status, ok := FetchJevGatewayStatus(ctx, jevConfig.GatewayURL); ok {
@@ -109,35 +123,44 @@ func (m *Monitor) Snapshot(ctx context.Context) Snapshot {
 			}
 		}
 	}
-	jevService := Service{ID: "jev-model", Name: "TypeSafe Jev 决策模型", Category: "external", Kind: "integration", Status: "unconfigured", Detail: "Jev 已关闭；审查使用确定性结果。", Target: safeTarget(jevConfig.Endpoint), DependsOn: []string{}, LogicalID: "jev-model"}
-	jevSummary := strings.TrimSpace(strings.Join([]string{jevConfig.Name, jevConfig.Mode, jevConfig.Egress, strings.Join(jevConfig.Features, ",")}, "，"))
-	switch {
-	case jevConfig.Mode == "" || jevConfig.Mode == "off":
-		jevService.Status = "unconfigured"
-		jevService.Detail = "Jev 已关闭；审查使用确定性结果。"
-	case !jevConfig.Valid:
-		jevService.Status = "unavailable"
-		jevService.Detail = "TypeSafe Jev 配置无效（" + jevConfig.Reason + "）；审查使用确定性回退。"
-	case jevConfig.Provider == "direct" && !jevConfig.KeyConfigured:
-		jevService.Status = "unconfigured"
-		jevService.Detail = "默认开启但未配置 TYPESAFE_API_KEY；审查使用确定性回退。"
-	case jevConfig.GatewayStatus == "unconfigured":
-		jevService.Status = "unconfigured"
-		jevService.Detail = "默认开启，但 model-gateway 未配置 TYPESAFE_API_KEY；审查使用确定性回退。"
-	case jevConfig.GatewayStatus == "unavailable":
-		jevService.Status = "unavailable"
-		jevService.Detail = "model-gateway 报告 Jev 不可用（" + jevConfig.GatewayReason + "）；审查使用确定性回退。"
-	case jevConfig.GatewayStatus == "off":
-		jevService.Status = "unconfigured"
-		jevService.Detail = "默认开启，但 model-gateway 报告 Jev 已关闭；审查使用确定性回退。"
-	case jevConfig.Name == "jev-fixture" || jevConfig.Mode == "fixture":
-		jevService.Status = "unknown"
-		jevService.Detail = "Jev 使用确定性 fixture（" + jevSummary + "）；不发起外部推理。"
-	default:
-		jevService.Status = "unknown"
-		jevService.Detail = "默认启用 TypeSafe Jev（" + jevSummary + "）；健康刷新不发起付费推理。"
+	return jevConfig
+}
+
+type observationState struct{ status, detail string }
+
+func jevService(config JevConfig) Service {
+	service := Service{ID: "jev-model", Name: "TypeSafe Jev 决策模型", Category: "external", Kind: "integration", Target: safeTarget(config.Endpoint), DependsOn: []string{}, LogicalID: "jev-model"}
+	state := jevObservation(config)
+	service.Status, service.Detail = state.status, state.detail
+	return service
+}
+
+func jevObservation(config JevConfig) observationState {
+	if config.Mode == "" || config.Mode == "off" {
+		return observationState{"unconfigured", "Jev 已关闭；审查使用确定性结果。"}
 	}
-	out.Services = append(out.Services, jevService)
+	if !config.Valid {
+		return observationState{"unavailable", "TypeSafe Jev 配置无效（" + config.Reason + "）；审查使用确定性回退。"}
+	}
+	if config.Provider == "direct" && !config.KeyConfigured {
+		return observationState{"unconfigured", "默认开启但未配置 TYPESAFE_API_KEY；审查使用确定性回退。"}
+	}
+	states := map[string]observationState{
+		"unconfigured": {"unconfigured", "默认开启，但 model-gateway 未配置 TYPESAFE_API_KEY；审查使用确定性回退。"},
+		"unavailable":  {"unavailable", "model-gateway 报告 Jev 不可用（" + config.GatewayReason + "）；审查使用确定性回退。"},
+		"off":          {"unconfigured", "默认开启，但 model-gateway 报告 Jev 已关闭；审查使用确定性回退。"},
+	}
+	if state, ok := states[config.GatewayStatus]; ok {
+		return state
+	}
+	summary := strings.TrimSpace(strings.Join([]string{config.Name, config.Mode, config.Egress, strings.Join(config.Features, ",")}, "，"))
+	if config.Name == "jev-fixture" || config.Mode == "fixture" {
+		return observationState{"unknown", "Jev 使用确定性 fixture（" + summary + "）；不发起外部推理。"}
+	}
+	return observationState{"unknown", "默认启用 TypeSafe Jev（" + summary + "）；健康刷新不发起付费推理。"}
+}
+
+func (m *Monitor) minerService(ctx context.Context) Service {
 	miner := Service{ID: "mineru", Name: "MinerU 文档解析", Category: "external", Kind: "integration", Status: "unconfigured", Detail: "未配置 MinerU 服务地址。", Target: safeTarget(m.config.MinerUURL), DependsOn: []string{}, LogicalID: "mineru"}
 	if miner.Target != "" {
 		started := time.Now()
@@ -156,10 +179,7 @@ func (m *Monitor) Snapshot(ctx context.Context) Snapshot {
 		}
 		miner.Probe = &Probe{Kind: "http", Status: miner.Status, DurationMS: time.Since(started).Milliseconds()}
 	}
-	out.Services = append(out.Services, miner)
-	out.Groups = buildGroups(out.Services, mergeExpectations(m.config.ExpectedReplicas, deploymentExpectations), missingIsUnknown)
-	out.Architecture = architectureInventory(out.Services, out.Source, out.Cluster)
-	return out
+	return miner
 }
 
 type dockerTarget struct {
@@ -178,47 +198,70 @@ const (
 )
 
 func (m *Monitor) containers(ctx context.Context, out *Snapshot) {
+	targets, err := m.listDockerTargets(ctx)
+	indices := prepareDockerServices(out)
+	if err != nil {
+		out.Source = "docker_unavailable"
+		markDockerUnavailable(out)
+		return
+	}
+	results := m.inspectDockerTargets(ctx, targets)
+	observed := map[string]bool{}
+	for i, target := range targets {
+		item := dockerServiceRow(out, target, indices, observed)
+		if results[i].err != nil {
+			out.Source = "docker_partial"
+			continue
+		}
+		applyDockerInspection(ctx, item, results[i].inspection)
+	}
+}
+
+func (m *Monitor) listDockerTargets(ctx context.Context) ([]dockerTarget, error) {
 	filters := `{"label":["com.docker.compose.project=` + m.config.Project + `"]}`
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimRight(m.config.DockerURL, "/")+"/containers/json?all=1&filters="+url.QueryEscape(filters), nil)
 	var containers []dockerContainer
 	if err == nil {
 		err = getJSON(m.config.Client, request, &containers)
 	}
-	indices := make(map[string]int, len(out.Services))
-	for i := range out.Services {
-		indices[out.Services[i].ID] = i
-	}
-	for i := range out.Services {
-		out.Services[i].ObservedAt = out.ObservedAt
-		if !optional(out.Services[i].ID) {
-			out.Services[i].Status = "unavailable"
-			out.Services[i].Detail = "当前项目未发现预期服务容器。"
-		}
-	}
 	if err != nil {
-		out.Source = "docker_unavailable"
-		for i := range out.Services {
-			if !optional(out.Services[i].ID) {
-				out.Services[i].Status = "unknown"
-				out.Services[i].Detail = "Docker 状态采集不可用，无法确认服务状态。"
-			}
-		}
-		return
+		return nil, err
 	}
-	// Inspect in bounded parallel batches. Each target owns one result slot, so
-	// a slow or failed inspect cannot corrupt another result or cancel the
-	// remaining probes. The overall Snapshot deadline still bounds the batch.
 	var targets []dockerTarget
 	for _, container := range containers {
-		if container.Labels["com.docker.compose.project"] != m.config.Project {
-			continue
-		}
 		serviceID := container.Labels["com.docker.compose.service"]
-		if serviceID == "" {
-			continue
+		if container.Labels["com.docker.compose.project"] == m.config.Project && serviceID != "" {
+			targets = append(targets, dockerTarget{container: container, serviceID: serviceID})
 		}
-		targets = append(targets, dockerTarget{container: container, serviceID: serviceID})
 	}
+	return targets, nil
+}
+
+func prepareDockerServices(out *Snapshot) map[string]int {
+	indices := make(map[string]int, len(out.Services))
+	for i := range out.Services {
+		item := &out.Services[i]
+		indices[item.ID] = i
+		item.ObservedAt = out.ObservedAt
+		if !optional(item.ID) {
+			item.Status = "unavailable"
+			item.Detail = "当前项目未发现预期服务容器。"
+		}
+	}
+	return indices
+}
+
+func markDockerUnavailable(out *Snapshot) {
+	for i := range out.Services {
+		if !optional(out.Services[i].ID) {
+			out.Services[i].Status = "unknown"
+			out.Services[i].Detail = "Docker 状态采集不可用，无法确认服务状态。"
+		}
+	}
+}
+
+// Each target owns one result slot; an inspection failure cannot cancel peers.
+func (m *Monitor) inspectDockerTargets(ctx context.Context, targets []dockerTarget) []dockerInspectionResult {
 	results := make([]dockerInspectionResult, len(targets))
 	var inspections errgroup.Group
 	inspections.SetLimit(dockerInspectLimit)
@@ -237,100 +280,96 @@ func (m *Monitor) containers(ctx context.Context, out *Snapshot) {
 		})
 	}
 	_ = inspections.Wait()
+	return results
+}
 
-	observed := map[string]bool{}
-	failures := 0
-	for i, target := range targets {
-		container := target.container
-		logicalID := target.serviceID
-		index, exists := indices[logicalID]
-		if !exists || observed[logicalID] {
-			name := logicalID
-			rowID := logicalID
-			if observed[logicalID] {
-				rowID = logicalID + "/" + container.ID
-			}
-			index = len(out.Services)
-			out.Services = append(out.Services, Service{ID: rowID, Name: name, Category: "application", Kind: "container", DependsOn: []string{}, LogicalID: logicalID})
+func dockerServiceRow(out *Snapshot, target dockerTarget, indices map[string]int, observed map[string]bool) *Service {
+	container := target.container
+	logicalID := target.serviceID
+	index, exists := indices[logicalID]
+	if !exists || observed[logicalID] {
+		name := logicalID
+		rowID := logicalID
+		if observed[logicalID] {
+			rowID = logicalID + "/" + container.ID
 		}
-		observed[logicalID] = true
-		item := &out.Services[index]
-		name := container.ID
-		if len(container.Names) > 0 {
-			name = strings.TrimPrefix(container.Names[0], "/")
-		}
-		item.LogicalID = logicalID
-		item.InstanceID = container.ID
-		item.Workload = logicalID
-		item.ObservedAt = out.ObservedAt
-		item.Container = &Container{ID: container.ID, Name: name, Image: container.Image}
-		item.Status = "unknown"
-		item.Detail = "容器元数据读取失败或超时。"
-		if results[i].err != nil {
-			failures++
-			continue
-		}
-		inspection := results[i].inspection
-		item.Container.State = inspection.State.Status
-		item.Container.StartedAt = inspection.State.StartedAt
-		item.Container.Restarts = inspection.RestartCount
-		if inspection.State.Health != nil {
-			item.Container.Health = inspection.State.Health.Status
-		}
-		switch inspection.State.Status {
-		case "running":
-			switch item.Container.Health {
-			case "healthy":
-				item.Status = "ready"
-				item.Detail = "容器运行中，Docker 健康检查通过。"
-			case "unhealthy":
-				item.Status = "unavailable"
-				item.Detail = "容器运行中，Docker 健康检查失败。"
-			case "starting":
-				item.Status = "starting"
-				item.Detail = "容器正在等待健康检查。"
-			default:
-				item.Status = "unknown"
-				item.Detail = "容器运行中，未配置 Docker 健康检查。"
-			}
-			if item.Container.Health == "" {
-				if path, ok := readinessPaths[item.LogicalID]; ok {
-					started := time.Now()
-					request, probeErr := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimRight(item.Target, "/")+path, nil)
-					status := "unavailable"
-					if probeErr == nil {
-						response, callErr := endpointClient.Do(request)
-						if callErr == nil {
-							if response.StatusCode == http.StatusOK {
-								status = "ready"
-							}
-							_ = response.Body.Close()
-						}
-					}
-					item.Status = status
-					item.Detail = "服务就绪端点探测失败。"
-					if status == "ready" {
-						item.Detail = "容器运行中，服务就绪端点可达。"
-					}
-					item.Probe = &Probe{Kind: "http", Status: status, DurationMS: time.Since(started).Milliseconds()}
-				}
-			}
-		case "created", "restarting":
-			item.Status = "starting"
-			item.Detail = "容器尚未就绪。"
-		case "exited":
-			item.Status = "stopped"
-			item.Detail = "容器已停止。"
-			if inspection.State.ExitCode == 0 && (logicalID == "migrate" || strings.HasSuffix(logicalID, "-init")) {
-				item.Status = "completed"
-				item.Detail = "一次性初始化任务已成功完成。"
-			}
-		default:
-			item.Status = "stopped"
-			item.Detail = "容器未处于运行状态。"
-		}
+		index = len(out.Services)
+		out.Services = append(out.Services, Service{ID: rowID, Name: name, Category: "application", Kind: "container", DependsOn: []string{}, LogicalID: logicalID})
 	}
-	if failures > 0 {
-		out.Source = "docker_partial"
+	observed[logicalID] = true
+	item := &out.Services[index]
+	name := container.ID
+	if len(container.Names) > 0 {
+		name = strings.TrimPrefix(container.Names[0], "/")
 	}
+	item.LogicalID = logicalID
+	item.InstanceID = container.ID
+	item.Workload = logicalID
+	item.ObservedAt = out.ObservedAt
+	item.Container = &Container{ID: container.ID, Name: name, Image: container.Image}
+	item.Status = "unknown"
+	item.Detail = "容器元数据读取失败或超时。"
+	return item
+}
+
+func applyDockerInspection(ctx context.Context, item *Service, inspection dockerInspection) {
+	item.Container.State = inspection.State.Status
+	item.Container.StartedAt = inspection.State.StartedAt
+	item.Container.Restarts = inspection.RestartCount
+	if inspection.State.Health != nil {
+		item.Container.Health = inspection.State.Health.Status
+	}
+	switch inspection.State.Status {
+	case "running":
+		applyRunningContainer(ctx, item)
+	case "created", "restarting":
+		item.Status, item.Detail = "starting", "容器尚未就绪。"
+	case "exited":
+		item.Status, item.Detail = "stopped", "容器已停止。"
+		if inspection.State.ExitCode == 0 && (item.LogicalID == "migrate" || strings.HasSuffix(item.LogicalID, "-init")) {
+			item.Status, item.Detail = "completed", "一次性初始化任务已成功完成。"
+		}
+	default:
+		item.Status, item.Detail = "stopped", "容器未处于运行状态。"
+	}
+}
+
+func applyRunningContainer(ctx context.Context, item *Service) {
+	states := map[string]observationState{
+		"healthy":   {"ready", "容器运行中，Docker 健康检查通过。"},
+		"unhealthy": {"unavailable", "容器运行中，Docker 健康检查失败。"},
+		"starting":  {"starting", "容器正在等待健康检查。"},
+	}
+	state, ok := states[item.Container.Health]
+	if !ok {
+		state = observationState{"unknown", "容器运行中，未配置 Docker 健康检查。"}
+	}
+	item.Status, item.Detail = state.status, state.detail
+	path, hasProbe := readinessPaths[item.LogicalID]
+	if item.Container.Health != "" || !hasProbe {
+		return
+	}
+	started := time.Now()
+	item.Status = probeReadiness(ctx, strings.TrimRight(item.Target, "/")+path)
+	item.Detail = "服务就绪端点探测失败。"
+	if item.Status == "ready" {
+		item.Detail = "容器运行中，服务就绪端点可达。"
+	}
+	item.Probe = &Probe{Kind: "http", Status: item.Status, DurationMS: time.Since(started).Milliseconds()}
+}
+
+func probeReadiness(ctx context.Context, endpoint string) string {
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return "unavailable"
+	}
+	response, err := endpointClient.Do(request)
+	if err != nil {
+		return "unavailable"
+	}
+	defer response.Body.Close()
+	if response.StatusCode == http.StatusOK {
+		return "ready"
+	}
+	return "unavailable"
 }

@@ -56,65 +56,74 @@ func architectureInventory(services []Service, source string, cluster *Cluster) 
 	for _, target := range architectureTargets {
 		entry := ArchitectureEntry{
 			ID: target.id, Name: target.name, Category: target.category,
-			Target: target.target, State: "not_connected", Verification: "NOT_RUN",
+			Target: target.target, Verification: "NOT_RUN",
 			ServiceIDs: append([]string{}, target.serviceIDs...), Reference: target.reference,
 		}
-		if len(target.serviceIDs) == 0 {
-			entry.Observed = "当前采集器没有此架构组件的集群或服务观测来源。"
-		} else if strings.HasSuffix(source, "_unavailable") {
-			entry.Observed = "状态观测源不可用，无法确认相关服务是否存在或其状态。"
-			if source == "docker_unavailable" {
-				entry.Observed = "Docker 状态源不可用，无法确认相关服务是否存在或其状态。"
-			}
-		} else {
-			count := 0
-			states := make([]string, 0, len(target.serviceIDs))
-			for _, service := range services {
-				matches := false
-				for _, id := range target.serviceIDs {
-					if service.ID == id || len(service.ID) > len(id) && service.ID[:len(id)] == id && service.ID[len(id)] == '/' {
-						matches = true
-						break
-					}
-				}
-				if matches && (service.Container != nil || service.Probe != nil) {
-					count++
-					states = append(states, fmt.Sprintf("%s=%s", service.Name, service.Status))
-				}
-			}
-			if count > 0 {
-				entry.State = "observed"
-				observedBy := "容器/数据库探测"
-				if source == "docker" {
-					observedBy = "Docker/数据库探测"
-				}
-				entry.Observed = fmt.Sprintf("%s观察到 %d 个相关服务实例（%s）；仅为实例状态，无法证明目标集群、复制、备份或验收能力。", observedBy, count, strings.Join(states, "、"))
-			} else {
-				entry.Observed = "当前服务观测中未发现相关服务实例。"
-			}
-		}
+		entry.State, entry.Observed = architectureObservation(target, services, source)
 		if target.id == "kubernetes" {
-			if (source == "kubernetes" || source == "kubernetes_partial") && cluster != nil {
-				readyNodes := 0
-				for _, node := range cluster.Nodes {
-					if node.Status == "ready" {
-						readyNodes++
-					}
-				}
-				entry.State = "observed"
-				entry.Observed = fmt.Sprintf("Kubernetes API 观察到 %d 个 Ready 节点（共 %d 个节点）；单机集群观测不证明物理高可用，验收未运行。", readyNodes, len(cluster.Nodes))
-				if source == "kubernetes_partial" {
-					entry.Observed += "当前有部分 Kubernetes 观测源不可用。"
-				}
-			} else {
-				entry.Observed = "当前采集器没有 Kubernetes 集群观测源；无法判断集群是否存在或连接状态。"
-				if source == "kubernetes_unavailable" {
-					entry.Observed = "Kubernetes 集群观测源不可用；无法判断集群状态。"
-				}
-				entry.State = "not_connected"
-			}
+			entry.State, entry.Observed = clusterObservation(source, cluster)
 		}
 		entries = append(entries, entry)
 	}
 	return entries
+}
+
+func architectureObservation(target architectureTarget, services []Service, source string) (string, string) {
+	if len(target.serviceIDs) == 0 {
+		return "not_connected", "当前采集器没有此架构组件的集群或服务观测来源。"
+	}
+	if strings.HasSuffix(source, "_unavailable") {
+		if source == "docker_unavailable" {
+			return "not_connected", "Docker 状态源不可用，无法确认相关服务是否存在或其状态。"
+		}
+		return "not_connected", "状态观测源不可用，无法确认相关服务是否存在或其状态。"
+	}
+	states := observedServiceStates(target.serviceIDs, services)
+	if len(states) == 0 {
+		return "not_connected", "当前服务观测中未发现相关服务实例。"
+	}
+	observedBy := "容器/数据库探测"
+	if source == "docker" {
+		observedBy = "Docker/数据库探测"
+	}
+	return "observed", fmt.Sprintf("%s观察到 %d 个相关服务实例（%s）；仅为实例状态，无法证明目标集群、复制、备份或验收能力。", observedBy, len(states), strings.Join(states, "、"))
+}
+
+func observedServiceStates(ids []string, services []Service) []string {
+	states := []string{}
+	for _, service := range services {
+		if matchesArchitectureService(service.ID, ids) && (service.Container != nil || service.Probe != nil) {
+			states = append(states, fmt.Sprintf("%s=%s", service.Name, service.Status))
+		}
+	}
+	return states
+}
+
+func matchesArchitectureService(serviceID string, ids []string) bool {
+	for _, id := range ids {
+		if serviceID == id || strings.HasPrefix(serviceID, id+"/") {
+			return true
+		}
+	}
+	return false
+}
+
+func clusterObservation(source string, cluster *Cluster) (string, string) {
+	if (source != "kubernetes" && source != "kubernetes_partial") || cluster == nil {
+		if source == "kubernetes_unavailable" {
+			return "not_connected", "Kubernetes 集群观测源不可用；无法判断集群状态。"
+		}
+		return "not_connected", "当前采集器没有 Kubernetes 集群观测源；无法判断集群是否存在或连接状态。"
+	}
+	readyNodes := 0
+	for _, node := range cluster.Nodes {
+		if node.Status == "ready" {
+			readyNodes++
+		}
+	}
+	detail := fmt.Sprintf("Kubernetes API 观察到 %d 个 Ready 节点（共 %d 个节点）；单机集群观测不证明物理高可用，验收未运行。", readyNodes, len(cluster.Nodes))
+	if source == "kubernetes_partial" {
+		detail += "当前有部分 Kubernetes 观测源不可用。"
+	}
+	return "observed", detail
 }

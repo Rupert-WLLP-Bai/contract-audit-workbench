@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -131,31 +132,14 @@ type Config struct {
 // keeps the API key out of the returned value; only its presence is exposed.
 func JevFromEnv() JevConfig {
 	state := jev.FromEnv().State()
-	mode := strings.ToLower(strings.TrimSpace(os.Getenv("TYPESAFE_JEV_MODE")))
-	if mode == "" {
-		mode = "off"
+	mode := advisoryEnvValue("TYPESAFE_JEV_MODE", "off")
+	egress := advisoryEnvValue("TYPESAFE_JEV_EGRESS", "minimized")
+	features := advisoryFeaturesFromEnv()
+	defaultProvider := "model-gateway"
+	if mode == "fixture" {
+		defaultProvider = "local-fixture"
 	}
-	egress := strings.ToLower(strings.TrimSpace(os.Getenv("TYPESAFE_JEV_EGRESS")))
-	if egress == "" {
-		egress = "minimized"
-	}
-	features := []string{}
-	for _, item := range strings.Split(os.Getenv("TYPESAFE_JEV_FEATURES"), ",") {
-		if feature := strings.TrimSpace(item); feature != "" {
-			features = append(features, feature)
-		}
-	}
-	if len(features) == 0 {
-		features = []string{"knowledge_rerank"}
-	}
-	provider := strings.ToLower(strings.TrimSpace(os.Getenv("TYPESAFE_JEV_PROVIDER")))
-	if provider == "" {
-		if mode == "fixture" {
-			provider = "local-fixture"
-		} else {
-			provider = "model-gateway"
-		}
-	}
+	provider := advisoryEnvValue("TYPESAFE_JEV_PROVIDER", defaultProvider)
 	config := JevConfig{
 		Name: state.Model, Endpoint: state.Endpoint, Mode: mode, Provider: provider,
 		Egress: egress, Features: features, KeyConfigured: state.KeyConfigured,
@@ -177,6 +161,26 @@ func JevFromEnv() JevConfig {
 	config.Egress = resolved.Egress
 	config.Features = append([]string(nil), resolved.Features...)
 	return config
+}
+
+func advisoryEnvValue(key, fallback string) string {
+	if value := strings.ToLower(strings.TrimSpace(os.Getenv(key))); value != "" {
+		return value
+	}
+	return fallback
+}
+
+func advisoryFeaturesFromEnv() []string {
+	features := []string{}
+	for _, item := range strings.Split(os.Getenv("TYPESAFE_JEV_FEATURES"), ",") {
+		if feature := strings.TrimSpace(item); feature != "" {
+			features = append(features, feature)
+		}
+	}
+	if len(features) == 0 {
+		return []string{"knowledge_rerank"}
+	}
+	return features
 }
 
 // gatewayBaseURL removes the API prefix from MODEL_GATEWAY_URL. The model
@@ -225,24 +229,36 @@ func ParseExpectedReplicas(raw string) (map[string]int, error) {
 		return result, nil
 	}
 	for _, item := range strings.Split(raw, ",") {
-		item = strings.TrimSpace(item)
-		id, count, ok := strings.Cut(item, "=")
-		id, count = strings.TrimSpace(id), strings.TrimSpace(count)
-		if !ok || id == "" || len(id) > 64 || count == "" {
-			return nil, errors.New("SYSTEM_HEALTH_EXPECTED_REPLICAS must be id=count pairs")
-		}
-		for _, c := range id {
-			if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_' || c == '-' || c == '.') {
-				return nil, errors.New("SYSTEM_HEALTH_EXPECTED_REPLICAS contains an invalid service id")
-			}
-		}
-		value, err := strconv.Atoi(count)
-		if err != nil || value < 0 || value > 99 {
-			return nil, errors.New("SYSTEM_HEALTH_EXPECTED_REPLICAS count must be an integer in 0..99")
+		id, value, err := parseReplicaDeclaration(item)
+		if err != nil {
+			return nil, err
 		}
 		result[id] = value
 	}
 	return result, nil
+}
+
+var replicaServiceID = regexp.MustCompile(`^[A-Za-z0-9_.-]+$`)
+
+func parseReplicaDeclaration(item string) (string, int, error) {
+	id, count, ok := strings.Cut(strings.TrimSpace(item), "=")
+	id, count = strings.TrimSpace(id), strings.TrimSpace(count)
+	if !ok || id == "" || len(id) > 64 || count == "" {
+		return "", 0, errors.New("SYSTEM_HEALTH_EXPECTED_REPLICAS must be id=count pairs")
+	}
+	if !replicaServiceID.MatchString(id) {
+		return "", 0, errors.New("SYSTEM_HEALTH_EXPECTED_REPLICAS contains an invalid service id")
+	}
+	value, err := parseReplicaCount(count)
+	return id, value, err
+}
+
+func parseReplicaCount(count string) (int, error) {
+	value, err := strconv.Atoi(count)
+	if err != nil || value < 0 || value > 99 {
+		return 0, errors.New("SYSTEM_HEALTH_EXPECTED_REPLICAS count must be an integer in 0..99")
+	}
+	return value, nil
 }
 
 // ExpectedReplicasFromEnv is the deployment-side declaration consumed by the

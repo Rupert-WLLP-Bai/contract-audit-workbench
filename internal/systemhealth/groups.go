@@ -39,102 +39,96 @@ func mergeExpectations(configured map[string]int, deployments map[string]replica
 // never infers the desired count from the observed count: when no controller
 // or deployment declaration exists, expected_source stays "unavailable".
 func buildGroups(services []Service, expected map[string]replicaExpectation, missingIsUnknown bool) []ServiceGroup {
-	order := make([]string, 0, len(services))
-	groups := make(map[string]*ServiceGroup, len(services))
-	statuses := make(map[string][]string, len(services))
+	collected := groupedServices{groups: map[string]*ServiceGroup{}, statuses: map[string][]string{}}
 	for _, service := range services {
-		logical := service.LogicalID
-		if logical == "" {
-			logical = service.ID
-		}
-		group, exists := groups[logical]
-		if !exists {
-			order = append(order, logical)
-			group = &ServiceGroup{ID: logical, Name: service.Name, Category: service.Category}
-			groups[logical] = group
-		}
-		// A container is a runtime instance; a configured integration is one
-		// observed endpoint. A catalog placeholder that was not found is neither.
-		observed := service.Container != nil ||
-			(service.Kind == "integration" && service.Status != "unconfigured")
-		if observed {
-			group.ObservedInstances++
-		}
-		if service.Status == "ready" {
-			group.ReadyInstances++
-		}
-		statuses[logical] = append(statuses[logical], service.Status)
-		if service.ObservedAt > group.ObservedAt {
-			group.ObservedAt = service.ObservedAt
-		}
+		collected.add(service)
 	}
-	for _, id := range order {
-		group := groups[id]
+	rows := make([]ServiceGroup, 0, len(collected.order))
+	for _, id := range collected.order {
+		group := collected.groups[id]
 		expectation, declared := expected[id]
 		if !declared {
 			expectation = replicaExpectation{source: "unavailable"}
 		}
 		group.ExpectedInstances, group.ExpectedSource = expectation.desired, expectation.source
-		group.Status = groupStatus(group, statuses[id], declared, missingIsUnknown)
+		group.Status = groupStatus(group, collected.statuses[id], declared, missingIsUnknown)
 		group.Detail = groupDetail(group, missingIsUnknown)
-	}
-	rows := make([]ServiceGroup, 0, len(order))
-	for _, id := range order {
-		rows = append(rows, *groups[id])
+		rows = append(rows, *group)
 	}
 	return rows
 }
 
+type groupedServices struct {
+	order    []string
+	groups   map[string]*ServiceGroup
+	statuses map[string][]string
+}
+
+func (g *groupedServices) add(service Service) {
+	logical := service.LogicalID
+	if logical == "" {
+		logical = service.ID
+	}
+	group, exists := g.groups[logical]
+	if !exists {
+		g.order = append(g.order, logical)
+		group = &ServiceGroup{ID: logical, Name: service.Name, Category: service.Category}
+		g.groups[logical] = group
+	}
+	// Catalog placeholders are not runtime observations.
+	if service.Container != nil || (service.Kind == "integration" && service.Status != "unconfigured") {
+		group.ObservedInstances++
+	}
+	if service.Status == "ready" {
+		group.ReadyInstances++
+	}
+	g.statuses[logical] = append(g.statuses[logical], service.Status)
+	if service.ObservedAt > group.ObservedAt {
+		group.ObservedAt = service.ObservedAt
+	}
+}
+
 func groupStatus(group *ServiceGroup, statuses []string, declared, missingIsUnknown bool) string {
 	if group.ObservedInstances == 0 {
-		if missingIsUnknown {
-			return "unknown"
-		}
-		if group.ExpectedInstances > 0 {
-			return "unavailable"
-		}
-		if !declared && !optional(group.ID) {
-			return "unavailable"
-		}
-		return "unconfigured"
+		return unobservedGroupStatus(group, declared, missingIsUnknown)
 	}
-	starting, unavailable, stopped, completed, unknown := 0, 0, 0, 0, 0
+	counts := map[string]int{}
 	for _, status := range statuses {
-		switch status {
-		case "starting":
-			starting++
-		case "unavailable":
-			unavailable++
-		case "stopped":
-			stopped++
-		case "completed":
-			completed++
-		case "unknown":
-			unknown++
-		}
+		counts[status]++
 	}
-	if completed == group.ObservedInstances {
+	if counts["completed"] == group.ObservedInstances {
 		return "completed"
 	}
 	if group.ReadyInstances == group.ObservedInstances {
-		if group.ExpectedInstances > 0 && group.ObservedInstances < group.ExpectedInstances {
-			return "degraded"
-		}
-		return "ready"
+		return readyGroupStatus(group)
 	}
 	if group.ReadyInstances > 0 {
 		return "degraded"
 	}
-	if starting > 0 {
+	if counts["starting"] > 0 {
 		return "starting"
 	}
-	if unavailable > 0 || stopped > 0 {
+	if counts["unavailable"] > 0 || counts["stopped"] > 0 {
 		return "unavailable"
 	}
-	if unknown > 0 {
+	return "unknown"
+}
+
+func unobservedGroupStatus(group *ServiceGroup, declared, missingIsUnknown bool) string {
+	if missingIsUnknown {
 		return "unknown"
 	}
-	return "unknown"
+	if group.ExpectedInstances > 0 || (!declared && !optional(group.ID)) {
+		return "unavailable"
+	}
+	return "unconfigured"
+}
+
+func readyGroupStatus(group *ServiceGroup) string {
+	if group.ExpectedInstances > 0 && group.ObservedInstances < group.ExpectedInstances {
+		return "degraded"
+	}
+	return "ready"
 }
 
 func groupDetail(group *ServiceGroup, missingIsUnknown bool) string {
