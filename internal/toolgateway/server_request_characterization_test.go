@@ -75,16 +75,115 @@ func TestMethodMirrorFailurePrecedesProtocolVersionMismatch(t *testing.T) {
 }
 
 func TestPreflightDuplicateHeaderKeepsExactErrorAndCORSOrigin(t *testing.T) {
+	for _, header := range []string{"Accept", "Authorization", "Content-Type", "Mcp-Method", "Mcp-Name", "MCP-Protocol-Version"} {
+		t.Run(header, func(t *testing.T) {
+			backend := testBackend(t)
+			request := httptest.NewRequest(http.MethodOptions, "/mcp", nil)
+			request.Header.Set("Origin", "https://PORTAL.example")
+			request.Header.Set("Access-Control-Request-Method", http.MethodPost)
+			request.Header.Set("Access-Control-Request-Headers", header+", "+strings.ToLower(header))
+			response := httptest.NewRecorder()
+			NewHandler(backend, Options{AllowedOrigins: []string{"https://portal.example"}}).ServeHTTP(response, request)
+			assertToolGatewayFailure(t, response, http.StatusBadRequest, codeInvalidParams, "CORS preflight contains a duplicate header name.")
+			if response.Header().Get("Access-Control-Allow-Origin") != "https://portal.example" || backend.userCalls != 0 {
+				t.Fatalf("preflight headers=%v user lookups=%d", response.Header(), backend.userCalls)
+			}
+		})
+	}
+}
+
+func TestPreflightRejectsLeadingAndTrailingEmptyHeaderEntries(t *testing.T) {
+	for _, headerList := range []string{",accept", "accept,"} {
+		t.Run(strings.ReplaceAll(headerList, ",", "_comma_"), func(t *testing.T) {
+			request := httptest.NewRequest(http.MethodOptions, "/mcp", nil)
+			request.Header.Set("Origin", "https://portal.example")
+			request.Header.Set("Access-Control-Request-Method", http.MethodPost)
+			request.Header.Set("Access-Control-Request-Headers", headerList)
+			response := httptest.NewRecorder()
+			NewHandler(testBackend(t), Options{AllowedOrigins: []string{"https://portal.example"}}).ServeHTTP(response, request)
+			assertToolGatewayFailure(t, response, http.StatusBadRequest, codeInvalidParams, "CORS preflight contains an invalid header name.")
+		})
+	}
+}
+
+func TestJSONArrayScannerRejectsUnterminatedAndNestedInvalidArrays(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		body string
+	}{
+		{"unterminated root array", `{"jsonrpc":"2.0","id":1,"method":"tools/list","params":[`},
+		{"array closes with object delimiter", `{"jsonrpc":"2.0","id":1,"method":"tools/list","params":[1}`},
+		{"duplicate object key nested in array", `{"jsonrpc":"2.0","id":1,"method":"tools/list","params":[{"x":1,"x":2}]}`},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			request := protocolRequest(t, "tools/list", nil)
+			request.Body = io.NopCloser(strings.NewReader(test.body))
+			response := httptest.NewRecorder()
+			backend := testBackend(t)
+			NewHandler(backend, Options{}).ServeHTTP(response, request)
+			assertToolGatewayFailure(t, response, http.StatusBadRequest, codeParseError, "Request must contain exactly one JSON object.")
+			if backend.userCalls != 0 {
+				t.Fatal("malformed array reached authentication")
+			}
+		})
+	}
+}
+
+func TestJSONArrayScannerAcceptsNestedArraysInsideMetadataObjects(t *testing.T) {
+	request := protocolRequest(t, "tools/list", func(body map[string]any) {
+		meta := body["params"].(map[string]any)["_meta"].(map[string]any)
+		meta["io.modelcontextprotocol/clientCapabilities"] = map[string]any{
+			"extensions": []any{1, []any{2, map[string]any{"value": true}}},
+		}
+	})
 	backend := testBackend(t)
-	request := httptest.NewRequest(http.MethodOptions, "/mcp", nil)
-	request.Header.Set("Origin", "https://PORTAL.example")
-	request.Header.Set("Access-Control-Request-Method", http.MethodPost)
-	request.Header.Set("Access-Control-Request-Headers", "Accept, accept")
 	response := httptest.NewRecorder()
-	NewHandler(backend, Options{AllowedOrigins: []string{"https://portal.example"}}).ServeHTTP(response, request)
-	assertToolGatewayFailure(t, response, http.StatusBadRequest, codeInvalidParams, "CORS preflight contains a duplicate header name.")
-	if response.Header().Get("Access-Control-Allow-Origin") != "https://portal.example" || backend.userCalls != 0 {
-		t.Fatalf("preflight headers=%v user lookups=%d", response.Header(), backend.userCalls)
+	NewHandler(backend, Options{}).ServeHTTP(response, request)
+	if response.Code != http.StatusOK || backend.userCalls != 1 {
+		t.Fatalf("valid nested JSON arrays were rejected: status=%d user lookups=%d body=%s", response.Code, backend.userCalls, response.Body.String())
+	}
+}
+
+func TestEncodedMirroredToolNameRejectsMalformedAndPinsEmptyBoundary(t *testing.T) {
+	for _, test := range []struct {
+		name        string
+		requestName string
+		headerName  string
+		wantCode    int
+		wantMessage string
+		wantHeader  string
+	}{
+		{"empty payload remains an exact empty mirrored value", "", "=?base64??=", codeInvalidParams, "Unknown tool.", ""},
+		{"missing encoded suffix can decode but must not mirror", "a", "=?base64?YQ==xx", codeHeaderMismatch, "HTTP header does not match the request body.", "Mcp-Name"},
+		{"missing encoded prefix can decode but must not mirror", "a", "123456789YQ==?=", codeHeaderMismatch, "HTTP header does not match the request body.", "Mcp-Name"},
+		{"short encoded prefix is rejected before slicing", "", "=?base64?", codeHeaderMismatch, "HTTP header does not match the request body.", "Mcp-Name"},
+		{"missing encoded prefix cannot mirror a literal", "foo", "123456789Zm9v?=", codeHeaderMismatch, "HTTP header does not match the request body.", "Mcp-Name"},
+		{"missing encoded suffix cannot mirror a literal", "foo", "=?base64?Zm9vab", codeHeaderMismatch, "HTTP header does not match the request body.", "Mcp-Name"},
+		{"invalid base64 with a decodable prefix is rejected", "foo", "=?base64?Zm9v!?=", codeHeaderMismatch, "HTTP header does not match the request body.", "Mcp-Name"},
+		{"invalid base64 cannot mirror an empty tool name", "", "=?base64?%%%?=", codeHeaderMismatch, "HTTP header does not match the request body.", "Mcp-Name"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			request := protocolRequest(t, "tools/call", func(body map[string]any) {
+				body["params"].(map[string]any)["name"] = test.requestName
+			})
+			request.Header.Set("Mcp-Name", test.headerName)
+			response := httptest.NewRecorder()
+			NewHandler(testBackend(t), Options{}).ServeHTTP(response, request)
+			assertToolGatewayFailure(t, response, http.StatusBadRequest, test.wantCode, test.wantMessage)
+			if test.wantHeader != "" {
+				var envelope struct {
+					Error struct {
+						Data map[string]string `json:"data"`
+					} `json:"error"`
+				}
+				if err := json.Unmarshal(response.Body.Bytes(), &envelope); err != nil {
+					t.Fatal(err)
+				}
+				if envelope.Error.Data["header"] != test.wantHeader {
+					t.Fatalf("header mismatch data = %v, want %q", envelope.Error.Data, test.wantHeader)
+				}
+			}
+		})
 	}
 }
 
