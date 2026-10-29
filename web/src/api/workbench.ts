@@ -1,5 +1,5 @@
-import { ApiError } from "./http";
 import { isRecord } from "./guards";
+import { invalidResponse } from "./respond";
 import {
   parseCaseSummary,
   parseExecutionUsage,
@@ -27,13 +27,7 @@ import type {
 } from "./types";
 
 function invalid(message: string): never {
-  throw new ApiError(
-    `工作台数据无效：${message}`,
-    500,
-    "invalid_response",
-    false,
-    null,
-  );
+  return invalidResponse(`工作台数据无效：${message}`, 500);
 }
 
 function object(value: unknown, name: string): Record<string, unknown> {

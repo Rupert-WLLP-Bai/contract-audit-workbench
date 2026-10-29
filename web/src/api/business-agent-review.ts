@@ -1,4 +1,4 @@
-import { ApiError } from "./http";
+import { responseReader } from "./respond";
 
 export interface BusinessAgentScope {
   domain: string;
@@ -64,37 +64,8 @@ export interface BusinessAgentReview {
   unresolved_gap_ids: string[] | null;
 }
 
-function invalid(path: string): never {
-  throw new ApiError(`业务审查响应中的 ${path} 无法识别`, 200, "invalid_response", false, null);
-}
-
-function record(value: unknown, path: string, keys: readonly string[]): Record<string, unknown> {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) return invalid(path);
-  const item = value as Record<string, unknown>;
-  if (keys.some((key) => !Object.hasOwn(item, key)) || Object.keys(item).some((key) => !keys.includes(key))) {
-    return invalid(path);
-  }
-  return item;
-}
-
-function text(value: unknown, path: string): string {
-  return typeof value === "string" ? value : invalid(path);
-}
-
-function nullableText(value: unknown, path: string): string | null {
-  return value === null ? null : text(value, path);
-}
-
-function integer(value: unknown, path: string): number {
-  return typeof value === "number" && Number.isSafeInteger(value) ? value : invalid(path);
-}
-
-
-function nullableArray<T>(value: unknown, path: string, parse: (value: unknown, path: string) => T): T[] | null {
-  if (value === null) return null;
-  if (!Array.isArray(value)) return invalid(path);
-  return value.map((entry, index) => parse(entry, `${path}[${index}]`));
-}
+const { invalid, record, text, integer, nullableText, nullableArray } =
+  responseReader((path) => `业务审查响应中的 ${path} 无法识别`);
 
 function scope(value: unknown, path: string): BusinessAgentScope {
   const item = record(value, path, ["domain", "capability_ids", "source_ids"]);

@@ -1,4 +1,5 @@
-import { ApiError, jsonInit, requestJson } from "./http";
+import { jsonInit, requestJson } from "./http";
+import { responseReader } from "./respond";
 
 export interface EvidenceSourceEvaluation {
   id: string;
@@ -109,33 +110,10 @@ export interface VerifyEvidenceRequestInput {
   expected_version: number;
 }
 
-function invalid(field: string): never {
-  throw new ApiError(`补充材料响应中的 ${field} 无法识别`, 200, "invalid_response", false, null);
-}
-
-function object(value: unknown, field: string): Record<string, unknown> {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) return invalid(field);
-  return value as Record<string, unknown>;
-}
-
-function text(value: unknown, field: string): string {
-  if (typeof value !== "string") return invalid(field);
-  return value;
-}
-
-function optionalText(value: unknown, field: string): string | null {
-  return value === undefined || value === null ? null : text(value, field);
-}
-
-function integer(value: unknown, field: string, minimum = 1): number {
-  if (typeof value !== "number" || !Number.isSafeInteger(value) || value < minimum) return invalid(field);
-  return value;
-}
-
-function array<T>(value: unknown, field: string, parse: (item: unknown) => T): T[] {
-  if (!Array.isArray(value)) return invalid(field);
-  return value.map(parse);
-}
+const { invalid, object, text, optionalText, array, integer: safeInteger } =
+  responseReader((field) => `补充材料响应中的 ${field} 无法识别`);
+const integer = (value: unknown, field: string, minimum = 1): number =>
+  safeInteger(value, field, minimum);
 
 function parseQuote(value: unknown): EvidenceQuote {
   const item = object(value, "evidence");

@@ -42,7 +42,8 @@ import type {
   ParsedDocumentMetadata,
   FindingSeveritySource,
 } from "./types";
-import { ApiError } from "./http";
+import { isRecord } from "./guards";
+import { invalidResponse } from "./respond";
 import { parseAgentReview } from "./agent-review";
 import { parseBusinessAgentReview } from "./business-agent-review";
 function nonNegativeIntegerOrNull(value: unknown): number | null {
@@ -66,15 +67,20 @@ function nullableString(
   return typeof value === "string" ? value : null;
 }
 
+function stringArrayValue(value: unknown, key: string): string[] {
+  if (!Array.isArray(value) || !value.every((item) => typeof item === "string"))
+    fail(`${key}不是字符串数组`);
+  return value as string[];
+}
+
 function stringArrayOrEmpty(
   record: Record<string, unknown>,
   key: string,
 ): string[] {
   const value = record[key];
-  if (value === undefined || value === null) return [];
-  if (!Array.isArray(value) || !value.every((item) => typeof item === "string"))
-    fail(`${key}不是字符串数组`);
-  return value as string[];
+  return value === undefined || value === null
+    ? []
+    : stringArrayValue(value, key);
 }
 
 function requiredBoolean(
@@ -89,10 +95,7 @@ function requiredStringArray(
   record: Record<string, unknown>,
   key: string,
 ): string[] {
-  const value = record[key];
-  if (!Array.isArray(value) || !value.every((item) => typeof item === "string"))
-    fail(`${key}不是字符串数组`);
-  return value as string[];
+  return stringArrayValue(record[key], key);
 }
 
 function requiredNullableString(
@@ -201,11 +204,7 @@ function parseExecutionEvent(value: unknown): ExecutionEvent {
 }
 
 function fail(message: string): never {
-  throw new ApiError(message, 500, "invalid_response", false, null);
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
+  return invalidResponse(message, 500);
 }
 
 function recordOf(value: unknown, name: string): Record<string, unknown> {
@@ -257,15 +256,22 @@ function parseOffset(value: unknown): TextOffset | null {
   return { start, end };
 }
 
-function parseBox(value: unknown): BoundingBox | null {
+function numberRecord<K extends string>(
+  value: unknown,
+  keys: readonly K[],
+): Record<K, number> | null {
   if (!isRecord(value)) return null;
-  const x = numberOrNull(value.x);
-  const y = numberOrNull(value.y);
-  const width = numberOrNull(value.width);
-  const height = numberOrNull(value.height);
-  if (x === null || y === null || width === null || height === null)
-    return null;
-  return { x, y, width, height };
+  const result = {} as Record<K, number>;
+  for (const key of keys) {
+    const parsed = numberOrNull(value[key]);
+    if (parsed === null) return null;
+    result[key] = parsed;
+  }
+  return result;
+}
+
+function parseBox(value: unknown): BoundingBox | null {
+  return numberRecord(value, ["x", "y", "width", "height"]);
 }
 
 function parseRunSummary(value: unknown): ReviewRunSummary | null {
@@ -298,10 +304,19 @@ export function parseCaseSummary(value: unknown): CaseSummary {
   };
 }
 
+function items<T>(
+  value: unknown,
+  recordName: string,
+  listName: string,
+  parse: (entry: unknown) => T,
+): T[] {
+  const record = recordOf(value, recordName);
+  if (!Array.isArray(record.items)) fail(`${listName}缺少 items`);
+  return record.items.map(parse);
+}
+
 export function parseCaseList(value: unknown): CaseSummary[] {
-  const record = recordOf(value, "案件列表");
-  if (!Array.isArray(record.items)) fail("案件列表缺少 items");
-  return record.items.map(parseCaseSummary);
+  return items(value, "案件列表", "案件列表", parseCaseSummary);
 }
 
 function nullableValueString(
@@ -360,20 +375,7 @@ function parseActivity(value: unknown): ActivityItem | null {
 }
 
 function parseCounts(value: unknown): FindingCounts | null {
-  if (value === null || value === undefined) return null;
-  if (!isRecord(value)) return null;
-  const total = numberOrNull(value.total);
-  const undecided = numberOrNull(value.undecided);
-  const conflict = numberOrNull(value.conflict);
-  const insufficient = numberOrNull(value.insufficient);
-  if (
-    total === null ||
-    undecided === null ||
-    conflict === null ||
-    insufficient === null
-  )
-    return null;
-  return { total, undecided, conflict, insufficient };
+  return numberRecord(value, ["total", "undecided", "conflict", "insufficient"]);
 }
 
 export function parseCaseDetail(value: unknown): CaseDetail {
@@ -717,9 +719,7 @@ function parseTemplate(value: unknown): Template {
 }
 
 export function parseTemplateList(value: unknown): Template[] {
-  const record = recordOf(value, "templates");
-  if (!Array.isArray(record.items)) fail("模板列表缺少 items");
-  return record.items.map(parseTemplate);
+  return items(value, "templates", "模板列表", parseTemplate);
 }
 
 export function parseGenerationRecord(value: unknown): GenerationRecord {

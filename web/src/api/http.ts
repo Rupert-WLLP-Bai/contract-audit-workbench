@@ -68,6 +68,11 @@ export function errorMessage(error: unknown): string {
   return "请求没有完成";
 }
 
+/** Status 0 is the fetch-failure sentinel; everything else is an HTTP code. */
+export function statusLabel(status: number): string {
+  return status === 0 ? "无法连接服务" : `HTTP ${status}`;
+}
+
 interface ErrorFields {
   message: string | null;
   code: string | null;
@@ -100,22 +105,20 @@ export function parseErrorPayload(payload: unknown): ErrorFields {
   };
 }
 
-function defaultCode(status: number): string {
-  if (status === 401) return "unauthenticated";
-  if (status === 403) return "forbidden";
-  if (status === 404) return "not_found";
-  if (status === 409) return "conflict";
-  if (status === 0) return "network";
-  return "request_failed";
-}
+const defaultOutcomes: Record<number, { code: string; message: string }> = {
+  401: { code: "unauthenticated", message: "登录已失效或账号密码不正确" },
+  403: { code: "forbidden", message: "没有访问该内容的权限" },
+  404: { code: "not_found", message: "没有找到对应记录" },
+  409: { code: "conflict", message: "该事项已被他人更新，请按最新内容重新确认" },
+  0: { code: "network", message: "无法连接审查服务" },
+};
+const requestFailure = {
+  code: "request_failed",
+  message: "审查服务暂时不能完成这个操作",
+};
 
-function defaultMessage(status: number): string {
-  if (status === 401) return "登录已失效或账号密码不正确";
-  if (status === 403) return "没有访问该内容的权限";
-  if (status === 404) return "没有找到对应记录";
-  if (status === 409) return "该事项已被他人更新，请按最新内容重新确认";
-  if (status === 0) return "无法连接审查服务";
-  return "审查服务暂时不能完成这个操作";
+function defaultOutcome(status: number): { code: string; message: string } {
+  return defaultOutcomes[status] ?? requestFailure;
 }
 
 export async function errorFromResponse(response: Response): Promise<ApiError> {
@@ -129,9 +132,9 @@ export async function errorFromResponse(response: Response): Promise<ApiError> {
   return new ApiError(
     parsed.message && parsed.message.trim() !== ""
       ? parsed.message
-      : defaultMessage(response.status),
+      : defaultOutcome(response.status).message,
     response.status,
-    parsed.code ?? defaultCode(response.status),
+    parsed.code ?? defaultOutcome(response.status).code,
     parsed.retryable ?? false,
     parsed.details,
   );

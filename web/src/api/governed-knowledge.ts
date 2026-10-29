@@ -1,4 +1,5 @@
-import { ApiError, jsonInit, requestJson } from "./http";
+import { jsonInit, requestJson } from "./http";
+import { enumValue, responseReader } from "./respond";
 
 export type KnowledgeKind = "policy" | "guidance" | "exception" | "experience";
 export type KnowledgeAction = "submit" | "validate" | "approve" | "publish" | "withdraw" | "rollback";
@@ -128,30 +129,28 @@ export interface KnowledgeCommand {
   cross_case_reviewed: boolean;
 }
 
-function invalid(path: string): never {
-  throw new ApiError(`知识治理响应中的 ${path} 无法识别`, 200, "invalid_response", false, null);
-}
-function obj(value: unknown, path: string): Record<string, unknown> {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) return invalid(path);
-  return value as Record<string, unknown>;
-}
-function text(value: unknown, path: string): string { return typeof value === "string" ? value : invalid(path); }
-function optionalText(value: unknown, path: string): string | undefined { return value === undefined ? undefined : text(value, path); }
-function integer(value: unknown, path: string): number { return typeof value === "number" && Number.isSafeInteger(value) && value >= 0 ? value : invalid(path); }
-function bool(value: unknown, path: string): boolean { return typeof value === "boolean" ? value : invalid(path); }
-function array<T>(value: unknown, path: string, parse: (entry: unknown, path: string) => T): T[] {
-  if (!Array.isArray(value)) return invalid(path);
-  return value.map((entry, index) => parse(entry, `${path}[${index}]`));
-}
-function nullableArray<T>(value: unknown, path: string, parse: (entry: unknown, path: string) => T): T[] | null {
-  return value === null ? null : array(value, path, parse);
-}
-function optionalArray<T>(value: unknown, path: string, parse: (entry: unknown, path: string) => T): T[] | undefined {
-  return value === undefined ? undefined : array(value, path, parse);
-}
+const {
+  invalid,
+  object: obj,
+  text,
+  bool,
+  array,
+  nullableArray,
+  optionalArray,
+  maybeText: optionalText,
+  integer: safeInteger,
+} = responseReader((path) => `知识治理响应中的 ${path} 无法识别`);
+const integer = (value: unknown, path: string): number =>
+  safeInteger(value, path, 0);
 function kind(value: unknown, path: string): KnowledgeKind {
-  if (value === "policy" || value === "guidance" || value === "exception" || value === "experience") return value;
-  return invalid(path);
+  return (
+    enumValue<KnowledgeKind>(value, [
+      "policy",
+      "guidance",
+      "exception",
+      "experience",
+    ]) ?? invalid(path)
+  );
 }
 function ref(value: unknown, path: string): KnowledgeRef {
   const v = obj(value, path);

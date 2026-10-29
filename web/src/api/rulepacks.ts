@@ -1,5 +1,6 @@
-import { ApiError, jsonInit, requestJson } from "./http";
+import { jsonInit, requestJson } from "./http";
 import { paths } from "./paths";
+import { enumValue, responseReader } from "./respond";
 
 export type RulePackState = "draft" | "validated" | "approved" | "published";
 export type RulePackHistoryAction =
@@ -210,36 +211,18 @@ export interface RulePackTestResponse {
 
 export type RulePackMutationResult = RulePackDetail | RulePackSummary;
 
-function fail(path: string): never {
-  throw new ApiError(
-    `RulePack 响应中的 ${path} 无法识别`,
-    200,
-    "invalid_response",
-    false,
-    null,
-  );
-}
-
-function object(
-  value: unknown,
-  path: string,
-  keys: readonly string[],
-  required: readonly string[] = keys,
-): Record<string, unknown> {
-  if (typeof value !== "object" || value === null || Array.isArray(value))
-    return fail(path);
-  const record = value as Record<string, unknown>;
-  if (
-    Object.keys(record).some((key) => !keys.includes(key)) ||
-    required.some((key) => !Object.hasOwn(record, key))
-  )
-    return fail(path);
-  return record;
-}
-
-function string(value: unknown, path: string): string {
-  return typeof value === "string" ? value : fail(path);
-}
+const {
+  invalid: fail,
+  record: object,
+  text: string,
+  bool: boolean,
+  array,
+  nullableText: nullableString,
+  nullableBool: nullableBoolean,
+  integer: safeInteger,
+} = responseReader((path) => `RulePack 响应中的 ${path} 无法识别`);
+const integer = (value: unknown, path: string): number =>
+  safeInteger(value, path, 0);
 function nonEmptyString(value: unknown, path: string): string {
   const parsed = string(value, path);
   return parsed.length > 0 ? parsed : fail(path);
@@ -250,34 +233,10 @@ function sha256(value: unknown, path: string): string {
   return /^[0-9a-f]{64}$/.test(parsed) ? parsed : fail(path);
 }
 
-function boolean(value: unknown, path: string): boolean {
-  return typeof value === "boolean" ? value : fail(path);
-}
-function nullableString(value: unknown, path: string): string | null {
-  return value === null ? null : string(value, path);
-}
-function nullableBoolean(value: unknown, path: string): boolean | null {
-  return value === null ? null : boolean(value, path);
-}
-
-function integer(value: unknown, path: string): number {
-  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0
-    ? value
-    : fail(path);
-}
 
 function positiveInteger(value: unknown, path: string): number {
   const parsed = integer(value, path);
   return parsed > 0 ? parsed : fail(path);
-}
-
-function array<T>(
-  value: unknown,
-  path: string,
-  parse: (item: unknown, itemPath: string) => T,
-): T[] {
-  if (!Array.isArray(value)) return fail(path);
-  return value.map((item, index) => parse(item, `${path}[${index}]`));
 }
 
 function optionalString(
@@ -291,42 +250,42 @@ function optionalString(
 }
 
 function parseState(value: unknown, path: string): RulePackState {
-  if (
-    value === "draft" ||
-    value === "validated" ||
-    value === "approved" ||
-    value === "published"
-  )
-    return value;
-  return fail(path);
+  return (
+    enumValue<RulePackState>(value, [
+      "draft",
+      "validated",
+      "approved",
+      "published",
+    ]) ?? fail(path)
+  );
 }
 
 function parseRelation(value: unknown, path: string): RulePackRelation {
-  if (
-    value === "compatible" ||
-    value === "conflict" ||
-    value === "insufficient" ||
-    value === "not_applicable"
-  )
-    return value;
-  return fail(path);
+  return (
+    enumValue<RulePackRelation>(value, [
+      "compatible",
+      "conflict",
+      "insufficient",
+      "not_applicable",
+    ]) ?? fail(path)
+  );
 }
 function parseHistoryAction(
   value: unknown,
   path: string,
 ): RulePackHistoryAction {
-  if (
-    value === "create" ||
-    value === "edit" ||
-    value === "validate" ||
-    value === "approve" ||
-    value === "publish" ||
-    value === "disable" ||
-    value === "rollback" ||
-    value === "test"
-  )
-    return value;
-  return fail(path);
+  return (
+    enumValue<RulePackHistoryAction>(value, [
+      "create",
+      "edit",
+      "validate",
+      "approve",
+      "publish",
+      "disable",
+      "rollback",
+      "test",
+    ]) ?? fail(path)
+  );
 }
 
 function parseAuthoritySource(
@@ -666,14 +625,21 @@ function parseHistoryEntry(value: unknown, path: string): RulePackHistoryEntry {
   };
 }
 
+function list<T>(
+  value: unknown,
+  name: string,
+  parse: (entry: unknown, path: string) => T,
+): T[] {
+  const record = object(value, name, ["items"]);
+  return array(record.items, `${name}.items`, parse);
+}
+
 export function parseRulePackList(value: unknown): RulePackSummary[] {
-  const record = object(value, "list", ["items"]);
-  return array(record.items, "list.items", parseSummary);
+  return list(value, "list", parseSummary);
 }
 
 export function parseRulePackHistory(value: unknown): RulePackHistoryEntry[] {
-  const record = object(value, "history", ["items"]);
-  return array(record.items, "history.items", parseHistoryEntry);
+  return list(value, "history", parseHistoryEntry);
 }
 
 function parseReportCitation(

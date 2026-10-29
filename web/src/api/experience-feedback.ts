@@ -1,4 +1,5 @@
-import { ApiError, jsonInit, requestJson } from "./http";
+import { jsonInit, requestJson } from "./http";
+import { responseReader } from "./respond";
 
 export interface ExperienceEvidenceRef {
   document_id: string;
@@ -63,18 +64,11 @@ export interface ExperienceCandidate {
   };
 }
 
-function invalid(field: string): never {
-  throw new ApiError(`经验反馈响应中的 ${field} 无法识别`, 200, "invalid_response", false, null);
-}
-
-function object(value: unknown, field: string): Record<string, unknown> {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) return invalid(field);
-  return value as Record<string, unknown>;
-}
-
-function text(value: unknown, field: string): string {
-  return typeof value === "string" ? value : invalid(field);
-}
+const { invalid, object, text, array, integer: safeInteger } = responseReader(
+  (field) => `经验反馈响应中的 ${field} 无法识别`,
+);
+const integer = (value: unknown, field: string): number =>
+  safeInteger(value, field, 0);
 
 function identity(value: unknown, field: string): string {
   const result = text(value, field);
@@ -85,14 +79,8 @@ function optionalIdentity(value: unknown, field: string): string | null {
   return value === undefined ? null : identity(value, field);
 }
 
-function integer(value: unknown, field: string): number {
-  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0 ? value : invalid(field);
-}
-
 function stringArray(value: unknown, field: string): string[] | null {
-  if (value === null) return null;
-  if (!Array.isArray(value)) return invalid(field);
-  return value.map((entry, index) => text(entry, `${field}[${index}]`));
+  return value === null ? null : array(value, field, text);
 }
 
 function evidence(value: unknown, field: string): ExperienceEvidenceRef {
