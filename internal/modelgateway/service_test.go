@@ -495,38 +495,69 @@ func TestSystemOneAndChatCapacityReleaseOnAcquisition(t *testing.T) {
 	}
 }
 
+type fixturePlan struct {
+	Calls []struct {
+		ToolID string `json:"tool_id"`
+		Domain string `json:"domain"`
+		GapID  string `json:"gap_id"`
+	} `json:"calls"`
+}
+
+func fixturePlannerPlan(t *testing.T, user any) fixturePlan {
+	t.Helper()
+	encoded, err := json.Marshal(user)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, err := json.Marshal(map[string]any{"model": "fixture-chat", "messages": []map[string]string{
+		{"role": "system", "content": "Select only registered read-only tools."},
+		{"role": "user", "content": string(encoded)},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	content := contentOf(t, fixtureService().fixtureResponse("fixture-chat", body))
+	var plan fixturePlan
+	if err := json.Unmarshal([]byte(content), &plan); err != nil {
+		t.Fatalf("fixture did not return a plan: %v", err)
+	}
+	return plan
+}
+
 func TestFixturePlannerSelectsOnlyRequestedRegisteredTools(t *testing.T) {
-	user, err := json.Marshal(map[string]any{
+	plan := fixturePlannerPlan(t, map[string]any{
 		"scope": []string{"compliance"},
 		"gaps":  []map[string]string{{"id": "gap-amount", "domain": "compliance", "capability": "amount"}},
 		"tools": []map[string]any{{"id": "baseline.compliance", "domain": "compliance", "capabilities": []string{"authorization_basis"}},
 			{"id": "source.compliance", "domain": "compliance", "capabilities": []string{"amount"}}},
 		"previously_called": []any{},
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	body, err := json.Marshal(map[string]any{"model": "fixture-chat", "messages": []map[string]string{
-		{"role": "system", "content": "Select only registered read-only tools."},
-		{"role": "user", "content": string(user)},
-	}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	content := contentOf(t, fixtureService().fixtureResponse("fixture-chat", body))
-	var plan struct {
-		Calls []struct {
-			ToolID string `json:"tool_id"`
-			Domain string `json:"domain"`
-			GapID  string `json:"gap_id"`
-		} `json:"calls"`
-	}
-	if err := json.Unmarshal([]byte(content), &plan); err != nil {
-		t.Fatalf("fixture did not return a plan: %v", err)
-	}
 	if len(plan.Calls) != 1 || plan.Calls[0].ToolID != "source.compliance" ||
 		plan.Calls[0].Domain != "compliance" || plan.Calls[0].GapID != "gap-amount" {
 		t.Fatalf("fixture plan exceeded its registered request: %+v", plan)
+	}
+}
+
+// Selection is per gap, not per id: when two gaps share an id, the second gap
+// still reaches the tool that satisfies its own capability instead of stopping
+// at the tool the previous gap used.
+func TestFixturePlannerSelectsEachGapWhenIDsRepeat(t *testing.T) {
+	plan := fixturePlannerPlan(t, map[string]any{
+		"scope": []string{"compliance"},
+		"gaps": []map[string]string{
+			{"id": "gap-shared", "domain": "compliance", "capability": "amount"},
+			{"id": "gap-shared", "domain": "compliance", "capability": "deadline"},
+		},
+		"tools": []map[string]any{
+			{"id": "source.amount", "domain": "compliance", "capabilities": []string{"amount"}},
+			{"id": "source.deadline", "domain": "compliance", "capabilities": []string{"deadline"}},
+		},
+		"previously_called": []any{},
+	})
+	if len(plan.Calls) != 2 ||
+		plan.Calls[0].ToolID != "source.amount" || plan.Calls[0].GapID != "gap-shared" ||
+		plan.Calls[1].ToolID != "source.deadline" || plan.Calls[1].GapID != "gap-shared" {
+		t.Fatalf("repeated gap id did not select per gap: %+v", plan)
 	}
 }
 
