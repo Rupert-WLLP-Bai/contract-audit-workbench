@@ -1,6 +1,8 @@
 package agentflow
 
 import (
+	"errors"
+	"math"
 	"strings"
 	"testing"
 )
@@ -234,5 +236,19 @@ func TestPlannerConfigurationHashChangesOnlyWhenAdvisoryIsFrozen(t *testing.T) {
 	off, err := ResolvePlannerConfiguration("")
 	if err != nil || off.Advisory != nil || off.ConfigurationID != baseline.ConfigurationID {
 		t.Fatalf("off did not restore the baseline hash: %+v (%v)", off, err)
+	}
+}
+
+func TestAdvisoryBandRejectsNonFiniteProbabilities(t *testing.T) {
+	for _, probability := range []float64{math.NaN(), math.Inf(1), math.Inf(-1), -0.01, 1.01} {
+		if band, err := advisoryBandFor(probability, 0.7, 0.3); !errors.Is(err, ErrInput) {
+			t.Fatalf("advisoryBandFor(%v) = %q, %v, want ErrInput", probability, band, err)
+		}
+	}
+	if band, err := advisoryBandFor(0.8, 0.7, 0.3); err != nil || band != "relevant" {
+		t.Fatalf("advisoryBandFor(0.8) = %q, %v, want relevant", band, err)
+	}
+	if band, err := advisoryBandFor(0.2, 0.7, 0.3); err != nil || band != "not_relevant" {
+		t.Fatalf("advisoryBandFor(0.2) = %q, %v, want not_relevant", band, err)
 	}
 }

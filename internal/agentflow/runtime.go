@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"math"
 	"math/big"
 	"regexp"
 	"slices"
@@ -2184,8 +2183,10 @@ func advisoryBandFor(probability, high, low float64) (string, error) {
 	}
 }
 
+// The closed interval already rejects NaN and both infinities: NaN compares
+// false against every bound, and an infinity fails the bound on its own side.
 func validAdvisoryProbability(value float64) bool {
-	return !math.IsNaN(value) && !math.IsInf(value, 0) && value >= 0 && value <= 1
+	return value >= 0 && value <= 1
 }
 
 func validAdvisoryThresholds(high, low float64) bool {
