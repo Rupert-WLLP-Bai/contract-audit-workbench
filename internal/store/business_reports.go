@@ -391,64 +391,115 @@ func reportDigest(jsonBytes, htmlBytes []byte) string {
 }
 
 func completeNoAuthorityRuleEvidence(caseItem Case, runID, attemptID string, evaluations []ConstraintEval, findings []Finding) bool {
-	if caseItem.BusinessLine != "ENT" || caseItem.Scenario != "telecom_dedicated_line" || caseItem.ContractType != "service" {
+	if !noAuthorityCaseScope(caseItem) {
 		return false
 	}
 	var seen [3]bool
 	var usedFindingIDs [3]string
 	for _, evaluation := range evaluations {
-		index, ruleID, domain, required := noAuthorityRuleForCapability(evaluation.CapabilityID)
-		if !required {
-			if evaluation.Mandatory {
-				return false
-			}
-			if _, knownRule := noAuthorityCapabilityForRule(evaluation.RuleID); knownRule {
-				return false
-			}
-			continue
-		}
-		if seen[index] || evaluation.RuleID != ruleID || evaluation.Domain != domain ||
-			evaluation.RunID != runID || evaluation.AttemptID != attemptID || evaluation.CaseID != caseItem.ID ||
-			evaluation.RuleVersion != "1" || !evaluation.Mandatory || evaluation.Relation != "insufficient" ||
-			evaluation.ReasonCode != "contractual_authority_missing" || strings.TrimSpace(evaluation.Reason) == "" ||
-			len(evaluation.FactIDs) != 0 || len(evaluation.ObjectRefs) != 0 || evaluation.FindingID == "" {
+		if !recordNoAuthorityEvaluation(caseItem, runID, attemptID, evaluation, findings, &seen, &usedFindingIDs) {
 			return false
 		}
-		var linked Finding
-		matches := 0
-		for _, finding := range findings {
-			if finding.ID == evaluation.FindingID && finding.RunID == runID && finding.AttemptID == attemptID && finding.CaseID == caseItem.ID {
-				linked = finding
-				matches++
-			}
-		}
-		if matches != 1 || linked.Origin != "rule" || linked.RuleID != ruleID || linked.CapabilityID != evaluation.CapabilityID ||
-			linked.Domain != domain || linked.Relation != "insufficient" || linked.DispositionSuggestion != "insufficient_evidence" ||
-			linked.Version < 1 || strings.TrimSpace(linked.Claim) == "" || linked.Claim != linked.UnverifiedReason ||
-			linked.ObjectRef != "" || len(linked.Anchors) != 0 {
-			return false
-		}
-		seen[index] = true
-		usedFindingIDs[index] = evaluation.FindingID
 	}
+	return noAuthorityFindingsComplete(caseItem, runID, attemptID, findings, seen, usedFindingIDs)
+}
+
+func noAuthorityCaseScope(item Case) bool {
+	return item.BusinessLine == "ENT" && item.Scenario == "telecom_dedicated_line" && item.ContractType == "service"
+}
+
+func recordNoAuthorityEvaluation(item Case, runID, attemptID string, evaluation ConstraintEval, findings []Finding, seen *[3]bool, used *[3]string) bool {
+	index, ruleID, domain, required := noAuthorityRuleForCapability(evaluation.CapabilityID)
+	if !required {
+		return !evaluation.Mandatory && !knownNoAuthorityRule(evaluation.RuleID)
+	}
+	if !validNoAuthorityEvaluation(item, runID, attemptID, evaluation, index, ruleID, domain, *seen) {
+		return false
+	}
+	if !linkedNoAuthorityFindingValid(item, runID, attemptID, evaluation, findings, ruleID, domain) {
+		return false
+	}
+	seen[index] = true
+	used[index] = evaluation.FindingID
+	return true
+}
+
+func knownNoAuthorityRule(ruleID string) bool {
+	_, known := noAuthorityCapabilityForRule(ruleID)
+	return known
+}
+
+func validNoAuthorityEvaluation(item Case, runID, attemptID string, evaluation ConstraintEval, index int, ruleID, domain string, seen [3]bool) bool {
+	return !seen[index] && noAuthorityEvaluationIdentityMatches(item, runID, attemptID, evaluation, ruleID, domain) &&
+		noAuthorityEvaluationEvidenceMatches(evaluation)
+}
+
+func noAuthorityEvaluationIdentityMatches(item Case, runID, attemptID string, evaluation ConstraintEval, ruleID, domain string) bool {
+	return evaluation.RuleID == ruleID && evaluation.Domain == domain && evaluation.RunID == runID &&
+		evaluation.AttemptID == attemptID && evaluation.CaseID == item.ID && evaluation.RuleVersion == "1"
+}
+
+func noAuthorityEvaluationEvidenceMatches(evaluation ConstraintEval) bool {
+	return evaluation.Mandatory && evaluation.Relation == "insufficient" &&
+		evaluation.ReasonCode == "contractual_authority_missing" && strings.TrimSpace(evaluation.Reason) != "" &&
+		len(evaluation.FactIDs) == 0 && len(evaluation.ObjectRefs) == 0 && evaluation.FindingID != ""
+}
+
+func linkedNoAuthorityFindingValid(item Case, runID, attemptID string, evaluation ConstraintEval, findings []Finding, ruleID, domain string) bool {
+	linked, matches := linkedNoAuthorityFinding(item, runID, attemptID, evaluation.FindingID, findings)
+	return matches == 1 && noAuthorityFindingMatchesEvaluation(linked, evaluation, ruleID, domain)
+}
+
+func linkedNoAuthorityFinding(item Case, runID, attemptID, findingID string, findings []Finding) (Finding, int) {
+	var linked Finding
+	matches := 0
 	for _, finding := range findings {
-		if finding.Origin != "rule" {
-			continue
+		if finding.ID == findingID && finding.RunID == runID && finding.AttemptID == attemptID && finding.CaseID == item.ID {
+			linked = finding
+			matches++
 		}
-		index, ruleID, _, requiredCapability := noAuthorityRuleForCapability(finding.CapabilityID)
-		capability, requiredRule := noAuthorityCapabilityForRule(finding.RuleID)
-		if !requiredCapability {
-			if requiredRule {
-				return false
-			}
-			continue
-		}
-		if !requiredRule || capability != finding.CapabilityID || finding.RuleID != ruleID || !seen[index] ||
-			usedFindingIDs[index] != finding.ID || finding.RunID != runID || finding.AttemptID != attemptID || finding.CaseID != caseItem.ID {
+	}
+	return linked, matches
+}
+
+func noAuthorityFindingMatchesEvaluation(linked Finding, evaluation ConstraintEval, ruleID, domain string) bool {
+	return noAuthorityFindingIdentityMatches(linked, evaluation, ruleID, domain) && noAuthorityFindingClaimMatches(linked)
+}
+
+func noAuthorityFindingIdentityMatches(linked Finding, evaluation ConstraintEval, ruleID, domain string) bool {
+	return linked.Origin == "rule" && linked.RuleID == ruleID && linked.CapabilityID == evaluation.CapabilityID &&
+		linked.Domain == domain && linked.Relation == "insufficient" && linked.DispositionSuggestion == "insufficient_evidence"
+}
+
+func noAuthorityFindingClaimMatches(linked Finding) bool {
+	return linked.Version >= 1 && strings.TrimSpace(linked.Claim) != "" && linked.Claim == linked.UnverifiedReason &&
+		linked.ObjectRef == "" && len(linked.Anchors) == 0
+}
+
+func noAuthorityFindingsComplete(item Case, runID, attemptID string, findings []Finding, seen [3]bool, used [3]string) bool {
+	for _, finding := range findings {
+		if !noAuthorityFindingMatches(item, runID, attemptID, finding, seen, used) {
 			return false
 		}
 	}
 	return seen[0] && seen[1] && seen[2]
+}
+
+func noAuthorityFindingMatches(item Case, runID, attemptID string, finding Finding, seen [3]bool, used [3]string) bool {
+	if finding.Origin != "rule" {
+		return true
+	}
+	index, ruleID, _, requiredCapability := noAuthorityRuleForCapability(finding.CapabilityID)
+	capability, requiredRule := noAuthorityCapabilityForRule(finding.RuleID)
+	if !requiredCapability {
+		return !requiredRule
+	}
+	return requiredNoAuthorityFindingMatches(item, runID, attemptID, finding, index, ruleID, capability, requiredRule, seen, used)
+}
+
+func requiredNoAuthorityFindingMatches(item Case, runID, attemptID string, finding Finding, index int, ruleID, capability string, knownRule bool, seen [3]bool, used [3]string) bool {
+	return knownRule && capability == finding.CapabilityID && finding.RuleID == ruleID && seen[index] &&
+		used[index] == finding.ID && finding.RunID == runID && finding.AttemptID == attemptID && finding.CaseID == item.ID
 }
 
 func noAuthorityRuleForCapability(capability string) (int, string, string, bool) {
