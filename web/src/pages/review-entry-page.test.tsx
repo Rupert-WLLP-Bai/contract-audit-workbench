@@ -147,6 +147,27 @@ describe("审查入口", () => {
     );
   });
 
+  it("shows the empty state when no cases are visible", () => {
+    const data = snapshot();
+    const client = makeClient({
+      ...data,
+      cases: [],
+      runs: [],
+      dashboard: {
+        ...data.dashboard,
+        visible_cases: 0,
+        pending_review_cases: 0,
+      },
+    });
+    renderEntry(client);
+
+    expect(
+      screen.getByRole("heading", { name: "当前身份没有可访问案件" }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("table")).not.toBeInTheDocument();
+    expect(screen.getAllByText("0", { selector: "strong" })).toHaveLength(3);
+  });
+
   it("shows a refresh error when a stale workbench snapshot fails to reload", async () => {
     const client = makeClient(snapshot(), Date.now() - 60_000);
     vi.stubGlobal(
