@@ -475,4 +475,46 @@ describe("OpenAPI reference resolution", () => {
       resolveOpenApiReference({ $ref: "#/components/schemas/Payload/nope" }, root),
     ).toThrow("无法解析 OpenAPI 引用：#/components/schemas/Payload/nope");
   });
+
+  it("treats explicitly undefined optional fields as absent", () => {
+    const contract = parseOpenApiContract({
+      openapi: "3.0.3",
+      info: { title: "审查接口", version: "1.2.3", description: undefined },
+      paths: {
+        "/cases": {
+          get: {
+            summary: undefined,
+            required: undefined,
+            responses: { "200": {} },
+          },
+        },
+      },
+    });
+    expect(contract.description).toBe("");
+    expect(contract.operations[0]?.summary).toBe("GET /cases");
+  });
+
+  it("keeps falsy parameter examples and accepts parameters without schemas", () => {
+    const contract = parseOpenApiContract({
+      openapi: "3.0.3",
+      info: { title: "审查接口", version: "1.2.3" },
+      paths: {
+        "/cases": {
+          get: {
+            parameters: [
+              { name: "q", in: "query", required: undefined },
+              { name: "zero", in: "query", example: 0 },
+              { name: "schema-zero", in: "query", schema: { type: "integer", example: 0 } },
+            ],
+            responses: { "200": {} },
+          },
+        },
+      },
+    });
+    const [plain, zero, schemaZero] = contract.operations[0]?.parameters ?? [];
+    expect(plain?.schema).toBeNull();
+    expect(plain?.example).toBeNull();
+    expect(zero?.example).toBe(0);
+    expect(schemaZero?.example).toBe(0);
+  });
 });

@@ -187,6 +187,11 @@ describe("http client", () => {
       retryable: null,
       details: null,
     });
+    expect(
+      parseErrorPayload({ error: "直接消息", message: "" }).message,
+    ).toBe("");
+    expect(parseErrorPayload({ details: false }).details).toBe(false);
+    expect(parseErrorPayload({ details: 0 }).details).toBe(0);
   });
 
   it("builds default errors per HTTP status and prefers the payload", async () => {
@@ -227,6 +232,10 @@ describe("http client", () => {
       retryable: true,
       details: [1],
     });
+    const emptyCode = await errorFromResponse(
+      Response.json({ error: { code: "" } }, { status: 404 }),
+    );
+    expect(emptyCode.code).toBe("");
   });
 
   it("classifies errors without throwing on unknown values", () => {
@@ -237,6 +246,8 @@ describe("http client", () => {
       true,
     );
     expect(isUnauthenticated(new Error("x"))).toBe(false);
+    expect(isUnauthenticated({ status: 401 })).toBe(false);
+    expect(isUnauthenticated({ code: "unauthenticated" })).toBe(false);
     expect(isConflict(new ApiError("x", 409, "other", false, null))).toBe(true);
     expect(isConflict(new ApiError("x", 400, "conflict", false, null))).toBe(true);
     expect(isConflict(null)).toBe(false);

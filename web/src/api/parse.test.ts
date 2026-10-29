@@ -1,11 +1,16 @@
 import {
+  parseAcceptedReview,
+  parseActor,
   parseCaseDetail,
   parseCaseList,
   parseCaseSummary,
   parseFinding,
+  parseId,
   parseRemediation,
+  parseReviewDiagnostics,
   parseReviewWorkspace,
   parseSettings,
+  parseTemplateList,
 } from "./parse";
 import { parseWorkbenchSnapshot } from "./workbench";
 
@@ -794,5 +799,493 @@ describe("response parsers", () => {
     });
     expect(snapshot.documents[0]).not.toHaveProperty("parsed_document_id");
     expect(snapshot.documents[0]).not.toHaveProperty("normalized_text_digest");
+  });
+});
+
+const minimalAttempt = {
+  id: "a1",
+  run_id: "r1",
+  ordinal: 1,
+  parsed_document_ids: [],
+  retry_of_attempt_id: null,
+  state: "failed",
+  accepted_at: null,
+  started_at: null,
+  finished_at: null,
+  input_hash: null,
+  output_hash: null,
+  error_code: null,
+  history_kind: "frozen",
+};
+
+const executionDefaults = {
+  schema_version: "audit-execution/v1",
+  attempt: minimalAttempt,
+  attempts: [minimalAttempt],
+  events: [],
+  usage: null,
+  all_attempts_usage: null,
+  duration_ms: null,
+  first_verified_finding_ms: null,
+  queue_wait_ms: null,
+};
+
+function workspaceWith(overrides: Record<string, unknown>): Record<string, unknown> {
+  return {
+    run: { id: "r1", state: "failed", case_id: "c1" },
+    audit_events: [],
+    ...overrides,
+  };
+}
+
+describe("response parser boundary values", () => {
+  it("keeps empty strings instead of display defaults", () => {
+    const summary = parseCaseSummary({
+      id: "c1",
+      title: "",
+      document_count: 0,
+      pending_decisions: 0,
+      business_line: "",
+      scenario: "",
+      business_status: "",
+      latest_run: { id: "r1", state: "" },
+    });
+    expect(summary.title).toBe("");
+    expect(summary.latest_run?.state).toBe("");
+    expect(summary.business_line).toBe("");
+    expect(summary.scenario).toBe("");
+    expect(summary.business_status).toBe("");
+
+    const detail = parseCaseDetail({
+      ...caseDefaults,
+      id: "c1",
+      title: "",
+      revision_pending: false,
+      configuration_pending: false,
+      documents: [
+        { id: "d1" },
+        {
+          id: "d2",
+          filename: "",
+          role: "",
+          media_type: "",
+          digest: "",
+          size: 0,
+          parse_status: "",
+          created_at: "",
+          superseded: false,
+        },
+      ],
+    });
+    expect(detail.title).toBe("");
+    expect(detail.revision_pending).toBe(false);
+    expect(detail.configuration_pending).toBe(false);
+    expect(detail.documents[0]).toMatchObject({
+      filename: "未命名文件",
+      size: -1,
+      parse_status: "unknown",
+    });
+    expect(detail.documents[1]).toMatchObject({
+      filename: "",
+      role: "",
+      media_type: "",
+      digest: "",
+      size: 0,
+      parse_status: "",
+      created_at: "",
+      superseded: false,
+    });
+
+    const finding = parseFinding({
+      id: "f1",
+      origin: "",
+      domain: "",
+      claim: "",
+      relation: "",
+      decisions: [{ id: "d1", action: "", actor: "" }],
+    });
+    expect(finding).toMatchObject({
+      origin: "",
+      domain: "",
+      claim: "",
+      relation: "",
+    });
+    expect(finding.decisions[0]).toMatchObject({ action: "", actor: "" });
+  });
+
+  it("accepts both documented session audiences", () => {
+    const client = parseActor({
+      id: "u1",
+      tenant_id: "t1",
+      org_id: "o1",
+      role: "",
+      display_name: "",
+      audience: "client",
+    });
+    expect(client).toMatchObject({
+      id: "u1",
+      role: "",
+      display_name: "",
+      audience: "client",
+    });
+    expect(
+      parseActor({
+        id: "u2",
+        tenant_id: "t1",
+        org_id: "o1",
+        audience: "admin",
+      }),
+    ).toMatchObject({ id: "u2", audience: "admin" });
+  });
+
+  it("rejects empty, non-string and non-object ids", () => {
+    expect(parseId({ id: "case-1" })).toBe("case-1");
+    expect(() => parseId({ id: "" })).toThrow("服务没有返回编号");
+    expect(() => parseId({ id: 7 })).toThrow("服务没有返回编号");
+    expect(() => parseId("case-1")).toThrow("服务没有返回编号");
+  });
+
+  it("validates anchor offsets and preserves every anchor status", () => {
+    const offsets = [
+      { start: 0, end: 5, expected: { start: 0, end: 5 } },
+      { start: 1.5, end: 5, expected: null },
+      { start: 1, end: 1.5, expected: null },
+      { start: 1, end: 1, expected: null },
+    ];
+    const finding = parseFinding({
+      id: "f1",
+      evidence: offsets.map((offset, index) => ({
+        id: `e${index}`,
+        text_offset: { start: offset.start, end: offset.end },
+      })),
+    });
+    expect(finding.evidence.map((entry) => entry.text_offset)).toEqual(
+      offsets.map((offset) => offset.expected),
+    );
+
+    const statuses = parseFinding({
+      id: "f2",
+      evidence: [
+        { id: "e1", status: "anchor_mismatch" },
+        { id: "e2", status: "unlocatable" },
+        { id: "e3", status: "located" },
+        { id: "e4", status: "missing" },
+        { id: "e5", status: "unknown-status" },
+      ],
+    });
+    expect(statuses.evidence.map((entry) => entry.status)).toEqual([
+      "anchor_mismatch",
+      "unlocatable",
+      "located",
+      "missing",
+      "missing",
+    ]);
+  });
+
+  it("keeps settings defaults distinct from empty reported values", () => {
+    const settings = parseSettings({
+      model: { status: "", label: "" },
+      redaction_policy: "",
+      users: [{ id: "u1", display_name: "", role: "" }, null],
+      execution: {
+        total_attempts: 1,
+        running_attempts: 0,
+        completed_attempts: 1,
+        partial_attempts: 0,
+        failed_attempts: 0,
+        cancelled_attempts: 0,
+        model_calls: 2,
+        unknown_usage_calls: 0,
+        queue_depth: null,
+      },
+      operator_audit: {
+        enabled: true,
+        connectors: [
+          {
+            connector_id: "fixture.oss",
+            source_system: "",
+            allowed_objects: [1, "line-1", ""],
+          },
+        ],
+      },
+    });
+    expect(settings.model).toEqual({ status: "", label: "" });
+    expect(settings.redaction_policy).toBe("");
+    expect(settings.users).toEqual([
+      { id: "u1", display_name: "", role: "" },
+    ]);
+    expect(settings.execution).toMatchObject({
+      total_attempts: 1,
+      unknown_usage_calls: 0,
+      queue_depth: null,
+    });
+    expect(settings.operator_audit?.connectors[0]).toMatchObject({
+      connector_id: "fixture.oss",
+      source_system: "",
+      allowed_objects: ["line-1"],
+    });
+    expect(parseSettings({}).model).toEqual({
+      status: "unknown",
+      label: "未报告",
+    });
+  });
+
+  it("keeps an empty acceptance job id", () => {
+    expect(
+      parseAcceptedReview({ id: "a1", attempt_id: "a2", job_id: "" }),
+    ).toMatchObject({ job_id: "" });
+  });
+
+  it("rejects a zero remediation version", () => {
+    expect(() =>
+      parseRemediation({
+        id: "rem-1",
+        case_id: "c1",
+        run_id: "r1",
+        attempt_id: "a1",
+        finding_ids: [],
+        measure: "补充材料",
+        status: "open",
+        version: 0,
+        document_ids: [],
+        created_at: "2026-10-22T01:00:00Z",
+        updated_at: "2026-10-22T01:00:00Z",
+      }),
+    ).toThrow("version必须大于0");
+  });
+
+  it("rejects a case that is missing any business record array", () => {
+    expect(() =>
+      parseCaseDetail({
+        id: "c1",
+        business_line: "ENT",
+        scenario: "s",
+        business_status: "active",
+        archived_at: null,
+        members: [],
+        generations: [],
+        remediations: [],
+      }),
+    ).toThrow("案件缺少业务记录数组");
+    expect(() =>
+      parseCaseDetail({
+        id: "c1",
+        business_line: "ENT",
+        scenario: "s",
+        business_status: "active",
+        archived_at: null,
+        members: [],
+        generations: [],
+        remediations: [],
+        archives: [],
+      }),
+    ).toThrow("案件缺少业务记录数组");
+  });
+
+  it("rejects non-finite case counts", () => {
+    expect(() =>
+      parseCaseSummary({
+        id: "c1",
+        document_count: Number.POSITIVE_INFINITY,
+        pending_decisions: 0,
+      }),
+    ).toThrow("案件列表缺少数量");
+  });
+
+  it("rejects non-string arrays in audit events", () => {
+    expect(() =>
+      parseReviewDiagnostics({
+        case_id: "c1",
+        run_id: "r1",
+        execution: null,
+        snapshot: null,
+        audit_events: [
+          {
+            event_id: "e1",
+            run_id: "r1",
+            actor: "u1",
+            seq: 1,
+            event_type: "review.started",
+            prev_hash: "hash-0",
+            hash: "hash-1",
+            correlation_ids: [1],
+          },
+        ],
+      }),
+    ).toThrow("correlation_ids不是字符串数组");
+  });
+
+  it("parses template definitions and their required flags", () => {
+    expect(
+      parseTemplateList({
+        items: [
+          {
+            id: "t1",
+            name: "审查模板",
+            version: "1",
+            digest: "digest-1",
+            fields: [
+              { key: "title", label: "标题", required: true, type: "text" },
+            ],
+          },
+        ],
+      }),
+    ).toEqual([
+      {
+        id: "t1",
+        name: "审查模板",
+        version: "1",
+        digest: "digest-1",
+        fields: [
+          { key: "title", label: "标题", required: true, type: "text" },
+        ],
+      },
+    ]);
+  });
+
+  it("rejects a parsed document with an unknown status", () => {
+    expect(() =>
+      parseCaseDetail({
+        ...caseDefaults,
+        id: "c1",
+        documents: [{ id: "d1", parsed_document: { status: "pending" } }],
+      }),
+    ).toThrow("解析产物状态无效");
+  });
+
+  it("accepts an explicit null agent review on an execution", () => {
+    const workspace = parseReviewWorkspace(
+      workspaceWith({
+        execution: { ...executionDefaults, agent_review: null },
+      }),
+    );
+    expect(workspace.execution?.agent_review).toBeNull();
+  });
+
+  it("parses review diagnostics with an empty audit event list", () => {
+    const diagnostics = parseReviewDiagnostics({
+      case_id: "c1",
+      run_id: "r1",
+      execution: null,
+      snapshot: null,
+      audit_events: [],
+    });
+    expect(diagnostics).toMatchObject({
+      case_id: "c1",
+      run_id: "r1",
+      audit_events: [],
+    });
+  });
+
+  it("keeps only non-negative integer execution durations", () => {
+    const duration = (value: unknown) =>
+      parseReviewWorkspace(
+        workspaceWith({
+          execution: { ...executionDefaults, duration_ms: value },
+        }),
+      ).execution?.duration_ms;
+    expect(duration(0)).toBe(0);
+    expect(duration(-1)).toBeNull();
+    expect(duration(1.5)).toBeNull();
+    expect(duration(null)).toBeNull();
+  });
+
+  it("keeps a null event usage and rejects a non-array usage source list", () => {
+    const event = {
+      seq: 1,
+      attempt_id: "a1",
+      span_id: null,
+      parent_span_id: null,
+      node_kind: "model",
+      phase: "model",
+      event_type: "completed",
+      at: null,
+      duration_ms: null,
+      status: "completed",
+      error_code: null,
+      model_ref: null,
+      usage: null,
+    };
+    const workspace = parseReviewWorkspace(
+      workspaceWith({
+        execution: { ...executionDefaults, events: [event] },
+      }),
+    );
+    expect(workspace.execution?.events[0]?.usage).toBeNull();
+
+    expect(() =>
+      parseReviewWorkspace(
+        workspaceWith({
+          execution: {
+            ...executionDefaults,
+            usage: {
+              sources: "not-array",
+              known_subtotals: {
+                input_tokens: null,
+                output_tokens: null,
+                total_tokens: null,
+              },
+            },
+          },
+        }),
+      ),
+    ).toThrow("usage.sources不是字符串数组");
+  });
+
+  it("keeps empty evaluation fields and parses revisions", () => {
+    const workspace = parseReviewWorkspace(
+      workspaceWith({
+        evaluations: [{ id: "e1", domain: "", relation: "" }],
+        revisions: [
+          {
+            mark: "",
+            domain: "",
+            relation: "",
+            claim: "",
+            prior_decision: { id: "d1" },
+          },
+        ],
+      }),
+    );
+    expect(workspace.evaluations?.[0]).toMatchObject({
+      domain: "",
+      relation: "",
+    });
+    expect(workspace.revisions?.[0]).toMatchObject({
+      mark: "",
+      domain: "",
+      relation: "",
+      claim: "",
+      prior_decision: { id: "d1", actor: "未知人员" },
+    });
+  });
+
+  it("parses clauses and drops incomplete clause entries", () => {
+    const workspace = parseReviewWorkspace(
+      workspaceWith({
+        documents: [
+          {
+            id: "d1",
+            clauses: [
+              { id: "cl1", heading: "第一条", text_offset: { start: 0, end: 2 } },
+              { heading: "缺少编号", text_offset: { start: 0, end: 2 } },
+              { id: "cl2", text_offset: { start: 0, end: 2 } },
+              { id: "cl3", heading: "缺少偏移" },
+              null,
+            ],
+          },
+        ],
+      }),
+    );
+    expect(workspace.documents[0]?.clauses).toEqual([
+      { id: "cl1", heading: "第一条", text_offset: { start: 0, end: 2 }, page: null },
+    ]);
+  });
+
+  it("filters non-string snapshot document ids", () => {
+    const workspace = parseReviewWorkspace(
+      workspaceWith({ snapshot: { document_ids: [1, "d1", null] } }),
+    );
+    expect(workspace.snapshot?.document_ids).toEqual(["d1"]);
   });
 });
