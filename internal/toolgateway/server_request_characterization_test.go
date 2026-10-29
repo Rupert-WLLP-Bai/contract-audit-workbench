@@ -157,6 +157,7 @@ func TestEncodedMirroredToolNameRejectsMalformedAndPinsEmptyBoundary(t *testing.
 		{"missing encoded suffix can decode but must not mirror", "a", "=?base64?YQ==xx", codeHeaderMismatch, "HTTP header does not match the request body.", "Mcp-Name"},
 		{"missing encoded prefix can decode but must not mirror", "a", "123456789YQ==?=", codeHeaderMismatch, "HTTP header does not match the request body.", "Mcp-Name"},
 		{"short encoded prefix is rejected before slicing", "", "=?base64?", codeHeaderMismatch, "HTTP header does not match the request body.", "Mcp-Name"},
+		{"overlapping encoded prefix and suffix are rejected before slicing", "", "=?base64?=", codeHeaderMismatch, "HTTP header does not match the request body.", "Mcp-Name"},
 		{"missing encoded prefix cannot mirror a literal", "foo", "123456789Zm9v?=", codeHeaderMismatch, "HTTP header does not match the request body.", "Mcp-Name"},
 		{"missing encoded suffix cannot mirror a literal", "foo", "=?base64?Zm9vab", codeHeaderMismatch, "HTTP header does not match the request body.", "Mcp-Name"},
 		{"invalid base64 with a decodable prefix is rejected", "foo", "=?base64?Zm9v!?=", codeHeaderMismatch, "HTTP header does not match the request body.", "Mcp-Name"},
