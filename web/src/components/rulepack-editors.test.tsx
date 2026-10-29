@@ -511,6 +511,49 @@ describe("RulePackManifestEditor structured edits", () => {
   });
 });
 
+describe("RulePackManifestEditor identity and rule fields", () => {
+  it("edits unlocked pack identity and every rule text field", () => {
+    const changes = renderManifest(createEmptyRulePackDraft("tenant-test"));
+    inputValue("规则包 ID", "pack-a");
+    inputValue("版本", "2");
+    expect(changes.at(-1)!.id).toBe("pack-a");
+    expect(changes.at(-1)!.version).toBe("2");
+    inputValue("规则版本", "3");
+    inputValue("检查域", "commercial");
+    inputValue("能力 ID", "amount");
+    inputValue("业务线", "ENT");
+    inputValue("场景", "cloud");
+    inputValue("合同类型", "service");
+    inputValue("所需事实维度", "amount");
+    inputValue("单位族", "money");
+    const rule = changes.at(-1)!.rules[0]!;
+    expect(rule).toMatchObject({
+      version: "3",
+      domain: "commercial",
+      capability_id: "amount",
+      business_scope: { business_line: "ENT", scenario: "cloud", contract_type: "service" },
+      required_fact: { dimension: "amount", unit_family: "money" },
+    });
+  });
+
+  it("keeps a locked pack id and version read-only while tenant stays fixed", () => {
+    renderManifest(manifest, { lockedIdentity: true });
+    expect(screen.getByLabelText("规则包 ID")).toHaveAttribute("readonly");
+    expect(screen.getByLabelText("版本", { exact: true })).toHaveAttribute("readonly");
+    expect(screen.getByLabelText("可信会话租户")).toHaveAttribute("readonly");
+    expect(screen.getByLabelText("规则租户")).toHaveAttribute("readonly");
+  });
+
+  it("blocks all rule edits when the editor is disabled", () => {
+    renderManifest(manifest, { disabled: true });
+    expect(screen.getByLabelText("规则 ID")).toBeDisabled();
+    expect(screen.getByLabelText("比较器")).toBeDisabled();
+    expect(screen.getByLabelText("添加规则")).toBeDisabled();
+    expect(screen.getByLabelText("添加来源")).toBeDisabled();
+    expect(screen.getByLabelText("生效时间（本地时区）")).toBeDisabled();
+  });
+});
+
 describe("RulePackTestPanel consumer behavior", () => {
   it("submits code point citations and literal facts, then renders all result relations and provenance", async () => {
     const user = userEvent.setup();
