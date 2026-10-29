@@ -3,7 +3,7 @@ package capabilitypack
 import (
 	"cmp"
 	"fmt"
-	"sort"
+	"slices"
 	"strings"
 	"sync"
 
@@ -153,11 +153,11 @@ func (r *Registry) List() []Manifest {
 			manifests = append(manifests, cloneManifest(m))
 		}
 	}
-	sort.Slice(manifests, func(i, j int) bool {
-		if manifests[i].PackID != manifests[j].PackID {
-			return manifests[i].PackID < manifests[j].PackID
+	slices.SortFunc(manifests, func(a, b Manifest) int {
+		if order := strings.Compare(a.PackID, b.PackID); order != 0 {
+			return order
 		}
-		return compareVersions(manifests[i].Version, manifests[j].Version) < 0
+		return compareVersions(a.Version, b.Version)
 	})
 	return manifests
 }

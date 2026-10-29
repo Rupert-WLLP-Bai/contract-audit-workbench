@@ -22,12 +22,15 @@ func LoadDir(dir string) ([]Manifest, error) {
 
 	manifests := make([]Manifest, 0, len(entries))
 	for _, entry := range entries {
-		manifest, include, err := loadEntry(dir, entry)
-		if err != nil {
+		if err := validateDirectoryEntry(entry); err != nil {
 			return nil, err
 		}
-		if !include {
+		if !strings.HasSuffix(entry.Name(), ".json") {
 			continue
+		}
+		manifest, err := loadManifestEntry(dir, entry.Name())
+		if err != nil {
+			return nil, err
 		}
 		manifests = append(manifests, manifest)
 	}
@@ -37,23 +40,16 @@ func LoadDir(dir string) ([]Manifest, error) {
 	return manifests, nil
 }
 
-func loadEntry(dir string, entry os.DirEntry) (Manifest, bool, error) {
-	name := entry.Name()
-	if err := validateDirectoryEntry(entry); err != nil {
-		return Manifest{}, false, err
-	}
-	if !strings.HasSuffix(name, ".json") {
-		return Manifest{}, false, nil
-	}
+func loadManifestEntry(dir, name string) (Manifest, error) {
 	raw, err := readManifestFile(filepath.Join(dir, name))
 	if err != nil {
-		return Manifest{}, false, err
+		return Manifest{}, err
 	}
 	manifest, err := Parse(raw)
 	if err != nil {
-		return Manifest{}, false, fmt.Errorf("%w: capability pack file %q: %v", auditext.ErrInvalidRequest, name, err)
+		return Manifest{}, fmt.Errorf("%w: capability pack file %q: %v", auditext.ErrInvalidRequest, name, err)
 	}
-	return manifest, true, nil
+	return manifest, nil
 }
 
 func validateDirectoryEntry(entry os.DirEntry) error {
