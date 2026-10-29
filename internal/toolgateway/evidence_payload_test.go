@@ -3,6 +3,8 @@ package toolgateway
 import (
 	"net/http/httptest"
 	"testing"
+
+	"contractaudit/internal/store"
 )
 
 func TestEvidencePayloadPublicBoundaryRejectsIdentityAndAuthorizationDrift(t *testing.T) {
@@ -22,6 +24,32 @@ func TestEvidencePayloadPublicBoundaryRejectsIdentityAndAuthorizationDrift(t *te
 				t.Fatalf("boundary drift was not refused: status=%d finish=%s bytes=%d body=%s", response.Code, backend.finishStatus, backend.finishOutputSize, response.Body.String())
 			}
 		})
+	}
+}
+
+func TestEvidencePayloadIgnoresMalformedUnpinnedSourceThroughHandler(t *testing.T) {
+	backend := testBackend(t)
+	unselected := backend.workspace.Documents[0]
+	parsed := *unselected.ParsedDocument
+	unselected.ParsedDocument = &parsed
+	unselected.Document.ID = "doc-unpinned"
+	unselected.Document.TenantID = "tenant-other"
+	unselected.ParsedDocument.ID = "parsed-unpinned"
+	unselected.ParsedDocument.Text = string([]byte{0xff})
+	backend.workspace.Documents = append([]store.Interpreted{unselected}, backend.workspace.Documents...)
+
+	response := httptest.NewRecorder()
+	NewHandler(backend, Options{}).ServeHTTP(response, protocolRequest(t, "tools/call", nil))
+	evidence := protocolEvidence(t, response)
+	if evidence.Status != "found" || len(evidence.Facts) != 1 || evidence.Facts[0].Value != "100" {
+		t.Fatalf("an unpinned malformed source affected selected evidence: %+v", evidence)
+	}
+	citation := evidence.Facts[0].Citations[0]
+	if citation.DocumentID != "doc-1" || citation.ParsedDocumentID != "parsed-1" || citation.SourceDigest != citation.NormalizedDigest {
+		t.Fatalf("citation did not remain bound to the pinned normalized source: %+v", citation)
+	}
+	if backend.finishStatus != "completed" || backend.finishOutputSize <= 0 {
+		t.Fatalf("successful frozen read did not settle: status=%s bytes=%d", backend.finishStatus, backend.finishOutputSize)
 	}
 }
 
