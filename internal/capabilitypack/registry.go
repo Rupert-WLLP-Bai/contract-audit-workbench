@@ -1,9 +1,9 @@
 package capabilitypack
 
 import (
+	"cmp"
 	"fmt"
 	"sort"
-	"strconv"
 	"strings"
 	"sync"
 
@@ -162,28 +162,22 @@ func (r *Registry) List() []Manifest {
 	return manifests
 }
 
-// compareVersions compares validated three-part numeric versions. Manifests
-// cannot be registered without validation, so every segment parses as an
-// integer.
+// compareVersions compares validated three-part numeric versions without a
+// machine-integer limit. Raw spelling breaks numeric ties so List stays stable
+// when distinct registered versions differ only in leading zeroes.
 func compareVersions(a, b string) int {
-	segmentsA := strings.Split(a, ".")
 	segmentsB := strings.Split(b, ".")
-	for i := 0; i < len(segmentsA) || i < len(segmentsB); i++ {
-		var left, right int
-		if i < len(segmentsA) {
-			left, _ = strconv.Atoi(segmentsA[i])
+	for i, segment := range strings.Split(a, ".") {
+		left := strings.TrimLeft(segment, "0")
+		right := strings.TrimLeft(segmentsB[i], "0")
+		if order := cmp.Compare(len(left), len(right)); order != 0 {
+			return order
 		}
-		if i < len(segmentsB) {
-			right, _ = strconv.Atoi(segmentsB[i])
-		}
-		if left != right {
-			if left < right {
-				return -1
-			}
-			return 1
+		if order := strings.Compare(left, right); order != 0 {
+			return order
 		}
 	}
-	return 0
+	return strings.Compare(a, b)
 }
 
 func cloneManifest(m Manifest) Manifest {
