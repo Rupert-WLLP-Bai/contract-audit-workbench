@@ -143,6 +143,18 @@ describe("apiRequestBodyFields", () => {
     ).toEqual([]);
   });
 
+  it("returns no fields for a text body that declares properties", () => {
+    expect(
+      apiRequestBodyFields(
+        requestBody({
+          mediaType: "text/plain",
+          schema: { type: "object", properties: { a: { type: "string" } } },
+        }),
+        {},
+      ),
+    ).toEqual([]);
+  });
+
   it("returns no fields when the schema has no properties", () => {
     expect(
       apiRequestBodyFields(
@@ -382,6 +394,18 @@ describe("buildApiRequest parameters", () => {
       "X-Flag": "true",
     });
     expect(built.request?.init.method).toBe("POST");
+  });
+
+  it("treats a parameter without a schema as a string", () => {
+    const target = operation({
+      path: "/cases",
+      parameters: [parameter({ name: "note", location: "query", schema: null })],
+    });
+    const built = build(target, {
+      values: { "GET /cases:query:note": "hello" },
+    });
+    expect(built.error).toBeNull();
+    expect(built.request?.url).toBe("/cases?note=hello");
   });
 
   it("replaces every path placeholder occurrence", () => {
@@ -686,19 +710,145 @@ describe("buildApiRequest JSON bodies", () => {
   });
 
   it("accepts a null value for an explicitly nullable schema", () => {
-    for (const schema of [{ nullable: true }, { type: ["string", "null"] }]) {
+    for (const schema of [
+      { nullable: true },
+      { type: ["string", "null"] },
+      { nullable: true, type: "string" },
+    ]) {
       const built = build(target(requestBody({ schema })), { bodyText: "null" });
       expect(built.error).toBeNull();
       expect(built.request?.init.body).toBe("null");
     }
   });
 
-  it("ignores non-string type declarations and unknown types", () => {
+  it("still validates a non-null value against a nullable schema", () => {
+    const built = build(
+      target(requestBody({ schema: { nullable: true, type: "string" } })),
+      { bodyText: "1" },
+    );
+    expect(built.error).toBe("请求体 类型不符合 OpenAPI schema");
+  });
+
+  it("ignores non-string type declarations", () => {
     const built = build(
       target(requestBody({ schema: { type: ["string", 7] } })),
       { bodyText: '"a"' },
     );
     expect(built.error).toBeNull();
+  });
+
+  it("rejects a value when the declared type is unknown", () => {
+    const built = build(target(requestBody({ schema: { type: "date" } })), {
+      bodyText: '"2026-01-01"',
+    });
+    expect(built.error).toBe("请求体 类型不符合 OpenAPI schema");
+    expect(built.request).toBeNull();
+  });
+
+  it("applies required only to object values", () => {
+    const built = build(
+      target(requestBody({ schema: { required: ["a"] } })),
+      { bodyText: '"text"' },
+    );
+    expect(built.error).toBeNull();
+  });
+
+  it("validates properties declared without an explicit object type", () => {
+    const built = build(
+      target(requestBody({ schema: { properties: { a: { type: "string" } } } })),
+      { bodyText: '{"a":1}' },
+    );
+    expect(built.error).toBe("请求体.a 类型不符合 OpenAPI schema");
+  });
+
+  it("does not treat object values with length-like keys as arrays", () => {
+    const built = build(
+      target(requestBody({ schema: { items: { type: "string" } } })),
+      { bodyText: '{"length":1,"0":7}' },
+    );
+    expect(built.error).toBeNull();
+  });
+
+  it("validates items for an array schema without an explicit array type", () => {
+    const built = build(
+      target(requestBody({ schema: { items: { type: "string" } } })),
+      { bodyText: "[1]" },
+    );
+    expect(built.error).toBe("请求体[0] 类型不符合 OpenAPI schema");
+  });
+
+  it("accepts every item of a valid array", () => {
+    const built = build(
+      target(requestBody({ schema: { type: "array", items: { type: "string" } } })),
+      { bodyText: '["a"]' },
+    );
+    expect(built.error).toBeNull();
+    expect(built.request?.init.body).toBe('["a"]');
+  });
+
+  it("reports the index of the first invalid array item", () => {
+    const built = build(
+      target(requestBody({ schema: { type: "array", items: { type: "string" } } })),
+      { bodyText: '[1,"a"]' },
+    );
+    expect(built.error).toBe("请求体[0] 类型不符合 OpenAPI schema");
+  });
+
+  it("reports the index of a later invalid array item", () => {
+    const built = build(
+      target(requestBody({ schema: { type: "array", items: { type: "string" } } })),
+      { bodyText: '["a",1]' },
+    );
+    expect(built.error).toBe("请求体[1] 类型不符合 OpenAPI schema");
+  });
+
+  it("limits nested allOf recursion depth", () => {
+    let schema: OpenApiRecord = { type: "integer" };
+    for (let index = 0; index < 70; index += 1) schema = { allOf: [schema] };
+    const built = build(target(requestBody({ schema })), { bodyText: "1" });
+    expect(built.error).toMatch(/递归层级超出限制$/);
+  });
+
+  it("limits nested anyOf recursion depth", () => {
+    let schema: OpenApiRecord = { type: "integer" };
+    for (let index = 0; index < 70; index += 1) schema = { anyOf: [schema] };
+    const built = build(target(requestBody({ schema })), { bodyText: "1" });
+    expect(built.error).toBe("请求体 不符合 schema anyOf");
+  });
+
+  it("limits nested oneOf recursion depth", () => {
+    let schema: OpenApiRecord = { type: "integer" };
+    for (let index = 0; index < 70; index += 1) schema = { oneOf: [schema] };
+    const built = build(target(requestBody({ schema })), { bodyText: "1" });
+    expect(built.error).toBe("请求体 不符合 schema oneOf");
+  });
+
+  it("limits recursion depth when following a schema reference", () => {
+    let deep: OpenApiRecord = { type: "integer" };
+    let value: unknown = 1;
+    for (let index = 0; index < 64; index += 1) {
+      deep = { type: "object", properties: { nest: deep } };
+      value = { nest: value };
+    }
+    const schemaRoot = { components: { schemas: { Deep: deep } } };
+    const built = build(
+      target(requestBody({ schema: { $ref: "#/components/schemas/Deep" } })),
+      { bodyText: JSON.stringify(value), schemaRoot },
+    );
+    expect(built.error).toMatch(/递归层级超出限制$/);
+  });
+
+  it("limits nested array item recursion depth", () => {
+    let schema: OpenApiRecord = { type: "integer" };
+    let value: unknown = 1;
+    for (let index = 0; index < 65; index += 1) {
+      schema = { type: "array", items: schema };
+      value = [value];
+    }
+    const built = build(target(requestBody({ schema })), {
+      bodyText: JSON.stringify(value),
+    });
+    expect(built.error).toMatch(/递归层级超出限制$/);
   });
 
   it("follows schema references", () => {
@@ -798,6 +948,49 @@ describe("buildApiRequest binary and form bodies", () => {
     expect(
       build(target(requestBody({ mediaType: "multipart/form-data", required: true }))).error,
     ).toBe("必填表单请求体没有可用的 OpenAPI schema。");
+  });
+
+  it("allows an optional multipart body without a schema", () => {
+    const built = build(target(requestBody({ mediaType: "multipart/form-data" })));
+    expect(built.error).toBeNull();
+    expect(built.request?.init).not.toHaveProperty("body");
+    expect(built.request?.init.headers).toEqual({ Accept: "application/json" });
+  });
+
+  it("sends a multipart form that contains exactly one entry", () => {
+    const built = build(
+      target(
+        requestBody({
+          mediaType: "multipart/form-data",
+          schema: { type: "object", properties: { note: { type: "string" } } },
+        }),
+      ),
+      { bodyValues: { note: "x" } },
+    );
+    expect(built.error).toBeNull();
+    const form = built.request?.init.body as FormData;
+    expect(form).toBeInstanceOf(FormData);
+    expect(form.getAll("note")).toEqual(["x"]);
+  });
+
+  it("sends a urlencoded form that contains exactly one entry", () => {
+    const built = build(
+      target(
+        requestBody({
+          mediaType: "application/x-www-form-urlencoded",
+          schema: { type: "object", properties: { note: { type: "string" } } },
+        }),
+      ),
+      { bodyValues: { note: "x" } },
+    );
+    expect(built.error).toBeNull();
+    const body = built.request?.init.body as URLSearchParams;
+    expect(body).toBeInstanceOf(URLSearchParams);
+    expect([...body.entries()]).toEqual([["note", "x"]]);
+    expect(built.request?.init.headers).toEqual({
+      Accept: "application/json",
+      "Content-Type": "application/x-www-form-urlencoded",
+    });
   });
 
   it("returns form schema errors unchanged", () => {
@@ -1103,6 +1296,69 @@ describe("apiRequestCode", () => {
     expect(code).toContain(
       'for (const file of fileInput1?.files ?? []) body.append("gallery", file);',
     );
+    expect(code).toContain("body: body,");
+  });
+
+  it("numbers file inputs after a multiple file field", () => {
+    const body = new FormData();
+    body.append("gallery", new File(["x"], "g1.txt"), "g1.txt");
+    body.append("attachment", new File(["x"], "a.txt"), "a.txt");
+    const upload = operation({
+      path: "/upload",
+      method: "post",
+      requestBody: requestBody({
+        mediaType: "multipart/form-data",
+        schema: {
+          type: "object",
+          properties: {
+            gallery: { type: "array", items: { type: "string", format: "binary" } },
+            attachment: { type: "string", format: "binary" },
+          },
+        },
+      }),
+    });
+    const code = apiRequestCode(
+      upload,
+      { url: "/upload", init: { method: "POST", headers: {}, body } },
+      {},
+    );
+    expect(code).toContain(
+      "const fileInput0 = Array.from(document.querySelectorAll('input[type=\"file\"][data-request-body-field]')).find((element) => element.dataset.requestBodyField === \"gallery\");",
+    );
+    expect(code).toContain(
+      'for (const file of fileInput0?.files ?? []) body.append("gallery", file);',
+    );
+    expect(code).toContain(
+      "const fileInput1 = Array.from(document.querySelectorAll('input[type=\"file\"][data-request-body-field]')).find((element) => element.dataset.requestBodyField === \"attachment\");",
+    );
+    expect(code).toContain("const file2 = fileInput1?.files?.[0];");
+    expect(code).toContain('if (!file2) throw new Error("请选择文件：attachment");');
+    expect(code).toContain('body.append("attachment", file2);');
+  });
+
+  it("prints a single-file input for a file field missing from the schema", () => {
+    const body = new FormData();
+    body.append("extra", new File(["x"], "x.bin"), "x.bin");
+    const code = apiRequestCode(
+      operation({ path: "/upload", method: "post" }),
+      { url: "/upload", init: { method: "POST", headers: {}, body } },
+      {},
+    );
+    expect(code).toContain(
+      "const fileInput0 = Array.from(document.querySelectorAll('input[type=\"file\"][data-request-body-field]')).find((element) => element.dataset.requestBodyField === \"extra\");",
+    );
+    expect(code).toContain("const file1 = fileInput0?.files?.[0];");
+    expect(code).toContain('if (!file1) throw new Error("请选择文件：extra");');
+    expect(code).toContain('body.append("extra", file1);');
+  });
+
+  it("prints the form prelude for a form with no entries", () => {
+    const code = apiRequestCode(
+      operation({ path: "/upload", method: "post" }),
+      { url: "/upload", init: { method: "POST", headers: {}, body: new FormData() } },
+      {},
+    );
+    expect(code).toContain("const body = new FormData();\n");
     expect(code).toContain("body: body,");
   });
 
