@@ -95,4 +95,110 @@ describe("cases table", () => {
       '"returnTo":"/cases?q=network&run=needs_human&selected=c1"',
     );
   });
+
+  it("shows an explicit empty state instead of an empty table", () => {
+    render(
+      <MemoryRouter>
+        <CasesTable items={[]} {...tableProps} />
+      </MemoryRouter>,
+    );
+    expect(screen.getByText("没有符合条件的案件。")).toBeInTheDocument();
+    expect(screen.queryByRole("table")).not.toBeInTheDocument();
+  });
+
+  it("describes business line, scenario, status and archive state", () => {
+    render(
+      <MemoryRouter>
+        <CasesTable
+          items={[
+            {
+              ...item,
+              business_line: "企业业务",
+              scenario: "专线",
+              business_status: "active",
+            },
+            {
+              ...item,
+              id: "c2",
+              title: "归档合同",
+              business_line: "",
+              scenario: undefined,
+              business_status: "closed",
+              archived_at: "2026-10-22T00:00:00Z",
+            },
+          ]}
+          {...tableProps}
+        />
+      </MemoryRouter>,
+    );
+    expect(screen.getByRole("cell", { name: "企业业务，专线" })).toBeInTheDocument();
+    expect(screen.getByRole("cell", { name: "进行中" })).toBeInTheDocument();
+    expect(screen.getByRole("cell", { name: "未提供" })).toBeInTheDocument();
+    expect(screen.getAllByText("已归档").length).toBeGreaterThan(0);
+  });
+
+  it("marks the selected row so the list and detail stay aligned", () => {
+    const { container } = render(
+      <MemoryRouter>
+        <CasesTable items={[item]} {...tableProps} selectedId="c1" />
+      </MemoryRouter>,
+    );
+    expect(container.querySelector(".cases-table-row-selected")).not.toBeNull();
+  });
+
+  it.each([
+    ["材料", "document_count"],
+    ["待决定", "pending_decisions"],
+    ["更新时间", "updated_at"],
+    ["案件", "title"],
+  ])("reports sorting for the %s column", async (column, field) => {
+    const onSort = vi.fn();
+    const user = userEvent.setup();
+    render(
+      <MemoryRouter>
+        <CasesTable items={[item]} {...tableProps} onSort={onSort} />
+      </MemoryRouter>,
+    );
+    await user.click(screen.getByRole("columnheader", { name: new RegExp(column) }));
+    expect(onSort).toHaveBeenCalledWith(field);
+  });
+
+  it("exposes the active sort direction and ignores unsortable columns", async () => {
+    const onSort = vi.fn();
+    const user = userEvent.setup();
+    render(
+      <MemoryRouter>
+        <CasesTable
+          items={[item]}
+          {...tableProps}
+          sort="title"
+          direction="asc"
+          onSort={onSort}
+        />
+      </MemoryRouter>,
+    );
+    expect(
+      screen.getByRole("columnheader", { name: /案件/ }),
+    ).toHaveAttribute("aria-sort", "ascending");
+    await user.click(
+      screen.getByRole("columnheader", { name: "业务线 / 场景" }),
+    );
+    expect(onSort).not.toHaveBeenCalled();
+  });
+
+  it("shows a descending marker for the active column", () => {
+    render(
+      <MemoryRouter>
+        <CasesTable
+          items={[item]}
+          {...tableProps}
+          sort="document_count"
+          direction="desc"
+        />
+      </MemoryRouter>,
+    );
+    expect(
+      screen.getByRole("columnheader", { name: /材料/ }),
+    ).toHaveAttribute("aria-sort", "descending");
+  });
 });
