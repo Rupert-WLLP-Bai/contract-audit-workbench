@@ -199,6 +199,33 @@ describe("审查入口", () => {
     );
   });
 
+  it("marks one visible case and one run as filled", () => {
+    const data = snapshot();
+    const client = makeClient({
+      ...data,
+      cases: [data.cases[0]!],
+      runs: [data.runs[0]!],
+      dashboard: {
+        ...data.dashboard,
+        visible_cases: 1,
+        pending_review_cases: 0,
+      },
+    });
+    renderEntry(client);
+
+    const summary = within(
+      screen.getByRole("list", { name: "审查工作区摘要" }),
+    );
+    expect(summary.getByText("可见案件").closest("li")).toHaveAttribute(
+      "data-state",
+      "filled",
+    );
+    expect(summary.getByText("本周运行").closest("li")).toHaveAttribute(
+      "data-state",
+      "filled",
+    );
+  });
+
   it("shows a refresh error when a stale workbench snapshot fails to reload", async () => {
     const client = makeClient(snapshot(), Date.now() - 60_000);
     vi.stubGlobal(
