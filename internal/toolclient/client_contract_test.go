@@ -2,6 +2,7 @@ package toolclient
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
@@ -151,5 +152,72 @@ func TestFrozenEvidenceCancellationStopsTheGatewayRequest(t *testing.T) {
 	case <-cancelled:
 	case <-time.After(time.Second):
 		t.Fatal("caller cancellation did not cancel the gateway request")
+	}
+}
+
+func TestFrozenEvidenceSendsCurrentClaimAndReturnsReadOnlyPayload(t *testing.T) {
+	request := clientTestRequest()
+	var calls atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		if r.Method != http.MethodPost || r.URL.Path != "/api/mcp" {
+			t.Errorf("request = %s %s, want POST /api/mcp", r.Method, r.URL.Path)
+		}
+		if r.Header.Get("Content-Type") != "application/json" ||
+			r.Header.Get("Accept") != "application/json, text/event-stream" ||
+			r.Header.Get("MCP-Protocol-Version") != ProtocolVersion ||
+			r.Header.Get("Mcp-Method") != "tools/call" || r.Header.Get("Mcp-Name") != ToolName ||
+			r.Header.Get("X-Contract-Service-Key") != toolClientCredential {
+			t.Errorf("request headers = %#v", r.Header)
+		}
+		var job struct {
+			TenantID   string `json:"tenant_id"`
+			OrgID      string `json:"org_id"`
+			JobID      string `json:"job_id"`
+			WorkerID   string `json:"worker_id"`
+			Generation int64  `json:"generation"`
+			AttemptID  string `json:"attempt_id"`
+		}
+		if err := json.Unmarshal([]byte(r.Header.Get("X-Contract-Job-Context")), &job); err != nil {
+			t.Errorf("decode claim header: %v", err)
+		}
+		if job.TenantID != request.Claim.TenantID || job.OrgID != request.Claim.OrgID || job.JobID != request.Claim.JobID ||
+			job.WorkerID != request.Claim.WorkerID || job.Generation != request.Claim.Generation || job.AttemptID != request.Claim.AttemptID {
+			t.Errorf("job context = %+v, want claim %+v", job, request.Claim)
+		}
+		var body struct {
+			JSONRPC string `json:"jsonrpc"`
+			ID      string `json:"id"`
+			Method  string `json:"method"`
+			Params  struct {
+				Name      string         `json:"name"`
+				Arguments map[string]any `json:"arguments"`
+			} `json:"params"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Errorf("decode tool request: %v", err)
+		}
+		if body.JSONRPC != "2.0" || body.ID != "worker-frozen-evidence" || body.Method != "tools/call" || body.Params.Name != ToolName {
+			t.Errorf("tool request envelope = %+v", body)
+		}
+		if body.Params.Arguments["attempt_id"] != request.AttemptID || body.Params.Arguments["case_id"] != request.CaseID ||
+			body.Params.Arguments["run_id"] != request.RunID || body.Params.Arguments["capability_id"] != request.CapabilityID ||
+			body.Params.Arguments["deadline"] != request.Deadline.UTC().Format(time.RFC3339) {
+			t.Errorf("tool arguments = %+v", body.Params.Arguments)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"jsonrpc":"2.0","id":"worker-frozen-evidence","result":{"isError":false,"content":[{"type":"text","text":"{\"frozen\":true}"}]}}`)
+	}))
+	defer server.Close()
+	client, err := New(" "+server.URL+"/api/// ", toolClientCredential, time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	payload, err := client.FrozenEvidence(context.Background(), request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(payload) != `{"frozen":true}` || calls.Load() != 1 {
+		t.Fatalf("payload=%s calls=%d", payload, calls.Load())
 	}
 }
