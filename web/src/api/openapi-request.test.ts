@@ -1,3 +1,6 @@
+import { spawnSync } from "node:child_process";
+import { resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 import { describe, expect, it } from "vitest";
 import type {
   OpenApiOperation,
@@ -784,6 +787,56 @@ describe("buildApiRequest JSON bodies", () => {
     );
     expect(built.error).toBeNull();
     expect(built.request?.init.body).toBe('["a"]');
+  });
+
+  it("returns a valid nonempty array request without hanging", () => {
+    const moduleUrl = pathToFileURL(
+      resolve(process.cwd(), "src/api/openapi-request.ts"),
+    ).href;
+    const script = `
+      import { buildApiRequest } from ${JSON.stringify(moduleUrl)};
+      const built = buildApiRequest({
+        operation: {
+          key: "POST /cases",
+          operationId: "",
+          summary: "",
+          description: "",
+          tags: [],
+          method: "POST",
+          path: "/cases",
+          parameters: [],
+          requestBody: {
+            required: false,
+            description: "",
+            mediaType: "application/json",
+            schema: { type: "array", items: { type: "string" } },
+            example: null,
+            raw: null,
+          },
+          responses: [],
+          security: null,
+          raw: null,
+        },
+        values: {},
+        bodyText: '["contract"]',
+        bodyValues: {},
+        bodyFiles: {},
+        origin: "http://api.test",
+        schemaRoot: {},
+      });
+      if (built.error !== null || built.request?.init.body !== '["contract"]') {
+        throw new Error(built.error ?? "array request body was not preserved");
+      }
+      process.stdout.write("ok");
+    `;
+    const result = spawnSync("bun", ["-e", script], {
+      encoding: "utf8",
+      timeout: 2000,
+    });
+
+    expect(result.error).toBeUndefined();
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toBe("ok");
   });
 
   it("reports the index of the first invalid array item", () => {
