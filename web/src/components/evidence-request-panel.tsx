@@ -507,7 +507,7 @@ function RequestCardHistoryEvent({
   return (
     <li>
       {eventLabels[event.type] ?? event.type} · {historyActorName(event, context)} · {formatDateTime(event.occurred_at)}
-      {filename ? <p>提交材料：{filename}</p> : null}
+      {event.receipt?.document_id ? <p>提交材料：{filename}</p> : null}
       {event.receipt?.answer ? <p>提交答复：{event.receipt.answer}</p> : null}
     </li>
   );
@@ -1111,6 +1111,7 @@ function RequestCard({ item, caseId, runId, attemptId, documents, evaluations, a
   });
 
   function selectQuote(event: SyntheticEvent<HTMLTextAreaElement>) {
+    if (!frozenDocument?.text || !frozenDocument.parsed_document_id) return;
     const { selectionStart, selectionEnd } = event.currentTarget;
     setQuote(quoteFromSelection(frozenDocument, selectionStart, selectionEnd));
   }
