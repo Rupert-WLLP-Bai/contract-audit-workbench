@@ -174,39 +174,57 @@ type Service struct {
 func New(st *store.Store, config Config) (*Service, error) {
 	config.Mode = strings.TrimSpace(config.Mode)
 	config.UpstreamBaseURL = strings.TrimRight(strings.TrimSpace(config.UpstreamBaseURL), "/")
+	if err := validateBaseConfig(st, config); err != nil {
+		return nil, err
+	}
+	if err := validateModeConfig(config); err != nil {
+		return nil, err
+	}
+	service := newService(st, config)
+	service.jevStatus, service.jevReason, service.jevClient = normalizeJev(&service.jev, config.Budget)
+	return service, nil
+}
+
+func validateBaseConfig(st *store.Store, config Config) error {
 	if st == nil || (config.Mode != "openai-compatible" && config.Mode != "fixture") ||
 		len(config.WorkerCredential) < 32 || len(config.DocumentCredential) < 32 ||
 		subtle.ConstantTimeCompare([]byte(config.WorkerCredential), []byte(config.DocumentCredential)) == 1 ||
 		config.MaxConcurrency < 1 || config.QueueCapacity < 1 || config.RequestTimeout <= 0 ||
 		config.CircuitFailureThreshold < 1 || config.CircuitCooldown <= 0 || config.Budget.LeaseDuration <= 0 {
-		return nil, errors.New("model gateway configuration is incomplete or invalid")
+		return errors.New("model gateway configuration is incomplete or invalid")
 	}
+	return nil
+}
+
+func validateModeConfig(config Config) error {
 	if config.Mode == "fixture" {
 		environment := strings.ToLower(strings.TrimSpace(os.Getenv("APP_ENV")))
 		if environment != "development" && environment != "dev" && environment != "test" {
-			return nil, errors.New("local model fixture is disabled outside development and test")
+			return errors.New("local model fixture is disabled outside development and test")
 		}
 		if strings.TrimSpace(config.FixtureOCRContent) == "" {
-			return nil, errors.New("local model fixture OCR content must be explicitly configured")
+			return errors.New("local model fixture OCR content must be explicitly configured")
 		}
 		if model.GatewayID(config.ChatModel) == model.GatewayID(config.OCRModel) {
-			return nil, errors.New("local model fixture requires distinct chat and OCR model identifiers")
+			return errors.New("local model fixture requires distinct chat and OCR model identifiers")
 		}
 	} else if config.UpstreamBaseURL != "" {
 		endpoint, err := url.Parse(config.UpstreamBaseURL)
 		if err != nil || endpoint.Host == "" || (endpoint.Scheme != "http" && endpoint.Scheme != "https") || endpoint.User != nil || endpoint.RawQuery != "" || endpoint.Fragment != "" {
-			return nil, errors.New("LLM_BASE_URL must be an HTTP(S) base URL without credentials or query")
+			return errors.New("LLM_BASE_URL must be an HTTP(S) base URL without credentials or query")
 		}
 	}
-	service := &Service{
+	return nil
+}
+
+func newService(st *store.Store, config Config) *Service {
+	return &Service{
 		store: st, config: config, client: &http.Client{Timeout: config.RequestTimeout},
 		queue: make(chan struct{}, config.QueueCapacity), concurrency: make(chan struct{}, config.MaxConcurrency),
 		circuit: circuitBreaker{threshold: config.CircuitFailureThreshold, cooldown: config.CircuitCooldown},
 		jev:     config.Jev, jevQueue: make(chan struct{}, jevQueueCapacity), jevSlots: make(chan struct{}, jevMaxConcurrency),
 		jevCircuit: circuitBreaker{threshold: config.CircuitFailureThreshold, cooldown: config.CircuitCooldown},
 	}
-	service.jevStatus, service.jevReason, service.jevClient = normalizeJev(&service.jev, config.Budget)
-	return service, nil
 }
 
 func (s *Service) Handler() http.Handler {
