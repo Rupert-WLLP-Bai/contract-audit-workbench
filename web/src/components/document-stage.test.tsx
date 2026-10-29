@@ -1,4 +1,4 @@
-import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router";
 import { describe, expect, it, vi } from "vitest";
@@ -497,7 +497,6 @@ describe("document stage comparison modes", () => {
   });
 
   it("moves to the evidence source when the selected finding changes", async () => {
-    const user = userEvent.setup();
     const finding = findingWith([locatedAnchor("doc-2", "质保二十四个月", 0, 7)]);
     const view = renderStage({
       documents: [first, second],

@@ -47,7 +47,7 @@ describe("experience feedback API", () => {
 
   it("does not accept a response for another decision, an invalid span, or different content", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValueOnce(Response.json({ ...feedback, decision_id: "different" }))
-      .mockResolvedValueOnce(Response.json({ ...feedback, evidence_refs: [{ ...input.evidence_refs[0], end: 3 }] }))
+      .mockResolvedValueOnce(Response.json({ ...feedback, evidence_refs: [{ ...input.evidence_refs[0]!, end: 3 }] }))
       .mockResolvedValueOnce(Response.json({ ...feedback, reason: "不同理由" })));
     await expect(submitExperienceFeedback("case/1", input, "one")).rejects.toMatchObject({ code: "invalid_response" });
     await expect(submitExperienceFeedback("case/1", input, "two")).rejects.toMatchObject({ code: "invalid_response" });
@@ -63,9 +63,9 @@ describe("experience feedback API", () => {
       .mockResolvedValueOnce(Response.json({ ...feedback, attempt_id: "other" }))
       .mockResolvedValueOnce(Response.json({ ...feedback, finding_id: "other" }))
       .mockResolvedValueOnce(Response.json({ ...feedback, evidence_refs: [] }))
-      .mockResolvedValueOnce(Response.json({ ...feedback, evidence_refs: [{ ...input.evidence_refs[0], document_id: "other" }] }))
-      .mockResolvedValueOnce(Response.json({ ...feedback, evidence_refs: [{ ...input.evidence_refs[0], parsed_document_id: "other" }] }))
-      .mockResolvedValueOnce(Response.json({ ...feedback, evidence_refs: [{ ...input.evidence_refs[0], quote: "其他" }] })));
+      .mockResolvedValueOnce(Response.json({ ...feedback, evidence_refs: [{ ...input.evidence_refs[0]!, document_id: "other" }] }))
+      .mockResolvedValueOnce(Response.json({ ...feedback, evidence_refs: [{ ...input.evidence_refs[0]!, parsed_document_id: "other" }] }))
+      .mockResolvedValueOnce(Response.json({ ...feedback, evidence_refs: [{ ...input.evidence_refs[0]!, quote: "其他" }] })));
     await expect(submitExperienceFeedback("case/1", spaced, "trimmed")).resolves.toMatchObject({ reason: "复核期限" });
     for (const key of ["one", "two", "three", "four", "five", "six", "seven", "eight"]) {
       await expect(submitExperienceFeedback("case/1", input, key)).rejects.toMatchObject({ code: "invalid_response" });
@@ -98,7 +98,7 @@ describe("experience feedback API", () => {
     const zeroStart: ExperienceFeedbackInput = {
       ...input,
       evidence_refs: [
-        { ...input.evidence_refs[0], start: 0, end: 3, quote: "😀证据" },
+        { ...input.evidence_refs[0]!, start: 0, end: 3, quote: "😀证据" },
       ],
     };
     vi.stubGlobal(
@@ -116,7 +116,7 @@ describe("experience feedback API", () => {
     const malformed: ExperienceFeedbackInput = {
       ...input,
       evidence_refs: [
-        { ...input.evidence_refs[0], start: 0, end: 3, quote: "ab" },
+        { ...input.evidence_refs[0]!, start: 0, end: 3, quote: "ab" },
       ],
     };
     vi.stubGlobal(

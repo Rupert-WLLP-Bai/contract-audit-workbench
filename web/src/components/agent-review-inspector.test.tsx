@@ -821,6 +821,7 @@ describe("AgentReview Inspector rich configuration and evidence", () => {
       document_ids: [],
       parsed_document_ids: ["parsed-1"],
       parse_selection_hash: "selection-hash",
+      parser_configuration_id: "parser-config-1",
     };
     review.rulepack = { id: "pack-1", version: "9", content_sha256: "pack-sha" };
     review.scope.push({

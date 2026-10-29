@@ -205,7 +205,7 @@ describe("cases table", () => {
 
 describe("cases table sorting helper and scroll", () => {
   it("reads a single sorter, the first of an array, and rejects missing or unknown columns", () => {
-    expect(sortFieldOf(undefined)).toBeNull();
+    expect(sortFieldOf(undefined as never)).toBeNull();
     expect(sortFieldOf({ columnKey: "title" })).toBe("title");
     expect(
       sortFieldOf([

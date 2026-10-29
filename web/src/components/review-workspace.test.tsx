@@ -595,6 +595,9 @@ const attempt = (id: string, ordinal: number, state: string) => ({
   finished_at: null,
   parsed_document_ids: [],
   history_kind: "frozen",
+  input_hash: null,
+  output_hash: null,
+  error_code: null,
 });
 
 describe("review workspace lifecycle", () => {

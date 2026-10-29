@@ -393,7 +393,7 @@ describe("experience feedback storage and source guards", () => {
       { ...document, id: "pending", parse_status: "pending" },
       { ...document, id: "no-text", text: null },
       { ...document, id: "empty-text", text: "" },
-      { ...document, id: "blank-id", id: "   " },
+      { ...document, id: "   " },
       { ...document, id: "no-parse", parsed_document_id: null },
       { ...document, id: "blank-parse", parsed_document_id: "   " },
       {
