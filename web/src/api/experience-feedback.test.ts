@@ -53,6 +53,24 @@ describe("experience feedback API", () => {
     await expect(submitExperienceFeedback("case/1", input, "three")).rejects.toMatchObject({ code: "invalid_response" });
   });
 
+  it("accepts a trimmed reason and rejects every source identity drift", async () => {
+    const spaced = { ...input, reason: "  复核期限  " };
+    vi.stubGlobal("fetch", vi.fn()
+      .mockResolvedValueOnce(Response.json({ ...feedback, reason: "复核期限" }, { status: 201 }))
+      .mockResolvedValueOnce(Response.json({ ...feedback, case_id: "other" }))
+      .mockResolvedValueOnce(Response.json({ ...feedback, run_id: "other" }))
+      .mockResolvedValueOnce(Response.json({ ...feedback, attempt_id: "other" }))
+      .mockResolvedValueOnce(Response.json({ ...feedback, finding_id: "other" }))
+      .mockResolvedValueOnce(Response.json({ ...feedback, evidence_refs: [] }))
+      .mockResolvedValueOnce(Response.json({ ...feedback, evidence_refs: [{ ...input.evidence_refs[0], document_id: "other" }] }))
+      .mockResolvedValueOnce(Response.json({ ...feedback, evidence_refs: [{ ...input.evidence_refs[0], parsed_document_id: "other" }] }))
+      .mockResolvedValueOnce(Response.json({ ...feedback, evidence_refs: [{ ...input.evidence_refs[0], quote: "其他" }] })));
+    await expect(submitExperienceFeedback("case/1", spaced, "trimmed")).resolves.toMatchObject({ reason: "复核期限" });
+    for (const key of ["one", "two", "three", "four", "five", "six", "seven", "eight"]) {
+      await expect(submitExperienceFeedback("case/1", input, key)).rejects.toMatchObject({ code: "invalid_response" });
+    }
+  });
+
   it("preserves server errors and rejects mismatched job or candidate identities", async () => {
     vi.stubGlobal("fetch", vi.fn()
       .mockResolvedValueOnce(Response.json({ error: { message: "冻结制度缺失", code: "policy_missing", details: { policy: "required" } } }, { status: 409 }))

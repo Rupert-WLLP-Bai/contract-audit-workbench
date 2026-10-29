@@ -144,14 +144,17 @@ function parseVerification(value: unknown): EvidenceVerification | null {
   };
 }
 
-export function parseEvidenceRequest(value: unknown): EvidenceRequest {
-  const item = object(value, "request");
-  const evaluation = item.source_evaluation === undefined || item.source_evaluation === null
-    ? null : object(item.source_evaluation, "source_evaluation");
-  const gap = item.source_gap === undefined || item.source_gap === null
-    ? null : object(item.source_gap, "source_gap");
-  if ((evaluation === null) === (gap === null)) return invalid("来源检查");
-  const sourceEvaluation = evaluation === null ? null : {
+function optionalSourceObject(
+  value: unknown,
+  label: string,
+): Record<string, unknown> | null {
+  return value === undefined || value === null ? null : object(value, label);
+}
+
+function parseSourceEvaluation(
+  evaluation: Record<string, unknown>,
+): EvidenceSourceEvaluation {
+  return {
     id: text(evaluation.id, "source_evaluation.id"),
     domain: text(evaluation.domain, "source_evaluation.domain"),
     rule_version: text(evaluation.rule_version, "source_evaluation.rule_version"),
@@ -162,17 +165,41 @@ export function parseEvidenceRequest(value: unknown): EvidenceRequest {
     relation: text(evaluation.relation, "source_evaluation.relation"),
     reason: text(evaluation.reason, "source_evaluation.reason"),
   };
-  const sourceGap = gap === null ? null : {
+}
+
+function parseSourceGap(
+  gap: Record<string, unknown>,
+): EvidenceSourceGap {
+  return {
     gap_id: text(gap.gap_id, "source_gap.gap_id"),
     domain: text(gap.domain, "source_gap.domain"),
     capability_id: text(gap.capability_id, "source_gap.capability_id"),
     status: text(gap.status, "source_gap.status"),
     reason_code: text(gap.reason_code, "source_gap.reason_code"),
   };
+}
+
+function assertVerificationConsistency(
+  status: string,
+  verification: EvidenceVerification | null,
+): void {
+  if (
+    (status === "verified" && verification === null) ||
+    ((status === "open" || status === "received") && verification !== null)
+  )
+    return invalid("verification");
+}
+
+export function parseEvidenceRequest(value: unknown): EvidenceRequest {
+  const item = object(value, "request");
+  const evaluation = optionalSourceObject(item.source_evaluation, "source_evaluation");
+  const gap = optionalSourceObject(item.source_gap, "source_gap");
+  if ((evaluation === null) === (gap === null)) return invalid("来源检查");
+  const sourceEvaluation = evaluation === null ? null : parseSourceEvaluation(evaluation);
+  const sourceGap = gap === null ? null : parseSourceGap(gap);
   const status = text(item.status, "status");
   const verification = parseVerification(item.verification);
-  if ((status === "verified" && verification === null) ||
-    ((status === "open" || status === "received") && verification !== null)) return invalid("verification");
+  assertVerificationConsistency(status, verification);
   return {
     id: text(item.id, "id"),
     case_id: text(item.case_id, "case_id"),

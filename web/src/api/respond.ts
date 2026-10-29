@@ -55,6 +55,104 @@ export interface ResponseReader {
   ) => T[] | undefined;
 }
 
+type Invalid = (path: string) => never;
+
+function objectReader(
+  invalid: Invalid,
+  value: unknown,
+  path: string,
+): Record<string, unknown> {
+  if (typeof value !== "object" || value === null || Array.isArray(value))
+    return invalid(path);
+  return value as Record<string, unknown>;
+}
+
+function recordReader(
+  invalid: Invalid,
+  value: unknown,
+  path: string,
+  keys: readonly string[],
+  required: readonly string[],
+): Record<string, unknown> {
+  const item = objectReader(invalid, value, path);
+  if (
+    Object.keys(item).some((key) => !keys.includes(key)) ||
+    required.some((key) => !Object.hasOwn(item, key))
+  )
+    return invalid(path);
+  return item;
+}
+
+function textReader(invalid: Invalid, value: unknown, path: string): string {
+  return typeof value === "string" ? value : invalid(path);
+}
+
+function optionalTextReader(
+  invalid: Invalid,
+  value: unknown,
+  path: string,
+): string | null {
+  return value === undefined || value === null
+    ? null
+    : textReader(invalid, value, path);
+}
+
+function sentinelTextReader<S extends null | undefined>(
+  invalid: Invalid,
+  value: unknown,
+  path: string,
+  sentinel: S,
+): string | S {
+  return value === sentinel ? sentinel : textReader(invalid, value, path);
+}
+
+function integerReader(
+  invalid: Invalid,
+  value: unknown,
+  path: string,
+  minimum?: number,
+): number {
+  return typeof value === "number" &&
+    Number.isSafeInteger(value) &&
+    (minimum === undefined || value >= minimum)
+    ? value
+    : invalid(path);
+}
+
+function boolReader(invalid: Invalid, value: unknown, path: string): boolean {
+  return typeof value === "boolean" ? value : invalid(path);
+}
+
+function nullableBoolReader(
+  invalid: Invalid,
+  value: unknown,
+  path: string,
+): boolean | null {
+  return value === null ? null : boolReader(invalid, value, path);
+}
+
+function arrayReader<T>(
+  invalid: Invalid,
+  value: unknown,
+  path: string,
+  parse: (entry: unknown, path: string) => T,
+): T[] {
+  if (!Array.isArray(value)) return invalid(path);
+  return value.map((entry, index) => parse(entry, `${path}[${index}]`));
+}
+
+function sentinelArrayReader<T, S extends null | undefined>(
+  invalid: Invalid,
+  value: unknown,
+  path: string,
+  sentinel: S,
+  parse: (entry: unknown, path: string) => T,
+): T[] | S {
+  return value === sentinel
+    ? sentinel
+    : arrayReader(invalid, value, path, parse);
+}
+
 /**
  * Binds the shared payload readers to one response family. Modules keep their
  * own message text; the validation decisions live here once.
@@ -64,79 +162,24 @@ export function responseReader(
   status = 200,
 ): ResponseReader {
   const invalid = (path: string): never => invalidResponse(message(path), status);
-  const object = (value: unknown, path: string): Record<string, unknown> => {
-    if (typeof value !== "object" || value === null || Array.isArray(value))
-      return invalid(path);
-    return value as Record<string, unknown>;
-  };
-  const record = (
-    value: unknown,
-    path: string,
-    keys: readonly string[],
-    required: readonly string[] = keys,
-  ): Record<string, unknown> => {
-    const item = object(value, path);
-    if (
-      Object.keys(item).some((key) => !keys.includes(key)) ||
-      required.some((key) => !Object.hasOwn(item, key))
-    )
-      return invalid(path);
-    return item;
-  };
-  const text = (value: unknown, path: string): string =>
-    typeof value === "string" ? value : invalid(path);
-  const optionalText = (value: unknown, path: string): string | null =>
-    value === undefined || value === null ? null : text(value, path);
-  const nullableText = (value: unknown, path: string): string | null =>
-    value === null ? null : text(value, path);
-  const maybeText = (value: unknown, path: string): string | undefined =>
-    value === undefined ? undefined : text(value, path);
-  const integer = (
-    value: unknown,
-    path: string,
-    minimum?: number,
-  ): number =>
-    typeof value === "number" &&
-    Number.isSafeInteger(value) &&
-    (minimum === undefined || value >= minimum)
-      ? value
-      : invalid(path);
-  const bool = (value: unknown, path: string): boolean =>
-    typeof value === "boolean" ? value : invalid(path);
-  const nullableBool = (value: unknown, path: string): boolean | null =>
-    value === null ? null : bool(value, path);
-  const array = <T>(
-    value: unknown,
-    path: string,
-    parse: (entry: unknown, path: string) => T,
-  ): T[] => {
-    if (!Array.isArray(value)) return invalid(path);
-    return value.map((entry, index) => parse(entry, `${path}[${index}]`));
-  };
-  const nullableArray = <T>(
-    value: unknown,
-    path: string,
-    parse: (entry: unknown, path: string) => T,
-  ): T[] | null => (value === null ? null : array(value, path, parse));
-  const optionalArray = <T>(
-    value: unknown,
-    path: string,
-    parse: (entry: unknown, path: string) => T,
-  ): T[] | undefined =>
-    value === undefined ? undefined : array(value, path, parse);
   return {
     invalid,
-    object,
-    record,
-    text,
-    optionalText,
-    nullableText,
-    maybeText,
-    integer,
-    bool,
-    nullableBool,
-    array,
-    nullableArray,
-    optionalArray,
+    object: (value, path) => objectReader(invalid, value, path),
+    record: (value, path, keys, required = keys) =>
+      recordReader(invalid, value, path, keys, required),
+    text: (value, path) => textReader(invalid, value, path),
+    optionalText: (value, path) => optionalTextReader(invalid, value, path),
+    nullableText: (value, path) =>
+      sentinelTextReader(invalid, value, path, null),
+    maybeText: (value, path) =>
+      sentinelTextReader(invalid, value, path, undefined),
+    integer: (value, path, minimum) => integerReader(invalid, value, path, minimum),
+    bool: (value, path) => boolReader(invalid, value, path),
+    nullableBool: (value, path) => nullableBoolReader(invalid, value, path),
+    array: (value, path, parse) => arrayReader(invalid, value, path, parse),
+    nullableArray: (value, path, parse) =>
+      sentinelArrayReader(invalid, value, path, null, parse),
+    optionalArray: (value, path, parse) =>
+      sentinelArrayReader(invalid, value, path, undefined, parse),
   };
 }
