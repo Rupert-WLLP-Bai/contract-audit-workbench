@@ -492,6 +492,9 @@ func TestMissingAmbiguousAndUnboundFactsReturnInsufficient(t *testing.T) {
 	if got := resultFor(t, report, "ENT-TECH-BW-001").Relation; got != RelationInsufficient {
 		t.Fatalf("unbound fact relation %s", got)
 	}
+	if got := resultFor(t, report, "ENT-TECH-BW-001").Citations; got == nil {
+		t.Fatal("unbound fact lost the non-nil empty citation list")
+	}
 
 	request = demoRequest(t)
 	for i := range request.Facts {
