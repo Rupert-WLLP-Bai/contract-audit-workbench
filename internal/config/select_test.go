@@ -123,3 +123,79 @@ func TestDatabaseIdentityURLIsCredentialFree(t *testing.T) {
 		t.Fatalf("credentials or query exposed: %q", got)
 	}
 }
+
+func TestEnvironmentSelectionKeepsEachIdentityAndRefusesSharedNames(t *testing.T) {
+	for _, mode := range []string{"dev", "test", "prod"} {
+		t.Run(mode, func(t *testing.T) {
+			env := config.Environ{AppEnv: " " + strings.ToUpper(mode) + " ",
+				DevDatabaseURL: "postgres://dev/isolated_dev", TestDatabaseURL: "postgres://test/isolated_test", ProdDatabaseURL: "postgres://prod/isolated_prod"}
+			selected, err := config.Select(env)
+			if err != nil || selected.Database.Name != "isolated_"+mode || selected.Database.Host != mode || selected.Database.Port != "5432" {
+				t.Fatalf("selected identity: %+v %v", selected.Database, err)
+			}
+			for _, other := range []string{"dev", "test", "prod"} {
+				if mode == other {
+					continue
+				}
+				collision := "postgres://different-host/isolated_" + other
+				shared := env
+				switch mode {
+				case "dev":
+					shared.DevDatabaseURL = collision
+				case "test":
+					shared.TestDatabaseURL = collision
+				case "prod":
+					shared.ProdDatabaseURL = collision
+				}
+				if _, err := config.Select(shared); !errors.Is(err, config.ErrRefusedDatabase) {
+					t.Fatalf("%s shared %s name across hosts: %v", mode, other, err)
+				}
+			}
+		})
+	}
+}
+
+func TestEnvironmentSelectionValidatesUnselectedURLsWithoutSecrets(t *testing.T) {
+	for _, which := range []string{"development", "test", "production"} {
+		env := config.Environ{AppEnv: "test"}
+		bad := "postgres://user:private-token@/database"
+		switch which {
+		case "development":
+			env.DevDatabaseURL = bad
+		case "test":
+			env.TestDatabaseURL = bad
+		case "production":
+			env.ProdDatabaseURL = bad
+		}
+		if _, err := config.Select(env); !errors.Is(err, config.ErrDatabaseURL) || strings.Contains(err.Error(), "private-token") {
+			t.Fatalf("unselected %s URL was accepted or disclosed: %v", which, err)
+		}
+	}
+	if _, err := config.Select(config.Environ{AppEnv: "staging", DevDatabaseURL: "invalid"}); !errors.Is(err, config.ErrUnknownMode) {
+		t.Fatalf("mode validation priority changed: %v", err)
+	}
+	for _, raw := range []string{"postgres://host1,host2/database", "postgres://host/database?HOST=elsewhere"} {
+		if _, err := config.ParseDSN(raw); !errors.Is(err, config.ErrDatabaseURL) {
+			t.Fatalf("ambiguous identity accepted: %v", err)
+		}
+	}
+}
+
+func TestFromProcessAndCredentialFreeIdentityDefaults(t *testing.T) {
+	t.Setenv("APP_ENV", "test")
+	t.Setenv("DEV_DATABASE_URL", "")
+	t.Setenv("TEST_DATABASE_URL", "postgres://testing:6543/isolated_test")
+	t.Setenv("PROD_DATABASE_URL", "")
+	selection, err := config.FromProcess()
+	if err != nil || selection.DSN != "postgres://testing:6543/isolated_test" || selection.Database.URL() != "postgres://testing:6543/isolated_test" {
+		t.Fatalf("process environment: %+v %v", selection.Database, err)
+	}
+	for _, id := range []config.Identity{{}, {Host: "host"}, {Name: "db"}} {
+		if id.URL() != "" {
+			t.Fatal("incomplete identity produced a URL")
+		}
+	}
+	if got := (config.Identity{Host: "::1", Name: "db"}).URL(); got != "postgres://[::1]:5432/db" {
+		t.Fatalf("default authority: %s", got)
+	}
+}

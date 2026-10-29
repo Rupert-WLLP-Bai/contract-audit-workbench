@@ -101,6 +101,18 @@ func Select(env Environ) (Selection, error) {
 	if err != nil {
 		return Selection{}, err
 	}
+	sel, err := databaseEnvironments(env)
+	if err != nil {
+		return Selection{}, err
+	}
+	sel.Mode = mode
+	if err := sel.selectDatabase(); err != nil {
+		return Selection{}, err
+	}
+	return sel, nil
+}
+
+func databaseEnvironments(env Environ) (Selection, error) {
 	devDSN := first(env.DevDatabaseURL, defaultDSN(DevDatabaseName))
 	testDSN := first(env.TestDatabaseURL, defaultDSN(TestDatabaseName))
 	prodDSN := strings.TrimSpace(env.ProdDatabaseURL)
@@ -121,34 +133,34 @@ func Select(env Environ) (Selection, error) {
 		}
 	}
 
-	sel := Selection{
-		Mode: mode, DevDSN: devDSN, TestDSN: testDSN, ProdDSN: prodDSN,
+	return Selection{
+		DevDSN: devDSN, TestDSN: testDSN, ProdDSN: prodDSN,
 		DevDatabase: devID, TestDatabase: testID, ProdDatabase: prodID,
-	}
-	switch mode {
+	}, nil
+}
+
+func (sel *Selection) selectDatabase() error {
+	switch sel.Mode {
 	case ModeDevelopment:
-		if shared(devID.Name, testID.Name, prodID.Name, TestDatabaseName, ProdDatabaseName) {
-			return Selection{}, ErrRefusedDatabase
+		if shared(sel.DevDatabase.Name, sel.TestDatabase.Name, sel.ProdDatabase.Name, TestDatabaseName, ProdDatabaseName) {
+			return ErrRefusedDatabase
 		}
-		sel.DSN = devDSN
-		sel.Database = devID
+		sel.DSN, sel.Database = sel.DevDSN, sel.DevDatabase
 	case ModeTest:
-		if shared(testID.Name, devID.Name, prodID.Name, DevDatabaseName, ProdDatabaseName) {
-			return Selection{}, ErrRefusedDatabase
+		if shared(sel.TestDatabase.Name, sel.DevDatabase.Name, sel.ProdDatabase.Name, DevDatabaseName, ProdDatabaseName) {
+			return ErrRefusedDatabase
 		}
-		sel.DSN = testDSN
-		sel.Database = testID
+		sel.DSN, sel.Database = sel.TestDSN, sel.TestDatabase
 	case ModeProduction:
-		if prodDSN == "" {
-			return Selection{}, ErrProductionUnset
+		if sel.ProdDSN == "" {
+			return ErrProductionUnset
 		}
-		if shared(prodID.Name, devID.Name, testID.Name, DevDatabaseName, TestDatabaseName) {
-			return Selection{}, ErrRefusedDatabase
+		if shared(sel.ProdDatabase.Name, sel.DevDatabase.Name, sel.TestDatabase.Name, DevDatabaseName, TestDatabaseName) {
+			return ErrRefusedDatabase
 		}
-		sel.DSN = prodDSN
-		sel.Database = prodID
+		sel.DSN, sel.Database = sel.ProdDSN, sel.ProdDatabase
 	}
-	return sel, nil
+	return nil
 }
 
 // ParseDSN reads the host, port, and database name. The name is the URL path.
@@ -161,17 +173,13 @@ func ParseDSN(raw string) (Identity, error) {
 		return Identity{}, ErrDatabaseURL
 	}
 	query, err := url.ParseQuery(u.RawQuery)
-	if err != nil {
+	if err != nil || !preservesDatabaseIdentity(query) {
 		return Identity{}, ErrDatabaseURL
 	}
-	// pgx gives URL query settings precedence over the path/authority. A URL
-	// ending in /test?dbname=production must never pass environment isolation.
-	for key := range query {
-		switch strings.ToLower(key) {
-		case "dbname", "database", "host", "hostaddr", "port", "service", "servicefile":
-			return Identity{}, ErrDatabaseURL
-		}
-	}
+	return databaseURLIdentity(u)
+}
+
+func databaseURLIdentity(u *url.URL) (Identity, error) {
 	name := strings.Trim(u.Path, "/")
 	host := u.Hostname()
 	port := u.Port()
@@ -182,6 +190,17 @@ func ParseDSN(raw string) (Identity, error) {
 		port = defaultPort
 	}
 	return Identity{Host: host, Port: port, Name: name}, nil
+}
+
+func preservesDatabaseIdentity(query url.Values) bool {
+	// pgx lets these settings override the URL authority or path.
+	for key := range query {
+		switch strings.ToLower(key) {
+		case "dbname", "database", "host", "hostaddr", "port", "service", "servicefile":
+			return false
+		}
+	}
+	return true
 }
 
 func normalizeMode(raw string) (string, error) {
@@ -199,7 +218,7 @@ func normalizeMode(raw string) (string, error) {
 
 func shared(name string, blocked ...string) bool {
 	for _, other := range blocked {
-		if name != "" && name == other {
+		if name == other {
 			return true
 		}
 	}
