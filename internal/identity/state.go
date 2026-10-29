@@ -43,31 +43,47 @@ func (m *Manager) sealState(payload statePayload) (string, error) {
 }
 
 func (m *Manager) openState(value string) (statePayload, error) {
-	if len(value) == 0 || len(value) > 4096 || strings.Contains(value, "=") {
+	if !validStateCookieShape(value) {
 		return statePayload{}, errors.New("invalid state cookie")
 	}
 	sealed, err := base64.RawURLEncoding.DecodeString(value)
 	if err != nil {
 		return statePayload{}, errors.New("invalid state cookie")
 	}
-	block, err := aes.NewCipher(m.config.StateEncryptionKey)
+	plaintext, err := m.openSealedState(sealed)
 	if err != nil {
 		return statePayload{}, errors.New("invalid state cookie")
 	}
-	aead, err := cipher.NewGCM(block)
-	if err != nil || len(sealed) < aead.NonceSize()+aead.Overhead() {
-		return statePayload{}, errors.New("invalid state cookie")
-	}
-	nonce := sealed[:aead.NonceSize()]
-	plaintext, err := aead.Open(nil, nonce, sealed[aead.NonceSize():], []byte(stateCookieAAD))
+	payload, err := decodeStatePayload(plaintext)
 	if err != nil {
-		return statePayload{}, errors.New("invalid state cookie")
-	}
-	var payload statePayload
-	if err := json.Unmarshal(plaintext, &payload); err != nil || payload.State == "" || payload.Nonce == "" || payload.Verifier == "" || payload.IssuedAt == 0 {
 		return statePayload{}, errors.New("invalid state cookie")
 	}
 	if _, _, err := m.clientCredentials(payload.Audience); err != nil {
+		return statePayload{}, errors.New("invalid state cookie")
+	}
+	return payload, nil
+}
+
+func validStateCookieShape(value string) bool {
+	return len(value) != 0 && len(value) <= 4096 && !strings.Contains(value, "=")
+}
+
+func (m *Manager) openSealedState(sealed []byte) ([]byte, error) {
+	block, err := aes.NewCipher(m.config.StateEncryptionKey)
+	if err != nil {
+		return nil, errors.New("invalid state cookie")
+	}
+	aead, err := cipher.NewGCM(block)
+	if err != nil || len(sealed) < aead.NonceSize()+aead.Overhead() {
+		return nil, errors.New("invalid state cookie")
+	}
+	nonce := sealed[:aead.NonceSize()]
+	return aead.Open(nil, nonce, sealed[aead.NonceSize():], []byte(stateCookieAAD))
+}
+
+func decodeStatePayload(plaintext []byte) (statePayload, error) {
+	var payload statePayload
+	if err := json.Unmarshal(plaintext, &payload); err != nil || payload.State == "" || payload.Nonce == "" || payload.Verifier == "" || payload.IssuedAt == 0 {
 		return statePayload{}, errors.New("invalid state cookie")
 	}
 	return payload, nil

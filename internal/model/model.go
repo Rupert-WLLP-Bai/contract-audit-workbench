@@ -64,25 +64,6 @@ func FromEnv() Config {
 	}
 }
 
-func modelGatewayCallerToken() string {
-	switch strings.TrimSpace(os.Getenv("MODEL_CALLER_SERVICE")) {
-	case "worker":
-		return strings.TrimSpace(os.Getenv("WORKER_MODEL_TOKEN"))
-	case "document":
-		return strings.TrimSpace(os.Getenv("DOCUMENT_MODEL_TOKEN"))
-	default:
-		workerToken := strings.TrimSpace(os.Getenv("WORKER_MODEL_TOKEN"))
-		documentToken := strings.TrimSpace(os.Getenv("DOCUMENT_MODEL_TOKEN"))
-		if workerToken != "" && documentToken == "" {
-			return workerToken
-		}
-		if documentToken != "" && workerToken == "" {
-			return documentToken
-		}
-		return strings.TrimSpace(os.Getenv("MODEL_GATEWAY_CALLER_TOKEN"))
-	}
-}
-
 func env(key, fallback string) string {
 	if value := strings.TrimSpace(os.Getenv(key)); value != "" {
 		return value
@@ -201,23 +182,9 @@ func (c *Client) CloudContract(ctx context.Context, policy CloudPolicy, docs []M
 // ParseCloudContract accepts only bounded, cited suggestions from the four
 // supported domains. The caller must bind both citations to frozen evidence.
 func ParseCloudContract(content string) (CloudReview, error) {
-	raw := extractJSON(content)
-	var body struct {
-		Findings []struct {
-			Domain       string `json:"domain"`
-			PolicyClause string `json:"policy_clause"`
-			Claim        string `json:"claim"`
-			DocumentID   string `json:"document_id"`
-			Quote        string `json:"quote"`
-		} `json:"findings"`
-	}
-	decoder := json.NewDecoder(strings.NewReader(raw))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&body); err != nil {
-		return CloudReview{}, fmt.Errorf("%w: cloud review is not json", ErrUnusable)
-	}
-	if err := decoder.Decode(new(any)); !errors.Is(err, io.EOF) {
-		return CloudReview{}, fmt.Errorf("%w: trailing cloud review content", ErrUnusable)
+	var body cloudReviewJSON
+	if err := strictDecode(extractJSON(content), &body, "cloud review is not json", "trailing cloud review content"); err != nil {
+		return CloudReview{}, err
 	}
 	if body.Findings == nil || len(body.Findings) > 4 {
 		return CloudReview{}, fmt.Errorf("%w: cloud review findings bounds", ErrUnusable)
@@ -225,32 +192,76 @@ func ParseCloudContract(content string) (CloudReview, error) {
 	out := CloudReview{Findings: make([]CloudFinding, 0, len(body.Findings))}
 	seen := make(map[string]bool, len(body.Findings))
 	for _, finding := range body.Findings {
-		domain := strings.TrimSpace(finding.Domain)
-		clause := strings.TrimSpace(finding.PolicyClause)
-		claim := strings.TrimSpace(finding.Claim)
-		documentID := strings.TrimSpace(finding.DocumentID)
-		quote := strings.TrimSpace(finding.Quote)
-		validDomain := domain == "liability" || domain == "data_security" || domain == "intellectual_property" || domain == "renewal"
-		if !validDomain || clause == "" || utf8.RuneCountInString(clause) > 1000 || seen[domain] || claim == "" || utf8.RuneCountInString(claim) > 1000 ||
-			documentID == "" || len(documentID) > 128 || quote == "" || utf8.RuneCountInString(quote) > 10000 {
-			return CloudReview{}, fmt.Errorf("%w: cloud review finding identity or evidence", ErrUnusable)
+		item, err := cloudFinding(finding, seen)
+		if err != nil {
+			return CloudReview{}, err
 		}
-		seen[domain] = true
-		out.Findings = append(out.Findings, CloudFinding{Domain: domain, PolicyClause: clause, Claim: claim, DocumentID: documentID, Quote: quote})
+		seen[item.Domain] = true
+		out.Findings = append(out.Findings, item)
 	}
 	return out, nil
+}
+
+type cloudFindingJSON struct {
+	Domain       string `json:"domain"`
+	PolicyClause string `json:"policy_clause"`
+	Claim        string `json:"claim"`
+	DocumentID   string `json:"document_id"`
+	Quote        string `json:"quote"`
+}
+
+type cloudReviewJSON struct {
+	Findings []cloudFindingJSON `json:"findings"`
+}
+
+func strictDecode(raw string, target any, invalidMessage, trailingMessage string) error {
+	decoder := json.NewDecoder(strings.NewReader(raw))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(target); err != nil {
+		return fmt.Errorf("%w: %s", ErrUnusable, invalidMessage)
+	}
+	if err := decoder.Decode(new(any)); !errors.Is(err, io.EOF) {
+		return fmt.Errorf("%w: %s", ErrUnusable, trailingMessage)
+	}
+	return nil
+}
+
+func cloudFinding(finding cloudFindingJSON, seen map[string]bool) (CloudFinding, error) {
+	domain := strings.TrimSpace(finding.Domain)
+	clause := strings.TrimSpace(finding.PolicyClause)
+	claim := strings.TrimSpace(finding.Claim)
+	documentID := strings.TrimSpace(finding.DocumentID)
+	quote := strings.TrimSpace(finding.Quote)
+	if !cloudIdentityValid(domain, seen) || !cloudClauseBound(clause) {
+		return CloudFinding{}, fmt.Errorf("%w: cloud review finding identity or evidence", ErrUnusable)
+	}
+	if !cloudTextBound(claim, 1000) || documentID == "" || len(documentID) > 128 || !cloudTextBound(quote, 10000) {
+		return CloudFinding{}, fmt.Errorf("%w: cloud review finding identity or evidence", ErrUnusable)
+	}
+	return CloudFinding{Domain: domain, PolicyClause: clause, Claim: claim, DocumentID: documentID, Quote: quote}, nil
+}
+
+func cloudIdentityValid(domain string, seen map[string]bool) bool {
+	return validCloudDomain(domain) && !seen[domain]
+}
+
+func validCloudDomain(domain string) bool {
+	return domain == "liability" || domain == "data_security" || domain == "intellectual_property" || domain == "renewal"
+}
+
+func cloudClauseBound(clause string) bool {
+	return clause != "" && utf8.RuneCountInString(clause) <= 1000
+}
+
+func cloudTextBound(text string, limit int) bool {
+	return text != "" && utf8.RuneCountInString(text) <= limit
 }
 
 // Generate implements the bounded Eino request surface used by ModelPlanner.
 // Planner prompts contain only a compact scope, gaps, and tool catalog.
 func (c *Client) Generate(ctx context.Context, messages []*schema.Message, _ ...einoModel.Option) (*schema.Message, error) {
-	if ctx == nil || len(messages) != 2 || messages[0] == nil || messages[1] == nil ||
-		messages[0].Role != schema.System || messages[1].Role != schema.User ||
-		messages[0].Content == "" || messages[1].Content == "" ||
-		messages[0].UserInputMultiContent != nil || messages[1].UserInputMultiContent != nil ||
-		messages[0].ToolCalls != nil || messages[1].ToolCalls != nil ||
-		len(messages[0].Content)+len(messages[1].Content) > 256<<10 {
-		return nil, fmt.Errorf("%w: invalid planner request", ErrUnusable)
+	if err := validatePlannerMessages(ctx, messages); err != nil {
+		return nil, err
 	}
 	completion, err := c.postChatMessages(ctx, c.cfg.ChatModel, []chatMessage{
 		{Role: string(messages[0].Role), Content: messages[0].Content},
@@ -259,6 +270,38 @@ func (c *Client) Generate(ctx context.Context, messages []*schema.Message, _ ...
 	if err != nil {
 		return nil, err
 	}
+	return plannerMessage(completion), nil
+}
+
+func validatePlannerMessages(ctx context.Context, messages []*schema.Message) error {
+	invalid := fmt.Errorf("%w: invalid planner request", ErrUnusable)
+	if ctx == nil || len(messages) != 2 {
+		return invalid
+	}
+	if messages[0] == nil || messages[1] == nil {
+		return invalid
+	}
+	if !validPlannerRoles(messages[0], messages[1]) {
+		return invalid
+	}
+	if !plainPlannerMessage(messages[0]) || !plainPlannerMessage(messages[1]) {
+		return invalid
+	}
+	if len(messages[0].Content)+len(messages[1].Content) > 256<<10 {
+		return invalid
+	}
+	return nil
+}
+
+func validPlannerRoles(system, user *schema.Message) bool {
+	return system.Role == schema.System && user.Role == schema.User && system.Content != "" && user.Content != ""
+}
+
+func plainPlannerMessage(message *schema.Message) bool {
+	return message.UserInputMultiContent == nil && message.ToolCalls == nil
+}
+
+func plannerMessage(completion chatCompletion) *schema.Message {
 	message := &schema.Message{Role: schema.Assistant, Content: completion.Content}
 	if completion.Usage != nil && completion.Usage.InputTokens != nil && completion.Usage.OutputTokens != nil && completion.Usage.TotalTokens != nil {
 		message.ResponseMeta = &schema.ResponseMeta{
@@ -270,7 +313,7 @@ func (c *Client) Generate(ctx context.Context, messages []*schema.Message, _ ...
 			},
 		}
 	}
-	return message, nil
+	return message
 }
 
 // Transcribe sends one PNG or JPEG to the vision model.
@@ -300,47 +343,80 @@ func (c *Client) Transcribe(ctx context.Context, media string, body []byte) (str
 
 // ParseWarranty accepts the model's content and nothing that is not the schema.
 func ParseWarranty(content string) (Warranty, error) {
-	raw := extractJSON(content)
 	var body warrantyJSON
-	decoder := json.NewDecoder(strings.NewReader(raw))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&body); err != nil {
-		return Warranty{}, fmt.Errorf("%w: not json", ErrUnusable)
-	}
-	if err := decoder.Decode(new(any)); !errors.Is(err, io.EOF) {
-		return Warranty{}, fmt.Errorf("%w: trailing content", ErrUnusable)
+	if err := strictDecode(extractJSON(content), &body, "not json", "trailing content"); err != nil {
+		return Warranty{}, err
 	}
 	relation, ok := normalizeRelation(body.Relation)
 	if !ok {
 		return Warranty{}, fmt.Errorf("%w: relation", ErrUnusable)
 	}
 	claim := strings.TrimSpace(body.Claim)
-	if utf8.RuneCountInString(claim) > 1000 || len(body.Quotes) > 32 {
-		return Warranty{}, fmt.Errorf("%w: output bounds", ErrUnusable)
+	if err := warrantyOutputBounds(claim, body.Quotes); err != nil {
+		return Warranty{}, err
+	}
+	quotes, err := warrantyQuotes(body.Quotes)
+	if err != nil {
+		return Warranty{}, err
 	}
 	disposition, hasDisposition := normalizeDisposition(body.Disposition)
-	out := Warranty{Claim: claim, Relation: relation, Disposition: disposition}
-	for _, quote := range body.Quotes {
-		id := strings.TrimSpace(quote.DocumentID)
-		text := strings.TrimSpace(quote.Quote)
-		if id == "" || text == "" || len(id) > 128 || utf8.RuneCountInString(text) > 10000 {
-			return Warranty{}, fmt.Errorf("%w: quote", ErrUnusable)
-		}
-		out.Quotes = append(out.Quotes, Quote{DocumentID: id, Quote: text})
-	}
-	if relation == "compatible" {
-		if body.Disposition != "" && !hasDisposition {
-			return Warranty{}, fmt.Errorf("%w: disposition", ErrUnusable)
-		}
-		return out, nil
-	}
-	if claim == "" || utf8.RuneCountInString(claim) > 1000 {
-		return Warranty{}, fmt.Errorf("%w: claim", ErrUnusable)
-	}
-	if !hasDisposition || len(out.Quotes) == 0 {
-		return Warranty{}, fmt.Errorf("%w: finding", ErrUnusable)
+	out := Warranty{Claim: claim, Relation: relation, Disposition: disposition, Quotes: quotes}
+	if err := validateWarrantyFinding(body, out, relation, claim, hasDisposition); err != nil {
+		return Warranty{}, err
 	}
 	return out, nil
+}
+
+func warrantyOutputBounds(claim string, quotes []warrantyQuoteJSON) error {
+	if utf8.RuneCountInString(claim) > 1000 || len(quotes) > 32 {
+		return fmt.Errorf("%w: output bounds", ErrUnusable)
+	}
+	return nil
+}
+
+func warrantyQuotes(raw []warrantyQuoteJSON) ([]Quote, error) {
+	var out []Quote
+	for _, quote := range raw {
+		item, err := warrantyQuote(quote.DocumentID, quote.Quote)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, item)
+	}
+	return out, nil
+}
+
+func warrantyQuote(documentID, text string) (Quote, error) {
+	id := strings.TrimSpace(documentID)
+	value := strings.TrimSpace(text)
+	if id == "" || value == "" || len(id) > 128 || utf8.RuneCountInString(value) > 10000 {
+		return Quote{}, fmt.Errorf("%w: quote", ErrUnusable)
+	}
+	return Quote{DocumentID: id, Quote: value}, nil
+}
+
+func validateWarrantyFinding(body warrantyJSON, out Warranty, relation, claim string, hasDisposition bool) error {
+	if relation == "compatible" {
+		return validateCompatibleWarranty(body, hasDisposition)
+	}
+	return validateReportedWarranty(out, claim, hasDisposition)
+}
+
+func validateCompatibleWarranty(body warrantyJSON, hasDisposition bool) error {
+	if body.Disposition != "" && !hasDisposition {
+		return fmt.Errorf("%w: disposition", ErrUnusable)
+	}
+	return nil
+}
+
+func validateReportedWarranty(out Warranty, claim string, hasDisposition bool) error {
+	if claim == "" || utf8.RuneCountInString(claim) > 1000 {
+		return fmt.Errorf("%w: claim", ErrUnusable)
+	}
+	if !hasDisposition || len(out.Quotes) == 0 {
+		return fmt.Errorf("%w: finding", ErrUnusable)
+	}
+	return nil
 }
 
 func (c *Client) postChat(ctx context.Context, modelID string, content any, maxTokens int, reasoningEffort string) (chatCompletion, error) {
@@ -348,38 +424,12 @@ func (c *Client) postChat(ctx context.Context, modelID string, content any, maxT
 }
 
 func (c *Client) postChatMessages(ctx context.Context, modelID string, messages []chatMessage, maxTokens int, reasoningEffort string) (result chatCompletion, retErr error) {
-	gateway := GatewayID(modelID)
-	if gateway == "" || c.cfg.BaseURL == "" || len(messages) == 0 {
-		return chatCompletion{}, fmt.Errorf("%w: model is not configured", ErrRequest)
-	}
-	payload, err := json.Marshal(chatRequest{
-		Model: gateway, Temperature: 0, MaxTokens: maxTokens, ReasoningEffort: reasoningEffort, Messages: messages,
-	})
+	req, err := c.newChatRequest(ctx, modelID, messages, maxTokens, reasoningEffort)
 	if err != nil {
 		return chatCompletion{}, err
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.cfg.BaseURL+"/chat/completions", bytes.NewReader(payload))
-	if err != nil {
-		return chatCompletion{}, fmt.Errorf("%w: %s", ErrRequest, c.redact(err.Error()))
-	}
-	req.Header.Set("Content-Type", "application/json")
-	key := strings.TrimSpace(c.cfg.APIKey)
-	if c.cfg.Gateway {
-		if key == "" {
-			return chatCompletion{}, fmt.Errorf("%w: model gateway caller credential is missing", ErrRequest)
-		}
-		req.Header.Set("X-Contract-Service-Key", key)
-		scope, ok := DelegatedScopeFromContext(ctx)
-		if !ok {
-			return chatCompletion{}, fmt.Errorf("%w: delegated model scope is missing", ErrRequest)
-		}
-		metadata, err := json.Marshal(scope)
-		if err != nil {
-			return chatCompletion{}, fmt.Errorf("%w: execution scope cannot be encoded", ErrRequest)
-		}
-		req.Header.Set("X-Audit-Execution-Scope", string(metadata))
-	} else if key != "" {
-		req.Header.Set("Authorization", "Bearer "+key)
+	if err := c.authorizeChatRequest(ctx, req); err != nil {
+		return chatCompletion{}, err
 	}
 	callCtx := ctx
 	var finish func(CallObservation)
@@ -399,51 +449,104 @@ func (c *Client) postChatMessages(ctx context.Context, modelID string, messages 
 	}
 	res, err := c.http.Do(req.WithContext(callCtx))
 	if err != nil {
-		if contextErr := callCtx.Err(); contextErr != nil {
-			return chatCompletion{}, fmt.Errorf("%w: %w", ErrRequest, contextErr)
-		}
-		return chatCompletion{}, fmt.Errorf("%w: %s", ErrRequest, c.redact(err.Error()))
+		return chatCompletion{}, c.chatTransportError(callCtx, err)
 	}
 	defer res.Body.Close()
 	raw, err := io.ReadAll(io.LimitReader(res.Body, (1<<20)+1))
 	if err != nil {
-		var partial struct {
-			Model string          `json:"model"`
-			Usage json.RawMessage `json:"usage"`
-		}
-		if len(raw) <= 1<<20 && json.Unmarshal(raw, &partial) == nil {
-			result = chatCompletion{Model: c.redact(partial.Model), Usage: parseTokenUsage(partial.Usage)}
-		}
-		return result, fmt.Errorf("%w: %s", ErrRequest, c.redact(err.Error()))
+		return c.partialChatCompletion(raw), fmt.Errorf("%w: %s", ErrRequest, c.redact(err.Error()))
 	}
 	if len(raw) > 1<<20 {
 		return chatCompletion{}, fmt.Errorf("%w: response too large", ErrUnusable)
 	}
+	return c.decodeChatResponse(raw, res.StatusCode)
+}
+
+func (c *Client) newChatRequest(ctx context.Context, modelID string, messages []chatMessage, maxTokens int, reasoningEffort string) (*http.Request, error) {
+	gateway := GatewayID(modelID)
+	if gateway == "" || c.cfg.BaseURL == "" || len(messages) == 0 {
+		return nil, fmt.Errorf("%w: model is not configured", ErrRequest)
+	}
+	payload, err := json.Marshal(chatRequest{
+		Model: gateway, Temperature: 0, MaxTokens: maxTokens, ReasoningEffort: reasoningEffort, Messages: messages,
+	})
+	if err != nil {
+		return nil, err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.cfg.BaseURL+"/chat/completions", bytes.NewReader(payload))
+	if err != nil {
+		return nil, fmt.Errorf("%w: %s", ErrRequest, c.redact(err.Error()))
+	}
+	req.Header.Set("Content-Type", "application/json")
+	return req, nil
+}
+
+func (c *Client) authorizeChatRequest(ctx context.Context, req *http.Request) error {
+	key := strings.TrimSpace(c.cfg.APIKey)
+	if c.cfg.Gateway {
+		if key == "" {
+			return fmt.Errorf("%w: model gateway caller credential is missing", ErrRequest)
+		}
+		req.Header.Set("X-Contract-Service-Key", key)
+		scope, ok := DelegatedScopeFromContext(ctx)
+		if !ok {
+			return fmt.Errorf("%w: delegated model scope is missing", ErrRequest)
+		}
+		metadata, err := json.Marshal(scope)
+		if err != nil {
+			return fmt.Errorf("%w: execution scope cannot be encoded", ErrRequest)
+		}
+		req.Header.Set("X-Audit-Execution-Scope", string(metadata))
+	} else if key != "" {
+		req.Header.Set("Authorization", "Bearer "+key)
+	}
+	return nil
+}
+
+func (c *Client) chatTransportError(callCtx context.Context, err error) error {
+	if contextErr := callCtx.Err(); contextErr != nil {
+		return fmt.Errorf("%w: %w", ErrRequest, contextErr)
+	}
+	return fmt.Errorf("%w: %s", ErrRequest, c.redact(err.Error()))
+}
+
+func (c *Client) partialChatCompletion(raw []byte) chatCompletion {
+	var partial struct {
+		Model string          `json:"model"`
+		Usage json.RawMessage `json:"usage"`
+	}
+	if len(raw) <= 1<<20 && json.Unmarshal(raw, &partial) == nil {
+		return chatCompletion{Model: c.redact(partial.Model), Usage: parseTokenUsage(partial.Usage)}
+	}
+	return chatCompletion{}
+}
+
+func (c *Client) decodeChatResponse(raw []byte, status int) (chatCompletion, error) {
+	completion := chatCompletion{}
 	var partial struct {
 		Model string          `json:"model"`
 		Usage json.RawMessage `json:"usage"`
 	}
 	if json.Unmarshal(raw, &partial) == nil {
-		result = chatCompletion{Model: c.redact(partial.Model), Usage: parseTokenUsage(partial.Usage)}
+		completion = chatCompletion{Model: c.redact(partial.Model), Usage: parseTokenUsage(partial.Usage)}
 	}
 	var parsed chatResponse
 	if err := json.Unmarshal(raw, &parsed); err != nil {
-		if res.StatusCode != http.StatusOK {
-			return result, fmt.Errorf("%w: HTTP %d", ErrRequest, res.StatusCode)
+		if status != http.StatusOK {
+			return completion, fmt.Errorf("%w: HTTP %d", ErrRequest, status)
 		}
-		return result, fmt.Errorf("%w: response is not json", ErrUnusable)
+		return completion, fmt.Errorf("%w: response is not json", ErrUnusable)
 	}
-	completion := chatCompletion{Model: c.redact(parsed.Model), Usage: parseTokenUsage(parsed.Usage)}
-	result = completion
-	if res.StatusCode != http.StatusOK {
-		msg := ""
-		if parsed.Error != nil {
-			msg = c.redact(parsed.Error.Message)
+	completion = chatCompletion{Model: c.redact(parsed.Model), Usage: parseTokenUsage(parsed.Usage)}
+	return c.completeChatResponse(completion, parsed, status)
+}
+
+func (c *Client) completeChatResponse(completion chatCompletion, parsed chatResponse, status int) (chatCompletion, error) {
+	if status != http.StatusOK {
+		if msg := c.providerErrorMessage(parsed.Error); msg != "" {
+			return completion, fmt.Errorf("%w: HTTP %d: %s", ErrRequest, status, msg)
 		}
-		if msg == "" {
-			return completion, fmt.Errorf("%w: HTTP %d", ErrRequest, res.StatusCode)
-		}
-		return completion, fmt.Errorf("%w: HTTP %d: %s", ErrRequest, res.StatusCode, msg)
+		return completion, fmt.Errorf("%w: HTTP %d", ErrRequest, status)
 	}
 	if len(parsed.Choices) == 0 {
 		return completion, fmt.Errorf("%w: empty content", ErrUnusable)
@@ -457,6 +560,15 @@ func (c *Client) postChatMessages(ctx context.Context, modelID string, messages 
 	}
 	completion.Content = responseContent
 	return completion, nil
+}
+
+func (c *Client) providerErrorMessage(providerError *struct {
+	Message string `json:"message"`
+}) string {
+	if providerError == nil {
+		return ""
+	}
+	return c.redact(providerError.Message)
 }
 
 func modelCallErrorCode(err error) string {
@@ -482,13 +594,7 @@ func (c *Client) list(ctx context.Context) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	if key := strings.TrimSpace(c.cfg.APIKey); key != "" {
-		if c.cfg.Gateway {
-			req.Header.Set("X-Contract-Service-Key", key)
-		} else {
-			req.Header.Set("Authorization", "Bearer "+key)
-		}
-	}
+	c.authorizeModelList(req)
 	res, err := c.http.Do(req)
 	if err != nil {
 		return nil, err
@@ -498,8 +604,24 @@ func (c *Client) list(ctx context.Context) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	if res.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("%w: HTTP %d", ErrRequest, res.StatusCode)
+	return modelListFromResponse(raw, res.StatusCode)
+}
+
+func (c *Client) authorizeModelList(req *http.Request) {
+	key := strings.TrimSpace(c.cfg.APIKey)
+	if key == "" {
+		return
+	}
+	if c.cfg.Gateway {
+		req.Header.Set("X-Contract-Service-Key", key)
+	} else {
+		req.Header.Set("Authorization", "Bearer "+key)
+	}
+}
+
+func modelListFromResponse(raw []byte, status int) ([]string, error) {
+	if status != http.StatusOK {
+		return nil, fmt.Errorf("%w: HTTP %d", ErrRequest, status)
 	}
 	var body struct {
 		Data []struct {
@@ -605,14 +727,16 @@ func extractJSON(content string) string {
 	return s
 }
 
+type warrantyQuoteJSON struct {
+	DocumentID string `json:"document_id"`
+	Quote      string `json:"quote"`
+}
+
 type warrantyJSON struct {
-	Claim       string `json:"claim"`
-	Relation    string `json:"relation"`
-	Disposition string `json:"disposition"`
-	Quotes      []struct {
-		DocumentID string `json:"document_id"`
-		Quote      string `json:"quote"`
-	} `json:"quotes"`
+	Claim       string              `json:"claim"`
+	Relation    string              `json:"relation"`
+	Disposition string              `json:"disposition"`
+	Quotes      []warrantyQuoteJSON `json:"quotes"`
 }
 
 type chatRequest struct {

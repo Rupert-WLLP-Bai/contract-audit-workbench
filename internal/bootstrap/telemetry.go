@@ -34,23 +34,9 @@ func configuredTelemetry(service string) (*telemetry.Exporter, error) {
 	if endpoint == "" {
 		return nil, nil
 	}
-	protocol := strings.TrimSpace(os.Getenv("OTEL_EXPORTER_OTLP_PROTOCOL"))
-	if protocol != "" && protocol != "http/json" {
-		return nil, errors.New("the configured trace exporter requires OTLP http/json")
-	}
-	ratio := 1.0
-	switch strings.TrimSpace(os.Getenv("OTEL_TRACES_SAMPLER")) {
-	case "", "always_on":
-	case "always_off":
-		return nil, nil
-	case "traceidratio":
-		var err error
-		ratio, err = strconv.ParseFloat(strings.TrimSpace(os.Getenv("OTEL_TRACES_SAMPLER_ARG")), 64)
-		if err != nil {
-			return nil, errors.New("OTEL_TRACES_SAMPLER_ARG must be a finite ratio between zero and one")
-		}
-	default:
-		return nil, errors.New("unsupported OTEL_TRACES_SAMPLER")
+	ratio, enabled, err := telemetrySampling()
+	if err != nil || !enabled {
+		return nil, err
 	}
 	if service == "" {
 		service = "embedded"
@@ -59,4 +45,29 @@ func configuredTelemetry(service string) (*telemetry.Exporter, error) {
 		Endpoint: endpoint, Service: "contract-audit." + service,
 		InstanceID: telemetryInstanceID(), SampleRatio: ratio,
 	})
+}
+
+func telemetrySampling() (float64, bool, error) {
+	protocol := strings.TrimSpace(os.Getenv("OTEL_EXPORTER_OTLP_PROTOCOL"))
+	if protocol != "" && protocol != "http/json" {
+		return 0, false, errors.New("the configured trace exporter requires OTLP http/json")
+	}
+	return telemetrySampleRatio()
+}
+
+func telemetrySampleRatio() (float64, bool, error) {
+	switch strings.TrimSpace(os.Getenv("OTEL_TRACES_SAMPLER")) {
+	case "", "always_on":
+		return 1.0, true, nil
+	case "always_off":
+		return 0, false, nil
+	case "traceidratio":
+		ratio, err := strconv.ParseFloat(strings.TrimSpace(os.Getenv("OTEL_TRACES_SAMPLER_ARG")), 64)
+		if err != nil {
+			return 0, false, errors.New("OTEL_TRACES_SAMPLER_ARG must be a finite ratio between zero and one")
+		}
+		return ratio, true, nil
+	default:
+		return 0, false, errors.New("unsupported OTEL_TRACES_SAMPLER")
+	}
 }

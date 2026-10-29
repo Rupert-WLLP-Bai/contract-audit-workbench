@@ -113,42 +113,48 @@ func SubscribeLoop(ctx context.Context, config Config) <-chan struct{} {
 	}
 	wake := make(chan struct{}, 1)
 	go func() {
-		delay := time.Second
-		for {
-			if ctx.Err() != nil {
-				return
-			}
-			subscriber, err := Subscribe(config)
-			if err != nil {
-				log.Printf("worker wake-up subscription unavailable: %v (retrying in %s)", err, delay)
-				if err := wait(ctx, delay); err != nil {
-					return
-				}
-				if delay *= 2; delay > reconnectBackoff {
-					delay = reconnectBackoff
-				}
-				continue
-			}
-			delay = time.Second
-			for subscriber != nil {
-				select {
-				case <-ctx.Done():
-					_ = subscriber.Close()
-					return
-				case <-subscriber.Done():
-					// The connection was closed: drop this subscription before
-					// opening another one, so notifications never accumulate
-					// connections or land in an abandoned channel.
-					_ = subscriber.Close()
-					subscriber = nil
-				case <-subscriber.Wake():
-					select {
-					case wake <- struct{}{}:
-					default:
-					}
-				}
-			}
-		}
+		subscribeLoop(ctx, config, wake)
 	}()
 	return wake
+}
+
+func subscribeLoop(ctx context.Context, config Config, wake chan struct{}) {
+	delay := time.Second
+	for {
+		if ctx.Err() != nil {
+			return
+		}
+		subscriber, err := Subscribe(config)
+		if err != nil {
+			log.Printf("worker wake-up subscription unavailable: %v (retrying in %s)", err, delay)
+			if err := wait(ctx, delay); err != nil {
+				return
+			}
+			delay = growRelayBackoff(delay, reconnectBackoff)
+			continue
+		}
+		delay = time.Second
+		consumeWakeup(ctx, subscriber, wake)
+	}
+}
+
+func consumeWakeup(ctx context.Context, subscriber *Wakeup, wake chan struct{}) {
+	for subscriber != nil {
+		select {
+		case <-ctx.Done():
+			_ = subscriber.Close()
+			return
+		case <-subscriber.Done():
+			// The connection was closed: drop this subscription before
+			// opening another one, so notifications never accumulate
+			// connections or land in an abandoned channel.
+			_ = subscriber.Close()
+			subscriber = nil
+		case <-subscriber.Wake():
+			select {
+			case wake <- struct{}{}:
+			default:
+			}
+		}
+	}
 }

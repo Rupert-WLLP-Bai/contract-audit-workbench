@@ -79,13 +79,12 @@ func New(cfg Config) (*Exporter, error) {
 	if strings.TrimSpace(cfg.Endpoint) == "" {
 		return nil, nil
 	}
-	u, err := url.Parse(cfg.Endpoint)
-	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Hostname() == "" ||
-		u.User != nil || u.RawQuery != "" || u.Fragment != "" || u.Opaque != "" {
-		return nil, errors.New("OTLP endpoint must be an HTTP(S) collector base URL without credentials, query or fragment")
+	u, err := parseCollectorEndpoint(cfg.Endpoint)
+	if err != nil {
+		return nil, err
 	}
-	if math.IsNaN(cfg.SampleRatio) || math.IsInf(cfg.SampleRatio, 0) || cfg.SampleRatio < 0 || cfg.SampleRatio > 1 {
-		return nil, errors.New("OTLP sampling ratio must be finite and between zero and one")
+	if err := validateSampleRatio(cfg.SampleRatio); err != nil {
+		return nil, err
 	}
 	service := metadata(cfg.Service)
 	if service == "" {
@@ -98,18 +97,12 @@ func New(cfg Config) (*Exporter, error) {
 	if instance == "" {
 		instance = service
 	}
-	basePath := strings.TrimRight(u.Path, "/")
-	traces := *u
-	traces.Path = basePath + "/v1/traces"
-	traces.RawPath = ""
-	metrics := *u
-	metrics.Path = basePath + "/v1/metrics"
-	metrics.RawPath = ""
+	traces, metrics := otlpEndpoints(u)
 	transport := http.DefaultTransport.(*http.Transport).Clone()
 	transport.Proxy = nil
 	ctx, cancel := context.WithCancel(context.Background())
 	e := &Exporter{
-		tracesEndpoint: traces.String(), metricsEndpoint: metrics.String(), service: service, instance: instance, ratio: cfg.SampleRatio,
+		tracesEndpoint: traces, metricsEndpoint: metrics, service: service, instance: instance, ratio: cfg.SampleRatio,
 		client: &http.Client{Transport: transport, Timeout: 2 * time.Second,
 			CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }},
 		queue: make(chan span, queueCapacity), ctx: ctx, cancel: cancel, done: make(chan struct{}),
@@ -119,10 +112,37 @@ func New(cfg Config) (*Exporter, error) {
 	return e, nil
 }
 
+func parseCollectorEndpoint(raw string) (*url.URL, error) {
+	u, err := url.Parse(raw)
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Hostname() == "" ||
+		u.User != nil || u.RawQuery != "" || u.Fragment != "" || u.Opaque != "" {
+		return nil, errors.New("OTLP endpoint must be an HTTP(S) collector base URL without credentials, query or fragment")
+	}
+	return u, nil
+}
+
+func validateSampleRatio(ratio float64) error {
+	if math.IsNaN(ratio) || math.IsInf(ratio, 0) || ratio < 0 || ratio > 1 {
+		return errors.New("OTLP sampling ratio must be finite and between zero and one")
+	}
+	return nil
+}
+
+func otlpEndpoints(u *url.URL) (string, string) {
+	basePath := strings.TrimRight(u.Path, "/")
+	traces := *u
+	traces.Path = basePath + "/v1/traces"
+	traces.RawPath = ""
+	metrics := *u
+	metrics.Path = basePath + "/v1/metrics"
+	metrics.RawPath = ""
+	return traces.String(), metrics.String()
+}
+
 // Record never waits for the network or for queue capacity. Its event must have
 // already been committed. Provider text, model names and usage are not exported.
 func (e *Exporter) Record(runID, attemptID string, event execution.Event) {
-	if e == nil || event.DurationMS == nil || *event.DurationMS < 0 || event.At.IsZero() || event.SpanID == "" {
+	if !recordableEvent(e, event) {
 		return
 	}
 	trace := sha256.Sum256([]byte(attemptID))
@@ -130,6 +150,14 @@ func (e *Exporter) Record(runID, attemptID string, event execution.Event) {
 		e.sampled.Add(1)
 		return
 	}
+	e.enqueue(buildSpan(runID, attemptID, event, trace))
+}
+
+func recordableEvent(e *Exporter, event execution.Event) bool {
+	return e != nil && event.DurationMS != nil && *event.DurationMS >= 0 && !event.At.IsZero() && event.SpanID != ""
+}
+
+func buildSpan(runID, attemptID string, event execution.Event, trace [32]byte) span {
 	item := span{
 		TraceID: hex.EncodeToString(trace[:16]), SpanID: spanID(event.SpanID),
 		Name: metadata(event.Phase), Kind: 1, Flags: 1,
@@ -153,6 +181,10 @@ func (e *Exporter) Record(runID, attemptID string, event execution.Event) {
 	case "failed", "cancelled":
 		item.Status.Code = 2
 	}
+	return item
+}
+
+func (e *Exporter) enqueue(item span) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	if e.closed {
@@ -199,43 +231,51 @@ func (e *Exporter) Close() {
 
 func (e *Exporter) run() {
 	defer close(e.done)
-	batch := make([]span, 0, batchCapacity)
 	for first := range e.queue {
-		batch = append(batch[:0], first)
-	drain:
-		for len(batch) < batchCapacity {
-			select {
-			case next, ok := <-e.queue:
-				if !ok {
-					break drain
-				}
-				batch = append(batch, next)
-			default:
+		e.deliver(e.collectBatch(first))
+	}
+}
+
+func (e *Exporter) collectBatch(first span) []span {
+	batch := make([]span, 0, batchCapacity)
+	batch = append(batch, first)
+drain:
+	for len(batch) < batchCapacity {
+		select {
+		case next, ok := <-e.queue:
+			if !ok {
 				break drain
 			}
+			batch = append(batch, next)
+		default:
+			break drain
 		}
-		if e.ctx.Err() != nil {
-			e.dropped.Add(uint64(len(batch)))
-			continue
+	}
+	return batch
+}
+
+func (e *Exporter) deliver(batch []span) {
+	if e.ctx.Err() != nil {
+		e.dropped.Add(uint64(len(batch)))
+		return
+	}
+	rejected, err := e.send(batch)
+	if err != nil {
+		e.dropped.Add(uint64(len(batch)))
+		if e.failed.Add(1) == 1 {
+			log.Print("OTLP metadata export failed; durable business records are unaffected")
 		}
-		rejected, err := e.send(batch)
-		if err != nil {
-			e.dropped.Add(uint64(len(batch)))
-			if e.failed.Add(1) == 1 {
-				log.Print("OTLP metadata export failed; durable business records are unaffected")
-			}
-			continue
-		}
-		e.exported.Add(uint64(len(batch) - rejected))
-		e.dropped.Add(uint64(rejected))
-		points, metricRejected, merr := e.sendMetrics(batch)
-		if merr != nil {
-			metricRejected = points
-		}
-		e.metricsExported.Add(uint64(points - metricRejected))
-		if metricRejected > 0 && e.metricsFailed.Add(uint64(metricRejected)) == uint64(metricRejected) {
-			log.Print("OTLP metadata metric export failed; durable business records are unaffected")
-		}
+		return
+	}
+	e.exported.Add(uint64(len(batch) - rejected))
+	e.dropped.Add(uint64(rejected))
+	points, metricRejected, merr := e.sendMetrics(batch)
+	if merr != nil {
+		metricRejected = points
+	}
+	e.metricsExported.Add(uint64(points - metricRejected))
+	if metricRejected > 0 && e.metricsFailed.Add(uint64(metricRejected)) == uint64(metricRejected) {
+		log.Print("OTLP metadata metric export failed; durable business records are unaffected")
 	}
 }
 
@@ -259,15 +299,27 @@ func (e *Exporter) send(batch []span) (int, error) {
 		return 0, err
 	}
 	defer response.Body.Close()
+	data, err := readOTLPResponse(response, "OTLP response was unsuccessful or exceeded its bound", "OTLP acknowledgement must be a JSON object")
+	if err != nil {
+		return 0, err
+	}
+	return traceRejection(data, len(batch))
+}
+
+func readOTLPResponse(response *http.Response, failure, objectFailure string) ([]byte, error) {
 	data, err := io.ReadAll(io.LimitReader(response.Body, responseLimit+1))
 	media, _, _ := mime.ParseMediaType(response.Header.Get("Content-Type"))
 	if err != nil || len(data) > responseLimit || response.StatusCode != http.StatusOK || media != "application/json" {
-		return 0, errors.New("OTLP response was unsuccessful or exceeded its bound")
+		return nil, errors.New(failure)
 	}
 	data = bytes.TrimSpace(data)
 	if len(data) == 0 || data[0] != '{' {
-		return 0, errors.New("OTLP acknowledgement must be a JSON object")
+		return nil, errors.New(objectFailure)
 	}
+	return data, nil
+}
+
+func traceRejection(data []byte, count int) (int, error) {
 	var result struct {
 		PartialSuccess *struct {
 			RejectedSpans json.Number `json:"rejectedSpans"`
@@ -280,7 +332,7 @@ func (e *Exporter) send(batch []span) (int, error) {
 		return 0, nil
 	}
 	rejected, err := result.PartialSuccess.RejectedSpans.Int64()
-	if err != nil || rejected < 0 || rejected > int64(len(batch)) {
+	if err != nil || rejected < 0 || rejected > int64(count) {
 		return 0, errors.New("OTLP rejection count was invalid")
 	}
 	return int(rejected), nil
@@ -289,57 +341,8 @@ func (e *Exporter) send(batch []span) (int, error) {
 // Only the delivery goroutine accesses metricSeries. Record keeps its bounded,
 // nonblocking queue path and never waits for metric aggregation or the collector.
 func (e *Exporter) sendMetrics(batch []span) (int, int, error) {
-	active := make([]*metricSeries, 0, len(batch))
-	for i := range batch {
-		item := &batch[i]
-		key := [3]string{
-			attributeValue(item.Attributes[:], "audit.phase"),
-			attributeValue(item.Attributes[:], "audit.node_kind"),
-			attributeValue(item.Attributes[:], "audit.status"),
-		}
-		series := e.metricSeries[key]
-		if series == nil {
-			// Reserve one of the 256 series for overflow. The reserved tuple
-			// retains event totals without keeping arbitrary new label values.
-			if len(e.metricSeries) >= metricSeriesCapacity-1 {
-				key = [3]string{"__overflow__", "__overflow__", "__overflow__"}
-				series = e.metricSeries[key]
-			}
-			if series == nil {
-				series = &metricSeries{attributes: metricAttributes(key), start: item.Start}
-				e.metricSeries[key] = series
-			}
-		}
-		series.count++
-		if !series.active {
-			series.active = true
-			active = append(active, series)
-		}
-		startNano, startErr := strconv.ParseInt(item.Start, 10, 64)
-		endNano, endErr := strconv.ParseInt(item.End, 10, 64)
-		if startErr == nil && endErr == nil && endNano >= startNano &&
-			(!series.hasDuration || endNano >= series.latestEnd) {
-			series.duration = (endNano - startNano) / int64(time.Millisecond)
-			series.latestEnd = endNano
-			series.hasDuration = true
-		}
-	}
-	events := make([]numberPoint, 0, len(active))
-	durations := make([]numberPoint, 0, len(active))
-	now := time.Now().UnixNano()
-	for _, series := range active {
-		series.active = false
-		// Collection timestamps advance even when events arrive out of order
-		// or a later batch has the same event timestamp as an earlier batch.
-		at := max(now, series.latestEnd, series.lastTime+1)
-		series.lastTime = at
-		events = append(events, numberPoint{Attributes: series.attributes, Start: series.start,
-			Time: strconv.FormatInt(at, 10), AsInt: strconv.FormatInt(series.count, 10)})
-		if series.hasDuration {
-			durations = append(durations, numberPoint{Attributes: series.attributes,
-				Time: strconv.FormatInt(series.latestEnd, 10), AsInt: strconv.FormatInt(series.duration, 10)})
-		}
-	}
+	active := e.aggregateMetrics(batch)
+	events, durations := metricPoints(active)
 	points := len(events) + len(durations)
 	var payload metricsRequest
 	payload.ResourceMetrics[0].Resource.Attributes[0] = stringAttribute("service.name", e.service)
@@ -363,15 +366,86 @@ func (e *Exporter) sendMetrics(batch []span) (int, int, error) {
 		return points, 0, err
 	}
 	defer response.Body.Close()
-	data, err := io.ReadAll(io.LimitReader(response.Body, responseLimit+1))
-	media, _, _ := mime.ParseMediaType(response.Header.Get("Content-Type"))
-	if err != nil || len(data) > responseLimit || response.StatusCode != http.StatusOK || media != "application/json" {
-		return points, 0, errors.New("OTLP metric response was unsuccessful or exceeded its bound")
+	data, err := readOTLPResponse(response, "OTLP metric response was unsuccessful or exceeded its bound", "OTLP metric acknowledgement must be a JSON object")
+	if err != nil {
+		return points, 0, err
 	}
-	data = bytes.TrimSpace(data)
-	if len(data) == 0 || data[0] != '{' {
-		return points, 0, errors.New("OTLP metric acknowledgement must be a JSON object")
+	return metricRejection(data, points)
+}
+
+func (e *Exporter) aggregateMetrics(batch []span) []*metricSeries {
+	active := make([]*metricSeries, 0, len(batch))
+	for i := range batch {
+		item := &batch[i]
+		series := e.seriesFor(item)
+		series.count++
+		if !series.active {
+			series.active = true
+			active = append(active, series)
+		}
+		series.observeDuration(item)
 	}
+	return active
+}
+
+func (e *Exporter) seriesFor(item *span) *metricSeries {
+	key := [3]string{
+		attributeValue(item.Attributes[:], "audit.phase"),
+		attributeValue(item.Attributes[:], "audit.node_kind"),
+		attributeValue(item.Attributes[:], "audit.status"),
+	}
+	if series := e.metricSeries[key]; series != nil {
+		return series
+	}
+	return e.newMetricSeries(key, item.Start)
+}
+
+func (e *Exporter) newMetricSeries(key [3]string, start string) *metricSeries {
+	// Reserve one of the 256 series for overflow. The reserved tuple
+	// retains event totals without keeping arbitrary new label values.
+	if len(e.metricSeries) >= metricSeriesCapacity-1 {
+		key = [3]string{"__overflow__", "__overflow__", "__overflow__"}
+		if series := e.metricSeries[key]; series != nil {
+			return series
+		}
+	}
+	series := &metricSeries{attributes: metricAttributes(key), start: start}
+	e.metricSeries[key] = series
+	return series
+}
+
+func (s *metricSeries) observeDuration(item *span) {
+	startNano, startErr := strconv.ParseInt(item.Start, 10, 64)
+	endNano, endErr := strconv.ParseInt(item.End, 10, 64)
+	if startErr == nil && endErr == nil && endNano >= startNano &&
+		(!s.hasDuration || endNano >= s.latestEnd) {
+		s.duration = (endNano - startNano) / int64(time.Millisecond)
+		s.latestEnd = endNano
+		s.hasDuration = true
+	}
+}
+
+func metricPoints(active []*metricSeries) ([]numberPoint, []numberPoint) {
+	events := make([]numberPoint, 0, len(active))
+	durations := make([]numberPoint, 0, len(active))
+	now := time.Now().UnixNano()
+	for _, series := range active {
+		series.active = false
+		// Collection timestamps advance even when events arrive out of order
+		// or a later batch has the same event timestamp as an earlier batch.
+		at := max(now, series.latestEnd, series.lastTime+1)
+		series.lastTime = at
+		events = append(events, numberPoint{Attributes: series.attributes, Start: series.start,
+			Time: strconv.FormatInt(at, 10), AsInt: strconv.FormatInt(series.count, 10)})
+		if series.hasDuration {
+			durations = append(durations, numberPoint{Attributes: series.attributes,
+				Time: strconv.FormatInt(series.latestEnd, 10), AsInt: strconv.FormatInt(series.duration, 10)})
+		}
+	}
+	return events, durations
+}
+
+func metricRejection(data []byte, points int) (int, int, error) {
 	var result struct {
 		PartialSuccess *struct {
 			RejectedDataPoints json.Number `json:"rejectedDataPoints"`
@@ -427,11 +501,23 @@ func metadata(value string) string {
 		return ""
 	}
 	for _, c := range value {
-		if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_' || c == '-' || c == '.') {
+		if !metadataChar(c) {
 			return ""
 		}
 	}
 	return value
+}
+
+func metadataChar(c rune) bool {
+	return isASCIILetter(c) || isASCIIDigit(c) || c == '_' || c == '-' || c == '.'
+}
+
+func isASCIILetter(c rune) bool {
+	return c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z'
+}
+
+func isASCIIDigit(c rune) bool {
+	return c >= '0' && c <= '9'
 }
 
 func spanID(value string) string {
