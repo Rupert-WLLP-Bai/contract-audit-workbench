@@ -27,7 +27,7 @@ type Client struct {
 // New creates a bounded client for the document-service internal endpoint.
 func New(endpoint, credential string, timeout time.Duration) (*Client, error) {
 	parsed, err := url.Parse(strings.TrimSpace(endpoint))
-	if err != nil || parsed.Host == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") ||
+	if err != nil || parsed.Host == "" || !isHTTPOrHTTPS(parsed.Scheme) ||
 		parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
 		return nil, errors.New("document-service endpoint must be an HTTP(S) origin or base path")
 	}
@@ -43,6 +43,10 @@ func New(endpoint, credential string, timeout time.Duration) (*Client, error) {
 		endpoint: parsed.String(), credential: credential,
 		http: &http.Client{Timeout: timeout},
 	}, nil
+}
+
+func isHTTPOrHTTPS(scheme string) bool {
+	return scheme == "http" || scheme == "https"
 }
 
 // PrepareAttemptDocument requests only a document selected by the authoritative
@@ -67,6 +71,10 @@ func (c *Client) PrepareAttemptDocument(ctx context.Context, request store.Prepa
 		return store.FrozenDocument{}, fmt.Errorf("document preparation request failed: %w", err)
 	}
 	defer response.Body.Close()
+	return preparedDocumentResponse(response)
+}
+
+func preparedDocumentResponse(response *http.Response) (store.FrozenDocument, error) {
 	body, err := io.ReadAll(io.LimitReader(response.Body, maxPreparedDocumentBytes+1))
 	if err != nil {
 		return store.FrozenDocument{}, fmt.Errorf("read document preparation response: %w", err)
@@ -77,6 +85,10 @@ func (c *Client) PrepareAttemptDocument(ctx context.Context, request store.Prepa
 	if response.StatusCode != http.StatusOK {
 		return store.FrozenDocument{}, fmt.Errorf("document preparation service returned HTTP %d", response.StatusCode)
 	}
+	return decodePreparedDocument(body)
+}
+
+func decodePreparedDocument(body []byte) (store.FrozenDocument, error) {
 	var frozen store.FrozenDocument
 	decoder := json.NewDecoder(bytes.NewReader(body))
 	decoder.DisallowUnknownFields()

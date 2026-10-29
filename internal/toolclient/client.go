@@ -62,7 +62,7 @@ type Client struct {
 // New creates a client for the internal tool gateway endpoint.
 func New(endpoint, credential string, timeout time.Duration) (*Client, error) {
 	parsed, err := url.Parse(strings.TrimSpace(endpoint))
-	if err != nil || parsed.Host == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") ||
+	if err != nil || parsed.Host == "" || !isHTTPOrHTTPS(parsed.Scheme) ||
 		parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
 		return nil, errors.New("tool gateway endpoint must be an HTTP(S) origin without credentials or query")
 	}
@@ -77,6 +77,10 @@ func New(endpoint, credential string, timeout time.Duration) (*Client, error) {
 	return &Client{endpoint: parsed.String(), credential: credential, http: &http.Client{Timeout: timeout}}, nil
 }
 
+func isHTTPOrHTTPS(scheme string) bool {
+	return scheme == "http" || scheme == "https"
+}
+
 // FrozenEvidence returns the frozen evidence payload of one attempt. The caller
 // must hold the live claim; the gateway re-resolves it before returning the
 // payload, so a stale or cancelled claim fails instead of delivering evidence.
@@ -84,16 +88,44 @@ func (c *Client) FrozenEvidence(ctx context.Context, request Request) (json.RawM
 	if ctx == nil {
 		return nil, errors.New("tool call context is required")
 	}
-	claim := request.Claim
-	if strings.TrimSpace(claim.JobID) == "" || strings.TrimSpace(claim.WorkerID) == "" ||
-		strings.TrimSpace(claim.AttemptID) == "" || claim.Generation < 1 ||
-		strings.TrimSpace(claim.TenantID) == "" || strings.TrimSpace(claim.OrgID) == "" {
+	jobContext, err := encodeCurrentClaim(request)
+	if err != nil {
+		return nil, err
+	}
+	httpRequest, err := newToolRequest(ctx, c.endpoint, c.credential, request, jobContext)
+	if err != nil {
+		return nil, err
+	}
+	response, err := c.http.Do(httpRequest)
+	if err != nil {
+		return nil, fmt.Errorf("tool call failed: %w", err)
+	}
+	defer response.Body.Close()
+	return readEvidenceResponse(response)
+}
+
+func encodeCurrentClaim(request Request) ([]byte, error) {
+	if !validJobClaim(request.Claim) {
 		return nil, errors.New("tool call requires the current job claim")
 	}
-	if request.AttemptID == "" || request.AttemptID != claim.AttemptID ||
-		request.CaseID == "" || request.RunID == "" || request.CapabilityID == "" || request.Deadline.IsZero() {
+	if !validToolRequest(request) {
 		return nil, errors.New("tool call requires the case, run, attempt, capability, and deadline")
 	}
+	return encodeClaimContext(request.Claim)
+}
+
+func validJobClaim(claim Claim) bool {
+	return strings.TrimSpace(claim.JobID) != "" && strings.TrimSpace(claim.WorkerID) != "" &&
+		strings.TrimSpace(claim.AttemptID) != "" && claim.Generation >= 1 &&
+		strings.TrimSpace(claim.TenantID) != "" && strings.TrimSpace(claim.OrgID) != ""
+}
+
+func validToolRequest(request Request) bool {
+	return request.AttemptID != "" && request.AttemptID == request.Claim.AttemptID &&
+		request.CaseID != "" && request.RunID != "" && request.CapabilityID != "" && !request.Deadline.IsZero()
+}
+
+func encodeClaimContext(claim Claim) ([]byte, error) {
 	jobContext, err := json.Marshal(map[string]any{
 		"tenant_id": claim.TenantID, "org_id": claim.OrgID,
 		"job_id": claim.JobID, "worker_id": claim.WorkerID,
@@ -102,6 +134,10 @@ func (c *Client) FrozenEvidence(ctx context.Context, request Request) (json.RawM
 	if err != nil || len(jobContext) > maxClaimBytes {
 		return nil, errors.New("tool call claim could not be encoded")
 	}
+	return jobContext, nil
+}
+
+func newToolRequest(ctx context.Context, endpoint, credential string, request Request, jobContext []byte) (*http.Request, error) {
 	payload, err := json.Marshal(map[string]any{
 		"jsonrpc": "2.0", "id": "worker-frozen-evidence", "method": "tools/call",
 		"params": map[string]any{
@@ -120,7 +156,7 @@ func (c *Client) FrozenEvidence(ctx context.Context, request Request) (json.RawM
 	if err != nil {
 		return nil, fmt.Errorf("encode tool call: %w", err)
 	}
-	httpRequest, err := http.NewRequestWithContext(ctx, http.MethodPost, c.endpoint, bytes.NewReader(payload))
+	httpRequest, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(payload))
 	if err != nil {
 		return nil, fmt.Errorf("create tool call: %w", err)
 	}
@@ -129,14 +165,12 @@ func (c *Client) FrozenEvidence(ctx context.Context, request Request) (json.RawM
 	httpRequest.Header.Set("MCP-Protocol-Version", ProtocolVersion)
 	httpRequest.Header.Set("Mcp-Method", "tools/call")
 	httpRequest.Header.Set("Mcp-Name", ToolName)
-	httpRequest.Header.Set("X-Contract-Service-Key", c.credential)
+	httpRequest.Header.Set("X-Contract-Service-Key", credential)
 	httpRequest.Header.Set("X-Contract-Job-Context", string(jobContext))
+	return httpRequest, nil
+}
 
-	response, err := c.http.Do(httpRequest)
-	if err != nil {
-		return nil, fmt.Errorf("tool call failed: %w", err)
-	}
-	defer response.Body.Close()
+func readEvidenceResponse(response *http.Response) (json.RawMessage, error) {
 	body, err := io.ReadAll(io.LimitReader(response.Body, maxResponseBytes+1))
 	if err != nil {
 		return nil, fmt.Errorf("read tool response: %w", err)
@@ -147,6 +181,10 @@ func (c *Client) FrozenEvidence(ctx context.Context, request Request) (json.RawM
 	if response.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("tool gateway answered HTTP %d", response.StatusCode)
 	}
+	return decodeEvidenceResponse(body)
+}
+
+func decodeEvidenceResponse(body []byte) (json.RawMessage, error) {
 	var envelope struct {
 		Error *struct {
 			Code    int    `json:"code"`
