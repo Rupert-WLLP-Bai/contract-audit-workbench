@@ -17,6 +17,7 @@ import type {
   BindingStatus,
   CapabilityPack,
   CheckResult,
+  ContractFact,
   CreateExternalCollectionJobInput,
   CreateObjectBindingInput,
   EvidenceRef,
@@ -337,6 +338,27 @@ export function parseExternalObservation(value: unknown): ExternalObservation {
     payloadRef: optionalString(item.payload_ref),
     fields: recordList(item.fields, "fields").map(parseExternalField),
     dataClass: optionalString(item.data_class),
+    snapshotSetId: optionalString(item.snapshot_set_id),
+  };
+}
+
+function parseContractFact(value: unknown): ContractFact {
+  const item = asRecord(value, "contract fact");
+  const quantity =
+    item.value === undefined || item.value === null
+      ? null
+      : asRecord(item.value, "contract fact value");
+  return {
+    name: requiredString(item.name, "contract fact name"),
+    value: quantity
+      ? {
+          value: optionalString(quantity.value),
+          unit: optionalString(quantity.unit),
+        }
+      : null,
+    uncertain: item.uncertain === true,
+    outOfScope: item.out_of_scope === true,
+    semanticKind: optionalString(item.semantic_kind),
   };
 }
 
@@ -415,6 +437,9 @@ export function parseFulfillmentEvaluation(
     snapshotSetId: optionalString(item.snapshot_set_id),
     businessAt: optionalString(item.business_at),
     checks: recordList(item.checks, "checks").map(parseCheckResult),
+    contractFacts: recordList(item.contract_facts, "contract_facts").map(
+      parseContractFact,
+    ),
     dataClass: optionalString(item.data_class),
   };
 }

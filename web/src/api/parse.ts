@@ -34,6 +34,8 @@ import type {
   RunSnapshot,
   ConstraintEvaluation,
   RevisionComparison,
+  OperatorAuditSettings,
+  OperatorConnectorInfo,
   SettingsUser,
   SettingsView,
   TextOffset,
@@ -841,6 +843,35 @@ function parseOperationalMetadata(
     queue_depth: nonNegativeIntegerOrNull(record.queue_depth),
   };
 }
+function parseOperatorConnector(value: unknown): OperatorConnectorInfo | null {
+  if (!isRecord(value)) return null;
+  const connectorId = optionalString(value, "connector_id");
+  if (connectorId === null) return null;
+  return {
+    connector_id: connectorId,
+    source_system: optionalString(value, "source_system"),
+    allowed_objects: Array.isArray(value.allowed_objects)
+      ? value.allowed_objects.filter(
+          (item): item is string => typeof item === "string" && item !== "",
+        )
+      : [],
+  };
+}
+
+function parseOperatorAuditSettings(
+  value: unknown,
+): OperatorAuditSettings | null {
+  if (!isRecord(value)) return null;
+  return {
+    enabled: value.enabled === true,
+    connectors: Array.isArray(value.connectors)
+      ? value.connectors
+          .map(parseOperatorConnector)
+          .filter((item): item is OperatorConnectorInfo => item !== null)
+      : [],
+  };
+}
+
 export function parseSettings(value: unknown): SettingsView {
   const record = isRecord(value) ? value : {};
   const model = isRecord(record.model) ? record.model : {};
@@ -861,6 +892,7 @@ export function parseSettings(value: unknown): SettingsView {
           .filter((item): item is SettingsUser => item !== null)
       : [],
     execution: parseOperationalMetadata(record.execution),
+    operator_audit: parseOperatorAuditSettings(record.operator_audit),
   };
 }
 

@@ -4,6 +4,7 @@ import {
   parseFinding,
   parseRemediation,
   parseReviewWorkspace,
+  parseSettings,
 } from "./parse";
 import { parseWorkbenchSnapshot } from "./workbench";
 
@@ -20,6 +21,30 @@ const caseDefaults = {
 };
 
 describe("response parsers", () => {
+  it("keeps operator audit defaults off unless the server enables them", () => {
+    expect(parseSettings({}).operator_audit).toBeNull();
+    const parsed = parseSettings({
+      operator_audit: {
+        enabled: true,
+        connectors: [
+          {
+            connector_id: "fixture.oss",
+            source_system: "fixture-oss-east",
+            allowed_objects: ["fixture-line-001"],
+          },
+        ],
+      },
+    });
+    expect(parsed.operator_audit?.enabled).toBe(true);
+    expect(parsed.operator_audit?.connectors[0]?.connector_id).toBe(
+      "fixture.oss",
+    );
+    expect(
+      parseSettings({ operator_audit: { enabled: "true" } }).operator_audit
+        ?.enabled,
+    ).toBe(false);
+  });
+
   it("rejects a list that is not the documented shape", () => {
     expect(() => parseCaseList({})).toThrow(/items/);
   });

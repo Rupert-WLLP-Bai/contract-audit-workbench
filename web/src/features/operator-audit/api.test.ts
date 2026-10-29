@@ -4,6 +4,7 @@ import {
   createHttpOperatorAuditClient,
   parseCheckResult,
   parseExternalObservation,
+  parseFulfillmentEvaluation,
   parseImpactPlan,
 } from "./api";
 import type {
@@ -273,6 +274,34 @@ describe("operator audit API client", () => {
     expect(plan.checks[0]?.action).toBe("unknown");
     expect(plan.checks[0]?.reasons).toEqual([]);
     expect(plan.businessResultSource).toBe("partial");
+  });
+
+  it("keeps snapshot-set identity and contract facts explicit", () => {
+    const observation = parseExternalObservation({
+      snapshot_id: "snapshot-1",
+      snapshot_set_id: "set-1",
+      fields: [],
+    });
+    expect(observation.snapshotSetId).toBe("set-1");
+
+    const evaluation = parseFulfillmentEvaluation({
+      evaluation_id: "eval-1",
+      checks: [],
+      contract_facts: [
+        {
+          name: "minimum_bandwidth",
+          value: { value: "100", unit: "Mbit/s" },
+          uncertain: false,
+          out_of_scope: false,
+          semantic_kind: "configured_value",
+        },
+      ],
+    });
+    expect(evaluation.contractFacts[0]?.value).toEqual({
+      value: "100",
+      unit: "Mbit/s",
+    });
+    expect(parseExternalObservation({ snapshot_id: "s", fields: [] }).snapshotSetId).toBeNull();
   });
 
   it("surfaces a forbidden response as an ApiError", async () => {

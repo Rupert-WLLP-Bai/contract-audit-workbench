@@ -31,6 +31,7 @@ import { RunProvenance } from "../components/run-provenance";
 import { AuditProjection } from "../components/audit-projection";
 import { EvidenceRequestPanel } from "../components/evidence-request-panel";
 import { ExperienceFeedbackPanel } from "../components/experience-feedback-panel";
+import { OperatorAuditEntry } from "../features/operator-audit/operator-audit-entry";
 import {
   contractTypeLabel,
   isActiveAttemptState,
@@ -470,6 +471,11 @@ export function ReviewPage() {
         evaluations={review.data.evaluations ?? []}
         agentReview={review.data.agent_review ?? null}
         documents={caseDetail.data?.documents ?? []}
+      />
+      <OperatorAuditEntry
+        caseId={caseId}
+        runId={runId}
+        attemptId={selectedAttempt?.id ?? null}
       />
       <ExperienceFeedbackPanel
         caseId={caseId}

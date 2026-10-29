@@ -115,6 +115,7 @@ export const ambiguousBinding: ObjectBinding = {
 
 export const availableObservation: ExternalObservation = {
   snapshotId: "fixture-snapshot-001",
+  snapshotSetId: "fixture-snapshot-set-001",
   connectorId: "fixture.oss",
   sourceSystem: "fixture-oss-east",
   objectBindingVersion: "fixture-binding-v1",

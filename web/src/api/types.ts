@@ -657,12 +657,24 @@ export interface SettingsUser {
   role: string;
 }
 
+export interface OperatorConnectorInfo {
+  connector_id: string;
+  source_system: string | null;
+  allowed_objects: string[];
+}
+
+export interface OperatorAuditSettings {
+  enabled: boolean;
+  connectors: OperatorConnectorInfo[];
+}
+
 export interface SettingsView {
   model: { status: string; label: string };
   queue: { depth: number | null; oldest_wait_ms: number | null };
   redaction_policy: string;
   users: SettingsUser[];
   execution?: ExecutionOperationalMetadata | null;
+  operator_audit?: OperatorAuditSettings | null;
 }
 export interface GenerationRecord {
   id: string;

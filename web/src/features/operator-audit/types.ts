@@ -158,6 +158,7 @@ export interface ExternalObservation {
   payloadRef: string | null;
   fields: ExternalField[];
   dataClass: string | null;
+  snapshotSetId: string | null;
 }
 
 export interface DocumentEvidence {
@@ -235,6 +236,14 @@ export interface FulfillmentEvaluationRef {
   jobId: string | null;
 }
 
+export interface ContractFact {
+  name: string;
+  value: { value: string | null; unit: string | null } | null;
+  uncertain: boolean;
+  outOfScope: boolean;
+  semanticKind: string | null;
+}
+
 export interface FulfillmentEvaluation {
   evaluationId: string;
   pack: PackRef | null;
@@ -244,6 +253,7 @@ export interface FulfillmentEvaluation {
   snapshotSetId: string | null;
   businessAt: string | null;
   checks: CheckResult[];
+  contractFacts: ContractFact[];
   dataClass: string | null;
 }
 
