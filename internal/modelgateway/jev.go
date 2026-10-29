@@ -44,13 +44,12 @@ type JevConfig struct {
 
 func jevConfigFromEnv() JevConfig {
 	config := JevConfig{
-		Mode:            strings.ToLower(strings.TrimSpace(os.Getenv("TYPESAFE_JEV_MODE"))),
-		BaseURL:         strings.TrimRight(strings.TrimSpace(os.Getenv("TYPESAFE_JEV_BASE_URL")), "/"),
-		APIKey:          strings.TrimSpace(os.Getenv("TYPESAFE_API_KEY")),
-		Model:           strings.TrimSpace(os.Getenv("TYPESAFE_JEV_MODEL")),
-		Egress:          strings.ToLower(strings.TrimSpace(os.Getenv("TYPESAFE_JEV_EGRESS"))),
-		Timeout:         agentflow.DefaultAdvisoryTimeout,
-		MaxOutputTokens: 2048,
+		Mode:    strings.ToLower(strings.TrimSpace(os.Getenv("TYPESAFE_JEV_MODE"))),
+		BaseURL: strings.TrimRight(strings.TrimSpace(os.Getenv("TYPESAFE_JEV_BASE_URL")), "/"),
+		APIKey:  strings.TrimSpace(os.Getenv("TYPESAFE_API_KEY")),
+		Model:   strings.TrimSpace(os.Getenv("TYPESAFE_JEV_MODEL")),
+		Egress:  strings.ToLower(strings.TrimSpace(os.Getenv("TYPESAFE_JEV_EGRESS"))),
+		Timeout: agentflow.DefaultAdvisoryTimeout, MaxOutputTokens: 2048,
 	}
 	if config.Mode == "" {
 		config.Mode = agentflow.AdvisoryModeOff
@@ -64,30 +63,40 @@ func jevConfigFromEnv() JevConfig {
 	if config.Egress != agentflow.AdvisoryEgressMinimized {
 		config.Problem = "unsupported_egress"
 	}
-	rawFeatures := strings.TrimSpace(os.Getenv("TYPESAFE_JEV_FEATURES"))
-	if rawFeatures == "" {
-		config.Features = []string{agentflow.AdvisoryFeatureKnowledgeRerank}
-	} else {
-		seen := map[string]bool{}
-		for _, raw := range strings.Split(rawFeatures, ",") {
-			feature := strings.ToLower(strings.TrimSpace(raw))
-			if feature == "" {
-				continue
-			}
-			if feature != agentflow.AdvisoryFeatureKnowledgeRerank {
-				config.Problem = "unsupported_feature"
-				continue
-			}
-			if !seen[feature] {
-				seen[feature] = true
-				config.Features = append(config.Features, feature)
-			}
+	config.Features, config.Problem = configuredJevFeatures(os.Getenv("TYPESAFE_JEV_FEATURES"), config.Problem)
+	applyJevTimingOverrides(&config)
+	return config
+}
+
+func configuredJevFeatures(rawValue, problem string) ([]string, string) {
+	rawValue = strings.TrimSpace(rawValue)
+	if rawValue == "" {
+		return []string{agentflow.AdvisoryFeatureKnowledgeRerank}, problem
+	}
+	seen := map[string]bool{}
+	features := make([]string, 0)
+	for _, raw := range strings.Split(rawValue, ",") {
+		feature := strings.ToLower(strings.TrimSpace(raw))
+		if feature == "" {
+			continue
 		}
-		sort.Strings(config.Features)
-		if len(config.Features) == 0 {
-			config.Problem = "unsupported_feature"
+		if feature != agentflow.AdvisoryFeatureKnowledgeRerank {
+			problem = "unsupported_feature"
+			continue
+		}
+		if !seen[feature] {
+			seen[feature] = true
+			features = append(features, feature)
 		}
 	}
+	sort.Strings(features)
+	if len(features) == 0 {
+		problem = "unsupported_feature"
+	}
+	return features, problem
+}
+
+func applyJevTimingOverrides(config *JevConfig) {
 	if raw := strings.TrimSpace(os.Getenv("TYPESAFE_JEV_TIMEOUT")); raw != "" {
 		value, err := time.ParseDuration(raw)
 		if err != nil || value < agentflow.MinAdvisoryTimeout || value > agentflow.MaxAdvisoryTimeout {
@@ -104,7 +113,6 @@ func jevConfigFromEnv() JevConfig {
 			config.MaxOutputTokens = value
 		}
 	}
-	return config
 }
 
 // normalizeJev keeps an advisory misconfiguration local to the Jev route. It
@@ -225,145 +233,226 @@ func (s *Service) systemOne(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusForbidden, map[string]string{"error": "only the worker may use the advisory route", "code": "jev_worker_identity_required"})
 		return
 	}
+	s.serveSystemOne(w, r, caller)
+}
+
+func (s *Service) serveSystemOne(w http.ResponseWriter, r *http.Request, caller string) {
+	if !s.jevAvailable(w) {
+		return
+	}
+	request, ok := s.readSystemOneRequest(w, r)
+	if !ok {
+		return
+	}
+	s.executeSystemOne(w, r, caller, request)
+}
+
+func (s *Service) jevAvailable(w http.ResponseWriter) bool {
 	switch s.jevStatus {
 	case "off":
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "Jev is disabled", "code": "jev_disabled"})
-		return
+		return false
 	case "unconfigured":
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "Jev is enabled but not configured", "code": "jev_unconfigured"})
-		return
+		return false
 	case "unavailable":
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "Jev is unavailable", "code": "jev_unavailable"})
-		return
+		return false
 	case "configured", "fixture":
 	default:
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "Jev is unavailable", "code": "jev_unavailable"})
-		return
+		return false
 	}
+	return true
+}
+
+type systemOneRequest struct {
+	body      []byte
+	state     string
+	questions map[string]jev.NoulQuestion
+	scope     model.DelegatedScope
+}
+
+func (s *Service) readSystemOneRequest(w http.ResponseWriter, r *http.Request) (systemOneRequest, bool) {
+	if !s.validateSystemOneHeaders(w, r) {
+		return systemOneRequest{}, false
+	}
+	body, ok := readSystemOneBody(w, r)
+	if !ok {
+		return systemOneRequest{}, false
+	}
+	state, questions, ok := decodeSystemOnePayload(w, body, s.jev.Model)
+	if !ok {
+		return systemOneRequest{}, false
+	}
+	scope, err := decodeDelegatedScope(r)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "delegated model scope is missing", "code": "jev_scope_missing"})
+		return systemOneRequest{}, false
+	}
+	if int64(len(body)) > s.config.Budget.MaxInputTokenReservation || s.jev.MaxOutputTokens > s.config.Budget.MaxOutputTokenReservation {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "advisory token bound exceeds the configured reservation", "code": "jev_token_bound_exceeded"})
+		return systemOneRequest{}, false
+	}
+	return systemOneRequest{body: body, state: state, questions: questions, scope: scope}, true
+}
+
+func decodeSystemOnePayload(w http.ResponseWriter, body []byte, configuredModel string) (string, map[string]jev.NoulQuestion, bool) {
+	requestModel, state, questions, err := decodeSystemOneRequest(body)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "advisory request body is invalid", "code": "jev_request_invalid"})
+		return "", nil, false
+	}
+	if requestModel != configuredModel {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "requested Jev model is not configured", "code": "jev_model_mismatch"})
+		return "", nil, false
+	}
+	if jev.ValidateNoulInput(state, questions) != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "advisory state or questions exceed their bound", "code": "jev_request_invalid"})
+		return "", nil, false
+	}
+	return state, questions, true
+}
+
+func (s *Service) validateSystemOneHeaders(w http.ResponseWriter, r *http.Request) bool {
 	feature, ok := singleHeader(r, "X-Contract-Jev-Feature")
 	if !ok || !s.jevSupports(feature) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "Jev feature is missing or not configured", "code": "jev_feature_invalid"})
-		return
+		return false
 	}
 	classification, ok := singleHeader(r, "X-Contract-Data-Classification")
 	if !ok {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "data classification is required", "code": "jev_classification_missing"})
-		return
+		return false
 	}
 	if classification == agentflow.AdvisoryEgressApprovedText {
 		writeJSON(w, http.StatusForbidden, map[string]string{"error": "approved text egress is not enabled", "code": "jev_egress_not_approved"})
-		return
+		return false
 	}
 	if classification != s.jev.Egress {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "data classification does not match the gateway", "code": "jev_classification_mismatch"})
-		return
+		return false
 	}
+	return true
+}
 
+func readSystemOneBody(w http.ResponseWriter, r *http.Request) ([]byte, bool) {
 	bodyReader := http.MaxBytesReader(w, r.Body, maxJevRequestBytes)
 	defer bodyReader.Close()
 	body, err := io.ReadAll(bodyReader)
 	if err != nil || len(body) == 0 {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "advisory request body is invalid", "code": "jev_request_invalid"})
-		return
+		return nil, false
 	}
-	requestModel, state, questions, err := decodeSystemOneRequest(body)
-	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "advisory request body is invalid", "code": "jev_request_invalid"})
-		return
-	}
-	if requestModel != s.jev.Model {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "requested Jev model is not configured", "code": "jev_model_mismatch"})
-		return
-	}
-	if err := jev.ValidateNoulInput(state, questions); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "advisory state or questions exceed their bound", "code": "jev_request_invalid"})
-		return
-	}
-	scope, err := decodeDelegatedScope(r)
-	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "delegated model scope is missing", "code": "jev_scope_missing"})
-		return
-	}
-	if int64(len(body)) > s.config.Budget.MaxInputTokenReservation || s.jev.MaxOutputTokens > s.config.Budget.MaxOutputTokenReservation {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "advisory token bound exceeds the configured reservation", "code": "jev_token_bound_exceeded"})
-		return
-	}
+	return body, true
+}
 
-	select {
-	case s.jevQueue <- struct{}{}:
-		defer func() { <-s.jevQueue }()
-	default:
-		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "advisory gateway capacity is full", "code": "jev_queue_full"})
+func (s *Service) executeSystemOne(w http.ResponseWriter, r *http.Request, caller string, request systemOneRequest) {
+	ctx, release, ok := s.acquireSystemOneCapacity(w, r)
+	if !ok {
 		return
 	}
-	ctx, cancel := context.WithTimeout(r.Context(), s.jev.Timeout)
-	defer cancel()
-	select {
-	case s.jevSlots <- struct{}{}:
-		defer func() { <-s.jevSlots }()
-	case <-ctx.Done():
-		writeJevContextError(w, ctx.Err())
-		return
-	}
+	defer release()
 	allowed, probe := s.jevCircuit.allow(time.Now())
 	if !allowed {
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "Jev provider circuit is open", "code": "jev_circuit_open"})
 		return
 	}
 	defer s.jevCircuit.release(probe)
+	s.completeSystemOne(w, ctx, caller, request, probe)
+}
 
-	lease, reserveErr := s.store.ReserveModelCall(ctx, caller, scope, "typesafe/"+s.jev.Model, 1,
-		int64(len(body)), s.jev.MaxOutputTokens, s.config.Budget)
-	if reserveErr != nil {
-		switch {
-		case errors.Is(reserveErr, store.ErrModelBudgetExceeded):
-			writeJSON(w, http.StatusTooManyRequests, map[string]string{"error": "advisory call quota is exhausted", "code": "jev_budget_exhausted"})
-		case errors.Is(reserveErr, store.ErrModelScopeUnavailable):
-			writeJSON(w, http.StatusForbidden, map[string]string{"error": "current model scope is unavailable", "code": "model_scope_unavailable"})
-		default:
-			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "advisory call could not be reserved", "code": "jev_budget_unavailable"})
-		}
+func (s *Service) acquireSystemOneCapacity(w http.ResponseWriter, r *http.Request) (context.Context, func(), bool) {
+	select {
+	case s.jevQueue <- struct{}{}:
+	default:
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "advisory gateway capacity is full", "code": "jev_queue_full"})
+		return nil, nil, false
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), s.jev.Timeout)
+	select {
+	case s.jevSlots <- struct{}{}:
+		return ctx, func() { <-s.jevSlots; <-s.jevQueue; cancel() }, true
+	case <-ctx.Done():
+		cancel()
+		<-s.jevQueue
+		writeJevContextError(w, ctx.Err())
+		return nil, nil, false
+	}
+}
+
+func (s *Service) completeSystemOne(w http.ResponseWriter, ctx context.Context, caller string, request systemOneRequest, probe circuitProbe) {
+	lease, err := s.reserveSystemOne(ctx, caller, request)
+	if err != nil {
+		writeReservationError(w, err, jevReservationErrors)
 		return
 	}
-	response, usage, requestErr := s.dispatchJev(ctx, state, questions)
+	s.executeReservedSystemOne(w, ctx, caller, request, probe, lease)
+}
+
+func (s *Service) executeReservedSystemOne(w http.ResponseWriter, ctx context.Context, caller string, request systemOneRequest, probe circuitProbe, lease store.ModelCallLease) {
+	response, usage, requestErr := s.dispatchJev(ctx, request.state, request.questions)
+	if err := s.settleSystemOne(lease, usage, requestErr); err != nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "advisory usage could not be recorded", "code": "jev_usage_unavailable"})
+		return
+	}
+	s.respondSystemOne(w, ctx, caller, request, probe, response, requestErr)
+}
+
+func (s *Service) respondSystemOne(w http.ResponseWriter, ctx context.Context, caller string, request systemOneRequest, probe circuitProbe, response []byte, requestErr error) {
+	if requestErr != nil {
+		s.writeSystemOneFailure(w, requestErr, probe)
+		return
+	}
+	s.jevCircuit.record(probe, true, false, time.Now())
+	s.writeAuthorizedSystemOneResponse(w, ctx, caller, request, response)
+}
+
+func (s *Service) writeAuthorizedSystemOneResponse(w http.ResponseWriter, ctx context.Context, caller string, request systemOneRequest, response []byte) {
+	if err := s.store.ReauthorizeModelScope(ctx, caller, request.scope); err != nil {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "current model scope is unavailable", "code": "model_scope_unavailable"})
+		return
+	}
+	writeSystemOneResponse(w, s.jevStatus, response)
+}
+
+func (s *Service) settleSystemOne(lease store.ModelCallLease, usage *model.TokenUsage, requestErr error) error {
 	modelStatus, errorCode := "completed", ""
 	if requestErr != nil {
 		modelStatus, errorCode = "failed", jevErrorCode(requestErr)
 	}
-	finishCtx, finishCancel := context.WithTimeout(context.Background(), 3*time.Second)
-	finishErr := s.store.FinishModelCall(finishCtx, lease, store.ModelCallResult{
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	return s.store.FinishModelCall(ctx, lease, store.ModelCallResult{
 		Status: modelStatus, ErrorCode: errorCode, Usage: usage, OccurredAt: time.Now().UTC(),
 	})
-	finishCancel()
-	if finishErr != nil {
-		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "advisory usage could not be recorded", "code": "jev_usage_unavailable"})
+}
+
+func (s *Service) writeSystemOneFailure(w http.ResponseWriter, err error, probe circuitProbe) {
+	s.jevCircuit.record(probe, false, true, time.Now())
+	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
+		writeJevContextError(w, err)
 		return
 	}
-	if requestErr != nil {
-		if errors.Is(requestErr, context.DeadlineExceeded) || errors.Is(requestErr, context.Canceled) {
-			s.jevCircuit.record(probe, false, true, time.Now())
-			writeJevContextError(w, requestErr)
-			return
-		}
-		s.jevCircuit.record(probe, false, true, time.Now())
-		code := "jev_provider_failed"
-		if errors.Is(requestErr, errJevInvalidResponse) {
-			code = "jev_invalid_response"
-		}
-		writeJSON(w, http.StatusBadGateway, map[string]string{"error": "Jev provider request failed", "code": code})
-		return
+	code := "jev_provider_failed"
+	if errors.Is(err, errJevInvalidResponse) {
+		code = "jev_invalid_response"
 	}
-	s.jevCircuit.record(probe, true, false, time.Now())
-	if err := s.store.ReauthorizeModelScope(ctx, caller, scope); err != nil {
-		writeJSON(w, http.StatusForbidden, map[string]string{"error": "current model scope is unavailable", "code": "model_scope_unavailable"})
-		return
-	}
+	writeJSON(w, http.StatusBadGateway, map[string]string{"error": "Jev provider request failed", "code": code})
+}
+
+func writeSystemOneResponse(w http.ResponseWriter, status string, response []byte) {
 	w.Header().Set("Content-Type", "application/json")
-	if s.jevStatus == "fixture" {
+	if status == "fixture" {
 		w.Header().Set("X-Model-Backend", "local-fixture")
 	}
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(response)
+}
+
+func (s *Service) reserveSystemOne(ctx context.Context, caller string, request systemOneRequest) (store.ModelCallLease, error) {
+	return s.store.ReserveModelCall(ctx, caller, request.scope, "typesafe/"+s.jev.Model, 1,
+		int64(len(request.body)), s.jev.MaxOutputTokens, s.config.Budget)
 }
 
 func singleHeader(r *http.Request, name string) (string, bool) {
@@ -426,6 +515,10 @@ func (s *Service) dispatchJev(ctx context.Context, state string, questions map[s
 		zero := int64(0)
 		return fixtureJevResponse(s.jev.Model, questions), &model.TokenUsage{Source: "local_fixture", InputTokens: &zero, OutputTokens: &zero}, nil
 	}
+	return s.dispatchRemoteJev(ctx, state, questions)
+}
+
+func (s *Service) dispatchRemoteJev(ctx context.Context, state string, questions map[string]jev.NoulQuestion) ([]byte, *model.TokenUsage, error) {
 	if s.jevClient == nil {
 		return nil, nil, errors.New("Jev client is unavailable")
 	}
@@ -436,8 +529,7 @@ func (s *Service) dispatchJev(ctx context.Context, state string, questions map[s
 	if meta.Model != s.jev.Model {
 		return nil, nil, errJevInvalidResponse
 	}
-	usage := tokenUsageFromJev(meta.Usage)
-	return encodeJevResponse(meta, answers), usage, nil
+	return encodeJevResponse(meta, answers), tokenUsageFromJev(meta.Usage), nil
 }
 
 // encodeJevResponse rebuilds the provider envelope from already-validated

@@ -83,6 +83,21 @@ func FromEnv() (Config, error) {
 	if config.OCRModel == "" {
 		config.OCRModel = model.DefaultOCRModel
 	}
+	if err := applyEnvIntOverrides(&config); err != nil {
+		return Config{}, err
+	}
+	if err := applyEnvInt64Overrides(&config); err != nil {
+		return Config{}, err
+	}
+	if err := applyEnvDurationOverrides(&config); err != nil {
+		return Config{}, err
+	}
+	config.Budget.LeaseDuration = config.RequestTimeout + 30*time.Second
+	config.Jev = jevConfigFromEnv()
+	return config, nil
+}
+
+func applyEnvIntOverrides(config *Config) error {
 	ints := []struct {
 		name   string
 		target *int
@@ -105,10 +120,14 @@ func FromEnv() (Config, error) {
 		}
 		value, err := strconv.Atoi(raw)
 		if err != nil || value < item.min || value > item.max {
-			return Config{}, fmt.Errorf("%s is outside its supported integer range", item.name)
+			return fmt.Errorf("%s is outside its supported integer range", item.name)
 		}
 		*item.target = value
 	}
+	return nil
+}
+
+func applyEnvInt64Overrides(config *Config) error {
 	for _, item := range []struct {
 		name   string
 		target *int64
@@ -124,10 +143,14 @@ func FromEnv() (Config, error) {
 		}
 		value, err := strconv.ParseInt(raw, 10, 64)
 		if err != nil || value < 1 {
-			return Config{}, fmt.Errorf("%s must be a positive integer", item.name)
+			return fmt.Errorf("%s must be a positive integer", item.name)
 		}
 		*item.target = value
 	}
+	return nil
+}
+
+func applyEnvDurationOverrides(config *Config) error {
 	for _, item := range []struct {
 		name   string
 		target *time.Duration
@@ -142,13 +165,11 @@ func FromEnv() (Config, error) {
 		}
 		value, err := time.ParseDuration(raw)
 		if err != nil || value <= 0 || value > item.max {
-			return Config{}, fmt.Errorf("%s must be a positive duration within the supported limit", item.name)
+			return fmt.Errorf("%s must be a positive duration within the supported limit", item.name)
 		}
 		*item.target = value
 	}
-	config.Budget.LeaseDuration = config.RequestTimeout + 30*time.Second
-	config.Jev = jevConfigFromEnv()
-	return config, nil
+	return nil
 }
 
 type Service struct {
@@ -316,6 +337,14 @@ func (s *Service) models(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"object": "list", "data": items})
 }
 
+type chatRequest struct {
+	caller          string
+	body            []byte
+	requestedModel  string
+	requestedTokens int
+	scope           model.DelegatedScope
+}
+
 func (s *Service) chatCompletions(w http.ResponseWriter, r *http.Request) {
 	if !requireMethod(w, r, http.MethodPost) {
 		return
@@ -324,118 +353,202 @@ func (s *Service) chatCompletions(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	select {
-	case s.queue <- struct{}{}:
-		defer func() { <-s.queue }()
-	default:
-		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "model gateway capacity is full", "code": "model_queue_full"})
+	s.serveChatCompletions(w, r, caller)
+}
+
+func (s *Service) serveChatCompletions(w http.ResponseWriter, r *http.Request, caller string) {
+	ctx, release, probe, ok := s.acquireChatCapacity(w, r)
+	if !ok {
 		return
 	}
+	defer release()
+	request, ok := s.readChatRequest(w, r, caller)
+	if !ok {
+		return
+	}
+	s.runChatAttempts(w, ctx, request, probe)
+}
+
+func (s *Service) acquireChatCapacity(w http.ResponseWriter, r *http.Request) (context.Context, func(), circuitProbe, bool) {
+	select {
+	case s.queue <- struct{}{}:
+	default:
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "model gateway capacity is full", "code": "model_queue_full"})
+		return nil, nil, 0, false
+	}
 	ctx, cancel := context.WithTimeout(r.Context(), s.config.RequestTimeout)
-	defer cancel()
 	select {
 	case s.concurrency <- struct{}{}:
-		defer func() { <-s.concurrency }()
 	case <-ctx.Done():
+		<-s.queue
+		cancel()
 		writeModelContextError(w, ctx.Err())
-		return
+		return nil, nil, 0, false
 	}
 	allowed, probe := s.circuit.allow(time.Now())
 	if !allowed {
+		<-s.concurrency
+		<-s.queue
+		cancel()
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "model provider circuit is open", "code": "model_circuit_open"})
-		return
+		return nil, nil, 0, false
 	}
-	defer s.circuit.release(probe)
+	return ctx, func() { s.circuit.release(probe); <-s.concurrency; <-s.queue; cancel() }, probe, true
+}
+
+func (s *Service) readChatRequest(w http.ResponseWriter, r *http.Request, caller string) (chatRequest, bool) {
 	body, requestedModel, requestedTokens, scope, err := decodeRequest(w, r)
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid OpenAI-compatible request"})
-		return
+		return chatRequest{}, false
 	}
 	if !s.allowedModel(requestedModel) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "requested model is not configured", "code": "model_not_configured"})
-		return
+		return chatRequest{}, false
 	}
-	// The reservation must cover the request that is actually forwarded: the
-	// encoded body is the input upper bound and the request's own max_tokens is
-	// the output upper bound. A request that exceeds the configured reservation
-	// is refused rather than silently forwarded above the reserved bound.
 	if int64(len(body)) > s.config.Budget.MaxInputTokenReservation || int64(requestedTokens) > s.config.Budget.MaxOutputTokenReservation {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "requested token bound exceeds the configured reservation", "code": "model_token_bound_exceeded"})
+		return chatRequest{}, false
+	}
+	return chatRequest{caller: caller, body: body, requestedModel: requestedModel, requestedTokens: requestedTokens, scope: scope}, true
+}
+
+func (s *Service) runChatAttempts(w http.ResponseWriter, ctx context.Context, request chatRequest, probe circuitProbe) {
+	for attempt := 1; attempt <= s.config.Retries+1; attempt++ {
+		if !s.runChatAttempt(w, ctx, request, probe, attempt) {
+			return
+		}
+	}
+}
+
+func (s *Service) runChatAttempt(w http.ResponseWriter, ctx context.Context, request chatRequest, probe circuitProbe, attempt int) bool {
+	lease, ok := s.reserveChatAttempt(w, ctx, request, attempt)
+	if !ok {
+		return false
+	}
+	response, status, usage, requestErr, retryable, preDispatch := s.dispatch(ctx, request.requestedModel, request.body)
+	modelStatus, errorCode := chatAttemptResult(requestErr, status)
+	return s.settleAndRespondChatAttempt(w, ctx, request, probe, attempt, lease, response, status, usage, requestErr, retryable, preDispatch, modelStatus, errorCode)
+}
+
+func (s *Service) reserveChatAttempt(w http.ResponseWriter, ctx context.Context, request chatRequest, attempt int) (store.ModelCallLease, bool) {
+	lease, err := s.store.ReserveModelCall(ctx, request.caller, request.scope, request.requestedModel, attempt,
+		int64(len(request.body)), int64(request.requestedTokens), s.config.Budget)
+	if err != nil {
+		writeReservationError(w, err, modelReservationErrors)
+		return store.ModelCallLease{}, false
+	}
+	return lease, true
+}
+
+func (s *Service) settleAndRespondChatAttempt(w http.ResponseWriter, ctx context.Context, request chatRequest, probe circuitProbe, attempt int, lease store.ModelCallLease, response []byte, status int, usage *model.TokenUsage, requestErr error, retryable, preDispatch bool, modelStatus, errorCode string) bool {
+	if err := s.finishChatAttempt(lease, modelStatus, errorCode, usage, preDispatch); err != nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "model usage could not be recorded", "code": "model_usage_unavailable"})
+		return false
+	}
+	return s.respondToChatAttempt(w, ctx, request, probe, attempt, response, status, requestErr, retryable)
+}
+
+func chatAttemptResult(requestErr error, status int) (string, string) {
+	if requestErr == nil && status >= 200 && status < 300 {
+		return "completed", ""
+	}
+	return "failed", requestErrCode(requestErr, status)
+}
+
+func (s *Service) finishChatAttempt(lease store.ModelCallLease, status, errorCode string, usage *model.TokenUsage, preDispatch bool) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	return s.store.FinishModelCall(ctx, lease, store.ModelCallResult{
+		Status: status, ErrorCode: errorCode, Usage: usage, OccurredAt: time.Now().UTC(), PreDispatchFailure: preDispatch,
+	})
+}
+
+func (s *Service) respondToChatAttempt(w http.ResponseWriter, ctx context.Context, request chatRequest, probe circuitProbe, attempt int, response []byte, status int, requestErr error, retryable bool) bool {
+	if requestErr != nil {
+		return s.respondToChatError(w, probe, attempt, requestErr, retryable)
+	}
+	return s.respondToChatStatus(w, ctx, request, probe, attempt, response, status)
+}
+
+func (s *Service) respondToChatStatus(w http.ResponseWriter, ctx context.Context, request chatRequest, probe circuitProbe, attempt int, response []byte, status int) bool {
+	if status >= 500 && attempt <= s.config.Retries {
+		s.circuit.record(probe, false, true, time.Now())
+		return true
+	}
+	s.circuit.record(probe, status >= 200 && status < 300, status >= 500, time.Now())
+	if status < http.StatusOK || status >= http.StatusMultipleChoices {
+		writeJSON(w, http.StatusBadGateway, map[string]string{"error": "model provider request failed", "code": "model_provider_failed"})
+		return false
+	}
+	s.writeAuthorizedChatResponse(w, ctx, request, status, response)
+	return false
+}
+
+func (s *Service) writeAuthorizedChatResponse(w http.ResponseWriter, ctx context.Context, request chatRequest, status int, response []byte) {
+	if err := s.store.ReauthorizeModelScope(ctx, request.caller, request.scope); err != nil {
+		writeChatReauthorizationError(w, err)
 		return
 	}
-	var lastStatus int
-	for attempt := 1; attempt <= s.config.Retries+1; attempt++ {
-		lease, reserveErr := s.store.ReserveModelCall(ctx, caller, scope, requestedModel, attempt, int64(len(body)), int64(requestedTokens), s.config.Budget)
-		if reserveErr != nil {
-			if errors.Is(reserveErr, store.ErrModelBudgetExceeded) {
-				writeJSON(w, http.StatusTooManyRequests, map[string]string{"error": "model call quota is exhausted", "code": "model_budget_exhausted"})
-			} else if errors.Is(reserveErr, store.ErrModelScopeUnavailable) {
-				writeJSON(w, http.StatusForbidden, map[string]string{"error": "current model scope is unavailable", "code": "model_scope_unavailable"})
-			} else {
-				writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "model call could not be reserved", "code": "model_budget_unavailable"})
-			}
-			return
-		}
-		response, status, usage, requestErr, retryable, preDispatch := s.dispatch(ctx, requestedModel, body)
-		modelStatus := "completed"
-		errorCode := ""
-		if requestErr != nil || status < 200 || status >= 300 {
-			modelStatus = "failed"
-			errorCode = requestErrCode(requestErr, status)
-		}
-		finishCtx, finishCancel := context.WithTimeout(context.Background(), 3*time.Second)
-		finishErr := s.store.FinishModelCall(finishCtx, lease, store.ModelCallResult{
-			Status: modelStatus, ErrorCode: errorCode, Usage: usage, OccurredAt: time.Now().UTC(),
-			// Only a failure proven to happen before the provider call releases
-			// the reservation; everything after keeps the reserved upper bound.
-			PreDispatchFailure: preDispatch,
-		})
-		finishCancel()
-		if finishErr != nil {
-			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "model usage could not be recorded", "code": "model_usage_unavailable"})
-			return
-		}
-		if requestErr != nil {
-			if errors.Is(requestErr, context.Canceled) || errors.Is(requestErr, context.DeadlineExceeded) {
-				s.circuit.record(probe, false, true, time.Now())
-				writeModelContextError(w, requestErr)
-				return
-			}
-			lastStatus = http.StatusBadGateway
-			if retryable && attempt <= s.config.Retries {
-				s.circuit.record(probe, false, true, time.Now())
-				continue
-			}
-			s.circuit.record(probe, false, true, time.Now())
-			writeJSON(w, lastStatus, map[string]string{"error": "model provider request failed", "code": "model_provider_failed"})
-			return
-		}
-		if status >= 500 && attempt <= s.config.Retries {
-			s.circuit.record(probe, false, true, time.Now())
-			continue
-		}
-		s.circuit.record(probe, status >= 200 && status < 300, status >= 500, time.Now())
-		if status < http.StatusOK || status >= http.StatusMultipleChoices {
-			writeJSON(w, http.StatusBadGateway, map[string]string{"error": "model provider request failed", "code": "model_provider_failed"})
-			return
-		}
-		if err := s.store.ReauthorizeModelScope(ctx, caller, scope); err != nil {
-			if errors.Is(err, store.ErrModelScopeUnavailable) {
-				writeJSON(w, http.StatusForbidden, map[string]string{"error": "current model scope is unavailable", "code": "model_scope_unavailable"})
-			} else {
-				writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "model scope could not be rechecked", "code": "model_scope_unavailable"})
-			}
-			return
-		}
-		w.Header().Set("Content-Type", "application/json")
-		if s.config.Mode == "fixture" {
-			w.Header().Set("X-Model-Backend", "local-fixture")
-		}
-		w.WriteHeader(status)
-		_, _ = w.Write(response)
-		return
+	writeChatResponse(w, s.config.Mode, status, response)
+}
+
+func (s *Service) respondToChatError(w http.ResponseWriter, probe circuitProbe, attempt int, err error, retryable bool) bool {
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		s.circuit.record(probe, false, true, time.Now())
+		writeModelContextError(w, err)
+		return false
+	}
+	s.circuit.record(probe, false, true, time.Now())
+	if retryable && attempt <= s.config.Retries {
+		return true
 	}
 	writeJSON(w, http.StatusBadGateway, map[string]string{"error": "model provider request failed", "code": "model_provider_failed"})
+	return false
+}
+
+func writeChatReauthorizationError(w http.ResponseWriter, err error) {
+	if errors.Is(err, store.ErrModelScopeUnavailable) {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "current model scope is unavailable", "code": "model_scope_unavailable"})
+		return
+	}
+	writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "model scope could not be rechecked", "code": "model_scope_unavailable"})
+}
+
+func writeChatResponse(w http.ResponseWriter, mode string, status int, response []byte) {
+	w.Header().Set("Content-Type", "application/json")
+	if mode == "fixture" {
+		w.Header().Set("X-Model-Backend", "local-fixture")
+	}
+	w.WriteHeader(status)
+	_, _ = w.Write(response)
+}
+
+type reservationErrorMessages struct {
+	budget          string
+	budgetCode      string
+	unavailable     string
+	unavailableCode string
+}
+
+var modelReservationErrors = reservationErrorMessages{
+	budget: "model call quota is exhausted", budgetCode: "model_budget_exhausted",
+	unavailable: "model call could not be reserved", unavailableCode: "model_budget_unavailable",
+}
+var jevReservationErrors = reservationErrorMessages{
+	budget: "advisory call quota is exhausted", budgetCode: "jev_budget_exhausted",
+	unavailable: "advisory call could not be reserved", unavailableCode: "jev_budget_unavailable",
+}
+
+func writeReservationError(w http.ResponseWriter, err error, messages reservationErrorMessages) {
+	switch {
+	case errors.Is(err, store.ErrModelBudgetExceeded):
+		writeJSON(w, http.StatusTooManyRequests, map[string]string{"error": messages.budget, "code": messages.budgetCode})
+	case errors.Is(err, store.ErrModelScopeUnavailable):
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "current model scope is unavailable", "code": "model_scope_unavailable"})
+	default:
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": messages.unavailable, "code": messages.unavailableCode})
+	}
 }
 
 func requireMethod(w http.ResponseWriter, r *http.Request, method string) bool {
@@ -566,9 +679,60 @@ func (s *Service) fixtureResponse(modelID string, body []byte) []byte {
 	})
 }
 
+type fixturePlannerInput struct {
+	Scope []string `json:"scope"`
+	Gaps  []struct {
+		ID         string `json:"id"`
+		Domain     string `json:"domain"`
+		Capability string `json:"capability"`
+	} `json:"gaps"`
+	Tools []struct {
+		ID           string   `json:"id"`
+		Domain       string   `json:"domain"`
+		Capabilities []string `json:"capabilities"`
+	} `json:"tools"`
+	PreviouslyCalled []struct {
+		ToolID               string `json:"tool_id"`
+		GapID                string `json:"gap_id"`
+		NewEvidenceAvailable bool   `json:"new_evidence_available"`
+	} `json:"previously_called"`
+}
+
+type fixturePlanCall struct {
+	ToolID string `json:"tool_id"`
+	Domain string `json:"domain"`
+	GapID  string `json:"gap_id"`
+	Reason string `json:"reason"`
+}
+
 func fixturePlannerAnswer(body []byte) (string, bool) {
-	if len(body) == 0 || len(body) > 256<<10 {
+	messages, ok := decodeFixturePlannerMessages(body)
+	if !ok {
 		return "", false
+	}
+	var input fixturePlannerInput
+	if json.Unmarshal([]byte(messages[1].Content), &input) != nil || !validFixturePlannerInput(input) {
+		return "", false
+	}
+	calls, ok := buildFixturePlannerCalls(input)
+	if !ok {
+		return "", false
+	}
+	encoded, err := json.Marshal(struct {
+		Calls []fixturePlanCall `json:"calls"`
+	}{Calls: calls})
+	if err != nil {
+		return "", false
+	}
+	return string(encoded), true
+}
+
+func decodeFixturePlannerMessages(body []byte) ([]struct {
+	Role    string `json:"role"`
+	Content string `json:"content"`
+}, bool) {
+	if len(body) == 0 || len(body) > 256<<10 {
+		return nil, false
 	}
 	var request struct {
 		Messages []struct {
@@ -577,68 +741,57 @@ func fixturePlannerAnswer(body []byte) (string, bool) {
 		} `json:"messages"`
 	}
 	if json.Unmarshal(body, &request) != nil || len(request.Messages) != 2 || request.Messages[0].Role != "system" || request.Messages[1].Role != "user" {
-		return "", false
+		return nil, false
 	}
-	var input struct {
-		Scope []string `json:"scope"`
-		Gaps  []struct {
-			ID         string `json:"id"`
-			Domain     string `json:"domain"`
-			Capability string `json:"capability"`
-		} `json:"gaps"`
-		Tools []struct {
-			ID           string   `json:"id"`
-			Domain       string   `json:"domain"`
-			Capabilities []string `json:"capabilities"`
-		} `json:"tools"`
-		PreviouslyCalled []struct {
-			ToolID               string `json:"tool_id"`
-			GapID                string `json:"gap_id"`
-			NewEvidenceAvailable bool   `json:"new_evidence_available"`
-		} `json:"previously_called"`
-	}
-	if json.Unmarshal([]byte(request.Messages[1].Content), &input) != nil || len(input.Scope) == 0 || len(input.Scope) > 5 ||
-		len(input.Gaps) == 0 || len(input.Gaps) > 16 || len(input.Tools) == 0 || len(input.Tools) > 32 || len(input.PreviouslyCalled) > 128 {
-		return "", false
-	}
-	type planCall struct {
-		ToolID string `json:"tool_id"`
-		Domain string `json:"domain"`
-		GapID  string `json:"gap_id"`
-		Reason string `json:"reason"`
-	}
+	return request.Messages, true
+}
+
+func validFixturePlannerInput(input fixturePlannerInput) bool {
+	return len(input.Scope) > 0 && len(input.Scope) <= 5 && len(input.Gaps) > 0 && len(input.Gaps) <= 16 &&
+		len(input.Tools) > 0 && len(input.Tools) <= 32 && len(input.PreviouslyCalled) <= 128
+}
+
+func buildFixturePlannerCalls(input fixturePlannerInput) ([]fixturePlanCall, bool) {
 	called := make(map[string]bool, len(input.PreviouslyCalled))
 	for _, prior := range input.PreviouslyCalled {
 		called[prior.GapID+"\x00"+prior.ToolID] = !prior.NewEvidenceAvailable
 	}
-	calls := make([]planCall, 0, len(input.Gaps))
+	calls := make([]fixturePlanCall, 0, len(input.Gaps))
 	for _, gap := range input.Gaps {
 		if gap.ID == "" || gap.Domain == "" || gap.Capability == "" {
-			return "", false
+			return nil, false
 		}
-		for _, tool := range input.Tools {
-			if tool.ID == "" || tool.Domain != gap.Domain || called[gap.ID+"\x00"+tool.ID] {
-				continue
-			}
-			for _, capability := range tool.Capabilities {
-				if capability == gap.Capability {
-					calls = append(calls, planCall{ToolID: tool.ID, Domain: gap.Domain, GapID: gap.ID,
-						Reason: "fixture selected a registered tool for this requested gap"})
-					break
-				}
-			}
-			if len(calls) > 0 && calls[len(calls)-1].GapID == gap.ID {
-				break
-			}
+		if call, ok := fixtureCallForGap(gap.ID, gap.Domain, gap.Capability, input.Tools, called); ok {
+			calls = append(calls, call)
 		}
 	}
-	encoded, err := json.Marshal(struct {
-		Calls []planCall `json:"calls"`
-	}{Calls: calls})
-	if err != nil {
-		return "", false
+	return calls, true
+}
+
+func fixtureCallForGap(gapID, domain, capability string, tools []struct {
+	ID           string   `json:"id"`
+	Domain       string   `json:"domain"`
+	Capabilities []string `json:"capabilities"`
+}, called map[string]bool) (fixturePlanCall, bool) {
+	for _, tool := range tools {
+		if tool.ID == "" || tool.Domain != domain || called[gapID+"\x00"+tool.ID] {
+			continue
+		}
+		if hasFixtureCapability(tool.Capabilities, capability) {
+			return fixturePlanCall{ToolID: tool.ID, Domain: domain, GapID: gapID,
+				Reason: "fixture selected a registered tool for this requested gap"}, true
+		}
 	}
-	return string(encoded), true
+	return fixturePlanCall{}, false
+}
+
+func hasFixtureCapability(capabilities []string, wanted string) bool {
+	for _, capability := range capabilities {
+		if capability == wanted {
+			return true
+		}
+	}
+	return false
 }
 
 // fixtureWarrantyAnswer answers a review prompt with the evidence lines that
@@ -649,43 +802,50 @@ func fixturePlannerAnswer(body []byte) (string, bool) {
 // deterministic citation verification and location stages still exercise the
 // real pipeline. An explicit MODEL_GATEWAY_FIXTURE_CHAT_CONTENT replaces this
 // answer; a prompt without material spans keeps it too.
+type fixtureWarrantyMessage struct {
+	Content string `json:"content"`
+}
+
 func fixtureWarrantyAnswer(body []byte) (string, bool) {
 	var request struct {
-		Messages []struct {
-			Content string `json:"content"`
-		} `json:"messages"`
+		Messages []fixtureWarrantyMessage `json:"messages"`
 	}
 	if err := json.Unmarshal(body, &request); err != nil {
 		return "", false
 	}
-	quotes := make([]map[string]string, 0, len(request.Messages))
-	var documentID string
-	for _, message := range request.Messages {
-		for _, line := range strings.Split(message.Content, "\n") {
-			if _, rest, ok := strings.Cut(line, "document_id="); ok {
-				documentID, _, _ = strings.Cut(strings.TrimSpace(rest), " ")
-				continue
-			}
-			if text, ok := strings.CutPrefix(line, "正文："); ok && documentID != "" {
-				if text = strings.TrimSpace(text); text != "" {
-					quotes = append(quotes, map[string]string{"document_id": documentID, "quote": text})
-				}
-			}
-		}
-	}
+	quotes := fixtureWarrantyQuotes(request.Messages)
 	if len(quotes) == 0 {
 		return "", false
 	}
 	answer, err := json.Marshal(map[string]any{
-		"claim":       "采购文件与合同草稿的质保期要求不一致",
-		"relation":    "conflict",
-		"disposition": "confirm_risk",
-		"quotes":      quotes,
+		"claim": "采购文件与合同草稿的质保期要求不一致", "relation": "conflict",
+		"disposition": "confirm_risk", "quotes": quotes,
 	})
 	if err != nil {
 		return "", false
 	}
 	return string(answer), true
+}
+
+func fixtureWarrantyQuotes(messages []fixtureWarrantyMessage) []map[string]string {
+	quotes := make([]map[string]string, 0, len(messages))
+	var documentID string
+	for _, message := range messages {
+		for _, line := range strings.Split(message.Content, "\n") {
+			if _, rest, ok := strings.Cut(line, "document_id="); ok {
+				documentID, _, _ = strings.Cut(strings.TrimSpace(rest), " ")
+				continue
+			}
+			text, ok := strings.CutPrefix(line, "正文：")
+			if !ok || documentID == "" {
+				continue
+			}
+			if text = strings.TrimSpace(text); text != "" {
+				quotes = append(quotes, map[string]string{"document_id": documentID, "quote": text})
+			}
+		}
+	}
+	return quotes
 }
 
 func (s *Service) catalog(ctx context.Context) ([]string, error) {
@@ -711,6 +871,15 @@ func (s *Service) catalog(ctx context.Context) ([]string, error) {
 }
 
 func (s *Service) fetchCatalog(ctx context.Context) ([]string, error) {
+	response, err := s.catalogResponse(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer response.Body.Close()
+	return decodeCatalog(response.Body)
+}
+
+func (s *Service) catalogResponse(ctx context.Context) (*http.Response, error) {
 	if s.config.UpstreamBaseURL == "" {
 		return nil, errors.New("model upstream is not configured")
 	}
@@ -725,16 +894,20 @@ func (s *Service) fetchCatalog(ctx context.Context) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer response.Body.Close()
 	if response.StatusCode != http.StatusOK {
+		response.Body.Close()
 		return nil, fmt.Errorf("model catalog returned HTTP %d", response.StatusCode)
 	}
+	return response, nil
+}
+
+func decodeCatalog(body io.Reader) ([]string, error) {
 	var catalog struct {
 		Data []struct {
 			ID string `json:"id"`
 		} `json:"data"`
 	}
-	decoder := json.NewDecoder(io.LimitReader(response.Body, maxResponseBytes+1))
+	decoder := json.NewDecoder(io.LimitReader(body, maxResponseBytes+1))
 	if err := decoder.Decode(&catalog); err != nil {
 		return nil, err
 	}
