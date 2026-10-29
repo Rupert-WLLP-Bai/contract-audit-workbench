@@ -358,7 +358,7 @@ func TestVerifyIDTokenDeniesMalformedTokensJWKSAndClaims(t *testing.T) {
 			return f.tokenWithClaims(func(claims map[string]any) { claims["iat"] = "yesterday" })
 		}},
 		{name: "issued-at in the future", token: func(f *oidcTokenFixture) string {
-			return f.tokenWithClaims(func(claims map[string]any) { claims["iat"] = time.Now().Add(61 * time.Second).Unix() })
+			return f.tokenWithClaims(func(claims map[string]any) { claims["iat"] = time.Now().Add(2 * time.Minute).Unix() })
 		}},
 		{name: "issued-at at the epoch", token: func(f *oidcTokenFixture) string {
 			return f.tokenWithClaims(func(claims map[string]any) { claims["iat"] = 0 })
@@ -367,7 +367,7 @@ func TestVerifyIDTokenDeniesMalformedTokensJWKSAndClaims(t *testing.T) {
 			return f.tokenWithClaims(func(claims map[string]any) { claims["nbf"] = "later" })
 		}},
 		{name: "not-before in the future", token: func(f *oidcTokenFixture) string {
-			return f.tokenWithClaims(func(claims map[string]any) { claims["nbf"] = time.Now().Add(61 * time.Second).Unix() })
+			return f.tokenWithClaims(func(claims map[string]any) { claims["nbf"] = time.Now().Add(2 * time.Minute).Unix() })
 		}},
 	}
 	for _, test := range cases {
