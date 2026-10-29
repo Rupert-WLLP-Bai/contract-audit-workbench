@@ -387,10 +387,15 @@ func canonicalOrigin(raw string) (string, bool) {
 		return "", false
 	}
 	u, err := url.Parse(raw)
-	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || u.User != nil || u.Path != "" || u.RawQuery != "" || u.Fragment != "" {
+	if err != nil || !validOriginURL(u) {
 		return "", false
 	}
 	return strings.ToLower(u.Scheme) + "://" + strings.ToLower(u.Host), true
+}
+
+func validOriginURL(origin *url.URL) bool {
+	return (origin.Scheme == "http" || origin.Scheme == "https") && origin.Host != "" &&
+		origin.User == nil && origin.Path == "" && origin.RawQuery == "" && origin.Fragment == ""
 }
 
 func isJSONContentType(value string) bool {
@@ -413,17 +418,11 @@ func acceptsJSONAndSSE(values []string) bool {
 	acceptedJSON, acceptedSSE := false, false
 	for _, value := range values {
 		for _, part := range strings.Split(value, ",") {
-			mediaType, params, err := mime.ParseMediaType(strings.TrimSpace(part))
-			if err != nil {
+			mediaType, ok := acceptableMediaType(part)
+			if !ok {
 				continue
 			}
-			if quality, exists := params["q"]; exists {
-				parsedQuality, err := strconv.ParseFloat(quality, 64)
-				if err != nil || !(parsedQuality > 0 && parsedQuality <= 1) {
-					continue
-				}
-			}
-			switch strings.ToLower(mediaType) {
+			switch mediaType {
 			case "application/json":
 				acceptedJSON = true
 			case "text/event-stream":
@@ -432,6 +431,20 @@ func acceptsJSONAndSSE(values []string) bool {
 		}
 	}
 	return acceptedJSON && acceptedSSE
+}
+
+func acceptableMediaType(part string) (string, bool) {
+	mediaType, params, err := mime.ParseMediaType(strings.TrimSpace(part))
+	if err != nil {
+		return "", false
+	}
+	if quality, exists := params["q"]; exists {
+		parsedQuality, err := strconv.ParseFloat(quality, 64)
+		if err != nil || !(parsedQuality > 0 && parsedQuality <= 1) {
+			return "", false
+		}
+	}
+	return strings.ToLower(mediaType), true
 }
 
 func parseRequest(body []byte) (rpcRequest, *rpcFailure) {
@@ -516,32 +529,33 @@ func (h *handler) authenticate(r *http.Request) (accounts.User, *rpcFailure) {
 	}
 	user, err := h.store.User(token)
 	if err != nil {
-		var public *fault.Error
-		if errors.As(err, &public) {
-			if public.Status == http.StatusUnauthorized {
-				return accounts.User{}, unauthorizedFailure()
-			}
-			return accounts.User{}, storeFailure(nil, err)
-		}
-		return accounts.User{}, &rpcFailure{status: http.StatusServiceUnavailable, code: codeInternalError, message: "Authentication service is unavailable."}
+		return accounts.User{}, authenticationFailure(err)
 	}
 	if user.ID == "" || !user.Enabled {
 		return accounts.User{}, unauthorizedFailure()
 	}
 	audience, err := h.store.SessionAudience(token)
 	if err != nil {
-		var public *fault.Error
-		if errors.As(err, &public) {
-			if public.Status == http.StatusUnauthorized {
-				return accounts.User{}, unauthorizedFailure()
-			}
-			return accounts.User{}, storeFailure(nil, err)
-		}
-		return accounts.User{}, &rpcFailure{status: http.StatusServiceUnavailable, code: codeInternalError, message: "Authentication service is unavailable."}
+		return accounts.User{}, authenticationFailure(err)
 	}
 	if audience != "client" {
 		return accounts.User{}, unauthorizedFailure()
 	}
+	return bindAuthenticatedUser(user)
+}
+
+func authenticationFailure(err error) *rpcFailure {
+	var public *fault.Error
+	if errors.As(err, &public) {
+		if public.Status == http.StatusUnauthorized {
+			return unauthorizedFailure()
+		}
+		return storeFailure(nil, err)
+	}
+	return &rpcFailure{status: http.StatusServiceUnavailable, code: codeInternalError, message: "Authentication service is unavailable."}
+}
+
+func bindAuthenticatedUser(user accounts.User) (accounts.User, *rpcFailure) {
 	current, ok := accounts.ByID(user.ID)
 	if !ok || !current.Enabled || current.ID != user.ID {
 		return accounts.User{}, unauthorizedFailure()
@@ -559,28 +573,13 @@ func (h *handler) authenticate(r *http.Request) (accounts.User, *rpcFailure) {
 }
 
 func requestToken(r *http.Request) (string, bool) {
-	var cookieToken string
-	cookieCount := 0
-	for _, cookie := range r.Cookies() {
-		if cookie.Name == "session" {
-			cookieToken = cookie.Value
-			cookieCount++
-		}
-	}
-	if cookieCount > 1 || len(cookieToken) > 4096 {
+	cookieToken, ok := requestCookieToken(r)
+	if !ok {
 		return "", false
 	}
-	var bearer string
-	authorization := r.Header.Values("Authorization")
-	if len(authorization) > 1 {
+	bearer, ok := requestBearerToken(r)
+	if !ok {
 		return "", false
-	}
-	if len(authorization) == 1 {
-		parts := strings.Fields(authorization[0])
-		if len(parts) != 2 || !strings.EqualFold(parts[0], "Bearer") || parts[1] == "" || len(parts[1]) > 4096 {
-			return "", false
-		}
-		bearer = parts[1]
 	}
 	if cookieToken != "" && bearer != "" && cookieToken != bearer {
 		return "", false
@@ -593,6 +592,40 @@ func requestToken(r *http.Request) (string, bool) {
 		return "", false
 	}
 	return token, true
+}
+
+func requestCookieToken(r *http.Request) (string, bool) {
+	var token string
+	foundSession := false
+	for _, cookie := range r.Cookies() {
+		if cookie.Name != "session" {
+			continue
+		}
+		if foundSession {
+			return "", false
+		}
+		foundSession = true
+		token = cookie.Value
+	}
+	if len(token) > 4096 {
+		return "", false
+	}
+	return token, true
+}
+
+func requestBearerToken(r *http.Request) (string, bool) {
+	authorization := r.Header.Values("Authorization")
+	if len(authorization) > 1 {
+		return "", false
+	}
+	if len(authorization) == 0 {
+		return "", true
+	}
+	parts := strings.Fields(authorization[0])
+	if len(parts) != 2 || !strings.EqualFold(parts[0], "Bearer") || parts[1] == "" || len(parts[1]) > 4096 {
+		return "", false
+	}
+	return parts[1], true
 }
 
 func safeToken(value string) bool {
@@ -791,12 +824,20 @@ func validRequestID(raw json.RawMessage) bool {
 		return false
 	}
 	if value[0] == '"' {
-		var id string
-		return json.Unmarshal(value, &id) == nil && len(id) <= 128
+		return validStringRequestID(value)
 	}
 	if value[0] == '-' {
 		value = value[1:]
 	}
+	return validIntegerRequestID(value)
+}
+
+func validStringRequestID(value []byte) bool {
+	var id string
+	return json.Unmarshal(value, &id) == nil && len(id) <= 128
+}
+
+func validIntegerRequestID(value []byte) bool {
 	if len(value) == 0 || (len(value) > 1 && value[0] == '0') {
 		return false
 	}
