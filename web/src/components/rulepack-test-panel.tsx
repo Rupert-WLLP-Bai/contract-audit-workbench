@@ -12,6 +12,7 @@ import type {
   RulePackTestSource,
 } from "../api/rulepacks";
 import { StatusText } from "./status-text";
+import { toLocalInputValue, toUtcInstant } from "./local-datetime";
 import type { StatusTone } from "../domain/review";
 
 interface Selection {
@@ -32,19 +33,6 @@ const RELATION_TONES: Record<RulePackRelation, StatusTone> = {
   insufficient: "attention",
   not_applicable: "neutral",
 };
-
-function localInputValue(value: string): string {
-  const date = new Date(value);
-  if (value === "" || Number.isNaN(date.getTime())) return "";
-  return new Date(date.getTime() - date.getTimezoneOffset() * 60_000)
-    .toISOString()
-    .slice(0, 16);
-}
-
-function utcValue(value: string): string {
-  const date = new Date(value);
-  return value === "" || Number.isNaN(date.getTime()) ? "" : date.toISOString();
-}
 
 function selectionKey(
   source: Pick<RulePackTestSource, "id" | "version">,
@@ -823,8 +811,8 @@ export function RulePackTestPanel({
               id="rulepack-test-at"
               type="datetime-local"
               required
-              value={localInputValue(at)}
-              onChange={(event) => setAt(utcValue(event.target.value))}
+              value={toLocalInputValue(at)}
+              onChange={(event) => setAt(toUtcInstant(event.target.value))}
             />
           </label>
         </div>

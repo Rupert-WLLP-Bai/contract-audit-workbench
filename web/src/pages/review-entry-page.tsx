@@ -8,20 +8,11 @@ import {
   businessStatusLabel,
   businessStatusTone,
   formatDateTime,
+  latestRun,
   runLabel,
   runTone,
 } from "../domain/review";
 import "./review-entry-page.css";
-
-function latestRun(runs: WorkbenchRun[]): WorkbenchRun | null {
-  return (
-    [...runs].sort(
-      (left, right) =>
-        right.updated_at.localeCompare(left.updated_at) ||
-        right.id.localeCompare(left.id),
-    )[0] ?? null
-  );
-}
 
 export function ReviewEntryPage() {
   const query = useWorkbench("week");

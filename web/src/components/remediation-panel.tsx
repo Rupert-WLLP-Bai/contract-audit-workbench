@@ -16,6 +16,7 @@ import type {
   ReviewHistoryEntry,
 } from "../api/types";
 import {
+  caseHref,
   formatDateTime,
   isTerminalAttemptState,
   relationLabel,
@@ -266,7 +267,7 @@ function RemediationCard({
           <dt>来源审查</dt>
           <dd>
             <Link
-              to={`/cases/${encodeURIComponent(caseId)}/reviews/${encodeURIComponent(item.run_id)}?attempt_id=${encodeURIComponent(item.attempt_id)}`}
+              to={caseHref(caseId, item.run_id, item.attempt_id)}
             >
               查看来源审查
             </Link>
@@ -301,7 +302,7 @@ function RemediationCard({
           <dd>
             {item.verification_run_id && item.verification_attempt_id ? (
               <Link
-                to={`/cases/${encodeURIComponent(caseId)}/reviews/${encodeURIComponent(item.verification_run_id)}?attempt_id=${encodeURIComponent(item.verification_attempt_id)}`}
+                to={caseHref(caseId, item.verification_run_id, item.verification_attempt_id)}
               >
                 查看复核审查
               </Link>

@@ -2,7 +2,7 @@ import { Button, Checkbox, Input, Select, Table, type TableProps } from "antd";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router";
-import { ApiError, errorMessage, isConflict, isForbidden } from "../api/http";
+import { ApiError, errorMessage, isConflict, isForbidden, statusLabel } from "../api/http";
 import {
   commandGovernedKnowledge, createGovernedKnowledge, getGovernedKnowledge, getKnowledgeHistory,
   listGovernedKnowledge, previewGovernedPolicy,
@@ -24,7 +24,7 @@ function ServerError({ error }: { error: unknown }) {
   if (!error) return null;
   return <div role="alert" className="workflow-error">
     <p>{error instanceof Error ? error.message : errorMessage(error)}</p>
-    {error instanceof ApiError && <p>错误代码：{error.code}；{error.status === 0 ? "无法连接服务" : `HTTP 状态：${error.status}`}{error.retryable ? "；服务允许重试" : ""}</p>}
+    {error instanceof ApiError && <p>错误代码：{error.code}；{statusLabel(error.status)}{error.retryable ? "；服务允许重试" : ""}</p>}
     {error instanceof ApiError && error.details != null && <pre>{typeof error.details === "string" ? error.details : JSON.stringify(error.details, null, 2)}</pre>}
   </div>;
 }

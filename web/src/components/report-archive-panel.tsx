@@ -6,6 +6,7 @@ import { paths } from "../api/paths";
 import { useArchiveCase, useCreateReport, useReview } from "../api/queries";
 import type { CaseDetail, ReviewHistoryEntry } from "../api/types";
 import {
+  caseHref,
   formatDateTime,
   isTerminalAttemptState,
   runLabel,
@@ -197,7 +198,7 @@ export function ReportArchivePanel({
             <p className="meta">
               审查的技术信息可由管理员在{" "}
               <Link
-                to={`/cases/${encodeURIComponent(caseId)}/reviews/${encodeURIComponent(selectedReview.data.run.id)}?attempt_id=${encodeURIComponent(selectedAttempt.id)}`}
+                to={caseHref(caseId, selectedReview.data.run.id, selectedAttempt.id)}
               >
                 审查工作区
               </Link>{" "}

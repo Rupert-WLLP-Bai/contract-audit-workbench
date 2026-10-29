@@ -20,18 +20,13 @@ import type { WorkbenchPeriod, WorkbenchTask } from "../api/types";
 import { PageStatus } from "../components/page-status";
 import { StatusText } from "../components/status-text";
 import {
+  caseHref,
   formatDateTime,
   runLabel,
   runTone,
   taskKindLabel,
 } from "../domain/review";
 import "./home-page.css";
-
-function caseHref(caseId: string, runId: string | null): string {
-  return runId
-    ? `/cases/${encodeURIComponent(caseId)}/reviews/${encodeURIComponent(runId)}`
-    : `/cases/${encodeURIComponent(caseId)}`;
-}
 
 function barWidth(count: number, total: number): number {
   return total === 0

@@ -12,147 +12,143 @@ import type {
   Relation,
 } from "./types";
 
-export function scenarioLabel(value: string | null): string {
-  if (value === null) return "场景未报告";
-  if (value === "telecom_dedicated_line") return "政企专线";
-  if (value === "cloud_services") return "云服务";
-  return value;
+/**
+ * Vocabulary is data. One lookup per policy keeps every panel consistent:
+ * `keepUnknown` passes an unrecognised server value through as-is, otherwise
+ * the concept's fallback is shown. A null value always shows the fallback.
+ */
+function labelMap<T extends string>(
+  vocabulary: Partial<Record<T, string>>,
+  fallback: string,
+  keepUnknown = false,
+) {
+  return (value: T | null): string => {
+    if (value === null) return fallback;
+    return (
+      (vocabulary as Record<string, string | undefined>)[value] ??
+      (keepUnknown ? value : fallback)
+    );
+  };
 }
 
-export function packStatusLabel(value: string | null): string {
-  if (value === null) return "状态未报告";
-  if (value === "published" || value === "enabled" || value === "active")
-    return "已发布";
-  if (value === "draft" || value === "pending") return "待发布";
-  if (value === "disabled" || value === "retired") return "已停用";
-  return value;
+function toneMap<T extends string>(vocabulary: Partial<Record<T, StatusTone>>) {
+  return (value: T | null): StatusTone => {
+    if (value === null) return "neutral";
+    return (
+      (vocabulary as Record<string, StatusTone | undefined>)[value] ?? "neutral"
+    );
+  };
 }
 
-export function packStatusTone(value: string | null): StatusTone {
-  if (value === "published" || value === "enabled" || value === "active")
-    return "good";
-  if (value === "draft" || value === "pending") return "attention";
-  return "neutral";
-}
+export const scenarioLabel = labelMap<string>(
+  {
+    telecom_dedicated_line: "政企专线",
+    cloud_services: "云服务",
+  },
+  "场景未报告",
+  true,
+);
 
-export function relationLabelFor(value: Relation): string {
-  switch (value) {
-    case "compatible":
-      return "一致";
-    case "conflict":
-      return "冲突";
-    case "insufficient":
-      return "信息不足";
-    case "not_applicable":
-      return "不适用";
-    default:
-      return "关系未报告";
-  }
-}
+export const packStatusLabel = labelMap<string>(
+  {
+    published: "已发布",
+    enabled: "已发布",
+    active: "已发布",
+    draft: "待发布",
+    pending: "待发布",
+    disabled: "已停用",
+    retired: "已停用",
+  },
+  "状态未报告",
+  true,
+);
 
-export function relationTone(value: Relation): StatusTone {
-  switch (value) {
-    case "compatible":
-      return "good";
-    case "conflict":
-      return "bad";
-    case "insufficient":
-      return "attention";
-    default:
-      return "neutral";
-  }
-}
+export const packStatusTone = toneMap<string>({
+  published: "good",
+  enabled: "good",
+  active: "good",
+  draft: "attention",
+  pending: "attention",
+});
 
-export function machineStatusLabel(value: MachineStatus): string {
-  switch (value) {
-    case "completed":
-      return "执行完成";
-    case "partial":
-      return "部分完成";
-    case "failed":
-      return "执行失败";
-    case "cancelled":
-      return "已取消";
-    default:
-      return "执行状态未报告";
-  }
-}
+export const relationLabelFor = labelMap<Relation>(
+  {
+    compatible: "一致",
+    conflict: "冲突",
+    insufficient: "信息不足",
+    not_applicable: "不适用",
+  },
+  "关系未报告",
+);
 
-export function machineStatusTone(value: MachineStatus): StatusTone {
-  switch (value) {
-    case "completed":
-      return "good";
-    case "partial":
-      return "attention";
-    case "failed":
-      return "bad";
-    default:
-      return "neutral";
-  }
-}
+export const relationTone = toneMap<Relation>({
+  compatible: "good",
+  conflict: "bad",
+  insufficient: "attention",
+});
 
-export function availabilityLabel(value: Availability): string {
-  switch (value) {
-    case "available":
-      return "可用";
-    case "unavailable":
-      return "不可用";
-    case "stale":
-      return "已过期";
-    case "rejected":
-      return "已拒绝";
-    default:
-      return "可用性未报告";
-  }
-}
+export const machineStatusLabel = labelMap<MachineStatus>(
+  {
+    completed: "执行完成",
+    partial: "部分完成",
+    failed: "执行失败",
+    cancelled: "已取消",
+  },
+  "执行状态未报告",
+);
 
-export function availabilityTone(value: Availability): StatusTone {
-  switch (value) {
-    case "available":
-      return "good";
-    case "unavailable":
-    case "stale":
-      return "attention";
-    case "rejected":
-      return "bad";
-    default:
-      return "neutral";
-  }
-}
+export const machineStatusTone = toneMap<MachineStatus>({
+  completed: "good",
+  partial: "attention",
+  failed: "bad",
+});
 
-export function bindingStatusLabel(value: BindingStatus): string {
-  switch (value) {
-    case "confirmed":
-      return "已人工确认";
-    case "missing":
-      return "缺失";
-    case "ambiguous":
-      return "多义（无法唯一确定）";
-    default:
-      return "映射状态未报告";
-  }
-}
+export const availabilityLabel = labelMap<Availability>(
+  {
+    available: "可用",
+    unavailable: "不可用",
+    stale: "已过期",
+    rejected: "已拒绝",
+  },
+  "可用性未报告",
+);
 
-export function bindingStatusTone(value: BindingStatus): StatusTone {
-  if (value === "confirmed") return "good";
-  if (value === "missing" || value === "ambiguous") return "attention";
-  return "neutral";
-}
+export const availabilityTone = toneMap<Availability>({
+  available: "good",
+  unavailable: "attention",
+  stale: "attention",
+  rejected: "bad",
+});
+
+export const bindingStatusLabel = labelMap<BindingStatus>(
+  {
+    confirmed: "已人工确认",
+    missing: "缺失",
+    ambiguous: "多义（无法唯一确定）",
+  },
+  "映射状态未报告",
+);
+
+export const bindingStatusTone = toneMap<BindingStatus>({
+  confirmed: "good",
+  missing: "attention",
+  ambiguous: "attention",
+});
 
 /**
  * A synthetic fixture is always labelled as such. The word used for server
  * "live" data is deliberately separate so a fixture can never read as live.
  */
-export function dataClassLabel(value: string | null): string {
-  if (value === null) return "数据分类未报告";
-  if (value === "synthetic") return "合成数据（fixture）";
-  if (value === "production") return "生产数据";
-  return value;
-}
+export const dataClassLabel = labelMap<string>(
+  {
+    synthetic: "合成数据（fixture）",
+    production: "生产数据",
+  },
+  "数据分类未报告",
+  true,
+);
 
-export function dataClassTone(value: string | null): StatusTone {
-  return value === "synthetic" ? "attention" : "neutral";
-}
+export const dataClassTone = toneMap<string>({ synthetic: "attention" });
 
 export function timeLabel(value: string | null): string {
   if (value === null) return "时间未报告";
@@ -165,81 +161,57 @@ export function quantityLabel(value: QuantityValue | null): string {
   return `${value.value} ${value.unit}`;
 }
 
-export function jobStateLabel(value: string | null): string {
-  if (value === null) return "状态未报告";
-  if (value === "accepted") return "已受理";
-  if (value === "queued") return "排队中";
-  if (value === "running") return "采集中";
-  if (value === "completed") return "已完成";
-  if (value === "failed") return "失败";
-  if (value === "denied" || value === "rejected") return "已拒绝";
-  if (value === "cancelled") return "已取消";
-  return value;
-}
+export const jobStateLabel = labelMap<string>(
+  {
+    accepted: "已受理",
+    queued: "排队中",
+    running: "采集中",
+    completed: "已完成",
+    failed: "失败",
+    denied: "已拒绝",
+    rejected: "已拒绝",
+    cancelled: "已取消",
+  },
+  "状态未报告",
+  true,
+);
 
-export function jobStateTone(value: string | null): StatusTone {
-  if (value === "completed") return "good";
-  if (value === "accepted" || value === "queued" || value === "running")
-    return "progress";
-  if (value === "failed" || value === "denied" || value === "rejected")
-    return "bad";
-  return "neutral";
-}
+export const jobStateTone = toneMap<string>({
+  completed: "good",
+  accepted: "progress",
+  queued: "progress",
+  running: "progress",
+  failed: "bad",
+  denied: "bad",
+  rejected: "bad",
+});
 
-export function impactModeLabel(value: ImpactMode): string {
-  switch (value) {
-    case "explain":
-      return "解释模式（explain）";
-    case "shadow":
-      return "影子对照（shadow）";
-    default:
-      return "模式未报告";
-  }
-}
+export const impactModeLabel = labelMap<ImpactMode>(
+  { explain: "解释模式（explain）", shadow: "影子对照（shadow）" },
+  "模式未报告",
+);
 
-export function impactModeTone(value: ImpactMode): StatusTone {
-  if (value === "shadow") return "progress";
-  return "neutral";
-}
+export const impactModeTone = toneMap<ImpactMode>({ shadow: "progress" });
 
-export function impactActionLabel(value: ImpactAction): string {
-  switch (value) {
-    case "recompute":
-      return "重新计算（recompute）";
-    case "reuse_candidate":
-      return "预计可复用（尚未跳过）";
-    case "deny":
-      return "不可复用（deny）";
-    default:
-      return "动作未报告";
-  }
-}
+export const impactActionLabel = labelMap<ImpactAction>(
+  {
+    recompute: "重新计算（recompute）",
+    reuse_candidate: "预计可复用（尚未跳过）",
+    deny: "不可复用（deny）",
+  },
+  "动作未报告",
+);
 
-export function impactActionTone(value: ImpactAction): StatusTone {
-  switch (value) {
-    case "recompute":
-      return "progress";
-    case "reuse_candidate":
-      return "attention";
-    case "deny":
-      return "bad";
-    default:
-      return "neutral";
-  }
-}
+export const impactActionTone = toneMap<ImpactAction>({
+  recompute: "progress",
+  reuse_candidate: "attention",
+  deny: "bad",
+});
 
-export function impactFallbackLabel(value: ImpactFallback): string {
-  switch (value) {
-    case "none":
-      return "无需回退";
-    case "full":
-      return "回退全量（full）";
-    case "deny":
-      return "拒绝（deny）";
-    default:
-      return "回退策略未报告";
-  }
-}
+export const impactFallbackLabel = labelMap<ImpactFallback>(
+  { none: "无需回退", full: "回退全量（full）", deny: "拒绝（deny）" },
+  "回退策略未报告",
+);
 
 export function dependencyCompleteLabel(value: boolean | null): string {
   if (value === true) return "依赖完整";
@@ -247,19 +219,14 @@ export function dependencyCompleteLabel(value: boolean | null): string {
   return "依赖完整性未报告";
 }
 
+const impactReasons: Record<string, string> = {
+  dependent_field_changed: "依赖字段发生变化",
+  unchanged_complete_dependencies: "依赖未变化且完整",
+  dependency_incomplete: "依赖不完整",
+  authorization_revoked: "授权已撤销",
+  denied: "拒绝复用",
+};
+
 export function impactReasonLabel(value: string): string {
-  switch (value) {
-    case "dependent_field_changed":
-      return "依赖字段发生变化";
-    case "unchanged_complete_dependencies":
-      return "依赖未变化且完整";
-    case "dependency_incomplete":
-      return "依赖不完整";
-    case "authorization_revoked":
-      return "授权已撤销";
-    case "denied":
-      return "拒绝复用";
-    default:
-      return value;
-  }
+  return impactReasons[value] ?? value;
 }

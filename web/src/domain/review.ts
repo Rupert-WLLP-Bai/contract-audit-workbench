@@ -1,4 +1,9 @@
-import type { CaseSummary, DecisionAction, Finding } from "../api/types";
+import type {
+  CaseSummary,
+  DecisionAction,
+  Finding,
+  WorkbenchRun,
+} from "../api/types";
 
 export const DECISION_ACTIONS: readonly {
   action: DecisionAction;
@@ -124,6 +129,20 @@ const BUSINESS_STATUS_LABELS: Record<string, string> = {
   archived: "已归档",
 };
 
+const BUSINESS_STATUS_TONES: Record<string, StatusTone> = {
+  active: "progress",
+  pending: "attention",
+  suspended: "attention",
+  closed: "good",
+};
+
+const PARSE_TONES: Record<string, StatusTone> = {
+  ready: "good",
+  failed: "bad",
+  parsing: "progress",
+  pending: "progress",
+};
+
 const TASK_KIND_LABELS: Record<string, string> = {
   decision: "审查判断",
   review: "审查复核",
@@ -138,7 +157,8 @@ export function labelOf(
   fallback: string,
 ): string {
   if (value === "") return fallback;
-  return table[value] ?? `${fallback}（${value}）`;
+  const label = Object.hasOwn(table, value) ? table[value] : undefined;
+  return label ?? `${fallback}（${value}）`;
 }
 
 export function runLabel(state: string): string {
@@ -202,10 +222,9 @@ export function businessStatusLabel(value: string): string {
 }
 
 export function businessStatusTone(value: string): StatusTone {
-  if (value === "active") return "progress";
-  if (value === "pending" || value === "suspended") return "attention";
-  if (value === "closed") return "good";
-  return "neutral";
+  return Object.hasOwn(BUSINESS_STATUS_TONES, value)
+    ? (BUSINESS_STATUS_TONES[value] ?? "neutral")
+    : "neutral";
 }
 
 export function taskKindLabel(value: string): string {
@@ -232,10 +251,9 @@ export function runTone(state: string): StatusTone {
 }
 
 export function parseTone(status: string): StatusTone {
-  if (status === "ready") return "good";
-  if (status === "failed") return "bad";
-  if (status === "parsing" || status === "pending") return "progress";
-  return "neutral";
+  return Object.hasOwn(PARSE_TONES, status)
+    ? (PARSE_TONES[status] ?? "neutral")
+    : "neutral";
 }
 
 export function parseRunFilter(value: string | null): RunFilter {
@@ -388,4 +406,29 @@ export function selectedFindingId(
     (finding) => latestDecision(finding) === null,
   );
   return undecided?.id ?? findings[0]?.id ?? null;
+}
+
+/** Most recent run wins; equal timestamps fall back to the descending id. */
+export function latestRun(runs: WorkbenchRun[]): WorkbenchRun | null {
+  return (
+    [...runs].sort(
+      (left, right) =>
+        right.updated_at.localeCompare(left.updated_at) ||
+        right.id.localeCompare(left.id),
+    )[0] ?? null
+  );
+}
+
+/** In-app review route; encoding lives here so every link agrees. */
+export function caseHref(
+  caseId: string,
+  runId: string | null = null,
+  attemptId: string | null = null,
+): string {
+  const base = `/cases/${encodeURIComponent(caseId)}`;
+  if (runId === null) return base;
+  const review = `${base}/reviews/${encodeURIComponent(runId)}`;
+  return attemptId === null
+    ? review
+    : `${review}?attempt_id=${encodeURIComponent(attemptId)}`;
 }

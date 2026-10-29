@@ -10,6 +10,7 @@ import { useReview, useWorkbench } from "../api/queries";
 import type { Finding, ReviewDocument, WorkbenchRun } from "../api/types";
 import { PageStatus } from "../components/page-status";
 import {
+  caseHref,
   decisionLabel,
   formatDateTime,
   parseLabel,
@@ -625,7 +626,7 @@ export function ComparePage() {
                     <p>
                       事件详情可由管理员在{" "}
                       <Link
-                        to={`/cases/${encodeURIComponent(side.review.run.case_id)}/reviews/${encodeURIComponent(side.review.run.id)}?attempt_id=${encodeURIComponent(side.review.review_attempts.attempt.id)}`}
+                        to={caseHref(side.review.run.case_id, side.review.run.id, side.review.review_attempts.attempt.id)}
                       >
                         审查工作区
                       </Link>{" "}
@@ -674,7 +675,7 @@ export function ComparePage() {
                   <p>
                     模型用量可由管理员在{" "}
                     <Link
-                      to={`/cases/${encodeURIComponent(side.review.run.case_id)}/reviews/${encodeURIComponent(side.review.run.id)}?attempt_id=${encodeURIComponent(side.review.review_attempts.attempt.id)}`}
+                      to={caseHref(side.review.run.case_id, side.review.run.id, side.review.review_attempts.attempt.id)}
                     >
                       审查工作区
                     </Link>{" "}

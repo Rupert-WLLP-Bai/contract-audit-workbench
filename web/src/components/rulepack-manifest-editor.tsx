@@ -6,6 +6,7 @@ import type {
   RulePackManifestInput,
   RulePackRule,
 } from "../api/rulepacks";
+import { toLocalInputValue, toUtcInstant } from "./local-datetime";
 
 const COMPARATORS = [
   ["minimum_bandwidth", "最低带宽"],
@@ -18,22 +19,8 @@ const REQUIRED_CAPABILITIES: Record<string, true> = {
   "payment.advance_ratio.ceiling": true,
 };
 
-function fromUtcInstant(value: string): string {
-  const parsed = new Date(value);
-  if (value === "" || Number.isNaN(parsed.getTime())) return "";
-  return new Date(parsed.getTime() - parsed.getTimezoneOffset() * 60_000)
-    .toISOString()
-    .slice(0, 16);
-}
 function isCoreCapability(rule: RulePackRule): boolean {
   return Object.hasOwn(REQUIRED_CAPABILITIES, rule.capability_id);
-}
-
-function toUtcInstant(value: string): string {
-  const parsed = new Date(value);
-  return value === "" || Number.isNaN(parsed.getTime())
-    ? ""
-    : parsed.toISOString();
 }
 
 function blankRule(tenantId: string): RulePackRule {
@@ -239,7 +226,7 @@ export function RulePackManifestEditor({
               id="rulepack-effective-from"
               type="datetime-local"
               required
-              value={fromUtcInstant(value.effective_from)}
+              value={toLocalInputValue(value.effective_from)}
               disabled={disabled}
               onChange={(event) =>
                 onChange({
@@ -255,7 +242,7 @@ export function RulePackManifestEditor({
               id="rulepack-effective-until"
               type="datetime-local"
               required
-              value={fromUtcInstant(value.effective_until)}
+              value={toLocalInputValue(value.effective_until)}
               disabled={disabled}
               onChange={(event) =>
                 onChange({

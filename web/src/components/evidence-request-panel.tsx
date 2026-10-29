@@ -16,10 +16,10 @@ import {
   type EvidenceReceipt,
   type EvidenceRequest,
 } from "../api/evidence-workflow";
-import { ApiError, errorMessage } from "../api/http";
+import { ErrorNotice } from "./error-notice";
 import { queryKeys, useCreateWorkbenchTask, useStartReview } from "../api/queries";
 import type { Actor, CaseDetail, ConstraintEvaluation, ReviewWorkspace, WorkbenchTask } from "../api/types";
-import { formatDateTime, relationLabel, roleLabel } from "../domain/review";
+import { caseHref, formatDateTime, relationLabel, roleLabel } from "../domain/review";
 import { StatusText } from "./status-text";
 
 const materialRoles = [
@@ -46,17 +46,6 @@ const conditionLabels: Record<string, string> = { compatible: "检查结果一�
 const statusLabels: Record<string, string> = { open: "待提交", received: "已提交，待复核", verified: "已核验" };
 const eventLabels: Record<string, string> = { created: "创建请求", received: "提交回执", verified: "完成核验" };
 const requestKey = (caseId: string) => ["evidence-requests", caseId] as const;
-
-function ErrorNotice({ error }: { error: unknown }) {
-  if (!error) return null;
-  return (
-    <div className="workflow-error" role="alert">
-      <p>{errorMessage(error)}</p>
-      {error instanceof ApiError ? <p>服务响应：{error.status} · {error.code}{error.retryable ? " · 可重试" : ""}</p> : null}
-      {error instanceof ApiError && error.details !== null ? <details><summary>服务错误详情</summary><pre>{JSON.stringify(error.details, null, 2)}</pre></details> : null}
-    </div>
-  );
-}
 
 function useOperationKeys() {
   const keys = useRef(new Map<string, string>());
@@ -377,14 +366,14 @@ function RequestCard({ item, caseId, runId, attemptId, documents, evaluations, a
         <StatusText tone={item.status === "verified" ? "good" : item.status === "received" ? "attention" : "neutral"}>{statusLabels[item.status] ?? item.status}</StatusText>
       </header>
       <p>要求材料：{item.material_role ? roleLabel(item.material_role) : "不限材料类型"}；核验条件：{conditionLabels[item.verification_condition] ?? item.verification_condition}</p>
-      <p>来源：{source ? `规则检查，${displayGap(source.domain, source.capability_id)}，${source.reason || "原因未报告"}` : item.source_gap ? displayGap(item.source_gap.domain, item.source_gap.capability_id) : "未报告"}。 <Link to={`/cases/${encodeURIComponent(caseId)}/reviews/${encodeURIComponent(item.source_run_id)}?attempt_id=${encodeURIComponent(item.source_attempt_id)}`}>查看来源审查</Link></p>
+      <p>来源：{source ? `规则检查，${displayGap(source.domain, source.capability_id)}，${source.reason || "原因未报告"}` : item.source_gap ? displayGap(item.source_gap.domain, item.source_gap.capability_id) : "未报告"}。 <Link to={caseHref(caseId, item.source_run_id, item.source_attempt_id)}>查看来源审查</Link></p>
       {item.status === "open" ? <p>下一步：责任人或案件管理人提交材料或答复。</p> : null}
       {item.status === "received" ? <p>下一步：提交回执后发起新审查，再根据新审查的检查结果和原文核验。上传或提交材料本身不代表已核验。</p> : null}
       {item.status === "verified" ? <p>下一步：查看核验审查与处理记录。</p> : null}
       {item.status === "verified" && item.verification ? <div>
         <p>核验结果：{conditionLabels[item.verification.relation ?? item.verification.gap_status ?? ""] ?? item.verification.relation ?? item.verification.gap_status ?? "未报告"}；{item.verification.reason}</p>
         {item.verification.evidence.map((entry, index) => <blockquote key={`${entry.document_id}-${entry.start}-${index}`}>{entry.quote}</blockquote>)}
-        <p><Link to={`/cases/${encodeURIComponent(caseId)}/reviews/${encodeURIComponent(item.verification.run_id)}?attempt_id=${encodeURIComponent(item.verification.attempt_id)}`}>查看核验审查</Link> · {formatDateTime(item.verification.verified_at)}</p>
+        <p><Link to={caseHref(caseId, item.verification.run_id, item.verification.attempt_id)}>查看核验审查</Link> · {formatDateTime(item.verification.verified_at)}</p>
       </div> : null}
       {history.isLoading ? <p role="status">正在读取处理记录。</p> : null}
       <ErrorNotice error={history.error} />
@@ -449,7 +438,7 @@ function RequestCard({ item, caseId, runId, attemptId, documents, evaluations, a
           <ErrorNotice error={start.error} />
           <Button htmlType="button" loading={start.isPending} disabled={start.isPending || (!!requiresBusinessAt && !validBusinessAt)} onClick={() => {
             start.mutate(requiresBusinessAt ? { business_at: new Date(businessAt).toISOString() } : {}, { onSuccess: (accepted) => {
-              void navigate(`/cases/${encodeURIComponent(caseId)}/reviews/${encodeURIComponent(accepted.id)}?attempt_id=${encodeURIComponent(accepted.attempt_id)}`);
+              void navigate(caseHref(caseId, accepted.id, accepted.attempt_id));
             } });
           }}>发起后续审查</Button>
         </div> : null}

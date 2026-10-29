@@ -111,23 +111,15 @@ const eventStatusLabels: Record<string, string> = {
   interrupted: "已中断",
 };
 
-function phaseLabel(phase: string): string {
-  return Object.hasOwn(phaseLabels, phase)
-    ? (phaseLabels[phase] ?? phase)
-    : phase;
+/** Unknown labels pass through; hasOwn keeps prototype keys from leaking in. */
+function labelFrom(labels: Record<string, string>, value: string): string {
+  return Object.hasOwn(labels, value) ? (labels[value] ?? value) : value;
 }
 
-function eventTypeLabel(type: string): string {
-  return Object.hasOwn(eventTypeLabels, type)
-    ? (eventTypeLabels[type] ?? type)
-    : type;
-}
-
-function eventStatusLabel(status: string): string {
-  return Object.hasOwn(eventStatusLabels, status)
-    ? (eventStatusLabels[status] ?? status)
-    : status;
-}
+const phaseLabel = (phase: string): string => labelFrom(phaseLabels, phase);
+const eventTypeLabel = (type: string): string => labelFrom(eventTypeLabels, type);
+const eventStatusLabel = (status: string): string =>
+  labelFrom(eventStatusLabels, status);
 
 function usageDetails(usage: ExecutionUsage | null) {
   if (usage === null) return <p>未报告用量。</p>;

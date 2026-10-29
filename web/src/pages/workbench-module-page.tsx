@@ -22,7 +22,7 @@ import type {
 } from "../api/types";
 import { PageStatus } from "../components/page-status";
 import { StatusText } from "../components/status-text";
-import { formatDateTime } from "../domain/review";
+import { caseHref, formatDateTime } from "../domain/review";
 import { SettingsPage } from "./settings-page";
 import "./workbench-module-page.css";
 
@@ -170,12 +170,6 @@ function panel(
   return { fields, body, links };
 }
 
-function caseUrl(caseId: string, runId: string | null): string {
-  return runId
-    ? `/cases/${encodeURIComponent(caseId)}/reviews/${encodeURIComponent(runId)}`
-    : `/cases/${encodeURIComponent(caseId)}`;
-}
-
 function emptyPanel(note: string): DetailPanel {
   return panel([], note);
 }
@@ -321,7 +315,7 @@ function buildRecords(
         updatedAt: task.updated_at,
         caseId: task.case_id,
         runId: relatedCase?.latest_run?.id ?? null,
-        href: caseUrl(task.case_id, relatedCase?.latest_run?.id ?? null),
+        href: caseHref(task.case_id, relatedCase?.latest_run?.id ?? null),
         panels,
         task,
       });
@@ -369,12 +363,12 @@ function buildRecords(
           ],
           null,
           [
-            { label: "打开原始审查", href: caseUrl(item.case_id, item.run_id) },
+            { label: "打开原始审查", href: caseHref(item.case_id, item.run_id) },
             ...(item.verification_run_id
               ? [
                   {
                     label: "打开复核审查",
-                    href: caseUrl(item.case_id, item.verification_run_id),
+                    href: caseHref(item.case_id, item.verification_run_id),
                   },
                 ]
               : []),
@@ -401,7 +395,7 @@ function buildRecords(
         updatedAt: item.updated_at,
         caseId: item.case_id,
         runId: item.run_id,
-        href: caseUrl(item.case_id, item.run_id),
+        href: caseHref(item.case_id, item.run_id),
         panels,
         task: null,
       });
@@ -495,7 +489,7 @@ function buildRecords(
             ? [
                 {
                   label: "查看审查引用",
-                  href: caseUrl(item.case_id, relatedCase.latest_run.id),
+                  href: caseHref(item.case_id, relatedCase.latest_run.id),
                 },
               ]
             : links,
@@ -519,7 +513,7 @@ function buildRecords(
               [
                 {
                   label: "打开最近审查",
-                  href: caseUrl(item.case_id, relatedCase.latest_run.id),
+                  href: caseHref(item.case_id, relatedCase.latest_run.id),
                 },
               ],
             )
@@ -569,7 +563,7 @@ function buildRecords(
           [
             {
               label: "打开完整执行工作区",
-              href: caseUrl(item.case_id, item.id),
+              href: caseHref(item.case_id, item.id),
             },
           ],
         ),
@@ -580,7 +574,7 @@ function buildRecords(
             field("已报告来源", usage?.sources.join("、") ?? null),
           ],
           "工作台没有返回单次调用记录；请在审查工作区的执行检查器中查看已保存的详细事件。",
-          [{ label: "查看执行事件", href: caseUrl(item.case_id, item.id) }],
+          [{ label: "查看执行事件", href: caseHref(item.case_id, item.id) }],
         ),
         输入与输出: panel(
           [
@@ -601,7 +595,7 @@ function buildRecords(
             field("结束时间", item.finished_at),
           ],
           "打开审查工作区，查看这次审查保存的执行事件。",
-          [{ label: "查看运行记录", href: caseUrl(item.case_id, item.id) }],
+          [{ label: "查看运行记录", href: caseHref(item.case_id, item.id) }],
         ),
       };
       return make({
@@ -612,7 +606,7 @@ function buildRecords(
         updatedAt: item.updated_at,
         caseId: item.case_id,
         runId: item.id,
-        href: caseUrl(item.case_id, item.id),
+        href: caseHref(item.case_id, item.id),
         panels,
         task: null,
       });
@@ -887,7 +881,7 @@ function buildRecords(
       updatedAt: item.at,
       caseId: item.case_id,
       runId: null,
-      href: item.case_id === null ? null : caseUrl(item.case_id, null),
+      href: item.case_id === null ? null : caseHref(item.case_id, null),
       panels,
       task: null,
     });

@@ -1,9 +1,10 @@
 import { Button, Input, Select } from "antd";
 import { useQuery } from "@tanstack/react-query";
 import type { ReactNode } from "react";
-import { ApiError, errorMessage } from "../api/http";
+import { ApiError, errorMessage, statusLabel } from "../api/http";
 import { listGovernedKnowledge, type KnowledgeCondition, type KnowledgeContent, type KnowledgeKind, type KnowledgeRef, type KnowledgeSpan } from "../api/governed-knowledge";
 import { useRulePack, useRulePacks } from "../api/queries";
+import { toLocalInputValue, toUtcInstant } from "./local-datetime";
 
 export interface KnowledgeFormIssue { id: string; message: string }
 const kinds: { value: KnowledgeKind; label: string }[] = [
@@ -25,20 +26,12 @@ export function emptyKnowledgeContent(): KnowledgeContent {
   };
 }
 
-function localDate(value: string): string {
-  const date = new Date(value);
-  return value && !Number.isNaN(date.getTime()) ? new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 23) : "";
-}
-function utcDate(value: string): string {
-  const date = new Date(value);
-  return value && !Number.isNaN(date.getTime()) ? date.toISOString() : "";
-}
 function lines(value: string): string[] {
   return value.split("\n");
 }
 function lookupError(error: unknown): string {
   if (!(error instanceof ApiError)) return errorMessage(error);
-  const status = error.status === 0 ? "无法连接服务" : `HTTP ${error.status}`;
+  const status = statusLabel(error.status);
   const details = error.details == null ? "" : `；${typeof error.details === "string" ? error.details : JSON.stringify(error.details)}`;
   return `${error.message}（${error.code}；${status}）${details}`;
 }
@@ -156,8 +149,8 @@ export function KnowledgeEditor({ value, onChange, issues, lockedIdentity, disab
         <Field id="knowledge-contract" label="合同类型" issues={issues}><Input id="knowledge-contract" {...errorProps("knowledge-contract", issues)} value={value.scope.contract_type} disabled={disabled} onChange={(event) => setScope({ contract_type: event.target.value })} /></Field>
         <Field id="knowledge-org" label="限定组织 ID（可选）" issues={issues}><Input id="knowledge-org" {...errorProps("knowledge-org", issues)} value={value.scope.org_id ?? ""} disabled={disabled} onChange={(event) => setScope({ org_id: event.target.value })} /></Field>
         <Field id="knowledge-case" label="限定案件 ID（可选）" issues={issues}><Input id="knowledge-case" value={value.scope.case_id ?? ""} disabled={disabled} onChange={(event) => setScope({ case_id: event.target.value })} /></Field>
-        <Field id="knowledge-from" label="生效时间（本地时间）" issues={issues}><Input id="knowledge-from" {...errorProps("knowledge-from", issues)} type="datetime-local" step="0.001" value={localDate(value.valid_from)} disabled={disabled} onChange={(event) => set({ valid_from: utcDate(event.target.value) })} /></Field>
-        <Field id="knowledge-until" label="失效时间（不含，本地时间）" issues={issues}><Input id="knowledge-until" {...errorProps("knowledge-until", issues)} type="datetime-local" step="0.001" value={localDate(value.valid_until)} disabled={disabled} onChange={(event) => set({ valid_until: utcDate(event.target.value) })} /></Field>
+        <Field id="knowledge-from" label="生效时间（本地时间）" issues={issues}><Input id="knowledge-from" {...errorProps("knowledge-from", issues)} type="datetime-local" step="0.001" value={toLocalInputValue(value.valid_from, "millisecond")} disabled={disabled} onChange={(event) => set({ valid_from: toUtcInstant(event.target.value) })} /></Field>
+        <Field id="knowledge-until" label="失效时间（不含，本地时间）" issues={issues}><Input id="knowledge-until" {...errorProps("knowledge-until", issues)} type="datetime-local" step="0.001" value={toLocalInputValue(value.valid_until, "millisecond")} disabled={disabled} onChange={(event) => set({ valid_until: toUtcInstant(event.target.value) })} /></Field>
       </div>
       {(["applicability", "exclusions"] as const).map((group) => <div key={group}>
         <h3>{group === "applicability" ? "适用条件（全部满足）" : "排除条件（任一满足即排除）"}</h3>

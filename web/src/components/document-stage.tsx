@@ -12,6 +12,7 @@ import type {
 import type { ReviewLayout } from "../domain/review";
 import {
   actorRoleLabel,
+  caseHref,
   formatDateTime,
   parseLabel,
   parseTone,
@@ -630,11 +631,7 @@ export function DocumentStage({
                   <li key={relation.relationId}>
                     <div>
                       <Link
-                        to={
-                          relation.runId
-                            ? `/cases/${encodeURIComponent(relation.id)}/reviews/${encodeURIComponent(relation.runId)}`
-                            : `/cases/${encodeURIComponent(relation.id)}`
-                        }
+                        to={caseHref(relation.id, relation.runId)}
                       >
                         {relation.title}
                       </Link>
