@@ -275,6 +275,61 @@ func TestEvaluateKnowledgeAppliesTheTruthTable(t *testing.T) {
 	}
 }
 
+func TestEvaluateKnowledgeRejectsInvalidFrozenInputsBeforeCallingProvider(t *testing.T) {
+	request := builtRequest(t)
+	called := false
+	provider := providerFunc(func(context.Context, ProviderRequest) (ProviderResponse, error) {
+		called = true
+		return ProviderResponse{}, nil
+	})
+	tests := []struct {
+		name          string
+		provider      Provider
+		configuration agentflow.AdvisoryConfiguration
+		request       KnowledgeRequest
+		want          error
+	}{
+		{name: "missing provider", configuration: testConfiguration(), request: request, want: ErrUnavailable},
+		{name: "invalid frozen configuration", provider: provider, configuration: agentflow.AdvisoryConfiguration{}, request: request, want: ErrNotApplicable},
+		{name: "unsupported feature", provider: provider, configuration: unsupportedFeatureConfiguration(), request: request, want: ErrNotApplicable},
+		{name: "model drift in request", provider: provider, configuration: testConfiguration(), request: requestWithModel(request, "jev-other"), want: ErrNotApplicable},
+		{name: "missing request digest", provider: provider, configuration: testConfiguration(), request: requestWithDigest(request, ""), want: ErrNotApplicable},
+		{name: "empty candidate set", provider: provider, configuration: testConfiguration(), request: requestWithCandidates(request, nil), want: ErrNotApplicable},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			called = false
+			if _, err := EvaluateKnowledge(context.Background(), test.provider, test.configuration, test.request); !errors.Is(err, test.want) {
+				t.Fatalf("err = %v, want %v", err, test.want)
+			}
+			if called {
+				t.Fatal("provider was called for an invalid frozen input")
+			}
+		})
+	}
+}
+
+func unsupportedFeatureConfiguration() agentflow.AdvisoryConfiguration {
+	configuration := testConfiguration()
+	configuration.Features = nil
+	return configuration
+}
+
+func requestWithModel(request KnowledgeRequest, model string) KnowledgeRequest {
+	request.Model = model
+	return request
+}
+
+func requestWithDigest(request KnowledgeRequest, digest string) KnowledgeRequest {
+	request.RequestSHA256 = digest
+	return request
+}
+
+func requestWithCandidates(request KnowledgeRequest, candidates []KnowledgeCandidate) KnowledgeRequest {
+	request.Candidates = candidates
+	return request
+}
+
 func TestEvaluateKnowledgeHonorsFrozenTimeout(t *testing.T) {
 	configuration := testConfiguration()
 	configuration.TimeoutMS = agentflow.MinAdvisoryTimeout.Milliseconds()
