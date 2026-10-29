@@ -13,6 +13,7 @@ import (
 
 	"contractaudit/internal/access"
 	"contractaudit/internal/accounts"
+	"contractaudit/internal/fault"
 )
 
 func TestAuthenticationFailureAndBackendPriorityRemainExact(t *testing.T) {
@@ -48,7 +49,98 @@ func TestAuthenticationFailureAndBackendPriorityRemainExact(t *testing.T) {
 	})
 }
 
+func TestAuthenticationCredentialBoundaryPrecedence(t *testing.T) {
+	t.Run("duplicate session cookies do not fall back to a valid bearer", func(t *testing.T) {
+		backend := testBackend(t)
+		request := protocolRequest(t, "tools/list", nil)
+		request.Header.Add("Cookie", "session=session-token")
+		request.Header.Set("Authorization", "Bearer session-token")
+		response := httptest.NewRecorder()
+		NewHandler(backend, Options{}).ServeHTTP(response, request)
+		assertToolGatewayFailure(t, response, http.StatusUnauthorized, codeUnauthenticated, "Authentication is required or no longer valid.")
+		if backend.userCalls != 0 {
+			t.Fatalf("duplicate session cookies reached the user store %d times", backend.userCalls)
+		}
+	})
+
+	t.Run("oversized session cookie does not fall back to a valid bearer", func(t *testing.T) {
+		backend := testBackend(t)
+		request := protocolRequest(t, "tools/list", nil)
+		request.Header.Set("Cookie", "session="+strings.Repeat("x", 4097))
+		request.Header.Set("Authorization", "Bearer session-token")
+		response := httptest.NewRecorder()
+		NewHandler(backend, Options{}).ServeHTTP(response, request)
+		assertToolGatewayFailure(t, response, http.StatusUnauthorized, codeUnauthenticated, "Authentication is required or no longer valid.")
+		if backend.userCalls != 0 {
+			t.Fatalf("oversized session cookie reached the user store %d times", backend.userCalls)
+		}
+	})
+
+	t.Run("wrong bearer scheme without cookie never reaches user lookup", func(t *testing.T) {
+		backend := testBackend(t)
+		request := protocolRequest(t, "tools/list", nil)
+		request.Header.Del("Cookie")
+		request.Header.Set("Authorization", "Basic private-token")
+		response := httptest.NewRecorder()
+		NewHandler(backend, Options{}).ServeHTTP(response, request)
+		assertToolGatewayFailure(t, response, http.StatusUnauthorized, codeUnauthenticated, "Authentication is required or no longer valid.")
+		if backend.userCalls != 0 {
+			t.Fatalf("wrong-scheme Authorization reached the user store %d times", backend.userCalls)
+		}
+	})
+
+	for _, source := range []string{"cookie", "bearer"} {
+		t.Run("4096-byte "+source+" token remains accepted", func(t *testing.T) {
+			token := strings.Repeat("x", 4096)
+			backend := &boundaryCredentialBackend{gatewayFakeStore: testBackend(t), acceptedToken: token}
+			request := protocolRequest(t, "tools/list", nil)
+			if source == "cookie" {
+				request.Header.Set("Cookie", "session="+token)
+			} else {
+				request.Header.Del("Cookie")
+				request.Header.Set("Authorization", "Bearer "+token)
+			}
+			response := httptest.NewRecorder()
+			NewHandler(backend, Options{}).ServeHTTP(response, request)
+			if response.Code != http.StatusOK || backend.userCalls != 1 {
+				t.Fatalf("exact-limit %s token status=%d user lookups=%d", source, response.Code, backend.userCalls)
+			}
+		})
+	}
+}
+
+type boundaryCredentialBackend struct {
+	*gatewayFakeStore
+	acceptedToken string
+}
+
+func (backend *boundaryCredentialBackend) User(token string) (accounts.User, error) {
+	backend.userCalls++
+	if token != backend.acceptedToken {
+		return accounts.User{}, fault.Unauthenticated("invalid token")
+	}
+	return backend.user, nil
+}
+
+func (backend *boundaryCredentialBackend) SessionAudience(token string) (string, error) {
+	if token != backend.acceptedToken {
+		return "", fault.Unauthenticated("invalid token")
+	}
+	return "client", nil
+}
+
 func TestOriginAndResponseMediaValidationKeepTheirOrder(t *testing.T) {
+	t.Run("allowed HTTP Origin is canonicalized and accepted", func(t *testing.T) {
+		backend := testBackend(t)
+		request := protocolRequest(t, "tools/list", nil)
+		request.Header.Set("Origin", "http://PORTAL.example")
+		response := httptest.NewRecorder()
+		NewHandler(backend, Options{AllowedOrigins: []string{"http://portal.example"}}).ServeHTTP(response, request)
+		if response.Code != http.StatusOK || response.Header().Get("Access-Control-Allow-Origin") != "http://portal.example" {
+			t.Fatalf("allowed HTTP Origin response status=%d allow-origin=%q", response.Code, response.Header().Get("Access-Control-Allow-Origin"))
+		}
+	})
+
 	t.Run("origin rejection precedes method and Accept checks", func(t *testing.T) {
 		backend := testBackend(t)
 		request := protocolRequest(t, "tools/list", nil)
