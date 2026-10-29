@@ -377,19 +377,29 @@ describe("knowledge governance administration", () => {
   });
 
   it("rejects an incomplete or failed source version", async () => {
+    const requests: string[] = [];
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
       const path = String(input);
+      requests.push(path);
       if (path === "/api/admin/rulepacks") return json({ items: [] });
       if (path === root) return json({ items: [] });
       return json({ error: { code: "not_found", message: "来源不存在", retryable: false } }, 404);
     }));
     show(`/admin/governed-knowledge/new?from_knowledge=${id}`);
     expect(await screen.findByText("来源版本信息不完整")).toBeInTheDocument();
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+    expect(requests).not.toContain(`${root}/${id}/versions/`);
     cleanup();
     show(`/admin/governed-knowledge/new?from_knowledge=${id}&from_version=${versionId}`);
     expect(await screen.findByText("来源知识版本没有加载")).toBeInTheDocument();
     expect(screen.getByText("来源不存在")).toBeInTheDocument();
     expect(screen.getAllByRole("link", { name: "返回知识列表" }).length).toBeGreaterThan(0);
+    cleanup();
+    requests.length = 0;
+    show(`/admin/governed-knowledge/new?from_version=${versionId}`);
+    expect(await screen.findByText("来源版本信息不完整")).toBeInTheDocument();
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+    expect(requests).not.toContain(`${root}//versions/${versionId}`);
   });
 
   it("does not expose a source copy form while its detail query is paused offline", async () => {
