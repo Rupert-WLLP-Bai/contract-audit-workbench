@@ -16,7 +16,9 @@ type routeBinding struct {
 }
 
 func mountRoutes(mux *http.ServeMux, routes ...routeBinding) {
-	for _, route := range routes { mux.HandleFunc(route.pattern, route.handler) }
+	for _, route := range routes {
+		mux.HandleFunc(route.pattern, route.handler)
+	}
 }
 
 // serveJSONCommand keeps the shared HTTP sequence in one place: authorize,
@@ -51,8 +53,13 @@ func serveGovernanceJSONCommand[T any](h *handler, w http.ResponseWriter, r *htt
 
 func serveClientJSONLookup(h *handler, w http.ResponseWriter, r *http.Request, execute jsonLookup) {
 	user, ok := h.actor(w, r)
-	if !ok { return }
+	if !ok {
+		return
+	}
 	item, err := execute(user, r)
-	if err != nil { writeErr(w, err); return }
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
 	writeJSON(w, http.StatusOK, item)
 }
