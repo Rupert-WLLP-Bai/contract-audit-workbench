@@ -5,6 +5,7 @@ import (
 	"mime"
 	"net/http"
 
+	"contractaudit/internal/accounts"
 	"contractaudit/internal/documentservice"
 	"contractaudit/internal/fault"
 	"contractaudit/internal/store"
@@ -47,57 +48,21 @@ func (h *handler) generate(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *handler) createRemediation(w http.ResponseWriter, r *http.Request) {
-	user, ok := h.actor(w, r)
-	if !ok {
-		return
-	}
-	var body store.RemediationInput
-	if err := readJSON(w, r, &body); err != nil {
-		writeErr(w, err)
-		return
-	}
-	item, err := h.store.CreateRemediation(user, r.PathValue("caseID"), body)
-	if err != nil {
-		writeErr(w, err)
-		return
-	}
-	writeJSON(w, http.StatusCreated, item)
+	serveClientJSONCommand[store.RemediationInput](h, w, r, http.StatusCreated, func(user accounts.User, r *http.Request, body store.RemediationInput) (any, error) {
+		return h.store.CreateRemediation(user, r.PathValue("caseID"), body)
+	})
 }
 
 func (h *handler) submitRemediation(w http.ResponseWriter, r *http.Request) {
-	user, ok := h.actor(w, r)
-	if !ok {
-		return
-	}
-	var body store.RemediationSubmitInput
-	if err := readJSON(w, r, &body); err != nil {
-		writeErr(w, err)
-		return
-	}
-	item, err := h.store.SubmitRemediation(user, r.PathValue("caseID"), r.PathValue("itemID"), body)
-	if err != nil {
-		writeErr(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, item)
+	serveClientJSONCommand[store.RemediationSubmitInput](h, w, r, http.StatusOK, func(user accounts.User, r *http.Request, body store.RemediationSubmitInput) (any, error) {
+		return h.store.SubmitRemediation(user, r.PathValue("caseID"), r.PathValue("itemID"), body)
+	})
 }
 
 func (h *handler) verifyRemediation(w http.ResponseWriter, r *http.Request) {
-	user, ok := h.actor(w, r)
-	if !ok {
-		return
-	}
-	var body store.RemediationVerifyInput
-	if err := readJSON(w, r, &body); err != nil {
-		writeErr(w, err)
-		return
-	}
-	item, err := h.store.VerifyRemediation(user, r.PathValue("caseID"), r.PathValue("itemID"), body)
-	if err != nil {
-		writeErr(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, item)
+	serveClientJSONCommand[store.RemediationVerifyInput](h, w, r, http.StatusOK, func(user accounts.User, r *http.Request, body store.RemediationVerifyInput) (any, error) {
+		return h.store.VerifyRemediation(user, r.PathValue("caseID"), r.PathValue("itemID"), body)
+	})
 }
 
 func (h *handler) createReport(w http.ResponseWriter, r *http.Request) {

@@ -291,19 +291,33 @@ func businessAgentReviewJSON(raw json.RawMessage) any {
 	if len(raw) == 0 || string(raw) == "null" {
 		return nil
 	}
-	var review struct {
-		AttemptID        string                       `json:"attempt_id"`
-		Status           string                       `json:"status"`
-		RulePack         *agentflow.RulePackIdentity  `json:"rulepack"`
-		Scope            []agentflow.DomainScope      `json:"scope"`
-		Domains          []agentflow.DomainCoverage   `json:"domains"`
-		Gaps             []agentflow.GapReport        `json:"gaps"`
-		Evidence         []agentflow.VerifiedEvidence `json:"evidence"`
-		UnresolvedGapIDs []string                     `json:"unresolved_gap_ids"`
-	}
-	if err := json.Unmarshal(raw, &review); err != nil {
+	review, err := decodeBusinessAgentReview(raw)
+	if err != nil {
 		return nil
 	}
+	return businessAgentReviewView(review)
+}
+
+type businessAgentReview struct {
+	AttemptID        string                       `json:"attempt_id"`
+	Status           string                       `json:"status"`
+	RulePack         *agentflow.RulePackIdentity  `json:"rulepack"`
+	Scope            []agentflow.DomainScope      `json:"scope"`
+	Domains          []agentflow.DomainCoverage   `json:"domains"`
+	Gaps             []agentflow.GapReport        `json:"gaps"`
+	Evidence         []agentflow.VerifiedEvidence `json:"evidence"`
+	UnresolvedGapIDs []string                     `json:"unresolved_gap_ids"`
+}
+
+func decodeBusinessAgentReview(raw json.RawMessage) (businessAgentReview, error) {
+	var review businessAgentReview
+	if err := json.Unmarshal(raw, &review); err != nil {
+		return businessAgentReview{}, err
+	}
+	return review, nil
+}
+
+func businessAgentReviewView(review businessAgentReview) any {
 	var rulepack any
 	if review.RulePack != nil {
 		rulepack = map[string]any{"id": review.RulePack.ID, "version": review.RulePack.Version}
@@ -482,35 +496,12 @@ func anchorJSON(anchor store.Anchor, doc store.Interpreted) map[string]any {
 		}
 		return out
 	}
-	if anchor.DocumentID != doc.Document.ID ||
-		(anchor.ParsedDocumentID != "" && (doc.ParsedDocument == nil || doc.ParsedDocument.ID != anchor.ParsedDocumentID ||
-			doc.ParsedDocument.DocumentID != anchor.DocumentID || doc.ParsedDocument.Status != "ready" ||
-			doc.ParsedDocument.OriginalDigest != doc.Document.Digest || anchor.NormalizedDigest == "" || doc.ParsedDocument.NormalizedDigest != anchor.NormalizedDigest)) ||
-		(anchor.NormalizedDigest != "" && anchor.NormalizedDigest != doc.IR.NormalizedDigest) {
-		out["status"] = "unlocatable"
-		out["mismatch_reason"] = "引用解析身份与冻结正文不一致，未在正文中高亮。"
-		return out
+	if !anchorMatchesFrozenIdentity(anchor, doc) {
+		return markAnchorUnlocatable(out, anchor, "引用解析身份与冻结正文不一致，未在正文中高亮。", false)
 	}
-	quote, ok := docir.Slice(doc.Text, anchor.Start, anchor.End)
-	if !doc.Ready || !ok || quote != anchor.Quote {
-		out["status"] = "unlocatable"
-		out["quote"] = anchor.Quote
-		out["mismatch_reason"] = "定位坐标与当前正文不一致，未在正文中高亮。"
-		return out
-	}
-	element := doc.IR.ElementAt(anchor.Start, anchor.End)
-	if anchor.ElementID != "" && element != "" && anchor.ElementID != element {
-		out["status"] = "unlocatable"
-		out["quote"] = anchor.Quote
-		out["mismatch_reason"] = "定位坐标与当前正文不一致，未在正文中高亮。"
-		return out
-	}
-	page, hasPage := doc.IR.PageAt(anchor.Start, anchor.End)
-	if anchor.Page != nil && (!hasPage || *anchor.Page != page) {
-		out["status"] = "unlocatable"
-		out["quote"] = anchor.Quote
-		out["mismatch_reason"] = "定位坐标与当前正文不一致，未在正文中高亮。"
-		return out
+	page, hasPage, element, located := locateFrozenAnchor(anchor, doc)
+	if !located {
+		return markAnchorUnlocatable(out, anchor, "定位坐标与当前正文不一致，未在正文中高亮。", true)
 	}
 	out["status"] = "located"
 	out["text_offset"] = map[string]int{"start": anchor.Start, "end": anchor.End}
@@ -520,6 +511,46 @@ func anchorJSON(anchor store.Anchor, doc store.Interpreted) map[string]any {
 	}
 	if hasPage {
 		out["page"] = page
+	}
+	return out
+}
+
+func anchorMatchesFrozenIdentity(anchor store.Anchor, doc store.Interpreted) bool {
+	if anchor.DocumentID != doc.Document.ID {
+		return false
+	}
+	if anchor.ParsedDocumentID != "" {
+		parsed := doc.ParsedDocument
+		if parsed == nil || parsed.ID != anchor.ParsedDocumentID || parsed.DocumentID != anchor.DocumentID ||
+			parsed.Status != "ready" || parsed.OriginalDigest != doc.Document.Digest ||
+			anchor.NormalizedDigest == "" || parsed.NormalizedDigest != anchor.NormalizedDigest {
+			return false
+		}
+	}
+	return anchor.NormalizedDigest == "" || anchor.NormalizedDigest == doc.IR.NormalizedDigest
+}
+
+func locateFrozenAnchor(anchor store.Anchor, doc store.Interpreted) (int, bool, string, bool) {
+	quote, ok := docir.Slice(doc.Text, anchor.Start, anchor.End)
+	if !doc.Ready || !ok || quote != anchor.Quote {
+		return 0, false, "", false
+	}
+	element := doc.IR.ElementAt(anchor.Start, anchor.End)
+	if anchor.ElementID != "" && element != "" && anchor.ElementID != element {
+		return 0, false, "", false
+	}
+	page, hasPage := doc.IR.PageAt(anchor.Start, anchor.End)
+	if anchor.Page != nil && (!hasPage || *anchor.Page != page) {
+		return 0, false, "", false
+	}
+	return page, hasPage, element, true
+}
+
+func markAnchorUnlocatable(out map[string]any, anchor store.Anchor, reason string, includeQuote bool) map[string]any {
+	out["status"] = "unlocatable"
+	out["mismatch_reason"] = reason
+	if includeQuote {
+		out["quote"] = anchor.Quote
 	}
 	return out
 }

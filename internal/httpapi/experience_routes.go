@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strings"
 
+	"contractaudit/internal/accounts"
 	"contractaudit/internal/fault"
 	"contractaudit/internal/store"
 )
@@ -12,17 +13,19 @@ import (
 // registerGovernanceRoutes mounts Core-owned case feedback and the separate
 // admin-audience knowledge governance API.
 func registerGovernanceRoutes(mux *http.ServeMux, h *handler) {
-	mux.HandleFunc("POST /api/cases/{caseID}/experience-feedback", h.submitExperienceFeedback)
-	mux.HandleFunc("GET /api/cases/{caseID}/experience-feedback/{feedbackID}", h.getExperienceFeedback)
-	mux.HandleFunc("POST /api/cases/{caseID}/experience-feedback/{feedbackID}/distillations", h.requestExperienceDistillation)
-	mux.HandleFunc("GET /api/cases/{caseID}/experience-feedback/{feedbackID}/distillations/{jobID}", h.getExperienceDistillation)
-	mux.HandleFunc("GET /api/cases/{caseID}/experience-candidates/{candidateID}/versions/{versionID}", h.getExperienceCandidate)
-	mux.HandleFunc("GET /api/admin/governed-knowledge", h.listGovernedKnowledgeVersions)
-	mux.HandleFunc("POST /api/admin/governed-knowledge", h.createGovernedKnowledge)
-	mux.HandleFunc("GET /api/admin/governed-knowledge/{knowledgeID}/versions/{versionID}", h.getGovernedKnowledgeVersion)
-	mux.HandleFunc("GET /api/admin/governed-knowledge/{knowledgeID}/versions/{versionID}/preview", h.previewGovernedPolicy)
-	mux.HandleFunc("POST /api/admin/governed-knowledge/{knowledgeID}/versions/{versionID}/commands", h.governedKnowledgeCommand)
-	mux.HandleFunc("GET /api/admin/governed-knowledge/{knowledgeID}/history", h.listGovernedKnowledgeHistory)
+	mountRoutes(mux,
+		routeBinding{"POST /api/cases/{caseID}/experience-feedback", h.submitExperienceFeedback},
+		routeBinding{"GET /api/cases/{caseID}/experience-feedback/{feedbackID}", h.getExperienceFeedback},
+		routeBinding{"POST /api/cases/{caseID}/experience-feedback/{feedbackID}/distillations", h.requestExperienceDistillation},
+		routeBinding{"GET /api/cases/{caseID}/experience-feedback/{feedbackID}/distillations/{jobID}", h.getExperienceDistillation},
+		routeBinding{"GET /api/cases/{caseID}/experience-candidates/{candidateID}/versions/{versionID}", h.getExperienceCandidate},
+		routeBinding{"GET /api/admin/governed-knowledge", h.listGovernedKnowledgeVersions},
+		routeBinding{"POST /api/admin/governed-knowledge", h.createGovernedKnowledge},
+		routeBinding{"GET /api/admin/governed-knowledge/{knowledgeID}/versions/{versionID}", h.getGovernedKnowledgeVersion},
+		routeBinding{"GET /api/admin/governed-knowledge/{knowledgeID}/versions/{versionID}/preview", h.previewGovernedPolicy},
+		routeBinding{"POST /api/admin/governed-knowledge/{knowledgeID}/versions/{versionID}/commands", h.governedKnowledgeCommand},
+		routeBinding{"GET /api/admin/governed-knowledge/{knowledgeID}/history", h.listGovernedKnowledgeHistory},
+	)
 }
 
 // optionalPathIdentity distinguishes omitted identities from explicit null or
@@ -175,29 +178,15 @@ func (h *handler) requestExperienceDistillation(w http.ResponseWriter, r *http.R
 }
 
 func (h *handler) getExperienceDistillation(w http.ResponseWriter, r *http.Request) {
-	user, ok := h.actor(w, r)
-	if !ok {
-		return
-	}
-	item, err := h.store.GetExperienceDistillation(r.Context(), user, r.PathValue("caseID"), r.PathValue("feedbackID"), r.PathValue("jobID"))
-	if err != nil {
-		writeErr(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, item)
+	serveClientJSONLookup(h, w, r, func(user accounts.User, r *http.Request) (any, error) {
+		return h.store.GetExperienceDistillation(r.Context(), user, r.PathValue("caseID"), r.PathValue("feedbackID"), r.PathValue("jobID"))
+	})
 }
 
 func (h *handler) getExperienceCandidate(w http.ResponseWriter, r *http.Request) {
-	user, ok := h.actor(w, r)
-	if !ok {
-		return
-	}
-	item, err := h.store.GetExperienceCandidate(r.Context(), user, r.PathValue("caseID"), r.PathValue("candidateID"), r.PathValue("versionID"))
-	if err != nil {
-		writeErr(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, item)
+	serveClientJSONLookup(h, w, r, func(user accounts.User, r *http.Request) (any, error) {
+		return h.store.GetExperienceCandidate(r.Context(), user, r.PathValue("caseID"), r.PathValue("candidateID"), r.PathValue("versionID"))
+	})
 }
 
 func (h *handler) listGovernedKnowledgeVersions(w http.ResponseWriter, r *http.Request) {

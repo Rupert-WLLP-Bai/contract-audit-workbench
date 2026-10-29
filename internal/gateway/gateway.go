@@ -103,85 +103,84 @@ func FromEnv() (Config, error) {
 		HealthFailureThreshold:  defaultFailureThreshold,
 		HealthRecoveryThreshold: defaultRecoveryThreshold,
 	}
-	if raw := strings.TrimSpace(os.Getenv("GATEWAY_MAX_UPLOAD_BYTES")); raw != "" {
-		value, err := strconv.ParseInt(raw, 10, 64)
-		if err != nil || value < 1 {
-			return Config{}, errors.New("GATEWAY_MAX_UPLOAD_BYTES must be a positive integer")
-		}
-		config.MaxUploadBytes = value
-	}
-	for _, item := range []struct {
-		name   string
-		target *int
-	}{
-		{"GATEWAY_MAX_INFLIGHT", &config.MaxInflight},
-		{"GATEWAY_MAX_UPLOADS", &config.MaxUploads},
-	} {
-		raw := strings.TrimSpace(os.Getenv(item.name))
-		if raw == "" {
-			continue
-		}
-		value, err := strconv.Atoi(raw)
-		if err != nil || value < 1 {
-			return Config{}, fmt.Errorf("%s must be a positive integer", item.name)
-		}
-		*item.target = value
-	}
-	for _, item := range []struct {
-		name   string
-		target *time.Duration
-	}{
-		{"GATEWAY_REQUEST_TIMEOUT", &config.RequestTimeout},
-		{"GATEWAY_UPLOAD_TIMEOUT", &config.UploadTimeout},
-	} {
-		raw := strings.TrimSpace(os.Getenv(item.name))
-		if raw == "" {
-			continue
-		}
-		value, err := time.ParseDuration(raw)
-		if err != nil || value <= 0 {
-			return Config{}, fmt.Errorf("%s must be a positive Go duration", item.name)
-		}
-		*item.target = value
-	}
-	for _, item := range []struct {
-		name   string
-		target *time.Duration
-	}{
-		{"GATEWAY_HEALTH_INTERVAL", &config.HealthInterval},
-		{"GATEWAY_HEALTH_TIMEOUT", &config.HealthTimeout},
-	} {
-		raw := strings.TrimSpace(os.Getenv(item.name))
-		if raw == "" {
-			continue
-		}
-		value, err := time.ParseDuration(raw)
-		if err != nil || value <= 0 {
-			return Config{}, fmt.Errorf("%s must be a positive Go duration", item.name)
-		}
-		*item.target = value
-	}
-	for _, item := range []struct {
-		name   string
-		target *int
-	}{
-		{"GATEWAY_HEALTH_FAILURE_THRESHOLD", &config.HealthFailureThreshold},
-		{"GATEWAY_HEALTH_RECOVERY_THRESHOLD", &config.HealthRecoveryThreshold},
-	} {
-		raw := strings.TrimSpace(os.Getenv(item.name))
-		if raw == "" {
-			continue
-		}
-		value, err := strconv.Atoi(raw)
-		if err != nil || value < 1 {
-			return Config{}, fmt.Errorf("%s must be a positive integer", item.name)
-		}
-		*item.target = value
+	if err := loadGatewayEnv(&config); err != nil {
+		return Config{}, err
 	}
 	if err := normalizeHealthConfig(&config); err != nil {
 		return Config{}, err
 	}
 	return config, nil
+}
+
+func loadGatewayEnv(config *Config) error {
+	if err := loadPositiveUploadLimit(&config.MaxUploadBytes); err != nil {
+		return err
+	}
+	if err := loadPositiveInts([]struct {
+		name   string
+		target *int
+	}{
+		{"GATEWAY_MAX_INFLIGHT", &config.MaxInflight}, {"GATEWAY_MAX_UPLOADS", &config.MaxUploads},
+		{"GATEWAY_HEALTH_FAILURE_THRESHOLD", &config.HealthFailureThreshold}, {"GATEWAY_HEALTH_RECOVERY_THRESHOLD", &config.HealthRecoveryThreshold},
+	}); err != nil {
+		return err
+	}
+	return loadPositiveDurations([]struct {
+		name   string
+		target *time.Duration
+	}{
+		{"GATEWAY_REQUEST_TIMEOUT", &config.RequestTimeout}, {"GATEWAY_UPLOAD_TIMEOUT", &config.UploadTimeout},
+		{"GATEWAY_HEALTH_INTERVAL", &config.HealthInterval}, {"GATEWAY_HEALTH_TIMEOUT", &config.HealthTimeout},
+	})
+}
+
+func loadPositiveUploadLimit(target *int64) error {
+	raw := strings.TrimSpace(os.Getenv("GATEWAY_MAX_UPLOAD_BYTES"))
+	if raw == "" {
+		return nil
+	}
+	value, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil || value < 1 {
+		return errors.New("GATEWAY_MAX_UPLOAD_BYTES must be a positive integer")
+	}
+	*target = value
+	return nil
+}
+
+func loadPositiveInts(items []struct {
+	name   string
+	target *int
+}) error {
+	for _, item := range items {
+		raw := strings.TrimSpace(os.Getenv(item.name))
+		if raw == "" {
+			continue
+		}
+		value, err := strconv.Atoi(raw)
+		if err != nil || value < 1 {
+			return fmt.Errorf("%s must be a positive integer", item.name)
+		}
+		*item.target = value
+	}
+	return nil
+}
+
+func loadPositiveDurations(items []struct {
+	name   string
+	target *time.Duration
+}) error {
+	for _, item := range items {
+		raw := strings.TrimSpace(os.Getenv(item.name))
+		if raw == "" {
+			continue
+		}
+		value, err := time.ParseDuration(raw)
+		if err != nil || value <= 0 {
+			return fmt.Errorf("%s must be a positive Go duration", item.name)
+		}
+		*item.target = value
+	}
+	return nil
 }
 
 func normalizeHealthConfig(config *Config) error {
@@ -197,12 +196,20 @@ func normalizeHealthConfig(config *Config) error {
 	if config.HealthRecoveryThreshold == 0 {
 		config.HealthRecoveryThreshold = defaultRecoveryThreshold
 	}
+	return validateHealthConfig(*config)
+}
+
+func validateHealthConfig(config Config) error {
 	if config.HealthInterval < minHealthInterval || config.HealthInterval > maxHealthInterval {
 		return errors.New("GATEWAY_HEALTH_INTERVAL must be between 100ms and 30s")
 	}
 	if config.HealthTimeout < minHealthTimeout || config.HealthTimeout > maxHealthTimeout || config.HealthTimeout > config.HealthInterval {
 		return errors.New("GATEWAY_HEALTH_TIMEOUT must be between 50ms and 5s and no greater than the health interval")
 	}
+	return validateHealthThresholds(config)
+}
+
+func validateHealthThresholds(config Config) error {
 	if config.HealthFailureThreshold < 1 || config.HealthFailureThreshold > maxHealthThreshold {
 		return errors.New("GATEWAY_HEALTH_FAILURE_THRESHOLD must be between 1 and 10")
 	}
@@ -587,16 +594,31 @@ func (g *Gateway) upstreamFor(role string) (*upstream, bool) {
 // body; only the review event feed and the stored original are long-lived
 // responses.
 func classify(role, method string, segments []string) class {
-	switch {
-	case method == http.MethodPost && role == "document" && len(segments) == 4 &&
-		segments[0] == "api" && segments[1] == "cases" && segments[3] == "documents":
+	if isUploadRequest(role, method, segments) {
 		return classUpload
-	case method == http.MethodGet && len(segments) == 6 && segments[0] == "api" && segments[1] == "cases" &&
-		(segments[3] == "reviews" && segments[5] == "events" ||
-			role == "document" && segments[3] == "documents" && segments[5] == "original"):
+	}
+	if isStreamRequest(role, method, segments) {
 		return classStream
 	}
 	return classRequest
+}
+
+func isUploadRequest(role, method string, s []string) bool {
+	return method == http.MethodPost && role == "document" && len(s) == 4 &&
+		s[0] == "api" && s[1] == "cases" && s[3] == "documents"
+}
+
+func isStreamRequest(role, method string, s []string) bool {
+	if method != http.MethodGet || len(s) != 6 || s[0] != "api" || s[1] != "cases" {
+		return false
+	}
+	return isReviewEventRoute(s) || isDocumentOriginalRoute(role, s)
+}
+
+func isReviewEventRoute(s []string) bool { return s[3] == "reviews" && s[5] == "events" }
+
+func isDocumentOriginalRoute(role string, s []string) bool {
+	return role == "document" && s[3] == "documents" && s[5] == "original"
 }
 
 type replica struct {
