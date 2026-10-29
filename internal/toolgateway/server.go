@@ -435,12 +435,7 @@ func validatePreflightHeader(header string, seen uint8) (uint8, *rpcFailure) {
 }
 
 func asciiHeaderValue(header string) bool {
-	for i := range header {
-		if header[i] < 0x21 || header[i] > 0x7e {
-			return false
-		}
-	}
-	return true
+	return safeToken(header)
 }
 
 func preflightHeaderBit(header string) (uint8, bool) {
@@ -561,15 +556,7 @@ func decodeRequestFields(body []byte) (map[string]json.RawMessage, *rpcFailure) 
 }
 
 func parseRequestParams(fields map[string]json.RawMessage) (map[string]json.RawMessage, *rpcFailure) {
-	paramsRaw, ok := fields["params"]
-	if !ok {
-		return nil, invalidParams("Request metadata is required in params._meta.")
-	}
-	params, err := decodeJSONObject(paramsRaw)
-	if err != nil {
-		return nil, invalidParams("params must be one JSON object.")
-	}
-	return params, nil
+	return requiredJSONObjectField(fields, "params", "Request metadata is required in params._meta.", "params must be one JSON object.")
 }
 
 func parseRequestIdentity(fields map[string]json.RawMessage) (json.RawMessage, string, *rpcFailure) {
@@ -639,15 +626,7 @@ func validateRequestMetadata(params map[string]json.RawMessage) (string, *rpcFai
 }
 
 func requestMetadataObject(params map[string]json.RawMessage) (map[string]json.RawMessage, *rpcFailure) {
-	metaRaw, ok := params["_meta"]
-	if !ok {
-		return nil, invalidParams("Request metadata is required in params._meta.")
-	}
-	meta, err := decodeJSONObject(metaRaw)
-	if err != nil {
-		return nil, invalidParams("params._meta must be an object.")
-	}
-	return meta, nil
+	return requiredJSONObjectField(params, "_meta", "Request metadata is required in params._meta.", "params._meta must be an object.")
 }
 
 func requestProtocolVersion(meta map[string]json.RawMessage) (string, *rpcFailure) {
@@ -680,15 +659,7 @@ func validateClientInfo(meta map[string]json.RawMessage) *rpcFailure {
 }
 
 func clientInfoObject(meta map[string]json.RawMessage) (map[string]json.RawMessage, *rpcFailure) {
-	clientRaw, exists := meta["io.modelcontextprotocol/clientInfo"]
-	if !exists {
-		return nil, invalidParams("Request clientInfo metadata is required.")
-	}
-	clientInfo, err := decodeJSONObject(clientRaw)
-	if err != nil {
-		return nil, invalidParams("Request clientInfo metadata must be an object.")
-	}
-	return clientInfo, nil
+	return requiredJSONObjectField(meta, "io.modelcontextprotocol/clientInfo", "Request clientInfo metadata is required.", "Request clientInfo metadata must be an object.")
 }
 
 func (h *handler) authenticate(r *http.Request) (accounts.User, *rpcFailure) {
@@ -970,6 +941,26 @@ func decodeJSONObject(raw json.RawMessage) (map[string]json.RawMessage, error) {
 	return object, nil
 }
 
+func decodeJSONObjectField(fields map[string]json.RawMessage, name string) (map[string]json.RawMessage, bool, error) {
+	raw, exists := fields[name]
+	if !exists {
+		return nil, false, nil
+	}
+	object, err := decodeJSONObject(raw)
+	return object, true, err
+}
+
+func requiredJSONObjectField(fields map[string]json.RawMessage, name, missingMessage, invalidMessage string) (map[string]json.RawMessage, *rpcFailure) {
+	object, exists, err := decodeJSONObjectField(fields, name)
+	if !exists {
+		return nil, invalidParams(missingMessage)
+	}
+	if err != nil {
+		return nil, invalidParams(invalidMessage)
+	}
+	return object, nil
+}
+
 func stringField(fields map[string]json.RawMessage, key string) (string, error) {
 	raw, ok := fields[key]
 	if !ok {
@@ -1064,9 +1055,16 @@ func scanJSONContainer(decoder *json.Decoder, opening json.Token, depth int) err
 func scanJSONObject(decoder *json.Decoder, depth int) error {
 	seen := make(map[string]struct{})
 	for decoder.More() {
-		key, err := nextJSONObjectKey(decoder, seen)
+		token, err := decoder.Token()
 		if err != nil {
 			return err
+		}
+		key, ok := token.(string)
+		if !ok {
+			return errors.New("object key is not a string")
+		}
+		if _, exists := seen[key]; exists {
+			return errors.New("duplicate JSON object key")
 		}
 		seen[key] = struct{}{}
 		value, err := decoder.Token()
@@ -1083,22 +1081,6 @@ func scanJSONObject(decoder *json.Decoder, depth int) error {
 	}
 	return nil
 }
-
-func nextJSONObjectKey(decoder *json.Decoder, seen map[string]struct{}) (string, error) {
-	token, err := decoder.Token()
-	if err != nil {
-		return "", err
-	}
-	key, ok := token.(string)
-	if !ok {
-		return "", errors.New("object key is not a string")
-	}
-	if _, exists := seen[key]; exists {
-		return "", errors.New("duplicate JSON object key")
-	}
-	return key, nil
-}
-
 func scanJSONArray(decoder *json.Decoder, depth int) error {
 	for decoder.More() {
 		value, err := decoder.Token()
