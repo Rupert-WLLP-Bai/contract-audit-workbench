@@ -217,6 +217,17 @@ func (h *handler) authorizeRequest(r *http.Request, request rpcRequest) (account
 	if err := r.Context().Err(); err != nil {
 		return accounts.User{}, "", false, storeFailure(r.Context(), err)
 	}
+	user, workerContext, workerCall, failure := h.authorizeRequestIdentity(r, request)
+	if failure != nil {
+		return accounts.User{}, "", false, failure
+	}
+	if err := r.Context().Err(); err != nil {
+		return accounts.User{}, "", false, storeFailure(r.Context(), err)
+	}
+	return user, workerContext, workerCall, nil
+}
+
+func (h *handler) authorizeRequestIdentity(r *http.Request, request rpcRequest) (accounts.User, string, bool, *rpcFailure) {
 	// A durable worker presents its job claim instead of a browser session. The
 	// claim header never arrives from outside: the edge strips every X-Contract-*
 	// header, and the credential is a service-pair secret rather than a user
@@ -239,9 +250,6 @@ func (h *handler) authorizeRequest(r *http.Request, request rpcRequest) (account
 		if failure != nil {
 			return accounts.User{}, "", false, failure
 		}
-	}
-	if err := r.Context().Err(); err != nil {
-		return accounts.User{}, "", false, storeFailure(r.Context(), err)
 	}
 	return user, workerContext, workerCall, nil
 }
