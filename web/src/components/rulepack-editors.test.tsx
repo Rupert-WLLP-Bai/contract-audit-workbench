@@ -829,6 +829,55 @@ describe("RulePackTestPanel consumer behavior", () => {
   });
 });
 
+describe("RulePackTestPanel fact field edits", () => {
+  it("edits the fact dimension, unit and source role before submission", async () => {
+    const user = userEvent.setup();
+    const requests = renderPanel();
+    await addSource(user);
+    await user.click(screen.getByRole("button", { name: "添加事实" }));
+    inputValue("事实 ID", "fact-1");
+    inputValue("业务对象", "LINE-9");
+    inputValue("事实维度", "custom_dimension");
+    inputValue("事实值", "42");
+    inputValue("单位", "Gbit/s");
+    await chooseOption(
+      user,
+      screen.getByRole("combobox", { name: "对应规则" }),
+      "选择规则",
+    );
+    await chooseOption(
+      user,
+      screen.getByRole("combobox", { name: "材料角色" }),
+      "procurement",
+    );
+    selectSource();
+    await user.click(screen.getByRole("button", { name: "添加当前选区引用" }));
+    await user.click(screen.getByRole("button", { name: "测试当前修订" }));
+    await screen.findByRole("heading", { name: "测试结果" });
+    expect(JSON.parse(String(requests[0]?.init?.body)).facts[0]).toMatchObject({
+      dimension: "custom_dimension",
+      unit: "Gbit/s",
+      source_role: "procurement",
+      object_ref: "LINE-9",
+      value: "42",
+    });
+  });
+
+  it("does not offer a citation when the selection is empty", async () => {
+    const user = userEvent.setup();
+    renderPanel();
+    await addSource(user);
+    const text = screen.getByLabelText<HTMLTextAreaElement>("样本文本");
+    text.focus();
+    text.setSelectionRange(2, 2);
+    fireEvent.select(text);
+    await user.click(screen.getByRole("button", { name: "添加事实" }));
+    expect(
+      screen.getByRole("button", { name: "添加当前选区引用" }),
+    ).toBeDisabled();
+  });
+});
+
 describe("RulePack editor literal values and fact selection", () => {
   it.each(["{malformed JSON", '{"value":"0.3000"}', "000100.000"])(
     "preserves a threshold as a literal string: %s",
