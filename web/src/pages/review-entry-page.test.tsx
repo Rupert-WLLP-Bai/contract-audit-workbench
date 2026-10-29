@@ -23,12 +23,20 @@ function snapshot(): WorkbenchSnapshot {
     severity: null,
     progress: 50,
   };
+  const noRunCase: WorkbenchCase = {
+    ...reviewCase,
+    id: "case/without-review",
+    title: "暂无运行案件",
+    document_count: 0,
+    pending_decisions: 0,
+    progress: 0,
+  };
   return {
     schema_version: "workbench/v1",
     generated_at: at,
     period: "week",
     dashboard: {
-      visible_cases: 1,
+      visible_cases: 2,
       my_pending_tasks: 0,
       overdue_tasks: 0,
       pending_review_cases: 1,
@@ -38,7 +46,7 @@ function snapshot(): WorkbenchSnapshot {
       progress: [],
       risks: [],
     },
-    cases: [reviewCase],
+    cases: [reviewCase, noRunCase],
     profiles: [],
     tasks: [],
     relations: [],
@@ -107,6 +115,11 @@ describe("审查入口", () => {
     expect(screen.getByRole("link", { name: "打开审查" })).toHaveAttribute(
       "href",
       "/cases/case%2Falpha/reviews/run-new?attempt_id=attempt%2Fnew",
+    );
+    expect(screen.getByText("尚无审查运行")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "进入案件" })).toHaveAttribute(
+      "href",
+      "/cases/case%2Fwithout-review",
     );
   });
 });
