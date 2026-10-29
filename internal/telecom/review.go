@@ -627,22 +627,31 @@ func executePack(ctx context.Context, request rulepack.Request, pack *rulepack.P
 	report := rulepack.Report{PackID: packID, PackVersion: compilerVersion,
 		Relations: []rulepack.Relation{rulepack.RelationCompatible, rulepack.RelationConflict, rulepack.RelationInsufficient, rulepack.RelationNotApplicable},
 		Results:   []rulepack.Result{}}
-	if pack != nil {
-		// Missing authority has no authority-backed facts; retain the mandatory
-		// result below even though this pack has an explicit frozen threshold.
-		filtered := make([]rulepack.Fact, 0, len(request.Facts))
-		for _, fact := range request.Facts {
-			if _, absent := missing[fact.RuleID]; !absent {
-				filtered = append(filtered, fact)
-			}
-		}
-		request.Facts = filtered
-		var err error
-		report, err = pack.Execute(ctx, request)
-		if err != nil {
-			return rulepack.Report{}, err
+	var err error
+	report, err = executeRulePack(ctx, request, pack, missing, report)
+	if err != nil {
+		return rulepack.Report{}, err
+	}
+	appendMissingResults(&report, definitions, missing)
+	applyBaselineChecks(&report, request, definitions, bases)
+	return report, nil
+}
+
+func executeRulePack(ctx context.Context, request rulepack.Request, pack *rulepack.Pack, missing map[string]string, empty rulepack.Report) (rulepack.Report, error) {
+	if pack == nil {
+		return empty, nil
+	}
+	filtered := make([]rulepack.Fact, 0, len(request.Facts))
+	for _, fact := range request.Facts {
+		if _, absent := missing[fact.RuleID]; !absent {
+			filtered = append(filtered, fact)
 		}
 	}
+	request.Facts = filtered
+	return pack.Execute(ctx, request)
+}
+
+func appendMissingResults(report *rulepack.Report, definitions []ruleDefinition, missing map[string]string) {
 	for _, definition := range definitions {
 		if reason, absent := missing[definition.id]; absent {
 			found := false
@@ -662,6 +671,9 @@ func executePack(ctx context.Context, request rulepack.Request, pack *rulepack.P
 			}
 		}
 	}
+}
+
+func applyBaselineChecks(report *rulepack.Report, request rulepack.Request, definitions []ruleDefinition, bases map[string]clause) {
 	for index := range report.Results {
 		result := &report.Results[index]
 		base, exists := bases[result.RuleID]
@@ -672,20 +684,7 @@ func executePack(ctx context.Context, request rulepack.Request, pack *rulepack.P
 			if fact.RuleID != result.RuleID {
 				continue
 			}
-			if fact.ObjectRef != base.fact.ObjectRef {
-				reason := "circuit_object_mismatch"
-				if request.Scenario == "cloud_services" {
-					reason = "service_object_mismatch"
-				}
-				result.Relation, result.ReasonCode = rulepack.RelationInsufficient, reason
-			}
-			if fact.RuleID == definitions[2].id {
-				actual, actualTax := contractAmount(request, fact.ObjectRef, false)
-				expected, expectedTax := contractAmount(request, base.fact.ObjectRef, true)
-				if actual == nil || expected == nil || actual.Cmp(expected) != 0 || actualTax == "" || actualTax != expectedTax || actualTax != base.tax {
-					result.Relation, result.ReasonCode = rulepack.RelationInsufficient, "amount_or_tax_basis_incomparable"
-				}
-			}
+			checkBaselineFact(result, fact, base, request, fact.RuleID == definitions[2].id)
 		}
 		if result.RuleID == definitions[1].id && result.Relation != rulepack.RelationInsufficient {
 			annexFound := false
@@ -720,5 +719,22 @@ func executePack(ctx context.Context, request rulepack.Request, pack *rulepack.P
 		}
 		result.Citations = append(result.Citations, base.fact.Citations...)
 	}
-	return report, nil
+}
+
+func checkBaselineFact(result *rulepack.Result, fact rulepack.Fact, base clause, request rulepack.Request, compareAmount bool) {
+	if fact.ObjectRef != base.fact.ObjectRef {
+		reason := "circuit_object_mismatch"
+		if request.Scenario == "cloud_services" {
+			reason = "service_object_mismatch"
+		}
+		result.Relation, result.ReasonCode = rulepack.RelationInsufficient, reason
+	}
+	if !compareAmount {
+		return
+	}
+	actual, actualTax := contractAmount(request, fact.ObjectRef, false)
+	expected, expectedTax := contractAmount(request, base.fact.ObjectRef, true)
+	if actual == nil || expected == nil || actual.Cmp(expected) != 0 || actualTax == "" || actualTax != expectedTax || actualTax != base.tax {
+		result.Relation, result.ReasonCode = rulepack.RelationInsufficient, "amount_or_tax_basis_incomparable"
+	}
 }
