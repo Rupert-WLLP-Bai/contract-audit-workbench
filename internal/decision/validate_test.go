@@ -60,6 +60,27 @@ func TestValidInputChecksShapeWithoutAuthorizingPrincipalOrResource(t *testing.T
 	}
 }
 
+func TestValidInputKeepsSingleByteDescriptionsAndRejectsDuplicatesAtAnyPosition(t *testing.T) {
+	input := validInputFixture()
+	input.AllowedCandidates[0].Description = "x"
+	if !ValidInput(input) {
+		t.Fatal("one-byte candidate description was rejected")
+	}
+
+	input.AllowedCandidates = []Candidate{
+		{ID: "first", Description: "one"},
+		{ID: "second", Description: "two"},
+		{ID: "manual_review", Description: "review"},
+	}
+	if !validCandidates(input.AllowedCandidates) {
+		t.Fatal("unique candidates were rejected")
+	}
+	input.AllowedCandidates[2].ID = "first"
+	if validCandidates(input.AllowedCandidates) {
+		t.Fatal("duplicate at final candidate position was accepted")
+	}
+}
+
 func TestValidInputRejectsUnboundedOrAmbiguousShapes(t *testing.T) {
 	for name, mutate := range map[string]func(*Input){
 		"missing request":          func(input *Input) { input.RequestID = "" },
