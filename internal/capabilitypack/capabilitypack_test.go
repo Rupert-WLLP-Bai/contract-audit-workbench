@@ -167,6 +167,40 @@ func TestLoadDirLoadsBothPacks(t *testing.T) {
 	}
 }
 
+func TestManifestValidationPreservesFirstErrorAndUnicodeRuneLimit(t *testing.T) {
+	manifest := mustParse(t, readPack(t, dedicatedLineFile))
+	manifest.SchemaVersion = "wrong"
+	manifest.HostContractVersion = "wrong"
+	err := manifest.Validate()
+	if err == nil || !strings.Contains(err.Error(), "schema_version") {
+		t.Fatalf("first validation error = %v, want schema_version", err)
+	}
+	manifest = mustParse(t, readPack(t, dedicatedLineFile))
+	manifest.DisplayName = strings.Repeat("界", 256)
+	if err := manifest.Validate(); err != nil {
+		t.Fatalf("256 Unicode runes rejected: %v", err)
+	}
+	manifest.DisplayName += "界"
+	if err := manifest.Validate(); err == nil || !strings.Contains(err.Error(), "display_name") {
+		t.Fatalf("257 Unicode runes error = %v, want display_name", err)
+	}
+}
+
+func TestLoadDirReturnsFirstEntryInSortedDirectoryOrder(t *testing.T) {
+	dir := t.TempDir()
+	for name, content := range map[string]string{
+		"b.json": "{}", "a.json": "{}",
+	} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	_, err := LoadDir(dir)
+	if err == nil || !strings.Contains(err.Error(), `file "a.json"`) {
+		t.Fatalf("first load error = %v, want sorted a.json error", err)
+	}
+}
+
 func TestParseRejectsUnknownFields(t *testing.T) {
 	cases := []struct {
 		name   string
