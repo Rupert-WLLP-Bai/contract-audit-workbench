@@ -322,6 +322,42 @@ describe("补充材料请求", () => {
     expect(calls.some((call) => call.pathname.endsWith("/verify"))).toBe(false);
   });
 
+  it("does not match a later check that cites a different set of frozen objects", async () => {
+    const request = {
+      ...rawRequest("received", 2),
+      source_evaluation: {
+        ...missing,
+        object_refs: ["object-a", "object-b"],
+        run_id: "run-old",
+        attempt_id: "attempt-old",
+        case_id: "case-1",
+      },
+    };
+    const laterEvaluation = {
+      ...compatible,
+      object_refs: ["object-a", "object-c"],
+    };
+    const { calls, user } = open({
+      runId: "run-new",
+      attemptId: "attempt-new",
+      evaluations: [laterEvaluation],
+      canManage: false,
+      respond(call) {
+        if (call.pathname.endsWith("/evidence-requests")) return Response.json({ items: [request] });
+        if (call.pathname.endsWith("/history")) return Response.json({ items: [
+          { type: "received", actor_id: "owner", occurred_at: at, request, receipt: rawReceipt },
+        ] });
+        return Response.json({ error: { message: "unexpected" } }, { status: 404 });
+      },
+    });
+
+    await screen.findByText("已提交，待复核");
+    await chooseActiveOption(user, screen.getByRole("combobox", { name: "选择提交回执" }), /补充合同.txt/);
+    expect(screen.getByText("当前审查没有唯一匹配且达到请求条件的实际检查，仍需补充或复审。")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "提交核验" })).toBeDisabled();
+    expect(calls.some((call) => call.pathname.endsWith("/verify"))).toBe(false);
+  });
+
   it.each(["conflict", "resolved"] as const)("submits the actual %s check from a later review", async (condition) => {
     const gap = { gap_id: "gap-1", domain: "commercial", capability_id: "warranty_months", mandatory: true, status: "resolved", reason_code: "", evidence_ids: ["doc-2"] };
     const review: BusinessAgentReview = {
