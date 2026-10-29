@@ -26,6 +26,7 @@ func TestNewRejectsUnsafeGatewayConfiguration(t *testing.T) {
 		{"endpoint query", "http://gateway.internal?target=unsafe", toolClientCredential, time.Second},
 		{"endpoint fragment", "http://gateway.internal#mcp", toolClientCredential, time.Second},
 		{"short service credential", "http://gateway.internal", "short", time.Second},
+		{"zero timeout", "http://gateway.internal", toolClientCredential, 0},
 		{"nonpositive timeout", "http://gateway.internal", toolClientCredential, -time.Second},
 	} {
 		t.Run(test.name, func(t *testing.T) {
@@ -33,6 +34,16 @@ func TestNewRejectsUnsafeGatewayConfiguration(t *testing.T) {
 				t.Fatal("unsafe tool client configuration was accepted")
 			}
 		})
+	}
+}
+
+func TestNewAcceptsCredentialAtExactMinimumLength(t *testing.T) {
+	client, err := New("http://gateway.example/base", strings.Repeat("k", 32), time.Second)
+	if err != nil {
+		t.Fatalf("New rejected a 32-byte credential: %v", err)
+	}
+	if client.endpoint != "http://gateway.example/base/mcp" {
+		t.Fatalf("endpoint = %q", client.endpoint)
 	}
 }
 

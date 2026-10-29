@@ -38,6 +38,16 @@ func TestNewRejectsUnsafeCoreConfiguration(t *testing.T) {
 	}
 }
 
+func TestNewAcceptsCredentialAtExactMinimumLength(t *testing.T) {
+	client, err := New("http://core.example/base", strings.Repeat("k", 32), time.Second)
+	if err != nil {
+		t.Fatalf("New rejected a 32-byte credential: %v", err)
+	}
+	if client.endpoint != "http://core.example/base/internal/v1/experience-results" {
+		t.Fatalf("endpoint = %q", client.endpoint)
+	}
+}
+
 func TestAcceptExperienceResultSendsFencedIdentityAndAcceptsNoContent(t *testing.T) {
 	delivery := store.ExperienceResultDelivery{
 		TenantID: "tenant-a", JobID: "job-1", Generation: 7,

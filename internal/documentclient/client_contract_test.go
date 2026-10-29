@@ -38,6 +38,16 @@ func TestNewRejectsNonOriginEndpointsCredentialsAndTimeouts(t *testing.T) {
 	}
 }
 
+func TestNewAcceptsCredentialAtExactMinimumLength(t *testing.T) {
+	client, err := New("http://document.example/base", strings.Repeat("k", 32), time.Second)
+	if err != nil {
+		t.Fatalf("New rejected a 32-byte credential: %v", err)
+	}
+	if client.endpoint != "http://document.example/base/internal/v1/prepare" {
+		t.Fatalf("endpoint = %q", client.endpoint)
+	}
+}
+
 func TestPrepareAttemptDocumentRejectsUntrustedErrorAndMalformedResponses(t *testing.T) {
 	for _, test := range []struct {
 		name, body string
