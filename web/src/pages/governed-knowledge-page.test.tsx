@@ -899,4 +899,46 @@ describe("knowledge governance administration", () => {
     expect(await screen.findByLabelText("校验依据")).toBeInTheDocument();
     expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
   });
+
+  it("does not carry cross-case confirmation from validation into approval", async () => {
+    let current: KnowledgeVersion = {
+      ...initial,
+      status: "submitted",
+      content: {
+        ...initial.content,
+        kind: "experience",
+        source_type: "human_feedback",
+        source_case_id: "case-1",
+        scope: { ...initial.content.scope, case_id: "case-2" },
+      },
+    };
+    const requests: RequestInit[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const path = String(input);
+      if (path === versionPath && init?.method === "GET") return json(current);
+      if (path === `${root}/${id}/history`) return json({ items: [] });
+      if (path === `${versionPath}/commands` && init?.method === "POST") {
+        requests.push(init);
+        current = { ...current, status: "validated", revision: current.revision + 1 };
+        return json(current);
+      }
+      return json({ error: { code: "not_found", message: "没有找到", retryable: false } }, 404);
+    }));
+    const user = userEvent.setup();
+    show(`/admin/governed-knowledge/${id}/versions/${versionId}`);
+    await user.type(await screen.findByLabelText("校验依据"), "先完成规则校验");
+    await user.click(screen.getByRole("button", { name: "校验" }));
+    await waitFor(() => expect(requests).toHaveLength(1));
+    expect(JSON.parse(String(requests[0]?.body))).toMatchObject({
+      action: "validate",
+      cross_case_reviewed: false,
+    });
+
+    await user.type(await screen.findByLabelText("批准依据"), "重新确认跨案适用性");
+    const confirmation = screen.getByRole("checkbox", { name: /我已审阅跨案适用性/ });
+    expect(confirmation).not.toBeChecked();
+    await user.click(screen.getByRole("button", { name: "批准" }));
+    expect(await screen.findByText("请先确认跨案审阅及敏感内容处理")).toBeInTheDocument();
+    expect(requests).toHaveLength(1);
+  });
 });
