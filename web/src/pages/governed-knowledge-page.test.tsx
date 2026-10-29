@@ -33,8 +33,7 @@ function json(value: unknown, status = 200): Response {
   return new Response(JSON.stringify(value), { status, headers: { "Content-Type": "application/json" } });
 }
 function Destination() { return <output aria-label="目标路径">{useLocation().pathname}</output>; }
-function show(path: string) {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 }, mutations: { retry: false } } });
+function show(path: string, client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 }, mutations: { retry: false } } })) {
   clients.push(client);
   render(<QueryClientProvider client={client}><MemoryRouter initialEntries={[path]}><Routes>
     <Route path="/admin/governed-knowledge" element={<GovernedKnowledgeListPage />} />
@@ -216,6 +215,22 @@ describe("knowledge governance administration", () => {
     show(`/admin/governed-knowledge/${id}/versions/${versionId}`);
     expect(await screen.findByText("没有找到对应记录")).toBeInTheDocument();
     expect(screen.getByText(/错误代码：not_found/)).toBeInTheDocument();
+    expect(screen.queryByText(initial.content.body)).not.toBeInTheDocument();
+  });
+
+  it("hides cached detail content after a failed refresh", async () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 }, mutations: { retry: false } } });
+    const detailKey = ["admin", "governed-knowledge", "detail", id, versionId];
+    client.setQueryData(detailKey, initial);
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const path = String(input);
+      if (path === versionPath) throw new TypeError("connection reset");
+      if (path === `${root}/${id}/history`) return json({ items: [] });
+      if (path === `${versionPath}/preview`) return json(preview);
+      return json({ error: { code: "not_found", message: "没有找到", retryable: false } }, 404);
+    }));
+    show(`/admin/governed-knowledge/${id}/versions/${versionId}`, client);
+    expect(await screen.findByText("知识版本没有加载")).toBeInTheDocument();
     expect(screen.queryByText(initial.content.body)).not.toBeInTheDocument();
   });
 
@@ -811,6 +826,35 @@ describe("knowledge governance administration", () => {
       expect(posts).toHaveLength(1);
       cleanup();
     }
+  });
+
+  it("replays a network-failed command with the original key and body", async () => {
+    let current: KnowledgeVersion = { ...initial, status: "submitted" };
+    const requests: RequestInit[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const path = String(input);
+      if (path === versionPath && init?.method === "GET") return json(current);
+      if (path === `${root}/${id}/history`) return json({ items: [] });
+      if (path === `${versionPath}/commands` && init?.method === "POST") {
+        requests.push(init);
+        if (requests.length === 1) throw new TypeError("connection reset");
+        current = { ...current, status: "validated", revision: 3 };
+        return json(current);
+      }
+      return json({ error: { code: "not_found", message: "没有找到", retryable: false } }, 404);
+    }));
+    const user = userEvent.setup();
+    show(`/admin/governed-knowledge/${id}/versions/${versionId}`);
+    await user.type(await screen.findByLabelText("校验依据"), "确认策略来源");
+    await user.click(screen.getByRole("button", { name: "校验" }));
+    expect(await screen.findByText("无法连接审查服务")).toBeInTheDocument();
+    const replay = await screen.findByRole("button", { name: "重试校验" });
+    await user.click(replay);
+    await waitFor(() => expect(requests).toHaveLength(2));
+    expect(requests[1]?.body).toBe(requests[0]?.body);
+    expect(new Headers(requests[1]?.headers).get("Idempotency-Key")).toBe(
+      new Headers(requests[0]?.headers).get("Idempotency-Key"),
+    );
   });
 
   it("asks for cross-case review only for experience approval", async () => {
