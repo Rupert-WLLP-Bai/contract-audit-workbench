@@ -587,6 +587,83 @@ describe("buildApiRequest JSON bodies", () => {
   const target = (body: OpenApiRequestBody | null) =>
     operation({ path: "/cases", method: "post", requestBody: body });
 
+  it("returns a valid nonempty array request without hanging", async () => {
+    const moduleUrl = pathToFileURL(
+      resolve(process.cwd(), "src/api/openapi-request.ts"),
+    ).href;
+    const script = `
+      import { buildApiRequest } from ${JSON.stringify(moduleUrl)};
+      const built = buildApiRequest({
+        operation: {
+          key: "POST /cases",
+          operationId: "",
+          summary: "",
+          description: "",
+          tags: [],
+          method: "POST",
+          path: "/cases",
+          parameters: [],
+          requestBody: {
+            required: false,
+            description: "",
+            mediaType: "application/json",
+            schema: { type: "array", items: { type: "string" } },
+            example: null,
+            raw: null,
+          },
+          responses: [],
+          security: null,
+          raw: null,
+        },
+        values: {},
+        bodyText: '["contract"]',
+        bodyValues: {},
+        bodyFiles: {},
+        origin: "http://api.test",
+        schemaRoot: {},
+      });
+      if (built.error !== null || built.request?.init.body !== '["contract"]') {
+        throw new Error(built.error ?? "array request body was not preserved");
+      }
+      process.stdout.write("ok");
+    `;
+    const child = spawn("bun", ["-e", script], {
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    let stdout = "";
+    let stderr = "";
+    child.stdout?.setEncoding("utf8").on("data", (chunk: string) => {
+      stdout += chunk;
+    });
+    child.stderr?.setEncoding("utf8").on("data", (chunk: string) => {
+      stderr += chunk;
+    });
+    const result = await new Promise<{
+      timedOut: boolean;
+      status: number | null;
+      error: Error | null;
+    }>((resolveResult) => {
+      let timedOut = false;
+      const deadline = setTimeout(() => {
+        timedOut = true;
+        child.kill("SIGKILL");
+      }, 2000);
+      child.on("error", (error) => {
+        clearTimeout(deadline);
+        resolveResult({ timedOut, status: null, error });
+      });
+      child.on("close", (status) => {
+        clearTimeout(deadline);
+        resolveResult({ timedOut, status, error: null });
+      });
+    });
+
+    expect(result.timedOut, stderr).toBe(false);
+    expect(result.error, stderr).toBeNull();
+    expect(result.status, stderr).toBe(0);
+    expect(stdout).toBe("ok");
+  });
+
   it("requires a JSON body when the contract marks it required", () => {
     expect(
       build(target(requestBody({ required: true }))).error,
@@ -787,83 +864,6 @@ describe("buildApiRequest JSON bodies", () => {
     );
     expect(built.error).toBeNull();
     expect(built.request?.init.body).toBe('["a"]');
-  });
-
-  it("returns a valid nonempty array request without hanging", async () => {
-    const moduleUrl = pathToFileURL(
-      resolve(process.cwd(), "src/api/openapi-request.ts"),
-    ).href;
-    const script = `
-      import { buildApiRequest } from ${JSON.stringify(moduleUrl)};
-      const built = buildApiRequest({
-        operation: {
-          key: "POST /cases",
-          operationId: "",
-          summary: "",
-          description: "",
-          tags: [],
-          method: "POST",
-          path: "/cases",
-          parameters: [],
-          requestBody: {
-            required: false,
-            description: "",
-            mediaType: "application/json",
-            schema: { type: "array", items: { type: "string" } },
-            example: null,
-            raw: null,
-          },
-          responses: [],
-          security: null,
-          raw: null,
-        },
-        values: {},
-        bodyText: '["contract"]',
-        bodyValues: {},
-        bodyFiles: {},
-        origin: "http://api.test",
-        schemaRoot: {},
-      });
-      if (built.error !== null || built.request?.init.body !== '["contract"]') {
-        throw new Error(built.error ?? "array request body was not preserved");
-      }
-      process.stdout.write("ok");
-    `;
-    const child = spawn("bun", ["-e", script], {
-      stdio: ["ignore", "pipe", "pipe"],
-    });
-    let stdout = "";
-    let stderr = "";
-    child.stdout?.setEncoding("utf8").on("data", (chunk: string) => {
-      stdout += chunk;
-    });
-    child.stderr?.setEncoding("utf8").on("data", (chunk: string) => {
-      stderr += chunk;
-    });
-    const result = await new Promise<{
-      timedOut: boolean;
-      status: number | null;
-      error: Error | null;
-    }>((resolveResult) => {
-      let timedOut = false;
-      const deadline = setTimeout(() => {
-        timedOut = true;
-        child.kill("SIGKILL");
-      }, 2000);
-      child.on("error", (error) => {
-        clearTimeout(deadline);
-        resolveResult({ timedOut, status: null, error });
-      });
-      child.on("close", (status) => {
-        clearTimeout(deadline);
-        resolveResult({ timedOut, status, error: null });
-      });
-    });
-
-    expect(result.timedOut, stderr).toBe(false);
-    expect(result.error, stderr).toBeNull();
-    expect(result.status, stderr).toBe(0);
-    expect(stdout).toBe("ok");
   });
 
   it("reports the index of the first invalid array item", () => {
