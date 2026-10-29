@@ -680,58 +680,95 @@ func applyBaselineChecks(report *rulepack.Report, request rulepack.Request, defi
 		if !exists {
 			continue
 		}
-		for _, fact := range request.Facts {
-			if fact.RuleID != result.RuleID {
-				continue
-			}
-			checkBaselineFact(result, fact, base, request, fact.RuleID == definitions[2].id)
-		}
-		if result.RuleID == definitions[1].id && result.Relation != rulepack.RelationInsufficient {
-			annexFound := false
-			for _, source := range request.Sources {
-				if source.Role != "attachment" {
-					continue
-				}
-				for _, sentence := range sourceSentences(source.Text) {
-					annex, ok := parseClause(source, sentence.text, sentence.offset, 1, definitions, request.Scenario == "cloud_services")
-					if !ok {
-						continue
-					}
-					annexFound = true
-					result.Citations = append(result.Citations, annex.fact.Citations...)
-					if annex.fact.ObjectRef != base.fact.ObjectRef || annex.fact.MeasurementWindow != base.fact.MeasurementWindow ||
-						annex.fact.TimeZone != base.fact.TimeZone || annex.fact.Calendar != base.fact.Calendar ||
-						annex.fact.OutageDefinition != base.fact.OutageDefinition || annex.fact.Exclusions == nil ||
-						!slices.Equal(annex.fact.Exclusions, base.fact.Exclusions) {
-						result.Relation, result.ReasonCode = rulepack.RelationInsufficient, "sla_annex_basis_incomparable"
-						continue
-					}
-					for _, fact := range request.Facts {
-						if fact.RuleID == result.RuleID && fact.Value != annex.fact.Value && result.Relation != rulepack.RelationInsufficient {
-							result.Relation, result.ReasonCode = rulepack.RelationConflict, "contract_sla_annex_conflict"
-						}
-					}
-				}
-			}
-			if !annexFound {
-				result.Relation, result.ReasonCode = rulepack.RelationInsufficient, "sla_annex_missing"
-			}
-		}
+		checkResultFacts(result, request, definitions, base)
+		checkSLAResult(result, request, definitions, base)
 		result.Citations = append(result.Citations, base.fact.Citations...)
 	}
 }
 
-func checkBaselineFact(result *rulepack.Result, fact rulepack.Fact, base clause, request rulepack.Request, compareAmount bool) {
-	if fact.ObjectRef != base.fact.ObjectRef {
-		reason := "circuit_object_mismatch"
-		if request.Scenario == "cloud_services" {
-			reason = "service_object_mismatch"
+func checkResultFacts(result *rulepack.Result, request rulepack.Request, definitions []ruleDefinition, base clause) {
+	for _, fact := range request.Facts {
+		if fact.RuleID == result.RuleID {
+			checkBaselineFact(result, fact, base, request, fact.RuleID == definitions[2].id)
 		}
-		result.Relation, result.ReasonCode = rulepack.RelationInsufficient, reason
 	}
-	if !compareAmount {
+}
+
+func checkSLAResult(result *rulepack.Result, request rulepack.Request, definitions []ruleDefinition, base clause) {
+	if result.RuleID != definitions[1].id || result.Relation == rulepack.RelationInsufficient {
 		return
 	}
+	if scanSLAAnnexes(result, request, definitions, base) {
+		return
+	}
+	result.Relation, result.ReasonCode = rulepack.RelationInsufficient, "sla_annex_missing"
+}
+
+func scanSLAAnnexes(result *rulepack.Result, request rulepack.Request, definitions []ruleDefinition, base clause) bool {
+	found := false
+	for _, source := range request.Sources {
+		if source.Role == "attachment" && scanSLAAnnexSource(result, source, request, definitions, base) {
+			found = true
+		}
+	}
+	return found
+}
+
+func scanSLAAnnexSource(result *rulepack.Result, source rulepack.Source, request rulepack.Request, definitions []ruleDefinition, base clause) bool {
+	found := false
+	for _, sentence := range sourceSentences(source.Text) {
+		annex, ok := parseClause(source, sentence.text, sentence.offset, 1, definitions, request.Scenario == "cloud_services")
+		if ok {
+			found = true
+			checkSLAAnnex(result, annex, base, request)
+		}
+	}
+	return found
+}
+
+func checkSLAAnnex(result *rulepack.Result, annex, base clause, request rulepack.Request) {
+	result.Citations = append(result.Citations, annex.fact.Citations...)
+	if !sameSLABasis(annex.fact, base.fact) {
+		result.Relation, result.ReasonCode = rulepack.RelationInsufficient, "sla_annex_basis_incomparable"
+		return
+	}
+	checkSLAAnnexValue(result, annex.fact, request.Facts)
+}
+
+func sameSLABasis(annex, base rulepack.Fact) bool {
+	return annex.ObjectRef == base.ObjectRef && annex.MeasurementWindow == base.MeasurementWindow &&
+		annex.TimeZone == base.TimeZone && annex.Calendar == base.Calendar &&
+		annex.OutageDefinition == base.OutageDefinition && annex.Exclusions != nil &&
+		slices.Equal(annex.Exclusions, base.Exclusions)
+}
+
+func checkSLAAnnexValue(result *rulepack.Result, annex rulepack.Fact, facts []rulepack.Fact) {
+	for _, fact := range facts {
+		if fact.RuleID == result.RuleID && fact.Value != annex.Value && result.Relation != rulepack.RelationInsufficient {
+			result.Relation, result.ReasonCode = rulepack.RelationConflict, "contract_sla_annex_conflict"
+		}
+	}
+}
+
+func checkBaselineFact(result *rulepack.Result, fact rulepack.Fact, base clause, request rulepack.Request, compareAmount bool) {
+	checkBaselineObject(result, fact, base, request)
+	if compareAmount {
+		checkBaselineAmount(result, fact, base, request)
+	}
+}
+
+func checkBaselineObject(result *rulepack.Result, fact rulepack.Fact, base clause, request rulepack.Request) {
+	if fact.ObjectRef == base.fact.ObjectRef {
+		return
+	}
+	reason := "circuit_object_mismatch"
+	if request.Scenario == "cloud_services" {
+		reason = "service_object_mismatch"
+	}
+	result.Relation, result.ReasonCode = rulepack.RelationInsufficient, reason
+}
+
+func checkBaselineAmount(result *rulepack.Result, fact rulepack.Fact, base clause, request rulepack.Request) {
 	actual, actualTax := contractAmount(request, fact.ObjectRef, false)
 	expected, expectedTax := contractAmount(request, base.fact.ObjectRef, true)
 	if actual == nil || expected == nil || actual.Cmp(expected) != 0 || actualTax == "" || actualTax != expectedTax || actualTax != base.tax {
