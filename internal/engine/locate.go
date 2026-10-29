@@ -50,10 +50,7 @@ func failedDocs(docs []Source) []Source {
 func missingAnchors(docs []Source) []Anchor {
 	var out []Anchor
 	for _, doc := range failedDocs(docs) {
-		out = append(out, Anchor{
-			DocumentID: doc.ID, Status: "missing",
-			Reason: "这份材料没有解析成正文，不能编造坐标，也不能把它当成无风险。",
-		})
+		out = append(out, missingDocument(doc))
 	}
 	return out
 }
@@ -62,8 +59,8 @@ func covered(docs []Source, seen map[string]bool) bool {
 	if len(readyIDs(docs)) < 2 {
 		return false
 	}
-	for id, ready := range readyIDs(docs) {
-		if ready && !seen[id] {
+	for id := range readyIDs(docs) {
+		if !seen[id] {
 			return false
 		}
 	}
@@ -84,4 +81,15 @@ func absence(ev Evaluation, docs []Source, kind string) Evaluation {
 	ev.Facts = nil
 	ev.Missing = nil
 	return ev
+}
+
+// Callers classify missing evidence before comparing a nonempty set of values.
+func allValuesEqual[T any, V comparable](items []T, value func(T) V) bool {
+	first := value(items[0])
+	for _, item := range items[1:] {
+		if value(item) != first {
+			return false
+		}
+	}
+	return true
 }

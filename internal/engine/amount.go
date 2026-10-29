@@ -22,18 +22,7 @@ type amountHit struct {
 // EvaluateAmount compares procurement amounts. 万元 and 元 are normalized
 // before the comparison; a conflict still quotes the unit that was written.
 func EvaluateAmount(docs []Source) Evaluation {
-	var hits []amountHit
-	var invalid []Anchor
-	for _, doc := range docs {
-		if doc.ParseStatus != "ready" {
-			continue
-		}
-		if hit, ok := firstAmount(doc); ok {
-			hits = append(hits, hit)
-		} else if amountRE.MatchString(doc.ir().NormalizedText) {
-			invalid = append(invalid, Anchor{DocumentID: doc.ID, Status: "missing", Reason: "金额数值超出支持的精度或范围，不能作为已核验金额。"})
-		}
-	}
+	hits, invalid := collectAmounts(docs)
 	ev := Evaluation{Domain: "amount", RuleVersion: AmountRuleVersion, Missing: missingAnchors(docs)}
 	ev.Missing = append(ev.Missing, invalid...)
 	if len(hits) == 0 {
@@ -44,15 +33,7 @@ func EvaluateAmount(docs []Source) Evaluation {
 		}
 		return absence(ev, docs, "采购金额")
 	}
-	for _, hit := range hits {
-		value, unit := int(hit.fen/100), "元"
-		if hit.fen%100 != 0 {
-			value, unit = int(hit.fen), "分"
-		}
-		ev.Facts = append(ev.Facts, Fact{
-			DocumentID: hit.doc.ID, Value: value, Unit: unit, Anchor: hit.anchor,
-		})
-	}
+	ev.Facts = amountFacts(hits)
 	if !sameAmount(hits) {
 		ev.Relation = RelConflict
 		ev.Reason = amountList(hits)
@@ -72,6 +53,36 @@ func EvaluateAmount(docs []Source) Evaluation {
 	return ev
 }
 
+func collectAmounts(docs []Source) ([]amountHit, []Anchor) {
+	var hits []amountHit
+	var invalid []Anchor
+	for _, doc := range docs {
+		if doc.ParseStatus != "ready" {
+			continue
+		}
+		if hit, ok := firstAmount(doc); ok {
+			hits = append(hits, hit)
+		} else if amountRE.MatchString(doc.ir().NormalizedText) {
+			invalid = append(invalid, Anchor{DocumentID: doc.ID, Status: "missing", Reason: "金额数值超出支持的精度或范围，不能作为已核验金额。"})
+		}
+	}
+	return hits, invalid
+}
+
+func amountFacts(hits []amountHit) []Fact {
+	var facts []Fact
+	for _, hit := range hits {
+		value, unit := int(hit.fen/100), "元"
+		if hit.fen%100 != 0 {
+			value, unit = int(hit.fen), "分"
+		}
+		facts = append(facts, Fact{
+			DocumentID: hit.doc.ID, Value: value, Unit: unit, Anchor: hit.anchor,
+		})
+	}
+	return facts
+}
+
 func firstAmount(doc Source) (amountHit, bool) {
 	ir := doc.ir()
 	text := ir.NormalizedText
@@ -79,7 +90,7 @@ func firstAmount(doc Source) (amountHit, bool) {
 		text = doc.Text
 	}
 	loc := amountRE.FindStringSubmatchIndex(text)
-	if loc == nil || len(loc) < 6 {
+	if loc == nil {
 		return amountHit{}, false
 	}
 	quote := text[loc[0]:loc[1]]
@@ -125,12 +136,7 @@ func amountFen(num, unit string) (int64, bool) {
 }
 
 func sameAmount(hits []amountHit) bool {
-	for _, hit := range hits[1:] {
-		if hit.fen != hits[0].fen {
-			return false
-		}
-	}
-	return true
+	return allValuesEqual(hits, func(item amountHit) int64 { return item.fen })
 }
 
 func amountList(hits []amountHit) string {
