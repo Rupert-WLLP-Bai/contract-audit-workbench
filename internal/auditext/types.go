@@ -147,12 +147,12 @@ func (s BindingStatus) Valid() bool {
 // Fact is a contract-bound value with its document evidence. Facts are frozen
 // into the evaluation input; callers must not fill them from a model response.
 type Fact struct {
-	Name         string
-	Value        ExactQuantity
-	Evidence     []EvidenceRef
-	Uncertain    bool
-	OutOfScope   bool
-	SemanticKind string
+	Name         string        `json:"name"`
+	Value        ExactQuantity `json:"value"`
+	Evidence     []EvidenceRef `json:"evidence"`
+	Uncertain    bool          `json:"uncertain"`
+	OutOfScope   bool          `json:"out_of_scope"`
+	SemanticKind string        `json:"semantic_kind"`
 }
 
 // ReadRequest asks a registered connector for a bounded, read-only record.
@@ -236,6 +236,49 @@ type EvidenceRef struct {
 	FieldPointer      string
 	DisplayValue      string
 	ObservedAt        time.Time
+}
+
+// UnmarshalJSON accepts the same closed evidence shapes. The struct has no
+// snake_case field tags because callers use named Go fields; persisted JSON is
+// re-hydrated through this method.
+func (e *EvidenceRef) UnmarshalJSON(data []byte) error {
+	if e == nil {
+		return ErrInvalidRequest
+	}
+	var wire struct {
+		Kind              string    `json:"kind"`
+		DocumentVersionID string    `json:"document_version_id"`
+		ParsedVersionID   string    `json:"parsed_version_id"`
+		Start             int       `json:"start"`
+		End               int       `json:"end"`
+		Quote             string    `json:"quote"`
+		SnapshotID        string    `json:"snapshot_id"`
+		RecordID          string    `json:"record_id"`
+		FieldPointer      string    `json:"field_pointer"`
+		DisplayValue      string    `json:"display_value"`
+		ObservedAt        time.Time `json:"observed_at"`
+	}
+	if err := json.Unmarshal(data, &wire); err != nil {
+		return err
+	}
+	evidence := EvidenceRef{
+		Kind: EvidenceKind(wire.Kind), DocumentVersionID: wire.DocumentVersionID,
+		ParsedVersionID: wire.ParsedVersionID, Start: wire.Start, End: wire.End, Quote: wire.Quote,
+		SnapshotID: wire.SnapshotID, RecordID: wire.RecordID, FieldPointer: wire.FieldPointer,
+		DisplayValue: wire.DisplayValue, ObservedAt: wire.ObservedAt,
+	}
+	switch evidence.Kind {
+	case EvidenceDocument:
+		evidence.SnapshotID, evidence.RecordID, evidence.FieldPointer = "", "", ""
+		evidence.DisplayValue, evidence.ObservedAt = "", time.Time{}
+	case EvidenceExternalSnapshot:
+		evidence.DocumentVersionID, evidence.ParsedVersionID = "", ""
+		evidence.Start, evidence.End, evidence.Quote = 0, 0, ""
+	default:
+		return ErrInvalidRequest
+	}
+	*e = evidence
+	return nil
 }
 
 func (e EvidenceRef) MarshalJSON() ([]byte, error) {

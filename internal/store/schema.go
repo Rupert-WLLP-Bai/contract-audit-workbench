@@ -436,6 +436,7 @@ var schemaStatements = []string{
 	EvaluationProvenanceSchemaSQL,
 	experienceDistillSchemaSQL,
 	advisoryJudgmentSchemaSQL,
+	OperatorAuditSchemaSQL,
 	`DO $$
 	DECLARE table_name text;
 	BEGIN
@@ -454,7 +455,9 @@ var schemaStatements = []string{
 			'governed_knowledge_history','governed_knowledge_idempotency','governed_policy_rule_bindings',
 			'experience_distill_inputs','experience_distill_results','experience_distill_failures',
 			'advisory_judgments',
-			'evidence_requests','evidence_receipts','evidence_request_events'
+			'evidence_requests','evidence_receipts','evidence_request_events',
+			'operator_object_bindings','operator_external_snapshot_sets','operator_external_observations',
+			'operator_fulfillment_evaluations','operator_fulfillment_checks','operator_impact_plans'
 		] LOOP
 			EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY', table_name);
 			EXECUTE format('ALTER TABLE %I FORCE ROW LEVEL SECURITY', table_name);
