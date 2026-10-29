@@ -276,6 +276,26 @@ TYPESAFE_API_KEY=                        # 只放 model-gateway 的 secret
 
 按仓库边界，试点脚本、合成语料、逐项报告、模型调用记录和验收产物位于本机仓库外的 `../contract-audit-delivery/implementation/2026-10-27/`，没有推送到源码仓。换机器如需复用历史证据或继续试点，须单独迁移该交付目录中的必要文件；不要复制私有凭据。独立服务的 Core/Worker 结果回传需要配置不同于其他服务凭据的 `WORKER_CORE_TOKEN` 和 `CORE_SERVICE_URL`；旧本地配置缺项时须补齐后再启动。
 
+### 跨系统核验与保守增量复审（默认关闭）
+
+新增的 `internal/auditext`、`capability-packs`、`internal/capabilitypack`、`internal/externalread`、`internal/fulfillment`、`internal/reviewimpact` 以及 Core 侧持久化/API，用于验证“合同约定 ↔ 授权业务记录”的差异：
+
+- 能力包只声明场景、材料角色、RulePack 精确版本、只读能力和比较器；不加载脚本、SQL 或可执行插件。
+- 对象映射必须由人工确认；采集与核验受理分开，失败读只形成 `unavailable`/`rejected` 观测。
+- 核验使用精确十进制和单位归一；配置带宽不等于实际吞吐，不自动确认风险、不计算赔偿。
+- 影响计划只提供 explain/shadow；依赖不完整、集合成员变化、旧证据不可重绑定或候选/全量结果不一致时强制 full，业务结果始终来自完整执行，reuse 保持关闭。
+
+默认 `OPERATOR_AUDIT_ENABLED=false`，路由返回 503，前端入口不显示。开发/测试可显式启用合成连接器：
+
+```text
+OPERATOR_AUDIT_ENABLED=true
+EXTERNAL_EVIDENCE_MODE=fixture
+EXTERNAL_EVIDENCE_CONNECTOR_ID=fixture.oss
+EXTERNAL_EVIDENCE_SOURCE_SYSTEM=fixture-oss-east
+```
+
+`fixture` 模式只允许在 development/test 使用，读取仓库内合成的 OSS 记录；`live` 模式需要另行完成数据出境/处理审批和真实来源接入，本版本不启用。启用后审查页会出现「进入跨系统核验」入口，页面遵循现有案件权限；未授权请求不返回快照内容。相关黑盒测试：`make test-unit`（含 `^TestOperator`）和 `make verify`；浏览器 R1 旅程仍需在具备数据库/浏览器环境中单独执行。
+
 ## 分支工作方式
 
 `main` 保存通过验收的交付版本，`dev` 汇集下一批变更，具体工作从 `dev` 创建 `feat/<主题>`。功能分支通过审查与验收后 squash 到 `dev`；交付时再 squash 到 `main`。需要单人作者时，提交前检查 `git var GIT_AUTHOR_IDENT` 和 `git var GIT_COMMITTER_IDENT`，使用本人身份，不添加代理作者或 `Co-authored-by`。既有已发布提交不重写。

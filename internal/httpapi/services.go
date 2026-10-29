@@ -108,7 +108,7 @@ func OperationOwnedBy(role, method, path string) bool {
 			return role == "document" && read
 		case "cases":
 			return role == "core" && (read || post)
-		case "workbench", "system-health":
+		case "workbench", "system-health", "capability-packs":
 			return role == "core" && read
 		case "knowledge":
 			return role == "core" && post
@@ -187,6 +187,13 @@ func OperationOwnedBy(role, method, path string) bool {
 		return role == "core" && (len(parts) == 4 && post || len(parts) == 5 && delete)
 	case "documents":
 		return role == "document" && (len(parts) == 4 && post || len(parts) == 6 && (parts[5] == "original" && read || parts[5] == "parse" && post))
+	case "object-bindings", "external-collection-jobs":
+		return role == "core" && len(parts) == 4 && post
+	case "external-snapshots":
+		return role == "core" && len(parts) == 4 && read
+	case "fulfillment-evaluations":
+		return role == "core" && (len(parts) == 4 && post || len(parts) == 5 && read ||
+			len(parts) == 6 && parts[5] == "impact" && read)
 	case "generations":
 		return role == "document" && len(parts) == 4 && post
 	case "reviews":

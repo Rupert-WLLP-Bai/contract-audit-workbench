@@ -61,6 +61,11 @@ const SystemHealthPage = lazy(() =>
     default: module.SystemHealthPage,
   })),
 );
+const OperatorAuditPage = lazy(() =>
+  import("./pages/operator-audit-page").then((module) => ({
+    default: module.OperatorAuditPage,
+  })),
+);
 
 function CompareRoute() {
   const [params] = useSearchParams();
@@ -89,6 +94,10 @@ export function App() {
             <Route path="/review" element={<ReviewEntryPage />} />
             <Route path="/cases" element={<CasesPage />} />
             <Route path="/cases/:caseId" element={<CaseDetailPage />} />
+            <Route
+              path="/cases/:caseId/operator-audit"
+              element={<OperatorAuditPage />}
+            />
             <Route
               path="/cases/:caseId/reviews/:runId"
               element={<ReviewPage />}

@@ -1,0 +1,41 @@
+{
+  "schema_version": "audit-capability-pack/v1",
+  "pack_id": "operator.dedicated_line",
+  "version": "1.0.0",
+  "host_contract_version": "auditext/v1",
+  "display_name": "专线配置核验（合成示例）",
+  "scenario": "telecom_dedicated_line",
+  "required_material_roles": [
+    "draft_contract",
+    "procurement"
+  ],
+  "rule_pack_ref": {
+    "id": "telecom-contractual",
+    "version": "5"
+  },
+  "capabilities": [
+    {
+      "id": "operator.oss.read_config",
+      "effect": "read",
+      "connector_ref": "fixture.oss"
+    }
+  ],
+  "checks": [
+    {
+      "id": "line.configured_bandwidth",
+      "comparator_ref": "builtin.configured_bandwidth_at_least/v1",
+      "contract_field": "minimum_bandwidth",
+      "external_field": "configured_bandwidth"
+    }
+  ],
+  "ui": {
+    "view": "field_comparison",
+    "fields": [
+      "minimum_bandwidth",
+      "configured_bandwidth",
+      "observed_at"
+    ]
+  },
+  "fixture_suite": "operatoraudit.dedicated_line.v1",
+  "data_class": "synthetic"
+}

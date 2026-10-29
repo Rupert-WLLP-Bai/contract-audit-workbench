@@ -1,0 +1,33 @@
+{
+  "schema_version": "audit-capability-pack/v1",
+  "pack_id": "operator.cloud_services",
+  "version": "1.0.0",
+  "host_contract_version": "auditext/v1",
+  "display_name": "云服务规则复用（合成示例）",
+  "scenario": "cloud_services",
+  "required_material_roles": [
+    "draft_contract",
+    "procurement"
+  ],
+  "rule_pack_ref": {
+    "id": "cloud-services-contractual",
+    "version": "5"
+  },
+  "capabilities": [],
+  "checks": [
+    {
+      "id": "cloud.existing_bandwidth",
+      "comparator_ref": "existing.minimum_bandwidth",
+      "contract_field": "minimum_bandwidth",
+      "external_field": null
+    }
+  ],
+  "ui": {
+    "view": "existing_review",
+    "fields": [
+      "minimum_bandwidth"
+    ]
+  },
+  "fixture_suite": "operatoraudit.cloud.v1",
+  "data_class": "synthetic"
+}

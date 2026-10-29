@@ -1,0 +1,38 @@
+{
+  "schema_version": "audit-capability-pack/v1",
+  "pack_id": "operator.duplicate_check",
+  "version": "1.0.0",
+  "host_contract_version": "auditext/v1",
+  "display_name": "重复检查 ID 反例（合成）",
+  "scenario": "telecom_dedicated_line",
+  "required_material_roles": [
+    "draft_contract"
+  ],
+  "rule_pack_ref": {
+    "id": "telecom-contractual",
+    "version": "5"
+  },
+  "capabilities": [],
+  "checks": [
+    {
+      "id": "line.duplicate",
+      "comparator_ref": "builtin.configured_bandwidth_at_least/v1",
+      "contract_field": "minimum_bandwidth",
+      "external_field": "configured_bandwidth"
+    },
+    {
+      "id": "line.duplicate",
+      "comparator_ref": "builtin.configured_bandwidth_at_least/v1",
+      "contract_field": "minimum_bandwidth",
+      "external_field": "configured_bandwidth"
+    }
+  ],
+  "ui": {
+    "view": "field_comparison",
+    "fields": [
+      "minimum_bandwidth"
+    ]
+  },
+  "fixture_suite": "operatoraudit.invalid.duplicate_check",
+  "data_class": "synthetic"
+}
