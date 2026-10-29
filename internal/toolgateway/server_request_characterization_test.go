@@ -1,12 +1,15 @@
 package toolgateway
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"contractaudit/internal/accounts"
 )
 
 func TestRequestParsingKeepsDuplicateJSONFailureBeforeEnvelopeChecks(t *testing.T) {
@@ -83,4 +86,30 @@ func TestPreflightDuplicateHeaderKeepsExactErrorAndCORSOrigin(t *testing.T) {
 	if response.Header().Get("Access-Control-Allow-Origin") != "https://portal.example" || backend.userCalls != 0 {
 		t.Fatalf("preflight headers=%v user lookups=%d", response.Header(), backend.userCalls)
 	}
+}
+
+func TestRequestCancellationDuringAuthenticationStopsBeforeDispatch(t *testing.T) {
+	backend := &cancelOnUserLookupBackend{
+		protocolBoundaryBackend: &protocolBoundaryBackend{gatewayFakeStore: testBackend(t)},
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	backend.cancel = cancel
+	request := protocolRequest(t, "tools/list", nil).WithContext(ctx)
+	response := httptest.NewRecorder()
+	NewHandler(backend, Options{}).ServeHTTP(response, request)
+	assertToolGatewayFailure(t, response, http.StatusRequestTimeout, codeInternalError, "Request was cancelled.")
+	if backend.userCalls != 1 || backend.workspaceCalls != 0 {
+		t.Fatalf("post-authentication cancellation user lookups=%d workspace reads=%d", backend.userCalls, backend.workspaceCalls)
+	}
+}
+
+type cancelOnUserLookupBackend struct {
+	*protocolBoundaryBackend
+	cancel context.CancelFunc
+}
+
+func (backend *cancelOnUserLookupBackend) User(token string) (accounts.User, error) {
+	user, err := backend.protocolBoundaryBackend.User(token)
+	backend.cancel()
+	return user, err
 }
