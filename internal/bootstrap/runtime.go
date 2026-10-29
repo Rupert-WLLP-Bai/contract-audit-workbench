@@ -13,6 +13,7 @@ import (
 	"contractaudit/internal/identity"
 	"contractaudit/internal/model"
 	"contractaudit/internal/objectstore"
+	"contractaudit/internal/process"
 	"contractaudit/internal/store"
 )
 
@@ -238,7 +239,7 @@ func configuredOIDCForService(includeOIDC bool, identityFile string) (identity.C
 }
 
 func openRuntimeStore(settings runtimeSettings) (*store.Store, error) {
-	dataDir := processValue("DATA_DIR", "var/lib")
+	dataDir := process.Env("DATA_DIR", "var/lib")
 	var st *store.Store
 	var err error
 	if settings.databaseMode == databaseModeApplication {
@@ -394,17 +395,17 @@ func readBoolean(name string, fallback bool) (bool, error) {
 }
 
 func configuredObjectStore() (*objectstore.S3, error) {
-	endpoint := processValue("S3_ENDPOINT", "")
+	endpoint := process.Env("S3_ENDPOINT", "")
 	if endpoint == "" {
 		return nil, nil
 	}
-	bucket := processValue("S3_BUCKET", "")
+	bucket := process.Env("S3_BUCKET", "")
 	accessKey := firstProcessValue("S3_ACCESS_KEY", "RUSTFS_ACCESS_KEY")
 	secretKey := firstProcessValue("S3_SECRET_KEY", "RUSTFS_SECRET_KEY")
 	if bucket == "" || accessKey == "" || secretKey == "" {
 		return nil, errors.New("S3_BUCKET and S3 access and secret keys are required when S3_ENDPOINT is configured")
 	}
-	region := processValue("S3_REGION", "us-east-1")
+	region := process.Env("S3_REGION", "us-east-1")
 	client, err := objectstore.New(objectstore.Config{
 		Endpoint: endpoint, Bucket: bucket, Region: region,
 		AccessKey: accessKey, SecretKey: secretKey,
@@ -416,22 +417,22 @@ func configuredObjectStore() (*objectstore.S3, error) {
 }
 
 func configuredOIDC() (identity.Config, bool, error) {
-	issuer := processValue("OIDC_ISSUER", "")
+	issuer := process.Env("OIDC_ISSUER", "")
 	if issuer == "" {
 		return identity.Config{}, false, nil
 	}
-	stateKey, err := decodeStateKey(processValue("OIDC_STATE_KEY", ""))
+	stateKey, err := decodeStateKey(process.Env("OIDC_STATE_KEY", ""))
 	if err != nil {
 		return identity.Config{}, false, err
 	}
 	config := identity.Config{
 		Issuer:             issuer,
-		ClientID:           processValue("OIDC_CLIENT_ID", ""),
+		ClientID:           process.Env("OIDC_CLIENT_ID", ""),
 		ClientSecret:       os.Getenv("OIDC_CLIENT_SECRET"),
-		AdminClientID:      processValue("OIDC_ADMIN_CLIENT_ID", ""),
+		AdminClientID:      process.Env("OIDC_ADMIN_CLIENT_ID", ""),
 		AdminClientSecret:  os.Getenv("OIDC_ADMIN_CLIENT_SECRET"),
-		RedirectURL:        processValue("OIDC_REDIRECT_URL", ""),
-		AdminRedirectURL:   processValue("OIDC_ADMIN_REDIRECT_URL", ""),
+		RedirectURL:        process.Env("OIDC_REDIRECT_URL", ""),
+		AdminRedirectURL:   process.Env("OIDC_ADMIN_REDIRECT_URL", ""),
 		StateEncryptionKey: stateKey,
 	}
 	if strings.TrimSpace(config.ClientSecret) == "" || strings.TrimSpace(config.AdminClientSecret) == "" {
@@ -452,15 +453,8 @@ func decodeStateKey(encoded string) ([]byte, error) {
 }
 
 func firstProcessValue(primary, legacy string) string {
-	if value := processValue(primary, ""); value != "" {
+	if value := process.Env(primary, ""); value != "" {
 		return value
 	}
-	return processValue(legacy, "")
-}
-
-func processValue(name, fallback string) string {
-	if value := strings.TrimSpace(os.Getenv(name)); value != "" {
-		return value
-	}
-	return fallback
+	return process.Env(legacy, "")
 }

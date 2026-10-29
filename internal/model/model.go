@@ -20,6 +20,7 @@ import (
 	"unicode/utf8"
 
 	"contractaudit/internal/labels"
+	"contractaudit/internal/process"
 	einoModel "github.com/cloudwego/eino/components/model"
 	"github.com/cloudwego/eino/schema"
 )
@@ -57,18 +58,11 @@ type Config struct {
 // Empty values use the authorized local model defaults. LLM_API_KEY is not defaulted.
 func FromEnv() Config {
 	return Config{
-		BaseURL:   env("LLM_BASE_URL", DefaultBaseURL),
-		ChatModel: env("LLM_MODEL", DefaultChatModel),
-		OCRModel:  env("OCR_MODEL", DefaultOCRModel),
+		BaseURL:   process.Env("LLM_BASE_URL", DefaultBaseURL),
+		ChatModel: process.Env("LLM_MODEL", DefaultChatModel),
+		OCRModel:  process.Env("OCR_MODEL", DefaultOCRModel),
 		APIKey:    strings.TrimSpace(os.Getenv("LLM_API_KEY")),
 	}
-}
-
-func env(key, fallback string) string {
-	if value := strings.TrimSpace(os.Getenv(key)); value != "" {
-		return value
-	}
-	return fallback
 }
 
 // GatewayID is the id this proxy lists. The panda-local/ catalog prefix is
