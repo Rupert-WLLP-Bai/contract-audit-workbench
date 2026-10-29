@@ -317,9 +317,7 @@ func (s *Service) models(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Service) chatCompletions(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		w.Header().Set("Allow", http.MethodPost)
-		w.WriteHeader(http.StatusMethodNotAllowed)
+	if !requireMethod(w, r, http.MethodPost) {
 		return
 	}
 	caller, ok := s.authenticate(w, r)
@@ -438,6 +436,15 @@ func (s *Service) chatCompletions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusBadGateway, map[string]string{"error": "model provider request failed", "code": "model_provider_failed"})
+}
+
+func requireMethod(w http.ResponseWriter, r *http.Request, method string) bool {
+	if r.Method == method {
+		return true
+	}
+	w.Header().Set("Allow", method)
+	w.WriteHeader(http.StatusMethodNotAllowed)
+	return false
 }
 
 func (s *Service) authenticate(w http.ResponseWriter, r *http.Request) (string, bool) {

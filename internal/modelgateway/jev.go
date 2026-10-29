@@ -214,9 +214,7 @@ func (s *Service) jevHealth(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Service) systemOne(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		w.Header().Set("Allow", http.MethodPost)
-		w.WriteHeader(http.StatusMethodNotAllowed)
+	if !requireMethod(w, r, http.MethodPost) {
 		return
 	}
 	caller, ok := s.authenticate(w, r)
