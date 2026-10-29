@@ -25,7 +25,6 @@ func TestConfigureDirectoryPinsAcceptedAndRejectedFiles(t *testing.T) {
 
 	duplicateID := `{"users":[{"id":"alice","tenant_id":"tenant-a","org_id":"sales","issuer":"i","subject":"one"},{"id":"alice","tenant_id":"tenant-a","org_id":"sales","issuer":"i","subject":"two"}]}`
 	duplicateSubject := `{"users":[{"id":"alice","tenant_id":"tenant-a","org_id":"sales","issuer":"i","subject":"same"},{"id":"bob","tenant_id":"tenant-a","org_id":"sales","issuer":"i","subject":"same"}]}`
-	missingBinding := `{"users":[{"id":"alice","tenant_id":"tenant-a","issuer":"i","subject":"one"}]}`
 	trailingObject := valid + ` {}`
 	unknownField := `{"users":[],"unexpected":true}`
 	tests := []struct {
@@ -35,7 +34,6 @@ func TestConfigureDirectoryPinsAcceptedAndRejectedFiles(t *testing.T) {
 	}{
 		{"duplicate ID", duplicateID, "duplicate directory user"},
 		{"duplicate issuer subject", duplicateSubject, "directory needs unique identity, issuer/subject, tenant and organization"},
-		{"missing organization", missingBinding, "directory needs unique identity, issuer/subject, tenant and organization"},
 		{"trailing object", trailingObject, "directory must contain one JSON object"},
 		{"unknown field", unknownField, "json: unknown field \"unexpected\""},
 		{"malformed JSON", `{"users":`, "unexpected EOF"},
@@ -47,6 +45,31 @@ func TestConfigureDirectoryPinsAcceptedAndRejectedFiles(t *testing.T) {
 			}
 			if err := ConfigureDirectory(replacement); err == nil || err.Error() != tc.want {
 				t.Fatalf("ConfigureDirectory() error = %v, want %q", err, tc.want)
+			}
+			if _, ok := BySubject("https://issuer.example", "subject-a"); !ok {
+				t.Fatal("rejected replacement changed the active directory")
+			}
+		})
+	}
+	for _, tc := range []struct {
+		name string
+		find string
+		repl string
+	}{
+		{"missing ID", `"id":"alice"`, `"id":""`},
+		{"missing tenant", `"tenant_id":"tenant-a"`, `"tenant_id":""`},
+		{"missing organization", `"org_id":"sales"`, `"org_id":""`},
+		{"missing issuer", `"issuer":"i"`, `"issuer":""`},
+		{"missing subject", `"subject":"one"`, `"subject":""`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			body := `{"users":[{"id":"alice","tenant_id":"tenant-a","org_id":"sales","issuer":"i","subject":"one"}]}`
+			body = strings.Replace(body, tc.find, tc.repl, 1)
+			if err := os.WriteFile(replacement, []byte(body), 0600); err != nil {
+				t.Fatal(err)
+			}
+			if err := ConfigureDirectory(replacement); err == nil || err.Error() != "directory needs unique identity, issuer/subject, tenant and organization" {
+				t.Fatalf("ConfigureDirectory() error = %v, want identity/organization validation error", err)
 			}
 			if _, ok := BySubject("https://issuer.example", "subject-a"); !ok {
 				t.Fatal("rejected replacement changed the active directory")
