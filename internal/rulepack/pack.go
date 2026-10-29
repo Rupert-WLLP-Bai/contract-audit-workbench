@@ -301,6 +301,16 @@ func (p *Pack) withLifecycle(life Lifecycle) *Pack {
 }
 
 func normalizeAndValidate(c *manifestContent) error {
+	if err := validateManifestIdentity(c); err != nil {
+		return err
+	}
+	if err := normalizeManifestWindow(c); err != nil {
+		return err
+	}
+	return normalizeManifestRules(c)
+}
+
+func validateManifestIdentity(c *manifestContent) error {
 	if c.SchemaVersion != SchemaVersion {
 		return fmt.Errorf("unsupported schema_version %q", c.SchemaVersion)
 	}
@@ -311,6 +321,10 @@ func normalizeAndValidate(c *manifestContent) error {
 	if err != nil || version == 0 || strconv.FormatUint(version, 10) != c.Version {
 		return errors.New("version must be a positive canonical integer string")
 	}
+	return nil
+}
+
+func normalizeManifestWindow(c *manifestContent) error {
 	from, fromTime, err := normalizeTime(c.EffectiveFrom)
 	if err != nil {
 		return fmt.Errorf("effective_from: %w", err)
@@ -323,6 +337,10 @@ func normalizeAndValidate(c *manifestContent) error {
 		return errors.New("effective_until must be later than effective_from")
 	}
 	c.EffectiveFrom, c.EffectiveUntil = from, until
+	return nil
+}
+
+func normalizeManifestRules(c *manifestContent) error {
 	if len(c.Rules) == 0 {
 		return errors.New("rules must not be empty")
 	}
@@ -342,6 +360,26 @@ func normalizeAndValidate(c *manifestContent) error {
 }
 
 func normalizeRule(r *Rule, packTenant string) error {
+	if err := validateRuleIdentity(r); err != nil {
+		return err
+	}
+	if err := validateRuleScope(r, packTenant); err != nil {
+		return err
+	}
+	if err := normalizeAuthoritySources(r); err != nil {
+		return err
+	}
+	rational, err := normalizeRuleThreshold(r)
+	if err != nil {
+		return err
+	}
+	if err := normalizeRequiredFact(r); err != nil {
+		return err
+	}
+	return validateComparatorMetadata(r, rational)
+}
+
+func validateRuleIdentity(r *Rule) error {
 	if !validIdentifier(r.RuleID) || !validIdentifier(r.Version) || !validIdentifier(r.CapabilityID) {
 		return errors.New("rule_id, version and capability_id must be nonempty canonical identifiers")
 	}
@@ -353,6 +391,10 @@ func normalizeRule(r *Rule, packTenant string) error {
 	if !validDomain(r.Domain) {
 		return fmt.Errorf("unsupported domain %q", r.Domain)
 	}
+	return nil
+}
+
+func validateRuleScope(r *Rule, packTenant string) error {
 	if !validIdentifier(r.BusinessScope.BusinessLine) || !validIdentifier(r.BusinessScope.Scenario) || !validIdentifier(r.BusinessScope.ContractType) {
 		return errors.New("business_scope fields must be nonempty canonical identifiers")
 	}
@@ -362,6 +404,10 @@ func normalizeRule(r *Rule, packTenant string) error {
 	if len(r.AuthoritySources) == 0 {
 		return errors.New("authority_sources must not be empty")
 	}
+	return nil
+}
+
+func normalizeAuthoritySources(r *Rule) error {
 	seenAuthority := make(map[string]struct{}, len(r.AuthoritySources))
 	for _, authority := range r.AuthoritySources {
 		if !validIdentifier(authority.ID) || !validIdentifier(authority.Version) {
@@ -388,15 +434,23 @@ func normalizeRule(r *Rule, packTenant string) error {
 		}
 		return a.Kind < b.Kind
 	})
+	return nil
+}
+
+func normalizeRuleThreshold(r *Rule) (*big.Rat, error) {
 	rational, err := parseThresholdRational(r.Threshold.Value)
 	if err != nil {
-		return fmt.Errorf("threshold.value: %w", err)
+		return nil, fmt.Errorf("threshold.value: %w", err)
 	}
 	canonical := rational.RatString()
 	if len(canonical) > maxCanonicalRationalBytes {
-		return errors.New("threshold.value canonical form exceeds size limit")
+		return nil, errors.New("threshold.value canonical form exceeds size limit")
 	}
 	r.Threshold.Value = canonical
+	return rational, nil
+}
+
+func normalizeRequiredFact(r *Rule) error {
 	if len(r.RequiredFact.SourceRoles) == 0 {
 		return errors.New("required_fact.source_roles must not be empty")
 	}
@@ -406,33 +460,58 @@ func normalizeRule(r *Rule, packTenant string) error {
 	if r.RequiredFact.ObjectRequired != true {
 		return errors.New("required_fact.object_required must be true for supported comparators")
 	}
+	return nil
+}
+
+func validateComparatorMetadata(r *Rule, rational *big.Rat) error {
 	switch r.Comparator {
 	case ComparatorMinimumBandwidth:
-		if r.Threshold.Unit != "Mbit/s" && r.Threshold.Unit != "Gbit/s" {
-			return errors.New("minimum_bandwidth threshold unit must be Mbit/s or Gbit/s")
-		}
-		if r.Threshold.Basis != "" || r.RequiredFact.Dimension != "minimum_bandwidth" || r.RequiredFact.UnitFamily != "bandwidth_decimal" || hasSLAFields(r.RequiredFact) || r.RequiredFact.Basis != "" {
-			return errors.New("minimum_bandwidth required_fact metadata mismatch")
-		}
+		return validateBandwidthMetadata(r)
 	case ComparatorMonthlySLA:
-		if r.Threshold.Unit != "percent" || r.Threshold.Basis != "" || rational.Cmp(big.NewRat(100, 1)) > 0 {
-			return errors.New("monthly_sla threshold must be a percent from 0 through 100")
-		}
-		if r.RequiredFact.Dimension != "monthly_availability" || r.RequiredFact.UnitFamily != "percentage" || r.RequiredFact.MeasurementWindow != "calendar_month" || !validIdentifier(r.RequiredFact.TimeZone) || r.RequiredFact.Calendar != "gregorian" || !validIdentifier(r.RequiredFact.OutageDefinition) || r.RequiredFact.Exclusions == nil || r.RequiredFact.Basis != "" {
-			return errors.New("monthly_sla requires calendar-month, time-zone, calendar, outage and explicit exclusions metadata")
-		}
-		if err := canonicalStrings(&r.RequiredFact.Exclusions, "exclusions", true); err != nil {
-			return err
-		}
+		return validateMonthlySLAMetadata(r, rational)
 	case ComparatorAdvancePaymentCeiling:
-		if r.Threshold.Unit != "ratio" || r.Threshold.Basis != "contract_total" || rational.Cmp(big.NewRat(1, 1)) > 0 || rational.Sign() < 0 {
-			return errors.New("advance_payment_ceiling requires a ratio in [0,1] with contract_total basis")
-		}
-		if r.RequiredFact.Dimension != "advance_payment_ratio" || r.RequiredFact.UnitFamily != "ratio" || r.RequiredFact.Basis != r.Threshold.Basis || hasSLAFields(r.RequiredFact) {
-			return errors.New("advance_payment_ceiling required_fact metadata mismatch")
-		}
+		return validateAdvanceMetadata(r, rational)
 	default:
 		return fmt.Errorf("unsupported comparator %q", r.Comparator)
+	}
+}
+
+func validateBandwidthMetadata(r *Rule) error {
+	if r.Threshold.Unit != "Mbit/s" && r.Threshold.Unit != "Gbit/s" {
+		return errors.New("minimum_bandwidth threshold unit must be Mbit/s or Gbit/s")
+	}
+	if r.Threshold.Basis != "" || r.RequiredFact.Dimension != "minimum_bandwidth" || r.RequiredFact.UnitFamily != "bandwidth_decimal" || hasSLAFields(r.RequiredFact) || r.RequiredFact.Basis != "" {
+		return errors.New("minimum_bandwidth required_fact metadata mismatch")
+	}
+	return nil
+}
+
+func validateMonthlySLAMetadata(r *Rule, rational *big.Rat) error {
+	if !validMonthlyThreshold(r, rational) {
+		return errors.New("monthly_sla threshold must be a percent from 0 through 100")
+	}
+	if !validMonthlyFactMetadata(r.RequiredFact) {
+		return errors.New("monthly_sla requires calendar-month, time-zone, calendar, outage and explicit exclusions metadata")
+	}
+	return canonicalStrings(&r.RequiredFact.Exclusions, "exclusions", true)
+}
+
+func validMonthlyThreshold(r *Rule, rational *big.Rat) bool {
+	return r.Threshold.Unit == "percent" && r.Threshold.Basis == "" && rational.Cmp(big.NewRat(100, 1)) <= 0
+}
+
+func validMonthlyFactMetadata(f RequiredFact) bool {
+	return f.Dimension == "monthly_availability" && f.UnitFamily == "percentage" && f.MeasurementWindow == "calendar_month" &&
+		validIdentifier(f.TimeZone) && f.Calendar == "gregorian" && validIdentifier(f.OutageDefinition) &&
+		f.Exclusions != nil && f.Basis == ""
+}
+
+func validateAdvanceMetadata(r *Rule, rational *big.Rat) error {
+	if r.Threshold.Unit != "ratio" || r.Threshold.Basis != "contract_total" || rational.Cmp(big.NewRat(1, 1)) > 0 || rational.Sign() < 0 {
+		return errors.New("advance_payment_ceiling requires a ratio in [0,1] with contract_total basis")
+	}
+	if r.RequiredFact.Dimension != "advance_payment_ratio" || r.RequiredFact.UnitFamily != "ratio" || r.RequiredFact.Basis != r.Threshold.Basis || hasSLAFields(r.RequiredFact) {
+		return errors.New("advance_payment_ceiling required_fact metadata mismatch")
 	}
 	return nil
 }
@@ -561,44 +640,60 @@ func validateJSONFieldAliases(target reflect.Type, value any) error {
 	}
 	switch typed := value.(type) {
 	case map[string]any:
-		if target.Kind() != reflect.Struct {
-			return nil
+		return validateObjectFieldAliases(target, typed)
+	case []any:
+		return validateArrayFieldAliases(target, typed)
+	}
+	return nil
+}
+
+func validateObjectFieldAliases(target reflect.Type, values map[string]any) error {
+	if target.Kind() != reflect.Struct {
+		return nil
+	}
+	fields := jsonFieldTypes(target)
+	for name, child := range values {
+		if err := validateJSONFieldName(name, fields); err != nil {
+			return err
 		}
-		fields := make(map[string]reflect.Type, target.NumField())
-		for index := range target.NumField() {
-			field := target.Field(index)
-			name := strings.Split(field.Tag.Get("json"), ",")[0]
-			if name == "" {
-				name = field.Name
-			}
-			fields[name] = field.Type
-		}
-		for name, child := range typed {
-			for canonical := range fields {
-				if name != canonical && strings.EqualFold(name, canonical) {
-					return fmt.Errorf("field %q must use exact name %q", name, canonical)
-				}
-			}
-			childType, exists := fields[name]
-			if !exists {
-				continue
-			}
+		if childType, exists := fields[name]; exists {
 			if err := validateJSONFieldAliases(childType, child); err != nil {
 				return err
 			}
 		}
-	case []any:
-		var element reflect.Type
-		if target.Kind() == reflect.Slice || target.Kind() == reflect.Array {
-			element = target.Elem()
+	}
+	return nil
+}
+
+func jsonFieldTypes(target reflect.Type) map[string]reflect.Type {
+	fields := make(map[string]reflect.Type, target.NumField())
+	for index := range target.NumField() {
+		field := target.Field(index)
+		name := strings.Split(field.Tag.Get("json"), ",")[0]
+		if name == "" {
+			name = field.Name
 		}
-		if element == nil {
-			return nil
+		fields[name] = field.Type
+	}
+	return fields
+}
+
+func validateJSONFieldName(name string, fields map[string]reflect.Type) error {
+	for canonical := range fields {
+		if name != canonical && strings.EqualFold(name, canonical) {
+			return fmt.Errorf("field %q must use exact name %q", name, canonical)
 		}
-		for _, child := range typed {
-			if err := validateJSONFieldAliases(element, child); err != nil {
-				return err
-			}
+	}
+	return nil
+}
+
+func validateArrayFieldAliases(target reflect.Type, values []any) error {
+	if target.Kind() != reflect.Slice && target.Kind() != reflect.Array {
+		return nil
+	}
+	for _, child := range values {
+		if err := validateJSONFieldAliases(target.Elem(), child); err != nil {
+			return err
 		}
 	}
 	return nil
@@ -653,94 +748,135 @@ func consumeJSONValue(decoder *json.Decoder) error {
 	}
 	switch delim {
 	case '{':
-		seen := make(map[string]struct{})
-		for decoder.More() {
-			keyToken, err := decoder.Token()
-			if err != nil {
-				return err
-			}
-			key, ok := keyToken.(string)
-			if !ok {
-				return errors.New("object key is not a string")
-			}
-			if _, exists := seen[key]; exists {
-				return fmt.Errorf("duplicate JSON key %q", key)
-			}
-			seen[key] = struct{}{}
-			if err := consumeJSONValue(decoder); err != nil {
-				return err
-			}
-		}
-		end, err := decoder.Token()
-		if err != nil {
-			return err
-		}
-		if end != json.Delim('}') {
-			return errors.New("unterminated JSON object")
-		}
+		return consumeJSONObject(decoder)
 	case '[':
-		for decoder.More() {
-			if err := consumeJSONValue(decoder); err != nil {
-				return err
-			}
-		}
-		end, err := decoder.Token()
-		if err != nil {
-			return err
-		}
-		if end != json.Delim(']') {
-			return errors.New("unterminated JSON array")
-		}
+		return consumeJSONArray(decoder)
 	default:
 		return errors.New("unexpected JSON delimiter")
+	}
+}
+
+func consumeJSONObject(decoder *json.Decoder) error {
+	seen := make(map[string]struct{})
+	for decoder.More() {
+		key, err := consumeJSONObjectKey(decoder, seen)
+		if err != nil {
+			return err
+		}
+		if err := consumeJSONValue(decoder); err != nil {
+			return err
+		}
+		seen[key] = struct{}{}
+	}
+	return consumeJSONEnd(decoder, '}', "unterminated JSON object")
+}
+
+func consumeJSONObjectKey(decoder *json.Decoder, seen map[string]struct{}) (string, error) {
+	token, err := decoder.Token()
+	if err != nil {
+		return "", err
+	}
+	key, ok := token.(string)
+	if !ok {
+		return "", errors.New("object key is not a string")
+	}
+	if _, exists := seen[key]; exists {
+		return "", fmt.Errorf("duplicate JSON key %q", key)
+	}
+	return key, nil
+}
+
+func consumeJSONArray(decoder *json.Decoder) error {
+	for decoder.More() {
+		if err := consumeJSONValue(decoder); err != nil {
+			return err
+		}
+	}
+	return consumeJSONEnd(decoder, ']', "unterminated JSON array")
+}
+
+func consumeJSONEnd(decoder *json.Decoder, delimiter json.Delim, message string) error {
+	end, err := decoder.Token()
+	if err != nil {
+		return err
+	}
+	if end != delimiter {
+		return errors.New(message)
 	}
 	return nil
 }
 
 func validateLifecycle(life Lifecycle, manifestHash string) error {
-	validVerification := func(v *Verification) bool {
-		return v != nil && v.ManifestHash == manifestHash && v.VerifierVersion == VerifierVersion && v.Passed
-	}
 	switch life.State {
 	case StateDraft:
-		if life.Verification != nil || life.Approval != nil || life.Release != nil {
-			return errors.New("draft lifecycle cannot carry attestations")
-		}
+		return validateDraftLifecycle(life)
 	case StateValidated:
-		if !validVerification(life.Verification) || life.Approval != nil || life.Release != nil {
-			return errors.New("invalid validated lifecycle")
-		}
+		return validateValidatedLifecycle(life, manifestHash)
 	case StateApproved:
-		if !validVerification(life.Verification) || life.Approval == nil || life.Release != nil {
-			return errors.New("invalid approved lifecycle")
-		}
-		if life.Approval.ManifestHash != manifestHash || life.Approval.VerificationHash != verificationHash(*life.Verification) || !validIdentifier(life.Approval.ActorID) {
-			return errors.New("approval is not bound to this manifest and verification")
-		}
+		return validateApprovedLifecycle(life, manifestHash)
 	case StatePublished:
-		if !validVerification(life.Verification) || life.Approval == nil || life.Release == nil {
-			return errors.New("invalid published lifecycle")
-		}
-		if life.Approval.ManifestHash != manifestHash || life.Approval.VerificationHash != verificationHash(*life.Verification) || !validIdentifier(life.Approval.ActorID) {
-			return errors.New("approval is not bound to this manifest and verification")
-		}
-		approvalDigest := approvalHash(*life.Approval)
-		if life.Release.ManifestHash != manifestHash || life.Release.ApprovalHash != approvalDigest || life.Release.ReleaseHash != releaseHash(manifestHash, approvalDigest) {
-			return errors.New("release is not bound to this manifest and approval")
-		}
+		return validatePublishedLifecycle(life, manifestHash)
 	default:
 		return fmt.Errorf("unsupported lifecycle state %q", life.State)
+	}
+}
+
+func validVerification(v *Verification, manifestHash string) bool {
+	return v != nil && v.ManifestHash == manifestHash && v.VerifierVersion == VerifierVersion && v.Passed
+}
+
+func validateDraftLifecycle(life Lifecycle) error {
+	if life.Verification != nil || life.Approval != nil || life.Release != nil {
+		return errors.New("draft lifecycle cannot carry attestations")
+	}
+	return nil
+}
+
+func validateValidatedLifecycle(life Lifecycle, manifestHash string) error {
+	if !validVerification(life.Verification, manifestHash) || life.Approval != nil || life.Release != nil {
+		return errors.New("invalid validated lifecycle")
+	}
+	return nil
+}
+
+func validateApprovedLifecycle(life Lifecycle, manifestHash string) error {
+	if !validVerification(life.Verification, manifestHash) || life.Approval == nil || life.Release != nil {
+		return errors.New("invalid approved lifecycle")
+	}
+	return validateLifecycleApproval(life, manifestHash)
+}
+
+func validatePublishedLifecycle(life Lifecycle, manifestHash string) error {
+	if !validVerification(life.Verification, manifestHash) || life.Approval == nil || life.Release == nil {
+		return errors.New("invalid published lifecycle")
+	}
+	if err := validateLifecycleApproval(life, manifestHash); err != nil {
+		return err
+	}
+	approvalDigest := approvalHash(*life.Approval)
+	if life.Release.ManifestHash != manifestHash || life.Release.ApprovalHash != approvalDigest || life.Release.ReleaseHash != releaseHash(manifestHash, approvalDigest) {
+		return errors.New("release is not bound to this manifest and approval")
+	}
+	return nil
+}
+
+func validateLifecycleApproval(life Lifecycle, manifestHash string) error {
+	if life.Approval.ManifestHash != manifestHash || life.Approval.VerificationHash != verificationHash(*life.Verification) || !validIdentifier(life.Approval.ActorID) {
+		return errors.New("approval is not bound to this manifest and verification")
 	}
 	return nil
 }
 
 func verificationHash(v Verification) string {
-	payload, _ := json.Marshal(v)
-	return digestHex(payload)
+	return hashAttestation(v)
 }
 
 func approvalHash(a Approval) string {
-	payload, _ := json.Marshal(a)
+	return hashAttestation(a)
+}
+
+func hashAttestation(value any) string {
+	payload, _ := json.Marshal(value)
 	return digestHex(payload)
 }
 
@@ -784,17 +920,17 @@ func cloneLifecycle(life Lifecycle) Lifecycle {
 }
 
 func cloneVerification(v *Verification) *Verification {
-	if v == nil {
-		return nil
-	}
-	copy := *v
-	return &copy
+	return clonePointer(v)
 }
 
 func cloneApproval(a *Approval) *Approval {
-	if a == nil {
+	return clonePointer(a)
+}
+
+func clonePointer[T any](value *T) *T {
+	if value == nil {
 		return nil
 	}
-	copy := *a
+	copy := *value
 	return &copy
 }
