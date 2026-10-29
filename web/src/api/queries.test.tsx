@@ -549,6 +549,45 @@ describe("review state polling", () => {
     client.clear();
   });
 
+  it("keeps the base delay when an initialData query changes scope", async () => {
+    vi.useFakeTimers();
+    const initial = workspace("running");
+    const client = new QueryClient({
+      defaultOptions: {
+        queries: {
+          retry: false,
+          staleTime: Number.POSITIVE_INFINITY,
+          initialData: initial,
+        },
+      },
+    });
+    const { rerender, unmount } = renderHook(
+      ({ attemptId }: { attemptId: string }) =>
+        useReview("c1", "r1", attemptId),
+      { wrapper: testWrapper(client), initialProps: { attemptId: "current" } },
+    );
+    const currentKey = queryKeys.review("c1", "r1", "current");
+    const currentQuery = client.getQueryCache().find({ queryKey: currentKey });
+    expect(currentQuery?.state.dataUpdateCount).toBe(0);
+
+    rerender({ attemptId: "next" });
+    const nextKey = queryKeys.review("c1", "r1", "next");
+    const nextQuery = client.getQueryCache().find({ queryKey: nextKey });
+    expect(nextQuery).toBeDefined();
+    if (!nextQuery) throw new Error("initialData query was not created");
+    expect(nextQuery.state.dataUpdateCount).toBe(0);
+    const nextInterval = nextQuery.observers[0]?.options.refetchInterval;
+    expect(nextInterval).toBeTypeOf("function");
+    if (typeof nextInterval !== "function") throw new Error("polling interval missing");
+    expect(nextInterval(nextQuery)).toBe(2_000);
+
+    client.setQueryData(nextKey, nextQuery.state.data);
+    expect(nextQuery.state.dataUpdateCount).toBe(1);
+    expect(nextInterval(nextQuery)).toBe(2_000);
+    unmount();
+    client.clear();
+  });
+
   it("restarts the backoff after a live stream ends", async () => {
     vi.useFakeTimers();
     const getReview = vi
