@@ -56,6 +56,7 @@ function rawRequest(status: string, version: number) {
 }
 
 const rawReceipt = { id: "receipt-1", request_id: "request-1", case_id: "case-1", document_id: "doc-2", submitted_by: "owner", created_at: at };
+type ReceiptPayload = Omit<typeof rawReceipt, "document_id"> & { document_id?: string; answer?: string };
 
 type Call = { pathname: string; method: string; init?: RequestInit };
 type ResponseFor = (call: Call) => Response | Promise<Response>;
@@ -80,6 +81,7 @@ function Location() {
 function open({
   runId = "run-old", attemptId = "attempt-old", urlAttempt = attemptId, evaluations = [missing], agentReview = null,
   respond, canManage = true, tasks, sessionActor = actor, caseDetail = detail,
+  workspace,
 }: {
   runId?: string;
   attemptId?: string;
@@ -91,6 +93,7 @@ function open({
   tasks?: WorkbenchTask[];
   sessionActor?: Actor;
   caseDetail?: CaseDetail;
+  workspace?: ReviewWorkspace;
 }) {
   const calls: Call[] = [];
   vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -102,7 +105,7 @@ function open({
   clients.push(client);
   client.setQueryData(queryKeys.case("case-1"), caseDetail);
   client.setQueryData(queryKeys.session, sessionActor);
-  client.setQueryData(queryKeys.review("case-1", runId, urlAttempt), makeWorkspace(runId, attemptId, evaluations));
+  client.setQueryData(queryKeys.review("case-1", runId, urlAttempt), workspace ?? makeWorkspace(runId, attemptId, evaluations));
   if (tasks) client.setQueryData(queryKeys.workbench("week"), { tasks });
   const path = `/cases/case-1/reviews/${runId}${urlAttempt ? `?attempt_id=${urlAttempt}` : ""}`;
   render(<QueryClientProvider client={client}><MemoryRouter initialEntries={[path]}>
@@ -111,6 +114,16 @@ function open({
     <Location />
   </MemoryRouter></QueryClientProvider>);
   return { calls, user: userEvent.setup() };
+}
+
+async function selectVerificationEvidence(user: UserEvent, receiptName: string | RegExp = /补充合同.txt/) {
+  await chooseActiveOption(user, screen.getByRole("combobox", { name: "选择提交回执" }), receiptName);
+  await chooseActiveOption(user, screen.getByRole("combobox", { name: "选择本次审查材料" }), /补充合同.txt/);
+  const original = screen.getByLabelText("本次审查使用的原文") as HTMLTextAreaElement;
+  await user.click(original);
+  original.setSelectionRange(2, 8);
+  fireEvent.select(original);
+  await user.type(screen.getByLabelText("核验理由"), "核对质保");
 }
 
 afterEach(() => {
@@ -320,6 +333,91 @@ describe("补充材料请求", () => {
     original.setSelectionRange(2, 8);
     fireEvent.select(original);
     await user.type(screen.getByLabelText("核验理由"), "核对质保");
+    expect(screen.getByRole("button", { name: "提交核验" })).toBeDisabled();
+    expect(calls.some((call) => call.pathname.endsWith("/verify"))).toBe(false);
+  });
+
+  it.each([
+    ["without the source review", null],
+    ["against another attempt", {
+      attempt_id: "attempt-old", status: "completed", rulepack: null, scope: null,
+      domains: [{ domain: "commercial", status: "completed", capabilities: [{ capability_id: "warranty_months", mandatory: true, status: "completed", relation: "compatible", reason_code: "", evidence_ids: ["doc-2"], canonical_evaluation_ids: null }] }],
+      gaps: [{ gap_id: "gap-1", domain: "commercial", capability_id: "warranty_months", mandatory: true, status: "resolved", reason_code: "", evidence_ids: ["doc-2"] }], evidence: null, unresolved_gap_ids: [],
+    }],
+    ["with a duplicate source gap", {
+      attempt_id: "attempt-new", status: "completed", rulepack: null, scope: null,
+      domains: [{ domain: "commercial", status: "completed", capabilities: [{ capability_id: "warranty_months", mandatory: true, status: "completed", relation: "compatible", reason_code: "", evidence_ids: ["doc-2"], canonical_evaluation_ids: null }] }],
+      gaps: [
+        { gap_id: "gap-1", domain: "commercial", capability_id: "warranty_months", mandatory: true, status: "resolved", reason_code: "", evidence_ids: ["doc-2"] },
+        { gap_id: "gap-1", domain: "commercial", capability_id: "warranty_months", mandatory: true, status: "resolved", reason_code: "", evidence_ids: ["doc-2"] },
+      ], evidence: null, unresolved_gap_ids: [],
+    }],
+    ["without a matching capability", {
+      attempt_id: "attempt-new", status: "completed", rulepack: null, scope: null,
+      domains: [{ domain: "commercial", status: "completed", capabilities: [] }],
+      gaps: [{ gap_id: "gap-1", domain: "commercial", capability_id: "warranty_months", mandatory: true, status: "resolved", reason_code: "", evidence_ids: ["doc-2"] }],
+      evidence: null, unresolved_gap_ids: [],
+    }],
+    ["with duplicate capabilities", {
+      attempt_id: "attempt-new", status: "completed", rulepack: null, scope: null,
+      domains: [{ domain: "commercial", status: "completed", capabilities: [
+        { capability_id: "warranty_months", mandatory: true, status: "completed", relation: "compatible", reason_code: "", evidence_ids: ["doc-2"], canonical_evaluation_ids: null },
+        { capability_id: "warranty_months", mandatory: true, status: "completed", relation: "compatible", reason_code: "", evidence_ids: ["doc-2"], canonical_evaluation_ids: null },
+      ] }],
+      gaps: [{ gap_id: "gap-1", domain: "commercial", capability_id: "warranty_months", mandatory: true, status: "resolved", reason_code: "", evidence_ids: ["doc-2"] }],
+      evidence: null, unresolved_gap_ids: [],
+    }],
+  ] as Array<[string, BusinessAgentReview | null]>) ("does not authorize a resolved gap %s", async (_caseName, agentReview) => {
+    const gap = { gap_id: "gap-1", domain: "commercial", capability_id: "warranty_months", mandatory: true, status: "unknown", reason_code: "required_source_or_field_missing", evidence_ids: null };
+    const request = { ...rawRequest("received", 2), source_evaluation: undefined, source_gap: gap, verification_condition: "resolved" };
+    const { calls, user } = open({ runId: "run-new", attemptId: "attempt-new", evaluations: [], agentReview, canManage: false, respond(call) {
+      if (call.pathname.endsWith("/evidence-requests")) return Response.json({ items: [request] });
+      if (call.pathname.endsWith("/history")) return Response.json({ items: [{ type: "received", actor_id: "owner", occurred_at: at, request, receipt: rawReceipt }] });
+      return Response.json({ error: { message: "unexpected" } }, { status: 404 });
+    } });
+    await screen.findByText("已提交，待复核");
+    await selectVerificationEvidence(user);
+    expect(screen.getByRole("button", { name: "提交核验" })).toBeDisabled();
+    expect(calls.some((call) => call.pathname.endsWith("/verify"))).toBe(false);
+  });
+
+  it.each([
+    ["for the source attempt", { history_kind: "frozen", state: "completed", finished_at: at }, "attempt-new"],
+    ["for a live attempt", { history_kind: "live", state: "completed", finished_at: at }, "attempt-old"],
+    ["before it is finished", { history_kind: "frozen", state: "running", finished_at: null }, "attempt-old"],
+    ["for another run", { history_kind: "frozen", run_id: "run-other", state: "completed", finished_at: at }, "attempt-old"],
+  ] as Array<[string, Partial<ExecutionAttempt>, string]>) ("does not authorize verification %s", async (_caseName, attemptOverrides, sourceAttemptId) => {
+    const workspace = makeWorkspace("run-new", "attempt-new", [compatible]);
+    const current = workspace.review_attempts!.attempt!;
+    const attempt = { ...current, ...attemptOverrides };
+    workspace.review_attempts = { attempt, attempts: [attempt] };
+    const request = { ...rawRequest("received", 2), source_attempt_id: sourceAttemptId };
+    const { calls, user } = open({ runId: "run-new", attemptId: "attempt-new", evaluations: [compatible], workspace, canManage: false, respond(call) {
+      if (call.pathname.endsWith("/evidence-requests")) return Response.json({ items: [request] });
+      if (call.pathname.endsWith("/history")) return Response.json({ items: [{ type: "received", actor_id: "owner", occurred_at: at, request, receipt: rawReceipt }] });
+      return Response.json({ error: { message: "unexpected" } }, { status: 404 });
+    } });
+    await screen.findByText("已提交，待复核");
+    await selectVerificationEvidence(user);
+    expect(screen.getByRole("button", { name: "提交核验" })).toBeDisabled();
+    expect(calls.some((call) => call.pathname.endsWith("/verify"))).toBe(false);
+  });
+
+  it.each([
+    ["a different frozen document", { ...rawReceipt, document_id: "other-document" }, "draft_contract"],
+    ["a document with the wrong material role", rawReceipt, "award"],
+    ["an answer absent from frozen text", { ...rawReceipt, document_id: undefined, answer: "无关答复" }, "draft_contract"],
+  ] as Array<[string, ReceiptPayload, string]>) ("does not offer frozen evidence for %s", async (_caseName, receipt, materialRole) => {
+    const request = { ...rawRequest("received", 2), material_role: materialRole };
+    const { calls, user } = open({ runId: "run-new", attemptId: "attempt-new", evaluations: [compatible], canManage: false, respond(call) {
+      if (call.pathname.endsWith("/evidence-requests")) return Response.json({ items: [request] });
+      if (call.pathname.endsWith("/history")) return Response.json({ items: [{ type: "received", actor_id: "owner", occurred_at: at, request, receipt }] });
+      return Response.json({ error: { message: "unexpected" } }, { status: 404 });
+    } });
+    await screen.findByText("已提交，待复核");
+    const receiptName = receipt.document_id === "other-document" ? /提交材料/ : receipt.answer ? /无关答复/ : /补充合同.txt/;
+    await chooseActiveOption(user, screen.getByRole("combobox", { name: "选择提交回执" }), receiptName);
+    expect(screen.getByText("当前审查未包含可引用的回执材料或答复原文。" )).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "提交核验" })).toBeDisabled();
     expect(calls.some((call) => call.pathname.endsWith("/verify"))).toBe(false);
   });
