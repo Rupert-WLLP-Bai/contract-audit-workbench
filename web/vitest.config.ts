@@ -6,6 +6,9 @@ export default defineConfig({
   test: {
     environment: "happy-dom",
     globals: true,
+    // Concurrent DOM journeys can starve asynchronous page rendering before
+    // the existing query deadlines. Run every file with one worker.
+    maxWorkers: 1,
     // V8 coverage instrumentation and parallel test files push the heaviest
     // form journeys past the 5s default even when they pass without coverage.
     // Keep the checks and the coverage gates unchanged; only allow those
