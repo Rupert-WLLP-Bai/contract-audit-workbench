@@ -580,6 +580,44 @@ delegationRejected:
 	}
 }
 
+func TestDelegatedPrepareWithoutCurrentJobAuthorityReturnsDenied(t *testing.T) {
+	f := newServiceFixture(t, 1, 10*time.Second)
+	request := store.PrepareDocumentRequest{
+		TenantID: accounts.Tenant(f.admin), OrgID: f.admin.OrgID,
+		JobID: "missing-delegated-job", WorkerID: "stale-worker", Generation: 1,
+		RunID: "missing-run", AttemptID: "missing-attempt", DocumentID: "missing-document",
+		Selection: store.AttemptParseSelection{
+			AttemptID: "missing-attempt", RunID: "missing-run", DocumentID: "missing-document",
+			ParsedDocumentID: "missing-parsed-document",
+		},
+	}
+	body, err := json.Marshal(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req, err := http.NewRequest(http.MethodPost, f.server.URL+"/internal/v1/prepare", bytes.NewReader(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Contract-Service-Key", testWorkerCredential)
+	response, err := f.httpClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+	responseBody, err := io.ReadAll(response.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if response.StatusCode != http.StatusForbidden || !strings.Contains(string(responseBody), "current delegated preparation authority is unavailable") {
+		t.Fatalf("missing claim authority answered %d %q", response.StatusCode, responseBody)
+	}
+	if strings.Contains(string(responseBody), "missing-delegated-job") || strings.Contains(string(responseBody), "tenant-a") {
+		t.Fatalf("authority failure exposed request identity: %s", responseBody)
+	}
+}
+
 func TestPublicAndDelegatedOCRUseOneSharedOCRPermit(t *testing.T) {
 	f := newServiceFixture(t, 4, 10*time.Second)
 	t.Cleanup(f.model.releaseAll)
