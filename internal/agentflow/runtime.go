@@ -76,6 +76,35 @@ const (
 )
 
 func New(ctx context.Context, config Config) (*Runtime, error) {
+	config = defaultRuntimeConfig(config)
+	if err := validateRuntimeConfiguration(config); err != nil {
+		return nil, err
+	}
+	if config.Clock == nil {
+		config.Clock = time.Now
+	}
+	registered, err := registerRuntimeTools(config.Tools)
+	if err != nil {
+		return nil, err
+	}
+	runtime := &Runtime{config: config, tools: registered.tools, specs: registered.specs, specByID: registered.specByID}
+	configuration, err := runtimePlannerConfiguration(config, runtime.specs)
+	if err != nil {
+		return nil, err
+	}
+	runtime.config.PlannerConfiguration = configuration
+	runtime.runnable, err = compileRuntime(ctx, runtime)
+	if err != nil {
+		return nil, err
+	}
+	return runtime, nil
+}
+
+func defaultRuntimeConfig(config Config) Config {
+	return defaultRuntimeToolTimeout(defaultRuntimeLimits(defaultPlannerConfig(config)))
+}
+
+func defaultPlannerConfig(config Config) Config {
 	if config.PlannerConfiguration.ConfigurationID != "" {
 		limits := config.PlannerConfiguration.Limits
 		if config.MaxCalls == 0 {
@@ -91,6 +120,10 @@ func New(ctx context.Context, config Config) (*Runtime, error) {
 			config.MaxEvidenceBytes = limits.MaxEvidenceBytes
 		}
 	}
+	return config
+}
+
+func defaultRuntimeLimits(config Config) Config {
 	if config.MaxCalls == 0 {
 		config.MaxCalls = DefaultPlannerCalls
 	}
@@ -103,68 +136,120 @@ func New(ctx context.Context, config Config) (*Runtime, error) {
 	if config.MaxEvidenceBytes == 0 {
 		config.MaxEvidenceBytes = DefaultEvidenceBytes
 	}
+	return config
+}
+
+func defaultRuntimeToolTimeout(config Config) Config {
 	if config.ToolTimeout == 0 {
 		config.ToolTimeout = min(config.Timeout, 10*time.Second)
 	}
-	if config.Planner == nil || strings.TrimSpace(config.Planner.Name()) == "" ||
-		config.MaxCalls < 1 || config.MaxCalls > 16 || config.MaxRounds < 1 || config.MaxRounds > MaxPlannerRounds ||
-		config.MaxEvidenceBytes < 1 || config.MaxEvidenceBytes > MaxPlannerEvidenceBytes ||
-		config.Timeout < time.Second || config.Timeout > MaxPlannerTimeout ||
-		config.ToolTimeout <= 0 || config.ToolTimeout > config.Timeout {
-		return nil, errors.New("invalid runtime configuration")
+	return config
+}
+
+func validateRuntimeConfiguration(config Config) error {
+	if !validRuntimePlanner(config) || !validRuntimeLimits(config) || !validRuntimeTimeouts(config) {
+		return errors.New("invalid runtime configuration")
 	}
-	if config.Clock == nil {
-		config.Clock = time.Now
-	}
-	runtime := &Runtime{config: config, tools: map[string]Tool{}, specByID: map[string]ToolSpec{}}
-	for _, tool := range config.Tools {
+	return nil
+}
+
+func validRuntimePlanner(config Config) bool {
+	return config.Planner != nil && strings.TrimSpace(config.Planner.Name()) != ""
+}
+
+func validRuntimeLimits(config Config) bool {
+	return config.MaxCalls >= 1 && config.MaxCalls <= 16 && config.MaxRounds >= 1 && config.MaxRounds <= MaxPlannerRounds &&
+		config.MaxEvidenceBytes >= 1 && config.MaxEvidenceBytes <= MaxPlannerEvidenceBytes
+}
+
+func validRuntimeTimeouts(config Config) bool {
+	return config.Timeout >= time.Second && config.Timeout <= MaxPlannerTimeout && config.ToolTimeout > 0 && config.ToolTimeout <= config.Timeout
+}
+
+type registeredRuntimeTools struct {
+	tools    map[string]Tool
+	specs    []ToolSpec
+	specByID map[string]ToolSpec
+}
+
+func registerRuntimeTools(tools []Tool) (registeredRuntimeTools, error) {
+	registered := registeredRuntimeTools{tools: map[string]Tool{}, specByID: map[string]ToolSpec{}}
+	for _, tool := range tools {
 		if tool == nil {
-			return nil, errors.New("nil tool")
+			return registeredRuntimeTools{}, errors.New("nil tool")
 		}
 		spec := tool.Spec()
-		if spec.ID == "" || spec.Version == "" || !validDomain(spec.Domain) || spec.Effect != "read" {
-			return nil, errors.New("only versioned read-only domain tools can be registered")
+		if !validRegisteredTool(spec) {
+			return registeredRuntimeTools{}, errors.New("only versioned read-only domain tools can be registered")
 		}
-		if len(spec.Capabilities) == 0 || len(spec.Capabilities) > 16 {
-			return nil, errors.New("tool requires explicit bounded capabilities")
+		if err := validateToolCapabilities(spec.Capabilities); err != nil {
+			return registeredRuntimeTools{}, err
 		}
-		seenCapabilities := map[string]bool{}
-		for _, capability := range spec.Capabilities {
-			if !capabilityID.MatchString(capability) || seenCapabilities[capability] {
-				return nil, errors.New("invalid or duplicate tool capability")
-			}
-			seenCapabilities[capability] = true
+		if _, exists := registered.tools[spec.ID]; exists {
+			return registeredRuntimeTools{}, errors.New("duplicate tool id")
 		}
 		spec.Capabilities = slices.Clone(spec.Capabilities)
-		if _, exists := runtime.tools[spec.ID]; exists {
-			return nil, errors.New("duplicate tool id")
+		registered.tools[spec.ID] = tool
+		registered.specs = append(registered.specs, spec)
+		registered.specByID[spec.ID] = spec
+	}
+	if len(registered.specs) == 0 {
+		return registeredRuntimeTools{}, errors.New("no tools configured")
+	}
+	return registered, nil
+}
+
+func validRegisteredTool(spec ToolSpec) bool {
+	return spec.ID != "" && spec.Version != "" && validDomain(spec.Domain) && spec.Effect == "read"
+}
+
+func validateToolCapabilities(capabilities []string) error {
+	if len(capabilities) == 0 || len(capabilities) > 16 {
+		return errors.New("tool requires explicit bounded capabilities")
+	}
+	seen := make(map[string]bool, len(capabilities))
+	for _, capability := range capabilities {
+		if !capabilityID.MatchString(capability) || seen[capability] {
+			return errors.New("invalid or duplicate tool capability")
 		}
-		runtime.tools[spec.ID] = tool
-		runtime.specs = append(runtime.specs, spec)
-		runtime.specByID[spec.ID] = spec
+		seen[capability] = true
 	}
-	if len(runtime.specs) == 0 {
-		return nil, errors.New("no tools configured")
-	}
-	configuration, err := runtimePlannerConfiguration(config, runtime.specs)
-	if err != nil {
-		return nil, err
-	}
-	runtime.config.PlannerConfiguration = configuration
+	return nil
+}
+
+func compileRuntime(ctx context.Context, runtime *Runtime) (compose.Runnable[*execution, *execution], error) {
 	chain := compose.NewChain[*execution, *execution]()
 	chain.AppendLambda(compose.InvokableLambda(runtime.plan), compose.WithNodeName("scope_planning"))
 	chain.AppendLambda(compose.InvokableLambda(runtime.guard), compose.WithNodeName("plan_guard"))
 	chain.AppendLambda(compose.InvokableLambda(runtime.execute), compose.WithNodeName("bounded_read_tools"))
-	runnable, err := chain.Compile(ctx, compose.WithGraphName("operator_audit_controlled_v1"), compose.WithMaxRunSteps(8))
-	if err != nil {
-		return nil, err
-	}
-	runtime.runnable = runnable
-	return runtime, nil
+	return chain.Compile(ctx, compose.WithGraphName("operator_audit_controlled_v1"), compose.WithMaxRunSteps(8))
 }
 
 func (r *Runtime) Run(ctx context.Context, request Request) (Report, error) {
-	state := &execution{
+	state := newExecution(r, ctx, request)
+	if err := r.prepareRun(ctx, state); err != nil {
+		return state.report, err
+	}
+	if err := initializeExecutionState(state, r.specs); err != nil {
+		return state.report, err
+	}
+	previousRound, err := acceptExecutionHistory(state)
+	if err != nil {
+		return state.report, err
+	}
+	remainingTime := remainingPlannerTime(r.config.Timeout, state.request.PriorElapsedMS)
+	bounded, cancel := context.WithTimeout(ctx, remainingTime)
+	defer cancel()
+	calls, reads, runErr := r.runRounds(bounded, state, previousRound, remainingTime)
+	finalizeRunReport(state, calls, reads, runErr, remainingTime, r.config)
+	if runErr != nil {
+		return state.report, runErr
+	}
+	return state.report, nil
+}
+
+func newExecution(r *Runtime, ctx context.Context, request Request) *execution {
+	return &execution{
 		request: request, gaps: map[string]Gap{}, resolved: map[string]bool{}, gapStates: map[string]string{},
 		callEvidenceCounts: map[string]int{}, previousCallByPair: map[string]PriorCall{},
 		gapEvidenceIDs: map[string]map[string]bool{}, findingsByGap: map[string][]Finding{}, evidenceIDs: map[string]bool{}, factsByID: map[string]SemanticFact{},
@@ -181,71 +266,105 @@ func (r *Runtime) Run(ctx context.Context, request Request) (Report, error) {
 				"A source with no verified candidate remains unknown or insufficient."},
 		},
 	}
+}
+
+func (r *Runtime) prepareRun(ctx context.Context, state *execution) error {
+	if err := validateRunAccessAndRequest(ctx, state, r.config); err != nil {
+		return err
+	}
+	if err := validateRunEvidenceContext(ctx, state, r.config); err != nil {
+		return err
+	}
+	if err := r.validateRunPriorObservations(ctx, state); err != nil {
+		return err
+	}
+	return freezeRunRequest(state, r.config)
+}
+
+func validateRunAccessAndRequest(ctx context.Context, state *execution, config Config) error {
 	if ctx.Err() != nil {
 		state.report.Status = "cancelled"
-		return state.report, ctx.Err()
+		return ctx.Err()
 	}
-	decision := access.Check(access.Review, request.Principal, request.Case, r.config.Clock())
+	decision := access.Check(access.Review, state.request.Principal, state.request.Case, config.Clock())
 	if !decision.Allowed {
 		if err := state.event("authorization", "", "", decision.Reason, 0); err != nil {
-			return state.report, err
+			return err
 		}
-		return state.report, ErrDenied
+		return ErrDenied
 	}
-	if err := validateRequest(request); err != nil {
-		if sinkErr := state.event("input", "", "", "invalid_frozen_input", 0); sinkErr != nil {
-			return state.report, sinkErr
-		}
-		return state.report, err
+	if err := validateRequest(state.request); err != nil {
+		return rejectRunInput(state, "input", "invalid_frozen_input", err)
 	}
-	// Deep-copy all input slices so adapters cannot mutate the caller's records.
-	totalEvidenceBytes := requestEvidenceBytes(request)
-	reservedKnowledgeBytes := request.PriorKnowledgeReadCount * KnowledgeReadMaxBytes
-	if reservedKnowledgeBytes > r.config.MaxEvidenceBytes || totalEvidenceBytes > r.config.MaxEvidenceBytes-reservedKnowledgeBytes {
-		if sinkErr := state.event("input", "", "", "input_budget_exceeded", 0); sinkErr != nil {
-			return state.report, sinkErr
-		}
-		return state.report, ErrInput
+	return nil
+}
+
+func validateRunEvidenceContext(ctx context.Context, state *execution, config Config) error {
+	totalEvidenceBytes := requestEvidenceBytes(state.request)
+	reservedKnowledgeBytes := state.request.PriorKnowledgeReadCount * KnowledgeReadMaxBytes
+	if reservedKnowledgeBytes > config.MaxEvidenceBytes || totalEvidenceBytes > config.MaxEvidenceBytes-reservedKnowledgeBytes {
+		return rejectRunInput(state, "input", "input_budget_exceeded", ErrInput)
 	}
-	if err := validatePlannerContext(ctx, request); err != nil {
-		if sinkErr := state.event("input", "", "", "invalid_frozen_context", 0); sinkErr != nil {
-			return state.report, sinkErr
-		}
-		return state.report, err
+	if err := validatePlannerContext(ctx, state.request); err != nil {
+		return rejectRunInput(state, "input", "invalid_frozen_context", err)
 	}
-	if err := validateAdvisoryAgainstConfiguration(request.KnowledgeSelection, r.config.PlannerConfiguration); err != nil {
-		if sinkErr := state.event("input", "", "", "invalid_frozen_advisory", 0); sinkErr != nil {
-			return state.report, sinkErr
-		}
-		return state.report, err
+	if err := validateAdvisoryAgainstConfiguration(state.request.KnowledgeSelection, config.PlannerConfiguration); err != nil {
+		return rejectRunInput(state, "input", "invalid_frozen_advisory", err)
 	}
-	if err := r.validatePriorToolResults(ctx, request); err != nil {
-		if sinkErr := state.event("input", "", "", "invalid_prior_observation", 0); sinkErr != nil {
-			return state.report, sinkErr
-		}
-		return state.report, err
+	return nil
+}
+
+func rejectRunInput(state *execution, kind, code string, cause error) error {
+	if err := state.event(kind, "", "", code, 0); err != nil {
+		return err
 	}
-	body, err := json.Marshal(request)
-	if err != nil || len(body) > r.config.MaxEvidenceBytes+(2<<20) {
-		if sinkErr := state.event("input", "", "", "input_budget_exceeded", 0); sinkErr != nil {
-			return state.report, sinkErr
-		}
-		return state.report, ErrInput
+	return cause
+}
+
+func (r *Runtime) validateRunPriorObservations(ctx context.Context, state *execution) error {
+	if err := r.validatePriorToolResults(ctx, state.request); err != nil {
+		return rejectRunInput(state, "input", "invalid_prior_observation", err)
+	}
+	return nil
+}
+
+func freezeRunRequest(state *execution, config Config) error {
+	body, err := json.Marshal(state.request)
+	if err != nil || len(body) > config.MaxEvidenceBytes+(2<<20) {
+		return rejectRunInput(state, "input", "input_budget_exceeded", ErrInput)
 	}
 	var frozen Request
-	if err = json.Unmarshal(body, &frozen); err != nil {
-		return state.report, ErrInput
+	if err := json.Unmarshal(body, &frozen); err != nil {
+		return ErrInput
 	}
 	state.request = frozen
-	state.evidenceBytesLeft = r.config.MaxEvidenceBytes - totalEvidenceBytes - reservedKnowledgeBytes
+	totalEvidenceBytes := requestEvidenceBytes(frozen)
+	reservedKnowledgeBytes := frozen.PriorKnowledgeReadCount * KnowledgeReadMaxBytes
+	state.evidenceBytesLeft = config.MaxEvidenceBytes - totalEvidenceBytes - reservedKnowledgeBytes
 	state.report.InputSHA256 = TextHash(string(body))
+	return nil
+}
+
+func initializeExecutionState(state *execution, specs []ToolSpec) error {
+	initializeDomainResults(state)
+	if err := initializeGapStates(state, specs); err != nil {
+		return err
+	}
+	seedVerifiedFacts(state)
+	return nil
+}
+
+func initializeDomainResults(state *execution) {
 	for _, domain := range Domains() {
 		status := "not_requested"
-		if slices.Contains(request.Scope, domain) {
+		if slices.Contains(state.request.Scope, domain) {
 			status = "unknown"
 		}
 		state.report.Domains = append(state.report.Domains, DomainResult{Domain: domain, Status: status, Findings: []Finding{}})
 	}
+}
+
+func initializeGapStates(state *execution, specs []ToolSpec) error {
 	for _, gap := range state.request.Gaps {
 		state.gaps[gap.ID] = gap
 		state.gapStates[gap.ID] = "open"
@@ -254,22 +373,29 @@ func (r *Runtime) Run(ctx context.Context, request Request) (Report, error) {
 		}
 		state.gapEvidenceIDs[gap.ID] = map[string]bool{}
 		state.findingsByGap[gap.ID] = []Finding{}
-		supported := false
-		for _, spec := range r.specs {
-			if spec.Domain == gap.Domain && slices.Contains(spec.Capabilities, gap.Capability) {
-				supported = true
-				break
-			}
+		if gapHasRegisteredCapability(gap, specs) {
+			continue
 		}
-		if !supported {
-			state.gapStates[gap.ID] = "unsupported:capability_not_registered"
-			if err := state.eventCall("gap_unsupported", "", gap.Domain, "capability_not_registered", 0, "", gap.ID); err != nil {
-				return state.report, err
-			}
-			state.domain(gap.Domain).Status = "partial"
-			state.report.Status = "partial"
+		state.gapStates[gap.ID] = "unsupported:capability_not_registered"
+		if err := state.eventCall("gap_unsupported", "", gap.Domain, "capability_not_registered", 0, "", gap.ID); err != nil {
+			return err
+		}
+		state.domain(gap.Domain).Status = "partial"
+		state.report.Status = "partial"
+	}
+	return nil
+}
+
+func gapHasRegisteredCapability(gap Gap, specs []ToolSpec) bool {
+	for _, spec := range specs {
+		if spec.Domain == gap.Domain && slices.Contains(spec.Capabilities, gap.Capability) {
+			return true
 		}
 	}
+	return false
+}
+
+func seedVerifiedFacts(state *execution) {
 	for _, verified := range state.request.VerifiedFacts {
 		fact := cloneFact(verified.Fact)
 		verified.Fact = fact
@@ -278,259 +404,413 @@ func (r *Runtime) Run(ctx context.Context, request Request) (Report, error) {
 		state.evidenceIDs[fact.ID] = true
 		state.gapEvidenceIDs[verified.GapID][fact.ID] = true
 	}
+}
+
+func acceptExecutionHistory(state *execution) (int, error) {
 	previousRound, err := state.acceptPriorToolResults()
 	if err != nil {
 		if sinkErr := state.event("input", "", "", "inconsistent_prior_observation", 0); sinkErr != nil {
-			return state.report, sinkErr
+			return 0, sinkErr
 		}
-		return state.report, err
+		return 0, err
 	}
 	state.report.ToolCalls += state.request.PriorKnowledgeReadCount
+	appendCanonicalFindings(state)
+	state.reuseCanonicalChecks()
+	return previousRound, nil
+}
+
+func appendCanonicalFindings(state *execution) {
 	for _, evaluation := range state.request.CanonicalEvaluations {
 		findings := state.domain(evaluation.Domain)
 		finding := Finding{
 			Domain: evaluation.Domain, Capability: evaluation.CapabilityID,
 			RuleID: "canonical:" + evaluation.ID, Relation: evaluation.Relation,
-			Summary: evaluation.ReasonCode, ReasonCode: evaluation.ReasonCode,
-			Citations: []Citation{},
+			Summary: evaluation.ReasonCode, ReasonCode: evaluation.ReasonCode, Citations: []Citation{},
 		}
 		findings.Findings = append(findings.Findings, finding)
 	}
-	state.reuseCanonicalChecks()
+}
 
-	remainingTime := r.config.Timeout
-	if state.request.PriorElapsedMS != nil {
-		if *state.request.PriorElapsedMS >= remainingTime.Milliseconds() {
-			remainingTime = 0
-		} else {
-			remainingTime -= time.Duration(*state.request.PriorElapsedMS) * time.Millisecond
-		}
+func remainingPlannerTime(timeout time.Duration, elapsed *int64) time.Duration {
+	remaining := timeout
+	if elapsed == nil {
+		return remaining
 	}
-	bounded, cancel := context.WithTimeout(ctx, remainingTime)
-	defer cancel()
-	allCalls := make([]Call, 0, r.config.MaxCalls)
-	allReads := make([]KnowledgeReadRequest, 0, KnowledgeReadMaxCalls)
-	var runErr error
+	if *elapsed >= remaining.Milliseconds() {
+		return 0
+	}
+	return remaining - time.Duration(*elapsed)*time.Millisecond
+}
+
+type roundResults struct {
+	calls []Call
+	reads []KnowledgeReadRequest
+	err   error
+}
+
+func (r *Runtime) runRounds(ctx context.Context, state *execution, previousRound int, remainingTime time.Duration) ([]Call, []KnowledgeReadRequest, error) {
+	result := roundResults{calls: make([]Call, 0, r.config.MaxCalls), reads: make([]KnowledgeReadRequest, 0, KnowledgeReadMaxCalls)}
 	for round := previousRound + 1; round <= r.config.MaxRounds && state.report.ToolCalls < r.config.MaxCalls && remainingTime > 0; round++ {
-		state.round = round
-		state.activeGaps = state.planningGaps()
-		if len(state.activeGaps) == 0 {
-			break
-		}
-		state.roundProgress = false
-		state.roundEvidenceIDs = []string{}
-		state.roundResolvedIDs = []string{}
-		state.report.Plan = Plan{Calls: []Call{}}
-		entry := PlanRound{Round: round, Status: "accepted", GapIDs: make([]string, 0, len(state.activeGaps)),
-			Calls: []PlannedCall{}, NewEvidenceIDs: []string{}, ResolvedGapIDs: []string{}}
-		for _, gap := range state.activeGaps {
-			entry.GapIDs = append(entry.GapIDs, gap.ID)
-		}
-		state.report.Rounds = append(state.report.Rounds, entry)
-		_, runErr = r.runnable.Invoke(bounded, state)
-		if state.sinkErr != nil {
-			runErr = state.sinkErr
-		}
-		index := len(state.report.Rounds) - 1
-		allCalls = append(allCalls, state.report.Plan.Calls...)
-		allReads = append(allReads, state.report.Plan.KnowledgeReads...)
-		state.report.Rounds[index].NewEvidenceIDs = slices.Clone(state.roundEvidenceIDs)
-		state.report.Rounds[index].ResolvedGapIDs = slices.Clone(state.roundResolvedIDs)
-		if runErr != nil && state.sinkErr == nil && (bounded.Err() != nil || errors.Is(runErr, context.Canceled) || errors.Is(runErr, context.DeadlineExceeded)) {
-			if sinkErr := state.event("run_cancelled", "", "", "cancelled_or_deadline", 0); sinkErr != nil {
-				runErr = errors.Join(runErr, sinkErr)
-			}
-		}
-		if runErr != nil {
-			if state.termination == "guard_rejected" {
-				state.report.Rounds[index].Status = "guard_rejected"
-				state.report.Rounds[index].TerminationCode = new("invalid_or_unauthorized_plan")
-				if round == 1 && state.report.ToolCalls == 0 {
-					state.report.Status = "rejected"
-				} else {
-					state.report.Status = "partial"
-				}
-			} else if bounded.Err() != nil || errors.Is(runErr, context.Canceled) {
-				state.report.Rounds[index].Status = "cancelled"
-				state.report.Rounds[index].TerminationCode = new("cancelled_or_deadline")
-				state.report.Status = "cancelled"
-			} else {
-				state.report.Rounds[index].Status = "failed"
-				state.report.Rounds[index].TerminationCode = new("runtime_failure")
-				state.report.Status = "partial"
-			}
-			break
-		}
-		unresolved := state.remainingGaps()
-		switch {
-		case state.termination == "evidence_budget_exhausted":
-			state.report.Rounds[index].Status = "budget_exhausted"
-			state.report.Rounds[index].TerminationCode = new("evidence_budget_exhausted")
-			state.report.Status = "partial"
-			state.activeGaps = nil
-		case len(unresolved) == 0:
-			state.report.Rounds[index].Status = "completed"
-			if state.report.FallbackUsed {
-				state.report.Status = "partial"
-			} else {
-				state.report.Status = "completed"
-			}
-		case !state.roundProgress:
-			state.report.Rounds[index].Status = "no_progress"
-			state.report.Rounds[index].TerminationCode = new("no_new_evidence_or_gap_change")
-			state.report.Status = "partial"
-			runErr = nil
-			state.activeGaps = nil
-		case state.report.ToolCalls >= r.config.MaxCalls:
-			state.report.Rounds[index].Status = "budget_exhausted"
-			state.report.Rounds[index].TerminationCode = new("max_calls_reached")
-			state.report.Status = "partial"
-			state.activeGaps = nil
-		case round == r.config.MaxRounds:
-			state.report.Rounds[index].Status = "partial"
-			state.report.Rounds[index].TerminationCode = new("max_rounds_reached")
-			state.report.Status = "partial"
-			state.activeGaps = nil
-		default:
-			state.report.Rounds[index].Status = "partial"
-		}
-		if state.activeGaps == nil {
+		if !r.runRound(ctx, state, round, &result) {
 			break
 		}
 	}
-	state.reconcileCanonicalChecks()
-	if len(state.report.Rounds) == 0 && (len(state.request.PriorObservations) > 0 || state.request.PriorKnowledgeReadCount > 0) {
-		reason := "max_rounds_reached"
-		if remainingTime <= 0 {
-			reason = "max_duration_reached"
+	return result.calls, result.reads, result.err
+}
+
+func (r *Runtime) runRound(ctx context.Context, state *execution, round int, result *roundResults) bool {
+	state.round = round
+	state.activeGaps = state.planningGaps()
+	if len(state.activeGaps) == 0 {
+		return false
+	}
+	state.roundProgress = false
+	state.roundEvidenceIDs = []string{}
+	state.roundResolvedIDs = []string{}
+	state.report.Plan = Plan{Calls: []Call{}}
+	appendRoundEntry(state, round)
+	_, result.err = r.runnable.Invoke(ctx, state)
+	if state.sinkErr != nil {
+		result.err = state.sinkErr
+	}
+	index := len(state.report.Rounds) - 1
+	result.calls = append(result.calls, state.report.Plan.Calls...)
+	result.reads = append(result.reads, state.report.Plan.KnowledgeReads...)
+	state.report.Rounds[index].NewEvidenceIDs = slices.Clone(state.roundEvidenceIDs)
+	state.report.Rounds[index].ResolvedGapIDs = slices.Clone(state.roundResolvedIDs)
+	if shouldRecordCancellation(ctx, state, result.err) {
+		if sinkErr := state.event("run_cancelled", "", "", "cancelled_or_deadline", 0); sinkErr != nil {
+			result.err = errors.Join(result.err, sinkErr)
 		}
-		if state.report.ToolCalls >= r.config.MaxCalls {
-			reason = "max_calls_reached"
+	}
+	if result.err != nil {
+		finishFailedRound(ctx, state, index, result.err)
+		return false
+	}
+	return finishSuccessfulRound(state, round, index, r.config)
+}
+
+func appendRoundEntry(state *execution, round int) {
+	entry := PlanRound{Round: round, Status: "accepted", GapIDs: make([]string, 0, len(state.activeGaps)),
+		Calls: []PlannedCall{}, NewEvidenceIDs: []string{}, ResolvedGapIDs: []string{}}
+	for _, gap := range state.activeGaps {
+		entry.GapIDs = append(entry.GapIDs, gap.ID)
+	}
+	state.report.Rounds = append(state.report.Rounds, entry)
+}
+
+func shouldRecordCancellation(ctx context.Context, state *execution, err error) bool {
+	return err != nil && state.sinkErr == nil && (ctx.Err() != nil || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded))
+}
+
+func finishFailedRound(ctx context.Context, state *execution, index int, err error) {
+	if state.termination == "guard_rejected" {
+		state.report.Rounds[index].Status = "guard_rejected"
+		state.report.Rounds[index].TerminationCode = new("invalid_or_unauthorized_plan")
+		if state.round == 1 && state.report.ToolCalls == 0 {
+			state.report.Status = "rejected"
+		} else {
+			state.report.Status = "partial"
 		}
-		state.report.Limitations = append(state.report.Limitations, "Planning stopped: "+reason)
-		for _, gap := range state.request.Gaps {
-			if state.gapStates[gap.ID] == "open" {
-				state.gapStates[gap.ID] = "unknown:" + reason
-			}
-		}
+		return
+	}
+	if ctx.Err() != nil || errors.Is(err, context.Canceled) {
+		state.report.Rounds[index].Status = "cancelled"
+		state.report.Rounds[index].TerminationCode = new("cancelled_or_deadline")
+		state.report.Status = "cancelled"
+		return
+	}
+	state.report.Rounds[index].Status = "failed"
+	state.report.Rounds[index].TerminationCode = new("runtime_failure")
+	state.report.Status = "partial"
+}
+
+func finishSuccessfulRound(state *execution, round, index int, config Config) bool {
+	unresolved := state.remainingGaps()
+	switch {
+	case state.termination == "evidence_budget_exhausted":
+		state.report.Rounds[index].Status = "budget_exhausted"
+		state.report.Rounds[index].TerminationCode = new("evidence_budget_exhausted")
 		state.report.Status = "partial"
+		state.activeGaps = nil
+	case len(unresolved) == 0:
+		state.report.Rounds[index].Status = "completed"
+		if state.report.FallbackUsed {
+			state.report.Status = "partial"
+		} else {
+			state.report.Status = "completed"
+		}
+	case !state.roundProgress:
+		state.report.Rounds[index].Status = "no_progress"
+		state.report.Rounds[index].TerminationCode = new("no_new_evidence_or_gap_change")
+		state.report.Status = "partial"
+		state.activeGaps = nil
+	case state.report.ToolCalls >= config.MaxCalls:
+		state.report.Rounds[index].Status = "budget_exhausted"
+		state.report.Rounds[index].TerminationCode = new("max_calls_reached")
+		state.report.Status = "partial"
+		state.activeGaps = nil
+	case round == config.MaxRounds:
+		state.report.Rounds[index].Status = "partial"
+		state.report.Rounds[index].TerminationCode = new("max_rounds_reached")
+		state.report.Status = "partial"
+		state.activeGaps = nil
+	default:
+		state.report.Rounds[index].Status = "partial"
 	}
-	if len(state.report.Rounds) > 0 {
-		last := state.report.Rounds[len(state.report.Rounds)-1]
-		if last.TerminationCode != nil {
-			for _, gap := range state.request.Gaps {
-				if state.gapStates[gap.ID] == "open" {
-					state.gapStates[gap.ID] = "unknown:" + *last.TerminationCode
-				}
-			}
+	return state.activeGaps != nil
+}
+
+func finalizeRunReport(state *execution, calls []Call, reads []KnowledgeReadRequest, runErr error, remainingTime time.Duration, config Config) {
+	state.reconcileCanonicalChecks()
+	finalizeEmptyPriorRun(state, remainingTime, config.MaxCalls)
+	finalizeOpenGapsFromLastRound(state)
+	state.report.Plan = Plan{Calls: calls, KnowledgeReads: reads}
+	state.report.UnresolvedGapIDs = unresolvedGapIDs(state)
+	finalizeReportStatus(state, runErr)
+	state.report.Projection = buildAgentReview(state, config)
+	if state.report.Projection != nil {
+		state.report.Status = state.report.Projection.Status
+		state.report.UnresolvedGapIDs = slices.Clone(state.report.Projection.UnresolvedGapIDs)
+	}
+}
+
+func finalizeEmptyPriorRun(state *execution, remainingTime time.Duration, maxCalls int) {
+	if len(state.report.Rounds) != 0 || (len(state.request.PriorObservations) == 0 && state.request.PriorKnowledgeReadCount == 0) {
+		return
+	}
+	reason := "max_rounds_reached"
+	if remainingTime <= 0 {
+		reason = "max_duration_reached"
+	}
+	if state.report.ToolCalls >= maxCalls {
+		reason = "max_calls_reached"
+	}
+	state.report.Limitations = append(state.report.Limitations, "Planning stopped: "+reason)
+	for _, gap := range state.request.Gaps {
+		if state.gapStates[gap.ID] == "open" {
+			state.gapStates[gap.ID] = "unknown:" + reason
 		}
 	}
-	state.report.Plan = Plan{Calls: allCalls, KnowledgeReads: allReads}
-	state.report.UnresolvedGapIDs = make([]string, 0, len(state.request.Gaps))
+	state.report.Status = "partial"
+}
+
+func finalizeOpenGapsFromLastRound(state *execution) {
+	if len(state.report.Rounds) == 0 {
+		return
+	}
+	last := state.report.Rounds[len(state.report.Rounds)-1]
+	if last.TerminationCode == nil {
+		return
+	}
+	for _, gap := range state.request.Gaps {
+		if state.gapStates[gap.ID] == "open" {
+			state.gapStates[gap.ID] = "unknown:" + *last.TerminationCode
+		}
+	}
+}
+
+func unresolvedGapIDs(state *execution) []string {
+	ids := make([]string, 0, len(state.request.Gaps))
 	for _, gap := range state.request.Gaps {
 		if !state.resolved[gap.ID] {
-			state.report.UnresolvedGapIDs = append(state.report.UnresolvedGapIDs, gap.ID)
+			ids = append(ids, gap.ID)
 		}
 	}
+	return ids
+}
+
+func finalizeReportStatus(state *execution, runErr error) {
 	if len(state.report.UnresolvedGapIDs) == 0 && len(state.report.Rounds) == 0 && runErr == nil {
 		state.report.Status = "completed"
 	}
 	if len(state.report.UnresolvedGapIDs) > 0 && state.report.Status == "completed" {
 		state.report.Status = "partial"
 	}
-	state.report.Projection = buildAgentReview(state, r.config)
-	if state.report.Projection != nil {
-		state.report.Status = state.report.Projection.Status
-		state.report.UnresolvedGapIDs = slices.Clone(state.report.Projection.UnresolvedGapIDs)
-	}
-	if runErr != nil {
-		return state.report, runErr
-	}
-	return state.report, nil
 }
 
 func requestEvidenceBytes(request Request) int {
 	total := 0
-	for _, evidence := range request.Evidence {
-		if len(evidence.Text) > maxEvidenceBytes-total {
-			return maxEvidenceBytes + 1
-		}
-		total += len(evidence.Text)
-	}
-	for _, ref := range request.Knowledge {
-		for _, field := range []string{ref.Summary, ref.Applicability, ref.Exclusions, ref.CheckAction, ref.MinimumEvidence, ref.Counterexamples, ref.SemanticChecks, ref.SourceSpans} {
-			if len(field) > maxEvidenceBytes-total {
-				return maxEvidenceBytes + 1
-			}
-			total += len(field)
-		}
-	}
-	for _, verified := range request.VerifiedFacts {
-		for _, field := range []string{verified.Fact.Value, verified.Fact.Unit, verified.Fact.Currency, verified.Fact.Citation.Quote} {
-			if len(field) > maxEvidenceBytes-total {
-				return maxEvidenceBytes + 1
-			}
-			total += len(field)
-		}
-	}
-	for _, previous := range request.PriorObservations {
-		bytes := returnedEvidenceBytes(previous.Findings)
-		if bytes > maxEvidenceBytes-total {
-			return maxEvidenceBytes + 1
-		}
-		total += bytes
+	if !addEvidenceSources(&total, request.Evidence) || !addKnowledgeReferenceBytes(&total, request.Knowledge) ||
+		!addVerifiedFactBytes(&total, request.VerifiedFacts) || !addPriorFindingBytes(&total, request.PriorObservations) {
+		return maxEvidenceBytes + 1
 	}
 	return total
 }
+
+func addEvidenceSources(total *int, evidence []Evidence) bool {
+	for _, item := range evidence {
+		if !addEvidenceBytes(total, len(item.Text)) {
+			return false
+		}
+	}
+	return true
+}
+
+func addKnowledgeReferenceBytes(total *int, references []KnowledgeReference) bool {
+	for _, ref := range references {
+		if !addEvidenceFields(total, ref.Summary, ref.Applicability, ref.Exclusions, ref.CheckAction, ref.MinimumEvidence,
+			ref.Counterexamples, ref.SemanticChecks, ref.SourceSpans) {
+			return false
+		}
+	}
+	return true
+}
+
+func addVerifiedFactBytes(total *int, facts []VerifiedFact) bool {
+	for _, verified := range facts {
+		if !addEvidenceFields(total, verified.Fact.Value, verified.Fact.Unit, verified.Fact.Currency, verified.Fact.Citation.Quote) {
+			return false
+		}
+	}
+	return true
+}
+
+func addPriorFindingBytes(total *int, prior []PriorToolResult) bool {
+	for _, result := range prior {
+		if !addEvidenceBytes(total, returnedEvidenceBytes(result.Findings)) {
+			return false
+		}
+	}
+	return true
+}
+
+func addEvidenceFields(total *int, fields ...string) bool {
+	for _, field := range fields {
+		if !addEvidenceBytes(total, len(field)) {
+			return false
+		}
+	}
+	return true
+}
+
+func addEvidenceBytes(total *int, count int) bool {
+	if count > maxEvidenceBytes-*total {
+		*total = maxEvidenceBytes + 1
+		return false
+	}
+	*total += count
+	return true
+}
+
 func validateRequest(request Request) error {
-	if !boundedIdentity(request.RequestID) || len(request.Scope) == 0 || len(request.Scope) > 5 ||
-		len(request.Gaps) == 0 || len(request.Gaps) > maxReviewGaps || len(request.Evidence) > 40 ||
-		len(request.Knowledge) > MaxKnowledgeRecords || len(request.VerifiedFacts) > maxContextReferences ||
-		len(request.CanonicalEvaluations) > maxContextReferences || len(request.PriorObservations) > DefaultPlannerCalls ||
-		request.PriorKnowledgeReadCount < 0 || request.PriorKnowledgeReadCount > KnowledgeReadMaxCalls ||
-		(request.PriorKnowledgeReadCount > 0 && request.KnowledgeSelection == nil) {
+	if !validRequestShape(request) || !validRequestScope(request.Scope) || !validRequestGaps(request.Scope, request.Gaps) || !validRequestEvidence(request) {
 		return ErrInput
-	}
-	scopes := map[Domain]bool{}
-	for _, domain := range request.Scope {
-		if !validDomain(domain) || scopes[domain] {
-			return ErrInput
-		}
-		scopes[domain] = true
-	}
-	gaps := map[string]bool{}
-	for _, gap := range request.Gaps {
-		if !boundedIdentity(gap.ID) || !capabilityID.MatchString(gap.Capability) ||
-			gaps[gap.ID] || !scopes[gap.Domain] || len(strings.TrimSpace(gap.Question)) == 0 ||
-			len(gap.Question) > 4096 || !utf8.ValidString(gap.Question) ||
-			(gap.IncompleteReason != "" && !capabilityID.MatchString(gap.IncompleteReason)) || gap.QuestionTruncated {
-			return ErrInput
-		}
-		gaps[gap.ID] = true
-	}
-	ids, total := map[string]bool{}, 0
-	for _, evidence := range request.Evidence {
-		total += len(evidence.Text)
-		// Reject the size before hashing or normalizing attacker-controlled text.
-		if total > maxEvidenceBytes {
-			return ErrInput
-		}
-		if evidence.ID == "" || len(evidence.ID) > 128 || evidence.Version == "" || len(evidence.Version) > 128 ||
-			len(evidence.Role) > 64 || ids[evidence.ID] ||
-			evidence.TenantID != request.Case.TenantID || evidence.CaseID != request.Case.CaseID ||
-			!utf8.ValidString(evidence.Text) || evidence.SHA256 != TextHash(evidence.Text) ||
-			docir.Build(evidence.Text).NormalizedText != evidence.Text {
-			return ErrInput
-		}
-		ids[evidence.ID] = true
 	}
 	return nil
 }
 
+func validRequestShape(request Request) bool {
+	return validRequestIdentityAndBounds(request) && validRequestHistoryBounds(request)
+}
+
+func validRequestIdentityAndBounds(request Request) bool {
+	return boundedIdentity(request.RequestID) && len(request.Scope) > 0 && len(request.Scope) <= 5 &&
+		len(request.Gaps) > 0 && len(request.Gaps) <= maxReviewGaps && len(request.Evidence) <= 40 &&
+		len(request.Knowledge) <= MaxKnowledgeRecords && len(request.VerifiedFacts) <= maxContextReferences &&
+		len(request.CanonicalEvaluations) <= maxContextReferences
+}
+
+func validRequestHistoryBounds(request Request) bool {
+	return len(request.PriorObservations) <= DefaultPlannerCalls && request.PriorKnowledgeReadCount >= 0 &&
+		request.PriorKnowledgeReadCount <= KnowledgeReadMaxCalls &&
+		(request.PriorKnowledgeReadCount == 0 || request.KnowledgeSelection != nil)
+}
+
+func validRequestScope(scope []Domain) bool {
+	seen := make(map[Domain]bool, len(scope))
+	for _, domain := range scope {
+		if !validDomain(domain) || seen[domain] {
+			return false
+		}
+		seen[domain] = true
+	}
+	return true
+}
+
+func validRequestGaps(scope []Domain, gaps []Gap) bool {
+	scopes := make(map[Domain]bool, len(scope))
+	for _, domain := range scope {
+		scopes[domain] = true
+	}
+	seen := make(map[string]bool, len(gaps))
+	for _, gap := range gaps {
+		if !validRequestGap(gap, scopes, seen) {
+			return false
+		}
+		seen[gap.ID] = true
+	}
+	return true
+}
+
+func validRequestGap(gap Gap, scopes map[Domain]bool, seen map[string]bool) bool {
+	return validRequestGapIdentity(gap, scopes, seen) && validRequestGapQuestion(gap) && validRequestGapReason(gap.IncompleteReason) && !gap.QuestionTruncated
+}
+
+func validRequestGapIdentity(gap Gap, scopes map[Domain]bool, seen map[string]bool) bool {
+	return boundedIdentity(gap.ID) && capabilityID.MatchString(gap.Capability) && !seen[gap.ID] && scopes[gap.Domain]
+}
+
+func validRequestGapQuestion(gap Gap) bool {
+	return len(strings.TrimSpace(gap.Question)) > 0 && len(gap.Question) <= 4096 && utf8.ValidString(gap.Question)
+}
+
+func validRequestGapReason(reason string) bool {
+	return reason == "" || capabilityID.MatchString(reason)
+}
+
+func validRequestEvidence(request Request) bool {
+	ids := make(map[string]bool, len(request.Evidence))
+	total := 0
+	for _, evidence := range request.Evidence {
+		total += len(evidence.Text)
+		// Reject the size before hashing or normalizing attacker-controlled text.
+		if total > maxEvidenceBytes || !validEvidenceIdentity(evidence, request, ids) || !validEvidenceText(evidence) {
+			return false
+		}
+		ids[evidence.ID] = true
+	}
+	return true
+}
+
+func validEvidenceIdentity(evidence Evidence, request Request, seen map[string]bool) bool {
+	return evidence.ID != "" && len(evidence.ID) <= 128 && evidence.Version != "" && len(evidence.Version) <= 128 &&
+		len(evidence.Role) <= 64 && !seen[evidence.ID] && evidence.TenantID == request.Case.TenantID &&
+		evidence.CaseID == request.Case.CaseID && utf8.ValidString(evidence.Text)
+}
+
+func validEvidenceText(evidence Evidence) bool {
+	return evidence.SHA256 == TextHash(evidence.Text) && docir.Build(evidence.Text).NormalizedText == evidence.Text
+}
+
 func (r *Runtime) plan(ctx context.Context, state *execution) (*execution, error) {
+	input, err := r.plannerInputForRun(ctx, state)
+	if err != nil {
+		return state, err
+	}
+	plan, err := r.requestPlan(ctx, state, input)
+	recordKnowledgePlanningRound(state, input, err)
+	if ctx.Err() != nil {
+		return state, ctx.Err()
+	}
+	if err != nil {
+		plan, err = r.fallbackPlan(ctx, state, input, err)
+		if err != nil {
+			return state, err
+		}
+	}
+	state.report.Plan = plan
+	if err := state.event("plan", "", "", "candidate_plan", 0); err != nil {
+		return state, err
+	}
+	return state, nil
+}
+
+func (r *Runtime) plannerInputForRun(ctx context.Context, state *execution) (PlanInput, error) {
 	if r.config.AuthorizePlanning != nil {
 		if err := r.config.AuthorizePlanning(ctx); err != nil {
-			return state, fmt.Errorf("%w: %w", ErrPlanningAuthorization, err)
+			return PlanInput{}, fmt.Errorf("%w: %w", ErrPlanningAuthorization, err)
 		}
 	}
 	input := state.plannerInput(r.config.MaxCalls - state.report.ToolCalls)
@@ -544,122 +824,157 @@ func (r *Runtime) plan(ctx context.Context, state *execution) (*execution, error
 			input.Tools = append(input.Tools, spec)
 		}
 	}
-	var plan Plan
-	var err error
+	return input, nil
+}
+
+func (r *Runtime) requestPlan(ctx context.Context, state *execution, input PlanInput) (Plan, error) {
 	if observedPlanner, ok := r.config.Planner.(ObservedPlanner); ok {
-		var observation PlannerObservation
-		plan, observation, err = observedPlanner.PlanObserved(ctx, input)
+		plan, observation, err := observedPlanner.PlanObserved(ctx, input)
 		state.recordPlannerObservation(observation)
-	} else {
-		plan, err = r.config.Planner.Plan(ctx, input)
-		state.observations.PlannerCalls++
+		return plan, err
 	}
-	if selection := state.request.KnowledgeSelection; selection != nil {
-		round := KnowledgePlanningRound{Round: state.round, ReferencesProvided: []KnowledgeIdentity{}, ReadObservationsProvided: []KnowledgeReadIdentity{}, Outcome: "returned"}
-		if err != nil {
-			round.Outcome = "failed"
-		}
-		for _, ref := range input.Knowledge {
-			round.ReferencesProvided = append(round.ReferencesProvided, KnowledgeIdentity{
-				KnowledgeID: ref.KnowledgeID, VersionID: ref.VersionID, ContentSHA256: ref.ContentSHA256,
-			})
-		}
-		for _, observation := range input.KnowledgeObservations {
-			round.ReadObservationsProvided = append(round.ReadObservationsProvided, observation.KnowledgeReadIdentity)
-		}
-		selection.PlannerRounds = append(selection.PlannerRounds, round)
+	plan, err := r.config.Planner.Plan(ctx, input)
+	state.observations.PlannerCalls++
+	return plan, err
+}
+
+func recordKnowledgePlanningRound(state *execution, input PlanInput, err error) {
+	selection := state.request.KnowledgeSelection
+	if selection == nil {
+		return
 	}
-	if ctx.Err() != nil {
-		return state, ctx.Err()
-	}
+	round := KnowledgePlanningRound{Round: state.round, ReferencesProvided: []KnowledgeIdentity{}, ReadObservationsProvided: []KnowledgeReadIdentity{}, Outcome: "returned"}
 	if err != nil {
-		if errors.Is(err, ErrPlan) {
-			state.termination = "guard_rejected"
-			if sinkErr := state.event("plan_rejected", "", "", "invalid_model_plan", 0); sinkErr != nil {
-				return state, sinkErr
-			}
-			return state, ErrPlan
-		}
-		state.report.FallbackUsed = true
-		if sinkErr := state.event("planner_fallback", "", "", "planner_unavailable", 0); sinkErr != nil {
-			return state, sinkErr
-		}
-		plan, _ = (ScopePlanner{}).Plan(ctx, input)
+		round.Outcome = "failed"
 	}
-	state.report.Plan = plan
-	if sinkErr := state.event("plan", "", "", "candidate_plan", 0); sinkErr != nil {
-		return state, sinkErr
+	for _, ref := range input.Knowledge {
+		round.ReferencesProvided = append(round.ReferencesProvided, KnowledgeIdentity{KnowledgeID: ref.KnowledgeID, VersionID: ref.VersionID, ContentSHA256: ref.ContentSHA256})
 	}
-	return state, nil
+	for _, observation := range input.KnowledgeObservations {
+		round.ReadObservationsProvided = append(round.ReadObservationsProvided, observation.KnowledgeReadIdentity)
+	}
+	selection.PlannerRounds = append(selection.PlannerRounds, round)
+}
+
+func (r *Runtime) fallbackPlan(ctx context.Context, state *execution, input PlanInput, plannerErr error) (Plan, error) {
+	if errors.Is(plannerErr, ErrPlan) {
+		state.termination = "guard_rejected"
+		if err := state.event("plan_rejected", "", "", "invalid_model_plan", 0); err != nil {
+			return Plan{}, err
+		}
+		return Plan{}, ErrPlan
+	}
+	state.report.FallbackUsed = true
+	if err := state.event("planner_fallback", "", "", "planner_unavailable", 0); err != nil {
+		return Plan{}, err
+	}
+	plan, _ := (ScopePlanner{}).Plan(ctx, input)
+	return plan, nil
 }
 
 func (r *Runtime) guard(_ context.Context, state *execution) (*execution, error) {
 	calls := state.report.Plan.Calls
+	r.recordCurrentRoundCalls(state, calls)
+	active := activeGapIDs(state.activeGaps)
+	if !validPlanGuardEnvelope(r, state, calls) {
+		return rejectGuardPlan(state, "", "", "", "allowlist_scope_or_budget")
+	}
+	seen := make(map[string]bool, len(calls))
+	for _, call := range calls {
+		if !validGuardedCall(r, state, call, active, seen) {
+			return rejectGuardPlan(state, call.ToolID, call.Domain, call.GapID, "allowlist_scope_or_budget")
+		}
+		seen[call.GapID] = true
+	}
+	if mandatoryGapPriorityViolation(r, state, calls, seen) {
+		return rejectGuardPlan(state, "", "", "", "mandatory_gap_not_prioritized")
+	}
+	if err := state.event("plan_accepted", "", "", "all_calls_validated_before_execution", 0); err != nil {
+		return state, err
+	}
+	return state, nil
+}
+
+func (r *Runtime) recordCurrentRoundCalls(state *execution, calls []Call) {
 	index := len(state.report.Rounds) - 1
 	if index >= 0 {
 		state.report.Rounds[index].Calls = r.plannedCalls(state, calls)
 	}
-	active := make(map[string]bool, len(state.activeGaps))
-	for _, gap := range state.activeGaps {
+}
+
+func activeGapIDs(gaps []Gap) map[string]bool {
+	active := make(map[string]bool, len(gaps))
+	for _, gap := range gaps {
 		active[gap.ID] = true
 	}
-	seen := make(map[string]bool, len(calls))
-	if calls == nil || state.report.ToolCalls+len(calls)+len(state.report.Plan.KnowledgeReads) > r.config.MaxCalls || r.validateKnowledgeReads(state) != nil {
-		state.termination = "guard_rejected"
-		if sinkErr := state.event("plan_rejected", "", "", "allowlist_scope_or_budget", 0); sinkErr != nil {
-			return state, sinkErr
-		}
-		return state, ErrPlan
-	}
-	for _, call := range calls {
-		spec, exists := r.specByID[call.ToolID]
-		gap, known := state.gaps[call.GapID]
-		pair := call.GapID + "\x00" + call.ToolID
-		priorEvidenceCount, wasCalled := state.callEvidenceCounts[pair]
-		newEvidenceSinceCall := len(state.gapEvidenceIDs[gap.ID]) > priorEvidenceCount
-		if !exists || !known || !active[call.GapID] || seen[call.GapID] ||
-			(wasCalled && !newEvidenceSinceCall) ||
-			!slices.Contains(state.request.Scope, call.Domain) || spec.Domain != call.Domain ||
-			!slices.Contains(spec.Capabilities, gap.Capability) || gap.Domain != call.Domain ||
-			strings.TrimSpace(call.Reason) == "" || len(call.Reason) > 1024 {
-			state.termination = "guard_rejected"
-			if sinkErr := state.eventCall("plan_rejected", call.ToolID, call.Domain, "allowlist_scope_or_budget", 0, "", call.GapID); sinkErr != nil {
-				return state, sinkErr
-			}
-			return state, ErrPlan
-		}
-		seen[call.GapID] = true
-	}
+	return active
+}
+
+func validPlanGuardEnvelope(runtime *Runtime, state *execution, calls []Call) bool {
+	return calls != nil && state.report.ToolCalls+len(calls)+len(state.report.Plan.KnowledgeReads) <= runtime.config.MaxCalls && runtime.validateKnowledgeReads(state) == nil
+}
+
+func validGuardedCall(runtime *Runtime, state *execution, call Call, active, seen map[string]bool) bool {
+	spec, exists := runtime.specByID[call.ToolID]
+	gap, known := state.gaps[call.GapID]
+	return exists && known && active[call.GapID] && !seen[call.GapID] && validCallRetryEvidence(state, call, gap) &&
+		validCallScope(spec, gap, call, state.request.Scope) && validCallReason(call.Reason)
+}
+
+func validCallRetryEvidence(state *execution, call Call, gap Gap) bool {
+	priorEvidenceCount, wasCalled := state.callEvidenceCounts[call.GapID+"\x00"+call.ToolID]
+	return !wasCalled || len(state.gapEvidenceIDs[gap.ID]) > priorEvidenceCount
+}
+
+func validCallScope(spec ToolSpec, gap Gap, call Call, scope []Domain) bool {
+	return slices.Contains(scope, call.Domain) && spec.Domain == call.Domain &&
+		slices.Contains(spec.Capabilities, gap.Capability) && gap.Domain == call.Domain
+}
+
+func validCallReason(reason string) bool {
+	return strings.TrimSpace(reason) != "" && len(reason) <= 1024
+}
+
+func mandatoryGapPriorityViolation(runtime *Runtime, state *execution, calls []Call, seen map[string]bool) bool {
 	for _, gap := range state.activeGaps {
-		if !gap.Mandatory || seen[gap.ID] {
-			continue
-		}
-		callable := false
-		for _, spec := range r.specs {
-			pair := gap.ID + "\x00" + spec.ID
-			count, called := state.callEvidenceCounts[pair]
-			if spec.Domain == gap.Domain && slices.Contains(spec.Capabilities, gap.Capability) && (!called || len(state.gapEvidenceIDs[gap.ID]) > count) {
-				callable = true
-				break
-			}
-		}
-		if !callable {
+		if !mandatoryGapNeedsCall(runtime, state, gap, seen) {
 			continue
 		}
 		for _, call := range calls {
 			if !state.gaps[call.GapID].Mandatory {
-				state.termination = "guard_rejected"
-				if sinkErr := state.event("plan_rejected", "", "", "mandatory_gap_not_prioritized", 0); sinkErr != nil {
-					return state, sinkErr
-				}
-				return state, ErrPlan
+				return true
 			}
 		}
 	}
-	if sinkErr := state.event("plan_accepted", "", "", "all_calls_validated_before_execution", 0); sinkErr != nil {
-		return state, sinkErr
+	return false
+}
+
+func mandatoryGapNeedsCall(runtime *Runtime, state *execution, gap Gap, seen map[string]bool) bool {
+	if !gap.Mandatory || seen[gap.ID] {
+		return false
 	}
-	return state, nil
+	for _, spec := range runtime.specs {
+		priorEvidenceCount, wasCalled := state.callEvidenceCounts[gap.ID+"\x00"+spec.ID]
+		newEvidence := len(state.gapEvidenceIDs[gap.ID]) > priorEvidenceCount
+		if spec.Domain == gap.Domain && slices.Contains(spec.Capabilities, gap.Capability) && (!wasCalled || newEvidence) {
+			return true
+		}
+	}
+	return false
+}
+
+func rejectGuardPlan(state *execution, tool string, domain Domain, gapID, code string) (*execution, error) {
+	state.termination = "guard_rejected"
+	var err error
+	if tool == "" {
+		err = state.event("plan_rejected", "", "", code, 0)
+	} else {
+		err = state.eventCall("plan_rejected", tool, domain, code, 0, "", gapID)
+	}
+	if err != nil {
+		return state, err
+	}
+	return state, ErrPlan
 }
 
 func (r *Runtime) execute(ctx context.Context, state *execution) (*execution, error) {
@@ -667,127 +982,187 @@ func (r *Runtime) execute(ctx context.Context, state *execution) (*execution, er
 		return state, err
 	}
 	for _, call := range state.report.Plan.Calls {
-		callID := stableCallID(state.request.RequestID, state.round, call)
-		if ctx.Err() != nil {
-			state.updatePlannedCall(callID, "cancelled", "cancelled_or_deadline", nil)
-			return state, ctx.Err()
-		}
-		if !access.Check(access.Review, state.request.Principal, state.request.Case, r.config.Clock()).Allowed {
-			state.updatePlannedCall(callID, "denied", "authorization_revoked", nil)
-			if sinkErr := state.eventCall("authorization", call.ToolID, call.Domain, "grant_expired_before_tool", 0, callID, call.GapID); sinkErr != nil {
-				return state, sinkErr
-			}
-			return state, ErrDenied
-		}
-		if sinkErr := state.eventCall("tool_started", call.ToolID, call.Domain, "read_action_started", 0, callID, call.GapID); sinkErr != nil {
-			return state, sinkErr
-		}
-		state.updatePlannedCall(callID, "running", "", nil)
-		toolCtx, cancel := context.WithTimeout(ctx, r.config.ToolTimeout)
-		started := time.Now()
-		state.report.ToolCalls++
-		pair := call.GapID + "\x00" + call.ToolID
-		findings, err := r.tools[call.ToolID].Execute(toolCtx, ToolInput{
-			TenantID: state.request.Case.TenantID, CaseID: state.request.Case.CaseID,
-			ActorID: state.request.Principal.UserID, Gap: state.gaps[call.GapID],
-			Evidence: slices.Clone(state.request.Evidence), PriorFindings: cloneFindings(state.findingsByGap[call.GapID]),
-		})
-		if toolCtx.Err() != nil {
-			err = toolCtx.Err()
-		}
-		cancel()
-		if err == nil && !access.Check(access.Review, state.request.Principal, state.request.Case, r.config.Clock()).Allowed {
-			err = ErrDenied
-		}
-		if err == nil {
-			err = validateFindings(ctx, findings, call.Domain, state.gaps[call.GapID].Capability, state.request.Evidence)
-		}
-		returnedBytes := 0
-		if err == nil {
-			returnedBytes = returnedEvidenceBytes(findings)
-			if returnedBytes > state.evidenceBytesLeft {
-				err = ErrEvidence
-				state.termination = "evidence_budget_exhausted"
-			}
-		}
-		if err == nil {
-			clearUnverifiedLocations(findings)
-			err = state.validateFactConsistency(findings)
-		}
-		if err == nil {
-			if sinkErr := state.eventCall("tool_observed", call.ToolID, call.Domain, "validated_tool_observation", time.Since(started).Milliseconds(), callID, call.GapID); sinkErr != nil {
-				return state, sinkErr
-			}
-			state.recordToolObservations(call, callID, findings)
-			if !verifiedComparator(r.tools[call.ToolID]) {
-				markClaimsUnverified(findings)
-			}
-			err = state.recordFindings(call.GapID, findings)
-		}
+		stop, err := r.executeToolCall(ctx, state, call)
 		if err != nil {
-			state.callEvidenceCounts[pair] = len(state.gapEvidenceIDs[call.GapID])
-			state.previousCallByPair[pair] = PriorCall{ToolID: call.ToolID, GapID: call.GapID}
-			status, code := "failed", "tool_error_or_unverified_result"
-			if errors.Is(err, ErrDenied) {
-				status, code = "denied", "authorization_revoked_after_tool"
-			} else if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-				status, code = "cancelled", "cancelled_or_deadline"
-			} else if state.termination == "evidence_budget_exhausted" {
-				code = "evidence_budget_exhausted"
-			}
-			state.gapStates[call.GapID] = "unknown:" + code
-			state.domain(call.Domain).Status = "partial"
-			state.updatePlannedCall(callID, status, code, nil)
-			if sinkErr := state.eventCall("tool_failed", call.ToolID, call.Domain, code, time.Since(started).Milliseconds(), callID, call.GapID); sinkErr != nil {
-				return state, sinkErr
-			}
-			if errors.Is(err, ErrDenied) {
-				return state, err
-			}
-			if ctx.Err() != nil {
-				return state, ctx.Err()
-			}
-			if state.termination == "evidence_budget_exhausted" {
-				break
-			}
-			continue
+			return state, err
 		}
-
-		state.evidenceBytesLeft -= returnedBytes
-		newState, resolved := gapOutcome(findings)
-		if previous := state.gapStates[call.GapID]; previous != newState {
-			state.gapStates[call.GapID] = newState
-			state.roundProgress = true
-		}
-		wasResolved := state.resolved[call.GapID]
-		state.resolved[call.GapID] = resolved
-		if resolved && !wasResolved {
-			state.roundResolvedIDs = append(state.roundResolvedIDs, call.GapID)
-			state.roundProgress = true
-		}
-		evidenceIDs := state.findingIDs(findings)
-		state.callEvidenceCounts[pair] = len(state.gapEvidenceIDs[call.GapID])
-		state.previousCallByPair[pair] = PriorCall{ToolID: call.ToolID, GapID: call.GapID}
-		domain := state.domain(call.Domain)
-		if newState == "resolved" {
-			domain.Status = "completed"
-		} else {
-			domain.Status = "partial"
-		}
-		domain.Findings = append(domain.Findings, findings...)
-		state.updatePlannedCall(callID, "completed", "", evidenceIDs)
-		if sinkErr := state.eventCall("tool_completed", call.ToolID, call.Domain, "validated_tool_result", time.Since(started).Milliseconds(), callID, call.GapID); sinkErr != nil {
-			state.resolved[call.GapID] = false
-			state.gapStates[call.GapID] = "unknown:event_sink_failed"
-			state.domain(call.Domain).Status = "partial"
-			state.updatePlannedCall(callID, "failed", "event_sink_failed", nil)
-			return state, sinkErr
+		if stop {
+			break
 		}
 	}
-	if ctx.Err() != nil {
-		return state, ctx.Err()
+	if err := ctx.Err(); err != nil {
+		return state, err
 	}
 	return state, nil
+}
+
+func (r *Runtime) executeToolCall(ctx context.Context, state *execution, call Call) (bool, error) {
+	callID := stableCallID(state.request.RequestID, state.round, call)
+	started, err := r.beginToolCall(ctx, state, call, callID)
+	if err != nil {
+		return false, err
+	}
+	findings, bytes, fatal, err := r.runTool(ctx, state, call, callID, started)
+	if fatal {
+		return false, err
+	}
+	if err != nil {
+		stop, failureErr := r.finishToolFailure(ctx, state, call, callID, started, err)
+		if failureErr != nil {
+			return false, failureErr
+		}
+		if errors.Is(err, ErrDenied) {
+			return false, err
+		}
+		if ctx.Err() != nil {
+			return false, ctx.Err()
+		}
+		return stop, nil
+	}
+	return false, r.finishToolSuccess(state, call, callID, started, findings, bytes)
+}
+
+func (r *Runtime) beginToolCall(ctx context.Context, state *execution, call Call, callID string) (time.Time, error) {
+	if ctx.Err() != nil {
+		state.updatePlannedCall(callID, "cancelled", "cancelled_or_deadline", nil)
+		return time.Time{}, ctx.Err()
+	}
+	if !r.reviewAccessAllowed(state) {
+		state.updatePlannedCall(callID, "denied", "authorization_revoked", nil)
+		if err := state.eventCall("authorization", call.ToolID, call.Domain, "grant_expired_before_tool", 0, callID, call.GapID); err != nil {
+			return time.Time{}, err
+		}
+		return time.Time{}, ErrDenied
+	}
+	if err := state.eventCall("tool_started", call.ToolID, call.Domain, "read_action_started", 0, callID, call.GapID); err != nil {
+		return time.Time{}, err
+	}
+	state.updatePlannedCall(callID, "running", "", nil)
+	return time.Now(), nil
+}
+
+func (r *Runtime) reviewAccessAllowed(state *execution) bool {
+	return access.Check(access.Review, state.request.Principal, state.request.Case, r.config.Clock()).Allowed
+}
+
+func (r *Runtime) runTool(ctx context.Context, state *execution, call Call, callID string, started time.Time) ([]Finding, int, bool, error) {
+	toolCtx, cancel := context.WithTimeout(ctx, r.config.ToolTimeout)
+	state.report.ToolCalls++
+	findings, err := r.tools[call.ToolID].Execute(toolCtx, ToolInput{
+		TenantID: state.request.Case.TenantID, CaseID: state.request.Case.CaseID, ActorID: state.request.Principal.UserID,
+		Gap: state.gaps[call.GapID], Evidence: slices.Clone(state.request.Evidence), PriorFindings: cloneFindings(state.findingsByGap[call.GapID]),
+	})
+	if toolCtx.Err() != nil {
+		err = toolCtx.Err()
+	}
+	cancel()
+	if err == nil && !r.reviewAccessAllowed(state) {
+		err = ErrDenied
+	}
+	if err == nil {
+		err = validateFindings(ctx, findings, call.Domain, state.gaps[call.GapID].Capability, state.request.Evidence)
+	}
+	returnedBytes, err := validateReturnedToolFindings(state, findings, err)
+	if err == nil {
+		clearUnverifiedLocations(findings)
+		err = state.validateFactConsistency(findings)
+	}
+	if err == nil {
+		if sinkErr := state.eventCall("tool_observed", call.ToolID, call.Domain, "validated_tool_observation", time.Since(started).Milliseconds(), callID, call.GapID); sinkErr != nil {
+			return nil, 0, true, sinkErr
+		}
+		state.recordToolObservations(call, callID, findings)
+		if !verifiedComparator(r.tools[call.ToolID]) {
+			markClaimsUnverified(findings)
+		}
+		err = state.recordFindings(call.GapID, findings)
+	}
+	return findings, returnedBytes, false, err
+}
+
+func validateReturnedToolFindings(state *execution, findings []Finding, err error) (int, error) {
+	if err != nil {
+		return 0, err
+	}
+	returnedBytes := returnedEvidenceBytes(findings)
+	if returnedBytes > state.evidenceBytesLeft {
+		state.termination = "evidence_budget_exhausted"
+		return 0, ErrEvidence
+	}
+	return returnedBytes, nil
+}
+
+func (r *Runtime) finishToolFailure(ctx context.Context, state *execution, call Call, callID string, started time.Time, err error) (bool, error) {
+	pair := call.GapID + "\x00" + call.ToolID
+	state.callEvidenceCounts[pair] = len(state.gapEvidenceIDs[call.GapID])
+	state.previousCallByPair[pair] = PriorCall{ToolID: call.ToolID, GapID: call.GapID}
+	status, code := toolFailureStatus(err, state.termination)
+	state.gapStates[call.GapID] = "unknown:" + code
+	state.domain(call.Domain).Status = "partial"
+	state.updatePlannedCall(callID, status, code, nil)
+	if sinkErr := state.eventCall("tool_failed", call.ToolID, call.Domain, code, time.Since(started).Milliseconds(), callID, call.GapID); sinkErr != nil {
+		return false, sinkErr
+	}
+	if errors.Is(err, ErrDenied) {
+		return false, nil
+	}
+	if ctx.Err() != nil {
+		return false, nil
+	}
+	return state.termination == "evidence_budget_exhausted", nil
+}
+
+func toolFailureStatus(err error, termination string) (string, string) {
+	status, code := "failed", "tool_error_or_unverified_result"
+	if errors.Is(err, ErrDenied) {
+		return "denied", "authorization_revoked_after_tool"
+	}
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return "cancelled", "cancelled_or_deadline"
+	}
+	if termination == "evidence_budget_exhausted" {
+		code = "evidence_budget_exhausted"
+	}
+	return status, code
+}
+
+func (r *Runtime) finishToolSuccess(state *execution, call Call, callID string, started time.Time, findings []Finding, returnedBytes int) error {
+	state.evidenceBytesLeft -= returnedBytes
+	newState, resolved := gapOutcome(findings)
+	if state.gapStates[call.GapID] != newState {
+		state.gapStates[call.GapID] = newState
+		state.roundProgress = true
+	}
+	if !state.resolved[call.GapID] && resolved {
+		state.roundResolvedIDs = append(state.roundResolvedIDs, call.GapID)
+		state.roundProgress = true
+	}
+	state.resolved[call.GapID] = resolved
+	evidenceIDs := state.findingIDs(findings)
+	pair := call.GapID + "\x00" + call.ToolID
+	state.callEvidenceCounts[pair] = len(state.gapEvidenceIDs[call.GapID])
+	state.previousCallByPair[pair] = PriorCall{ToolID: call.ToolID, GapID: call.GapID}
+	domain := state.domain(call.Domain)
+	domain.Status = completedDomainStatus(newState)
+	domain.Findings = append(domain.Findings, findings...)
+	state.updatePlannedCall(callID, "completed", "", evidenceIDs)
+	if err := state.eventCall("tool_completed", call.ToolID, call.Domain, "validated_tool_result", time.Since(started).Milliseconds(), callID, call.GapID); err != nil {
+		state.resolved[call.GapID] = false
+		state.gapStates[call.GapID] = "unknown:event_sink_failed"
+		state.domain(call.Domain).Status = "partial"
+		state.updatePlannedCall(callID, "failed", "event_sink_failed", nil)
+		return err
+	}
+	return nil
+}
+
+func completedDomainStatus(gapState string) string {
+	switch gapState {
+	case "resolved":
+		return "completed"
+	default:
+		return "partial"
+	}
 }
 
 func (state *execution) remainingGaps() []Gap {
@@ -1003,38 +1378,54 @@ func (state *execution) updatePlannedCall(callID, status, reasonCode string, evi
 }
 
 func gapOutcome(findings []Finding) (string, bool) {
-	insufficientReason := ""
-	unsupportedReason := ""
-	unknownReason := ""
-	decision := false
-	notApplicable := false
-	for _, finding := range findings {
-		switch finding.Relation {
-		case "compatible", "conflict":
-			decision = true
-		case "not_applicable":
-			notApplicable = true
-		case "insufficient":
-			insufficientReason = finding.ReasonCode
-		case "unsupported":
-			unsupportedReason = finding.ReasonCode
-		case "unknown":
-			unknownReason = finding.ReasonCode
-		}
+	state := collectGapOutcome(findings)
+	if outcome, found := prioritizedGapReason(state.insufficient, state.unsupported, state.unknown); found {
+		return outcome, false
 	}
-	if insufficientReason != "" {
-		return "insufficient:" + insufficientReason, false
-	}
-	if unsupportedReason != "" {
-		return "unsupported:" + unsupportedReason, false
-	}
-	if unknownReason != "" {
-		return "unknown:" + unknownReason, false
-	}
-	if decision || notApplicable {
+	if state.decision || state.notApplicable {
 		return "resolved", true
 	}
 	return "insufficient:no_verified_result", false
+}
+
+type gapOutcomeState struct {
+	insufficient  string
+	unsupported   string
+	unknown       string
+	decision      bool
+	notApplicable bool
+}
+
+func collectGapOutcome(findings []Finding) gapOutcomeState {
+	var state gapOutcomeState
+	for _, finding := range findings {
+		switch finding.Relation {
+		case "compatible", "conflict":
+			state.decision = true
+		case "not_applicable":
+			state.notApplicable = true
+		case "insufficient":
+			state.insufficient = finding.ReasonCode
+		case "unsupported":
+			state.unsupported = finding.ReasonCode
+		case "unknown":
+			state.unknown = finding.ReasonCode
+		}
+	}
+	return state
+}
+
+func prioritizedGapReason(insufficient, unsupported, unknown string) (string, bool) {
+	if insufficient != "" {
+		return "insufficient:" + insufficient, true
+	}
+	if unsupported != "" {
+		return "unsupported:" + unsupported, true
+	}
+	if unknown != "" {
+		return "unknown:" + unknown, true
+	}
+	return "", false
 }
 
 func cloneFindings(findings []Finding) []Finding {
@@ -1072,23 +1463,22 @@ func cloneCitation(citation Citation) Citation {
 }
 
 func buildAgentReview(state *execution, config Config) *AgentReview {
-	configuration := config.PlannerConfiguration
-	mode := configuration.Mode
-	if mode == "" {
-		mode = ModeDeterministic
-	}
-	var fallbackCode, modelID *string
-	if state.report.FallbackUsed {
-		fallbackCode = new("planner_unavailable_used_deterministic_fallback")
-	}
-	if configuration.ModelConfigurationID != "" {
-		modelID = new(configuration.ModelConfigurationID)
-	}
-	var rejectionCode *string
-	if state.termination == "guard_rejected" {
-		rejectionCode = new("invalid_or_unauthorized_plan")
-	}
-	projection := &AgentReview{
+	projection := newReviewProjection(state, config.PlannerConfiguration)
+	appendProjectedCalls(projection, state)
+	projectReviewScope(projection, state)
+	projectReviewDomains(projection, state)
+	applyKnowledgePolicyProjection(projection)
+	projectVerifiedFacts(projection, state)
+	projectReviewEvents(projection, state)
+	return projection
+}
+
+func newReviewProjection(state *execution, configuration PlannerConfiguration) *AgentReview {
+	mode := plannerProjectionMode(configuration.Mode)
+	fallbackCode := plannerFallbackCode(state.report.FallbackUsed)
+	modelID := optionalString(configuration.ModelConfigurationID)
+	rejectionCode := planRejectionCode(state.termination)
+	return &AgentReview{
 		SchemaVersion: AgentReviewSchemaVersion, AttemptID: state.request.AttemptID,
 		Status: state.report.Status, Mode: mode, SourceSnapshot: cloneSourceSnapshot(state.request.SourceSnapshot),
 		RulePack: cloneRulePackIdentity(state.request.RulePack), KnowledgeSelection: state.request.KnowledgeSelection,
@@ -1098,10 +1488,35 @@ func buildAgentReview(state *execution, config Config) *AgentReview {
 			ToolCatalogVersion: configuration.ToolCatalogVersion, FallbackUsed: state.report.FallbackUsed,
 			FallbackCode: fallbackCode, Limits: configuration.Limits},
 		Scope: []DomainScope{}, Domains: []DomainCoverage{}, Gaps: []GapReport{},
-		Plan:     AgentPlan{Status: planProjectionStatus(state.report.Status, state.report.Rounds, state.report.FallbackUsed, rejectionCode != nil), RejectionCode: rejectionCode, Calls: []PlannedCall{}, Rounds: cloneRounds(state.report.Rounds)},
+		Plan: AgentPlan{Status: planProjectionStatus(state.report.Status, state.report.Rounds, state.report.FallbackUsed, rejectionCode != nil),
+			RejectionCode: rejectionCode, Calls: []PlannedCall{}, Rounds: cloneRounds(state.report.Rounds)},
 		Evidence: []VerifiedEvidence{}, Usage: state.projectedUsage(),
 		UnresolvedGapIDs: slices.Clone(state.report.UnresolvedGapIDs), Events: []AgentReviewEvent{},
 	}
+}
+
+func plannerProjectionMode(mode string) string {
+	if mode == "" {
+		return ModeDeterministic
+	}
+	return mode
+}
+
+func plannerFallbackCode(fallbackUsed bool) *string {
+	if fallbackUsed {
+		return new("planner_unavailable_used_deterministic_fallback")
+	}
+	return nil
+}
+
+func planRejectionCode(termination string) *string {
+	if termination == "guard_rejected" {
+		return new("invalid_or_unauthorized_plan")
+	}
+	return nil
+}
+
+func appendProjectedCalls(projection *AgentReview, state *execution) {
 	if state.report.Plan.Calls == nil {
 		projection.Plan.Calls = []PlannedCall{}
 	}
@@ -1110,6 +1525,9 @@ func buildAgentReview(state *execution, config Config) *AgentReview {
 			projection.Plan.Calls = append(projection.Plan.Calls, clonePlannedCall(call))
 		}
 	}
+}
+
+func projectReviewScope(projection *AgentReview, state *execution) {
 	sourceIDs := make([]string, 0, len(state.request.Evidence))
 	for _, evidence := range state.request.Evidence {
 		sourceIDs = append(sourceIDs, evidence.ID)
@@ -1117,7 +1535,7 @@ func buildAgentReview(state *execution, config Config) *AgentReview {
 	slices.Sort(sourceIDs)
 	sourceIDs = slices.Compact(sourceIDs)
 	for _, domain := range state.request.Scope {
-		capabilityIDs := []string{}
+		capabilityIDs := make([]string, 0)
 		for _, gap := range state.request.Gaps {
 			if gap.Domain == domain {
 				capabilityIDs = append(capabilityIDs, gap.Capability)
@@ -1132,123 +1550,23 @@ func buildAgentReview(state *execution, config Config) *AgentReview {
 		capabilityIDs = slices.Compact(capabilityIDs)
 		projection.Scope = append(projection.Scope, DomainScope{Domain: domain, CapabilityIDs: capabilityIDs, SourceIDs: slices.Clone(sourceIDs)})
 	}
-	for _, domain := range state.report.Domains {
-		coverage := DomainCoverage{Domain: domain.Domain, Status: domain.Status, Capabilities: []CapabilityResult{}}
-		if !slices.Contains(state.request.Scope, domain.Domain) {
-			projection.Domains = append(projection.Domains, coverage)
-			continue
-		}
-		for _, gap := range state.request.Gaps {
-			if gap.Domain != domain.Domain {
-				continue
-			}
-			gapStatus, reasonCode := projectedGapState(state.gapStates[gap.ID])
-			result := CapabilityResult{CapabilityID: gap.Capability, Mandatory: gap.Mandatory, Status: gapStatus,
-				ReasonCode: reasonCode, EvidenceIDs: []string{}, CanonicalEvaluationIDs: []string{}}
-			if gapStatus == "resolved" {
-				result.Status = "completed"
-			}
-			for _, finding := range state.findingsByGap[gap.ID] {
-				if result.Relation == nil && (finding.Relation == "compatible" || finding.Relation == "conflict") {
-					result.Relation = new(finding.Relation)
-				}
-				if finding.ReasonCode != "" {
-					result.ReasonCode = finding.ReasonCode
-				}
-				result.EvidenceIDs = append(result.EvidenceIDs, state.findingIDs([]Finding{finding})...)
-			}
-			for _, evaluation := range state.request.CanonicalEvaluations {
-				if evaluation.Domain != gap.Domain || evaluation.CapabilityID != gap.Capability {
-					continue
-				}
-				result.CanonicalEvaluationIDs = append(result.CanonicalEvaluationIDs, evaluation.ID)
-				result.Mandatory = result.Mandatory || evaluation.Mandatory
-				result.Status, result.ReasonCode = state.canonicalEvaluationStatus(evaluation)
-				if result.Status == "completed" || result.Status == evaluation.Relation {
-					result.Relation = new(evaluation.Relation)
-				} else {
-					result.Relation = nil
-				}
-				result.EvidenceIDs = append(result.EvidenceIDs, evaluation.EvidenceIDs...)
-			}
-			if len(result.CanonicalEvaluationIDs) > 1 {
-				result.Status, result.ReasonCode, result.Relation = "unknown", "multiple_canonical_results_require_review", nil
-			}
-			slices.Sort(result.EvidenceIDs)
-			result.EvidenceIDs = slices.Compact(result.EvidenceIDs)
-			slices.Sort(result.CanonicalEvaluationIDs)
-			result.CanonicalEvaluationIDs = slices.Compact(result.CanonicalEvaluationIDs)
-			coverage.Capabilities = append(coverage.Capabilities, result)
-			if result.Status == "completed" || result.Status == "not_applicable" {
-				gapStatus = "resolved"
-			} else {
-				gapStatus = result.Status
-			}
-			projection.Gaps = append(projection.Gaps, GapReport{GapID: gap.ID, Domain: gap.Domain,
-				Capability: gap.Capability, Mandatory: result.Mandatory, Status: gapStatus, ReasonCode: result.ReasonCode,
-				EvidenceIDs: slices.Clone(result.EvidenceIDs)})
-		}
-		for _, evaluation := range state.request.CanonicalEvaluations {
-			if evaluation.Domain != domain.Domain {
-				continue
-			}
-			matched := false
-			for _, gap := range state.request.Gaps {
-				if gap.Domain == domain.Domain && gap.Capability == evaluation.CapabilityID {
-					matched = true
-					break
-				}
-			}
-			if matched {
-				continue
-			}
-			evidenceIDs := append([]string{}, evaluation.EvidenceIDs...)
-			slices.Sort(evidenceIDs)
-			evidenceIDs = slices.Compact(evidenceIDs)
-			status, reason := state.canonicalEvaluationStatus(evaluation)
-			var relation *string
-			if status == "completed" || status == evaluation.Relation {
-				relation = new(evaluation.Relation)
-			}
-			coverage.Capabilities = append(coverage.Capabilities, CapabilityResult{
-				CapabilityID: evaluation.CapabilityID, Mandatory: evaluation.Mandatory, Status: status,
-				Relation: relation, ReasonCode: reason,
-				EvidenceIDs: evidenceIDs, CanonicalEvaluationIDs: []string{evaluation.ID},
-			})
-		}
-		if domain.Domain == Compliance {
-			for _, check := range knowledgePolicyChecks(state.request.KnowledgeSelection) {
-				coverage.Capabilities = append(coverage.Capabilities, CapabilityResult{CapabilityID: check.Capability, Mandatory: true,
-					Status: check.Status, ReasonCode: check.Reason, EvidenceIDs: []string{}, CanonicalEvaluationIDs: []string{}})
-				projection.Gaps = append(projection.Gaps, GapReport{GapID: check.GapID, Domain: Compliance, Capability: check.Capability,
-					Mandatory: true, Status: check.Status, ReasonCode: check.Reason, EvidenceIDs: []string{}})
-				projection.UnresolvedGapIDs = append(projection.UnresolvedGapIDs, check.GapID)
-			}
-		}
-		if len(coverage.Capabilities) > 0 {
-			coverage.Status = "completed"
-			for _, capability := range coverage.Capabilities {
-				if capability.Status != "completed" && capability.Status != "not_applicable" {
-					coverage.Status = "partial"
-					break
-				}
-			}
-			if coverage.Status == "partial" && projection.Status == "completed" {
-				projection.Status = "partial"
-			}
-		}
-		projection.Domains = append(projection.Domains, coverage)
+}
+
+func applyKnowledgePolicyProjection(projection *AgentReview) {
+	if projection.KnowledgeSelection == nil || projection.KnowledgeSelection.PolicyStatus == "available" {
+		return
 	}
-	if projection.KnowledgeSelection != nil && projection.KnowledgeSelection.PolicyStatus != "available" {
-		if projection.Status == "completed" {
-			projection.Status = "partial"
-		}
-		for i := range projection.Domains {
-			if projection.Domains[i].Domain == Compliance && projection.Domains[i].Status == "completed" {
-				projection.Domains[i].Status = "partial"
-			}
+	if projection.Status == "completed" {
+		projection.Status = "partial"
+	}
+	for i := range projection.Domains {
+		if projection.Domains[i].Domain == Compliance && projection.Domains[i].Status == "completed" {
+			projection.Domains[i].Status = "partial"
 		}
 	}
+}
+
+func projectVerifiedFacts(projection *AgentReview, state *execution) {
 	factIDs := make([]string, 0, len(state.factsByID))
 	for id := range state.factsByID {
 		factIDs = append(factIDs, id)
@@ -1262,22 +1580,170 @@ func buildAgentReview(state *execution, config Config) *AgentReview {
 			Verification: "typed_semantic_and_frozen_quote_verified",
 			Anchor: EvidenceAnchor{ID: fact.ID, DocumentID: citation.DocumentID, ParsedDocumentID: citation.ParsedDocumentID,
 				NormalizedDigest: citation.NormalizedDigest, Quote: citation.Quote, Status: "located", Start: citation.Start,
-				End: citation.End, Page: cloneIntPointer(citation.Page), ElementID: optionalString(citation.ElementID)},
-		})
+				End: citation.End, Page: cloneIntPointer(citation.Page), ElementID: optionalString(citation.ElementID)}})
 	}
+}
+
+func projectReviewEvents(projection *AgentReview, state *execution) {
 	for _, event := range state.report.Events {
-		var callID *string
-		if event.CallID != "" {
-			callID = new(event.CallID)
-		}
-		var eventDomain *Domain
-		if event.Domain != "" {
-			eventDomain = new(event.Domain)
-		}
-		projection.Events = append(projection.Events, AgentReviewEvent{EventID: event.EventID, Sequence: event.Sequence, Round: event.Round, Kind: event.Kind,
-			CallID: callID, Domain: eventDomain, Code: event.Code, OccurredAt: new(event.OccurredAt), DurationMS: event.DurationMS})
+		projection.Events = append(projection.Events, projectedReviewEvent(event))
 	}
-	return projection
+}
+
+func projectedReviewEvent(event Event) AgentReviewEvent {
+	var callID *string
+	if event.CallID != "" {
+		callID = new(event.CallID)
+	}
+	var eventDomain *Domain
+	if event.Domain != "" {
+		eventDomain = new(event.Domain)
+	}
+	return AgentReviewEvent{EventID: event.EventID, Sequence: event.Sequence, Round: event.Round, Kind: event.Kind,
+		CallID: callID, Domain: eventDomain, Code: event.Code, OccurredAt: new(event.OccurredAt), DurationMS: event.DurationMS}
+}
+
+func projectReviewDomains(projection *AgentReview, state *execution) {
+	for _, domain := range state.report.Domains {
+		coverage := projectReviewDomain(domain, projection, state)
+		projection.Domains = append(projection.Domains, coverage)
+		if coverage.Status == "partial" && projection.Status == "completed" {
+			projection.Status = "partial"
+		}
+	}
+}
+
+func projectReviewDomain(domain DomainResult, projection *AgentReview, state *execution) DomainCoverage {
+	coverage := DomainCoverage{Domain: domain.Domain, Status: domain.Status, Capabilities: []CapabilityResult{}}
+	if !slices.Contains(state.request.Scope, domain.Domain) {
+		return coverage
+	}
+	appendProjectedGaps(&coverage, projection, domain.Domain, state)
+	appendProjectedCanonicalEvaluations(&coverage, domain.Domain, state)
+	appendProjectedKnowledgeChecks(&coverage, projection, domain.Domain, state)
+	finalizeDomainCoverage(&coverage)
+	return coverage
+}
+
+func appendProjectedGaps(coverage *DomainCoverage, projection *AgentReview, domain Domain, state *execution) {
+	for _, gap := range state.request.Gaps {
+		if gap.Domain != domain {
+			continue
+		}
+		result := projectedGapCapability(gap, state)
+		coverage.Capabilities = append(coverage.Capabilities, result)
+		projection.Gaps = append(projection.Gaps, GapReport{GapID: gap.ID, Domain: gap.Domain, Capability: gap.Capability,
+			Mandatory: result.Mandatory, Status: capabilityGapStatus(result.Status), ReasonCode: result.ReasonCode,
+			EvidenceIDs: slices.Clone(result.EvidenceIDs)})
+	}
+}
+
+func projectedGapCapability(gap Gap, state *execution) CapabilityResult {
+	status, reason := projectedGapState(state.gapStates[gap.ID])
+	result := CapabilityResult{CapabilityID: gap.Capability, Mandatory: gap.Mandatory, Status: status,
+		ReasonCode: reason, EvidenceIDs: []string{}, CanonicalEvaluationIDs: []string{}}
+	if status == "resolved" {
+		result.Status = "completed"
+	}
+	for _, finding := range state.findingsByGap[gap.ID] {
+		if result.Relation == nil && (finding.Relation == "compatible" || finding.Relation == "conflict") {
+			result.Relation = new(finding.Relation)
+		}
+		if finding.ReasonCode != "" {
+			result.ReasonCode = finding.ReasonCode
+		}
+		result.EvidenceIDs = append(result.EvidenceIDs, state.findingIDs([]Finding{finding})...)
+	}
+	appendProjectedGapEvaluations(&result, gap, state)
+	return result
+}
+
+func appendProjectedGapEvaluations(result *CapabilityResult, gap Gap, state *execution) {
+	for _, evaluation := range state.request.CanonicalEvaluations {
+		if evaluation.Domain != gap.Domain || evaluation.CapabilityID != gap.Capability {
+			continue
+		}
+		result.CanonicalEvaluationIDs = append(result.CanonicalEvaluationIDs, evaluation.ID)
+		result.Mandatory = result.Mandatory || evaluation.Mandatory
+		result.Status, result.ReasonCode = state.canonicalEvaluationStatus(evaluation)
+		if result.Status == "completed" || result.Status == evaluation.Relation {
+			result.Relation = new(evaluation.Relation)
+		} else {
+			result.Relation = nil
+		}
+		result.EvidenceIDs = append(result.EvidenceIDs, evaluation.EvidenceIDs...)
+	}
+	if len(result.CanonicalEvaluationIDs) > 1 {
+		result.Status, result.ReasonCode, result.Relation = "unknown", "multiple_canonical_results_require_review", nil
+	}
+	result.EvidenceIDs = sortedUnique(result.EvidenceIDs)
+	result.CanonicalEvaluationIDs = sortedUnique(result.CanonicalEvaluationIDs)
+}
+
+func sortedUnique(values []string) []string {
+	slices.Sort(values)
+	return slices.Compact(values)
+}
+
+func capabilityGapStatus(status string) string {
+	if status == "completed" || status == "not_applicable" {
+		return "resolved"
+	}
+	return status
+}
+
+func appendProjectedCanonicalEvaluations(coverage *DomainCoverage, domain Domain, state *execution) {
+	for _, evaluation := range state.request.CanonicalEvaluations {
+		if evaluation.Domain != domain || hasProjectionGap(state.request.Gaps, domain, evaluation.CapabilityID) {
+			continue
+		}
+		coverage.Capabilities = append(coverage.Capabilities, projectedCanonicalCapability(evaluation, state))
+	}
+}
+
+func hasProjectionGap(gaps []Gap, domain Domain, capability string) bool {
+	for _, gap := range gaps {
+		if gap.Domain == domain && gap.Capability == capability {
+			return true
+		}
+	}
+	return false
+}
+
+func projectedCanonicalCapability(evaluation CanonicalEvaluation, state *execution) CapabilityResult {
+	status, reason := state.canonicalEvaluationStatus(evaluation)
+	var relation *string
+	if status == "completed" || status == evaluation.Relation {
+		relation = new(evaluation.Relation)
+	}
+	return CapabilityResult{CapabilityID: evaluation.CapabilityID, Mandatory: evaluation.Mandatory, Status: status, Relation: relation,
+		ReasonCode: reason, EvidenceIDs: sortedUnique(append([]string{}, evaluation.EvidenceIDs...)), CanonicalEvaluationIDs: []string{evaluation.ID}}
+}
+
+func appendProjectedKnowledgeChecks(coverage *DomainCoverage, projection *AgentReview, domain Domain, state *execution) {
+	if domain != Compliance {
+		return
+	}
+	for _, check := range knowledgePolicyChecks(state.request.KnowledgeSelection) {
+		coverage.Capabilities = append(coverage.Capabilities, CapabilityResult{CapabilityID: check.Capability, Mandatory: true,
+			Status: check.Status, ReasonCode: check.Reason, EvidenceIDs: []string{}, CanonicalEvaluationIDs: []string{}})
+		projection.Gaps = append(projection.Gaps, GapReport{GapID: check.GapID, Domain: Compliance, Capability: check.Capability,
+			Mandatory: true, Status: check.Status, ReasonCode: check.Reason, EvidenceIDs: []string{}})
+		projection.UnresolvedGapIDs = append(projection.UnresolvedGapIDs, check.GapID)
+	}
+}
+
+func finalizeDomainCoverage(coverage *DomainCoverage) {
+	if len(coverage.Capabilities) == 0 {
+		return
+	}
+	coverage.Status = "completed"
+	for _, capability := range coverage.Capabilities {
+		if capability.Status != "completed" && capability.Status != "not_applicable" {
+			coverage.Status = "partial"
+			return
+		}
+	}
 }
 
 func projectedGapState(value string) (string, string) {
@@ -1387,20 +1853,18 @@ func cloneUsage(usage PlannerUsage) PlannerUsage {
 }
 
 func cloneInt64Pointer(value *int64) *int64 {
-	if value == nil {
-		return nil
-	}
-	return new(*value)
+	return clonePointer(value)
 }
 
 func cloneIntPointer(value *int) *int {
-	if value == nil {
-		return nil
-	}
-	return new(*value)
+	return clonePointer(value)
 }
 
 func cloneStringPointer(value *string) *string {
+	return clonePointer(value)
+}
+
+func clonePointer[T any](value *T) *T {
 	if value == nil {
 		return nil
 	}
@@ -1420,67 +1884,17 @@ func validateFindings(ctx context.Context, findings []Finding, domain Domain, ca
 	if len(findings) == 0 || len(findings) > 100 {
 		return ErrEvidence
 	}
-	byID := map[string]Evidence{}
-	runesByID := map[string][]rune{}
-	for _, item := range evidence {
-		if err := ctx.Err(); err != nil {
-			return err
-		}
-		byID[item.ID] = item
-		runesByID[item.ID] = []rune(item.Text)
+	byID, runesByID, err := indexFindingEvidence(ctx, evidence)
+	if err != nil {
+		return err
 	}
-	citations, factCount, quoteBytes := 0, 0, 0
+	totals := findingValidationTotals{}
 	for _, finding := range findings {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		citations += len(finding.Citations)
-		if finding.Domain != domain || finding.Capability != capability || finding.RuleID == "" ||
-			len(finding.RuleID) > 128 || finding.Summary == "" || len(finding.Summary) > 8192 || !utf8.ValidString(finding.Summary) ||
-			len(finding.ReasonCode) > 128 || !utf8.ValidString(finding.ReasonCode) ||
-			len(finding.Citations) > maxCitationsPerFinding || citations > maxCitationsTotal {
-			return ErrEvidence
-		}
-		switch finding.Relation {
-		case "compatible", "conflict":
-			if len(finding.Citations) == 0 {
-				return ErrEvidence
-			}
-		case "insufficient", "unsupported", "unknown":
-			if finding.ReasonCode == "" || len(finding.ReasonCode) > 128 {
-				return ErrEvidence
-			}
-		case "not_applicable":
-		default:
-			return ErrEvidence
-		}
-		for _, citation := range finding.Citations {
-			if err := ctx.Err(); err != nil {
-				return err
-			}
-			quoteBytes += len(citation.Quote)
-			if quoteBytes > maxQuoteBytes {
-				return ErrEvidence
-			}
-			item, exists := byID[citation.EvidenceID]
-			text := runesByID[citation.EvidenceID]
-			if !exists || citation.Version != item.Version || citation.Quote == "" ||
-				citation.Start < 0 || citation.End <= citation.Start || citation.End > len(text) ||
-				string(text[citation.Start:citation.End]) != citation.Quote {
-				return ErrEvidence
-			}
-		}
-		factCount += len(finding.Facts)
-		if factCount > 128 {
-			return ErrEvidence
-		}
-		for _, fact := range finding.Facts {
-			if err := ctx.Err(); err != nil {
-				return err
-			}
-			if err := validateSemanticFact(fact, finding, byID); err != nil {
-				return err
-			}
+		if err := validateOneFinding(ctx, finding, domain, capability, byID, runesByID, &totals); err != nil {
+			return err
 		}
 	}
 	if err := ctx.Err(); err != nil {
@@ -1489,58 +1903,179 @@ func validateFindings(ctx context.Context, findings []Finding, domain Domain, ca
 	return nil
 }
 
+type findingValidationTotals struct {
+	citations  int
+	facts      int
+	quoteBytes int
+}
+
+func indexFindingEvidence(ctx context.Context, evidence []Evidence) (map[string]Evidence, map[string][]rune, error) {
+	byID, runesByID := map[string]Evidence{}, map[string][]rune{}
+	for _, item := range evidence {
+		if err := ctx.Err(); err != nil {
+			return nil, nil, err
+		}
+		byID[item.ID] = item
+		runesByID[item.ID] = []rune(item.Text)
+	}
+	return byID, runesByID, nil
+}
+
+func validateOneFinding(ctx context.Context, finding Finding, domain Domain, capability string, byID map[string]Evidence, runesByID map[string][]rune, totals *findingValidationTotals) error {
+	totals.citations += len(finding.Citations)
+	if !validFindingEnvelope(finding, domain, capability, totals.citations) ||
+		!validFindingRelation(finding.Relation, finding.ReasonCode, len(finding.Citations)) {
+		return ErrEvidence
+	}
+	if err := validateFindingCitations(ctx, finding.Citations, byID, runesByID, totals); err != nil {
+		return err
+	}
+	totals.facts += len(finding.Facts)
+	if totals.facts > 128 {
+		return ErrEvidence
+	}
+	return validateFindingFacts(ctx, finding, byID)
+}
+
+func validFindingEnvelope(finding Finding, domain Domain, capability string, citationCount int) bool {
+	return validFindingIdentity(finding, domain, capability) && validFindingText(finding) && validFindingCitationTotals(finding, citationCount)
+}
+
+func validFindingIdentity(finding Finding, domain Domain, capability string) bool {
+	return finding.Domain == domain && finding.Capability == capability && finding.RuleID != "" && len(finding.RuleID) <= 128
+}
+
+func validFindingText(finding Finding) bool {
+	return finding.Summary != "" && len(finding.Summary) <= 8192 && utf8.ValidString(finding.Summary) &&
+		len(finding.ReasonCode) <= 128 && utf8.ValidString(finding.ReasonCode)
+}
+
+func validFindingCitationTotals(finding Finding, citationCount int) bool {
+	return len(finding.Citations) <= maxCitationsPerFinding && citationCount <= maxCitationsTotal
+}
+
+func validFindingRelation(relation, reason string, citations int) bool {
+	switch relation {
+	case "compatible", "conflict":
+		return citations > 0
+	case "insufficient", "unsupported", "unknown":
+		return reason != "" && len(reason) <= 128
+	case "not_applicable":
+		return true
+	default:
+		return false
+	}
+}
+
+func validateFindingCitations(ctx context.Context, citations []Citation, byID map[string]Evidence, runesByID map[string][]rune, totals *findingValidationTotals) error {
+	for _, citation := range citations {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		totals.quoteBytes += len(citation.Quote)
+		if totals.quoteBytes > maxQuoteBytes || !validFindingCitation(citation, byID, runesByID) {
+			return ErrEvidence
+		}
+	}
+	return nil
+}
+
+func validFindingCitation(citation Citation, byID map[string]Evidence, runesByID map[string][]rune) bool {
+	item, exists := byID[citation.EvidenceID]
+	text := runesByID[citation.EvidenceID]
+	return exists && citation.Version == item.Version && citation.Quote != "" &&
+		citation.Start >= 0 && citation.End > citation.Start && citation.End <= len(text) &&
+		string(text[citation.Start:citation.End]) == citation.Quote
+}
+
+func validateFindingFacts(ctx context.Context, finding Finding, byID map[string]Evidence) error {
+	for _, fact := range finding.Facts {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if err := validateSemanticFact(fact, finding, byID); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func validateSemanticFact(fact SemanticFact, finding Finding, evidence map[string]Evidence) error {
-	if !capabilityID.MatchString(fact.ID) || !validSemanticFactType(finding.Domain, fact.Type) ||
-		strings.TrimSpace(fact.Value) == "" || len(fact.Value) > 4096 || !utf8.ValidString(fact.Value) ||
-		len(fact.Unit) > 64 || len(fact.Currency) > 16 {
+	if !validSemanticFactIdentity(fact, finding.Domain) {
 		return ErrEvidence
 	}
 	citation := fact.Citation
 	item, exists := evidence[citation.EvidenceID]
-	if !exists || citation.Version != item.Version || citation.Status != "located" ||
-		citation.DocumentID == "" || citation.DocumentID != item.DocumentID ||
-		citation.ParsedDocumentID == "" || citation.ParsedDocumentID != item.ParsedDocumentID ||
-		citation.NormalizedDigest == "" || citation.NormalizedDigest != item.NormalizedDigest ||
-		!normalizedDigest.MatchString(citation.NormalizedDigest) {
+	if !validFactCitation(citation, item, exists) {
 		return ErrEvidence
 	}
-	if sourceSemanticType(fact.Type) {
-		value, unit, currency, ok := normalizeSemanticQuote(fact.Type, citation.Quote)
-		if !ok || value != fact.Value || unit != fact.Unit || currency != fact.Currency {
-			return ErrEvidence
-		}
-	} else if fact.Type != "amount" && fact.Type != "liability_cap" && !strings.Contains(citation.Quote, fact.Value) {
+	if !factValueMatchesQuote(fact, citation.Quote) || !findingAnchorsFact(finding, citation) {
 		return ErrEvidence
 	}
-	anchored := false
-	for _, candidate := range finding.Citations {
-		if candidate.EvidenceID == citation.EvidenceID && candidate.Version == citation.Version &&
-			candidate.Quote == citation.Quote && candidate.Start == citation.Start && candidate.End == citation.End &&
-			candidate.DocumentID == citation.DocumentID && candidate.ParsedDocumentID == citation.ParsedDocumentID &&
-			candidate.NormalizedDigest == citation.NormalizedDigest && candidate.Status == citation.Status {
-			anchored = true
-			break
-		}
-	}
-	if !anchored {
-		return ErrEvidence
-	}
-	if isAmountFactType(fact.Type) {
-		amount, ok := new(big.Rat).SetString(fact.Value)
-		if !ok || amount.Sign() < 0 || fact.Unit == "" || !validCurrency(fact.Currency) {
-			return ErrEvidence
-		}
-	} else if isSourceDateFactType(fact.Type) {
-		if (fact.Unit != "date" && fact.Unit != "instant") || fact.Currency != "" {
-			return ErrEvidence
-		}
-	} else if fact.Unit != "" || fact.Currency != "" {
-		return ErrEvidence
-	}
-	if (fact.Type == "subject_id" || strings.HasPrefix(fact.Type, "subject_id_")) && strings.ContainsAny(fact.Value, " \t\r\n") {
+	if !validSemanticFactMeasure(fact) || !validSemanticFactValue(fact) {
 		return ErrEvidence
 	}
 	return nil
+}
+
+func validSemanticFactIdentity(fact SemanticFact, domain Domain) bool {
+	return capabilityID.MatchString(fact.ID) && validSemanticFactType(domain, fact.Type) &&
+		strings.TrimSpace(fact.Value) != "" && len(fact.Value) <= 4096 && utf8.ValidString(fact.Value) &&
+		len(fact.Unit) <= 64 && len(fact.Currency) <= 16
+}
+
+func validFactCitation(citation Citation, item Evidence, exists bool) bool {
+	return exists && validFactCitationSource(citation, item) && validFactCitationDigest(citation, item)
+}
+
+func validFactCitationSource(citation Citation, item Evidence) bool {
+	return citation.Version == item.Version && citation.DocumentID != "" && citation.DocumentID == item.DocumentID &&
+		citation.ParsedDocumentID != "" && citation.ParsedDocumentID == item.ParsedDocumentID
+}
+
+func validFactCitationDigest(citation Citation, item Evidence) bool {
+	return citation.Status == "located" &&
+		citation.NormalizedDigest != "" && citation.NormalizedDigest == item.NormalizedDigest &&
+		normalizedDigest.MatchString(citation.NormalizedDigest)
+}
+
+func factValueMatchesQuote(fact SemanticFact, quote string) bool {
+	if sourceSemanticType(fact.Type) {
+		value, unit, currency, ok := normalizeSemanticQuote(fact.Type, quote)
+		return ok && value == fact.Value && unit == fact.Unit && currency == fact.Currency
+	}
+	return fact.Type == "amount" || fact.Type == "liability_cap" || strings.Contains(quote, fact.Value)
+}
+
+func findingAnchorsFact(finding Finding, citation Citation) bool {
+	for _, candidate := range finding.Citations {
+		if sameFactCitation(candidate, citation) {
+			return true
+		}
+	}
+	return false
+}
+
+func sameFactCitation(left, right Citation) bool {
+	return left.EvidenceID == right.EvidenceID && left.Version == right.Version && left.Quote == right.Quote &&
+		left.Start == right.Start && left.End == right.End && left.DocumentID == right.DocumentID &&
+		left.ParsedDocumentID == right.ParsedDocumentID && left.NormalizedDigest == right.NormalizedDigest && left.Status == right.Status
+}
+
+func validSemanticFactMeasure(fact SemanticFact) bool {
+	if isAmountFactType(fact.Type) {
+		amount, ok := new(big.Rat).SetString(fact.Value)
+		return ok && amount.Sign() >= 0 && fact.Unit != "" && validCurrency(fact.Currency)
+	}
+	if isSourceDateFactType(fact.Type) {
+		return (fact.Unit == "date" || fact.Unit == "instant") && fact.Currency == ""
+	}
+	return fact.Unit == "" && fact.Currency == ""
+}
+
+func validSemanticFactValue(fact SemanticFact) bool {
+	return !(fact.Type == "subject_id" || strings.HasPrefix(fact.Type, "subject_id_")) ||
+		!strings.ContainsAny(fact.Value, " \t\r\n")
 }
 
 func validSemanticFactType(domain Domain, kind string) bool {
@@ -1598,36 +2133,45 @@ func validateAdvisoryAgainstConfiguration(selection *KnowledgeSelectionRecord, p
 	if selection == nil || selection.Advisory == nil {
 		return nil
 	}
-	advisory := selection.Advisory
-	configuration := planner.Advisory
-	if configuration == nil || !configuration.Supports(AdvisoryFeatureKnowledgeRerank) ||
-		advisory.ConfigurationID != planner.ConfigurationID || advisory.Mode != configuration.Mode ||
-		advisory.Provider != configuration.Provider || advisory.QuestionSetVersion != configuration.QuestionSetVersion ||
-		advisory.Egress != configuration.Egress || (advisory.ModelRequested != "" && advisory.ModelRequested != configuration.Model) {
+	if !validAdvisoryTraceIdentity(selection.Advisory, planner) {
 		return ErrInput
 	}
-	if advisory.Status == "completed" {
-		if advisory.ModelObserved != configuration.Model {
+	return validateCompletedAdvisoryTrace(selection.Advisory, planner.Advisory)
+}
+
+func validAdvisoryTraceIdentity(advisory *KnowledgeAdvisoryRecord, planner PlannerConfiguration) bool {
+	configuration := planner.Advisory
+	return configuration != nil && configuration.Supports(AdvisoryFeatureKnowledgeRerank) &&
+		advisory.ConfigurationID == planner.ConfigurationID && advisory.Mode == configuration.Mode &&
+		advisory.Provider == configuration.Provider && advisory.QuestionSetVersion == configuration.QuestionSetVersion &&
+		advisory.Egress == configuration.Egress && (advisory.ModelRequested == "" || advisory.ModelRequested == configuration.Model)
+}
+
+func validateCompletedAdvisoryTrace(advisory *KnowledgeAdvisoryRecord, configuration *AdvisoryConfiguration) error {
+	if advisory.Status != "completed" {
+		return nil
+	}
+	if advisory.ModelObserved != configuration.Model {
+		return ErrInput
+	}
+	for _, candidate := range advisory.Candidates {
+		if !validAdvisoryCandidateBand(candidate, configuration) {
 			return ErrInput
-		}
-		for _, candidate := range advisory.Candidates {
-			if candidate.Probability == nil {
-				if candidate.Band != "unknown" {
-					return ErrInput
-				}
-				continue
-			}
-			band, err := advisoryBandFor(*candidate.Probability, configuration.ThresholdHigh, configuration.ThresholdLow)
-			if err != nil || candidate.Band != band {
-				return ErrInput
-			}
 		}
 	}
 	return nil
 }
 
+func validAdvisoryCandidateBand(candidate KnowledgeAdvisoryCandidate, configuration *AdvisoryConfiguration) bool {
+	if candidate.Probability == nil {
+		return candidate.Band == "unknown"
+	}
+	band, err := advisoryBandFor(*candidate.Probability, configuration.ThresholdHigh, configuration.ThresholdLow)
+	return err == nil && candidate.Band == band
+}
+
 func advisoryBandFor(probability, high, low float64) (string, error) {
-	if math.IsNaN(probability) || math.IsInf(probability, 0) || probability < 0 || probability > 1 || low <= 0 || high >= 1 || low >= high {
+	if !validAdvisoryProbability(probability) || !validAdvisoryThresholds(high, low) {
 		return "", ErrInput
 	}
 	switch {
@@ -1638,4 +2182,12 @@ func advisoryBandFor(probability, high, low float64) (string, error) {
 	default:
 		return "uncertain", nil
 	}
+}
+
+func validAdvisoryProbability(value float64) bool {
+	return !math.IsNaN(value) && !math.IsInf(value, 0) && value >= 0 && value <= 1
+}
+
+func validAdvisoryThresholds(high, low float64) bool {
+	return low > 0 && high < 1 && low < high
 }

@@ -395,6 +395,25 @@ func TestInvalidRuntimeConfigurations(t *testing.T) {
 	}
 }
 
+func TestNewAppliesLimitsFrozenInPlannerConfiguration(t *testing.T) {
+	for _, name := range []string{"AGENT_PLANNER_MODE", "AGENT_PLANNER_MAX_ROUNDS", "AGENT_PLANNER_MAX_CALLS", "AGENT_PLANNER_TIMEOUT", "AGENT_PLANNER_MAX_EVIDENCE_BYTES"} {
+		t.Setenv(name, "")
+	}
+	configuration, err := ResolvePlannerConfiguration("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	runtime, err := New(context.Background(), Config{Planner: ScopePlanner{}, Tools: append(BaselineTools(), SourceFactTools()...), PlannerConfiguration: configuration})
+	if err != nil {
+		t.Fatalf("New rejected frozen planner limits: %v", err)
+	}
+	if runtime.config.MaxCalls != configuration.Limits.MaxCalls || runtime.config.MaxRounds != configuration.Limits.MaxRounds ||
+		runtime.config.Timeout != time.Duration(configuration.Limits.MaxDurationMS)*time.Millisecond ||
+		runtime.config.MaxEvidenceBytes != configuration.Limits.MaxEvidenceBytes {
+		t.Fatalf("runtime limits=%+v, frozen=%+v", runtime.config, configuration.Limits)
+	}
+}
+
 func TestPlannerConfigurationRejectsStaleImplementationIdentity(t *testing.T) {
 	for _, name := range []string{"AGENT_PLANNER_MODE", "AGENT_PLANNER_MAX_ROUNDS", "AGENT_PLANNER_MAX_CALLS", "AGENT_PLANNER_TIMEOUT", "AGENT_PLANNER_MAX_EVIDENCE_BYTES"} {
 		t.Setenv(name, "")

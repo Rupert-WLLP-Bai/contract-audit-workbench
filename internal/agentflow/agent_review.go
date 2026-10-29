@@ -75,65 +75,24 @@ type PlannerConfiguration struct {
 // exact same process configuration that the worker uses, applies hard upper
 // bounds, and returns a deterministic identity without making network calls.
 func ResolvePlannerConfiguration(modelConfigurationID string) (PlannerConfiguration, error) {
-	mode := strings.TrimSpace(os.Getenv("AGENT_PLANNER_MODE"))
-	if mode == "" {
-		mode = "deterministic"
-	}
-	var outputMode string
-	switch mode {
-	case "fixed_chain":
-		outputMode = ModeFixedChain
-	case "deterministic":
-		outputMode = ModeDeterministic
-	case "fixture":
-		outputMode = ModeModelFixture
-	case "live":
-		outputMode = ModeModelLive
-	default:
-		return PlannerConfiguration{}, errors.New("AGENT_PLANNER_MODE must be fixed_chain, deterministic, fixture, or live")
-	}
-	if (outputMode == ModeModelFixture || outputMode == ModeModelLive) && strings.TrimSpace(modelConfigurationID) == "" {
-		return PlannerConfiguration{}, errors.New("model planner requires the configured model identity")
-	}
-
-	limits := PlannerLimits{
-		MaxRounds: DefaultPlannerRounds, MaxCalls: DefaultPlannerCalls,
-		MaxDurationMS: DefaultPlannerTimeout.Milliseconds(), MaxEvidenceBytes: DefaultEvidenceBytes,
-	}
-	if value, err := integerSetting("AGENT_PLANNER_MAX_ROUNDS", limits.MaxRounds, 1, MaxPlannerRounds); err != nil {
+	outputMode, err := resolvePlannerMode(os.Getenv("AGENT_PLANNER_MODE"))
+	if err != nil {
 		return PlannerConfiguration{}, err
-	} else {
-		limits.MaxRounds = value
 	}
-	if value, err := integerSetting("AGENT_PLANNER_MAX_CALLS", limits.MaxCalls, 1, 16); err != nil {
+	modelID, err := resolvePlannerModelID(outputMode, modelConfigurationID)
+	if err != nil {
 		return PlannerConfiguration{}, err
-	} else {
-		limits.MaxCalls = value
 	}
-	if raw := strings.TrimSpace(os.Getenv("AGENT_PLANNER_TIMEOUT")); raw != "" {
-		duration, err := time.ParseDuration(raw)
-		if err != nil || duration < time.Second || duration > MaxPlannerTimeout {
-			return PlannerConfiguration{}, errors.New("AGENT_PLANNER_TIMEOUT must be between 1s and 2m")
-		}
-		limits.MaxDurationMS = duration.Milliseconds()
-	}
-	if value, err := integerSetting("AGENT_PLANNER_MAX_EVIDENCE_BYTES", limits.MaxEvidenceBytes, 1, MaxPlannerEvidenceBytes); err != nil {
+	limits, err := resolvePlannerLimits()
+	if err != nil {
 		return PlannerConfiguration{}, err
-	} else {
-		limits.MaxEvidenceBytes = value
 	}
-
 	configuration := PlannerConfiguration{
-		Mode: outputMode, PromptVersion: PlannerPromptVersion,
+		Mode: outputMode, ModelConfigurationID: modelID, PromptVersion: PlannerPromptVersion,
 		PromptSHA256: plannerPromptSHA256(), SchemaVersion: PlannerSchemaVersion,
 		RuntimeVersion: RuntimeVersion, ToolCatalogVersion: ToolCatalogVersion(), Limits: limits,
 	}
-	if outputMode == ModeModelFixture || outputMode == ModeModelLive {
-		configuration.ModelConfigurationID = strings.TrimSpace(modelConfigurationID)
-	}
-	// An invalid advisory configuration freezes as absent rather than blocking
-	// acceptance. The worker then uses deterministic order, and health reports
-	// the reason from the same resolver.
+	// Invalid advisory settings freeze as absent; they cannot block acceptance.
 	configuration.Advisory, _ = ResolveAdvisoryConfiguration()
 	identity, err := plannerConfigurationID(configuration)
 	if err != nil {
@@ -141,6 +100,64 @@ func ResolvePlannerConfiguration(modelConfigurationID string) (PlannerConfigurat
 	}
 	configuration.ConfigurationID = identity
 	return configuration, nil
+}
+
+func resolvePlannerMode(raw string) (string, error) {
+	mode := strings.TrimSpace(raw)
+	if mode == "" {
+		mode = "deterministic"
+	}
+	switch mode {
+	case "fixed_chain":
+		return ModeFixedChain, nil
+	case "deterministic":
+		return ModeDeterministic, nil
+	case "fixture":
+		return ModeModelFixture, nil
+	case "live":
+		return ModeModelLive, nil
+	default:
+		return "", errors.New("AGENT_PLANNER_MODE must be fixed_chain, deterministic, fixture, or live")
+	}
+}
+
+func resolvePlannerModelID(mode, rawID string) (string, error) {
+	if mode != ModeModelFixture && mode != ModeModelLive {
+		return "", nil
+	}
+	modelID := strings.TrimSpace(rawID)
+	if modelID == "" {
+		return "", errors.New("model planner requires the configured model identity")
+	}
+	return modelID, nil
+}
+
+func resolvePlannerLimits() (PlannerLimits, error) {
+	limits := PlannerLimits{MaxRounds: DefaultPlannerRounds, MaxCalls: DefaultPlannerCalls,
+		MaxDurationMS: DefaultPlannerTimeout.Milliseconds(), MaxEvidenceBytes: DefaultEvidenceBytes}
+	value, err := integerSetting("AGENT_PLANNER_MAX_ROUNDS", limits.MaxRounds, 1, MaxPlannerRounds)
+	if err != nil {
+		return PlannerLimits{}, err
+	}
+	limits.MaxRounds = value
+	value, err = integerSetting("AGENT_PLANNER_MAX_CALLS", limits.MaxCalls, 1, 16)
+	if err != nil {
+		return PlannerLimits{}, err
+	}
+	limits.MaxCalls = value
+	if raw := strings.TrimSpace(os.Getenv("AGENT_PLANNER_TIMEOUT")); raw != "" {
+		duration, err := time.ParseDuration(raw)
+		if err != nil || duration < time.Second || duration > MaxPlannerTimeout {
+			return PlannerLimits{}, errors.New("AGENT_PLANNER_TIMEOUT must be between 1s and 2m")
+		}
+		limits.MaxDurationMS = duration.Milliseconds()
+	}
+	value, err = integerSetting("AGENT_PLANNER_MAX_EVIDENCE_BYTES", limits.MaxEvidenceBytes, 1, MaxPlannerEvidenceBytes)
+	if err != nil {
+		return PlannerLimits{}, err
+	}
+	limits.MaxEvidenceBytes = value
+	return limits, nil
 }
 
 func integerSetting(name string, fallback, minimum, maximum int) (int, error) {
@@ -161,8 +178,7 @@ func plannerConfigurationID(configuration PlannerConfiguration) (string, error) 
 	if err != nil {
 		return "", err
 	}
-	digest := sha256.Sum256(encoded)
-	return hex.EncodeToString(digest[:]), nil
+	return digestBytes(encoded), nil
 }
 
 // ToolCatalogVersion binds a plan to the default registered, read-only
@@ -387,31 +403,53 @@ func (configuration PlannerConfiguration) Report(identity string, fallbackUsed b
 }
 
 func (configuration PlannerConfiguration) Validate() error {
-	if configuration.Mode != ModeFixedChain && configuration.Mode != ModeDeterministic &&
-		configuration.Mode != ModeModelFixture && configuration.Mode != ModeModelLive {
+	if !validPlannerMode(configuration.Mode) {
 		return errors.New("invalid planner mode")
 	}
-	if configuration.PromptVersion != PlannerPromptVersion || configuration.PromptSHA256 != plannerPromptSHA256() ||
-		configuration.SchemaVersion != PlannerSchemaVersion || configuration.RuntimeVersion != RuntimeVersion ||
-		configuration.ToolCatalogVersion != ToolCatalogVersion() {
+	if !matchesPlannerImplementation(configuration) {
 		return errors.New("planner configuration implementation identity is stale")
 	}
-	if configuration.Limits.MaxRounds < 1 || configuration.Limits.MaxRounds > MaxPlannerRounds ||
-		configuration.Limits.MaxCalls < 1 || configuration.Limits.MaxCalls > 16 ||
-		configuration.Limits.MaxDurationMS < 1_000 || configuration.Limits.MaxDurationMS > MaxPlannerTimeout.Milliseconds() ||
-		configuration.Limits.MaxEvidenceBytes < 1 || configuration.Limits.MaxEvidenceBytes > MaxPlannerEvidenceBytes {
+	if !validPlannerLimits(configuration.Limits) {
 		return errors.New("planner limits exceed fixed bounds")
 	}
-	if configuration.Advisory != nil {
-		if err := configuration.Advisory.Validate(); err != nil {
-			return errors.New("planner advisory configuration is invalid")
-		}
+	if err := validatePlannerAdvisory(configuration.Advisory); err != nil {
+		return err
 	}
-	identity, err := plannerConfigurationID(configuration)
-	if err != nil || configuration.ConfigurationID != identity {
+	if !matchesPlannerConfigurationID(configuration) {
 		return errors.New("planner configuration identity is invalid")
 	}
 	return nil
+}
+
+func validPlannerMode(mode string) bool {
+	return mode == ModeFixedChain || mode == ModeDeterministic || mode == ModeModelFixture || mode == ModeModelLive
+}
+
+func matchesPlannerImplementation(configuration PlannerConfiguration) bool {
+	return configuration.PromptVersion == PlannerPromptVersion && configuration.PromptSHA256 == plannerPromptSHA256() &&
+		configuration.SchemaVersion == PlannerSchemaVersion && configuration.RuntimeVersion == RuntimeVersion &&
+		configuration.ToolCatalogVersion == ToolCatalogVersion()
+}
+
+func validPlannerLimits(limits PlannerLimits) bool {
+	return limits.MaxRounds >= 1 && limits.MaxRounds <= MaxPlannerRounds && limits.MaxCalls >= 1 && limits.MaxCalls <= 16 &&
+		limits.MaxDurationMS >= 1_000 && limits.MaxDurationMS <= MaxPlannerTimeout.Milliseconds() &&
+		limits.MaxEvidenceBytes >= 1 && limits.MaxEvidenceBytes <= MaxPlannerEvidenceBytes
+}
+
+func validatePlannerAdvisory(configuration *AdvisoryConfiguration) error {
+	if configuration == nil {
+		return nil
+	}
+	if err := configuration.Validate(); err != nil {
+		return errors.New("planner advisory configuration is invalid")
+	}
+	return nil
+}
+
+func matchesPlannerConfigurationID(configuration PlannerConfiguration) bool {
+	identity, err := plannerConfigurationID(configuration)
+	return err == nil && configuration.ConfigurationID == identity
 }
 
 // HashEvidenceSnapshot binds attempt input references without copying document
@@ -421,6 +459,10 @@ func HashEvidenceSnapshot(snapshot SourceSnapshot) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	digest := sha256.Sum256(encoded)
-	return hex.EncodeToString(digest[:]), nil
+	return digestBytes(encoded), nil
+}
+
+func digestBytes(value []byte) string {
+	digest := sha256.Sum256(value)
+	return hex.EncodeToString(digest[:])
 }

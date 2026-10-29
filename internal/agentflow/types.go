@@ -4,8 +4,6 @@ package agentflow
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"time"
 
@@ -67,8 +65,7 @@ type Evidence struct {
 }
 
 func TextHash(text string) string {
-	digest := sha256.Sum256([]byte(text))
-	return hex.EncodeToString(digest[:])
+	return digestBytes([]byte(text))
 }
 
 // NewEvidence records an in-memory normalized snapshot for component execution.

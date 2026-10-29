@@ -63,23 +63,11 @@ func (tool sourceFactTool) Execute(ctx context.Context, input ToolInput) ([]Find
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	if input.TenantID == "" || input.CaseID == "" || input.Gap.Domain != tool.domain || !containsCapability(tool.capabilities, input.Gap.Capability) {
-		return nil, ErrInput
-	}
-	for _, source := range input.Evidence {
-		if source.TenantID != input.TenantID || source.CaseID != input.CaseID ||
-			source.DocumentID == "" || source.ParsedDocumentID == "" ||
-			source.SHA256 != TextHash(source.Text) || !normalizedDigest.MatchString(source.NormalizedDigest) {
-			return nil, ErrInput
-		}
+	if err := validateSourceFactInput(tool, input); err != nil {
+		return nil, err
 	}
 	leftDocs, rightDocs := comparisonSources(input.Gap.Domain, input.Gap.Capability, input.Evidence)
-	finding := Finding{Domain: tool.domain, Capability: input.Gap.Capability, RuleID: tool.id,
-		Relation: "insufficient", Summary: "冻结来源缺少可直接比较的双方字段；此项不构成法律或主体资质结论。",
-		ReasonCode: "required_source_or_field_missing", Facts: []SemanticFact{}, Citations: []Citation{}}
-	if tool.domain == Counterparty {
-		finding.Summary = "只比较本案上传材料中的稳定标识和主体表述，不查询外部登记或推断关联关系。"
-	}
+	finding := initialSourceFactFinding(tool, input.Gap.Capability)
 	if len(leftDocs) == 0 || len(rightDocs) == 0 {
 		return []Finding{finding}, nil
 	}
@@ -89,56 +77,106 @@ func (tool sourceFactTool) Execute(ctx context.Context, input ToolInput) ([]Find
 	if input.Gap.Capability == "signing_party" || input.Gap.Capability == "payee" {
 		return compareNamedCounterparty(input.Gap.Capability, finding, leftDocs, rightDocs)
 	}
-	left, leftAmbiguous := sideCandidate(input.Gap.Capability, leftDocs)
-	right, rightAmbiguous := sideCandidate(input.Gap.Capability, rightDocs)
+	return compareSourceCandidates(finding, input.Gap.Capability, leftDocs, rightDocs)
+}
+
+func validateSourceFactInput(tool sourceFactTool, input ToolInput) error {
+	if !validSourceFactRequestIdentity(tool, input) {
+		return ErrInput
+	}
+	for _, source := range input.Evidence {
+		if !validSourceFactEvidence(source, input) {
+			return ErrInput
+		}
+	}
+	return nil
+}
+
+func validSourceFactRequestIdentity(tool sourceFactTool, input ToolInput) bool {
+	return input.TenantID != "" && input.CaseID != "" && input.Gap.Domain == tool.domain && containsCapability(tool.capabilities, input.Gap.Capability)
+}
+
+func validSourceFactEvidence(source Evidence, input ToolInput) bool {
+	return source.TenantID == input.TenantID && source.CaseID == input.CaseID && source.DocumentID != "" && source.ParsedDocumentID != "" &&
+		source.SHA256 == TextHash(source.Text) && normalizedDigest.MatchString(source.NormalizedDigest)
+}
+
+func initialSourceFactFinding(tool sourceFactTool, capability string) Finding {
+	finding := Finding{Domain: tool.domain, Capability: capability, RuleID: tool.id,
+		Relation: "insufficient", Summary: "冻结来源缺少可直接比较的双方字段；此项不构成法律或主体资质结论。",
+		ReasonCode: "required_source_or_field_missing", Facts: []SemanticFact{}, Citations: []Citation{}}
+	if tool.domain == Counterparty {
+		finding.Summary = "只比较本案上传材料中的稳定标识和主体表述，不查询外部登记或推断关联关系。"
+	}
+	return finding
+}
+
+func compareSourceCandidates(finding Finding, capability string, leftDocs, rightDocs []Evidence) ([]Finding, error) {
+	left, leftAmbiguous := sideCandidate(capability, leftDocs)
+	right, rightAmbiguous := sideCandidate(capability, rightDocs)
 	if leftAmbiguous || rightAmbiguous {
 		finding.ReasonCode = "multiple_source_values_require_review"
 		finding.Summary = "冻结来源含多个不同的受支持字段值，已保留缺口供人工核对。"
 		return []Finding{finding}, nil
 	}
 	if left == nil || right == nil {
-		if unsupportedOnMissingSide(input.Gap.Capability, left, right, leftDocs, rightDocs) {
-			finding.Relation = "unsupported"
-			finding.ReasonCode = "source_expression_not_supported"
-			finding.Summary = "材料提到该检查项，但表达不在本片支持的有限语法内；未推断结果。"
-		}
-		return []Finding{finding}, nil
+		return findingForMissingCandidate(finding, capability, left, right, leftDocs, rightDocs), nil
 	}
-	leftFact, leftCitation, err := candidateFact(*left, leftDocs)
+	return compareFactCandidatePair(finding, capability, *left, *right, leftDocs, rightDocs)
+}
+
+func findingForMissingCandidate(finding Finding, capability string, left, right *semanticCandidate, leftDocs, rightDocs []Evidence) []Finding {
+	if unsupportedOnMissingSide(capability, left, right, leftDocs, rightDocs) {
+		finding.Relation = "unsupported"
+		finding.ReasonCode = "source_expression_not_supported"
+		finding.Summary = "材料提到该检查项，但表达不在本片支持的有限语法内；未推断结果。"
+	}
+	return []Finding{finding}
+}
+
+func compareFactCandidatePair(finding Finding, capability string, left, right semanticCandidate, leftDocs, rightDocs []Evidence) ([]Finding, error) {
+	leftFact, leftCitation, err := candidateFact(left, leftDocs)
 	if err != nil {
 		return nil, err
 	}
-	rightFact, rightCitation, err := candidateFact(*right, rightDocs)
+	rightFact, rightCitation, err := candidateFact(right, rightDocs)
 	if err != nil {
 		return nil, err
 	}
 	finding.Facts = append(finding.Facts, leftFact, rightFact)
 	finding.Citations = append(finding.Citations, leftCitation, rightCitation)
-	if input.Gap.Capability == "amount" {
-		finding.Relation, finding.ReasonCode, finding.Summary = compareAmountCandidates(*left, *right)
-	} else if input.Gap.Capability == "milestone" && left.semanticType != right.semanticType {
-		finding.Relation = "insufficient"
-		finding.ReasonCode = "milestone_event_type_mismatch"
-		finding.Summary = "两侧字段属于不同履约事件，不能因日期相同认定已核对。"
-	} else if input.Gap.Capability == "party" && left.semanticType != right.semanticType {
-		finding.Relation = "insufficient"
-		finding.ReasonCode = "party_role_mismatch"
-		finding.Summary = "两侧材料指向不同或未映射的主体角色，不能按名称相同判定一致。"
-	} else if input.Gap.Capability == "subject_id" &&
-		(left.semanticType == "subject_id" || right.semanticType == "subject_id" || left.semanticType != right.semanticType) {
-		finding.Relation = "insufficient"
-		finding.ReasonCode = "subject_role_not_comparable"
-		finding.Summary = "主体标识缺少相同且明确的角色关联，不能据此关闭主体核验缺口。"
-	} else if left.value == right.value && left.unit == right.unit && left.currency == right.currency {
-		finding.Relation = "compatible"
-		finding.ReasonCode = "frozen_source_values_match"
-		finding.Summary = "两侧冻结来源中的受支持字段值一致；此结论仅限该字段的来源一致性。"
-	} else {
-		finding.Relation = "conflict"
-		finding.ReasonCode = "frozen_source_values_differ"
-		finding.Summary = "两侧冻结来源中的受支持字段值不一致，需人工复核具体条款和适用背景。"
-	}
+	finding.Relation, finding.ReasonCode, finding.Summary = compareSourceCandidateValues(capability, left, right)
 	return []Finding{finding}, nil
+}
+
+func compareSourceCandidateValues(capability string, left, right semanticCandidate) (string, string, string) {
+	if capability == "amount" {
+		return compareAmountCandidates(left, right)
+	}
+	if status, code, summary, mismatch := candidateRoleMismatch(capability, left, right); mismatch {
+		return status, code, summary
+	}
+	return compareCandidateValues(left, right)
+}
+
+func candidateRoleMismatch(capability string, left, right semanticCandidate) (string, string, string, bool) {
+	if capability == "milestone" && left.semanticType != right.semanticType {
+		return "insufficient", "milestone_event_type_mismatch", "两侧字段属于不同履约事件，不能因日期相同认定已核对。", true
+	}
+	if capability == "party" && left.semanticType != right.semanticType {
+		return "insufficient", "party_role_mismatch", "两侧材料指向不同或未映射的主体角色，不能按名称相同判定一致。", true
+	}
+	if capability == "subject_id" && (left.semanticType == "subject_id" || right.semanticType == "subject_id" || left.semanticType != right.semanticType) {
+		return "insufficient", "subject_role_not_comparable", "主体标识缺少相同且明确的角色关联，不能据此关闭主体核验缺口。", true
+	}
+	return "", "", "", false
+}
+
+func compareCandidateValues(left, right semanticCandidate) (string, string, string) {
+	if left.value == right.value && left.unit == right.unit && left.currency == right.currency {
+		return "compatible", "frozen_source_values_match", "两侧冻结来源中的受支持字段值一致；此结论仅限该字段的来源一致性。"
+	}
+	return "conflict", "frozen_source_values_differ", "两侧冻结来源中的受支持字段值不一致，需人工复核具体条款和适用背景。"
 }
 
 func containsCapability(capabilities []string, want string) bool {
@@ -190,125 +228,152 @@ func sideCandidate(capability string, sources []Evidence) (*semanticCandidate, b
 }
 
 func compareApprovalValidity(finding Finding, authority, contract []Evidence) ([]Finding, error) {
-	if hasMalformedApprovalValidity(authority) {
-		finding.Relation = "unsupported"
-		finding.ReasonCode = "approval_validity_expression_unsupported"
-		finding.Summary = "审批材料含无法准确解析的有效期端点；未用其他日期或当前日期替代。"
+	if rejectMalformedApprovalSources(&finding, authority, contract) {
 		return []Finding{finding}, nil
+	}
+	from, until, valid := selectApprovalValidityInterval(&finding, authority)
+	if !valid {
+		return []Finding{finding}, nil
+	}
+	references, valid := selectContractReferenceDates(&finding, contract)
+	if !valid {
+		return []Finding{finding}, nil
+	}
+	if err := appendApprovalValidityFacts(&finding, from, until, references, authority, contract); err != nil {
+		return nil, err
+	}
+	return compareApprovalDateWindow(finding, from, until, references)
+}
+
+func rejectMalformedApprovalSources(finding *Finding, authority, contract []Evidence) bool {
+	if hasMalformedApprovalValidity(authority) {
+		finding.Relation, finding.ReasonCode = "unsupported", "approval_validity_expression_unsupported"
+		finding.Summary = "审批材料含无法准确解析的有效期端点；未用其他日期或当前日期替代。"
+		return true
 	}
 	if hasMalformedContractReferenceDate(contract) {
-		finding.Relation = "unsupported"
-		finding.ReasonCode = "contract_reference_date_unsupported"
+		finding.Relation, finding.ReasonCode = "unsupported", "contract_reference_date_unsupported"
 		finding.Summary = "合同材料含无法准确解析的签订、生效或审查基准日期；未用其他日期或当前日期替代。"
-		return []Finding{finding}, nil
+		return true
 	}
+	return false
+}
+
+func selectApprovalValidityInterval(finding *Finding, authority []Evidence) (*semanticCandidate, *semanticCandidate, bool) {
 	from, fromAmbiguous := sideCandidate("approval_valid_from", authority)
 	until, untilAmbiguous := sideCandidate("approval_valid_until", authority)
 	if fromAmbiguous || untilAmbiguous {
-		finding.Relation = "insufficient"
-		finding.ReasonCode = "multiple_approval_validity_intervals_require_review"
+		finding.Relation, finding.ReasonCode = "insufficient", "multiple_approval_validity_intervals_require_review"
 		finding.Summary = "审批材料包含多个不同有效区间，需人工确认适用区间。"
-		return []Finding{finding}, nil
+		return nil, nil, false
 	}
 	if from == nil || until == nil {
-		if hasUnsupportedIndicator("approval_validity", authority) {
-			finding.Relation = "unsupported"
-			finding.ReasonCode = "approval_validity_expression_unsupported"
-			finding.Summary = "审批材料提及有效期，但日期不完整、含糊或不在支持的有限语法内；未推断结果。"
-		} else {
-			finding.ReasonCode = "approval_validity_interval_missing"
-			finding.Summary = "冻结审批材料没有可核验的完整有效区间。"
-		}
-		return []Finding{finding}, nil
+		setMissingApprovalInterval(finding, authority)
+		return nil, nil, false
 	}
 	if from.sourceID != until.sourceID || from.unit != until.unit {
-		finding.Relation = "insufficient"
-		finding.ReasonCode = "approval_validity_interval_not_comparable"
+		finding.Relation, finding.ReasonCode = "insufficient", "approval_validity_interval_not_comparable"
 		finding.Summary = "有效区间端点缺少同一冻结来源或一致的日期/时区精度，未推断适用性。"
-		return []Finding{finding}, nil
+		return nil, nil, false
 	}
+	return from, until, true
+}
+
+func setMissingApprovalInterval(finding *Finding, authority []Evidence) {
+	if hasUnsupportedIndicator("approval_validity", authority) {
+		finding.Relation, finding.ReasonCode = "unsupported", "approval_validity_expression_unsupported"
+		finding.Summary = "审批材料提及有效期，但日期不完整、含糊或不在支持的有限语法内；未推断结果。"
+		return
+	}
+	finding.ReasonCode = "approval_validity_interval_missing"
+	finding.Summary = "冻结审批材料没有可核验的完整有效区间。"
+}
+
+func selectContractReferenceDates(finding *Finding, contract []Evidence) ([]semanticCandidate, bool) {
 	references := sourceCandidates("contract_reference_date", contract)
-	if len(references) == 0 {
-		if hasUnsupportedIndicator("contract_reference_date", contract) {
-			finding.Relation = "unsupported"
-			finding.ReasonCode = "contract_reference_date_unsupported"
-			finding.Summary = "合同材料提及签订、生效或审查基准日期，但日期格式或时区不受支持。"
-		} else {
-			finding.ReasonCode = "contract_reference_date_missing"
-			finding.Summary = "合同材料没有明确的签订、生效或审查基准日期；不使用当前日期推断。"
-		}
-		return []Finding{finding}, nil
+	if len(references) != 0 {
+		return references, true
 	}
-	allCandidates := []*semanticCandidate{from, until}
+	if hasUnsupportedIndicator("contract_reference_date", contract) {
+		finding.Relation, finding.ReasonCode = "unsupported", "contract_reference_date_unsupported"
+		finding.Summary = "合同材料提及签订、生效或审查基准日期，但日期格式或时区不受支持。"
+	} else {
+		finding.ReasonCode = "contract_reference_date_missing"
+		finding.Summary = "合同材料没有明确的签订、生效或审查基准日期；不使用当前日期推断。"
+	}
+	return nil, false
+}
+
+func appendApprovalValidityFacts(finding *Finding, from, until *semanticCandidate, references []semanticCandidate, authority, contract []Evidence) error {
+	candidates := []*semanticCandidate{from, until}
 	for index := range references {
-		allCandidates = append(allCandidates, &references[index])
+		candidates = append(candidates, &references[index])
 	}
-	for _, candidate := range allCandidates {
-		fact, citation, err := candidateFact(*candidate, append(append([]Evidence(nil), authority...), contract...))
-		if err != nil {
-			return nil, err
-		}
-		finding.Facts = append(finding.Facts, fact)
-		finding.Citations = append(finding.Citations, citation)
-	}
+	return appendCandidateFacts(finding, candidates, append(append([]Evidence(nil), authority...), contract...))
+}
+
+func compareApprovalDateWindow(finding Finding, from, until *semanticCandidate, references []semanticCandidate) ([]Finding, error) {
 	intervalOrder, ok := compareSourceDates(from.value, until.value, from.unit)
 	if !ok || intervalOrder > 0 {
-		finding.Relation = "unsupported"
-		finding.ReasonCode = "approval_validity_interval_invalid"
+		finding.Relation, finding.ReasonCode = "unsupported", "approval_validity_interval_invalid"
 		finding.Summary = "审批有效区间无效或端点无法准确比较；未推断适用性。"
 		return []Finding{finding}, nil
 	}
 	for _, reference := range references {
-		if reference.unit != from.unit {
-			finding.Relation = "unsupported"
-			finding.ReasonCode = "approval_validity_timezone_or_precision_mismatch"
-			finding.Summary = "审批有效期与合同基准日期的时区或日期精度不同，无法准确比较。"
-			return []Finding{finding}, nil
-		}
-		startOrder, startOK := compareSourceDates(reference.value, from.value, from.unit)
-		endOrder, endOK := compareSourceDates(reference.value, until.value, from.unit)
-		if !startOK || !endOK {
-			finding.Relation = "unsupported"
-			finding.ReasonCode = "approval_validity_date_unparseable"
-			finding.Summary = "审批有效期与合同基准日期无法准确比较；未推断适用性。"
-			return []Finding{finding}, nil
-		}
-		if startOrder < 0 || endOrder > 0 {
-			finding.Relation = "conflict"
-			finding.ReasonCode = "contract_reference_outside_approval_validity"
-			finding.Summary = "合同明确的签订、生效或审查基准日期超出审批材料注明的有效区间。"
+		if result := compareOneApprovalReference(reference, from, until); result != "" {
+			finding.Relation, finding.ReasonCode, finding.Summary = approvalReferenceRelation(result), approvalReferenceReason(result), approvalReferenceSummary(result)
 			return []Finding{finding}, nil
 		}
 	}
-	finding.Relation = "compatible"
-	finding.ReasonCode = "contract_reference_within_approval_validity"
+	finding.Relation, finding.ReasonCode = "compatible", "contract_reference_within_approval_validity"
 	finding.Summary = "合同明确的签订、生效或审查基准日期位于审批材料注明的有效区间内；仅核对材料中的日期关系。"
 	return []Finding{finding}, nil
 }
 
+func compareOneApprovalReference(reference semanticCandidate, from, until *semanticCandidate) string {
+	if reference.unit != from.unit {
+		return "approval_validity_timezone_or_precision_mismatch"
+	}
+	startOrder, startOK := compareSourceDates(reference.value, from.value, from.unit)
+	endOrder, endOK := compareSourceDates(reference.value, until.value, from.unit)
+	if !startOK || !endOK {
+		return "approval_validity_date_unparseable"
+	}
+	if startOrder < 0 || endOrder > 0 {
+		return "contract_reference_outside_approval_validity"
+	}
+	return ""
+}
+
+func approvalReferenceReason(code string) string {
+	return code
+}
+
+func approvalReferenceRelation(code string) string {
+	if code == "contract_reference_outside_approval_validity" {
+		return "conflict"
+	}
+	return "unsupported"
+}
+
+func approvalReferenceSummary(code string) string {
+	switch code {
+	case "approval_validity_timezone_or_precision_mismatch":
+		return "审批有效期与合同基准日期的时区或日期精度不同，无法准确比较。"
+	case "approval_validity_date_unparseable":
+		return "审批有效期与合同基准日期无法准确比较；未推断适用性。"
+	default:
+		return "合同明确的签订、生效或审查基准日期超出审批材料注明的有效区间。"
+	}
+}
+
 func compareNamedCounterparty(capability string, finding Finding, authority, contract []Evidence) ([]Finding, error) {
-	left, leftAmbiguous := sideCandidate(capability, authority)
-	right, rightAmbiguous := sideCandidate(capability, contract)
-	if leftAmbiguous || rightAmbiguous {
-		finding.ReasonCode = "multiple_counterparty_values_require_review"
-		finding.Summary = "冻结来源包含多个不同的主体名称或角色，需人工核对。"
+	left, right, complete := resolveNamedCounterpartyCandidates(capability, &finding, authority, contract)
+	if !complete {
 		return []Finding{finding}, nil
 	}
-	if left == nil || right == nil {
-		if unsupportedOnMissingSide(capability, left, right, authority, contract) {
-			finding.Relation = "unsupported"
-			finding.ReasonCode = "counterparty_expression_unsupported"
-			finding.Summary = "材料提及签约方或收款方，但主体表述不在支持的有限语法内。"
-		}
-		return []Finding{finding}, nil
-	}
-	for _, candidate := range []*semanticCandidate{left, right} {
-		fact, citation, err := candidateFact(*candidate, append(append([]Evidence(nil), authority...), contract...))
-		if err != nil {
-			return nil, err
-		}
-		finding.Facts = append(finding.Facts, fact)
-		finding.Citations = append(finding.Citations, citation)
+	if err := appendCandidateFacts(&finding, []*semanticCandidate{left, right}, append(append([]Evidence(nil), authority...), contract...)); err != nil {
+		return nil, err
 	}
 	if left.value != right.value {
 		finding.Relation = "conflict"
@@ -321,12 +386,47 @@ func compareNamedCounterparty(capability string, finding Finding, authority, con
 		finding.Summary = "名称文字相同，但材料未证明两侧名称对应同一明确主体角色；稳定主体缺口仍保留。"
 		return []Finding{finding}, nil
 	}
+	return compareNamedStableIdentity(finding, left, right, authority, contract)
+}
+
+func resolveNamedCounterpartyCandidates(capability string, finding *Finding, authority, contract []Evidence) (*semanticCandidate, *semanticCandidate, bool) {
+	left, leftAmbiguous := sideCandidate(capability, authority)
+	right, rightAmbiguous := sideCandidate(capability, contract)
+	if leftAmbiguous || rightAmbiguous {
+		finding.ReasonCode = "multiple_counterparty_values_require_review"
+		finding.Summary = "冻结来源包含多个不同的主体名称或角色，需人工核对。"
+		return nil, nil, false
+	}
+	if left == nil || right == nil {
+		if unsupportedOnMissingSide(capability, left, right, authority, contract) {
+			finding.Relation = "unsupported"
+			finding.ReasonCode = "counterparty_expression_unsupported"
+			finding.Summary = "材料提及签约方或收款方，但主体表述不在支持的有限语法内。"
+		}
+		return nil, nil, false
+	}
+	return left, right, true
+}
+
+func compareNamedStableIdentity(finding Finding, left, right *semanticCandidate, authority, contract []Evidence) ([]Finding, error) {
+	leftID, rightID, valid := resolveNamedStableIDs(&finding, left, right, authority, contract)
+	if !valid {
+		return []Finding{finding}, nil
+	}
+	allSources := append(append([]Evidence(nil), authority...), contract...)
+	if err := appendCandidateFacts(&finding, []*semanticCandidate{leftID, rightID}, allSources); err != nil {
+		return nil, err
+	}
+	return compareNamedStableIDValues(finding, leftID, rightID)
+}
+
+func resolveNamedStableIDs(finding *Finding, left, right *semanticCandidate, authority, contract []Evidence) (*semanticCandidate, *semanticCandidate, bool) {
 	leftID, leftFound, leftOtherRole, leftIDAmbiguous := subjectIDForParty(*left, authority)
 	rightID, rightFound, rightOtherRole, rightIDAmbiguous := subjectIDForParty(*right, contract)
 	if leftIDAmbiguous || rightIDAmbiguous {
 		finding.ReasonCode = "multiple_subject_ids_for_counterparty_role"
 		finding.Summary = "同一主体角色关联到多个不同稳定标识，需人工核对。"
-		return []Finding{finding}, nil
+		return nil, nil, false
 	}
 	if !leftFound || !rightFound {
 		if leftOtherRole || rightOtherRole {
@@ -336,21 +436,17 @@ func compareNamedCounterparty(capability string, finding Finding, authority, con
 			finding.ReasonCode = "stable_subject_id_required"
 			finding.Summary = "名称文字相同但缺少两侧经校验且与相同角色关联的稳定主体标识；主体缺口仍保留。"
 		}
-		return []Finding{finding}, nil
+		return nil, nil, false
 	}
 	if leftID.semanticType != rightID.semanticType {
 		finding.ReasonCode = "subject_id_role_mismatch"
 		finding.Summary = "两侧稳定标识对应的主体角色不同；主体缺口仍保留。"
-		return []Finding{finding}, nil
+		return nil, nil, false
 	}
-	for _, candidate := range []*semanticCandidate{leftID, rightID} {
-		fact, citation, err := candidateFact(*candidate, append(append([]Evidence(nil), authority...), contract...))
-		if err != nil {
-			return nil, err
-		}
-		finding.Facts = append(finding.Facts, fact)
-		finding.Citations = append(finding.Citations, citation)
-	}
+	return leftID, rightID, true
+}
+
+func compareNamedStableIDValues(finding Finding, leftID, rightID *semanticCandidate) ([]Finding, error) {
 	if leftID.value != rightID.value {
 		finding.Relation = "conflict"
 		finding.ReasonCode = "stable_subject_id_differs_for_role"
@@ -363,6 +459,18 @@ func compareNamedCounterparty(capability string, finding Finding, authority, con
 	return []Finding{finding}, nil
 }
 
+func appendCandidateFacts(finding *Finding, candidates []*semanticCandidate, sources []Evidence) error {
+	for _, candidate := range candidates {
+		fact, citation, err := candidateFact(*candidate, sources)
+		if err != nil {
+			return err
+		}
+		finding.Facts = append(finding.Facts, fact)
+		finding.Citations = append(finding.Citations, citation)
+	}
+	return nil
+}
+
 func subjectIDForParty(party semanticCandidate, sources []Evidence) (*semanticCandidate, bool, bool, bool) {
 	var selected *semanticCandidate
 	otherRole := false
@@ -370,16 +478,9 @@ func subjectIDForParty(party semanticCandidate, sources []Evidence) (*semanticCa
 		if source.ID != party.sourceID {
 			continue
 		}
-		for _, candidate := range candidatesFor("subject_id", source.Text) {
-			if !sameSourceClause(source.Text, party.start, candidate.start) {
-				continue
-			}
-			role := strings.TrimPrefix(candidate.semanticType, "subject_id_")
-			if !strings.HasPrefix(candidate.semanticType, "subject_id_") || role != party.role {
-				otherRole = true
-				continue
-			}
-			candidate.sourceID = source.ID
+		candidates, mentionsOtherRole := matchingSubjectIDs(party, source)
+		otherRole = otherRole || mentionsOtherRole
+		for _, candidate := range candidates {
 			if selected != nil && (selected.value != candidate.value || selected.semanticType != candidate.semanticType) {
 				return nil, false, otherRole, true
 			}
@@ -388,6 +489,24 @@ func subjectIDForParty(party semanticCandidate, sources []Evidence) (*semanticCa
 		}
 	}
 	return selected, selected != nil, otherRole, false
+}
+
+func matchingSubjectIDs(party semanticCandidate, source Evidence) ([]semanticCandidate, bool) {
+	var matches []semanticCandidate
+	otherRole := false
+	for _, candidate := range candidatesFor("subject_id", source.Text) {
+		if !sameSourceClause(source.Text, party.start, candidate.start) {
+			continue
+		}
+		role := strings.TrimPrefix(candidate.semanticType, "subject_id_")
+		if !strings.HasPrefix(candidate.semanticType, "subject_id_") || role != party.role {
+			otherRole = true
+			continue
+		}
+		candidate.sourceID = source.ID
+		matches = append(matches, candidate)
+	}
+	return matches, otherRole
 }
 
 func sameSourceClause(text string, left, right int) bool {
@@ -499,125 +618,172 @@ func hasUnsupportedIndicator(capability string, sources []Evidence) bool {
 }
 
 func candidatesFor(capability, text string) []semanticCandidate {
-	var candidates []semanticCandidate
-	addCapture := func(pattern *regexp.Regexp, semanticType string, valueGroup int) {
-		for _, indexes := range pattern.FindAllStringSubmatchIndex(text, 32) {
-			valueStart, valueEnd := valueGroup*2, valueGroup*2+1
-			if len(indexes) <= valueEnd || indexes[0] < 0 || indexes[1] < indexes[0] ||
-				indexes[valueStart] < 0 || indexes[valueEnd] < indexes[valueStart] {
-				continue
-			}
-			value := normalizeSourceValue(text[indexes[valueStart]:indexes[valueEnd]])
-			if value != "" {
-				candidates = append(candidates, semanticCandidate{semanticType: semanticType, value: value, start: indexes[0], end: indexes[1]})
-			}
-		}
+	if candidates, handled := commonCandidates(capability, text); handled {
+		return candidates
 	}
-	addWhole := func(pattern *regexp.Regexp, semanticType string) {
-		addWholeMatches(pattern, semanticType, text, &candidates)
-	}
+	return specializedCandidates(capability, text)
+}
+
+func commonCandidates(capability, text string) ([]semanticCandidate, bool) {
 	switch capability {
 	case "amount":
-		for _, indexes := range amountPattern.FindAllStringSubmatchIndex(text, 32) {
-			quote := text[indexes[0]:indexes[1]]
-			if amountNegatedBefore(text, indexes[0]) {
-				continue
-			}
-			value, unit, currency, ok := normalizeQuotedAmount(quote)
-			if ok {
-				candidates = append(candidates, semanticCandidate{semanticType: amountSemanticType(text[indexes[4]:indexes[5]]), value: value,
-					unit: unit, currency: currency, start: indexes[0], end: indexes[1]})
-			}
-		}
+		return amountCandidates(text), true
 	case "party", "party_a", "party_b", "party_buyer", "party_seller", "party_service_provider", "party_customer":
-		for _, indexes := range partyPattern.FindAllStringSubmatchIndex(text, 32) {
-			role := partySemanticType(text[indexes[4]:indexes[5]])
-			if capability != "party" && role != capability {
-				continue
-			}
-			candidates = append(candidates, semanticCandidate{semanticType: role,
-				value: normalizeSourceValue(text[indexes[6]:indexes[7]]), start: indexes[0], end: indexes[1]})
-		}
+		return partyCandidates(capability, text), true
 	case "approval_authority":
-		addCapture(approvalPattern, "approval_authority", 3)
+		return capturedCandidates(approvalPattern, "approval_authority", 3, text), true
 	case "effective_scope", "scope":
-		addCapture(scopePattern, capability, 3)
+		return capturedCandidates(scopePattern, capability, 3, text), true
 	case "milestone", "milestone_delivery", "milestone_acceptance", "milestone_mobilization", "milestone_start", "milestone_activation", "milestone_launch":
-		for _, indexes := range milestonePattern.FindAllStringSubmatchIndex(text, 32) {
-			kind := milestoneSemanticType(text[indexes[4]:indexes[5]])
-			if capability != "milestone" && kind != capability {
-				continue
-			}
-			value, ok := normalizeMilestoneDate(text[indexes[6]:indexes[7]])
-			if !ok {
-				continue
-			}
-			candidates = append(candidates, semanticCandidate{semanticType: kind,
-				value: value, start: indexes[0], end: indexes[1]})
-		}
+		return milestoneCandidates(capability, text), true
 	case "explicit_start_event":
-		addWhole(startEventPattern, "explicit_start_event")
+		var candidates []semanticCandidate
+		addWholeMatches(startEventPattern, capability, text, &candidates)
+		return candidates, true
+	default:
+		return nil, false
+	}
+}
+
+func specializedCandidates(capability, text string) []semanticCandidate {
+	switch capability {
 	case "subject_id", "subject_id_party_a", "subject_id_party_b", "subject_id_party_buyer", "subject_id_party_seller", "subject_id_party_service_provider", "subject_id_party_customer":
-		for _, indexes := range subjectIDPattern.FindAllStringSubmatchIndex(text, 32) {
-			value := text[indexes[6]:indexes[7]]
-			if !validUnifiedSocialCreditCode(value) {
-				continue
-			}
-			kind, start := subjectIDSemanticRole(text, indexes[0])
-			if capability != "subject_id" && kind != capability {
-				continue
-			}
-			candidates = append(candidates, semanticCandidate{semanticType: kind,
-				value: value, start: start, end: indexes[1]})
-		}
+		return subjectCandidates(capability, text)
 	case "signing_party":
-		for _, indexes := range signingPartyPattern.FindAllStringSubmatchIndex(text, 32) {
-			candidates = append(candidates, semanticCandidate{semanticType: "signing_party",
-				value: normalizeSourceValue(text[indexes[6]:indexes[7]]), role: partyRoleBefore(text, indexes[0]),
-				start: indexes[0], end: indexes[1]})
-		}
+		return namedPartyCandidates(signingPartyPattern, "signing_party", text)
 	case "payee":
-		for _, indexes := range payeePattern.FindAllStringSubmatchIndex(text, 32) {
-			candidates = append(candidates, semanticCandidate{semanticType: "payee",
-				value: normalizeSourceValue(text[indexes[6]:indexes[7]]), role: partyRoleBefore(text, indexes[0]),
-				start: indexes[0], end: indexes[1]})
-		}
+		return namedPartyCandidates(payeePattern, "payee", text)
 	case "responsibility":
-		addWhole(responsibilityPattern, "responsibility")
+		var candidates []semanticCandidate
+		addWholeMatches(responsibilityPattern, capability, text, &candidates)
+		return candidates
 	case "approval_validity", "approval_valid_from", "approval_valid_until":
-		for _, indexes := range approvalValidityPattern.FindAllStringSubmatchIndex(text, 32) {
-			fromRaw, untilRaw := text[indexes[4]:indexes[5]], text[indexes[6]:indexes[7]]
-			from, fromUnit, _, fromOK := normalizeSourceDate(fromRaw)
-			until, untilUnit, _, untilOK := normalizeSourceDate(untilRaw)
-			if !fromOK || !untilOK {
-				continue
-			}
-			if capability != "approval_valid_until" {
-				candidates = append(candidates, semanticCandidate{semanticType: "approval_valid_from", value: from,
-					unit: fromUnit, start: indexes[0], end: indexes[1]})
-			}
-			if capability != "approval_valid_from" {
-				candidates = append(candidates, semanticCandidate{semanticType: "approval_valid_until", value: until,
-					unit: untilUnit, start: indexes[0], end: indexes[1]})
-			}
-		}
+		return approvalValidityCandidates(capability, text)
 	case "contract_reference_date", "contract_signing_date", "contract_effective_date", "contract_review_basis_date":
-		for _, indexes := range contractReferencePattern.FindAllStringSubmatchIndex(text, 32) {
-			label := text[indexes[2]:indexes[3]]
-			semanticType := contractReferenceSemanticType(label)
-			if capability != "contract_reference_date" && capability != semanticType {
-				continue
-			}
-			value, unit, _, ok := normalizeSourceDate(text[indexes[4]:indexes[5]])
-			if !ok {
-				continue
-			}
-			candidates = append(candidates, semanticCandidate{semanticType: semanticType, value: value, unit: unit,
-				start: indexes[0], end: indexes[1]})
+		return contractReferenceCandidates(capability, text)
+	default:
+		return nil
+	}
+}
+
+func capturedCandidates(pattern *regexp.Regexp, semanticType string, group int, text string) []semanticCandidate {
+	var candidates []semanticCandidate
+	for _, indexes := range pattern.FindAllStringSubmatchIndex(text, 32) {
+		valueStart, valueEnd := group*2, group*2+1
+		if len(indexes) <= valueEnd || indexes[0] < 0 || indexes[1] < indexes[0] ||
+			indexes[valueStart] < 0 || indexes[valueEnd] < indexes[valueStart] {
+			continue
+		}
+		value := normalizeSourceValue(text[indexes[valueStart]:indexes[valueEnd]])
+		if value != "" {
+			candidates = append(candidates, semanticCandidate{semanticType: semanticType, value: value, start: indexes[0], end: indexes[1]})
 		}
 	}
 	return candidates
+}
 
+func amountCandidates(text string) []semanticCandidate {
+	var candidates []semanticCandidate
+	for _, indexes := range amountPattern.FindAllStringSubmatchIndex(text, 32) {
+		quote := text[indexes[0]:indexes[1]]
+		if amountNegatedBefore(text, indexes[0]) {
+			continue
+		}
+		value, unit, currency, ok := normalizeQuotedAmount(quote)
+		if ok {
+			candidates = append(candidates, semanticCandidate{semanticType: amountSemanticType(text[indexes[4]:indexes[5]]), value: value,
+				unit: unit, currency: currency, start: indexes[0], end: indexes[1]})
+		}
+	}
+	return candidates
+}
+
+func partyCandidates(capability, text string) []semanticCandidate {
+	var candidates []semanticCandidate
+	for _, indexes := range partyPattern.FindAllStringSubmatchIndex(text, 32) {
+		role := partySemanticType(text[indexes[4]:indexes[5]])
+		if capability != "party" && role != capability {
+			continue
+		}
+		candidates = append(candidates, semanticCandidate{semanticType: role,
+			value: normalizeSourceValue(text[indexes[6]:indexes[7]]), start: indexes[0], end: indexes[1]})
+	}
+	return candidates
+}
+
+func milestoneCandidates(capability, text string) []semanticCandidate {
+	var candidates []semanticCandidate
+	for _, indexes := range milestonePattern.FindAllStringSubmatchIndex(text, 32) {
+		kind := milestoneSemanticType(text[indexes[4]:indexes[5]])
+		if capability != "milestone" && kind != capability {
+			continue
+		}
+		value, ok := normalizeMilestoneDate(text[indexes[6]:indexes[7]])
+		if !ok {
+			continue
+		}
+		candidates = append(candidates, semanticCandidate{semanticType: kind, value: value, start: indexes[0], end: indexes[1]})
+	}
+	return candidates
+}
+
+func subjectCandidates(capability, text string) []semanticCandidate {
+	var candidates []semanticCandidate
+	for _, indexes := range subjectIDPattern.FindAllStringSubmatchIndex(text, 32) {
+		value := text[indexes[6]:indexes[7]]
+		if !validUnifiedSocialCreditCode(value) {
+			continue
+		}
+		kind, start := subjectIDSemanticRole(text, indexes[0])
+		if capability != "subject_id" && kind != capability {
+			continue
+		}
+		candidates = append(candidates, semanticCandidate{semanticType: kind, value: value, start: start, end: indexes[1]})
+	}
+	return candidates
+}
+
+func namedPartyCandidates(pattern *regexp.Regexp, semanticType, text string) []semanticCandidate {
+	var candidates []semanticCandidate
+	for _, indexes := range pattern.FindAllStringSubmatchIndex(text, 32) {
+		candidates = append(candidates, semanticCandidate{semanticType: semanticType,
+			value: normalizeSourceValue(text[indexes[6]:indexes[7]]), role: partyRoleBefore(text, indexes[0]), start: indexes[0], end: indexes[1]})
+	}
+	return candidates
+}
+
+func approvalValidityCandidates(capability, text string) []semanticCandidate {
+	var candidates []semanticCandidate
+	for _, indexes := range approvalValidityPattern.FindAllStringSubmatchIndex(text, 32) {
+		from, fromUnit, _, fromOK := normalizeSourceDate(text[indexes[4]:indexes[5]])
+		until, untilUnit, _, untilOK := normalizeSourceDate(text[indexes[6]:indexes[7]])
+		if !fromOK || !untilOK {
+			continue
+		}
+		if capability != "approval_valid_until" {
+			candidates = append(candidates, semanticCandidate{semanticType: "approval_valid_from", value: from, unit: fromUnit, start: indexes[0], end: indexes[1]})
+		}
+		if capability != "approval_valid_from" {
+			candidates = append(candidates, semanticCandidate{semanticType: "approval_valid_until", value: until, unit: untilUnit, start: indexes[0], end: indexes[1]})
+		}
+	}
+	return candidates
+}
+
+func contractReferenceCandidates(capability, text string) []semanticCandidate {
+	var candidates []semanticCandidate
+	for _, indexes := range contractReferencePattern.FindAllStringSubmatchIndex(text, 32) {
+		semanticType := contractReferenceSemanticType(text[indexes[2]:indexes[3]])
+		if capability != "contract_reference_date" && capability != semanticType {
+			continue
+		}
+		value, unit, _, ok := normalizeSourceDate(text[indexes[4]:indexes[5]])
+		if !ok {
+			continue
+		}
+		candidates = append(candidates, semanticCandidate{semanticType: semanticType, value: value, unit: unit, start: indexes[0], end: indexes[1]})
+	}
+	return candidates
 }
 
 func normalizeMilestoneDate(raw string) (string, bool) {
@@ -742,25 +908,32 @@ func addWholeMatches(pattern *regexp.Regexp, semanticType, text string, candidat
 
 func candidateFact(candidate semanticCandidate, sources []Evidence) (SemanticFact, Citation, error) {
 	for _, evidence := range sources {
-		if evidence.ID != candidate.sourceID || candidate.start < 0 || candidate.end > len(evidence.Text) || candidate.end <= candidate.start {
-			continue
+		if candidateEvidenceMatches(candidate, evidence) {
+			return buildCandidateFact(candidate, evidence)
 		}
-		quote := evidence.Text[candidate.start:candidate.end]
-		value, unit, currency, ok := normalizeSemanticQuote(candidate.semanticType, quote)
-		if !ok || value != candidate.value || unit != candidate.unit || currency != candidate.currency {
-			return SemanticFact{}, Citation{}, ErrEvidence
-		}
-		start := utf8.RuneCountInString(evidence.Text[:candidate.start])
-		end := start + utf8.RuneCountInString(quote)
-		citation := Citation{EvidenceID: evidence.ID, Version: evidence.Version, Quote: quote,
-			Start: start, End: end, DocumentID: evidence.DocumentID, ParsedDocumentID: evidence.ParsedDocumentID,
-			NormalizedDigest: evidence.NormalizedDigest, Status: "located"}
-		key := evidence.ID + "\x00" + candidate.semanticType + "\x00" + quote + "\x00" + candidate.value
-		fact := SemanticFact{ID: "fact_" + TextHash(key)[:24], Type: candidate.semanticType,
-			Value: candidate.value, Unit: candidate.unit, Currency: candidate.currency, Citation: citation}
-		return fact, citation, nil
 	}
 	return SemanticFact{}, Citation{}, ErrEvidence
+}
+
+func candidateEvidenceMatches(candidate semanticCandidate, evidence Evidence) bool {
+	return evidence.ID == candidate.sourceID && candidate.start >= 0 && candidate.end <= len(evidence.Text) && candidate.end > candidate.start
+}
+
+func buildCandidateFact(candidate semanticCandidate, evidence Evidence) (SemanticFact, Citation, error) {
+	quote := evidence.Text[candidate.start:candidate.end]
+	value, unit, currency, ok := normalizeSemanticQuote(candidate.semanticType, quote)
+	if !ok || value != candidate.value || unit != candidate.unit || currency != candidate.currency {
+		return SemanticFact{}, Citation{}, ErrEvidence
+	}
+	start := utf8.RuneCountInString(evidence.Text[:candidate.start])
+	end := start + utf8.RuneCountInString(quote)
+	citation := Citation{EvidenceID: evidence.ID, Version: evidence.Version, Quote: quote, Start: start, End: end,
+		DocumentID: evidence.DocumentID, ParsedDocumentID: evidence.ParsedDocumentID,
+		NormalizedDigest: evidence.NormalizedDigest, Status: "located"}
+	key := evidence.ID + "\x00" + candidate.semanticType + "\x00" + quote + "\x00" + candidate.value
+	fact := SemanticFact{ID: "fact_" + TextHash(key)[:24], Type: candidate.semanticType,
+		Value: candidate.value, Unit: candidate.unit, Currency: candidate.currency, Citation: citation}
+	return fact, citation, nil
 }
 
 func sourceSemanticType(semanticType string) bool {
@@ -780,24 +953,34 @@ func normalizeSemanticQuote(semanticType, quote string) (value, unit, currency s
 		return normalizeQuotedAmount(quote)
 	}
 	if semanticType == "amount_total" || semanticType == "amount_ceiling" {
-		value, unit, currency, ok = normalizeQuotedAmount(quote)
-		if !ok {
-			return "", "", "", false
-		}
-		match := amountPattern.FindStringSubmatch(quote)
-		if len(match) != 6 || amountSemanticType(match[2]) != semanticType {
-			return "", "", "", false
-		}
-		return value, unit, currency, true
+		return normalizeTypedAmountQuote(semanticType, quote)
 	}
-	candidates := candidatesFor(semanticType, quote)
-	for _, candidate := range candidates {
-		if candidate.start == 0 && candidate.end == len(quote) &&
-			(candidate.semanticType == semanticType || semanticType == "party" || semanticType == "milestone") {
+	return normalizeCandidateQuote(semanticType, quote)
+}
+
+func normalizeTypedAmountQuote(semanticType, quote string) (string, string, string, bool) {
+	value, unit, currency, ok := normalizeQuotedAmount(quote)
+	if !ok {
+		return "", "", "", false
+	}
+	match := amountPattern.FindStringSubmatch(quote)
+	if len(match) != 6 || amountSemanticType(match[2]) != semanticType {
+		return "", "", "", false
+	}
+	return value, unit, currency, true
+}
+
+func normalizeCandidateQuote(semanticType, quote string) (string, string, string, bool) {
+	for _, candidate := range candidatesFor(semanticType, quote) {
+		if candidate.start == 0 && candidate.end == len(quote) && candidateRepresents(candidate.semanticType, semanticType) {
 			return candidate.value, candidate.unit, candidate.currency, true
 		}
 	}
 	return "", "", "", false
+}
+
+func candidateRepresents(candidateType, requestedType string) bool {
+	return candidateType == requestedType || requestedType == "party" || requestedType == "milestone"
 }
 
 func amountSemanticType(label string) string {
@@ -820,16 +1003,25 @@ func compareAmountCandidates(left, right semanticCandidate) (string, string, str
 	if left.currency != right.currency {
 		return "unsupported", "currency_conversion_not_supported", "两侧金额币种不同且本版没有汇率来源；未换算或推断比较结果。"
 	}
+	if status, code, summary, handled := compareAmountRoles(left, right); handled {
+		return status, code, summary
+	}
+	return compareEqualAmountFields(left, right)
+}
+
+func compareAmountRoles(left, right semanticCandidate) (string, string, string, bool) {
 	if left.semanticType == "amount_ceiling" && right.semanticType == "amount_total" {
-		return compareAmountToCeiling(right.value, left.value)
+		status, code, summary := compareAmountToCeiling(right.value, left.value)
+		return status, code, summary, true
 	}
 	if right.semanticType == "amount_ceiling" && left.semanticType == "amount_total" {
-		return compareAmountToCeiling(left.value, right.value)
+		status, code, summary := compareAmountToCeiling(left.value, right.value)
+		return status, code, summary, true
 	}
-	if left.semanticType != right.semanticType &&
-		(left.semanticType == "amount_ceiling" || right.semanticType == "amount_ceiling" || left.semanticType == "amount_total" || right.semanticType == "amount_total") {
-		return "insufficient", "amount_semantic_roles_not_comparable", "两侧金额表达含义不同且不构成可直接比较的预算上限与合同金额。"
-	}
+	return "", "", "", false
+}
+
+func compareEqualAmountFields(left, right semanticCandidate) (string, string, string) {
 	if left.value == right.value && left.unit == right.unit {
 		return "compatible", "frozen_source_values_match", "两侧冻结来源中的受支持字段值一致；此结论仅限该字段的来源一致性。"
 	}
@@ -854,20 +1046,28 @@ func compareAmountValues(left, right string) (int, bool) {
 		!validAmountDecimal(rightWhole, rightFraction, rightHasFraction) {
 		return 0, false
 	}
-	leftWhole = strings.TrimLeft(leftWhole, "0")
-	rightWhole = strings.TrimLeft(rightWhole, "0")
-	if leftWhole == "" {
-		leftWhole = "0"
-	}
-	if rightWhole == "" {
-		rightWhole = "0"
-	}
-	if len(leftWhole) != len(rightWhole) {
-		return len(leftWhole) - len(rightWhole), true
-	}
-	if comparison := strings.Compare(leftWhole, rightWhole); comparison != 0 {
+	if comparison := compareAmountWhole(leftWhole, rightWhole); comparison != 0 {
 		return comparison, true
 	}
+	return compareAmountFraction(leftFraction, rightFraction), true
+}
+
+func compareAmountWhole(left, right string) int {
+	left = strings.TrimLeft(left, "0")
+	right = strings.TrimLeft(right, "0")
+	if left == "" {
+		left = "0"
+	}
+	if right == "" {
+		right = "0"
+	}
+	if len(left) != len(right) {
+		return len(left) - len(right)
+	}
+	return strings.Compare(left, right)
+}
+
+func compareAmountFraction(leftFraction, rightFraction string) int {
 	for index := range max(len(leftFraction), len(rightFraction)) {
 		leftDigit, rightDigit := byte('0'), byte('0')
 		if index < len(leftFraction) {
@@ -877,23 +1077,19 @@ func compareAmountValues(left, right string) (int, bool) {
 			rightDigit = rightFraction[index]
 		}
 		if leftDigit != rightDigit {
-			return int(leftDigit) - int(rightDigit), true
+			return int(leftDigit) - int(rightDigit)
 		}
 	}
-	return 0, true
+	return 0
 }
 
 func validAmountDecimal(whole, fraction string, hasFraction bool) bool {
-	if whole == "" || hasFraction && fraction == "" {
-		return false
-	}
-	for index := range len(whole) {
-		if whole[index] < '0' || whole[index] > '9' {
-			return false
-		}
-	}
-	for index := range len(fraction) {
-		if fraction[index] < '0' || fraction[index] > '9' {
+	return whole != "" && (!hasFraction || fraction != "") && decimalDigits(whole) && decimalDigits(fraction)
+}
+
+func decimalDigits(value string) bool {
+	for index := range len(value) {
+		if value[index] < '0' || value[index] > '9' {
 			return false
 		}
 	}
@@ -961,48 +1157,67 @@ func normalizeQuotedAmount(quote string) (value, unit, currency string, ok bool)
 	if len(match) != 6 || match[0] != quote {
 		return "", "", "", false
 	}
-	number, sourceUnit := match[3], match[5]
+	digits, fraction, valid := normalizedAmountDigits(match[3])
+	if !valid {
+		return "", "", "", false
+	}
+	value = scaleAmountDigits(digits, len(fraction)-amountUnitPower(match[5]))
+	return value, "major_currency", amountCurrency(match[5]), true
+}
+
+func normalizedAmountDigits(number string) (string, string, bool) {
 	whole, fraction, _ := strings.Cut(number, ".")
 	groups := strings.Split(whole, ",")
 	if groups[0] == "" || len(groups) > 1 && len(groups[0]) > 3 {
-		return "", "", "", false
+		return "", "", false
 	}
 	for _, group := range groups[1:] {
 		if len(group) != 3 {
-			return "", "", "", false
+			return "", "", false
 		}
 	}
 	digits := strings.TrimLeft(strings.Join(groups, "")+fraction, "0")
 	if digits == "" {
 		digits = "0"
 	}
-	power := 0
-	switch sourceUnit {
+	return digits, fraction, true
+}
+
+func amountUnitPower(unit string) int {
+	switch unit {
 	case "亿元":
-		power = 8
+		return 8
 	case "万元", "万":
-		power = 4
+		return 4
+	default:
+		return 0
 	}
-	scale := len(fraction) - power
+}
+
+func scaleAmountDigits(digits string, scale int) string {
 	if scale <= 0 {
-		value = digits + strings.Repeat("0", -scale)
-	} else if len(digits) <= scale {
-		value = "0." + strings.Repeat("0", scale-len(digits)) + digits
-	} else {
-		point := len(digits) - scale
-		value = digits[:point] + "." + digits[point:]
+		return digits + strings.Repeat("0", -scale)
 	}
+	if len(digits) <= scale {
+		return "0." + strings.Repeat("0", scale-len(digits)) + digits
+	}
+	point := len(digits) - scale
+	value := digits[:point] + "." + digits[point:]
 	if strings.Contains(value, ".") {
 		value = strings.TrimRight(strings.TrimRight(value, "0"), ".")
 	}
 	if value == "" {
-		value = "0"
+		return "0"
 	}
-	currency = "CNY"
-	if sourceUnit == "美元" {
-		currency = "USD"
-	} else if sourceUnit == "欧元" {
-		currency = "EUR"
+	return value
+}
+
+func amountCurrency(unit string) string {
+	if unit == "美元" {
+		return "USD"
 	}
-	return value, "major_currency", currency, true
+	if unit == "欧元" {
+		return "EUR"
+	}
+	return "CNY"
 }
