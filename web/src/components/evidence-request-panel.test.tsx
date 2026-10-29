@@ -366,7 +366,7 @@ describe("补充材料请求", () => {
       canManage: false,
       sessionActor: clerk,
       respond(call) {
-        const request = rawRequest("received", 2);
+        const request = { ...rawRequest("received", 2), material_role: null };
         if (call.pathname.endsWith("/evidence-requests")) return Response.json({ items: [request] });
         if (call.pathname.endsWith("/history")) return Response.json({ items: [
           { type: "received", actor_id: clerk.id, occurred_at: at, request, receipt: rawReceipt },
@@ -377,6 +377,7 @@ describe("补充材料请求", () => {
 
     await screen.findByText("已提交，待复核");
     expect(screen.getByLabelText("上传补充文件")).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "上传材料类型" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "发起后续审查" })).toBeInTheDocument();
     expect(screen.getByText("当前身份不能提交核验。")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "提交核验" })).toBeDisabled();
@@ -399,6 +400,79 @@ describe("补充材料请求", () => {
     expect(screen.queryByRole("button", { name: "提交回执" })).not.toBeInTheDocument();
     expect(screen.queryByLabelText("上传补充文件")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "创建任务并发起请求" })).not.toBeInTheDocument();
+  });
+
+  it("lets a reviewer submit a receipt without exposing upload controls", async () => {
+    const reviewer: Actor = { ...actor, id: "reviewer-1", display_name: "复核人", role: "reviewer" };
+    open({
+      canManage: false,
+      sessionActor: reviewer,
+      respond(call) {
+        const request = rawRequest("open", 1);
+        if (call.pathname.endsWith("/evidence-requests")) return Response.json({ items: [request] });
+        if (call.pathname.endsWith("/history")) return Response.json({ items: [] });
+        return Response.json({ error: { message: "unexpected" } }, { status: 404 });
+      },
+    });
+
+    await screen.findByText("待提交");
+    expect(screen.getByRole("button", { name: "提交回执" })).toBeInTheDocument();
+    expect(screen.queryByLabelText("上传补充文件")).not.toBeInTheDocument();
+    expect(screen.getByText("如需上传新材料，请由有上传权限的案件成员登记后再选择。")).toBeInTheDocument();
+  });
+
+  it("shows safe fallbacks when assignee and source reason are missing", async () => {
+    const request = {
+      ...rawRequest("open", 1),
+      assignee_id: "unlisted-assignee",
+      source_evaluation: {
+        ...missing,
+        reason: "",
+        run_id: "run-old",
+        attempt_id: "attempt-old",
+        case_id: "case-1",
+      },
+    };
+    open({ canManage: false, respond(call) {
+      if (call.pathname.endsWith("/evidence-requests")) return Response.json({ items: [request] });
+      if (call.pathname.endsWith("/history")) return Response.json({ items: [] });
+      return Response.json({ error: { message: "unexpected" } }, { status: 404 });
+    } });
+
+    await screen.findByText("待提交");
+    expect(screen.getByText(/责任人：姓名未报告；期限：/)).toBeInTheDocument();
+    expect(screen.getByText(/来源：规则检查，.*原因未报告。/)).toBeInTheDocument();
+    expect(screen.queryByText("unlisted-assignee")).not.toBeInTheDocument();
+  });
+
+  it("shows verified evidence and the no-result fallback", async () => {
+    const verification = {
+      run_id: "run-old",
+      attempt_id: "attempt-old",
+      receipt_id: "receipt-1",
+      evaluation_id: "eval-old",
+      relation: null,
+      gap_id: null,
+      gap_status: null,
+      evidence: [{ document_id: "doc-2", parsed_document_id: "parse-2", quote: "质保36个月", start: 1, end: 7 }],
+      reason: "复核已完成",
+      verified_by: "owner",
+      verified_at: at,
+    };
+    const request = { ...rawRequest("verified", 3), verification };
+    open({ canManage: false, respond(call) {
+      if (call.pathname.endsWith("/evidence-requests")) return Response.json({ items: [request] });
+      if (call.pathname.endsWith("/history")) return Response.json({ items: [] });
+      return Response.json({ error: { message: "unexpected" } }, { status: 404 });
+    } });
+
+    await screen.findByText("已核验");
+    expect(screen.getByText("核验结果：未报告；复核已完成")).toBeInTheDocument();
+    expect(screen.getByText("质保36个月")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "查看核验审查" })).toHaveAttribute(
+      "href",
+      "/cases/case-1/reviews/run-old?attempt_id=attempt-old",
+    );
   });
 
   it("preserves the received request and recovers its history after a read error", async () => {
