@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { parseEvidenceRequest } from "./evidence-workflow";
+import {
+  createEvidenceReceipt,
+  listEvidenceHistory,
+  parseEvidenceRequest,
+  uploadEvidenceDocument,
+} from "./evidence-workflow";
 
 const baseRequest = {
   id: "request-1",
@@ -239,5 +244,101 @@ describe("parseEvidenceRequest", () => {
         verification: { ...verification, run_id: null },
       }),
     ).toThrow("补充材料响应中的 verification.run_id 无法识别");
+  });
+});
+
+const receipt = {
+  id: "receipt-1",
+  request_id: "request-1",
+  case_id: "case-1",
+  document_id: "document-1",
+  answer: null,
+  submitted_by: "user-1",
+  created_at: "2026-10-07T00:00:00Z",
+};
+
+function jsonResponse(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "Content-Type": "application/json" },
+  });
+}
+
+describe("evidence workflow responses", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("requires a receipt to carry exactly one of document or answer", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      jsonResponse({ request: baseRequest, receipt }),
+    );
+    const result = await createEvidenceReceipt("case-1", "request-1", {
+      document_id: "document-1",
+      expected_version: 3,
+    }, "key-1");
+    expect(result.receipt).toMatchObject({
+      id: "receipt-1",
+      document_id: "document-1",
+      answer: null,
+    });
+
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      jsonResponse({
+        request: baseRequest,
+        receipt: { ...receipt, document_id: null, answer: null },
+      }),
+    );
+    await expect(
+      createEvidenceReceipt("case-1", "request-1", { expected_version: 3 }, "key-2"),
+    ).rejects.toThrow("补充材料响应中的 receipt 内容 无法识别");
+  });
+
+  it("parses history receipts only when present", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      jsonResponse({
+        items: [
+          {
+            type: "receipt_submitted",
+            actor_id: "user-1",
+            occurred_at: "2026-10-07T00:00:00Z",
+            request: baseRequest,
+            receipt,
+          },
+        ],
+      }),
+    );
+    const withReceipt = await listEvidenceHistory("case-1", "request-1");
+    expect(withReceipt[0]?.receipt).toMatchObject({ id: "receipt-1" });
+
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      jsonResponse({
+        items: [
+          {
+            type: "created",
+            actor_id: "user-1",
+            occurred_at: "2026-10-07T00:00:00Z",
+            request: baseRequest,
+            receipt: null,
+          },
+        ],
+      }),
+    );
+    const withoutReceipt = await listEvidenceHistory("case-1", "request-1");
+    expect(withoutReceipt[0]?.receipt).toBeNull();
+  });
+
+  it("rejects an uploaded document without an id", async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(jsonResponse({ id: "" }));
+    await expect(
+      uploadEvidenceDocument("case-1", new File(["x"], "a.pdf"), "procurement"),
+    ).rejects.toThrow("补充材料响应中的 uploaded document.id 无法识别");
+
+    fetchMock.mockResolvedValue(jsonResponse({ id: "document-1" }));
+    await expect(
+      uploadEvidenceDocument("case-1", new File(["x"], "a.pdf"), "procurement"),
+    ).resolves.toEqual({ id: "document-1" });
   });
 });
