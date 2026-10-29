@@ -2,6 +2,7 @@ import { screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { MemoryRouter } from "react-router";
 import { parseAgentReview } from "../api/agent-review";
+import type { ExecutionEvent } from "../api/types";
 import { AgentReviewInspector } from "./agent-review-inspector";
 import { renderWithAntd as render } from "../test/antd";
 
@@ -634,5 +635,292 @@ describe("AgentReview Inspector", () => {
     expect(
       region.getByText(/排序保持确定性顺序/),
     ).toBeInTheDocument();
+  });
+});
+
+describe("AgentReview Inspector tones and missing details", () => {
+  function renderReview(
+    review = reviewWithUnsupportedCapability(),
+    executionEvents: ExecutionEvent[] = [],
+  ) {
+    render(
+      <MemoryRouter>
+        <AgentReviewInspector
+          agentReview={review}
+          caseId="case-1"
+          attemptId="attempt-1"
+          executionEvents={executionEvents}
+        />
+      </MemoryRouter>,
+    );
+  }
+
+  it("colors failed reviews as errors and completed reviews neutrally", () => {
+    const failed = reviewWithUnsupportedCapability();
+    failed.status = "failed";
+    const view = render(
+      <MemoryRouter>
+        <AgentReviewInspector
+          agentReview={failed}
+          caseId="case-1"
+          attemptId="attempt-1"
+          executionEvents={[]}
+        />
+      </MemoryRouter>,
+    );
+    expect(screen.getByText("failed").className).toContain("ant-tag-error");
+    view.unmount();
+    const completed = reviewWithUnsupportedCapability();
+    completed.status = "completed";
+    renderReview(completed);
+    expect(screen.getByText("completed").className).toContain("ant-tag-default");
+  });
+
+  it("keeps an absent review and a mismatched attempt explicit", () => {
+    render(
+      <MemoryRouter>
+        <AgentReviewInspector
+          agentReview={null}
+          caseId="case-1"
+          attemptId="attempt-1"
+          executionEvents={[]}
+        />
+      </MemoryRouter>,
+    );
+    expect(
+      screen.getByText(/本次执行没有保存五个方面的检查计划/),
+    ).toBeInTheDocument();
+  });
+
+  it("marks a compatible verified capability good, conflicts bad and unknown relations attention", () => {
+    const review = reviewWithApprovalValidity();
+    const capability = review.domains[0]?.capabilities.find(
+      (item) => item.capability_id === "approval_validity",
+    )!;
+    capability.status = "completed";
+    capability.relation = "compatible";
+    const view = render(
+      <MemoryRouter>
+        <AgentReviewInspector
+          agentReview={review}
+          caseId="case-1"
+          attemptId="attempt-1"
+          executionEvents={[]}
+        />
+      </MemoryRouter>,
+    );
+    expect(screen.getByText("符合").className).toContain("ant-tag-success");
+    view.unmount();
+    capability.relation = "conflict";
+    capability.status = "supported";
+    const conflictView = render(
+      <MemoryRouter>
+        <AgentReviewInspector
+          agentReview={review}
+          caseId="case-1"
+          attemptId="attempt-1"
+          executionEvents={[]}
+        />
+      </MemoryRouter>,
+    );
+    expect(screen.getByText("冲突").className).toContain("ant-tag-error");
+    conflictView.unmount();
+    capability.relation = null;
+    renderReview(review);
+    expect(screen.getByText("supported").className).toContain(
+      "ant-tag-warning",
+    );
+  });
+
+  it("reports an unreported citation detail without inventing evidence", () => {
+    const review = reviewWithApprovalValidity();
+    const domain = review.domains[0]!;
+    domain.capabilities.push({
+      capability_id: "ghost_capability",
+      status: "supported",
+      relation: "compatible",
+      reason_code: "",
+      evidence_ids: ["ghost-evidence"],
+      canonical_evaluation_ids: [],
+    });
+    review.scope[0]!.capability_ids.push("ghost_capability");
+    renderReview(review);
+    const region = within(
+      screen.getByRole("region", { name: "范围、支持表达与证据覆盖" }),
+    );
+    expect(region.getByText("ghost-evidence")).toBeInTheDocument();
+    expect(region.getByText(/来源引用详情未报告/)).toBeInTheDocument();
+  });
+
+  it("lists observed model references and usage sources from execution events", () => {
+    renderReview(reviewWithUnsupportedCapability(), [
+      { model_ref: "model-a", usage: { source: "gateway" } },
+      { model_ref: "model-a", usage: { source: "cache" } },
+      { model_ref: null, usage: null },
+    ] as ExecutionEvent[]);
+    expect(screen.getByText("model-a")).toBeInTheDocument();
+    expect(screen.getByText("gateway、cache")).toBeInTheDocument();
+  });
+
+  it("marks a failed advisory as attention-toned and keeps deterministic fallback", () => {
+    const review = reviewWithUnsupportedCapability();
+    review.knowledge_selection = {
+      snapshot_sha256: "a".repeat(64),
+      algorithm: "chinese-bigram-label/v1",
+      policy_status: "unknown",
+      policy_reason: "policy_missing",
+      advisory: {
+        mode: "fixture",
+        feature: "knowledge_rerank",
+        provider: "local-fixture",
+        configuration_id: "b".repeat(64),
+        model_requested: null,
+        model_observed: "observed",
+        question_set_version: "knowledge-relevance/v1",
+        egress: "minimized",
+        request_sha256: null,
+        judgment_id: null,
+        status: "invalid_response",
+        error_code: null,
+        truncated: true,
+        candidates: [
+          {
+            knowledge_id: "guide-c",
+            version_id: "v2",
+            content_sha256: "c".repeat(64),
+            alias: "candidate_0",
+            probability: null,
+            band: "unknown",
+            rank_before: 3,
+            rank_after: 3,
+            reason: "no_signal",
+          },
+        ],
+      },
+    };
+    renderReview(review);
+    const region = within(
+      screen.getByRole("region", { name: "治理知识与排序建议" }),
+    );
+    expect(region.getByText("响应无效").className).toContain("ant-tag-warning");
+    expect(region.getByText("本地 fixture， 本地 fixture")).toBeInTheDocument();
+    expect(region.getByText(/候选过多，本次仅评估了部分可选知识/)).toBeInTheDocument();
+    expect(region.getByText(/建议概率 未返回/)).toBeInTheDocument();
+    expect(region.getByText(/原因 no_signal/)).toBeInTheDocument();
+    expect(region.getByText(/该失败本身不构成审查结论/)).toBeInTheDocument();
+  });
+});
+
+describe("AgentReview Inspector rich configuration and evidence", () => {
+  it("renders snapshot, rulepack, fallback and every evidence field", () => {
+    const review = reviewWithUnsupportedCapability();
+    review.planner.fallback_used = true;
+    review.planner.fallback_code = null;
+    review.planner.model_configuration_id = "model-config-1";
+    review.source_snapshot = {
+      document_ids: [],
+      parsed_document_ids: ["parsed-1"],
+      parse_selection_hash: "selection-hash",
+    };
+    review.rulepack = { id: "pack-1", version: "9", content_sha256: "pack-sha" };
+    review.scope.push({
+      domain: "commercial",
+      capability_ids: [],
+      source_ids: [],
+    });
+    review.domains[0]!.capabilities.push({
+      capability_id: "amount",
+      status: "supported",
+      relation: "compatible",
+      reason_code: "",
+      evidence_ids: ["rich", "unlocated", "empty-quote"],
+      canonical_evaluation_ids: [],
+    });
+    review.evidence = [
+      {
+        evidence_id: "rich",
+        semantic_type: "amount",
+        value: "100",
+        unit: "CNY",
+        currency: "人民币",
+        verification: "verified",
+        anchor: {
+          id: "a-1",
+          document_id: "doc-1",
+          parsed_document_id: "parsed-1",
+          normalized_digest: "norm-1",
+          quote: "100元",
+          status: "located",
+          start: 0,
+          end: 4,
+          reason: null,
+          page: 3,
+          element_id: "el-1",
+        },
+      },
+      {
+        evidence_id: "unlocated",
+        semantic_type: "amount",
+        value: "50",
+        unit: null,
+        currency: null,
+        verification: "unknown",
+        anchor: {
+          id: "a-2",
+          document_id: "doc-1",
+          parsed_document_id: "parsed-1",
+          normalized_digest: "norm-1",
+          quote: "",
+          status: "unlocatable",
+          start: 0,
+          end: 0,
+          reason: null,
+          page: null,
+          element_id: null,
+        },
+      },
+      {
+        evidence_id: "empty-quote",
+        semantic_type: "amount",
+        value: "20",
+        unit: null,
+        currency: null,
+        verification: "verified",
+        anchor: {
+          id: "a-3",
+          document_id: "doc-1",
+          parsed_document_id: "parsed-1",
+          normalized_digest: "norm-1",
+          quote: "",
+          status: "located",
+          start: 0,
+          end: 0,
+          reason: null,
+          page: null,
+          element_id: null,
+        },
+      },
+    ];
+    render(
+      <MemoryRouter>
+        <AgentReviewInspector
+          agentReview={review}
+          caseId="case-1"
+          attemptId="attempt-1"
+          executionEvents={[]}
+        />
+      </MemoryRouter>,
+    );
+    expect(screen.getAllByText(/无已报告 ID/).length).toBeGreaterThan(0);
+    expect(screen.getByText("selection-hash")).toBeInTheDocument();
+    expect(screen.getByText(/pack-1 v9/)).toBeInTheDocument();
+    expect(screen.getByText("已回退：原因未报告")).toBeInTheDocument();
+    expect(screen.getByText("model-config-1")).toBeInTheDocument();
+    expect(screen.getAllByText("未报告").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("没有报告具体能力结果。").length).toBeGreaterThan(0);
+    expect(screen.getByText("amount: 100 CNY，人民币")).toBeInTheDocument();
+    expect(screen.getByText(/页 3，元素 el-1/)).toBeInTheDocument();
+    expect(screen.getByText("引用未定位：未提供原因")).toBeInTheDocument();
+    expect(screen.getByText("没有报告原文引用。")).toBeInTheDocument();
   });
 });

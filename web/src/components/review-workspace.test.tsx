@@ -557,3 +557,247 @@ describe("review workspace", () => {
     });
   });
 });
+
+function renderView(
+  overrides: Partial<ComponentProps<typeof ReviewWorkspaceView>> = {},
+) {
+  const onRetry = vi.fn();
+  const onCancel = vi.fn();
+  const onSelectAttempt = vi.fn();
+  const props: ComponentProps<typeof ReviewWorkspaceView> = {
+    workspace: workspace(),
+    layout: "switch",
+    selectedId: "f1",
+    streamStatus: "live",
+    pending: false,
+    retrying: false,
+    conflictMessage: null,
+    saveError: null,
+    onSelect: vi.fn(),
+    onSelectAttempt,
+    onDecide: vi.fn().mockResolvedValue(true),
+    onRetry,
+    onCancel,
+    ...overrides,
+  };
+  const view = render(<MemoryRouter><ReviewWorkspaceView {...props} /></MemoryRouter>);
+  return { ...view, onRetry, onCancel, onSelectAttempt };
+}
+
+const attempt = (id: string, ordinal: number, state: string) => ({
+  id,
+  run_id: "r1",
+  ordinal,
+  retry_of_attempt_id: null,
+  state,
+  accepted_at: "2026-10-21T00:00:00Z",
+  started_at: "2026-10-21T00:00:00Z",
+  finished_at: null,
+  parsed_document_ids: [],
+  history_kind: "frozen",
+});
+
+describe("review workspace lifecycle", () => {
+  it.each([
+    ["connecting", "正在连接运行状态"],
+    ["live", "运行状态已连接"],
+    ["reconnecting", "连接中断，正在按游标重连"],
+    ["closed", "运行状态流已关闭，不会自动重连；请刷新页面或重新登录后再试。"],
+    ["inactive", "本次执行没有活动的事件流"],
+  ] as const)("reports the %s stream status", (streamStatus, label) => {
+    renderView({ streamStatus });
+    expect(screen.getByText(label)).toBeInTheDocument();
+  });
+
+  it("shows the configured model only when the run reports one", () => {
+    const result = workspace();
+    result.run.model_ref = "model-v1";
+    const view = renderView({ workspace: result });
+    expect(screen.getByText("模型 model-v1")).toBeInTheDocument();
+    view.unmount();
+    const without = workspace();
+    without.run.model_ref = null;
+    renderView({ workspace: without });
+    expect(screen.queryByText(/^模型 /)).not.toBeInTheDocument();
+  });
+
+  it.each(["failed", "partial", "cancelled", "interrupted"])(
+    "offers a retry for a %s run",
+    async (state) => {
+      const user = userEvent.setup();
+      const result = workspace();
+      result.run.state = state;
+      const { onRetry } = renderView({ workspace: result });
+      expect(
+        screen.getByRole("button", { name: "重新执行未完成的审查" }),
+      ).toBeEnabled();
+      await user.click(
+        screen.getByRole("button", { name: "重新执行未完成的审查" }),
+      );
+      expect(onRetry).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it.each(["completed", "awaiting_human", "running"])(
+    "does not offer a retry for a %s run",
+    (state) => {
+      const result = workspace();
+      result.run.state = state;
+      renderView({ workspace: result });
+      expect(
+        screen.queryByRole("button", { name: "重新执行未完成的审查" }),
+      ).not.toBeInTheDocument();
+    },
+  );
+
+  it("marks a retry as pending and respects the retry permission", () => {
+    const result = workspace();
+    result.run.state = "failed";
+    const view = renderView({ workspace: result, retrying: true });
+    expect(
+      screen.getByRole("button", { name: "正在受理重试" }),
+    ).toBeDisabled();
+    view.unmount();
+    renderView({ workspace: result, canRetry: false });
+    expect(
+      screen.getByRole("button", { name: "重新执行未完成的审查" }),
+    ).toBeDisabled();
+  });
+
+  it("explains partial, failed and cancelled runs", () => {
+    const partial = workspace();
+    partial.run.state = "partial";
+    partial.run.partial_reason = "模型输出超时";
+    const view = renderView({ workspace: partial });
+    expect(
+      screen.getByText(/模型输出超时.*模型步骤未完成/),
+    ).toBeInTheDocument();
+    view.unmount();
+    const failed = workspace();
+    failed.run.state = "failed";
+    failed.run.failure_message = "网关错误";
+    const failedView = renderView({ workspace: failed });
+    expect(screen.getByText("网关错误")).toBeInTheDocument();
+    failedView.unmount();
+    const cancelled = workspace();
+    cancelled.run.state = "cancelled";
+    renderView({ workspace: cancelled });
+    expect(
+      screen.getByText("审查已取消。取消前保存的规则发现和实际调用用量仍会保留。"),
+    ).toBeInTheDocument();
+  });
+
+  it("falls back to neutral partial and failure wording", () => {
+    const partial = workspace();
+    partial.run.state = "partial";
+    const view = renderView({ workspace: partial });
+    expect(screen.getByText(/部分结果已保留。.*模型步骤未完成/)).toBeInTheDocument();
+    view.unmount();
+    const failed = workspace();
+    failed.run.state = "failed";
+    renderView({ workspace: failed });
+    expect(
+      screen.getByText("本次审查执行失败，已保留失败前的记录。"),
+    ).toBeInTheDocument();
+  });
+
+  it("selects a saved attempt when no detailed execution is available", async () => {
+    const user = userEvent.setup();
+    const result = workspace();
+    result.review_attempts = {
+      attempt: attempt("attempt-2", 2, "completed"),
+      attempts: [attempt("attempt-1", 1, "failed"), attempt("attempt-2", 2, "completed")],
+    };
+    const { onSelectAttempt } = renderView({ workspace: result });
+    expect(
+      screen.getByText("没有提供详细执行诊断；以下执行状态来自业务工作区。"),
+    ).toBeInTheDocument();
+    const select = screen.getByRole("combobox", { name: "查看执行记录" });
+    await user.click(select);
+    const options = await screen.findAllByRole("option");
+    expect(options.map((option) => option.textContent)).toEqual([
+      "第 2 次，执行完成，最新",
+      "第 1 次，失败",
+    ]);
+    await user.click(options[1]!);
+    expect(onSelectAttempt.mock.calls[0]?.[0]).toBe("attempt-1");
+  });
+
+  it("prepends an attempt missing from the saved attempt list", async () => {
+    const result = workspace();
+    result.review_attempts = {
+      attempt: attempt("attempt-9", 9, "running"),
+      attempts: [attempt("attempt-1", 1, "failed")],
+    };
+    renderView({ workspace: result });
+    await userEvent.setup().click(
+      screen.getByRole("combobox", { name: "查看执行记录" }),
+    );
+    const options = await screen.findAllByRole("option");
+    expect(options.map((option) => option.textContent)).toEqual([
+      "第 9 次，审查中，最新",
+      "第 1 次，失败",
+    ]);
+  });
+
+  it("warns about a legacy attempt and offers cancellation with its error", async () => {
+    const user = userEvent.setup();
+    const result = workspace();
+    result.review_attempts = {
+      attempt: { ...attempt("attempt-1", 1, "running"), history_kind: "legacy_unfrozen" },
+      attempts: [],
+    };
+    const { onCancel } = renderView({
+      workspace: result,
+      canCancel: true,
+      cancelError: "取消失败",
+    });
+    expect(
+      screen.getByText("较早的审查没有保存当时使用的材料版本记录，无法补回当时的执行过程。"),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("alert")).toHaveTextContent("取消失败");
+    await user.click(screen.getByRole("button", { name: "取消本次执行" }));
+    expect(onCancel).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows a pending cancellation label without allowing duplicates", () => {
+    const result = workspace();
+    result.review_attempts = {
+      attempt: attempt("attempt-1", 1, "running"),
+      attempts: [],
+    };
+    renderView({ workspace: result, canCancel: true, cancelling: true });
+    expect(screen.getByRole("button", { name: "正在取消" })).toBeDisabled();
+  });
+
+  it("fills the circuit for materials, findings and decisions", () => {
+    const result = workspace();
+    result.findings[0]!.decisions = [
+      {
+        id: "dec-2",
+        action: "confirm_risk",
+        reason: "已确认",
+        actor: "审查员",
+        decided_at: "2026-10-21T02:00:00Z",
+      },
+    ];
+    renderView({ workspace: result });
+    const circuit = screen.getByRole("list", { name: "审查链路" });
+    const items = within(circuit).getAllByRole("listitem");
+    expect(items[0]).toHaveAttribute("data-state", "filled");
+    expect(items[2]).toHaveAttribute("data-state", "filled");
+    expect(items[3]).toHaveAttribute("data-state", "filled");
+    expect(items[3]).toHaveTextContent("2/2");
+  });
+
+  it("marks an empty run as open and uses the layout class", () => {
+    const result = workspace();
+    result.documents = [];
+    result.findings = [];
+    const { container } = renderView({ workspace: result, layout: "split" });
+    const circuit = screen.getByRole("list", { name: "审查链路" });
+    for (const item of within(circuit).getAllByRole("listitem"))
+      expect(item).toHaveAttribute("data-state", "open");
+    expect(container.querySelector(".workspace-grid")).toHaveClass("layout-split");
+  });
+});

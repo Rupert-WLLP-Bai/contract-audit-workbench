@@ -511,6 +511,49 @@ describe("RulePackManifestEditor structured edits", () => {
   });
 });
 
+describe("RulePackManifestEditor identity and rule fields", () => {
+  it("edits unlocked pack identity and every rule text field", () => {
+    const changes = renderManifest(createEmptyRulePackDraft("tenant-test"));
+    inputValue("规则包 ID", "pack-a");
+    inputValue("版本", "2");
+    expect(changes.at(-1)!.id).toBe("pack-a");
+    expect(changes.at(-1)!.version).toBe("2");
+    inputValue("规则版本", "3");
+    inputValue("检查域", "commercial");
+    inputValue("能力 ID", "amount");
+    inputValue("业务线", "ENT");
+    inputValue("场景", "cloud");
+    inputValue("合同类型", "service");
+    inputValue("所需事实维度", "amount");
+    inputValue("单位族", "money");
+    const rule = changes.at(-1)!.rules[0]!;
+    expect(rule).toMatchObject({
+      version: "3",
+      domain: "commercial",
+      capability_id: "amount",
+      business_scope: { business_line: "ENT", scenario: "cloud", contract_type: "service" },
+      required_fact: { dimension: "amount", unit_family: "money" },
+    });
+  });
+
+  it("keeps a locked pack id and version read-only while tenant stays fixed", () => {
+    renderManifest(manifest, { lockedIdentity: true });
+    expect(screen.getByLabelText("规则包 ID")).toHaveAttribute("readonly");
+    expect(screen.getByLabelText("版本", { exact: true })).toHaveAttribute("readonly");
+    expect(screen.getByLabelText("可信会话租户")).toHaveAttribute("readonly");
+    expect(screen.getByLabelText("规则租户")).toHaveAttribute("readonly");
+  });
+
+  it("blocks all rule edits when the editor is disabled", () => {
+    renderManifest(manifest, { disabled: true });
+    expect(screen.getByLabelText("规则 ID")).toBeDisabled();
+    expect(screen.getByLabelText("比较器")).toBeDisabled();
+    expect(screen.getByLabelText("添加规则")).toBeDisabled();
+    expect(screen.getByLabelText("添加来源")).toBeDisabled();
+    expect(screen.getByLabelText("生效时间（本地时区）")).toBeDisabled();
+  });
+});
+
 describe("RulePackTestPanel consumer behavior", () => {
   it("submits code point citations and literal facts, then renders all result relations and provenance", async () => {
     const user = userEvent.setup();
@@ -783,6 +826,55 @@ describe("RulePackTestPanel consumer behavior", () => {
       screen.queryByRole("heading", { name: "测试结果" }),
     ).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "测试当前修订" })).toBeEnabled();
+  });
+});
+
+describe("RulePackTestPanel fact field edits", () => {
+  it("edits the fact dimension, unit and source role before submission", async () => {
+    const user = userEvent.setup();
+    const requests = renderPanel();
+    await addSource(user);
+    await user.click(screen.getByRole("button", { name: "添加事实" }));
+    inputValue("事实 ID", "fact-1");
+    inputValue("业务对象", "LINE-9");
+    inputValue("事实维度", "custom_dimension");
+    inputValue("事实值", "42");
+    inputValue("单位", "Gbit/s");
+    await chooseOption(
+      user,
+      screen.getByRole("combobox", { name: "对应规则" }),
+      "选择规则",
+    );
+    await chooseOption(
+      user,
+      screen.getByRole("combobox", { name: "材料角色" }),
+      "procurement",
+    );
+    selectSource();
+    await user.click(screen.getByRole("button", { name: "添加当前选区引用" }));
+    await user.click(screen.getByRole("button", { name: "测试当前修订" }));
+    await screen.findByRole("heading", { name: "测试结果" });
+    expect(JSON.parse(String(requests[0]?.init?.body)).facts[0]).toMatchObject({
+      dimension: "custom_dimension",
+      unit: "Gbit/s",
+      source_role: "procurement",
+      object_ref: "LINE-9",
+      value: "42",
+    });
+  });
+
+  it("does not offer a citation when the selection is empty", async () => {
+    const user = userEvent.setup();
+    renderPanel();
+    await addSource(user);
+    const text = screen.getByLabelText<HTMLTextAreaElement>("样本文本");
+    text.focus();
+    text.setSelectionRange(2, 2);
+    fireEvent.select(text);
+    await user.click(screen.getByRole("button", { name: "添加事实" }));
+    expect(
+      screen.getByRole("button", { name: "添加当前选区引用" }),
+    ).toBeDisabled();
   });
 });
 

@@ -12,30 +12,154 @@ import {
   SafetyCertificateOutlined,
   SettingOutlined,
 } from "@ant-design/icons";
+import type { Actor } from "../api/types";
+
+function rulepackVersionTitle(pathname: string): string {
+  if (pathname.endsWith("/new")) return "创建规则包草稿";
+  if (pathname.includes("/versions/")) return "规则包详情";
+  return "规则包治理";
+}
+
+function knowledgeTitle(pathname: string): string {
+  if (pathname.endsWith("/new")) return "创建知识版本";
+  if (pathname.includes("/versions/")) return "知识版本详情";
+  return "知识治理";
+}
+
+function adminBreadcrumb(pathname: string): string {
+  if (pathname.startsWith("/admin/infrastructure")) return "基础设施与中间件";
+  if (pathname.startsWith("/admin/governed-knowledge"))
+    return knowledgeTitle(pathname);
+  if (!pathname.startsWith("/admin/rulepacks")) return "设置与运行状态";
+  return rulepackVersionTitle(pathname);
+}
+
+function adminMenuKey(pathname: string): string {
+  if (pathname.startsWith("/admin/infrastructure")) return "/admin/infrastructure";
+  if (pathname.startsWith("/admin/governed-knowledge"))
+    return "/admin/governed-knowledge";
+  if (pathname.startsWith("/admin/rulepacks")) return "/admin/rulepacks";
+  return "/admin/settings";
+}
+
+const ADMIN_MENU_ITEMS = [
+  {
+    key: "organization",
+    type: "group" as const,
+    label: "组织管理",
+    children: [
+      {
+        key: "/admin/settings",
+        icon: <SettingOutlined />,
+        label: <NavLink to="/admin/settings">设置与运行状态</NavLink>,
+      },
+      {
+        key: "/admin/rulepacks",
+        icon: <SafetyCertificateOutlined />,
+        label: <NavLink to="/admin/rulepacks">规则库</NavLink>,
+      },
+      {
+        key: "/admin/governed-knowledge",
+        icon: <BookOutlined />,
+        label: <NavLink to="/admin/governed-knowledge">知识治理</NavLink>,
+      },
+      {
+        key: "/admin/infrastructure",
+        icon: <ApiOutlined />,
+        label: (
+          <NavLink to="/admin/infrastructure">基础设施与中间件</NavLink>
+        ),
+      },
+    ],
+  },
+];
+
+function AdminTopbar({
+  actor,
+  logoutPending,
+  onLogout,
+}: {
+  actor: Actor | undefined;
+  logoutPending: boolean;
+  onLogout: () => void;
+}) {
+  return (
+    <Layout.Header className="topbar admin-topbar">
+      <NavLink className="brand" to="/admin/settings" aria-label="管理工作台">
+        <span className="brand-mark" aria-hidden="true">
+          <CircuitMark />
+        </span>
+        <span className="brand-copy">
+          <strong>合同智能审计工作台</strong>
+        </span>
+      </NavLink>
+      <span className="organization-badge" title={actor?.org_id}>
+        <span className="organization-badge-label">组织：</span>
+        <span className="organization-badge-value">
+          {organizationName(actor?.org_id)}
+        </span>
+      </span>
+      <p className="disclaimer">此工作区不授予案件正文访问权限。</p>
+      <div className="who" aria-label="当前管理身份">
+        {actor ? (
+          <>
+            <Avatar className="header-avatar">
+              {Array.from(actor.display_name)[0]}
+            </Avatar>
+            <span className="identity-copy">
+              <strong>{actor.display_name}</strong>
+              <span className="meta">{actorRoleLabel(actor.role)}</span>
+            </span>
+          </>
+        ) : (
+          <span>身份未知</span>
+        )}
+        <Button
+          className="header-action"
+          ghost
+          aria-label={"退出"}
+          icon={<LogoutOutlined />}
+          disabled={logoutPending}
+          onClick={onLogout}
+        >
+          退出
+        </Button>
+      </div>
+    </Layout.Header>
+  );
+}
+
+function AdminSidebar({ pathname }: { pathname: string }) {
+  return (
+    <Layout.Sider
+      theme="dark"
+      className="sidenav admin-sidenav"
+      aria-label="管理导航"
+      width={248}
+      collapsedWidth={72}
+      collapsible
+    >
+      <Menu
+        mode="inline"
+        theme="dark"
+        selectedKeys={[adminMenuKey(pathname)]}
+        items={ADMIN_MENU_ITEMS}
+      />
+      <div className="nav-footer">
+        规则版本与发布历史
+        <br />
+        按当前管理身份授权
+      </div>
+    </Layout.Sider>
+  );
+}
 
 export function AdminShell() {
   const session = useSession("admin");
   const logout = useLogout("admin");
   const navigate = useNavigate();
-  const location = useLocation();
+  const { pathname } = useLocation();
   const actor = session.data;
-  const rulepackRoute = location.pathname.startsWith("/admin/rulepacks");
-  const knowledgeRoute = location.pathname.startsWith("/admin/governed-knowledge");
-  const breadcrumb = location.pathname.startsWith("/admin/infrastructure")
-    ? "基础设施与中间件"
-    : knowledgeRoute
-      ? location.pathname.endsWith("/new")
-        ? "创建知识版本"
-        : location.pathname.includes("/versions/")
-          ? "知识版本详情"
-          : "知识治理"
-      : !rulepackRoute
-        ? "设置与运行状态"
-        : location.pathname.endsWith("/new")
-          ? "创建规则包草稿"
-          : location.pathname.includes("/versions/")
-            ? "规则包详情"
-            : "规则包治理";
 
   if (actor && actor.role !== "admin") {
     return (
@@ -52,117 +176,21 @@ export function AdminShell() {
       <a className="skip" href="#main">
         跳到主要内容
       </a>
-      <Layout.Header className="topbar admin-topbar">
-        <NavLink className="brand" to="/admin/settings" aria-label="管理工作台">
-          <span className="brand-mark" aria-hidden="true">
-            <CircuitMark />
-          </span>
-          <span className="brand-copy">
-            <strong>合同智能审计工作台</strong>
-          </span>
-        </NavLink>
-        <span className="organization-badge" title={actor?.org_id}>
-          <span className="organization-badge-label">组织：</span>
-          <span className="organization-badge-value">
-            {organizationName(actor?.org_id)}
-          </span>
-        </span>
-        <p className="disclaimer">此工作区不授予案件正文访问权限。</p>
-        <div className="who" aria-label="当前管理身份">
-          {actor ? (
-            <>
-              <Avatar className="header-avatar">{Array.from(actor.display_name)[0]}</Avatar>
-              <span className="identity-copy">
-                <strong>{actor.display_name}</strong>
-                <span className="meta">{actorRoleLabel(actor.role)}</span>
-              </span>
-            </>
-          ) : (
-            <span>身份未知</span>
-          )}
-          <Button
-            className="header-action"
-            ghost
-            aria-label={"退出"}
-            icon={<LogoutOutlined />}
-            disabled={logout.isPending}
-            onClick={() => {
-              void logout.mutateAsync().finally(() => {
-                void navigate("/admin/login", { replace: true });
-              });
-            }}
-          >
-            退出
-          </Button>
-        </div>
-      </Layout.Header>
+      <AdminTopbar
+        actor={actor}
+        logoutPending={logout.isPending}
+        onLogout={() => {
+          void logout.mutateAsync().finally(() => {
+            void navigate("/admin/login", { replace: true });
+          });
+        }}
+      />
       <Layout className="frame" hasSider>
-        <Layout.Sider
-          theme="dark"
-          className="sidenav admin-sidenav"
-          aria-label="管理导航"
-          width={248}
-          collapsedWidth={72}
-          collapsible
-        >
-          <Menu
-            mode="inline"
-            theme="dark"
-            selectedKeys={[
-              location.pathname.startsWith("/admin/infrastructure")
-                ? "/admin/infrastructure"
-                : knowledgeRoute
-                  ? "/admin/governed-knowledge"
-                  : rulepackRoute
-                    ? "/admin/rulepacks"
-                    : "/admin/settings",
-            ]}
-            items={[
-              {
-                key: "organization",
-                type: "group",
-                label: "组织管理",
-                children: [
-                  {
-                    key: "/admin/settings",
-                    icon: <SettingOutlined />,
-                    label: (
-                      <NavLink to="/admin/settings">设置与运行状态</NavLink>
-                    ),
-                  },
-                  {
-                    key: "/admin/rulepacks",
-                    icon: <SafetyCertificateOutlined />,
-                    label: <NavLink to="/admin/rulepacks">规则库</NavLink>,
-                  },
-                  {
-                    key: "/admin/governed-knowledge",
-                    icon: <BookOutlined />,
-                    label: <NavLink to="/admin/governed-knowledge">知识治理</NavLink>,
-                  },
-                  {
-                    key: "/admin/infrastructure",
-                    icon: <ApiOutlined />,
-                    label: (
-                      <NavLink to="/admin/infrastructure">
-                        基础设施与中间件
-                      </NavLink>
-                    ),
-                  },
-                ],
-              },
-            ]}
-          />
-          <div className="nav-footer">
-            规则版本与发布历史
-            <br />
-            按当前管理身份授权
-          </div>
-        </Layout.Sider>
+        <AdminSidebar pathname={pathname} />
         <Layout.Content className="content-column">
           <Breadcrumb
             className="breadcrumbs"
-            items={[{ title: "管理" }, { title: breadcrumb }]}
+            items={[{ title: "管理" }, { title: adminBreadcrumb(pathname) }]}
           />
           <main id="main" tabIndex={-1}>
             <Outlet />
