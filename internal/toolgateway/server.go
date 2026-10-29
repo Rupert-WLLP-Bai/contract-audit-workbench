@@ -380,15 +380,9 @@ func validatePreflightHeaderList(requested string) *rpcFailure {
 			header = remaining[:separator]
 		}
 		header = strings.TrimSpace(header)
-		if header == "" || !asciiHeaderValue(header) {
-			return invalidParams("CORS preflight contains an invalid header name.")
-		}
-		bit, ok := preflightHeaderBit(header)
-		if !ok {
-			return invalidParams("CORS preflight requested an unsupported header.")
-		}
-		if seen&bit != 0 {
-			return invalidParams("CORS preflight contains a duplicate header name.")
+		bit, failure := validatePreflightHeader(header, seen)
+		if failure != nil {
+			return failure
 		}
 		seen |= bit
 		if separator < 0 {
@@ -396,6 +390,20 @@ func validatePreflightHeaderList(requested string) *rpcFailure {
 		}
 		remaining = remaining[separator+1:]
 	}
+}
+
+func validatePreflightHeader(header string, seen uint8) (uint8, *rpcFailure) {
+	if header == "" || !asciiHeaderValue(header) {
+		return 0, invalidParams("CORS preflight contains an invalid header name.")
+	}
+	bit, ok := preflightHeaderBit(header)
+	if !ok {
+		return 0, invalidParams("CORS preflight requested an unsupported header.")
+	}
+	if seen&bit != 0 {
+		return 0, invalidParams("CORS preflight contains a duplicate header name.")
+	}
+	return bit, nil
 }
 
 func asciiHeaderValue(header string) bool {
@@ -492,15 +500,9 @@ func acceptableMediaType(part string) (string, bool) {
 }
 
 func parseRequest(body []byte) (rpcRequest, *rpcFailure) {
-	if len(body) == 0 || !utf8.Valid(body) {
-		return rpcRequest{}, &rpcFailure{status: http.StatusBadRequest, code: codeParseError, message: "Invalid JSON request."}
-	}
-	if err := validateSingleJSON(body); err != nil {
-		return rpcRequest{}, &rpcFailure{status: http.StatusBadRequest, code: codeParseError, message: "Request must contain exactly one JSON object."}
-	}
-	var fields map[string]json.RawMessage
-	if err := json.Unmarshal(body, &fields); err != nil || fields == nil {
-		return rpcRequest{}, &rpcFailure{status: http.StatusBadRequest, code: codeInvalidRequest, message: "JSON-RPC request must be an object."}
+	fields, failure := decodeRequestFields(body)
+	if failure != nil {
+		return rpcRequest{}, failure
 	}
 	if failure := rejectUnsupportedEnvelopeFields(fields); failure != nil {
 		return rpcRequest{}, failure
@@ -516,6 +518,20 @@ func parseRequest(body []byte) (rpcRequest, *rpcFailure) {
 	return rpcRequest{id: requestID, method: method, params: params}, nil
 }
 
+func decodeRequestFields(body []byte) (map[string]json.RawMessage, *rpcFailure) {
+	if len(body) == 0 || !utf8.Valid(body) {
+		return nil, &rpcFailure{status: http.StatusBadRequest, code: codeParseError, message: "Invalid JSON request."}
+	}
+	if err := validateSingleJSON(body); err != nil {
+		return nil, &rpcFailure{status: http.StatusBadRequest, code: codeParseError, message: "Request must contain exactly one JSON object."}
+	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(body, &fields); err != nil || fields == nil {
+		return nil, &rpcFailure{status: http.StatusBadRequest, code: codeInvalidRequest, message: "JSON-RPC request must be an object."}
+	}
+	return fields, nil
+}
+
 func parseRequestParams(fields map[string]json.RawMessage) (map[string]json.RawMessage, *rpcFailure) {
 	paramsRaw, ok := fields["params"]
 	if !ok {
@@ -529,19 +545,42 @@ func parseRequestParams(fields map[string]json.RawMessage) (map[string]json.RawM
 }
 
 func parseRequestIdentity(fields map[string]json.RawMessage) (json.RawMessage, string, *rpcFailure) {
-	jsonrpc, err := stringField(fields, "jsonrpc")
-	if err != nil || jsonrpc != "2.0" {
-		return nil, "", &rpcFailure{status: http.StatusBadRequest, code: codeInvalidRequest, message: "jsonrpc must be 2.0."}
+	if failure := validateJSONRPCVersion(fields); failure != nil {
+		return nil, "", failure
 	}
-	id, ok := fields["id"]
-	if !ok || !validRequestID(id) {
-		return nil, "", &rpcFailure{status: http.StatusBadRequest, code: codeInvalidRequest, message: "A non-null string or integer request id is required."}
+	id, failure := parseJSONRPCRequestID(fields)
+	if failure != nil {
+		return nil, "", failure
 	}
-	method, err := stringField(fields, "method")
-	if err != nil || method == "" || len(method) > 128 {
-		return id, "", &rpcFailure{status: http.StatusBadRequest, code: codeInvalidRequest, message: "A valid method is required."}
+	method, failure := parseJSONRPCMethod(fields)
+	if failure != nil {
+		return id, "", failure
 	}
 	return id, method, nil
+}
+
+func validateJSONRPCVersion(fields map[string]json.RawMessage) *rpcFailure {
+	jsonrpc, err := stringField(fields, "jsonrpc")
+	if err != nil || jsonrpc != "2.0" {
+		return &rpcFailure{status: http.StatusBadRequest, code: codeInvalidRequest, message: "jsonrpc must be 2.0."}
+	}
+	return nil
+}
+
+func parseJSONRPCRequestID(fields map[string]json.RawMessage) (json.RawMessage, *rpcFailure) {
+	id, ok := fields["id"]
+	if !ok || !validRequestID(id) {
+		return nil, &rpcFailure{status: http.StatusBadRequest, code: codeInvalidRequest, message: "A non-null string or integer request id is required."}
+	}
+	return id, nil
+}
+
+func parseJSONRPCMethod(fields map[string]json.RawMessage) (string, *rpcFailure) {
+	method, err := stringField(fields, "method")
+	if err != nil || method == "" || len(method) > 128 {
+		return "", &rpcFailure{status: http.StatusBadRequest, code: codeInvalidRequest, message: "A valid method is required."}
+	}
+	return method, nil
 }
 
 func rejectUnsupportedEnvelopeFields(fields map[string]json.RawMessage) *rpcFailure {
@@ -554,20 +593,16 @@ func rejectUnsupportedEnvelopeFields(fields map[string]json.RawMessage) *rpcFail
 }
 
 func validateRequestMetadata(params map[string]json.RawMessage) (string, *rpcFailure) {
-	metaRaw, ok := params["_meta"]
-	if !ok {
-		return "", invalidParams("Request metadata is required in params._meta.")
+	meta, failure := requestMetadataObject(params)
+	if failure != nil {
+		return "", failure
 	}
-	meta, err := decodeJSONObject(metaRaw)
-	if err != nil {
-		return "", invalidParams("params._meta must be an object.")
+	version, failure := requestProtocolVersion(meta)
+	if failure != nil {
+		return "", failure
 	}
-	version, err := stringField(meta, "io.modelcontextprotocol/protocolVersion")
-	if err != nil || version == "" {
-		return "", invalidParams("Request protocolVersion metadata is required.")
-	}
-	if raw, exists := meta["io.modelcontextprotocol/clientCapabilities"]; !exists || !isJSONObject(raw) {
-		return "", invalidParams("Request clientCapabilities metadata is required as an object.")
+	if failure := validateClientCapabilities(meta); failure != nil {
+		return "", failure
 	}
 	if failure := validateClientInfo(meta); failure != nil {
 		return "", failure
@@ -575,14 +610,37 @@ func validateRequestMetadata(params map[string]json.RawMessage) (string, *rpcFai
 	return version, nil
 }
 
-func validateClientInfo(meta map[string]json.RawMessage) *rpcFailure {
-	clientRaw, exists := meta["io.modelcontextprotocol/clientInfo"]
-	if !exists {
-		return invalidParams("Request clientInfo metadata is required.")
+func requestMetadataObject(params map[string]json.RawMessage) (map[string]json.RawMessage, *rpcFailure) {
+	metaRaw, ok := params["_meta"]
+	if !ok {
+		return nil, invalidParams("Request metadata is required in params._meta.")
 	}
-	clientInfo, err := decodeJSONObject(clientRaw)
+	meta, err := decodeJSONObject(metaRaw)
 	if err != nil {
-		return invalidParams("Request clientInfo metadata must be an object.")
+		return nil, invalidParams("params._meta must be an object.")
+	}
+	return meta, nil
+}
+
+func requestProtocolVersion(meta map[string]json.RawMessage) (string, *rpcFailure) {
+	version, err := stringField(meta, "io.modelcontextprotocol/protocolVersion")
+	if err != nil || version == "" {
+		return "", invalidParams("Request protocolVersion metadata is required.")
+	}
+	return version, nil
+}
+
+func validateClientCapabilities(meta map[string]json.RawMessage) *rpcFailure {
+	if raw, exists := meta["io.modelcontextprotocol/clientCapabilities"]; !exists || !isJSONObject(raw) {
+		return invalidParams("Request clientCapabilities metadata is required as an object.")
+	}
+	return nil
+}
+
+func validateClientInfo(meta map[string]json.RawMessage) *rpcFailure {
+	clientInfo, failure := clientInfoObject(meta)
+	if failure != nil {
+		return failure
 	}
 	if name, err := stringField(clientInfo, "name"); err != nil || name == "" {
 		return invalidParams("Request clientInfo.name is required.")
@@ -591,6 +649,18 @@ func validateClientInfo(meta map[string]json.RawMessage) *rpcFailure {
 		return invalidParams("Request clientInfo.version is required.")
 	}
 	return nil
+}
+
+func clientInfoObject(meta map[string]json.RawMessage) (map[string]json.RawMessage, *rpcFailure) {
+	clientRaw, exists := meta["io.modelcontextprotocol/clientInfo"]
+	if !exists {
+		return nil, invalidParams("Request clientInfo metadata is required.")
+	}
+	clientInfo, err := decodeJSONObject(clientRaw)
+	if err != nil {
+		return nil, invalidParams("Request clientInfo metadata must be an object.")
+	}
+	return clientInfo, nil
 }
 
 func (h *handler) authenticate(r *http.Request) (accounts.User, *rpcFailure) {
