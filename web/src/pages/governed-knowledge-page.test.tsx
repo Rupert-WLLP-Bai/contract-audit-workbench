@@ -1,6 +1,6 @@
 import { act, cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { onlineManager, QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { setSessionIdentity } from "../api/http";
@@ -42,7 +42,7 @@ function show(path: string, client = new QueryClient({ defaultOptions: { queries
     <Route path="/destination/:knowledgeId/versions/:versionId" element={<Destination />} />
   </Routes></MemoryRouter></QueryClientProvider>);
 }
-afterEach(() => { cleanup(); for (const client of clients.splice(0)) client.clear(); setSessionIdentity(null); vi.unstubAllGlobals(); });
+afterEach(() => { cleanup(); for (const client of clients.splice(0)) client.clear(); setSessionIdentity(null); vi.unstubAllGlobals(); vi.useRealTimers(); onlineManager.setOnline(true); });
 
 describe("knowledge governance administration", () => {
   it("validates source offsets as Unicode characters", () => {
@@ -390,6 +390,20 @@ describe("knowledge governance administration", () => {
     expect(await screen.findByText("来源知识版本没有加载")).toBeInTheDocument();
     expect(screen.getByText("来源不存在")).toBeInTheDocument();
     expect(screen.getAllByRole("link", { name: "返回知识列表" }).length).toBeGreaterThan(0);
+  });
+
+  it("does not expose a source copy form while its detail query is paused offline", async () => {
+    const requests: string[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const path = String(input);
+      requests.push(path);
+      return json({ error: { code: "not_found", message: "来源不存在", retryable: false } }, 404);
+    }));
+    onlineManager.setOnline(false);
+    show(`/admin/governed-knowledge/new?from_knowledge=${id}&from_version=${versionId}`);
+    expect(await screen.findByText("正在准备新版本")).toBeInTheDocument();
+    expect(screen.queryByLabelText("标题")).not.toBeInTheDocument();
+    expect(requests).not.toContain(versionPath);
   });
 
   it("creates an experience draft with trimmed review lists", async () => {
