@@ -13,17 +13,9 @@ type docxStyles struct {
 
 func (p *docxParser) loadStyles(main string) error {
 	p.styles.definitions = make(map[string]*docxNode)
-	var target string
-	for _, rel := range p.pkg.rels[main] {
-		if docxRelKind(rel.kind, "styles") {
-			if target != "" {
-				return fmt.Errorf("DOCX: multiple styles parts")
-			}
-			target = rel.target
-		}
-	}
-	if target == "" {
-		return nil
+	target, err := p.stylesPart(main)
+	if err != nil || target == "" {
+		return err
 	}
 	root, err := p.pkg.xml(target)
 	if err != nil {
@@ -32,33 +24,69 @@ func (p *docxParser) loadStyles(main string) error {
 	if !root.word("styles") {
 		return fmt.Errorf("DOCX: invalid styles root")
 	}
+	if err := p.loadStyleDefaults(root); err != nil {
+		return err
+	}
+	return p.addStyles(root)
+}
+
+func (p *docxParser) stylesPart(main string) (string, error) {
+	var target string
+	for _, rel := range p.pkg.rels[main] {
+		if docxRelKind(rel.kind, "styles") {
+			if target != "" {
+				return "", fmt.Errorf("DOCX: multiple styles parts")
+			}
+			target = rel.target
+		}
+	}
+	return target, nil
+}
+
+func (p *docxParser) loadStyleDefaults(root *docxNode) error {
 	if defaults := root.child("docDefaults"); defaults != nil {
 		if run := defaults.child("rPrDefault"); run != nil {
-			p.styles.defaults, err = docxVisibilityProps(p.styles.defaults, run.child("rPr"), false)
+			visibility, err := docxVisibilityProps(p.styles.defaults, run.child("rPr"), false)
 			if err != nil {
 				return err
 			}
-		}
-	}
-	for _, node := range root.children {
-		if !node.word("style") {
-			continue
-		}
-		id := node.attr("styleId")
-		if id == "" || p.styles.definitions[id] != nil {
-			return fmt.Errorf("DOCX: invalid duplicate style identity")
-		}
-		p.styles.definitions[id] = node
-		if node.attr("default") == "1" || node.attr("default") == "true" {
-			switch node.attr("type") {
-			case "paragraph":
-				p.styles.paragraph = id
-			case "character":
-				p.styles.character = id
-			}
+			p.styles.defaults = visibility
 		}
 	}
 	return nil
+}
+
+func (p *docxParser) addStyles(root *docxNode) error {
+	for _, node := range root.children {
+		if err := p.addStyle(node); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (p *docxParser) addStyle(node *docxNode) error {
+	if !node.word("style") {
+		return nil
+	}
+	id := node.attr("styleId")
+	if id == "" || p.styles.definitions[id] != nil {
+		return fmt.Errorf("DOCX: invalid duplicate style identity")
+	}
+	p.styles.definitions[id] = node
+	if docxDefaultStyle(node) {
+		switch node.attr("type") {
+		case "paragraph":
+			p.styles.paragraph = id
+		case "character":
+			p.styles.character = id
+		}
+	}
+	return nil
+}
+
+func docxDefaultStyle(node *docxNode) bool {
+	return node.attr("default") == "1" || node.attr("default") == "true"
 }
 
 func docxOnOff(node *docxNode) (bool, error) {

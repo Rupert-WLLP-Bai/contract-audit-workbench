@@ -82,159 +82,287 @@ type docxPackage struct {
 }
 
 func docxOpen(ctx context.Context, body []byte) (*docxPackage, string, error) {
-	if err := ctx.Err(); err != nil {
+	files, err := docxArchiveFiles(ctx, body)
+	if err != nil {
 		return nil, "", err
 	}
-	if len(body) > docxMaxArchive {
-		return nil, "", fmt.Errorf("DOCX: archive exceeds 32 MiB limit")
+	p := &docxPackage{ctx: ctx, files: files, rels: make(map[string]map[string]docxRelationship), contentTypes: make(map[string]string), defaults: make(map[string]string)}
+	if err := p.loadContentTypes(); err != nil {
+		return nil, "", err
 	}
-	if len(body) < 4 || !bytes.Equal(body[:4], []byte{'P', 'K', 3, 4}) {
-		return nil, "", fmt.Errorf("DOCX: input is not an OOXML ZIP package")
+	if err := p.loadRelationships(); err != nil {
+		return nil, "", err
 	}
-	zr, err := zip.NewReader(bytes.NewReader(body), int64(len(body)))
+	main, err := p.mainDocument()
 	if err != nil {
-		return nil, "", fmt.Errorf("DOCX: invalid ZIP: %w", err)
+		return nil, "", err
+	}
+	return p, main, nil
+}
+
+func docxArchiveFiles(ctx context.Context, body []byte) (map[string]*zip.File, error) {
+	zr, err := docxZipReader(ctx, body)
+	if err != nil {
+		return nil, err
 	}
 	if len(zr.File) > docxMaxEntries {
-		return nil, "", fmt.Errorf("DOCX: ZIP entry limit exceeded")
+		return nil, fmt.Errorf("DOCX: ZIP entry limit exceeded")
 	}
-	p := &docxPackage{ctx: ctx, files: make(map[string]*zip.File), rels: make(map[string]map[string]docxRelationship), contentTypes: make(map[string]string), defaults: make(map[string]string)}
+	files := make(map[string]*zip.File)
 	var expanded uint64
 	for _, file := range zr.File {
 		if err := ctx.Err(); err != nil {
-			return nil, "", err
+			return nil, err
 		}
 		if file.FileInfo().IsDir() {
 			continue
 		}
-		name := file.Name
-		if name == "" || strings.ContainsAny(name, "\\\x00") || strings.HasPrefix(name, "/") || path.Clean(name) != name || name == ".." || strings.HasPrefix(name, "../") || file.Mode().Type() != 0 {
-			return nil, "", fmt.Errorf("DOCX: invalid ZIP part path or file type")
+		if err := addArchiveFile(files, file, &expanded); err != nil {
+			return nil, err
 		}
-		if _, exists := p.files[name]; exists {
-			return nil, "", fmt.Errorf("DOCX: duplicate ZIP part %q", name)
-		}
-		if file.Flags&1 != 0 {
-			return nil, "", fmt.Errorf("DOCX: encrypted ZIP parts are unsupported")
-		}
-		if file.UncompressedSize64 > docxMaxPart {
-			return nil, "", fmt.Errorf("DOCX: part exceeds 16 MiB limit")
-		}
-		expanded += file.UncompressedSize64
-		if expanded > docxMaxExpanded {
-			return nil, "", fmt.Errorf("DOCX: expanded ZIP exceeds 64 MiB limit")
-		}
-		lower := strings.ToLower(name)
-		if strings.Contains(lower, "/embeddings/") || strings.Contains(lower, "/activex/") || strings.HasSuffix(lower, "vbaproject.bin") {
-			return nil, "", fmt.Errorf("DOCX: opaque embedded packages, OLE, ActiveX and macros are unsupported")
-		}
-		p.files[name] = file
 	}
+	return files, nil
+}
+
+func docxZipReader(ctx context.Context, body []byte) (*zip.Reader, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if len(body) > docxMaxArchive {
+		return nil, fmt.Errorf("DOCX: archive exceeds 32 MiB limit")
+	}
+	if len(body) < 4 || !bytes.Equal(body[:4], []byte{'P', 'K', 3, 4}) {
+		return nil, fmt.Errorf("DOCX: input is not an OOXML ZIP package")
+	}
+	zr, err := zip.NewReader(bytes.NewReader(body), int64(len(body)))
+	if err != nil {
+		return nil, fmt.Errorf("DOCX: invalid ZIP: %w", err)
+	}
+	return zr, nil
+}
+
+func addArchiveFile(files map[string]*zip.File, file *zip.File, expanded *uint64) error {
+	if err := docxValidateArchivePath(file); err != nil {
+		return err
+	}
+	if _, exists := files[file.Name]; exists {
+		return fmt.Errorf("DOCX: duplicate ZIP part %q", file.Name)
+	}
+	if err := docxValidateArchiveResource(file); err != nil {
+		return err
+	}
+	*expanded += file.UncompressedSize64
+	if *expanded > docxMaxExpanded {
+		return fmt.Errorf("DOCX: expanded ZIP exceeds 64 MiB limit")
+	}
+	if docxOpaquePart(file.Name) {
+		return fmt.Errorf("DOCX: opaque embedded packages, OLE, ActiveX and macros are unsupported")
+	}
+	files[file.Name] = file
+	return nil
+}
+
+func docxValidateArchivePath(file *zip.File) error {
+	if !docxInvalidArchivePath(file) {
+		return nil
+	}
+	return fmt.Errorf("DOCX: invalid ZIP part path or file type")
+}
+
+func docxValidateArchiveResource(file *zip.File) error {
+	if file.Flags&1 != 0 {
+		return fmt.Errorf("DOCX: encrypted ZIP parts are unsupported")
+	}
+	if file.UncompressedSize64 > docxMaxPart {
+		return fmt.Errorf("DOCX: part exceeds 16 MiB limit")
+	}
+	return nil
+}
+
+func docxInvalidArchivePath(file *zip.File) bool {
+	name := file.Name
+	return name == "" || strings.ContainsAny(name, "\\\x00") || strings.HasPrefix(name, "/") || path.Clean(name) != name || name == ".." || strings.HasPrefix(name, "../") || file.Mode().Type() != 0
+}
+
+func docxOpaquePart(name string) bool {
+	lower := strings.ToLower(name)
+	return strings.Contains(lower, "/embeddings/") || strings.Contains(lower, "/activex/") || strings.HasSuffix(lower, "vbaproject.bin")
+}
+
+func (p *docxPackage) loadContentTypes() error {
 	types, err := p.xml("[Content_Types].xml")
 	if err != nil {
-		return nil, "", err
+		return err
 	}
 	if types.name.Space != docxTypesNS || types.name.Local != "Types" {
-		return nil, "", fmt.Errorf("DOCX: invalid content-types root")
+		return fmt.Errorf("DOCX: invalid content-types root")
 	}
 	for _, entry := range types.children {
-		if entry.name.Space != docxTypesNS {
-			return nil, "", fmt.Errorf("DOCX: invalid content-types entry")
-		}
-		kind := entry.attr("ContentType")
-		if kind == "" {
-			return nil, "", fmt.Errorf("DOCX: missing part content type")
-		}
-		lower := strings.ToLower(kind)
-		if strings.Contains(lower, "macroenabled") || strings.Contains(lower, "vbaproject") || strings.Contains(lower, "oleobject") || strings.Contains(lower, "activex") {
-			return nil, "", fmt.Errorf("DOCX: executable or opaque content type is unsupported")
-		}
-		switch entry.name.Local {
-		case "Default":
-			ext := strings.ToLower(entry.attr("Extension"))
-			if ext == "" || p.defaults[ext] != "" {
-				return nil, "", fmt.Errorf("DOCX: invalid duplicate default content type")
-			}
-			p.defaults[ext] = kind
-		case "Override":
-			name, err := docxTarget("", entry.attr("PartName"))
-			if err != nil || p.contentTypes[name] != "" {
-				return nil, "", fmt.Errorf("DOCX: invalid duplicate part content type")
-			}
-			p.contentTypes[name] = kind
-		default:
-			return nil, "", fmt.Errorf("DOCX: unsupported content-types entry")
+		if err := p.addContentType(entry); err != nil {
+			return err
 		}
 	}
+	return nil
+}
+
+func (p *docxPackage) addContentType(entry *docxNode) error {
+	if entry.name.Space != docxTypesNS {
+		return fmt.Errorf("DOCX: invalid content-types entry")
+	}
+	kind := entry.attr("ContentType")
+	if kind == "" {
+		return fmt.Errorf("DOCX: missing part content type")
+	}
+	if docxOpaqueContentType(kind) {
+		return fmt.Errorf("DOCX: executable or opaque content type is unsupported")
+	}
+	switch entry.name.Local {
+	case "Default":
+		return p.addDefaultType(entry, kind)
+	case "Override":
+		return p.addOverrideType(entry, kind)
+	default:
+		return fmt.Errorf("DOCX: unsupported content-types entry")
+	}
+}
+
+func (p *docxPackage) addDefaultType(entry *docxNode, kind string) error {
+	ext := strings.ToLower(entry.attr("Extension"))
+	if ext == "" || p.defaults[ext] != "" {
+		return fmt.Errorf("DOCX: invalid duplicate default content type")
+	}
+	p.defaults[ext] = kind
+	return nil
+}
+
+func (p *docxPackage) addOverrideType(entry *docxNode, kind string) error {
+	name, err := docxTarget("", entry.attr("PartName"))
+	if err != nil || p.contentTypes[name] != "" {
+		return fmt.Errorf("DOCX: invalid duplicate part content type")
+	}
+	p.contentTypes[name] = kind
+	return nil
+}
+
+func docxOpaqueContentType(kind string) bool {
+	lower := strings.ToLower(kind)
+	return strings.Contains(lower, "macroenabled") || strings.Contains(lower, "vbaproject") || strings.Contains(lower, "oleobject") || strings.Contains(lower, "activex")
+}
+
+func (p *docxPackage) loadRelationships() error {
 	// External hyperlinks carry visible in-package text and are never fetched.
 	// Other external resources would leave document evidence incomplete.
 	for name := range p.files {
 		if !strings.HasSuffix(name, ".rels") {
 			continue
 		}
-		source := ""
-		if name != "_rels/.rels" {
-			if path.Base(path.Dir(name)) != "_rels" {
-				return nil, "", fmt.Errorf("DOCX: invalid relationship part path")
-			}
-			source = path.Join(path.Dir(path.Dir(name)), strings.TrimSuffix(path.Base(name), ".rels"))
+		if err := p.loadRelationshipsFor(name); err != nil {
+			return err
 		}
-		root, err := p.xml(name)
-		if err != nil {
-			return nil, "", err
-		}
-		if root.name.Space != docxPackageRNS || root.name.Local != "Relationships" {
-			return nil, "", fmt.Errorf("DOCX: invalid relationships root")
-		}
-		rels := make(map[string]docxRelationship)
-		for _, node := range root.children {
-			if node.name.Space != docxPackageRNS || node.name.Local != "Relationship" {
-				return nil, "", fmt.Errorf("DOCX: invalid relationship entry")
-			}
-			mode := node.attr("TargetMode")
-			id, kind := node.attr("Id"), node.attr("Type")
-			if id == "" || kind == "" {
-				return nil, "", fmt.Errorf("DOCX: invalid relationship identity")
-			}
-			if _, duplicate := rels[id]; duplicate {
-				return nil, "", fmt.Errorf("DOCX: duplicate relationship identity")
-			}
-			if mode == "External" && docxRelKind(kind, "hyperlink") {
-				rels[id] = docxRelationship{kind: kind}
-				continue
-			}
-			if mode != "" && mode != "Internal" {
-				return nil, "", fmt.Errorf("DOCX: external resources are unsupported; no network resources are fetched")
-			}
-			for _, opaque := range []string{"oleObject", "package", "aFChunk", "control", "vbaProject"} {
-				if strings.HasSuffix(kind, "/"+opaque) {
-					return nil, "", fmt.Errorf("DOCX: opaque relationship %s is unsupported", opaque)
-				}
-			}
-			target, err := docxTarget(source, node.attr("Target"))
-			if err != nil {
-				return nil, "", err
-			}
-			if p.files[target] == nil {
-				return nil, "", fmt.Errorf("DOCX: relationship points to missing part %q", target)
-			}
-			rels[id] = docxRelationship{kind: kind, target: target}
-		}
-		p.rels[source] = rels
 	}
+	return nil
+}
+
+func (p *docxPackage) loadRelationshipsFor(name string) error {
+	source, err := docxRelationshipSource(name)
+	if err != nil {
+		return err
+	}
+	root, err := p.xml(name)
+	if err != nil {
+		return err
+	}
+	if root.name.Space != docxPackageRNS || root.name.Local != "Relationships" {
+		return fmt.Errorf("DOCX: invalid relationships root")
+	}
+	rels := make(map[string]docxRelationship)
+	for _, node := range root.children {
+		rel, err := p.relationship(source, node, rels)
+		if err != nil {
+			return err
+		}
+		rels[node.attr("Id")] = rel
+	}
+	p.rels[source] = rels
+	return nil
+}
+
+func docxRelationshipSource(name string) (string, error) {
+	if name == "_rels/.rels" {
+		return "", nil
+	}
+	if path.Base(path.Dir(name)) != "_rels" {
+		return "", fmt.Errorf("DOCX: invalid relationship part path")
+	}
+	return path.Join(path.Dir(path.Dir(name)), strings.TrimSuffix(path.Base(name), ".rels")), nil
+}
+
+func (p *docxPackage) relationship(source string, node *docxNode, rels map[string]docxRelationship) (docxRelationship, error) {
+	if node.name.Space != docxPackageRNS || node.name.Local != "Relationship" {
+		return docxRelationship{}, fmt.Errorf("DOCX: invalid relationship entry")
+	}
+	mode := node.attr("TargetMode")
+	id, kind := node.attr("Id"), node.attr("Type")
+	if id == "" || kind == "" {
+		return docxRelationship{}, fmt.Errorf("DOCX: invalid relationship identity")
+	}
+	if _, duplicate := rels[id]; duplicate {
+		return docxRelationship{}, fmt.Errorf("DOCX: duplicate relationship identity")
+	}
+	if docxExternalHyperlink(mode, kind) {
+		return docxRelationship{kind: kind}, nil
+	}
+	target, err := p.internalRelationshipTarget(source, mode, kind, node.attr("Target"))
+	if err != nil {
+		return docxRelationship{}, err
+	}
+	return docxRelationship{kind: kind, target: target}, nil
+}
+
+func docxExternalHyperlink(mode, kind string) bool {
+	return mode == "External" && docxRelKind(kind, "hyperlink")
+}
+
+func (p *docxPackage) internalRelationshipTarget(source, mode, kind, value string) (string, error) {
+	if mode != "" && mode != "Internal" {
+		return "", fmt.Errorf("DOCX: external resources are unsupported; no network resources are fetched")
+	}
+	if opaque := docxOpaqueRelationship(kind); opaque != "" {
+		return "", fmt.Errorf("DOCX: opaque relationship %s is unsupported", opaque)
+	}
+	target, err := docxTarget(source, value)
+	if err != nil {
+		return "", err
+	}
+	if p.files[target] == nil {
+		return "", fmt.Errorf("DOCX: relationship points to missing part %q", target)
+	}
+	return target, nil
+}
+
+func docxOpaqueRelationship(kind string) string {
+	for _, opaque := range []string{"oleObject", "package", "aFChunk", "control", "vbaProject"} {
+		if strings.HasSuffix(kind, "/"+opaque) {
+			return opaque
+		}
+	}
+	return ""
+}
+
+func (p *docxPackage) mainDocument() (string, error) {
 	main := ""
 	for _, rel := range p.rels[""] {
 		if docxRelKind(rel.kind, "officeDocument") {
 			if main != "" {
-				return nil, "", fmt.Errorf("DOCX: multiple main document parts")
+				return "", fmt.Errorf("DOCX: multiple main document parts")
 			}
 			main = rel.target
 		}
 	}
 	if main == "" || p.media(main) != "application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml" {
-		return nil, "", fmt.Errorf("DOCX: missing DOCX main document relationship/content type")
+		return "", fmt.Errorf("DOCX: missing DOCX main document relationship/content type")
 	}
-	return p, main, nil
+	return main, nil
 }
 
 func docxRelKind(kind, local string) bool {
@@ -243,17 +371,25 @@ func docxRelKind(kind, local string) bool {
 
 func docxTarget(source, target string) (string, error) {
 	u, err := url.Parse(target)
-	if err != nil || u.Scheme != "" || u.Host != "" || u.RawQuery != "" || u.Fragment != "" || u.Opaque != "" || u.Path == "" || strings.ContainsAny(u.Path, "\\\x00") {
+	if err != nil || !docxInternalURL(u) {
 		return "", fmt.Errorf("DOCX: invalid or external relationship target")
 	}
 	name := path.Clean(path.Join(path.Dir(source), u.Path))
 	if strings.HasPrefix(u.Path, "/") {
 		name = path.Clean(strings.TrimPrefix(u.Path, "/"))
 	}
-	if name == "." || name == ".." || strings.HasPrefix(name, "../") || strings.HasPrefix(name, "/") {
+	if docxPackagePathEscapes(name) {
 		return "", fmt.Errorf("DOCX: relationship escapes package")
 	}
 	return name, nil
+}
+
+func docxInternalURL(u *url.URL) bool {
+	return u != nil && u.Scheme == "" && u.Host == "" && u.RawQuery == "" && u.Fragment == "" && u.Opaque == "" && u.Path != "" && !strings.ContainsAny(u.Path, "\\\x00")
+}
+
+func docxPackagePathEscapes(name string) bool {
+	return name == "." || name == ".." || strings.HasPrefix(name, "../") || strings.HasPrefix(name, "/")
 }
 
 func (p *docxPackage) media(name string) string {
@@ -295,8 +431,7 @@ func (p *docxPackage) xml(name string) (*docxNode, error) {
 		return nil, err
 	}
 	decoder := xml.NewDecoder(bytes.NewReader(body))
-	var root *docxNode
-	var stack []*docxNode
+	tree := &docxXMLTree{pkg: p}
 	for {
 		if err := p.ctx.Err(); err != nil {
 			return nil, err
@@ -308,44 +443,67 @@ func (p *docxPackage) xml(name string) (*docxNode, error) {
 		if err != nil {
 			return nil, fmt.Errorf("DOCX: invalid XML in %s: %w", name, err)
 		}
-		switch token := token.(type) {
-		case xml.StartElement:
-			p.nodes++
-			if p.nodes > docxMaxNodes || len(stack) >= docxMaxDepth || len(token.Attr) > 128 {
-				return nil, fmt.Errorf("DOCX: XML node/depth/attribute limit exceeded")
-			}
-			node := &docxNode{name: token.Name, attrs: token.Attr}
-			if len(stack) == 0 {
-				if root != nil {
-					return nil, fmt.Errorf("DOCX: XML has multiple roots")
-				}
-				root = node
-			} else {
-				parent := stack[len(stack)-1]
-				parent.children = append(parent.children, node)
-			}
-			stack = append(stack, node)
-		case xml.EndElement:
-			stack = stack[:len(stack)-1]
-		case xml.CharData:
-			if len(stack) == 0 {
-				if strings.TrimSpace(string(token)) != "" {
-					return nil, fmt.Errorf("DOCX: text outside XML root")
-				}
-			} else {
-				node := stack[len(stack)-1]
-				node.text += string(token)
-			}
-		case xml.Directive:
-			return nil, fmt.Errorf("DOCX: XML directives/entities are unsupported")
-		case xml.ProcInst:
-			if token.Target != "xml" || root != nil {
-				return nil, fmt.Errorf("DOCX: XML processing instruction is unsupported")
-			}
+		if err := tree.consume(token); err != nil {
+			return nil, err
 		}
 	}
-	if root == nil {
+	if tree.root == nil {
 		return nil, fmt.Errorf("DOCX: empty XML part")
 	}
-	return root, nil
+	return tree.root, nil
+}
+
+type docxXMLTree struct {
+	pkg   *docxPackage
+	root  *docxNode
+	stack []*docxNode
+}
+
+func (tree *docxXMLTree) consume(token xml.Token) error {
+	switch token := token.(type) {
+	case xml.StartElement:
+		return tree.start(token)
+	case xml.EndElement:
+		tree.stack = tree.stack[:len(tree.stack)-1]
+	case xml.CharData:
+		return tree.characters(token)
+	case xml.Directive:
+		return fmt.Errorf("DOCX: XML directives/entities are unsupported")
+	case xml.ProcInst:
+		if token.Target != "xml" || tree.root != nil {
+			return fmt.Errorf("DOCX: XML processing instruction is unsupported")
+		}
+	}
+	return nil
+}
+
+func (tree *docxXMLTree) start(token xml.StartElement) error {
+	tree.pkg.nodes++
+	if tree.pkg.nodes > docxMaxNodes || len(tree.stack) >= docxMaxDepth || len(token.Attr) > 128 {
+		return fmt.Errorf("DOCX: XML node/depth/attribute limit exceeded")
+	}
+	node := &docxNode{name: token.Name, attrs: token.Attr}
+	if len(tree.stack) == 0 {
+		if tree.root != nil {
+			return fmt.Errorf("DOCX: XML has multiple roots")
+		}
+		tree.root = node
+	} else {
+		parent := tree.stack[len(tree.stack)-1]
+		parent.children = append(parent.children, node)
+	}
+	tree.stack = append(tree.stack, node)
+	return nil
+}
+
+func (tree *docxXMLTree) characters(token xml.CharData) error {
+	if len(tree.stack) == 0 {
+		if strings.TrimSpace(string(token)) != "" {
+			return fmt.Errorf("DOCX: text outside XML root")
+		}
+		return nil
+	}
+	node := tree.stack[len(tree.stack)-1]
+	node.text += string(token)
+	return nil
 }
