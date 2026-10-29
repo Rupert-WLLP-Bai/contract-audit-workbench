@@ -94,10 +94,39 @@ describe("review polling", () => {
     const wrapper = ({ children }: { children: ReactNode }) => (
       <QueryClientProvider client={client}>{children}</QueryClientProvider>
     );
-    const { unmount } = renderHook(() => useReview("c1", "r1"), { wrapper });
+    const { rerender, unmount } = renderHook(() => useReview("c1", "r1"), { wrapper });
     await act(async () => { await vi.advanceTimersByTimeAsync(1); });
     await act(async () => { await vi.advanceTimersByTimeAsync(2_000); });
     expect(getReview).toHaveBeenCalledTimes(2);
+    const query = client.getQueryCache().find({
+      queryKey: queryKeys.review("c1", "r1"),
+    });
+    const interval = query?.observers[0]?.options.refetchInterval;
+    expect(interval).toBeTypeOf("function");
+    if (query && typeof interval === "function") {
+      expect(interval(query)).toBe(false);
+    }
+    rerender();
+    await act(async () => { await vi.advanceTimersByTimeAsync(30_000); });
+    expect(getReview).toHaveBeenCalledTimes(2);
+    unmount();
+    client.clear();
+  });
+
+  it("stops catch-up polling after the session expires", async () => {
+    vi.useFakeTimers();
+    const getReview = vi.spyOn(api, "getReview")
+      .mockResolvedValueOnce(workspace("running"))
+      .mockRejectedValue(new ApiError("登录状态已失效", 401, "unauthenticated", false, null));
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={client}>{children}</QueryClientProvider>
+    );
+    const { rerender, unmount } = renderHook(() => useReview("c1", "r1"), { wrapper });
+    await act(async () => { await vi.advanceTimersByTimeAsync(1); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(2_000); });
+    expect(getReview).toHaveBeenCalledTimes(2);
+    rerender();
     await act(async () => { await vi.advanceTimersByTimeAsync(30_000); });
     expect(getReview).toHaveBeenCalledTimes(2);
     unmount();
@@ -421,6 +450,14 @@ describe("review state polling", () => {
     });
     await act(async () => { await vi.advanceTimersByTimeAsync(1); });
     expect(getReview).toHaveBeenCalledTimes(1);
+    const query = client.getQueryCache().find({
+      queryKey: queryKeys.review("c1", "r1"),
+    });
+    const interval = query?.observers[0]?.options.refetchInterval;
+    expect(interval).toBeTypeOf("function");
+    if (query && typeof interval === "function") {
+      expect(interval(query)).toBe(false);
+    }
     await act(async () => { await vi.advanceTimersByTimeAsync(30_000); });
     expect(getReview).toHaveBeenCalledTimes(1);
     unmount();
@@ -502,6 +539,42 @@ describe("review state polling", () => {
     expect(getReview).toHaveBeenCalledTimes(3);
     await act(async () => { await vi.advanceTimersByTimeAsync(2_000); });
     expect(getReview).toHaveBeenCalledTimes(4);
+    unmount();
+    client.clear();
+  });
+
+  it("resets the catch-up delay after an unchanged read during a live stream", async () => {
+    vi.useFakeTimers();
+    const getReview = vi.spyOn(api, "getReview")
+      .mockImplementation(async () => structuredClone(workspace("running")));
+    const client = testClient();
+    const { rerender, unmount } = renderHook(
+      ({ live }) => useReview("c1", "r1", null, live),
+      { wrapper: testWrapper(client), initialProps: { live: false } },
+    );
+    await act(async () => { await vi.advanceTimersByTimeAsync(1); });
+    expect(getReview).toHaveBeenCalledTimes(1);
+    const query = client.getQueryCache().find({
+      queryKey: queryKeys.review("c1", "r1"),
+    });
+    expect(query).toBeDefined();
+    if (!query) throw new Error("review query was not created");
+
+    rerender({ live: true });
+    const liveInterval = query.observers[0]?.options.refetchInterval;
+    expect(liveInterval).toBeTypeOf("function");
+    if (typeof liveInterval !== "function") throw new Error("live polling interval missing");
+    expect(liveInterval(query)).toBe(30_000);
+
+    query.state = {
+      ...query.state,
+      dataUpdateCount: query.state.dataUpdateCount + 1,
+    };
+    rerender({ live: false });
+    const catchUpInterval = query.observers[0]?.options.refetchInterval;
+    expect(catchUpInterval).toBeTypeOf("function");
+    if (typeof catchUpInterval !== "function") throw new Error("catch-up interval missing");
+    expect(catchUpInterval(query)).toBe(2_000);
     unmount();
     client.clear();
   });
