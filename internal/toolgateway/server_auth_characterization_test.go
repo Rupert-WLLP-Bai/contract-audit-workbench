@@ -77,7 +77,7 @@ func TestAuthenticationCredentialBoundaryPrecedence(t *testing.T) {
 	})
 
 	t.Run("wrong bearer scheme without cookie never reaches user lookup", func(t *testing.T) {
-		backend := testBackend(t)
+		backend := &protocolBoundaryBackend{gatewayFakeStore: testBackend(t), userErr: errors.New("unexpected user lookup")}
 		request := protocolRequest(t, "tools/list", nil)
 		request.Header.Del("Cookie")
 		request.Header.Set("Authorization", "Basic private-token")
@@ -86,6 +86,19 @@ func TestAuthenticationCredentialBoundaryPrecedence(t *testing.T) {
 		assertToolGatewayFailure(t, response, http.StatusUnauthorized, codeUnauthenticated, "Authentication is required or no longer valid.")
 		if backend.userCalls != 0 {
 			t.Fatalf("wrong-scheme Authorization reached the user store %d times", backend.userCalls)
+		}
+	})
+
+	t.Run("oversized bearer without cookie never reaches user lookup", func(t *testing.T) {
+		backend := &protocolBoundaryBackend{gatewayFakeStore: testBackend(t), userErr: errors.New("unexpected oversized token lookup")}
+		request := protocolRequest(t, "tools/list", nil)
+		request.Header.Del("Cookie")
+		request.Header.Set("Authorization", "Bearer "+strings.Repeat("x", 4097))
+		response := httptest.NewRecorder()
+		NewHandler(backend, Options{}).ServeHTTP(response, request)
+		assertToolGatewayFailure(t, response, http.StatusUnauthorized, codeUnauthenticated, "Authentication is required or no longer valid.")
+		if backend.userCalls != 0 {
+			t.Fatalf("oversized bearer reached the user store %d times", backend.userCalls)
 		}
 	})
 
