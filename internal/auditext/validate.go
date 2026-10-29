@@ -57,12 +57,29 @@ func (p PackRef) Validate() error {
 }
 
 func (f Field) Validate() error {
+	if err := validateFieldIdentity(f); err != nil {
+		return err
+	}
+	if err := validateFieldSource(f); err != nil {
+		return err
+	}
+	return nil
+}
+
+// validateFieldIdentity checks the field name and lexical value.
+func validateFieldIdentity(f Field) error {
 	if ValidateID(f.Name) != nil {
 		return fmt.Errorf("%w: field name", ErrInvalidRequest)
 	}
 	if !quantityPattern.MatchString(f.Value) || len(f.Value) > 64 {
 		return fmt.Errorf("%w: field value", ErrInvalidRequest)
 	}
+	return nil
+}
+
+// validateFieldSource checks the unit, JSON pointer and semantic kind of the
+// field's source binding.
+func validateFieldSource(f Field) error {
 	if f.Unit != "Mbit/s" && f.Unit != "Gbit/s" {
 		return fmt.Errorf("%w: field unit", ErrInvalidRequest)
 	}
@@ -79,6 +96,33 @@ func (f Field) Validate() error {
 // scope. A tenant or case mismatch is an authorization failure, not a shape
 // error, so callers do not leak snapshot content.
 func (o Observation) Validate(scope AuthorizedScope) error {
+	if err := validateObservationHeader(o, scope); err != nil {
+		return err
+	}
+	if err := validateIDGroup("observation identity", o.SnapshotID, o.ConnectorID, o.SourceSystem, o.ObjectBindingVersion, o.ExternalObjectID, o.RecordID); err != nil {
+		return err
+	}
+	if err := validateObservationRecordVersion(o); err != nil {
+		return err
+	}
+	if err := validateObservationTimes(o); err != nil {
+		return err
+	}
+	if err := validateObservationPayload(o); err != nil {
+		return err
+	}
+	if err := validateBounded(o.Fields, 32, "too many fields", Field.Validate); err != nil {
+		return err
+	}
+	if o.DataClass != DataClassSynthetic {
+		return fmt.Errorf("%w: data class", ErrInvalidRequest)
+	}
+	return nil
+}
+
+// validateObservationHeader checks the schema, the bound scope and whether the
+// observation belongs to that scope.
+func validateObservationHeader(o Observation, scope AuthorizedScope) error {
 	if o.SchemaVersion != ExternalObservationSchema {
 		return fmt.Errorf("%w: observation schema", ErrInvalidRequest)
 	}
@@ -88,14 +132,44 @@ func (o Observation) Validate(scope AuthorizedScope) error {
 	if o.TenantID != scope.TenantID || o.CaseID != scope.CaseID {
 		return ErrUnauthorized
 	}
-	if ValidateID(o.SnapshotID) != nil || ValidateID(o.ConnectorID) != nil ||
-		ValidateID(o.SourceSystem) != nil || ValidateID(o.ObjectBindingVersion) != nil ||
-		ValidateID(o.ExternalObjectID) != nil || ValidateID(o.RecordID) != nil {
-		return fmt.Errorf("%w: observation identity", ErrInvalidRequest)
+	return nil
+}
+
+// validateIDGroup checks a group of identifiers and reports the section that
+// rejected them.
+func validateIDGroup(section string, values ...string) error {
+	for _, value := range values {
+		if ValidateID(value) != nil {
+			return fmt.Errorf("%w: %s", ErrInvalidRequest, section)
+		}
 	}
+	return nil
+}
+
+// validateBounded checks a slice limit and every element through validate.
+func validateBounded[T any](items []T, limit int, section string, validate func(T) error) error {
+	if len(items) > limit {
+		return fmt.Errorf("%w: %s", ErrInvalidRequest, section)
+	}
+	for _, item := range items {
+		if err := validate(item); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// validateObservationRecordVersion checks the optional source record version.
+func validateObservationRecordVersion(o Observation) error {
 	if o.RecordVersion != nil && (len(*o.RecordVersion) == 0 || len(*o.RecordVersion) > 128) {
 		return fmt.Errorf("%w: record version", ErrInvalidRequest)
 	}
+	return nil
+}
+
+// validateObservationTimes checks observation instants, the effective interval
+// and the availability vocabulary.
+func validateObservationTimes(o Observation) error {
 	if o.ObservedAt.IsZero() || o.EffectiveFrom.IsZero() || o.EffectiveUntil.IsZero() {
 		return fmt.Errorf("%w: observation time", ErrInvalidRequest)
 	}
@@ -105,6 +179,12 @@ func (o Observation) Validate(scope AuthorizedScope) error {
 	if !o.Availability.Valid() {
 		return fmt.Errorf("%w: availability", ErrInvalidRequest)
 	}
+	return nil
+}
+
+// validateObservationPayload checks the reason code, payload reference and the
+// payload/field requirement of an available observation.
+func validateObservationPayload(o Observation) error {
 	if ValidateID(o.ReasonCode) != nil {
 		return fmt.Errorf("%w: reason code", ErrInvalidRequest)
 	}
@@ -118,17 +198,6 @@ func (o Observation) Validate(scope AuthorizedScope) error {
 		if len(o.Fields) == 0 {
 			return fmt.Errorf("%w: available observation requires fields", ErrInvalidRequest)
 		}
-	}
-	if len(o.Fields) > 32 {
-		return fmt.Errorf("%w: too many fields", ErrInvalidRequest)
-	}
-	for _, field := range o.Fields {
-		if err := field.Validate(); err != nil {
-			return err
-		}
-	}
-	if o.DataClass != DataClassSynthetic {
-		return fmt.Errorf("%w: data class", ErrInvalidRequest)
 	}
 	return nil
 }
@@ -160,22 +229,11 @@ func (f FrozenInput) Validate() error {
 	if err := f.Pack.Validate(); err != nil {
 		return err
 	}
-	if ValidateID(f.ContractVersion) != nil || ValidateID(f.SnapshotSetID) != nil ||
-		ValidateID(f.ModelConfigurationID) != nil || ValidateID(f.PlannerConfigurationID) != nil ||
-		ValidateID(f.ParserConfigurationID) != nil {
-		return fmt.Errorf("%w: frozen input identity", ErrInvalidRequest)
+	if err := validateIDGroup("frozen input identity", f.ContractVersion, f.SnapshotSetID, f.ModelConfigurationID, f.PlannerConfigurationID, f.ParserConfigurationID); err != nil {
+		return err
 	}
-	if !f.BindingStatus.Valid() {
-		return fmt.Errorf("%w: binding status", ErrInvalidRequest)
-	}
-	if f.BindingStatus == BindingConfirmed {
-		if ValidateID(f.BindingVersion) != nil || ValidateID(f.ExternalObjectID) != nil || ValidateID(f.SourceSystem) != nil {
-			return fmt.Errorf("%w: confirmed binding", ErrInvalidRequest)
-		}
-	} else if (f.BindingVersion != "" && ValidateID(f.BindingVersion) != nil) ||
-		(f.ExternalObjectID != "" && ValidateID(f.ExternalObjectID) != nil) ||
-		(f.SourceSystem != "" && ValidateID(f.SourceSystem) != nil) {
-		return fmt.Errorf("%w: unconfirmed binding", ErrInvalidRequest)
+	if err := validateFrozenBinding(f); err != nil {
+		return err
 	}
 	if f.RulePackVersion == "" || len(f.RulePackVersion) > 128 {
 		return fmt.Errorf("%w: rule pack version", ErrInvalidRequest)
@@ -183,6 +241,62 @@ func (f FrozenInput) Validate() error {
 	if f.BusinessAt.IsZero() {
 		return fmt.Errorf("%w: business time", ErrInvalidRequest)
 	}
+	if err := validateFrozenFacts(f); err != nil {
+		return err
+	}
+	return nil
+}
+
+// validateFrozenBinding checks the binding status and the identities that the
+// status requires.
+func validateFrozenBinding(f FrozenInput) error {
+	if err := validateFrozenBindingStatus(f); err != nil {
+		return err
+	}
+	if err := validateFrozenBindingIdentity(f); err != nil {
+		return err
+	}
+	return nil
+}
+
+// validateFrozenBindingStatus checks the binding status vocabulary.
+func validateFrozenBindingStatus(f FrozenInput) error {
+	if !f.BindingStatus.Valid() {
+		return fmt.Errorf("%w: binding status", ErrInvalidRequest)
+	}
+	return nil
+}
+
+// validateFrozenBindingIdentity checks the binding fields that an unconfirmed
+// or confirmed status allows.
+func validateFrozenBindingIdentity(f FrozenInput) error {
+	if f.BindingStatus == BindingConfirmed {
+		return validateConfirmedBindingIdentity(f)
+	}
+	return validateUnconfirmedBindingIdentity(f)
+}
+
+// validateConfirmedBindingIdentity requires every confirmed binding identity.
+func validateConfirmedBindingIdentity(f FrozenInput) error {
+	if ValidateID(f.BindingVersion) != nil || ValidateID(f.ExternalObjectID) != nil || ValidateID(f.SourceSystem) != nil {
+		return fmt.Errorf("%w: confirmed binding", ErrInvalidRequest)
+	}
+	return nil
+}
+
+// validateUnconfirmedBindingIdentity allows empty optional identities but
+// still checks any that are present.
+func validateUnconfirmedBindingIdentity(f FrozenInput) error {
+	if (f.BindingVersion != "" && ValidateID(f.BindingVersion) != nil) ||
+		(f.ExternalObjectID != "" && ValidateID(f.ExternalObjectID) != nil) ||
+		(f.SourceSystem != "" && ValidateID(f.SourceSystem) != nil) {
+		return fmt.Errorf("%w: unconfirmed binding", ErrInvalidRequest)
+	}
+	return nil
+}
+
+// validateFrozenFacts checks the fact limit, uniqueness and each fact.
+func validateFrozenFacts(f FrozenInput) error {
 	if len(f.Facts) > 64 {
 		return fmt.Errorf("%w: too many facts", ErrInvalidRequest)
 	}
@@ -202,33 +316,18 @@ func (f FrozenInput) Validate() error {
 func (e EvidenceRef) Validate() error {
 	switch e.Kind {
 	case EvidenceDocument:
-		if ValidateID(e.DocumentVersionID) != nil || ValidateID(e.ParsedVersionID) != nil {
-			return fmt.Errorf("%w: document evidence identity", ErrInvalidRequest)
+		if err := validateDocumentEvidenceIdentity(e); err != nil {
+			return err
 		}
-		if e.Start < 0 || e.End <= e.Start {
-			return fmt.Errorf("%w: document evidence range", ErrInvalidRequest)
-		}
-		if e.Quote == "" || len(e.Quote) > 4096 {
-			return fmt.Errorf("%w: document evidence quote", ErrInvalidRequest)
-		}
-		if e.SnapshotID != "" || e.RecordID != "" || e.FieldPointer != "" || e.DisplayValue != "" || !e.ObservedAt.IsZero() {
-			return fmt.Errorf("%w: mixed document evidence", ErrInvalidRequest)
+		if err := validateDocumentEvidenceContent(e); err != nil {
+			return err
 		}
 	case EvidenceExternalSnapshot:
-		if ValidateID(e.SnapshotID) != nil || ValidateID(e.RecordID) != nil {
-			return fmt.Errorf("%w: snapshot evidence identity", ErrInvalidRequest)
+		if err := validateSnapshotEvidenceIdentity(e); err != nil {
+			return err
 		}
-		if len(e.FieldPointer) < 1 || e.FieldPointer[0] != '/' || len(e.FieldPointer) > 512 {
-			return fmt.Errorf("%w: snapshot evidence pointer", ErrInvalidRequest)
-		}
-		if e.DisplayValue == "" || len(e.DisplayValue) > 256 {
-			return fmt.Errorf("%w: snapshot evidence value", ErrInvalidRequest)
-		}
-		if e.ObservedAt.IsZero() {
-			return fmt.Errorf("%w: snapshot evidence time", ErrInvalidRequest)
-		}
-		if e.DocumentVersionID != "" || e.ParsedVersionID != "" || e.Start != 0 || e.End != 0 || e.Quote != "" {
-			return fmt.Errorf("%w: mixed snapshot evidence", ErrInvalidRequest)
+		if err := validateSnapshotEvidenceContent(e); err != nil {
+			return err
 		}
 	default:
 		return fmt.Errorf("%w: evidence kind", ErrInvalidRequest)
@@ -236,7 +335,71 @@ func (e EvidenceRef) Validate() error {
 	return nil
 }
 
+// validateDocumentEvidenceIdentity checks the document version pair and span.
+func validateDocumentEvidenceIdentity(e EvidenceRef) error {
+	if ValidateID(e.DocumentVersionID) != nil || ValidateID(e.ParsedVersionID) != nil {
+		return fmt.Errorf("%w: document evidence identity", ErrInvalidRequest)
+	}
+	if e.Start < 0 || e.End <= e.Start {
+		return fmt.Errorf("%w: document evidence range", ErrInvalidRequest)
+	}
+	return nil
+}
+
+// validateDocumentEvidenceContent checks the quote and rejects snapshot fields
+// on document evidence.
+func validateDocumentEvidenceContent(e EvidenceRef) error {
+	if e.Quote == "" || len(e.Quote) > 4096 {
+		return fmt.Errorf("%w: document evidence quote", ErrInvalidRequest)
+	}
+	if e.SnapshotID != "" || e.RecordID != "" || e.FieldPointer != "" || e.DisplayValue != "" || !e.ObservedAt.IsZero() {
+		return fmt.Errorf("%w: mixed document evidence", ErrInvalidRequest)
+	}
+	return nil
+}
+
+// validateSnapshotEvidenceIdentity checks the snapshot identity, pointer, value
+// and observation time.
+func validateSnapshotEvidenceIdentity(e EvidenceRef) error {
+	if ValidateID(e.SnapshotID) != nil || ValidateID(e.RecordID) != nil {
+		return fmt.Errorf("%w: snapshot evidence identity", ErrInvalidRequest)
+	}
+	if len(e.FieldPointer) < 1 || e.FieldPointer[0] != '/' || len(e.FieldPointer) > 512 {
+		return fmt.Errorf("%w: snapshot evidence pointer", ErrInvalidRequest)
+	}
+	if e.DisplayValue == "" || len(e.DisplayValue) > 256 {
+		return fmt.Errorf("%w: snapshot evidence value", ErrInvalidRequest)
+	}
+	if e.ObservedAt.IsZero() {
+		return fmt.Errorf("%w: snapshot evidence time", ErrInvalidRequest)
+	}
+	return nil
+}
+
+// validateSnapshotEvidenceContent rejects document fields on snapshot evidence.
+func validateSnapshotEvidenceContent(e EvidenceRef) error {
+	if e.DocumentVersionID != "" || e.ParsedVersionID != "" || e.Start != 0 || e.End != 0 || e.Quote != "" {
+		return fmt.Errorf("%w: mixed snapshot evidence", ErrInvalidRequest)
+	}
+	return nil
+}
+
 func (r CheckResult) Validate() error {
+	if err := validateCheckResultIdentity(r); err != nil {
+		return err
+	}
+	if err := validateBounded(r.Evidence, 16, "too much check evidence", EvidenceRef.Validate); err != nil {
+		return err
+	}
+	if err := validateCheckResultLimitations(r); err != nil {
+		return err
+	}
+	return nil
+}
+
+// validateCheckResultIdentity checks the check identifier, relation, reason and
+// machine status.
+func validateCheckResultIdentity(r CheckResult) error {
 	if ValidateID(r.CheckID) != nil {
 		return fmt.Errorf("%w: check id", ErrInvalidRequest)
 	}
@@ -249,14 +412,11 @@ func (r CheckResult) Validate() error {
 	if !r.MachineStatus.Valid() {
 		return fmt.Errorf("%w: machine status", ErrInvalidRequest)
 	}
-	if len(r.Evidence) > 16 {
-		return fmt.Errorf("%w: too much check evidence", ErrInvalidRequest)
-	}
-	for _, evidence := range r.Evidence {
-		if err := evidence.Validate(); err != nil {
-			return err
-		}
-	}
+	return nil
+}
+
+// validateCheckResultLimitations checks the limitation limit and each text.
+func validateCheckResultLimitations(r CheckResult) error {
 	if len(r.Limitations) > 16 {
 		return fmt.Errorf("%w: too many limitations", ErrInvalidRequest)
 	}
@@ -269,6 +429,30 @@ func (r CheckResult) Validate() error {
 }
 
 func (p ImpactPlan) Validate() error {
+	if err := validateImpactPlanHeader(p); err != nil {
+		return err
+	}
+	if err := validateImpactPlanFallback(p); err != nil {
+		return err
+	}
+	if err := validateImpactChangedInputs(p.ChangedInputs); err != nil {
+		return err
+	}
+	if err := validateImpactChecks(p.Checks); err != nil {
+		return err
+	}
+	if p.BusinessResultSource != "full" {
+		return fmt.Errorf("%w: business result source", ErrInvalidRequest)
+	}
+	if p.DataClass != DataClassSynthetic {
+		return fmt.Errorf("%w: data class", ErrInvalidRequest)
+	}
+	return nil
+}
+
+// validateImpactPlanHeader checks the schema, evaluation identifiers and the
+// mode/fallback vocabulary.
+func validateImpactPlanHeader(p ImpactPlan) error {
 	if p.SchemaVersion != ImpactPlanSchema {
 		return fmt.Errorf("%w: impact plan schema", ErrInvalidRequest)
 	}
@@ -278,6 +462,12 @@ func (p ImpactPlan) Validate() error {
 	if !p.Mode.Valid() || !p.Fallback.Valid() {
 		return fmt.Errorf("%w: impact plan mode", ErrInvalidRequest)
 	}
+	return nil
+}
+
+// validateImpactPlanFallback checks dependency completeness against the
+// fallback and the fallback reason.
+func validateImpactPlanFallback(p ImpactPlan) error {
 	if p.DependencyComplete && p.Fallback != FallbackNone {
 		return fmt.Errorf("%w: complete dependencies require no fallback", ErrInvalidRequest)
 	}
@@ -291,35 +481,48 @@ func (p ImpactPlan) Validate() error {
 	} else if ValidateID(p.FallbackReason) != nil {
 		return fmt.Errorf("%w: fallback reason", ErrInvalidRequest)
 	}
-	if len(p.ChangedInputs) > 128 {
+	return nil
+}
+
+// validateImpactChangedInputs checks the changed-input limit and identifiers.
+func validateImpactChangedInputs(inputs []string) error {
+	if len(inputs) > 128 {
 		return fmt.Errorf("%w: too many changed inputs", ErrInvalidRequest)
 	}
-	for _, input := range p.ChangedInputs {
+	for _, input := range inputs {
 		if ValidateID(input) != nil {
 			return fmt.Errorf("%w: changed input", ErrInvalidRequest)
 		}
 	}
-	if len(p.Checks) == 0 || len(p.Checks) > 128 {
+	return nil
+}
+
+// validateImpactChecks checks the check limit and every check.
+func validateImpactChecks(checks []ImpactCheck) error {
+	if len(checks) == 0 || len(checks) > 128 {
 		return fmt.Errorf("%w: impact checks", ErrInvalidRequest)
 	}
-	for _, check := range p.Checks {
+	for _, check := range checks {
 		if ValidateID(check.CheckID) != nil || !check.Action.Valid() {
 			return fmt.Errorf("%w: impact check", ErrInvalidRequest)
 		}
-		if len(check.Reasons) == 0 || len(check.Reasons) > 32 {
-			return fmt.Errorf("%w: impact reasons", ErrInvalidRequest)
-		}
-		for _, reason := range check.Reasons {
-			if ValidateID(reason) != nil {
-				return fmt.Errorf("%w: impact reason", ErrInvalidRequest)
-			}
+		if err := validateImpactCheckReasons(check.Reasons); err != nil {
+			return err
 		}
 	}
-	if p.BusinessResultSource != "full" {
-		return fmt.Errorf("%w: business result source", ErrInvalidRequest)
+	return nil
+}
+
+// validateImpactCheckReasons checks the reason limit and identifiers of one
+// planned check.
+func validateImpactCheckReasons(reasons []string) error {
+	if len(reasons) == 0 || len(reasons) > 32 {
+		return fmt.Errorf("%w: impact reasons", ErrInvalidRequest)
 	}
-	if p.DataClass != DataClassSynthetic {
-		return fmt.Errorf("%w: data class", ErrInvalidRequest)
+	for _, reason := range reasons {
+		if ValidateID(reason) != nil {
+			return fmt.Errorf("%w: impact reason", ErrInvalidRequest)
+		}
 	}
 	return nil
 }
