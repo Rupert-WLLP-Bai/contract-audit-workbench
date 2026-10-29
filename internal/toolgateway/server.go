@@ -243,63 +243,79 @@ func (h *handler) dispatchRequest(w http.ResponseWriter, r *http.Request, reques
 }
 
 func (h *handler) dispatchAuthorizedRequest(w http.ResponseWriter, r *http.Request, request rpcRequest, user accounts.User, workerContext string, workerCall bool) {
+	if h.dispatchReadMethod(w, request, user) {
+		return
+	}
+	if request.method == "tools/call" {
+		h.dispatchToolCall(w, r, request, user, workerContext, workerCall)
+		return
+	}
+	h.writeFailure(w, request.id, &rpcFailure{status: http.StatusNotFound, code: codeMethodNotFound, message: "Method not found."})
+}
+
+func (h *handler) dispatchReadMethod(w http.ResponseWriter, request rpcRequest, user accounts.User) bool {
 	switch request.method {
 	case "server/discover":
 		if failure := validateParams(request.params, "_meta"); failure != nil {
 			h.writeFailure(w, request.id, failure)
-			return
+			return true
 		}
 		h.writeResult(w, request.id, discoverResult())
+		return true
 	case "tools/list":
 		if failure := validateParams(request.params, "_meta", "cursor"); failure != nil {
 			h.writeFailure(w, request.id, failure)
-			return
+			return true
 		}
 		if raw, exists := request.params["cursor"]; exists {
 			cursor, err := unmarshalString(raw)
 			if err != nil || cursor != "" {
 				h.writeFailure(w, request.id, invalidParams("This server exposes one unpaginated tool."))
-				return
+				return true
 			}
 		}
 		h.writeResult(w, request.id, toolsListResult(hasReadGrant(user)))
-	case "tools/call":
-		if failure := validateParams(request.params, "_meta", "name", "arguments"); failure != nil {
-			h.writeFailure(w, request.id, failure)
-			return
-		}
-		name, _ := stringField(request.params, "name")
-		if name != ToolName {
-			h.writeFailure(w, request.id, invalidParams("Unknown tool."))
-			return
-		}
-		args, failure := parseToolArguments(request.params["arguments"])
-		if failure != nil {
-			h.writeFailure(w, request.id, failure)
-			return
-		}
-		if failure := requireBackend(h.store); failure != nil {
-			h.writeFailure(w, request.id, failure)
-			return
-		}
-		var result []byte
-		if workerCall {
-			result, failure = h.callFrozenEvidenceForWorker(r.Context(), workerContext, args)
-		} else {
-			result, failure = h.callFrozenEvidence(r.Context(), user, args)
-		}
-		if failure != nil {
-			h.writeFailure(w, request.id, failure)
-			return
-		}
-		h.writeResult(w, request.id, toolCallResult{
-			ResultType: "complete",
-			Content:    []rpcContent{{Type: "text", Text: string(result)}},
-			IsError:    false,
-		})
-	default:
-		h.writeFailure(w, request.id, &rpcFailure{status: http.StatusNotFound, code: codeMethodNotFound, message: "Method not found."})
+		return true
 	}
+	return false
+}
+
+func (h *handler) dispatchToolCall(w http.ResponseWriter, r *http.Request, request rpcRequest, user accounts.User, workerContext string, workerCall bool) {
+	if failure := validateParams(request.params, "_meta", "name", "arguments"); failure != nil {
+		h.writeFailure(w, request.id, failure)
+		return
+	}
+	name, _ := stringField(request.params, "name")
+	if name != ToolName {
+		h.writeFailure(w, request.id, invalidParams("Unknown tool."))
+		return
+	}
+	args, failure := parseToolArguments(request.params["arguments"])
+	if failure != nil {
+		h.writeFailure(w, request.id, failure)
+		return
+	}
+	if failure := requireBackend(h.store); failure != nil {
+		h.writeFailure(w, request.id, failure)
+		return
+	}
+	result, failure := h.executeToolCall(r, user, workerContext, workerCall, args)
+	if failure != nil {
+		h.writeFailure(w, request.id, failure)
+		return
+	}
+	h.writeResult(w, request.id, toolCallResult{
+		ResultType: "complete",
+		Content:    []rpcContent{{Type: "text", Text: string(result)}},
+		IsError:    false,
+	})
+}
+
+func (h *handler) executeToolCall(r *http.Request, user accounts.User, workerContext string, workerCall bool, args toolArguments) ([]byte, *rpcFailure) {
+	if workerCall {
+		return h.callFrozenEvidenceForWorker(r.Context(), workerContext, args)
+	}
+	return h.callFrozenEvidence(r.Context(), user, args)
 }
 
 func (h *handler) originAllowed(r *http.Request) bool {
