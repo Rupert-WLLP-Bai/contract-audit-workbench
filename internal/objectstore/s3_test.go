@@ -112,6 +112,45 @@ func TestGetRejectsTamperedBodyAndMetadata(t *testing.T) {
 	}
 }
 
+func TestGetMapsPublicServiceAndMetadataFailures(t *testing.T) {
+	payload := []byte("verified object")
+	digest := sha256.Sum256(payload)
+	validDigest := hex.EncodeToString(digest[:])
+	cases := []struct {
+		name     string
+		status   int
+		metadata []string
+		want     error
+	}{
+		{"not found", http.StatusNotFound, nil, ErrObjectNotFound},
+		{"service error", http.StatusForbidden, []string{validDigest}, ErrRequestFailed},
+		{"missing digest", http.StatusOK, nil, ErrIntegrity},
+		{"duplicate digest", http.StatusOK, []string{validDigest, validDigest}, ErrIntegrity},
+		{"malformed digest", http.StatusOK, []string{"not-hex"}, ErrIntegrity},
+		{"short digest", http.StatusOK, []string{"abcd"}, ErrIntegrity},
+		{"wrong digest", http.StatusOK, []string{strings.Repeat("0", sha256.Size*2)}, ErrIntegrity},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				for _, value := range tc.metadata {
+					w.Header().Add("X-Amz-Meta-Sha256", value)
+				}
+				w.WriteHeader(tc.status)
+				if tc.status != http.StatusOK {
+					return
+				}
+				_, _ = w.Write(payload)
+			}))
+			defer server.Close()
+			_, err := testStore(t, server.URL).Get(context.Background(), "tenants/t1/cases/c1/source")
+			if !errors.Is(err, tc.want) {
+				t.Fatalf("Get error = %v; want %v", err, tc.want)
+			}
+		})
+	}
+}
+
 func TestPutSignatureRejectsTamperedRequestBody(t *testing.T) {
 	var accepted atomic.Bool
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -190,13 +229,110 @@ func TestNewRejectsInvalidConfigurationAndKeysBeforeRequest(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { requests.Add(1) }))
 	defer server.Close()
 	store := testStore(t, server.URL)
-	for _, key := range []string{"", "/absolute", `\\absolute`, "../escape", "tenant/../escape", "tenant//case/file", "tenant/case/.", "tenant/case/file?query", "tenant/case/file#fragment", "C:/absolute/file", "https://foreign.example/object"} {
+	for _, key := range []string{"", "/absolute", `\\absolute`, "../escape", "tenant/../escape", "tenant//case/file", "tenant/case/.", "tenant/case/file?query", "tenant/case/file#fragment", "tenant/case/file\x7f", "C:/absolute/file", "https://foreign.example/object", "mailto:foreign@example.invalid", strings.Repeat("k", 1025), string([]byte{0xff})} {
 		if err := store.Put(context.Background(), key, []byte("bytes")); !errors.Is(err, ErrInvalidKey) {
 			t.Errorf("Put key %q error = %v; want ErrInvalidKey", key, err)
 		}
 	}
 	if requests.Load() != 0 {
 		t.Fatalf("invalid inputs sent %d requests", requests.Load())
+	}
+}
+
+func TestNewAcceptsPublicConfigurationBoundaries(t *testing.T) {
+	base := Config{Endpoint: "https://objects.example.invalid/private%20gateway/", Bucket: "abc", Region: testRegion, AccessKey: testAccessKey, SecretKey: testSecretKey}
+	validConfigs := []struct {
+		name string
+		edit func(*Config)
+	}{
+		{"minimum bucket", func(c *Config) { c.Bucket = "abc" }},
+		{"maximum bucket", func(c *Config) { c.Bucket = strings.Repeat("a", 63) }},
+		{"maximum region", func(c *Config) { c.Region = strings.Repeat("a", 64) }},
+		{"maximum access key", func(c *Config) { c.AccessKey = strings.Repeat("A", 128) }},
+		{"maximum secret key", func(c *Config) { c.SecretKey = strings.Repeat("s", 1024) }},
+		{"endpoint with a safe base path", func(c *Config) { c.Endpoint = "HTTPS://objects.example.invalid/gateway/v1/" }},
+		{"endpoint with maximum port", func(c *Config) { c.Endpoint = "http://objects.example.invalid:65535" }},
+	}
+	for _, tc := range validConfigs {
+		t.Run(tc.name, func(t *testing.T) {
+			config := base
+			tc.edit(&config)
+			if _, err := New(config); err != nil {
+				t.Fatalf("New rejected valid boundary config: %v", err)
+			}
+		})
+	}
+}
+
+func TestNewRejectsConfigurationBoundaryViolations(t *testing.T) {
+	base := Config{Endpoint: "http://objects.example.invalid", Bucket: testBucket, Region: testRegion, AccessKey: testAccessKey, SecretKey: testSecretKey}
+	invalidConfigs := []struct {
+		name string
+		edit func(*Config)
+	}{
+		{"short bucket", func(c *Config) { c.Bucket = "ab" }},
+		{"long bucket", func(c *Config) { c.Bucket = strings.Repeat("a", 64) }},
+		{"dotted bucket", func(c *Config) { c.Bucket = "ab..cd" }},
+		{"reserved bucket prefix", func(c *Config) { c.Bucket = "xn--bucket" }},
+		{"IP bucket", func(c *Config) { c.Bucket = "192.0.2.1" }},
+		{"long region", func(c *Config) { c.Region = strings.Repeat("a", 65) }},
+		{"uppercase region", func(c *Config) { c.Region = "US-east-1" }},
+		{"long access key", func(c *Config) { c.AccessKey = strings.Repeat("A", 129) }},
+		{"invalid access key byte", func(c *Config) { c.AccessKey = "KEY:SUFFIX" }},
+		{"long secret key", func(c *Config) { c.SecretKey = strings.Repeat("s", 1025) }},
+		{"padded secret key", func(c *Config) { c.SecretKey = " secret " }},
+		{"control in secret key", func(c *Config) { c.SecretKey = "secret\nkey" }},
+		{"invalid UTF-8 secret key", func(c *Config) { c.SecretKey = string([]byte{0xff}) }},
+		{"port zero", func(c *Config) { c.Endpoint = "http://objects.example.invalid:0" }},
+		{"port too large", func(c *Config) { c.Endpoint = "http://objects.example.invalid:65536" }},
+		{"encoded slash in endpoint path", func(c *Config) { c.Endpoint = "http://objects.example.invalid/a%2fb" }},
+		{"encoded backslash in endpoint path", func(c *Config) { c.Endpoint = "http://objects.example.invalid/a%5Cb" }},
+		{"empty endpoint segment", func(c *Config) { c.Endpoint = "http://objects.example.invalid/a//b" }},
+		{"dot endpoint segment", func(c *Config) { c.Endpoint = "http://objects.example.invalid/a/../b" }},
+		{"control endpoint segment", func(c *Config) { c.Endpoint = "http://objects.example.invalid/a/%0a" }},
+	}
+	for _, tc := range invalidConfigs {
+		t.Run(tc.name, func(t *testing.T) {
+			config := base
+			tc.edit(&config)
+			if _, err := New(config); !errors.Is(err, ErrInvalidConfig) {
+				t.Fatalf("New error = %v; want ErrInvalidConfig", err)
+			}
+		})
+	}
+}
+
+func TestPutAcceptsColonAfterKeyPathSegment(t *testing.T) {
+	var gotPath string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.EscapedPath()
+		w.WriteHeader(http.StatusCreated)
+	}))
+	defer server.Close()
+	if err := testStore(t, server.URL).Put(context.Background(), "tenant/case:part/source", []byte("bytes")); err != nil {
+		t.Fatalf("Put rejected a colon after a path segment: %v", err)
+	}
+	if want := "/" + testBucket + "/tenant/case%3Apart/source"; gotPath != want {
+		t.Fatalf("escaped path = %q; want %q", gotPath, want)
+	}
+}
+
+func TestPutEnforcesPublicObjectKeyByteLimit(t *testing.T) {
+	var requests atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		requests.Add(1)
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer server.Close()
+	store := testStore(t, server.URL)
+	if err := store.Put(context.Background(), strings.Repeat("k", 1024), []byte("bytes")); err != nil {
+		t.Fatalf("Put rejected a key at the byte limit: %v", err)
+	}
+	if err := store.Put(context.Background(), strings.Repeat("k", 1025), []byte("bytes")); !errors.Is(err, ErrInvalidKey) {
+		t.Fatalf("Put over the key byte limit error = %v; want ErrInvalidKey", err)
+	}
+	if requests.Load() != 1 {
+		t.Fatalf("boundary check made %d requests; want only the valid key request", requests.Load())
 	}
 }
 
