@@ -68,16 +68,28 @@ func TestValidInputKeepsSingleByteDescriptionsAndRejectsDuplicatesAtAnyPosition(
 	}
 
 	input.AllowedCandidates = []Candidate{
+		{ID: "manual_review", Description: "review"},
 		{ID: "first", Description: "one"},
 		{ID: "second", Description: "two"},
-		{ID: "manual_review", Description: "review"},
+		{ID: "third", Description: "three"},
 	}
-	if !validCandidates(input.AllowedCandidates) {
+	if !ValidInput(input) {
 		t.Fatal("unique candidates were rejected")
 	}
-	input.AllowedCandidates[2].ID = "first"
-	if validCandidates(input.AllowedCandidates) {
+	input.AllowedCandidates[3].ID = "first"
+	if ValidInput(input) {
 		t.Fatal("duplicate at final candidate position was accepted")
+	}
+}
+
+func TestValidInputAcceptsExactMinimumCandidateCount(t *testing.T) {
+	input := validInputFixture()
+	input.AllowedCandidates = []Candidate{
+		{ID: "manual_review", Description: "人工复核"},
+		{ID: "focus", Description: "核查重点"},
+	}
+	if !ValidInput(input) {
+		t.Fatal("exact minimum candidate count was rejected")
 	}
 }
 

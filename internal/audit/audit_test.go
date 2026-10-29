@@ -200,6 +200,12 @@ func TestAuditAppendPinsRequiredFieldsSequenceAndRecomputedHashes(t *testing.T) 
 			}
 		})
 	}
+	negativePrevious := audit.Event{RunID: "run", Seq: -1}
+	negativeNext := valid
+	negativeNext.Seq = 0
+	if _, err := audit.Append(negativePrevious, negativeNext); !errors.Is(err, audit.ErrBrokenChain) {
+		t.Fatalf("negative sequence chain error = %v, want ErrBrokenChain", err)
+	}
 	next := valid
 	next.PrevHash, next.Hash = "stale-prev", "caller-hash"
 	got, err := audit.Append(audit.Event{}, next)
