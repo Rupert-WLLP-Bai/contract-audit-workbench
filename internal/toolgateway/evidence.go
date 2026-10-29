@@ -362,56 +362,100 @@ func selectFrozenSources(ctx context.Context, user accounts.User, args toolArgum
 	seenPinned := make(map[string]struct{}, len(pinned))
 	totalBytes := 0
 	for _, item := range workspace.Documents {
-		if err := ctx.Err(); err != nil {
+		source, ruleSource, include, bytes, err := collectFrozenSource(ctx, item, user, args, pinned, seenPinned)
+		if err != nil {
 			return nil, nil, err
 		}
-		parsed := item.ParsedDocument
-		if parsed == nil {
+		if !include {
 			continue
 		}
-		if _, selected := pinned[parsed.ID]; !selected {
-			continue
-		}
-		if _, exists := seenPinned[parsed.ID]; exists {
-			return nil, nil, errFrozenIdentity
-		}
-		seenPinned[parsed.ID] = struct{}{}
-		if item.Document.CaseID != args.caseID || item.Document.TenantID != accounts.Tenant(user) || item.Document.Digest == "" ||
-			parsed.DocumentID != item.Document.ID || parsed.OriginalDigest != item.Document.Digest || parsed.ArtifactDigest == "" {
-			return nil, nil, errFrozenIdentity
-		}
-		if item.Document.Role != "draft_contract" || !item.Ready || parsed.Status != "ready" {
-			continue
-		}
-		if parsed.ParserID == "" || parsed.ParserVersion == "" || parsed.ConfigHash == "" ||
-			parsed.NormalizationVersion == "" || parsed.NormalizedDigest == "" || parsed.Text == "" || item.Text != parsed.Text {
-			return nil, nil, errFrozenIdentity
-		}
-		if !utf8.ValidString(parsed.Text) {
-			return nil, nil, errFrozenIdentity
-		}
-		digest := sha256.Sum256([]byte(parsed.Text))
-		normalizedDigest := hex.EncodeToString(digest[:])
-		if normalizedDigest != parsed.NormalizedDigest {
-			return nil, nil, errFrozenIdentity
-		}
-		totalBytes += len(parsed.Text)
+		totalBytes += bytes
 		if totalBytes > maxSourceBytes {
 			return nil, nil, errEvidenceLimit
 		}
-		sources = append(sources, frozenSource{document: item.Document, parsed: parsed, text: parsed.Text})
-		ruleSources = append(ruleSources, rulepack.Source{
-			ID: item.Document.ID, Version: parsed.ID, TenantID: item.Document.TenantID, CaseID: item.Document.CaseID,
-			Role: item.Document.Role, Digest: normalizedDigest, Text: parsed.Text,
-		})
+		sources = append(sources, source)
+		ruleSources = append(ruleSources, ruleSource)
 	}
+	if err := finalizeFrozenSources(sources, ruleSources, seenPinned, pinned); err != nil {
+		return nil, nil, err
+	}
+	return sources, ruleSources, nil
+}
+
+func collectFrozenSource(ctx context.Context, item store.Interpreted, user accounts.User, args toolArguments, pinned, seen map[string]struct{}) (frozenSource, rulepack.Source, bool, int, error) {
+	if err := ctx.Err(); err != nil {
+		return frozenSource{}, rulepack.Source{}, false, 0, err
+	}
+	parsed := item.ParsedDocument
+	if parsed == nil {
+		return frozenSource{}, rulepack.Source{}, false, 0, nil
+	}
+	if _, selected := pinned[parsed.ID]; !selected {
+		return frozenSource{}, rulepack.Source{}, false, 0, nil
+	}
+	if _, exists := seen[parsed.ID]; exists {
+		return frozenSource{}, rulepack.Source{}, false, 0, errFrozenIdentity
+	}
+	seen[parsed.ID] = struct{}{}
+	source, ruleSource, include, err := selectedFrozenSource(item, user, args)
+	if err != nil || !include {
+		return source, ruleSource, include, 0, err
+	}
+	return source, ruleSource, true, len(source.text), nil
+}
+
+func finalizeFrozenSources(sources []frozenSource, ruleSources []rulepack.Source, seenPinned, pinned map[string]struct{}) error {
 	if len(seenPinned) != len(pinned) {
-		return nil, nil, errFrozenIdentity
+		return errFrozenIdentity
 	}
 	sort.Slice(sources, func(i, j int) bool { return sources[i].document.ID < sources[j].document.ID })
 	sort.Slice(ruleSources, func(i, j int) bool { return ruleSources[i].ID < ruleSources[j].ID })
+	return nil
+}
 
-	return sources, ruleSources, nil
+func selectedFrozenSource(item store.Interpreted, user accounts.User, args toolArguments) (frozenSource, rulepack.Source, bool, error) {
+	if err := validateFrozenDocumentIdentity(item, user, args); err != nil {
+		return frozenSource{}, rulepack.Source{}, false, err
+	}
+	parsed := item.ParsedDocument
+	if item.Document.Role != "draft_contract" || !item.Ready || parsed.Status != "ready" {
+		return frozenSource{}, rulepack.Source{}, false, nil
+	}
+	digest, err := validateFrozenParsedDocument(item)
+	if err != nil {
+		return frozenSource{}, rulepack.Source{}, false, err
+	}
+	source := frozenSource{document: item.Document, parsed: parsed, text: parsed.Text}
+	ruleSource := rulepack.Source{ID: item.Document.ID, Version: parsed.ID, TenantID: item.Document.TenantID, CaseID: item.Document.CaseID, Role: item.Document.Role, Digest: digest, Text: parsed.Text}
+	return source, ruleSource, true, nil
+}
+
+func validateFrozenDocumentIdentity(item store.Interpreted, user accounts.User, args toolArguments) error {
+	parsed := item.ParsedDocument
+	if item.Document.CaseID != args.caseID || item.Document.TenantID != accounts.Tenant(user) || item.Document.Digest == "" || parsed.DocumentID != item.Document.ID || parsed.OriginalDigest != item.Document.Digest || parsed.ArtifactDigest == "" {
+		return errFrozenIdentity
+	}
+	return nil
+}
+
+func validateFrozenParsedDocument(item store.Interpreted) (string, error) {
+	parsed := item.ParsedDocument
+	if !validFrozenParsedText(item) {
+		return "", errFrozenIdentity
+	}
+	digest := sha256.Sum256([]byte(parsed.Text))
+	normalizedDigest := hex.EncodeToString(digest[:])
+	if normalizedDigest != parsed.NormalizedDigest {
+		return "", errFrozenIdentity
+	}
+	return normalizedDigest, nil
+}
+
+func validFrozenParsedText(item store.Interpreted) bool {
+	parsed := item.ParsedDocument
+	return parsed.ParserID != "" && parsed.ParserVersion != "" && parsed.ConfigHash != "" &&
+		parsed.NormalizationVersion != "" && parsed.NormalizedDigest != "" && parsed.Text != "" &&
+		item.Text == parsed.Text && utf8.ValidString(parsed.Text)
 }
 
 func selectCapabilityFacts(ctx context.Context, facts []rulepack.Fact, capabilityID string) ([]rulepack.Fact, error) {
@@ -445,34 +489,9 @@ func assembleEvidence(ctx context.Context, user accounts.User, args toolArgument
 		if err := ctx.Err(); err != nil {
 			return evidencePayload{}, err
 		}
-		item := evidenceFact{
-			RuleID: fact.RuleID, ObjectRef: fact.ObjectRef, Value: fact.Value, Unit: fact.Unit,
-			MeasurementWindow: fact.MeasurementWindow, TimeZone: fact.TimeZone, Calendar: fact.Calendar,
-			OutageDefinition: fact.OutageDefinition, Exclusions: fact.Exclusions, Basis: fact.Basis,
-			Citations: make([]evidenceCitation, 0, len(fact.Citations)),
-		}
-		for _, cite := range fact.Citations {
-			source, ok := sourceByID[cite.SourceID]
-			if !ok || cite.CaseID != args.caseID || cite.TenantID != accounts.Tenant(user) ||
-				cite.SourceVersion != source.parsed.ID || cite.SourceDigest != source.parsed.NormalizedDigest {
-				return evidencePayload{}, errFrozenIdentity
-			}
-			runes := []rune(source.text)
-			if cite.Start < 0 || cite.End < cite.Start || cite.End > len(runes) || cite.End-cite.Start > maxQuoteRunes || string(runes[cite.Start:cite.End]) != cite.Quote {
-				return evidencePayload{}, errFrozenIdentity
-			}
-			item.Citations = append(item.Citations, evidenceCitation{
-				DocumentID: source.document.ID, Filename: source.document.Filename, DocumentRole: source.document.Role,
-				OriginalDigest: source.document.Digest, ParsedDocumentID: source.parsed.ID,
-				ParserID: source.parsed.ParserID, ParserVersion: source.parsed.ParserVersion,
-				ConfigHash: source.parsed.ConfigHash, NormalizationVersion: source.parsed.NormalizationVersion,
-				NormalizedDigest: source.parsed.NormalizedDigest, ArtifactDigest: source.parsed.ArtifactDigest,
-				SourceVersion: cite.SourceVersion, SourceDigest: cite.SourceDigest,
-				Start: cite.Start, End: cite.End, Quote: cite.Quote,
-			})
-		}
-		if len(item.Citations) == 0 {
-			return evidencePayload{}, errFrozenIdentity
+		item, err := evidenceFactFromRuleFact(fact, sourceByID, user, args)
+		if err != nil {
+			return evidencePayload{}, err
 		}
 		evidence.Facts = append(evidence.Facts, item)
 	}
@@ -490,6 +509,41 @@ func assembleEvidence(ctx context.Context, user accounts.User, args toolArgument
 		evidence.Status = "found"
 	}
 	return evidence, nil
+}
+
+func evidenceFactFromRuleFact(fact rulepack.Fact, sourceByID map[string]frozenSource, user accounts.User, args toolArguments) (evidenceFact, error) {
+	item := evidenceFact{RuleID: fact.RuleID, ObjectRef: fact.ObjectRef, Value: fact.Value, Unit: fact.Unit, MeasurementWindow: fact.MeasurementWindow, TimeZone: fact.TimeZone, Calendar: fact.Calendar, OutageDefinition: fact.OutageDefinition, Exclusions: fact.Exclusions, Basis: fact.Basis, Citations: make([]evidenceCitation, 0, len(fact.Citations))}
+	for _, cite := range fact.Citations {
+		citation, err := frozenCitation(cite, sourceByID, user, args)
+		if err != nil {
+			return evidenceFact{}, err
+		}
+		item.Citations = append(item.Citations, citation)
+	}
+	if len(item.Citations) == 0 {
+		return evidenceFact{}, errFrozenIdentity
+	}
+	return item, nil
+}
+
+func frozenCitation(cite rulepack.Citation, sources map[string]frozenSource, user accounts.User, args toolArguments) (evidenceCitation, error) {
+	source, ok := sources[cite.SourceID]
+	if !validCitationBinding(cite, source, ok, user, args) {
+		return evidenceCitation{}, errFrozenIdentity
+	}
+	if !validCitationQuote(cite, source.text) {
+		return evidenceCitation{}, errFrozenIdentity
+	}
+	return evidenceCitation{DocumentID: source.document.ID, Filename: source.document.Filename, DocumentRole: source.document.Role, OriginalDigest: source.document.Digest, ParsedDocumentID: source.parsed.ID, ParserID: source.parsed.ParserID, ParserVersion: source.parsed.ParserVersion, ConfigHash: source.parsed.ConfigHash, NormalizationVersion: source.parsed.NormalizationVersion, NormalizedDigest: source.parsed.NormalizedDigest, ArtifactDigest: source.parsed.ArtifactDigest, SourceVersion: cite.SourceVersion, SourceDigest: cite.SourceDigest, Start: cite.Start, End: cite.End, Quote: cite.Quote}, nil
+}
+
+func validCitationBinding(cite rulepack.Citation, source frozenSource, exists bool, user accounts.User, args toolArguments) bool {
+	return exists && cite.CaseID == args.caseID && cite.TenantID == accounts.Tenant(user) && cite.SourceVersion == source.parsed.ID && cite.SourceDigest == source.parsed.NormalizedDigest
+}
+
+func validCitationQuote(cite rulepack.Citation, text string) bool {
+	runes := []rune(text)
+	return cite.Start >= 0 && cite.End >= cite.Start && cite.End <= len(runes) && cite.End-cite.Start <= maxQuoteRunes && string(runes[cite.Start:cite.End]) == cite.Quote
 }
 
 func workspaceSignature(workspace store.Workspace) string {
