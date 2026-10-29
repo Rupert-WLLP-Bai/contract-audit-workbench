@@ -195,13 +195,33 @@ var advisoryStatuses = []string{
 
 func validateKnowledgeAdvisory(record *KnowledgeSelectionRecord, request Request) error {
 	advisory := record.Advisory
-	type rank struct {
-		detRank   int
-		finalRank int
+	ranks, optional := advisoryCandidateRanks(record.Candidates)
+	if advisory == nil {
+		for _, candidate := range record.Candidates {
+			if candidate.Advisory != nil {
+				return ErrInput
+			}
+		}
+		return nil
 	}
-	ranks := map[KnowledgeIdentity]rank{}
+	if err := validateAdvisoryMetadata(advisory); err != nil {
+		return err
+	}
+	if err := validateAdvisoryCandidates(record, advisory, ranks, len(optional)); err != nil {
+		return err
+	}
+	return validateCompletedAdvisoryOrder(record, advisory, request)
+}
+
+type advisoryCandidateRank struct {
+	detRank   int
+	finalRank int
+}
+
+func advisoryCandidateRanks(candidates []KnowledgeCandidate) (map[KnowledgeIdentity]advisoryCandidateRank, []KnowledgeCandidate) {
+	ranks := map[KnowledgeIdentity]advisoryCandidateRank{}
 	optional := []KnowledgeCandidate{}
-	for _, candidate := range record.Candidates {
+	for _, candidate := range candidates {
 		if !candidate.Required && candidate.Score > 0 && (candidate.Reason == "relevance" || candidate.Reason == "planner_budget") {
 			optional = append(optional, candidate)
 		}
@@ -220,10 +240,10 @@ func validateKnowledgeAdvisory(record *KnowledgeSelectionRecord, request Request
 		return left.ContentSHA256 < right.ContentSHA256
 	})
 	for index, candidate := range optional {
-		ranks[KnowledgeIdentity{KnowledgeID: candidate.KnowledgeID, VersionID: candidate.VersionID, ContentSHA256: candidate.ContentSHA256}] = rank{detRank: index + 1}
+		ranks[KnowledgeIdentity{KnowledgeID: candidate.KnowledgeID, VersionID: candidate.VersionID, ContentSHA256: candidate.ContentSHA256}] = advisoryCandidateRank{detRank: index + 1}
 	}
 	finalIndex := 0
-	for _, candidate := range record.Candidates {
+	for _, candidate := range candidates {
 		if candidate.Required || candidate.Score <= 0 || (candidate.Reason != "relevance" && candidate.Reason != "planner_budget") {
 			continue
 		}
@@ -233,14 +253,10 @@ func validateKnowledgeAdvisory(record *KnowledgeSelectionRecord, request Request
 		item.finalRank = finalIndex
 		ranks[key] = item
 	}
-	if advisory == nil {
-		for _, candidate := range record.Candidates {
-			if candidate.Advisory != nil {
-				return ErrInput
-			}
-		}
-		return nil
-	}
+	return ranks, optional
+}
+
+func validateAdvisoryMetadata(advisory *KnowledgeAdvisoryRecord) error {
 	if advisory.Feature != AdvisoryFeatureKnowledgeRerank ||
 		(advisory.Mode != AdvisoryModeAdvisory && advisory.Mode != AdvisoryModeFixture) ||
 		(advisory.Provider != AdvisoryProviderGateway && advisory.Provider != AdvisoryProviderFixture && advisory.Provider != AdvisoryProviderDirect) ||
@@ -278,12 +294,16 @@ func validateKnowledgeAdvisory(record *KnowledgeSelectionRecord, request Request
 			}
 		}
 	}
+	return nil
+}
+
+func validateAdvisoryCandidates(record *KnowledgeSelectionRecord, advisory *KnowledgeAdvisoryRecord, ranks map[KnowledgeIdentity]advisoryCandidateRank, optionalCount int) error {
 	byIdentity := map[KnowledgeIdentity]KnowledgeAdvisoryCandidate{}
 	for _, item := range advisory.Candidates {
 		key := KnowledgeIdentity{KnowledgeID: item.KnowledgeID, VersionID: item.VersionID, ContentSHA256: item.ContentSHA256}
 		if !boundedIdentity(key.KnowledgeID) || !boundedIdentity(key.VersionID) || !normalizedDigest.MatchString(key.ContentSHA256) ||
 			!capabilityID.MatchString(item.Alias) || !slices.Contains(advisoryBands, item.Band) ||
-			item.RankBefore < 1 || item.RankAfter < 1 || item.RankBefore > len(optional) || item.RankAfter > len(optional) ||
+			item.RankBefore < 1 || item.RankAfter < 1 || item.RankBefore > optionalCount || item.RankAfter > optionalCount ||
 			len(item.Reason) > 64 || !utf8.ValidString(item.Reason) {
 			return ErrInput
 		}
@@ -338,22 +358,27 @@ func validateKnowledgeAdvisory(record *KnowledgeSelectionRecord, request Request
 		if advisory.Truncated && advisoryCandidates == 0 {
 			return ErrInput
 		}
-		selected := []KnowledgeIdentity{}
-		for _, candidate := range record.Candidates {
-			if candidate.Decision != "selected" {
-				continue
-			}
-			selected = append(selected, KnowledgeIdentity{
-				KnowledgeID: candidate.KnowledgeID, VersionID: candidate.VersionID, ContentSHA256: candidate.ContentSHA256,
-			})
+	}
+	return nil
+}
+
+func validateCompletedAdvisoryOrder(record *KnowledgeSelectionRecord, advisory *KnowledgeAdvisoryRecord, request Request) error {
+	if advisory.Status != "completed" {
+		return nil
+	}
+	selected := []KnowledgeIdentity{}
+	for _, candidate := range record.Candidates {
+		if candidate.Decision != "selected" {
+			continue
 		}
-		if len(selected) != len(request.Knowledge) {
+		selected = append(selected, KnowledgeIdentity{KnowledgeID: candidate.KnowledgeID, VersionID: candidate.VersionID, ContentSHA256: candidate.ContentSHA256})
+	}
+	if len(selected) != len(request.Knowledge) {
+		return ErrInput
+	}
+	for index, ref := range request.Knowledge {
+		if selected[index] != (KnowledgeIdentity{KnowledgeID: ref.KnowledgeID, VersionID: ref.VersionID, ContentSHA256: ref.ContentSHA256}) {
 			return ErrInput
-		}
-		for index, ref := range request.Knowledge {
-			if selected[index] != (KnowledgeIdentity{KnowledgeID: ref.KnowledgeID, VersionID: ref.VersionID, ContentSHA256: ref.ContentSHA256}) {
-				return ErrInput
-			}
 		}
 	}
 	return nil
