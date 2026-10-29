@@ -204,10 +204,8 @@ func objectFields(raw json.RawMessage, label string, required ...string) (map[st
 	if err := json.Unmarshal(raw, &object); err != nil || object == nil {
 		return nil, fmt.Errorf("%w: %s must be an object", auditext.ErrInvalidRequest, label)
 	}
-	for _, field := range required {
-		if _, ok := object[field]; !ok {
-			return nil, fmt.Errorf("%w: missing required field %s.%s", auditext.ErrInvalidRequest, label, field)
-		}
+	if err := requireFields(object, required, label); err != nil {
+		return nil, err
 	}
 	return object, nil
 }
