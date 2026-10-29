@@ -3,7 +3,7 @@ import {
   QueryClientProvider,
   onlineManager,
 } from "@tanstack/react-query";
-import { cleanup, screen } from "@testing-library/react";
+import { cleanup, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router";
 import { setSessionIdentity } from "../api/http";
@@ -145,6 +145,22 @@ describe("审查入口", () => {
       "href",
       "/cases/case%2Fwithout-review",
     );
+    const summary = within(
+      screen.getByRole("list", { name: "审查工作区摘要" }),
+    );
+    expect(summary.getByText("可见案件").closest("li")).toHaveAttribute(
+      "data-state",
+      "filled",
+    );
+    expect(summary.getByText("本周运行").closest("li")).toHaveAttribute(
+      "data-state",
+      "filled",
+    );
+    expect(summary.getByText("待人工处理").closest("li")).toHaveAttribute(
+      "data-state",
+      "open",
+    );
+    expect(screen.getByRole("combobox")).toBeInTheDocument();
   });
 
   it("shows the empty state when no cases are visible", () => {
@@ -166,6 +182,21 @@ describe("审查入口", () => {
     ).toBeInTheDocument();
     expect(screen.queryByRole("table")).not.toBeInTheDocument();
     expect(screen.getAllByText("0", { selector: "strong" })).toHaveLength(3);
+    const summary = within(
+      screen.getByRole("list", { name: "审查工作区摘要" }),
+    );
+    expect(summary.getByText("可见案件").closest("li")).toHaveAttribute(
+      "data-state",
+      "empty",
+    );
+    expect(summary.getByText("本周运行").closest("li")).toHaveAttribute(
+      "data-state",
+      "empty",
+    );
+    expect(summary.getByText("待人工处理").closest("li")).toHaveAttribute(
+      "data-state",
+      "filled",
+    );
   });
 
   it("shows a refresh error when a stale workbench snapshot fails to reload", async () => {
