@@ -217,6 +217,15 @@ func newServiceFixture(t *testing.T, queueCapacity int, parseTimeout time.Durati
 	}
 	worker.UseModels(model)
 
+	server, client := serveFixture(t, document, queueCapacity, parseTimeout)
+	return &serviceFixture{
+		core: core, document: document, worker: worker, admin: admin, token: token,
+		model: model, server: server, httpClient: client,
+	}
+}
+
+func serveFixture(t *testing.T, document *store.Store, queueCapacity int, parseTimeout time.Duration) (*httptest.Server, *http.Client) {
+	t.Helper()
 	service, err := documentservice.New(document, documentservice.Config{
 		WorkerCredential: testWorkerCredential,
 		CPUConcurrency:   1,
@@ -231,10 +240,7 @@ func newServiceFixture(t *testing.T, queueCapacity int, parseTimeout time.Durati
 	t.Cleanup(server.Close)
 	client := server.Client()
 	client.Timeout = 20 * time.Second
-	return &serviceFixture{
-		core: core, document: document, worker: worker, admin: admin, token: token,
-		model: model, server: server, httpClient: client,
-	}
+	return server, client
 }
 
 func TestUploadPreservesLargeOriginalAndRejectsOversize(t *testing.T) {
@@ -623,8 +629,12 @@ func TestPublicAndDelegatedOCRUseOneSharedOCRPermit(t *testing.T) {
 }
 
 func TestPublicParseTimeoutPersistsParserFailure(t *testing.T) {
-	f := newServiceFixture(t, 2, 350*time.Millisecond)
+	// Upload preparation performs database writes but does not run OCR. Give
+	// that setup its ordinary budget, then exercise the short parse deadline.
+	f := newServiceFixture(t, 2, 2*time.Minute)
 	caseID, imageID := f.newCaseWithDocuments(t)
+	f.server.Close()
+	f.server, f.httpClient = serveFixture(t, f.document, 2, 350*time.Millisecond)
 
 	result := waitHTTP(t, f.reparseAsync(caseID, imageID))
 	if result.status != http.StatusGatewayTimeout {
