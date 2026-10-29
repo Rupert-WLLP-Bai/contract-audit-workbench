@@ -186,33 +186,48 @@ func New(st *store.Store, config Config) (*Service, error) {
 }
 
 func validateBaseConfig(st *store.Store, config Config) error {
-	if st == nil || (config.Mode != "openai-compatible" && config.Mode != "fixture") ||
-		len(config.WorkerCredential) < 32 || len(config.DocumentCredential) < 32 ||
-		subtle.ConstantTimeCompare([]byte(config.WorkerCredential), []byte(config.DocumentCredential)) == 1 ||
-		config.MaxConcurrency < 1 || config.QueueCapacity < 1 || config.RequestTimeout <= 0 ||
-		config.CircuitFailureThreshold < 1 || config.CircuitCooldown <= 0 || config.Budget.LeaseDuration <= 0 {
+	if st == nil || (config.Mode != "openai-compatible" && config.Mode != "fixture") || !validServiceCredentials(config) || !validServiceCapacity(config) {
 		return errors.New("model gateway configuration is incomplete or invalid")
 	}
 	return nil
 }
 
+func validServiceCredentials(config Config) bool {
+	return len(config.WorkerCredential) >= 32 && len(config.DocumentCredential) >= 32 && subtle.ConstantTimeCompare([]byte(config.WorkerCredential), []byte(config.DocumentCredential)) != 1
+}
+
+func validServiceCapacity(config Config) bool {
+	return config.MaxConcurrency >= 1 && config.QueueCapacity >= 1 && config.RequestTimeout > 0 && config.CircuitFailureThreshold >= 1 && config.CircuitCooldown > 0 && config.Budget.LeaseDuration > 0
+}
+
 func validateModeConfig(config Config) error {
 	if config.Mode == "fixture" {
-		environment := strings.ToLower(strings.TrimSpace(os.Getenv("APP_ENV")))
-		if environment != "development" && environment != "dev" && environment != "test" {
-			return errors.New("local model fixture is disabled outside development and test")
-		}
-		if strings.TrimSpace(config.FixtureOCRContent) == "" {
-			return errors.New("local model fixture OCR content must be explicitly configured")
-		}
-		if model.GatewayID(config.ChatModel) == model.GatewayID(config.OCRModel) {
-			return errors.New("local model fixture requires distinct chat and OCR model identifiers")
-		}
-	} else if config.UpstreamBaseURL != "" {
-		endpoint, err := url.Parse(config.UpstreamBaseURL)
-		if err != nil || endpoint.Host == "" || (endpoint.Scheme != "http" && endpoint.Scheme != "https") || endpoint.User != nil || endpoint.RawQuery != "" || endpoint.Fragment != "" {
-			return errors.New("LLM_BASE_URL must be an HTTP(S) base URL without credentials or query")
-		}
+		return validateFixtureConfig(config)
+	}
+	return validateUpstreamURL(config.UpstreamBaseURL)
+}
+
+func validateUpstreamURL(baseURL string) error {
+	if baseURL == "" {
+		return nil
+	}
+	endpoint, err := url.Parse(baseURL)
+	if err != nil || endpoint.Host == "" || (endpoint.Scheme != "http" && endpoint.Scheme != "https") || endpoint.User != nil || endpoint.RawQuery != "" || endpoint.Fragment != "" {
+		return errors.New("LLM_BASE_URL must be an HTTP(S) base URL without credentials or query")
+	}
+	return nil
+}
+
+func validateFixtureConfig(config Config) error {
+	environment := strings.ToLower(strings.TrimSpace(os.Getenv("APP_ENV")))
+	if environment != "development" && environment != "dev" && environment != "test" {
+		return errors.New("local model fixture is disabled outside development and test")
+	}
+	if strings.TrimSpace(config.FixtureOCRContent) == "" {
+		return errors.New("local model fixture OCR content must be explicitly configured")
+	}
+	if model.GatewayID(config.ChatModel) == model.GatewayID(config.OCRModel) {
+		return errors.New("local model fixture requires distinct chat and OCR model identifiers")
 	}
 	return nil
 }
