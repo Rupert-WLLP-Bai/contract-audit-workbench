@@ -1,4 +1,4 @@
-import { spawnSync } from "node:child_process";
+import { spawn } from "node:child_process";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { describe, expect, it } from "vitest";
@@ -789,7 +789,7 @@ describe("buildApiRequest JSON bodies", () => {
     expect(built.request?.init.body).toBe('["a"]');
   });
 
-  it("returns a valid nonempty array request without hanging", () => {
+  it("returns a valid nonempty array request without hanging", async () => {
     const moduleUrl = pathToFileURL(
       resolve(process.cwd(), "src/api/openapi-request.ts"),
     ).href;
@@ -829,14 +829,41 @@ describe("buildApiRequest JSON bodies", () => {
       }
       process.stdout.write("ok");
     `;
-    const result = spawnSync("bun", ["-e", script], {
-      encoding: "utf8",
-      timeout: 2000,
+    const child = spawn("bun", ["-e", script], {
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    let stdout = "";
+    let stderr = "";
+    child.stdout?.setEncoding("utf8").on("data", (chunk: string) => {
+      stdout += chunk;
+    });
+    child.stderr?.setEncoding("utf8").on("data", (chunk: string) => {
+      stderr += chunk;
+    });
+    const result = await new Promise<{
+      timedOut: boolean;
+      status: number | null;
+      error: Error | null;
+    }>((resolveResult) => {
+      let timedOut = false;
+      const deadline = setTimeout(() => {
+        timedOut = true;
+        child.kill("SIGKILL");
+      }, 2000);
+      child.on("error", (error) => {
+        clearTimeout(deadline);
+        resolveResult({ timedOut, status: null, error });
+      });
+      child.on("close", (status) => {
+        clearTimeout(deadline);
+        resolveResult({ timedOut, status, error: null });
+      });
     });
 
-    expect(result.error).toBeUndefined();
-    expect(result.status, result.stderr).toBe(0);
-    expect(result.stdout).toBe("ok");
+    expect(result.timedOut, stderr).toBe(false);
+    expect(result.error, stderr).toBeNull();
+    expect(result.status, stderr).toBe(0);
+    expect(stdout).toBe("ok");
   });
 
   it("reports the index of the first invalid array item", () => {
