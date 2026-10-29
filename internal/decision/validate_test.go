@@ -1,6 +1,7 @@
 package decision
 
 import (
+	"strconv"
 	"strings"
 	"testing"
 
@@ -28,6 +29,34 @@ func validInputFixture() Input {
 func TestValidInputAcceptsTheBoundedChoiceShape(t *testing.T) {
 	if input := validInputFixture(); !ValidInput(input) {
 		t.Fatalf("valid input was rejected: %+v", input)
+	}
+}
+
+func TestValidInputAcceptsInclusiveByteAndCountLimits(t *testing.T) {
+	input := validInputFixture()
+	input.State = strings.Repeat("x", MaxStateBytes)
+	input.AllowedCandidates = make([]Candidate, MaxCandidates)
+	for index := range input.AllowedCandidates {
+		suffix := strconv.Itoa(index)
+		id := "candidate_" + strings.Repeat("a", MaxCandidateIDBytes-len("candidate_")-len(suffix)) + suffix
+		if index == MaxCandidates-1 {
+			id = "manual_review"
+		}
+		input.AllowedCandidates[index] = Candidate{
+			ID: id, Description: strings.Repeat("d", MaxCandidateDescriptionBytes),
+		}
+	}
+	if !ValidInput(input) {
+		t.Fatal("inclusive maximum byte and candidate counts were rejected")
+	}
+}
+
+func TestValidInputChecksShapeWithoutAuthorizingPrincipalOrResource(t *testing.T) {
+	input := validInputFixture()
+	input.Principal = access.Principal{}
+	input.Resource = access.Resource{}
+	if !ValidInput(input) {
+		t.Fatal("valid bounded shape depended on authorization fields")
 	}
 }
 

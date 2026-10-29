@@ -18,24 +18,33 @@ var (
 // does not check authorization; callers must still call access.Check with the
 // resolved principal and resource before sending state anywhere.
 func ValidInput(input Input) bool {
-	if !validReference(input.RequestID) || !validReference(input.DecisionID) ||
-		!validReference(input.RunID) || !validReference(input.AttemptID) ||
-		!validReference(input.TraceID) || input.PolicyVersion != access.PolicyVersion ||
-		!validReference(input.RulePackVersion) || !ruleHashPattern.MatchString(input.RulePackHash) ||
-		len(input.State) == 0 || len(input.State) > MaxStateBytes || !utf8.ValidString(input.State) {
+	if !validInputReferences(input) || !validInputState(input.State) {
 		return false
 	}
 	if input.Capability != CapabilityChoice {
 		return false
 	}
-	if len(input.AllowedCandidates) < 2 || len(input.AllowedCandidates) > MaxCandidates {
+	return validCandidates(input.AllowedCandidates)
+}
+
+func validInputReferences(input Input) bool {
+	return validReference(input.RequestID) && validReference(input.DecisionID) &&
+		validReference(input.RunID) && validReference(input.AttemptID) &&
+		validReference(input.TraceID) && input.PolicyVersion == access.PolicyVersion &&
+		validReference(input.RulePackVersion) && ruleHashPattern.MatchString(input.RulePackHash)
+}
+
+func validInputState(state string) bool {
+	return len(state) != 0 && len(state) <= MaxStateBytes && utf8.ValidString(state)
+}
+
+func validCandidates(candidates []Candidate) bool {
+	if len(candidates) < 2 || len(candidates) > MaxCandidates {
 		return false
 	}
-	seen := make(map[string]struct{}, len(input.AllowedCandidates))
-	for _, candidate := range input.AllowedCandidates {
-		if !candidatePattern.MatchString(candidate.ID) || len(candidate.ID) > MaxCandidateIDBytes ||
-			len(candidate.Description) == 0 || len(candidate.Description) > MaxCandidateDescriptionBytes ||
-			!utf8.ValidString(candidate.Description) || strings.TrimSpace(candidate.Description) == "" {
+	seen := make(map[string]struct{}, len(candidates))
+	for _, candidate := range candidates {
+		if !validCandidate(candidate) {
 			return false
 		}
 		if _, duplicate := seen[candidate.ID]; duplicate {
@@ -45,6 +54,12 @@ func ValidInput(input Input) bool {
 	}
 	_, manual := seen["manual_review"]
 	return manual
+}
+
+func validCandidate(candidate Candidate) bool {
+	return candidatePattern.MatchString(candidate.ID) && len(candidate.ID) <= MaxCandidateIDBytes &&
+		len(candidate.Description) != 0 && len(candidate.Description) <= MaxCandidateDescriptionBytes &&
+		utf8.ValidString(candidate.Description) && strings.TrimSpace(candidate.Description) != ""
 }
 
 func validReference(value string) bool {

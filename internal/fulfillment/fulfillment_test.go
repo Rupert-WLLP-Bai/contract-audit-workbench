@@ -663,6 +663,63 @@ func TestEvaluateInvalidAvailabilityIsRejected(t *testing.T) {
 	}
 }
 
+func TestEvaluatePinsValidationAndEarlyOutcomePrecedence(t *testing.T) {
+	t.Run("nil context before unsupported pack", func(t *testing.T) {
+		input := validInput()
+		input.Pack.ID = "unsupported"
+		_, err := fulfillment.New().Evaluate(nil, input, nil)
+		if err == nil || err.Error() != "auditext: invalid request: nil context" {
+			t.Fatalf("error = %v, want exact nil-context error", err)
+		}
+	})
+	t.Run("unsupported pack before invalid scope", func(t *testing.T) {
+		input := validInput()
+		input.Pack.ID = "unsupported"
+		input.Scope.TenantID = ""
+		_, err := fulfillment.New().Evaluate(context.Background(), input, nil)
+		if err != auditext.ErrUnsupported {
+			t.Fatalf("error = %v, want ErrUnsupported", err)
+		}
+	})
+	t.Run("invalid scope before malformed input", func(t *testing.T) {
+		input := validInput()
+		input.Scope.TenantID = ""
+		input.BusinessAt = time.Time{}
+		_, err := fulfillment.New().Evaluate(context.Background(), input, nil)
+		if err != auditext.ErrUnauthorized {
+			t.Fatalf("error = %v, want ErrUnauthorized", err)
+		}
+	})
+	t.Run("malformed input before foreign observation", func(t *testing.T) {
+		input := validInput()
+		input.BusinessAt = time.Time{}
+		observation := validObservation()
+		observation.TenantID = "tenant-b"
+		_, err := fulfillment.New().Evaluate(context.Background(), input, []auditext.Observation{observation})
+		if err == nil || err.Error() != "auditext: invalid request: business time" {
+			t.Fatalf("error = %v, want exact input-validation error", err)
+		}
+	})
+	t.Run("foreign observation before missing fact", func(t *testing.T) {
+		input := validInput()
+		input.Facts = nil
+		observation := validObservation()
+		observation.TenantID = "tenant-b"
+		_, err := fulfillment.New().Evaluate(context.Background(), input, []auditext.Observation{observation})
+		if err != auditext.ErrUnauthorized {
+			t.Fatalf("error = %v, want ErrUnauthorized", err)
+		}
+	})
+	t.Run("missing fact before observation availability", func(t *testing.T) {
+		input := validInput()
+		input.Facts = nil
+		observation := validObservation()
+		observation.Availability = auditext.Availability("unknown")
+		results, err := fulfillment.New().Evaluate(context.Background(), input, []auditext.Observation{observation})
+		requireResult(t, results, err, auditext.RelationInsufficient, "contract_fact_missing")
+	})
+}
+
 func TestEvaluateMultipleNonMatchingObservationsAreAmbiguous(t *testing.T) {
 	first := validObservation()
 	first.SnapshotID = "snap-002"
