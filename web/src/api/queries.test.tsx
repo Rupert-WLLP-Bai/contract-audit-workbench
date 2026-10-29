@@ -517,6 +517,38 @@ describe("review state polling", () => {
     client.clear();
   });
 
+  it("starts the new attempt scope at the base interval", async () => {
+    vi.useFakeTimers();
+    const getReview = vi.spyOn(api, "getReview")
+      .mockImplementation(async () => structuredClone(workspace("running")));
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false, staleTime: Number.POSITIVE_INFINITY } },
+    });
+    const nextScope = queryKeys.review("c1", "r1", "next");
+    const cached = workspace("running");
+    client.setQueryData(nextScope, cached);
+    const { rerender, unmount } = renderHook(
+      ({ attemptId }: { attemptId: string | null }) =>
+        useReview("c1", "r1", attemptId),
+      { wrapper: testWrapper(client), initialProps: { attemptId: "current" } },
+    );
+    await act(async () => { await vi.advanceTimersByTimeAsync(1); });
+    expect(getReview).toHaveBeenCalledTimes(1);
+    rerender({ attemptId: "next" });
+    const query = client.getQueryCache().find({ queryKey: nextScope });
+    expect(query).toBeDefined();
+    if (!query) throw new Error("next attempt query was not created");
+    const data = query.state.data;
+    if (!data) throw new Error("next attempt query data was not cached");
+    client.setQueryData(nextScope, data);
+    const interval = query.observers[0]?.options.refetchInterval;
+    expect(interval).toBeTypeOf("function");
+    if (typeof interval !== "function") throw new Error("polling interval missing");
+    expect(interval(query)).toBe(4_000);
+    unmount();
+    client.clear();
+  });
+
   it("restarts the backoff after a live stream ends", async () => {
     vi.useFakeTimers();
     const getReview = vi
