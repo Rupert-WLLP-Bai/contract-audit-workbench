@@ -176,6 +176,169 @@ func TestWorkbenchProfileAndTaskSurviveUnrelatedWritesAndReopen(t *testing.T) {
 	}
 }
 
+func TestWorkbenchTaskPersistenceRejectsScopeChangesAndStaleVersions(t *testing.T) {
+	ctx := context.Background()
+	st, owner := openExecutionStore(t)
+	caseID, err := st.CreateCase(owner, "任务持久化边界", "procurement_ict")
+	if err != nil {
+		t.Fatal(err)
+	}
+	task, err := st.CreateWorkbenchTask(owner, caseID, WorkbenchTaskInput{
+		Title: "核对案件", Kind: "review", AssigneeID: owner.ID, Status: "open", Priority: "high",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	before, err := st.snapshotAs(owner)
+	if err != nil || len(before.Tasks) != 1 {
+		t.Fatalf("load original task: tasks=%+v err=%v", before.Tasks, err)
+	}
+	prior := before.Tasks[0]
+	for _, tc := range []struct {
+		name   string
+		change func(*workbenchTaskRecord)
+	}{
+		{"tenant", func(item *workbenchTaskRecord) { item.TenantID = "other-tenant" }},
+		{"organization", func(item *workbenchTaskRecord) { item.OrgID = "other-org" }},
+		{"case", func(item *workbenchTaskRecord) { item.Task.CaseID = "other-case" }},
+		{"creation time", func(item *workbenchTaskRecord) { item.Task.CreatedAt = "2000-01-01T00:00:00Z" }},
+		{"version", func(item *workbenchTaskRecord) { item.Task.Version++ }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			changed := prior
+			changed.Task.Version++
+			tc.change(&changed)
+			tx, err := st.pool.Begin(ctx)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer tx.Rollback(ctx)
+			err = syncWorkbenchTasks(ctx, tx, []workbenchTaskRecord{prior}, []workbenchTaskRecord{changed})
+			if err == nil || err.Error() != "workbench task changed scope, creation time, or version" {
+				t.Fatalf("altered task was not rejected at the persistence boundary: %v", err)
+			}
+			if err := tx.Rollback(ctx); err != nil {
+				t.Fatal(err)
+			}
+			after, err := st.snapshotAs(owner)
+			if err != nil || !reflect.DeepEqual(after.Tasks, before.Tasks) || !reflect.DeepEqual(after.WorkbenchAudit, before.WorkbenchAudit) {
+				t.Fatalf("rejected write changed the task or its audit: tasks=%+v err=%v", after.Tasks, err)
+			}
+		})
+	}
+
+	updated, err := st.UpdateWorkbenchTask(owner, caseID, task.ID, WorkbenchTaskInput{
+		Title: task.Title, Kind: task.Kind, AssigneeID: task.AssigneeID, Status: "in_progress", Priority: task.Priority,
+		ExpectedVersion: task.Version,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	current, err := st.snapshotAs(owner)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stale := prior
+	stale.Task.Version = updated.Version
+	tx, err := st.pool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback(ctx)
+	err = syncWorkbenchTasks(ctx, tx, []workbenchTaskRecord{prior}, []workbenchTaskRecord{stale})
+	if err == nil || err.Error() != "workbench task version conflict" {
+		t.Fatalf("stale database version was not rejected: %v", err)
+	}
+	if err := tx.Rollback(ctx); err != nil {
+		t.Fatal(err)
+	}
+	after, err := st.snapshotAs(owner)
+	if err != nil || !reflect.DeepEqual(after.Tasks, current.Tasks) || !reflect.DeepEqual(after.WorkbenchAudit, current.WorkbenchAudit) {
+		t.Fatalf("stale write changed the task or its audit: tasks=%+v err=%v", after.Tasks, err)
+	}
+}
+
+func TestWorkbenchProfilePersistenceRejectsScopeChangesAndStaleVersions(t *testing.T) {
+	ctx := context.Background()
+	st, owner := openExecutionStore(t)
+	caseID, err := st.CreateCase(owner, "案件资料持久化边界", "procurement_ict")
+	if err != nil {
+		t.Fatal(err)
+	}
+	input := CaseProfileInput{
+		Number: "WB-BOUNDARY-1", Customer: "采购方", Supplier: "服务商",
+		ContractCategory: "采购", OwnerID: owner.ID,
+	}
+	profile, err := st.UpdateCaseProfile(owner, caseID, input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	before, err := st.snapshotAs(owner)
+	if err != nil || len(before.Profiles) != 1 {
+		t.Fatalf("load original profile: profiles=%+v err=%v", before.Profiles, err)
+	}
+	prior := before.Profiles[0]
+	for _, tc := range []struct {
+		name   string
+		change func(*caseProfileRecord)
+	}{
+		{"tenant", func(item *caseProfileRecord) { item.TenantID = "other-tenant" }},
+		{"organization", func(item *caseProfileRecord) { item.OrgID = "other-org" }},
+		{"version", func(item *caseProfileRecord) { item.Profile.Version++ }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			changed := prior
+			changed.Profile.Version++
+			tc.change(&changed)
+			tx, err := st.pool.Begin(ctx)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer tx.Rollback(ctx)
+			err = syncWorkbenchProfiles(ctx, tx, []caseProfileRecord{prior}, []caseProfileRecord{changed})
+			if err == nil || err.Error() != "case profile changed scope or skipped a version" {
+				t.Fatalf("altered profile was not rejected at the persistence boundary: %v", err)
+			}
+			if err := tx.Rollback(ctx); err != nil {
+				t.Fatal(err)
+			}
+			after, err := st.snapshotAs(owner)
+			if err != nil || !reflect.DeepEqual(after.Profiles, before.Profiles) || !reflect.DeepEqual(after.WorkbenchAudit, before.WorkbenchAudit) {
+				t.Fatalf("rejected write changed the profile or its audit: profiles=%+v err=%v", after.Profiles, err)
+			}
+		})
+	}
+
+	input.ExpectedVersion = profile.Version
+	input.Customer = "更新后的采购方"
+	updated, err := st.UpdateCaseProfile(owner, caseID, input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	current, err := st.snapshotAs(owner)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stale := prior
+	stale.Profile.Version = updated.Version
+	tx, err := st.pool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback(ctx)
+	err = syncWorkbenchProfiles(ctx, tx, []caseProfileRecord{prior}, []caseProfileRecord{stale})
+	if err == nil || err.Error() != "case profile version conflict" {
+		t.Fatalf("stale database version was not rejected: %v", err)
+	}
+	if err := tx.Rollback(ctx); err != nil {
+		t.Fatal(err)
+	}
+	after, err := st.snapshotAs(owner)
+	if err != nil || !reflect.DeepEqual(after.Profiles, current.Profiles) || !reflect.DeepEqual(after.WorkbenchAudit, current.WorkbenchAudit) {
+		t.Fatalf("stale write changed the profile or its audit: profiles=%+v err=%v", after.Profiles, err)
+	}
+}
+
 func TestWorkbenchDocumentUsesPublicParsedMetadataProjection(t *testing.T) {
 	document := Document{
 		ID: "doc-1", TenantID: "tenant-private", OrgID: "org-private", CaseID: "case-1", Role: "draft_contract",

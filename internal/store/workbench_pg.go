@@ -267,7 +267,20 @@ func syncWorkbenchRows(ctx context.Context, tx pgx.Tx, previous, removed, change
 	if err := syncWorkbenchTasks(ctx, tx, previous.Tasks, changed.Tasks); err != nil {
 		return err
 	}
-	for _, item := range changed.Relations {
+	if err := insertWorkbenchRelations(ctx, tx, changed.Relations); err != nil {
+		return err
+	}
+	if err := deleteWorkbenchRelations(ctx, tx, removed.Relations); err != nil {
+		return err
+	}
+	if err := insertWorkbenchKnowledge(ctx, tx, changed.Knowledge); err != nil {
+		return err
+	}
+	return insertWorkbenchAudit(ctx, tx, changed.WorkbenchAudit)
+}
+
+func insertWorkbenchRelations(ctx context.Context, tx pgx.Tx, relations []caseRelationRecord) error {
+	for _, item := range relations {
 		raw, err := json.Marshal(item.Relation)
 		if err != nil {
 			return err
@@ -278,7 +291,11 @@ func syncWorkbenchRows(ctx context.Context, tx pgx.Tx, previous, removed, change
 			return fmt.Errorf("insert case relation %q: %w", item.Relation.ID, err)
 		}
 	}
-	for _, item := range removed.Relations {
+	return nil
+}
+
+func deleteWorkbenchRelations(ctx context.Context, tx pgx.Tx, relations []caseRelationRecord) error {
+	for _, item := range relations {
 		result, err := tx.Exec(ctx, `DELETE FROM business_case_relations WHERE id=$1 AND tenant_id=$2 AND org_id=$3 AND case_id=$4`,
 			item.Relation.ID, item.TenantID, item.OrgID, item.Relation.CaseID)
 		if err != nil {
@@ -288,7 +305,11 @@ func syncWorkbenchRows(ctx context.Context, tx pgx.Tx, previous, removed, change
 			return errors.New("case relation disappeared before deletion")
 		}
 	}
-	for _, item := range changed.Knowledge {
+	return nil
+}
+
+func insertWorkbenchKnowledge(ctx context.Context, tx pgx.Tx, knowledge []knowledgeRecord) error {
+	for _, item := range knowledge {
 		raw, err := json.Marshal(item.Item)
 		if err != nil {
 			return err
@@ -298,7 +319,11 @@ func syncWorkbenchRows(ctx context.Context, tx pgx.Tx, previous, removed, change
 			return fmt.Errorf("insert knowledge %q/%q: %w", item.Item.ID, item.Item.Version, err)
 		}
 	}
-	for _, item := range changed.WorkbenchAudit {
+	return nil
+}
+
+func insertWorkbenchAudit(ctx context.Context, tx pgx.Tx, events []workbenchAuditRecord) error {
+	for _, item := range events {
 		raw, err := json.Marshal(item.Item)
 		if err != nil {
 			return err
@@ -321,34 +346,41 @@ func syncWorkbenchProfiles(ctx context.Context, tx pgx.Tx, previous, changed []c
 		previousByCase[item.Profile.CaseID] = item
 	}
 	for _, item := range changed {
-		profile := item.Profile
-		raw, err := json.Marshal(profile)
-		if err != nil {
+		prior, exists := previousByCase[item.Profile.CaseID]
+		if err := syncWorkbenchProfile(ctx, tx, item, prior, exists); err != nil {
 			return err
 		}
-		prior, exists := previousByCase[profile.CaseID]
-		if exists {
-			if item.TenantID != prior.TenantID || item.OrgID != prior.OrgID || profile.Version != prior.Profile.Version+1 {
-				return errors.New("case profile changed scope or skipped a version")
-			}
-			result, err := tx.Exec(ctx, `UPDATE business_case_profiles SET number=$1,version=$2,record_json=$3
-				WHERE tenant_id=$4 AND org_id=$5 AND case_id=$6 AND version=$7`, profile.Number, profile.Version,
-				json.RawMessage(raw), item.TenantID, item.OrgID, profile.CaseID, prior.Profile.Version)
-			if err != nil {
-				return fmt.Errorf("update case profile %q: %w", profile.CaseID, err)
-			}
-			if result.RowsAffected() != 1 {
-				return errors.New("case profile version conflict")
-			}
-			continue
-		}
-		if profile.Version != 1 {
-			return errors.New("new case profile must begin at version one")
-		}
-		if _, err := tx.Exec(ctx, `INSERT INTO business_case_profiles (tenant_id,org_id,case_id,number,version,record_json)
-			VALUES ($1,$2,$3,$4,$5,$6)`, item.TenantID, item.OrgID, profile.CaseID, profile.Number, profile.Version, json.RawMessage(raw)); err != nil {
-			return fmt.Errorf("insert case profile %q: %w", profile.CaseID, err)
-		}
+	}
+	return nil
+}
+
+func syncWorkbenchProfile(ctx context.Context, tx pgx.Tx, item, prior caseProfileRecord, exists bool) error {
+	profile := item.Profile
+	raw, err := json.Marshal(profile)
+	if err != nil {
+		return err
+	}
+	if exists {
+		return updateWorkbenchProfile(ctx, tx, item, prior, raw)
+	}
+	return insertVersionedWorkbenchRow(ctx, tx, profile.Version, profile.CaseID, "case profile",
+		`INSERT INTO business_case_profiles (tenant_id,org_id,case_id,number,version,record_json)
+		VALUES ($1,$2,$3,$4,$5,$6)`, item.TenantID, item.OrgID, profile.CaseID, profile.Number, profile.Version, json.RawMessage(raw))
+}
+
+func updateWorkbenchProfile(ctx context.Context, tx pgx.Tx, item, prior caseProfileRecord, raw []byte) error {
+	profile := item.Profile
+	if item.TenantID != prior.TenantID || item.OrgID != prior.OrgID || profile.Version != prior.Profile.Version+1 {
+		return errors.New("case profile changed scope or skipped a version")
+	}
+	result, err := tx.Exec(ctx, `UPDATE business_case_profiles SET number=$1,version=$2,record_json=$3
+		WHERE tenant_id=$4 AND org_id=$5 AND case_id=$6 AND version=$7`, profile.Number, profile.Version,
+		json.RawMessage(raw), item.TenantID, item.OrgID, profile.CaseID, prior.Profile.Version)
+	if err != nil {
+		return fmt.Errorf("update case profile %q: %w", profile.CaseID, err)
+	}
+	if result.RowsAffected() != 1 {
+		return errors.New("case profile version conflict")
 	}
 	return nil
 }
@@ -359,35 +391,52 @@ func syncWorkbenchTasks(ctx context.Context, tx pgx.Tx, previous, changed []work
 		previousByID[item.Task.ID] = item
 	}
 	for _, item := range changed {
-		task := item.Task
-		raw, err := json.Marshal(task)
-		if err != nil {
+		prior, exists := previousByID[item.Task.ID]
+		if err := syncWorkbenchTask(ctx, tx, item, prior, exists); err != nil {
 			return err
 		}
-		prior, exists := previousByID[task.ID]
-		if exists {
-			if item.TenantID != prior.TenantID || item.OrgID != prior.OrgID || task.CaseID != prior.Task.CaseID ||
-				task.CreatedAt != prior.Task.CreatedAt || task.Version != prior.Task.Version+1 {
-				return errors.New("workbench task changed scope, creation time, or version")
-			}
-			result, err := tx.Exec(ctx, `UPDATE business_workbench_tasks SET version=$1,record_json=$2
-				WHERE id=$3 AND tenant_id=$4 AND org_id=$5 AND case_id=$6 AND version=$7`, task.Version,
-				json.RawMessage(raw), task.ID, item.TenantID, item.OrgID, task.CaseID, prior.Task.Version)
-			if err != nil {
-				return fmt.Errorf("update workbench task %q: %w", task.ID, err)
-			}
-			if result.RowsAffected() != 1 {
-				return errors.New("workbench task version conflict")
-			}
-			continue
-		}
-		if task.Version != 1 {
-			return errors.New("new workbench task must begin at version one")
-		}
-		if _, err := tx.Exec(ctx, `INSERT INTO business_workbench_tasks (id,tenant_id,org_id,case_id,version,record_json)
-			VALUES ($1,$2,$3,$4,$5,$6)`, task.ID, item.TenantID, item.OrgID, task.CaseID, task.Version, json.RawMessage(raw)); err != nil {
-			return fmt.Errorf("insert workbench task %q: %w", task.ID, err)
-		}
+	}
+	return nil
+}
+
+func syncWorkbenchTask(ctx context.Context, tx pgx.Tx, item, prior workbenchTaskRecord, exists bool) error {
+	task := item.Task
+	raw, err := json.Marshal(task)
+	if err != nil {
+		return err
+	}
+	if exists {
+		return updateWorkbenchTask(ctx, tx, item, prior, raw)
+	}
+	return insertVersionedWorkbenchRow(ctx, tx, task.Version, task.ID, "workbench task",
+		`INSERT INTO business_workbench_tasks (id,tenant_id,org_id,case_id,version,record_json)
+		VALUES ($1,$2,$3,$4,$5,$6)`, task.ID, item.TenantID, item.OrgID, task.CaseID, task.Version, json.RawMessage(raw))
+}
+
+func updateWorkbenchTask(ctx context.Context, tx pgx.Tx, item, prior workbenchTaskRecord, raw []byte) error {
+	task := item.Task
+	if item.TenantID != prior.TenantID || item.OrgID != prior.OrgID || task.CaseID != prior.Task.CaseID ||
+		task.CreatedAt != prior.Task.CreatedAt || task.Version != prior.Task.Version+1 {
+		return errors.New("workbench task changed scope, creation time, or version")
+	}
+	result, err := tx.Exec(ctx, `UPDATE business_workbench_tasks SET version=$1,record_json=$2
+		WHERE id=$3 AND tenant_id=$4 AND org_id=$5 AND case_id=$6 AND version=$7`, task.Version,
+		json.RawMessage(raw), task.ID, item.TenantID, item.OrgID, task.CaseID, prior.Task.Version)
+	if err != nil {
+		return fmt.Errorf("update workbench task %q: %w", task.ID, err)
+	}
+	if result.RowsAffected() != 1 {
+		return errors.New("workbench task version conflict")
+	}
+	return nil
+}
+
+func insertVersionedWorkbenchRow(ctx context.Context, tx pgx.Tx, version int, id, kind, query string, args ...any) error {
+	if version != 1 {
+		return fmt.Errorf("new %s must begin at version one", kind)
+	}
+	if _, err := tx.Exec(ctx, query, args...); err != nil {
+		return fmt.Errorf("insert %s %q: %w", kind, id, err)
 	}
 	return nil
 }
