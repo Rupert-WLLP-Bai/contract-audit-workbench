@@ -785,11 +785,15 @@ func retryableTransport(err error, ctx context.Context) bool {
 }
 
 func writeModelContextError(w http.ResponseWriter, err error) {
+	writeContextError(w, err, "model", "model_timeout", "model_cancelled")
+}
+
+func writeContextError(w http.ResponseWriter, err error, service, timeoutCode, cancelledCode string) {
 	if errors.Is(err, context.DeadlineExceeded) {
-		writeJSON(w, http.StatusGatewayTimeout, map[string]string{"error": "model request timed out", "code": "model_timeout"})
+		writeJSON(w, http.StatusGatewayTimeout, map[string]string{"error": service + " request timed out", "code": timeoutCode})
 		return
 	}
-	writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "model request cancelled", "code": "model_cancelled"})
+	writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": service + " request cancelled", "code": cancelledCode})
 }
 
 func writeJSON(w http.ResponseWriter, status int, body any) {

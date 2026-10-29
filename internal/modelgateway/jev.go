@@ -526,9 +526,5 @@ func jevErrorCode(err error) string {
 }
 
 func writeJevContextError(w http.ResponseWriter, err error) {
-	if errors.Is(err, context.DeadlineExceeded) {
-		writeJSON(w, http.StatusGatewayTimeout, map[string]string{"error": "Jev request timed out", "code": "jev_timeout"})
-		return
-	}
-	writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "Jev request cancelled", "code": "jev_cancelled"})
+	writeContextError(w, err, "Jev", "jev_timeout", "jev_cancelled")
 }
