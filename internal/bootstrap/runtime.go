@@ -40,93 +40,34 @@ func Open(ctx context.Context, includeOIDC bool) (*Runtime, error) {
 	return openConfigured(ctx, includeOIDC, "")
 }
 
+type runtimeSettings struct {
+	selection          config.Selection
+	databaseMode       string
+	executionMode      string
+	secureCookies      bool
+	readOnly           bool
+	objects            *objectstore.S3
+	modelConfig        model.Config
+	experienceAcceptor store.ExperienceResultAcceptor
+	oidcConfig         identity.Config
+	oidcConfigured     bool
+}
+
 func openConfigured(ctx context.Context, includeOIDC bool, service string) (*Runtime, error) {
-	if ctx == nil {
-		return nil, errors.New("startup context is required")
+	if err := startupContextReady(ctx); err != nil {
+		return nil, err
+	}
+
+	settings, err := loadRuntimeSettings(includeOIDC, service)
+	if err != nil {
+		return nil, err
 	}
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
 
-	identityFile := strings.TrimSpace(os.Getenv("IDENTITY_DIRECTORY_FILE"))
-	if err := accounts.ConfigureDirectory(identityFile); err != nil {
-		return nil, errors.New("trusted identity directory configuration failed")
-	}
-	selection, err := serviceSelection(service)
+	st, err := openRuntimeStore(settings)
 	if err != nil {
-		return nil, err
-	}
-	databaseMode, err := selectedDatabaseMode(selection.Mode)
-	if err != nil {
-		return nil, err
-	}
-	executionMode, err := selectedExecutionMode(selection.Mode)
-	if err != nil {
-		return nil, err
-	}
-	if service != "" {
-		databaseMode = databaseModeApplication
-		executionMode = executionModeDurable
-	}
-	secureCookies, err := readBoolean("COOKIE_SECURE", false)
-	if err != nil {
-		return nil, err
-	}
-	readOnly, err := readBoolean("APP_READ_ONLY", false)
-	if err != nil {
-		return nil, errors.New("APP_READ_ONLY must be true or false")
-	}
-	if selection.Mode == config.ModeProduction && !secureCookies {
-		return nil, errors.New("COOKIE_SECURE must be true in production")
-	}
-	if err := accounts.ValidateEnvironment(selection.Mode); err != nil {
-		return nil, err
-	}
-
-	var configuredObjects *objectstore.S3
-	if service == "" || service == "document" {
-		configuredObjects, err = configuredObjectStore()
-		if err != nil {
-			return nil, err
-		}
-	}
-	modelConfig, err := serviceModelConfig(service)
-	if err != nil {
-		return nil, err
-	}
-	var experienceAcceptor store.ExperienceResultAcceptor
-	if service == "worker" {
-		experienceAcceptor, err = configuredExperienceResultAcceptor()
-		if err != nil {
-			return nil, err
-		}
-	}
-	var oidcConfig identity.Config
-	var oidcConfigured bool
-	if includeOIDC {
-		oidcConfig, oidcConfigured, err = configuredOIDC()
-		if err != nil {
-			return nil, err
-		}
-		if oidcConfigured && identityFile == "" {
-			return nil, errors.New("IDENTITY_DIRECTORY_FILE is required when OIDC_ISSUER is configured")
-		}
-	}
-	if err := ctx.Err(); err != nil {
-		return nil, err
-	}
-
-	dataDir := processValue("DATA_DIR", "var/lib")
-	var st *store.Store
-	if databaseMode == databaseModeApplication {
-		st, err = store.OpenApplicationSelection(dataDir, selection)
-	} else {
-		st, err = store.Open(dataDir)
-	}
-	if err != nil {
-		if st != nil {
-			_ = st.Close()
-		}
 		return nil, err
 	}
 	closeOnFailure := func(err error) (*Runtime, error) {
@@ -136,69 +77,255 @@ func openConfigured(ctx context.Context, includeOIDC bool, service string) (*Run
 	if err := ctx.Err(); err != nil {
 		return closeOnFailure(err)
 	}
-	st.UseReadOnly(readOnly)
-	if service == "core" || service == "execution" || service == "worker" || service == "" {
-		policy, err := configuredQueuePolicy()
-		if err != nil {
-			return closeOnFailure(err)
-		}
-		if err := st.UseQueuePolicy(policy); err != nil {
-			return closeOnFailure(err)
-		}
-	}
-	if service != "" {
-		if err := st.UseServiceOwner(service); err != nil {
-			return closeOnFailure(err)
-		}
-		if err := st.ValidateServiceDatabaseRole(ctx, service); err != nil {
-			return closeOnFailure(err)
-		}
-	}
-	exporter, err := configuredTelemetry(service)
+	models, err := wireRuntimeStore(ctx, st, settings, service)
 	if err != nil {
 		return closeOnFailure(err)
 	}
-	st.UseTelemetry(exporter)
-	if configuredObjects != nil {
-		st.UseObjectStore(configuredObjects)
-	}
-	models := model.New(modelConfig)
-	st.UseModels(models)
-	if provider := configuredAdvisoryProvider(service, models); provider != nil {
-		st.UseAdvisory(provider)
-	}
-	if service == "worker" {
-		preparer, err := configuredDocumentPreparer()
-		if err != nil {
-			return closeOnFailure(err)
-		}
-		st.UseDocumentPreparer(preparer)
-		reader, err := configuredToolEvidenceReader()
-		if err != nil {
-			return closeOnFailure(err)
-		}
-		if err := st.UseToolEvidenceReader(reader); err != nil {
-			return closeOnFailure(err)
-		}
-		if experienceAcceptor != nil {
-			st.UseExperienceResultAcceptor(experienceAcceptor)
-		}
-	}
-
-	var oidc *identity.Manager
-	if oidcConfigured {
-		oidc, err = identity.NewManager(oidcConfig, accounts.BySubject, st)
-		if err != nil {
-			return closeOnFailure(err)
-		}
+	oidc, err := openRuntimeOIDC(settings, st)
+	if err != nil {
+		return closeOnFailure(err)
 	}
 	if err := ctx.Err(); err != nil {
 		return closeOnFailure(err)
 	}
 	return &Runtime{
-		Store: st, Models: models, OIDC: oidc, Selection: selection,
-		Durable: executionMode == executionModeDurable, SecureCookies: secureCookies,
+		Store: st, Models: models, OIDC: oidc, Selection: settings.selection,
+		Durable: settings.executionMode == executionModeDurable, SecureCookies: settings.secureCookies,
 	}, nil
+}
+
+func startupContextReady(ctx context.Context) error {
+	if ctx == nil {
+		return errors.New("startup context is required")
+	}
+	return ctx.Err()
+}
+
+func openRuntimeOIDC(settings runtimeSettings, st *store.Store) (*identity.Manager, error) {
+	if !settings.oidcConfigured {
+		return nil, nil
+	}
+	return identity.NewManager(settings.oidcConfig, accounts.BySubject, st)
+}
+
+type runtimeModes struct {
+	selection config.Selection
+	database  string
+	execution string
+}
+
+func loadRuntimeSettings(includeOIDC bool, service string) (runtimeSettings, error) {
+	identityFile := strings.TrimSpace(os.Getenv("IDENTITY_DIRECTORY_FILE"))
+	if err := accounts.ConfigureDirectory(identityFile); err != nil {
+		return runtimeSettings{}, errors.New("trusted identity directory configuration failed")
+	}
+	modes, err := loadRuntimeModes(service)
+	if err != nil {
+		return runtimeSettings{}, err
+	}
+	secureCookies, readOnly, err := loadRuntimeToggles(modes.selection)
+	if err != nil {
+		return runtimeSettings{}, err
+	}
+	dependencies, err := loadRuntimeDependencies(includeOIDC, service, identityFile)
+	if err != nil {
+		return runtimeSettings{}, err
+	}
+	return runtimeSettings{
+		selection: modes.selection, databaseMode: modes.database, executionMode: modes.execution,
+		secureCookies: secureCookies, readOnly: readOnly,
+		objects: dependencies.objects, modelConfig: dependencies.modelConfig,
+		experienceAcceptor: dependencies.experienceAcceptor,
+		oidcConfig:         dependencies.oidcConfig, oidcConfigured: dependencies.oidcConfigured,
+	}, nil
+}
+
+func loadRuntimeModes(service string) (runtimeModes, error) {
+	selection, err := serviceSelection(service)
+	if err != nil {
+		return runtimeModes{}, err
+	}
+	databaseMode, err := selectedDatabaseMode(selection.Mode)
+	if err != nil {
+		return runtimeModes{}, err
+	}
+	executionMode, err := selectedExecutionMode(selection.Mode)
+	if err != nil {
+		return runtimeModes{}, err
+	}
+	if service != "" {
+		databaseMode = databaseModeApplication
+		executionMode = executionModeDurable
+	}
+	return runtimeModes{selection: selection, database: databaseMode, execution: executionMode}, nil
+}
+
+func loadRuntimeToggles(selection config.Selection) (bool, bool, error) {
+	secureCookies, err := readBoolean("COOKIE_SECURE", false)
+	if err != nil {
+		return false, false, err
+	}
+	readOnly, err := readBoolean("APP_READ_ONLY", false)
+	if err != nil {
+		return false, false, errors.New("APP_READ_ONLY must be true or false")
+	}
+	if selection.Mode == config.ModeProduction && !secureCookies {
+		return false, false, errors.New("COOKIE_SECURE must be true in production")
+	}
+	if err := accounts.ValidateEnvironment(selection.Mode); err != nil {
+		return false, false, err
+	}
+	return secureCookies, readOnly, nil
+}
+
+type runtimeDependencies struct {
+	objects            *objectstore.S3
+	modelConfig        model.Config
+	experienceAcceptor store.ExperienceResultAcceptor
+	oidcConfig         identity.Config
+	oidcConfigured     bool
+}
+
+func loadRuntimeDependencies(includeOIDC bool, service, identityFile string) (runtimeDependencies, error) {
+	objects, err := configuredObjectsForService(service)
+	if err != nil {
+		return runtimeDependencies{}, err
+	}
+	modelConfig, err := serviceModelConfig(service)
+	if err != nil {
+		return runtimeDependencies{}, err
+	}
+	experienceAcceptor, err := configuredExperienceAcceptorForService(service)
+	if err != nil {
+		return runtimeDependencies{}, err
+	}
+	oidcConfig, oidcConfigured, err := configuredOIDCForService(includeOIDC, identityFile)
+	if err != nil {
+		return runtimeDependencies{}, err
+	}
+	return runtimeDependencies{
+		objects: objects, modelConfig: modelConfig, experienceAcceptor: experienceAcceptor,
+		oidcConfig: oidcConfig, oidcConfigured: oidcConfigured,
+	}, nil
+}
+
+func configuredObjectsForService(service string) (*objectstore.S3, error) {
+	if service == "" || service == "document" {
+		return configuredObjectStore()
+	}
+	return nil, nil
+}
+
+func configuredExperienceAcceptorForService(service string) (store.ExperienceResultAcceptor, error) {
+	if service == "worker" {
+		return configuredExperienceResultAcceptor()
+	}
+	return nil, nil
+}
+
+func configuredOIDCForService(includeOIDC bool, identityFile string) (identity.Config, bool, error) {
+	if !includeOIDC {
+		return identity.Config{}, false, nil
+	}
+	oidcConfig, oidcConfigured, err := configuredOIDC()
+	if err != nil {
+		return identity.Config{}, false, err
+	}
+	if oidcConfigured && identityFile == "" {
+		return identity.Config{}, false, errors.New("IDENTITY_DIRECTORY_FILE is required when OIDC_ISSUER is configured")
+	}
+	return oidcConfig, oidcConfigured, nil
+}
+
+func openRuntimeStore(settings runtimeSettings) (*store.Store, error) {
+	dataDir := processValue("DATA_DIR", "var/lib")
+	var st *store.Store
+	var err error
+	if settings.databaseMode == databaseModeApplication {
+		st, err = store.OpenApplicationSelection(dataDir, settings.selection)
+	} else {
+		st, err = store.Open(dataDir)
+	}
+	if err != nil {
+		if st != nil {
+			_ = st.Close()
+		}
+		return nil, err
+	}
+	return st, nil
+}
+
+func wireRuntimeStore(ctx context.Context, st *store.Store, settings runtimeSettings, service string) (*model.Client, error) {
+	st.UseReadOnly(settings.readOnly)
+	if err := applyStorePolicy(ctx, st, service); err != nil {
+		return nil, err
+	}
+	exporter, err := configuredTelemetry(service)
+	if err != nil {
+		return nil, err
+	}
+	st.UseTelemetry(exporter)
+	if settings.objects != nil {
+		st.UseObjectStore(settings.objects)
+	}
+	models := model.New(settings.modelConfig)
+	st.UseModels(models)
+	if provider := configuredAdvisoryProvider(service, models); provider != nil {
+		st.UseAdvisory(provider)
+	}
+	if service == "worker" {
+		if err := wireWorkerDependencies(st, settings.experienceAcceptor); err != nil {
+			return nil, err
+		}
+	}
+	return models, nil
+}
+
+func applyStorePolicy(ctx context.Context, st *store.Store, service string) error {
+	if err := applyQueuePolicy(st, service); err != nil {
+		return err
+	}
+	return applyServiceIdentity(ctx, st, service)
+}
+
+func applyQueuePolicy(st *store.Store, service string) error {
+	if service != "core" && service != "execution" && service != "worker" && service != "" {
+		return nil
+	}
+	policy, err := configuredQueuePolicy()
+	if err != nil {
+		return err
+	}
+	return st.UseQueuePolicy(policy)
+}
+
+func applyServiceIdentity(ctx context.Context, st *store.Store, service string) error {
+	if service == "" {
+		return nil
+	}
+	if err := st.UseServiceOwner(service); err != nil {
+		return err
+	}
+	return st.ValidateServiceDatabaseRole(ctx, service)
+}
+
+func wireWorkerDependencies(st *store.Store, experienceAcceptor store.ExperienceResultAcceptor) error {
+	preparer, err := configuredDocumentPreparer()
+	if err != nil {
+		return err
+	}
+	st.UseDocumentPreparer(preparer)
+	reader, err := configuredToolEvidenceReader()
+	if err != nil {
+		return err
+	}
+	if err := st.UseToolEvidenceReader(reader); err != nil {
+		return err
+	}
+	if experienceAcceptor != nil {
+		st.UseExperienceResultAcceptor(experienceAcceptor)
+	}
+	return nil
 }
 
 // Close releases the store owned by this runtime. A nil runtime is safe to close.
