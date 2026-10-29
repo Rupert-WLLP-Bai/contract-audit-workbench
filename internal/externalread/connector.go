@@ -102,45 +102,26 @@ var _ auditext.ReadConnector = (*Connector)(nil)
 
 // New validates the deployment configuration and builds a connector.
 func New(cfg Config) (*Connector, error) {
-	if err := auditext.ValidateID(cfg.ConnectorID); err != nil {
-		return nil, fmt.Errorf("%w: connector id", auditext.ErrInvalidRequest)
-	}
-	if err := auditext.ValidateID(cfg.SourceSystem); err != nil {
-		return nil, fmt.Errorf("%w: source system", auditext.ErrInvalidRequest)
+	if err := validateConnectorIdentity(cfg); err != nil {
+		return nil, err
 	}
 	base, err := parseBaseURL(cfg.BaseURL)
 	if err != nil {
 		return nil, err
 	}
-	allowed := make(map[string]struct{}, len(cfg.AllowedObjects))
-	for _, objectID := range cfg.AllowedObjects {
-		if !validObjectID(objectID) {
-			return nil, fmt.Errorf("%w: allowed object", auditext.ErrInvalidRequest)
-		}
-		allowed[objectID] = struct{}{}
+	allowed, err := allowedObjectSet(cfg.AllowedObjects)
+	if err != nil {
+		return nil, err
 	}
-	prefix := cfg.PayloadPrefix
-	if prefix == "" {
-		prefix = DefaultPayloadPrefix
+	prefix, err := configuredPayloadPrefix(cfg.PayloadPrefix)
+	if err != nil {
+		return nil, err
 	}
-	if len(prefix)+sha256.Size*2 > 512 {
-		return nil, fmt.Errorf("%w: payload prefix", auditext.ErrInvalidRequest)
+	maxResponseBytes, err := configuredResponseLimit(cfg.MaxResponseBytes)
+	if err != nil {
+		return nil, err
 	}
-	maxResponseBytes := cfg.MaxResponseBytes
-	if maxResponseBytes < 0 || maxResponseBytes > MaxResponseBytesLimit {
-		return nil, fmt.Errorf("%w: max response bytes", auditext.ErrInvalidRequest)
-	}
-	if maxResponseBytes == 0 {
-		maxResponseBytes = DefaultMaxResponseBytes
-	}
-	timeout := cfg.Timeout
-	if timeout <= 0 {
-		timeout = DefaultTimeout
-	}
-	freshness := cfg.Freshness
-	if freshness < 0 {
-		freshness = 0
-	}
+	timeout, freshness := configuredReadTiming(cfg.Timeout, cfg.Freshness)
 	client := &http.Client{}
 	if cfg.HTTPClient != nil {
 		copied := *cfg.HTTPClient
@@ -169,6 +150,57 @@ func New(cfg Config) (*Connector, error) {
 	}, nil
 }
 
+func configuredReadTiming(timeout, freshness time.Duration) (time.Duration, time.Duration) {
+	if timeout <= 0 {
+		timeout = DefaultTimeout
+	}
+	if freshness < 0 {
+		freshness = 0
+	}
+	return timeout, freshness
+}
+
+func validateConnectorIdentity(cfg Config) error {
+	if err := auditext.ValidateID(cfg.ConnectorID); err != nil {
+		return fmt.Errorf("%w: connector id", auditext.ErrInvalidRequest)
+	}
+	if err := auditext.ValidateID(cfg.SourceSystem); err != nil {
+		return fmt.Errorf("%w: source system", auditext.ErrInvalidRequest)
+	}
+	return nil
+}
+
+func allowedObjectSet(objectIDs []string) (map[string]struct{}, error) {
+	allowed := make(map[string]struct{}, len(objectIDs))
+	for _, objectID := range objectIDs {
+		if !validObjectID(objectID) {
+			return nil, fmt.Errorf("%w: allowed object", auditext.ErrInvalidRequest)
+		}
+		allowed[objectID] = struct{}{}
+	}
+	return allowed, nil
+}
+
+func configuredPayloadPrefix(prefix string) (string, error) {
+	if prefix == "" {
+		prefix = DefaultPayloadPrefix
+	}
+	if len(prefix)+sha256.Size*2 > 512 {
+		return "", fmt.Errorf("%w: payload prefix", auditext.ErrInvalidRequest)
+	}
+	return prefix, nil
+}
+
+func configuredResponseLimit(limit int64) (int64, error) {
+	if limit < 0 || limit > MaxResponseBytesLimit {
+		return 0, fmt.Errorf("%w: max response bytes", auditext.ErrInvalidRequest)
+	}
+	if limit == 0 {
+		return DefaultMaxResponseBytes, nil
+	}
+	return limit, nil
+}
+
 // ID returns the registered connector identifier.
 func (c *Connector) ID() string { return c.id }
 
@@ -179,30 +211,50 @@ func (c *Connector) ID() string { return c.id }
 // availability unavailable/rejected and a nil error, so callers cannot mistake
 // them for evidence.
 func (c *Connector) Read(ctx context.Context, req auditext.ReadRequest) (auditext.Observation, error) {
-	if err := req.Scope.Validate(); err != nil {
-		return auditext.Observation{}, fmt.Errorf("%w: authorized scope", auditext.ErrInvalidRequest)
-	}
-	if req.ConnectorID != c.id {
-		return auditext.Observation{}, fmt.Errorf("%w: connector id", auditext.ErrInvalidRequest)
-	}
-	if err := auditext.ValidateID(req.BindingVersion); err != nil {
-		return auditext.Observation{}, fmt.Errorf("%w: binding version", auditext.ErrInvalidRequest)
-	}
-	if !validObjectID(req.ExternalObjectID) {
-		return auditext.Observation{}, fmt.Errorf("%w: external object id", auditext.ErrInvalidRequest)
+	if err := validateReadRequest(c, req); err != nil {
+		return auditext.Observation{}, err
 	}
 	if ctx == nil {
 		ctx = context.Background()
 	}
-
 	observedAt := c.clock()
-
 	if len(c.allowedObjects) > 0 {
 		if _, ok := c.allowedObjects[req.ExternalObjectID]; !ok {
 			return c.observation(req, observedAt, nil, nil, auditext.AvailabilityRejected, reasonObjectNotAllowed, false)
 		}
 	}
+	result, err := c.readSourceRecord(ctx, req, observedAt)
+	if err != nil {
+		return auditext.Observation{}, err
+	}
+	return c.observation(req, observedAt, result.data, result.payload, result.availability, result.reason, result.withPayload)
+}
 
+func validateReadRequest(c *Connector, req auditext.ReadRequest) error {
+	if err := req.Scope.Validate(); err != nil {
+		return fmt.Errorf("%w: authorized scope", auditext.ErrInvalidRequest)
+	}
+	if req.ConnectorID != c.id {
+		return fmt.Errorf("%w: connector id", auditext.ErrInvalidRequest)
+	}
+	if err := auditext.ValidateID(req.BindingVersion); err != nil {
+		return fmt.Errorf("%w: binding version", auditext.ErrInvalidRequest)
+	}
+	if !validObjectID(req.ExternalObjectID) {
+		return fmt.Errorf("%w: external object id", auditext.ErrInvalidRequest)
+	}
+	return nil
+}
+
+type sourceReadResult struct {
+	data         *recordData
+	payload      []byte
+	availability auditext.Availability
+	reason       string
+	withPayload  bool
+}
+
+func (c *Connector) readSourceRecord(ctx context.Context, req auditext.ReadRequest, observedAt time.Time) (sourceReadResult, error) {
 	callCtx := ctx
 	if c.timeout > 0 {
 		var cancel context.CancelFunc
@@ -212,70 +264,110 @@ func (c *Connector) Read(ctx context.Context, req auditext.ReadRequest) (auditex
 
 	httpReq, err := http.NewRequestWithContext(callCtx, http.MethodGet, c.endpoint(req.ExternalObjectID), nil)
 	if err != nil {
-		return auditext.Observation{}, fmt.Errorf("%w: connector request", auditext.ErrInvalidRequest)
+		return sourceReadResult{}, fmt.Errorf("%w: connector request", auditext.ErrInvalidRequest)
 	}
 	// No caller credentials exist on the request and none are added here.
 	httpReq.Header.Set("Accept", "application/json")
 
 	resp, err := c.client.Do(httpReq)
 	if err != nil {
-		return c.observation(req, observedAt, nil, nil, auditext.AvailabilityUnavailable, reasonForError(callCtx, err), false)
+		return failedSourceRead(auditext.AvailabilityUnavailable, reasonForError(callCtx, err)), nil
 	}
 	defer resp.Body.Close()
-
-	switch {
-	case resp.StatusCode >= 300 && resp.StatusCode < 400:
-		return c.observation(req, observedAt, nil, nil, auditext.AvailabilityRejected, reasonSourceRedirectRejected, false)
-	case resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden:
-		// Do not surface the response body or any snapshot metadata.
-		return auditext.Observation{}, auditext.ErrUnauthorized
-	case resp.StatusCode == http.StatusNotFound || resp.StatusCode == http.StatusGone:
-		return c.observation(req, observedAt, nil, nil, auditext.AvailabilityUnavailable, reasonSourceNotFound, false)
-	case resp.StatusCode == http.StatusTooManyRequests:
-		return c.observation(req, observedAt, nil, nil, auditext.AvailabilityUnavailable, reasonSourceRateLimited, false)
-	case resp.StatusCode == http.StatusRequestTimeout:
-		return c.observation(req, observedAt, nil, nil, auditext.AvailabilityUnavailable, reasonSourceTimeout, false)
-	case resp.StatusCode >= 500:
-		return c.observation(req, observedAt, nil, nil, auditext.AvailabilityUnavailable, reasonSourceUnavailable, false)
-	case resp.StatusCode < 200 || resp.StatusCode >= 300:
-		return c.observation(req, observedAt, nil, nil, auditext.AvailabilityUnavailable, reasonSourceUnavailable, false)
-	}
-
-	if resp.ContentLength > c.maxResponseBytes {
-		return c.observation(req, observedAt, nil, nil, auditext.AvailabilityRejected, reasonSourceResponseTooLarge, false)
-	}
-	payload, err := io.ReadAll(io.LimitReader(resp.Body, c.maxResponseBytes+1))
+	statusResult, err := sourceStatusResult(resp.StatusCode)
 	if err != nil {
-		return c.observation(req, observedAt, nil, nil, auditext.AvailabilityUnavailable, reasonForError(callCtx, err), false)
+		// Do not surface an unauthorized response body or source metadata.
+		return sourceReadResult{}, err
 	}
-	if int64(len(payload)) > c.maxResponseBytes {
-		return c.observation(req, observedAt, nil, nil, auditext.AvailabilityRejected, reasonSourceResponseTooLarge, false)
+	if statusResult.reason != "" {
+		return statusResult, nil
 	}
-
+	payload, bodyFailure := readSourcePayload(resp, c.maxResponseBytes, callCtx)
+	if bodyFailure.reason != "" {
+		return bodyFailure, nil
+	}
 	data, ok := parseRecord(payload)
 	if !ok {
-		return c.observation(req, observedAt, nil, nil, auditext.AvailabilityRejected, reasonSourceResponseInvalid, false)
+		return failedSourceRead(auditext.AvailabilityRejected, reasonSourceResponseInvalid), nil
 	}
-	switch {
-	case !data.recordIDValid || data.recordID != req.ExternalObjectID:
-		return c.observation(req, observedAt, data, payload, auditext.AvailabilityRejected, reasonExternalObjectMismatch, false)
-	case data.versionInvalid:
-		return c.observation(req, observedAt, data, payload, auditext.AvailabilityRejected, reasonRecordVersionInvalid, false)
-	case data.intervalInvalid:
-		return c.observation(req, observedAt, data, payload, auditext.AvailabilityRejected, reasonEffectiveIntervalMiss, false)
-	case data.updatedAtInvalid:
-		return c.observation(req, observedAt, data, payload, auditext.AvailabilityRejected, reasonSourceUpdatedAtInvalid, false)
-	case !data.hasField:
-		return c.observation(req, observedAt, data, payload, auditext.AvailabilityRejected, reasonRequiredFieldMissing, false)
+	return normalizeSourceRecord(data, payload, req, observedAt, c.freshness), nil
+}
+
+func failedSourceRead(availability auditext.Availability, reason string) sourceReadResult {
+	return sourceReadResult{availability: availability, reason: reason}
+}
+
+func sourceStatusResult(status int) (sourceReadResult, error) {
+	if status >= 300 && status < 400 {
+		return failedSourceRead(auditext.AvailabilityRejected, reasonSourceRedirectRejected), nil
+	}
+	if status == http.StatusUnauthorized || status == http.StatusForbidden {
+		return sourceReadResult{}, auditext.ErrUnauthorized
+	}
+	if result, matched := knownUnavailableStatus(status); matched {
+		return result, nil
+	}
+	if status >= 500 || status < 200 || status >= 300 {
+		return failedSourceRead(auditext.AvailabilityUnavailable, reasonSourceUnavailable), nil
+	}
+	return sourceReadResult{}, nil
+}
+
+func knownUnavailableStatus(status int) (sourceReadResult, bool) {
+	switch status {
+	case http.StatusNotFound, http.StatusGone:
+		return failedSourceRead(auditext.AvailabilityUnavailable, reasonSourceNotFound), true
+	case http.StatusTooManyRequests:
+		return failedSourceRead(auditext.AvailabilityUnavailable, reasonSourceRateLimited), true
+	case http.StatusRequestTimeout:
+		return failedSourceRead(auditext.AvailabilityUnavailable, reasonSourceTimeout), true
+	}
+	return sourceReadResult{}, false
+}
+
+func readSourcePayload(resp *http.Response, maxBytes int64, ctx context.Context) ([]byte, sourceReadResult) {
+	if resp.ContentLength > maxBytes {
+		return nil, failedSourceRead(auditext.AvailabilityRejected, reasonSourceResponseTooLarge)
+	}
+	payload, err := io.ReadAll(io.LimitReader(resp.Body, maxBytes+1))
+	if err != nil {
+		return nil, failedSourceRead(auditext.AvailabilityUnavailable, reasonForError(ctx, err))
+	}
+	if int64(len(payload)) > maxBytes {
+		return nil, failedSourceRead(auditext.AvailabilityRejected, reasonSourceResponseTooLarge)
+	}
+	return payload, sourceReadResult{}
+}
+
+func normalizeSourceRecord(data *recordData, payload []byte, req auditext.ReadRequest, observedAt time.Time, freshness time.Duration) sourceReadResult {
+	if reason := rejectedRecordReason(data, req.ExternalObjectID); reason != "" {
+		return sourceReadResult{data: data, payload: payload, availability: auditext.AvailabilityRejected, reason: reason}
 	}
 
 	availability := auditext.AvailabilityAvailable
 	reason := reasonReadSucceeded
-	if c.freshness > 0 && data.hasUpdatedAt && observedAt.Sub(data.updatedAt) > c.freshness {
+	if freshness > 0 && data.hasUpdatedAt && observedAt.Sub(data.updatedAt) > freshness {
 		availability = auditext.AvailabilityStale
 		reason = reasonSourceStale
 	}
-	return c.observation(req, observedAt, data, payload, availability, reason, true)
+	return sourceReadResult{data: data, payload: payload, availability: availability, reason: reason, withPayload: true}
+}
+
+func rejectedRecordReason(data *recordData, externalObjectID string) string {
+	switch {
+	case !data.recordIDValid || data.recordID != externalObjectID:
+		return reasonExternalObjectMismatch
+	case data.versionInvalid:
+		return reasonRecordVersionInvalid
+	case data.intervalInvalid:
+		return reasonEffectiveIntervalMiss
+	case data.updatedAtInvalid:
+		return reasonSourceUpdatedAtInvalid
+	case !data.hasField:
+		return reasonRequiredFieldMissing
+	default:
+		return ""
+	}
 }
 
 // observation assembles and validates one observation. Tenant and case always
@@ -310,28 +402,7 @@ func (c *Connector) observation(
 		DataClass:      auditext.DataClassSynthetic,
 	}
 	if data != nil {
-		if data.recordIDValid {
-			recordID = data.recordID
-		}
-		if data.hasVersion {
-			version := data.recordVersion
-			observation.RecordVersion = &version
-			recordVersion = data.recordVersion
-		}
-		if data.hasUpdatedAt {
-			updatedAt := data.updatedAt
-			observation.SourceUpdatedAt = &updatedAt
-		}
-		// Only a usable (available or stale) snapshot may carry the source's
-		// validity interval; a rejected record must not appear to cover any
-		// business instant.
-		if data.hasInterval && (availability == auditext.AvailabilityAvailable || availability == auditext.AvailabilityStale) {
-			observation.EffectiveFrom = data.effectiveFrom
-			observation.EffectiveUntil = data.effectiveUntil
-		}
-		if data.hasField && availability != auditext.AvailabilityRejected {
-			observation.Fields = []auditext.Field{data.field}
-		}
+		recordID, recordVersion = applyRecordMetadata(&observation, recordID, data, availability)
 	}
 	observation.RecordID = recordID
 	observation.SnapshotID = c.snapshotID(req.ExternalObjectID, recordID, recordVersion, observedAt, payload)
@@ -343,6 +414,33 @@ func (c *Connector) observation(
 		return auditext.Observation{}, err
 	}
 	return observation, nil
+}
+
+func applyRecordMetadata(observation *auditext.Observation, recordID string, data *recordData, availability auditext.Availability) (string, string) {
+	if data.recordIDValid {
+		recordID = data.recordID
+	}
+	recordVersion := ""
+	if data.hasVersion {
+		version := data.recordVersion
+		observation.RecordVersion = &version
+		recordVersion = data.recordVersion
+	}
+	if data.hasUpdatedAt {
+		updatedAt := data.updatedAt
+		observation.SourceUpdatedAt = &updatedAt
+	}
+	// Only a usable (available or stale) snapshot may carry the source's
+	// validity interval; a rejected record must not appear to cover any
+	// business instant.
+	if data.hasInterval && (availability == auditext.AvailabilityAvailable || availability == auditext.AvailabilityStale) {
+		observation.EffectiveFrom = data.effectiveFrom
+		observation.EffectiveUntil = data.effectiveUntil
+	}
+	if data.hasField && availability != auditext.AvailabilityRejected {
+		observation.Fields = []auditext.Field{data.field}
+	}
+	return recordID, recordVersion
 }
 
 // snapshotID is deterministic over the connector, object, record identity,
@@ -417,20 +515,38 @@ func parseBaseURL(raw string) (*url.URL, error) {
 	if err != nil {
 		return nil, fmt.Errorf("%w: base url", auditext.ErrInvalidRequest)
 	}
-	if !strings.EqualFold(parsed.Scheme, "http") && !strings.EqualFold(parsed.Scheme, "https") {
+	if !supportedBaseURLScheme(parsed.Scheme) {
 		return nil, fmt.Errorf("%w: base url scheme", auditext.ErrInvalidRequest)
 	}
-	if parsed.Host == "" || parsed.Hostname() == "" || parsed.Opaque != "" {
-		return nil, fmt.Errorf("%w: base url host", auditext.ErrInvalidRequest)
+	if err := validateBaseURLAuthority(parsed); err != nil {
+		return nil, err
 	}
-	if parsed.User != nil {
-		return nil, fmt.Errorf("%w: base url userinfo", auditext.ErrInvalidRequest)
-	}
-	if parsed.RawQuery != "" || parsed.ForceQuery {
-		return nil, fmt.Errorf("%w: base url query", auditext.ErrInvalidRequest)
-	}
-	if parsed.Fragment != "" || strings.Contains(raw, "#") {
-		return nil, fmt.Errorf("%w: base url fragment", auditext.ErrInvalidRequest)
+	if err := validateBaseURLSuffix(parsed, raw); err != nil {
+		return nil, err
 	}
 	return parsed, nil
+}
+
+func supportedBaseURLScheme(scheme string) bool {
+	return strings.EqualFold(scheme, "http") || strings.EqualFold(scheme, "https")
+}
+
+func validateBaseURLAuthority(parsed *url.URL) error {
+	if parsed.Host == "" || parsed.Hostname() == "" || parsed.Opaque != "" {
+		return fmt.Errorf("%w: base url host", auditext.ErrInvalidRequest)
+	}
+	if parsed.User != nil {
+		return fmt.Errorf("%w: base url userinfo", auditext.ErrInvalidRequest)
+	}
+	return nil
+}
+
+func validateBaseURLSuffix(parsed *url.URL, raw string) error {
+	if parsed.RawQuery != "" || parsed.ForceQuery {
+		return fmt.Errorf("%w: base url query", auditext.ErrInvalidRequest)
+	}
+	if parsed.Fragment != "" || strings.Contains(raw, "#") {
+		return fmt.Errorf("%w: base url fragment", auditext.ErrInvalidRequest)
+	}
+	return nil
 }

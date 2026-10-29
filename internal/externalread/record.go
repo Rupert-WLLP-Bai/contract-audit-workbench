@@ -78,50 +78,66 @@ func parseRecord(payload []byte) (*recordData, bool) {
 	}
 
 	data := &recordData{}
-	if id, present, valid := jsonString(raw.ID); present && valid && id != "" && auditext.ValidateID(id) == nil {
+	parseRecordID(data, raw.ID)
+	parseRecordVersion(data, raw.Version)
+	parseRecordUpdatedAt(data, raw.UpdatedAt)
+	parseRecordInterval(data, raw.EffectiveFrom, raw.EffectiveUntil)
+	data.parseConfiguredBandwidth(raw.ServiceCharacteristic)
+	return data, true
+}
+
+func parseRecordID(data *recordData, raw json.RawMessage) {
+	if id, present, valid := jsonString(raw); present && valid && id != "" && auditext.ValidateID(id) == nil {
 		data.recordID = id
 		data.recordIDValid = true
 	}
+}
 
-	if version, present, valid := jsonString(raw.Version); present {
-		switch {
-		case !valid, len(version) > 128:
-			data.versionInvalid = true
-		case version != "":
-			data.recordVersion = version
-			data.hasVersion = true
-		}
+func parseRecordVersion(data *recordData, raw json.RawMessage) {
+	if version, present, valid := jsonString(raw); !present {
+		return
+	} else if !valid || len(version) > 128 {
+		data.versionInvalid = true
+	} else if version != "" {
+		data.recordVersion = version
+		data.hasVersion = true
 	}
+}
 
-	if updatedAt, present, valid := jsonString(raw.UpdatedAt); present {
-		if !valid {
-			data.updatedAtInvalid = true
-		} else if parsed, err := time.Parse(time.RFC3339, updatedAt); err != nil {
-			data.updatedAtInvalid = true
-		} else {
-			data.updatedAt = parsed
-			data.hasUpdatedAt = true
-		}
+func parseRecordUpdatedAt(data *recordData, raw json.RawMessage) {
+	updatedAt, present, valid := jsonString(raw)
+	if !present {
+		return
 	}
+	if !valid {
+		data.updatedAtInvalid = true
+		return
+	}
+	parsed, err := time.Parse(time.RFC3339, updatedAt)
+	if err != nil {
+		data.updatedAtInvalid = true
+		return
+	}
+	data.updatedAt = parsed
+	data.hasUpdatedAt = true
+}
 
-	from, fromPresent, fromValid := jsonString(raw.EffectiveFrom)
-	until, untilPresent, untilValid := jsonString(raw.EffectiveUntil)
-	if fromPresent && fromValid && untilPresent && untilValid {
-		parsedFrom, fromErr := time.Parse(time.RFC3339, from)
-		parsedUntil, untilErr := time.Parse(time.RFC3339, until)
-		if fromErr == nil && untilErr == nil && parsedFrom.Before(parsedUntil) {
-			data.effectiveFrom = parsedFrom
-			data.effectiveUntil = parsedUntil
-			data.hasInterval = true
-		} else {
-			data.intervalInvalid = true
-		}
-	} else {
+func parseRecordInterval(data *recordData, rawFrom, rawUntil json.RawMessage) {
+	from, fromPresent, fromValid := jsonString(rawFrom)
+	until, untilPresent, untilValid := jsonString(rawUntil)
+	if !fromPresent || !fromValid || !untilPresent || !untilValid {
 		data.intervalInvalid = true
+		return
 	}
-
-	data.parseConfiguredBandwidth(raw.ServiceCharacteristic)
-	return data, true
+	parsedFrom, fromErr := time.Parse(time.RFC3339, from)
+	parsedUntil, untilErr := time.Parse(time.RFC3339, until)
+	if fromErr != nil || untilErr != nil || !parsedFrom.Before(parsedUntil) {
+		data.intervalInvalid = true
+		return
+	}
+	data.effectiveFrom = parsedFrom
+	data.effectiveUntil = parsedUntil
+	data.hasInterval = true
 }
 
 func (d *recordData) parseConfiguredBandwidth(rawCharacteristics json.RawMessage) {
@@ -133,28 +149,42 @@ func (d *recordData) parseConfiguredBandwidth(rawCharacteristics json.RawMessage
 		return
 	}
 	for index, characteristic := range characteristics {
-		name, present, valid := jsonString(characteristic.Name)
-		if !present || !valid || name != configuredBandwidthSourceName {
+		field, matches, valid := configuredBandwidthCharacteristic(index, characteristic)
+		if !matches {
 			continue
 		}
-		value, valuePresent, valueValid := jsonString(characteristic.Value)
-		unit, unitPresent, unitValid := jsonString(characteristic.Unit)
-		if !valuePresent || !valueValid || !unitPresent || !unitValid ||
-			!validConfiguredQuantity(value) || !validBandwidthUnit(unit) {
+		if !valid {
 			// The configured characteristic exists but is unusable; do not
 			// fall through to a later duplicate entry.
 			return
 		}
-		d.field = auditext.Field{
-			Name:          configuredBandwidthFieldName,
-			Value:         value,
-			Unit:          unit,
-			SourcePointer: fmt.Sprintf("/serviceCharacteristic/%d/value", index),
-			SemanticKind:  configuredBandwidthSemantic,
-		}
+		d.field = field
 		d.hasField = true
 		return
 	}
+}
+
+func configuredBandwidthCharacteristic(index int, characteristic rawCharacteristic) (auditext.Field, bool, bool) {
+	name, present, valid := jsonString(characteristic.Name)
+	if !present || !valid || name != configuredBandwidthSourceName {
+		return auditext.Field{}, false, false
+	}
+	value, valuePresent, valueValid := jsonString(characteristic.Value)
+	unit, unitPresent, unitValid := jsonString(characteristic.Unit)
+	if !validConfiguredBandwidthField(value, valuePresent, valueValid, unit, unitPresent, unitValid) {
+		return auditext.Field{}, true, false
+	}
+	return auditext.Field{
+		Name:          configuredBandwidthFieldName,
+		Value:         value,
+		Unit:          unit,
+		SourcePointer: fmt.Sprintf("/serviceCharacteristic/%d/value", index),
+		SemanticKind:  configuredBandwidthSemantic,
+	}, true, true
+}
+
+func validConfiguredBandwidthField(value string, valuePresent, valueValid bool, unit string, unitPresent, unitValid bool) bool {
+	return valuePresent && valueValid && unitPresent && unitValid && validConfiguredQuantity(value) && validBandwidthUnit(unit)
 }
 
 func jsonString(raw json.RawMessage) (value string, present bool, valid bool) {
