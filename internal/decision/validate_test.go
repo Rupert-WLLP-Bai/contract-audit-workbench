@@ -93,6 +93,14 @@ func TestValidInputAcceptsExactMinimumCandidateCount(t *testing.T) {
 	}
 }
 
+func TestValidInputRejectsOneCandidateEvenWhenManualReviewIsPresent(t *testing.T) {
+	input := validInputFixture()
+	input.AllowedCandidates = []Candidate{{ID: "manual_review", Description: "人工复核"}}
+	if ValidInput(input) {
+		t.Fatal("one candidate was accepted when manual_review was present")
+	}
+}
+
 func TestValidInputRejectsUnboundedOrAmbiguousShapes(t *testing.T) {
 	for name, mutate := range map[string]func(*Input){
 		"missing request":          func(input *Input) { input.RequestID = "" },
