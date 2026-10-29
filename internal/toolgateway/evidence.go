@@ -306,28 +306,64 @@ func buildEvidencePayload(ctx context.Context, user accounts.User, args toolArgu
 	if err := ctx.Err(); err != nil {
 		return evidencePayload{}, err
 	}
-	attempt := workspace.Execution.Attempt
-	pinned := make(map[string]struct{}, len(attempt.ParsedDocumentIDs))
-	for _, id := range attempt.ParsedDocumentIDs {
+	pinned, err := pinnedDocumentIDs(workspace.Execution.Attempt.ParsedDocumentIDs)
+	if err != nil {
+		return evidencePayload{}, err
+	}
+	sources, ruleSources, err := selectFrozenSources(ctx, user, args, workspace, pinned)
+	if err != nil {
+		return evidencePayload{}, err
+	}
+	facts, err := telecom.Extract(rulepack.Request{
+		BusinessLine: workspace.Case.BusinessLine, Scenario: workspace.Case.Scenario,
+		ContractType: workspace.Case.ContractType, Sources: ruleSources,
+	})
+	if err != nil {
+		return evidencePayload{}, err
+	}
+	selected, err := selectCapabilityFacts(ctx, facts, args.capabilityID)
+	if err != nil {
+		return evidencePayload{}, err
+	}
+	evidence, err := assembleEvidence(ctx, user, args, sources, selected)
+	if err != nil {
+		return evidencePayload{}, err
+	}
+	encoded, err := json.Marshal(evidence)
+	if err != nil {
+		return evidencePayload{}, fmt.Errorf("encode evidence payload: %w", err)
+	}
+	if len(encoded) > maxToolResult {
+		return evidencePayload{}, errEvidenceLimit
+	}
+	return evidence, nil
+}
+
+func pinnedDocumentIDs(ids []string) (map[string]struct{}, error) {
+	pinned := make(map[string]struct{}, len(ids))
+	for _, id := range ids {
 		if id == "" {
-			return evidencePayload{}, errFrozenIdentity
+			return nil, errFrozenIdentity
 		}
 		if _, exists := pinned[id]; exists {
-			return evidencePayload{}, errFrozenIdentity
+			return nil, errFrozenIdentity
 		}
 		pinned[id] = struct{}{}
 	}
 	if len(pinned) > maxWorkspaceDocs {
-		return evidencePayload{}, errEvidenceLimit
+		return nil, errEvidenceLimit
 	}
+	return pinned, nil
+}
 
+func selectFrozenSources(ctx context.Context, user accounts.User, args toolArguments, workspace store.Workspace, pinned map[string]struct{}) ([]frozenSource, []rulepack.Source, error) {
 	sources := make([]frozenSource, 0, len(pinned))
 	ruleSources := make([]rulepack.Source, 0, len(pinned))
 	seenPinned := make(map[string]struct{}, len(pinned))
 	totalBytes := 0
 	for _, item := range workspace.Documents {
 		if err := ctx.Err(); err != nil {
-			return evidencePayload{}, err
+			return nil, nil, err
 		}
 		parsed := item.ParsedDocument
 		if parsed == nil {
@@ -337,31 +373,31 @@ func buildEvidencePayload(ctx context.Context, user accounts.User, args toolArgu
 			continue
 		}
 		if _, exists := seenPinned[parsed.ID]; exists {
-			return evidencePayload{}, errFrozenIdentity
+			return nil, nil, errFrozenIdentity
 		}
 		seenPinned[parsed.ID] = struct{}{}
 		if item.Document.CaseID != args.caseID || item.Document.TenantID != accounts.Tenant(user) || item.Document.Digest == "" ||
 			parsed.DocumentID != item.Document.ID || parsed.OriginalDigest != item.Document.Digest || parsed.ArtifactDigest == "" {
-			return evidencePayload{}, errFrozenIdentity
+			return nil, nil, errFrozenIdentity
 		}
 		if item.Document.Role != "draft_contract" || !item.Ready || parsed.Status != "ready" {
 			continue
 		}
 		if parsed.ParserID == "" || parsed.ParserVersion == "" || parsed.ConfigHash == "" ||
 			parsed.NormalizationVersion == "" || parsed.NormalizedDigest == "" || parsed.Text == "" || item.Text != parsed.Text {
-			return evidencePayload{}, errFrozenIdentity
+			return nil, nil, errFrozenIdentity
 		}
 		if !utf8.ValidString(parsed.Text) {
-			return evidencePayload{}, errFrozenIdentity
+			return nil, nil, errFrozenIdentity
 		}
 		digest := sha256.Sum256([]byte(parsed.Text))
 		normalizedDigest := hex.EncodeToString(digest[:])
 		if normalizedDigest != parsed.NormalizedDigest {
-			return evidencePayload{}, errFrozenIdentity
+			return nil, nil, errFrozenIdentity
 		}
 		totalBytes += len(parsed.Text)
 		if totalBytes > maxSourceBytes {
-			return evidencePayload{}, errEvidenceLimit
+			return nil, nil, errEvidenceLimit
 		}
 		sources = append(sources, frozenSource{document: item.Document, parsed: parsed, text: parsed.Text})
 		ruleSources = append(ruleSources, rulepack.Source{
@@ -370,33 +406,32 @@ func buildEvidencePayload(ctx context.Context, user accounts.User, args toolArgu
 		})
 	}
 	if len(seenPinned) != len(pinned) {
-		return evidencePayload{}, errFrozenIdentity
+		return nil, nil, errFrozenIdentity
 	}
 	sort.Slice(sources, func(i, j int) bool { return sources[i].document.ID < sources[j].document.ID })
 	sort.Slice(ruleSources, func(i, j int) bool { return ruleSources[i].ID < ruleSources[j].ID })
 
-	facts, err := telecom.Extract(rulepack.Request{
-		BusinessLine: workspace.Case.BusinessLine,
-		Scenario:     workspace.Case.Scenario,
-		ContractType: workspace.Case.ContractType,
-		Sources:      ruleSources,
-	})
-	if err != nil {
-		return evidencePayload{}, err
-	}
-	wantedRule := capabilityRuleIDs[args.capabilityID]
+	return sources, ruleSources, nil
+}
+
+func selectCapabilityFacts(ctx context.Context, facts []rulepack.Fact, capabilityID string) ([]rulepack.Fact, error) {
+	wantedRule := capabilityRuleIDs[capabilityID]
 	selected := make([]rulepack.Fact, 0, len(facts))
 	for _, fact := range facts {
 		if err := ctx.Err(); err != nil {
-			return evidencePayload{}, err
+			return nil, err
 		}
 		if fact.RuleID == wantedRule {
 			selected = append(selected, fact)
 		}
 	}
 	if len(selected) > maxFacts {
-		return evidencePayload{}, errEvidenceLimit
+		return nil, errEvidenceLimit
 	}
+	return selected, nil
+}
+
+func assembleEvidence(ctx context.Context, user accounts.User, args toolArguments, sources []frozenSource, selected []rulepack.Fact) (evidencePayload, error) {
 	sourceByID := make(map[string]frozenSource, len(sources))
 	for _, source := range sources {
 		sourceByID[source.document.ID] = source
@@ -453,13 +488,6 @@ func buildEvidencePayload(ctx context.Context, user accounts.User, args toolArgu
 	})
 	if len(evidence.Facts) > 0 {
 		evidence.Status = "found"
-	}
-	encoded, err := json.Marshal(evidence)
-	if err != nil {
-		return evidencePayload{}, fmt.Errorf("encode evidence payload: %w", err)
-	}
-	if len(encoded) > maxToolResult {
-		return evidencePayload{}, errEvidenceLimit
 	}
 	return evidence, nil
 }
