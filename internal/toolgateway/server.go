@@ -205,9 +205,17 @@ func validateMirroredToolName(header http.Header, request rpcRequest) *rpcFailur
 }
 
 func (h *handler) dispatchRequest(w http.ResponseWriter, r *http.Request, request rpcRequest) {
-	if err := r.Context().Err(); err != nil {
-		h.writeFailure(w, request.id, storeFailure(r.Context(), err))
+	user, workerContext, workerCall, failure := h.authorizeRequest(r, request)
+	if failure != nil {
+		h.writeFailure(w, request.id, failure)
 		return
+	}
+	h.dispatchAuthorizedRequest(w, r, request, user, workerContext, workerCall)
+}
+
+func (h *handler) authorizeRequest(r *http.Request, request rpcRequest) (accounts.User, string, bool, *rpcFailure) {
+	if err := r.Context().Err(); err != nil {
+		return accounts.User{}, "", false, storeFailure(r.Context(), err)
 	}
 	// A durable worker presents its job claim instead of a browser session. The
 	// claim header never arrives from outside: the edge strips every X-Contract-*
@@ -216,30 +224,26 @@ func (h *handler) dispatchRequest(w http.ResponseWriter, r *http.Request, reques
 	workerContext, workerCall := "", false
 	if values := r.Header.Values("X-Contract-Job-Context"); len(values) > 0 {
 		if len(values) != 1 || values[0] == "" || request.method != "tools/call" {
-			h.writeFailure(w, request.id, unauthorizedFailure())
-			return
+			return accounts.User{}, "", false, unauthorizedFailure()
 		}
 		workerContext, workerCall = values[0], true
 	}
 	var user accounts.User
 	if workerCall {
 		if failure := h.authorizeWorkerCall(r); failure != nil {
-			h.writeFailure(w, request.id, failure)
-			return
+			return accounts.User{}, "", false, failure
 		}
 	} else {
 		var failure *rpcFailure
 		user, failure = h.authenticate(r)
 		if failure != nil {
-			h.writeFailure(w, request.id, failure)
-			return
+			return accounts.User{}, "", false, failure
 		}
 	}
 	if err := r.Context().Err(); err != nil {
-		h.writeFailure(w, request.id, storeFailure(r.Context(), err))
-		return
+		return accounts.User{}, "", false, storeFailure(r.Context(), err)
 	}
-	h.dispatchAuthorizedRequest(w, r, request, user, workerContext, workerCall)
+	return user, workerContext, workerCall, nil
 }
 
 func (h *handler) dispatchAuthorizedRequest(w http.ResponseWriter, r *http.Request, request rpcRequest, user accounts.User, workerContext string, workerCall bool) {
