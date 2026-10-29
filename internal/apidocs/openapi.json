@@ -3596,6 +3596,153 @@
           }
         }
       }
+    },
+    "/api/capability-packs": {
+      "get": {
+        "operationId": "listOperatorCapabilityPacks",
+        "tags": ["跨系统核验"],
+        "summary": "列出已启用能力包",
+        "description": "默认关闭；未启用时返回 503。只返回宿主内嵌且通过 allow-list 的清单。",
+        "responses": {
+          "200": {"description": "能力包目录", "content": {"application/json": {"schema": {"type": "object", "additionalProperties": false, "required": ["items"], "properties": {"items": {"type": "array", "items": {"type": "object"}}}}}}},
+          "401": {"$ref": "#/components/responses/Error401"},
+          "503": {"$ref": "#/components/responses/Error503"}
+        }
+      }
+    },
+    "/api/cases/{caseID}/object-bindings": {
+      "post": {
+        "operationId": "createOperatorObjectBinding",
+        "tags": ["跨系统核验"],
+        "summary": "人工确认合同对象与外部对象的版本化映射",
+        "description": "需要案件管理授权和 Idempotency-Key。相似名称不会自动匹配；confirmed 必须为 true。",
+        "parameters": [
+          {"name": "caseID", "in": "path", "required": true, "schema": {"type": "string"}},
+          {"name": "Idempotency-Key", "in": "header", "required": true, "schema": {"type": "string", "minLength": 1}}
+        ],
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {"type": "object", "additionalProperties": false, "required": ["contract_object", "external_object", "confirmed"], "properties": {
+          "contract_object": {"type": "object", "additionalProperties": false, "required": ["object_type", "object_id", "label"], "properties": {"object_type": {"type": "string"}, "object_id": {"type": "string"}, "label": {"type": ["string", "null"]}}},
+          "external_object": {"type": "object", "additionalProperties": false, "required": ["connector_id", "external_object_id"], "properties": {"connector_id": {"type": "string"}, "external_object_id": {"type": "string"}}},
+          "effective_from": {"type": ["string", "null"], "format": "date-time"},
+          "effective_until": {"type": ["string", "null"], "format": "date-time"},
+          "confirmed": {"const": true}
+        }}}}},
+        "responses": {
+          "201": {"description": "已确认的不可变映射"},
+          "403": {"$ref": "#/components/responses/Error403"},
+          "404": {"$ref": "#/components/responses/Error404"},
+          "409": {"$ref": "#/components/responses/Error409"},
+          "422": {"$ref": "#/components/responses/Error422"},
+          "503": {"$ref": "#/components/responses/Error503"}
+        }
+      }
+    },
+    "/api/cases/{caseID}/external-collection-jobs": {
+      "post": {
+        "operationId": "collectOperatorExternalSnapshot",
+        "tags": ["跨系统核验"],
+        "summary": "执行一次只读外部证据采集",
+        "description": "采集与核验受理分开；失败读只形成 unavailable/rejected 观测，不形成业务结论。",
+        "parameters": [
+          {"name": "caseID", "in": "path", "required": true, "schema": {"type": "string"}},
+          {"name": "Idempotency-Key", "in": "header", "required": true, "schema": {"type": "string", "minLength": 1}}
+        ],
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {"type": "object", "additionalProperties": false, "required": ["connector_id", "external_object_id", "object_binding_version", "business_at"], "properties": {
+          "connector_id": {"type": "string"},
+          "external_object_id": {"type": "string"},
+          "object_binding_version": {"type": "string"},
+          "business_at": {"type": "string", "format": "date-time"}
+        }}}}},
+        "responses": {
+          "201": {"description": "不可变快照集引用；不是审查结论"},
+          "403": {"$ref": "#/components/responses/Error403"},
+          "404": {"$ref": "#/components/responses/Error404"},
+          "409": {"$ref": "#/components/responses/Error409"},
+          "422": {"$ref": "#/components/responses/Error422"},
+          "503": {"$ref": "#/components/responses/Error503"}
+        }
+      }
+    },
+    "/api/cases/{caseID}/external-snapshots": {
+      "get": {
+        "operationId": "listOperatorExternalSnapshots",
+        "tags": ["跨系统核验"],
+        "summary": "列出案件内已授权的不可变外部快照元数据",
+        "parameters": [{"name": "caseID", "in": "path", "required": true, "schema": {"type": "string"}}],
+        "responses": {
+          "200": {"description": "快照集与观测列表"},
+          "403": {"$ref": "#/components/responses/Error403"},
+          "404": {"$ref": "#/components/responses/Error404"},
+          "503": {"$ref": "#/components/responses/Error503"}
+        }
+      }
+    },
+    "/api/cases/{caseID}/fulfillment-evaluations": {
+      "post": {
+        "operationId": "createOperatorFulfillmentEvaluation",
+        "tags": ["跨系统核验"],
+        "summary": "受理绑定完整冻结输入与快照集的确定性核验",
+        "description": "所述版本由服务端解析和校验；调用方不能提交任意 URL、模型结论或任意事实。",
+        "parameters": [
+          {"name": "caseID", "in": "path", "required": true, "schema": {"type": "string"}},
+          {"name": "Idempotency-Key", "in": "header", "required": true, "schema": {"type": "string", "minLength": 1}}
+        ],
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {"type": "object", "additionalProperties": false, "required": ["pack_id", "pack_version", "source_review_id", "source_attempt_id", "contract_version_id", "object_binding_version", "snapshot_set_id", "business_at"], "properties": {
+          "pack_id": {"type": "string"},
+          "pack_version": {"type": "string"},
+          "source_review_id": {"type": "string"},
+          "source_attempt_id": {"type": "string"},
+          "contract_version_id": {"type": "string"},
+          "object_binding_version": {"type": "string"},
+          "snapshot_set_id": {"type": "string"},
+          "business_at": {"type": "string", "format": "date-time"}
+        }}}}},
+        "responses": {
+          "201": {"description": "不可变核验结果"},
+          "403": {"$ref": "#/components/responses/Error403"},
+          "404": {"$ref": "#/components/responses/Error404"},
+          "409": {"$ref": "#/components/responses/Error409"},
+          "422": {"$ref": "#/components/responses/Error422"},
+          "503": {"$ref": "#/components/responses/Error503"}
+        }
+      }
+    },
+    "/api/cases/{caseID}/fulfillment-evaluations/{evaluationID}": {
+      "get": {
+        "operationId": "getOperatorFulfillmentEvaluation",
+        "tags": ["跨系统核验"],
+        "summary": "读取已授权的核验结果与来源引用",
+        "parameters": [
+          {"name": "caseID", "in": "path", "required": true, "schema": {"type": "string"}},
+          {"name": "evaluationID", "in": "path", "required": true, "schema": {"type": "string"}}
+        ],
+        "responses": {
+          "200": {"description": "机器结果；人工决定另存"},
+          "403": {"$ref": "#/components/responses/Error403"},
+          "404": {"$ref": "#/components/responses/Error404"},
+          "503": {"$ref": "#/components/responses/Error503"}
+        }
+      }
+    },
+    "/api/cases/{caseID}/fulfillment-evaluations/{evaluationID}/impact": {
+      "get": {
+        "operationId": "getOperatorImpactPlan",
+        "tags": ["跨系统核验"],
+        "summary": "读取 explain 或 shadow 影响计划",
+        "description": "影响计划不取代完整业务结果；reuse_candidate 仅是预测，业务结果来源始终为 full。",
+        "parameters": [
+          {"name": "caseID", "in": "path", "required": true, "schema": {"type": "string"}},
+          {"name": "evaluationID", "in": "path", "required": true, "schema": {"type": "string"}},
+          {"name": "mode", "in": "query", "required": false, "schema": {"type": "string", "enum": ["explain", "shadow"], "default": "explain"}}
+        ],
+        "responses": {
+          "200": {"description": "影响计划"},
+          "403": {"$ref": "#/components/responses/Error403"},
+          "404": {"$ref": "#/components/responses/Error404"},
+          "422": {"$ref": "#/components/responses/Error422"},
+          "503": {"$ref": "#/components/responses/Error503"}
+        }
+      }
     }
   },
   "components": {
@@ -6897,6 +7044,48 @@
               "$ref": "#/components/schemas/Actor"
             }
           },
+          "operator_audit": {
+            "type": "object",
+            "properties": {
+              "enabled": {
+                "type": "boolean"
+              },
+              "connectors": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "connector_id": {
+                      "type": "string"
+                    },
+                    "source_system": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "allowed_objects": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "required": [
+                    "connector_id",
+                    "source_system",
+                    "allowed_objects"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": [
+              "enabled",
+              "connectors"
+            ],
+            "additionalProperties": false
+          },
           "execution": {
             "type": "object",
             "properties": {
@@ -6954,7 +7143,8 @@
           "model",
           "queue",
           "redaction_policy",
-          "users"
+          "users",
+          "operator_audit"
         ],
         "additionalProperties": false,
         "description": "模型探测约5秒；没有真实队列时depth/wait均为null。execution仅管理员可见且只含运维计数；管理员不因此取得合同正文。"
@@ -9598,6 +9788,8 @@
     "internal/httpapi/experience_routes.go",
     "internal/httpapi/evidence_routes.go",
     "internal/httpapi/diagnostics_routes.go",
+    "internal/httpapi/operator_audit.go",
+    "internal/store/operator_audit.go",
     "internal/store/cases.go",
     "internal/store/reviews.go"
   ]

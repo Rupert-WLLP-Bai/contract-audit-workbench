@@ -15,6 +15,8 @@ import (
 
 	"contractaudit/internal/accounts"
 	"contractaudit/internal/apidocs"
+	"contractaudit/internal/auditext"
+	"contractaudit/internal/capabilitypack"
 	"contractaudit/internal/documentservice"
 	"contractaudit/internal/fault"
 	"contractaudit/internal/identity"
@@ -35,6 +37,14 @@ type Options struct {
 	SecureCookies              bool
 	ExperienceWorkerCredential string
 	experienceDeliveryEnabled  bool
+
+	// OperatorAuditEnabled is the server-side feature switch. The extension is
+	// absent from the default review path and returns 503 until an operator
+	// explicitly enables it.
+	OperatorAuditEnabled  bool
+	CapabilityPacks       *capabilitypack.Registry
+	ExternalConnectors    map[string]auditext.ReadConnector
+	ExternalConnectorInfo []OperatorConnectorInfo
 }
 
 // Handler serves the review API the web client calls.
@@ -45,7 +55,7 @@ func Handler(st *store.Store, opt Options) http.Handler {
 	if opt.SystemHealth == nil {
 		opt.SystemHealth = systemhealth.New(systemhealth.Config{DatabaseReady: st.Ready})
 	}
-	h := &handler{store: st, cors: opt.CORSOrigins, models: opt.Models, oidc: opt.OIDC, durable: opt.Durable, secureCookies: opt.SecureCookies, systemHealth: opt.SystemHealth, experienceDeliveryEnabled: opt.experienceDeliveryEnabled}
+	h := &handler{store: st, cors: opt.CORSOrigins, models: opt.Models, oidc: opt.OIDC, durable: opt.Durable, secureCookies: opt.SecureCookies, systemHealth: opt.SystemHealth, experienceDeliveryEnabled: opt.experienceDeliveryEnabled, operatorAuditEnabled: opt.OperatorAuditEnabled, capabilityPacks: opt.CapabilityPacks, externalConnectors: opt.ExternalConnectors, externalConnectorInfo: opt.ExternalConnectorInfo}
 	mux := http.NewServeMux()
 	// Every binary in this repository serves the same probe surface so a manifest
 	// can never point at a path no binary answers. Readiness is the shared
@@ -74,6 +84,7 @@ func Handler(st *store.Store, opt Options) http.Handler {
 	mux.HandleFunc("GET /api/auth/oidc/login", h.oidcLogin)
 	mux.HandleFunc("GET /api/auth/oidc/callback", h.oidcCallback)
 	mux.HandleFunc("GET /api/templates", h.templates)
+	mux.HandleFunc("GET /api/capability-packs", h.listCapabilityPacks)
 	mux.HandleFunc("GET /api/workbench", h.workbench)
 	mux.HandleFunc("GET /api/system-health", h.healthSnapshot)
 	mux.HandleFunc("PUT /api/cases/{caseID}/profile", h.updateCaseProfile)
@@ -91,6 +102,12 @@ func Handler(st *store.Store, opt Options) http.Handler {
 	mux.HandleFunc("POST /api/cases/{caseID}/documents", h.upload)
 	mux.HandleFunc("GET /api/cases/{caseID}/documents/{docID}/original", h.original)
 	mux.HandleFunc("POST /api/cases/{caseID}/documents/{docID}/parse", h.reparse)
+	mux.HandleFunc("POST /api/cases/{caseID}/object-bindings", h.createObjectBinding)
+	mux.HandleFunc("POST /api/cases/{caseID}/external-collection-jobs", h.collectExternalSnapshot)
+	mux.HandleFunc("GET /api/cases/{caseID}/external-snapshots", h.listExternalSnapshots)
+	mux.HandleFunc("POST /api/cases/{caseID}/fulfillment-evaluations", h.createFulfillmentEvaluation)
+	mux.HandleFunc("GET /api/cases/{caseID}/fulfillment-evaluations/{evaluationID}", h.getFulfillmentEvaluation)
+	mux.HandleFunc("GET /api/cases/{caseID}/fulfillment-evaluations/{evaluationID}/impact", h.getImpactPlan)
 	mux.HandleFunc("POST /api/cases/{caseID}/generations", h.generate)
 	mux.HandleFunc("POST /api/cases/{caseID}/remediations", h.createRemediation)
 	mux.HandleFunc("POST /api/cases/{caseID}/remediations/{itemID}/submit", h.submitRemediation)
@@ -117,6 +134,10 @@ type handler struct {
 	durable                   bool
 	secureCookies             bool
 	experienceDeliveryEnabled bool
+	operatorAuditEnabled      bool
+	capabilityPacks           *capabilitypack.Registry
+	externalConnectors        map[string]auditext.ReadConnector
+	externalConnectorInfo     []OperatorConnectorInfo
 }
 
 func (h *handler) login(w http.ResponseWriter, r *http.Request) {
@@ -212,11 +233,16 @@ func (h *handler) settingsForUser(w http.ResponseWriter, r *http.Request, user a
 			status, label = h.models.Reachable(ctx)
 		}
 	}
+	connectors := h.externalConnectorInfo
+	if connectors == nil {
+		connectors = []OperatorConnectorInfo{}
+	}
 	body := map[string]any{
 		"model":            map[string]string{"status": status, "label": label},
 		"queue":            map[string]any{"depth": nil, "oldest_wait_ms": nil},
 		"redaction_policy": "原文只返回给已登录且能看到该案件的人。审查和图片转写会把正文或图片发给已配置的本地模型，密钥不返回给浏览器。",
 		"users":            out,
+		"operator_audit":   map[string]any{"enabled": h.operatorAuditEnabled, "connectors": connectors},
 	}
 	if user.Role == "admin" {
 		metadata, err := h.store.OperationalMetadata(user)
