@@ -1,6 +1,7 @@
 import {
   parseCaseDetail,
   parseCaseList,
+  parseCaseSummary,
   parseFinding,
   parseRemediation,
   parseReviewWorkspace,
@@ -401,6 +402,307 @@ describe("response parsers", () => {
       verification_run_id: null,
       verification_attempt_id: null,
     });
+  });
+
+  it("keeps case summary defaults and rejects missing counts", () => {
+    expect(
+      parseCaseSummary({ id: "c1", document_count: 0, pending_decisions: 0 }),
+    ).toEqual({
+      id: "c1",
+      title: "未命名案件",
+      contract_type: "",
+      document_count: 0,
+      pending_decisions: 0,
+      latest_run: null,
+      updated_at: "",
+      business_line: undefined,
+      scenario: undefined,
+      business_status: undefined,
+      archived_at: null,
+    });
+    expect(
+      parseCaseSummary({
+        id: "c1",
+        title: "合同",
+        contract_type: "service",
+        document_count: 2,
+        pending_decisions: 1,
+        updated_at: "2026-10-01T00:00:00Z",
+        business_line: "ENT",
+        scenario: "telecom_dedicated_line",
+        business_status: "active",
+        archived_at: "2026-10-02T00:00:00Z",
+        latest_run: { id: "r1", state: "running" },
+      }),
+    ).toMatchObject({
+      title: "合同",
+      latest_run: { id: "r1", state: "running", updated_at: "" },
+      archived_at: "2026-10-02T00:00:00Z",
+    });
+    expect(() => parseCaseSummary({ document_count: 0, pending_decisions: 0 })).toThrow(
+      "响应缺少 id",
+    );
+    expect(() => parseCaseSummary({ id: "c1", pending_decisions: 0 })).toThrow(
+      "案件列表缺少数量",
+    );
+    expect(() => parseCaseSummary({ id: "c1", document_count: 0 })).toThrow(
+      "案件列表缺少数量",
+    );
+    expect(() => parseCaseSummary(null)).toThrow("case不是对象");
+  });
+
+  it("parses case members and drops incomplete activity entries", () => {
+    const detail = parseCaseDetail({
+      ...caseDefaults,
+      id: "c1",
+      business_line: "ENT",
+      scenario: "telecom_dedicated_line",
+      business_status: "active",
+      archived_at: null,
+      members: [
+        {
+          id: "u1",
+          display_name: "审查员",
+          role: "reviewer",
+          tenant_id: "t1",
+          org_id: "o1",
+        },
+      ],
+      activity: [
+        { id: "a1", summary: "创建案件", at: "2026-10-01T00:00:00Z" },
+        { id: "a2", summary: "缺少时间" },
+        { id: "a3" },
+        { summary: "缺少标识" },
+        null,
+        "text",
+      ],
+    });
+    expect(detail.members).toEqual([
+      {
+        id: "u1",
+        display_name: "审查员",
+        role: "reviewer",
+        tenant_id: "t1",
+        org_id: "o1",
+      },
+    ]);
+    expect(detail.activity).toEqual([
+      { id: "a1", at: "2026-10-01T00:00:00Z", summary: "创建案件" },
+      { id: "a2", at: "", summary: "缺少时间" },
+    ]);
+    expect(() =>
+      parseCaseDetail({
+        ...caseDefaults,
+        id: "c1",
+        business_line: "ENT",
+        scenario: "telecom_dedicated_line",
+        business_status: "active",
+        archived_at: null,
+        members: [null],
+      }),
+    ).toThrow("案件成员不是对象");
+    expect(() =>
+      parseCaseDetail({
+        ...caseDefaults,
+        id: "c1",
+        business_line: "ENT",
+        scenario: "telecom_dedicated_line",
+        business_status: "active",
+        archived_at: null,
+        members: [{ id: "u1" }],
+      }),
+    ).toThrow("响应缺少 display_name");
+    expect(
+      parseCaseDetail({
+        ...caseDefaults,
+        id: "c1",
+        business_line: "ENT",
+        scenario: "telecom_dedicated_line",
+        business_status: "active",
+        archived_at: null,
+        members: [],
+        documents: "none",
+      }),
+    ).toMatchObject({ documents: [] });
+    expect(
+      parseCaseDetail({
+        ...caseDefaults,
+        id: "c1",
+        business_line: "ENT",
+        scenario: "telecom_dedicated_line",
+        business_status: "active",
+        archived_at: null,
+        members: [],
+        activity: "none",
+      }),
+    ).toMatchObject({ activity: [] });
+    const missingBusinessStatus = {
+      ...caseDefaults,
+      id: "c1",
+      business_line: "ENT",
+      scenario: "telecom_dedicated_line",
+      members: [],
+    } as Record<string, unknown>;
+    delete missingBusinessStatus.business_status;
+    expect(() => parseCaseDetail(missingBusinessStatus)).toThrow(
+      "响应缺少 business_status",
+    );
+    const missingArchive = { ...caseDefaults, id: "c1", business_line: "ENT", scenario: "s", business_status: "active", members: [] } as Record<string, unknown>;
+    delete missingArchive.archived_at;
+    expect(() => parseCaseDetail(missingArchive)).toThrow("响应缺少 archived_at");
+    expect(() =>
+      parseCaseDetail({
+        ...caseDefaults,
+        id: "c1",
+        business_line: "ENT",
+        scenario: "s",
+        business_status: "active",
+        members: [],
+        archived_at: 3,
+      }),
+    ).toThrow("archived_at不是字符串或null");
+  });
+
+  it("rejects a case without its business record arrays or run summary", () => {
+    expect(() =>
+      parseCaseDetail({
+        id: "c1",
+        business_line: "ENT",
+        scenario: "s",
+        business_status: "active",
+        archived_at: null,
+        members: [],
+      }),
+    ).toThrow("案件缺少业务记录数组");
+    expect(() =>
+      parseCaseDetail({
+        ...caseDefaults,
+        id: "c1",
+        business_line: "ENT",
+        scenario: "s",
+        business_status: "active",
+        members: [],
+        archived_at: null,
+        latest_run: 7,
+      }),
+    ).toThrow("latest_run不是对象");
+  });
+
+  it("reads evaluations through the review workspace and filters non-string references", () => {
+    const workspace = parseReviewWorkspace({
+      run: { id: "r1", state: "completed", case_id: "c1" },
+      audit_events: [],
+      evaluations: [
+        {
+          id: "e1",
+          object_refs: ["LINE-1", 7, null],
+          fact_ids: ["fact-1", false],
+          finding_id: null,
+        },
+        {
+          id: "e2",
+          domain: "technical",
+          relation: "conflict",
+          rule_version: "1",
+          reason: "原因",
+          rule_id: "R1",
+          capability_id: "C1",
+          object_refs: "not-array",
+          finding_id: "f1",
+          reason_code: "code",
+          fact_ids: "not-array",
+        },
+      ],
+    });
+    expect(workspace.evaluations?.[0]).toEqual({
+      id: "e1",
+      domain: "",
+      relation: "unknown",
+      rule_version: "",
+      reason: "",
+      rule_id: "",
+      capability_id: "",
+      object_refs: ["LINE-1"],
+      finding_id: null,
+      reason_code: "",
+      fact_ids: ["fact-1"],
+    });
+    expect(workspace.evaluations?.[1]).toMatchObject({
+      object_refs: [],
+      fact_ids: [],
+      finding_id: "f1",
+    });
+    expect(() =>
+      parseReviewWorkspace({
+        run: { id: "r1", state: "completed", case_id: "c1" },
+        audit_events: [],
+        evaluations: [null],
+      }),
+    ).toThrow("evaluation不是对象");
+    expect(() =>
+      parseReviewWorkspace({
+        run: { id: "r1", state: "completed", case_id: "c1" },
+        audit_events: [],
+        evaluations: [{}],
+      }),
+    ).toThrow("响应缺少 id");
+  });
+
+  it("parses finding severity, decisions and severity source with defaults", () => {
+    const finding = parseFinding({
+      id: "f1",
+      version: 2,
+      severity: "high",
+      severity_source: {
+        policy_id: "p1",
+        policy_version: "1",
+        clause: "3.1",
+        reason: "幅度",
+      },
+      evidence: [{ id: "e1", status: "unknown-status" }],
+      decisions: [{ id: "d1", action: "confirm_risk", reason: "确认" }],
+    });
+    expect(finding).toMatchObject({
+      origin: "unknown",
+      domain: "",
+      claim: "",
+      relation: "unknown",
+      confidence: null,
+      verification_status: "unknown",
+      version: 2,
+      severity: "high",
+      severity_source: { policy_id: "p1", clause: "3.1" },
+      decisions: [{ id: "d1", action: "confirm_risk", reason: "确认", actor: "未知人员", decided_at: "" }],
+    });
+    expect(finding.evidence[0]?.status).toBe("missing");
+    expect(
+      parseFinding({
+        id: "f2",
+        version: 1.5,
+        severity: null,
+        evidence: "none",
+        decisions: "none",
+      }),
+    ).toMatchObject({ version: null, severity: null, evidence: [], decisions: [] });
+    expect(
+      parseFinding({ id: "f1", version: "2" }),
+    ).toMatchObject({ version: null });
+    expect(() =>
+      parseFinding({ id: "f1", evidence: [null] }),
+    ).toThrow("evidence不是对象");
+    expect(() =>
+      parseFinding({ id: "f1", decisions: [null] }),
+    ).toThrow("decision不是对象");
+    expect(() =>
+      parseFinding({ id: "f1", severity: 2 }),
+    ).toThrow("severity不是字符串或null");
+    expect(() =>
+      parseFinding({
+        id: "f1",
+        severity_source: { policy_id: "p1" },
+      }),
+    ).toThrow("响应缺少 policy_version");
+    expect(() => parseFinding({ id: 1 })).toThrow("响应缺少 id");
   });
 
   it("keeps platform audit events unlinked and parses nested document provenance", () => {

@@ -221,10 +221,10 @@ function advisoryCandidate(
   };
 }
 
-function knowledgeAdvisory(
+function advisoryEnvelope(
   value: unknown,
   path: string,
-): AgentReviewKnowledgeAdvisory {
+): Record<string, unknown> {
   const item = optionalRecord(
     value,
     path,
@@ -252,6 +252,23 @@ function knowledgeAdvisory(
     return invalid(`${path}.truncated`);
   if (item.feature !== "knowledge_rerank") return invalid(`${path}.feature`);
   if (item.egress !== "minimized") return invalid(`${path}.egress`);
+  return item;
+}
+
+function optionalAdvisoryText(
+  item: Record<string, unknown>,
+  key: string,
+  path: string,
+): string | null {
+  return item[key] === undefined ? null : text(item[key], `${path}.${key}`);
+}
+
+function knowledgeAdvisory(
+  value: unknown,
+  path: string,
+): AgentReviewKnowledgeAdvisory {
+  const item = advisoryEnvelope(value, path);
+  const candidates = item.candidates as unknown[];
   return {
     mode: enumValue(item.mode, advisoryModes) ?? invalid(`${path}.mode`),
     feature: "knowledge_rerank",
@@ -259,35 +276,20 @@ function knowledgeAdvisory(
       enumValue(item.provider, advisoryProviders) ??
       invalid(`${path}.provider`),
     configuration_id: text(item.configuration_id, `${path}.configuration_id`),
-    model_requested:
-      item.model_requested === undefined
-        ? null
-        : text(item.model_requested, `${path}.model_requested`),
-    model_observed:
-      item.model_observed === undefined
-        ? null
-        : text(item.model_observed, `${path}.model_observed`),
+    model_requested: optionalAdvisoryText(item, "model_requested", path),
+    model_observed: optionalAdvisoryText(item, "model_observed", path),
     question_set_version: text(
       item.question_set_version,
       `${path}.question_set_version`,
     ),
     egress: "minimized",
-    request_sha256:
-      item.request_sha256 === undefined
-        ? null
-        : text(item.request_sha256, `${path}.request_sha256`),
-    judgment_id:
-      item.judgment_id === undefined
-        ? null
-        : text(item.judgment_id, `${path}.judgment_id`),
+    request_sha256: optionalAdvisoryText(item, "request_sha256", path),
+    judgment_id: optionalAdvisoryText(item, "judgment_id", path),
     status:
       enumValue(item.status, advisoryStatuses) ?? invalid(`${path}.status`),
-    error_code:
-      item.error_code === undefined
-        ? null
-        : text(item.error_code, `${path}.error_code`),
+    error_code: optionalAdvisoryText(item, "error_code", path),
     truncated: item.truncated === true,
-    candidates: item.candidates.map((candidate, index) =>
+    candidates: candidates.map((candidate, index) =>
       advisoryCandidate(candidate, `${path}.candidates[${index}]`),
     ),
   };

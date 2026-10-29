@@ -248,6 +248,188 @@ describe("AgentReview API parser", () => {
     expect(parsed.knowledge_selection?.policy_status).toBe("available");
   });
 
+  it("reads advisory optionals, statuses and provider variants", () => {
+    const advisory = (overrides: Record<string, unknown> = {}) => ({
+      ...structuredClone(validReview),
+      knowledge_selection: {
+        snapshot_sha256: "a".repeat(64),
+        algorithm: "chinese-bigram-label/v1",
+        policy_status: "available",
+        policy_reason: "",
+        input: {},
+        candidates: [],
+        budget: {},
+        planner_rounds: [],
+        reads: [],
+        advisory: {
+          mode: "fixture",
+          feature: "knowledge_rerank",
+          provider: "local-fixture",
+          configuration_id: "b".repeat(64),
+          model_requested: "jev-1",
+          model_observed: "jev-1",
+          question_set_version: "v1",
+          egress: "minimized",
+          request_sha256: "c".repeat(64),
+          judgment_id: "d".repeat(64),
+          status: "completed",
+          error_code: "EGRESS",
+          truncated: true,
+          candidates: [
+            {
+              knowledge_id: "k1",
+              version_id: "v1",
+              content_sha256: "e".repeat(64),
+              alias: "candidate_0",
+              probability: 0,
+              band: "not_relevant",
+              rank_before: 1,
+              rank_after: 2,
+              reason: "低相关",
+            },
+          ],
+          ...overrides,
+        },
+      },
+    });
+    expect(
+      parseAgentReview(advisory()).knowledge_selection?.advisory,
+    ).toMatchObject({
+      mode: "fixture",
+      provider: "local-fixture",
+      model_requested: "jev-1",
+      model_observed: "jev-1",
+      request_sha256: "c".repeat(64),
+      judgment_id: "d".repeat(64),
+      error_code: "EGRESS",
+      truncated: true,
+      candidates: [
+        {
+          probability: 0,
+          band: "not_relevant",
+          reason: "低相关",
+          rank_before: 1,
+          rank_after: 2,
+        },
+      ],
+    });
+    expect(
+      parseAgentReview(advisory({ truncated: undefined })).knowledge_selection
+        ?.advisory?.truncated,
+    ).toBe(false);
+    expect(
+      parseAgentReview(
+        advisory({
+          mode: "advisory",
+          provider: "direct",
+          status: "unavailable",
+          model_requested: undefined,
+          model_observed: undefined,
+          request_sha256: undefined,
+          judgment_id: undefined,
+          error_code: undefined,
+          candidates: [],
+        }),
+      ).knowledge_selection?.advisory,
+    ).toMatchObject({
+      model_requested: null,
+      model_observed: null,
+      request_sha256: null,
+      judgment_id: null,
+      error_code: null,
+      status: "unavailable",
+    });
+  });
+
+  it.each([
+    ["candidates", { candidates: {} }, /knowledge_selection\.advisory\.candidates/],
+    ["truncated", { truncated: "yes" }, /knowledge_selection\.advisory\.truncated/],
+    ["feature", { feature: "other" }, /knowledge_selection\.advisory\.feature/],
+    ["egress", { egress: "full" }, /knowledge_selection\.advisory\.egress/],
+    ["mode", { mode: "unknown" }, /knowledge_selection\.advisory\.mode/],
+    ["provider", { provider: "unknown" }, /knowledge_selection\.advisory\.provider/],
+    ["status", { status: "unknown" }, /knowledge_selection\.advisory\.status/],
+    [
+      "candidate band",
+      {
+        candidates: [
+          {
+            knowledge_id: "k1",
+            version_id: "v1",
+            content_sha256: "e".repeat(64),
+            alias: "candidate_0",
+            band: "unknown_band",
+            rank_before: 1,
+            rank_after: 2,
+          },
+        ],
+      },
+      /knowledge_selection\.advisory\.candidates\[0\]\.band/,
+    ],
+    [
+      "candidate rank",
+      {
+        candidates: [
+          {
+            knowledge_id: "k1",
+            version_id: "v1",
+            content_sha256: "e".repeat(64),
+            alias: "candidate_0",
+            band: "relevant",
+            rank_before: 0,
+            rank_after: 2,
+          },
+        ],
+      },
+      /knowledge_selection\.advisory\.candidates\[0\]\.rank_before/,
+    ],
+    [
+      "candidate reason",
+      {
+        candidates: [
+          {
+            knowledge_id: "k1",
+            version_id: "v1",
+            content_sha256: "e".repeat(64),
+            alias: "candidate_0",
+            band: "relevant",
+            rank_before: 1,
+            rank_after: 2,
+            reason: 7,
+          },
+        ],
+      },
+      /knowledge_selection\.advisory\.candidates\[0\]\.reason/,
+    ],
+  ])("rejects an invalid advisory %s", (_label, overrides, pattern) => {
+    const review = {
+      ...structuredClone(validReview),
+      knowledge_selection: {
+        snapshot_sha256: "a".repeat(64),
+        algorithm: "chinese-bigram-label/v1",
+        policy_status: "available",
+        policy_reason: "",
+        input: {},
+        candidates: [],
+        budget: {},
+        planner_rounds: [],
+        reads: [],
+        advisory: {
+          mode: "advisory",
+          feature: "knowledge_rerank",
+          provider: "model-gateway",
+          configuration_id: "b".repeat(64),
+          question_set_version: "v1",
+          egress: "minimized",
+          status: "completed",
+          candidates: [],
+          ...overrides,
+        },
+      },
+    };
+    expect(() => parseAgentReview(review)).toThrow(pattern);
+  });
+
   it("keeps old reviews without knowledge selection compatible", () => {
     expect(parseAgentReview(validReview).knowledge_selection).toBeNull();
   });

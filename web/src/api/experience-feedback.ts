@@ -177,15 +177,41 @@ function feedbackPath(caseId: string, feedbackId?: string): string {
   return feedbackId === undefined ? base : `${base}/${encodeURIComponent(feedbackId)}`;
 }
 
+function sameFeedbackIdentity(
+  item: ExperienceFeedback,
+  caseId: string,
+  input: ExperienceFeedbackInput,
+): boolean {
+  return item.case_id === caseId && item.run_id === input.run_id &&
+    item.attempt_id === input.attempt_id && item.finding_id === input.finding_id &&
+    item.decision_id === input.decision_id;
+}
+
+function sameEvidenceRef(
+  actual: ExperienceEvidenceRef,
+  expected: ExperienceEvidenceRef,
+): boolean {
+  return actual.document_id === expected.document_id &&
+    actual.parsed_document_id === expected.parsed_document_id &&
+    actual.quote === expected.quote && actual.start === expected.start &&
+    actual.end === expected.end;
+}
+
+function sameEvidenceRefs(
+  actual: readonly ExperienceEvidenceRef[],
+  expected: readonly ExperienceEvidenceRef[],
+): boolean {
+  return actual.length === expected.length &&
+    actual.every((ref, index) => {
+      const expectedRef = expected[index];
+      return expectedRef !== undefined && sameEvidenceRef(ref, expectedRef);
+    });
+}
+
 function checkFeedbackSource(item: ExperienceFeedback, caseId: string, input: ExperienceFeedbackInput): ExperienceFeedback {
-  if (item.case_id !== caseId || item.run_id !== input.run_id || item.attempt_id !== input.attempt_id ||
-      item.finding_id !== input.finding_id || item.decision_id !== input.decision_id) return invalid("来源身份");
-  if (item.reason !== input.reason.trim() || item.evidence_refs.length !== input.evidence_refs.length ||
-      item.evidence_refs.some((ref, index) => {
-        const expected = input.evidence_refs[index];
-        return !expected || ref.document_id !== expected.document_id || ref.parsed_document_id !== expected.parsed_document_id ||
-          ref.quote !== expected.quote || ref.start !== expected.start || ref.end !== expected.end;
-      })) return invalid("反馈内容");
+  if (!sameFeedbackIdentity(item, caseId, input)) return invalid("来源身份");
+  if (item.reason !== input.reason.trim() ||
+      !sameEvidenceRefs(item.evidence_refs, input.evidence_refs)) return invalid("反馈内容");
   return item;
 }
 
