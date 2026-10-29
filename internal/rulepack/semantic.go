@@ -34,26 +34,27 @@ func EvidenceSupportsValue(rule Rule, fact Fact) bool {
 // statement. Comparator-aligned bounds can establish a normative threshold;
 // measured facts continue to use EvidenceSupportsValue's stricter semantics.
 func EvidenceSupportsAuthority(rule Rule, fact Fact) bool {
-	if fact.SourceRole != "procurement" && fact.SourceRole != "award" {
-		return false
-	}
-	switch rule.Comparator {
-	case ComparatorMinimumBandwidth:
-		if fact.Unit != "Mbit/s" && fact.Unit != "Gbit/s" {
-			return false
-		}
-	case ComparatorMonthlySLA:
-		if fact.Unit != "percent" {
-			return false
-		}
-	case ComparatorAdvancePaymentCeiling:
-		if fact.Unit != "ratio" || fact.Basis != "contract_total" {
-			return false
-		}
-	default:
+	if !authorityRole(fact.SourceRole) || !authorityUnit(rule.Comparator, fact) {
 		return false
 	}
 	return evidenceSupportsValue(rule, fact, true)
+}
+
+func authorityRole(role string) bool {
+	return role == "procurement" || role == "award"
+}
+
+func authorityUnit(comparator string, fact Fact) bool {
+	switch comparator {
+	case ComparatorMinimumBandwidth:
+		return fact.Unit == "Mbit/s" || fact.Unit == "Gbit/s"
+	case ComparatorMonthlySLA:
+		return fact.Unit == "percent"
+	case ComparatorAdvancePaymentCeiling:
+		return fact.Unit == "ratio" && fact.Basis == "contract_total"
+	default:
+		return false
+	}
 }
 
 func evidenceSupportsValue(rule Rule, fact Fact, authority bool) bool {
@@ -61,6 +62,11 @@ func evidenceSupportsValue(rule Rule, fact Fact, authority bool) bool {
 	if err != nil {
 		return false
 	}
+	candidates, matched := evidenceValueCandidates(rule, fact, target, authority)
+	return candidates == 1 && matched
+}
+
+func evidenceValueCandidates(rule Rule, fact Fact, target *big.Rat, authority bool) (int, bool) {
 	candidates := 0
 	matched := false
 	for _, citation := range fact.Citations {
@@ -68,21 +74,25 @@ func evidenceSupportsValue(rule Rule, fact Fact, authority bool) bool {
 			if fact.ObjectRef == "" || !strings.Contains(assertion, fact.ObjectRef) {
 				continue
 			}
-			var count int
-			var found bool
-			switch rule.Comparator {
-			case ComparatorMinimumBandwidth:
-				count, found = evidenceBandwidthValue(assertion, fact, target, authority)
-			case ComparatorMonthlySLA:
-				count, found = evidenceMonthlyValue(assertion, citation.Quote, fact, target, authority)
-			case ComparatorAdvancePaymentCeiling:
-				count, found = evidenceAdvanceValue(assertion, fact, target, authority)
-			}
+			count, found := evidenceAssertionValue(rule, fact, assertion, citation.Quote, target, authority)
 			candidates += count
 			matched = matched || found
 		}
 	}
-	return candidates == 1 && matched
+	return candidates, matched
+}
+
+func evidenceAssertionValue(rule Rule, fact Fact, assertion, citation string, target *big.Rat, authority bool) (int, bool) {
+	switch rule.Comparator {
+	case ComparatorMinimumBandwidth:
+		return evidenceBandwidthValue(assertion, fact, target, authority)
+	case ComparatorMonthlySLA:
+		return evidenceMonthlyValue(assertion, citation, fact, target, authority)
+	case ComparatorAdvancePaymentCeiling:
+		return evidenceAdvanceValue(assertion, fact, target, authority)
+	default:
+		return 0, false
+	}
 }
 
 func evidenceBandwidthValue(text string, fact Fact, target *big.Rat, authority bool) (int, bool) {
@@ -109,64 +119,101 @@ func evidenceBandwidthValue(text string, fact Fact, target *big.Rat, authority b
 }
 
 func evidenceMonthlyValue(assertion, citation string, fact Fact, target *big.Rat, authority bool) (int, bool) {
-	candidates := 0
-	matched := false
-	for _, number := range evidenceNumbers(assertion) {
-		unit := unitAfter(assertion, number.end)
-		percent := unit == "percent" || hasPercentPrefix(assertion, number.start)
-		if !percent || !hasNearbyTerm(assertion, number.start, number.end, 48, 20, "可用率", "availability", "sla") {
-			continue
-		}
-		if evidenceNumberIsNegatedOrRanged(assertion, number.start, number.end) &&
-			(!authority || !evidenceAuthorityBoundMatches(assertion, number.start, number.end, ComparatorMonthlySLA)) {
-			return candidates, false
-		}
-		candidates++
-		if number.value.Cmp(target) == 0 {
-			matched = true
-		}
+	candidates, matched, invalidBound := monthlyValueCandidates(assertion, fact, target, authority)
+	if invalidBound {
+		return candidates, false
 	}
 	if candidates != 1 || !matched {
 		return candidates, false
 	}
+	return candidates, monthlyCitationMatches(citation, fact)
+}
+
+func monthlyValueCandidates(assertion string, fact Fact, target *big.Rat, authority bool) (int, bool, bool) {
+	candidates, matched := 0, false
+	for _, number := range evidenceNumbers(assertion) {
+		if !monthlyNumberCandidate(assertion, number) {
+			continue
+		}
+		if invalidAuthorityBound(assertion, number, ComparatorMonthlySLA, authority) {
+			return candidates, false, true
+		}
+		candidates++
+		matched = matched || number.value.Cmp(target) == 0
+	}
+	return candidates, matched, false
+}
+
+func monthlyNumberCandidate(assertion string, number evidenceNumber) bool {
+	percent := unitAfter(assertion, number.end) == "percent" || hasPercentPrefix(assertion, number.start)
+	return percent && hasNearbyTerm(assertion, number.start, number.end, 48, 20, "可用率", "availability", "sla")
+}
+
+func invalidAuthorityBound(text string, number evidenceNumber, comparator string, authority bool) bool {
+	return evidenceNumberIsNegatedOrRanged(text, number.start, number.end) &&
+		(!authority || !evidenceAuthorityBoundMatches(text, number.start, number.end, comparator))
+}
+
+func monthlyCitationMatches(citation string, fact Fact) bool {
 	citation = FoldSoftLineBreaks(citation)
 	lower := strings.ToLower(citation)
 	if !evidenceUsesCalendarMonth(citation) || !containsIdentifierToken(citation, fact.TimeZone) || !containsAny(lower, "gregorian", "公历") {
-		return candidates, false
+		return false
 	}
 	if fact.OutageDefinition == "" || !strings.Contains(lower, strings.ToLower(fact.OutageDefinition)) {
-		return candidates, false
+		return false
 	}
-	return candidates, evidenceExclusionsMatch(citation, fact.Exclusions)
+	return evidenceExclusionsMatch(citation, fact.Exclusions)
 }
 
 func evidenceAdvanceValue(assertion string, fact Fact, target *big.Rat, authority bool) (int, bool) {
-	if fact.Basis != "contract_total" || !containsAny(strings.ToLower(assertion), "合同总额为预付款计算基础", "预付款以合同总额为基础", "预付款按合同总额", "advance payment basis is contract total", "contract total basis") {
+	if !hasAdvanceBasis(assertion, fact) {
 		return 0, false
 	}
-	candidates := 0
-	matched := false
-	for _, number := range evidenceNumbers(assertion) {
-		if !hasNearbyTerm(assertion, number.start, number.end, 48, 20, "预付款", "预付", "advance payment") {
-			continue
-		}
-		unit := unitAfter(assertion, number.end)
-		value := number.value
-		if unit == "percent" || hasPercentPrefix(assertion, number.start) {
-			value = new(big.Rat).Quo(value, big.NewRat(100, 1))
-		} else if !hasNearbyTerm(assertion, number.start, number.end, 16, 8, "比例", "ratio") {
-			continue
-		}
-		if evidenceNumberIsNegatedOrRanged(assertion, number.start, number.end) &&
-			(!authority || !evidenceAuthorityBoundMatches(assertion, number.start, number.end, ComparatorAdvancePaymentCeiling)) {
-			return candidates, false
-		}
-		candidates++
-		if value.Cmp(target) == 0 {
-			matched = true
-		}
+	candidates, matched, invalid := advanceValueCandidates(assertion, target, authority)
+	if invalid {
+		return candidates, false
 	}
 	return candidates, matched
+}
+
+func hasAdvanceBasis(assertion string, fact Fact) bool {
+	phrases := []string{"合同总额为预付款计算基础", "预付款以合同总额为基础", "预付款按合同总额", "advance payment basis is contract total", "contract total basis"}
+	return fact.Basis == "contract_total" && containsAny(strings.ToLower(assertion), phrases...)
+}
+
+func advanceValueCandidates(assertion string, target *big.Rat, authority bool) (int, bool, bool) {
+	candidates, matched := 0, false
+	for _, number := range evidenceNumbers(assertion) {
+		if !advanceNumberCandidate(assertion, number) {
+			continue
+		}
+		value := advanceNumberValue(assertion, number)
+		if value == nil {
+			continue
+		}
+		if invalidAuthorityBound(assertion, number, ComparatorAdvancePaymentCeiling, authority) {
+			return candidates, false, true
+		}
+		candidates++
+		matched = matched || value.Cmp(target) == 0
+	}
+	return candidates, matched, false
+}
+
+func advanceNumberCandidate(assertion string, number evidenceNumber) bool {
+	return hasNearbyTerm(assertion, number.start, number.end, 48, 20, "预付款", "预付", "advance payment")
+}
+
+func advanceNumberValue(assertion string, number evidenceNumber) *big.Rat {
+	unit := unitAfter(assertion, number.end)
+	if unit == "percent" || hasPercentPrefix(assertion, number.start) {
+		return new(big.Rat).Quo(number.value, big.NewRat(100, 1))
+	}
+	if !hasNearbyTerm(assertion, number.start, number.end, 16, 8, "比例", "ratio") {
+		return nil
+	}
+	return number.value
 }
 
 func evidenceAssertions(text string) []string {
@@ -186,36 +233,52 @@ func FoldSoftLineBreaks(text string) string {
 	var folded strings.Builder
 	folded.Grow(len(text))
 	for index := 0; index < len(text); {
-		r, size := utf8.DecodeRuneInString(text[index:])
-		if r != '\n' && r != '\r' {
-			folded.WriteString(text[index : index+size])
-			index += size
-			continue
-		}
-		breakStart := index
-		breaks := 0
-		for index < len(text) {
-			r, size = utf8.DecodeRuneInString(text[index:])
-			if r != '\n' && r != '\r' {
-				break
-			}
-			index += size
-			if r == '\r' && index < len(text) && text[index] == '\n' {
-				index++
-			}
-			breaks++
-		}
-		if breaks > 1 {
-			folded.WriteByte('\n')
-			continue
-		}
-		left, _ := utf8.DecodeLastRuneInString(text[:breakStart])
-		right, _ := utf8.DecodeRuneInString(text[index:])
-		if !joinsWrappedToken(left, right) {
-			folded.WriteByte(' ')
-		}
+		index = foldSoftLineStep(text, index, &folded)
 	}
 	return folded.String()
+}
+
+func foldSoftLineStep(text string, index int, folded *strings.Builder) int {
+	r, size := utf8.DecodeRuneInString(text[index:])
+	if !isLineBreak(r) {
+		folded.WriteString(text[index : index+size])
+		return index + size
+	}
+	end, breaks := consumeLineBreaks(text, index)
+	if breaks > 1 {
+		folded.WriteByte('\n')
+	} else {
+		foldSoftWrapSeparator(text, index, end, folded)
+	}
+	return end
+}
+
+func consumeLineBreaks(text string, start int) (int, int) {
+	index, breaks := start, 0
+	for index < len(text) {
+		r, size := utf8.DecodeRuneInString(text[index:])
+		if !isLineBreak(r) {
+			break
+		}
+		index += size
+		if r == '\r' && index < len(text) && text[index] == '\n' {
+			index++
+		}
+		breaks++
+	}
+	return index, breaks
+}
+
+func isLineBreak(value rune) bool {
+	return value == '\n' || value == '\r'
+}
+
+func foldSoftWrapSeparator(text string, start, end int, folded *strings.Builder) {
+	left, _ := utf8.DecodeLastRuneInString(text[:start])
+	right, _ := utf8.DecodeRuneInString(text[end:])
+	if !joinsWrappedToken(left, right) {
+		folded.WriteByte(' ')
+	}
 }
 
 func joinsWrappedToken(left, right rune) bool {
@@ -225,42 +288,67 @@ func joinsWrappedToken(left, right rune) bool {
 	if unicode.Is(unicode.Han, left) && unicode.Is(unicode.Han, right) {
 		return true
 	}
-	leftToken := unicode.IsLetter(left) || unicode.IsNumber(left)
-	rightToken := unicode.IsLetter(right) || unicode.IsNumber(right)
-	leftConnector := strings.ContainsRune("_+-./:", left)
-	rightConnector := strings.ContainsRune("_+-./:", right)
+	leftToken, rightToken := wrappedTokenRune(left), wrappedTokenRune(right)
+	leftConnector, rightConnector := wrappedConnectorRune(left), wrappedConnectorRune(right)
 	return leftToken && rightConnector || leftConnector && rightToken
 }
 
+func wrappedTokenRune(value rune) bool {
+	return unicode.IsLetter(value) || unicode.IsNumber(value)
+}
+
+func wrappedConnectorRune(value rune) bool {
+	return strings.ContainsRune("_+-./:", value)
+}
+
 func evidenceProvesInapplicable(rule Rule, fact Fact) bool {
-	if fact.ObjectRef == "" || fact.Dimension != rule.RequiredFact.Dimension || !containsString(rule.RequiredFact.SourceRoles, fact.SourceRole) {
+	if !inapplicabilityFactMatches(rule, fact) {
 		return false
 	}
-	terms := dimensionTerms(rule.Comparator)
 	for _, citation := range fact.Citations {
 		for _, assertion := range evidenceAssertions(citation.Quote) {
-			if !strings.Contains(assertion, fact.ObjectRef) || !containsAny(strings.ToLower(assertion), terms...) {
-				continue
-			}
-			lower := strings.ToLower(assertion)
-			for _, marker := range []string{"不属于适用范围", "不适用于", "不适用", "not applicable", "does not apply"} {
-				start := 0
-				for {
-					index := strings.Index(lower[start:], strings.ToLower(marker))
-					if index < 0 {
-						break
-					}
-					index += start
-					if !inapplicabilityMarkerNegated(lower, index) {
-						return true
-					}
-					start = index + len(marker)
-					if start >= len(lower) {
-						break
-					}
-				}
+			if inapplicabilityAssertionMatches(rule, fact, assertion) {
+				return true
 			}
 		}
+	}
+	return false
+}
+
+func inapplicabilityFactMatches(rule Rule, fact Fact) bool {
+	return fact.ObjectRef != "" && fact.Dimension == rule.RequiredFact.Dimension &&
+		containsString(rule.RequiredFact.SourceRoles, fact.SourceRole)
+}
+
+func inapplicabilityAssertionMatches(rule Rule, fact Fact, assertion string) bool {
+	if !strings.Contains(assertion, fact.ObjectRef) || !containsAny(strings.ToLower(assertion), dimensionTerms(rule.Comparator)...) {
+		return false
+	}
+	return hasUnnegatedInapplicabilityMarker(strings.ToLower(assertion))
+}
+
+func hasUnnegatedInapplicabilityMarker(assertion string) bool {
+	markers := []string{"不属于适用范围", "不适用于", "不适用", "not applicable", "does not apply"}
+	for _, marker := range markers {
+		if hasUnnegatedMarker(assertion, marker) {
+			return true
+		}
+	}
+	return false
+}
+
+func hasUnnegatedMarker(assertion, marker string) bool {
+	start := 0
+	for start < len(assertion) {
+		index := strings.Index(assertion[start:], marker)
+		if index < 0 {
+			return false
+		}
+		index += start
+		if !inapplicabilityMarkerNegated(assertion, index) {
+			return true
+		}
+		start = index + len(marker)
 	}
 	return false
 }
@@ -269,17 +357,14 @@ func inapplicabilityMarkerNegated(assertion string, markerStart int) bool {
 	return containsAny(assertion[:markerStart], "并非", "并不", "并不是", "不是", "not ")
 }
 
+var evidenceDimensionTerms = map[string][]string{
+	ComparatorMinimumBandwidth:      {"带宽", "接入速率", "保障速率", "bandwidth"},
+	ComparatorMonthlySLA:            {"可用率", "availability", "sla"},
+	ComparatorAdvancePaymentCeiling: {"预付款", "预付比例", "advance payment"},
+}
+
 func dimensionTerms(comparator string) []string {
-	switch comparator {
-	case ComparatorMinimumBandwidth:
-		return []string{"带宽", "接入速率", "保障速率", "bandwidth"}
-	case ComparatorMonthlySLA:
-		return []string{"可用率", "availability", "sla"}
-	case ComparatorAdvancePaymentCeiling:
-		return []string{"预付款", "预付比例", "advance payment"}
-	default:
-		return nil
-	}
+	return evidenceDimensionTerms[comparator]
 }
 
 func evidenceNumbers(text string) []evidenceNumber {
@@ -299,33 +384,49 @@ func evidenceNumbers(text string) []evidenceNumber {
 }
 
 func numericBoundary(text string, start, end int) bool {
-	if start > 0 && (isRationalByte(text[start-1]) || isASCIIAlpha(text[start-1])) {
+	return numericStartBoundary(text, start) && numericEndBoundary(text, end)
+}
+
+func numericStartBoundary(text string, start int) bool {
+	if start == 0 {
+		return true
+	}
+	if isRationalByte(text[start-1]) || isASCIIAlpha(text[start-1]) {
 		return false
 	}
-	if end < len(text) {
-		if isRationalByte(text[end]) || isASCIIAlpha(text[end]) && unitAfter(text, end) == "" {
-			return false
-		}
+	return !startsInGroupedNumber(text, start)
+}
+
+func startsInGroupedNumber(text string, start int) bool {
+	previous, previousStart := utf8.DecodeLastRuneInString(text[:start])
+	if previous != ',' && previous != '，' {
+		return false
 	}
-	if start > 0 {
-		previous, previousStart := utf8.DecodeLastRuneInString(text[:start])
-		if previous == ',' || previous == '，' {
-			beforePrevious, _ := utf8.DecodeLastRuneInString(text[:previousStart])
-			if beforePrevious >= '0' && beforePrevious <= '9' {
-				return false
-			}
-		}
+	beforePrevious, _ := utf8.DecodeLastRuneInString(text[:previousStart])
+	return asciiDigit(beforePrevious)
+}
+
+func numericEndBoundary(text string, end int) bool {
+	if end == len(text) {
+		return true
 	}
-	if end < len(text) {
-		next, nextSize := utf8.DecodeRuneInString(text[end:])
-		if next == ',' || next == '，' {
-			afterNext, _ := utf8.DecodeRuneInString(text[end+nextSize:])
-			if afterNext >= '0' && afterNext <= '9' {
-				return false
-			}
-		}
+	if isRationalByte(text[end]) || isASCIIAlpha(text[end]) && unitAfter(text, end) == "" {
+		return false
 	}
-	return true
+	return !endsInGroupedNumber(text, end)
+}
+
+func endsInGroupedNumber(text string, end int) bool {
+	next, nextSize := utf8.DecodeRuneInString(text[end:])
+	if next != ',' && next != '，' {
+		return false
+	}
+	afterNext, _ := utf8.DecodeRuneInString(text[end+nextSize:])
+	return asciiDigit(afterNext)
+}
+
+func asciiDigit(value rune) bool {
+	return value >= '0' && value <= '9'
 }
 
 func isRationalByte(value byte) bool {
@@ -495,50 +596,62 @@ func runeContext(text string, start, end, before, after int) string {
 func evidenceExclusionsMatch(text string, expected []string) bool {
 	lower := strings.ToLower(text)
 	markers := []string{"排除项：", "排除项:", "排除项为", "exclusions:"}
-	hasList := false
-	for _, marker := range markers {
-		if strings.Contains(lower, strings.ToLower(marker)) {
-			hasList = true
-			break
-		}
-	}
+	hasList := containsAny(lower, markers...)
 	noExclusions := containsAny(lower, "无排除项", "不设排除", "no exclusions")
 	if len(expected) == 0 {
-		if !noExclusions || hasList {
-			return false
-		}
-		return !containsAny(lower, "除外", "例外", "except", "excluding")
+		return evidenceDeclaresNoExclusions(lower, hasList, noExclusions)
 	}
 	if noExclusions {
 		return false
 	}
-	var listed string
-	found := 0
-	for _, marker := range markers {
-		search := 0
-		for {
-			index := strings.Index(lower[search:], strings.ToLower(marker))
-			if index < 0 {
-				break
-			}
-			index += search
-			found++
-			begin := index + len(marker)
-			end := len(text)
-			if stop := strings.IndexAny(text[begin:], "。.;；\n\r"); stop >= 0 {
-				end = begin + stop
-			}
-			listed = strings.TrimSpace(text[begin:end])
-			search = begin
-			if search >= len(lower) {
-				break
-			}
-		}
-	}
-	if found != 1 || containsAny(lower, "除外", "例外", "except", "excluding") {
+	listed, found := collectExclusionList(text, lower, markers)
+	if found != 1 || hasAdditionalExclusionMarkers(lower) {
 		return false
 	}
-	items := strings.FieldsFunc(listed, func(r rune) bool { return r == ',' || r == '，' || r == '、' || r == ';' || r == '；' })
+	return exclusionItemsMatch(listed, expected)
+}
+
+func evidenceDeclaresNoExclusions(lower string, hasList, noExclusions bool) bool {
+	return noExclusions && !hasList && !hasAdditionalExclusionMarkers(lower)
+}
+
+func hasAdditionalExclusionMarkers(lower string) bool {
+	return containsAny(lower, "除外", "例外", "except", "excluding")
+}
+
+func collectExclusionList(text, lower string, markers []string) (string, int) {
+	listed, found := "", 0
+	for _, marker := range markers {
+		value, count := collectExclusionMarker(text, lower, marker)
+		if count > 0 {
+			listed = value
+			found += count
+		}
+	}
+	return listed, found
+}
+
+func collectExclusionMarker(text, lower, marker string) (string, int) {
+	listed, found, search := "", 0, 0
+	for search < len(lower) {
+		relative := strings.Index(lower[search:], strings.ToLower(marker))
+		if relative < 0 {
+			break
+		}
+		index := search + relative
+		begin, end := index+len(marker), len(text)
+		if stop := strings.IndexAny(text[begin:], "。.;；\n\r"); stop >= 0 {
+			end = begin + stop
+		}
+		listed = strings.TrimSpace(text[begin:end])
+		found++
+		search = begin
+	}
+	return listed, found
+}
+
+func exclusionItemsMatch(listed string, expected []string) bool {
+	items := strings.FieldsFunc(listed, isExclusionSeparator)
 	for i := range items {
 		items[i] = strings.TrimSpace(items[i])
 	}
@@ -554,6 +667,10 @@ func evidenceExclusionsMatch(text string, expected []string) bool {
 		}
 	}
 	return true
+}
+
+func isExclusionSeparator(value rune) bool {
+	return value == ',' || value == '，' || value == '、' || value == ';' || value == '；'
 }
 
 func sameStrings(left, right []string) bool {
