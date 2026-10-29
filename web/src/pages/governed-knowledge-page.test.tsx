@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router";
@@ -940,5 +940,57 @@ describe("knowledge governance administration", () => {
     await user.click(screen.getByRole("button", { name: "批准" }));
     expect(await screen.findByText("请先确认跨案审阅及敏感内容处理")).toBeInTheDocument();
     expect(requests).toHaveLength(1);
+  });
+
+  it("keeps the source error page stable when a pending create fails after it unmounts the form", async () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 }, mutations: { retry: false } } });
+    let detailReads = 0;
+    let failSource: ((reason: unknown) => void) | undefined;
+    let failCreate: ((reason: unknown) => void) | undefined;
+    const posts: RequestInit[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const path = String(input);
+      if (path === versionPath && init?.method === "GET") {
+        detailReads += 1;
+        if (detailReads === 1) return json(initial);
+        return await new Promise<Response>((_resolve, reject) => { failSource = reject; });
+      }
+      if (path === root && init?.method === "POST") {
+        posts.push(init);
+        return await new Promise<Response>((_resolve, reject) => { failCreate = reject; });
+      }
+      if (path === root || path === "/api/admin/rulepacks") return json({ items: [] });
+      return json({ error: { code: "not_found", message: "没有找到", retryable: false } }, 404);
+    }));
+    const user = userEvent.setup();
+    show(`/admin/governed-knowledge/new?from_knowledge=${id}&from_version=${versionId}`, client);
+    await user.type(await screen.findByLabelText("版本号"), "2");
+    await user.click(screen.getByRole("button", { name: "创建草稿" }));
+    await waitFor(() => expect(posts).toHaveLength(1));
+
+    let refreshSource: Promise<void> | undefined;
+    await act(async () => {
+      refreshSource = client.invalidateQueries({
+        queryKey: ["admin", "governed-knowledge", "detail", id, versionId],
+      });
+    });
+    await waitFor(() => expect(detailReads).toBe(2));
+    expect(screen.getByLabelText("标题")).toBeInTheDocument();
+    await act(async () => {
+      if (!failSource) throw new Error("source refresh did not start");
+      failSource(new TypeError("source refresh failed"));
+    });
+    expect(await screen.findByText("来源知识版本没有加载")).toBeInTheDocument();
+    expect(screen.queryByLabelText("标题")).not.toBeInTheDocument();
+    expect(screen.queryByText(initial.content.body)).not.toBeInTheDocument();
+
+    await act(async () => {
+      if (!failCreate) throw new Error("create request did not start");
+      failCreate(new TypeError("create response was lost"));
+      await refreshSource;
+    });
+    expect(screen.getByText("来源知识版本没有加载")).toBeInTheDocument();
+    expect(screen.queryByLabelText("标题")).not.toBeInTheDocument();
+    expect(posts).toHaveLength(1);
   });
 });
