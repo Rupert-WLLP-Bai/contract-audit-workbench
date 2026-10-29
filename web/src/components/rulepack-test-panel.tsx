@@ -20,6 +20,7 @@ import type {
 } from "../api/rulepacks";
 import { StatusText } from "./status-text";
 import { toLocalInputValue, toUtcInstant } from "./local-datetime";
+import { OptionalFactField } from "./optional-fact-field";
 import type { StatusTone } from "../domain/review";
 
 interface Selection {
@@ -325,32 +326,6 @@ function FactRoleField({
           { label: "选择样本材料角色", value: "" },
           ...roleOptions(sources, selectedRule),
         ]}
-      />
-    </label>
-  );
-}
-
-function OptionalFactField({
-  id,
-  label,
-  value,
-  disabled,
-  onChange,
-}: {
-  id: string;
-  label: string;
-  value: string;
-  disabled: boolean;
-  onChange: (value: string) => void;
-}) {
-  return (
-    <label className="field" htmlFor={id}>
-      {label}
-      <Input
-        disabled={disabled}
-        id={id}
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
       />
     </label>
   );

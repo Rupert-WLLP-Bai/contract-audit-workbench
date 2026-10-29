@@ -14,24 +14,35 @@ import {
 } from "@ant-design/icons";
 import type { Actor } from "../api/types";
 
-function rulepackVersionTitle(pathname: string): string {
-  if (pathname.endsWith("/new")) return "创建规则包草稿";
-  if (pathname.includes("/versions/")) return "规则包详情";
-  return "规则包治理";
-}
+type VersionedRouteTitles = {
+  create: string;
+  version: string;
+  list: string;
+};
 
-function knowledgeTitle(pathname: string): string {
-  if (pathname.endsWith("/new")) return "创建知识版本";
-  if (pathname.includes("/versions/")) return "知识版本详情";
-  return "知识治理";
+function versionedRouteTitle(
+  pathname: string,
+  titles: VersionedRouteTitles,
+): string {
+  if (pathname.endsWith("/new")) return titles.create;
+  if (pathname.includes("/versions/")) return titles.version;
+  return titles.list;
 }
 
 function adminBreadcrumb(pathname: string): string {
   if (pathname.startsWith("/admin/infrastructure")) return "基础设施与中间件";
   if (pathname.startsWith("/admin/governed-knowledge"))
-    return knowledgeTitle(pathname);
+    return versionedRouteTitle(pathname, {
+      create: "创建知识版本",
+      version: "知识版本详情",
+      list: "知识治理",
+    });
   if (!pathname.startsWith("/admin/rulepacks")) return "设置与运行状态";
-  return rulepackVersionTitle(pathname);
+  return versionedRouteTitle(pathname, {
+    create: "创建规则包草稿",
+    version: "规则包详情",
+    list: "规则包治理",
+  });
 }
 
 function adminMenuKey(pathname: string): string {

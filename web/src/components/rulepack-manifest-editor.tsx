@@ -7,6 +7,7 @@ import type {
   RulePackRule,
 } from "../api/rulepacks";
 import { toLocalInputValue, toUtcInstant } from "./local-datetime";
+import { OptionalFactField } from "./optional-fact-field";
 
 const COMPARATORS = [
   ["minimum_bandwidth", "最低带宽"],
@@ -413,32 +414,6 @@ function displayOptional(value: string | undefined): string {
 
 function optionalValue(value: string): string | undefined {
   return value || undefined;
-}
-
-function OptionalFactField({
-  id,
-  label,
-  value,
-  disabled,
-  onChange,
-}: {
-  id: string;
-  label: string;
-  value: string;
-  disabled: boolean;
-  onChange: (value: string) => void;
-}) {
-  return (
-    <label className="field" htmlFor={id}>
-      {label}
-      <Input
-        disabled={disabled}
-        id={id}
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-      />
-    </label>
-  );
 }
 
 function RuleOptionalFactFields({
