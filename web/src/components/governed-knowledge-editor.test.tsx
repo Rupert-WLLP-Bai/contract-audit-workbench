@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useState } from "react";
@@ -367,6 +367,62 @@ describe("validateKnowledgeDraft", () => {
       message: "请添加政策依赖",
     });
   });
+
+  it("requires an expiry strictly after the start", () => {
+    expect(
+      validateKnowledgeDraft(
+        draft({ valid_from: "2026-01-01T00:00:00Z", valid_until: "2026-01-01T00:00:00Z" }),
+      ),
+    ).toContainEqual({ id: "knowledge-until", message: "失效时间必须晚于生效时间" });
+  });
+
+  it("rejects a null source-span list instead of throwing", () => {
+    const issues = validateKnowledgeDraft(
+      draft({ binding: { ...draft().binding, rule_ids: null, source_spans: null } }),
+    );
+    expect(issues).toContainEqual({
+      id: "knowledge-spans",
+      message: "至少添加一条规则及对应正文引用",
+    });
+  });
+
+  it("rejects negative span starts even when the slice matches", () => {
+    expect(
+      validateKnowledgeDraft(
+        draft({
+          body: "abc",
+          binding: {
+            ...draft().binding,
+            source_spans: [{ rule_id: "BW", start: -3, end: 2, quote: "ab" }],
+          },
+        }),
+      ),
+    ).toContainEqual({
+      id: "span-quote-0",
+      message: "引用文字和起始位置必须与正文一致",
+    });
+  });
+
+  it("reports a policy reference that misses any one field", () => {
+    const base = draft({
+      kind: "exception",
+      exception_basis: "批准",
+      scope: { ...draft().scope, org_id: "org-1" },
+    });
+    const message = "请完整填写政策 ID、精确版本 ID 和内容摘要";
+    expect(
+      validateKnowledgeDraft({
+        ...base,
+        policy_refs: [{ knowledge_id: "", version_id: "v", content_sha256: digest("1") }],
+      }),
+    ).toContainEqual({ id: "policy-ref-0", message });
+    expect(
+      validateKnowledgeDraft({
+        ...base,
+        policy_refs: [{ knowledge_id: "policy", version_id: "v", content_sha256: "" }],
+      }),
+    ).toContainEqual({ id: "policy-ref-0", message });
+  });
 });
 
 describe("KnowledgeEditor", () => {
@@ -380,8 +436,20 @@ describe("KnowledgeEditor", () => {
     expect(screen.getByLabelText("知识 ID")).toHaveAttribute("readonly");
     expect(screen.getByLabelText("知识 ID")).toBeDisabled();
     expect(screen.getByLabelText("标题")).toBeDisabled();
+    expect(screen.getByLabelText("知识类型")).toBeDisabled();
+    expect(screen.getByLabelText("来源类型")).toBeDisabled();
     expect(screen.queryByRole("heading", { name: "例外批准依据" })).not.toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "经验候选与人工审阅" })).not.toBeInTheDocument();
+  });
+
+  it("locks only identity and kind for an existing version", async () => {
+    installApi();
+    show({ lockedIdentity: true });
+    expect(await screen.findByRole("heading", { name: "知识内容与来源" })).toBeInTheDocument();
+    expect(screen.getByLabelText("知识 ID")).toHaveAttribute("readonly");
+    expect(screen.getByLabelText("知识 ID")).not.toBeDisabled();
+    expect(screen.getByLabelText("知识类型")).toBeDisabled();
+    expect(screen.getByLabelText("来源类型")).not.toBeDisabled();
   });
 
   it("switches the source type with the knowledge kind", async () => {
@@ -410,7 +478,9 @@ describe("KnowledgeEditor", () => {
     const title = screen.getByLabelText("标题");
     expect(title).toHaveAttribute("aria-invalid", "true");
     expect(title).toHaveAttribute("aria-describedby", "knowledge-title-error");
+    expect(screen.getByLabelText("知识 ID")).not.toHaveAttribute("aria-invalid");
     expect(screen.getByText("请填写标题")).toBeInTheDocument();
+    expect(document.getElementById("knowledge-spans")).toHaveAttribute("tabindex", "-1");
     expect(screen.getAllByRole("alert").map((item) => item.textContent)).toEqual(
       expect.arrayContaining([
         "至少添加一条规则及对应正文引用",
@@ -458,6 +528,14 @@ describe("KnowledgeEditor", () => {
       }),
       onChange: (value) => changes.push(value),
     });
+    expect(
+      within(screen.getByRole("button", { name: "添加适用条件" }).parentElement!)
+        .getByRole("heading", { name: "适用条件（全部满足）" }),
+    ).toBeInTheDocument();
+    expect(
+      within(screen.getByRole("button", { name: "添加排除条件" }).parentElement!)
+        .getByRole("heading", { name: "排除条件（任一满足即排除）" }),
+    ).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText("等于"), { target: { value: "closed" } });
     expect(changes.at(-1)?.applicability?.[0]).toEqual({
       field: "business_status",
@@ -502,12 +580,159 @@ describe("KnowledgeEditor", () => {
 
   it("keeps an original pack binding visible as an option", async () => {
     installApi();
+    const user = userEvent.setup();
     show({
       initial: draft({
         binding: { ...draft().binding, pack_id: "legacy", pack_version: "0" },
       }),
     });
     expect(await screen.findByText("legacy · 0（原绑定）")).toBeInTheDocument();
+    await user.click(screen.getByLabelText("已发布并生效的规则包"));
+    expect(
+      await screen.findByRole("option", { name: "legacy · 0（原绑定）" }),
+    ).toBeInTheDocument();
+  });
+
+  it("offers the current pack binding once and no empty original binding", async () => {
+    installApi();
+    const user = userEvent.setup();
+    show();
+    await screen.findByText(/规则包有效期/);
+    await user.click(screen.getByLabelText("已发布并生效的规则包"));
+    expect(await screen.findByRole("option", { name: "pack · 1" })).toBeInTheDocument();
+    expect(
+      screen.queryByRole("option", { name: "pack · 1（原绑定）" }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: /原绑定/ })).not.toBeInTheDocument();
+  });
+
+  it("lists only published active packs", async () => {
+    const inactive = { ...packSummary, id: "inactive-pack", is_active: false };
+    const activeDraft = { ...packSummary, id: "active-draft", status: "draft", is_active: true };
+    installApi((path) =>
+      path === "/api/admin/rulepacks"
+        ? json({ items: [packSummary, secondPack, draftPack, inactive, activeDraft] })
+        : null,
+    );
+    const user = userEvent.setup();
+    show({ initial: emptyKnowledgeContent() });
+    await user.click(screen.getByLabelText("已发布并生效的规则包"));
+    expect(await screen.findByRole("option", { name: "pack · 1" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "pack2 · 2" })).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: /inactive-pack/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: /active-draft/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: /原绑定/ })).not.toBeInTheDocument();
+  });
+
+  it("offers existing span rules without duplicate or empty options", async () => {
+    installApi();
+    const user = userEvent.setup();
+    show({
+      initial: draft({
+        binding: {
+          ...draft().binding,
+          source_spans: [
+            { rule_id: "BW", start: 0, end: 15, quote },
+            { rule_id: "CUSTOM", start: 0, end: 15, quote },
+          ],
+        },
+      }),
+    });
+    await screen.findByText(/规则包有效期/);
+    await user.click(screen.getByLabelText("引用 1 的规则"));
+    expect(
+      await screen.findByRole("option", { name: /^BW · dedicated_line\.minimum_bandwidth/ }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: "BW" })).not.toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "CUSTOM" })).toBeInTheDocument();
+  });
+
+  it("does not offer an empty rule option for a new span", async () => {
+    installApi();
+    const user = userEvent.setup();
+    show({
+      initial: draft({
+        binding: {
+          ...draft().binding,
+          source_spans: [{ rule_id: "", start: 0, end: 0, quote: "" }],
+        },
+      }),
+    });
+    await screen.findByText(/规则包有效期/);
+    await user.click(screen.getByLabelText("引用 1 的规则"));
+    await screen.findByRole("option", { name: /^BW · dedicated_line/ });
+    expect(screen.getAllByRole("option")).toHaveLength(1);
+  });
+
+  it("locates a quote that appears after the start of the body", async () => {
+    installApi();
+    const changes: KnowledgeContent[] = [];
+    show({
+      initial: draft({
+        body: `前缀${quote}。`,
+        binding: {
+          ...draft().binding,
+          source_spans: [{ rule_id: "BW", start: 20, end: 22, quote: "旧引用" }],
+        },
+      }),
+      onChange: (value) => changes.push(value),
+    });
+    fireEvent.change(screen.getByLabelText("正文中的原文"), { target: { value: quote } });
+    expect(changes.at(-1)?.binding.source_spans?.[0]).toEqual({
+      rule_id: "BW",
+      start: 2,
+      end: 17,
+      quote,
+    });
+  });
+
+  it("moves a quote found at the start of the body to offset zero", async () => {
+    installApi();
+    const changes: KnowledgeContent[] = [];
+    show({
+      initial: draft({
+        binding: {
+          ...draft().binding,
+          source_spans: [{ rule_id: "BW", start: 16, end: 18, quote: "旧引用" }],
+        },
+      }),
+      onChange: (value) => changes.push(value),
+    });
+    fireEvent.change(screen.getByLabelText("正文中的原文"), { target: { value: quote } });
+    expect(changes.at(-1)?.binding.source_spans?.[0]).toEqual({
+      rule_id: "BW",
+      start: 0,
+      end: 15,
+      quote,
+    });
+  });
+
+  it("offers only active policy knowledge as dependencies", async () => {
+    const guidance = {
+      ...policySummary,
+      ref: { ...policySummary.ref, knowledge_id: "guidance" },
+      title: "操作指引",
+      kind: "guidance",
+    };
+    const inactivePolicy = {
+      ...policySummary,
+      ref: { ...policySummary.ref, knowledge_id: "old-policy" },
+      title: "旧政策",
+      active: false,
+    };
+    installApi((path) =>
+      path === "/api/admin/governed-knowledge"
+        ? json({ items: [policySummary, guidance, inactivePolicy] })
+        : null,
+    );
+    const user = userEvent.setup();
+    show();
+    await user.click(
+      screen.getByRole("combobox", { name: /从可访问的生效政策添加/ }),
+    );
+    expect(await screen.findByRole("option", { name: "基础政策 · policy v3" })).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: /操作指引 · guidance/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: /旧政策 · old-policy/ })).not.toBeInTheDocument();
   });
 
   it("adds spans, locates quotes and updates their offsets", async () => {
@@ -527,6 +752,7 @@ describe("KnowledgeEditor", () => {
     ]);
     await chooseOption(user, screen.getByLabelText("引用 1 的规则"), "BW · dedicated_line.minimum_bandwidth · ENT / line / service");
     expect(changes.at(-1)?.binding.rule_ids).toEqual(["BW"]);
+    expect(screen.getByLabelText("起始字符位置（从 0 开始）")).toHaveAttribute("min", "0");
     fireEvent.change(screen.getByLabelText("正文中的原文"), {
       target: { value: quote },
     });
@@ -711,8 +937,72 @@ describe("KnowledgeEditor", () => {
     expect(changes.at(-1)?.policy_refs?.[0]?.content_sha256).toBe("hash");
     await user.click(screen.getByRole("button", { name: "手动添加政策依赖" }));
     expect(changes.at(-1)?.policy_refs).toHaveLength(2);
+    expect(screen.getByRole("button", { name: "删除政策 1" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "删除政策 2" })).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "删除政策 1" }));
     expect(changes.at(-1)?.policy_refs).toHaveLength(1);
+  });
+
+  it("keeps policy references with the same id but a different exact version", async () => {
+    const secondPolicy = {
+      ...policySummary,
+      ref: { ...policySummary.ref, version_id: digest("7") },
+      version: "4",
+    };
+    installApi((path) =>
+      path === "/api/admin/governed-knowledge"
+        ? json({ items: [policySummary, secondPolicy] })
+        : null,
+    );
+    const user = userEvent.setup();
+    const changes: KnowledgeContent[] = [];
+    show({
+      initial: draft({
+        kind: "exception",
+        scope: { ...draft().scope, org_id: "org-1" },
+        policy_refs: [],
+      }),
+      onChange: (value) => changes.push(value),
+    });
+    const picker = () =>
+      screen.getByRole("combobox", { name: /从可访问的生效政策添加/ });
+    await chooseOption(user, picker(), "基础政策 · policy v3");
+    await chooseOption(user, picker(), "基础政策 · policy v4");
+    expect(changes.at(-1)?.policy_refs).toHaveLength(2);
+  });
+
+  it("deduplicates an exact policy version after adding another policy", async () => {
+    const otherPolicy = {
+      ...policySummary,
+      ref: {
+        knowledge_id: "other",
+        version_id: digest("6"),
+        content_sha256: digest("5"),
+      },
+      title: "其他政策",
+      version: "5",
+    };
+    installApi((path) =>
+      path === "/api/admin/governed-knowledge"
+        ? json({ items: [policySummary, otherPolicy] })
+        : null,
+    );
+    const user = userEvent.setup();
+    const changes: KnowledgeContent[] = [];
+    show({
+      initial: draft({
+        kind: "exception",
+        scope: { ...draft().scope, org_id: "org-1" },
+        policy_refs: [],
+      }),
+      onChange: (value) => changes.push(value),
+    });
+    const picker = () =>
+      screen.getByRole("combobox", { name: /从可访问的生效政策添加/ });
+    await chooseOption(user, picker(), "基础政策 · policy v3");
+    await chooseOption(user, picker(), "其他政策 · other v5");
+    await chooseOption(user, picker(), "基础政策 · policy v3");
+    expect(changes.at(-1)?.policy_refs).toHaveLength(2);
   });
 
   it("shows and retries a failed policy list", async () => {
