@@ -442,6 +442,7 @@ describe("knowledge governance administration", () => {
     expect(screen.getByText(/BW · 无法唯一确认/)).toBeInTheDocument();
     expect(screen.getByText(/未提取到候选/)).toBeInTheDocument();
     expect(screen.getByText(/规则阈值：99.9 %，月/)).toBeInTheDocument();
+    expect(screen.queryByText(/原因：/)).not.toBeInTheDocument();
     expect(screen.getByText("提取或绑定问题")).toBeInTheDocument();
     expect(screen.getByText(/missing_value：带宽（0–4）/)).toBeInTheDocument();
     expect(screen.queryByText("仍需人工核对含义")).not.toBeInTheDocument();
