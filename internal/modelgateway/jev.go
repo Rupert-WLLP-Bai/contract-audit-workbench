@@ -116,59 +116,81 @@ func normalizeJev(config *JevConfig, budget store.ModelBudgetLimits) (status, re
 	if config.Problem != "" {
 		return "unavailable", config.Problem, nil
 	}
-	if config.Mode != agentflow.AdvisoryModeAdvisory && config.Mode != agentflow.AdvisoryModeFixture {
-		return "unavailable", "invalid_mode", nil
-	}
-	if config.Egress != agentflow.AdvisoryEgressMinimized {
-		return "unavailable", "unsupported_egress", nil
-	}
-	if len(config.Features) == 0 {
-		return "unavailable", "unsupported_feature", nil
-	}
-	for _, feature := range config.Features {
-		if feature != agentflow.AdvisoryFeatureKnowledgeRerank {
-			return "unavailable", "unsupported_feature", nil
-		}
-	}
-	if config.Timeout < agentflow.MinAdvisoryTimeout || config.Timeout > agentflow.MaxAdvisoryTimeout {
-		return "unavailable", "invalid_timeout", nil
-	}
-	if config.MaxOutputTokens < 1 || config.MaxOutputTokens > budget.MaxOutputTokenReservation {
-		return "unavailable", "invalid_max_output_tokens", nil
+	if reason := jevConfigurationProblem(config, budget); reason != "" {
+		return "unavailable", reason, nil
 	}
 	switch config.Mode {
 	case agentflow.AdvisoryModeFixture:
-		if config.Model == "" {
-			config.Model = agentflow.AdvisoryFixtureModel
-		}
-		if config.Model != agentflow.AdvisoryFixtureModel {
-			return "unavailable", "fixture_model_mismatch", nil
-		}
-		environment := strings.ToLower(strings.TrimSpace(os.Getenv("APP_ENV")))
-		if environment != "development" && environment != "dev" && environment != "test" {
-			return "unavailable", "fixture_not_allowed", nil
-		}
-		return "fixture", "", nil
+		return normalizeFixtureJev(config)
 	case agentflow.AdvisoryModeAdvisory:
-		if !pinnedJevModelPattern.MatchString(config.Model) {
-			if config.Model == "" {
-				return "unavailable", "model_required", nil
-			}
-			return "unavailable", "model_alias_not_allowed", nil
-		}
-		if config.APIKey == "" {
-			return "unconfigured", "api_key_missing", nil
-		}
-		if len(config.APIKey) < 20 {
-			return "unavailable", "api_key_invalid", nil
-		}
-		client, err := jev.New(jev.Config{BaseURL: config.BaseURL, APIKey: config.APIKey, Model: config.Model, Timeout: config.Timeout})
-		if err != nil {
-			return "unavailable", "endpoint_or_model_invalid", nil
-		}
-		return "configured", "", client
+		return normalizeRemoteJev(config)
 	}
 	return "unavailable", "invalid_mode", nil
+}
+
+func jevConfigurationProblem(config *JevConfig, budget store.ModelBudgetLimits) string {
+	if config.Mode != agentflow.AdvisoryModeAdvisory && config.Mode != agentflow.AdvisoryModeFixture {
+		return "invalid_mode"
+	}
+	if config.Egress != agentflow.AdvisoryEgressMinimized {
+		return "unsupported_egress"
+	}
+	if !supportsConfiguredFeatures(config.Features) {
+		return "unsupported_feature"
+	}
+	if config.Timeout < agentflow.MinAdvisoryTimeout || config.Timeout > agentflow.MaxAdvisoryTimeout {
+		return "invalid_timeout"
+	}
+	if config.MaxOutputTokens < 1 || config.MaxOutputTokens > budget.MaxOutputTokenReservation {
+		return "invalid_max_output_tokens"
+	}
+	return ""
+}
+
+func supportsConfiguredFeatures(features []string) bool {
+	if len(features) == 0 {
+		return false
+	}
+	for _, feature := range features {
+		if feature != agentflow.AdvisoryFeatureKnowledgeRerank {
+			return false
+		}
+	}
+	return true
+}
+
+func normalizeFixtureJev(config *JevConfig) (string, string, *jev.Client) {
+	if config.Model == "" {
+		config.Model = agentflow.AdvisoryFixtureModel
+	}
+	if config.Model != agentflow.AdvisoryFixtureModel {
+		return "unavailable", "fixture_model_mismatch", nil
+	}
+	environment := strings.ToLower(strings.TrimSpace(os.Getenv("APP_ENV")))
+	if environment != "development" && environment != "dev" && environment != "test" {
+		return "unavailable", "fixture_not_allowed", nil
+	}
+	return "fixture", "", nil
+}
+
+func normalizeRemoteJev(config *JevConfig) (string, string, *jev.Client) {
+	if !pinnedJevModelPattern.MatchString(config.Model) {
+		if config.Model == "" {
+			return "unavailable", "model_required", nil
+		}
+		return "unavailable", "model_alias_not_allowed", nil
+	}
+	if config.APIKey == "" {
+		return "unconfigured", "api_key_missing", nil
+	}
+	if len(config.APIKey) < 20 {
+		return "unavailable", "api_key_invalid", nil
+	}
+	client, err := jev.New(jev.Config{BaseURL: config.BaseURL, APIKey: config.APIKey, Model: config.Model, Timeout: config.Timeout})
+	if err != nil {
+		return "unavailable", "endpoint_or_model_invalid", nil
+	}
+	return "configured", "", client
 }
 
 func (s *Service) JevStatus() (mode, status, modelID string, features []string, egress, reason string) {
