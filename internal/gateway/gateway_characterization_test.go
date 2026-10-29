@@ -245,6 +245,119 @@ func TestRoundTripLogsContextFailureWithoutResponseStatus(t *testing.T) {
 	}
 }
 
+func TestRoundTripStreamHeaderTimeoutLogsAndClosesLateResponse(t *testing.T) {
+	target, err := baseURL("http://core.example.test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, returnResponse := range []bool{false, true} {
+		name := "without response"
+		if returnResponse {
+			name = "late response"
+		}
+		t.Run(name, func(t *testing.T) {
+			upstream := &upstream{
+				role: "core",
+				replicas: []*replica{
+					{target: target, healthy: true, checked: true},
+				},
+			}
+			body := &closeObservedBody{}
+			transport := &replicaTransport{
+				upstream:           upstream,
+				streamHeaderBudget: 50 * time.Millisecond,
+				base: probeRoundTripper(func(request *http.Request) (*http.Response, error) {
+					<-request.Context().Done()
+					if !returnResponse {
+						return nil, request.Context().Err()
+					}
+					return &http.Response{
+						StatusCode: http.StatusOK,
+						Header:     make(http.Header),
+						Body:       body,
+						Request:    request,
+					}, nil
+				}),
+			}
+			request, err := http.NewRequest(http.MethodGet, "http://edge.example.test/api/cases/case-1/reviews/review-1/events", nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var logs bytes.Buffer
+			previousLogOutput := log.Writer()
+			log.SetOutput(&logs)
+			t.Cleanup(func() { log.SetOutput(previousLogOutput) })
+			response, err := transport.RoundTrip(request)
+			if !errors.Is(err, context.DeadlineExceeded) {
+				if response != nil {
+					_ = response.Body.Close()
+				}
+				t.Fatalf("RoundTrip error = %v, want stream header timeout", err)
+			}
+			if !strings.Contains(logs.String(), "outcome=stream_header_timeout status=0") {
+				t.Fatalf("stream timeout log = %q", logs.String())
+			}
+			if returnResponse && !body.closed {
+				t.Fatal("late response body was not closed after the stream header timeout")
+			}
+		})
+	}
+}
+
+func TestRoundTripReturnsRequestBuildErrorWhenReplayBodyCannotBeCreated(t *testing.T) {
+	firstTarget, err := baseURL("http://first.example.test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	secondTarget, err := baseURL("http://second.example.test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	upstream := &upstream{
+		role: "core",
+		replicas: []*replica{
+			{target: firstTarget, healthy: true, checked: true},
+			{target: secondTarget, healthy: true, checked: true},
+		},
+	}
+	transportErrors := 0
+	transport := &replicaTransport{
+		upstream: upstream,
+		base: probeRoundTripper(func(*http.Request) (*http.Response, error) {
+			transportErrors++
+			return nil, errors.New("first replica did not return a response")
+		}),
+	}
+	replayError := errors.New("request body cannot be replayed")
+	request, err := http.NewRequest(http.MethodGet, "http://edge.example.test/api/cases", strings.NewReader("request-body"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	request.GetBody = func() (io.ReadCloser, error) { return nil, replayError }
+	var logs bytes.Buffer
+	previousLogOutput := log.Writer()
+	log.SetOutput(&logs)
+	t.Cleanup(func() { log.SetOutput(previousLogOutput) })
+	if _, err := transport.RoundTrip(request); !errors.Is(err, replayError) {
+		t.Fatalf("RoundTrip error = %v, want body replay failure", err)
+	}
+	if transportErrors != 1 || !strings.Contains(logs.String(), "attempt=2 replica=") ||
+		!strings.Contains(logs.String(), "outcome=request_build_failure status=0") {
+		t.Fatalf("retry request-build result = calls %d, logs %q", transportErrors, logs.String())
+	}
+}
+
+type closeObservedBody struct {
+	closed bool
+}
+
+func (body *closeObservedBody) Read([]byte) (int, error) { return 0, io.EOF }
+
+func (body *closeObservedBody) Close() error {
+	body.closed = true
+	return nil
+}
+
 func TestProbeTransitionsKeepFailureAndRecoveryLogDurations(t *testing.T) {
 	var logs bytes.Buffer
 	previousLogOutput := log.Writer()
