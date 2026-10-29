@@ -1,7 +1,12 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import {
+  QueryClient,
+  QueryClientProvider,
+  onlineManager,
+} from "@tanstack/react-query";
 import { cleanup, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router";
+import { setSessionIdentity } from "../api/http";
 import { queryKeys } from "../api/queries";
 import type { WorkbenchCase, WorkbenchSnapshot } from "../api/types";
 import { renderWithAntd as render } from "../test/antd";
@@ -96,21 +101,40 @@ function snapshot(): WorkbenchSnapshot {
 afterEach(() => {
   cleanup();
   for (const client of clients.splice(0)) client.clear();
+  setSessionIdentity(null);
+  vi.unstubAllGlobals();
+  onlineManager.setOnline(true);
 });
+
+function makeClient(data?: WorkbenchSnapshot, updatedAt?: number) {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false, gcTime: 0 } },
+  });
+  clients.push(client);
+  if (data) {
+    client.setQueryData(
+      queryKeys.workbench("week"),
+      data,
+      updatedAt === undefined ? undefined : { updatedAt },
+    );
+  }
+  return client;
+}
+
+function renderEntry(client: QueryClient) {
+  render(
+    <QueryClientProvider client={client}>
+      <MemoryRouter initialEntries={["/reviews"]}>
+        <ReviewEntryPage />
+      </MemoryRouter>
+    </QueryClientProvider>,
+  );
+}
 
 describe("审查入口", () => {
   it("opens the newest run with its exact frozen attempt id", () => {
-    const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
-    clients.push(client);
-    client.setQueryData(queryKeys.workbench("week"), snapshot());
-
-    render(
-      <QueryClientProvider client={client}>
-        <MemoryRouter initialEntries={["/reviews"]}>
-          <ReviewEntryPage />
-        </MemoryRouter>
-      </QueryClientProvider>,
-    );
+    const client = makeClient(snapshot());
+    renderEntry(client);
 
     expect(screen.getByRole("link", { name: "打开审查" })).toHaveAttribute(
       "href",
@@ -121,5 +145,37 @@ describe("审查入口", () => {
       "href",
       "/cases/case%2Fwithout-review",
     );
+  });
+
+  it("shows a refresh error when a stale workbench snapshot fails to reload", async () => {
+    const client = makeClient(snapshot(), Date.now() - 60_000);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        Response.json(
+          { error: { message: "工作区刷新暂不可用" } },
+          { status: 503 },
+        ),
+      ),
+    );
+    renderEntry(client);
+
+    expect(
+      await screen.findByRole("heading", { name: "审查工作区没有加载" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("工作区刷新暂不可用")).toBeInTheDocument();
+    expect(screen.queryByText("专线合同审查")).not.toBeInTheDocument();
+  });
+
+  it("shows the unloaded state when an offline workbench query has no cache", async () => {
+    onlineManager.setOnline(false);
+    const client = makeClient();
+    renderEntry(client);
+
+    expect(
+      await screen.findByRole("heading", { name: "审查工作区没有加载" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("请求没有完成")).toBeInTheDocument();
+    expect(screen.queryByText("合同审查")).not.toBeInTheDocument();
   });
 });
