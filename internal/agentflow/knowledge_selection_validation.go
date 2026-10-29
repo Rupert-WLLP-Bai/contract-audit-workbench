@@ -118,11 +118,6 @@ func validKnowledgeContentBudget(b KnowledgeSelectionBudget) bool {
 func (v *knowledgeSelectionValidation) collectReferences() bool {
 	for _, ref := range v.request.Knowledge {
 		v.selected[referenceKnowledgeIdentity(ref)] = ref
-		bytes, ok := selectedKnowledgeBytes(ref)
-		if !ok {
-			return false
-		}
-		v.contentBytes += bytes
 		if ref.Required {
 			v.required++
 			v.policyTruncated = v.policyTruncated || ref.Truncated
@@ -130,20 +125,22 @@ func (v *knowledgeSelectionValidation) collectReferences() bool {
 		} else {
 			v.optionalSelected++
 		}
+		if !v.collectReferenceContent(ref) {
+			return false
+		}
 	}
 	return true
 }
 
-func selectedKnowledgeBytes(ref KnowledgeReference) (int, bool) {
-	total := 0
+func (v *knowledgeSelectionValidation) collectReferenceContent(ref KnowledgeReference) bool {
 	for _, value := range []string{ref.Summary, ref.Applicability, ref.Exclusions, ref.CheckAction,
 		ref.MinimumEvidence, ref.Counterexamples, ref.SemanticChecks, ref.SourceSpans} {
+		v.contentBytes += len(value)
 		if len(value) > PlannerKnowledgeFieldBytes {
-			return 0, false
+			return false
 		}
-		total += len(value)
 	}
-	return total, true
+	return true
 }
 
 func referenceKnowledgeIdentity(ref KnowledgeReference) KnowledgeIdentity {
@@ -202,9 +199,6 @@ func (v *knowledgeSelectionValidation) validCandidates() bool {
 
 func (v *knowledgeSelectionValidation) matchCandidate(candidate KnowledgeCandidate, key KnowledgeIdentity) bool {
 	rule, ok := knowledgeCandidateRules[candidate.Reason]
-	if !ok || !rule.matches(candidate) {
-		return false
-	}
 	if rule.optional {
 		v.optionalCandidates++
 	}
@@ -214,7 +208,7 @@ func (v *knowledgeSelectionValidation) matchCandidate(candidate KnowledgeCandida
 	if rule.acceptance {
 		v.acceptanceOmitted++
 	}
-	return v.matchReference(candidate, key)
+	return ok && rule.matches(candidate) && v.matchReference(candidate, key)
 }
 
 func (v *knowledgeSelectionValidation) matchReference(candidate KnowledgeCandidate, key KnowledgeIdentity) bool {
@@ -222,11 +216,8 @@ func (v *knowledgeSelectionValidation) matchReference(candidate KnowledgeCandida
 	if candidate.Decision != "selected" {
 		return !ok
 	}
-	if !ok || !candidateMatchesReference(candidate, ref) {
-		return false
-	}
 	delete(v.selected, key)
-	return true
+	return ok && candidateMatchesReference(candidate, ref)
 }
 
 func candidateMatchesReference(candidate KnowledgeCandidate, ref KnowledgeReference) bool {

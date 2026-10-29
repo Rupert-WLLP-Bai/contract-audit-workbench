@@ -19,8 +19,8 @@ func validateKnowledgeAdvisory(record *KnowledgeSelectionRecord, request Request
 	if !validAdvisoryMetadata(advisory) {
 		return ErrInput
 	}
-	ranks, optionalCount := advisoryCandidateRanks(record.Candidates)
-	if err := validateAdvisoryCandidates(record.Candidates, advisory, ranks, optionalCount); err != nil {
+	ranks := advisoryCandidateRanks(record.Candidates)
+	if err := validateAdvisoryCandidates(record.Candidates, advisory, ranks); err != nil {
 		return err
 	}
 	return validateCompletedAdvisoryOrder(record, advisory, request)
@@ -40,7 +40,7 @@ func compareAdvisoryCandidates(left, right KnowledgeCandidate) int {
 		cmp.Compare(left.VersionID, right.VersionID), cmp.Compare(left.ContentSHA256, right.ContentSHA256))
 }
 
-func advisoryCandidateRanks(candidates []KnowledgeCandidate) (map[KnowledgeIdentity]advisoryCandidateRank, int) {
+func advisoryCandidateRanks(candidates []KnowledgeCandidate) map[KnowledgeIdentity]advisoryCandidateRank {
 	ranks := map[KnowledgeIdentity]advisoryCandidateRank{}
 	optional := []KnowledgeCandidate{}
 	for _, candidate := range candidates {
@@ -56,7 +56,7 @@ func advisoryCandidateRanks(candidates []KnowledgeCandidate) (map[KnowledgeIdent
 		item.detRank = index + 1
 		ranks[key] = item
 	}
-	return ranks, len(optional)
+	return ranks
 }
 
 func validAdvisoryMetadata(advisory *KnowledgeAdvisoryRecord) bool {
@@ -107,21 +107,17 @@ func advisoryKnowledgeIdentity(item KnowledgeAdvisoryCandidate) KnowledgeIdentit
 	return KnowledgeIdentity{KnowledgeID: item.KnowledgeID, VersionID: item.VersionID, ContentSHA256: item.ContentSHA256}
 }
 
-func validAdvisoryCandidateFields(item KnowledgeAdvisoryCandidate, count int) bool {
+func validAdvisoryCandidateFields(item KnowledgeAdvisoryCandidate) bool {
 	return validKnowledgeIdentity(advisoryKnowledgeIdentity(item)) && capabilityID.MatchString(item.Alias) &&
-		slices.Contains(advisoryBands, item.Band) && validAdvisoryRankBounds(item, count) &&
+		slices.Contains(advisoryBands, item.Band) &&
 		len(item.Reason) <= 64 && utf8.ValidString(item.Reason)
 }
 
-func validAdvisoryRankBounds(item KnowledgeAdvisoryCandidate, count int) bool {
-	return item.RankBefore >= 1 && item.RankAfter >= 1 && item.RankBefore <= count && item.RankAfter <= count
-}
-
-func indexAdvisoryCandidates(items []KnowledgeAdvisoryCandidate, count int) (map[KnowledgeIdentity]KnowledgeAdvisoryCandidate, error) {
+func indexAdvisoryCandidates(items []KnowledgeAdvisoryCandidate) (map[KnowledgeIdentity]KnowledgeAdvisoryCandidate, error) {
 	indexed := make(map[KnowledgeIdentity]KnowledgeAdvisoryCandidate, len(items))
 	for _, item := range items {
 		key := advisoryKnowledgeIdentity(item)
-		if !validAdvisoryCandidateFields(item, count) {
+		if !validAdvisoryCandidateFields(item) {
 			return nil, ErrInput
 		}
 		if _, duplicate := indexed[key]; duplicate {
@@ -132,8 +128,8 @@ func indexAdvisoryCandidates(items []KnowledgeAdvisoryCandidate, count int) (map
 	return indexed, nil
 }
 
-func validateAdvisoryCandidates(candidates []KnowledgeCandidate, advisory *KnowledgeAdvisoryRecord, ranks map[KnowledgeIdentity]advisoryCandidateRank, optionalCount int) error {
-	indexed, err := indexAdvisoryCandidates(advisory.Candidates, optionalCount)
+func validateAdvisoryCandidates(candidates []KnowledgeCandidate, advisory *KnowledgeAdvisoryRecord, ranks map[KnowledgeIdentity]advisoryCandidateRank) error {
+	indexed, err := indexAdvisoryCandidates(advisory.Candidates)
 	if err != nil {
 		return err
 	}
@@ -165,6 +161,7 @@ func matchesCandidateAdvisory(candidate KnowledgeCandidate, item KnowledgeAdviso
 }
 
 func matchingAdvisoryMetadata(item, attached KnowledgeAdvisoryCandidate, rank advisoryCandidateRank) bool {
+	// Equality with the computed ranks also enforces their one-based bounds.
 	return item.Alias == attached.Alias && item.Band == attached.Band && item.RankBefore == attached.RankBefore &&
 		item.RankAfter == attached.RankAfter && item.RankBefore == rank.detRank && item.RankAfter == rank.finalRank
 }

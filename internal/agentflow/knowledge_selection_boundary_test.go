@@ -4,6 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"reflect"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -16,6 +19,8 @@ func TestRuntimeRejectsForgedKnowledgeSelection(t *testing.T) {
 		"missing candidates":   func(r *Request) { r.KnowledgeSelection.Candidates = nil },
 		"missing gaps":         func(r *Request) { r.KnowledgeSelection.Input.Gaps = nil },
 		"missing evidence":     func(r *Request) { r.KnowledgeSelection.Input.Evidence = nil },
+		"empty gaps":           func(r *Request) { r.KnowledgeSelection.Input.Gaps = []KnowledgeInputGap{} },
+		"empty evidence":       func(r *Request) { r.KnowledgeSelection.Input.Evidence = []KnowledgeInputEvidence{} },
 		"missing rounds":       func(r *Request) { r.KnowledgeSelection.PlannerRounds = nil },
 		"previous round":       func(r *Request) { r.KnowledgeSelection.PlannerRounds = []KnowledgePlanningRound{{}} },
 		"missing reads":        func(r *Request) { r.KnowledgeSelection.Reads = nil },
@@ -40,7 +45,11 @@ func TestRuntimeRejectsForgedKnowledgeSelection(t *testing.T) {
 		"previous reads":       func(r *Request) { r.KnowledgeSelection.Budget.PriorReadCalls++ },
 		"previous reservation": func(r *Request) { r.KnowledgeSelection.Budget.PriorReadReservedBytes++ },
 		"field length":         func(r *Request) { r.Knowledge[0].Summary = strings.Repeat("x", PlannerKnowledgeFieldBytes+1) },
-		"unknown candidate":    func(r *Request) { r.KnowledgeSelection.Candidates[0].KnowledgeID = "other" },
+		"oversize field with matching total": func(r *Request) {
+			r.Knowledge[0].Summary = strings.Repeat("x", PlannerKnowledgeFieldBytes+1)
+			r.KnowledgeSelection.Budget.ContentBytesUsed = len(r.Knowledge[0].Summary)
+		},
+		"unknown candidate": func(r *Request) { r.KnowledgeSelection.Candidates[0].KnowledgeID = "other" },
 		"duplicate candidate": func(r *Request) {
 			r.KnowledgeSelection.Candidates = append(r.KnowledgeSelection.Candidates, r.KnowledgeSelection.Candidates[0])
 		},
@@ -61,6 +70,12 @@ func TestRuntimeRejectsForgedKnowledgeSelection(t *testing.T) {
 		"policy status":                func(r *Request) { r.KnowledgeSelection.PolicyStatus = "unknown" },
 		"policy reason":                func(r *Request) { r.KnowledgeSelection.PolicyReason = "policy_missing" },
 		"missing snapshot with policy": func(r *Request) { r.KnowledgeSelection.SnapshotSHA256 = "" },
+		"policy check collides with user gap": func(r *Request) {
+			r.Knowledge[0].Truncated, r.KnowledgeSelection.Candidates[0].Truncated = true, true
+			r.KnowledgeSelection.PolicyStatus, r.KnowledgeSelection.PolicyReason = "unknown", "policy_context_truncated"
+			id := "knowledge_policy_" + TextHash("policy\x00version\x00" + r.Knowledge[0].ContentSHA256)[:24]
+			r.Gaps[0].ID, r.KnowledgeSelection.Input.Gaps[0].GapID = id, id
+		},
 	}
 	for name, alter := range tests {
 		t.Run(name, func(t *testing.T) {
@@ -76,6 +91,154 @@ func TestRuntimeRejectsForgedKnowledgeSelection(t *testing.T) {
 			after, _ := json.Marshal(request)
 			if string(after) != string(before) {
 				t.Fatal("validation modified the frozen input")
+			}
+		})
+	}
+}
+
+func selectionWithoutPolicy() Request {
+	request := requestWithPolicyTrace(false)
+	request.Knowledge = nil
+	trace := request.KnowledgeSelection
+	trace.Candidates = []KnowledgeCandidate{}
+	trace.PolicyStatus, trace.PolicyReason = "unknown", "policy_missing"
+	trace.Budget.RequiredCount, trace.Budget.ContentBytesUsed = 0, 0
+	return request
+}
+
+func omittedGuidance(id string) KnowledgeCandidate {
+	return KnowledgeCandidate{KnowledgeID: id, VersionID: "v1", ContentSHA256: TextHash(id),
+		Kind: "guidance", Decision: "omitted", Reason: "no_relevance"}
+}
+
+func TestSelectionTraceRejectsInvalidOmittedCandidates(t *testing.T) {
+	tests := map[string]func(*Request){
+		"invalid identity": func(r *Request) { r.KnowledgeSelection.Candidates[0].KnowledgeID = "" },
+		"invalid version":  func(r *Request) { r.KnowledgeSelection.Candidates[0].VersionID = "" },
+		"invalid digest":   func(r *Request) { r.KnowledgeSelection.Candidates[0].ContentSHA256 = "bad" },
+		"duplicate omitted": func(r *Request) {
+			r.KnowledgeSelection.Candidates = append(r.KnowledgeSelection.Candidates, r.KnowledgeSelection.Candidates[0])
+			r.KnowledgeSelection.Budget.OptionalCandidates, r.KnowledgeSelection.Budget.OptionalOmitted = 2, 2
+		},
+		"missing snapshot": func(r *Request) {
+			r.KnowledgeSelection.SnapshotSHA256, r.KnowledgeSelection.PolicyReason = "", "policy_snapshot_missing"
+		},
+	}
+	for name, alter := range tests {
+		t.Run(name, func(t *testing.T) {
+			request := selectionWithoutPolicy()
+			request.KnowledgeSelection.Candidates = []KnowledgeCandidate{omittedGuidance("optional")}
+			request.KnowledgeSelection.Budget.OptionalCandidates, request.KnowledgeSelection.Budget.OptionalOmitted = 1, 1
+			alter(&request)
+			if err := validateKnowledgeSelection(request); !errors.Is(err, ErrInput) {
+				t.Fatalf("invalid omitted candidate accepted: %v", err)
+			}
+		})
+	}
+}
+
+func TestSelectionTraceAcceptsContentAndInputBoundaries(t *testing.T) {
+	for _, limit := range []int{0, MaxPlannerEvidenceBytes} {
+		request := selectionWithoutPolicy()
+		request.KnowledgeSelection.Budget.ContentBytesLimit = limit
+		request.KnowledgeSelection.Input.BusinessLine = strings.Repeat("x", 128)
+		if err := validateKnowledgeSelection(request); err != nil {
+			t.Fatalf("empty content with limit %d rejected: %v", limit, err)
+		}
+	}
+	request := requestWithPolicyTrace(false)
+	request.Knowledge[0].Summary = strings.Repeat("x", PlannerKnowledgeFieldBytes)
+	request.KnowledgeSelection.Budget.ContentBytesUsed = PlannerKnowledgeFieldBytes
+	request.KnowledgeSelection.Budget.ContentBytesLimit = PlannerKnowledgeFieldBytes
+	if err := validateKnowledgeSelection(request); err != nil {
+		t.Fatalf("exact field and content budget rejected: %v", err)
+	}
+	request.KnowledgeSelection.Candidates = append(request.KnowledgeSelection.Candidates,
+		KnowledgeCandidate{KnowledgeID: "omitted", VersionID: "v1", ContentSHA256: TextHash("omitted"),
+			Decision: "omitted", Reason: "acceptance_optional_budget"})
+	request.KnowledgeSelection.Budget.AcceptanceOmitted, request.KnowledgeSelection.Budget.AcceptanceTruncated = 1, true
+	if err := validateKnowledgeSelection(request); err != nil {
+		t.Fatalf("one acceptance omission rejected: %v", err)
+	}
+}
+
+func TestSelectionTraceCandidateAndReferenceLimits(t *testing.T) {
+	for _, count := range []int{MaxKnowledgeRecords, MaxKnowledgeRecords + 1} {
+		request := selectionWithoutPolicy()
+		for i := 0; i < count; i++ {
+			request.KnowledgeSelection.Candidates = append(request.KnowledgeSelection.Candidates, omittedGuidance(fmt.Sprintf("optional-%d", i)))
+		}
+		request.KnowledgeSelection.Budget.OptionalCandidates, request.KnowledgeSelection.Budget.OptionalOmitted = count, count
+		if err := validateKnowledgeSelection(request); (err == nil) != (count <= MaxKnowledgeRecords) {
+			t.Fatalf("candidate count %d: %v", count, err)
+		}
+	}
+	for _, count := range []int{1, PlannerKnowledgeReferenceBudget, PlannerKnowledgeReferenceBudget + 1} {
+		for _, required := range []bool{false, true} {
+			request := requestWithPolicyTrace(false)
+			for i := 1; i < count; i++ {
+				id := fmt.Sprintf("reference-%d", i)
+				ref := KnowledgeReference{KnowledgeID: id, VersionID: "v1", ContentSHA256: TextHash(id), Kind: "guidance", Required: required}
+				candidate := KnowledgeCandidate{KnowledgeID: id, VersionID: "v1", ContentSHA256: ref.ContentSHA256,
+					Kind: ref.Kind, Required: required, Decision: "selected", Reason: "relevance", Score: 1}
+				if required {
+					ref.Kind, candidate.Kind, candidate.Reason = "policy", "policy", "required_policy"
+					request.KnowledgeSelection.Budget.RequiredCount++
+				} else {
+					request.KnowledgeSelection.Budget.OptionalCandidates++
+					request.KnowledgeSelection.Budget.OptionalSelected++
+				}
+				request.Knowledge = append(request.Knowledge, ref)
+				request.KnowledgeSelection.Candidates = append(request.KnowledgeSelection.Candidates, candidate)
+			}
+			wantValid := required || count <= PlannerKnowledgeReferenceBudget
+			if err := validateKnowledgeSelection(request); (err == nil) != wantValid {
+				t.Fatalf("reference count %d required=%v: %v", count, required, err)
+			}
+		}
+	}
+}
+
+func TestRuntimeDeliversExactPolicyChecks(t *testing.T) {
+	for _, state := range []string{"available", "missing", "truncated", "semantic", "both"} {
+		t.Run(state, func(t *testing.T) {
+			request := requestWithPolicyTrace(false)
+			want := []MandatoryCheck{}
+			switch state {
+			case "missing":
+				request = selectionWithoutPolicy()
+				want = append(want, MandatoryCheck{GapID: "knowledge_policy_missing", Domain: Compliance,
+					Capability: "governed_policy_context", Status: "unknown", Reason: "policy_missing"})
+			case "truncated", "semantic", "both":
+				ref := &request.Knowledge[0]
+				ref.Truncated, ref.RequiresFactEvaluation = state != "semantic", state != "truncated"
+				request.KnowledgeSelection.Candidates[0].Truncated = ref.Truncated
+				request.KnowledgeSelection.Candidates[0].RequiresFactEvaluation = ref.RequiresFactEvaluation
+				reason, capability := "policy_semantic_verification_required", "governed_policy_semantics"
+				if ref.Truncated {
+					reason, capability = "policy_context_truncated", "governed_policy_context"
+				}
+				request.KnowledgeSelection.PolicyStatus, request.KnowledgeSelection.PolicyReason = "unknown", reason
+				want = append(want, MandatoryCheck{GapID: "knowledge_policy_" + TextHash("policy\x00version\x00" + ref.ContentSHA256)[:24],
+					Domain: Compliance, Capability: capability, Status: "unknown", Reason: reason})
+				// Complete required policies and optional semantic context do not create mandatory gaps.
+				request.Knowledge = append(request.Knowledge,
+					KnowledgeReference{KnowledgeID: "complete", VersionID: "v1", ContentSHA256: TextHash("complete"), Kind: "policy", Required: true},
+					KnowledgeReference{KnowledgeID: "optional", VersionID: "v1", ContentSHA256: TextHash("optional"), Kind: "guidance", RequiresFactEvaluation: true})
+				request.KnowledgeSelection.Candidates = append(request.KnowledgeSelection.Candidates,
+					KnowledgeCandidate{KnowledgeID: "complete", VersionID: "v1", ContentSHA256: TextHash("complete"), Kind: "policy", Required: true, Decision: "selected", Reason: "required_policy"},
+					KnowledgeCandidate{KnowledgeID: "optional", VersionID: "v1", ContentSHA256: TextHash("optional"), Kind: "guidance", Decision: "selected", Reason: "relevance", Score: 1, RequiresFactEvaluation: true})
+				request.KnowledgeSelection.Budget.RequiredCount, request.KnowledgeSelection.Budget.OptionalCandidates, request.KnowledgeSelection.Budget.OptionalSelected = 2, 1, 1
+			}
+			request.Scope = append(request.Scope, Compliance)
+			var got []MandatoryCheck
+			planner := plannerFunc(func(ctx context.Context, input PlanInput) (Plan, error) {
+				got = slices.DeleteFunc(slices.Clone(input.MandatoryChecks), func(check MandatoryCheck) bool { return !strings.HasPrefix(check.GapID, "knowledge_policy_") })
+				return (ScopePlanner{}).Plan(ctx, input)
+			})
+			_, err := runtimeFixture(t, planner, BaselineTools(), 1).Run(context.Background(), request)
+			if err != nil || !reflect.DeepEqual(got, want) {
+				t.Fatalf("policy checks: got=%+v want=%+v err=%v", got, want, err)
 			}
 		})
 	}
