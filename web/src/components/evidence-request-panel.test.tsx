@@ -79,7 +79,7 @@ function Location() {
 
 function open({
   runId = "run-old", attemptId = "attempt-old", urlAttempt = attemptId, evaluations = [missing], agentReview = null,
-  respond, canManage = true, tasks,
+  respond, canManage = true, tasks, sessionActor = actor, caseDetail = detail,
 }: {
   runId?: string;
   attemptId?: string;
@@ -89,6 +89,8 @@ function open({
   respond: ResponseFor;
   canManage?: boolean;
   tasks?: WorkbenchTask[];
+  sessionActor?: Actor;
+  caseDetail?: CaseDetail;
 }) {
   const calls: Call[] = [];
   vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -98,14 +100,14 @@ function open({
   }));
   const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 }, mutations: { retry: false } } });
   clients.push(client);
-  client.setQueryData(queryKeys.case("case-1"), detail);
-  client.setQueryData(queryKeys.session, actor);
+  client.setQueryData(queryKeys.case("case-1"), caseDetail);
+  client.setQueryData(queryKeys.session, sessionActor);
   client.setQueryData(queryKeys.review("case-1", runId, urlAttempt), makeWorkspace(runId, attemptId, evaluations));
   if (tasks) client.setQueryData(queryKeys.workbench("week"), { tasks });
   const path = `/cases/case-1/reviews/${runId}${urlAttempt ? `?attempt_id=${urlAttempt}` : ""}`;
   render(<QueryClientProvider client={client}><MemoryRouter initialEntries={[path]}>
     <EvidenceRequestPanel caseId="case-1" runId={runId} attemptId={attemptId} canManage={canManage}
-      evaluations={evaluations} agentReview={agentReview} documents={detail.documents} />
+      evaluations={evaluations} agentReview={agentReview} documents={caseDetail.documents} />
     <Location />
   </MemoryRouter></QueryClientProvider>);
   return { calls, user: userEvent.setup() };
@@ -355,6 +357,73 @@ describe("补充材料请求", () => {
     await chooseActiveOption(user, screen.getByRole("combobox", { name: "选择提交回执" }), /补充合同.txt/);
     expect(screen.getByText("当前审查没有唯一匹配且达到请求条件的实际检查，仍需补充或复审。")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "提交核验" })).toBeDisabled();
+    expect(calls.some((call) => call.pathname.endsWith("/verify"))).toBe(false);
+  });
+
+  it("lets a clerk submit or upload but never authorise verification", async () => {
+    const clerk: Actor = { ...actor, id: "clerk-1", display_name: "案件经办人", role: "clerk" };
+    open({
+      canManage: false,
+      sessionActor: clerk,
+      respond(call) {
+        const request = rawRequest("received", 2);
+        if (call.pathname.endsWith("/evidence-requests")) return Response.json({ items: [request] });
+        if (call.pathname.endsWith("/history")) return Response.json({ items: [
+          { type: "received", actor_id: clerk.id, occurred_at: at, request, receipt: rawReceipt },
+        ] });
+        return Response.json({ error: { message: "unexpected" } }, { status: 404 });
+      },
+    });
+
+    await screen.findByText("已提交，待复核");
+    expect(screen.getByLabelText("上传补充文件")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "发起后续审查" })).toBeInTheDocument();
+    expect(screen.getByText("当前身份不能提交核验。")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "提交核验" })).toBeDisabled();
+    expect(screen.queryByText("如需上传新材料，请由有上传权限的案件成员登记后再选择。")).not.toBeInTheDocument();
+  });
+
+  it("does not offer submission or upload controls for an archived case", async () => {
+    const archivedDetail = { ...detail, archived_at: "2026-10-22T06:00:00Z" };
+    open({
+      canManage: false,
+      caseDetail: archivedDetail,
+      respond(call) {
+        if (call.pathname.endsWith("/evidence-requests")) return Response.json({ items: [rawRequest("open", 1)] });
+        if (call.pathname.endsWith("/history")) return Response.json({ items: [] });
+        return Response.json({ error: { message: "unexpected" } }, { status: 404 });
+      },
+    });
+
+    await screen.findByText("待提交");
+    expect(screen.queryByRole("button", { name: "提交回执" })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("上传补充文件")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "创建任务并发起请求" })).not.toBeInTheDocument();
+  });
+
+  it("preserves the received request and recovers its history after a read error", async () => {
+    let historyReads = 0;
+    const { calls, user } = open({ canManage: false, respond(call) {
+      const request = rawRequest("received", 2);
+      if (call.pathname.endsWith("/evidence-requests")) return Response.json({ items: [request] });
+      if (call.pathname.endsWith("/history")) {
+        historyReads++;
+        if (historyReads === 1)
+          return Response.json({ error: { message: "回执历史暂不可用" } }, { status: 503 });
+        return Response.json({ items: [
+          { type: "received", actor_id: "owner", occurred_at: at, request, receipt: rawReceipt },
+        ] });
+      }
+      return Response.json({ error: { message: "unexpected" } }, { status: 404 });
+    } });
+
+    await screen.findByText("已提交，待复核");
+    expect(await screen.findByText("回执历史暂不可用")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "重试读取记录" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "重试读取记录" }));
+    await waitFor(() => expect(historyReads).toBe(2));
+    await screen.findByText("处理记录");
+    expect(screen.getByText("已提交，待复核")).toBeInTheDocument();
     expect(calls.some((call) => call.pathname.endsWith("/verify"))).toBe(false);
   });
 
