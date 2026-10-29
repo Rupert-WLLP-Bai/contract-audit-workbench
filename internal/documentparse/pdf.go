@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"image/png"
-	"math"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -41,113 +40,219 @@ var pdfPageSize = regexp.MustCompile(`^Page\s+([0-9]+)\s+size:\s+([0-9.eE+-]+) x
 // Mixed pages keep native extraction followed by the complete-page transcript:
 // removing similar-looking OCR text could discard different image evidence.
 func ParsePDF(ctx context.Context, body []byte, ocr OCR) (Result, error) {
-	if err := ctx.Err(); err != nil {
+	if err := pdfValidateInput(ctx, body); err != nil {
 		return Result{}, err
 	}
-	if len(body) > pdfMaxBytes {
-		return Result{}, fmt.Errorf("PDF exceeds %d-byte input limit", pdfMaxBytes)
-	}
-	if !bytes.HasPrefix(body, []byte("%PDF-")) || !bytes.Contains(body[max(0, len(body)-1024):], []byte("%%EOF")) {
-		return Result{}, errors.New("PDF header or end marker is missing")
-	}
-	dir, err := os.MkdirTemp("", "contractaudit-pdf-")
+	dir, err := pdfWorkspace(body)
 	if err != nil {
-		return Result{}, fmt.Errorf("creating PDF workspace: %w", err)
+		return Result{}, err
 	}
 	defer os.RemoveAll(dir)
 	path := filepath.Join(dir, "original.pdf")
-	if err := os.WriteFile(path, body, 0600); err != nil {
-		return Result{}, fmt.Errorf("writing PDF workspace: %w", err)
-	}
-	info, err := pdfCommand(ctx, 128<<10, "pdfinfo", path)
+	pages, err := pdfInspectPages(ctx, path)
 	if err != nil {
 		return Result{}, err
 	}
-	pages, err := pdfPageCount(string(info))
+	images, err := pdfImageInventory(ctx, path, pages)
 	if err != nil {
 		return Result{}, err
 	}
-	pageInfo, err := pdfCommand(ctx, 128<<10, "pdfinfo", "-f", "1", "-l", strconv.Itoa(pages), path)
+	segments, err := pdfTextSegments(ctx, path, pages)
 	if err != nil {
 		return Result{}, err
 	}
-	if err := pdfCheckPageSizes(string(pageInfo), pages); err != nil {
-		return Result{}, err
-	}
-	imageInfo, err := pdfCommand(ctx, 1<<20, "pdfimages", "-list", path)
+	pageTexts, fromOCR, err := pdfPageTexts(ctx, path, pages, segments, images, ocr)
 	if err != nil {
 		return Result{}, err
 	}
-	images, err := pdfImagePages(string(imageInfo), pages)
-	if err != nil {
-		return Result{}, err
-	}
-	text, err := pdfCommand(ctx, pdfMaxTextBytes, "pdftotext", "-layout", "-enc", "UTF-8", "-eol", "unix", path, "-")
-	if err != nil {
-		return Result{}, err
-	}
-	if !utf8.Valid(text) {
-		return Result{}, errors.New("PDF extraction returned invalid UTF-8")
-	}
-	segments := strings.Split(string(text), "\f")
-	if len(segments) != pages+1 || strings.TrimSpace(segments[len(segments)-1]) != "" {
-		return Result{}, errors.New("PDF text page boundaries do not match observed page count")
-	}
-	pageTexts := make([]string, pages)
-	fromOCR, total := false, 0
-	for i := range pageTexts {
-		if err := ctx.Err(); err != nil {
-			return Result{}, err
-		}
-		native := strings.TrimSpace(segments[i])
-		if len(native) > pdfMaxPageText {
-			return Result{}, fmt.Errorf("PDF page %d exceeds text limit", i+1)
-		}
-		readable := pdfReadableText(native)
-		if !readable && native != "" {
-			// Broken font encodings must be transcribed from visible content.
-			native = ""
-		}
-		if images[i] || !readable {
-			if ocr == nil {
-				return Result{}, fmt.Errorf("PDF page %d requires an OCR callback", i+1)
-			}
-			pngBody, err := pdfCommand(ctx, pdfMaxPNGBytes, "pdftoppm", "-f", strconv.Itoa(i+1), "-l", strconv.Itoa(i+1), "-singlefile", "-scale-to", strconv.Itoa(pdfRenderSide), "-png", path)
-			if err != nil {
-				return Result{}, fmt.Errorf("rendering PDF page %d: %w", i+1, err)
-			}
-			config, err := png.DecodeConfig(bytes.NewReader(pngBody))
-			if err != nil || config.Width < 1 || config.Height < 1 || config.Width > pdfRenderSide || config.Height > pdfRenderSide {
-				return Result{}, fmt.Errorf("PDF page %d has an invalid or excessive render", i+1)
-			}
-			transcript, err := ocr(ctx, "image/png", pngBody)
-			if err != nil {
-				return Result{}, fmt.Errorf("transcribing PDF page %d: %w", i+1, err)
-			}
-			if err := ctx.Err(); err != nil {
-				return Result{}, err
-			}
-			transcript = strings.TrimSpace(transcript)
-			if len(transcript) > pdfMaxPageText || !pdfReadableText(transcript) || strings.ContainsRune(transcript, '\f') {
-				return Result{}, fmt.Errorf("PDF page %d OCR returned empty, invalid, or excessive text", i+1)
-			}
-			if native == "" {
-				native = transcript
-			} else {
-				native += "\n\n" + transcript
-			}
-			fromOCR = true
-		}
-		total += len(native)
-		if total > pdfMaxTextBytes {
-			return Result{}, errors.New("PDF complete text exceeds output limit")
-		}
-		pageTexts[i] = native
-	}
-	// The terminal observed break also gives a one-page PDF truthful page 1.
 	ir := docir.Build(strings.Join(pageTexts, "\f") + "\f")
 	ir.ExtractionVersion = PDFVersion
 	return Result{IR: ir, FromOCR: fromOCR}, nil
+}
+
+// pdfValidateInput rejects canceled calls, oversized bodies and bodies that do
+// not carry the PDF header and end marker.
+func pdfValidateInput(ctx context.Context, body []byte) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if len(body) > pdfMaxBytes {
+		return fmt.Errorf("PDF exceeds %d-byte input limit", pdfMaxBytes)
+	}
+	if !bytes.HasPrefix(body, []byte("%PDF-")) || !bytes.Contains(body[len(body)-min(len(body), 1024):], []byte("%%EOF")) {
+		return errors.New("PDF header or end marker is missing")
+	}
+	return nil
+}
+
+// pdfWorkspace writes the original body into a private temporary directory.
+// A failed write removes the directory before returning.
+func pdfWorkspace(body []byte) (string, error) {
+	dir, err := os.MkdirTemp("", "contractaudit-pdf-")
+	if err != nil {
+		return "", fmt.Errorf("creating PDF workspace: %w", err)
+	}
+	path := filepath.Join(dir, "original.pdf")
+	if err := os.WriteFile(path, body, 0600); err != nil {
+		os.RemoveAll(dir)
+		return "", fmt.Errorf("writing PDF workspace: %w", err)
+	}
+	return dir, nil
+}
+
+// pdfInspectPages reads the page count and validates every page geometry.
+func pdfInspectPages(ctx context.Context, path string) (int, error) {
+	var pages int
+	info, err := pdfCommand(ctx, 128<<10, "pdfinfo", path)
+	if err != nil {
+		return pages, err
+	}
+	pages, err = pdfPageCount(string(info))
+	if err != nil {
+		return pages, err
+	}
+	pageInfo, err := pdfCommand(ctx, 128<<10, "pdfinfo", "-f", "1", "-l", strconv.Itoa(pages), path)
+	if err != nil {
+		return pages, err
+	}
+	if err := pdfCheckPageSizes(string(pageInfo), pages); err != nil {
+		return pages, err
+	}
+	return pages, nil
+}
+
+// pdfImageInventory reads the embedded-image inventory.
+func pdfImageInventory(ctx context.Context, path string, pages int) ([]bool, error) {
+	imageInfo, err := pdfCommand(ctx, 1<<20, "pdfimages", "-list", path)
+	if err != nil {
+		return nil, err
+	}
+	return pdfImagePages(string(imageInfo), pages)
+}
+
+// pdfTextSegments extracts native text and validates the page boundaries.
+func pdfTextSegments(ctx context.Context, path string, pages int) ([]string, error) {
+	text, err := pdfCommand(ctx, pdfMaxTextBytes, "pdftotext", "-layout", "-enc", "UTF-8", "-eol", "unix", path, "-")
+	if err != nil {
+		return nil, err
+	}
+	if !utf8.Valid(text) {
+		return nil, errors.New("PDF extraction returned invalid UTF-8")
+	}
+	segments := strings.Split(string(text), "\f")
+	if len(segments) != pages+1 {
+		return nil, errors.New("PDF text page boundaries do not match observed page count")
+	}
+	if strings.TrimSpace(segments[len(segments)-1]) != "" {
+		return nil, errors.New("PDF text page boundaries do not match observed page count")
+	}
+	return segments, nil
+}
+
+// pdfPageTexts builds one page text per observed page, transcribing pages that
+// carry images or have no readable native text.
+func pdfPageTexts(ctx context.Context, path string, pages int, segments []string, images []bool, ocr OCR) ([]string, bool, error) {
+	pageTexts := make([]string, pages)
+	fromOCR := false
+	var total int
+	for i := range pageTexts {
+		if err := ctx.Err(); err != nil {
+			return nil, fromOCR, err
+		}
+		native := strings.TrimSpace(segments[i])
+		if pdfLimitExceeded(len(native), pdfMaxPageText) {
+			return nil, fromOCR, fmt.Errorf("PDF page %d exceeds text limit", i+1)
+		}
+		native, usedOCR, err := pdfNativeOrTranscript(ctx, path, i, native, images[i], ocr)
+		if err != nil {
+			return nil, fromOCR, err
+		}
+		if usedOCR {
+			fromOCR = true
+		}
+		total += len(native)
+		if pdfLimitExceeded(total, pdfMaxTextBytes) {
+			return nil, fromOCR, errors.New("PDF complete text exceeds output limit")
+		}
+		pageTexts[i] = native
+	}
+	return pageTexts, fromOCR, nil
+}
+
+// pdfNativeOrTranscript keeps readable native text and appends a complete-page
+// transcript when the page carries an image.
+func pdfNativeOrTranscript(ctx context.Context, path string, index int, native string, hasImage bool, ocr OCR) (nativeText string, usedOCR bool, err error) {
+	page := index + 1
+	readable := pdfReadableText(native)
+	if !readable {
+		// Broken font encodings must be transcribed from visible content.
+		native = ""
+	}
+	if !hasImage && readable {
+		return native, false, nil
+	}
+	if ocr == nil {
+		return "", usedOCR, fmt.Errorf("PDF page %d requires an OCR callback", page)
+	}
+	transcript, err := pdfOCRPage(ctx, path, page, ocr)
+	if err != nil {
+		return "", usedOCR, err
+	}
+	if native == "" {
+		native = transcript
+	} else {
+		native += "\n\n" + transcript
+	}
+	return native, true, nil
+}
+
+// pdfOCRPage renders one complete page and validates its transcript.
+func pdfOCRPage(ctx context.Context, path string, page int, ocr OCR) (string, error) {
+	pngBody, err := pdfRenderPage(ctx, path, page)
+	if err != nil {
+		return "", err
+	}
+	transcript, err := ocr(ctx, "image/png", pngBody)
+	if err != nil {
+		return "", fmt.Errorf("transcribing PDF page %d: %w", page, err)
+	}
+	return pdfValidateTranscript(ctx, page, transcript)
+}
+
+// pdfRenderPage renders one page as a bounded PNG.
+func pdfRenderPage(ctx context.Context, path string, page int) ([]byte, error) {
+	pngBody, err := pdfCommand(ctx, pdfMaxPNGBytes, "pdftoppm", "-f", strconv.Itoa(page), "-l", strconv.Itoa(page), "-singlefile", "-scale-to", strconv.Itoa(pdfRenderSide), "-png", path)
+	if err != nil {
+		return nil, fmt.Errorf("rendering PDF page %d: %w", page, err)
+	}
+	config, err := png.DecodeConfig(bytes.NewReader(pngBody))
+	if !pdfRenderValid(err, config.Width, config.Height) {
+		return nil, fmt.Errorf("PDF page %d has an invalid or excessive render", page)
+	}
+	return pngBody, nil
+}
+
+// pdfRenderValid accepts only a decoded render inside the configured square.
+func pdfRenderValid(err error, width, height int) bool {
+	return err == nil && width >= 1 && height >= 1 && width <= pdfRenderSide && height <= pdfRenderSide
+}
+
+// pdfValidateTranscript rejects empty, unreadable, excessive or page-breaking
+// transcripts.
+func pdfValidateTranscript(ctx context.Context, page int, transcript string) (string, error) {
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
+	transcript = strings.TrimSpace(transcript)
+	if pdfLimitExceeded(len(transcript), pdfMaxPageText) || !pdfReadableText(transcript) || strings.ContainsRune(transcript, '\f') {
+		return "", fmt.Errorf("PDF page %d OCR returned empty, invalid, or excessive text", page)
+	}
+	return transcript, nil
+}
+
+// pdfLimitExceeded reports whether a size exceeds its configured limit.
+func pdfLimitExceeded(size, limit int) bool {
+	return size > limit
 }
 
 func pdfReadableText(text string) bool {
@@ -162,7 +267,27 @@ func pdfReadableText(text string) bool {
 	return true
 }
 
+// pdfPageCount validates the metadata fields and the observed page count.
 func pdfPageCount(info string) (int, error) {
+	fields, err := pdfMetadataFields(info)
+	if err != nil {
+		return 0, err
+	}
+	if err := pdfValidateMetadata(fields); err != nil {
+		return 0, err
+	}
+	// strconv.Atoi reports a zero or clamped value on failure, both outside the
+	// accepted range, so the range check covers parse failures too.
+	pages, _ := strconv.Atoi(fields["Pages"])
+	if pages < 1 || pages > pdfMaxPages {
+		return 0, fmt.Errorf("PDF page count must be between 1 and %d", pdfMaxPages)
+	}
+	return pages, nil
+}
+
+// pdfMetadataFields collects the required metadata fields. A repeated required
+// field is ambiguous and rejected.
+func pdfMetadataFields(info string) (map[string]string, error) {
 	fields := make(map[string]string, 4)
 	for _, line := range strings.Split(info, "\n") {
 		key, value, ok := strings.Cut(line, ":")
@@ -170,23 +295,25 @@ func pdfPageCount(info string) (int, error) {
 			continue
 		}
 		if _, exists := fields[key]; exists {
-			return 0, errors.New("PDF metadata has ambiguous required fields")
+			return nil, errors.New("PDF metadata has ambiguous required fields")
 		}
 		fields[key] = strings.TrimSpace(value)
 	}
-	if fields["Encrypted"] != "no" {
-		return 0, errors.New("encrypted PDFs are unsupported")
-	}
-	if fields["Form"] != "none" || fields["JavaScript"] != "no" {
-		return 0, errors.New("PDF forms or JavaScript require a flattened document")
-	}
-	pages, err := strconv.Atoi(fields["Pages"])
-	if err != nil || pages < 1 || pages > pdfMaxPages {
-		return 0, fmt.Errorf("PDF page count must be between 1 and %d", pdfMaxPages)
-	}
-	return pages, nil
+	return fields, nil
 }
 
+// pdfValidateMetadata rejects encrypted, interactive or scripted documents.
+func pdfValidateMetadata(fields map[string]string) error {
+	if fields["Encrypted"] != "no" {
+		return errors.New("encrypted PDFs are unsupported")
+	}
+	if fields["Form"] != "none" || fields["JavaScript"] != "no" {
+		return errors.New("PDF forms or JavaScript require a flattened document")
+	}
+	return nil
+}
+
+// pdfCheckPageSizes requires one valid geometry per observed page.
 func pdfCheckPageSizes(info string, pages int) error {
 	seen := make([]bool, pages)
 	for _, line := range strings.Split(info, "\n") {
@@ -194,10 +321,8 @@ func pdfCheckPageSizes(info string, pages int) error {
 		if match == nil {
 			continue
 		}
-		page, _ := strconv.Atoi(match[1])
-		width, e1 := strconv.ParseFloat(match[2], 64)
-		height, e2 := strconv.ParseFloat(match[3], 64)
-		if page < 1 || page > pages || seen[page-1] || e1 != nil || e2 != nil || math.IsInf(width, 0) || math.IsInf(height, 0) || math.IsNaN(width) || math.IsNaN(height) || width <= 0 || height <= 0 || width > 14400 || height > 14400 {
+		page, valid := pdfParsePageSize(match)
+		if !valid || page < 1 || page > pages || seen[page-1] {
 			return errors.New("PDF page geometry is invalid or exceeds 14400-point limit")
 		}
 		seen[page-1] = true
@@ -210,25 +335,46 @@ func pdfCheckPageSizes(info string, pages int) error {
 	return nil
 }
 
+// pdfParsePageSize parses one geometry line and rejects unparsable or
+// out-of-range dimensions.
+func pdfParsePageSize(match []string) (int, bool) {
+	page, _ := strconv.Atoi(match[1])
+	// ParseFloat yields zero for syntax errors and an infinity for range
+	// errors; both fail the dimension check below.
+	width, _ := strconv.ParseFloat(match[2], 64)
+	height, _ := strconv.ParseFloat(match[3], 64)
+	if !pdfValidPageDimensions(width, height) {
+		return page, false
+	}
+	return page, true
+}
+
+// pdfValidPageDimensions checks the positive 14400-point geometry. ParseFloat
+// turns syntax errors into zero and range errors into an infinity, so the range
+// checks also reject values that could not be parsed.
+func pdfValidPageDimensions(width, height float64) bool {
+	if width <= 0 || height <= 0 || width > 14400 || height > 14400 {
+		return false
+	}
+	return true
+}
+
+// pdfImagePages validates the image inventory header, every row and the total
+// pixel budget.
 func pdfImagePages(info string, pages int) ([]bool, error) {
 	out := make([]bool, pages)
-	lines := strings.Split(strings.TrimSpace(info), "\n")
-	if len(lines) < 2 || !strings.HasPrefix(lines[0], "page") || !strings.HasPrefix(lines[1], "---") {
-		return nil, errors.New("PDF image inventory is invalid")
-	}
-	if len(lines)-2 > pdfMaxImages {
-		return nil, errors.New("PDF image count exceeds resource limit")
+	lines, err := pdfImageInventoryLines(info)
+	if err != nil {
+		return nil, err
 	}
 	var allPixels int64
-	for _, line := range lines[2:] {
+	for _, line := range lines {
 		fields := strings.Fields(line)
 		if len(fields) < 5 {
 			return nil, errors.New("PDF image inventory is incomplete")
 		}
-		page, ep := strconv.Atoi(fields[0])
-		width, ew := strconv.ParseInt(fields[3], 10, 64)
-		height, eh := strconv.ParseInt(fields[4], 10, 64)
-		if ep != nil || ew != nil || eh != nil || page < 1 || page > pages || width < 1 || height < 1 || width > pdfMaxImagePixels || height > pdfMaxImagePixels || width > pdfMaxImagePixels/height {
+		page, width, height, ok := pdfImageFields(fields, pages)
+		if !ok {
 			return nil, errors.New("PDF embedded image exceeds pixel limit or has invalid dimensions")
 		}
 		allPixels += width * height
@@ -238,6 +384,43 @@ func pdfImagePages(info string, pages int) ([]bool, error) {
 		out[page-1] = true
 	}
 	return out, nil
+}
+
+// pdfImageInventoryLines validates the inventory header and the row limit.
+func pdfImageInventoryLines(info string) ([]string, error) {
+	lines := strings.Split(strings.TrimSpace(info), "\n")
+	if len(lines) < 2 || !strings.HasPrefix(lines[0], "page") || !strings.HasPrefix(lines[1], "---") {
+		return nil, errors.New("PDF image inventory is invalid")
+	}
+	if len(lines)-2 > pdfMaxImages {
+		return nil, errors.New("PDF image count exceeds resource limit")
+	}
+	return lines[2:], nil
+}
+
+// pdfImageFields parses and validates one image row. The strconv calls yield
+// zero on syntax errors and a clamped value on range errors; the page and pixel
+// checks reject both, so the parsed values are returned with ok=false.
+func pdfImageFields(fields []string, pages int) (page int, width, height int64, ok bool) {
+	page, _ = strconv.Atoi(fields[0])
+	width, _ = strconv.ParseInt(fields[3], 10, 64)
+	height, _ = strconv.ParseInt(fields[4], 10, 64)
+	if page < 1 || page > pages {
+		return
+	}
+	if !pdfImageDimensionsValid(width, height) {
+		return
+	}
+	return page, width, height, true
+}
+
+// pdfImageDimensionsValid rejects non-positive dimensions and a pixel product
+// above pdfMaxImagePixels.
+func pdfImageDimensionsValid(width, height int64) bool {
+	if width < 1 || height < 1 || width > pdfMaxImagePixels/height {
+		return false
+	}
+	return true
 }
 
 // pdfBoundedOutput stops reading hostile tool output before it can grow memory
