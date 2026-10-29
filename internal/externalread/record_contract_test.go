@@ -127,6 +127,19 @@ func TestReadKeepsInvalidRecordIDOutOfRejectedObservation(t *testing.T) {
 	}
 }
 
+func TestReadRejectsUpdatedAtWithNonStringJSONType(t *testing.T) {
+	server := serveBody(t, http.StatusOK, recordJSONWith(t, func(fields map[string]any) { fields["updatedAt"] = 123 }))
+	connector := newTestConnector(t, baseConfig(server.URL))
+	observation, err := connector.Read(context.Background(), testRequest())
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertObservation(t, observation, auditext.AvailabilityRejected, reasonSourceUpdatedAtInvalid)
+	if len(observation.Fields) != 0 || observation.PayloadRef != nil || observation.EffectiveAt(fixedNow) {
+		t.Fatalf("invalid update time carried trusted record evidence: %+v", observation)
+	}
+}
+
 func TestReadAcceptsMaximumRecordVersion(t *testing.T) {
 	version := strings.Repeat("v", 128)
 	server := serveBody(t, http.StatusOK, recordJSONWith(t, func(fields map[string]any) { fields["version"] = version }))
