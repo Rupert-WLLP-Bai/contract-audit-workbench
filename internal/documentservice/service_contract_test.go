@@ -40,8 +40,12 @@ func TestFromEnvRejectsUnsafeParseBounds(t *testing.T) {
 			}
 			t.Setenv("WORKER_DOCUMENT_TOKEN", strings.Repeat("d", 32))
 			t.Setenv(test.name, test.value)
-			if _, err := FromEnv(); err == nil {
+			config, err := FromEnv()
+			if err == nil {
 				t.Fatalf("unsafe %s=%q was accepted", test.name, test.value)
+			}
+			if config != (Config{}) {
+				t.Fatalf("invalid environment returned a partial config: %+v", config)
 			}
 		})
 	}
@@ -288,6 +292,23 @@ func TestDelegatedPrepareCredentialAndRequestSizeBoundaries(t *testing.T) {
 		if recorder.Code != http.StatusServiceUnavailable || !strings.Contains(recorder.Body.String(), "capacity is full") {
 			t.Fatalf("exact-size request answered %d %q, want capacity response", recorder.Code, recorder.Body.String())
 		}
+	}
+}
+
+func TestDelegatedPrepareCallerCancellationDoesNotEnterStore(t *testing.T) {
+	const credential = "dddddddddddddddddddddddddddddddd"
+	service, err := New(&store.Store{}, Config{WorkerCredential: credential, CPUConcurrency: 1, OCRConcurrency: 1, QueueCapacity: 1, ParseTimeout: time.Second})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	req := httptest.NewRequest(http.MethodPost, "/internal/v1/prepare", strings.NewReader(`{}`)).WithContext(ctx)
+	req.Header.Set("X-Contract-Service-Key", credential)
+	recorder := httptest.NewRecorder()
+	service.Handler(nil).ServeHTTP(recorder, req)
+	if recorder.Code != http.StatusOK || recorder.Body.Len() != 0 {
+		t.Fatalf("canceled prepare wrote status=%d body=%q", recorder.Code, recorder.Body.String())
 	}
 }
 
