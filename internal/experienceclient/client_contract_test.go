@@ -24,6 +24,7 @@ func TestNewRejectsUnsafeCoreConfiguration(t *testing.T) {
 	}{
 		{"missing scheme", "core.internal", experienceClientCredential, time.Second},
 		{"unsupported scheme", "ftp://core.internal", experienceClientCredential, time.Second},
+		{"invalid path escape", "http://core.internal/%zz", experienceClientCredential, time.Second},
 		{"embedded credentials", "http://user:secret@core.internal", experienceClientCredential, time.Second},
 		{"endpoint query", "http://core.internal?target=bad", experienceClientCredential, time.Second},
 		{"endpoint fragment", "http://core.internal#results", experienceClientCredential, time.Second},
@@ -45,6 +46,12 @@ func TestNewAcceptsCredentialAtExactMinimumLength(t *testing.T) {
 	}
 	if client.endpoint != "http://core.example/base/internal/v1/experience-results" {
 		t.Fatalf("endpoint = %q", client.endpoint)
+	}
+}
+
+func TestNewAcceptsPositiveNanosecondTimeout(t *testing.T) {
+	if _, err := New("http://core.example", experienceClientCredential, time.Nanosecond); err != nil {
+		t.Fatalf("New rejected a positive nanosecond timeout: %v", err)
 	}
 }
 

@@ -17,6 +17,10 @@ import (
 
 const documentClientCredential = "document-client-test-private-key-0001"
 
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(request *http.Request) (*http.Response, error) { return f(request) }
+
 func TestNewRejectsNonOriginEndpointsCredentialsAndTimeouts(t *testing.T) {
 	for _, test := range []struct {
 		name, endpoint, credential string
@@ -24,6 +28,7 @@ func TestNewRejectsNonOriginEndpointsCredentialsAndTimeouts(t *testing.T) {
 	}{
 		{"missing scheme", "localhost:8080", documentClientCredential, time.Second},
 		{"unsupported scheme", "ftp://document.example", documentClientCredential, time.Second},
+		{"invalid path escape", "http://document.example/%zz", documentClientCredential, time.Second},
 		{"endpoint credentials", "http://user:password@document.example", documentClientCredential, time.Second},
 		{"endpoint query", "http://document.example?target=internal", documentClientCredential, time.Second},
 		{"endpoint fragment", "http://document.example#prepare", documentClientCredential, time.Second},
@@ -45,6 +50,12 @@ func TestNewAcceptsCredentialAtExactMinimumLength(t *testing.T) {
 	}
 	if client.endpoint != "http://document.example/base/internal/v1/prepare" {
 		t.Fatalf("endpoint = %q", client.endpoint)
+	}
+}
+
+func TestNewAcceptsPositiveNanosecondTimeout(t *testing.T) {
+	if _, err := New("http://document.example", documentClientCredential, time.Nanosecond); err != nil {
+		t.Fatalf("New rejected a positive nanosecond timeout: %v", err)
 	}
 }
 
@@ -189,5 +200,42 @@ func TestPrepareAttemptDocumentRejectsOversizedAndNonSuccessResponses(t *testing
 				t.Fatalf("PrepareAttemptDocument error = %v, want %q", err, test.want)
 			}
 		})
+	}
+}
+
+type repeatedByteReader struct {
+	value     byte
+	remaining int64
+}
+
+func (r *repeatedByteReader) Read(p []byte) (int, error) {
+	if r.remaining == 0 {
+		return 0, io.EOF
+	}
+	n := len(p)
+	if int64(n) > r.remaining {
+		n = int(r.remaining)
+	}
+	for i := 0; i < n; i++ {
+		p[i] = r.value
+	}
+	r.remaining -= int64(n)
+	return n, nil
+}
+
+func TestPrepareAttemptDocumentAcceptsResponseAtExactSizeLimit(t *testing.T) {
+	prefix := `{"ready":true}`
+	padding := int64(maxPreparedDocumentBytes - len(prefix))
+	client, err := New("http://document.example", documentClientCredential, time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	client.http.Transport = roundTripFunc(func(*http.Request) (*http.Response, error) {
+		body := io.NopCloser(io.MultiReader(strings.NewReader(prefix), &repeatedByteReader{value: ' ', remaining: padding}))
+		return &http.Response{StatusCode: http.StatusOK, Body: body, Header: make(http.Header)}, nil
+	})
+	frozen, err := client.PrepareAttemptDocument(context.Background(), store.PrepareDocumentRequest{})
+	if err != nil || !frozen.Ready {
+		t.Fatalf("exact-size response: ready=%v err=%v", frozen.Ready, err)
 	}
 }
