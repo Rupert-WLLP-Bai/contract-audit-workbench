@@ -993,6 +993,35 @@ describe("buildApiRequest binary and form bodies", () => {
     });
   });
 
+  it("accepts schema nesting at the limit and rejects the next level for a form field", () => {
+    function buildWithAllOfDepth(depth: number) {
+      let field: OpenApiRecord = { type: "string" };
+      for (let index = 0; index < depth; index += 1)
+        field = { allOf: [field] };
+      return build(
+        target(
+          requestBody({
+            mediaType: "application/x-www-form-urlencoded",
+            schema: { type: "object", properties: { title: field } },
+          }),
+        ),
+        { bodyValues: { title: "contract" } },
+      );
+    }
+
+    const atLimit = buildWithAllOfDepth(64);
+    expect(atLimit.error).toBeNull();
+    expect([...(atLimit.request?.init.body as URLSearchParams).entries()]).toEqual([
+      ["title", "contract"],
+    ]);
+
+    const beyondLimit = buildWithAllOfDepth(65);
+    expect(beyondLimit.error).toBe(
+      "请求体.title 的 schema 递归层级超出限制",
+    );
+    expect(beyondLimit.request).toBeNull();
+  });
+
   it("returns form schema errors unchanged", () => {
     expect(
       build(
