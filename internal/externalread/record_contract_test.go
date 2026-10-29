@@ -95,6 +95,25 @@ func TestFirstConfiguredCharacteristicControlsParsingAndSourcePointer(t *testing
 	})
 }
 
+func TestReadSkipsUnrelatedCharacteristicBeforeConfiguredValue(t *testing.T) {
+	server := serveBody(t, http.StatusOK, recordJSONWith(t, func(fields map[string]any) {
+		fields["serviceCharacteristic"] = []map[string]any{
+			{"name": "unrelated", "value": "1", "unit": "Mbit/s"},
+			{"name": "configuredBandwidth", "value": "80", "unit": "Mbit/s"},
+		}
+	}))
+	connector := newTestConnector(t, baseConfig(server.URL))
+	observation, err := connector.Read(context.Background(), testRequest())
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertObservation(t, observation, auditext.AvailabilityAvailable, reasonReadSucceeded)
+	field, ok := observation.FieldByName("configured_bandwidth")
+	if !ok || field.Value != "80" || field.SourcePointer != "/serviceCharacteristic/1/value" {
+		t.Fatalf("configured field after unrelated item = %+v, present=%v", field, ok)
+	}
+}
+
 func TestReadKeepsInvalidRecordIDOutOfRejectedObservation(t *testing.T) {
 	server := serveBody(t, http.StatusOK, recordJSONWith(t, func(fields map[string]any) { fields["id"] = "bad id" }))
 	connector := newTestConnector(t, baseConfig(server.URL))
@@ -217,6 +236,29 @@ func TestNewPinsPayloadPrefixAndResponseLimitBoundaries(t *testing.T) {
 			t.Fatalf("over-limit response became evidence: %+v", observation)
 		}
 	})
+}
+
+func TestNewKeepsPositiveNanosecondTimeout(t *testing.T) {
+	cfg := baseConfig("https://source.example")
+	cfg.Timeout = time.Nanosecond
+	connector := newTestConnector(t, cfg)
+	if connector.timeout != time.Nanosecond {
+		t.Fatalf("timeout = %v, want one nanosecond", connector.timeout)
+	}
+}
+
+func TestNegativeFreshnessDisablesStaleness(t *testing.T) {
+	server := serveBody(t, http.StatusOK, recordJSONWith(t, func(fields map[string]any) {
+		fields["updatedAt"] = fixedNow.Add(-time.Second).Format(time.RFC3339)
+	}))
+	cfg := baseConfig(server.URL)
+	cfg.Freshness = -time.Nanosecond
+	connector := newTestConnector(t, cfg)
+	observation, err := connector.Read(context.Background(), testRequest())
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertObservation(t, observation, auditext.AvailabilityAvailable, reasonReadSucceeded)
 }
 
 func TestReadAcceptsResponseAtExactConfiguredByteLimit(t *testing.T) {
