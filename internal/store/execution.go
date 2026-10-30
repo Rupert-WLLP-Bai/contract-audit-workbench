@@ -248,6 +248,10 @@ func (s *Store) startReview(ctx context.Context, user accounts.User, caseID, bus
 			return err
 		}
 		executionCase = *currentCase
+		signature, err = withPartyContext(*st, caseID, signature)
+		if err != nil {
+			return err
+		}
 		if materialSelectionPending(*st, caseID) || !sameDocumentSet(documentIDs(selectedMaterialDocuments(*st, caseID)), reviewDocumentIDs) || !parsedSelectionCurrent(*st, frozenDocs) {
 			return fault.Conflict("所选的材料解析版本刚被更新，请重新发起审查")
 		}
@@ -401,6 +405,13 @@ func (s *Store) retry(ctx context.Context, user accounts.User, caseID, runID str
 	// validated, even if the endpoint watcher applies a new revision meanwhile.
 	models := s.currentModels()
 	currentSignature := withFrozenGovernance(currentSignatureFor(frozen.DocumentIDs, nil, models, telecomCompilerRefForCase(caseItem)), frozen)
+	currentSignature, err = withPartyContext(seen, caseID, currentSignature)
+	if err != nil {
+		return err
+	}
+	if frozen.PartyContextHash != currentSignature.PartyContextHash {
+		return fault.Conflict("主体信息已变更，请发起新的审查。原审查记录会保留")
+	}
 	if !sameRunConfiguration(frozen, currentSignature) || !sameRunCompilerIdentity(frozen, currentSignature) {
 		return fault.Conflict("规则或模型配置已变更，请发起新的审查。原审查记录会保留")
 	}
@@ -438,7 +449,17 @@ func (s *Store) retry(ctx context.Context, user accounts.User, caseID, runID str
 			return fault.NotFound("没有找到对应记录")
 		}
 		currentSignature := withFrozenGovernance(currentSignatureFor(frozen.DocumentIDs, nil, models, telecomCompilerRefForCase(*currentCase)), frozen)
-		if !sameRunSignature(st.snapshotOf(runID), frozen) || !sameRunConfiguration(frozen, currentSignature) ||
+		currentSignature, err = withPartyContext(*st, caseID, currentSignature)
+		if err != nil {
+			return err
+		}
+		if !sameRunSignature(st.snapshotOf(runID), frozen) {
+			return fault.Conflict("审查记录已变化，请重新发起审查")
+		}
+		if currentSignature.PartyContextHash != frozen.PartyContextHash {
+			return fault.Conflict("主体信息已变更，请发起新的审查。原审查记录会保留")
+		}
+		if !sameRunConfiguration(frozen, currentSignature) ||
 			!sameRunCompilerIdentity(frozen, currentSignature) {
 			return fault.Conflict("规则或模型配置已变更，请发起新的审查。原审查记录会保留")
 		}

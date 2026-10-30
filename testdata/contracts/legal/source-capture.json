@@ -1,0 +1,72 @@
+{
+  "capture_snapshot_id": "lsc_wire_fixture_1",
+  "source_id": "FIXTURE-LEGAL-SOURCE",
+  "norm_version": "fixture-v1",
+  "norm_title": "法律知识 wire fixture（非真实条文）",
+  "document_type": "law",
+  "publisher": "fixture publisher",
+  "issuer": "fixture issuer",
+  "official_url": "https://fixture.invalid/legal-source",
+  "provenance": "fixture_only",
+  "promulgated_on": "2020-01-01",
+  "effective_from": "2021-01-01",
+  "source_captured_at": "2026-10-30T00:00:00Z",
+  "response_status": 200,
+  "media_type": "text/html",
+  "raw_response": "PGh0bWw+Zml4dHVyZS1vbmx5PC9odG1sPg==",
+  "raw_sha256": "4444444444444444444444444444444444444444444444444444444444444444",
+  "extracted_full_text": "fixture-only body; not a statutory quotation",
+  "extracted_full_text_sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+  "extractor_id": "fixture-adapter",
+  "extractor_version": "v1",
+  "canonicalization_version": "legalnorm-whitespace-v1",
+  "status_observation_id": "fixture-status-1",
+  "observed_status": "effective",
+  "status_registry_url": "https://fixture.invalid/status",
+  "status_request_method": "GET",
+  "status_observed_at": "2026-10-30T00:00:00Z",
+  "status_response_status": 200,
+  "status_media_type": "application/json",
+  "status_response": "eyJzdGF0dXMiOiJmaXh0dXJlIn0=",
+  "status_response_sha256": "5555555555555555555555555555555555555555555555555555555555555555",
+  "status_mapping_evidence": {
+    "status": "effective"
+  },
+  "articles": [
+    {
+      "ref": {
+        "source_id": "FIXTURE-LEGAL-SOURCE",
+        "source_snapshot_id": "fixture-source-snapshot-1",
+        "version_id": "fixture-v1",
+        "article_number": 1,
+        "article_label": "条文 1（fixture）",
+        "full_text": "",
+        "text_sha256": "",
+        "citation_span": {
+          "start": 0,
+          "end": 0,
+          "quote": ""
+        },
+        "promulgated_on": "2020-01-01",
+        "effective_from": "2021-01-01",
+        "currency_status": "effective",
+        "status_evidence_id": "fixture-status-1"
+      },
+      "full_text": "fixture-only body; not a statutory quotation",
+      "text_sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+      "start": 0,
+      "end": 44
+    }
+  ],
+  "imported_articles": [
+    {
+      "knowledge_id": "legal-wire-fixture-article-1",
+      "version_id": "1111111111111111111111111111111111111111111111111111111111111111",
+      "content_sha256": "2222222222222222222222222222222222222222222222222222222222222222"
+    }
+  ],
+  "request_digest": "6666666666666666666666666666666666666666666666666666666666666666",
+  "idempotency_key": "legal-wire-fixture-idem",
+  "created_by": "fixture-admin",
+  "created_at": "2026-10-31T00:00:00Z"
+}

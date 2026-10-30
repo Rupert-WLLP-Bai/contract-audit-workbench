@@ -237,6 +237,8 @@ var schemaStatements = []string{
 	`ALTER TABLE review_run_snapshots ADD COLUMN IF NOT EXISTS parsed_document_ids text NOT NULL DEFAULT '[]'`,
 	`ALTER TABLE review_run_snapshots ADD COLUMN IF NOT EXISTS parse_selection_hash text NOT NULL DEFAULT ''`,
 	`ALTER TABLE review_run_snapshots ADD COLUMN IF NOT EXISTS parser_configuration_id text NOT NULL DEFAULT ''`,
+	`ALTER TABLE review_run_snapshots ADD COLUMN IF NOT EXISTS party_context bytea`,
+	`ALTER TABLE review_run_snapshots ADD COLUMN IF NOT EXISTS party_context_hash text NOT NULL DEFAULT ''`,
 	`CREATE TABLE IF NOT EXISTS audit_events (
 		event_id text PRIMARY KEY,
 		run_id text NOT NULL,
@@ -435,6 +437,7 @@ var schemaStatements = []string{
 	queueSchedulerSchemaSQL,
 	ExperienceFeedbackSchemaSQL,
 	knowledgeGovernanceSchemaSQL,
+	legalKnowledgeSchemaSQL,
 	knowledgeAcceptanceSchemaSQL,
 	EvidenceRequestSchemaSQL,
 	EvaluationProvenanceSchemaSQL,
@@ -474,7 +477,8 @@ var schemaStatements = []string{
 			'advisory_judgments',
 			'evidence_requests','evidence_receipts','evidence_request_events',
 			'operator_object_bindings','operator_external_snapshot_sets','operator_external_observations',
-			'operator_fulfillment_evaluations','operator_fulfillment_checks','operator_impact_plans'
+			'operator_fulfillment_evaluations','operator_fulfillment_checks','operator_impact_plans',
+			'legal_source_captures'
 		] LOOP
 			EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY', table_name);
 			EXECUTE format('ALTER TABLE %I FORCE ROW LEVEL SECURITY', table_name);

@@ -3,6 +3,9 @@ package store
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"reflect"
 	"strings"
@@ -714,6 +717,7 @@ func TestCreateReportFreezesAttemptAndDecisionBytes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	secondJSON, secondHTML := []byte(nil), []byte(nil)
 	finding := workspace.Findings[0]
 	decisionReason := "按实际规则复核报告版本"
 	if err := st.Decide(admin, caseID, runID, finding.ID, "freeze-report-decision", "insufficient_evidence", decisionReason, finding.Version); err != nil {
@@ -739,6 +743,75 @@ func TestCreateReportFreezesAttemptAndDecisionBytes(t *testing.T) {
 	if err != nil || !bytes.Contains(nextJSON, []byte(decisionReason)) {
 		t.Fatalf("new report omitted the actual human decision: err=%v", err)
 	}
+	_, secondJSON, err = st.ReadReport(admin, caseID, second.ID, "json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, secondHTML, err = st.ReadReport(admin, caseID, second.ID, "html")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := st.AddMember(admin, caseID, "demo-reviewer"); err != nil {
+		t.Fatal(err)
+	}
+	created, replayed, err := st.CreateCaseSubject(context.Background(), admin, caseID, CaseSubjectCreateInput{Role: SubjectRoleSupplier,
+		Subject: SubjectCreateInput{DisplayName: "报告冻结前的历史主体"}}, "report-subject-create")
+	if err != nil || replayed || created.SubjectID == "" {
+		t.Fatalf("create subject before report-preservation change: %+v replayed=%v err=%v", created, replayed, err)
+	}
+	current, err := st.snapshotAs(admin)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var source Document
+	for _, item := range current.Documents {
+		if item.CaseID == caseID && item.Role == "procurement" {
+			source = item
+			break
+		}
+	}
+	if source.ID == "" {
+		t.Fatal("procurement evidence for the subject correction is missing")
+	}
+	parsed, err := st.ensureParsed(context.Background(), admin, source, false)
+	if err != nil || parsed.Status != "ready" {
+		t.Fatalf("parse report subject evidence: parsed=%+v err=%v", parsed, err)
+	}
+	var materialVersion MaterialVersion
+	for _, item := range current.MaterialVersions {
+		if item.DocumentID == source.ID && item.CaseID == caseID {
+			materialVersion = item
+			break
+		}
+	}
+	if materialVersion.MaterialID == "" {
+		t.Fatal("pinned material version for report evidence is missing")
+	}
+	quote := []rune(parsed.Text)
+	quoteDigest := sha256.Sum256([]byte(string(quote)))
+	basis, err := json.Marshal([]materialAnchorInput{{Kind: "material_anchor", MaterialID: materialVersion.MaterialID, MaterialVersion: materialVersion.Version,
+		DocumentID: source.ID, ParsedDocumentID: parsed.ID, Start: 0, End: len(quote), QuoteDigest: hex.EncodeToString(quoteDigest[:])}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	proposal, replayed, err := st.ProposeSubjectChange(context.Background(), admin, caseID, SubjectChangeCreateInput{Target: SubjectChangeTarget{Kind: "subject", SubjectID: created.SubjectID},
+		ExpectedSubjectVersion: 1, Patch: json.RawMessage(`{"display_name":"报告审批后的新主体"}`), BasisNote: "依据已冻结材料更正主体名称", BasisRefs: basis}, "report-subject-correction")
+	if err != nil || replayed || proposal.RequestID == "" {
+		t.Fatalf("propose source-backed subject change: %+v replayed=%v err=%v", proposal, replayed, err)
+	}
+	reviewer, ok := accounts.ByID("demo-reviewer")
+	if !ok {
+		t.Fatal("reviewer missing")
+	}
+	impact, err := st.GetSubjectChangeImpact(context.Background(), reviewer, caseID, proposal.RequestID)
+	if err != nil || !impact.CanDecide {
+		t.Fatalf("independent reviewer could not see subject change: %+v err=%v", impact, err)
+	}
+	decision, replayed, err := st.DecideSubjectChange(context.Background(), reviewer, caseID, proposal.RequestID, SubjectChangeDecisionInput{Decision: "approve", ExpectedSubjectVersion: 1,
+		ExpectedPayloadHash: proposal.PayloadHash, ExpectedImpactETag: impact.ImpactETag, Reason: "复核主体更正依据"}, "report-subject-correction-decision")
+	if err != nil || replayed || decision.Decision != "approved" || decision.AppliedSubjectVersion == nil || *decision.AppliedSubjectVersion != 2 {
+		t.Fatalf("independent approver did not apply subject correction: %+v replayed=%v err=%v", decision, replayed, err)
+	}
 	governedRunID, err := st.StartReviewAt(context.Background(), admin, caseID, acceptanceBusinessTime)
 	if err != nil {
 		t.Fatal(err)
@@ -750,6 +823,22 @@ func TestCreateReportFreezesAttemptAndDecisionBytes(t *testing.T) {
 	_, afterGovernedJSON, err := st.ReadReport(admin, caseID, first.ID, "json")
 	if err != nil || !bytes.Equal(afterGovernedJSON, originalJSON) {
 		t.Fatalf("governed review rewrote historical report JSON: %v", err)
+	}
+	firstAfter, firstAfterJSON, err := st.ReadReport(admin, caseID, first.ID, "json")
+	if err != nil || firstAfter.Digest != first.Digest || firstAfter.InputHash != first.InputHash || firstAfter.OutputHash != first.OutputHash || !bytes.Equal(firstAfterJSON, originalJSON) {
+		t.Fatalf("approved subject and new review changed the original report record/JSON: report=%+v err=%v", firstAfter, err)
+	}
+	_, firstAfterHTML, err := st.ReadReport(admin, caseID, first.ID, "html")
+	if err != nil || !bytes.Equal(firstAfterHTML, originalHTML) {
+		t.Fatalf("approved subject and new review changed the original report HTML: %v", err)
+	}
+	secondAfter, secondAfterJSON, err := st.ReadReport(admin, caseID, second.ID, "json")
+	if err != nil || secondAfter.Digest != second.Digest || !bytes.Equal(secondAfterJSON, secondJSON) {
+		t.Fatalf("approved subject and new review changed the decision-version report/JSON: report=%+v err=%v", secondAfter, err)
+	}
+	_, secondAfterHTML, err := st.ReadReport(admin, caseID, second.ID, "html")
+	if err != nil || !bytes.Equal(secondAfterHTML, secondHTML) {
+		t.Fatalf("approved subject and new review changed the decision-version report HTML: %v", err)
 	}
 }
 

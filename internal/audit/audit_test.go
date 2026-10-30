@@ -138,6 +138,7 @@ func TestSnapshotRejectRewritePinsEveryScalarAndSliceField(t *testing.T) {
 		{"parser configuration", func(s *audit.Snapshot) { s.ParserConfigurationID = "other" }},
 		{"documents", func(s *audit.Snapshot) { s.DocumentIDs = []string{"doc-a"} }},
 		{"parsed documents", func(s *audit.Snapshot) { s.ParsedDocumentIDs = []string{"parsed-b"} }},
+		{"party context hash", func(s *audit.Snapshot) { s.PartyContextHash = "party-context" }},
 		{"document order", func(s *audit.Snapshot) { s.DocumentIDs = []string{"doc-b", "doc-a"} }},
 	}
 	for _, tc := range tests {

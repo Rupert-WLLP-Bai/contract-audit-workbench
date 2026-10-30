@@ -28,11 +28,18 @@ func trustedUser(user accounts.User) (accounts.User, error) {
 }
 
 func (s *Store) snapshotAs(user accounts.User) (state, error) {
+	return s.snapshotAsContext(context.Background(), user)
+}
+
+func (s *Store) snapshotAsContext(ctx context.Context, user accounts.User) (state, error) {
+	if err := ctx.Err(); err != nil {
+		return state{}, err
+	}
 	current, err := trustedUser(user)
 	if err != nil {
 		return state{}, err
 	}
-	return s.snapshotScoped(context.Background(), userScope(current))
+	return s.snapshotScoped(ctx, userScope(current))
 }
 
 func (s *Store) snapshotForClaim(claim JobClaim) (state, error) {
@@ -76,13 +83,20 @@ func userScope(user accounts.User) dbScope {
 }
 
 func (s *Store) updateAs(user accounts.User, fn func(*state) error) error {
+	return s.updateAsContext(context.Background(), user, fn)
+}
+
+func (s *Store) updateAsContext(ctx context.Context, user accounts.User, fn func(*state) error) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	current, err := trustedUser(user)
 	if err != nil {
 		return err
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.updateState(context.Background(), userScope(current), "", fn)
+	return s.updateState(ctx, userScope(current), "", fn)
 }
 
 // bindLocalDemoCaseGrant binds an unbound case-scope grant for a local demo

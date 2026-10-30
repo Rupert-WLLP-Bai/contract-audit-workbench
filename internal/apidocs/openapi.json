@@ -44,6 +44,112 @@
     }
   ],
   "paths": {
+    "/api/subjects": {
+      "get": {
+        "operationId": "listSubjects",
+        "tags": ["案件"],
+        "summary": "列出当前可见主体",
+        "parameters": [
+          {"name":"case_id","in":"query","required":false,"schema":{"type":"string"}},
+          {"name":"q","in":"query","required":false,"schema":{"type":"string"}},
+          {"name":"cursor","in":"query","required":false,"schema":{"type":"string"}},
+          {"name":"limit","in":"query","required":false,"schema":{"type":"integer","minimum":1,"maximum":100}}
+        ],
+        "responses": {"200":{"description":"可见主体列表；标识符已脱敏","content":{"application/json":{"schema":{"type":"object","required":["items","next_cursor"],"properties":{"items":{"type":"array","items":{"type":"object"}},"next_cursor":{"type":["string","null"]}}}}}},"401":{"$ref":"#/components/responses/Error401"},"403":{"$ref":"#/components/responses/Error403"}}
+      },
+      "post": {
+        "operationId": "createUnboundSubject",
+        "tags": ["案件"],
+        "summary": "创建待核验主体",
+        "parameters": [{"name":"Idempotency-Key","in":"header","required":true,"schema":{"type":"string","maxLength":80}}],
+        "requestBody": {"required":true,"content":{"application/json":{"schema":{"type":"object","required":["display_name"],"additionalProperties":false,"properties":{"display_name":{"type":"string"},"legal_name":{"type":"string"},"identifiers":{"type":"array","items":{"type":"object"}},"aliases":{"type":"array","items":{"type":"object"}}}}}}},
+        "responses": {"201":{"description":"已创建待核验主体","content":{"application/json":{"schema":{"type":"object"}}}},"400":{"$ref":"#/components/responses/Error400"},"401":{"$ref":"#/components/responses/Error401"},"409":{"$ref":"#/components/responses/Error409"}}
+      }
+    },
+    "/api/subjects/{subjectID}": {
+      "get": {"operationId":"getSubject","tags":["案件"],"summary":"读取当前可见主体","parameters":[{"name":"subjectID","in":"path","required":true,"schema":{"type":"string"}}],"responses":{"200":{"description":"当前主体版本；标识符已脱敏","content":{"application/json":{"schema":{"type":"object"}}}},"401":{"$ref":"#/components/responses/Error401"},"403":{"$ref":"#/components/responses/Error403"},"404":{"$ref":"#/components/responses/Error404"}}}
+    },
+    "/api/subjects/{subjectID}/history": {
+      "get": {"operationId":"getSubjectHistory","tags":["案件"],"summary":"读取授权范围内的主体版本和更正事件","parameters":[{"name":"subjectID","in":"path","required":true,"schema":{"type":"string"}}],"responses":{"200":{"description":"授权主体历史","content":{"application/json":{"schema":{"type":"object"}}}},"401":{"$ref":"#/components/responses/Error401"},"403":{"$ref":"#/components/responses/Error403"},"404":{"$ref":"#/components/responses/Error404"}}}
+    },
+    "/api/subjects/{subjectID}/case-links": {
+      "get": {"operationId":"listSubjectCaseLinks","tags":["案件"],"summary":"列出当前可见的主体案件关联","parameters":[{"name":"subjectID","in":"path","required":true,"schema":{"type":"string"}},{"name":"cursor","in":"query","required":false,"schema":{"type":"string"}},{"name":"limit","in":"query","required":false,"schema":{"type":"integer","minimum":1,"maximum":100}}],"responses":{"200":{"description":"仅返回当前有权查看的案件关联","content":{"application/json":{"schema":{"type":"object"}}}},"401":{"$ref":"#/components/responses/Error401"},"403":{"$ref":"#/components/responses/Error403"},"404":{"$ref":"#/components/responses/Error404"}}}
+    },
+    "/api/cases/{caseID}/subjects": {
+      "get": {"operationId":"listCaseSubjects","tags":["案件"],"summary":"列出案件主体和旧资料字段","parameters":[{"name":"caseID","in":"path","required":true,"schema":{"type":"string"}}],"responses":{"200":{"description":"案件主体关联与旧 profile","content":{"application/json":{"schema":{"type":"object"}}}},"401":{"$ref":"#/components/responses/Error401"},"403":{"$ref":"#/components/responses/Error403"},"404":{"$ref":"#/components/responses/Error404"}}},
+      "post": {"operationId":"createCaseSubject","tags":["案件"],"summary":"创建案件主体关联","parameters":[{"name":"caseID","in":"path","required":true,"schema":{"type":"string"}},{"name":"Idempotency-Key","in":"header","required":true,"schema":{"type":"string","maxLength":80}}],"requestBody":{"required":true,"content":{"application/json":{"schema":{"type":"object","required":["role","subject"],"additionalProperties":false,"properties":{"role":{"type":"string"},"subject":{"type":"object"},"legacy_binding":{"type":"object"}}}}}},"responses":{"201":{"description":"已创建主体关联","content":{"application/json":{"schema":{"type":"object"}}}},"400":{"$ref":"#/components/responses/Error400"},"401":{"$ref":"#/components/responses/Error401"},"403":{"$ref":"#/components/responses/Error403"},"404":{"$ref":"#/components/responses/Error404"},"409":{"$ref":"#/components/responses/Error409"}}}
+    },
+    "/api/cases/{caseID}/subjects/bind-existing": {
+      "post": {"operationId":"bindExistingSubject","tags":["案件"],"summary":"将明确选择的现有主体关联到案件","parameters":[{"name":"caseID","in":"path","required":true,"schema":{"type":"string"}},{"name":"Idempotency-Key","in":"header","required":true,"schema":{"type":"string","maxLength":80}}],"requestBody":{"required":true,"content":{"application/json":{"schema":{"type":"object","required":["role","subject_id","expected_subject_version"],"additionalProperties":false,"properties":{"role":{"type":"string"},"subject_id":{"type":"string"},"expected_subject_version":{"type":"integer","minimum":1}}}}}},"responses":{"201":{"description":"已创建主体关联","content":{"application/json":{"schema":{"type":"object"}}}},"400":{"$ref":"#/components/responses/Error400"},"401":{"$ref":"#/components/responses/Error401"},"403":{"$ref":"#/components/responses/Error403"},"404":{"$ref":"#/components/responses/Error404"},"409":{"$ref":"#/components/responses/Error409"}}}
+    },
+    "/api/cases/{caseID}/subject-sources": {
+      "get": {"operationId":"listConfiguredSubjectSources","tags":["案件"],"summary":"读取当前已配置的版本化受控主体来源目录","parameters":[{"name":"caseID","in":"path","required":true,"schema":{"type":"string"}}],"responses":{"200":{"description":"未配置时items为空；不暴露来源记录标识或USCC","content":{"application/json":{"schema":{"type":"object"}}}},"401":{"$ref":"#/components/responses/Error401"},"403":{"$ref":"#/components/responses/Error403"},"404":{"$ref":"#/components/responses/Error404"}}}
+    },
+    "/api/cases/{caseID}/subject-source-snapshots": {
+      "get": {"operationId":"listSubjectSourceSnapshots","tags":["案件"],"summary":"分页列出案件已冻结的受控主体来源","parameters":[{"name":"caseID","in":"path","required":true,"schema":{"type":"string"}},{"name":"cursor","in":"query","required":false,"schema":{"type":"string"}},{"name":"limit","in":"query","required":false,"schema":{"type":"integer","minimum":1,"maximum":100}}],"responses":{"200":{"description":"不返回冻结源payload","content":{"application/json":{"schema":{"type":"object"}}}},"401":{"$ref":"#/components/responses/Error401"},"403":{"$ref":"#/components/responses/Error403"},"404":{"$ref":"#/components/responses/Error404"}}},
+      "post": {"operationId":"createSubjectSourceSnapshot","tags":["案件"],"summary":"按当前配置版本冻结受控来源","parameters":[{"name":"caseID","in":"path","required":true,"schema":{"type":"string"}},{"name":"Idempotency-Key","in":"header","required":true,"schema":{"type":"string","maxLength":80}}],"requestBody":{"required":true,"content":{"application/json":{"schema":{"type":"object","required":["source_catalog_id","expected_source_version"],"additionalProperties":false,"properties":{"source_catalog_id":{"const":"synthetic.uscc.demo"},"expected_source_version":{"type":"integer","minimum":1}}}}}},"responses":{"201":{"description":"来源快照元数据","content":{"application/json":{"schema":{"type":"object"}}}},"400":{"$ref":"#/components/responses/Error400"},"401":{"$ref":"#/components/responses/Error401"},"403":{"$ref":"#/components/responses/Error403"},"404":{"$ref":"#/components/responses/Error404"},"409":{"$ref":"#/components/responses/Error409"}}}
+    },
+    "/api/cases/{caseID}/subject-source-snapshots/{snapshotID}": {
+      "get": {"operationId":"getSubjectSourceSnapshot","tags":["案件"],"summary":"读取案件来源快照元数据","parameters":[{"name":"caseID","in":"path","required":true,"schema":{"type":"string"}},{"name":"snapshotID","in":"path","required":true,"schema":{"type":"string"}}],"responses":{"200":{"description":"不返回冻结源payload","content":{"application/json":{"schema":{"type":"object"}}}},"401":{"$ref":"#/components/responses/Error401"},"403":{"$ref":"#/components/responses/Error403"},"404":{"$ref":"#/components/responses/Error404"}}}
+    },
+    "/api/cases/{caseID}/subject-source-snapshots/{snapshotID}/verify": {
+      "post": {"operationId":"verifySubjectSourceSnapshot","tags":["案件"],"summary":"将主体申报身份与指定受控来源快照精确比对并在匹配时创建异人审批提案","parameters":[{"name":"caseID","in":"path","required":true,"schema":{"type":"string"}},{"name":"snapshotID","in":"path","required":true,"schema":{"type":"string"}},{"name":"Idempotency-Key","in":"header","required":true,"schema":{"type":"string","maxLength":80}}],"requestBody":{"required":true,"content":{"application/json":{"schema":{"type":"object","required":["subject_id","expected_subject_version"],"additionalProperties":false,"properties":{"subject_id":{"type":"string"},"expected_subject_version":{"type":"integer","minimum":1}}}}}},"responses":{"202":{"description":"精确匹配，等待异人决定；返回request_id和受控来源摘要","content":{"application/json":{"schema":{"type":"object"}}}},"200":{"description":"无匹配或存在歧义，没有创建提案","content":{"application/json":{"schema":{"type":"object"}}}},"400":{"$ref":"#/components/responses/Error400"},"401":{"$ref":"#/components/responses/Error401"},"403":{"$ref":"#/components/responses/Error403"},"404":{"$ref":"#/components/responses/Error404"},"409":{"$ref":"#/components/responses/Error409"}}}
+    },
+    "/api/cases/{caseID}/materials/{materialID}/versions/{version}/parsed-documents": {
+      "get": {"operationId":"listMaterialVersionParses","tags":["案件"],"summary":"列出固定材料版本的不可变解析记录","parameters":[{"name":"caseID","in":"path","required":true,"schema":{"type":"string"}},{"name":"materialID","in":"path","required":true,"schema":{"type":"string"}},{"name":"version","in":"path","required":true,"schema":{"type":"integer","minimum":1}}],"responses":{"200":{"description":"只返回解析摘要，不选择latest解析","content":{"application/json":{"schema":{"type":"object"}}}},"401":{"$ref":"#/components/responses/Error401"},"403":{"$ref":"#/components/responses/Error403"},"404":{"$ref":"#/components/responses/Error404"}}}
+    },
+    "/api/cases/{caseID}/materials/{materialID}/versions/{version}/parsed-documents/{parsedDocumentID}": {
+      "get": {"operationId":"getMaterialVersionParsedChunk","tags":["案件"],"summary":"按明确解析ID分页读取固定材料版本正文","parameters":[{"name":"caseID","in":"path","required":true,"schema":{"type":"string"}},{"name":"materialID","in":"path","required":true,"schema":{"type":"string"}},{"name":"version","in":"path","required":true,"schema":{"type":"integer","minimum":1}},{"name":"parsedDocumentID","in":"path","required":true,"schema":{"type":"string"}},{"name":"offset","in":"query","required":false,"schema":{"type":"integer","minimum":0}},{"name":"limit","in":"query","required":false,"schema":{"type":"integer","minimum":1,"maximum":65536}}],"responses":{"200":{"description":"offset/next_offset按Unicode rune计数","content":{"application/json":{"schema":{"type":"object"}}}},"401":{"$ref":"#/components/responses/Error401"},"403":{"$ref":"#/components/responses/Error403"},"404":{"$ref":"#/components/responses/Error404"},"409":{"$ref":"#/components/responses/Error409"}}}
+    },
+    "/api/cases/{caseID}/subject-changes": {
+      "get": {"operationId":"listSubjectChanges","tags":["案件"],"summary":"列出主体更正请求","parameters":[{"name":"caseID","in":"path","required":true,"schema":{"type":"string"}}],"responses":{"200":{"description":"更正请求及服务端审批能力","content":{"application/json":{"schema":{"type":"object"}}}},"401":{"$ref":"#/components/responses/Error401"},"403":{"$ref":"#/components/responses/Error403"},"404":{"$ref":"#/components/responses/Error404"}}},
+      "post": {"operationId":"proposeSubjectChange","tags":["案件"],"summary":"提出主体或案件归属更正","parameters":[{"name":"caseID","in":"path","required":true,"schema":{"type":"string"}},{"name":"Idempotency-Key","in":"header","required":true,"schema":{"type":"string","maxLength":80}}],"requestBody":{"required":true,"content":{"application/json":{"schema":{"type":"object","required":["target","expected_subject_version","patch","basis_note","basis_refs"],"additionalProperties":false,"properties":{"target":{"type":"object","required":["kind","subject_id"],"properties":{"kind":{"enum":["subject","case_subject_role"]},"subject_id":{"type":"string"},"binding_id":{"type":"string"}}},"expected_subject_version":{"type":"integer","minimum":1},"expected_binding_version":{"type":"integer","minimum":1},"patch":{"type":"object"},"basis_note":{"type":"string"},"basis_refs":{"type":"array","items":{"type":"object"}}}}}},"responses":{"201":{"description":"待决定更正提案","content":{"application/json":{"schema":{"type":"object"}}}},"400":{"$ref":"#/components/responses/Error400"},"401":{"$ref":"#/components/responses/Error401"},"403":{"$ref":"#/components/responses/Error403"},"404":{"$ref":"#/components/responses/Error404"},"409":{"$ref":"#/components/responses/Error409"},"422":{"$ref":"#/components/responses/Error422"}}}
+    }
+    },
+    "/api/cases/{caseID}/subject-changes/{requestID}": {
+      "get": {"operationId":"getSubjectChange","tags":["案件"],"summary":"读取主体更正提案和证据","parameters":[{"name":"caseID","in":"path","required":true,"schema":{"type":"string"}},{"name":"requestID","in":"path","required":true,"schema":{"type":"string"}}],"responses":{"200":{"description":"当前授权范围内的更正提案、before/after和依据","content":{"application/json":{"schema":{"type":"object"}}}},"401":{"$ref":"#/components/responses/Error401"},"403":{"$ref":"#/components/responses/Error403"},"404":{"$ref":"#/components/responses/Error404"}}}
+    },
+    "/api/cases/{caseID}/subject-changes/{requestID}/impact": {
+      "get": {"operationId":"getSubjectChangeImpact","tags":["案件"],"summary":"预览主体更正影响范围","description":"只读；只返回当前授权案件，不暴露隐藏案件及其数量。","parameters":[{"name":"caseID","in":"path","required":true,"schema":{"type":"string"}},{"name":"requestID","in":"path","required":true,"schema":{"type":"string"}}],"responses":{"200":{"description":"授权影响预览和impact_etag","content":{"application/json":{"schema":{"type":"object"}}}},"401":{"$ref":"#/components/responses/Error401"},"403":{"$ref":"#/components/responses/Error403"},"404":{"$ref":"#/components/responses/Error404"}}}
+    },
+    "/api/cases/{caseID}/subject-changes/{requestID}/decisions": {
+      "post": {"operationId":"decideSubjectChange","tags":["案件"],"summary":"批准或拒绝主体更正提案","parameters":[{"name":"caseID","in":"path","required":true,"schema":{"type":"string"}},{"name":"requestID","in":"path","required":true,"schema":{"type":"string"}},{"name":"Idempotency-Key","in":"header","required":true,"schema":{"type":"string","maxLength":80}}],"requestBody":{"required":true,"content":{"application/json":{"schema":{"type":"object","required":["decision","expected_subject_version","expected_payload_hash","expected_impact_etag","reason"],"additionalProperties":false,"properties":{"decision":{"enum":["approve","reject"]},"expected_subject_version":{"type":"integer","minimum":1},"expected_binding_version":{"type":"integer","minimum":1},"expected_payload_hash":{"type":"string"},"expected_impact_etag":{"type":"string"},"reason":{"type":"string"}}}}}},"responses":{"200":{"description":"决定已追加","content":{"application/json":{"schema":{"type":"object"}}}},"400":{"$ref":"#/components/responses/Error400"},"401":{"$ref":"#/components/responses/Error401"},"403":{"$ref":"#/components/responses/Error403"},"404":{"$ref":"#/components/responses/Error404"},"409":{"$ref":"#/components/responses/Error409"}}}
+    },
+    "/api/cases/{caseID}/legal-applicability-facts": {
+      "get": {"operationId":"resolveLegalApplicabilityFacts","tags":["法律适用事实"],"summary":"按案件事实、业务时点和证据截止时间解析当前可用的法律适用事实","parameters":[{"name":"caseID","in":"path","required":true,"schema":{"type":"string"}},{"name":"business_at","in":"query","required":false,"schema":{"type":"string","format":"date-time"}},{"name":"evidence_cutoff_at","in":"query","required":false,"schema":{"type":"string","format":"date-time"}}],"responses":{"200":{"description":"服务端时间与来源授权校验后的适用事实集合","content":{"application/json":{"schema":{"type":"object"}}}},"401":{"$ref":"#/components/responses/Error401"},"403":{"$ref":"#/components/responses/Error403"},"404":{"$ref":"#/components/responses/Error404"}}}
+    },
+    "/api/cases/{caseID}/legal-applicability-facts/{dimension}": {
+      "put": {
+        "operationId": "recordLegalApplicabilityFact",
+        "tags": ["法律适用事实"],
+        "summary": "追加一项带依据和当前版本CAS的法律适用事实",
+        "parameters": [
+          {"name":"caseID","in":"path","required":true,"schema":{"type":"string"}},
+          {"name":"dimension","in":"path","required":true,"schema":{"type":"string"}},
+          {"name":"Idempotency-Key","in":"header","required":true,"schema":{"type":"string","maxLength":200}}
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {"application/json":{"schema":{"type":"object","required":["expected_version","status","temporal_basis","basis_note","basis_refs"],"properties":{"expected_version":{"type":"integer","minimum":0},"status":{"enum":["established","unknown"]},"value":{"type":"string"},"unknown_reason":{"type":"string"},"temporal_basis":{"enum":["current_state","historical_interval"]},"valid_from":{"type":"string","format":"date-time"},"valid_until":{"type":"string","format":"date-time"},"basis_note":{"type":"string"},"basis_refs":{"type":"array","items":{"type":"object"}},"party":{"type":"object"}}}}}
+        },
+        "responses": {
+          "201":{"description":"事实版本已追加","content":{"application/json":{"schema":{"type":"object"}}}},
+          "400":{"$ref":"#/components/responses/Error400"},"401":{"$ref":"#/components/responses/Error401"},"403":{"$ref":"#/components/responses/Error403"},"404":{"$ref":"#/components/responses/Error404"},"409":{"$ref":"#/components/responses/Error409"},"422":{"$ref":"#/components/responses/Error422"}
+        }
+      }
+    },
+    "/api/cases/{caseID}/legal-knowledge": {
+      "get": {"operationId":"searchLegalKnowledgeForCase","tags":["制度检索"],"summary":"在案件授权范围内检索已导入法律条文","parameters":[{"name":"caseID","in":"path","required":true,"schema":{"type":"string"}},{"name":"q","in":"query","required":false,"schema":{"type":"string"}},{"name":"source_id","in":"query","required":false,"schema":{"type":"string"}},{"name":"business_at","in":"query","required":false,"schema":{"type":"string","format":"date-time"}},{"name":"article_number","in":"query","required":false,"schema":{"type":"integer","minimum":1}},{"name":"cursor","in":"query","required":false,"schema":{"type":"string"}},{"name":"limit","in":"query","required":false,"schema":{"type":"integer","minimum":1,"maximum":50}}],"responses":{"200":{"description":"只返回来源及案件可见的法律版本","content":{"application/json":{"schema":{"type":"object"}}}},"401":{"$ref":"#/components/responses/Error401"},"403":{"$ref":"#/components/responses/Error403"},"404":{"$ref":"#/components/responses/Error404"},"422":{"$ref":"#/components/responses/Error422"}}}
+    },
+    "/api/cases/{caseID}/legal-knowledge/{knowledgeID}/versions/{versionID}": {
+      "get": {"operationId":"getLegalKnowledgeForCase","tags":["制度检索"],"summary":"读取精确法律知识版本","parameters":[{"name":"caseID","in":"path","required":true,"schema":{"type":"string"}},{"name":"knowledgeID","in":"path","required":true,"schema":{"type":"string"}},{"name":"versionID","in":"path","required":true,"schema":{"type":"string"}}],"responses":{"200":{"description":"授权的不可变法律知识版本及来源身份","content":{"application/json":{"schema":{"type":"object"}}}},"401":{"$ref":"#/components/responses/Error401"},"403":{"$ref":"#/components/responses/Error403"},"404":{"$ref":"#/components/responses/Error404"}}}
+    },
+    "/api/cases/{caseID}/legal-sources/snapshots/{captureSnapshotID}": {
+      "get": {"operationId":"getLegalSourceCaptureForCase","tags":["制度检索"],"summary":"读取案件可见的法律来源采集快照","parameters":[{"name":"caseID","in":"path","required":true,"schema":{"type":"string"}},{"name":"captureSnapshotID","in":"path","required":true,"schema":{"type":"string"}}],"responses":{"200":{"description":"案件授权的来源采集快照","content":{"application/json":{"schema":{"type":"object"}}}},"401":{"$ref":"#/components/responses/Error401"},"403":{"$ref":"#/components/responses/Error403"},"404":{"$ref":"#/components/responses/Error404"}}}
+    },
+    "/api/cases/{caseID}/company-policy-sources": {
+      "get": {"operationId":"listCaseCompanyPolicySources","tags":["制度检索"],"summary":"读取案件公司制度来源接入状态","parameters":[{"name":"caseID","in":"path","required":true,"schema":{"type":"string"}}],"responses":{"200":{"description":"来源待提供，不是可引用制度，不满足强制依赖","content":{"application/json":{"schema":{"type":"object"}}}},"401":{"$ref":"#/components/responses/Error401"},"403":{"$ref":"#/components/responses/Error403"},"404":{"$ref":"#/components/responses/Error404"}}}
+    },
     "/api/cases/{caseID}/evidence-requests": {
       "get": {
         "operationId":"listEvidenceRequests","tags":["人工复核"],"summary":"列出案件补充材料请求",
@@ -142,10 +248,20 @@
         "responses":{"200":{"description":"候选版本","content":{"application/json":{"schema":{"$ref":"#/components/schemas/ExperienceCandidate"}}}},"401":{"$ref":"#/components/responses/Error401"},"403":{"$ref":"#/components/responses/Error403"},"404":{"$ref":"#/components/responses/Error404"},"409":{"$ref":"#/components/responses/Error409"},"500":{"$ref":"#/components/responses/Error500"},"503":{"$ref":"#/components/responses/Error503"}}
       }
     },
+    "/api/admin/legal-sources/imports": {
+      "post": {"operationId":"importLegalSource","tags":["制度治理"],"summary":"导入并校验法律来源材料","security":[{"adminSessionCookie":[]}],"parameters":[{"name":"Idempotency-Key","in":"header","required":false,"schema":{"type":"string","maxLength":80}}],"requestBody":{"required":true,"content":{"application/json":{"schema":{"type":"object"}}}},"responses":{"201":{"description":"法律来源与不可变capture已创建","content":{"application/json":{"schema":{"type":"object"}}}},"400":{"$ref":"#/components/responses/Error400"},"401":{"$ref":"#/components/responses/Error401"},"403":{"$ref":"#/components/responses/Error403"},"409":{"$ref":"#/components/responses/Error409"},"422":{"$ref":"#/components/responses/Error422"},"503":{"$ref":"#/components/responses/Error503"}}}
+    },
+    "/api/admin/legal-sources/{sourceID}/snapshots/{captureSnapshotID}": {
+      "get": {"operationId":"getLegalSourceCapture","tags":["制度治理"],"summary":"读取法律来源的不可变采集快照","security":[{"adminSessionCookie":[]}],"parameters":[{"name":"sourceID","in":"path","required":true,"schema":{"type":"string"}},{"name":"captureSnapshotID","in":"path","required":true,"schema":{"type":"string"}}],"responses":{"200":{"description":"精确来源采集快照","content":{"application/json":{"schema":{"type":"object"}}}},"401":{"$ref":"#/components/responses/Error401"},"403":{"$ref":"#/components/responses/Error403"},"404":{"$ref":"#/components/responses/Error404"}}}
+    },
+    "/api/admin/company-policy-sources": {
+      "get": {"operationId":"listAdminCompanyPolicySources","tags":["制度治理"],"summary":"读取公司制度来源接入状态","security":[{"adminSessionCookie":[]}],"responses":{"200":{"description":"来源待提供状态；不含可引用正文或版本","content":{"application/json":{"schema":{"type":"object"}}}},"401":{"$ref":"#/components/responses/Error401"},"403":{"$ref":"#/components/responses/Error403"}}}
+    },
     "/api/admin/governed-knowledge": {
       "get": {
         "operationId":"listGovernedKnowledgeVersions","tags":["规则治理"],"summary":"列出已治理知识版本元数据","security":[{"adminSessionCookie":[]}],
-        "description":"仅 admin audience；仅列出当前租户且当前管理员有来源案件权限的版本，不返回正文。",
+        "description":"默认列出已治理知识元数据；kind=legal时由法律检索服务返回当前管理员授权范围内的法律知识。",
+        "parameters":[{"name":"kind","in":"query","required":false,"schema":{"type":"string","enum":["governed","legal"]}}],
         "responses":{"200":{"description":"版本元数据","content":{"application/json":{"schema":{"$ref":"#/components/schemas/GovernedKnowledgeList"}}}},"401":{"$ref":"#/components/responses/Error401"},"403":{"$ref":"#/components/responses/Error403"},"500":{"$ref":"#/components/responses/Error500"},"503":{"$ref":"#/components/responses/Error503"}}
       },
       "post": {
@@ -6542,6 +6658,10 @@
           "configuration_pending": {
             "type": "boolean"
           },
+          "subject_context_changed_after_latest_run": {
+            "type": "boolean",
+            "description": "当前主体上下文与最近一次审查冻结的主体上下文不同，需要发起新审查。"
+          },
           "finding_counts": {
             "anyOf": [
               {
@@ -6577,6 +6697,7 @@
           "documents",
           "revision_pending",
           "configuration_pending",
+          "subject_context_changed_after_latest_run",
           "finding_counts",
           "activity",
           "members",
@@ -10168,6 +10289,16 @@
       }
     },
     "responses": {
+      "Error400": {
+        "description": "请求格式错误或字段无效",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
       "Error401": {
         "description": "会话失效或凭据错误",
         "content": {

@@ -190,6 +190,10 @@ func (h *handler) getExperienceCandidate(w http.ResponseWriter, r *http.Request)
 }
 
 func (h *handler) listGovernedKnowledgeVersions(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Query().Get("kind") == "legal" {
+		h.adminLegalKnowledgeSearch(w, r)
+		return
+	}
 	user, ok := h.actorForAudience(w, r, "admin")
 	if !ok {
 		return

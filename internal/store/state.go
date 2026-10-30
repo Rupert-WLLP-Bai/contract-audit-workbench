@@ -41,6 +41,8 @@ type Store struct {
 	st                     state
 	modelsMu               sync.RWMutex
 	models                 Models
+	subjectSourcesMu       sync.RWMutex
+	subjectSources         *SubjectSourceManifest
 	advisoryProvider       advisory.Provider
 	objects                ObjectStore
 	documentPreparer       DocumentPreparer
@@ -76,38 +78,46 @@ func (s *Store) ReadOnly() bool {
 func (s *Store) HasDatabase() bool { return s != nil && s.pool != nil }
 
 type state struct {
-	Sessions               []session                 `json:"sessions"`
-	Cases                  []Case                    `json:"cases"`
-	Documents              []Document                `json:"documents"`
-	Materials              []MaterialEntity          `json:"materials"`
-	MaterialVersions       []MaterialVersion         `json:"material_versions"`
-	MaterialChains         []CaseMaterialChain       `json:"material_chains"`
-	UploadIdempotency      []UploadIdempotencyRecord `json:"upload_idempotency"`
-	ParsedDocuments        []ParsedDocument          `json:"parsed_documents"`
-	Runs                   []Run                     `json:"runs"`
-	Attempts               []Attempt                 `json:"attempts"`
-	AttemptInputs          []AttemptInput            `json:"attempt_inputs"`
-	AttemptParseSelections []AttemptParseSelection   `json:"attempt_parse_selections"`
-	ExecutionEvents        []ExecutionEvent          `json:"execution_events"`
-	Findings               []Finding                 `json:"findings"`
-	Evaluations            []ConstraintEval          `json:"evaluations"`
-	Decisions              []Decision                `json:"decisions"`
-	Events                 []Event                   `json:"events"`
-	Activity               []Activity                `json:"activity"`
-	Idempotency            []Idem                    `json:"idempotency"`
-	Snapshots              []RunSnapshot             `json:"snapshots"`
-	Audits                 []AuditRecord             `json:"audits"`
-	Jobs                   []Job                     `json:"jobs"`
-	Outbox                 []OutboxRecord            `json:"outbox"`
-	Generations            []generationRecord        `json:"generations"`
-	Remediations           []remediationRecord       `json:"remediations"`
-	Reports                []frozenReport            `json:"reports"`
-	Archives               []archiveRecord           `json:"archives"`
-	Profiles               []caseProfileRecord       `json:"profiles"`
-	Tasks                  []workbenchTaskRecord     `json:"tasks"`
-	Relations              []caseRelationRecord      `json:"relations"`
-	Knowledge              []knowledgeRecord         `json:"knowledge"`
-	WorkbenchAudit         []workbenchAuditRecord    `json:"workbench_audit"`
+	Sessions                []session                  `json:"sessions"`
+	Cases                   []Case                     `json:"cases"`
+	Documents               []Document                 `json:"documents"`
+	Materials               []MaterialEntity           `json:"materials"`
+	MaterialVersions        []MaterialVersion          `json:"material_versions"`
+	MaterialChains          []CaseMaterialChain        `json:"material_chains"`
+	UploadIdempotency       []UploadIdempotencyRecord  `json:"upload_idempotency"`
+	ParsedDocuments         []ParsedDocument           `json:"parsed_documents"`
+	Runs                    []Run                      `json:"runs"`
+	Attempts                []Attempt                  `json:"attempts"`
+	AttemptInputs           []AttemptInput             `json:"attempt_inputs"`
+	AttemptParseSelections  []AttemptParseSelection    `json:"attempt_parse_selections"`
+	ExecutionEvents         []ExecutionEvent           `json:"execution_events"`
+	Findings                []Finding                  `json:"findings"`
+	Evaluations             []ConstraintEval           `json:"evaluations"`
+	Decisions               []Decision                 `json:"decisions"`
+	Events                  []Event                    `json:"events"`
+	Activity                []Activity                 `json:"activity"`
+	Idempotency             []Idem                     `json:"idempotency"`
+	Snapshots               []RunSnapshot              `json:"snapshots"`
+	Audits                  []AuditRecord              `json:"audits"`
+	Jobs                    []Job                      `json:"jobs"`
+	Outbox                  []OutboxRecord             `json:"outbox"`
+	Generations             []generationRecord         `json:"generations"`
+	Remediations            []remediationRecord        `json:"remediations"`
+	Reports                 []frozenReport             `json:"reports"`
+	Archives                []archiveRecord            `json:"archives"`
+	Profiles                []caseProfileRecord        `json:"profiles"`
+	Tasks                   []workbenchTaskRecord      `json:"tasks"`
+	Relations               []caseRelationRecord       `json:"relations"`
+	Knowledge               []knowledgeRecord          `json:"knowledge"`
+	WorkbenchAudit          []workbenchAuditRecord     `json:"workbench_audit"`
+	Subjects                []Subject                  `json:"subjects"`
+	SubjectVersions         []SubjectVersion           `json:"subject_versions"`
+	CaseSubjectRoles        []CaseSubjectRole          `json:"case_subject_roles"`
+	CaseSubjectRoleVersions []CaseSubjectRoleVersion   `json:"case_subject_role_versions"`
+	SubjectChangeRequests   []SubjectChangeRequest     `json:"subject_change_requests"`
+	SubjectChangeDecisions  []SubjectChangeDecision    `json:"subject_change_decisions"`
+	SubjectIdempotency      []SubjectIdempotencyRecord `json:"subject_idempotency"`
+	SubjectSourceSnapshots  []SubjectSourceSnapshot    `json:"subject_source_snapshots"`
 }
 
 // AttemptParseSelection pins parser identity and a reserved artifact ID at acceptance.
@@ -259,6 +269,30 @@ func (st *state) normalize() {
 	}
 	if st.WorkbenchAudit == nil {
 		st.WorkbenchAudit = []workbenchAuditRecord{}
+	}
+	if st.Subjects == nil {
+		st.Subjects = []Subject{}
+	}
+	if st.SubjectVersions == nil {
+		st.SubjectVersions = []SubjectVersion{}
+	}
+	if st.CaseSubjectRoles == nil {
+		st.CaseSubjectRoles = []CaseSubjectRole{}
+	}
+	if st.CaseSubjectRoleVersions == nil {
+		st.CaseSubjectRoleVersions = []CaseSubjectRoleVersion{}
+	}
+	if st.SubjectChangeRequests == nil {
+		st.SubjectChangeRequests = []SubjectChangeRequest{}
+	}
+	if st.SubjectChangeDecisions == nil {
+		st.SubjectChangeDecisions = []SubjectChangeDecision{}
+	}
+	if st.SubjectIdempotency == nil {
+		st.SubjectIdempotency = []SubjectIdempotencyRecord{}
+	}
+	if st.SubjectSourceSnapshots == nil {
+		st.SubjectSourceSnapshots = []SubjectSourceSnapshot{}
 	}
 }
 
@@ -559,17 +593,19 @@ type Activity struct {
 
 // RunSnapshot is the immutable input of one review run.
 type RunSnapshot struct {
-	RunID                 string   `json:"run_id"`
-	DocumentIDs           []string `json:"document_ids"`
-	ParsedDocumentIDs     []string `json:"parsed_document_ids,omitempty"`
-	ParseSelectionHash    string   `json:"parse_selection_hash,omitempty"`
-	ParserConfigurationID string   `json:"parser_configuration_id,omitempty"`
-	RuleSetHash           string   `json:"rule_set_hash"`
-	PlaybookHash          string   `json:"playbook_hash"`
-	ModelRef              string   `json:"model_ref"`
-	ModelConfigurationID  string   `json:"model_configuration_id,omitempty"`
-	ComparatorRef         string   `json:"comparator_ref"`
-	RulePackCompilerRef   string   `json:"rule_pack_compiler_ref,omitempty"`
+	RunID                 string             `json:"run_id"`
+	DocumentIDs           []string           `json:"document_ids"`
+	PartyContext          []PartyContextItem `json:"party_context,omitempty"`
+	PartyContextHash      string             `json:"party_context_hash,omitempty"`
+	ParsedDocumentIDs     []string           `json:"parsed_document_ids,omitempty"`
+	ParseSelectionHash    string             `json:"parse_selection_hash,omitempty"`
+	ParserConfigurationID string             `json:"parser_configuration_id,omitempty"`
+	RuleSetHash           string             `json:"rule_set_hash"`
+	PlaybookHash          string             `json:"playbook_hash"`
+	ModelRef              string             `json:"model_ref"`
+	ModelConfigurationID  string             `json:"model_configuration_id,omitempty"`
+	ComparatorRef         string             `json:"comparator_ref"`
+	RulePackCompilerRef   string             `json:"rule_pack_compiler_ref,omitempty"`
 	// RulePack identity frozen at acceptance. PackID and PackVersion are empty
 	// when no governed pack applied and the synthetic baseline compiler ran.
 	RulePackID          string          `json:"rule_pack_id,omitempty"`

@@ -1,0 +1,49 @@
+{
+  "items": [
+    {
+      "binding_id": "binding-2",
+      "binding_version": 1,
+      "case_id": "case-2",
+      "role": "supplier",
+      "binding_state": "active",
+      "source_kind": "user_asserted",
+      "legacy_label": null,
+      "subject": {
+        "subject_id": "subject-2",
+        "version": 2,
+        "display_name": "示例企业甲",
+        "legal_name": null,
+        "verification_state": "pending_verification",
+        "source_kind": "user_asserted",
+        "basis_summary": "user supplied",
+        "payload_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "identity_claims": [
+          {
+            "namespace": "cn.gov.samr.uscc",
+            "identifier_type": "unified_social_credit_code",
+            "masked_value": "9135••••••••••0Y43",
+            "verification_state": "pending_verification",
+            "source_kind": "user_asserted",
+            "source_time": null,
+            "payload_hash": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+          }
+        ],
+        "aliases": [],
+        "created_by": {
+          "user_id": "user-1",
+          "issuer": "issuer.example",
+          "subject": "principal-1"
+        },
+        "created_at": "2026-10-31T09:00:00Z"
+      },
+      "created_by": {
+        "user_id": "user-1",
+        "issuer": "issuer.example",
+        "subject": "principal-1"
+      },
+      "created_at": "2026-10-31T09:00:00Z"
+    }
+  ],
+  "legacy_profile": null,
+  "can_manage": false
+}

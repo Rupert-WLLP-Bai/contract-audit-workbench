@@ -236,6 +236,7 @@ type GovernedKnowledgeContent struct {
 	MinimumEvidence       string               `json:"minimum_evidence,omitempty"`
 	Counterexamples       []string             `json:"counterexamples,omitempty"`
 	PolicyRefs            []KnowledgeRef       `json:"policy_refs,omitempty"`
+	LegalMetadata         *LegalMetadata       `json:"legal_metadata,omitempty"`
 }
 
 type CreateGovernedKnowledgeInput struct {
@@ -386,7 +387,7 @@ func validateKnowledgeContent(content GovernedKnowledgeContent) error {
 		return fault.Invalid("制度内容或来源无效")
 	}
 	switch content.Kind {
-	case "policy", "guidance", "exception", "experience":
+	case "policy", "guidance", "exception", "experience", "legal":
 	default:
 		return fault.Invalid("制度类型无效")
 	}
@@ -394,6 +395,12 @@ func validateKnowledgeContent(content GovernedKnowledgeContent) error {
 	case "reference", "synthetic_policy", "human_feedback":
 	default:
 		return fault.Invalid("制度来源类型无效")
+	}
+	if content.Kind == "legal" {
+		return validateLegalKnowledgeContent(content)
+	}
+	if content.LegalMetadata != nil {
+		return fault.Invalid("只有法律知识条目可以携带法律来源元数据")
 	}
 	s := content.Scope
 	if !validResourceID(s.BusinessLine) || !validResourceID(s.Scenario) || !validResourceID(s.ContractType) ||
@@ -488,6 +495,27 @@ func validateKnowledgeContent(content GovernedKnowledgeContent) error {
 		}
 	}
 	return nil
+}
+
+func validateLegalKnowledgeContent(content GovernedKnowledgeContent) error {
+	metadata := content.LegalMetadata
+	if content.SourceType != "reference" || content.SourceReference != metadataURL(metadata) ||
+		!reflect.DeepEqual(content.Scope, KnowledgeScope{}) || content.ValidFrom != "" || content.ValidUntil != "" ||
+		content.SourceCaseID != "" || content.SourceOrgID != "" || content.SourceFeedbackID != "" || content.CandidateID != "" ||
+		content.CandidateVersionID != "" || content.CandidateSHA256 != "" || content.CandidateReviewDiff != "" ||
+		len(content.ReviewedApplicability) != 0 || len(content.ReviewedExclusions) != 0 || len(content.Applicability) != 0 ||
+		len(content.Exclusions) != 0 || len(content.PolicyRefs) != 0 || content.ExceptionBasis != "" || content.CheckAction != "" ||
+		content.MinimumEvidence != "" || len(content.Counterexamples) != 0 || !reflect.DeepEqual(content.Binding, PolicyRuleBinding{}) {
+		return fault.Invalid("法律来源不得伪装成案件制度、规则绑定或政策依赖")
+	}
+	return validateLegalMetadata(metadata, content.Body)
+}
+
+func metadataURL(metadata *LegalMetadata) string {
+	if metadata == nil {
+		return ""
+	}
+	return metadata.OfficialURL
 }
 
 func loadKnowledgeCase(ctx context.Context, tx pgx.Tx, user accounts.User, caseID string) (Case, error) {
@@ -755,24 +783,16 @@ func (s *Store) CreateGovernedKnowledge(user accounts.User, input CreateGoverned
 			if err := validateKnowledgeContent(content); err != nil {
 				return GovernedKnowledgeVersion{}, err
 			}
+			if content.Kind == "legal" {
+				if err := validateLegalCaptureReference(ctx, tx, accounts.Tenant(admin), content); err != nil {
+					return GovernedKnowledgeVersion{}, err
+				}
+			}
 			if err := authorizeKnowledgeSource(ctx, tx, admin, content); err != nil {
 				return GovernedKnowledgeVersion{}, err
 			}
-			var exists bool
-			if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM business_knowledge WHERE tenant_id=$1 AND id=$2 AND version=$3) OR EXISTS(SELECT 1 FROM governed_knowledge_versions WHERE tenant_id=$1 AND knowledge_id=$2 AND display_version=$3)`,
-				accounts.Tenant(admin), content.KnowledgeID, content.Version).Scan(&exists); err != nil {
+			if err := validateKnowledgeVersionFamily(ctx, tx, accounts.Tenant(admin), content); err != nil {
 				return GovernedKnowledgeVersion{}, err
-			}
-			if exists {
-				return GovernedKnowledgeVersion{}, fault.Conflict("制度版本已经存在；旧制度不会自动升级为已治理内容")
-			}
-			var differentKind bool
-			if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM governed_knowledge_versions WHERE tenant_id=$1 AND knowledge_id=$2 AND kind<>$3)`,
-				accounts.Tenant(admin), content.KnowledgeID, content.Kind).Scan(&differentKind); err != nil {
-				return GovernedKnowledgeVersion{}, err
-			}
-			if differentKind {
-				return GovernedKnowledgeVersion{}, fault.Conflict("制度族的类型不可改变")
 			}
 			raw, err := json.Marshal(content)
 			if err != nil {
@@ -788,22 +808,28 @@ func (s *Store) CreateGovernedKnowledge(user accounts.User, input CreateGoverned
 			}
 			id := knowledgeVersionID(accounts.Tenant(admin), content.KnowledgeID, content.Version)
 			ref := KnowledgeRef{KnowledgeID: content.KnowledgeID, VersionID: id, ContentSHA256: sha256Bytes(raw)}
+			var legalCaptureID any
+			if content.Kind == "legal" {
+				legalCaptureID = content.LegalMetadata.SourceSnapshotID
+			}
 			var created time.Time
 			err = tx.QueryRow(ctx, `INSERT INTO governed_knowledge_versions
-				(tenant_id,knowledge_id,version_id,display_version,scope_key,kind,scope_org_id,scope_case_id,source_org_id,source_case_id,candidate_id,candidate_version_id,candidate_content_sha256,content_sha256,content,created_by,created_at)
-				VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,clock_timestamp()) RETURNING created_at`,
+				(tenant_id,knowledge_id,version_id,display_version,scope_key,kind,scope_org_id,scope_case_id,source_org_id,source_case_id,candidate_id,candidate_version_id,candidate_content_sha256,content_sha256,content,created_by,created_at,legal_capture_snapshot_id)
+				VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,clock_timestamp(),$17) RETURNING created_at`,
 				accounts.Tenant(admin), content.KnowledgeID, id, content.Version, scopeKey, content.Kind,
 				nullableKnowledgeID(content.Scope.OrgID), nullableKnowledgeID(content.Scope.CaseID), nullableKnowledgeID(content.SourceOrgID),
 				nullableKnowledgeID(content.SourceCaseID), nullableKnowledgeID(content.CandidateID), nullableKnowledgeID(content.CandidateVersionID),
-				nullableKnowledgeID(content.CandidateSHA256), ref.ContentSHA256, raw, admin.ID).Scan(&created)
+				nullableKnowledgeID(content.CandidateSHA256), ref.ContentSHA256, raw, admin.ID, legalCaptureID).Scan(&created)
 			if err != nil {
 				return GovernedKnowledgeVersion{}, err
 			}
 			if _, err = tx.Exec(ctx, `INSERT INTO governed_knowledge_state (tenant_id,knowledge_id,version_id,status,revision) VALUES ($1,$2,$3,'draft',1)`, accounts.Tenant(admin), content.KnowledgeID, id); err != nil {
 				return GovernedKnowledgeVersion{}, err
 			}
-			if _, err = tx.Exec(ctx, `INSERT INTO governed_policy_rule_bindings (tenant_id,knowledge_id,version_id,pack_id,pack_version,binding) VALUES ($1,$2,$3,$4,$5,$6)`, accounts.Tenant(admin), content.KnowledgeID, id, content.Binding.PackID, content.Binding.PackVersion, binding); err != nil {
-				return GovernedKnowledgeVersion{}, err
+			if content.Kind != "legal" {
+				if _, err = tx.Exec(ctx, `INSERT INTO governed_policy_rule_bindings (tenant_id,knowledge_id,version_id,pack_id,pack_version,binding) VALUES ($1,$2,$3,$4,$5,$6)`, accounts.Tenant(admin), content.KnowledgeID, id, content.Binding.PackID, content.Binding.PackVersion, binding); err != nil {
+					return GovernedKnowledgeVersion{}, err
+				}
 			}
 			version := GovernedKnowledgeVersion{Ref: ref, Content: content, Status: "draft", Revision: 1, CreatedBy: admin.ID, CreatedAt: created.UTC().Format(time.RFC3339Nano)}
 			var pointerVersion string
@@ -830,16 +856,17 @@ func loadGovernedKnowledge(ctx context.Context, tx pgx.Tx, tenant, knowledgeID, 
 	var scopeOrg, scopeCase, sourceOrg, sourceCase *string
 	var candidateID, candidateVersionID, candidateDigest *string
 	var bindingPackID, bindingPackVersion string
+	var legalCaptureID string
 	var active bool
 	var created time.Time
-	err := tx.QueryRow(ctx, `SELECT v.content,v.content_sha256,v.display_version,v.scope_key,v.kind,v.scope_org_id,v.scope_case_id,v.source_org_id,v.source_case_id,v.candidate_id,v.candidate_version_id,v.candidate_content_sha256,v.created_by,v.created_at,
+	err := tx.QueryRow(ctx, `SELECT v.content,v.content_sha256,v.display_version,v.scope_key,v.kind,v.scope_org_id,v.scope_case_id,v.source_org_id,v.source_case_id,v.candidate_id,v.candidate_version_id,v.candidate_content_sha256,v.created_by,v.created_at,COALESCE(v.legal_capture_snapshot_id,''),
 		s.status,s.revision,s.approved_digest,s.approval_actor_id,s.approval_reason,s.cross_case_reviewed,
-		COALESCE(p.version_id,''),COALESCE(p.active,false),COALESCE(p.pointer_revision,0),b.binding,b.pack_id,b.pack_version
+		COALESCE(p.version_id,''),COALESCE(p.active,false),COALESCE(p.pointer_revision,0),COALESCE(b.binding,''::bytea),COALESCE(b.pack_id,''),COALESCE(b.pack_version,'')
 		FROM governed_knowledge_versions v JOIN governed_knowledge_state s USING (tenant_id,knowledge_id,version_id)
-		JOIN governed_policy_rule_bindings b USING (tenant_id,knowledge_id,version_id)
+		LEFT JOIN governed_policy_rule_bindings b USING (tenant_id,knowledge_id,version_id)
 		LEFT JOIN governed_knowledge_pointers p ON p.tenant_id=v.tenant_id AND p.knowledge_id=v.knowledge_id AND p.scope_key=v.scope_key
 		WHERE v.tenant_id=$1 AND v.knowledge_id=$2 AND v.version_id=$3`, tenant, knowledgeID, versionID).
-		Scan(&raw, &out.Ref.ContentSHA256, &display, &scopeKey, &storedKind, &scopeOrg, &scopeCase, &sourceOrg, &sourceCase, &candidateID, &candidateVersionID, &candidateDigest, &out.CreatedBy, &created,
+		Scan(&raw, &out.Ref.ContentSHA256, &display, &scopeKey, &storedKind, &scopeOrg, &scopeCase, &sourceOrg, &sourceCase, &candidateID, &candidateVersionID, &candidateDigest, &out.CreatedBy, &created, &legalCaptureID,
 			&out.Status, &out.Revision, &out.ApprovedDigest, &out.ApprovalActorID, &out.ApprovalReason, &out.CrossCaseReviewed,
 			&pointerID, &active, &out.PointerRevision, &binding, &bindingPackID, &bindingPackVersion)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -857,9 +884,18 @@ func loadGovernedKnowledge(ctx context.Context, tx pgx.Tx, tenant, knowledgeID, 
 	if err != nil || !bytes.Equal(raw, canonical) {
 		return GovernedKnowledgeVersion{}, "", "", false, fault.Conflict("制度规范编码损坏")
 	}
-	bindingBytes, err := json.Marshal(out.Content.Binding)
-	if err != nil || !bytes.Equal(binding, bindingBytes) || bindingPackID != out.Content.Binding.PackID || bindingPackVersion != out.Content.Binding.PackVersion {
-		return GovernedKnowledgeVersion{}, "", "", false, fault.Conflict("制度规则绑定损坏")
+	if out.Content.Kind == "legal" {
+		if len(binding) != 0 || bindingPackID != "" || bindingPackVersion != "" {
+			return GovernedKnowledgeVersion{}, "", "", false, fault.Conflict("法律来源不得存在伪造的规则绑定")
+		}
+		if err := validateLegalCaptureReference(ctx, tx, tenant, out.Content); err != nil {
+			return GovernedKnowledgeVersion{}, "", "", false, err
+		}
+	} else {
+		bindingBytes, err := json.Marshal(out.Content.Binding)
+		if err != nil || !bytes.Equal(binding, bindingBytes) || bindingPackID != out.Content.Binding.PackID || bindingPackVersion != out.Content.Binding.PackVersion {
+			return GovernedKnowledgeVersion{}, "", "", false, fault.Conflict("制度规则绑定损坏")
+		}
 	}
 	key, err := knowledgeScopeKey(out.Content.Scope)
 	if err != nil || key != scopeKey || out.Content.KnowledgeID != knowledgeID || out.Content.Version != display ||
@@ -868,6 +904,10 @@ func loadGovernedKnowledge(ctx context.Context, tx pgx.Tx, tenant, knowledgeID, 
 		out.Content.SourceOrgID != knowledgeNullableString(sourceOrg) || out.Content.SourceCaseID != knowledgeNullableString(sourceCase) ||
 		out.Content.CandidateID != knowledgeNullableString(candidateID) || out.Content.CandidateVersionID != knowledgeNullableString(candidateVersionID) || out.Content.CandidateSHA256 != knowledgeNullableString(candidateDigest) {
 		return GovernedKnowledgeVersion{}, "", "", false, fault.Conflict("制度编号或适用范围记录已损坏")
+	}
+	if (out.Content.Kind == "legal" && legalCaptureID != out.Content.LegalMetadata.SourceSnapshotID) ||
+		(out.Content.Kind != "legal" && legalCaptureID != "") {
+		return GovernedKnowledgeVersion{}, "", "", false, fault.Conflict("法律来源快照外键与制度内容不一致")
 	}
 	if err := validateKnowledgeContent(out.Content); err != nil {
 		return GovernedKnowledgeVersion{}, "", "", false, fault.Conflict("已保存的制度内容无效")
@@ -886,6 +926,9 @@ func knowledgeNullableString(value *string) string {
 // validateKnowledgeBinding checks the exact published, active RulePack and the
 // rule/source mapping, under the same transaction and schema lock as a publish.
 func validateKnowledgeBinding(ctx context.Context, tx pgx.Tx, tenant string, content GovernedKnowledgeContent) error {
+	if content.Kind == "legal" {
+		return validateLegalCaptureReference(ctx, tx, tenant, content)
+	}
 	b := content.Binding
 	var raw []byte
 	var hash, digest, status, pointerVersion string
@@ -1840,6 +1883,12 @@ func resolveGovernedKnowledgeTx(ctx context.Context, tx pgx.Tx, user accounts.Us
 		version, _, _, _, err := loadGovernedKnowledge(ctx, tx, item.TenantID, id.id, id.version)
 		if err != nil {
 			return ReviewKnowledgeSnapshot{}, fault.Conflict("无法解析生效制度的编号或内容")
+		}
+		// Legal text is searchable reference material. It is never automatically
+		// inserted into policy dependency snapshots or treated as an executable
+		// policy candidate.
+		if version.Content.Kind == "legal" {
+			continue
 		}
 		applies, err := knowledgeApplies(version.Content, item, at)
 		if err != nil {

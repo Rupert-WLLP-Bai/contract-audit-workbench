@@ -85,6 +85,7 @@ func detailJSON(detail store.CaseDetail) map[string]any {
 	body["material_selection"] = detail.MaterialSelection
 	body["revision_pending"] = detail.RevisionPending
 	body["configuration_pending"] = detail.ConfigurationPending
+	body["subject_context_changed_after_latest_run"] = detail.SubjectContextChangedAfterLatestRun
 	if detail.Counts == nil {
 		body["finding_counts"] = nil
 	} else {

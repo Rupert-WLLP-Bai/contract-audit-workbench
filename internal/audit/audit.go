@@ -36,6 +36,7 @@ type Event struct {
 type Snapshot struct {
 	DocumentIDs            []string
 	ParsedDocumentIDs      []string
+	PartyContextHash       string
 	ParseSelectionHash     string
 	ParserConfigurationID  string
 	RuleSetHash            string
@@ -131,7 +132,7 @@ func digest(event Event) string {
 
 func same(a, b Snapshot) bool {
 	if !sameRuleHashes(a, b) || !sameModelAndComparator(a, b) ||
-		!sameRulePack(a, b) || !sameParseAndPlannerConfiguration(a, b) {
+		!sameRulePack(a, b) || !sameParseAndPlannerConfiguration(a, b) || a.PartyContextHash != b.PartyContextHash {
 		return false
 	}
 	return equalStrings(a.DocumentIDs, b.DocumentIDs) && equalStrings(a.ParsedDocumentIDs, b.ParsedDocumentIDs)

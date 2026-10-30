@@ -3,6 +3,8 @@ package store
 import (
 	"context"
 	"errors"
+	"reflect"
+	"strings"
 	"sync/atomic"
 	"testing"
 
@@ -47,6 +49,65 @@ func TestSignatureIncludesEveryFrozenInput(t *testing.T) {
 		if sameRunSignature(base, changed) {
 			t.Fatalf("signature omitted %s", name)
 		}
+	}
+}
+
+func TestSubjectContextChangeCreatesNewRunAndKeepsPriorReviewFrozen(t *testing.T) {
+	s, err := OpenTest(t.TempDir(), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = s.Close() })
+	admin := revisionAdmin(t)
+	model := &countingModel{name: "subject-context-v1"}
+	s.UseModels(model)
+	caseID, err := s.CreateCase(admin, "主体上下文变更需要新审查", "procurement_ict")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for role, body := range map[string]string{"procurement": "质保36个月。", "draft_contract": "质保24个月。"} {
+		if _, err := s.AddDocument(context.Background(), admin, caseID, role, role+".txt", "text/plain", []byte(body)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	run1, err := s.StartReview(context.Background(), admin, caseID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	oldReview := waitTerminalReview(t, s, admin, caseID, run1)
+	created, replayed, err := s.CreateCaseSubject(context.Background(), admin, caseID, CaseSubjectCreateInput{
+		Role: SubjectRoleSupplier, Subject: SubjectCreateInput{DisplayName: "新加入的供应商"},
+	}, "subject-context-new-party")
+	if err != nil || replayed || created.SubjectID == "" {
+		t.Fatalf("add subject context: result=%+v replayed=%v err=%v", created, replayed, err)
+	}
+	afterSubjectChange, err := s.GetCase(admin, caseID)
+	if err != nil || !afterSubjectChange.SubjectContextChangedAfterLatestRun {
+		t.Fatalf("case did not expose stale subject context: detail=%+v err=%v", afterSubjectChange, err)
+	}
+	var conflict *fault.Error
+	if err := s.Retry(context.Background(), admin, caseID, run1); !errors.As(err, &conflict) || conflict.Status != 409 || !strings.Contains(err.Error(), "主体信息已变更") || model.calls.Load() != 1 {
+		t.Fatalf("retry did not explain the stale subject context: err=%v calls=%d", err, model.calls.Load())
+	}
+	run2, err := s.StartReview(context.Background(), admin, caseID)
+	if err != nil || run2 == run1 {
+		t.Fatalf("changed party context did not create a new review: run1=%s run2=%s err=%v", run1, run2, err)
+	}
+	newReview := waitTerminalReview(t, s, admin, caseID, run2)
+	if newReview.Snapshot.PartyContextHash == oldReview.Snapshot.PartyContextHash || len(newReview.Snapshot.PartyContext) != 1 || newReview.Snapshot.PartyContext[0].SubjectID != created.SubjectID {
+		t.Fatalf("new review did not freeze the current subject context: old=%+v new=%+v", oldReview.Snapshot, newReview.Snapshot)
+	}
+	afterNewReview, err := s.GetCase(admin, caseID)
+	if err != nil || afterNewReview.SubjectContextChangedAfterLatestRun {
+		t.Fatalf("current subject context remains pending after matching review: detail=%+v err=%v", afterNewReview, err)
+	}
+	if same, err := s.StartReview(context.Background(), admin, caseID); err != nil || same != run2 || model.calls.Load() != 2 {
+		t.Fatalf("unchanged subject context failed to reuse latest run: run=%s err=%v calls=%d", same, err, model.calls.Load())
+	}
+	oldAfter, err := s.Workspace(admin, caseID, run1)
+	oldAfter.Case = oldReview.Case
+	if err != nil || !reflect.DeepEqual(oldReview, oldAfter) {
+		t.Fatalf("subject update rewrote the frozen prior review/report: err=%v\nbefore=%+v\nafter=%+v", err, oldReview, oldAfter)
 	}
 }
 

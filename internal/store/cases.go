@@ -341,6 +341,7 @@ type CaseDetail struct {
 	Activities           []Activity                  `json:"activities"`
 	RevisionPending      bool                        `json:"revision_pending"`
 	ConfigurationPending bool                        `json:"configuration_pending"`
+	SubjectContextChangedAfterLatestRun bool         `json:"subject_context_changed_after_latest_run"`
 	BusinessLine         string                      `json:"business_line"`
 	Scenario             string                      `json:"scenario"`
 	BusinessStatus       string                      `json:"business_status"`
@@ -416,6 +417,7 @@ func (s *Store) GetCase(user accounts.User, caseID string) (CaseDetail, error) {
 	if run, ok := st.latestRun(item.ID); ok {
 		frozen := st.snapshotOf(run.ID)
 		detail.ConfigurationPending = !sameRunConfiguration(frozen, withFrozenGovernance(s.currentSignature(nil), frozen))
+		detail.SubjectContextChangedAfterLatestRun = subjectContextChangedSinceRun(st, item.ID, frozen)
 	}
 	for _, record := range st.Generations {
 		if record.TenantID == item.TenantID && record.OrgID == item.OwnerOrgID && record.CaseID == item.ID {

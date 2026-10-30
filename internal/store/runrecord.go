@@ -3,6 +3,7 @@ package store
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 
 	"contractaudit/internal/agentflow"
 	"contractaudit/internal/audit"
@@ -189,7 +190,17 @@ func currentSignatureFor(docIDs []string, frozen []FrozenDocument, models Models
 
 func sameRunSignature(a, b RunSnapshot) bool {
 	return sameDocumentSet(a.DocumentIDs, b.DocumentIDs) && sameDocumentSet(a.ParsedDocumentIDs, b.ParsedDocumentIDs) &&
-		a.ParseSelectionHash == b.ParseSelectionHash && sameRunConfiguration(a, b)
+		a.ParseSelectionHash == b.ParseSelectionHash && a.PartyContextHash == b.PartyContextHash && sameRunConfiguration(a, b)
+}
+
+func withPartyContext(st state, caseID string, signature RunSnapshot) (RunSnapshot, error) {
+	items, hash, err := partyContextForCase(st, caseID)
+	if err != nil {
+		return RunSnapshot{}, err
+	}
+	signature.PartyContext = items
+	signature.PartyContextHash = hash
+	return signature, nil
 }
 
 func sameRunCompilerIdentity(a, b RunSnapshot) bool {
@@ -225,11 +236,58 @@ func samePlannerConfiguration(a, b RunSnapshot) bool {
 	return bytes.Equal(a.PlannerConfiguration, b.PlannerConfiguration)
 }
 
+func validatePartyContextSnapshot(snapshot RunSnapshot) error {
+	if len(snapshot.PartyContext) == 0 {
+		if snapshot.PartyContextHash != "" {
+			return errors.New("party context hash exists without a party context payload")
+		}
+		return nil
+	}
+	if snapshot.PartyContextHash == "" {
+		return errors.New("party context payload exists without its hash")
+	}
+	encoded, err := json.Marshal(snapshot.PartyContext)
+	if err != nil {
+		return err
+	}
+	if hashJSON(encoded) != snapshot.PartyContextHash {
+		return errors.New("party context hash does not match its payload")
+	}
+	return nil
+}
+
+func decodePartyContext(payload []byte, hash string) ([]PartyContextItem, error) {
+	if len(payload) == 0 && hash == "" {
+		return nil, nil
+	}
+	if len(payload) == 0 || hash == "" {
+		return nil, errors.New("party context payload and hash must be present together")
+	}
+	var items []PartyContextItem
+	if err := json.Unmarshal(payload, &items); err != nil {
+		return nil, err
+	}
+	if len(items) == 0 {
+		return nil, errors.New("party context payload cannot be an empty array")
+	}
+	encoded, err := json.Marshal(items)
+	if err != nil {
+		return nil, err
+	}
+	if !bytes.Equal(payload, encoded) || hashJSON(encoded) != hash {
+		return nil, errors.New("party context payload is noncanonical or its hash does not match")
+	}
+	return items, nil
+}
+
 func sealSnapshot(st *state, runID string, input RunSnapshot) error {
 	for _, item := range st.Snapshots {
 		if item.RunID == runID {
 			return audit.ErrImmutable
 		}
+	}
+	if err := validatePartyContextSnapshot(input); err != nil {
+		return err
 	}
 	knowledge, err := copyGovernedKnowledge(input)
 	if err != nil {
@@ -241,6 +299,7 @@ func sealSnapshot(st *state, runID string, input RunSnapshot) error {
 	}
 	st.Snapshots = append(st.Snapshots, RunSnapshot{
 		RunID: runID, DocumentIDs: frozen.DocumentIDs, ParsedDocumentIDs: frozen.ParsedDocumentIDs,
+		PartyContext: append([]PartyContextItem(nil), input.PartyContext...), PartyContextHash: input.PartyContextHash,
 		ParseSelectionHash: frozen.ParseSelectionHash, ParserConfigurationID: frozen.ParserConfigurationID,
 		RuleSetHash: frozen.RuleSetHash, PlaybookHash: frozen.PlaybookHash, ModelRef: frozen.ModelRef,
 		ComparatorRef: frozen.ComparatorRef, ModelConfigurationID: frozen.ModelConfigurationID,

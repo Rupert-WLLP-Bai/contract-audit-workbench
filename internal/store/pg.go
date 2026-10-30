@@ -116,6 +116,10 @@ func openStore(dir string, sel config.Selection, schema string, drop bool) (*Sto
 		dir: dir, sel: sel, schema: schema, dropSchema: drop, pool: pool,
 		executionSlots: make(chan struct{}, maxConcurrentReviews), running: make(map[string]func()), claims: make(map[string]JobClaim),
 	}
+	if err := configureSubjectSourceFromEnvironment(s); err != nil {
+		pool.Close()
+		return nil, err
+	}
 	if err := s.load(ctx); err != nil {
 		pool.Close()
 		return nil, err
@@ -223,6 +227,12 @@ func migrate(ctx context.Context, pool *pgxpool.Pool) error {
 	if err := migrateMaterials(ctx, pool); err != nil {
 		return err
 	}
+	if err := migrateSubjects(ctx, pool); err != nil {
+		return err
+	}
+	if err := migrateLegalApplicability(ctx, pool); err != nil {
+		return err
+	}
 	if err := migrateModelBudgetFunctions(ctx, pool); err != nil {
 		return err
 	}
@@ -301,6 +311,10 @@ func openApplicationStore(dir string, sel config.Selection, schema string) (*Sto
 	s := &Store{
 		dir: dir, sel: sel, schema: schema, pool: pool,
 		executionSlots: make(chan struct{}, maxConcurrentReviews), running: make(map[string]func()), claims: make(map[string]JobClaim),
+	}
+	if err := configureSubjectSourceFromEnvironment(s); err != nil {
+		pool.Close()
+		return nil, err
 	}
 	if err := s.load(ctx); err != nil {
 		pool.Close()
@@ -406,6 +420,18 @@ func loadState(ctx context.Context, q queryer, strict bool) (state, error) {
 	if st.UploadIdempotency, err = loadUploadIdempotency(ctx, q); err != nil {
 		return state{}, err
 	}
+	subjectState, err := loadSubjectState(ctx, q)
+	if err != nil {
+		return state{}, err
+	}
+	st.Subjects = subjectState.Subjects
+	st.SubjectVersions = subjectState.SubjectVersions
+	st.CaseSubjectRoles = subjectState.CaseSubjectRoles
+	st.CaseSubjectRoleVersions = subjectState.CaseSubjectRoleVersions
+	st.SubjectChangeRequests = subjectState.SubjectChangeRequests
+	st.SubjectChangeDecisions = subjectState.SubjectChangeDecisions
+	st.SubjectIdempotency = subjectState.SubjectIdempotency
+	st.SubjectSourceSnapshots = subjectState.SubjectSourceSnapshots
 	if st.ParsedDocuments, err = loadParsedDocuments(ctx, q, st.Documents, strict); err != nil {
 		return state{}, err
 	}
@@ -484,6 +510,18 @@ func (s *Store) updateState(ctx context.Context, scope dbScope, attemptID string
 // justifies are linearised in one transaction instead of being compared against
 // itself afterwards.
 func (s *Store) updateStateWith(ctx context.Context, scope dbScope, attemptID string, hook func(pgx.Tx) error, fn func(*state) error) error {
+	caseIDs := []string{}
+	if scope.CaseID != "" {
+		caseIDs = append(caseIDs, scope.CaseID)
+	}
+	return s.updateStateWithLocks(ctx, scope, attemptID, nil, caseIDs, hook, fn)
+}
+
+// updateStateWithLocks extends the ordinary schema-scoped writer with ordered
+// subject and case locks. Subject mutations that affect bindings in several
+// cases take the schema lock first, then sorted subject locks, then sorted case
+// locks before loading or changing state.
+func (s *Store) updateStateWithLocks(ctx context.Context, scope dbScope, attemptID string, subjectIDs, caseIDs []string, hook func(pgx.Tx) error, fn func(*state) error) error {
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return err
@@ -495,10 +533,16 @@ func (s *Store) updateStateWith(ctx context.Context, scope dbScope, attemptID st
 	if err := setLocalScope(ctx, tx, scope); err != nil {
 		return err
 	}
-	// Lock order: scheme-wide key, then the case key, then the attempt row, then
-	// the claim row. Case-scoped writers and the narrow case writers therefore
-	// serialise on one key without needing UPDATE privilege on a foreign case row.
-	if err := scopedCaseLock(ctx, tx, scope.CaseID); err != nil {
+	// Lock order: schema-wide key, sorted subjects, sorted cases, attempt row,
+	// then claim row. This preserves the established schema/case ordering while
+	// avoiding subject-versus-case inversion for multi-case correction writes.
+	if err := scopedSubjectLocks(ctx, tx, subjectIDs); err != nil {
+		return err
+	}
+	if len(caseIDs) == 0 && scope.CaseID != "" {
+		caseIDs = []string{scope.CaseID}
+	}
+	if err := scopedCaseLocks(ctx, tx, caseIDs); err != nil {
 		return err
 	}
 	var expectedAttemptVersion *int64
@@ -670,6 +714,99 @@ func replaceRows(ctx context.Context, tx pgx.Tx, previous, st state, owner strin
 	}
 	for _, item := range st.UploadIdempotency {
 		if _, err := tx.Exec(ctx, `INSERT INTO document_upload_idempotency (tenant_id,org_id,case_id,actor_id,idempotency_key,request_hash,document_id,material_id,created_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT (tenant_id,org_id,case_id,actor_id,idempotency_key) DO NOTHING`, item.TenantID, item.OrgID, item.CaseID, item.ActorID, item.Key, item.RequestHash, item.DocumentID, item.MaterialID, item.CreatedAt); err != nil {
+			return err
+		}
+	}
+	for _, item := range st.Subjects {
+		if _, err := tx.Exec(ctx, `INSERT INTO subjects (tenant_id,subject_id,current_version,status,created_by_user_id,created_by_issuer,created_by_subject,created_at)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+			ON CONFLICT (tenant_id,subject_id) DO UPDATE SET current_version=EXCLUDED.current_version,status=EXCLUDED.status`,
+			item.TenantID, item.ID, item.CurrentVersion, item.Status, item.CreatedByUser, item.CreatedByIssuer, item.CreatedBySubject, item.CreatedAt); err != nil {
+			return err
+		}
+	}
+	for _, item := range st.SubjectVersions {
+		payload, err := json.Marshal(item)
+		if err != nil {
+			return err
+		}
+		if _, err := tx.Exec(ctx, `INSERT INTO subject_versions (tenant_id,subject_id,version,payload,payload_hash,created_at)
+			VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT (tenant_id,subject_id,version) DO NOTHING`, item.TenantID, item.SubjectID, item.Version, payload, item.PayloadHash, item.CreatedAt); err != nil {
+			return err
+		}
+	}
+	for _, item := range st.Subjects {
+		current, ok := subjectVersionAt(st.SubjectVersions, item.ID, item.CurrentVersion)
+		if !ok {
+			return fmt.Errorf("subject %s points to a missing immutable version", item.ID)
+		}
+		if _, err := tx.Exec(ctx, `DELETE FROM subject_current_identifier_claims WHERE tenant_id=$1 AND subject_id=$2`, item.TenantID, item.ID); err != nil {
+			return err
+		}
+		for _, claim := range current.IdentityClaims {
+			if _, err := tx.Exec(ctx, `INSERT INTO subject_current_identifier_claims
+				(tenant_id,subject_id,namespace,identifier_type,value,verification_state,verification_scope,source_catalog_id,source_snapshot_id,source_digest,source_time,source_valid_from,source_valid_until)
+				VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`, item.TenantID, item.ID, claim.Namespace, claim.IdentifierType, claim.Value,
+				claim.VerificationState, claim.VerificationScope, claim.SourceCatalogID, claim.SourceSnapshotID, claim.SourceDigest, claim.SourceTime, claim.SourceValidFrom, claim.SourceValidUntil); err != nil {
+				return err
+			}
+		}
+	}
+	for _, item := range st.CaseSubjectRoles {
+		if _, err := tx.Exec(ctx, `INSERT INTO case_subject_roles (tenant_id,org_id,case_id,binding_id,current_version,created_by_user_id,created_at)
+			VALUES ($1,$2,$3,$4,$5,$6,$7)
+			ON CONFLICT (tenant_id,org_id,case_id,binding_id) DO UPDATE SET current_version=EXCLUDED.current_version`,
+			item.TenantID, item.OrgID, item.CaseID, item.BindingID, item.CurrentVersion, item.CreatedByUser, item.CreatedAt); err != nil {
+			return err
+		}
+	}
+	for _, item := range st.CaseSubjectRoleVersions {
+		payload, err := json.Marshal(item)
+		if err != nil {
+			return err
+		}
+		if _, err := tx.Exec(ctx, `INSERT INTO case_subject_role_versions
+			(tenant_id,org_id,case_id,binding_id,version,subject_id,subject_version,role,binding_state,source_kind,payload,created_at)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) ON CONFLICT (tenant_id,org_id,case_id,binding_id,version) DO NOTHING`,
+			item.TenantID, item.OrgID, item.CaseID, item.BindingID, item.Version, item.SubjectID, item.SubjectVersion, item.Role, item.BindingState, item.SourceKind, payload, item.CreatedAt); err != nil {
+			return err
+		}
+	}
+	for _, item := range st.SubjectChangeRequests {
+		payload, err := json.Marshal(item)
+		if err != nil {
+			return err
+		}
+		if _, err := tx.Exec(ctx, `INSERT INTO subject_change_requests
+			(tenant_id,org_id,source_case_id,request_id,target_kind,target_subject_id,target_binding_id,expected_subject_version,expected_binding_version,payload,payload_hash,affected_bindings_hash,created_at)
+			VALUES ($1,$2,$3,$4,$5,$6,NULLIF($7,''),$8,$9,$10,$11,$12,$13) ON CONFLICT (tenant_id,request_id) DO NOTHING`,
+			item.TenantID, item.OrgID, item.SourceCaseID, item.RequestID, item.TargetKind, item.TargetSubjectID, item.TargetBindingID, item.ExpectedSubjectVersion, item.ExpectedBindingVersion, payload, item.CanonicalPayloadHash, item.ExpectedBindingsHash, item.CreatedAt); err != nil {
+			return err
+		}
+	}
+	for _, item := range st.SubjectChangeDecisions {
+		payload, err := json.Marshal(item)
+		if err != nil {
+			return err
+		}
+		if _, err := tx.Exec(ctx, `INSERT INTO subject_change_decisions (tenant_id,request_id,decision_id,decision,actor_user_id,actor_issuer,actor_subject,payload,created_at)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT (tenant_id,decision_id) DO NOTHING`,
+			item.TenantID, item.RequestID, item.DecisionID, item.Decision, item.Actor.UserID, item.Actor.Issuer, item.Actor.Subject, payload, item.CreatedAt); err != nil {
+			return err
+		}
+	}
+	for _, item := range st.SubjectIdempotency {
+		if _, err := tx.Exec(ctx, `INSERT INTO subject_write_idempotency (tenant_id,actor_user_id,operation,target_id,idempotency_key,payload_hash,http_status,response,created_at)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT (tenant_id,actor_user_id,operation,target_id,idempotency_key) DO NOTHING`,
+			item.TenantID, item.ActorUserID, item.Operation, item.TargetID, item.Key, item.PayloadHash, item.HTTPStatus, item.Response, item.CreatedAt); err != nil {
+			return err
+		}
+	}
+	for _, item := range st.SubjectSourceSnapshots {
+		if _, err := tx.Exec(ctx, `INSERT INTO subject_source_snapshots
+			(tenant_id,org_id,case_id,snapshot_id,source_catalog_id,source_version,source_payload,source_digest,source_scope,captured_at,created_by_user_id,created_by_issuer,created_by_subject)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) ON CONFLICT (tenant_id,org_id,case_id,snapshot_id) DO NOTHING`,
+			item.TenantID, item.OrgID, item.CaseID, item.SnapshotID, item.SourceCatalogID, item.SourceVersion, item.SourcePayload, item.SourceDigest, item.SourceScope, item.CapturedAt, item.CreatedByUser, item.CreatedByIssuer, item.CreatedBySubject); err != nil {
 			return err
 		}
 	}
@@ -849,6 +986,9 @@ func replaceRows(ctx context.Context, tx pgx.Tx, previous, st state, owner strin
 
 func syncSnapshots(ctx context.Context, tx pgx.Tx, items []RunSnapshot) error {
 	for _, item := range items {
+		if err := validatePartyContextSnapshot(item); err != nil {
+			return err
+		}
 		raw, err := jsonText(item.DocumentIDs)
 		if err != nil {
 			return err
@@ -867,12 +1007,19 @@ func syncSnapshots(ctx context.Context, tx pgx.Tx, items []RunSnapshot) error {
 				return err
 			}
 		}
-		if _, err := tx.Exec(ctx, `INSERT INTO review_run_snapshots (run_id, document_ids, rule_set_hash, playbook_hash, model_ref, comparator_ref, model_configuration_id, parsed_document_ids, parse_selection_hash, parser_configuration_id, rule_pack_compiler_ref, rule_pack_id, rule_pack_version, rule_pack_hash, rule_pack_digest, rule_pack_snapshot, planner_configuration_id, planner_configuration, cloud_policy_snapshot, cloud_policy_digest, governed_knowledge) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)`,
+		var partyContext []byte
+		if len(item.PartyContext) > 0 {
+			partyContext, err = json.Marshal(item.PartyContext)
+			if err != nil {
+				return err
+			}
+		}
+		if _, err := tx.Exec(ctx, `INSERT INTO review_run_snapshots (run_id, document_ids, rule_set_hash, playbook_hash, model_ref, comparator_ref, model_configuration_id, parsed_document_ids, parse_selection_hash, parser_configuration_id, rule_pack_compiler_ref, rule_pack_id, rule_pack_version, rule_pack_hash, rule_pack_digest, rule_pack_snapshot, planner_configuration_id, planner_configuration, cloud_policy_snapshot, cloud_policy_digest, governed_knowledge, party_context, party_context_hash) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23)`,
 			item.RunID, raw, item.RuleSetHash, item.PlaybookHash, item.ModelRef, item.ComparatorRef, item.ModelConfigurationID,
 			parsedRaw, item.ParseSelectionHash, item.ParserConfigurationID, item.RulePackCompilerRef,
 			item.RulePackID, item.RulePackVersion, item.RulePackHash, item.RulePackDigest,
 			[]byte(item.RulePackSnapshot), item.PlannerConfigurationID, plannerPayloadValue(item.PlannerConfiguration),
-			[]byte(item.CloudPolicySnapshot), item.CloudPolicyDigest, knowledge); err != nil {
+			[]byte(item.CloudPolicySnapshot), item.CloudPolicyDigest, knowledge, partyContext, item.PartyContextHash); err != nil {
 			return err
 		}
 	}
@@ -1295,7 +1442,7 @@ func loadIdempotency(ctx context.Context, q queryer) ([]Idem, error) {
 }
 
 func loadSnapshots(ctx context.Context, q queryer) ([]RunSnapshot, error) {
-	rows, err := q.Query(ctx, `SELECT run_id, document_ids, rule_set_hash, playbook_hash, model_ref, comparator_ref, model_configuration_id, parsed_document_ids, parse_selection_hash, parser_configuration_id, rule_pack_compiler_ref, rule_pack_id, rule_pack_version, rule_pack_hash, rule_pack_digest, rule_pack_snapshot, planner_configuration_id, planner_configuration, cloud_policy_snapshot, cloud_policy_digest, governed_knowledge FROM review_run_snapshots ORDER BY run_id`)
+	rows, err := q.Query(ctx, `SELECT run_id, document_ids, rule_set_hash, playbook_hash, model_ref, comparator_ref, model_configuration_id, parsed_document_ids, parse_selection_hash, parser_configuration_id, rule_pack_compiler_ref, rule_pack_id, rule_pack_version, rule_pack_hash, rule_pack_digest, rule_pack_snapshot, planner_configuration_id, planner_configuration, cloud_policy_snapshot, cloud_policy_digest, governed_knowledge, party_context, party_context_hash FROM review_run_snapshots ORDER BY run_id`)
 	if err != nil {
 		return nil, err
 	}
@@ -1304,11 +1451,11 @@ func loadSnapshots(ctx context.Context, q queryer) ([]RunSnapshot, error) {
 	for rows.Next() {
 		var item RunSnapshot
 		var raw, parsedRaw string
-		var snapshot, plannerPayload, policySnapshot, knowledge []byte
+		var snapshot, plannerPayload, policySnapshot, knowledge, partyContext []byte
 		if err := rows.Scan(&item.RunID, &raw, &item.RuleSetHash, &item.PlaybookHash, &item.ModelRef,
 			&item.ComparatorRef, &item.ModelConfigurationID, &parsedRaw, &item.ParseSelectionHash, &item.ParserConfigurationID, &item.RulePackCompilerRef,
 			&item.RulePackID, &item.RulePackVersion, &item.RulePackHash, &item.RulePackDigest, &snapshot, &item.PlannerConfigurationID, &plannerPayload,
-			&policySnapshot, &item.CloudPolicyDigest, &knowledge); err != nil {
+			&policySnapshot, &item.CloudPolicyDigest, &knowledge, &partyContext, &item.PartyContextHash); err != nil {
 			return nil, err
 		}
 		if err := json.Unmarshal([]byte(raw), &item.DocumentIDs); err != nil {
@@ -1325,6 +1472,10 @@ func loadSnapshots(ctx context.Context, q queryer) ([]RunSnapshot, error) {
 		}
 		if len(policySnapshot) > 0 {
 			item.CloudPolicySnapshot = append(json.RawMessage(nil), policySnapshot...)
+		}
+		item.PartyContext, err = decodePartyContext(partyContext, item.PartyContextHash)
+		if err != nil {
+			return nil, fmt.Errorf("invalid party context snapshot for run %s: %w", item.RunID, err)
 		}
 		item.GovernedKnowledge, err = decodeGovernedKnowledge(knowledge)
 		if err != nil {
@@ -1372,6 +1523,7 @@ func snapshotValue(item RunSnapshot) audit.Snapshot {
 	return audit.Snapshot{
 		DocumentIDs:        append([]string(nil), item.DocumentIDs...),
 		ParsedDocumentIDs:  append([]string(nil), item.ParsedDocumentIDs...),
+		PartyContextHash:   item.PartyContextHash,
 		ParseSelectionHash: item.ParseSelectionHash, ParserConfigurationID: item.ParserConfigurationID,
 		RuleSetHash: item.RuleSetHash, PlaybookHash: item.PlaybookHash,
 		ModelRef: item.ModelRef, ModelConfigurationID: item.ModelConfigurationID, ComparatorRef: item.ComparatorRef,

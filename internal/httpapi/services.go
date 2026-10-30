@@ -144,6 +144,9 @@ func routeOwned(role string, methods routeMethodSet, parts []string) bool {
 	if parts[0] == "knowledge" {
 		return role == "core" && methods.read && knowledgeRoute(parts)
 	}
+	if parts[0] == "subjects" {
+		return subjectRoute(role, methods, parts)
+	}
 	if parts[0] == "admin" {
 		return adminRoute(role, methods, parts)
 	}
@@ -172,6 +175,7 @@ var topLevelRoutes = map[string]topLevelRouteRule{
 	"templates":        {role: "document", methods: routeMethodSet{read: true}},
 	"cases":            {role: "core", methods: routeMethodSet{read: true, post: true}},
 	"knowledge":        {role: "core", methods: routeMethodSet{post: true}},
+	"subjects":         {role: "core", methods: routeMethodSet{read: true, post: true}},
 }
 
 func routeMethodsMatch(got, allowed routeMethodSet) bool {
@@ -193,10 +197,14 @@ func adminRoute(role string, m routeMethodSet, parts []string) bool {
 	switch parts[1] {
 	case "settings", "system-health":
 		return len(parts) == 2 && m.read
+	case "company-policy-sources":
+		return len(parts) == 2 && m.read
 	case "llm-endpoint":
 		return llmEndpointRoute(m, parts[1:])
 	case "governed-knowledge":
 		return governedKnowledgeRoute(m, parts[1:])
+	case "legal-sources":
+		return legalSourceAdminRoute(m, parts[1:])
 	case "rulepacks":
 		return rulePackRoute(m, parts[1:])
 	}
@@ -272,8 +280,16 @@ var caseRouteHandlers = map[string]caseRouteHandler{
 	"experience-feedback": experienceFeedbackRoute, "experience-candidates": experienceCandidateRoute,
 	"evidence-requests": evidenceRequestHandlerRoute, "profile": profileRoute,
 	"tasks": taskRoute, "relations": relationRoute, "documents": documentRoute,
-	"materials":       materialRoute,
-	"object-bindings": corePostRoute, "external-collection-jobs": corePostRoute,
+	"materials":                 materialRoute,
+	"subjects":                  caseSubjectRoute,
+	"subject-changes":           caseSubjectRoute,
+	"subject-sources":           coreReadRoute,
+	"company-policy-sources":    coreReadRoute,
+	"subject-source-snapshots":  subjectSourceSnapshotRoute,
+	"legal-knowledge":           caseLegalKnowledgeRoute,
+	"legal-applicability-facts": legalApplicabilityRoute,
+	"legal-sources":             caseLegalSourceRoute,
+	"object-bindings":           corePostRoute, "external-collection-jobs": corePostRoute,
 	"external-snapshots": coreReadRoute, "fulfillment-evaluations": fulfillmentRoute,
 	"generations": documentPostRoute, "reviews": reviewRoute,
 	"members": corePostRoute, "archive": corePostRoute,
@@ -291,7 +307,69 @@ func documentPostRoute(role string, m routeMethodSet, p []string) bool {
 }
 
 func materialRoute(role string, m routeMethodSet, p []string) bool {
-	return role == "document" && len(p) == 4 && p[3] == "selection" && m.post
+	if role != "document" {
+		return false
+	}
+	if len(p) == 4 && p[3] == "selection" && m.post {
+		return true
+	}
+	if len(p) == 7 && p[4] == "versions" && p[6] == "parsed-documents" && m.read {
+		return true
+	}
+	return len(p) == 8 && p[4] == "versions" && p[6] == "parsed-documents" && m.read
+}
+
+func caseSubjectRoute(role string, m routeMethodSet, p []string) bool {
+	if role != "core" || len(p) < 3 {
+		return false
+	}
+	if p[2] == "subjects" {
+		return len(p) == 3 && (m.read || m.post) || len(p) == 4 && p[3] == "bind-existing" && m.post
+	}
+	if p[2] != "subject-changes" {
+		return false
+	}
+	return len(p) == 3 && (m.read || m.post) || len(p) == 4 && m.read ||
+		len(p) == 5 && (p[4] == "impact" && m.read || p[4] == "decisions" && m.post)
+}
+
+func subjectSourceSnapshotRoute(role string, m routeMethodSet, p []string) bool {
+	if role != "core" {
+		return false
+	}
+	return len(p) == 3 && (m.read || m.post) || len(p) == 4 && m.read || len(p) == 5 && p[4] == "verify" && m.post
+}
+
+func legalSourceAdminRoute(m routeMethodSet, p []string) bool {
+	return len(p) == 2 && p[1] == "imports" && m.post || len(p) == 4 && p[2] == "snapshots" && m.read
+}
+
+func caseLegalSourceRoute(role string, m routeMethodSet, p []string) bool {
+	return role == "core" && len(p) == 5 && p[3] == "snapshots" && m.read
+}
+
+func caseLegalKnowledgeRoute(role string, m routeMethodSet, p []string) bool {
+	if role != "core" || !m.read {
+		return false
+	}
+	return len(p) == 3 || len(p) == 6 && p[4] == "versions"
+}
+
+func legalApplicabilityRoute(role string, m routeMethodSet, p []string) bool {
+	if role != "core" {
+		return false
+	}
+	return len(p) == 3 && m.read || len(p) == 4 && m.put
+}
+
+func subjectRoute(role string, m routeMethodSet, p []string) bool {
+	if role != "core" {
+		return false
+	}
+	if len(p) == 1 {
+		return m.read || m.post
+	}
+	return len(p) == 2 && m.read || len(p) == 3 && m.read && (p[2] == "history" || p[2] == "case-links")
 }
 
 func experienceFeedbackRoute(role string, m routeMethodSet, p []string) bool {
