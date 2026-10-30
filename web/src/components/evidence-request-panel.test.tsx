@@ -601,6 +601,7 @@ describe("补充材料请求", () => {
     await screen.findByText("请求暂时不可用");
     expect(screen.getByRole("combobox", { name: "关联任务" })).toBeDisabled();
     expect(screen.getByLabelText("任务名称")).toBeDisabled();
+    expect(screen.getByRole("combobox", { name: "责任人" })).toBeDisabled();
     expect(screen.getByLabelText("完成期限（本地时间）")).toBeDisabled();
   });
 
@@ -673,6 +674,7 @@ describe("补充材料请求", () => {
       verification_condition: "conflict",
     });
     expect(new Headers(requestCalls[0]?.init?.headers).get("Idempotency-Key")).toBeTruthy();
+    expect(screen.getByRole("combobox", { name: "缺失检查" }).closest(".ant-select")?.querySelector(".ant-select-content-has-value")).toBeNull();
 
     expect(screen.getByLabelText("任务名称")).toHaveValue("");
     expect(screen.getByLabelText("需要补充的问题")).toHaveValue("");
