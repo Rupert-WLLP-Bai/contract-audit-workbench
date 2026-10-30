@@ -653,6 +653,8 @@ describe("补充材料请求", () => {
 
     await screen.findByText("发起补充材料请求");
     await chooseOption(user, screen.getByRole("combobox", { name: "缺失检查" }), /缺少质保期限/);
+    expect(screen.getByRole("combobox", { name: "缺失检查" }).closest(".ant-select")?.querySelector(".ant-select-content-has-value"))
+      .toHaveTextContent("规则检查 1");
     await user.type(screen.getByLabelText("任务名称"), "  补充质保  ");
     await chooseOption(user, screen.getByRole("combobox", { name: "责任人" }), /审查人/);
     const dueInput = screen.getByLabelText("完成期限（本地时间）");
