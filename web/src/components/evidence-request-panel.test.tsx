@@ -727,6 +727,12 @@ describe("补充材料请求", () => {
     await selectVerificationEvidence(user);
     expect(screen.getByText("当前审查没有唯一匹配且达到请求条件的实际检查，仍需补充或复审。")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "提交核验" })).toBeDisabled();
+    const form = screen.getByText("核验补充材料").closest("form");
+    expect(form).not.toBeNull();
+    await act(async () => {
+      fireEvent.submit(form!);
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    });
     expect(calls.some((call) => call.pathname.endsWith("/verify"))).toBe(false);
   });
 
