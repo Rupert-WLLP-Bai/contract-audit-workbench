@@ -330,6 +330,26 @@ describe("补充材料请求", () => {
     expect(JSON.parse(String(receiptCall?.init?.body))).toEqual({ answer: "确认36个月", expected_version: 1 });
   });
 
+  it("submits the document after switching from an answer with retained text", async () => {
+    const { calls, user } = open({ respond(call) {
+      if (call.pathname.endsWith("/evidence-requests")) return Response.json({ items: [rawRequest("open", 1)] });
+      if (call.pathname.endsWith("/history")) return Response.json({ items: [] });
+      if (call.pathname.endsWith("/receipts") && call.method === "POST") return Response.json({
+        request: rawRequest("received", 2), receipt: rawReceipt,
+      });
+      return Response.json({ error: { message: "unexpected" } }, { status: 404 });
+    } });
+
+    await screen.findByText("待提交");
+    await chooseOption(user, screen.getByRole("combobox", { name: "提交方式" }), "文字答复");
+    await user.type(screen.getByLabelText("文字答复"), "暂存答复");
+    await chooseOption(user, screen.getByRole("combobox", { name: "提交方式" }), "案件材料");
+    await chooseOption(user, screen.getByRole("combobox", { name: "选择案件材料" }), /补充合同\.txt/);
+    await user.click(screen.getByRole("button", { name: "提交回执" }));
+    const receiptCall = calls.find((call) => call.pathname.endsWith("/receipts"));
+    expect(JSON.parse(String(receiptCall?.init?.body))).toEqual({ document_id: "doc-2", expected_version: 1 });
+  });
+
   it("disables receipt submission for a missing document or blank answer", async () => {
     const { calls, user } = open({ respond(call) {
       if (call.pathname.endsWith("/evidence-requests")) return Response.json({ items: [rawRequest("open", 1)] });
@@ -895,6 +915,36 @@ describe("补充材料请求", () => {
     expect(screen.getByText(/custom_event · 审查人/)).toBeInTheDocument();
     expect(screen.getByText("提交材料：材料名称未报告")).toBeInTheDocument();
     expect(screen.getByText("提交答复：质保36个月")).toBeInTheDocument();
+  });
+
+  it("preserves explicitly empty names and filenames from the server", async () => {
+    const blankDocument = { ...document, filename: "" };
+    const blankDetail = { ...detail, documents: [blankDocument], members: detail.members.map((member) => ({ ...member, display_name: "" })) };
+    const request = rawRequest("received", 2);
+    const { user } = open({ canManage: false, caseDetail: blankDetail, respond(call) {
+      if (call.pathname.endsWith("/evidence-requests")) return Response.json({ items: [request] });
+      if (call.pathname.endsWith("/history")) return Response.json({ items: [{ type: "received", actor_id: "owner", occurred_at: at, request, receipt: rawReceipt }] });
+      return Response.json({ error: { message: "unexpected" } }, { status: 404 });
+    } });
+
+    await screen.findByText("已提交，待复核");
+    const heading = screen.getByText(/责任人：/);
+    expect(heading).toHaveTextContent(/责任人：\s*；期限：/);
+    expect(heading).not.toHaveTextContent("姓名未报告");
+    await screen.findByText("已提交材料或答复：");
+    const summaryList = screen.getByText("已提交材料或答复：").parentElement?.querySelector("ul");
+    expect(summaryList).not.toBeNull();
+    const summaryRow = within(summaryList!).getByRole("listitem");
+    expect(summaryRow).not.toHaveTextContent("材料名称未报告");
+    const receiptOptions = await openActiveListbox(user, screen.getByRole("combobox", { name: "选择提交回执" }));
+    expect(receiptOptions).not.toHaveTextContent("提交材料");
+    await user.keyboard("{Escape}");
+    await user.click(screen.getByText("处理记录"));
+    const historyEvent = screen.getByText("提交材料：").closest("li");
+    expect(historyEvent).not.toBeNull();
+    expect(historyEvent).toHaveTextContent("提交回执");
+    expect(historyEvent).not.toHaveTextContent("姓名未报告");
+    expect(historyEvent).not.toHaveTextContent("材料名称未报告");
   });
 
   it.each(["conflict", "resolved"] as const)("submits the actual %s check from a later review", async (condition) => {
