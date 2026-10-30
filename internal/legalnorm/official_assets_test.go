@@ -112,7 +112,7 @@ func TestOfficialAssetsExtractAndMatchFirstFiveNorms(t *testing.T) {
 			}
 			raw := readAsset(t, assetDir, source.SnapshotFile)
 			statusRaw := readAsset(t, assetDir, statusManifest.SnapshotPath)
-			if adapter.baselineRawSHA256 != source.RawSHA256 || digest(raw) != source.RawSHA256 {
+			if adapter.baseline == nil || adapter.baseline.RawSHA256 != source.RawSHA256 || digest(raw) != source.RawSHA256 {
 				t.Fatalf("initial official response digest does not match pinned acceptance asset")
 			}
 			assertions := make([]ArticleRef, 0, 5)
