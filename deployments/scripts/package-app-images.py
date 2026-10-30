@@ -135,12 +135,13 @@ def source_snapshot(fronts: dict[str, list[Path]]) -> dict[str, object]:
         "vite.config.ts", "tsconfig.json", "tsconfig.test.json",
     ))
     web_inputs.extend(regular_files([ROOT / "deploy/app/nginx"]))
-    web_inputs.append(Path(__file__).resolve())
+    packager_script = ROOT / "deployments/scripts/package-app-images.py"
+    web_inputs.append(packager_script)
     backend_roots = [ROOT / "cmd" / name for name in COMMANDS]
-    backend_roots.append(ROOT / "internal")
+    backend_roots.extend([ROOT / "internal", ROOT / "capability-packs"])
     backend_inputs = [path for path in regular_files(backend_roots) if not path.name.endswith("_test.go")]
     backend_inputs.extend(ROOT / name for name in ("go.mod", "go.sum", "deploy/app/entrypoint.sh"))
-    backend_inputs.append(Path(__file__).resolve())
+    backend_inputs.append(packager_script)
     components = {
         "backend": file_manifest(backend_inputs),
         **{name: file_manifest([*web_inputs, *files]) for name, files in fronts.items()},

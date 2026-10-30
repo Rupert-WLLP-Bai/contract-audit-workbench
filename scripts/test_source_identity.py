@@ -20,6 +20,7 @@ class SourceIdentityScopeTests(unittest.TestCase):
         for name in ROOT_FILES:
             self.write(name, f"{name}\n")
         self.write("cmd/server/main.go", "package main\n")
+        self.write("capability-packs/telecom.json", "{\"version\":1}\n")
         self.write("deployments/local.py", "print('bootstrap')\n")
         self.write("deployments/scripts/journey-local.py", "print('journey')\n")
         self.write("deployments/k8s/base/config.yaml", "apiVersion: v1\n")
@@ -44,6 +45,13 @@ class SourceIdentityScopeTests(unittest.TestCase):
                          "deployments/k8s/base/config.yaml", "deployments/k8s/base/kustomization.yaml",
                          "deploy/nginx/client.conf", "cmd/server/main.go"):
             self.assertIn(required, paths)
+
+    def test_changed_capability_pack_changes_digest(self):
+        self.write("capability-packs/telecom.json", "{\"version\":2}\n")
+        changed = source_identity(self.root)
+        self.assertNotEqual(self.baseline["digest"], changed["digest"])
+        self.assertIn("capability-packs/telecom.json",
+                      {record["path"] for record in changed["files"]})
 
     def test_changed_deployment_script_changes_digest(self):
         self.write("deployments/scripts/journey-local.py", "print('journey v2')\n")
@@ -94,6 +102,7 @@ class SourceIdentityRepositoryTests(unittest.TestCase):
                          "deployments/k8s/base/workloads.yaml",
                          "deployments/k8s/test/backup.yaml",
                          "deploy/app/Dockerfile",
+                         "capability-packs/dedicated-line-1.0.0.json",
                          "compose.app.yaml",
                          "compose.observe.yaml"):
             self.assertIn(required, paths)
