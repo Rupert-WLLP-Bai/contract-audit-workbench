@@ -8,6 +8,7 @@ import {
   parseRulePackDetail,
   parseRulePackHistory,
   parseRulePackList,
+  parseRulePackManifest,
   parseRulePackMutationResult,
   parseRulePackTestResponse,
   publishRulePack,
@@ -144,6 +145,114 @@ describe("RulePack API parsers", () => {
     ).toThrow(/exclusions/);
     expect(() => parseRulePackDetail(withExclusions([7]))).toThrow(
       /exclusions/,
+    );
+  });
+
+  it("keeps every optional required-fact field when present and omits them otherwise", () => {
+    const manifestValue = {
+      ...manifestSnapshot,
+      rules: [
+        {
+          ...manifest.rules[0],
+          required_fact: {
+            ...manifest.rules[0]!.required_fact,
+            measurement_window: "月",
+            time_zone: "Asia/Shanghai",
+            calendar: "自然月",
+            outage_definition: "不可用",
+            basis: "合同",
+          },
+        },
+      ],
+    };
+    expect(
+      parseRulePackManifest(manifestValue).rules[0]?.required_fact,
+    ).toEqual({
+      dimension: "bandwidth",
+      source_roles: ["procurement"],
+      object_required: true,
+      unit_family: "bandwidth",
+      exclusions: [],
+      measurement_window: "月",
+      time_zone: "Asia/Shanghai",
+      calendar: "自然月",
+      outage_definition: "不可用",
+      basis: "合同",
+    });
+    expect(
+      parseRulePackManifest(manifestSnapshot).rules[0]?.required_fact,
+    ).toEqual({
+      dimension: "bandwidth",
+      source_roles: ["procurement"],
+      object_required: true,
+      unit_family: "bandwidth",
+      exclusions: [],
+    });
+  });
+
+  it("rejects malformed required-fact fields", () => {
+    const withRequiredFact = (patch: Record<string, unknown>) => ({
+      ...manifestSnapshot,
+      rules: [
+        {
+          ...manifest.rules[0],
+          required_fact: { ...manifest.rules[0]!.required_fact, ...patch },
+        },
+      ],
+    });
+    const missing = (key: string) => {
+      const requiredFact = {
+        ...manifest.rules[0]!.required_fact,
+      } as Record<string, unknown>;
+      delete requiredFact[key];
+      return {
+        ...manifestSnapshot,
+        rules: [{ ...manifest.rules[0], required_fact: requiredFact }],
+      };
+    };
+    expect(() => parseRulePackManifest(withRequiredFact({ dimension: 7 }))).toThrow(
+      /required_fact\.dimension/,
+    );
+    expect(() =>
+      parseRulePackManifest(withRequiredFact({ source_roles: [1] })),
+    ).toThrow(/required_fact\.source_roles/);
+    expect(() =>
+      parseRulePackManifest(withRequiredFact({ object_required: "yes" })),
+    ).toThrow(/required_fact\.object_required/);
+    expect(() =>
+      parseRulePackManifest(withRequiredFact({ exclusions: 7 })),
+    ).toThrow(/required_fact\.exclusions/);
+    expect(() =>
+      parseRulePackManifest(withRequiredFact({ measurement_window: 7 })),
+    ).toThrow(/required_fact\.measurement_window/);
+    expect(() =>
+      parseRulePackManifest(withRequiredFact({ time_zone: 7 })),
+    ).toThrow(/required_fact\.time_zone/);
+    expect(() =>
+      parseRulePackManifest(withRequiredFact({ calendar: 7 })),
+    ).toThrow(/required_fact\.calendar/);
+    expect(() =>
+      parseRulePackManifest(withRequiredFact({ outage_definition: 7 })),
+    ).toThrow(/required_fact\.outage_definition/);
+    expect(() =>
+      parseRulePackManifest(withRequiredFact({ basis: 7 })),
+    ).toThrow(/required_fact\.basis/);
+    for (const key of [
+      "dimension",
+      "source_roles",
+      "object_required",
+      "unit_family",
+      "exclusions",
+    ]) {
+      expect(() => parseRulePackManifest(missing(key))).toThrow(
+        /required_fact/,
+      );
+    }
+    expect(() =>
+      parseRulePackManifest({ ...manifestSnapshot, schema_version: "rulepack/v2" }),
+    ).toThrow(/schema_version/);
+    expect(() => parseRulePackManifest(null)).toThrow(
+      /RulePack 响应中的 manifest 无法识别/,
     );
   });
 

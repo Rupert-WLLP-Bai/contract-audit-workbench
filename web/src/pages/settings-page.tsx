@@ -1,7 +1,12 @@
+import { useState } from "react";
 import { errorMessage } from "../api/http";
 import { Button, Statistic, Table, type TableProps } from "antd";
-import { useSession, useSettings } from "../api/queries";
+import { useLLMEndpoint, useSession, useSettings } from "../api/queries";
 import { PageStatus } from "../components/page-status";
+import {
+  LLMEndpointPanel,
+  LLMModelSelection,
+} from "../components/llm-endpoint";
 import { actorRoleLabel, formatWait, modelStatusLabel } from "../domain/review";
 
 type ModelFact = {
@@ -45,6 +50,9 @@ export function SettingsPage({
 }) {
   const settings = useSettings(audience);
   const session = useSession(audience);
+  const [endpointOpen, setEndpointOpen] = useState(false);
+  const isAdmin = audience === "admin" && session.data?.role === "admin";
+  const endpoint = useLLMEndpoint(isAdmin);
   if (settings.isLoading)
     return <PageStatus kind="loading" title="正在加载设置" />;
   if (settings.isError) {
@@ -115,7 +123,7 @@ export function SettingsPage({
         <div>
           <h1>设置</h1>
           <p>
-            只显示连通、队列、脱敏政策和角色。密钥留在服务端，这个页面不提供输入框。
+            查看连通、队列、脱敏政策和角色。模型端点由管理员配置，密钥只在保存时提交并留在服务端。
           </p>
         </div>
       </header>
@@ -152,6 +160,13 @@ export function SettingsPage({
               </div>
             ))}
           </dl>
+          {isAdmin ? (
+            <LLMModelSelection
+              endpoint={endpoint.data}
+              loading={endpoint.isLoading}
+              onConfigure={() => setEndpointOpen(true)}
+            />
+          ) : null}
         </section>
         <section
           className="settings-panel"
@@ -170,6 +185,16 @@ export function SettingsPage({
           </dl>
         </section>
       </div>
+      {isAdmin ? (
+        <LLMEndpointPanel
+          endpoint={endpoint.data}
+          loading={endpoint.isLoading}
+          error={endpoint.isError ? endpoint.error : null}
+          onRetry={() => void endpoint.refetch()}
+          open={endpointOpen}
+          onOpenChange={setEndpointOpen}
+        />
+      ) : null}
       <section
         className="settings-panel"
         aria-labelledby="settings-redaction-title"

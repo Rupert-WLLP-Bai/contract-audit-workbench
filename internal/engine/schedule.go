@@ -22,15 +22,7 @@ type scheduleHit struct {
 // Different trigger events have no common start and stay insufficient.
 // The same trigger with a different count or calendar-versus-workday is a conflict.
 func EvaluateSchedule(docs []Source) Evaluation {
-	var hits []scheduleHit
-	for _, doc := range docs {
-		if doc.ParseStatus != "ready" {
-			continue
-		}
-		if hit, ok := firstSchedule(doc); ok {
-			hits = append(hits, hit)
-		}
-	}
+	hits := collectSchedules(docs)
 	ev := Evaluation{Domain: "schedule", RuleVersion: ScheduleRuleVersion, Missing: missingAnchors(docs)}
 	if len(hits) == 0 {
 		return absence(ev, docs, "验收时限")
@@ -64,6 +56,19 @@ func EvaluateSchedule(docs []Source) Evaluation {
 	return ev
 }
 
+func collectSchedules(docs []Source) []scheduleHit {
+	var hits []scheduleHit
+	for _, doc := range docs {
+		if doc.ParseStatus != "ready" {
+			continue
+		}
+		if hit, ok := firstSchedule(doc); ok {
+			hits = append(hits, hit)
+		}
+	}
+	return hits
+}
+
 func firstSchedule(doc Source) (scheduleHit, bool) {
 	ir := doc.ir()
 	text := ir.NormalizedText
@@ -71,7 +76,7 @@ func firstSchedule(doc Source) (scheduleHit, bool) {
 		text = doc.Text
 	}
 	loc := scheduleRE.FindStringSubmatchIndex(text)
-	if loc == nil || len(loc) < 8 {
+	if loc == nil {
 		return scheduleHit{}, false
 	}
 	quote := text[loc[0]:loc[1]]
@@ -110,21 +115,19 @@ func scheduleList(prefix string, hits []scheduleHit) string {
 }
 
 func sameTrigger(hits []scheduleHit) bool {
-	for _, hit := range hits[1:] {
-		if hit.trigger != hits[0].trigger {
-			return false
-		}
-	}
-	return true
+	return allValuesEqual(hits, func(item scheduleHit) string { return item.trigger })
 }
 
 func sameSchedule(hits []scheduleHit) bool {
-	for _, hit := range hits[1:] {
-		if hit.days != hits[0].days || hit.class != hits[0].class {
-			return false
-		}
-	}
-	return true
+	return allValuesEqual(hits, func(item scheduleHit) struct {
+		days  int
+		class string
+	} {
+		return struct {
+			days  int
+			class string
+		}{item.days, item.class}
+	})
 }
 
 func partialSchedule(hits []scheduleHit, docs []Source) string {

@@ -13,28 +13,53 @@ import (
 // ServiceHandler exposes only the operations owned by one process. Each request
 // still passes the ordinary session and resource authorization in Handler.
 func ServiceHandler(st *store.Store, opt Options, role, credential string) (http.Handler, error) {
+	if err := validateServiceHandlerConfig(role, credential, opt); err != nil {
+		return nil, err
+	}
+	if err := configureExperienceDelivery(role, credential, &opt); err != nil {
+		return nil, err
+	}
+	return buildServiceHandler(st, opt, role, credential), nil
+}
+
+func validateServiceHandlerConfig(role, credential string, opt Options) error {
 	if role != "core" && role != "document" && role != "execution" {
-		return nil, errors.New("unknown HTTP service role")
+		return errors.New("unknown HTTP service role")
 	}
 	if len(credential) < 32 {
-		return nil, errors.New("a private service credential of at least 32 bytes is required")
+		return errors.New("a private service credential of at least 32 bytes is required")
 	}
 	if !opt.Durable {
-		return nil, errors.New("independent HTTP services require durable execution")
+		return errors.New("independent HTTP services require durable execution")
 	}
-	if role == "core" && opt.ExperienceWorkerCredential != "" {
-		if len(opt.ExperienceWorkerCredential) < 32 || subtle.ConstantTimeCompare([]byte(opt.ExperienceWorkerCredential), []byte(credential)) == 1 {
-			return nil, errors.New("experience worker credential must be private and distinct from the gateway credential")
-		}
-		opt.experienceDeliveryEnabled = true
+	return nil
+}
+
+func configureExperienceDelivery(role, credential string, opt *Options) error {
+	workerCredential := opt.ExperienceWorkerCredential
+	if role != "core" || workerCredential == "" {
+		return nil
 	}
+	if len(workerCredential) < 32 || subtle.ConstantTimeCompare([]byte(workerCredential), []byte(credential)) == 1 {
+		return errors.New("experience worker credential must be private and distinct from the gateway credential")
+	}
+	opt.experienceDeliveryEnabled = true
+	return nil
+}
+
+func buildServiceHandler(st *store.Store, opt Options, role, credential string) http.Handler {
 	api := Handler(st, opt)
 	mux := http.NewServeMux()
 	MountHealth(mux, st.Ready)
 	if opt.experienceDeliveryEnabled {
 		mux.HandleFunc("/internal/v1/experience-results", experienceResultHandler(st, opt.ExperienceWorkerCredential))
 	}
-	mux.Handle("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	mux.Handle("/", serviceRequestHandler(api, role, credential))
+	return mux
+}
+
+func serviceRequestHandler(api http.Handler, role, credential string) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !OperationOwnedBy(role, r.Method, r.URL.EscapedPath()) {
 			http.NotFound(w, r)
 			return
@@ -45,8 +70,7 @@ func ServiceHandler(st *store.Store, opt Options, role, credential string) (http
 			return
 		}
 		api.ServeHTTP(w, r)
-	}))
-	return mux, nil
+	})
 }
 
 // RouteSegments decodes one escaped URL path into its segments. It reports
@@ -62,18 +86,26 @@ func RouteSegments(path string) ([]string, bool) {
 	}
 	parts := strings.Split(path[1:], "/")
 	for i, part := range parts {
-		decoded, err := url.PathUnescape(part)
-		if err != nil || decoded == "" || decoded == "." || decoded == ".." || strings.ContainsAny(decoded, "/\\") {
+		decoded, ok := decodeRouteSegment(part)
+		if !ok {
 			return nil, false
-		}
-		for _, r := range decoded {
-			if r < 32 || r == 127 {
-				return nil, false
-			}
 		}
 		parts[i] = decoded
 	}
 	return parts, true
+}
+
+func decodeRouteSegment(part string) (string, bool) {
+	decoded, err := url.PathUnescape(part)
+	if err != nil || decoded == "" || decoded == "." || decoded == ".." || strings.ContainsAny(decoded, "/\\") {
+		return "", false
+	}
+	for _, r := range decoded {
+		if r < 32 || r == 127 {
+			return "", false
+		}
+	}
+	return decoded, true
 }
 
 // OperationOwnedBy is the exact public routing contract shared with the edge.
@@ -83,130 +115,243 @@ func OperationOwnedBy(role, method, path string) bool {
 	if !ok {
 		return false
 	}
-	read := method == http.MethodGet || method == http.MethodHead
-	post := method == http.MethodPost
-	put := method == http.MethodPut
-	delete := method == http.MethodDelete
-	// CORS preflight is still checked against the exact route; Handler validates
-	// origin and requested headers. Each path has only one owning service.
-	if method == http.MethodOptions {
-		read, post, put, delete = true, true, true, true
-	}
+	methods := methodsForRoute(method)
 	if len(parts) == 1 && parts[0] == "openapi.json" {
-		return role == "core" && read
+		return role == "core" && methods.read
 	}
 	if len(parts) < 2 || parts[0] != "api" {
 		return false
 	}
-	if len(parts) == 2 {
-		switch parts[1] {
-		case "session":
-			return role == "core" && (read || post || delete)
-		case "settings":
-			return role == "core" && read
-		case "templates":
-			return role == "document" && read
-		case "cases":
-			return role == "core" && (read || post)
-		case "workbench", "system-health", "capability-packs":
-			return role == "core" && read
-		case "knowledge":
-			return role == "core" && post
-		}
+	return routeOwned(role, methods, parts[1:])
+}
+
+type routeMethodSet struct{ read, post, put, delete bool }
+
+func methodsForRoute(method string) routeMethodSet {
+	methods := routeMethodSet{read: method == http.MethodGet || method == http.MethodHead,
+		post: method == http.MethodPost, put: method == http.MethodPut, delete: method == http.MethodDelete}
+	// Preflight remains checked against the exact route; Handler validates origin and headers.
+	if method == http.MethodOptions {
+		return routeMethodSet{read: true, post: true, put: true, delete: true}
 	}
-	if len(parts) == 3 && parts[1] == "knowledge" {
-		return role == "core" && read
+	return methods
+}
+
+func routeOwned(role string, methods routeMethodSet, parts []string) bool {
+	if len(parts) == 1 {
+		return topLevelRoute(role, methods, parts[0])
 	}
-	if len(parts) == 5 && parts[1] == "knowledge" && parts[3] == "versions" {
-		return role == "core" && read
+	if parts[0] == "knowledge" {
+		return role == "core" && methods.read && knowledgeRoute(parts)
 	}
-	if len(parts) == 3 && parts[1] == "admin" && parts[2] == "settings" {
-		return role == "core" && read
+	if parts[0] == "admin" {
+		return adminRoute(role, methods, parts)
 	}
-	if len(parts) == 3 && parts[1] == "admin" && parts[2] == "system-health" {
-		return role == "core" && read
+	if parts[0] == "auth" {
+		return role == "core" && methods.read && oidcRoute(parts)
 	}
-	if len(parts) >= 3 && parts[1] == "admin" && parts[2] == "governed-knowledge" {
-		switch {
-		case len(parts) == 3:
-			return role == "core" && (read || post)
-		case len(parts) == 6 && parts[4] == "versions":
-			return role == "core" && read
-		case len(parts) == 7 && parts[4] == "versions" && parts[6] == "commands":
-			return role == "core" && post
-		case len(parts) == 7 && parts[4] == "versions" && parts[6] == "preview":
-			return role == "core" && read
-		case len(parts) == 5 && parts[4] == "history":
-			return role == "core" && read
-		}
+	return caseRoute(role, methods, parts)
+}
+
+func topLevelRoute(role string, m routeMethodSet, path string) bool {
+	rule, exists := topLevelRoutes[path]
+	return exists && role == rule.role && routeMethodsMatch(m, rule.methods)
+}
+
+type topLevelRouteRule struct {
+	role    string
+	methods routeMethodSet
+}
+
+var topLevelRoutes = map[string]topLevelRouteRule{
+	"session":          {role: "core", methods: routeMethodSet{read: true, post: true, delete: true}},
+	"settings":         {role: "core", methods: routeMethodSet{read: true}},
+	"workbench":        {role: "core", methods: routeMethodSet{read: true}},
+	"system-health":    {role: "core", methods: routeMethodSet{read: true}},
+	"capability-packs": {role: "core", methods: routeMethodSet{read: true}},
+	"templates":        {role: "document", methods: routeMethodSet{read: true}},
+	"cases":            {role: "core", methods: routeMethodSet{read: true, post: true}},
+	"knowledge":        {role: "core", methods: routeMethodSet{post: true}},
+}
+
+func routeMethodsMatch(got, allowed routeMethodSet) bool {
+	return got.read && allowed.read || got.post && allowed.post || got.put && allowed.put || got.delete && allowed.delete
+}
+
+func knowledgeRoute(parts []string) bool {
+	return len(parts) == 2 || len(parts) == 4 && parts[2] == "versions"
+}
+
+func oidcRoute(parts []string) bool {
+	return len(parts) == 3 && parts[1] == "oidc" && (parts[2] == "login" || parts[2] == "callback")
+}
+
+func adminRoute(role string, m routeMethodSet, parts []string) bool {
+	if role != "core" || len(parts) < 2 {
 		return false
 	}
-	// Rule governance is Core-owned: only the core service writes the lifecycle
-	// and the active pointer. The execution and worker roles read the frozen
-	// published version an acceptance transaction selects.
-	if len(parts) >= 3 && parts[1] == "admin" && parts[2] == "rulepacks" {
-		switch {
-		case len(parts) == 3:
-			return role == "core" && (read || post)
-		case len(parts) == 6 && parts[4] == "versions":
-			return role == "core" && (read || post || put)
-		case len(parts) == 7 && parts[4] == "versions":
-			return role == "core" && post
-		case len(parts) == 5 && parts[4] == "rollback":
-			return role == "core" && post
-		case len(parts) == 5 && parts[4] == "history":
-			return role == "core" && read
-		}
-		return false
-	}
-	if len(parts) == 4 && parts[1] == "auth" && parts[2] == "oidc" && (parts[3] == "login" || parts[3] == "callback") {
-		return role == "core" && read
-	}
-	if parts[1] != "cases" || len(parts) < 3 {
-		return false
-	}
-	if len(parts) == 3 {
-		return role == "core" && read
-	}
-	switch parts[3] {
-	case "experience-feedback":
-		return role == "core" && (len(parts) == 4 && post || len(parts) == 5 && read ||
-			len(parts) == 6 && parts[5] == "distillations" && post ||
-			len(parts) == 7 && parts[5] == "distillations" && read)
-	case "experience-candidates":
-		return role == "core" && len(parts) == 7 && parts[5] == "versions" && read
-	case "evidence-requests":
-		return role == "core" && (len(parts) == 4 && (read || post) || len(parts) == 5 && read ||
-			len(parts) == 6 && (parts[5] == "history" && read || parts[5] == "receipts" && post) ||
-			len(parts) == 8 && parts[5] == "receipts" && parts[7] == "verify" && post)
-	case "profile":
-		return role == "core" && len(parts) == 4 && put
-	case "tasks":
-		return role == "core" && (len(parts) == 4 && post || len(parts) == 5 && put)
-	case "relations":
-		return role == "core" && (len(parts) == 4 && post || len(parts) == 5 && delete)
-	case "documents":
-		return role == "document" && (len(parts) == 4 && post || len(parts) == 6 && (parts[5] == "original" && read || parts[5] == "parse" && post))
-	case "object-bindings", "external-collection-jobs":
-		return role == "core" && len(parts) == 4 && post
-	case "external-snapshots":
-		return role == "core" && len(parts) == 4 && read
-	case "fulfillment-evaluations":
-		return role == "core" && (len(parts) == 4 && post || len(parts) == 5 && read ||
-			len(parts) == 6 && parts[5] == "impact" && read)
-	case "generations":
-		return role == "document" && len(parts) == 4 && post
-	case "reviews":
-		if len(parts) == 8 && parts[5] == "findings" && parts[7] == "decisions" {
-			return role == "core" && post
-		}
-		return role == "execution" && (len(parts) == 4 && post || len(parts) == 5 && read || len(parts) == 6 && ((parts[5] == "events" || parts[5] == "diagnostics") && read || (parts[5] == "retry" || parts[5] == "cancel") && post))
-	case "members", "archive":
-		return role == "core" && len(parts) == 4 && post
-	case "remediations":
-		return role == "core" && post && (len(parts) == 4 || len(parts) == 6 && (parts[5] == "submit" || parts[5] == "verify"))
-	case "reports":
-		return role == "core" && (len(parts) == 4 && post || len(parts) == 5 && read)
+	switch parts[1] {
+	case "settings", "system-health":
+		return len(parts) == 2 && m.read
+	case "llm-endpoint":
+		return llmEndpointRoute(m, parts[1:])
+	case "governed-knowledge":
+		return governedKnowledgeRoute(m, parts[1:])
+	case "rulepacks":
+		return rulePackRoute(m, parts[1:])
 	}
 	return false
+}
+
+func llmEndpointRoute(m routeMethodSet, parts []string) bool {
+	if len(parts) == 1 {
+		return m.read || m.put
+	}
+	if len(parts) != 2 {
+		return false
+	}
+	switch parts[1] {
+	case "probe":
+		return m.post
+	case "models":
+		return m.put
+	}
+	return false
+}
+
+func governedKnowledgeRoute(m routeMethodSet, p []string) bool {
+	if len(p) == 1 {
+		return m.read || m.post
+	}
+	if len(p) == 4 && p[2] == "versions" {
+		return m.read
+	}
+	if len(p) == 5 && p[2] == "versions" {
+		return governedVersionCommand(m, p[4])
+	}
+	return len(p) == 3 && p[2] == "history" && m.read
+}
+
+func governedVersionCommand(m routeMethodSet, command string) bool {
+	return command == "commands" && m.post || command == "preview" && m.read
+}
+
+func rulePackRoute(m routeMethodSet, p []string) bool {
+	if len(p) == 1 {
+		return m.read || m.post
+	}
+	if len(p) == 4 && p[2] == "versions" {
+		return m.read || m.post || m.put
+	}
+	if len(p) == 5 && p[2] == "versions" {
+		return m.post
+	}
+	if len(p) == 3 && p[2] == "rollback" {
+		return m.post
+	}
+	return len(p) == 3 && p[2] == "history" && m.read
+}
+
+func caseRoute(role string, m routeMethodSet, p []string) bool {
+	if len(p) < 2 || p[0] != "cases" {
+		return false
+	}
+	if len(p) == 2 {
+		return role == "core" && m.read
+	}
+	if len(p) < 3 {
+		return false
+	}
+	handler, exists := caseRouteHandlers[p[2]]
+	return exists && handler(role, m, p)
+}
+
+type caseRouteHandler func(string, routeMethodSet, []string) bool
+
+var caseRouteHandlers = map[string]caseRouteHandler{
+	"experience-feedback": experienceFeedbackRoute, "experience-candidates": experienceCandidateRoute,
+	"evidence-requests": evidenceRequestHandlerRoute, "profile": profileRoute,
+	"tasks": taskRoute, "relations": relationRoute, "documents": documentRoute,
+	"object-bindings": corePostRoute, "external-collection-jobs": corePostRoute,
+	"external-snapshots": coreReadRoute, "fulfillment-evaluations": fulfillmentRoute,
+	"generations": documentPostRoute, "reviews": reviewRoute,
+	"members": corePostRoute, "archive": corePostRoute,
+	"remediations": remediationRoute, "reports": reportRoute,
+}
+
+func corePostRoute(role string, m routeMethodSet, p []string) bool {
+	return role == "core" && len(p) == 3 && m.post
+}
+func coreReadRoute(role string, m routeMethodSet, p []string) bool {
+	return role == "core" && len(p) == 3 && m.read
+}
+func documentPostRoute(role string, m routeMethodSet, p []string) bool {
+	return role == "document" && len(p) == 3 && m.post
+}
+
+func experienceFeedbackRoute(role string, m routeMethodSet, p []string) bool {
+	return role == "core" && experienceFeedbackPath(m, p)
+}
+
+func experienceFeedbackPath(m routeMethodSet, p []string) bool {
+	if len(p) == 3 {
+		return m.post
+	}
+	if len(p) == 4 {
+		return m.read
+	}
+	if len(p) == 5 && p[4] == "distillations" {
+		return m.post
+	}
+	return len(p) == 6 && p[4] == "distillations" && m.read
+}
+
+func experienceCandidateRoute(role string, m routeMethodSet, p []string) bool {
+	return role == "core" && len(p) == 6 && p[4] == "versions" && m.read
+}
+
+func evidenceRequestHandlerRoute(role string, m routeMethodSet, p []string) bool {
+	return role == "core" && evidenceRequestRoute(m, p)
+}
+func profileRoute(role string, m routeMethodSet, p []string) bool {
+	return role == "core" && len(p) == 3 && m.put
+}
+func taskRoute(role string, m routeMethodSet, p []string) bool {
+	return role == "core" && (len(p) == 3 && m.post || len(p) == 4 && m.put)
+}
+func relationRoute(role string, m routeMethodSet, p []string) bool {
+	return role == "core" && (len(p) == 3 && m.post || len(p) == 4 && m.delete)
+}
+func documentRoute(role string, m routeMethodSet, p []string) bool {
+	return role == "document" && (len(p) == 3 && m.post || len(p) == 5 && (p[4] == "original" && m.read || p[4] == "parse" && m.post))
+}
+func fulfillmentRoute(role string, m routeMethodSet, p []string) bool {
+	return role == "core" && (len(p) == 3 && m.post || len(p) == 4 && m.read || len(p) == 5 && p[4] == "impact" && m.read)
+}
+func remediationRoute(role string, m routeMethodSet, p []string) bool {
+	return role == "core" && m.post && (len(p) == 3 || len(p) == 5 && (p[4] == "submit" || p[4] == "verify"))
+}
+func reportRoute(role string, m routeMethodSet, p []string) bool {
+	return role == "core" && (len(p) == 3 && m.post || len(p) == 4 && m.read)
+}
+
+func evidenceRequestRoute(m routeMethodSet, p []string) bool {
+	return len(p) == 3 && (m.read || m.post) || len(p) == 4 && m.read ||
+		len(p) == 5 && (p[4] == "history" && m.read || p[4] == "receipts" && m.post) ||
+		len(p) == 7 && p[4] == "receipts" && p[6] == "verify" && m.post
+}
+
+func reviewRoute(role string, m routeMethodSet, p []string) bool {
+	if len(p) == 7 && p[4] == "findings" && p[6] == "decisions" {
+		return role == "core" && m.post
+	}
+	if role != "execution" {
+		return false
+	}
+	return len(p) == 3 && m.post || len(p) == 4 && m.read || len(p) == 5 && reviewAction(p[4], m)
+}
+
+func reviewAction(action string, m routeMethodSet) bool {
+	return (action == "events" || action == "diagnostics") && m.read ||
+		(action == "retry" || action == "cancel") && m.post
 }

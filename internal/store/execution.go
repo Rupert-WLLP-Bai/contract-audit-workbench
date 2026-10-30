@@ -131,7 +131,7 @@ func (s *Store) startReview(ctx context.Context, user accounts.User, caseID, bus
 	if !sameDocumentSet(documentIDs(current), reviewDocumentIDs) {
 		return "", fault.Conflict("案件材料刚被更新，请重新发起审查")
 	}
-	models := s.models
+	models := s.currentModels()
 	frozenDocs, selections, err := s.acceptanceParsePlan(ctx, seen, current, models)
 	if err != nil {
 		return "", err
@@ -394,7 +394,10 @@ func (s *Store) retry(ctx context.Context, user accounts.User, caseID, runID str
 		return fault.NotFound("没有找到对应记录")
 	}
 	frozen := seen.snapshotOf(runID)
-	currentSignature := withFrozenGovernance(currentSignatureFor(frozen.DocumentIDs, nil, s.models, telecomCompilerRefForCase(caseItem)), frozen)
+	// One operation, one client: the retried attempt must keep the identity it
+	// validated, even if the endpoint watcher applies a new revision meanwhile.
+	models := s.currentModels()
+	currentSignature := withFrozenGovernance(currentSignatureFor(frozen.DocumentIDs, nil, models, telecomCompilerRefForCase(caseItem)), frozen)
 	if !sameRunConfiguration(frozen, currentSignature) || !sameRunCompilerIdentity(frozen, currentSignature) {
 		return fault.Conflict("规则或模型配置已变更，请发起新的审查。原审查记录会保留")
 	}
@@ -415,7 +418,6 @@ func (s *Store) retry(ctx context.Context, user accounts.User, caseID, runID str
 		return err
 	}
 	acceptedAt := stamp()
-	models := s.models
 	created := false
 	var executionCase Case
 	var retryTx pgx.Tx
@@ -432,7 +434,7 @@ func (s *Store) retry(ctx context.Context, user accounts.User, caseID, runID str
 		if !ok || latestRun.ID != runID {
 			return fault.NotFound("没有找到对应记录")
 		}
-		currentSignature := withFrozenGovernance(currentSignatureFor(frozen.DocumentIDs, nil, s.models, telecomCompilerRefForCase(*currentCase)), frozen)
+		currentSignature := withFrozenGovernance(currentSignatureFor(frozen.DocumentIDs, nil, models, telecomCompilerRefForCase(*currentCase)), frozen)
 		if !sameRunSignature(st.snapshotOf(runID), frozen) || !sameRunConfiguration(frozen, currentSignature) ||
 			!sameRunCompilerIdentity(frozen, currentSignature) {
 			return fault.Conflict("规则或模型配置已变更，请发起新的审查。原审查记录会保留")
@@ -764,11 +766,11 @@ func (s *Store) executeAttemptContext(parent context.Context, runID, attemptID s
 	ctx, cancel := context.WithTimeout(parent, reviewExecutionLimit)
 	defer cancel()
 	if claim, ok := s.claimForAttempt(attemptID); ok {
-		ctx = model.WithDelegatedScope(ctx, model.DelegatedScope{
+		ctx = model.WithDelegatedScope(ctx, modelScope(model.DelegatedScope{
 			Kind: "execution", TenantID: claim.TenantID, OrgID: claim.OrgID, CaseID: claim.CaseID,
 			ActorID: claim.ActorID, JobID: claim.JobID, RunID: runID, AttemptID: attemptID,
 			WorkerID: claim.WorkerID, Generation: claim.Generation,
-		})
+		}, models))
 	}
 	s.runningMu.Lock()
 	s.running[attemptID] = cancel
@@ -1304,10 +1306,10 @@ func (s *Store) recordFirstVerifiedFinding(ctx context.Context, recorder attempt
 		EventType: "finding_verified", At: time.Now().UTC(), Status: "verified",
 	}
 	if err := recorder.RecordExecutionEvent(spanCtx, verified); err != nil {
-		_ = finish("span_failed", "failed", "event_persistence_failed", nil, "")
+		_ = finish(execution.SpanCompletion{EventType: "span_failed", Status: "failed", ErrorCode: "event_persistence_failed"})
 		return err
 	}
-	return finish("span_completed", "completed", "", nil, "")
+	return finish(execution.SpanCompletion{EventType: "span_completed", Status: "completed"})
 }
 
 func (s *Store) finishAttempt(runID, attemptID, stateName, partialReason, errorCode string) error {
@@ -1416,7 +1418,7 @@ func (s *Store) updateExecutionContext(ctx context.Context, attemptID string, fn
 }
 
 func insertExecutionEvent(ctx context.Context, tx pgx.Tx, event ExecutionEvent) error {
-	var usage any
+	var usage, trace any
 	if event.Usage != nil {
 		encoded, err := jsonText(event.Usage)
 		if err != nil {
@@ -1424,10 +1426,17 @@ func insertExecutionEvent(ctx context.Context, tx pgx.Tx, event ExecutionEvent) 
 		}
 		usage = encoded
 	}
-	_, err := tx.Exec(ctx, `INSERT INTO execution_events (attempt_id, event_seq, span_id, parent_span_id, node_kind, phase, event_type, occurred_at, duration_ms, status, error_code, model_ref, usage, recorded_at, event_key, generation)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) ON CONFLICT (attempt_id,event_seq) DO NOTHING`,
+	if event.Trace != nil {
+		encoded, err := jsonText(event.Trace)
+		if err != nil {
+			return err
+		}
+		trace = encoded
+	}
+	_, err := tx.Exec(ctx, `INSERT INTO execution_events (attempt_id, event_seq, span_id, parent_span_id, node_kind, phase, event_type, occurred_at, duration_ms, status, error_code, model_ref, usage, trace, recorded_at, event_key, generation)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17) ON CONFLICT (attempt_id,event_seq) DO NOTHING`,
 		event.AttemptID, event.Seq, event.SpanID, event.ParentSpanID, event.NodeKind, event.Phase,
-		event.EventType, event.At, event.DurationMS, event.Status, event.ErrorCode, event.ModelRef, usage, event.RecordedAt, event.EventKey, event.Generation)
+		event.EventType, event.At, event.DurationMS, event.Status, event.ErrorCode, event.ModelRef, usage, trace, event.RecordedAt, event.EventKey, event.Generation)
 	return err
 }
 
@@ -1462,6 +1471,7 @@ func (r attemptRecorder) RecordExecutionEvent(ctx context.Context, event executi
 		AttemptID: r.attemptID, SpanID: spanID, ParentSpanID: parentID, NodeKind: event.NodeKind,
 		Phase: event.Phase, EventType: event.EventType, At: event.At.UTC().Format(time.RFC3339Nano),
 		DurationMS: event.DurationMS, Status: event.Status, ErrorCode: errorCode, ModelRef: modelRef, Usage: usage,
+		Trace: event.Trace,
 	}
 	if event.EventKey != "" {
 		stored.EventKey = stringPointer(event.EventKey)
@@ -1510,11 +1520,16 @@ func (r attemptRecorder) StartModelCall(ctx context.Context, modelRef string) (c
 				OutputTokens: result.Usage.OutputTokens, TotalTokens: result.Usage.TotalTokens,
 			}
 		}
+		completion := execution.SpanCompletion{Usage: usage, ModelRef: result.ModelRef, Trace: result.Trace}
 		if result.Status == "completed" {
-			r.remember(finish("model_completed", "completed", "", usage, result.ModelRef))
-			return
+			completion.EventType = "model_completed"
+			completion.Status = "completed"
+		} else {
+			completion.EventType = "model_failed"
+			completion.Status = "failed"
+			completion.ErrorCode = result.ErrorCode
 		}
-		r.remember(finish("model_failed", "failed", result.ErrorCode, usage, result.ModelRef))
+		r.remember(finish(completion))
 	}
 }
 

@@ -50,34 +50,47 @@ func (h *handler) oidcCallback(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "authentication failed", http.StatusServiceUnavailable)
 		return
 	}
-	query := r.URL.Query()
-	if _, hasError := query["error"]; hasError {
+	code, state, cookie, ok := oidcCallbackValues(r)
+	if !ok {
 		http.Error(w, "authentication failed", http.StatusUnauthorized)
 		return
 	}
-	codes, hasCode := query["code"]
-	states, hasState := query["state"]
-	cookie, err := r.Cookie(oidcStateCookie)
-	if err != nil || !hasCode || len(codes) != 1 || !hasState || len(states) != 1 || len(codes[0]) == 0 || len(codes[0]) > 4096 || len(states[0]) == 0 || len(states[0]) > 256 {
-		http.Error(w, "authentication failed", http.StatusUnauthorized)
-		return
-	}
-	code, state := codes[0], states[0]
 	token, audience, err := h.oidc.Complete(r.Context(), code, state, cookie.Value)
 	if err != nil {
 		http.Error(w, "authentication failed", http.StatusUnauthorized)
 		return
 	}
-	destination := ""
-	switch audience {
-	case identity.AudienceClient:
-		destination = "/"
-	case identity.AudienceAdmin:
-		destination = "/admin"
-	default:
+	destination, ok := oidcDestination(audience)
+	if !ok {
 		http.Error(w, "authentication failed", http.StatusUnauthorized)
 		return
 	}
 	h.setSessionCookie(w, r, token, audience, 7*24*3600)
 	http.Redirect(w, r, destination, http.StatusSeeOther)
+}
+
+func oidcCallbackValues(r *http.Request) (string, string, *http.Cookie, bool) {
+	query := r.URL.Query()
+	if _, hasError := query["error"]; hasError {
+		return "", "", nil, false
+	}
+	codes, hasCode := query["code"]
+	states, hasState := query["state"]
+	cookie, err := r.Cookie(oidcStateCookie)
+	if err != nil || !hasCode || len(codes) != 1 || !hasState || len(states) != 1 ||
+		len(codes[0]) == 0 || len(codes[0]) > 4096 || len(states[0]) == 0 || len(states[0]) > 256 {
+		return "", "", nil, false
+	}
+	return codes[0], states[0], cookie, true
+}
+
+func oidcDestination(audience string) (string, bool) {
+	switch audience {
+	case identity.AudienceClient:
+		return "/", true
+	case identity.AudienceAdmin:
+		return "/admin", true
+	default:
+		return "", false
+	}
 }

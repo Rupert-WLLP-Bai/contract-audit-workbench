@@ -101,64 +101,17 @@ func (s Source) ir() docir.IR {
 // Evaluate reads ready documents. Equal months across every ready document are
 // compatible. A missing side or a failed parse is insufficient, not agreement.
 func Evaluate(docs []Source) Evaluation {
-	var hits []hit
-	var failed []Source
-	var uncertain []Anchor
-	for _, doc := range docs {
-		if doc.ParseStatus != "ready" {
-			failed = append(failed, doc)
-			continue
-		}
-		found, ambiguous := findWarranty(doc)
-		hits = append(hits, found...)
-		uncertain = append(uncertain, ambiguous...)
+	ev, hits, failed := warrantyEvidence(docs)
+	if len(hits) == 0 && len(ev.Uncertain) == 0 {
+		return absentWarranty(ev, docs, failed)
 	}
-	ev := Evaluation{Domain: "warranty", RuleVersion: WarrantyRuleVersion, Uncertain: uncertain}
-	for _, doc := range failed {
-		ev.Missing = append(ev.Missing, Anchor{
-			DocumentID: doc.ID, Status: "missing",
-			Reason: "这份材料没有解析成正文，不能编造坐标，也不能把它当成无风险。",
-		})
-	}
-	if len(hits) == 0 && len(uncertain) == 0 {
-		if len(docs) == 0 {
-			ev.Relation = RelInsufficient
-			ev.Reason = "没有可比对的材料，这条比对是信息不足。"
-			return ev
-		}
-		if len(failed) > 0 {
-			ev.Relation = RelInsufficient
-			ev.Reason = "有材料未能解析，已解析材料也没有写明质保月数，这条比对是信息不足。"
-			return ev
-		}
-		ev.Relation = RelNotApplicable
-		ev.Reason = "已解析材料没有写明质保月数，本条规则不适用。"
-		return ev
-	}
-	for _, item := range hits {
-		ev.Facts = append(ev.Facts, Fact{
-			DocumentID: item.doc.ID, Value: item.value, Unit: "个月",
-			Anchor: Anchor{
-				DocumentID: item.doc.ID, Quote: item.quote, Status: "located",
-				Start: item.start, End: item.end, Page: item.page, ElementID: item.element,
-			},
-		})
-	}
-	if len(uncertain) > 0 {
+	if len(ev.Uncertain) > 0 {
 		ev.Relation = RelInsufficient
 		ev.Reason = "质保条款含范围、否定或例外表达，当前规则仅核对明确的固定月数，需要人工核对；这条比对是信息不足。"
 		return ev
 	}
-	same := true
-	for _, item := range hits[1:] {
-		if item.value != hits[0].value {
-			same = false
-			break
-		}
-	}
-	if !same {
-		ev.Relation = RelConflict
-		ev.Reason = conflictClaim(hits)
+	if !sameWarranty(hits) {
+		ev.Relation, ev.Reason = RelConflict, conflictClaim(hits)
 		return ev
 	}
 	if len(failed) == 0 && covers(docs, hits) {
@@ -166,9 +119,48 @@ func Evaluate(docs []Source) Evaluation {
 		ev.Reason = fmt.Sprintf("已解析材料写明的质保月数相同，都是 %d 个月。", hits[0].value)
 		return ev
 	}
-	ev.Relation = RelInsufficient
-	ev.Reason = insufficientClaim(hits, failed, docs)
+	ev.Relation, ev.Reason = RelInsufficient, insufficientClaim(hits, failed, docs)
 	return ev
+}
+
+func warrantyEvidence(docs []Source) (Evaluation, []hit, []Source) {
+	ev := Evaluation{Domain: "warranty", RuleVersion: WarrantyRuleVersion}
+	var hits []hit
+	var failed []Source
+	for _, doc := range docs {
+		if doc.ParseStatus != "ready" {
+			failed = append(failed, doc)
+			ev.Missing = append(ev.Missing, missingDocument(doc))
+			continue
+		}
+		found, ambiguous := findWarranty(doc)
+		hits = append(hits, found...)
+		ev.Uncertain = append(ev.Uncertain, ambiguous...)
+	}
+	for _, item := range hits {
+		ev.Facts = append(ev.Facts, Fact{DocumentID: item.doc.ID, Value: item.value, Unit: "个月",
+			Anchor: Anchor{DocumentID: item.doc.ID, Quote: item.quote, Status: "located", Start: item.start,
+				End: item.end, Page: item.page, ElementID: item.element}})
+	}
+	return ev, hits, failed
+}
+
+func absentWarranty(ev Evaluation, docs, failed []Source) Evaluation {
+	ev.Relation = RelInsufficient
+	switch {
+	case len(docs) == 0:
+		ev.Reason = "没有可比对的材料，这条比对是信息不足。"
+	case len(failed) > 0:
+		ev.Reason = "有材料未能解析，已解析材料也没有写明质保月数，这条比对是信息不足。"
+	default:
+		ev.Relation = RelNotApplicable
+		ev.Reason = "已解析材料没有写明质保月数，本条规则不适用。"
+	}
+	return ev
+}
+
+func sameWarranty(hits []hit) bool {
+	return allValuesEqual(hits, func(item hit) int { return item.value })
 }
 
 // Findings turns a conflict or an insufficient evaluation into one proposal.
@@ -227,9 +219,6 @@ func findWarranty(doc Source) ([]hit, []Anchor) {
 	var uncertain []Anchor
 	seen := map[int]bool{}
 	for _, loc := range indexes {
-		if len(loc) < 4 {
-			continue
-		}
 		quote := text[loc[0]:loc[1]]
 		if strings.HasPrefix(quote, "质保金") || strings.HasPrefix(quote, "保修金") {
 			continue
@@ -243,22 +232,25 @@ func findWarranty(doc Source) ([]hit, []Anchor) {
 			}
 			continue
 		}
-		value, err := strconv.Atoi(text[loc[2]:loc[3]])
-		if err != nil {
-			continue
+		if item, ok := locatedWarranty(doc, text, loc); ok {
+			out = append(out, item)
 		}
-		start := utf8.RuneCountInString(text[:loc[0]])
-		end := start + utf8.RuneCountInString(quote)
-		bound := docir.Bind(ir, quote, start, end)
-		if bound.Status != docir.StatusLocated {
-			continue
-		}
-		out = append(out, hit{
-			doc: doc, quote: quote, start: bound.Start, end: bound.End, value: value,
-			page: bound.Page, element: bound.ElementID,
-		})
 	}
 	return out, uncertain
+}
+
+func locatedWarranty(doc Source, text string, loc []int) (hit, bool) {
+	value, err := strconv.Atoi(text[loc[2]:loc[3]])
+	if err != nil {
+		return hit{}, false
+	}
+	quote := text[loc[0]:loc[1]]
+	bound, ok := bindSpan(doc, quote, loc[0])
+	if !ok {
+		return hit{}, false
+	}
+	return hit{doc: doc, quote: quote, start: bound.Start, end: bound.End, value: value,
+		page: bound.Page, element: bound.ElementID}, true
 }
 
 // Inspect the surrounding sentence, including qualifiers before the keyword and
@@ -305,7 +297,7 @@ func insufficientClaim(hits []hit, failed, docs []Source) string {
 	if len(readyIDs(docs)) < 2 && len(failed) == 0 {
 		return "仅有一份独立材料写明质保月数，无法完成跨文件比对，这条比对是信息不足。"
 	}
-	if len(failed) > 0 && len(hits) > 0 {
+	if len(failed) > 0 {
 		return fmt.Sprintf("已解析材料写明质保 %d 个月，但仍有材料未能解析，这条比对是信息不足。", hits[0].value)
 	}
 	named := make([]string, 0, len(hits))

@@ -3,6 +3,8 @@ package jev
 import (
 	"os"
 	"strings"
+
+	"contractaudit/internal/process"
 )
 
 const (
@@ -20,9 +22,9 @@ const (
 // fall back to the documented defaults.
 func FromEnv() Config {
 	return Config{
-		BaseURL: envOrDefault(EnvBaseURL, DefaultBaseURL),
+		BaseURL: process.Env(EnvBaseURL, DefaultBaseURL),
 		APIKey:  strings.TrimSpace(os.Getenv(EnvAPIKey)),
-		Model:   envOrDefault(EnvModel, DefaultModel),
+		Model:   process.Env(EnvModel, DefaultModel),
 		Timeout: DefaultTimeout,
 	}
 }
@@ -55,11 +57,4 @@ func (c Config) State() State {
 		valid = c.Validate() == nil
 	}
 	return State{Endpoint: endpoint, Model: model, KeyConfigured: keyConfigured, Valid: valid}
-}
-
-func envOrDefault(key, fallback string) string {
-	if value := strings.TrimSpace(os.Getenv(key)); value != "" {
-		return value
-	}
-	return fallback
 }

@@ -68,6 +68,11 @@ export function errorMessage(error: unknown): string {
   return "请求没有完成";
 }
 
+/** Status 0 is the fetch-failure sentinel; everything else is an HTTP code. */
+export function statusLabel(status: number): string {
+  return status === 0 ? "无法连接服务" : `HTTP ${status}`;
+}
+
 interface ErrorFields {
   message: string | null;
   code: string | null;
@@ -80,42 +85,44 @@ function asRecord(value: unknown): Record<string, unknown> | null {
   return value as Record<string, unknown>;
 }
 
-export function parseErrorPayload(payload: unknown): ErrorFields {
-  const record = asRecord(payload);
-  const nested = record ? asRecord(record.error) : null;
+function errorFieldsFrom(record: Record<string, unknown>): ErrorFields {
+  const nested = asRecord(record.error);
   const source = nested ?? record;
-  if (!source)
-    return { message: null, code: null, retryable: null, details: null };
-  const directMessage = typeof record?.error === "string" ? record.error : null;
+  const directMessage =
+    typeof record.error === "string" ? record.error : null;
   const message =
-    typeof source.message === "string" ? source.message : directMessage;
-  const code = typeof source.code === "string" ? source.code : null;
-  const retryable =
-    typeof source.retryable === "boolean" ? source.retryable : null;
+    (typeof source.message === "string" ? source.message : null) ??
+    directMessage;
   return {
     message: message === null ? null : message.slice(0, 300),
-    code,
-    retryable,
+    code: typeof source.code === "string" ? source.code : null,
+    retryable:
+      typeof source.retryable === "boolean" ? source.retryable : null,
     details: source.details ?? null,
   };
 }
 
-function defaultCode(status: number): string {
-  if (status === 401) return "unauthenticated";
-  if (status === 403) return "forbidden";
-  if (status === 404) return "not_found";
-  if (status === 409) return "conflict";
-  if (status === 0) return "network";
-  return "request_failed";
+export function parseErrorPayload(payload: unknown): ErrorFields {
+  const record = asRecord(payload);
+  if (!record)
+    return { message: null, code: null, retryable: null, details: null };
+  return errorFieldsFrom(record);
 }
 
-function defaultMessage(status: number): string {
-  if (status === 401) return "登录已失效或账号密码不正确";
-  if (status === 403) return "没有访问该内容的权限";
-  if (status === 404) return "没有找到对应记录";
-  if (status === 409) return "该事项已被他人更新，请按最新内容重新确认";
-  if (status === 0) return "无法连接审查服务";
-  return "审查服务暂时不能完成这个操作";
+const defaultOutcomes: Record<number, { code: string; message: string }> = {
+  401: { code: "unauthenticated", message: "登录已失效或账号密码不正确" },
+  403: { code: "forbidden", message: "没有访问该内容的权限" },
+  404: { code: "not_found", message: "没有找到对应记录" },
+  409: { code: "conflict", message: "该事项已被他人更新，请按最新内容重新确认" },
+  0: { code: "network", message: "无法连接审查服务" },
+};
+const requestFailure = {
+  code: "request_failed",
+  message: "审查服务暂时不能完成这个操作",
+};
+
+function defaultOutcome(status: number): { code: string; message: string } {
+  return defaultOutcomes[status] ?? requestFailure;
 }
 
 export async function errorFromResponse(response: Response): Promise<ApiError> {
@@ -129,25 +136,20 @@ export async function errorFromResponse(response: Response): Promise<ApiError> {
   return new ApiError(
     parsed.message && parsed.message.trim() !== ""
       ? parsed.message
-      : defaultMessage(response.status),
+      : defaultOutcome(response.status).message,
     response.status,
-    parsed.code ?? defaultCode(response.status),
+    parsed.code ?? defaultOutcome(response.status).code,
     parsed.retryable ?? false,
     parsed.details,
   );
 }
 
-export async function requestJson<T>(
+async function fetchResponse(
   path: string,
   init: RequestInit,
-  parse: (value: unknown) => T,
-): Promise<T> {
-  const requestEpoch = sessionEpoch;
-  const isSessionRequest =
-    path === "/api/session" || path.startsWith("/api/session?");
-  let response: Response;
+): Promise<Response> {
   try {
-    response = await fetch(path, {
+    return await fetch(path, {
       ...init,
       credentials: "include",
       cache: "no-store",
@@ -160,16 +162,28 @@ export async function requestJson<T>(
     if (error instanceof Error && error.name === "AbortError") throw error;
     throw new ApiError("无法连接审查服务", 0, "network", true, null);
   }
+}
+
+function assertSessionEpoch(
+  requestEpoch: number,
+  isSessionRequest: boolean,
+): void {
   if (!isSessionRequest && requestEpoch !== sessionEpoch)
     throw new DOMException("Session changed", "AbortError");
-  if (!response.ok) throw await errorFromResponse(response);
+}
+
+async function readJsonResponse<T>(
+  response: Response,
+  parse: (value: unknown) => T,
+  requestEpoch: number,
+  isSessionRequest: boolean,
+): Promise<T> {
   if (response.status === 204) return parse(null);
   const text = await response.text();
   if (text.trim() === "") return parse(null);
   try {
     const value = JSON.parse(text) as unknown;
-    if (!isSessionRequest && requestEpoch !== sessionEpoch)
-      throw new DOMException("Session changed", "AbortError");
+    assertSessionEpoch(requestEpoch, isSessionRequest);
     return parse(value);
   } catch (error) {
     if (
@@ -185,6 +199,20 @@ export async function requestJson<T>(
       null,
     );
   }
+}
+
+export async function requestJson<T>(
+  path: string,
+  init: RequestInit,
+  parse: (value: unknown) => T,
+): Promise<T> {
+  const requestEpoch = sessionEpoch;
+  const isSessionRequest =
+    path === "/api/session" || path.startsWith("/api/session?");
+  const response = await fetchResponse(path, init);
+  assertSessionEpoch(requestEpoch, isSessionRequest);
+  if (!response.ok) throw await errorFromResponse(response);
+  return readJsonResponse(response, parse, requestEpoch, isSessionRequest);
 }
 
 export function jsonInit(

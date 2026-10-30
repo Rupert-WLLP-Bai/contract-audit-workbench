@@ -67,6 +67,18 @@ func TestExecutionConservativelyAbstainsOnUnsupportedValuesAndRoles(t *testing.T
 	}
 }
 
+func TestExecutionPrioritizesEvidenceRoleMismatch(t *testing.T) {
+	request := demoRequest(t)
+	request.Facts[1].SourceRole = "unapproved_role"
+	report, err := demoPublished(t).Execute(context.Background(), request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := resultFor(t, report, "ENT-TECH-BW-001").ReasonCode; got != "source_role_mismatch" {
+		t.Fatalf("role mismatch priority changed: got %q", got)
+	}
+}
+
 func TestExecutionRejectsNilPack(t *testing.T) {
 	var pack *Pack
 	if _, err := pack.Execute(context.Background(), demoRequest(t)); !errors.Is(err, ErrInvalidManifest) {

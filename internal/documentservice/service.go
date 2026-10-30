@@ -43,24 +43,39 @@ func FromEnv() (Config, error) {
 		"DOCUMENT_OCR_CONCURRENCY": &config.OCRConcurrency,
 		"DOCUMENT_QUEUE_CAPACITY":  &config.QueueCapacity,
 	} {
-		raw := strings.TrimSpace(os.Getenv(name))
-		if raw == "" {
-			continue
+		if err := readBoundedEnvInt(name, destination); err != nil {
+			return Config{}, err
 		}
-		value, err := strconv.Atoi(raw)
-		if err != nil || value < 1 || value > 1024 {
-			return Config{}, errors.New(name + " must be an integer in 1..1024")
-		}
-		*destination = value
 	}
 	if raw := strings.TrimSpace(os.Getenv("DOCUMENT_PARSE_TIMEOUT")); raw != "" {
-		value, err := time.ParseDuration(raw)
-		if err != nil || value <= 0 || value > 30*time.Minute {
-			return Config{}, errors.New("DOCUMENT_PARSE_TIMEOUT must be a positive duration no longer than 30m")
+		value, err := parseDocumentTimeout(raw)
+		if err != nil {
+			return Config{}, err
 		}
 		config.ParseTimeout = value
 	}
 	return config, nil
+}
+
+func readBoundedEnvInt(name string, destination *int) error {
+	raw := strings.TrimSpace(os.Getenv(name))
+	if raw == "" {
+		return nil
+	}
+	value, err := strconv.Atoi(raw)
+	if err != nil || value < 1 || value > 1024 {
+		return errors.New(name + " must be an integer in 1..1024")
+	}
+	*destination = value
+	return nil
+}
+
+func parseDocumentTimeout(raw string) (time.Duration, error) {
+	value, err := time.ParseDuration(raw)
+	if err != nil || value <= 0 || value > 30*time.Minute {
+		return 0, errors.New("DOCUMENT_PARSE_TIMEOUT must be a positive duration no longer than 30m")
+	}
+	return value, nil
 }
 
 // Service owns the public Document routes and authenticated delegated prepare
@@ -216,21 +231,14 @@ func (s *Service) prepare(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return
 	}
-	values := r.Header.Values("X-Contract-Service-Key")
-	if len(values) != 1 || subtle.ConstantTimeCompare([]byte(values[0]), []byte(s.config.WorkerCredential)) != 1 {
+	if !validPrepareCredential(r.Header.Values("X-Contract-Service-Key"), s.config.WorkerCredential) {
 		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "service authentication required", "code": "service_unauthenticated"})
 		return
 	}
 	body := http.MaxBytesReader(w, r.Body, maxPrepareRequestBytes)
 	defer body.Close()
-	var request store.PrepareDocumentRequest
-	decoder := json.NewDecoder(body)
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&request); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid preparation request"})
-		return
-	}
-	if err := decoder.Decode(new(any)); err != io.EOF {
+	request, err := decodePrepareRequest(body)
+	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid preparation request"})
 		return
 	}
@@ -238,7 +246,7 @@ func (s *Service) prepare(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 	classified := false
 	var frozen store.FrozenDocument
-	err := s.withQueue(ctx, func(ctx context.Context) error {
+	err = s.withQueue(ctx, func(ctx context.Context) error {
 		kind, err := s.store.DocumentPreparationKind(ctx, request)
 		if err != nil {
 			return err
@@ -251,22 +259,46 @@ func (s *Service) prepare(w http.ResponseWriter, r *http.Request) {
 		})
 	})
 	if err != nil {
-		if errors.Is(err, errParseCapacityFull) {
-			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "document preparation capacity is full"})
-			return
-		}
-		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			writePrepareContextError(w, err)
-			return
-		}
-		if !classified {
-			writeJSON(w, http.StatusForbidden, map[string]string{"error": "current delegated preparation authority is unavailable"})
-			return
-		}
-		writePrepareContextError(w, err)
+		writePrepareFailure(w, err, classified)
 		return
 	}
 	writeJSON(w, http.StatusOK, frozen)
+}
+
+func validPrepareCredential(values []string, credential string) bool {
+	return len(values) == 1 && subtle.ConstantTimeCompare([]byte(values[0]), []byte(credential)) == 1
+}
+
+func decodePrepareRequest(body io.Reader) (store.PrepareDocumentRequest, error) {
+	var request store.PrepareDocumentRequest
+	decoder := json.NewDecoder(body)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&request); err != nil {
+		return store.PrepareDocumentRequest{}, err
+	}
+	if err := decoder.Decode(new(any)); err != io.EOF {
+		if err == nil {
+			return store.PrepareDocumentRequest{}, errors.New("trailing preparation request data")
+		}
+		return store.PrepareDocumentRequest{}, err
+	}
+	return request, nil
+}
+
+func writePrepareFailure(w http.ResponseWriter, err error, classified bool) {
+	if errors.Is(err, errParseCapacityFull) {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "document preparation capacity is full"})
+		return
+	}
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		writePrepareContextError(w, err)
+		return
+	}
+	if !classified {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "current delegated preparation authority is unavailable"})
+		return
+	}
+	writePrepareContextError(w, err)
 }
 
 func writePrepareContextError(w http.ResponseWriter, err error) {

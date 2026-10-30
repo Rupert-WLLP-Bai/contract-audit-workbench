@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
+	"os"
 	"reflect"
 	"sort"
 	"strconv"
@@ -53,11 +54,73 @@ func TestOpenAPITracksAllRegisteredRoutesAndJSONFields(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	workbench, err := parser.ParseFile(token.NewFileSet(), "workbench.go", nil, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	business, err := parser.ParseFile(token.NewFileSet(), "business.go", nil, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	storePackages, err := parser.ParseDir(token.NewFileSet(), "../store", func(info os.FileInfo) bool { return !strings.HasSuffix(info.Name(), "_test.go") }, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
 	routes := map[string]string{}
+	handlerName := func(expr ast.Expr) string {
+		switch target := expr.(type) {
+		case *ast.SelectorExpr:
+			return target.Sel.Name
+		case *ast.Ident:
+			return target.Name
+		default:
+			return ""
+		}
+	}
+	routeLiteral := func(literal *ast.BasicLit) string {
+		route, err := strconv.Unquote(literal.Value)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return route
+	}
 	for _, parsed := range []*ast.File{file, health, governance, evidence} {
+		// Route coverage reads the declarations the server mounts. Both forms
+		// are accepted: an explicit HandleFunc, and the shared mountRoutes whose
+		// variadic argument is a list of literal routeBinding entries. A
+		// duplicated registration fails the check.
+		register := func(route, handler string) {
+			if handler == "" {
+				t.Fatal("route coverage check needs a named handler")
+			}
+			if _, exists := routes[route]; exists {
+				t.Fatalf("duplicate registered route: %s", route)
+			}
+			routes[route] = handler
+		}
 		ast.Inspect(parsed, func(node ast.Node) bool {
 			call, ok := node.(*ast.CallExpr)
-			if !ok || len(call.Args) != 2 {
+			if !ok {
+				return true
+			}
+			if ident, ok := call.Fun.(*ast.Ident); ok && ident.Name == "mountRoutes" {
+				if len(call.Args) < 2 {
+					t.Fatal("mountRoutes needs a mux followed by route bindings")
+				}
+				for _, arg := range call.Args[1:] {
+					binding, ok := arg.(*ast.CompositeLit)
+					if !ok || len(binding.Elts) != 2 {
+						t.Fatal("mountRoutes needs literal route bindings")
+					}
+					literal, ok := binding.Elts[0].(*ast.BasicLit)
+					if !ok || literal.Kind != token.STRING {
+						t.Fatal("route coverage check needs a literal route pattern")
+					}
+					register(routeLiteral(literal), handlerName(binding.Elts[1]))
+				}
+				return true
+			}
+			if len(call.Args) != 2 {
 				return true
 			}
 			selector, ok := call.Fun.(*ast.SelectorExpr)
@@ -65,51 +128,100 @@ func TestOpenAPITracksAllRegisteredRoutesAndJSONFields(t *testing.T) {
 				return true
 			}
 			literal, ok := call.Args[0].(*ast.BasicLit)
-			if !ok {
-				t.Fatal("route coverage check needs a literal route or an explicit new registry reader")
+			if !ok || literal.Kind != token.STRING {
+				t.Fatal("route coverage check needs a literal route pattern")
 			}
-			route, err := strconv.Unquote(literal.Value)
-			if err != nil {
-				t.Fatal(err)
-			}
-			handler := ""
-			switch target := call.Args[1].(type) {
-			case *ast.SelectorExpr:
-				handler = target.Sel.Name
-			case *ast.Ident:
-				handler = target.Name
-			}
-			routes[route] = handler
+			register(routeLiteral(literal), handlerName(call.Args[1]))
 			return true
 		})
 	}
 	schemas := spec["components"].(map[string]any)["schemas"].(map[string]any)
 	jsonFields := map[string][]string{}
-	for _, parsed := range []*ast.File{file, governance, evidence} {
+	types := map[string]*ast.StructType{}
+	for _, storeFile := range storePackages["store"].Files {
+		for _, decl := range storeFile.Decls {
+			gen, ok := decl.(*ast.GenDecl)
+			if !ok {
+				continue
+			}
+			for _, spec := range gen.Specs {
+				typ, ok := spec.(*ast.TypeSpec)
+				if !ok {
+					continue
+				}
+				if body, ok := typ.Type.(*ast.StructType); ok {
+					types[typ.Name.Name] = body
+				}
+			}
+		}
+	}
+	fieldsFor := func(body *ast.StructType) []string {
+		fields := []string{}
+		for _, field := range body.Fields.List {
+			if field.Tag == nil {
+				t.Fatal("request body field lacks JSON tag")
+			}
+			tag, err := strconv.Unquote(field.Tag.Value)
+			if err != nil {
+				t.Fatal(err)
+			}
+			name := strings.Split(reflect.StructTag(tag).Get("json"), ",")[0]
+			if name == "" || name == "-" {
+				t.Fatal("request body field lacks JSON name")
+			}
+			fields = append(fields, name)
+		}
+		sort.Strings(fields)
+		return fields
+	}
+	for _, parsed := range []*ast.File{file, governance, evidence, workbench, business} {
 		for _, decl := range parsed.Decls {
 			fn, ok := decl.(*ast.FuncDecl)
 			if !ok {
 				continue
 			}
 			ast.Inspect(fn, func(node ast.Node) bool {
+				if call, ok := node.(*ast.CallExpr); ok {
+					var name *ast.Ident
+					var requestType ast.Expr
+					switch fun := call.Fun.(type) {
+					case *ast.Ident:
+						name = fun
+					case *ast.IndexExpr:
+						name, _ = fun.X.(*ast.Ident)
+						requestType = fun.Index
+					case *ast.IndexListExpr:
+						name, _ = fun.X.(*ast.Ident)
+					}
+					if name != nil && (name.Name == "serveClientJSONCommand" || name.Name == "serveGovernanceJSONCommand") {
+						typ, ok := requestType.(*ast.SelectorExpr)
+						if !ok {
+							t.Fatal("command request type must be an explicit named store struct")
+						}
+						pkg, ok := typ.X.(*ast.Ident)
+						if !ok || pkg.Name != "store" || types[typ.Sel.Name] == nil {
+							t.Fatal("command request type must be a known store struct")
+						}
+						jsonFields[fn.Name.Name] = fieldsFor(types[typ.Sel.Name])
+					}
+				}
 				value, ok := node.(*ast.ValueSpec)
 				if !ok || len(value.Names) != 1 || value.Names[0].Name != "body" {
 					return true
 				}
 				body, ok := value.Type.(*ast.StructType)
 				if !ok {
-					return true
-				}
-				fields := []string{}
-				for _, field := range body.Fields.List {
-					tag, err := strconv.Unquote(field.Tag.Value)
-					if err != nil {
-						t.Fatal(err)
+					typ, ok := value.Type.(*ast.SelectorExpr)
+					if !ok {
+						t.Fatal("body declaration must use an inline or named store struct")
 					}
-					fields = append(fields, strings.Split(reflect.StructTag(tag).Get("json"), ",")[0])
+					pkg, ok := typ.X.(*ast.Ident)
+					if !ok || pkg.Name != "store" || types[typ.Sel.Name] == nil {
+						t.Fatal("body declaration must use a known store struct")
+					}
+					body = types[typ.Sel.Name]
 				}
-				sort.Strings(fields)
-				jsonFields[fn.Name.Name] = fields
+				jsonFields[fn.Name.Name] = fieldsFor(body)
 				return true
 			})
 		}

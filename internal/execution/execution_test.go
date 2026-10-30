@@ -177,7 +177,7 @@ func TestConcurrentSpanFinishIsRecordedOnce(t *testing.T) {
 	var wg sync.WaitGroup
 	for range 16 {
 		wg.Go(func() {
-			if err := finish("model_failed", "failed", "cancelled", nil, "observed-model"); err != nil {
+			if err := finish(execution.SpanCompletion{EventType: "model_failed", Status: "failed", ErrorCode: "cancelled", ModelRef: "observed-model"}); err != nil {
 				t.Error(err)
 			}
 		})

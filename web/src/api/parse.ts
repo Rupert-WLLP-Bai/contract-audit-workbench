@@ -25,6 +25,9 @@ import type {
   FindingVerification,
   FindingCounts,
   HumanDecision,
+  LLMEndpointView,
+  LLMProbeResult,
+  ModelCallTrace,
   ReviewDocument,
   ReviewRun,
   ReviewRunSummary,
@@ -42,7 +45,8 @@ import type {
   ParsedDocumentMetadata,
   FindingSeveritySource,
 } from "./types";
-import { ApiError } from "./http";
+import { isRecord } from "./guards";
+import { invalidResponse } from "./respond";
 import { parseAgentReview } from "./agent-review";
 import { parseBusinessAgentReview } from "./business-agent-review";
 function nonNegativeIntegerOrNull(value: unknown): number | null {
@@ -66,15 +70,20 @@ function nullableString(
   return typeof value === "string" ? value : null;
 }
 
+function stringArrayValue(value: unknown, key: string): string[] {
+  if (!Array.isArray(value) || !value.every((item) => typeof item === "string"))
+    fail(`${key}不是字符串数组`);
+  return value as string[];
+}
+
 function stringArrayOrEmpty(
   record: Record<string, unknown>,
   key: string,
 ): string[] {
   const value = record[key];
-  if (value === undefined || value === null) return [];
-  if (!Array.isArray(value) || !value.every((item) => typeof item === "string"))
-    fail(`${key}不是字符串数组`);
-  return value as string[];
+  return value === undefined || value === null
+    ? []
+    : stringArrayValue(value, key);
 }
 
 function requiredBoolean(
@@ -89,10 +98,7 @@ function requiredStringArray(
   record: Record<string, unknown>,
   key: string,
 ): string[] {
-  const value = record[key];
-  if (!Array.isArray(value) || !value.every((item) => typeof item === "string"))
-    fail(`${key}不是字符串数组`);
-  return value as string[];
+  return stringArrayValue(record[key], key);
 }
 
 function requiredNullableString(
@@ -197,15 +203,47 @@ function parseExecutionEvent(value: unknown): ExecutionEvent {
     error_code: nullableString(record, "error_code"),
     model_ref: nullableString(record, "model_ref"),
     usage: parseCallUsage(record.usage),
+    trace: parseModelCallTrace(record.trace),
+  };
+}
+
+/**
+ * A malformed trace never hides the rest of the execution record: the
+ * trajectory renders "not recorded" instead of failing the workspace.
+ */
+function parseModelCallTrace(value: unknown): ModelCallTrace | null {
+  if (!isRecord(value)) return null;
+  const messages = Array.isArray(value.request_messages)
+    ? value.request_messages.flatMap((entry) => {
+        if (!isRecord(entry) || typeof entry.role !== "string" || typeof entry.content !== "string")
+          return [];
+        return [{
+          role: entry.role,
+          content: entry.content,
+          truncated: entry.truncated === true,
+        }];
+      })
+    : [];
+  return {
+    requested_model: optionalString(value, "requested_model") ?? "",
+    reported_model: optionalString(value, "reported_model") ?? "",
+    status: optionalString(value, "status") ?? "",
+    error_code: optionalString(value, "error_code") ?? "",
+    started_at: optionalString(value, "started_at") ?? "",
+    finished_at: optionalString(value, "finished_at") ?? "",
+    request_sha256: optionalString(value, "request_sha256") ?? "",
+    request_bytes: nonNegativeIntegerOrNull(value.request_bytes) ?? 0,
+    request_messages: messages,
+    request_truncated: value.request_truncated === true,
+    response_sha256: optionalString(value, "response_sha256") ?? "",
+    response_bytes: nonNegativeIntegerOrNull(value.response_bytes) ?? 0,
+    response_text: optionalString(value, "response_text") ?? "",
+    response_truncated: value.response_truncated === true,
   };
 }
 
 function fail(message: string): never {
-  throw new ApiError(message, 500, "invalid_response", false, null);
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
+  return invalidResponse(message, 500);
 }
 
 function recordOf(value: unknown, name: string): Record<string, unknown> {
@@ -257,15 +295,22 @@ function parseOffset(value: unknown): TextOffset | null {
   return { start, end };
 }
 
-function parseBox(value: unknown): BoundingBox | null {
+function numberRecord<K extends string>(
+  value: unknown,
+  keys: readonly K[],
+): Record<K, number> | null {
   if (!isRecord(value)) return null;
-  const x = numberOrNull(value.x);
-  const y = numberOrNull(value.y);
-  const width = numberOrNull(value.width);
-  const height = numberOrNull(value.height);
-  if (x === null || y === null || width === null || height === null)
-    return null;
-  return { x, y, width, height };
+  const result = {} as Record<K, number>;
+  for (const key of keys) {
+    const parsed = numberOrNull(value[key]);
+    if (parsed === null) return null;
+    result[key] = parsed;
+  }
+  return result;
+}
+
+function parseBox(value: unknown): BoundingBox | null {
+  return numberRecord(value, ["x", "y", "width", "height"]);
 }
 
 function parseRunSummary(value: unknown): ReviewRunSummary | null {
@@ -298,10 +343,42 @@ export function parseCaseSummary(value: unknown): CaseSummary {
   };
 }
 
+function items<T>(
+  value: unknown,
+  recordName: string,
+  listName: string,
+  parse: (entry: unknown) => T,
+): T[] {
+  const record = recordOf(value, recordName);
+  if (!Array.isArray(record.items)) fail(`${listName}缺少 items`);
+  return record.items.map(parse);
+}
+
+function requiredStringRecord<K extends string>(
+  value: unknown,
+  recordName: string,
+  keys: readonly K[],
+): Record<"id" | K, string> {
+  const record = recordOf(value, recordName);
+  const result = {
+    id: requiredString(record, "id"),
+  } as Record<"id" | K, string>;
+  for (const key of keys) result[key] = requiredString(record, key);
+  return result;
+}
+
+function stringDefaults<K extends string>(
+  record: Record<string, unknown>,
+  defaults: Record<K, string>,
+): Record<K, string> {
+  const result = {} as Record<K, string>;
+  for (const key of Object.keys(defaults) as K[])
+    result[key] = optionalString(record, key) ?? defaults[key];
+  return result;
+}
+
 export function parseCaseList(value: unknown): CaseSummary[] {
-  const record = recordOf(value, "案件列表");
-  if (!Array.isArray(record.items)) fail("案件列表缺少 items");
-  return record.items.map(parseCaseSummary);
+  return items(value, "案件列表", "案件列表", parseCaseSummary);
 }
 
 function nullableValueString(
@@ -351,6 +428,19 @@ function parseDocument(value: unknown): DocumentVersion {
   };
 }
 
+function recordList<T>(
+  value: unknown,
+  parse: (entry: unknown) => T,
+): T[] {
+  return Array.isArray(value) ? value.map(parse) : [];
+}
+
+function stringList(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === "string")
+    : [];
+}
+
 function parseActivity(value: unknown): ActivityItem | null {
   if (!isRecord(value)) return null;
   const id = optionalString(value, "id");
@@ -359,69 +449,63 @@ function parseActivity(value: unknown): ActivityItem | null {
   return { id, at: optionalString(value, "at") ?? "", summary };
 }
 
+function parseActivityItems(value: unknown): ActivityItem[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map(parseActivity)
+    .filter((item): item is ActivityItem => item !== null);
+}
+
 function parseCounts(value: unknown): FindingCounts | null {
-  if (value === null || value === undefined) return null;
-  if (!isRecord(value)) return null;
-  const total = numberOrNull(value.total);
-  const undecided = numberOrNull(value.undecided);
-  const conflict = numberOrNull(value.conflict);
-  const insufficient = numberOrNull(value.insufficient);
-  if (
-    total === null ||
-    undecided === null ||
-    conflict === null ||
-    insufficient === null
-  )
-    return null;
-  return { total, undecided, conflict, insufficient };
+  return numberRecord(value, ["total", "undecided", "conflict", "insufficient"]);
+}
+
+function hasCaseRecordArrays(record: Record<string, unknown>): boolean {
+  return (
+    Array.isArray(record.members) &&
+    Array.isArray(record.generations) &&
+    Array.isArray(record.remediations) &&
+    Array.isArray(record.reports) &&
+    Array.isArray(record.archives)
+  );
+}
+
+function parseMembers(value: unknown[]): CaseDetail["members"] {
+  return value.map((entry) => {
+    const member = recordOf(entry, "案件成员");
+    return {
+      id: requiredStringValue(member, "id"),
+      display_name: requiredStringValue(member, "display_name"),
+      role: requiredStringValue(member, "role"),
+      tenant_id: requiredStringValue(member, "tenant_id"),
+      org_id: requiredStringValue(member, "org_id"),
+    };
+  });
 }
 
 export function parseCaseDetail(value: unknown): CaseDetail {
   const record = recordOf(value, "case");
-  if (
-    !Array.isArray(record.members) ||
-    !Array.isArray(record.generations) ||
-    !Array.isArray(record.remediations) ||
-    !Array.isArray(record.reports) ||
-    !Array.isArray(record.archives)
-  ) {
-    fail("案件缺少业务记录数组");
-  }
+  if (!hasCaseRecordArrays(record)) fail("案件缺少业务记录数组");
   return {
     id: requiredString(record, "id"),
     title: optionalString(record, "title") ?? "未命名案件",
     contract_type: optionalString(record, "contract_type") ?? "",
     created_at: optionalString(record, "created_at") ?? "",
     updated_at: optionalString(record, "updated_at") ?? "",
-    documents: Array.isArray(record.documents)
-      ? record.documents.map(parseDocument)
-      : [],
-    members: record.members.map((value) => {
-      const member = recordOf(value, "案件成员");
-      return {
-        id: requiredStringValue(member, "id"),
-        display_name: requiredStringValue(member, "display_name"),
-        role: requiredStringValue(member, "role"),
-        tenant_id: requiredStringValue(member, "tenant_id"),
-        org_id: requiredStringValue(member, "org_id"),
-      };
-    }),
+    documents: recordList(record.documents, parseDocument),
+    members: parseMembers(record.members as unknown[]),
     latest_run: parseRunSummary(record.latest_run),
     finding_counts: parseCounts(record.finding_counts),
-    activity: Array.isArray(record.activity)
-      ? record.activity
-          .map(parseActivity)
-          .filter((item): item is ActivityItem => item !== null)
-      : [],
+    activity: parseActivityItems(record.activity),
     revision_pending: record.revision_pending === true,
     configuration_pending: record.configuration_pending === true,
     business_line: requiredStringValue(record, "business_line"),
     scenario: requiredStringValue(record, "scenario"),
     business_status: requiredStringValue(record, "business_status"),
-    generations: record.generations.map(parseGenerationRecord),
-    remediations: record.remediations.map(parseRemediation),
-    reports: record.reports.map(parseReportRecord),
-    archives: record.archives.map(parseArchiveRecord),
+    generations: (record.generations as unknown[]).map(parseGenerationRecord),
+    remediations: (record.remediations as unknown[]).map(parseRemediation),
+    reports: (record.reports as unknown[]).map(parseReportRecord),
+    archives: (record.archives as unknown[]).map(parseArchiveRecord),
     archived_at: requiredNullableString(record, "archived_at"),
   };
 }
@@ -453,10 +537,12 @@ function parseDecision(value: unknown): HumanDecision {
   const record = recordOf(value, "decision");
   return {
     id: requiredString(record, "id"),
-    action: optionalString(record, "action") ?? "",
-    reason: optionalString(record, "reason") ?? "",
-    actor: optionalString(record, "actor") ?? "未知人员",
-    decided_at: optionalString(record, "decided_at") ?? "",
+    ...stringDefaults(record, {
+      action: "",
+      reason: "",
+      actor: "未知人员",
+      decided_at: "",
+    }),
   };
 }
 
@@ -476,9 +562,6 @@ function parseFindingSeveritySource(
 export function parseFinding(value: unknown): Finding {
   const record = recordOf(value, "finding");
   const version = numberOrNull(record.version);
-  const evidence = Array.isArray(record.evidence)
-    ? record.evidence.map(parseAnchor)
-    : [];
   const verification: FindingVerification =
     typeof record.unverified_reason === "string"
       ? "unverified"
@@ -491,14 +574,12 @@ export function parseFinding(value: unknown): Finding {
     relation: optionalString(record, "relation") ?? "unknown",
     confidence: optionalString(record, "confidence"),
     verification_status: verification,
-    evidence,
+    evidence: recordList(record.evidence, parseAnchor),
     unverified_reason: optionalString(record, "unverified_reason"),
     version: version !== null && Number.isInteger(version) ? version : null,
     severity: optionalNullableString(record, "severity"),
     severity_source: parseFindingSeveritySource(record.severity_source),
-    decisions: Array.isArray(record.decisions)
-      ? record.decisions.map(parseDecision)
-      : [],
+    decisions: recordList(record.decisions, parseDecision),
   };
 }
 
@@ -653,16 +734,10 @@ function parseEvaluation(value: unknown): ConstraintEvaluation {
     reason: optionalString(row, "reason") ?? "",
     rule_id: optionalString(row, "rule_id") ?? "",
     capability_id: optionalString(row, "capability_id") ?? "",
-    object_refs: Array.isArray(row.object_refs)
-      ? row.object_refs.filter(
-          (item): item is string => typeof item === "string",
-        )
-      : [],
+    object_refs: stringList(row.object_refs),
     finding_id: optionalString(row, "finding_id"),
     reason_code: optionalString(row, "reason_code") ?? "",
-    fact_ids: Array.isArray(row.fact_ids)
-      ? row.fact_ids.filter((item): item is string => typeof item === "string")
-      : [],
+    fact_ids: stringList(row.fact_ids),
   };
 }
 
@@ -717,21 +792,17 @@ function parseTemplate(value: unknown): Template {
 }
 
 export function parseTemplateList(value: unknown): Template[] {
-  const record = recordOf(value, "templates");
-  if (!Array.isArray(record.items)) fail("模板列表缺少 items");
-  return record.items.map(parseTemplate);
+  return items(value, "templates", "模板列表", parseTemplate);
 }
 
 export function parseGenerationRecord(value: unknown): GenerationRecord {
-  const record = recordOf(value, "generation");
-  return {
-    id: requiredString(record, "id"),
-    document_id: requiredString(record, "document_id"),
-    template_id: requiredString(record, "template_id"),
-    template_version: requiredString(record, "template_version"),
-    digest: requiredString(record, "digest"),
-    created_at: requiredString(record, "created_at"),
-  };
+  return requiredStringRecord(value, "generation", [
+    "document_id",
+    "template_id",
+    "template_version",
+    "digest",
+    "created_at",
+  ]);
 }
 
 export function parseRemediation(value: unknown): Remediation {
@@ -778,14 +849,12 @@ export function parseReportRecord(value: unknown): ReportRecord {
 }
 
 export function parseArchiveRecord(value: unknown): ArchiveRecord {
-  const record = recordOf(value, "archive");
-  return {
-    id: requiredString(record, "id"),
-    case_id: requiredString(record, "case_id"),
-    report_id: requiredString(record, "report_id"),
-    reason: requiredString(record, "reason"),
-    archived_at: requiredString(record, "archived_at"),
-  };
+  return requiredStringRecord(value, "archive", [
+    "case_id",
+    "report_id",
+    "reason",
+    "archived_at",
+  ]);
 }
 
 function parseBusinessAuditEvent(value: unknown): BusinessAuditEvent {
@@ -893,6 +962,31 @@ export function parseSettings(value: unknown): SettingsView {
       : [],
     execution: parseOperationalMetadata(record.execution),
     operator_audit: parseOperatorAuditSettings(record.operator_audit),
+  };
+}
+
+export function parseLLMEndpoint(value: unknown): LLMEndpointView {
+  const record = recordOf(value, "LLM endpoint");
+  return {
+    configured: requiredBoolean(record, "configured"),
+    name: requiredStringValue(record, "name"),
+    protocol: requiredStringValue(record, "protocol"),
+    base_url: requiredStringValue(record, "base_url"),
+    models: requiredStringArray(record, "models"),
+    review_model: requiredStringValue(record, "review_model"),
+    ocr_model: requiredStringValue(record, "ocr_model"),
+    has_api_key: requiredBoolean(record, "has_api_key"),
+    revision: requiredCount(record, "revision"),
+    updated_at: requiredStringValue(record, "updated_at"),
+    updated_by: requiredStringValue(record, "updated_by"),
+  };
+}
+
+export function parseLLMProbe(value: unknown): LLMProbeResult {
+  const record = recordOf(value, "LLM probe result");
+  return {
+    models: requiredStringArray(record, "models"),
+    latency_ms: requiredCount(record, "latency_ms"),
   };
 }
 

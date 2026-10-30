@@ -142,6 +142,10 @@ spec:
               valueFrom: {secretKeyRef: {name: contract-audit-service-tokens, key: GATEWAY_CORE_TOKEN}}
             - name: WORKER_CORE_TOKEN
               valueFrom: {secretKeyRef: {name: contract-audit-service-tokens, key: WORKER_CORE_TOKEN}}
+            # Seals admin-managed LLM credentials. Optional: absent leaves the
+            # endpoint registry readable but refuses saving or probing secrets.
+            - name: LLM_CONFIG_KEY
+              valueFrom: {secretKeyRef: {name: contract-audit-model, key: LLM_CONFIG_KEY, optional: true}}
             - name: OIDC_CLIENT_SECRET
               valueFrom: {secretKeyRef: {name: contract-audit-oidc, key: OIDC_CLIENT_SECRET, optional: true}}
             - name: OIDC_ADMIN_CLIENT_SECRET
@@ -500,6 +504,9 @@ spec:
               value: ":8084"
             - name: LLM_API_KEY
               valueFrom: {secretKeyRef: {name: contract-audit-model, key: LLM_API_KEY}}
+            # Opens the sealed credential written by the core admin surface.
+            - name: LLM_CONFIG_KEY
+              valueFrom: {secretKeyRef: {name: contract-audit-model, key: LLM_CONFIG_KEY, optional: true}}
             # Only the gateway holds the TypeSafe credential. Missing key leaves
             # Jev unconfigured without affecting chat/OCR readiness.
             - name: TYPESAFE_API_KEY

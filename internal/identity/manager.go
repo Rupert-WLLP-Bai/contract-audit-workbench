@@ -76,42 +76,63 @@ func NewManager(config Config, lookup DirectoryLookup, sessions SessionStore) (*
 	if lookup == nil || sessions == nil {
 		return nil, errors.New("OIDC identity directory and session store are required")
 	}
-	if len(config.StateEncryptionKey) != 32 {
-		return nil, errors.New("OIDC state encryption key must be exactly 32 bytes")
+	if err := validateOIDCConfig(&config); err != nil {
+		return nil, err
 	}
+	config.HTTPClient = oidcHTTPClient(config.HTTPClient)
+	config.StateEncryptionKey = append([]byte(nil), config.StateEncryptionKey...)
+	return &Manager{config: config, lookup: lookup, sessions: sessions, client: config.HTTPClient}, nil
+}
+
+func validateOIDCConfig(config *Config) error {
+	if len(config.StateEncryptionKey) != 32 {
+		return errors.New("OIDC state encryption key must be exactly 32 bytes")
+	}
+	if err := validateOIDCEndpoints(config); err != nil {
+		return err
+	}
+	return validateOIDCCredentials(config)
+}
+
+func validateOIDCEndpoints(config *Config) error {
 	if _, err := parseConfiguredURL(config.Issuer); err != nil {
-		return nil, fmt.Errorf("invalid OIDC issuer: %w", err)
+		return fmt.Errorf("invalid OIDC issuer: %w", err)
 	}
 	if _, err := parseConfiguredURL(config.RedirectURL); err != nil {
-		return nil, fmt.Errorf("invalid OIDC redirect URL: %w", err)
+		return fmt.Errorf("invalid OIDC redirect URL: %w", err)
 	}
 	if config.AdminRedirectURL == "" {
 		config.AdminRedirectURL = config.RedirectURL
 	}
 	if _, err := parseConfiguredURL(config.AdminRedirectURL); err != nil {
-		return nil, fmt.Errorf("invalid OIDC admin redirect URL: %w", err)
+		return fmt.Errorf("invalid OIDC admin redirect URL: %w", err)
 	}
+	return nil
+}
+
+func validateOIDCCredentials(config *Config) error {
 	if config.ClientID == "" || config.ClientSecret == "" || config.AdminClientID == "" || config.AdminClientSecret == "" {
-		return nil, errors.New("both OIDC client and admin client credentials are required")
+		return errors.New("both OIDC client and admin client credentials are required")
 	}
 	if config.ClientID == config.AdminClientID {
-		return nil, errors.New("OIDC client and admin client IDs must be distinct")
+		return errors.New("OIDC client and admin client IDs must be distinct")
 	}
-	if config.HTTPClient != nil {
-		cloned := *config.HTTPClient
+	return nil
+}
+
+func oidcHTTPClient(client *http.Client) *http.Client {
+	if client != nil {
+		cloned := *client
 		cloned.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
 		if cloned.Timeout <= 0 {
 			cloned.Timeout = 10 * time.Second
 		}
-		config.HTTPClient = &cloned
-	} else {
-		config.HTTPClient = &http.Client{
-			Timeout:       10 * time.Second,
-			CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
-		}
+		return &cloned
 	}
-	config.StateEncryptionKey = append([]byte(nil), config.StateEncryptionKey...)
-	return &Manager{config: config, lookup: lookup, sessions: sessions, client: config.HTTPClient}, nil
+	return &http.Client{
+		Timeout:       10 * time.Second,
+		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+	}
 }
 
 // Begin creates the provider authorization URL and an authenticated encrypted
@@ -169,11 +190,11 @@ func (m *Manager) Begin(ctx context.Context, audience string) (string, string, e
 // code, verifies the ID token, maps the trusted user, and creates an
 // audience-bound server session.
 func (m *Manager) Complete(ctx context.Context, code, returnedState, stateCookie string) (string, string, error) {
-	if m == nil || code == "" || returnedState == "" || stateCookie == "" {
+	if !m.completeRequestPresent(code, returnedState, stateCookie) {
 		return "", "", ErrAuthentication
 	}
-	payload, err := m.openState(stateCookie)
-	if err != nil || !subtleStringEqual(payload.State, returnedState) || !validStateAge(payload.IssuedAt, time.Now()) {
+	payload, ok := m.authenticatedState(stateCookie, returnedState)
+	if !ok {
 		return "", "", ErrAuthentication
 	}
 	clientID, clientSecret, err := m.clientCredentials(payload.Audience)
@@ -192,22 +213,54 @@ func (m *Manager) Complete(ctx context.Context, code, returnedState, stateCookie
 	if err != nil {
 		return "", "", ErrAuthentication
 	}
-	user, found := m.lookup(claims.Issuer, claims.Subject)
-	if !found || !user.Enabled || user.Issuer != claims.Issuer || user.Subject != claims.Subject {
+	user, err := m.trustedUser(claims, payload.Audience)
+	if err != nil {
 		return "", "", ErrAuthentication
 	}
-	if payload.Audience == AudienceAdmin && user.Role != "admin" {
-		return "", "", ErrAuthentication
-	}
-	token, err := m.sessions.EstablishSession(user, payload.Audience)
-	if err != nil || token == "" {
-		return "", "", ErrAuthentication
-	}
-	storedAudience, err := m.sessions.SessionAudience(token)
-	if err != nil || storedAudience != payload.Audience {
+	token, err := m.establishSession(user, payload.Audience)
+	if err != nil {
 		return "", "", ErrAuthentication
 	}
 	return token, payload.Audience, nil
+}
+
+func (m *Manager) completeRequestPresent(code, returnedState, stateCookie string) bool {
+	return m != nil && code != "" && returnedState != "" && stateCookie != ""
+}
+
+func (m *Manager) authenticatedState(stateCookie, returnedState string) (statePayload, bool) {
+	payload, err := m.openState(stateCookie)
+	if err != nil || !validReturnedState(payload, returnedState, time.Now()) {
+		return statePayload{}, false
+	}
+	return payload, true
+}
+
+func validReturnedState(payload statePayload, returnedState string, now time.Time) bool {
+	return subtleStringEqual(payload.State, returnedState) && validStateAge(payload.IssuedAt, now)
+}
+
+func (m *Manager) trustedUser(claims idTokenClaims, audience string) (accounts.User, error) {
+	user, found := m.lookup(claims.Issuer, claims.Subject)
+	if !found || !user.Enabled || user.Issuer != claims.Issuer || user.Subject != claims.Subject {
+		return accounts.User{}, ErrAuthentication
+	}
+	if audience == AudienceAdmin && user.Role != "admin" {
+		return accounts.User{}, ErrAuthentication
+	}
+	return user, nil
+}
+
+func (m *Manager) establishSession(user accounts.User, audience string) (string, error) {
+	token, err := m.sessions.EstablishSession(user, audience)
+	if err != nil || token == "" {
+		return "", ErrAuthentication
+	}
+	storedAudience, err := m.sessions.SessionAudience(token)
+	if err != nil || storedAudience != audience {
+		return "", ErrAuthentication
+	}
+	return token, nil
 }
 
 func (m *Manager) clientCredentials(audience string) (string, string, error) {
@@ -238,17 +291,29 @@ func (m *Manager) discover(ctx context.Context) (providerMetadata, error) {
 	if err := json.Unmarshal(body, &metadata); err != nil || metadata.Issuer != m.config.Issuer {
 		return providerMetadata{}, ErrAuthentication
 	}
-	issuerURL, _ := url.Parse(m.config.Issuer)
-	for _, endpoint := range []string{metadata.AuthorizationEndpoint, metadata.TokenEndpoint, metadata.JWKSURI} {
-		parsed, err := parseProviderURL(endpoint)
-		if err != nil || parsed.Scheme == "http" && !isLoopbackHost(issuerURL.Hostname()) {
-			return providerMetadata{}, ErrAuthentication
-		}
-	}
-	if metadata.AuthorizationEndpoint == "" || metadata.TokenEndpoint == "" || metadata.JWKSURI == "" {
+	if !validProviderEndpoints(metadata, m.config.Issuer) {
 		return providerMetadata{}, ErrAuthentication
 	}
 	return metadata, nil
+}
+
+func validProviderEndpoints(metadata providerMetadata, issuer string) bool {
+	issuerURL, _ := url.Parse(issuer)
+	loopbackIssuer := issuerURL != nil && isLoopbackHost(issuerURL.Hostname())
+	for _, endpoint := range []string{metadata.AuthorizationEndpoint, metadata.TokenEndpoint, metadata.JWKSURI} {
+		if !providerEndpointAllowed(endpoint, loopbackIssuer) {
+			return false
+		}
+	}
+	return metadata.AuthorizationEndpoint != "" && metadata.TokenEndpoint != "" && metadata.JWKSURI != ""
+}
+
+func providerEndpointAllowed(endpoint string, loopbackIssuer bool) bool {
+	parsed, err := parseProviderURL(endpoint)
+	if err != nil {
+		return false
+	}
+	return parsed.Scheme != "http" || loopbackIssuer
 }
 
 func (m *Manager) exchangeCode(ctx context.Context, metadata providerMetadata, clientID, clientSecret, code, verifier, redirectURL string) (string, error) {

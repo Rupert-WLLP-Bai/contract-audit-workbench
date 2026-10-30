@@ -23,6 +23,8 @@ import type {
   WorkbenchTaskUpdateInput,
   CaseRelationInput,
   KnowledgeInput,
+  LLMEndpointInput,
+  LLMModelSelectionInput,
   ReviewWorkspace,
 } from "./types";
 import { isActiveAttemptState } from "../domain/review";
@@ -48,6 +50,7 @@ export const queryKeys = {
     audience === "admin"
       ? (["settings", "admin"] as const)
       : queryKeys.settings,
+  llmEndpoint: ["admin", "llm-endpoint"] as const,
   rulePacks: ["admin", "rulepacks"] as const,
   rulePackList: ["admin", "rulepacks", "list"] as const,
   rulePack: (packId: string, version: string) =>
@@ -278,53 +281,113 @@ export function useStartReview(caseId: string) {
   });
 }
 
+interface ReviewPolling {
+  scope: string;
+  data: ReviewWorkspace | undefined;
+  updateCount: number;
+  unchanged: number;
+  wasLive: boolean;
+}
+
+interface ReviewPollQuery {
+  state: {
+    data: ReviewWorkspace | undefined;
+    dataUpdateCount: number;
+    error: unknown;
+  };
+}
+
+function reviewScope(
+  caseId: string,
+  runId: string,
+  attemptId: string | null | undefined,
+): string {
+  return JSON.stringify([caseId, runId, attemptId ?? null]);
+}
+
+function activeReviewState(data: ReviewWorkspace | undefined): string | undefined {
+  return data?.review_attempts?.attempt.state ?? data?.run.state;
+}
+
+function advanceReviewPolling(
+  previous: ReviewPolling,
+  data: ReviewWorkspace | undefined,
+  updateCount: number,
+  scope: string,
+): ReviewPolling {
+  if (previous.wasLive) {
+    return { scope, data, updateCount, unchanged: 0, wasLive: false };
+  }
+  if (previous.updateCount !== updateCount) {
+    // React Query retains the data reference for structurally identical reads.
+    // Only completed unchanged reads advance the bounded 2/4/8s backoff.
+    return {
+      scope,
+      data,
+      updateCount,
+      unchanged: previous.data === data ? Math.min(previous.unchanged + 1, 2) : 0,
+      wasLive: false,
+    };
+  }
+  return previous;
+}
+
+function reviewRefetchInterval(
+  query: ReviewPollQuery,
+  polling: { current: ReviewPolling },
+  caseId: string,
+  runId: string,
+  attemptId: string | null | undefined,
+  streamLive: boolean,
+): number | false {
+  if (isForbidden(query.state.error) || isUnauthenticated(query.state.error)) return false;
+  const data = query.state.data;
+  const state = activeReviewState(data);
+  if (!state || !isActiveAttemptState(state)) return false;
+  const scope = reviewScope(caseId, runId, attemptId);
+  if (polling.current.scope !== scope) {
+    polling.current = { scope, data: undefined, updateCount: 0, unchanged: 0, wasLive: false };
+  }
+  if (streamLive) {
+    polling.current = { scope, data, updateCount: query.state.dataUpdateCount, unchanged: 0, wasLive: true };
+    // A live stream drives immediate refreshes; this is only a safety read.
+    return 30_000;
+  }
+  polling.current = advanceReviewPolling(
+    polling.current,
+    data,
+    query.state.dataUpdateCount,
+    scope,
+  );
+  return 2_000 * 2 ** polling.current.unchanged;
+}
+
 export function useReview(
   caseId: string,
   runId: string,
   attemptId?: string | null,
   streamLive = false,
 ) {
-  const polling = useRef<{
-    scope: string;
-    data: ReviewWorkspace | undefined;
-    updateCount: number;
-    unchanged: number;
-    wasLive: boolean;
-  }>({ scope: "", data: undefined, updateCount: 0, unchanged: 0, wasLive: false });
+  const polling = useRef<ReviewPolling>({
+    scope: "",
+    data: undefined,
+    updateCount: 0,
+    unchanged: 0,
+    wasLive: false,
+  });
   return useQuery({
     queryKey: queryKeys.review(caseId, runId, attemptId),
     queryFn: ({ signal }) => api.getReview(caseId, runId, attemptId, signal),
     enabled: caseId !== "" && runId !== "",
-    refetchInterval: (query) => {
-      if (isForbidden(query.state.error) || isUnauthenticated(query.state.error)) return false;
-      const data = query.state.data;
-      const state = data?.review_attempts?.attempt.state ?? data?.run.state;
-      if (!state || !isActiveAttemptState(state)) return false;
-      const scope = JSON.stringify([caseId, runId, attemptId ?? null]);
-      if (polling.current.scope !== scope) {
-        polling.current = { scope, data: undefined, updateCount: 0, unchanged: 0, wasLive: false };
-      }
-      const previous = polling.current;
-      if (streamLive) {
-        polling.current = { scope, data, updateCount: query.state.dataUpdateCount, unchanged: 0, wasLive: true };
-        // A live stream drives immediate refreshes; this is only a safety read.
-        return 30_000;
-      }
-      if (previous.wasLive) {
-        polling.current = { scope, data, updateCount: query.state.dataUpdateCount, unchanged: 0, wasLive: false };
-      } else if (previous.updateCount !== query.state.dataUpdateCount) {
-        // React Query retains the data reference for structurally identical reads.
-        // Only completed unchanged reads advance the bounded 2/4/8s backoff.
-        polling.current = {
-          scope,
-          data,
-          updateCount: query.state.dataUpdateCount,
-          unchanged: previous.data === data ? Math.min(previous.unchanged + 1, 2) : 0,
-          wasLive: false,
-        };
-      }
-      return 2_000 * 2 ** polling.current.unchanged;
-    },
+    refetchInterval: (query) =>
+      reviewRefetchInterval(
+        query,
+        polling,
+        caseId,
+        runId,
+        attemptId,
+        streamLive,
+      ),
   });
 }
 
@@ -455,6 +518,55 @@ export function useSettings(audience: SessionAudience = "client") {
   return useQuery({
     queryKey: queryKeys.settingsFor(audience),
     queryFn: ({ signal }) => api.getSettings(audience, signal),
+  });
+}
+
+export function useLLMEndpoint(enabled = true) {
+  return useQuery({
+    queryKey: queryKeys.llmEndpoint,
+    queryFn: ({ signal }) => api.getLLMEndpoint(signal),
+    enabled,
+    retry: false,
+  });
+}
+
+function useRefreshLLMEndpoint() {
+  const queryClient = useQueryClient();
+  return async () => {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: queryKeys.llmEndpoint }),
+      queryClient.invalidateQueries({ queryKey: queryKeys.settingsFor("admin") }),
+    ]);
+  };
+}
+
+export function useProbeLLMEndpoint() {
+  return useMutation({
+    mutationFn: (input: {
+      protocol: string;
+      base_url: string;
+      api_key?: string;
+      clear_api_key?: boolean;
+    }) => api.probeLLMEndpoint(input),
+    retry: false,
+  });
+}
+
+export function useSaveLLMEndpoint() {
+  const refresh = useRefreshLLMEndpoint();
+  return useMutation({
+    mutationFn: (input: LLMEndpointInput) => api.saveLLMEndpoint(input),
+    onSuccess: refresh,
+    retry: false,
+  });
+}
+
+export function useSaveLLMModels() {
+  const refresh = useRefreshLLMEndpoint();
+  return useMutation({
+    mutationFn: (input: LLMModelSelectionInput) => api.saveLLMModels(input),
+    onSuccess: refresh,
+    retry: false,
   });
 }
 export function useRulePacks() {

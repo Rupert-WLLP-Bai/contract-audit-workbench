@@ -305,7 +305,10 @@ func (s *Store) RequestExperienceDistillation(ctx context.Context, user accounts
 	if !errors.Is(err, pgx.ErrNoRows) {
 		return ExperienceDistillReceipt{}, err
 	}
-	if s.models == nil || strings.TrimSpace(s.models.ConfigurationID()) == "" {
+	models := s.currentModels()
+	// The model must exist; a provider-backed client also has to expose the
+	// identity the distill job will be compared against when it runs.
+	if models == nil || strings.TrimSpace(models.ConfigurationID()) == "" {
 		return ExperienceDistillReceipt{}, fault.New(503, "model_unavailable", "经验提炼模型配置不可用")
 	}
 	policyContext, err := experiencePolicyContext(ctx, tx, item, feedback)
@@ -341,7 +344,7 @@ func (s *Store) RequestExperienceDistillation(ctx context.Context, user accounts
 	frozen := ExperienceDistillInput{SchemaVersion: "experience-distill-input/v1", TenantID: item.TenantID,
 		OrgID: item.OwnerOrgID, CaseID: item.ID, FeedbackID: feedback.FeedbackID, DecisionID: feedback.DecisionID,
 		ApplicantID: current.ID, CandidateID: candidateID, BaseVersionID: input.BaseVersionID,
-		ModelConfigurationID: s.models.ConfigurationID(), TemplateRef: experienceDistillTemplate, PolicyContext: policyContext}
+		ModelConfigurationID: models.ConfigurationID(), TemplateRef: experienceDistillTemplate, PolicyContext: policyContext}
 	prompt, err := json.Marshal(experienceDistillWork{Input: frozen, Feedback: feedback, Previous: previous})
 	if err != nil {
 		return ExperienceDistillReceipt{}, err

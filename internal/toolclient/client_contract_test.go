@@ -2,6 +2,7 @@ package toolclient
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
@@ -14,6 +15,10 @@ import (
 
 const toolClientCredential = "tool-client-test-private-key-0001"
 
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(request *http.Request) (*http.Response, error) { return f(request) }
+
 func TestNewRejectsUnsafeGatewayConfiguration(t *testing.T) {
 	for _, test := range []struct {
 		name, endpoint, credential string
@@ -21,10 +26,12 @@ func TestNewRejectsUnsafeGatewayConfiguration(t *testing.T) {
 	}{
 		{"missing scheme", "gateway.internal", toolClientCredential, time.Second},
 		{"unsupported scheme", "ftp://gateway.internal", toolClientCredential, time.Second},
+		{"invalid path escape", "http://gateway.internal/%zz", toolClientCredential, time.Second},
 		{"embedded credentials", "http://user:password@gateway.internal", toolClientCredential, time.Second},
 		{"endpoint query", "http://gateway.internal?target=unsafe", toolClientCredential, time.Second},
 		{"endpoint fragment", "http://gateway.internal#mcp", toolClientCredential, time.Second},
 		{"short service credential", "http://gateway.internal", "short", time.Second},
+		{"zero timeout", "http://gateway.internal", toolClientCredential, 0},
 		{"nonpositive timeout", "http://gateway.internal", toolClientCredential, -time.Second},
 	} {
 		t.Run(test.name, func(t *testing.T) {
@@ -32,6 +39,22 @@ func TestNewRejectsUnsafeGatewayConfiguration(t *testing.T) {
 				t.Fatal("unsafe tool client configuration was accepted")
 			}
 		})
+	}
+}
+
+func TestNewAcceptsCredentialAtExactMinimumLength(t *testing.T) {
+	client, err := New("http://gateway.example/base", strings.Repeat("k", 32), time.Second)
+	if err != nil {
+		t.Fatalf("New rejected a 32-byte credential: %v", err)
+	}
+	if client.endpoint != "http://gateway.example/base/mcp" {
+		t.Fatalf("endpoint = %q", client.endpoint)
+	}
+}
+
+func TestNewAcceptsPositiveNanosecondTimeout(t *testing.T) {
+	if _, err := New("http://gateway.example", toolClientCredential, time.Nanosecond); err != nil {
+		t.Fatalf("New rejected a positive nanosecond timeout: %v", err)
 	}
 }
 
@@ -151,5 +174,126 @@ func TestFrozenEvidenceCancellationStopsTheGatewayRequest(t *testing.T) {
 	case <-cancelled:
 	case <-time.After(time.Second):
 		t.Fatal("caller cancellation did not cancel the gateway request")
+	}
+}
+
+func TestFrozenEvidenceSendsCurrentClaimAndReturnsReadOnlyPayload(t *testing.T) {
+	request := clientTestRequest()
+	var calls atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		if r.Method != http.MethodPost || r.URL.Path != "/api/mcp" {
+			t.Errorf("request = %s %s, want POST /api/mcp", r.Method, r.URL.Path)
+		}
+		if r.Header.Get("Content-Type") != "application/json" ||
+			r.Header.Get("Accept") != "application/json, text/event-stream" ||
+			r.Header.Get("MCP-Protocol-Version") != ProtocolVersion ||
+			r.Header.Get("Mcp-Method") != "tools/call" || r.Header.Get("Mcp-Name") != ToolName ||
+			r.Header.Get("X-Contract-Service-Key") != toolClientCredential {
+			t.Errorf("request headers = %#v", r.Header)
+		}
+		var job struct {
+			TenantID   string `json:"tenant_id"`
+			OrgID      string `json:"org_id"`
+			JobID      string `json:"job_id"`
+			WorkerID   string `json:"worker_id"`
+			Generation int64  `json:"generation"`
+			AttemptID  string `json:"attempt_id"`
+		}
+		if err := json.Unmarshal([]byte(r.Header.Get("X-Contract-Job-Context")), &job); err != nil {
+			t.Errorf("decode claim header: %v", err)
+		}
+		if job.TenantID != request.Claim.TenantID || job.OrgID != request.Claim.OrgID || job.JobID != request.Claim.JobID ||
+			job.WorkerID != request.Claim.WorkerID || job.Generation != request.Claim.Generation || job.AttemptID != request.Claim.AttemptID {
+			t.Errorf("job context = %+v, want claim %+v", job, request.Claim)
+		}
+		var body struct {
+			JSONRPC string `json:"jsonrpc"`
+			ID      string `json:"id"`
+			Method  string `json:"method"`
+			Params  struct {
+				Name      string         `json:"name"`
+				Arguments map[string]any `json:"arguments"`
+			} `json:"params"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Errorf("decode tool request: %v", err)
+		}
+		if body.JSONRPC != "2.0" || body.ID != "worker-frozen-evidence" || body.Method != "tools/call" || body.Params.Name != ToolName {
+			t.Errorf("tool request envelope = %+v", body)
+		}
+		if body.Params.Arguments["attempt_id"] != request.AttemptID || body.Params.Arguments["case_id"] != request.CaseID ||
+			body.Params.Arguments["run_id"] != request.RunID || body.Params.Arguments["capability_id"] != request.CapabilityID ||
+			body.Params.Arguments["deadline"] != request.Deadline.UTC().Format(time.RFC3339) {
+			t.Errorf("tool arguments = %+v", body.Params.Arguments)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"jsonrpc":"2.0","id":"worker-frozen-evidence","result":{"isError":false,"content":[{"type":"text","text":"{\"frozen\":true}"}]}}`)
+	}))
+	defer server.Close()
+	client, err := New(" "+server.URL+"/api/// ", toolClientCredential, time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	payload, err := client.FrozenEvidence(context.Background(), request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(payload) != `{"frozen":true}` || calls.Load() != 1 {
+		t.Fatalf("payload=%s calls=%d", payload, calls.Load())
+	}
+}
+
+func TestFrozenEvidenceAcceptsResponseAtExactSizeLimit(t *testing.T) {
+	prefix := `{"jsonrpc":"2.0","id":"worker-frozen-evidence","result":{"content":[{"type":"text","text":"{}"}]}}`
+	body := []byte(prefix + strings.Repeat(" ", maxResponseBytes-len(prefix)))
+	client, err := New("http://gateway.example", toolClientCredential, time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	client.http.Transport = roundTripFunc(func(*http.Request) (*http.Response, error) {
+		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(string(body))), Header: make(http.Header)}, nil
+	})
+	payload, err := client.FrozenEvidence(context.Background(), clientTestRequest())
+	if err != nil || string(payload) != `{}` {
+		t.Fatalf("exact-size response: payload=%q err=%v", payload, err)
+	}
+}
+
+func TestFrozenEvidenceAcceptsClaimAtExactEncodedSizeLimit(t *testing.T) {
+	request := clientTestRequest()
+	workerLength := -1
+	for length := 1; length <= maxClaimBytes; length++ {
+		request.Claim.WorkerID = strings.Repeat("w", length)
+		claim := request.Claim
+		encoded, err := json.Marshal(map[string]any{
+			"tenant_id": claim.TenantID, "org_id": claim.OrgID,
+			"job_id": claim.JobID, "worker_id": claim.WorkerID,
+			"generation": claim.Generation, "attempt_id": claim.AttemptID,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(encoded) == maxClaimBytes {
+			workerLength = length
+			break
+		}
+	}
+	if workerLength < 0 {
+		t.Fatal("could not construct a claim at the encoded size limit")
+	}
+	var headerSize int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		headerSize = len(r.Header.Get("X-Contract-Job-Context"))
+		_, _ = io.WriteString(w, `{"jsonrpc":"2.0","id":"worker-frozen-evidence","result":{"content":[{"type":"text","text":"{}"}]}}`)
+	}))
+	defer server.Close()
+	client, err := New(server.URL, toolClientCredential, time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	payload, err := client.FrozenEvidence(context.Background(), request)
+	if err != nil || string(payload) != `{}` || headerSize != maxClaimBytes {
+		t.Fatalf("boundary claim: payload=%q headerSize=%d err=%v", payload, headerSize, err)
 	}
 }

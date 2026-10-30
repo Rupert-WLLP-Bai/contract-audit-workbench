@@ -101,3 +101,44 @@ func TestEvidenceSupportsAuthorityDirectionalBounds(t *testing.T) {
 		})
 	}
 }
+
+func TestMonthlySLAExclusionsThroughPublicEvidenceEntryPoint(t *testing.T) {
+	const prefix = "云服务 CLOUD-001：SLA 可用率至少99.95%；统计周期：自然月；时区 Asia/Shanghai；公历 gregorian；故障口径 all_service_unavailability；"
+	tests := []struct {
+		name       string
+		quote      string
+		exclusions []string
+		want       bool
+	}{
+		{name: "no exclusions", quote: prefix + "无排除项。", exclusions: []string{}, want: true},
+		{name: "listed exclusions sorted", quote: prefix + "排除项：force_majeure、planned_maintenance。", exclusions: []string{"planned_maintenance", "force_majeure"}, want: true},
+		{name: "missing declaration", quote: prefix, exclusions: []string{}},
+		{name: "no exclusions conflicts with list", quote: prefix + "无排除项；排除项：planned_maintenance。", exclusions: []string{"planned_maintenance"}},
+		{name: "duplicate list markers", quote: prefix + "排除项：planned_maintenance；排除项：planned_maintenance。", exclusions: []string{"planned_maintenance"}},
+		{name: "wrong list", quote: prefix + "排除项：planned_maintenance。", exclusions: []string{"force_majeure"}},
+		{name: "additional exception language", quote: prefix + "排除项：planned_maintenance，其他例外另行约定。", exclusions: []string{"planned_maintenance"}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			fact := Fact{
+				ObjectRef: "CLOUD-001", Value: "99.95", Unit: "percent", SourceRole: "award",
+				MeasurementWindow: "calendar_month", TimeZone: "Asia/Shanghai", Calendar: "gregorian",
+				OutageDefinition: "all_service_unavailability", Exclusions: test.exclusions,
+				Citations: []Citation{{Quote: test.quote}},
+			}
+			if got := EvidenceSupportsAuthority(Rule{Comparator: ComparatorMonthlySLA}, fact); got != test.want {
+				t.Fatalf("EvidenceSupportsAuthority = %t, want %t", got, test.want)
+			}
+		})
+	}
+}
+
+func TestEvidenceSupportsValueFoldsSoftBreakInsideBandwidthToken(t *testing.T) {
+	fact := Fact{
+		ObjectRef: "CLOUD-001", Value: "1/2", Unit: "Mbit/s", Dimension: "bandwidth",
+		SourceRole: "award", Citations: []Citation{{Quote: "云服务 CLOUD-001：带宽为1\n/2 Mbit/s。"}},
+	}
+	if !EvidenceSupportsValue(Rule{Comparator: ComparatorMinimumBandwidth}, fact) {
+		t.Fatal("EvidenceSupportsValue rejected a rational split by a soft line break")
+	}
+}

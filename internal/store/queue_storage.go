@@ -238,7 +238,7 @@ func (s *Store) RunClaimedJob(ctx context.Context, claim JobClaim) error {
 			executionContext, cancel = context.WithDeadline(ctx, claim.deadline)
 			defer cancel()
 		}
-		s.executeAttemptContext(executionContext, claim.RunID, claim.AttemptID, s.models)
+		s.executeAttemptContext(executionContext, claim.RunID, claim.AttemptID, s.currentModels())
 	}
 	if err := ctx.Err(); err != nil {
 		return err

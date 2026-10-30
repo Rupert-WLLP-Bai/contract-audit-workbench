@@ -17,10 +17,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"os/signal"
 	"strconv"
 	"strings"
-	"syscall"
 	"time"
 
 	capabilitypacks "contractaudit/capability-packs"
@@ -30,17 +28,16 @@ import (
 	"contractaudit/internal/config"
 	"contractaudit/internal/externalread"
 	"contractaudit/internal/httpapi"
+	"contractaudit/internal/process"
 	"contractaudit/internal/systemhealth"
 )
 
 func main() {
-	if err := run(); err != nil {
-		log.Fatal(err)
-	}
+	process.Main(run)
 }
 
 func run() error {
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	ctx, stop := process.SignalContext()
 	defer stop()
 	switch role := strings.TrimSpace(os.Getenv("SERVICE_ROLE")); role {
 	case "core":
@@ -114,21 +111,38 @@ func options(app *bootstrap.Runtime, cors []string) httpapi.Options {
 // only in development/test; production must configure an explicit read-only
 // endpoint and object allow-list.
 func operatorAuditConfig(mode string) (bool, *capabilitypack.Registry, map[string]auditext.ReadConnector, []httpapi.OperatorConnectorInfo) {
+	if !operatorAuditEnabled() {
+		return false, nil, nil, nil
+	}
+	registry, ok := operatorAuditRegistry()
+	if !ok {
+		return false, nil, nil, nil
+	}
+	connectors, catalog, ok := operatorAuditEvidence(mode)
+	if !ok {
+		return false, nil, nil, nil
+	}
+	return true, registry, connectors, catalog
+}
+
+func operatorAuditEnabled() bool {
 	rawEnabled := strings.TrimSpace(os.Getenv("OPERATOR_AUDIT_ENABLED"))
 	if rawEnabled == "" {
-		return false, nil, nil, nil
+		return false
 	}
 	enabled, err := strconv.ParseBool(rawEnabled)
-	if err != nil || !enabled {
-		if err != nil {
-			log.Printf("operator audit disabled: OPERATOR_AUDIT_ENABLED is not a boolean")
-		}
-		return false, nil, nil, nil
+	if err != nil {
+		log.Printf("operator audit disabled: OPERATOR_AUDIT_ENABLED is not a boolean")
+		return false
 	}
+	return enabled
+}
+
+func operatorAuditRegistry() (*capabilitypack.Registry, bool) {
 	raws, err := capabilitypacks.Manifests()
 	if err != nil {
 		log.Printf("operator audit disabled: embedded capability packs: %v", err)
-		return false, nil, nil, nil
+		return nil, false
 	}
 	registry, err := capabilitypack.NewRegistry(capabilitypack.RegistryConfig{
 		AllowedCapabilities: []string{"operator.oss.read_config"},
@@ -137,43 +151,69 @@ func operatorAuditConfig(mode string) (bool, *capabilitypack.Registry, map[strin
 	})
 	if err != nil {
 		log.Printf("operator audit disabled: capability registry: %v", err)
-		return false, nil, nil, nil
+		return nil, false
 	}
+	if !registerOperatorAuditManifests(registry, raws) {
+		return nil, false
+	}
+	return registry, true
+}
+
+func registerOperatorAuditManifests(registry *capabilitypack.Registry, raws [][]byte) bool {
 	for _, raw := range raws {
 		manifest, err := capabilitypack.Parse(raw)
 		if err != nil {
 			log.Printf("operator audit disabled: embedded capability pack: %v", err)
-			return false, nil, nil, nil
+			return false
 		}
 		if err := registry.Register(manifest); err != nil {
 			log.Printf("operator audit disabled: register capability pack: %v", err)
-			return false, nil, nil, nil
+			return false
 		}
 	}
+	return true
+}
+
+func operatorAuditEvidence(mode string) (map[string]auditext.ReadConnector, []httpapi.OperatorConnectorInfo, bool) {
 	connectors := map[string]auditext.ReadConnector{}
 	evidenceMode := strings.ToLower(strings.TrimSpace(os.Getenv("EXTERNAL_EVIDENCE_MODE")))
 	if evidenceMode == "" || evidenceMode == "off" {
-		return true, registry, connectors, nil
+		return connectors, nil, true
 	}
-	connectorID := env("EXTERNAL_EVIDENCE_CONNECTOR_ID", "fixture.oss")
-	sourceSystem := env("EXTERNAL_EVIDENCE_SOURCE_SYSTEM", "fixture-oss-east")
+	config, ok := operatorAuditExternalEvidenceConfig(mode, evidenceMode)
+	if !ok {
+		return nil, nil, false
+	}
+	connector, err := externalread.New(config)
+	if err != nil {
+		log.Printf("operator audit disabled: external connector: %v", err)
+		return nil, nil, false
+	}
+	connectors[config.ConnectorID] = connector
+	catalog := []httpapi.OperatorConnectorInfo{{ConnectorID: config.ConnectorID, SourceSystem: config.SourceSystem, AllowedObjects: config.AllowedObjects}}
+	return connectors, catalog, true
+}
+
+func operatorAuditExternalEvidenceConfig(mode, evidenceMode string) (externalread.Config, bool) {
+	connectorID := process.Env("EXTERNAL_EVIDENCE_CONNECTOR_ID", "fixture.oss")
+	sourceSystem := process.Env("EXTERNAL_EVIDENCE_SOURCE_SYSTEM", "fixture-oss-east")
 	baseURL := strings.TrimSpace(os.Getenv("EXTERNAL_EVIDENCE_BASE_URL"))
 	allowed := splitList(os.Getenv("EXTERNAL_EVIDENCE_ALLOWED_OBJECTS"))
-	payloadPrefix := env("EXTERNAL_EVIDENCE_PAYLOAD_PREFIX", "fixture://oss/")
+	payloadPrefix := process.Env("EXTERNAL_EVIDENCE_PAYLOAD_PREFIX", "fixture://oss/")
 	switch evidenceMode {
 	case "fixture":
 		if mode != config.ModeDevelopment && mode != config.ModeTest {
 			log.Printf("operator audit disabled: fixture external evidence is not allowed in %q", mode)
-			return false, nil, nil, nil
+			return externalread.Config{}, false
 		}
 		if len(allowed) == 0 {
 			allowed = []string{"fixture-line-001"}
 		}
-		path := env("EXTERNAL_EVIDENCE_FIXTURE_FILE", "testdata/operatoraudit/raw/oss-bandwidth.json")
+		path := process.Env("EXTERNAL_EVIDENCE_FIXTURE_FILE", "testdata/operatoraudit/raw/oss-bandwidth.json")
 		raw, err := os.ReadFile(path)
 		if err != nil {
 			log.Printf("operator audit disabled: fixture file: %v", err)
-			return false, nil, nil, nil
+			return externalread.Config{}, false
 		}
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "application/json")
@@ -185,23 +225,16 @@ func operatorAuditConfig(mode string) (bool, *capabilitypack.Registry, map[strin
 		// non-synthetic observation contract. This release only accepts the
 		// explicitly synthetic fixture path.
 		log.Printf("operator audit disabled: live external evidence requires a separate approved data path")
-		return false, nil, nil, nil
+		return externalread.Config{}, false
 	default:
 		log.Printf("operator audit disabled: unknown EXTERNAL_EVIDENCE_MODE %q", evidenceMode)
-		return false, nil, nil, nil
+		return externalread.Config{}, false
 	}
-	connector, err := externalread.New(externalread.Config{
+	return externalread.Config{
 		ConnectorID: connectorID, BaseURL: baseURL, SourceSystem: sourceSystem,
 		AllowedObjects: allowed, PayloadPrefix: payloadPrefix,
 		Freshness: 0, Timeout: 5 * time.Second, MaxResponseBytes: 1 << 20,
-	})
-	if err != nil {
-		log.Printf("operator audit disabled: external connector: %v", err)
-		return false, nil, nil, nil
-	}
-	connectors[connectorID] = connector
-	catalog := []httpapi.OperatorConnectorInfo{{ConnectorID: connectorID, SourceSystem: sourceSystem, AllowedObjects: allowed}}
-	return true, registry, connectors, catalog
+	}, true
 }
 
 func splitList(raw string) []string {
@@ -239,7 +272,7 @@ func logStartup(app *bootstrap.Runtime) {
 }
 
 func listen(ctx context.Context, handler http.Handler) error {
-	addr := env("ADDR", "127.0.0.1:8080")
+	addr := process.Env("ADDR", "127.0.0.1:8080")
 	log.Printf("listening on %s", addr)
 	server := &http.Server{
 		Addr: addr, Handler: handler,
@@ -268,11 +301,4 @@ func listen(ctx context.Context, handler http.Handler) error {
 		}
 		return nil
 	}
-}
-
-func env(key, fallback string) string {
-	if value := strings.TrimSpace(os.Getenv(key)); value != "" {
-		return value
-	}
-	return fallback
 }

@@ -80,121 +80,173 @@ func New() *Evaluator { return &Evaluator{} }
 // RequiresHumanReview set: a configured-value conflict is never an automatic
 // risk confirmation.
 func (e *Evaluator) Evaluate(ctx context.Context, input auditext.FrozenInput, observations []auditext.Observation) ([]auditext.CheckResult, error) {
+	if err := validateEvaluationRequest(ctx, input, observations); err != nil {
+		return nil, err
+	}
+	fact, contractEvidence, results, err := evaluateContractFact(input)
+	if evaluationFinished(results, err) {
+		return results, err
+	}
+	observation, results, err := selectEvaluationObservation(input, observations, contractEvidence)
+	if evaluationFinished(results, err) {
+		return results, err
+	}
+	recordVersion := observationRecordVersion(observation)
+	results, err = evaluateObservationAvailability(input, observation, contractEvidence, recordVersion)
+	if evaluationFinished(results, err) {
+		return results, err
+	}
+	results, err = validateObservationBinding(input, observation, contractEvidence, recordVersion)
+	if evaluationFinished(results, err) {
+		return results, err
+	}
+	return evaluateConfiguredBandwidth(input, fact, observation, contractEvidence, recordVersion)
+}
+
+func evaluationFinished(results []auditext.CheckResult, err error) bool {
+	return results != nil || err != nil
+}
+
+func validateEvaluationRequest(ctx context.Context, input auditext.FrozenInput, observations []auditext.Observation) error {
 	if ctx == nil {
-		return nil, fmt.Errorf("%w: nil context", auditext.ErrInvalidRequest)
+		return fmt.Errorf("%w: nil context", auditext.ErrInvalidRequest)
 	}
 	if err := ctx.Err(); err != nil {
-		return nil, err
+		return err
 	}
 	if input.Pack.ID != packDedicatedLine {
-		return nil, auditext.ErrUnsupported
+		return auditext.ErrUnsupported
 	}
 	if err := input.Scope.Validate(); err != nil {
-		return nil, auditext.ErrUnauthorized
+		return auditext.ErrUnauthorized
 	}
 	if err := input.Validate(); err != nil {
-		return nil, err
+		return err
 	}
 	for _, observation := range observations {
 		if observation.TenantID != input.Scope.TenantID || observation.CaseID != input.Scope.CaseID {
-			return nil, auditext.ErrUnauthorized
+			return auditext.ErrUnauthorized
 		}
 	}
+	return nil
+}
 
+func evaluateContractFact(input auditext.FrozenInput) (auditext.Fact, []auditext.EvidenceRef, []auditext.CheckResult, error) {
 	fact, found := input.FactByName(ContractFieldMinimumBandwidth)
 	if !found {
-		return newResult(input, auditext.RelationInsufficient, reasonContractFactMissing, nil, false, "")
+		results, err := newResult(input, auditext.RelationInsufficient, reasonContractFactMissing, nil, false, "")
+		return auditext.Fact{}, nil, results, err
 	}
 	contractEvidence := append([]auditext.EvidenceRef(nil), fact.Evidence...)
 
-	// Contract-side checks are ordered from "no fact" to "fact not usable".
+	// Contract-side checks stay ordered from "no fact" to "fact not usable".
 	if fact.Uncertain {
-		return newResult(input, auditext.RelationInsufficient, reasonContractFactUncertain, contractEvidence, false, "")
+		results, err := newResult(input, auditext.RelationInsufficient, reasonContractFactUncertain, contractEvidence, false, "")
+		return auditext.Fact{}, nil, results, err
 	}
 	if fact.OutOfScope {
-		return newResult(input, auditext.RelationNotApplicable, reasonProvenOutOfScope, contractEvidence, false, "")
+		results, err := newResult(input, auditext.RelationNotApplicable, reasonProvenOutOfScope, contractEvidence, false, "")
+		return auditext.Fact{}, nil, results, err
 	}
 	if len(fact.Evidence) == 0 {
-		return newResult(input, auditext.RelationInsufficient, reasonContractEvidenceMissing, nil, false, "")
+		results, err := newResult(input, auditext.RelationInsufficient, reasonContractEvidenceMissing, nil, false, "")
+		return auditext.Fact{}, nil, results, err
 	}
 	if !documentEvidenceContains(fact.Evidence, fact.Value.Value) {
-		return newResult(input, auditext.RelationInsufficient, reasonEvidenceFieldMismatch, contractEvidence, false, "")
+		results, err := newResult(input, auditext.RelationInsufficient, reasonEvidenceFieldMismatch, contractEvidence, false, "")
+		return auditext.Fact{}, nil, results, err
 	}
 	if fact.SemanticKind != semanticConfiguredValue {
-		return newResult(input, auditext.RelationInsufficient, reasonMeasurementSemanticsMismatch, contractEvidence, false, "")
+		results, err := newResult(input, auditext.RelationInsufficient, reasonMeasurementSemanticsMismatch, contractEvidence, false, "")
+		return auditext.Fact{}, nil, results, err
 	}
+	return fact, contractEvidence, nil, nil
+}
 
+func selectEvaluationObservation(input auditext.FrozenInput, observations []auditext.Observation, evidence []auditext.EvidenceRef) (auditext.Observation, []auditext.CheckResult, error) {
 	switch input.BindingStatus {
 	case auditext.BindingMissing:
-		return newResult(input, auditext.RelationInsufficient, reasonObjectBindingMissing, contractEvidence, false, "")
+		results, err := newResult(input, auditext.RelationInsufficient, reasonObjectBindingMissing, evidence, false, "")
+		return auditext.Observation{}, results, err
 	case auditext.BindingAmbiguous:
-		return newResult(input, auditext.RelationInsufficient, reasonObjectBindingAmbiguous, contractEvidence, false, "")
+		results, err := newResult(input, auditext.RelationInsufficient, reasonObjectBindingAmbiguous, evidence, false, "")
+		return auditext.Observation{}, results, err
 	}
-
 	observation, selectionReason := selectObservation(input, observations)
 	if selectionReason != "" {
-		return newResult(input, auditext.RelationInsufficient, selectionReason, contractEvidence, false, "")
+		results, err := newResult(input, auditext.RelationInsufficient, selectionReason, evidence, false, "")
+		return auditext.Observation{}, results, err
 	}
+	return observation, nil, nil
+}
 
-	recordVersion := ""
+func observationRecordVersion(observation auditext.Observation) string {
 	if observation.RecordVersion != nil {
-		recordVersion = *observation.RecordVersion
+		return *observation.RecordVersion
 	}
+	return ""
+}
 
-	// An observation that is not usable as evidence is never trusted for its
-	// fields; its availability reason is surfaced instead.
+func evaluateObservationAvailability(input auditext.FrozenInput, observation auditext.Observation, evidence []auditext.EvidenceRef, recordVersion string) ([]auditext.CheckResult, error) {
+	// Unusable observations surface their availability before fields are read.
 	switch observation.Availability {
 	case auditext.AvailabilityAvailable:
+		return nil, nil
 	case auditext.AvailabilityStale:
-		return newResult(input, auditext.RelationInsufficient, reasonSourceStale, contractEvidence, false, recordVersion)
+		return newResult(input, auditext.RelationInsufficient, reasonSourceStale, evidence, false, recordVersion)
 	case auditext.AvailabilityUnavailable:
-		return newResult(input, auditext.RelationInsufficient, reasonSourceUnavailable, contractEvidence, false, recordVersion)
+		return newResult(input, auditext.RelationInsufficient, reasonSourceUnavailable, evidence, false, recordVersion)
 	case auditext.AvailabilityRejected:
 		if auditext.ValidateID(observation.ReasonCode) != nil {
 			return nil, fmt.Errorf("%w: rejected observation reason", auditext.ErrInvalidRequest)
 		}
-		return newResult(input, auditext.RelationInsufficient, observation.ReasonCode, contractEvidence, false, recordVersion)
+		return newResult(input, auditext.RelationInsufficient, observation.ReasonCode, evidence, false, recordVersion)
 	default:
 		return nil, fmt.Errorf("%w: observation availability", auditext.ErrInvalidRequest)
 	}
+}
 
+func validateObservationBinding(input auditext.FrozenInput, observation auditext.Observation, evidence []auditext.EvidenceRef, recordVersion string) ([]auditext.CheckResult, error) {
 	if observation.ExternalObjectID != input.ExternalObjectID {
-		return newResult(input, auditext.RelationInsufficient, reasonExternalObjectMismatch, contractEvidence, false, "")
+		return newResult(input, auditext.RelationInsufficient, reasonExternalObjectMismatch, evidence, false, "")
 	}
 	if observation.ObjectBindingVersion != input.BindingVersion {
-		return newResult(input, auditext.RelationInsufficient, reasonObjectBindingMismatch, contractEvidence, false, recordVersion)
+		return newResult(input, auditext.RelationInsufficient, reasonObjectBindingMismatch, evidence, false, recordVersion)
 	}
 	if observation.SourceSystem != input.SourceSystem {
-		return newResult(input, auditext.RelationInsufficient, reasonSourceSystemMismatch, contractEvidence, false, recordVersion)
+		return newResult(input, auditext.RelationInsufficient, reasonSourceSystemMismatch, evidence, false, recordVersion)
 	}
 	if observation.ObservedAt.After(input.BusinessAt) {
-		return newResult(input, auditext.RelationInsufficient, reasonObservationTimeMismatch, contractEvidence, false, recordVersion)
+		return newResult(input, auditext.RelationInsufficient, reasonObservationTimeMismatch, evidence, false, recordVersion)
 	}
 	if !observation.EffectiveAt(input.BusinessAt) {
-		return newResult(input, auditext.RelationInsufficient, reasonEffectiveTimeMismatch, contractEvidence, false, recordVersion)
+		return newResult(input, auditext.RelationInsufficient, reasonEffectiveTimeMismatch, evidence, false, recordVersion)
 	}
+	return nil, nil
+}
 
+func evaluateConfiguredBandwidth(input auditext.FrozenInput, fact auditext.Fact, observation auditext.Observation, evidence []auditext.EvidenceRef, recordVersion string) ([]auditext.CheckResult, error) {
 	field, fieldFound := observation.FieldByName(ExternalFieldConfiguredBandwidth)
 	if !fieldFound {
-		return newResult(input, auditext.RelationInsufficient, reasonRequiredFieldMissing, contractEvidence, false, recordVersion)
+		return newResult(input, auditext.RelationInsufficient, reasonRequiredFieldMissing, evidence, false, recordVersion)
 	}
 	if field.SemanticKind != semanticConfiguredValue {
-		return newResult(input, auditext.RelationInsufficient, reasonMeasurementSemanticsMismatch, contractEvidence, true, recordVersion)
+		return newResult(input, auditext.RelationInsufficient, reasonMeasurementSemanticsMismatch, evidence, true, recordVersion)
 	}
 	configured, ok := bandwidthInMbit(field.Value, field.Unit)
 	if !ok {
-		return newResult(input, auditext.RelationInsufficient, reasonRequiredFieldInvalid, contractEvidence, true, recordVersion)
+		return newResult(input, auditext.RelationInsufficient, reasonRequiredFieldInvalid, evidence, true, recordVersion)
 	}
 	minimum, ok := bandwidthInMbit(fact.Value.Value, fact.Value.Unit)
 	if !ok {
-		return newResult(input, auditext.RelationInsufficient, reasonRequiredFieldInvalid, contractEvidence, true, recordVersion)
+		return newResult(input, auditext.RelationInsufficient, reasonRequiredFieldInvalid, evidence, true, recordVersion)
 	}
 
-	evidence := withSnapshotEvidence(contractEvidence, observation, field)
+	resultEvidence := withSnapshotEvidence(evidence, observation, field)
 	if configured.Cmp(minimum) < 0 {
-		return newResult(input, auditext.RelationConflict, reasonConfiguredBelowContract, evidence, true, recordVersion)
+		return newResult(input, auditext.RelationConflict, reasonConfiguredBelowContract, resultEvidence, true, recordVersion)
 	}
-	return newResult(input, auditext.RelationCompatible, reasonConfiguredMeetsContract, evidence, true, recordVersion)
+	return newResult(input, auditext.RelationCompatible, reasonConfiguredMeetsContract, resultEvidence, true, recordVersion)
 }
 
 // selectObservation requires exactly one observation bound to the frozen

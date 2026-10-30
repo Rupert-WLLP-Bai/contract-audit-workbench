@@ -70,49 +70,23 @@ func FromEnv() (Config, error) {
 		Subject: Subject, Stream: Stream, Replicas: 1,
 	}
 	if config.Owner == "" {
-		host, err := os.Hostname()
+		owner, err := defaultRelayOwner()
 		if err != nil {
 			return Config{}, err
 		}
-		config.Owner = fmt.Sprintf("%s-%d", host, os.Getpid())
+		config.Owner = owner
 	}
-	if raw := strings.TrimSpace(os.Getenv("OUTBOX_RELAY_BATCH")); raw != "" {
-		value, err := strconv.Atoi(raw)
-		if err != nil || value < 1 || value > 512 {
-			return Config{}, errors.New("OUTBOX_RELAY_BATCH must be an integer in 1..512")
-		}
-		config.Batch = value
+	if err := config.applyBoundedInteger("OUTBOX_RELAY_BATCH", 1, 512, &config.Batch); err != nil {
+		return Config{}, err
 	}
 	// Replicas is the JetStream stream replication factor, not the number of
 	// broker servers. Leave it at 1 for a single-node local broker and set 3
 	// only after the peer set exists.
-	if raw := strings.TrimSpace(os.Getenv("NATS_STREAM_REPLICAS")); raw != "" {
-		value, err := strconv.Atoi(raw)
-		if err != nil || value < 1 || value > 5 {
-			return Config{}, errors.New("NATS_STREAM_REPLICAS must be an integer in 1..5")
-		}
-		config.Replicas = value
+	if err := config.applyBoundedInteger("NATS_STREAM_REPLICAS", 1, 5, &config.Replicas); err != nil {
+		return Config{}, err
 	}
-	for _, item := range []struct {
-		name   string
-		target *time.Duration
-		max    time.Duration
-		min    time.Duration
-	}{
-		{"OUTBOX_RELAY_LEASE", &config.Lease, 5 * time.Minute, leaseSafetyMargin + time.Millisecond},
-		{"OUTBOX_RELAY_POLL_INTERVAL", &config.Poll, time.Minute, time.Millisecond},
-		{"OUTBOX_RELAY_PUBLISH_TIMEOUT", &config.PublishTimeout, time.Minute, time.Millisecond},
-		{"OUTBOX_RELAY_MAX_BACKOFF", &config.MaxBackoff, 10 * time.Minute, time.Millisecond},
-	} {
-		raw := strings.TrimSpace(os.Getenv(item.name))
-		if raw == "" {
-			continue
-		}
-		value, err := time.ParseDuration(raw)
-		if err != nil || value < item.min || value > item.max {
-			return Config{}, fmt.Errorf("%s must be a duration in [%s, %s]", item.name, item.min, item.max)
-		}
-		*item.target = value
+	if err := config.applyDurations(); err != nil {
+		return Config{}, err
 	}
 	// The publish must finish inside the lease, otherwise another relay could
 	// claim the same row while this one is still publishing it — and the lease
@@ -122,6 +96,52 @@ func FromEnv() (Config, error) {
 		return Config{}, errors.New("OUTBOX_RELAY_PUBLISH_TIMEOUT must leave a publish window inside OUTBOX_RELAY_LEASE")
 	}
 	return config, nil
+}
+
+func defaultRelayOwner() (string, error) {
+	host, err := os.Hostname()
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("%s-%d", host, os.Getpid()), nil
+}
+
+func (c *Config) applyBoundedInteger(name string, minimum, maximum int, target *int) error {
+	raw := strings.TrimSpace(os.Getenv(name))
+	if raw == "" {
+		return nil
+	}
+	value, err := strconv.Atoi(raw)
+	if err != nil || value < minimum || value > maximum {
+		return fmt.Errorf("%s must be an integer in %d..%d", name, minimum, maximum)
+	}
+	*target = value
+	return nil
+}
+
+func (c *Config) applyDurations() error {
+	for _, item := range []struct {
+		name   string
+		target *time.Duration
+		max    time.Duration
+		min    time.Duration
+	}{
+		{"OUTBOX_RELAY_LEASE", &c.Lease, 5 * time.Minute, leaseSafetyMargin + time.Millisecond},
+		{"OUTBOX_RELAY_POLL_INTERVAL", &c.Poll, time.Minute, time.Millisecond},
+		{"OUTBOX_RELAY_PUBLISH_TIMEOUT", &c.PublishTimeout, time.Minute, time.Millisecond},
+		{"OUTBOX_RELAY_MAX_BACKOFF", &c.MaxBackoff, 10 * time.Minute, time.Millisecond},
+	} {
+		raw := strings.TrimSpace(os.Getenv(item.name))
+		if raw == "" {
+			continue
+		}
+		value, err := time.ParseDuration(raw)
+		if err != nil || value < item.min || value > item.max {
+			return fmt.Errorf("%s must be a duration in [%s, %s]", item.name, item.min, item.max)
+		}
+		*item.target = value
+	}
+	return nil
 }
 
 // Enabled reports whether the relay and the wake-up subscription should run.
@@ -157,12 +177,26 @@ func New(st Store, broker Broker, config Config) (*Relay, error) {
 	if !config.Enabled() {
 		return nil, errors.New("outbox relay requires a broker URL")
 	}
-	if config.Batch < 1 || config.Lease <= leaseSafetyMargin || config.Poll <= 0 || config.PublishTimeout <= 0 ||
-		config.MaxBackoff <= 0 || config.PublishTimeout > config.Lease-leaseSafetyMargin || config.Subject == "" ||
-		config.Replicas < 1 || config.Replicas > 5 {
+	if !config.valid() {
 		return nil, errors.New("outbox relay configuration is incomplete or invalid")
 	}
 	return &Relay{store: st, broker: broker, config: config, backoff: map[string]time.Duration{}}, nil
+}
+
+func (c Config) valid() bool {
+	return c.validBatchAndLease() && c.validTimeouts() && c.validRouting()
+}
+
+func (c Config) validBatchAndLease() bool {
+	return c.Batch >= 1 && c.Lease > leaseSafetyMargin && c.Poll > 0
+}
+
+func (c Config) validTimeouts() bool {
+	return c.PublishTimeout > 0 && c.MaxBackoff > 0 && c.PublishTimeout <= c.Lease-leaseSafetyMargin
+}
+
+func (c Config) validRouting() bool {
+	return c.Subject != "" && c.Replicas >= 1 && c.Replicas <= 5
 }
 
 // Dialer connects to the broker; the relay keeps retrying it.
@@ -184,21 +218,12 @@ func Serve(ctx context.Context, st Store, config Config, dial Dialer) error {
 			if err := wait(ctx, delay); err != nil {
 				return err
 			}
-			if delay *= 2; delay > reconnectBackoff {
-				delay = reconnectBackoff
-			}
+			delay = growRelayBackoff(delay, reconnectBackoff)
 			continue
 		}
 		delay = time.Second
-		relay, err := New(st, broker, config)
-		if err != nil {
-			_ = broker.Close()
+		if err := serveBroker(ctx, st, config, broker); err != nil {
 			return err
-		}
-		runErr := relay.Run(ctx)
-		_ = broker.Close()
-		if runErr != nil {
-			log.Printf("outbox relay stopped: %v (reconnecting)", runErr)
 		}
 		if err := ctx.Err(); err != nil {
 			return err
@@ -207,6 +232,27 @@ func Serve(ctx context.Context, st Store, config Config, dial Dialer) error {
 			return err
 		}
 	}
+}
+
+func serveBroker(ctx context.Context, st Store, config Config, broker Broker) error {
+	relay, err := New(st, broker, config)
+	if err != nil {
+		_ = broker.Close()
+		return err
+	}
+	runErr := relay.Run(ctx)
+	_ = broker.Close()
+	if runErr != nil {
+		log.Printf("outbox relay stopped: %v (reconnecting)", runErr)
+	}
+	return nil
+}
+
+func growRelayBackoff(delay, maximum time.Duration) time.Duration {
+	if delay *= 2; delay > maximum {
+		return maximum
+	}
+	return delay
 }
 
 // Run publishes until the context ends. Every step is independent: a broker

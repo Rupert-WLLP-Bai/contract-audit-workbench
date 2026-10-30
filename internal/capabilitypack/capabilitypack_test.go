@@ -167,6 +167,210 @@ func TestLoadDirLoadsBothPacks(t *testing.T) {
 	}
 }
 
+func TestManifestValidationPreservesFirstErrorAndUnicodeRuneLimit(t *testing.T) {
+	manifest := mustParse(t, readPack(t, dedicatedLineFile))
+	manifest.SchemaVersion = "wrong"
+	manifest.HostContractVersion = "wrong"
+	err := manifest.Validate()
+	if err == nil || !strings.Contains(err.Error(), "schema_version") {
+		t.Fatalf("first validation error = %v, want schema_version", err)
+	}
+	manifest = mustParse(t, readPack(t, dedicatedLineFile))
+	manifest.DisplayName = strings.Repeat("界", 256)
+	if err := manifest.Validate(); err != nil {
+		t.Fatalf("256 Unicode runes rejected: %v", err)
+	}
+	manifest.DisplayName += "界"
+	if err := manifest.Validate(); err == nil || !strings.Contains(err.Error(), "display_name") {
+		t.Fatalf("257 Unicode runes error = %v, want display_name", err)
+	}
+}
+
+func TestLoadDirReturnsFirstEntryInSortedDirectoryOrder(t *testing.T) {
+	dir := t.TempDir()
+	for name, content := range map[string]string{
+		"b.json": "{}", "a.json": "{}",
+	} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	_, err := LoadDir(dir)
+	if err == nil || !strings.Contains(err.Error(), `file "a.json"`) {
+		t.Fatalf("first load error = %v, want sorted a.json error", err)
+	}
+}
+
+func TestParseAndValidatePublicBoundaries(t *testing.T) {
+	connector := func(value string) *string { return &value }
+	checks := func(count int) []Check {
+		items := make([]Check, count)
+		for i := range items {
+			items[i] = Check{ID: fmt.Sprintf("check-%02d", i), ComparatorRef: "builtin.configured_bandwidth_at_least/v1", ContractField: "minimum_bandwidth"}
+		}
+		return items
+	}
+	capabilities := func(count int, ref *string) []Capability {
+		items := make([]Capability, count)
+		for i := range items {
+			items[i] = Capability{ID: fmt.Sprintf("capability-%02d", i), Effect: EffectRead, ConnectorRef: ref}
+		}
+		return items
+	}
+	roles := []string{"draft_contract", "procurement", "award", "attachment"}
+	fields := make([]string, 16)
+	for i := range fields {
+		fields[i] = fmt.Sprintf("field-%02d", i)
+	}
+
+	tests := []struct {
+		name     string
+		mutate   func(*Manifest)
+		wantText string
+	}{
+		{name: "minimum roles", mutate: func(m *Manifest) { m.RequiredMaterialRoles = roles[:1] }},
+		{name: "maximum roles", mutate: func(m *Manifest) { m.RequiredMaterialRoles = roles }},
+		{name: "too few roles", mutate: func(m *Manifest) { m.RequiredMaterialRoles = nil }, wantText: "required_material_roles"},
+		{name: "too many roles", mutate: func(m *Manifest) { m.RequiredMaterialRoles = append(append([]string(nil), roles...), "draft_contract") }, wantText: "required_material_roles"},
+		{name: "zero capabilities", mutate: func(m *Manifest) { m.Capabilities = []Capability{} }},
+		{name: "maximum capabilities", mutate: func(m *Manifest) { m.Capabilities = capabilities(16, nil) }},
+		{name: "too many capabilities", mutate: func(m *Manifest) { m.Capabilities = capabilities(17, nil) }, wantText: "too many capabilities"},
+		{name: "null connector reference", mutate: func(m *Manifest) { m.Capabilities[0].ConnectorRef = nil }},
+		{name: "minimum checks", mutate: func(m *Manifest) { m.Checks = checks(1) }},
+		{name: "maximum checks", mutate: func(m *Manifest) { m.Checks = checks(16) }},
+		{name: "too few checks", mutate: func(m *Manifest) { m.Checks = checks(0) }, wantText: "checks"},
+		{name: "too many checks", mutate: func(m *Manifest) { m.Checks = checks(17) }, wantText: "checks"},
+		{name: "minimum UI fields", mutate: func(m *Manifest) { m.UI.Fields = fields[:1] }},
+		{name: "maximum UI fields", mutate: func(m *Manifest) { m.UI.Fields = fields }},
+		{name: "too few UI fields", mutate: func(m *Manifest) { m.UI.Fields = nil }, wantText: "ui.fields"},
+		{name: "too many UI fields", mutate: func(m *Manifest) { m.UI.Fields = append(append([]string(nil), fields...), "extra") }, wantText: "ui.fields"},
+		{name: "connector Unicode 128 runes", mutate: func(m *Manifest) { m.Capabilities[0].ConnectorRef = connector(strings.Repeat("界", 128)) }},
+		{name: "connector Unicode 129 runes", mutate: func(m *Manifest) { m.Capabilities[0].ConnectorRef = connector(strings.Repeat("界", 129)) }, wantText: "connector_ref"},
+		{name: "external field Unicode 128 runes", mutate: func(m *Manifest) { m.Checks[0].ExternalField = connector(strings.Repeat("界", 128)) }},
+		{name: "external field Unicode 129 runes", mutate: func(m *Manifest) { m.Checks[0].ExternalField = connector(strings.Repeat("界", 129)) }, wantText: "external_field"},
+		{name: "UI field Unicode 256 runes", mutate: func(m *Manifest) { m.UI.Fields[0] = strings.Repeat("界", 256) }},
+		{name: "UI field Unicode 257 runes", mutate: func(m *Manifest) { m.UI.Fields[0] = strings.Repeat("界", 257) }, wantText: "ui field"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			manifest := mustParse(t, readPack(t, dedicatedLineFile))
+			tc.mutate(&manifest)
+			validateErr := manifest.Validate()
+			raw, err := json.Marshal(manifest)
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, parseErr := Parse(raw)
+			for name, got := range map[string]error{"Manifest.Validate": validateErr, "Parse": parseErr} {
+				if tc.wantText == "" {
+					if got != nil {
+						t.Errorf("%s rejected boundary value: %v", name, got)
+					}
+					continue
+				}
+				if got == nil || !strings.Contains(got.Error(), tc.wantText) {
+					t.Errorf("%s error = %v, want text %q", name, got, tc.wantText)
+				}
+			}
+		})
+	}
+}
+
+func TestParseReportsJSONShapeErrorsInSchemaOrder(t *testing.T) {
+	cases := []struct {
+		name string
+		raw  []byte
+		want string
+	}{
+		{"null root", []byte("null"), "must be a JSON object"},
+		{"array root", []byte("[]"), "decode capability pack manifest"},
+		{"string root", []byte(`"manifest"`), "decode capability pack manifest"},
+		{"number root", []byte("7"), "decode capability pack manifest"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := Parse(tc.raw)
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("Parse error = %v, want %q", err, tc.want)
+			}
+		})
+	}
+
+	ordered := []struct {
+		name   string
+		mutate func(map[string]any)
+		want   string
+	}{
+		{"decode error before required fields", func(doc map[string]any) { delete(doc, "schema_version"); doc["unexpected"] = true }, `unknown field "unexpected"`},
+		{"required top-level field before nested errors", func(doc map[string]any) { delete(doc, "schema_version"); doc["ui"] = nil }, `missing required field "schema_version"`},
+		{"rule pack reference field order", func(doc map[string]any) { doc["rule_pack_ref"] = map[string]any{"version": "5"} }, "missing required field rule_pack_ref.id"},
+		{"UI field order", func(doc map[string]any) { doc["ui"] = map[string]any{"fields": []any{}} }, "missing required field ui.view"},
+		{"capability field order", func(doc map[string]any) { doc["capabilities"] = []any{map[string]any{}} }, "missing required field capabilities[0].id"},
+		{"check field order", func(doc map[string]any) { doc["checks"] = []any{map[string]any{}} }, "missing required field checks[0].id"},
+		{"null rule pack reference", func(doc map[string]any) { doc["rule_pack_ref"] = nil }, "rule_pack_ref must be an object"},
+		{"null UI", func(doc map[string]any) { doc["ui"] = nil }, "ui must be an object"},
+		{"null UI fields", func(doc map[string]any) { doc["ui"].(map[string]any)["fields"] = nil }, "ui.fields must be an array"},
+		{"null roles", func(doc map[string]any) { doc["required_material_roles"] = nil }, "required_material_roles must be an array"},
+		{"null capabilities", func(doc map[string]any) { doc["capabilities"] = nil }, "capabilities must be an array"},
+		{"null capability item", func(doc map[string]any) { doc["capabilities"] = []any{nil} }, "capabilities[0] must be an object"},
+		{"null checks", func(doc map[string]any) { doc["checks"] = nil }, "checks must be an array"},
+		{"null check item", func(doc map[string]any) { doc["checks"] = []any{nil} }, "checks[0] must be an object"},
+	}
+	for _, tc := range ordered {
+		t.Run(tc.name, func(t *testing.T) {
+			raw := mutatePack(t, tc.mutate)
+			_, err := Parse(raw)
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("Parse error = %v, want %q", err, tc.want)
+			}
+		})
+	}
+}
+
+func TestParseAcceptsExactManifestByteLimit(t *testing.T) {
+	raw := readPack(t, dedicatedLineFile)
+	if len(raw) >= MaxManifestBytes {
+		t.Fatal("fixture unexpectedly reaches manifest size limit")
+	}
+	raw = append(raw, bytes.Repeat([]byte(" "), MaxManifestBytes-len(raw))...)
+	if _, err := Parse(raw); err != nil {
+		t.Fatalf("exactly %d bytes rejected: %v", MaxManifestBytes, err)
+	}
+}
+
+func TestLoadDirEnforcesExactManifestFileSizeBoundary(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		extraByte bool
+		wantError string
+	}{
+		{name: "exact limit"},
+		{name: "one byte over", extraByte: true, wantError: "exceeds"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			raw := readPack(t, dedicatedLineFile)
+			raw = append(raw, bytes.Repeat([]byte(" "), MaxManifestBytes-len(raw))...)
+			if tc.extraByte {
+				raw = append(raw, ' ')
+			}
+			if err := os.WriteFile(filepath.Join(dir, "pack.json"), raw, 0o600); err != nil {
+				t.Fatal(err)
+			}
+			manifests, err := LoadDir(dir)
+			if tc.wantError == "" {
+				if err != nil || len(manifests) != 1 {
+					t.Fatalf("LoadDir() = %d manifests, %v; want one manifest", len(manifests), err)
+				}
+				return
+			}
+			if err == nil || !strings.Contains(err.Error(), tc.wantError) {
+				t.Fatalf("LoadDir() error = %v, want %q", err, tc.wantError)
+			}
+		})
+	}
+}
+
 func TestParseRejectsUnknownFields(t *testing.T) {
 	cases := []struct {
 		name   string

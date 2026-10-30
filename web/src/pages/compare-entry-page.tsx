@@ -10,6 +10,7 @@ import {
   businessStatusLabel,
   businessStatusTone,
   formatDateTime,
+  latestRun,
   runLabel,
   runTone,
 } from "../domain/review";
@@ -21,16 +22,6 @@ function customerLabel(item: WorkbenchCase): string {
   const businessLine = item.business_line;
   if (businessLine && businessLine !== "unspecified") return businessLine;
   return "业务信息未报告";
-}
-
-function latestRun(runs: WorkbenchRun[]): WorkbenchRun | null {
-  return (
-    [...runs].sort(
-      (left, right) =>
-        right.updated_at.localeCompare(left.updated_at) ||
-        right.id.localeCompare(left.id),
-    )[0] ?? null
-  );
 }
 
 export function CompareEntryPage() {

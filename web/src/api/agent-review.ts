@@ -1,4 +1,4 @@
-import { ApiError } from "./http";
+import { enumValue, responseReader } from "./respond";
 import type {
   AgentPlannerMode,
   AgentReview,
@@ -16,38 +16,17 @@ import type {
   AgentReviewGapStatus,
   AgentReviewKnowledgeAdvisory,
   AgentReviewKnowledgeAdvisoryCandidate,
+  AgentReviewKnowledgeRead,
   AgentReviewKnowledgeSelection,
+  AgentReviewObservation,
   AgentReviewPlanStatus,
   AgentReviewRelation,
   AgentReviewRoundStatus,
   AgentReviewStatus,
 } from "./types";
 
-function invalid(path: string): never {
-  throw new ApiError(
-    `五域审查响应中的 ${path} 无法识别`,
-    200,
-    "invalid_response",
-    false,
-    null,
-  );
-}
-
-function record(
-  value: unknown,
-  path: string,
-  keys: readonly string[],
-): Record<string, unknown> {
-  if (typeof value !== "object" || value === null || Array.isArray(value))
-    return invalid(path);
-  const object = value as Record<string, unknown>;
-  if (
-    Object.keys(object).some((key) => !keys.includes(key)) ||
-    keys.some((key) => !Object.hasOwn(object, key))
-  )
-    return invalid(path);
-  return object;
-}
+const { invalid, record, text, integer, bool, array, optionalText } =
+  responseReader((path) => `五域审查响应中的 ${path} 无法识别`);
 
 function optionalRecord(
   value: unknown,
@@ -55,27 +34,7 @@ function optionalRecord(
   required: readonly string[],
   optional: readonly string[],
 ): Record<string, unknown> {
-  if (typeof value !== "object" || value === null || Array.isArray(value))
-    return invalid(path);
-  const object = value as Record<string, unknown>;
-  if (
-    Object.keys(object).some(
-      (key) => !required.includes(key) && !optional.includes(key),
-    ) ||
-    required.some((key) => !Object.hasOwn(object, key))
-  )
-    return invalid(path);
-  return object;
-}
-
-function text(value: unknown, path: string): string {
-  return typeof value === "string" ? value : invalid(path);
-}
-
-function integer(value: unknown, path: string): number {
-  return typeof value === "number" && Number.isSafeInteger(value)
-    ? value
-    : invalid(path);
+  return record(value, path, [...required, ...optional], required);
 }
 
 function boundedInteger(
@@ -86,17 +45,6 @@ function boundedInteger(
 ): number {
   const result = integer(value, path);
   return result >= minimum && result <= maximum ? result : invalid(path);
-}
-
-function enumValue<T extends string>(
-  value: unknown,
-  path: string,
-  values: readonly T[],
-): T {
-  return typeof value === "string" &&
-    (values as readonly string[]).includes(value)
-    ? (value as T)
-    : invalid(path);
 }
 
 function strings(value: unknown, path: string): string[] {
@@ -113,51 +61,58 @@ function nullableInteger(value: unknown, path: string): number | null {
 }
 
 function domain(value: unknown, path: string): AgentReviewDomain {
-  return enumValue(value, path, [
-    "compliance",
-    "commercial",
-    "technical",
-    "fulfillment",
-    "counterparty",
-  ]);
+  return (
+    enumValue(value, [
+      "compliance",
+      "commercial",
+      "technical",
+      "fulfillment",
+      "counterparty",
+    ]) ?? invalid(path)
+  );
 }
 
 function mode(value: unknown, path: string): AgentPlannerMode {
-  return enumValue(value, path, [
-    "fixed_chain",
-    "deterministic_planner",
-    "model_fixture",
-    "model_live",
-  ]);
+  return (
+    enumValue(value, [
+      "fixed_chain",
+      "deterministic_planner",
+      "model_fixture",
+      "model_live",
+    ]) ?? invalid(path)
+  );
 }
 
 function reviewStatus(value: unknown, path: string): AgentReviewStatus {
-  return enumValue(value, path, [
-    "queued",
-    "planning",
-    "running",
-    "completed",
-    "partial",
-    "blocked_live",
-    "cancelled",
-    "failed",
-    "rejected",
-  ]);
+  return (
+    enumValue(value, [
+      "queued",
+      "planning",
+      "running",
+      "completed",
+      "partial",
+      "blocked_live",
+      "cancelled",
+      "failed",
+      "rejected",
+    ]) ?? invalid(path)
+  );
 }
 
 function relation(value: unknown, path: string): AgentReviewRelation | null {
-  return value === null
-    ? null
-    : enumValue<AgentReviewRelation>(value, path, [
-        "compatible",
-        "conflict",
-        "insufficient",
-        "not_applicable",
-      ]);
+  if (value === null) return null;
+  return (
+    enumValue<AgentReviewRelation>(value, [
+      "compatible",
+      "conflict",
+      "insufficient",
+      "not_applicable",
+    ]) ?? invalid(path)
+  );
 }
 
 function anchorStatus(value: unknown, path: string): AgentReviewAnchorStatus {
-  return enumValue(value, path, ["located", "unlocatable"]);
+  return enumValue(value, ["located", "unlocatable"]) ?? invalid(path);
 }
 
 function sourceSnapshot(value: unknown): AgentReview["source_snapshot"] {
@@ -260,17 +215,17 @@ function advisoryCandidate(
     content_sha256: text(item.content_sha256, `${path}.content_sha256`),
     alias: text(item.alias, `${path}.alias`),
     probability: probability(item.probability, `${path}.probability`),
-    band: enumValue(item.band, `${path}.band`, advisoryBands),
+    band: enumValue(item.band, advisoryBands) ?? invalid(`${path}.band`),
     rank_before: boundedInteger(item.rank_before, `${path}.rank_before`, 1),
     rank_after: boundedInteger(item.rank_after, `${path}.rank_after`, 1),
     reason: item.reason === undefined ? null : text(item.reason, `${path}.reason`),
   };
 }
 
-function knowledgeAdvisory(
+function advisoryEnvelope(
   value: unknown,
   path: string,
-): AgentReviewKnowledgeAdvisory {
+): Record<string, unknown> {
   const item = optionalRecord(
     value,
     path,
@@ -298,39 +253,44 @@ function knowledgeAdvisory(
     return invalid(`${path}.truncated`);
   if (item.feature !== "knowledge_rerank") return invalid(`${path}.feature`);
   if (item.egress !== "minimized") return invalid(`${path}.egress`);
+  return item;
+}
+
+function optionalAdvisoryText(
+  item: Record<string, unknown>,
+  key: string,
+  path: string,
+): string | null {
+  return item[key] === undefined ? null : text(item[key], `${path}.${key}`);
+}
+
+function knowledgeAdvisory(
+  value: unknown,
+  path: string,
+): AgentReviewKnowledgeAdvisory {
+  const item = advisoryEnvelope(value, path);
+  const candidates = item.candidates as unknown[];
   return {
-    mode: enumValue(item.mode, `${path}.mode`, advisoryModes),
+    mode: enumValue(item.mode, advisoryModes) ?? invalid(`${path}.mode`),
     feature: "knowledge_rerank",
-    provider: enumValue(item.provider, `${path}.provider`, advisoryProviders),
+    provider:
+      enumValue(item.provider, advisoryProviders) ??
+      invalid(`${path}.provider`),
     configuration_id: text(item.configuration_id, `${path}.configuration_id`),
-    model_requested:
-      item.model_requested === undefined
-        ? null
-        : text(item.model_requested, `${path}.model_requested`),
-    model_observed:
-      item.model_observed === undefined
-        ? null
-        : text(item.model_observed, `${path}.model_observed`),
+    model_requested: optionalAdvisoryText(item, "model_requested", path),
+    model_observed: optionalAdvisoryText(item, "model_observed", path),
     question_set_version: text(
       item.question_set_version,
       `${path}.question_set_version`,
     ),
     egress: "minimized",
-    request_sha256:
-      item.request_sha256 === undefined
-        ? null
-        : text(item.request_sha256, `${path}.request_sha256`),
-    judgment_id:
-      item.judgment_id === undefined
-        ? null
-        : text(item.judgment_id, `${path}.judgment_id`),
-    status: enumValue(item.status, `${path}.status`, advisoryStatuses),
-    error_code:
-      item.error_code === undefined
-        ? null
-        : text(item.error_code, `${path}.error_code`),
+    request_sha256: optionalAdvisoryText(item, "request_sha256", path),
+    judgment_id: optionalAdvisoryText(item, "judgment_id", path),
+    status:
+      enumValue(item.status, advisoryStatuses) ?? invalid(`${path}.status`),
+    error_code: optionalAdvisoryText(item, "error_code", path),
     truncated: item.truncated === true,
-    candidates: item.candidates.map((candidate, index) =>
+    candidates: candidates.map((candidate, index) =>
       advisoryCandidate(candidate, `${path}.candidates[${index}]`),
     ),
   };
@@ -461,20 +421,27 @@ function capability(
   value: unknown,
   path: string,
 ): AgentReview["domains"][number]["capabilities"][number] {
-  const item = record(value, path, [
-    "capability_id",
-    "status",
-    "relation",
-    "reason_code",
-    "evidence_ids",
-    "canonical_evaluation_ids",
-  ]);
+  const item = optionalRecord(
+    value,
+    path,
+    [
+      "capability_id",
+      "status",
+      "relation",
+      "reason_code",
+      "evidence_ids",
+      "canonical_evaluation_ids",
+    ],
+    ["mandatory"],
+  );
   return {
     capability_id: text(item.capability_id, `${path}.capability_id`),
-    status: enumValue<AgentReviewCapabilityStatus>(
-      item.status,
-      `${path}.status`,
-      [
+    mandatory:
+      item.mandatory === undefined
+        ? false
+        : bool(item.mandatory, `${path}.mandatory`),
+    status:
+      enumValue<AgentReviewCapabilityStatus>(item.status, [
         "supported",
         "completed",
         "insufficient",
@@ -482,8 +449,7 @@ function capability(
         "unknown",
         "unsupported",
         "not_applicable",
-      ],
-    ),
+      ]) ?? invalid(`${path}.status`),
     relation: relation(item.relation, `${path}.relation`),
     reason_code: text(item.reason_code, `${path}.reason_code`),
     evidence_ids: strings(item.evidence_ids, `${path}.evidence_ids`),
@@ -502,16 +468,17 @@ function domainCoverage(
   if (!Array.isArray(item.capabilities)) return invalid(`${path}.capabilities`);
   return {
     domain: domain(item.domain, `${path}.domain`),
-    status: enumValue<AgentReviewDomainStatus>(item.status, `${path}.status`, [
-      "not_requested",
-      "supported",
-      "completed",
-      "insufficient",
-      "partial",
-      "unknown",
-      "unsupported",
-      "not_applicable",
-    ]),
+    status:
+      enumValue<AgentReviewDomainStatus>(item.status, [
+        "not_requested",
+        "supported",
+        "completed",
+        "insufficient",
+        "partial",
+        "unknown",
+        "unsupported",
+        "not_applicable",
+      ]) ?? invalid(`${path}.status`),
     capabilities: item.capabilities.map((entry, index) =>
       capability(entry, `${path}.capabilities[${index}]`),
     ),
@@ -519,26 +486,36 @@ function domainCoverage(
 }
 
 function gap(value: unknown, path: string): AgentReview["gaps"][number] {
-  const item = record(value, path, [
-    "gap_id",
-    "domain",
-    "capability_id",
-    "status",
-    "reason_code",
-    "evidence_ids",
-  ]);
+  const item = optionalRecord(
+    value,
+    path,
+    [
+      "gap_id",
+      "domain",
+      "capability_id",
+      "status",
+      "reason_code",
+      "evidence_ids",
+    ],
+    ["mandatory"],
+  );
   return {
     gap_id: text(item.gap_id, `${path}.gap_id`),
     domain: domain(item.domain, `${path}.domain`),
     capability_id: text(item.capability_id, `${path}.capability_id`),
-    status: enumValue<AgentReviewGapStatus>(item.status, `${path}.status`, [
-      "open",
-      "resolved",
-      "completed",
-      "insufficient",
-      "unsupported",
-      "unknown",
-    ]),
+    mandatory:
+      item.mandatory === undefined
+        ? false
+        : bool(item.mandatory, `${path}.mandatory`),
+    status:
+      enumValue<AgentReviewGapStatus>(item.status, [
+        "open",
+        "resolved",
+        "completed",
+        "insufficient",
+        "unsupported",
+        "unknown",
+      ]) ?? invalid(`${path}.status`),
     reason_code: text(item.reason_code, `${path}.reason_code`),
     evidence_ids: strings(item.evidence_ids, `${path}.evidence_ids`),
   };
@@ -566,16 +543,17 @@ function plannedCall(
     domain: domain(item.domain, `${path}.domain`),
     capability_id: text(item.capability_id, `${path}.capability_id`),
     gap_id: text(item.gap_id, `${path}.gap_id`),
-    status: enumValue<AgentReviewCallStatus>(item.status, `${path}.status`, [
-      "planned",
-      "running",
-      "completed",
-      "failed",
-      "denied",
-      "cancelled",
-      "insufficient",
-      "unsupported",
-    ]),
+    status:
+      enumValue<AgentReviewCallStatus>(item.status, [
+        "planned",
+        "running",
+        "completed",
+        "failed",
+        "denied",
+        "cancelled",
+        "insufficient",
+        "unsupported",
+      ]) ?? invalid(`${path}.status`),
     reason_code: nullableText(item.reason_code, `${path}.reason_code`),
     evidence_ids: strings(item.evidence_ids, `${path}.evidence_ids`),
   };
@@ -597,16 +575,17 @@ function planRound(
   if (!Array.isArray(item.calls)) return invalid(`${path}.calls`);
   return {
     round: boundedInteger(item.round, `${path}.round`, 1),
-    status: enumValue<AgentReviewRoundStatus>(item.status, `${path}.status`, [
-      "accepted",
-      "guard_rejected",
-      "completed",
-      "partial",
-      "no_progress",
-      "budget_exhausted",
-      "cancelled",
-      "failed",
-    ]),
+    status:
+      enumValue<AgentReviewRoundStatus>(item.status, [
+        "accepted",
+        "guard_rejected",
+        "completed",
+        "partial",
+        "no_progress",
+        "budget_exhausted",
+        "cancelled",
+        "failed",
+      ]) ?? invalid(`${path}.status`),
     gap_ids: strings(item.gap_ids, `${path}.gap_ids`),
     calls: item.calls.map((call, index) =>
       plannedCall(call, `${path}.calls[${index}]`),
@@ -633,15 +612,16 @@ function plan(value: unknown): AgentReview["plan"] {
     "calls",
     "rounds",
   ]);
-  const status = enumValue<AgentReviewPlanStatus>(item.status, "plan.status", [
-    "not_planned",
-    "accepted",
-    "guard_rejected",
-    "executing",
-    "completed",
-    "partial",
-    "fallback",
-  ]);
+  const status =
+    enumValue<AgentReviewPlanStatus>(item.status, [
+      "not_planned",
+      "accepted",
+      "guard_rejected",
+      "executing",
+      "completed",
+      "partial",
+      "fallback",
+    ]) ?? invalid("plan.status");
   if (!Array.isArray(item.calls) || !Array.isArray(item.rounds))
     return invalid("plan.calls/rounds");
   return {
@@ -691,16 +671,13 @@ function evidence(
     value: text(item.value, `${path}.value`),
     unit: nullableText(item.unit, `${path}.unit`),
     currency: nullableText(item.currency, `${path}.currency`),
-    verification: enumValue<AgentReviewEvidenceVerification>(
-      item.verification,
-      `${path}.verification`,
-      [
+    verification:
+      enumValue<AgentReviewEvidenceVerification>(item.verification, [
         "verified",
         "typed_semantic_and_frozen_quote_verified",
         "unknown",
         "rejected",
-      ],
-    ),
+      ]) ?? invalid(`${path}.verification`),
     anchor: {
       id: text(anchor.id, `${path}.anchor.id`),
       document_id: text(anchor.document_id, `${path}.anchor.document_id`),
@@ -724,39 +701,112 @@ function evidence(
 }
 
 function event(value: unknown, path: string): AgentReview["events"][number] {
-  const item = record(value, path, [
-    "sequence",
-    "round",
-    "kind",
-    "call_id",
-    "domain",
-    "code",
-    "duration_ms",
-  ]);
+  const item = optionalRecord(
+    value,
+    path,
+    [
+      "sequence",
+      "round",
+      "kind",
+      "call_id",
+      "domain",
+      "code",
+      "duration_ms",
+    ],
+    ["event_id", "tool_id", "gap_id", "occurred_at"],
+  );
   return {
+    event_id: optionalText(item.event_id, `${path}.event_id`) ?? undefined,
     sequence: boundedInteger(item.sequence, `${path}.sequence`, 1),
     round: boundedInteger(item.round, `${path}.round`, 0, 3),
-    kind: enumValue<AgentReviewEventKind>(item.kind, `${path}.kind`, [
-      "planning",
-      "guard",
-      "tool_call",
-      "evidence",
-      "budget",
-      "terminal",
-      "authorization",
-      "input",
-      "gap_unsupported",
-      "plan_rejected",
-      "planner_fallback",
-      "plan",
-      "plan_accepted",
-      "tool_failed",
-      "tool_completed",
-    ]),
+    kind:
+      enumValue<AgentReviewEventKind>(item.kind, [
+        "planning",
+        "guard",
+        "tool_call",
+        "tool_started",
+        "tool_observed",
+        "tool_completed",
+        "tool_failed",
+        "knowledge_read_started",
+        "knowledge_read_completed",
+        "knowledge_read_failed",
+        "run_cancelled",
+        "evidence",
+        "budget",
+        "terminal",
+        "authorization",
+        "input",
+        "gap_unsupported",
+        "plan_rejected",
+        "planner_fallback",
+        "plan",
+        "plan_accepted",
+      ]) ?? invalid(`${path}.kind`),
+    tool_id: optionalText(item.tool_id, `${path}.tool_id`) ?? undefined,
+    gap_id: optionalText(item.gap_id, `${path}.gap_id`) ?? undefined,
     call_id: nullableText(item.call_id, `${path}.call_id`),
     domain: item.domain === null ? null : domain(item.domain, `${path}.domain`),
     code: text(item.code, `${path}.code`),
+    occurred_at: optionalText(item.occurred_at, `${path}.occurred_at`),
     duration_ms: boundedInteger(item.duration_ms, `${path}.duration_ms`, 0),
+  };
+}
+
+function observation(value: unknown, path: string): AgentReviewObservation {
+  const item = optionalRecord(
+    value,
+    path,
+    [
+      "round",
+      "call_id",
+      "gap_id",
+      "tool_id",
+      "reported_relation",
+      "summary",
+      "claim_status",
+      "fact_ids",
+      "located_evidence_ids",
+      "truncated",
+    ],
+    ["reason_code"],
+  );
+  return {
+    round: boundedInteger(item.round, `${path}.round`, 0, 3),
+    call_id: text(item.call_id, `${path}.call_id`),
+    gap_id: text(item.gap_id, `${path}.gap_id`),
+    tool_id: text(item.tool_id, `${path}.tool_id`),
+    reported_relation: text(item.reported_relation, `${path}.reported_relation`),
+    reason_code: optionalText(item.reason_code, `${path}.reason_code`) ?? undefined,
+    summary: text(item.summary, `${path}.summary`),
+    claim_status: text(item.claim_status, `${path}.claim_status`),
+    fact_ids: strings(item.fact_ids, `${path}.fact_ids`),
+    located_evidence_ids: strings(
+      item.located_evidence_ids,
+      `${path}.located_evidence_ids`,
+    ),
+    truncated: bool(item.truncated, `${path}.truncated`),
+  };
+}
+
+function knowledgeRead(value: unknown, path: string): AgentReviewKnowledgeRead {
+  const item = record(value, path, [
+    "knowledge_id",
+    "version_id",
+    "content_sha256",
+    "start",
+    "end",
+    "text_sha256",
+    "text",
+  ]);
+  return {
+    knowledge_id: text(item.knowledge_id, `${path}.knowledge_id`),
+    version_id: text(item.version_id, `${path}.version_id`),
+    content_sha256: text(item.content_sha256, `${path}.content_sha256`),
+    start: boundedInteger(item.start, `${path}.start`, 0),
+    end: boundedInteger(item.end, `${path}.end`, 1),
+    text_sha256: text(item.text_sha256, `${path}.text_sha256`),
+    text: text(item.text, `${path}.text`),
   };
 }
 
@@ -781,7 +831,7 @@ export function parseAgentReview(value: unknown): AgentReview {
       "unresolved_gap_ids",
       "events",
     ],
-    ["knowledge_selection"],
+    ["knowledge_selection", "observations", "knowledge_reads"],
   );
   if (item.schema_version !== "five-domain-review/v1")
     return invalid("schema_version");
@@ -834,5 +884,13 @@ export function parseAgentReview(value: unknown): AgentReview {
     },
     unresolved_gap_ids: strings(item.unresolved_gap_ids, "unresolved_gap_ids"),
     events: item.events.map((entry, index) => event(entry, `events[${index}]`)),
+    observations:
+      item.observations === undefined || item.observations === null
+        ? []
+        : array(item.observations, "observations", observation),
+    knowledge_reads:
+      item.knowledge_reads === undefined || item.knowledge_reads === null
+        ? []
+        : array(item.knowledge_reads, "knowledge_reads", knowledgeRead),
   };
 }

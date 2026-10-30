@@ -13,7 +13,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
-	"sort"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -99,10 +99,7 @@ func New(config Config) (*S3, error) {
 
 // Put writes one object and stores its SHA-256 digest as signed S3 user metadata.
 func (s *S3) Put(ctx context.Context, key string, content []byte) error {
-	if s == nil || s.client == nil || ctx == nil {
-		return ErrInvalidConfig
-	}
-	if err := validateKey(key); err != nil {
+	if err := validateOperation(s, ctx, key); err != nil {
 		return err
 	}
 	if len(content) > MaxObjectBytes {
@@ -120,30 +117,17 @@ func (s *S3) Put(ctx context.Context, key string, content []byte) error {
 	}
 	response, err := s.client.Do(request)
 	if err != nil {
-		if ctxErr := ctx.Err(); ctxErr != nil {
-			return ctxErr
-		}
-		return ErrRequestFailed
+		return requestError(ctx)
 	}
 	defer response.Body.Close()
-	if response.StatusCode != http.StatusOK && response.StatusCode != http.StatusCreated && response.StatusCode != http.StatusNoContent {
-		return ErrRequestFailed
-	}
-	return nil
+	return validatePutResponse(response)
 }
 
 // Get downloads one object and verifies its bytes against the stored SHA-256 metadata.
 func (s *S3) Get(ctx context.Context, key string) ([]byte, error) {
-	if s == nil || s.client == nil || ctx == nil {
-		return nil, ErrInvalidConfig
-	}
-	if err := validateKey(key); err != nil {
+	if err := validateOperation(s, ctx, key); err != nil {
 		return nil, err
 	}
-	if err := ctx.Err(); err != nil {
-		return nil, err
-	}
-
 	emptyDigest := sha256.Sum256(nil)
 	emptyDigestHex := hex.EncodeToString(emptyDigest[:])
 	request, err := s.newRequest(ctx, http.MethodGet, key, nil, emptyDigestHex)
@@ -152,44 +136,80 @@ func (s *S3) Get(ctx context.Context, key string) ([]byte, error) {
 	}
 	response, err := s.client.Do(request)
 	if err != nil {
-		if ctxErr := ctx.Err(); ctxErr != nil {
-			return nil, ctxErr
-		}
-		return nil, ErrRequestFailed
+		return nil, requestError(ctx)
 	}
 	defer response.Body.Close()
+	return readGetResponse(ctx, response)
+}
+
+func validateOperation(s *S3, ctx context.Context, key string) error {
+	if s == nil || s.client == nil || ctx == nil {
+		return ErrInvalidConfig
+	}
+	if err := validateKey(key); err != nil {
+		return err
+	}
+	return ctx.Err()
+}
+
+func requestError(ctx context.Context) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	return ErrRequestFailed
+}
+
+func validatePutResponse(response *http.Response) error {
+	if response.StatusCode == http.StatusOK || response.StatusCode == http.StatusCreated || response.StatusCode == http.StatusNoContent {
+		return nil
+	}
+	return ErrRequestFailed
+}
+
+func readGetResponse(ctx context.Context, response *http.Response) ([]byte, error) {
 	if response.StatusCode == http.StatusNotFound {
 		return nil, ErrObjectNotFound
 	}
 	if response.StatusCode != http.StatusOK {
 		return nil, ErrRequestFailed
 	}
+	content, err := readLimitedObject(ctx, response)
+	if err != nil {
+		return nil, err
+	}
+	if err := verifyObjectDigest(content, response.Header.Values("X-Amz-Meta-Sha256")); err != nil {
+		return nil, err
+	}
+	return content, nil
+}
+
+func readLimitedObject(ctx context.Context, response *http.Response) ([]byte, error) {
 	if response.ContentLength > MaxObjectBytes {
 		return nil, ErrObjectTooLarge
 	}
 	content, err := io.ReadAll(io.LimitReader(response.Body, MaxObjectBytes+1))
 	if err != nil {
-		if ctxErr := ctx.Err(); ctxErr != nil {
-			return nil, ctxErr
-		}
-		return nil, ErrRequestFailed
+		return nil, requestError(ctx)
 	}
 	if len(content) > MaxObjectBytes {
 		return nil, ErrObjectTooLarge
 	}
-	metadataValues := response.Header.Values("X-Amz-Meta-Sha256")
+	return content, nil
+}
+
+func verifyObjectDigest(content []byte, metadataValues []string) error {
 	if len(metadataValues) != 1 {
-		return nil, ErrIntegrity
+		return ErrIntegrity
 	}
 	storedDigest, err := hex.DecodeString(metadataValues[0])
 	if err != nil || len(storedDigest) != sha256.Size {
-		return nil, ErrIntegrity
+		return ErrIntegrity
 	}
 	actualDigest := sha256.Sum256(content)
 	if subtle.ConstantTimeCompare(storedDigest, actualDigest[:]) != 1 {
-		return nil, ErrIntegrity
+		return ErrIntegrity
 	}
-	return content, nil
+	return nil
 }
 
 func (s *S3) newRequest(ctx context.Context, method, key string, body []byte, digest string) (*http.Request, error) {
@@ -257,37 +277,16 @@ func (s *S3) sign(request *http.Request, payloadDigest string) error {
 }
 
 func parseEndpoint(value string) (url.URL, error) {
-	if value == "" || strings.TrimSpace(value) != value || strings.ContainsAny(value, "?#") {
+	if !validEndpointInput(value) {
 		return url.URL{}, ErrInvalidConfig
 	}
 	endpoint, err := url.Parse(value)
-	if err != nil || !endpoint.IsAbs() || endpoint.Opaque != "" || endpoint.User != nil ||
-		(endpoint.Scheme != "http" && endpoint.Scheme != "https") || endpoint.Hostname() == "" ||
-		endpoint.RawQuery != "" || endpoint.ForceQuery || endpoint.Fragment != "" || endpoint.RawFragment != "" {
+	if err != nil || !validEndpointURL(endpoint) || !validEndpointPort(endpoint) {
 		return url.URL{}, ErrInvalidConfig
 	}
-	if port := endpoint.Port(); port != "" {
-		portNumber, err := strconv.Atoi(port)
-		if err != nil || portNumber < 1 || portNumber > 65535 {
-			return url.URL{}, ErrInvalidConfig
-		}
-	}
-	escapedPath := strings.ToLower(endpoint.EscapedPath())
-	if strings.Contains(escapedPath, "%2f") || strings.Contains(escapedPath, "%5c") || strings.Contains(endpoint.Path, `\`) {
+	basePath, ok := endpointBasePath(endpoint)
+	if !ok {
 		return url.URL{}, ErrInvalidConfig
-	}
-	basePath := strings.TrimRight(endpoint.Path, "/")
-	if basePath != "" {
-		for _, segment := range strings.Split(strings.TrimPrefix(basePath, "/"), "/") {
-			if segment == "" || segment == "." || segment == ".." {
-				return url.URL{}, ErrInvalidConfig
-			}
-			for _, r := range segment {
-				if unicode.IsControl(r) {
-					return url.URL{}, ErrInvalidConfig
-				}
-			}
-		}
 	}
 	endpoint.Scheme = strings.ToLower(endpoint.Scheme)
 	endpoint.Path = basePath
@@ -295,36 +294,105 @@ func parseEndpoint(value string) (url.URL, error) {
 	return *endpoint, nil
 }
 
-func validBucket(bucket string) bool {
-	if len(bucket) < 3 || len(bucket) > 63 || strings.Contains(bucket, "..") ||
-		strings.HasPrefix(bucket, "xn--") || strings.HasPrefix(bucket, "sthree-") ||
-		strings.HasPrefix(bucket, "amzn-s3-demo-") || net.ParseIP(bucket) != nil {
+func validEndpointInput(value string) bool {
+	return value != "" && strings.TrimSpace(value) == value && !strings.ContainsAny(value, "?#")
+}
+
+func validEndpointURL(endpoint *url.URL) bool {
+	return validEndpointAddress(endpoint) && validEndpointPathOptions(endpoint)
+}
+
+func validEndpointAddress(endpoint *url.URL) bool {
+	return endpoint.IsAbs() && endpoint.Opaque == "" && endpoint.User == nil &&
+		(endpoint.Scheme == "http" || endpoint.Scheme == "https") && endpoint.Hostname() != ""
+}
+
+func validEndpointPathOptions(endpoint *url.URL) bool {
+	return endpoint.RawQuery == "" && !endpoint.ForceQuery && endpoint.Fragment == "" && endpoint.RawFragment == ""
+}
+
+func validEndpointPort(endpoint *url.URL) bool {
+	port := endpoint.Port()
+	if port == "" {
+		return true
+	}
+	portNumber, err := strconv.Atoi(port)
+	return err == nil && portNumber > 0 && portNumber <= 65535
+}
+
+func endpointBasePath(endpoint *url.URL) (string, bool) {
+	escapedPath := strings.ToLower(endpoint.EscapedPath())
+	if strings.Contains(escapedPath, "%2f") || strings.Contains(escapedPath, "%5c") || strings.Contains(endpoint.Path, `\`) {
+		return "", false
+	}
+	basePath := strings.TrimRight(endpoint.Path, "/")
+	for _, segment := range endpointSegments(basePath) {
+		if !validEndpointSegment(segment) {
+			return "", false
+		}
+	}
+	return basePath, true
+}
+
+func endpointSegments(basePath string) []string {
+	if basePath == "" {
+		return nil
+	}
+	return strings.Split(strings.TrimPrefix(basePath, "/"), "/")
+}
+
+func validEndpointSegment(segment string) bool {
+	if segment == "" || segment == "." || segment == ".." {
 		return false
 	}
-	isAlphanumeric := func(b byte) bool { return b >= 'a' && b <= 'z' || b >= '0' && b <= '9' }
-	if !isAlphanumeric(bucket[0]) || !isAlphanumeric(bucket[len(bucket)-1]) {
-		return false
-	}
-	for i := range bucket {
-		b := bucket[i]
-		if !isAlphanumeric(b) && b != '.' && b != '-' {
+	for _, r := range segment {
+		if unicode.IsControl(r) {
 			return false
 		}
 	}
 	return true
 }
 
+func validBucket(bucket string) bool {
+	if !validBucketLength(bucket) || !validBucketName(bucket) {
+		return false
+	}
+	if !isBucketAlphaNumeric(bucket[0]) || !isBucketAlphaNumeric(bucket[len(bucket)-1]) {
+		return false
+	}
+	for i := range bucket {
+		if !validBucketCharacter(bucket[i]) {
+			return false
+		}
+	}
+	return true
+}
+
+func validBucketLength(bucket string) bool { return len(bucket) >= 3 && len(bucket) <= 63 }
+
+func validBucketName(bucket string) bool {
+	return !strings.Contains(bucket, "..") && !strings.HasPrefix(bucket, "xn--") &&
+		!strings.HasPrefix(bucket, "sthree-") && !strings.HasPrefix(bucket, "amzn-s3-demo-") && net.ParseIP(bucket) == nil
+}
+
+func isBucketAlphaNumeric(b byte) bool { return b >= 'a' && b <= 'z' || b >= '0' && b <= '9' }
+
+func validBucketCharacter(b byte) bool { return isBucketAlphaNumeric(b) || b == '.' || b == '-' }
+
 func validRegion(region string) bool {
 	if region == "" || len(region) > 64 {
 		return false
 	}
 	for i := range region {
-		b := region[i]
-		if !(b >= 'a' && b <= 'z' || b >= '0' && b <= '9' || b == '-') {
+		if !validRegionCharacter(region[i]) {
 			return false
 		}
 	}
 	return true
+}
+
+func validRegionCharacter(b byte) bool {
+	return b >= 'a' && b <= 'z' || b >= '0' && b <= '9' || b == '-'
 }
 
 func validAccessKey(accessKey string) bool {
@@ -332,12 +400,15 @@ func validAccessKey(accessKey string) bool {
 		return false
 	}
 	for i := range accessKey {
-		b := accessKey[i]
-		if !(b >= 'a' && b <= 'z' || b >= 'A' && b <= 'Z' || b >= '0' && b <= '9' || strings.ContainsRune("+=._-", rune(b))) {
+		if !validAccessKeyCharacter(accessKey[i]) {
 			return false
 		}
 	}
 	return true
+}
+
+func validAccessKeyCharacter(b byte) bool {
+	return b >= 'a' && b <= 'z' || b >= 'A' && b <= 'Z' || b >= '0' && b <= '9' || strings.ContainsRune("+=._-", rune(b))
 }
 
 func validSecretKey(secretKey string) bool {
@@ -353,21 +424,32 @@ func validSecretKey(secretKey string) bool {
 }
 
 func validateKey(key string) error {
-	if key == "" || len(key) > 1024 || !utf8.ValidString(key) ||
-		key[0] == '/' || key[0] == '\\' || strings.ContainsAny(key, `\?#`) || hasSchemePrefix(key) {
+	if !validKeyText(key) || !validKeyPrefix(key) || !validKeySegments(key) {
 		return ErrInvalidKey
 	}
+	return nil
+}
+
+func validKeyText(key string) bool {
+	return key != "" && len(key) <= 1024 && utf8.ValidString(key)
+}
+
+func validKeyPrefix(key string) bool {
+	return key[0] != '/' && key[0] != '\\' && !strings.ContainsAny(key, `\?#`) && !hasSchemePrefix(key)
+}
+
+func validKeySegments(key string) bool {
 	for _, r := range key {
 		if unicode.IsControl(r) {
-			return ErrInvalidKey
+			return false
 		}
 	}
 	for _, segment := range strings.Split(key, "/") {
 		if segment == "" || segment == "." || segment == ".." {
-			return ErrInvalidKey
+			return false
 		}
 	}
-	return nil
+	return true
 }
 
 func isASCIIAlpha(b byte) bool { return b >= 'a' && b <= 'z' || b >= 'A' && b <= 'Z' }
@@ -375,24 +457,47 @@ func isASCIIAlpha(b byte) bool { return b >= 'a' && b <= 'z' || b >= 'A' && b <=
 func hasSchemePrefix(key string) bool {
 	colon := strings.IndexByte(key, ':')
 	slash := strings.IndexByte(key, '/')
-	if colon <= 0 || slash >= 0 && slash < colon || !isASCIIAlpha(key[0]) {
-		return false
-	}
-	for i := 1; i < colon; i++ {
-		b := key[i]
-		if !(isASCIIAlpha(b) || b >= '0' && b <= '9' || b == '+' || b == '.' || b == '-') {
+	return validSchemePosition(key, colon, slash) && validSchemeName(key[:colon])
+}
+
+func validSchemePosition(key string, colon, slash int) bool {
+	return colon > 0 && (slash < 0 || slash >= colon) && isASCIIAlpha(key[0])
+}
+
+func validSchemeName(name string) bool {
+	for i := 1; i < len(name); i++ {
+		if !validSchemeCharacter(name[i]) {
 			return false
 		}
 	}
 	return true
 }
 
+func validSchemeCharacter(b byte) bool {
+	return isASCIIAlpha(b) || b >= '0' && b <= '9' || b == '+' || b == '.' || b == '-'
+}
+
 func canonicalQuery(raw string) (string, error) {
 	if raw == "" {
 		return "", nil
 	}
-	type pair struct{ key, value string }
-	pairs := make([]pair, 0, strings.Count(raw, "&")+1)
+	pairs, err := parseCanonicalQuery(raw)
+	if err != nil {
+		return "", err
+	}
+	slices.SortFunc(pairs, func(a, b canonicalQueryPair) int {
+		if order := strings.Compare(a.key, b.key); order != 0 {
+			return order
+		}
+		return strings.Compare(a.value, b.value)
+	})
+	return formatCanonicalQuery(pairs), nil
+}
+
+type canonicalQueryPair struct{ key, value string }
+
+func parseCanonicalQuery(raw string) ([]canonicalQueryPair, error) {
+	pairs := make([]canonicalQueryPair, 0, strings.Count(raw, "&")+1)
 	for _, item := range strings.Split(raw, "&") {
 		if item == "" {
 			continue
@@ -400,23 +505,21 @@ func canonicalQuery(raw string) (string, error) {
 		name, value, hasValue := strings.Cut(item, "=")
 		decodedName, err := url.PathUnescape(name)
 		if err != nil {
-			return "", err
+			return nil, err
 		}
 		if !hasValue {
 			value = ""
 		}
 		decodedValue, err := url.PathUnescape(value)
 		if err != nil {
-			return "", err
+			return nil, err
 		}
-		pairs = append(pairs, pair{key: awsEncode(decodedName), value: awsEncode(decodedValue)})
+		pairs = append(pairs, canonicalQueryPair{key: awsEncode(decodedName), value: awsEncode(decodedValue)})
 	}
-	sort.Slice(pairs, func(i, j int) bool {
-		if pairs[i].key == pairs[j].key {
-			return pairs[i].value < pairs[j].value
-		}
-		return pairs[i].key < pairs[j].key
-	})
+	return pairs, nil
+}
+
+func formatCanonicalQuery(pairs []canonicalQueryPair) string {
 	var query strings.Builder
 	for i, item := range pairs {
 		if i > 0 {
@@ -426,40 +529,15 @@ func canonicalQuery(raw string) (string, error) {
 		query.WriteByte('=')
 		query.WriteString(item.value)
 	}
-	return query.String(), nil
+	return query.String()
 }
 
 func encodePath(path string) string {
-	var encoded strings.Builder
-	encoded.Grow(len(path))
-	for i := range len(path) {
-		if path[i] == '/' {
-			encoded.WriteByte('/')
-		} else {
-			writeEncodedByte(&encoded, path[i])
-		}
-	}
-	return encoded.String()
+	return strings.ReplaceAll(strings.ReplaceAll(url.QueryEscape(path), "+", "%20"), "%2F", "/")
 }
 
 func awsEncode(value string) string {
-	var encoded strings.Builder
-	encoded.Grow(len(value))
-	for i := range len(value) {
-		writeEncodedByte(&encoded, value[i])
-	}
-	return encoded.String()
-}
-
-func writeEncodedByte(encoded *strings.Builder, b byte) {
-	if b >= 'a' && b <= 'z' || b >= 'A' && b <= 'Z' || b >= '0' && b <= '9' || b == '-' || b == '_' || b == '.' || b == '~' {
-		encoded.WriteByte(b)
-		return
-	}
-	const hexDigits = "0123456789ABCDEF"
-	encoded.WriteByte('%')
-	encoded.WriteByte(hexDigits[b>>4])
-	encoded.WriteByte(hexDigits[b&0x0f])
+	return strings.ReplaceAll(url.QueryEscape(value), "+", "%20")
 }
 
 func hmacSHA256(key []byte, value string) []byte {

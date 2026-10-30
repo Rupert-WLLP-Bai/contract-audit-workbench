@@ -5,6 +5,7 @@ COPY go.mod go.sum ./
 RUN go mod download
 COPY cmd/ ./cmd/
 COPY internal/ ./internal/
+COPY capability-packs/ ./capability-packs/
 ARG TARGETOS
 ARG TARGETARCH
 RUN mkdir -p /out \

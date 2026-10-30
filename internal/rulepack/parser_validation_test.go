@@ -112,6 +112,18 @@ func TestParseRejectsUnsupportedManifestValues(t *testing.T) {
 	}
 }
 
+func TestParseKeepsRuleValidationErrorPrecedence(t *testing.T) {
+	raw := mutateDemoManifest(t, func(root map[string]any) {
+		rule := ruleMap(root, "ENT-TECH-BW-001")
+		rule["rule_id"] = ""
+		rule["comparator"] = "unsupported"
+	})
+	_, err := Parse(raw)
+	if err == nil || !strings.Contains(err.Error(), "rule_id, version and capability_id") || strings.Contains(err.Error(), "unsupported comparator") {
+		t.Fatalf("Parse changed rule validation priority: %v", err)
+	}
+}
+
 func TestManifestHashNormalizesEquivalentInstants(t *testing.T) {
 	base, err := Parse(fixture(t, "demo.json"))
 	if err != nil {

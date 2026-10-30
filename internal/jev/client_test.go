@@ -226,6 +226,7 @@ func TestChooseRejectsUnusableResponses(t *testing.T) {
 		{name: "oversize response", status: http.StatusOK, body: strings.Repeat("x", MaxResponseBytes+1), want: ErrOversizeResponse},
 		{name: "malformed json", status: http.StatusOK, body: "{", want: ErrInvalidJSON},
 		{name: "duplicate keys", status: http.StatusOK, body: `{"model":"jev-1.14.0","model":"jev-1.14.0","answers":{},"usage":{}}`, want: ErrInvalidJSON},
+		{name: "duplicate key in nested array", status: http.StatusOK, body: `{"model":"jev-1.14.0","answers":{"review_focus":{"type":"choice","choice":"bandwidth","probabilities":{"bandwidth":0.91,"monthly_sla":0.05,"advance_payment":0.02,"manual_review":0.02}}},"usage":{},"extra":[{"key":1,"key":2}]}`, want: ErrInvalidJSON},
 		{name: "trailing content", status: http.StatusOK, body: valid + `{}`, want: ErrInvalidJSON},
 		{name: "missing answers", status: http.StatusOK, body: `{"model":"jev-1.14.0","answers":{},"usage":{}}`, want: ErrInvalidAnswer},
 		{name: "multiple answers", status: http.StatusOK, body: `{"model":"jev-1.14.0","answers":{"review_focus":{"type":"choice","choice":"bandwidth","probabilities":{"bandwidth":1,"monthly_sla":0,"advance_payment":0,"manual_review":0}},"other":{"type":"choice","choice":"bandwidth"}},"usage":{}}`, want: ErrInvalidAnswer},

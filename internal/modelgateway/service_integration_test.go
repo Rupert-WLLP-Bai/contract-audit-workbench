@@ -300,11 +300,12 @@ func TestGatewayWorkerAndDocumentFixtureConsumersSettleUnknownUsage(t *testing.T
 	t.Setenv("APP_ENV", "test")
 	st, admin := openGatewayTestStore(t)
 	config := gatewayTestConfig("fixture", "")
+	config.ProviderURL = "https://fixture-provider.example/v1"
 	config.FixtureOCRContent = "质保期为36个月。"
 	_, gateway := startGatewayServer(t, st, config)
 
 	workerClient := model.New(model.Config{
-		BaseURL: gateway.URL + "/v1", Gateway: true, APIKey: config.WorkerCredential,
+		BaseURL: gateway.URL + "/v1", ProviderURL: config.ProviderURL, Gateway: true, APIKey: config.WorkerCredential,
 		ChatModel: config.ChatModel, OCRModel: config.OCRModel,
 	})
 	if status, _ := workerClient.Reachable(context.Background()); status != "connected" {
@@ -377,10 +378,11 @@ func TestExplicitImageReparseUsesAuthorizedDocumentScopeBeforeReview(t *testing.
 	t.Setenv("APP_ENV", "test")
 	st, admin := openGatewayTestStore(t)
 	config := gatewayTestConfig("fixture", "")
+	config.ProviderURL = "https://fixture-provider.example/v1"
 	config.FixtureOCRContent = "采购文件要求质保36个月。"
 	_, gateway := startGatewayServer(t, st, config)
 	st.UseModels(model.New(model.Config{
-		BaseURL: gateway.URL + "/v1", Gateway: true, APIKey: config.DocumentCredential,
+		BaseURL: gateway.URL + "/v1", ProviderURL: config.ProviderURL, Gateway: true, APIKey: config.DocumentCredential,
 		ChatModel: config.ChatModel, OCRModel: config.OCRModel,
 	}))
 	caseID, err := st.CreateCase(admin, "独立图片重解析授权", "procurement_ict")
@@ -513,8 +515,10 @@ type gatewayBarrierModels struct {
 	release <-chan struct{}
 }
 
-func (m *gatewayBarrierModels) Name() string            { return "gateway-scope-barrier" }
-func (m *gatewayBarrierModels) ConfigurationID() string { return "gateway-scope-barrier/v1" }
+func (m *gatewayBarrierModels) Name() string { return "gateway-scope-barrier" }
+func (m *gatewayBarrierModels) ConfigurationID() string {
+	return model.ConfigurationIDFor("https://gateway-scope.example/v1", "fixture-chat", "fixture-ocr")
+}
 func (m *gatewayBarrierModels) Transcribe(context.Context, string, []byte) (string, error) {
 	return "unused", nil
 }
@@ -620,6 +624,7 @@ func TestGatewayFencesStaleWorkerClaimsAndRejectsCrossCaseClaims(t *testing.T) {
 	}))
 	defer upstream.Close()
 	config := gatewayTestConfig("openai-compatible", upstream.URL+"/v1")
+	config.ProviderURL = "https://gateway-scope.example/v1"
 	_, gateway := startGatewayServer(t, st, config)
 	client := &http.Client{Timeout: 5 * time.Second}
 	endpoint := gateway.URL + "/v1/chat/completions"

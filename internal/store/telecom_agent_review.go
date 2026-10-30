@@ -254,7 +254,7 @@ func frozenAgentPlanner(configuration agentflow.PlannerConfiguration, models Mod
 	case agentflow.ModeDeterministic:
 		return agentflow.ScopePlanner{}, nil
 	case agentflow.ModeModelFixture, agentflow.ModeModelLive:
-		if models == nil || models.ConfigurationID() != configuration.ModelConfigurationID {
+		if models == nil || frozenConfigurationID(models) != configuration.ModelConfigurationID {
 			return nil, errors.New("frozen planner model identity is unavailable")
 		}
 		chat, ok := any(models).(agentflow.PlannerChatModel)

@@ -90,58 +90,100 @@ type sourceKey struct{ id, version string }
 // Execute checks case.review authorization before inspecting facts, then runs every
 // rule whose exact business scope matches the request. Model output is not an input.
 func (p *Pack) Execute(ctx context.Context, request Request) (Report, error) {
-	if p == nil {
-		return Report{}, ErrInvalidManifest
-	}
-	if p.lifecycle.State != StatePublished {
-		return Report{}, ErrNotPublished
-	}
-	if ctx == nil {
-		return Report{}, fmt.Errorf("%w: nil context", ErrInvalidRequest)
-	}
-	decision := access.Check(access.Review, request.Principal, request.Resource, time.Now())
-	if !decision.Allowed {
-		return Report{}, fmt.Errorf("%w: %s", ErrUnauthorized, decision.Reason)
-	}
-	if request.Resource.TenantID != p.content.TenantID {
-		return Report{}, ErrTenantMismatch
-	}
-	if request.At.IsZero() || !validIdentifier(request.BusinessLine) || !validIdentifier(request.Scenario) || !validIdentifier(request.ContractType) {
-		return Report{}, fmt.Errorf("%w: business scope and evaluation time are required", ErrInvalidRequest)
-	}
-	from, _ := time.Parse(time.RFC3339Nano, p.content.EffectiveFrom)
-	until, _ := time.Parse(time.RFC3339Nano, p.content.EffectiveUntil)
-	if request.At.Before(from) || !request.At.Before(until) {
-		return Report{}, ErrNotEffective
-	}
-	if err := ctx.Err(); err != nil {
+	if err := validateExecutionRequest(p, ctx, request); err != nil {
 		return Report{}, err
 	}
-
 	sources, err := indexSources(request)
 	if err != nil {
 		return Report{}, err
 	}
-	rulesByID := make(map[string]struct{}, len(p.content.Rules))
-	factsByRule := make(map[string][]Fact)
-	factIDs := make(map[string]struct{}, len(request.Facts))
-	for _, rule := range p.content.Rules {
+	factsByRule, err := indexFacts(p.content.Rules, request.Facts)
+	if err != nil {
+		return Report{}, err
+	}
+	return executeRules(ctx, p, request, sources, factsByRule)
+}
+
+func validateExecutionRequest(p *Pack, ctx context.Context, request Request) error {
+	if err := validateExecutionPack(p); err != nil {
+		return err
+	}
+	if err := validateExecutionContext(ctx); err != nil {
+		return err
+	}
+	if err := validateExecutionAccess(p, request); err != nil {
+		return err
+	}
+	if err := validateExecutionScope(p, request); err != nil {
+		return err
+	}
+	return ctx.Err()
+}
+
+func validateExecutionPack(p *Pack) error {
+	if p == nil {
+		return ErrInvalidManifest
+	}
+	if p.lifecycle.State != StatePublished {
+		return ErrNotPublished
+	}
+	return nil
+}
+
+func validateExecutionContext(ctx context.Context) error {
+	if ctx == nil {
+		return fmt.Errorf("%w: nil context", ErrInvalidRequest)
+	}
+	return nil
+}
+
+func validateExecutionAccess(p *Pack, request Request) error {
+	decision := access.Check(access.Review, request.Principal, request.Resource, time.Now())
+	if !decision.Allowed {
+		return fmt.Errorf("%w: %s", ErrUnauthorized, decision.Reason)
+	}
+	if request.Resource.TenantID != p.content.TenantID {
+		return ErrTenantMismatch
+	}
+	return nil
+}
+
+func validateExecutionScope(p *Pack, request Request) error {
+	if request.At.IsZero() || !validIdentifier(request.BusinessLine) || !validIdentifier(request.Scenario) || !validIdentifier(request.ContractType) {
+		return fmt.Errorf("%w: business scope and evaluation time are required", ErrInvalidRequest)
+	}
+	from, _ := time.Parse(time.RFC3339Nano, p.content.EffectiveFrom)
+	until, _ := time.Parse(time.RFC3339Nano, p.content.EffectiveUntil)
+	if request.At.Before(from) || !request.At.Before(until) {
+		return ErrNotEffective
+	}
+	return nil
+}
+
+func indexFacts(rules []Rule, facts []Fact) (map[string][]Fact, error) {
+	rulesByID := make(map[string]struct{}, len(rules))
+	for _, rule := range rules {
 		rulesByID[rule.RuleID] = struct{}{}
 	}
-	for _, fact := range request.Facts {
+	factsByRule := make(map[string][]Fact)
+	factIDs := make(map[string]struct{}, len(facts))
+	for _, fact := range facts {
 		if !validIdentifier(fact.ID) || !validIdentifier(fact.RuleID) {
-			return Report{}, fmt.Errorf("%w: fact identity is required", ErrInvalidRequest)
+			return nil, fmt.Errorf("%w: fact identity is required", ErrInvalidRequest)
 		}
 		if _, exists := factIDs[fact.ID]; exists {
-			return Report{}, fmt.Errorf("%w: duplicate fact id %q", ErrInvalidRequest, fact.ID)
+			return nil, fmt.Errorf("%w: duplicate fact id %q", ErrInvalidRequest, fact.ID)
 		}
 		factIDs[fact.ID] = struct{}{}
 		if _, exists := rulesByID[fact.RuleID]; !exists {
-			return Report{}, fmt.Errorf("%w: fact references unknown rule %q", ErrInvalidRequest, fact.RuleID)
+			return nil, fmt.Errorf("%w: fact references unknown rule %q", ErrInvalidRequest, fact.RuleID)
 		}
 		factsByRule[fact.RuleID] = append(factsByRule[fact.RuleID], fact)
 	}
+	return factsByRule, nil
+}
 
+func executeRules(ctx context.Context, p *Pack, request Request, sources map[sourceKey]Source, factsByRule map[string][]Fact) (Report, error) {
 	report := Report{
 		PackID:      p.content.ID,
 		PackVersion: p.content.Version,
@@ -173,22 +215,38 @@ func scopeMatches(scope BusinessScope, request Request) bool {
 func indexSources(request Request) (map[sourceKey]Source, error) {
 	sources := make(map[sourceKey]Source, len(request.Sources))
 	for _, source := range request.Sources {
-		if !validIdentifier(source.ID) || !validIdentifier(source.Version) || !validIdentifier(source.Role) || source.TenantID == "" || source.CaseID == "" || !utf8.ValidString(source.Text) {
-			return nil, fmt.Errorf("%w: malformed source identity", ErrIdentity)
-		}
-		if source.TenantID != request.Resource.TenantID || source.CaseID != request.Resource.CaseID {
-			return nil, fmt.Errorf("%w: source is outside the authorized case", ErrIdentity)
-		}
-		if source.Digest != digestHex([]byte(source.Text)) {
-			return nil, fmt.Errorf("%w: source digest does not match text", ErrIdentity)
-		}
 		key := sourceKey{id: source.ID, version: source.Version}
-		if _, exists := sources[key]; exists {
-			return nil, fmt.Errorf("%w: duplicate source identity", ErrIdentity)
+		if err := validateSourceIndexEntry(request, source, key, sources); err != nil {
+			return nil, err
 		}
 		sources[key] = source
 	}
 	return sources, nil
+}
+
+func validateSourceIndexEntry(request Request, source Source, key sourceKey, sources map[sourceKey]Source) error {
+	if !validSourceIdentity(source) {
+		return fmt.Errorf("%w: malformed source identity", ErrIdentity)
+	}
+	if !sourceWithinRequest(source, request) {
+		return fmt.Errorf("%w: source is outside the authorized case", ErrIdentity)
+	}
+	if source.Digest != digestHex([]byte(source.Text)) {
+		return fmt.Errorf("%w: source digest does not match text", ErrIdentity)
+	}
+	if _, exists := sources[key]; exists {
+		return fmt.Errorf("%w: duplicate source identity", ErrIdentity)
+	}
+	return nil
+}
+
+func validSourceIdentity(source Source) bool {
+	return validIdentifier(source.ID) && validIdentifier(source.Version) && validIdentifier(source.Role) &&
+		source.TenantID != "" && source.CaseID != "" && utf8.ValidString(source.Text)
+}
+
+func sourceWithinRequest(source Source, request Request) bool {
+	return source.TenantID == request.Resource.TenantID && source.CaseID == request.Resource.CaseID
 }
 
 // ValidateSources verifies source identities, digests, case scope and uniqueness.
@@ -201,65 +259,102 @@ func ValidateSources(request Request) error {
 func evaluateRule(rule Rule, facts []Fact, sources map[sourceKey]Source, request Request) (Result, error) {
 	facts = append([]Fact(nil), facts...)
 	sort.Slice(facts, func(i, j int) bool { return facts[i].ID < facts[j].ID })
-	result := Result{
-		RuleID:       rule.RuleID,
-		RuleVersion:  rule.Version,
-		Domain:       rule.Domain,
-		CapabilityID: rule.CapabilityID,
-		Mandatory:    rule.Mandatory,
-	}
+	result := ruleResult(rule)
 	if len(facts) == 0 {
 		result.Relation, result.ReasonCode = RelationInsufficient, "required_fact_missing"
 		return result, nil
 	}
-	allCitations := make([]Citation, 0)
-	for _, fact := range facts {
-		citations, rolesMatch, err := validateFactEvidence(fact, sources, request)
-		if err != nil {
-			return Result{}, err
-		}
-		allCitations = append(allCitations, citations...)
-		if !rolesMatch {
-			result.Relation, result.ReasonCode = RelationInsufficient, "source_role_mismatch"
-			result.FactIDs, result.Citations = factIDsAndCitations(facts, allCitations)
-			return result, nil
-		}
+	citations, roleMismatch, err := validateRuleFacts(facts, sources, request)
+	if err != nil {
+		return Result{}, err
+	}
+	if roleMismatch {
+		return insufficientFactsResult(result, "source_role_mismatch", facts, citations), nil
 	}
 	if len(facts) > 1 {
-		result.Relation, result.ReasonCode = RelationInsufficient, "required_fact_ambiguous"
-		result.FactIDs, result.Citations = factIDsAndCitations(facts, allCitations)
+		return insufficientFactsResult(result, "required_fact_ambiguous", facts, citations), nil
+	}
+	return evaluateSingleFact(result, rule, facts[0], citations)
+}
+
+func ruleResult(rule Rule) Result {
+	return Result{RuleID: rule.RuleID, RuleVersion: rule.Version, Domain: rule.Domain,
+		CapabilityID: rule.CapabilityID, Mandatory: rule.Mandatory}
+}
+
+func validateRuleFacts(facts []Fact, sources map[sourceKey]Source, request Request) ([]Citation, bool, error) {
+	citations := make([]Citation, 0)
+	for _, fact := range facts {
+		factCitations, rolesMatch, err := validateFactEvidence(fact, sources, request)
+		if err != nil {
+			return nil, false, err
+		}
+		citations = append(citations, factCitations...)
+		if !rolesMatch {
+			return citations, true, nil
+		}
+	}
+	return citations, false, nil
+}
+
+func insufficientFactsResult(result Result, reason string, facts []Fact, citations []Citation) Result {
+	result.Relation, result.ReasonCode = RelationInsufficient, reason
+	result.FactIDs, result.Citations = factIDsAndCitations(facts, citations)
+	return result
+}
+
+func evaluateSingleFact(result Result, rule Rule, fact Fact, citations []Citation) (Result, error) {
+	result.FactIDs, result.Citations = []string{fact.ID}, citations
+	if evaluateFactPrerequisites(&result, rule, fact) {
 		return result, nil
 	}
-	fact := facts[0]
-	result.FactIDs, result.Citations = []string{fact.ID}, allCitations
+	return evaluateFactValue(result, rule, fact)
+}
+
+func evaluateFactPrerequisites(result *Result, rule Rule, fact Fact) bool {
 	if len(fact.Citations) == 0 {
 		result.Relation, result.ReasonCode = RelationInsufficient, "evidence_missing"
-		return result, nil
+		return true
 	}
 	if !containsString(rule.RequiredFact.SourceRoles, fact.SourceRole) {
 		result.Relation, result.ReasonCode = RelationInsufficient, "source_role_not_allowed"
-		return result, nil
+		return true
 	}
-	if fact.Applicable != nil && !*fact.Applicable {
-		if !evidenceProvesInapplicable(rule, fact) {
-			result.Relation, result.ReasonCode = RelationInsufficient, "applicability_not_proven_for_rule_and_object"
-			return result, nil
-		}
+	if evaluateFactApplicability(result, rule, fact) {
+		return true
+	}
+	return evaluateFactMetadata(result, rule, fact)
+}
+
+func evaluateFactApplicability(result *Result, rule Rule, fact Fact) bool {
+	if fact.Applicable == nil || *fact.Applicable {
+		return false
+	}
+	if !evidenceProvesInapplicable(rule, fact) {
+		result.Relation, result.ReasonCode = RelationInsufficient, "applicability_not_proven_for_rule_and_object"
+	} else {
 		result.Relation, result.ReasonCode = RelationNotApplicable, "applicability_proven_false"
-		return result, nil
 	}
+	return true
+}
+
+func evaluateFactMetadata(result *Result, rule Rule, fact Fact) bool {
 	if fact.Dimension != rule.RequiredFact.Dimension || fact.ObjectRef == "" || fact.SourceRole == "" || fact.Value == "" {
 		result.Relation, result.ReasonCode = RelationInsufficient, "required_fact_metadata_missing"
-		return result, nil
+		return true
 	}
 	if rule.RequiredFact.ObjectRequired && !evidenceContains(fact.Citations, fact.ObjectRef) {
 		result.Relation, result.ReasonCode = RelationInsufficient, "object_not_supported_by_evidence"
-		return result, nil
+		return true
 	}
 	if !factMetadataMatches(rule, fact) {
 		result.Relation, result.ReasonCode = RelationInsufficient, "fact_metadata_mismatch"
-		return result, nil
+		return true
 	}
+	return false
+}
+
+func evaluateFactValue(result Result, rule Rule, fact Fact) (Result, error) {
 	value, err := parseRational(fact.Value)
 	if err != nil {
 		result.Relation, result.ReasonCode = RelationInsufficient, "fact_value_invalid"
@@ -273,35 +368,56 @@ func evaluateRule(rule Rule, facts []Fact, sources map[sourceKey]Source, request
 	if err != nil {
 		return Result{}, fmt.Errorf("%w: invalid threshold for rule %q: %v", ErrInvalidManifest, rule.RuleID, err)
 	}
-	switch rule.Comparator {
-	case ComparatorMinimumBandwidth:
-		value = bandwidthMbit(value, fact.Unit)
-		threshold = bandwidthMbit(threshold, rule.Threshold.Unit)
-		if value.Cmp(threshold) >= 0 {
-			result.Relation, result.ReasonCode = RelationCompatible, "minimum_bandwidth_met"
-		} else {
-			result.Relation, result.ReasonCode = RelationConflict, "minimum_bandwidth_below_threshold"
-		}
-	case ComparatorMonthlySLA:
-		if fact.Unit != "percent" || value.Cmp(big.NewRat(100, 1)) > 0 {
-			result.Relation, result.ReasonCode = RelationInsufficient, "fact_unit_or_range_invalid"
-		} else if value.Cmp(threshold) >= 0 {
-			result.Relation, result.ReasonCode = RelationCompatible, "monthly_availability_met"
-		} else {
-			result.Relation, result.ReasonCode = RelationConflict, "monthly_availability_below_threshold"
-		}
-	case ComparatorAdvancePaymentCeiling:
-		if fact.Unit != "ratio" || value.Cmp(big.NewRat(1, 1)) > 0 {
-			result.Relation, result.ReasonCode = RelationInsufficient, "fact_unit_or_range_invalid"
-		} else if value.Cmp(threshold) <= 0 {
-			result.Relation, result.ReasonCode = RelationCompatible, "advance_payment_within_ceiling"
-		} else {
-			result.Relation, result.ReasonCode = RelationConflict, "advance_payment_exceeds_ceiling"
-		}
-	default:
-		return Result{}, fmt.Errorf("%w: unsupported comparator %q", ErrInvalidManifest, rule.Comparator)
+	if err := compareFactValue(&result, rule, fact, value, threshold); err != nil {
+		return Result{}, err
 	}
 	return result, nil
+}
+
+func compareFactValue(result *Result, rule Rule, fact Fact, value, threshold *big.Rat) error {
+	switch rule.Comparator {
+	case ComparatorMinimumBandwidth:
+		return compareBandwidth(result, fact, rule, value, threshold)
+	case ComparatorMonthlySLA:
+		return compareMonthlySLA(result, fact, value, threshold)
+	case ComparatorAdvancePaymentCeiling:
+		return compareAdvancePayment(result, fact, value, threshold)
+	default:
+		return fmt.Errorf("%w: unsupported comparator %q", ErrInvalidManifest, rule.Comparator)
+	}
+}
+
+func compareBandwidth(result *Result, fact Fact, rule Rule, value, threshold *big.Rat) error {
+	actual := bandwidthMbit(value, fact.Unit)
+	expected := bandwidthMbit(threshold, rule.Threshold.Unit)
+	if actual.Cmp(expected) >= 0 {
+		result.Relation, result.ReasonCode = RelationCompatible, "minimum_bandwidth_met"
+	} else {
+		result.Relation, result.ReasonCode = RelationConflict, "minimum_bandwidth_below_threshold"
+	}
+	return nil
+}
+
+func compareMonthlySLA(result *Result, fact Fact, value, threshold *big.Rat) error {
+	if fact.Unit != "percent" || value.Cmp(big.NewRat(100, 1)) > 0 {
+		result.Relation, result.ReasonCode = RelationInsufficient, "fact_unit_or_range_invalid"
+	} else if value.Cmp(threshold) >= 0 {
+		result.Relation, result.ReasonCode = RelationCompatible, "monthly_availability_met"
+	} else {
+		result.Relation, result.ReasonCode = RelationConflict, "monthly_availability_below_threshold"
+	}
+	return nil
+}
+
+func compareAdvancePayment(result *Result, fact Fact, value, threshold *big.Rat) error {
+	if fact.Unit != "ratio" || value.Cmp(big.NewRat(1, 1)) > 0 {
+		result.Relation, result.ReasonCode = RelationInsufficient, "fact_unit_or_range_invalid"
+	} else if value.Cmp(threshold) <= 0 {
+		result.Relation, result.ReasonCode = RelationCompatible, "advance_payment_within_ceiling"
+	} else {
+		result.Relation, result.ReasonCode = RelationConflict, "advance_payment_exceeds_ceiling"
+	}
+	return nil
 }
 
 func validateFactEvidence(fact Fact, sources map[sourceKey]Source, request Request) ([]Citation, bool, error) {
@@ -311,25 +427,50 @@ func validateFactEvidence(fact Fact, sources map[sourceKey]Source, request Reque
 	citations := make([]Citation, 0, len(fact.Citations))
 	rolesMatch := true
 	for _, citation := range fact.Citations {
-		source, exists := sources[sourceKey{id: citation.SourceID, version: citation.SourceVersion}]
-		if !exists {
-			return nil, false, fmt.Errorf("%w: citation source does not exist", ErrIdentity)
+		roleMatches, err := validateCitation(fact, citation, sources, request)
+		if err != nil {
+			return nil, false, err
 		}
-		if citation.TenantID != request.Resource.TenantID || citation.CaseID != request.Resource.CaseID || citation.TenantID != source.TenantID || citation.CaseID != source.CaseID || citation.SourceDigest != source.Digest {
-			return nil, false, fmt.Errorf("%w: citation identity does not match frozen source", ErrIdentity)
-		}
-		if citation.Start < 0 || citation.End <= citation.Start || citation.Quote == "" {
-			return nil, false, fmt.Errorf("%w: citation span is invalid", ErrIdentity)
-		}
-		runes := []rune(source.Text)
-		if citation.End > len(runes) || string(runes[citation.Start:citation.End]) != citation.Quote {
-			return nil, false, fmt.Errorf("%w: code-point quote does not match source text", ErrIdentity)
-		}
-		if source.Role != fact.SourceRole {
+		if !roleMatches {
 			rolesMatch = false
 		}
 		citations = append(citations, citation)
 	}
+	return sortCitations(citations), rolesMatch, nil
+}
+
+func validateCitation(fact Fact, citation Citation, sources map[sourceKey]Source, request Request) (bool, error) {
+	source, exists := sources[sourceKey{id: citation.SourceID, version: citation.SourceVersion}]
+	if !exists {
+		return false, fmt.Errorf("%w: citation source does not exist", ErrIdentity)
+	}
+	if !citationMatchesSource(citation, source, request) {
+		return false, fmt.Errorf("%w: citation identity does not match frozen source", ErrIdentity)
+	}
+	if !validCitationSpan(citation) {
+		return false, fmt.Errorf("%w: citation span is invalid", ErrIdentity)
+	}
+	if !citationQuoteMatches(citation, source) {
+		return false, fmt.Errorf("%w: code-point quote does not match source text", ErrIdentity)
+	}
+	return source.Role == fact.SourceRole, nil
+}
+
+func citationMatchesSource(citation Citation, source Source, request Request) bool {
+	return citation.TenantID == request.Resource.TenantID && citation.CaseID == request.Resource.CaseID &&
+		citation.TenantID == source.TenantID && citation.CaseID == source.CaseID && citation.SourceDigest == source.Digest
+}
+
+func validCitationSpan(citation Citation) bool {
+	return citation.Start >= 0 && citation.End > citation.Start && citation.Quote != ""
+}
+
+func citationQuoteMatches(citation Citation, source Source) bool {
+	runes := []rune(source.Text)
+	return citation.End <= len(runes) && string(runes[citation.Start:citation.End]) == citation.Quote
+}
+
+func sortCitations(citations []Citation) []Citation {
 	sort.Slice(citations, func(i, j int) bool {
 		a, b := citations[i], citations[j]
 		if a.SourceID != b.SourceID {
@@ -346,21 +487,34 @@ func validateFactEvidence(fact Fact, sources map[sourceKey]Source, request Reque
 		}
 		return a.Quote < b.Quote
 	})
-	return citations, rolesMatch, nil
+	return citations
 }
 
 func factMetadataMatches(rule Rule, fact Fact) bool {
-	required := rule.RequiredFact
 	switch rule.Comparator {
 	case ComparatorMinimumBandwidth:
-		return fact.Unit == "Mbit/s" || fact.Unit == "Gbit/s"
+		return bandwidthMetadataMatches(fact)
 	case ComparatorMonthlySLA:
-		return fact.Unit == "percent" && fact.MeasurementWindow == required.MeasurementWindow && fact.TimeZone == required.TimeZone && fact.Calendar == required.Calendar && fact.OutageDefinition == required.OutageDefinition && sameStrings(fact.Exclusions, required.Exclusions)
+		return slaMetadataMatches(rule.RequiredFact, fact)
 	case ComparatorAdvancePaymentCeiling:
-		return fact.Unit == "ratio" && fact.Basis == rule.Threshold.Basis && fact.Basis == required.Basis
+		return advanceMetadataMatches(rule, fact)
 	default:
 		return false
 	}
+}
+
+func bandwidthMetadataMatches(fact Fact) bool {
+	return fact.Unit == "Mbit/s" || fact.Unit == "Gbit/s"
+}
+
+func slaMetadataMatches(required RequiredFact, fact Fact) bool {
+	return fact.Unit == "percent" && fact.MeasurementWindow == required.MeasurementWindow &&
+		fact.TimeZone == required.TimeZone && fact.Calendar == required.Calendar &&
+		fact.OutageDefinition == required.OutageDefinition && sameStrings(fact.Exclusions, required.Exclusions)
+}
+
+func advanceMetadataMatches(rule Rule, fact Fact) bool {
+	return fact.Unit == "ratio" && fact.Basis == rule.Threshold.Basis && fact.Basis == rule.RequiredFact.Basis
 }
 
 func evidenceContains(citations []Citation, value string) bool {

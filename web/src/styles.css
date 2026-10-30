@@ -209,6 +209,16 @@
   body {
     overflow-x: clip;
   }
+  /* Ant Design locks modal scrolling by hiding body overflow. That turns body
+     into the scroll container, so the sticky header and side rail scroll away
+     while the modal is open and the uncovered rail shows the page background.
+     Lock the root instead; body stays a normal box and sticky keeps working. */
+  html:has(.ant-modal-root) {
+    overflow: hidden;
+  }
+  body:has(.ant-modal-root) {
+    overflow-y: visible !important;
+  }
   html {
     scrollbar-color: var(--border-strong) var(--surface-page);
   }
@@ -1459,6 +1469,184 @@
   .workspace-trace-link:hover {
     color: var(--action-primary-hover);
   }
+  .trajectory-view {
+    min-width: 0;
+    padding: var(--space-6);
+    border-bottom: 1px solid var(--border-default);
+    background: var(--surface-raised);
+    scroll-margin-top: calc(var(--header-height) + var(--space-4));
+  }
+  .trajectory-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--space-2) var(--space-4);
+  }
+  .trajectory-head h2 {
+    margin: 0;
+  }
+  .trajectory-head .meta {
+    margin: var(--space-1) 0 0;
+  }
+  .trajectory-summary {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(140px, 100%), 1fr));
+    gap: var(--space-3) var(--space-6);
+    margin: var(--space-4) 0;
+  }
+  .trajectory-summary > div {
+    min-width: 0;
+  }
+  .trajectory-summary dt {
+    color: var(--text-secondary);
+    font-size: 13px;
+  }
+  .trajectory-summary dd {
+    margin: 2px 0 0;
+    font-variant-numeric: tabular-nums;
+    overflow-wrap: anywhere;
+  }
+  .trajectory-controls {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-2);
+  }
+  .trajectory-controls .ant-input-search {
+    flex: 1 1 280px;
+    min-width: min(280px, 100%);
+  }
+  .trajectory-filter,
+  .trajectory-empty {
+    margin: var(--space-3) 0 0;
+    color: var(--text-secondary);
+  }
+  .trajectory-list {
+    display: grid;
+    gap: var(--space-2);
+    margin: var(--space-4) 0 0;
+    padding: 0;
+    list-style: none;
+  }
+  .trajectory-entry {
+    border: 1px solid var(--border-default);
+    border-radius: var(--panel-radius);
+    background: var(--surface-raised);
+  }
+  .trajectory-entry-head {
+    display: flex;
+    width: 100%;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-3);
+    border: 0;
+    background: none;
+    color: inherit;
+    text-align: left;
+    cursor: pointer;
+  }
+  .trajectory-entry-head:focus-visible {
+    outline: 3px solid var(--focus-ring);
+    outline-offset: 2px;
+  }
+  .trajectory-entry-marker {
+    flex: none;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--state-neutral);
+  }
+  .trajectory-entry[data-kind="model"] .trajectory-entry-marker {
+    background: var(--state-progress);
+  }
+  .trajectory-entry[data-kind="tool"] .trajectory-entry-marker {
+    background: var(--state-compatible);
+  }
+  .trajectory-entry[data-kind="knowledge"] .trajectory-entry-marker {
+    background: var(--state-insufficient);
+  }
+  .trajectory-entry-main {
+    display: grid;
+    flex: 1;
+    gap: 2px;
+    min-width: 0;
+  }
+  .trajectory-entry-title {
+    font-weight: 600;
+    overflow-wrap: anywhere;
+  }
+  .trajectory-kind {
+    display: inline-block;
+    margin-right: var(--space-2);
+    padding: 0 6px;
+    border: 1px solid var(--border-default);
+    border-radius: 999px;
+    color: var(--text-secondary);
+    font-size: 12px;
+    font-weight: 500;
+  }
+  .trajectory-entry-meta {
+    color: var(--text-secondary);
+    font-size: 13px;
+    overflow-wrap: anywhere;
+  }
+  .trajectory-disclosure {
+    flex: none;
+    color: var(--action-primary);
+    font-size: 13px;
+  }
+  .trajectory-body-wrap {
+    padding: var(--space-3) var(--space-4) var(--space-4);
+    border-top: 1px solid var(--border-default);
+  }
+  .trajectory-body {
+    display: grid;
+    gap: var(--space-3);
+    min-width: 0;
+  }
+  .trajectory-fields {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr));
+    gap: var(--space-2) var(--space-4);
+    margin: 0;
+  }
+  .trajectory-fields > div {
+    min-width: 0;
+  }
+  .trajectory-fields dt {
+    color: var(--text-secondary);
+    font-size: 13px;
+  }
+  .trajectory-fields dd {
+    margin: 2px 0 0;
+    overflow-wrap: anywhere;
+  }
+  .trajectory-section h4 {
+    margin: 0 0 var(--space-1);
+    color: var(--text-secondary);
+    font-size: 13px;
+    font-weight: 600;
+  }
+  .trajectory-text {
+    margin: 0;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+  .trajectory-code {
+    max-height: 360px;
+    margin: 0;
+    padding: var(--space-3);
+    overflow: auto;
+    border: 1px solid var(--border-default);
+    border-radius: var(--panel-radius);
+    background: var(--surface-subtle);
+    font-family: var(--font-mono);
+    font-size: 12px;
+    line-height: 1.6;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
   .execution-tree > li {
     padding-block: var(--space-2);
   }
@@ -2697,6 +2885,12 @@
     .execution-inspector {
       padding: var(--space-4);
     }
+    .trajectory-view {
+      padding: var(--space-4);
+    }
+    .trajectory-entry-head {
+      flex-wrap: wrap;
+    }
     .execution-overview-stats,
     .execution-event-detail .execution-dl {
       grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -3246,6 +3440,55 @@
   .settings-panel .data-table .ant-table-tbody > tr > td {
     font-size: 13px;
   }
+  .settings-endpoint-actions,
+  .settings-model-actions,
+  .llm-endpoint-probe {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-3);
+  }
+  .settings-endpoint-actions {
+    margin-top: var(--space-4);
+    padding-top: var(--space-3);
+    border-top: 1px solid var(--border-default);
+  }
+  .settings-endpoint-actions .settings-panel-note,
+  .settings-model-actions .settings-panel-note,
+  .llm-endpoint-probe .settings-panel-note {
+    flex: 1;
+    min-width: 220px;
+    margin: 0;
+  }
+  .settings-model-controls {
+    display: grid;
+    gap: var(--space-3);
+    margin-top: var(--space-4);
+    padding-top: var(--space-4);
+    border-top: 1px solid var(--border-default);
+  }
+  .settings-model-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-3);
+  }
+  .settings-model-actions {
+    justify-content: space-between;
+  }
+  .llm-endpoint-form {
+    display: grid;
+    gap: var(--space-3);
+  }
+  .llm-endpoint-form .settings-panel-note {
+    margin: 0;
+  }
+  .llm-endpoint-form [role="alert"] {
+    margin: 0;
+  }
+  .llm-endpoint-model-list .ant-select-selection-overflow {
+    max-height: 132px;
+    overflow-y: auto;
+  }
   @media (max-width: 1100px) {
     .settings-figures {
       grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -3263,7 +3506,8 @@
     }
   }
   @media (max-width: 900px) {
-    .settings-grid {
+    .settings-grid,
+    .settings-model-grid {
       grid-template-columns: minmax(0, 1fr);
     }
     .settings-overview {

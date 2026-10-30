@@ -43,10 +43,10 @@ const (
 // BandFor applies the frozen 0.70/0.30 truth table. The uncertain band always
 // has its own outcome and is never rounded to yes or no.
 func BandFor(probability, thresholdHigh, thresholdLow float64) (Band, error) {
-	if !(thresholdLow > 0 && thresholdHigh < 1 && thresholdLow < thresholdHigh) {
+	if !validThresholds(thresholdHigh, thresholdLow) {
 		return BandUnknown, errors.New("advisory thresholds are invalid")
 	}
-	if probability != probability || probability < 0 || probability > 1 {
+	if !validProbability(probability) {
 		return BandUnknown, errors.New("advisory probability is outside [0,1]")
 	}
 	switch {
@@ -57,6 +57,14 @@ func BandFor(probability, thresholdHigh, thresholdLow float64) (Band, error) {
 	default:
 		return BandUncertain, nil
 	}
+}
+
+func validThresholds(high, low float64) bool {
+	return low > 0 && high < 1 && low < high
+}
+
+func validProbability(probability float64) bool {
+	return probability == probability && probability >= 0 && probability <= 1
 }
 
 // BandRank controls the stable optional-candidate order. uncertain and unknown
@@ -163,15 +171,8 @@ type KnowledgeResult struct {
 // a response whose observed model differs from the frozen model; a caller must
 // fall back rather than mix two model versions in one run.
 func EvaluateKnowledge(ctx context.Context, provider Provider, configuration agentflow.AdvisoryConfiguration, request KnowledgeRequest) (KnowledgeResult, error) {
-	if provider == nil {
-		return KnowledgeResult{}, ErrUnavailable
-	}
-	if err := configuration.Validate(); err != nil || !configuration.Supports(request.Feature) {
-		return KnowledgeResult{}, fmt.Errorf("%w: frozen advisory configuration is invalid", ErrNotApplicable)
-	}
-	if request.Model != configuration.Model || request.RequestSHA256 == "" || len(request.Candidates) == 0 ||
-		len(request.Candidates) > configuration.MaxCandidates {
-		return KnowledgeResult{}, fmt.Errorf("%w: frozen advisory request is invalid", ErrNotApplicable)
+	if err := validateEvaluationInput(provider, configuration, request); err != nil {
+		return KnowledgeResult{}, err
 	}
 	// Apply the accepted timeout even if the transport was configured with a
 	// different value after this review was frozen. The parent may end sooner.
@@ -187,6 +188,24 @@ func EvaluateKnowledge(ctx context.Context, provider Provider, configuration age
 	if err != nil {
 		return KnowledgeResult{}, fmt.Errorf("%w: %w", ErrUnavailable, err)
 	}
+	return evaluateResponse(response, configuration, request)
+}
+
+func validateEvaluationInput(provider Provider, configuration agentflow.AdvisoryConfiguration, request KnowledgeRequest) error {
+	if provider == nil {
+		return ErrUnavailable
+	}
+	if err := configuration.Validate(); err != nil || !configuration.Supports(request.Feature) {
+		return fmt.Errorf("%w: frozen advisory configuration is invalid", ErrNotApplicable)
+	}
+	if request.Model != configuration.Model || request.RequestSHA256 == "" || len(request.Candidates) == 0 ||
+		len(request.Candidates) > configuration.MaxCandidates {
+		return fmt.Errorf("%w: frozen advisory request is invalid", ErrNotApplicable)
+	}
+	return nil
+}
+
+func evaluateResponse(response ProviderResponse, configuration agentflow.AdvisoryConfiguration, request KnowledgeRequest) (KnowledgeResult, error) {
 	if response.Model != request.Model {
 		return KnowledgeResult{}, ErrModelMismatch
 	}

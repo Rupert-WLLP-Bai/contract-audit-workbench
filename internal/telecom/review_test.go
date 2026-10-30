@@ -132,6 +132,116 @@ func TestHistoricalCompilerSnapshotsRemainReadable(t *testing.T) {
 	}
 }
 
+func TestCloudRulePackValidatorRejectsAlteredPublicPolicySnapshots(t *testing.T) {
+	valid := publishedCloudSnapshot(t, nil)
+	if err := telecom.ValidateCloudServicesRulePack(valid); err != nil {
+		t.Fatalf("valid published cloud policy rejected: %v", err)
+	}
+	tests := []struct {
+		name   string
+		mutate func(*rulepack.Manifest)
+	}{
+		{"bandwidth source roles are not exact", func(m *rulepack.Manifest) {
+			editCloudRule(t, m, "CLOUD-TECH-BW-001", func(r *rulepack.Rule) { r.RequiredFact.SourceRoles = []string{"draft_contract", "procurement"} })
+		}},
+		{"bandwidth role is unsupported", func(m *rulepack.Manifest) {
+			editCloudRule(t, m, "CLOUD-TECH-BW-001", func(r *rulepack.Rule) { r.RequiredFact.SourceRoles = []string{"procurement"} })
+		}},
+		{"SLA time zone differs", func(m *rulepack.Manifest) {
+			editCloudRule(t, m, "CLOUD-TECH-SLA-001", func(r *rulepack.Rule) { r.RequiredFact.TimeZone = "UTC" })
+		}},
+		{"SLA outage definition differs", func(m *rulepack.Manifest) {
+			editCloudRule(t, m, "CLOUD-TECH-SLA-001", func(r *rulepack.Rule) { r.RequiredFact.OutageDefinition = "partial_outage" })
+		}},
+		{"SLA exclusions are not empty", func(m *rulepack.Manifest) {
+			editCloudRule(t, m, "CLOUD-TECH-SLA-001", func(r *rulepack.Rule) { r.RequiredFact.Exclusions = []string{"planned_maintenance"} })
+		}},
+		{"authority kind is not approved for cloud policy", func(m *rulepack.Manifest) {
+			editCloudRule(t, m, "CLOUD-TECH-BW-001", func(r *rulepack.Rule) { r.AuthoritySources[0].Kind = "contractual" })
+		}},
+		{"missing required cloud rule", func(m *rulepack.Manifest) {
+			for i, rule := range m.Rules {
+				if rule.RuleID == "CLOUD-COM-ADV-001" {
+					m.Rules = append(m.Rules[:i], m.Rules[i+1:]...)
+					return
+				}
+			}
+			t.Fatal("advance-payment rule not found")
+		}},
+		{"unknown cloud rule", func(m *rulepack.Manifest) {
+			copy := m.Rules[0]
+			copy.RuleID = "CLOUD-EXTRA-001"
+			m.Rules = append(m.Rules, copy)
+		}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			snapshot := publishedCloudSnapshot(t, test.mutate)
+			if err := telecom.ValidateCloudServicesRulePack(snapshot); !errors.Is(err, rulepack.ErrInvalidManifest) {
+				t.Fatalf("ValidateCloudServicesRulePack error = %v, want invalid manifest", err)
+			}
+		})
+	}
+}
+
+func editCloudRule(t *testing.T, manifest *rulepack.Manifest, id string, edit func(*rulepack.Rule)) {
+	t.Helper()
+	for i := range manifest.Rules {
+		if manifest.Rules[i].RuleID == id {
+			edit(&manifest.Rules[i])
+			return
+		}
+	}
+	t.Fatalf("cloud rule %s not found", id)
+}
+
+func publishedCloudSnapshot(t *testing.T, mutate func(*rulepack.Manifest)) []byte {
+	t.Helper()
+	raw, err := telecom.Snapshot(cloudRequest("不低于", "不低于"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	pack, err := rulepack.Parse(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	manifest := pack.Manifest()
+	manifest.Lifecycle = rulepack.Lifecycle{State: rulepack.StateDraft}
+	for i := range manifest.Rules {
+		for j := range manifest.Rules[i].AuthoritySources {
+			manifest.Rules[i].AuthoritySources[j].Kind = "internal_policy"
+		}
+	}
+	if mutate != nil {
+		mutate(&manifest)
+	}
+	raw, err = json.Marshal(manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pack, err = rulepack.Parse(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pack, err = pack.Validate()
+	if err != nil {
+		t.Fatal(err)
+	}
+	pack, err = pack.Approve("cloud-policy-admin", pack.Hash())
+	if err != nil {
+		t.Fatal(err)
+	}
+	pack, err = pack.Publish()
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err = pack.Snapshot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return raw
+}
+
 func TestWrappedClausesKeepObjectValueUnitAndBasis(t *testing.T) {
 	for _, newline := range []string{"\n", "\r\n"} {
 		t.Run(fmt.Sprintf("break-%q", newline), func(t *testing.T) {

@@ -27,7 +27,7 @@ func (s *Store) currentSignature(docIDs []string, selection ...[]FrozenDocument)
 	if len(selection) > 0 {
 		frozen = selection[0]
 	}
-	return currentSignatureFor(docIDs, frozen, s.models)
+	return currentSignatureFor(docIDs, frozen, s.currentModels())
 }
 
 // currentSignatureWithRulePack extends the signature with the pack identity and
@@ -38,7 +38,7 @@ func (s *Store) currentSignatureWithRulePack(docIDs []string, selection []Frozen
 	// The extractor belongs to comparator configuration; the governed pack has
 	// its own compiler marker. Keep both identities so retries cannot execute
 	// changed extraction semantics against a previously frozen run.
-	signature := currentSignatureFor(docIDs, selection, s.models, compilerRef)
+	signature := currentSignatureFor(docIDs, selection, s.currentModels(), compilerRef)
 	signature.RulePackCompilerRef = ""
 	if pack != nil {
 		signature.RulePackCompilerRef = pack.CompilerMarker
@@ -149,10 +149,7 @@ func (s *Store) plannerConfigurationForAcceptance(modelConfigurationID string) (
 }
 
 func signatureModelConfigurationID(models Models) string {
-	if models == nil {
-		return ""
-	}
-	return models.ConfigurationID()
+	return frozenConfigurationID(models)
 }
 
 func currentSignatureFor(docIDs []string, frozen []FrozenDocument, models Models, compilerRefs ...string) RunSnapshot {
@@ -160,7 +157,9 @@ func currentSignatureFor(docIDs []string, frozen []FrozenDocument, models Models
 	configurationID := "models-disabled/v1"
 	if models != nil {
 		name = models.Name()
-		configurationID = models.ConfigurationID()
+		if identity := frozenConfigurationID(models); identity != "" {
+			configurationID = identity
+		}
 	}
 	parsedIDs := make([]string, len(frozen))
 	for i, item := range frozen {

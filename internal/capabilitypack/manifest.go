@@ -149,15 +149,37 @@ var (
 )
 
 func checkRequiredJSONFields(raw []byte) error {
+	document, err := requiredManifestObject(raw)
+	if err != nil {
+		return err
+	}
+	if err := requireFields(document, manifestRequiredFields, ""); err != nil {
+		return err
+	}
+	return validateRequiredManifestContainers(document)
+}
+
+func requiredManifestObject(raw []byte) (map[string]json.RawMessage, error) {
 	var document map[string]json.RawMessage
 	if err := json.Unmarshal(raw, &document); err != nil || document == nil {
-		return fmt.Errorf("%w: capability pack manifest must be a JSON object", auditext.ErrInvalidRequest)
+		return nil, fmt.Errorf("%w: capability pack manifest must be a JSON object", auditext.ErrInvalidRequest)
 	}
-	for _, field := range manifestRequiredFields {
+	return document, nil
+}
+
+func requireFields(document map[string]json.RawMessage, fields []string, label string) error {
+	for _, field := range fields {
 		if _, ok := document[field]; !ok {
-			return fmt.Errorf("%w: missing required field %q", auditext.ErrInvalidRequest, field)
+			if label == "" {
+				return fmt.Errorf("%w: missing required field %q", auditext.ErrInvalidRequest, field)
+			}
+			return fmt.Errorf("%w: missing required field %s.%s", auditext.ErrInvalidRequest, label, field)
 		}
 	}
+	return nil
+}
+
+func validateRequiredManifestContainers(document map[string]json.RawMessage) error {
 	if _, err := objectFields(document["rule_pack_ref"], "rule_pack_ref", "id", "version"); err != nil {
 		return err
 	}
@@ -182,10 +204,8 @@ func objectFields(raw json.RawMessage, label string, required ...string) (map[st
 	if err := json.Unmarshal(raw, &object); err != nil || object == nil {
 		return nil, fmt.Errorf("%w: %s must be an object", auditext.ErrInvalidRequest, label)
 	}
-	for _, field := range required {
-		if _, ok := object[field]; !ok {
-			return nil, fmt.Errorf("%w: missing required field %s.%s", auditext.ErrInvalidRequest, label, field)
-		}
+	if err := requireFields(object, required, label); err != nil {
+		return nil, err
 	}
 	return object, nil
 }
@@ -225,6 +245,19 @@ func isJSONNull(raw json.RawMessage) bool {
 // does not check whether referenced capabilities, connectors or comparators are
 // registered; use Registry.Register for that.
 func (m Manifest) Validate() error {
+	if err := m.validateIdentity(); err != nil {
+		return err
+	}
+	if err := m.validateDisplay(); err != nil {
+		return err
+	}
+	if err := m.validateBindings(); err != nil {
+		return err
+	}
+	return m.validatePresentation()
+}
+
+func (m Manifest) validateIdentity() error {
 	if m.SchemaVersion != auditext.CapabilityPackSchemaVersion {
 		return fmt.Errorf("%w: schema_version must be %q", auditext.ErrInvalidRequest, auditext.CapabilityPackSchemaVersion)
 	}
@@ -237,6 +270,10 @@ func (m Manifest) Validate() error {
 	if err := auditext.ValidateVersion(m.Version); err != nil {
 		return fmt.Errorf("%w: pack version %q", auditext.ErrInvalidRequest, m.Version)
 	}
+	return nil
+}
+
+func (m Manifest) validateDisplay() error {
 	if m.DisplayName == "" || utf8.RuneCountInString(m.DisplayName) > 256 {
 		return fmt.Errorf("%w: display_name", auditext.ErrInvalidRequest)
 	}
@@ -245,6 +282,10 @@ func (m Manifest) Validate() error {
 	default:
 		return fmt.Errorf("%w: scenario %q", auditext.ErrInvalidRequest, m.Scenario)
 	}
+	return nil
+}
+
+func (m Manifest) validateBindings() error {
 	if err := validateMaterialRoles(m.RequiredMaterialRoles); err != nil {
 		return err
 	}
@@ -254,9 +295,10 @@ func (m Manifest) Validate() error {
 	if err := validateCapabilities(m.Capabilities); err != nil {
 		return err
 	}
-	if err := validateChecks(m.Checks); err != nil {
-		return err
-	}
+	return validateChecks(m.Checks)
+}
+
+func (m Manifest) validatePresentation() error {
 	if err := m.UI.validate(); err != nil {
 		return err
 	}
@@ -334,15 +376,22 @@ func validateChecks(checks []Check) error {
 			return fmt.Errorf("%w: duplicate check id %q", auditext.ErrInvalidRequest, check.ID)
 		}
 		seen[check.ID] = struct{}{}
-		if err := auditext.ValidateID(check.ComparatorRef); err != nil {
-			return fmt.Errorf("%w: check %q comparator_ref %q", auditext.ErrInvalidRequest, check.ID, check.ComparatorRef)
+		if err := validateCheckFields(check); err != nil {
+			return err
 		}
-		if err := auditext.ValidateID(check.ContractField); err != nil {
-			return fmt.Errorf("%w: check %q contract_field %q", auditext.ErrInvalidRequest, check.ID, check.ContractField)
-		}
-		if check.ExternalField != nil && utf8.RuneCountInString(*check.ExternalField) > 128 {
-			return fmt.Errorf("%w: check %q external_field", auditext.ErrInvalidRequest, check.ID)
-		}
+	}
+	return nil
+}
+
+func validateCheckFields(check Check) error {
+	if err := auditext.ValidateID(check.ComparatorRef); err != nil {
+		return fmt.Errorf("%w: check %q comparator_ref %q", auditext.ErrInvalidRequest, check.ID, check.ComparatorRef)
+	}
+	if err := auditext.ValidateID(check.ContractField); err != nil {
+		return fmt.Errorf("%w: check %q contract_field %q", auditext.ErrInvalidRequest, check.ID, check.ContractField)
+	}
+	if check.ExternalField != nil && utf8.RuneCountInString(*check.ExternalField) > 128 {
+		return fmt.Errorf("%w: check %q external_field", auditext.ErrInvalidRequest, check.ID)
 	}
 	return nil
 }

@@ -8,12 +8,14 @@ import (
 
 // registerEvidenceRoutes mounts the case-bound evidence request workflow.
 func registerEvidenceRoutes(mux *http.ServeMux, h *handler) {
-	mux.HandleFunc("POST /api/cases/{caseID}/evidence-requests", h.createEvidenceRequest)
-	mux.HandleFunc("GET /api/cases/{caseID}/evidence-requests", h.listEvidenceRequests)
-	mux.HandleFunc("GET /api/cases/{caseID}/evidence-requests/{requestID}", h.getEvidenceRequest)
-	mux.HandleFunc("GET /api/cases/{caseID}/evidence-requests/{requestID}/history", h.listEvidenceRequestHistory)
-	mux.HandleFunc("POST /api/cases/{caseID}/evidence-requests/{requestID}/receipts", h.submitEvidenceReceipt)
-	mux.HandleFunc("POST /api/cases/{caseID}/evidence-requests/{requestID}/receipts/{receiptID}/verify", h.verifyEvidenceRequest)
+	mountRoutes(mux,
+		routeBinding{"POST /api/cases/{caseID}/evidence-requests", h.createEvidenceRequest},
+		routeBinding{"GET /api/cases/{caseID}/evidence-requests", h.listEvidenceRequests},
+		routeBinding{"GET /api/cases/{caseID}/evidence-requests/{requestID}", h.getEvidenceRequest},
+		routeBinding{"GET /api/cases/{caseID}/evidence-requests/{requestID}/history", h.listEvidenceRequestHistory},
+		routeBinding{"POST /api/cases/{caseID}/evidence-requests/{requestID}/receipts", h.submitEvidenceReceipt},
+		routeBinding{"POST /api/cases/{caseID}/evidence-requests/{requestID}/receipts/{receiptID}/verify", h.verifyEvidenceRequest},
+	)
 }
 
 func (h *handler) createEvidenceRequest(w http.ResponseWriter, r *http.Request) {

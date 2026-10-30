@@ -663,6 +663,190 @@ func TestEvaluateInvalidAvailabilityIsRejected(t *testing.T) {
 	}
 }
 
+func TestEvaluatePinsValidationAndEarlyOutcomePrecedence(t *testing.T) {
+	t.Run("nil context before unsupported pack", func(t *testing.T) {
+		input := validInput()
+		input.Pack.ID = "unsupported"
+		_, err := fulfillment.New().Evaluate(nil, input, nil)
+		if err == nil || err.Error() != "auditext: invalid request: nil context" {
+			t.Fatalf("error = %v, want exact nil-context error", err)
+		}
+	})
+	t.Run("unsupported pack before invalid scope", func(t *testing.T) {
+		input := validInput()
+		input.Pack.ID = "unsupported"
+		input.Scope.TenantID = ""
+		_, err := fulfillment.New().Evaluate(context.Background(), input, nil)
+		if err != auditext.ErrUnsupported {
+			t.Fatalf("error = %v, want ErrUnsupported", err)
+		}
+	})
+	t.Run("invalid scope before malformed input", func(t *testing.T) {
+		input := validInput()
+		input.Scope.TenantID = ""
+		input.BusinessAt = time.Time{}
+		_, err := fulfillment.New().Evaluate(context.Background(), input, nil)
+		if err != auditext.ErrUnauthorized {
+			t.Fatalf("error = %v, want ErrUnauthorized", err)
+		}
+	})
+	t.Run("malformed input before foreign observation", func(t *testing.T) {
+		input := validInput()
+		input.BusinessAt = time.Time{}
+		observation := validObservation()
+		observation.TenantID = "tenant-b"
+		_, err := fulfillment.New().Evaluate(context.Background(), input, []auditext.Observation{observation})
+		if err == nil || err.Error() != "auditext: invalid request: business time" {
+			t.Fatalf("error = %v, want exact input-validation error", err)
+		}
+	})
+	t.Run("foreign observation before missing fact", func(t *testing.T) {
+		input := validInput()
+		input.Facts = nil
+		observation := validObservation()
+		observation.TenantID = "tenant-b"
+		_, err := fulfillment.New().Evaluate(context.Background(), input, []auditext.Observation{observation})
+		if err != auditext.ErrUnauthorized {
+			t.Fatalf("error = %v, want ErrUnauthorized", err)
+		}
+	})
+	t.Run("missing fact before observation availability", func(t *testing.T) {
+		input := validInput()
+		input.Facts = nil
+		observation := validObservation()
+		observation.Availability = auditext.Availability("unknown")
+		results, err := fulfillment.New().Evaluate(context.Background(), input, []auditext.Observation{observation})
+		requireResult(t, results, err, auditext.RelationInsufficient, "contract_fact_missing")
+	})
+}
+
+func TestEvaluatePinsDependencyPresenceForEveryEarlyResult(t *testing.T) {
+	tests := []struct {
+		name         string
+		mutateInput  func(*auditext.FrozenInput)
+		observations func() []auditext.Observation
+		wantReason   string
+		wantPresent  bool
+	}{
+		{"missing contract fact", func(input *auditext.FrozenInput) { input.Facts = nil }, nil, "contract_fact_missing", false},
+		{"uncertain contract fact", func(input *auditext.FrozenInput) { input.Facts[0].Uncertain = true }, nil, "contract_fact_uncertain", false},
+		{"out of scope contract fact", func(input *auditext.FrozenInput) { input.Facts[0].OutOfScope = true }, nil, "proven_out_of_scope", false},
+		{"missing contract evidence", func(input *auditext.FrozenInput) { input.Facts[0].Evidence = nil }, nil, "contract_evidence_missing", false},
+		{"mismatched contract quote", func(input *auditext.FrozenInput) { input.Facts[0].Evidence[0].Quote = "unrelated" }, nil, "evidence_field_mismatch", false},
+		{"contract measurement semantics", func(input *auditext.FrozenInput) { input.Facts[0].SemanticKind = "measured_value" }, nil, "measurement_semantics_mismatch", false},
+		{"missing binding", func(input *auditext.FrozenInput) {
+			input.BindingStatus = auditext.BindingMissing
+			input.BindingVersion = ""
+			input.ExternalObjectID = ""
+			input.SourceSystem = ""
+		}, nil, "object_binding_missing", false},
+		{"ambiguous binding", func(input *auditext.FrozenInput) {
+			input.BindingStatus = auditext.BindingAmbiguous
+			input.BindingVersion = ""
+			input.ExternalObjectID = ""
+			input.SourceSystem = ""
+		}, nil, "object_binding_ambiguous", false},
+		{"missing observation", nil, func() []auditext.Observation { return nil }, "observation_missing", false},
+		{"ambiguous observation", nil, func() []auditext.Observation { return []auditext.Observation{validObservation(), validObservation()} }, "observation_ambiguous", false},
+		{"stale source", nil, func() []auditext.Observation {
+			o := validObservation()
+			o.Availability = auditext.AvailabilityStale
+			return []auditext.Observation{o}
+		}, "source_stale", false},
+		{"unavailable source", nil, func() []auditext.Observation {
+			o := validObservation()
+			o.Availability = auditext.AvailabilityUnavailable
+			o.PayloadRef = nil
+			o.Fields = nil
+			return []auditext.Observation{o}
+		}, "source_unavailable", false},
+		{"rejected source", nil, func() []auditext.Observation {
+			o := validObservation()
+			o.Availability = auditext.AvailabilityRejected
+			o.ReasonCode = "source_rejected"
+			o.PayloadRef = nil
+			o.Fields = nil
+			return []auditext.Observation{o}
+		}, "source_rejected", false},
+		{"external object mismatch", nil, func() []auditext.Observation {
+			o := validObservation()
+			o.ExternalObjectID = "other-line"
+			return []auditext.Observation{o}
+		}, "external_object_mismatch", false},
+		{"binding version mismatch", nil, func() []auditext.Observation {
+			o := validObservation()
+			o.ObjectBindingVersion = "binding-v2"
+			return []auditext.Observation{o}
+		}, "object_binding_mismatch", false},
+		{"source system mismatch", nil, func() []auditext.Observation {
+			o := validObservation()
+			o.SourceSystem = "oss-west"
+			return []auditext.Observation{o}
+		}, "source_system_mismatch", false},
+		{"observation after business time", nil, func() []auditext.Observation {
+			o := validObservation()
+			o.ObservedAt = businessAt.Add(time.Second)
+			return []auditext.Observation{o}
+		}, "observation_time_mismatch", false},
+		{"effective time mismatch", nil, func() []auditext.Observation {
+			o := validObservation()
+			o.EffectiveUntil = businessAt
+			return []auditext.Observation{o}
+		}, "effective_time_mismatch", false},
+		{"missing configured field", nil, func() []auditext.Observation {
+			o := validObservation()
+			o.Fields = []auditext.Field{{Name: "other", Value: "80", Unit: "Mbit/s", SourcePointer: "/other", SemanticKind: "configured_value"}}
+			return []auditext.Observation{o}
+		}, "required_field_missing", false},
+		{"field measurement semantics", nil, func() []auditext.Observation {
+			o := validObservation()
+			o.Fields[0].SemanticKind = "measured_value"
+			return []auditext.Observation{o}
+		}, "measurement_semantics_mismatch", true},
+		{"invalid configured value", nil, func() []auditext.Observation {
+			o := validObservation()
+			o.Fields[0].Value = "not-a-number"
+			return []auditext.Observation{o}
+		}, "required_field_invalid", true},
+		{"invalid contract unit", func(input *auditext.FrozenInput) { input.Facts[0].Value.Unit = "Mbps" }, nil, "required_field_invalid", true},
+		{"below contract", nil, nil, "configured_bandwidth_below_contract", true},
+		{"meets contract", nil, func() []auditext.Observation {
+			o := validObservation()
+			o.Fields[0].Value = "100"
+			return []auditext.Observation{o}
+		}, "configured_bandwidth_meets_contract", true},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			input := validInput()
+			if tc.mutateInput != nil {
+				tc.mutateInput(&input)
+			}
+			observations := defaultObservations()
+			if tc.observations != nil {
+				observations = tc.observations()
+			}
+			results, err := fulfillment.New().Evaluate(context.Background(), input, observations)
+			result := requireResult(t, results, err, func() auditext.Relation {
+				if tc.wantReason == "proven_out_of_scope" {
+					return auditext.RelationNotApplicable
+				}
+				if tc.wantReason == "configured_bandwidth_below_contract" {
+					return auditext.RelationConflict
+				}
+				if tc.wantReason == "configured_bandwidth_meets_contract" {
+					return auditext.RelationCompatible
+				}
+				return auditext.RelationInsufficient
+			}(), tc.wantReason)
+			field := mustDependency(t, result.Dependencies, auditext.DependencyField, "external.configured_bandwidth")
+			if field.Present != tc.wantPresent {
+				t.Fatalf("field dependency Present = %v, want %v", field.Present, tc.wantPresent)
+			}
+		})
+	}
+}
+
 func TestEvaluateMultipleNonMatchingObservationsAreAmbiguous(t *testing.T) {
 	first := validObservation()
 	first.SnapshotID = "snap-002"

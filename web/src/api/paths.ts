@@ -64,6 +64,9 @@ export const paths = {
     `/api/cases/${id(caseId)}/reviews/${id(runId)}/events`,
   settings: "/api/settings",
   adminSettings: "/api/admin/settings",
+  llmEndpoint: "/api/admin/llm-endpoint",
+  llmEndpointProbe: "/api/admin/llm-endpoint/probe",
+  llmEndpointModels: "/api/admin/llm-endpoint/models",
   rulePacks: "/api/admin/rulepacks",
   rulePack: (packId: string, version: string) =>
     `/api/admin/rulepacks/${id(packId)}/versions/${id(version)}`,

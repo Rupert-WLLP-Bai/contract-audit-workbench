@@ -198,15 +198,34 @@ func (c *Client) Model() string { return c.model }
 // ValidateInput applies the same bounds Choose enforces, so callers can reject
 // an oversized or malformed request before a network call.
 func ValidateInput(state, questionID, instructions string, criteria map[string]string) error {
-	if !utf8.ValidString(state) || len(state) == 0 || len(state) > MaxStateBytes {
-		return fmt.Errorf("%w: state must be valid utf-8 within the size limit", ErrInvalidInput)
+	if err := validateState(state); err != nil {
+		return err
 	}
 	if !questionPattern.MatchString(questionID) {
 		return fmt.Errorf("%w: question id is invalid", ErrInvalidInput)
 	}
-	if !utf8.ValidString(instructions) || len(instructions) == 0 || len(instructions) > MaxInstructionsBytes {
-		return fmt.Errorf("%w: instructions must be valid utf-8 within the size limit", ErrInvalidInput)
+	if err := validateInstructions(instructions); err != nil {
+		return err
 	}
+	return validateCriteria(criteria)
+}
+
+func validateState(state string) error {
+	return validateBoundedText(state, MaxStateBytes, "state")
+}
+
+func validateInstructions(instructions string) error {
+	return validateBoundedText(instructions, MaxInstructionsBytes, "instructions")
+}
+
+func validateBoundedText(value string, limit int, field string) error {
+	if !utf8.ValidString(value) || len(value) == 0 || len(value) > limit {
+		return fmt.Errorf("%w: %s must be valid utf-8 within the size limit", ErrInvalidInput, field)
+	}
+	return nil
+}
+
+func validateCriteria(criteria map[string]string) error {
 	if len(criteria) < 2 || len(criteria) > MaxCriteria {
 		return fmt.Errorf("%w: criteria count is outside the supported range", ErrInvalidInput)
 	}
@@ -251,23 +270,37 @@ func (c *Client) Choose(ctx context.Context, state, questionID, instructions str
 // call. It is exported so the advisory layer can reject or omit candidates
 // without spending a provider request.
 func ValidateNoulInput(state string, questions map[string]NoulQuestion) error {
-	if !utf8.ValidString(state) || len(state) == 0 || len(state) > MaxStateBytes {
-		return fmt.Errorf("%w: state must be valid utf-8 within the size limit", ErrInvalidInput)
+	if err := validateState(state); err != nil {
+		return err
 	}
 	if len(questions) == 0 || len(questions) > MaxQuestions {
 		return fmt.Errorf("%w: question count is outside the supported range", ErrInvalidInput)
 	}
 	for id, question := range questions {
-		if !questionPattern.MatchString(id) {
-			return fmt.Errorf("%w: question id is invalid", ErrInvalidInput)
+		if err := validateQuestionID(id); err != nil {
+			return err
 		}
-		if !utf8.ValidString(question.Instructions) || len(question.Instructions) == 0 || len(question.Instructions) > MaxInstructionsBytes {
-			return fmt.Errorf("%w: instructions must be valid utf-8 within the size limit", ErrInvalidInput)
+		if err := validateInstructions(question.Instructions); err != nil {
+			return err
 		}
-		for _, description := range []string{question.Criteria.True, question.Criteria.False} {
-			if !utf8.ValidString(description) || strings.TrimSpace(description) == "" || len(description) > MaxCandidateDescriptionSize {
-				return fmt.Errorf("%w: noul criterion description is invalid", ErrInvalidInput)
-			}
+		if err := validateNoulCriteria(question.Criteria); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func validateQuestionID(id string) error {
+	if !questionPattern.MatchString(id) {
+		return fmt.Errorf("%w: question id is invalid", ErrInvalidInput)
+	}
+	return nil
+}
+
+func validateNoulCriteria(criteria NoulCriteria) error {
+	for _, description := range []string{criteria.True, criteria.False} {
+		if !utf8.ValidString(description) || strings.TrimSpace(description) == "" || len(description) > MaxCandidateDescriptionSize {
+			return fmt.Errorf("%w: noul criterion description is invalid", ErrInvalidInput)
 		}
 	}
 	return nil
@@ -320,6 +353,10 @@ func (c *Client) post(ctx context.Context, payload []byte) ([]byte, error) {
 		return nil, fmt.Errorf("%w: transport", ErrRequest)
 	}
 	defer res.Body.Close()
+	return readResponse(ctx, res)
+}
+
+func readResponse(ctx context.Context, res *http.Response) ([]byte, error) {
 	body, err := io.ReadAll(io.LimitReader(res.Body, MaxResponseBytes+1))
 	if err != nil {
 		if contextErr := ctx.Err(); contextErr != nil {
@@ -373,16 +410,8 @@ type wireAnswer struct {
 // out-of-range answer invalidates the whole response; callers must not turn a
 // decoder failure into a probability.
 func ParseSystemOne(body []byte, questions map[string]NoulQuestion) (map[string]NoulAnswer, ResponseMeta, error) {
-	if err := rejectDuplicateKeys(body); err != nil {
-		return nil, ResponseMeta{}, ErrInvalidJSON
-	}
-	var response wireResponse
-	decoder := json.NewDecoder(bytes.NewReader(body))
-	if err := decoder.Decode(&response); err != nil {
-		return nil, ResponseMeta{}, ErrInvalidJSON
-	}
-	var trailing any
-	if err := decoder.Decode(&trailing); err != io.EOF {
+	response, err := decodeWireResponse(body)
+	if err != nil {
 		return nil, ResponseMeta{}, ErrInvalidJSON
 	}
 	if !modelPattern.MatchString(response.Model) {
@@ -400,60 +429,45 @@ func ParseSystemOne(body []byte, questions map[string]NoulQuestion) (map[string]
 		return nil, ResponseMeta{}, ErrInvalidAnswer
 	}
 	usage := Usage{InputTokens: inputTokens, OutputTokens: outputTokens}
-	answers := make(map[string]NoulAnswer, len(questions))
-	for id := range questions {
-		answer, ok := response.Answers[id]
-		if !ok || answer.Type != "noul" || answer.Noul == nil {
-			return nil, ResponseMeta{}, ErrInvalidAnswer
-		}
-		value := *answer.Noul
-		if math.IsNaN(value) || math.IsInf(value, 0) || value < 0 || value > 1 {
-			return nil, ResponseMeta{}, ErrInvalidProbabilities
-		}
-		answers[id] = NoulAnswer{Noul: value, Model: response.Model, Usage: usage}
+	answers, err := parseNoulAnswers(response, questions, usage)
+	if err != nil {
+		return nil, ResponseMeta{}, err
 	}
 	return answers, ResponseMeta{Model: response.Model, Usage: usage}, nil
 }
 
+func parseNoulAnswers(response wireResponse, questions map[string]NoulQuestion, usage Usage) (map[string]NoulAnswer, error) {
+	answers := make(map[string]NoulAnswer, len(questions))
+	for id := range questions {
+		answer, ok := response.Answers[id]
+		if !ok || answer.Type != "noul" || answer.Noul == nil {
+			return nil, ErrInvalidAnswer
+		}
+		value := *answer.Noul
+		if math.IsNaN(value) || math.IsInf(value, 0) || value < 0 || value > 1 {
+			return nil, ErrInvalidProbabilities
+		}
+		answers[id] = NoulAnswer{Noul: value, Model: response.Model, Usage: usage}
+	}
+	return answers, nil
+}
+
 func decodeAnswer(body []byte, questionID string, criteria map[string]string) (Answer, error) {
-	if err := rejectDuplicateKeys(body); err != nil {
+	response, err := decodeWireResponse(body)
+	if err != nil {
 		return Answer{}, ErrInvalidJSON
 	}
-	var response wireResponse
-	decoder := json.NewDecoder(bytes.NewReader(body))
-	if err := decoder.Decode(&response); err != nil {
-		return Answer{}, ErrInvalidJSON
-	}
-	var trailing any
-	if err := decoder.Decode(&trailing); err != io.EOF {
-		return Answer{}, ErrInvalidJSON
-	}
-	if !modelPattern.MatchString(response.Model) {
-		return Answer{}, ErrInvalidAnswer
-	}
-	if len(response.Answers) != 1 {
-		return Answer{}, ErrInvalidAnswer
-	}
-	answer, ok := response.Answers[questionID]
-	if !ok || answer.Type != "choice" || answer.Choice == "" {
-		return Answer{}, ErrInvalidAnswer
-	}
-	if _, allowed := criteria[answer.Choice]; !allowed {
-		return Answer{}, ErrInvalidAnswer
+	answer, err := validateChoiceAnswer(response, questionID, criteria)
+	if err != nil {
+		return Answer{}, err
 	}
 	probabilities, err := validateProbabilities(answer.Probabilities, criteria, answer.Choice)
 	if err != nil {
 		return Answer{}, ErrInvalidProbabilities
 	}
-	confidence := probabilities[answer.Choice]
-	source := "probability_max"
-	if answer.Confidence != nil {
-		if math.IsNaN(*answer.Confidence) || math.IsInf(*answer.Confidence, 0) ||
-			*answer.Confidence < 0 || *answer.Confidence > 1 {
-			return Answer{}, ErrInvalidAnswer
-		}
-		confidence = *answer.Confidence
-		source = "answer_confidence"
+	confidence, source, err := choiceConfidence(answer.Confidence, probabilities[answer.Choice])
+	if err != nil {
+		return Answer{}, err
 	}
 	inputTokens, err := nonNegative(response.Usage.InputTokens)
 	if err != nil {
@@ -473,31 +487,89 @@ func decodeAnswer(body []byte, questionID string, criteria map[string]string) (A
 	}, nil
 }
 
+func validateChoiceAnswer(response wireResponse, questionID string, criteria map[string]string) (wireAnswer, error) {
+	if !modelPattern.MatchString(response.Model) || len(response.Answers) != 1 {
+		return wireAnswer{}, ErrInvalidAnswer
+	}
+	answer, ok := response.Answers[questionID]
+	if !ok || answer.Type != "choice" || answer.Choice == "" {
+		return wireAnswer{}, ErrInvalidAnswer
+	}
+	if _, allowed := criteria[answer.Choice]; !allowed {
+		return wireAnswer{}, ErrInvalidAnswer
+	}
+	return answer, nil
+}
+
+func decodeWireResponse(body []byte) (wireResponse, error) {
+	if err := rejectDuplicateKeys(body); err != nil {
+		return wireResponse{}, err
+	}
+	var response wireResponse
+	decoder := json.NewDecoder(bytes.NewReader(body))
+	if err := decoder.Decode(&response); err != nil {
+		return wireResponse{}, err
+	}
+	var trailing any
+	if err := decoder.Decode(&trailing); err != io.EOF {
+		return wireResponse{}, errors.New("trailing json")
+	}
+	return response, nil
+}
+
+func choiceConfidence(reported *float64, probability float64) (float64, string, error) {
+	if reported == nil {
+		return probability, "probability_max", nil
+	}
+	if math.IsNaN(*reported) || math.IsInf(*reported, 0) || *reported < 0 || *reported > 1 {
+		return 0, "", ErrInvalidAnswer
+	}
+	return *reported, "answer_confidence", nil
+}
+
 func validateProbabilities(values map[string]float64, criteria map[string]string, choice string) (map[string]float64, error) {
 	if len(values) != len(criteria) {
 		return nil, errors.New("probability count does not match criteria")
 	}
 	probabilities := make(map[string]float64, len(values))
-	var sum, maximum float64
 	for id := range criteria {
-		value, ok := values[id]
-		if !ok || math.IsNaN(value) || math.IsInf(value, 0) || value < 0 || value > 1 {
+		value, ok := validProbability(values, id)
+		if !ok {
 			return nil, errors.New("probability value is invalid")
 		}
 		probabilities[id] = value
-		sum += value
-		if value > maximum {
-			maximum = value
-		}
 	}
-	tolerance := math.Max(1e-3, float64(len(criteria))*1e-4)
-	if math.Abs(sum-1) > tolerance {
+	if !probabilityTotalIsOne(probabilities) {
 		return nil, errors.New("probabilities do not sum to one")
 	}
-	if probabilities[choice] < maximum-1e-9 {
+	if !selectedProbabilityIsMaximum(probabilities, choice) {
 		return nil, errors.New("selected choice is not the probability maximum")
 	}
 	return probabilities, nil
+}
+
+func validProbability(values map[string]float64, id string) (float64, bool) {
+	value, ok := values[id]
+	return value, ok && !math.IsNaN(value) && !math.IsInf(value, 0) && value >= 0 && value <= 1
+}
+
+func probabilityTotalIsOne(probabilities map[string]float64) bool {
+	var sum float64
+	for _, value := range probabilities {
+		sum += value
+	}
+	tolerance := math.Max(1e-3, float64(len(probabilities))*1e-4)
+	return math.Abs(sum-1) <= tolerance
+}
+
+func selectedProbabilityIsMaximum(probabilities map[string]float64, choice string) bool {
+	selected := probabilities[choice]
+	for _, value := range probabilities {
+		if selected < value-1e-9 {
+			return false
+		}
+	}
+	return true
 }
 
 func nonNegative(value *int64) (*int64, error) {
@@ -517,31 +589,52 @@ func validateEndpoint(raw string) (string, error) {
 		raw = DefaultBaseURL
 	}
 	u, err := url.Parse(raw)
-	if err != nil || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" ||
-		u.Opaque != "" || u.RawPath != "" {
+	if err != nil || !validEndpointShape(u) {
 		return "", errors.New("jev endpoint must be an http(s) base URL without credentials, query or fragment")
 	}
-	switch u.Scheme {
-	case "https":
-	case "http":
-		if !isLoopbackHost(u.Hostname()) {
-			return "", errors.New("jev endpoint must use https unless it is loopback")
-		}
-	default:
-		return "", errors.New("jev endpoint must use http or https")
+	if err := validateEndpointScheme(u); err != nil {
+		return "", err
 	}
-	if u.Path != "" && u.Path != "/" && u.Path != "/v1" && u.Path != "/v1/" {
+	if !validEndpointPath(u.Path) {
 		return "", errors.New("jev endpoint path must be empty or /v1")
 	}
-	if port := u.Port(); port != "" {
-		value, parseErr := strconv.Atoi(port)
-		if parseErr != nil || value < 1 || value > 65535 {
-			return "", errors.New("jev endpoint has an invalid port")
-		}
+	if !validEndpointPort(u) {
+		return "", errors.New("jev endpoint has an invalid port")
 	}
 	u.Path = "/v1/systemone"
 	u.RawPath = ""
 	return u.String(), nil
+}
+
+func validEndpointShape(u *url.URL) bool {
+	return u.Host != "" && u.User == nil && u.RawQuery == "" && u.Fragment == "" && u.Opaque == "" && u.RawPath == ""
+}
+
+func validateEndpointScheme(u *url.URL) error {
+	switch u.Scheme {
+	case "https":
+		return nil
+	case "http":
+		if !isLoopbackHost(u.Hostname()) {
+			return errors.New("jev endpoint must use https unless it is loopback")
+		}
+		return nil
+	default:
+		return errors.New("jev endpoint must use http or https")
+	}
+}
+
+func validEndpointPath(path string) bool {
+	return path == "" || path == "/" || path == "/v1" || path == "/v1/"
+}
+
+func validEndpointPort(u *url.URL) bool {
+	port := u.Port()
+	if port == "" {
+		return true
+	}
+	value, err := strconv.Atoi(port)
+	return err == nil && value >= 1 && value <= 65535
 }
 
 func isLoopbackHost(host string) bool {
@@ -594,40 +687,57 @@ func consumeJSONValue(decoder *json.Decoder) error {
 	}
 	switch delimiter {
 	case '{':
-		seen := make(map[string]struct{})
-		for decoder.More() {
-			keyToken, err := decoder.Token()
-			if err != nil {
-				return err
-			}
-			key, ok := keyToken.(string)
-			if !ok {
-				return errors.New("invalid json object key")
-			}
-			if _, duplicate := seen[key]; duplicate {
-				return errors.New("duplicate json object key")
-			}
-			seen[key] = struct{}{}
-			if err := consumeJSONValue(decoder); err != nil {
-				return err
-			}
-		}
-		closing, err := decoder.Token()
-		if err != nil || closing != json.Delim('}') {
-			return errors.New("invalid json object")
-		}
+		return consumeJSONObject(decoder)
 	case '[':
-		for decoder.More() {
-			if err := consumeJSONValue(decoder); err != nil {
-				return err
-			}
-		}
-		closing, err := decoder.Token()
-		if err != nil || closing != json.Delim(']') {
-			return errors.New("invalid json array")
-		}
+		return consumeJSONArray(decoder)
 	default:
 		return errors.New("invalid json delimiter")
+	}
+}
+
+func consumeJSONObject(decoder *json.Decoder) error {
+	seen := make(map[string]struct{})
+	for decoder.More() {
+		key, err := consumeJSONObjectKey(decoder, seen)
+		if err != nil {
+			return err
+		}
+		seen[key] = struct{}{}
+		if err := consumeJSONValue(decoder); err != nil {
+			return err
+		}
+	}
+	closing, err := decoder.Token()
+	if err != nil || closing != json.Delim('}') {
+		return errors.New("invalid json object")
+	}
+	return nil
+}
+
+func consumeJSONObjectKey(decoder *json.Decoder, seen map[string]struct{}) (string, error) {
+	keyToken, err := decoder.Token()
+	if err != nil {
+		return "", err
+	}
+	key, ok := keyToken.(string)
+	if !ok {
+		return "", errors.New("invalid json object key")
+	}
+	if _, duplicate := seen[key]; duplicate {
+		return "", errors.New("duplicate json object key")
+	}
+	return key, nil
+}
+
+func consumeJSONArray(decoder *json.Decoder) error {
+	for decoder.More() {
+		if err := consumeJSONValue(decoder); err != nil {
+			return err
+		}
+	}
+	closing, err := decoder.Token()
+	if err != nil || closing != json.Delim(']') {
+		return errors.New("invalid json array")
 	}
 	return nil
 }

@@ -1,5 +1,5 @@
-import { ApiError } from "./http";
 import { isRecord } from "./guards";
+import { enumValue, invalidResponse } from "./respond";
 import {
   parseCaseSummary,
   parseExecutionUsage,
@@ -27,13 +27,7 @@ import type {
 } from "./types";
 
 function invalid(message: string): never {
-  throw new ApiError(
-    `工作台数据无效：${message}`,
-    500,
-    "invalid_response",
-    false,
-    null,
-  );
+  return invalidResponse(`工作台数据无效：${message}`, 500);
 }
 
 function object(value: unknown, name: string): Record<string, unknown> {
@@ -118,22 +112,18 @@ function profile(value: unknown): CaseProfile {
   };
 }
 
+const taskKinds = ["review", "decision", "remediation", "general"] as const;
+const taskStatuses = ["open", "in_progress", "completed"] as const;
+const taskPriorities = ["high", "medium", "low"] as const;
+
 function task(value: unknown): WorkbenchTask {
   const record = object(value, "任务");
-  const kind = string(record, "kind");
-  const status = string(record, "status");
-  const priority = string(record, "priority");
-  if (
-    kind !== "review" &&
-    kind !== "decision" &&
-    kind !== "remediation" &&
-    kind !== "general"
-  )
-    return invalid("任务 kind 无效");
-  if (status !== "open" && status !== "in_progress" && status !== "completed")
-    return invalid("任务 status 无效");
-  if (priority !== "high" && priority !== "medium" && priority !== "low")
-    return invalid("任务 priority 无效");
+  const kind = enumValue(string(record, "kind"), taskKinds);
+  const status = enumValue(string(record, "status"), taskStatuses);
+  const priority = enumValue(string(record, "priority"), taskPriorities);
+  if (kind === null) return invalid("任务 kind 无效");
+  if (status === null) return invalid("任务 status 无效");
+  if (priority === null) return invalid("任务 priority 无效");
   return {
     id: string(record, "id"),
     case_id: string(record, "case_id"),
@@ -194,33 +184,38 @@ function member(value: unknown): WorkbenchMember {
   };
 }
 
+function hasCaseEnvelope(record: Record<string, unknown>): boolean {
+  return (
+    Object.hasOwn(record, "profile") &&
+    Object.hasOwn(record, "severity") &&
+    Object.hasOwn(record, "progress") &&
+    Object.hasOwn(record, "latest_run")
+  );
+}
+
+function isCaseProgress(value: unknown): boolean {
+  return (
+    value === null ||
+    (typeof value === "number" &&
+      Number.isFinite(value) &&
+      value >= 0 &&
+      value <= 100)
+  );
+}
+
 function workbenchCase(value: unknown): WorkbenchCase {
   const record = object(value, "案件");
-  if (
-    !Object.hasOwn(record, "profile") ||
-    !Object.hasOwn(record, "severity") ||
-    !Object.hasOwn(record, "progress") ||
-    !Object.hasOwn(record, "latest_run")
-  ) {
+  if (!hasCaseEnvelope(record))
     return invalid("案件缺少profile、severity、progress或latest_run");
-  }
   const severity = nullableString(record, "severity");
   const progress = record.progress;
-  if (
-    progress !== null &&
-    (typeof progress !== "number" ||
-      !Number.isFinite(progress) ||
-      progress < 0 ||
-      progress > 100)
-  ) {
-    return invalid("案件 progress 无效");
-  }
+  if (!isCaseProgress(progress)) return invalid("案件 progress 无效");
   const parsed = parseCaseSummary(value);
   return {
     ...parsed,
     profile: record.profile === null ? null : profile(record.profile),
     severity,
-    progress,
+    progress: progress as number | null,
   };
 }
 

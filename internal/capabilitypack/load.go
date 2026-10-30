@@ -22,26 +22,15 @@ func LoadDir(dir string) ([]Manifest, error) {
 
 	manifests := make([]Manifest, 0, len(entries))
 	for _, entry := range entries {
-		name := entry.Name()
-		if entry.Type()&os.ModeSymlink != 0 {
-			return nil, fmt.Errorf("%w: capability pack entry %q is a symlink", auditext.ErrInvalidRequest, name)
-		}
-		if entry.IsDir() {
-			return nil, fmt.Errorf("%w: capability pack entry %q is a directory", auditext.ErrInvalidRequest, name)
-		}
-		if !entry.Type().IsRegular() {
-			return nil, fmt.Errorf("%w: capability pack entry %q is not a regular file", auditext.ErrInvalidRequest, name)
-		}
-		if !strings.HasSuffix(name, ".json") {
-			continue
-		}
-		raw, err := readManifestFile(filepath.Join(dir, name))
-		if err != nil {
+		if err := validateDirectoryEntry(entry); err != nil {
 			return nil, err
 		}
-		manifest, err := Parse(raw)
+		if !strings.HasSuffix(entry.Name(), ".json") {
+			continue
+		}
+		manifest, err := loadManifestEntry(dir, entry.Name())
 		if err != nil {
-			return nil, fmt.Errorf("%w: capability pack file %q: %v", auditext.ErrInvalidRequest, name, err)
+			return nil, err
 		}
 		manifests = append(manifests, manifest)
 	}
@@ -49,6 +38,32 @@ func LoadDir(dir string) ([]Manifest, error) {
 		return nil, fmt.Errorf("%w: no capability pack manifests in %q", auditext.ErrInvalidRequest, dir)
 	}
 	return manifests, nil
+}
+
+func loadManifestEntry(dir, name string) (Manifest, error) {
+	raw, err := readManifestFile(filepath.Join(dir, name))
+	if err != nil {
+		return Manifest{}, err
+	}
+	manifest, err := Parse(raw)
+	if err != nil {
+		return Manifest{}, fmt.Errorf("%w: capability pack file %q: %v", auditext.ErrInvalidRequest, name, err)
+	}
+	return manifest, nil
+}
+
+func validateDirectoryEntry(entry os.DirEntry) error {
+	name := entry.Name()
+	if entry.Type()&os.ModeSymlink != 0 {
+		return fmt.Errorf("%w: capability pack entry %q is a symlink", auditext.ErrInvalidRequest, name)
+	}
+	if entry.IsDir() {
+		return fmt.Errorf("%w: capability pack entry %q is a directory", auditext.ErrInvalidRequest, name)
+	}
+	if !entry.Type().IsRegular() {
+		return fmt.Errorf("%w: capability pack entry %q is not a regular file", auditext.ErrInvalidRequest, name)
+	}
+	return nil
 }
 
 func readManifestFile(path string) ([]byte, error) {

@@ -105,24 +105,47 @@ func (r *Registry) Reload(raw []byte) error {
 	if r == nil {
 		return errors.New("nil rulepack registry")
 	}
+	packs, err := parseRegistrySnapshot(raw)
+	if err != nil {
+		return err
+	}
+	replacement, err := registryFromPacks(packs)
+	if err != nil {
+		return err
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if err := retainExistingReleases(r, replacement); err != nil {
+		return err
+	}
+	r.release, r.latest = replacement.release, replacement.latest
+	return nil
+}
+
+func parseRegistrySnapshot(raw []byte) ([]*Pack, error) {
 	var snapshot registrySnapshot
 	if err := decodeStrict(raw, &snapshot); err != nil {
-		return fmt.Errorf("%w: registry snapshot: %v", ErrInvalidManifest, err)
+		return nil, fmt.Errorf("%w: registry snapshot: %v", ErrInvalidManifest, err)
 	}
 	if snapshot.SchemaVersion != RegistrySchema {
-		return fmt.Errorf("%w: unsupported registry schema %q", ErrInvalidManifest, snapshot.SchemaVersion)
+		return nil, fmt.Errorf("%w: unsupported registry schema %q", ErrInvalidManifest, snapshot.SchemaVersion)
 	}
 	packs := make([]*Pack, 0, len(snapshot.Packs))
 	for _, rawPack := range snapshot.Packs {
 		pack, err := Parse(rawPack)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		if pack.lifecycle.State != StatePublished {
-			return ErrNotPublished
+			return nil, ErrNotPublished
 		}
 		packs = append(packs, pack)
 	}
+	sortRegistryPacks(packs)
+	return packs, nil
+}
+
+func sortRegistryPacks(packs []*Pack) {
 	sort.Slice(packs, func(i, j int) bool {
 		a, b := packs[i], packs[j]
 		if a.content.TenantID != b.content.TenantID {
@@ -135,63 +158,72 @@ func (r *Registry) Reload(raw []byte) error {
 		bVersion, _ := strconv.ParseUint(b.content.Version, 10, 64)
 		return aVersion < bVersion
 	})
+}
+
+func registryFromPacks(packs []*Pack) (*Registry, error) {
 	replacement := NewRegistry()
 	for _, pack := range packs {
 		if err := replacement.insert(pack); err != nil {
-			return err
+			return nil, err
 		}
 	}
-	r.mu.Lock()
-	if err := retainExistingReleases(r, replacement); err != nil {
-		r.mu.Unlock()
-		return err
-	}
-	r.release, r.latest = replacement.release, replacement.latest
-	r.mu.Unlock()
-	return nil
+	return replacement, nil
 }
 
 func retainExistingReleases(current, incoming *Registry) error {
 	for key, versions := range current.release {
 		incomingVersions := incoming.release[key]
-		if len(incomingVersions) == 0 {
-			return ErrVersionRollback
-		}
-		for version, existing := range versions {
-			candidate, ok := incomingVersions[version]
-			if !ok {
-				return ErrVersionRollback
-			}
-			if existing.hash != candidate.hash {
-				return ErrVersionReuse
-			}
-			existingSnapshot, _ := existing.Snapshot()
-			candidateSnapshot, _ := candidate.Snapshot()
-			if !bytes.Equal(existingSnapshot, candidateSnapshot) {
-				return ErrVersionReuse
-			}
+		if err := retainExistingPackVersions(versions, incomingVersions); err != nil {
+			return err
 		}
 		currentLatest, ok := current.latest[key]
 		if !ok {
 			return ErrVersionRollback
 		}
-		incomingLatest, ok := incoming.latest[key]
+		if err := retainExistingLatest(currentLatest, incoming.latest[key], versions, incomingVersions); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func retainExistingPackVersions(current, incoming map[string]*Pack) error {
+	if len(incoming) == 0 {
+		return ErrVersionRollback
+	}
+	for version, existing := range current {
+		candidate, ok := incoming[version]
 		if !ok {
 			return ErrVersionRollback
 		}
-		currentVersion, _ := strconv.ParseUint(currentLatest.content.Version, 10, 64)
-		incomingVersion, _ := strconv.ParseUint(incomingLatest.content.Version, 10, 64)
-		if incomingVersion < currentVersion {
-			return ErrVersionRollback
+		if existing.hash != candidate.hash {
+			return ErrVersionReuse
 		}
-		for version := range incomingVersions {
-			if _, retained := versions[version]; retained {
-				continue
-			}
-			parsedVersion, _ := strconv.ParseUint(version, 10, 64)
-			if parsedVersion <= currentVersion {
-				return ErrVersionRollback
-			}
+		existingSnapshot, _ := existing.Snapshot()
+		candidateSnapshot, _ := candidate.Snapshot()
+		if !bytes.Equal(existingSnapshot, candidateSnapshot) {
+			return ErrVersionReuse
+		}
+	}
+	return nil
+}
+
+func retainExistingLatest(current, incoming *Pack, currentVersions, incomingVersions map[string]*Pack) error {
+	if incoming == nil {
+		return ErrVersionRollback
+	}
+	currentVersion, _ := strconv.ParseUint(current.content.Version, 10, 64)
+	incomingVersion, _ := strconv.ParseUint(incoming.content.Version, 10, 64)
+	if incomingVersion < currentVersion {
+		return ErrVersionRollback
+	}
+	for version := range incomingVersions {
+		if _, retained := currentVersions[version]; retained {
+			continue
+		}
+		parsedVersion, _ := strconv.ParseUint(version, 10, 64)
+		if parsedVersion <= currentVersion {
+			return ErrVersionRollback
 		}
 	}
 	return nil
@@ -203,12 +235,7 @@ func (r *Registry) insert(pack *Pack) error {
 	if err != nil {
 		return fmt.Errorf("%w: invalid pack version", ErrInvalidManifest)
 	}
-	if r.release == nil {
-		r.release = make(map[registryKey]map[string]*Pack)
-	}
-	if r.latest == nil {
-		r.latest = make(map[registryKey]*Pack)
-	}
+	initializeRegistryMaps(r)
 
 	versions := r.release[key]
 	if versions == nil {
@@ -216,15 +243,7 @@ func (r *Registry) insert(pack *Pack) error {
 		r.release[key] = versions
 	}
 	if existing, exists := versions[pack.content.Version]; exists {
-		if existing.hash != pack.hash {
-			return ErrVersionReuse
-		}
-		existingSnapshot, _ := existing.Snapshot()
-		candidateSnapshot, _ := pack.Snapshot()
-		if !bytes.Equal(existingSnapshot, candidateSnapshot) {
-			return ErrVersionReuse
-		}
-		return nil
+		return verifyExistingRelease(existing, pack)
 	}
 	if latest := r.latest[key]; latest != nil {
 		latestVersion, _ := strconv.ParseUint(latest.content.Version, 10, 64)
@@ -233,13 +252,38 @@ func (r *Registry) insert(pack *Pack) error {
 		}
 	}
 	versions[pack.content.Version] = pack
-	if latest := r.latest[key]; latest == nil {
-		r.latest[key] = pack
+	updateRegistryLatest(r, key, pack, version)
+	return nil
+}
+
+func initializeRegistryMaps(registry *Registry) {
+	if registry.release == nil {
+		registry.release = make(map[registryKey]map[string]*Pack)
+	}
+	if registry.latest == nil {
+		registry.latest = make(map[registryKey]*Pack)
+	}
+}
+
+func verifyExistingRelease(existing, candidate *Pack) error {
+	if existing.hash != candidate.hash {
+		return ErrVersionReuse
+	}
+	existingSnapshot, _ := existing.Snapshot()
+	candidateSnapshot, _ := candidate.Snapshot()
+	if !bytes.Equal(existingSnapshot, candidateSnapshot) {
+		return ErrVersionReuse
+	}
+	return nil
+}
+
+func updateRegistryLatest(registry *Registry, key registryKey, pack *Pack, version uint64) {
+	if latest := registry.latest[key]; latest == nil {
+		registry.latest[key] = pack
 	} else {
 		latestVersion, _ := strconv.ParseUint(latest.content.Version, 10, 64)
 		if version > latestVersion {
-			r.latest[key] = pack
+			registry.latest[key] = pack
 		}
 	}
-	return nil
 }

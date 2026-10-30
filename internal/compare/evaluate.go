@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"slices"
 	"sort"
 	"strings"
 
@@ -82,23 +83,17 @@ func Load(r io.Reader) (Dataset, error) {
 
 var labels = []string{engine.RelCompatible, engine.RelConflict, engine.RelInsufficient, engine.RelNotApplicable}
 
-func validRelation(v string) bool {
-	for _, label := range labels {
-		if v == label {
-			return true
-		}
-	}
-	return false
+func validRelation(v string) bool { return slices.Contains(labels, v) }
+
+var domainRules = map[string]func([]engine.Source) engine.Evaluation{
+	"warranty":          engine.Evaluate,
+	"payment_sum":       engine.EvaluatePaymentSum,
+	"payment_condition": engine.EvaluatePaymentCondition,
+	"schedule":          engine.EvaluateSchedule,
+	"amount":            engine.EvaluateAmount,
 }
 
-func supported(domain string) bool {
-	switch domain {
-	case "warranty", "payment_sum", "payment_condition", "schedule", "amount":
-		return true
-	default:
-		return false
-	}
-}
+func supported(domain string) bool { _, ok := domainRules[domain]; return ok }
 
 func (d Dataset) Validate() error {
 	if d.SchemaVersion != SchemaVersion || strings.TrimSpace(d.ID) == "" || len(d.Scenarios) == 0 {
@@ -108,36 +103,55 @@ func (d Dataset) Validate() error {
 		return fmt.Errorf("dataset kind must be synthetic or human_annotated")
 	}
 	ids := map[string]bool{}
-	for _, s := range d.Scenarios {
-		if strings.TrimSpace(s.ID) == "" || ids[s.ID] || !supported(s.Domain) || !validRelation(s.Expected) {
-			return fmt.Errorf("scenario %q: duplicate/empty id, unknown domain or invalid relation", s.ID)
+	for _, scenario := range d.Scenarios {
+		if err := validateScenario(scenario, ids); err != nil {
+			return err
 		}
-		ids[s.ID] = true
-		if (s.Expected == engine.RelCompatible || s.Expected == engine.RelConflict) && len(s.Evidence) == 0 {
-			return fmt.Errorf("scenario %q: a decisive gold label requires expected evidence", s.ID)
+		ids[scenario.ID] = true
+	}
+	return nil
+}
+
+func validateScenario(s Scenario, ids map[string]bool) error {
+	if strings.TrimSpace(s.ID) == "" || ids[s.ID] || !supported(s.Domain) || !validRelation(s.Expected) {
+		return fmt.Errorf("scenario %q: duplicate/empty id, unknown domain or invalid relation", s.ID)
+	}
+	if (s.Expected == engine.RelCompatible || s.Expected == engine.RelConflict) && len(s.Evidence) == 0 {
+		return fmt.Errorf("scenario %q: a decisive gold label requires expected evidence", s.ID)
+	}
+	docs, err := scenarioDocuments(s)
+	if err != nil {
+		return err
+	}
+	return validateGoldEvidence(s, docs)
+}
+
+func scenarioDocuments(s Scenario) (map[string]Document, error) {
+	docs := map[string]Document{}
+	for _, doc := range s.Documents {
+		if strings.TrimSpace(doc.ID) == "" {
+			return nil, fmt.Errorf("scenario %q: empty document id", s.ID)
 		}
-		docs := map[string]Document{}
-		for _, doc := range s.Documents {
-			if strings.TrimSpace(doc.ID) == "" {
-				return fmt.Errorf("scenario %q: empty document id", s.ID)
-			}
-			if _, ok := docs[doc.ID]; ok {
-				return fmt.Errorf("scenario %q: duplicate document %q", s.ID, doc.ID)
-			}
-			if doc.ParseStatus != "ready" && doc.ParseStatus != "failed" && doc.ParseStatus != "pending" {
-				return fmt.Errorf("scenario %q: document %q has invalid parse_status", s.ID, doc.ID)
-			}
-			docs[doc.ID] = doc
+		if _, ok := docs[doc.ID]; ok {
+			return nil, fmt.Errorf("scenario %q: duplicate document %q", s.ID, doc.ID)
 		}
-		seen := map[string]bool{}
-		for _, gold := range s.Evidence {
-			doc, ok := docs[gold.DocumentID]
-			key := gold.DocumentID + "\x00" + gold.Quote
-			if !ok || doc.ParseStatus != "ready" || seen[key] || docir.Locate(docir.Build(doc.Text), gold.Quote).Status != docir.StatusLocated {
-				return fmt.Errorf("scenario %q: expected evidence is duplicate or not grounded in a ready document", s.ID)
-			}
-			seen[key] = true
+		if doc.ParseStatus != "ready" && doc.ParseStatus != "failed" && doc.ParseStatus != "pending" {
+			return nil, fmt.Errorf("scenario %q: document %q has invalid parse_status", s.ID, doc.ID)
 		}
+		docs[doc.ID] = doc
+	}
+	return docs, nil
+}
+
+func validateGoldEvidence(s Scenario, docs map[string]Document) error {
+	seen := map[string]bool{}
+	for _, gold := range s.Evidence {
+		doc, ok := docs[gold.DocumentID]
+		key := gold.DocumentID + "\x00" + gold.Quote
+		if !ok || doc.ParseStatus != "ready" || seen[key] || docir.Locate(docir.Build(doc.Text), gold.Quote).Status != docir.StatusLocated {
+			return fmt.Errorf("scenario %q: expected evidence is duplicate or not grounded in a ready document", s.ID)
+		}
+		seen[key] = true
 	}
 	return nil
 }
@@ -210,20 +224,11 @@ type Report struct {
 type Evaluator func(domain string, documents []engine.Source) (engine.Evaluation, error)
 
 func Rules(domain string, documents []engine.Source) (engine.Evaluation, error) {
-	switch domain {
-	case "warranty":
-		return engine.Evaluate(documents), nil
-	case "payment_sum":
-		return engine.EvaluatePaymentSum(documents), nil
-	case "payment_condition":
-		return engine.EvaluatePaymentCondition(documents), nil
-	case "schedule":
-		return engine.EvaluateSchedule(documents), nil
-	case "amount":
-		return engine.EvaluateAmount(documents), nil
-	default:
+	rule, ok := domainRules[domain]
+	if !ok {
 		return engine.Evaluation{}, fmt.Errorf("unknown evaluation domain %q", domain)
 	}
+	return rule(documents), nil
 }
 
 // Run measures predictions against gold without changing either. A caller can
@@ -242,18 +247,10 @@ func Run(data Dataset, evaluator Evaluator) (Report, error) {
 		Limitations: "Regression corpus only; not production legal accuracy. Macro-F1 averages labels with gold or predicted support. Exact citation verification checks source consistency, not legal sufficiency. No train/test split or paper reproduction is claimed."}
 	byDomain := map[string][]CaseResult{}
 	for _, scenario := range data.Scenarios {
-		sources := make([]engine.Source, 0, len(scenario.Documents))
-		for _, d := range scenario.Documents {
-			sources = append(sources, engine.Source{ID: d.ID, Role: d.Role, ParseStatus: d.ParseStatus, Text: d.Text, FromOCR: d.FromOCR})
-		}
-		evaluation, err := evaluator(scenario.Domain, sources)
+		result, err := evaluateScenario(scenario, evaluator)
 		if err != nil {
-			return Report{}, fmt.Errorf("scenario %q: %w", scenario.ID, err)
+			return Report{}, err
 		}
-		if evaluation.Domain != scenario.Domain || !validRelation(evaluation.Relation) {
-			return Report{}, fmt.Errorf("scenario %q: evaluator returned invalid domain or relation", scenario.ID)
-		}
-		result := score(scenario, evaluation)
 		report.Cases = append(report.Cases, result)
 		byDomain[scenario.Domain] = append(byDomain[scenario.Domain], result)
 		if !result.Correct || len(result.FalseAnchors) > 0 || len(result.MissingEvidence) > 0 {
@@ -261,22 +258,55 @@ func Run(data Dataset, evaluator Evaluator) (Report, error) {
 		}
 	}
 	report.Overall = summarize(report.Cases)
+	report.Domains = summarizeDomains(byDomain)
+	return report, nil
+}
+
+func evaluateScenario(scenario Scenario, evaluator Evaluator) (CaseResult, error) {
+	sources := make([]engine.Source, 0, len(scenario.Documents))
+	for _, d := range scenario.Documents {
+		sources = append(sources, engine.Source{ID: d.ID, Role: d.Role, ParseStatus: d.ParseStatus, Text: d.Text, FromOCR: d.FromOCR})
+	}
+	evaluation, err := evaluator(scenario.Domain, sources)
+	if err != nil {
+		return CaseResult{}, fmt.Errorf("scenario %q: %w", scenario.ID, err)
+	}
+	if evaluation.Domain != scenario.Domain || !validRelation(evaluation.Relation) {
+		return CaseResult{}, fmt.Errorf("scenario %q: evaluator returned invalid domain or relation", scenario.ID)
+	}
+	return score(scenario, evaluation), nil
+}
+
+func summarizeDomains(byDomain map[string][]CaseResult) []DomainMetric {
+	var result []DomainMetric
 	var domains []string
 	for domain := range byDomain {
 		domains = append(domains, domain)
 	}
 	sort.Strings(domains)
 	for _, domain := range domains {
-		report.Domains = append(report.Domains, DomainMetric{Domain: domain, Metrics: summarize(byDomain[domain])})
+		result = append(result, DomainMetric{Domain: domain, Metrics: summarize(byDomain[domain])})
 	}
-	return report, nil
+	return result
 }
 
 func score(s Scenario, ev engine.Evaluation) CaseResult {
 	r := CaseResult{ID: s.ID, Domain: s.Domain, Expected: s.Expected, Actual: ev.Relation,
 		Correct: s.Expected == ev.Relation, GoldEvidence: len(s.Evidence), FalseAnchors: []string{}, MissingEvidence: []Evidence{}}
+	verified := r.verifyEvidence(s.Documents, ev)
+	for _, gold := range s.Evidence {
+		if verified[gold.DocumentID+"\x00"+gold.Quote] {
+			r.MatchedGold++
+		} else {
+			r.MissingEvidence = append(r.MissingEvidence, gold)
+		}
+	}
+	return r
+}
+
+func (r *CaseResult) verifyEvidence(documents []Document, ev engine.Evaluation) map[string]bool {
 	docs := map[string]Document{}
-	for _, d := range s.Documents {
+	for _, d := range documents {
 		docs[d.ID] = d
 	}
 	anchors := append([]engine.Anchor(nil), ev.Missing...)
@@ -288,38 +318,41 @@ func score(s Scenario, ev engine.Evaluation) CaseResult {
 		}
 	}
 	verified := map[string]bool{}
-	for _, a := range anchors {
-		if a.Status != docir.StatusLocated {
-			if a.Start != 0 || a.End != 0 || a.Page != nil || a.ElementID != "" {
-				r.FalseAnchors = append(r.FalseAnchors, a.DocumentID+": unlocated evidence has coordinates")
-			}
-			continue
-		}
-		r.LocatedAnchors++
-		doc, exists := docs[a.DocumentID]
-		ir := docir.Build(doc.Text)
-		quote, ok := docir.Slice(ir.NormalizedText, a.Start, a.End)
-		pageOK := true
-		if a.Page != nil {
-			page, found := ir.PageAt(a.Start, a.End)
-			pageOK = found && page == *a.Page
-		}
-		elementOK := a.ElementID == "" || ir.ElementAt(a.Start, a.End) == a.ElementID
-		if !exists || doc.ParseStatus != "ready" || !ok || quote != a.Quote || !pageOK || !elementOK {
-			r.FalseAnchors = append(r.FalseAnchors, a.DocumentID+": citation does not match source coordinates")
-			continue
-		}
-		r.VerifiedAnchors++
-		verified[a.DocumentID+"\x00"+a.Quote] = true
-	}
-	for _, gold := range s.Evidence {
-		if verified[gold.DocumentID+"\x00"+gold.Quote] {
-			r.MatchedGold++
-		} else {
-			r.MissingEvidence = append(r.MissingEvidence, gold)
+	for _, anchor := range anchors {
+		if r.verifyAnchor(anchor, docs) {
+			verified[anchor.DocumentID+"\x00"+anchor.Quote] = true
 		}
 	}
-	return r
+	return verified
+}
+
+func (r *CaseResult) verifyAnchor(a engine.Anchor, docs map[string]Document) bool {
+	if a.Status != docir.StatusLocated {
+		if a.Start != 0 || a.End != 0 || a.Page != nil || a.ElementID != "" {
+			r.FalseAnchors = append(r.FalseAnchors, a.DocumentID+": unlocated evidence has coordinates")
+		}
+		return false
+	}
+	r.LocatedAnchors++
+	doc, exists := docs[a.DocumentID]
+	if !exists || !matchesSourceAnchor(doc, a) {
+		r.FalseAnchors = append(r.FalseAnchors, a.DocumentID+": citation does not match source coordinates")
+		return false
+	}
+	r.VerifiedAnchors++
+	return true
+}
+
+func matchesSourceAnchor(doc Document, a engine.Anchor) bool {
+	ir := docir.Build(doc.Text)
+	quote, ok := docir.Slice(ir.NormalizedText, a.Start, a.End)
+	pageOK := true
+	if a.Page != nil {
+		page, found := ir.PageAt(a.Start, a.End)
+		pageOK = found && page == *a.Page
+	}
+	elementOK := a.ElementID == "" || ir.ElementAt(a.Start, a.End) == a.ElementID
+	return doc.ParseStatus == "ready" && ok && quote == a.Quote && pageOK && elementOK
 }
 
 func summarize(cases []CaseResult) Metrics {
@@ -331,23 +364,7 @@ func summarize(cases []CaseResult) Metrics {
 		}
 	}
 	for _, c := range cases {
-		m.Confusion[c.Expected][c.Actual]++
-		if c.Correct {
-			m.Correct++
-		}
-		switch c.Actual {
-		case engine.RelCompatible, engine.RelConflict:
-			m.Decisive++
-		case engine.RelInsufficient:
-			m.Insufficient++
-		case engine.RelNotApplicable:
-			m.NotApplicable++
-		}
-		m.LocatedAnchors += c.LocatedAnchors
-		m.VerifiedAnchors += c.VerifiedAnchors
-		m.FalseAnchors += len(c.FalseAnchors)
-		m.GoldEvidence += c.GoldEvidence
-		m.MatchedGold += c.MatchedGold
+		m.accumulate(c)
 	}
 	for _, label := range labels {
 		class := ClassMetric{Label: label}
@@ -374,6 +391,26 @@ func summarize(cases []CaseResult) Metrics {
 	m.CitationVerification = optionalRatio(m.VerifiedAnchors, m.LocatedAnchors)
 	m.EvidenceRecall = optionalRatio(m.MatchedGold, m.GoldEvidence)
 	return m
+}
+
+func (m *Metrics) accumulate(c CaseResult) {
+	m.Confusion[c.Expected][c.Actual]++
+	if c.Correct {
+		m.Correct++
+	}
+	switch c.Actual {
+	case engine.RelCompatible, engine.RelConflict:
+		m.Decisive++
+	case engine.RelInsufficient:
+		m.Insufficient++
+	case engine.RelNotApplicable:
+		m.NotApplicable++
+	}
+	m.LocatedAnchors += c.LocatedAnchors
+	m.VerifiedAnchors += c.VerifiedAnchors
+	m.FalseAnchors += len(c.FalseAnchors)
+	m.GoldEvidence += c.GoldEvidence
+	m.MatchedGold += c.MatchedGold
 }
 
 func ratio(n, d int) float64 {

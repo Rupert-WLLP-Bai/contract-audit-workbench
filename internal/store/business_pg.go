@@ -335,32 +335,55 @@ func validateFrozenReport(item frozenReport) error {
 	if err := json.Unmarshal(item.JSONBytes, &payload); err != nil {
 		return fmt.Errorf("decode business report %q payload: %w", item.Record.ID, err)
 	}
-	if payload.SchemaVersion != businessReportSchema || payload.ReportID != item.Record.ID || payload.ReportVersion != item.Record.Version ||
-		payload.CreatedAt != item.Record.CreatedAt || payload.Case.ID != item.CaseID || payload.Run.ID != item.Record.RunID ||
-		payload.Attempt.ID != item.Record.AttemptID || payload.Attempt.RunID != item.Record.RunID ||
-		payload.InputHash != item.Record.InputHash || payload.OutputHash != item.Record.OutputHash ||
-		payload.DecisionSnapshotHash != item.Record.DecisionSnapshotHash {
+	if !frozenReportIdentityMatches(item, payload) {
 		return errors.New("business report row identity does not match its frozen JSON payload")
 	}
+	return validateReportAgentReview(payload)
+}
+
+func frozenReportIdentityMatches(item frozenReport, payload reportEnvelope) bool {
+	return frozenReportHeaderMatches(item, payload) && frozenReportRunMatches(item.Record, payload) &&
+		payload.InputHash == item.Record.InputHash && payload.OutputHash == item.Record.OutputHash &&
+		payload.DecisionSnapshotHash == item.Record.DecisionSnapshotHash
+}
+
+func frozenReportHeaderMatches(item frozenReport, payload reportEnvelope) bool {
+	return payload.SchemaVersion == businessReportSchema && payload.ReportID == item.Record.ID &&
+		payload.ReportVersion == item.Record.Version && payload.CreatedAt == item.Record.CreatedAt && payload.Case.ID == item.CaseID
+}
+
+func frozenReportRunMatches(record ReportRecord, payload reportEnvelope) bool {
+	return payload.Run.ID == record.RunID && payload.Attempt.ID == record.AttemptID && payload.Attempt.RunID == record.RunID
+}
+
+func validateReportAgentReview(payload reportEnvelope) error {
 	if len(payload.AgentReview) == 0 || bytes.Equal(bytes.TrimSpace(payload.AgentReview), []byte("null")) {
 		if len(payload.AgentReviewBytes) != 0 || payload.AgentReviewSHA256 != "" {
 			return errors.New("business report has a digest or byte payload without an agent review")
 		}
-	} else {
-		if !json.Valid(payload.AgentReview) || len(payload.AgentReviewBytes) == 0 ||
-			!json.Valid(payload.AgentReviewBytes) || sha256Bytes(payload.AgentReviewBytes) != payload.AgentReviewSHA256 {
-			return errors.New("business report agent review bytes do not match their digest")
-		}
-		var embedded, exact bytes.Buffer
-		if err := json.Compact(&embedded, payload.AgentReview); err != nil {
-			return fmt.Errorf("compact business report agent review: %w", err)
-		}
-		if err := json.Compact(&exact, payload.AgentReviewBytes); err != nil {
-			return fmt.Errorf("compact business report agent review bytes: %w", err)
-		}
-		if !bytes.Equal(embedded.Bytes(), exact.Bytes()) {
-			return errors.New("business report agent review projection differs from its exact bytes")
-		}
+		return nil
+	}
+	if !validReportAgentReviewBytes(payload) {
+		return errors.New("business report agent review bytes do not match their digest")
+	}
+	return reportAgentReviewMatchesBytes(payload.AgentReview, payload.AgentReviewBytes)
+}
+
+func validReportAgentReviewBytes(payload reportEnvelope) bool {
+	return json.Valid(payload.AgentReview) && len(payload.AgentReviewBytes) != 0 &&
+		json.Valid(payload.AgentReviewBytes) && sha256Bytes(payload.AgentReviewBytes) == payload.AgentReviewSHA256
+}
+
+func reportAgentReviewMatchesBytes(embeddedJSON, exactJSON []byte) error {
+	var embedded, exact bytes.Buffer
+	if err := json.Compact(&embedded, embeddedJSON); err != nil {
+		return fmt.Errorf("compact business report agent review: %w", err)
+	}
+	if err := json.Compact(&exact, exactJSON); err != nil {
+		return fmt.Errorf("compact business report agent review bytes: %w", err)
+	}
+	if !bytes.Equal(embedded.Bytes(), exact.Bytes()) {
+		return errors.New("business report agent review projection differs from its exact bytes")
 	}
 	return nil
 }
@@ -388,7 +411,23 @@ func loadBusinessArchives(ctx context.Context, q queryer) ([]archiveRecord, erro
 }
 
 func syncBusinessRows(ctx context.Context, tx pgx.Tx, previous, removed, changed state) error {
-	for _, item := range changed.Generations {
+	if err := syncBusinessGenerations(ctx, tx, changed.Generations); err != nil {
+		return err
+	}
+	if err := syncBusinessRemediations(ctx, tx, previous.Remediations, changed.Remediations); err != nil {
+		return err
+	}
+	if err := syncBusinessReports(ctx, tx, changed.Reports); err != nil {
+		return err
+	}
+	if err := syncBusinessArchives(ctx, tx, changed.Archives); err != nil {
+		return err
+	}
+	return syncWorkbenchRows(ctx, tx, previous, removed, changed)
+}
+
+func syncBusinessGenerations(ctx context.Context, tx pgx.Tx, items []generationRecord) error {
+	for _, item := range items {
 		record := item.Record
 		if _, err := tx.Exec(ctx, `INSERT INTO business_generations
 			(id, tenant_id, org_id, case_id, document_id, template_id, template_version, digest, created_at)
@@ -398,10 +437,11 @@ func syncBusinessRows(ctx context.Context, tx pgx.Tx, previous, removed, changed
 			return fmt.Errorf("insert business generation %q: %w", record.ID, err)
 		}
 	}
-	if err := syncBusinessRemediations(ctx, tx, previous.Remediations, changed.Remediations); err != nil {
-		return err
-	}
-	for _, item := range changed.Reports {
+	return nil
+}
+
+func syncBusinessReports(ctx context.Context, tx pgx.Tx, items []frozenReport) error {
+	for _, item := range items {
 		record := item.Record
 		if err := validateFrozenReport(item); err != nil {
 			return err
@@ -415,7 +455,11 @@ func syncBusinessRows(ctx context.Context, tx pgx.Tx, previous, removed, changed
 			return fmt.Errorf("insert business report %q: %w", record.ID, err)
 		}
 	}
-	for _, item := range changed.Archives {
+	return nil
+}
+
+func syncBusinessArchives(ctx context.Context, tx pgx.Tx, items []archiveRecord) error {
+	for _, item := range items {
 		record := item.Record
 		if _, err := tx.Exec(ctx, `INSERT INTO business_archives
 			(id, tenant_id, org_id, case_id, report_id, actor_id, reason, archived_at)
@@ -423,9 +467,6 @@ func syncBusinessRows(ctx context.Context, tx pgx.Tx, previous, removed, changed
 			record.ID, item.TenantID, item.OrgID, record.CaseID, record.ReportID, item.ActorID, record.Reason, record.ArchivedAt); err != nil {
 			return fmt.Errorf("insert business archive %q: %w", record.ID, err)
 		}
-	}
-	if err := syncWorkbenchRows(ctx, tx, previous, removed, changed); err != nil {
-		return err
 	}
 	return nil
 }
@@ -437,55 +478,79 @@ func syncBusinessRemediations(ctx context.Context, tx pgx.Tx, previous, changed 
 	}
 	for _, item := range changed {
 		record := item.Record
-		if record.ID == "" || len(item.History) == 0 || len(item.History) != record.Version ||
-			!reflect.DeepEqual(item.History[len(item.History)-1].Record, record) {
-			return fmt.Errorf("business remediation %q has invalid revision history", record.ID)
+		if err := validateRemediationSyncHistory(item); err != nil {
+			return err
 		}
 		prior, exists := previousByID[record.ID]
 		if exists {
-			if item.TenantID != prior.TenantID || item.OrgID != prior.OrgID || record.CaseID != prior.Record.CaseID ||
-				record.RunID != prior.Record.RunID || record.AttemptID != prior.Record.AttemptID ||
-				!appendOnlyEqual(prior.History, item.History) || record.Version != prior.Record.Version+1 || len(item.History) != len(prior.History)+1 {
-				return fmt.Errorf("business remediation %q changed immutable identity or history", record.ID)
+			if err := updateBusinessRemediation(ctx, tx, prior, item); err != nil {
+				return err
 			}
-			result, err := tx.Exec(ctx, `UPDATE business_remediations SET finding_ids=$1, assignee_id=$2, due_at=$3,
-				measure=$4, status=$5, version=$6, document_ids=$7, reason=$8, verification_run_id=$9,
-				verification_attempt_id=$10, updated_at=$11
-				WHERE id=$12 AND tenant_id=$13 AND org_id=$14 AND case_id=$15 AND version=$16`,
-				nonNilStrings(record.FindingIDs), record.AssigneeID, record.DueAt, record.Measure, record.Status, record.Version,
-				nonNilStrings(record.DocumentIDs), record.Reason, optionalString(record.VerificationRunID),
-				optionalString(record.VerificationAttemptID), record.UpdatedAt, record.ID, item.TenantID, item.OrgID, record.CaseID, prior.Record.Version)
-			if err != nil {
-				return fmt.Errorf("update business remediation %q: %w", record.ID, err)
-			}
-			if result.RowsAffected() != 1 {
-				return fmt.Errorf("business remediation %q optimistic version conflict", record.ID)
-			}
-			for _, revision := range item.History[len(prior.History):] {
-				if err := insertBusinessRemediationRevision(ctx, tx, item, revision); err != nil {
-					return err
-				}
-			}
-			continue
-		}
-		if record.Version != 1 || len(item.History) != 1 {
-			return fmt.Errorf("new business remediation %q must begin at revision one", record.ID)
-		}
-		if _, err := tx.Exec(ctx, `INSERT INTO business_remediations
-			(id, tenant_id, org_id, case_id, run_id, attempt_id, finding_ids, assignee_id, due_at, measure, status, version,
-			document_ids, reason, verification_run_id, verification_attempt_id, created_at, updated_at)
-			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)`,
-			record.ID, item.TenantID, item.OrgID, record.CaseID, record.RunID, record.AttemptID,
-			nonNilStrings(record.FindingIDs), record.AssigneeID, record.DueAt, record.Measure, record.Status, record.Version,
-			nonNilStrings(record.DocumentIDs), record.Reason, optionalString(record.VerificationRunID),
-			optionalString(record.VerificationAttemptID), record.CreatedAt, record.UpdatedAt); err != nil {
-			return fmt.Errorf("insert business remediation %q: %w", record.ID, err)
-		}
-		if err := insertBusinessRemediationRevision(ctx, tx, item, item.History[0]); err != nil {
+		} else if err := insertBusinessRemediation(ctx, tx, item); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+func validateRemediationSyncHistory(item remediationRecord) error {
+	if item.Record.ID == "" || len(item.History) == 0 || len(item.History) != item.Record.Version ||
+		!reflect.DeepEqual(item.History[len(item.History)-1].Record, item.Record) {
+		return fmt.Errorf("business remediation %q has invalid revision history", item.Record.ID)
+	}
+	return nil
+}
+
+func updateBusinessRemediation(ctx context.Context, tx pgx.Tx, prior, item remediationRecord) error {
+	record := item.Record
+	if !businessRemediationIdentityAndHistoryMatch(prior, item) {
+		return fmt.Errorf("business remediation %q changed immutable identity or history", record.ID)
+	}
+	result, err := tx.Exec(ctx, `UPDATE business_remediations SET finding_ids=$1, assignee_id=$2, due_at=$3,
+		measure=$4, status=$5, version=$6, document_ids=$7, reason=$8, verification_run_id=$9,
+		verification_attempt_id=$10, updated_at=$11
+		WHERE id=$12 AND tenant_id=$13 AND org_id=$14 AND case_id=$15 AND version=$16`,
+		nonNilStrings(record.FindingIDs), record.AssigneeID, record.DueAt, record.Measure, record.Status, record.Version,
+		nonNilStrings(record.DocumentIDs), record.Reason, optionalString(record.VerificationRunID),
+		optionalString(record.VerificationAttemptID), record.UpdatedAt, record.ID, item.TenantID, item.OrgID, record.CaseID, prior.Record.Version)
+	if err != nil {
+		return fmt.Errorf("update business remediation %q: %w", record.ID, err)
+	}
+	if result.RowsAffected() != 1 {
+		return fmt.Errorf("business remediation %q optimistic version conflict", record.ID)
+	}
+	for _, revision := range item.History[len(prior.History):] {
+		if err := insertBusinessRemediationRevision(ctx, tx, item, revision); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func businessRemediationIdentityAndHistoryMatch(prior, item remediationRecord) bool {
+	record := item.Record
+	return item.TenantID == prior.TenantID && item.OrgID == prior.OrgID && record.CaseID == prior.Record.CaseID &&
+		record.RunID == prior.Record.RunID && record.AttemptID == prior.Record.AttemptID &&
+		appendOnlyEqual(prior.History, item.History) && record.Version == prior.Record.Version+1 &&
+		len(item.History) == len(prior.History)+1
+}
+
+func insertBusinessRemediation(ctx context.Context, tx pgx.Tx, item remediationRecord) error {
+	record := item.Record
+	if record.Version != 1 || len(item.History) != 1 {
+		return fmt.Errorf("new business remediation %q must begin at revision one", record.ID)
+	}
+	if _, err := tx.Exec(ctx, `INSERT INTO business_remediations
+		(id, tenant_id, org_id, case_id, run_id, attempt_id, finding_ids, assignee_id, due_at, measure, status, version,
+		document_ids, reason, verification_run_id, verification_attempt_id, created_at, updated_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)`,
+		record.ID, item.TenantID, item.OrgID, record.CaseID, record.RunID, record.AttemptID,
+		nonNilStrings(record.FindingIDs), record.AssigneeID, record.DueAt, record.Measure, record.Status, record.Version,
+		nonNilStrings(record.DocumentIDs), record.Reason, optionalString(record.VerificationRunID),
+		optionalString(record.VerificationAttemptID), record.CreatedAt, record.UpdatedAt); err != nil {
+		return fmt.Errorf("insert business remediation %q: %w", record.ID, err)
+	}
+	return insertBusinessRemediationRevision(ctx, tx, item, item.History[0])
 }
 
 func insertBusinessRemediationRevision(ctx context.Context, tx pgx.Tx, item remediationRecord, revision remediationRevision) error {

@@ -472,12 +472,12 @@ async function clickText(page: Page, session: string, tag: string, text: string)
 }
 
 async function loadDiagnostics(page: Page, session: string): Promise<void> {
-  await page.wait(session, `document.body.innerText.includes("加载审查诊断") || document.querySelector(".execution-inspector")`);
+  await page.wait(session, `document.body.innerText.includes("加载运行轨迹与诊断") || document.querySelector(".execution-inspector")`);
   const hasButton = await page.eval(
     session,
-    `[...document.querySelectorAll("button")].some((item) => item.textContent.trim() === "加载审查诊断" && !item.disabled)`,
+    `[...document.querySelectorAll("button")].some((item) => item.textContent.trim() === "加载运行轨迹与诊断" && !item.disabled)`,
   );
-  if (hasButton === "true") await clickText(page, session, "button", "加载审查诊断");
+  if (hasButton === "true") await clickText(page, session, "button", "加载运行轨迹与诊断");
   await page.wait(session, "document.querySelector('.execution-inspector')");
 }
 

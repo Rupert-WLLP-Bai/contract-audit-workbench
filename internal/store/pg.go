@@ -14,6 +14,7 @@ import (
 	"contractaudit/internal/accounts"
 	"contractaudit/internal/audit"
 	"contractaudit/internal/config"
+	"contractaudit/internal/execution"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -690,17 +691,24 @@ func replaceRows(ctx context.Context, tx pgx.Tx, previous, st state, owner strin
 		}
 	}
 	for _, item := range st.ExecutionEvents {
-		var raw any
+		var usage, trace any
 		if item.Usage != nil {
 			encoded, err := jsonText(item.Usage)
 			if err != nil {
 				return err
 			}
-			raw = encoded
+			usage = encoded
 		}
-		if _, err := tx.Exec(ctx, `INSERT INTO execution_events (attempt_id, event_seq, span_id, parent_span_id, node_kind, phase, event_type, occurred_at, duration_ms, status, error_code, model_ref, usage, recorded_at, event_key, generation)
-			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) ON CONFLICT (attempt_id,event_seq) DO NOTHING`,
-			item.AttemptID, item.Seq, item.SpanID, item.ParentSpanID, item.NodeKind, item.Phase, item.EventType, item.At, item.DurationMS, item.Status, item.ErrorCode, item.ModelRef, raw, item.RecordedAt, item.EventKey, item.Generation); err != nil {
+		if item.Trace != nil {
+			encoded, err := jsonText(item.Trace)
+			if err != nil {
+				return err
+			}
+			trace = encoded
+		}
+		if _, err := tx.Exec(ctx, `INSERT INTO execution_events (attempt_id, event_seq, span_id, parent_span_id, node_kind, phase, event_type, occurred_at, duration_ms, status, error_code, model_ref, usage, trace, recorded_at, event_key, generation)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17) ON CONFLICT (attempt_id,event_seq) DO NOTHING`,
+			item.AttemptID, item.Seq, item.SpanID, item.ParentSpanID, item.NodeKind, item.Phase, item.EventType, item.At, item.DurationMS, item.Status, item.ErrorCode, item.ModelRef, usage, trace, item.RecordedAt, item.EventKey, item.Generation); err != nil {
 			return err
 		}
 	}
@@ -1072,7 +1080,7 @@ func loadAttemptParseSelections(ctx context.Context, q queryer) ([]AttemptParseS
 }
 
 func loadExecutionEvents(ctx context.Context, q queryer) ([]ExecutionEvent, error) {
-	rows, err := q.Query(ctx, `SELECT attempt_id, event_seq, span_id, parent_span_id, node_kind, phase, event_type, occurred_at, duration_ms, status, error_code, model_ref, usage, recorded_at, event_key, generation FROM execution_events ORDER BY attempt_id, event_seq`)
+	rows, err := q.Query(ctx, `SELECT attempt_id, event_seq, span_id, parent_span_id, node_kind, phase, event_type, occurred_at, duration_ms, status, error_code, model_ref, usage, trace, recorded_at, event_key, generation FROM execution_events ORDER BY attempt_id, event_seq`)
 	if err != nil {
 		return nil, err
 	}
@@ -1080,8 +1088,8 @@ func loadExecutionEvents(ctx context.Context, q queryer) ([]ExecutionEvent, erro
 	var out []ExecutionEvent
 	for rows.Next() {
 		var item ExecutionEvent
-		var raw *string
-		if err := rows.Scan(&item.AttemptID, &item.Seq, &item.SpanID, &item.ParentSpanID, &item.NodeKind, &item.Phase, &item.EventType, &item.At, &item.DurationMS, &item.Status, &item.ErrorCode, &item.ModelRef, &raw, &item.RecordedAt, &item.EventKey, &item.Generation); err != nil {
+		var raw, traceJSON *string
+		if err := rows.Scan(&item.AttemptID, &item.Seq, &item.SpanID, &item.ParentSpanID, &item.NodeKind, &item.Phase, &item.EventType, &item.At, &item.DurationMS, &item.Status, &item.ErrorCode, &item.ModelRef, &raw, &traceJSON, &item.RecordedAt, &item.EventKey, &item.Generation); err != nil {
 			return nil, err
 		}
 		if raw != nil {
@@ -1090,6 +1098,13 @@ func loadExecutionEvents(ctx context.Context, q queryer) ([]ExecutionEvent, erro
 				return nil, err
 			}
 			item.Usage = &usage
+		}
+		if traceJSON != nil {
+			var trace execution.ModelCallTrace
+			if err := json.Unmarshal([]byte(*traceJSON), &trace); err != nil {
+				return nil, err
+			}
+			item.Trace = &trace
 		}
 		out = append(out, item)
 	}

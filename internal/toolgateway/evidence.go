@@ -86,32 +86,54 @@ var capabilityRuleIDs = map[string]string{
 }
 
 func parseToolArguments(raw json.RawMessage) (toolArguments, *rpcFailure) {
+	fields, failure := decodeToolArgumentFields(raw)
+	if failure != nil {
+		return toolArguments{}, failure
+	}
+	args, failure := parseToolSelection(fields)
+	if failure != nil {
+		return toolArguments{}, failure
+	}
+	deadline, failure := parseToolDeadline(fields)
+	if failure != nil {
+		return toolArguments{}, failure
+	}
+	args.deadline = deadline
+	return args, nil
+}
+
+func decodeToolArgumentFields(raw json.RawMessage) (map[string]json.RawMessage, *rpcFailure) {
 	fields, err := decodeJSONObject(raw)
 	if err != nil {
-		return toolArguments{}, invalidParams("arguments must be one JSON object.")
+		return nil, invalidParams("arguments must be one JSON object.")
 	}
 	for key := range fields {
 		switch key {
 		case "case_id", "run_id", "attempt_id", "capability_id", "deadline":
 		default:
-			return toolArguments{}, invalidParams("arguments contain an unsupported field.")
+			return nil, invalidParams("arguments contain an unsupported field.")
 		}
 	}
+	return fields, nil
+}
+
+func parseToolSelection(fields map[string]json.RawMessage) (toolArguments, *rpcFailure) {
 	var args toolArguments
-	args.caseID, err = stringField(fields, "case_id")
-	if err != nil || args.caseID == "" {
+	var ok bool
+	args.caseID, ok = requiredToolArgument(fields, "case_id")
+	if !ok {
 		return toolArguments{}, invalidParams("All evidence selection fields are required strings.")
 	}
-	args.runID, err = stringField(fields, "run_id")
-	if err != nil || args.runID == "" {
+	args.runID, ok = requiredToolArgument(fields, "run_id")
+	if !ok {
 		return toolArguments{}, invalidParams("All evidence selection fields are required strings.")
 	}
-	args.attemptID, err = stringField(fields, "attempt_id")
-	if err != nil || args.attemptID == "" {
+	args.attemptID, ok = requiredToolArgument(fields, "attempt_id")
+	if !ok {
 		return toolArguments{}, invalidParams("All evidence selection fields are required strings.")
 	}
-	args.capabilityID, err = stringField(fields, "capability_id")
-	if err != nil || args.capabilityID == "" {
+	args.capabilityID, ok = requiredToolArgument(fields, "capability_id")
+	if !ok {
 		return toolArguments{}, invalidParams("All evidence selection fields are required strings.")
 	}
 	if !validIdentifier(args.caseID) || !validIdentifier(args.runID) || !validIdentifier(args.attemptID) {
@@ -120,17 +142,25 @@ func parseToolArguments(raw json.RawMessage) (toolArguments, *rpcFailure) {
 	if _, ok := capabilityRuleIDs[args.capabilityID]; !ok {
 		return toolArguments{}, invalidParams("Capability is not supported by this tool version.")
 	}
+	return args, nil
+}
+
+func requiredToolArgument(fields map[string]json.RawMessage, key string) (string, bool) {
+	value, err := stringField(fields, key)
+	return value, err == nil && value != ""
+}
+
+func parseToolDeadline(fields map[string]json.RawMessage) (time.Time, *rpcFailure) {
 	deadlineText, err := stringField(fields, "deadline")
 	if err != nil || len(deadlineText) > 64 {
-		return toolArguments{}, invalidParams("A bounded RFC3339 deadline is required.")
+		return time.Time{}, invalidParams("A bounded RFC3339 deadline is required.")
 	}
 	deadline, err := time.Parse(time.RFC3339Nano, deadlineText)
 	now := time.Now()
 	if err != nil || !deadline.After(now) || deadline.After(now.Add(time.Duration(maxCallDeadline)*time.Second)) {
-		return toolArguments{}, &rpcFailure{status: http.StatusBadRequest, code: codeInvalidParams, message: "Deadline must be in the future and no more than 60 seconds away.", data: map[string]string{"code": "invalid_deadline"}}
+		return time.Time{}, &rpcFailure{status: http.StatusBadRequest, code: codeInvalidParams, message: "Deadline must be in the future and no more than 60 seconds away.", data: map[string]string{"code": "invalid_deadline"}}
 	}
-	args.deadline = deadline
-	return args, nil
+	return deadline, nil
 }
 
 func validIdentifier(value string) bool {
@@ -138,12 +168,22 @@ func validIdentifier(value string) bool {
 		return false
 	}
 	for i := range value {
-		c := value[i]
-		if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-' || c == '_' || c == '.' || c == ':') {
+		if !validIdentifierCharacter(value[i]) {
 			return false
 		}
 	}
 	return true
+}
+
+func validIdentifierCharacter(c byte) bool {
+	if c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' {
+		return true
+	}
+	return validIdentifierPunctuation(c)
+}
+
+func validIdentifierPunctuation(c byte) bool {
+	return strings.ContainsRune("-_.:", rune(c))
 }
 
 // logStoreFailure keeps the raw storage error in the server log and never in the
@@ -161,30 +201,53 @@ func logStoreFailure(operation string, err error) {
 }
 
 func (h *handler) callFrozenEvidence(parent context.Context, user accounts.User, args toolArguments) ([]byte, *rpcFailure) {
-	if parent == nil {
-		parent = context.Background()
-	}
+	parent = nonNilContext(parent)
 	ctx, cancel := context.WithDeadline(parent, args.deadline)
 	defer cancel()
-	if err := ctx.Err(); err != nil {
-		return nil, storeFailure(ctx, err)
+	workspace, failure := h.loadFrozenWorkspace(ctx, user, args)
+	if failure != nil {
+		return nil, failure
 	}
+	callID, failure := h.reserveFrozenEvidenceCall(parent, ctx, user, args)
+	if failure != nil {
+		return nil, failure
+	}
+	return h.completeFrozenEvidenceCall(parent, ctx, user, args, workspace, callID)
+}
 
+func nonNilContext(parent context.Context) context.Context {
+	if parent == nil {
+		return context.Background()
+	}
+	return parent
+}
+
+func (h *handler) loadFrozenWorkspace(ctx context.Context, user accounts.User, args toolArguments) (store.Workspace, *rpcFailure) {
+	if err := ctx.Err(); err != nil {
+		return store.Workspace{}, storeFailure(ctx, err)
+	}
 	workspace, err := h.store.WorkspaceAttempt(user, args.caseID, args.runID, args.attemptID)
 	if err != nil {
 		logStoreFailure("workspace_attempt", err)
-		return nil, storeFailure(ctx, err)
+		return store.Workspace{}, storeFailure(ctx, err)
 	}
 	if failure := validateWorkspaceBinding(user, args, workspace); failure != nil {
-		return nil, failure
+		return store.Workspace{}, failure
 	}
-	if workspace.Case.BusinessLine != "ENT" || workspace.Case.Scenario != "telecom_dedicated_line" || workspace.Case.ContractType != "service" {
-		return nil, &rpcFailure{status: http.StatusUnprocessableEntity, code: codeInvalidParams, message: "This capability is only available for enterprise dedicated-line service cases.", data: map[string]string{"code": "unsupported_case_scope"}}
+	if !supportsDedicatedLineService(workspace.Case) {
+		return store.Workspace{}, &rpcFailure{status: http.StatusUnprocessableEntity, code: codeInvalidParams, message: "This capability is only available for enterprise dedicated-line service cases.", data: map[string]string{"code": "unsupported_case_scope"}}
 	}
 	if err := ctx.Err(); err != nil {
-		return nil, storeFailure(ctx, err)
+		return store.Workspace{}, storeFailure(ctx, err)
 	}
+	return workspace, nil
+}
 
+func supportsDedicatedLineService(caseData store.Case) bool {
+	return caseData.BusinessLine == "ENT" && caseData.Scenario == "telecom_dedicated_line" && caseData.ContractType == "service"
+}
+
+func (h *handler) reserveFrozenEvidenceCall(parent, ctx context.Context, user accounts.User, args toolArguments) (string, *rpcFailure) {
 	callID, err := h.store.ReserveToolCall(ctx, user, store.ToolCallRequest{
 		CaseID: args.caseID, RunID: args.runID, AttemptID: args.attemptID,
 		CapabilityID: args.capabilityID, ToolVersion: ToolVersion, Deadline: args.deadline,
@@ -193,20 +256,31 @@ func (h *handler) callFrozenEvidence(parent context.Context, user accounts.User,
 		logStoreFailure("reserve_tool_call", err)
 		if callID != "" {
 			if finishErr := h.finishCall(user, callID, completionStatus(parent, ctx), 0); finishErr != nil {
-				return nil, &rpcFailure{status: http.StatusServiceUnavailable, code: codeInternalError, message: "Tool-call accounting could not be completed."}
+				return "", toolAccountingFailure()
 			}
 		}
-		return nil, storeFailure(ctx, err)
+		return "", storeFailure(ctx, err)
 	}
 	if callID == "" {
-		return nil, &rpcFailure{status: http.StatusInternalServerError, code: codeInternalError, message: "Gateway storage returned an invalid reservation."}
+		return "", invalidReservationFailure()
 	}
+	return callID, nil
+}
 
+func toolAccountingFailure() *rpcFailure {
+	return &rpcFailure{status: http.StatusServiceUnavailable, code: codeInternalError, message: "Tool-call accounting could not be completed."}
+}
+
+func invalidReservationFailure() *rpcFailure {
+	return &rpcFailure{status: http.StatusInternalServerError, code: codeInternalError, message: "Gateway storage returned an invalid reservation."}
+}
+
+func (h *handler) completeFrozenEvidenceCall(parent, ctx context.Context, user accounts.User, args toolArguments, workspace store.Workspace, callID string) ([]byte, *rpcFailure) {
 	status := "failed"
 	var outputBytes int64
 	finish := func() *rpcFailure {
 		if failure := h.finishCall(user, callID, status, outputBytes); failure != nil {
-			return &rpcFailure{status: http.StatusServiceUnavailable, code: codeInternalError, message: "Tool-call accounting could not be completed."}
+			return toolAccountingFailure()
 		}
 		return nil
 	}
@@ -218,35 +292,13 @@ func (h *handler) callFrozenEvidence(parent context.Context, user accounts.User,
 		return nil, failure
 	}
 
-	payload, err := buildEvidencePayload(ctx, user, args, workspace)
-	if err != nil {
-		return fail(evidenceFailure(ctx, err))
-	}
-	if err := ctx.Err(); err != nil {
-		return fail(storeFailure(ctx, err))
-	}
-
-	current, err := h.store.WorkspaceAttempt(user, args.caseID, args.runID, args.attemptID)
-	if err != nil {
-		logStoreFailure("workspace_recheck", err)
-		return fail(storeFailure(ctx, err))
-	}
-	if failure := validateWorkspaceBinding(user, args, current); failure != nil {
+	payload, failure := h.readStableEvidencePayload(ctx, user, args, workspace)
+	if failure != nil {
 		return fail(failure)
 	}
-	if workspaceSignature(workspace) != workspaceSignature(current) {
-		return fail(&rpcFailure{status: http.StatusConflict, code: codeInternalError, message: "Frozen attempt evidence changed during the read.", data: map[string]string{"code": "frozen_attempt_changed"}})
-	}
-	if err := ctx.Err(); err != nil {
-		return fail(storeFailure(ctx, err))
-	}
-
-	encoded, err := json.Marshal(payload)
-	if err != nil {
-		return fail(&rpcFailure{status: http.StatusInternalServerError, code: codeInternalError, message: "Evidence result could not be serialized."})
-	}
-	if len(encoded) > maxToolResult {
-		return fail(&rpcFailure{status: http.StatusRequestEntityTooLarge, code: codeInternalError, message: "Evidence result exceeds the configured output limit.", data: map[string]string{"code": "tool_output_too_large"}})
+	encoded, failure := encodeEvidenceResult(payload)
+	if failure != nil {
+		return fail(failure)
 	}
 	if err := ctx.Err(); err != nil {
 		return fail(storeFailure(ctx, err))
@@ -255,6 +307,42 @@ func (h *handler) callFrozenEvidence(parent context.Context, user accounts.User,
 	status = "completed"
 	if failure := finish(); failure != nil {
 		return nil, failure
+	}
+	return encoded, nil
+}
+
+func (h *handler) readStableEvidencePayload(ctx context.Context, user accounts.User, args toolArguments, workspace store.Workspace) (evidencePayload, *rpcFailure) {
+	payload, err := buildEvidencePayload(ctx, user, args, workspace)
+	if err != nil {
+		return evidencePayload{}, evidenceFailure(ctx, err)
+	}
+	if err := ctx.Err(); err != nil {
+		return evidencePayload{}, storeFailure(ctx, err)
+	}
+	current, err := h.store.WorkspaceAttempt(user, args.caseID, args.runID, args.attemptID)
+	if err != nil {
+		logStoreFailure("workspace_recheck", err)
+		return evidencePayload{}, storeFailure(ctx, err)
+	}
+	if failure := validateWorkspaceBinding(user, args, current); failure != nil {
+		return evidencePayload{}, failure
+	}
+	if workspaceSignature(workspace) != workspaceSignature(current) {
+		return evidencePayload{}, &rpcFailure{status: http.StatusConflict, code: codeInternalError, message: "Frozen attempt evidence changed during the read.", data: map[string]string{"code": "frozen_attempt_changed"}}
+	}
+	if err := ctx.Err(); err != nil {
+		return evidencePayload{}, storeFailure(ctx, err)
+	}
+	return payload, nil
+}
+
+func encodeEvidenceResult(payload evidencePayload) ([]byte, *rpcFailure) {
+	encoded, err := json.Marshal(payload)
+	if err != nil {
+		return nil, &rpcFailure{status: http.StatusInternalServerError, code: codeInternalError, message: "Evidence result could not be serialized."}
+	}
+	if len(encoded) > maxToolResult {
+		return nil, &rpcFailure{status: http.StatusRequestEntityTooLarge, code: codeInternalError, message: "Evidence result exceeds the configured output limit.", data: map[string]string{"code": "tool_output_too_large"}}
 	}
 	return encoded, nil
 }
@@ -271,13 +359,22 @@ func completionStatus(parent, callCtx context.Context) string {
 
 func validateWorkspaceBinding(user accounts.User, args toolArguments, workspace store.Workspace) *rpcFailure {
 	tenantID := accounts.Tenant(user)
-	if workspace.Case.ID != args.caseID || workspace.Case.TenantID != tenantID ||
-		workspace.Snapshot.RunID != args.runID || workspace.Execution == nil || workspace.Execution.Attempt == nil ||
-		workspace.Execution.Attempt.ID != args.attemptID || workspace.Execution.Attempt.RunID != args.runID ||
-		workspace.Execution.Attempt.HistoryKind != "frozen" || workspace.Execution.Attempt.InputHash == nil || *workspace.Execution.Attempt.InputHash == "" {
+	if !workspaceCaseMatches(tenantID, args, workspace) || !workspaceAttemptMatches(args, workspace) {
 		return &rpcFailure{status: http.StatusNotFound, code: codeInternalError, message: "No matching frozen attempt is available."}
 	}
 	return nil
+}
+
+func workspaceCaseMatches(tenantID string, args toolArguments, workspace store.Workspace) bool {
+	return workspace.Case.ID == args.caseID && workspace.Case.TenantID == tenantID && workspace.Snapshot.RunID == args.runID
+}
+
+func workspaceAttemptMatches(args toolArguments, workspace store.Workspace) bool {
+	if workspace.Execution == nil || workspace.Execution.Attempt == nil {
+		return false
+	}
+	attempt := workspace.Execution.Attempt
+	return attempt.ID == args.attemptID && attempt.RunID == args.runID && attempt.HistoryKind == "frozen" && attempt.InputHash != nil && *attempt.InputHash != ""
 }
 
 func evidenceFailure(ctx context.Context, err error) *rpcFailure {
@@ -306,97 +403,176 @@ func buildEvidencePayload(ctx context.Context, user accounts.User, args toolArgu
 	if err := ctx.Err(); err != nil {
 		return evidencePayload{}, err
 	}
-	attempt := workspace.Execution.Attempt
-	pinned := make(map[string]struct{}, len(attempt.ParsedDocumentIDs))
-	for _, id := range attempt.ParsedDocumentIDs {
+	pinned, err := pinnedDocumentIDs(workspace.Execution.Attempt.ParsedDocumentIDs)
+	if err != nil {
+		return evidencePayload{}, err
+	}
+	sources, ruleSources, err := selectFrozenSources(ctx, user, args, workspace, pinned)
+	if err != nil {
+		return evidencePayload{}, err
+	}
+	facts, err := telecom.Extract(rulepack.Request{
+		BusinessLine: workspace.Case.BusinessLine, Scenario: workspace.Case.Scenario,
+		ContractType: workspace.Case.ContractType, Sources: ruleSources,
+	})
+	if err != nil {
+		return evidencePayload{}, err
+	}
+	selected, err := selectCapabilityFacts(ctx, facts, args.capabilityID)
+	if err != nil {
+		return evidencePayload{}, err
+	}
+	evidence, err := assembleEvidence(ctx, user, args, sources, selected)
+	if err != nil {
+		return evidencePayload{}, err
+	}
+	encoded, err := json.Marshal(evidence)
+	if err != nil {
+		return evidencePayload{}, fmt.Errorf("encode evidence payload: %w", err)
+	}
+	if len(encoded) > maxToolResult {
+		return evidencePayload{}, errEvidenceLimit
+	}
+	return evidence, nil
+}
+
+func pinnedDocumentIDs(ids []string) (map[string]struct{}, error) {
+	pinned := make(map[string]struct{}, len(ids))
+	for _, id := range ids {
 		if id == "" {
-			return evidencePayload{}, errFrozenIdentity
+			return nil, errFrozenIdentity
 		}
 		if _, exists := pinned[id]; exists {
-			return evidencePayload{}, errFrozenIdentity
+			return nil, errFrozenIdentity
 		}
 		pinned[id] = struct{}{}
 	}
 	if len(pinned) > maxWorkspaceDocs {
-		return evidencePayload{}, errEvidenceLimit
+		return nil, errEvidenceLimit
 	}
+	return pinned, nil
+}
 
+func selectFrozenSources(ctx context.Context, user accounts.User, args toolArguments, workspace store.Workspace, pinned map[string]struct{}) ([]frozenSource, []rulepack.Source, error) {
 	sources := make([]frozenSource, 0, len(pinned))
 	ruleSources := make([]rulepack.Source, 0, len(pinned))
 	seenPinned := make(map[string]struct{}, len(pinned))
 	totalBytes := 0
 	for _, item := range workspace.Documents {
-		if err := ctx.Err(); err != nil {
-			return evidencePayload{}, err
+		source, ruleSource, include, bytes, err := collectFrozenSource(ctx, item, user, args, pinned, seenPinned)
+		if err != nil {
+			return nil, nil, err
 		}
-		parsed := item.ParsedDocument
-		if parsed == nil {
+		if !include {
 			continue
 		}
-		if _, selected := pinned[parsed.ID]; !selected {
-			continue
-		}
-		if _, exists := seenPinned[parsed.ID]; exists {
-			return evidencePayload{}, errFrozenIdentity
-		}
-		seenPinned[parsed.ID] = struct{}{}
-		if item.Document.CaseID != args.caseID || item.Document.TenantID != accounts.Tenant(user) || item.Document.Digest == "" ||
-			parsed.DocumentID != item.Document.ID || parsed.OriginalDigest != item.Document.Digest || parsed.ArtifactDigest == "" {
-			return evidencePayload{}, errFrozenIdentity
-		}
-		if item.Document.Role != "draft_contract" || !item.Ready || parsed.Status != "ready" {
-			continue
-		}
-		if parsed.ParserID == "" || parsed.ParserVersion == "" || parsed.ConfigHash == "" ||
-			parsed.NormalizationVersion == "" || parsed.NormalizedDigest == "" || parsed.Text == "" || item.Text != parsed.Text {
-			return evidencePayload{}, errFrozenIdentity
-		}
-		if !utf8.ValidString(parsed.Text) {
-			return evidencePayload{}, errFrozenIdentity
-		}
-		digest := sha256.Sum256([]byte(parsed.Text))
-		normalizedDigest := hex.EncodeToString(digest[:])
-		if normalizedDigest != parsed.NormalizedDigest {
-			return evidencePayload{}, errFrozenIdentity
-		}
-		totalBytes += len(parsed.Text)
+		totalBytes += bytes
 		if totalBytes > maxSourceBytes {
-			return evidencePayload{}, errEvidenceLimit
+			return nil, nil, errEvidenceLimit
 		}
-		sources = append(sources, frozenSource{document: item.Document, parsed: parsed, text: parsed.Text})
-		ruleSources = append(ruleSources, rulepack.Source{
-			ID: item.Document.ID, Version: parsed.ID, TenantID: item.Document.TenantID, CaseID: item.Document.CaseID,
-			Role: item.Document.Role, Digest: normalizedDigest, Text: parsed.Text,
-		})
+		sources = append(sources, source)
+		ruleSources = append(ruleSources, ruleSource)
 	}
+	if err := finalizeFrozenSources(sources, ruleSources, seenPinned, pinned); err != nil {
+		return nil, nil, err
+	}
+	return sources, ruleSources, nil
+}
+
+func collectFrozenSource(ctx context.Context, item store.Interpreted, user accounts.User, args toolArguments, pinned, seen map[string]struct{}) (frozenSource, rulepack.Source, bool, int, error) {
+	if err := ctx.Err(); err != nil {
+		return frozenSource{}, rulepack.Source{}, false, 0, err
+	}
+	parsed := item.ParsedDocument
+	if parsed == nil {
+		return frozenSource{}, rulepack.Source{}, false, 0, nil
+	}
+	if _, selected := pinned[parsed.ID]; !selected {
+		return frozenSource{}, rulepack.Source{}, false, 0, nil
+	}
+	if _, exists := seen[parsed.ID]; exists {
+		return frozenSource{}, rulepack.Source{}, false, 0, errFrozenIdentity
+	}
+	seen[parsed.ID] = struct{}{}
+	source, ruleSource, include, err := selectedFrozenSource(item, user, args)
+	if err != nil || !include {
+		return source, ruleSource, include, 0, err
+	}
+	return source, ruleSource, true, len(source.text), nil
+}
+
+func finalizeFrozenSources(sources []frozenSource, ruleSources []rulepack.Source, seenPinned, pinned map[string]struct{}) error {
 	if len(seenPinned) != len(pinned) {
-		return evidencePayload{}, errFrozenIdentity
+		return errFrozenIdentity
 	}
 	sort.Slice(sources, func(i, j int) bool { return sources[i].document.ID < sources[j].document.ID })
 	sort.Slice(ruleSources, func(i, j int) bool { return ruleSources[i].ID < ruleSources[j].ID })
+	return nil
+}
 
-	facts, err := telecom.Extract(rulepack.Request{
-		BusinessLine: workspace.Case.BusinessLine,
-		Scenario:     workspace.Case.Scenario,
-		ContractType: workspace.Case.ContractType,
-		Sources:      ruleSources,
-	})
-	if err != nil {
-		return evidencePayload{}, err
+func selectedFrozenSource(item store.Interpreted, user accounts.User, args toolArguments) (frozenSource, rulepack.Source, bool, error) {
+	if err := validateFrozenDocumentIdentity(item, user, args); err != nil {
+		return frozenSource{}, rulepack.Source{}, false, err
 	}
-	wantedRule := capabilityRuleIDs[args.capabilityID]
+	parsed := item.ParsedDocument
+	if item.Document.Role != "draft_contract" || !item.Ready || parsed.Status != "ready" {
+		return frozenSource{}, rulepack.Source{}, false, nil
+	}
+	digest, err := validateFrozenParsedDocument(item)
+	if err != nil {
+		return frozenSource{}, rulepack.Source{}, false, err
+	}
+	source := frozenSource{document: item.Document, parsed: parsed, text: parsed.Text}
+	ruleSource := rulepack.Source{ID: item.Document.ID, Version: parsed.ID, TenantID: item.Document.TenantID, CaseID: item.Document.CaseID, Role: item.Document.Role, Digest: digest, Text: parsed.Text}
+	return source, ruleSource, true, nil
+}
+
+func validateFrozenDocumentIdentity(item store.Interpreted, user accounts.User, args toolArguments) error {
+	parsed := item.ParsedDocument
+	if item.Document.CaseID != args.caseID || item.Document.TenantID != accounts.Tenant(user) || item.Document.Digest == "" || parsed.DocumentID != item.Document.ID || parsed.OriginalDigest != item.Document.Digest || parsed.ArtifactDigest == "" {
+		return errFrozenIdentity
+	}
+	return nil
+}
+
+func validateFrozenParsedDocument(item store.Interpreted) (string, error) {
+	parsed := item.ParsedDocument
+	if !validFrozenParsedText(item) {
+		return "", errFrozenIdentity
+	}
+	digest := sha256.Sum256([]byte(parsed.Text))
+	normalizedDigest := hex.EncodeToString(digest[:])
+	if normalizedDigest != parsed.NormalizedDigest {
+		return "", errFrozenIdentity
+	}
+	return normalizedDigest, nil
+}
+
+func validFrozenParsedText(item store.Interpreted) bool {
+	parsed := item.ParsedDocument
+	return parsed.ParserID != "" && parsed.ParserVersion != "" && parsed.ConfigHash != "" &&
+		parsed.NormalizationVersion != "" && parsed.NormalizedDigest != "" && parsed.Text != "" &&
+		item.Text == parsed.Text && utf8.ValidString(parsed.Text)
+}
+
+func selectCapabilityFacts(ctx context.Context, facts []rulepack.Fact, capabilityID string) ([]rulepack.Fact, error) {
+	wantedRule := capabilityRuleIDs[capabilityID]
 	selected := make([]rulepack.Fact, 0, len(facts))
 	for _, fact := range facts {
 		if err := ctx.Err(); err != nil {
-			return evidencePayload{}, err
+			return nil, err
 		}
 		if fact.RuleID == wantedRule {
 			selected = append(selected, fact)
 		}
 	}
 	if len(selected) > maxFacts {
-		return evidencePayload{}, errEvidenceLimit
+		return nil, errEvidenceLimit
 	}
+	return selected, nil
+}
+
+func assembleEvidence(ctx context.Context, user accounts.User, args toolArguments, sources []frozenSource, selected []rulepack.Fact) (evidencePayload, error) {
 	sourceByID := make(map[string]frozenSource, len(sources))
 	for _, source := range sources {
 		sourceByID[source.document.ID] = source
@@ -410,34 +586,9 @@ func buildEvidencePayload(ctx context.Context, user accounts.User, args toolArgu
 		if err := ctx.Err(); err != nil {
 			return evidencePayload{}, err
 		}
-		item := evidenceFact{
-			RuleID: fact.RuleID, ObjectRef: fact.ObjectRef, Value: fact.Value, Unit: fact.Unit,
-			MeasurementWindow: fact.MeasurementWindow, TimeZone: fact.TimeZone, Calendar: fact.Calendar,
-			OutageDefinition: fact.OutageDefinition, Exclusions: fact.Exclusions, Basis: fact.Basis,
-			Citations: make([]evidenceCitation, 0, len(fact.Citations)),
-		}
-		for _, cite := range fact.Citations {
-			source, ok := sourceByID[cite.SourceID]
-			if !ok || cite.CaseID != args.caseID || cite.TenantID != accounts.Tenant(user) ||
-				cite.SourceVersion != source.parsed.ID || cite.SourceDigest != source.parsed.NormalizedDigest {
-				return evidencePayload{}, errFrozenIdentity
-			}
-			runes := []rune(source.text)
-			if cite.Start < 0 || cite.End < cite.Start || cite.End > len(runes) || cite.End-cite.Start > maxQuoteRunes || string(runes[cite.Start:cite.End]) != cite.Quote {
-				return evidencePayload{}, errFrozenIdentity
-			}
-			item.Citations = append(item.Citations, evidenceCitation{
-				DocumentID: source.document.ID, Filename: source.document.Filename, DocumentRole: source.document.Role,
-				OriginalDigest: source.document.Digest, ParsedDocumentID: source.parsed.ID,
-				ParserID: source.parsed.ParserID, ParserVersion: source.parsed.ParserVersion,
-				ConfigHash: source.parsed.ConfigHash, NormalizationVersion: source.parsed.NormalizationVersion,
-				NormalizedDigest: source.parsed.NormalizedDigest, ArtifactDigest: source.parsed.ArtifactDigest,
-				SourceVersion: cite.SourceVersion, SourceDigest: cite.SourceDigest,
-				Start: cite.Start, End: cite.End, Quote: cite.Quote,
-			})
-		}
-		if len(item.Citations) == 0 {
-			return evidencePayload{}, errFrozenIdentity
+		item, err := evidenceFactFromRuleFact(fact, sourceByID, user, args)
+		if err != nil {
+			return evidencePayload{}, err
 		}
 		evidence.Facts = append(evidence.Facts, item)
 	}
@@ -454,14 +605,42 @@ func buildEvidencePayload(ctx context.Context, user accounts.User, args toolArgu
 	if len(evidence.Facts) > 0 {
 		evidence.Status = "found"
 	}
-	encoded, err := json.Marshal(evidence)
-	if err != nil {
-		return evidencePayload{}, fmt.Errorf("encode evidence payload: %w", err)
-	}
-	if len(encoded) > maxToolResult {
-		return evidencePayload{}, errEvidenceLimit
-	}
 	return evidence, nil
+}
+
+func evidenceFactFromRuleFact(fact rulepack.Fact, sourceByID map[string]frozenSource, user accounts.User, args toolArguments) (evidenceFact, error) {
+	item := evidenceFact{RuleID: fact.RuleID, ObjectRef: fact.ObjectRef, Value: fact.Value, Unit: fact.Unit, MeasurementWindow: fact.MeasurementWindow, TimeZone: fact.TimeZone, Calendar: fact.Calendar, OutageDefinition: fact.OutageDefinition, Exclusions: fact.Exclusions, Basis: fact.Basis, Citations: make([]evidenceCitation, 0, len(fact.Citations))}
+	for _, cite := range fact.Citations {
+		citation, err := frozenCitation(cite, sourceByID, user, args)
+		if err != nil {
+			return evidenceFact{}, err
+		}
+		item.Citations = append(item.Citations, citation)
+	}
+	if len(item.Citations) == 0 {
+		return evidenceFact{}, errFrozenIdentity
+	}
+	return item, nil
+}
+
+func frozenCitation(cite rulepack.Citation, sources map[string]frozenSource, user accounts.User, args toolArguments) (evidenceCitation, error) {
+	source, ok := sources[cite.SourceID]
+	if !validCitationBinding(cite, source, ok, user, args) {
+		return evidenceCitation{}, errFrozenIdentity
+	}
+	if !validCitationQuote(cite, source.text) {
+		return evidenceCitation{}, errFrozenIdentity
+	}
+	return evidenceCitation{DocumentID: source.document.ID, Filename: source.document.Filename, DocumentRole: source.document.Role, OriginalDigest: source.document.Digest, ParsedDocumentID: source.parsed.ID, ParserID: source.parsed.ParserID, ParserVersion: source.parsed.ParserVersion, ConfigHash: source.parsed.ConfigHash, NormalizationVersion: source.parsed.NormalizationVersion, NormalizedDigest: source.parsed.NormalizedDigest, ArtifactDigest: source.parsed.ArtifactDigest, SourceVersion: cite.SourceVersion, SourceDigest: cite.SourceDigest, Start: cite.Start, End: cite.End, Quote: cite.Quote}, nil
+}
+
+func validCitationBinding(cite rulepack.Citation, source frozenSource, exists bool, user accounts.User, args toolArguments) bool {
+	return exists && cite.CaseID == args.caseID && cite.TenantID == accounts.Tenant(user) && cite.SourceVersion == source.parsed.ID && cite.SourceDigest == source.parsed.NormalizedDigest
+}
+
+func validCitationQuote(cite rulepack.Citation, text string) bool {
+	runes := []rune(text)
+	return cite.Start >= 0 && cite.End >= cite.Start && cite.End <= len(runes) && cite.End-cite.Start <= maxQuoteRunes && string(runes[cite.Start:cite.End]) == cite.Quote
 }
 
 func workspaceSignature(workspace store.Workspace) string {

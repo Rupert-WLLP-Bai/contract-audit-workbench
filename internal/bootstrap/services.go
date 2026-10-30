@@ -113,31 +113,43 @@ func configuredAdvisoryProvider(service string, models *model.Client) advisory.P
 		}
 		return nil
 	}
+	return advisoryProviderFor(service, configuration, models)
+}
+
+func advisoryProviderFor(service string, configuration *agentflow.AdvisoryConfiguration, models *model.Client) advisory.Provider {
 	switch configuration.Provider {
 	case agentflow.AdvisoryProviderFixture:
 		return advisory.FixtureProvider{}
 	case agentflow.AdvisoryProviderGateway:
-		provider, err := advisory.NewGatewayProvider(models)
-		if err != nil {
-			log.Printf("advisory gateway provider unavailable: %v", err)
-			return nil
-		}
-		return provider
+		return configuredGatewayAdvisoryProvider(models)
 	case agentflow.AdvisoryProviderDirect:
-		if service != "" {
-			log.Printf("advisory direct provider is only available to the single-process development mode")
-			return nil
-		}
-		provider, err := advisory.NewDirectProvider(jev.FromEnv())
-		if err != nil {
-			log.Printf("advisory direct provider unavailable: %v", err)
-			return nil
-		}
-		return provider
+		return configuredDirectAdvisoryProvider(service)
 	default:
 		log.Printf("advisory provider %q is not implemented", configuration.Provider)
 		return nil
 	}
+}
+
+func configuredGatewayAdvisoryProvider(models *model.Client) advisory.Provider {
+	provider, err := advisory.NewGatewayProvider(models)
+	if err != nil {
+		log.Printf("advisory gateway provider unavailable: %v", err)
+		return nil
+	}
+	return provider
+}
+
+func configuredDirectAdvisoryProvider(service string) advisory.Provider {
+	if service != "" {
+		log.Printf("advisory direct provider is only available to the single-process development mode")
+		return nil
+	}
+	provider, err := advisory.NewDirectProvider(jev.FromEnv())
+	if err != nil {
+		log.Printf("advisory direct provider unavailable: %v", err)
+		return nil
+	}
+	return provider
 }
 
 func configuredDocumentPreparer() (store.DocumentPreparer, error) {

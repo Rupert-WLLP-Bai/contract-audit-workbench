@@ -65,88 +65,136 @@ type AdvisoryConfiguration struct {
 // nil plus a bounded reason: it must never block review acceptance or silently
 // become a different model. Deployment surfaces use the reason for health.
 func ResolveAdvisoryConfiguration() (*AdvisoryConfiguration, string) {
-	mode := strings.ToLower(strings.TrimSpace(os.Getenv("TYPESAFE_JEV_MODE")))
-	if mode == "" || mode == AdvisoryModeOff {
-		return nil, "disabled"
+	mode, reason := advisoryMode(os.Getenv("TYPESAFE_JEV_MODE"))
+	if reason == "disabled" {
+		return nil, reason
 	}
-	if mode != AdvisoryModeAdvisory && mode != AdvisoryModeFixture {
-		return nil, "invalid_mode"
+	if reason != "" {
+		return nil, reason
 	}
-	if mode == AdvisoryModeFixture && !developmentEnvironment() {
-		return nil, "fixture_not_allowed"
-	}
-	egress := strings.ToLower(strings.TrimSpace(os.Getenv("TYPESAFE_JEV_EGRESS")))
-	if egress == "" {
-		egress = AdvisoryEgressMinimized
-	}
-	if egress != AdvisoryEgressMinimized {
-		return nil, "unsupported_egress"
+	egress, reason := resolveAdvisoryEgress(os.Getenv("TYPESAFE_JEV_EGRESS"))
+	if reason != "" {
+		return nil, reason
 	}
 	features, reason := advisoryFeatures(os.Getenv("TYPESAFE_JEV_FEATURES"))
 	if reason != "" {
 		return nil, reason
 	}
-	model := strings.TrimSpace(os.Getenv("TYPESAFE_JEV_MODEL"))
-	provider := AdvisoryProviderGateway
-	if mode == AdvisoryModeFixture {
-		provider = AdvisoryProviderFixture
-		if model == "" {
-			model = AdvisoryFixtureModel
-		}
-		if model != AdvisoryFixtureModel {
-			return nil, "fixture_model_mismatch"
-		}
-	} else {
-		if raw := strings.ToLower(strings.TrimSpace(os.Getenv("TYPESAFE_JEV_PROVIDER"))); raw != "" {
-			provider = raw
-		}
-		if provider != AdvisoryProviderGateway && provider != AdvisoryProviderDirect {
-			return nil, "unsupported_provider"
-		}
-		if provider == AdvisoryProviderDirect && !developmentEnvironment() {
-			return nil, "direct_provider_not_allowed"
-		}
-		if model == "" {
-			return nil, "model_required"
-		}
-		if model != AdvisoryFixtureModel && !advisoryPinnedModelPattern.MatchString(model) {
-			return nil, "model_alias_not_allowed"
-		}
-		if model == AdvisoryFixtureModel {
-			if provider != AdvisoryProviderGateway {
-				return nil, "fixture_model_requires_gateway"
-			}
-			if !developmentEnvironment() {
-				return nil, "fixture_model_not_allowed"
-			}
-		}
+	provider, model, reason := resolveAdvisoryProvider(mode, os.Getenv("TYPESAFE_JEV_PROVIDER"), os.Getenv("TYPESAFE_JEV_MODEL"))
+	if reason != "" {
+		return nil, reason
 	}
-	timeout := DefaultAdvisoryTimeout
-	if raw := strings.TrimSpace(os.Getenv("TYPESAFE_JEV_TIMEOUT")); raw != "" {
-		value, err := time.ParseDuration(raw)
-		if err != nil || value < MinAdvisoryTimeout || value > MaxAdvisoryTimeout {
-			return nil, "invalid_timeout"
-		}
-		timeout = value
+	timeout, candidates, reason := resolveAdvisoryLimits(os.Getenv("TYPESAFE_JEV_TIMEOUT"), os.Getenv("TYPESAFE_JEV_MAX_CANDIDATES"))
+	if reason != "" {
+		return nil, reason
 	}
-	maxCandidates := DefaultAdvisoryMaxCandidates
-	if raw := strings.TrimSpace(os.Getenv("TYPESAFE_JEV_MAX_CANDIDATES")); raw != "" {
-		value, err := strconv.Atoi(raw)
-		if err != nil || value < 1 || value > MaxAdvisoryMaxCandidates {
-			return nil, "invalid_max_candidates"
-		}
-		maxCandidates = value
-	}
-	configuration := &AdvisoryConfiguration{
-		Mode: mode, Provider: provider, Model: model,
-		QuestionSetVersion: AdvisoryQuestionSetVersion, Egress: egress,
-		Features: features, ThresholdHigh: AdvisoryThresholdHigh, ThresholdLow: AdvisoryThresholdLow,
-		MaxCandidates: maxCandidates, TimeoutMS: timeout.Milliseconds(),
-	}
+	configuration := &AdvisoryConfiguration{Mode: mode, Provider: provider, Model: model,
+		QuestionSetVersion: AdvisoryQuestionSetVersion, Egress: egress, Features: features,
+		ThresholdHigh: AdvisoryThresholdHigh, ThresholdLow: AdvisoryThresholdLow,
+		MaxCandidates: candidates, TimeoutMS: timeout.Milliseconds()}
 	if err := configuration.Validate(); err != nil {
 		return nil, "invalid_configuration"
 	}
 	return configuration, ""
+}
+
+func advisoryMode(raw string) (string, string) {
+	mode := strings.ToLower(strings.TrimSpace(raw))
+	if mode == "" || mode == AdvisoryModeOff {
+		return mode, "disabled"
+	}
+	if mode != AdvisoryModeAdvisory && mode != AdvisoryModeFixture {
+		return "", "invalid_mode"
+	}
+	if mode == AdvisoryModeFixture && !developmentEnvironment() {
+		return "", "fixture_not_allowed"
+	}
+	return mode, ""
+}
+
+func resolveAdvisoryEgress(raw string) (string, string) {
+	egress := strings.ToLower(strings.TrimSpace(raw))
+	if egress == "" {
+		egress = AdvisoryEgressMinimized
+	}
+	if egress != AdvisoryEgressMinimized {
+		return "", "unsupported_egress"
+	}
+	return egress, ""
+}
+
+func resolveAdvisoryProvider(mode, rawProvider, rawModel string) (string, string, string) {
+	model := strings.TrimSpace(rawModel)
+	if mode == AdvisoryModeFixture {
+		return resolveFixtureProvider(model)
+	}
+	provider := AdvisoryProviderGateway
+	if raw := strings.ToLower(strings.TrimSpace(rawProvider)); raw != "" {
+		provider = raw
+	}
+	if provider != AdvisoryProviderGateway && provider != AdvisoryProviderDirect {
+		return "", "", "unsupported_provider"
+	}
+	if provider == AdvisoryProviderDirect && !developmentEnvironment() {
+		return "", "", "direct_provider_not_allowed"
+	}
+	if reason := advisoryProviderModelReason(provider, model); reason != "" {
+		return "", "", reason
+	}
+	return provider, model, ""
+}
+
+func resolveFixtureProvider(model string) (string, string, string) {
+	if model == "" {
+		model = AdvisoryFixtureModel
+	}
+	if model != AdvisoryFixtureModel {
+		return "", "", "fixture_model_mismatch"
+	}
+	return AdvisoryProviderFixture, model, ""
+}
+
+func advisoryProviderModelReason(provider, model string) string {
+	if model == "" {
+		return "model_required"
+	}
+	if model != AdvisoryFixtureModel && !advisoryPinnedModelPattern.MatchString(model) {
+		return "model_alias_not_allowed"
+	}
+	if model == AdvisoryFixtureModel {
+		return advisoryFixtureProviderReason(provider)
+	}
+	return ""
+}
+
+func advisoryFixtureProviderReason(provider string) string {
+	if provider != AdvisoryProviderGateway {
+		return "fixture_model_requires_gateway"
+	}
+	if !developmentEnvironment() {
+		return "fixture_model_not_allowed"
+	}
+	return ""
+}
+
+func resolveAdvisoryLimits(rawTimeout, rawCandidates string) (time.Duration, int, string) {
+	timeout := DefaultAdvisoryTimeout
+	if raw := strings.TrimSpace(rawTimeout); raw != "" {
+		value, err := time.ParseDuration(raw)
+		if err != nil || value < MinAdvisoryTimeout || value > MaxAdvisoryTimeout {
+			return 0, 0, "invalid_timeout"
+		}
+		timeout = value
+	}
+	candidates := DefaultAdvisoryMaxCandidates
+	if raw := strings.TrimSpace(rawCandidates); raw != "" {
+		value, err := strconv.Atoi(raw)
+		if err != nil || value < 1 || value > MaxAdvisoryMaxCandidates {
+			return 0, 0, "invalid_max_candidates"
+		}
+		candidates = value
+	}
+	return timeout, candidates, ""
 }
 
 // developmentEnvironment matches the repository's APP_ENV convention: an empty
@@ -187,17 +235,22 @@ func advisoryFeatures(raw string) ([]string, string) {
 }
 
 func (configuration AdvisoryConfiguration) Validate() error {
+	if err := validAdvisoryProviderConfiguration(configuration); err != nil {
+		return err
+	}
+	if err := validAdvisoryCatalog(configuration); err != nil {
+		return err
+	}
+	if err := validAdvisoryLimits(configuration); err != nil {
+		return err
+	}
+	return nil
+}
+
+func validAdvisoryProviderConfiguration(configuration AdvisoryConfiguration) error {
 	switch configuration.Mode {
 	case AdvisoryModeAdvisory:
-		if configuration.Provider != AdvisoryProviderGateway && configuration.Provider != AdvisoryProviderDirect {
-			return errors.New("advisory mode requires the gateway or direct provider")
-		}
-		if configuration.Model != AdvisoryFixtureModel && !advisoryPinnedModelPattern.MatchString(configuration.Model) {
-			return errors.New("advisory mode requires a pinned Jev model")
-		}
-		if configuration.Model == AdvisoryFixtureModel && configuration.Provider != AdvisoryProviderGateway {
-			return errors.New("the gateway fixture model requires the gateway provider")
-		}
+		return validAdvisoryModelProvider(configuration)
 	case AdvisoryModeFixture:
 		if configuration.Provider != AdvisoryProviderFixture || configuration.Model != AdvisoryFixtureModel {
 			return errors.New("advisory fixture requires the local fixture provider and the fixture model")
@@ -205,6 +258,23 @@ func (configuration AdvisoryConfiguration) Validate() error {
 	default:
 		return errors.New("advisory mode must be advisory or fixture")
 	}
+	return nil
+}
+
+func validAdvisoryModelProvider(configuration AdvisoryConfiguration) error {
+	if configuration.Provider != AdvisoryProviderGateway && configuration.Provider != AdvisoryProviderDirect {
+		return errors.New("advisory mode requires the gateway or direct provider")
+	}
+	if configuration.Model != AdvisoryFixtureModel && !advisoryPinnedModelPattern.MatchString(configuration.Model) {
+		return errors.New("advisory mode requires a pinned Jev model")
+	}
+	if configuration.Model == AdvisoryFixtureModel && configuration.Provider != AdvisoryProviderGateway {
+		return errors.New("the gateway fixture model requires the gateway provider")
+	}
+	return nil
+}
+
+func validAdvisoryCatalog(configuration AdvisoryConfiguration) error {
 	if configuration.QuestionSetVersion != AdvisoryQuestionSetVersion {
 		return errors.New("advisory question set version is not the implemented catalog")
 	}
@@ -221,6 +291,10 @@ func (configuration AdvisoryConfiguration) Validate() error {
 		}
 		seen[feature] = true
 	}
+	return nil
+}
+
+func validAdvisoryLimits(configuration AdvisoryConfiguration) error {
 	if configuration.ThresholdLow <= 0 || configuration.ThresholdHigh >= 1 ||
 		configuration.ThresholdLow >= configuration.ThresholdHigh {
 		return errors.New("advisory thresholds are invalid")

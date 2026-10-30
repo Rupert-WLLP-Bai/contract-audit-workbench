@@ -85,8 +85,7 @@ type knowledgeIdentity struct {
 // bounded, minimized System One batch. It never receives contract text: the
 // scope, gap labels and governed descriptive fields are the entire egress.
 func BuildKnowledgeRequest(configuration agentflow.AdvisoryConfiguration, scope KnowledgeScope, gaps []KnowledgeGap, candidates []KnowledgeCandidate) (KnowledgeRequest, error) {
-	if err := configuration.Validate(); err != nil || !configuration.Supports(FeatureKnowledgeRerank) ||
-		configuration.Egress != EgressMinimized {
+	if !validKnowledgeConfiguration(configuration) {
 		return KnowledgeRequest{}, fmt.Errorf("%w: frozen advisory configuration cannot build a request", ErrNotApplicable)
 	}
 	stateGaps := buildGaps(gaps)
@@ -98,12 +97,26 @@ func BuildKnowledgeRequest(configuration agentflow.AdvisoryConfiguration, scope 
 		Scenario:     minimizedField(scope.Scenario, maxScopeFieldBytes),
 		ContractType: minimizedField(scope.ContractType, maxScopeFieldBytes),
 	}
-	included := make([]KnowledgeCandidate, 0, min(len(candidates), configuration.MaxCandidates))
+	included, omitted, truncated, err := selectCandidates(configuration.MaxCandidates, stateScope, stateGaps, candidates)
+	if err != nil {
+		return KnowledgeRequest{}, err
+	}
+	state := mustEncodeState(stateScope, stateGaps, included)
+	questions, canonicalQuestions := buildQuestions(included)
+	return finishKnowledgeRequest(configuration, state, questions, canonicalQuestions, included, omitted, truncated)
+}
+
+func validKnowledgeConfiguration(configuration agentflow.AdvisoryConfiguration) bool {
+	return configuration.Validate() == nil && configuration.Supports(FeatureKnowledgeRerank) && configuration.Egress == EgressMinimized
+}
+
+func selectCandidates(maxCandidates int, scope knowledgeScope, gaps []knowledgeStateGap, candidates []KnowledgeCandidate) ([]KnowledgeCandidate, []KnowledgeOmission, bool, error) {
+	included := make([]KnowledgeCandidate, 0, min(len(candidates), maxCandidates))
 	omitted := make([]KnowledgeOmission, 0)
 	truncated := false
 	for index, candidate := range candidates {
 		alias := fmt.Sprintf("candidate_%d", index)
-		if index >= configuration.MaxCandidates {
+		if index >= maxCandidates {
 			truncated = true
 			break
 		}
@@ -113,9 +126,9 @@ func BuildKnowledgeRequest(configuration agentflow.AdvisoryConfiguration, scope 
 			continue
 		}
 		trial := append(append([]KnowledgeCandidate(nil), included...), prepared)
-		encoded, err := encodeState(stateScope, stateGaps, trial)
+		encoded, err := encodeState(scope, gaps, trial)
 		if err != nil {
-			return KnowledgeRequest{}, fmt.Errorf("%w: advisory state cannot be encoded", ErrNotApplicable)
+			return nil, nil, false, fmt.Errorf("%w: advisory state cannot be encoded", ErrNotApplicable)
 		}
 		if len(encoded) > stateBudget {
 			omitted = append(omitted, KnowledgeOmission{Alias: alias, Reason: "state_budget"})
@@ -125,9 +138,12 @@ func BuildKnowledgeRequest(configuration agentflow.AdvisoryConfiguration, scope 
 		included = trial
 	}
 	if len(included) == 0 {
-		return KnowledgeRequest{}, ErrNotApplicable
+		return nil, nil, false, ErrNotApplicable
 	}
-	state := mustEncodeState(stateScope, stateGaps, included)
+	return included, omitted, truncated, nil
+}
+
+func buildQuestions(included []KnowledgeCandidate) (map[string]jev.NoulQuestion, []knowledgeQuestion) {
 	questions := make(map[string]jev.NoulQuestion, len(included))
 	canonicalQuestions := make([]knowledgeQuestion, 0, len(included))
 	for _, candidate := range included {
@@ -146,6 +162,10 @@ func BuildKnowledgeRequest(configuration agentflow.AdvisoryConfiguration, scope 
 		})
 	}
 	sort.Slice(canonicalQuestions, func(i, j int) bool { return canonicalQuestions[i].Alias < canonicalQuestions[j].Alias })
+	return questions, canonicalQuestions
+}
+
+func finishKnowledgeRequest(configuration agentflow.AdvisoryConfiguration, state string, questions map[string]jev.NoulQuestion, canonicalQuestions []knowledgeQuestion, included []KnowledgeCandidate, omitted []KnowledgeOmission, truncated bool) (KnowledgeRequest, error) {
 	identity := knowledgeIdentity{
 		Feature: FeatureKnowledgeRerank, QuestionSetVersion: QuestionSetVersion,
 		Egress: EgressMinimized, Model: configuration.Model, State: state,
@@ -169,35 +189,47 @@ func buildGaps(gaps []KnowledgeGap) []knowledgeStateGap {
 	seen := map[string]bool{}
 	out := make([]knowledgeStateGap, 0, len(gaps))
 	for _, gap := range gaps {
-		domain := strings.TrimSpace(gap.Domain)
-		capability := strings.TrimSpace(gap.Capability)
-		if !labelPattern.MatchString(domain) || !labelPattern.MatchString(capability) {
+		prepared, ok := minimizeGap(gap)
+		if !ok {
 			continue
 		}
-		reason := minimizedField(gap.Reason, maxGapReasonBytes)
-		if reason != "" && !labelPattern.MatchString(reason) {
-			reason = ""
-		}
-		key := domain + "\x00" + capability + "\x00" + reason
+		key := prepared.Domain + "\x00" + prepared.Capability + "\x00" + prepared.Reason
 		if seen[key] {
 			continue
 		}
 		seen[key] = true
-		out = append(out, knowledgeStateGap{Domain: domain, Capability: capability, Reason: reason})
+		out = append(out, prepared)
 	}
-	sort.Slice(out, func(i, j int) bool {
-		if out[i].Domain != out[j].Domain {
-			return out[i].Domain < out[j].Domain
+	return orderAndCapGaps(out)
+}
+
+func minimizeGap(gap KnowledgeGap) (knowledgeStateGap, bool) {
+	domain := strings.TrimSpace(gap.Domain)
+	capability := strings.TrimSpace(gap.Capability)
+	if !labelPattern.MatchString(domain) || !labelPattern.MatchString(capability) {
+		return knowledgeStateGap{}, false
+	}
+	reason := minimizedField(gap.Reason, maxGapReasonBytes)
+	if reason != "" && !labelPattern.MatchString(reason) {
+		reason = ""
+	}
+	return knowledgeStateGap{Domain: domain, Capability: capability, Reason: reason}, true
+}
+
+func orderAndCapGaps(gaps []knowledgeStateGap) []knowledgeStateGap {
+	sort.Slice(gaps, func(i, j int) bool {
+		if gaps[i].Domain != gaps[j].Domain {
+			return gaps[i].Domain < gaps[j].Domain
 		}
-		if out[i].Capability != out[j].Capability {
-			return out[i].Capability < out[j].Capability
+		if gaps[i].Capability != gaps[j].Capability {
+			return gaps[i].Capability < gaps[j].Capability
 		}
-		return out[i].Reason < out[j].Reason
+		return gaps[i].Reason < gaps[j].Reason
 	})
-	if len(out) > maxStateGaps {
-		out = out[:maxStateGaps]
+	if len(gaps) > maxStateGaps {
+		return gaps[:maxStateGaps]
 	}
-	return out
+	return gaps
 }
 
 func minimizeCandidate(alias string, candidate KnowledgeCandidate) (KnowledgeCandidate, string) {
@@ -214,15 +246,22 @@ func minimizeCandidate(alias string, candidate KnowledgeCandidate) (KnowledgeCan
 	// The minimizedField helper returns an empty string both for an empty input
 	// and for an oversized or invalid one. Distinguish the latter first so a
 	// long field is not silently mistaken for an absent one.
-	for _, field := range []string{candidate.Summary, candidate.CheckAction, candidate.MinimumEvidence} {
-		if strings.TrimSpace(field) != "" && minimizedField(field, agentflow.PlannerKnowledgeFieldBytes) == "" {
-			return KnowledgeCandidate{}, "field_too_long"
-		}
+	if hasInvalidCandidateField(candidate) {
+		return KnowledgeCandidate{}, "field_too_long"
 	}
 	if prepared.Summary == "" && prepared.CheckAction == "" && prepared.MinimumEvidence == "" {
 		return KnowledgeCandidate{}, "empty"
 	}
 	return prepared, ""
+}
+
+func hasInvalidCandidateField(candidate KnowledgeCandidate) bool {
+	for _, field := range []string{candidate.Summary, candidate.CheckAction, candidate.MinimumEvidence} {
+		if strings.TrimSpace(field) != "" && minimizedField(field, agentflow.PlannerKnowledgeFieldBytes) == "" {
+			return true
+		}
+	}
+	return false
 }
 
 // minimizedField applies the allowlisted redactions before the byte cap. It

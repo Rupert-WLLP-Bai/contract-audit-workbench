@@ -12,6 +12,7 @@
  */
 
 import { ApiError, jsonInit, requestJson } from "../../api/http";
+import { enumValue, responseReader } from "../../api/respond";
 import type {
   Availability,
   BindingStatus,
@@ -71,24 +72,9 @@ export interface OperatorAuditClient {
   ): Promise<ImpactPlan>;
 }
 
-function invalid(field: string): never {
-  throw new ApiError(
-    `外部审查响应中的 ${field} 无法识别`,
-    200,
-    "invalid_response",
-    false,
-    null,
-  );
-}
-
-function asRecord(
-  value: unknown,
-  field: string,
-): Record<string, unknown> {
-  if (typeof value !== "object" || value === null || Array.isArray(value))
-    return invalid(field);
-  return value as Record<string, unknown>;
-}
+const { invalid, object: asRecord } = responseReader(
+  (field) => `外部审查响应中的 ${field} 无法识别`,
+);
 
 /** Accept both `{ [key]: value }` and the bare object for single resources. */
 function unwrap(
@@ -154,66 +140,47 @@ function relation(value: unknown): Relation {
   }
 }
 
-function machineStatus(value: unknown): MachineStatus {
-  switch (value) {
-    case "completed":
-    case "partial":
-    case "failed":
-    case "cancelled":
-      return value;
-    default:
-      return "unknown";
-  }
-}
+/** Unknown stays unknown: an unrecognised server value never becomes a state. */
+const machineStatus = (value: unknown): MachineStatus =>
+  enumValue<Exclude<MachineStatus, "unknown">>(value, [
+    "completed",
+    "partial",
+    "failed",
+    "cancelled",
+  ]) ?? "unknown";
 
-function availability(value: unknown): Availability {
-  switch (value) {
-    case "available":
-    case "unavailable":
-    case "stale":
-    case "rejected":
-      return value;
-    default:
-      return "unknown";
-  }
-}
+const availability = (value: unknown): Availability =>
+  enumValue<Exclude<Availability, "unknown">>(value, [
+    "available",
+    "unavailable",
+    "stale",
+    "rejected",
+  ]) ?? "unknown";
 
-function bindingStatus(value: unknown): BindingStatus {
-  switch (value) {
-    case "confirmed":
-    case "missing":
-    case "ambiguous":
-      return value;
-    default:
-      return "unknown";
-  }
-}
+const bindingStatus = (value: unknown): BindingStatus =>
+  enumValue<Exclude<BindingStatus, "unknown">>(value, [
+    "confirmed",
+    "missing",
+    "ambiguous",
+  ]) ?? "unknown";
 
-function impactMode(value: unknown): ImpactMode {
-  return value === "explain" || value === "shadow" ? value : "unknown";
-}
+const impactMode = (value: unknown): ImpactMode =>
+  enumValue<Exclude<ImpactMode, "unknown">>(value, ["explain", "shadow"]) ??
+  "unknown";
 
-function impactAction(value: unknown): ImpactAction {
-  switch (value) {
-    case "recompute":
-    case "reuse_candidate":
-    case "deny":
-      return value;
-    default:
-      return "unknown";
-  }
-}
+const impactAction = (value: unknown): ImpactAction =>
+  enumValue<Exclude<ImpactAction, "unknown">>(value, [
+    "recompute",
+    "reuse_candidate",
+    "deny",
+  ]) ?? "unknown";
 
-function impactFallback(value: unknown): ImpactFallback {
-  switch (value) {
-    case "none":
-    case "full":
-    case "deny":
-      return value;
-    default:
-      return "unknown";
-  }
-}
+const impactFallback = (value: unknown): ImpactFallback =>
+  enumValue<Exclude<ImpactFallback, "unknown">>(value, [
+    "none",
+    "full",
+    "deny",
+  ]) ?? "unknown";
 
 export function parsePackRef(value: unknown): PackRef | null {
   if (value === undefined || value === null) return null;

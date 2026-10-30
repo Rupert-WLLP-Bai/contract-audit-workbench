@@ -36,6 +36,16 @@ def load_manifest(path):
         manifest = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, UnicodeError, json.JSONDecodeError) as exc:
         raise RunnerError(f"cannot read manifest: {exc}") from exc
+    check_manifest_identity(manifest)
+    ids = set()
+    for case in manifest["cases"]:
+        check_case(case, ids)
+        for material in case["materials"]:
+            check_material(case["id"], material, path.parent)
+    return path, manifest
+
+
+def check_manifest_identity(manifest):
     if not isinstance(manifest, dict) or manifest.get("version") != 1 or isinstance(manifest.get("version"), bool):
         raise RunnerError("manifest version must be 1")
     if not isinstance(manifest.get("dataset_id"), str) or not manifest["dataset_id"].strip():
@@ -43,35 +53,37 @@ def load_manifest(path):
     cases = manifest.get("cases")
     if not isinstance(cases, list) or not cases:
         raise RunnerError("manifest cases must be a nonempty list")
-    ids = set()
-    for case in cases:
-        if not isinstance(case, dict) or any(not isinstance(case.get(k), str) or not case[k].strip() for k in ("id", "title", "contract_type")):
-            raise RunnerError("each case requires id, title and contract_type")
-        if case["id"] in ids:
-            raise RunnerError(f"duplicate case id: {case['id']}")
-        ids.add(case["id"])
-        materials = case.get("materials")
-        if not isinstance(materials, list) or not materials:
-            raise RunnerError(f"case {case['id']} has no materials")
-        for material in materials:
-            if not isinstance(material, dict) or material.get("role") not in ROLES or material.get("data_class") != "original":
-                raise RunnerError(f"invalid material role or data_class in {case['id']}")
-            if not isinstance(material.get("source"), str) or not material["source"].strip():
-                raise RunnerError(f"material source required in {case['id']}")
-            digest = material.get("sha256")
-            if not isinstance(digest, str) or not re.fullmatch(r"[0-9a-f]{64}", digest):
-                raise RunnerError(f"invalid SHA-256 in {case['id']}")
-            raw = material.get("path")
-            if not isinstance(raw, str) or not raw or "\\" in raw or any(ord(c) < 32 for c in raw):
-                raise RunnerError(f"invalid material path in {case['id']}")
-            parts = raw.split("/")
-            if PurePosixPath(raw).is_absolute() or any(part in ("", ".", "..") for part in parts):
-                raise RunnerError(f"unsafe material path in {case['id']}")
-            resolved = (path.parent / raw).resolve(strict=True)
-            if not resolved.is_relative_to(path.parent) or not resolved.is_file():
-                raise RunnerError(f"material escapes manifest directory or is not a file: {raw}")
-            material["_resolved"] = str(resolved)
-    return path, manifest
+
+
+def check_case(case, ids):
+    if not isinstance(case, dict) or any(not isinstance(case.get(k), str) or not case[k].strip() for k in ("id", "title", "contract_type")):
+        raise RunnerError("each case requires id, title and contract_type")
+    if case["id"] in ids:
+        raise RunnerError(f"duplicate case id: {case['id']}")
+    ids.add(case["id"])
+    materials = case.get("materials")
+    if not isinstance(materials, list) or not materials:
+        raise RunnerError(f"case {case['id']} has no materials")
+
+
+def check_material(case_id, material, base):
+    if not isinstance(material, dict) or material.get("role") not in ROLES or material.get("data_class") != "original":
+        raise RunnerError(f"invalid material role or data_class in {case_id}")
+    if not isinstance(material.get("source"), str) or not material["source"].strip():
+        raise RunnerError(f"material source required in {case_id}")
+    digest = material.get("sha256")
+    if not isinstance(digest, str) or not re.fullmatch(r"[0-9a-f]{64}", digest):
+        raise RunnerError(f"invalid SHA-256 in {case_id}")
+    raw = material.get("path")
+    if not isinstance(raw, str) or not raw or "\\" in raw or any(ord(c) < 32 for c in raw):
+        raise RunnerError(f"invalid material path in {case_id}")
+    parts = raw.split("/")
+    if PurePosixPath(raw).is_absolute() or any(part in ("", ".", "..") for part in parts):
+        raise RunnerError(f"unsafe material path in {case_id}")
+    resolved = (base / raw).resolve(strict=True)
+    if not resolved.is_relative_to(base) or not resolved.is_file():
+        raise RunnerError(f"material escapes manifest directory or is not a file: {raw}")
+    material["_resolved"] = str(resolved)
 
 
 def material_bytes(material):

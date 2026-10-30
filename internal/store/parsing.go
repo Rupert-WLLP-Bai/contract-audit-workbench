@@ -69,7 +69,7 @@ type parsedPayload struct {
 }
 
 func (s *Store) parserConfiguration(doc Document) (string, string, string) {
-	return parserConfigurationFor(doc, s.models)
+	return parserConfigurationFor(doc, s.currentModels())
 }
 
 // DocumentParseKind returns the parser capacity class derived from the
@@ -91,7 +91,9 @@ func parserConfigurationFor(doc Document, models Models) (parserID, parserVersio
 		parserID, parserVersion = "ocr", "unconfigured"
 		modelConfig := "ocr-disabled/v1"
 		if models != nil {
-			modelConfig = models.ConfigurationID()
+			if identity := frozenConfigurationID(models); identity != "" {
+				modelConfig = identity
+			}
 			if named, ok := models.(interface{ OCRName() string }); ok {
 				parserVersion = named.OCRName()
 			} else {
@@ -104,7 +106,8 @@ func parserConfigurationFor(doc Document, models Models) (parserID, parserVersio
 		case kindDOCX:
 			parserID, parserVersion = "docx", documentparse.DOCXVersion
 		}
-		configuration = []string{"parsed-configuration/v1", parserID, parserVersion, docir.ExtractionVersion, docir.NormalizationVersion, modelConfig}
+		configHash = ocrConfigurationHash(parserID, parserVersion, docir.NormalizationVersion, modelConfig)
+		return parserID, parserVersion, configHash
 	} else if kind == kindBinary {
 		parserVersion = "document-inspection-v1"
 		configuration = []string{"parsed-configuration/v1", parserID, parserVersion, docir.ExtractionVersion, docir.NormalizationVersion}
@@ -113,8 +116,13 @@ func parserConfigurationFor(doc Document, models Models) (parserID, parserVersio
 	return parserID, parserVersion, hash
 }
 
+func ocrConfigurationHash(parserID, parserVersion, normalizationVersion, modelIdentity string) string {
+	hash, _ := canonicalDigest([]string{"parsed-configuration/v1", parserID, parserVersion, docir.ExtractionVersion, normalizationVersion, modelIdentity})
+	return hash
+}
+
 func (s *Store) ensureParsed(ctx context.Context, user accounts.User, doc Document, force bool) (ParsedDocument, error) {
-	return s.ensureParsedWithModels(ctx, user, doc, force, s.models)
+	return s.ensureParsedWithModels(ctx, user, doc, force, s.currentModels())
 }
 
 func (s *Store) ensureParsedWithModels(ctx context.Context, user accounts.User, doc Document, force bool, models Models) (ParsedDocument, error) {
@@ -493,7 +501,7 @@ func parsedInterpreted(doc Document, p ParsedDocument) Interpreted {
 }
 
 func (s *Store) interpretUnpersisted(ctx context.Context, doc Document) Interpreted {
-	return s.interpretUnpersistedWithModels(ctx, doc, s.models)
+	return s.interpretUnpersistedWithModels(ctx, doc, s.currentModels())
 }
 
 func (s *Store) interpretUnpersistedWithModels(ctx context.Context, doc Document, models Models) Interpreted {

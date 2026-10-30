@@ -111,71 +111,113 @@ func parseClause(source rulepack.Source, text string, offset, index int, definit
 	}
 	definition := definitions[index]
 	matchText := rulepack.FoldSoftLineBreaks(text)
-	objects := objectRE.FindAllStringSubmatch(matchText, -1)
-	if len(objects) != 1 {
+	object, ok := clauseObject(matchText)
+	if !ok {
 		return clause{}, false
 	}
-	var matches [][]string
-	switch index {
-	case 0:
-		matches = bandwidthRE.FindAllStringSubmatch(matchText, -1)
-	case 1:
-		matches = slaRE.FindAllStringSubmatch(matchText, -1)
-	case 2:
-		matches = advanceRE.FindAllStringSubmatch(matchText, -1)
-	}
-	if len(matches) != 1 {
+	matches := clauseValueMatches(index, matchText)
+	if len(matches) != 1 || hasUnsupportedClauseQualifier(matchText, allowBounds) {
 		return clause{}, false
-	}
-	for _, qualifier := range []string{"并非", "不是", "未承诺", "未载明", "不提供", "不保证", "另行协商", "区间", "范围", "或者", "浮动"} {
-		if strings.Contains(matchText, qualifier) {
-			return clause{}, false
-		}
-	}
-	if !allowBounds {
-		for _, qualifier := range []string{"不得低于", "不得超过", "不得高于", "不低于", "不超过", "不少于", "不多于", "至少", "至多", "不高于", "以上", "以下"} {
-			if strings.Contains(matchText, qualifier) {
-				return clause{}, false
-			}
-		}
 	}
 	value := numeric(matches[0][1])
 	if value == nil {
 		return clause{}, false
 	}
-	fact := rulepack.Fact{RuleID: definition.id, Dimension: definition.dimension, ObjectRef: objects[0][1], Value: value.RatString(), Unit: definition.unit, SourceRole: source.Role}
+	fact := buildClauseFact(source, definition, object, matches[0], value, matchText, index, offset, text)
+	return clause{fact: fact, source: source, tax: taxBasis(matchText), direction: authorityDirection(index, matchText, allowBounds)}, true
+}
+
+func clauseObject(text string) (string, bool) {
+	objects := objectRE.FindAllStringSubmatch(text, -1)
+	if len(objects) != 1 {
+		return "", false
+	}
+	return objects[0][1], true
+}
+
+func clauseValueMatches(index int, text string) [][]string {
+	switch index {
+	case 0:
+		return bandwidthRE.FindAllStringSubmatch(text, -1)
+	case 1:
+		return slaRE.FindAllStringSubmatch(text, -1)
+	case 2:
+		return advanceRE.FindAllStringSubmatch(text, -1)
+	default:
+		return nil
+	}
+}
+
+func hasUnsupportedClauseQualifier(text string, allowBounds bool) bool {
+	if containsClauseQualifier(text, []string{"并非", "不是", "未承诺", "未载明", "不提供", "不保证", "另行协商", "区间", "范围", "或者", "浮动"}) {
+		return true
+	}
+	return !allowBounds && containsClauseQualifier(text, []string{"不得低于", "不得超过", "不得高于", "不低于", "不超过", "不少于", "不多于", "至少", "至多", "不高于", "以上", "以下"})
+}
+
+func containsClauseQualifier(text string, qualifiers []string) bool {
+	for _, qualifier := range qualifiers {
+		if strings.Contains(text, qualifier) {
+			return true
+		}
+	}
+	return false
+}
+
+func buildClauseFact(source rulepack.Source, definition ruleDefinition, object string, match []string, value *big.Rat, text string, index, offset int, quote string) rulepack.Fact {
+	fact := rulepack.Fact{RuleID: definition.id, Dimension: definition.dimension, ObjectRef: object, Value: value.RatString(), Unit: definition.unit, SourceRole: source.Role}
 	if index == 0 {
-		fact.Unit = matches[0][2]
+		fact.Unit = match[2]
 	}
 	if index == 1 {
-		if strings.Contains(matchText, "自然月") && !strings.Contains(matchText, "非自然月") && !strings.Contains(matchText, "滚动") {
-			fact.MeasurementWindow = "calendar_month"
-		}
-		if strings.Contains(matchText, "Asia/Shanghai") {
-			fact.TimeZone = "Asia/Shanghai"
-		}
-		if strings.Contains(matchText, "gregorian") || strings.Contains(matchText, "公历") {
-			fact.Calendar = "gregorian"
-		}
-		if strings.Contains(matchText, "all_service_unavailability") {
-			fact.OutageDefinition = "all_service_unavailability"
-		}
-		switch {
-		case strings.Contains(matchText, "无排除项") || strings.Contains(matchText, "不设排除") || strings.Contains(matchText, "排除项：无") || strings.Contains(matchText, "排除项:无"):
-			fact.Exclusions = []string{}
-		case strings.Contains(matchText, "planned_maintenance"):
-			fact.Exclusions = []string{"planned_maintenance"}
-		}
+		applySLAMetadata(&fact, text)
 	}
 	if index == 2 {
-		fact.Value = new(big.Rat).Quo(value, big.NewRat(100, 1)).RatString()
-		if strings.Contains(matchText, "预付款以合同总额为基础") || strings.Contains(matchText, "预付款按合同总额") || strings.Contains(matchText, "合同总额为预付款计算基础") {
-			fact.Basis = "contract_total"
-		}
+		applyAdvanceMetadata(&fact, value, text)
 	}
 	fact.ID = fmt.Sprintf("%s/%s/%d", definition.id, source.ID, offset)
-	fact.Citations = []rulepack.Citation{{SourceID: source.ID, SourceVersion: source.Version, TenantID: source.TenantID, CaseID: source.CaseID, SourceDigest: source.Digest, Start: offset, End: offset + utf8.RuneCountInString(text), Quote: text}}
-	return clause{fact: fact, source: source, tax: taxBasis(matchText), direction: authorityDirection(index, matchText, allowBounds)}, true
+	fact.Citations = []rulepack.Citation{{SourceID: source.ID, SourceVersion: source.Version, TenantID: source.TenantID, CaseID: source.CaseID, SourceDigest: source.Digest, Start: offset, End: offset + utf8.RuneCountInString(quote), Quote: quote}}
+	return fact
+}
+
+func applySLAMetadata(fact *rulepack.Fact, text string) {
+	applySLAWindow(fact, text)
+	applySLACalendar(fact, text)
+	applySLAExclusions(fact, text)
+}
+
+func applySLAWindow(fact *rulepack.Fact, text string) {
+	if strings.Contains(text, "自然月") && !strings.Contains(text, "非自然月") && !strings.Contains(text, "滚动") {
+		fact.MeasurementWindow = "calendar_month"
+	}
+}
+
+func applySLACalendar(fact *rulepack.Fact, text string) {
+	if strings.Contains(text, "Asia/Shanghai") {
+		fact.TimeZone = "Asia/Shanghai"
+	}
+	if strings.Contains(text, "gregorian") || strings.Contains(text, "公历") {
+		fact.Calendar = "gregorian"
+	}
+	if strings.Contains(text, "all_service_unavailability") {
+		fact.OutageDefinition = "all_service_unavailability"
+	}
+}
+
+func applySLAExclusions(fact *rulepack.Fact, text string) {
+	switch {
+	case strings.Contains(text, "无排除项") || strings.Contains(text, "不设排除") || strings.Contains(text, "排除项：无") || strings.Contains(text, "排除项:无"):
+		fact.Exclusions = []string{}
+	case strings.Contains(text, "planned_maintenance"):
+		fact.Exclusions = []string{"planned_maintenance"}
+	}
+}
+
+func applyAdvanceMetadata(fact *rulepack.Fact, value *big.Rat, text string) {
+	fact.Value = new(big.Rat).Quo(value, big.NewRat(100, 1)).RatString()
+	if strings.Contains(text, "预付款以合同总额为基础") || strings.Contains(text, "预付款按合同总额") || strings.Contains(text, "合同总额为预付款计算基础") {
+		fact.Basis = "contract_total"
+	}
 }
 
 func authorityDirection(index int, text string, allowBounds bool) string {
@@ -186,6 +228,14 @@ func authorityDirection(index int, text string, allowBounds bool) string {
 	if !allowBounds {
 		return direction
 	}
+	operator := authorityBoundOperator(index, text)
+	if operator == "" {
+		return direction
+	}
+	return boundOperatorDirection(operator, direction)
+}
+
+func authorityBoundOperator(index int, text string) string {
 	var matches [][]string
 	switch index {
 	case 0:
@@ -196,15 +246,19 @@ func authorityDirection(index int, text string, allowBounds bool) string {
 		matches = advanceBoundRE.FindAllStringSubmatch(text, -1)
 	}
 	if len(matches) != 1 {
-		return direction
+		return ""
 	}
-	switch matches[0][1] {
+	return matches[0][1]
+}
+
+func boundOperatorDirection(operator, fallback string) string {
+	switch operator {
 	case "不得低于", "不低于", "至少", "不少于":
 		return "lower"
 	case "不得超过", "不得高于", "不高于", "不超过", "不多于", "至多":
 		return "upper"
 	default:
-		return direction
+		return fallback
 	}
 }
 
@@ -278,18 +332,12 @@ func clauses(request rulepack.Request, index int, authority bool) []clause {
 	}
 	var out []clause
 	for _, source := range request.Sources {
-		if authority && source.Role != "procurement" && source.Role != "award" {
-			continue
-		}
-		if !authority && source.Role != "draft_contract" {
+		if !amountSourceRole(source.Role, authority) {
 			continue
 		}
 		for _, sentence := range sourceSentences(source.Text) {
-			if authority && index == 2 {
-				matchText := rulepack.FoldSoftLineBreaks(sentence.text)
-				if !strings.Contains(matchText, "审批") || !strings.Contains(matchText, "上限") {
-					continue
-				}
+			if !eligibleClauseSentence(sentence.text, index, authority) {
+				continue
 			}
 			if parsed, ok := parseClause(source, sentence.text, sentence.offset, index, definitions, request.Scenario == "cloud_services"); ok {
 				out = append(out, parsed)
@@ -297,6 +345,14 @@ func clauses(request rulepack.Request, index int, authority bool) []clause {
 		}
 	}
 	return out
+}
+
+func eligibleClauseSentence(text string, index int, authority bool) bool {
+	if !authority || index != 2 {
+		return true
+	}
+	matchText := rulepack.FoldSoftLineBreaks(text)
+	return strings.Contains(matchText, "审批") && strings.Contains(matchText, "上限")
 }
 
 // Extract returns only statements actually present in the frozen draft. The
@@ -317,7 +373,17 @@ func Extract(request rulepack.Request) ([]rulepack.Fact, error) {
 
 func sameClause(a, b clause) bool {
 	x, y := a.fact, b.fact
-	return x.ObjectRef == y.ObjectRef && x.Value == y.Value && x.Unit == y.Unit && x.MeasurementWindow == y.MeasurementWindow && x.TimeZone == y.TimeZone && x.Calendar == y.Calendar && x.OutageDefinition == y.OutageDefinition && x.Basis == y.Basis && a.tax == b.tax && a.direction == b.direction && (x.Exclusions == nil) == (y.Exclusions == nil) && slices.Equal(x.Exclusions, y.Exclusions)
+	return sameClauseFact(x, y) && a.tax == b.tax && a.direction == b.direction && sameClauseExclusions(x.Exclusions, y.Exclusions)
+}
+
+func sameClauseFact(left, right rulepack.Fact) bool {
+	return left.ObjectRef == right.ObjectRef && left.Value == right.Value && left.Unit == right.Unit &&
+		left.MeasurementWindow == right.MeasurementWindow && left.TimeZone == right.TimeZone &&
+		left.Calendar == right.Calendar && left.OutageDefinition == right.OutageDefinition && left.Basis == right.Basis
+}
+
+func sameClauseExclusions(left, right []string) bool {
+	return (left == nil) == (right == nil) && slices.Equal(left, right)
 }
 
 func authorityEvidenceSupportsValue(definition ruleDefinition, item clause) bool {
@@ -338,58 +404,85 @@ func baseline(request rulepack.Request, index int) (clause, string) {
 			return clause{}, "contractual_authority_ambiguous"
 		}
 	}
-	item := items[0]
+	return validateAuthorityClause(definitions[index], index, items[0])
+}
+
+func validateAuthorityClause(definition ruleDefinition, index int, item clause) (clause, string) {
 	value := numeric(item.fact.Value)
 	maximum := big.NewRat(100, 1)
 	if index == 2 {
 		maximum = big.NewRat(1, 1)
 	}
-	if value == nil || (index != 0 && value.Cmp(maximum) > 0) {
+	if invalidAuthorityValue(value, maximum, index) {
 		return clause{}, "authority_value_out_of_range"
 	}
-	if !authorityEvidenceSupportsValue(definitions[index], item) {
+	if !authorityEvidenceSupportsValue(definition, item) {
 		return clause{}, "authority_semantics_unsupported"
 	}
-	if index == 1 && (item.fact.MeasurementWindow == "" || item.fact.TimeZone == "" || item.fact.Calendar == "" || item.fact.OutageDefinition == "" || item.fact.Exclusions == nil) {
+	if index == 1 && missingSLAAuthorityBasis(item.fact) {
 		return clause{}, "authority_measurement_basis_missing"
 	}
-	if index == 2 && (item.fact.Basis == "" || item.tax == "") {
+	if index == 2 && missingAdvanceAuthorityBasis(item) {
 		return clause{}, "authority_amount_basis_missing"
 	}
 	return item, ""
+}
+
+func invalidAuthorityValue(value, maximum *big.Rat, index int) bool {
+	return value == nil || (index != 0 && value.Cmp(maximum) > 0)
+}
+
+func missingSLAAuthorityBasis(fact rulepack.Fact) bool {
+	return fact.MeasurementWindow == "" || fact.TimeZone == "" || fact.Calendar == "" ||
+		fact.OutageDefinition == "" || fact.Exclusions == nil
+}
+
+func missingAdvanceAuthorityBasis(item clause) bool {
+	return item.fact.Basis == "" || item.tax == ""
 }
 
 func contractAmount(request rulepack.Request, object string, authority bool) (*big.Rat, string) {
 	var amount *big.Rat
 	tax := ""
 	for _, source := range request.Sources {
-		if authority && source.Role != "procurement" && source.Role != "award" {
-			continue
-		}
-		if !authority && source.Role != "draft_contract" {
+		if !amountSourceRole(source.Role, authority) {
 			continue
 		}
 		for _, line := range strings.Split(source.Text, "\n") {
-			objects := objectRE.FindAllStringSubmatch(line, -1)
-			matches := amountRE.FindAllStringSubmatch(line, -1)
-			if len(objects) != 1 || objects[0][1] != object || len(matches) != 1 {
+			current, currentTax, ok := parseContractAmountLine(line, object)
+			if !ok {
 				continue
 			}
-			value := numeric(matches[0][1])
-			if value == nil {
-				continue
-			}
-			if matches[0][2] == "万元" {
-				value.Mul(value, big.NewRat(10000, 1))
-			}
-			currentTax := taxBasis(line)
-			if amount != nil && (amount.Cmp(value) != 0 || currentTax != tax) {
+			if amount != nil && (amount.Cmp(current) != 0 || currentTax != tax) {
 				return nil, ""
 			}
-			amount, tax = value, currentTax
+			amount, tax = current, currentTax
 		}
 	}
 	return amount, tax
+}
+
+func amountSourceRole(role string, authority bool) bool {
+	if authority {
+		return role == "procurement" || role == "award"
+	}
+	return role == "draft_contract"
+}
+
+func parseContractAmountLine(line, object string) (*big.Rat, string, bool) {
+	objects := objectRE.FindAllStringSubmatch(line, -1)
+	matches := amountRE.FindAllStringSubmatch(line, -1)
+	if len(objects) != 1 || objects[0][1] != object || len(matches) != 1 {
+		return nil, "", false
+	}
+	value := numeric(matches[0][1])
+	if value == nil {
+		return nil, "", false
+	}
+	if matches[0][2] == "万元" {
+		value.Mul(value, big.NewRat(10000, 1))
+	}
+	return value, taxBasis(line), true
 }
 
 func build(request rulepack.Request) (*rulepack.Pack, map[string]string, map[string]clause, error) {
@@ -397,13 +490,26 @@ func build(request rulepack.Request) (*rulepack.Pack, map[string]string, map[str
 	if len(definitions) != 3 {
 		return nil, nil, nil, rulepack.ErrInvalidRequest
 	}
-	missing := make(map[string]string)
-	bases := make(map[string]clause)
+	manifest := compilerManifest(request)
+	missing, bases := make(map[string]string), make(map[string]clause)
+	manifest.Rules = compilerRules(request, definitions, missing, bases)
+	if len(manifest.Rules) == 0 {
+		return nil, missing, bases, nil
+	}
+	pack, err := publishCompilerManifest(manifest)
+	return pack, missing, bases, err
+}
+
+func compilerManifest(request rulepack.Request) rulepack.Manifest {
 	manifestID := "telecom-contractual"
 	if request.Scenario == "cloud_services" {
 		manifestID = "cloud-services-contractual"
 	}
-	manifest := rulepack.Manifest{SchemaVersion: rulepack.SchemaVersion, ID: manifestID, Version: compilerVersion, TenantID: request.Resource.TenantID, EffectiveFrom: "2000-01-01T00:00:00Z", EffectiveUntil: "2100-01-01T00:00:00Z", Rules: []rulepack.Rule{}, Lifecycle: rulepack.Lifecycle{State: rulepack.StateDraft}}
+	return rulepack.Manifest{SchemaVersion: rulepack.SchemaVersion, ID: manifestID, Version: compilerVersion, TenantID: request.Resource.TenantID, EffectiveFrom: "2000-01-01T00:00:00Z", EffectiveUntil: "2100-01-01T00:00:00Z", Rules: []rulepack.Rule{}, Lifecycle: rulepack.Lifecycle{State: rulepack.StateDraft}}
+}
+
+func compilerRules(request rulepack.Request, definitions []ruleDefinition, missing map[string]string, bases map[string]clause) []rulepack.Rule {
+	rules := make([]rulepack.Rule, 0, len(definitions))
 	for index, definition := range definitions {
 		base, reason := baseline(request, index)
 		if reason != "" {
@@ -411,39 +517,44 @@ func build(request rulepack.Request) (*rulepack.Pack, map[string]string, map[str
 			continue
 		}
 		bases[definition.id] = base
-		required := rulepack.RequiredFact{Dimension: definition.dimension, SourceRoles: []string{"draft_contract"}, ObjectRequired: true, UnitFamily: definition.family}
-		threshold := rulepack.Threshold{Value: base.fact.Value, Unit: base.fact.Unit}
-		if index == 1 {
-			required.MeasurementWindow, required.TimeZone, required.Calendar, required.OutageDefinition, required.Exclusions = base.fact.MeasurementWindow, base.fact.TimeZone, base.fact.Calendar, base.fact.OutageDefinition, base.fact.Exclusions
-		}
-		if index == 2 {
-			required.Basis, threshold.Basis = base.fact.Basis, base.fact.Basis
-		}
-		manifest.Rules = append(manifest.Rules, rulepack.Rule{RuleID: definition.id, Version: "1", Domain: definition.domain, CapabilityID: definition.capability, Mandatory: true, BusinessScope: rulepack.BusinessScope{BusinessLine: request.BusinessLine, Scenario: request.Scenario, ContractType: request.ContractType}, TenantID: request.Resource.TenantID, Comparator: definition.comparator, Threshold: threshold, RequiredFact: required, AuthoritySources: []rulepack.AuthoritySource{{ID: base.source.ID, Version: base.source.Version, Kind: "contractual"}}})
+		rules = append(rules, compilerRule(request, definition, index, base))
 	}
-	if len(manifest.Rules) == 0 {
-		return nil, missing, bases, nil
+	return rules
+}
+
+func compilerRule(request rulepack.Request, definition ruleDefinition, index int, base clause) rulepack.Rule {
+	required := rulepack.RequiredFact{Dimension: definition.dimension, SourceRoles: []string{"draft_contract"}, ObjectRequired: true, UnitFamily: definition.family}
+	threshold := rulepack.Threshold{Value: base.fact.Value, Unit: base.fact.Unit}
+	if index == 1 {
+		required.MeasurementWindow, required.TimeZone, required.Calendar, required.OutageDefinition, required.Exclusions = base.fact.MeasurementWindow, base.fact.TimeZone, base.fact.Calendar, base.fact.OutageDefinition, base.fact.Exclusions
 	}
+	if index == 2 {
+		required.Basis, threshold.Basis = base.fact.Basis, base.fact.Basis
+	}
+	return rulepack.Rule{RuleID: definition.id, Version: "1", Domain: definition.domain, CapabilityID: definition.capability, Mandatory: true, BusinessScope: rulepack.BusinessScope{BusinessLine: request.BusinessLine, Scenario: request.Scenario, ContractType: request.ContractType}, TenantID: request.Resource.TenantID, Comparator: definition.comparator, Threshold: threshold, RequiredFact: required, AuthoritySources: []rulepack.AuthoritySource{{ID: base.source.ID, Version: base.source.Version, Kind: "contractual"}}}
+}
+
+func publishCompilerManifest(manifest rulepack.Manifest) (*rulepack.Pack, error) {
 	raw, err := json.Marshal(manifest)
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, err
 	}
 	pack, err := rulepack.Parse(raw)
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, err
 	}
 	pack, err = pack.Validate()
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, err
 	}
 	// This service attests a deterministic compiler release. It does not record
 	// human policy approval, legal validity, or approval of the uploaded contract.
 	pack, err = pack.Approve("contract-rule-compiler", pack.Hash())
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, err
 	}
 	pack, err = pack.Publish()
-	return pack, missing, bases, err
+	return pack, err
 }
 
 // Snapshot freezes the exact compiler-produced rule manifest for the attempt.
@@ -488,16 +599,10 @@ func ExecuteFrozen(ctx context.Context, request rulepack.Request, pack *rulepack
 }
 
 func prepareExecutionRequest(ctx context.Context, request rulepack.Request) (rulepack.Request, error) {
-	if ctx == nil {
-		return rulepack.Request{}, rulepack.ErrInvalidRequest
-	}
-	if !access.Check(access.Review, request.Principal, request.Resource, time.Now()).Allowed {
-		return rulepack.Request{}, rulepack.ErrUnauthorized
-	}
-	if err := ctx.Err(); err != nil {
+	if err := validateExecutionContext(ctx, request); err != nil {
 		return rulepack.Request{}, err
 	}
-	if request.At.IsZero() || request.BusinessLine == "" || request.Scenario == "" || request.ContractType == "" {
+	if !validExecutionScope(request) {
 		return rulepack.Request{}, rulepack.ErrInvalidRequest
 	}
 	if err := rulepack.ValidateSources(request); err != nil {
@@ -513,41 +618,89 @@ func prepareExecutionRequest(ctx context.Context, request rulepack.Request) (rul
 	return request, nil
 }
 
-func validateFrozenTelecomPack(request rulepack.Request, pack *rulepack.Pack) error {
-	if pack == nil {
-		return rulepack.ErrInvalidManifest
+func validateExecutionContext(ctx context.Context, request rulepack.Request) error {
+	if ctx == nil {
+		return rulepack.ErrInvalidRequest
 	}
-	manifest := pack.Manifest()
-	if manifest.Lifecycle.State != rulepack.StatePublished || manifest.TenantID != request.Resource.TenantID {
+	if !access.Check(access.Review, request.Principal, request.Resource, time.Now()).Allowed {
+		return rulepack.ErrUnauthorized
+	}
+	return ctx.Err()
+}
+
+func validExecutionScope(request rulepack.Request) bool {
+	return !request.At.IsZero() && request.BusinessLine != "" && request.Scenario != "" && request.ContractType != ""
+}
+
+func validateFrozenTelecomPack(request rulepack.Request, pack *rulepack.Pack) error {
+	if !frozenPackIdentityMatches(request, pack) {
 		return rulepack.ErrInvalidManifest
 	}
 	definitions := rulesFor(request)
 	if len(definitions) != 3 {
 		return rulepack.ErrInvalidManifest
 	}
+	required := ruleDefinitionMap(definitions)
+	seen := make(map[string]bool, len(required))
+	for _, rule := range pack.Manifest().Rules {
+		if err := validateFrozenRule(request, rule, required); err != nil {
+			return rulepack.ErrInvalidManifest
+		}
+		if _, known := required[rule.RuleID]; known {
+			seen[rule.RuleID] = true
+		}
+	}
+	return allRequiredRulesSeen(required, seen)
+}
+
+func frozenPackIdentityMatches(request rulepack.Request, pack *rulepack.Pack) bool {
+	if pack == nil {
+		return false
+	}
+	manifest := pack.Manifest()
+	return manifest.Lifecycle.State == rulepack.StatePublished && manifest.TenantID == request.Resource.TenantID
+}
+
+func ruleDefinitionMap(definitions []ruleDefinition) map[string]ruleDefinition {
 	required := make(map[string]ruleDefinition, len(definitions))
 	for _, definition := range definitions {
 		required[definition.id] = definition
 	}
-	seen := make(map[string]bool, len(required))
-	for _, rule := range manifest.Rules {
-		definition, mandatory := required[rule.RuleID]
-		if !mandatory {
-			if request.Scenario == "cloud_services" {
-				return rulepack.ErrInvalidManifest
-			}
-			continue
-		}
-		if !rule.Mandatory || rule.Comparator != definition.comparator || rule.Domain != definition.domain || rule.CapabilityID != definition.capability ||
-			rule.BusinessScope.BusinessLine != request.BusinessLine || rule.BusinessScope.Scenario != request.Scenario ||
-			rule.BusinessScope.ContractType != request.ContractType || rule.TenantID != request.Resource.TenantID || len(rule.AuthoritySources) == 0 {
+	return required
+}
+
+func validateFrozenRule(request rulepack.Request, rule rulepack.Rule, required map[string]ruleDefinition) error {
+	definition, known := required[rule.RuleID]
+	if !known {
+		if request.Scenario == "cloud_services" {
 			return rulepack.ErrInvalidManifest
 		}
-		if request.Scenario == "cloud_services" && !validCloudRule(rule) {
-			return rulepack.ErrInvalidManifest
-		}
-		seen[rule.RuleID] = true
+		return nil
 	}
+	if !validFrozenRuleShape(request, rule, definition) {
+		return rulepack.ErrInvalidManifest
+	}
+	if request.Scenario == "cloud_services" && !validCloudRule(rule) {
+		return rulepack.ErrInvalidManifest
+	}
+	return nil
+}
+
+func validFrozenRuleShape(request rulepack.Request, rule rulepack.Rule, definition ruleDefinition) bool {
+	return validFrozenRuleIdentity(request, rule, definition) && validFrozenRuleScope(request, rule) && len(rule.AuthoritySources) > 0
+}
+
+func validFrozenRuleIdentity(request rulepack.Request, rule rulepack.Rule, definition ruleDefinition) bool {
+	return rule.Mandatory && rule.Comparator == definition.comparator && rule.Domain == definition.domain &&
+		rule.CapabilityID == definition.capability && rule.TenantID == request.Resource.TenantID
+}
+
+func validFrozenRuleScope(request rulepack.Request, rule rulepack.Rule) bool {
+	return rule.BusinessScope.BusinessLine == request.BusinessLine && rule.BusinessScope.Scenario == request.Scenario &&
+		rule.BusinessScope.ContractType == request.ContractType
+}
+
+func allRequiredRulesSeen(required map[string]ruleDefinition, seen map[string]bool) error {
 	for ruleID := range required {
 		if !seen[ruleID] {
 			return rulepack.ErrInvalidManifest
@@ -568,29 +721,47 @@ func ValidateCloudServicesRulePack(snapshot []byte) error {
 }
 
 func validCloudRule(rule rulepack.Rule) bool {
-	if len(rule.RequiredFact.SourceRoles) != 1 || rule.RequiredFact.SourceRoles[0] != "draft_contract" ||
-		!rule.RequiredFact.ObjectRequired || rule.RequiredFact.Dimension == "" || rule.RequiredFact.UnitFamily == "" {
+	if !validCloudFactBase(rule.RequiredFact) || !validCloudFactMetadata(rule) {
 		return false
 	}
+	return hasAllowedCloudAuthority(rule.AuthoritySources)
+}
+
+func validCloudFactBase(fact rulepack.RequiredFact) bool {
+	return len(fact.SourceRoles) == 1 && fact.SourceRoles[0] == "draft_contract" &&
+		fact.ObjectRequired && fact.Dimension != "" && fact.UnitFamily != ""
+}
+
+func validCloudFactMetadata(rule rulepack.Rule) bool {
 	switch rule.RuleID {
 	case "CLOUD-TECH-BW-001":
-		if rule.RequiredFact.Dimension != "minimum_bandwidth" || rule.RequiredFact.UnitFamily != "bandwidth_decimal" || hasSLARequirementFields(rule.RequiredFact) || rule.RequiredFact.Basis != "" {
-			return false
-		}
+		return validCloudBandwidthFact(rule.RequiredFact)
 	case "CLOUD-TECH-SLA-001":
-		if rule.RequiredFact.Dimension != "monthly_availability" || rule.RequiredFact.UnitFamily != "percentage" ||
-			rule.RequiredFact.MeasurementWindow != "calendar_month" || rule.RequiredFact.TimeZone != "Asia/Shanghai" ||
-			rule.RequiredFact.Calendar != "gregorian" || rule.RequiredFact.OutageDefinition != "all_service_unavailability" ||
-			rule.RequiredFact.Exclusions == nil || len(rule.RequiredFact.Exclusions) != 0 || rule.RequiredFact.Basis != "" {
-			return false
-		}
+		return validCloudSLAFact(rule.RequiredFact)
 	case "CLOUD-COM-ADV-001":
-		if rule.RequiredFact.Dimension != "advance_payment_ratio" || rule.RequiredFact.UnitFamily != "ratio" ||
-			rule.RequiredFact.Basis != "contract_total" || hasSLARequirementFields(rule.RequiredFact) {
-			return false
-		}
+		return validCloudAdvanceFact(rule.RequiredFact)
+	default:
+		return false
 	}
-	for _, source := range rule.AuthoritySources {
+}
+
+func validCloudBandwidthFact(fact rulepack.RequiredFact) bool {
+	return fact.Dimension == "minimum_bandwidth" && fact.UnitFamily == "bandwidth_decimal"
+}
+
+func validCloudSLAFact(fact rulepack.RequiredFact) bool {
+	return fact.Dimension == "monthly_availability" && fact.UnitFamily == "percentage" &&
+		fact.MeasurementWindow == "calendar_month" && fact.TimeZone == "Asia/Shanghai" &&
+		fact.Calendar == "gregorian" && fact.OutageDefinition == "all_service_unavailability" &&
+		fact.Exclusions != nil && len(fact.Exclusions) == 0 && fact.Basis == ""
+}
+
+func validCloudAdvanceFact(fact rulepack.RequiredFact) bool {
+	return fact.Dimension == "advance_payment_ratio" && fact.UnitFamily == "ratio" && fact.Basis == "contract_total"
+}
+
+func hasAllowedCloudAuthority(sources []rulepack.AuthoritySource) bool {
+	for _, source := range sources {
 		if source.Kind == "internal_policy" || source.Kind == "synthetic_demo" {
 			return true
 		}
@@ -598,9 +769,6 @@ func validCloudRule(rule rulepack.Rule) bool {
 	return false
 }
 
-func hasSLARequirementFields(fact rulepack.RequiredFact) bool {
-	return fact.MeasurementWindow != "" || fact.TimeZone != "" || fact.Calendar != "" || fact.OutageDefinition != "" || fact.Exclusions != nil
-}
 func authorityBaselines(request rulepack.Request) (map[string]string, map[string]clause) {
 	missing := make(map[string]string)
 	bases := make(map[string]clause)
@@ -627,22 +795,31 @@ func executePack(ctx context.Context, request rulepack.Request, pack *rulepack.P
 	report := rulepack.Report{PackID: packID, PackVersion: compilerVersion,
 		Relations: []rulepack.Relation{rulepack.RelationCompatible, rulepack.RelationConflict, rulepack.RelationInsufficient, rulepack.RelationNotApplicable},
 		Results:   []rulepack.Result{}}
-	if pack != nil {
-		// Missing authority has no authority-backed facts; retain the mandatory
-		// result below even though this pack has an explicit frozen threshold.
-		filtered := make([]rulepack.Fact, 0, len(request.Facts))
-		for _, fact := range request.Facts {
-			if _, absent := missing[fact.RuleID]; !absent {
-				filtered = append(filtered, fact)
-			}
-		}
-		request.Facts = filtered
-		var err error
-		report, err = pack.Execute(ctx, request)
-		if err != nil {
-			return rulepack.Report{}, err
+	var err error
+	report, err = executeRulePack(ctx, request, pack, missing, report)
+	if err != nil {
+		return rulepack.Report{}, err
+	}
+	appendMissingResults(&report, definitions, missing)
+	applyBaselineChecks(&report, request, definitions, bases)
+	return report, nil
+}
+
+func executeRulePack(ctx context.Context, request rulepack.Request, pack *rulepack.Pack, missing map[string]string, empty rulepack.Report) (rulepack.Report, error) {
+	if pack == nil {
+		return empty, nil
+	}
+	filtered := make([]rulepack.Fact, 0, len(request.Facts))
+	for _, fact := range request.Facts {
+		if _, absent := missing[fact.RuleID]; !absent {
+			filtered = append(filtered, fact)
 		}
 	}
+	request.Facts = filtered
+	return pack.Execute(ctx, request)
+}
+
+func appendMissingResults(report *rulepack.Report, definitions []ruleDefinition, missing map[string]string) {
 	for _, definition := range definitions {
 		if reason, absent := missing[definition.id]; absent {
 			found := false
@@ -662,63 +839,107 @@ func executePack(ctx context.Context, request rulepack.Request, pack *rulepack.P
 			}
 		}
 	}
+}
+
+func applyBaselineChecks(report *rulepack.Report, request rulepack.Request, definitions []ruleDefinition, bases map[string]clause) {
 	for index := range report.Results {
 		result := &report.Results[index]
 		base, exists := bases[result.RuleID]
 		if !exists {
 			continue
 		}
-		for _, fact := range request.Facts {
-			if fact.RuleID != result.RuleID {
-				continue
-			}
-			if fact.ObjectRef != base.fact.ObjectRef {
-				reason := "circuit_object_mismatch"
-				if request.Scenario == "cloud_services" {
-					reason = "service_object_mismatch"
-				}
-				result.Relation, result.ReasonCode = rulepack.RelationInsufficient, reason
-			}
-			if fact.RuleID == definitions[2].id {
-				actual, actualTax := contractAmount(request, fact.ObjectRef, false)
-				expected, expectedTax := contractAmount(request, base.fact.ObjectRef, true)
-				if actual == nil || expected == nil || actual.Cmp(expected) != 0 || actualTax == "" || actualTax != expectedTax || actualTax != base.tax {
-					result.Relation, result.ReasonCode = rulepack.RelationInsufficient, "amount_or_tax_basis_incomparable"
-				}
-			}
-		}
-		if result.RuleID == definitions[1].id && result.Relation != rulepack.RelationInsufficient {
-			annexFound := false
-			for _, source := range request.Sources {
-				if source.Role != "attachment" {
-					continue
-				}
-				for _, sentence := range sourceSentences(source.Text) {
-					annex, ok := parseClause(source, sentence.text, sentence.offset, 1, definitions, request.Scenario == "cloud_services")
-					if !ok {
-						continue
-					}
-					annexFound = true
-					result.Citations = append(result.Citations, annex.fact.Citations...)
-					if annex.fact.ObjectRef != base.fact.ObjectRef || annex.fact.MeasurementWindow != base.fact.MeasurementWindow ||
-						annex.fact.TimeZone != base.fact.TimeZone || annex.fact.Calendar != base.fact.Calendar ||
-						annex.fact.OutageDefinition != base.fact.OutageDefinition || annex.fact.Exclusions == nil ||
-						!slices.Equal(annex.fact.Exclusions, base.fact.Exclusions) {
-						result.Relation, result.ReasonCode = rulepack.RelationInsufficient, "sla_annex_basis_incomparable"
-						continue
-					}
-					for _, fact := range request.Facts {
-						if fact.RuleID == result.RuleID && fact.Value != annex.fact.Value && result.Relation != rulepack.RelationInsufficient {
-							result.Relation, result.ReasonCode = rulepack.RelationConflict, "contract_sla_annex_conflict"
-						}
-					}
-				}
-			}
-			if !annexFound {
-				result.Relation, result.ReasonCode = rulepack.RelationInsufficient, "sla_annex_missing"
-			}
-		}
+		checkResultFacts(result, request, definitions, base)
+		checkSLAResult(result, request, definitions, base)
 		result.Citations = append(result.Citations, base.fact.Citations...)
 	}
-	return report, nil
+}
+
+func checkResultFacts(result *rulepack.Result, request rulepack.Request, definitions []ruleDefinition, base clause) {
+	for _, fact := range request.Facts {
+		if fact.RuleID == result.RuleID {
+			checkBaselineFact(result, fact, base, request, fact.RuleID == definitions[2].id)
+		}
+	}
+}
+
+func checkSLAResult(result *rulepack.Result, request rulepack.Request, definitions []ruleDefinition, base clause) {
+	if result.RuleID != definitions[1].id || result.Relation == rulepack.RelationInsufficient {
+		return
+	}
+	if scanSLAAnnexes(result, request, definitions, base) {
+		return
+	}
+	result.Relation, result.ReasonCode = rulepack.RelationInsufficient, "sla_annex_missing"
+}
+
+func scanSLAAnnexes(result *rulepack.Result, request rulepack.Request, definitions []ruleDefinition, base clause) bool {
+	found := false
+	for _, source := range request.Sources {
+		if source.Role == "attachment" && scanSLAAnnexSource(result, source, request, definitions, base) {
+			found = true
+		}
+	}
+	return found
+}
+
+func scanSLAAnnexSource(result *rulepack.Result, source rulepack.Source, request rulepack.Request, definitions []ruleDefinition, base clause) bool {
+	found := false
+	for _, sentence := range sourceSentences(source.Text) {
+		annex, ok := parseClause(source, sentence.text, sentence.offset, 1, definitions, request.Scenario == "cloud_services")
+		if ok {
+			found = true
+			checkSLAAnnex(result, annex, base, request)
+		}
+	}
+	return found
+}
+
+func checkSLAAnnex(result *rulepack.Result, annex, base clause, request rulepack.Request) {
+	result.Citations = append(result.Citations, annex.fact.Citations...)
+	if !sameSLABasis(annex.fact, base.fact) {
+		result.Relation, result.ReasonCode = rulepack.RelationInsufficient, "sla_annex_basis_incomparable"
+		return
+	}
+	checkSLAAnnexValue(result, annex.fact, request.Facts)
+}
+
+func sameSLABasis(annex, base rulepack.Fact) bool {
+	return annex.ObjectRef == base.ObjectRef && annex.MeasurementWindow == base.MeasurementWindow &&
+		annex.TimeZone == base.TimeZone && annex.Calendar == base.Calendar &&
+		annex.OutageDefinition == base.OutageDefinition && annex.Exclusions != nil &&
+		slices.Equal(annex.Exclusions, base.Exclusions)
+}
+
+func checkSLAAnnexValue(result *rulepack.Result, annex rulepack.Fact, facts []rulepack.Fact) {
+	for _, fact := range facts {
+		if fact.RuleID == result.RuleID && fact.Value != annex.Value && result.Relation != rulepack.RelationInsufficient {
+			result.Relation, result.ReasonCode = rulepack.RelationConflict, "contract_sla_annex_conflict"
+		}
+	}
+}
+
+func checkBaselineFact(result *rulepack.Result, fact rulepack.Fact, base clause, request rulepack.Request, compareAmount bool) {
+	checkBaselineObject(result, fact, base, request)
+	if compareAmount {
+		checkBaselineAmount(result, fact, base, request)
+	}
+}
+
+func checkBaselineObject(result *rulepack.Result, fact rulepack.Fact, base clause, request rulepack.Request) {
+	if fact.ObjectRef == base.fact.ObjectRef {
+		return
+	}
+	reason := "circuit_object_mismatch"
+	if request.Scenario == "cloud_services" {
+		reason = "service_object_mismatch"
+	}
+	result.Relation, result.ReasonCode = rulepack.RelationInsufficient, reason
+}
+
+func checkBaselineAmount(result *rulepack.Result, fact rulepack.Fact, base clause, request rulepack.Request) {
+	actual, actualTax := contractAmount(request, fact.ObjectRef, false)
+	expected, expectedTax := contractAmount(request, base.fact.ObjectRef, true)
+	if actual == nil || expected == nil || actual.Cmp(expected) != 0 || actualTax == "" || actualTax != expectedTax || actualTax != base.tax {
+		result.Relation, result.ReasonCode = rulepack.RelationInsufficient, "amount_or_tax_basis_incomparable"
+	}
 }

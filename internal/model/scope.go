@@ -19,6 +19,14 @@ type DelegatedScope struct {
 	Generation       int64  `json:"generation,omitempty"`
 	InputSHA256      string `json:"input_sha256,omitempty"`
 	ParseSelectionID string `json:"parse_selection_id,omitempty"`
+	// ConfigurationID is the frozen model configuration identity of the
+	// operation. The gateway must dispatch to the provider that identity names,
+	// never to a newer endpoint that happens to serve the same model id.
+	ConfigurationID string `json:"configuration_id,omitempty"`
+	// ProviderURL is the provider address inside that identity. A gateway that
+	// fronts the provider under another address compares the frozen address
+	// directly instead of rebuilding the identity from its own configuration.
+	ProviderURL string `json:"provider_url,omitempty"`
 }
 
 type delegatedScopeKey struct{}

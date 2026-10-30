@@ -5,11 +5,8 @@ import { PageStatus } from "../../components/page-status";
 import { StatusText } from "../../components/status-text";
 import { defaultOperatorAuditClient, type OperatorAuditClient } from "./api";
 import { OperatorAuditError } from "./error-notice";
-import {
-  DEFAULT_OPERATOR_AUDIT_FLAGS,
-  externalEvidenceEnabled,
-  type OperatorAuditFlags,
-} from "./feature-flags";
+import { type OperatorAuditFlags } from "./feature-flags";
+import { ExternalEvidenceGate } from "./external-evidence-gate";
 import { useStableIdempotencyKey } from "./idempotency";
 import { bindingStatusLabel, bindingStatusTone, timeLabel } from "./labels";
 import type {
@@ -326,7 +323,9 @@ function ObjectBindingPanelContent({
 
 /** Default off; the Lead mounts this panel only after wiring candidates. */
 export function ObjectBindingPanel(props: ObjectBindingPanelProps) {
-  const flags = props.flags ?? DEFAULT_OPERATOR_AUDIT_FLAGS;
-  if (!externalEvidenceEnabled(flags)) return null;
-  return <ObjectBindingPanelContent {...props} />;
+  return (
+    <ExternalEvidenceGate flags={props.flags}>
+      <ObjectBindingPanelContent {...props} />
+    </ExternalEvidenceGate>
+  );
 }

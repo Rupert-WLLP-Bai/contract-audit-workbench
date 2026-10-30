@@ -5,11 +5,8 @@ import { errorMessage, isForbidden } from "../../api/http";
 import { PageStatus } from "../../components/page-status";
 import { StatusText } from "../../components/status-text";
 import { defaultOperatorAuditClient, type OperatorAuditClient } from "./api";
-import {
-  DEFAULT_OPERATOR_AUDIT_FLAGS,
-  externalEvidenceEnabled,
-  type OperatorAuditFlags,
-} from "./feature-flags";
+import { type OperatorAuditFlags } from "./feature-flags";
+import { ExternalEvidenceGate } from "./external-evidence-gate";
 import {
   availabilityLabel,
   availabilityTone,
@@ -339,7 +336,9 @@ function ExternalEvidencePanelContent({
 
 /** Default off; fixture or live mode must be wired explicitly. */
 export function ExternalEvidencePanel(props: ExternalEvidencePanelProps) {
-  const flags = props.flags ?? DEFAULT_OPERATOR_AUDIT_FLAGS;
-  if (!externalEvidenceEnabled(flags)) return null;
-  return <ExternalEvidencePanelContent {...props} />;
+  return (
+    <ExternalEvidenceGate flags={props.flags}>
+      <ExternalEvidencePanelContent {...props} />
+    </ExternalEvidenceGate>
+  );
 }

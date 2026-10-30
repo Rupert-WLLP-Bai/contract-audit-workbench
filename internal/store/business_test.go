@@ -139,6 +139,66 @@ func TestTemplateRejectsUnsupportedBusinessValues(t *testing.T) {
 	}
 }
 
+func TestBusinessCaseCreationPreservesValidationOrderAndDefaults(t *testing.T) {
+	st, err := OpenTest(t.TempDir(), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	admin, ok := accounts.ByID("demo-admin")
+	if !ok {
+		t.Fatal("demo admin missing")
+	}
+	checks := []struct {
+		name, title, contractType, line, scenario, want string
+	}{
+		{"title precedes contract type", " ", "invalid", "bad", "bad", "案件标题需要 1 到 120 个字"},
+		{"contract type precedes business scope", "合同标题", "invalid", "bad", "bad", "合同类型不在本版范围内"},
+		{"scope precedes contract requirements", "合同标题", "unspecified", "ENT", "bad", "业务线与场景不在本版范围内"},
+		{"business contract requirement", "合同标题", "unspecified", "ENT", "telecom_dedicated_line", "政企业务案件需要明确合同类型"},
+		{"cloud service contract requirement", "合同标题", "procurement_ict", "ENT", "cloud_services", "云服务案件需要服务合同类型"},
+	}
+	for _, check := range checks {
+		t.Run(check.name, func(t *testing.T) {
+			_, err := st.CreateCaseWithBusiness(admin, check.title, check.contractType, check.line, check.scenario)
+			if err == nil || err.Error() != check.want {
+				t.Fatalf("CreateCaseWithBusiness error = %v, want %q", err, check.want)
+			}
+		})
+	}
+	id, err := st.CreateCaseWithBusiness(admin, "  默认业务范围  ", "service", " ", " ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	detail, err := st.GetCase(admin, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if detail.Case.Title != "默认业务范围" || detail.BusinessLine != "unspecified" || detail.Scenario != "unspecified" {
+		t.Fatalf("created case did not freeze normalized defaults: %+v", detail)
+	}
+}
+
+func TestBusinessGenerationChecksCaseTemplateBeforeTemplateFields(t *testing.T) {
+	st, err := OpenTest(t.TempDir(), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	admin, ok := accounts.ByID("demo-admin")
+	if !ok {
+		t.Fatal("demo admin missing")
+	}
+	caseID, err := st.CreateCaseWithBusiness(admin, "云服务模板优先级", "service", "ENT", "cloud_services")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = st.Generate(context.Background(), admin, caseID, telecomTemplateID, nil)
+	if err == nil || err.Error() != "合同模板与案件业务场景不匹配" {
+		t.Fatalf("Generate error = %v, want scenario mismatch before field validation", err)
+	}
+}
+
 func TestBusinessWriteGuardRejectsArchivedCase(t *testing.T) {
 	archivedAt := "2026-10-22T00:00:00.000Z"
 	for _, item := range []Case{{BusinessStatus: "archived"}, {ArchivedAt: &archivedAt}} {

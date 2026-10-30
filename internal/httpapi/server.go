@@ -67,6 +67,10 @@ func Handler(st *store.Store, opt Options) http.Handler {
 	mux.HandleFunc("DELETE /api/session", h.logout)
 	mux.HandleFunc("GET /api/settings", h.settings)
 	mux.HandleFunc("GET /api/admin/settings", h.adminSettings)
+	mux.HandleFunc("GET /api/admin/llm-endpoint", h.llmEndpoint)
+	mux.HandleFunc("PUT /api/admin/llm-endpoint", h.saveLLMEndpoint)
+	mux.HandleFunc("POST /api/admin/llm-endpoint/probe", h.probeLLMEndpoint)
+	mux.HandleFunc("PUT /api/admin/llm-endpoint/models", h.saveLLMModels)
 	mux.HandleFunc("GET /api/admin/system-health", h.adminSystemHealth)
 	mux.HandleFunc("GET /api/admin/rulepacks", h.listRulePacks)
 	mux.HandleFunc("POST /api/admin/rulepacks", h.createRulePack)
@@ -224,14 +228,16 @@ func (h *handler) settingsForUser(w http.ResponseWriter, r *http.Request, user a
 		}
 	}
 	status, label := "unreachable", "未配置审查模型"
-	if h.models != nil {
-		if h.store.ReadOnly() {
+	if h.store.ReadOnly() {
+		if h.models != nil {
 			status, label = "unknown", "只读维护，未探测模型："+h.models.Name()+" / "+h.models.OCRName()
-		} else {
-			ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
-			defer cancel()
-			status, label = h.models.Reachable(ctx)
 		}
+	} else if configuredStatus, configuredLabel, handled := h.llmEndpointStatus(r.Context()); handled {
+		status, label = configuredStatus, configuredLabel
+	} else if h.models != nil {
+		ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+		defer cancel()
+		status, label = h.models.Reachable(ctx)
 	}
 	connectors := h.externalConnectorInfo
 	if connectors == nil {
@@ -579,13 +585,7 @@ func (h *handler) events(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	after := 0
-	if raw := r.Header.Get("Last-Event-ID"); raw != "" {
-		n, err := strconv.Atoi(raw)
-		if err == nil && n > 0 {
-			after = n
-		}
-	}
+	after := eventCursor(r.Header.Get("Last-Event-ID"))
 	items, err := h.store.EventsAfter(user, r.PathValue("caseID"), r.PathValue("runID"), after)
 	if err != nil {
 		writeErr(w, err)
@@ -599,19 +599,11 @@ func (h *handler) events(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/event-stream; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("X-Accel-Buffering", "no")
-	send := func(items []store.Event) bool {
-		for _, event := range items {
-			payload, _ := json.Marshal(map[string]any{"seq": event.Seq, "type": event.Type, "state": event.State})
-			if _, err := io.WriteString(w, "id: "+strconv.Itoa(event.Seq)+"\ndata: "+string(payload)+"\n\n"); err != nil {
-				return false
-			}
-			after = event.Seq
-		}
-		flusher.Flush()
-		return true
-	}
-	if !send(items) {
+	if !writeEventBatch(w, flusher, items) {
 		return
+	}
+	if len(items) > 0 {
+		after = items[len(items)-1].Seq
 	}
 	// Read only committed events; each poll queries the Store and rechecks the current session.
 	// A reconnect resumes strictly after Last-Event-ID, including later decisions.
@@ -627,8 +619,8 @@ func (h *handler) events(w http.ResponseWriter, r *http.Request) {
 			if _, err := h.store.User(cookieValue(r)); err != nil {
 				return // A logout/expiry also revokes an already-open stream.
 			}
-			items, err := h.store.EventsAfter(user, r.PathValue("caseID"), r.PathValue("runID"), after)
-			if err != nil || (len(items) > 0 && !send(items)) {
+			after, err = h.pollEventBatch(w, flusher, user, r, after)
+			if err != nil {
 				return
 			}
 		case <-heartbeat.C:
@@ -638,6 +630,39 @@ func (h *handler) events(w http.ResponseWriter, r *http.Request) {
 			flusher.Flush()
 		}
 	}
+}
+
+func eventCursor(raw string) int {
+	n, err := strconv.Atoi(raw)
+	if err != nil || n < 1 {
+		return 0
+	}
+	return n
+}
+
+func writeEventBatch(w http.ResponseWriter, flusher http.Flusher, items []store.Event) bool {
+	for _, event := range items {
+		payload, _ := json.Marshal(map[string]any{"seq": event.Seq, "type": event.Type, "state": event.State})
+		if _, err := io.WriteString(w, "id: "+strconv.Itoa(event.Seq)+"\ndata: "+string(payload)+"\n\n"); err != nil {
+			return false
+		}
+	}
+	flusher.Flush()
+	return true
+}
+
+func (h *handler) pollEventBatch(w http.ResponseWriter, flusher http.Flusher, user accounts.User, r *http.Request, after int) (int, error) {
+	items, err := h.store.EventsAfter(user, r.PathValue("caseID"), r.PathValue("runID"), after)
+	if err != nil {
+		return after, err
+	}
+	if len(items) == 0 {
+		return after, nil
+	}
+	if !writeEventBatch(w, flusher, items) {
+		return after, io.ErrClosedPipe
+	}
+	return items[len(items)-1].Seq, nil
 }
 
 func (h *handler) actor(w http.ResponseWriter, r *http.Request) (accounts.User, bool) {

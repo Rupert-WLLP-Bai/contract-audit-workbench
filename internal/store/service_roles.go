@@ -229,6 +229,14 @@ func MigrateServiceRoles(ctx context.Context) error {
 			}
 		}
 		if service == "core" {
+			// The LLM endpoint registry is platform control data rather than a
+			// tenant row, so it deliberately has no tenant_boundary policy. Every
+			// role already has SELECT; only core may replace the row. The sealed
+			// provider key is unreadable without LLM_CONFIG_KEY.
+			llmTable := pgx.Identifier{schema, "llm_endpoint_settings"}.Sanitize()
+			if _, err := tx.Exec(ctx, `GRANT INSERT,UPDATE ON TABLE `+llmTable+` TO `+quotedRole); err != nil {
+				return errors.New("cannot grant LLM endpoint configuration ownership")
+			}
 			functions := []string{
 				"experience_distill_lock_result(text,bigint,text,text)",
 				"experience_distill_enqueue(text,text,text,text,text,text,text,text,text,text,bytea,text,text,integer,integer,integer,integer)",

@@ -44,49 +44,99 @@ func ParseDOCX(ctx context.Context, body []byte, ocr OCR) (Result, error) {
 	if err := parser.loadStyles(main); err != nil {
 		return Result{}, err
 	}
-	document, err := pkg.xml(main)
+	fragments, kinds, err := parser.documentStories(main)
 	if err != nil {
 		return Result{}, err
+	}
+	return parser.result(ctx, fragments, kinds)
+}
+
+func (p *docxParser) documentStories(main string) ([]docxFragment, []string, error) {
+	fragments, err := p.mainStoryBlocks(main)
+	if err != nil {
+		return nil, nil, err
+	}
+	kinds := docxBlockKinds(len(fragments), "paragraph")
+	for _, story := range p.stories {
+		parts, err := p.storyBlocks(story)
+		if err != nil {
+			return nil, nil, err
+		}
+		fragments = append(fragments, parts...)
+		kinds = append(kinds, docxBlockKinds(len(parts), story.kind)...)
+	}
+	return fragments, kinds, nil
+}
+
+func (p *docxParser) mainStoryBlocks(main string) ([]docxFragment, error) {
+	document, err := p.pkg.xml(main)
+	if err != nil {
+		return nil, err
 	}
 	if !document.word("document") || document.child("body") == nil {
-		return Result{}, fmt.Errorf("DOCX: invalid main document/body")
+		return nil, fmt.Errorf("DOCX: invalid main document/body")
 	}
-	mainFragments, err := parser.blocks(document.child("body"), main)
+	fragments, err := p.blocks(document.child("body"), main)
+	if err != nil {
+		return nil, err
+	}
+	if len(p.fields) != 0 {
+		return nil, fmt.Errorf("DOCX: main story has unterminated fields")
+	}
+	return fragments, nil
+}
+
+func docxBlockKinds(count int, kind string) []string {
+	kinds := make([]string, count)
+	for i := range kinds {
+		kinds[i] = kind
+	}
+	return kinds
+}
+
+func (p *docxParser) storyBlocks(story docxStory) ([]docxFragment, error) {
+	root, err := p.pkg.xml(story.part)
+	if err != nil {
+		return nil, err
+	}
+	local := "hdr"
+	if story.kind == "footer" {
+		local = "ftr"
+	}
+	if !root.word(local) {
+		return nil, fmt.Errorf("DOCX: invalid %s root", story.kind)
+	}
+	parts, err := p.blocks(root, story.part)
+	if err != nil {
+		return nil, err
+	}
+	if len(p.fields) != 0 {
+		return nil, fmt.Errorf("DOCX: header/footer has unterminated fields")
+	}
+	return parts, nil
+}
+
+func (p *docxParser) result(ctx context.Context, fragments []docxFragment, kinds []string) (Result, error) {
+	text, cells, err := docxStoryText(fragments)
 	if err != nil {
 		return Result{}, err
 	}
-	fragments := mainFragments
-	if len(parser.fields) != 0 {
-		return Result{}, fmt.Errorf("DOCX: main story has unterminated fields")
+	if err := ctx.Err(); err != nil {
+		return Result{}, err
 	}
-	kinds := make([]string, len(fragments))
-	for i := range kinds {
-		kinds[i] = "paragraph"
+	if text == "" {
+		return Result{}, fmt.Errorf("DOCX: document has no supported visible text")
 	}
-	for _, story := range parser.stories {
-		root, err := pkg.xml(story.part)
-		if err != nil {
-			return Result{}, err
-		}
-		local := "hdr"
-		if story.kind == "footer" {
-			local = "ftr"
-		}
-		if !root.word(local) {
-			return Result{}, fmt.Errorf("DOCX: invalid %s root", story.kind)
-		}
-		parts, err := parser.blocks(root, story.part)
-		if err != nil {
-			return Result{}, err
-		}
-		for _, part := range parts {
-			fragments = append(fragments, part)
-			kinds = append(kinds, story.kind)
-		}
-		if len(parser.fields) != 0 {
-			return Result{}, fmt.Errorf("DOCX: header/footer has unterminated fields")
-		}
+	ir := docir.Build(text)
+	ir.Cells = cells
+	ir.ExtractionVersion = DOCXVersion
+	if err := docxBlockMetadata(&ir, fragments, kinds); err != nil {
+		return Result{}, err
 	}
+	return Result{IR: ir, FromOCR: p.fromOCR}, nil
+}
+
+func docxStoryText(fragments []docxFragment) (string, []docir.Cell, error) {
 	var text strings.Builder
 	cells := []docir.Cell{}
 	offset := 0
@@ -101,23 +151,17 @@ func ParseDOCX(ctx context.Context, body []byte, ocr OCR) (Result, error) {
 			cells = append(cells, cell)
 		}
 		if text.Len()+len(fragment.text) > docxMaxText {
-			return Result{}, fmt.Errorf("DOCX: extracted text exceeds 8 MiB limit")
+			return "", nil, fmt.Errorf("DOCX: extracted text exceeds 8 MiB limit")
 		}
 		text.WriteString(fragment.text)
 		offset += utf8.RuneCountInString(fragment.text)
 	}
-	if err := ctx.Err(); err != nil {
-		return Result{}, err
-	}
-	if text.Len() == 0 {
-		return Result{}, fmt.Errorf("DOCX: document has no supported visible text")
-	}
-	ir := docir.Build(text.String())
-	// OOXML table coordinates come from tc/gridSpan, never pipe heuristics.
-	ir.Cells = cells
-	ir.ExtractionVersion = DOCXVersion
+	return text.String(), cells, nil
+}
+
+func docxBlockMetadata(ir *docir.IR, fragments []docxFragment, kinds []string) error {
 	if len(ir.Blocks) != len(fragments) {
-		return Result{}, fmt.Errorf("DOCX: inconsistent normalized block boundaries")
+		return fmt.Errorf("DOCX: inconsistent normalized block boundaries")
 	}
 	for i := range ir.Blocks {
 		ir.Blocks[i].Kind = kinds[i]
@@ -125,7 +169,7 @@ func ParseDOCX(ctx context.Context, body []byte, ocr OCR) (Result, error) {
 			ir.Blocks[i].Kind = "table"
 		}
 	}
-	return Result{IR: ir, FromOCR: parser.fromOCR}, nil
+	return nil
 }
 
 func docxCleanText(text string) string {
@@ -173,50 +217,82 @@ func (p *docxParser) blocks(node *docxNode, part string) ([]docxFragment, error)
 		if err := p.pkg.ctx.Err(); err != nil {
 			return nil, err
 		}
-		switch {
-		case child.word("p"):
-			text, err := p.paragraph(child, part)
-			if err != nil {
-				return nil, err
-			}
-			if text != "" {
-				out = append(out, docxFragment{text: text})
-			}
-		case child.word("tbl"):
-			fragment, err := p.table(child, part)
-			if err != nil {
-				return nil, err
-			}
-			if fragment.text != "" {
-				out = append(out, fragment)
-			}
-		case child.word("sectPr"):
-			if err := p.section(child, part); err != nil {
-				return nil, err
-			}
-		case child.word("del"), child.word("moveFrom"):
-			continue
-		case child.word("ins"), child.word("moveTo"), child.word("sdtContent"), child.word("customXml"):
-			parts, err := p.blocks(child, part)
-			if err != nil {
-				return nil, err
-			}
-			out = append(out, parts...)
-		case child.word("sdt"):
-			if content := child.child("sdtContent"); content != nil {
-				parts, err := p.blocks(content, part)
-				if err != nil {
-					return nil, err
-				}
-				out = append(out, parts...)
-			}
-		case docxNonContent(child):
-			continue
-		default:
-			return nil, fmt.Errorf("DOCX: unsupported block %s", child.name.Local)
+		parts, err := p.block(child, part)
+		if err != nil {
+			return nil, err
 		}
+		out = append(out, parts...)
 	}
 	return out, nil
+}
+
+func (p *docxParser) block(child *docxNode, part string) ([]docxFragment, error) {
+	switch docxBlockKind(child) {
+	case "paragraph":
+		return p.paragraphBlock(child, part)
+	case "table":
+		return p.tableBlock(child, part)
+	case "section":
+		return nil, p.section(child, part)
+	case "ignored":
+		return nil, nil
+	case "wrapper":
+		return p.blocks(child, part)
+	case "sdt":
+		return p.blockSDT(child, part)
+	default:
+		return nil, fmt.Errorf("DOCX: unsupported block %s", child.name.Local)
+	}
+}
+
+func (p *docxParser) paragraphBlock(child *docxNode, part string) ([]docxFragment, error) {
+	text, err := p.paragraph(child, part)
+	if err != nil || text == "" {
+		return nil, err
+	}
+	return []docxFragment{{text: text}}, nil
+}
+
+func (p *docxParser) tableBlock(child *docxNode, part string) ([]docxFragment, error) {
+	fragment, err := p.table(child, part)
+	if err != nil || fragment.text == "" {
+		return nil, err
+	}
+	return []docxFragment{fragment}, nil
+}
+
+func docxBlockKind(child *docxNode) string {
+	switch {
+	case child.word("p"):
+		return "paragraph"
+	case child.word("tbl"):
+		return "table"
+	case child.word("sectPr"):
+		return "section"
+	case docxBlockIgnored(child):
+		return "ignored"
+	case docxBlockWrapper(child):
+		return "wrapper"
+	case child.word("sdt"):
+		return "sdt"
+	default:
+		return "unsupported"
+	}
+}
+
+func (p *docxParser) blockSDT(child *docxNode, part string) ([]docxFragment, error) {
+	if content := child.child("sdtContent"); content != nil {
+		return p.blocks(content, part)
+	}
+	return nil, nil
+}
+
+func docxBlockIgnored(child *docxNode) bool {
+	return child.word("del") || child.word("moveFrom") || docxNonContent(child)
+}
+
+func docxBlockWrapper(child *docxNode) bool {
+	return child.word("ins") || child.word("moveTo") || child.word("sdtContent") || child.word("customXml")
 }
 
 func (p *docxParser) section(node *docxNode, part string) error {

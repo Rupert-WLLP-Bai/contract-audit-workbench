@@ -14,13 +14,12 @@ import (
 	"net"
 	"net/http"
 	"os"
-	"os/signal"
 	"strings"
-	"syscall"
 	"time"
 
 	"contractaudit/internal/bootstrap"
 	"contractaudit/internal/httpapi"
+	"contractaudit/internal/process"
 	"contractaudit/internal/toolgateway"
 )
 
@@ -30,13 +29,11 @@ import (
 const shutdownTimeout = 15 * time.Second
 
 func main() {
-	if err := run(); err != nil {
-		log.Fatal(err)
-	}
+	process.Main(run)
 }
 
 func run() error {
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	ctx, stop := process.SignalContext()
 	defer stop()
 
 	app, err := bootstrap.OpenService(ctx, "tool")
@@ -61,7 +58,7 @@ func run() error {
 	mux.Handle("/mcp", mcpHandler(app.Store, configuredOrigins(), credential, workerCredential))
 	httpapi.MountHealth(mux, func(ctx context.Context) error { return app.Store.Ready(ctx) })
 
-	addr := env("ADDR", "127.0.0.1:8090")
+	addr := process.Env("ADDR", "127.0.0.1:8090")
 	host, _ := os.Hostname()
 	log.Printf("tool gateway instance %s pid %d listening on %s", host, os.Getpid(), addr)
 	server := &http.Server{
@@ -75,7 +72,7 @@ func run() error {
 		MaxHeaderBytes: 1 << 20,
 	}
 	server.BaseContext = func(net.Listener) context.Context { return ctx }
-	return serve(ctx, server, shutdownTimeout)
+	return process.Serve(ctx, server, shutdownTimeout)
 }
 
 // mcpHandler assembles the MCP endpoint: caller authentication first, then the
@@ -144,32 +141,3 @@ func configuredOrigins() []string {
 // serve runs server until ctx is canceled or the listener fails, then drains
 // in-flight requests within timeout. It mirrors the lifecycle of the other
 // process entrypoints in this repository.
-func serve(ctx context.Context, server *http.Server, timeout time.Duration) error {
-	finished := make(chan error, 1)
-	go func() { finished <- server.ListenAndServe() }()
-	select {
-	case err := <-finished:
-		if errors.Is(err, http.ErrServerClosed) {
-			return nil
-		}
-		return err
-	case <-ctx.Done():
-		shutdown, cancel := context.WithTimeout(context.Background(), timeout)
-		defer cancel()
-		if err := server.Shutdown(shutdown); err != nil {
-			_ = server.Close()
-			return err
-		}
-		if err := <-finished; !errors.Is(err, http.ErrServerClosed) {
-			return err
-		}
-		return nil
-	}
-}
-
-func env(key, fallback string) string {
-	if value := strings.TrimSpace(os.Getenv(key)); value != "" {
-		return value
-	}
-	return fallback
-}

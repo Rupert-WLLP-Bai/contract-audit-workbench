@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"strings"
 
+	"contractaudit/internal/accounts"
 	"contractaudit/internal/fault"
 	"contractaudit/internal/store"
 )
@@ -37,75 +38,27 @@ func (h *handler) workbench(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *handler) updateCaseProfile(w http.ResponseWriter, r *http.Request) {
-	user, ok := h.actor(w, r)
-	if !ok {
-		return
-	}
-	var body store.CaseProfileInput
-	if err := readJSON(w, r, &body); err != nil {
-		writeErr(w, err)
-		return
-	}
-	item, err := h.store.UpdateCaseProfile(user, r.PathValue("caseID"), body)
-	if err != nil {
-		writeErr(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, item)
+	serveClientJSONCommand[store.CaseProfileInput](h, w, r, http.StatusOK, func(user accounts.User, r *http.Request, body store.CaseProfileInput) (any, error) {
+		return h.store.UpdateCaseProfile(user, r.PathValue("caseID"), body)
+	})
 }
 
 func (h *handler) createWorkbenchTask(w http.ResponseWriter, r *http.Request) {
-	user, ok := h.actor(w, r)
-	if !ok {
-		return
-	}
-	var body store.WorkbenchTaskInput
-	if err := readJSON(w, r, &body); err != nil {
-		writeErr(w, err)
-		return
-	}
-	item, err := h.store.CreateWorkbenchTask(user, r.PathValue("caseID"), body)
-	if err != nil {
-		writeErr(w, err)
-		return
-	}
-	writeJSON(w, http.StatusCreated, item)
+	serveClientJSONCommand[store.WorkbenchTaskInput](h, w, r, http.StatusCreated, func(user accounts.User, r *http.Request, body store.WorkbenchTaskInput) (any, error) {
+		return h.store.CreateWorkbenchTask(user, r.PathValue("caseID"), body)
+	})
 }
 
 func (h *handler) updateWorkbenchTask(w http.ResponseWriter, r *http.Request) {
-	user, ok := h.actor(w, r)
-	if !ok {
-		return
-	}
-	var body store.WorkbenchTaskInput
-	if err := readJSON(w, r, &body); err != nil {
-		writeErr(w, err)
-		return
-	}
-	item, err := h.store.UpdateWorkbenchTask(user, r.PathValue("caseID"), r.PathValue("taskID"), body)
-	if err != nil {
-		writeErr(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, item)
+	serveClientJSONCommand[store.WorkbenchTaskInput](h, w, r, http.StatusOK, func(user accounts.User, r *http.Request, body store.WorkbenchTaskInput) (any, error) {
+		return h.store.UpdateWorkbenchTask(user, r.PathValue("caseID"), r.PathValue("taskID"), body)
+	})
 }
 
 func (h *handler) createCaseRelation(w http.ResponseWriter, r *http.Request) {
-	user, ok := h.actor(w, r)
-	if !ok {
-		return
-	}
-	var body store.CaseRelationInput
-	if err := readJSON(w, r, &body); err != nil {
-		writeErr(w, err)
-		return
-	}
-	item, err := h.store.CreateCaseRelation(user, r.PathValue("caseID"), body)
-	if err != nil {
-		writeErr(w, err)
-		return
-	}
-	writeJSON(w, http.StatusCreated, item)
+	serveClientJSONCommand[store.CaseRelationInput](h, w, r, http.StatusCreated, func(user accounts.User, r *http.Request, body store.CaseRelationInput) (any, error) {
+		return h.store.CreateCaseRelation(user, r.PathValue("caseID"), body)
+	})
 }
 
 func (h *handler) deleteCaseRelation(w http.ResponseWriter, r *http.Request) {

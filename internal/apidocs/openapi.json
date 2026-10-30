@@ -4,7 +4,7 @@
   "info": {
     "title": "合同智能审计工作台 · 当前 HTTP API",
     "version": "0.3.0",
-    "description": "本接口文档对应当前 Go 服务，涵盖登录、案件与成员、材料、模板、审查、人工判断、任务、制度、整改、报告和规则管理。JSON 写入请求有大小限制，只接受一个对象，并拒绝未知字段和多余内容；服务器会检查权限、版本和 Origin。文档请求面板使用当前会话发送同源请求；尚未实现的接口不列入 paths。"
+    "description": "本接口文档对应当前 Go 服务，涵盖登录、案件与成员、材料、模板、审查、人工判断、任务、制度、整改、报告和规则管理和平台模型端点配置。JSON 写入请求有大小限制，只接受一个对象，并拒绝未知字段和多余内容；服务器会检查权限、版本和 Origin。文档请求面板使用当前会话发送同源请求；尚未实现的接口不列入 paths。"
   },
   "servers": [
     {
@@ -1841,6 +1841,198 @@
           },
           "403": {
             "$ref": "#/components/responses/Error403"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          }
+        }
+      }
+    },
+    "/api/admin/llm-endpoint": {
+      "get": {
+        "operationId": "getLLMEndpoint",
+        "tags": [
+          "会话"
+        ],
+        "summary": "读取平台 LLM 端点",
+        "description": "仅 admin audience 会话可读。视图不包含 API 密钥或密文，只报告是否已保存密钥。",
+        "responses": {
+          "200": {
+            "description": "端点视图；未配置时 configured=false",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LLMEndpointView"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          }
+        }
+      },
+      "put": {
+        "operationId": "saveLLMEndpoint",
+        "tags": [
+          "会话"
+        ],
+        "summary": "保存平台 LLM 端点与模型列表",
+        "description": "仅 admin audience 会话可写。密钥只在请求中提交，服务端使用 LLM_CONFIG_KEY 封存；响应与后续读取都不返回明文或密文。省略 api_key 时保留已存密钥。端点保存后仍需选择审查模型和图片转写模型才会启用。",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LLMEndpointInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "已保存的端点视图",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LLMEndpointView"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          }
+        }
+      }
+    },
+    "/api/admin/llm-endpoint/probe": {
+      "post": {
+        "operationId": "probeLLMEndpoint",
+        "tags": [
+          "会话"
+        ],
+        "summary": "探测 OpenAI 兼容端点模型",
+        "description": "读取端点的 /models 列表，不保存配置。api_key 为空时使用已保存密钥；探测过程与错误都不会回显密钥。",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LLMEndpointProbeRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "探测到的模型与耗时",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LLMEndpointProbeResult"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422"
+          },
+          "502": {
+            "description": "端点不可达、返回非 200 或模型列表无效",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          }
+        }
+      }
+    },
+    "/api/admin/llm-endpoint/models": {
+      "put": {
+        "operationId": "saveLLMModelSelection",
+        "tags": [
+          "会话"
+        ],
+        "summary": "选择审查与图片转写模型",
+        "description": "两个模型必须同时选择且属于已保存的端点模型列表。只更新角色选择，不改变端点或密钥；expected_revision 防止覆盖其他管理员的新版本。",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LLMModelSelectionInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "已保存的端点视图",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LLMEndpointView"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422"
           },
           "503": {
             "$ref": "#/components/responses/Error503"
@@ -6983,7 +7175,8 @@
       "BusinessAgentGap": {"type":"object","additionalProperties":false,"required":["gap_id","domain","capability_id","mandatory","status","reason_code","evidence_ids"],"properties":{"gap_id":{"type":"string"},"domain":{"type":"string"},"capability_id":{"type":"string"},"mandatory":{"type":"boolean"},"status":{"type":"string"},"reason_code":{"type":"string"},"evidence_ids":{"type":["array","null"],"items":{"type":"string"}}}},
       "BusinessEvidenceAnchor": {"type":"object","additionalProperties":false,"required":["id","document_id","parsed_document_id","quote","status","start","end","reason","page","element_id"],"properties":{"id":{"type":"string"},"document_id":{"type":"string"},"parsed_document_id":{"type":"string"},"quote":{"type":"string"},"status":{"type":"string"},"start":{"type":"integer"},"end":{"type":"integer"},"reason":{"type":["string","null"]},"page":{"type":["integer","null"]},"element_id":{"type":["string","null"]}}},
       "BusinessAgentEvidence": {"type":"object","additionalProperties":false,"required":["evidence_id","semantic_type","value","unit","currency","verification","anchor"],"properties":{"evidence_id":{"type":"string"},"semantic_type":{"type":"string"},"value":{"type":"string"},"unit":{"type":["string","null"]},"currency":{"type":["string","null"]},"verification":{"type":"string"},"anchor":{"$ref":"#/components/schemas/BusinessEvidenceAnchor"}}},
-      "BusinessAgentReview": {"type":"object","additionalProperties":false,"required":["attempt_id","status","rulepack","scope","domains","gaps","evidence","unresolved_gap_ids"],"properties":{"attempt_id":{"type":["string","null"]},"status":{"type":["string","null"]},"rulepack":{"type":["object","null"],"additionalProperties":false,"required":["id","version"],"properties":{"id":{"type":"string"},"version":{"type":"string"}}},"scope":{"type":["array","null"],"items":{"$ref":"#/components/schemas/BusinessAgentScope"}},"domains":{"type":["array","null"],"items":{"$ref":"#/components/schemas/BusinessAgentDomain"}},"gaps":{"type":["array","null"],"items":{"$ref":"#/components/schemas/BusinessAgentGap"}},"evidence":{"type":["array","null"],"items":{"$ref":"#/components/schemas/BusinessAgentEvidence"}},"unresolved_gap_ids":{"type":["array","null"],"items":{"type":"string"}}}},
+      "BusinessAgentReview": {"type":"object","additionalProperties":false,"required":["attempt_id","status","rulepack","scope","domains","gaps","evidence","unresolved_gap_ids","observations"],"properties":{"attempt_id":{"type":["string","null"]},"status":{"type":["string","null"]},"rulepack":{"type":["object","null"],"additionalProperties":false,"required":["id","version"],"properties":{"id":{"type":"string"},"version":{"type":"string"}}},"scope":{"type":["array","null"],"items":{"$ref":"#/components/schemas/BusinessAgentScope"}},"domains":{"type":["array","null"],"items":{"$ref":"#/components/schemas/BusinessAgentDomain"}},"gaps":{"type":["array","null"],"items":{"$ref":"#/components/schemas/BusinessAgentGap"}},"evidence":{"type":["array","null"],"items":{"$ref":"#/components/schemas/BusinessAgentEvidence"}},"unresolved_gap_ids":{"type":["array","null"],"items":{"type":"string"}},"observations":{"type":["array","null"],"items":{"$ref":"#/components/schemas/BusinessAgentObservation"}}}},
+      "BusinessAgentObservation": {"type":"object","additionalProperties":false,"required":["round","call_id","gap_id","tool_id","reported_relation","reason_code","summary","claim_status","fact_ids","located_evidence_ids","truncated"],"properties":{"round":{"type":"integer"},"call_id":{"type":"string"},"gap_id":{"type":"string"},"tool_id":{"type":"string"},"reported_relation":{"type":"string"},"reason_code":{"type":"string"},"summary":{"type":"string"},"claim_status":{"type":"string"},"fact_ids":{"type":["array","null"],"items":{"type":"string"}},"located_evidence_ids":{"type":["array","null"],"items":{"type":"string"}},"truncated":{"type":"boolean"}}},
       "Settings": {
         "type": "object",
         "properties": {
@@ -7619,6 +7812,16 @@
                 "type": "null"
               }
             ]
+          },
+          "trace": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ModelCallTrace"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
@@ -7638,6 +7841,8 @@
         ],
         "additionalProperties": false
       },
+      "ModelCallTrace": {"type":"object","additionalProperties":false,"required":["requested_model","status","started_at","finished_at","request_sha256","request_bytes","request_messages","request_truncated","response_bytes","response_truncated"],"properties":{"requested_model":{"type":"string"},"reported_model":{"type":"string"},"status":{"type":"string"},"error_code":{"type":"string"},"started_at":{"type":"string","format":"date-time"},"finished_at":{"type":"string","format":"date-time"},"request_sha256":{"type":"string"},"request_bytes":{"type":"integer","minimum":0},"request_messages":{"type":"array","items":{"$ref":"#/components/schemas/ModelCallTraceMessage"}},"request_truncated":{"type":"boolean"},"response_sha256":{"type":"string"},"response_bytes":{"type":"integer","minimum":0},"response_text":{"type":"string"},"response_truncated":{"type":"boolean"}}},
+      "ModelCallTraceMessage": {"type":"object","additionalProperties":false,"required":["role","content","truncated"],"properties":{"role":{"type":"string"},"content":{"type":"string"},"truncated":{"type":"boolean"}}},
       "Execution": {
         "type": "object",
         "properties": {
@@ -8984,6 +9189,8 @@
               }
             ]
           },
+          "tool_id": {"type":"string"},
+          "gap_id": {"type":"string"},
           "domain": {
             "anyOf": [
               {
@@ -9020,6 +9227,8 @@
         ],
         "additionalProperties": false
       },
+      "AgentReviewObservation": {"type":"object","additionalProperties":false,"required":["round","call_id","gap_id","tool_id","reported_relation","summary","claim_status","fact_ids","located_evidence_ids","truncated"],"properties":{"round":{"type":"integer"},"call_id":{"type":"string"},"gap_id":{"type":"string"},"tool_id":{"type":"string"},"reported_relation":{"type":"string"},"reason_code":{"type":"string"},"summary":{"type":"string"},"claim_status":{"type":"string"},"fact_ids":{"type":["array","null"],"items":{"type":"string"}},"located_evidence_ids":{"type":["array","null"],"items":{"type":"string"}},"truncated":{"type":"boolean"}}},
+      "AgentReviewKnowledgeRead": {"type":"object","additionalProperties":false,"required":["knowledge_id","version_id","content_sha256","start","end","text_sha256","text"],"properties":{"knowledge_id":{"type":"string"},"version_id":{"type":"string"},"content_sha256":{"type":"string"},"start":{"type":"integer"},"end":{"type":"integer"},"text_sha256":{"type":"string"},"text":{"type":"string"}}},
       "AgentKnowledgeSelection": {
         "type":"object","additionalProperties":false,"required":["snapshot_sha256","algorithm","policy_status","policy_reason","input","candidates","budget","planner_rounds","reads"],
         "properties":{
@@ -9112,6 +9321,18 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/AgentReviewEvent"
+            }
+          },
+          "observations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AgentReviewObservation"
+            }
+          },
+          "knowledge_reads": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AgentReviewKnowledgeRead"
             }
           }
         },
@@ -9696,6 +9917,187 @@
           "status": {"type": "string", "enum": ["ready", "unavailable", "unknown"]},
           "version": {"type": "string"}
         }
+      },
+      "LLMEndpointView": {
+        "type": "object",
+        "properties": {
+          "configured": {
+            "type": "boolean"
+          },
+          "name": {
+            "type": "string"
+          },
+          "protocol": {
+            "type": "string",
+            "enum": [
+              "openai-compatible"
+            ]
+          },
+          "base_url": {
+            "type": "string"
+          },
+          "models": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "review_model": {
+            "type": "string"
+          },
+          "ocr_model": {
+            "type": "string"
+          },
+          "has_api_key": {
+            "type": "boolean"
+          },
+          "revision": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "updated_at": {
+            "type": "string"
+          },
+          "updated_by": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "configured",
+          "name",
+          "protocol",
+          "base_url",
+          "models",
+          "review_model",
+          "ocr_model",
+          "has_api_key",
+          "revision",
+          "updated_at",
+          "updated_by"
+        ],
+        "additionalProperties": false,
+        "description": "平台端点视图。api_key、secret_ciphertext 不在任何响应中出现；未配置时 revision=0，已保存时从 1 开始。"
+      },
+      "LLMEndpointProbeRequest": {
+        "type": "object",
+        "properties": {
+          "protocol": {
+            "type": "string",
+            "enum": [
+              "openai-compatible"
+            ]
+          },
+          "base_url": {
+            "type": "string"
+          },
+          "api_key": {
+            "type": "string",
+            "description": "可选。仅在地址和协议与已保存端点一致时，为空才复用服务端已保存的密钥；不会写入日志或响应。"
+          },
+          "clear_api_key": {
+            "type": "boolean",
+            "description": "为 true 时明确不使用已保存的密钥。"
+          }
+        },
+        "required": [
+          "protocol",
+          "base_url"
+        ],
+        "additionalProperties": false
+      },
+      "LLMEndpointProbeResult": {
+        "type": "object",
+        "properties": {
+          "models": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "latency_ms": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "models",
+          "latency_ms"
+        ],
+        "additionalProperties": false
+      },
+      "LLMEndpointInput": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80
+          },
+          "protocol": {
+            "type": "string",
+            "enum": [
+              "openai-compatible"
+            ]
+          },
+          "base_url": {
+            "type": "string"
+          },
+          "models": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 512,
+            "items": {
+              "type": "string"
+            }
+          },
+          "review_model": {
+            "type": "string"
+          },
+          "ocr_model": {
+            "type": "string"
+          },
+          "api_key": {
+            "type": "string",
+            "description": "可选。非空时封存并替换已存密钥；为空且 clear_api_key=false 时保留，但更换 base_url 或 protocol 时必须重新输入或清除。"
+          },
+          "clear_api_key": {
+            "type": "boolean"
+          },
+          "expected_revision": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "name",
+          "protocol",
+          "base_url",
+          "models"
+        ],
+        "additionalProperties": false,
+        "description": "省略 review_model/ocr_model 时，仅保留仍存在于新模型列表中的旧选择；否则端点保存但不启用。"
+      },
+      "LLMModelSelectionInput": {
+        "type": "object",
+        "properties": {
+          "review_model": {
+            "type": "string",
+            "minLength": 1
+          },
+          "ocr_model": {
+            "type": "string",
+            "minLength": 1
+          },
+          "expected_revision": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "review_model",
+          "ocr_model"
+        ],
+        "additionalProperties": false
       }
     },
     "responses": {

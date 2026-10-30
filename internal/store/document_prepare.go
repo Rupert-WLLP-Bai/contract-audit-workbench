@@ -72,19 +72,20 @@ func (s *Store) PrepareAttemptDocument(ctx context.Context, request PrepareDocum
 		}
 		return frozenFromParsed(authority.Document, *authority.Parsed), nil
 	}
-	parserID, parserVersion, configHash := parserConfigurationFor(authority.Document, s.models)
+	models := s.currentModels()
+	parserID, parserVersion, configHash := parserConfigurationFor(authority.Document, models)
 	if parserID != request.Selection.ParserID || parserVersion != request.Selection.ParserVersion ||
 		configHash != request.Selection.ConfigHash || request.Selection.NormalizationVersion != docir.NormalizationVersion {
 		return FrozenDocument{}, errors.New("pinned parser configuration is unavailable")
 	}
-	scope := model.WithDelegatedScope(ctx, model.DelegatedScope{
+	scope := model.WithDelegatedScope(ctx, modelScope(model.DelegatedScope{
 		Kind: "document", TenantID: authority.Claim.TenantID, OrgID: authority.Claim.OrgID,
 		CaseID: authority.Claim.CaseID, ActorID: authority.Claim.ActorID, DocumentID: authority.Document.ID,
 		JobID: authority.Claim.JobID, RunID: authority.Claim.RunID, AttemptID: authority.Claim.AttemptID,
 		WorkerID: authority.Claim.WorkerID, Generation: authority.Claim.Generation,
 		ParseSelectionID: request.Selection.ParsedDocumentID,
-	})
-	interpreted := s.interpretUnpersistedWithModels(scope, authority.Document, s.models)
+	}, models))
+	interpreted := s.interpretUnpersistedWithModels(scope, authority.Document, models)
 	parsed, err := makeParsedWithSelection(authority.Document, interpreted, request.Selection)
 	if err != nil {
 		return FrozenDocument{}, err

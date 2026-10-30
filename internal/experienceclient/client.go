@@ -24,7 +24,7 @@ type Client struct {
 
 func New(endpoint, credential string, timeout time.Duration) (*Client, error) {
 	parsed, err := url.Parse(strings.TrimSpace(endpoint))
-	if err != nil || parsed.Host == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") ||
+	if err != nil || parsed.Host == "" || !isHTTPOrHTTPS(parsed.Scheme) ||
 		parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
 		return nil, errors.New("core service endpoint must be an HTTP(S) origin or base path")
 	}
@@ -34,6 +34,10 @@ func New(endpoint, credential string, timeout time.Duration) (*Client, error) {
 	parsed.Path = strings.TrimRight(parsed.Path, "/") + "/internal/v1/experience-results"
 	parsed.RawPath = ""
 	return &Client{endpoint: parsed.String(), credential: credential, http: &http.Client{Timeout: timeout}}, nil
+}
+
+func isHTTPOrHTTPS(scheme string) bool {
+	return scheme == "http" || scheme == "https"
 }
 
 func (c *Client) AcceptExperienceResult(ctx context.Context, delivery store.ExperienceResultDelivery) error {

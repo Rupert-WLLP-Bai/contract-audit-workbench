@@ -109,30 +109,45 @@ func readDirectory(path string) (map[string]User, os.FileInfo, error) {
 	if !info.Mode().IsRegular() || info.Size() > 1<<20 {
 		return nil, nil, errors.New("invalid trusted directory file")
 	}
+	users, err := decodeDirectory(file)
+	if err != nil {
+		return nil, nil, err
+	}
+	return users, info, nil
+}
+
+func decodeDirectory(file io.Reader) (map[string]User, error) {
 	var body struct {
 		Users []User `json:"users"`
 	}
 	decoder := json.NewDecoder(io.LimitReader(file, (1<<20)+1))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&body); err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	if decoder.Decode(new(any)) != io.EOF {
-		return nil, nil, errors.New("directory must contain one JSON object")
+		return nil, errors.New("directory must contain one JSON object")
 	}
 	users := make(map[string]User, len(body.Users))
 	subjects := make(map[string]bool, len(body.Users))
 	for _, user := range body.Users {
-		key := user.Issuer + "\x00" + user.Subject
-		if user.ID == "" || user.TenantID == "" || user.OrgID == "" || user.Issuer == "" || user.Subject == "" || subjects[key] {
-			return nil, nil, errors.New("directory needs unique identity, issuer/subject, tenant and organization")
+		if err := addDirectoryUser(users, subjects, user); err != nil {
+			return nil, err
 		}
-		if _, exists := users[user.ID]; exists {
-			return nil, nil, errors.New("duplicate directory user")
-		}
-		users[user.ID], subjects[key] = user, true
 	}
-	return users, info, nil
+	return users, nil
+}
+
+func addDirectoryUser(users map[string]User, subjects map[string]bool, user User) error {
+	key := user.Issuer + "\x00" + user.Subject
+	if user.ID == "" || user.TenantID == "" || user.OrgID == "" || user.Issuer == "" || user.Subject == "" || subjects[key] {
+		return errors.New("directory needs unique identity, issuer/subject, tenant and organization")
+	}
+	if _, exists := users[user.ID]; exists {
+		return errors.New("duplicate directory user")
+	}
+	users[user.ID], subjects[key] = user, true
+	return nil
 }
 
 func refreshDirectoryLocked() error {

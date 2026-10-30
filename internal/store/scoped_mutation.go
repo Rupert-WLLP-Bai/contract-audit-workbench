@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"contractaudit/internal/accounts"
+	"contractaudit/internal/execution"
 	"contractaudit/internal/fault"
 	"github.com/jackc/pgx/v5"
 )
@@ -52,7 +53,7 @@ func (s *Store) loadScopedAttemptState(ctx context.Context, tx pgx.Tx, claim Job
 	out.Findings = scope.Findings
 	out.Evaluations = scope.Evaluations
 
-	execEvents, err := tx.Query(ctx, `SELECT attempt_id, event_seq, span_id, parent_span_id, node_kind, phase, event_type, occurred_at, duration_ms, status, error_code, model_ref, usage, recorded_at, event_key, generation
+	execEvents, err := tx.Query(ctx, `SELECT attempt_id, event_seq, span_id, parent_span_id, node_kind, phase, event_type, occurred_at, duration_ms, status, error_code, model_ref, usage, trace, recorded_at, event_key, generation
 		FROM execution_events WHERE attempt_id=$1 ORDER BY event_seq`, attemptID)
 	if err != nil {
 		return state{}, err
@@ -60,9 +61,9 @@ func (s *Store) loadScopedAttemptState(ctx context.Context, tx pgx.Tx, claim Job
 	defer execEvents.Close()
 	for execEvents.Next() {
 		var item ExecutionEvent
-		var spanID, parentID, errorCode, modelRef, usageJSON *string
+		var spanID, parentID, errorCode, modelRef, usageJSON, traceJSON *string
 		var duration *int64
-		if err := execEvents.Scan(&item.AttemptID, &item.Seq, &spanID, &parentID, &item.NodeKind, &item.Phase, &item.EventType, &item.At, &duration, &item.Status, &errorCode, &modelRef, &usageJSON, &item.RecordedAt, &item.EventKey, &item.Generation); err != nil {
+		if err := execEvents.Scan(&item.AttemptID, &item.Seq, &spanID, &parentID, &item.NodeKind, &item.Phase, &item.EventType, &item.At, &duration, &item.Status, &errorCode, &modelRef, &usageJSON, &traceJSON, &item.RecordedAt, &item.EventKey, &item.Generation); err != nil {
 			return state{}, err
 		}
 		item.SpanID, item.ParentSpanID, item.ErrorCode, item.ModelRef, item.DurationMS = spanID, parentID, errorCode, modelRef, duration
@@ -72,6 +73,13 @@ func (s *Store) loadScopedAttemptState(ctx context.Context, tx pgx.Tx, claim Job
 				return state{}, err
 			}
 			item.Usage = &usage
+		}
+		if traceJSON != nil {
+			var trace execution.ModelCallTrace
+			if err := json.Unmarshal([]byte(*traceJSON), &trace); err != nil {
+				return state{}, err
+			}
+			item.Trace = &trace
 		}
 		out.ExecutionEvents = append(out.ExecutionEvents, item)
 	}

@@ -1,6 +1,12 @@
 import { Collapse } from "antd";
 import type { AuditEvent, BusinessAuditEvent } from "../api/types";
 
+function eventLabel(eventType: string): string {
+  return Object.hasOwn(EVENT_LABELS, eventType)
+    ? EVENT_LABELS[eventType]!
+    : "其他审查记录";
+}
+
 const EVENT_LABELS: Record<string, string> = {
   review_started: "审查已发起",
   review_retried: "已重新执行审查",
@@ -83,7 +89,7 @@ export function AuditProjection({ runId, events, showDiagnostics = false }: Audi
                           ]}
                         />
                         ) : (
-                          <p>记录 {event.seq}，{EVENT_LABELS[event.event_type] ?? "其他审查记录"}</p>
+                          <p>记录 {event.seq}，{eventLabel(event.event_type)}</p>
                         )}
                       </li>
                     ))}

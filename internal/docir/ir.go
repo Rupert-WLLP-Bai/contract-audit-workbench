@@ -91,6 +91,29 @@ type QuoteAnchor struct {
 // Blocks are joined with a blank line. A leading UTF-8 BOM is removed from the
 // normalized text only.
 func Build(raw string) IR {
+	normalized, blocks, pages := buildText(raw)
+	cells := attachTables(blocks)
+	if pages == nil {
+		pages = []Page{}
+	}
+	if cells == nil {
+		cells = []Cell{}
+	}
+	return IR{
+		CoordinateSpace:   CoordinateSpace,
+		NormalizedText:    normalized,
+		NormalizedDigest:  docversion.Hash([]byte(normalized)).String(),
+		ExtractionVersion: ExtractionVersion,
+		Pages:             pages,
+		Blocks:            blocks,
+		Cells:             cells,
+		Clauses:           clausesOf(normalized, blocks),
+	}
+}
+
+// buildText normalizes line endings, removes the BOM, and splits form-feed
+// pages and blank-line paragraphs into blocks.
+func buildText(raw string) (string, []Block, []Page) {
 	raw = strings.TrimPrefix(raw, "\uFEFF")
 	raw = strings.ReplaceAll(raw, "\r\n", "\n")
 	raw = strings.ReplaceAll(raw, "\r", "\n")
@@ -102,10 +125,7 @@ func Build(raw string) IR {
 	var b strings.Builder
 	offset := 0
 	for i, segment := range segments {
-		var page *int
-		if paged {
-			page = intPtr(i + 1)
-		}
+		page := pageMarker(paged, i)
 		pageStart := offset
 		wrote := false
 		for _, part := range strings.Split(segment, "\n\n") {
@@ -137,7 +157,20 @@ func Build(raw string) IR {
 			pages = append(pages, Page{Number: i + 1, Start: pageStart, End: offset})
 		}
 	}
-	normalized := b.String()
+	return b.String(), blocks, pages
+}
+
+// pageMarker returns the 1-based break index when the text has form feeds.
+func pageMarker(paged bool, segment int) *int {
+	if paged {
+		return intPtr(segment + 1)
+	}
+	return nil
+}
+
+// attachTables marks blocks that hold a markdown table and collects their
+// cells.
+func attachTables(blocks []Block) []Cell {
 	var cells []Cell
 	tables := 0
 	for i := range blocks {
@@ -148,29 +181,14 @@ func Build(raw string) IR {
 		blocks[i].Kind = "table"
 		cells = append(cells, got...)
 	}
-	if pages == nil {
-		pages = []Page{}
-	}
-	if cells == nil {
-		cells = []Cell{}
-	}
-	return IR{
-		CoordinateSpace:   CoordinateSpace,
-		NormalizedText:    normalized,
-		NormalizedDigest:  docversion.Hash([]byte(normalized)).String(),
-		ExtractionVersion: ExtractionVersion,
-		Pages:             pages,
-		Blocks:            blocks,
-		Cells:             cells,
-		Clauses:           clausesOf(normalized, blocks),
-	}
+	return cells
 }
 
 // Bind accepts the span only when its code-point slice is quote.
 // A mismatch returns unlocatable and drops the page, element, and offsets.
 func Bind(ir IR, quote string, start, end int) QuoteAnchor {
 	got, ok := Slice(ir.NormalizedText, start, end)
-	if quote == "" || !ok || got != quote {
+	if !ok || got != quote || quote == "" {
 		return unlocatable(quote, "引用与坐标切片不一致，不能编造页码或框。")
 	}
 	page, element := ir.cover(start, end)
@@ -213,23 +231,45 @@ func (ir IR) ElementAt(start, end int) string {
 	return id
 }
 
+// cover returns the page and tightest element containing the span: a cell
+// first, then a block, then a clause.
 func (ir IR) cover(start, end int) (*int, string) {
-	for _, cell := range ir.Cells {
-		if start >= cell.Start && end <= cell.End {
-			return cell.Page, cell.ID
-		}
+	if page, id, ok := coverFirst(ir.Cells, start, end, cellSpan); ok {
+		return page, id
 	}
-	for _, block := range ir.Blocks {
-		if start >= block.Start && end <= block.End {
-			return block.Page, block.ID
-		}
+	if page, id, ok := coverFirst(ir.Blocks, start, end, blockSpan); ok {
+		return page, id
 	}
-	for _, clause := range ir.Clauses {
-		if start >= clause.Start && end <= clause.End {
-			return clause.Page, clause.ID
-		}
+	if page, id, ok := coverFirst(ir.Clauses, start, end, clauseSpan); ok {
+		return page, id
 	}
 	return nil, ""
+}
+
+// coverFirst finds the first element whose span contains start..end.
+func coverFirst[T any](elements []T, start, end int, span func(T) (int, int, *int, string)) (*int, string, bool) {
+	for _, element := range elements {
+		elementStart, elementEnd, page, id := span(element)
+		if start >= elementStart && end <= elementEnd {
+			return page, id, true
+		}
+	}
+	return nil, "", false
+}
+
+// cellSpan reports one cell's span, page and identifier.
+func cellSpan(cell Cell) (int, int, *int, string) {
+	return cell.Start, cell.End, cell.Page, cell.ID
+}
+
+// blockSpan reports one block's span, page and identifier.
+func blockSpan(block Block) (int, int, *int, string) {
+	return block.Start, block.End, block.Page, block.ID
+}
+
+// clauseSpan reports one clause's span, page and identifier.
+func clauseSpan(clause Clause) (int, int, *int, string) {
+	return clause.Start, clause.End, clause.Page, clause.ID
 }
 
 // Slice returns text[start:end] in Unicode code points.
@@ -270,8 +310,9 @@ func clausesOf(text string, blocks []Block) []Clause {
 	return out
 }
 
-func cellsIn(block Block, tableN *int) []Cell {
-	lines := strings.Split(block.Text, "\n")
+// tableShape reports whether every non-empty line has a pipe and at least two
+// of them are data rows.
+func tableShape(lines []string) bool {
 	dataRows := 0
 	for _, line := range lines {
 		trimmed := strings.TrimSpace(line)
@@ -279,54 +320,70 @@ func cellsIn(block Block, tableN *int) []Cell {
 			continue
 		}
 		if !strings.Contains(trimmed, "|") {
-			return nil
+			return false
 		}
 		if !isRule(trimmed) {
 			dataRows++
 		}
 	}
-	if dataRows < 2 {
+	return dataRows >= 2
+}
+
+func cellsIn(block Block, tableN *int) []Cell {
+	lines := strings.Split(block.Text, "\n")
+	if !tableShape(lines) {
 		return nil
 	}
 	*tableN++
 	tableID := "t-" + itoa(*tableN)
+	cells := cellRows(block, lines, tableID)
+	if len(cells) < 2 {
+		*tableN--
+		return nil
+	}
+	return cells
+}
+
+// cellRows scans the lines of a table block and collects the cells of every
+// data row.
+func cellRows(block Block, lines []string, tableID string) []Cell {
 	var cells []Cell
 	row := 0
 	linePos := 0
-	for li, line := range lines {
+	for _, line := range lines {
 		if !isRule(line) {
 			parts := splitRow(line)
 			if len(parts) > 0 {
 				row++
-				search := 0
-				runes := []rune(line)
-				for col, raw := range parts {
-					text := strings.TrimSpace(raw)
-					if text == "" {
-						continue
-					}
-					rel := indexRunes(runes, []rune(text), search)
-					if rel < 0 {
-						continue
-					}
-					start := block.Start + linePos + rel
-					end := start + utf8.RuneCountInString(text)
-					cells = append(cells, Cell{
-						ID: tableID + "-r" + itoa(row) + "c" + itoa(col+1), TableID: tableID,
-						Row: row, Col: col + 1, Text: text, Start: start, End: end, Page: block.Page,
-					})
-					search = rel + utf8.RuneCountInString(text)
-				}
+				cells = append(cells, rowCells(block, line, linePos, row, tableID, parts)...)
 			}
 		}
-		linePos += utf8.RuneCountInString(line)
-		if li < len(lines)-1 {
-			linePos++
-		}
+		linePos += utf8.RuneCountInString(line) + 1
 	}
-	if len(cells) < 2 {
-		*tableN--
-		return nil
+	return cells
+}
+
+// rowCells locates the non-empty cells of one line inside the block text.
+func rowCells(block Block, line string, linePos, row int, tableID string, parts []string) []Cell {
+	var cells []Cell
+	search := 0
+	runes := []rune(line)
+	for col, raw := range parts {
+		text := strings.TrimSpace(raw)
+		if text == "" {
+			continue
+		}
+		rel := indexRunes(runes, []rune(text), search)
+		if rel < 0 {
+			continue
+		}
+		start := block.Start + linePos + rel
+		end := start + utf8.RuneCountInString(text)
+		cells = append(cells, Cell{
+			ID: tableID + "-r" + itoa(row) + "c" + itoa(col+1), TableID: tableID,
+			Row: row, Col: col + 1, Text: text, Start: start, End: end, Page: block.Page,
+		})
+		search = rel + utf8.RuneCountInString(text)
 	}
 	return cells
 }
@@ -339,7 +396,7 @@ func isRule(line string) bool {
 	if len(parts) == 0 {
 		return false
 	}
-	saw := false
+	var saw bool
 	for _, part := range parts {
 		part = strings.TrimSpace(part)
 		if part == "" {
@@ -365,7 +422,7 @@ func splitRow(line string) []string {
 }
 
 func indexRunes(hay, needle []rune, from int) int {
-	if len(needle) == 0 || from > len(hay) {
+	if len(needle) == 0 {
 		return -1
 	}
 	for i := from; i+len(needle) <= len(hay); i++ {

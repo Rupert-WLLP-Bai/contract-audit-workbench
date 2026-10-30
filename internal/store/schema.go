@@ -132,6 +132,9 @@ var schemaStatements = []string{
 	`ALTER TABLE execution_events ADD COLUMN IF NOT EXISTS recorded_at text`,
 	`ALTER TABLE execution_events ADD COLUMN IF NOT EXISTS event_key text`,
 	`ALTER TABLE execution_events ADD COLUMN IF NOT EXISTS generation bigint`,
+	// Bounded physical model request/response record. This is diagnostic
+	// observability only; it is never read as evidence for a finding.
+	`ALTER TABLE execution_events ADD COLUMN IF NOT EXISTS trace jsonb`,
 	`CREATE UNIQUE INDEX IF NOT EXISTS execution_events_logical_identity ON execution_events (attempt_id, generation, event_key) WHERE event_key IS NOT NULL`,
 	`CREATE TABLE IF NOT EXISTS findings (
 		seq bigserial PRIMARY KEY,
@@ -434,6 +437,19 @@ var schemaStatements = []string{
 	knowledgeAcceptanceSchemaSQL,
 	EvidenceRequestSchemaSQL,
 	EvaluationProvenanceSchemaSQL,
+	`CREATE TABLE IF NOT EXISTS llm_endpoint_settings (
+		id text PRIMARY KEY CHECK (id = 'active'),
+		name text NOT NULL,
+		protocol text NOT NULL CHECK (protocol IN ('openai-compatible')),
+		base_url text NOT NULL,
+		models jsonb NOT NULL DEFAULT '[]'::jsonb,
+		review_model text NOT NULL DEFAULT '',
+		ocr_model text NOT NULL DEFAULT '',
+		secret_ciphertext bytea NOT NULL DEFAULT ''::bytea,
+		revision bigint NOT NULL DEFAULT 1 CHECK (revision > 0),
+		updated_at text NOT NULL,
+		updated_by text NOT NULL
+	)`,
 	experienceDistillSchemaSQL,
 	advisoryJudgmentSchemaSQL,
 	OperatorAuditSchemaSQL,

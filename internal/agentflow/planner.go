@@ -37,25 +37,33 @@ func (ScopePlanner) Plan(_ context.Context, input PlanInput) (Plan, error) {
 	if input.RemainingCalls <= 0 {
 		return plan, nil
 	}
-	for _, mandatory := range []bool{true, false} {
-		for _, gap := range input.Gaps {
-			if gap.Mandatory != mandatory {
-				continue
-			}
-			if len(plan.Calls) >= input.RemainingCalls {
-				break
-			}
-			for _, tool := range input.Tools {
-				if tool.Domain == gap.Domain && slices.Contains(tool.Capabilities, gap.Capability) &&
-					!called[gap.ID+"\x00"+tool.ID] {
-					plan.Calls = append(plan.Calls, Call{ToolID: tool.ID, Domain: gap.Domain,
-						GapID: gap.ID, Reason: "registered tool for a requested evidence gap"})
-					break
-				}
-			}
+	appendScopePlanCalls(&plan, input, called, true)
+	appendScopePlanCalls(&plan, input, called, false)
+	return plan, nil
+}
+
+func appendScopePlanCalls(plan *Plan, input PlanInput, called map[string]bool, mandatory bool) {
+	for _, gap := range input.Gaps {
+		if gap.Mandatory != mandatory {
+			continue
+		}
+		if len(plan.Calls) >= input.RemainingCalls {
+			break
+		}
+		if tool, exists := firstToolForGap(input.Tools, called, gap); exists {
+			plan.Calls = append(plan.Calls, Call{ToolID: tool.ID, Domain: gap.Domain, GapID: gap.ID,
+				Reason: "registered tool for a requested evidence gap"})
 		}
 	}
-	return plan, nil
+}
+
+func firstToolForGap(tools []ToolSpec, called map[string]bool, gap Gap) (ToolSpec, bool) {
+	for _, tool := range tools {
+		if tool.Domain == gap.Domain && slices.Contains(tool.Capabilities, gap.Capability) && !called[gap.ID+"\x00"+tool.ID] {
+			return tool, true
+		}
+	}
+	return ToolSpec{}, false
 }
 
 // PlannerChatModel is the Generate-only Eino surface required by bounded
@@ -92,19 +100,13 @@ func (p ModelPlanner) PlanObserved(ctx context.Context, input PlanInput) (Plan, 
 	if p.Model == nil || strings.TrimSpace(p.Identity) == "" {
 		return Plan{}, PlannerObservation{}, errPlannerUnavailable
 	}
-	body, err := json.Marshal(input)
+	body, err := marshalPlannerInput(input)
 	if err != nil {
 		return Plan{}, PlannerObservation{}, err
 	}
-	message, err := p.Model.Generate(ctx, []*schema.Message{
-		schema.SystemMessage(plannerSystemPrompt),
-		schema.UserMessage(string(body)),
-	})
+	message, err := p.generatePlanMessage(ctx, body)
 	if err != nil {
-		if ctx.Err() != nil {
-			return Plan{}, PlannerObservation{}, ctx.Err()
-		}
-		return Plan{}, PlannerObservation{}, errPlannerUnavailable
+		return Plan{}, PlannerObservation{}, err
 	}
 	if message == nil {
 		return Plan{}, PlannerObservation{}, errPlannerUnavailable
@@ -113,14 +115,30 @@ func (p ModelPlanner) PlanObserved(ctx context.Context, input PlanInput) (Plan, 
 	if err != nil {
 		return Plan{}, PlannerObservation{}, err
 	}
-	var observation PlannerObservation
-	if message.ResponseMeta != nil && message.ResponseMeta.Usage != nil {
-		inputTokens := int64(message.ResponseMeta.Usage.PromptTokens)
-		outputTokens := int64(message.ResponseMeta.Usage.CompletionTokens)
-		totalTokens := int64(message.ResponseMeta.Usage.TotalTokens)
-		observation = PlannerObservation{InputTokens: &inputTokens, OutputTokens: &outputTokens, TotalTokens: &totalTokens}
+	return plan, plannerObservation(message), nil
+}
+
+func marshalPlannerInput(input PlanInput) ([]byte, error) { return json.Marshal(input) }
+
+func (p ModelPlanner) generatePlanMessage(ctx context.Context, body []byte) (*schema.Message, error) {
+	message, err := p.Model.Generate(ctx, []*schema.Message{schema.SystemMessage(plannerSystemPrompt), schema.UserMessage(string(body))})
+	if err != nil {
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+		return nil, errPlannerUnavailable
 	}
-	return plan, observation, nil
+	return message, nil
+}
+
+func plannerObservation(message *schema.Message) PlannerObservation {
+	if message.ResponseMeta == nil || message.ResponseMeta.Usage == nil {
+		return PlannerObservation{}
+	}
+	inputTokens := int64(message.ResponseMeta.Usage.PromptTokens)
+	outputTokens := int64(message.ResponseMeta.Usage.CompletionTokens)
+	totalTokens := int64(message.ResponseMeta.Usage.TotalTokens)
+	return PlannerObservation{InputTokens: &inputTokens, OutputTokens: &outputTokens, TotalTokens: &totalTokens}
 }
 
 var errPlannerUnavailable = errors.New("planner model unavailable")

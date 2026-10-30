@@ -4,9 +4,11 @@ import (
 	"archive/zip"
 	"bytes"
 	"context"
+	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"hash/crc32"
 	"io"
 	"os"
 	"strings"
@@ -40,6 +42,31 @@ func docxFixture(t *testing.T, filename string) []byte {
 		t.Fatal(err)
 	}
 	return body
+}
+
+func docxPart(t *testing.T, archive []byte, partName string) []byte {
+	t.Helper()
+	zr, err := zip.NewReader(bytes.NewReader(archive), int64(len(archive)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, file := range zr.File {
+		if file.Name != partName {
+			continue
+		}
+		reader, err := file.Open()
+		if err != nil {
+			t.Fatal(err)
+		}
+		body, err := io.ReadAll(reader)
+		reader.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+		return body
+	}
+	t.Fatalf("missing DOCX fixture part %q", partName)
+	return nil
 }
 
 func TestDOCXRealFixturesAndCellAnchors(t *testing.T) {
@@ -244,6 +271,282 @@ func TestDOCXRejectsIncompleteAndUnboundedPackages(t *testing.T) {
 	}
 }
 
+func TestDOCXEnforcesZIPEntryAndExpansionLimits(t *testing.T) {
+	plain := docxFixture(t, "plain.docx")
+	tooMany := make(map[string][]byte, docxMaxEntries-2)
+	for index := 0; index < docxMaxEntries-2; index++ {
+		tooMany[fmt.Sprintf("extra/%04d.xml", index)] = nil
+	}
+	largeTotal := bytes.Repeat([]byte{'x'}, 13<<20)
+	tooExpanded := map[string][]byte{
+		"extra/one.xml":   largeTotal,
+		"extra/two.xml":   largeTotal,
+		"extra/three.xml": largeTotal,
+		"extra/four.xml":  largeTotal,
+		"extra/five.xml":  largeTotal,
+	}
+	for _, item := range []struct {
+		name         string
+		replacements map[string][]byte
+		want         string
+	}{
+		{"ZIP entry count", tooMany, "ZIP entry limit"},
+		{"expanded ZIP bytes", tooExpanded, "expanded ZIP exceeds 64 MiB"},
+		{"single part bytes", map[string][]byte{"extra/large.bin": bytes.Repeat([]byte{'x'}, docxMaxPart+1)}, "part exceeds 16 MiB"},
+	} {
+		t.Run(item.name, func(t *testing.T) {
+			_, err := ParseDOCX(context.Background(), docxRewrite(t, plain, item.replacements), nil)
+			if err == nil || !strings.Contains(err.Error(), item.want) {
+				t.Fatalf("want %q error, got %v", item.want, err)
+			}
+		})
+	}
+}
+
+func TestDOCXRejectsUnsafeRelationshipTargets(t *testing.T) {
+	plain := docxFixture(t, "plain.docx")
+	cases := []struct {
+		name string
+		xml  string
+		want string
+	}{
+		{"external main part", `<Relationships xmlns="` + docxPackageRNS + `"><Relationship Id="main" Type="` + docxRNS + `/officeDocument" Target="https://example.invalid/document.xml"/></Relationships>`, "invalid or external relationship target"},
+		{"package traversal", `<Relationships xmlns="` + docxPackageRNS + `"><Relationship Id="main" Type="` + docxRNS + `/officeDocument" Target="../../outside.xml"/></Relationships>`, "relationship escapes package"},
+		{"query target", `<Relationships xmlns="` + docxPackageRNS + `"><Relationship Id="main" Type="` + docxRNS + `/officeDocument" Target="word/document.xml?download=1"/></Relationships>`, "invalid or external relationship target"},
+	}
+	for _, item := range cases {
+		t.Run(item.name, func(t *testing.T) {
+			result, err := ParseDOCX(context.Background(), docxRewrite(t, plain, map[string][]byte{"_rels/.rels": []byte(item.xml)}), nil)
+			if err == nil || !strings.Contains(err.Error(), item.want) {
+				t.Fatalf("want %q error, got %v", item.want, err)
+			}
+			if result.IR.NormalizedText != "" {
+				t.Fatalf("unsafe relationship returned partial text: %q", result.IR.NormalizedText)
+			}
+		})
+	}
+}
+
+func TestDOCXRejectsExternalImageRelationships(t *testing.T) {
+	plain := docxFixture(t, "plain.docx")
+	relationships := []byte(`<Relationships xmlns="` + docxPackageRNS + `"><Relationship Id="image" Type="` + docxRNS + `/image" Target="https://example.invalid/image.png" TargetMode="External"/></Relationships>`)
+	result, err := ParseDOCX(context.Background(), docxRewrite(t, plain, map[string][]byte{"word/_rels/document.xml.rels": relationships}), nil)
+	if err == nil || !strings.Contains(err.Error(), "external resources are unsupported") {
+		t.Fatalf("external image relationship was accepted: %v", err)
+	}
+	if result.IR.NormalizedText != "" {
+		t.Fatalf("external relationship returned partial text: %q", result.IR.NormalizedText)
+	}
+}
+
+func TestDOCXRejectsOpaqueAndMissingRelationships(t *testing.T) {
+	plain := docxFixture(t, "plain.docx")
+	for _, item := range []struct {
+		name string
+		xml  string
+		want string
+	}{
+		{"opaque OLE relation", `<Relationships xmlns="` + docxPackageRNS + `"><Relationship Id="ole" Type="` + docxRNS + `/oleObject" Target="missing.bin"/></Relationships>`, "opaque relationship oleObject is unsupported"},
+		{"missing related part", `<Relationships xmlns="` + docxPackageRNS + `"><Relationship Id="image" Type="` + docxRNS + `/image" Target="missing.png"/></Relationships>`, `relationship points to missing part "word/missing.png"`},
+		{"duplicate identity", `<Relationships xmlns="` + docxPackageRNS + `"><Relationship Id="same" Type="` + docxRNS + `/image" Target="document.xml"/><Relationship Id="same" Type="` + docxRNS + `/image" Target="document.xml"/></Relationships>`, "duplicate relationship identity"},
+	} {
+		t.Run(item.name, func(t *testing.T) {
+			result, err := ParseDOCX(context.Background(), docxRewrite(t, plain, map[string][]byte{"word/_rels/document.xml.rels": []byte(item.xml)}), nil)
+			if err == nil || !strings.Contains(err.Error(), item.want) || result.IR.NormalizedText != "" {
+				t.Fatalf("want fail-closed %q, got text=%q err=%v", item.want, result.IR.NormalizedText, err)
+			}
+		})
+	}
+}
+
+func TestDOCXRejectsConditionalTableVisibility(t *testing.T) {
+	plain := docxFixture(t, "plain.docx")
+	contentTypes := []byte(`<Types xmlns="` + docxTypesNS + `"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/></Types>`)
+	relationships := []byte(`<Relationships xmlns="` + docxPackageRNS + `"><Relationship Id="styles" Type="` + docxRNS + `/styles" Target="styles.xml"/></Relationships>`)
+	styles := []byte(`<w:styles xmlns:w="` + docxWNS + `"><w:style w:type="table" w:styleId="Hidden"><w:rPr><w:vanish/></w:rPr></w:style></w:styles>`)
+	document := []byte(`<w:document xmlns:w="` + docxWNS + `"><w:body><w:tbl><w:tblPr><w:tblStyle w:val="Hidden"/></w:tblPr><w:tr><w:tc><w:p><w:r><w:t>must not be hidden</w:t></w:r></w:p></w:tc></w:tr></w:tbl></w:body></w:document>`)
+	result, err := ParseDOCX(context.Background(), docxRewrite(t, plain, map[string][]byte{
+		"[Content_Types].xml":          contentTypes,
+		"word/document.xml":            document,
+		"word/_rels/document.xml.rels": relationships,
+		"word/styles.xml":              styles,
+	}), nil)
+	if err == nil || !strings.Contains(err.Error(), "conditional table-style visibility is unsupported") {
+		t.Fatalf("conditionally hidden table was accepted: %v", err)
+	}
+	if result.IR.NormalizedText != "" {
+		t.Fatalf("hidden table returned partial text: %q", result.IR.NormalizedText)
+	}
+}
+
+func TestDOCXRecursesSupportedTableWrappersInOrder(t *testing.T) {
+	plain := docxFixture(t, "plain.docx")
+	document := []byte(`<w:document xmlns:w="` + docxWNS + `"><w:body><w:tbl><w:tblGrid><w:gridCol/><w:gridCol/></w:tblGrid><w:ins><w:tr><w:customXml><w:tc><w:p><w:r><w:t>first</w:t></w:r></w:p></w:tc></w:customXml><w:tc><w:p><w:r><w:t>second</w:t></w:r></w:p></w:tc></w:tr></w:ins><w:moveTo><w:tr><w:sdt><w:sdtContent><w:tc><w:p><w:r><w:t>third</w:t></w:r></w:p></w:tc></w:sdtContent></w:sdt><w:tc><w:p><w:r><w:t>fourth</w:t></w:r></w:p></w:tc></w:tr></w:moveTo></w:tbl></w:body></w:document>`)
+	result, err := ParseDOCX(context.Background(), docxRewrite(t, plain, map[string][]byte{"word/document.xml": document}), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.IR.Cells) != 4 {
+		t.Fatalf("wrapped table cells missing: %+v", result.IR.Cells)
+	}
+	want := []string{"first", "second", "third", "fourth"}
+	for index, text := range want {
+		if result.IR.Cells[index].Text != text || result.IR.Cells[index].Row != index/2+1 || result.IR.Cells[index].Col != index%2+1 {
+			t.Fatalf("wrapped cell order/coordinates changed at %d: %+v", index, result.IR.Cells[index])
+		}
+	}
+}
+
+func TestDOCXInlineBreaksAndSpecialHyphensStayInOrder(t *testing.T) {
+	plain := docxFixture(t, "plain.docx")
+	document := []byte(`<w:document xmlns:w="` + docxWNS + `"><w:body><w:p><w:r><w:t>A</w:t><w:tab/><w:ptab/><w:br/><w:cr/><w:lastRenderedPageBreak/><w:noBreakHyphen/><w:softHyphen/><w:t>B</w:t></w:r></w:p></w:body></w:document>`)
+	result, err := ParseDOCX(context.Background(), docxRewrite(t, plain, map[string][]byte{"word/document.xml": document}), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.IR.NormalizedText != "A\t\t\n\u2011\u00adB" {
+		t.Fatalf("inline character order changed: %q", result.IR.NormalizedText)
+	}
+}
+
+func TestDOCXStyleDefaultsKeepStyledVisibleText(t *testing.T) {
+	plain := docxFixture(t, "plain.docx")
+	contentTypes := []byte(`<Types xmlns="` + docxTypesNS + `"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/></Types>`)
+	relationships := []byte(`<Relationships xmlns="` + docxPackageRNS + `"><Relationship Id="styles" Type="` + docxRNS + `/styles" Target="styles.xml"/></Relationships>`)
+	styles := []byte(`<w:styles xmlns:w="` + docxWNS + `"><w:docDefaults><w:rPrDefault><w:rPr><w:vanish w:val="0"/></w:rPr></w:rPrDefault></w:docDefaults><w:style w:type="paragraph" w:styleId="pDefault" w:default="1"/><w:style w:type="character" w:styleId="rDefault" w:default="true"/></w:styles>`)
+	document := []byte(`<w:document xmlns:w="` + docxWNS + `"><w:body><w:p><w:pPr><w:pStyle w:val="pDefault"/></w:pPr><w:r><w:rPr><w:rStyle w:val="rDefault"/></w:rPr><w:t>styled</w:t></w:r></w:p></w:body></w:document>`)
+	result, err := ParseDOCX(context.Background(), docxRewrite(t, plain, map[string][]byte{
+		"[Content_Types].xml":          contentTypes,
+		"word/document.xml":            document,
+		"word/_rels/document.xml.rels": relationships,
+		"word/styles.xml":              styles,
+	}), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.IR.NormalizedText != "styled" {
+		t.Fatalf("default styles changed text visibility: %q", result.IR.NormalizedText)
+	}
+}
+
+func TestDOCXFieldControlsExposeOnlyCachedResult(t *testing.T) {
+	plain := docxFixture(t, "plain.docx")
+	document := func(content string) []byte {
+		return []byte(`<w:document xmlns:w="` + docxWNS + `"><w:body><w:p>` + content + `</w:p></w:body></w:document>`)
+	}
+	valid := `<w:r><w:fldChar w:fldCharType="begin"/><w:instrText>secret</w:instrText><w:fldChar w:fldCharType="separate"/><w:t>cached</w:t><w:fldChar w:fldCharType="end"/></w:r>`
+	result, err := ParseDOCX(context.Background(), docxRewrite(t, plain, map[string][]byte{"word/document.xml": document(valid)}), nil)
+	if err != nil || result.IR.NormalizedText != "cached" {
+		t.Fatalf("field did not retain only cached result: text=%q err=%v", result.IR.NormalizedText, err)
+	}
+	for _, item := range []struct{ name, body, want string }{
+		{"separator without begin", `<w:r><w:fldChar w:fldCharType="separate"/></w:r>`, "invalid field separator"},
+		{"end without begin", `<w:r><w:fldChar w:fldCharType="end"/></w:r>`, "invalid field terminator"},
+		{"unsupported field kind", `<w:r><w:fldChar w:fldCharType="unknown"/></w:r>`, "unsupported field character"},
+		{"excessive nesting", `<w:r>` + strings.Repeat(`<w:fldChar w:fldCharType="begin"/>`, 33) + `</w:r>`, "field nesting limit"},
+	} {
+		t.Run(item.name, func(t *testing.T) {
+			got, err := ParseDOCX(context.Background(), docxRewrite(t, plain, map[string][]byte{"word/document.xml": document(item.body)}), nil)
+			if err == nil || !strings.Contains(err.Error(), item.want) || got.IR.NormalizedText != "" {
+				t.Fatalf("want fail-closed %q, got text=%q err=%v", item.want, got.IR.NormalizedText, err)
+			}
+		})
+	}
+}
+
+func TestDOCXBlockWrappersAndIgnoredBlocksPreserveVisibleOrder(t *testing.T) {
+	plain := docxFixture(t, "plain.docx")
+	paragraph := func(value string) string { return `<w:p><w:r><w:t>` + value + `</w:t></w:r></w:p>` }
+	content := `<w:del>` + paragraph("deleted") + `</w:del><w:moveFrom>` + paragraph("moved-from") + `</w:moveFrom>` +
+		`<w:ins>` + paragraph("inserted") + `</w:ins><w:moveTo>` + paragraph("moved-to") + `</w:moveTo>` +
+		`<w:customXml>` + paragraph("custom") + `</w:customXml><w:sdt><w:sdtContent>` + paragraph("controlled") + `</w:sdtContent></w:sdt><w:sdt/><w:sectPr/>`
+	document := []byte(`<w:document xmlns:w="` + docxWNS + `"><w:body>` + content + `</w:body></w:document>`)
+	result, err := ParseDOCX(context.Background(), docxRewrite(t, plain, map[string][]byte{"word/document.xml": document}), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"inserted", "moved-to", "custom", "controlled"} {
+		if !strings.Contains(result.IR.NormalizedText, want) {
+			t.Errorf("missing visible wrapper content %q in %q", want, result.IR.NormalizedText)
+		}
+	}
+	for _, absent := range []string{"deleted", "moved-from"} {
+		if strings.Contains(result.IR.NormalizedText, absent) {
+			t.Errorf("included deleted block %q in %q", absent, result.IR.NormalizedText)
+		}
+	}
+	if strings.Index(result.IR.NormalizedText, "inserted") > strings.Index(result.IR.NormalizedText, "moved-to") || strings.Index(result.IR.NormalizedText, "moved-to") > strings.Index(result.IR.NormalizedText, "custom") {
+		t.Fatalf("block order changed: %q", result.IR.NormalizedText)
+	}
+	bad := []byte(`<w:document xmlns:w="` + docxWNS + `"><w:body><w:unknown/></w:body></w:document>`)
+	if _, err := ParseDOCX(context.Background(), docxRewrite(t, plain, map[string][]byte{"word/document.xml": bad}), nil); err == nil || !strings.Contains(err.Error(), "unsupported block unknown") {
+		t.Fatalf("unsupported block accepted: %v", err)
+	}
+}
+
+func TestDOCXInlineHyperlinksAndContentControls(t *testing.T) {
+	plain := docxFixture(t, "plain.docx")
+	document := []byte(`<w:document xmlns:w="` + docxWNS + `" xmlns:r="` + docxRNS + `"><w:body><w:p><w:hyperlink r:id="web"><w:r><w:t>外链文本</w:t></w:r></w:hyperlink><w:r><w:sdt><w:sdtContent><w:t>控件文本</w:t></w:sdtContent></w:sdt></w:r></w:p></w:body></w:document>`)
+	relationships := []byte(`<Relationships xmlns="` + docxPackageRNS + `"><Relationship Id="web" Type="` + docxRNS + `/hyperlink" Target="https://example.invalid/" TargetMode="External"/></Relationships>`)
+	result, err := ParseDOCX(context.Background(), docxRewrite(t, plain, map[string][]byte{
+		"word/document.xml":            document,
+		"word/_rels/document.xml.rels": relationships,
+	}), nil)
+	if err != nil || result.IR.NormalizedText != "外链文本控件文本" {
+		t.Fatalf("external link text/control content changed: text=%q err=%v", result.IR.NormalizedText, err)
+	}
+	badLink := strings.Replace(string(document), `r:id="web"`, `r:id="missing"`, 1)
+	_, err = ParseDOCX(context.Background(), docxRewrite(t, plain, map[string][]byte{"word/document.xml": []byte(badLink)}), nil)
+	if err == nil || !strings.Contains(err.Error(), "invalid hyperlink relationship") {
+		t.Fatalf("missing hyperlink relationship was accepted: %v", err)
+	}
+}
+
+func TestDOCXRejectsCroppedImages(t *testing.T) {
+	original := docxFixture(t, "embedded-image.docx")
+	document := string(docxPart(t, original, "word/document.xml"))
+	document = strings.Replace(document, `<a:blip r:embed="image1"/>`, `<a:srcRect l="1"/><a:blip r:embed="image1"/>`, 1)
+	result, err := ParseDOCX(context.Background(), docxRewrite(t, original, map[string][]byte{"word/document.xml": []byte(document)}), func(context.Context, string, []byte) (string, error) { return "should not run", nil })
+	if err == nil || !strings.Contains(err.Error(), "cropped images require rendered OCR") || result.IR.NormalizedText != "" {
+		t.Fatalf("cropped image was accepted: text=%q err=%v", result.IR.NormalizedText, err)
+	}
+}
+
+func TestDOCXRejectsInvalidMismatchedAndOversizedImages(t *testing.T) {
+	original := docxFixture(t, "embedded-image.docx")
+	contentTypes := strings.Replace(string(docxPart(t, original, "[Content_Types].xml")), `ContentType="image/png"`, `ContentType="image/jpeg"`, 1)
+	for _, item := range []struct {
+		name         string
+		replacements map[string][]byte
+		want         string
+	}{
+		{"invalid bytes", map[string][]byte{"word/media/bandwidth.png": []byte("invalid image")}, "valid PNG or JPEG"},
+		{"mismatched media type", map[string][]byte{"[Content_Types].xml": []byte(contentTypes)}, "content type does not match bytes"},
+		{"over 16 megapixels", map[string][]byte{"word/media/bandwidth.png": docxPNGHeader(4001, 4000)}, "16 megapixel limit"},
+	} {
+		t.Run(item.name, func(t *testing.T) {
+			result, err := ParseDOCX(context.Background(), docxRewrite(t, original, item.replacements), func(context.Context, string, []byte) (string, error) { return "should not run", nil })
+			if err == nil || !strings.Contains(err.Error(), item.want) || result.IR.NormalizedText != "" {
+				t.Fatalf("want fail-closed %q, got text=%q err=%v", item.want, result.IR.NormalizedText, err)
+			}
+		})
+	}
+}
+
+func docxPNGHeader(width, height uint32) []byte {
+	chunk := make([]byte, 21)
+	binary.BigEndian.PutUint32(chunk[:4], 13)
+	copy(chunk[4:8], "IHDR")
+	binary.BigEndian.PutUint32(chunk[8:12], width)
+	binary.BigEndian.PutUint32(chunk[12:16], height)
+	chunk[16] = 8 // bit depth; the remaining IHDR fields are zero-valued.
+	data := append([]byte{137, 80, 78, 71, 13, 10, 26, 10}, chunk...)
+	crc := crc32.ChecksumIEEE(data[12:29])
+	var checksum [4]byte
+	binary.BigEndian.PutUint32(checksum[:], crc)
+	return append(data, checksum[:]...)
+}
+
 func TestDOCXImageFailuresAndCancellationAreNotSuccess(t *testing.T) {
 	image := docxFixture(t, "embedded-image.docx")
 	failure := errors.New("model unavailable")
@@ -285,5 +588,180 @@ func TestDOCXPlainTextKeepsExistingNormalization(t *testing.T) {
 	legacy := docir.Build("第1条 合同范围😀\n\n采购带宽100Mbps，质保期36个月。")
 	if result.IR.NormalizedText != legacy.NormalizedText || result.IR.NormalizedDigest != legacy.NormalizedDigest || fmt.Sprint(result.IR.Clauses) != fmt.Sprint(legacy.Clauses) {
 		t.Fatal("plain DOCX changed existing text/normalization/clause behavior")
+	}
+}
+
+func TestDOCXPublicStructureAndVisibleErrorBoundaries(t *testing.T) {
+	plain := docxFixture(t, "plain.docx")
+	cases := []struct {
+		name, xml, want string
+	}{
+		{"wrong root with body", `<w:notDocument xmlns:w="` + docxWNS + `"><w:body><w:p/></w:body></w:notDocument>`, "invalid main document/body"},
+		{"document without body", `<w:document xmlns:w="` + docxWNS + `"><w:p/></w:document>`, "invalid main document/body"},
+		{"visible unsupported footnote", `<w:document xmlns:w="` + docxWNS + `"><w:body><w:p><w:r><w:t>visible</w:t><w:footnoteReference w:id="1"/></w:r></w:p></w:body></w:document>`, "visible footnote/endnote references are unsupported"},
+		{"invalid table fragment", `<w:document xmlns:w="` + docxWNS + `"><w:body><w:tbl><w:tr><w:tc><w:tcPr><w:vMerge/></w:tcPr><w:p/></w:tc></w:tr></w:tbl></w:body></w:document>`, "vertical merge has no matching origin"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			result, err := ParseDOCX(context.Background(), docxRewrite(t, plain, map[string][]byte{"word/document.xml": []byte(tc.xml)}), nil)
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("ParseDOCX error = %v, want %q", err, tc.want)
+			}
+			if result.IR.NormalizedText != "" {
+				t.Fatalf("failed parse returned partial text %q", result.IR.NormalizedText)
+			}
+		})
+	}
+}
+
+func TestDOCXPublicSingleCharacterStoryAndTableBoundaries(t *testing.T) {
+	plain := docxFixture(t, "plain.docx")
+	document := []byte(`<w:document xmlns:w="` + docxWNS + `"><w:body><w:p><w:r><w:t>A</w:t></w:r></w:p><w:p><w:r><w:t>B</w:t></w:r></w:p></w:body></w:document>`)
+	result, err := ParseDOCX(context.Background(), docxRewrite(t, plain, map[string][]byte{"word/document.xml": document}), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.IR.NormalizedText != "A\n\nB" || len(result.IR.Blocks) != 2 {
+		t.Fatalf("one-rune paragraphs lost their separator: text=%q blocks=%+v", result.IR.NormalizedText, result.IR.Blocks)
+	}
+
+	table := []byte(`<w:document xmlns:w="` + docxWNS + `"><w:body><w:tbl><w:tr><w:tc><w:p><w:r><w:t>A</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>B</w:t></w:r></w:p></w:tc></w:tr></w:tbl></w:body></w:document>`)
+	result, err = ParseDOCX(context.Background(), docxRewrite(t, plain, map[string][]byte{"word/document.xml": table}), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.IR.NormalizedText != "A\tB" || len(result.IR.Cells) != 2 || len(result.IR.Blocks) != 1 || result.IR.Blocks[0].Kind != "table" {
+		t.Fatalf("single-character table cells lost their delimiter or table kind: %+v", result.IR)
+	}
+
+	oneCell := []byte(`<w:document xmlns:w="` + docxWNS + `"><w:body><w:tbl><w:tr><w:tc><w:p><w:r><w:t>only</w:t></w:r></w:p></w:tc></w:tr></w:tbl></w:body></w:document>`)
+	result, err = ParseDOCX(context.Background(), docxRewrite(t, plain, map[string][]byte{"word/document.xml": oneCell}), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.IR.Blocks) != 1 || result.IR.Blocks[0].Kind != "table" || len(result.IR.Cells) != 1 {
+		t.Fatalf("one-cell table was not marked as a table: %+v", result.IR)
+	}
+}
+
+func TestDOCXPublicStoryReferencesAreValidatedAndDeduplicated(t *testing.T) {
+	complex := docxFixture(t, "complex-tables.docx")
+	document := string(docxPart(t, complex, "word/document.xml"))
+	duplicate := strings.Replace(document, "</w:body>", `<w:sectPr><w:headerReference w:type="default" r:id="header"/><w:headerReference w:type="first" r:id="header"/></w:sectPr></w:body>`, 1)
+	result, err := ParseDOCX(context.Background(), docxRewrite(t, complex, map[string][]byte{"word/document.xml": []byte(duplicate)}), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Count(result.IR.NormalizedText, "合成页眉：内部演示"); got != 1 {
+		t.Fatalf("referenced header appeared %d times, want once", got)
+	}
+
+	wrongKind := strings.Replace(document, "</w:body>", `<w:sectPr><w:headerReference w:type="default" r:id="footer"/></w:sectPr></w:body>`, 1)
+	result, err = ParseDOCX(context.Background(), docxRewrite(t, complex, map[string][]byte{"word/document.xml": []byte(wrongKind)}), nil)
+	if err == nil || !strings.Contains(err.Error(), "missing or invalid header relationship") || result.IR.NormalizedText != "" {
+		t.Fatalf("wrong-kind header relationship did not fail closed: text=%q err=%v", result.IR.NormalizedText, err)
+	}
+}
+
+func TestDOCXPublicNonContentIsNamespaceScoped(t *testing.T) {
+	plain := docxFixture(t, "plain.docx")
+	transitional := []byte(`<w:document xmlns:w="` + docxWNS + `" xmlns:s="` + docxWStrictNS + `"><w:body><w:p><w:r><w:t>visible</w:t><w:bookmarkStart w:id="1" w:name="x"/><w:bookmarkEnd w:id="1"/><s:commentReference s:id="2"/></w:r></w:p></w:body></w:document>`)
+	result, err := ParseDOCX(context.Background(), docxRewrite(t, plain, map[string][]byte{"word/document.xml": transitional}), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.IR.NormalizedText != "visible" {
+		t.Fatalf("Word non-content nodes changed visible text: %q", result.IR.NormalizedText)
+	}
+
+	foreign := []byte(`<w:document xmlns:w="` + docxWNS + `" xmlns:x="urn:foreign"><w:body><w:p><w:r><w:t>visible</w:t><x:bookmarkStart/></w:r></w:p></w:body></w:document>`)
+	result, err = ParseDOCX(context.Background(), docxRewrite(t, plain, map[string][]byte{"word/document.xml": foreign}), nil)
+	if err == nil || !strings.Contains(err.Error(), "unsupported visible inline content bookmarkStart") || result.IR.NormalizedText != "" {
+		t.Fatalf("foreign-namespace bookmark was ignored: text=%q err=%v", result.IR.NormalizedText, err)
+	}
+}
+
+func TestDOCXPublicCombinedStoriesEnforceExactTextLimit(t *testing.T) {
+	complex := docxFixture(t, "complex-tables.docx")
+	mainText := strings.Repeat("m", docxMaxText/2)
+	makeArchive := func(headerLength int) []byte {
+		document := []byte(`<w:document xmlns:w="` + docxWNS + `" xmlns:r="` + docxRNS + `"><w:body><w:p><w:r><w:t>` + mainText + `</w:t></w:r></w:p><w:sectPr><w:headerReference w:type="default" r:id="header"/></w:sectPr></w:body></w:document>`)
+		header := []byte(`<w:hdr xmlns:w="` + docxWNS + `"><w:p><w:r><w:t>` + strings.Repeat("h", headerLength) + `</w:t></w:r></w:p></w:hdr>`)
+		return docxRewrite(t, complex, map[string][]byte{"word/document.xml": document, "word/header1.xml": header})
+	}
+
+	exactHeaderLength := docxMaxText - len(mainText) - 2
+	result, err := ParseDOCX(context.Background(), makeArchive(exactHeaderLength), nil)
+	if err != nil {
+		t.Fatalf("exact combined text limit failed: %v", err)
+	}
+	if len(result.IR.NormalizedText) != docxMaxText {
+		t.Fatalf("exact combined text length = %d, want %d", len(result.IR.NormalizedText), docxMaxText)
+	}
+
+	_, err = ParseDOCX(context.Background(), makeArchive(exactHeaderLength+1), nil)
+	if err == nil || !strings.Contains(err.Error(), "extracted text exceeds 8 MiB limit") {
+		t.Fatalf("combined text above limit was accepted: %v", err)
+	}
+}
+
+func TestDOCXPublicTableJoinEnforcesTextLimitBeforeLaterTables(t *testing.T) {
+	original := docxFixture(t, "embedded-image.docx")
+	document := string(docxPart(t, original, "word/document.xml"))
+	start := strings.Index(document, "<w:drawing>")
+	if start < 0 {
+		t.Fatal("embedded-image fixture has no drawing")
+	}
+	end := strings.Index(document[start:], "</w:drawing>")
+	if end < 0 {
+		t.Fatal("embedded-image fixture has an unterminated drawing")
+	}
+	drawing := document[start : start+end+len("</w:drawing>")]
+	draw := func(id string) string { return strings.Replace(drawing, `r:embed="image1"`, `r:embed="`+id+`"`, 1) }
+	prefix := document[:strings.Index(document, "<w:body>")]
+	imageCell := func(id string) string {
+		return `<w:tc><w:p><w:r>` + draw(id) + `</w:r></w:p></w:tc>`
+	}
+	makeDocument := func(laterTable bool) []byte {
+		body := `<w:tbl><w:tblGrid><w:gridCol/><w:gridCol/></w:tblGrid><w:tr>` + imageCell("image1") + imageCell("image2") + `</w:tr></w:tbl>`
+		if laterTable {
+			body += `<w:tbl><w:tblGrid><w:gridCol/></w:tblGrid><w:tr>` + imageCell("image3") + `</w:tr></w:tbl>`
+		}
+		return []byte(prefix + `<w:body>` + body + `</w:body></w:document>`)
+	}
+	relationships := string(docxPart(t, original, "word/_rels/document.xml.rels"))
+	relationships = strings.Replace(relationships, `</Relationships>`, `<Relationship Id="image2" Type="`+docxRNS+`/image" Target="media/image2.png"/><Relationship Id="image3" Type="`+docxRNS+`/image" Target="media/image3.png"/></Relationships>`, 1)
+	image := docxPart(t, original, "word/media/bandwidth.png")
+	archive := func(laterTable bool) []byte {
+		return docxRewrite(t, original, map[string][]byte{
+			"word/document.xml":            makeDocument(laterTable),
+			"word/_rels/document.xml.rels": []byte(relationships),
+			"word/media/image2.png":        image,
+			"word/media/image3.png":        image,
+		})
+	}
+	parse := func(body []byte, lengths []int) (Result, error, int) {
+		calls := 0
+		result, err := ParseDOCX(context.Background(), body, func(context.Context, string, []byte) (string, error) {
+			if calls >= len(lengths) {
+				calls++
+				return "unexpected OCR call", nil
+			}
+			value := strings.Repeat("x", lengths[calls])
+			calls++
+			return value, nil
+		})
+		return result, err, calls
+	}
+
+	half := docxMaxText / 2
+	result, err, calls := parse(archive(false), []int{half, half - 1})
+	if err != nil || calls != 2 || len(result.IR.NormalizedText) != docxMaxText {
+		t.Fatalf("exact table join limit: text=%d OCR calls=%d err=%v", len(result.IR.NormalizedText), calls, err)
+	}
+
+	_, err, calls = parse(archive(true), []int{half, half})
+	if err == nil || !strings.Contains(err.Error(), "extracted text exceeds 8 MiB limit") || calls != 2 {
+		t.Fatalf("oversized table join must stop before later table: OCR calls=%d err=%v", calls, err)
 	}
 }

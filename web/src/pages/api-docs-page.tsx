@@ -1,4 +1,5 @@
-import { Menu, Tabs, Tag } from "antd";
+import { SearchOutlined } from "@ant-design/icons";
+import { Menu, Tabs } from "antd";
 import { Collapse } from "antd";
 import {
   Input,
@@ -62,15 +63,12 @@ const SECTIONS: { key: DocumentationSection; label: string }[] = [
   { key: "community", label: "开发者社区" },
 ];
 
-function methodTone(method: string): string {
-  const tones: Record<string, string> = {
-    GET: "processing",
-    POST: "processing",
-    PUT: "warning",
-    PATCH: "warning",
-    DELETE: "error",
-  };
-  return tones[method] ?? "default";
+function MethodStamp({ method }: { method: string }) {
+  return (
+    <span className={`api-method api-method-${method.toLocaleLowerCase("en-US")}`}>
+      {method}
+    </span>
+  );
 }
 
 function pretty(value: unknown): string {
@@ -256,7 +254,7 @@ function OperationReference({
   return (
     <article className="api-operation-reference">
       <div className="api-operation-heading">
-        <Tag color={methodTone(operation.method)}>{operation.method}</Tag>
+        <MethodStamp method={operation.method} />
         <code>{operation.path}</code>
       </div>
       <h1>{operation.summary || operation.operationId}</h1>
@@ -266,7 +264,9 @@ function OperationReference({
       ) : null}
       <div className="api-operation-tags">
         {operation.tags.map((tag) => (
-          <Tag key={tag}>{tag}</Tag>
+          <span className="api-operation-tag" key={tag}>
+            {tag}
+          </span>
         ))}
       </div>
       <section className="api-contract-section">
@@ -291,8 +291,10 @@ function OperationReference({
             请求体{operation.requestBody.required ? "，必填" : "，可选"}
           </h2>
           <p>
-            {operation.requestBody.description || "OpenAPI 未提供请求体说明。"}{" "}
-          ，{operation.requestBody.mediaType ?? "媒体类型未声明"}
+            {operation.requestBody.description || "OpenAPI 未提供请求体说明。"}
+            <span className="api-contract-media">
+              {operation.requestBody.mediaType ?? "媒体类型未声明"}
+            </span>
           </p>
           {bodyFields.length > 0 ? (
             <div className="api-parameter-table-wrap">
@@ -335,7 +337,7 @@ function OperationReference({
           <ul className="api-response-list">
             {responses.map((response) => (
               <li key={response.status}>
-                <code>{response.status}</code>
+                <code className="api-response-status">{response.status}</code>
                 <span>{response.description}</span>
               </li>
             ))}
@@ -387,14 +389,18 @@ function ApiExplorer({
   const [validation, setValidation] = useState("");
   const [sending, setSending] = useState(false);
   const controller = useRef<AbortController | null>(null);
+  const referenceRef = useRef<HTMLElement | null>(null);
+  const requestPanelRef = useRef<HTMLElement | null>(null);
   useEffect(() => () => controller.current?.abort(), []);
 
   const groups = useMemo(
     () => operationGroups(contract, filter),
     [contract, filter],
   );
+  const firstListedOperation = groups[0]?.operations[0] ?? null;
   const operation =
     contract.operations.find((entry) => entry.key === operationKey) ??
+    firstListedOperation ??
     contract.operations[0] ??
     null;
   const requestBody = operation?.requestBody ?? null;
@@ -444,6 +450,8 @@ function ApiExplorer({
     setBodyFiles({});
     setResponse(null);
     setValidation("");
+    referenceRef.current?.scrollTo?.({ top: 0 });
+    requestPanelRef.current?.scrollTo?.({ top: 0 });
   }
 
   function updateParameter(key: string, value: string) {
@@ -532,9 +540,10 @@ function ApiExplorer({
           <span>{contract.operations.length} 个操作</span>
         </div>
         <label className="api-filter-label">
-          筛选接口
+          <span>筛选接口</span>
           <Input
             type="search"
+            prefix={<SearchOutlined aria-hidden="true" />}
             value={filter}
             onChange={(event) => setFilter(event.target.value)}
             placeholder="方法、路径、名称"
@@ -558,29 +567,41 @@ function ApiExplorer({
               key: entry.key,
               label: (
                 <span className="api-operation-menu-label" title={entry.path}>
-                  <Tag color={methodTone(entry.method)}>{entry.method}</Tag>
+                  <MethodStamp method={entry.method} />
                   <span>{entry.summary || entry.operationId}</span>
                 </span>
               ),
             })),
           }))}
         />
+        {groups.length === 0 ? (
+          <p className="api-filter-empty">没有匹配的接口</p>
+        ) : null}
       </aside>
       {operation ? (
         <>
-          <main className="api-reference-content" aria-label="接口详细文档">
+          <main
+            ref={referenceRef}
+            className="api-reference-content"
+            aria-label="接口详细文档"
+          >
             <OperationReference
+              key={operation.key}
               operation={operation}
               contract={contract}
               bodyFields={bodyFieldsResult.fields}
             />
           </main>
-          <aside className="api-request-panel" aria-label="真实请求调试区">
+          <aside
+            ref={requestPanelRef}
+            className="api-request-panel"
+            aria-label="真实请求调试区"
+          >
             <header className="api-request-head">
               <div>
                 <h2>试运行</h2>
               </div>
-              <Tag color={methodTone(operation.method)}>{operation.method}</Tag>
+              <MethodStamp method={operation.method} />
             </header>
             <p className="api-request-route">{operation.path}</p>
             <section className="api-code-section">
@@ -951,24 +972,25 @@ function SectionContent({
         <p>请以服务端 OpenAPI 契约和授权后的真实响应为准。</p>
       </section>
     );
+  const tagGroups = operationGroups(contract, "");
   return (
     <section className="api-section-page api-docs-home">
       <h1>{contract.title}</h1>
       <p>{contract.description || "服务端 OpenAPI 契约未提供总览说明。"}</p>
-      <div className="api-docs-home-grid">
-        <article>
-          <span>服务端版本</span>
-          <strong>{contract.version}</strong>
-        </article>
-        <article>
-          <span>实际接口</span>
-          <strong>{contract.operations.length}</strong>
-        </article>
-        <article>
-          <span>资源标签</span>
-          <strong>{contract.tags.length}</strong>
-        </article>
-      </div>
+      <dl className="api-contract-facts">
+        <div>
+          <dt>服务端版本</dt>
+          <dd>{contract.version}</dd>
+        </div>
+        <div>
+          <dt>实际接口</dt>
+          <dd>{contract.operations.length}</dd>
+        </div>
+        <div>
+          <dt>接口分组</dt>
+          <dd>{tagGroups.length}</dd>
+        </div>
+      </dl>
       <h2>快速开始</h2>
       <p>
         所有试运行请求从当前页面同源发送，自动使用浏览器当前身份。选择 API
@@ -982,6 +1004,19 @@ function SectionContent({
       >
         下载服务端 OpenAPI JSON
       </Button>
+      <h2>接口分组</h2>
+      <ul className="api-docs-tag-index">
+        {tagGroups.map(({ tag, operations }) => (
+          <li key={tag}>
+            <span className="api-docs-tag-name">{tag}</span>
+            <span className="api-docs-tag-description">
+              {contract.tags.find((entry) => entry.name === tag)?.description ||
+                "—"}
+            </span>
+            <span className="api-docs-tag-count">{operations.length}</span>
+          </li>
+        ))}
+      </ul>
       {sampleCode ? (
         <pre className="api-section-code">
           <code>{sampleCode}</code>
@@ -1023,14 +1058,19 @@ export default function ApiDocsPage() {
           <strong>合同智能审计工作台</strong>
           <span className="api-docs-platform-badge">API 开放平台</span>
         </a>
-        <Tabs
-          activeKey={section}
-          onChange={(key) => {
-            const selectedSection = SECTIONS.find((item) => item.key === key);
-            if (selectedSection) setSection(selectedSection.key);
-          }}
-          items={SECTIONS.map((item) => ({ key: item.key, label: item.label }))}
-        />
+        <nav className="api-docs-nav" aria-label="文档导航">
+          <Tabs
+            activeKey={section}
+            onChange={(key) => {
+              const selectedSection = SECTIONS.find((item) => item.key === key);
+              if (selectedSection) setSection(selectedSection.key);
+            }}
+            items={SECTIONS.map((item) => ({
+              key: item.key,
+              label: item.label,
+            }))}
+          />
+        </nav>
         <div className="api-docs-session">
           {session.data
             ? `${session.data.display_name}，${session.data.role}`

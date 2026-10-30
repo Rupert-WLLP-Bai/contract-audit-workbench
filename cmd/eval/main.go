@@ -32,15 +32,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, "eval: unexpected positional argument")
 		return 2
 	}
-	data, err := compare.DefaultDataset()
-	if *datasetPath != "" {
-		var file *os.File
-		file, err = os.Open(*datasetPath)
-		if err == nil {
-			data, err = compare.Load(file)
-			file.Close()
-		}
-	}
+	data, err := loadEvalDataset(*datasetPath)
 	if err != nil {
 		fmt.Fprintln(stderr, "eval:", err)
 		return 2
@@ -56,14 +48,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 	encoded = append(encoded, '\n')
-	if *outputPath == "" {
-		_, err = stdout.Write(encoded)
-	} else {
-		if err = os.MkdirAll(filepath.Dir(*outputPath), 0o755); err == nil {
-			err = os.WriteFile(*outputPath, encoded, 0o644)
-		}
-	}
-	if err != nil {
+	if err := writeEvalOutput(*outputPath, stdout, encoded); err != nil {
 		fmt.Fprintln(stderr, "eval:", err)
 		return 2
 	}
@@ -72,4 +57,28 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 	return 0
+}
+
+func loadEvalDataset(path string) (compare.Dataset, error) {
+	data, err := compare.DefaultDataset()
+	if path != "" {
+		var file *os.File
+		file, err = os.Open(path)
+		if err == nil {
+			data, err = compare.Load(file)
+			file.Close()
+		}
+	}
+	return data, err
+}
+
+func writeEvalOutput(path string, stdout io.Writer, encoded []byte) error {
+	if path == "" {
+		_, err := stdout.Write(encoded)
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	return os.WriteFile(path, encoded, 0o644)
 }

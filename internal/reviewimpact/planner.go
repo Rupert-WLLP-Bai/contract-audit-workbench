@@ -12,6 +12,7 @@ import (
 	"context"
 	"fmt"
 	"reflect"
+	"slices"
 	"sort"
 
 	"contractaudit/internal/auditext"
@@ -70,28 +71,9 @@ func (p *Planner) Plan(ctx context.Context, req auditext.ImpactRequest) (auditex
 	if err := ctx.Err(); err != nil {
 		return auditext.ImpactPlan{}, err
 	}
-	if !req.Mode.Valid() {
-		return auditext.ImpactPlan{}, fmt.Errorf("%w: impact mode", auditext.ErrInvalidRequest)
-	}
-	if err := auditext.ValidateID(req.BaseEvaluationID); err != nil {
-		return auditext.ImpactPlan{}, fmt.Errorf("%w: base evaluation id", auditext.ErrInvalidRequest)
-	}
-	if err := auditext.ValidateID(req.TargetEvaluationID); err != nil {
-		return auditext.ImpactPlan{}, fmt.Errorf("%w: target evaluation id", auditext.ErrInvalidRequest)
-	}
-	if err := req.Base.Validate(); err != nil {
+	if err := validateRequest(req); err != nil {
 		return auditext.ImpactPlan{}, err
 	}
-	if err := req.Target.Validate(); err != nil {
-		return auditext.ImpactPlan{}, err
-	}
-	if req.Base.Scope.TenantID != req.Target.Scope.TenantID || req.Base.Scope.CaseID != req.Target.Scope.CaseID {
-		return auditext.ImpactPlan{}, auditext.ErrUnauthorized
-	}
-	if len(req.TargetChecks) == 0 {
-		return auditext.ImpactPlan{}, fmt.Errorf("%w: target checks", auditext.ErrInvalidRequest)
-	}
-
 	baseByID, err := checkIndex(req.BaseChecks)
 	if err != nil {
 		return auditext.ImpactPlan{}, err
@@ -99,219 +81,61 @@ func (p *Planner) Plan(ctx context.Context, req auditext.ImpactRequest) (auditex
 	if _, err := checkIndex(req.TargetChecks); err != nil {
 		return auditext.ImpactPlan{}, err
 	}
-
 	if req.Base.Scope.GrantVersion != req.Target.Scope.GrantVersion {
 		return denyPlan(req)
 	}
 	return buildPlan(req, baseByID)
 }
 
+func validateRequest(req auditext.ImpactRequest) error {
+	if !req.Mode.Valid() {
+		return fmt.Errorf("%w: impact mode", auditext.ErrInvalidRequest)
+	}
+	if err := auditext.ValidateID(req.BaseEvaluationID); err != nil {
+		return fmt.Errorf("%w: base evaluation id", auditext.ErrInvalidRequest)
+	}
+	if err := auditext.ValidateID(req.TargetEvaluationID); err != nil {
+		return fmt.Errorf("%w: target evaluation id", auditext.ErrInvalidRequest)
+	}
+	if err := req.Base.Validate(); err != nil {
+		return err
+	}
+	if err := req.Target.Validate(); err != nil {
+		return err
+	}
+	if req.Base.Scope.TenantID != req.Target.Scope.TenantID || req.Base.Scope.CaseID != req.Target.Scope.CaseID {
+		return auditext.ErrUnauthorized
+	}
+	if len(req.TargetChecks) == 0 {
+		return fmt.Errorf("%w: target checks", auditext.ErrInvalidRequest)
+	}
+	return nil
+}
+
 func buildPlan(req auditext.ImpactRequest, baseByID map[string]auditext.CheckResult) (auditext.ImpactPlan, error) {
-	base := req.Base
-	target := req.Target
-	changed := make(map[string]struct{})
-	addChange := func(name string) { changed[name] = struct{}{} }
-
-	forcedFull := false
-	if base.Pack.ID != target.Pack.ID {
-		addChange(changedCapabilityPackID)
-		forcedFull = true
-	}
-	if base.Pack.Version != target.Pack.Version {
-		addChange(changedCapabilityPackVersion)
-		forcedFull = true
-	}
-	if base.ContractVersion != target.ContractVersion {
-		addChange(changedContractVersion)
-		forcedFull = true
-	}
-	if base.RulePackVersion != target.RulePackVersion {
-		addChange(changedRulePackVersion)
-		forcedFull = true
-	}
-	if base.BindingStatus != target.BindingStatus {
-		addChange(changedObjectBinding)
-		forcedFull = true
-	}
-	if base.BindingVersion != target.BindingVersion {
-		addChange(changedObjectBinding)
-		forcedFull = true
-	}
-	if base.ExternalObjectID != target.ExternalObjectID {
-		addChange(changedExternalObject)
-		forcedFull = true
-	}
-	if base.SourceSystem != target.SourceSystem {
-		addChange(changedSourceSystem)
-		forcedFull = true
-	}
-	if base.ModelConfigurationID != target.ModelConfigurationID {
-		addChange(changedModelConfiguration)
-		forcedFull = true
-	}
-	if base.PlannerConfigurationID != target.PlannerConfigurationID {
-		addChange(changedPlannerConfiguration)
-		forcedFull = true
-	}
-	if base.ParserConfigurationID != target.ParserConfigurationID {
-		addChange(changedParserConfiguration)
-		forcedFull = true
-	}
-	if !base.BusinessAt.Equal(target.BusinessAt) {
-		addChange(changedBusinessAt)
-		forcedFull = true
-	}
-
-	snapshotSetChanged := base.SnapshotSetID != target.SnapshotSetID
-	if snapshotSetChanged {
-		addChange(changedExternalSnapshotSet)
-	}
-
-	factSetChanged, factChanged, factRefs := compareFacts(base, target)
-	for _, ref := range factRefs {
-		addChange(ref)
-	}
-
-	complete := checksHaveCompleteDependencies(req.BaseChecks) && checksHaveCompleteDependencies(req.TargetChecks)
-
-	unknownDependency := false
-	otherDependencyChanged := false
-	recordSetMembershipChanged := false
-	evidenceRebindRequired := false
-	for _, targetCheck := range req.TargetChecks {
-		baseCheck, ok := baseByID[targetCheck.CheckID]
-		if !ok {
-			continue
-		}
-		baseDeps := dependencyIndex(baseCheck.Dependencies.Items)
-		targetDeps := dependencyIndex(targetCheck.Dependencies.Items)
-		for key, item := range targetDeps {
-			before, exists := baseDeps[key]
-			if !exists {
-				unknownDependency = true
-				addDependencyChange(addChange, item)
-				continue
-			}
-			if before.Version == item.Version && before.Present == item.Present {
-				continue
-			}
-			switch item.Kind {
-			case auditext.DependencyField:
-				addDependencyChange(addChange, item)
-			case auditext.DependencyRecordSet:
-				if before.Present != item.Present {
-					// A record set that was empty (or non-empty) changing
-					// membership can invalidate negative and existential
-					// checks, so the whole evaluation is recomputed.
-					recordSetMembershipChanged = true
-					addDependencyChange(addChange, item)
-				}
-				if target.SnapshotSetID != "" && item.Version != target.SnapshotSetID {
-					// The check still declares the old snapshot set. Its
-					// evidence cannot be proven to belong to the target set.
-					evidenceRebindRequired = true
-				}
-			default:
-				// Field and record-set moves are the supported incremental
-				// scope. Everything else already forces a full plan through
-				// the frozen input identities above; if it still reaches this
-				// branch, treat it as unknown rather than reusing.
-				otherDependencyChanged = true
-			}
-		}
-		for key, before := range baseDeps {
-			if _, exists := targetDeps[key]; !exists {
-				unknownDependency = true
-				addDependencyChange(addChange, before)
-			}
-		}
-		if snapshotSetChanged && !externalEvidenceRebound(baseCheck, targetCheck) {
-			evidenceRebindRequired = true
-		}
-	}
-
-	fallback := auditext.FallbackNone
-	fallbackReason := ""
-	switch {
-	case !complete:
-		fallback = auditext.FallbackFull
-		fallbackReason = reasonDependencyIncomplete
-	case factSetChanged:
-		fallback = auditext.FallbackFull
-		fallbackReason = reasonUnknownDependency
-	case factChanged:
-		fallback = auditext.FallbackFull
-		fallbackReason = reasonContractFactChanged
-	case forcedFull:
-		fallback = auditext.FallbackFull
-		fallbackReason = reasonInputChanged
-	case recordSetMembershipChanged:
-		fallback = auditext.FallbackFull
-		fallbackReason = reasonRecordSetChanged
-	case evidenceRebindRequired:
-		fallback = auditext.FallbackFull
-		fallbackReason = reasonEvidenceRebindRequired
-	case unknownDependency || otherDependencyChanged:
-		fallback = auditext.FallbackFull
-		fallbackReason = reasonUnknownDependency
-	}
-
-	// A candidate may only be offered when the full target result is
-	// semantically identical to the base result. Anything else keeps the full
-	// path and disables reuse for this plan.
-	if fallback == auditext.FallbackNone {
-		for _, targetCheck := range req.TargetChecks {
-			baseCheck, ok := baseByID[targetCheck.CheckID]
-			if !ok {
-				continue
-			}
-			if dependentChanged(baseCheck, targetCheck, snapshotSetChanged) {
-				continue
-			}
-			if !sameCheckResult(baseCheck, targetCheck) {
-				fallback = auditext.FallbackFull
-				fallbackReason = reasonCandidateMismatch
-				break
-			}
-		}
+	analysis := planAnalysis{changed: make(map[string]struct{})}
+	analysis.inputs(req.Base, req.Target)
+	if !checksHaveCompleteDependencies(req.BaseChecks) || !checksHaveCompleteDependencies(req.TargetChecks) {
+		analysis.force(fallbackIncomplete)
 	}
 
 	checks := make([]auditext.ImpactCheck, 0, len(req.TargetChecks))
-	if fallback == auditext.FallbackFull {
-		for _, targetCheck := range req.TargetChecks {
-			checks = append(checks, auditext.ImpactCheck{
-				CheckID: targetCheck.CheckID,
-				Action:  auditext.ImpactRecompute,
-				Reasons: []string{fallbackReason},
-			})
-		}
-	} else {
-		for _, targetCheck := range req.TargetChecks {
-			baseCheck, ok := baseByID[targetCheck.CheckID]
-			if !ok {
-				checks = append(checks, auditext.ImpactCheck{
-					CheckID: targetCheck.CheckID,
-					Action:  auditext.ImpactRecompute,
-					Reasons: []string{reasonNewCheck},
-				})
-				continue
-			}
-			action := auditext.ImpactReuseCandidate
-			reason := reasonUnchangedDependencies
-			if dependentChanged(baseCheck, targetCheck, snapshotSetChanged) {
-				action = auditext.ImpactRecompute
-				reason = reasonDependentFieldChanged
-			}
-			checks = append(checks, auditext.ImpactCheck{
-				CheckID: targetCheck.CheckID,
-				Action:  action,
-				Reasons: []string{reason},
-			})
+	snapshotChanged := req.Base.SnapshotSetID != req.Target.SnapshotSetID
+	for _, target := range req.TargetChecks {
+		base, exists := baseByID[target.CheckID]
+		checks = append(checks, analysis.check(base, target, exists, req.Target.SnapshotSetID, snapshotChanged))
+	}
+	fallback := auditext.FallbackNone
+	reason := analysis.cause.reason()
+	if analysis.cause != fallbackNone {
+		fallback = auditext.FallbackFull
+		for i := range checks {
+			checks[i].Action = auditext.ImpactRecompute
+			checks[i].Reasons = []string{reason}
 		}
 	}
-
-	changedInputs := make([]string, 0, len(changed))
-	for name := range changed {
+	changedInputs := make([]string, 0, len(analysis.changed))
+	for name := range analysis.changed {
 		changedInputs = append(changedInputs, name)
 	}
 	sort.Strings(changedInputs)
@@ -323,7 +147,7 @@ func buildPlan(req auditext.ImpactRequest, baseByID map[string]auditext.CheckRes
 		Mode:                 req.Mode,
 		DependencyComplete:   fallback == auditext.FallbackNone,
 		Fallback:             fallback,
-		FallbackReason:       fallbackReason,
+		FallbackReason:       reason,
 		ChangedInputs:        changedInputs,
 		Checks:               checks,
 		BusinessResultSource: "full",
@@ -389,28 +213,13 @@ func externalSnapshotIDs(check auditext.CheckResult) map[string]struct{} {
 // timing are deliberately ignored; relation, reason, execution state, evidence
 // identity and limitations are not.
 func sameCheckResult(base, target auditext.CheckResult) bool {
-	if base.CheckID != target.CheckID ||
-		base.Relation != target.Relation ||
-		base.ReasonCode != target.ReasonCode ||
-		base.MachineStatus != target.MachineStatus ||
-		base.RequiresHumanReview != target.RequiresHumanReview ||
-		len(base.Limitations) != len(target.Limitations) {
-		return false
-	}
-	for index := range base.Limitations {
-		if base.Limitations[index] != target.Limitations[index] {
-			return false
-		}
-	}
-	if len(base.Evidence) != len(target.Evidence) {
-		return false
-	}
-	for index := range base.Evidence {
-		if !sameEvidence(base.Evidence[index], target.Evidence[index]) {
-			return false
-		}
-	}
-	return true
+	return base.CheckID == target.CheckID &&
+		base.Relation == target.Relation &&
+		base.ReasonCode == target.ReasonCode &&
+		base.MachineStatus == target.MachineStatus &&
+		base.RequiresHumanReview == target.RequiresHumanReview &&
+		slices.Equal(base.Limitations, target.Limitations) &&
+		slices.EqualFunc(base.Evidence, target.Evidence, sameEvidence)
 }
 
 func sameEvidence(base, target auditext.EvidenceRef) bool {
@@ -419,20 +228,28 @@ func sameEvidence(base, target auditext.EvidenceRef) bool {
 	}
 	switch base.Kind {
 	case auditext.EvidenceDocument:
-		return base.DocumentVersionID == target.DocumentVersionID &&
-			base.ParsedVersionID == target.ParsedVersionID &&
-			base.Start == target.Start &&
-			base.End == target.End &&
-			base.Quote == target.Quote
+		return sameDocumentEvidence(base, target)
 	case auditext.EvidenceExternalSnapshot:
-		return base.SnapshotID == target.SnapshotID &&
-			base.RecordID == target.RecordID &&
-			base.FieldPointer == target.FieldPointer &&
-			base.DisplayValue == target.DisplayValue &&
-			base.ObservedAt.Equal(target.ObservedAt)
+		return sameSnapshotEvidence(base, target)
 	default:
 		return false
 	}
+}
+
+func sameDocumentEvidence(base, target auditext.EvidenceRef) bool {
+	return base.DocumentVersionID == target.DocumentVersionID &&
+		base.ParsedVersionID == target.ParsedVersionID &&
+		base.Start == target.Start &&
+		base.End == target.End &&
+		base.Quote == target.Quote
+}
+
+func sameSnapshotEvidence(base, target auditext.EvidenceRef) bool {
+	return base.SnapshotID == target.SnapshotID &&
+		base.RecordID == target.RecordID &&
+		base.FieldPointer == target.FieldPointer &&
+		base.DisplayValue == target.DisplayValue &&
+		base.ObservedAt.Equal(target.ObservedAt)
 }
 
 func checksHaveCompleteDependencies(checks []auditext.CheckResult) bool {

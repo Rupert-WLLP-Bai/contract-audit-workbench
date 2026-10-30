@@ -436,11 +436,12 @@ func (s *Store) AddDocument(ctx context.Context, user accounts.User, caseID, rol
 	}
 	var initialParse *ParsedDocument
 	if DocumentParseKind(filename, media) != "ocr" {
-		selection, err := s.reserveParseSelection(ctx, document, s.models)
+		models := s.currentModels()
+		selection, err := s.reserveParseSelection(ctx, document, models)
 		if err != nil {
 			return "", err
 		}
-		interpreted := s.interpretUnpersistedWithModels(ctx, document, s.models)
+		interpreted := s.interpretUnpersistedWithModels(ctx, document, models)
 		if contextErr := ctx.Err(); contextErr != nil {
 			interpreted = Interpreted{Document: document, ParseError: contextErr.Error(), FromOCR: interpreted.FromOCR}
 		}
@@ -507,10 +508,10 @@ func (s *Store) Reparse(ctx context.Context, user accounts.User, caseID, docID s
 		if doc.ID != docID {
 			continue
 		}
-		parseCtx := model.WithDelegatedScope(ctx, model.DelegatedScope{
+		parseCtx := model.WithDelegatedScope(ctx, modelScope(model.DelegatedScope{
 			Kind: "document", TenantID: doc.TenantID, OrgID: doc.OrgID,
 			CaseID: doc.CaseID, ActorID: currentUser.ID, DocumentID: doc.ID,
-		})
+		}, s.currentModels()))
 		parsed, err := s.ensureParsed(parseCtx, currentUser, doc, true)
 		if err != nil {
 			return err
