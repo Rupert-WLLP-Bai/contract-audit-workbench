@@ -181,7 +181,12 @@ type Service struct {
 	circuit     circuitBreaker
 	catalogMu   sync.Mutex
 	catalogAt   time.Time
+	catalogKey  string
 	catalogIDs  []string
+	upstreamMu  sync.Mutex
+	upstreamAt  time.Time
+	upstreamCfg upstreamConfig
+	upstreamErr error
 
 	jev        JevConfig
 	jevClient  *jev.Client
@@ -306,11 +311,15 @@ func (s *Service) readyProvider(ctx context.Context) error {
 	if s.config.Mode == "fixture" {
 		return nil
 	}
-	ids, err := s.fetchCatalog(ctx)
+	upstream, err := s.upstreamFor(ctx)
 	if err != nil {
 		return err
 	}
-	if !containsModel(ids, s.config.ChatModel) || !containsModel(ids, s.config.OCRModel) {
+	ids, err := s.fetchCatalogFrom(ctx, upstream)
+	if err != nil {
+		return err
+	}
+	if !containsModel(ids, upstream.ChatModel) || !containsModel(ids, upstream.OCRModel) {
 		return errors.New("configured model is absent from upstream catalog")
 	}
 	return nil
@@ -343,6 +352,7 @@ type chatRequest struct {
 	requestedModel  string
 	requestedTokens int
 	scope           model.DelegatedScope
+	upstream        upstreamConfig
 }
 
 func (s *Service) chatCompletions(w http.ResponseWriter, r *http.Request) {
@@ -402,7 +412,12 @@ func (s *Service) readChatRequest(w http.ResponseWriter, r *http.Request, caller
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid OpenAI-compatible request"})
 		return chatRequest{}, false
 	}
-	if !s.allowedModel(requestedModel) {
+	upstream, err := s.upstreamFor(r.Context())
+	if err != nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "model upstream configuration is unavailable", "code": "model_upstream_unavailable"})
+		return chatRequest{}, false
+	}
+	if !upstream.allows(requestedModel) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "requested model is not configured", "code": "model_not_configured"})
 		return chatRequest{}, false
 	}
@@ -410,7 +425,7 @@ func (s *Service) readChatRequest(w http.ResponseWriter, r *http.Request, caller
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "requested token bound exceeds the configured reservation", "code": "model_token_bound_exceeded"})
 		return chatRequest{}, false
 	}
-	return chatRequest{caller: caller, body: body, requestedModel: requestedModel, requestedTokens: requestedTokens, scope: scope}, true
+	return chatRequest{caller: caller, body: body, requestedModel: requestedModel, requestedTokens: requestedTokens, scope: scope, upstream: upstream}, true
 }
 
 func (s *Service) runChatAttempts(w http.ResponseWriter, ctx context.Context, request chatRequest, probe circuitProbe) {
@@ -426,7 +441,7 @@ func (s *Service) runChatAttempt(w http.ResponseWriter, ctx context.Context, req
 	if !ok {
 		return false
 	}
-	response, status, usage, requestErr, retryable, preDispatch := s.dispatch(ctx, request.requestedModel, request.body)
+	response, status, usage, requestErr, retryable, preDispatch := s.dispatchUpstream(ctx, request.upstream, request.requestedModel, request.body)
 	modelStatus, errorCode := chatAttemptResult(requestErr, status)
 	return s.settleAndRespondChatAttempt(w, ctx, request, probe, attempt, lease, response, status, usage, requestErr, retryable, preDispatch, modelStatus, errorCode)
 }
@@ -620,26 +635,29 @@ func decodeDelegatedScope(r *http.Request) (model.DelegatedScope, error) {
 	return scope, nil
 }
 
-func (s *Service) allowedModel(requested string) bool {
-	requested = model.GatewayID(requested)
-	return requested != "" && (requested == model.GatewayID(s.config.ChatModel) || requested == model.GatewayID(s.config.OCRModel))
+func (s *Service) dispatch(ctx context.Context, modelID string, body []byte) ([]byte, int, *model.TokenUsage, error, bool, bool) {
+	upstream, err := s.upstreamFor(ctx)
+	if err != nil {
+		return nil, http.StatusServiceUnavailable, nil, err, false, true
+	}
+	return s.dispatchUpstream(ctx, upstream, modelID, body)
 }
 
-func (s *Service) dispatch(ctx context.Context, modelID string, body []byte) ([]byte, int, *model.TokenUsage, error, bool, bool) {
+func (s *Service) dispatchUpstream(ctx context.Context, upstream upstreamConfig, modelID string, body []byte) ([]byte, int, *model.TokenUsage, error, bool, bool) {
 	if s.config.Mode == "fixture" {
 		return s.fixtureResponse(modelID, body), http.StatusOK, nil, nil, false, false
 	}
-	if s.config.UpstreamBaseURL == "" {
+	if upstream.BaseURL == "" {
 		return nil, http.StatusServiceUnavailable, nil, errors.New("model upstream is not configured"), false, true
 	}
-	request, err := http.NewRequestWithContext(ctx, http.MethodPost, s.config.UpstreamBaseURL+"/chat/completions", strings.NewReader(string(body)))
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, upstream.BaseURL+"/chat/completions", strings.NewReader(string(body)))
 	if err != nil {
 		return nil, http.StatusBadGateway, nil, err, false, true
 	}
 	request.Header.Set("Content-Type", "application/json")
 	request.Header.Set("Accept", "application/json")
-	if s.config.UpstreamAPIKey != "" {
-		request.Header.Set("Authorization", "Bearer "+s.config.UpstreamAPIKey)
+	if upstream.APIKey != "" {
+		request.Header.Set("Authorization", "Bearer "+upstream.APIKey)
 	}
 	response, err := s.client.Do(request)
 	if err != nil {
@@ -849,29 +867,47 @@ func fixtureWarrantyQuotes(messages []fixtureWarrantyMessage) []map[string]strin
 }
 
 func (s *Service) catalog(ctx context.Context) ([]string, error) {
-	if s.config.Mode == "fixture" {
-		return []string{model.GatewayID(s.config.ChatModel), model.GatewayID(s.config.OCRModel)}, nil
+	upstream, err := s.upstreamFor(ctx)
+	if err != nil {
+		return nil, err
 	}
+	if s.config.Mode == "fixture" {
+		return []string{model.GatewayID(upstream.ChatModel), model.GatewayID(upstream.OCRModel)}, nil
+	}
+	key := catalogCacheKey(upstream)
 	s.catalogMu.Lock()
-	if time.Since(s.catalogAt) < 5*time.Second && s.catalogIDs != nil {
+	if time.Since(s.catalogAt) < 5*time.Second && s.catalogIDs != nil && s.catalogKey == key {
 		ids := append([]string(nil), s.catalogIDs...)
 		s.catalogMu.Unlock()
 		return ids, nil
 	}
 	s.catalogMu.Unlock()
-	ids, err := s.fetchCatalog(ctx)
+	ids, err := s.fetchCatalogFrom(ctx, upstream)
 	if err != nil {
 		return nil, err
 	}
 	s.catalogMu.Lock()
 	s.catalogIDs = append([]string(nil), ids...)
 	s.catalogAt = time.Now()
+	s.catalogKey = key
 	s.catalogMu.Unlock()
 	return ids, nil
 }
 
+func catalogCacheKey(upstream upstreamConfig) string {
+	return strconv.FormatInt(upstream.Revision, 10) + "|" + upstream.BaseURL
+}
+
 func (s *Service) fetchCatalog(ctx context.Context) ([]string, error) {
-	response, err := s.catalogResponse(ctx)
+	upstream, err := s.upstreamFor(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return s.fetchCatalogFrom(ctx, upstream)
+}
+
+func (s *Service) fetchCatalogFrom(ctx context.Context, upstream upstreamConfig) ([]string, error) {
+	response, err := s.catalogResponse(ctx, upstream)
 	if err != nil {
 		return nil, err
 	}
@@ -879,16 +915,16 @@ func (s *Service) fetchCatalog(ctx context.Context) ([]string, error) {
 	return decodeCatalog(response.Body)
 }
 
-func (s *Service) catalogResponse(ctx context.Context) (*http.Response, error) {
-	if s.config.UpstreamBaseURL == "" {
+func (s *Service) catalogResponse(ctx context.Context, upstream upstreamConfig) (*http.Response, error) {
+	if upstream.BaseURL == "" {
 		return nil, errors.New("model upstream is not configured")
 	}
-	request, err := http.NewRequestWithContext(ctx, http.MethodGet, s.config.UpstreamBaseURL+"/models", nil)
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, upstream.BaseURL+"/models", nil)
 	if err != nil {
 		return nil, err
 	}
-	if s.config.UpstreamAPIKey != "" {
-		request.Header.Set("Authorization", "Bearer "+s.config.UpstreamAPIKey)
+	if upstream.APIKey != "" {
+		request.Header.Set("Authorization", "Bearer "+upstream.APIKey)
 	}
 	response, err := s.client.Do(request)
 	if err != nil {

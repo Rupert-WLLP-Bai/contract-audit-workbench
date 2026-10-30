@@ -14,6 +14,8 @@ import type {
   WorkbenchTaskUpdateInput,
   CaseRelationInput,
   KnowledgeInput,
+  LLMEndpointInput,
+  LLMModelSelectionInput,
 } from "./types";
 import { ApiError, jsonInit, requestJson } from "./http";
 import {
@@ -25,6 +27,8 @@ import {
   parseEmpty,
   parseGenerationRecord,
   parseId,
+  parseLLMEndpoint,
+  parseLLMProbe,
   parseRemediation,
   parseReportRecord,
   parseReviewDiagnostics,
@@ -286,6 +290,43 @@ export function getSettings(
 ) {
   const path = audience === "admin" ? paths.adminSettings : paths.settings;
   return requestJson(path, { method: "GET", signal }, parseSettings);
+}
+
+export function getLLMEndpoint(signal?: AbortSignal) {
+  return requestJson(
+    paths.llmEndpoint,
+    { method: "GET", signal },
+    parseLLMEndpoint,
+  );
+}
+
+export function probeLLMEndpoint(input: {
+  protocol: string;
+  base_url: string;
+  api_key?: string;
+  clear_api_key?: boolean;
+}) {
+  return requestJson(
+    paths.llmEndpointProbe,
+    jsonInit("POST", input),
+    parseLLMProbe,
+  );
+}
+
+export function saveLLMEndpoint(input: LLMEndpointInput) {
+  return requestJson(
+    paths.llmEndpoint,
+    jsonInit("PUT", input),
+    parseLLMEndpoint,
+  );
+}
+
+export function saveLLMModels(input: LLMModelSelectionInput) {
+  return requestJson(
+    paths.llmEndpointModels,
+    jsonInit("PUT", input),
+    parseLLMEndpoint,
+  );
 }
 export function getWorkbench(period: WorkbenchPeriod, signal?: AbortSignal) {
   return requestJson(

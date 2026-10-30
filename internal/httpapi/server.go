@@ -67,6 +67,10 @@ func Handler(st *store.Store, opt Options) http.Handler {
 	mux.HandleFunc("DELETE /api/session", h.logout)
 	mux.HandleFunc("GET /api/settings", h.settings)
 	mux.HandleFunc("GET /api/admin/settings", h.adminSettings)
+	mux.HandleFunc("GET /api/admin/llm-endpoint", h.llmEndpoint)
+	mux.HandleFunc("PUT /api/admin/llm-endpoint", h.saveLLMEndpoint)
+	mux.HandleFunc("POST /api/admin/llm-endpoint/probe", h.probeLLMEndpoint)
+	mux.HandleFunc("PUT /api/admin/llm-endpoint/models", h.saveLLMModels)
 	mux.HandleFunc("GET /api/admin/system-health", h.adminSystemHealth)
 	mux.HandleFunc("GET /api/admin/rulepacks", h.listRulePacks)
 	mux.HandleFunc("POST /api/admin/rulepacks", h.createRulePack)
@@ -224,14 +228,16 @@ func (h *handler) settingsForUser(w http.ResponseWriter, r *http.Request, user a
 		}
 	}
 	status, label := "unreachable", "未配置审查模型"
-	if h.models != nil {
-		if h.store.ReadOnly() {
+	if h.store.ReadOnly() {
+		if h.models != nil {
 			status, label = "unknown", "只读维护，未探测模型："+h.models.Name()+" / "+h.models.OCRName()
-		} else {
-			ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
-			defer cancel()
-			status, label = h.models.Reachable(ctx)
 		}
+	} else if configuredStatus, configuredLabel, handled := h.llmEndpointStatus(r.Context()); handled {
+		status, label = configuredStatus, configuredLabel
+	} else if h.models != nil {
+		ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+		defer cancel()
+		status, label = h.models.Reachable(ctx)
 	}
 	connectors := h.externalConnectorInfo
 	if connectors == nil {

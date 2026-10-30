@@ -31,6 +31,9 @@ type Runtime struct {
 	Selection     config.Selection
 	Durable       bool
 	SecureCookies bool
+
+	stopModelWatch context.CancelFunc
+	modelWatchDone <-chan struct{}
 }
 
 // Open validates process configuration and initializes all shared dependencies
@@ -162,6 +165,13 @@ func openConfigured(ctx context.Context, includeOIDC bool, service string) (*Run
 	if configuredObjects != nil {
 		st.UseObjectStore(configuredObjects)
 	}
+	var modelWatchStop context.CancelFunc
+	var modelWatchDone <-chan struct{}
+	var endpointRevision int64
+	envModelConfig := modelConfig
+	if !readOnly {
+		modelConfig, endpointRevision = loadStoredLLMEndpoint(ctx, st, service, modelConfig)
+	}
 	models := model.New(modelConfig)
 	st.UseModels(models)
 	if provider := configuredAdvisoryProvider(service, models); provider != nil {
@@ -195,9 +205,13 @@ func openConfigured(ctx context.Context, includeOIDC bool, service string) (*Run
 	if err := ctx.Err(); err != nil {
 		return closeOnFailure(err)
 	}
+	if !readOnly {
+		modelWatchStop, modelWatchDone = watchStoredLLMEndpoint(ctx, st, service, envModelConfig, endpointRevision)
+	}
 	return &Runtime{
 		Store: st, Models: models, OIDC: oidc, Selection: selection,
 		Durable: executionMode == executionModeDurable, SecureCookies: secureCookies,
+		stopModelWatch: modelWatchStop, modelWatchDone: modelWatchDone,
 	}, nil
 }
 
@@ -205,6 +219,12 @@ func openConfigured(ctx context.Context, includeOIDC bool, service string) (*Run
 func (r *Runtime) Close() error {
 	if r == nil || r.Store == nil {
 		return nil
+	}
+	if r.stopModelWatch != nil {
+		r.stopModelWatch()
+	}
+	if r.modelWatchDone != nil {
+		<-r.modelWatchDone
 	}
 	return r.Store.Close()
 }

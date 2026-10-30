@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import base64
 import json
 import os
 from pathlib import Path
@@ -87,9 +88,11 @@ def ensure_secrets() -> dict[str, str]:
                     "WORKER_TOOL_TOKEN", "DOCUMENT_MODEL_TOKEN"}
         if not isinstance(values, dict) or required - values.keys():
             raise RuntimeError(f"private credentials file is incomplete; left untouched: {SECRETS}")
-        if "DEV_DATABASE_URL" not in values or "WORKER_CORE_TOKEN" not in values:
+        if "DEV_DATABASE_URL" not in values or "WORKER_CORE_TOKEN" not in values or \
+                "LLM_CONFIG_KEY" not in values:
             values.setdefault("DEV_DATABASE_URL", values["MIGRATOR_DATABASE_URL"])
             values.setdefault("WORKER_CORE_TOKEN", secrets.token_urlsafe(48))
+            values.setdefault("LLM_CONFIG_KEY", base64.b64encode(secrets.token_bytes(32)).decode("ascii"))
             temporary = SECRETS.with_suffix(".tmp")
             descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
             with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
@@ -106,6 +109,8 @@ def ensure_secrets() -> dict[str, str]:
         "RUSTFS_SECRET_KEY": secrets.token_urlsafe(48),
         # Fixture mode never sends this generated value to a model provider.
         "LLM_API_KEY": secrets.token_urlsafe(48),
+        # Seals admin-managed provider credentials; exactly 32 bytes, base64 encoded.
+        "LLM_CONFIG_KEY": base64.b64encode(secrets.token_bytes(32)).decode("ascii"),
     }
     for key, role in (("CORE_DATABASE_URL", "core_api"), ("DOCUMENT_DATABASE_URL", "document_service"),
                       ("EXECUTION_DATABASE_URL", "audit_execution"), ("MODEL_DATABASE_URL", "model_gateway"),
@@ -255,7 +260,7 @@ def deploy() -> None:
         "GATEWAY_CORE_TOKEN", "GATEWAY_DOCUMENT_TOKEN", "GATEWAY_EXECUTION_TOKEN", "GATEWAY_TOOL_TOKEN",
         "WORKER_DOCUMENT_TOKEN", "WORKER_MODEL_TOKEN", "WORKER_TOOL_TOKEN", "WORKER_CORE_TOKEN", "DOCUMENT_MODEL_TOKEN"))
     apply_private_secret("contract-audit-rustfs", ("RUSTFS_ACCESS_KEY", "RUSTFS_SECRET_KEY"))
-    apply_private_secret("contract-audit-model", ("LLM_API_KEY",))
+    apply_private_secret("contract-audit-model", ("LLM_API_KEY", "LLM_CONFIG_KEY"))
     kubectl("delete", "job/rustfs-bucket-init", "-n", NAMESPACE, "--ignore-not-found=true", check=False)
     apply_phase("bootstrap")
     wait_platform()

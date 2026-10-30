@@ -16,6 +16,7 @@ import (
 	"contractaudit/internal/config"
 	"contractaudit/internal/docir"
 	"contractaudit/internal/docversion"
+	"contractaudit/internal/execution"
 	"contractaudit/internal/telemetry"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -38,6 +39,7 @@ type Store struct {
 	claims                 map[string]JobClaim
 	dir                    string
 	st                     state
+	modelsMu               sync.RWMutex
 	models                 Models
 	advisoryProvider       advisory.Provider
 	objects                ObjectStore
@@ -67,6 +69,11 @@ func (s *Store) ReadOnly() bool {
 	defer s.mu.Unlock()
 	return s.readOnly
 }
+
+// HasDatabase reports whether this store was opened against PostgreSQL. Tests
+// and fixture-only services can hold a zero Store; callers that need durable
+// platform settings must not assume a pool.
+func (s *Store) HasDatabase() bool { return s != nil && s.pool != nil }
 
 type state struct {
 	Sessions               []session               `json:"sessions"`
@@ -380,22 +387,23 @@ type UsageObservation struct {
 
 // ExecutionEvent is an append-only business observation for one attempt.
 type ExecutionEvent struct {
-	Seq          int               `json:"seq"`
-	AttemptID    string            `json:"attempt_id"`
-	SpanID       *string           `json:"span_id"`
-	ParentSpanID *string           `json:"parent_span_id"`
-	NodeKind     string            `json:"node_kind"`
-	Phase        string            `json:"phase"`
-	EventType    string            `json:"event_type"`
-	At           string            `json:"at"`
-	RecordedAt   *string           `json:"recorded_at,omitempty"`
-	EventKey     *string           `json:"event_key,omitempty"`
-	Generation   *int64            `json:"generation,omitempty"`
-	DurationMS   *int64            `json:"duration_ms"`
-	Status       string            `json:"status"`
-	ErrorCode    *string           `json:"error_code"`
-	ModelRef     *string           `json:"model_ref"`
-	Usage        *UsageObservation `json:"usage"`
+	Seq          int                       `json:"seq"`
+	AttemptID    string                    `json:"attempt_id"`
+	SpanID       *string                   `json:"span_id"`
+	ParentSpanID *string                   `json:"parent_span_id"`
+	NodeKind     string                    `json:"node_kind"`
+	Phase        string                    `json:"phase"`
+	EventType    string                    `json:"event_type"`
+	At           string                    `json:"at"`
+	RecordedAt   *string                   `json:"recorded_at,omitempty"`
+	EventKey     *string                   `json:"event_key,omitempty"`
+	Generation   *int64                    `json:"generation,omitempty"`
+	DurationMS   *int64                    `json:"duration_ms"`
+	Status       string                    `json:"status"`
+	ErrorCode    *string                   `json:"error_code"`
+	ModelRef     *string                   `json:"model_ref"`
+	Usage        *UsageObservation         `json:"usage"`
+	Trace        *execution.ModelCallTrace `json:"trace,omitempty"`
 }
 
 type KnownTokenSubtotals struct {

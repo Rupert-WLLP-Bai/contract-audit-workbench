@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Local Docker infrastructure lifecycle. Never removes a volume or business data."""
 import argparse
+import base64
 import datetime as dt
 import hashlib
 import json
@@ -178,6 +179,16 @@ def bootstrap(root=ROOT):
 	generated = {key: secrets.token_hex(24) for key in SECRET_KEYS}
 	for key, value in generated.items():
 		template = template.replace(f"__GENERATE_{key}__", value)
+	# The provider-credential sealing key is exactly 32 bytes, base64 encoded;
+	# the generic secret generator above produces hex, which would be the wrong
+	# length. Empty would disable saving an admin-managed credential.
+	template = template.replace(
+		"LLM_CONFIG_KEY=\n",
+		f"LLM_CONFIG_KEY={base64.b64encode(secrets.token_bytes(32)).decode('ascii')}\n",
+		1,
+	)
+	if "\nLLM_CONFIG_KEY=\n" in template:
+		raise ValueError("LLM_CONFIG_KEY must be generated for the local profile")
 	if "__GENERATE_" in template:
 		raise ValueError("Unresolved configuration placeholder")
 	if destination != root / ".env":

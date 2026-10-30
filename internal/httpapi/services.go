@@ -193,10 +193,28 @@ func adminRoute(role string, m routeMethodSet, parts []string) bool {
 	switch parts[1] {
 	case "settings", "system-health":
 		return len(parts) == 2 && m.read
+	case "llm-endpoint":
+		return llmEndpointRoute(m, parts[1:])
 	case "governed-knowledge":
 		return governedKnowledgeRoute(m, parts[1:])
 	case "rulepacks":
 		return rulePackRoute(m, parts[1:])
+	}
+	return false
+}
+
+func llmEndpointRoute(m routeMethodSet, parts []string) bool {
+	if len(parts) == 1 {
+		return m.read || m.put
+	}
+	if len(parts) != 2 {
+		return false
+	}
+	switch parts[1] {
+	case "probe":
+		return m.post
+	case "models":
+		return m.put
 	}
 	return false
 }

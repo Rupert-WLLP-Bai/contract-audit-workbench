@@ -23,6 +23,8 @@ import type {
   WorkbenchTaskUpdateInput,
   CaseRelationInput,
   KnowledgeInput,
+  LLMEndpointInput,
+  LLMModelSelectionInput,
   ReviewWorkspace,
 } from "./types";
 import { isActiveAttemptState } from "../domain/review";
@@ -48,6 +50,7 @@ export const queryKeys = {
     audience === "admin"
       ? (["settings", "admin"] as const)
       : queryKeys.settings,
+  llmEndpoint: ["admin", "llm-endpoint"] as const,
   rulePacks: ["admin", "rulepacks"] as const,
   rulePackList: ["admin", "rulepacks", "list"] as const,
   rulePack: (packId: string, version: string) =>
@@ -455,6 +458,55 @@ export function useSettings(audience: SessionAudience = "client") {
   return useQuery({
     queryKey: queryKeys.settingsFor(audience),
     queryFn: ({ signal }) => api.getSettings(audience, signal),
+  });
+}
+
+export function useLLMEndpoint(enabled = true) {
+  return useQuery({
+    queryKey: queryKeys.llmEndpoint,
+    queryFn: ({ signal }) => api.getLLMEndpoint(signal),
+    enabled,
+    retry: false,
+  });
+}
+
+function useRefreshLLMEndpoint() {
+  const queryClient = useQueryClient();
+  return async () => {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: queryKeys.llmEndpoint }),
+      queryClient.invalidateQueries({ queryKey: queryKeys.settingsFor("admin") }),
+    ]);
+  };
+}
+
+export function useProbeLLMEndpoint() {
+  return useMutation({
+    mutationFn: (input: {
+      protocol: string;
+      base_url: string;
+      api_key?: string;
+      clear_api_key?: boolean;
+    }) => api.probeLLMEndpoint(input),
+    retry: false,
+  });
+}
+
+export function useSaveLLMEndpoint() {
+  const refresh = useRefreshLLMEndpoint();
+  return useMutation({
+    mutationFn: (input: LLMEndpointInput) => api.saveLLMEndpoint(input),
+    onSuccess: refresh,
+    retry: false,
+  });
+}
+
+export function useSaveLLMModels() {
+  const refresh = useRefreshLLMEndpoint();
+  return useMutation({
+    mutationFn: (input: LLMModelSelectionInput) => api.saveLLMModels(input),
+    onSuccess: refresh,
+    retry: false,
   });
 }
 export function useRulePacks() {
