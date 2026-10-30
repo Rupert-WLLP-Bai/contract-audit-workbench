@@ -88,6 +88,13 @@ func TestWarrantyObservationRetainsUsageFromFailedAndIncompleteResponses(t *test
 			} else if calls[0].Usage != nil {
 				t.Fatalf("unknown usage was fabricated: %+v", calls[0].Usage)
 			}
+			trace := calls[0].Trace
+			if trace == nil || trace.RequestedModel != "configured-model" || trace.RequestBytes == 0 || trace.ResponseBytes == 0 {
+				t.Fatalf("physical call trace was not recorded: %+v", trace)
+			}
+			if trace.Status != test.wantStatus {
+				t.Fatalf("trace status %q, want %q", trace.Status, test.wantStatus)
+			}
 		})
 	}
 }
@@ -112,5 +119,8 @@ func TestWarrantyObservationIdentifiesTimeoutAndUnknownUsage(t *testing.T) {
 	calls := sink.snapshot()
 	if len(calls) != 1 || calls[0].Status != "failed" || calls[0].ErrorCode != "timeout" || calls[0].Usage != nil {
 		t.Fatalf("timeout invented usage or lost status: %+v", calls)
+	}
+	if calls[0].Trace == nil || calls[0].Trace.RequestBytes == 0 || calls[0].Trace.ResponseBytes != 0 || calls[0].Trace.Status != "failed" {
+		t.Fatalf("timeout trace was not bounded or honest: %+v", calls[0].Trace)
 	}
 }

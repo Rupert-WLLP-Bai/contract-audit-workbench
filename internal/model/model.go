@@ -382,8 +382,10 @@ func (c *Client) postChatMessages(ctx context.Context, modelID string, messages 
 		req.Header.Set("Authorization", "Bearer "+key)
 	}
 	callCtx := ctx
+	var raw []byte
 	var finish func(CallObservation)
 	if observer := callObserverFromContext(ctx); observer != nil {
+		startedAt := time.Now().UTC()
 		callCtx, finish = observer.StartModelCall(ctx, modelID)
 		defer func() {
 			if finish == nil {
@@ -394,6 +396,17 @@ func (c *Client) postChatMessages(ctx context.Context, modelID string, messages 
 				observation.Status = "failed"
 				observation.ErrorCode = modelCallErrorCode(retErr)
 			}
+			responseText := result.Content
+			if responseText == "" && len(raw) > 0 {
+				// A provider error body is still an API output and is often the only
+				// explanation of a failed call. The trace keeps it bounded.
+				responseText = c.redact(string(raw))
+			}
+			observation.Trace = buildModelCallTrace(callTraceInput{
+				RequestedModel: modelID, ReportedModel: result.Model, Payload: payload,
+				Messages: messages, StartedAt: startedAt, FinishedAt: time.Now().UTC(),
+				ResponseText: responseText, Status: observation.Status, ErrorCode: observation.ErrorCode,
+			})
 			finish(observation)
 		}()
 	}
@@ -405,7 +418,7 @@ func (c *Client) postChatMessages(ctx context.Context, modelID string, messages 
 		return chatCompletion{}, fmt.Errorf("%w: %s", ErrRequest, c.redact(err.Error()))
 	}
 	defer res.Body.Close()
-	raw, err := io.ReadAll(io.LimitReader(res.Body, (1<<20)+1))
+	raw, err = io.ReadAll(io.LimitReader(res.Body, (1<<20)+1))
 	if err != nil {
 		var partial struct {
 			Model string          `json:"model"`
@@ -449,13 +462,15 @@ func (c *Client) postChatMessages(ctx context.Context, modelID string, messages 
 		return completion, fmt.Errorf("%w: empty content", ErrUnusable)
 	}
 	responseContent := parsed.Choices[0].Message.Content
+	// Keep the provider content on the completion before any parse check so a
+	// rejected but inspectable response still reaches the bounded trace.
+	completion.Content = responseContent
 	if strings.TrimSpace(responseContent) == "" {
 		return completion, fmt.Errorf("%w: empty content", ErrUnusable)
 	}
 	if reason := parsed.Choices[0].FinishReason; reason != "" && reason != "stop" {
 		return completion, fmt.Errorf("%w: incomplete completion", ErrUnusable)
 	}
-	completion.Content = responseContent
 	return completion, nil
 }
 

@@ -11,6 +11,7 @@ import { DocumentStage, type ReviewCaseContext } from "./document-stage";
 import { ExecutionInspector } from "./execution-inspector";
 import { FindingPanel } from "./finding-panel";
 import { BusinessAgentReviewView } from "./business-agent-review";
+import { TrajectoryView } from "./trajectory-view";
 import { StatusText } from "./status-text";
 
 const STREAM_LABEL: Record<StreamStatus, string> = {
@@ -35,8 +36,10 @@ export function ReviewWorkspaceView({
   canCancel = false,
   cancelling = false,
   cancelError = null,
+  diagnosticsLoading = false,
   conflictMessage,
   saveError,
+  onLoadDiagnostics,
   onSelect,
   onSelectAttempt,
   onDecide,
@@ -62,8 +65,10 @@ export function ReviewWorkspaceView({
   canCancel?: boolean;
   cancelling?: boolean;
   cancelError?: string | null;
+  diagnosticsLoading?: boolean;
   conflictMessage: string | null;
   saveError: string | null;
+  onLoadDiagnostics?: () => void;
   onSelect: (findingId: string) => void;
   onSelectAttempt: (attemptId: string) => void;
   onDecide: (input: {
@@ -106,9 +111,24 @@ export function ReviewWorkspaceView({
         <StatusText tone={runTone(run.state)}>{runLabel(run.state)}</StatusText>
         <span>{STREAM_LABEL[streamStatus]}</span>
         {run.model_ref ? <span>模型 {run.model_ref}</span> : null}
-        <a className="workspace-trace-link" href="#execution-inspector">
-          查看运行轨迹
-        </a>
+        {workspace.execution ? (
+          <a className="workspace-trace-link" href="#review-trajectory">
+            查看运行轨迹
+          </a>
+        ) : onLoadDiagnostics ? (
+          <Button
+            type="text"
+            htmlType="button"
+            onClick={onLoadDiagnostics}
+            disabled={diagnosticsLoading}
+          >
+            {diagnosticsLoading ? "正在加载运行轨迹" : "加载运行轨迹与诊断"}
+          </Button>
+        ) : (
+          <a className="workspace-trace-link" href="#execution-inspector">
+            查看执行记录
+          </a>
+        )}
         <ol className="workspace-circuit" aria-label="审查链路">
           <li data-state={workspace.documents.length > 0 ? "filled" : "open"}>
             <span className="workspace-circuit-mark" aria-hidden="true" />
@@ -210,6 +230,9 @@ export function ReviewWorkspaceView({
         />
       </div>
       <BusinessAgentReviewView review={workspace.agent_review ?? null} />
+      {workspace.execution ? (
+        <TrajectoryView execution={workspace.execution} />
+      ) : null}
       {workspace.execution ? (
         <ExecutionInspector
           execution={workspace.execution}

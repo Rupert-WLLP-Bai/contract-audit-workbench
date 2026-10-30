@@ -35,6 +35,47 @@ type Event struct {
 	ErrorCode    string
 	ModelRef     string
 	Usage        *Usage
+	// Trace carries the bounded request/response record of one physical model
+	// call. It is observability data, not a source of audit conclusions.
+	Trace *ModelCallTrace
+}
+
+// ModelCallTrace is the bounded record of one physical model request. Request
+// and response bodies are truncated for storage and always carry exact byte
+// counts and SHA-256 digests of the full bodies.
+type ModelCallTrace struct {
+	RequestedModel    string         `json:"requested_model"`
+	ReportedModel     string         `json:"reported_model,omitempty"`
+	Status            string         `json:"status"`
+	ErrorCode         string         `json:"error_code,omitempty"`
+	StartedAt         string         `json:"started_at"`
+	FinishedAt        string         `json:"finished_at"`
+	RequestSHA256     string         `json:"request_sha256"`
+	RequestBytes      int            `json:"request_bytes"`
+	RequestMessages   []TraceMessage `json:"request_messages"`
+	RequestTruncated  bool           `json:"request_truncated"`
+	ResponseSHA256    string         `json:"response_sha256,omitempty"`
+	ResponseBytes     int            `json:"response_bytes"`
+	ResponseText      string         `json:"response_text,omitempty"`
+	ResponseTruncated bool           `json:"response_truncated"`
+}
+
+// TraceMessage is one bounded request message. Image payloads are omitted.
+type TraceMessage struct {
+	Role      string `json:"role"`
+	Content   string `json:"content"`
+	Truncated bool   `json:"truncated"`
+}
+
+// SpanCompletion is the terminal observation of one span. The trace is only
+// set for physical model calls.
+type SpanCompletion struct {
+	EventType string
+	Status    string
+	ErrorCode string
+	Usage     *Usage
+	ModelRef  string
+	Trace     *ModelCallTrace
 }
 
 // Recorder persists business events. Errors are retained and returned by Run.
@@ -76,7 +117,7 @@ func Run(ctx context.Context, recorder Recorder, stages ...Stage) error {
 }
 
 type callbackState struct {
-	finish func(string, string, string, *Usage, string) error
+	finish func(SpanCompletion) error
 }
 
 type spanContextKey struct{}
@@ -93,7 +134,7 @@ func ParentSpanID(ctx context.Context) string {
 }
 
 // StartSpan records a span start and returns its invocation-local child context and finisher.
-func StartSpan(ctx context.Context, recorder Recorder, nodeKind, phase, modelRef string) (context.Context, func(string, string, string, *Usage, string) error, error) {
+func StartSpan(ctx context.Context, recorder Recorder, nodeKind, phase, modelRef string) (context.Context, func(SpanCompletion) error, error) {
 	spanID, err := newSpanID()
 	if err != nil {
 		return ctx, nil, err
@@ -113,7 +154,7 @@ func StartSpan(ctx context.Context, recorder Recorder, nodeKind, phase, modelRef
 	}
 	var once sync.Once
 	var finishErr error
-	finish := func(eventType, status, errorCode string, usage *Usage, reportedModelRef string) error {
+	finish := func(completion SpanCompletion) error {
 		once.Do(func() {
 			defer cancel()
 			at := time.Now()
@@ -121,8 +162,9 @@ func StartSpan(ctx context.Context, recorder Recorder, nodeKind, phase, modelRef
 			if recorder != nil {
 				finishErr = recorder.RecordExecutionEvent(child, Event{
 					SpanID: spanID, ParentSpanID: parentID, NodeKind: nodeKind,
-					Phase: phase, EventType: eventType, At: at.UTC(), DurationMS: &elapsed,
-					Status: status, ErrorCode: errorCode, ModelRef: reportedModelRef, Usage: usage,
+					Phase: phase, EventType: completion.EventType, At: at.UTC(), DurationMS: &elapsed,
+					Status: completion.Status, ErrorCode: completion.ErrorCode,
+					ModelRef: completion.ModelRef, Usage: completion.Usage, Trace: completion.Trace,
 				})
 			}
 		})
@@ -203,7 +245,7 @@ func (c *Callbacks) finish(ctx context.Context, eventType, status, errorCode str
 	if state.finish == nil || c.recorder == nil {
 		return
 	}
-	if err := state.finish(eventType, status, errorCode, nil, ""); err != nil {
+	if err := state.finish(SpanCompletion{EventType: eventType, Status: status, ErrorCode: errorCode}); err != nil {
 		c.remember(err)
 	}
 }

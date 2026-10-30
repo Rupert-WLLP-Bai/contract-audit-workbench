@@ -1,6 +1,10 @@
 package model
 
-import "context"
+import (
+	"context"
+
+	"contractaudit/internal/execution"
+)
 
 type callObserverKey struct{}
 
@@ -10,6 +14,9 @@ type CallObservation struct {
 	Usage     *TokenUsage
 	Status    string
 	ErrorCode string
+	// Trace is the bounded request/response record. It is never used to decide
+	// a finding; it only makes the physical call inspectable.
+	Trace *execution.ModelCallTrace
 }
 
 // CallObserver observes one request from dispatch through its complete or failed response.
