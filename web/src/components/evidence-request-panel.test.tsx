@@ -489,6 +489,21 @@ describe("补充材料请求", () => {
     expect(calls.some((call) => call.pathname.endsWith("/verify"))).toBe(false);
   });
 
+  it("keeps verification disabled when the workspace has no attempt summary", async () => {
+    const request = rawRequest("received", 2);
+    const workspace = makeWorkspace("run-new", "attempt-new", [compatible]);
+    workspace.review_attempts = null;
+    const { calls } = open({ runId: "run-new", attemptId: "attempt-new", evaluations: [compatible], workspace, canManage: false, respond(call) {
+      if (call.pathname.endsWith("/evidence-requests")) return Response.json({ items: [request] });
+      if (call.pathname.endsWith("/history")) return Response.json({ items: [{ type: "received", actor_id: "owner", occurred_at: at, request, receipt: rawReceipt }] });
+      return Response.json({ error: { message: "unexpected" } }, { status: 404 });
+    } });
+
+    await screen.findByText("已提交，待复核");
+    expect(screen.getByRole("button", { name: "提交核验" })).toBeDisabled();
+    expect(calls.some((call) => call.pathname.endsWith("/verify"))).toBe(false);
+  });
+
   it("lets a clerk submit or upload but never authorise verification", async () => {
     const clerk: Actor = { ...actor, id: "clerk-1", display_name: "案件经办人", role: "clerk" };
     open({
