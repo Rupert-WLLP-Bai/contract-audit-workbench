@@ -51,14 +51,11 @@ func providerEndpointOf(models Models) string {
 	return provider.ProviderEndpoint()
 }
 
-// frozenConfigurationID is the identity recorded for a review. It only exists
-// for callers that name a provider configuration; fixtures and test doubles
-// keep their previous signature instead of inventing a provider address.
+// frozenConfigurationID is the identity recorded for a review. Every client
+// reports one, including fixtures and test doubles; only a client that also
+// names a provider address contributes that address to the delegated scope.
 func frozenConfigurationID(models Models) string {
 	if models == nil {
-		return ""
-	}
-	if providerEndpointOf(models) == "" {
 		return ""
 	}
 	return models.ConfigurationID()

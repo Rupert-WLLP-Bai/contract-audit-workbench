@@ -329,7 +329,7 @@ func (s *Store) runExperienceDistill(ctx context.Context, claim JobClaim) error 
 			return fail(claim.stopReason, errors.New("experience task could not be claimed"))
 		}
 		models := s.currentModels()
-		if models == nil || work.Input.ModelConfigurationID == "" || work.Input.ModelConfigurationID != frozenConfigurationID(models) || work.Input.TemplateRef != experienceDistillTemplate {
+		if models == nil || work.Input.ModelConfigurationID == "" || work.Input.ModelConfigurationID != models.ConfigurationID() || work.Input.TemplateRef != experienceDistillTemplate {
 			return fail("experience_input_unavailable", errors.New("experience task model or template configuration changed"))
 		}
 		generator, ok := models.(experienceGenerator)
