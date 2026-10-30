@@ -291,8 +291,14 @@ describe("补充材料请求", () => {
 
     await screen.findByText("发起补充材料请求");
     const sourceControl = screen.getByRole("combobox", { name: "缺失检查" });
-    if (disabled) expect(sourceControl).toBeDisabled();
-    else expect(sourceControl).toBeEnabled();
+    if (disabled) {
+      expect(sourceControl).toBeDisabled();
+      expect(screen.getByText("只有已完成或部分完成、且已保存审查材料的执行记录可以发起请求。")).toBeInTheDocument();
+    } else {
+      expect(sourceControl).toBeEnabled();
+      expect(screen.queryByText("只有已完成或部分完成、且已保存审查材料的执行记录可以发起请求。")).not.toBeInTheDocument();
+    }
+    expect(screen.queryByText("本次审查没有返回符合条件的待补充检查。")).not.toBeInTheDocument();
   });
 
   it("offers only existing tasks for this case with a deadline and a current member assignee", async () => {
@@ -318,6 +324,113 @@ describe("补充材料请求", () => {
     expect(within(taskOptions).getAllByRole("option").map((option) => option.textContent?.trim())).toEqual([
       "可关联任务 · 审查人 · 2026/10/21 14:00",
     ]);
+    expect(screen.queryByText("暂无包含责任人和期限的未完成案件任务。")).not.toBeInTheDocument();
+  });
+
+  it.each(["workspace unavailable", "attempt summary unavailable"] as const)("keeps request creation closed when the %s is absent", async (missingState) => {
+    const workspace = missingState === "workspace unavailable" ? null : makeWorkspace("run-old", "attempt-old", [missing]);
+    if (workspace && missingState === "attempt summary unavailable") workspace.review_attempts = null;
+    const { calls } = open({ workspace, respond(call) {
+      if (call.pathname.includes("/reviews/run-old")) return Response.json({ error: { message: "review unavailable" } }, { status: 404 });
+      if (call.pathname.endsWith("/evidence-requests")) return Response.json({ items: [] });
+      if (call.pathname.endsWith("/history")) return Response.json({ items: [] });
+      return Response.json({ error: { message: "unexpected" } }, { status: 404 });
+    } });
+
+    await screen.findByText("发起补充材料请求");
+    expect(screen.getByText("只有已完成或部分完成、且已保存审查材料的执行记录可以发起请求。")).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "缺失检查" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "创建任务并发起请求" })).toBeDisabled();
+    expect(calls.some((call) => call.pathname.endsWith("/tasks") && call.method === "POST")).toBe(false);
+  });
+
+  it("keeps task creation inputs unavailable when case details have not loaded", async () => {
+    const task: WorkbenchTask = { id: "task-hidden", case_id: "case-1", title: "现有任务", kind: "review",
+      assignee_id: "owner", due_at: at, status: "open", priority: "high", finding_id: null, version: 1,
+      created_at: at, created_by: "owner", updated_at: at };
+    const { user } = open({ caseDetail: null, tasks: [task], respond(call) {
+      if (call.pathname.endsWith("/cases/case-1")) return Response.json({ error: { message: "case unavailable" } }, { status: 404 });
+      if (call.pathname.endsWith("/evidence-requests")) return Response.json({ items: [] });
+      if (call.pathname.endsWith("/history")) return Response.json({ items: [] });
+      return Response.json({ error: { message: "unexpected" } }, { status: 404 });
+    } });
+
+    await screen.findByText("发起补充材料请求");
+    expect(screen.getByRole("combobox", { name: "责任人" })).toBeDisabled();
+    await chooseOption(user, screen.getByRole("combobox", { name: "关联任务" }), "选择已有任务");
+    const taskOptions = await openActiveListbox(user, screen.getByRole("combobox", { name: "选择已有任务" }));
+    expect(within(taskOptions).queryByRole("option", { name: /现有任务/ })).not.toBeInTheDocument();
+    expect(screen.getByText("暂无包含责任人和期限的未完成案件任务。")).toBeInTheDocument();
+  });
+
+  it("preserves empty member names in existing-task options and restores selection after mode changes", async () => {
+    const task: WorkbenchTask = { id: "task-blank-name", case_id: "case-1", title: "空姓名任务", kind: "review",
+      assignee_id: "owner", due_at: at, status: "open", priority: "high", finding_id: null, version: 2,
+      created_at: at, created_by: "owner", updated_at: at };
+    const blankDetail = { ...detail, members: [{ ...detail.members[0]!, display_name: "" }] };
+    const { user } = open({ caseDetail: blankDetail, tasks: [task], respond(call) {
+      if (call.pathname.endsWith("/evidence-requests")) return Response.json({ items: [] });
+      if (call.pathname.endsWith("/history")) return Response.json({ items: [] });
+      return Response.json({ error: { message: "unexpected" } }, { status: 404 });
+    } });
+
+    await screen.findByText("发起补充材料请求");
+    await chooseOption(user, screen.getByRole("combobox", { name: "关联任务" }), "选择已有任务");
+    const taskOptions = await openActiveListbox(user, screen.getByRole("combobox", { name: "选择已有任务" }));
+    const taskOption = within(taskOptions).getByRole("option", { name: /空姓名任务/ });
+    expect(taskOption).toHaveTextContent("空姓名任务 · · 2026/10/21 14:00");
+    expect(taskOption).not.toHaveTextContent("责任人姓名未报告");
+    await user.click(taskOption);
+    const selectedTask = screen.getByRole("combobox", { name: "选择已有任务" });
+    expect(selectedTask.closest(".ant-select")?.querySelector(".ant-select-content-has-value")).toHaveTextContent("空姓名任务");
+
+    await chooseOption(user, screen.getByRole("combobox", { name: "关联任务" }), "创建新任务");
+    await chooseOption(user, screen.getByRole("combobox", { name: "关联任务" }), "选择已有任务");
+    expect(screen.getByRole("combobox", { name: "选择已有任务" }).closest(".ant-select")?.querySelector(".ant-select-content-has-value"))
+      .toHaveTextContent("空姓名任务");
+  });
+
+  it("retains a selected assignee when switching away from and back to new-task fields", async () => {
+    const { user } = open({ tasks: [], respond(call) {
+      if (call.pathname.endsWith("/evidence-requests")) return Response.json({ items: [] });
+      if (call.pathname.endsWith("/history")) return Response.json({ items: [] });
+      return Response.json({ error: { message: "unexpected" } }, { status: 404 });
+    } });
+
+    await screen.findByText("发起补充材料请求");
+    await chooseOption(user, screen.getByRole("combobox", { name: "责任人" }), /审查人/);
+    await chooseOption(user, screen.getByRole("combobox", { name: "关联任务" }), "选择已有任务");
+    await chooseOption(user, screen.getByRole("combobox", { name: "关联任务" }), "创建新任务");
+    const assignee = screen.getByRole("combobox", { name: "责任人" });
+    expect(assignee.closest(".ant-select")?.querySelector(".ant-select-content-has-value")).toHaveTextContent("审查人");
+  });
+
+  it("shows task loading and read errors without presenting them as an empty task list", async () => {
+    let rejectWorkbench: ((response: Response) => void) | undefined;
+    const pendingWorkbench = new Promise<Response>((resolve) => { rejectWorkbench = resolve; });
+    const { user } = open({ respond(call) {
+      if (call.pathname.endsWith("/workbench")) return pendingWorkbench;
+      if (call.pathname.endsWith("/evidence-requests")) return Response.json({ items: [] });
+      if (call.pathname.endsWith("/history")) return Response.json({ items: [] });
+      return Response.json({ error: { message: "unexpected" } }, { status: 404 });
+    } });
+
+    await screen.findByText("发起补充材料请求");
+    await chooseOption(user, screen.getByRole("combobox", { name: "关联任务" }), "选择已有任务");
+    expect(screen.getByText("案件任务尚未载入。")).toBeInTheDocument();
+    expect(screen.queryByText("正在读取案件任务。")).not.toBeInTheDocument();
+    expect(screen.queryByText("暂无包含责任人和期限的未完成案件任务。")).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "刷新案件任务" }));
+    expect(screen.getByText("正在读取案件任务。")).toBeInTheDocument();
+    expect(screen.queryByText("案件任务尚未载入。")).not.toBeInTheDocument();
+    expect(screen.queryByText("暂无包含责任人和期限的未完成案件任务。")).not.toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "选择已有任务" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /刷新案件任务/ })).toBeDisabled();
+
+    rejectWorkbench?.(Response.json({ error: { message: "任务读取失败" } }, { status: 503 }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("任务读取失败");
+    expect(screen.queryByText("案件任务尚未载入。")).not.toBeInTheDocument();
+    expect(screen.queryByText("暂无包含责任人和期限的未完成案件任务。")).not.toBeInTheDocument();
   });
 
   it.each(["source", "title", "assignee", "due", "question"] as const)("does not submit a new task when %s is missing", async (missingField) => {
@@ -339,6 +452,102 @@ describe("补充材料请求", () => {
     fireEvent.submit(form!);
     expect(calls.some((call) => call.pathname.endsWith("/tasks") && call.method === "POST")).toBe(false);
     expect(calls.some((call) => call.pathname.endsWith("/evidence-requests") && call.method === "POST")).toBe(false);
+  });
+
+  it("does not submit a selected source after its frozen attempt becomes live", async () => {
+    const { calls, client, user } = open({ tasks: [], respond(call) {
+      if (call.pathname.endsWith("/evidence-requests")) return Response.json({ items: [] });
+      if (call.pathname.endsWith("/history")) return Response.json({ items: [] });
+      return Response.json({ error: { message: "unexpected" } }, { status: 404 });
+    } });
+    await screen.findByText("发起补充材料请求");
+    await chooseOption(user, screen.getByRole("combobox", { name: "缺失检查" }), /缺少质保期限/);
+    await user.type(screen.getByLabelText("任务名称"), "补充质保");
+    await chooseOption(user, screen.getByRole("combobox", { name: "责任人" }), /审查人/);
+    const dueInput = screen.getByLabelText("完成期限（本地时间）");
+    expect(dueInput).toBeEnabled();
+    fireEvent.change(dueInput, { target: { value: "2026-11-01T10:00" } });
+    await user.type(screen.getByLabelText("需要补充的问题"), "请补充质保期限");
+    const form = screen.getByRole("button", { name: "创建任务并发起请求" }).closest("form");
+    expect(form).not.toBeNull();
+    const liveWorkspace = makeWorkspace("run-old", "attempt-old", [missing]);
+    liveWorkspace.review_attempts!.attempt = { ...liveWorkspace.review_attempts!.attempt!, state: "running" };
+    await act(async () => {
+      client.setQueryData(queryKeys.review("case-1", "run-old", "attempt-old"), liveWorkspace);
+    });
+
+    await waitFor(() => expect(screen.getByText("只有已完成或部分完成、且已保存审查材料的执行记录可以发起请求。")).toBeInTheDocument());
+    expect(screen.getByRole("button", { name: "创建任务并发起请求" })).toBeDisabled();
+    fireEvent.submit(form!);
+    expect(calls.some((call) => call.pathname.endsWith("/tasks") && call.method === "POST")).toBe(false);
+    expect(calls.some((call) => call.pathname.endsWith("/evidence-requests") && call.method === "POST")).toBe(false);
+  });
+
+  it("ignores a second native form submit while the request post is pending", async () => {
+    let finishRequest: ((response: Response) => void) | undefined;
+    const pendingRequest = new Promise<Response>((resolve) => { finishRequest = resolve; });
+    const taskCalls: Call[] = [];
+    const requestCalls: Call[] = [];
+    const { user } = open({ tasks: [], respond(call) {
+      if (call.pathname.endsWith("/tasks") && call.method === "POST") {
+        taskCalls.push(call);
+        return Response.json({ id: "pending-task", case_id: "case-1", title: "补充质保", kind: "review",
+          assignee_id: "owner", due_at: at, status: "open", priority: "high", finding_id: null, version: 1,
+          created_at: at, created_by: "owner", updated_at: at });
+      }
+      if (call.pathname.endsWith("/evidence-requests") && call.method === "POST") {
+        requestCalls.push(call);
+        return pendingRequest;
+      }
+      if (call.pathname.endsWith("/evidence-requests")) return Response.json({ items: [] });
+      if (call.pathname.endsWith("/history")) return Response.json({ items: [] });
+      return Response.json({ error: { message: "unexpected" } }, { status: 404 });
+    } });
+
+    await screen.findByText("发起补充材料请求");
+    await chooseOption(user, screen.getByRole("combobox", { name: "缺失检查" }), /缺少质保期限/);
+    await user.type(screen.getByLabelText("任务名称"), "补充质保");
+    await chooseOption(user, screen.getByRole("combobox", { name: "责任人" }), /审查人/);
+    fireEvent.change(screen.getByLabelText("完成期限（本地时间）"), { target: { value: "2026-11-01T10:00" } });
+    await user.type(screen.getByLabelText("需要补充的问题"), "请补充质保期限");
+    const form = screen.getByRole("button", { name: "创建任务并发起请求" }).closest("form");
+    expect(form).not.toBeNull();
+    await user.click(screen.getByRole("button", { name: "创建任务并发起请求" }));
+    await waitFor(() => expect(requestCalls).toHaveLength(1));
+    fireEvent.submit(form!);
+    expect(taskCalls).toHaveLength(1);
+    expect(requestCalls).toHaveLength(1);
+
+    finishRequest?.(Response.json({ error: { message: "请求暂时不可用", code: "unavailable", retryable: true } }, { status: 503 }));
+    await screen.findByText("请求暂时不可用");
+    expect(screen.getByRole("combobox", { name: "关联任务" })).toBeDisabled();
+    expect(screen.getByLabelText("任务名称")).toBeDisabled();
+    expect(screen.getByLabelText("完成期限（本地时间）")).toBeDisabled();
+  });
+
+  it("keeps existing-task controls locked after a linked request fails", async () => {
+    const task: WorkbenchTask = { id: "task-retry", case_id: "case-1", title: "可重试任务", kind: "review",
+      assignee_id: "owner", due_at: at, status: "open", priority: "high", finding_id: null, version: 3,
+      created_at: at, created_by: "owner", updated_at: at };
+    const { calls, user } = open({ tasks: [task], respond(call) {
+      if (call.pathname.endsWith("/evidence-requests") && call.method === "POST")
+        return Response.json({ error: { message: "请求暂时不可用", code: "unavailable", retryable: true } }, { status: 503 });
+      if (call.pathname.endsWith("/evidence-requests")) return Response.json({ items: [] });
+      if (call.pathname.endsWith("/history")) return Response.json({ items: [] });
+      return Response.json({ error: { message: "unexpected" } }, { status: 404 });
+    } });
+
+    await screen.findByText("发起补充材料请求");
+    await chooseOption(user, screen.getByRole("combobox", { name: "缺失检查" }), /缺少质保期限/);
+    await chooseOption(user, screen.getByRole("combobox", { name: "关联任务" }), "选择已有任务");
+    await chooseOption(user, screen.getByRole("combobox", { name: "选择已有任务" }), /可重试任务/);
+    await user.type(screen.getByLabelText("需要补充的问题"), "请补充质保期限");
+    await user.click(screen.getByRole("button", { name: "发起补充请求" }));
+    await screen.findByText("请求暂时不可用");
+    expect(calls.some((call) => call.pathname.endsWith("/tasks") && call.method === "POST")).toBe(false);
+    expect(screen.getByRole("combobox", { name: "关联任务" })).toBeDisabled();
+    expect(screen.getByRole("combobox", { name: "选择已有任务" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "刷新案件任务" })).toBeDisabled();
   });
 
   it("sends selected request values, preserves retained fields after success, and advances the next key", async () => {
@@ -366,7 +575,9 @@ describe("补充材料请求", () => {
     await chooseOption(user, screen.getByRole("combobox", { name: "缺失检查" }), /缺少质保期限/);
     await user.type(screen.getByLabelText("任务名称"), "  补充质保  ");
     await chooseOption(user, screen.getByRole("combobox", { name: "责任人" }), /审查人/);
-    fireEvent.change(screen.getByLabelText("完成期限（本地时间）"), { target: { value: due } });
+    const dueInput = screen.getByLabelText("完成期限（本地时间）");
+    expect(dueInput).toBeEnabled();
+    fireEvent.change(dueInput, { target: { value: due } });
     await user.type(screen.getByLabelText("需要补充的问题"), "  请补充质保期限  ");
     await chooseOption(user, screen.getByRole("combobox", { name: "要求的材料类型" }), "拟签合同");
     await chooseOption(user, screen.getByRole("combobox", { name: "核验条件" }), "检查结果存在冲突");
