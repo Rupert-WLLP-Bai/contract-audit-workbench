@@ -122,10 +122,12 @@ func sameSchedule(hits []scheduleHit) bool {
 	return allValuesEqual(hits, func(item scheduleHit) struct {
 		days  int
 		class string
-	} { return struct {
-		days  int
-		class string
-	}{item.days, item.class} })
+	} {
+		return struct {
+			days  int
+			class string
+		}{item.days, item.class}
+	})
 }
 
 func partialSchedule(hits []scheduleHit, docs []Source) string {
