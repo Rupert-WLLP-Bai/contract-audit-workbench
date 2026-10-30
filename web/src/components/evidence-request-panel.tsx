@@ -901,6 +901,320 @@ type PanelContext = {
   refreshTasks: () => void;
 };
 
+type RequestSourceOption = { value: string; label: string };
+
+function isFrozenRequestSourceAttempt(
+  attempt: NonNullable<ReviewWorkspace["review_attempts"]>["attempt"] | undefined,
+  attemptId: string | null,
+  runId: string,
+): boolean {
+  return !!attemptId && attempt?.id === attemptId && attempt.run_id === runId &&
+    attempt.history_kind === "frozen" && !!attempt.finished_at &&
+    (attempt.state === "completed" || attempt.state === "partial");
+}
+
+function countRequestSourceIds<T>(items: T[], getId: (item: T) => string): Map<string, number> {
+  const counts = new Map<string, number>();
+  for (const item of items) {
+    const id = getId(item);
+    counts.set(id, (counts.get(id) ?? 0) + 1);
+  }
+  return counts;
+}
+
+function isEligibleRequestEvaluation(entry: ConstraintEvaluation, counts: Map<string, number>): boolean {
+  return !!entry.id && !!entry.domain && !!entry.rule_version &&
+    (entry.relation === "insufficient" || entry.relation === "unknown") && counts.get(entry.id) === 1;
+}
+
+function eligibleRequestEvaluations(evaluations: ConstraintEvaluation[]): ConstraintEvaluation[] {
+  const counts = countRequestSourceIds(evaluations, (evaluation) => evaluation.id);
+  return evaluations.filter((entry) => isEligibleRequestEvaluation(entry, counts));
+}
+
+function isEligibleRequestGap(gap: BusinessAgentGap, counts: Map<string, number>): boolean {
+  return !!gap.gap_id && !!gap.domain && !!gap.capability_id &&
+    ["insufficient", "unknown", "unsupported"].includes(gap.status) && counts.get(gap.gap_id) === 1;
+}
+
+function eligibleRequestGaps(
+  agentReview: BusinessAgentReview | null,
+  attemptId: string | null,
+): BusinessAgentGap[] {
+  const reported = agentReview && agentReview.attempt_id === attemptId ? agentReview.gaps ?? [] : [];
+  const counts = countRequestSourceIds(reported, (gap) => gap.gap_id);
+  return reported.filter((gap) => isEligibleRequestGap(gap, counts));
+}
+
+function requestSourceOptions(
+  evaluations: ConstraintEvaluation[],
+  gaps: BusinessAgentGap[],
+): RequestSourceOption[] {
+  return [
+    ...evaluations.map((entry, index) => ({
+      value: `evaluation:${entry.id}`,
+      label: `规则检查 ${index + 1}：${displayGap(entry.domain, entry.capability_id)}，${entry.reason || "原因未报告"}（${relationLabel(entry.relation)}）`,
+    })),
+    ...gaps.map((gap, index) => ({
+      value: `gap:${gap.gap_id}`,
+      label: `审查缺口 ${index + 1}：${displayGap(gap.domain, gap.capability_id)}`,
+    })),
+  ];
+}
+
+function eligibleExistingRequestTasks(
+  tasks: WorkbenchTask[] | undefined,
+  caseId: string,
+  members: CaseDetail["members"] | undefined,
+): WorkbenchTask[] {
+  return (tasks ?? []).filter((entry) => entry.case_id === caseId && entry.status !== "completed" && !!entry.due_at &&
+    members?.some((member) => member.id === entry.assignee_id));
+}
+
+function existingTaskControlDisabled(task: WorkbenchTask | null, pending: boolean, tasksLoading: boolean): boolean {
+  return !!task || pending || tasksLoading;
+}
+
+function resolveRequestTask(
+  task: WorkbenchTask | null,
+  taskMode: "new" | "existing",
+  existingTask: WorkbenchTask | undefined,
+): WorkbenchTask | null {
+  return task ?? (taskMode === "existing" ? existingTask ?? null : null);
+}
+
+function isRequestTaskReady(
+  task: WorkbenchTask | null,
+  taskMode: "new" | "existing",
+  existingTask: WorkbenchTask | undefined,
+  title: string,
+  assignee: string,
+  dueValid: boolean,
+): boolean {
+  return !!task || (taskMode === "existing" ? !!existingTask : !!title.trim() && !!assignee && dueValid);
+}
+
+function canSubmitRequest(
+  canManage: boolean,
+  frozen: boolean,
+  attemptId: string | null,
+  validSource: boolean,
+  question: string,
+  taskReady: boolean,
+  pending: boolean,
+): attemptId is string {
+  return canManage && frozen && !!attemptId && validSource && !!question.trim() && taskReady && !pending;
+}
+
+function isCreateRequestButtonDisabled(
+  frozen: boolean,
+  validSource: boolean,
+  question: string,
+  taskReady: boolean,
+): boolean {
+  return !frozen || !validSource || !question.trim() || !taskReady;
+}
+
+function createRequestButtonLabel(task: WorkbenchTask | null, taskMode: "new" | "existing"): string {
+  return task ? "重试创建补充请求" : taskMode === "existing" ? "发起补充请求" : "创建任务并发起请求";
+}
+
+function createEvidenceRequestInput(
+  task: WorkbenchTask,
+  source: string,
+  runId: string,
+  attemptId: string,
+  question: string,
+  role: string,
+  condition: "compatible" | "conflict",
+): CreateEvidenceRequestInput {
+  const isGap = source.startsWith("gap:");
+  return {
+    task_id: task.id,
+    task_version: task.version,
+    source_run_id: runId,
+    source_attempt_id: attemptId,
+    ...(isGap ? { source_gap_id: source.slice(4) } : { source_evaluation_id: source.slice(11) }),
+    question: question.trim(),
+    ...(role ? { material_role: role } : {}),
+    verification_condition: isGap ? "resolved" : condition,
+  };
+}
+
+function CreateRequestSourceFields({
+  frozen,
+  options,
+  source,
+  pending,
+  onSourceChange,
+}: {
+  frozen: boolean;
+  options: RequestSourceOption[];
+  source: string;
+  pending: boolean;
+  onSourceChange: (value: string) => void;
+}) {
+  return (
+    <>
+      {!frozen ? <p className="callout">只有已完成或部分完成、且已保存审查材料的执行记录可以发起请求。</p> : null}
+      {frozen && options.length === 0 ? <p>本次审查没有返回符合条件的待补充检查。</p> : null}
+      <label className="field">缺失检查
+        <Select<string> aria-label="缺失检查" placeholder="选择缺失检查" value={source || undefined} onChange={onSourceChange}
+          options={options} disabled={!frozen || pending || options.length === 0} />
+      </label>
+    </>
+  );
+}
+
+function ExistingRequestTaskLoadStatus({ context }: { context: PanelContext }) {
+  if (context.tasksLoading) return <p role="status">正在读取案件任务。</p>;
+  return !context.tasks && !context.tasksError ? <p>案件任务尚未载入。</p> : null;
+}
+
+function ExistingRequestTaskEmptyStatus({ context, eligibleTasks }: {
+  context: PanelContext;
+  eligibleTasks: WorkbenchTask[];
+}) {
+  return context.tasks && eligibleTasks.length === 0 ? <p>暂无包含责任人和期限的未完成案件任务。</p> : null;
+}
+
+function ExistingRequestTaskFields({ task, pending, existingTaskId, onExistingTaskChange, context, eligibleTasks }: {
+  task: WorkbenchTask | null;
+  pending: boolean;
+  existingTaskId: string;
+  onExistingTaskChange: (value: string) => void;
+  context: PanelContext;
+  eligibleTasks: WorkbenchTask[];
+}) {
+  return (
+    <>
+      <label className="field">选择已有任务
+        <Select<string> aria-label="选择已有任务" placeholder="选择案件任务" value={existingTaskId || undefined}
+          onChange={onExistingTaskChange} disabled={existingTaskControlDisabled(task, pending, context.tasksLoading)} options={eligibleTasks.map((entry) => ({
+            value: entry.id, label: `${entry.title} · ${context.detail?.members.find((member) => member.id === entry.assignee_id)?.display_name ?? "责任人姓名未报告"} · ${formatDateTime(entry.due_at ?? "")}`,
+          }))} />
+      </label>
+      <ExistingRequestTaskLoadStatus context={context} />
+      <Button htmlType="button" loading={context.tasksLoading} disabled={existingTaskControlDisabled(task, pending, context.tasksLoading)} onClick={context.refreshTasks}>刷新案件任务</Button>
+      <ErrorNotice error={context.tasksError} />
+      <ExistingRequestTaskEmptyStatus context={context} eligibleTasks={eligibleTasks} />
+    </>
+  );
+}
+
+function NewRequestTaskFields({ context, task, pending, title, onTitleChange, assignee, onAssigneeChange, due, onDueChange }: {
+  context: PanelContext;
+  task: WorkbenchTask | null;
+  pending: boolean;
+  title: string;
+  onTitleChange: (value: string) => void;
+  assignee: string;
+  onAssigneeChange: (value: string) => void;
+  due: string;
+  onDueChange: (value: string) => void;
+}) {
+  return (
+    <>
+      <label className="field">任务名称
+        <Input required maxLength={200} value={title} onChange={(event) => onTitleChange(event.target.value)} disabled={!!task || pending} />
+      </label>
+      <label className="field">责任人
+        <Select<string> aria-label="责任人" placeholder="选择案件成员" value={assignee || undefined} onChange={onAssigneeChange}
+          options={(context.detail?.members ?? []).map((member) => ({ value: member.id, label: member.display_name }))}
+          disabled={!!task || pending || !context.detail} />
+      </label>
+      <label className="field">完成期限（本地时间）
+        <Input type="datetime-local" required value={due} onChange={(event) => onDueChange(event.target.value)} disabled={!!task || pending} />
+      </label>
+    </>
+  );
+}
+
+function CreateRequestTaskFields({
+  taskMode, onTaskModeChange, task, pending, existingTaskId, onExistingTaskChange, context, eligibleTasks,
+  title, onTitleChange, assignee, onAssigneeChange, due, onDueChange,
+}: {
+  taskMode: "new" | "existing";
+  onTaskModeChange: (value: "new" | "existing") => void;
+  task: WorkbenchTask | null;
+  pending: boolean;
+  existingTaskId: string;
+  onExistingTaskChange: (value: string) => void;
+  context: PanelContext;
+  eligibleTasks: WorkbenchTask[];
+  title: string;
+  onTitleChange: (value: string) => void;
+  assignee: string;
+  onAssigneeChange: (value: string) => void;
+  due: string;
+  onDueChange: (value: string) => void;
+}) {
+  return (
+    <>
+      <label className="field">关联任务
+        <Select<"new" | "existing"> aria-label="关联任务" value={taskMode} onChange={onTaskModeChange} disabled={!!task || pending}
+          options={[{ value: "new", label: "创建新任务" }, { value: "existing", label: "选择已有任务" }]} />
+      </label>
+      {taskMode === "existing"
+        ? <ExistingRequestTaskFields task={task} pending={pending} existingTaskId={existingTaskId} onExistingTaskChange={onExistingTaskChange} context={context} eligibleTasks={eligibleTasks} />
+        : <NewRequestTaskFields context={context} task={task} pending={pending} title={title} onTitleChange={onTitleChange}
+          assignee={assignee} onAssigneeChange={onAssigneeChange} due={due} onDueChange={onDueChange} />}
+    </>
+  );
+}
+
+function CreateRequestDetailsFields({
+  question,
+  onQuestionChange,
+  role,
+  onRoleChange,
+  source,
+  condition,
+  onConditionChange,
+  pending,
+}: {
+  question: string;
+  onQuestionChange: (value: string) => void;
+  role: string;
+  onRoleChange: (value: string) => void;
+  source: string;
+  condition: "compatible" | "conflict";
+  onConditionChange: (value: "compatible" | "conflict") => void;
+  pending: boolean;
+}) {
+  return (
+    <>
+      <label className="field">需要补充的问题
+        <Input.TextArea required maxLength={2000} value={question} onChange={(event) => onQuestionChange(event.target.value)} disabled={pending} />
+      </label>
+      <label className="field">要求的材料类型
+        <Select<string> aria-label="要求的材料类型" value={role} onChange={onRoleChange} disabled={pending}
+          options={[{ value: "", label: "不限材料类型" }, ...materialRoles]} />
+      </label>
+      {source.startsWith("gap:") ? <p>核验条件：缺口已解决。</p> : (
+        <label className="field">核验条件
+          <Select<"compatible" | "conflict"> aria-label="核验条件" value={condition} onChange={onConditionChange} disabled={pending}
+            options={[{ value: "compatible", label: "检查结果一致" }, { value: "conflict", label: "检查结果存在冲突" }]} />
+        </label>
+      )}
+    </>
+  );
+}
+
+function CreateRequestLinkedTaskFooter({ task, pending, onReplace }: {
+  task: WorkbenchTask | null;
+  pending: boolean;
+  onReplace: () => void;
+}) {
+  if (!task) return null;
+  return (
+    <>
+      <p className="callout">已关联任务“{task.title}”。请求未完成时可在此重试，任务不会再次创建。</p>
+      <Button htmlType="button" disabled={pending} onClick={onReplace}>更换关联任务</Button>
+    </>
+  );
+}
+
 function CreateRequest({ caseId, runId, attemptId, evaluations, agentReview, canManage, context }: Omit<EvidencePanelProps, "documents"> & { context: PanelContext }) {
   const createTask = useCreateWorkbenchTask(caseId);
   const client = useQueryClient();
@@ -921,38 +1235,24 @@ function CreateRequest({ caseId, runId, attemptId, evaluations, agentReview, can
   const [created, setCreated] = useState(false);
   if (!canManage) return null;
 
-  const selectedAttempt = context.workspace?.review_attempts?.attempt;
-  const frozen = !!attemptId && selectedAttempt?.id === attemptId && selectedAttempt.run_id === runId &&
-    selectedAttempt.history_kind === "frozen" && !!selectedAttempt.finished_at &&
-    (selectedAttempt.state === "completed" || selectedAttempt.state === "partial");
-  const evaluationCounts = new Map<string, number>();
-  for (const evaluation of evaluations) evaluationCounts.set(evaluation.id, (evaluationCounts.get(evaluation.id) ?? 0) + 1);
-  const missingEvaluations = evaluations.filter((entry) => entry.id && entry.domain && entry.rule_version &&
-    (entry.relation === "insufficient" || entry.relation === "unknown") && evaluationCounts.get(entry.id) === 1);
-  const reportedGaps = agentReview && agentReview.attempt_id === attemptId ? agentReview.gaps ?? [] : [];
-  const gapCounts = new Map<string, number>();
-  for (const gap of reportedGaps) gapCounts.set(gap.gap_id, (gapCounts.get(gap.gap_id) ?? 0) + 1);
-  const gaps = reportedGaps.filter((gap) => gap.gap_id && gap.domain && gap.capability_id &&
-    ["insufficient", "unknown", "unsupported"].includes(gap.status) && gapCounts.get(gap.gap_id) === 1);
-  const options = [
-    ...missingEvaluations.map((entry, index) => ({ value: `evaluation:${entry.id}`, label: `规则检查 ${index + 1}：${displayGap(entry.domain, entry.capability_id)}，${entry.reason || "原因未报告"}（${relationLabel(entry.relation)}）` })),
-    ...gaps.map((gap, index) => ({ value: `gap:${gap.gap_id}`, label: `审查缺口 ${index + 1}：${displayGap(gap.domain, gap.capability_id)}` })),
-  ];
+  const frozen = isFrozenRequestSourceAttempt(context.workspace?.review_attempts?.attempt, attemptId, runId);
+  const missingEvaluations = eligibleRequestEvaluations(evaluations);
+  const gaps = eligibleRequestGaps(agentReview, attemptId);
+  const options = requestSourceOptions(missingEvaluations, gaps);
   const validSource = options.some((option) => option.value === source);
-  const dueValid = due !== "" && !Number.isNaN(new Date(due).getTime());
-  const eligibleTasks = (context.tasks ?? []).filter((entry) => entry.case_id === caseId && entry.status !== "completed" && !!entry.due_at &&
-    context.detail?.members.some((member) => member.id === entry.assignee_id));
+  const dueValid = validBusinessReviewTime(due);
+  const eligibleTasks = eligibleExistingRequestTasks(context.tasks, caseId, context.detail?.members);
   const existingTask = eligibleTasks.find((entry) => entry.id === existingTaskId);
-  const taskReady = !!task || (taskMode === "existing" ? !!existingTask : !!title.trim() && !!assignee && dueValid);
+  const taskReady = isRequestTaskReady(task, taskMode, existingTask, title, assignee, dueValid);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!canManage || !frozen || !attemptId || !validSource || !question.trim() || !taskReady || pending) return;
+    if (!canSubmitRequest(canManage, frozen, attemptId, validSource, question, taskReady, pending)) return;
     setError(null);
     setCreated(false);
     setPending(true);
     try {
-      let linkedTask = task ?? (taskMode === "existing" ? existingTask ?? null : null);
+      let linkedTask = resolveRequestTask(task, taskMode, existingTask);
       if (!linkedTask) {
         linkedTask = await createTask.mutateAsync({
           title: title.trim(), kind: "review", assignee_id: assignee, due_at: new Date(due).toISOString(),
@@ -960,13 +1260,7 @@ function CreateRequest({ caseId, runId, attemptId, evaluations, agentReview, can
         });
       }
       setTask(linkedTask);
-      const isGap = source.startsWith("gap:");
-      const input: CreateEvidenceRequestInput = {
-        task_id: linkedTask.id, task_version: linkedTask.version, source_run_id: runId, source_attempt_id: attemptId,
-        ...(isGap ? { source_gap_id: source.slice(4) } : { source_evaluation_id: source.slice(11) }),
-        question: question.trim(), ...(role ? { material_role: role } : {}),
-        verification_condition: isGap ? "resolved" : condition,
-      };
+      const input = createEvidenceRequestInput(linkedTask, source, runId, attemptId, question, role, condition);
       await createEvidenceRequest(caseId, input, keyFor(`create:${createGeneration.current}`, input));
       createGeneration.current += 1;
       setTask(null);
@@ -983,66 +1277,35 @@ function CreateRequest({ caseId, runId, attemptId, evaluations, agentReview, can
     }
   }
 
+  function replaceLinkedTask() {
+    setTask(null);
+    setError(null);
+  }
+
+  const submitLabel = createRequestButtonLabel(task, taskMode);
+  const submitDisabled = isCreateRequestButtonDisabled(frozen, validSource, question, taskReady);
+
   return (
     <form className="workflow-form" onSubmit={(event) => void submit(event)}>
       <h3>发起补充材料请求</h3>
       <p className="meta">选择本次审查中需要补充材料的检查，再关联一项有责任人和截止时间的案件任务。</p>
-      {!frozen ? <p className="callout">只有已完成或部分完成、且已保存审查材料的执行记录可以发起请求。</p> : null}
-      {frozen && options.length === 0 ? <p>本次审查没有返回符合条件的待补充检查。</p> : null}
-      <label className="field">缺失检查
-        <Select<string> aria-label="缺失检查" placeholder="选择缺失检查" value={source || undefined} onChange={setSource}
-          options={options} disabled={!frozen || pending || options.length === 0} />
-      </label>
-      <label className="field">关联任务
-        <Select<"new" | "existing"> aria-label="关联任务" value={taskMode} onChange={setTaskMode} disabled={!!task || pending}
-          options={[{ value: "new", label: "创建新任务" }, { value: "existing", label: "选择已有任务" }]} />
-      </label>
-      {taskMode === "existing" ? <>
-        <label className="field">选择已有任务
-          <Select<string> aria-label="选择已有任务" placeholder="选择案件任务" value={existingTaskId || undefined}
-            onChange={setExistingTaskId} disabled={!!task || pending || context.tasksLoading} options={eligibleTasks.map((entry) => ({
-              value: entry.id, label: `${entry.title} · ${context.detail?.members.find((member) => member.id === entry.assignee_id)?.display_name ?? "责任人姓名未报告"} · ${formatDateTime(entry.due_at ?? "")}`,
-            }))} />
-        </label>
-        {context.tasksLoading ? <p role="status">正在读取案件任务。</p> : !context.tasks && !context.tasksError ? <p>案件任务尚未载入。</p> : null}
-        <Button htmlType="button" loading={context.tasksLoading} disabled={!!task || pending || context.tasksLoading} onClick={context.refreshTasks}>刷新案件任务</Button>
-        <ErrorNotice error={context.tasksError} />
-        {context.tasks && eligibleTasks.length === 0 ? <p>暂无包含责任人和期限的未完成案件任务。</p> : null}
-      </> : <>
-        <label className="field">任务名称
-          <Input required maxLength={200} value={title} onChange={(event) => setTitle(event.target.value)} disabled={!!task || pending} />
-        </label>
-        <label className="field">责任人
-          <Select<string> aria-label="责任人" placeholder="选择案件成员" value={assignee || undefined} onChange={setAssignee}
-            options={(context.detail?.members ?? []).map((member) => ({ value: member.id, label: member.display_name }))}
-            disabled={!!task || pending || !context.detail} />
-        </label>
-        <label className="field">完成期限（本地时间）
-          <Input type="datetime-local" required value={due} onChange={(event) => setDue(event.target.value)} disabled={!!task || pending} />
-        </label>
-      </>}
+      <CreateRequestSourceFields frozen={frozen} options={options} source={source} pending={pending} onSourceChange={setSource} />
+      <CreateRequestTaskFields
+        taskMode={taskMode} onTaskModeChange={setTaskMode} task={task} pending={pending}
+        existingTaskId={existingTaskId} onExistingTaskChange={setExistingTaskId} context={context} eligibleTasks={eligibleTasks}
+        title={title} onTitleChange={setTitle} assignee={assignee} onAssigneeChange={setAssignee}
+        due={due} onDueChange={setDue}
+      />
       <ErrorNotice error={context.detailError} />
-      <label className="field">需要补充的问题
-        <Input.TextArea required maxLength={2000} value={question} onChange={(event) => setQuestion(event.target.value)} disabled={pending} />
-      </label>
-      <label className="field">要求的材料类型
-        <Select<string> aria-label="要求的材料类型" value={role} onChange={setRole} disabled={pending}
-          options={[{ value: "", label: "不限材料类型" }, ...materialRoles]} />
-      </label>
-      {source.startsWith("gap:") ? <p>核验条件：缺口已解决。</p> : (
-        <label className="field">核验条件
-          <Select<"compatible" | "conflict"> aria-label="核验条件" value={condition} onChange={setCondition} disabled={pending}
-            options={[{ value: "compatible", label: "检查结果一致" }, { value: "conflict", label: "检查结果存在冲突" }]} />
-        </label>
-      )}
-      {task ? <>
-        <p className="callout">已关联任务“{task.title}”。请求未完成时可在此重试，任务不会再次创建。</p>
-        <Button htmlType="button" disabled={pending} onClick={() => { setTask(null); setError(null); }}>更换关联任务</Button>
-      </> : null}
+      <CreateRequestDetailsFields
+        question={question} onQuestionChange={setQuestion} role={role} onRoleChange={setRole}
+        source={source} condition={condition} onConditionChange={setCondition} pending={pending}
+      />
+      <CreateRequestLinkedTaskFooter task={task} pending={pending} onReplace={replaceLinkedTask} />
       <ErrorNotice error={error} />
       {created ? <p role="status">补充材料请求已创建。</p> : null}
-      <Button aria-label={task ? "重试创建补充请求" : taskMode === "existing" ? "发起补充请求" : "创建任务并发起请求"} type="primary" htmlType="submit" loading={pending} disabled={!frozen || !validSource || !question.trim() || !taskReady}>
-        {task ? "重试创建补充请求" : taskMode === "existing" ? "发起补充请求" : "创建任务并发起请求"}
+      <Button aria-label={submitLabel} type="primary" htmlType="submit" loading={pending} disabled={submitDisabled}>
+        {submitLabel}
       </Button>
     </form>
   );
