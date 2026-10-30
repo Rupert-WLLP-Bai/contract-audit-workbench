@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
 	"net"
 	"net/http"
@@ -21,9 +22,11 @@ import (
 	"time"
 
 	"contractaudit/internal/auditext"
+	"contractaudit/internal/bootstrap"
 	"contractaudit/internal/capabilitypack"
 	"contractaudit/internal/config"
 	"contractaudit/internal/httpapi"
+	"contractaudit/internal/model"
 	"contractaudit/internal/store"
 	"github.com/jackc/pgx/v5"
 )
@@ -302,6 +305,91 @@ func captureServerLog(t *testing.T, action func()) string {
 	}()
 	action()
 	return output.String()
+}
+
+func TestDevelopmentCompatibilityUsesAppEnvironmentAllowList(t *testing.T) {
+	for _, test := range []struct {
+		app  string
+		want bool
+	}{
+		{app: "", want: true}, {app: " DEVELOPMENT ", want: true}, {app: "Dev", want: true},
+		{app: "test", want: true}, {app: "production", want: false}, {app: "staging", want: false},
+	} {
+		t.Run(test.app, func(t *testing.T) {
+			t.Setenv("APP_ENV", test.app)
+			if got := developmentCompatibility(); got != test.want {
+				t.Fatalf("developmentCompatibility() = %t, want %t", got, test.want)
+			}
+		})
+	}
+}
+
+func TestServeLegacyReturnsBootstrapCancellation(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if err := serveLegacy(ctx); !errors.Is(err, context.Canceled) {
+		t.Fatalf("serveLegacy(canceled context) = %v, want context.Canceled", err)
+	}
+}
+
+func TestLogStartupReportsInstanceDatabaseAndModels(t *testing.T) {
+	app := &bootstrap.Runtime{
+		Models:    model.New(model.Config{ChatModel: "review-v7", OCRModel: "ocr-v3"}),
+		Selection: config.Selection{Mode: "test", Database: config.Identity{Name: "audit_test", Host: "db.internal", Port: "5433"}},
+	}
+	output := captureServerLog(t, func() { logStartup(app) })
+	for _, want := range []string{
+		"instance ", fmt.Sprintf("pid %d", os.Getpid()),
+		"database audit_test at db.internal:5433 (test)", "review model review-v7, ocr model ocr-v3",
+	} {
+		if !strings.Contains(output, want) {
+			t.Fatalf("startup log %q does not contain %q", output, want)
+		}
+	}
+}
+
+func TestOptionsPreservesRuntimeFlagsAndKeepsAuditDefaultOff(t *testing.T) {
+	t.Setenv("OPERATOR_AUDIT_ENABLED", "")
+	t.Setenv("WORKER_CORE_TOKEN", " worker-token ")
+	app := &bootstrap.Runtime{
+		Models: model.New(model.Config{ChatModel: "review-v7"}), Durable: true, SecureCookies: true,
+		Selection: config.Selection{Mode: config.ModeTest, Database: config.Identity{Name: "audit_test", Host: "localhost", Port: "5432"}},
+	}
+	got := options(app, []string{"https://app.example"})
+	if got.Models != app.Models || !got.Durable || !got.SecureCookies || got.ExperienceWorkerCredential != "worker-token" {
+		t.Fatalf("runtime options lost configured values: %+v", got)
+	}
+	if !reflect.DeepEqual(got.CORSOrigins, []string{"https://app.example"}) || got.SystemHealth == nil {
+		t.Fatalf("runtime options origins/health = %#v/%v", got.CORSOrigins, got.SystemHealth)
+	}
+	if got.OperatorAuditEnabled || got.CapabilityPacks != nil || got.ExternalConnectors != nil || got.ExternalConnectorInfo != nil {
+		t.Fatalf("operator audit was enabled without its explicit switch: %+v", got)
+	}
+}
+
+func TestMainRejectsUnknownRoleInChildProcess(t *testing.T) {
+	if os.Getenv("CAW_SERVER_MAIN_CHILD") == "1" {
+		main()
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	args := []string{"-test.run=^TestMainRejectsUnknownRoleInChildProcess$"}
+	for _, arg := range os.Args[1:] {
+		if strings.HasPrefix(arg, "-test.gocoverdir=") {
+			args = append(args, arg)
+			break
+		}
+	}
+	command := exec.CommandContext(ctx, os.Args[0], args...)
+	command.Env = replaceServerTestEnvironment(os.Environ(), map[string]string{
+		"CAW_SERVER_MAIN_CHILD": "1", "SERVICE_ROLE": "unexpected", "APP_ENV": "development",
+	})
+	output, err := command.CombinedOutput()
+	var exitError *exec.ExitError
+	if ctx.Err() != nil || !errors.As(err, &exitError) || exitError.ExitCode() != 1 || !strings.Contains(string(output), `unknown SERVICE_ROLE "unexpected"`) {
+		t.Fatalf("main() child err=%v output=%q, want unknown-role fatal", err, output)
+	}
 }
 
 func TestOperatorAuditFixtureConnectorInBoundedChild(t *testing.T) {
