@@ -358,14 +358,15 @@ func completionStatus(parent, callCtx context.Context) string {
 }
 
 func validateWorkspaceBinding(user accounts.User, args toolArguments, workspace store.Workspace) *rpcFailure {
-	if !workspaceCaseMatches(user, args, workspace) || !workspaceAttemptMatches(args, workspace) {
+	tenantID := accounts.Tenant(user)
+	if !workspaceCaseMatches(tenantID, args, workspace) || !workspaceAttemptMatches(args, workspace) {
 		return &rpcFailure{status: http.StatusNotFound, code: codeInternalError, message: "No matching frozen attempt is available."}
 	}
 	return nil
 }
 
-func workspaceCaseMatches(user accounts.User, args toolArguments, workspace store.Workspace) bool {
-	return workspace.Case.ID == args.caseID && workspace.Case.TenantID == accounts.Tenant(user) && workspace.Snapshot.RunID == args.runID
+func workspaceCaseMatches(tenantID string, args toolArguments, workspace store.Workspace) bool {
+	return workspace.Case.ID == args.caseID && workspace.Case.TenantID == tenantID && workspace.Snapshot.RunID == args.runID
 }
 
 func workspaceAttemptMatches(args toolArguments, workspace store.Workspace) bool {

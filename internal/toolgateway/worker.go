@@ -134,11 +134,15 @@ func decodeStrictWorkerJobContext(raw string) (workerJobContext, error) {
 }
 
 func workerJobContextComplete(claim workerJobContext) bool {
-	identities := [...]string{claim.JobID, claim.WorkerID, claim.AttemptID, claim.TenantID, claim.OrgID}
-	for _, identity := range identities {
-		if strings.TrimSpace(identity) == "" {
-			return false
-		}
+	if !workerIdentityPresent(claim.JobID) || !workerIdentityPresent(claim.WorkerID) || !workerIdentityPresent(claim.AttemptID) {
+		return false
 	}
-	return claim.Generation >= 1
+	if claim.Generation < 1 {
+		return false
+	}
+	return workerIdentityPresent(claim.TenantID) && workerIdentityPresent(claim.OrgID)
+}
+
+func workerIdentityPresent(value string) bool {
+	return strings.TrimSpace(value) != ""
 }
