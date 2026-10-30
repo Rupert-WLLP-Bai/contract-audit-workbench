@@ -860,6 +860,13 @@ describe("补充材料请求", () => {
     await screen.findByText("已提交材料或答复：");
     expect((await screen.findAllByText(/材料名称未报告/)).length).toBeGreaterThan(0);
     expect((await screen.findAllByText(/补充合同\.txt/)).length).toBeGreaterThan(0);
+    const receiptList = screen.getByText("已提交材料或答复：").parentElement?.querySelector("ul");
+    expect(receiptList).not.toBeNull();
+    const receiptRows = within(receiptList!).getAllByRole("listitem");
+    expect(receiptRows).toHaveLength(3);
+    expect(receiptRows[0]).toHaveTextContent("材料名称未报告");
+    expect(receiptRows[1]).toHaveTextContent("质保36个月");
+    expect(receiptRows[2]).toHaveTextContent("补充合同.txt");
     await user.click(screen.getByText("处理记录"));
     expect(screen.getByText(/创建请求 · 系统/)).toBeInTheDocument();
     expect(screen.getByText(/提交回执 · 姓名未报告/)).toBeInTheDocument();
