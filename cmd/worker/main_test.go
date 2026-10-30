@@ -122,6 +122,62 @@ func TestWorkerRunValidatesConfigAndDrainsIdlePostgresQueue(t *testing.T) {
 	if err := claimJobs(env.ctx, env.worker.Store, "", time.Second, time.Millisecond, time.Millisecond, nil); err == nil || err.Error() != "worker id and positive lease are required" {
 		t.Fatalf("claimJobs invalid worker ID error = %v", err)
 	}
+	t.Run("empty PostgreSQL queue honors poll and returns an unclaimed tuple", func(t *testing.T) {
+		poll := 250 * time.Millisecond
+		type claimResult struct {
+			claim   store.JobClaim
+			claimed bool
+			err     error
+		}
+		result := make(chan claimResult, 1)
+		started := time.Now()
+		go func() {
+			claim, claimed, err := claimNextJob(env.ctx, env.worker.Store, "worker-poll-test", time.Second, poll, nil)
+			result <- claimResult{claim: claim, claimed: claimed, err: err}
+		}()
+		select {
+		case got := <-result:
+			t.Fatalf("empty queue returned before poll interval: %+v", got)
+		case <-time.After(50 * time.Millisecond):
+		}
+		select {
+		case got := <-result:
+			if got.err != nil || got.claimed || got.claim.JobID != "" {
+				t.Fatalf("empty queue claim tuple = %+v, want zero claim, false, nil", got)
+			}
+			if elapsed := time.Since(started); elapsed < poll-50*time.Millisecond {
+				t.Fatalf("empty queue poll returned after %s, want about %s", elapsed, poll)
+			}
+		case <-time.After(2 * time.Second):
+			t.Fatal("empty queue claim did not return after its poll interval")
+		}
+	})
+	t.Run("empty PostgreSQL queue returns cancellation in the error tuple", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(env.ctx)
+		result := make(chan struct {
+			claim   store.JobClaim
+			claimed bool
+			err     error
+		}, 1)
+		time.AfterFunc(50*time.Millisecond, cancel)
+		defer cancel()
+		go func() {
+			claim, claimed, err := claimNextJob(ctx, env.worker.Store, "worker-cancel-test", time.Second, time.Second, nil)
+			result <- struct {
+				claim   store.JobClaim
+				claimed bool
+				err     error
+			}{claim: claim, claimed: claimed, err: err}
+		}()
+		select {
+		case got := <-result:
+			if got.claim.JobID != "" || got.claimed || !errors.Is(got.err, context.Canceled) {
+				t.Fatalf("canceled empty queue claim tuple = %+v, want zero claim, false, context.Canceled", got)
+			}
+		case <-time.After(2 * time.Second):
+			t.Fatal("empty queue claim did not return after cancellation")
+		}
+	})
 	idleCtx, cancelIdle := context.WithCancel(env.ctx)
 	idleDone := make(chan error, 1)
 	idleCancel := time.AfterFunc(250*time.Millisecond, cancelIdle)
@@ -182,6 +238,68 @@ func TestWorkerRunValidatesConfigAndDrainsIdlePostgresQueue(t *testing.T) {
 		_, _, _, current, err := env.workerJobState(accepted.JobID)
 		if err != nil || !current.Valid || !current.Time.Equal(last) {
 			t.Fatalf("heartbeat changed after claimJobs returned: valid=%t err=%v", current.Valid, err)
+		}
+	})
+
+	t.Run("successive PostgreSQL claims finish and log both jobs", func(t *testing.T) {
+		first := env.createReview(t)
+		second := env.createReview(t)
+		env.worker.Store.UseModels(successfulWorkerModel{})
+		var output bytes.Buffer
+		previous := slog.Default()
+		slog.SetDefault(slog.New(slog.NewTextHandler(&output, &slog.HandlerOptions{Level: slog.LevelDebug})))
+		t.Cleanup(func() { slog.SetDefault(previous) })
+
+		ctx, cancel := context.WithCancel(env.ctx)
+		done := make(chan error, 1)
+		const workerID = "worker-successive-claims"
+		go func() {
+			done <- claimJobs(ctx, env.worker.Store, workerID, 5*time.Second, time.Second, 10*time.Millisecond, nil)
+		}()
+		deadline := time.Now().Add(20 * time.Second)
+		completed := map[string]bool{}
+		for time.Now().Before(deadline) && len(completed) < 2 {
+			for _, jobID := range []string{first.JobID, second.JobID} {
+				state, _, _, _, err := env.workerJobState(jobID)
+				if err != nil {
+					t.Fatalf("read worker job state (%T)", err)
+				}
+				if state == "completed" {
+					completed[jobID] = true
+				}
+			}
+			if len(completed) == 2 {
+				break
+			}
+			select {
+			case err := <-done:
+				t.Fatalf("claim loop stopped before both jobs completed: %v; states=%v", err, completed)
+			case <-time.After(20 * time.Millisecond):
+			}
+		}
+		if len(completed) != 2 {
+			cancel()
+			select {
+			case <-done:
+			case <-time.After(3 * time.Second):
+				t.Error("claim loop did not stop after cancel")
+			}
+			t.Fatalf("only %d of 2 PostgreSQL jobs reached completed state", len(completed))
+		}
+		cancel()
+		select {
+		case err := <-done:
+			if !errors.Is(err, context.Canceled) {
+				t.Fatalf("claim loop after completed jobs = %v, want context.Canceled", err)
+			}
+		case <-time.After(3 * time.Second):
+			t.Fatal("claim loop did not stop after cancel")
+		}
+		if got := strings.Count(output.String(), `msg="review job finished"`); got != 2 {
+			t.Fatalf("successful worker jobs logged %d finish events, want 2: %s", got, output.String())
+		}
+		if strings.Contains(output.String(), `msg="review job failed"`) || strings.Contains(output.String(), `msg="review job heartbeat failed"`) {
+			t.Fatalf("successful worker jobs emitted failure logs: %s", output.String())
 		}
 	})
 
@@ -432,6 +550,17 @@ func (m blockingWorkerModel) Warranty(ctx context.Context, _ []model.Material) (
 }
 func (blockingWorkerModel) Transcribe(context.Context, string, []byte) (string, error) {
 	return "", errors.New("unexpected OCR request in text-only worker test")
+}
+
+type successfulWorkerModel struct{}
+
+func (successfulWorkerModel) Name() string            { return "worker-success-model" }
+func (successfulWorkerModel) ConfigurationID() string { return "worker-success-model-config" }
+func (successfulWorkerModel) Warranty(context.Context, []model.Material) (model.Warranty, error) {
+	return model.Warranty{Relation: "compatible", Disposition: "false_positive"}, nil
+}
+func (successfulWorkerModel) Transcribe(context.Context, string, []byte) (string, error) {
+	return "", model.ErrUnusable
 }
 
 func waitForWorkerStatus(t *testing.T, addr, path string, done <-chan error, status int) {
