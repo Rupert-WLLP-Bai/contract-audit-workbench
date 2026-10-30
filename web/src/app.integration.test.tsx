@@ -747,7 +747,7 @@ describe("application routes and API contract", () => {
     expect(
       screen.getByText("质保期限不一致", { selector: "h3" }),
     ).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "加载审查诊断" }));
+    await user.click(screen.getByRole("button", { name: "加载运行轨迹与诊断" }));
     await user.click(
       screen.getByRole("button", { name: "运行依据与规则评估" }),
     );
@@ -1102,7 +1102,7 @@ describe("application routes and API contract", () => {
     expect(
       await screen.findByRole("heading", { name: "执行检查器" }),
     ).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "加载审查诊断" }));
+    await user.click(screen.getByRole("button", { name: "加载运行轨迹与诊断" }));
     expect(
       await screen.findByRole("heading", { name: "引用已定位的线索" }),
     ).toBeInTheDocument();
@@ -1111,8 +1111,8 @@ describe("application routes and API contract", () => {
     expect(
       within(attemptUsage).getByText("物理调用").parentElement,
     ).toHaveTextContent("3");
-    expect(screen.getByText("provider_unavailable")).toBeInTheDocument();
     const eventDetails = screen.getByRole("region", { name: "事件详情" });
+    expect(within(eventDetails).getByText("provider_unavailable")).toBeVisible();
     expect(within(eventDetails).getByText("model_http")).toBeVisible();
     expect(within(eventDetails).getAllByText("未知")).toHaveLength(3);
     await user.click(screen.getByRole("button", { name: "时间线" }));
@@ -1171,7 +1171,7 @@ describe("application routes and API contract", () => {
     expect(
       await screen.findByRole("heading", { name: "执行检查器" }),
     ).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "加载审查诊断" }));
+    await user.click(screen.getByRole("button", { name: "加载运行轨迹与诊断" }));
     const eventDetails = await screen.findByRole("region", { name: "事件详情" });
     expect(
       within(eventDetails).getByText("openai_response.usage"),
@@ -1353,7 +1353,7 @@ describe("application routes and API contract", () => {
     expect(
       screen.getByText("还没有审查人员的判断。模型建议不会自动结案。"),
     ).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "加载审查诊断" }));
+    await user.click(screen.getByRole("button", { name: "加载运行轨迹与诊断" }));
     await user.click(
       screen.getByRole("button", { name: "运行依据与规则评估" }),
     );
@@ -1450,7 +1450,7 @@ describe("application routes and API contract", () => {
     const { user } = open(api, "/cases/c1/reviews/r1");
     await screen.findByRole("heading", { name: "审查工作区" });
     expect(api.requests.some((entry) => entry.key.includes("/diagnostics"))).toBe(false);
-    await user.click(screen.getByRole("button", { name: "加载审查诊断" }));
+    await user.click(screen.getByRole("button", { name: "加载运行轨迹与诊断" }));
     expect(await screen.findByText(/审查诊断不可用/)).toHaveTextContent("受控失败 403");
     await user.click(screen.getByRole("button", { name: "查看审计记录（1）" }));
     expect(screen.getByText(/审查已发起/)).toBeInTheDocument();

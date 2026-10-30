@@ -158,6 +158,19 @@ test("loads the local OpenAPI contract and displays real route metadata", async 
   );
 });
 
+test("states when the operation filter has no matches", async () => {
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValue(response(contract)));
+  renderApiDocsPage();
+  await screen.findByRole("heading", { name: "读取案件" });
+  fireEvent.change(screen.getByPlaceholderText("方法、路径、名称"), {
+    target: { value: "不存在的接口" },
+  });
+  expect(screen.getByText("没有匹配的接口")).toBeInTheDocument();
+  expect(
+    screen.queryByRole("menuitem", { name: /读取案件/ }),
+  ).not.toBeInTheDocument();
+});
+
 test("sends a filled same-origin request and shows the unmodified response", async () => {
   const fetcher = vi
     .fn()

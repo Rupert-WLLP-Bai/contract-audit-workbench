@@ -54,32 +54,55 @@ func TestOpenAPITracksAllRegisteredRoutesAndJSONFields(t *testing.T) {
 		t.Fatal(err)
 	}
 	routes := map[string]string{}
+	handlerName := func(expr ast.Expr) string {
+		switch target := expr.(type) {
+		case *ast.SelectorExpr:
+			return target.Sel.Name
+		case *ast.Ident:
+			return target.Name
+		default:
+			return ""
+		}
+	}
+	routeLiteral := func(literal *ast.BasicLit) string {
+		route, err := strconv.Unquote(literal.Value)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return route
+	}
 	for _, parsed := range []*ast.File{file, health, governance, evidence} {
 		ast.Inspect(parsed, func(node ast.Node) bool {
 			call, ok := node.(*ast.CallExpr)
-			if !ok || len(call.Args) != 2 {
-				return true
-			}
-			selector, ok := call.Fun.(*ast.SelectorExpr)
-			if !ok || selector.Sel.Name != "HandleFunc" {
-				return true
-			}
-			literal, ok := call.Args[0].(*ast.BasicLit)
 			if !ok {
-				t.Fatal("route coverage check needs a literal route or an explicit new registry reader")
+				return true
 			}
-			route, err := strconv.Unquote(literal.Value)
-			if err != nil {
-				t.Fatal(err)
+			if selector, ok := call.Fun.(*ast.SelectorExpr); ok && selector.Sel.Name == "HandleFunc" && len(call.Args) == 2 {
+				literal, ok := call.Args[0].(*ast.BasicLit)
+				if !ok {
+					t.Fatal("route coverage check needs a literal route or an explicit new registry reader")
+				}
+				routes[routeLiteral(literal)] = handlerName(call.Args[1])
+				return true
 			}
-			handler := ""
-			switch target := call.Args[1].(type) {
-			case *ast.SelectorExpr:
-				handler = target.Sel.Name
-			case *ast.Ident:
-				handler = target.Name
+			ident, ok := call.Fun.(*ast.Ident)
+			if !ok || ident.Name != "mountRoutes" || len(call.Args) < 2 {
+				return true
 			}
-			routes[route] = handler
+			// mountRoutes takes the mux followed by literal routeBinding
+			// entries, so route coverage must read the same declarations the
+			// server mounts instead of requiring a separate HandleFunc copy.
+			for _, arg := range call.Args[1:] {
+				binding, ok := arg.(*ast.CompositeLit)
+				if !ok || len(binding.Elts) != 2 {
+					t.Fatal("route coverage check needs literal routeBinding entries")
+				}
+				literal, ok := binding.Elts[0].(*ast.BasicLit)
+				if !ok {
+					t.Fatal("route coverage check needs a literal route pattern")
+				}
+				routes[routeLiteral(literal)] = handlerName(binding.Elts[1])
+			}
 			return true
 		})
 	}

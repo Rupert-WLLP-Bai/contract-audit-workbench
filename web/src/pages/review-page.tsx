@@ -457,12 +457,13 @@ export function ReviewPage() {
         }}
         onCreateRelation={saveRelation}
         onDeleteRelation={(relationId) => deleteRelation.mutate(relationId)}
+        diagnosticsLoading={diagnostics.isFetching}
+        onLoadDiagnostics={
+          currentDiagnosticScope && diagnosticScope !== currentDiagnosticScope
+            ? () => setDiagnosticScope(currentDiagnosticScope)
+            : undefined
+        }
       />
-      {currentDiagnosticScope && diagnosticScope !== currentDiagnosticScope ? (
-        <Button onClick={() => setDiagnosticScope(currentDiagnosticScope)}>
-          加载审查诊断
-        </Button>
-      ) : null}
       <EvidenceRequestPanel
         caseId={caseId}
         runId={runId}
