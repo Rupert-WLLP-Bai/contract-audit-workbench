@@ -85,16 +85,43 @@ func TestOpenAPITracksAllRegisteredRoutesAndJSONFields(t *testing.T) {
 		return route
 	}
 	for _, parsed := range []*ast.File{file, health, governance, evidence} {
-		// Route coverage reads the declarations the server mounts. Both the
-		// explicit HandleFunc form and the shared mountRoutes form are accepted,
-		// and a duplicated registration fails the check.
+		// Route coverage reads the declarations the server mounts. Both forms
+		// are accepted: an explicit HandleFunc, and the shared mountRoutes whose
+		// variadic argument is a list of literal routeBinding entries. A
+		// duplicated registration fails the check.
+		register := func(route, handler string) {
+			if handler == "" {
+				t.Fatal("route coverage check needs a named handler")
+			}
+			if _, exists := routes[route]; exists {
+				t.Fatalf("duplicate registered route: %s", route)
+			}
+			routes[route] = handler
+		}
 		ast.Inspect(parsed, func(node ast.Node) bool {
 			call, ok := node.(*ast.CallExpr)
-			if !ok || len(call.Args) != 2 {
+			if !ok {
 				return true
 			}
 			if ident, ok := call.Fun.(*ast.Ident); ok && ident.Name == "mountRoutes" {
-				t.Fatal("mountRoutes needs a literal mux followed by route bindings")
+				if len(call.Args) < 2 {
+					t.Fatal("mountRoutes needs a mux followed by route bindings")
+				}
+				for _, arg := range call.Args[1:] {
+					binding, ok := arg.(*ast.CompositeLit)
+					if !ok || len(binding.Elts) != 2 {
+						t.Fatal("mountRoutes needs literal route bindings")
+					}
+					literal, ok := binding.Elts[0].(*ast.BasicLit)
+					if !ok || literal.Kind != token.STRING {
+						t.Fatal("route coverage check needs a literal route pattern")
+					}
+					register(routeLiteral(literal), handlerName(binding.Elts[1]))
+				}
+				return true
+			}
+			if len(call.Args) != 2 {
+				return true
 			}
 			selector, ok := call.Fun.(*ast.SelectorExpr)
 			if !ok || selector.Sel.Name != "HandleFunc" {
@@ -104,15 +131,7 @@ func TestOpenAPITracksAllRegisteredRoutesAndJSONFields(t *testing.T) {
 			if !ok || literal.Kind != token.STRING {
 				t.Fatal("route coverage check needs a literal route pattern")
 			}
-			route := routeLiteral(literal)
-			handler := handlerName(call.Args[1])
-			if handler == "" {
-				t.Fatal("route coverage check needs a named handler")
-			}
-			if _, exists := routes[route]; exists {
-				t.Fatalf("duplicate registered route: %s", route)
-			}
-			routes[route] = handler
+			register(routeLiteral(literal), handlerName(call.Args[1]))
 			return true
 		})
 	}

@@ -394,7 +394,10 @@ func (s *Store) retry(ctx context.Context, user accounts.User, caseID, runID str
 		return fault.NotFound("没有找到对应记录")
 	}
 	frozen := seen.snapshotOf(runID)
-	currentSignature := withFrozenGovernance(currentSignatureFor(frozen.DocumentIDs, nil, s.currentModels(), telecomCompilerRefForCase(caseItem)), frozen)
+	// One operation, one client: the retried attempt must keep the identity it
+	// validated, even if the endpoint watcher applies a new revision meanwhile.
+	models := s.currentModels()
+	currentSignature := withFrozenGovernance(currentSignatureFor(frozen.DocumentIDs, nil, models, telecomCompilerRefForCase(caseItem)), frozen)
 	if !sameRunConfiguration(frozen, currentSignature) || !sameRunCompilerIdentity(frozen, currentSignature) {
 		return fault.Conflict("规则或模型配置已变更，请发起新的审查。原审查记录会保留")
 	}
@@ -415,7 +418,6 @@ func (s *Store) retry(ctx context.Context, user accounts.User, caseID, runID str
 		return err
 	}
 	acceptedAt := stamp()
-	models := s.currentModels()
 	created := false
 	var executionCase Case
 	var retryTx pgx.Tx
@@ -432,7 +434,7 @@ func (s *Store) retry(ctx context.Context, user accounts.User, caseID, runID str
 		if !ok || latestRun.ID != runID {
 			return fault.NotFound("没有找到对应记录")
 		}
-		currentSignature := withFrozenGovernance(currentSignatureFor(frozen.DocumentIDs, nil, s.currentModels(), telecomCompilerRefForCase(*currentCase)), frozen)
+		currentSignature := withFrozenGovernance(currentSignatureFor(frozen.DocumentIDs, nil, models, telecomCompilerRefForCase(*currentCase)), frozen)
 		if !sameRunSignature(st.snapshotOf(runID), frozen) || !sameRunConfiguration(frozen, currentSignature) ||
 			!sameRunCompilerIdentity(frozen, currentSignature) {
 			return fault.Conflict("规则或模型配置已变更，请发起新的审查。原审查记录会保留")

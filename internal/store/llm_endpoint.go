@@ -190,6 +190,12 @@ func (s *Store) SaveLLMModelSelection(ctx context.Context, user accounts.User, r
 	err = tx.QueryRow(ctx, `SELECT `+llmEndpointColumns+` FROM llm_endpoint_settings WHERE id='active' FOR UPDATE`).
 		Scan(&out.Name, &out.Protocol, &out.BaseURL, &models, &out.ReviewModel, &out.OCRModel, &out.SecretCiphertext, &out.Revision, &out.UpdatedAt, &out.UpdatedBy)
 	if errors.Is(err, pgx.ErrNoRows) {
+		// Same precondition as SaveLLMEndpoint: a model selection is an update
+		// of an existing endpoint, so a concurrent creator is a conflict, not a
+		// missing route.
+		if expectedRevision != nil && *expectedRevision > 0 {
+			return LLMEndpointSettings{}, fault.Conflict("模型端点已被其他管理员更新，请刷新后重试")
+		}
 		return LLMEndpointSettings{}, fault.NotFound("尚未配置 LLM 端点")
 	}
 	if err != nil {

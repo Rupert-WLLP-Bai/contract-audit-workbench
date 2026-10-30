@@ -58,3 +58,18 @@ func TestConcurrentFirstLLMEndpointSaveSerializesRevisions(t *testing.T) {
 		t.Fatalf("serialized save produced revision %d at %s", settings.Revision, settings.BaseURL)
 	}
 }
+
+// Selecting models against a revision the caller has seen, when no endpoint
+// row exists any more, is a conflict rather than a missing route.
+func TestModelSelectionWithoutEndpointConflictsOnKnownRevision(t *testing.T) {
+	st, admin := openExecutionStore(t)
+	known := int64(2)
+	if _, err := st.SaveLLMModelSelection(context.Background(), admin, "review-a", "ocr-b", &known); err == nil {
+		t.Fatal("model selection without an endpoint was accepted")
+	} else {
+		var conflict *fault.Error
+		if !errors.As(err, &conflict) || conflict.Status != 409 {
+			t.Fatalf("model selection without an endpoint returned %v, want a 409 conflict", err)
+		}
+	}
+}
