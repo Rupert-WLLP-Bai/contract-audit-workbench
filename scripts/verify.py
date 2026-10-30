@@ -9,6 +9,7 @@ import json
 import os
 from pathlib import Path
 import re
+import signal
 import shutil
 import subprocess
 import sys
@@ -284,6 +285,112 @@ def command_with_output_dir(check):
     return command
 
 
+def _process_group_has_live_members(process_group):
+    """Return whether a command's isolated process group still has live members."""
+    proc_root = Path("/proc")
+    if proc_root.is_dir():
+        for entry in proc_root.iterdir():
+            if not entry.name.isdecimal():
+                continue
+            try:
+                stat = (entry / "stat").read_text()
+                fields = stat[stat.rfind(")") + 2:].split()
+                # After comm, fields start with state, ppid, pgrp.
+                if len(fields) > 2 and fields[2].isdecimal() and int(fields[2]) == process_group:
+                    if fields[0] != "Z":
+                        return True
+            except (OSError, ValueError):
+                continue
+        return False
+    try:
+        os.killpg(process_group, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
+
+
+def _signal_process_group(process_group, sig):
+    try:
+        os.killpg(process_group, sig)
+    except ProcessLookupError:
+        pass
+
+
+def _terminate_process_group(process_group, grace=3.0):
+    """Stop only members of a process group created for one verifier check."""
+    had_live_members = _process_group_has_live_members(process_group)
+    _signal_process_group(process_group, signal.SIGTERM)
+    deadline = time.monotonic() + grace
+    while _process_group_has_live_members(process_group) and time.monotonic() < deadline:
+        time.sleep(min(0.05, max(0, deadline - time.monotonic())))
+    sigkill_sent = _process_group_has_live_members(process_group)
+    if sigkill_sent:
+        _signal_process_group(process_group, signal.SIGKILL)
+        deadline = time.monotonic() + grace
+        while _process_group_has_live_members(process_group) and time.monotonic() < deadline:
+            time.sleep(min(0.05, max(0, deadline - time.monotonic())))
+    return {
+        "performed": had_live_members,
+        "sigkill_sent": sigkill_sent,
+        "remaining_live_members": _process_group_has_live_members(process_group),
+    }
+
+
+def run_supervised(command, cwd, env, stdout, timeout):
+    """Run a check in its own session and clean up only its child processes."""
+    try:
+        process = subprocess.Popen(command, cwd=cwd, env=env, stdout=stdout,
+                                   stderr=subprocess.STDOUT, start_new_session=True)
+    except OSError as error:
+        return None, type(error).__name__, str(error), False, None
+
+    timed_out = False
+    error_kind = None
+    error_detail = None
+    cleanup = None
+    try:
+        try:
+            process.wait(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            timed_out = True
+            error_kind = "TimeoutExpired"
+            cleanup = _terminate_process_group(process.pid, grace=3.0)
+        else:
+            # A completed parent can leave children holding resources or an
+            # inherited output handle. Reap only its isolated process group.
+            if _process_group_has_live_members(process.pid):
+                cleanup = _terminate_process_group(process.pid, grace=3.0)
+        if process.poll() is None:
+            _signal_process_group(process.pid, signal.SIGKILL)
+            try:
+                process.wait(timeout=1.0)
+            except subprocess.TimeoutExpired:
+                error_kind = "ProcessReapTimeout"
+                error_detail = "direct child did not exit within 1s after SIGKILL"
+        if cleanup and cleanup["remaining_live_members"]:
+            error_kind = "ProcessGroupCleanupTimeout"
+            error_detail = "live members remain in verifier process group after SIGKILL"
+    except OSError as error:
+        error_kind = type(error).__name__
+        error_detail = str(error)
+        if cleanup is None:
+            cleanup = {"performed": False, "sigkill_sent": False,
+                       "remaining_live_members": _process_group_has_live_members(process.pid)}
+    if process.poll() is None:
+        _signal_process_group(process.pid, signal.SIGKILL)
+        try:
+            process.wait(timeout=1.0)
+        except subprocess.TimeoutExpired:
+            error_kind = "ProcessReapTimeout"
+            error_detail = "direct child did not exit within 1s after final SIGKILL"
+    if cleanup and cleanup["remaining_live_members"]:
+        error_kind = "ProcessGroupCleanupTimeout"
+        error_detail = "live members remain in verifier process group after bounded cleanup"
+    return process.returncode, error_kind, error_detail, timed_out, cleanup
+
+
 def evidence_path(path):
     try:
         return str(path.relative_to(ROOT))
@@ -401,21 +508,23 @@ def run_check(check, env, report, logs):
     display_path = logs / (check.name + ".txt")
     command_returncode = None
     error_kind = None
+    error_detail = None
     timed_out = False
+    process_group_cleanup = None
     try:
         with raw.open("w") as handle:
-            result = subprocess.run(command, cwd=check.cwd, env=env, stdout=handle,
-                                    stderr=subprocess.STDOUT, timeout=check.timeout, check=False)
-        command_returncode = result.returncode
-    except subprocess.TimeoutExpired as error:
-        with raw.open("a") as handle:
-            handle.write(f"COMMAND TIMED OUT after {check.timeout}s\n")
-        error_kind = type(error).__name__
-        timed_out = True
+            command_returncode, error_kind, error_detail, timed_out, process_group_cleanup = run_supervised(
+                command, check.cwd, env, handle, check.timeout)
     except OSError as error:
         with raw.open("a") as handle:
-            handle.write(f"COMMAND COULD NOT START: {error}\n")
+            handle.write(f"COMMAND SUPERVISION FAILED: {error}\n")
         error_kind = type(error).__name__
+    if timed_out:
+        with raw.open("a") as handle:
+            handle.write(f"COMMAND TIMED OUT after {check.timeout}s\n")
+    elif error_kind:
+        with raw.open("a") as handle:
+            handle.write(f"COMMAND FAILED: {error_kind}: {error_detail or ''}\n")
     raw_text = raw.read_text(errors="replace")
     if check.jsonl:
         display = decode_go_test_log(raw_text)
@@ -432,7 +541,8 @@ def run_check(check, env, report, logs):
             with display_path.open("a") as handle:
                 handle.write(f"\n{failure}\n")
             display += f"\n{failure}"
-    passed = command_returncode == 0 and error_kind is None and failure is None
+    cleanup_failed = bool(process_group_cleanup and process_group_cleanup["remaining_live_members"])
+    passed = command_returncode == 0 and error_kind is None and failure is None and not cleanup_failed
     record = {
         "name": check.name,
         "stage": check.stage,
@@ -446,6 +556,10 @@ def run_check(check, env, report, logs):
         record["error_kind"] = error_kind
     if timed_out:
         record["timed_out"] = True
+    if process_group_cleanup is not None:
+        record["process_group_cleanup"] = process_group_cleanup
+    if error_detail:
+        record["error_detail"] = error_detail
     if check.jsonl:
         record["raw_log"] = evidence_path(raw)
     if evidence is not None:

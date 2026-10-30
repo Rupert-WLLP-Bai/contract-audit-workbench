@@ -4,8 +4,10 @@ from io import StringIO
 import json
 import os
 from pathlib import Path
+import signal
 import sys
 import tempfile
+import time
 import unittest
 from unittest.mock import patch
 
@@ -204,16 +206,76 @@ class RunCheckExitSemanticsTests(unittest.TestCase):
         self.assertEqual(record["command_returncode"], 7)
         self.assertNotIn("error_kind", record)
 
-    def test_timeout_has_no_synthetic_returncode(self):
+    def test_timeout_preserves_real_returncode_and_timeout_status(self):
         check = verify.Check("timeout", "go",
                              (sys.executable, "-c", "import time; time.sleep(10)"), timeout=0.05)
         passed, record = self.run_check(check)
         self.assertFalse(passed)
         self.assertEqual(record["status"], "FAIL")
-        self.assertIsNone(record["returncode"])
-        self.assertIsNone(record["command_returncode"])
+        self.assertIn(record["returncode"], (-signal.SIGTERM, -signal.SIGKILL))
+        self.assertEqual(record["command_returncode"], record["returncode"])
         self.assertEqual(record["error_kind"], "TimeoutExpired")
         self.assertTrue(record["timed_out"])
+
+    @staticmethod
+    def pid_is_live(pid):
+        stat = Path(f"/proc/{pid}/stat")
+        if stat.exists():
+            value = stat.read_text()
+            fields = value[value.rfind(")") + 2:].split()
+            return bool(fields) and fields[0] != "Z"
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            return False
+        return True
+
+    def test_normal_parent_exit_cleans_child_holding_inherited_output(self):
+        pid_path = self.root / "child.pid"
+        child_code = "import time; time.sleep(60)"
+        parent_code = (
+            "import pathlib,subprocess,sys; "
+            f"p=subprocess.Popen([sys.executable,'-c',{child_code!r}]); "
+            f"pathlib.Path({str(pid_path)!r}).write_text(str(p.pid))"
+        )
+        check = verify.Check("orphan-child", "go", (sys.executable, "-c", parent_code))
+        before = time.monotonic()
+        passed, record = self.run_check(check)
+        self.assertTrue(passed, record)
+        self.assertLess(time.monotonic() - before, 4)
+        self.assertTrue(record["process_group_cleanup"]["performed"])
+        self.assertFalse(record["process_group_cleanup"]["remaining_live_members"])
+        child_pid = int(pid_path.read_text())
+        self.assertFalse(self.pid_is_live(child_pid))
+
+    def test_timeout_kills_term_ignoring_child_within_bound(self):
+        pid_path = self.root / "term-ignoring-child.pid"
+        ready_path = self.root / "term-ignoring-child.ready"
+        child_code = (
+            "import pathlib,signal,time; signal.signal(signal.SIGTERM,signal.SIG_IGN); "
+            f"pathlib.Path({str(ready_path)!r}).write_text('ready'); time.sleep(60)"
+        )
+        parent_code = (
+            "import pathlib,subprocess,sys,time\n"
+            f"p=subprocess.Popen([sys.executable,'-c',{child_code!r}])\n"
+            f"ready=pathlib.Path({str(ready_path)!r})\n"
+            "deadline=time.monotonic()+5\n"
+            "while not ready.exists() and time.monotonic()<deadline:\n"
+            "    time.sleep(.01)\n"
+            f"pathlib.Path({str(pid_path)!r}).write_text(str(p.pid))\n"
+            "time.sleep(60)\n"
+        )
+        check = verify.Check("timeout-child", "go", (sys.executable, "-c", parent_code), timeout=0.2)
+        before = time.monotonic()
+        passed, record = self.run_check(check)
+        elapsed = time.monotonic() - before
+        self.assertFalse(passed)
+        self.assertTrue(record["timed_out"])
+        self.assertEqual(record["returncode"], -signal.SIGTERM)
+        self.assertTrue(record["process_group_cleanup"]["sigkill_sent"])
+        self.assertFalse(record["process_group_cleanup"]["remaining_live_members"])
+        self.assertLess(elapsed, 5)
+        self.assertFalse(self.pid_is_live(int(pid_path.read_text())))
 
     def test_startup_failure_has_no_synthetic_returncode(self):
         check = verify.Check("cannot-start", "go", ("/missing/verify-command",))
@@ -223,6 +285,7 @@ class RunCheckExitSemanticsTests(unittest.TestCase):
         self.assertIsNone(record["returncode"])
         self.assertIsNone(record["command_returncode"])
         self.assertEqual(record["error_kind"], "FileNotFoundError")
+        self.assertIn("/missing/verify-command", record["error_detail"])
 
     def test_evidence_failure_preserves_successful_process_returncode(self):
         def reject_evidence(_path):
