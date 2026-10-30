@@ -235,6 +235,9 @@ describe("补充材料请求", () => {
     expect(screen.getByText("待提交")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "提交回执" }));
     await screen.findByText("已提交，待复核");
+    const submittedSummary = screen.getByText("已提交材料或答复：").parentElement?.parentElement;
+    expect(submittedSummary).not.toBeNull();
+    expect(submittedSummary!).toHaveTextContent("补充合同.txt");
     const receiptCall = calls.find((call) => call.pathname.endsWith("/receipts"));
     expect(JSON.parse(String(receiptCall?.init?.body))).toEqual({ document_id: "doc-2", expected_version: 1 });
     expect(calls.some((call) => call.pathname.endsWith("/verify"))).toBe(false);
@@ -356,6 +359,37 @@ describe("补充材料请求", () => {
     const listbox = await openActiveListbox(user, screen.getByRole("combobox", { name: "选择案件材料" }));
     expect(within(listbox).getByRole("option", { name: /符合类型\.txt/ })).toBeInTheDocument();
     expect(within(listbox).queryByRole("option", { name: /已替代\.txt|中标文件\.txt/ })).not.toBeInTheDocument();
+  });
+
+  it("does not show a receipt fallback for an open request with empty history", async () => {
+    const request = rawRequest("open", 1);
+    const { client } = open({ canManage: false, respond(call) {
+      if (call.pathname.endsWith("/evidence-requests")) return Response.json({ items: [request] });
+      if (call.pathname.endsWith("/history")) return Response.json({ items: [] });
+      return Response.json({ error: { message: "unexpected" } }, { status: 404 });
+    } });
+
+    await screen.findByText("待提交");
+    await act(async () => {
+      client.setQueryData(["evidence-requests", "case-1", request.id, "history"], []);
+    });
+    expect(screen.queryByText("处理记录中未报告回执。")).not.toBeInTheDocument();
+  });
+
+  it("does not request frozen quote material before selecting a receipt", async () => {
+    const request = rawRequest("received", 2);
+    const workspace = makeWorkspace("run-new", "attempt-new", [compatible]);
+    workspace.documents = [];
+    open({ runId: "run-new", attemptId: "attempt-new", evaluations: [compatible], workspace, canManage: false, respond(call) {
+      if (call.pathname.endsWith("/evidence-requests")) return Response.json({ items: [request] });
+      if (call.pathname.endsWith("/history")) return Response.json({ items: [] });
+      return Response.json({ error: { message: "unexpected" } }, { status: 404 });
+    } });
+
+    await screen.findByText("已提交，待复核");
+    await screen.findByText("处理记录中未报告回执。");
+    expect(screen.queryByText("当前审查未包含可引用的回执材料或答复原文。")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "提交核验" })).toBeDisabled();
   });
 
   it("allows any current document when the request has no material role", async () => {
