@@ -107,10 +107,21 @@ func sanitizeStoreError(err error) string {
 var postgresDSNPattern = regexp.MustCompile(`postgres://[^ "]+`)
 
 func decodeWorkerJobContext(raw string) (workerJobContext, error) {
-	var claim workerJobContext
 	if len(raw) > maxJobContextBytes {
 		return workerJobContext{}, errors.New("job context is too large")
 	}
+	claim, err := decodeStrictWorkerJobContext(raw)
+	if err != nil {
+		return workerJobContext{}, err
+	}
+	if !workerJobContextComplete(claim) {
+		return workerJobContext{}, errors.New("job context is incomplete")
+	}
+	return claim, nil
+}
+
+func decodeStrictWorkerJobContext(raw string) (workerJobContext, error) {
+	var claim workerJobContext
 	decoder := json.NewDecoder(strings.NewReader(raw))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&claim); err != nil {
@@ -119,10 +130,15 @@ func decodeWorkerJobContext(raw string) (workerJobContext, error) {
 	if err := decoder.Decode(new(any)); !errors.Is(err, io.EOF) {
 		return workerJobContext{}, errors.New("job context contains trailing data")
 	}
-	if strings.TrimSpace(claim.JobID) == "" || strings.TrimSpace(claim.WorkerID) == "" ||
-		strings.TrimSpace(claim.AttemptID) == "" || claim.Generation < 1 ||
-		strings.TrimSpace(claim.TenantID) == "" || strings.TrimSpace(claim.OrgID) == "" {
-		return workerJobContext{}, errors.New("job context is incomplete")
-	}
 	return claim, nil
+}
+
+func workerJobContextComplete(claim workerJobContext) bool {
+	identities := [...]string{claim.JobID, claim.WorkerID, claim.AttemptID, claim.TenantID, claim.OrgID}
+	for _, identity := range identities {
+		if strings.TrimSpace(identity) == "" {
+			return false
+		}
+	}
+	return claim.Generation >= 1
 }

@@ -299,6 +299,108 @@ func TestMCPProfileRejectsDuplicateTrailingAndUnsupportedArguments(t *testing.T)
 	})
 }
 
+func TestFrozenEvidenceRejectsOutOfBoundsSelectionIDsBeforeWorkspaceRead(t *testing.T) {
+	for _, test := range []struct {
+		name  string
+		field string
+		value string
+	}{
+		{name: "leading space", field: "case_id", value: " case-1"},
+		{name: "trailing tab", field: "run_id", value: "run-1\t"},
+		{name: "unsupported slash", field: "attempt_id", value: "attempt/1"},
+		{name: "non-ASCII byte", field: "case_id", value: "案件-1"},
+		{name: "identifier too long", field: "run_id", value: strings.Repeat("r", 129)},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			backend := testBackend(t)
+			args := map[string]any{
+				"case_id": "case-1", "run_id": "run-1", "attempt_id": "attempt-1",
+				"capability_id": "dedicated_line.minimum_bandwidth",
+				"deadline":      time.Now().Add(30 * time.Second).Format(time.RFC3339Nano),
+			}
+			args[test.field] = test.value
+			request := mcpRequest("tools/call", ToolName, args, time.Now().Add(30*time.Second))
+			recorder := httptest.NewRecorder()
+			NewHandler(backend, Options{}).ServeHTTP(recorder, request)
+
+			if recorder.Code != http.StatusBadRequest || rpcErrorCode(t, recorder) != codeInvalidParams {
+				t.Fatalf("invalid selection identity status=%d code=%d", recorder.Code, rpcErrorCode(t, recorder))
+			}
+			if !strings.Contains(recorder.Body.String(), "Case, run, and attempt identities must be bounded identifiers.") {
+				t.Fatalf("unexpected invalid-identity response: %s", recorder.Body.String())
+			}
+			if backend.workspaceCalls != 0 || backend.reserveCalls != 0 {
+				t.Fatalf("invalid identity reached storage: workspace=%d reserve=%d", backend.workspaceCalls, backend.reserveCalls)
+			}
+		})
+	}
+}
+
+func TestFrozenEvidenceAcceptsMaximumLengthSelectionIDs(t *testing.T) {
+	backend := testBackend(t)
+	caseID := strings.Repeat("c", 124) + "-_.:"
+	runID := strings.Repeat("r", 124) + "-_.:"
+	attemptID := strings.Repeat("a", 124) + "-_.:"
+	backend.workspace.Case.ID = caseID
+	backend.workspace.Snapshot.RunID = runID
+	backend.workspace.Execution.Attempt.ID = attemptID
+	backend.workspace.Execution.Attempt.RunID = runID
+	backend.workspace.Documents[0].Document.CaseID = caseID
+	request := mcpRequest("tools/call", ToolName, map[string]any{
+		"case_id": caseID, "run_id": runID, "attempt_id": attemptID,
+		"capability_id": "dedicated_line.minimum_bandwidth",
+		"deadline":      time.Now().Add(30 * time.Second).Format(time.RFC3339Nano),
+	}, time.Now().Add(30*time.Second))
+	recorder := httptest.NewRecorder()
+	NewHandler(backend, Options{}).ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("128-byte identifiers with supported punctuation were rejected: status=%d response=%s", recorder.Code, recorder.Body.String())
+	}
+	if backend.reserveCalls != 1 || backend.finishCalls != 1 || backend.finishStatus != "completed" {
+		t.Fatalf("valid boundary identifiers did not complete one read: reserve=%d finish=%d status=%s", backend.reserveCalls, backend.finishCalls, backend.finishStatus)
+	}
+}
+
+func TestFrozenEvidenceRejectsMismatchedWorkspaceBindingBeforeReservation(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		mutate func(*gatewayFakeStore)
+	}{
+		{name: "case identity", mutate: func(b *gatewayFakeStore) { b.workspace.Case.ID = "other-case" }},
+		{name: "tenant identity", mutate: func(b *gatewayFakeStore) { b.workspace.Case.TenantID = "other-tenant" }},
+		{name: "snapshot run identity", mutate: func(b *gatewayFakeStore) { b.workspace.Snapshot.RunID = "other-run" }},
+		{name: "missing execution", mutate: func(b *gatewayFakeStore) { b.workspace.Execution = nil }},
+		{name: "missing attempt", mutate: func(b *gatewayFakeStore) { b.workspace.Execution.Attempt = nil }},
+		{name: "attempt identity", mutate: func(b *gatewayFakeStore) { b.workspace.Execution.Attempt.ID = "other-attempt" }},
+		{name: "attempt run identity", mutate: func(b *gatewayFakeStore) { b.workspace.Execution.Attempt.RunID = "other-run" }},
+		{name: "non-frozen attempt", mutate: func(b *gatewayFakeStore) { b.workspace.Execution.Attempt.HistoryKind = "current" }},
+		{name: "missing frozen input hash", mutate: func(b *gatewayFakeStore) { b.workspace.Execution.Attempt.InputHash = nil }},
+		{name: "empty frozen input hash", mutate: func(b *gatewayFakeStore) { empty := ""; b.workspace.Execution.Attempt.InputHash = &empty }},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			backend := testBackend(t)
+			test.mutate(backend)
+			request := mcpRequest("tools/call", ToolName, map[string]any{
+				"case_id": "case-1", "run_id": "run-1", "attempt_id": "attempt-1",
+				"capability_id": "dedicated_line.minimum_bandwidth",
+				"deadline":      time.Now().Add(30 * time.Second).Format(time.RFC3339Nano),
+			}, time.Now().Add(30*time.Second))
+			recorder := httptest.NewRecorder()
+			NewHandler(backend, Options{}).ServeHTTP(recorder, request)
+
+			if recorder.Code != http.StatusNotFound || rpcErrorCode(t, recorder) != codeInternalError {
+				t.Fatalf("mismatched frozen workspace status=%d code=%d", recorder.Code, rpcErrorCode(t, recorder))
+			}
+			if !strings.Contains(recorder.Body.String(), "No matching frozen attempt is available.") {
+				t.Fatalf("unexpected frozen-workspace response: %s", recorder.Body.String())
+			}
+			if backend.workspaceCalls != 1 || backend.reserveCalls != 0 || backend.finishCalls != 0 {
+				t.Fatalf("mismatched workspace reached reservation: workspace=%d reserve=%d finish=%d", backend.workspaceCalls, backend.reserveCalls, backend.finishCalls)
+			}
+		})
+	}
+}
+
 func TestMCPRequiresBothResponseMediaTypesInAccept(t *testing.T) {
 	for _, test := range []struct {
 		name   string
@@ -330,6 +432,7 @@ func TestFrozenEvidenceRejectsUnsupportedCapabilityAndDeadline(t *testing.T) {
 	}{
 		{name: "unsupported capability", capabilityID: "dedicated_line.anything", deadline: time.Now().Add(30 * time.Second)},
 		{name: "expired deadline", capabilityID: "dedicated_line.minimum_bandwidth", deadline: time.Now().Add(-time.Second)},
+		{name: "deadline exceeds tool limit", capabilityID: "dedicated_line.minimum_bandwidth", deadline: time.Now().Add(61 * time.Second)},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			backend := testBackend(t)
