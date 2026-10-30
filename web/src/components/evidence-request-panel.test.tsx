@@ -310,7 +310,12 @@ describe("补充材料请求", () => {
     await screen.findByText("待提交");
     const roleControl = screen.getByRole("combobox", { name: "上传材料类型" });
     await chooseOption(user, roleControl, "拟签合同");
-    expect(roleControl.closest(".ant-select")?.querySelector(".ant-select-content-has-value")).toHaveTextContent("拟签合同");
+    await chooseOption(user, screen.getByRole("combobox", { name: "提交方式" }), "文字答复");
+    await chooseOption(user, screen.getByRole("combobox", { name: "提交方式" }), "案件材料");
+    const restoredRoleControl = screen.getByRole("combobox", { name: "上传材料类型" });
+    const roleField = restoredRoleControl.closest("label");
+    expect(roleField).not.toBeNull();
+    expect(roleField!).toHaveTextContent("拟签合同");
     const upload = screen.getByRole("button", { name: "上传补充文件" });
     expect(upload).toBeDisabled();
     await user.upload(screen.getByLabelText("上传补充文件"), new File(["新材料"], "新材料.txt", { type: "text/plain" }));
