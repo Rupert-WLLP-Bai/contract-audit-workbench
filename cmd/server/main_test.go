@@ -1,11 +1,13 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"log"
 	"net"
 	"net/http"
 	"net/url"
@@ -19,7 +21,9 @@ import (
 	"time"
 
 	"contractaudit/internal/auditext"
+	"contractaudit/internal/capabilitypack"
 	"contractaudit/internal/config"
+	"contractaudit/internal/httpapi"
 	"contractaudit/internal/store"
 	"github.com/jackc/pgx/v5"
 )
@@ -199,14 +203,35 @@ func TestListenWaitsForAnInflightRequestBeforeReturning(t *testing.T) {
 }
 
 func TestOperatorAuditConfigKeepsTheExtensionDefaultOff(t *testing.T) {
-	for _, enabledValue := range []string{"", "false", "not-a-boolean"} {
-		t.Run("enabled="+enabledValue, func(t *testing.T) {
-			t.Setenv("OPERATOR_AUDIT_ENABLED", enabledValue)
-			t.Setenv("EXTERNAL_EVIDENCE_MODE", "fixture")
-			t.Setenv("EXTERNAL_EVIDENCE_FIXTURE_FILE", "does-not-exist.json")
-			enabled, registry, connectors, catalog := operatorAuditConfig(config.ModeTest)
+	for _, test := range []struct {
+		enabledValue string
+		wantLog      string
+	}{
+		{enabledValue: ""},
+		{enabledValue: "false"},
+		{enabledValue: "not-a-boolean", wantLog: "operator audit disabled: OPERATOR_AUDIT_ENABLED is not a boolean"},
+	} {
+		t.Run("enabled="+test.enabledValue, func(t *testing.T) {
+			t.Setenv("OPERATOR_AUDIT_ENABLED", test.enabledValue)
+			t.Setenv("EXTERNAL_EVIDENCE_MODE", "off")
+			t.Setenv("EXTERNAL_EVIDENCE_CONNECTOR_ID", "invalid connector id")
+			t.Setenv("EXTERNAL_EVIDENCE_BASE_URL", "://not a URL")
+			var enabled bool
+			var registry *capabilitypack.Registry
+			var connectors map[string]auditext.ReadConnector
+			var catalog []httpapi.OperatorConnectorInfo
+			output := captureServerLog(t, func() {
+				enabled, registry, connectors, catalog = operatorAuditConfig(config.ModeTest)
+			})
 			if enabled || registry != nil || connectors != nil || catalog != nil {
 				t.Fatalf("disabled operator audit configuration = %t/%t/%d/%d", enabled, registry != nil, len(connectors), len(catalog))
+			}
+			wantLog := test.wantLog
+			if wantLog != "" {
+				wantLog += "\n"
+			}
+			if output != wantLog {
+				t.Fatalf("default-off log = %q, want %q", output, wantLog)
 			}
 		})
 	}
@@ -225,26 +250,58 @@ func TestOperatorAuditConfigStopsAtTheConfiguredEvidenceMode(t *testing.T) {
 	})
 
 	for _, test := range []struct {
-		name string
-		mode string
-		app  string
-		file string
+		name    string
+		mode    string
+		app     string
+		file    string
+		wantLog string
 	}{
-		{name: "fixture in production", mode: "fixture", app: config.ModeProduction, file: "../../testdata/operatoraudit/raw/oss-bandwidth.json"},
-		{name: "live remains disabled", mode: "live", app: config.ModeTest, file: ""},
-		{name: "unknown remains disabled", mode: "unexpected", app: config.ModeTest, file: ""},
-		{name: "missing fixture fails closed", mode: "fixture", app: config.ModeTest, file: "missing-fixture.json"},
+		{name: "fixture in production", mode: "fixture", app: config.ModeProduction, file: "../../testdata/operatoraudit/raw/oss-bandwidth.json", wantLog: `operator audit disabled: fixture external evidence is not allowed in "production"`},
+		{name: "live remains disabled", mode: "live", app: config.ModeTest, wantLog: "operator audit disabled: live external evidence requires a separate approved data path"},
+		{name: "unknown remains disabled", mode: "unexpected", app: config.ModeTest, wantLog: `operator audit disabled: unknown EXTERNAL_EVIDENCE_MODE "unexpected"`},
+		{name: "missing fixture fails closed", mode: "fixture", app: config.ModeTest, file: "missing-fixture.json", wantLog: "operator audit disabled: fixture file: open missing-fixture.json"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			t.Setenv("OPERATOR_AUDIT_ENABLED", "true")
 			t.Setenv("EXTERNAL_EVIDENCE_MODE", test.mode)
 			t.Setenv("EXTERNAL_EVIDENCE_FIXTURE_FILE", test.file)
-			enabled, registry, connectors, catalog := operatorAuditConfig(test.app)
+			t.Setenv("EXTERNAL_EVIDENCE_CONNECTOR_ID", "")
+			t.Setenv("EXTERNAL_EVIDENCE_SOURCE_SYSTEM", "")
+			t.Setenv("EXTERNAL_EVIDENCE_BASE_URL", "")
+			t.Setenv("EXTERNAL_EVIDENCE_ALLOWED_OBJECTS", "")
+			t.Setenv("EXTERNAL_EVIDENCE_PAYLOAD_PREFIX", "")
+			var enabled bool
+			var registry *capabilitypack.Registry
+			var connectors map[string]auditext.ReadConnector
+			var catalog []httpapi.OperatorConnectorInfo
+			output := captureServerLog(t, func() {
+				enabled, registry, connectors, catalog = operatorAuditConfig(test.app)
+			})
 			if enabled || registry != nil || connectors != nil || catalog != nil {
 				t.Fatalf("disabled external evidence config = %t/%t/%d/%d", enabled, registry != nil, len(connectors), len(catalog))
 			}
+			if !strings.Contains(output, test.wantLog) {
+				t.Fatalf("operator audit log %q, want reason %q", output, test.wantLog)
+			}
+			if strings.Contains(output, "operator audit disabled: external connector:") {
+				t.Fatalf("operator audit emitted a generic connector error after the configured reason: %q", output)
+			}
 		})
 	}
+}
+
+func captureServerLog(t *testing.T, action func()) string {
+	t.Helper()
+	var output bytes.Buffer
+	previousWriter, previousFlags := log.Writer(), log.Flags()
+	log.SetOutput(&output)
+	log.SetFlags(0)
+	defer func() {
+		log.SetOutput(previousWriter)
+		log.SetFlags(previousFlags)
+	}()
+	action()
+	return output.String()
 }
 
 func TestOperatorAuditFixtureConnectorInBoundedChild(t *testing.T) {
@@ -272,16 +329,29 @@ func TestOperatorAuditFixtureConnectorInBoundedChild(t *testing.T) {
 		}
 
 		t.Setenv("EXTERNAL_EVIDENCE_CONNECTOR_ID", "invalid connector id")
-		enabled, registry, connectors, catalog = operatorAuditConfig(config.ModeTest)
+		var connectorFailureLog string
+		connectorFailureLog = captureServerLog(t, func() {
+			enabled, registry, connectors, catalog = operatorAuditConfig(config.ModeTest)
+		})
 		if enabled || registry != nil || connectors != nil || catalog != nil {
 			t.Fatalf("invalid fixture connector config = %t/%t/%d/%d", enabled, registry != nil, len(connectors), len(catalog))
+		}
+		if !strings.Contains(connectorFailureLog, "operator audit disabled: external connector:") {
+			t.Fatalf("invalid connector log lost its connector error: %q", connectorFailureLog)
 		}
 		return
 	}
 
 	childCtx, cancelChild := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancelChild()
-	command := exec.CommandContext(childCtx, os.Args[0], "-test.run=^TestOperatorAuditFixtureConnectorInBoundedChild$")
+	childArgs := []string{"-test.run=^TestOperatorAuditFixtureConnectorInBoundedChild$"}
+	for _, arg := range os.Args[1:] {
+		if strings.HasPrefix(arg, "-test.gocoverdir=") {
+			childArgs = append(childArgs, arg)
+			break
+		}
+	}
+	command := exec.CommandContext(childCtx, os.Args[0], childArgs...)
 	command.Env = replaceServerTestEnvironment(os.Environ(), map[string]string{
 		"CAW_SERVER_OPERATOR_AUDIT_CHILD":   "1",
 		"OPERATOR_AUDIT_ENABLED":            "true",
