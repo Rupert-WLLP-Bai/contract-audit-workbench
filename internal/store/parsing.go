@@ -106,13 +106,19 @@ func parserConfigurationFor(doc Document, models Models) (parserID, parserVersio
 		case kindDOCX:
 			parserID, parserVersion = "docx", documentparse.DOCXVersion
 		}
-		configuration = []string{"parsed-configuration/v1", parserID, parserVersion, docir.ExtractionVersion, docir.NormalizationVersion, modelConfig}
+		configHash = ocrConfigurationHash(parserID, parserVersion, docir.NormalizationVersion, modelConfig)
+		return parserID, parserVersion, configHash
 	} else if kind == kindBinary {
 		parserVersion = "document-inspection-v1"
 		configuration = []string{"parsed-configuration/v1", parserID, parserVersion, docir.ExtractionVersion, docir.NormalizationVersion}
 	}
 	hash, _ := canonicalDigest(configuration)
 	return parserID, parserVersion, hash
+}
+
+func ocrConfigurationHash(parserID, parserVersion, normalizationVersion, modelIdentity string) string {
+	hash, _ := canonicalDigest([]string{"parsed-configuration/v1", parserID, parserVersion, docir.ExtractionVersion, normalizationVersion, modelIdentity})
+	return hash
 }
 
 func (s *Store) ensureParsed(ctx context.Context, user accounts.User, doc Document, force bool) (ParsedDocument, error) {

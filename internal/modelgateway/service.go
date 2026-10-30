@@ -357,6 +357,7 @@ type chatRequest struct {
 	requestedTokens int
 	scope           model.DelegatedScope
 	upstream        upstreamConfig
+	frozenMatches   bool
 }
 
 func (s *Service) chatCompletions(w http.ResponseWriter, r *http.Request) {
@@ -425,18 +426,11 @@ func (s *Service) readChatRequest(w http.ResponseWriter, r *http.Request, caller
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "requested model is not configured", "code": "model_not_configured"})
 		return chatRequest{}, false
 	}
-	// The caller freezes a configuration id; dispatching to a different
-	// endpoint that happens to serve the same model id would break the frozen
-	// identity even though the name still matches.
-	if !upstream.matchesFrozen(scope) {
-		writeJSON(w, http.StatusConflict, map[string]string{"error": "frozen model configuration no longer matches the configured endpoint", "code": "model_configuration_changed"})
-		return chatRequest{}, false
-	}
 	if int64(len(body)) > s.config.Budget.MaxInputTokenReservation || int64(requestedTokens) > s.config.Budget.MaxOutputTokenReservation {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "requested token bound exceeds the configured reservation", "code": "model_token_bound_exceeded"})
 		return chatRequest{}, false
 	}
-	return chatRequest{caller: caller, body: body, requestedModel: requestedModel, requestedTokens: requestedTokens, scope: scope, upstream: upstream}, true
+	return chatRequest{caller: caller, body: body, requestedModel: requestedModel, requestedTokens: requestedTokens, scope: scope, upstream: upstream, frozenMatches: scope.Kind != "document" || upstream.matchesFrozen(scope)}, true
 }
 
 func (s *Service) runChatAttempts(w http.ResponseWriter, ctx context.Context, request chatRequest, probe circuitProbe) {
@@ -452,14 +446,27 @@ func (s *Service) runChatAttempt(w http.ResponseWriter, ctx context.Context, req
 	if !ok {
 		return false
 	}
+	if !request.frozenMatches {
+		if err := s.finishChatAttempt(lease, "failed", "model_configuration_changed", nil, true); err != nil {
+			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "model usage could not be recorded", "code": "model_usage_unavailable"})
+			return false
+		}
+		writeJSON(w, http.StatusConflict, map[string]string{"error": "model configuration no longer matches the configured endpoint", "code": "model_configuration_changed"})
+		return false
+	}
 	response, status, usage, requestErr, retryable, preDispatch := s.dispatchUpstream(ctx, request.upstream, request.requestedModel, request.body)
 	modelStatus, errorCode := chatAttemptResult(requestErr, status)
 	return s.settleAndRespondChatAttempt(w, ctx, request, probe, attempt, lease, response, status, usage, requestErr, retryable, preDispatch, modelStatus, errorCode)
 }
 
 func (s *Service) reserveChatAttempt(w http.ResponseWriter, ctx context.Context, request chatRequest, attempt int) (store.ModelCallLease, bool) {
-	lease, err := s.store.ReserveModelCall(ctx, request.caller, request.scope, request.requestedModel, attempt,
-		int64(len(request.body)), int64(request.requestedTokens), s.config.Budget)
+	identity := model.ConfigurationIDFor(request.upstream.ProviderURL, request.upstream.ChatModel, request.upstream.OCRModel)
+	lease, err := s.store.ReserveModelChatCall(ctx, request.caller, request.scope, request.requestedModel, attempt,
+		int64(len(request.body)), int64(request.requestedTokens), s.config.Budget, identity)
+	if errors.Is(err, store.ErrModelConfigurationChanged) {
+		writeJSON(w, http.StatusConflict, map[string]string{"error": "frozen model configuration no longer matches the configured endpoint", "code": "model_configuration_changed"})
+		return store.ModelCallLease{}, false
+	}
 	if err != nil {
 		writeReservationError(w, err, modelReservationErrors)
 		return store.ModelCallLease{}, false

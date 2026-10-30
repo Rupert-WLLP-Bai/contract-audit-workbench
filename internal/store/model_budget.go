@@ -85,6 +85,7 @@ CREATE INDEX IF NOT EXISTS model_usage_reserved_at ON model_usage (reserved_at);
 
 var ErrModelBudgetExceeded = errors.New("model call budget is exhausted")
 var ErrModelScopeUnavailable = errors.New("current model execution scope is unavailable")
+var ErrModelConfigurationChanged = errors.New("frozen model configuration no longer matches the provider")
 var ErrModelCallSettlementConflict = errors.New("model call settlement conflicts with its first result")
 
 type ModelBudgetLimits struct {
@@ -127,6 +128,18 @@ type ModelCallResult struct {
 // call, its conservative token upper bound, and global and tenant quotas in one
 // PostgreSQL transaction.
 func (s *Store) ReserveModelCall(ctx context.Context, caller string, scope model.DelegatedScope, modelRef string, attemptNumber int, inputUpperBound, outputUpperBound int64, limits ModelBudgetLimits) (ModelCallLease, error) {
+	return s.reserveModelCall(ctx, caller, scope, modelRef, attemptNumber, inputUpperBound, outputUpperBound, limits, nil)
+}
+
+// ReserveModelChatCall binds a chat request to the server-selected provider.
+// Unlike advisory calls, chat execution and distillation have an authoritative
+// immutable configuration identity. Caller-supplied identity fields are not
+// consulted. Standalone document reparses have no frozen configuration record.
+func (s *Store) ReserveModelChatCall(ctx context.Context, caller string, scope model.DelegatedScope, modelRef string, attemptNumber int, inputUpperBound, outputUpperBound int64, limits ModelBudgetLimits, providerIdentity string) (ModelCallLease, error) {
+	return s.reserveModelCall(ctx, caller, scope, modelRef, attemptNumber, inputUpperBound, outputUpperBound, limits, &providerIdentity)
+}
+
+func (s *Store) reserveModelCall(ctx context.Context, caller string, scope model.DelegatedScope, modelRef string, attemptNumber int, inputUpperBound, outputUpperBound int64, limits ModelBudgetLimits, providerIdentity *string) (ModelCallLease, error) {
 	if ctx == nil || strings.TrimSpace(modelRef) == "" || attemptNumber < 1 || limits.GlobalMaxInFlight < 1 || limits.TenantMaxInFlight < 1 ||
 		limits.GlobalCallsPerMinute < 1 || limits.TenantCallsPerMinute < 1 || limits.GlobalTokensPerMinute < 1 || limits.TenantTokensPerMinute < 1 ||
 		limits.MaxInputTokenReservation < 1 || limits.MaxOutputTokenReservation < 1 || inputUpperBound < 1 || outputUpperBound < 1 ||
@@ -166,6 +179,11 @@ func (s *Store) ReserveModelCall(ctx context.Context, caller string, scope model
 	}
 	if err := authorizeModelScope(ctx, tx, caller, scope); err != nil {
 		return ModelCallLease{}, err
+	}
+	if providerIdentity != nil && (scope.Kind == "execution" || scope.Kind == "experience_distill" || (scope.Kind == "document" && scope.JobID != "")) {
+		if err := authorizeFrozenModelConfiguration(ctx, tx, scope, *providerIdentity); err != nil {
+			return ModelCallLease{}, err
+		}
 	}
 	id, err := newID("ml_")
 	if err != nil {
@@ -276,6 +294,47 @@ func (s *Store) FinishModelCall(ctx context.Context, lease ModelCallLease, resul
 		return ErrModelCallSettlementConflict
 	}
 	return tx.Commit(ctx)
+}
+
+func authorizeFrozenModelConfiguration(ctx context.Context, tx pgx.Tx, scope model.DelegatedScope, providerIdentity string) error {
+	var frozen string
+	switch scope.Kind {
+	case "document":
+		return authorizeFrozenDocumentConfiguration(ctx, tx, scope, providerIdentity)
+	case "execution":
+		err := tx.QueryRow(ctx, `SELECT s.model_configuration_id FROM review_run_snapshots s
+			JOIN review_runs r ON r.id=s.run_id AND r.tenant_id=s.tenant_id AND r.org_id=s.org_id
+			WHERE s.run_id=$1 AND r.case_id=$2 AND r.tenant_id=$3 AND r.org_id=$4`,
+			scope.RunID, scope.CaseID, scope.TenantID, scope.OrgID).Scan(&frozen)
+		if err != nil {
+			return ErrModelScopeUnavailable
+		}
+	case "experience_distill":
+		var raw []byte
+		var digest string
+		err := tx.QueryRow(ctx, `SELECT input_bytes,input_sha256 FROM experience_distill_inputs
+			WHERE job_id=$1 AND tenant_id=$2 AND org_id=$3 AND case_id=$4 AND actor_id=$5`,
+			scope.JobID, scope.TenantID, scope.OrgID, scope.CaseID, scope.ActorID).Scan(&raw, &digest)
+		if err != nil {
+			return ErrModelScopeUnavailable
+		}
+		sum := sha256.Sum256(raw)
+		if hex.EncodeToString(sum[:]) != digest || digest != scope.InputSHA256 {
+			return ErrModelScopeUnavailable
+		}
+		var input ExperienceDistillInput
+		if decodeExperienceJSON(raw, &input) != nil || input.SchemaVersion != "experience-distill-input/v1" ||
+			input.TenantID != scope.TenantID || input.OrgID != scope.OrgID || input.CaseID != scope.CaseID || input.ApplicantID != scope.ActorID {
+			return ErrModelScopeUnavailable
+		}
+		frozen = input.ModelConfigurationID
+	default:
+		return ErrModelScopeUnavailable
+	}
+	if frozen == "" || providerIdentity == "" || frozen != providerIdentity {
+		return ErrModelConfigurationChanged
+	}
+	return nil
 }
 
 func authorizeModelScope(ctx context.Context, tx pgx.Tx, caller string, scope model.DelegatedScope) error {

@@ -103,18 +103,16 @@ func (s *Service) loadStoredUpstream(ctx context.Context) (upstreamConfig, error
 	}, nil
 }
 
-// matchesFrozen reports whether this upstream is the provider the frozen
-// caller names. A caller without an identity (fixtures, internal callers) is
-// not constrained. A caller that carries a configuration id also carries the
-// provider address inside that id; when the addresses agree the models agree
-// too, so a differently versioned identity is not a provider switch. Without a
-// recorded address the gateway can only compare the full identity.
+// matchesFrozen compares the full frozen configuration, including both model
+// names, with the upstream selected for this request. ProviderURL, when sent,
+// must also agree; it is not a substitute for the configuration identity.
+// Callers without an identity retain the existing unconstrained behavior.
 func (u upstreamConfig) matchesFrozen(scope model.DelegatedScope) bool {
 	if scope.ConfigurationID == "" {
 		return true
 	}
-	if scope.ProviderURL != "" {
-		return scope.ProviderURL == u.ProviderURL
+	if scope.ProviderURL != "" && scope.ProviderURL != u.ProviderURL {
+		return false
 	}
 	return scope.ConfigurationID == model.ConfigurationIDFor(u.ProviderURL, u.ChatModel, u.OCRModel)
 }

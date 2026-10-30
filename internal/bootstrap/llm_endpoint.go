@@ -12,6 +12,12 @@ import (
 
 const llmEndpointPollInterval = 2 * time.Second
 
+type llmEndpointStore interface {
+	LLMEndpoint(context.Context) (store.LLMEndpointSettings, bool, error)
+	UseModels(store.Models)
+	HasDatabase() bool
+}
+
 // applyStoredLLMEndpoint merges the platform endpoint with the deployment
 // identity. Worker and document clients keep the gateway URL and caller
 // credential; only their upstream identity (used for signatures) and selected
@@ -51,7 +57,7 @@ func applyStoredLLMEndpoint(base model.Config, service string, settings store.LL
 // platform endpoint applied. A missing or incomplete row leaves the deployment
 // identity untouched and reports its revision so the watcher can detect a
 // later selection.
-func loadStoredLLMEndpoint(ctx context.Context, st *store.Store, service string, base model.Config) (model.Config, int64) {
+func loadStoredLLMEndpoint(ctx context.Context, st llmEndpointStore, service string, base model.Config) (model.Config, int64) {
 	settings, found, err := st.LLMEndpoint(ctx)
 	if err != nil {
 		log.Printf("LLM endpoint settings unavailable: %v", err)
@@ -66,7 +72,7 @@ func loadStoredLLMEndpoint(ctx context.Context, st *store.Store, service string,
 // watchStoredLLMEndpoint applies endpoint changes without restarting every
 // process. Callers capture the current model client at the start of an
 // operation, so a running attempt keeps the frozen identity it validated.
-func watchStoredLLMEndpoint(ctx context.Context, st *store.Store, service string, base model.Config, revision int64) (cancel context.CancelFunc, done <-chan struct{}) {
+func watchStoredLLMEndpoint(ctx context.Context, st llmEndpointStore, service string, base model.Config, revision int64) (cancel context.CancelFunc, done <-chan struct{}) {
 	watchCtx, stop := context.WithCancel(ctx)
 	finished := make(chan struct{})
 	go func() {

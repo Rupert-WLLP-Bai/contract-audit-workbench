@@ -823,6 +823,30 @@ func TestExperienceBudgetFenceRolePrivileges(t *testing.T) {
 	pack := publishSyntheticAcceptancePack(t, st, owner)
 	publishSyntheticAcceptancePolicy(t, st, owner, pack)
 	source := createGovernedFeedbackSource(t, st, owner, owner, "false_positive", "model-role-fence")
+	var snapshotTenant, snapshotOrg, snapshotIdentity string
+	if err := st.pool.QueryRow(ctx, `SELECT tenant_id,org_id,model_configuration_id FROM review_run_snapshots WHERE run_id=$1`, source.RunID).Scan(&snapshotTenant, &snapshotOrg, &snapshotIdentity); err != nil {
+		t.Fatal(err)
+	}
+	snapshotScope := model.DelegatedScope{Kind: "execution", RunID: source.RunID, CaseID: source.CaseID, TenantID: snapshotTenant, OrgID: snapshotOrg}
+	modelTx, err := modelPool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := setLocalScope(ctx, modelTx, dbScope{ActorID: "model-gateway", Role: "model", TenantID: snapshotTenant, OrgID: snapshotOrg}); err != nil {
+		_ = modelTx.Rollback(ctx)
+		t.Fatal(err)
+	}
+	if err := authorizeFrozenModelConfiguration(ctx, modelTx, snapshotScope, snapshotIdentity); err != nil {
+		_ = modelTx.Rollback(ctx)
+		t.Fatalf("model role could not read its frozen execution identity: %v", err)
+	}
+	if err := authorizeFrozenModelConfiguration(ctx, modelTx, snapshotScope, "wrong-provider"); !errors.Is(err, ErrModelConfigurationChanged) {
+		_ = modelTx.Rollback(ctx)
+		t.Fatalf("model role accepted wrong execution identity: %v", err)
+	}
+	if err := modelTx.Rollback(ctx); err != nil {
+		t.Fatal(err)
+	}
 	feedback, err := st.SubmitExperienceFeedback(ctx, owner, source)
 	if err != nil {
 		t.Fatal(err)
@@ -846,6 +870,22 @@ func TestExperienceBudgetFenceRolePrivileges(t *testing.T) {
 		CaseID: claim.CaseID, ActorID: claim.ActorID, JobID: claim.JobID, WorkerID: claim.WorkerID,
 		Generation: claim.Generation, InputSHA256: work.InputSHA256}
 	modelStore := &Store{pool: modelPool, schema: st.schema}
+	// An omitted or forged caller declaration cannot affect the identity read
+	// from the immutable, digest-checked input under the dedicated model role.
+	scope.ConfigurationID = "forged-client-identity"
+	if _, err := modelStore.ReserveModelChatCall(ctx, "worker", scope, "role-fence-model", 1, 20, 20, modelBudgetTestLimits(), "wrong-provider"); !errors.Is(err, ErrModelConfigurationChanged) {
+		t.Fatalf("wrong provider accepted: %v", err)
+	}
+	chatLease, err := modelStore.ReserveModelChatCall(ctx, "worker", scope, "role-fence-model", 1, 20, 20, modelBudgetTestLimits(), work.Input.ModelConfigurationID)
+	if err != nil {
+		t.Fatalf("matching frozen identity rejected: %v", err)
+	}
+	settlePredispatch(t, ctx, modelStore, chatLease)
+	wrongScope := scope
+	wrongScope.CaseID += "-other"
+	if _, err := modelStore.ReserveModelChatCall(ctx, "worker", wrongScope, "role-fence-model", 1, 20, 20, modelBudgetTestLimits(), "wrong-provider"); !errors.Is(err, ErrModelScopeUnavailable) {
+		t.Fatalf("authorization must precede configuration mismatch: %v", err)
+	}
 	lease, err := modelStore.ReserveModelCall(ctx, "worker", scope, "role-fence-model", 1, 20, 20, modelBudgetTestLimits())
 	if err != nil {
 		t.Fatalf("dedicated model role could not reserve its live job: %v", err)

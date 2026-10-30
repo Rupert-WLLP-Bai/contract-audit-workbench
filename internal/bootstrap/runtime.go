@@ -81,7 +81,7 @@ func openConfigured(ctx context.Context, includeOIDC bool, service string) (*Run
 	if err := ctx.Err(); err != nil {
 		return closeOnFailure(err)
 	}
-	models, err := wireRuntimeStore(ctx, st, settings, service)
+	models, revision, err := wireRuntimeStore(ctx, st, settings, service)
 	if err != nil {
 		return closeOnFailure(err)
 	}
@@ -94,7 +94,7 @@ func openConfigured(ctx context.Context, includeOIDC bool, service string) (*Run
 	}
 	// The watcher starts only after every startup step succeeded, so a failed
 	// startup cannot leave a goroutine polling against a closed store.
-	modelWatchStop, modelWatchDone := watchConfiguredLLMEndpoint(ctx, st, settings, service)
+	modelWatchStop, modelWatchDone := watchConfiguredLLMEndpoint(ctx, st, settings, service, revision)
 	return &Runtime{
 		Store: st, Models: models, OIDC: oidc, Selection: settings.selection,
 		Durable: settings.executionMode == executionModeDurable, SecureCookies: settings.secureCookies,
@@ -263,14 +263,14 @@ func openRuntimeStore(settings runtimeSettings) (*store.Store, error) {
 	return st, nil
 }
 
-func wireRuntimeStore(ctx context.Context, st *store.Store, settings runtimeSettings, service string) (*model.Client, error) {
+func wireRuntimeStore(ctx context.Context, st *store.Store, settings runtimeSettings, service string) (*model.Client, int64, error) {
 	st.UseReadOnly(settings.readOnly)
 	if err := applyStorePolicy(ctx, st, service); err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	exporter, err := configuredTelemetry(service)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	st.UseTelemetry(exporter)
 	if settings.objects != nil {
@@ -278,38 +278,34 @@ func wireRuntimeStore(ctx context.Context, st *store.Store, settings runtimeSett
 	}
 	// The stored endpoint overrides the deployment identity before the client
 	// is built, so the configuration id a review freezes is the configured one.
-	models := model.New(configuredLLMEndpoint(ctx, st, settings, service))
+	config, revision := configuredLLMEndpoint(ctx, st, settings, service)
+	models := model.New(config)
 	st.UseModels(models)
 	if provider := configuredAdvisoryProvider(service, models); provider != nil {
 		st.UseAdvisory(provider)
 	}
 	if service == "worker" {
 		if err := wireWorkerDependencies(st, settings.experienceAcceptor); err != nil {
-			return nil, err
+			return nil, 0, err
 		}
 	}
-	return models, nil
+	return models, revision, nil
 }
 
 // configuredLLMEndpoint merges the platform endpoint with the deployment
 // identity. Read-only deployments keep the deployment configuration.
-func configuredLLMEndpoint(ctx context.Context, st *store.Store, settings runtimeSettings, service string) model.Config {
+func configuredLLMEndpoint(ctx context.Context, st llmEndpointStore, settings runtimeSettings, service string) (model.Config, int64) {
 	if settings.readOnly {
-		return settings.modelConfig
+		return settings.modelConfig, 0
 	}
-	config, _ := loadStoredLLMEndpoint(ctx, st, service, settings.modelConfig)
-	return config
+	return loadStoredLLMEndpoint(ctx, st, service, settings.modelConfig)
 }
 
 // watchConfiguredLLMEndpoint applies later endpoint revisions. Read-only
 // deployments and stores without a database are never polled.
-func watchConfiguredLLMEndpoint(ctx context.Context, st *store.Store, settings runtimeSettings, service string) (context.CancelFunc, <-chan struct{}) {
+func watchConfiguredLLMEndpoint(ctx context.Context, st llmEndpointStore, settings runtimeSettings, service string, revision int64) (context.CancelFunc, <-chan struct{}) {
 	if settings.readOnly || !st.HasDatabase() {
 		return nil, nil
-	}
-	revision := int64(0)
-	if endpoint, found, err := st.LLMEndpoint(ctx); err == nil && found {
-		revision = endpoint.Revision
 	}
 	return watchStoredLLMEndpoint(ctx, st, service, settings.modelConfig, revision)
 }

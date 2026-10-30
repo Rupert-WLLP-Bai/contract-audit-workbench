@@ -1,9 +1,12 @@
 package bootstrap
 
 import (
+	"context"
 	"encoding/base64"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"contractaudit/internal/llmendpoint"
 	"contractaudit/internal/model"
@@ -85,5 +88,71 @@ func TestApplyStoredLLMEndpointFallsBackWholeWithoutUsableCredential(t *testing.
 	}
 	if got := applyStoredLLMEndpoint(base, "", settings); got != base {
 		t.Fatalf("single-process client paired a new endpoint with the deployment credential: %+v", got)
+	}
+}
+
+type endpointWatchTestStore struct {
+	mu       sync.Mutex
+	endpoint store.LLMEndpointSettings
+	database bool
+	updates  chan store.Models
+}
+
+func (s *endpointWatchTestStore) LLMEndpoint(context.Context) (store.LLMEndpointSettings, bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.endpoint, true, nil
+}
+
+func (s *endpointWatchTestStore) UseModels(models store.Models) { s.updates <- models }
+func (s *endpointWatchTestStore) HasDatabase() bool             { return s.database }
+
+func TestWatcherAppliesRevisionChangedDuringStartup(t *testing.T) {
+	first := store.LLMEndpointSettings{Protocol: llmendpoint.ProtocolOpenAICompatible, BaseURL: "https://first.example/v1", Models: []string{"chat-one", "ocr-one"}, ReviewModel: "chat-one", OCRModel: "ocr-one", Revision: 1}
+	second := store.LLMEndpointSettings{Protocol: llmendpoint.ProtocolOpenAICompatible, BaseURL: "https://second.example/v1", Models: []string{"chat-two", "ocr-two"}, ReviewModel: "chat-two", OCRModel: "ocr-two", Revision: 2}
+	st := &endpointWatchTestStore{endpoint: first, database: true, updates: make(chan store.Models, 2)}
+	settings := runtimeSettings{modelConfig: model.Config{Gateway: true, BaseURL: "http://gateway/v1"}}
+	config, revision := configuredLLMEndpoint(t.Context(), st, settings, "worker")
+	if config.ProviderURL != first.BaseURL || revision != first.Revision {
+		t.Fatalf("initial endpoint = %+v, revision = %d", config, revision)
+	}
+	// An administrator saves another revision after the client is built but
+	// before the watcher starts. It must not treat that revision as applied.
+	st.mu.Lock()
+	st.endpoint = second
+	st.mu.Unlock()
+	stop, done := watchConfiguredLLMEndpoint(t.Context(), st, settings, "worker", revision)
+	defer stop()
+	select {
+	case got := <-st.updates:
+		want := model.New(applyStoredLLMEndpoint(settings.modelConfig, "worker", second))
+		if got.ConfigurationID() != want.ConfigurationID() {
+			t.Fatalf("watcher installed identity %q, want %q", got.ConfigurationID(), want.ConfigurationID())
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("watcher missed the revision saved during startup")
+	}
+	stop()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("watcher did not stop after cancellation")
+	}
+}
+
+func TestWatcherDisabledForReadOnlyAndNoDatabase(t *testing.T) {
+	for _, tc := range []struct {
+		name               string
+		readOnly, database bool
+	}{
+		{"read-only", true, true}, {"no-database", false, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			st := &endpointWatchTestStore{database: tc.database}
+			stop, done := watchConfiguredLLMEndpoint(t.Context(), st, runtimeSettings{readOnly: tc.readOnly}, "worker", 1)
+			if stop != nil || done != nil {
+				t.Fatal("disabled watcher was started")
+			}
+		})
 	}
 }

@@ -298,9 +298,9 @@ EXTERNAL_EVIDENCE_SOURCE_SYSTEM=fixture-oss-east
 
 ## 分支工作方式
 
-`main` 保存通过验收的交付版本，`dev` 汇集下一批变更，具体工作从 `dev` 创建 `feat/<主题>`。功能分支通过审查与验收后 squash 到 `dev`；交付时再 squash 到 `main`。需要单人作者时，提交前检查 `git var GIT_AUTHOR_IDENT` 和 `git var GIT_COMMITTER_IDENT`，使用本人身份，不添加代理作者或 `Co-authored-by`。既有已发布提交不重写。
+`main` 保存通过验收的交付版本，`feat/<主题>` 汇集正在开发的变更。功能通过审查与验收后，通过 PR squash 合并到 `main`；交付后将功能分支同步到 `main`。需要单人作者时，提交前检查 `git var GIT_AUTHOR_IDENT` 和 `git var GIT_COMMITTER_IDENT`，使用本人身份，不添加代理作者或 `Co-authored-by`。既有已发布提交不重写。
 
 ```bash
-git switch dev
+git switch main
 git switch -c feat/mineru-integration
 ```
