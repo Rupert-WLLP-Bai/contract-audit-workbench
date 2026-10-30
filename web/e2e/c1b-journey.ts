@@ -6,14 +6,9 @@ import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium, type Locator, type Page } from "playwright";
+import { replaceMaterial, replacePrimaryMaterial, uploadNewMaterial } from "./materials-ui";
 
 type Material = { role: string; filename: string; text: string };
-const MATERIAL_ROLE_LABELS: Record<string, string> = {
-  procurement: "采购文件",
-  award: "中标文件",
-  draft_contract: "拟签合同",
-  attachment: "技术附件",
-};
 type RulePackIdentity = { id: string; version: string; content_sha256: string };
 type Scenario = {
   id: string;
@@ -38,7 +33,7 @@ type Workspace = {
   evaluations: Array<Record<string, unknown>>;
   documents: Array<Record<string, unknown>>;
   execution?: {
-    attempt?: { id?: string; state?: string };
+    attempt?: { id?: string; state?: string; parsed_document_ids?: string[] };
     agent_review?: { rulepack?: RulePackIdentity | null } | null;
   };
   previous_run_id?: string | null;
@@ -50,11 +45,17 @@ type CaseDetail = {
   business_line: string;
   scenario: string;
   documents: Array<Record<string, unknown>>;
+  materials?: Array<{ material_id: string; role: string; purpose: string; current_document_id: string; current_version: number }>;
   generations: Array<Record<string, unknown>>;
   remediations: Array<Record<string, unknown>>;
   reports: Array<Record<string, unknown>>;
   archives: Array<Record<string, unknown>>;
   archived_at: string | null;
+};
+type ReviewDiagnostics = {
+  snapshot: { document_ids: string[] };
+  execution?: { attempt?: { input_hash?: string | null; parsed_document_ids?: string[] } };
+  documents: Array<{ id: string; digest: string; parsed_document?: { id: string; original_digest?: string; artifact_digest?: string; normalized_digest?: string | null } | null }>;
 };
 
 const web = required("E2E_WEB").replace(/\/$/, "");
@@ -171,6 +172,33 @@ try {
   assert.ok(uploaded.procurement, "procurement source was not uploaded");
   assert.ok(uploaded.award, "approval source was not uploaded");
   assert.ok(uploaded.attachment, "SLA annex was not uploaded");
+  const samePurposePair = scenario.id === "conflict" ? {
+    first: await uploadNewMaterial(page, {
+      role: "attachment",
+      purpose: "supplement",
+      filename: "联系人说明-A1.txt",
+      text: "项目联系人说明：甲方联系人为联系人甲，电话 010-10000001。",
+    }),
+    second: await uploadNewMaterial(page, {
+      role: "attachment",
+      purpose: "supplement",
+      filename: "联系人说明-B.txt",
+      text: "项目联系人说明：乙方联系人为联系人乙，电话 010-10000002。",
+    }),
+  } : null;
+  if (samePurposePair) {
+    const pairDetail = await waitForCase(page, caseID, (detail) =>
+      detail.documents.some((item) => item.id === samePurposePair.first.id) &&
+      detail.documents.some((item) => item.id === samePurposePair.second.id),
+    );
+    for (const upload of [samePurposePair.first, samePurposePair.second]) {
+      const material = pairDetail.materials?.find((item) => item.material_id === upload.material_id);
+      assert.equal(material?.purpose, "supplement", `${upload.id} did not retain the selected supplement purpose`);
+      assert.equal(material?.current_document_id, upload.id, `${upload.id} is not the current document for its own material`);
+      assert.equal(material?.current_version, 1, `${upload.id} did not start at material version 1`);
+      await waitForCurrentMaterialParsed(page, upload.material_id);
+    }
+  }
 
   await enterC1BBusinessAt(page);
   const firstReviewResponsePromise = page.waitForResponse((response) =>
@@ -194,6 +222,21 @@ try {
   if (dataset.rulepack) assert.deepEqual(firstRulepack, dataset.rulepack, "initial attempt froze a different governed policy");
   const firstAttemptID = getAttemptID(firstWorkspace, firstURL.searchParams.get("attempt_id"));
   assertRelations(firstWorkspace, scenario.expected_relations);
+  const firstAttachmentDiagnostics = samePurposePair
+    ? await readReviewDiagnostics(page, caseID, firstRunID, firstAttemptID)
+    : null;
+  if (samePurposePair && firstAttachmentDiagnostics) {
+    const snapshotIDs = new Set(firstAttachmentDiagnostics.snapshot.document_ids);
+    for (const upload of [samePurposePair.first, samePurposePair.second]) {
+      assert.ok(snapshotIDs.has(upload.id), `original attempt did not freeze attachment ${upload.filename}`);
+      assert.ok(firstWorkspace.documents.some((document) => document.id === upload.id), `original workspace omitted attachment ${upload.filename}`);
+      const frozen: ReviewDiagnostics["documents"][number] | undefined = firstAttachmentDiagnostics.documents.find((document) => document.id === upload.id);
+      assert.equal(frozen?.digest, createHash("sha256").update(upload === samePurposePair.first
+        ? "项目联系人说明：甲方联系人为联系人甲，电话 010-10000001。"
+        : "项目联系人说明：乙方联系人为联系人乙，电话 010-10000002。", "utf8").digest("hex"),
+      `original attempt changed the uploaded bytes for ${upload.filename}`);
+    }
+  }
 
   const bandwidthEval = evaluation(firstWorkspace, "ENT-TECH-BW-001");
   const findingID = String(bandwidthEval.finding_id ?? "");
@@ -255,12 +298,62 @@ try {
   assert.ok(remediationID, "remediation ID missing");
 
   const revisedText = renderDraft(compatible.fields);
-  const revisedID = await uploadMaterial(page, {
+  const beforeReplacement = await waitForCase(page, caseID, (detail) => detail.documents.some((item) => item.id === generationResponse.document_id));
+  const primaryMaterial = (beforeReplacement as CaseDetail & { materials?: Array<{ material_id: string; purpose: string; current_document_id: string; current_version: number }> }).materials?.find((item) => item.purpose === "primary_contract");
+  assert.ok(primaryMaterial, "generated main contract has no material identity");
+  assert.equal(primaryMaterial.current_document_id, generationResponse.document_id, "the intended main contract is not current before replacement");
+  const primaryDocument = beforeReplacement.documents.find((document) => document.id === primaryMaterial.current_document_id);
+  assert.ok(primaryDocument, "current primary document is absent from case detail");
+  const replacement = await replacePrimaryMaterial(page, {
     role: "draft_contract",
     filename: "telecom-revised-draft.txt",
     text: revisedText,
-  });
+  }, primaryMaterial, String(primaryDocument.filename ?? ""));
+  const revisedID = replacement.id;
   assert.ok(revisedID, "revised draft upload returned no identity");
+  const afterReplacement = await waitForCase(page, caseID, (detail) => detail.documents.some((item) => item.id === revisedID));
+  const updatedPrimary = (afterReplacement as CaseDetail & { materials?: Array<{ material_id: string; purpose: string; current_document_id: string; current_version: number }> }).materials?.find((item) => item.purpose === "primary_contract");
+  assert.equal(updatedPrimary?.material_id, primaryMaterial.material_id, "the UI replacement changed the selected material identity");
+  assert.equal(updatedPrimary?.current_document_id, revisedID, "the UI replacement did not become the current document");
+  assert.equal(updatedPrimary?.current_version, primaryMaterial.current_version + 1, "the UI replacement did not create the next material version");
+
+  let attachmentA2: Awaited<ReturnType<typeof replaceMaterial>> | null = null;
+  if (samePurposePair) {
+    const attachmentTarget = afterReplacement.materials?.find((item) => item.material_id === samePurposePair.first.material_id);
+    const attachmentB = afterReplacement.materials?.find((item) => item.material_id === samePurposePair.second.material_id);
+    assert.ok(attachmentTarget, "contact note A has no current material projection");
+    assert.ok(attachmentB, "contact note B has no current material projection");
+    assert.equal(attachmentTarget.current_document_id, samePurposePair.first.id, "contact note A changed before explicit replacement");
+    const attachmentA1Doc = afterReplacement.documents.find((item) => item.id === samePurposePair.first.id);
+    assert.ok(attachmentA1Doc, "current document for contact note A is absent");
+    attachmentA2 = await replaceMaterial(page, {
+      role: "attachment",
+      purpose: "supplement",
+      filename: "联系人说明-A2.txt",
+      text: "项目联系人说明：甲方联系人为联系人甲，电话 010-10000001；本次更新了联系人说明文件。",
+    }, attachmentTarget, String(attachmentA1Doc.filename ?? ""), "补充协议");
+    const afterAttachmentReplacement = await waitForCase(page, caseID, (detail) =>
+      detail.documents.some((item) => item.id === attachmentA2?.id),
+    );
+    const updatedA = afterAttachmentReplacement.materials?.find((item) => item.material_id === samePurposePair.first.material_id);
+    const unchangedB = afterAttachmentReplacement.materials?.find((item) => item.material_id === samePurposePair.second.material_id);
+    assert.equal(attachmentA2.material_id, attachmentTarget.material_id, "attachment A replacement changed material identity");
+    assert.equal(attachmentA2.version, attachmentTarget.current_version + 1, "attachment A replacement did not increment its version");
+    assert.equal(updatedA?.current_document_id, attachmentA2.id, "attachment A replacement is not current after refresh");
+    assert.equal(updatedA?.current_version, attachmentTarget.current_version + 1, "attachment A current version did not increment after refresh");
+    assert.equal(unchangedB?.current_document_id, samePurposePair.second.id, "replacing attachment A changed attachment B's current document");
+    assert.equal(unchangedB?.current_version, 1, "replacing attachment A changed attachment B's version");
+    await page.reload();
+    await page.getByRole("heading", { name: title, exact: true }).waitFor();
+    const currentA = page.locator(`.material-current-set li[data-material-id="${samePurposePair.first.material_id}"]`);
+    const currentB = page.locator(`.material-current-set li[data-material-id="${samePurposePair.second.material_id}"]`);
+    await currentA.getByText("联系人说明-A2.txt", { exact: true }).waitFor();
+    await currentB.getByText("联系人说明-B.txt", { exact: true }).waitFor();
+    assert.match(await currentA.innerText(), /当前版本 v2/);
+    assert.match(await currentB.innerText(), /当前版本 v1/);
+    assert.doesNotMatch(await currentA.innerText(), /联系人说明-A1\.txt/);
+    await waitForCurrentMaterialParsed(page, samePurposePair.first.material_id);
+  }
 
   await enterC1BBusinessAt(page);
   const reReviewResponsePromise = page.waitForResponse((response) =>
@@ -285,6 +378,27 @@ try {
   const secondAttemptID = getAttemptID(secondWorkspace, secondURL.searchParams.get("attempt_id"));
   assert.notEqual(secondAttemptID, firstAttemptID, "re-review reused the previous attempt");
   assertRelations(secondWorkspace, compatible.expected_relations);
+  if (samePurposePair && attachmentA2 && firstAttachmentDiagnostics) {
+    const currentAttachmentDiagnostics = await readReviewDiagnostics(page, caseID, secondRunID, secondAttemptID);
+    const currentSnapshotIDs = new Set(currentAttachmentDiagnostics.snapshot.document_ids);
+    for (const id of [attachmentA2.id, samePurposePair.second.id]) {
+      assert.ok(currentSnapshotIDs.has(id), `new attempt did not freeze current attachment ${id}`);
+      assert.ok(secondWorkspace.documents.some((document) => document.id === id), `new workspace omitted current attachment ${id}`);
+    }
+    assert.ok(!currentSnapshotIDs.has(samePurposePair.first.id), "new attempt still selected replaced attachment A1");
+    const firstDiagnosticsAfterReplacement = await readReviewDiagnostics(page, caseID, firstRunID, firstAttemptID);
+    const oldPairBefore = [samePurposePair.first.id, samePurposePair.second.id].map((id) => diagnosticDocument(firstAttachmentDiagnostics, id));
+    const oldPairAfter = [samePurposePair.first.id, samePurposePair.second.id].map((id) => diagnosticDocument(firstDiagnosticsAfterReplacement, id));
+    assert.deepEqual(oldPairAfter, oldPairBefore, "later material replacement changed the original attempt's frozen attachment hashes");
+    assert.equal(firstDiagnosticsAfterReplacement.execution?.attempt?.input_hash, firstAttachmentDiagnostics.execution?.attempt?.input_hash,
+      "later material replacement changed the original attempt input hash");
+    const secondA = diagnosticDocument(currentAttachmentDiagnostics, attachmentA2.id);
+    const secondB = diagnosticDocument(currentAttachmentDiagnostics, samePurposePair.second.id);
+    assert.equal(secondA?.digest, createHash("sha256").update("项目联系人说明：甲方联系人为联系人甲，电话 010-10000001；本次更新了联系人说明文件。", "utf8").digest("hex"),
+      "new attempt A2 content hash differs from the uploaded bytes");
+    assert.equal(secondB?.digest, diagnosticDocument(firstAttachmentDiagnostics, samePurposePair.second.id)?.digest,
+      "unchanged attachment B content hash changed between attempts");
+  }
 
   await page.goto(`${web}/cases/${caseID}`);
   await page.getByRole("heading", { name: title, exact: true }).waitFor();
@@ -591,35 +705,7 @@ async function chooseAntSelect(page: Page, select: Locator, optionText: string):
 }
 
 async function uploadMaterial(page: Page, material: Material): Promise<string> {
-  const roleSelect = page.getByLabel("材料角色", { exact: true });
-  const fileInput = page.getByLabel("文件", { exact: true });
-  const uploadButton = page.getByRole("button", { name: "上传", exact: true });
-  const roleLabel = MATERIAL_ROLE_LABELS[material.role];
-  assert.ok(roleLabel, `unknown material role ${material.role}`);
-  await chooseAntSelect(page, roleSelect, roleLabel);
-  // The upload panel remounts its file input after a completed upload, so the
-  // attach/enable cycle is retried until the submit button is actually enabled.
-  for (let attempt = 0; attempt < 4; attempt++) {
-    await fileInput.setInputFiles({
-      name: material.filename,
-      mimeType: "text/plain",
-      buffer: Buffer.from(material.text, "utf8"),
-    });
-    await page.waitForTimeout(150);
-    if (!(await uploadButton.isDisabled().catch(() => true))) break;
-  }
-  await uploadButton.waitFor({ state: "visible", timeout: 15000 });
-  await uploadButton.scrollIntoViewIfNeeded();
-  const [response] = await Promise.all([
-    page.waitForResponse((response) =>
-      response.request().method() === "POST" && response.url().endsWith("/documents"),
-    ),
-    uploadButton.click(),
-  ]);
-  assert.equal(response.status(), 201, `upload ${material.filename} returned HTTP ${response.status()}`);
-  const result = await response.json() as { id?: string };
-  assert.ok(result.id, `upload ${material.filename} returned no document ID`);
-  await page.getByText(material.filename, { exact: true }).waitFor();
+  const result = await uploadNewMaterial(page, material);
   return result.id;
 }
 
@@ -636,6 +722,13 @@ async function waitForCase(page: Page, caseID: string, ready: (detail: CaseDetai
   throw new Error(`case ${caseID} did not reach expected state; last detail=${JSON.stringify(last)}`);
 }
 
+async function waitForCurrentMaterialParsed(page: Page, materialID: string): Promise<void> {
+  await page.waitForFunction((id) => {
+    const row = document.querySelector(`.material-current-set li[data-material-id="${CSS.escape(id)}"]`);
+    return row?.querySelector<HTMLElement>(".parsed-document-summary")?.dataset.status === "ready";
+  }, materialID, { timeout: 30000 });
+}
+
 async function waitForWorkspace(page: Page, caseID: string, runID: string): Promise<Workspace> {
   const deadline = Date.now() + 90000;
   let last: Workspace | null = null;
@@ -647,6 +740,35 @@ async function waitForWorkspace(page: Page, caseID: string, runID: string): Prom
     await page.waitForTimeout(200);
   }
   throw new Error(`review ${runID} did not terminate; last workspace=${JSON.stringify(last)}`);
+}
+
+async function readReviewDiagnostics(page: Page, caseID: string, runID: string, attemptID: string): Promise<ReviewDiagnostics> {
+  const response = await page.request.get(
+    `${web}/api/cases/${caseID}/reviews/${runID}/diagnostics?attempt_id=${encodeURIComponent(attemptID)}`,
+  );
+  assert.equal(response.status(), 200, `review diagnostics returned HTTP ${response.status()}`);
+  const diagnostics = await response.json() as ReviewDiagnostics;
+  assert.equal(diagnostics.snapshot.document_ids instanceof Array, true, "review diagnostics omitted frozen document identities");
+  assert.match(diagnostics.execution?.attempt?.input_hash ?? "", /^[0-9a-f]{64}$/, "review diagnostics omitted a valid frozen attempt input hash");
+  return diagnostics;
+}
+
+function diagnosticDocument(diagnostics: ReviewDiagnostics, documentID: string) {
+  const document = diagnostics.documents.find((item) => item.id === documentID);
+  assert.ok(document, `review diagnostics omitted document ${documentID}`);
+  assert.match(document.digest, /^[0-9a-f]{64}$/, `review diagnostics omitted the original byte hash for ${documentID}`);
+  const parsed = document.parsed_document;
+  assert.ok(parsed?.id, `review diagnostics omitted the frozen parse identity for ${documentID}`);
+  assert.match(parsed.artifact_digest ?? "", /^[0-9a-f]{64}$/, `review diagnostics omitted the parse artifact hash for ${documentID}`);
+  assert.match(parsed.normalized_digest ?? "", /^[0-9a-f]{64}$/, `review diagnostics omitted the normalized text hash for ${documentID}`);
+  return {
+    id: document.id,
+    digest: document.digest,
+    parsed_document_id: parsed.id,
+    artifact_digest: parsed.artifact_digest,
+    normalized_digest: parsed.normalized_digest,
+    parsed_original_digest: parsed.original_digest ?? null,
+  };
 }
 
 function getAttemptID(workspace: Workspace, routeAttempt: string | null): string {

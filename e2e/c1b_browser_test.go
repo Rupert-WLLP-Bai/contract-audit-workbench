@@ -86,8 +86,6 @@ func runBrowserTelecomC1B(t *testing.T, journey, scenario string) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Second)
 	defer cancel()
-	script := exec.CommandContext(ctx, bun, "e2e/"+journey)
-	script.Dir = webRoot
 	scenarioEnv := "E2E_TELECOM_SCENARIO=" + scenario
 	if journey == "c1b-scenarios.ts" {
 		scenarioEnv = "E2E_TELECOM_SCENARIOS=" + scenario
@@ -98,7 +96,7 @@ func runBrowserTelecomC1B(t *testing.T, journey, scenario string) {
 		evidenceDir = filepath.Join(delivery, "browser", t.Name())
 		screenshotDir = filepath.Join(evidenceDir, "screenshots")
 	}
-	script.Env = append(os.Environ(),
+	scriptEnv := append(os.Environ(),
 		"CHROMIUM_BIN="+chrome,
 		"E2E_WEB="+webURL,
 		"E2E_TELECOM_DATASET="+dataset,
@@ -106,7 +104,7 @@ func runBrowserTelecomC1B(t *testing.T, journey, scenario string) {
 		"E2E_OUT="+evidenceDir,
 		"E2E_SCREENSHOT_DIR="+screenshotDir,
 	)
-	out, err := script.CombinedOutput()
+	out, err := runBrowserScript(ctx, webRoot, scriptEnv, "e2e/"+journey)
 	t.Log(string(out))
 	if err != nil {
 		if ctx.Err() != nil {

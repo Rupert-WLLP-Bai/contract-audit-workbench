@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import { mkdir, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { chromium, type Locator, type Page } from "playwright";
+import { replacePrimaryMaterial, selectMaterialOption, uploadNewMaterial } from "./materials-ui";
 
 type Material = { role: string; filename: string; text: string };
 type Scenario = {
@@ -39,6 +40,7 @@ type CaseDetail = {
   scenario: string;
   generations: Array<Record<string, any>>;
   documents: Array<Record<string, any>>;
+  materials?: Array<{ material_id: string; purpose: string; current_document_id: string; current_version: number }>;
   reports: Array<{ id: string; run_id: string; attempt_id: string }>;
   archives: Array<{ id: string; report_id: string }>;
   archived_at: string | null;
@@ -116,7 +118,7 @@ try {
     await page.getByRole("button", { name: "新建案件", exact: true }).click();
     const dialog = page.getByRole("dialog");
     await dialog.getByLabel("标题", { exact: true }).fill(title);
-    await dialog.getByLabel("合同类型", { exact: true }).selectOption("service");
+    await selectMaterialOption(page, "合同类型", "服务合同");
     await dialog.getByRole("button", { name: "创建", exact: true }).click();
     await page.waitForURL(/\/cases\/[^/]+$/);
     const caseID = new URL(page.url()).pathname.split("/").at(-1) ?? "";
@@ -128,12 +130,12 @@ try {
 
     const templateResponse = await page.request.get(`${web}/api/templates`);
     assert.equal(templateResponse.status(), 200, "template listing failed");
-    const templateData = await templateResponse.json() as { items: Array<{ id: string; version: string; fields: Array<{ key: string; label: string; required: boolean }> }> };
+    const templateData = await templateResponse.json() as { items: Array<{ id: string; name: string; version: string; fields: Array<{ key: string; label: string; required: boolean }> }> };
     const template = templateData.items.find((item) => item.id === dataset.template_id);
     assert.ok(template, `template ${dataset.template_id} not returned by the API`);
     assert.equal(template.version, dataset.template_version, "template version differs from the frozen dataset");
     assert.deepEqual(new Set(template.fields.map((field) => field.key)), new Set(Object.keys(scenario.fields)));
-    await page.getByLabel("模板", { exact: true }).selectOption(dataset.template_id);
+    await selectMaterialOption(page, "模板", `${template.name}，${template.version}`);
     for (const field of template.fields) {
       const value = scenario.fields[field.key];
       assert.notEqual(value, undefined, `fixture field ${field.key} is missing`);
@@ -153,11 +155,19 @@ try {
     const uploaded: Record<string, string> = {};
     for (const material of scenario.materials) uploaded[material.role] = await uploadMaterial(page, material);
     if (scenario.draft_override) {
-      uploaded.draft_contract = await uploadMaterial(page, {
+      const beforeReplacement = await waitForCase(page, caseID, (detail) =>
+        detail.materials?.some((material) => material.purpose === "primary_contract" && material.current_document_id === generation.document_id) === true,
+      );
+      const primaryMaterial = beforeReplacement.materials?.find((material) => material.purpose === "primary_contract");
+      assert.ok(primaryMaterial, `${scenario.id} generated primary contract has no material identity`);
+      const currentDocument = beforeReplacement.documents.find((document) => document.id === primaryMaterial.current_document_id);
+      assert.ok(currentDocument, `${scenario.id} current primary document is absent from case detail`);
+      const result = await replacePrimaryMaterial(page, {
         role: "draft_contract",
         filename: scenario.draft_override.filename,
         text: scenario.draft_override.text,
-      });
+      }, primaryMaterial, String(currentDocument.filename ?? ""));
+      uploaded.draft_contract = result.id;
     }
     assert.ok(uploaded.procurement, `${scenario.id} procurement evidence was not uploaded`);
     const detailWithMaterials = await waitForCase(page, caseID, (detail) =>
@@ -330,23 +340,7 @@ function canonical(value: unknown): string {
 }
 
 async function uploadMaterial(currentPage: Page, material: Material): Promise<string> {
-  const roleSelect = currentPage.getByLabel("材料角色", { exact: true });
-  const fileInput = currentPage.getByLabel("文件", { exact: true });
-  const uploadButton = currentPage.getByRole("button", { name: "上传", exact: true });
-  await roleSelect.selectOption(material.role);
-  for (let attempt = 0; attempt < 4; attempt++) {
-    await fileInput.setInputFiles({ name: material.filename, mimeType: "text/plain", buffer: Buffer.from(material.text, "utf8") });
-    await currentPage.waitForTimeout(150);
-    if (!(await uploadButton.isDisabled().catch(() => true))) break;
-  }
-  const responsePromise = currentPage.waitForResponse((response) => response.request().method() === "POST" && response.url().endsWith("/documents"));
-  await uploadButton.scrollIntoViewIfNeeded();
-  await uploadButton.click();
-  const response = await responsePromise;
-  assert.equal(response.status(), 201, `upload ${material.filename} returned HTTP ${response.status()}`);
-  const result = await response.json() as { id?: string };
-  assert.ok(result.id, `upload ${material.filename} returned no document ID`);
-  await currentPage.getByText(material.filename, { exact: true }).waitFor();
+  const result = await uploadNewMaterial(currentPage, material);
   return result.id;
 }
 
