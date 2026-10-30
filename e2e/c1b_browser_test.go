@@ -20,6 +20,19 @@ import (
 )
 
 func TestBrowserTelecomC1BFullJourney(t *testing.T) {
+	runBrowserTelecomC1B(t, "c1b-journey.ts", "conflict")
+}
+
+func TestBrowserTelecomC1BCompatibleScenario(t *testing.T) {
+	runBrowserTelecomC1B(t, "c1b-scenarios.ts", "compatible")
+}
+
+func TestBrowserTelecomC1BInsufficientScenario(t *testing.T) {
+	runBrowserTelecomC1B(t, "c1b-scenarios.ts", "insufficient")
+}
+
+func runBrowserTelecomC1B(t *testing.T, journey, scenario string) {
+	t.Helper()
 	chrome := chromiumBinary(t)
 	bun, err := exec.LookPath("bun")
 	if err != nil {
@@ -73,13 +86,25 @@ func TestBrowserTelecomC1BFullJourney(t *testing.T) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Second)
 	defer cancel()
-	script := exec.CommandContext(ctx, bun, "e2e/c1b-journey.ts")
+	script := exec.CommandContext(ctx, bun, "e2e/"+journey)
 	script.Dir = webRoot
+	scenarioEnv := "E2E_TELECOM_SCENARIO=" + scenario
+	if journey == "c1b-scenarios.ts" {
+		scenarioEnv = "E2E_TELECOM_SCENARIOS=" + scenario
+	}
+	evidenceDir := filepath.Join("..", "artifacts", "d2-8-browser", t.Name())
+	screenshotDir := filepath.Join("..", "artifacts", "screenshots")
+	if delivery := os.Getenv("CAW_DELIVERY_DIR"); delivery != "" {
+		evidenceDir = filepath.Join(delivery, "browser", t.Name())
+		screenshotDir = filepath.Join(evidenceDir, "screenshots")
+	}
 	script.Env = append(os.Environ(),
 		"CHROMIUM_BIN="+chrome,
 		"E2E_WEB="+webURL,
 		"E2E_TELECOM_DATASET="+dataset,
-		"E2E_TELECOM_SCENARIO=conflict",
+		scenarioEnv,
+		"E2E_OUT="+evidenceDir,
+		"E2E_SCREENSHOT_DIR="+screenshotDir,
 	)
 	out, err := script.CombinedOutput()
 	t.Log(string(out))

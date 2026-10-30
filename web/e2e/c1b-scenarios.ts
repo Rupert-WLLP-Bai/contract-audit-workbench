@@ -1,4 +1,5 @@
 import { chromiumExecutable } from "./chromium";
+import { C1B_BUSINESS_AT_UTC, C1B_BUSINESS_TIME_ZONE, enterC1BBusinessAt } from "./c1b-clock";
 import assert from "node:assert/strict";
 import { mkdir, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
@@ -26,7 +27,10 @@ type Workspace = {
   findings: Array<Record<string, any>>;
   evaluations: Array<Record<string, any>>;
   documents: Array<Record<string, any>>;
-  execution?: { attempt?: { id?: string; state?: string } };
+  execution?: {
+    attempt?: { id?: string; state?: string };
+    agent_review?: { rulepack?: { id?: string; version?: string } | null } | null;
+  };
 };
 type CaseDetail = {
   id: string;
@@ -64,7 +68,10 @@ const browser = await chromium.launch({
   executablePath: chromiumExecutable(),
   args: ["--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu"],
 });
-const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
+const page = await browser.newPage({
+  viewport: { width: 1440, height: 1000 },
+  timezoneId: C1B_BUSINESS_TIME_ZONE,
+});
 const consoleErrors: string[] = [];
 const httpErrors: string[] = [];
 const expectedHTTPFailures = new Set(["GET /api/session 401"]);
@@ -157,7 +164,13 @@ try {
       Object.values(uploaded).every((documentID) => detail.documents.some((document) => document.id === documentID)));
     Object.assign(scenarioResult, { uploaded_document_ids: uploaded, case_document_count: detailWithMaterials.documents.length, stage: "materials_ready" });
 
+    await enterC1BBusinessAt(page);
+    const startReviewResponsePromise = page.waitForResponse((response) =>
+      response.request().method() === "POST" && response.url().endsWith(`/api/cases/${caseID}/reviews`));
     await page.getByRole("button", { name: "开始审查", exact: true }).click();
+    const startReviewResponse = await startReviewResponsePromise;
+    assert.ok(startReviewResponse.status() === 200 || startReviewResponse.status() === 202, `${scenario.id} review start returned HTTP ${startReviewResponse.status()}`);
+    assert.deepEqual(startReviewResponse.request().postDataJSON(), { business_at: C1B_BUSINESS_AT_UTC }, `${scenario.id} did not submit the frozen business time`);
     await page.waitForURL(/\/cases\/[^/]+\/reviews\/[^/]+/);
     const reviewURL = new URL(page.url());
     const runID = reviewURL.pathname.split("/").at(-1) ?? "";
@@ -165,12 +178,17 @@ try {
     const workspace = await waitForWorkspace(page, caseID, runID);
     const attemptID = workspace.execution?.attempt?.id ?? "";
     assert.ok(attemptID, `${scenario.id} review has no attempt identity`);
+    const rulepack = workspace.execution?.agent_review?.rulepack;
+    assert.ok(rulepack?.id && rulepack.version, `${scenario.id} review did not resolve a governed rule pack`);
     assertRelations(workspace, scenario.expected_relations);
     Object.assign(scenarioResult, {
       run_id: runID,
       attempt_id: attemptID,
       run_state: workspace.run.state,
       finding_count: workspace.findings.length,
+      business_at: C1B_BUSINESS_AT_UTC,
+      business_time_zone: C1B_BUSINESS_TIME_ZONE,
+      rulepack,
       expected_relations: scenario.expected_relations,
       stage: "reviewed",
     });

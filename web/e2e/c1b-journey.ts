@@ -1,4 +1,5 @@
 import { chromiumExecutable } from "./chromium";
+import { C1B_BUSINESS_AT_UTC, C1B_BUSINESS_TIME_ZONE, enterC1BBusinessAt } from "./c1b-clock";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { mkdir } from "node:fs/promises";
@@ -36,7 +37,10 @@ type Workspace = {
   findings: Array<Record<string, unknown>>;
   evaluations: Array<Record<string, unknown>>;
   documents: Array<Record<string, unknown>>;
-  execution?: { attempt?: { id?: string; state?: string }; agent_review?: { rulepack?: RulePackIdentity } };
+  execution?: {
+    attempt?: { id?: string; state?: string };
+    agent_review?: { rulepack?: RulePackIdentity | null } | null;
+  };
   previous_run_id?: string | null;
   revisions?: Array<Record<string, unknown>>;
   revision_comparison_reason?: string | null;
@@ -64,7 +68,10 @@ const browser = await chromium.launch({
   executablePath: chromiumExecutable(),
   args: ["--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu"],
 });
-const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
+const page = await browser.newPage({
+  viewport: { width: 1440, height: 1000 },
+  timezoneId: C1B_BUSINESS_TIME_ZONE,
+});
 const consoleErrors: string[] = [];
 const httpErrors: string[] = [];
 const consoleErrorURLs: string[] = [];
@@ -165,8 +172,13 @@ try {
   assert.ok(uploaded.award, "approval source was not uploaded");
   assert.ok(uploaded.attachment, "SLA annex was not uploaded");
 
-  await page.getByLabel("审查业务时间（本地时区）", { exact: true }).fill("2026-01-15T09:00");
+  await enterC1BBusinessAt(page);
+  const firstReviewResponsePromise = page.waitForResponse((response) =>
+    response.request().method() === "POST" && response.url().endsWith(`/api/cases/${caseID}/reviews`));
   await page.getByRole("button", { name: "开始审查", exact: true }).click();
+  const firstReviewResponse = await firstReviewResponsePromise;
+  assert.ok(firstReviewResponse.status() === 200 || firstReviewResponse.status() === 202, `review start returned HTTP ${firstReviewResponse.status()}`);
+  assert.deepEqual(firstReviewResponse.request().postDataJSON(), { business_at: C1B_BUSINESS_AT_UTC }, "review did not submit the frozen business time");
   try {
     await page.waitForURL(/\/cases\/[^/]+\/reviews\/[^/]+/);
   } catch (error) {
@@ -177,7 +189,9 @@ try {
   const firstRunID = firstURL.pathname.split("/").at(-1) ?? "";
   assert.ok(firstRunID, "initial review run ID was not in the route");
   const firstWorkspace = await waitForWorkspace(page, caseID, firstRunID);
-  if (dataset.rulepack) assert.deepEqual(firstWorkspace.execution?.agent_review?.rulepack, dataset.rulepack, "initial attempt froze a different governed policy");
+  const firstRulepack = firstWorkspace.execution?.agent_review?.rulepack;
+  assert.ok(firstRulepack?.id && firstRulepack.version, "initial attempt did not resolve a governed rule pack");
+  if (dataset.rulepack) assert.deepEqual(firstRulepack, dataset.rulepack, "initial attempt froze a different governed policy");
   const firstAttemptID = getAttemptID(firstWorkspace, firstURL.searchParams.get("attempt_id"));
   assertRelations(firstWorkspace, scenario.expected_relations);
 
@@ -248,8 +262,13 @@ try {
   });
   assert.ok(revisedID, "revised draft upload returned no identity");
 
-  await page.getByLabel("审查业务时间（本地时区）", { exact: true }).fill("2026-01-15T09:00");
+  await enterC1BBusinessAt(page);
+  const reReviewResponsePromise = page.waitForResponse((response) =>
+    response.request().method() === "POST" && response.url().endsWith(`/api/cases/${caseID}/reviews`));
   await page.getByRole("button", { name: "开始复审", exact: true }).click();
+  const reReviewResponse = await reReviewResponsePromise;
+  assert.ok(reReviewResponse.status() === 200 || reReviewResponse.status() === 202, `re-review start returned HTTP ${reReviewResponse.status()}`);
+  assert.deepEqual(reReviewResponse.request().postDataJSON(), { business_at: C1B_BUSINESS_AT_UTC }, "re-review did not submit the frozen business time");
   try {
     await page.waitForURL(/\/cases\/[^/]+\/reviews\/[^/]+/);
   } catch (error) {
@@ -260,7 +279,9 @@ try {
   const secondRunID = secondURL.pathname.split("/").at(-1) ?? "";
   assert.ok(secondRunID && secondRunID !== firstRunID, "re-review overwrote the original run");
   const secondWorkspace = await waitForWorkspace(page, caseID, secondRunID);
-  if (dataset.rulepack) assert.deepEqual(secondWorkspace.execution?.agent_review?.rulepack, dataset.rulepack, "re-review froze a different governed policy");
+  const secondRulepack = secondWorkspace.execution?.agent_review?.rulepack;
+  assert.ok(secondRulepack?.id && secondRulepack.version, "re-review did not resolve a governed rule pack");
+  if (dataset.rulepack) assert.deepEqual(secondRulepack, dataset.rulepack, "re-review froze a different governed policy");
   const secondAttemptID = getAttemptID(secondWorkspace, secondURL.searchParams.get("attempt_id"));
   assert.notEqual(secondAttemptID, firstAttemptID, "re-review reused the previous attempt");
   assertRelations(secondWorkspace, compatible.expected_relations);
@@ -423,6 +444,9 @@ try {
     dataset_id: dataset.dataset_id,
     dataset_sha256: dataset.sha256,
     scenario: scenario.id,
+    business_at: C1B_BUSINESS_AT_UTC,
+    business_time_zone: C1B_BUSINESS_TIME_ZONE,
+    rulepack: firstRulepack,
     case_id: caseID,
     original_run_id: firstRunID,
     re_review_run_id: secondRunID,

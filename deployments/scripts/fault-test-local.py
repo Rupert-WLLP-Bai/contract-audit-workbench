@@ -77,7 +77,7 @@ from urllib.parse import urlsplit
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
-from deployments.local import DISTRIBUTED_ENV_PATH, ENV_PATH  # noqa: E402
+from deployments.local import DISTRIBUTED_ENV_PATH, ENV_PATH, compose_prefix as local_compose_prefix  # noqa: E402
 
 # The six frozen prerequisites, exactly as approved (plan section eleven).
 ITEM_DEFINITIONS = {
@@ -284,16 +284,12 @@ class Recorder:
                 stream.write(json.dumps(record, ensure_ascii=False, sort_keys=True) + "\n")
 
 
-def compose_prefix_for(env_path: Path) -> list[str]:
-    binary = os.environ.get("COMPOSE_BIN")
-    command = [binary] if binary else [os.environ.get("DOCKER_BIN", "docker"), "compose"]
-    return command + [
-        "--project-directory", str(ROOT),
-        "--env-file", str(ENV_PATH),
-        "--env-file", str(env_path),
-        "-f", str(ROOT / "compose.yaml"),
-        "-f", str(ROOT / "compose.app.yaml"),
-    ]
+def compose_prefix_for(env_path: Path, database_target: str = "development") -> list[str]:
+    if env_path.expanduser().resolve() != DISTRIBUTED_ENV_PATH.expanduser().resolve():
+        raise Failure("--env must match the distributed profile bound to the active infrastructure/project profile")
+    if database_target not in ("development", "test"):
+        raise Failure("database target must be development or test")
+    return local_compose_prefix(env_path)
 
 def database_identity(raw: str) -> tuple[str, int, str] | None:
     try:
@@ -323,12 +319,14 @@ class Stack:
     """
 
     def __init__(self, recorder: Recorder, env_path: Path, confirm: str, app_env: dict[str, str],
-                 control: str = "compose", control_file: Path | None = None) -> None:
+                 control: str = "compose", control_file: Path | None = None,
+                 database_target: str = "development") -> None:
         self.recorder = recorder
         self.control_file: Path | None = None
         self.control_document: dict | None = None
         self.control_services: dict | None = None
         self.env_path = env_path
+        self.database_target = database_target
         self.confirm = confirm
         self.app_env = app_env
         self.docker = os.environ.get("DOCKER_BIN", "docker")
@@ -581,7 +579,7 @@ class Stack:
     # --- shared helpers -------------------------------------------------
 
     def compose(self, *arguments: str, timeout: float = 600) -> subprocess.CompletedProcess:
-        return self.recorder.run(compose_prefix_for(self.env_path) + list(arguments), timeout=timeout)
+        return self.recorder.run(compose_prefix_for(self.env_path, self.database_target) + list(arguments), timeout=timeout)
 
     @staticmethod
     def alive(pid: int) -> bool:
@@ -3040,7 +3038,7 @@ class PsqlQuerySession:
         self.started_at: float | None = None
 
     def _start(self) -> None:
-        argv = compose_prefix_for(self.stack.env_path) + [
+        argv = compose_prefix_for(self.stack.env_path, self.stack.database_target) + [
             "exec", "-T", "db", "psql", "-X", "-qAt", "-F", "|", "-v", "ON_ERROR_STOP=1",
             "-U", self.stack.migrator_user, "-d", self.stack.confirm,
         ]
@@ -3625,10 +3623,20 @@ def parse_scale(raw: str) -> dict[str, int]:
     return counts
 
 
+def select_scenarios(names: list[str] | None, scenarios=SCENARIOS):
+    selected = set(names or [name for name, _ in scenarios])
+    unknown = selected - {name for name, _ in scenarios}
+    if unknown:
+        raise ValueError(f"unknown scenario name(s): {', '.join(sorted(unknown))}")
+    return [(name, function) for name, function in scenarios if name in selected]
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--env", default=str(DISTRIBUTED_ENV_PATH), help="private dotenv profile of the isolated stack")
     parser.add_argument("--confirm", default="", help="the isolated database every stack service must target")
+    parser.add_argument("--database-target", choices=("development", "test"), default="development",
+                        help="which isolated database target every stack service must use")
     parser.add_argument("--prerequisites", default=str(ROOT / "artifacts" / "d2-8" / "prerequisites.json"))
     parser.add_argument("--artifact-dir", default="")
     parser.add_argument("--scale", default="core-api=2,audit-worker=2,tool-gateway=2")
@@ -3645,11 +3653,19 @@ def main(argv: list[str] | None = None) -> int:
                         help="override the default stale-generation rejection command (A's store test)")
     parser.add_argument("--plan", action="store_true", help="evaluate the gate and print the plan only")
     parser.add_argument("--run", action="store_true", help="execute the gated scenarios")
+    parser.add_argument("--scenario", action="append", dest="selected_scenarios",
+                        help="run only this named scenario; repeat to select several (default: all)")
     parser.add_argument("--print-prerequisites-template", action="store_true",
                         help="print the six-item evidence skeleton bound to the current source identity")
     parser.add_argument("--print-control-template", action="store_true",
                         help="print the host control-file skeleton (pid, start, log, health per instance)")
     args = parser.parse_args(argv)
+
+    try:
+        selected_scenarios = select_scenarios(args.selected_scenarios)
+    except ValueError as error:
+        print(f"REFUSED: {error}", file=sys.stderr)
+        return 2
 
     journey = load_journey()
     if args.print_control_template:
@@ -3698,8 +3714,9 @@ def main(argv: list[str] | None = None) -> int:
         print("REFUSED: distributed fault runs require --oidc-env-file and real trusted OIDC identities",
               file=sys.stderr)
         return 2
+    delivery_root = Path(os.environ.get("CAW_DELIVERY_DIR") or (ROOT.parent / "contract-audit-delivery"))
     artifact_dir = Path(args.artifact_dir) if args.artifact_dir else (
-        ROOT / "artifacts" / "d2-8" /
+        delivery_root / "fault-runs" /
         (dt.datetime.now(dt.timezone.utc).strftime("%Y%m%d%H%M%S") + "_" + secrets.token_hex(3)))
     try:
         artifact_dir.mkdir(parents=True)
@@ -3711,7 +3728,7 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     try:
-        infra, app = journey.require_isolated_stack(env_path, args.confirm)
+        infra, app = journey.require_isolated_stack(env_path, args.confirm, args.database_target)
     except journey.Failure as error:
         print(f"REFUSED: {error}", file=sys.stderr)
         return 2
@@ -3726,7 +3743,7 @@ def main(argv: list[str] | None = None) -> int:
             return 2
     try:
         stack = Stack(recorder, env_path, args.confirm, app, args.control,
-                      Path(args.control_file) if args.control_file else None)
+                      Path(args.control_file) if args.control_file else None, args.database_target)
     except Failure as error:
         print(f"REFUSED: {error}", file=sys.stderr)
         return 2
@@ -3861,7 +3878,7 @@ def main(argv: list[str] | None = None) -> int:
                "stale_cmd": stale_cmd, "app_env": app, "recorder": recorder,
                "quota_runs": args.quota_runs}
     results = []
-    for name, function in SCENARIOS:
+    for name, function in selected_scenarios:
         service_scale_at_start = dict(scale)
         started = time.monotonic()
         try:

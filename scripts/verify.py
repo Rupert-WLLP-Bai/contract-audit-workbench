@@ -19,7 +19,19 @@ from typing import Callable
 from source_identity import source_identity
 
 ROOT = Path(__file__).resolve().parents[1]
-OUT = ROOT / "artifacts"
+# CI keeps collecting the historical in-repository paths. Other runs keep
+# verifier-owned artifacts in the sibling delivery tree.
+def default_output(root, environ):
+    if environ.get("CAW_DELIVERY_DIR"):
+        return Path(environ["CAW_DELIVERY_DIR"]).expanduser().resolve() / "verification"
+    if environ.get("GITHUB_ACTIONS") == "true":
+        # Keep the paths consumed by existing CI artifact-upload steps.
+        return root / "artifacts"
+    return root.parent / "contract-audit-delivery" / "verification"
+
+
+OUT = default_output(ROOT, os.environ)
+OUT_IS_EXTERNAL = OUT.resolve() != (ROOT / "artifacts").resolve()
 
 STAGES = ("static", "go", "web", "coverage", "browser")
 # Only the outputs a stage owns are removed before it runs. The coverage stage
@@ -231,7 +243,12 @@ def save_report(report):
 
 def clean_outputs(paths):
     for relative in paths:
-        path = ROOT / relative
+        if relative.startswith("artifacts/") and OUT_IS_EXTERNAL:
+            path = OUT / relative.removeprefix("artifacts/")
+        elif relative == "web/coverage" and OUT_IS_EXTERNAL:
+            path = OUT / "web-coverage"
+        else:
+            path = ROOT / relative
         if path.is_dir() and not path.is_symlink():
             shutil.rmtree(path)
         else:
@@ -242,6 +259,36 @@ def selected_check(check, stage, browser):
     if stage == "all":
         return check.stage != "browser" or browser
     return check.stage == stage
+
+
+def command_with_output_dir(check):
+    """Keep generated artifacts with the run outside source/CI collection paths."""
+    if not OUT_IS_EXTERNAL:
+        return list(check.cmd)
+    if check.name == "coverage-gates":
+        return [*check.cmd, "--go", str(OUT / "go-coverage.out"),
+                "--web", str(OUT / "web-coverage" / "coverage-summary.json"),
+                "--out", str(OUT / "coverage-summary.json")]
+    def relocate(argument):
+        option, separator, value = argument.partition("=")
+        path_value = value if separator else argument
+        if path_value.startswith("artifacts/"):
+            path_value = str(OUT / path_value.removeprefix("artifacts/"))
+        elif path_value.startswith("../artifacts/") and check.cwd == ROOT / "web":
+            path_value = str(OUT / path_value.removeprefix("../artifacts/"))
+        return f"{option}={path_value}" if separator else path_value
+
+    command = [relocate(argument) for argument in check.cmd]
+    if check.name == "web-tests":
+        command.append(f"--coverage.reportsDirectory={OUT / 'web-coverage'}")
+    return command
+
+
+def evidence_path(path):
+    try:
+        return str(path.relative_to(ROOT))
+    except ValueError:
+        return str(path.resolve())
 
 
 def prepare_browser(env):
@@ -278,6 +325,8 @@ def build_checks(go, bun):
               (sys.executable, "-m", "unittest", "discover", "-s", "scripts", "-p", "test_*.py")),
         Check("infra-tests", "static",
               (sys.executable, "-m", "unittest", "discover", "-s", "deploy/tests", "-v")),
+        Check("fault-harness-tests", "static",
+              (sys.executable, "-m", "unittest", "deployments.scripts.test_fault_test_local")),
         Check("format", "static", (sys.executable, "scripts/check_format.py")),
         Check("modules", "static", (go, "mod", "verify")),
         Check("vet", "static", (go, "vet", "./...")),
@@ -293,6 +342,8 @@ def build_checks(go, bun):
                "--outputFile=../artifacts/vitest-results.json"), cwd=ROOT / "web",
               validate=lambda _: validate_web_test_results(
                   json.loads((OUT / "vitest-results.json").read_text()))),
+        Check("web-c1b-clock-tests", "browser",
+              (bun, "test", "e2e/c1b-clock.test.ts"), cwd=ROOT / "web"),
         Check("web-build", "web", (bun, "run", "build"), cwd=ROOT / "web"),
         Check("backend-build", "go",
               (go, "build", "-buildvcs=false", "-trimpath",
@@ -328,17 +379,28 @@ def build_checks(go, bun):
                "./e2e", "-run", "^TestBrowserTelecomC1BFullJourney$"),
               timeout=360, jsonl=True, continue_on_failure=True,
               validate=lambda path: validate_go_test_results(path.read_text())),
+        Check("browser-telecom-compatible", "browser",
+              (go, "test", "-tags", "browser", "-count=1", "-json", "-timeout=330s",
+               "./e2e", "-run", "^TestBrowserTelecomC1BCompatibleScenario$"),
+              timeout=360, jsonl=True, continue_on_failure=True,
+              validate=lambda path: validate_go_test_results(path.read_text())),
+        Check("browser-telecom-insufficient", "browser",
+              (go, "test", "-tags", "browser", "-count=1", "-json", "-timeout=330s",
+               "./e2e", "-run", "^TestBrowserTelecomC1BInsufficientScenario$"),
+              timeout=360, jsonl=True, continue_on_failure=True,
+              validate=lambda path: validate_go_test_results(path.read_text())),
     )
 
 
 def run_check(check, env, report, logs):
-    print(f"[{check.name}] {' '.join(check.cmd)}", flush=True)
+    command = command_with_output_dir(check)
+    print(f"[{check.name}] {' '.join(command)}", flush=True)
     before = time.monotonic()
     raw = logs / (check.name + (".jsonl" if check.jsonl else ".txt"))
     display_path = logs / (check.name + ".txt")
     try:
         with raw.open("w") as handle:
-            result = subprocess.run(list(check.cmd), cwd=check.cwd, env=env, stdout=handle,
+            result = subprocess.run(command, cwd=check.cwd, env=env, stdout=handle,
                                     stderr=subprocess.STDOUT, timeout=check.timeout, check=False)
         code = result.returncode
     except (OSError, subprocess.TimeoutExpired) as error:
@@ -368,10 +430,10 @@ def run_check(check, env, report, logs):
         "status": "PASS" if code == 0 else "FAIL",
         "returncode": code,
         "seconds": round(time.monotonic() - before, 3),
-        "log": str(display_path.relative_to(ROOT)),
+        "log": evidence_path(display_path),
     }
     if check.jsonl:
-        record["raw_log"] = str(raw.relative_to(ROOT))
+        record["raw_log"] = evidence_path(raw)
     if evidence is not None:
         record["evidence"] = evidence
     if failure:
@@ -392,7 +454,7 @@ def main():
     parser.add_argument("--stage", choices=(*STAGES, "all"), default="all",
                         help="run only one gate stage (default: all)")
     args = parser.parse_args()
-    OUT.mkdir(exist_ok=True)
+    OUT.mkdir(parents=True, exist_ok=True)
     logs = OUT / "logs"
     logs.mkdir(exist_ok=True)
     stages = STAGE_OUTPUTS if args.stage == "all" else (args.stage,)
@@ -403,6 +465,9 @@ def main():
     # mode explicitly, so an inherited developer shell cannot turn this into a
     # paid external run.
     env = dict(os.environ, APP_ENV="test", TYPESAFE_JEV_MODE="off")
+    if OUT_IS_EXTERNAL:
+        env["CAW_DELIVERY_DIR"] = str(OUT.parent)
+        env["E2E_SCREENSHOT_DIR"] = str(OUT / "screenshots")
     env.pop("TYPESAFE_API_KEY", None)
     browser_selected = args.browser or args.stage == "browser"
     report = {
