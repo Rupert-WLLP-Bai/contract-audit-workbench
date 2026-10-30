@@ -89,7 +89,7 @@ function open({
   workspace,
 }: {
   runId?: string;
-  attemptId?: string;
+  attemptId?: string | null;
   urlAttempt?: string | null;
   evaluations?: ConstraintEvaluation[];
   agentReview?: BusinessAgentReview | null;
@@ -110,7 +110,7 @@ function open({
   clients.push(client);
   if (caseDetail !== null) client.setQueryData(queryKeys.case("case-1"), caseDetail);
   if (sessionActor !== null) client.setQueryData(queryKeys.session, sessionActor);
-  if (workspace !== null) client.setQueryData(queryKeys.review("case-1", runId, urlAttempt), workspace ?? makeWorkspace(runId, attemptId, evaluations));
+  if (workspace !== null) client.setQueryData(queryKeys.review("case-1", runId, urlAttempt), workspace ?? makeWorkspace(runId, attemptId ?? "attempt-old", evaluations));
   if (tasks) client.setQueryData(queryKeys.workbench("week"), { tasks });
   const path = `/cases/case-1/reviews/${runId}${urlAttempt ? `?attempt_id=${urlAttempt}` : ""}`;
   render(<QueryClientProvider client={client}><MemoryRouter initialEntries={[path]}>
@@ -269,6 +269,32 @@ describe("补充材料请求", () => {
     expect(calls.some((call) => call.pathname.endsWith("/evidence-requests") && call.method === "POST")).toBe(false);
   });
 
+  it("does not offer source selection without a selected attempt identity", async () => {
+    const { calls } = open({ attemptId: null, urlAttempt: null, respond(call) {
+      if (call.pathname.endsWith("/evidence-requests")) return Response.json({ items: [] });
+      if (call.pathname.endsWith("/history")) return Response.json({ items: [] });
+      return Response.json({ error: { message: "unexpected" } }, { status: 404 });
+    } });
+
+    await screen.findByText("发起补充材料请求");
+    expect(screen.getByText("只有已完成或部分完成、且已保存审查材料的执行记录可以发起请求。")).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "缺失检查" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "创建任务并发起请求" })).toBeDisabled();
+    expect(calls.some((call) => call.pathname.endsWith("/tasks") && call.method === "POST")).toBe(false);
+  });
+
+  it("does not render request creation controls for an actor without manage permission", async () => {
+    open({ canManage: false, respond(call) {
+      if (call.pathname.endsWith("/evidence-requests")) return Response.json({ items: [] });
+      if (call.pathname.endsWith("/history")) return Response.json({ items: [] });
+      return Response.json({ error: { message: "unexpected" } }, { status: 404 });
+    } });
+
+    await screen.findByText("当前案件没有补充材料请求。");
+    expect(screen.queryByRole("heading", { name: "发起补充材料请求" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "创建任务并发起请求" })).not.toBeInTheDocument();
+  });
+
   it.each([
     ["completed frozen", "completed", "frozen", at, "attempt-old", "run-old", false],
     ["partial frozen", "partial", "frozen", at, "attempt-old", "run-old", false],
@@ -325,6 +351,26 @@ describe("补充材料请求", () => {
       "可关联任务 · 审查人 · 2026/10/21 14:00",
     ]);
     expect(screen.queryByText("暂无包含责任人和期限的未完成案件任务。")).not.toBeInTheDocument();
+  });
+
+  it("does not submit in existing-task mode without a selected eligible task", async () => {
+    const { calls, user } = open({ tasks: [], respond(call) {
+      if (call.pathname.endsWith("/evidence-requests")) return Response.json({ items: [] });
+      if (call.pathname.endsWith("/history")) return Response.json({ items: [] });
+      return Response.json({ error: { message: "unexpected" } }, { status: 404 });
+    } });
+    await screen.findByText("发起补充材料请求");
+    await chooseOption(user, screen.getByRole("combobox", { name: "缺失检查" }), /缺少质保期限/);
+    await chooseOption(user, screen.getByRole("combobox", { name: "关联任务" }), "选择已有任务");
+    await user.type(screen.getByLabelText("需要补充的问题"), "请补充质保期限");
+
+    const submit = screen.getByRole("button", { name: "发起补充请求" });
+    expect(submit).toBeDisabled();
+    const form = submit.closest("form");
+    expect(form).not.toBeNull();
+    fireEvent.submit(form!);
+    expect(calls.some((call) => call.pathname.endsWith("/tasks") && call.method === "POST")).toBe(false);
+    expect(calls.some((call) => call.pathname.endsWith("/evidence-requests") && call.method === "POST")).toBe(false);
   });
 
   it.each(["workspace unavailable", "attempt summary unavailable"] as const)("keeps request creation closed when the %s is absent", async (missingState) => {
@@ -450,6 +496,39 @@ describe("补充材料请求", () => {
     const form = submit.closest("form");
     expect(form).not.toBeNull();
     fireEvent.submit(form!);
+    expect(calls.some((call) => call.pathname.endsWith("/tasks") && call.method === "POST")).toBe(false);
+    expect(calls.some((call) => call.pathname.endsWith("/evidence-requests") && call.method === "POST")).toBe(false);
+  });
+
+  it("refuses a native extended-year deadline that JavaScript Date rejects", async () => {
+    const { calls, user } = open({ tasks: [], respond(call) {
+      if (call.pathname.endsWith("/evidence-requests")) return Response.json({ items: [] });
+      if (call.pathname.endsWith("/history")) return Response.json({ items: [] });
+      return Response.json({ error: { message: "unexpected" } }, { status: 404 });
+    } });
+    await screen.findByText("发起补充材料请求");
+    await chooseOption(user, screen.getByRole("combobox", { name: "缺失检查" }), /缺少质保期限/);
+    await user.type(screen.getByLabelText("任务名称"), "补充质保");
+    await chooseOption(user, screen.getByRole("combobox", { name: "责任人" }), /审查人/);
+    const dueInput = screen.getByLabelText("完成期限（本地时间）") as HTMLInputElement;
+    const nativeValueSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
+    if (!nativeValueSetter) throw new Error("Native input value setter is unavailable");
+    // Chromium preserves this valid datetime-local value; HappyDOM sanitizes it (see the W2 Chromium probe).
+    nativeValueSetter.call(dueInput, "2026-11-01T10:00");
+    const extendedYear = "10000-01-01T00:00";
+    Object.defineProperty(dueInput, "value", {
+      configurable: true,
+      get: () => extendedYear,
+      set: (value: string) => nativeValueSetter.call(dueInput, value),
+    });
+    fireEvent.change(dueInput, { target: { value: extendedYear } });
+    expect(dueInput.value).toBe(extendedYear);
+    expect(Number.isNaN(new Date(dueInput.value).getTime())).toBe(true);
+    await user.type(screen.getByLabelText("需要补充的问题"), "请补充质保期限");
+
+    const submit = screen.getByRole("button", { name: "创建任务并发起请求" });
+    expect(submit).toBeDisabled();
+    fireEvent.submit(submit.closest("form")!);
     expect(calls.some((call) => call.pathname.endsWith("/tasks") && call.method === "POST")).toBe(false);
     expect(calls.some((call) => call.pathname.endsWith("/evidence-requests") && call.method === "POST")).toBe(false);
   });
