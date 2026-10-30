@@ -69,7 +69,7 @@ type parsedPayload struct {
 }
 
 func (s *Store) parserConfiguration(doc Document) (string, string, string) {
-	return parserConfigurationFor(doc, s.models)
+	return parserConfigurationFor(doc, s.currentModels())
 }
 
 // DocumentParseKind returns the parser capacity class derived from the
@@ -114,7 +114,7 @@ func parserConfigurationFor(doc Document, models Models) (parserID, parserVersio
 }
 
 func (s *Store) ensureParsed(ctx context.Context, user accounts.User, doc Document, force bool) (ParsedDocument, error) {
-	return s.ensureParsedWithModels(ctx, user, doc, force, s.models)
+	return s.ensureParsedWithModels(ctx, user, doc, force, s.currentModels())
 }
 
 func (s *Store) ensureParsedWithModels(ctx context.Context, user accounts.User, doc Document, force bool, models Models) (ParsedDocument, error) {
@@ -493,7 +493,7 @@ func parsedInterpreted(doc Document, p ParsedDocument) Interpreted {
 }
 
 func (s *Store) interpretUnpersisted(ctx context.Context, doc Document) Interpreted {
-	return s.interpretUnpersistedWithModels(ctx, doc, s.models)
+	return s.interpretUnpersistedWithModels(ctx, doc, s.currentModels())
 }
 
 func (s *Store) interpretUnpersistedWithModels(ctx context.Context, doc Document, models Models) Interpreted {

@@ -436,11 +436,12 @@ func (s *Store) AddDocument(ctx context.Context, user accounts.User, caseID, rol
 	}
 	var initialParse *ParsedDocument
 	if DocumentParseKind(filename, media) != "ocr" {
-		selection, err := s.reserveParseSelection(ctx, document, s.models)
+		models := s.currentModels()
+		selection, err := s.reserveParseSelection(ctx, document, models)
 		if err != nil {
 			return "", err
 		}
-		interpreted := s.interpretUnpersistedWithModels(ctx, document, s.models)
+		interpreted := s.interpretUnpersistedWithModels(ctx, document, models)
 		if contextErr := ctx.Err(); contextErr != nil {
 			interpreted = Interpreted{Document: document, ParseError: contextErr.Error(), FromOCR: interpreted.FromOCR}
 		}

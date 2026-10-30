@@ -328,10 +328,11 @@ func (s *Store) runExperienceDistill(ctx context.Context, claim JobClaim) error 
 		if claim.stopReason != "" {
 			return fail(claim.stopReason, errors.New("experience task could not be claimed"))
 		}
-		if s.models == nil || work.Input.ModelConfigurationID == "" || work.Input.ModelConfigurationID != s.models.ConfigurationID() || work.Input.TemplateRef != experienceDistillTemplate {
+		models := s.currentModels()
+		if models == nil || work.Input.ModelConfigurationID == "" || work.Input.ModelConfigurationID != models.ConfigurationID() || work.Input.TemplateRef != experienceDistillTemplate {
 			return fail("experience_input_unavailable", errors.New("experience task model or template configuration changed"))
 		}
-		generator, ok := s.models.(experienceGenerator)
+		generator, ok := models.(experienceGenerator)
 		if !ok {
 			return fail("experience_model_unavailable", errors.New("configured model does not support experience generation"))
 		}
@@ -359,7 +360,7 @@ func (s *Store) runExperienceDistill(ctx context.Context, claim JobClaim) error 
 		if err := validateExperiencePolicyRefs(candidate, work.Input.PolicyContext); err != nil {
 			return fail("experience_result_invalid", err)
 		}
-		modelRef = s.models.Name()
+		modelRef = models.Name()
 	}
 	digest, err := s.persistExperienceDistillResult(ctx, claim, work, result, modelRef)
 	if err != nil {

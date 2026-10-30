@@ -141,7 +141,7 @@ func (s *Store) compareRun(st *state, run Run, current []Interpreted, selectedAt
 // revision incomparable even when the live compiler has not changed.
 func (s *Store) comparisonSignature(st *state, run Run) RunSnapshot {
 	if caseItem, ok := st.caseByID(run.CaseID); ok {
-		return currentSignatureFor(nil, nil, s.models, telecomCompilerRefForCase(caseItem))
+		return currentSignatureFor(nil, nil, s.currentModels(), telecomCompilerRefForCase(caseItem))
 	}
 	return s.currentSignature(nil)
 }
