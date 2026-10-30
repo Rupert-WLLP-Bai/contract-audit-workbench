@@ -294,6 +294,21 @@ describe("补充材料请求", () => {
     expect(calls.some((call) => call.pathname.endsWith("/documents"))).toBe(false);
   });
 
+  it("shows the selected upload role on an untyped request", async () => {
+    const request = { ...rawRequest("open", 1), material_role: null };
+    const { user } = open({ respond(call) {
+      if (call.pathname.endsWith("/evidence-requests")) return Response.json({ items: [request] });
+      if (call.pathname.endsWith("/history")) return Response.json({ items: [] });
+      return Response.json({ error: { message: "unexpected" } }, { status: 404 });
+    } });
+
+    await screen.findByText("待提交");
+    const roleControl = screen.getByRole("combobox", { name: "上传材料类型" });
+    await chooseOption(user, roleControl, "拟签合同");
+    expect(roleControl.closest(".ant-select")?.querySelector(".ant-select-content-has-value")).toHaveTextContent("拟签合同");
+    expect(screen.getByRole("button", { name: "上传补充文件" })).toBeDisabled();
+  });
+
   it("submits a written answer as a receipt without treating it as verified", async () => {
     let received = false;
     const answerReceipt = { ...rawReceipt, document_id: undefined, answer: "质保36个月" };
