@@ -311,6 +311,25 @@ describe("补充材料请求", () => {
     expect(calls.some((call) => call.pathname.endsWith("/verify"))).toBe(false);
   });
 
+  it("submits the selected mode when switching a document receipt to an answer", async () => {
+    const { calls, user } = open({ respond(call) {
+      if (call.pathname.endsWith("/evidence-requests")) return Response.json({ items: [rawRequest("open", 1)] });
+      if (call.pathname.endsWith("/history")) return Response.json({ items: [] });
+      if (call.pathname.endsWith("/receipts") && call.method === "POST") return Response.json({
+        request: rawRequest("received", 2), receipt: { ...rawReceipt, id: "answer-receipt", document_id: undefined, answer: "确认36个月" },
+      });
+      return Response.json({ error: { message: "unexpected" } }, { status: 404 });
+    } });
+
+    await screen.findByText("待提交");
+    await chooseOption(user, screen.getByRole("combobox", { name: "选择案件材料" }), /补充合同\.txt/);
+    await chooseOption(user, screen.getByRole("combobox", { name: "提交方式" }), "文字答复");
+    await user.type(screen.getByLabelText("文字答复"), "确认36个月");
+    await user.click(screen.getByRole("button", { name: "提交回执" }));
+    const receiptCall = calls.find((call) => call.pathname.endsWith("/receipts"));
+    expect(JSON.parse(String(receiptCall?.init?.body))).toEqual({ answer: "确认36个月", expected_version: 1 });
+  });
+
   it("disables receipt submission for a missing document or blank answer", async () => {
     const { calls, user } = open({ respond(call) {
       if (call.pathname.endsWith("/evidence-requests")) return Response.json({ items: [rawRequest("open", 1)] });
@@ -446,6 +465,7 @@ describe("补充材料请求", () => {
       return Response.json({ error: { message: "unexpected" } }, { status: 404 });
     } });
     await screen.findByText("已提交，待复核");
+    expect(screen.getByText("当前审查的匹配检查：检查结果一致。")).toBeInTheDocument();
     await chooseActiveOption(user, screen.getByRole("combobox", { name: "选择提交回执" }), /补充合同.txt/);
     await chooseActiveOption(user, screen.getByRole("combobox", { name: "选择本次审查材料" }), /补充合同.txt/);
     const original = screen.getByLabelText("本次审查使用的原文") as HTMLTextAreaElement;
