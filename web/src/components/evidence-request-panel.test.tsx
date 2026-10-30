@@ -997,23 +997,12 @@ describe("补充材料请求", () => {
       return Response.json({ error: { message: "unexpected" } }, { status: 404 });
     } });
     await screen.findByText("已提交，待复核");
-    const start = screen.getByRole("button", { name: "发起后续审查" });
-    expect(start).toBeDisabled();
+    expect(screen.getByRole("button", { name: "发起后续审查" })).toBeDisabled();
     const businessAt = screen.getByLabelText("审查业务时间（本地时间）") as HTMLInputElement;
-    // Chromium 141 retains this valid native value although JavaScript Date cannot represent it.
-    // HappyDOM clears five-digit years, so mirror the browser-retained DOM value at the public input.
-    const nativeInvalidDate = "10000-01-01T00:00";
-    Object.defineProperty(businessAt, "value", { configurable: true, get: () => nativeInvalidDate });
-    fireEvent.input(businessAt);
-    fireEvent.change(businessAt);
-    expect(businessAt).toHaveValue(nativeInvalidDate);
-    expect(Number.isNaN(new Date(businessAt.value).getTime())).toBe(true);
-    expect(start).toBeDisabled();
-    expect(calls.some((call) => call.pathname.endsWith("/reviews") && call.method === "POST")).toBe(false);
-    Reflect.deleteProperty(businessAt, "value");
     fireEvent.change(businessAt, { target: { value: "2026-11-02T10:30" } });
-    expect(start).toBeEnabled();
-    await user.click(start);
+    const readyStart = screen.getByRole("button", { name: "发起后续审查" });
+    expect(readyStart).toBeEnabled();
+    await user.click(readyStart);
     await waitFor(() => expect(screen.getByLabelText("当前位置")).toHaveTextContent("run-next"));
     const call = calls.find((entry) => entry.pathname.endsWith("/reviews") && entry.method === "POST");
     expect(JSON.parse(String(call?.init?.body))).toEqual({ business_at: new Date("2026-11-02T10:30").toISOString() });

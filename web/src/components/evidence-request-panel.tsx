@@ -320,7 +320,7 @@ function followupReviewInput(
 }
 
 function validBusinessReviewTime(value: string): boolean {
-  return value !== "" && !Number.isNaN(new Date(value).getTime());
+  return !Number.isNaN(new Date(value).getTime());
 }
 
 function submitRequestForm<Input>(
