@@ -301,15 +301,20 @@ func TestMCPProfileRejectsDuplicateTrailingAndUnsupportedArguments(t *testing.T)
 
 func TestFrozenEvidenceRejectsOutOfBoundsSelectionIDsBeforeWorkspaceRead(t *testing.T) {
 	for _, test := range []struct {
-		name  string
-		field string
-		value string
+		name          string
+		field         string
+		value         string
+		publicMessage string
 	}{
-		{name: "leading space", field: "case_id", value: " case-1"},
-		{name: "trailing tab", field: "run_id", value: "run-1\t"},
-		{name: "unsupported slash", field: "attempt_id", value: "attempt/1"},
-		{name: "non-ASCII byte", field: "case_id", value: "案件-1"},
-		{name: "identifier too long", field: "run_id", value: strings.Repeat("r", 129)},
+		{name: "empty case identity", field: "case_id", value: "", publicMessage: "All evidence selection fields are required strings."},
+		{name: "empty run identity", field: "run_id", value: "", publicMessage: "All evidence selection fields are required strings."},
+		{name: "empty attempt identity", field: "attempt_id", value: "", publicMessage: "All evidence selection fields are required strings."},
+		{name: "empty capability", field: "capability_id", value: "", publicMessage: "All evidence selection fields are required strings."},
+		{name: "leading space", field: "case_id", value: " case-1", publicMessage: "Case, run, and attempt identities must be bounded identifiers."},
+		{name: "trailing tab", field: "run_id", value: "run-1\t", publicMessage: "Case, run, and attempt identities must be bounded identifiers."},
+		{name: "unsupported slash", field: "attempt_id", value: "attempt/1", publicMessage: "Case, run, and attempt identities must be bounded identifiers."},
+		{name: "non-ASCII byte", field: "case_id", value: "案件-1", publicMessage: "Case, run, and attempt identities must be bounded identifiers."},
+		{name: "identifier too long", field: "run_id", value: strings.Repeat("r", 129), publicMessage: "Case, run, and attempt identities must be bounded identifiers."},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			backend := testBackend(t)
@@ -326,7 +331,7 @@ func TestFrozenEvidenceRejectsOutOfBoundsSelectionIDsBeforeWorkspaceRead(t *test
 			if recorder.Code != http.StatusBadRequest || rpcErrorCode(t, recorder) != codeInvalidParams {
 				t.Fatalf("invalid selection identity status=%d code=%d", recorder.Code, rpcErrorCode(t, recorder))
 			}
-			if !strings.Contains(recorder.Body.String(), "Case, run, and attempt identities must be bounded identifiers.") {
+			if !strings.Contains(recorder.Body.String(), test.publicMessage) {
 				t.Fatalf("unexpected invalid-identity response: %s", recorder.Body.String())
 			}
 			if backend.workspaceCalls != 0 || backend.reserveCalls != 0 {
@@ -338,9 +343,9 @@ func TestFrozenEvidenceRejectsOutOfBoundsSelectionIDsBeforeWorkspaceRead(t *test
 
 func TestFrozenEvidenceAcceptsMaximumLengthSelectionIDs(t *testing.T) {
 	backend := testBackend(t)
-	caseID := strings.Repeat("c", 124) + "-_.:"
-	runID := strings.Repeat("r", 124) + "-_.:"
-	attemptID := strings.Repeat("a", 124) + "-_.:"
+	caseID := strings.Repeat("c", 120) + "zZ9-_.:0"
+	runID := strings.Repeat("r", 120) + "zZ9-_.:0"
+	attemptID := strings.Repeat("a", 120) + "zZ9-_.:0"
 	backend.workspace.Case.ID = caseID
 	backend.workspace.Snapshot.RunID = runID
 	backend.workspace.Execution.Attempt.ID = attemptID
