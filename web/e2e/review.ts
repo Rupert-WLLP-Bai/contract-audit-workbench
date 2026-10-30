@@ -197,14 +197,14 @@ try {
   if (primaryMaterial.current_document_id !== initialDraftParse.documentVersionId) {
     throw new Error(`current primary document ${primaryMaterial.current_document_id} differs from the frozen initial draft ${initialDraftParse.documentVersionId}`);
   }
-  await selectAntOption(page, session, "材料操作", "替换选中的材料");
+  await selectAntOption(page, session, "操作", "替换选中的材料");
   const replacementNotice = `将替换“draft.txt”（主合同）当前第 ${primaryMaterial.current_version} 版；若版本已更新，请刷新重试。`;
   await page.wait(session, `document.body.innerText.includes(${JSON.stringify(replacementNotice)})`);
   const replacementRequestStart = page.documentUploads.length;
   await upload(page, session, revised);
   await clickText(page, session, "button", "替换材料");
   await waitParsedDocument(page, session, "draft-revised.txt");
-  assertReplacementMultipart(page.documentUploads.slice(replacementRequestStart), primaryMaterial.material_id, primaryMaterial.current_document_id);
+  await assertReplacementMultipart(page.documentUploads.slice(replacementRequestStart), primaryMaterial.material_id, primaryMaterial.current_document_id);
   const revisedMetadata = await readDocumentMetadata(page, session, "draft-revised.txt");
   const afterReplacement = await readCaseDetail(page, session, oldRunURL);
   const revisedPrimary = afterReplacement.materials?.find((item) => item.material_id === primaryMaterial.material_id);
@@ -241,9 +241,9 @@ try {
   if (!revisionRunParsedIds.includes(previousParse.parsedDocumentId)) {
     throw new Error("revision run does not reference its displayed pre-reparse document parse");
   }
-  await clickDocumentRowButton(page, session, "draft-revised.txt", "重新解析");
+  await clickDocumentRowButton(page, session, primaryMaterial.material_id, "draft-revised.txt", "重新解析");
   await page.wait(session, `(() => {
-    const row = [...document.querySelectorAll('.document-list li')].find((item) => item.innerText.includes('draft-revised.txt'));
+    const row = [...document.querySelectorAll('.material-current-set .document-list li[data-material-id]')].find((item) => item.innerText.includes('draft-revised.txt'));
     const summary = row?.querySelector('.parsed-document-summary');
     return Boolean(summary && summary.dataset.parsedDocumentId !== ${JSON.stringify(previousParse.parsedDocumentId)} && document.body.innerText.includes('材料已更新'));
   })()`);
@@ -461,13 +461,22 @@ class Page {
   }>();
   private opened: Promise<void>;
   readonly consoleErrors: string[] = [];
-  readonly documentUploads: Array<{ url: string; method: string; postData?: string }> = [];
+  readonly documentUploads: Array<{
+    url: string;
+    method: string;
+    requestId?: string;
+    sessionId?: string;
+    postData?: string;
+    postDataError?: string;
+    postDataReady: Promise<void>;
+  }> = [];
 
   constructor(url: string) {
     this.socket = new WebSocket(url);
     this.socket.addEventListener("message", (event) => {
       const message = JSON.parse(String(event.data)) as {
         id?: number;
+        sessionId?: string;
         result?: unknown;
         error?: { message: string };
         method?: string;
@@ -475,6 +484,7 @@ class Page {
           type?: string;
           args?: { value?: unknown; description?: string }[];
           exceptionDetails?: { text?: string; exception?: { description?: string } };
+          requestId?: string;
           request?: { url?: string; method?: string; postData?: string };
         };
       };
@@ -485,11 +495,42 @@ class Page {
         } else if (message.method === "Runtime.consoleAPICalled" && params?.type === "error") {
           this.consoleErrors.push(params.args?.map((argument) => argument.value ?? argument.description ?? "").join(" ") || "console.error");
         } else if (message.method === "Network.requestWillBeSent" && params?.request?.method === "POST" && params.request.url?.endsWith("/documents")) {
-          this.documentUploads.push({
+          const upload: {
+            url: string;
+            method: string;
+            requestId?: string;
+            sessionId?: string;
+            postData?: string;
+            postDataError?: string;
+            postDataReady: Promise<void>;
+          } = {
             url: params.request.url,
             method: params.request.method,
+            requestId: params.requestId,
+            sessionId: message.sessionId,
             postData: params.request.postData,
-          });
+            postDataReady: Promise.resolve(),
+          };
+          if (upload.postData === undefined) {
+            if (!params.requestId || !message.sessionId) {
+              upload.postDataError = "CDP request did not include requestId or target sessionId";
+            } else {
+              upload.postDataReady = this.send(
+                "Network.getRequestPostData",
+                { requestId: params.requestId },
+                message.sessionId,
+              ).then((raw) => {
+                const response = raw as { postData?: string; base64Encoded?: boolean };
+                if (typeof response.postData !== "string") throw new Error("CDP returned no postData");
+                upload.postData = response.base64Encoded
+                  ? new TextDecoder().decode(Uint8Array.from(atob(response.postData), (char) => char.charCodeAt(0)))
+                  : response.postData;
+              }).catch((error: unknown) => {
+                upload.postDataError = error instanceof Error ? error.message : String(error);
+              });
+            }
+          }
+          this.documentUploads.push(upload);
         }
         return;
       }
@@ -551,7 +592,7 @@ class Page {
   async eval(session: string, expression: string): Promise<string> {
     const result = (await this.send(
       "Runtime.evaluate",
-      { expression, returnByValue: true },
+      { expression, returnByValue: true, awaitPromise: true },
       session,
     )) as { result?: { value?: string }; exceptionDetails?: { text?: string; exception?: { description?: string } } };
     if (result.exceptionDetails) throw new Error(`${result.exceptionDetails.exception?.description ?? result.exceptionDetails.text ?? "browser evaluation failed"}\nExpression: ${expression}`);
@@ -809,7 +850,7 @@ async function readWorkspaceSourceTabs(page: Page, session: string): Promise<Doc
 
 async function waitParsedDocument(page: Page, session: string, filename: string): Promise<void> {
   await page.wait(session, `(() => {
-    const row = [...document.querySelectorAll('.document-list li')].find(
+    const row = [...document.querySelectorAll('.material-current-set .document-list li[data-material-id]')].find(
       (item) => item.innerText.includes(${JSON.stringify(filename)}),
     );
     return row?.querySelector('.parsed-document-summary')?.dataset.status === 'ready';
@@ -818,7 +859,7 @@ async function waitParsedDocument(page: Page, session: string, filename: string)
 
 async function readDocumentMetadata(page: Page, session: string, filename: string): Promise<DocumentMetadataSnapshot> {
   const raw = await page.eval(session, `(() => {
-    const row = [...document.querySelectorAll('.document-list li')].find((item) => item.innerText.includes(${JSON.stringify(filename)}));
+    const row = [...document.querySelectorAll('.material-current-set .document-list li[data-material-id]')].find((item) => item.innerText.includes(${JSON.stringify(filename)}));
     const summary = row?.querySelector('.parsed-document-summary');
     if (!summary) return '';
     const data = summary.dataset;
@@ -1057,12 +1098,14 @@ function assertAttemptParseRefsMatchDisplayed(attemptIds: string[], displayed: D
   if (missing.length > 0) throw new Error(`${label} references undisplayed parses: ${missing.join(", ")}`);
 }
 
-function assertReplacementMultipart(
-  requests: Array<{ url: string; method: string; postData?: string }>,
+async function assertReplacementMultipart(
+  requests: Array<{ url: string; method: string; postData?: string; postDataError?: string; postDataReady: Promise<void> }>,
   materialId: string,
   replacesDocumentId: string,
-): void {
+): Promise<void> {
+  await Promise.all(requests.map((item) => item.postDataReady));
   const request = requests.find((item) => item.method === "POST" && item.url.endsWith("/documents"));
+  if (request?.postDataError) throw new Error(`could not inspect replacement upload request body: ${request.postDataError}`);
   if (!request?.postData) throw new Error("replacement upload request did not expose multipart fields");
   if (!request.postData.includes(`name="material_id"\r\n\r\n${materialId}\r\n`)) {
     throw new Error("replacement request did not send the selected material identity");
@@ -1072,9 +1115,10 @@ function assertReplacementMultipart(
   }
 }
 
-async function clickDocumentRowButton(page: Page, session: string, filename: string, text: string): Promise<void> {
+async function clickDocumentRowButton(page: Page, session: string, materialId: string, filename: string, text: string): Promise<void> {
   const status = await page.eval(session, `(() => {
-    const row = [...document.querySelectorAll('.document-list li[data-document-id]')].find((item) => item.innerText.includes(${JSON.stringify(filename)}));
+    const row = [...document.querySelectorAll('.material-current-set .document-list li[data-material-id]')].find((item) => item.dataset.materialId === ${JSON.stringify(materialId)});
+    if (row && !row.innerText.includes(${JSON.stringify(filename)})) return 'filename-mismatch';
     const button = [...(row?.querySelectorAll('button') ?? [])].find((item) => item.textContent?.trim() === ${JSON.stringify(text)} && !item.disabled);
     if (!button) return 'missing';
     button.click();
