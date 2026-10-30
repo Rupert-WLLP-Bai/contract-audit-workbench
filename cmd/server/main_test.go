@@ -279,7 +279,9 @@ func TestOperatorAuditFixtureConnectorInBoundedChild(t *testing.T) {
 		return
 	}
 
-	command := exec.Command(os.Args[0], "-test.run=^TestOperatorAuditFixtureConnectorInBoundedChild$")
+	childCtx, cancelChild := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancelChild()
+	command := exec.CommandContext(childCtx, os.Args[0], "-test.run=^TestOperatorAuditFixtureConnectorInBoundedChild$")
 	command.Env = replaceServerTestEnvironment(os.Environ(), map[string]string{
 		"CAW_SERVER_OPERATOR_AUDIT_CHILD":   "1",
 		"OPERATOR_AUDIT_ENABLED":            "true",
