@@ -296,9 +296,14 @@ describe("补充材料请求", () => {
 
   it("shows the selected upload role on an untyped request", async () => {
     const request = { ...rawRequest("open", 1), material_role: null };
+    let uploadedRole: FormDataEntryValue | null = null;
     const { user } = open({ respond(call) {
       if (call.pathname.endsWith("/evidence-requests")) return Response.json({ items: [request] });
       if (call.pathname.endsWith("/history")) return Response.json({ items: [] });
+      if (call.pathname.endsWith("/documents") && call.method === "POST") {
+        uploadedRole = (call.init?.body as FormData).get("role");
+        return Response.json({ id: "doc-role" });
+      }
       return Response.json({ error: { message: "unexpected" } }, { status: 404 });
     } });
 
@@ -306,7 +311,13 @@ describe("补充材料请求", () => {
     const roleControl = screen.getByRole("combobox", { name: "上传材料类型" });
     await chooseOption(user, roleControl, "拟签合同");
     expect(roleControl.closest(".ant-select")?.querySelector(".ant-select-content-has-value")).toHaveTextContent("拟签合同");
-    expect(screen.getByRole("button", { name: "上传补充文件" })).toBeDisabled();
+    const upload = screen.getByRole("button", { name: "上传补充文件" });
+    expect(upload).toBeDisabled();
+    await user.upload(screen.getByLabelText("上传补充文件"), new File(["新材料"], "新材料.txt", { type: "text/plain" }));
+    expect(upload).toBeEnabled();
+    await user.click(upload);
+    await screen.findByText(/已上传 新材料.txt/);
+    expect(uploadedRole).toBe("draft_contract");
   });
 
   it("submits a written answer as a receipt without treating it as verified", async () => {
