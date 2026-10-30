@@ -392,6 +392,23 @@ describe("补充材料请求", () => {
     expect(screen.getByRole("button", { name: "提交核验" })).toBeDisabled();
   });
 
+  it("keeps frozen documents safe when history has not reported a receipt", async () => {
+    const request = rawRequest("received", 2);
+    const workspace = makeWorkspace("run-new", "attempt-new", [compatible]);
+    workspace.documents = [document];
+    open({ runId: "run-new", attemptId: "attempt-new", evaluations: [compatible], workspace, canManage: false, respond(call) {
+      if (call.pathname.endsWith("/evidence-requests")) return Response.json({ items: [request] });
+      if (call.pathname.endsWith("/history")) return Response.json({ items: [] });
+      return Response.json({ error: { message: "unexpected" } }, { status: 404 });
+    } });
+
+    await screen.findByText("已提交，待复核");
+    await screen.findByText("处理记录中未报告回执。");
+    expect(screen.queryByText("当前审查未包含可引用的回执材料或答复原文。")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "提交核验" })).toBeDisabled();
+    expect(screen.getByRole("combobox", { name: "选择本次审查材料" })).toBeInTheDocument();
+  });
+
   it("allows any current document when the request has no material role", async () => {
     const currentDraft = { ...document, id: "doc-draft", filename: "合同.txt", role: "draft_contract", superseded: false };
     const currentAward = { ...document, id: "doc-award", filename: "中标.txt", role: "award", superseded: false };
