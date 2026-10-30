@@ -84,17 +84,18 @@ type Manifest struct {
 }
 
 type Rule struct {
-	RuleID           string            `json:"rule_id"`
-	Version          string            `json:"version"`
-	Domain           string            `json:"domain"`
-	CapabilityID     string            `json:"capability_id"`
-	Mandatory        bool              `json:"mandatory"`
-	BusinessScope    BusinessScope     `json:"business_scope"`
-	TenantID         string            `json:"tenant_id"`
-	Comparator       string            `json:"comparator"`
-	Threshold        Threshold         `json:"threshold"`
-	RequiredFact     RequiredFact      `json:"required_fact"`
-	AuthoritySources []AuthoritySource `json:"authority_sources"`
+	RuleID           string                    `json:"rule_id"`
+	Version          string                    `json:"version"`
+	Domain           string                    `json:"domain"`
+	CapabilityID     string                    `json:"capability_id"`
+	Mandatory        bool                      `json:"mandatory"`
+	BusinessScope    BusinessScope             `json:"business_scope"`
+	TenantID         string                    `json:"tenant_id"`
+	Comparator       string                    `json:"comparator"`
+	Threshold        Threshold                 `json:"threshold"`
+	RequiredFact     RequiredFact              `json:"required_fact"`
+	AuthoritySources []AuthoritySource         `json:"authority_sources"`
+	LegalAuthorities []LegalAuthorityReference `json:"legal_authorities,omitempty"`
 }
 
 type BusinessScope struct {
@@ -367,6 +368,9 @@ func normalizeRule(r *Rule, packTenant string) error {
 		return err
 	}
 	if err := normalizeAuthoritySources(r); err != nil {
+		return err
+	}
+	if err := normalizeRuleLegalAuthorities(r); err != nil {
 		return err
 	}
 	rational, err := normalizeRuleThreshold(r)
@@ -905,6 +909,19 @@ func cloneRule(rule Rule) Rule {
 		copy.RequiredFact.Exclusions = append([]string{}, rule.RequiredFact.Exclusions...)
 	}
 	copy.AuthoritySources = append([]AuthoritySource(nil), rule.AuthoritySources...)
+	if rule.LegalAuthorities != nil {
+		copy.LegalAuthorities = make([]LegalAuthorityReference, len(rule.LegalAuthorities))
+		for i, ref := range rule.LegalAuthorities {
+			copy.LegalAuthorities[i] = ref
+			if ref.Applicability.AllOf != nil {
+				copy.LegalAuthorities[i].Applicability.AllOf = make([]LegalApplicabilityCondition, len(ref.Applicability.AllOf))
+				for j, condition := range ref.Applicability.AllOf {
+					copy.LegalAuthorities[i].Applicability.AllOf[j] = condition
+					copy.LegalAuthorities[i].Applicability.AllOf[j].OneOf = append([]string(nil), condition.OneOf...)
+				}
+			}
+		}
+	}
 	return copy
 }
 
