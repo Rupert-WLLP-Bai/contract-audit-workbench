@@ -12,6 +12,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"os"
+	"os/exec"
 	"strconv"
 	"strings"
 	"sync"
@@ -87,6 +88,27 @@ func TestWaitForUsesTimerWakeAndCancellation(t *testing.T) {
 			t.Fatalf("waitFor canceled context = %v, want context.Canceled", err)
 		}
 	})
+}
+
+func TestWorkerMainRefusesToStartWithoutHealthAddress(t *testing.T) {
+	if os.Getenv("CAW_WORKER_MAIN_CHILD") == "1" {
+		main()
+		t.Fatal("main returned after the required health address was rejected")
+	}
+
+	command := exec.Command(os.Args[0], "-test.run=^TestWorkerMainRefusesToStartWithoutHealthAddress$")
+	command.Env = replaceWorkerTestEnvironment(os.Environ(), map[string]string{
+		"CAW_WORKER_MAIN_CHILD": "1",
+		"HEALTH_ADDR":           " ",
+	})
+	output, err := command.CombinedOutput()
+	var exit *exec.ExitError
+	if !errors.As(err, &exit) || exit.ExitCode() != 1 {
+		t.Fatalf("worker main exit = %v, output=%s; want exit 1", err, output)
+	}
+	if !bytes.Contains(output, []byte("HEALTH_ADDR is required to expose the worker health surface")) {
+		t.Fatalf("worker main output lost the required health address error: %s", output)
+	}
 }
 
 func TestClaimOutcomeLogsExpectedAndUnexpectedFailures(t *testing.T) {
@@ -390,6 +412,40 @@ func TestWorkerRunValidatesConfigAndDrainsIdlePostgresQueue(t *testing.T) {
 		}
 	})
 
+}
+
+func TestClaimNextJobWakeOnlyResumesPostgresPolling(t *testing.T) {
+	env := newWorkerCommandEnvironment(t, http.NotFoundHandler())
+	wake := make(chan struct{}, 1)
+	wake <- struct{}{}
+	claim, claimed, err := claimNextJob(env.ctx, env.worker.Store, "worker-advisory-wake", time.Second, time.Hour, wake)
+	if err != nil || claimed || claim.JobID != "" {
+		t.Fatalf("wake without a PostgreSQL job returned claim=%+v claimed=%t err=%v, want no claim", claim, claimed, err)
+	}
+
+	accepted := env.createReview(t)
+	claim, claimed, err = claimNextJob(env.ctx, env.worker.Store, "worker-advisory-wake", time.Second, time.Hour, nil)
+	if err != nil || !claimed || claim.JobID != accepted.JobID {
+		t.Fatalf("next PostgreSQL poll returned claim=%+v claimed=%t err=%v, want persisted job %s", claim, claimed, err, accepted.JobID)
+	}
+	state, workerID, generation, _, err := env.workerJobState(accepted.JobID)
+	if err != nil || state != "running" || workerID != "worker-advisory-wake" || generation != 1 {
+		t.Fatalf("PostgreSQL claim state=%s worker=%s generation=%d err=%v", state, workerID, generation, err)
+	}
+}
+
+func replaceWorkerTestEnvironment(environment []string, replacements map[string]string) []string {
+	filtered := make([]string, 0, len(environment)+len(replacements))
+	for _, entry := range environment {
+		name, _, _ := strings.Cut(entry, "=")
+		if _, replaced := replacements[name]; !replaced {
+			filtered = append(filtered, entry)
+		}
+	}
+	for name, value := range replacements {
+		filtered = append(filtered, name+"="+value)
+	}
+	return filtered
 }
 
 func configureWorkerProcessEnvironment(t *testing.T) {
