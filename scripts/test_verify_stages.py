@@ -1,9 +1,10 @@
 """Tests for verify.py stage selection, evidence cleanup, and CI diagnostics."""
-from contextlib import redirect_stdout
+from contextlib import redirect_stderr, redirect_stdout
 from io import StringIO
 import json
 import os
 from pathlib import Path
+import sys
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -170,6 +171,73 @@ class DecoderTests(unittest.TestCase):
                          "partial\npanic: test timed out after 20m")
 
 
+class RunCheckExitSemanticsTests(unittest.TestCase):
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temporary.cleanup)
+        self.root = Path(self.temporary.name)
+        self.original_root = verify.ROOT
+        self.original_out = verify.OUT
+        self.original_external = verify.OUT_IS_EXTERNAL
+        verify.ROOT = self.root
+        verify.OUT = self.root / "delivery" / "verification"
+        verify.OUT.mkdir(parents=True)
+        verify.OUT_IS_EXTERNAL = True
+        self.addCleanup(setattr, verify, "ROOT", self.original_root)
+        self.addCleanup(setattr, verify, "OUT", self.original_out)
+        self.addCleanup(setattr, verify, "OUT_IS_EXTERNAL", self.original_external)
+        self.logs = verify.OUT / "logs"
+        self.logs.mkdir()
+        self.report = {"stage": "go", "checks": []}
+
+    def run_check(self, check):
+        with redirect_stdout(StringIO()), redirect_stderr(StringIO()):
+            result = verify.run_check(check, os.environ.copy(), self.report, self.logs)
+        return result, self.report["checks"][-1]
+
+    def test_real_exit_seven_is_preserved(self):
+        check = verify.Check("exit-seven", "go", (sys.executable, "-c", "raise SystemExit(7)"))
+        passed, record = self.run_check(check)
+        self.assertFalse(passed)
+        self.assertEqual(record["status"], "FAIL")
+        self.assertEqual(record["returncode"], 7)
+        self.assertEqual(record["command_returncode"], 7)
+        self.assertNotIn("error_kind", record)
+
+    def test_timeout_has_no_synthetic_returncode(self):
+        check = verify.Check("timeout", "go",
+                             (sys.executable, "-c", "import time; time.sleep(10)"), timeout=0.05)
+        passed, record = self.run_check(check)
+        self.assertFalse(passed)
+        self.assertEqual(record["status"], "FAIL")
+        self.assertIsNone(record["returncode"])
+        self.assertIsNone(record["command_returncode"])
+        self.assertEqual(record["error_kind"], "TimeoutExpired")
+        self.assertTrue(record["timed_out"])
+
+    def test_startup_failure_has_no_synthetic_returncode(self):
+        check = verify.Check("cannot-start", "go", ("/missing/verify-command",))
+        passed, record = self.run_check(check)
+        self.assertFalse(passed)
+        self.assertEqual(record["status"], "FAIL")
+        self.assertIsNone(record["returncode"])
+        self.assertIsNone(record["command_returncode"])
+        self.assertEqual(record["error_kind"], "FileNotFoundError")
+
+    def test_evidence_failure_preserves_successful_process_returncode(self):
+        def reject_evidence(_path):
+            raise ValueError("expected evidence marker is missing")
+
+        check = verify.Check("bad-evidence", "go",
+                             (sys.executable, "-c", "raise SystemExit(0)"), validate=reject_evidence)
+        passed, record = self.run_check(check)
+        self.assertFalse(passed)
+        self.assertEqual(record["status"], "FAIL")
+        self.assertEqual(record["returncode"], 0)
+        self.assertEqual(record["command_returncode"], 0)
+        self.assertIn("EVIDENCE CHECK FAILED", record["failure"])
+
+
 class AnnotationTests(unittest.TestCase):
     def test_workflow_command_escaping(self):
         self.assertEqual(verify.workflow_escape("a%b\r\nc"), "a%25b%0D%0Ac")
@@ -319,6 +387,9 @@ class RegistryTests(unittest.TestCase):
     def test_evidence_validators_are_attached(self):
         for name in ("go-tests", "web-tests", "agent-demo", "rule-shadow"):
             self.assertIsNotNone(self.checks[name].validate)
+
+    def test_web_test_timeout_covers_measured_full_suite_runtime(self):
+        self.assertEqual(self.checks["web-tests"].timeout, 600)
 
 
 if __name__ == "__main__":

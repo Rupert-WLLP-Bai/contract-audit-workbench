@@ -340,6 +340,7 @@ def build_checks(go, bun):
         Check("web-tests", "web",
               (bun, "run", "test:coverage", "--reporter=default", "--reporter=json",
                "--outputFile=../artifacts/vitest-results.json"), cwd=ROOT / "web",
+              timeout=600,
               validate=lambda _: validate_web_test_results(
                   json.loads((OUT / "vitest-results.json").read_text()))),
         Check("web-c1b-clock-tests", "browser",
@@ -398,15 +399,23 @@ def run_check(check, env, report, logs):
     before = time.monotonic()
     raw = logs / (check.name + (".jsonl" if check.jsonl else ".txt"))
     display_path = logs / (check.name + ".txt")
+    command_returncode = None
+    error_kind = None
+    timed_out = False
     try:
         with raw.open("w") as handle:
             result = subprocess.run(command, cwd=check.cwd, env=env, stdout=handle,
                                     stderr=subprocess.STDOUT, timeout=check.timeout, check=False)
-        code = result.returncode
-    except (OSError, subprocess.TimeoutExpired) as error:
+        command_returncode = result.returncode
+    except subprocess.TimeoutExpired as error:
         with raw.open("a") as handle:
-            handle.write(str(error) + "\n")
-        code = 127
+            handle.write(f"COMMAND TIMED OUT after {check.timeout}s\n")
+        error_kind = type(error).__name__
+        timed_out = True
+    except OSError as error:
+        with raw.open("a") as handle:
+            handle.write(f"COMMAND COULD NOT START: {error}\n")
+        error_kind = type(error).__name__
     raw_text = raw.read_text(errors="replace")
     if check.jsonl:
         display = decode_go_test_log(raw_text)
@@ -415,7 +424,7 @@ def run_check(check, env, report, logs):
         display = raw_text
     evidence = None
     failure = None
-    if code == 0 and check.validate is not None:
+    if command_returncode == 0 and error_kind is None and check.validate is not None:
         try:
             evidence = check.validate(raw)
         except (OSError, ValueError, KeyError, TypeError) as error:
@@ -423,15 +432,20 @@ def run_check(check, env, report, logs):
             with display_path.open("a") as handle:
                 handle.write(f"\n{failure}\n")
             display += f"\n{failure}"
-            code = 1
+    passed = command_returncode == 0 and error_kind is None and failure is None
     record = {
         "name": check.name,
         "stage": check.stage,
-        "status": "PASS" if code == 0 else "FAIL",
-        "returncode": code,
+        "status": "PASS" if passed else "FAIL",
+        "returncode": command_returncode,
+        "command_returncode": command_returncode,
         "seconds": round(time.monotonic() - before, 3),
         "log": evidence_path(display_path),
     }
+    if error_kind:
+        record["error_kind"] = error_kind
+    if timed_out:
+        record["timed_out"] = True
     if check.jsonl:
         record["raw_log"] = evidence_path(raw)
     if evidence is not None:
@@ -440,7 +454,7 @@ def run_check(check, env, report, logs):
         record["failure"] = failure
     report["checks"].append(record)
     save_report(report)
-    if code:
+    if not passed:
         emit_failure_annotations(check.name, display)
         print(display[-6000:], file=sys.stderr)
         return False
