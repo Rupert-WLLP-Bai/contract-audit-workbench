@@ -120,7 +120,9 @@ func TestWorkerRunValidatesConfigAndDrainsIdlePostgresQueue(t *testing.T) {
 		t.Fatalf("run environment helper error = %v", err)
 	}
 	env := newWorkerCommandEnvironment(t, http.NotFoundHandler())
-	if err := claimJobs(env.ctx, env.worker.Store, "", time.Second, time.Millisecond, time.Millisecond, nil); err == nil || err.Error() != "worker id and positive lease are required" {
+	invalidWorkerCtx, cancelInvalidWorker := context.WithTimeout(env.ctx, time.Second)
+	defer cancelInvalidWorker()
+	if err := claimJobs(invalidWorkerCtx, env.worker.Store, "", time.Second, time.Millisecond, time.Millisecond, nil); err == nil || err.Error() != "worker id and positive lease are required" {
 		t.Fatalf("claimJobs invalid worker ID error = %v", err)
 	}
 	t.Run("empty PostgreSQL queue honors poll and returns an unclaimed tuple", func(t *testing.T) {
