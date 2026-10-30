@@ -6,6 +6,7 @@ import { MemoryRouter, useLocation } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { setSessionIdentity } from "../api/http";
 import { queryKeys } from "../api/queries";
+import type { EvidenceQuote } from "../api/evidence-workflow";
 import type { BusinessAgentReview } from "../api/business-agent-review";
 import type { Actor, CaseDetail, ConstraintEvaluation, ExecutionAttempt, ReviewDocument, ReviewWorkspace, WorkbenchTask } from "../api/types";
 import { chooseOption, renderWithAntd as render } from "../test/antd";
@@ -92,7 +93,7 @@ function open({
   canManage?: boolean;
   tasks?: WorkbenchTask[];
   sessionActor?: Actor | null;
-  caseDetail?: CaseDetail;
+  caseDetail?: CaseDetail | null;
   workspace?: ReviewWorkspace;
 }) {
   const calls: Call[] = [];
@@ -103,14 +104,14 @@ function open({
   }));
   const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 }, mutations: { retry: false } } });
   clients.push(client);
-  client.setQueryData(queryKeys.case("case-1"), caseDetail);
+  if (caseDetail !== null) client.setQueryData(queryKeys.case("case-1"), caseDetail);
   if (sessionActor !== null) client.setQueryData(queryKeys.session, sessionActor);
   client.setQueryData(queryKeys.review("case-1", runId, urlAttempt), workspace ?? makeWorkspace(runId, attemptId, evaluations));
   if (tasks) client.setQueryData(queryKeys.workbench("week"), { tasks });
   const path = `/cases/case-1/reviews/${runId}${urlAttempt ? `?attempt_id=${urlAttempt}` : ""}`;
   render(<QueryClientProvider client={client}><MemoryRouter initialEntries={[path]}>
     <EvidenceRequestPanel caseId="case-1" runId={runId} attemptId={attemptId} canManage={canManage}
-      evaluations={evaluations} agentReview={agentReview} documents={caseDetail.documents} />
+      evaluations={evaluations} agentReview={agentReview} documents={caseDetail?.documents ?? []} />
     <Location />
   </MemoryRouter></QueryClientProvider>);
   return { calls, user: userEvent.setup() };
@@ -518,6 +519,25 @@ describe("补充材料请求", () => {
     expect(screen.queryByRole("button", { name: "提交核验" })).toBeDisabled();
   });
 
+  it("keeps case actions unavailable when case details cannot be loaded", async () => {
+    const request = rawRequest("received", 2);
+    open({
+      canManage: false,
+      caseDetail: null,
+      respond(call) {
+        if (call.pathname.endsWith("/cases/case-1")) return Response.json({ error: { message: "case unavailable" } }, { status: 404 });
+        if (call.pathname.endsWith("/evidence-requests")) return Response.json({ items: [request] });
+        if (call.pathname.endsWith("/history")) return Response.json({ items: [{ type: "received", actor_id: "owner", occurred_at: at, request, receipt: rawReceipt }] });
+        return Response.json({ error: { message: "unexpected" } }, { status: 404 });
+      },
+    });
+
+    await screen.findByText("已提交，待复核");
+    expect(screen.queryByRole("button", { name: "提交回执" })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("上传补充文件")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "提交核验" })).toBeDisabled();
+  });
+
   it("lets a reviewer submit a receipt without exposing upload controls", async () => {
     const reviewer: Actor = { ...actor, id: "reviewer-1", display_name: "复核人", role: "reviewer" };
     open({
@@ -773,9 +793,11 @@ describe("补充材料请求", () => {
     expect(JSON.parse(String(call?.init?.body))).toEqual({ business_at: new Date("2026-11-02T10:30").toISOString() });
   });
 
-  it("does not require business time for a non-governed case", async () => {
-    const ordinaryCase = { ...detail, business_line: "SMB", scenario: "standard", contract_type: "service" };
-    const { calls, user } = open({ caseDetail: ordinaryCase, respond(call) {
+  it.each([
+    ["a non-ENT case", { ...detail, business_line: "SMB", scenario: "standard", contract_type: "service" }],
+    ["a cloud agreement outside the service contract branch", { ...detail, business_line: "ENT", scenario: "cloud_services", contract_type: "goods" }],
+  ] as const)("does not require business time for %s", async (_caseName, caseDetail) => {
+    const { calls, user } = open({ caseDetail, respond(call) {
       if (call.pathname.endsWith("/evidence-requests")) return Response.json({ items: [rawRequest("received", 2)] });
       if (call.pathname.endsWith("/history")) return Response.json({ items: [] });
       if (call.pathname.endsWith("/reviews") && call.method === "POST") return Response.json({ id: "run-next", attempt_id: "attempt-next" });
@@ -829,5 +851,96 @@ describe("补充材料请求", () => {
     const submit = screen.getByRole("button", { name: "提交核验" });
     if (ready) expect(submit).toBeEnabled();
     else expect(submit).toBeDisabled();
+  });
+
+  it("does not authorize an empty quotation selection", async () => {
+    const request = rawRequest("received", 2);
+    const { calls, user } = open({ runId: "run-new", attemptId: "attempt-new", evaluations: [compatible], canManage: false, respond(call) {
+      if (call.pathname.endsWith("/evidence-requests")) return Response.json({ items: [request] });
+      if (call.pathname.endsWith("/history")) return Response.json({ items: [{ type: "received", actor_id: "owner", occurred_at: at, request, receipt: rawReceipt }] });
+      return Response.json({ error: { message: "unexpected" } }, { status: 404 });
+    } });
+    await screen.findByText("已提交，待复核");
+    await selectVerificationEvidence(user);
+    const original = screen.getByLabelText("本次审查使用的原文") as HTMLTextAreaElement;
+    await user.click(original);
+    original.setSelectionRange(2, 2);
+    fireEvent.select(original);
+    expect(screen.getByRole("button", { name: "提交核验" })).toBeDisabled();
+    expect(calls.some((call) => call.pathname.endsWith("/verify"))).toBe(false);
+  });
+
+  it("submits code point offsets for a quote after an ASCII and emoji prefix", async () => {
+    const quoteDocument = { ...document, id: "doc-unicode", parsed_document_id: "parse-unicode", filename: "Unicode合同.txt", text: "A😀质保36个月。" };
+    const workspace = makeWorkspace("run-new", "attempt-new", [compatible]);
+    workspace.documents = [quoteDocument];
+    const receipt = { ...rawReceipt, document_id: quoteDocument.id };
+    const request = rawRequest("received", 2);
+    const { calls, user } = open({ runId: "run-new", attemptId: "attempt-new", evaluations: [compatible], workspace, canManage: false, respond(call) {
+      if (call.pathname.endsWith("/evidence-requests")) return Response.json({ items: [request] });
+      if (call.pathname.endsWith("/history")) return Response.json({ items: [{ type: "received", actor_id: "owner", occurred_at: at, request, receipt }] });
+      if (call.pathname.endsWith("/verify")) {
+        const body = JSON.parse(String(call.init?.body)) as { evidence: EvidenceQuote[]; reason: string; attempt_id: string; run_id: string };
+        return Response.json({ ...request, status: "verified", version: 3, verification: {
+          run_id: body.run_id, attempt_id: body.attempt_id, receipt_id: receipt.id, evaluation_id: "eval-new",
+          relation: "compatible", gap_id: null, gap_status: null, evidence: body.evidence,
+          reason: body.reason, verified_by: "owner", verified_at: at,
+        } });
+      }
+      return Response.json({ error: { message: "unexpected" } }, { status: 404 });
+    } });
+    await screen.findByText("已提交，待复核");
+    await chooseActiveOption(user, screen.getByRole("combobox", { name: "选择提交回执" }), /提交材料/);
+    await chooseActiveOption(user, screen.getByRole("combobox", { name: "选择本次审查材料" }), /Unicode合同/);
+    const original = screen.getByLabelText("本次审查使用的原文") as HTMLTextAreaElement;
+    await user.click(original);
+    original.setSelectionRange(3, 9);
+    fireEvent.select(original);
+    await user.type(screen.getByLabelText("核验理由"), "核对 Unicode 引用");
+    await user.click(screen.getByRole("button", { name: "提交核验" }));
+    await waitFor(() => expect(calls.some((call) => call.pathname.endsWith("/verify"))).toBe(true));
+    const verifyCall = calls.find((call) => call.pathname.endsWith("/verify"));
+    expect(JSON.parse(String(verifyCall?.init?.body))).toMatchObject({
+      evidence: [{ document_id: "doc-unicode", parsed_document_id: "parse-unicode", quote: "质保36个月", start: 2, end: 8 }],
+    });
+  });
+
+  it.each([[2, 8, true], [2, 4, false]] as const)("requires the frozen quote to include the submitted answer (%s..%s)", async (start, end, ready) => {
+    const request = rawRequest("received", 2);
+    const answerReceipt = { ...rawReceipt, id: "receipt-answer", document_id: undefined, answer: "36个月" };
+    const { calls, user } = open({ runId: "run-new", attemptId: "attempt-new", evaluations: [compatible], canManage: false, respond(call) {
+      if (call.pathname.endsWith("/evidence-requests")) return Response.json({ items: [request] });
+      if (call.pathname.endsWith("/history")) return Response.json({ items: [{ type: "received", actor_id: "owner", occurred_at: at, request, receipt: answerReceipt }] });
+      if (call.pathname.endsWith("/verify")) {
+        const body = JSON.parse(String(call.init?.body)) as { evidence: EvidenceQuote[]; reason: string; attempt_id: string; run_id: string };
+        return Response.json({ ...request, status: "verified", version: 3, verification: {
+          run_id: body.run_id, attempt_id: body.attempt_id, receipt_id: answerReceipt.id, evaluation_id: "eval-new",
+          relation: "compatible", gap_id: null, gap_status: null, evidence: body.evidence,
+          reason: body.reason, verified_by: "owner", verified_at: at,
+        } });
+      }
+      return Response.json({ error: { message: "unexpected" } }, { status: 404 });
+    } });
+    await screen.findByText("已提交，待复核");
+    await chooseActiveOption(user, screen.getByRole("combobox", { name: "选择提交回执" }), /答复：36个月/);
+    await chooseActiveOption(user, screen.getByRole("combobox", { name: "选择本次审查材料" }), /补充合同/);
+    const original = screen.getByLabelText("本次审查使用的原文") as HTMLTextAreaElement;
+    await user.click(original);
+    original.setSelectionRange(start, end);
+    fireEvent.select(original);
+    await user.type(screen.getByLabelText("核验理由"), "核对文字答复");
+    const submit = screen.getByRole("button", { name: "提交核验" });
+    if (!ready) {
+      expect(submit).toBeDisabled();
+      expect(calls.some((call) => call.pathname.endsWith("/verify"))).toBe(false);
+      return;
+    }
+    expect(submit).toBeEnabled();
+    await user.click(submit);
+    await waitFor(() => expect(calls.some((call) => call.pathname.endsWith("/verify"))).toBe(true));
+    const verifyCall = calls.find((call) => call.pathname.endsWith("/verify"));
+    expect(JSON.parse(String(verifyCall?.init?.body))).toMatchObject({
+      evidence: [{ quote: "质保36个月", start: 1, end: 7 }],
+    });
   });
 });
