@@ -892,6 +892,25 @@ describe("补充材料请求", () => {
     );
   });
 
+  it("does not render verification details for an unknown request status", async () => {
+    const verification = {
+      run_id: "run-new", attempt_id: "attempt-new", receipt_id: "receipt-1", evaluation_id: "eval-new",
+      relation: "compatible", gap_id: null, gap_status: null,
+      evidence: [{ document_id: "doc-2", parsed_document_id: "parse-2", quote: "质保36个月", start: 1, end: 7 }],
+      reason: "核对质保", verified_by: "owner", verified_at: at,
+    };
+    const request = { ...rawRequest("archived", 3), verification };
+    open({ canManage: false, respond(call) {
+      if (call.pathname.endsWith("/evidence-requests")) return Response.json({ items: [request] });
+      if (call.pathname.endsWith("/history")) return Response.json({ items: [] });
+      return Response.json({ error: { message: "unexpected" } }, { status: 404 });
+    } });
+
+    await screen.findByText("archived");
+    expect(screen.queryByText(/核验结果：/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "查看核验审查" })).not.toBeInTheDocument();
+  });
+
   it("preserves the received request and recovers its history after a read error", async () => {
     let historyReads = 0;
     const { calls, user } = open({ canManage: false, respond(call) {
