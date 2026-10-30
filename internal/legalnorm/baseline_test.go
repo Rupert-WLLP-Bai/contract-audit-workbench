@@ -1,6 +1,7 @@
 package legalnorm
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"testing"
@@ -29,6 +30,38 @@ func TestVerifyBaselinePinsBothOfficialResponsesAndObservationTimes(t *testing.T
 				t.Fatalf("baseline capture output incomplete: %+v", verified)
 			}
 		})
+	}
+}
+
+func TestSMEPaymentBaselineSeparatesBodyPublisherFromStatusRegistry(t *testing.T) {
+	assetDir := os.Getenv("LEGALNORM_ASSET_DIR")
+	if assetDir == "" {
+		t.Skip("set LEGALNORM_ASSET_DIR to the external official legal-sources directory")
+	}
+	var input *CaptureInput
+	for _, candidate := range baselineInputs(t, assetDir) {
+		if candidate.SourceSnapshotID == "S4_sme_payment_regulation_2025" {
+			copy := candidate
+			input = &copy
+			break
+		}
+	}
+	if input == nil {
+		t.Fatal("official S4 captured baseline is missing")
+	}
+	if !bytes.Contains(input.RawBytes, []byte("2025年第10号国务院公报_中国政府网")) {
+		t.Fatal("captured body bytes do not contain the independently checked government gazette page title")
+	}
+	verified, err := VerifyBaseline(*input)
+	if err != nil {
+		t.Fatalf("verify real captured S4 source and status responses: %v", err)
+	}
+	if verified.Publisher != "中国政府网（国务院公报）" || verified.Issuer != "国务院" ||
+		verified.Capture.OfficialURL != "https://www.gov.cn/gongbao/2025/issue_11966/202504/content_7017465.html" {
+		t.Fatalf("verified body attribution does not match the captured publisher: %+v", verified)
+	}
+	if verified.StatusRegistryURL != "https://xzfg.moj.gov.cn/SearchTitleFront?QueryAll=%E4%BF%9D%E9%9A%9C%E4%B8%AD%E5%B0%8F%E4%BC%81%E4%B8%9A%E6%AC%BE%E9%A1%B9%E6%94%AF%E4%BB%98%E6%9D%A1%E4%BE%8B" {
+		t.Fatalf("verified status observation source is not the MOJ registry: %s", verified.StatusRegistryURL)
 	}
 }
 

@@ -121,7 +121,7 @@ var officialAdapters = map[string]sourceAdapter{
 			StatusRequestMethod: "GET", StatusRequestBody: []byte(""),
 			StatusContentType: "text/html;charset=UTF-8", StatusObservedAt: "2026-10-31T00:01:36+08:00", StatusResponseStatus: 200,
 			StatusSHA256: "55e786d64e1531899f0c367ff85f4c7f460bd009c77d694782f11cab280d21a2",
-			Publisher:    "司法部国家行政法规库", Issuer: "国务院", DocumentType: "administrative_regulation",
+			Publisher:    "中国政府网（国务院公报）", Issuer: "国务院", DocumentType: "administrative_regulation",
 		},
 	},
 	"S5_tender_implementing_regulation_2019": {
