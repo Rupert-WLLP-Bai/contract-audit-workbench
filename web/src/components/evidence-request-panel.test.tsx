@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { UserEvent } from "@testing-library/user-event";
 import { MemoryRouter, useLocation } from "react-router";
@@ -62,15 +62,19 @@ type ReceiptPayload = Omit<typeof rawReceipt, "document_id"> & { document_id?: s
 type Call = { pathname: string; method: string; init?: RequestInit };
 type ResponseFor = (call: Call) => Response | Promise<Response>;
 
-async function chooseActiveOption(user: UserEvent, control: HTMLElement, name: string | RegExp) {
+async function openActiveListbox(user: UserEvent, control: HTMLElement) {
   const existing = new Set(screen.queryAllByRole("listbox", { hidden: true }));
   await user.click(control);
-  const listbox = await waitFor(() => {
+  return waitFor(() => {
     expect(control).toHaveAttribute("aria-expanded", "true");
     const opened = screen.getAllByRole("listbox").filter((element) => !existing.has(element));
     expect(opened).toHaveLength(1);
     return opened[0]!;
   });
+}
+
+async function chooseActiveOption(user: UserEvent, control: HTMLElement, name: string | RegExp) {
+  const listbox = await openActiveListbox(user, control);
   await user.click(await within(listbox).findByRole("option", { name }));
 }
 
@@ -114,7 +118,7 @@ function open({
       evaluations={evaluations} agentReview={agentReview} documents={caseDetail?.documents ?? []} />
     <Location />
   </MemoryRouter></QueryClientProvider>);
-  return { calls, user: userEvent.setup() };
+  return { calls, user: userEvent.setup(), client };
 }
 
 async function selectVerificationEvidence(user: UserEvent, receiptName: string | RegExp = /补充合同.txt/) {
@@ -220,9 +224,13 @@ describe("补充材料请求", () => {
       return Response.json({ error: { message: "unexpected" } }, { status: 404 });
     } });
     await screen.findByText("待提交");
+    expect(screen.getByRole("button", { name: "上传补充文件" })).toBeDisabled();
     await user.upload(screen.getByLabelText("上传补充文件"), new File(["质保36个月"], "补充合同.txt", { type: "text/plain" }));
     await user.click(screen.getByRole("button", { name: "上传补充文件" }));
     await screen.findByText(/已上传 补充合同.txt/);
+    const documentOptions = await openActiveListbox(user, screen.getByRole("combobox", { name: "选择案件材料" }));
+    expect(within(documentOptions).getAllByRole("option", { name: /补充合同\.txt/ })).toHaveLength(1);
+    await user.keyboard("{Escape}");
     expect(calls.filter((call) => call.pathname.endsWith("/receipts"))).toHaveLength(0);
     expect(screen.getByText("待提交")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "提交回执" }));
@@ -235,6 +243,46 @@ describe("补充材料请求", () => {
     await waitFor(() => expect(screen.getByLabelText("当前位置")).toHaveTextContent("/cases/case-1/reviews/run-new?attempt_id=attempt-new"));
     const start = calls.find((call) => call.pathname.endsWith("/reviews") && call.method === "POST");
     expect(JSON.parse(String(start?.init?.body))).toEqual({ business_at: new Date("2026-11-01T10:00").toISOString() });
+  });
+
+  it("adds a newly uploaded document to receipt choices and submits its ID", async () => {
+    const emptyCase = { ...detail, documents: [] };
+    const { calls, user } = open({ caseDetail: emptyCase, respond(call) {
+      if (call.pathname.endsWith("/evidence-requests")) return Response.json({ items: [rawRequest("open", 1)] });
+      if (call.pathname.endsWith("/history")) return Response.json({ items: [] });
+      if (call.pathname.endsWith("/documents") && call.method === "POST") return Response.json({ id: "doc-new" });
+      if (call.pathname.endsWith("/receipts") && call.method === "POST") return Response.json({
+        request: rawRequest("received", 2), receipt: { ...rawReceipt, document_id: "doc-new" },
+      });
+      return Response.json({ error: { message: "unexpected" } }, { status: 404 });
+    } });
+
+    await screen.findByText("待提交");
+    expect(screen.getByRole("button", { name: "上传补充文件" })).toBeDisabled();
+    expect(screen.getByText("当前没有符合材料类型的案件材料。")).toBeInTheDocument();
+    await user.upload(screen.getByLabelText("上传补充文件"), new File(["新材料"], "新版本合同.txt", { type: "text/plain" }));
+    await user.click(screen.getByRole("button", { name: "上传补充文件" }));
+    await screen.findByText(/已上传 新版本合同.txt/);
+    const options = await openActiveListbox(user, screen.getByRole("combobox", { name: "选择案件材料" }));
+    expect(within(options).getByRole("option", { name: /新版本合同\.txt/ })).toBeInTheDocument();
+    await user.keyboard("{Escape}");
+    await user.click(screen.getByRole("button", { name: "提交回执" }));
+    const receiptCall = calls.find((call) => call.pathname.endsWith("/receipts"));
+    expect(JSON.parse(String(receiptCall?.init?.body))).toEqual({ document_id: "doc-new", expected_version: 1 });
+  });
+
+  it("keeps file upload disabled until an untyped request has an upload role", async () => {
+    const request = { ...rawRequest("open", 1), material_role: null };
+    const { calls, user } = open({ respond(call) {
+      if (call.pathname.endsWith("/evidence-requests")) return Response.json({ items: [request] });
+      if (call.pathname.endsWith("/history")) return Response.json({ items: [] });
+      return Response.json({ error: { message: "unexpected" } }, { status: 404 });
+    } });
+
+    await screen.findByText("待提交");
+    await user.upload(screen.getByLabelText("上传补充文件"), new File(["新材料"], "新材料.txt", { type: "text/plain" }));
+    expect(screen.getByRole("button", { name: "上传补充文件" })).toBeDisabled();
+    expect(calls.some((call) => call.pathname.endsWith("/documents"))).toBe(false);
   });
 
   it("submits a written answer as a receipt without treating it as verified", async () => {
@@ -260,6 +308,22 @@ describe("补充材料请求", () => {
     expect(calls.some((call) => call.pathname.endsWith("/verify"))).toBe(false);
   });
 
+  it("disables receipt submission for a missing document or blank answer", async () => {
+    const { calls, user } = open({ respond(call) {
+      if (call.pathname.endsWith("/evidence-requests")) return Response.json({ items: [rawRequest("open", 1)] });
+      if (call.pathname.endsWith("/history")) return Response.json({ items: [] });
+      return Response.json({ error: { message: "unexpected" } }, { status: 404 });
+    } });
+
+    await screen.findByText("待提交");
+    const submit = screen.getByRole("button", { name: "提交回执" });
+    expect(submit).toBeDisabled();
+    await chooseOption(user, screen.getByRole("combobox", { name: "提交方式" }), "文字答复");
+    await user.type(screen.getByLabelText("文字答复"), "   ");
+    expect(submit).toBeDisabled();
+    expect(calls.some((call) => call.pathname.endsWith("/receipts"))).toBe(false);
+  });
+
   it("shows missing material names without exposing their identifiers", async () => {
     open({ canManage: false, respond(call) {
       const request = rawRequest("received", 2);
@@ -270,8 +334,46 @@ describe("补充材料请求", () => {
     } });
     const panel = screen.getByRole("region", { name: "补充材料请求" });
     expect((await within(panel).findAllByText(/材料名称未报告/)).length).toBeGreaterThan(0);
+    expect(within(panel).queryByText("处理记录中未报告回执。")).not.toBeInTheDocument();
+    expect(within(panel).getByText("已提交，待复核").closest(".ant-tag")).toHaveClass("ant-tag-warning");
+    expect(within(panel).getByText("下一步：提交回执后发起新审查，再根据新审查的检查结果和原文核验。上传或提交材料本身不代表已核验。")).toBeInTheDocument();
     expect(within(panel).queryByText(/unknown-document|unknown-actor|run-old|attempt-old/)).not.toBeInTheDocument();
     expect(within(panel).getByRole("link", { name: "查看来源审查" })).toHaveAttribute("href", "/cases/case-1/reviews/run-old?attempt_id=attempt-old");
+  });
+
+  it("offers only current documents of the requested material role", async () => {
+    const validDocument = { ...document, id: "doc-valid", filename: "符合类型.txt", role: "draft_contract", superseded: false };
+    const supersededDocument = { ...document, id: "doc-old", filename: "已替代.txt", role: "draft_contract", superseded: true };
+    const wrongRoleDocument = { ...document, id: "doc-award", filename: "中标文件.txt", role: "award", superseded: false };
+    const caseDetail = { ...detail, documents: [validDocument, supersededDocument, wrongRoleDocument] };
+    const { user } = open({ canManage: false, caseDetail, respond(call) {
+      if (call.pathname.endsWith("/evidence-requests")) return Response.json({ items: [{ ...rawRequest("open", 1), material_role: "draft_contract" }] });
+      if (call.pathname.endsWith("/history")) return Response.json({ items: [] });
+      return Response.json({ error: { message: "unexpected" } }, { status: 404 });
+    } });
+
+    await screen.findByText("待提交");
+    const listbox = await openActiveListbox(user, screen.getByRole("combobox", { name: "选择案件材料" }));
+    expect(within(listbox).getByRole("option", { name: /符合类型\.txt/ })).toBeInTheDocument();
+    expect(within(listbox).queryByRole("option", { name: /已替代\.txt|中标文件\.txt/ })).not.toBeInTheDocument();
+  });
+
+  it("allows any current document when the request has no material role", async () => {
+    const currentDraft = { ...document, id: "doc-draft", filename: "合同.txt", role: "draft_contract", superseded: false };
+    const currentAward = { ...document, id: "doc-award", filename: "中标.txt", role: "award", superseded: false };
+    const oldDocument = { ...document, id: "doc-old", filename: "旧版.txt", role: "draft_contract", superseded: true };
+    const caseDetail = { ...detail, documents: [currentDraft, currentAward, oldDocument] };
+    const { user } = open({ canManage: false, caseDetail, respond(call) {
+      if (call.pathname.endsWith("/evidence-requests")) return Response.json({ items: [{ ...rawRequest("open", 1), material_role: null }] });
+      if (call.pathname.endsWith("/history")) return Response.json({ items: [] });
+      return Response.json({ error: { message: "unexpected" } }, { status: 404 });
+    } });
+
+    await screen.findByText("待提交");
+    const listbox = await openActiveListbox(user, screen.getByRole("combobox", { name: "选择案件材料" }));
+    expect(within(listbox).getByRole("option", { name: /合同\.txt/ })).toBeInTheDocument();
+    expect(within(listbox).getByRole("option", { name: /中标\.txt/ })).toBeInTheDocument();
+    expect(within(listbox).queryByRole("option", { name: /旧版\.txt/ })).not.toBeInTheDocument();
   });
 
   it("uses a selected frozen quotation and actual later check, and preserves a server refusal", async () => {
@@ -621,6 +723,8 @@ describe("补充材料请求", () => {
     } });
 
     await screen.findByText("待提交");
+    expect(screen.getByText("待提交").closest(".ant-tag")).toHaveClass("ant-tag-default");
+    expect(screen.getByText("下一步：责任人或案件管理人提交材料或答复。")).toBeInTheDocument();
     expect(screen.getByText(/责任人：姓名未报告；期限：/)).toBeInTheDocument();
     expect(screen.getByText(/来源：规则检查，.*原因未报告。/)).toBeInTheDocument();
     expect(screen.queryByText("unlisted-assignee")).not.toBeInTheDocument();
@@ -648,8 +752,11 @@ describe("补充材料请求", () => {
     } });
 
     await screen.findByText("已核验");
+    expect(screen.getByText("已核验").closest(".ant-tag")).toHaveClass("ant-tag-success");
+    expect(screen.getByText("下一步：查看核验审查与处理记录。")).toBeInTheDocument();
+    expect(await screen.findByText("处理记录中未报告回执。")).toBeInTheDocument();
     expect(screen.getByText("核验结果：未报告；复核已完成")).toBeInTheDocument();
-    expect(screen.getByText("质保36个月")).toBeInTheDocument();
+    expect((await screen.findAllByText("质保36个月")).length).toBeGreaterThan(0);
     expect(screen.getByRole("link", { name: "查看核验审查" })).toHaveAttribute(
       "href",
       "/cases/case-1/reviews/run-old?attempt_id=attempt-old",
@@ -674,12 +781,38 @@ describe("补充材料请求", () => {
 
     await screen.findByText("已提交，待复核");
     expect(await screen.findByText("回执历史暂不可用")).toBeInTheDocument();
+    expect(screen.queryByText("当前审查未包含可引用的回执材料或答复原文。")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "重试读取记录" })).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "重试读取记录" }));
     await waitFor(() => expect(historyReads).toBe(2));
     await screen.findByText("处理记录");
     expect(screen.getByText("已提交，待复核")).toBeInTheDocument();
     expect(calls.some((call) => call.pathname.endsWith("/verify"))).toBe(false);
+  });
+
+  it("shows history actors and fallbacks for missing receipt files and written answers", async () => {
+    const request = rawRequest("received", 2);
+    const unknownDocumentReceipt = { ...rawReceipt, id: "receipt-missing", document_id: "unknown-document" };
+    const answerReceipt = { ...rawReceipt, id: "receipt-answer", document_id: undefined, answer: "质保36个月" };
+    const { user } = open({ canManage: false, respond(call) {
+      if (call.pathname.endsWith("/evidence-requests")) return Response.json({ items: [request] });
+      if (call.pathname.endsWith("/history")) return Response.json({ items: [
+        { type: "created", actor_id: "system", occurred_at: at, request: { ...request, version: 1 }, receipt: null },
+        { type: "received", actor_id: "unknown-actor", occurred_at: at, request: { ...request, version: 2 }, receipt: unknownDocumentReceipt },
+        { type: "custom_event", actor_id: "owner", occurred_at: at, request: { ...request, version: 3 }, receipt: answerReceipt },
+      ] });
+      return Response.json({ error: { message: "unexpected" } }, { status: 404 });
+    } });
+
+    await screen.findByText("已提交，待复核");
+    await screen.findByText("已提交材料或答复：");
+    expect((await screen.findAllByText(/材料名称未报告/)).length).toBeGreaterThan(0);
+    await user.click(screen.getByText("处理记录"));
+    expect(screen.getByText(/创建请求 · 系统/)).toBeInTheDocument();
+    expect(screen.getByText(/提交回执 · 姓名未报告/)).toBeInTheDocument();
+    expect(screen.getByText(/custom_event · 审查人/)).toBeInTheDocument();
+    expect(screen.getByText("提交材料：材料名称未报告")).toBeInTheDocument();
+    expect(screen.getByText("提交答复：质保36个月")).toBeInTheDocument();
   });
 
   it.each(["conflict", "resolved"] as const)("submits the actual %s check from a later review", async (condition) => {
@@ -977,15 +1110,44 @@ describe("补充材料请求", () => {
     const submit = screen.getByRole("button", { name: "提交核验" });
     if (!ready) {
       expect(submit).toBeDisabled();
+      expect(screen.getByText("引用过长，或未包含所提交的文字答复。")).toBeInTheDocument();
       expect(calls.some((call) => call.pathname.endsWith("/verify"))).toBe(false);
       return;
     }
     expect(submit).toBeEnabled();
+    expect(screen.queryByText("引用过长，或未包含所提交的文字答复。")).not.toBeInTheDocument();
     await user.click(submit);
     await waitFor(() => expect(calls.some((call) => call.pathname.endsWith("/verify"))).toBe(true));
     const verifyCall = calls.find((call) => call.pathname.endsWith("/verify"));
     expect(JSON.parse(String(verifyCall?.init?.body))).toMatchObject({
       evidence: [{ quote: "质保36个月", start: 1, end: 7 }],
     });
+  });
+
+  it("drops quote readiness when a history refresh removes its selected receipt", async () => {
+    const request = rawRequest("received", 2);
+    const answerReceipt = { ...rawReceipt, document_id: undefined, answer: "36个月" };
+    const { calls, client, user } = open({ runId: "run-new", attemptId: "attempt-new", evaluations: [compatible], canManage: false, respond(call) {
+      if (call.pathname.endsWith("/evidence-requests")) return Response.json({ items: [request] });
+      if (call.pathname.endsWith("/history")) return Response.json({ items: [{ type: "received", actor_id: "owner", occurred_at: at, request, receipt: answerReceipt }] });
+      return Response.json({ error: { message: "unexpected" } }, { status: 404 });
+    } });
+
+    await screen.findByText("已提交，待复核");
+    await chooseActiveOption(user, screen.getByRole("combobox", { name: "选择提交回执" }), /答复：36个月/);
+    await chooseActiveOption(user, screen.getByRole("combobox", { name: "选择本次审查材料" }), /补充合同/);
+    const original = screen.getByLabelText("本次审查使用的原文") as HTMLTextAreaElement;
+    await user.click(original);
+    original.setSelectionRange(2, 8);
+    fireEvent.select(original);
+    await user.type(screen.getByLabelText("核验理由"), "核对答复");
+    expect(screen.getByRole("button", { name: "提交核验" })).toBeEnabled();
+
+    await act(async () => {
+      client.setQueryData(["evidence-requests", "case-1", request.id, "history"], []);
+    });
+    expect(screen.getByText("已选引用：")).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole("button", { name: "提交核验" })).toBeDisabled());
+    expect(calls.some((call) => call.pathname.endsWith("/verify"))).toBe(false);
   });
 });
