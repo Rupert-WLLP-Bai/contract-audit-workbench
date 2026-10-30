@@ -124,11 +124,11 @@ func TestWorkerRunValidatesConfigAndDrainsIdlePostgresQueue(t *testing.T) {
 	}
 	idleCtx, cancelIdle := context.WithCancel(env.ctx)
 	idleDone := make(chan error, 1)
+	idleCancel := time.AfterFunc(250*time.Millisecond, cancelIdle)
+	defer idleCancel.Stop()
 	go func() {
 		idleDone <- claimJobs(idleCtx, env.worker.Store, "worker-empty-queue", time.Second, time.Millisecond, 5*time.Millisecond, nil)
 	}()
-	time.Sleep(20 * time.Millisecond)
-	cancelIdle()
 	select {
 	case err := <-idleDone:
 		if !errors.Is(err, context.Canceled) {
