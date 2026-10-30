@@ -1265,6 +1265,7 @@ describe("补充材料请求", () => {
     } });
     await screen.findByText("已提交，待复核");
     await selectVerificationEvidence(user);
+    expect(screen.getByLabelText("核验理由")).toHaveValue("核对质保");
     const original = screen.getByLabelText("本次审查使用的原文") as HTMLTextAreaElement;
     await user.click(original);
     original.setSelectionRange(2, 2);
