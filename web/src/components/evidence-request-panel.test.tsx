@@ -91,7 +91,7 @@ function open({
   respond: ResponseFor;
   canManage?: boolean;
   tasks?: WorkbenchTask[];
-  sessionActor?: Actor;
+  sessionActor?: Actor | null;
   caseDetail?: CaseDetail;
   workspace?: ReviewWorkspace;
 }) {
@@ -104,7 +104,7 @@ function open({
   const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 }, mutations: { retry: false } } });
   clients.push(client);
   client.setQueryData(queryKeys.case("case-1"), caseDetail);
-  client.setQueryData(queryKeys.session, sessionActor);
+  if (sessionActor !== null) client.setQueryData(queryKeys.session, sessionActor);
   client.setQueryData(queryKeys.review("case-1", runId, urlAttempt), workspace ?? makeWorkspace(runId, attemptId, evaluations));
   if (tasks) client.setQueryData(queryKeys.workbench("week"), { tasks });
   const path = `/cases/case-1/reviews/${runId}${urlAttempt ? `?attempt_id=${urlAttempt}` : ""}`;
@@ -500,6 +500,24 @@ describe("补充材料请求", () => {
     expect(screen.queryByRole("button", { name: "创建任务并发起请求" })).not.toBeInTheDocument();
   });
 
+  it("fails closed when the session identity is unavailable", async () => {
+    open({
+      canManage: false,
+      sessionActor: null,
+      respond(call) {
+        const request = rawRequest("received", 2);
+        if (call.pathname.endsWith("/evidence-requests")) return Response.json({ items: [request] });
+        if (call.pathname.endsWith("/history")) return Response.json({ items: [{ type: "received", actor_id: "owner", occurred_at: at, request, receipt: rawReceipt }] });
+        return Response.json({ error: { message: "session unavailable" } }, { status: 401 });
+      },
+    });
+
+    await screen.findByText("已提交，待复核");
+    expect(screen.queryByRole("button", { name: "提交回执" })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("上传补充文件")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "提交核验" })).toBeDisabled();
+  });
+
   it("lets a reviewer submit a receipt without exposing upload controls", async () => {
     const reviewer: Actor = { ...actor, id: "reviewer-1", display_name: "复核人", role: "reviewer" };
     open({
@@ -648,5 +666,168 @@ describe("补充材料请求", () => {
       expect(body.evaluation_id).toBe("eval-new");
       expect(body).not.toHaveProperty("gap_id");
     }
+  });
+
+  it.each([
+    ["a matching gap with a different domain", { ...rawRequest("received", 2), source_evaluation: undefined,
+      source_gap: { gap_id: "gap-1", domain: "technical", capability_id: "warranty_months", mandatory: true, status: "unknown", reason_code: "required_source_or_field_missing", evidence_ids: null }, verification_condition: "resolved" }],
+    ["a matching gap with a different capability", { ...rawRequest("received", 2), source_evaluation: undefined,
+      source_gap: { gap_id: "gap-1", domain: "commercial", capability_id: "amount", mandatory: true, status: "unknown", reason_code: "required_source_or_field_missing", evidence_ids: null }, verification_condition: "resolved" }],
+  ] as const)("does not verify %s", async (_caseName, request) => {
+    const gap = { gap_id: "gap-1", domain: "commercial", capability_id: "warranty_months", mandatory: true, status: "resolved", reason_code: "", evidence_ids: ["doc-2"] };
+    const review: BusinessAgentReview = {
+      attempt_id: "attempt-new", status: "completed", rulepack: null, scope: null,
+      domains: [{ domain: "commercial", status: "completed", capabilities: [{ capability_id: "warranty_months", mandatory: true, status: "completed", relation: "compatible", reason_code: "", evidence_ids: ["doc-2"], canonical_evaluation_ids: null }] }],
+      gaps: [gap], evidence: null, unresolved_gap_ids: [],
+    };
+    const { calls, user } = open({ runId: "run-new", attemptId: "attempt-new", evaluations: [], agentReview: review, canManage: false, respond(call) {
+      if (call.pathname.endsWith("/evidence-requests")) return Response.json({ items: [request] });
+      if (call.pathname.endsWith("/history")) return Response.json({ items: [{ type: "received", actor_id: "owner", occurred_at: at, request, receipt: rawReceipt }] });
+      return Response.json({ error: { message: "unexpected" } }, { status: 404 });
+    } });
+    await screen.findByText("已提交，待复核");
+    await selectVerificationEvidence(user);
+    expect(screen.getByRole("button", { name: "提交核验" })).toBeDisabled();
+    expect(calls.some((call) => call.pathname.endsWith("/verify"))).toBe(false);
+  });
+
+  it("accepts a completed compatible capability as a resolved gap", async () => {
+    const gap = { gap_id: "gap-1", domain: "commercial", capability_id: "warranty_months", mandatory: true, status: "resolved", reason_code: "", evidence_ids: ["doc-2"] };
+    const review: BusinessAgentReview = {
+      attempt_id: "attempt-new", status: "completed", rulepack: null, scope: null,
+      domains: [{ domain: "commercial", status: "completed", capabilities: [{ capability_id: "warranty_months", mandatory: true, status: "completed", relation: "compatible", reason_code: "", evidence_ids: ["doc-2"], canonical_evaluation_ids: null }] }],
+      gaps: [gap], evidence: null, unresolved_gap_ids: [],
+    };
+    const request = { ...rawRequest("received", 2), source_evaluation: undefined,
+      source_gap: { ...gap, status: "unknown" }, verification_condition: "resolved" };
+    const { user } = open({ runId: "run-new", attemptId: "attempt-new", evaluations: [], agentReview: review, canManage: false, respond(call) {
+      if (call.pathname.endsWith("/evidence-requests")) return Response.json({ items: [request] });
+      if (call.pathname.endsWith("/history")) return Response.json({ items: [{ type: "received", actor_id: "owner", occurred_at: at, request, receipt: rawReceipt }] });
+      return Response.json({ error: { message: "unexpected" } }, { status: 404 });
+    } });
+    await screen.findByText("已提交，待复核");
+    await selectVerificationEvidence(user);
+    expect(screen.getByText("当前审查的匹配检查：商务与财务：质保期限，缺口已解决。")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "提交核验" })).toBeEnabled();
+  });
+
+  it.each([
+    ["an unfinished capability", "pending", "compatible"],
+    ["an unsupported capability relation", "completed", "insufficient"],
+  ] as const)("does not verify a resolved gap with %s", async (_caseName, capabilityStatus, relation) => {
+    const gap = { gap_id: "gap-1", domain: "commercial", capability_id: "warranty_months", mandatory: true, status: "resolved", reason_code: "", evidence_ids: ["doc-2"] };
+    const review: BusinessAgentReview = {
+      attempt_id: "attempt-new", status: "completed", rulepack: null, scope: null,
+      domains: [{ domain: "commercial", status: "completed", capabilities: [{ capability_id: "warranty_months", mandatory: true, status: capabilityStatus, relation, reason_code: "", evidence_ids: ["doc-2"], canonical_evaluation_ids: null }] }],
+      gaps: [gap], evidence: null, unresolved_gap_ids: [],
+    };
+    const request = { ...rawRequest("received", 2), source_evaluation: undefined,
+      source_gap: { ...gap, status: "unknown" }, verification_condition: "resolved" };
+    const { calls, user } = open({ runId: "run-new", attemptId: "attempt-new", evaluations: [], agentReview: review, canManage: false, respond(call) {
+      if (call.pathname.endsWith("/evidence-requests")) return Response.json({ items: [request] });
+      if (call.pathname.endsWith("/history")) return Response.json({ items: [{ type: "received", actor_id: "owner", occurred_at: at, request, receipt: rawReceipt }] });
+      return Response.json({ error: { message: "unexpected" } }, { status: 404 });
+    } });
+    await screen.findByText("已提交，待复核");
+    await selectVerificationEvidence(user);
+    expect(screen.getByRole("button", { name: "提交核验" })).toBeDisabled();
+    expect(calls.some((call) => call.pathname.endsWith("/verify"))).toBe(false);
+  });
+
+  it.each([
+    ["a frozen partial attempt", "partial", at, true],
+    ["a finished running attempt", "running", at, false],
+  ] as const)("applies the state gate to %s", async (_caseName, state, finishedAt, ready) => {
+    const workspace = makeWorkspace("run-new", "attempt-new", [compatible]);
+    const current = workspace.review_attempts!.attempt!;
+    const attempt = { ...current, state, finished_at: finishedAt };
+    workspace.review_attempts = { attempt, attempts: [attempt] };
+    const request = rawRequest("received", 2);
+    const { user } = open({ runId: "run-new", attemptId: "attempt-new", evaluations: [compatible], workspace, canManage: false, respond(call) {
+      if (call.pathname.endsWith("/evidence-requests")) return Response.json({ items: [request] });
+      if (call.pathname.endsWith("/history")) return Response.json({ items: [{ type: "received", actor_id: "owner", occurred_at: at, request, receipt: rawReceipt }] });
+      return Response.json({ error: { message: "unexpected" } }, { status: 404 });
+    } });
+    await screen.findByText("已提交，待复核");
+    await selectVerificationEvidence(user);
+    if (ready) expect(screen.getByRole("button", { name: "提交核验" })).toBeEnabled();
+    else expect(screen.getByRole("button", { name: "提交核验" })).toBeDisabled();
+  });
+
+  it("requires and sends business time for cloud services", async () => {
+    const cloudCase = { ...detail, scenario: "cloud_services" };
+    const { calls, user } = open({ caseDetail: cloudCase, respond(call) {
+      if (call.pathname.endsWith("/evidence-requests")) return Response.json({ items: [rawRequest("received", 2)] });
+      if (call.pathname.endsWith("/history")) return Response.json({ items: [] });
+      if (call.pathname.endsWith("/reviews") && call.method === "POST") return Response.json({ id: "run-next", attempt_id: "attempt-next" });
+      return Response.json({ error: { message: "unexpected" } }, { status: 404 });
+    } });
+    await screen.findByText("已提交，待复核");
+    const start = screen.getByRole("button", { name: "发起后续审查" });
+    expect(start).toBeDisabled();
+    fireEvent.change(screen.getByLabelText("审查业务时间（本地时间）"), { target: { value: "2026-11-02T10:30" } });
+    expect(start).toBeEnabled();
+    await user.click(start);
+    await waitFor(() => expect(screen.getByLabelText("当前位置")).toHaveTextContent("run-next"));
+    const call = calls.find((entry) => entry.pathname.endsWith("/reviews") && entry.method === "POST");
+    expect(JSON.parse(String(call?.init?.body))).toEqual({ business_at: new Date("2026-11-02T10:30").toISOString() });
+  });
+
+  it("does not require business time for a non-governed case", async () => {
+    const ordinaryCase = { ...detail, business_line: "SMB", scenario: "standard", contract_type: "service" };
+    const { calls, user } = open({ caseDetail: ordinaryCase, respond(call) {
+      if (call.pathname.endsWith("/evidence-requests")) return Response.json({ items: [rawRequest("received", 2)] });
+      if (call.pathname.endsWith("/history")) return Response.json({ items: [] });
+      if (call.pathname.endsWith("/reviews") && call.method === "POST") return Response.json({ id: "run-next", attempt_id: "attempt-next" });
+      return Response.json({ error: { message: "unexpected" } }, { status: 404 });
+    } });
+    await screen.findByText("已提交，待复核");
+    expect(screen.queryByLabelText("审查业务时间（本地时间）")).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "发起后续审查" }));
+    await waitFor(() => expect(screen.getByLabelText("当前位置")).toHaveTextContent("run-next"));
+    const call = calls.find((entry) => entry.pathname.endsWith("/reviews") && entry.method === "POST");
+    expect(JSON.parse(String(call?.init?.body))).toEqual({});
+  });
+
+  it.each([
+    ["without a frozen parsing ID", { ...document, parsed_document_id: null }],
+    ["without frozen text", { ...document, text: "" }],
+  ] as const)("does not offer frozen quote material %s", async (_caseName, frozenDocument) => {
+    const workspace = makeWorkspace("run-new", "attempt-new", [compatible]);
+    workspace.documents = [frozenDocument];
+    const request = rawRequest("received", 2);
+    const { calls, user } = open({ runId: "run-new", attemptId: "attempt-new", evaluations: [compatible], workspace, canManage: false, respond(call) {
+      if (call.pathname.endsWith("/evidence-requests")) return Response.json({ items: [request] });
+      if (call.pathname.endsWith("/history")) return Response.json({ items: [{ type: "received", actor_id: "owner", occurred_at: at, request, receipt: rawReceipt }] });
+      return Response.json({ error: { message: "unexpected" } }, { status: 404 });
+    } });
+    await screen.findByText("已提交，待复核");
+    await chooseActiveOption(user, screen.getByRole("combobox", { name: "选择提交回执" }), /补充合同.txt/);
+    expect(screen.getByText("当前审查未包含可引用的回执材料或答复原文。")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "提交核验" })).toBeDisabled();
+    expect(calls.some((call) => call.pathname.endsWith("/verify"))).toBe(false);
+  });
+
+  it.each([[4096, true], [4097, false]] as const)("enforces the frozen quotation limit at %s characters", async (length, ready) => {
+    const longDocument = { ...document, text: "x".repeat(length) };
+    const workspace = makeWorkspace("run-new", "attempt-new", [compatible]);
+    workspace.documents = [longDocument];
+    const request = rawRequest("received", 2);
+    const { user } = open({ runId: "run-new", attemptId: "attempt-new", evaluations: [compatible], workspace, canManage: false, respond(call) {
+      if (call.pathname.endsWith("/evidence-requests")) return Response.json({ items: [request] });
+      if (call.pathname.endsWith("/history")) return Response.json({ items: [{ type: "received", actor_id: "owner", occurred_at: at, request, receipt: rawReceipt }] });
+      return Response.json({ error: { message: "unexpected" } }, { status: 404 });
+    } });
+    await screen.findByText("已提交，待复核");
+    await chooseActiveOption(user, screen.getByRole("combobox", { name: "选择提交回执" }), /补充合同.txt/);
+    await chooseActiveOption(user, screen.getByRole("combobox", { name: "选择本次审查材料" }), /补充合同.txt/);
+    const original = screen.getByLabelText("本次审查使用的原文") as HTMLTextAreaElement;
+    await user.click(original);
+    original.setSelectionRange(0, length);
+    fireEvent.select(original);
+    await user.type(screen.getByLabelText("核验理由"), "核对合同");
+    const submit = screen.getByRole("button", { name: "提交核验" });
+    if (ready) expect(submit).toBeEnabled();
+    else expect(submit).toBeDisabled();
   });
 });
