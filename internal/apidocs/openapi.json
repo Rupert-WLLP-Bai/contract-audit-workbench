@@ -1266,6 +1266,16 @@
               "type": "string",
               "minLength": 1
             }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "description": "新客户端必传；同一案件、身份和内容的重试返回原生成记录。",
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            }
           }
         ],
         "requestBody": {
@@ -1279,6 +1289,16 @@
           }
         },
         "responses": {
+          "200": {
+            "description": "幂等重放",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenerationRecord"
+                }
+              }
+            }
+          },
           "201": {
             "description": "已生成",
             "content": {
@@ -2390,18 +2410,11 @@
           "材料"
         ],
         "summary": "登记原件版本",
-        "description": "admin/clerk 且案件可见。每次上传记录新版本；同内容原件可以共享 blob。最多 32 MiB，完整 multipart 请求上限 33 MiB。TXT/Markdown 有文本解析，PNG/JPEG 依赖配置的图片模型；PDF/DOCX 留存不代表已解析。",
+        "description": "admin/clerk 且案件可见。缺省 intent=add；只有明确 intent=replace 和 CAS 目标才替换实体当前文档。最多 32 MiB，完整 multipart 请求上限 33 MiB。新客户端发送 Idempotency-Key；旧客户端缺少时仍按新增处理。",
         "responses": {
-          "201": {
-            "description": "成功",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ID"
-                }
-              }
-            }
-          },
+          "201": {"description":"成功","content":{"application/json":{"schema":{"type":"object","properties":{"id":{"type":"string"},"material_id":{"type":"string"},"version":{"type":"integer"},"replayed":{"type":"boolean"}},"required":["id","material_id","version","replayed"],"additionalProperties":false}}}},
+          "200": {"description":"幂等重放返回原文档和材料身份"},
+          "409": {"description":"CAS冲突、主合同已存在或幂等键负载冲突"},
           "401": {
             "$ref": "#/components/responses/Error401"
           },
@@ -2434,6 +2447,7 @@
               "minLength": 1
             }
           }
+          ,{"name":"Idempotency-Key","in":"header","required":false,"description":"新客户端必传；旧客户端缺省兼容新增语义。","schema":{"type":"string","minLength":1,"maxLength":200}}
         ],
         "requestBody": {
           "required": true,
@@ -2459,12 +2473,25 @@
                     "type": "string",
                     "format": "binary",
                     "description": "单个原件，最大 32 MiB。"
-                  }
+                  },
+                  "intent": {"type":"string","enum":["add","replace"],"default":"add"},
+                  "material_id": {"type":"string","description":"replace时必填，目标材料实体身份"},
+                  "replaces_document_id": {"type":"string","description":"replace时必填，目标实体当前文档CAS身份"},
+                  "purpose": {"type":"string","enum":["supplement","acceptance","invoice","correspondence","other"],"description":"仅role=attachment可选；缺省other"}
                 }
               }
             }
           }
         }
+      }
+    },
+    "/api/cases/{caseID}/materials/selection": {
+      "post": {
+        "operationId":"confirmMaterialSelection","tags":["材料"],"summary":"确认案件材料集合",
+        "description":"在授权案件内通过version CAS选择当前材料文档；更新不改写历史审查快照。",
+        "parameters":[{"name":"caseID","in":"path","required":true,"schema":{"type":"string","minLength":1}}],
+        "requestBody":{"required":true,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/MaterialSelectionInput"}}}},
+        "responses":{"200":{"description":"更新后的材料集合","content":{"application/json":{"schema":{"$ref":"#/components/schemas/MaterialSelectionProjection"}}}},"403":{"$ref":"#/components/responses/Error403"},"404":{"$ref":"#/components/responses/Error404"},"409":{"description":"材料集合版本冲突或主合同链冲突"}}
       }
     },
     "/api/cases/{caseID}/documents/{docID}/original": {
@@ -5365,6 +5392,19 @@
             "additionalProperties": {
               "type": "string"
             }
+          },
+          "intent": {
+            "type": "string",
+            "enum": ["add", "replace"],
+            "default": "add"
+          },
+          "material_id": {
+            "type": "string",
+            "description": "intent=replace 时必填"
+          },
+          "replaces_document_id": {
+            "type": "string",
+            "description": "intent=replace 时的当前版本 CAS 目标"
           }
         },
         "required": [
@@ -5382,6 +5422,16 @@
           "document_id": {
             "type": "string"
           },
+          "material_id": {
+            "type": "string"
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "replayed": {
+            "type": "boolean"
+          },
           "template_id": {
             "type": "string"
           },
@@ -5398,6 +5448,9 @@
         "required": [
           "id",
           "document_id",
+          "material_id",
+          "version",
+          "replayed",
           "template_id",
           "template_version",
           "digest",
@@ -5911,6 +5964,13 @@
               },
               "retryable": {
                 "type": "boolean"
+              },
+              "next_actions": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "enum": ["separate_case", "explicit_replace"]
+                }
               }
             },
             "required": [
@@ -6391,6 +6451,9 @@
           "id": {
             "type": "string"
           },
+          "materials": {"type":"array","items":{"$ref":"#/components/schemas/MaterialProjection"}},
+          "material_versions": {"type":"array","items":{"$ref":"#/components/schemas/MaterialVersionProjection"}},
+          "material_selection": {"$ref":"#/components/schemas/MaterialSelectionProjection"},
           "business_line": {
             "type": "string"
           },
@@ -6684,6 +6747,10 @@
         ],
         "additionalProperties": false
       },
+      "MaterialProjection": {"type":"object","properties":{"material_id":{"type":"string"},"role":{"type":"string","enum":["procurement","award","draft_contract","attachment"]},"purpose":{"type":"string","enum":["primary_contract","supplement","procurement","award","acceptance","invoice","correspondence","other"]},"legacy_status":{"type":"string","enum":["native","pending_confirmation","confirmed"]},"legacy_selected":{"type":"boolean"},"selected":{"type":"boolean"},"current_document_id":{"type":"string"},"current_version":{"type":"integer"}},"required":["material_id","role","purpose","legacy_status","legacy_selected","selected","current_document_id","current_version"],"additionalProperties":false},
+      "MaterialSelectionInput": {"type":"object","properties":{"version":{"type":"integer","minimum":1},"document_ids":{"type":"array","items":{"type":"string","minLength":1}}},"required":["version","document_ids"],"additionalProperties":false},
+      "MaterialVersionProjection": {"type":"object","properties":{"material_id":{"type":"string"},"version":{"type":"integer"},"document_id":{"type":"string"},"previous_document_id":{"type":["string","null"]},"created_at":{"type":"string","format":"date-time"}},"required":["material_id","version","document_id","previous_document_id","created_at"],"additionalProperties":false},
+      "MaterialSelectionProjection": {"type":"object","properties":{"version":{"type":"integer"},"status":{"type":"string","enum":["pending_confirmation","confirmed","not_applicable"]},"document_ids":{"type":"array","items":{"type":"string"}},"candidate_document_ids":{"type":"array","description":"仅pending_confirmation时提供的服务端候选；不能视为已确认材料。","items":{"type":"string"}},"primary_material_id":{"type":["string","null"]}},"required":["version","status","document_ids","candidate_document_ids","primary_material_id"],"additionalProperties":false},
       "Finding": {
         "type": "object",
         "properties": {

@@ -104,6 +104,7 @@ func Handler(st *store.Store, opt Options) http.Handler {
 	mux.HandleFunc("GET /api/cases/{caseID}", h.getCase)
 	mux.HandleFunc("POST /api/cases/{caseID}/members", h.addMember)
 	mux.HandleFunc("POST /api/cases/{caseID}/documents", h.upload)
+	mux.HandleFunc("POST /api/cases/{caseID}/materials/selection", h.confirmMaterialSelection)
 	mux.HandleFunc("GET /api/cases/{caseID}/documents/{docID}/original", h.original)
 	mux.HandleFunc("POST /api/cases/{caseID}/documents/{docID}/parse", h.reparse)
 	mux.HandleFunc("POST /api/cases/{caseID}/object-bindings", h.createObjectBinding)
@@ -365,19 +366,46 @@ func (h *handler) upload(w http.ResponseWriter, r *http.Request) {
 	}
 	media := http.DetectContentType(body)
 	caseID := r.PathValue("caseID")
-	var id string
+	var result store.DocumentUploadResult
 	err = documentservice.WithPublicParse(r.Context(), func(ctx context.Context) (string, error) {
 		return h.store.DocumentUploadKind(ctx, user, caseID, header.Filename, media)
 	}, func(ctx context.Context) error {
 		var err error
-		id, err = h.store.AddDocument(ctx, user, caseID, r.FormValue("role"), header.Filename, media, body)
+		options := store.MaterialUploadOptions{Intent: r.FormValue("intent"), MaterialID: r.FormValue("material_id"), ReplacesDocumentID: r.FormValue("replaces_document_id"), Purpose: r.FormValue("purpose"), IdempotencyKey: r.Header.Get("Idempotency-Key")}
+		result, err = h.store.UploadMaterial(ctx, user, caseID, r.FormValue("role"), header.Filename, media, body, options)
 		return err
 	})
 	if err != nil {
 		writeErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusCreated, map[string]string{"id": id})
+	status := http.StatusCreated
+	if result.Replayed {
+		status = http.StatusOK
+	}
+	writeJSON(w, status, result)
+}
+
+func (h *handler) confirmMaterialSelection(w http.ResponseWriter, r *http.Request) {
+	user, ok := h.actor(w, r)
+	if !ok {
+		return
+	}
+	var body store.MaterialSelectionInput
+	if err := readJSON(w, r, &body); err != nil {
+		writeErr(w, err)
+		return
+	}
+	if err := h.store.ConfirmMaterialSelection(r.Context(), user, r.PathValue("caseID"), body.Version, body.DocumentIDs); err != nil {
+		writeErr(w, err)
+		return
+	}
+	detail, err := h.store.GetCase(user, r.PathValue("caseID"))
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, detail.MaterialSelection)
 }
 
 func (h *handler) original(w http.ResponseWriter, r *http.Request) {
@@ -721,9 +749,11 @@ func writeJSON(w http.ResponseWriter, status int, body any) {
 func writeErr(w http.ResponseWriter, err error) {
 	var fe *fault.Error
 	if errors.As(err, &fe) {
-		writeJSON(w, fe.Status, map[string]any{
-			"error": map[string]any{"code": fe.Code, "message": fe.Message, "retryable": fe.Retryable},
-		})
+		body := map[string]any{"code": fe.Code, "message": fe.Message, "retryable": fe.Retryable}
+		if len(fe.NextActions) > 0 {
+			body["next_actions"] = fe.NextActions
+		}
+		writeJSON(w, fe.Status, map[string]any{"error": body})
 		return
 	}
 	log.Printf("request failed: %v", err)

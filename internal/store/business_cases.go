@@ -1,8 +1,11 @@
 package store
 
 import (
+	"bytes"
 	"context"
+	"errors"
 	"strings"
+	"time"
 
 	"contractaudit/internal/access"
 	"contractaudit/internal/accounts"
@@ -165,14 +168,51 @@ func appendBusinessCaseActivity(st *state, item Case, businessLine, activityID, 
 // Generate carries the authenticated request deadline through original
 // storage and initial text parsing.
 func (s *Store) Generate(ctx context.Context, user accounts.User, caseID, templateID string, fields map[string]string) (GenerationRecord, error) {
+	return s.GenerateWithOptions(ctx, user, caseID, templateID, fields, MaterialUploadOptions{})
+}
+
+func (s *Store) GenerateWithOptions(ctx context.Context, user accounts.User, caseID, templateID string, fields map[string]string, options MaterialUploadOptions) (GenerationRecord, error) {
 	currentUser, caseItem, body, err := s.prepareBusinessGeneration(ctx, user, caseID, templateID, fields)
 	if err != nil {
 		return GenerationRecord{}, err
 	}
-	prepared, err := s.buildBusinessGeneration(ctx, caseItem, caseID, templateID, body)
-	if err != nil {
-		return GenerationRecord{}, err
+	if err := validateMaterialUploadOptions(options); err != nil {
+		return GenerationRecord{}, fault.Invalid(err.Error())
 	}
+	if options.Purpose != "" && options.Purpose != "primary_contract" {
+		return GenerationRecord{}, fault.Invalid("生成合同用途固定为主合同")
+	}
+	options.IdempotencyKey = strings.TrimSpace(options.IdempotencyKey)
+	if len(options.IdempotencyKey) > 200 || strings.ContainsAny(options.IdempotencyKey, "\r\n\x00") {
+		return GenerationRecord{}, fault.Invalid("Idempotency-Key无效")
+	}
+	requestHash := [32]byte{}
+	replayCandidate := false
+	if options.IdempotencyKey != "" {
+		filename, _ := businessDraftIdentity(templateID)
+		requestHash = uploadRequestHash("generation", currentUser.ID, caseID, "draft_contract", "primary_contract", filename, "text/plain", body, options)
+		priorState, err := s.snapshotScoped(ctx, userScope(currentUser))
+		if err != nil {
+			return GenerationRecord{}, err
+		}
+		for _, prior := range priorState.UploadIdempotency {
+			if prior.CaseID == caseID && prior.ActorID == currentUser.ID && prior.Key == options.IdempotencyKey {
+				if !bytes.Equal(prior.RequestHash, requestHash[:]) {
+					return GenerationRecord{}, fault.Conflict("Idempotency-Key已用于不同生成内容")
+				}
+				replayCandidate = true
+			}
+		}
+	}
+	prepared := preparedBusinessGeneration{}
+	if !replayCandidate {
+		prepared, err = s.buildBusinessGeneration(ctx, caseItem, caseID, templateID, body)
+		if err != nil {
+			return GenerationRecord{}, err
+		}
+		prepared.requestHash = requestHash
+	}
+	var result GenerationRecord
 	persistCtx := ctx
 	persistCancel := func() {}
 	if ctx.Err() != nil {
@@ -180,18 +220,63 @@ func (s *Store) Generate(ctx context.Context, user accounts.User, caseID, templa
 	}
 	defer persistCancel()
 	if err := s.scopedCaseMutation(persistCtx, currentUser, caseID, func(next *state) error {
-		return s.persistBusinessGeneration(next, currentUser, caseID, prepared)
+		currentCase, err := s.requireBusinessWrite(next, currentUser, caseID)
+		if err != nil {
+			return err
+		}
+		if err := allowBusinessGeneration(currentUser, currentCase); err != nil {
+			return err
+		}
+		if options.IdempotencyKey != "" {
+			for _, prior := range next.UploadIdempotency {
+				if prior.CaseID == caseID && prior.ActorID == currentUser.ID && prior.Key == options.IdempotencyKey {
+					if !bytes.Equal(prior.RequestHash, requestHash[:]) {
+						return fault.Conflict("Idempotency-Key已用于不同生成内容")
+					}
+					for _, generation := range next.Generations {
+						if generation.CaseID == caseID && generation.Record.DocumentID == prior.DocumentID {
+							result = generationRecordWithMaterial(next, generation.Record)
+							result.Replayed = true
+							return nil
+						}
+					}
+					return errors.New("generation idempotency record has no generation")
+				}
+			}
+		}
+		if err := s.persistBusinessGeneration(next, currentUser, caseID, prepared, options); err != nil {
+			return err
+		}
+		for _, generation := range next.Generations {
+			if generation.CaseID == caseID && generation.Record.DocumentID == prepared.document.ID {
+				result = generationRecordWithMaterial(next, generation.Record)
+				return nil
+			}
+		}
+		return errors.New("generated document was not recorded")
 	}); err != nil {
 		return GenerationRecord{}, err
 	}
-	return prepared.record, nil
+	return result, nil
+}
+
+func generationRecordWithMaterial(st *state, record GenerationRecord) GenerationRecord {
+	for _, version := range st.MaterialVersions {
+		if version.DocumentID == record.DocumentID {
+			record.MaterialID = version.MaterialID
+			record.Version = version.Version
+			break
+		}
+	}
+	return record
 }
 
 type preparedBusinessGeneration struct {
-	document Document
-	parsed   ParsedDocument
-	record   GenerationRecord
-	now      string
+	document    Document
+	parsed      ParsedDocument
+	record      GenerationRecord
+	now         string
+	requestHash [32]byte
 }
 
 func (s *Store) prepareBusinessGeneration(ctx context.Context, user accounts.User, caseID, templateID string, fields map[string]string) (accounts.User, Case, []byte, error) {
@@ -278,7 +363,7 @@ func (s *Store) parseBusinessDraft(ctx context.Context, document Document) (Pars
 	return makeParsedWithSelection(document, interpreted, selection)
 }
 
-func (s *Store) persistBusinessGeneration(next *state, user accounts.User, caseID string, prepared preparedBusinessGeneration) error {
+func (s *Store) persistBusinessGeneration(next *state, user accounts.User, caseID string, prepared preparedBusinessGeneration, options MaterialUploadOptions) error {
 	currentCase, err := s.requireBusinessWrite(next, user, caseID)
 	if err != nil {
 		return err
@@ -286,8 +371,15 @@ func (s *Store) persistBusinessGeneration(next *state, user accounts.User, caseI
 	if err := allowBusinessGeneration(user, currentCase); err != nil {
 		return err
 	}
-	if err := allowDraftReplacement(next, caseID); err != nil {
+	if err := persistGeneratedMaterial(next, currentCase, caseID, prepared, options, user.ID); err != nil {
 		return err
+	}
+	for _, version := range next.MaterialVersions {
+		if version.CaseID == caseID && version.DocumentID == prepared.document.ID {
+			prepared.record.MaterialID = version.MaterialID
+			prepared.record.Version = version.Version
+			break
+		}
 	}
 	appendBusinessGenerationRecords(next, currentCase, caseID, prepared)
 	activityID, err := newID("act_")
@@ -305,23 +397,93 @@ func allowBusinessGeneration(user accounts.User, item Case) error {
 	return requireCaseAction(item, user, access.Review)
 }
 
-func allowDraftReplacement(next *state, caseID string) error {
-	current := currentDocuments(next.documents(caseID))
-	for _, item := range current {
-		if item.Role == "draft_contract" {
-			return nil
-		}
-	}
-	if len(current) >= 4 {
-		return fault.Invalid("每个案件最多登记 4 份材料")
-	}
-	return nil
-}
-
 func appendBusinessGenerationRecords(next *state, item Case, caseID string, prepared preparedBusinessGeneration) {
 	next.Documents = append(next.Documents, prepared.document)
 	next.ParsedDocuments = append(next.ParsedDocuments, prepared.parsed)
 	next.Generations = append(next.Generations, generationRecord{
 		Record: prepared.record, TenantID: item.TenantID, OrgID: item.OwnerOrgID, CaseID: caseID,
 	})
+}
+
+func persistGeneratedMaterial(next *state, item Case, caseID string, prepared preparedBusinessGeneration, options MaterialUploadOptions, actorID string) error {
+	intent := options.Intent
+	if intent == "" {
+		intent = "add"
+	}
+	var material *MaterialEntity
+	previous := ""
+	if intent == "replace" {
+		for i := range next.Materials {
+			if next.Materials[i].ID == options.MaterialID && next.Materials[i].CaseID == caseID && next.Materials[i].TenantID == item.TenantID && next.Materials[i].OrgID == item.OwnerOrgID {
+				material = &next.Materials[i]
+				break
+			}
+		}
+		if material == nil {
+			return fault.NotFound("没有找到对应材料")
+		}
+		if material.CurrentDocumentID != options.ReplacesDocumentID {
+			return fault.Conflict("材料当前版本已变化，请刷新后重试")
+		}
+		if material.Role != "draft_contract" || material.Purpose != "primary_contract" {
+			return fault.Invalid("生成合同只能替换主合同材料")
+		}
+		if err := validatePrimaryMaterialMutation(next, caseID, intent, material); err != nil {
+			return err
+		}
+		previous = material.CurrentDocumentID
+	} else {
+		if len(next.Materials) >= maxMaterialsPerCase {
+			return fault.TooLarge("案件材料数量达到上限")
+		}
+		if err := validatePrimaryMaterialMutation(next, caseID, intent, nil); err != nil {
+			return err
+		}
+		id, err := newID("mat_")
+		if err != nil {
+			return err
+		}
+		material = &MaterialEntity{TenantID: item.TenantID, OrgID: item.OwnerOrgID, CaseID: caseID, ID: id, Role: "draft_contract", Purpose: "primary_contract", LegacyStatus: "native", CreatedBy: actorID, CreatedAt: time.Now().UTC()}
+		next.Materials = append(next.Materials, *material)
+		material = &next.Materials[len(next.Materials)-1]
+	}
+	material.CurrentVersion++
+	material.CurrentDocumentID = prepared.document.ID
+	created := time.Now().UTC()
+	next.MaterialVersions = append(next.MaterialVersions, MaterialVersion{TenantID: item.TenantID, OrgID: item.OwnerOrgID, CaseID: caseID, MaterialID: material.ID, Version: material.CurrentVersion, DocumentID: prepared.document.ID, PreviousDocument: previous, CreatedBy: actorID, CreatedAt: created})
+	if options.IdempotencyKey != "" {
+		next.UploadIdempotency = append(next.UploadIdempotency, UploadIdempotencyRecord{TenantID: item.TenantID, OrgID: item.OwnerOrgID, CaseID: caseID, ActorID: actorID, Key: options.IdempotencyKey, RequestHash: append([]byte(nil), prepared.requestHash[:]...), DocumentID: prepared.document.ID, MaterialID: material.ID, CreatedAt: created})
+	}
+	prepared.record.MaterialID = material.ID
+	prepared.record.Version = material.CurrentVersion
+	for i := range next.MaterialChains {
+		chain := &next.MaterialChains[i]
+		if chain.TenantID != item.TenantID || chain.OrgID != item.OwnerOrgID || chain.CaseID != caseID {
+			continue
+		}
+		if intent == "replace" {
+			ids := chain.SelectedDocumentIDs[:0]
+			for _, id := range chain.SelectedDocumentIDs {
+				if id != previous {
+					ids = append(ids, id)
+				}
+			}
+			chain.SelectedDocumentIDs = ids
+		}
+		chain.SelectedDocumentIDs = append(chain.SelectedDocumentIDs, prepared.document.ID)
+		chain.PrimaryMaterialID = &material.ID
+		chain.SelectionVersion++
+		chain.UpdatedAt = created
+		if material.LegacySelected {
+			material.LegacyStatus = "confirmed"
+			chain.LegacySelectionStatus = "confirmed"
+		}
+		if chain.LegacySelectionStatus == "not_applicable" {
+			chain.LegacySelectionStatus = "confirmed"
+		}
+		return nil
+	}
+	status := "confirmed"
+	next.MaterialChains = append(next.MaterialChains, CaseMaterialChain{TenantID: item.TenantID, OrgID: item.OwnerOrgID, CaseID: caseID, PrimaryMaterialID: &material.ID, LegacySelectionStatus: status, SelectedDocumentIDs: []string{prepared.document.ID}, SelectionVersion: 1, CreatedAt: created, UpdatedAt: created})
+	return nil
 }

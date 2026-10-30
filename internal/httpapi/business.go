@@ -24,8 +24,11 @@ func (h *handler) generate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		TemplateID string            `json:"template_id"`
-		Fields     map[string]string `json:"fields"`
+		TemplateID         string            `json:"template_id"`
+		Fields             map[string]string `json:"fields"`
+		Intent             string            `json:"intent,omitempty"`
+		MaterialID         string            `json:"material_id,omitempty"`
+		ReplacesDocumentID string            `json:"replaces_document_id,omitempty"`
 	}
 	if err := readJSON(w, r, &body); err != nil {
 		writeErr(w, err)
@@ -37,14 +40,18 @@ func (h *handler) generate(w http.ResponseWriter, r *http.Request) {
 		return h.store.GenerationParseKind(ctx, user, caseID)
 	}, func(ctx context.Context) error {
 		var err error
-		item, err = h.store.Generate(ctx, user, caseID, body.TemplateID, body.Fields)
+		item, err = h.store.GenerateWithOptions(ctx, user, caseID, body.TemplateID, body.Fields, store.MaterialUploadOptions{Intent: body.Intent, MaterialID: body.MaterialID, ReplacesDocumentID: body.ReplacesDocumentID, IdempotencyKey: r.Header.Get("Idempotency-Key")})
 		return err
 	})
 	if err != nil {
 		writeErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusCreated, item)
+	status := http.StatusCreated
+	if item.Replayed {
+		status = http.StatusOK
+	}
+	writeJSON(w, status, item)
 }
 
 func (h *handler) createRemediation(w http.ResponseWriter, r *http.Request) {

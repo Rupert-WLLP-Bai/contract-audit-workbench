@@ -551,6 +551,43 @@ func TestSubmitRemediationPinsExactDraftAndVersion(t *testing.T) {
 // insertLegacyTelecomReportAttempt reconstructs a pending pre-governance run.
 // Its empty policy and RulePack identities are inserted at creation; no frozen
 // snapshot or input is rewritten to simulate historical evidence.
+func TestGenerationIdempotencySeparatesUploadOperation(t *testing.T) {
+	ctx := context.Background()
+	st, err := OpenTest(t.TempDir(), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	admin, ok := accounts.ByID("demo-admin")
+	if !ok {
+		t.Fatal("demo admin missing")
+	}
+	caseID, err := st.CreateCaseWithBusiness(admin, "生成幂等操作隔离", "service", "ENT", "telecom_dedicated_line")
+	if err != nil {
+		t.Fatal(err)
+	}
+	fields := validTelecomTemplateFields()
+	options := MaterialUploadOptions{IdempotencyKey: "shared-operation-key"}
+	first, err := st.GenerateWithOptions(ctx, admin, caseID, telecomTemplateID, fields, options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	replay, err := st.GenerateWithOptions(ctx, admin, caseID, telecomTemplateID, fields, options)
+	if err != nil || !replay.Replayed || replay.DocumentID != first.DocumentID || replay.MaterialID != first.MaterialID || replay.Version != first.Version {
+		t.Fatalf("generation retry did not return its original result: first=%+v replay=%+v err=%v", first, replay, err)
+	}
+	filename, _ := businessDraftIdentity(telecomTemplateID)
+	body, err := renderBusinessTemplate(telecomTemplateID, fields)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = st.UploadMaterial(ctx, admin, caseID, "draft_contract", filename, "text/plain", body, options)
+	var apiErr *fault.Error
+	if !errors.As(err, &apiErr) || apiErr.Status != 409 || apiErr.Code != "conflict" {
+		t.Fatalf("cross-operation key reuse should return 409 instead of generation replay failure: %v", err)
+	}
+}
+
 func insertLegacyTelecomReportAttempt(t *testing.T, st *Store, user accounts.User, caseID string) string {
 	t.Helper()
 	ctx := context.Background()

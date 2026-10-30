@@ -575,7 +575,7 @@ func TestRevisionDoesNotResolveBeforeRulePublication(t *testing.T) {
 	if len(old.Findings) == 0 {
 		t.Fatal("fixture has no previous conflict")
 	}
-	if _, err := st.AddDocument(context.Background(), admin, caseID, "draft_contract", "revised.txt", "text/plain", []byte("拟签合同约定质保36个月。合同总价为100万元。")); err != nil {
+	if _, err := replaceCurrentPrimaryForTest(t, st, admin, caseID, "revised.txt", []byte("拟签合同约定质保36个月。合同总价为100万元。")); err != nil {
 		t.Fatal(err)
 	}
 	runID, err := newID("run_")

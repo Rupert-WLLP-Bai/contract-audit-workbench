@@ -53,6 +53,7 @@ func TestOperationOwnedByRouteOwnershipMatrix(t *testing.T) {
 		{"relation-create", "/api/cases/c/relations", "core", []string{http.MethodPost}},
 		{"relation-delete", "/api/cases/c/relations/r", "core", []string{http.MethodDelete}},
 		{"document-upload", "/api/cases/c/documents", "document", []string{http.MethodPost}},
+		{"material-selection", "/api/cases/c/materials/selection", "document", []string{http.MethodPost}},
 		{"document-original", "/api/cases/c/documents/d/original", "document", []string{http.MethodGet}},
 		{"document-parse", "/api/cases/c/documents/d/parse", "document", []string{http.MethodPost}},
 		{"object-binding", "/api/cases/c/object-bindings", "core", []string{http.MethodPost}},
@@ -144,6 +145,9 @@ func TestOperationOwnedByFailsClosedForUnknownRolesMethodsAndPathShapes(t *testi
 		{"core", http.MethodGet, "/api/cases/c/unknown"},
 		{"execution", http.MethodPost, "/api/cases/c/reviews/r/diagnostics"},
 		{"document", http.MethodGet, "/api/cases/c/documents/d/original/extra"},
+		{"core", http.MethodPost, "/api/cases/c/materials/selection"},
+		{"document", http.MethodPut, "/api/cases/c/materials/selection"},
+		{"document", http.MethodPost, "/api/cases/c/materials/unknown"},
 		{"core", http.MethodGet, "/api/%2563ases/c"},
 		{"core", http.MethodGet, "/api/cases/c/"},
 	} {

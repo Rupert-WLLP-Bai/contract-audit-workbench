@@ -76,34 +76,38 @@ func (s *Store) ReadOnly() bool {
 func (s *Store) HasDatabase() bool { return s != nil && s.pool != nil }
 
 type state struct {
-	Sessions               []session               `json:"sessions"`
-	Cases                  []Case                  `json:"cases"`
-	Documents              []Document              `json:"documents"`
-	ParsedDocuments        []ParsedDocument        `json:"parsed_documents"`
-	Runs                   []Run                   `json:"runs"`
-	Attempts               []Attempt               `json:"attempts"`
-	AttemptInputs          []AttemptInput          `json:"attempt_inputs"`
-	AttemptParseSelections []AttemptParseSelection `json:"attempt_parse_selections"`
-	ExecutionEvents        []ExecutionEvent        `json:"execution_events"`
-	Findings               []Finding               `json:"findings"`
-	Evaluations            []ConstraintEval        `json:"evaluations"`
-	Decisions              []Decision              `json:"decisions"`
-	Events                 []Event                 `json:"events"`
-	Activity               []Activity              `json:"activity"`
-	Idempotency            []Idem                  `json:"idempotency"`
-	Snapshots              []RunSnapshot           `json:"snapshots"`
-	Audits                 []AuditRecord           `json:"audits"`
-	Jobs                   []Job                   `json:"jobs"`
-	Outbox                 []OutboxRecord          `json:"outbox"`
-	Generations            []generationRecord      `json:"generations"`
-	Remediations           []remediationRecord     `json:"remediations"`
-	Reports                []frozenReport          `json:"reports"`
-	Archives               []archiveRecord         `json:"archives"`
-	Profiles               []caseProfileRecord     `json:"profiles"`
-	Tasks                  []workbenchTaskRecord   `json:"tasks"`
-	Relations              []caseRelationRecord    `json:"relations"`
-	Knowledge              []knowledgeRecord       `json:"knowledge"`
-	WorkbenchAudit         []workbenchAuditRecord  `json:"workbench_audit"`
+	Sessions               []session                 `json:"sessions"`
+	Cases                  []Case                    `json:"cases"`
+	Documents              []Document                `json:"documents"`
+	Materials              []MaterialEntity          `json:"materials"`
+	MaterialVersions       []MaterialVersion         `json:"material_versions"`
+	MaterialChains         []CaseMaterialChain       `json:"material_chains"`
+	UploadIdempotency      []UploadIdempotencyRecord `json:"upload_idempotency"`
+	ParsedDocuments        []ParsedDocument          `json:"parsed_documents"`
+	Runs                   []Run                     `json:"runs"`
+	Attempts               []Attempt                 `json:"attempts"`
+	AttemptInputs          []AttemptInput            `json:"attempt_inputs"`
+	AttemptParseSelections []AttemptParseSelection   `json:"attempt_parse_selections"`
+	ExecutionEvents        []ExecutionEvent          `json:"execution_events"`
+	Findings               []Finding                 `json:"findings"`
+	Evaluations            []ConstraintEval          `json:"evaluations"`
+	Decisions              []Decision                `json:"decisions"`
+	Events                 []Event                   `json:"events"`
+	Activity               []Activity                `json:"activity"`
+	Idempotency            []Idem                    `json:"idempotency"`
+	Snapshots              []RunSnapshot             `json:"snapshots"`
+	Audits                 []AuditRecord             `json:"audits"`
+	Jobs                   []Job                     `json:"jobs"`
+	Outbox                 []OutboxRecord            `json:"outbox"`
+	Generations            []generationRecord        `json:"generations"`
+	Remediations           []remediationRecord       `json:"remediations"`
+	Reports                []frozenReport            `json:"reports"`
+	Archives               []archiveRecord           `json:"archives"`
+	Profiles               []caseProfileRecord       `json:"profiles"`
+	Tasks                  []workbenchTaskRecord     `json:"tasks"`
+	Relations              []caseRelationRecord      `json:"relations"`
+	Knowledge              []knowledgeRecord         `json:"knowledge"`
+	WorkbenchAudit         []workbenchAuditRecord    `json:"workbench_audit"`
 }
 
 // AttemptParseSelection pins parser identity and a reserved artifact ID at acceptance.
@@ -123,25 +127,33 @@ type AttemptParseSelection struct {
 
 // FrozenDocument stores parser output bound to an immutable original and parse identity.
 type FrozenDocument struct {
-	Document             Document `json:"document"`
-	Ready                bool     `json:"ready"`
-	FromOCR              bool     `json:"from_ocr"`
-	ParseError           string   `json:"parse_error"`
-	Text                 string   `json:"text"`
-	IR                   docir.IR `json:"ir"`
-	OriginalHash         string   `json:"original_hash"`
-	NormalizedHash       *string  `json:"normalized_hash"`
-	ParserRef            string   `json:"parser_ref"`
-	ParsedDocumentID     string   `json:"parsed_document_id,omitempty"`
-	SelectionOrder       int64    `json:"selection_order,omitempty"`
-	ParsedArtifactDigest string   `json:"parsed_artifact_digest,omitempty"`
-	ConfigHash           string   `json:"config_hash,omitempty"`
-	ParserID             string   `json:"parser_id,omitempty"`
-	ParserVersion        string   `json:"parser_version,omitempty"`
-	NormalizationVersion string   `json:"normalization_version,omitempty"`
-	IRDigest             string   `json:"ir_digest,omitempty"`
-	ParsedCreatedAt      string   `json:"parsed_created_at,omitempty"`
-	ParsedStatus         string   `json:"parsed_status,omitempty"`
+	Document             Document                 `json:"document"`
+	Material             *FrozenMaterialSelection `json:"material,omitempty"`
+	Ready                bool                     `json:"ready"`
+	FromOCR              bool                     `json:"from_ocr"`
+	ParseError           string                   `json:"parse_error"`
+	Text                 string                   `json:"text"`
+	IR                   docir.IR                 `json:"ir"`
+	OriginalHash         string                   `json:"original_hash"`
+	NormalizedHash       *string                  `json:"normalized_hash"`
+	ParserRef            string                   `json:"parser_ref"`
+	ParsedDocumentID     string                   `json:"parsed_document_id,omitempty"`
+	SelectionOrder       int64                    `json:"selection_order,omitempty"`
+	ParsedArtifactDigest string                   `json:"parsed_artifact_digest,omitempty"`
+	ConfigHash           string                   `json:"config_hash,omitempty"`
+	ParserID             string                   `json:"parser_id,omitempty"`
+	ParserVersion        string                   `json:"parser_version,omitempty"`
+	NormalizationVersion string                   `json:"normalization_version,omitempty"`
+	IRDigest             string                   `json:"ir_digest,omitempty"`
+	ParsedCreatedAt      string                   `json:"parsed_created_at,omitempty"`
+	ParsedStatus         string                   `json:"parsed_status,omitempty"`
+}
+
+type FrozenMaterialSelection struct {
+	MaterialID string `json:"material_id"`
+	Role       string `json:"role"`
+	Purpose    string `json:"purpose"`
+	Version    int    `json:"version"`
 }
 
 // AttemptInput is the immutable input record reused by retries.

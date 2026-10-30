@@ -390,6 +390,7 @@ var schemaStatements = []string{
 	`CREATE UNIQUE INDEX IF NOT EXISTS sessions_token_identity ON sessions (tenant_id, org_id, token)`,
 	`CREATE UNIQUE INDEX IF NOT EXISTS cases_tenant_org_identity ON cases (tenant_id, org_id, id)`,
 	`CREATE UNIQUE INDEX IF NOT EXISTS documents_tenant_org_identity ON documents (tenant_id, org_id, id)`,
+	`CREATE UNIQUE INDEX IF NOT EXISTS documents_case_scoped_identity ON documents (tenant_id, org_id, case_id, id)`,
 	`CREATE UNIQUE INDEX IF NOT EXISTS review_runs_tenant_org_identity ON review_runs (tenant_id, org_id, id)`,
 	`CREATE UNIQUE INDEX IF NOT EXISTS review_attempts_tenant_org_identity ON review_attempts (tenant_id, org_id, id)`,
 	`DO $$

@@ -272,6 +272,7 @@ var caseRouteHandlers = map[string]caseRouteHandler{
 	"experience-feedback": experienceFeedbackRoute, "experience-candidates": experienceCandidateRoute,
 	"evidence-requests": evidenceRequestHandlerRoute, "profile": profileRoute,
 	"tasks": taskRoute, "relations": relationRoute, "documents": documentRoute,
+	"materials":       materialRoute,
 	"object-bindings": corePostRoute, "external-collection-jobs": corePostRoute,
 	"external-snapshots": coreReadRoute, "fulfillment-evaluations": fulfillmentRoute,
 	"generations": documentPostRoute, "reviews": reviewRoute,
@@ -287,6 +288,10 @@ func coreReadRoute(role string, m routeMethodSet, p []string) bool {
 }
 func documentPostRoute(role string, m routeMethodSet, p []string) bool {
 	return role == "document" && len(p) == 3 && m.post
+}
+
+func materialRoute(role string, m routeMethodSet, p []string) bool {
+	return role == "document" && len(p) == 4 && p[3] == "selection" && m.post
 }
 
 func experienceFeedbackRoute(role string, m routeMethodSet, p []string) bool {

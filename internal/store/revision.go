@@ -12,7 +12,7 @@ func revisionPending(st *state, caseID string) bool {
 	if !ok {
 		return false
 	}
-	documents := currentDocuments(st.documents(caseID))
+	documents := selectedMaterialDocuments(*st, caseID)
 	current := documentIDs(documents)
 	snapshot := st.snapshotOf(run.ID)
 	if !sameDocumentSet(snapshot.DocumentIDs, current) {

@@ -106,7 +106,10 @@ func (s *Store) startReview(ctx context.Context, user accounts.User, caseID, bus
 	if _, err := s.writableCase(&seen, user, caseID, access.Review); err != nil {
 		return "", err
 	}
-	current := currentDocuments(seen.documents(caseID))
+	if materialSelectionPending(seen, caseID) {
+		return "", fault.Conflict("历史材料集合待确认，请先确认本次审查材料")
+	}
+	current := selectedMaterialDocuments(seen, caseID)
 	if len(current) < 2 {
 		return "", fault.Invalid("至少需要两份材料才能开始审查")
 	}
@@ -127,7 +130,7 @@ func (s *Store) startReview(ctx context.Context, user accounts.User, caseID, bus
 	if err != nil {
 		return "", err
 	}
-	current = currentDocuments(seen.documents(caseID))
+	current = selectedMaterialDocuments(seen, caseID)
 	if !sameDocumentSet(documentIDs(current), reviewDocumentIDs) {
 		return "", fault.Conflict("案件材料刚被更新，请重新发起审查")
 	}
@@ -143,7 +146,7 @@ func (s *Store) startReview(ctx context.Context, user accounts.User, caseID, bus
 	if err != nil {
 		return "", err
 	}
-	if !sameDocumentSet(documentIDs(currentDocuments(seen.documents(caseID))), reviewDocumentIDs) || !parsedSelectionCurrent(seen, frozenDocs) {
+	if !sameDocumentSet(documentIDs(selectedMaterialDocuments(seen, caseID)), reviewDocumentIDs) || !parsedSelectionCurrent(seen, frozenDocs) {
 		return "", fault.Conflict("所选的材料解析版本刚被更新，请重新发起审查")
 	}
 	caseItem, ok := seen.caseByID(caseID)
@@ -245,7 +248,7 @@ func (s *Store) startReview(ctx context.Context, user accounts.User, caseID, bus
 			return err
 		}
 		executionCase = *currentCase
-		if !sameDocumentSet(documentIDs(currentDocuments(st.documents(caseID))), reviewDocumentIDs) || !parsedSelectionCurrent(*st, frozenDocs) {
+		if materialSelectionPending(*st, caseID) || !sameDocumentSet(documentIDs(selectedMaterialDocuments(*st, caseID)), reviewDocumentIDs) || !parsedSelectionCurrent(*st, frozenDocs) {
 			return fault.Conflict("所选的材料解析版本刚被更新，请重新发起审查")
 		}
 		if run, ok := st.latestRun(caseID); ok {
@@ -1122,6 +1125,7 @@ func (s *Store) prepareAttempt(ctx context.Context, runID, attemptID string, mod
 				return nil, fmt.Errorf("remote parsed artifact integrity check failed: %w", err)
 			}
 			frozen[i] = prepared
+			bindFrozenMaterialIdentity(st, &frozen[i])
 			continue
 		}
 		doc, ok := st.documentByIdentity(selection.DocumentID, selection.OriginalDigest)
@@ -1158,6 +1162,7 @@ func (s *Store) prepareAttempt(ctx context.Context, runID, attemptID string, mod
 			return nil, fmt.Errorf("attempt parsed artifact integrity check failed: %w", err)
 		}
 		frozen[i] = frozenFromParsed(doc, parsed)
+		bindFrozenMaterialIdentity(st, &frozen[i])
 	}
 	if !frozenInputMatchesSnapshot(snapshot, frozen) {
 		return nil, errors.New("pinned parse selection does not match the run snapshot")

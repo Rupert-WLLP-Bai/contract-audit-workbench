@@ -60,12 +60,29 @@ func detailJSON(detail store.CaseDetail) map[string]any {
 	} else {
 		body["archives"] = detail.Archives
 	}
-	replaced := supersededIDs(detail.Documents)
+	replaced := map[string]bool{}
+	for _, version := range detail.MaterialVersions {
+		if version.PreviousDocumentID != nil && *version.PreviousDocumentID != "" {
+			replaced[*version.PreviousDocumentID] = true
+		}
+	}
 	docs := make([]any, len(detail.Documents))
 	for i, doc := range detail.Documents {
 		docs[i] = documentJSON(doc, false, replaced[doc.Document.ID])
 	}
 	body["documents"] = docs
+	if detail.Materials == nil {
+		detail.Materials = []store.MaterialProjection{}
+	}
+	if detail.MaterialVersions == nil {
+		detail.MaterialVersions = []store.MaterialVersionProjection{}
+	}
+	if detail.MaterialSelection.DocumentIDs == nil {
+		detail.MaterialSelection.DocumentIDs = []string{}
+	}
+	body["materials"] = detail.Materials
+	body["material_versions"] = detail.MaterialVersions
+	body["material_selection"] = detail.MaterialSelection
 	body["revision_pending"] = detail.RevisionPending
 	body["configuration_pending"] = detail.ConfigurationPending
 	if detail.Counts == nil {
@@ -89,20 +106,6 @@ func detailJSON(detail store.CaseDetail) map[string]any {
 	}
 	body["members"] = members
 	return body
-}
-
-func supersededIDs(docs []store.Interpreted) map[string]bool {
-	latest := map[string]string{}
-	for _, doc := range docs {
-		latest[doc.Document.Role] = doc.Document.ID
-	}
-	out := map[string]bool{}
-	for _, doc := range docs {
-		if latest[doc.Document.Role] != doc.Document.ID {
-			out[doc.Document.ID] = true
-		}
-	}
-	return out
 }
 
 func documentJSON(doc store.Interpreted, withText, superseded bool) map[string]any {

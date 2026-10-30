@@ -21,6 +21,9 @@ type TemplateField struct {
 type GenerationRecord struct {
 	ID              string `json:"id"`
 	DocumentID      string `json:"document_id"`
+	MaterialID      string `json:"material_id"`
+	Version         int    `json:"version"`
+	Replayed        bool   `json:"replayed"`
 	TemplateID      string `json:"template_id"`
 	TemplateVersion string `json:"template_version"`
 	Digest          string `json:"digest"`

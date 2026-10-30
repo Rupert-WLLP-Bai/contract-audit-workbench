@@ -95,6 +95,12 @@ func validateAppendOnly(previous, next state) error {
 	if err := requireAppendOnly("parsed documents", previous.ParsedDocuments, next.ParsedDocuments); err != nil {
 		return err
 	}
+	if err := requireAppendOnly("material versions", previous.MaterialVersions, next.MaterialVersions); err != nil {
+		return err
+	}
+	if err := requireAppendOnly("document upload idempotency records", previous.UploadIdempotency, next.UploadIdempotency); err != nil {
+		return err
+	}
 	if err := requireAppendOnly("attempt inputs", previous.AttemptInputs, next.AttemptInputs); err != nil {
 		return err
 	}
@@ -379,6 +385,22 @@ func stateDelta(previous, next state) (state, state, error) {
 		return state{}, state{}, err
 	}
 	if old.Documents, changed.Documents, err = deltaRows(previous.Documents, next.Documents, func(v Document) string { return v.ID }, false); err != nil {
+		return state{}, state{}, err
+	}
+	if old.Materials, changed.Materials, err = deltaRows(previous.Materials, next.Materials, func(v MaterialEntity) [4]string { return [4]string{v.TenantID, v.OrgID, v.CaseID, v.ID} }, false); err != nil {
+		return state{}, state{}, err
+	}
+	if old.MaterialVersions, changed.MaterialVersions, err = deltaRows(previous.MaterialVersions, next.MaterialVersions, func(v MaterialVersion) [5]string {
+		return [5]string{v.TenantID, v.OrgID, v.CaseID, v.MaterialID, strconv.Itoa(v.Version)}
+	}, false); err != nil {
+		return state{}, state{}, err
+	}
+	if old.MaterialChains, changed.MaterialChains, err = deltaRows(previous.MaterialChains, next.MaterialChains, func(v CaseMaterialChain) [3]string { return [3]string{v.TenantID, v.OrgID, v.CaseID} }, false); err != nil {
+		return state{}, state{}, err
+	}
+	if old.UploadIdempotency, changed.UploadIdempotency, err = deltaRows(previous.UploadIdempotency, next.UploadIdempotency, func(v UploadIdempotencyRecord) [5]string {
+		return [5]string{v.TenantID, v.OrgID, v.CaseID, v.ActorID, v.Key}
+	}, false); err != nil {
 		return state{}, state{}, err
 	}
 	if old.ParsedDocuments, changed.ParsedDocuments, err = deltaRows(previous.ParsedDocuments, next.ParsedDocuments, func(v ParsedDocument) string { return v.ID }, false); err != nil {

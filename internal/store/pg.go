@@ -220,6 +220,9 @@ func migrate(ctx context.Context, pool *pgxpool.Pool) error {
 			return fmt.Errorf("migrate: %w", err)
 		}
 	}
+	if err := migrateMaterials(ctx, pool); err != nil {
+		return err
+	}
 	if err := migrateModelBudgetFunctions(ctx, pool); err != nil {
 		return err
 	}
@@ -356,6 +359,19 @@ func (s *Store) load(ctx context.Context) error {
 // must not do. Only fields tagged omitempty need this: the clone drops them when
 // empty and unmarshals them back as nil.
 func canonicalizeLoadedRows(st *state) {
+	for i := range st.Materials {
+		st.Materials[i].CreatedAt = st.Materials[i].CreatedAt.UTC().Round(0)
+	}
+	for i := range st.MaterialVersions {
+		st.MaterialVersions[i].CreatedAt = st.MaterialVersions[i].CreatedAt.UTC().Round(0)
+	}
+	for i := range st.MaterialChains {
+		st.MaterialChains[i].CreatedAt = st.MaterialChains[i].CreatedAt.UTC().Round(0)
+		st.MaterialChains[i].UpdatedAt = st.MaterialChains[i].UpdatedAt.UTC().Round(0)
+	}
+	for i := range st.UploadIdempotency {
+		st.UploadIdempotency[i].CreatedAt = st.UploadIdempotency[i].CreatedAt.UTC().Round(0)
+	}
 	for i := range st.Evaluations {
 		st.Evaluations[i].FactIDs = emptyStringsToNil(st.Evaluations[i].FactIDs)
 		st.Evaluations[i].ObjectRefs = emptyStringsToNil(st.Evaluations[i].ObjectRefs)
@@ -382,6 +398,12 @@ func loadState(ctx context.Context, q queryer, strict bool) (state, error) {
 		return state{}, err
 	}
 	if st.Documents, err = loadDocuments(ctx, q); err != nil {
+		return state{}, err
+	}
+	if st.Materials, st.MaterialVersions, st.MaterialChains, err = loadMaterialState(ctx, q); err != nil {
+		return state{}, err
+	}
+	if st.UploadIdempotency, err = loadUploadIdempotency(ctx, q); err != nil {
 		return state{}, err
 	}
 	if st.ParsedDocuments, err = loadParsedDocuments(ctx, q, st.Documents, strict); err != nil {
@@ -615,6 +637,39 @@ func replaceRows(ctx context.Context, tx pgx.Tx, previous, st state, owner strin
 	for _, item := range st.Documents {
 		if _, err := tx.Exec(ctx, `INSERT INTO documents (id, tenant_id, org_id, case_id, role, filename, media_type, digest, size, origin, storage_backend, created_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
 			ON CONFLICT (id) DO NOTHING`, item.ID, item.TenantID, item.OrgID, item.CaseID, item.Role, item.Filename, item.MediaType, item.Digest, item.Size, item.Origin, item.StorageBackend, item.CreatedAt); err != nil {
+			return err
+		}
+	}
+	for _, item := range st.Materials {
+		if _, err := tx.Exec(ctx, `INSERT INTO material_entities (tenant_id,org_id,case_id,material_id,role,purpose,legacy_status,legacy_selected,current_document_id,current_version,created_by,created_at)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+			ON CONFLICT (tenant_id,org_id,case_id,material_id) DO UPDATE SET legacy_status=EXCLUDED.legacy_status, legacy_selected=EXCLUDED.legacy_selected,
+			current_document_id=EXCLUDED.current_document_id,current_version=EXCLUDED.current_version`,
+			item.TenantID, item.OrgID, item.CaseID, item.ID, item.Role, item.Purpose, item.LegacyStatus, item.LegacySelected, item.CurrentDocumentID, item.CurrentVersion, item.CreatedBy, item.CreatedAt); err != nil {
+			return err
+		}
+	}
+	for _, item := range st.MaterialVersions {
+		if _, err := tx.Exec(ctx, `INSERT INTO material_versions (tenant_id,org_id,case_id,material_id,version,document_id,previous_document_id,created_by,created_at)
+			VALUES ($1,$2,$3,$4,$5,$6,NULLIF($7,''),$8,$9) ON CONFLICT (tenant_id,org_id,case_id,material_id,version) DO NOTHING`,
+			item.TenantID, item.OrgID, item.CaseID, item.MaterialID, item.Version, item.DocumentID, item.PreviousDocument, item.CreatedBy, item.CreatedAt); err != nil {
+			return err
+		}
+	}
+	for _, item := range st.MaterialChains {
+		selected, err := jsonText(item.SelectedDocumentIDs)
+		if err != nil {
+			return err
+		}
+		if _, err := tx.Exec(ctx, `INSERT INTO case_contract_chains (tenant_id,org_id,case_id,primary_material_id,legacy_selected_document_id,legacy_selection_status,selection_version,selected_document_ids,created_at,updated_at)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+			ON CONFLICT (tenant_id,org_id,case_id) DO UPDATE SET primary_material_id=EXCLUDED.primary_material_id,legacy_selected_document_id=EXCLUDED.legacy_selected_document_id,legacy_selection_status=EXCLUDED.legacy_selection_status,selection_version=EXCLUDED.selection_version,selected_document_ids=EXCLUDED.selected_document_ids,updated_at=EXCLUDED.updated_at`,
+			item.TenantID, item.OrgID, item.CaseID, item.PrimaryMaterialID, item.LegacySelectedDocumentID, item.LegacySelectionStatus, item.SelectionVersion, selected, item.CreatedAt, item.UpdatedAt); err != nil {
+			return err
+		}
+	}
+	for _, item := range st.UploadIdempotency {
+		if _, err := tx.Exec(ctx, `INSERT INTO document_upload_idempotency (tenant_id,org_id,case_id,actor_id,idempotency_key,request_hash,document_id,material_id,created_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT (tenant_id,org_id,case_id,actor_id,idempotency_key) DO NOTHING`, item.TenantID, item.OrgID, item.CaseID, item.ActorID, item.Key, item.RequestHash, item.DocumentID, item.MaterialID, item.CreatedAt); err != nil {
 			return err
 		}
 	}

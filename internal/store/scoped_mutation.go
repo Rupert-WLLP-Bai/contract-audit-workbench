@@ -410,6 +410,37 @@ func (s *Store) patchScopedAttemptProjection(ctx context.Context, changed state)
 			s.st.Documents = append(s.st.Documents, item)
 		}
 	}
+	for _, item := range changed.Materials {
+		replaced := false
+		for i := range s.st.Materials {
+			if s.st.Materials[i].TenantID == item.TenantID && s.st.Materials[i].OrgID == item.OrgID && s.st.Materials[i].CaseID == item.CaseID && s.st.Materials[i].ID == item.ID {
+				s.st.Materials[i] = item
+				replaced = true
+				break
+			}
+		}
+		if !replaced {
+			s.st.Materials = append(s.st.Materials, item)
+		}
+	}
+	for _, item := range changed.MaterialVersions {
+		s.st.MaterialVersions = append(s.st.MaterialVersions, item)
+	}
+	for _, item := range changed.MaterialChains {
+		for i := range s.st.MaterialChains {
+			if s.st.MaterialChains[i].CaseID == item.CaseID {
+				s.st.MaterialChains[i] = item
+				item.CaseID = ""
+				break
+			}
+		}
+		if item.CaseID != "" {
+			s.st.MaterialChains = append(s.st.MaterialChains, item)
+		}
+	}
+	for _, item := range changed.UploadIdempotency {
+		s.st.UploadIdempotency = append(s.st.UploadIdempotency, item)
+	}
 	for _, item := range changed.ParsedDocuments {
 		replaced := false
 		for i := range s.st.ParsedDocuments {
@@ -560,6 +591,71 @@ func (s *Store) loadScopedCaseState(ctx context.Context, tx pgx.Tx, caseID strin
 	if err := documentRows.Err(); err != nil {
 		return state{}, err
 	}
+	materialRows, err := tx.Query(ctx, `SELECT tenant_id,org_id,case_id,material_id,role,purpose,legacy_status,legacy_selected,current_document_id,current_version,created_by,created_at
+		FROM material_entities WHERE case_id=$1 AND tenant_id=$2 AND org_id=$3 ORDER BY created_at,material_id`, caseID, caseItem.TenantID, caseItem.OwnerOrgID)
+	if err != nil {
+		return state{}, err
+	}
+	for materialRows.Next() {
+		var item MaterialEntity
+		if err := materialRows.Scan(&item.TenantID, &item.OrgID, &item.CaseID, &item.ID, &item.Role, &item.Purpose, &item.LegacyStatus, &item.LegacySelected, &item.CurrentDocumentID, &item.CurrentVersion, &item.CreatedBy, &item.CreatedAt); err != nil {
+			materialRows.Close()
+			return state{}, err
+		}
+		out.Materials = append(out.Materials, item)
+	}
+	if err := materialRows.Err(); err != nil {
+		materialRows.Close()
+		return state{}, err
+	}
+	materialRows.Close()
+	versionRows, err := tx.Query(ctx, `SELECT tenant_id,org_id,case_id,material_id,version,document_id,COALESCE(previous_document_id,''),created_by,created_at
+		FROM material_versions WHERE case_id=$1 AND tenant_id=$2 AND org_id=$3 ORDER BY material_id,version`, caseID, caseItem.TenantID, caseItem.OwnerOrgID)
+	if err != nil {
+		return state{}, err
+	}
+	for versionRows.Next() {
+		var item MaterialVersion
+		if err := versionRows.Scan(&item.TenantID, &item.OrgID, &item.CaseID, &item.MaterialID, &item.Version, &item.DocumentID, &item.PreviousDocument, &item.CreatedBy, &item.CreatedAt); err != nil {
+			versionRows.Close()
+			return state{}, err
+		}
+		out.MaterialVersions = append(out.MaterialVersions, item)
+	}
+	if err := versionRows.Err(); err != nil {
+		versionRows.Close()
+		return state{}, err
+	}
+	versionRows.Close()
+	var chain CaseMaterialChain
+	var primary, legacy *string
+	var selected string
+	if err := tx.QueryRow(ctx, `SELECT tenant_id,org_id,case_id,primary_material_id,legacy_selected_document_id,legacy_selection_status,selection_version,selected_document_ids,created_at,updated_at FROM case_contract_chains WHERE case_id=$1 AND tenant_id=$2 AND org_id=$3`, caseID, caseItem.TenantID, caseItem.OwnerOrgID).Scan(&chain.TenantID, &chain.OrgID, &chain.CaseID, &primary, &legacy, &chain.LegacySelectionStatus, &chain.SelectionVersion, &selected, &chain.CreatedAt, &chain.UpdatedAt); err == nil {
+		chain.PrimaryMaterialID, chain.LegacySelectedDocumentID = primary, legacy
+		if err := json.Unmarshal([]byte(selected), &chain.SelectedDocumentIDs); err != nil {
+			return state{}, err
+		}
+		out.MaterialChains = append(out.MaterialChains, chain)
+	} else if !errors.Is(err, pgx.ErrNoRows) {
+		return state{}, err
+	}
+	uploadRows, err := tx.Query(ctx, `SELECT tenant_id,org_id,case_id,actor_id,idempotency_key,request_hash,document_id,material_id,created_at FROM document_upload_idempotency WHERE case_id=$1 AND tenant_id=$2 AND org_id=$3`, caseID, caseItem.TenantID, caseItem.OwnerOrgID)
+	if err != nil {
+		return state{}, err
+	}
+	for uploadRows.Next() {
+		var item UploadIdempotencyRecord
+		if err := uploadRows.Scan(&item.TenantID, &item.OrgID, &item.CaseID, &item.ActorID, &item.Key, &item.RequestHash, &item.DocumentID, &item.MaterialID, &item.CreatedAt); err != nil {
+			uploadRows.Close()
+			return state{}, err
+		}
+		out.UploadIdempotency = append(out.UploadIdempotency, item)
+	}
+	if err := uploadRows.Err(); err != nil {
+		uploadRows.Close()
+		return state{}, err
+	}
+	uploadRows.Close()
 	if len(documentIDs) > 0 {
 		parsedRows, err := tx.Query(ctx, `SELECT payload FROM parsed_documents WHERE document_id = ANY($1) ORDER BY seq`, documentIDs)
 		if err != nil {

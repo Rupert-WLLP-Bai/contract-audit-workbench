@@ -164,6 +164,51 @@ func currentDocuments(docs []Document) []Document {
 	return out
 }
 
+// selectedMaterialDocuments is the single current-material selector used by
+// case projection, review admission, and revision checks. Legacy fallback is
+// frozen by the migration's legacy_selected flag; it never infers version
+// chains from role.
+func selectedMaterialDocuments(st state, caseID string) []Document {
+	entities := map[string]MaterialEntity{}
+	var chain *CaseMaterialChain
+	for i := range st.MaterialChains {
+		if st.MaterialChains[i].CaseID == caseID {
+			chain = &st.MaterialChains[i]
+			break
+		}
+	}
+	if materialSelectionPending(st, caseID) {
+		return []Document{}
+	}
+	for _, item := range st.Materials {
+		if item.CaseID == caseID {
+			entities[item.CurrentDocumentID] = item
+		}
+	}
+	if len(entities) == 0 {
+		return currentDocuments(st.documents(caseID))
+	}
+	selected := map[string]bool{}
+	if chain != nil && chain.LegacySelectionStatus == "confirmed" {
+		for _, id := range chain.SelectedDocumentIDs {
+			selected[id] = true
+		}
+	} else {
+		for id, item := range entities {
+			if item.LegacySelected || item.LegacyStatus == "native" || item.LegacyStatus == "confirmed" {
+				selected[id] = true
+			}
+		}
+	}
+	var out []Document
+	for _, doc := range st.documents(caseID) {
+		if selected[doc.ID] {
+			out = append(out, doc)
+		}
+	}
+	return out
+}
+
 func sameDocumentSet(a, b []string) bool {
 	if len(a) != len(b) {
 		return false

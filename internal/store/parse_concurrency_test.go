@@ -153,7 +153,7 @@ func assertIndependentPendingParseProducers(t *testing.T, reparseCompanion bool)
 		if err := st.Reparse(context.Background(), admin, caseID, draftID); err != nil {
 			t.Fatal(err)
 		}
-	} else if _, err := st.AddDocument(context.Background(), admin, caseID, "draft_contract", "draft-v2.txt", "text/plain", []byte(expectedDraftText)); err != nil {
+	} else if _, err := replaceCurrentPrimaryForTest(t, st, admin, caseID, "draft-v2.txt", []byte(expectedDraftText)); err != nil {
 		t.Fatal(err)
 	}
 	runB, err := st.StartReview(context.Background(), admin, caseID)

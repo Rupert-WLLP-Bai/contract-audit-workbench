@@ -1,6 +1,7 @@
 package store
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"strings"
@@ -333,18 +334,21 @@ func (s *Store) summarize(st *state, item Case) CaseSummary {
 // CaseDetail is the case page.
 type CaseDetail struct {
 	CaseSummary
-	Documents            []Interpreted      `json:"documents"`
-	Activities           []Activity         `json:"activities"`
-	RevisionPending      bool               `json:"revision_pending"`
-	ConfigurationPending bool               `json:"configuration_pending"`
-	BusinessLine         string             `json:"business_line"`
-	Scenario             string             `json:"scenario"`
-	BusinessStatus       string             `json:"business_status"`
-	Generations          []GenerationRecord `json:"generations"`
-	Remediations         []Remediation      `json:"remediations"`
-	Reports              []ReportRecord     `json:"reports"`
-	Archives             []ArchiveRecord    `json:"archives"`
-	ArchivedAt           *string            `json:"archived_at"`
+	Documents            []Interpreted               `json:"documents"`
+	Materials            []MaterialProjection        `json:"materials"`
+	MaterialVersions     []MaterialVersionProjection `json:"material_versions"`
+	MaterialSelection    MaterialSelectionProjection `json:"material_selection"`
+	Activities           []Activity                  `json:"activities"`
+	RevisionPending      bool                        `json:"revision_pending"`
+	ConfigurationPending bool                        `json:"configuration_pending"`
+	BusinessLine         string                      `json:"business_line"`
+	Scenario             string                      `json:"scenario"`
+	BusinessStatus       string                      `json:"business_status"`
+	Generations          []GenerationRecord          `json:"generations"`
+	Remediations         []Remediation               `json:"remediations"`
+	Reports              []ReportRecord              `json:"reports"`
+	Archives             []ArchiveRecord             `json:"archives"`
+	ArchivedAt           *string                     `json:"archived_at"`
 }
 
 func (s *Store) GetCase(user accounts.User, caseID string) (CaseDetail, error) {
@@ -361,8 +365,53 @@ func (s *Store) GetCase(user accounts.User, caseID string) (CaseDetail, error) {
 		Documents:       s.interpretAll(st.documents(item.ID)),
 		RevisionPending: revisionPending(&st, item.ID),
 		BusinessLine:    item.BusinessLine, Scenario: item.Scenario, BusinessStatus: item.BusinessStatus,
-		ArchivedAt:  item.ArchivedAt,
-		Generations: []GenerationRecord{}, Remediations: []Remediation{}, Reports: []ReportRecord{}, Archives: []ArchiveRecord{},
+		ArchivedAt: item.ArchivedAt,
+		Materials:  []MaterialProjection{}, MaterialVersions: []MaterialVersionProjection{},
+		MaterialSelection: MaterialSelectionProjection{Version: 1, Status: "not_applicable", DocumentIDs: []string{}, CandidateDocumentIDs: []string{}},
+		Generations:       []GenerationRecord{}, Remediations: []Remediation{}, Reports: []ReportRecord{}, Archives: []ArchiveRecord{},
+	}
+	selectedDocs := map[string]bool{}
+	for _, doc := range selectedMaterialDocuments(st, item.ID) {
+		selectedDocs[doc.ID] = true
+		detail.MaterialSelection.DocumentIDs = append(detail.MaterialSelection.DocumentIDs, doc.ID)
+	}
+	var chain *CaseMaterialChain
+	for i := range st.MaterialChains {
+		if st.MaterialChains[i].CaseID == item.ID && st.MaterialChains[i].TenantID == item.TenantID && st.MaterialChains[i].OrgID == item.OwnerOrgID {
+			chain = &st.MaterialChains[i]
+			break
+		}
+	}
+	if chain != nil {
+		detail.MaterialSelection.Version = chain.SelectionVersion
+		detail.MaterialSelection.Status = chain.LegacySelectionStatus
+		detail.MaterialSelection.PrimaryMaterialID = chain.PrimaryMaterialID
+		if chain.LegacySelectionStatus == "pending_confirmation" {
+			detail.MaterialSelection.CandidateDocumentIDs = append([]string(nil), chain.SelectedDocumentIDs...)
+		}
+	}
+	if primaryID := casePrimaryMaterialID(st, item.ID); primaryID != "" {
+		detail.MaterialSelection.PrimaryMaterialID = &primaryID
+	}
+	for _, material := range st.Materials {
+		if material.CaseID != item.ID || material.TenantID != item.TenantID || material.OrgID != item.OwnerOrgID {
+			continue
+		}
+		selected := selectedDocs[material.CurrentDocumentID]
+		detail.Materials = append(detail.Materials, MaterialProjection{MaterialID: material.ID, Role: material.Role, Purpose: material.Purpose, LegacyStatus: material.LegacyStatus, LegacySelected: material.LegacySelected, Selected: selected, CurrentDocumentID: material.CurrentDocumentID, CurrentVersion: material.CurrentVersion})
+	}
+	for _, version := range st.MaterialVersions {
+		if version.CaseID == item.ID && version.TenantID == item.TenantID && version.OrgID == item.OwnerOrgID {
+			var previous *string
+			if version.PreviousDocument != "" {
+				value := version.PreviousDocument
+				previous = &value
+			}
+			detail.MaterialVersions = append(detail.MaterialVersions, MaterialVersionProjection{MaterialID: version.MaterialID, Version: version.Version, DocumentID: version.DocumentID, PreviousDocumentID: previous, CreatedAt: version.CreatedAt})
+		}
+	}
+	if len(detail.Materials) > 0 && detail.MaterialSelection.Status == "not_applicable" {
+		detail.MaterialSelection.Status = "confirmed"
 	}
 	if run, ok := st.latestRun(item.ID); ok {
 		frozen := st.snapshotOf(run.ID)
@@ -370,7 +419,7 @@ func (s *Store) GetCase(user accounts.User, caseID string) (CaseDetail, error) {
 	}
 	for _, record := range st.Generations {
 		if record.TenantID == item.TenantID && record.OrgID == item.OwnerOrgID && record.CaseID == item.ID {
-			detail.Generations = append(detail.Generations, record.Record)
+			detail.Generations = append(detail.Generations, generationRecordWithMaterial(&st, record.Record))
 		}
 	}
 	for _, record := range st.Remediations {
@@ -402,33 +451,75 @@ func (s *Store) GetCase(user accounts.User, caseID string) (CaseDetail, error) {
 // AddDocument stores an upload and carries the caller deadline through
 // object access and initial deterministic parsing.
 func (s *Store) AddDocument(ctx context.Context, user accounts.User, caseID, role, filename, media string, body []byte) (string, error) {
+	result, err := s.UploadMaterial(ctx, user, caseID, role, filename, media, body, MaterialUploadOptions{})
+	return result.DocumentID, err
+}
+
+func (s *Store) AddDocumentWithOptions(ctx context.Context, user accounts.User, caseID, role, filename, media string, body []byte, options MaterialUploadOptions) (string, error) {
+	result, err := s.UploadMaterial(ctx, user, caseID, role, filename, media, body, options)
+	return result.DocumentID, err
+}
+
+func (s *Store) UploadMaterial(ctx context.Context, user accounts.User, caseID, role, filename, media string, body []byte, options MaterialUploadOptions) (DocumentUploadResult, error) {
 	currentUser, caseItem, err := s.documentWriteCase(ctx, user, caseID, access.Manage)
 	if err != nil {
-		return "", err
+		return DocumentUploadResult{}, err
 	}
 	if len(body) > 32<<20 {
-		return "", fault.TooLarge("文件超过 32 MiB")
+		return DocumentUploadResult{}, fault.TooLarge("文件超过 32 MiB")
 	}
 	switch role {
 	case "procurement", "award", "draft_contract", "attachment":
 	default:
-		return "", fault.Invalid("材料角色不在本版范围内")
+		return DocumentUploadResult{}, fault.Invalid("材料角色不在本版范围内")
+	}
+	if err := validateMaterialUploadOptions(options); err != nil {
+		return DocumentUploadResult{}, fault.Invalid(err.Error())
+	}
+	purpose, err := resolveMaterialPurpose(role, options.Purpose)
+	if err != nil {
+		return DocumentUploadResult{}, fault.Invalid(err.Error())
 	}
 	filename = cleanName(filename)
 	media = cleanMedia(media)
+	options.IdempotencyKey = strings.TrimSpace(options.IdempotencyKey)
+	if len(options.IdempotencyKey) > 200 || strings.ContainsAny(options.IdempotencyKey, "\r\n\x00") {
+		return DocumentUploadResult{}, fault.Invalid("Idempotency-Key无效")
+	}
+	requestHash := uploadRequestHash("upload", currentUser.ID, caseID, role, purpose, filename, media, body, options)
+	if options.IdempotencyKey != "" {
+		st, err := s.snapshotScoped(ctx, userScope(currentUser))
+		if err != nil {
+			return DocumentUploadResult{}, err
+		}
+		for _, prior := range st.UploadIdempotency {
+			if prior.CaseID == caseID && prior.ActorID == currentUser.ID && prior.Key == options.IdempotencyKey {
+				if !bytes.Equal(prior.RequestHash, requestHash[:]) {
+					return DocumentUploadResult{}, fault.Conflict("Idempotency-Key已用于不同上传内容")
+				}
+				for _, v := range st.MaterialVersions {
+					if v.CaseID == caseID && v.MaterialID == prior.MaterialID && v.DocumentID == prior.DocumentID {
+						return DocumentUploadResult{DocumentID: prior.DocumentID, MaterialID: prior.MaterialID, Version: v.Version, Replayed: true}, nil
+					}
+				}
+				return DocumentUploadResult{}, errors.New("upload idempotency record has no material version")
+			}
+		}
+	}
 	id, err := newID("doc_")
 	if err != nil {
-		return "", err
+		return DocumentUploadResult{}, err
 	}
 	version, err := docversion.New(id, docversion.Source{Origin: "upload", Filename: filename, MediaType: media}, body)
 	if err != nil {
-		return "", err
+		return DocumentUploadResult{}, err
 	}
 	digest := version.Digest().String()
 	if err := s.putObject(ctx, caseItem.TenantID, caseID, digest, body); err != nil {
-		return "", err
+		return DocumentUploadResult{}, err
 	}
 	now := stamp()
+	materialNow := time.Now().UTC()
 	document := Document{
 		ID: id, TenantID: caseItem.TenantID, OrgID: caseItem.OwnerOrgID, CaseID: caseID,
 		Role: role, Filename: filename, MediaType: media,
@@ -439,7 +530,7 @@ func (s *Store) AddDocument(ctx context.Context, user accounts.User, caseID, rol
 		models := s.currentModels()
 		selection, err := s.reserveParseSelection(ctx, document, models)
 		if err != nil {
-			return "", err
+			return DocumentUploadResult{}, err
 		}
 		interpreted := s.interpretUnpersistedWithModels(ctx, document, models)
 		if contextErr := ctx.Err(); contextErr != nil {
@@ -447,7 +538,7 @@ func (s *Store) AddDocument(ctx context.Context, user accounts.User, caseID, rol
 		}
 		parsed, parseErr := makeParsedWithSelection(document, interpreted, selection)
 		if parseErr != nil {
-			return "", parseErr
+			return DocumentUploadResult{}, parseErr
 		}
 		initialParse = &parsed
 	}
@@ -457,21 +548,115 @@ func (s *Store) AddDocument(ctx context.Context, user accounts.User, caseID, rol
 		persistCtx, persistCancel = parseFailurePersistenceContext(ctx)
 	}
 	defer persistCancel()
+	var uploadResult DocumentUploadResult
 	err = s.scopedCaseMutation(persistCtx, currentUser, caseID, func(st *state) error {
 		if _, err := s.writableCase(st, currentUser, caseID, access.Manage); err != nil {
 			return err
 		}
-		current := currentDocuments(st.documents(caseID))
-		replacing := false
-		for _, doc := range current {
-			if doc.Role == role {
-				replacing = true
+		if options.IdempotencyKey != "" {
+			for _, prior := range st.UploadIdempotency {
+				if prior.CaseID == caseID && prior.ActorID == currentUser.ID && prior.Key == options.IdempotencyKey {
+					if !bytes.Equal(prior.RequestHash, requestHash[:]) {
+						return fault.Conflict("Idempotency-Key已用于不同上传内容")
+					}
+					for _, priorVersion := range st.MaterialVersions {
+						if priorVersion.CaseID == caseID && priorVersion.MaterialID == prior.MaterialID && priorVersion.DocumentID == prior.DocumentID {
+							uploadResult = DocumentUploadResult{DocumentID: prior.DocumentID, MaterialID: prior.MaterialID, Version: priorVersion.Version, Replayed: true}
+							return nil
+						}
+					}
+					return errors.New("upload idempotency record has no material version")
+				}
 			}
 		}
-		if !replacing && len(current) >= 4 {
-			return fault.Invalid("每个案件最多登记 4 份材料")
+		intent := options.Intent
+		if intent == "" {
+			intent = "add"
+		}
+		var material *MaterialEntity
+		if intent == "replace" {
+			for i := range st.Materials {
+				if st.Materials[i].ID == options.MaterialID {
+					material = &st.Materials[i]
+					break
+				}
+			}
+			if material == nil {
+				return fault.NotFound("没有找到对应材料")
+			}
+			if material.CurrentDocumentID != options.ReplacesDocumentID {
+				return fault.Conflict("材料当前版本已变化，请刷新后重试")
+			}
+			if material.Role != role || material.Purpose != purpose {
+				return fault.Invalid("替换不能改变材料角色或用途")
+			}
+			if purpose == "primary_contract" {
+				if err := validatePrimaryMaterialMutation(st, caseID, intent, material); err != nil {
+					return err
+				}
+			}
+		} else {
+			if len(st.Materials) >= maxMaterialsPerCase {
+				return fault.TooLarge("案件材料数量达到上限")
+			}
+			if purpose == "primary_contract" {
+				if err := validatePrimaryMaterialMutation(st, caseID, intent, nil); err != nil {
+					return err
+				}
+			}
+			materialID, err := newID("mat_")
+			if err != nil {
+				return err
+			}
+			material = &MaterialEntity{TenantID: caseItem.TenantID, OrgID: caseItem.OwnerOrgID, CaseID: caseID, ID: materialID, Role: role, Purpose: purpose, LegacyStatus: "native", CurrentVersion: 0, CreatedBy: currentUser.ID, CreatedAt: materialNow}
+			st.Materials = append(st.Materials, *material)
+			material = &st.Materials[len(st.Materials)-1]
 		}
 		st.Documents = append(st.Documents, document)
+		previousDocument := ""
+		if intent == "replace" {
+			previousDocument = material.CurrentDocumentID
+		}
+		material.CurrentVersion++
+		material.CurrentDocumentID = document.ID
+		st.MaterialVersions = append(st.MaterialVersions, MaterialVersion{TenantID: caseItem.TenantID, OrgID: caseItem.OwnerOrgID, CaseID: caseID, MaterialID: material.ID, Version: material.CurrentVersion, DocumentID: document.ID, PreviousDocument: previousDocument, CreatedBy: currentUser.ID, CreatedAt: materialNow})
+		if options.IdempotencyKey != "" {
+			st.UploadIdempotency = append(st.UploadIdempotency, UploadIdempotencyRecord{TenantID: caseItem.TenantID, OrgID: caseItem.OwnerOrgID, CaseID: caseID, ActorID: currentUser.ID, Key: options.IdempotencyKey, RequestHash: append([]byte(nil), requestHash[:]...), DocumentID: document.ID, MaterialID: material.ID, CreatedAt: materialNow})
+		}
+		uploadResult = DocumentUploadResult{DocumentID: document.ID, MaterialID: material.ID, Version: material.CurrentVersion}
+		var chain *CaseMaterialChain
+		for i := range st.MaterialChains {
+			if st.MaterialChains[i].TenantID == caseItem.TenantID && st.MaterialChains[i].OrgID == caseItem.OwnerOrgID && st.MaterialChains[i].CaseID == caseID {
+				chain = &st.MaterialChains[i]
+				break
+			}
+		}
+		if chain == nil {
+			status := "confirmed"
+			st.MaterialChains = append(st.MaterialChains, CaseMaterialChain{TenantID: caseItem.TenantID, OrgID: caseItem.OwnerOrgID, CaseID: caseID, LegacySelectionStatus: status, SelectionVersion: 1, CreatedAt: materialNow, UpdatedAt: materialNow})
+			chain = &st.MaterialChains[len(st.MaterialChains)-1]
+		}
+		if intent == "replace" {
+			filtered := chain.SelectedDocumentIDs[:0]
+			for _, selectedID := range chain.SelectedDocumentIDs {
+				if selectedID != previousDocument {
+					filtered = append(filtered, selectedID)
+				}
+			}
+			chain.SelectedDocumentIDs = filtered
+		}
+		chain.SelectedDocumentIDs = append(chain.SelectedDocumentIDs, document.ID)
+		chain.SelectionVersion++
+		chain.UpdatedAt = materialNow
+		if purpose == "primary_contract" {
+			chain.PrimaryMaterialID = &material.ID
+			if material.LegacySelected {
+				chain.LegacySelectionStatus = "confirmed"
+				material.LegacyStatus = "confirmed"
+			} else if chain.LegacySelectionStatus == "not_applicable" {
+				chain.LegacySelectionStatus = "confirmed"
+			}
+		}
 		if initialParse != nil {
 			st.ParsedDocuments = append(st.ParsedDocuments, *initialParse)
 		}
@@ -487,7 +672,7 @@ func (s *Store) AddDocument(ctx context.Context, user accounts.User, caseID, rol
 		})
 		return nil
 	})
-	return id, err
+	return uploadResult, err
 }
 
 // Reparse appends a new parse selection and makes cancellation visible

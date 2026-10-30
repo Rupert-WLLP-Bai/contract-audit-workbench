@@ -37,7 +37,8 @@ func TestRevisedDocumentOpensNewRun(t *testing.T) {
 	_, before := api.do(t, http.MethodGet, "/api/cases/"+caseID+"/reviews/"+oldID, nil)
 	beforeDiagnostics := api.reviewDiagnostics(t, "/api/cases/"+caseID+"/reviews/"+oldID)
 
-	docC := api.upload(t, caseID, "draft_contract", "draft-v2.txt", "text/plain", []byte("根据谈判，拟签合同约定质保24个月。其余义务不变。"))
+	materialID, currentDocumentID := api.materialForCurrentDocument(t, caseID, docB)
+	docC := api.replaceUpload(t, caseID, "draft_contract", "draft-v2.txt", "text/plain", []byte("根据谈判，拟签合同约定质保24个月。其余义务不变。"), materialID, currentDocumentID)
 	_, detail := api.do(t, http.MethodGet, "/api/cases/"+caseID, nil)
 	if detail["revision_pending"] != true {
 		t.Fatalf("pending %+v", detail["revision_pending"])
@@ -91,7 +92,8 @@ func TestRevisedDocumentOpensNewRun(t *testing.T) {
 		t.Fatalf("old snapshot %v", old["snapshot"])
 	}
 
-	api.upload(t, caseID, "draft_contract", "draft-v3.txt", "text/plain", []byte("拟签合同约定质保36个月。"))
+	materialID, currentDocumentID = api.materialForCurrentDocument(t, caseID, docC)
+	docD := api.replaceUpload(t, caseID, "draft_contract", "draft-v3.txt", "text/plain", []byte("拟签合同约定质保36个月。"), materialID, currentDocumentID)
 	_, cleared := api.do(t, http.MethodPost, "/api/cases/"+caseID+"/reviews", map[string]any{})
 	_, clearedWS := api.do(t, http.MethodGet, "/api/cases/"+caseID+"/reviews/"+cleared["id"].(string), nil)
 	resolved := revisionByMark(t, clearedWS["revisions"].([]any), "消除")
@@ -103,7 +105,8 @@ func TestRevisedDocumentOpensNewRun(t *testing.T) {
 		t.Fatalf("aligned run still has findings %+v", clearedWS["findings"])
 	}
 
-	api.upload(t, caseID, "draft_contract", "draft-v4.txt", "text/plain", []byte("拟签合同改为质保12个月。"))
+	materialID, currentDocumentID = api.materialForCurrentDocument(t, caseID, docD)
+	api.replaceUpload(t, caseID, "draft_contract", "draft-v4.txt", "text/plain", []byte("拟签合同改为质保12个月。"), materialID, currentDocumentID)
 	_, addedRun := api.do(t, http.MethodPost, "/api/cases/"+caseID+"/reviews", map[string]any{})
 	_, addedWS := api.do(t, http.MethodGet, "/api/cases/"+caseID+"/reviews/"+addedRun["id"].(string), nil)
 	added := revisionByMark(t, addedWS["revisions"].([]any), "新增")

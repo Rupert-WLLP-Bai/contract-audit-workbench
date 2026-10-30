@@ -557,10 +557,11 @@ func TestConcurrentFeedbackSubmissionReturnsOneReceipt(t *testing.T) {
 
 func TestFeedbackCannotCiteEvidenceAddedAfterItsAttempt(t *testing.T) {
 	st, user, input, _ := feedbackFixture(t, "false_positive")
-	documentID, err := st.AddDocument(context.Background(), user, input.CaseID, "draft_contract", "new-evidence.txt", "text/plain", []byte("之后新增的验收记录。"))
+	added, err := st.UploadMaterial(context.Background(), user, input.CaseID, "attachment", "new-evidence.txt", "text/plain", []byte("之后新增的验收记录。"), MaterialUploadOptions{Purpose: "acceptance", IdempotencyKey: "feedback-later-acceptance"})
 	if err != nil {
 		t.Fatal(err)
 	}
+	documentID := added.DocumentID
 	runID, err := st.StartReviewAt(context.Background(), user, input.CaseID, acceptanceBusinessTime)
 	if err != nil {
 		t.Fatal(err)
