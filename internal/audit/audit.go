@@ -54,19 +54,23 @@ type Snapshot struct {
 // Append returns next chained after prev. The first event uses seq 1 and an
 // empty previous hash. next.Hash is ignored and recomputed.
 func Append(prev, next Event) (Event, error) {
-	if next.EventID == "" || next.RunID == "" || next.Actor == "" || next.EventType == "" || next.Seq <= 0 {
-		return Event{}, ErrBrokenChain
-	}
-	if prev.Seq == 0 {
-		if next.Seq != 1 {
-			return Event{}, ErrBrokenChain
-		}
-	} else if next.Seq != prev.Seq+1 || next.RunID != prev.RunID {
+	if !completeEvent(next) || !continuesChain(prev, next) {
 		return Event{}, ErrBrokenChain
 	}
 	next.PrevHash = prev.Hash
 	next.Hash = digest(next)
 	return next, nil
+}
+
+func completeEvent(event Event) bool {
+	return event.EventID != "" && event.RunID != "" && event.Actor != "" && event.EventType != "" && event.Seq > 0
+}
+
+func continuesChain(prev, next Event) bool {
+	if prev.Seq == 0 {
+		return next.Seq == 1
+	}
+	return next.Seq == prev.Seq+1 && next.RunID == prev.RunID
 }
 
 // Verify recomputes the chain. The first event must be sequence 1.
@@ -126,16 +130,29 @@ func digest(event Event) string {
 }
 
 func same(a, b Snapshot) bool {
-	if a.RuleSetHash != b.RuleSetHash || a.PlaybookHash != b.PlaybookHash || a.ModelRef != b.ModelRef ||
-		a.ModelConfigurationID != b.ModelConfigurationID || a.ComparatorRef != b.ComparatorRef ||
-		a.RulePackCompilerRef != b.RulePackCompilerRef ||
-		a.RulePackID != b.RulePackID || a.RulePackVersion != b.RulePackVersion ||
-		a.RulePackHash != b.RulePackHash || a.RulePackDigest != b.RulePackDigest ||
-		a.PlannerConfigurationID != b.PlannerConfigurationID ||
-		a.ParseSelectionHash != b.ParseSelectionHash || a.ParserConfigurationID != b.ParserConfigurationID {
+	if !sameRuleHashes(a, b) || !sameModelAndComparator(a, b) ||
+		!sameRulePack(a, b) || !sameParseAndPlannerConfiguration(a, b) {
 		return false
 	}
 	return equalStrings(a.DocumentIDs, b.DocumentIDs) && equalStrings(a.ParsedDocumentIDs, b.ParsedDocumentIDs)
+}
+
+func sameRuleHashes(a, b Snapshot) bool {
+	return a.RuleSetHash == b.RuleSetHash && a.PlaybookHash == b.PlaybookHash
+}
+
+func sameModelAndComparator(a, b Snapshot) bool {
+	return a.ModelRef == b.ModelRef && a.ModelConfigurationID == b.ModelConfigurationID && a.ComparatorRef == b.ComparatorRef
+}
+
+func sameRulePack(a, b Snapshot) bool {
+	return a.RulePackCompilerRef == b.RulePackCompilerRef && a.RulePackID == b.RulePackID &&
+		a.RulePackVersion == b.RulePackVersion && a.RulePackHash == b.RulePackHash && a.RulePackDigest == b.RulePackDigest
+}
+
+func sameParseAndPlannerConfiguration(a, b Snapshot) bool {
+	return a.PlannerConfigurationID == b.PlannerConfigurationID &&
+		a.ParseSelectionHash == b.ParseSelectionHash && a.ParserConfigurationID == b.ParserConfigurationID
 }
 
 func equalStrings(a, b []string) bool {

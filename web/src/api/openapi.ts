@@ -129,40 +129,108 @@ export function resolveOpenApiReference(
   return current;
 }
 
+const parameterLocations: readonly OpenApiParameterLocation[] = [
+  "path",
+  "query",
+  "header",
+  "cookie",
+];
+
+function parameterLocation(value: unknown): OpenApiParameterLocation {
+  const location = stringValue(value, "参数位置");
+  if (!(parameterLocations as readonly string[]).includes(location))
+    throw new Error(`不支持的参数位置：${location}`);
+  return location as OpenApiParameterLocation;
+}
+
+function parameterSchema(
+  parameter: OpenApiRecord,
+): OpenApiRecord | null {
+  if (parameter.schema === undefined) return null;
+  return recordOf(parameter.schema, "参数 schema");
+}
+
+function parameterExample(
+  parameter: OpenApiRecord,
+  schema: OpenApiRecord | null,
+): unknown {
+  const example = Object.hasOwn(parameter, "example")
+    ? parameter.example
+    : schema?.example;
+  return example ?? null;
+}
+
+function parseParameter(
+  entry: unknown,
+  root: OpenApiRecord,
+): OpenApiParameter {
+  const raw = resolveOpenApiReference(entry, root);
+  const parameter = recordOf(raw, "参数");
+  const location = parameterLocation(parameter.in);
+  const schema = parameterSchema(parameter);
+  return {
+    name: stringValue(parameter.name, "参数名称"),
+    location,
+    required: location === "path" || optionalBoolean(parameter, "required"),
+    description: optionalString(parameter, "description"),
+    schema,
+    example: parameterExample(parameter, schema),
+    raw,
+  };
+}
+
 function parseParameters(
   value: unknown,
   root: OpenApiRecord,
   label: string,
 ): OpenApiParameter[] {
   if (value === undefined) return [];
-  return arrayValue(value, label).map((entry) => {
-    const raw = resolveOpenApiReference(entry, root);
-    const parameter = recordOf(raw, "参数");
-    const location = stringValue(parameter.in, "参数位置");
-    if (
-      location !== "path" &&
-      location !== "query" &&
-      location !== "header" &&
-      location !== "cookie"
-    )
-      throw new Error(`不支持的参数位置：${location}`);
-    const schema =
-      parameter.schema === undefined
-        ? null
-        : recordOf(parameter.schema, "参数 schema");
-    const example = Object.hasOwn(parameter, "example")
-      ? parameter.example
-      : schema?.example;
-    return {
-      name: stringValue(parameter.name, "参数名称"),
-      location,
-      required: location === "path" || optionalBoolean(parameter, "required"),
-      description: optionalString(parameter, "description"),
-      schema,
-      example: example ?? null,
-      raw,
-    };
-  });
+  return arrayValue(value, label).map((entry) => parseParameter(entry, root));
+}
+
+function selectRequestBodyContent(
+  content: OpenApiRecord,
+): [string, unknown] | null {
+  const entries = Object.entries(content);
+  return (
+    entries.find(([mediaType]) => mediaType === "application/json") ??
+    entries[0] ??
+    null
+  );
+}
+
+function namedExample(examples: OpenApiRecord): unknown {
+  const firstExample = Object.values(examples)[0];
+  if (firstExample === undefined) return null;
+  const firstRecord = recordOf(firstExample, "请求体 example");
+  return Object.hasOwn(firstRecord, "value") ? firstRecord.value : null;
+}
+
+function schemaExample(schema: OpenApiRecord): unknown {
+  if (Object.hasOwn(schema, "example")) return schema.example;
+  return Object.hasOwn(schema, "default") ? schema.default : null;
+}
+
+function requestBodyExample(
+  media: OpenApiRecord,
+  schema: OpenApiRecord | null,
+): unknown {
+  let example: unknown = Object.hasOwn(media, "example") ? media.example : null;
+  if (example === null && media.examples !== undefined)
+    example = namedExample(recordOf(media.examples, "请求体 examples"));
+  if (example === null && schema) example = schemaExample(schema);
+  return example;
+}
+
+function emptyRequestBody(requestBody: OpenApiRecord): OpenApiRequestBody {
+  return {
+    required: optionalBoolean(requestBody, "required"),
+    description: optionalString(requestBody, "description"),
+    mediaType: null,
+    schema: null,
+    example: null,
+    raw: requestBody,
+  };
 }
 
 function parseRequestBody(
@@ -176,43 +244,18 @@ function parseRequestBody(
     requestBody.content === undefined
       ? {}
       : recordOf(requestBody.content, "请求体 content");
-  const entries = Object.entries(content);
-  const selected =
-    entries.find(([mediaType]) => mediaType === "application/json") ??
-    entries[0] ??
-    null;
-  if (!selected)
-    return {
-      required: optionalBoolean(requestBody, "required"),
-      description: optionalString(requestBody, "description"),
-      mediaType: null,
-      schema: null,
-      example: null,
-      raw,
-    };
+  const selected = selectRequestBodyContent(content);
+  if (!selected) return emptyRequestBody(requestBody);
   const [mediaType, rawMedia] = selected;
   const media = recordOf(rawMedia, "请求体 media type");
   const schema =
     media.schema === undefined ? null : recordOf(media.schema, "请求体 schema");
-  let example: unknown = Object.hasOwn(media, "example") ? media.example : null;
-  if (example === null && media.examples !== undefined) {
-    const examples = recordOf(media.examples, "请求体 examples");
-    const firstExample = Object.values(examples)[0];
-    if (firstExample !== undefined) {
-      const firstRecord = recordOf(firstExample, "请求体 example");
-      if (Object.hasOwn(firstRecord, "value")) example = firstRecord.value;
-    }
-  }
-  if (example === null && schema) {
-    if (Object.hasOwn(schema, "example")) example = schema.example;
-    else if (Object.hasOwn(schema, "default")) example = schema.default;
-  }
   return {
     required: optionalBoolean(requestBody, "required"),
     description: optionalString(requestBody, "description"),
     mediaType,
     schema,
-    example,
+    example: requestBodyExample(media, schema),
     raw,
   };
 }
@@ -282,21 +325,22 @@ function parseOperation(
   };
 }
 
-export function parseOpenApiContract(value: unknown): OpenApiContract {
-  const root = recordOf(value, "OpenAPI 契约");
-  const openapi = stringValue(root.openapi, "openapi");
-  if (!openapi.startsWith("3.")) throw new Error("仅支持 OpenAPI 3.x 契约");
-  const info = recordOf(root.info, "info");
-  const paths = recordOf(root.paths, "paths");
+function invalidOpenApiPath(path: string): boolean {
+  return (
+    !path.startsWith("/") ||
+    path.startsWith("//") ||
+    path.includes("?") ||
+    path.includes("#")
+  );
+}
+
+function collectOperations(
+  paths: OpenApiRecord,
+  root: OpenApiRecord,
+): OpenApiOperation[] {
   const operations: OpenApiOperation[] = [];
   for (const [path, rawPathItem] of Object.entries(paths)) {
-    if (
-      !path.startsWith("/") ||
-      path.startsWith("//") ||
-      path.includes("?") ||
-      path.includes("#")
-    )
-      throw new Error(`OpenAPI 路径无效：${path}`);
+    if (invalidOpenApiPath(path)) throw new Error(`OpenAPI 路径无效：${path}`);
     const pathItem = recordOf(rawPathItem, `paths.${path}`);
     for (const [method, rawOperation] of Object.entries(pathItem)) {
       if (METHODS[method.toLowerCase()] === true)
@@ -311,23 +355,36 @@ export function parseOpenApiContract(value: unknown): OpenApiContract {
         );
     }
   }
+  return operations;
+}
+
+function parseContractTags(
+  root: OpenApiRecord,
+): { name: string; description: string }[] {
+  if (root.tags === undefined) return [];
+  return arrayValue(root.tags, "tags").map((entry) => {
+    const tag = recordOf(entry, "tag");
+    return {
+      name: stringValue(tag.name, "tag.name"),
+      description: optionalString(tag, "description"),
+    };
+  });
+}
+
+export function parseOpenApiContract(value: unknown): OpenApiContract {
+  const root = recordOf(value, "OpenAPI 契约");
+  const openapi = stringValue(root.openapi, "openapi");
+  if (!openapi.startsWith("3.")) throw new Error("仅支持 OpenAPI 3.x 契约");
+  const info = recordOf(root.info, "info");
+  const paths = recordOf(root.paths, "paths");
+  const operations = collectOperations(paths, root);
   if (operations.length === 0) throw new Error("OpenAPI 契约没有可用操作");
-  const tags =
-    root.tags === undefined
-      ? []
-      : arrayValue(root.tags, "tags").map((entry) => {
-          const tag = recordOf(entry, "tag");
-          return {
-            name: stringValue(tag.name, "tag.name"),
-            description: optionalString(tag, "description"),
-          };
-        });
   return {
     openapi,
     title: stringValue(info.title, "info.title"),
     version: stringValue(info.version, "info.version"),
     description: optionalString(info, "description"),
-    tags,
+    tags: parseContractTags(root),
     operations,
     raw: root,
   };

@@ -50,6 +50,11 @@ function LLMEndpointDialog({
   const [models, setModels] = useState<string[]>([]);
   const [probedTarget, setProbedTarget] = useState("");
   const [submitted, setSubmitted] = useState(false);
+  // The revision the dialog is editing. A save bumps the stored revision, so the
+  // dialog tracks the version it just wrote instead of the refetched one.
+  const [editingRevision, setEditingRevision] = useState<number | undefined>(
+    undefined,
+  );
   const probe = useProbeLLMEndpoint();
   const save = useSaveLLMEndpoint();
 
@@ -63,6 +68,7 @@ function LLMEndpointDialog({
     setModels(endpoint?.models ? [...endpoint.models] : []);
     setProbedTarget("");
     setSubmitted(false);
+    setEditingRevision(endpoint?.configured ? endpoint.revision : undefined);
     // Refetches that keep the same revision must not overwrite an open form.
     // Reset mutation state only when the dialog opens: resetting it while a
     // successful save invalidates the endpoint would cancel the close callback.
@@ -136,11 +142,16 @@ function LLMEndpointDialog({
         models,
         api_key: clearAPIKey ? undefined : apiKey.trim() || undefined,
         clear_api_key: clearAPIKey || undefined,
-        expected_revision: endpoint?.configured
-          ? endpoint.revision
-          : undefined,
+        // A first save has nothing to compare against; sending 0 makes two
+        // concurrent first saves conflict instead of overwriting each other.
+        expected_revision: editingRevision ?? 0,
       },
-      { onSuccess: () => onOpenChange(false) },
+      {
+        onSuccess: (saved) => {
+          setEditingRevision(saved.revision);
+          onOpenChange(false);
+        },
+      },
     );
   }
 

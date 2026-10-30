@@ -38,6 +38,13 @@ const (
 	shutdownTimeout  = 30 * time.Second
 )
 
+type workerRuntimeConfig struct {
+	lease     time.Duration
+	heartbeat time.Duration
+	poll      time.Duration
+	relay     outboxrelay.Config
+}
+
 func main() {
 	process.Main(run)
 }
@@ -68,27 +75,39 @@ func run() error {
 		"service", "audit-worker", "service.instance.id", bootstrap.InstanceID(), "worker_id", workerID,
 	))
 	slog.Info("worker starting", "database", app.Selection.Database.Name)
-	lease, err := durationEnv("WORKER_LEASE_DURATION", defaultLease)
+	config, err := workerRuntimeConfigFromEnv()
 	if err != nil {
 		return err
+	}
+	return serveWorker(runCtx, abort, app, healthAddr, workerID, config)
+}
+
+func workerRuntimeConfigFromEnv() (workerRuntimeConfig, error) {
+	lease, err := durationEnv("WORKER_LEASE_DURATION", defaultLease)
+	if err != nil {
+		return workerRuntimeConfig{}, err
 	}
 	heartbeat, err := durationEnv("WORKER_HEARTBEAT_INTERVAL", defaultHeartbeat)
 	if err != nil || heartbeat >= lease {
-		return errors.New("WORKER_HEARTBEAT_INTERVAL must be positive and shorter than WORKER_LEASE_DURATION")
+		return workerRuntimeConfig{}, errors.New("WORKER_HEARTBEAT_INTERVAL must be positive and shorter than WORKER_LEASE_DURATION")
 	}
 	poll, err := durationEnv("WORKER_POLL_INTERVAL", defaultPoll)
 	if err != nil {
-		return err
+		return workerRuntimeConfig{}, err
 	}
+	relay, err := outboxrelay.FromEnv()
+	if err != nil {
+		return workerRuntimeConfig{}, err
+	}
+	return workerRuntimeConfig{lease: lease, heartbeat: heartbeat, poll: poll, relay: relay}, nil
+}
+
+func serveWorker(runCtx context.Context, abort context.CancelFunc, app *bootstrap.Runtime, healthAddr, workerID string, config workerRuntimeConfig) error {
 	// NATS only wakes an idle worker. Jobs are always claimed from PostgreSQL,
 	// so a missed notification cannot lose work.
-	relayConfig, err := outboxrelay.FromEnv()
-	if err != nil {
-		return err
-	}
 	// SubscribeLoop keeps retrying the broker in the background; a nil channel
 	// means wake-ups are disabled and the claim loop polls PostgreSQL.
-	wake := outboxrelay.SubscribeLoop(runCtx, relayConfig)
+	wake := outboxrelay.SubscribeLoop(runCtx, config.relay)
 	if wake == nil {
 		log.Printf("worker wake-up disabled: NATS_URL is not configured; polling PostgreSQL directly")
 	}
@@ -129,7 +148,7 @@ func run() error {
 	}()
 
 	log.Printf("worker %s claiming jobs from %s", workerID, app.Selection.Database.Name)
-	claimErr := claimJobs(runCtx, app.Store, workerID, lease, heartbeat, poll, wake)
+	claimErr := claimJobs(runCtx, app.Store, workerID, config.lease, config.heartbeat, config.poll, wake)
 
 	shutdown, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
 	defer cancel()
@@ -150,39 +169,65 @@ func run() error {
 // lease expires, and the lease generation rejects a late commit from this one.
 func claimJobs(ctx context.Context, st *store.Store, workerID string, lease, heartbeat, poll time.Duration, wake <-chan struct{}) error {
 	for {
-		claim, err := st.ClaimNextJob(ctx, workerID, lease)
-		if errors.Is(err, pgx.ErrNoRows) {
-			if err := waitFor(ctx, poll, wake); err != nil {
-				return err
-			}
-			continue
-		}
+		claim, claimed, err := claimNextJob(ctx, st, workerID, lease, poll, wake)
 		if err != nil {
 			return err
 		}
-		slog.Info("review job claimed", "job_id", claim.JobID, "run_id", claim.RunID,
-			"attempt_id", claim.AttemptID, "generation", claim.Generation)
-		jobCtx, cancel := context.WithCancel(ctx)
-		heartbeatDone := make(chan error, 1)
-		go func() { heartbeatDone <- renewLease(jobCtx, cancel, st, claim, lease, heartbeat) }()
-		runErr := st.RunClaimedJob(jobCtx, claim)
-		cancel()
-		heartbeatErr := <-heartbeatDone
-		if ctx.Err() != nil {
-			return ctx.Err()
+		if !claimed {
+			continue
 		}
-		if runErr != nil && !errors.Is(runErr, context.Canceled) && !errors.Is(runErr, store.ErrLeaseLost) {
-			slog.Error("review job failed", "job_id", claim.JobID, "run_id", claim.RunID,
-				"attempt_id", claim.AttemptID, "generation", claim.Generation, "error", runErr)
-		} else {
-			slog.Info("review job finished", "job_id", claim.JobID, "run_id", claim.RunID,
-				"attempt_id", claim.AttemptID, "generation", claim.Generation)
-		}
-		if heartbeatErr != nil && !errors.Is(heartbeatErr, context.Canceled) && !errors.Is(heartbeatErr, store.ErrLeaseLost) {
-			slog.Error("review job heartbeat failed", "job_id", claim.JobID, "run_id", claim.RunID,
-				"attempt_id", claim.AttemptID, "generation", claim.Generation, "error", heartbeatErr)
+		if err := processClaim(ctx, st, claim, lease, heartbeat); err != nil {
+			return err
 		}
 	}
+}
+
+func claimNextJob(ctx context.Context, st *store.Store, workerID string, lease, poll time.Duration, wake <-chan struct{}) (store.JobClaim, bool, error) {
+	claim, err := st.ClaimNextJob(ctx, workerID, lease)
+	if errors.Is(err, pgx.ErrNoRows) {
+		if err := waitFor(ctx, poll, wake); err != nil {
+			return store.JobClaim{}, false, err
+		}
+		return store.JobClaim{}, false, nil
+	}
+	if err != nil {
+		return store.JobClaim{}, false, err
+	}
+	slog.Info("review job claimed", "job_id", claim.JobID, "run_id", claim.RunID,
+		"attempt_id", claim.AttemptID, "generation", claim.Generation)
+	return claim, true, nil
+}
+
+func processClaim(ctx context.Context, st *store.Store, claim store.JobClaim, lease, heartbeat time.Duration) error {
+	jobCtx, cancel := context.WithCancel(ctx)
+	heartbeatDone := make(chan error, 1)
+	go func() { heartbeatDone <- renewLease(jobCtx, cancel, st, claim, lease, heartbeat) }()
+	runErr := st.RunClaimedJob(jobCtx, claim)
+	cancel()
+	heartbeatErr := <-heartbeatDone
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
+	logClaimOutcome(claim, runErr, heartbeatErr)
+	return nil
+}
+
+func logClaimOutcome(claim store.JobClaim, runErr, heartbeatErr error) {
+	if unexpectedWorkerError(runErr) {
+		slog.Error("review job failed", "job_id", claim.JobID, "run_id", claim.RunID,
+			"attempt_id", claim.AttemptID, "generation", claim.Generation, "error", runErr)
+	} else {
+		slog.Info("review job finished", "job_id", claim.JobID, "run_id", claim.RunID,
+			"attempt_id", claim.AttemptID, "generation", claim.Generation)
+	}
+	if unexpectedWorkerError(heartbeatErr) {
+		slog.Error("review job heartbeat failed", "job_id", claim.JobID, "run_id", claim.RunID,
+			"attempt_id", claim.AttemptID, "generation", claim.Generation, "error", heartbeatErr)
+	}
+}
+
+func unexpectedWorkerError(err error) bool {
+	return err != nil && !errors.Is(err, context.Canceled) && !errors.Is(err, store.ErrLeaseLost)
 }
 
 func renewLease(ctx context.Context, cancel context.CancelFunc, st *store.Store, claim store.JobClaim, lease, interval time.Duration) error {

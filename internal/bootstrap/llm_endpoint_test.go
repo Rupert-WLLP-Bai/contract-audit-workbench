@@ -64,3 +64,26 @@ func TestLoadStoredLLMEndpointWithoutDatabaseKeepsEnvironmentIdentity(t *testing
 		t.Fatalf("loaded %+v revision %d", got, revision)
 	}
 }
+
+// A stored endpoint whose credential cannot be opened must not be paired with
+// the deployment credential: the new address never received that key.
+func TestApplyStoredLLMEndpointFallsBackWholeWithoutUsableCredential(t *testing.T) {
+	t.Setenv(llmendpoint.EncryptionKeyEnv, "")
+	sealed, err := llmendpoint.Seal("provider-key")
+	if err != nil {
+		// Without the environment key sealing already fails; use opaque bytes.
+		sealed = []byte("sealed-with-another-key")
+	}
+	base := model.Config{
+		BaseURL: "https://env.example.com/v1", ProviderURL: "https://env.example.com/v1",
+		ChatModel: "env-review", OCRModel: "env-ocr", APIKey: "env-key",
+	}
+	settings := store.LLMEndpointSettings{
+		Name: "平台端点", Protocol: llmendpoint.ProtocolOpenAICompatible, BaseURL: "https://llm.example.com/v1",
+		Models: []string{"review-stored", "ocr-stored"}, ReviewModel: "review-stored", OCRModel: "ocr-stored",
+		SecretCiphertext: sealed, Revision: 4,
+	}
+	if got := applyStoredLLMEndpoint(base, "", settings); got != base {
+		t.Fatalf("single-process client paired a new endpoint with the deployment credential: %+v", got)
+	}
+}

@@ -31,7 +31,12 @@ func applyStoredLLMEndpoint(base model.Config, service string, settings store.LL
 			if key, err := llmendpoint.Open(settings.SecretCiphertext); err == nil {
 				out.APIKey = key
 			} else if len(settings.SecretCiphertext) > 0 {
-				log.Printf("stored LLM credential cannot be opened; single-process model calls keep the environment credential")
+				// The stored endpoint and the stored credential are one
+				// identity. Pairing the new address with the environment key
+				// would send the deployment credential to a provider that never
+				// received it, so the whole stored endpoint is ignored instead.
+				log.Printf("stored LLM credential cannot be opened; single-process model calls keep the deployment endpoint")
+				return base
 			}
 		} else {
 			// Core and execution never call the provider directly. Keeping the

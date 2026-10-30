@@ -261,14 +261,16 @@ type Gateway struct {
 	transportClose sync.Once
 }
 
+type upstreamRoleConfig struct {
+	role      string
+	urls      []string
+	token     string
+	tokenName string
+}
+
 // New validates the configuration and builds one reverse proxy per service.
 func New(config Config) (*Gateway, error) {
-	roles := []struct {
-		role      string
-		urls      []string
-		token     string
-		tokenName string
-	}{
+	roles := []upstreamRoleConfig{
 		{"core", config.CoreURLs, config.CoreToken, "GATEWAY_CORE_TOKEN"},
 		{"document", oneURL(config.DocumentURL), config.DocumentToken, "GATEWAY_DOCUMENT_TOKEN"},
 		{"execution", oneURL(config.ExecutionURL), config.ExecutionToken, "GATEWAY_EXECUTION_TOKEN"},
@@ -293,33 +295,42 @@ func New(config Config) (*Gateway, error) {
 		healthTimeout:  config.HealthTimeout,
 	}
 	for _, role := range roles {
-		if len(role.urls) == 0 {
-			return nil, fmt.Errorf("no %s upstream URL is configured", role.role)
-		}
-		if len(role.urls) > maxReplicasPerService {
-			return nil, fmt.Errorf("%s supports at most %d upstream replicas", role.role, maxReplicasPerService)
-		}
-		if len(role.token) < 32 {
-			return nil, fmt.Errorf("%s must hold a private credential of at least 32 bytes", role.tokenName)
-		}
-		if other, duplicate := seenTokens[role.token]; duplicate {
-			return nil, fmt.Errorf("%s must differ from %s", role.tokenName, other)
-		}
-		seenTokens[role.token] = role.tokenName
-		targets := make([]*url.URL, 0, len(role.urls))
-		for _, raw := range role.urls {
-			target, err := baseURL(raw)
-			if err != nil {
-				// The message never repeats the configured value: a base URL can
-				// carry credentials, and a startup error is logged.
-				return nil, fmt.Errorf("the %s upstream URL is not an HTTP(S) base URL without credentials, query, or path prefix", role.role)
-			}
-			targets = append(targets, target)
+		targets, err := validateUpstreamRole(role, seenTokens)
+		if err != nil {
+			return nil, err
 		}
 		gateway.upstreams = append(gateway.upstreams, newUpstream(role.role, targets, role.token, config.HealthFailureThreshold, config.HealthRecoveryThreshold))
 	}
 	gateway.probe = &http.Client{Transport: upstreamTransport(config.HealthTimeout, true)}
 	return gateway, nil
+}
+
+func validateUpstreamRole(role upstreamRoleConfig, seenTokens map[string]string) ([]*url.URL, error) {
+	if len(role.urls) == 0 {
+		return nil, fmt.Errorf("no %s upstream URL is configured", role.role)
+	}
+	if len(role.urls) > maxReplicasPerService {
+		return nil, fmt.Errorf("%s supports at most %d upstream replicas", role.role, maxReplicasPerService)
+	}
+	if len(role.token) < 32 {
+		return nil, fmt.Errorf("%s must hold a private credential of at least 32 bytes", role.tokenName)
+	}
+	if other, duplicate := seenTokens[role.token]; duplicate {
+		return nil, fmt.Errorf("%s must differ from %s", role.tokenName, other)
+	}
+	seenTokens[role.token] = role.tokenName
+
+	targets := make([]*url.URL, 0, len(role.urls))
+	for _, raw := range role.urls {
+		target, err := baseURL(raw)
+		if err != nil {
+			// The message never repeats the configured value: a base URL can
+			// carry credentials, and a startup error is logged.
+			return nil, fmt.Errorf("the %s upstream URL is not an HTTP(S) base URL without credentials, query, or path prefix", role.role)
+		}
+		targets = append(targets, target)
+	}
+	return targets, nil
 }
 
 func oneURL(value string) []string {
@@ -331,14 +342,31 @@ func oneURL(value string) []string {
 
 func baseURL(raw string) (*url.URL, error) {
 	target, err := url.Parse(raw)
-	if err != nil || target.Host == "" || (target.Scheme != "http" && target.Scheme != "https") ||
-		target.User != nil || target.RawQuery != "" || target.Fragment != "" {
+	if err != nil {
 		return nil, errors.New("upstream URL is not a plain HTTP(S) base URL")
 	}
-	if target.Path != "" && target.Path != "/" {
-		return nil, errors.New("upstream URL must not carry a path prefix")
+	if err := validateBaseURLAuthority(target); err != nil {
+		return nil, err
+	}
+	if err := validateBaseURLPath(target); err != nil {
+		return nil, err
 	}
 	return target, nil
+}
+
+func validateBaseURLAuthority(target *url.URL) error {
+	if target.Host == "" || (target.Scheme != "http" && target.Scheme != "https") ||
+		target.User != nil || target.RawQuery != "" || target.Fragment != "" {
+		return errors.New("upstream URL is not a plain HTTP(S) base URL")
+	}
+	return nil
+}
+
+func validateBaseURLPath(target *url.URL) error {
+	if target.Path != "" && target.Path != "/" {
+		return errors.New("upstream URL must not carry a path prefix")
+	}
+	return nil
 }
 
 // Handler mounts the unified probe surface next to the proxy. A request is
@@ -512,6 +540,10 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
+	g.serveRoutedRequest(w, r, upstream, segments)
+}
+
+func (g *Gateway) serveRoutedRequest(w http.ResponseWriter, r *http.Request, upstream *upstream, segments []string) {
 	// The concurrency budget covers every proxied request, including a stream
 	// that stays open: a bounded gateway is worth more than an unbounded one.
 	select {
@@ -758,102 +790,149 @@ func (transport *replicaTransport) RoundTrip(request *http.Request) (*http.Respo
 		logGatewayRequestAttempt(transport.upstream, requestID, 0, nil, request.Method, "context_closed", 0, time.Now())
 		return nil, err
 	}
-	retrySafe := (request.Method == http.MethodGet || request.Method == http.MethodHead) && replayableBody(request)
+	retrySafe := retrySafeRequest(request)
 	maxAttempts := 1
 	if retrySafe {
 		maxAttempts = len(transport.upstream.replicas)
 	}
 	var tried [maxReplicasPerService]bool
-	var streamContext context.Context
-	var cancelStream context.CancelFunc
-	var headerTimer *time.Timer
-	var streamDeadline <-chan struct{}
-	if transport.streamHeaderBudget > 0 {
-		if _, hasDeadline := request.Context().Deadline(); !hasDeadline {
-			streamCtx, streamCancel := context.WithCancel(request.Context())
-			streamContext = streamCtx
-			cancelStream = streamCancel
-			deadline := make(chan struct{})
-			streamDeadline = deadline
-			headerTimer = time.AfterFunc(transport.streamHeaderBudget, func() {
-				close(deadline)
-				streamCancel()
-			})
-		}
-	}
-	stopStreamTimer := func() {
-		if headerTimer != nil {
-			headerTimer.Stop()
-		}
-		if cancelStream != nil {
-			cancelStream()
-		}
-	}
+	streamGuard := newStreamHeaderGuard(request, transport.streamHeaderBudget)
+	defer streamGuard.stop()
 	for attempt := range maxAttempts {
 		attemptStarted := time.Now()
 		replica, ok := transport.upstream.pickHealthy(tried[:len(transport.upstream.replicas)])
 		if !ok {
-			stopStreamTimer()
+			streamGuard.stop()
 			logGatewayRequestAttempt(transport.upstream, requestID, attempt+1, nil, request.Method, "no_healthy_replica", 0, attemptStarted)
 			return nil, errNoHealthyReplica
 		}
-		attemptRequest, err := requestForReplica(request, replica.target, attempt > 0)
-		if err != nil {
-			stopStreamTimer()
-			logGatewayRequestAttempt(transport.upstream, requestID, attempt+1, replica, request.Method, "request_build_failure", 0, attemptStarted)
+		response, err, requestBuildFailed := transport.roundTripAttempt(request, replica, attempt, streamGuard, requestID, attemptStarted)
+		if requestBuildFailed {
 			return nil, err
 		}
-		if streamContext != nil {
-			attemptRequest = attemptRequest.WithContext(streamContext)
-		}
-		response, err := transport.base.RoundTrip(attemptRequest)
 		if err == nil {
-			if headerTimer != nil {
-				if !headerTimer.Stop() {
-					if response.Body != nil {
-						_ = response.Body.Close()
-					}
-					cancelStream()
-					logGatewayRequestAttempt(transport.upstream, requestID, attempt+1, replica, request.Method, "stream_header_timeout", 0, attemptStarted)
-					return nil, context.DeadlineExceeded
-				}
-				if response.Body != nil {
-					response.Body = &cancelReadCloser{ReadCloser: response.Body, cancel: cancelStream}
-					cancelStream = nil
-				} else {
-					cancelStream()
-					cancelStream = nil
-				}
-				headerTimer = nil
-			}
-			logGatewayRequestAttempt(transport.upstream, requestID, attempt+1, replica, request.Method, "response_headers", response.StatusCode, attemptStarted)
-			return response, nil
+			return transport.finishResponse(response, replica, request.Method, streamGuard, requestID, attempt+1, attemptStarted)
 		}
-		select {
-		case <-streamDeadline:
-			stopStreamTimer()
-			logGatewayRequestAttempt(transport.upstream, requestID, attempt+1, replica, request.Method, "stream_header_timeout", 0, attemptStarted)
-			return nil, context.DeadlineExceeded
-		default:
+		if terminalErr := transport.reportRoundTripFailure(request, replica, streamGuard, requestID, attempt+1, attemptStarted); terminalErr != nil {
+			return nil, terminalErr
 		}
-		if err := request.Context().Err(); err != nil {
-			stopStreamTimer()
-			outcome := "context_cancelled"
-			if errors.Is(err, context.DeadlineExceeded) {
-				outcome = "context_deadline"
-			}
-			logGatewayRequestAttempt(transport.upstream, requestID, attempt+1, replica, request.Method, outcome, 0, attemptStarted)
-			return nil, err
-		}
-		transport.upstream.observeRequestFailure(replica)
-		logGatewayRequestAttempt(transport.upstream, requestID, attempt+1, replica, request.Method, "transport_failure", 0, attemptStarted)
 		if !retrySafe {
-			stopStreamTimer()
 			return nil, err
 		}
 	}
-	stopStreamTimer()
 	return nil, errNoHealthyReplica
+}
+
+func (transport *replicaTransport) finishResponse(response *http.Response, replica *replica, method string, guard *streamHeaderGuard, requestID uint64, attempt int, started time.Time) (*http.Response, error) {
+	if guard.responseTimedOut(response) {
+		logGatewayRequestAttempt(transport.upstream, requestID, attempt, replica, method, "stream_header_timeout", 0, started)
+		return nil, context.DeadlineExceeded
+	}
+	logGatewayRequestAttempt(transport.upstream, requestID, attempt, replica, method, "response_headers", response.StatusCode, started)
+	return response, nil
+}
+
+func retrySafeRequest(request *http.Request) bool {
+	return (request.Method == http.MethodGet || request.Method == http.MethodHead) && replayableBody(request)
+}
+
+type streamHeaderGuard struct {
+	requestContext context.Context
+	cancel         context.CancelFunc
+	timer          *time.Timer
+	deadline       <-chan struct{}
+}
+
+func newStreamHeaderGuard(request *http.Request, budget time.Duration) *streamHeaderGuard {
+	guard := &streamHeaderGuard{}
+	if budget <= 0 {
+		return guard
+	}
+	if _, hasDeadline := request.Context().Deadline(); hasDeadline {
+		return guard
+	}
+	streamContext, cancel := context.WithCancel(request.Context())
+	deadline := make(chan struct{})
+	guard.requestContext = streamContext
+	guard.cancel = cancel
+	guard.deadline = deadline
+	guard.timer = time.AfterFunc(budget, func() {
+		close(deadline)
+		cancel()
+	})
+	return guard
+}
+
+func (guard *streamHeaderGuard) stop() {
+	if guard.timer != nil {
+		guard.timer.Stop()
+	}
+	if guard.cancel != nil {
+		guard.cancel()
+	}
+}
+
+func (guard *streamHeaderGuard) bind(request *http.Request) *http.Request {
+	if guard.requestContext == nil {
+		return request
+	}
+	return request.WithContext(guard.requestContext)
+}
+
+func (guard *streamHeaderGuard) responseTimedOut(response *http.Response) bool {
+	if guard.timer == nil {
+		return false
+	}
+	if !guard.timer.Stop() {
+		if response.Body != nil {
+			_ = response.Body.Close()
+		}
+		guard.cancel()
+		return true
+	}
+	if response.Body != nil {
+		response.Body = &cancelReadCloser{ReadCloser: response.Body, cancel: guard.cancel}
+		guard.cancel = nil
+	} else {
+		guard.cancel()
+		guard.cancel = nil
+	}
+	guard.timer = nil
+	return false
+}
+
+func (transport *replicaTransport) roundTripAttempt(request *http.Request, replica *replica, attempt int, guard *streamHeaderGuard, requestID uint64, started time.Time) (*http.Response, error, bool) {
+	attemptRequest, err := requestForReplica(request, replica.target, attempt > 0)
+	if err != nil {
+		guard.stop()
+		logGatewayRequestAttempt(transport.upstream, requestID, attempt+1, replica, request.Method, "request_build_failure", 0, started)
+		return nil, err, true
+	}
+	attemptRequest = guard.bind(attemptRequest)
+	response, err := transport.base.RoundTrip(attemptRequest)
+	return response, err, false
+}
+
+func (transport *replicaTransport) reportRoundTripFailure(request *http.Request, replica *replica, guard *streamHeaderGuard, requestID uint64, attempt int, started time.Time) error {
+	select {
+	case <-guard.deadline:
+		guard.stop()
+		logGatewayRequestAttempt(transport.upstream, requestID, attempt, replica, request.Method, "stream_header_timeout", 0, started)
+		return context.DeadlineExceeded
+	default:
+	}
+	if err := request.Context().Err(); err != nil {
+		guard.stop()
+		outcome := "context_cancelled"
+		if errors.Is(err, context.DeadlineExceeded) {
+			outcome = "context_deadline"
+		}
+		logGatewayRequestAttempt(transport.upstream, requestID, attempt, replica, request.Method, outcome, 0, started)
+		return err
+	}
+	transport.upstream.observeRequestFailure(replica)
+	logGatewayRequestAttempt(transport.upstream, requestID, attempt, replica, request.Method, "transport_failure", 0, started)
+	return nil
 }
 
 func logGatewayRequestAttempt(upstream *upstream, requestID uint64, attempt int, replica *replica, method, outcome string, status int, started time.Time) {
@@ -928,56 +1007,68 @@ func (up *upstream) observeProbe(replica *replica, probeStarted time.Time, healt
 	}
 	wasChecked, wasHealthy := replica.checked, replica.healthy
 	if healthy {
-		replica.failures = 0
-		replica.failureSince = time.Time{}
-		if !replica.checked || replica.healthy {
-			replica.healthy = true
-			replica.successes = 0
-		} else {
-			replica.successes++
-			if replica.successes >= up.recoveryThreshold {
-				replica.healthy = true
-				replica.successes = 0
-			}
-		}
+		up.applySuccessfulProbe(replica)
 	} else {
-		replica.successes = 0
-		if replica.failures == 0 {
-			replica.failureSince = probeStarted
-		}
-		if replica.failures < up.failureThreshold {
-			replica.failures++
-		}
-		if replica.failures >= up.failureThreshold {
-			replica.healthy = false
-		}
+		up.applyFailedProbe(replica, probeStarted)
 	}
 	replica.checked = true
 	if !wasChecked || wasHealthy != replica.healthy {
-		previous, state := "unknown", "unhealthy"
-		if wasChecked {
-			previous = "unhealthy"
-			if wasHealthy {
-				previous = "healthy"
-			}
-		}
-		if replica.healthy {
-			state = "healthy"
-		}
-		transitionMS := int64(0)
-		if state == "healthy" && !replica.unhealthySince.IsZero() {
-			transitionMS = time.Since(replica.unhealthySince).Milliseconds()
-			replica.unhealthySince = time.Time{}
-			replica.failureSince = time.Time{}
-		} else if state == "unhealthy" {
-			if replica.failureSince.IsZero() {
-				replica.failureSince = probeStarted
-			}
-			replica.unhealthySince = replica.failureSince
-			transitionMS = time.Since(replica.failureSince).Milliseconds()
-		}
-		log.Printf("gateway_upstream_health role=%s replica=%s previous=%s state=%s source=probe transition_ms=%d probe_ms=%d", up.role, replica.identity, previous, state, transitionMS, time.Since(probeStarted).Milliseconds())
+		up.logProbeTransition(replica, wasChecked, wasHealthy, probeStarted)
 	}
+}
+
+func (up *upstream) applySuccessfulProbe(replica *replica) {
+	replica.failures = 0
+	replica.failureSince = time.Time{}
+	if !replica.checked || replica.healthy {
+		replica.healthy = true
+		replica.successes = 0
+		return
+	}
+	replica.successes++
+	if replica.successes >= up.recoveryThreshold {
+		replica.healthy = true
+		replica.successes = 0
+	}
+}
+
+func (up *upstream) applyFailedProbe(replica *replica, probeStarted time.Time) {
+	replica.successes = 0
+	if replica.failures == 0 {
+		replica.failureSince = probeStarted
+	}
+	if replica.failures < up.failureThreshold {
+		replica.failures++
+	}
+	if replica.failures >= up.failureThreshold {
+		replica.healthy = false
+	}
+}
+
+func (up *upstream) logProbeTransition(replica *replica, wasChecked, wasHealthy bool, probeStarted time.Time) {
+	previous, state := "unknown", "unhealthy"
+	if wasChecked {
+		previous = "unhealthy"
+		if wasHealthy {
+			previous = "healthy"
+		}
+	}
+	if replica.healthy {
+		state = "healthy"
+	}
+	transitionMS := int64(0)
+	if state == "healthy" && !replica.unhealthySince.IsZero() {
+		transitionMS = time.Since(replica.unhealthySince).Milliseconds()
+		replica.unhealthySince = time.Time{}
+		replica.failureSince = time.Time{}
+	} else if state == "unhealthy" {
+		if replica.failureSince.IsZero() {
+			replica.failureSince = probeStarted
+		}
+		replica.unhealthySince = replica.failureSince
+		transitionMS = time.Since(replica.failureSince).Milliseconds()
+	}
+	log.Printf("gateway_upstream_health role=%s replica=%s previous=%s state=%s source=probe transition_ms=%d probe_ms=%d", up.role, replica.identity, previous, state, transitionMS, time.Since(probeStarted).Milliseconds())
 }
 
 func (up *upstream) observeRequestFailure(replica *replica) {

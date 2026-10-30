@@ -50,22 +50,69 @@ type jwk struct {
 }
 
 func (m *Manager) verifyIDToken(ctx context.Context, metadata providerMetadata, token, clientID, expectedNonce string) (idTokenClaims, error) {
-	if len(token) == 0 || len(token) > maxProviderJSON {
-		return idTokenClaims{}, ErrAuthentication
-	}
-	parts := strings.Split(token, ".")
-	if len(parts) != 3 || parts[0] == "" || parts[1] == "" || parts[2] == "" {
-		return idTokenClaims{}, ErrAuthentication
-	}
-	headerBytes, err := base64.RawURLEncoding.DecodeString(parts[0])
+	header, claims, signingInput, signature, err := parseIDToken(token)
 	if err != nil {
 		return idTokenClaims{}, ErrAuthentication
 	}
-	var header jwtHeader
-	if err := json.Unmarshal(headerBytes, &header); err != nil || header.Algorithm != "RS256" || header.KeyID == "" || len(header.Critical) != 0 || (header.B64 != nil && !*header.B64) {
+	document, err := m.fetchJWKS(ctx, metadata.JWKSURI)
+	if err != nil {
 		return idTokenClaims{}, ErrAuthentication
 	}
-	payloadBytes, err := base64.RawURLEncoding.DecodeString(parts[1])
+	publicKey, err := rsaKeyForID(document.Keys, header.KeyID)
+	if err != nil {
+		return idTokenClaims{}, ErrAuthentication
+	}
+	if !validIDTokenSignature(publicKey, signingInput, signature) {
+		return idTokenClaims{}, ErrAuthentication
+	}
+	if !validIDClaims(claims, metadata.Issuer, clientID, expectedNonce, time.Now()) {
+		return idTokenClaims{}, ErrAuthentication
+	}
+	return claims, nil
+}
+
+func parseIDToken(token string) (jwtHeader, idTokenClaims, string, []byte, error) {
+	if !validJWTShape(token) {
+		return jwtHeader{}, idTokenClaims{}, "", nil, ErrAuthentication
+	}
+	parts := strings.Split(token, ".")
+	header, err := decodeJWTHeader(parts[0])
+	if err != nil {
+		return jwtHeader{}, idTokenClaims{}, "", nil, ErrAuthentication
+	}
+	claims, err := decodeJWTPayload(parts[1])
+	if err != nil {
+		return jwtHeader{}, idTokenClaims{}, "", nil, ErrAuthentication
+	}
+	signature, err := decodeJWTSignature(parts[2])
+	if err != nil {
+		return jwtHeader{}, idTokenClaims{}, "", nil, ErrAuthentication
+	}
+	return header, claims, parts[0] + "." + parts[1], signature, nil
+}
+
+func validJWTShape(token string) bool {
+	if len(token) == 0 || len(token) > maxProviderJSON {
+		return false
+	}
+	parts := strings.Split(token, ".")
+	return len(parts) == 3 && parts[0] != "" && parts[1] != "" && parts[2] != ""
+}
+
+func decodeJWTHeader(encoded string) (jwtHeader, error) {
+	headerBytes, err := base64.RawURLEncoding.DecodeString(encoded)
+	if err != nil {
+		return jwtHeader{}, ErrAuthentication
+	}
+	var header jwtHeader
+	if err := json.Unmarshal(headerBytes, &header); err != nil || header.Algorithm != "RS256" || header.KeyID == "" || len(header.Critical) != 0 || (header.B64 != nil && !*header.B64) {
+		return jwtHeader{}, ErrAuthentication
+	}
+	return header, nil
+}
+
+func decodeJWTPayload(encoded string) (idTokenClaims, error) {
+	payloadBytes, err := base64.RawURLEncoding.DecodeString(encoded)
 	if err != nil {
 		return idTokenClaims{}, ErrAuthentication
 	}
@@ -73,31 +120,32 @@ func (m *Manager) verifyIDToken(ctx context.Context, metadata providerMetadata, 
 	if err != nil {
 		return idTokenClaims{}, ErrAuthentication
 	}
-	signature, err := base64.RawURLEncoding.DecodeString(parts[2])
+	return claims, nil
+}
+
+func decodeJWTSignature(encoded string) ([]byte, error) {
+	signature, err := base64.RawURLEncoding.DecodeString(encoded)
 	if err != nil {
-		return idTokenClaims{}, ErrAuthentication
+		return nil, ErrAuthentication
 	}
-	jwksBytes, err := m.getJSON(ctx, metadata.JWKSURI)
+	return signature, nil
+}
+
+func (m *Manager) fetchJWKS(ctx context.Context, uri string) (jwksDocument, error) {
+	jwksBytes, err := m.getJSON(ctx, uri)
 	if err != nil {
-		return idTokenClaims{}, ErrAuthentication
+		return jwksDocument{}, ErrAuthentication
 	}
 	var document jwksDocument
 	if err := json.Unmarshal(jwksBytes, &document); err != nil || len(document.Keys) == 0 || len(document.Keys) > 4096 {
-		return idTokenClaims{}, ErrAuthentication
+		return jwksDocument{}, ErrAuthentication
 	}
-	publicKey, err := rsaKeyForID(document.Keys, header.KeyID)
-	if err != nil {
-		return idTokenClaims{}, ErrAuthentication
-	}
-	signed := []byte(parts[0] + "." + parts[1])
-	digest := sha256.Sum256(signed)
-	if err := rsa.VerifyPKCS1v15(publicKey, crypto.SHA256, digest[:], signature); err != nil {
-		return idTokenClaims{}, ErrAuthentication
-	}
-	if !validIDClaims(claims, metadata.Issuer, clientID, expectedNonce, time.Now()) {
-		return idTokenClaims{}, ErrAuthentication
-	}
-	return claims, nil
+	return document, nil
+}
+
+func validIDTokenSignature(publicKey *rsa.PublicKey, signingInput string, signature []byte) bool {
+	digest := sha256.Sum256([]byte(signingInput))
+	return rsa.VerifyPKCS1v15(publicKey, crypto.SHA256, digest[:], signature) == nil
 }
 
 func decodeIDClaims(data []byte) (idTokenClaims, error) {
@@ -182,32 +230,55 @@ func decodeNumericDate(raw json.RawMessage) (float64, error) {
 }
 
 func validIDClaims(claims idTokenClaims, issuer, clientID, expectedNonce string, now time.Time) bool {
-	if claims.Issuer != issuer || claims.Subject == "" || len(claims.Subject) > 1024 || claims.Nonce == "" || claims.AuthorizedParty != "" && claims.AuthorizedParty != clientID {
+	if !validTokenIdentity(claims, issuer, clientID) {
 		return false
 	}
+	if subtle.ConstantTimeCompare([]byte(claims.Nonce), []byte(expectedNonce)) != 1 {
+		return false
+	}
+	return validTokenTimes(claims, now)
+}
+
+func validTokenIdentity(claims idTokenClaims, issuer, clientID string) bool {
+	if claims.Issuer != issuer || claims.Subject == "" || len(claims.Subject) > 1024 || claims.Nonce == "" {
+		return false
+	}
+	if claims.AuthorizedParty != "" && claims.AuthorizedParty != clientID {
+		return false
+	}
+	return validTokenAudience(claims, clientID)
+}
+
+func validTokenAudience(claims idTokenClaims, clientID string) bool {
 	hasAudience := false
 	for _, audience := range claims.Audience {
 		if audience == clientID {
 			hasAudience = true
 		}
 	}
-	if !hasAudience || (len(claims.Audience) > 1 && claims.AuthorizedParty != clientID) {
-		return false
-	}
-	if subtle.ConstantTimeCompare([]byte(claims.Nonce), []byte(expectedNonce)) != 1 {
-		return false
-	}
+	return hasAudience && (len(claims.Audience) <= 1 || claims.AuthorizedParty == clientID)
+}
+
+func validTokenTimes(claims idTokenClaims, now time.Time) bool {
 	nowSeconds := float64(now.Unix())
 	if claims.ExpiresAt <= nowSeconds || claims.IssuedAt > nowSeconds+60 || claims.IssuedAt <= 0 {
 		return false
 	}
-	if claims.NotBefore != nil && *claims.NotBefore > nowSeconds+60 {
-		return false
-	}
-	return true
+	return claims.NotBefore == nil || *claims.NotBefore <= nowSeconds+60
 }
 
 func rsaKeyForID(keys []jwk, keyID string) (*rsa.PublicKey, error) {
+	match, err := matchSigningKey(keys, keyID)
+	if err != nil {
+		return nil, err
+	}
+	if !usableSigningKey(match) {
+		return nil, errors.New("no usable signing key")
+	}
+	return rsaPublicKey(match)
+}
+
+func matchSigningKey(keys []jwk, keyID string) (*jwk, error) {
 	var match *jwk
 	for index := range keys {
 		if keys[index].KeyID != keyID {
@@ -218,29 +289,53 @@ func rsaKeyForID(keys []jwk, keyID string) (*rsa.PublicKey, error) {
 		}
 		match = &keys[index]
 	}
-	if match == nil || match.KeyType != "RSA" || (match.Use != "" && match.Use != "sig") || (match.Algorithm != "" && match.Algorithm != "RS256") || !supportsVerify(match.KeyOps) {
+	if match == nil {
 		return nil, errors.New("no usable signing key")
 	}
-	modulusBytes, err := base64.RawURLEncoding.DecodeString(match.Modulus)
+	return match, nil
+}
+
+func usableSigningKey(key *jwk) bool {
+	return key.KeyType == "RSA" && signingUseAllowed(key.Use) && signingAlgorithmAllowed(key.Algorithm) && supportsVerify(key.KeyOps)
+}
+
+func signingUseAllowed(use string) bool {
+	return use == "" || use == "sig"
+}
+
+func signingAlgorithmAllowed(algorithm string) bool {
+	return algorithm == "" || algorithm == "RS256"
+}
+
+func rsaPublicKey(key *jwk) (*rsa.PublicKey, error) {
+	modulusBytes, err := base64.RawURLEncoding.DecodeString(key.Modulus)
 	if err != nil || len(modulusBytes) < 256 || len(modulusBytes) > 1024 {
 		return nil, errors.New("invalid RSA modulus")
 	}
-	exponentBytes, err := base64.RawURLEncoding.DecodeString(match.Exponent)
-	if err != nil || len(exponentBytes) == 0 || len(exponentBytes) > 4 {
-		return nil, errors.New("invalid RSA exponent")
-	}
-	exponent := 0
-	for _, value := range exponentBytes {
-		exponent = exponent<<8 | int(value)
-	}
-	if exponent < 3 || exponent%2 == 0 {
-		return nil, errors.New("invalid RSA exponent")
+	exponent, err := rsaExponent(key.Exponent)
+	if err != nil {
+		return nil, err
 	}
 	modulus := new(big.Int).SetBytes(modulusBytes)
 	if modulus.BitLen() < 2048 || modulus.BitLen() > 8192 {
 		return nil, errors.New("invalid RSA key size")
 	}
 	return &rsa.PublicKey{N: modulus, E: exponent}, nil
+}
+
+func rsaExponent(encoded string) (int, error) {
+	exponentBytes, err := base64.RawURLEncoding.DecodeString(encoded)
+	if err != nil || len(exponentBytes) == 0 || len(exponentBytes) > 4 {
+		return 0, errors.New("invalid RSA exponent")
+	}
+	exponent := 0
+	for _, value := range exponentBytes {
+		exponent = exponent<<8 | int(value)
+	}
+	if exponent < 3 || exponent%2 == 0 {
+		return 0, errors.New("invalid RSA exponent")
+	}
+	return exponent, nil
 }
 
 func supportsVerify(operations []string) bool {

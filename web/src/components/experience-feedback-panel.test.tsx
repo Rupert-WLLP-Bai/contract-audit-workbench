@@ -48,11 +48,30 @@ const candidate = {
 };
 const trackedKey = `experience-feedback:${JSON.stringify(["case-1", "run-1", "attempt-1", "finding-1"])}`;
 
+function parsedMetadata() {
+  return {
+    id: "parse-1",
+    document_id: "document-1",
+    original_digest: "original",
+    parser_id: "parser",
+    parser_version: "1",
+    config_hash: "config",
+    normalization_version: "v1",
+    normalized_digest: "norm",
+    ir_digest: "ir",
+    artifact_digest: "artifact",
+    created_at: at,
+    status: "ready" as const,
+  };
+}
+
 type Request = { path: string; init: RequestInit };
-function installServer(options: { failFeedbackOnce?: boolean; failDistillationOnce?: boolean; state?: "queued" | "failed" | "completed"; feedback?: typeof savedFeedback } = {}) {
+function installServer(options: { failFeedbackOnce?: boolean; failDistillationOnce?: boolean; failStatusOnce?: boolean; failCandidateOnce?: boolean; state?: "queued" | "failed" | "completed"; feedback?: typeof savedFeedback; candidate?: unknown } = {}) {
   const requests: Request[] = [];
   let feedbackCalls = 0;
   let distillCalls = 0;
+  let statusCalls = 0;
+  let candidateCalls = 0;
   const serverFeedback = options.feedback ?? savedFeedback;
   vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init: RequestInit = {}) => {
     const path = new URL(String(input), "http://workbench.test").pathname;
@@ -73,12 +92,22 @@ function installServer(options: { failFeedbackOnce?: boolean; failDistillationOn
       return Response.json({ job_id: "job-1" }, { status: 202 });
     }
     if (path === "/api/cases/case-1/experience-feedback/feedback-1/distillations/job-1" && init.method === "GET") {
+      statusCalls += 1;
+      if (options.failStatusOnce && statusCalls === 1) {
+        return Response.json({ error: { code: "status_failed", message: "状态读取失败" } }, { status: 500 });
+      }
       const state = options.state ?? "completed";
       return Response.json({ job_id: "job-1", feedback_id: "feedback-1", state,
         ...(state === "completed" ? { candidate_id: "candidate-1", version_id: "version-1" } : {}),
         ...(state === "failed" ? { failure_code: "experience_model_unavailable" } : {}) });
     }
-    if (path === "/api/cases/case-1/experience-candidates/candidate-1/versions/version-1" && init.method === "GET") return Response.json(candidate);
+    if (path === "/api/cases/case-1/experience-candidates/candidate-1/versions/version-1" && init.method === "GET") {
+      candidateCalls += 1;
+      if (options.failCandidateOnce && candidateCalls === 1) {
+        return Response.json({ error: { code: "candidate_failed", message: "候选读取失败" } }, { status: 500 });
+      }
+      return Response.json(options.candidate ?? candidate);
+    }
     return Response.json({ error: { code: "unexpected", message: "请求不匹配" } }, { status: 404 });
   }));
   return requests;
@@ -318,5 +347,153 @@ describe("experience feedback panel", () => {
     view.rerender(<ExperienceFeedbackPanel {...props} documents={[{ ...document, text: "甲😀不同合同" }]} />);
     await waitFor(() => expect(screen.getByRole("button", { name: "提交经验建议并请求提炼" })).toBeDisabled());
     expect(requests).toHaveLength(0);
+  });
+});
+
+describe("experience feedback storage and source guards", () => {
+  it.each([
+    "not-json",
+    "[]",
+    '"text"',
+    "{}",
+    '{"feedbackId":"   "}',
+    '{"feedbackId":null}',
+  ])("ignores unusable saved tracking: %s", async (raw) => {
+    sessionStorage.setItem(trackedKey, raw);
+    const requests = installServer();
+    const view = render(<ExperienceFeedbackPanel {...props} />);
+    expect(
+      screen.getByRole("combobox", { name: "审查判断" }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(requests).toHaveLength(0);
+    view.unmount();
+  });
+
+  it("restores a saved feedback without inventing a job identity", async () => {
+    sessionStorage.setItem(
+      trackedKey,
+      JSON.stringify({ feedbackId: "feedback-1", jobId: "", distillKey: "" }),
+    );
+    const requests = installServer();
+    render(<ExperienceFeedbackPanel {...props} />);
+    expect(
+      await screen.findByRole("heading", { name: "反馈已记录" }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/任务状态：/)).not.toBeInTheDocument();
+    expect(requests.map((request) => request.init.method)).toEqual(["GET"]);
+  });
+
+  it("offers only fully frozen parsed sources", async () => {
+    const user = userEvent.setup();
+    installServer();
+    const valid = document;
+    const variants: ReviewDocument[] = [
+      valid,
+      { ...document, id: "pending", parse_status: "pending" },
+      { ...document, id: "no-text", text: null },
+      { ...document, id: "empty-text", text: "" },
+      { ...document, id: "   " },
+      { ...document, id: "no-parse", parsed_document_id: null },
+      { ...document, id: "blank-parse", parsed_document_id: "   " },
+      {
+        ...document,
+        id: "failed-parse",
+        parsed_document: { ...parsedMetadata(), status: "failed" },
+      },
+      {
+        ...document,
+        id: "wrong-document",
+        parsed_document: { ...parsedMetadata(), document_id: "other" },
+      },
+      {
+        ...document,
+        id: "wrong-parse",
+        parsed_document: { ...parsedMetadata(), id: "other" },
+      },
+    ];
+    render(<ExperienceFeedbackPanel {...props} documents={variants} />);
+    await user.click(screen.getByRole("combobox", { name: "本次审查材料" }));
+    const options = await screen.findAllByRole("option");
+    expect(options).toHaveLength(1);
+    expect(options[0]).toHaveTextContent(/第 1 份 · 合同.txt · 拟签合同/);
+  });
+
+  it("shows sparse candidate content without inventing fields", async () => {
+    sessionStorage.setItem(
+      trackedKey,
+      JSON.stringify({ feedbackId: "feedback-1", jobId: "job-1", distillKey: "key" }),
+    );
+    installServer({
+      candidate: {
+        ...candidate,
+        content: {
+          schema_version: "experience/v1",
+          applicability: null,
+          exclusions: [],
+          check_action: "",
+          minimum_evidence: [],
+          counterexamples: null,
+          valid_from: "",
+          valid_until: "",
+          policy_refs: null,
+          review_diff: "",
+        },
+      },
+    });
+    render(<ExperienceFeedbackPanel {...props} />);
+    expect(await screen.findByText("已生成经验候选")).toBeInTheDocument();
+    expect(screen.getAllByText("未提供").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("无").length).toBeGreaterThan(0);
+    expect(screen.getByText(/未提供 至 未提供/)).toBeInTheDocument();
+    expect(screen.getByText("在知识治理中审阅此候选")).toBeInTheDocument();
+  });
+
+  it("reports an empty policy reference list as none", async () => {
+    sessionStorage.setItem(
+      trackedKey,
+      JSON.stringify({ feedbackId: "feedback-1", jobId: "job-1", distillKey: "key" }),
+    );
+    installServer({
+      candidate: {
+        ...candidate,
+        content: { ...candidate.content, policy_refs: [] },
+      },
+    });
+    render(<ExperienceFeedbackPanel {...props} />);
+    expect(await screen.findByText("已生成经验候选")).toBeInTheDocument();
+    expect(screen.getByText("无")).toBeInTheDocument();
+  });
+});
+
+describe("experience feedback distillation errors", () => {
+  it("shows a status read failure and recovers after a refresh", async () => {
+    sessionStorage.setItem(
+      trackedKey,
+      JSON.stringify({ feedbackId: "feedback-1", jobId: "job-1", distillKey: "key" }),
+    );
+    installServer({ failStatusOnce: true });
+    const user = userEvent.setup();
+    render(<ExperienceFeedbackPanel {...props} />);
+    expect(await screen.findByText("状态读取失败")).toBeInTheDocument();
+    expect(screen.queryByText(/任务状态：/)).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "刷新任务状态" }));
+    expect(await screen.findByText(/任务状态：提炼完成/)).toBeInTheDocument();
+    expect(screen.getByText("已生成经验候选")).toBeInTheDocument();
+  });
+
+  it("shows a candidate read failure without dropping the task status", async () => {
+    sessionStorage.setItem(
+      trackedKey,
+      JSON.stringify({ feedbackId: "feedback-1", jobId: "job-1", distillKey: "key" }),
+    );
+    installServer({ failCandidateOnce: true });
+    const user = userEvent.setup();
+    render(<ExperienceFeedbackPanel {...props} />);
+    expect(await screen.findByText("候选读取失败")).toBeInTheDocument();
+    expect(screen.getByText(/任务状态：提炼完成/)).toBeInTheDocument();
+    expect(screen.queryByText("已生成经验候选")).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "刷新任务状态" }));
+    expect(await screen.findByText("已生成经验候选")).toBeInTheDocument();
   });
 });

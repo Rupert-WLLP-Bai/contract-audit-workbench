@@ -508,10 +508,10 @@ func (s *Store) Reparse(ctx context.Context, user accounts.User, caseID, docID s
 		if doc.ID != docID {
 			continue
 		}
-		parseCtx := model.WithDelegatedScope(ctx, model.DelegatedScope{
+		parseCtx := model.WithDelegatedScope(ctx, modelScope(model.DelegatedScope{
 			Kind: "document", TenantID: doc.TenantID, OrgID: doc.OrgID,
 			CaseID: doc.CaseID, ActorID: currentUser.ID, DocumentID: doc.ID,
-		})
+		}, s.currentModels()))
 		parsed, err := s.ensureParsed(parseCtx, currentUser, doc, true)
 		if err != nil {
 			return err

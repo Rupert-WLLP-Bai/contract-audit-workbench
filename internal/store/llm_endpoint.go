@@ -110,6 +110,13 @@ func (s *Store) SaveLLMEndpoint(ctx context.Context, user accounts.User, input L
 	}
 	defer tx.Rollback(ctx)
 
+	// The single row must be serialized even when it does not exist yet: a
+	// row lock locks nothing on the first save, so two concurrent creators
+	// could both write revision 1 and the revision-only watcher would miss the
+	// second configuration.
+	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtext('llm_endpoint_settings.active'))`); err != nil {
+		return LLMEndpointSettings{}, err
+	}
 	var previousRevision int64
 	var previousSecret []byte
 	err = tx.QueryRow(ctx, `SELECT revision, secret_ciphertext FROM llm_endpoint_settings WHERE id='active' FOR UPDATE`).

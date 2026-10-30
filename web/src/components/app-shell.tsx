@@ -1,6 +1,13 @@
 import { MenuFoldOutlined, MenuUnfoldOutlined } from "@ant-design/icons";
 import { useEffect, useMemo, useState, type FormEvent } from "react";
-import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router";
+import {
+  Link,
+  NavLink,
+  Outlet,
+  useLocation,
+  useNavigate,
+  type NavigateFunction,
+} from "react-router";
 import { useCaseDetail, useLogout, useSession } from "../api/queries";
 import { organizationName } from "../domain/organization";
 import { actorRoleLabel } from "../domain/review";
@@ -20,6 +27,7 @@ import {
   ToolOutlined,
 } from "@ant-design/icons";
 import type { ReactNode } from "react";
+import type { Actor } from "../api/types";
 import { CompetitionIdentity } from "./competition-identity";
 type NavLinkItem = {
   to: string;
@@ -109,6 +117,295 @@ const NAV_ICONS: Record<string, ReactNode> = {
   api: <ApiOutlined />,
 };
 
+const MODULE_TITLES: Record<string, string> = {
+  tasks: "审查任务",
+  remediation: "整改中心",
+  reports: "报告中心",
+  evidence: "证据中心",
+  executions: "执行轨迹",
+  knowledge: "知识库",
+  organization: "组织与权限",
+  templates: "模板管理",
+  models: "模型服务",
+  tools: "工具网关",
+  health: "系统健康",
+  audit: "审计日志",
+  settings: "系统设置",
+};
+
+interface Crumb {
+  label: string;
+  to: string | null;
+}
+
+function staticBreadcrumb(pathname: string): Crumb[] | null {
+  if (pathname === "/") return [{ label: "工作台", to: null }];
+  if (pathname === "/review")
+    return [
+      { label: "工作台", to: "/" },
+      { label: "合同审查", to: null },
+    ];
+  if (pathname === "/compare")
+    return [
+      { label: "工作台", to: "/" },
+      { label: "版本对照", to: null },
+    ];
+  if (pathname === "/cases")
+    return [
+      { label: "工作台", to: "/" },
+      { label: "案件管理", to: null },
+    ];
+  return null;
+}
+
+function caseBreadcrumbs(
+  caseId: string,
+  caseTitle: string,
+  inReview: boolean,
+): Crumb[] {
+  return [
+    { label: "工作台", to: "/" },
+    { label: "案件", to: "/cases" },
+    {
+      label: caseTitle,
+      to: inReview ? `/cases/${encodeURIComponent(caseId)}` : null,
+    },
+    ...(inReview ? [{ label: "审查工作区", to: null }] : []),
+  ];
+}
+
+function moduleTitle(moduleKey: string): string {
+  return Object.hasOwn(MODULE_TITLES, moduleKey)
+    ? MODULE_TITLES[moduleKey]!
+    : "工作区";
+}
+
+function workbenchBreadcrumbs(pathname: string): Crumb[] {
+  const moduleKey = pathname.slice("/workbench/".length).split("/")[0]!;
+  return [
+    { label: "工作台", to: "/" },
+    { label: "业务管理", to: null },
+    { label: moduleTitle(moduleKey), to: null },
+  ];
+}
+
+function breadcrumbsFor(
+  pathname: string,
+  caseId: string,
+  caseTitle: string,
+  inReview: boolean,
+): Crumb[] {
+  const fixed = staticBreadcrumb(pathname);
+  if (fixed) return fixed;
+  if (caseId) return caseBreadcrumbs(caseId, caseTitle, inReview);
+  if (pathname.startsWith("/workbench/")) return workbenchBreadcrumbs(pathname);
+  return [
+    { label: "开发者", to: null },
+    { label: "API 接入", to: null },
+  ];
+}
+
+function selectedMenuKey(
+  pathname: string,
+  inReview: boolean,
+): string {
+  if (pathname === "/") return "/";
+  if (inReview) return "/review";
+  const match = NAV_LINKS.find(
+    (item) =>
+      !item.external &&
+      (pathname === item.to || pathname.startsWith(`${item.to}/`)),
+  );
+  return match ? match.to : pathname;
+}
+
+function searchFromLocation(search: string): string {
+  const query = new URLSearchParams(search).get("q");
+  return query === null ? "" : query;
+}
+
+function caseTitleOf(title: string | undefined): string {
+  return title === undefined ? "案件" : title;
+}
+
+function navigateSearch(
+  navigate: NavigateFunction,
+  location: ReturnType<typeof useLocation>,
+  query: string,
+) {
+  const trimmed = query.trim();
+  const params = new URLSearchParams(location.search);
+  if (trimmed === "") params.delete("q");
+  else params.set("q", trimmed);
+  params.delete("page");
+  params.delete("selected");
+  const suffix = params.toString();
+  void navigate(`/cases${suffix === "" ? "" : `?${suffix}`}`);
+}
+
+function caseIdOf(pathname: string): string {
+  const match = pathname.match(/^\/cases\/([^/]+)/);
+  return match?.[1] ? decodeURIComponent(match[1]) : "";
+}
+
+function layoutClassName(
+  collapsed: boolean,
+  inReview: boolean,
+  pathname: string,
+): string {
+  const classes = ["app"];
+  if (collapsed) classes.push("app--nav-collapsed");
+  if (inReview) classes.push("app--review");
+  if (pathname === "/compare") classes.push("app--compare");
+  if (pathname === "/api-docs") classes.push("app--api-docs");
+  return classes.join(" ");
+}
+
+function BreadcrumbItems({ crumbs }: { crumbs: Crumb[] }) {
+  return (
+    <Breadcrumb
+      className="breadcrumbs"
+      items={crumbs.map((crumb) => ({
+        title: crumb.to ? <Link to={crumb.to}>{crumb.label}</Link> : crumb.label,
+      }))}
+    />
+  );
+}
+
+function AppTopbar({
+  actor,
+  search,
+  logoutPending,
+  onSearchChange,
+  onSearchSubmit,
+  onLogout,
+}: {
+  actor: Actor | undefined;
+  search: string;
+  logoutPending: boolean;
+  onSearchChange: (value: string) => void;
+  onSearchSubmit: (event: FormEvent<HTMLFormElement>) => void;
+  onLogout: () => void;
+}) {
+  return (
+    <Layout.Header className="topbar">
+      <Link
+        className="brand competition-brand"
+        to="/"
+        aria-label="第一届黄桷树AI智能体开发大赛，合同智能审计工作台首页"
+      >
+        <CompetitionIdentity />
+      </Link>
+      <span className="organization-badge" title={actor?.org_id}>
+        <span className="organization-badge-label">组织：</span>
+        <span className="organization-badge-value">
+          {organizationName(actor?.org_id)}
+        </span>
+      </span>
+      <form className="global-search" role="search" onSubmit={onSearchSubmit}>
+        <label className="sr-only" htmlFor="global-case-search">
+          全局搜索案件
+        </label>
+        <Input
+          className="header-search-input"
+          id="global-case-search"
+          type="search"
+          value={search}
+          onChange={(event) => onSearchChange(event.target.value)}
+          placeholder="搜索案件标题或编号"
+        />
+        <Button className="header-action" aria-label={"搜索"} htmlType="submit" ghost>
+          搜索
+        </Button>
+      </form>
+      <div className="who" aria-label="当前身份">
+        {actor ? (
+          <>
+            <Avatar className="header-avatar">
+              {Array.from(actor.display_name)[0]}
+            </Avatar>
+            <span className="identity-copy">
+              <strong>{actor.display_name}</strong>
+              <span className="meta">{actorRoleLabel(actor.role)}</span>
+            </span>
+          </>
+        ) : (
+          <span>身份未知</span>
+        )}
+        <Button
+          className="header-action"
+          ghost
+          aria-label={"退出"}
+          icon={<LogoutOutlined />}
+          disabled={logoutPending}
+          onClick={onLogout}
+        >
+          退出
+        </Button>
+      </div>
+    </Layout.Header>
+  );
+}
+
+function AppSidebar({
+  pathname,
+  inReview,
+  adminRulePacksUrl,
+  collapsed,
+  onCollapse,
+}: {
+  pathname: string;
+  inReview: boolean;
+  adminRulePacksUrl: string;
+  collapsed: boolean;
+  onCollapse: (collapsed: boolean) => void;
+}) {
+  return (
+    <Layout.Sider
+      trigger={
+        <Button
+          type="text"
+          className="nav-collapse-action"
+          aria-label={collapsed ? "展开侧栏" : "收合侧栏"}
+          aria-expanded={!collapsed}
+          icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
+        />
+      }
+      theme="dark"
+      id="primary-navigation"
+      className="sidenav"
+      aria-label="主导航"
+      width={248}
+      collapsedWidth={72}
+      collapsed={collapsed}
+      collapsible
+      onCollapse={onCollapse}
+    >
+      <Menu
+        mode="inline"
+        theme="dark"
+        selectedKeys={[selectedMenuKey(pathname, inReview)]}
+        items={NAV_GROUPS.map((group) => ({
+          key: group.key,
+          type: "group" as const,
+          label: group.label,
+          children: group.links.map((item) => ({
+            key: item.to,
+            icon: NAV_ICONS[item.icon],
+            label: item.external ? (
+              <a href={adminRulePacksUrl}>{item.label}</a>
+            ) : (
+              <NavLink to={item.to} end={item.end}>
+                {item.label}
+              </NavLink>
+            ),
+          })),
+        }))}
+      />
+    </Layout.Sider>
+  );
+}
+
 export function AppShell() {
   const session = useSession();
   const logout = useLogout();
@@ -121,222 +418,58 @@ export function AppShell() {
   }, []);
   const [collapsed, setCollapsed] = useState(false);
   const [search, setSearch] = useState("");
-  const caseMatch = location.pathname.match(/^\/cases\/([^/]+)/);
-  const caseId = caseMatch?.[1] ? decodeURIComponent(caseMatch[1]) : "";
+  const caseId = caseIdOf(location.pathname);
   const caseDetail = useCaseDetail(caseId);
   useEffect(() => {
-    setSearch(new URLSearchParams(location.search).get("q") ?? "");
+    setSearch(searchFromLocation(location.search));
   }, [location.pathname, location.search]);
   const reviewMatch = location.pathname.match(
     /^\/cases\/([^/]+)\/reviews\/([^/]+)/,
   );
-
-  function searchCases(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const query = search.trim();
-    const params = new URLSearchParams(location.search);
-    if (query === "") params.delete("q");
-    else params.set("q", query);
-    params.delete("page");
-    params.delete("selected");
-    const suffix = params.toString();
-    void navigate(`/cases${suffix === "" ? "" : `?${suffix}`}`);
-  }
-
-  const caseTitle = caseDetail.data?.title ?? "案件";
-  const moduleTitles: Record<string, string> = {
-    tasks: "审查任务",
-    remediation: "整改中心",
-    reports: "报告中心",
-    evidence: "证据中心",
-    executions: "执行轨迹",
-    knowledge: "知识库",
-    organization: "组织与权限",
-    templates: "模板管理",
-    tools: "工具网关",
-    health: "系统健康",
-    audit: "审计日志",
-    settings: "系统设置",
-  };
-  const moduleKey = location.pathname.split("/")[2] ?? "";
-  const breadcrumbs =
-    location.pathname === "/"
-      ? [{ label: "工作台", to: null }]
-      : location.pathname === "/review"
-        ? [
-            { label: "工作台", to: "/" },
-            { label: "合同审查", to: null },
-          ]
-        : location.pathname === "/compare"
-          ? [
-              { label: "工作台", to: "/" },
-              { label: "版本对照", to: null },
-            ]
-          : location.pathname === "/cases"
-            ? [
-                { label: "工作台", to: "/" },
-                { label: "案件管理", to: null },
-              ]
-            : caseId
-              ? [
-                  { label: "工作台", to: "/" },
-                  { label: "案件", to: "/cases" },
-                  {
-                    label: caseTitle,
-                    to: reviewMatch
-                      ? `/cases/${encodeURIComponent(caseId)}`
-                      : null,
-                  },
-                  ...(reviewMatch
-                    ? [
-                        {
-                          label: "审查工作区",
-                          to: null,
-                        },
-                      ]
-                    : []),
-                ]
-              : location.pathname.startsWith("/workbench/")
-                ? [
-                    { label: "工作台", to: "/" },
-                    { label: "业务管理", to: null },
-                    { label: moduleTitles[moduleKey] ?? "工作区", to: null },
-                  ]
-                : [
-                    { label: "开发者", to: null },
-                    { label: "API 接入", to: null },
-                  ];
+  const caseTitle = caseTitleOf(caseDetail.data?.title);
+  const breadcrumbs = breadcrumbsFor(
+    location.pathname,
+    caseId,
+    caseTitle,
+    reviewMatch !== null,
+  );
 
   return (
     <Layout
-      className={`app${collapsed ? " app--nav-collapsed" : ""}${reviewMatch ? " app--review" : ""}${location.pathname === "/compare" ? " app--compare" : ""}${location.pathname === "/api-docs" ? " app--api-docs" : ""}`}
+      className={layoutClassName(
+        collapsed,
+        reviewMatch !== null,
+        location.pathname,
+      )}
     >
       <a className="skip" href="#main">
         跳到主要内容
       </a>
-      <Layout.Header className="topbar">
-        <Link
-          className="brand competition-brand"
-          to="/"
-          aria-label="第一届黄桷树AI智能体开发大赛，合同智能审计工作台首页"
-        >
-          <CompetitionIdentity />
-        </Link>
-        <span className="organization-badge" title={actor?.org_id}>
-          <span className="organization-badge-label">组织：</span>
-          <span className="organization-badge-value">
-            {organizationName(actor?.org_id)}
-          </span>
-        </span>
-        <form className="global-search" role="search" onSubmit={searchCases}>
-          <label className="sr-only" htmlFor="global-case-search">
-            全局搜索案件
-          </label>
-          <Input
-            className="header-search-input"
-            id="global-case-search"
-            type="search"
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            placeholder="搜索案件标题或编号"
-          />
-          <Button className="header-action" aria-label={"搜索"} htmlType="submit" ghost>
-            搜索
-          </Button>
-        </form>
-        <div className="who" aria-label="当前身份">
-          {actor ? (
-            <>
-              <Avatar className="header-avatar">{Array.from(actor.display_name)[0]}</Avatar>
-              <span className="identity-copy">
-                <strong>{actor.display_name}</strong>
-                <span className="meta">{actorRoleLabel(actor.role)}</span>
-              </span>
-            </>
-          ) : (
-            <span>身份未知</span>
-          )}
-          <Button
-            className="header-action"
-            ghost
-            aria-label={"退出"}
-            icon={<LogoutOutlined />}
-            disabled={logout.isPending}
-            onClick={() => {
-              void logout.mutateAsync().finally(() => {
-                void navigate("/login", { replace: true });
-              });
-            }}
-          >
-            退出
-          </Button>
-        </div>
-      </Layout.Header>
+      <AppTopbar
+        actor={actor}
+        search={search}
+        logoutPending={logout.isPending}
+        onSearchChange={setSearch}
+        onSearchSubmit={(event) => {
+          event.preventDefault();
+          navigateSearch(navigate, location, search);
+        }}
+        onLogout={() => {
+          void logout.mutateAsync().finally(() => {
+            void navigate("/login", { replace: true });
+          });
+        }}
+      />
       <Layout className="frame" hasSider>
-        <Layout.Sider
-          trigger={
-            <Button
-              type="text"
-              className="nav-collapse-action"
-              aria-label={collapsed ? "展开侧栏" : "收合侧栏"}
-              aria-expanded={!collapsed}
-              icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
-            />
-          }
-          theme="dark"
-          id="primary-navigation"
-          className="sidenav"
-          aria-label="主导航"
-          width={248}
-          collapsedWidth={72}
+        <AppSidebar
+          pathname={location.pathname}
+          inReview={reviewMatch !== null}
+          adminRulePacksUrl={adminRulePacksUrl}
           collapsed={collapsed}
-          collapsible
           onCollapse={setCollapsed}
-        >
-          <Menu
-            mode="inline"
-            theme="dark"
-            selectedKeys={[
-              location.pathname === "/"
-                ? "/"
-                : reviewMatch
-                  ? "/review"
-                  : (NAV_LINKS.find(
-                      (item) =>
-                        !item.external &&
-                        (location.pathname === item.to ||
-                          location.pathname.startsWith(`${item.to}/`)),
-                    )?.to ?? location.pathname),
-            ]}
-            items={NAV_GROUPS.map((group) => ({
-              key: group.key,
-              type: "group" as const,
-              label: group.label,
-              children: group.links.map((item) => ({
-                key: item.to,
-                icon: NAV_ICONS[item.icon],
-                label: item.external ? (
-                  <a href={adminRulePacksUrl}>{item.label}</a>
-                ) : (
-                  <NavLink to={item.to} end={item.end}>
-                    {item.label}
-                  </NavLink>
-                ),
-              })),
-            }))}
-          />
-        </Layout.Sider>
+        />
         <Layout.Content className="content-column">
-          <Breadcrumb
-            className="breadcrumbs"
-            items={breadcrumbs.map((crumb) => ({
-              title: crumb.to ? (
-                <Link to={crumb.to}>{crumb.label}</Link>
-              ) : (
-                crumb.label
-              ),
-            }))}
-          />
+          <BreadcrumbItems crumbs={breadcrumbs} />
           <main id="main" tabIndex={-1}>
             <Outlet />
           </main>

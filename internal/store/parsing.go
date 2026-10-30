@@ -91,7 +91,9 @@ func parserConfigurationFor(doc Document, models Models) (parserID, parserVersio
 		parserID, parserVersion = "ocr", "unconfigured"
 		modelConfig := "ocr-disabled/v1"
 		if models != nil {
-			modelConfig = models.ConfigurationID()
+			if identity := frozenConfigurationID(models); identity != "" {
+				modelConfig = identity
+			}
 			if named, ok := models.(interface{ OCRName() string }); ok {
 				parserVersion = named.OCRName()
 			} else {

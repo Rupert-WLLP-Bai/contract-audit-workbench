@@ -29,9 +29,13 @@ const (
 )
 
 type Config struct {
-	Mode                    string
-	UpstreamBaseURL         string
-	UpstreamAPIKey          string
+	Mode            string
+	UpstreamBaseURL string
+	UpstreamAPIKey  string
+	// ProviderURL is the address the configuration ids of callers name. It is
+	// normally LLM_BASE_URL; deployment tooling that fronts the provider with a
+	// different gateway address sets it explicitly.
+	ProviderURL             string
 	ChatModel               string
 	OCRModel                string
 	WorkerCredential        string
@@ -419,6 +423,13 @@ func (s *Service) readChatRequest(w http.ResponseWriter, r *http.Request, caller
 	}
 	if !upstream.allows(requestedModel) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "requested model is not configured", "code": "model_not_configured"})
+		return chatRequest{}, false
+	}
+	// The caller freezes a configuration id; dispatching to a different
+	// endpoint that happens to serve the same model id would break the frozen
+	// identity even though the name still matches.
+	if !upstream.matchesFrozen(scope) {
+		writeJSON(w, http.StatusConflict, map[string]string{"error": "frozen model configuration no longer matches the configured endpoint", "code": "model_configuration_changed"})
 		return chatRequest{}, false
 	}
 	if int64(len(body)) > s.config.Budget.MaxInputTokenReservation || int64(requestedTokens) > s.config.Budget.MaxOutputTokenReservation {

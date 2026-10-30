@@ -86,32 +86,54 @@ var capabilityRuleIDs = map[string]string{
 }
 
 func parseToolArguments(raw json.RawMessage) (toolArguments, *rpcFailure) {
+	fields, failure := decodeToolArgumentFields(raw)
+	if failure != nil {
+		return toolArguments{}, failure
+	}
+	args, failure := parseToolSelection(fields)
+	if failure != nil {
+		return toolArguments{}, failure
+	}
+	deadline, failure := parseToolDeadline(fields)
+	if failure != nil {
+		return toolArguments{}, failure
+	}
+	args.deadline = deadline
+	return args, nil
+}
+
+func decodeToolArgumentFields(raw json.RawMessage) (map[string]json.RawMessage, *rpcFailure) {
 	fields, err := decodeJSONObject(raw)
 	if err != nil {
-		return toolArguments{}, invalidParams("arguments must be one JSON object.")
+		return nil, invalidParams("arguments must be one JSON object.")
 	}
 	for key := range fields {
 		switch key {
 		case "case_id", "run_id", "attempt_id", "capability_id", "deadline":
 		default:
-			return toolArguments{}, invalidParams("arguments contain an unsupported field.")
+			return nil, invalidParams("arguments contain an unsupported field.")
 		}
 	}
+	return fields, nil
+}
+
+func parseToolSelection(fields map[string]json.RawMessage) (toolArguments, *rpcFailure) {
 	var args toolArguments
-	args.caseID, err = stringField(fields, "case_id")
-	if err != nil || args.caseID == "" {
+	var ok bool
+	args.caseID, ok = requiredToolArgument(fields, "case_id")
+	if !ok {
 		return toolArguments{}, invalidParams("All evidence selection fields are required strings.")
 	}
-	args.runID, err = stringField(fields, "run_id")
-	if err != nil || args.runID == "" {
+	args.runID, ok = requiredToolArgument(fields, "run_id")
+	if !ok {
 		return toolArguments{}, invalidParams("All evidence selection fields are required strings.")
 	}
-	args.attemptID, err = stringField(fields, "attempt_id")
-	if err != nil || args.attemptID == "" {
+	args.attemptID, ok = requiredToolArgument(fields, "attempt_id")
+	if !ok {
 		return toolArguments{}, invalidParams("All evidence selection fields are required strings.")
 	}
-	args.capabilityID, err = stringField(fields, "capability_id")
-	if err != nil || args.capabilityID == "" {
+	args.capabilityID, ok = requiredToolArgument(fields, "capability_id")
+	if !ok {
 		return toolArguments{}, invalidParams("All evidence selection fields are required strings.")
 	}
 	if !validIdentifier(args.caseID) || !validIdentifier(args.runID) || !validIdentifier(args.attemptID) {
@@ -120,17 +142,25 @@ func parseToolArguments(raw json.RawMessage) (toolArguments, *rpcFailure) {
 	if _, ok := capabilityRuleIDs[args.capabilityID]; !ok {
 		return toolArguments{}, invalidParams("Capability is not supported by this tool version.")
 	}
+	return args, nil
+}
+
+func requiredToolArgument(fields map[string]json.RawMessage, key string) (string, bool) {
+	value, err := stringField(fields, key)
+	return value, err == nil && value != ""
+}
+
+func parseToolDeadline(fields map[string]json.RawMessage) (time.Time, *rpcFailure) {
 	deadlineText, err := stringField(fields, "deadline")
 	if err != nil || len(deadlineText) > 64 {
-		return toolArguments{}, invalidParams("A bounded RFC3339 deadline is required.")
+		return time.Time{}, invalidParams("A bounded RFC3339 deadline is required.")
 	}
 	deadline, err := time.Parse(time.RFC3339Nano, deadlineText)
 	now := time.Now()
 	if err != nil || !deadline.After(now) || deadline.After(now.Add(time.Duration(maxCallDeadline)*time.Second)) {
-		return toolArguments{}, &rpcFailure{status: http.StatusBadRequest, code: codeInvalidParams, message: "Deadline must be in the future and no more than 60 seconds away.", data: map[string]string{"code": "invalid_deadline"}}
+		return time.Time{}, &rpcFailure{status: http.StatusBadRequest, code: codeInvalidParams, message: "Deadline must be in the future and no more than 60 seconds away.", data: map[string]string{"code": "invalid_deadline"}}
 	}
-	args.deadline = deadline
-	return args, nil
+	return deadline, nil
 }
 
 func validIdentifier(value string) bool {
@@ -138,12 +168,22 @@ func validIdentifier(value string) bool {
 		return false
 	}
 	for i := range value {
-		c := value[i]
-		if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-' || c == '_' || c == '.' || c == ':') {
+		if !validIdentifierCharacter(value[i]) {
 			return false
 		}
 	}
 	return true
+}
+
+func validIdentifierCharacter(c byte) bool {
+	if c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' {
+		return true
+	}
+	return validIdentifierPunctuation(c)
+}
+
+func validIdentifierPunctuation(c byte) bool {
+	return strings.ContainsRune("-_.:", rune(c))
 }
 
 // logStoreFailure keeps the raw storage error in the server log and never in the
@@ -161,30 +201,53 @@ func logStoreFailure(operation string, err error) {
 }
 
 func (h *handler) callFrozenEvidence(parent context.Context, user accounts.User, args toolArguments) ([]byte, *rpcFailure) {
-	if parent == nil {
-		parent = context.Background()
-	}
+	parent = nonNilContext(parent)
 	ctx, cancel := context.WithDeadline(parent, args.deadline)
 	defer cancel()
-	if err := ctx.Err(); err != nil {
-		return nil, storeFailure(ctx, err)
+	workspace, failure := h.loadFrozenWorkspace(ctx, user, args)
+	if failure != nil {
+		return nil, failure
 	}
+	callID, failure := h.reserveFrozenEvidenceCall(parent, ctx, user, args)
+	if failure != nil {
+		return nil, failure
+	}
+	return h.completeFrozenEvidenceCall(parent, ctx, user, args, workspace, callID)
+}
 
+func nonNilContext(parent context.Context) context.Context {
+	if parent == nil {
+		return context.Background()
+	}
+	return parent
+}
+
+func (h *handler) loadFrozenWorkspace(ctx context.Context, user accounts.User, args toolArguments) (store.Workspace, *rpcFailure) {
+	if err := ctx.Err(); err != nil {
+		return store.Workspace{}, storeFailure(ctx, err)
+	}
 	workspace, err := h.store.WorkspaceAttempt(user, args.caseID, args.runID, args.attemptID)
 	if err != nil {
 		logStoreFailure("workspace_attempt", err)
-		return nil, storeFailure(ctx, err)
+		return store.Workspace{}, storeFailure(ctx, err)
 	}
 	if failure := validateWorkspaceBinding(user, args, workspace); failure != nil {
-		return nil, failure
+		return store.Workspace{}, failure
 	}
-	if workspace.Case.BusinessLine != "ENT" || workspace.Case.Scenario != "telecom_dedicated_line" || workspace.Case.ContractType != "service" {
-		return nil, &rpcFailure{status: http.StatusUnprocessableEntity, code: codeInvalidParams, message: "This capability is only available for enterprise dedicated-line service cases.", data: map[string]string{"code": "unsupported_case_scope"}}
+	if !supportsDedicatedLineService(workspace.Case) {
+		return store.Workspace{}, &rpcFailure{status: http.StatusUnprocessableEntity, code: codeInvalidParams, message: "This capability is only available for enterprise dedicated-line service cases.", data: map[string]string{"code": "unsupported_case_scope"}}
 	}
 	if err := ctx.Err(); err != nil {
-		return nil, storeFailure(ctx, err)
+		return store.Workspace{}, storeFailure(ctx, err)
 	}
+	return workspace, nil
+}
 
+func supportsDedicatedLineService(caseData store.Case) bool {
+	return caseData.BusinessLine == "ENT" && caseData.Scenario == "telecom_dedicated_line" && caseData.ContractType == "service"
+}
+
+func (h *handler) reserveFrozenEvidenceCall(parent, ctx context.Context, user accounts.User, args toolArguments) (string, *rpcFailure) {
 	callID, err := h.store.ReserveToolCall(ctx, user, store.ToolCallRequest{
 		CaseID: args.caseID, RunID: args.runID, AttemptID: args.attemptID,
 		CapabilityID: args.capabilityID, ToolVersion: ToolVersion, Deadline: args.deadline,
@@ -193,20 +256,31 @@ func (h *handler) callFrozenEvidence(parent context.Context, user accounts.User,
 		logStoreFailure("reserve_tool_call", err)
 		if callID != "" {
 			if finishErr := h.finishCall(user, callID, completionStatus(parent, ctx), 0); finishErr != nil {
-				return nil, &rpcFailure{status: http.StatusServiceUnavailable, code: codeInternalError, message: "Tool-call accounting could not be completed."}
+				return "", toolAccountingFailure()
 			}
 		}
-		return nil, storeFailure(ctx, err)
+		return "", storeFailure(ctx, err)
 	}
 	if callID == "" {
-		return nil, &rpcFailure{status: http.StatusInternalServerError, code: codeInternalError, message: "Gateway storage returned an invalid reservation."}
+		return "", invalidReservationFailure()
 	}
+	return callID, nil
+}
 
+func toolAccountingFailure() *rpcFailure {
+	return &rpcFailure{status: http.StatusServiceUnavailable, code: codeInternalError, message: "Tool-call accounting could not be completed."}
+}
+
+func invalidReservationFailure() *rpcFailure {
+	return &rpcFailure{status: http.StatusInternalServerError, code: codeInternalError, message: "Gateway storage returned an invalid reservation."}
+}
+
+func (h *handler) completeFrozenEvidenceCall(parent, ctx context.Context, user accounts.User, args toolArguments, workspace store.Workspace, callID string) ([]byte, *rpcFailure) {
 	status := "failed"
 	var outputBytes int64
 	finish := func() *rpcFailure {
 		if failure := h.finishCall(user, callID, status, outputBytes); failure != nil {
-			return &rpcFailure{status: http.StatusServiceUnavailable, code: codeInternalError, message: "Tool-call accounting could not be completed."}
+			return toolAccountingFailure()
 		}
 		return nil
 	}
@@ -218,35 +292,13 @@ func (h *handler) callFrozenEvidence(parent context.Context, user accounts.User,
 		return nil, failure
 	}
 
-	payload, err := buildEvidencePayload(ctx, user, args, workspace)
-	if err != nil {
-		return fail(evidenceFailure(ctx, err))
-	}
-	if err := ctx.Err(); err != nil {
-		return fail(storeFailure(ctx, err))
-	}
-
-	current, err := h.store.WorkspaceAttempt(user, args.caseID, args.runID, args.attemptID)
-	if err != nil {
-		logStoreFailure("workspace_recheck", err)
-		return fail(storeFailure(ctx, err))
-	}
-	if failure := validateWorkspaceBinding(user, args, current); failure != nil {
+	payload, failure := h.readStableEvidencePayload(ctx, user, args, workspace)
+	if failure != nil {
 		return fail(failure)
 	}
-	if workspaceSignature(workspace) != workspaceSignature(current) {
-		return fail(&rpcFailure{status: http.StatusConflict, code: codeInternalError, message: "Frozen attempt evidence changed during the read.", data: map[string]string{"code": "frozen_attempt_changed"}})
-	}
-	if err := ctx.Err(); err != nil {
-		return fail(storeFailure(ctx, err))
-	}
-
-	encoded, err := json.Marshal(payload)
-	if err != nil {
-		return fail(&rpcFailure{status: http.StatusInternalServerError, code: codeInternalError, message: "Evidence result could not be serialized."})
-	}
-	if len(encoded) > maxToolResult {
-		return fail(&rpcFailure{status: http.StatusRequestEntityTooLarge, code: codeInternalError, message: "Evidence result exceeds the configured output limit.", data: map[string]string{"code": "tool_output_too_large"}})
+	encoded, failure := encodeEvidenceResult(payload)
+	if failure != nil {
+		return fail(failure)
 	}
 	if err := ctx.Err(); err != nil {
 		return fail(storeFailure(ctx, err))
@@ -255,6 +307,42 @@ func (h *handler) callFrozenEvidence(parent context.Context, user accounts.User,
 	status = "completed"
 	if failure := finish(); failure != nil {
 		return nil, failure
+	}
+	return encoded, nil
+}
+
+func (h *handler) readStableEvidencePayload(ctx context.Context, user accounts.User, args toolArguments, workspace store.Workspace) (evidencePayload, *rpcFailure) {
+	payload, err := buildEvidencePayload(ctx, user, args, workspace)
+	if err != nil {
+		return evidencePayload{}, evidenceFailure(ctx, err)
+	}
+	if err := ctx.Err(); err != nil {
+		return evidencePayload{}, storeFailure(ctx, err)
+	}
+	current, err := h.store.WorkspaceAttempt(user, args.caseID, args.runID, args.attemptID)
+	if err != nil {
+		logStoreFailure("workspace_recheck", err)
+		return evidencePayload{}, storeFailure(ctx, err)
+	}
+	if failure := validateWorkspaceBinding(user, args, current); failure != nil {
+		return evidencePayload{}, failure
+	}
+	if workspaceSignature(workspace) != workspaceSignature(current) {
+		return evidencePayload{}, &rpcFailure{status: http.StatusConflict, code: codeInternalError, message: "Frozen attempt evidence changed during the read.", data: map[string]string{"code": "frozen_attempt_changed"}}
+	}
+	if err := ctx.Err(); err != nil {
+		return evidencePayload{}, storeFailure(ctx, err)
+	}
+	return payload, nil
+}
+
+func encodeEvidenceResult(payload evidencePayload) ([]byte, *rpcFailure) {
+	encoded, err := json.Marshal(payload)
+	if err != nil {
+		return nil, &rpcFailure{status: http.StatusInternalServerError, code: codeInternalError, message: "Evidence result could not be serialized."}
+	}
+	if len(encoded) > maxToolResult {
+		return nil, &rpcFailure{status: http.StatusRequestEntityTooLarge, code: codeInternalError, message: "Evidence result exceeds the configured output limit.", data: map[string]string{"code": "tool_output_too_large"}}
 	}
 	return encoded, nil
 }
@@ -271,13 +359,22 @@ func completionStatus(parent, callCtx context.Context) string {
 
 func validateWorkspaceBinding(user accounts.User, args toolArguments, workspace store.Workspace) *rpcFailure {
 	tenantID := accounts.Tenant(user)
-	if workspace.Case.ID != args.caseID || workspace.Case.TenantID != tenantID ||
-		workspace.Snapshot.RunID != args.runID || workspace.Execution == nil || workspace.Execution.Attempt == nil ||
-		workspace.Execution.Attempt.ID != args.attemptID || workspace.Execution.Attempt.RunID != args.runID ||
-		workspace.Execution.Attempt.HistoryKind != "frozen" || workspace.Execution.Attempt.InputHash == nil || *workspace.Execution.Attempt.InputHash == "" {
+	if !workspaceCaseMatches(tenantID, args, workspace) || !workspaceAttemptMatches(args, workspace) {
 		return &rpcFailure{status: http.StatusNotFound, code: codeInternalError, message: "No matching frozen attempt is available."}
 	}
 	return nil
+}
+
+func workspaceCaseMatches(tenantID string, args toolArguments, workspace store.Workspace) bool {
+	return workspace.Case.ID == args.caseID && workspace.Case.TenantID == tenantID && workspace.Snapshot.RunID == args.runID
+}
+
+func workspaceAttemptMatches(args toolArguments, workspace store.Workspace) bool {
+	if workspace.Execution == nil || workspace.Execution.Attempt == nil {
+		return false
+	}
+	attempt := workspace.Execution.Attempt
+	return attempt.ID == args.attemptID && attempt.RunID == args.runID && attempt.HistoryKind == "frozen" && attempt.InputHash != nil && *attempt.InputHash != ""
 }
 
 func evidenceFailure(ctx context.Context, err error) *rpcFailure {

@@ -149,10 +149,7 @@ func (s *Store) plannerConfigurationForAcceptance(modelConfigurationID string) (
 }
 
 func signatureModelConfigurationID(models Models) string {
-	if models == nil {
-		return ""
-	}
-	return models.ConfigurationID()
+	return frozenConfigurationID(models)
 }
 
 func currentSignatureFor(docIDs []string, frozen []FrozenDocument, models Models, compilerRefs ...string) RunSnapshot {
@@ -160,7 +157,9 @@ func currentSignatureFor(docIDs []string, frozen []FrozenDocument, models Models
 	configurationID := "models-disabled/v1"
 	if models != nil {
 		name = models.Name()
-		configurationID = models.ConfigurationID()
+		if identity := frozenConfigurationID(models); identity != "" {
+			configurationID = identity
+		}
 	}
 	parsedIDs := make([]string, len(frozen))
 	for i, item := range frozen {

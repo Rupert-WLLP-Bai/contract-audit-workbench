@@ -78,13 +78,13 @@ func (s *Store) PrepareAttemptDocument(ctx context.Context, request PrepareDocum
 		configHash != request.Selection.ConfigHash || request.Selection.NormalizationVersion != docir.NormalizationVersion {
 		return FrozenDocument{}, errors.New("pinned parser configuration is unavailable")
 	}
-	scope := model.WithDelegatedScope(ctx, model.DelegatedScope{
+	scope := model.WithDelegatedScope(ctx, modelScope(model.DelegatedScope{
 		Kind: "document", TenantID: authority.Claim.TenantID, OrgID: authority.Claim.OrgID,
 		CaseID: authority.Claim.CaseID, ActorID: authority.Claim.ActorID, DocumentID: authority.Document.ID,
 		JobID: authority.Claim.JobID, RunID: authority.Claim.RunID, AttemptID: authority.Claim.AttemptID,
 		WorkerID: authority.Claim.WorkerID, Generation: authority.Claim.Generation,
 		ParseSelectionID: request.Selection.ParsedDocumentID,
-	})
+	}, models))
 	interpreted := s.interpretUnpersistedWithModels(scope, authority.Document, models)
 	parsed, err := makeParsedWithSelection(authority.Document, interpreted, request.Selection)
 	if err != nil {

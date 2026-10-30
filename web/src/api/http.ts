@@ -85,24 +85,28 @@ function asRecord(value: unknown): Record<string, unknown> | null {
   return value as Record<string, unknown>;
 }
 
-export function parseErrorPayload(payload: unknown): ErrorFields {
-  const record = asRecord(payload);
-  const nested = record ? asRecord(record.error) : null;
+function errorFieldsFrom(record: Record<string, unknown>): ErrorFields {
+  const nested = asRecord(record.error);
   const source = nested ?? record;
-  if (!source)
-    return { message: null, code: null, retryable: null, details: null };
-  const directMessage = typeof record?.error === "string" ? record.error : null;
+  const directMessage =
+    typeof record.error === "string" ? record.error : null;
   const message =
-    typeof source.message === "string" ? source.message : directMessage;
-  const code = typeof source.code === "string" ? source.code : null;
-  const retryable =
-    typeof source.retryable === "boolean" ? source.retryable : null;
+    (typeof source.message === "string" ? source.message : null) ??
+    directMessage;
   return {
     message: message === null ? null : message.slice(0, 300),
-    code,
-    retryable,
+    code: typeof source.code === "string" ? source.code : null,
+    retryable:
+      typeof source.retryable === "boolean" ? source.retryable : null,
     details: source.details ?? null,
   };
+}
+
+export function parseErrorPayload(payload: unknown): ErrorFields {
+  const record = asRecord(payload);
+  if (!record)
+    return { message: null, code: null, retryable: null, details: null };
+  return errorFieldsFrom(record);
 }
 
 const defaultOutcomes: Record<number, { code: string; message: string }> = {
@@ -140,17 +144,12 @@ export async function errorFromResponse(response: Response): Promise<ApiError> {
   );
 }
 
-export async function requestJson<T>(
+async function fetchResponse(
   path: string,
   init: RequestInit,
-  parse: (value: unknown) => T,
-): Promise<T> {
-  const requestEpoch = sessionEpoch;
-  const isSessionRequest =
-    path === "/api/session" || path.startsWith("/api/session?");
-  let response: Response;
+): Promise<Response> {
   try {
-    response = await fetch(path, {
+    return await fetch(path, {
       ...init,
       credentials: "include",
       cache: "no-store",
@@ -163,16 +162,28 @@ export async function requestJson<T>(
     if (error instanceof Error && error.name === "AbortError") throw error;
     throw new ApiError("无法连接审查服务", 0, "network", true, null);
   }
+}
+
+function assertSessionEpoch(
+  requestEpoch: number,
+  isSessionRequest: boolean,
+): void {
   if (!isSessionRequest && requestEpoch !== sessionEpoch)
     throw new DOMException("Session changed", "AbortError");
-  if (!response.ok) throw await errorFromResponse(response);
+}
+
+async function readJsonResponse<T>(
+  response: Response,
+  parse: (value: unknown) => T,
+  requestEpoch: number,
+  isSessionRequest: boolean,
+): Promise<T> {
   if (response.status === 204) return parse(null);
   const text = await response.text();
   if (text.trim() === "") return parse(null);
   try {
     const value = JSON.parse(text) as unknown;
-    if (!isSessionRequest && requestEpoch !== sessionEpoch)
-      throw new DOMException("Session changed", "AbortError");
+    assertSessionEpoch(requestEpoch, isSessionRequest);
     return parse(value);
   } catch (error) {
     if (
@@ -188,6 +199,20 @@ export async function requestJson<T>(
       null,
     );
   }
+}
+
+export async function requestJson<T>(
+  path: string,
+  init: RequestInit,
+  parse: (value: unknown) => T,
+): Promise<T> {
+  const requestEpoch = sessionEpoch;
+  const isSessionRequest =
+    path === "/api/session" || path.startsWith("/api/session?");
+  const response = await fetchResponse(path, init);
+  assertSessionEpoch(requestEpoch, isSessionRequest);
+  if (!response.ok) throw await errorFromResponse(response);
+  return readJsonResponse(response, parse, requestEpoch, isSessionRequest);
 }
 
 export function jsonInit(

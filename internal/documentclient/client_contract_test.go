@@ -2,10 +2,12 @@ package documentclient
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -15,6 +17,10 @@ import (
 
 const documentClientCredential = "document-client-test-private-key-0001"
 
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(request *http.Request) (*http.Response, error) { return f(request) }
+
 func TestNewRejectsNonOriginEndpointsCredentialsAndTimeouts(t *testing.T) {
 	for _, test := range []struct {
 		name, endpoint, credential string
@@ -22,6 +28,7 @@ func TestNewRejectsNonOriginEndpointsCredentialsAndTimeouts(t *testing.T) {
 	}{
 		{"missing scheme", "localhost:8080", documentClientCredential, time.Second},
 		{"unsupported scheme", "ftp://document.example", documentClientCredential, time.Second},
+		{"invalid path escape", "http://document.example/%zz", documentClientCredential, time.Second},
 		{"endpoint credentials", "http://user:password@document.example", documentClientCredential, time.Second},
 		{"endpoint query", "http://document.example?target=internal", documentClientCredential, time.Second},
 		{"endpoint fragment", "http://document.example#prepare", documentClientCredential, time.Second},
@@ -33,6 +40,22 @@ func TestNewRejectsNonOriginEndpointsCredentialsAndTimeouts(t *testing.T) {
 				t.Fatal("invalid document client configuration was accepted")
 			}
 		})
+	}
+}
+
+func TestNewAcceptsCredentialAtExactMinimumLength(t *testing.T) {
+	client, err := New("http://document.example/base", strings.Repeat("k", 32), time.Second)
+	if err != nil {
+		t.Fatalf("New rejected a 32-byte credential: %v", err)
+	}
+	if client.endpoint != "http://document.example/base/internal/v1/prepare" {
+		t.Fatalf("endpoint = %q", client.endpoint)
+	}
+}
+
+func TestNewAcceptsPositiveNanosecondTimeout(t *testing.T) {
+	if _, err := New("http://document.example", documentClientCredential, time.Nanosecond); err != nil {
+		t.Fatalf("New rejected a positive nanosecond timeout: %v", err)
 	}
 }
 
@@ -112,5 +135,107 @@ func TestPrepareAttemptDocumentPropagatesCallerCancellation(t *testing.T) {
 	case <-cancelled:
 	case <-time.After(time.Second):
 		t.Fatal("caller cancellation did not cancel the service request")
+	}
+}
+
+func TestDocumentClientNormalizesEndpointAndReturnsFrozenSuccess(t *testing.T) {
+	const credential = documentClientCredential
+	request := store.PrepareDocumentRequest{
+		TenantID: "tenant-a", OrgID: "sales", JobID: "job-1", WorkerID: "worker-1", Generation: 2,
+		RunID: "run-1", AttemptID: "attempt-1", DocumentID: "doc-1",
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/api/internal/v1/prepare" {
+			t.Errorf("request = %s %s, want POST /api/internal/v1/prepare", r.Method, r.URL.Path)
+		}
+		if r.Header.Get("Content-Type") != "application/json" || r.Header.Get("Accept") != "application/json" ||
+			r.Header.Get("X-Contract-Service-Key") != credential {
+			t.Errorf("request headers = %#v", r.Header)
+		}
+		var got store.PrepareDocumentRequest
+		if err := json.NewDecoder(r.Body).Decode(&got); err != nil {
+			t.Errorf("decode request: %v", err)
+		}
+		if !reflect.DeepEqual(got, request) {
+			t.Errorf("request body = %+v, want %+v", got, request)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"ready":true,"text":"冻结文本","original_hash":"sha256:original","parser_ref":"parser-v1"}`)
+	}))
+	defer server.Close()
+	client, err := New(" "+server.URL+"/api/// ", credential, time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	frozen, err := client.PrepareAttemptDocument(context.Background(), request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !frozen.Ready || frozen.Text != "冻结文本" || frozen.OriginalHash != "sha256:original" || frozen.ParserRef != "parser-v1" {
+		t.Fatalf("frozen document = %+v", frozen)
+	}
+}
+
+func TestPrepareAttemptDocumentRejectsOversizedAndNonSuccessResponses(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		status int
+		body   string
+		want   string
+	}{
+		{"non-success status", http.StatusConflict, `{}`, "HTTP 409"},
+		{"oversized body", http.StatusOK, strings.Repeat("x", maxPreparedDocumentBytes+1), "exceeds the size limit"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(test.status)
+				_, _ = io.WriteString(w, test.body)
+			}))
+			defer server.Close()
+			client, err := New(server.URL, documentClientCredential, 10*time.Second)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := client.PrepareAttemptDocument(context.Background(), store.PrepareDocumentRequest{}); err == nil || !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("PrepareAttemptDocument error = %v, want %q", err, test.want)
+			}
+		})
+	}
+}
+
+type repeatedByteReader struct {
+	value     byte
+	remaining int64
+}
+
+func (r *repeatedByteReader) Read(p []byte) (int, error) {
+	if r.remaining == 0 {
+		return 0, io.EOF
+	}
+	n := len(p)
+	if int64(n) > r.remaining {
+		n = int(r.remaining)
+	}
+	for i := 0; i < n; i++ {
+		p[i] = r.value
+	}
+	r.remaining -= int64(n)
+	return n, nil
+}
+
+func TestPrepareAttemptDocumentAcceptsResponseAtExactSizeLimit(t *testing.T) {
+	prefix := `{"ready":true}`
+	padding := int64(maxPreparedDocumentBytes - len(prefix))
+	client, err := New("http://document.example", documentClientCredential, time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	client.http.Transport = roundTripFunc(func(*http.Request) (*http.Response, error) {
+		body := io.NopCloser(io.MultiReader(strings.NewReader(prefix), &repeatedByteReader{value: ' ', remaining: padding}))
+		return &http.Response{StatusCode: http.StatusOK, Body: body, Header: make(http.Header)}, nil
+	})
+	frozen, err := client.PrepareAttemptDocument(context.Background(), store.PrepareDocumentRequest{})
+	if err != nil || !frozen.Ready {
+		t.Fatalf("exact-size response: ready=%v err=%v", frozen.Ready, err)
 	}
 }

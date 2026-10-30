@@ -1,9 +1,21 @@
 import { Button, Input, Select } from "antd";
-import { Fragment, useEffect, useRef, useState, type FormEvent } from "react";
+import {
+  Fragment,
+  useEffect,
+  useRef,
+  useState,
+  type FormEvent,
+  type RefObject,
+} from "react";
 import { errorMessage } from "../api/http";
 import { useCreateGeneration, useTemplates } from "../api/queries";
-import type { GenerationRecord, Template } from "../api/types";
+import type {
+  GenerationRecord,
+  Template,
+  TemplateField,
+} from "../api/types";
 import { formatDateTime } from "../domain/review";
+import type { UseQueryResult } from "@tanstack/react-query";
 
 function templateControlType(fieldType: string): {
   inputType: string;
@@ -20,29 +32,216 @@ function templateControlType(fieldType: string): {
   return { inputType: "text", multiline: false };
 }
 
-export function TemplateGenerationPanel({
+function TemplateFieldControl({
+  field,
+  value,
+  fieldId,
+  onChange,
+}: {
+  field: TemplateField;
+  value: string;
+  fieldId: string;
+  onChange: (value: string) => void;
+}) {
+  const control = templateControlType(field.type);
+  if (control.multiline) {
+    return (
+      <Input.TextArea
+        id={fieldId}
+        name={field.key}
+        required={field.required}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+      />
+    );
+  }
+  return (
+    <Input
+      id={fieldId}
+      name={field.key}
+      type={control.inputType}
+      step={control.inputType === "number" ? "any" : undefined}
+      required={field.required}
+      value={value}
+      onChange={(event) => onChange(event.target.value)}
+    />
+  );
+}
+
+function TemplateFieldRow({
+  field,
+  index,
   caseId,
-  records,
-  canWrite,
-  archived,
+  value,
+  onChange,
+}: {
+  field: TemplateField;
+  index: number;
+  caseId: string;
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  const fieldId = `template-${caseId}-${field.key}-${index}`;
+  return (
+    <Fragment key={`${field.key}-${index}`}>
+      <label className="field" htmlFor={fieldId}>
+        {field.label}
+        {field.required ? "（必填）" : ""}
+        <TemplateFieldControl
+          field={field}
+          value={value}
+          fieldId={fieldId}
+          onChange={onChange}
+        />
+      </label>
+      <p className="meta">
+        字段：{field.key}，类型：{field.type}
+      </p>
+    </Fragment>
+  );
+}
+
+function selectedTemplateOf(
+  data: Template[] | undefined,
+  selectedTemplateId: string,
+): Template | null {
+  return (
+    data?.find((item) => item.id === selectedTemplateId) ?? data?.[0] ?? null
+  );
+}
+
+function templateOptions(data: Template[] | undefined) {
+  if (data === undefined) return [];
+  return data.map((template: Template) => ({
+    label: `${template.name}，${template.version}`,
+    value: template.id,
+  }));
+}
+
+function fieldValue(values: Record<string, string>, key: string): string {
+  return Object.hasOwn(values, key) ? values[key]! : "";
+}
+
+function TemplateReadState({
+  templates,
+}: {
+  templates: UseQueryResult<Template[]>;
+}) {
+  return (
+    <>
+      {templates.isLoading ? (
+        <p role="status">正在读取可用模板。</p>
+      ) : null}
+      {templates.isError ? (
+        <p className="workflow-error" role="alert">
+          {errorMessage(templates.error)}{" "}
+          <Button
+            aria-label={"重试读取模板"}
+            type="text"
+            htmlType="button"
+            onClick={() => void templates.refetch()}
+          >
+            重试读取模板
+          </Button>
+        </p>
+      ) : null}
+      {templates.isSuccess && templates.data.length === 0 ? (
+        <p>服务没有返回可用模板。</p>
+      ) : null}
+    </>
+  );
+}
+
+function TemplateForm({
+  caseId,
+  template,
+  options,
+  generate,
+  values,
+  errorRef,
+  onSubmit,
+  onSelectTemplate,
+  onUpdateField,
 }: {
   caseId: string;
-  records: GenerationRecord[];
-  canWrite: boolean;
-  archived: boolean;
+  template: Template;
+  options: { label: string; value: string }[];
+  generate: ReturnType<typeof useCreateGeneration>;
+  values: Record<string, string>;
+  errorRef: RefObject<HTMLParagraphElement | null>;
+  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+  onSelectTemplate: (templateId: string) => void;
+  onUpdateField: (fieldKey: string, value: string) => void;
 }) {
-  const templates = useTemplates(canWrite && !archived);
+  return (
+    <form className="workflow-form" onSubmit={onSubmit}>
+      <label className="field">
+        模板
+        <Select
+          aria-label="模板"
+          value={template.id}
+          onChange={onSelectTemplate}
+          options={options}
+        />
+      </label>
+      <p className="meta">
+        模板 ID：{template.id}，版本：{template.version}，
+        摘要：<code className="digest">{template.digest}</code>
+      </p>
+      {template.fields.map((field, index) => (
+        <TemplateFieldRow
+          key={`${field.key}-${index}`}
+          field={field}
+          index={index}
+          caseId={caseId}
+          value={fieldValue(values, field.key)}
+          onChange={(value) => onUpdateField(field.key, value)}
+        />
+      ))}
+      {generate.error ? (
+        <p ref={errorRef} className="workflow-error" role="alert" tabIndex={-1}>
+          {errorMessage(generate.error)}
+        </p>
+      ) : null}
+      {generate.data ? (
+        <p role="status">
+          草稿已生成：文档 {generate.data.document_id}，模板{" "}
+          {generate.data.template_id} / {generate.data.template_version}，
+          摘要 <code className="digest">{generate.data.digest}</code>
+        </p>
+      ) : null}
+      <Button
+        aria-label={String(
+          generate.isPending ? "正在生成草稿" : "生成待审草稿",
+        )}
+        type="primary"
+        htmlType="submit"
+        disabled={generate.isPending}
+      >
+        {generate.isPending ? "正在生成草稿" : "生成待审草稿"}
+      </Button>
+    </form>
+  );
+}
+
+function TemplateGenerationBody({
+  caseId,
+  templates,
+}: {
+  caseId: string;
+  templates: UseQueryResult<Template[]>;
+}) {
   const generate = useCreateGeneration(caseId);
   const [selectedTemplateId, setSelectedTemplateId] = useState("");
   const [values, setValues] = useState<Record<string, string>>({});
   const errorRef = useRef<HTMLParagraphElement>(null);
-  const selectedTemplate =
-    templates.data?.find((item) => item.id === selectedTemplateId) ??
-    templates.data?.[0] ??
-    null;
+  const selectedTemplate = selectedTemplateOf(
+    templates.data,
+    selectedTemplateId,
+  );
 
   useEffect(() => {
-    if (generate.error) errorRef.current?.focus();
+    if (generate.error && errorRef.current) errorRef.current.focus();
   }, [generate.error]);
 
   function selectTemplate(templateId: string) {
@@ -60,7 +259,7 @@ export function TemplateGenerationPanel({
     const fields = Object.fromEntries(
       selectedTemplate.fields.map((field) => [
         field.key,
-        values[field.key] ?? "",
+        fieldValue(values, field.key),
       ]),
     );
     generate.mutate(
@@ -71,6 +270,79 @@ export function TemplateGenerationPanel({
     );
   }
 
+  return (
+    <>
+      <TemplateReadState templates={templates} />
+      {selectedTemplate ? (
+        <TemplateForm
+          caseId={caseId}
+          template={selectedTemplate}
+          options={templateOptions(templates.data)}
+          generate={generate}
+          values={values}
+          errorRef={errorRef}
+          onSubmit={onSubmit}
+          onSelectTemplate={selectTemplate}
+          onUpdateField={updateField}
+        />
+      ) : null}
+    </>
+  );
+}
+
+function GenerationHistory({ records }: { records: GenerationRecord[] }) {
+  return (
+    <section aria-labelledby="generation-history-title">
+      <h3 id="generation-history-title">生成历史</h3>
+      {records.length === 0 ? (
+        <p>没有已返回的模板生成记录。</p>
+      ) : (
+        <ul className="workflow-record-list">
+          {records.map((record) => (
+            <li key={record.id}>
+              <strong>
+                {record.template_id}，{record.template_version}
+              </strong>
+              <dl className="execution-dl">
+                <div>
+                  <dt>生成记录</dt>
+                  <dd>{record.id}</dd>
+                </div>
+                <div>
+                  <dt>草稿文档</dt>
+                  <dd>{record.document_id}</dd>
+                </div>
+                <div>
+                  <dt>摘要</dt>
+                  <dd>
+                    <code className="digest">{record.digest}</code>
+                  </dd>
+                </div>
+                <div>
+                  <dt>生成时间</dt>
+                  <dd>{formatDateTime(record.created_at)}</dd>
+                </div>
+              </dl>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+export function TemplateGenerationPanel({
+  caseId,
+  records,
+  canWrite,
+  archived,
+}: {
+  caseId: string;
+  records: GenerationRecord[];
+  canWrite: boolean;
+  archived: boolean;
+}) {
+  const templates = useTemplates(canWrite && !archived);
   return (
     <section
       className="workflow-panel"
@@ -92,151 +364,10 @@ export function TemplateGenerationPanel({
           案件已归档，模板生成写入会被服务端拒绝（HTTP 409）。
         </p>
       ) : null}
-      {canWrite && !archived && templates.isLoading ? (
-        <p role="status">正在读取可用模板。</p>
+      {canWrite && !archived ? (
+        <TemplateGenerationBody caseId={caseId} templates={templates} />
       ) : null}
-      {canWrite && !archived && templates.isError ? (
-        <p className="workflow-error" role="alert">
-          {errorMessage(templates.error)}{" "}
-          <Button
-            aria-label={"重试读取模板"}
-            type="text"
-            htmlType="button"
-            onClick={() => void templates.refetch()}
-          >
-            重试读取模板
-          </Button>
-        </p>
-      ) : null}
-      {canWrite &&
-      !archived &&
-      templates.isSuccess &&
-      templates.data.length === 0 ? (
-        <p>服务没有返回可用模板。</p>
-      ) : null}
-      {canWrite && !archived && selectedTemplate ? (
-        <form className="workflow-form" onSubmit={onSubmit}>
-          <label className="field">
-            模板
-            <Select
-              aria-label="模板"
-              value={selectedTemplate.id}
-              onChange={selectTemplate}
-              options={
-                templates.data?.map((template: Template) => ({
-                  label: `${template.name}，${template.version}`,
-                  value: template.id,
-                })) ?? []
-              }
-            />
-          </label>
-          <p className="meta">
-            模板 ID：{selectedTemplate.id}，版本：{selectedTemplate.version}，
-            摘要：<code className="digest">{selectedTemplate.digest}</code>
-          </p>
-          {selectedTemplate.fields.map((field, index) => {
-            const control = templateControlType(field.type);
-            const fieldId = `template-${caseId}-${field.key}-${index}`;
-            return (
-              <Fragment key={`${field.key}-${index}`}>
-                <label className="field" htmlFor={fieldId}>
-                  {field.label}
-                  {field.required ? "（必填）" : ""}
-                  {control.multiline ? (
-                    <Input.TextArea
-                      id={fieldId}
-                      name={field.key}
-                      required={field.required}
-                      value={values[field.key] ?? ""}
-                      onChange={(event) =>
-                        updateField(field.key, event.target.value)
-                      }
-                    />
-                  ) : (
-                    <Input
-                      id={fieldId}
-                      name={field.key}
-                      type={control.inputType}
-                      step={control.inputType === "number" ? "any" : undefined}
-                      required={field.required}
-                      value={values[field.key] ?? ""}
-                      onChange={(event) =>
-                        updateField(field.key, event.target.value)
-                      }
-                    />
-                  )}
-                </label>
-                <p className="meta">
-                  字段：{field.key}，类型：{field.type}
-                </p>
-              </Fragment>
-            );
-          })}
-          {generate.error ? (
-            <p
-              ref={errorRef}
-              className="workflow-error"
-              role="alert"
-              tabIndex={-1}
-            >
-              {errorMessage(generate.error)}
-            </p>
-          ) : null}
-          {generate.data ? (
-            <p role="status">
-              草稿已生成：文档 {generate.data.document_id}，模板{" "}
-              {generate.data.template_id} / {generate.data.template_version}，
-              摘要 <code className="digest">{generate.data.digest}</code>
-            </p>
-          ) : null}
-          <Button
-            aria-label={String(
-              generate.isPending ? "正在生成草稿" : "生成待审草稿",
-            )}
-            type="primary"
-            htmlType="submit"
-            disabled={generate.isPending}
-          >
-            {generate.isPending ? "正在生成草稿" : "生成待审草稿"}
-          </Button>
-        </form>
-      ) : null}
-      <section aria-labelledby="generation-history-title">
-        <h3 id="generation-history-title">生成历史</h3>
-        {records.length === 0 ? (
-          <p>没有已返回的模板生成记录。</p>
-        ) : (
-          <ul className="workflow-record-list">
-            {records.map((record) => (
-              <li key={record.id}>
-                <strong>
-                  {record.template_id}，{record.template_version}
-                </strong>
-                <dl className="execution-dl">
-                  <div>
-                    <dt>生成记录</dt>
-                    <dd>{record.id}</dd>
-                  </div>
-                  <div>
-                    <dt>草稿文档</dt>
-                    <dd>{record.document_id}</dd>
-                  </div>
-                  <div>
-                    <dt>摘要</dt>
-                    <dd>
-                      <code className="digest">{record.digest}</code>
-                    </dd>
-                  </div>
-                  <div>
-                    <dt>生成时间</dt>
-                    <dd>{formatDateTime(record.created_at)}</dd>
-                  </div>
-                </dl>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
+      <GenerationHistory records={records} />
     </section>
   );
 }

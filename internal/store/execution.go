@@ -764,11 +764,11 @@ func (s *Store) executeAttemptContext(parent context.Context, runID, attemptID s
 	ctx, cancel := context.WithTimeout(parent, reviewExecutionLimit)
 	defer cancel()
 	if claim, ok := s.claimForAttempt(attemptID); ok {
-		ctx = model.WithDelegatedScope(ctx, model.DelegatedScope{
+		ctx = model.WithDelegatedScope(ctx, modelScope(model.DelegatedScope{
 			Kind: "execution", TenantID: claim.TenantID, OrgID: claim.OrgID, CaseID: claim.CaseID,
 			ActorID: claim.ActorID, JobID: claim.JobID, RunID: runID, AttemptID: attemptID,
 			WorkerID: claim.WorkerID, Generation: claim.Generation,
-		})
+		}, models))
 	}
 	s.runningMu.Lock()
 	s.running[attemptID] = cancel

@@ -93,83 +93,65 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.handlePreflight(w, r)
 		return
 	}
-	if r.Method != http.MethodPost {
-		w.Header().Set("Allow", "POST, OPTIONS")
-		h.writeFailure(w, nil, &rpcFailure{status: http.StatusMethodNotAllowed, code: codeInvalidRequest, message: "Only HTTP POST is supported."})
+	if failure := validateHTTPRequest(r); failure != nil {
+		if failure.status == http.StatusMethodNotAllowed {
+			w.Header().Set("Allow", "POST, OPTIONS")
+		}
+		h.writeFailure(w, nil, failure)
 		return
+	}
+	request, failure := h.readAndParseRequest(w, r)
+	if failure != nil {
+		h.writeFailure(w, request.id, failure)
+		return
+	}
+	h.handleParsedRequest(w, r, request)
+}
+
+func validateHTTPRequest(r *http.Request) *rpcFailure {
+	if r.Method != http.MethodPost {
+		return &rpcFailure{status: http.StatusMethodNotAllowed, code: codeInvalidRequest, message: "Only HTTP POST is supported."}
 	}
 	if hasHeader(r.Header, "MCP-Session-Id") {
-		h.writeFailure(w, nil, &rpcFailure{status: http.StatusBadRequest, code: codeInvalidRequest, message: "Protocol sessions are not supported."})
-		return
+		return &rpcFailure{status: http.StatusBadRequest, code: codeInvalidRequest, message: "Protocol sessions are not supported."}
 	}
 	if hasHeader(r.Header, "Content-Encoding") {
-		h.writeFailure(w, nil, &rpcFailure{status: http.StatusUnsupportedMediaType, code: codeInvalidRequest, message: "Content-Encoding is not supported."})
-		return
+		return &rpcFailure{status: http.StatusUnsupportedMediaType, code: codeInvalidRequest, message: "Content-Encoding is not supported."}
 	}
 	contentType, contentTypeOK := oneHeader(r.Header, "Content-Type")
 	if !contentTypeOK || !isJSONContentType(contentType) {
-		h.writeFailure(w, nil, &rpcFailure{status: http.StatusUnsupportedMediaType, code: codeInvalidRequest, message: "Content-Type must be application/json."})
-		return
+		return &rpcFailure{status: http.StatusUnsupportedMediaType, code: codeInvalidRequest, message: "Content-Type must be application/json."}
 	}
 	if !acceptsJSONAndSSE(r.Header.Values("Accept")) {
-		h.writeFailure(w, nil, &rpcFailure{status: http.StatusNotAcceptable, code: codeInvalidRequest, message: "Accept must include application/json and text/event-stream."})
-		return
+		return &rpcFailure{status: http.StatusNotAcceptable, code: codeInvalidRequest, message: "Accept must include application/json and text/event-stream."}
 	}
+	return nil
+}
 
+func (h *handler) readAndParseRequest(w http.ResponseWriter, r *http.Request) (rpcRequest, *rpcFailure) {
 	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBytes)
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		var tooLarge *http.MaxBytesError
 		if errors.As(err, &tooLarge) {
-			h.writeFailure(w, nil, &rpcFailure{status: http.StatusRequestEntityTooLarge, code: codeInvalidRequest, message: "Request body exceeds the configured limit."})
-			return
+			return rpcRequest{}, &rpcFailure{status: http.StatusRequestEntityTooLarge, code: codeInvalidRequest, message: "Request body exceeds the configured limit."}
 		}
-		h.writeFailure(w, nil, &rpcFailure{status: http.StatusBadRequest, code: codeParseError, message: "Request body could not be read."})
-		return
+		return rpcRequest{}, &rpcFailure{status: http.StatusBadRequest, code: codeParseError, message: "Request body could not be read."}
 	}
 	request, failure := parseRequest(body)
 	if failure != nil {
-		h.writeFailure(w, request.id, failure)
-		return
+		return request, failure
 	}
 	request.version, failure = validateRequestMetadata(request.params)
 	if failure != nil {
-		h.writeFailure(w, request.id, failure)
-		return
+		return request, failure
 	}
+	return request, nil
+}
 
-	protocolHeader, ok := oneHeader(r.Header, "MCP-Protocol-Version")
-	if !ok {
-		h.writeFailure(w, request.id, headerMismatch("MCP-Protocol-Version"))
-		return
-	}
-	methodHeader, ok := oneHeader(r.Header, "Mcp-Method")
-	if !ok || methodHeader != request.method {
-		h.writeFailure(w, request.id, headerMismatch("Mcp-Method"))
-		return
-	}
-	if protocolHeader != request.version {
-		h.writeFailure(w, request.id, headerMismatch("MCP-Protocol-Version"))
-		return
-	}
-	if request.method == "tools/call" {
-		name, err := stringField(request.params, "name")
-		if err != nil {
-			h.writeFailure(w, request.id, invalidParams("tools/call requires a tool name."))
-			return
-		}
-		headerName, ok := oneHeader(r.Header, "Mcp-Name")
-		if !ok {
-			h.writeFailure(w, request.id, headerMismatch("Mcp-Name"))
-			return
-		}
-		decoded, ok := decodeMirroredValue(headerName)
-		if !ok || decoded != name {
-			h.writeFailure(w, request.id, headerMismatch("Mcp-Name"))
-			return
-		}
-	} else if hasHeader(r.Header, "Mcp-Name") {
-		h.writeFailure(w, request.id, headerMismatch("Mcp-Name"))
+func (h *handler) handleParsedRequest(w http.ResponseWriter, r *http.Request, request rpcRequest) {
+	if failure := validateMirroredHeaders(r.Header, request); failure != nil {
+		h.writeFailure(w, request.id, failure)
 		return
 	}
 	if request.version != ProtocolVersion {
@@ -183,11 +165,69 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.writeFailure(w, request.id, &rpcFailure{status: http.StatusNotFound, code: codeMethodNotFound, message: "Method not found."})
 		return
 	}
+	h.dispatchRequest(w, r, request)
+}
 
-	if err := r.Context().Err(); err != nil {
-		h.writeFailure(w, request.id, storeFailure(r.Context(), err))
+func validateMirroredHeaders(header http.Header, request rpcRequest) *rpcFailure {
+	protocolHeader, ok := oneHeader(header, "MCP-Protocol-Version")
+	if !ok {
+		return headerMismatch("MCP-Protocol-Version")
+	}
+	methodHeader, ok := oneHeader(header, "Mcp-Method")
+	if !ok || methodHeader != request.method {
+		return headerMismatch("Mcp-Method")
+	}
+	if protocolHeader != request.version {
+		return headerMismatch("MCP-Protocol-Version")
+	}
+	if failure := validateMirroredToolName(header, request); failure != nil {
+		return failure
+	}
+	return nil
+}
+
+func validateMirroredToolName(header http.Header, request rpcRequest) *rpcFailure {
+	if request.method != "tools/call" {
+		if hasHeader(header, "Mcp-Name") {
+			return headerMismatch("Mcp-Name")
+		}
+		return nil
+	}
+	name, err := stringField(request.params, "name")
+	if err != nil {
+		return invalidParams("tools/call requires a tool name.")
+	}
+	headerName, ok := oneHeader(header, "Mcp-Name")
+	if !ok || !mirroredToolNameMatches(headerName, name) {
+		return headerMismatch("Mcp-Name")
+	}
+	return nil
+}
+
+func (h *handler) dispatchRequest(w http.ResponseWriter, r *http.Request, request rpcRequest) {
+	user, workerContext, workerCall, failure := h.authorizeRequest(r, request)
+	if failure != nil {
+		h.writeFailure(w, request.id, failure)
 		return
 	}
+	h.dispatchAuthorizedRequest(w, r, request, user, workerContext, workerCall)
+}
+
+func (h *handler) authorizeRequest(r *http.Request, request rpcRequest) (accounts.User, string, bool, *rpcFailure) {
+	if err := r.Context().Err(); err != nil {
+		return accounts.User{}, "", false, storeFailure(r.Context(), err)
+	}
+	user, workerContext, workerCall, failure := h.authorizeRequestIdentity(r, request)
+	if failure != nil {
+		return accounts.User{}, "", false, failure
+	}
+	if err := r.Context().Err(); err != nil {
+		return accounts.User{}, "", false, storeFailure(r.Context(), err)
+	}
+	return user, workerContext, workerCall, nil
+}
+
+func (h *handler) authorizeRequestIdentity(r *http.Request, request rpcRequest) (accounts.User, string, bool, *rpcFailure) {
 	// A durable worker presents its job claim instead of a browser session. The
 	// claim header never arrives from outside: the edge strips every X-Contract-*
 	// header, and the credential is a service-pair secret rather than a user
@@ -195,87 +235,99 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	workerContext, workerCall := "", false
 	if values := r.Header.Values("X-Contract-Job-Context"); len(values) > 0 {
 		if len(values) != 1 || values[0] == "" || request.method != "tools/call" {
-			h.writeFailure(w, request.id, unauthorizedFailure())
-			return
+			return accounts.User{}, "", false, unauthorizedFailure()
 		}
 		workerContext, workerCall = values[0], true
 	}
 	var user accounts.User
 	if workerCall {
 		if failure := h.authorizeWorkerCall(r); failure != nil {
-			h.writeFailure(w, request.id, failure)
-			return
+			return accounts.User{}, "", false, failure
 		}
 	} else {
 		var failure *rpcFailure
 		user, failure = h.authenticate(r)
 		if failure != nil {
-			h.writeFailure(w, request.id, failure)
-			return
+			return accounts.User{}, "", false, failure
 		}
 	}
-	if err := r.Context().Err(); err != nil {
-		h.writeFailure(w, request.id, storeFailure(r.Context(), err))
+	return user, workerContext, workerCall, nil
+}
+
+func (h *handler) dispatchAuthorizedRequest(w http.ResponseWriter, r *http.Request, request rpcRequest, user accounts.User, workerContext string, workerCall bool) {
+	if h.dispatchReadMethod(w, request, user) {
 		return
 	}
+	if request.method == "tools/call" {
+		h.dispatchToolCall(w, r, request, user, workerContext, workerCall)
+		return
+	}
+	h.writeFailure(w, request.id, &rpcFailure{status: http.StatusNotFound, code: codeMethodNotFound, message: "Method not found."})
+}
 
+func (h *handler) dispatchReadMethod(w http.ResponseWriter, request rpcRequest, user accounts.User) bool {
 	switch request.method {
 	case "server/discover":
 		if failure := validateParams(request.params, "_meta"); failure != nil {
 			h.writeFailure(w, request.id, failure)
-			return
+			return true
 		}
 		h.writeResult(w, request.id, discoverResult())
+		return true
 	case "tools/list":
 		if failure := validateParams(request.params, "_meta", "cursor"); failure != nil {
 			h.writeFailure(w, request.id, failure)
-			return
+			return true
 		}
 		if raw, exists := request.params["cursor"]; exists {
 			cursor, err := unmarshalString(raw)
 			if err != nil || cursor != "" {
 				h.writeFailure(w, request.id, invalidParams("This server exposes one unpaginated tool."))
-				return
+				return true
 			}
 		}
 		h.writeResult(w, request.id, toolsListResult(hasReadGrant(user)))
-	case "tools/call":
-		if failure := validateParams(request.params, "_meta", "name", "arguments"); failure != nil {
-			h.writeFailure(w, request.id, failure)
-			return
-		}
-		name, _ := stringField(request.params, "name")
-		if name != ToolName {
-			h.writeFailure(w, request.id, invalidParams("Unknown tool."))
-			return
-		}
-		args, failure := parseToolArguments(request.params["arguments"])
-		if failure != nil {
-			h.writeFailure(w, request.id, failure)
-			return
-		}
-		if failure := requireBackend(h.store); failure != nil {
-			h.writeFailure(w, request.id, failure)
-			return
-		}
-		var result []byte
-		if workerCall {
-			result, failure = h.callFrozenEvidenceForWorker(r.Context(), workerContext, args)
-		} else {
-			result, failure = h.callFrozenEvidence(r.Context(), user, args)
-		}
-		if failure != nil {
-			h.writeFailure(w, request.id, failure)
-			return
-		}
-		h.writeResult(w, request.id, toolCallResult{
-			ResultType: "complete",
-			Content:    []rpcContent{{Type: "text", Text: string(result)}},
-			IsError:    false,
-		})
-	default:
-		h.writeFailure(w, request.id, &rpcFailure{status: http.StatusNotFound, code: codeMethodNotFound, message: "Method not found."})
+		return true
 	}
+	return false
+}
+
+func (h *handler) dispatchToolCall(w http.ResponseWriter, r *http.Request, request rpcRequest, user accounts.User, workerContext string, workerCall bool) {
+	if failure := validateParams(request.params, "_meta", "name", "arguments"); failure != nil {
+		h.writeFailure(w, request.id, failure)
+		return
+	}
+	name, _ := stringField(request.params, "name")
+	if name != ToolName {
+		h.writeFailure(w, request.id, invalidParams("Unknown tool."))
+		return
+	}
+	args, failure := parseToolArguments(request.params["arguments"])
+	if failure != nil {
+		h.writeFailure(w, request.id, failure)
+		return
+	}
+	if failure := requireBackend(h.store); failure != nil {
+		h.writeFailure(w, request.id, failure)
+		return
+	}
+	result, failure := h.executeToolCall(r, user, workerContext, workerCall, args)
+	if failure != nil {
+		h.writeFailure(w, request.id, failure)
+		return
+	}
+	h.writeResult(w, request.id, toolCallResult{
+		ResultType: "complete",
+		Content:    []rpcContent{{Type: "text", Text: string(result)}},
+		IsError:    false,
+	})
+}
+
+func (h *handler) executeToolCall(r *http.Request, user accounts.User, workerContext string, workerCall bool, args toolArguments) ([]byte, *rpcFailure) {
+	if workerCall {
+		return h.callFrozenEvidenceForWorker(r.Context(), workerContext, args)
+	}
+	return h.callFrozenEvidence(r.Context(), user, args)
 }
 
 func (h *handler) originAllowed(r *http.Request) bool {
@@ -313,67 +365,9 @@ func (h *handler) setCORS(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *handler) handlePreflight(w http.ResponseWriter, r *http.Request) {
-	if len(r.Header.Values("Origin")) != 1 {
-		h.writeFailure(w, nil, invalidParams("CORS preflight requires one Origin header."))
+	if failure := validatePreflightRequest(r); failure != nil {
+		h.writeFailure(w, nil, failure)
 		return
-	}
-	method, ok := oneHeader(r.Header, "Access-Control-Request-Method")
-	if !ok || method != http.MethodPost {
-		h.writeFailure(w, nil, invalidParams("CORS preflight only permits POST."))
-		return
-	}
-	requested := r.Header.Values("Access-Control-Request-Headers")
-	if len(requested) > 1 {
-		h.writeFailure(w, nil, invalidParams("CORS preflight headers must be provided once."))
-		return
-	}
-	if len(requested) == 1 && requested[0] != "" {
-		var seen uint8
-		for remaining := requested[0]; ; {
-			separator := strings.IndexByte(remaining, ',')
-			header := remaining
-			if separator >= 0 {
-				header = remaining[:separator]
-			}
-			header = strings.TrimSpace(header)
-			if header == "" {
-				h.writeFailure(w, nil, invalidParams("CORS preflight contains an invalid header name."))
-				return
-			}
-			for i := range header {
-				if header[i] < 0x21 || header[i] > 0x7e {
-					h.writeFailure(w, nil, invalidParams("CORS preflight contains an invalid header name."))
-					return
-				}
-			}
-			var bit uint8
-			switch {
-			case strings.EqualFold(header, "accept"):
-				bit = 1 << 0
-			case strings.EqualFold(header, "authorization"):
-				bit = 1 << 1
-			case strings.EqualFold(header, "content-type"):
-				bit = 1 << 2
-			case strings.EqualFold(header, "mcp-method"):
-				bit = 1 << 3
-			case strings.EqualFold(header, "mcp-name"):
-				bit = 1 << 4
-			case strings.EqualFold(header, "mcp-protocol-version"):
-				bit = 1 << 5
-			default:
-				h.writeFailure(w, nil, invalidParams("CORS preflight requested an unsupported header."))
-				return
-			}
-			if seen&bit != 0 {
-				h.writeFailure(w, nil, invalidParams("CORS preflight contains a duplicate header name."))
-				return
-			}
-			seen |= bit
-			if separator < 0 {
-				break
-			}
-			remaining = remaining[separator+1:]
-		}
 	}
 	w.Header().Set("Access-Control-Allow-Methods", "POST")
 	w.Header().Set("Access-Control-Allow-Headers", "Accept, Authorization, Content-Type, Mcp-Method, Mcp-Name, MCP-Protocol-Version")
@@ -382,15 +376,101 @@ func (h *handler) handlePreflight(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+func validatePreflightRequest(r *http.Request) *rpcFailure {
+	if len(r.Header.Values("Origin")) != 1 {
+		return invalidParams("CORS preflight requires one Origin header.")
+	}
+	method, ok := oneHeader(r.Header, "Access-Control-Request-Method")
+	if !ok || method != http.MethodPost {
+		return invalidParams("CORS preflight only permits POST.")
+	}
+	requested := r.Header.Values("Access-Control-Request-Headers")
+	if len(requested) > 1 {
+		return invalidParams("CORS preflight headers must be provided once.")
+	}
+	if len(requested) == 1 {
+		if failure := validatePreflightHeaderList(requested[0]); failure != nil {
+			return failure
+		}
+	}
+	return nil
+}
+
+func validatePreflightHeaderList(requested string) *rpcFailure {
+	if requested == "" {
+		return nil
+	}
+	var seen uint8
+	for remaining := requested; ; {
+		separator := strings.IndexByte(remaining, ',')
+		header := remaining
+		if separator >= 0 {
+			header = remaining[:separator]
+		}
+		header = strings.TrimSpace(header)
+		bit, failure := validatePreflightHeader(header, seen)
+		if failure != nil {
+			return failure
+		}
+		seen |= bit
+		if separator < 0 {
+			return nil
+		}
+		remaining = remaining[separator+1:]
+	}
+}
+
+func validatePreflightHeader(header string, seen uint8) (uint8, *rpcFailure) {
+	if header == "" || !asciiHeaderValue(header) {
+		return 0, invalidParams("CORS preflight contains an invalid header name.")
+	}
+	bit, ok := preflightHeaderBit(header)
+	if !ok {
+		return 0, invalidParams("CORS preflight requested an unsupported header.")
+	}
+	if seen&bit != 0 {
+		return 0, invalidParams("CORS preflight contains a duplicate header name.")
+	}
+	return bit, nil
+}
+
+func asciiHeaderValue(header string) bool {
+	return safeToken(header)
+}
+
+func preflightHeaderBit(header string) (uint8, bool) {
+	switch {
+	case strings.EqualFold(header, "accept"):
+		return 1 << 0, true
+	case strings.EqualFold(header, "authorization"):
+		return 1 << 1, true
+	case strings.EqualFold(header, "content-type"):
+		return 1 << 2, true
+	case strings.EqualFold(header, "mcp-method"):
+		return 1 << 3, true
+	case strings.EqualFold(header, "mcp-name"):
+		return 1 << 4, true
+	case strings.EqualFold(header, "mcp-protocol-version"):
+		return 1 << 5, true
+	default:
+		return 0, false
+	}
+}
+
 func canonicalOrigin(raw string) (string, bool) {
 	if raw == "" || raw == "null" || strings.TrimSpace(raw) != raw {
 		return "", false
 	}
 	u, err := url.Parse(raw)
-	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || u.User != nil || u.Path != "" || u.RawQuery != "" || u.Fragment != "" {
+	if err != nil || !validOriginURL(u) {
 		return "", false
 	}
 	return strings.ToLower(u.Scheme) + "://" + strings.ToLower(u.Host), true
+}
+
+func validOriginURL(origin *url.URL) bool {
+	return (origin.Scheme == "http" || origin.Scheme == "https") && origin.Host != "" &&
+		origin.User == nil && origin.Path == "" && origin.RawQuery == "" && origin.Fragment == ""
 }
 
 func isJSONContentType(value string) bool {
@@ -413,17 +493,11 @@ func acceptsJSONAndSSE(values []string) bool {
 	acceptedJSON, acceptedSSE := false, false
 	for _, value := range values {
 		for _, part := range strings.Split(value, ",") {
-			mediaType, params, err := mime.ParseMediaType(strings.TrimSpace(part))
-			if err != nil {
+			mediaType, ok := acceptableMediaType(part)
+			if !ok {
 				continue
 			}
-			if quality, exists := params["q"]; exists {
-				parsedQuality, err := strconv.ParseFloat(quality, 64)
-				if err != nil || !(parsedQuality > 0 && parsedQuality <= 1) {
-					continue
-				}
-			}
-			switch strings.ToLower(mediaType) {
+			switch mediaType {
 			case "application/json":
 				acceptedJSON = true
 			case "text/event-stream":
@@ -434,76 +508,158 @@ func acceptsJSONAndSSE(values []string) bool {
 	return acceptedJSON && acceptedSSE
 }
 
-func parseRequest(body []byte) (rpcRequest, *rpcFailure) {
-	if len(body) == 0 || !utf8.Valid(body) {
-		return rpcRequest{}, &rpcFailure{status: http.StatusBadRequest, code: codeParseError, message: "Invalid JSON request."}
+func acceptableMediaType(part string) (string, bool) {
+	mediaType, params, err := mime.ParseMediaType(strings.TrimSpace(part))
+	if err != nil {
+		return "", false
 	}
-	if err := validateSingleJSON(body); err != nil {
-		return rpcRequest{}, &rpcFailure{status: http.StatusBadRequest, code: codeParseError, message: "Request must contain exactly one JSON object."}
-	}
-	var fields map[string]json.RawMessage
-	if err := json.Unmarshal(body, &fields); err != nil || fields == nil {
-		return rpcRequest{}, &rpcFailure{status: http.StatusBadRequest, code: codeInvalidRequest, message: "JSON-RPC request must be an object."}
-	}
-	for key := range fields {
-		if key != "jsonrpc" && key != "id" && key != "method" && key != "params" {
-			return rpcRequest{}, &rpcFailure{status: http.StatusBadRequest, code: codeInvalidRequest, message: "Request contains an unsupported field."}
+	if quality, exists := params["q"]; exists {
+		parsedQuality, err := strconv.ParseFloat(quality, 64)
+		if err != nil || !(parsedQuality > 0 && parsedQuality <= 1) {
+			return "", false
 		}
 	}
-	jsonrpc, err := stringField(fields, "jsonrpc")
-	if err != nil || jsonrpc != "2.0" {
-		return rpcRequest{}, &rpcFailure{status: http.StatusBadRequest, code: codeInvalidRequest, message: "jsonrpc must be 2.0."}
+	return strings.ToLower(mediaType), true
+}
+
+func parseRequest(body []byte) (rpcRequest, *rpcFailure) {
+	fields, failure := decodeRequestFields(body)
+	if failure != nil {
+		return rpcRequest{}, failure
 	}
-	id, ok := fields["id"]
-	if !ok || !validRequestID(id) {
-		return rpcRequest{}, &rpcFailure{status: http.StatusBadRequest, code: codeInvalidRequest, message: "A non-null string or integer request id is required."}
+	if failure := rejectUnsupportedEnvelopeFields(fields); failure != nil {
+		return rpcRequest{}, failure
 	}
-	method, err := stringField(fields, "method")
-	requestID := id
-	if err != nil || method == "" || len(method) > 128 {
-		return rpcRequest{id: requestID}, &rpcFailure{status: http.StatusBadRequest, code: codeInvalidRequest, message: "A valid method is required."}
+	requestID, method, failure := parseRequestIdentity(fields)
+	if failure != nil {
+		return rpcRequest{id: requestID}, failure
 	}
-	paramsRaw, ok := fields["params"]
-	if !ok {
-		return rpcRequest{id: requestID}, invalidParams("Request metadata is required in params._meta.")
-	}
-	params, err := decodeJSONObject(paramsRaw)
-	if err != nil {
-		return rpcRequest{id: requestID}, invalidParams("params must be one JSON object.")
+	params, failure := parseRequestParams(fields)
+	if failure != nil {
+		return rpcRequest{id: requestID}, failure
 	}
 	return rpcRequest{id: requestID, method: method, params: params}, nil
 }
+
+func decodeRequestFields(body []byte) (map[string]json.RawMessage, *rpcFailure) {
+	if len(body) == 0 || !utf8.Valid(body) {
+		return nil, &rpcFailure{status: http.StatusBadRequest, code: codeParseError, message: "Invalid JSON request."}
+	}
+	if err := validateSingleJSON(body); err != nil {
+		return nil, &rpcFailure{status: http.StatusBadRequest, code: codeParseError, message: "Request must contain exactly one JSON object."}
+	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(body, &fields); err != nil || fields == nil {
+		return nil, &rpcFailure{status: http.StatusBadRequest, code: codeInvalidRequest, message: "JSON-RPC request must be an object."}
+	}
+	return fields, nil
+}
+
+func parseRequestParams(fields map[string]json.RawMessage) (map[string]json.RawMessage, *rpcFailure) {
+	return requiredJSONObjectField(fields, "params", "Request metadata is required in params._meta.", "params must be one JSON object.")
+}
+
+func parseRequestIdentity(fields map[string]json.RawMessage) (json.RawMessage, string, *rpcFailure) {
+	if failure := validateJSONRPCVersion(fields); failure != nil {
+		return nil, "", failure
+	}
+	id, failure := parseJSONRPCRequestID(fields)
+	if failure != nil {
+		return nil, "", failure
+	}
+	method, failure := parseJSONRPCMethod(fields)
+	if failure != nil {
+		return id, "", failure
+	}
+	return id, method, nil
+}
+
+func validateJSONRPCVersion(fields map[string]json.RawMessage) *rpcFailure {
+	jsonrpc, err := stringField(fields, "jsonrpc")
+	if err != nil || jsonrpc != "2.0" {
+		return &rpcFailure{status: http.StatusBadRequest, code: codeInvalidRequest, message: "jsonrpc must be 2.0."}
+	}
+	return nil
+}
+
+func parseJSONRPCRequestID(fields map[string]json.RawMessage) (json.RawMessage, *rpcFailure) {
+	id, ok := fields["id"]
+	if !ok || !validRequestID(id) {
+		return nil, &rpcFailure{status: http.StatusBadRequest, code: codeInvalidRequest, message: "A non-null string or integer request id is required."}
+	}
+	return id, nil
+}
+
+func parseJSONRPCMethod(fields map[string]json.RawMessage) (string, *rpcFailure) {
+	method, err := stringField(fields, "method")
+	if err != nil || method == "" || len(method) > 128 {
+		return "", &rpcFailure{status: http.StatusBadRequest, code: codeInvalidRequest, message: "A valid method is required."}
+	}
+	return method, nil
+}
+
+func rejectUnsupportedEnvelopeFields(fields map[string]json.RawMessage) *rpcFailure {
+	for key := range fields {
+		if key != "jsonrpc" && key != "id" && key != "method" && key != "params" {
+			return &rpcFailure{status: http.StatusBadRequest, code: codeInvalidRequest, message: "Request contains an unsupported field."}
+		}
+	}
+	return nil
+}
+
 func validateRequestMetadata(params map[string]json.RawMessage) (string, *rpcFailure) {
-	metaRaw, ok := params["_meta"]
-	if !ok {
-		return "", invalidParams("Request metadata is required in params._meta.")
+	meta, failure := requestMetadataObject(params)
+	if failure != nil {
+		return "", failure
 	}
-	meta, err := decodeJSONObject(metaRaw)
-	if err != nil {
-		return "", invalidParams("params._meta must be an object.")
+	version, failure := requestProtocolVersion(meta)
+	if failure != nil {
+		return "", failure
 	}
+	if failure := validateClientCapabilities(meta); failure != nil {
+		return "", failure
+	}
+	if failure := validateClientInfo(meta); failure != nil {
+		return "", failure
+	}
+	return version, nil
+}
+
+func requestMetadataObject(params map[string]json.RawMessage) (map[string]json.RawMessage, *rpcFailure) {
+	return requiredJSONObjectField(params, "_meta", "Request metadata is required in params._meta.", "params._meta must be an object.")
+}
+
+func requestProtocolVersion(meta map[string]json.RawMessage) (string, *rpcFailure) {
 	version, err := stringField(meta, "io.modelcontextprotocol/protocolVersion")
 	if err != nil || version == "" {
 		return "", invalidParams("Request protocolVersion metadata is required.")
 	}
+	return version, nil
+}
+
+func validateClientCapabilities(meta map[string]json.RawMessage) *rpcFailure {
 	if raw, exists := meta["io.modelcontextprotocol/clientCapabilities"]; !exists || !isJSONObject(raw) {
-		return "", invalidParams("Request clientCapabilities metadata is required as an object.")
+		return invalidParams("Request clientCapabilities metadata is required as an object.")
 	}
-	clientRaw, exists := meta["io.modelcontextprotocol/clientInfo"]
-	if !exists {
-		return "", invalidParams("Request clientInfo metadata is required.")
-	}
-	clientInfo, err := decodeJSONObject(clientRaw)
-	if err != nil {
-		return "", invalidParams("Request clientInfo metadata must be an object.")
+	return nil
+}
+
+func validateClientInfo(meta map[string]json.RawMessage) *rpcFailure {
+	clientInfo, failure := clientInfoObject(meta)
+	if failure != nil {
+		return failure
 	}
 	if name, err := stringField(clientInfo, "name"); err != nil || name == "" {
-		return "", invalidParams("Request clientInfo.name is required.")
+		return invalidParams("Request clientInfo.name is required.")
 	}
 	if clientVersion, err := stringField(clientInfo, "version"); err != nil || clientVersion == "" {
-		return "", invalidParams("Request clientInfo.version is required.")
+		return invalidParams("Request clientInfo.version is required.")
 	}
-	return version, nil
+	return nil
+}
+
+func clientInfoObject(meta map[string]json.RawMessage) (map[string]json.RawMessage, *rpcFailure) {
+	return requiredJSONObjectField(meta, "io.modelcontextprotocol/clientInfo", "Request clientInfo metadata is required.", "Request clientInfo metadata must be an object.")
 }
 
 func (h *handler) authenticate(r *http.Request) (accounts.User, *rpcFailure) {
@@ -516,32 +672,33 @@ func (h *handler) authenticate(r *http.Request) (accounts.User, *rpcFailure) {
 	}
 	user, err := h.store.User(token)
 	if err != nil {
-		var public *fault.Error
-		if errors.As(err, &public) {
-			if public.Status == http.StatusUnauthorized {
-				return accounts.User{}, unauthorizedFailure()
-			}
-			return accounts.User{}, storeFailure(nil, err)
-		}
-		return accounts.User{}, &rpcFailure{status: http.StatusServiceUnavailable, code: codeInternalError, message: "Authentication service is unavailable."}
+		return accounts.User{}, authenticationFailure(err)
 	}
 	if user.ID == "" || !user.Enabled {
 		return accounts.User{}, unauthorizedFailure()
 	}
 	audience, err := h.store.SessionAudience(token)
 	if err != nil {
-		var public *fault.Error
-		if errors.As(err, &public) {
-			if public.Status == http.StatusUnauthorized {
-				return accounts.User{}, unauthorizedFailure()
-			}
-			return accounts.User{}, storeFailure(nil, err)
-		}
-		return accounts.User{}, &rpcFailure{status: http.StatusServiceUnavailable, code: codeInternalError, message: "Authentication service is unavailable."}
+		return accounts.User{}, authenticationFailure(err)
 	}
 	if audience != "client" {
 		return accounts.User{}, unauthorizedFailure()
 	}
+	return bindAuthenticatedUser(user)
+}
+
+func authenticationFailure(err error) *rpcFailure {
+	var public *fault.Error
+	if errors.As(err, &public) {
+		if public.Status == http.StatusUnauthorized {
+			return unauthorizedFailure()
+		}
+		return storeFailure(nil, err)
+	}
+	return &rpcFailure{status: http.StatusServiceUnavailable, code: codeInternalError, message: "Authentication service is unavailable."}
+}
+
+func bindAuthenticatedUser(user accounts.User) (accounts.User, *rpcFailure) {
 	current, ok := accounts.ByID(user.ID)
 	if !ok || !current.Enabled || current.ID != user.ID {
 		return accounts.User{}, unauthorizedFailure()
@@ -559,28 +716,13 @@ func (h *handler) authenticate(r *http.Request) (accounts.User, *rpcFailure) {
 }
 
 func requestToken(r *http.Request) (string, bool) {
-	var cookieToken string
-	cookieCount := 0
-	for _, cookie := range r.Cookies() {
-		if cookie.Name == "session" {
-			cookieToken = cookie.Value
-			cookieCount++
-		}
-	}
-	if cookieCount > 1 || len(cookieToken) > 4096 {
+	cookieToken, ok := requestCookieToken(r)
+	if !ok {
 		return "", false
 	}
-	var bearer string
-	authorization := r.Header.Values("Authorization")
-	if len(authorization) > 1 {
+	bearer, ok := requestBearerToken(r)
+	if !ok {
 		return "", false
-	}
-	if len(authorization) == 1 {
-		parts := strings.Fields(authorization[0])
-		if len(parts) != 2 || !strings.EqualFold(parts[0], "Bearer") || parts[1] == "" || len(parts[1]) > 4096 {
-			return "", false
-		}
-		bearer = parts[1]
 	}
 	if cookieToken != "" && bearer != "" && cookieToken != bearer {
 		return "", false
@@ -593,6 +735,40 @@ func requestToken(r *http.Request) (string, bool) {
 		return "", false
 	}
 	return token, true
+}
+
+func requestCookieToken(r *http.Request) (string, bool) {
+	var token string
+	foundSession := false
+	for _, cookie := range r.Cookies() {
+		if cookie.Name != "session" {
+			continue
+		}
+		if foundSession {
+			return "", false
+		}
+		foundSession = true
+		token = cookie.Value
+	}
+	if len(token) > 4096 {
+		return "", false
+	}
+	return token, true
+}
+
+func requestBearerToken(r *http.Request) (string, bool) {
+	authorization := r.Header.Values("Authorization")
+	if len(authorization) > 1 {
+		return "", false
+	}
+	if len(authorization) == 0 {
+		return "", true
+	}
+	parts := strings.Fields(authorization[0])
+	if len(parts) != 2 || !strings.EqualFold(parts[0], "Bearer") || parts[1] == "" || len(parts[1]) > 4096 {
+		return "", false
+	}
+	return parts[1], true
 }
 
 func safeToken(value string) bool {
@@ -765,6 +941,26 @@ func decodeJSONObject(raw json.RawMessage) (map[string]json.RawMessage, error) {
 	return object, nil
 }
 
+func decodeJSONObjectField(fields map[string]json.RawMessage, name string) (map[string]json.RawMessage, bool, error) {
+	raw, exists := fields[name]
+	if !exists {
+		return nil, false, nil
+	}
+	object, err := decodeJSONObject(raw)
+	return object, true, err
+}
+
+func requiredJSONObjectField(fields map[string]json.RawMessage, name, missingMessage, invalidMessage string) (map[string]json.RawMessage, *rpcFailure) {
+	object, exists, err := decodeJSONObjectField(fields, name)
+	if !exists {
+		return nil, invalidParams(missingMessage)
+	}
+	if err != nil {
+		return nil, invalidParams(invalidMessage)
+	}
+	return object, nil
+}
+
 func stringField(fields map[string]json.RawMessage, key string) (string, error) {
 	raw, ok := fields[key]
 	if !ok {
@@ -791,12 +987,20 @@ func validRequestID(raw json.RawMessage) bool {
 		return false
 	}
 	if value[0] == '"' {
-		var id string
-		return json.Unmarshal(value, &id) == nil && len(id) <= 128
+		return validStringRequestID(value)
 	}
 	if value[0] == '-' {
 		value = value[1:]
 	}
+	return validIntegerRequestID(value)
+}
+
+func validStringRequestID(value []byte) bool {
+	var id string
+	return json.Unmarshal(value, &id) == nil && len(id) <= 128
+}
+
+func validIntegerRequestID(value []byte) bool {
 	if len(value) == 0 || (len(value) > 1 && value[0] == '0') {
 		return false
 	}
@@ -840,48 +1044,56 @@ func scanJSONContainer(decoder *json.Decoder, opening json.Token, depth int) err
 	}
 	switch delim {
 	case '{':
-		seen := make(map[string]struct{})
-		for decoder.More() {
-			token, err := decoder.Token()
-			if err != nil {
-				return err
-			}
-			key, ok := token.(string)
-			if !ok {
-				return errors.New("object key is not a string")
-			}
-			if _, exists := seen[key]; exists {
-				return errors.New("duplicate JSON object key")
-			}
-			seen[key] = struct{}{}
-			value, err := decoder.Token()
-			if err != nil {
-				return err
-			}
-			if err := scanJSONContainer(decoder, value, depth+1); err != nil {
-				return err
-			}
-		}
-		closing, err := decoder.Token()
-		if err != nil || closing != json.Delim('}') {
-			return errors.New("unterminated JSON object")
-		}
+		return scanJSONObject(decoder, depth)
 	case '[':
-		for decoder.More() {
-			value, err := decoder.Token()
-			if err != nil {
-				return err
-			}
-			if err := scanJSONContainer(decoder, value, depth+1); err != nil {
-				return err
-			}
-		}
-		closing, err := decoder.Token()
-		if err != nil || closing != json.Delim(']') {
-			return errors.New("unterminated JSON array")
-		}
+		return scanJSONArray(decoder, depth)
 	default:
 		return errors.New("unexpected JSON delimiter")
+	}
+}
+
+func scanJSONObject(decoder *json.Decoder, depth int) error {
+	seen := make(map[string]struct{})
+	for decoder.More() {
+		token, err := decoder.Token()
+		if err != nil {
+			return err
+		}
+		key, ok := token.(string)
+		if !ok {
+			return errors.New("object key is not a string")
+		}
+		if _, exists := seen[key]; exists {
+			return errors.New("duplicate JSON object key")
+		}
+		seen[key] = struct{}{}
+		value, err := decoder.Token()
+		if err != nil {
+			return err
+		}
+		if err := scanJSONContainer(decoder, value, depth+1); err != nil {
+			return err
+		}
+	}
+	closing, err := decoder.Token()
+	if err != nil || closing != json.Delim('}') {
+		return errors.New("unterminated JSON object")
+	}
+	return nil
+}
+func scanJSONArray(decoder *json.Decoder, depth int) error {
+	for decoder.More() {
+		value, err := decoder.Token()
+		if err != nil {
+			return err
+		}
+		if err := scanJSONContainer(decoder, value, depth+1); err != nil {
+			return err
+		}
+	}
+	closing, err := decoder.Token()
+	if err != nil || closing != json.Delim(']') {
+		return errors.New("unterminated JSON array")
 	}
 	return nil
 }
@@ -907,19 +1119,32 @@ func hasHeader(header http.Header, name string) bool {
 	return false
 }
 
+func mirroredToolNameMatches(headerName, requestName string) bool {
+	decoded, ok := decodeMirroredValue(headerName)
+	return ok && decoded == requestName
+}
+
 func decodeMirroredValue(value string) (string, bool) {
 	const prefix = "=?base64?"
 	const suffix = "?="
 	if strings.HasPrefix(value, prefix) || strings.HasSuffix(value, suffix) {
-		if !strings.HasPrefix(value, prefix) || !strings.HasSuffix(value, suffix) || len(value) < len(prefix)+len(suffix) {
-			return "", false
-		}
-		decoded, err := base64.StdEncoding.DecodeString(value[len(prefix) : len(value)-len(suffix)])
-		if err != nil || !utf8.Valid(decoded) {
-			return "", false
-		}
-		return string(decoded), true
+		return decodeEncodedMirroredValue(value, prefix, suffix)
 	}
+	return decodeLiteralMirroredValue(value)
+}
+
+func decodeEncodedMirroredValue(value, prefix, suffix string) (string, bool) {
+	if !strings.HasPrefix(value, prefix) || !strings.HasSuffix(value, suffix) || len(value) < len(prefix)+len(suffix) {
+		return "", false
+	}
+	decoded, err := base64.StdEncoding.DecodeString(value[len(prefix) : len(value)-len(suffix)])
+	if err != nil || !utf8.Valid(decoded) {
+		return "", false
+	}
+	return string(decoded), true
+}
+
+func decodeLiteralMirroredValue(value string) (string, bool) {
 	if strings.TrimSpace(value) != value {
 		return "", false
 	}

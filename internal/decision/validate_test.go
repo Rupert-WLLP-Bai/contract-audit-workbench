@@ -1,6 +1,7 @@
 package decision
 
 import (
+	"strconv"
 	"strings"
 	"testing"
 
@@ -28,6 +29,75 @@ func validInputFixture() Input {
 func TestValidInputAcceptsTheBoundedChoiceShape(t *testing.T) {
 	if input := validInputFixture(); !ValidInput(input) {
 		t.Fatalf("valid input was rejected: %+v", input)
+	}
+}
+
+func TestValidInputAcceptsInclusiveByteAndCountLimits(t *testing.T) {
+	input := validInputFixture()
+	input.State = strings.Repeat("x", MaxStateBytes)
+	input.AllowedCandidates = make([]Candidate, MaxCandidates)
+	for index := range input.AllowedCandidates {
+		suffix := strconv.Itoa(index)
+		id := "candidate_" + strings.Repeat("a", MaxCandidateIDBytes-len("candidate_")-len(suffix)) + suffix
+		if index == MaxCandidates-1 {
+			id = "manual_review"
+		}
+		input.AllowedCandidates[index] = Candidate{
+			ID: id, Description: strings.Repeat("d", MaxCandidateDescriptionBytes),
+		}
+	}
+	if !ValidInput(input) {
+		t.Fatal("inclusive maximum byte and candidate counts were rejected")
+	}
+}
+
+func TestValidInputChecksShapeWithoutAuthorizingPrincipalOrResource(t *testing.T) {
+	input := validInputFixture()
+	input.Principal = access.Principal{}
+	input.Resource = access.Resource{}
+	if !ValidInput(input) {
+		t.Fatal("valid bounded shape depended on authorization fields")
+	}
+}
+
+func TestValidInputKeepsSingleByteDescriptionsAndRejectsDuplicatesAtAnyPosition(t *testing.T) {
+	input := validInputFixture()
+	input.AllowedCandidates[0].Description = "x"
+	if !ValidInput(input) {
+		t.Fatal("one-byte candidate description was rejected")
+	}
+
+	input.AllowedCandidates = []Candidate{
+		{ID: "manual_review", Description: "review"},
+		{ID: "first", Description: "one"},
+		{ID: "second", Description: "two"},
+		{ID: "third", Description: "three"},
+	}
+	if !ValidInput(input) {
+		t.Fatal("unique candidates were rejected")
+	}
+	input.AllowedCandidates[3].ID = "first"
+	if ValidInput(input) {
+		t.Fatal("duplicate at final candidate position was accepted")
+	}
+}
+
+func TestValidInputAcceptsExactMinimumCandidateCount(t *testing.T) {
+	input := validInputFixture()
+	input.AllowedCandidates = []Candidate{
+		{ID: "manual_review", Description: "人工复核"},
+		{ID: "focus", Description: "核查重点"},
+	}
+	if !ValidInput(input) {
+		t.Fatal("exact minimum candidate count was rejected")
+	}
+}
+
+func TestValidInputRejectsOneCandidateEvenWhenManualReviewIsPresent(t *testing.T) {
+	input := validInputFixture()
+	input.AllowedCandidates = []Candidate{{ID: "manual_review", Description: "人工复核"}}
+	if ValidInput(input) {
+		t.Fatal("one candidate was accepted when manual_review was present")
 	}
 }
 

@@ -2,8 +2,6 @@ package store
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -945,8 +943,7 @@ func authorityList(content rulepack.Manifest) []string {
 }
 
 func sha256Bytes(raw []byte) string {
-	sum := sha256.Sum256(raw)
-	return hex.EncodeToString(sum[:])
+	return digestBytes(raw)
 }
 
 func validIdentifier(value string) bool { return rulepackValidIdentifier(value) }

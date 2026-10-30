@@ -18,17 +18,25 @@ const (
 // upstreamConfig is the provider identity a single gateway call is pinned to.
 // Revision 0 means the deployment environment; stored rows start at 1.
 type upstreamConfig struct {
-	BaseURL   string
-	APIKey    string
-	ChatModel string
-	OCRModel  string
-	Revision  int64
+	BaseURL string
+	APIKey  string
+	// ProviderURL is the identity address used for configuration ids. It is the
+	// stored endpoint row, or the deployment provider URL when none is stored.
+	ProviderURL string
+	ChatModel   string
+	OCRModel    string
+	Revision    int64
 }
 
 func (s *Service) staticUpstream() upstreamConfig {
+	providerURL := s.config.ProviderURL
+	if providerURL == "" {
+		providerURL = s.config.UpstreamBaseURL
+	}
 	return upstreamConfig{
 		BaseURL: s.config.UpstreamBaseURL, APIKey: s.config.UpstreamAPIKey,
-		ChatModel: s.config.ChatModel, OCRModel: s.config.OCRModel,
+		ProviderURL: providerURL,
+		ChatModel:   s.config.ChatModel, OCRModel: s.config.OCRModel,
 	}
 }
 
@@ -89,8 +97,24 @@ func (s *Service) loadStoredUpstream(ctx context.Context) (upstreamConfig, error
 		}
 	}
 	return upstreamConfig{
-		BaseURL: settings.BaseURL, APIKey: key,
+		BaseURL: settings.BaseURL, APIKey: key, ProviderURL: settings.BaseURL,
 		ChatModel: settings.ReviewModel, OCRModel: settings.OCRModel,
 		Revision: settings.Revision,
 	}, nil
+}
+
+// matchesFrozen reports whether this upstream is the provider the frozen
+// caller names. A caller without an identity (fixtures, internal callers) is
+// not constrained. A caller that carries a configuration id also carries the
+// provider address inside that id; when the addresses agree the models agree
+// too, so a differently versioned identity is not a provider switch. Without a
+// recorded address the gateway can only compare the full identity.
+func (u upstreamConfig) matchesFrozen(scope model.DelegatedScope) bool {
+	if scope.ConfigurationID == "" {
+		return true
+	}
+	if scope.ProviderURL != "" {
+		return scope.ProviderURL == u.ProviderURL
+	}
+	return scope.ConfigurationID == model.ConfigurationIDFor(u.ProviderURL, u.ChatModel, u.OCRModel)
 }
