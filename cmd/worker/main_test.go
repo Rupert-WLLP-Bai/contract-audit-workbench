@@ -231,6 +231,7 @@ func TestWorkerRunValidatesConfigAndDrainsIdlePostgresQueue(t *testing.T) {
 	})
 
 	t.Run("claimed job starts and joins heartbeat before parent cancellation", func(t *testing.T) {
+		env := newWorkerCommandEnvironment(t, http.NotFoundHandler())
 		accepted := env.createReview(t)
 		entered := make(chan struct{}, 1)
 		env.worker.Store.UseModels(blockingWorkerModel{entered: entered})
@@ -267,6 +268,7 @@ func TestWorkerRunValidatesConfigAndDrainsIdlePostgresQueue(t *testing.T) {
 	})
 
 	t.Run("successive PostgreSQL claims finish and log both jobs", func(t *testing.T) {
+		env := newWorkerCommandEnvironment(t, http.NotFoundHandler())
 		first := env.createReview(t)
 		second := env.createReview(t)
 		modelCalls := make(chan struct{}, 2)
