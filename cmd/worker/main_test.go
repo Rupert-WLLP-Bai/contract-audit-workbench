@@ -14,6 +14,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -246,14 +247,26 @@ func TestWorkerRunValidatesConfigAndDrainsIdlePostgresQueue(t *testing.T) {
 		second := env.createReview(t)
 		modelCalls := make(chan struct{}, 2)
 		env.worker.Store.UseModels(successfulWorkerModel{called: modelCalls})
-		var output bytes.Buffer
+		var output synchronizedLogBuffer
 		previous := slog.Default()
 		slog.SetDefault(slog.New(slog.NewTextHandler(&output, &slog.HandlerOptions{Level: slog.LevelDebug})))
 		t.Cleanup(func() { slog.SetDefault(previous) })
 
 		ctx, cancel := context.WithCancel(env.ctx)
-		defer cancel()
 		done := make(chan error, 1)
+		loopStopped := false
+		defer func() {
+			if loopStopped {
+				return
+			}
+			cancel()
+			select {
+			case <-done:
+				loopStopped = true
+			case <-time.After(3 * time.Second):
+				t.Error("claim loop did not stop during test cleanup")
+			}
+		}()
 		const workerID = "worker-successive-claims"
 		go func() {
 			done <- claimJobs(ctx, env.worker.Store, workerID, 5*time.Second, time.Second, 10*time.Millisecond, nil)
@@ -262,6 +275,7 @@ func TestWorkerRunValidatesConfigAndDrainsIdlePostgresQueue(t *testing.T) {
 			select {
 			case <-modelCalls:
 			case err := <-done:
+				loopStopped = true
 				t.Fatalf("claim loop stopped before entering both jobs: %v", err)
 			case <-time.After(5 * time.Second):
 				t.Fatalf("only %d of 2 queued jobs entered the model stage", job)
@@ -284,6 +298,7 @@ func TestWorkerRunValidatesConfigAndDrainsIdlePostgresQueue(t *testing.T) {
 			}
 			select {
 			case err := <-done:
+				loopStopped = true
 				t.Fatalf("claim loop stopped before both jobs completed: %v; states=%v", err, completed)
 			case <-time.After(20 * time.Millisecond):
 			}
@@ -292,14 +307,30 @@ func TestWorkerRunValidatesConfigAndDrainsIdlePostgresQueue(t *testing.T) {
 			cancel()
 			select {
 			case <-done:
+				loopStopped = true
 			case <-time.After(3 * time.Second):
 				t.Error("claim loop did not stop after cancel")
 			}
 			t.Fatalf("only %d of 2 PostgreSQL jobs reached completed state", len(completed))
 		}
+		logDeadline := time.Now().Add(3 * time.Second)
+		for strings.Count(output.String(), `msg="review job finished"`) < 2 && time.Now().Before(logDeadline) {
+			time.Sleep(5 * time.Millisecond)
+		}
+		if got := strings.Count(output.String(), `msg="review job finished"`); got != 2 {
+			cancel()
+			select {
+			case <-done:
+				loopStopped = true
+			case <-time.After(3 * time.Second):
+				t.Error("claim loop did not stop after missing finish log")
+			}
+			t.Fatalf("successful worker jobs logged %d finish events before cancellation, want 2: %s", got, output.String())
+		}
 		cancel()
 		select {
 		case err := <-done:
+			loopStopped = true
 			if !errors.Is(err, context.Canceled) {
 				t.Fatalf("claim loop after completed jobs = %v, want context.Canceled", err)
 			}
@@ -564,6 +595,23 @@ func (blockingWorkerModel) Transcribe(context.Context, string, []byte) (string, 
 }
 
 type successfulWorkerModel struct{ called chan struct{} }
+
+type synchronizedLogBuffer struct {
+	mu sync.Mutex
+	bytes.Buffer
+}
+
+func (b *synchronizedLogBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.Buffer.Write(p)
+}
+
+func (b *synchronizedLogBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.Buffer.String()
+}
 
 func (successfulWorkerModel) Name() string            { return "worker-success-model" }
 func (successfulWorkerModel) ConfigurationID() string { return "worker-success-model-config" }
