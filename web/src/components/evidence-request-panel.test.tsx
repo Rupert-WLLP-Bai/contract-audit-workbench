@@ -1270,6 +1270,7 @@ describe("补充材料请求", () => {
     await user.click(original);
     original.setSelectionRange(2, 2);
     fireEvent.select(original);
+    expect(screen.queryByText("已选引用：")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "提交核验" })).toBeDisabled();
     expect(calls.some((call) => call.pathname.endsWith("/verify"))).toBe(false);
   });
