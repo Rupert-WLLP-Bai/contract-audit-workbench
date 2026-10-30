@@ -210,6 +210,137 @@ describe("补充材料请求", () => {
     expect(calls.some((call) => call.pathname.endsWith("/tasks"))).toBe(false);
   });
 
+  it("filters source choices using the full duplicate-ID counts before field validation", async () => {
+    const eligibleEvaluation = { ...missing, id: "eval-eligible", reason: "唯一缺失检查", relation: "insufficient" };
+    const eligibleUnknown = { ...missing, id: "eval-unknown", domain: "technical", capability_id: "amount", reason: "未知检查", relation: "unknown" };
+    const duplicateEvaluation = { ...missing, id: "eval-duplicate", reason: "重复检查" };
+    const invalidDuplicateEvaluation = { ...duplicateEvaluation, domain: "" };
+    const invalidRelation = { ...missing, id: "eval-valid-result", relation: "compatible" };
+    const invalidVersion = { ...missing, id: "eval-no-version", rule_version: "" };
+    const duplicateGap = { gap_id: "gap-duplicate", domain: "commercial", capability_id: "warranty_months", mandatory: true, status: "unknown", reason_code: "required_source_or_field_missing", evidence_ids: null };
+    const invalidDuplicateGap = { ...duplicateGap, capability_id: "" };
+    const review: BusinessAgentReview = {
+      attempt_id: "attempt-old", status: "partial", rulepack: null, scope: null, domains: null,
+      gaps: [
+        { ...duplicateGap, gap_id: "gap-eligible" },
+        duplicateGap,
+        invalidDuplicateGap,
+        { ...duplicateGap, gap_id: "gap-resolved-status", status: "resolved" },
+        { ...duplicateGap, gap_id: "gap-no-domain", domain: "" },
+      ], evidence: null, unresolved_gap_ids: [],
+    };
+    const { user } = open({
+      evaluations: [eligibleEvaluation, eligibleUnknown, duplicateEvaluation, invalidDuplicateEvaluation, invalidRelation, invalidVersion],
+      agentReview: review,
+      respond(call) {
+        if (call.pathname.endsWith("/evidence-requests")) return Response.json({ items: [] });
+        if (call.pathname.endsWith("/history")) return Response.json({ items: [] });
+        return Response.json({ error: { message: "unexpected" } }, { status: 404 });
+      },
+    });
+
+    await screen.findByText("发起补充材料请求");
+    const sourceOptions = await openActiveListbox(user, screen.getByRole("combobox", { name: "缺失检查" }));
+    expect(within(sourceOptions).getAllByRole("option").map((option) => option.textContent?.trim())).toEqual([
+      "规则检查 1：商务与财务：质保期限，唯一缺失检查（信息不足）",
+      "规则检查 2：技术与服务：金额，未知检查（关系未识别（unknown））",
+      "审查缺口 1：商务与财务：质保期限",
+    ]);
+  });
+
+  it("does not offer a gap reported for a different attempt", async () => {
+    const gap = { gap_id: "gap-other-attempt", domain: "commercial", capability_id: "warranty_months", mandatory: true, status: "unknown", reason_code: "required_source_or_field_missing", evidence_ids: null };
+    const review: BusinessAgentReview = {
+      attempt_id: "attempt-other", status: "partial", rulepack: null, scope: null,
+      domains: null, gaps: [gap], evidence: null, unresolved_gap_ids: [gap.gap_id],
+    };
+    const { calls } = open({ evaluations: [], agentReview: review, respond(call) {
+      if (call.pathname.endsWith("/evidence-requests")) return Response.json({ items: [] });
+      if (call.pathname.endsWith("/history")) return Response.json({ items: [] });
+      return Response.json({ error: { message: "unexpected" } }, { status: 404 });
+    } });
+
+    await screen.findByText("本次审查没有返回符合条件的待补充检查。");
+    expect(screen.getByRole("combobox", { name: "缺失检查" })).toBeDisabled();
+    const form = screen.getByRole("heading", { name: "发起补充材料请求" }).closest("form");
+    expect(form).not.toBeNull();
+    fireEvent.submit(form!);
+    expect(calls.some((call) => call.pathname.endsWith("/tasks") && call.method === "POST")).toBe(false);
+    expect(calls.some((call) => call.pathname.endsWith("/evidence-requests") && call.method === "POST")).toBe(false);
+  });
+
+  it.each([
+    ["completed frozen", "completed", "frozen", at, "attempt-old", "run-old", false],
+    ["partial frozen", "partial", "frozen", at, "attempt-old", "run-old", false],
+    ["running", "running", "frozen", at, "attempt-old", "run-old", true],
+    ["unfinished", "completed", "frozen", null, "attempt-old", "run-old", true],
+    ["live history", "completed", "live", at, "attempt-old", "run-old", true],
+    ["another attempt", "completed", "frozen", at, "attempt-other", "run-old", true],
+    ["another run", "completed", "frozen", at, "attempt-old", "run-other", true],
+  ] as const)("keeps source selection gated by the %s attempt", async (_name, state, historyKind, finishedAt, id, attemptRunId, disabled) => {
+    const workspace = makeWorkspace("run-old", "attempt-old", [missing]);
+    workspace.review_attempts!.attempt = {
+      ...workspace.review_attempts!.attempt!, state, history_kind: historyKind, finished_at: finishedAt,
+      id, run_id: attemptRunId,
+    };
+    open({ workspace, respond(call) {
+      if (call.pathname.endsWith("/evidence-requests")) return Response.json({ items: [] });
+      if (call.pathname.endsWith("/history")) return Response.json({ items: [] });
+      return Response.json({ error: { message: "unexpected" } }, { status: 404 });
+    } });
+
+    await screen.findByText("发起补充材料请求");
+    const sourceControl = screen.getByRole("combobox", { name: "缺失检查" });
+    if (disabled) expect(sourceControl).toBeDisabled();
+    else expect(sourceControl).toBeEnabled();
+  });
+
+  it("offers only existing tasks for this case with a deadline and a current member assignee", async () => {
+    const eligibleTask: WorkbenchTask = { id: "task-eligible", case_id: "case-1", title: "可关联任务", kind: "review",
+      assignee_id: "owner", due_at: at, status: "open", priority: "high", finding_id: null, version: 4,
+      created_at: at, created_by: "owner", updated_at: at };
+    const tasks: WorkbenchTask[] = [
+      eligibleTask,
+      { ...eligibleTask, id: "task-wrong-case", case_id: "case-other", title: "其他案件任务" },
+      { ...eligibleTask, id: "task-completed", status: "completed", title: "已完成任务" },
+      { ...eligibleTask, id: "task-no-deadline", due_at: "", title: "无期限任务" },
+      { ...eligibleTask, id: "task-no-member", assignee_id: "former-member", title: "责任人已退出任务" },
+    ];
+    const { user } = open({ tasks, respond(call) {
+      if (call.pathname.endsWith("/evidence-requests")) return Response.json({ items: [] });
+      if (call.pathname.endsWith("/history")) return Response.json({ items: [] });
+      return Response.json({ error: { message: "unexpected" } }, { status: 404 });
+    } });
+
+    await screen.findByText("发起补充材料请求");
+    await chooseOption(user, screen.getByRole("combobox", { name: "关联任务" }), "选择已有任务");
+    const taskOptions = await openActiveListbox(user, screen.getByRole("combobox", { name: "选择已有任务" }));
+    expect(within(taskOptions).getAllByRole("option").map((option) => option.textContent?.trim())).toEqual([
+      "可关联任务 · 审查人 · 2026/10/21 14:00",
+    ]);
+  });
+
+  it.each(["source", "title", "assignee", "due", "question"] as const)("does not submit a new task when %s is missing", async (missingField) => {
+    const { calls, user } = open({ respond(call) {
+      if (call.pathname.endsWith("/evidence-requests")) return Response.json({ items: [] });
+      if (call.pathname.endsWith("/history")) return Response.json({ items: [] });
+      return Response.json({ error: { message: "unexpected" } }, { status: 404 });
+    } });
+    if (missingField !== "source") await chooseOption(user, screen.getByRole("combobox", { name: "缺失检查" }), /缺少质保期限/);
+    if (missingField !== "title") await user.type(screen.getByLabelText("任务名称"), "补充质保");
+    if (missingField !== "assignee") await chooseOption(user, screen.getByRole("combobox", { name: "责任人" }), /审查人/);
+    if (missingField !== "due") fireEvent.change(screen.getByLabelText("完成期限（本地时间）"), { target: { value: "2026-11-01T10:00" } });
+    if (missingField !== "question") await user.type(screen.getByLabelText("需要补充的问题"), "请补充质保期限");
+
+    const submit = screen.getByRole("button", { name: "创建任务并发起请求" });
+    expect(submit).toBeDisabled();
+    const form = submit.closest("form");
+    expect(form).not.toBeNull();
+    fireEvent.submit(form!);
+    expect(calls.some((call) => call.pathname.endsWith("/tasks") && call.method === "POST")).toBe(false);
+    expect(calls.some((call) => call.pathname.endsWith("/evidence-requests") && call.method === "POST")).toBe(false);
+  });
+
   it("uploads and explicitly submits a receipt, then starts a new review with the chosen business time", async () => {
     let request = rawRequest("open", 1);
     let received = false;
