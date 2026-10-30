@@ -13,6 +13,7 @@ import {
   parseReviewWorkspace,
   parseSettings,
   parseTemplateList,
+  parseUploadDocumentResult,
 } from "./parse";
 import { parseWorkbenchSnapshot } from "./workbench";
 
@@ -129,6 +130,33 @@ describe("response parsers", () => {
     });
     expect(withZero.finding_counts?.total).toBe(0);
     expect(missing.finding_counts).toBeNull();
+  });
+  it("parses material identity, per-entity versions and explicit selection without role inference", () => {
+    const detail = parseCaseDetail({
+      ...caseDefaults,
+      id: "material-case",
+      materials: [{
+        material_id: "mat-a", role: "attachment", purpose: "supplement", legacy_status: "pending_confirmation",
+        legacy_selected: false, selected: false, current_document_id: "doc-a", current_version: 2,
+      }],
+      material_versions: [
+        { material_id: "mat-a", version: 1, document_id: "doc-old", previous_document_id: null, created_at: "2026-10-30T00:00:00Z" },
+        { material_id: "mat-a", version: 2, document_id: "doc-a", previous_document_id: "doc-old", created_at: "2026-10-31T00:00:00Z" },
+      ],
+      material_selection: {
+        version: 3, status: "pending_confirmation", document_ids: [], candidate_document_ids: ["doc-a"], primary_material_id: null,
+      },
+    });
+    expect(detail.materials?.[0]).toMatchObject({ selected: false, legacy_selected: false, current_version: 2 });
+    expect(detail.material_versions?.map((item) => item.document_id)).toEqual(["doc-old", "doc-a"]);
+    expect(detail.material_selection).toMatchObject({ status: "pending_confirmation", document_ids: [], candidate_document_ids: ["doc-a"] });
+    expect(() => parseCaseDetail({ ...caseDefaults, id: "partial", materials: [] })).toThrow("案件材料投影字段不完整");
+  });
+  it("parses upload replay identity and version", () => {
+    expect(parseUploadDocumentResult({ id: "doc-1", material_id: "mat-1", version: 1, replayed: true })).toEqual({
+      id: "doc-1", material_id: "mat-1", version: 1, replayed: true,
+    });
+    expect(() => parseUploadDocumentResult({ id: "doc-1" })).toThrow();
   });
   it("preserves empty legacy business context without inferring telecom values", () => {
     const legacy = parseCaseDetail({

@@ -37,6 +37,8 @@ export const paths = {
     `/api/cases/${id(caseId)}/reports/${id(reportId)}?format=${format}`,
   archive: (caseId: string) => `/api/cases/${id(caseId)}/archive`,
   documents: (caseId: string) => `/api/cases/${id(caseId)}/documents`,
+  materialSelection: (caseId: string) =>
+    `/api/cases/${id(caseId)}/materials/selection`,
   documentOriginal: (caseId: string, documentId: string) =>
     `/api/cases/${id(caseId)}/documents/${id(documentId)}/original`,
   reparse: (caseId: string, documentId: string) =>

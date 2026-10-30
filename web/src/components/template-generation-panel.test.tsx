@@ -1,7 +1,7 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import { act, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { GenerationRecord, Template } from "../api/types";
+import type { DocumentVersion, GenerationRecord, MaterialProjection, MaterialSelectionProjection, Template } from "../api/types";
 import { chooseOption, renderWithAntd as render } from "../test/antd";
 import { TemplateGenerationPanel } from "./template-generation-panel";
 
@@ -71,12 +71,19 @@ function renderPanel(
     records: GenerationRecord[];
     canWrite: boolean;
     archived: boolean;
+    materials: MaterialProjection[];
+    documents: DocumentVersion[];
+    materialSelection: MaterialSelectionProjection;
   }> = {},
 ) {
   return render(
     <TemplateGenerationPanel
       caseId="case-1"
+      actorId="actor-1"
       records={overrides.records ?? []}
+      materials={overrides.materials ?? []}
+      documents={overrides.documents ?? []}
+      materialSelection={overrides.materialSelection ?? { version: 1, status: "not_applicable", document_ids: [], primary_material_id: null }}
       canWrite={overrides.canWrite ?? true}
       archived={overrides.archived ?? false}
     />,
@@ -121,7 +128,7 @@ describe("template generation panel", () => {
       templatesState({ isError: true, error: new Error("boom"), refetch }),
     );
     view.rerender(
-      <TemplateGenerationPanel caseId="case-1" records={[]} canWrite archived={false} />,
+      <TemplateGenerationPanel caseId="case-1" actorId="actor-1" records={[]} materials={[]} documents={[]} canWrite archived={false} />,
     );
     expect(screen.getByRole("alert")).toHaveTextContent("请求没有完成");
     const user = userEvent.setup();
@@ -187,9 +194,11 @@ describe("template generation panel", () => {
     await user.click(screen.getByRole("button", { name: "生成待审草稿" }));
     expect(mutate).toHaveBeenCalledTimes(1);
     const [input, options] = mutate.mock.calls[0]!;
-    expect(input).toEqual({
-      template_id: "template-1",
-      fields: {
+    expect(input).toMatchObject({
+      input: {
+        template_id: "template-1",
+        intent: "add",
+        fields: {
         title: "合同",
         summary: "说明",
         amount: "",
@@ -199,9 +208,10 @@ describe("template generation panel", () => {
         fee: "",
         signed: "",
         note: "",
+        },
       },
     });
-    (options as { onSuccess: () => void }).onSuccess();
+    act(() => (options as { onSuccess: () => void }).onSuccess());
     await waitFor(() =>
       expect(screen.getByRole("textbox", { name: /标题（必填）/ })).toHaveValue(""),
     );
@@ -236,7 +246,7 @@ describe("template generation panel", () => {
       generationState({ error: new Error("boom") }),
     );
     view.rerender(
-      <TemplateGenerationPanel caseId="case-1" records={[]} canWrite archived={false} />,
+      <TemplateGenerationPanel caseId="case-1" actorId="actor-1" records={[]} materials={[]} documents={[]} canWrite archived={false} />,
     );
     await waitFor(() =>
       expect(screen.getByRole("alert")).toHaveTextContent("请求没有完成"),
@@ -250,17 +260,78 @@ describe("template generation panel", () => {
           document_id: "document-9",
           template_id: "template-1",
           template_version: "3",
+          material_id: "mat-primary",
+          version: 2,
           digest: "result-digest",
           created_at: at,
         },
       }),
     );
     view.rerender(
-      <TemplateGenerationPanel caseId="case-1" records={[]} canWrite archived={false} />,
+      <TemplateGenerationPanel caseId="case-1" actorId="actor-1" records={[]} materials={[]} documents={[]} canWrite archived={false} />,
     );
     expect(screen.getByRole("status")).toHaveTextContent(
-      /草稿已生成：文档 document-9，模板 template-1 \/ 3，\s*摘要 result-digest/,
+      /草稿已生成：采购合同模板（3），当前第 2 版。\s*摘要 result-digest/,
     );
+    expect(screen.getByRole("status")).toHaveAttribute("data-document-id", "document-9");
+    expect(screen.getByRole("status")).toHaveAttribute("data-material-id", "mat-primary");
+    expect(screen.getByRole("status")).not.toHaveTextContent("document-9");
+    expect(screen.getByRole("status")).not.toHaveTextContent("mat-primary");
+    expect(screen.getByRole("status")).not.toHaveTextContent("重放");
+  });
+
+  it("requires an explicit target and sends the current document CAS for generated replacement", async () => {
+    const mutate = vi.fn();
+    mocks.useCreateGeneration.mockReturnValue(generationState({ mutate }));
+    const materials: MaterialProjection[] = [{
+      material_id: "mat-primary",
+      role: "draft_contract",
+      purpose: "primary_contract",
+      legacy_status: "confirmed",
+      legacy_selected: true,
+      selected: true,
+      current_document_id: "doc-current",
+      current_version: 3,
+    }];
+    const documents: DocumentVersion[] = [{
+      id: "doc-current", role: "draft_contract", filename: "主合同.txt", media_type: "text/plain", digest: "digest", size: 8,
+      parse_status: "ready", parse_error: null, created_at: at, parsed_document: null,
+    }];
+    const user = userEvent.setup();
+    renderPanel({ materials, documents, materialSelection: { version: 3, status: "confirmed", document_ids: ["doc-current"], primary_material_id: "mat-primary" } });
+    await user.type(screen.getByRole("textbox", { name: /标题（必填）/ }), "新文本");
+    await chooseOption(user, screen.getByRole("combobox", { name: "草稿操作" }), "明确替换已有草稿材料");
+    await user.click(screen.getByRole("button", { name: "生成待审草稿" }));
+    expect(mutate).toHaveBeenCalledTimes(1);
+    const command = mutate.mock.calls[0]![0];
+    expect(command.input).toMatchObject({ intent: "replace", material_id: "mat-primary", replaces_document_id: "doc-current" });
+    expect(command.idempotencyKey).toMatch(/^[0-9a-f-]{32,36}$/i);
+  });
+
+  it("only offers the server-designated primary chain for generated replacement", async () => {
+    const materials: MaterialProjection[] = [
+      { material_id: "mat-chain", role: "draft_contract", purpose: "primary_contract", legacy_status: "native", legacy_selected: false, selected: true, current_document_id: "doc-chain", current_version: 2 },
+      { material_id: "mat-unrelated", role: "draft_contract", purpose: "primary_contract", legacy_status: "confirmed", legacy_selected: true, selected: false, current_document_id: "doc-unrelated", current_version: 7 },
+    ];
+    const documents: DocumentVersion[] = [
+      { id: "doc-chain", role: "draft_contract", filename: "主链合同.txt", media_type: "text/plain", digest: "a", size: 8, parse_status: "ready", parse_error: null, created_at: at, parsed_document: null },
+      { id: "doc-unrelated", role: "draft_contract", filename: "其他旧合同.txt", media_type: "text/plain", digest: "b", size: 8, parse_status: "ready", parse_error: null, created_at: at, parsed_document: null },
+    ];
+    const user = userEvent.setup();
+    renderPanel({
+      materials,
+      documents,
+      materialSelection: { version: 8, status: "confirmed", document_ids: ["doc-chain"], primary_material_id: "mat-chain" },
+    });
+    await user.type(screen.getByRole("textbox", { name: /标题（必填）/ }), "新文本");
+    await chooseOption(user, screen.getByRole("combobox", { name: "草稿操作" }), "明确替换已有草稿材料");
+    const target = screen.getByRole("combobox", { name: "要替换的主合同材料" });
+    const selectedLabel = target.closest(".ant-select")?.querySelector(".ant-select-content")?.textContent?.trim();
+    expect(selectedLabel).toContain("主链合同.txt，v2");
+    await user.click(target);
+    const options = screen.getAllByRole("option").map((item) => item.textContent?.trim());
+    expect(options).toContain("主链合同.txt，v2");
+    expect(options).not.toContain("其他旧合同.txt，v7");
   });
 
   it("lists generation history with digests and times", () => {

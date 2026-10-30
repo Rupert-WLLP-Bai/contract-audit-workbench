@@ -18,6 +18,7 @@ import type {
   ConstraintEvaluation,
   ExecutionAttempt,
   Finding,
+  MaterialProjection,
   Remediation,
   ReviewDocument,
   ReviewWorkspace,
@@ -115,6 +116,15 @@ function caseOf(id = "c1"): CaseDetail {
     created_at: at,
     updated_at: at,
     documents: [],
+    materials: [],
+    material_versions: [],
+    material_selection: {
+      version: 1,
+      status: "not_applicable",
+      document_ids: [],
+      candidate_document_ids: [],
+      primary_material_id: null,
+    },
     latest_run: null,
     finding_counts: null,
     activity: [],
@@ -204,6 +214,36 @@ class Service {
       ...item,
       document_count: item.documents.length,
       pending_decisions: item.finding_counts?.undecided ?? 0,
+    };
+  }
+  ensureMaterialProjection(item: CaseDetail) {
+    if (!item.materials || !item.material_versions || !item.material_selection) return;
+    if (item.materials.length > 0 || item.documents.length === 0) return;
+    const purposeFor = (role: string) => role === "draft_contract" ? "primary_contract" : role === "procurement" ? "procurement" : role === "award" ? "award" : "supplement";
+    item.materials = item.documents.map((document) => ({
+      material_id: `mat-${document.id}`,
+      role: document.role as "procurement" | "award" | "draft_contract" | "attachment",
+      purpose: purposeFor(document.role) as "primary_contract" | "supplement" | "procurement" | "award",
+      legacy_status: "native",
+      legacy_selected: false,
+      selected: true,
+      current_document_id: document.id,
+      current_version: 1,
+    }));
+    item.material_versions = item.documents.map((document) => ({
+      material_id: `mat-${document.id}`,
+      version: 1,
+      document_id: document.id,
+      previous_document_id: null,
+      created_at: document.created_at,
+    }));
+    const documentIds = item.documents.map((document) => document.id);
+    item.material_selection = {
+      version: item.material_selection.version,
+      status: "confirmed",
+      document_ids: documentIds,
+      candidate_document_ids: [],
+      primary_material_id: item.materials.find((material) => material.purpose === "primary_contract")?.material_id ?? null,
     };
   }
   addReview(state = "awaiting_human", id = "r1", caseId = "c1") {
@@ -394,7 +434,69 @@ class Service {
     const caseId = parts[3]!;
     const item = this.cases.get(caseId);
     if (!item) return this.json({ error: "案件不存在" }, 404);
-    if (parts.length === 4) return this.json(item);
+    if (parts.length === 4) {
+      this.ensureMaterialProjection(item);
+      return this.json(item);
+    }
+    if (parts[4] === "documents" && parts.length === 5 && method === "POST") {
+      this.ensureMaterialProjection(item);
+      const form = init?.body as FormData;
+      const role = String(form.get("role"));
+      const intent = String(form.get("intent"));
+      const purpose = String(form.get("purpose") ?? (role === "draft_contract" ? "primary_contract" : role === "procurement" ? "procurement" : role === "award" ? "award" : "supplement"));
+      const file = form.get("file") as File;
+      if (role === "draft_contract" && intent === "add" && item.materials!.some((material) => material.purpose === "primary_contract")) {
+        return this.json({ error: { message: "此案已有主合同，请明确替换或另建案件", code: "primary_contract_exists" } }, 409);
+      }
+      const id = `doc-${item.documents.length + 1}`;
+      const materialId = String(form.get("material_id") ?? `mat-${id}`);
+      const target = intent === "replace" ? item.materials!.find((material) => material.material_id === materialId) : undefined;
+      if (intent === "replace" && (!target || target.current_document_id !== form.get("replaces_document_id"))) {
+        return this.json({ error: { message: "材料版本已变化", code: "conflict" } }, 409);
+      }
+      const sourceDoc = doc(id, role, {
+        filename: file.name,
+        media_type: file.type,
+        size: file.size,
+        parse_status: "pending",
+        text: null,
+        clauses: [],
+      });
+      item.documents.push(sourceDoc);
+      let version = 1;
+      if (target) {
+        const previousId = target.current_document_id;
+        version = target.current_version + 1;
+        target.current_document_id = id;
+        target.current_version = version;
+        item.documents.find((document) => document.id === previousId)!.superseded = true;
+        item.material_versions!.push({ material_id: target.material_id, version, document_id: id, previous_document_id: previousId, created_at: at });
+        if (item.material_selection!.document_ids.includes(previousId)) {
+          item.material_selection!.document_ids = item.material_selection!.document_ids.map((documentId) => documentId === previousId ? id : documentId);
+        }
+      } else {
+        item.materials!.push({ material_id: materialId, role: role as "procurement" | "award" | "draft_contract" | "attachment", purpose: purpose as "primary_contract" | "supplement" | "procurement" | "award" | "acceptance" | "invoice" | "correspondence" | "other", legacy_status: "native", legacy_selected: false, selected: true, current_document_id: id, current_version: 1 });
+        item.material_versions!.push({ material_id: materialId, version: 1, document_id: id, previous_document_id: null, created_at: at });
+        item.material_selection!.document_ids.push(id);
+        item.material_selection!.status = "confirmed";
+        if (purpose === "primary_contract") item.material_selection!.primary_material_id = materialId;
+      }
+      item.revision_pending = true;
+      return this.json({ id, material_id: materialId, version, replayed: false }, 201);
+    }
+    if (parts[4] === "materials" && parts[5] === "selection" && method === "POST") {
+      this.ensureMaterialProjection(item);
+      const submitted = body as { version: number; document_ids: string[] };
+      if (submitted.version !== item.material_selection!.version) return this.json({ error: { message: "材料选择已变化", code: "conflict" } }, 409);
+      const allowed = new Set(item.materials!.map((material) => material.current_document_id));
+      if (!submitted.document_ids.every((id) => allowed.has(id))) return this.json({ error: { message: "材料不属于此案件", code: "invalid_material_selection" } }, 400);
+      item.material_selection!.version += 1;
+      item.material_selection!.status = "confirmed";
+      item.material_selection!.document_ids = [...submitted.document_ids];
+      item.material_selection!.candidate_document_ids = [];
+      item.materials!.forEach((material) => { material.selected = submitted.document_ids.includes(material.current_document_id); });
+      return this.json(item.material_selection);
+    }
     if (parts[4] === "evidence-requests" && method === "GET")
       return this.json({ items: [] });
     if (parts[4] === "remediations" && parts.length === 5 && method === "POST") {
@@ -682,6 +784,40 @@ function selectBusinessTime() {
 }
 
 describe("application routes and API contract", () => {
+  it("confirms the server-provided legacy material candidates before opening a new review", async () => {
+    const api = new Service();
+    const item = api.cases.get("c1")!;
+    item.documents = [doc("legacy-a", "procurement", { filename: "旧采购材料.txt" }), doc("native-b", "attachment", { filename: "新增补充材料.txt" })];
+    item.materials = [
+      { material_id: "mat-legacy", role: "procurement", purpose: "procurement", legacy_status: "pending_confirmation", legacy_selected: true, selected: false, current_document_id: "legacy-a", current_version: 1 },
+      { material_id: "mat-native", role: "attachment", purpose: "supplement", legacy_status: "native", legacy_selected: false, selected: false, current_document_id: "native-b", current_version: 1 },
+    ] satisfies MaterialProjection[];
+    item.material_versions = [
+      { material_id: "mat-legacy", version: 1, document_id: "legacy-a", previous_document_id: null, created_at: at },
+      { material_id: "mat-native", version: 1, document_id: "native-b", previous_document_id: null, created_at: at },
+    ];
+    item.material_selection = {
+      version: 8,
+      status: "pending_confirmation",
+      document_ids: [],
+      candidate_document_ids: ["legacy-a", "native-b"],
+      primary_material_id: null,
+    };
+    const { user } = open(api, "/cases/c1");
+    await screen.findByText("新增补充材料.txt");
+    selectBusinessTime();
+    expect(screen.getByRole("button", { name: "开始审查" })).toBeDisabled();
+    expect(screen.getByRole("checkbox", { name: /旧采购材料/ })).toBeChecked();
+    expect(screen.getByRole("checkbox", { name: /新增补充材料/ })).toBeChecked();
+    await user.click(screen.getByRole("button", { name: "确认本次材料集合" }));
+    await waitFor(() => expect(item.material_selection?.status).toBe("confirmed"));
+    const confirmation = api.requests.find((entry) => entry.key === "POST /api/cases/c1/materials/selection");
+    expect(confirmation?.input).toEqual({ version: 8, document_ids: ["legacy-a", "native-b"] });
+    expect(confirmation?.headers.has("If-Match")).toBe(false);
+    expect(confirmation?.headers.has("Idempotency-Key")).toBe(false);
+    await waitFor(() => expect(screen.getByRole("button", { name: "开始审查" })).toBeEnabled());
+  });
+
   it("logs in, creates a case, uploads source versions, reviews, decides, and logs out", async () => {
     const api = new Service();
     api.signedIn = false;
@@ -721,14 +857,14 @@ describe("application routes and API contract", () => {
       screen.getByLabelText("文件"),
       new File([text], "采购.txt", { type: "text/plain" }),
     );
-    await user.click(screen.getByRole("button", { name: "上传" }));
+    await user.click(screen.getByRole("button", { name: "新增材料" }));
     expect(await screen.findAllByText("采购.txt")).not.toHaveLength(0);
     await chooseOption(user, screen.getByLabelText("材料角色"), "拟签合同");
     await user.upload(
       screen.getByLabelText("文件"),
       new File(["质保24个月"], "合同.txt", { type: "text/plain" }),
     );
-    await user.click(screen.getByRole("button", { name: "上传" }));
+    await user.click(screen.getByRole("button", { name: "新增材料" }));
     await waitFor(() =>
       expect(screen.getByRole("button", { name: "开始审查" })).toBeEnabled(),
     );
@@ -860,18 +996,25 @@ describe("application routes and API contract", () => {
     ];
     api.addReview();
     const { user } = open(api, "/cases/c1");
-    expect(await screen.findByText(/历史版本/)).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "材料版本历史" })).toBeInTheDocument();
     expect(
-      screen.queryByText(/有材料解析失败。文件仍保留/),
-    ).not.toBeInTheDocument();
+      await screen.findByText(/有材料解析失败。文件仍保留/),
+    ).toBeInTheDocument();
     expect(screen.getByLabelText("文件")).toBeEnabled();
     await chooseOption(user, screen.getByLabelText("材料角色"), "拟签合同");
+    await chooseOption(user, screen.getByLabelText("材料操作"), "替换选中的材料");
     await user.upload(
       screen.getByLabelText("文件"),
       new File([text], "修改稿.txt", { type: "text/plain" }),
     );
-    await user.click(screen.getByRole("button", { name: "上传" }));
+    await user.click(screen.getByRole("button", { name: "替换材料" }));
     expect(await screen.findAllByText("修改稿.txt")).not.toHaveLength(0);
+    expect(api.cases.get("c1")!.materials?.find((material) => material.purpose === "primary_contract")).toMatchObject({
+      material_id: "mat-d2",
+      current_document_id: "doc-6",
+      current_version: 2,
+    });
+    expect(api.cases.get("c1")!.documents.find((document) => document.id === "d2")?.superseded).toBe(true);
     selectBusinessTime();
     const reReview = await screen.findByRole("button", { name: "开始复审" });
     expect(reReview).toBeEnabled();
@@ -930,6 +1073,8 @@ describe("application routes and API contract", () => {
     await user.click(screen.getByRole("button", { name: "重新解析 d2.txt" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("受控失败 503");
     await user.click(screen.getByRole("button", { name: "重新解析 d2.txt" }));
+    await waitFor(() => expect(item.documents.find((document) => document.id === "d2")?.parse_status).toBe("ready"));
+    expect(item.material_selection).toMatchObject({ status: "confirmed", document_ids: ["d1", "d2"] });
     await waitFor(() =>
       expect(screen.getByRole("button", { name: "开始审查" })).toBeEnabled(),
     );
@@ -939,7 +1084,7 @@ describe("application routes and API contract", () => {
       screen.getByLabelText("文件"),
       new File([text], "超限.txt", { type: "text/plain" }),
     );
-    await user.click(screen.getByRole("button", { name: "上传" }));
+    await user.click(screen.getByRole("button", { name: "新增材料" }));
     expect(await screen.findByText("受控失败 413")).toBeInTheDocument();
     expect(item.documents).toHaveLength(2);
   });
@@ -1609,7 +1754,7 @@ describe("application routes and API contract", () => {
     expect(screen.getByRole("button", { name: "新建案件" })).toBeDisabled();
     await user.click(screen.getByRole("link", { name: "接入设备采购" }));
     await screen.findByRole("heading", { name: "接入设备采购" });
-    expect(screen.getByRole("button", { name: "选择合同原件" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "选择文件" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "开始审查" })).toBeDisabled();
     expect(screen.getByText(/当前角色只能查看材料/)).toBeInTheDocument();
   });

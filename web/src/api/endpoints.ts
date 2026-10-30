@@ -16,6 +16,7 @@ import type {
   KnowledgeInput,
   LLMEndpointInput,
   LLMModelSelectionInput,
+  UploadDocumentInput,
 } from "./types";
 import { ApiError, jsonInit, requestJson } from "./http";
 import {
@@ -35,6 +36,8 @@ import {
   parseReviewWorkspace,
   parseSettings,
   parseTemplateList,
+  parseMaterialSelectionProjection,
+  parseUploadDocumentResult,
 } from "./parse";
 import {
   parseCaseProfile,
@@ -105,10 +108,14 @@ export function listTemplates(signal?: AbortSignal) {
   );
 }
 
-export function createGeneration(caseId: string, input: GenerationInput) {
+export function createGeneration(
+  caseId: string,
+  input: GenerationInput,
+  idempotencyKey: string,
+) {
   return requestJson(
     paths.generations(caseId),
-    jsonInit("POST", input),
+    jsonInit("POST", input, { "Idempotency-Key": idempotencyKey }),
     parseGenerationRecord,
   );
 }
@@ -164,14 +171,36 @@ export function archiveCase(caseId: string, input: ArchiveInput) {
   );
 }
 
-export function uploadDocument(caseId: string, file: File, role: string) {
+export function uploadDocument(caseId: string, input: UploadDocumentInput) {
   const body = new FormData();
-  body.set("file", file);
-  body.set("role", role);
+  body.set("file", input.file);
+  body.set("role", input.role);
+  body.set("intent", input.intent);
+  if (input.purpose !== undefined) body.set("purpose", input.purpose);
+  if (input.intent === "replace") {
+    if (!input.material_id || !input.replaces_document_id)
+      throw new Error("替换材料必须提供材料 ID 和当前文档 ID");
+    body.set("material_id", input.material_id);
+    body.set("replaces_document_id", input.replaces_document_id);
+  }
   return requestJson(
     paths.documents(caseId),
-    { method: "POST", body },
-    parseEmpty,
+    { method: "POST", body, headers: { "Idempotency-Key": input.idempotency_key } },
+    parseUploadDocumentResult,
+  );
+}
+
+export function confirmLegacyMaterialSelection(
+  caseId: string,
+  input: { version: number; document_ids: string[] },
+) {
+  return requestJson(
+    paths.materialSelection(caseId),
+    jsonInit(
+      "POST",
+      { version: input.version, document_ids: input.document_ids },
+    ),
+    parseMaterialSelectionProjection,
   );
 }
 

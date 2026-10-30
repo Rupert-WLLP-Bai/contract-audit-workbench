@@ -26,6 +26,7 @@ import type {
   LLMEndpointInput,
   LLMModelSelectionInput,
   ReviewWorkspace,
+  UploadDocumentInput,
 } from "./types";
 import { isActiveAttemptState } from "../domain/review";
 import type { RulePackManifestInput, RulePackTestInput } from "./rulepacks";
@@ -252,11 +253,22 @@ export function useCaseReviewHistory(
 export function useUploadDocument(caseId: string) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (input: { file: File; role: string }) =>
-      api.uploadDocument(caseId, input.file, input.role),
+    mutationFn: (input: UploadDocumentInput) =>
+      api.uploadDocument(caseId, input),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: queryKeys.case(caseId) });
       await queryClient.invalidateQueries({ queryKey: queryKeys.cases });
+    },
+  });
+}
+
+export function useConfirmLegacyMaterialSelection(caseId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { version: number; document_ids: string[] }) =>
+      api.confirmLegacyMaterialSelection(caseId, input),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: queryKeys.case(caseId) });
     },
   });
 }
@@ -448,7 +460,8 @@ export function useSubmitDecision(caseId: string, runId: string) {
 export function useCreateGeneration(caseId: string) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (input: GenerationInput) => api.createGeneration(caseId, input),
+    mutationFn: (command: { input: GenerationInput; idempotencyKey: string }) =>
+      api.createGeneration(caseId, command.input, command.idempotencyKey),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: queryKeys.case(caseId) });
       await queryClient.invalidateQueries({ queryKey: queryKeys.cases });

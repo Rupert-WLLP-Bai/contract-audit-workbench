@@ -3089,6 +3089,28 @@
   .document-list li:hover {
     background: var(--surface-raised);
   }
+  .material-current-set .document-list li,
+  .material-history-chain {
+    background: var(--surface-raised);
+  }
+  .material-current-set .document-list li:hover {
+    background: var(--surface-raised);
+  }
+  .material-history-chain {
+    margin-block: var(--space-3);
+    padding: var(--space-3);
+    border-block: 1px solid var(--border-default);
+  }
+  .material-history-chain ol,
+  .material-selection-list {
+    display: grid;
+    gap: var(--space-2);
+    margin: 0;
+    padding-left: var(--space-5);
+  }
+  .material-selection-list li {
+    color: var(--text-primary);
+  }
   .upload-form {
     padding: var(--space-4) 0;
     border: 0;
