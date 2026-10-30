@@ -353,6 +353,33 @@ describe("补充材料请求", () => {
     expect(JSON.parse(String(receiptCall?.init?.body))).toEqual({ document_id: "doc-2", expected_version: 1 });
   });
 
+  it("does not submit a retained answer when document mode has no selected document", async () => {
+    const calls: Call[] = [];
+    const { user } = open({ respond(call) {
+      calls.push(call);
+      if (call.pathname.endsWith("/evidence-requests")) return Response.json({ items: [rawRequest("open", 1)] });
+      if (call.pathname.endsWith("/history")) return Response.json({ items: [] });
+      if (call.pathname.endsWith("/receipts") && call.method === "POST") return Response.json({
+        request: rawRequest("received", 2), receipt: { ...rawReceipt, document_id: undefined, answer: "暂存答复" },
+      });
+      return Response.json({ error: { message: "unexpected" } }, { status: 404 });
+    } });
+
+    await screen.findByText("待提交");
+    await chooseOption(user, screen.getByRole("combobox", { name: "提交方式" }), "文字答复");
+    await user.type(screen.getByLabelText("文字答复"), "暂存答复");
+    await chooseOption(user, screen.getByRole("combobox", { name: "提交方式" }), "案件材料");
+    expect(screen.getByRole("button", { name: "提交回执" })).toBeDisabled();
+
+    const form = screen.getByText("提交材料或答复").closest("form");
+    expect(form).not.toBeNull();
+    await act(async () => {
+      fireEvent.submit(form!);
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    });
+    expect(calls.some((call) => call.pathname.endsWith("/receipts") && call.method === "POST")).toBe(false);
+  });
+
   it("disables receipt submission for a missing document or blank answer", async () => {
     const { calls, user } = open({ respond(call) {
       if (call.pathname.endsWith("/evidence-requests")) return Response.json({ items: [rawRequest("open", 1)] });
