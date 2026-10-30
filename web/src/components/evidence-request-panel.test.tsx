@@ -344,6 +344,9 @@ describe("补充材料请求", () => {
     await chooseOption(user, screen.getByRole("combobox", { name: "提交方式" }), "文字答复");
     await user.type(screen.getByLabelText("文字答复"), "暂存答复");
     await chooseOption(user, screen.getByRole("combobox", { name: "提交方式" }), "案件材料");
+    await chooseOption(user, screen.getByRole("combobox", { name: "提交方式" }), "文字答复");
+    expect(screen.getByLabelText("文字答复")).toHaveValue("暂存答复");
+    await chooseOption(user, screen.getByRole("combobox", { name: "提交方式" }), "案件材料");
     await chooseOption(user, screen.getByRole("combobox", { name: "选择案件材料" }), /补充合同\.txt/);
     await user.click(screen.getByRole("button", { name: "提交回执" }));
     const receiptCall = calls.find((call) => call.pathname.endsWith("/receipts"));
