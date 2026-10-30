@@ -94,7 +94,7 @@ function open({
   tasks?: WorkbenchTask[];
   sessionActor?: Actor | null;
   caseDetail?: CaseDetail | null;
-  workspace?: ReviewWorkspace;
+  workspace?: ReviewWorkspace | null;
 }) {
   const calls: Call[] = [];
   vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -106,7 +106,7 @@ function open({
   clients.push(client);
   if (caseDetail !== null) client.setQueryData(queryKeys.case("case-1"), caseDetail);
   if (sessionActor !== null) client.setQueryData(queryKeys.session, sessionActor);
-  client.setQueryData(queryKeys.review("case-1", runId, urlAttempt), workspace ?? makeWorkspace(runId, attemptId, evaluations));
+  if (workspace !== null) client.setQueryData(queryKeys.review("case-1", runId, urlAttempt), workspace ?? makeWorkspace(runId, attemptId, evaluations));
   if (tasks) client.setQueryData(queryKeys.workbench("week"), { tasks });
   const path = `/cases/case-1/reviews/${runId}${urlAttempt ? `?attempt_id=${urlAttempt}` : ""}`;
   render(<QueryClientProvider client={client}><MemoryRouter initialEntries={[path]}>
@@ -455,6 +455,36 @@ describe("补充材料请求", () => {
     await screen.findByText("已提交，待复核");
     await chooseActiveOption(user, screen.getByRole("combobox", { name: "选择提交回执" }), /补充合同.txt/);
     expect(screen.getByText("当前审查没有唯一匹配且达到请求条件的实际检查，仍需补充或复审。")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "提交核验" })).toBeDisabled();
+    expect(calls.some((call) => call.pathname.endsWith("/verify"))).toBe(false);
+  });
+
+  it("does not authorize a source evaluation with duplicate matching results", async () => {
+    const request = rawRequest("received", 2);
+    const duplicate = { ...compatible, id: "eval-new-duplicate" };
+    const { calls, user } = open({ runId: "run-new", attemptId: "attempt-new", evaluations: [compatible, duplicate], canManage: false, respond(call) {
+      if (call.pathname.endsWith("/evidence-requests")) return Response.json({ items: [request] });
+      if (call.pathname.endsWith("/history")) return Response.json({ items: [{ type: "received", actor_id: "owner", occurred_at: at, request, receipt: rawReceipt }] });
+      return Response.json({ error: { message: "unexpected" } }, { status: 404 });
+    } });
+
+    await screen.findByText("已提交，待复核");
+    await selectVerificationEvidence(user);
+    expect(screen.getByText("当前审查没有唯一匹配且达到请求条件的实际检查，仍需补充或复审。")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "提交核验" })).toBeDisabled();
+    expect(calls.some((call) => call.pathname.endsWith("/verify"))).toBe(false);
+  });
+
+  it("keeps verification disabled when the review workspace is unavailable", async () => {
+    const request = rawRequest("received", 2);
+    const { calls } = open({ runId: "run-new", attemptId: "attempt-new", evaluations: [compatible], workspace: null, canManage: false, respond(call) {
+      if (call.pathname.endsWith("/reviews/run-new")) return Response.json({ error: { message: "review unavailable" } }, { status: 404 });
+      if (call.pathname.endsWith("/evidence-requests")) return Response.json({ items: [request] });
+      if (call.pathname.endsWith("/history")) return Response.json({ items: [{ type: "received", actor_id: "owner", occurred_at: at, request, receipt: rawReceipt }] });
+      return Response.json({ error: { message: "unexpected" } }, { status: 404 });
+    } });
+
+    await screen.findByText("已提交，待复核");
     expect(screen.getByRole("button", { name: "提交核验" })).toBeDisabled();
     expect(calls.some((call) => call.pathname.endsWith("/verify"))).toBe(false);
   });
