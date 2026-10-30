@@ -834,6 +834,7 @@ describe("补充材料请求", () => {
         { type: "created", actor_id: "system", occurred_at: at, request: { ...request, version: 1 }, receipt: null },
         { type: "received", actor_id: "unknown-actor", occurred_at: at, request: { ...request, version: 2 }, receipt: unknownDocumentReceipt },
         { type: "custom_event", actor_id: "owner", occurred_at: at, request: { ...request, version: 3 }, receipt: answerReceipt },
+        { type: "received", actor_id: "owner", occurred_at: at, request: { ...request, version: 4 }, receipt: { ...rawReceipt, id: "receipt-known" } },
       ] });
       return Response.json({ error: { message: "unexpected" } }, { status: 404 });
     } });
@@ -841,6 +842,7 @@ describe("补充材料请求", () => {
     await screen.findByText("已提交，待复核");
     await screen.findByText("已提交材料或答复：");
     expect((await screen.findAllByText(/材料名称未报告/)).length).toBeGreaterThan(0);
+    expect((await screen.findAllByText(/补充合同\.txt/)).length).toBeGreaterThan(0);
     await user.click(screen.getByText("处理记录"));
     expect(screen.getByText(/创建请求 · 系统/)).toBeInTheDocument();
     expect(screen.getByText(/提交回执 · 姓名未报告/)).toBeInTheDocument();
@@ -997,7 +999,12 @@ describe("补充材料请求", () => {
     await screen.findByText("已提交，待复核");
     const start = screen.getByRole("button", { name: "发起后续审查" });
     expect(start).toBeDisabled();
-    fireEvent.change(screen.getByLabelText("审查业务时间（本地时间）"), { target: { value: "2026-11-02T10:30" } });
+    const businessAt = screen.getByLabelText("审查业务时间（本地时间）") as HTMLInputElement;
+    fireEvent.change(businessAt, { target: { value: "999999-01-01T00:00" } });
+    expect(businessAt).toHaveValue("");
+    expect(start).toBeDisabled();
+    expect(calls.some((call) => call.pathname.endsWith("/reviews") && call.method === "POST")).toBe(false);
+    fireEvent.change(businessAt, { target: { value: "2026-11-02T10:30" } });
     expect(start).toBeEnabled();
     await user.click(start);
     await waitFor(() => expect(screen.getByLabelText("当前位置")).toHaveTextContent("run-next"));
