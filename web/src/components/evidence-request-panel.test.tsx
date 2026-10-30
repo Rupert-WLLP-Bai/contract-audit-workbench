@@ -719,7 +719,7 @@ describe("补充材料请求", () => {
 
   it("keeps case actions unavailable when case details cannot be loaded", async () => {
     const request = rawRequest("received", 2);
-    open({
+    const { user } = open({
       canManage: false,
       caseDetail: null,
       respond(call) {
@@ -731,6 +731,8 @@ describe("补充材料请求", () => {
     });
 
     await screen.findByText("已提交，待复核");
+    await user.click(screen.getByText("处理记录"));
+    expect(await screen.findByText(/提交回执 · 姓名未报告/)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "提交回执" })).not.toBeInTheDocument();
     expect(screen.queryByLabelText("上传补充文件")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "提交核验" })).toBeDisabled();
