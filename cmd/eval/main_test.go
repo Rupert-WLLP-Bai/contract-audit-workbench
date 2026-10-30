@@ -132,6 +132,10 @@ type failedWriter struct{}
 
 func (failedWriter) Write([]byte) (int, error) { return 0, errors.New("write failed") }
 
+type shortNilWriter struct{}
+
+func (shortNilWriter) Write(data []byte) (int, error) { return len(data) - 1, nil }
+
 func TestCLIInputAndOutputErrorsFail(t *testing.T) {
 	var out, errout bytes.Buffer
 	file := filepath.Join(t.TempDir(), "not-a-directory")
@@ -147,5 +151,8 @@ func TestCLIInputAndOutputErrorsFail(t *testing.T) {
 	}
 	if got := run(nil, failedWriter{}, &errout); got != 2 {
 		t.Fatalf("write error returned %d", got)
+	}
+	if got := run(nil, shortNilWriter{}, &errout); got != 0 {
+		t.Fatalf("short stdout write without an error returned %d, want 0", got)
 	}
 }
