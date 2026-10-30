@@ -1000,10 +1000,16 @@ describe("补充材料请求", () => {
     const start = screen.getByRole("button", { name: "发起后续审查" });
     expect(start).toBeDisabled();
     const businessAt = screen.getByLabelText("审查业务时间（本地时间）") as HTMLInputElement;
-    fireEvent.change(businessAt, { target: { value: "999999-01-01T00:00" } });
-    expect(businessAt).toHaveValue("");
+    // Chromium 141 retains this valid native value although JavaScript Date cannot represent it.
+    // HappyDOM clears five-digit years, so mirror the browser-retained DOM value at the public input.
+    const nativeInvalidDate = "10000-01-01T00:00";
+    Object.defineProperty(businessAt, "value", { configurable: true, get: () => nativeInvalidDate });
+    fireEvent.change(businessAt);
+    expect(businessAt).toHaveValue(nativeInvalidDate);
+    expect(Number.isNaN(new Date(businessAt.value).getTime())).toBe(true);
     expect(start).toBeDisabled();
     expect(calls.some((call) => call.pathname.endsWith("/reviews") && call.method === "POST")).toBe(false);
+    Reflect.deleteProperty(businessAt, "value");
     fireEvent.change(businessAt, { target: { value: "2026-11-02T10:30" } });
     expect(start).toBeEnabled();
     await user.click(start);
