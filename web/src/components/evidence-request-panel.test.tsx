@@ -1004,6 +1004,7 @@ describe("补充材料请求", () => {
     // HappyDOM clears five-digit years, so mirror the browser-retained DOM value at the public input.
     const nativeInvalidDate = "10000-01-01T00:00";
     Object.defineProperty(businessAt, "value", { configurable: true, get: () => nativeInvalidDate });
+    fireEvent.input(businessAt);
     fireEvent.change(businessAt);
     expect(businessAt).toHaveValue(nativeInvalidDate);
     expect(Number.isNaN(new Date(businessAt.value).getTime())).toBe(true);
