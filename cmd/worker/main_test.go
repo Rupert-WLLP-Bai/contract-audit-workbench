@@ -244,19 +244,30 @@ func TestWorkerRunValidatesConfigAndDrainsIdlePostgresQueue(t *testing.T) {
 	t.Run("successive PostgreSQL claims finish and log both jobs", func(t *testing.T) {
 		first := env.createReview(t)
 		second := env.createReview(t)
-		env.worker.Store.UseModels(successfulWorkerModel{})
+		modelCalls := make(chan struct{}, 2)
+		env.worker.Store.UseModels(successfulWorkerModel{called: modelCalls})
 		var output bytes.Buffer
 		previous := slog.Default()
 		slog.SetDefault(slog.New(slog.NewTextHandler(&output, &slog.HandlerOptions{Level: slog.LevelDebug})))
 		t.Cleanup(func() { slog.SetDefault(previous) })
 
 		ctx, cancel := context.WithCancel(env.ctx)
+		defer cancel()
 		done := make(chan error, 1)
 		const workerID = "worker-successive-claims"
 		go func() {
 			done <- claimJobs(ctx, env.worker.Store, workerID, 5*time.Second, time.Second, 10*time.Millisecond, nil)
 		}()
-		deadline := time.Now().Add(20 * time.Second)
+		for job := 0; job < 2; job++ {
+			select {
+			case <-modelCalls:
+			case err := <-done:
+				t.Fatalf("claim loop stopped before entering both jobs: %v", err)
+			case <-time.After(5 * time.Second):
+				t.Fatalf("only %d of 2 queued jobs entered the model stage", job)
+			}
+		}
+		deadline := time.Now().Add(10 * time.Second)
 		completed := map[string]bool{}
 		for time.Now().Before(deadline) && len(completed) < 2 {
 			for _, jobID := range []string{first.JobID, second.JobID} {
@@ -552,11 +563,15 @@ func (blockingWorkerModel) Transcribe(context.Context, string, []byte) (string, 
 	return "", errors.New("unexpected OCR request in text-only worker test")
 }
 
-type successfulWorkerModel struct{}
+type successfulWorkerModel struct{ called chan struct{} }
 
 func (successfulWorkerModel) Name() string            { return "worker-success-model" }
 func (successfulWorkerModel) ConfigurationID() string { return "worker-success-model-config" }
-func (successfulWorkerModel) Warranty(context.Context, []model.Material) (model.Warranty, error) {
+func (m successfulWorkerModel) Warranty(context.Context, []model.Material) (model.Warranty, error) {
+	select {
+	case m.called <- struct{}{}:
+	default:
+	}
 	return model.Warranty{Relation: "compatible", Disposition: "false_positive"}, nil
 }
 func (successfulWorkerModel) Transcribe(context.Context, string, []byte) (string, error) {
