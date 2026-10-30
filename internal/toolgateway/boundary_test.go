@@ -343,9 +343,9 @@ func TestFrozenEvidenceRejectsOutOfBoundsSelectionIDsBeforeWorkspaceRead(t *test
 
 func TestFrozenEvidenceAcceptsMaximumLengthSelectionIDs(t *testing.T) {
 	backend := testBackend(t)
-	caseID := strings.Repeat("c", 120) + "zZ9-_.:0"
-	runID := strings.Repeat("r", 120) + "zZ9-_.:0"
-	attemptID := strings.Repeat("a", 120) + "zZ9-_.:0"
+	caseID := strings.Repeat("c", 119) + "zZ9-_.:0A"
+	runID := strings.Repeat("r", 119) + "zZ9-_.:0A"
+	attemptID := strings.Repeat("a", 119) + "zZ9-_.:0A"
 	backend.workspace.Case.ID = caseID
 	backend.workspace.Snapshot.RunID = runID
 	backend.workspace.Execution.Attempt.ID = attemptID
