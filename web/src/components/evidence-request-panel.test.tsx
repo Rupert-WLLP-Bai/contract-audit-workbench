@@ -122,8 +122,12 @@ function open({
 }
 
 async function selectVerificationEvidence(user: UserEvent, receiptName: string | RegExp = /补充合同.txt/) {
-  await chooseActiveOption(user, screen.getByRole("combobox", { name: "选择提交回执" }), receiptName);
-  await chooseActiveOption(user, screen.getByRole("combobox", { name: "选择本次审查材料" }), /补充合同.txt/);
+  const receiptControl = screen.getByRole("combobox", { name: "选择提交回执" });
+  await chooseActiveOption(user, receiptControl, receiptName);
+  expect(receiptControl.closest(".ant-select")?.querySelector(".ant-select-content-has-value")).toHaveTextContent(receiptName);
+  const frozenDocumentControl = screen.getByRole("combobox", { name: "选择本次审查材料" });
+  await chooseActiveOption(user, frozenDocumentControl, /补充合同.txt/);
+  expect(frozenDocumentControl.closest(".ant-select")?.querySelector(".ant-select-content-has-value")).toHaveTextContent(/补充合同\.txt/);
   const original = screen.getByLabelText("本次审查使用的原文") as HTMLTextAreaElement;
   await user.click(original);
   original.setSelectionRange(2, 8);
@@ -266,7 +270,9 @@ describe("补充材料请求", () => {
     await user.upload(screen.getByLabelText("上传补充文件"), new File(["新材料"], "新版本合同.txt", { type: "text/plain" }));
     await user.click(screen.getByRole("button", { name: "上传补充文件" }));
     await screen.findByText(/已上传 新版本合同.txt/);
-    const options = await openActiveListbox(user, screen.getByRole("combobox", { name: "选择案件材料" }));
+    const receiptDocumentControl = screen.getByRole("combobox", { name: "选择案件材料" });
+    expect(receiptDocumentControl.closest(".ant-select")?.querySelector(".ant-select-content-has-value")).toHaveTextContent("新版本合同.txt");
+    const options = await openActiveListbox(user, receiptDocumentControl);
     expect(within(options).getByRole("option", { name: /新版本合同\.txt/ })).toBeInTheDocument();
     await user.keyboard("{Escape}");
     await user.click(screen.getByRole("button", { name: "提交回执" }));
