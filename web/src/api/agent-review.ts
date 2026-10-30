@@ -16,16 +16,17 @@ import type {
   AgentReviewGapStatus,
   AgentReviewKnowledgeAdvisory,
   AgentReviewKnowledgeAdvisoryCandidate,
+  AgentReviewKnowledgeRead,
   AgentReviewKnowledgeSelection,
+  AgentReviewObservation,
   AgentReviewPlanStatus,
   AgentReviewRelation,
   AgentReviewRoundStatus,
   AgentReviewStatus,
 } from "./types";
 
-const { invalid, record, text, integer } = responseReader(
-  (path) => `五域审查响应中的 ${path} 无法识别`,
-);
+const { invalid, record, text, integer, bool, array, optionalText } =
+  responseReader((path) => `五域审查响应中的 ${path} 无法识别`);
 
 function optionalRecord(
   value: unknown,
@@ -418,16 +419,25 @@ function capability(
   value: unknown,
   path: string,
 ): AgentReview["domains"][number]["capabilities"][number] {
-  const item = record(value, path, [
-    "capability_id",
-    "status",
-    "relation",
-    "reason_code",
-    "evidence_ids",
-    "canonical_evaluation_ids",
-  ]);
+  const item = optionalRecord(
+    value,
+    path,
+    [
+      "capability_id",
+      "status",
+      "relation",
+      "reason_code",
+      "evidence_ids",
+      "canonical_evaluation_ids",
+    ],
+    ["mandatory"],
+  );
   return {
     capability_id: text(item.capability_id, `${path}.capability_id`),
+    mandatory:
+      item.mandatory === undefined
+        ? false
+        : bool(item.mandatory, `${path}.mandatory`),
     status:
       enumValue<AgentReviewCapabilityStatus>(item.status, [
         "supported",
@@ -474,18 +484,27 @@ function domainCoverage(
 }
 
 function gap(value: unknown, path: string): AgentReview["gaps"][number] {
-  const item = record(value, path, [
-    "gap_id",
-    "domain",
-    "capability_id",
-    "status",
-    "reason_code",
-    "evidence_ids",
-  ]);
+  const item = optionalRecord(
+    value,
+    path,
+    [
+      "gap_id",
+      "domain",
+      "capability_id",
+      "status",
+      "reason_code",
+      "evidence_ids",
+    ],
+    ["mandatory"],
+  );
   return {
     gap_id: text(item.gap_id, `${path}.gap_id`),
     domain: domain(item.domain, `${path}.domain`),
     capability_id: text(item.capability_id, `${path}.capability_id`),
+    mandatory:
+      item.mandatory === undefined
+        ? false
+        : bool(item.mandatory, `${path}.mandatory`),
     status:
       enumValue<AgentReviewGapStatus>(item.status, [
         "open",
@@ -680,16 +699,22 @@ function evidence(
 }
 
 function event(value: unknown, path: string): AgentReview["events"][number] {
-  const item = record(value, path, [
-    "sequence",
-    "round",
-    "kind",
-    "call_id",
-    "domain",
-    "code",
-    "duration_ms",
-  ]);
+  const item = optionalRecord(
+    value,
+    path,
+    [
+      "sequence",
+      "round",
+      "kind",
+      "call_id",
+      "domain",
+      "code",
+      "duration_ms",
+    ],
+    ["event_id", "tool_id", "gap_id", "occurred_at"],
+  );
   return {
+    event_id: optionalText(item.event_id, `${path}.event_id`) ?? undefined,
     sequence: boundedInteger(item.sequence, `${path}.sequence`, 1),
     round: boundedInteger(item.round, `${path}.round`, 0, 3),
     kind:
@@ -697,6 +722,14 @@ function event(value: unknown, path: string): AgentReview["events"][number] {
         "planning",
         "guard",
         "tool_call",
+        "tool_started",
+        "tool_observed",
+        "tool_completed",
+        "tool_failed",
+        "knowledge_read_started",
+        "knowledge_read_completed",
+        "knowledge_read_failed",
+        "run_cancelled",
         "evidence",
         "budget",
         "terminal",
@@ -707,13 +740,71 @@ function event(value: unknown, path: string): AgentReview["events"][number] {
         "planner_fallback",
         "plan",
         "plan_accepted",
-        "tool_failed",
-        "tool_completed",
       ]) ?? invalid(`${path}.kind`),
+    tool_id: optionalText(item.tool_id, `${path}.tool_id`) ?? undefined,
+    gap_id: optionalText(item.gap_id, `${path}.gap_id`) ?? undefined,
     call_id: nullableText(item.call_id, `${path}.call_id`),
     domain: item.domain === null ? null : domain(item.domain, `${path}.domain`),
     code: text(item.code, `${path}.code`),
+    occurred_at: optionalText(item.occurred_at, `${path}.occurred_at`),
     duration_ms: boundedInteger(item.duration_ms, `${path}.duration_ms`, 0),
+  };
+}
+
+function observation(value: unknown, path: string): AgentReviewObservation {
+  const item = optionalRecord(
+    value,
+    path,
+    [
+      "round",
+      "call_id",
+      "gap_id",
+      "tool_id",
+      "reported_relation",
+      "summary",
+      "claim_status",
+      "fact_ids",
+      "located_evidence_ids",
+      "truncated",
+    ],
+    ["reason_code"],
+  );
+  return {
+    round: boundedInteger(item.round, `${path}.round`, 0, 3),
+    call_id: text(item.call_id, `${path}.call_id`),
+    gap_id: text(item.gap_id, `${path}.gap_id`),
+    tool_id: text(item.tool_id, `${path}.tool_id`),
+    reported_relation: text(item.reported_relation, `${path}.reported_relation`),
+    reason_code: optionalText(item.reason_code, `${path}.reason_code`) ?? undefined,
+    summary: text(item.summary, `${path}.summary`),
+    claim_status: text(item.claim_status, `${path}.claim_status`),
+    fact_ids: strings(item.fact_ids, `${path}.fact_ids`),
+    located_evidence_ids: strings(
+      item.located_evidence_ids,
+      `${path}.located_evidence_ids`,
+    ),
+    truncated: bool(item.truncated, `${path}.truncated`),
+  };
+}
+
+function knowledgeRead(value: unknown, path: string): AgentReviewKnowledgeRead {
+  const item = record(value, path, [
+    "knowledge_id",
+    "version_id",
+    "content_sha256",
+    "start",
+    "end",
+    "text_sha256",
+    "text",
+  ]);
+  return {
+    knowledge_id: text(item.knowledge_id, `${path}.knowledge_id`),
+    version_id: text(item.version_id, `${path}.version_id`),
+    content_sha256: text(item.content_sha256, `${path}.content_sha256`),
+    start: boundedInteger(item.start, `${path}.start`, 0),
+    end: boundedInteger(item.end, `${path}.end`, 1),
+    text_sha256: text(item.text_sha256, `${path}.text_sha256`),
+    text: text(item.text, `${path}.text`),
   };
 }
 
@@ -738,7 +829,7 @@ export function parseAgentReview(value: unknown): AgentReview {
       "unresolved_gap_ids",
       "events",
     ],
-    ["knowledge_selection"],
+    ["knowledge_selection", "observations", "knowledge_reads"],
   );
   if (item.schema_version !== "five-domain-review/v1")
     return invalid("schema_version");
@@ -791,5 +882,13 @@ export function parseAgentReview(value: unknown): AgentReview {
     },
     unresolved_gap_ids: strings(item.unresolved_gap_ids, "unresolved_gap_ids"),
     events: item.events.map((entry, index) => event(entry, `events[${index}]`)),
+    observations:
+      item.observations === undefined || item.observations === null
+        ? []
+        : array(item.observations, "observations", observation),
+    knowledge_reads:
+      item.knowledge_reads === undefined || item.knowledge_reads === null
+        ? []
+        : array(item.knowledge_reads, "knowledge_reads", knowledgeRead),
   };
 }

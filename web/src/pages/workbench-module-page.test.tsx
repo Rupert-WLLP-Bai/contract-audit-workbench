@@ -1618,61 +1618,6 @@ describe("workbench execution and platform projections", () => {
     ).toHaveAttribute("href", "/cases/case-empty/reviews/run-no-usage");
   });
 
-  it("reports configured model usage only from returned runs and limits changes to platform audit", async () => {
-    const { user } = open("models");
-    await list("模型服务");
-    expect(
-      details().getByRole("heading", { name: "已登记审查模型" }),
-    ).toBeInTheDocument();
-    expectField("模型名", "model/configured");
-    expectField("OCR 模型", "ocr/model");
-    expectField("配置状态", "已配置");
-    expect(details().queryByRole("link")).not.toBeInTheDocument();
-    await category(user, "模型服务", "调用记录");
-    await detailTab(user, "调用统计");
-    expectField("工作台返回的审查记录数", "2");
-    expectField("有用量汇总的运行", "1");
-    expectField("已报告调用总数", "7");
-    expect(details().getByText(/费用仍为未知/)).toBeInTheDocument();
-    await category(user, "模型服务", "预算配置");
-    await detailTab(user, "能力边界");
-    expectField("聊天模型", "model/configured");
-    await detailTab(user, "变更记录");
-    expect(details().getByText("发布运营商规则包")).toBeInTheDocument();
-    expect(details().getByText("维护安全制度")).toBeInTheDocument();
-    expect(
-      details().queryByText(/创建付款核对任务|提交签章材料/),
-    ).not.toBeInTheDocument();
-    expect(
-      details().getByRole("link", { name: "打开业务审计" }),
-    ).toHaveAttribute("href", "/workbench/audit");
-  });
-
-  it("uses the model name when unlabeled and leaves aggregate usage unreported when every run lacks it", async () => {
-    const service = new WorkbenchService();
-    service.snapshot.model = {
-      name: "unconfigured-model",
-      label: "",
-      ocr_name: "",
-      status: "unconfigured",
-    };
-    service.snapshot.runs = [run({ usage: null })];
-    service.snapshot.audit = [];
-    const { user } = open("models", service);
-    await list("模型服务");
-    expect(
-      details().getByRole("heading", { name: "unconfigured-model" }),
-    ).toBeInTheDocument();
-    expectField("配置状态", "未配置");
-    expectField("OCR 模型", "未报告");
-    expectField("显示标签", "未报告");
-    await detailTab(user, "调用统计");
-    expectField("有用量汇总的运行", "0");
-    expectField("已报告调用总数", "未报告");
-    await detailTab(user, "变更记录");
-    expect(details().queryByRole("definition")).not.toBeInTheDocument();
-  });
-
   it("keeps registered tool capabilities, call counts and unreported status distinct from private payloads", async () => {
     const { user } = open("tools");
     await list("工具网关");
@@ -1948,6 +1893,19 @@ describe("workbench snapshot boundaries", () => {
       screen.getByRole("heading", { name: "没有这个工作区页面" }),
     ).toBeInTheDocument();
     expect(service.requests).toHaveLength(0);
+  });
+
+  it("sends the retired model service route to client settings", async () => {
+    const { service, router } = open("models");
+    expect(
+      await screen.findByRole("heading", { name: "设置" }),
+    ).toBeInTheDocument();
+    await waitFor(() =>
+      expect(router.state.location.pathname).toBe("/workbench/settings"),
+    );
+    expect(
+      service.requests.some((item) => item.key.startsWith("GET /api/workbench")),
+    ).toBe(false);
   });
 
   it("routes settings to client settings and never loads a workbench projection", async () => {

@@ -253,6 +253,10 @@ type AgentReview struct {
 	Usage              PlannerUsage              `json:"usage"`
 	UnresolvedGapIDs   []string                  `json:"unresolved_gap_ids"`
 	Events             []AgentReviewEvent        `json:"events"`
+	// Observations and KnowledgeReads are the bounded tool and frozen-knowledge
+	// outputs of this attempt. They remain reported claims, not conclusions.
+	Observations   []ToolObservation          `json:"observations,omitempty"`
+	KnowledgeReads []KnowledgeReadObservation `json:"knowledge_reads,omitempty"`
 }
 
 type SourceSnapshot struct {
@@ -381,6 +385,8 @@ type AgentReviewEvent struct {
 	Sequence   int        `json:"sequence"`
 	Round      int        `json:"round"`
 	Kind       string     `json:"kind"`
+	ToolID     string     `json:"tool_id,omitempty"`
+	GapID      string     `json:"gap_id,omitempty"`
 	CallID     *string    `json:"call_id"`
 	Domain     *Domain    `json:"domain"`
 	Code       string     `json:"code"`

@@ -25,6 +25,9 @@ import type {
   FindingVerification,
   FindingCounts,
   HumanDecision,
+  LLMEndpointView,
+  LLMProbeResult,
+  ModelCallTrace,
   ReviewDocument,
   ReviewRun,
   ReviewRunSummary,
@@ -200,6 +203,42 @@ function parseExecutionEvent(value: unknown): ExecutionEvent {
     error_code: nullableString(record, "error_code"),
     model_ref: nullableString(record, "model_ref"),
     usage: parseCallUsage(record.usage),
+    trace: parseModelCallTrace(record.trace),
+  };
+}
+
+/**
+ * A malformed trace never hides the rest of the execution record: the
+ * trajectory renders "not recorded" instead of failing the workspace.
+ */
+function parseModelCallTrace(value: unknown): ModelCallTrace | null {
+  if (!isRecord(value)) return null;
+  const messages = Array.isArray(value.request_messages)
+    ? value.request_messages.flatMap((entry) => {
+        if (!isRecord(entry) || typeof entry.role !== "string" || typeof entry.content !== "string")
+          return [];
+        return [{
+          role: entry.role,
+          content: entry.content,
+          truncated: entry.truncated === true,
+        }];
+      })
+    : [];
+  return {
+    requested_model: optionalString(value, "requested_model") ?? "",
+    reported_model: optionalString(value, "reported_model") ?? "",
+    status: optionalString(value, "status") ?? "",
+    error_code: optionalString(value, "error_code") ?? "",
+    started_at: optionalString(value, "started_at") ?? "",
+    finished_at: optionalString(value, "finished_at") ?? "",
+    request_sha256: optionalString(value, "request_sha256") ?? "",
+    request_bytes: nonNegativeIntegerOrNull(value.request_bytes) ?? 0,
+    request_messages: messages,
+    request_truncated: value.request_truncated === true,
+    response_sha256: optionalString(value, "response_sha256") ?? "",
+    response_bytes: nonNegativeIntegerOrNull(value.response_bytes) ?? 0,
+    response_text: optionalString(value, "response_text") ?? "",
+    response_truncated: value.response_truncated === true,
   };
 }
 
@@ -893,6 +932,31 @@ export function parseSettings(value: unknown): SettingsView {
       : [],
     execution: parseOperationalMetadata(record.execution),
     operator_audit: parseOperatorAuditSettings(record.operator_audit),
+  };
+}
+
+export function parseLLMEndpoint(value: unknown): LLMEndpointView {
+  const record = recordOf(value, "LLM endpoint");
+  return {
+    configured: requiredBoolean(record, "configured"),
+    name: requiredStringValue(record, "name"),
+    protocol: requiredStringValue(record, "protocol"),
+    base_url: requiredStringValue(record, "base_url"),
+    models: requiredStringArray(record, "models"),
+    review_model: requiredStringValue(record, "review_model"),
+    ocr_model: requiredStringValue(record, "ocr_model"),
+    has_api_key: requiredBoolean(record, "has_api_key"),
+    revision: requiredCount(record, "revision"),
+    updated_at: requiredStringValue(record, "updated_at"),
+    updated_by: requiredStringValue(record, "updated_by"),
+  };
+}
+
+export function parseLLMProbe(value: unknown): LLMProbeResult {
+  const record = recordOf(value, "LLM probe result");
+  return {
+    models: requiredStringArray(record, "models"),
+    latency_ms: requiredCount(record, "latency_ms"),
   };
 }
 

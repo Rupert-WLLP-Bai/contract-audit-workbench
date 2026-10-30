@@ -1,4 +1,4 @@
-import type { BusinessAgentEvidence, BusinessAgentReview } from "../api/business-agent-review";
+import type { BusinessAgentEvidence, BusinessAgentGap, BusinessAgentReview } from "../api/business-agent-review";
 import { StatusText } from "./status-text";
 
 const DOMAIN_LABELS: Record<string, string> = {
@@ -59,8 +59,26 @@ const RELATION_LABELS: Record<string, string> = {
   not_applicable: "比较结果：不适用",
 };
 
+const OBSERVED_RELATION_LABELS: Record<string, string> = {
+  compatible: "一致",
+  conflict: "冲突",
+  insufficient: "证据不足",
+  not_applicable: "不适用",
+};
+
+const CLAIM_STATUS_LABELS: Record<string, string> = {
+  tool_reported_not_independently_verified: "工具报告，尚未独立核验",
+};
+
 const REASON_LABELS: Record<string, string> = {
   required_source_or_field_missing: "缺少必要材料或字段",
+  required_authority_source_missing: "缺少授权依据来源",
+  authorized_counterparty_source_missing: "缺少经授权的相对方来源",
+  approval_validity_interval_missing: "缺少审批有效期区间",
+  source_expression_not_supported: "当前工具不支持来源中的表达形式",
+  multiple_source_values_require_review: "多个来源值需要人工核对",
+  max_calls_reached: "达到本轮调用预算",
+  verified_result: "已核验结果",
   source_fact_only_not_a_decision: "仅提取了来源事实，尚无审查结论",
   capability_not_registered: "当前能力尚不支持此项检查",
   claim_requires_semantic_verification: "来源内容的含义仍需核对",
@@ -68,8 +86,38 @@ const REASON_LABELS: Record<string, string> = {
   stable_party_role_linkage_missing: "主体与角色的关联尚未核验",
 };
 
+const REASON_NEXT_STEPS: Record<string, string> = {
+  required_source_or_field_missing: "补充包含该字段的采购、合同或审批材料后重新审查。",
+  required_authority_source_missing: "补充授权依据或审批文件。",
+  authorized_counterparty_source_missing: "补充经授权的相对方登记材料。",
+  approval_validity_interval_missing: "补充审批生效与失效日期。",
+  source_expression_not_supported: "当前规则包与工具无法解析该表述；改用匹配业务的规则包，或由审查人员核对原文后记录判断。",
+  multiple_source_values_require_review: "人工比对多个来源值并记录采用哪一个值。",
+  max_calls_reached: "规划调用预算已用尽；提高预算或缩小审查范围后重新执行。",
+  capability_not_registered: "当前版本没有注册这项能力，不能把“未检查”当作“已通过”。",
+  claim_requires_semantic_verification: "回到冻结原文核对语义后再判断。",
+  approval_period_dates_unverified: "核对审批日期后再判断。",
+  stable_party_role_linkage_missing: "核对主体与角色的对应关系。",
+  source_fact_only_not_a_decision: "这仍是来源事实，需要审查人员给出判断。",
+};
+
 function label(labels: Record<string, string>, value: string, fallback: string): string {
   return Object.hasOwn(labels, value) ? labels[value] ?? fallback : fallback;
+}
+
+function gapGuidance(gaps: BusinessAgentGap[]): string {
+  const counts = new Map<string, number>();
+  for (const gap of gaps) {
+    if (gap.reason_code) counts.set(gap.reason_code, (counts.get(gap.reason_code) ?? 0) + 1);
+  }
+  const ranked = [...counts.entries()]
+    .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))
+    .slice(0, 3)
+    .map(([code, count]) => `${label(REASON_LABELS, code, "原因待核对")} ${count} 项`);
+  const lead = ranked.length > 0
+    ? `本次 ${gaps.length} 项缺口中，${ranked.join("、")}。`
+    : `本次共 ${gaps.length} 项缺口。`;
+  return `${lead}未解决或证据不足表示尚未确认，不等于已通过；按每条缺口给出的下一步处理。`;
 }
 
 function domainLabel(value: string): string {
@@ -162,6 +210,9 @@ export function BusinessAgentReviewView({ review }: { review: BusinessAgentRevie
       </header>
       <p className="meta">流程完成或找到原文依据，并不代表风险已确认或合同已合规；仍需审查人员判断。</p>
       {missingCitations ? <p className="meta">部分项目没有原文依据，不能确认这些项目已经核验。</p> : null}
+      {review.gaps && review.gaps.length > 0 ? (
+        <p className="meta">{gapGuidance(review.gaps)}</p>
+      ) : null}
 
       <section className="agent-review-section" aria-label="领域与检查项目">
         <h4>领域与检查项目</h4>
@@ -220,6 +271,34 @@ export function BusinessAgentReviewView({ review }: { review: BusinessAgentRevie
         )}
       </section>
 
+      {review.observations && review.observations.length > 0 ? (
+        <section className="agent-review-section" aria-label="工具返回记录">
+          <h4>工具返回记录</h4>
+          <p className="meta">工具返回是待核验的记录，不是已确认结论；只有引用能对上冻结原文时才可能进入核验。</p>
+          <ul className="agent-review-list">
+            {review.observations.map((observation, index) => (
+              <li key={`${observation.call_id}-${index}`}>
+                <header>
+                  <strong>{observation.tool_id} · 缺口 {observation.gap_id}</strong>
+                  <StatusText tone="attention">
+                    {label(CLAIM_STATUS_LABELS, observation.claim_status, "工具报告的记录，尚未独立核验")}
+                  </StatusText>
+                </header>
+                <p>
+                  第 {observation.round} 轮；报告关系 {label(OBSERVED_RELATION_LABELS, observation.reported_relation, "未识别")}
+                  {observation.reason_code ? `；${label(REASON_LABELS, observation.reason_code, "原因待进一步核对")}` : ""}。
+                </p>
+                <p>{observation.summary}</p>
+                {observation.located_evidence_ids && observation.located_evidence_ids.length > 0 ? (
+                  <p className="meta">已定位证据：{observation.located_evidence_ids.join("、")}</p>
+                ) : null}
+                {observation.truncated ? <p className="meta">该工具返回已被截断。</p> : null}
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+
       <section className="agent-review-section" aria-label="审查缺口">
         <h4>审查缺口</h4>
         {review.gaps === null || review.gaps.length === 0 ? (
@@ -236,6 +315,9 @@ export function BusinessAgentReviewView({ review }: { review: BusinessAgentRevie
                     <StatusText tone={reportedUnresolved || gap.status === "completed" ? "attention" : statusTone(gap.status)}>{gapLabel}</StatusText>
                   </header>
                   <p>{gap.mandatory ? "必查项目" : "非必查项目"}{gap.reason_code ? `；${label(REASON_LABELS, gap.reason_code, "原因待进一步核对")}` : ""}。</p>
+                  {gap.reason_code && REASON_NEXT_STEPS[gap.reason_code] ? (
+                    <p className="meta">下一步：{REASON_NEXT_STEPS[gap.reason_code]}</p>
+                  ) : null}
                   <Citations ids={gap.evidence_ids} evidence={review.evidence} />
                 </li>
               );

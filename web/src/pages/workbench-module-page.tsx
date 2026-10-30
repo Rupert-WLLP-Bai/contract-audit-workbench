@@ -3,7 +3,7 @@ import { Flex } from "antd";
 import { Select } from "antd";
 import { Input, Button } from "antd";
 import { useState, type FormEvent } from "react";
-import { useParams, useSearchParams } from "react-router";
+import { Navigate, useParams, useSearchParams } from "react-router";
 import { errorMessage } from "../api/http";
 import { paths } from "../api/paths";
 import {
@@ -54,8 +54,8 @@ export const WORKBENCH_MODULES = {
   executions: {
     title: "执行轨迹",
     description: "查看实际运行和已报告的执行用量。",
-    // Model-call usage belongs to each run's detail tabs and the model service
-    // register; rule execution has no run-level projection here.
+    // Model-call usage belongs to each run's detail tabs; platform model
+    // configuration lives in settings, not this projection.
     tabs: ["运行记录"],
     details: ["运行概览", "调用时间轴", "输入与输出", "执行日志"],
   },
@@ -76,12 +76,6 @@ export const WORKBENCH_MODULES = {
     description: "查看服务端当前模板版本及结构化字段。",
     tabs: ["模板库", "字段配置", "生成记录"],
     details: ["模板预览", "字段定义", "使用记录", "版本记录"],
-  },
-  models: {
-    title: "模型服务",
-    description: "查看模型配置和工作台记录的状态。",
-    tabs: ["模型服务", "调用记录", "预算配置"],
-    details: ["服务配置", "调用统计", "能力边界", "变更记录"],
   },
   tools: {
     title: "工具网关",
@@ -732,69 +726,6 @@ function buildRecords(
       });
     });
 
-  if (module === "models") {
-    const model = snapshot.model;
-    const platformEvents = snapshot.audit
-      .filter((item) => item.case_id === null)
-      .slice(0, 8);
-    const record = make({
-      id: model.name,
-      title: model.label || model.name,
-      subtitle: model.name,
-      status: model.status === "configured" ? "已配置" : "未配置",
-      updatedAt: null,
-      caseId: null,
-      runId: null,
-      href: null,
-      panels: {
-        服务配置: panel(
-          [
-            field("模型名", model.name),
-            field("OCR 模型", model.ocr_name),
-            field(
-              "配置状态",
-              model.status === "configured" ? "已配置" : "未配置",
-            ),
-            field("显示标签", model.label),
-          ],
-          "已配置不代表服务可以连接；工作台不会主动检测外部服务。",
-        ),
-        调用统计: panel(
-          [
-            field("工作台返回的审查记录数", snapshot.runs.length),
-            field(
-              "有用量汇总的运行",
-              snapshot.runs.filter((item) => item.usage !== null).length,
-            ),
-            field(
-              "已报告调用总数",
-              snapshot.runs.some((item) => item.usage !== null)
-                ? snapshot.runs.reduce(
-                    (total, item) => total + (item.usage?.calls ?? 0),
-                    0,
-                  )
-                : null,
-            ),
-          ],
-          "没有获取到费用或模型连接地址，费用仍为未知。",
-        ),
-        能力边界: panel(
-          [field("聊天模型", model.name), field("OCR 模型", model.ocr_name)],
-          "工作台没有提供其他能力或服务连接检测结果。",
-        ),
-        变更记录: panel(
-          platformEvents.map((item) =>
-            field(`${item.action}，${formatDateTime(item.at)}`, item.summary),
-          ),
-          "这里只列工作台已返回的平台级业务审计，不将规则发布等事件解释为模型专属配置变更。",
-          [{ label: "打开业务审计", href: "/workbench/audit" }],
-        ),
-      },
-      task: null,
-    });
-    return [record];
-  }
-
   if (module === "tools")
     return snapshot.tools.map((item) => {
       const panels: Record<string, DetailPanel> = {
@@ -1163,6 +1094,10 @@ function KnowledgeCreateForm({ onClose }: { onClose: () => void }) {
 
 export function WorkbenchModulePage() {
   const { module: routeModule = "" } = useParams();
+  // Model configuration moved to settings; keep old bookmarks working rather
+  // than leaving a retired module URL on the generic empty state.
+  if (routeModule === "models")
+    return <Navigate to="/workbench/settings" replace />;
   if (routeModule === "settings") return <SettingsPage audience="client" />;
   if (!isWorkbenchModuleKey(routeModule))
     return <PageStatus kind="empty" title="没有这个工作区页面" />;

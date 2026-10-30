@@ -216,6 +216,30 @@ export interface ExecutionCallUsage {
   total_tokens: number | null;
 }
 
+export interface ModelCallTraceMessage {
+  role: string;
+  content: string;
+  truncated: boolean;
+}
+
+/** Bounded physical model call record. It is diagnostic data, not evidence. */
+export interface ModelCallTrace {
+  requested_model: string;
+  reported_model: string;
+  status: string;
+  error_code: string;
+  started_at: string;
+  finished_at: string;
+  request_sha256: string;
+  request_bytes: number;
+  request_messages: ModelCallTraceMessage[];
+  request_truncated: boolean;
+  response_sha256: string;
+  response_bytes: number;
+  response_text: string;
+  response_truncated: boolean;
+}
+
 export interface ExecutionEvent {
   seq: number;
   attempt_id: string;
@@ -230,6 +254,7 @@ export interface ExecutionEvent {
   error_code: string | null;
   model_ref: string | null;
   usage: ExecutionCallUsage | null;
+  trace?: ModelCallTrace | null;
 }
 
 export type AgentReviewDomain =
@@ -307,6 +332,14 @@ export type AgentReviewEventKind =
   | "planning"
   | "guard"
   | "tool_call"
+  | "tool_started"
+  | "tool_observed"
+  | "tool_completed"
+  | "tool_failed"
+  | "knowledge_read_started"
+  | "knowledge_read_completed"
+  | "knowledge_read_failed"
+  | "run_cancelled"
   | "evidence"
   | "budget"
   | "terminal"
@@ -365,6 +398,7 @@ export interface AgentReviewDomainScope {
 
 export interface AgentReviewCapability {
   capability_id: string;
+  mandatory: boolean;
   status: AgentReviewCapabilityStatus;
   relation: AgentReviewRelation | null;
   reason_code: string;
@@ -382,6 +416,7 @@ export interface AgentReviewGap {
   gap_id: string;
   domain: AgentReviewDomain;
   capability_id: string;
+  mandatory: boolean;
   status: AgentReviewGapStatus;
   reason_code: string;
   evidence_ids: string[];
@@ -439,13 +474,43 @@ export interface AgentReviewEvidence {
 }
 
 export interface AgentReviewEvent {
+  event_id?: string;
   sequence: number;
   round: number;
   kind: AgentReviewEventKind;
+  tool_id?: string;
+  gap_id?: string;
   call_id: string | null;
   domain: AgentReviewDomain | null;
   code: string;
+  occurred_at?: string | null;
   duration_ms: number;
+}
+
+/** One validated tool result. It is a reported claim, not a conclusion. */
+export interface AgentReviewObservation {
+  round: number;
+  call_id: string;
+  gap_id: string;
+  tool_id: string;
+  reported_relation: string;
+  reason_code?: string;
+  summary: string;
+  claim_status: string;
+  fact_ids: string[];
+  located_evidence_ids: string[];
+  truncated: boolean;
+}
+
+/** One bounded span read from frozen governed knowledge. */
+export interface AgentReviewKnowledgeRead {
+  knowledge_id: string;
+  version_id: string;
+  content_sha256: string;
+  start: number;
+  end: number;
+  text_sha256: string;
+  text: string;
 }
 
 export type AgentReviewAdvisoryStatus =
@@ -536,6 +601,8 @@ export interface AgentReview {
   };
   unresolved_gap_ids: string[];
   events: AgentReviewEvent[];
+  observations?: AgentReviewObservation[];
+  knowledge_reads?: AgentReviewKnowledgeRead[];
 }
 
 export interface Execution {
@@ -675,6 +742,41 @@ export interface SettingsView {
   users: SettingsUser[];
   execution?: ExecutionOperationalMetadata | null;
   operator_audit?: OperatorAuditSettings | null;
+}
+
+export interface LLMEndpointView {
+  configured: boolean;
+  name: string;
+  protocol: string;
+  base_url: string;
+  models: string[];
+  review_model: string;
+  ocr_model: string;
+  has_api_key: boolean;
+  revision: number;
+  updated_at: string;
+  updated_by: string;
+}
+
+export interface LLMProbeResult {
+  models: string[];
+  latency_ms: number;
+}
+
+export interface LLMEndpointInput {
+  name: string;
+  protocol: string;
+  base_url: string;
+  models: string[];
+  api_key?: string;
+  clear_api_key?: boolean;
+  expected_revision?: number;
+}
+
+export interface LLMModelSelectionInput {
+  review_model: string;
+  ocr_model: string;
+  expected_revision?: number;
 }
 export interface GenerationRecord {
   id: string;

@@ -307,6 +307,7 @@ type businessAgentReview struct {
 	Gaps             []agentflow.GapReport        `json:"gaps"`
 	Evidence         []agentflow.VerifiedEvidence `json:"evidence"`
 	UnresolvedGapIDs []string                     `json:"unresolved_gap_ids"`
+	Observations     []agentflow.ToolObservation  `json:"observations"`
 }
 
 func decodeBusinessAgentReview(raw json.RawMessage) (businessAgentReview, error) {
@@ -373,10 +374,23 @@ func businessAgentReviewView(review businessAgentReview) any {
 			}
 		}
 	}
+	var observations []any
+	if review.Observations != nil {
+		observations = make([]any, len(review.Observations))
+		for i, observation := range review.Observations {
+			observations[i] = map[string]any{
+				"round": observation.Round, "call_id": observation.CallID, "gap_id": observation.GapID,
+				"tool_id": observation.ToolID, "reported_relation": observation.Relation,
+				"reason_code": observation.ReasonCode, "summary": observation.Summary,
+				"claim_status": observation.ClaimStatus, "fact_ids": observation.FactIDs,
+				"located_evidence_ids": observation.EvidenceIDs, "truncated": observation.Truncated,
+			}
+		}
+	}
 	return map[string]any{
 		"attempt_id": nilString(review.AttemptID), "status": nilString(review.Status), "rulepack": rulepack,
 		"scope": scope, "domains": domains, "gaps": gaps, "evidence": evidence,
-		"unresolved_gap_ids": review.UnresolvedGapIDs,
+		"unresolved_gap_ids": review.UnresolvedGapIDs, "observations": observations,
 	}
 }
 

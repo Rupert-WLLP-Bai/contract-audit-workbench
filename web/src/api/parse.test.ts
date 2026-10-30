@@ -2,6 +2,8 @@ import {
   parseCaseDetail,
   parseCaseList,
   parseFinding,
+  parseLLMEndpoint,
+  parseLLMProbe,
   parseRemediation,
   parseReviewWorkspace,
   parseSettings,
@@ -43,6 +45,43 @@ describe("response parsers", () => {
       parseSettings({ operator_audit: { enabled: "true" } }).operator_audit
         ?.enabled,
     ).toBe(false);
+  });
+
+  it("parses the admin LLM endpoint without accepting a credential field", () => {
+    const endpoint = parseLLMEndpoint({
+      configured: true,
+      name: "生产网关",
+      protocol: "openai-compatible",
+      base_url: "https://llm.example.com/v1",
+      models: ["review-a", "ocr-b"],
+      review_model: "review-a",
+      ocr_model: "ocr-b",
+      has_api_key: true,
+      revision: 4,
+      updated_at: "2026-10-30T08:00:00.000Z",
+      updated_by: "admin-1",
+    });
+    expect(endpoint.models).toEqual(["review-a", "ocr-b"]);
+    expect(endpoint.has_api_key).toBe(true);
+    expect("api_key" in endpoint).toBe(false);
+    expect(() =>
+      parseLLMEndpoint({
+        configured: true,
+        name: "生产网关",
+        protocol: "openai-compatible",
+        base_url: "https://llm.example.com/v1",
+        review_model: "review-a",
+        ocr_model: "ocr-b",
+        has_api_key: true,
+        revision: 4,
+        updated_at: "",
+        updated_by: "",
+      }),
+    ).toThrow(/models/);
+    expect(parseLLMProbe({ models: ["a"], latency_ms: 12 })).toEqual({
+      models: ["a"],
+      latency_ms: 12,
+    });
   });
 
   it("rejects a list that is not the documented shape", () => {
@@ -336,6 +375,23 @@ describe("response parsers", () => {
               output_tokens: 144,
               total_tokens: 327,
             },
+            trace: {
+              requested_model: "group/auto-deepseek-v4-flash",
+              reported_model: "observed-model",
+              status: "completed",
+              started_at: "2026-10-30T00:00:00.000Z",
+              finished_at: "2026-10-30T00:00:01.000Z",
+              request_sha256: "request-digest",
+              request_bytes: 42,
+              request_messages: [
+                { role: "user", content: "冻结原文", truncated: false },
+              ],
+              request_truncated: false,
+              response_sha256: "response-digest",
+              response_bytes: 12,
+              response_text: "模型输出",
+              response_truncated: false,
+            },
           },
           {
             seq: 2,
@@ -356,6 +412,7 @@ describe("response parsers", () => {
               output_tokens: null,
               total_tokens: null,
             },
+            trace: "not-a-trace",
           },
         ],
         usage,
@@ -379,6 +436,12 @@ describe("response parsers", () => {
       total_tokens: 327,
     });
     expect(workspace.execution?.events[1]?.usage?.total_tokens).toBeNull();
+    expect(workspace.execution?.events[0]?.trace).toMatchObject({
+      requested_model: "group/auto-deepseek-v4-flash",
+      response_text: "模型输出",
+      request_bytes: 42,
+    });
+    expect(workspace.execution?.events[1]?.trace).toBeNull();
   });
   it("preserves omitted optional fields on a newly created remediation", () => {
     const remediation = parseRemediation({

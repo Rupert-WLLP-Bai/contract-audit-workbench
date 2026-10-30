@@ -53,6 +53,20 @@ export interface BusinessAgentEvidence {
   };
 }
 
+export interface BusinessAgentObservation {
+  round: number;
+  call_id: string;
+  gap_id: string;
+  tool_id: string;
+  reported_relation: string;
+  reason_code: string | null;
+  summary: string;
+  claim_status: string;
+  fact_ids: string[] | null;
+  located_evidence_ids: string[] | null;
+  truncated: boolean;
+}
+
 export interface BusinessAgentReview {
   attempt_id: string | null;
   status: string | null;
@@ -62,6 +76,7 @@ export interface BusinessAgentReview {
   gaps: BusinessAgentGap[] | null;
   evidence: BusinessAgentEvidence[] | null;
   unresolved_gap_ids: string[] | null;
+  observations: BusinessAgentObservation[] | null;
 }
 
 const { invalid, record, text, integer, nullableText, nullableArray } =
@@ -136,9 +151,42 @@ function evidence(value: unknown, path: string): BusinessAgentEvidence {
   };
 }
 
+function observation(value: unknown, path: string): BusinessAgentObservation {
+  const item = record(value, path, [
+    "round",
+    "call_id",
+    "gap_id",
+    "tool_id",
+    "reported_relation",
+    "reason_code",
+    "summary",
+    "claim_status",
+    "fact_ids",
+    "located_evidence_ids",
+    "truncated",
+  ]);
+  return {
+    round: integer(item.round, `${path}.round`, 0),
+    call_id: text(item.call_id, `${path}.call_id`),
+    gap_id: text(item.gap_id, `${path}.gap_id`),
+    tool_id: text(item.tool_id, `${path}.tool_id`),
+    reported_relation: text(item.reported_relation, `${path}.reported_relation`),
+    reason_code: nullableText(item.reason_code, `${path}.reason_code`),
+    summary: text(item.summary, `${path}.summary`),
+    claim_status: text(item.claim_status, `${path}.claim_status`),
+    fact_ids: nullableArray(item.fact_ids, `${path}.fact_ids`, text),
+    located_evidence_ids: nullableArray(
+      item.located_evidence_ids,
+      `${path}.located_evidence_ids`,
+      text,
+    ),
+    truncated: typeof item.truncated === "boolean" ? item.truncated : invalid(`${path}.truncated`),
+  };
+}
+
 export function parseBusinessAgentReview(value: unknown): BusinessAgentReview | null {
   if (value === null || value === undefined) return null;
-  const item = record(value, "agent_review", ["attempt_id", "status", "rulepack", "scope", "domains", "gaps", "evidence", "unresolved_gap_ids"]);
+  const item = record(value, "agent_review", ["attempt_id", "status", "rulepack", "scope", "domains", "gaps", "evidence", "unresolved_gap_ids", "observations"]);
   const pack = item.rulepack === null ? null : record(item.rulepack, "agent_review.rulepack", ["id", "version"]);
   return {
     attempt_id: nullableText(item.attempt_id, "agent_review.attempt_id"),
@@ -152,5 +200,10 @@ export function parseBusinessAgentReview(value: unknown): BusinessAgentReview | 
     gaps: nullableArray(item.gaps, "agent_review.gaps", gap),
     evidence: nullableArray(item.evidence, "agent_review.evidence", evidence),
     unresolved_gap_ids: nullableArray(item.unresolved_gap_ids, "agent_review.unresolved_gap_ids", text),
+    observations: nullableArray(
+      item.observations,
+      "agent_review.observations",
+      observation,
+    ),
   };
 }

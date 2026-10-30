@@ -160,7 +160,7 @@ describe("补充材料请求", () => {
   it("binds an observed agent gap to an existing case task", async () => {
     const gap = { gap_id: "gap-observed", domain: "commercial", capability_id: "warranty_months", mandatory: true, status: "unknown", reason_code: "required_source_or_field_missing", evidence_ids: null };
     const review: BusinessAgentReview = { attempt_id: "attempt-old", status: "partial", rulepack: null, scope: null,
-      domains: null, gaps: [gap], evidence: null, unresolved_gap_ids: [gap.gap_id] };
+      domains: null, gaps: [gap], evidence: null, unresolved_gap_ids: [gap.gap_id], observations: null };
     const task: WorkbenchTask = { id: "existing-task", case_id: "case-1", title: "现有质保任务", kind: "review",
       assignee_id: "owner", due_at: at, status: "open", priority: "high", finding_id: null, version: 2,
       created_at: at, created_by: "owner", updated_at: at };
@@ -302,7 +302,7 @@ describe("补充材料请求", () => {
     const review: BusinessAgentReview = {
       attempt_id: "attempt-new", status: "partial", rulepack: null, scope: null,
       domains: [{ domain: "commercial", status: "completed", capabilities: [{ capability_id: "warranty_months", mandatory: true, status: "completed", relation: "compatible", reason_code: "", evidence_ids: ["doc-2"], canonical_evaluation_ids: null }] }],
-      gaps: [gap], evidence: null, unresolved_gap_ids: ["gap-1"],
+      gaps: [gap], evidence: null, unresolved_gap_ids: ["gap-1"], observations: null,
     };
     const { calls, user } = open({ runId: "run-new", attemptId: "attempt-new", evaluations: [], agentReview: review, canManage: false, respond(call) {
       const gapRequest = { ...rawRequest("received", 2), source_evaluation: undefined, source_gap: { ...gap, status: "unknown" }, verification_condition: "resolved" };
@@ -327,7 +327,7 @@ describe("补充材料请求", () => {
     const review: BusinessAgentReview = {
       attempt_id: "attempt-new", status: "completed", rulepack: null, scope: null,
       domains: [{ domain: "commercial", status: "completed", capabilities: [{ capability_id: "warranty_months", mandatory: true, status: "completed", relation: "conflict", reason_code: "", evidence_ids: ["doc-2"], canonical_evaluation_ids: null }] }],
-      gaps: [gap], evidence: null, unresolved_gap_ids: [],
+      gaps: [gap], evidence: null, unresolved_gap_ids: [], observations: null,
     };
     const received = condition === "resolved" ? {
       ...rawRequest("received", 2), source_evaluation: undefined,

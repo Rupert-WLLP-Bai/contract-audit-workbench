@@ -40,6 +40,7 @@ const projection = {
   gaps: [{ gap_id: "gap-1", domain: "technical", capability_id: "warranty_months", mandatory: true, status: "open", reason_code: "required_source_or_field_missing", evidence_ids: null }],
   evidence: [evidence],
   unresolved_gap_ids: ["gap-1"],
+  observations: null,
 };
 
 describe("business agent review projection", () => {
@@ -64,6 +65,28 @@ describe("business agent review projection", () => {
     expect(() => parseBusinessAgentReview({ ...projection, domains: [{ domain: "technical", status: "partial", capabilities: [missingMandatory] }] })).toThrow(/capabilities\[0\]/);
     expect(() => parseBusinessAgentReview({ ...projection, gaps: "none" })).toThrow(/agent_review.gaps/);
     expect(() => parseBusinessAgentReview({ ...projection, evidence: [{ ...evidence, anchor: { ...anchor, start: 1.5 } }] })).toThrow(/anchor.start/);
+  });
+
+  it("parses bounded tool returns without treating them as conclusions", () => {
+    const observation = {
+      round: 1,
+      call_id: "call-1",
+      gap_id: "gap-1",
+      tool_id: "evidence.lookup",
+      reported_relation: "conflict",
+      reason_code: "verified_result",
+      summary: "工具报告金额冲突",
+      claim_status: "tool_reported_not_independently_verified",
+      fact_ids: ["fact-1"],
+      located_evidence_ids: ["evidence-1"],
+      truncated: false,
+    };
+    const result = parseBusinessAgentReview({ ...projection, observations: [observation] });
+    expect(result?.observations?.[0]).toEqual(observation);
+    const missing = { ...observation } as Record<string, unknown>;
+    delete missing.truncated;
+    expect(() => parseBusinessAgentReview({ ...projection, observations: [missing] })).toThrow(/observations\[0\]/);
+    expect(() => parseBusinessAgentReview({ ...projection, observations: [{ ...observation, prompt: "private" }] })).toThrow(/observations\[0\]/);
   });
 
   it("rejects diagnostic fields rather than carrying them into the business view", () => {

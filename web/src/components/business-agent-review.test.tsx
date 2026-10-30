@@ -43,6 +43,7 @@ const projection = {
   gaps: [{ gap_id: "gap-1", domain: "technical", capability_id: "warranty_months", mandatory: true, status: "open", reason_code: "required_source_or_field_missing", evidence_ids: [] }],
   evidence: [checkedEvidence, { ...checkedEvidence, evidence_id: "unverified", verification: "unknown", anchor: { ...anchor, quote: "未经核验原文" } }],
   unresolved_gap_ids: ["gap-1"],
+  observations: null,
 };
 
 describe("business agent review", () => {
@@ -52,6 +53,16 @@ describe("business agent review", () => {
     expect(screen.getByText("质保期限")).toBeInTheDocument();
     expect(screen.getByText("必查项目；比较结果：证据不足。")).toBeInTheDocument();
     expect(screen.getByText("未解决")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "下一步：补充包含该字段的采购、合同或审批材料后重新审查。",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        /本次 1 项缺口中，缺少必要材料或字段 1 项。未解决或证据不足表示尚未确认/,
+      ),
+    ).toBeInTheDocument();
     expect(screen.getByText("来源材料中的引用已核验")).toBeInTheDocument();
     expect(screen.getByText("质保36个月")).toBeInTheDocument();
     expect(screen.getByText("引用尚未核验。")).toBeInTheDocument();
@@ -85,6 +96,32 @@ describe("business agent review", () => {
     expect(screen.queryByText(/internal.secret_code|private-hash/)).not.toBeInTheDocument();
     expect(screen.getByText("暂无缺口资料；这不等于不存在风险。")).toBeInTheDocument();
     expect(screen.queryByText("已通过")).not.toBeInTheDocument();
+  });
+
+  it("shows tool returns as reported records, not confirmed conclusions", () => {
+    const review = parseBusinessAgentReview({
+      ...projection,
+      observations: [
+        {
+          round: 1,
+          call_id: "call-1",
+          gap_id: "gap-1",
+          tool_id: "evidence.lookup",
+          reported_relation: "conflict",
+          reason_code: "verified_result",
+          summary: "工具报告金额冲突",
+          claim_status: "tool_reported_not_independently_verified",
+          fact_ids: ["fact-1"],
+          located_evidence_ids: ["checked"],
+          truncated: false,
+        },
+      ],
+    });
+    render(<BusinessAgentReviewView review={review} />);
+    expect(screen.getByText("工具返回记录")).toBeInTheDocument();
+    expect(screen.getByText("工具报告金额冲突")).toBeInTheDocument();
+    expect(screen.getByText(/工具返回是待核验的记录/)).toBeInTheDocument();
+    expect(screen.getByText(/已定位证据：checked/)).toBeInTheDocument();
   });
 
   it("does not display a quotation when a claimed verification lacks a usable location", () => {

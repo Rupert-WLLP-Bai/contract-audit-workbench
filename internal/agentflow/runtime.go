@@ -1469,7 +1469,19 @@ func buildAgentReview(state *execution, config Config) *AgentReview {
 	applyKnowledgePolicyProjection(projection)
 	projectVerifiedFacts(projection, state)
 	projectReviewEvents(projection, state)
+	projectToolObservations(projection, state)
 	return projection
+}
+
+func projectToolObservations(projection *AgentReview, state *execution) {
+	for _, observation := range state.toolObservations {
+		observation.FactIDs = slices.Clone(observation.FactIDs)
+		observation.EvidenceIDs = slices.Clone(observation.EvidenceIDs)
+		projection.Observations = append(projection.Observations, observation)
+	}
+	for _, observation := range state.knowledgeObservations {
+		projection.KnowledgeReads = append(projection.KnowledgeReads, observation)
+	}
 }
 
 func newReviewProjection(state *execution, configuration PlannerConfiguration) *AgentReview {
@@ -1599,7 +1611,8 @@ func projectedReviewEvent(event Event) AgentReviewEvent {
 		eventDomain = new(event.Domain)
 	}
 	return AgentReviewEvent{EventID: event.EventID, Sequence: event.Sequence, Round: event.Round, Kind: event.Kind,
-		CallID: callID, Domain: eventDomain, Code: event.Code, OccurredAt: new(event.OccurredAt), DurationMS: event.DurationMS}
+		ToolID: event.ToolID, GapID: event.GapID, CallID: callID, Domain: eventDomain, Code: event.Code,
+		OccurredAt: new(event.OccurredAt), DurationMS: event.DurationMS}
 }
 
 func projectReviewDomains(projection *AgentReview, state *execution) {

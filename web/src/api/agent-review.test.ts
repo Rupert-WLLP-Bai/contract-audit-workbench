@@ -62,6 +62,7 @@ describe("AgentReview API parser", () => {
           capabilities: [
             {
               capability_id: "scope",
+              mandatory: true,
               status: "insufficient",
               relation: null,
               reason_code: "required_source_or_field_missing",
@@ -103,6 +104,20 @@ describe("AgentReview API parser", () => {
     expect(parseAgentReview(review).domains[0]?.capabilities[0]?.status).toBe(
       "insufficient",
     );
+    expect(parseAgentReview(review).domains[0]?.capabilities[0]?.mandatory).toBe(
+      true,
+    );
+    expect(() =>
+      parseAgentReview({
+        ...review,
+        domains: [
+          {
+            ...review.domains[0],
+            capabilities: [{ ...review.domains[0]!.capabilities[0], mandatory: "yes" }],
+          },
+        ],
+      }),
+    ).toThrow(/mandatory/);
     expect(() =>
       parseAgentReview({
         ...review,
@@ -124,6 +139,76 @@ describe("AgentReview API parser", () => {
         events: [{ ...review.events[0], kind: "invented_event" }],
       }),
     ).toThrow(/events\[0\].kind/);
+  });
+
+  it("parses runtime tool events, returned observations and frozen knowledge reads", () => {
+    const review = parseAgentReview({
+      ...validReview,
+      events: [
+        {
+          event_id: "event-1",
+          sequence: 1,
+          round: 1,
+          kind: "tool_observed",
+          tool_id: "evidence.lookup",
+          gap_id: "gap-1",
+          call_id: "call-1",
+          domain: "commercial",
+          code: "validated_tool_observation",
+          occurred_at: "2026-10-30T00:00:01.000Z",
+          duration_ms: 12,
+        },
+        {
+          ...validReview.events[0],
+          event_id: "event-2",
+          sequence: 2,
+          kind: "knowledge_read_completed",
+          tool_id: "knowledge.read",
+          gap_id: "gap-1",
+          occurred_at: "2026-10-30T00:00:02.000Z",
+        },
+      ],
+      observations: [
+        {
+          round: 1,
+          call_id: "call-1",
+          gap_id: "gap-1",
+          tool_id: "evidence.lookup",
+          reported_relation: "conflict",
+          reason_code: "verified_result",
+          summary: "工具报告冲突",
+          claim_status: "tool_reported_not_independently_verified",
+          fact_ids: ["fact-1"],
+          located_evidence_ids: ["evidence-1"],
+          truncated: false,
+        },
+      ],
+      knowledge_reads: [
+        {
+          knowledge_id: "knowledge-1",
+          version_id: "version-1",
+          content_sha256: "content-digest",
+          start: 0,
+          end: 4,
+          text_sha256: "text-digest",
+          text: "知识文本",
+        },
+      ],
+    });
+    expect(review.events[0]).toMatchObject({
+      event_id: "event-1",
+      kind: "tool_observed",
+      tool_id: "evidence.lookup",
+      gap_id: "gap-1",
+      occurred_at: "2026-10-30T00:00:01.000Z",
+    });
+    expect(review.events[1]?.kind).toBe("knowledge_read_completed");
+    expect(review.observations?.[0]).toMatchObject({
+      summary: "工具报告冲突",
+      fact_ids: ["fact-1"],
+      reason_code: "verified_result",
+    });
+    expect(review.knowledge_reads?.[0]?.text).toBe("知识文本");
   });
 
   it("preserves the runtime planner round on events", () => {
