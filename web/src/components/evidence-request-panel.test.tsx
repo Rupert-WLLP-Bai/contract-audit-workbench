@@ -341,6 +341,72 @@ describe("补充材料请求", () => {
     expect(calls.some((call) => call.pathname.endsWith("/evidence-requests") && call.method === "POST")).toBe(false);
   });
 
+  it("sends selected request values, preserves retained fields after success, and advances the next key", async () => {
+    const taskCalls: Call[] = [];
+    const requestCalls: Call[] = [];
+    const due = "2026-11-01T10:00";
+    const { calls, user } = open({ respond(call) {
+      if (call.pathname.endsWith("/tasks") && call.method === "POST") {
+        taskCalls.push(call);
+        const index = taskCalls.length;
+        return Response.json({ id: `created-task-${index}`, case_id: "case-1", title: "补充质保", kind: "review",
+          assignee_id: "owner", due_at: at, status: "open", priority: "high", finding_id: null, version: 7,
+          created_at: at, created_by: "owner", updated_at: at });
+      }
+      if (call.pathname.endsWith("/evidence-requests") && call.method === "POST") {
+        requestCalls.push(call);
+        return Response.json(rawRequest("open", 1));
+      }
+      if (call.pathname.endsWith("/evidence-requests")) return Response.json({ items: requestCalls.length ? [rawRequest("open", 1)] : [] });
+      if (call.pathname.endsWith("/history")) return Response.json({ items: [] });
+      return Response.json({ error: { message: "unexpected" } }, { status: 404 });
+    } });
+
+    await screen.findByText("发起补充材料请求");
+    await chooseOption(user, screen.getByRole("combobox", { name: "缺失检查" }), /缺少质保期限/);
+    await user.type(screen.getByLabelText("任务名称"), "  补充质保  ");
+    await chooseOption(user, screen.getByRole("combobox", { name: "责任人" }), /审查人/);
+    fireEvent.change(screen.getByLabelText("完成期限（本地时间）"), { target: { value: due } });
+    await user.type(screen.getByLabelText("需要补充的问题"), "  请补充质保期限  ");
+    await chooseOption(user, screen.getByRole("combobox", { name: "要求的材料类型" }), "拟签合同");
+    await chooseOption(user, screen.getByRole("combobox", { name: "核验条件" }), "检查结果存在冲突");
+    await user.click(screen.getByRole("button", { name: "创建任务并发起请求" }));
+    await screen.findByText("补充材料请求已创建。");
+
+    expect(JSON.parse(String(taskCalls[0]?.init?.body))).toEqual({
+      title: "补充质保", kind: "review", assignee_id: "owner", due_at: new Date(due).toISOString(),
+      status: "open", priority: "high", finding_id: null,
+    });
+    expect(JSON.parse(String(requestCalls[0]?.init?.body))).toEqual({
+      task_id: "created-task-1", task_version: 7, source_run_id: "run-old", source_attempt_id: "attempt-old",
+      source_evaluation_id: "eval-old", question: "请补充质保期限", material_role: "draft_contract",
+      verification_condition: "conflict",
+    });
+    expect(new Headers(requestCalls[0]?.init?.headers).get("Idempotency-Key")).toBeTruthy();
+
+    expect(screen.getByLabelText("任务名称")).toHaveValue("");
+    expect(screen.getByLabelText("需要补充的问题")).toHaveValue("");
+    expect(screen.getByLabelText("完成期限（本地时间）")).toHaveValue(due);
+    expect(screen.getByRole("combobox", { name: "责任人" }).closest(".ant-select")?.querySelector(".ant-select-content-has-value")).toHaveTextContent("审查人");
+    expect(screen.getByRole("combobox", { name: "要求的材料类型" }).closest(".ant-select")?.querySelector(".ant-select-content-has-value")).toHaveTextContent("拟签合同");
+    expect(screen.getByRole("combobox", { name: "核验条件" }).closest(".ant-select")?.querySelector(".ant-select-content-has-value")).toHaveTextContent("检查结果存在冲突");
+
+    await chooseOption(user, screen.getByRole("combobox", { name: "缺失检查" }), /缺少质保期限/);
+    await user.type(screen.getByLabelText("任务名称"), "再次补充质保");
+    await user.type(screen.getByLabelText("需要补充的问题"), "再次核对质保期限");
+    await waitFor(() => expect(screen.getByRole("button", { name: "创建任务并发起请求" })).toBeEnabled());
+    await user.click(screen.getByRole("button", { name: "创建任务并发起请求" }));
+    await waitFor(() => expect(requestCalls).toHaveLength(2));
+    expect(taskCalls).toHaveLength(2);
+    expect(JSON.parse(String(requestCalls[1]?.init?.body))).toMatchObject({
+      task_id: "created-task-2", source_evaluation_id: "eval-old", material_role: "draft_contract",
+      verification_condition: "conflict",
+    });
+    expect(new Headers(requestCalls[1]?.init?.headers).get("Idempotency-Key"))
+      .not.toBe(new Headers(requestCalls[0]?.init?.headers).get("Idempotency-Key"));
+    expect(calls.filter((call) => call.pathname.endsWith("/tasks") && call.method === "POST")).toHaveLength(2);
+  });
+
   it("uploads and explicitly submits a receipt, then starts a new review with the chosen business time", async () => {
     let request = rawRequest("open", 1);
     let received = false;
