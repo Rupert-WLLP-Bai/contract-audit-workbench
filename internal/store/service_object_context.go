@@ -149,56 +149,46 @@ func canonicalServiceObjectReviewContext(context ServiceObjectReviewContext) ([]
 	return payload, hex.EncodeToString(digest[:]), nil
 }
 
-// withServiceObjectContextTx freezes the current service-object and mapping
-// pins using the same acceptance transaction as the run snapshot. These tables
-// are intentionally absent from the shared state loader, so this function
-// reads their authoritative SQL heads directly. Object discovery for the new
-// attempt has not run yet; the explicit unresolved inventory marker prevents a
-// pre-review snapshot from claiming complete coverage.
-func withServiceObjectContextTx(ctx context.Context, tx pgx.Tx, caseItem Case,
-	selectedFrozenMaterials []FrozenDocument, snapshot RunSnapshot) (RunSnapshot, error) {
-	if snapshot.GovernedKnowledge == nil {
-		return snapshot, nil
-	}
-	businessAt, err := knowledgeTime(snapshot.GovernedKnowledge.BusinessAt)
-	if err != nil {
-		return RunSnapshot{}, err
-	}
+// serviceObjectReviewContextSourcesTx loads the authoritative service-object
+// heads together with their current version, association and mapping pins
+// under the caller's case-scoped transaction. It never selects a "latest"
+// row: every source identity comes from the head's current pointers.
+func serviceObjectReviewContextSourcesTx(ctx context.Context, tx pgx.Tx, caseItem Case) ([]serviceObjectReviewContextSource, error) {
 	tenantID, orgID, caseID := caseItem.TenantID, caseItem.OwnerOrgID, caseItem.ID
 	rows, err := tx.Query(ctx, `SELECT service_object_id,current_version,COALESCE(current_association_version,0)
 		FROM service_objects WHERE tenant_id=$1 AND org_id=$2 AND case_id=$3 ORDER BY service_object_id`, tenantID, orgID, caseID)
 	if err != nil {
-		return RunSnapshot{}, err
+		return nil, err
 	}
 	var heads []ServiceObjectHead
 	for rows.Next() {
 		var head ServiceObjectHead
 		if err := rows.Scan(&head.ID, &head.CurrentVersion, &head.CurrentAssociationVersion); err != nil {
 			rows.Close()
-			return RunSnapshot{}, err
+			return nil, err
 		}
 		heads = append(heads, head)
 	}
 	if err := rows.Err(); err != nil {
 		rows.Close()
-		return RunSnapshot{}, err
+		return nil, err
 	}
 	rows.Close()
 	if len(heads) > 100 {
-		return RunSnapshot{}, fault.Invalid("每个案件最多登记100个服务对象")
+		return nil, fault.Invalid("每个案件最多登记100个服务对象")
 	}
 
 	sources := make([]serviceObjectReviewContextSource, 0, len(heads))
 	for _, head := range heads {
 		version, err := loadServiceObjectVersionValue(ctx, tx, tenantID, orgID, caseID, head)
 		if err != nil {
-			return RunSnapshot{}, err
+			return nil, err
 		}
 		source := serviceObjectReviewContextSource{Head: head, Version: version}
 		if head.CurrentAssociationVersion > 0 {
 			association, err := loadServiceObjectAssociation(ctx, tx, tenantID, orgID, caseID, head.ID, head.CurrentAssociationVersion)
 			if err != nil {
-				return RunSnapshot{}, err
+				return nil, err
 			}
 			source.Association = &association
 		}
@@ -208,19 +198,62 @@ func withServiceObjectContextTx(ctx context.Context, tx pgx.Tx, caseItem Case,
 		if err == nil {
 			mappingHead, mapping, identity, association, err := loadOperatorMappingCurrent(ctx, tx, tenantID, orgID, caseID, mappingID)
 			if err != nil {
-				return RunSnapshot{}, err
+				return nil, err
 			}
 			if mappingHead.ServiceObjectID != head.ID || mapping.ObjectVersion != head.CurrentVersion ||
 				mapping.AssociationVersion != head.CurrentAssociationVersion || identity.Version != head.CurrentVersion ||
 				source.Association == nil || association.AssociationVersion != source.Association.AssociationVersion {
-				return RunSnapshot{}, fault.New(500, "integrity_error", "服务对象与当前映射版本指针不一致")
+				return nil, fault.New(500, "integrity_error", "服务对象与当前映射版本指针不一致")
 			}
 			source.Mapping = &mapping
 		} else if !errors.Is(err, pgx.ErrNoRows) {
-			return RunSnapshot{}, err
+			return nil, err
 		}
 		sources = append(sources, source)
 	}
+	return sources, nil
+}
+
+// serviceObjectFrozenMaterials projects the selected documents with their
+// immutable material identities so context planning sees exactly the material
+// versions AttemptInput will later freeze. Without this projection an accepted
+// context could not be recomputed byte for byte from the frozen attempt input.
+// The caller's slice is never mutated.
+func serviceObjectFrozenMaterials(st state, documents []FrozenDocument) []FrozenDocument {
+	projected := append([]FrozenDocument(nil), documents...)
+	for i := range projected {
+		bindFrozenMaterialIdentity(st, &projected[i])
+	}
+	return projected
+}
+
+// withServiceObjectContextTx freezes the current service-object and mapping
+// pins using the same acceptance transaction as the run snapshot. These tables
+// are intentionally absent from the shared state loader, so this function
+// reads their authoritative SQL heads directly. Object discovery for the new
+// attempt has not run yet; the explicit unresolved inventory marker prevents a
+// pre-review snapshot from claiming complete coverage.
+//
+// Freezing no longer depends on a governed knowledge pack. A case with
+// registered service objects must freeze their exact dependencies, and it must
+// name the business instant explicitly: the server clock is never substituted
+// for the instant whose mappings are being reviewed. Ungoverned cases without
+// any registered object keep the historical nil extension.
+func withServiceObjectContextTx(ctx context.Context, tx pgx.Tx, caseItem Case, businessAt time.Time,
+	selectedFrozenMaterials []FrozenDocument, snapshot RunSnapshot) (RunSnapshot, error) {
+	sources, err := serviceObjectReviewContextSourcesTx(ctx, tx, caseItem)
+	if err != nil {
+		return RunSnapshot{}, err
+	}
+	if len(sources) == 0 && snapshot.GovernedKnowledge == nil {
+		snapshot.ServiceObjectContext = nil
+		snapshot.ServiceObjectContextHash = ""
+		return snapshot, nil
+	}
+	if businessAt.IsZero() {
+		return RunSnapshot{}, fault.Invalid("该案件已登记服务对象，必须提供明确的业务时间")
+	}
+	businessAt = businessAt.UTC().Truncate(time.Microsecond)
 
 	var candidates []ServiceObjectCandidateEvidence
 	parseInventoryReady := len(selectedFrozenMaterials) > 0
@@ -272,7 +305,7 @@ func withServiceObjectContextTx(ctx context.Context, tx pgx.Tx, caseItem Case,
 func selectedMaterialHasParse(documents []FrozenDocument, materialID string, materialVersion int, documentID, parsedDocumentID string) bool {
 	for _, item := range documents {
 		if item.Material != nil && item.Material.MaterialID == materialID && item.Material.Version == materialVersion &&
-			item.Document.ID == documentID && item.ParsedDocumentID == parsedDocumentID && item.Ready && item.ParseError == "" {
+			item.Document.ID == documentID && item.ParsedDocumentID == parsedDocumentID {
 			return true
 		}
 	}
