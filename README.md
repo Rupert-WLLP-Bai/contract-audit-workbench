@@ -215,9 +215,32 @@ python3 deployments/k3d.py smoke    # Service DNS/HTTP、数据库 DNS、Pod 重
 
 Admin 的「基础设施与中间件」页面（`/admin/infrastructure`）列出生产目标架构的组件、依赖边界、当前观测接入情况和生产验收状态。没有集群观测来源的组件显示为未接入，单实例容器健康不会被写成生产高可用；生产验收未执行时保持 `NOT_RUN`。
 
-## 开发检查
+## 开发检查与检查节奏
 
-运行本地 Go 测试或 `make verify` 前，先从固定公开测试资产发布准备仓库外的法律来源快照；脚本会校验归档及文件 SHA256，重复运行可复用相同内容：
+日常开发和 PR 使用快速检查。它从 PR 基线（默认 `origin/main`）的 merge-base 开始，连同未提交和新增文件一起计算差异，正确处理删除、重命名和带空格的路径；只运行本次改动直接影响的范围，任何失败都以非零状态退出：
+
+```bash
+make check-fast                                # 等价于 python3 scripts/check_fast.py
+python3 scripts/check_fast.py --base origin/main
+BASE_REF=<base-sha> make check-fast            # 也可用 CAW_FAST_BASE 指定基线
+python3 scripts/check_fast.py --base <base-sha> --plan --github-output "$GITHUB_OUTPUT"
+```
+
+- `--plan` 输出一行 JSON，至少包含 `go`、`web`、`python`、`database` 四个布尔值；`--github-output <path>` 向该文件追加同名 `true`/`false`，GitHub Actions 据此条件安装 Go/Bun、准备法律资产和启动数据库。
+- Python 脚本检查、受影响 Go 包的格式/vet/单测、web 类型检查与相关测试按范围执行；只有 Go 范围才安装 Poppler 并准备固定的法律测试资产，只有 web 范围才安装 Bun 依赖。
+- 鉴权、会话、租户、迁移、预算、租约等敏感路径保留有限真实 PostgreSQL 18 定点检查：只有 `database=true` 才启动隔离实例，并用 `scripts/provision_test_db.sh` 创建测试库和非特权模型角色。快速路径不启动浏览器，也不无条件启动 PostgreSQL 或 Poppler。
+
+快检不能替代完整验收。需要完整复验时仍使用 `make verify`、`make acceptance` 和 `make test-unit`：
+
+```bash
+make test-unit                  # 不依赖数据库或模型的 Go 测试，包含 race
+cd web
+bun run typecheck
+bun run test
+bun run build
+```
+
+运行本地 Go 测试或完整验收前，先从固定公开测试资产发布准备仓库外的法律来源快照；脚本会校验归档及文件 SHA256，重复运行可复用相同内容：
 
 ```bash
 python3 scripts/fetch_legal_test_assets.py --destination ../contract-audit-delivery/legal-test-assets-20261031-v1
@@ -228,15 +251,14 @@ export LEGALNORM_CANONICAL_MANIFEST="$CAW_LEGAL_TEST_ROOT/p4-canonical-articles-
 
 这些固定原始快照的采集时间和 SHA256 仅用于可重复回归，不证明法律当前持续有效。CI 会自动准备测试资产；它们不是应用发布内容。
 
-```bash
-make test-unit                  # 不依赖数据库或模型的 Go 测试，包含 race
-cd web
-bun run typecheck
-bun run test
-bun run build
-```
+需要数据库的集成测试使用隔离的 `TEST_DATABASE_URL`，`MIGRATOR_DATABASE_URL` 指向同一测试库的迁移角色；`MODEL_DATABASE_URL` 指向同库的独立非特权登录角色。专用角色不能是超级用户、表所有者或具有 `BYPASSRLS`，配置示例见 CI 的数据库角色准备步骤。真实模型/OCR 联调由 `make test-live` 单独启用。
 
-需要数据库的集成测试使用隔离的 `TEST_DATABASE_URL`，`MIGRATOR_DATABASE_URL` 指向同一测试库的迁移角色；`MODEL_DATABASE_URL` 指向同库的独立非特权登录角色。专用角色不能是超级用户、表所有者或具有 `BYPASSRLS`，配置示例见 CI 的数据库角色准备步骤。`make verify` 执行确定性检查，`make acceptance` 进一步执行浏览器旅程；真实模型/OCR 联调由 `make test-live` 单独启用。
+CI 分层如下：
+
+- **PR 到 `main`**：只运行 `pr-fast-gate` 一个稳定 job，仅由 `pull_request` 触发，没有顶层 `paths` 过滤；检出完整基线后按 `--plan` 结果条件安装工具链，并执行 `scripts/check_fast.py --base <PR base SHA>`。敏感路径才启动 PostgreSQL 18 定点检查。
+- **完整五阶段**：在 Actions 手动运行 `deterministic-quality`（`workflow_dispatch`）。可留空 `ref` 以验证派发的那个修订，也可指定 SHA、tag 或分支；入口先把目标解析为唯一 SHA，`static`、`go`、`web`、`coverage`、`browser` 全部基于该 SHA 运行，汇总 job 要求每个阶段都是 `success`。`skipped`、`cancelled`、失败或未运行的阶段都不能当作完整 PASS。
+- **普通 `main` 推送**不自动运行全量五阶段；固定候选和发布必须手动派发完整入口，并保留覆盖率阈值、数据库和浏览器验收，不能靠跳过或降低阈值制造绿灯。
+- **结果记录**：不重复运行同范围检查；失败后只复验相关范围，未覆盖的部分保持 `NOT_RUN`，被外部条件阻塞时写 `BLOCKED`，不写成通过。
 
 ## 开发状态与验收记录
 
@@ -309,9 +331,14 @@ EXTERNAL_EVIDENCE_SOURCE_SYSTEM=fixture-oss-east
 
 ## 分支工作方式
 
-`main` 保存通过验收的交付版本，`feat/<主题>` 汇集正在开发的变更。功能通过审查与验收后，通过 PR squash 合并到 `main`；交付后将功能分支同步到 `main`。需要单人作者时，提交前检查 `git var GIT_AUTHOR_IDENT` 和 `git var GIT_COMMITTER_IDENT`，使用本人身份，不添加代理作者或 `Co-authored-by`。既有已发布提交不重写。
+`main` 是唯一长期分支，保存通过验收的交付版本；日常改动都走短分支。一个工作批次最多并行处理两个互不依赖的问题，涉及公共接口、数据库结构或依赖等共享核心的改动必须串行，由主 Agent 统一合并。
+
+- 分支名：`fix/<issue>-<slug>`，例如 `fix/56-fast-workflow`；从最新 `main` 创建，一个分支只处理一个 Issue。
+- 完成方式：向 `main` 提 PR，快速门禁通过后使用 Squash merge，合并后删除远程和本地分支。
+- 完整五阶段只在固定候选或发布时手动派发；普通 `main` 推送不触发全量检查。
+- 需要单人作者时，提交前检查 `git var GIT_AUTHOR_IDENT` 和 `git var GIT_COMMITTER_IDENT`，使用本人身份，不添加代理作者或 `Co-authored-by`。既有已发布提交不重写。
 
 ```bash
 git switch main
-git switch -c feat/mineru-integration
+git switch -c fix/56-fast-workflow
 ```
