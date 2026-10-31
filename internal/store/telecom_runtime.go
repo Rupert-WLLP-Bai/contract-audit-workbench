@@ -101,7 +101,15 @@ func isDeclaredReviewCase(item Case) bool {
 		item.BusinessLine == "unspecified" || item.Scenario == "unspecified" {
 		return false
 	}
-	return !isTelecomDedicatedLineCase(item) && !(item.BusinessLine == "ENT" && item.Scenario == "cloud_services")
+	if isTelecomDedicatedLineCase(item) {
+		switch item.ContractType {
+		case "service", "procurement_ict", "network_engineering", "unspecified":
+			return false
+		default:
+			return true
+		}
+	}
+	return !(item.BusinessLine == "ENT" && item.Scenario == "cloud_services")
 }
 
 func isGovernedReviewCase(item Case) bool {
