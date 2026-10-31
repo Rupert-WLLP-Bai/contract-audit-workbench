@@ -292,6 +292,17 @@ export LEGALNORM_CANONICAL_MANIFEST="$CAW_LEGAL_TEST_ROOT/p4-canonical-articles-
 
 这些固定原始快照的采集时间和 SHA256 仅用于可重复回归，不证明法律当前持续有效。CI 会自动准备测试资产；它们不是应用发布内容。
 
+官方登记效力用只读命令核对，不写数据库、capture、条文版本或冻结引用：
+
+```bash
+go run ./cmd/legalstatuscheck -asset-dir "$LEGALNORM_ASSET_DIR"    # 离线：核对已捕获官方响应
+go run ./cmd/legalstatuscheck -capture-dir /tmp/legal-status-<ts>  # 在线：抓取已登记官方端点、落盘原始响应后核对
+```
+
+- 在线模式只访问 `internal/legalnorm` 登记的 HTTPS 端点，跨主机重定向拒绝，响应上限 8 MiB、失败重试一次；原始响应、响应状态、媒体类型、观察时间、字节数与 SHA256 写入仓外 `-capture-dir/raw` 与 `capture-observation.json`，是否导入为新来源版本仍由人工治理决定。
+- 退出码：`0` 全部未变；`2` 存在变更（需新 capture，旧引用不变）；`1` 失败（缺失候选、证据无效、抓取失败或 IO），失败优先于变更。
+- 输出的 `decision` 是核对结论（`UNCHANGED`、`CHANGED_NEW_CAPTURE_REQUIRED`、`CHANGED_UNVERIFIED`、`CANDIDATE_MISSING`、`CANDIDATE_INVALID`、`CAPTURED`、`CAPTURE_FAILED`），不是验收状态；本仓验收状态只使用 `PASS`/`FAIL`/`BLOCKED`/`NOT_RUN`/`NOT_APPLICABLE`。
+
 需要数据库的集成测试使用隔离的 `TEST_DATABASE_URL`，`MIGRATOR_DATABASE_URL` 指向同一测试库的迁移角色；`MODEL_DATABASE_URL` 指向同库的独立非特权登录角色。专用角色不能是超级用户、表所有者或具有 `BYPASSRLS`，配置示例见 CI 的数据库角色准备步骤。真实模型/OCR 联调由 `make test-live` 单独启用。
 
 CI 分层如下：
