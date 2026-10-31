@@ -27,6 +27,57 @@ async function selectionApplied(select: Locator, matches: (label: string) => boo
   return false;
 }
 
+function cssQuoted(value: string): string {
+  return `"${value.replaceAll("\\", "\\\\").replaceAll('"', '\\"').replaceAll("\n", "\\a ")}"`;
+}
+
+async function controlledDropdown(page: Page, select: Locator): Promise<Locator> {
+  let controls = (await select.getAttribute("aria-controls"))?.trim() ?? "";
+  let ariaListbox = controls ? page.locator(`[id=${cssQuoted(controls)}]`) : null;
+  let dropdown = ariaListbox
+    ? page.locator(".ant-select-dropdown:visible").filter({ has: ariaListbox })
+    : null;
+  if (!dropdown || (await dropdown.count()) === 0) {
+    await select.click();
+    controls = (await select.getAttribute("aria-controls"))?.trim() ?? "";
+    assert.ok(controls, "Ant Design combobox omitted its controlled popup ID");
+    ariaListbox = page.locator(`[id=${cssQuoted(controls)}]`);
+    dropdown = page.locator(".ant-select-dropdown:visible").filter({ has: ariaListbox });
+  }
+  assert.ok(await dropdown.count() > 0, `no visible Ant Design popup is associated with aria-controls=${controls}`);
+  const visibleDropdown = dropdown.first();
+  await visibleDropdown.waitFor({ state: "visible", timeout: 5000 });
+  return visibleDropdown;
+}
+
+async function clickExactOption(listbox: Locator, label: string): Promise<void> {
+  const titled = listbox.locator(`.ant-select-item-option[title=${cssQuoted(label)}]`);
+  const titledCount = await titled.count();
+  if (titledCount === 1) {
+    await titled.waitFor({ state: "visible", timeout: 5000 });
+    await titled.click();
+    return;
+  }
+  assert.equal(titledCount, 0, `Ant Design listbox contains duplicate exact titles for ${label}`);
+  const option = listbox.getByRole("option", { name: label, exact: true });
+  assert.equal(await option.count(), 1, `Ant Design listbox does not contain one exact option named ${label}`);
+  await option.waitFor({ state: "visible", timeout: 5000 });
+  await option.click();
+}
+
+export async function clickAntOptionByAttribute(
+  page: Page,
+  select: Locator,
+  attribute: "title" | "aria-label",
+  value: string,
+): Promise<void> {
+  const dropdown = await controlledDropdown(page, select);
+  const option = dropdown.locator(`.ant-select-item-option[${attribute}=${cssQuoted(value)}]`);
+  assert.equal(await option.count(), 1, `Ant Design popup does not contain one visible option with ${attribute}=${value}`);
+  await option.waitFor({ state: "visible", timeout: 5000 });
+  await option.click();
+}
+
 async function captureAntSelectFailure(page: Page, labels: string[]): Promise<void> {
   const directory = process.env.E2E_SCREENSHOT_DIR?.trim() || fileURLToPath(new URL("../../artifacts/screenshots/", import.meta.url));
   const slug = labels.join("-").replace(/[^\p{L}\p{N}-]+/gu, "_").slice(0, 60) || "unknown";
@@ -38,19 +89,18 @@ export async function chooseAntOption(page: Page, select: Locator, matches: (lab
   let labels: string[] = [];
   for (let attempt = 0; attempt < 5; attempt++) {
     if (matches(await selectedAntLabel(select))) return;
-    if ((await page.locator(".ant-select-dropdown:visible").count()) === 0) await select.click();
-    const dropdown = page.locator(".ant-select-dropdown:visible").last();
-    try { await dropdown.waitFor({ state: "visible", timeout: 5000 }); } catch { await Bun.sleep(100); continue; }
+    let dropdown: Locator;
+    try { dropdown = await controlledDropdown(page, select); } catch { await Bun.sleep(100); continue; }
     const options = dropdown.locator(".ant-select-item-option");
     try { await options.first().waitFor({ state: "visible", timeout: 5000 }); } catch { await Bun.sleep(100); continue; }
     const measured = await options.evaluateAll((elements) => elements.map((element) => ({
-      label: element.getAttribute("title") ?? element.textContent?.trim() ?? "",
+      label: element.getAttribute("title") ?? element.getAttribute("aria-label") ?? element.textContent?.trim() ?? "",
       visible: element.getBoundingClientRect().height > 0,
     })));
     labels = measured.map((option) => option.label);
-    const targetIndex = measured.findIndex((option) => option.visible && matches(option.label));
-    if (targetIndex < 0) break;
-    await options.nth(targetIndex).click();
+    const targetLabels = measured.filter((option) => option.visible && matches(option.label)).map((option) => option.label);
+    if (targetLabels.length !== 1) break;
+    await clickExactOption(dropdown, targetLabels[0]!);
     if (await selectionApplied(select, matches)) return;
     await Bun.sleep(100);
   }

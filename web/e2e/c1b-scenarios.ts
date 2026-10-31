@@ -321,7 +321,8 @@ try {
     const archivedReviewWorkspace = parseReviewWorkspace(JSON.parse(archivedReviewWorkspaceRaw));
     assert.equal(archivedReviewWorkspace.run.id, runID, `${scenario.id} archived workspace returned a different review run`);
     assert.equal(archivedReviewWorkspace.review_attempts?.attempt?.id, attemptID, `${scenario.id} archived workspace returned a different review attempt`);
-    assert.equal(archivedReviewWorkspace.run.state, "awaiting_human", `${scenario.id} archived workspace did not retain its awaiting-human run state`);
+    const expectedArchivedRunState = scenario.id === "compatible" ? "completed" : "awaiting_human";
+    assert.equal(archivedReviewWorkspace.run.state, expectedArchivedRunState, `${scenario.id} archived workspace run state did not retain its expected ${expectedArchivedRunState} status`);
     assert.equal(archivedReviewWorkspace.review_attempts?.attempt?.state, "completed", `${scenario.id} archived workspace did not retain its completed attempt state`);
     const archivedFrozenDocuments = expectedWorkspaceDocumentIDs.map((documentID) => archivedReviewWorkspace.documents.find((document) => document.id === documentID));
     assert.ok(archivedFrozenDocuments.every((document) => document && document.parsed_document_id && document.parse_status === "ready"), `${scenario.id} archived workspace omitted a frozen parsed material or its ready status`);

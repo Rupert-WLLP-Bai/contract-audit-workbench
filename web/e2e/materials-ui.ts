@@ -1,4 +1,5 @@
 import { readCDPRequestPostData } from "./cdp-request-post-data";
+import { chooseAntOption, clickAntOptionByAttribute } from "./c1b-select";
 import assert from "node:assert/strict";
 import type { Locator, Page } from "playwright";
 
@@ -30,37 +31,7 @@ const purposeLabels: Record<string, string> = {
 
 export async function selectMaterialOption(page: Page, label: string, optionText: string): Promise<void> {
   const select = page.getByLabel(label, { exact: true });
-  for (let attempt = 0; attempt < 5; attempt++) {
-    const selected = await select.evaluate((element) => {
-      const wrapper = element.closest(".ant-select");
-      return wrapper?.querySelector(".ant-select-content")?.getAttribute("title") ??
-        wrapper?.querySelector(".ant-select-content")?.textContent?.trim() ?? "";
-    });
-    if (selected === optionText) return;
-    await select.click();
-    const dropdown = page.locator(".ant-select-dropdown:visible").last();
-    await dropdown.waitFor({ state: "visible", timeout: 5000 });
-    const options = dropdown.locator(".ant-select-item-option");
-    const labels = await options.evaluateAll((elements) => elements.map((element) => ({
-      label: element.getAttribute("title") ?? element.textContent?.trim() ?? "",
-      visible: element.getBoundingClientRect().height > 0,
-    })));
-    const index = labels.findIndex((item) => item.visible && item.label === optionText);
-    if (index < 0) {
-      await page.keyboard.press("Escape").catch(() => {});
-      continue;
-    }
-    await options.nth(index).click();
-    await page.waitForFunction(({ selectorLabel, target }) => {
-      const labelled = Array.from(document.querySelectorAll("[aria-label]")).find((element) =>
-        element.getAttribute("aria-label") === selectorLabel,
-      );
-      const content = labelled?.closest(".ant-select")?.querySelector(".ant-select-content");
-      return content?.getAttribute("title") === target || content?.textContent?.trim() === target;
-    }, { selectorLabel: label, target: optionText });
-    return;
-  }
-  throw new Error(`cannot select ${optionText} in ${label}`);
+  await chooseAntOption(page, select, (candidate) => candidate === optionText);
 }
 
 export async function uploadNewMaterial(page: Page, material: MaterialUpload): Promise<UploadResult & { id: string; material_id: string; version: number; filename: string }> {
@@ -117,16 +88,7 @@ export async function replaceMaterial(
   })));
   const identityOption = identityOptions.find((item) => item.materialId === target.material_id && item.label.startsWith(targetFilename));
   assert.ok(identityOption, `target material ID ${target.material_id} did not map to ${targetFilename} in its own listbox: ${JSON.stringify(identityOptions)}`);
-  await page.waitForFunction(({ label }) => [...document.querySelectorAll(".ant-select-dropdown .ant-select-item-option")]
-    .some((item) => item.getAttribute("title") === label && item.getBoundingClientRect().height > 0), { label: identityOption.label }, { timeout: 5000 });
-  const visibleOptions = page.locator(".ant-select-dropdown .ant-select-item-option");
-  const visibleLabels = await visibleOptions.evaluateAll((elements) => elements.map((element) => ({
-    label: element.getAttribute("title") ?? element.textContent?.trim() ?? "",
-    visible: element.getBoundingClientRect().height > 0,
-  })));
-  const index = visibleLabels.findIndex((item) => item.visible && item.label === identityOption.label);
-  assert.notEqual(index, -1, `target material ID ${target.material_id} option did not render in the visible target list: ${JSON.stringify(visibleLabels)}`);
-  await visibleOptions.nth(index).click();
+  await clickAntOptionByAttribute(page, targetField, "title", identityOption.label);
   const filenameLabel = await targetField.evaluate((element) => {
     const wrapper = element.closest(".ant-select");
     return wrapper?.querySelector(".ant-select-content")?.getAttribute("title") ??
