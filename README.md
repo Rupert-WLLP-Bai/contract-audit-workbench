@@ -153,6 +153,8 @@ python3 scripts/record_model_proxy.py --upstream http://127.0.0.1:3425/v1 \
 
 扫描页逐页转写。单文件上限为 32 MiB，模型网关仍按请求体字节作保守预算预留；需要根据页面大小和频率调整 `MODEL_MAX_INPUT_TOKEN_RESERVATION`、`MODEL_TENANT_TOKENS_PER_MINUTE`、`MODEL_GLOBAL_TOKENS_PER_MINUTE`。要覆盖最大 33 MiB 模型请求，单次预留至少为 34603008，全局与租户每分钟预算均须大于单次预留和输出额度之和。长文档还需按实际耗时配置 `DOCUMENT_PARSE_TIMEOUT`、`GATEWAY_REQUEST_TIMEOUT` 和 `GATEWAY_UPLOAD_TIMEOUT`；文档解析超时上限为 30 分钟。
 
+逐页 OCR 的输出上限为 8192 tokens，文本审查保持 2048 tokens；两项额度均进入冻结模型配置身份。模型返回截断或过滤状态时仍拒绝将该页作为完整正文，旧尝试的配置身份和解析原文不会被重写。使用新版额度时，Core、Document、Worker 与模型网关需要运行同一版本。
+
 模型网关对已声明超过 33 MiB 的请求在读取正文前拒绝；未声明长度的流仍在读取时按相同字节上限限制。
 
 材料上传、重新解析和草稿生成在进入解析队列前检查角色与案件权限，提交时再次检查；队列满时仅对已授权请求返回容量不足。
@@ -289,7 +291,7 @@ CI 分层如下：
 
 ## 开发状态与验收记录
 
-当前原功能开发已暂停，剩余范围跟踪于 [Issue #7](https://github.com/Rupert-WLLP-Bai/contract-audit-workbench/issues/7)。以下历史记录仅对应当时的源码候选与验收，不表示全部交付；其中 `f427153` 是 Jev 建议层接入前的候选。
+当前工作在 `dev` 集成，产品与交付范围跟踪于 [Issue #7](https://github.com/Rupert-WLLP-Bai/contract-audit-workbench/issues/7) 和 [PR #68](https://github.com/Rupert-WLLP-Bai/contract-audit-workbench/pull/68)。PR 持续记录当前源码的快速检查、定点复验及完整验收结果。以下历史记录只对应各自的源码候选；其中 `f427153` 是 Jev 建议层接入前的候选，不能用于证明当前版本通过。
 
 1. **PASS：修复前端类型检查。** `web/src/app.integration.test.tsx` 的 breadcrumb 查询已收窄为 `HTMLElement`。最终 `make acceptance` 中 `web-typecheck` 通过，`web-tests` 371/371 通过，`web-build` 通过。
 2. **PASS（本地）：完成全量发布验收。** 在隔离 PostgreSQL 18（一次性容器 `caw-accept-pg`）上执行 `make acceptance`；`artifacts/verification.json` 为 `passed:true`，21 项检查全部返回 0，源码身份摘要 `0285f4b2cb0d7d90ef4d6edf3f93fb2082dea969a42155d55a31e75697ff7f82` 与最终可执行工作树一致；`browser-system` 耗时 90.1s，`TestBrowserWarrantyConflictAndConfirm` 与 `TestBrowserTelecomC1BFullJourney` 均 PASS。远端 CI 在推送后另行记录，不能把本地结果当作远端通过。

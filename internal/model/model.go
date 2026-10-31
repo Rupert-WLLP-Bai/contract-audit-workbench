@@ -333,7 +333,7 @@ func (c *Client) Transcribe(ctx context.Context, media string, body []byte) (str
 			},
 		},
 	}
-	completion, err := c.postChat(ctx, c.cfg.OCRModel, content, completionTokenLimit, "")
+	completion, err := c.postChat(ctx, c.cfg.OCRModel, content, transcriptionTokenLimit, "")
 	if err != nil {
 		return "", err
 	}
