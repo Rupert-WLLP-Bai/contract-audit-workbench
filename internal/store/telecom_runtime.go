@@ -447,7 +447,10 @@ func (s *Store) executeTelecomAttempt(parent, ctx context.Context, runID, attemp
 			Scenario: caseItem.Scenario, ContractType: caseItem.ContractType, At: time.Now().UTC(), Sources: sources,
 		}
 		if isDeclaredReviewCase(caseItem) {
-			stored := s.snapshotForAttempt(attemptID)
+			stored, err := s.snapshotForAttemptMetadataContext(stageCtx, attemptID)
+			if err != nil {
+				return err
+			}
 			frozen := stored.snapshotOf(runID)
 			if frozen.ComparatorRef != engine.ComparatorRef+"+"+telecom.DeclaredCompilerRef || frozen.GovernedKnowledge == nil {
 				return errors.New("declared extractor identity or business time was not frozen")
@@ -472,7 +475,10 @@ func (s *Store) executeTelecomAttempt(parent, ctx context.Context, runID, attemp
 				var facts []rulepack.Fact
 				var err error
 				if isDeclaredReviewCase(caseItem) {
-					stored := s.snapshotForAttempt(attemptID)
+					stored, loadErr := s.snapshotForAttemptMetadataContext(stageCtx, attemptID)
+					if loadErr != nil {
+						return loadErr
+					}
 					attempt, ok := stored.attemptByID(attemptID)
 					if !ok || attempt.RunID != runID {
 						return errors.New("declared review attempt is unavailable")

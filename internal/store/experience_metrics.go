@@ -71,7 +71,7 @@ func (s *Store) ExperienceMetricsForVersion(ctx context.Context, user accounts.U
 	if version.Content.Kind != "experience" {
 		return out, fault.NotFound("没有找到对应经验版本")
 	}
-	if err := authorizeKnowledgeRead(ctx, tx, admin, version.Content); err != nil {
+	if err := authorizeKnowledgeReadWithCaseLocks(ctx, tx, admin, version.Content, false); err != nil {
 		return out, err
 	}
 	out.Ref = version.Ref

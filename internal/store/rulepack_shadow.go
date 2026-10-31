@@ -256,7 +256,7 @@ func shadowKnowledgeAuthorization(ctx context.Context, tx pgx.Tx, admin accounts
 		if loadErr != nil || version.Ref != selected.Ref || (required && (!active || !reflect.DeepEqual(knowledgeSelection(version), selected))) {
 			return errors.New("frozen knowledge unavailable or withdrawn")
 		}
-		return authorizeKnowledgeAdoption(ctx, tx, admin, version)
+		return authorizeKnowledgeAdoptionWithCaseLocks(ctx, tx, admin, version, false)
 	}
 	for _, selected := range snapshot.RequiredPolicies {
 		if err := checkSelection(selected, true); err != nil {

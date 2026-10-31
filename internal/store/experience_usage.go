@@ -214,7 +214,7 @@ func (s *Store) ListExperienceUsageOptions(ctx context.Context, user accounts.Us
 			if err != nil || version.Ref != candidate.Ref || version.Content.Kind != "experience" {
 				return ExperienceUsageOptions{}, fault.Conflict("冻结经验版本无法验证")
 			}
-			if err := authorizeKnowledgeRead(ctx, tx, current, version.Content); err != nil {
+			if err := authorizeKnowledgeReadWithCaseLocks(ctx, tx, current, version.Content, false); err != nil {
 				var problem *fault.Error
 				if errors.As(err, &problem) && (problem.Status == 403 || problem.Status == 404) {
 					continue
@@ -306,7 +306,7 @@ func (s *Store) RecordExperienceUsage(ctx context.Context, user accounts.User, i
 	if err != nil || version.Ref != input.Ref || version.Content.Kind != "experience" {
 		return ExperienceUsage{}, fault.Conflict("经验的精确版本或内容摘要不一致")
 	}
-	if err := authorizeKnowledgeRead(ctx, tx, current, version.Content); err != nil {
+	if err := authorizeKnowledgeReadWithCaseLocks(ctx, tx, current, version.Content, true); err != nil {
 		return ExperienceUsage{}, err
 	}
 	usage := ExperienceUsage{TenantID: item.TenantID, OrgID: item.OwnerOrgID, CaseID: item.ID, RunID: input.RunID, AttemptID: input.AttemptID,
