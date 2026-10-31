@@ -35,6 +35,7 @@ import { FrozenLegalAuthorities } from "../components/frozen-legal-authorities";
 import { AuditProjection } from "../components/audit-projection";
 import { EvidenceRequestPanel } from "../components/evidence-request-panel";
 import { ExperienceFeedbackPanel } from "../components/experience-feedback-panel";
+import { ManualFindingsPanel } from "../components/manual-findings-panel";
 import { OperatorAuditEntry } from "../features/operator-audit/operator-audit-entry";
 import {
   contractTypeLabel,
@@ -615,6 +616,18 @@ export function ReviewPage() {
         />
       </DecisionDraftScopeProvider>
       <DirtyLeaveGuard dirty={decisionDraftsDirty} />
+      <ManualFindingsPanel
+        key={`${caseId}:${runId}:${selectedAttempt?.id ?? "none"}:${session.data?.tenant_id ?? ""}:${session.data?.org_id ?? ""}:${session.data?.id ?? ""}:${session.data?.role ?? ""}`}
+        caseId={caseId}
+        runId={runId}
+        attemptId={selectedAttempt?.id ?? null}
+        isFrozenAttempt={selectedAttempt?.history_kind === "frozen"}
+        parsedDocumentIds={selectedAttempt?.parsed_document_ids ?? []}
+        selection={quoteSelection}
+        documents={review.data.documents}
+        actor={session.data ?? null}
+        canCreate={caseDetailReady && !caseArchived && roleCanDecide && selectedAttempt?.history_kind === "frozen"}
+      />
       <EvidenceRequestPanel
         caseId={caseId}
         runId={runId}

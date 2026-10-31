@@ -558,6 +558,9 @@ func evidenceRequestRoute(m routeMethodSet, p []string) bool {
 }
 
 func reviewRoute(role string, m routeMethodSet, p []string) bool {
+	if len(p) == 7 && p[4] == "attempts" && p[5] != "" && p[6] == "manual-findings" {
+		return role == "core" && (m.read || m.post)
+	}
 	if len(p) == 7 && p[4] == "findings" && p[6] == "decisions" {
 		return role == "core" && m.post
 	}
