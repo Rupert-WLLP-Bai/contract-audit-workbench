@@ -343,6 +343,25 @@ func operatorMappingApprovedDigest(mapping operatorMappingCanonicalState, identi
 	if identity == nil && association == nil {
 		return operatorMappingDigest(mapping)
 	}
+	// JSON storage may reorder raw evidence object keys without changing their value.
+	if identity != nil && len(identity.BasisRefs) > 0 {
+		basis, err := canonicalRawJSON(identity.BasisRefs)
+		if err != nil {
+			return "", err
+		}
+		canonical := *identity
+		canonical.BasisRefs = basis
+		identity = &canonical
+	}
+	if association != nil && len(association.BasisRefs) > 0 {
+		basis, err := canonicalRawJSON(association.BasisRefs)
+		if err != nil {
+			return "", err
+		}
+		canonical := *association
+		canonical.BasisRefs = basis
+		association = &canonical
+	}
 	encoded, err := json.Marshal(operatorMappingApprovedAfter{Mapping: mapping, Identity: identity, Association: association})
 	if err != nil {
 		return "", err

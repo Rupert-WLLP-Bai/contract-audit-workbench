@@ -1,8 +1,12 @@
 package store
 
 import (
+	"encoding/json"
+	"strings"
 	"testing"
 	"time"
+
+	"contractaudit/internal/rulepack"
 )
 
 func TestPlanOperatorMappingChangePinsIdentityAndAdvancesOneBindingVersion(t *testing.T) {
@@ -49,7 +53,7 @@ func TestPlanOperatorMappingIdentityCorrectionPinsNewIdentityAndAssociation(t *t
 		ExternalObject: &OperatorExternalObject{ConnectorID: "connector-b", ExternalObjectID: "external-b"},
 		Identity: &OperatorServiceIdentityPatch{ObjectType: ServiceObjectDedicatedLine, DisplayName: "LINE-A corrected",
 			BusinessCode: "LINE-A-2", Aliases: []ServiceObjectAlias{{Kind: "legacy", Value: "LINE-A"}},
-			State: ServiceObjectConfirmed, BasisRefs: []byte(`[]`), BasisSummary: "pinned contract correction"},
+			State: ServiceObjectConfirmed, BasisRefs: []byte(`[{"parsed_document_id":"parse-1","document_id":"doc-1"}]`), BasisSummary: "pinned contract correction"},
 		EffectiveFrom:  time.Date(2026, 4, 1, 0, 0, 0, 123456789, time.FixedZone("CST", 8*60*60)),
 		EffectiveUntil: time.Date(2027, 4, 1, 0, 0, 0, 0, time.UTC)}
 	plan, err := PlanOperatorMappingChange(operatorMappingTestHead(), current, cas, patch, "proposal-placeholder", "proposer", time.Date(2026, 10, 31, 0, 0, 0, 999, time.UTC))
@@ -64,6 +68,101 @@ func TestPlanOperatorMappingIdentityCorrectionPinsNewIdentityAndAssociation(t *t
 	if err != nil || proposed.EffectiveFrom.Nanosecond()%1000 != 0 || proposed.EffectiveFrom.Location() != time.UTC ||
 		proposed.State != ServiceObjectConfirmed || proposed.BusinessCode != "LINE-A-2" {
 		t.Fatalf("approved identity proposal lost canonical payload/effective instant: %+v err=%v", proposed, err)
+	}
+	encoded, err := json.Marshal(patch)
+	if err != nil {
+		t.Fatal(err)
+	}
+	persisted, err := canonicalRawJSON(encoded)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var storedPatch OperatorMappingChangePatch
+	if err := json.Unmarshal(persisted, &storedPatch); err != nil {
+		t.Fatal(err)
+	}
+	storedPlan, err := PlanOperatorMappingChange(operatorMappingTestHead(), current, cas, storedPatch, "proposal-placeholder", "proposer", time.Date(2026, 10, 31, 0, 0, 0, 999, time.UTC))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if storedPlan.AfterSHA256 != plan.AfterSHA256 {
+		t.Fatal("unchanged identity proposal cannot be approved after JSON storage reorders basis properties")
+	}
+	storedPatch.Identity.BasisRefs = []byte(`[{"document_id":"different-doc","parsed_document_id":"parse-1"}]`)
+	changedPlan, err := PlanOperatorMappingChange(operatorMappingTestHead(), current, cas, storedPatch, "proposal-placeholder", "proposer", time.Date(2026, 10, 31, 0, 0, 0, 999, time.UTC))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if changedPlan.AfterSHA256 == plan.AfterSHA256 {
+		t.Fatal("identity proposal digest did not bind a changed basis document")
+	}
+}
+
+func TestOperatorMappingAssociationApprovalDigestSurvivesJSONStorage(t *testing.T) {
+	current, cas := operatorMappingTestCurrent()
+	plan, err := PlanOperatorMappingChange(operatorMappingTestHead(), current, cas, OperatorMappingChangePatch{
+		Kind:           OperatorMappingReplace,
+		ExternalObject: &OperatorExternalObject{ConnectorID: "connector-b", ExternalObjectID: "external-b"},
+		EffectiveFrom:  time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
+		EffectiveUntil: time.Date(2027, 4, 1, 0, 0, 0, 0, time.UTC),
+	}, "binding_proposal", "proposer", time.Date(2026, 10, 31, 0, 0, 0, 0, time.UTC))
+	if err != nil {
+		t.Fatal(err)
+	}
+	target := &operatorMappingAssociationAfter{
+		ServiceObjectID: "service-a", ObjectVersion: 2, AssociationVersion: 4,
+		MaterialID: "material-next", MaterialVersion: 2, DocumentID: "doc-next", ParsedDocumentID: "parse-next",
+		SourceRunID: "run-next", SourceAttemptID: "attempt-next", ObjectRef: "LINE-A",
+		BasisRefs: json.RawMessage(`[{"parsed_document_id":"parse-next","document_id":"doc-next"}]`),
+		FactRefs: []ServiceObjectFactRef{{DocumentID: "doc-next", ParsedDocumentID: "parse-next", Fact: rulepack.Fact{
+			ID: "fact-bandwidth", RuleID: "bandwidth", Dimension: "minimum_bandwidth", ObjectRef: "LINE-A",
+			Value: "100", Unit: "Mbit/s", SourceRole: "draft_contract",
+			Citations: []rulepack.Citation{{SourceID: "doc-next", SourceVersion: "parse-next", SourceDigest: strings.Repeat("a", 64), Start: 0, End: 3, Quote: "100"}},
+		}}},
+	}
+	target.FactRefs[0].CanonicalFactSHA256, err = canonicalRuleFactSHA256(target.FactRefs[0].Fact)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, target.FactsSHA256, err = canonicalServiceObjectFacts(target.FactRefs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := bindMappingAssociation(&plan, target); err != nil {
+		t.Fatal(err)
+	}
+	encoded, err := json.Marshal(operatorMappingApprovedAfter{Mapping: canonicalOperatorMappingState(plan.NextVersion), Association: target})
+	if err != nil {
+		t.Fatal(err)
+	}
+	persisted, err := canonicalRawJSON(encoded)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var saved operatorMappingApprovedAfter
+	if err := json.Unmarshal(persisted, &saved); err != nil {
+		t.Fatal(err)
+	}
+	digest, err := operatorMappingApprovedDigest(saved.Mapping, saved.Identity, saved.Association)
+	if err != nil || digest != plan.AfterSHA256 {
+		t.Fatalf("persisted reassociation proposal cannot pass approval integrity: %v", err)
+	}
+	saved.Association.SourceAttemptID = "different-attempt"
+	changed, err := operatorMappingApprovedDigest(saved.Mapping, saved.Identity, saved.Association)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if changed == digest {
+		t.Fatal("approval digest did not bind the frozen attempt identity")
+	}
+	saved.Association.SourceAttemptID = target.SourceAttemptID
+	saved.Association.BasisRefs = json.RawMessage(`[{"parsed_document_id":"different-parse","document_id":"doc-next"}]`)
+	changed, err = operatorMappingApprovedDigest(saved.Mapping, saved.Identity, saved.Association)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if changed == digest {
+		t.Fatal("approval digest did not bind the evidence basis content")
 	}
 }
 
