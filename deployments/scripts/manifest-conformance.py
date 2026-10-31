@@ -455,7 +455,7 @@ def check_kustomize(root: Path, entrypoints: set[str], roles: set[str], dsn_keys
         for key in ("CORE_DATABASE_URL", "DOCUMENT_DATABASE_URL", "EXECUTION_DATABASE_URL", "MODEL_DATABASE_URL", "TOOL_DATABASE_URL", "MIGRATOR_DATABASE_URL"):
             if key not in env:
                 fail(f"the migration Job is missing {key}")
-        notes.append("apply order: deployments/k8s/migrate (wait for completion) then deployments/k8s/base")
+        notes.append("release order: release-k8s.py bootstrap, migrate-k8s.sh <candidate-lock>, then release-k8s.py deploy <candidate-lock>")
     notes.append("cluster runtime: NOT_RUN (static manifest evidence only)")
 
 
