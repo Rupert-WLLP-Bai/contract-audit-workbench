@@ -33,10 +33,10 @@ data:
   LLM_MODEL: operator-configured-openai-compatible-model
   OCR_MODEL: operator-configured-vision-model
   MODEL_GATEWAY_MODE: openai-compatible
-  # The default-on suggestion layer. Set TYPESAFE_JEV_MODE=off until the
-  # third-party processing/data-egress approval for the deployment is complete.
+  # Enable advisory only in an explicitly authorized deployment overlay after
+  # third-party processing/data-egress approval. Keep the shared base disabled.
   # The resolver accepts only a pinned model version, never a floating alias.
-  TYPESAFE_JEV_MODE: advisory
+  TYPESAFE_JEV_MODE: "off"
   TYPESAFE_JEV_EGRESS: minimized
   TYPESAFE_JEV_FEATURES: knowledge_rerank
   TYPESAFE_JEV_MODEL: jev-1.14.0

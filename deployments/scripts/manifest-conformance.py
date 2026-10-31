@@ -344,6 +344,8 @@ def check_kustomize(root: Path, entrypoints: set[str], roles: set[str], dsn_keys
     if "contract-audit-runtime" not in configs:
         fail("the rendered base does not include the contract-audit-runtime ConfigMap")
     if str(runtime.get("APP_ENV", "")).strip() == "production":
+        if str(runtime.get("TYPESAFE_JEV_MODE", "")).strip() != "off":
+            fail("production base must disable Jev; enable advisory only in an authorized deployment overlay")
         if str(runtime.get("TYPESAFE_JEV_MODE", "")).strip() == "fixture" or \
                 str(runtime.get("TYPESAFE_JEV_MODEL", "")).strip() == "jev-fixture":
             fail("production runtime must not enable the Jev fixture")
@@ -603,6 +605,7 @@ def self_test(root: Path) -> int:
     compose_url = "${CORE_SERVICE_URL:?Add CORE_SERVICE_URL to the private distributed profile}"
     mutations = (
         ("missing required env", lambda tree: replace_mutation(tree, workload, tool_binding, ""), "role worker is missing required env WORKER_TOOL_TOKEN"),
+        ("unapproved production Jev", lambda tree: replace_mutation(tree, config, 'TYPESAFE_JEV_MODE: "off"', "TYPESAFE_JEV_MODE: advisory"), "production base must disable Jev"),
         ("missing probe", lambda tree: replace_mutation(tree, workload, "          livenessProbe:\n", "          livenessProbeDisabled:\n"), "declares no livenessProbe"),
         ("HPA back in the render", lambda tree: replace_mutation(tree, "deployments/k8s/base/kustomization.yaml", "  - poddisruptionbudgets.yaml", "  - poddisruptionbudgets.yaml\n  - ../optional/scaling-hpa.yaml"), "must contain zero HorizontalPodAutoscaler"),
         ("migration kustomization removed", lambda tree: tree.joinpath("deployments/k8s/migrate/kustomization.yaml").unlink(), "missing kustomization"),
