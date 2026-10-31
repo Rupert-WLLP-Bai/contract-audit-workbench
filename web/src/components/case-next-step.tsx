@@ -117,7 +117,7 @@ function remediationOwner(item: CaseDetail, remediation: Remediation): string {
   const member = item.members.find((entry) => entry.id === remediation.assignee_id);
   return member?.display_name
     ? `整改负责人：${member.display_name}`
-    : `整改负责人 ID：${remediation.assignee_id}`;
+    : "已指定整改负责人，成员资料未返回";
 }
 
 function planFor(props: Props): CaseNextStepPlan {
@@ -145,6 +145,7 @@ function planFor(props: Props): CaseNextStepPlan {
   const canStart = Object.hasOwn(CAN_START_REVIEW_ROLES, actorRole);
   const canCreateReport = Object.hasOwn(CAN_CREATE_REPORT_ROLES, actorRole);
   const archived = item.archived_at !== null;
+  const subjectContextUnknown = run !== null && item.subject_context_changed_after_latest_run === undefined;
 
   if (archived) {
     return {
@@ -553,10 +554,10 @@ function planFor(props: Props): CaseNextStepPlan {
 
   return {
     stage: "待生成审查报告",
-    title: canCreateReport ? "人工判断已完成，可以生成报告" : "等待经办生成审查报告",
+    title: canCreateReport ? "人工判断已完成，选择报告依据" : "等待经办生成审查报告",
     tone: "neutral",
     reason: canCreateReport
-      ? "请在报告区选择本次审查与执行记录并生成固定版本；报告生成后可从同一区域导出。"
+      ? "请在报告区选择本次审查与执行记录；服务端会核验冻结输入、规则依据和结果。符合条件后生成固定版本，再从同一区域导出。"
       : "当前角色不能生成报告；请交由经办或管理员完成报告保存和导出。",
     missingItems: ["审查报告"],
     owner: canCreateReport ? "经办" : "经办或管理员",
@@ -568,7 +569,7 @@ export function CaseNextStep(props: Props) {
   const plan = planFor(props);
   const { actorRole } = props;
   const action = plan.action;
-  const actionProps = { type: "primary" as const, htmlType: "button" as const, loading: action.loading, disabled: action.disabled };
+  const actionProps = { className: "case-next-step-button", "aria-label": action.label, type: "primary" as const, htmlType: "button" as const, loading: action.loading, disabled: action.disabled };
 
   let mainAction;
   if (action.kind === "link") {

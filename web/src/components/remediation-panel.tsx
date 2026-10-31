@@ -87,7 +87,7 @@ function hasCompatibleRuleEvaluations(
 
 function RemediationCard({
   caseId,
-  latestRunId,
+  latestRun,
   item,
   documents,
   members,
@@ -97,7 +97,7 @@ function RemediationCard({
 }: {
   caseId: string;
   item: Remediation;
-  latestRunId: string | null;
+  latestRun: CaseDetail["latest_run"];
   members: CaseDetail["members"];
   documents: CaseDetail["documents"];
   archived: boolean;
@@ -133,10 +133,7 @@ function RemediationCard({
     sourceBusinessTime !== null && Number.isFinite(Date.parse(sourceBusinessTime));
   const candidateBusinessTimeMatches =
     sourceBusinessTime === null ||
-    (sourceBusinessTime !== null && Number.isFinite(Date.parse(sourceBusinessTime)) &&
-      typeof candidateBusinessAt === "string" && Number.isFinite(Date.parse(candidateBusinessAt)) &&
-      Date.parse(sourceBusinessTime) === Date.parse(candidateBusinessAt));
-  const sourceRunIsLatest = latestRunId === item.run_id;
+    (sourceBusinessTimeValid && sourceBusinessTime === candidateBusinessAt);
   const businessTimeMismatchReason =
     typeof sourceBusinessAt !== "string"
       ? "原审查没有返回可用于复审的冻结业务时点。"
@@ -202,7 +199,6 @@ function RemediationCard({
       source.data?.evaluations ?? [],
       candidateWorkspace.data?.evaluations ?? [],
     );
-  const comparisonReason = candidateWorkspace.data?.revision_comparison_reason;
   const verificationReady =
     item.status === "submitted" &&
     !archived &&
@@ -213,8 +209,6 @@ function RemediationCard({
     selectedAttemptIsExpected &&
     isNewAttempt &&
     isTerminalAttemptState(selectedAttempt?.state ?? "") &&
-    comparesSourceRun &&
-    !comparisonReason &&
     candidateBusinessTimeMatches &&
     everyFindingCompatible;
   let verificationBlockReason =
@@ -227,11 +221,6 @@ function RemediationCard({
     verificationBlockReason = "正在读取所选的复核执行记录。";
   else if (candidateWorkspace.isError)
     verificationBlockReason = `无法读取所选复核尝试：${errorMessage(candidateWorkspace.error)}`;
-  else if (comparisonReason) verificationBlockReason = comparisonReason;
-  else if (candidateWorkspace.data && !comparesSourceRun)
-    verificationBlockReason = "所选复核并非针对这项整改的来源审查。";
-  else if (!candidateBusinessTimeMatches && !sourceRunIsLatest)
-    verificationBlockReason = `${businessTimeMismatchReason} 当前最新审查已不是整改来源，不能从当前记录创建该来源的直接复核；请在现有审查中选择服务端确认兼容的记录。`;
   else if (!candidateBusinessTimeMatches)
     verificationBlockReason = businessTimeMismatchReason;
   else if (candidateWorkspace.data && !everyFindingCompatible)
@@ -250,7 +239,8 @@ function RemediationCard({
     canWrite &&
     source.isSuccess &&
     sourceBusinessTimeValid &&
-    sourceRunIsLatest &&
+    latestRun !== null &&
+    (latestRun.state === "awaiting_human" || isTerminalAttemptState(latestRun.state)) &&
     (!candidateBusinessTimeMatches || selectedAttempt?.id === item.attempt_id) &&
     !candidateWorkspace.isLoading &&
     (!selectedAttempt || isTerminalAttemptState(selectedAttempt.state));
@@ -286,7 +276,12 @@ function RemediationCard({
   function onStartSourceTimeReview() {
     if (!sourceBusinessTimeValid || sourceBusinessTime === null) return;
     startSourceReview.mutate(
-      { business_at: sourceBusinessTime },
+      {
+        business_at: sourceBusinessTime,
+        scope: source.data?.snapshot?.review_scope?.id === "single_contract_precheck"
+          ? "single_contract_precheck"
+          : "full_review",
+      },
       {
         onSuccess: (accepted) => {
           void navigate(caseHref(caseId, accepted.id, accepted.attempt_id));
@@ -483,10 +478,14 @@ function RemediationCard({
                 </StatusText>
                 {selectedAttempt ? `，第 ${selectedAttempt.ordinal} 次执行` : "，未获取到执行次数"}
               </p>
-              {candidateWorkspace.data.revision_comparison_reason ? (
+              {comparesSourceRun && candidateWorkspace.data.revision_comparison_reason ? (
                 <p className="callout">
                   运行间差异明细未生成：
                   {candidateWorkspace.data.revision_comparison_reason}
+                </p>
+              ) : !comparesSourceRun ? (
+                <p className="meta">
+                  所选审查的运行间差异对应另一轮审查；提交复核时将核对本整改的来源记录。
                 </p>
               ) : null}
               <ul className="workflow-record-list">
@@ -807,7 +806,7 @@ export function RemediationPanel({
                 documents={detail.documents}
                 members={detail.members}
                 archived={archived}
-                latestRunId={detail.latest_run?.id ?? null}
+                latestRun={detail.latest_run}
                 canWrite={canWrite}
                 choices={choices}
               />
