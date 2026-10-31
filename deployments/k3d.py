@@ -19,7 +19,25 @@ FULL = PROFILE == "full"
 CLUSTER = os.environ.get("CAW_K3D_CLUSTER", "caw-local-full" if FULL else "caw-local")
 CLUSTER_CONFIG = "cluster-5node.yaml" if FULL else "cluster.yaml"
 APPS_OVERLAY = "apps-5node" if FULL else "apps"
-API_PORT = "6446" if FULL else "6445"
+
+
+def port_setting(name: str, default: str) -> str:
+    raw = os.environ.get(name, "").strip()
+    if not raw:
+        return default
+    if not raw.isascii() or not raw.isdigit() or not 1 <= int(raw) <= 65535:
+        print(f"BLOCKED: {name} must be a TCP port between 1 and 65535, got {raw!r}", file=sys.stderr)
+        raise SystemExit(2)
+    return raw
+
+
+API_PORT = port_setting("CAW_K3D_API_PORT", "6446" if FULL else "6445")
+# Browser-facing host ports for the UI services; they only materialize through
+# kubectl port-forward and must match CORS_ORIGIN and the OIDC redirect URLs.
+DEFAULT_UI_PORTS = ("18080", "18081", "18082")
+CLIENT_PORT = port_setting("CAW_K3D_CLIENT_PORT", DEFAULT_UI_PORTS[0])
+ADMIN_PORT = port_setting("CAW_K3D_ADMIN_PORT", DEFAULT_UI_PORTS[1])
+PORTAL_PORT = port_setting("CAW_K3D_PORTAL_PORT", DEFAULT_UI_PORTS[2])
 SERVER_MEMORY = "1g" if FULL else "768m"
 # 2 GiB agents leave room for ztunnel/CNI and a surge pod in the full profile.
 AGENTS_MEMORY = "2g"
@@ -158,7 +176,7 @@ def up() -> None:
         print(f"Cluster {CLUSTER} already exists; reusing it without touching the default kubeconfig.")
     else:
         run([
-            "k3d", "cluster", "create", "--config", str(ROOT / "deployments/k3d" / CLUSTER_CONFIG),
+            "k3d", "cluster", "create", CLUSTER, "--config", str(ROOT / "deployments/k3d" / CLUSTER_CONFIG),
             "--api-port", "127.0.0.1:" + API_PORT, "--servers-memory", SERVER_MEMORY,
             "--agents-memory", AGENTS_MEMORY,
             "--kubeconfig-update-default=false", "--kubeconfig-switch-context=false",
@@ -245,6 +263,22 @@ def apply_observe_configs() -> None:
     apply_configmap("grafana-datasources", "datasources.yaml", ROOT / "deploy/app/observe/grafana-datasources.yaml")
 
 
+def apply_runtime_origin_override() -> None:
+    # The in-repo config patch pins CORS/OIDC to the default UI ports; when the
+    # isolated acceptance binds free ports, keep the runtime ConfigMap consistent
+    # with the port-forward URLs instead of editing tracked manifests.
+    patch = {"data": {
+        "CORS_ORIGIN": ",".join(f"http://127.0.0.1:{port}" for port in (CLIENT_PORT, ADMIN_PORT, PORTAL_PORT)),
+        "OIDC_REDIRECT_URL": f"http://127.0.0.1:{CLIENT_PORT}/api/auth/oidc/callback",
+        "OIDC_ADMIN_REDIRECT_URL": f"http://127.0.0.1:{ADMIN_PORT}/api/auth/oidc/callback",
+    }}
+    applied = run(["kubectl", "--kubeconfig", str(KUBECONFIG), "-n", NAMESPACE, "patch",
+                   "configmap", "contract-audit-runtime", "--type", "merge", "-p", json.dumps(patch)],
+                  check=False)
+    if applied.returncode:
+        raise RuntimeError(f"failed applying runtime origin override: {applied.stderr.strip()}")
+
+
 def deploy() -> None:
     if not cluster_exists():
         raise RuntimeError(f"cluster {CLUSTER} does not exist; run 'up' first")
@@ -264,6 +298,8 @@ def deploy() -> None:
     apply_private_secret("contract-audit-model", ("LLM_API_KEY", "LLM_CONFIG_KEY"))
     kubectl("delete", "job/rustfs-bucket-init", "-n", NAMESPACE, "--ignore-not-found=true", check=False)
     apply_phase("bootstrap")
+    if (CLIENT_PORT, ADMIN_PORT, PORTAL_PORT) != DEFAULT_UI_PORTS:
+        apply_runtime_origin_override()
     wait_platform()
     kubectl("delete", "job/contract-audit-migrate", "-n", NAMESPACE, "--ignore-not-found=true", check=False)
     apply_phase("migrate")
@@ -289,10 +325,11 @@ def status() -> None:
     print(kubectl("get", "nodes", "-o", "wide").stdout, end="")
     result = kubectl("get", "all", "-n", NAMESPACE, "-o", "wide", check=False)
     print(result.stdout, end="")
-    print("Ports: client http://127.0.0.1:18080, admin http://127.0.0.1:18081, portal http://127.0.0.1:18082")
-    print(f"kubectl --kubeconfig {KUBECONFIG} -n {NAMESPACE} port-forward svc/client 18080:80")
-    print(f"kubectl --kubeconfig {KUBECONFIG} -n {NAMESPACE} port-forward svc/admin 18081:80")
-    print(f"kubectl --kubeconfig {KUBECONFIG} -n {NAMESPACE} port-forward svc/portal 18082:80")
+    print(f"Ports: client http://127.0.0.1:{CLIENT_PORT}, admin http://127.0.0.1:{ADMIN_PORT}, "
+          f"portal http://127.0.0.1:{PORTAL_PORT}")
+    print(f"kubectl --kubeconfig {KUBECONFIG} -n {NAMESPACE} port-forward svc/client {CLIENT_PORT}:80")
+    print(f"kubectl --kubeconfig {KUBECONFIG} -n {NAMESPACE} port-forward svc/admin {ADMIN_PORT}:80")
+    print(f"kubectl --kubeconfig {KUBECONFIG} -n {NAMESPACE} port-forward svc/portal {PORTAL_PORT}:80")
 
 
 def smoke() -> None:
