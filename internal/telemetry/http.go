@@ -109,7 +109,7 @@ func HTTPBoundary(exporter *Exporter, service string, opt HTTPOptions, next http
 			// An abort panic means the connection ended without any response, so
 			// the exchange is logged with status 0 and counted in no status
 			// bucket instead of being recorded as a success.
-			status := recorder.status()
+			status := recorder.responseStatus()
 			if recovered != nil && isAbortPanic(recovered) {
 				status = 0
 			}
@@ -373,14 +373,14 @@ func (w *responseRecorder) FlushError() error {
 		w.status = http.StatusOK
 		w.wroteHeader = true
 	}
-	return http.NewResponseController(w.ResponseWriter).FlushError()
+	return http.NewResponseController(w.ResponseWriter).Flush()
 }
 
 // Unwrap exposes the underlying writer so http.ResponseController reaches the
 // real deadlines, flushes, and hijack support of the server connection.
 func (w *responseRecorder) Unwrap() http.ResponseWriter { return w.ResponseWriter }
 
-func (w *responseRecorder) status() int {
+func (w *responseRecorder) responseStatus() int {
 	if !w.wroteHeader || w.status == 0 {
 		return http.StatusOK
 	}
