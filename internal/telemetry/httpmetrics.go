@@ -1,8 +1,8 @@
 package telemetry
 
 import (
+	"log"
 	"strconv"
-	"sync"
 	"time"
 )
 
