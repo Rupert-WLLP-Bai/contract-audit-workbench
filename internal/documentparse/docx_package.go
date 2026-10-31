@@ -13,19 +13,25 @@ import (
 )
 
 const (
-	docxMaxArchive  = 32 << 20
-	docxMaxExpanded = 64 << 20
-	docxMaxPart     = 16 << 20
-	docxMaxXML      = 8 << 20
-	docxMaxEntries  = 1024
-	docxMaxNodes    = 250000
-	docxMaxDepth    = 128
-	docxWNS         = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
-	docxWStrictNS   = "http://purl.oclc.org/ooxml/wordprocessingml/main"
-	docxRNS         = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
-	docxRStrictNS   = "http://purl.oclc.org/ooxml/officeDocument/relationships"
-	docxPackageRNS  = "http://schemas.openxmlformats.org/package/2006/relationships"
-	docxTypesNS     = "http://schemas.openxmlformats.org/package/2006/content-types"
+	docxMaxArchive      = 32 << 20
+	docxMaxExpanded     = 64 << 20
+	docxMaxPart         = 16 << 20
+	docxMaxXML          = 8 << 20
+	docxMaxEntries      = 1024
+	docxMaxNodes        = 250000
+	docxMaxDepth        = 128
+	docxWNS             = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+	docxWStrictNS       = "http://purl.oclc.org/ooxml/wordprocessingml/main"
+	docxRNS             = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
+	docxRStrictNS       = "http://purl.oclc.org/ooxml/officeDocument/relationships"
+	docxPackageRNS      = "http://schemas.openxmlformats.org/package/2006/relationships"
+	docxTypesNS         = "http://schemas.openxmlformats.org/package/2006/content-types"
+	docxMCNS            = "http://schemas.openxmlformats.org/markup-compatibility/2006"
+	docxANS             = "http://schemas.openxmlformats.org/drawingml/2006/main"
+	docxAStrictNS       = "http://purl.oclc.org/ooxml/drawingml/main"
+	docxWPSNS           = "http://schemas.microsoft.com/office/word/2010/wordprocessingShape"
+	docxPictureNS       = "http://schemas.openxmlformats.org/drawingml/2006/picture"
+	docxPictureStrictNS = "http://purl.oclc.org/ooxml/drawingml/picture"
 )
 
 type docxNode struct {

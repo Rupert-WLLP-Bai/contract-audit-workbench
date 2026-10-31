@@ -82,7 +82,82 @@ func (p *docxParser) inlineSpecialContainer(node *docxNode, part string, visibil
 	if node.word("sdt") {
 		return true, p.inlineSDT(node, part, visibility, text)
 	}
+	if node.word("fldSimple") {
+		return true, p.simpleField(node, part, visibility, text)
+	}
+	if node.name.Space == docxMCNS && node.name.Local == "AlternateContent" {
+		branch, err := docxAlternateBranch(node)
+		if err != nil {
+			return true, err
+		}
+		return true, p.inlineChildren(branch, part, visibility, text)
+	}
 	return false, nil
+}
+
+// simpleField reads the cached result of a w:fldSimple field. Pagination
+// instructions only cache a page or section number, which is a layout artifact
+// and never contract text.
+func (p *docxParser) simpleField(node *docxNode, part string, visibility docxVisibility, text *strings.Builder) error {
+	instruction := strings.TrimSpace(node.attr("instr"))
+	if instruction == "" {
+		return fmt.Errorf("DOCX: simple field has no instruction")
+	}
+	if docxPaginationField(instruction) {
+		return nil
+	}
+	return p.inlineChildren(node, part, visibility, text)
+}
+
+// docxAlternateBranch returns the single branch a markup-compatibility consumer
+// renders: the first mc:Choice whose Requires are all understood, else
+// mc:Fallback. Reading exactly one branch keeps equivalent alternatives from
+// being duplicated or merged.
+func docxAlternateBranch(node *docxNode) (*docxNode, error) {
+	var chosen, fallback *docxNode
+	for _, child := range node.children {
+		if child.name.Space != docxMCNS {
+			return nil, fmt.Errorf("DOCX: AlternateContent entry %s is not markup compatibility", child.name.Local)
+		}
+		switch child.name.Local {
+		case "Choice":
+			if fallback != nil {
+				return nil, fmt.Errorf("DOCX: AlternateContent choice after fallback")
+			}
+			if chosen != nil {
+				continue
+			}
+			if docxRequiresSupported(child.attr("Requires")) {
+				chosen = child
+			}
+		case "Fallback":
+			if fallback != nil {
+				return nil, fmt.Errorf("DOCX: duplicate AlternateContent fallback")
+			}
+			fallback = child
+		default:
+			return nil, fmt.Errorf("DOCX: unsupported AlternateContent entry %s", child.name.Local)
+		}
+	}
+	if chosen == nil {
+		chosen = fallback
+	}
+	if chosen == nil {
+		return nil, fmt.Errorf("DOCX: AlternateContent has no supported branch")
+	}
+	return chosen, nil
+}
+
+// docxRequiresSupported reports whether every extension a mc:Choice requires is
+// implemented here. Only wordprocessingShape text is understood; any other
+// extension must be served by the fallback alternative.
+func docxRequiresSupported(requires string) bool {
+	for _, prefix := range strings.Fields(requires) {
+		if prefix != "wps" {
+			return false
+		}
+	}
+	return true
 }
 
 func (p *docxParser) inlineChildren(node *docxNode, part string, visibility docxVisibility, text *strings.Builder) error {
@@ -127,6 +202,15 @@ func (p *docxParser) inlineRunVisibility(node *docxNode, visibility docxVisibili
 	return visibility, nil
 }
 
+// docxField tracks one nested complex field. Its cached result is visible only
+// after the separator, and instructions such as PAGE cache a layout number.
+type docxField struct {
+	separated   bool
+	instruction string
+}
+
+const docxMaxFieldInstruction = 1024
+
 func (p *docxParser) fieldCharacter(node *docxNode) error {
 	if node.word("fldChar") {
 		switch node.attr("fldCharType") {
@@ -134,12 +218,12 @@ func (p *docxParser) fieldCharacter(node *docxNode) error {
 			if len(p.fields) >= 32 {
 				return fmt.Errorf("DOCX: field nesting limit exceeded")
 			}
-			p.fields = append(p.fields, false)
+			p.fields = append(p.fields, docxField{})
 		case "separate":
 			if len(p.fields) == 0 {
 				return fmt.Errorf("DOCX: invalid field separator")
 			}
-			p.fields[len(p.fields)-1] = true
+			p.fields[len(p.fields)-1].separated = true
 		case "end":
 			if len(p.fields) == 0 {
 				return fmt.Errorf("DOCX: invalid field terminator")
@@ -152,10 +236,40 @@ func (p *docxParser) fieldCharacter(node *docxNode) error {
 	return nil
 }
 
+// fieldInstruction keeps the bounded instruction of the innermost field. The
+// text itself is never visible; it decides whether the cached result is a
+// layout number or contract text.
+func (p *docxParser) fieldInstruction(node *docxNode) error {
+	if len(p.fields) == 0 || p.fields[len(p.fields)-1].separated {
+		return fmt.Errorf("DOCX: field instruction outside an open field")
+	}
+	field := &p.fields[len(p.fields)-1]
+	if utf8.RuneCountInString(field.instruction)+utf8.RuneCountInString(node.text) > docxMaxFieldInstruction {
+		return fmt.Errorf("DOCX: field instruction limit exceeded")
+	}
+	field.instruction += node.text
+	return nil
+}
+
+// docxPaginationField reports whether a field instruction only caches a page or
+// section number. Those values follow layout, so they are excluded exactly as
+// DOCX pages and boxes are never invented.
+func docxPaginationField(instruction string) bool {
+	keywords := strings.Fields(instruction)
+	if len(keywords) == 0 {
+		return false
+	}
+	switch strings.ToUpper(keywords[0]) {
+	case "PAGE", "NUMPAGES", "SECTIONPAGES", "SECTION":
+		return true
+	}
+	return false
+}
+
 func (p *docxParser) inlineVisible(visibility docxVisibility) bool {
 	visible := !visibility.hidden && !visibility.special
-	for _, result := range p.fields {
-		if !result {
+	for _, field := range p.fields {
+		if !field.separated || docxPaginationField(field.instruction) {
 			visible = false
 		}
 	}
@@ -163,7 +277,7 @@ func (p *docxParser) inlineVisible(visibility docxVisibility) bool {
 }
 
 func docxInlineIgnored(node *docxNode) bool {
-	return node.word("del") || node.word("moveFrom") || node.word("delText") || node.word("delInstrText") || node.word("instrText") || node.word("pPr") || node.word("rPr") || docxNonContent(node)
+	return node.word("del") || node.word("moveFrom") || node.word("delText") || node.word("delInstrText") || node.word("pPr") || node.word("rPr") || docxNonContent(node)
 }
 
 func (p *docxParser) inlineLeaf(node *docxNode, part string, visible bool, text *strings.Builder) (bool, error) {
@@ -215,6 +329,8 @@ func (p *docxParser) inlineSpecialLeaf(node *docxNode, part string, visible bool
 		}
 		text.WriteRune(symbol)
 		return true, nil
+	case node.word("instrText"):
+		return true, p.fieldInstruction(node)
 	case node.word("drawing"):
 		if !visible {
 			return true, nil
@@ -253,57 +369,154 @@ func (p *docxParser) inlineContainer(node *docxNode) bool {
 	}
 }
 
-func (p *docxParser) drawing(node *docxNode, part string) (string, error) {
-	var imageIDs []string
-	if err := collectDOCXDrawingIDs(node, &imageIDs); err != nil {
-		return "", err
-	}
-	if len(imageIDs) != 1 {
-		return "", fmt.Errorf("DOCX: drawing must contain exactly one supported raster image")
-	}
-	rel, ok := p.pkg.rels[part][imageIDs[0]]
-	if !ok || !docxRelKind(rel.kind, "image") {
-		return "", fmt.Errorf("DOCX: missing embedded image relationship")
-	}
-	return p.imageText(rel.target)
+// docxDrawingContent records the visible content one w:drawing carries. A
+// drawing yields either one raster image or one text box; mixing both would
+// require rendered layout to know what is actually painted.
+type docxDrawingContent struct {
+	imageIDs  []string
+	textBoxes []*docxNode
 }
 
-func collectDOCXDrawingIDs(node *docxNode, imageIDs *[]string) error {
-	if err := inspectDOCXDrawingNode(node, imageIDs); err != nil {
+func (p *docxParser) drawing(node *docxNode, part string) (string, error) {
+	var content docxDrawingContent
+	if err := collectDOCXDrawingIDs(node, &content); err != nil {
+		return "", err
+	}
+	switch {
+	case len(content.imageIDs) == 1 && len(content.textBoxes) == 0:
+		rel, ok := p.pkg.rels[part][content.imageIDs[0]]
+		if !ok || !docxRelKind(rel.kind, "image") {
+			return "", fmt.Errorf("DOCX: missing embedded image relationship")
+		}
+		return p.imageText(rel.target)
+	case len(content.imageIDs) == 0 && len(content.textBoxes) == 1:
+		return p.textBox(content.textBoxes[0], part)
+	default:
+		return "", fmt.Errorf("DOCX: drawing must contain exactly one supported raster image or one text box")
+	}
+}
+
+func collectDOCXDrawingIDs(node *docxNode, content *docxDrawingContent) error {
+	descend, err := inspectDOCXDrawingNode(node, content)
+	if err != nil || !descend {
 		return err
 	}
 	for _, child := range node.children {
-		if err := collectDOCXDrawingIDs(child, imageIDs); err != nil {
+		if err := collectDOCXDrawingIDs(child, content); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func inspectDOCXDrawingNode(node *docxNode, imageIDs *[]string) error {
+// inspectDOCXDrawingNode reports whether the walk continues into the children.
+// Text box content stops here: it is parsed as WordprocessingML blocks once the
+// branch that carries it is selected, so nested images are not double counted.
+func inspectDOCXDrawingNode(node *docxNode, content *docxDrawingContent) (bool, error) {
 	switch node.name.Local {
 	case "graphicData":
-		return validateDOCXGraphicData(node)
+		return true, validateDOCXGraphicData(node)
 	case "blip":
-		return appendDOCXImageID(node, imageIDs)
+		return true, appendDOCXImageID(node, &content.imageIDs)
 	case "srcRect":
-		return validateDOCXImageCrop(node)
-	case "txbxContent", "chart", "relIds", "AlternateContent", "svgBlip", "oleObj", "hidden":
-		return fmt.Errorf("DOCX: unsupported opaque or hidden drawing content %s", node.name.Local)
+		return true, validateDOCXImageCrop(node)
+	case "txbxContent":
+		if !node.word("txbxContent") {
+			return false, fmt.Errorf("DOCX: unsupported text box namespace")
+		}
+		content.textBoxes = append(content.textBoxes, node)
+		return false, nil
+	case "chart", "relIds", "AlternateContent", "svgBlip", "oleObj", "hidden":
+		return false, fmt.Errorf("DOCX: unsupported opaque or hidden drawing content %s", node.name.Local)
 	}
-	return validateDOCXDrawingVisibility(node)
+	return true, validateDOCXDrawingVisibility(node)
 }
 
 func validateDOCXGraphicData(node *docxNode) error {
-	uri := node.attr("uri")
-	if uri != "http://schemas.openxmlformats.org/drawingml/2006/picture" && uri != "http://purl.oclc.org/ooxml/drawingml/picture" {
-		return fmt.Errorf("DOCX: charts, diagrams, text boxes and opaque drawings are unsupported")
+	switch node.attr("uri") {
+	case docxPictureNS, docxPictureStrictNS:
+		return nil
+	case docxWPSNS:
+		return validateDOCXShape(node)
+	default:
+		return fmt.Errorf("DOCX: charts, diagrams, grouped shapes and opaque drawings are unsupported")
+	}
+}
+
+// validateDOCXShape accepts only a single shape whose visible content is one
+// text box. Words drawn elsewhere, grouped shapes and shape text drawn by a
+// nested layout are refused rather than guessed.
+func validateDOCXShape(node *docxNode) error {
+	var shape *docxNode
+	for _, child := range node.children {
+		if child.name.Space != docxWPSNS || child.name.Local != "wsp" || shape != nil {
+			return fmt.Errorf("DOCX: grouped or nested shapes are unsupported")
+		}
+		shape = child
+	}
+	if shape == nil {
+		return fmt.Errorf("DOCX: drawing shape is missing")
+	}
+	boxes := 0
+	for _, child := range shape.children {
+		if child.name.Space != docxWPSNS {
+			return fmt.Errorf("DOCX: unsupported shape child %s", child.name.Local)
+		}
+		switch child.name.Local {
+		case "cNvSpPr", "spPr", "style", "bodyPr":
+			if err := docxDrawingProperties(child); err != nil {
+				return err
+			}
+		case "txbx":
+			boxes++
+			if len(child.children) != 1 || !child.children[0].word("txbxContent") {
+				return fmt.Errorf("DOCX: shape text box must hold exactly one text box body")
+			}
+		default:
+			return fmt.Errorf("DOCX: unsupported shape content %s", child.name.Local)
+		}
+	}
+	if boxes != 1 {
+		return fmt.Errorf("DOCX: shape must contain exactly one text box")
 	}
 	return nil
 }
 
+// docxDrawingProperties keeps shape appearance purely DrawingML, so no
+// WordprocessingML text hides inside properties this parser does not render.
+func docxDrawingProperties(node *docxNode) error {
+	for _, child := range node.children {
+		if child.name.Space != docxANS && child.name.Space != docxAStrictNS {
+			return fmt.Errorf("DOCX: unsupported shape property %s", child.name.Local)
+		}
+		if err := docxDrawingProperties(child); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// textBox reads the paragraphs a text box paints. Tables are refused because
+// their cell coordinates cannot be anchored to this drawing's position.
+func (p *docxParser) textBox(node *docxNode, part string) (string, error) {
+	parts, err := p.blocks(node, part)
+	if err != nil {
+		return "", err
+	}
+	for _, part := range parts {
+		if len(part.cells) > 0 {
+			return "", fmt.Errorf("DOCX: tables inside text boxes are unsupported")
+		}
+	}
+	fragment, err := docxJoin(parts, "\n")
+	if err != nil {
+		return "", err
+	}
+	return fragment.text, nil
+}
+
 func appendDOCXImageID(node *docxNode, imageIDs *[]string) error {
-	if node.name.Space != "http://schemas.openxmlformats.org/drawingml/2006/main" && node.name.Space != "http://purl.oclc.org/ooxml/drawingml/main" {
+	if node.name.Space != docxANS && node.name.Space != docxAStrictNS {
 		return fmt.Errorf("DOCX: unsupported image namespace")
 	}
 	if node.relID("link") != "" || node.relID("embed") == "" {

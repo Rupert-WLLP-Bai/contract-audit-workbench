@@ -246,7 +246,7 @@ func TestDOCXRejectsIncompleteAndUnboundedPackages(t *testing.T) {
 		{"oversized XML", map[string][]byte{"word/document.xml": bytes.Repeat([]byte(" "), docxMaxXML+1)}, "resource limit"},
 		{"ZIP traversal", map[string][]byte{"../outside.xml": []byte("outside")}, "path"},
 		{"opaque OLE", map[string][]byte{"word/embeddings/oleObject.bin": []byte("opaque")}, "opaque embedded"},
-		{"alt content", map[string][]byte{"word/document.xml": document(`<mc:AlternateContent xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"/>`)}, "unsupported block"},
+		{"alt content", map[string][]byte{"word/document.xml": document(`<mc:AlternateContent xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"/>`)}, "no supported branch"},
 		{"symbol font", map[string][]byte{"word/document.xml": document(`<w:p><w:r><w:sym w:font="Wingdings" w:char="F021"/></w:r></w:p>`)}, "unsupported visible inline"},
 		{"missing field end", map[string][]byte{"word/document.xml": document(`<w:p><w:r><w:fldChar w:fldCharType="begin"/></w:r></w:p>`)}, "unterminated fields"},
 		{"bad vertical merge", map[string][]byte{"word/document.xml": document(`<w:tbl><w:tr><w:tc><w:tcPr><w:vMerge/></w:tcPr><w:p/></w:tc></w:tr></w:tbl>`)}, "no matching origin"},
@@ -763,5 +763,230 @@ func TestDOCXPublicTableJoinEnforcesTextLimitBeforeLaterTables(t *testing.T) {
 	_, err, calls = parse(archive(true), []int{half, half})
 	if err == nil || !strings.Contains(err.Error(), "extracted text exceeds 8 MiB limit") || calls != 2 {
 		t.Fatalf("oversized table join must stop before later table: OCR calls=%d err=%v", calls, err)
+	}
+}
+
+const (
+	docxAltDecl  = `xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"`
+	docxWPSDecl  = `xmlns:wps="http://schemas.microsoft.com/office/word/2010/wordprocessingShape"`
+	docxVMLDecl  = `xmlns:v="urn:schemas-microsoft-com:vml"`
+	docxDrawingN = `xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"`
+)
+
+// docxShapeBody renders one wordprocessingShape drawing whose visible content is
+// a text box, the construct Word uses for page numbers in footers.
+func docxShapeBody(inner string) string {
+	return `<w:drawing><wp:inline><a:graphic><a:graphicData uri="` + docxWPSNS + `"><wps:wsp><wps:cNvSpPr/>` +
+		`<wps:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="1" cy="1"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></wps:spPr>` +
+		`<wps:txbx><w:txbxContent>` + inner + `</w:txbxContent></wps:txbx><wps:bodyPr><a:spAutoFit/></wps:bodyPr>` +
+		`</wps:wsp></a:graphicData></a:graphic></wp:inline></w:drawing>`
+}
+
+func docxTextBoxParagraph(value string) string {
+	return `<w:p><w:r><w:t>` + value + `</w:t></w:r></w:p>`
+}
+
+func docxAltContentDocument(content string) []byte {
+	return []byte(`<w:document xmlns:w="` + docxWNS + `" xmlns:r="` + docxRNS + `" ` + docxDrawingN + ` ` + docxWPSDecl + ` ` + docxAltDecl + ` ` + docxVMLDecl + `><w:body>` +
+		content + `</w:body></w:document>`)
+}
+
+func TestDOCXShapeTextBoxCarriesVisibleParagraphs(t *testing.T) {
+	plain := docxFixture(t, "plain.docx")
+	document := docxAltContentDocument(docxTextBoxParagraph("正文") +
+		`<w:p><w:r>` + docxShapeBody(docxTextBoxParagraph("框内条款")+docxTextBoxParagraph("框内第二条")) + `</w:r></w:p>`)
+	result, err := ParseDOCX(context.Background(), docxRewrite(t, plain, map[string][]byte{"word/document.xml": document}), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(result.IR.NormalizedText, "框内条款") || !strings.Contains(result.IR.NormalizedText, "框内第二条") {
+		t.Fatalf("text box content was dropped: %q", result.IR.NormalizedText)
+	}
+	if anchor := docir.Locate(result.IR, "框内条款"); anchor.Status != docir.StatusLocated {
+		t.Fatalf("text box quote is not locatable: %+v", anchor)
+	}
+}
+
+func TestDOCXAlternateContentReadsExactlyOneBranch(t *testing.T) {
+	plain := docxFixture(t, "plain.docx")
+	alternate := func(requires, choice, fallback string) string {
+		attribute := ""
+		if requires != "" {
+			attribute = ` Requires="` + requires + `"`
+		}
+		return `<w:p><w:r><mc:AlternateContent><mc:Choice` + attribute + `>` + choice + `</mc:Choice><mc:Fallback>` + fallback + `</mc:Fallback></mc:AlternateContent></w:r></w:p>`
+	}
+	fallbackVML := `<w:pict><v:shape><v:textbox>` + docxTextBoxParagraph("回退分支") + `</v:textbox></v:shape></w:pict>`
+	for _, item := range []struct {
+		name    string
+		content string
+		want    string
+		absent  string
+	}{
+		{
+			name:    "supported choice wins",
+			content: alternate("wps", docxShapeBody(docxTextBoxParagraph("首选分支")), fallbackVML),
+			want:    "首选分支",
+			absent:  "回退分支",
+		},
+		{
+			name:    "unsupported requirement uses fallback",
+			content: alternate("wpg", `<w:drawing/>`, `<w:r><w:t>回退文本</w:t></w:r>`),
+			want:    "回退文本",
+			absent:  "",
+		},
+		{
+			name:    "fallback only",
+			content: `<w:p><w:r><mc:AlternateContent><mc:Fallback><w:r><w:t>仅回退</w:t></w:r></mc:Fallback></mc:AlternateContent></w:r></w:p>`,
+			want:    "仅回退",
+			absent:  "",
+		},
+		{
+			name:    "block level alternate",
+			content: `<mc:AlternateContent><mc:Choice Requires="wps"><w:p><w:r>` + docxShapeBody(docxTextBoxParagraph("块级首选")) + `</w:r></w:p></mc:Choice><mc:Fallback>` + docxTextBoxParagraph("块级回退") + `</mc:Fallback></mc:AlternateContent>`,
+			want:    "块级首选",
+			absent:  "块级回退",
+		},
+	} {
+		t.Run(item.name, func(t *testing.T) {
+			result, err := ParseDOCX(context.Background(), docxRewrite(t, plain, map[string][]byte{"word/document.xml": docxAltContentDocument(item.content)}), nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !strings.Contains(result.IR.NormalizedText, item.want) {
+				t.Fatalf("missing %q in %q", item.want, result.IR.NormalizedText)
+			}
+			if item.absent != "" && strings.Contains(result.IR.NormalizedText, item.absent) {
+				t.Fatalf("unrendered branch leaked %q into %q", item.absent, result.IR.NormalizedText)
+			}
+		})
+	}
+}
+
+func TestDOCXAlternateContentFailuresStayClosed(t *testing.T) {
+	plain := docxFixture(t, "plain.docx")
+	for _, item := range []struct {
+		name    string
+		content string
+		want    string
+	}{
+		{
+			name:    "choice after fallback",
+			content: `<w:p><w:r><mc:AlternateContent><mc:Fallback><w:r><w:t>回退</w:t></w:r></mc:Fallback><mc:Choice Requires="wps"><w:r><w:t>首选</w:t></w:r></mc:Choice></mc:AlternateContent></w:r></w:p>`,
+			want:    "choice after fallback",
+		},
+		{
+			name:    "duplicate fallback",
+			content: `<w:p><w:r><mc:AlternateContent><mc:Fallback><w:r><w:t>a</w:t></w:r></mc:Fallback><mc:Fallback><w:r><w:t>b</w:t></w:r></mc:Fallback></mc:AlternateContent></w:r></w:p>`,
+			want:    "duplicate AlternateContent fallback",
+		},
+		{
+			name:    "foreign alternate entry",
+			content: `<w:p><w:r><mc:AlternateContent><w:r><w:t>x</w:t></w:r></mc:AlternateContent></w:r></w:p>`,
+			want:    "is not markup compatibility",
+		},
+		{
+			name:    "shape without text box",
+			content: `<w:p><w:r><w:drawing><wp:inline><a:graphic><a:graphicData uri="` + docxWPSNS + `"><wps:wsp><wps:spPr/></wps:wsp></a:graphicData></a:graphic></wp:inline></w:drawing></w:r></w:p>`,
+			want:    "exactly one text box",
+		},
+		{
+			name:    "grouped shape",
+			content: `<w:p><w:r><w:drawing><wp:inline><a:graphic><a:graphicData uri="` + docxWPSNS + `"><wps:wgp/></a:graphicData></a:graphic></wp:inline></w:drawing></w:r></w:p>`,
+			want:    "grouped or nested shapes are unsupported",
+		},
+		{
+			name:    "image and text box in one drawing",
+			content: `<w:p><w:r><w:drawing><wp:inline><a:graphic><a:graphicData uri="` + docxWPSNS + `"><wps:wsp><wps:txbx><w:txbxContent>` + docxTextBoxParagraph("框内") + `</w:txbxContent></wps:txbx></wps:wsp></a:graphicData></a:graphic><a:graphic><a:graphicData uri="` + docxPictureNS + `"><pic:pic><pic:blipFill><a:blip r:embed="image1"/></pic:blipFill></pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r></w:p>`,
+			want:    "exactly one supported raster image or one text box",
+		},
+		{
+			name:    "table in text box",
+			content: `<w:p><w:r>` + docxShapeBody(`<w:tbl><w:tr><w:tc>`+docxTextBoxParagraph("单元格")+`</w:tc></w:tr></w:tbl>`) + `</w:r></w:p>`,
+			want:    "tables inside text boxes are unsupported",
+		},
+		{
+			name:    "wordprocessing content in shape properties",
+			content: `<w:p><w:r><w:drawing><wp:inline><a:graphic><a:graphicData uri="` + docxWPSNS + `"><wps:wsp><wps:spPr><w:t>藏在属性里</w:t></wps:spPr><wps:txbx><w:txbxContent>` + docxTextBoxParagraph("框内") + `</w:txbxContent></wps:txbx></wps:wsp></a:graphicData></a:graphic></wp:inline></w:drawing></w:r></w:p>`,
+			want:    "unsupported shape property",
+		},
+	} {
+		t.Run(item.name, func(t *testing.T) {
+			result, err := ParseDOCX(context.Background(), docxRewrite(t, plain, map[string][]byte{"word/document.xml": docxAltContentDocument(item.content)}), nil)
+			if err == nil || !strings.Contains(err.Error(), item.want) {
+				t.Fatalf("want %q, got %v", item.want, err)
+			}
+			if result.IR.NormalizedText != "" {
+				t.Fatalf("failed parse returned text %q", result.IR.NormalizedText)
+			}
+		})
+	}
+}
+
+func TestDOCXPaginationFieldsNeverBecomeContractText(t *testing.T) {
+	plain := docxFixture(t, "plain.docx")
+	page := `<w:r><w:fldChar w:fldCharType="begin"/><w:instrText xml:space="preserve"> PAGE  \* MERGEFORMAT </w:instrText><w:fldChar w:fldCharType="separate"/><w:t>7</w:t><w:fldChar w:fldCharType="end"/></w:r>`
+	numpages := `<w:r><w:fldChar w:fldCharType="begin"/><w:instrText> NUMPAGES </w:instrText><w:fldChar w:fldCharType="separate"/><w:t>12</w:t><w:fldChar w:fldCharType="end"/></w:r>`
+	reference := `<w:r><w:fldChar w:fldCharType="begin"/><w:instrText> REF clauseA </w:instrText><w:fldChar w:fldCharType="separate"/><w:t>5.1</w:t><w:fldChar w:fldCharType="end"/></w:r>`
+	document := docxAltContentDocument(`<w:p>` + page + numpages + reference + docxShapeParagraphRun("页") + `</w:p>` +
+		`<w:p><w:fldSimple w:instr=" PAGE "><w:r><w:t>9</w:t></w:r></w:fldSimple><w:fldSimple w:instr=" REF clauseB "><w:r><w:t>6.2</w:t></w:r></w:fldSimple></w:p>`)
+	result, err := ParseDOCX(context.Background(), docxRewrite(t, plain, map[string][]byte{"word/document.xml": document}), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := result.IR.NormalizedText
+	for _, absent := range []string{"7", "12", "9"} {
+		if strings.Contains(text, absent) {
+			t.Fatalf("pagination number %q leaked into contract text %q", absent, text)
+		}
+	}
+	for _, want := range []string{"5.1", "6.2"} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("cached result %q of a non-pagination field was dropped from %q", want, text)
+		}
+	}
+}
+
+func docxShapeParagraphRun(value string) string {
+	return `<w:r><w:t>` + value + `</w:t></w:r>`
+}
+
+func TestDOCXFieldInstructionFailuresStayClosed(t *testing.T) {
+	plain := docxFixture(t, "plain.docx")
+	for _, item := range []struct {
+		name    string
+		content string
+		want    string
+	}{
+		{
+			name:    "instruction outside a field",
+			content: `<w:p><w:r><w:instrText> PAGE </w:instrText></w:r></w:p>`,
+			want:    "field instruction outside an open field",
+		},
+		{
+			name:    "instruction after separator",
+			content: `<w:p><w:r><w:fldChar w:fldCharType="begin"/><w:fldChar w:fldCharType="separate"/><w:instrText> PAGE </w:instrText><w:fldChar w:fldCharType="end"/></w:r></w:p>`,
+			want:    "field instruction outside an open field",
+		},
+		{
+			name:    "instruction over the limit",
+			content: `<w:p><w:r><w:fldChar w:fldCharType="begin"/><w:instrText>` + strings.Repeat("A", docxMaxFieldInstruction+1) + `</w:instrText><w:fldChar w:fldCharType="end"/></w:r></w:p>`,
+			want:    "field instruction limit exceeded",
+		},
+		{
+			name:    "simple field without instruction",
+			content: `<w:p><w:fldSimple><w:r><w:t>无指令</w:t></w:r></w:fldSimple></w:p>`,
+			want:    "simple field has no instruction",
+		},
+	} {
+		t.Run(item.name, func(t *testing.T) {
+			result, err := ParseDOCX(context.Background(), docxRewrite(t, plain, map[string][]byte{"word/document.xml": docxAltContentDocument(item.content)}), nil)
+			if err == nil || !strings.Contains(err.Error(), item.want) {
+				t.Fatalf("want %q, got %v", item.want, err)
+			}
+			if result.IR.NormalizedText != "" {
+				t.Fatalf("failed parse returned text %q", result.IR.NormalizedText)
+			}
+		})
 	}
 }
