@@ -288,9 +288,18 @@ def run(args):
                 # review. Success is a finished, frozen attempt under the
                 # precheck rule set; model calls are optional on this path.
                 summary = (workspace.get("review_attempts") or {}).get("attempt") or {}
+                run_view = workspace.get("run") or {}
                 scope_id = (summary.get("review_scope") or {}).get("id")
                 if state not in {"completed", "awaiting_human", "partial"}:
                     raise RunnerError(f"review ended in {state}")
+                # Terminal identity: the frozen summary must be the attempt this
+                # runner accepted, for the same run, under frozen history.
+                if not current["attempt_id"] or summary.get("id") != current["attempt_id"]:
+                    raise RunnerError("precheck summary is not the accepted attempt")
+                if summary.get("run_id") != current["run_id"] or run_view.get("id") not in (None, current["run_id"]):
+                    raise RunnerError("precheck summary is not the accepted run")
+                if summary.get("history_kind") != "frozen":
+                    raise RunnerError("precheck attempt history is not frozen")
                 if scope_id != "single_contract_precheck":
                     raise RunnerError("review scope does not match the requested precheck scope")
                 if not summary.get("finished_at") or not summary.get("frozen_result_available"):
@@ -298,16 +307,24 @@ def run(args):
                 current["precheck"] = {
                     "frozen": True,
                     "attempt_id": summary.get("id"),
+                    "run_id": summary.get("run_id"),
+                    "history_kind": summary.get("history_kind"),
                     "findings": len(workspace.get("findings") or []),
                     "evaluations": len(workspace.get("evaluations") or []),
-                    "partial_reason": (workspace.get("run") or {}).get("partial_reason"),
+                    "partial_reason": run_view.get("partial_reason"),
                     "rule_set": (summary.get("review_scope") or {}).get("rule_set_id"),
+                }
+                current["model_call_acceptance"] = {
+                    "status": "NOT_APPLICABLE",
+                    "reason": "single_contract_precheck on a non-governed public case runs deterministic payment-rule checks only; no agent review or text-model call is executed in this scope",
                 }
             else:
                 if state not in {"completed", "awaiting_human"}:
                     raise RunnerError(f"review ended in {state}")
                 if attempt.get("state") != "completed" or not any(event.get("node_kind") == "model_call" and event.get("event_type") == "model_completed" for event in events):
                     raise RunnerError("review lacks a completed model execution")
+                current["model_call_acceptance"] = {"status": "PASS",
+                                                    "reason": "full review completed with a recorded model_completed event"}
             current["status"] = "complete"
             current["finished_at"] = dt.datetime.now(dt.timezone.utc).isoformat()
             save(result_path, result)
@@ -333,6 +350,10 @@ def run(args):
         if args.model_record_dir:
             try:
                 result["model_record_count"] = snapshot_model_calls(args.model_record_dir, output, result["started_at"], result["finished_at"])
+                result["ocr_acceptance"] = ({"status": "RECORDED", "record_count": result["model_record_count"],
+                                             "note": "recorded OCR transcriptions through the local recording proxy"} if result["model_record_count"] else
+                                            {"status": "NOT_RUN", "record_count": 0,
+                                             "reason": "no OCR transcription was needed or reached for this case"})
                 if result["status"] == "complete" and result["model_record_count"] == 0 and result.get("review_scope") != "single_contract_precheck":
                     raise RunnerError("completed review has no recorded model call")
             except (OSError, ValueError, KeyError, RunnerError) as exc:
