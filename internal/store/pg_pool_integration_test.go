@@ -126,14 +126,14 @@ func TestRuntimePoolExplicitTimeoutPrecedence(t *testing.T) {
 		want     [3]int64
 	}{
 		{
-			name: "direct startup parameters",
+			name:     "direct startup parameters",
 			settings: map[string]string{"statement_timeout": "2s", "lock_timeout": "0", "idle_in_transaction_session_timeout": "750ms"},
-			want: [3]int64{2000, 0, 750},
+			want:     [3]int64{2000, 0, 750},
 		},
 		{
-			name: "options and direct parameter",
+			name:     "options and direct parameter",
 			settings: map[string]string{"options": "-c statement_timeout=1500ms --lock_timeout=1250ms", "idle_in_transaction_session_timeout": "0"},
-			want: [3]int64{1500, 1250, 0},
+			want:     [3]int64{1500, 1250, 0},
 		},
 	} {
 		t.Run(tt.name, func(t *testing.T) {

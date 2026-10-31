@@ -107,7 +107,7 @@ func LoadSupplementalCapture(assetDir, sourceID string) (CaptureInput, error) {
 		capture.Articles = append(capture.Articles, ArticleRef{
 			SourceID: sourceID, SourceSnapshotID: source.snapshot, VersionID: adapter.versionID,
 			ArticleNumber: article.Number, ArticleLabel: article.Label, FullText: text, TextSHA256: digest([]byte(text)),
-			CitationSpan: TextSpan{Start: 0, End: len([]rune(article.Label)), Quote: article.Label},
+			CitationSpan:  TextSpan{Start: 0, End: len([]rune(article.Label)), Quote: article.Label},
 			PromulgatedOn: adapter.promulgatedOn, EffectiveFrom: adapter.effectiveFrom, EffectiveUntil: adapter.effectiveUntil,
 			CurrencyStatus: source.status, StatusEvidenceID: baseline.StatusEvidenceID,
 		})

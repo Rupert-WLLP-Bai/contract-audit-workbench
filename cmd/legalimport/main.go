@@ -95,8 +95,8 @@ func importSource(client *http.Client, endpoint, assetDir, session, sourceID str
 	input := store.LegalSourceImportInput{Capture: capture, IdempotencyKey: key}
 	for _, article := range capture.Articles {
 		input.Articles = append(input.Articles, store.LegalArticleVersionInput{
-			ArticleNumber: article.ArticleNumber,
-			KnowledgeID: "legal-" + strings.ToLower(sourceID) + "-" + strconv.Itoa(article.ArticleNumber),
+			ArticleNumber:  article.ArticleNumber,
+			KnowledgeID:    "legal-" + strings.ToLower(sourceID) + "-" + strconv.Itoa(article.ArticleNumber),
 			DisplayVersion: capture.VersionID,
 		})
 	}

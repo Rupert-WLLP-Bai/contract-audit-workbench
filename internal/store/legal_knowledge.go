@@ -286,19 +286,19 @@ func validateKnowledgeVersionFamily(ctx context.Context, tx pgx.Tx, tenant strin
 }
 
 type legalCaptureReference struct {
-	id, sourceID, versionID, normTitle, documentType, publisher, issuer, officialURL, provenance string
-	promulgatedOn, effectiveFrom, effectiveUntil string
-	sourceCapturedAt, statusObservedAt time.Time
-	responseStatus, statusResponseStatus int
+	id, sourceID, versionID, normTitle, documentType, publisher, issuer, officialURL, provenance                 string
+	promulgatedOn, effectiveFrom, effectiveUntil                                                                 string
+	sourceCapturedAt, statusObservedAt                                                                           time.Time
+	responseStatus, statusResponseStatus                                                                         int
 	mediaType, statusMediaType, rawSHA, extracted, extractedSHA, extractorID, extractorVersion, canonicalVersion string
-	statusID, status, statusRegistryURL, statusMethod, statusSHA string
-	articleManifestSHA string
-	raw, statusRaw, statusRequestBody, articleRaw []byte
-	digestsChecked, digestsValid bool
-	articlesChecked bool
-	articlesErr error
-	articles []legalnorm.VerifiedArticle
-	extractedRunes []rune
+	statusID, status, statusRegistryURL, statusMethod, statusSHA                                                 string
+	articleManifestSHA                                                                                           string
+	raw, statusRaw, statusRequestBody, articleRaw                                                                []byte
+	digestsChecked, digestsValid                                                                                 bool
+	articlesChecked                                                                                              bool
+	articlesErr                                                                                                  error
+	articles                                                                                                     []legalnorm.VerifiedArticle
+	extractedRunes                                                                                               []rune
 }
 
 const legalCaptureReferenceColumns = `capture_snapshot_id,source_id,norm_version,norm_title,document_type,publisher,issuer,official_url,provenance,
