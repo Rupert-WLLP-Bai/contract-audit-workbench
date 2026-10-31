@@ -2,7 +2,6 @@ package documentservice
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
@@ -155,10 +154,9 @@ func writeIntakeUploadFailure(w http.ResponseWriter, err error) {
 	}
 	var failure *fault.Error
 	if errors.As(err, &failure) {
-		body, _ := json.Marshal(map[string]any{"error": map[string]any{
+		writeJSON(w, failure.Status, map[string]any{"error": map[string]any{
 			"code": failure.Code, "message": failure.Message, "retryable": failure.Retryable,
 		}})
-		writeJSON(w, failure.Status, body)
 		return
 	}
 	writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "document intake upload failed"})
