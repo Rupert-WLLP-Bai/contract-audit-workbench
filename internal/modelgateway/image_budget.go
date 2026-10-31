@@ -1,8 +1,10 @@
 package modelgateway
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/base64"
+	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"image"
@@ -158,12 +160,15 @@ func canonicalSingleImageOCR(body []byte, format string) bool {
 	return err == nil && bytes.Equal(body, encoded)
 }
 
-// Match the existing document-image pixel bound before decoding. Full decoding
-// and a final base64 drain reject malformed images and trailing invalid data.
+// Match the document-image pixel bound and reject animated or concatenated PNGs
+// before decoding. The image budget assumes a single static image.
 func validEmbeddedImage(encoded []byte, expectedFormat string) bool {
 	const maxPixels = 40_000_000
 	decoder := func() io.Reader {
 		return base64.NewDecoder(base64.StdEncoding.Strict(), bytes.NewReader(encoded))
+	}
+	if expectedFormat == "png" && !singlePNG(bufio.NewReader(decoder())) {
+		return false
 	}
 	config, format, err := image.DecodeConfig(decoder())
 	if err != nil || format != expectedFormat || config.Width < 1 || config.Height < 1 || config.Width > maxPixels/config.Height {
@@ -176,4 +181,29 @@ func validEmbeddedImage(encoded []byte, expectedFormat string) bool {
 	}
 	_, err = io.Copy(io.Discard, imageData)
 	return err == nil
+}
+
+func singlePNG(reader *bufio.Reader) bool {
+	var signature [8]byte
+	if _, err := io.ReadFull(reader, signature[:]); err != nil || signature != [8]byte{137, 'P', 'N', 'G', 13, 10, 26, 10} {
+		return false
+	}
+	for {
+		var header [8]byte
+		if _, err := io.ReadFull(reader, header[:]); err != nil {
+			return false
+		}
+		length := binary.BigEndian.Uint32(header[:4])
+		kind := string(header[4:])
+		if kind == "acTL" || kind == "fcTL" || kind == "fdAT" || kind == "IEND" && length != 0 {
+			return false
+		}
+		if _, err := io.CopyN(io.Discard, reader, int64(length)+4); err != nil {
+			return false
+		}
+		if kind == "IEND" {
+			_, err := reader.ReadByte()
+			return err == io.EOF
+		}
+	}
 }

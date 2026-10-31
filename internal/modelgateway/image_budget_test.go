@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
+	"encoding/binary"
 	"encoding/json"
+	"hash/crc32"
 	"image"
 	"image/color"
 	"image/jpeg"
@@ -123,6 +125,13 @@ func TestImageTokenBudgetCountsOnlyValidatedBoundOCR(t *testing.T) {
 	if got := budget.inputUpperBound(jpegPayload, "cq1/qwen3.6", upstream, 200000); got != jpegWant {
 		t.Fatalf("verified JPEG reservation=%d, want %d", got, jpegWant)
 	}
+	animation := make([]byte, 20)
+	binary.BigEndian.PutUint32(animation[:4], 8)
+	copy(animation[4:8], "acTL")
+	binary.BigEndian.PutUint32(animation[8:12], 2)
+	binary.BigEndian.PutUint32(animation[16:20], crc32.ChecksumIEEE(animation[4:16]))
+	animatedPNG := append(append(append([]byte(nil), imageBytes[:33]...), animation...), imageBytes[33:]...)
+	concatenatedPNG := append(append([]byte(nil), imageBytes...), imageBytes...)
 	for _, tc := range []struct {
 		name      string
 		budget    imageTokenBudget
@@ -140,6 +149,8 @@ func TestImageTokenBudgetCountsOnlyValidatedBoundOCR(t *testing.T) {
 		{"not an image", budget, upstream, "cq1/qwen3.6", testOCRPayload(t, "cq1/qwen3.6", "image/png", "text", []byte("not-a-png"), 1)},
 		{"truncated image", budget, upstream, "cq1/qwen3.6", testOCRPayload(t, "cq1/qwen3.6", "image/png", "text", imageBytes[:50], 1)},
 		{"wrong image declaration", budget, upstream, "cq1/qwen3.6", testOCRPayload(t, "cq1/qwen3.6", "image/jpeg", "text", imageBytes, 1)},
+		{"animated PNG", budget, upstream, "cq1/qwen3.6", testOCRPayload(t, "cq1/qwen3.6", "image/png", "text", animatedPNG, 1)},
+		{"concatenated PNG", budget, upstream, "cq1/qwen3.6", testOCRPayload(t, "cq1/qwen3.6", "image/png", "text", concatenatedPNG, 1)},
 		{"extra JSON field", budget, upstream, "cq1/qwen3.6", bytes.Replace(payload, []byte(`{"model":`), []byte(`{"extra":1,"model":`), 1)},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
