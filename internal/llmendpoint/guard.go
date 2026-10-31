@@ -129,8 +129,10 @@ func CheckBaseURLPolicy(baseURL string) error {
 	if hostAllowlisted(parsed.hostname, parsed.port) {
 		return nil
 	}
-	if reason := forbiddenIPReason(net.ParseIP(parsed.hostname)); reason != "" {
-		return fmt.Errorf("%w: base URL names a %s", ErrEndpointForbidden, reason)
+	if literal := net.ParseIP(parsed.hostname); literal != nil {
+		if reason := forbiddenIPReason(literal); reason != "" {
+			return fmt.Errorf("%w: base URL names a %s", ErrEndpointForbidden, reason)
+		}
 	}
 	return nil
 }
@@ -149,7 +151,14 @@ func parseEndpointHost(baseURL string) (endpointHost, error) {
 	if err != nil || parsed.Hostname() == "" {
 		return endpointHost{}, fmt.Errorf("%w: base URL has no host", ErrInvalidEndpoint)
 	}
-	return endpointHost{hostname: parsed.Hostname(), port: parsed.Port()}, nil
+	port := parsed.Port()
+	if port == "" {
+		port = "80"
+		if parsed.Scheme == "https" {
+			port = "443"
+		}
+	}
+	return endpointHost{hostname: parsed.Hostname(), port: port}, nil
 }
 
 // GuardedTransport returns a transport for operator-configured endpoint
@@ -209,6 +218,8 @@ func guardedDialContext(ctx context.Context, network, addr string) (net.Conn, er
 		if reason := forbiddenIPReason(candidate.IP); reason != "" {
 			return nil, ErrEndpointForbidden
 		}
+	}
+	for _, candidate := range addresses {
 		conn, dialErr := dialer.DialContext(ctx, network, net.JoinHostPort(candidate.IP.String(), port))
 		if dialErr == nil {
 			return conn, nil
