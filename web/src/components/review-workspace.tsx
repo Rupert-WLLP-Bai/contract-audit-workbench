@@ -324,6 +324,8 @@ export function ReviewWorkspaceView({
   relationError = null,
   onCreateRelation,
   onDeleteRelation,
+  selectedEvidenceId = null,
+  onSelectEvidence,
 }: {
   workspace: ReviewWorkspace;
   layout: ReviewLayout;
@@ -358,6 +360,8 @@ export function ReviewWorkspaceView({
   relationError?: string | null;
   onCreateRelation?: (input: CaseRelationInput) => Promise<void>;
   onDeleteRelation?: (relationId: string) => void;
+  selectedEvidenceId?: string | null;
+  onSelectEvidence?: (evidenceId: string | null) => void;
 }) {
   const { run } = workspace;
   const { selected, attempts } = attemptsOf(workspace);
@@ -409,7 +413,14 @@ export function ReviewWorkspaceView({
           onDecide={onDecide}
         />
       </div>
-      <BusinessAgentReviewView review={workspace.agent_review ?? null} />
+      <BusinessAgentReviewView
+        review={workspace.agent_review ?? null}
+        caseId={run.case_id}
+        runId={run.id}
+        attemptId={selected?.history_kind === "frozen" ? selected.id : null}
+        selectedEvidenceId={selectedEvidenceId}
+        onSelectEvidence={onSelectEvidence}
+      />
       {workspace.execution ? (
         <TrajectoryView execution={workspace.execution} />
       ) : null}

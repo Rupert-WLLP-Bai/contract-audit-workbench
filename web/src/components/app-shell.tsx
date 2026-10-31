@@ -474,7 +474,7 @@ export function AppShell() {
         }}
         onLogout={() => {
           void logout.mutateAsync().finally(() => {
-            void navigate("/login", { replace: true });
+            void navigate("/login", { replace: true, state: { from: location.pathname + location.search + location.hash } });
           });
         }}
       />

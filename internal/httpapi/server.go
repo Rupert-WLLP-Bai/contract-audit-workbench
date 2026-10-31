@@ -85,6 +85,7 @@ func Handler(st *store.Store, opt Options) http.Handler {
 	mux.HandleFunc("GET /api/admin/rulepacks/{packID}/history", h.rulePackHistory)
 	registerGovernanceRoutes(mux, h)
 	registerLegalKnowledgeRoutes(mux, h)
+	registerContractCitationRoutes(mux, h)
 	registerEvidenceRoutes(mux, h)
 	mux.HandleFunc("GET /api/auth/oidc/login", h.oidcLogin)
 	mux.HandleFunc("GET /api/auth/oidc/callback", h.oidcCallback)

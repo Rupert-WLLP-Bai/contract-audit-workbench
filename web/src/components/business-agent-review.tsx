@@ -1,3 +1,5 @@
+import { Alert, Button } from "antd";
+import { createContext, useContext } from "react";
 import type {
   BusinessAgentCapability,
   BusinessAgentDomain,
@@ -6,7 +8,18 @@ import type {
   BusinessAgentReview,
   BusinessAgentScope,
 } from "../api/business-agent-review";
+import { FrozenContractCitationReader } from "./contract-citation-reader";
 import { StatusText } from "./status-text";
+
+interface CitationTarget {
+  caseId: string;
+  runId: string;
+  attemptId: string;
+  selectedEvidenceId: string | null;
+  onSelectEvidence: (evidenceId: string | null) => void;
+}
+
+const CitationTargetContext = createContext<CitationTarget | null>(null);
 
 const DOMAIN_LABELS: Record<string, string> = {
   compliance: "合规与授权",
@@ -187,6 +200,7 @@ function citationPage(item: BusinessAgentEvidence): string {
 }
 
 function Citation({ item }: { item: BusinessAgentEvidence | undefined }) {
+  const target = useContext(CitationTargetContext);
   if (!item) return <span>关联引用详情不可用。</span>;
   if (item.verification === "rejected") return <span>引用未通过核验。</span>;
   if (!isVerifiedCitation(item)) {
@@ -195,10 +209,30 @@ function Citation({ item }: { item: BusinessAgentEvidence | undefined }) {
   if (!anchorIdentityComplete(item) || !anchorRangeValid(item)) {
     return <span>核验引用的信息不完整，需进一步核对。</span>;
   }
+  const reading = target !== null && target.selectedEvidenceId === item.evidence_id;
   return (
     <>
       <p>来源材料中的引用已核验{citationPage(item)}</p>
       <blockquote>{item.anchor.quote}</blockquote>
+      {target === null ? null : (
+        <Button
+          type="link"
+          size="small"
+          aria-expanded={reading}
+          onClick={() => target.onSelectEvidence(reading ? null : item.evidence_id)}
+        >
+          {reading ? "收起本次冻结原文" : "读取本次冻结原文"}
+        </Button>
+      )}
+      {target !== null && reading ? (
+        <FrozenContractCitationReader
+          caseId={target.caseId}
+          runId={target.runId}
+          attemptId={target.attemptId}
+          evidenceId={item.evidence_id}
+          expected={item}
+        />
+      ) : null}
     </>
   );
 }
@@ -578,7 +612,7 @@ function ReviewSections({
   );
 }
 
-export function BusinessAgentReviewView({ review }: { review: BusinessAgentReview | null }) {
+function BusinessAgentReviewBody({ review }: { review: BusinessAgentReview | null }) {
   if (!review) return <EmptyReview />;
   const domains = arrayOr(review.domains);
   const scopesWithoutResults = scopesWithoutResultsOf(review.scope, domains);
@@ -591,5 +625,46 @@ export function BusinessAgentReviewView({ review }: { review: BusinessAgentRevie
       domains={domains}
       scopesWithoutResults={scopesWithoutResults}
     />
+  );
+}
+
+/**
+ * Business agent review projection. When the page supplies the exact case,
+ * run and attempt, every verified citation also opens its frozen text from
+ * that attempt; the reader stays closed when the caller has no attempt scope.
+ */
+export function BusinessAgentReviewView({
+  review,
+  caseId,
+  runId,
+  attemptId,
+  selectedEvidenceId = null,
+  onSelectEvidence,
+}: {
+  review: BusinessAgentReview | null;
+  caseId?: string;
+  runId?: string;
+  attemptId?: string | null;
+  selectedEvidenceId?: string | null;
+  onSelectEvidence?: (evidenceId: string | null) => void;
+}) {
+  const target: CitationTarget | null =
+    caseId && runId && attemptId && onSelectEvidence
+      ? { caseId, runId, attemptId, selectedEvidenceId, onSelectEvidence }
+      : null;
+  const citationUnknown = target !== null && selectedEvidenceId !== null && review !== null &&
+    !arrayOr(review.evidence).some((item) => item.evidence_id === selectedEvidenceId);
+  return (
+    <CitationTargetContext.Provider value={target}>
+      {citationUnknown ? (
+        <Alert
+          type="warning"
+          showIcon
+          title="URL 中的引用不属于当前执行记录"
+          description="未显示其他执行记录的原文；请从当前执行记录的引用重新打开。"
+        />
+      ) : null}
+      <BusinessAgentReviewBody review={review} />
+    </CitationTargetContext.Provider>
   );
 }

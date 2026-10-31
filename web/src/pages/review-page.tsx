@@ -46,6 +46,7 @@ export function ReviewPage() {
   const { caseId = "", runId = "" } = useParams();
   const [params, setParams] = useSearchParams();
   const selectedAttemptId = params.get("attempt_id");
+  const selectedCitation = params.get("citation");
   const [streamLive, setStreamLive] = useState(false);
   const review = useReview(caseId, runId, selectedAttemptId, streamLive);
   const workbench = useWorkbench("week");
@@ -440,6 +441,20 @@ export function ReviewPage() {
         onSelectAttempt={(attemptId) => {
           const next = new URLSearchParams(params);
           next.set("attempt_id", attemptId);
+          // A citation belongs to its own attempt; never show the previous
+          // attempt's evidence after switching.
+          next.delete("citation");
+          setParams(next);
+        }}
+        selectedEvidenceId={selectedCitation}
+        onSelectEvidence={(evidenceId) => {
+          const next = new URLSearchParams(params);
+          if (selectedAttempt?.id) next.set("attempt_id", selectedAttempt.id);
+          if (evidenceId === null) {
+            next.delete("citation");
+          } else {
+            next.set("citation", evidenceId);
+          }
           setParams(next);
         }}
         onDecide={onDecide}
@@ -449,6 +464,7 @@ export function ReviewPage() {
             onSuccess: (accepted) => {
               const next = new URLSearchParams(params);
               next.set("attempt_id", accepted.attempt_id);
+              next.delete("citation");
               setParams(next);
             },
           });
