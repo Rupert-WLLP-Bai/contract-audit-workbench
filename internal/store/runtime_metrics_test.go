@@ -170,9 +170,9 @@ func TestRuntimeMetricsWorkerScopeAndCommittedReclaim(t *testing.T) {
 			Resources []struct {
 				Scopes []struct {
 					Metrics []struct {
-						Name      string `json:"name"`
-						Unit      string `json:"unit"`
-						Sum       *struct {
+						Name string `json:"name"`
+						Unit string `json:"unit"`
+						Sum  *struct {
 							Points []struct {
 								Value      string `json:"asInt"`
 								Attributes []struct {
