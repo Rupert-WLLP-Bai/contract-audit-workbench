@@ -296,7 +296,7 @@ async function run(): Promise<void> {
 
     await admin.screenshot({ path: join(output, "d3-subject-history.png"), fullPage: true });
     await writeFile(join(output, "d3-subject-controlled-source.json"), `${JSON.stringify({
-      status: "PASS", case_ids: [caseA, caseB], source_snapshot_id: snapshotId,
+      assertions: "COMPLETE", case_ids: [caseA, caseB], source_snapshot_id: snapshotId,
       source_change_request_id: sourceChangeId, identifier_change_request_id: correctionId, trace,
     }, null, 2)}\n`, "utf8");
   } catch (error) {
