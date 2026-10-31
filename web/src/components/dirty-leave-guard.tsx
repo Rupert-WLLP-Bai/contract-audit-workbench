@@ -1,5 +1,5 @@
 import { Modal } from "antd";
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { useBlocker } from "react-router";
 
 // Router-level blocking only intercepts in-app SPA navigation; tab close and
@@ -17,11 +17,6 @@ export function DirtyLeaveGuard({
     ({ currentLocation, nextLocation }) =>
       dirty && currentLocation.pathname !== nextLocation.pathname,
   );
-  const [confirmOpen, setConfirmOpen] = useState(false);
-
-  useEffect(() => {
-    setConfirmOpen(blocker.state === "blocked");
-  }, [blocker.state]);
 
   useEffect(() => {
     if (!dirty) return;
@@ -41,12 +36,13 @@ export function DirtyLeaveGuard({
       maskClosable={false}
       okButtonProps={{ danger: true }}
       okText="离开"
-      onCancel={() => blocker.reset()}
-      onOk={() => {
-        setConfirmOpen(false);
-        blocker.proceed();
+      onCancel={() => {
+        if (blocker.state === "blocked") blocker.reset();
       }}
-      open={confirmOpen}
+      onOk={() => {
+        if (blocker.state === "blocked") blocker.proceed();
+      }}
+      open={blocker.state === "blocked"}
       title="有未提交的草稿"
     >
       {description ??
