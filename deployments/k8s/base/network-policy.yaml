@@ -6,8 +6,8 @@
 # policy. Pods without a matching policy (migration/backup/restore jobs,
 # platform db/nats/rustfs, health-monitor, the observe stack, smoke jobs) stay
 # unrestricted; a namespace default-deny would require covering those first.
-# Enforcement also requires a policy-capable CNI: k3d's flannel ignores
-# NetworkPolicies, so real coverage is validated on production CNIs only.
+# Enforcement requires a NetworkPolicy controller in the target cluster.
+# Verify allowed and denied flows in each production or k3d profile.
 #
 # Kubelet health/readiness probes originate on the node and are exempt from
 # NetworkPolicy under the default host-endpoint behavior of the policy-capable
