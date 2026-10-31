@@ -370,10 +370,14 @@ func (s *Store) readAttemptState(ctx context.Context, claim JobClaim, withInput 
 	}
 	var st state
 	if claim.JobID != "" {
-		st.Jobs, err = loadJobs(ctx, readRows(tx, `id=$1 AND tenant_id=$2 AND org_id=$3 AND case_id=$4 AND run_id=$5 AND attempt_id=$6
+		rows, queryErr := tx.Query(ctx, jobSelectSQL+` WHERE id=$1 AND tenant_id=$2 AND org_id=$3 AND case_id=$4 AND run_id=$5 AND attempt_id=$6
 			AND actor_id=$7 AND worker_id=$8 AND generation=$9 AND state='running' AND lease_until > clock_timestamp()`,
 			claim.JobID, claim.TenantID, claim.OrgID, claim.CaseID, claim.RunID, claim.AttemptID,
-			claim.ActorID, claim.WorkerID, claim.Generation))
+			claim.ActorID, claim.WorkerID, claim.Generation)
+		if queryErr != nil {
+			return state{}, queryErr
+		}
+		st.Jobs, err = scanJobs(rows)
 		if err != nil {
 			return state{}, err
 		}
