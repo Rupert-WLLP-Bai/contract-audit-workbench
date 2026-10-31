@@ -1,14 +1,284 @@
+# Per-role least-privilege network access for the application workloads in
+# this namespace. Rules are evaluated on pod addresses and container ports
+# (post-ClusterIP DNAT), so service ports such as client:80 never appear here.
+#
+# Scope: only workloads with an in-cluster or declared external caller get a
+# policy. Pods without a matching policy (migration/backup/restore jobs,
+# platform db/nats/rustfs, health-monitor, the observe stack, smoke jobs) stay
+# unrestricted; a namespace default-deny would require covering those first.
+# Enforcement also requires a policy-capable CNI: k3d's flannel ignores
+# NetworkPolicies, so real coverage is validated on production CNIs only.
+#
+# Kubelet health/readiness probes originate on the node and are exempt from
+# NetworkPolicy under the default host-endpoint behavior of the policy-capable
+# CNIs (Calico, Cilium). audit-worker therefore receives no in-cluster ingress
+# peer at all.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: core-api-oidc-egress
+  name: gateway
+  namespace: contract-audit
+  labels: {app.kubernetes.io/part-of: contract-audit}
+spec:
+  podSelector: {matchLabels: {app.kubernetes.io/name: gateway}}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        # Edge controller for ingressClassName: nginx (services-ingress.yaml);
+        # standard ingress-nginx chart labels. Adjust if the operator installs
+        # the controller under different namespace or pod labels.
+        - namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: ingress-nginx}}
+          podSelector: {matchLabels: {app.kubernetes.io/name: ingress-nginx}}
+        # Web tiers proxy /api, /openapi.json and /mcp to the gateway
+        # (contract-audit-web-proxy).
+        - podSelector: {matchLabels: {app.kubernetes.io/name: client}}
+        - podSelector: {matchLabels: {app.kubernetes.io/name: admin}}
+        - podSelector: {matchLabels: {app.kubernetes.io/name: portal}}
+      ports: [{protocol: TCP, port: 8080}]
+  egress:
+    - to:
+        - namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: kube-system}}
+          podSelector: {matchLabels: {k8s-app: kube-dns}}
+      ports:
+        - {protocol: UDP, port: 53}
+        - {protocol: TCP, port: 53}
+    - to: [{podSelector: {matchLabels: {app.kubernetes.io/name: core-api}}}]
+      ports: [{protocol: TCP, port: 8081}]
+    - to: [{podSelector: {matchLabels: {app.kubernetes.io/name: document-service}}}]
+      ports: [{protocol: TCP, port: 8082}]
+    - to: [{podSelector: {matchLabels: {app.kubernetes.io/name: audit-execution}}}]
+      ports: [{protocol: TCP, port: 8083}]
+    - to: [{podSelector: {matchLabels: {app.kubernetes.io/name: tool-gateway}}}]
+      ports: [{protocol: TCP, port: 8085}]
+---
+# core-api: edge-forwarded API traffic (gateway) and worker result delivery.
+# Egress: PostgreSQL authority store, RustFS intake object writes, document
+# intake upload, DNS, and external HTTP(S) for OIDC issuer discovery/token
+# exchange plus admin-managed LLM endpoint probes (sealed credentials).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: core-api
   namespace: contract-audit
   labels: {app.kubernetes.io/part-of: contract-audit}
 spec:
   podSelector: {matchLabels: {app.kubernetes.io/name: core-api}}
-  policyTypes: [Egress]
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from: [{podSelector: {matchLabels: {app.kubernetes.io/name: gateway}}}]
+      ports: [{protocol: TCP, port: 8081}]
+    - from: [{podSelector: {matchLabels: {app.kubernetes.io/name: audit-worker}}}]
+      ports: [{protocol: TCP, port: 8081}]
   egress:
+    - to:
+        - namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: kube-system}}
+          podSelector: {matchLabels: {k8s-app: kube-dns}}
+      ports:
+        - {protocol: UDP, port: 53}
+        - {protocol: TCP, port: 53}
+    - to:
+        # k3d platform PostgreSQL and the production CNPG cluster (the -rw
+        # service always targets one of these pods on 5432).
+        - podSelector: {matchLabels: {app.kubernetes.io/name: db}}
+        - podSelector: {matchLabels: {cnpg.io/cluster: contract-audit-db}}
+      ports: [{protocol: TCP, port: 5432}]
+    - to: [{podSelector: {matchLabels: {app.kubernetes.io/name: rustfs}}}]
+      ports: [{protocol: TCP, port: 9000}]
+    - to: [{podSelector: {matchLabels: {app.kubernetes.io/name: document-service}}}]
+      ports: [{protocol: TCP, port: 8082}]
     - to: [{ipBlock: {cidr: 0.0.0.0/0}}]
       ports:
-        - {protocol: TCP, port: 443}
         - {protocol: TCP, port: 80}
+        - {protocol: TCP, port: 443}
+---
+# document-service: gateway forwarding, worker preparation requests and core
+# intake upload. Egress: PostgreSQL, RustFS object storage, model-gateway for
+# OCR/chat parse work, DNS.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: document-service
+  namespace: contract-audit
+  labels: {app.kubernetes.io/part-of: contract-audit}
+spec:
+  podSelector: {matchLabels: {app.kubernetes.io/name: document-service}}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from: [{podSelector: {matchLabels: {app.kubernetes.io/name: gateway}}}]
+      ports: [{protocol: TCP, port: 8082}]
+    - from: [{podSelector: {matchLabels: {app.kubernetes.io/name: audit-worker}}}]
+      ports: [{protocol: TCP, port: 8082}]
+    - from: [{podSelector: {matchLabels: {app.kubernetes.io/name: core-api}}}]
+      ports: [{protocol: TCP, port: 8082}]
+  egress:
+    - to:
+        - namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: kube-system}}
+          podSelector: {matchLabels: {k8s-app: kube-dns}}
+      ports:
+        - {protocol: UDP, port: 53}
+        - {protocol: TCP, port: 53}
+    - to:
+        - podSelector: {matchLabels: {app.kubernetes.io/name: db}}
+        - podSelector: {matchLabels: {cnpg.io/cluster: contract-audit-db}}
+      ports: [{protocol: TCP, port: 5432}]
+    - to: [{podSelector: {matchLabels: {app.kubernetes.io/name: rustfs}}}]
+      ports: [{protocol: TCP, port: 9000}]
+    - to: [{podSelector: {matchLabels: {app.kubernetes.io/name: model-gateway}}}]
+      ports: [{protocol: TCP, port: 8084}]
+---
+# audit-execution: gateway forwarding only. Egress: PostgreSQL and NATS for
+# the outbox relay publisher (NATS_URL unset keeps the relay off and the
+# egress unused).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: audit-execution
+  namespace: contract-audit
+  labels: {app.kubernetes.io/part-of: contract-audit}
+spec:
+  podSelector: {matchLabels: {app.kubernetes.io/name: audit-execution}}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from: [{podSelector: {matchLabels: {app.kubernetes.io/name: gateway}}}]
+      ports: [{protocol: TCP, port: 8083}]
+  egress:
+    - to:
+        - namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: kube-system}}
+          podSelector: {matchLabels: {k8s-app: kube-dns}}
+      ports:
+        - {protocol: UDP, port: 53}
+        - {protocol: TCP, port: 53}
+    - to:
+        - podSelector: {matchLabels: {app.kubernetes.io/name: db}}
+        - podSelector: {matchLabels: {cnpg.io/cluster: contract-audit-db}}
+      ports: [{protocol: TCP, port: 5432}]
+    - to: [{podSelector: {matchLabels: {app.kubernetes.io/name: nats}}}]
+      ports: [{protocol: TCP, port: 4222}]
+---
+# audit-worker: no in-cluster caller ever connects to its health port, so it
+# gets no ingress peers (node-originated kubelet probes remain exempt). Egress:
+# PostgreSQL, NATS wake-up subscription, and the four services it runs jobs
+# against (core result delivery, document preparation, model calls, tool
+# evidence).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: audit-worker
+  namespace: contract-audit
+  labels: {app.kubernetes.io/part-of: contract-audit}
+spec:
+  podSelector: {matchLabels: {app.kubernetes.io/name: audit-worker}}
+  policyTypes: [Ingress, Egress]
+  egress:
+    - to:
+        - namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: kube-system}}
+          podSelector: {matchLabels: {k8s-app: kube-dns}}
+      ports:
+        - {protocol: UDP, port: 53}
+        - {protocol: TCP, port: 53}
+    - to:
+        - podSelector: {matchLabels: {app.kubernetes.io/name: db}}
+        - podSelector: {matchLabels: {cnpg.io/cluster: contract-audit-db}}
+      ports: [{protocol: TCP, port: 5432}]
+    - to: [{podSelector: {matchLabels: {app.kubernetes.io/name: nats}}}]
+      ports: [{protocol: TCP, port: 4222}]
+    - to: [{podSelector: {matchLabels: {app.kubernetes.io/name: core-api}}}]
+      ports: [{protocol: TCP, port: 8081}]
+    - to: [{podSelector: {matchLabels: {app.kubernetes.io/name: document-service}}}]
+      ports: [{protocol: TCP, port: 8082}]
+    - to: [{podSelector: {matchLabels: {app.kubernetes.io/name: model-gateway}}}]
+      ports: [{protocol: TCP, port: 8084}]
+    - to: [{podSelector: {matchLabels: {app.kubernetes.io/name: tool-gateway}}}]
+      ports: [{protocol: TCP, port: 8085}]
+---
+# model-gateway: worker and document callers, plus health-monitor snapshots in
+# the local k3d profile (no such pods exist in production). Egress: PostgreSQL
+# and external HTTP(S) for the deployment LLM_BASE_URL and admin-managed
+# endpoint rows.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: model-gateway
+  namespace: contract-audit
+  labels: {app.kubernetes.io/part-of: contract-audit}
+spec:
+  podSelector: {matchLabels: {app.kubernetes.io/name: model-gateway}}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from: [{podSelector: {matchLabels: {app.kubernetes.io/name: audit-worker}}}]
+      ports: [{protocol: TCP, port: 8084}]
+    - from: [{podSelector: {matchLabels: {app.kubernetes.io/name: document-service}}}]
+      ports: [{protocol: TCP, port: 8084}]
+    - from: [{podSelector: {matchLabels: {app.kubernetes.io/name: health-monitor}}}]
+      ports: [{protocol: TCP, port: 8084}]
+  egress:
+    - to:
+        - namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: kube-system}}
+          podSelector: {matchLabels: {k8s-app: kube-dns}}
+      ports:
+        - {protocol: UDP, port: 53}
+        - {protocol: TCP, port: 53}
+    - to:
+        - podSelector: {matchLabels: {app.kubernetes.io/name: db}}
+        - podSelector: {matchLabels: {cnpg.io/cluster: contract-audit-db}}
+      ports: [{protocol: TCP, port: 5432}]
+    - to: [{ipBlock: {cidr: 0.0.0.0/0}}]
+      ports:
+        - {protocol: TCP, port: 80}
+        - {protocol: TCP, port: 443}
+---
+# tool-gateway: gateway forwarding and worker evidence reads. Egress:
+# PostgreSQL only; the MCP tool surface makes no outbound calls.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: tool-gateway
+  namespace: contract-audit
+  labels: {app.kubernetes.io/part-of: contract-audit}
+spec:
+  podSelector: {matchLabels: {app.kubernetes.io/name: tool-gateway}}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from: [{podSelector: {matchLabels: {app.kubernetes.io/name: gateway}}}]
+      ports: [{protocol: TCP, port: 8085}]
+    - from: [{podSelector: {matchLabels: {app.kubernetes.io/name: audit-worker}}}]
+      ports: [{protocol: TCP, port: 8085}]
+  egress:
+    - to:
+        - namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: kube-system}}
+          podSelector: {matchLabels: {k8s-app: kube-dns}}
+      ports:
+        - {protocol: UDP, port: 53}
+        - {protocol: TCP, port: 53}
+    - to:
+        - podSelector: {matchLabels: {app.kubernetes.io/name: db}}
+        - podSelector: {matchLabels: {cnpg.io/cluster: contract-audit-db}}
+      ports: [{protocol: TCP, port: 5432}]
+---
+# Web tiers: served through the edge controller only, proxying API traffic to
+# the gateway (contract-audit-web-proxy).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: web-tiers
+  namespace: contract-audit
+  labels: {app.kubernetes.io/part-of: contract-audit}
+spec:
+  podSelector:
+    matchExpressions:
+      - {key: app.kubernetes.io/name, operator: In, values: [client, admin, portal]}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: ingress-nginx}}
+          podSelector: {matchLabels: {app.kubernetes.io/name: ingress-nginx}}
+      ports: [{protocol: TCP, port: 8080}]
+  egress:
+    - to:
+        - namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: kube-system}}
+          podSelector: {matchLabels: {k8s-app: kube-dns}}
+      ports:
+        - {protocol: UDP, port: 53}
+        - {protocol: TCP, port: 53}
+    - to: [{podSelector: {matchLabels: {app.kubernetes.io/name: gateway}}}]
+      ports: [{protocol: TCP, port: 8080}]
