@@ -221,6 +221,7 @@ export interface ExecutionAttempt {
   error_code: string | null;
   review_scope?: ReviewScopeIdentity;
   history_kind: string;
+  frozen_result_available?: boolean;
 }
 
 export interface ExecutionUsageSubtotals {

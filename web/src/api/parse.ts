@@ -199,6 +199,7 @@ function parseExecutionAttempt(value: unknown): ExecutionAttempt {
     error_code: nullableString(record, "error_code"),
     review_scope: parseReviewScope(record.review_scope),
     history_kind: requiredString(record, "history_kind"),
+    frozen_result_available: record.frozen_result_available === true,
   };
 }
 

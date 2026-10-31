@@ -42,7 +42,8 @@ function choiceProblem(choice: ReviewChoice): string | null {
   const attempt = choice.attempt;
   if (attempt.run_id !== choice.runId || !attempt.id) return "执行身份无效，不可比较";
   if (attempt.history_kind !== "frozen") return "无冻结记录，不可比较";
-  if (!attempt.finished_at || (attempt.state !== "completed" && attempt.state !== "awaiting_human")) return "未完整完成，不可比较";
+  if (!attempt.finished_at || (attempt.state !== "completed" && attempt.state !== "awaiting_human" && attempt.state !== "partial")) return "尚未结束，不可比较";
+  if (attempt.frozen_result_available !== true) return "冻结输入或结果不可用，不可比较";
   return null;
 }
 
@@ -250,7 +251,7 @@ function ReviewDiffBody({ caseId, latestRunId, actorScope }: ReviewDiffProps) {
     sourceChoice && targetChoice && !sameSelection && !sourceProblem && !targetProblem;
   const rows = ready && source.data && target.data ? compareReviewWorkspaces(source.data, target.data) : [];
   return <>
-    <p>选择同一案件中两条已完成、保存了冻结原文的执行记录。来源和目标均按所选身份重新读取。</p>
+    <p>选择同一案件中两条已结束、保存了冻结输入和结果的执行记录。部分审查可核对已返回的结果，缺失检查保留待核对；来源和目标均按所选身份重新读取。</p>
     {unavailableRuns.length ? <p className="callout">以下审查未返回执行记录，不能比较：{unavailableRuns.map((entry) => entry.runId).join("、")}。</p> : null}
     {choices.length === 0 ? <p>当前没有可选择的审查执行记录。</p> : <div className="review-diff-columns">
       <Choice label="来源审查与执行" choices={choices} value={sourceKey} onChange={setSourceKey} />

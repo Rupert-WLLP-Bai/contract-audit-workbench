@@ -96,8 +96,9 @@ export function frozenWorkspaceProblem(workspace: ReviewWorkspace, caseId: strin
   if (workspace.run.case_id !== caseId || workspace.run.id !== runId ||
       !attempt || attempt.id !== attemptId || attempt.run_id !== runId) return "返回的案件、审查或执行身份不一致，不能比较。";
   if (attempt.history_kind !== "frozen") return "该执行没有可核对的冻结记录，不能比较。";
-  if (!attempt.finished_at || (attempt.state !== "completed" && attempt.state !== "awaiting_human"))
-    return "该执行尚未完整完成，不能比较；未执行或部分结果不能视为风险消除。";
+  if (!attempt.finished_at || (attempt.state !== "completed" && attempt.state !== "awaiting_human" && attempt.state !== "partial"))
+    return "该执行尚未结束，不能比较；未执行的检查不能视为风险消除。";
+  if (attempt.frozen_result_available !== true) return "冻结输入或结果尚不可核对，不能比较。";
   const documentIds = workspace.snapshot?.document_ids ?? [];
   const parsedIds = attempt.parsed_document_ids;
   if (!hasUniqueStrings(documentIds) || !hasUniqueStrings(parsedIds)) return "冻结材料或解析版本身份未完整返回，不能比较。";
@@ -253,9 +254,10 @@ export function compareReviewWorkspaces(source: ReviewWorkspace, target: ReviewW
       return;
     }
     const base = baseKey(left);
-    const canDescribeAbsence = sameScope && !!key && leftCount === 1 && !!base && !afterIndex.bases.has(base) && !!left.finding;
+    const targetPartial = target.review_attempts?.attempt.state === "partial";
+    const canDescribeAbsence = !targetPartial && sameScope && !!key && leftCount === 1 && !!base && !afterIndex.bases.has(base) && !!left.finding;
     rows.push({ kind: canDescribeAbsence ? "disappeared" : "unmatched", source: left, target: null,
-      reason: canDescribeAbsence ? "目标未返回相同规则检查；不代表已执行或风险消除。" : "范围、规则、对象或条款缺失或不唯一，不能自动对应。" });
+      reason: canDescribeAbsence ? "目标未返回相同规则检查；不代表已执行或风险消除。" : targetPartial ? "目标为部分审查，未返回检查项不能视为风险消除。" : "范围、规则、对象或条款缺失或不唯一，不能自动对应。" });
   });
 
   after.forEach((right, position) => {
@@ -263,9 +265,10 @@ export function compareReviewWorkspaces(source: ReviewWorkspace, target: ReviewW
     const key = afterIndex.keys[position];
     const rightCount = key ? afterIndex.byKey.get(key)?.length ?? 0 : 0;
     const base = baseKey(right);
-    const canDescribeAddition = sameScope && !!key && rightCount === 1 && !!base && !beforeIndex.bases.has(base) && !!right.finding;
+    const sourcePartial = source.review_attempts?.attempt.state === "partial";
+    const canDescribeAddition = !sourcePartial && sameScope && !!key && rightCount === 1 && !!base && !beforeIndex.bases.has(base) && !!right.finding;
     rows.push({ kind: canDescribeAddition ? "added" : "unmatched", source: null, target: right,
-      reason: canDescribeAddition ? "来源未返回相同规则检查；不能推断此前已执行该检查。" : "范围、规则、对象或条款缺失或不唯一，不能自动对应。" });
+      reason: canDescribeAddition ? "来源未返回相同规则检查；不能推断此前已执行该检查。" : sourcePartial ? "来源为部分审查，不能认定此前已执行该检查。" : "范围、规则、对象或条款缺失或不唯一，不能自动对应。" });
   });
 
   for (const [workspace, location, sides] of [[source, "source", before], [target, "target", after]] as const) {
