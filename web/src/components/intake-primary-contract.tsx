@@ -7,22 +7,22 @@ import {
   isConflict,
   isForbidden,
   isUnauthenticated,
-} from "../../api/http";
-import { fileSha256, newIdempotencyKey } from "../../api/idempotency";
+} from "../api/http";
+import { fileSha256, newIdempotencyKey } from "../api/idempotency";
 import {
   createIntake,
   getIntake,
   getIntakeByKey,
   INTAKE_MAX_FILE_BYTES,
   type IntakeResult,
-} from "../../api/intakes";
-import type { Actor } from "../../api/types";
+} from "../api/intakes";
+import type { Actor } from "../api/types";
 import {
   caseHref,
   formatBytes,
   formatDateTime,
   validateCaseTitle,
-} from "../../domain/review";
+} from "../domain/review";
 import {
   clearIntakeContinuation,
   continuationFileProblem,
@@ -33,7 +33,7 @@ import {
   withReceipt,
   writeIntakeContinuation,
   type IntakeContinuation,
-} from "../../features/intake/intake-continuation";
+} from "../features/intake/intake-continuation";
 
 /** The server accepts only existing case business lines; this mirrors case creation. */
 const BUSINESS_LINE = "ENT";
