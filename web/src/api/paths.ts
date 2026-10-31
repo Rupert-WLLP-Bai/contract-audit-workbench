@@ -13,6 +13,11 @@ export const paths = {
     `/api/auth/oidc/login?audience=${id(audience)}`,
   cases: "/api/cases",
   case: (caseId: string) => `/api/cases/${id(caseId)}`,
+  caseReviewReadiness: (caseId: string, businessAt = "") => {
+    const query = new URLSearchParams();
+    if (businessAt) query.set("business_at", businessAt);
+    return `/api/cases/${id(caseId)}/review-readiness${query.size ? `?${query}` : ""}`;
+  },
   templates: "/api/templates",
   workbench: (period: "day" | "week" | "month") =>
     `/api/workbench?period=${period}`,
