@@ -1,0 +1,145 @@
+name: pr-fast
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr-fast-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+env:
+  APP_ENV: test
+  GOFLAGS: -mod=readonly
+
+jobs:
+  pr-fast-gate:
+    name: pr-fast-gate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      BASE_SHA: ${{ github.event.pull_request.base.sha }}
+      TEST_DATABASE_URL: postgres://contractaudit:contractaudit@127.0.0.1:5432/contract_audit_test?sslmode=disable
+      MIGRATOR_DATABASE_URL: postgres://contractaudit:contractaudit@127.0.0.1:5432/contract_audit_test?sslmode=disable
+      MODEL_DATABASE_URL: postgres://contract_audit_model:contractaudit@127.0.0.1:5432/contract_audit_test?sslmode=disable
+    steps:
+      - name: Checkout pull request with full base history
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Plan scoped checks
+        id: plan
+        run: >-
+          python3 scripts/check_fast.py
+          --base "$BASE_SHA"
+          --plan
+          --github-output "$GITHUB_OUTPUT"
+
+      - name: Set up Go
+        if: steps.plan.outputs.go == 'true'
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Download Go modules
+        if: steps.plan.outputs.go == 'true'
+        run: go mod download
+
+      - name: Set up Bun
+        if: steps.plan.outputs.web == 'true'
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: '1.4.3'
+
+      - name: Set up Node
+        if: steps.plan.outputs.web == 'true'
+        uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+
+      - name: Install web dependencies
+        if: steps.plan.outputs.web == 'true'
+        working-directory: web
+        run: bun install --frozen-lockfile
+
+      - name: Install scoped system packages
+        if: steps.plan.outputs.poppler == 'true' || steps.plan.outputs.database == 'true'
+        env:
+          NEED_POPPLER: ${{ steps.plan.outputs.poppler }}
+          NEED_POSTGRES_CLIENT: ${{ steps.plan.outputs.database }}
+        run: |
+          set -euo pipefail
+          packages=()
+          if [ "$NEED_POPPLER" = "true" ]; then
+            packages+=(poppler-utils poppler-data)
+          fi
+          if [ "$NEED_POSTGRES_CLIENT" = "true" ]; then
+            packages+=(postgresql-client)
+          fi
+          sudo apt-get update
+          sudo apt-get install -y "${packages[@]}"
+          if [ "$NEED_POPPLER" = "true" ]; then
+            command -v pdfinfo
+            command -v pdftotext
+            command -v pdfimages
+            command -v pdftoppm
+            test -d /usr/share/poppler/cMap
+          fi
+          if [ "$NEED_POSTGRES_CLIENT" = "true" ]; then
+            command -v psql
+          fi
+
+      - name: Prepare pinned legal test assets
+        if: steps.plan.outputs.legal_assets == 'true'
+        run: |
+          set -euo pipefail
+          python3 scripts/fetch_legal_test_assets.py --destination "$RUNNER_TEMP/caw-legal-fast"
+          {
+            echo "LEGALNORM_ASSET_DIR=$RUNNER_TEMP/caw-legal-fast/legal-sources"
+            echo "LEGALNORM_CANONICAL_MANIFEST=$RUNNER_TEMP/caw-legal-fast/p4-canonical-articles-v2.json"
+          } >> "$GITHUB_ENV"
+
+      - name: Start PostgreSQL 18 for sensitive paths
+        if: steps.plan.outputs.database == 'true'
+        run: |
+          set -euo pipefail
+          docker run -d --name caw-fast-pg \
+            --env POSTGRES_USER=contractaudit \
+            --env POSTGRES_PASSWORD=contractaudit \
+            --env POSTGRES_DB=postgres \
+            --publish 5432:5432 \
+            postgres:18.6-bookworm
+          for _ in $(seq 1 60); do
+            if docker exec caw-fast-pg pg_isready -U contractaudit -d postgres >/dev/null 2>&1; then
+              exit 0
+            fi
+            sleep 2
+          done
+          docker logs caw-fast-pg
+          exit 1
+
+      - name: Provision isolated test database role
+        if: steps.plan.outputs.database == 'true'
+        env:
+          PGHOST: 127.0.0.1
+          PGPORT: "5432"
+          PGUSER: contractaudit
+          PGPASSWORD: contractaudit
+        run: bash scripts/provision_test_db.sh
+
+      - name: Run scoped fast checks
+        run: python3 scripts/check_fast.py --base "$BASE_SHA"
+
+      - name: Upload fast evidence
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: pr-fast-evidence
+          path: ${{ runner.temp }}/caw-fast
+          if-no-files-found: ignore
+          retention-days: 7
