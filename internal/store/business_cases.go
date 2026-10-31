@@ -89,7 +89,7 @@ func (s *Store) CreateCaseWithBusinessContext(ctx context.Context, user accounts
 			if err != nil {
 				return err
 			}
-			if err := requireCaseAction(item, current, access.Read); err != nil {
+			if err := requireCaseAction(item, current, access.Manage); err != nil {
 				return err
 			}
 			if err := checkWriteReceipt(receipt, item, digest); err != nil {
