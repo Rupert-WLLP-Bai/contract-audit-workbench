@@ -491,7 +491,7 @@ async function run(): Promise<void> {
     const accepted = reviewer.waitForResponse((response) => response.request().method() === "POST" && new URL(response.url()).pathname.endsWith("/decision"));
     await section.getByRole("button", { name: "批准关联更正", exact: true }).click();
     const acceptedResponse = await accepted;
-    assert.equal(acceptedResponse.status(), 200, `independent reviewer could not approve reassociation: ${await acceptedResponse.text()}`);
+    assert.equal(acceptedResponse.status(), 201, `independent reviewer could not approve reassociation: ${await acceptedResponse.text()}`);
     await section.getByText("审批决定已记录。", { exact: true }).waitFor();
   } finally {
     await reviewerContext.close();
