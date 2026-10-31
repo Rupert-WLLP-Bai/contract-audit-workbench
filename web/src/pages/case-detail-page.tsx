@@ -13,6 +13,7 @@ import {
   useStartReview,
 } from "../api/queries";
 import { PageStatus } from "../components/page-status";
+import { CaseNextStep } from "../components/case-next-step";
 import { MaterialCollectionPanel } from "../components/material-collection-panel";
 import { CaseSubjectRolesPanel } from "../components/case-subject-roles-panel";
 import { CaseSubjectCorrectionsPanel } from "../components/case-subject-corrections-panel";
@@ -152,7 +153,20 @@ export function CaseDetailPage() {
   const canArchive = actorRole === "admin";
   const requiresBusinessAt = businessAt !== "" ||
     readiness.data?.scopes.some((scope) => scope.blockers.some((blocker) => blocker.code === "business_at_required")) === true;
-  const selectedReadiness = readiness.data?.scopes.find((scope) => scope.id === reviewScope);
+  function onStartReview() {
+    start.mutate(
+      {
+        ...(validBusinessAt ? { business_at: businessAtValue } : {}),
+        ...(reviewScope === "single_contract_precheck" ? { scope: reviewScope } : {}),
+      },
+      {
+        onSuccess: (accepted) => {
+          const query = new URLSearchParams({ attempt_id: accepted.attempt_id });
+          void navigate(`/cases/${item.id}/reviews/${accepted.id}?${query}`);
+        },
+      },
+    );
+  }
 
   return (
     <section className="page">
@@ -181,48 +195,28 @@ export function CaseDetailPage() {
           cases={[{ id: item.id, title: item.title }]}
         />
         <Button href={`/cases/${encodeURIComponent(item.id)}/legal-knowledge`}>法律知识</Button>
-        {run ? (
-          <Button
-            aria-label={"打开审查工作区"}
-            type="primary"
-            href={`/cases/${item.id}/reviews/${run.id}`}
-          >
-            打开审查工作区
-          </Button>
-        ) : null}
-        {!run || needsNewReview || subjectContextUnknown || !["accepted", "queued", "running"].includes(run.state) ? (
-          <Button
-            aria-label={String(
-              start.isPending ? "正在发起" : subjectContextUnknown ? "主体状态暂不可用" : run ? "开始复审" : "开始审查",
-            )}
-            type="primary"
-            htmlType="button"
-            disabled={
-              (!canUpload && actorRole !== "reviewer") ||
-              selectedReadiness?.can_start !== true ||
-              readiness.isFetching || readiness.isError ||
-              (businessAt !== "" && !validBusinessAt) ||
-              subjectContextUnknown ||
-              start.isPending ||
-              archived
-            }
-            onClick={() => {
-              start.mutate({ ...(validBusinessAt ? { business_at: businessAtValue } : {}), ...(reviewScope === "single_contract_precheck" ? { scope: reviewScope } : {}) }, {
-                onSuccess: (accepted) => {
-                  const query = new URLSearchParams({
-                    attempt_id: accepted.attempt_id,
-                  });
-                  void navigate(
-                    `/cases/${item.id}/reviews/${accepted.id}?${query}`,
-                  );
-                },
-              });
-            }}
-          >
-            {start.isPending ? "正在发起" : subjectContextUnknown ? "主体状态暂不可用" : run ? "开始复审" : "开始审查"}
-          </Button>
-        ) : null}
       </header>
+      <CaseNextStep
+        caseDetail={item}
+        actorRole={actorRole}
+        sessionReady={session.isSuccess}
+        sessionLoading={session.isLoading}
+        sessionError={session.isError ? session.error : null}
+        readiness={readiness.data}
+        readinessLoading={readiness.isFetching}
+        readinessError={readiness.isError ? readiness.error : null}
+        selectedScope={reviewScope}
+        businessAtInput={businessAt}
+        validBusinessAt={validBusinessAt}
+        historyLoading={history.isLoading}
+        historyError={history.isError ? history.error : null}
+        startPending={start.isPending}
+        startError={start.isError ? start.error : null}
+        onRetrySession={() => void session.refetch()}
+        onRefreshReadiness={() => void readiness.refetch()}
+        onRefreshHistory={() => void history.refetch()}
+        onStartReview={onStartReview}
+      />
       {requiresBusinessAt ? (
         <label className="field" id="review-business-time">
           审查业务时间（北京时间）
@@ -313,7 +307,6 @@ export function CaseDetailPage() {
       {run && run.state !== "queued" && run.state !== "running" ? (
         <p className="meta">新上传的材料不会自动进入已经开始的审查。</p>
       ) : null}
-      {start.isError ? <p role="alert">{errorMessage(start.error)}</p> : null}
 
       <ReviewReadinessPanel caseId={item.id} data={readiness.data} loading={readiness.isFetching}
         error={readiness.isError ? readiness.error : null} onRefresh={() => void readiness.refetch()}
@@ -321,8 +314,12 @@ export function CaseDetailPage() {
       <div id="case-materials">
         <MaterialCollectionPanel key={`materials:${item.id}:${actorScope}`} caseDetail={item} canWrite={canUpload} actorId={session.data?.id ?? ""} />
       </div>
-      <CaseSubjectRolesPanel key={`subjects:${item.id}:${actorScope}`} caseId={item.id} />
-      <CaseSubjectCorrectionsPanel key={`subject-corrections:${item.id}:${actorScope}`} caseId={item.id} />
+      <div id="case-subjects">
+        <CaseSubjectRolesPanel key={`subjects:${item.id}:${actorScope}`} caseId={item.id} />
+      </div>
+      <div id="case-subject-corrections">
+        <CaseSubjectCorrectionsPanel key={`subject-corrections:${item.id}:${actorScope}`} caseId={item.id} />
+      </div>
       <CaseLegalApplicabilityPanel key={`legal-applicability:${item.id}:${actorScope}`} caseId={item.id} />
 
       <section

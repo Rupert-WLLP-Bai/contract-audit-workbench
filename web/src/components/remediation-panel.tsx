@@ -1,11 +1,12 @@
 import { Card } from "antd";
 import { Button, Checkbox, Input, Radio } from "antd";
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { Link } from "react-router";
+import { Link, useNavigate } from "react-router";
 import { errorMessage } from "../api/http";
 import {
   useCreateRemediation,
   useReview,
+  useStartReview,
   useSubmitRemediation,
   useVerifyRemediation,
 } from "../api/queries";
@@ -86,6 +87,7 @@ function hasCompatibleRuleEvaluations(
 
 function RemediationCard({
   caseId,
+  latestRun,
   item,
   documents,
   members,
@@ -95,13 +97,16 @@ function RemediationCard({
 }: {
   caseId: string;
   item: Remediation;
+  latestRun: CaseDetail["latest_run"];
   members: CaseDetail["members"];
   documents: CaseDetail["documents"];
   archived: boolean;
   canWrite: boolean;
   choices: ReviewChoice[];
 }) {
+  const navigate = useNavigate();
   const source = useReview(caseId, item.run_id, item.attempt_id);
+  const startSourceReview = useStartReview(caseId);
   const submit = useSubmitRemediation(caseId, item.id);
   const verify = useVerifyRemediation(caseId, item.id);
   const candidateDefault =
@@ -113,6 +118,7 @@ function RemediationCard({
   const [submitReason, setSubmitReason] = useState("");
   const [verifyReason, setVerifyReason] = useState("");
   const submitErrorRef = useRef<HTMLParagraphElement>(null);
+  const startReviewErrorRef = useRef<HTMLParagraphElement>(null);
   const verifyErrorRef = useRef<HTMLParagraphElement>(null);
   const candidate = reviewChoiceForKey(choices, candidateKey);
   const candidateWorkspace = useReview(
@@ -120,6 +126,22 @@ function RemediationCard({
     candidate?.runId ?? "",
     candidate?.attempt.id ?? null,
   );
+  const sourceBusinessAt = source.data?.snapshot?.business_at;
+  const sourceBusinessTime = typeof sourceBusinessAt === "string" ? sourceBusinessAt : null;
+  const candidateBusinessAt = candidateWorkspace.data?.snapshot?.business_at;
+  const sourceBusinessTimeValid =
+    sourceBusinessTime !== null && Number.isFinite(Date.parse(sourceBusinessTime));
+  const candidateBusinessTimeMatches =
+    sourceBusinessTime === null ||
+    (sourceBusinessTimeValid && sourceBusinessTime === candidateBusinessAt);
+  const businessTimeMismatchReason =
+    typeof sourceBusinessAt !== "string"
+      ? "原审查没有返回可用于复审的冻结业务时点。"
+      : !sourceBusinessTimeValid
+        ? "原审查返回的冻结业务时点无法识别，不能安全判断复核时点。"
+        : typeof candidateBusinessAt !== "string" || !Number.isFinite(Date.parse(candidateBusinessAt))
+          ? `所选复核没有返回可识别的冻结业务时点；来源时点为${formatDateTime(sourceBusinessAt)}。`
+          : `所选复核的冻结业务时点为${formatDateTime(candidateBusinessAt)}，与来源审查的${formatDateTime(sourceBusinessAt)}不一致。`;
 
   useEffect(() => {
     if (!candidateKey && choices.length > 0) setCandidateKey(candidateDefault);
@@ -143,6 +165,9 @@ function RemediationCard({
   useEffect(() => {
     if (verify.error) verifyErrorRef.current?.focus();
   }, [verify.error]);
+  useEffect(() => {
+    if (startSourceReview.error) startReviewErrorRef.current?.focus();
+  }, [startSourceReview.error]);
 
   const originalFindingIds = new Set(
     source.data?.findings.map((finding) => finding.id) ?? [],
@@ -174,7 +199,6 @@ function RemediationCard({
       source.data?.evaluations ?? [],
       candidateWorkspace.data?.evaluations ?? [],
     );
-  const comparisonReason = candidateWorkspace.data?.revision_comparison_reason;
   const verificationReady =
     item.status === "submitted" &&
     !archived &&
@@ -185,8 +209,7 @@ function RemediationCard({
     selectedAttemptIsExpected &&
     isNewAttempt &&
     isTerminalAttemptState(selectedAttempt?.state ?? "") &&
-    comparesSourceRun &&
-    !comparisonReason &&
+    candidateBusinessTimeMatches &&
     everyFindingCompatible;
   let verificationBlockReason =
     "当前复审没有返回与整改来源一致的兼容规则评估。";
@@ -198,16 +221,29 @@ function RemediationCard({
     verificationBlockReason = "正在读取所选的复核执行记录。";
   else if (candidateWorkspace.isError)
     verificationBlockReason = `无法读取所选复核尝试：${errorMessage(candidateWorkspace.error)}`;
-  else if (comparisonReason) verificationBlockReason = comparisonReason;
-  else if (candidateWorkspace.data && !comparesSourceRun)
-    verificationBlockReason = "所选复核并非针对这项整改的来源审查。";
+  else if (!candidateBusinessTimeMatches)
+    verificationBlockReason = businessTimeMismatchReason;
   else if (candidateWorkspace.data && !everyFindingCompatible)
     verificationBlockReason =
       "复核未为每个整改发现返回唯一、同规则版本、同能力和同业务对象的兼容评估。";
+  else if (candidateWorkspace.data && !isNewAttempt && sourceBusinessTime === null)
+    verificationBlockReason = "必须选择不同于来源执行记录的新执行；来源审查未返回冻结业务时点，无法自动带入原时点发起复审。请使用服务端已确认兼容的现有复核记录或核对来源审查。";
   else if (candidateWorkspace.data && !isNewAttempt)
     verificationBlockReason = "关闭整改时，必须选择不同于原审查执行记录的新执行记录。";
   else if (selectedAttempt && !isTerminalAttemptState(selectedAttempt.state))
     verificationBlockReason = "所选执行尚未结束，不能作为复核依据。";
+
+  const canStartSourceTimeReview =
+    item.status === "submitted" &&
+    !archived &&
+    canWrite &&
+    source.isSuccess &&
+    sourceBusinessTimeValid &&
+    latestRun !== null &&
+    (latestRun.state === "awaiting_human" || isTerminalAttemptState(latestRun.state)) &&
+    (!candidateBusinessTimeMatches || selectedAttempt?.id === item.attempt_id) &&
+    !candidateWorkspace.isLoading &&
+    (!selectedAttempt || isTerminalAttemptState(selectedAttempt.state));
 
   function onSubmitChanges(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -235,6 +271,22 @@ function RemediationCard({
         expected_version: item.version,
       },
       { onSuccess: () => setVerifyReason("") },
+    );
+  }
+  function onStartSourceTimeReview() {
+    if (!sourceBusinessTimeValid || sourceBusinessTime === null) return;
+    startSourceReview.mutate(
+      {
+        business_at: sourceBusinessTime,
+        scope: source.data?.snapshot?.review_scope?.id === "single_contract_precheck"
+          ? "single_contract_precheck"
+          : "full_review",
+      },
+      {
+        onSuccess: (accepted) => {
+          void navigate(caseHref(caseId, accepted.id, accepted.attempt_id));
+        },
+      },
     );
   }
 
@@ -314,6 +366,18 @@ function RemediationCard({
           <dd>
             {formatDateTime(item.created_at)}，
             {formatDateTime(item.updated_at)}
+          </dd>
+        </div>
+        <div>
+          <dt>来源冻结业务时间</dt>
+          <dd>
+            {typeof sourceBusinessAt === "string"
+              ? formatDateTime(sourceBusinessAt)
+              : sourceBusinessAt === null
+                ? "服务端确认该来源未记录业务时间"
+                : source.isLoading
+                  ? "正在读取来源审查"
+                  : "无法确认"}
           </dd>
         </div>
       </dl>
@@ -414,10 +478,14 @@ function RemediationCard({
                 </StatusText>
                 {selectedAttempt ? `，第 ${selectedAttempt.ordinal} 次执行` : "，未获取到执行次数"}
               </p>
-              {candidateWorkspace.data.revision_comparison_reason ? (
+              {comparesSourceRun && candidateWorkspace.data.revision_comparison_reason ? (
                 <p className="callout">
                   运行间差异明细未生成：
                   {candidateWorkspace.data.revision_comparison_reason}
+                </p>
+              ) : !comparesSourceRun ? (
+                <p className="meta">
+                  所选审查的运行间差异对应另一轮审查；提交复核时将核对本整改的来源记录。
                 </p>
               ) : null}
               <ul className="workflow-record-list">
@@ -447,6 +515,27 @@ function RemediationCard({
           ) : null}
           {!verificationReady ? (
             <p className="callout">{verificationBlockReason}</p>
+          ) : null}
+          {canStartSourceTimeReview && sourceBusinessTime !== null ? (
+            <>
+              <p className="meta">
+                新审查会使用来源冻结业务时点 {formatDateTime(sourceBusinessTime)}；材料、规则和其他依赖仍由服务端重新冻结并核验。
+              </p>
+              {startSourceReview.error ? (
+                <p ref={startReviewErrorRef} className="workflow-error" role="alert" tabIndex={-1}>
+                  {errorMessage(startSourceReview.error)}
+                </p>
+              ) : null}
+              <Button
+                type="primary"
+                htmlType="button"
+                loading={startSourceReview.isPending}
+                disabled={startSourceReview.isPending}
+                onClick={onStartSourceTimeReview}
+              >
+                按来源业务时点发起复审
+              </Button>
+            </>
           ) : null}
           <label className="field">
             复核理由
@@ -717,6 +806,7 @@ export function RemediationPanel({
                 documents={detail.documents}
                 members={detail.members}
                 archived={archived}
+                latestRun={detail.latest_run}
                 canWrite={canWrite}
                 choices={choices}
               />

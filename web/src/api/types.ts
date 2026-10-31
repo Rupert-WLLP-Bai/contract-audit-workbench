@@ -714,6 +714,7 @@ export type DecisionInput = Omit<WireSchemas["DecisionRequest"], "expected_versi
 
 export interface RunSnapshot {
   document_ids: string[];
+  business_at?: string | null;
   rule_set_hash: string;
   playbook_hash: string;
   model_ref: string | null;
