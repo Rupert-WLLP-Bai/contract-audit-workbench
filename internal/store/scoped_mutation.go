@@ -812,6 +812,7 @@ func (s *Store) loadScopedCaseState(ctx context.Context, tx pgx.Tx, caseID strin
 	out.SubjectChangeRequests = subjectState.SubjectChangeRequests
 	out.SubjectChangeDecisions = subjectState.SubjectChangeDecisions
 	out.SubjectSourceSnapshots = subjectState.SubjectSourceSnapshots
+	canonicalizeLoadedRows(&out)
 	return out, nil
 }
 

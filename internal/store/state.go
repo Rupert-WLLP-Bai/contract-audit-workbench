@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
 	"time"
 	"unicode/utf8"
 
@@ -56,20 +57,18 @@ type Store struct {
 	schema                 string
 	dropSchema             bool
 	pool                   *pgxpool.Pool
-	readOnly               bool
+	readOnly               atomic.Bool
 }
 
 // UseReadOnly disables business writes. Session maintenance and forward migrations remain available.
 func (s *Store) UseReadOnly(readOnly bool) {
 	s.mu.Lock()
-	s.readOnly = readOnly
+	s.readOnly.Store(readOnly)
 	s.mu.Unlock()
 }
 
 func (s *Store) ReadOnly() bool {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.readOnly
+	return s.readOnly.Load()
 }
 
 // HasDatabase reports whether this store was opened against PostgreSQL. Tests
@@ -338,6 +337,10 @@ func (st state) clone() (state, error) {
 		out.Snapshots[i].RulePackSnapshot = append([]byte(nil), st.Snapshots[i].RulePackSnapshot...)
 		out.Snapshots[i].PlannerConfiguration = append(json.RawMessage(nil), st.Snapshots[i].PlannerConfiguration...)
 	}
+	// JSON encodes UTC instants with a Z suffix. When the process timezone is
+	// UTC, decoding may attach time.Local instead of time.UTC; normalize rows
+	// before reflect-based delta checks so a clone cannot appear to mutate them.
+	canonicalizeLoadedRows(&out)
 	out.normalize()
 	return out, nil
 }

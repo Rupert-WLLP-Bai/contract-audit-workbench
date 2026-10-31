@@ -303,6 +303,7 @@ try {
     expectedHTTPFailures.add(`POST /api/cases/${caseID}/generations 409`);
     await page.goto(`${web}/cases/${caseID}/reviews/${runID}?attempt_id=${encodeURIComponent(attemptID)}`);
     await page.getByRole("heading", { name: "审查工作区", exact: true }).waitFor();
+    await page.getByText("案件已归档，历史审查仅供查看。", { exact: true }).waitFor({ state: "visible" });
     const archivedReviewBodyText = await page.locator("body").innerText();
     const archivedReviewWorkspaceResponse = await page.request.get(`${web}/api/cases/${caseID}/reviews/${runID}?attempt_id=${encodeURIComponent(attemptID)}`);
     const archivedReviewWorkspaceRaw = await archivedReviewWorkspaceResponse.text();

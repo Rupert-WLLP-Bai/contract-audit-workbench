@@ -125,6 +125,43 @@ func TestContractIsValidJSONWithInternalReferences(t *testing.T) {
 	}
 }
 
+func TestEveryPublicHTTPOperationHasResponsesObject(t *testing.T) {
+	var spec struct {
+		Paths map[string]map[string]json.RawMessage `json:"paths"`
+	}
+	if err := json.Unmarshal(apidocs.Document(), &spec); err != nil {
+		t.Fatal(err)
+	}
+	if len(spec.Paths) == 0 {
+		t.Fatal("OpenAPI paths are missing")
+	}
+	methods := map[string]bool{
+		"get": true, "put": true, "post": true, "delete": true,
+		"options": true, "head": true, "patch": true, "trace": true,
+	}
+	checked := 0
+	for path, pathItem := range spec.Paths {
+		for method, rawOperation := range pathItem {
+			if !methods[method] {
+				continue
+			}
+			var operation map[string]json.RawMessage
+			if err := json.Unmarshal(rawOperation, &operation); err != nil {
+				t.Fatalf("%s %s is not an operation object: %v", method, path, err)
+			}
+			var responses map[string]json.RawMessage
+			rawResponses, ok := operation["responses"]
+			if !ok || json.Unmarshal(rawResponses, &responses) != nil || len(responses) == 0 {
+				t.Fatalf("%s %s must have a nonempty responses object", method, path)
+			}
+			checked++
+		}
+	}
+	if checked == 0 {
+		t.Fatal("no public HTTP operations were checked")
+	}
+}
+
 func TestAgentReviewSchemaMatchesApprovedWireContract(t *testing.T) {
 	var spec map[string]any
 	if err := json.Unmarshal(apidocs.Document(), &spec); err != nil {

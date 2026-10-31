@@ -53,7 +53,7 @@ func (s *Store) Reopen() (*Store, error) {
 	if err != nil {
 		return nil, err
 	}
-	reopened.readOnly = s.ReadOnly()
+	reopened.readOnly.Store(s.ReadOnly())
 	return reopened, nil
 }
 
