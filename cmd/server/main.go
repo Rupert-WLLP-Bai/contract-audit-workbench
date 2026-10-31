@@ -13,7 +13,6 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -291,22 +290,5 @@ func listen(ctx context.Context, handler http.Handler) error {
 		// SSE is a long-lived response. A global WriteTimeout would terminate
 		// valid streams; a reverse proxy should enforce its own client limits.
 	}
-	server.BaseContext = func(_ net.Listener) context.Context { return ctx }
-	finished := make(chan error, 1)
-	go func() { finished <- server.ListenAndServe() }()
-	select {
-	case err := <-finished:
-		return err
-	case <-ctx.Done():
-		shutdown, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-		if err := server.Shutdown(shutdown); err != nil {
-			_ = server.Close()
-			return err
-		}
-		if err := <-finished; !errors.Is(err, http.ErrServerClosed) {
-			return err
-		}
-		return nil
-	}
+	return process.Serve(ctx, server, 10*time.Second)
 }

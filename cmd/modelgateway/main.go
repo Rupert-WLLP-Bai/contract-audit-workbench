@@ -15,9 +15,7 @@
 package main
 
 import (
-	"context"
 	"log"
-	"net"
 	"net/http"
 	"time"
 
@@ -63,10 +61,10 @@ func run() error {
 		IdleTimeout:       60 * time.Second,
 		MaxHeaderBytes:    1 << 20,
 		// A completion may legitimately take as long as MODEL_REQUEST_TIMEOUT;
-		// a global WriteTimeout would cut a valid call, and the request context
-		// ends when the process is asked to stop.
+		// a global WriteTimeout would cut a valid call. process.Serve keeps the
+		// request context live for the whole drain window, so an in-flight
+		// completion survives the stop signal.
 	}
-	server.BaseContext = func(net.Listener) context.Context { return ctx }
 	return process.Serve(ctx, server, shutdownTimeout)
 }
 

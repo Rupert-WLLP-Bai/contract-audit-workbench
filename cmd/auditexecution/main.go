@@ -14,7 +14,6 @@ import (
 	"fmt"
 	"log"
 	"log/slog"
-	"net"
 	"net/http"
 	"os"
 	"strings"
@@ -100,9 +99,9 @@ func run() error {
 		IdleTimeout:       60 * time.Second,
 		MaxHeaderBytes:    1 << 20,
 		// Review events stream over SSE; a global WriteTimeout would cut a valid
-		// stream, and the request context ends when the process is asked to stop.
+		// stream. process.Serve keeps the request context live for the whole
+		// drain window, so an in-flight stream survives the stop signal.
 	}
-	server.BaseContext = func(net.Listener) context.Context { return ctx }
 	serveErr := process.Serve(ctx, server, shutdownTimeout)
 	stopRelay()
 	return errors.Join(serveErr, waitRelay(relayDone, shutdownTimeout))

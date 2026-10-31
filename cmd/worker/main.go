@@ -15,7 +15,6 @@ import (
 	"fmt"
 	"log"
 	"log/slog"
-	"net"
 	"net/http"
 	"os"
 	"strings"
@@ -131,30 +130,21 @@ func serveWorker(runCtx context.Context, abort context.CancelFunc, app *bootstra
 		IdleTimeout:       60 * time.Second,
 		MaxHeaderBytes:    1 << 20,
 	}
-	health.BaseContext = func(net.Listener) context.Context { return runCtx }
 	// The probe surface is the only way an orchestrator can observe this
 	// process, so a listener failure must end the process instead of leaving an
 	// unobservable worker running.
 	healthFailed := make(chan error, 1)
 	go func() {
-		err := health.ListenAndServe()
-		if errors.Is(err, http.ErrServerClosed) {
-			err = nil
-		}
-		healthFailed <- err
+		err := process.Serve(runCtx, health, shutdownTimeout)
 		if err != nil {
 			abort()
 		}
+		healthFailed <- err
 	}()
 
 	log.Printf("worker %s claiming jobs from %s", workerID, app.Selection.Database.Name)
 	claimErr := claimJobs(runCtx, app.Store, workerID, config.lease, config.heartbeat, config.poll, wake)
 
-	shutdown, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
-	defer cancel()
-	if err := health.Shutdown(shutdown); err != nil {
-		_ = health.Close()
-	}
 	if healthErr := <-healthFailed; healthErr != nil {
 		return fmt.Errorf("worker health server: %w", healthErr)
 	}

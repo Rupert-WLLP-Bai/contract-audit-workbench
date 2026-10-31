@@ -11,7 +11,6 @@ import (
 	"crypto/subtle"
 	"errors"
 	"log"
-	"net"
 	"net/http"
 	"os"
 	"strings"
@@ -71,7 +70,6 @@ func run() error {
 		IdleTimeout:    60 * time.Second,
 		MaxHeaderBytes: 1 << 20,
 	}
-	server.BaseContext = func(net.Listener) context.Context { return ctx }
 	return process.Serve(ctx, server, shutdownTimeout)
 }
 
