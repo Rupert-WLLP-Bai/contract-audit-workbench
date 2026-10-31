@@ -1,95 +1,5 @@
-package store
+-- Experience functions share the execution queue lock with workers.
 
-import (
-	"context"
-	"strings"
-
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
-)
-
-// Distillation inputs and results belong to Execution. The source feedback and
-// candidate remain Core-owned. Neither a task nor a model call borrows a review
-// attempt identity.
-const experienceDistillSchemaSQL = `
-ALTER TABLE worker_jobs ALTER COLUMN run_id DROP NOT NULL;
-ALTER TABLE worker_jobs ALTER COLUMN attempt_id DROP NOT NULL;
-DO $$ BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='worker_jobs_kind_identity' AND connamespace=current_schema()::regnamespace) THEN
-    ALTER TABLE worker_jobs ADD CONSTRAINT worker_jobs_kind_identity CHECK (
-      (kind='review' AND run_id IS NOT NULL AND run_id<>'' AND attempt_id IS NOT NULL AND attempt_id<>'') OR
-      (kind='experience_distill' AND run_id IS NULL AND attempt_id IS NULL)
-    );
-  END IF;
-END $$;
-
-CREATE TABLE IF NOT EXISTS experience_distill_inputs (
-  job_id text PRIMARY KEY REFERENCES worker_jobs(id),
-  tenant_id text NOT NULL,
-  org_id text NOT NULL,
-  case_id text NOT NULL,
-  actor_id text NOT NULL,
-  feedback_id text NOT NULL,
-  idempotency_key text NOT NULL,
-  request_sha256 text NOT NULL CHECK (request_sha256 ~ '^[0-9a-f]{64}$'),
-  input_sha256 text NOT NULL CHECK (input_sha256 ~ '^[0-9a-f]{64}$'),
-  input_bytes bytea NOT NULL CHECK (octet_length(input_bytes) BETWEEN 1 AND 65536),
-  created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
-  UNIQUE (tenant_id,org_id,case_id,job_id),
-  UNIQUE (tenant_id,actor_id,idempotency_key),
-  FOREIGN KEY (tenant_id,org_id,case_id,feedback_id)
-    REFERENCES experience_feedback(tenant_id,org_id,case_id,feedback_id)
-);
-CREATE TABLE IF NOT EXISTS experience_distill_results (
-  job_id text NOT NULL REFERENCES experience_distill_inputs(job_id),
-  generation bigint NOT NULL CHECK (generation > 0),
-  tenant_id text NOT NULL,
-  org_id text NOT NULL,
-  case_id text NOT NULL,
-  input_sha256 text NOT NULL CHECK (input_sha256 ~ '^[0-9a-f]{64}$'),
-  result_sha256 text NOT NULL CHECK (result_sha256 ~ '^[0-9a-f]{64}$'),
-  result_bytes bytea NOT NULL CHECK (octet_length(result_bytes) BETWEEN 1 AND 65536),
-  model_ref text NOT NULL CHECK (model_ref<>''),
-  template_ref text NOT NULL CHECK (template_ref<>''),
-  created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
-  PRIMARY KEY (job_id,generation),
-  UNIQUE (tenant_id,org_id,case_id,job_id,generation,input_sha256,result_sha256),
-  FOREIGN KEY (tenant_id,org_id,case_id,job_id)
-    REFERENCES experience_distill_inputs(tenant_id,org_id,case_id,job_id)
-);
-DO $$ BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='experience_candidate_result_scope_fk' AND connamespace=current_schema()::regnamespace) THEN
-    ALTER TABLE experience_candidate_versions ADD CONSTRAINT experience_candidate_result_scope_fk
-      FOREIGN KEY (tenant_id,org_id,case_id,job_id,generation,input_sha256,result_sha256)
-      REFERENCES experience_distill_results (tenant_id,org_id,case_id,job_id,generation,input_sha256,result_sha256);
-  END IF;
-END $$;
-CREATE TABLE IF NOT EXISTS experience_distill_failures (
-  job_id text NOT NULL REFERENCES experience_distill_inputs(job_id),
-  generation bigint NOT NULL CHECK (generation > 0),
-  tenant_id text NOT NULL,
-  org_id text NOT NULL,
-  case_id text NOT NULL,
-  error_code text NOT NULL CHECK (error_code<>''),
-  created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
-  PRIMARY KEY (job_id,generation),
-  FOREIGN KEY (tenant_id,org_id,case_id,job_id)
-    REFERENCES experience_distill_inputs(tenant_id,org_id,case_id,job_id)
-);
-DROP TRIGGER IF EXISTS experience_distill_failures_immutable ON experience_distill_failures;
-CREATE TRIGGER experience_distill_failures_immutable BEFORE UPDATE OR DELETE ON experience_distill_failures
-  FOR EACH ROW EXECUTE FUNCTION forbid_append_only();
-DROP TRIGGER IF EXISTS experience_distill_inputs_immutable ON experience_distill_inputs;
-CREATE TRIGGER experience_distill_inputs_immutable BEFORE UPDATE OR DELETE ON experience_distill_inputs
-  FOR EACH ROW EXECUTE FUNCTION forbid_append_only();
-DROP TRIGGER IF EXISTS experience_distill_results_immutable ON experience_distill_results;
-CREATE TRIGGER experience_distill_results_immutable BEFORE UPDATE OR DELETE ON experience_distill_results
-  FOR EACH ROW EXECUTE FUNCTION forbid_append_only();
-`
-
-// The function is installed with a fixed, schema-qualified search path. Core
-// may lock one live result but does not receive direct job write permissions.
-const experienceDistillLockSQL = `
 CREATE OR REPLACE FUNCTION {{SCHEMA}}.experience_distill_lock_result(
   p_job_id text, p_generation bigint, p_input_sha256 text, p_result_sha256 text
 ) RETURNS TABLE (tenant_id text, org_id text, case_id text, actor_id text, feedback_id text,
@@ -110,12 +20,8 @@ LANGUAGE sql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $function
   FOR UPDATE OF j
 $function$;
 REVOKE ALL ON FUNCTION {{SCHEMA}}.experience_distill_lock_result(text,bigint,text,text) FROM PUBLIC;
-`
 
-// Admission is the sole Core-to-Execution write boundary. It checks the
-// transaction's tenant and actor, locks the same bounded queue as reviews and
-// atomically records one input, job and notification.
-const experienceDistillEnqueueSQL = `
+
 CREATE OR REPLACE FUNCTION {{SCHEMA}}.experience_distill_enqueue(
   p_job text,p_outbox text,p_tenant text,p_org text,p_case text,p_actor text,p_feedback text,
   p_key text,p_request_sha text,p_input_sha text,p_input bytea,
@@ -204,17 +110,4 @@ BEGIN
 END
 $function$;
 REVOKE ALL ON FUNCTION {{SCHEMA}}.experience_distill_enqueue(text,text,text,text,text,text,text,text,text,text,bytea,text,text,integer,integer,integer,integer) FROM PUBLIC;
-`
 
-func migrateExperienceDistillFunctions(ctx context.Context, pool *pgxpool.Pool) error {
-	var schema string
-	if err := pool.QueryRow(ctx, `SELECT current_schema()`).Scan(&schema); err != nil {
-		return err
-	}
-	qualified := pgx.Identifier{schema}.Sanitize()
-	statements := strings.ReplaceAll(experienceDistillLockSQL+experienceDistillEnqueueSQL, "{{SCHEMA}}", qualified)
-	key := strings.ReplaceAll(schema+":execution-queue", "'", "''")
-	statements = strings.ReplaceAll(statements, "{{QUEUE_LOCK_KEY}}", key)
-	_, err := pool.Exec(ctx, statements)
-	return err
-}

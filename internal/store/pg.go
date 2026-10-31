@@ -104,13 +104,11 @@ func openStore(dir string, sel config.Selection, schema string, drop bool) (*Sto
 	if err := createSchema(ctx, sel.DSN, schema); err != nil {
 		return nil, err
 	}
-	// The legacy in-process migration uses the same DSN but not the runtime
-	// timeout defaults; explicit DSN timeouts still apply to both pools.
 	migrationPool, err := newStorePool(ctx, sel.DSN, schema, false)
 	if err != nil {
 		return nil, err
 	}
-	err = migrate(ctx, migrationPool)
+	err = migrate(ctx, migrationPool, schema)
 	migrationPool.Close()
 	if err != nil {
 		return nil, err
@@ -299,35 +297,6 @@ func applyRuntimeTimeoutDefaults(params map[string]string) {
 	params["options"] = defaults.String()
 }
 
-func migrate(ctx context.Context, pool *pgxpool.Pool) error {
-	for _, stmt := range schemaStatements {
-		if _, err := pool.Exec(ctx, stmt); err != nil {
-			return fmt.Errorf("migrate: %w", err)
-		}
-	}
-	if err := migrateMaterials(ctx, pool); err != nil {
-		return err
-	}
-	// Service-object association constraints pin a material version and parse
-	// selection, so install them only after those immutable tables exist.
-	if _, err := pool.Exec(ctx, serviceObjectSchemaSQL); err != nil {
-		return fmt.Errorf("migrate service objects: %w", err)
-	}
-	if _, err := pool.Exec(ctx, operatorMappingChangesSchemaSQL); err != nil {
-		return fmt.Errorf("migrate operator mapping lineages: %w", err)
-	}
-	if err := migrateSubjects(ctx, pool); err != nil {
-		return err
-	}
-	if err := migrateLegalApplicability(ctx, pool); err != nil {
-		return err
-	}
-	if err := migrateModelBudgetFunctions(ctx, pool); err != nil {
-		return err
-	}
-	return migrateExperienceDistillFunctions(ctx, pool)
-}
-
 // Migrate applies the schema using MIGRATOR_DATABASE_URL. The URL must select
 // the same database as the APP_ENV-selected application URL.
 func Migrate(ctx context.Context) error {
@@ -366,7 +335,7 @@ func Migrate(ctx context.Context) error {
 		return err
 	}
 	defer pool.Close()
-	return migrate(ctx, pool)
+	return migrate(ctx, pool, schema)
 }
 
 func applicationSchema() (string, error) {
@@ -393,6 +362,10 @@ func openApplicationStore(dir string, sel config.Selection, schema string) (*Sto
 		return nil, err
 	}
 	if err := rejectPrivilegedApplicationRole(ctx, pool, schema); err != nil {
+		pool.Close()
+		return nil, err
+	}
+	if err := checkSchemaCompatibility(ctx, pool); err != nil {
 		pool.Close()
 		return nil, err
 	}
