@@ -186,7 +186,7 @@ def run(args):
     parent.mkdir(mode=0o700, parents=True, exist_ok=True)
     output = Path(tempfile.mkdtemp(prefix="real-corpus-", dir=parent))
     result_path = output / "result.json"
-    result = {"status": "running", "started_at": dt.datetime.now(dt.timezone.utc).isoformat(), "manifest": str(args.manifest.resolve()), "model_record_dir": str(args.model_record_dir.resolve()) if args.model_record_dir else None, "model_record_time": args.model_record_time, "cases": []}
+    result = {"status": "running", "started_at": dt.datetime.now(dt.timezone.utc).isoformat(), "manifest": str(args.manifest.resolve()), "model_record_dir": str(args.model_record_dir.resolve()) if args.model_record_dir else None, "model_record_time": args.model_record_time, "review_scope": args.review_scope, "cases": []}
     save(result_path, result)
     print(f"output: {output}", flush=True)
     current = None
@@ -212,7 +212,7 @@ def run(args):
         save(result_path, result)
         for case_id in selected:
             case = by_id[case_id]
-            current = {"manifest_case_id": case_id, "title": case["title"], "status": "creating", "started_at": dt.datetime.now(dt.timezone.utc).isoformat(), "materials": []}
+            current = {"manifest_case_id": case_id, "title": case["title"], "review_scope": args.review_scope, "status": "creating", "started_at": dt.datetime.now(dt.timezone.utc).isoformat(), "materials": []}
             result["cases"].append(current)
             save(result_path, result)
             created = api.request("POST", "/api/cases", {"title": case["title"], "contract_type": case["contract_type"]})
@@ -253,7 +253,7 @@ def run(args):
             current["status"] = "starting_review"
             save(result_path, result)
             current["review_started_at"] = dt.datetime.now(dt.timezone.utc).isoformat()
-            accepted = api.request("POST", f"{prefix}/reviews", {})
+            accepted = api.request("POST", f"{prefix}/reviews", {"scope": args.review_scope})
             current["accepted"] = accepted
             current["run_id"] = accepted.get("id")
             current["attempt_id"] = accepted.get("attempt_id")
@@ -339,6 +339,7 @@ def main():
     parser.add_argument("--base", help="API base URL; defaults to API_BASE_URL")
     parser.add_argument("--username", help="login name; defaults to DEMO_USERNAME")
     parser.add_argument("--env-file", type=Path, default=Path(".env"))
+    parser.add_argument("--review-scope", choices=("full_review", "single_contract_precheck"), default="full_review", help="scope sent in POST /api/cases/{caseID}/reviews; single_contract_precheck is required for single-material cases")
     parser.add_argument("--review-timeout", type=positive, default=900)
     parser.add_argument("--request-timeout", type=positive, default=600)
     parser.add_argument("--model-record-dir", required=True, type=Path, help="independent model recorder output directory")
