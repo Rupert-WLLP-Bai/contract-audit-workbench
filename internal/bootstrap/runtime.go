@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/base64"
 	"errors"
+	"fmt"
 	"os"
 	"strings"
 
@@ -39,7 +40,10 @@ type Runtime struct {
 
 // Open validates process configuration and initializes all shared dependencies
 // before a caller starts accepting traffic. Optional OIDC credentials are read
-// only when includeOIDC is true and OIDC_ISSUER is configured.
+// only when includeOIDC is true and OIDC_ISSUER is configured. Production
+// refuses to start without a loaded enterprise identity directory and, for
+// identity-serving processes, a configured OIDC issuer; development and test
+// keep the demonstration identities.
 func Open(ctx context.Context, includeOIDC bool) (*Runtime, error) {
 	return openConfigured(ctx, includeOIDC, "")
 }
@@ -123,9 +127,11 @@ type runtimeModes struct {
 }
 
 func loadRuntimeSettings(includeOIDC bool, service string) (runtimeSettings, error) {
+	// The directory must load before the production environment gate below:
+	// ValidateEnvironment requires this process's loaded identity source.
 	identityFile := strings.TrimSpace(os.Getenv("IDENTITY_DIRECTORY_FILE"))
 	if err := accounts.ConfigureDirectory(identityFile); err != nil {
-		return runtimeSettings{}, errors.New("trusted identity directory configuration failed")
+		return runtimeSettings{}, fmt.Errorf("trusted identity directory configuration failed: %w", err)
 	}
 	modes, err := loadRuntimeModes(service)
 	if err != nil {
@@ -135,7 +141,7 @@ func loadRuntimeSettings(includeOIDC bool, service string) (runtimeSettings, err
 	if err != nil {
 		return runtimeSettings{}, err
 	}
-	dependencies, err := loadRuntimeDependencies(includeOIDC, service, identityFile)
+	dependencies, err := loadRuntimeDependencies(includeOIDC, service, identityFile, modes.selection.Mode)
 	if err != nil {
 		return runtimeSettings{}, err
 	}
@@ -194,7 +200,7 @@ type runtimeDependencies struct {
 	oidcConfigured     bool
 }
 
-func loadRuntimeDependencies(includeOIDC bool, service, identityFile string) (runtimeDependencies, error) {
+func loadRuntimeDependencies(includeOIDC bool, service, identityFile, mode string) (runtimeDependencies, error) {
 	objects, err := configuredObjectsForService(service)
 	if err != nil {
 		return runtimeDependencies{}, err
@@ -207,7 +213,7 @@ func loadRuntimeDependencies(includeOIDC bool, service, identityFile string) (ru
 	if err != nil {
 		return runtimeDependencies{}, err
 	}
-	oidcConfig, oidcConfigured, err := configuredOIDCForService(includeOIDC, identityFile)
+	oidcConfig, oidcConfigured, err := configuredOIDCForService(includeOIDC, identityFile, mode)
 	if err != nil {
 		return runtimeDependencies{}, err
 	}
@@ -231,7 +237,7 @@ func configuredExperienceAcceptorForService(service string) (store.ExperienceRes
 	return nil, nil
 }
 
-func configuredOIDCForService(includeOIDC bool, identityFile string) (identity.Config, bool, error) {
+func configuredOIDCForService(includeOIDC bool, identityFile, mode string) (identity.Config, bool, error) {
 	if !includeOIDC {
 		return identity.Config{}, false, nil
 	}
@@ -241,6 +247,12 @@ func configuredOIDCForService(includeOIDC bool, identityFile string) (identity.C
 	}
 	if oidcConfigured && identityFile == "" {
 		return identity.Config{}, false, errors.New("IDENTITY_DIRECTORY_FILE is required when OIDC_ISSUER is configured")
+	}
+	// An identity-serving process without a configured provider would leave the
+	// fixed demonstration passwords as the only way to sign in, which production
+	// never allows.
+	if mode == config.ModeProduction && !oidcConfigured {
+		return identity.Config{}, false, errors.New("OIDC_ISSUER is required in production")
 	}
 	return oidcConfig, oidcConfigured, nil
 }

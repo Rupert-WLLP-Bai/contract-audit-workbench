@@ -31,15 +31,24 @@ type record struct {
 
 var directory []record
 
-// ValidateEnvironment prevents the fixed demonstration directory from being
-// mistaken for a production identity provider. Production requires a separately
-// implemented identity provider; no environment flag bypasses this guard.
+// ValidateEnvironment reports whether this process may start in the given mode
+// with the identity sources loaded so far. Development and test keep the fixed
+// demonstration directory. Production requires the enterprise directory to be
+// loaded already, so callers must configure it first: an absent, unreadable, or
+// invalid directory file refuses startup instead of leaving the fixed
+// demonstration passwords as the only identity source. No environment flag
+// bypasses this guard.
 func ValidateEnvironment(mode string) error {
 	switch strings.ToLower(strings.TrimSpace(mode)) {
 	case "", "development", "dev", "test":
 		return nil
+	case "production":
+		if directoryConfigured() {
+			return nil
+		}
+		return errors.New("production requires a loaded enterprise identity directory; the fixed demonstration passwords are never available")
 	default:
-		return errors.New("demo accounts are unavailable in production; configure an audited identity provider before deployment")
+		return errors.New("unknown application environment")
 	}
 }
 
