@@ -189,13 +189,18 @@ export interface TextSegment {
 
 export function segmentText(
   text: string,
-  highlight: TextOffset | null,
+  highlight: TextOffset | readonly TextOffset[] | null,
   anchorStarts: number[],
   findRange: TextOffset | null = null,
   textIndex?: CodePointTextIndex,
 ): TextSegment[] {
   const codePointIndex = textIndex?.text === text ? textIndex : null;
   const chars = codePointIndex?.codePoints ?? codePoints(text);
+  const highlights: readonly TextOffset[] = highlight === null
+    ? []
+    : "start" in highlight
+      ? [highlight]
+      : highlight;
   const breaks = new Set<number>([0, chars.length]);
   const addRange = (range: TextOffset | null) => {
     if (
@@ -208,7 +213,7 @@ export function segmentText(
     breaks.add(range.start);
     breaks.add(range.end);
   };
-  addRange(highlight);
+  for (const range of highlights) addRange(range);
   addRange(findRange);
   for (const start of anchorStarts) {
     if (start >= 0 && start < chars.length) breaks.add(start);
@@ -220,8 +225,8 @@ export function segmentText(
     const start = points[index];
     const end = points[index + 1];
     if (start === undefined || end === undefined || start === end) continue;
-    const inEvidence = Boolean(
-      highlight && start >= highlight.start && end <= highlight.end,
+    const inEvidence = highlights.some(
+      (range) => start >= range.start && end <= range.end,
     );
     const inFind = Boolean(
       findRange && start >= findRange.start && end <= findRange.end,

@@ -23,6 +23,12 @@ import { ApiError, errorMessage } from "../api/http";
 import type { Finding, HumanDecision, ReviewDocument } from "../api/types";
 import { DECISION_ACTIONS, decisionLabel, formatDateTime, roleLabel } from "../domain/review";
 import { sliceByCodePoints } from "../domain/text";
+import {
+  createFrozenQuoteSelection,
+  frozenQuoteMatchesDocument,
+  type FrozenQuoteScope,
+  type FrozenQuoteSelection,
+} from "../domain/frozen-quote";
 
 export interface ExperienceFeedbackPanelProps {
   caseId: string;
@@ -31,10 +37,20 @@ export interface ExperienceFeedbackPanelProps {
   finding: Finding | null;
   documents: ReviewDocument[];
   canSubmit: boolean;
+  quoteSelection?: FrozenQuoteSelection | null;
+  quoteScope?: FrozenQuoteScope | null;
 }
 
 type SavedTracking = { feedbackId: string; jobId: string | null; distillKey: string | null };
-type Selection = { sourceKey: string; text: string; evidence: ExperienceEvidenceRef };
+type Selection = {
+  sourceKey: string;
+  text: string;
+  caseId: string;
+  runId: string;
+  attemptId: string | null;
+  digest: string;
+  evidence: ExperienceEvidenceRef;
+};
 
 function distillationBlocked(
   canSubmit: boolean,
@@ -54,9 +70,10 @@ function selectFromSource(
   source: ReviewDocument | undefined,
   event: SyntheticEvent<HTMLTextAreaElement>,
   onSelection: (selection: Selection | null) => void,
+  scope: FrozenQuoteScope | null,
 ) {
   if (!source) return;
-  onSelection(selectionFromTextArea(source, event.currentTarget));
+  onSelection(selectionFromTextArea(source, event.currentTarget, scope));
 }
 
 function savedJobId(saved: SavedTracking | null): string | null {
@@ -168,7 +185,11 @@ function displayedSelectionIsReal(
   );
 }
 
-function selectionFromTextArea(document: ReviewDocument, element: HTMLTextAreaElement): Selection | null {
+function selectionFromTextArea(
+  document: ReviewDocument,
+  element: HTMLTextAreaElement,
+  scope: FrozenQuoteScope | null,
+): Selection | null {
   const text = document.text;
   const parsedId = parseId(document);
   if (text === null || parsedId === null || !displayedSelectionIsReal(document, element)) return null;
@@ -178,12 +199,48 @@ function selectionFromTextArea(document: ReviewDocument, element: HTMLTextAreaEl
   const quote = text.slice(startIndex, endIndex);
   const start = Array.from(text.slice(0, startIndex)).length;
   const end = Array.from(text.slice(0, endIndex)).length;
-  if (quote === "" || end - start > 4096 || sliceByCodePoints(text, start, end) !== quote) return null;
+  const frozen = createFrozenQuoteSelection(scope, document, { start, end });
+  if (!frozen || frozen.quote !== quote) return null;
+  return selectionFromFrozenQuote(frozen, document);
+}
+
+function selectionFromFrozenQuote(
+  selection: FrozenQuoteSelection,
+  document: ReviewDocument,
+): Selection {
   return {
     sourceKey: sourceKey(document),
-    text,
-    evidence: { document_id: document.id, parsed_document_id: parsedId, quote, start, end },
+    text: document.text!,
+    caseId: selection.caseId,
+    runId: selection.runId,
+    attemptId: selection.attemptId,
+    digest: selection.digest,
+    evidence: {
+      document_id: selection.documentId,
+      parsed_document_id: selection.parsedDocumentId,
+      quote: selection.quote,
+      start: selection.start,
+      end: selection.end,
+    },
   };
+}
+function selectionFromPanelQuote(
+  selection: FrozenQuoteSelection | null,
+  scope: FrozenQuoteScope | null,
+  sources: ReviewDocument[],
+  caseId: string,
+  runId: string,
+  attemptId: string | null,
+): Selection | null {
+  if (selection === null || scope === null || !attemptId ||
+    scope.caseId !== caseId || scope.runId !== runId ||
+    scope.attemptId !== attemptId || !scope.isFrozenAttempt ||
+    selection.caseId !== caseId || selection.runId !== runId ||
+    selection.attemptId !== attemptId) return null;
+  const source = sources.find((document) => document.id === selection.documentId &&
+    document.parsed_document_id === selection.parsedDocumentId);
+  if (!frozenQuoteMatchesDocument(selection, scope, source)) return null;
+  return selectionFromFrozenQuote(selection, source);
 }
 
 function feedbackMatchesSource(item: ExperienceFeedback, props: ExperienceFeedbackPanelProps): boolean {
@@ -340,6 +397,8 @@ function EvidencePicker({
   selectedSource,
   onSelect,
   onChoose,
+  canUseFrozenSelection,
+  onUseFrozenSelection,
 }: {
   source: ReviewDocument | undefined;
   displayText: string;
@@ -351,6 +410,8 @@ function EvidencePicker({
   selectedSource: string;
   onSelect: (event: SyntheticEvent<HTMLTextAreaElement>) => void;
   onChoose: () => void;
+  canUseFrozenSelection: boolean;
+  onUseFrozenSelection: () => void;
 }) {
   return (
     <>
@@ -366,6 +427,8 @@ function EvidencePicker({
             onClick={onChoose}>选用选中原文</Button>
         </>
       ) : null}
+      <Button htmlType="button" disabled={!canSubmit || pending || !canUseFrozenSelection}
+        onClick={onUseFrozenSelection}>填入工作区正文当前选区</Button>
       {validEvidence && chosenEvidence ? <blockquote>已选证据：{chosenEvidence.evidence.quote}</blockquote> : <p>请选择一段与本次审查使用的原文一致的内容。</p>}
     </>
   );
@@ -391,6 +454,8 @@ function FeedbackForm({
   onSource,
   onSelect,
   onChoose,
+  canUseFrozenSelection,
+  onUseFrozenSelection,
   onReason,
   onSubmit,
 }: {
@@ -413,6 +478,8 @@ function FeedbackForm({
   onSource: (value: string) => void;
   onSelect: (event: SyntheticEvent<HTMLTextAreaElement>) => void;
   onChoose: () => void;
+  canUseFrozenSelection: boolean;
+  onUseFrozenSelection: () => void;
   onReason: (value: string) => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
 }) {
@@ -423,7 +490,8 @@ function FeedbackForm({
       <SourceSelect sources={sources} value={selectedSource} onChange={onSource} disabled={disabled} />
       <EvidencePicker source={source} displayText={displayText} selection={selection}
         validEvidence={validEvidence} chosenEvidence={chosenEvidence} canSubmit={canSubmit}
-        pending={pending} selectedSource={selectedSource} onSelect={onSelect} onChoose={onChoose} />
+        pending={pending} selectedSource={selectedSource} onSelect={onSelect} onChoose={onChoose}
+        canUseFrozenSelection={canUseFrozenSelection} onUseFrozenSelection={onUseFrozenSelection} />
       <label className="field">
         经验建议理由
         <Input.TextArea aria-label="经验建议理由" value={reason} rows={3} disabled={disabled}
@@ -660,10 +728,16 @@ function decisionsOf(finding: Finding | null): HumanDecision[] {
 function validEvidenceOf(
   chosenEvidence: Selection | null,
   sources: ReviewDocument[],
+  caseId: string,
+  runId: string,
+  attemptId: string | null,
 ): boolean {
-  return chosenEvidence !== null && sources.some((document) =>
-    sourceKey(document) === chosenEvidence.sourceKey && document.text !== null && document.text === chosenEvidence.text &&
-    sliceByCodePoints(document.text, chosenEvidence.evidence.start, chosenEvidence.evidence.end) === chosenEvidence.evidence.quote);
+  return chosenEvidence !== null && chosenEvidence.caseId === caseId &&
+    chosenEvidence.runId === runId && chosenEvidence.attemptId === attemptId &&
+    sources.some((document) => sourceKey(document) === chosenEvidence.sourceKey &&
+      document.digest === chosenEvidence.digest && document.text !== null &&
+      document.text === chosenEvidence.text &&
+      sliceByCodePoints(document.text, chosenEvidence.evidence.start, chosenEvidence.evidence.end) === chosenEvidence.evidence.quote);
 }
 
 function decisionChosen(
@@ -1039,14 +1113,21 @@ function useFeedbackPanelState(props: ExperienceFeedbackPanelProps) {
     setCandidate,
     setCandidateError,
   });
-
   const decisions = decisionsOf(finding);
   const sources = useMemo(() => documents.filter(sourceUsable), [documents]);
+  const quoteScope = props.quoteScope ?? null;
+  const frozenSelection = useMemo(
+    () => selectionFromPanelQuote(
+      props.quoteSelection ?? null, quoteScope, sources, caseId, runId, attemptId,
+    ),
+    [attemptId, caseId, props.quoteSelection, quoteScope, runId, sources],
+  );
+  const canUseFrozenSelection = frozenSelection !== null;
   const source = sources.find((document) => sourceKey(document) === selectedSource);
   const displayText = useMemo(() => displayTextOf(source), [source?.text]);
   const validEvidence = useMemo(
-    () => validEvidenceOf(chosenEvidence, sources),
-    [chosenEvidence, sources],
+    () => validEvidenceOf(chosenEvidence, sources, caseId, runId, attemptId),
+    [attemptId, caseId, chosenEvidence, runId, sources],
   );
   const reasonLength = Array.from(reason.trim()).length;
   const ready = feedbackReady({
@@ -1091,6 +1172,12 @@ function useFeedbackPanelState(props: ExperienceFeedbackPanelProps) {
     setSelection,
     setChosenEvidence,
   };
+  function useFrozenSelection() {
+    if (!canSubmit || !frozenSelection) return;
+    setSelectedSource(frozenSelection.sourceKey);
+    setSelection(frozenSelection);
+    setChosenEvidence(frozenSelection);
+  }
 
   function startDistillation(item: ExperienceFeedback, newOperation: boolean) {
     return runStartDistillation(actionContext, item, newOperation);
@@ -1130,6 +1217,9 @@ function useFeedbackPanelState(props: ExperienceFeedbackPanelProps) {
     attemptId,
     finding,
     canSubmit,
+    quoteScope,
+    canUseFrozenSelection,
+    useFrozenSelection,
     feedback,
     jobId,
     decisions,
@@ -1193,14 +1283,11 @@ function FeedbackPanelContent({ state }: { state: FeedbackPanelState }) {
           chosenEvidence={state.chosenEvidence}
           validEvidence={state.validEvidence}
           reason={state.reason}
-          canSubmit={state.canSubmit}
-          ready={state.ready}
-          pending={state.pending}
-          recovering={state.recovering}
-          submitError={state.submitError}
+          canUseFrozenSelection={state.canUseFrozenSelection}
+          onUseFrozenSelection={state.useFrozenSelection}
           onDecision={state.setDecisionId}
           onSource={state.onSourceChange}
-          onSelect={(event) => selectFromSource(state.source, event, state.setSelection)}
+          onSelect={(event) => selectFromSource(state.source, event, state.setSelection, state.quoteScope)}
           onChoose={() => state.setChosenEvidence(state.selection)}
           onReason={state.setReason}
           onSubmit={(event) => void state.submit(event)}

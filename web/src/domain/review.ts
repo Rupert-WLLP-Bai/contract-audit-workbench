@@ -378,7 +378,7 @@ export function sameFindingBatchGroup(left: FindingBatchGroup | null, right: Fin
 }
 
 export function reviewLayout(viewportWidth: number): ReviewLayout {
-  return viewportWidth >= 1440 ? "split" : "switch";
+  return viewportWidth >= 1100 ? "split" : "switch";
 }
 
 export function validateDecisionReason(reason: string): string | null {

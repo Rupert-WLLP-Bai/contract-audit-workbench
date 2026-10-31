@@ -7,7 +7,7 @@ export function useReviewLayout(): ReviewLayout {
   );
 
   useEffect(() => {
-    const media = window.matchMedia("(min-width: 1440px)");
+    const media = window.matchMedia("(min-width: 1100px)");
     const apply = () => setLayout(media.matches ? "split" : "switch");
     apply();
     media.addEventListener("change", apply);
