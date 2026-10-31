@@ -1,7 +1,9 @@
 package documentparse
 
 import (
+	"bytes"
 	"context"
+	"image/png"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -9,8 +11,8 @@ import (
 	"testing"
 )
 
-// TestPDFDiagnosticClassification keeps the Poppler refusal explicit for every
-// diagnostic except the enumerated font-metadata warnings.
+// TestPDFDiagnosticClassification only accepts complete observed diagnostics
+// and requires each JPX header warning to belong to an explicit J2K retry.
 func TestPDFDiagnosticClassification(t *testing.T) {
 	const (
 		fontWeight = "Syntax Warning: Invalid Font Weight"
@@ -30,13 +32,25 @@ func TestPDFDiagnosticClassification(t *testing.T) {
 		{name: "both corpus warnings", stderr: fontWeight + "\n" + fontType + "\n", untrusted: true},
 		{name: "windows line endings", stderr: fontType + "\r\n" + fontWeight + "\r\n", untrusted: true},
 		{name: "syntax error", stderr: "Syntax Error: Couldn't read xref table\n", fatal: true},
-		{name: "declared jpx codestream", stderr: pdfDiagJPXDeclared + "\n" + pdfDiagJPXRetry + "\n" + pdfDiagJPXHeader + "\n"},
-		{name: "repeated declared jpx codestream", stderr: strings.Repeat(pdfDiagJPXDeclared+"\n"+pdfDiagJPXRetry+"\n"+pdfDiagJPXHeader+"\n", 27)},
-		{name: "declared jpx codestream with poppler newline marker", stderr: pdfDiagJPXDeclared + "<0a>\n" + pdfDiagJPXRetry + "\n" + pdfDiagJPXHeader + "\n"},
-		{name: "jpx header complaint without declaration", stderr: pdfDiagJPXHeader + "\n", fatal: true},
-		{name: "jpx header complaint after other damage", stderr: "Syntax Error: Couldn't read xref table\n" + pdfDiagJPXHeader + "\n", fatal: true},
+		{name: "declared jpx codestream", stderr: pdfDiagJPXDeclared + "\n" + pdfDiagJPXHeader + "\n" + pdfDiagJPXRetry + "\n"},
+		{name: "jpx without header complaint", stderr: pdfDiagJPXDeclared + "\n" + pdfDiagJPXRetry + "\n"},
+		{name: "repeated declared jpx codestream", stderr: strings.Repeat(pdfDiagJPXDeclared+"\n"+pdfDiagJPXHeader+"\n"+pdfDiagJPXRetry+"\n", 27)},
+		{name: "jpx declaration alone", stderr: pdfDiagJPXDeclared + "\n", fatal: true},
+		{name: "jpx retry alone", stderr: pdfDiagJPXRetry + "\n", fatal: true},
+		{name: "jpx header alone", stderr: pdfDiagJPXHeader + "\n", fatal: true},
+		{name: "jpx header without retry", stderr: pdfDiagJPXDeclared + "\n" + pdfDiagJPXHeader + "\n", fatal: true},
+		{name: "jpx header without declaration", stderr: pdfDiagJPXHeader + "\n" + pdfDiagJPXRetry + "\n", fatal: true},
+		{name: "jpx orphan header after retry", stderr: pdfDiagJPXDeclared + "\n" + pdfDiagJPXRetry + "\n" + pdfDiagJPXHeader + "\n", fatal: true},
+		{name: "jpx duplicated header", stderr: pdfDiagJPXDeclared + "\n" + pdfDiagJPXHeader + "\n" + pdfDiagJPXHeader + "\n" + pdfDiagJPXRetry + "\n", fatal: true},
+		{name: "jpx declaration without observed marker", stderr: strings.TrimSuffix(pdfDiagJPXDeclared, "<0a>") + "\n" + pdfDiagJPXRetry + "\n", fatal: true},
+		{name: "known prefix with fatal suffix", stderr: fontType + " Syntax Error: Couldn't read xref table\n", fatal: true},
+		{name: "fatal prefix with known suffix", stderr: "Syntax Error: Couldn't read xref table " + fontType + "\n", fatal: true},
+		{name: "known line with extra whitespace", stderr: fontWeight + " \n", fatal: true},
+		{name: "known line with location prefix", stderr: "Syntax Warning (123): " + fontWeight + "\n", fatal: true},
+		{name: "jpx retry with extra error", stderr: pdfDiagJPXDeclared + "\n" + pdfDiagJPXHeader + "\n" + pdfDiagJPXRetry + " Syntax Error: decoder failed\n", fatal: true},
+		{name: "jpx decoder failure after retry", stderr: pdfDiagJPXDeclared + "\n" + pdfDiagJPXHeader + "\n" + pdfDiagJPXRetry + "\nSyntax Error: Did no succeed opening JPX Stream.\n", fatal: true},
 		{name: "syntax alert", stderr: "Syntax Alert: something the renderer could not read\n", fatal: true},
-		{name: "command line error", stderr: "Command Line Error: Incorrect password\n", fatal: true},
+		{name: "command line error", stderr: "Command Line Error: bad option\n", fatal: true},
 		{name: "io error", stderr: "I/O Error: Couldn't open file\n", fatal: true},
 		{name: "tolerated plus fatal", stderr: fontType + "\nSyntax Error: Couldn't read xref table\n", fatal: true},
 	} {
@@ -154,5 +168,65 @@ func TestPDFFontMismatchTranscribesRenderedPages(t *testing.T) {
 
 	if _, err := ParsePDF(context.Background(), body, nil); err == nil || !strings.Contains(err.Error(), "OCR callback") {
 		t.Fatalf("untrusted native text without OCR must refuse: %v", err)
+	}
+}
+
+// TestPDFMixedRawJ2KRequiresACompleteRender exercises both a valid raw J2K
+// fallback and a damaged image on a page that also contains native text.
+func TestPDFMixedRawJ2KRequiresACompleteRender(t *testing.T) {
+	pdfTools(t)
+	body := pdfFixture(t, "declared-jpx-native-text.pdf")
+	calls := 0
+	result, err := ParsePDF(context.Background(), body, func(_ context.Context, mediaType string, body []byte) (string, error) {
+		calls++
+		if mediaType != "image/png" {
+			t.Fatalf("OCR media type = %q", mediaType)
+		}
+		img, err := png.Decode(bytes.NewReader(body))
+		if err != nil {
+			t.Fatalf("decode page render: %v", err)
+		}
+		bounds := img.Bounds()
+		red := false
+		for y := bounds.Min.Y; y < bounds.Max.Y && !red; y += 10 {
+			for x := bounds.Min.X; x < bounds.Max.X; x += 10 {
+				r, g, b, _ := img.At(x, y).RGBA()
+				if r > 0x8000 && r > 2*g && r > 2*b {
+					red = true
+					break
+				}
+			}
+		}
+		if !red {
+			t.Fatal("decoded page lost the red embedded image")
+		}
+		return "rendered image transcript", nil
+	})
+	if err != nil || calls != 1 || !result.FromOCR {
+		t.Fatalf("valid J2K fallback: calls=%d fromOCR=%v err=%v", calls, result.FromOCR, err)
+	}
+	if !strings.Contains(result.IR.NormalizedText, "Native clause: warranty 36 months.") || !strings.Contains(result.IR.NormalizedText, "rendered image transcript") {
+		t.Fatalf("valid mixed page lost text or transcript: %q", result.IR.NormalizedText)
+	}
+
+	// Keep all offsets and the image declaration intact, but corrupt the raw
+	// codestream after its header. Poppler reports additional decoder errors;
+	// native text must never make this damaged page a successful parse.
+	start := bytes.Index(body, []byte{0xff, 0x4f, 0xff, 0x51})
+	if start < 0 {
+		t.Fatal("fixture has no raw J2K codestream")
+	}
+	end := bytes.Index(body[start:], []byte("\nendstream"))
+	if end < 61 {
+		t.Fatal("fixture has an incomplete image stream")
+	}
+	clear(body[start+60 : start+end])
+	calls = 0
+	result, err = ParsePDF(context.Background(), body, func(context.Context, string, []byte) (string, error) {
+		calls++
+		return "native text alone", nil
+	})
+	if err == nil || !strings.Contains(err.Error(), "malformed or unsupported content") || result.IR.NormalizedText != "" || result.FromOCR || calls != 0 {
+		t.Fatalf("damaged image returned a partial parse: calls=%d fromOCR=%v err=%v text=%q", calls, result.FromOCR, err, result.IR.NormalizedText)
 	}
 }

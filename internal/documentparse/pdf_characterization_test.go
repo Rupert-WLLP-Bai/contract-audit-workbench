@@ -138,6 +138,14 @@ func TestPDFCheckPageSizesPinned(t *testing.T) {
 
 const imageInventoryHeader = "page num type width height\n---\n"
 
+func pdfImageInventoryAtLimit() string {
+	info := imageInventoryHeader + strings.Repeat("1 0 image 10000 4000\n", pdfMaxAllPixels/pdfMaxImagePixels)
+	if remainder := pdfMaxAllPixels % pdfMaxImagePixels; remainder != 0 {
+		info += fmt.Sprintf("1 0 image %d 1\n", remainder)
+	}
+	return info
+}
+
 func TestPDFImagePagesPinned(t *testing.T) {
 	rows := func(lines ...string) string {
 		return imageInventoryHeader + strings.Join(lines, "\n") + "\n"
@@ -150,13 +158,6 @@ func TestPDFImagePagesPinned(t *testing.T) {
 	if err != nil || len(pages) != 2 || !pages[0] || !pages[1] {
 		t.Fatalf("valid inventory = %v, %v", pages, err)
 	}
-
-	if pdfMaxAllPixels%pdfMaxImagePixels != 0 {
-		t.Fatalf("total pixel budget %d is not a whole number of images at %d pixels", pdfMaxAllPixels, pdfMaxImagePixels)
-	}
-	// aggregateRows is the largest number of maximum-size images inside the
-	// total budget; every row stays on page 1 so page validation is unchanged.
-	aggregateRows := pdfMaxAllPixels / pdfMaxImagePixels
 
 	tests := []struct {
 		name  string
@@ -182,8 +183,8 @@ func TestPDFImagePagesPinned(t *testing.T) {
 		{"product above pixel limit", rows("1 0 image 10000 4001"), 1, "PDF embedded image exceeds pixel limit or has invalid dimensions"},
 		{"width at pixel limit", rows("1 0 image 40000000 1"), 1, ""},
 		{"height at pixel limit", rows("1 0 image 1 40000000"), 1, ""},
-		{"aggregate at limit", imageInventoryHeader + strings.Repeat("1 0 image 10000 4000\n", aggregateRows), 1, ""},
-		{"aggregate above limit", imageInventoryHeader + strings.Repeat("1 0 image 10000 4000\n", aggregateRows) + "1 0 image 1 1\n", 1, "PDF embedded images exceed total pixel limit"},
+		{"aggregate at limit", pdfImageInventoryAtLimit(), 1, ""},
+		{"aggregate above limit", pdfImageInventoryAtLimit() + "1 0 image 1 1\n", 1, "PDF embedded images exceed total pixel limit"},
 		{"image count above limit", imageInventoryHeader + strings.Repeat("1 0 image 1 1\n", pdfMaxImages+1), 1, "PDF image count exceeds resource limit"},
 		{"image count at limit", imageInventoryHeader + strings.Repeat("1 0 image 1 1\n", pdfMaxImages), 1, ""},
 	}
