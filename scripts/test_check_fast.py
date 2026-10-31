@@ -194,11 +194,20 @@ class PlanSelectionTests(unittest.TestCase):
         self.assertTrue(plan.go)
         self.assertFalse(plan.go_build_all)
 
-    def test_install_flags_default_false_for_unit_selection(self):
-        plan = self.plan(check_fast.Change("M", "internal/decision/decision.go"))
-        payload = plan.payload()
-        self.assertFalse(payload["poppler"])
-        self.assertFalse(payload["legal_assets"])
+    def test_schema_change_requires_real_database_migration_check(self):
+        plan = self.plan(check_fast.Change("M", "internal/store/schema.go"))
+        self.assertTrue(plan.database)
+        self.assertIn("migration", plan.database_tests[0].reasons)
+        self.assertIn("TestEvaluationProvenanceMigrationPreservesHistoricalRows",
+                      plan.database_tests[0].tests)
+
+    def test_object_freeze_change_requires_persisted_snapshot_check(self):
+        plan = self.plan(check_fast.Change("M", "internal/store/service_object_context.go"))
+        self.assertTrue(plan.database)
+        self.assertIn("frozen-evidence", plan.database_tests[0].reasons)
+        self.assertIn("TestDurableReviewFreezesServiceObjectContextAndRejectsChangedRetryAfterReopen",
+                      plan.database_tests[0].tests)
+
 
 
 class CliBoundaryTests(unittest.TestCase):

@@ -68,9 +68,9 @@ jobs:
         run: bun install --frozen-lockfile
 
       - name: Install scoped system packages
-        if: steps.plan.outputs.go == 'true' || steps.plan.outputs.database == 'true'
+        if: steps.plan.outputs.poppler == 'true' || steps.plan.outputs.database == 'true'
         env:
-          NEED_POPPLER: ${{ steps.plan.outputs.go }}
+          NEED_POPPLER: ${{ steps.plan.outputs.poppler }}
           NEED_POSTGRES_CLIENT: ${{ steps.plan.outputs.database }}
         run: |
           set -euo pipefail
@@ -95,7 +95,7 @@ jobs:
           fi
 
       - name: Prepare pinned legal test assets
-        if: steps.plan.outputs.go == 'true'
+        if: steps.plan.outputs.legal_assets == 'true'
         run: |
           set -euo pipefail
           python3 scripts/fetch_legal_test_assets.py --destination "$RUNNER_TEMP/caw-legal-fast"

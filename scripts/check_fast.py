@@ -78,6 +78,9 @@ MIGRATION_TESTS = ("TestEvaluationProvenanceMigrationPreservesHistoricalRows",)
 BUDGET_TESTS = ("TestModelBudgetRoleIsolationAndFunctionPrivileges",)
 LEASE_TESTS = ("TestStaleGenerationCompletionIsRejected",)
 DATABASE_CORE_TESTS = ("TestLoginOriginalAndRetryStayInPostgres",)
+FROZEN_EVIDENCE_TESTS = (
+    "TestDurableReviewFreezesServiceObjectContextAndRejectsChangedRetryAfterReopen",
+)
 
 
 class FastError(RuntimeError):
@@ -233,6 +236,8 @@ def _is_tenant(path: str) -> bool:
 
 
 def _is_migration(path: str) -> bool:
+    if path.startswith("internal/store/") and "schema" in _stem(path):
+        return True
     if not path.startswith(("cmd/migrate/", "deploy/", "deployments/",
                             "internal/", "scripts/")):
         return False
@@ -257,6 +262,12 @@ def _is_database_core(path: str) -> bool:
                     "internal/config/select.go")
 
 
+def _is_frozen_evidence(path: str) -> bool:
+    return path.startswith("internal/store/") and any(
+        token in _stem(path) for token in
+        ("frozen", "snapshot", "service_object_context", "attempt_input", "material"))
+
+
 SENSITIVE_RULES = (
     SensitiveRule("auth", _is_auth, AUTH_TESTS),
     SensitiveRule("session", _is_session, SESSION_TESTS),
@@ -265,6 +276,7 @@ SENSITIVE_RULES = (
     SensitiveRule("budget", _is_budget, BUDGET_TESTS, needs_model=True),
     SensitiveRule("lease", _is_lease, LEASE_TESTS),
     SensitiveRule("database-core", _is_database_core, DATABASE_CORE_TESTS),
+    SensitiveRule("frozen-evidence", _is_frozen_evidence, FROZEN_EVIDENCE_TESTS),
 )
 
 

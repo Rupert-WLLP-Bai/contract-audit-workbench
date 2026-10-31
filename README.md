@@ -226,9 +226,9 @@ BASE_REF=<base-sha> make check-fast            # 也可用 CAW_FAST_BASE 指定�
 python3 scripts/check_fast.py --base <base-sha> --plan --github-output "$GITHUB_OUTPUT"
 ```
 
-- `--plan` 输出一行 JSON，至少包含 `go`、`web`、`python`、`database` 四个布尔值；`--github-output <path>` 向该文件追加同名 `true`/`false`，GitHub Actions 据此条件安装 Go/Bun、准备法律资产和启动数据库。
-- Python 脚本检查、受影响 Go 包的格式/vet/单测、web 类型检查与相关测试按范围执行；只有 Go 范围才安装 Poppler 并准备固定的法律测试资产，只有 web 范围才安装 Bun 依赖。
-- 鉴权、会话、租户、迁移、预算、租约等敏感路径保留有限真实 PostgreSQL 18 定点检查：只有 `database=true` 才启动隔离实例，并用 `scripts/provision_test_db.sh` 创建测试库和非特权模型角色。快速路径不启动浏览器，也不无条件启动 PostgreSQL 或 Poppler。
+- `--plan` 输出一行 JSON，包含 `go`、`web`、`python`、`database`、`poppler`、`legal_assets`；`--github-output <path>` 向该文件追加同名 `true`/`false`，GitHub Actions 据此按范围准备工具链和依赖。
+- Python 脚本检查、受影响 Go 包的格式/编译/无数据库单测和 web 类型检查按范围执行；快速路径不跑 `go vet`，全仓 vet 保留在完整 static。只有 `poppler=true` 才安装 Poppler，只有 `legal_assets=true` 才准备法律资产，只有 web 范围才安装 Bun 依赖。
+- 鉴权、会话、租户、迁移、预算、租约、冻结证据等敏感路径保留有限真实 PostgreSQL 18 定点检查：只有 `database=true` 才启动隔离实例，并用 `scripts/provision_test_db.sh` 创建测试库和非特权模型角色。快速路径不启动浏览器，也不无条件启动 PostgreSQL 或 Poppler。
 
 快检不能替代完整验收。需要完整复验时仍使用 `make verify`、`make acceptance` 和 `make test-unit`：
 
