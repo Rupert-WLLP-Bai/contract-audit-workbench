@@ -125,8 +125,11 @@ function principal(value: unknown, path: string): SubjectPrincipal {
   const record = object(value, path);
   return {
     user_id: text(record, "user_id", path),
-    issuer: text(record, "issuer", path),
-    subject: text(record, "subject", path),
+    // The fixed local demonstration directory carries no SSO identity; only
+    // enterprise directory records must have issuer/subject, so both stay
+    // required keys that may be empty strings.
+    issuer: textAllowEmpty(record, "issuer", path),
+    subject: textAllowEmpty(record, "subject", path),
   };
 }
 

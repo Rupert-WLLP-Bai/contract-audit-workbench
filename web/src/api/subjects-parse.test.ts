@@ -117,6 +117,10 @@ describe("subject API response parsing", () => {
     });
     expect(value.identifiers[0]?.masked_value).toBe("9132••••••••••01X3");
     expect(() => parseSubjectSummary({ ...value, created_by: { user_id: "u-1" } })).toThrow(/created_by/);
+    // The fixed local demonstration directory records principals without an
+    // SSO issuer/subject; the keys must exist but may be empty strings.
+    expect(parseSubjectSummary({ ...value, created_by: { user_id: "demo-admin", issuer: "", subject: "" } }).created_by).toEqual({ user_id: "demo-admin", issuer: "", subject: "" });
+    expect(parseSubjectSummary({ ...value, created_by: { user_id: "u-1", issuer: "", subject: "" } }).created_by).toEqual({ user_id: "u-1", issuer: "", subject: "" });
     const currentBinding = binding();
     expect(() => parseCaseRoleBinding({
       ...currentBinding,
