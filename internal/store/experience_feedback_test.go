@@ -90,13 +90,17 @@ func (s *Store) snapshot() state {
 	if err != nil {
 		return state{}
 	}
-	s.mu.Lock()
-	s.st = st
-	s.mu.Unlock()
+	// Clone before publishing: the assignment below makes the freshly loaded
+	// row slices reachable from s.st, and a concurrent writer holding mu mutates
+	// those same slices in place. Cloning afterwards would read shared memory
+	// without mu and race with patchStateProjectionLocked.
 	out, err := st.clone()
 	if err != nil {
 		return st
 	}
+	s.mu.Lock()
+	s.st = st
+	s.mu.Unlock()
 	return out
 }
 
