@@ -36,10 +36,10 @@ const before = {
 const after = { ...before, version: 2, display_name: "示例网络有限公司", payload_hash: "b".repeat(64) };
 const request = {
   summary: {
-    request_id: "change-1", target_kind: "subject", state: "pending_decision", source_case_id: "case-1",
+    request_id: "change-1", target_kind: "subject", state: "pending_decision",
     target_subject_id: "subject-1", target_binding_id: null, expected_subject_version: 1,
     expected_binding_version: null, payload_hash: "c".repeat(64),
-    proposer: { user_id: "requester-1", issuer: "issuer", subject: "principal-1" },
+    proposed_by: { user_id: "requester-1", issuer: "issuer", subject: "principal-1" },
     proposed_by_display_name: "提案经办人", can_decide: true, decision_blocked_reason: null,
     created_at: "2026-10-30T00:00:00Z",
   },

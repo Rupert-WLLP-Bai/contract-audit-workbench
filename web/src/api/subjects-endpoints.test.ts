@@ -149,9 +149,9 @@ describe("subject API endpoints", () => {
     }));
 
     const changeSummary = {
-      request_id: "change-1", target_kind: "subject", state: "pending_decision", source_case_id: "case-1",
+      request_id: "change-1", target_kind: "subject", state: "pending_decision",
       target_subject_id: "s-1", target_binding_id: null, expected_subject_version: 1,
-      expected_binding_version: null, payload_hash: "c".repeat(64), proposer: principal,
+      expected_binding_version: null, payload_hash: "c".repeat(64), proposed_by: principal,
       proposed_by_display_name: "经办人甲", can_decide: false, decision_blocked_reason: "本人不能复核", created_at: "2026-10-31T01:00:00Z",
     };
     setResponse({

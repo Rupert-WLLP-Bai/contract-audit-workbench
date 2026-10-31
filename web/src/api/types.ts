@@ -1102,13 +1102,12 @@ export interface SubjectChangeSummary {
   request_id: string;
   target_kind: "subject" | "case_subject_role";
   state: "pending_decision" | "approved" | "rejected" | "applied";
-  source_case_id: string;
   target_subject_id: string;
   target_binding_id: string | null;
   expected_subject_version: number;
   expected_binding_version: number | null;
   payload_hash: string;
-  proposer: SubjectPrincipal;
+  proposed_by: SubjectPrincipal;
   proposed_by_display_name: string;
   can_decide: boolean;
   decision_blocked_reason: string | null;
