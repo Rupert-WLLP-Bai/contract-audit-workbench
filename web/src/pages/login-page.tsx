@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { Button, Input } from "antd";
-import { Navigate, useNavigate } from "react-router";
+import { Navigate, useLocation, useNavigate } from "react-router";
 import { errorMessage, isUnauthenticated } from "../api/http";
 import { paths } from "../api/paths";
 import { useLogin, useSession } from "../api/queries";
@@ -17,6 +17,15 @@ export function LoginPage({
   const login = useLogin(audience);
   const session = useSession(audience);
   const navigate = useNavigate();
+  const location = useLocation();
+  const navigationState: unknown = location.state;
+  const from = navigationState !== null && typeof navigationState === "object" && "from" in navigationState
+    ? navigationState.from : undefined;
+  const returnTo = typeof from === "string" && from.startsWith("/") && !from.startsWith("//") && !from.includes("\\") &&
+    (audience === "admin"
+      ? from.startsWith("/admin/") && !from.startsWith("/admin/login")
+      : !from.startsWith("/admin") && !from.startsWith("/login"))
+    ? from : audience === "admin" ? "/admin/settings" : "/cases";
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
 
@@ -26,9 +35,7 @@ export function LoginPage({
       { username: username.trim(), password },
       {
         onSuccess: () =>
-          navigate(audience === "admin" ? "/admin/settings" : "/cases", {
-            replace: true,
-          }),
+          navigate(returnTo, { replace: true }),
       },
     );
   }
@@ -56,7 +63,7 @@ export function LoginPage({
   if (session.isSuccess)
     return (
       <Navigate
-        to={audience === "admin" ? "/admin/settings" : "/cases"}
+        to={returnTo}
         replace
       />
     );
