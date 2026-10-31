@@ -68,6 +68,25 @@ compose.app.yaml     独立服务部署配置
 
 仓库保留源码、配置、依赖锁文件和必要的小型测试资源。合同样本、演示预置材料、设计文档、截图、课件、模型权重和运行产物不随源码提供。
 
+主要入口和维护位置：
+
+| 文件或目录 | 职责 |
+|---|---|
+| `cmd/server/main.go`、`internal/bootstrap/` | 装配本地单进程或 Core 服务，加载身份、存储与执行配置 |
+| `cmd/gateway/`、`internal/gateway/` | 对外 API 路由与独立服务凭据转发 |
+| `cmd/worker/`、`cmd/auditexecution/` | 领取 PostgreSQL 任务、维护租约并执行审查 |
+| `cmd/documentservice/`、`internal/documentparse/` | 授权材料上传、解析、PDF 页面与 DOCX 图像转写 |
+| `cmd/modelgateway/`、`cmd/toolgateway/` | 模型预算和受控调用、只读证据工具 |
+| `internal/store/`、`internal/httpapi/` | 业务事务、冻结记录、授权查询和 HTTP 契约 |
+| `internal/engine/`、`internal/agentflow/` | 确定性规则、智能体编排及引用核验 |
+| `internal/rulepack/`、`capability-packs/` | 版本化规则、业务范围与作者样本自检 |
+| `internal/evidencebundle/`、`cmd/verify-evidence/` | 证据包签名、文件摘要与独立验签 |
+| `internal/apidocs/openapi.json` | HTTP wire 契约；由 `scripts/generate_openapi_types.py` 生成前端类型 |
+| `web/src/app.tsx`、`web/src/admin-app.tsx` | 客户端和管理端路由；页面、组件、API 与状态 hooks 分目录维护 |
+| `scripts/verify.py`、`scripts/check_fast.py` | 固定候选完整验收和按差异执行的快速检查 |
+
+文件说明优先记录职责、输入输出和业务边界。手写源码与测试放在对应模块，生成类型随契约重新生成；本机配置、模型调用记录和验收材料仍放在仓库外。
+
 ## 本地启动
 
 需要 Go 1.26.7+、Bun 1.4.3、Node.js 22.12+、Python 3.10+，以及可用的 Docker Engine/Desktop 和 Compose v2。解析 PDF 还需要 Poppler 的 `pdfinfo`、`pdftotext`、`pdfimages`、`pdftoppm` 及 CJK mappings。
