@@ -136,7 +136,7 @@ func serveWorker(runCtx context.Context, abort context.CancelFunc, app *bootstra
 		return app.Store.Ready(ctx)
 	})
 	health := &http.Server{
-		Addr: healthAddr, Handler: mux,
+		Addr: healthAddr, Handler: app.Boundary("worker", mux),
 		ReadHeaderTimeout: 5 * time.Second,
 		WriteTimeout:      5 * time.Second,
 		IdleTimeout:       60 * time.Second,

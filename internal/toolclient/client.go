@@ -18,6 +18,8 @@ import (
 	"net/url"
 	"strings"
 	"time"
+
+	"contractaudit/internal/telemetry"
 )
 
 const (
@@ -167,6 +169,14 @@ func newToolRequest(ctx context.Context, endpoint, credential string, request Re
 	httpRequest.Header.Set("Mcp-Name", ToolName)
 	httpRequest.Header.Set("X-Contract-Service-Key", credential)
 	httpRequest.Header.Set("X-Contract-Job-Context", string(jobContext))
+	// The call joins the attempt's trace: the identity is the same deterministic
+	// one the execution event exporter derives, so the tool hop and the attempt
+	// land in one trace. The request identity is bounded and generated here so
+	// the tool gateway's access log correlates with the worker.
+	httpRequest.Header.Set("X-Request-Id", telemetry.NewRequestID())
+	if traceparent := telemetry.AttemptTraceparent(request.AttemptID); traceparent != "" {
+		httpRequest.Header.Set("Traceparent", traceparent)
+	}
 	return httpRequest, nil
 }
 

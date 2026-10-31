@@ -62,7 +62,7 @@ func run() error {
 	host, _ := os.Hostname()
 	log.Printf("tool gateway instance %s pid %d listening on %s", host, os.Getpid(), addr)
 	server := &http.Server{
-		Addr: addr, Handler: mux,
+		Addr: addr, Handler: app.Boundary("tool", mux),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       30 * time.Second,
 		// A tool call carries its own deadline (60s); the write timeout only has

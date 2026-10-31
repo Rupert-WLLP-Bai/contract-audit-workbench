@@ -9,8 +9,17 @@ import (
 	"time"
 
 	"contractaudit/internal/process"
+	"contractaudit/internal/bootstrap"
 	"contractaudit/internal/systemhealth"
+	"contractaudit/internal/telemetry"
 )
+
+// telemetryExporter builds the OTLP exporter for this monitor's HTTP boundary.
+// It is nil, and the boundary still logs and recovers, when no collector is
+// configured.
+func telemetryExporter() (*telemetry.Exporter, error) {
+	return bootstrap.HTTPExporter("healthmonitor")
+}
 
 func main() {
 	kubernetes := systemhealth.KubernetesConfigFromEnv()
@@ -40,9 +49,14 @@ func main() {
 		_ = json.NewEncoder(w).Encode(monitor.Snapshot(r.Context()))
 	})
 	mux.HandleFunc("GET /health", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
+	exporter, err := telemetryExporter()
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer exporter.Close()
 	ctx, stop := process.SignalContext()
 	defer stop()
-	server := &http.Server{Addr: ":8092", Handler: mux, ReadHeaderTimeout: 3 * time.Second, ReadTimeout: 5 * time.Second, WriteTimeout: 8 * time.Second, IdleTimeout: 30 * time.Second}
+	server := &http.Server{Addr: ":8092", Handler: telemetry.HTTPBoundary(exporter, "healthmonitor", telemetry.HTTPOptions{}, mux), ReadHeaderTimeout: 3 * time.Second, ReadTimeout: 5 * time.Second, WriteTimeout: 8 * time.Second, IdleTimeout: 30 * time.Second}
 	if err := process.Serve(ctx, server, 5*time.Second); err != nil {
 		log.Fatal(err)
 	}

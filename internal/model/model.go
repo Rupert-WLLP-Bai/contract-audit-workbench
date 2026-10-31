@@ -21,6 +21,7 @@ import (
 
 	"contractaudit/internal/labels"
 	"contractaudit/internal/process"
+	"contractaudit/internal/telemetry"
 	einoModel "github.com/cloudwego/eino/components/model"
 	"github.com/cloudwego/eino/schema"
 )
@@ -621,6 +622,13 @@ func (c *Client) authorizeChatRequest(ctx context.Context, req *http.Request) er
 			return fmt.Errorf("%w: execution scope cannot be encoded", ErrRequest)
 		}
 		req.Header.Set("X-Audit-Execution-Scope", string(metadata))
+		// The model hop joins the attempt's deterministic trace and carries a
+		// bounded request identity, so the model gateway's access log
+		// correlates with the attempt that paid for the call.
+		req.Header.Set("X-Request-Id", telemetry.NewRequestID())
+		if traceparent := telemetry.AttemptTraceparent(scope.AttemptID); traceparent != "" {
+			req.Header.Set("Traceparent", traceparent)
+		}
 	} else if key != "" {
 		req.Header.Set("Authorization", "Bearer "+key)
 	}

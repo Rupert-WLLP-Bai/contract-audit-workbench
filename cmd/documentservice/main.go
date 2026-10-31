@@ -82,7 +82,7 @@ func run() error {
 	mux.Handle("/", service.Handler(public))
 	server := &http.Server{
 		Addr:    addr,
-		Handler: mux,
+		Handler: app.Boundary("document", mux),
 		// Upload and parse requests are streamed and bounded inside the handler
 		// (MaxBytesReader plus the per-request parse deadline), so no global
 		// ReadTimeout or WriteTimeout may cut a valid long request.

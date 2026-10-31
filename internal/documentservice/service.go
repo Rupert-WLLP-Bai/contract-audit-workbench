@@ -140,7 +140,14 @@ func (s *Service) Handler(public http.Handler) http.Handler {
 	}
 	mux.Handle("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctx := context.WithValue(r.Context(), publicServiceContextKey{}, s)
-		public.ServeHTTP(w, r.WithContext(ctx))
+		served := r.WithContext(ctx)
+		public.ServeHTTP(w, served)
+		// The inner API mux records the matched template on the context copy it
+		// receives. Write it back so the process HTTP boundary reports the real
+		// route instead of this fallback arm, now that the exchange has ended.
+		if served.Pattern != "" {
+			r.Pattern = served.Pattern
+		}
 	}))
 	return mux
 }

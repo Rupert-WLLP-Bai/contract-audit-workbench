@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"net/http"
 	"os"
 	"strings"
 
@@ -16,6 +17,7 @@ import (
 	"contractaudit/internal/objectstore"
 	"contractaudit/internal/process"
 	"contractaudit/internal/store"
+	"contractaudit/internal/telemetry"
 )
 
 const (
@@ -36,6 +38,15 @@ type Runtime struct {
 
 	stopModelWatch context.CancelFunc
 	modelWatchDone <-chan struct{}
+}
+
+// Boundary wraps a process HTTP surface with the uniform HTTP boundary: the
+// bounded request identity, W3C trace context, panic recovery, structured
+// access log, and RED metrics. It reuses the exporter the Store already owns
+// instead of building a second one, and works unchanged when telemetry is
+// disabled because the boundary keeps every behavior except metric export.
+func (r *Runtime) Boundary(service string, next http.Handler) http.Handler {
+	return telemetry.HTTPBoundary(r.Store.Telemetry(), service, telemetry.HTTPOptions{}, next)
 }
 
 // Open validates process configuration and initializes all shared dependencies

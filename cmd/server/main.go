@@ -73,7 +73,7 @@ func serveLegacy(ctx context.Context) error {
 	logStartup(app)
 	apiOptions := options(app, origins())
 	apiOptions.IntakeUploader = store.NewDirectCaseIntakeUploader(app.Store)
-	return listen(ctx, httpapi.Handler(app.Store, apiOptions))
+	return listen(ctx, app.Boundary("core", httpapi.Handler(app.Store, apiOptions)))
 }
 
 func serveCore(ctx context.Context) error {
@@ -97,7 +97,7 @@ func serveCore(ctx context.Context) error {
 		return err
 	}
 	logStartup(app)
-	return listen(ctx, handler)
+	return listen(ctx, app.Boundary("core", handler))
 }
 
 func options(app *bootstrap.Runtime, cors []string) httpapi.Options {

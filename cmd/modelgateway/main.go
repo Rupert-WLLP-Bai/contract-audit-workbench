@@ -55,7 +55,7 @@ func run() error {
 	addr := process.Env("ADDR", "127.0.0.1:8084")
 	log.Printf("model gateway listening on %s (mode %s, chat %s, ocr %s)", addr, config.Mode, config.ChatModel, config.OCRModel)
 	server := &http.Server{
-		Addr: addr, Handler: service.Handler(),
+		Addr: addr, Handler: app.Boundary("model", service.Handler()),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       30 * time.Second,
 		IdleTimeout:       60 * time.Second,

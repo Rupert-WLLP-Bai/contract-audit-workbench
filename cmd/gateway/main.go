@@ -11,8 +11,10 @@ import (
 	"net/http"
 	"time"
 
+	"contractaudit/internal/bootstrap"
 	"contractaudit/internal/gateway"
 	"contractaudit/internal/process"
+	"contractaudit/internal/telemetry"
 )
 
 // shutdownTimeout drains in-flight requests after SIGTERM. The deployment
@@ -41,10 +43,15 @@ func run() error {
 		return err
 	}
 	defer edge.Close()
+	exporter, err := bootstrap.HTTPExporter("gateway")
+	if err != nil {
+		return err
+	}
+	defer exporter.Close()
 	addr := process.Env("ADDR", "127.0.0.1:8080")
 	log.Printf("edge gateway listening on %s", addr)
 	server := &http.Server{
-		Addr: addr, Handler: edge.Handler(),
+		Addr: addr, Handler: telemetry.HTTPBoundary(exporter, "gateway", telemetry.HTTPOptions{ResolveRoute: gateway.RouteTemplate}, edge.Handler()),
 		ReadHeaderTimeout: 5 * time.Second,
 		// No global ReadTimeout: an upload streams for as long as its own byte
 		// and time bounds allow. No global WriteTimeout: a review event stream

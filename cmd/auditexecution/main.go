@@ -94,7 +94,7 @@ func run() error {
 	addr := process.Env("ADDR", "127.0.0.1:8083")
 	slog.Info("execution service listening", "addr", addr)
 	server := &http.Server{
-		Addr: addr, Handler: service,
+		Addr: addr, Handler: app.Boundary("execution", service),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       30 * time.Second,
 		IdleTimeout:       60 * time.Second,
