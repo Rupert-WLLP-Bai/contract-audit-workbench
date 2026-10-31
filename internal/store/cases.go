@@ -485,22 +485,12 @@ func (s *Store) UploadMaterial(ctx context.Context, user accounts.User, caseID, 
 	}
 	requestHash := uploadRequestHash("upload", currentUser.ID, caseID, role, purpose, filename, media, body, options)
 	if options.IdempotencyKey != "" {
-		st, err := s.snapshotScoped(ctx, userScope(currentUser))
+		result, found, err := s.readUploadReceipt(ctx, currentUser, caseID, options.IdempotencyKey, requestHash)
 		if err != nil {
 			return DocumentUploadResult{}, err
 		}
-		for _, prior := range st.UploadIdempotency {
-			if prior.CaseID == caseID && prior.ActorID == currentUser.ID && prior.Key == options.IdempotencyKey {
-				if !bytes.Equal(prior.RequestHash, requestHash[:]) {
-					return DocumentUploadResult{}, fault.Conflict("Idempotency-Key已用于不同上传内容")
-				}
-				for _, v := range st.MaterialVersions {
-					if v.CaseID == caseID && v.MaterialID == prior.MaterialID && v.DocumentID == prior.DocumentID {
-						return DocumentUploadResult{DocumentID: prior.DocumentID, MaterialID: prior.MaterialID, Version: v.Version, Replayed: true}, nil
-					}
-				}
-				return DocumentUploadResult{}, errors.New("upload idempotency record has no material version")
-			}
+		if found {
+			return result, nil
 		}
 	}
 	id, err := newID("doc_")
@@ -547,6 +537,13 @@ func (s *Store) UploadMaterial(ctx context.Context, user accounts.User, caseID, 
 	defer persistCancel()
 	var uploadResult DocumentUploadResult
 	err = s.scopedCaseMutation(persistCtx, currentUser, caseID, func(st *state) error {
+		currentUser, err = trustedUser(currentUser)
+		if err != nil {
+			return err
+		}
+		if !accounts.CanUpload(currentUser.Role) {
+			return fault.Forbidden("当前角色不能执行文档操作")
+		}
 		if _, err := s.writableCase(st, currentUser, caseID, access.Manage); err != nil {
 			return err
 		}

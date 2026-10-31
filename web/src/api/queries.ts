@@ -7,6 +7,7 @@ import {
 } from "@tanstack/react-query";
 import * as api from "./endpoints";
 import { isForbidden, isUnauthenticated, setSessionIdentity } from "./http";
+import { clearPendingMutationKey, idempotencyActorScope, newIdempotencyKey, pendingMutationKey } from "./idempotency";
 import type {
   Actor,
   CaseDetail,
@@ -90,6 +91,19 @@ export const queryKeys = {
   materialParsedDocuments: (caseId: string, materialId: string, version: number) => ["cases", caseId, "materials", materialId, "versions", version, "parsed-documents"] as const,
   materialParsedText: (caseId: string, materialId: string, version: number, parsedDocumentId: string, offset: number) => ["cases", caseId, "materials", materialId, "versions", version, "parsed-documents", parsedDocumentId, offset] as const,
 };
+
+async function keyedMutation<T>(client: QueryClient, operation: string, target: string, input: unknown, send: (key: string) => Promise<T>): Promise<T> {
+  const actor = client.getQueryData<Actor>(queryKeys.session);
+  if (!actor) throw new Error("登录状态不可用，请刷新后重试");
+  const pending = await pendingMutationKey(operation, idempotencyActorScope(actor), target, input);
+  const result = await send(pending.key);
+  try {
+    clearPendingMutationKey(pending.storageKey);
+  } catch {
+    try { sessionStorage.setItem(pending.storageKey, newIdempotencyKey()); } catch { /* response already succeeded */ }
+  }
+  return result;
+}
 export function clearIdentityQueries(queryClient: QueryClient): void {
   const filter = {
     predicate: (query: { queryKey: readonly unknown[] }) =>
@@ -371,7 +385,8 @@ export function useKnowledge(knowledgeId: string, versionId: string) {
 export function useCreateCase() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: api.createCase,
+    mutationFn: (input: Parameters<typeof api.createCase>[0]) =>
+      keyedMutation(queryClient, "case.create", "new", input, (key) => api.createCase(input, key)),
     onSuccess: () =>
       Promise.all([
         queryClient.invalidateQueries({
@@ -725,7 +740,8 @@ export function useReparse(caseId: string) {
 export function useStartReview(caseId: string) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (input: { business_at?: string; scope?: "full_review" | "single_contract_precheck" }) => api.startReview(caseId, input),
+    mutationFn: (input: { business_at?: string; scope?: "full_review" | "single_contract_precheck" }) =>
+      keyedMutation(queryClient, "review.start", caseId, input, (key) => api.startReview(caseId, input, key)),
     onSuccess: () =>
       invalidateCaseViews(queryClient, caseId, {
         caseList: true,
@@ -940,7 +956,8 @@ export function useVerifyRemediation(caseId: string, itemId: string) {
 export function useCreateReport(caseId: string) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (input: ReportCreateInput) => api.createReport(caseId, input),
+    mutationFn: (input: ReportCreateInput) =>
+      keyedMutation(queryClient, "report.create", caseId, input, (key) => api.createReport(caseId, input, key)),
     onSuccess: () =>
       invalidateCaseViews(queryClient, caseId, {
         caseList: true,

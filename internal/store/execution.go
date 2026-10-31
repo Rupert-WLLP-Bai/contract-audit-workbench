@@ -116,6 +116,9 @@ func (s *Store) startReviewAsync(ctx context.Context, user accounts.User, caseID
 	if err != nil {
 		return JobAcceptance{}, err
 	}
+	if accepted, _, ok := ReviewIdempotentAcceptance(ctx); ok {
+		return accepted, nil
+	}
 	return s.jobAcceptanceForRun(ctx, user, caseID, runID, "审查任务缺少执行记录", "审查任务没有保存到任务队列")
 }
 
@@ -155,6 +158,30 @@ func (s *Store) startReview(ctx context.Context, user accounts.User, caseID, bus
 	}
 	if _, err := s.writableCase(&seen, user, caseID, access.Review); err != nil {
 		return "", err
+	}
+	idempotency, _ := ctx.Value(reviewIdempotencyContextKey{}).(*reviewIdempotency)
+	key, route, digest := "", "POST /api/cases/"+caseID+"/reviews", ""
+	if idempotency != nil {
+		key, err = optionalIdempotencyKey(idempotency.key)
+		if err != nil {
+			return "", err
+		}
+	}
+	if key != "" {
+		digest, err = canonicalHash([]string{caseID, businessAt, evidenceCutoffAt, scope})
+		if err != nil {
+			return "", err
+		}
+		if receipt, found, err := s.readWriteReceipt(ctx, user, executionWriteReceipts, route, key, digest, access.Review); err != nil {
+			return "", err
+		} else if found {
+			accepted, err := decodeReviewWriteReceipt(receipt.Response)
+			if err != nil {
+				return "", err
+			}
+			idempotency.acceptance, idempotency.durable, idempotency.present = accepted.Acceptance, accepted.Durable, true
+			return accepted.Acceptance.RunID, nil
+		}
 	}
 	current := selectedMaterialDocuments(seen, caseID)
 	readinessMaterials := make([]ReviewReadinessMaterial, 0, len(current))
@@ -260,8 +287,21 @@ func (s *Store) startReview(ctx context.Context, user accounts.User, caseID, bus
 	// recompute the accepted context from the exact frozen materials.
 	serviceObjectDocuments := serviceObjectFrozenMaterials(seen, frozenDocs)
 	var acceptanceTx pgx.Tx
+	var receipt writeReceipt
+	var receiptFound bool
+	var receiptResult reviewWriteReceipt
 	hook := func(tx pgx.Tx) error {
 		acceptanceTx = tx
+		if key != "" {
+			if err := lockWriteReceipt(ctx, tx, user, route, key); err != nil {
+				return err
+			}
+			var err error
+			receipt, receiptFound, err = loadWriteReceipt(ctx, tx, executionWriteReceipts, user, route, key)
+			if err != nil || receiptFound {
+				return err
+			}
+		}
 		lockedCase, err := loadKnowledgeCase(ctx, tx, user, caseID)
 		if err != nil {
 			return err
@@ -324,10 +364,54 @@ func (s *Store) startReview(ctx context.Context, user accounts.User, caseID, bus
 		}
 		return nil
 	}
+	saveReceipt := func(st *state, item Case) error {
+		if key == "" {
+			return nil
+		}
+		acceptedAttempt, ok := st.latestAttempt(runID)
+		if !ok {
+			return fault.Conflict("审查任务缺少执行记录")
+		}
+		accepted := JobAcceptance{RunID: runID, AttemptID: acceptedAttempt.ID}
+		if durable {
+			for _, job := range st.Jobs {
+				if job.RunID == runID && job.AttemptID == acceptedAttempt.ID {
+					accepted.JobID = job.ID
+					break
+				}
+			}
+			if accepted.JobID == "" {
+				return fault.Conflict("审查任务没有保存到任务队列")
+			}
+		}
+		receiptResult = reviewWriteReceipt{Acceptance: accepted, Durable: durable}
+		return insertWriteReceipt(ctx, acceptanceTx, executionWriteReceipts, user, item, route, key, digest, receiptResult)
+	}
 	err = s.updateCaseAsWith(user, caseID, hook, func(st *state) error {
+		user, err = trustedUser(user)
+		if err != nil {
+			return err
+		}
+		if !accounts.CanStart(user.Role) {
+			return fault.Forbidden("当前角色不能发起审查")
+		}
 		currentCase, err := s.writableCase(st, user, caseID, access.Review)
 		if err != nil {
 			return err
+		}
+		if receiptFound {
+			if err := checkWriteReceipt(receipt, *currentCase, digest); err != nil {
+				return err
+			}
+			if err := validateWriteReceiptTarget(ctx, acceptanceTx, executionWriteReceipts, *currentCase, receipt); err != nil {
+				return err
+			}
+			receiptResult, err = decodeReviewWriteReceipt(receipt.Response)
+			if err != nil {
+				return err
+			}
+			runID = receiptResult.Acceptance.RunID
+			return nil
 		}
 		executionCase = *currentCase
 		signature, err = withPartyContext(*st, caseID, signature)
@@ -367,7 +451,7 @@ func (s *Store) startReview(ctx context.Context, user accounts.User, caseID, bus
 					}
 				}
 				runID = run.ID
-				return nil
+				return saveReceipt(st, *currentCase)
 			}
 		}
 		if !durable {
@@ -428,11 +512,17 @@ func (s *Store) startReview(ctx context.Context, user accounts.User, caseID, bus
 			summary = "开始了一次修改稿复审"
 		}
 		st.Activity = append(st.Activity, Activity{ID: activityID, CaseID: caseID, At: now, Summary: summary})
+		if err := saveReceipt(st, *currentCase); err != nil {
+			return err
+		}
 		created = true
 		return nil
 	})
 	s.releaseParseLock()
 	parseLocked = false
+	if err == nil && key != "" {
+		idempotency.acceptance, idempotency.durable, idempotency.present = receiptResult.Acceptance, receiptResult.Durable, true
+	}
 	if err != nil || !created {
 		if reserved {
 			s.releaseExecution()

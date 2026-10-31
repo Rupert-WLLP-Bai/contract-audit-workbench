@@ -363,7 +363,12 @@ func (h *handler) createCase(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
-	id, err := h.store.CreateCaseWithBusiness(user, body.Title, body.ContractType, body.BusinessLine, body.Scenario)
+	key, err := writeIdempotencyKey(r)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	id, err := h.store.CreateCaseWithBusinessContext(r.Context(), user, body.Title, body.ContractType, body.BusinessLine, body.Scenario, key)
 	if err != nil {
 		writeErr(w, err)
 		return
@@ -557,22 +562,35 @@ func (h *handler) startReview(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
+	key, err := writeIdempotencyKey(r)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	ctx := store.WithReviewIdempotency(r.Context(), key)
 	if h.durable {
 		var accepted store.JobAcceptance
 		var err error
-		accepted, err = h.store.StartReviewAsyncScope(r.Context(), user, r.PathValue("caseID"), body.BusinessAt, body.EvidenceCutoffAt, body.Scope)
+		accepted, err = h.store.StartReviewAsyncScope(ctx, user, r.PathValue("caseID"), body.BusinessAt, body.EvidenceCutoffAt, body.Scope)
 		if err != nil {
 			writeErr(w, err)
+			return
+		}
+		if accepted, durable, ok := store.ReviewIdempotentAcceptance(ctx); ok {
+			writeAcceptedReviewReceipt(w, accepted, durable)
 			return
 		}
 		writeJSON(w, http.StatusAccepted, accepted)
 		return
 	}
 	var id string
-	var err error
-	id, err = h.store.StartReviewScope(r.Context(), user, r.PathValue("caseID"), body.BusinessAt, body.EvidenceCutoffAt, body.Scope)
+	id, err = h.store.StartReviewScope(ctx, user, r.PathValue("caseID"), body.BusinessAt, body.EvidenceCutoffAt, body.Scope)
 	if err != nil {
 		writeErr(w, err)
+		return
+	}
+	if accepted, durable, ok := store.ReviewIdempotentAcceptance(ctx); ok {
+		writeAcceptedReviewReceipt(w, accepted, durable)
 		return
 	}
 	ws, err := h.store.Workspace(user, r.PathValue("caseID"), id)

@@ -256,11 +256,11 @@ export function verifyEvidenceRequest(caseId: string, requestId: string, receipt
   return requestJson(`${requestPath(caseId, requestId)}/receipts/${encodeURIComponent(receiptId)}/verify`, jsonInit("POST", input, { "Idempotency-Key": key }), parseEvidenceRequest);
 }
 
-export function uploadEvidenceDocument(caseId: string, file: File, role: string) {
+export function uploadEvidenceDocument(caseId: string, file: File, role: string, idempotencyKey?: string) {
   const body = new FormData();
   body.set("file", file);
   body.set("role", role);
-  return requestJson(`/api/cases/${encodeURIComponent(caseId)}/documents`, { method: "POST", body }, (value) => {
+  return requestJson(`/api/cases/${encodeURIComponent(caseId)}/documents`, { method: "POST", body, headers: idempotencyKey ? { "Idempotency-Key": idempotencyKey } : undefined }, (value) => {
     const id = text(object(value, "uploaded document").id, "uploaded document.id");
     if (!id) return invalid("uploaded document.id");
     return { id };

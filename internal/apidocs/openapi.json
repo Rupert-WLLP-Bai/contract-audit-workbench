@@ -1697,7 +1697,7 @@
           "案件"
         ],
         "summary": "生成并保存报告",
-        "description": "根据所选执行记录保存当时的材料、解析结果、规则、发现和人工判断。JSON 和转义后的 HTML 会按字节摘要保存；有新的判断时生成新报告。",
+        "description": "根据所选执行记录保存当时的材料、解析结果、规则、发现和人工判断。JSON 和转义后的 HTML 会按字节摘要保存；有新的判断时生成新报告。可选幂等键在同一操作者和路由下重放已提交回执，内容不同时返回 409；重放时重新检查案件权限。",
         "parameters": [
           {
             "name": "caseID",
@@ -1707,7 +1707,8 @@
               "type": "string",
               "minLength": 1
             }
-          }
+          },
+          {"name":"Idempotency-Key","in":"header","required":false,"schema":{"type":"string","minLength":1,"maxLength":200}}
         ],
         "requestBody": {
           "required": true,
@@ -2398,7 +2399,8 @@
           "案件"
         ],
         "summary": "创建案件",
-        "description": "admin/clerk 可创建。新建案件默认只有创建人为成员。",
+        "description": "admin/clerk 可创建。新建案件默认只有创建人为成员。可选幂等键在同一操作者和路由下重放已提交回执，内容不同时返回 409；重放时重新检查案件权限。",
+        "parameters": [{"name":"Idempotency-Key","in":"header","required":false,"schema":{"type":"string","minLength":1,"maxLength":200}}],
         "responses": {
           "201": {
             "description": "成功",
@@ -2416,6 +2418,7 @@
           "403": {
             "$ref": "#/components/responses/Error403"
           },
+          "409": {"$ref": "#/components/responses/Error409"},
           "413": {
             "$ref": "#/components/responses/Error413"
           },
@@ -2880,7 +2883,8 @@
               "type": "string",
               "minLength": 1
             }
-          }
+          },
+          {"name":"Idempotency-Key","in":"header","required":false,"description":"同一操作者和路由重放已提交受理回执；不同请求内容返回 409，重放时重新检查案件权限。缺省保持现有受理行为。","schema":{"type":"string","minLength":1,"maxLength":200}}
         ]
       }
     },

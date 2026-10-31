@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, type FormEvent, type SyntheticEvent } from
 import { Link, useNavigate, useSearchParams } from "react-router";
 import type { BusinessAgentCapability, BusinessAgentGap, BusinessAgentReview } from "../api/business-agent-review";
 import { getCase, getReview, getSession, getWorkbench } from "../api/endpoints";
+import { clearPendingMutationKey, fileSha256, idempotencyActorScope, newIdempotencyKey, pendingMutationKey } from "../api/idempotency";
 import {
   createEvidenceReceipt,
   createEvidenceRequest,
@@ -1448,7 +1449,18 @@ function RequestCard({
   const documentOptions = requestDocumentOptions(availableDocuments, uploaded);
 
   const upload = useMutation({
-    mutationFn: ({ selectedFile, selectedRole }: { selectedFile: File; selectedRole: string }) => uploadEvidenceDocument(caseId, selectedFile, selectedRole),
+    mutationFn: async ({ selectedFile, selectedRole }: { selectedFile: File; selectedRole: string }) => {
+      if (!context.actor) throw new Error("登录状态不可用，请刷新后重试");
+      const payload = { role: selectedRole, name: selectedFile.name, type: selectedFile.type, size: selectedFile.size, sha256: await fileSha256(selectedFile) };
+      const pending = await pendingMutationKey("evidence.upload", idempotencyActorScope(context.actor), caseId, payload);
+      const result = await uploadEvidenceDocument(caseId, selectedFile, selectedRole, pending.key);
+      try {
+        clearPendingMutationKey(pending.storageKey);
+      } catch {
+        try { sessionStorage.setItem(pending.storageKey, newIdempotencyKey()); } catch { /* response already succeeded */ }
+      }
+      return result;
+    },
     onSuccess: async (result, input) => {
       setUploaded({ id: result.id, filename: input.selectedFile.name, role: input.selectedRole });
       setDocumentId(result.id);

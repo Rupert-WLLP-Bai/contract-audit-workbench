@@ -17,6 +17,8 @@ import (
 	"contractaudit/internal/engine"
 	"contractaudit/internal/fault"
 	"contractaudit/internal/rulepack"
+
+	"github.com/jackc/pgx/v5"
 )
 
 const (
@@ -35,6 +37,11 @@ func (s *Store) CreateReport(user accounts.User, caseID, runID, attemptID string
 // object-integrity and agent-review reads when the HTTP request is gone while
 // keeping the existing CreateReport signature for internal and test callers.
 func (s *Store) CreateReportContext(ctx context.Context, user accounts.User, caseID, runID, attemptID string) (ReportRecord, error) {
+	return s.CreateReportWithIdempotency(ctx, user, caseID, runID, attemptID, "")
+}
+
+// CreateReportWithIdempotency commits the optional receipt with the frozen report.
+func (s *Store) CreateReportWithIdempotency(ctx context.Context, user accounts.User, caseID, runID, attemptID, key string) (ReportRecord, error) {
 	if err := ctx.Err(); err != nil {
 		return ReportRecord{}, err
 	}
@@ -48,6 +55,27 @@ func (s *Store) CreateReportContext(ctx context.Context, user accounts.User, cas
 	caseID, runID, attemptID = strings.TrimSpace(caseID), strings.TrimSpace(runID), strings.TrimSpace(attemptID)
 	if caseID == "" || runID == "" || attemptID == "" {
 		return ReportRecord{}, fault.Invalid("生成报告需要指定案件、审查和执行记录")
+	}
+	key, err = optionalIdempotencyKey(key)
+	if err != nil {
+		return ReportRecord{}, err
+	}
+	route := "POST /api/cases/" + caseID + "/reports"
+	digest := ""
+	if key != "" {
+		digest, err = canonicalHash([]string{caseID, runID, attemptID})
+		if err != nil {
+			return ReportRecord{}, err
+		}
+	}
+	if receipt, found, err := s.readWriteReceipt(ctx, currentUser, coreWriteReceipts, route, key, digest, access.Export); err != nil {
+		return ReportRecord{}, err
+	} else if found {
+		var record ReportRecord
+		if err := json.Unmarshal(receipt.Response, &record); err != nil || record.ID == "" || record.RunID != runID || record.AttemptID != attemptID {
+			return ReportRecord{}, errors.New("invalid report idempotency receipt")
+		}
+		return record, nil
 	}
 	st, err := s.snapshotReportState(ctx, currentUser, caseID, runID, attemptID)
 	if err != nil {
@@ -192,13 +220,42 @@ func (s *Store) CreateReportContext(ctx context.Context, user accounts.User, cas
 		InputHash: *attempt.InputHash, OutputHash: *attempt.OutputHash,
 		DecisionSnapshotHash: decisionHash, Digest: reportDigest(jsonBytes, htmlBytes), CreatedAt: now,
 	}
-	if err := s.updateCaseAs(currentUser, caseID, func(next *state) error {
+	var receipt writeReceipt
+	var found bool
+	var receiptTx pgx.Tx
+	if err := s.updateCaseAsWith(currentUser, caseID, func(tx pgx.Tx) error {
+		receiptTx = tx
+		if key == "" {
+			return nil
+		}
+		if err := lockWriteReceipt(ctx, tx, currentUser, route, key); err != nil {
+			return err
+		}
+		receipt, found, err = loadWriteReceipt(ctx, tx, coreWriteReceipts, currentUser, route, key)
+		return err
+	}, func(next *state) error {
+		currentUser, err = trustedUser(currentUser)
+		if err != nil {
+			return err
+		}
 		currentCase, err := s.requireBusinessWrite(next, currentUser, caseID)
 		if err != nil {
 			return err
 		}
 		if err := requireCaseAction(currentCase, currentUser, access.Export); err != nil {
 			return err
+		}
+		if found {
+			if err := checkWriteReceipt(receipt, currentCase, digest); err != nil {
+				return err
+			}
+			if err := validateWriteReceiptTarget(ctx, receiptTx, coreWriteReceipts, currentCase, receipt); err != nil {
+				return err
+			}
+			if err := json.Unmarshal(receipt.Response, &record); err != nil || record.ID == "" || record.RunID != runID || record.AttemptID != attemptID {
+				return errors.New("invalid report idempotency receipt")
+			}
+			return nil
 		}
 		currentAttempt, ok := next.attemptByID(attemptID)
 		if !ok || currentAttempt.RunID != runID || currentAttempt.InputHash == nil || currentAttempt.OutputHash == nil ||
@@ -219,6 +276,9 @@ func (s *Store) CreateReportContext(ctx context.Context, user accounts.User, cas
 			Record: record, TenantID: currentCase.TenantID, OrgID: currentCase.OwnerOrgID, CaseID: caseID,
 			JSONBytes: append([]byte(nil), jsonBytes...), HTMLBytes: append([]byte(nil), htmlBytes...),
 		})
+		if key != "" {
+			return insertWriteReceipt(ctx, receiptTx, coreWriteReceipts, currentUser, currentCase, route, key, digest, record)
+		}
 		return nil
 	}); err != nil {
 		return ReportRecord{}, err
