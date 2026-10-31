@@ -223,7 +223,7 @@ func (s *Store) CreateReportWithIdempotency(ctx context.Context, user accounts.U
 	var receipt writeReceipt
 	var found bool
 	var receiptTx pgx.Tx
-	if err := s.updateCaseAsWith(currentUser, caseID, func(tx pgx.Tx) error {
+	if err := s.scopedCaseWrite(ctx, currentUser, caseID, "", "", true, false, func(tx pgx.Tx) error {
 		receiptTx = tx
 		if key == "" {
 			return nil
