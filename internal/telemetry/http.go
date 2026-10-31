@@ -151,7 +151,7 @@ func sanitizeRequestID(value string) string {
 		return ""
 	}
 	for i := range len(value) {
-		c := value[i]
+		c := rune(value[i])
 		if !isASCIILetter(c) && !isASCIIDigit(c) && c != '-' && c != '_' && c != '.' {
 			return ""
 		}
