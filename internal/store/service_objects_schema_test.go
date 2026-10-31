@@ -18,10 +18,14 @@ func TestServiceObjectSchemaHeadAndAppendOnlyBoundariesInPostgres(t *testing.T) 
 		t.Skip("isolated PostgreSQL test environment is unavailable")
 	}
 	ctx := context.Background()
-	if _, err := env.harness.pool.Exec(ctx, serviceObjectSchemaSQL); err != nil {
+	schema, err := migrationFiles.ReadFile("migrations/0003_service_objects.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := env.harness.pool.Exec(ctx, string(schema)); err != nil {
 		t.Fatalf("apply service object schema: %v", err)
 	}
-	if _, err := env.harness.pool.Exec(ctx, serviceObjectSchemaSQL); err != nil {
+	if _, err := env.harness.pool.Exec(ctx, string(schema)); err != nil {
 		t.Fatalf("reapply service object schema idempotently: %v", err)
 	}
 	admin, found := accounts.ByID("demo-admin")

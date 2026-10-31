@@ -11,7 +11,29 @@ import (
 
 	"contractaudit/internal/accounts"
 	"contractaudit/internal/fault"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
+
+// The legacy backfill tests exercise the exact numbered migration content.
+func migrateMaterials(ctx context.Context, pool *pgxpool.Pool) error {
+	catalog, err := migrationCatalog()
+	if err != nil {
+		return err
+	}
+	tx, err := pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+	var schema string
+	if err := tx.QueryRow(ctx, `SELECT current_schema()`).Scan(&schema); err != nil {
+		return err
+	}
+	if err := executeMigrationSQL(ctx, tx, schema, catalog[1].sql); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
 
 func TestMaterialMigrationUploadReplaceAndRerunPreservesEntityHistory(t *testing.T) {
 	st, err := OpenTest(t.TempDir(), "")
