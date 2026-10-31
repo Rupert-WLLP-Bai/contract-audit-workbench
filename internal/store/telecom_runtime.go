@@ -101,7 +101,7 @@ func isDeclaredReviewCase(item Case) bool {
 		item.BusinessLine == "unspecified" || item.Scenario == "unspecified" {
 		return false
 	}
-	return !(isTelecomDedicatedLineCase(item) && item.ContractType == "service") && !isCloudServicesCase(item)
+	return !isTelecomDedicatedLineCase(item) && !(item.BusinessLine == "ENT" && item.Scenario == "cloud_services")
 }
 
 func isGovernedReviewCase(item Case) bool {

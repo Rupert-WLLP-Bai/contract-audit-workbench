@@ -189,6 +189,7 @@ function quoteMatchesFrozenDocument(
 function requiresBusinessReviewTime(detail: CaseDetail | undefined): boolean {
   if (!detail) return false;
   if (detail.business_line === "ENT" && detail.scenario === "telecom_dedicated_line") return true;
+  if (detail.business_line === "ENT" && detail.scenario === "cloud_services") return detail.contract_type === "service";
   return !!detail.business_line && detail.business_line !== "unspecified" &&
     !!detail.scenario && detail.scenario !== "unspecified" && !!detail.contract_type;
 }
