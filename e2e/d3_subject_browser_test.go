@@ -41,7 +41,7 @@ func TestBrowserD3SubjectControlledSourceSOD(t *testing.T) {
 		"source_root": repoRoot, "source_manifest_before_sha256": beforeDigest,
 		"browser_script_status": "NOT_RUN", "browser_script_exit_code": nil,
 		"go_test_exit_code": nil,
-		"go_test_evidence": "outer runner must capture complete go test output and actual exit code",
+		"go_test_evidence":  "outer runner must capture complete go test output and actual exit code",
 	}
 	t.Cleanup(func() {
 		after, afterDigest, captureErr := d3SourceManifest(repoRoot)
@@ -206,7 +206,6 @@ func TestBrowserD3SubjectControlledSourceSOD(t *testing.T) {
 		t.Fatalf("D3 subject/source journey failed: %v\n%s", runErr, out)
 	}
 	result["browser_script_status"] = "PASS"
-	}
 }
 
 // Evidence must be outside the checkout, including when the supplied path is a symlink.

@@ -49,12 +49,12 @@ type OperatorMappingVersion struct {
 // OperatorMappingChangePatch is a typed proposal. It is not a persisted
 // mutation; approved changes create a new immutable OperatorObjectBinding.
 type OperatorMappingChangePatch struct {
-	Kind           string                        `json:"kind"`
-	ExternalObject *OperatorExternalObject       `json:"external_object,omitempty"`
-	Identity       *OperatorServiceIdentityPatch `json:"identity,omitempty"`
+	Kind                string                                `json:"kind"`
+	ExternalObject      *OperatorExternalObject               `json:"external_object,omitempty"`
+	Identity            *OperatorServiceIdentityPatch         `json:"identity,omitempty"`
 	ContractAssociation *ServiceObjectAssociationConfirmInput `json:"contract_association,omitempty"`
-	EffectiveFrom  time.Time                     `json:"effective_from"`
-	EffectiveUntil time.Time                     `json:"effective_until"`
+	EffectiveFrom       time.Time                             `json:"effective_from"`
+	EffectiveUntil      time.Time                             `json:"effective_until"`
 }
 
 // OperatorServiceIdentityPatch is a complete desired identity payload for a
@@ -164,8 +164,8 @@ type operatorMappingCanonicalState struct {
 }
 
 type operatorMappingApprovedAfter struct {
-	Mapping  operatorMappingCanonicalState `json:"mapping"`
-	Identity *operatorMappingIdentityAfter `json:"identity,omitempty"`
+	Mapping     operatorMappingCanonicalState    `json:"mapping"`
+	Identity    *operatorMappingIdentityAfter    `json:"identity,omitempty"`
 	Association *operatorMappingAssociationAfter `json:"association,omitempty"`
 }
 

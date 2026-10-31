@@ -208,37 +208,37 @@ type OperatorEvaluationCoverage struct {
 }
 
 type OperatorEvaluationObject struct {
-	ObjectRef          string                    `json:"object_ref"`
-	Source             *OperatorEvaluationSource `json:"source"`
-	ServiceObjectID    *string                   `json:"service_object_id"`
-	ObjectVersion      *int                      `json:"object_version"`
-	AssociationVersion *int                      `json:"association_version"`
-	AssociationRunID     string                  `json:"association_run_id,omitempty"`
-	AssociationAttemptID string                  `json:"association_attempt_id,omitempty"`
-	MappingID          *string                   `json:"mapping_id"`
-	MappingVersion     *int64                    `json:"mapping_version"`
-	BindingVersion     *string                   `json:"binding_version"`
-	SnapshotSetID      *string                   `json:"snapshot_set_id"`
-	Status             string                    `json:"status"`
-	ReasonCode         string                    `json:"reason_code"`
-	FactsSHA256        string                    `json:"facts_sha256,omitempty"`
-	FactRefs            []ServiceObjectFactRef    `json:"fact_refs"`
-	SnapshotCollectedAt *time.Time                `json:"snapshot_collected_at,omitempty"`
-	Facts              []auditext.Fact           `json:"facts"`
-	Checks             []auditext.CheckResult    `json:"checks"`
+	ObjectRef            string                    `json:"object_ref"`
+	Source               *OperatorEvaluationSource `json:"source"`
+	ServiceObjectID      *string                   `json:"service_object_id"`
+	ObjectVersion        *int                      `json:"object_version"`
+	AssociationVersion   *int                      `json:"association_version"`
+	AssociationRunID     string                    `json:"association_run_id,omitempty"`
+	AssociationAttemptID string                    `json:"association_attempt_id,omitempty"`
+	MappingID            *string                   `json:"mapping_id"`
+	MappingVersion       *int64                    `json:"mapping_version"`
+	BindingVersion       *string                   `json:"binding_version"`
+	SnapshotSetID        *string                   `json:"snapshot_set_id"`
+	Status               string                    `json:"status"`
+	ReasonCode           string                    `json:"reason_code"`
+	FactsSHA256          string                    `json:"facts_sha256,omitempty"`
+	FactRefs             []ServiceObjectFactRef    `json:"fact_refs"`
+	SnapshotCollectedAt  *time.Time                `json:"snapshot_collected_at,omitempty"`
+	Facts                []auditext.Fact           `json:"facts"`
+	Checks               []auditext.CheckResult    `json:"checks"`
 }
 
 type OperatorEvaluationSource struct {
-	RunID            string `json:"run_id"`
-	AttemptID        string `json:"attempt_id"`
+	RunID                string `json:"run_id"`
+	AttemptID            string `json:"attempt_id"`
 	AssociationRunID     string `json:"association_run_id,omitempty"`
 	AssociationAttemptID string `json:"association_attempt_id,omitempty"`
-	DocumentID       string `json:"document_id"`
-	ParsedDocumentID string `json:"parsed_document_id"`
-	MaterialID       string `json:"material_id"`
-	MaterialVersion  int    `json:"material_version"`
-	Purpose          string `json:"purpose"`
-	Role             string `json:"role"`
+	DocumentID           string `json:"document_id"`
+	ParsedDocumentID     string `json:"parsed_document_id"`
+	MaterialID           string `json:"material_id"`
+	MaterialVersion      int    `json:"material_version"`
+	Purpose              string `json:"purpose"`
+	Role                 string `json:"role"`
 }
 
 func (s *Store) operatorReady(write bool) error {
@@ -1418,7 +1418,7 @@ func operatorEvaluationObjectForAssociation(scope OperatorEvaluationScope, input
 		MappingID: &mappingID, MappingVersion: &mappingVersion, BindingVersion: &bindingVersion, SnapshotSetID: &snapshotSetID,
 		SnapshotCollectedAt: &snapshot.CollectedAt, Status: status, ReasonCode: reason, FactsSHA256: association.FactsSHA256,
 		FactRefs: append([]ServiceObjectFactRef{}, association.FactRefs...),
-		Facts: append([]auditext.Fact{}, facts...), Checks: append([]auditext.CheckResult{}, checks...),
+		Facts:    append([]auditext.Fact{}, facts...), Checks: append([]auditext.CheckResult{}, checks...),
 	}, nil
 }
 

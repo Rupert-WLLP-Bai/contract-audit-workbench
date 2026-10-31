@@ -25,9 +25,9 @@ import (
 )
 
 const (
-	maxConcurrentReviews    = 2
-	reviewExecutionLimit    = 90 * time.Second
-	attemptFinalizeTimeout  = 5 * time.Second
+	maxConcurrentReviews   = 2
+	reviewExecutionLimit   = 90 * time.Second
+	attemptFinalizeTimeout = 5 * time.Second
 )
 
 var (

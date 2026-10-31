@@ -71,14 +71,14 @@ type ServiceObjectSummary struct {
 }
 
 type ServiceObjectMappingPin struct {
-	MappingID string `json:"mapping_id"`
-	MappingVersion int64 `json:"mapping_version"`
-	BindingVersion string `json:"binding_version"`
-	ObjectVersion int `json:"object_version"`
-	AssociationVersion int `json:"association_version"`
-	ExternalObject OperatorExternalObject `json:"external_object"`
-	EffectiveFrom time.Time `json:"effective_from"`
-	EffectiveUntil time.Time `json:"effective_until"`
+	MappingID          string                 `json:"mapping_id"`
+	MappingVersion     int64                  `json:"mapping_version"`
+	BindingVersion     string                 `json:"binding_version"`
+	ObjectVersion      int                    `json:"object_version"`
+	AssociationVersion int                    `json:"association_version"`
+	ExternalObject     OperatorExternalObject `json:"external_object"`
+	EffectiveFrom      time.Time              `json:"effective_from"`
+	EffectiveUntil     time.Time              `json:"effective_until"`
 }
 
 type ServiceObjectDetail struct {

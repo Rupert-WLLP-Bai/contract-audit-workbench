@@ -242,15 +242,15 @@ func (h *handler) createFulfillmentEvaluation(w http.ResponseWriter, r *http.Req
 		return
 	}
 	var body struct {
-		PackID               string `json:"pack_id"`
-		PackVersion          string `json:"pack_version"`
-		SourceReviewID       string `json:"source_review_id"`
-		SourceAttemptID      string `json:"source_attempt_id"`
-		ContractVersionID    string `json:"contract_version_id"`
-		ObjectBindingVersion string `json:"object_binding_version"`
-		SnapshotSetID        string `json:"snapshot_set_id"`
-		BusinessAt           string `json:"business_at"`
-		EvidenceCutoffAt     string `json:"evidence_cutoff_at,omitempty"`
+		PackID               string                         `json:"pack_id"`
+		PackVersion          string                         `json:"pack_version"`
+		SourceReviewID       string                         `json:"source_review_id"`
+		SourceAttemptID      string                         `json:"source_attempt_id"`
+		ContractVersionID    string                         `json:"contract_version_id"`
+		ObjectBindingVersion string                         `json:"object_binding_version"`
+		SnapshotSetID        string                         `json:"snapshot_set_id"`
+		BusinessAt           string                         `json:"business_at"`
+		EvidenceCutoffAt     string                         `json:"evidence_cutoff_at,omitempty"`
 		Scope                *store.OperatorEvaluationScope `json:"scope,omitempty"`
 	}
 	if err := readJSON(w, r, &body); err != nil {

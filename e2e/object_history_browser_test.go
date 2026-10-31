@@ -178,7 +178,7 @@ func TestBrowserObjectHistory(t *testing.T) {
 	webURL := "http://127.0.0.1:" + webPort
 	api := &http.Server{Handler: httpapi.Handler(st, httpapi.Options{
 		CORSOrigins: []string{webURL}, OperatorAuditEnabled: true, CapabilityPacks: catalog,
-		ExternalConnectors: map[string]auditext.ReadConnector{"fixture.oss": objectHistoryConnector{}},
+		ExternalConnectors:    map[string]auditext.ReadConnector{"fixture.oss": objectHistoryConnector{}},
 		ExternalConnectorInfo: []httpapi.OperatorConnectorInfo{{ConnectorID: "fixture.oss", SourceSystem: "fixture-oss", AllowedObjects: []string{"fixture-line-001", "fixture-line-002"}}},
 	})}
 	go func() { _ = api.Serve(listener) }()
@@ -250,7 +250,7 @@ func (objectHistoryConnector) Read(_ context.Context, request auditext.ReadReque
 		RecordID: "record-" + request.ExternalObjectID, RecordVersion: &version, ObservedAt: observed,
 		EffectiveFrom: from, EffectiveUntil: until, Availability: auditext.AvailabilityAvailable,
 		ReasonCode: "read_succeeded", PayloadRef: &payload,
-		Fields: []auditext.Field{{Name: "configured_bandwidth", Value: "100", Unit: "Mbit/s", SourcePointer: "/configured_bandwidth", SemanticKind: "configured_value"}},
+		Fields:    []auditext.Field{{Name: "configured_bandwidth", Value: "100", Unit: "Mbit/s", SourcePointer: "/configured_bandwidth", SemanticKind: "configured_value"}},
 		DataClass: auditext.DataClassSynthetic,
 		TemporalProof: &auditext.TemporalProof{Kind: auditext.TemporalProofHistoricalInterval, SourceCatalogID: "fixture.oss",
 			DatasetVersion: "synthetic-v1", RecordVersion: version, SourceAsOf: &observed, ValidFrom: &from, ValidUntil: &until},
@@ -262,58 +262,118 @@ func (objectHistoryConnector) Read(_ context.Context, request auditext.ReadReque
 // digests and extracts the article through the production governance path.
 func objectHistoryLegalFixture(t *testing.T, st *store.Store, admin accounts.User, assetDir string) store.GovernedKnowledgeVersion {
 	t.Helper()
-	var sources struct { Sources []struct {
-		SnapshotID string `json:"source_snapshot_id"`; SourceID string `json:"source_id"`; Title string `json:"title"`
-		Version string `json:"version_id"`; Promulgated string `json:"promulgated_on"`; Effective string `json:"effective_from"`
-		URL string `json:"official_url"`; File string `json:"snapshot_file"`; SHA string `json:"sha256_raw_bytes"`; StatusID string `json:"currency_status_evidence_id"`
-	} `json:"sources"` }
+	var sources struct {
+		Sources []struct {
+			SnapshotID  string `json:"source_snapshot_id"`
+			SourceID    string `json:"source_id"`
+			Title       string `json:"title"`
+			Version     string `json:"version_id"`
+			Promulgated string `json:"promulgated_on"`
+			Effective   string `json:"effective_from"`
+			URL         string `json:"official_url"`
+			File        string `json:"snapshot_file"`
+			SHA         string `json:"sha256_raw_bytes"`
+			StatusID    string `json:"currency_status_evidence_id"`
+		} `json:"sources"`
+	}
 	objectHistoryReadJSON(t, filepath.Join(assetDir, "articles.json"), &sources)
 	var source = sources.Sources[:0]
 	for _, item := range sources.Sources {
-		if item.SnapshotID == "S1_civil_code_contract" { source = append(source, item); break }
+		if item.SnapshotID == "S1_civil_code_contract" {
+			source = append(source, item)
+			break
+		}
 	}
-	if len(source) != 1 { t.Fatal("reviewed legal source S1 is missing") }
+	if len(source) != 1 {
+		t.Fatal("reviewed legal source S1 is missing")
+	}
 	s := source[0]
-	var capture struct { Sources []struct { ID string `json:"id"`; ContentType string `json:"content_type"`; CapturedAt string `json:"captured_at"` } `json:"sources"` }
+	var capture struct {
+		Sources []struct {
+			ID          string `json:"id"`
+			ContentType string `json:"content_type"`
+			CapturedAt  string `json:"captured_at"`
+		} `json:"sources"`
+	}
 	objectHistoryReadJSON(t, filepath.Join(assetDir, "capture-manifest.json"), &capture)
 	var contentType, capturedAt string
-	for _, item := range capture.Sources { if item.ID == s.SnapshotID { contentType, capturedAt = item.ContentType, item.CapturedAt; break } }
-	var statuses struct { Sources []struct { ID string `json:"id"`; CapturedAt string `json:"captured_at"`; File string `json:"snapshot_path"`; SHA string `json:"sha256_raw_bytes"` } `json:"sources"` }
+	for _, item := range capture.Sources {
+		if item.ID == s.SnapshotID {
+			contentType, capturedAt = item.ContentType, item.CapturedAt
+			break
+		}
+	}
+	var statuses struct {
+		Sources []struct {
+			ID         string `json:"id"`
+			CapturedAt string `json:"captured_at"`
+			File       string `json:"snapshot_path"`
+			SHA        string `json:"sha256_raw_bytes"`
+		} `json:"sources"`
+	}
 	objectHistoryReadJSON(t, filepath.Join(assetDir, "status-capture-manifest.json"), &statuses)
 	var statusAt, statusFile, statusSHA string
-	for _, item := range statuses.Sources { if item.ID == s.StatusID { statusAt, statusFile, statusSHA = item.CapturedAt, item.File, item.SHA; break } }
-	if contentType == "" || capturedAt == "" || statusAt == "" || statusFile == "" || statusSHA == "" { t.Fatal("reviewed legal capture metadata is incomplete") }
-	var canonical struct { Articles []struct {
-		SourceID string `json:"source_id"`; SnapshotID string `json:"source_snapshot_id"`; Version string `json:"version_id"`
-		Number int `json:"article_no"`; Label string `json:"article_label"`; Text string `json:"full_text"`
-		Promulgated string `json:"promulgated_on"`; Effective string `json:"effective_from"`; Until string `json:"effective_to"`
-		StatusID string `json:"currency_status_evidence_id"`; SHA string `json:"canonical_text_sha256"`
-	} `json:"articles"` }
+	for _, item := range statuses.Sources {
+		if item.ID == s.StatusID {
+			statusAt, statusFile, statusSHA = item.CapturedAt, item.File, item.SHA
+			break
+		}
+	}
+	if contentType == "" || capturedAt == "" || statusAt == "" || statusFile == "" || statusSHA == "" {
+		t.Fatal("reviewed legal capture metadata is incomplete")
+	}
+	var canonical struct {
+		Articles []struct {
+			SourceID    string `json:"source_id"`
+			SnapshotID  string `json:"source_snapshot_id"`
+			Version     string `json:"version_id"`
+			Number      int    `json:"article_no"`
+			Label       string `json:"article_label"`
+			Text        string `json:"full_text"`
+			Promulgated string `json:"promulgated_on"`
+			Effective   string `json:"effective_from"`
+			Until       string `json:"effective_to"`
+			StatusID    string `json:"currency_status_evidence_id"`
+			SHA         string `json:"canonical_text_sha256"`
+		} `json:"articles"`
+	}
 	objectHistoryReadJSON(t, filepath.Join(filepath.Dir(assetDir), "p4-canonical-articles-v2.json"), &canonical)
 	var articles []legalnorm.ArticleRef
 	for _, item := range canonical.Articles {
-		if item.SnapshotID != s.SnapshotID || item.Number != 496 { continue }
+		if item.SnapshotID != s.SnapshotID || item.Number != 496 {
+			continue
+		}
 		articles = append(articles, legalnorm.ArticleRef{SourceID: item.SourceID, SourceSnapshotID: item.SnapshotID, VersionID: item.Version,
 			ArticleNumber: item.Number, ArticleLabel: item.Label, FullText: item.Text, TextSHA256: item.SHA,
 			CitationSpan: legalnorm.TextSpan{Start: 0, End: len([]rune(item.Label)), Quote: item.Label}, PromulgatedOn: item.Promulgated,
 			EffectiveFrom: item.Effective, EffectiveUntil: item.Until, CurrencyStatus: legalnorm.StatusEffective, StatusEvidenceID: item.StatusID})
 	}
-	if len(articles) != 1 { t.Fatal("reviewed article 496 is missing or ambiguous") }
+	if len(articles) != 1 {
+		t.Fatal("reviewed article 496 is missing or ambiguous")
+	}
 	imported, err := st.ImportLegalSource(context.Background(), admin, store.LegalSourceImportInput{Capture: legalnorm.CaptureInput{
 		SourceID: s.SourceID, SourceSnapshotID: s.SnapshotID, VersionID: s.Version, Title: s.Title, OfficialURL: s.URL,
 		ContentType: contentType, RawBytes: objectHistoryReadBytes(t, filepath.Join(assetDir, s.File)), ExpectedRawSHA256: s.SHA,
 		SourceCapturedAt: capturedAt, PromulgatedOn: s.Promulgated, EffectiveFrom: s.Effective, CurrencyStatus: legalnorm.StatusEffective,
 		StatusEvidenceID: s.StatusID, StatusObservedAt: statusAt, StatusEvidenceRaw: objectHistoryReadBytes(t, filepath.Join(assetDir, statusFile)),
 		ExpectedStatusSHA256: statusSHA, Articles: articles}, Articles: []store.LegalArticleVersionInput{{ArticleNumber: 496, KnowledgeID: "legal-civil-code-496", DisplayVersion: s.Version}}, IdempotencyKey: "object-history-legal-import"})
-	if err != nil { t.Fatalf("import reviewed legal fixture: %v", err) }
-	if len(imported.Articles) != 1 { t.Fatalf("legal fixture imported %d articles", len(imported.Articles)) }
+	if err != nil {
+		t.Fatalf("import reviewed legal fixture: %v", err)
+	}
+	if len(imported.Articles) != 1 {
+		t.Fatalf("legal fixture imported %d articles", len(imported.Articles))
+	}
 	article, err := st.GetGovernedKnowledgeVersion(admin, imported.Articles[0].KnowledgeID, imported.Articles[0].VersionID)
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	for _, action := range []string{"submit", "validate", "approve", "publish"} {
 		article, err = st.GovernedKnowledgeCommand(admin, store.GovernedKnowledgeCommandInput{KnowledgeID: article.Ref.KnowledgeID,
 			VersionID: article.Ref.VersionID, Action: action, ExpectedRevision: article.Revision, ExpectedContentSHA256: article.Ref.ContentSHA256,
 			ExpectedPointerRevision: article.PointerRevision, Reason: "浏览器冻结引用测试的已核验来源", CrossCaseReviewed: true, IdempotencyKey: "object-history-legal-" + action})
-		if err != nil { t.Fatalf("%s legal fixture: %v", action, err) }
+		if err != nil {
+			t.Fatalf("%s legal fixture: %v", action, err)
+		}
 	}
 	return article
 }
@@ -321,12 +381,16 @@ func objectHistoryLegalFixture(t *testing.T, st *store.Store, admin accounts.Use
 func objectHistoryReadBytes(t *testing.T, path string) []byte {
 	t.Helper()
 	value, err := os.ReadFile(path)
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	return value
 }
 func objectHistoryReadJSON(t *testing.T, path string, value any) {
 	t.Helper()
-	if err := json.Unmarshal(objectHistoryReadBytes(t, path), value); err != nil { t.Fatalf("decode %s: %v", path, err) }
+	if err := json.Unmarshal(objectHistoryReadBytes(t, path), value); err != nil {
+		t.Fatalf("decode %s: %v", path, err)
+	}
 }
 
 func objectHistoryGovernance(t *testing.T, st *store.Store, admin accounts.User, article store.GovernedKnowledgeVersion) {
@@ -335,15 +399,19 @@ func objectHistoryGovernance(t *testing.T, st *store.Store, admin accounts.User,
 	scope := map[string]any{"business_line": "ENT", "scenario": "telecom_dedicated_line", "contract_type": "service"}
 	policyAuthority := []any{map[string]any{"id": "object-history-policy", "version": "1", "kind": "synthetic_demo"}}
 	metadata := article.Content.LegalMetadata
-	if metadata == nil { t.Fatal("published legal article has no source metadata") }
+	if metadata == nil {
+		t.Fatal("published legal article has no source metadata")
+	}
 	quote := []rune(article.Content.Body)
-	if len(quote) > 32 { quote = quote[:32] }
+	if len(quote) > 32 {
+		quote = quote[:32]
+	}
 	legalRef := map[string]any{"authority_source_id": metadata.SourceID, "knowledge_id": article.Ref.KnowledgeID, "version_id": article.Ref.VersionID,
 		"content_sha256": article.Ref.ContentSHA256, "source_id": metadata.SourceID, "source_snapshot_id": metadata.SourceSnapshotID,
 		"norm_title": metadata.NormTitle, "norm_version": metadata.NormVersion, "article_number": metadata.ArticleNumber,
 		"document_type": metadata.DocumentType, "source_sha256": metadata.SourceSHA256, "article_text_sha256": metadata.NormTextSHA256,
 		"effective_from": metadata.EffectiveFrom, "effective_until": metadata.EffectiveUntil,
-		"quote_span": map[string]any{"start": 0, "end": len(quote), "quote": string(quote)},
+		"quote_span":    map[string]any{"start": 0, "end": len(quote), "quote": string(quote)},
 		"applicability": map[string]any{"all_of": []any{map[string]any{"field": "transaction_kind", "one_of": []string{"civil_contract"}}}}}
 	rules := []any{
 		map[string]any{"rule_id": "ENT-TECH-BW-001", "version": "1", "domain": "technical", "capability_id": "dedicated_line.minimum_bandwidth", "mandatory": true,
@@ -351,7 +419,7 @@ func objectHistoryGovernance(t *testing.T, st *store.Store, admin accounts.User,
 			"required_fact": map[string]any{"dimension": "minimum_bandwidth", "source_roles": []string{"draft_contract"}, "object_required": true, "unit_family": "bandwidth_decimal"}, "authority_sources": policyAuthority},
 		map[string]any{"rule_id": "ENT-TECH-SLA-001", "version": "1", "domain": "technical", "capability_id": "dedicated_line.monthly_availability", "mandatory": true,
 			"business_scope": scope, "tenant_id": tenant, "comparator": "monthly_sla", "threshold": map[string]any{"value": "99.9", "unit": "percent"},
-			"required_fact": map[string]any{"dimension": "monthly_availability", "source_roles": []string{"draft_contract"}, "object_required": true, "unit_family": "percentage", "measurement_window": "calendar_month", "time_zone": "Asia/Shanghai", "calendar": "gregorian", "outage_definition": "all_service_unavailability", "exclusions": []string{}},
+			"required_fact":     map[string]any{"dimension": "monthly_availability", "source_roles": []string{"draft_contract"}, "object_required": true, "unit_family": "percentage", "measurement_window": "calendar_month", "time_zone": "Asia/Shanghai", "calendar": "gregorian", "outage_definition": "all_service_unavailability", "exclusions": []string{}},
 			"authority_sources": []any{map[string]any{"id": metadata.SourceID, "version": metadata.NormVersion, "kind": "normative"}}, "legal_authorities": []any{legalRef}},
 		map[string]any{"rule_id": "ENT-COM-ADV-001", "version": "1", "domain": "commercial", "capability_id": "payment.advance_ratio.ceiling", "mandatory": true,
 			"business_scope": scope, "tenant_id": tenant, "comparator": "advance_payment_ceiling", "threshold": map[string]any{"value": "1/3", "unit": "ratio", "basis": "contract_total"},
@@ -359,15 +427,25 @@ func objectHistoryGovernance(t *testing.T, st *store.Store, admin accounts.User,
 	}
 	raw, err := json.Marshal(map[string]any{"schema_version": "rulepack/v1", "id": "telecom-object-history", "version": "1", "tenant_id": tenant,
 		"effective_from": "2020-01-01T00:00:00Z", "effective_until": "2100-01-01T00:00:00Z", "rules": rules})
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	created, err := st.CreateRulePack(admin, raw)
-	if err != nil { t.Fatalf("create fixture pack: %v", err) }
+	if err != nil {
+		t.Fatalf("create fixture pack: %v", err)
+	}
 	validated, err := st.ValidateRulePackVersion(admin, store.GovernanceInput{PackID: "telecom-object-history", Version: "1", ExpectedRevision: created.Pack.Revision})
-	if err != nil { t.Fatalf("validate fixture pack: %v", err) }
+	if err != nil {
+		t.Fatalf("validate fixture pack: %v", err)
+	}
 	approved, err := st.ApproveRulePackVersion(admin, store.GovernanceInput{PackID: "telecom-object-history", Version: "1", ExpectedRevision: validated.Pack.Revision, ExpectedContentHash: validated.Pack.ContentHash})
-	if err != nil { t.Fatalf("approve fixture pack: %v", err) }
+	if err != nil {
+		t.Fatalf("approve fixture pack: %v", err)
+	}
 	published, err := st.PublishRulePackVersion(admin, store.GovernanceInput{PackID: "telecom-object-history", Version: "1", ExpectedRevision: approved.Pack.Revision, ExpectedPointerRevision: approved.Pack.ActivePointerRevision})
-	if err != nil { t.Fatalf("publish fixture pack: %v", err) }
+	if err != nil {
+		t.Fatalf("publish fixture pack: %v", err)
+	}
 	body := "带宽不低于100 Mbit/s。预付款比例不超过1/3，预付款以合同总额为基础。"
 	first, second := "带宽不低于100 Mbit/s", "预付款比例不超过1/3"
 	secondStart := len([]rune(first + "。"))
@@ -377,11 +455,15 @@ func objectHistoryGovernance(t *testing.T, st *store.Store, admin accounts.User,
 		ValidFrom: "2020-01-01T00:00:00Z", ValidUntil: "2100-01-01T00:00:00Z",
 		Binding: store.PolicyRuleBinding{PackID: "telecom-object-history", PackVersion: "1", PackContentHash: published.Pack.ContentHash, PackSnapshotDigest: published.Pack.SnapshotSHA256,
 			CompilerRef: "governed-rulepack/v1", RuleIDs: []string{"ENT-TECH-BW-001", "ENT-COM-ADV-001"}, SourceSpans: []store.KnowledgeSourceSpan{{RuleID: "ENT-TECH-BW-001", Start: 0, End: len([]rune(first)), Quote: first}, {RuleID: "ENT-COM-ADV-001", Start: secondStart, End: secondStart + len([]rune(second)), Quote: second}}, CandidateDiff: "规则差异已审阅", ValidationEvidence: "合成制度校验"}}, IdempotencyKey: "object-history-policy-create"})
-	if err != nil { t.Fatalf("create synthetic policy: %v", err) }
+	if err != nil {
+		t.Fatalf("create synthetic policy: %v", err)
+	}
 	for _, action := range []string{"submit", "validate", "approve", "publish"} {
 		policy, err = st.GovernedKnowledgeCommand(admin, store.GovernedKnowledgeCommandInput{KnowledgeID: policy.Ref.KnowledgeID, VersionID: policy.Ref.VersionID,
 			Action: action, ExpectedRevision: policy.Revision, ExpectedContentSHA256: policy.Ref.ContentSHA256, ExpectedPointerRevision: policy.PointerRevision,
 			Reason: "合成制度浏览器测试", IdempotencyKey: "object-history-policy-" + action})
-		if err != nil { t.Fatalf("%s synthetic policy: %v", action, err) }
+		if err != nil {
+			t.Fatalf("%s synthetic policy: %v", action, err)
+		}
 	}
 }

@@ -50,9 +50,9 @@ func run() error {
 		return err
 	}
 	return json.NewEncoder(os.Stdout).Encode(struct {
-		Status string `json:"status"`
-		Identity evidencebundle.Identity `json:"identity"`
-		Fingerprint string `json:"public_key_spki_sha256"`
-		Entries int `json:"verified_entries"`
+		Status      string                  `json:"status"`
+		Identity    evidencebundle.Identity `json:"identity"`
+		Fingerprint string                  `json:"public_key_spki_sha256"`
+		Entries     int                     `json:"verified_entries"`
 	}{Status: "verified", Identity: manifest.Identity, Fingerprint: manifest.PublicKeySHA256, Entries: len(manifest.Entries)})
 }

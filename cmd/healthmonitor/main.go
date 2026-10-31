@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"contractaudit/internal/process"
 	"contractaudit/internal/bootstrap"
+	"contractaudit/internal/process"
 	"contractaudit/internal/systemhealth"
 	"contractaudit/internal/telemetry"
 )

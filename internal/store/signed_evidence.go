@@ -16,41 +16,41 @@ import (
 // EvidenceManualFinding is the append-only manual finding as observed by the
 // export transaction. It remains separate from the original report findings.
 type EvidenceManualFinding struct {
-	ID string `json:"id"`
-	CaseID string `json:"case_id"`
-	RunID string `json:"run_id"`
-	AttemptID string `json:"attempt_id"`
-	ActorID string `json:"actor_id"`
-	ActorName string `json:"actor_name"`
-	Claim string `json:"claim"`
-	Severity string `json:"severity"`
-	Evidence ExperienceEvidenceRef `json:"evidence"`
-	CreatedAt time.Time `json:"created_at"`
+	ID        string                `json:"id"`
+	CaseID    string                `json:"case_id"`
+	RunID     string                `json:"run_id"`
+	AttemptID string                `json:"attempt_id"`
+	ActorID   string                `json:"actor_id"`
+	ActorName string                `json:"actor_name"`
+	Claim     string                `json:"claim"`
+	Severity  string                `json:"severity"`
+	Evidence  ExperienceEvidenceRef `json:"evidence"`
+	CreatedAt time.Time             `json:"created_at"`
 }
 
 // EvidenceOriginal maps a fixed safe archive path to the immutable document.
 // The bytes are read separately through Original under current case access.
 type EvidenceOriginal struct {
-	Path string `json:"path"`
-	DocumentID string `json:"document_id"`
+	Path             string `json:"path"`
+	DocumentID       string `json:"document_id"`
 	ParsedDocumentID string `json:"parsed_document_id"`
-	Filename string `json:"filename"`
-	MediaType string `json:"media_type"`
-	Size int64 `json:"size"`
-	SHA256 string `json:"sha256"`
+	Filename         string `json:"filename"`
+	MediaType        string `json:"media_type"`
+	Size             int64  `json:"size"`
+	SHA256           string `json:"sha256"`
 }
 
 type EvidenceBundleData struct {
-	Record ReportRecord
-	ReportJSON []byte
-	CaseTitle string
-	Findings []Finding
-	Evaluations []ConstraintEval
+	Record          ReportRecord
+	ReportJSON      []byte
+	CaseTitle       string
+	Findings        []Finding
+	Evaluations     []ConstraintEval
 	FrozenDecisions []Decision
-	Decisions []Decision
-	ManualFindings []EvidenceManualFinding
-	Originals []EvidenceOriginal
-	HistoryCutoff time.Time
+	Decisions       []Decision
+	ManualFindings  []EvidenceManualFinding
+	Originals       []EvidenceOriginal
+	HistoryCutoff   time.Time
 }
 
 // EvidenceBundleDataForReport reads an immutable report only after current

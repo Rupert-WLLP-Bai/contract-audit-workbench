@@ -18,9 +18,9 @@ import (
 // predicate. These decoders issue unparameterized SELECTs ending in ORDER BY;
 // fail closed if their SQL contract changes.
 type scopedReadRows struct {
-	tx		pgx.Tx
-	predicate	string
-	args		[]any
+	tx        pgx.Tx
+	predicate string
+	args      []any
 }
 
 func (q scopedReadRows) Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error) {
@@ -484,10 +484,10 @@ func (s *Store) readAttemptState(ctx context.Context, claim JobClaim, withInput 
 // unionReadRows filters the already-merged service timelines without changing
 // their ordering or excluding either service's historical records.
 type unionReadRows struct {
-	tx		pgx.Tx
-	predicate	string
-	order		string
-	args		[]any
+	tx        pgx.Tx
+	predicate string
+	order     string
+	args      []any
 }
 
 func (q unionReadRows) Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error) {

@@ -72,9 +72,13 @@ func (s *Store) patchStateProjectionLocked(previous, removed, changed state) {
 	s.st.Cases = mergeProjection(s.st.Cases, previous.Cases, removed.Cases, changed.Cases, func(v Case) string { return v.ID })
 	s.st.Documents = mergeProjection(s.st.Documents, previous.Documents, removed.Documents, changed.Documents, func(v Document) string { return v.ID })
 	s.st.Materials = mergeProjection(s.st.Materials, previous.Materials, removed.Materials, changed.Materials, func(v MaterialEntity) [4]string { return [4]string{v.TenantID, v.OrgID, v.CaseID, v.ID} })
-	s.st.MaterialVersions = mergeProjection(s.st.MaterialVersions, previous.MaterialVersions, removed.MaterialVersions, changed.MaterialVersions, func(v MaterialVersion) [5]string { return [5]string{v.TenantID, v.OrgID, v.CaseID, v.MaterialID, strconv.Itoa(v.Version)} })
+	s.st.MaterialVersions = mergeProjection(s.st.MaterialVersions, previous.MaterialVersions, removed.MaterialVersions, changed.MaterialVersions, func(v MaterialVersion) [5]string {
+		return [5]string{v.TenantID, v.OrgID, v.CaseID, v.MaterialID, strconv.Itoa(v.Version)}
+	})
 	s.st.MaterialChains = mergeProjection(s.st.MaterialChains, previous.MaterialChains, removed.MaterialChains, changed.MaterialChains, func(v CaseMaterialChain) [3]string { return [3]string{v.TenantID, v.OrgID, v.CaseID} })
-	s.st.UploadIdempotency = mergeProjection(s.st.UploadIdempotency, previous.UploadIdempotency, removed.UploadIdempotency, changed.UploadIdempotency, func(v UploadIdempotencyRecord) [5]string { return [5]string{v.TenantID, v.OrgID, v.CaseID, v.ActorID, v.Key} })
+	s.st.UploadIdempotency = mergeProjection(s.st.UploadIdempotency, previous.UploadIdempotency, removed.UploadIdempotency, changed.UploadIdempotency, func(v UploadIdempotencyRecord) [5]string {
+		return [5]string{v.TenantID, v.OrgID, v.CaseID, v.ActorID, v.Key}
+	})
 	s.st.ParsedDocuments = mergeProjection(s.st.ParsedDocuments, previous.ParsedDocuments, removed.ParsedDocuments, changed.ParsedDocuments, func(v ParsedDocument) string { return v.ID })
 	s.st.Runs = mergeProjection(s.st.Runs, previous.Runs, removed.Runs, changed.Runs, func(v Run) string { return v.ID })
 	s.st.Attempts = mergeProjection(s.st.Attempts, previous.Attempts, removed.Attempts, changed.Attempts, func(v Attempt) string { return v.ID })
@@ -101,11 +105,17 @@ func (s *Store) patchStateProjectionLocked(previous, removed, changed state) {
 	s.st.Knowledge = mergeProjection(s.st.Knowledge, previous.Knowledge, removed.Knowledge, changed.Knowledge, func(v knowledgeRecord) [3]string { return [3]string{v.TenantID, v.Item.ID, v.Item.Version} })
 	s.st.WorkbenchAudit = mergeProjection(s.st.WorkbenchAudit, previous.WorkbenchAudit, removed.WorkbenchAudit, changed.WorkbenchAudit, func(v workbenchAuditRecord) string { return v.Item.ID })
 	s.st.Subjects = mergeProjection(s.st.Subjects, previous.Subjects, removed.Subjects, changed.Subjects, func(v Subject) [2]string { return [2]string{v.TenantID, v.ID} })
-	s.st.SubjectVersions = mergeProjection(s.st.SubjectVersions, previous.SubjectVersions, removed.SubjectVersions, changed.SubjectVersions, func(v SubjectVersion) [3]string { return [3]string{v.TenantID, v.SubjectID, strconv.FormatInt(v.Version, 10)} })
+	s.st.SubjectVersions = mergeProjection(s.st.SubjectVersions, previous.SubjectVersions, removed.SubjectVersions, changed.SubjectVersions, func(v SubjectVersion) [3]string {
+		return [3]string{v.TenantID, v.SubjectID, strconv.FormatInt(v.Version, 10)}
+	})
 	s.st.CaseSubjectRoles = mergeProjection(s.st.CaseSubjectRoles, previous.CaseSubjectRoles, removed.CaseSubjectRoles, changed.CaseSubjectRoles, func(v CaseSubjectRole) [4]string { return [4]string{v.TenantID, v.OrgID, v.CaseID, v.BindingID} })
-	s.st.CaseSubjectRoleVersions = mergeProjection(s.st.CaseSubjectRoleVersions, previous.CaseSubjectRoleVersions, removed.CaseSubjectRoleVersions, changed.CaseSubjectRoleVersions, func(v CaseSubjectRoleVersion) [5]string { return [5]string{v.TenantID, v.OrgID, v.CaseID, v.BindingID, strconv.FormatInt(v.Version, 10)} })
+	s.st.CaseSubjectRoleVersions = mergeProjection(s.st.CaseSubjectRoleVersions, previous.CaseSubjectRoleVersions, removed.CaseSubjectRoleVersions, changed.CaseSubjectRoleVersions, func(v CaseSubjectRoleVersion) [5]string {
+		return [5]string{v.TenantID, v.OrgID, v.CaseID, v.BindingID, strconv.FormatInt(v.Version, 10)}
+	})
 	s.st.SubjectChangeRequests = mergeProjection(s.st.SubjectChangeRequests, previous.SubjectChangeRequests, removed.SubjectChangeRequests, changed.SubjectChangeRequests, func(v SubjectChangeRequest) [2]string { return [2]string{v.TenantID, v.RequestID} })
 	s.st.SubjectChangeDecisions = mergeProjection(s.st.SubjectChangeDecisions, previous.SubjectChangeDecisions, removed.SubjectChangeDecisions, changed.SubjectChangeDecisions, func(v SubjectChangeDecision) [2]string { return [2]string{v.TenantID, v.DecisionID} })
-	s.st.SubjectIdempotency = mergeProjection(s.st.SubjectIdempotency, previous.SubjectIdempotency, removed.SubjectIdempotency, changed.SubjectIdempotency, func(v SubjectIdempotencyRecord) [5]string { return [5]string{v.TenantID, v.ActorUserID, v.Operation, v.TargetID, v.Key} })
+	s.st.SubjectIdempotency = mergeProjection(s.st.SubjectIdempotency, previous.SubjectIdempotency, removed.SubjectIdempotency, changed.SubjectIdempotency, func(v SubjectIdempotencyRecord) [5]string {
+		return [5]string{v.TenantID, v.ActorUserID, v.Operation, v.TargetID, v.Key}
+	})
 	s.st.SubjectSourceSnapshots = mergeProjection(s.st.SubjectSourceSnapshots, previous.SubjectSourceSnapshots, removed.SubjectSourceSnapshots, changed.SubjectSourceSnapshots, func(v SubjectSourceSnapshot) [4]string { return [4]string{v.TenantID, v.OrgID, v.CaseID, v.SnapshotID} })
 }

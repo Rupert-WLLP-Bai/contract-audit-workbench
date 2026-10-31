@@ -296,6 +296,7 @@ func applyRuntimeTimeoutDefaults(params map[string]string) {
 	}
 	params["options"] = defaults.String()
 }
+
 // Migrate applies the schema using MIGRATOR_DATABASE_URL. The URL must select
 // the same database as the APP_ENV-selected application URL.
 func Migrate(ctx context.Context) error {

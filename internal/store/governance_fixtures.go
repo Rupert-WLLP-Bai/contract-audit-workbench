@@ -13,16 +13,18 @@ import (
 // RulePackSuiteResult is a synthetic run pinned to persisted versions. No case
 // content or lifecycle state is modified by a run.
 type RulePackSuiteResult struct {
-	Revision    int64                       `json:"revision"`
-	ContentHash string                      `json:"content_hash"`
-	Suite       rulepack.FixtureRun         `json:"suite"`
-	Comparison  *rulepack.FixtureComparison `json:"comparison,omitempty"`
-	CompareRevision int64                   `json:"compare_revision,omitempty"`
+	Revision        int64                       `json:"revision"`
+	ContentHash     string                      `json:"content_hash"`
+	Suite           rulepack.FixtureRun         `json:"suite"`
+	Comparison      *rulepack.FixtureComparison `json:"comparison,omitempty"`
+	CompareRevision int64                       `json:"compare_revision,omitempty"`
 }
 
 func (s *Store) TestRulePackSuite(user accounts.User, input RulePackTestInput) (RulePackSuiteResult, error) {
 	admin, err := trustedAdmin(user)
-	if err != nil { return RulePackSuiteResult{}, err }
+	if err != nil {
+		return RulePackSuiteResult{}, err
+	}
 	if !input.RunFixtureSuite || input.ExpectedRevision < 1 || input.ExpectedContentHash == "" ||
 		input.BusinessLine != "" || input.Scenario != "" || input.ContractType != "" || input.At != "" ||
 		len(input.Sources) != 0 || len(input.Facts) != 0 {
@@ -39,27 +41,47 @@ func (s *Store) TestRulePackSuite(user accounts.User, input RulePackTestInput) (
 	err = s.updateAdminAs(admin, func(tx pgx.Tx) error {
 		ctx := context.Background()
 		tenant := accounts.Tenant(admin)
-		if err := lockGovernancePack(ctx, tx, tenant, input.PackID); err != nil { return err }
+		if err := lockGovernancePack(ctx, tx, tenant, input.PackID); err != nil {
+			return err
+		}
 		row, err := loadGovernanceRow(ctx, tx, tenant, input.PackID, input.Version)
-		if errors.Is(err, errGovernanceVersionMissing) { return fault.NotFound("没有找到对应规则包版本") }
-		if err != nil { return err }
+		if errors.Is(err, errGovernanceVersionMissing) {
+			return fault.NotFound("没有找到对应规则包版本")
+		}
+		if err != nil {
+			return err
+		}
 		pack, err := fixtureGovernancePack(row, input.ExpectedRevision, input.ExpectedContentHash)
-		if err != nil { return err }
+		if err != nil {
+			return err
+		}
 		run, err := rulepack.RunFixtureSuite(ctx, pack)
-		if err != nil { return fault.Invalid("无法运行样本套件：" + err.Error()) }
+		if err != nil {
+			return fault.Invalid("无法运行样本套件：" + err.Error())
+		}
 		result = RulePackSuiteResult{Revision: row.Version.Revision, ContentHash: row.Version.ContentHash, Suite: run}
 		if input.CompareVersion != "" {
 			other, err := loadGovernanceRow(ctx, tx, tenant, input.PackID, input.CompareVersion)
-			if errors.Is(err, errGovernanceVersionMissing) { return fault.NotFound("没有找到对比规则包版本") }
-			if err != nil { return err }
+			if errors.Is(err, errGovernanceVersionMissing) {
+				return fault.NotFound("没有找到对比规则包版本")
+			}
+			if err != nil {
+				return err
+			}
 			baseline, err := fixtureGovernancePack(other, input.CompareExpectedRevision, input.CompareExpectedHash)
-			if err != nil { return err }
+			if err != nil {
+				return err
+			}
 			comparison, err := rulepack.CompareFixtureSuite(ctx, pack, baseline, run)
-			if err != nil { return fault.Invalid("无法对比样本套件：" + err.Error()) }
+			if err != nil {
+				return fault.Invalid("无法对比样本套件：" + err.Error())
+			}
 			result.Comparison, result.CompareRevision = &comparison, other.Version.Revision
 		}
 		pointerRevision, err := currentGovernancePointerRevision(ctx, tx, tenant, input.PackID)
-		if err != nil { return err }
+		if err != nil {
+			return err
+		}
 		return insertGovernanceHistory(ctx, tx, RulePackHistoryEntry{
 			TenantID: tenant, PackID: input.PackID, Version: input.Version, Action: GovernanceActionTest,
 			ActorID: admin.ID, ContentHash: row.Version.ContentHash, PointerRevision: pointerRevision, CreatedAt: nowUTC(),

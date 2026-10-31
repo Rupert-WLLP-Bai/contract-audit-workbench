@@ -25,54 +25,54 @@ import (
 )
 
 const (
-	Schema = "contract-audit-evidence/v1"
+	Schema             = "contract-audit-evidence/v1"
 	OriginalsIndexPath = "originals/index.json"
-	DecisionsPath = "history/decisions.json"
-	ManifestPath = "manifest.json"
-	SignaturePath = "manifest.ed25519"
-	ReportPath = "report/report.json"
-	PDFPath = "report/report.pdf"
+	DecisionsPath      = "history/decisions.json"
+	ManifestPath       = "manifest.json"
+	SignaturePath      = "manifest.ed25519"
+	ReportPath         = "report/report.json"
+	PDFPath            = "report/report.pdf"
 	ManualFindingsPath = "history/manual-findings.json"
-	maxManifestBytes = 4 << 20
-	maxEntries = 10000
+	maxManifestBytes   = 4 << 20
+	maxEntries         = 10000
 )
 
 // Identity identifies the immutable report and its exact frozen attempt.
 // HistoryCutoff is the database snapshot boundary; ExportedAt is the service clock.
 type Identity struct {
-	CaseID string `json:"case_id"`
-	ReportID string `json:"report_id"`
-	ReportVersion int `json:"report_version"`
-	RunID string `json:"run_id"`
-	AttemptID string `json:"attempt_id"`
-	InputSHA256 string `json:"input_sha256"`
-	OutputSHA256 string `json:"output_sha256"`
-	DecisionSnapshotSHA256 string `json:"decision_snapshot_sha256"`
-	ExportedAt string `json:"exported_at"`
-	HistoryCutoff string `json:"history_cutoff"`
-	Decisions []HistoryRecord `json:"decisions"`
-	ManualFindings []HistoryRecord `json:"manual_findings"`
+	CaseID                 string          `json:"case_id"`
+	ReportID               string          `json:"report_id"`
+	ReportVersion          int             `json:"report_version"`
+	RunID                  string          `json:"run_id"`
+	AttemptID              string          `json:"attempt_id"`
+	InputSHA256            string          `json:"input_sha256"`
+	OutputSHA256           string          `json:"output_sha256"`
+	DecisionSnapshotSHA256 string          `json:"decision_snapshot_sha256"`
+	ExportedAt             string          `json:"exported_at"`
+	HistoryCutoff          string          `json:"history_cutoff"`
+	Decisions              []HistoryRecord `json:"decisions"`
+	ManualFindings         []HistoryRecord `json:"manual_findings"`
 }
 
 // HistoryRecord names a selected append-only row and its creation time.
 type HistoryRecord struct {
-	ID string `json:"id"`
+	ID        string `json:"id"`
 	CreatedAt string `json:"created_at"`
 }
 
 type Entry struct {
-	Path string `json:"path"`
-	Size int64 `json:"size"`
+	Path   string `json:"path"`
+	Size   int64  `json:"size"`
 	SHA256 string `json:"sha256"`
 }
 
 type Manifest struct {
-	Schema string `json:"schema"`
-	Identity Identity `json:"identity"`
-	SignatureAlgorithm string `json:"signature_algorithm"`
-	PublicKey string `json:"public_key_spki_base64"`
-	PublicKeySHA256 string `json:"public_key_spki_sha256"`
-	Entries []Entry `json:"entries"`
+	Schema             string   `json:"schema"`
+	Identity           Identity `json:"identity"`
+	SignatureAlgorithm string   `json:"signature_algorithm"`
+	PublicKey          string   `json:"public_key_spki_base64"`
+	PublicKeySHA256    string   `json:"public_key_spki_sha256"`
+	Entries            []Entry  `json:"entries"`
 }
 
 // Source.Path must be one of the fixed container names, never an uploaded name.
@@ -156,7 +156,7 @@ func allowedPath(name string) bool {
 	if len(name) != len("originals/000000.bin") || !strings.HasPrefix(name, "originals/") || !strings.HasSuffix(name, ".bin") {
 		return false
 	}
-	for _, c := range name[len("originals/"):len("originals/")+6] {
+	for _, c := range name[len("originals/") : len("originals/")+6] {
 		if c < '0' || c > '9' {
 			return false
 		}
@@ -277,7 +277,7 @@ func Write(ctx context.Context, dst io.Writer, id Identity, sources []Source, ke
 }
 
 type cancelReader struct {
-	ctx context.Context
+	ctx    context.Context
 	reader io.Reader
 }
 

@@ -865,15 +865,15 @@ func (s *Store) CreateGovernedKnowledge(user accounts.User, input CreateGoverned
 // governedKnowledgeRow retains the complete immutable record and its current
 // state so single-version and batched reads use exactly the same checks.
 type governedKnowledgeRow struct {
-	version GovernedKnowledgeVersion
-	raw, binding []byte
-	scopeKey, storedKind, display, pointerID string
-	scopeOrg, scopeCase, sourceOrg, sourceCase *string
-	candidateID, candidateVersionID, candidateDigest *string
+	version                                           GovernedKnowledgeVersion
+	raw, binding                                      []byte
+	scopeKey, storedKind, display, pointerID          string
+	scopeOrg, scopeCase, sourceOrg, sourceCase        *string
+	candidateID, candidateVersionID, candidateDigest  *string
 	bindingPackID, bindingPackVersion, legalCaptureID string
-	active bool
-	created time.Time
-	decodeErr error
+	active                                            bool
+	created                                           time.Time
+	decodeErr                                         error
 }
 
 const governedKnowledgeSelect = `SELECT v.knowledge_id,v.version_id,v.content,v.content_sha256,v.display_version,v.scope_key,v.kind,v.scope_org_id,v.scope_case_id,v.source_org_id,v.source_case_id,v.candidate_id,v.candidate_version_id,v.candidate_content_sha256,v.created_by,v.created_at,COALESCE(v.legal_capture_snapshot_id,''),

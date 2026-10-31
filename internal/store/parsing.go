@@ -557,7 +557,6 @@ func (s *Store) interpretUnpersistedWithModels(ctx context.Context, doc Document
 	return Interpreted{Document: doc, Ready: true, Text: ir.NormalizedText, IR: ir}
 }
 
-
 func frozenFromParsed(doc Document, parsed ParsedDocument) FrozenDocument {
 	var normalizedHash *string
 	if parsed.NormalizedDigest != "" {

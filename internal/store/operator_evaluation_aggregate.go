@@ -53,10 +53,10 @@ func summarizeOperatorEvaluationObjects(scopeKind string, objects []OperatorEval
 }
 
 type operatorEvaluationCandidate struct {
-	ObjectRef string
+	ObjectRef       string
 	ServiceObjectID string
-	Source    FrozenDocument
-	Reason    string
+	Source          FrozenDocument
+	Reason          string
 }
 
 type operatorEvaluationObjectRecord struct {

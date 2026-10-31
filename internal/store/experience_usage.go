@@ -74,18 +74,18 @@ func validExperienceUsageIdentity(input ExperienceUsageInput) bool {
 // attempt input, knowledge version and finding. RecordedAt is database-owned.
 func experienceUsageHash(usage ExperienceUsage) (string, error) {
 	raw, err := json.Marshal(struct {
-		Encoding string `json:"encoding"`
-		TenantID string `json:"tenant_id"`
-		OrgID    string `json:"org_id"`
-		CaseID   string `json:"case_id"`
-		RunID    string `json:"run_id"`
-		AttemptID string `json:"attempt_id"`
-		FindingID string `json:"finding_id"`
-		Ref KnowledgeRef `json:"ref"`
-		SnapshotSHA256 string `json:"snapshot_sha256"`
-		InputSHA256 string `json:"input_sha256"`
-		ExpectedAction string `json:"expected_action"`
-		RecordedBy string `json:"recorded_by"`
+		Encoding       string       `json:"encoding"`
+		TenantID       string       `json:"tenant_id"`
+		OrgID          string       `json:"org_id"`
+		CaseID         string       `json:"case_id"`
+		RunID          string       `json:"run_id"`
+		AttemptID      string       `json:"attempt_id"`
+		FindingID      string       `json:"finding_id"`
+		Ref            KnowledgeRef `json:"ref"`
+		SnapshotSHA256 string       `json:"snapshot_sha256"`
+		InputSHA256    string       `json:"input_sha256"`
+		ExpectedAction string       `json:"expected_action"`
+		RecordedBy     string       `json:"recorded_by"`
 	}{"experience-finding-usage/v1", usage.TenantID, usage.OrgID, usage.CaseID, usage.RunID, usage.AttemptID, usage.FindingID,
 		usage.Ref, usage.SnapshotSHA256, usage.InputSHA256, usage.ExpectedAction, usage.RecordedBy})
 	if err != nil {

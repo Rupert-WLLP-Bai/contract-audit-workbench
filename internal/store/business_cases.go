@@ -162,8 +162,6 @@ func requireCaseAction(item Case, user accounts.User, action access.Action) erro
 	return nil
 }
 
-
-
 type businessCaseInput struct {
 	title, contractType, businessLine, scenario string
 }

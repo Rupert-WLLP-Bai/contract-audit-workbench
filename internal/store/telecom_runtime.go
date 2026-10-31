@@ -34,7 +34,7 @@ const (
 
 type governedCapability struct {
 	ruleID, capabilityID, domain, version string
-	mandatory                            bool
+	mandatory                             bool
 }
 
 var telecomCapabilities = []governedCapability{

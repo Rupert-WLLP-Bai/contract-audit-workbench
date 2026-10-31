@@ -22,8 +22,8 @@ import (
 // Later schema changes must be new numbered files; never edit an applied file.
 // The running application accepts only this explicitly reviewed version range.
 const (
-	schemaMinCompatibleVersion = 12
-	schemaMaxCompatibleVersion = 12
+	schemaMinCompatibleVersion = 16
+	schemaMaxCompatibleVersion = 16
 )
 
 //go:embed migrations/*.sql

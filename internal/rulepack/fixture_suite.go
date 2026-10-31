@@ -216,19 +216,25 @@ func validateFixtureCase(content manifestContent, item FixtureCase) error {
 		default:
 			return fmt.Errorf("invalid relation for rule %q", expected.RuleID)
 		}
-		if expected.Relation == wantedKind { hasKind = true }
+		if expected.Relation == wantedKind {
+			hasKind = true
+		}
 		for _, citation := range expected.Citations {
 			if !sources[citation.SourceID+"\x00"+citation.SourceVersion] || citation.Start < 0 || citation.End <= citation.Start || citation.Quote == "" {
 				return fmt.Errorf("invalid expected citation for rule %q", expected.RuleID)
 			}
 		}
 	}
-	if !hasKind { return fmt.Errorf("case kind %q does not match any expected relation", item.Kind) }
+	if !hasKind {
+		return fmt.Errorf("case kind %q does not match any expected relation", item.Kind)
+	}
 	return nil
 }
 
 func cloneFixtureSuite(suite *FixtureSuite) *FixtureSuite {
-	if suite == nil { return nil }
+	if suite == nil {
+		return nil
+	}
 	copy := *suite
 	copy.Cases = cloneFixtureSlice(suite.Cases)
 	for i, item := range suite.Cases {
@@ -249,21 +255,29 @@ func cloneFixtureSuite(suite *FixtureSuite) *FixtureSuite {
 }
 
 func cloneFixtureSlice[T any](items []T) []T {
-	if items == nil { return nil }
+	if items == nil {
+		return nil
+	}
 	return append(make([]T, 0, len(items)), items...)
 }
 
 func fixtureExecutable(pack *Pack) (*Pack, error) {
-	if pack == nil { return nil, ErrInvalidManifest }
+	if pack == nil {
+		return nil, ErrInvalidManifest
+	}
 	var err error
 	switch pack.lifecycle.State {
 	case StateDraft:
 		pack, err = pack.Validate()
-		if err != nil { return nil, err }
+		if err != nil {
+			return nil, err
+		}
 		fallthrough
 	case StateValidated:
 		pack, err = pack.Approve("rulepack-sample-test", pack.Hash())
-		if err != nil { return nil, err }
+		if err != nil {
+			return nil, err
+		}
 		fallthrough
 	case StateApproved:
 		return pack.Publish()
@@ -276,11 +290,13 @@ func fixtureExecutable(pack *Pack) (*Pack, error) {
 
 func fixtureRequest(tenant string, input FixtureInput) (Request, error) {
 	at, err := time.Parse(time.RFC3339, input.At)
-	if err != nil { return Request{}, err }
+	if err != nil {
+		return Request{}, err
+	}
 	request := Request{
 		Principal: access.Principal{UserID: "rulepack-sample", TenantID: tenant, Enabled: true,
 			Grants: []access.Grant{{Role: "reviewer", Scope: "case", CaseID: "rulepack-sample"}}},
-		Resource: access.Resource{TenantID: tenant, CaseID: "rulepack-sample", OrgID: "rulepack-sample"},
+		Resource:     access.Resource{TenantID: tenant, CaseID: "rulepack-sample", OrgID: "rulepack-sample"},
 		BusinessLine: input.BusinessLine, Scenario: input.Scenario, ContractType: input.ContractType,
 		At: at, AuthorityGates: append([]AuthorityGate(nil), input.AuthorityGates...),
 	}
@@ -296,7 +312,9 @@ func fixtureRequest(tenant string, input FixtureInput) (Request, error) {
 			Value: fact.Value, Unit: fact.Unit, SourceRole: fact.SourceRole, MeasurementWindow: fact.MeasurementWindow,
 			TimeZone: fact.TimeZone, Calendar: fact.Calendar, OutageDefinition: fact.OutageDefinition,
 			Basis: fact.Basis, Applicable: fact.Applicable}
-		if fact.Exclusions != nil { converted.Exclusions = append([]string{}, fact.Exclusions...) }
+		if fact.Exclusions != nil {
+			converted.Exclusions = append([]string{}, fact.Exclusions...)
+		}
 		for _, citation := range fact.Citations {
 			converted.Citations = append(converted.Citations, Citation{SourceID: citation.SourceID, SourceVersion: citation.SourceVersion,
 				TenantID: tenant, CaseID: "rulepack-sample", SourceDigest: digests[citation.SourceID+"\x00"+citation.SourceVersion],
@@ -309,28 +327,43 @@ func fixtureRequest(tenant string, input FixtureInput) (Request, error) {
 
 // RunFixtureSuite executes every case against the exact pack's synthetic suite.
 func RunFixtureSuite(ctx context.Context, pack *Pack) (FixtureRun, error) {
-	if pack == nil || pack.content.FixtureSuite == nil { return FixtureRun{}, errors.New("rule pack has no fixture_suite") }
-	if err := validateFixtureSuite(pack.content); err != nil { return FixtureRun{}, err }
+	if pack == nil || pack.content.FixtureSuite == nil {
+		return FixtureRun{}, errors.New("rule pack has no fixture_suite")
+	}
+	if err := validateFixtureSuite(pack.content); err != nil {
+		return FixtureRun{}, err
+	}
 	return runFixtureCases(ctx, pack, pack.content.FixtureSuite)
 }
 
 func runFixtureCases(ctx context.Context, pack *Pack, suite *FixtureSuite) (FixtureRun, error) {
-	if ctx == nil { return FixtureRun{}, errors.New("nil context") }
+	if ctx == nil {
+		return FixtureRun{}, errors.New("nil context")
+	}
 	executable, err := fixtureExecutable(pack)
-	if err != nil { return FixtureRun{}, err }
+	if err != nil {
+		return FixtureRun{}, err
+	}
 	out := FixtureRun{SuiteID: suite.ID, PackID: pack.content.ID, PackVersion: pack.content.Version,
 		PackHash: pack.Hash(), Passed: true, Cases: make([]FixtureCaseResult, 0, len(suite.Cases))}
 	for _, item := range suite.Cases {
-		if err := ctx.Err(); err != nil { return FixtureRun{}, err }
+		if err := ctx.Err(); err != nil {
+			return FixtureRun{}, err
+		}
 		result := FixtureCaseResult{ID: item.ID, Title: item.Title, Kind: item.Kind, Failures: []string{}}
 		request, err := fixtureRequest(pack.content.TenantID, item.Input)
 		if err == nil {
 			var report Report
 			report, err = executable.Execute(ctx, request)
-			if err == nil { result.Report = &report; result.Failures = fixtureFailures(item.Expected, report.Results) }
+			if err == nil {
+				result.Report = &report
+				result.Failures = fixtureFailures(item.Expected, report.Results)
+			}
 		}
 		if err != nil {
-			if ctx.Err() != nil { return FixtureRun{}, ctx.Err() }
+			if ctx.Err() != nil {
+				return FixtureRun{}, ctx.Err()
+			}
 			result.Failures = append(result.Failures, "execution: "+err.Error())
 		}
 		result.Passed = len(result.Failures) == 0
@@ -343,38 +376,71 @@ func runFixtureCases(ctx context.Context, pack *Pack, suite *FixtureSuite) (Fixt
 func fixtureFailures(expected []FixtureExpected, actual []Result) []string {
 	failures := []string{}
 	byID := make(map[string]Result, len(actual))
-	for _, result := range actual { byID[result.RuleID] = result }
+	for _, result := range actual {
+		byID[result.RuleID] = result
+	}
 	for _, want := range expected {
 		got, ok := byID[want.RuleID]
-		if !ok { failures = append(failures, fmt.Sprintf("%s: no result", want.RuleID)); continue }
+		if !ok {
+			failures = append(failures, fmt.Sprintf("%s: no result", want.RuleID))
+			continue
+		}
 		delete(byID, want.RuleID)
-		if got.RuleVersion != want.RuleVersion { failures = append(failures, fmt.Sprintf("%s: rule version expected %s, got %s", want.RuleID, want.RuleVersion, got.RuleVersion)) }
-		if got.Relation != want.Relation { failures = append(failures, fmt.Sprintf("%s: relation expected %s, got %s", want.RuleID, want.Relation, got.Relation)) }
-		if got.ReasonCode != want.ReasonCode { failures = append(failures, fmt.Sprintf("%s: reason expected %s, got %s", want.RuleID, want.ReasonCode, got.ReasonCode)) }
-		if !fixtureCitationsEqual(want.Citations, got.Citations) { failures = append(failures, fmt.Sprintf("%s: citations differ from expected source, version, span or quote", want.RuleID)) }
+		if got.RuleVersion != want.RuleVersion {
+			failures = append(failures, fmt.Sprintf("%s: rule version expected %s, got %s", want.RuleID, want.RuleVersion, got.RuleVersion))
+		}
+		if got.Relation != want.Relation {
+			failures = append(failures, fmt.Sprintf("%s: relation expected %s, got %s", want.RuleID, want.Relation, got.Relation))
+		}
+		if got.ReasonCode != want.ReasonCode {
+			failures = append(failures, fmt.Sprintf("%s: reason expected %s, got %s", want.RuleID, want.ReasonCode, got.ReasonCode))
+		}
+		if !fixtureCitationsEqual(want.Citations, got.Citations) {
+			failures = append(failures, fmt.Sprintf("%s: citations differ from expected source, version, span or quote", want.RuleID))
+		}
 	}
 	extra := make([]string, 0, len(byID))
-	for id := range byID { extra = append(extra, id) }
+	for id := range byID {
+		extra = append(extra, id)
+	}
 	sort.Strings(extra)
-	for _, id := range extra { failures = append(failures, fmt.Sprintf("%s: unexpected result", id)) }
+	for _, id := range extra {
+		failures = append(failures, fmt.Sprintf("%s: unexpected result", id))
+	}
 	return failures
 }
 
 func fixtureCitationsEqual(want []FixtureCitation, got []Citation) bool {
-	if len(want) != len(got) { return false }
+	if len(want) != len(got) {
+		return false
+	}
 	wanted := append([]FixtureCitation(nil), want...)
 	actual := make([]FixtureCitation, 0, len(got))
-	for _, c := range got { actual = append(actual, FixtureCitation{SourceID: c.SourceID, SourceVersion: c.SourceVersion, Start: c.Start, End: c.End, Quote: c.Quote}) }
+	for _, c := range got {
+		actual = append(actual, FixtureCitation{SourceID: c.SourceID, SourceVersion: c.SourceVersion, Start: c.Start, End: c.End, Quote: c.Quote})
+	}
 	less := func(a, b FixtureCitation) bool {
-		if a.SourceID != b.SourceID { return a.SourceID < b.SourceID }
-		if a.SourceVersion != b.SourceVersion { return a.SourceVersion < b.SourceVersion }
-		if a.Start != b.Start { return a.Start < b.Start }
-		if a.End != b.End { return a.End < b.End }
+		if a.SourceID != b.SourceID {
+			return a.SourceID < b.SourceID
+		}
+		if a.SourceVersion != b.SourceVersion {
+			return a.SourceVersion < b.SourceVersion
+		}
+		if a.Start != b.Start {
+			return a.Start < b.Start
+		}
+		if a.End != b.End {
+			return a.End < b.End
+		}
 		return a.Quote < b.Quote
 	}
 	sort.Slice(wanted, func(i, j int) bool { return less(wanted[i], wanted[j]) })
 	sort.Slice(actual, func(i, j int) bool { return less(actual[i], actual[j]) })
-	for i := range wanted { if wanted[i] != actual[i] { return false } }
+	for i := range wanted {
+		if wanted[i] != actual[i] {
+			return false
+		}
+	}
 	return true
 }
 
@@ -388,11 +454,15 @@ func CompareFixtureSuite(ctx context.Context, candidate, baseline *Pack, candida
 		return FixtureComparison{}, errors.New("fixture comparison pack or candidate identity mismatch")
 	}
 	before, err := runFixtureCases(ctx, baseline, candidate.content.FixtureSuite)
-	if err != nil { return FixtureComparison{}, err }
+	if err != nil {
+		return FixtureComparison{}, err
+	}
 	out := FixtureComparison{Baseline: before, Changes: []FixtureChange{}}
 	for i, oldCase := range before.Cases {
 		newCase := candidateRun.Cases[i]
-		if oldCase.ID != newCase.ID { return FixtureComparison{}, errors.New("fixture comparison case mismatch") }
+		if oldCase.ID != newCase.ID {
+			return FixtureComparison{}, errors.New("fixture comparison case mismatch")
+		}
 		if oldCase.Report == nil || newCase.Report == nil {
 			if !reflect.DeepEqual(oldCase.Failures, newCase.Failures) {
 				out.Changes = append(out.Changes, FixtureChange{CaseID: oldCase.ID, BeforeError: strings.Join(oldCase.Failures, "; "), AfterError: strings.Join(newCase.Failures, "; ")})
@@ -400,17 +470,32 @@ func CompareFixtureSuite(ctx context.Context, candidate, baseline *Pack, candida
 			continue
 		}
 		oldResults, newResults, ids := map[string]Result{}, map[string]Result{}, map[string]bool{}
-		for _, result := range oldCase.Report.Results { oldResults[result.RuleID] = result; ids[result.RuleID] = true }
-		for _, result := range newCase.Report.Results { newResults[result.RuleID] = result; ids[result.RuleID] = true }
+		for _, result := range oldCase.Report.Results {
+			oldResults[result.RuleID] = result
+			ids[result.RuleID] = true
+		}
+		for _, result := range newCase.Report.Results {
+			newResults[result.RuleID] = result
+			ids[result.RuleID] = true
+		}
 		ordered := make([]string, 0, len(ids))
-		for id := range ids { ordered = append(ordered, id) }
+		for id := range ids {
+			ordered = append(ordered, id)
+		}
 		sort.Strings(ordered)
 		for _, id := range ordered {
-			oldResult, oldOK := oldResults[id]; newResult, newOK := newResults[id]
-			if oldOK && newOK && reflect.DeepEqual(oldResult, newResult) { continue }
+			oldResult, oldOK := oldResults[id]
+			newResult, newOK := newResults[id]
+			if oldOK && newOK && reflect.DeepEqual(oldResult, newResult) {
+				continue
+			}
 			change := FixtureChange{CaseID: oldCase.ID, RuleID: id}
-			if oldOK { change.Before = &oldResult }
-			if newOK { change.After = &newResult }
+			if oldOK {
+				change.Before = &oldResult
+			}
+			if newOK {
+				change.After = &newResult
+			}
 			out.Changes = append(out.Changes, change)
 		}
 	}

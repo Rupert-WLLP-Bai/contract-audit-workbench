@@ -17,17 +17,17 @@ import (
 )
 
 type OperatorMappingChangePreview struct {
-	MappingID       string                   `json:"mapping_id"`
-	ServiceObjectID string                   `json:"service_object_id"`
-	CAS             OperatorMappingChangeCAS `json:"cas"`
-	Before          OperatorMappingVersion   `json:"before"`
-	After           OperatorMappingVersion   `json:"after"`
-	IdentityAfter   *ServiceObjectVersion    `json:"identity_after,omitempty"`
+	MappingID        string                           `json:"mapping_id"`
+	ServiceObjectID  string                           `json:"service_object_id"`
+	CAS              OperatorMappingChangeCAS         `json:"cas"`
+	Before           OperatorMappingVersion           `json:"before"`
+	After            OperatorMappingVersion           `json:"after"`
+	IdentityAfter    *ServiceObjectVersion            `json:"identity_after,omitempty"`
 	AssociationAfter *operatorMappingAssociationAfter `json:"association_after,omitempty"`
-	BeforeSHA256    string                   `json:"before_sha256"`
-	AfterSHA256     string                   `json:"after_sha256"`
-	ImpactSHA256    string                   `json:"impact_sha256"`
-	BasisRefs       json.RawMessage          `json:"basis_refs"`
+	BeforeSHA256     string                           `json:"before_sha256"`
+	AfterSHA256      string                           `json:"after_sha256"`
+	ImpactSHA256     string                           `json:"impact_sha256"`
+	BasisRefs        json.RawMessage                  `json:"basis_refs"`
 }
 
 func (s *Store) mappingAssociationTarget(ctx context.Context, tx pgx.Tx, st state, user accounts.User, item Case,
@@ -93,8 +93,8 @@ func mappingImpactWithAssociation(head OperatorMappingHead, version OperatorMapp
 		return base, err
 	}
 	return operatorHash(struct {
-		CurrentImpact string `json:"current_impact"`
-		Target *operatorMappingAssociationAfter `json:"target_association"`
+		CurrentImpact string                           `json:"current_impact"`
+		Target        *operatorMappingAssociationAfter `json:"target_association"`
 	}{base, target})
 }
 

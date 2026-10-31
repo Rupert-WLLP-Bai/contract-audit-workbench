@@ -20,16 +20,16 @@ import (
 )
 
 type evidenceHistory[T any] struct {
-	Cutoff string `json:"cutoff"`
-	Scope string `json:"scope"`
-	Records []T `json:"records"`
+	Cutoff  string `json:"cutoff"`
+	Scope   string `json:"scope"`
+	Records []T    `json:"records"`
 }
 
 type evidenceOriginalIndex struct {
-	CaseID string `json:"case_id"`
-	RunID string `json:"run_id"`
-	AttemptID string `json:"attempt_id"`
-	Entries []store.EvidenceOriginal `json:"entries"`
+	CaseID    string                   `json:"case_id"`
+	RunID     string                   `json:"run_id"`
+	AttemptID string                   `json:"attempt_id"`
+	Entries   []store.EvidenceOriginal `json:"entries"`
 }
 
 func (h *handler) downloadEvidenceBundle(w http.ResponseWriter, r *http.Request) {

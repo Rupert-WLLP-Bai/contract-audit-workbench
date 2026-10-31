@@ -17,35 +17,58 @@ func registerRuleShadowRoutes(mux *http.ServeMux, h *handler) {
 
 func (h *handler) ruleShadowSamples(w http.ResponseWriter, r *http.Request) {
 	user, ok := h.actorForAudience(w, r, "admin")
-	if !ok { return }
+	if !ok {
+		return
+	}
 	items, err := h.store.RuleShadowSamples(r.Context(), user, r.PathValue("packID"), r.PathValue("version"))
-	if err != nil { writeErr(w, err); return }
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
 	writeJSON(w, http.StatusOK, map[string]any{"items": items, "selection_limit": 20, "scan_limit": 250})
 }
 
 func (h *handler) createRuleShadow(w http.ResponseWriter, r *http.Request) {
 	user, ok := h.actorForAudience(w, r, "admin")
-	if !ok { return }
+	if !ok {
+		return
+	}
 	var input store.RuleShadowInput
-	if err := readJSON(w, r, &input); err != nil { writeErr(w, err); return }
+	if err := readJSON(w, r, &input); err != nil {
+		writeErr(w, err)
+		return
+	}
 	input.PackID, input.Version = r.PathValue("packID"), r.PathValue("version")
 	report, err := h.store.CreateRuleShadowReport(r.Context(), user, input)
-	if err != nil { writeErr(w, err); return }
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
 	writeJSON(w, http.StatusCreated, report)
 }
 
 func (h *handler) ruleShadowReports(w http.ResponseWriter, r *http.Request) {
 	user, ok := h.actorForAudience(w, r, "admin")
-	if !ok { return }
+	if !ok {
+		return
+	}
 	items, err := h.store.RuleShadowReports(r.Context(), user, r.PathValue("packID"), r.PathValue("version"), "")
-	if err != nil { writeErr(w, err); return }
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
 	writeJSON(w, http.StatusOK, map[string]any{"items": items})
 }
 
 func (h *handler) ruleShadowReport(w http.ResponseWriter, r *http.Request) {
 	user, ok := h.actorForAudience(w, r, "admin")
-	if !ok { return }
+	if !ok {
+		return
+	}
 	items, err := h.store.RuleShadowReports(r.Context(), user, r.PathValue("packID"), r.PathValue("version"), r.PathValue("reportID"))
-	if err != nil { writeErr(w, err); return }
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
 	writeJSON(w, http.StatusOK, items[0])
 }

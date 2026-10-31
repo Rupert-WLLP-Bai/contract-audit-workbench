@@ -12,35 +12,48 @@ import (
 
 type frozenOriginal struct {
 	Document struct {
-		ID string `json:"id"`
-		CaseID string `json:"case_id"`
-		Filename string `json:"filename"`
+		ID        string `json:"id"`
+		CaseID    string `json:"case_id"`
+		Filename  string `json:"filename"`
 		MediaType string `json:"media_type"`
-		Digest string `json:"digest"`
-		Size int64 `json:"size"`
+		Digest    string `json:"digest"`
+		Size      int64  `json:"size"`
 	} `json:"document"`
-	OriginalHash string `json:"original_hash"`
+	OriginalHash     string `json:"original_hash"`
 	ParsedDocumentID string `json:"parsed_document_id"`
 }
 
 func verifyContents(manifest Manifest, files map[string]*zip.File) error {
 	id := manifest.Identity
 	var report struct {
-		Schema string `json:"schema_version"`
-		ReportID string `json:"report_id"`
-		ReportVersion int `json:"report_version"`
-		Case struct { ID string `json:"id"` } `json:"case"`
-		Run struct { ID string `json:"id"`; CaseID string `json:"case_id"` } `json:"run"`
-		Attempt struct { ID string `json:"id"`; RunID string `json:"run_id"` } `json:"attempt"`
-		Input struct { AttemptID string `json:"attempt_id"`; RunID string `json:"run_id"`; InputHash string `json:"input_hash"`; Documents []frozenOriginal `json:"documents"` } `json:"input"`
-		InputHash string `json:"input_hash"`
-		OutputHash string `json:"output_hash"`
-		DecisionHash string `json:"decision_snapshot_hash"`
-		Decisions json.RawMessage `json:"decisions"`
-		RulePack struct {
-			Availability string `json:"availability"`
-			SnapshotDigest string `json:"snapshot_sha256"`
-			Snapshot json.RawMessage `json:"snapshot"`
+		Schema        string `json:"schema_version"`
+		ReportID      string `json:"report_id"`
+		ReportVersion int    `json:"report_version"`
+		Case          struct {
+			ID string `json:"id"`
+		} `json:"case"`
+		Run struct {
+			ID     string `json:"id"`
+			CaseID string `json:"case_id"`
+		} `json:"run"`
+		Attempt struct {
+			ID    string `json:"id"`
+			RunID string `json:"run_id"`
+		} `json:"attempt"`
+		Input struct {
+			AttemptID string           `json:"attempt_id"`
+			RunID     string           `json:"run_id"`
+			InputHash string           `json:"input_hash"`
+			Documents []frozenOriginal `json:"documents"`
+		} `json:"input"`
+		InputHash    string          `json:"input_hash"`
+		OutputHash   string          `json:"output_hash"`
+		DecisionHash string          `json:"decision_snapshot_hash"`
+		Decisions    json.RawMessage `json:"decisions"`
+		RulePack     struct {
+			Availability   string          `json:"availability"`
+			SnapshotDigest string          `json:"snapshot_sha256"`
+			Snapshot       json.RawMessage `json:"snapshot"`
 		} `json:"rulepack"`
 	}
 	if err := decodeJSONEntry(files[ReportPath], &report); err != nil || report.Schema != "case-report/v1" ||
@@ -85,10 +98,10 @@ func verifyContents(manifest Manifest, files map[string]*zip.File) error {
 
 func verifyHistory(file *zip.File, cutoff string, selected []HistoryRecord) error {
 	var history struct {
-		Cutoff string `json:"cutoff"`
-		Scope string `json:"scope"`
+		Cutoff  string `json:"cutoff"`
+		Scope   string `json:"scope"`
 		Records []struct {
-			ID string `json:"id"`
+			ID        string `json:"id"`
 			CreatedAt string `json:"created_at"`
 		} `json:"records"`
 	}
@@ -107,17 +120,17 @@ func verifyHistory(file *zip.File, cutoff string, selected []HistoryRecord) erro
 
 func verifyOriginals(manifest Manifest, file *zip.File, frozen []frozenOriginal) error {
 	var index struct {
-		CaseID string `json:"case_id"`
-		RunID string `json:"run_id"`
+		CaseID    string `json:"case_id"`
+		RunID     string `json:"run_id"`
 		AttemptID string `json:"attempt_id"`
-		Entries []struct {
-			Path string `json:"path"`
-			DocumentID string `json:"document_id"`
+		Entries   []struct {
+			Path             string `json:"path"`
+			DocumentID       string `json:"document_id"`
 			ParsedDocumentID string `json:"parsed_document_id"`
-			Filename string `json:"filename"`
-			MediaType string `json:"media_type"`
-			SHA256 string `json:"sha256"`
-			Size int64 `json:"size"`
+			Filename         string `json:"filename"`
+			MediaType        string `json:"media_type"`
+			SHA256           string `json:"sha256"`
+			Size             int64  `json:"size"`
 		} `json:"entries"`
 	}
 	if err := decodeJSONEntry(file, &index); err != nil || index.CaseID != manifest.Identity.CaseID ||

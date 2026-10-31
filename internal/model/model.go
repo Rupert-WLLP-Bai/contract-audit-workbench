@@ -460,7 +460,7 @@ func (c *Client) postChatMessages(ctx context.Context, modelID string, messages 
 			observation.Trace = buildModelCallTrace(callTraceInput{
 				RequestedModel: modelID, ReportedModel: result.Model, Payload: payload.prefix,
 				PayloadReader: payload.traceReader(),
-				Messages: messages, StartedAt: startedAt, FinishedAt: time.Now().UTC(),
+				Messages:      messages, StartedAt: startedAt, FinishedAt: time.Now().UTC(),
 				ResponseText: responseText, Status: observation.Status, ErrorCode: observation.ErrorCode,
 			})
 			finish(observation)

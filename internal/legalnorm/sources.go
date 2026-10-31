@@ -156,12 +156,12 @@ var officialAdapters = map[string]sourceAdapter{
 		baseline: &officialBaseline{
 			OfficialURL: "https://ipc.court.gov.cn/zh-cn/news/view-387.html", SourceContentType: "text/html; charset=UTF-8",
 			SourceCapturedAt: "2026-10-30T23:58:34+08:00", SourceResponseStatus: 200,
-			RawSHA256: "34fbedabb99a3c671b50ceeb019c389976264b616cabeed41f266b0d2b350047",
+			RawSHA256:        "34fbedabb99a3c671b50ceeb019c389976264b616cabeed41f266b0d2b350047",
 			StatusEvidenceID: "S8D_npc_contract_law_status", StatusRegistryURL: "https://flk.npc.gov.cn/law-search/search/list",
 			StatusRequestMethod: "POST", StatusRequestBody: []byte(`{"searchContent":"中华人民共和国合同法","searchType":1,"searchRange":1,"pageNum":1,"pageSize":50,"sxx":[],"sxrq":[],"flfgCodeId":[],"zdjgCodeId":[],"gbrqYear":[],"orderByParam":{"order":"-1","sort":""}}`),
 			StatusContentType: "application/json", StatusObservedAt: "2026-10-31T00:01:35+08:00", StatusResponseStatus: 200,
 			StatusSHA256: "7702e08f57cb3b1f130f3306648ece1c874f1e35e42a3886e64e1a1742de078b",
-			Publisher: "最高人民法院知识产权法庭", Issuer: "全国人民代表大会", DocumentType: "law",
+			Publisher:    "最高人民法院知识产权法庭", Issuer: "全国人民代表大会", DocumentType: "law",
 		},
 	},
 	"S12_sc_time_effect_2020_15": {
@@ -175,12 +175,12 @@ var officialAdapters = map[string]sourceAdapter{
 		baseline: &officialBaseline{
 			OfficialURL: "https://www.court.gov.cn/fabu/xiangqing/282051.html", SourceContentType: "text/html; charset=utf-8",
 			SourceCapturedAt: "2026-10-30T23:58:34+08:00", SourceResponseStatus: 200,
-			RawSHA256: "04438ce4f63060abfa5c2bb61dd34b6be7a965f761981aa5da4e2849c93f14bc",
+			RawSHA256:        "04438ce4f63060abfa5c2bb61dd34b6be7a965f761981aa5da4e2849c93f14bc",
 			StatusEvidenceID: "S8E_npc_time_effect_status", StatusRegistryURL: "https://flk.npc.gov.cn/law-search/search/list",
 			StatusRequestMethod: "POST", StatusRequestBody: []byte(`{"searchContent":"最高人民法院关于适用《中华人民共和国民法典》时间效力的若干规定","searchType":1,"searchRange":1,"pageNum":1,"pageSize":50,"sxx":[],"sxrq":[],"flfgCodeId":[],"zdjgCodeId":[],"gbrqYear":[],"orderByParam":{"order":"-1","sort":""}}`),
 			StatusContentType: "application/json", StatusObservedAt: "2026-10-31T00:01:35+08:00", StatusResponseStatus: 200,
 			StatusSHA256: "9e42fe13818fe443c2500c122ceb6eae0f95996e13eb04e5a52aa939c4dc1b9d",
-			Publisher: "最高人民法院", Issuer: "最高人民法院", DocumentType: "judicial_interpretation",
+			Publisher:    "最高人民法院", Issuer: "最高人民法院", DocumentType: "judicial_interpretation",
 		},
 	},
 	"S13_sc_contract_general_2023_13": {
@@ -194,12 +194,12 @@ var officialAdapters = map[string]sourceAdapter{
 		baseline: &officialBaseline{
 			OfficialURL: "https://www.court.gov.cn/zixun/xiangqing/419382.html", SourceContentType: "text/html; charset=utf-8",
 			SourceCapturedAt: "2026-10-30T23:58:35+08:00", SourceResponseStatus: 200,
-			RawSHA256: "60dd9e30c5eb6e9079cf113efd414fd6cd08827ca175bf62fa2e51f86d80155b",
+			RawSHA256:        "60dd9e30c5eb6e9079cf113efd414fd6cd08827ca175bf62fa2e51f86d80155b",
 			StatusEvidenceID: "S8F_npc_contract_general_status", StatusRegistryURL: "https://flk.npc.gov.cn/law-search/search/list",
 			StatusRequestMethod: "POST", StatusRequestBody: []byte(`{"searchContent":"最高人民法院关于适用《中华人民共和国民法典》合同编通则若干问题的解释","searchType":1,"searchRange":1,"pageNum":1,"pageSize":50,"sxx":[],"sxrq":[],"flfgCodeId":[],"zdjgCodeId":[],"gbrqYear":[],"orderByParam":{"order":"-1","sort":""}}`),
 			StatusContentType: "application/json", StatusObservedAt: "2026-10-31T00:01:35+08:00", StatusResponseStatus: 200,
 			StatusSHA256: "fcced433ae2ec216fc6d0b62a1d18fde4f1be6124100e674983f86e3286379fc",
-			Publisher: "最高人民法院", Issuer: "最高人民法院", DocumentType: "judicial_interpretation",
+			Publisher:    "最高人民法院", Issuer: "最高人民法院", DocumentType: "judicial_interpretation",
 		},
 	},
 }

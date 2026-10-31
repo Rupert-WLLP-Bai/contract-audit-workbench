@@ -76,13 +76,13 @@ compose.app.yaml     独立服务部署配置
 
 ```bash
 make setup
-make infra-bootstrap
-make infra-config
+make app-bootstrap
+make app-config
 make infra-up
 make infra-smoke
 ```
 
-`infra-bootstrap` 生成私有的 `.env` 和 `.env.distributed`，已有文件不会被覆盖。配置项见 [.env.example](.env.example)。数据库和对象存储凭据保存在本机，不提交到 Git。
+`app-bootstrap` 生成私有的 `.env` 和 `.env.distributed`，已有文件不会被覆盖。配置项见 [.env.example](.env.example)。数据库和对象存储凭据保存在本机，不提交到 Git。
 
 Go 不会自动加载 `.env`。在第一个终端启动 API：
 
@@ -159,7 +159,7 @@ python3 scripts/check_real_access.py --base http://127.0.0.1:8080 \
 
 命令创建独立验证案件，记录不同账号对案件列表、原件、成员和写操作的实际状态码；结果保存在仓库外的 `test-runs/`。
 
-本地停止基础设施可执行 `make infra-stop`，该命令保留数据卷。
+本地停止基础设施可执行 `make infra-down`，该命令保留数据卷。
 
 业务数据库使用 PostgreSQL 18，数据卷为 `pgdata18`，挂载到 `/var/lib/postgresql`。旧 PostgreSQL 17 数据卷不能直接交给 18 使用：先备份、创建新卷，再用 `pg_dump` / `pg_restore` 迁移并验证。旧卷应保留到回退窗口结束；新库有业务写入后，回退还需要处理新增数据。Keycloak 的身份库独立保留 PostgreSQL 17，不随业务库升级。
 
