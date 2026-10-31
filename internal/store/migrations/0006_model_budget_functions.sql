@@ -1,18 +1,17 @@
-package store
+-- Budget functions retain the schema-specific advisory lock and service isolation.
+DROP FUNCTION IF EXISTS {{SCHEMA}}.model_reserve_call(text,text,text,text,text,text,text,text,integer,integer,integer,integer,integer,integer);
+DROP FUNCTION IF EXISTS {{SCHEMA}}.model_settle_call(text,text,text);
+DO $migration$
+BEGIN
+ IF to_regclass(format('%I.%I',current_schema(),'model_budget_ledger')) IS NOT NULL THEN
+  EXECUTE format('ALTER TABLE %I.%I ENABLE ROW LEVEL SECURITY',current_schema(),'model_budget_ledger');
+  EXECUTE format('ALTER TABLE %I.%I FORCE ROW LEVEL SECURITY',current_schema(),'model_budget_ledger');
+  EXECUTE format('DROP POLICY IF EXISTS tenant_boundary ON %I.%I',current_schema(),'model_budget_ledger');
+  EXECUTE format('CREATE POLICY tenant_boundary ON %I.%I USING (tenant_id=current_setting(%L,true)) WITH CHECK (tenant_id=current_setting(%L,true))',current_schema(),'model_budget_ledger','app.tenant_id','app.tenant_id');
+  EXECUTE format('REVOKE ALL ON TABLE %I.%I FROM PUBLIC',current_schema(),'model_budget_ledger');
+ END IF;
+END $migration$;
 
-import (
-	"context"
-	"errors"
-	"strings"
-
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
-)
-
-// The accounting functions operate on the existing lease and immutable usage
-// tables in the caller's transaction. The separate job lock exposes no job
-// contents or write access to the model role.
-const modelBudgetFunctionsSQL = `
 CREATE OR REPLACE FUNCTION {{SCHEMA}}.model_budget_lock_experience_job(
 	p_tenant text, p_org text, p_case text, p_actor text, p_job text, p_worker text,
 	p_generation bigint, p_input_sha256 text) RETURNS boolean
@@ -218,70 +217,23 @@ END
 $function$;
 
 REVOKE ALL ON FUNCTION {{SCHEMA}}.model_budget_finish(text,text,text,text,text,text,text,text,integer,text,text,text,bigint,bigint,bigint,timestamptz,boolean,text) FROM PUBLIC;
-`
 
-func migrateModelBudgetFunctions(ctx context.Context, pool *pgxpool.Pool) error {
-	var schema string
-	if err := pool.QueryRow(ctx, `SELECT current_schema()`).Scan(&schema); err != nil {
-		return err
-	}
-	qualifiedSchema := pgx.Identifier{schema}.Sanitize()
-	legacyFunctions := `DROP FUNCTION IF EXISTS ` + qualifiedSchema + `.model_reserve_call(text,text,text,text,text,text,text,text,integer,integer,integer,integer,integer,integer);
-		DROP FUNCTION IF EXISTS ` + qualifiedSchema + `.model_settle_call(text,text,text)`
-	if _, err := pool.Exec(ctx, legacyFunctions); err != nil {
-		return err
-	}
-	legacyTable := pgx.Identifier{schema, "model_budget_ledger"}.Sanitize()
-	var legacyExists bool
-	if err := pool.QueryRow(ctx, `SELECT to_regclass($1) IS NOT NULL`, legacyTable).Scan(&legacyExists); err != nil {
-		return err
-	}
-	if legacyExists {
-		legacyProtection := `ALTER TABLE ` + legacyTable + ` ENABLE ROW LEVEL SECURITY;
-			ALTER TABLE ` + legacyTable + ` FORCE ROW LEVEL SECURITY;
-			DROP POLICY IF EXISTS tenant_boundary ON ` + legacyTable + `;
-			CREATE POLICY tenant_boundary ON ` + legacyTable + `
-			USING (tenant_id = current_setting('app.tenant_id',true))
-			WITH CHECK (tenant_id = current_setting('app.tenant_id',true));
-			REVOKE ALL ON TABLE ` + legacyTable + ` FROM PUBLIC`
-		if _, err := pool.Exec(ctx, legacyProtection); err != nil {
-			return err
-		}
-	}
-	sql := strings.ReplaceAll(modelBudgetFunctionsSQL, "{{SCHEMA}}", qualifiedSchema)
-	lockKey := strings.ReplaceAll(schema+":model-budget:global", "'", "''")
-	sql = strings.ReplaceAll(sql, "{{LOCK_KEY}}", lockKey)
-	if _, err := pool.Exec(ctx, sql); err != nil {
-		return err
-	}
-	var functionOwner string
-	if err := pool.QueryRow(ctx, `SELECT r.rolname FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
-		JOIN pg_roles r ON r.oid=p.proowner WHERE n.nspname=$1 AND p.proname='model_budget_reserve'`, schema).Scan(&functionOwner); err != nil {
-		return err
-	}
-	if functionOwner == "" {
-		return errors.New("model budget function owner is unavailable")
-	}
-	ownerLiteral := "'" + strings.ReplaceAll(functionOwner, "'", "''") + "'"
-	for _, table := range []string{"model_call_leases", "model_usage"} {
-		qualifiedTable := pgx.Identifier{schema, table}.Sanitize()
-		statement := `DROP POLICY IF EXISTS model_budget_accounting_authority ON ` + qualifiedTable + `;
-			CREATE POLICY model_budget_accounting_authority ON ` + qualifiedTable + `
-			USING (current_user = ` + ownerLiteral + `) WITH CHECK (current_user = ` + ownerLiteral + `)`
-		if _, err := pool.Exec(ctx, statement); err != nil {
-			return err
-		}
-	}
-	immutableFunction := `CREATE OR REPLACE FUNCTION ` + qualifiedSchema + `.reject_model_usage_mutation()
-		RETURNS trigger LANGUAGE plpgsql SET search_path = pg_catalog, pg_temp AS $function$
-		BEGIN RAISE EXCEPTION 'model usage is immutable' USING ERRCODE = '55000'; END
-		$function$;
-		REVOKE ALL ON FUNCTION ` + qualifiedSchema + `.reject_model_usage_mutation() FROM PUBLIC;
-		DROP TRIGGER IF EXISTS model_usage_immutable ON ` + pgx.Identifier{schema, "model_usage"}.Sanitize() + `;
-		CREATE TRIGGER model_usage_immutable BEFORE UPDATE OR DELETE ON ` + pgx.Identifier{schema, "model_usage"}.Sanitize() + `
-		FOR EACH ROW EXECUTE FUNCTION ` + qualifiedSchema + `.reject_model_usage_mutation()`
-	if _, err := pool.Exec(ctx, immutableFunction); err != nil {
-		return err
-	}
-	return nil
-}
+DO $migration$
+DECLARE function_owner text; table_name text;
+BEGIN
+ SELECT r.rolname INTO function_owner FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+ JOIN pg_roles r ON r.oid=p.proowner WHERE n.nspname=current_schema() AND p.proname='model_budget_reserve' LIMIT 1;
+ IF function_owner IS NULL OR function_owner='' THEN RAISE EXCEPTION 'model budget function owner is unavailable'; END IF;
+ FOREACH table_name IN ARRAY ARRAY['model_call_leases','model_usage'] LOOP
+  EXECUTE format('DROP POLICY IF EXISTS model_budget_accounting_authority ON %I.%I',current_schema(),table_name);
+  EXECUTE format('CREATE POLICY model_budget_accounting_authority ON %I.%I USING (current_user = %L) WITH CHECK (current_user = %L)',current_schema(),table_name,function_owner,function_owner);
+ END LOOP;
+END $migration$;
+CREATE OR REPLACE FUNCTION {{SCHEMA}}.reject_model_usage_mutation()
+ RETURNS trigger LANGUAGE plpgsql SET search_path = pg_catalog, pg_temp AS $function$
+ BEGIN RAISE EXCEPTION 'model usage is immutable' USING ERRCODE = '55000'; END
+ $function$;
+REVOKE ALL ON FUNCTION {{SCHEMA}}.reject_model_usage_mutation() FROM PUBLIC;
+DROP TRIGGER IF EXISTS model_usage_immutable ON {{SCHEMA}}.model_usage;
+CREATE TRIGGER model_usage_immutable BEFORE UPDATE OR DELETE ON {{SCHEMA}}.model_usage
+ FOR EACH ROW EXECUTE FUNCTION {{SCHEMA}}.reject_model_usage_mutation();

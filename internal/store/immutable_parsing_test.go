@@ -541,6 +541,7 @@ func TestLegacyAttemptMigrationIsRepeatableAndRetryIsRejected(t *testing.T) {
 	}
 	legacyStatements := []string{
 		`DROP TABLE operator_fulfillment_evaluation_objects`,
+		`DROP TABLE schema_migrations`,
 		`ALTER TABLE operator_object_bindings DROP CONSTRAINT IF EXISTS operator_binding_mapping_lineage_fk, DROP CONSTRAINT IF EXISTS operator_binding_service_association_fk, DROP CONSTRAINT IF EXISTS operator_binding_mapping_decision_fk, DROP CONSTRAINT IF EXISTS operator_binding_mapping_pin_null_group, DROP CONSTRAINT IF EXISTS operator_binding_decision_outcome_pair`,
 		`ALTER TABLE service_objects DROP CONSTRAINT IF EXISTS service_objects_current_association_fk, DROP CONSTRAINT IF EXISTS service_objects_current_version_fk`,
 		`ALTER TABLE service_object_versions DROP CONSTRAINT IF EXISTS service_object_version_mapping_decision_fk, DROP CONSTRAINT IF EXISTS service_object_version_decision_outcome_pair`,

@@ -91,6 +91,7 @@ func (s *Store) executeSingleContractPrecheck(parent, ctx context.Context, runID
 				next.Findings = append(next.Findings, made...)
 				next.Evaluations = append(next.Evaluations, ConstraintEval{ID: evaluationID, RunID: runID, AttemptID: attemptID,
 					CaseID: runIDCase(*next, runID), Domain: evaluation.Domain, Relation: evaluation.Relation,
+					RuleID: engine.SingleContractPrecheckRule, CapabilityID: "single_contract.payment_sum",
 					RuleVersion: evaluation.RuleVersion, Reason: evaluation.Reason, FindingID: findingID})
 				return nil
 			})
