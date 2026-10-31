@@ -1232,14 +1232,13 @@ export interface SubjectSourceVerificationResult {
 }
 
 export interface SubjectSourceSnapshotInput {
-  source_id: "synthetic.uscc.demo";
+  source_catalog_id: "synthetic.uscc.demo";
   expected_source_version: number;
 }
 
 export interface SubjectSourceVerificationInput {
   subject_id: string;
   expected_subject_version: number;
-  expected_binding_id?: string;
 }
 
 export interface SubjectChangeDetail {

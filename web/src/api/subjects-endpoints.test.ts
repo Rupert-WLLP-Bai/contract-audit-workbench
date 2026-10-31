@@ -188,11 +188,11 @@ describe("subject API endpoints", () => {
       label: "已对照核验（受控来源，合成演示）",
     }, 201);
     const snapshot = await createSubjectSourceSnapshot("case-1", {
-      source_id: "synthetic.uscc.demo", expected_source_version: 1,
+      source_catalog_id: "synthetic.uscc.demo", expected_source_version: 1,
     }, "snapshot-key-1");
     expect(sourceFetch).toHaveBeenCalledWith("/api/cases/case-1/subject-source-snapshots", expect.objectContaining({
       headers: expect.objectContaining({ "Idempotency-Key": "snapshot-key-1" }),
-      body: JSON.stringify({ source_id: "synthetic.uscc.demo", expected_source_version: 1 }),
+      body: JSON.stringify({ source_catalog_id: "synthetic.uscc.demo", expected_source_version: 1 }),
     }));
 
     const verifyFetch = setResponse({
@@ -203,11 +203,11 @@ describe("subject API endpoints", () => {
       matched_record: { display_name: "示例公司", masked_identifier: "9135••••••••••0Y43" },
     }, 202);
     const result = await verifySubjectAgainstSourceSnapshot("case-1", snapshot.snapshot_id, {
-      subject_id: "s-1", expected_subject_version: 1, expected_binding_id: "b-1",
+      subject_id: "s-1", expected_subject_version: 1,
     }, "verify-key-1");
     expect(verifyFetch).toHaveBeenCalledWith("/api/cases/case-1/subject-source-snapshots/snap-1/verify", expect.objectContaining({
       headers: expect.objectContaining({ "Idempotency-Key": "verify-key-1" }),
-      body: JSON.stringify({ subject_id: "s-1", expected_subject_version: 1, expected_binding_id: "b-1" }),
+      body: JSON.stringify({ subject_id: "s-1", expected_subject_version: 1 }),
     }));
     expect(result.state).toBe("pending_decision");
   });
