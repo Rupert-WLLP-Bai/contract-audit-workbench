@@ -416,13 +416,15 @@ func (h *handler) upload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer file.Close()
-	body, err := io.ReadAll(io.LimitReader(file, 32<<20+1))
-	if err != nil {
-		writeErr(w, err)
+	if header.Size > 32<<20 {
+		writeErr(w, fault.TooLarge("文件超过 32 MiB"))
 		return
 	}
-	if len(body) > 32<<20 {
-		writeErr(w, fault.TooLarge("文件超过 32 MiB"))
+	// The multipart parser has already measured the part, so keep a single
+	// exact-size copy for the existing immutable object upload contract.
+	body := make([]byte, int(header.Size))
+	if _, err := io.ReadFull(file, body); err != nil {
+		writeErr(w, err)
 		return
 	}
 	media := http.DetectContentType(body)

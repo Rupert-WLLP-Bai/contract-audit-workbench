@@ -90,23 +90,29 @@ func (c *IntakeUploader) UploadPrimaryContract(ctx context.Context, caseID strin
 	if disposition == "" {
 		return store.DocumentUploadResult{}, errors.New("intake filename cannot be encoded")
 	}
-	part, err := writer.CreatePart(textproto.MIMEHeader{
+	_, err := writer.CreatePart(textproto.MIMEHeader{
 		"Content-Disposition": {disposition},
 		"Content-Type":        {media},
 	})
 	if err != nil {
 		return store.DocumentUploadResult{}, fmt.Errorf("encode intake file part: %w", err)
 	}
-	if _, err := part.Write(request.Body); err != nil {
-		return store.DocumentUploadResult{}, fmt.Errorf("encode intake file: %w", err)
-	}
+	// Keep only the multipart framing in memory; the file is already held by
+	// Core and is read directly between the headers and the closing boundary.
+	headerLength := payload.Len()
 	if err := writer.Close(); err != nil {
 		return store.DocumentUploadResult{}, fmt.Errorf("encode intake upload: %w", err)
 	}
-	httpRequest, err := http.NewRequestWithContext(ctx, http.MethodPost, c.endpoint, &payload)
+	header, trailer := payload.Bytes()[:headerLength], payload.Bytes()[headerLength:]
+	newBody := func() io.Reader {
+		return io.MultiReader(bytes.NewReader(header), bytes.NewReader(request.Body), bytes.NewReader(trailer))
+	}
+	httpRequest, err := http.NewRequestWithContext(ctx, http.MethodPost, c.endpoint, newBody())
 	if err != nil {
 		return store.DocumentUploadResult{}, fmt.Errorf("create intake upload request: %w", err)
 	}
+	httpRequest.ContentLength = int64(len(header)) + int64(len(request.Body)) + int64(len(trailer))
+	httpRequest.GetBody = func() (io.ReadCloser, error) { return io.NopCloser(newBody()), nil }
 	httpRequest.Header.Set("Content-Type", writer.FormDataContentType())
 	httpRequest.Header.Set("Accept", "application/json")
 	httpRequest.Header.Set("X-Contract-Service-Key", c.credential)

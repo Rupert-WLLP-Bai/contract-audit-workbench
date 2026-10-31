@@ -88,13 +88,14 @@ func (s *Service) intakeUpload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer file.Close()
-	body, err := io.ReadAll(io.LimitReader(file, internalIntakeFileLimit+1))
-	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "intake file cannot be read"})
+	if files[0].Size > internalIntakeFileLimit {
+		writeJSON(w, http.StatusRequestEntityTooLarge, map[string]string{"error": "intake file exceeds 32 MiB"})
 		return
 	}
-	if len(body) > internalIntakeFileLimit {
-		writeJSON(w, http.StatusRequestEntityTooLarge, map[string]string{"error": "intake file exceeds 32 MiB"})
+	// The multipart parser has measured the complete file part already.
+	body := make([]byte, int(files[0].Size))
+	if _, err := io.ReadFull(file, body); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "intake file cannot be read"})
 		return
 	}
 	filename := files[0].Filename

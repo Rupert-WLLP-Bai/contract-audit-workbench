@@ -327,8 +327,8 @@ func (c *Client) Transcribe(ctx context.Context, media string, body []byte) (str
 		map[string]string{"type": "text", "text": transcriptionInstruction},
 		map[string]any{
 			"type": "image_url",
-			"image_url": map[string]string{
-				"url": "data:" + imageMIME(media, body) + ";base64," + base64.StdEncoding.EncodeToString(body),
+			"image_url": map[string]any{
+				"url": &chatImageURL{media: imageMIME(media, body), body: body},
 			},
 		},
 	}
@@ -457,7 +457,8 @@ func (c *Client) postChatMessages(ctx context.Context, modelID string, messages 
 				responseText = c.redact(string(raw))
 			}
 			observation.Trace = buildModelCallTrace(callTraceInput{
-				RequestedModel: modelID, ReportedModel: result.Model, Payload: payload,
+				RequestedModel: modelID, ReportedModel: result.Model, Payload: payload.prefix,
+				PayloadReader: payload.traceReader(),
 				Messages: messages, StartedAt: startedAt, FinishedAt: time.Now().UTC(),
 				ResponseText: responseText, Status: observation.Status, ErrorCode: observation.ErrorCode,
 			})
@@ -479,25 +480,129 @@ func (c *Client) postChatMessages(ctx context.Context, modelID string, messages 
 	return c.decodeChatResponse(raw, res.StatusCode)
 }
 
-// newChatRequest builds the exact bytes sent upstream and returns them with the
-// request so the call trace hashes what the provider actually receives.
-func (c *Client) newChatRequest(ctx context.Context, modelID string, messages []chatMessage, maxTokens int, reasoningEffort string) (*http.Request, []byte, error) {
+// newChatRequest retains the exact request representation for the call trace.
+// Images are encoded as the HTTP client reads them, without a base64 string or
+// a second full-size JSON buffer. Every retry gets a fresh reader.
+func (c *Client) newChatRequest(ctx context.Context, modelID string, messages []chatMessage, maxTokens int, reasoningEffort string) (*http.Request, chatRequestPayload, error) {
 	gateway := GatewayID(modelID)
 	if gateway == "" || c.cfg.BaseURL == "" || len(messages) == 0 {
-		return nil, nil, fmt.Errorf("%w: model is not configured", ErrRequest)
+		return nil, chatRequestPayload{}, fmt.Errorf("%w: model is not configured", ErrRequest)
 	}
-	payload, err := json.Marshal(chatRequest{
+	encoded, err := json.Marshal(chatRequest{
 		Model: gateway, Temperature: 0, MaxTokens: maxTokens, ReasoningEffort: reasoningEffort, Messages: messages,
 	})
 	if err != nil {
-		return nil, nil, err
+		return nil, chatRequestPayload{}, err
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.cfg.BaseURL+"/chat/completions", bytes.NewReader(payload))
+	payload := chatRequestPayload{prefix: encoded}
+	if image := transcriptionImage(messages); image != nil {
+		marker := `"data:` + image.media + `;base64,"`
+		start := bytes.LastIndex(encoded, []byte(marker))
+		if start < 0 {
+			return nil, chatRequestPayload{}, fmt.Errorf("%w: image request cannot be encoded", ErrRequest)
+		}
+		insert := start + len(marker) - 1
+		payload = chatRequestPayload{prefix: encoded[:insert], image: image.body, suffix: encoded[insert:]}
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.cfg.BaseURL+"/chat/completions", payload.reader())
 	if err != nil {
-		return nil, nil, fmt.Errorf("%w: %s", ErrRequest, c.redact(err.Error()))
+		return nil, chatRequestPayload{}, fmt.Errorf("%w: %s", ErrRequest, c.redact(err.Error()))
 	}
+	req.ContentLength = int64(payload.size())
+	req.GetBody = func() (io.ReadCloser, error) { return io.NopCloser(payload.reader()), nil }
 	req.Header.Set("Content-Type", "application/json")
 	return req, payload, nil
+}
+
+// chatImageURL marshals just the data-URL prefix; the request body reader inserts
+// the encoded image before its closing quote.
+type chatImageURL struct {
+	media string
+	body  []byte
+}
+
+func (image *chatImageURL) MarshalJSON() ([]byte, error) {
+	return json.Marshal("data:" + image.media + ";base64,")
+}
+
+func transcriptionImage(messages []chatMessage) *chatImageURL {
+	if len(messages) != 1 {
+		return nil
+	}
+	content, ok := messages[0].Content.([]any)
+	if !ok || len(content) != 2 {
+		return nil
+	}
+	part, ok := content[1].(map[string]any)
+	if !ok {
+		return nil
+	}
+	imageURL, ok := part["image_url"].(map[string]any)
+	if !ok {
+		return nil
+	}
+	image, _ := imageURL["url"].(*chatImageURL)
+	return image
+}
+
+type chatRequestPayload struct {
+	prefix []byte
+	image  []byte
+	suffix []byte
+}
+
+func (payload chatRequestPayload) reader() io.Reader {
+	if payload.suffix == nil {
+		return bytes.NewReader(payload.prefix)
+	}
+	return io.MultiReader(bytes.NewReader(payload.prefix), &base64ImageReader{source: payload.image}, bytes.NewReader(payload.suffix))
+}
+
+func (payload chatRequestPayload) size() int {
+	return len(payload.prefix) + base64.StdEncoding.EncodedLen(len(payload.image)) + len(payload.suffix)
+}
+
+func (payload chatRequestPayload) traceReader() io.Reader {
+	if payload.suffix == nil {
+		return nil
+	}
+	return payload.reader()
+}
+
+// base64ImageReader encodes complete quanta directly into the consumer's
+// buffer, keeping at most one four-byte quantum between short reads.
+type base64ImageReader struct {
+	source  []byte
+	pending [4]byte
+	pos     int
+	end     int
+}
+
+func (reader *base64ImageReader) Read(dst []byte) (int, error) {
+	if len(dst) == 0 {
+		return 0, nil
+	}
+	if reader.pos < reader.end {
+		n := copy(dst, reader.pending[reader.pos:reader.end])
+		reader.pos += n
+		return n, nil
+	}
+	if len(reader.source) == 0 {
+		return 0, io.EOF
+	}
+	complete := min(len(dst)/4, len(reader.source)/3) * 3
+	if complete > 0 {
+		encoded := complete / 3 * 4
+		base64.StdEncoding.Encode(dst[:encoded], reader.source[:complete])
+		reader.source = reader.source[complete:]
+		return encoded, nil
+	}
+	count := min(3, len(reader.source))
+	reader.end = base64.StdEncoding.EncodedLen(count)
+	base64.StdEncoding.Encode(reader.pending[:reader.end], reader.source[:count])
+	reader.source = reader.source[count:]
+	reader.pos = copy(dst, reader.pending[:reader.end])
+	return reader.pos, nil
 }
 
 func (c *Client) authorizeChatRequest(ctx context.Context, req *http.Request) error {

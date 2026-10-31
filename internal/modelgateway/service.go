@@ -1,6 +1,7 @@
 package modelgateway
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"crypto/subtle"
@@ -623,7 +624,7 @@ func decodeRequest(w http.ResponseWriter, r *http.Request) ([]byte, string, int,
 	if r.ContentLength > maxRequestBytes {
 		return nil, "", 0, model.DelegatedScope{}, errors.New("request body is invalid")
 	}
-	payload, err := io.ReadAll(body)
+	payload, err := readChatPayload(body, r.ContentLength)
 	if err != nil || len(payload) == 0 {
 		return nil, "", 0, model.DelegatedScope{}, errors.New("request body is invalid")
 	}
@@ -640,6 +641,38 @@ func decodeRequest(w http.ResponseWriter, r *http.Request) ([]byte, string, int,
 		return nil, "", 0, model.DelegatedScope{}, err
 	}
 	return payload, strings.TrimSpace(request.Model), request.MaxTokens, scope, nil
+}
+
+// readChatPayload keeps large known-length requests to one final buffer after
+// at least half the advertised body has actually arrived. Content-Length is
+// only an allocation hint: the caller validates and reserves the bytes read.
+func readChatPayload(body io.Reader, declared int64) ([]byte, error) {
+	if declared < 128<<10 {
+		return io.ReadAll(body)
+	}
+	half := declared / 2
+	first, err := io.ReadAll(io.LimitReader(body, half))
+	if err != nil || int64(len(first)) < half {
+		return first, err
+	}
+	payload := make([]byte, int(declared)+1)
+	length := copy(payload, first)
+	for length < len(payload) {
+		n, readErr := body.Read(payload[length:])
+		length += n
+		if readErr != nil {
+			if readErr == io.EOF {
+				return payload[:length], nil
+			}
+			return nil, readErr
+		}
+	}
+	// A mismatched declaration is never used as the reservation length.
+	rest, err := io.ReadAll(body)
+	if err != nil {
+		return nil, err
+	}
+	return append(payload, rest...), nil
 }
 
 func decodeDelegatedScope(r *http.Request) (model.DelegatedScope, error) {
@@ -671,7 +704,7 @@ func (s *Service) dispatchUpstream(ctx context.Context, upstream upstreamConfig,
 	if upstream.BaseURL == "" {
 		return nil, http.StatusServiceUnavailable, nil, errors.New("model upstream is not configured"), false, true
 	}
-	request, err := http.NewRequestWithContext(ctx, http.MethodPost, upstream.BaseURL+"/chat/completions", strings.NewReader(string(body)))
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, upstream.BaseURL+"/chat/completions", bytes.NewReader(body))
 	if err != nil {
 		return nil, http.StatusBadGateway, nil, err, false, true
 	}

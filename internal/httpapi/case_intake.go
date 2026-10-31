@@ -187,12 +187,14 @@ func parseIntakeRequest(w http.ResponseWriter, r *http.Request) (intakeUpload, s
 		return intakeUpload{}, "", fault.Invalid("文件无法读取")
 	}
 	defer file.Close()
-	body, err := io.ReadAll(io.LimitReader(file, intakeMaxFileBytes+1))
-	if err != nil {
-		return intakeUpload{}, "", fault.Invalid("文件无法读取")
-	}
-	if len(body) > intakeMaxFileBytes {
+	if files[0].Size > intakeMaxFileBytes {
 		return intakeUpload{}, "", fault.TooLarge("文件超过 32 MiB")
+	}
+	// ParseMultipartForm measured the complete part; allocate its exact size
+	// once instead of growing and copying a large file buffer repeatedly.
+	body := make([]byte, int(files[0].Size))
+	if _, err := io.ReadFull(file, body); err != nil {
+		return intakeUpload{}, "", fault.Invalid("文件无法读取")
 	}
 	filename := canonicalIntakeFilename(files[0].Filename)
 	for _, char := range filename {
