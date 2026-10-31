@@ -142,36 +142,39 @@ type caseIntakeRecord struct {
 	ResponseDigest string
 	CreatedAt      time.Time
 	UpdatedAt      time.Time
+	Archived       bool
 }
 
-func normalizeCaseIntakeInput(input CaseIntakeInput) (CaseIntakeInput, businessCaseInput, string, error) {
+func normalizeCaseIntakeInput(input CaseIntakeInput) (CaseIntakeInput, businessCaseInput, CaseIntakeRequestIdentity, string, error) {
 	if err := validateIdempotencyKey(input.IdempotencyKey); err != nil {
-		return CaseIntakeInput{}, businessCaseInput{}, "", fault.Invalid(err.Error())
+		return CaseIntakeInput{}, businessCaseInput{}, CaseIntakeRequestIdentity{}, "", fault.Invalid(err.Error())
 	}
 	if len(input.Body) > caseIntakeMaxFileBytes {
-		return CaseIntakeInput{}, businessCaseInput{}, "", fault.TooLarge("文件超过 32 MiB")
+		return CaseIntakeInput{}, businessCaseInput{}, CaseIntakeRequestIdentity{}, "", fault.TooLarge("文件超过 32 MiB")
 	}
 	caseInput, err := validateBusinessCaseInput(input.Title, input.ContractType, input.BusinessLine, input.Scenario)
 	if err != nil {
-		return CaseIntakeInput{}, businessCaseInput{}, "", err
+		return CaseIntakeInput{}, businessCaseInput{}, CaseIntakeRequestIdentity{}, "", err
 	}
 	input.Title, input.ContractType = caseInput.title, caseInput.contractType
 	input.BusinessLine, input.Scenario = caseInput.businessLine, caseInput.scenario
 	input.Filename, input.MediaType = cleanName(input.Filename), cleanMedia(input.MediaType)
 	if strings.TrimSpace(input.Filename) == "" {
-		return CaseIntakeInput{}, businessCaseInput{}, "", fault.Invalid("文件名不能为空")
+		return CaseIntakeInput{}, businessCaseInput{}, CaseIntakeRequestIdentity{}, "", fault.Invalid("文件名不能为空")
 	}
 	for _, char := range input.Filename {
 		if char < 0x20 || char == 0x7f {
-			return CaseIntakeInput{}, businessCaseInput{}, "", fault.Invalid("文件名包含无效字符")
+			return CaseIntakeInput{}, businessCaseInput{}, CaseIntakeRequestIdentity{}, "", fault.Invalid("文件名包含无效字符")
 		}
 	}
-	digest := caseIntakeRequestDigest(input)
-	return input, caseInput, digest, nil
+	identity := CaseIntakeRequestIdentity{
+		Title: input.Title, ContractType: input.ContractType, BusinessLine: input.BusinessLine, Scenario: input.Scenario,
+		FileName: input.Filename, FileSize: int64(len(input.Body)), MediaType: input.MediaType, FileSHA256: caseIntakeDigest(input.Body),
+	}
+	return input, caseInput, identity, caseIntakeRequestDigest(identity), nil
 }
 
-func caseIntakeRequestDigest(input CaseIntakeInput) string {
-	contentDigest := sha256.Sum256(input.Body)
+func caseIntakeRequestDigest(identity CaseIntakeRequestIdentity) string {
 	canonical := struct {
 		Title        string `json:"title"`
 		ContractType string `json:"contract_type"`
@@ -183,10 +186,9 @@ func caseIntakeRequestDigest(input CaseIntakeInput) string {
 		Filename     string `json:"filename"`
 		MediaType    string `json:"media_type"`
 		FileSHA256   string `json:"file_sha256"`
-	}{input.Title, input.ContractType, input.BusinessLine, input.Scenario, "add", "draft_contract", "primary_contract", input.Filename, input.MediaType, hex.EncodeToString(contentDigest[:])}
+	}{identity.Title, identity.ContractType, identity.BusinessLine, identity.Scenario, "add", "draft_contract", "primary_contract", identity.FileName, identity.MediaType, identity.FileSHA256}
 	encoded, _ := json.Marshal(canonical)
-	digest := sha256.Sum256(encoded)
-	return hex.EncodeToString(digest[:])
+	return caseIntakeDigest(encoded)
 }
 
 func caseIntakeDigest(body []byte) string {
@@ -208,7 +210,7 @@ func (s *Store) BeginCaseIntake(ctx context.Context, user accounts.User, input C
 	if !accounts.CanCreate(current.Role) {
 		return CaseIntakeOperation{}, fault.Forbidden("当前角色不能创建案件")
 	}
-	input, caseInput, digest, err := normalizeCaseIntakeInput(input)
+	input, caseInput, identity, digest, err := normalizeCaseIntakeInput(input)
 	if err != nil {
 		return CaseIntakeOperation{}, err
 	}
@@ -231,8 +233,11 @@ func (s *Store) BeginCaseIntake(ctx context.Context, user accounts.User, input C
 	err = s.updateStateWithLocks(ctx, userScope(current), "", nil, []string{caseID}, func(tx pgx.Tx) error {
 		record, err := loadCaseIntakeByKey(ctx, tx, accounts.Tenant(current), current.ID, input.IdempotencyKey, true)
 		if err == nil {
-			if record.RequestDigest != digest {
-				return fault.Conflict("Idempotency-Key已用于不同建案请求")
+			if record.Status == caseIntakePendingStatus {
+				record.Archived, err = caseIntakeArchived(ctx, tx, record.TenantID, record.OperationID)
+				if err != nil {
+					return err
+				}
 			}
 			prior = &record
 			return nil
@@ -244,6 +249,16 @@ func (s *Store) BeginCaseIntake(ctx context.Context, user accounts.User, input C
 			(tenant_id,org_id,operation_id,actor_id,idempotency_key,request_digest,case_id,upload_idempotency_key,status,created_at,updated_at)
 			VALUES($1,$2,$3,$4,$5,$6,$7,$8,'pending',$9,$9)`, accounts.Tenant(current), current.OrgID, operationID,
 			current.ID, input.IdempotencyKey, digest, caseID, uploadKey, createdAt)
+		if err != nil {
+			return err
+		}
+		requestJSON, err := json.Marshal(identity)
+		if err != nil {
+			return err
+		}
+		_, err = tx.Exec(ctx, `INSERT INTO case_intake_requests
+			(tenant_id,operation_id,schema_version,request_json,created_at) VALUES($1,$2,1,$3,$4)`,
+			accounts.Tenant(current), operationID, requestJSON, createdAt)
 		return err
 	}, func(next *state) error {
 		if prior != nil {
@@ -253,6 +268,12 @@ func (s *Store) BeginCaseIntake(ctx context.Context, user accounts.User, input C
 			}
 			if !authorizeCase(item, current, access.Read) {
 				return fault.NotFound("建案操作不存在")
+			}
+			if prior.Status == caseIntakePendingStatus && prior.Archived {
+				return fault.New(409, "intake_archived", "此待续办事项已归档")
+			}
+			if prior.RequestDigest != digest {
+				return fault.Conflict("Idempotency-Key已用于不同建案请求")
 			}
 			result, err = prior.operation()
 			return err
@@ -378,6 +399,15 @@ func (s *Store) readCaseIntake(ctx context.Context, user accounts.User, load fun
 	}
 	if !authorizeCase(item, current, access.Read) {
 		return CaseIntakeOperation{}, fault.NotFound("建案操作不存在")
+	}
+	if record.Status == caseIntakePendingStatus {
+		record.Archived, err = caseIntakeArchived(ctx, tx, record.TenantID, record.OperationID)
+		if err != nil {
+			return CaseIntakeOperation{}, err
+		}
+		if record.Archived {
+			return CaseIntakeOperation{}, fault.New(409, "intake_archived", "此待续办事项已归档")
+		}
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return CaseIntakeOperation{}, err

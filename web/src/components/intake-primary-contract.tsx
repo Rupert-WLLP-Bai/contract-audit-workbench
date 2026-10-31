@@ -13,6 +13,7 @@ import {
   createIntake,
   getIntake,
   getIntakeByKey,
+  getIntakeContinuation,
   INTAKE_MAX_FILE_BYTES,
   type IntakeResult,
 } from "../api/intakes";
@@ -33,6 +34,7 @@ import {
   withReceipt,
   writeIntakeContinuation,
   type IntakeContinuation,
+  type IntakeContinuationSelection,
 } from "../features/intake/intake-continuation";
 
 /** The server accepts only existing case business lines; this mirrors case creation. */
@@ -54,6 +56,7 @@ const CONTRACT_TYPES = [
 
 const INTAKE_ERROR_LABELS: Record<string, string> = {
   document_upload_unavailable: "上传服务暂不可用",
+  intake_archived: "该办理已归档",
 };
 
 type Busy = "hashing" | "uploading" | "recovering" | null;
@@ -92,12 +95,56 @@ function requestReceipt(
     : getIntake(continuation.receipt.operation_id, signal);
 }
 
+function continuationFromSelection(
+  actor: Actor,
+  selection: IntakeContinuationSelection,
+): IntakeContinuation | null {
+  const { detail } = selection;
+  if (detail.request === null || detail.idempotency_key === null) return null;
+  return {
+    version: 1,
+    scope: scopeOf(actor),
+    idempotency_key: detail.idempotency_key,
+    request: detail.request,
+    receipt: {
+      operation_id: detail.operation_id,
+      case_id: detail.case_id,
+      state: detail.state,
+      material_id: null,
+      material_version: null,
+      document_id: null,
+      error_code: selection.archived ? "intake_archived" : selection.error_code,
+      retryable: detail.state === "upload_pending" && !selection.archived,
+    },
+    updated_at: new Date().toISOString(),
+  };
+}
+
+const CONTINUATION_REASON_LABELS: Record<string, string> = {
+  legacy_request_unavailable: "这是旧办理，服务器没有可验证的原始请求信息，无法安全续传。",
+  request_identity_invalid: "服务器无法验证原始文件身份，已停止续办以避免改写案件。",
+  forbidden: "当前身份无权继续该办理。请使用原经办身份登录，或在有权查看时打开原案件。",
+  read_only: "当前工作区处于只读状态，不能继续上传。",
+  case_not_writable: "原案件当前不可写，不能继续上传。",
+  completed: "服务器已确认该办理完成；请打开原案件查看。",
+  archived: "该办理已归档。归档只从未完成列表中隐藏办理，不会删除原案件；已开始的上传仍可能完成。",
+};
+
+const ARCHIVED_NOTICE =
+  CONTINUATION_REASON_LABELS.archived ?? "该办理已归档，继续上传已关闭。";
+
 /**
  * Homepage entry that creates one case from one primary contract. The server
  * fixes the intake intent; this component never sends a replacement or a
  * single-contract review request.
  */
-export function IntakePrimaryContract({ actor }: { actor: Actor | null }) {
+export function IntakePrimaryContract({
+  actor,
+  selectedContinuation = null,
+}: {
+  actor: Actor | null;
+  selectedContinuation?: IntakeContinuationSelection | null;
+}) {
   const navigate = useNavigate();
   const headingId = useId();
   const titleInputId = useId();
@@ -109,6 +156,9 @@ export function IntakePrimaryContract({ actor }: { actor: Actor | null }) {
 
   const [hydrated, setHydrated] = useState(false);
   const [draft, setDraft] = useState<IntakeContinuation | null>(null);
+
+  const [localAccess, setLocalAccess] =
+    useState<IntakeContinuationSelection | null>(null);
   const [busy, setBusy] = useState<Busy>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [problem, setProblem] = useState<Problem | null>(null);
@@ -134,11 +184,66 @@ export function IntakePrimaryContract({ actor }: { actor: Actor | null }) {
         );
   const canCreate =
     actor !== null && (actor.role === "admin" || actor.role === "clerk");
+  const selectedOperationId = selectedContinuation?.detail.operation_id ?? "";
+  const selectedOperationRef = useRef(selectedOperationId);
+  selectedOperationRef.current = selectedOperationId;
+  const actorKeyRef = useRef(actorKey);
+  actorKeyRef.current = actorKey;
+  const activeContinuationKeyRef = useRef<string | null>(null);
+  const activeAccess =
+    draft?.receipt.operation_id == null
+      ? null
+      : localAccess?.detail.operation_id === draft.receipt.operation_id
+        ? localAccess
+        : selectedContinuation?.detail.operation_id === draft.receipt.operation_id
+          ? selectedContinuation
+          : null;
+  const canResumeCurrent =
+    activeAccess?.detail.can_resume === true && !activeAccess.archived;
+
+  function isCurrentContinuation(continuation: IntakeContinuation): boolean {
+    return (
+      actorKeyRef.current ===
+        [
+          continuation.scope.audience,
+          continuation.scope.tenant_id,
+          continuation.scope.org_id,
+          continuation.scope.actor_id,
+        ].join("\u0000") &&
+      activeContinuationKeyRef.current === continuation.idempotency_key
+    );
+  }
+
+  function blockLocalContinuation(operationId: string, reasonCode: string) {
+    setLocalAccess((current) => {
+      const access =
+        current?.detail.operation_id === operationId
+          ? current
+          : selectedContinuation?.detail.operation_id === operationId
+            ? selectedContinuation
+            : null;
+      if (access === null) return current;
+      const archived = reasonCode === "archived";
+      return {
+        ...access,
+        archived,
+        detail: {
+          ...access.detail,
+          can_resume: false,
+          idempotency_key: null,
+          reason_code: reasonCode,
+        },
+      };
+    });
+  }
 
   useEffect(() => {
     const controller = new AbortController();
+    const selectionAtStart = selectedOperationRef.current;
     setHydrated(false);
+    activeContinuationKeyRef.current = null;
     setDraft(null);
+    setLocalAccess(null);
     setBusy(null);
     setNotice(null);
     setProblem(null);
@@ -157,6 +262,10 @@ export function IntakePrimaryContract({ actor }: { actor: Actor | null }) {
       setHydrated(true);
       return () => controller.abort();
     }
+    if (selectionAtStart !== "") {
+      setHydrated(true);
+      return () => controller.abort();
+    }
     void (async () => {
       let stored: IntakeContinuation | null = null;
       try {
@@ -164,24 +273,88 @@ export function IntakePrimaryContract({ actor }: { actor: Actor | null }) {
       } catch {
         stored = null;
       }
-      if (controller.signal.aborted) return;
+      if (
+        controller.signal.aborted ||
+        selectionAtStart !== selectedOperationRef.current
+      )
+        return;
+      activeContinuationKeyRef.current = stored?.idempotency_key ?? null;
       setDraft(stored);
       setHydrated(true);
       if (stored === null) return;
       setBusy("recovering");
       try {
         const result = await requestReceipt(stored, controller.signal);
-        if (controller.signal.aborted) return;
-        const next = withReceipt(stored, result);
+        if (
+          controller.signal.aborted ||
+          selectionAtStart !== selectedOperationRef.current
+        )
+          return;
+        let next = withReceipt(stored, result);
+        if (result.state === "upload_pending") {
+          const detail = await getIntakeContinuation(
+            result.operation_id,
+            controller.signal,
+          );
+          if (
+            controller.signal.aborted ||
+            selectionAtStart !== selectedOperationRef.current
+          )
+            return;
+          setLocalAccess({ detail, error_code: result.error_code, archived: false });
+          if (
+            detail.can_resume &&
+            detail.request !== null &&
+            detail.idempotency_key !== null
+          ) {
+            next = {
+              ...next,
+              request: detail.request,
+              idempotency_key: detail.idempotency_key,
+            };
+          }
+        } else {
+          setLocalAccess(null);
+        }
         setDraft(next);
+        activeContinuationKeyRef.current = next.idempotency_key;
         try {
           await writeIntakeContinuation(next);
         } catch {
           /* The in-memory receipt still drives this session; see help text. */
         }
       } catch (error) {
-        if (controller.signal.aborted || isAbortError(error)) return;
-        setProblem(problemFromError(error));
+        if (
+          controller.signal.aborted ||
+          isAbortError(error) ||
+          selectionAtStart !== selectedOperationRef.current
+        )
+          return;
+        if (error instanceof ApiError && error.code === "intake_archived")
+          setNotice(ARCHIVED_NOTICE);
+        if (
+          error instanceof ApiError &&
+          error.code === "intake_archived" &&
+          stored.receipt.operation_id !== null
+        ) {
+          try {
+            const detail = await getIntakeContinuation(
+              stored.receipt.operation_id,
+              controller.signal,
+            );
+            if (controller.signal.aborted) return;
+            setLocalAccess({
+              detail,
+              error_code: "intake_archived",
+              archived: false,
+            });
+          } catch (detailError) {
+            if (!controller.signal.aborted)
+              setProblem(problemFromError(detailError));
+          }
+        } else {
+          setProblem(problemFromError(error));
+        }
       } finally {
         if (!controller.signal.aborted) setBusy(null);
       }
@@ -189,10 +362,40 @@ export function IntakePrimaryContract({ actor }: { actor: Actor | null }) {
     return () => controller.abort();
   }, [actorKey]);
 
+  useEffect(() => {
+    if (actor === null || selectedContinuation === null) return;
+    const continuation = continuationFromSelection(actor, selectedContinuation);
+    activeContinuationKeyRef.current = continuation?.idempotency_key ?? null;
+    setLocalAccess(selectedContinuation);
+    setBusy(null);
+    setProblem(null);
+    setConflict(null);
+    setConfirmNew(false);
+    setResumeFile(null);
+    setResumeError(null);
+    setHydrated(true);
+    if (continuation === null) {
+      setDraft(null);
+      setProblem({
+        kind: "error",
+        message: "服务器没有提供可验证的原始请求；请从未完成办理列表查看原因。",
+      });
+      return;
+    }
+    setDraft(continuation);
+    activeContinuationKeyRef.current = continuation.idempotency_key;
+    setNotice(
+      selectedContinuation.archived
+        ? "该办理已归档，继续上传已关闭。"
+        : "已读取服务器保存的原始请求。重新选择文件并通过校验后，才会提交同一办理。",
+    );
+  }, [actorKey, selectedContinuation]);
+
   async function submitNew(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (actor === null || !canCreate || busy !== null || submitting.current)
       return;
+    const actorKeyAtSubmit = actorKey;
     const titleProblem = validateCaseTitle(title);
     setTitleError(titleProblem);
     if (titleProblem !== null) return;
@@ -215,6 +418,7 @@ export function IntakePrimaryContract({ actor }: { actor: Actor | null }) {
       let sha256: string;
       try {
         sha256 = await fileSha256(file);
+        if (actorKeyRef.current !== actorKeyAtSubmit) return;
       } catch {
         setBusy(null);
         setFormError("无法读取文件内容，请重新选择主合同文件");
@@ -237,6 +441,7 @@ export function IntakePrimaryContract({ actor }: { actor: Actor | null }) {
         receipt: pendingReceipt(),
         updated_at: new Date().toISOString(),
       };
+      if (actorKeyRef.current !== actorKeyAtSubmit) return;
       try {
         await writeIntakeContinuation(continuation);
       } catch (error) {
@@ -248,7 +453,9 @@ export function IntakePrimaryContract({ actor }: { actor: Actor | null }) {
         );
         return;
       }
+      if (actorKeyRef.current !== actorKeyAtSubmit) return;
       setDraft(continuation);
+      activeContinuationKeyRef.current = continuation.idempotency_key;
       await postContinuation(continuation, file);
     } finally {
       submitting.current = false;
@@ -259,11 +466,19 @@ export function IntakePrimaryContract({ actor }: { actor: Actor | null }) {
     continuation: IntakeContinuation,
     chosen: File,
   ) {
+    if (!isCurrentContinuation(continuation)) return;
     setBusy("uploading");
     setProblem(null);
     setConflict(null);
     setNotice(null);
     setResumeError(null);
+    const replayFile =
+      chosen.type === continuation.request.media_type &&
+      chosen.name === continuation.request.file_name
+        ? chosen
+        : new File([chosen], continuation.request.file_name, {
+            type: continuation.request.media_type,
+          });
     try {
       const result = await createIntake(
         {
@@ -271,12 +486,40 @@ export function IntakePrimaryContract({ actor }: { actor: Actor | null }) {
           contract_type: continuation.request.contract_type,
           business_line: continuation.request.business_line,
           scenario: continuation.request.scenario,
-          file: chosen,
+          file: replayFile,
         },
         continuation.idempotency_key,
       );
-      const next = withReceipt(continuation, result);
+      if (!isCurrentContinuation(continuation)) return;
+      let next = withReceipt(continuation, result);
+      if (result.state === "upload_pending") {
+        try {
+          const detail = await getIntakeContinuation(result.operation_id);
+          if (!isCurrentContinuation(continuation)) return;
+          setLocalAccess({
+            detail,
+            error_code: result.error_code,
+            archived: false,
+          });
+          if (
+            detail.can_resume &&
+            detail.request !== null &&
+            detail.idempotency_key !== null
+          ) {
+            next = {
+              ...next,
+              request: detail.request,
+              idempotency_key: detail.idempotency_key,
+            };
+          }
+        } catch (detailError) {
+          if (isCurrentContinuation(continuation))
+            setProblem(problemFromError(detailError));
+        }
+      }
+      if (!isCurrentContinuation(continuation)) return;
       setDraft(next);
+      activeContinuationKeyRef.current = next.idempotency_key;
       setResumeFile(null);
       let stored = true;
       try {
@@ -284,6 +527,7 @@ export function IntakePrimaryContract({ actor }: { actor: Actor | null }) {
       } catch {
         stored = false;
       }
+      if (!isCurrentContinuation(next)) return;
       setBusy(null);
       if (result.state === "completed") {
         if (stored) {
@@ -303,13 +547,74 @@ export function IntakePrimaryContract({ actor }: { actor: Actor | null }) {
         });
       }
     } catch (error) {
+      if (!isCurrentContinuation(continuation)) return;
       if (isAbortError(error)) {
         setBusy(null);
         setProblem({
           kind: "error",
           message:
-            "登录身份已变化，本次请求已取消；本机续办记录仍保留，重新登录后继续同一个案件。",
+            "登录身份已变化，本次请求已取消；服务器未确认前请从未完成办理列表重新选择原办理。",
         });
+        return;
+      }
+      if (
+        error instanceof ApiError &&
+        error.code === "intake_archived" &&
+        continuation.receipt.operation_id !== null
+      ) {
+        setBusy("recovering");
+        blockLocalContinuation(
+          continuation.receipt.operation_id,
+          "archived",
+        );
+        setNotice(ARCHIVED_NOTICE);
+        setResumeFile(null);
+        try {
+          const detail = await getIntakeContinuation(
+            continuation.receipt.operation_id,
+          );
+          if (!isCurrentContinuation(continuation)) return;
+          setLocalAccess({
+            detail,
+            error_code: "intake_archived",
+            archived: false,
+          });
+          setNotice(ARCHIVED_NOTICE);
+        } catch (detailError) {
+          if (isCurrentContinuation(continuation))
+            setProblem(problemFromError(detailError));
+        } finally {
+          if (isCurrentContinuation(continuation)) setBusy(null);
+        }
+        return;
+      }
+      if (
+        error instanceof ApiError &&
+        ["forbidden", "read_only", "case_not_writable"].includes(error.code) &&
+        continuation.receipt.operation_id !== null
+      ) {
+        blockLocalContinuation(
+          continuation.receipt.operation_id,
+          error.code,
+        );
+        setResumeFile(null);
+        setBusy("recovering");
+        try {
+          const detail = await getIntakeContinuation(
+            continuation.receipt.operation_id,
+          );
+          if (!isCurrentContinuation(continuation)) return;
+          setLocalAccess({
+            detail,
+            error_code: continuation.receipt.error_code,
+            archived: false,
+          });
+        } catch {
+          /* The original write error remains visible below. */
+        } finally {
+          if (isCurrentContinuation(continuation)) setBusy(null);
+        }
+        setProblem(problemFromError(error));
         return;
       }
       if (isConflict(error)) {
@@ -320,6 +625,7 @@ export function IntakePrimaryContract({ actor }: { actor: Actor | null }) {
         } catch {
           existing = null;
         }
+        if (!isCurrentContinuation(continuation)) return;
         setBusy(null);
         setResumeFile(null);
         setConflict({ message: errorMessage(error), existing, origin: "server" });
@@ -331,26 +637,73 @@ export function IntakePrimaryContract({ actor }: { actor: Actor | null }) {
           error.status >= 500 ||
           error.code === "invalid_response")
       ) {
-        setBusy("recovering");
         try {
           const recovered = await requestReceipt(continuation);
-          const next = withReceipt(continuation, recovered);
+          if (!isCurrentContinuation(continuation)) return;
+          let next = withReceipt(continuation, recovered);
+          if (recovered.state === "upload_pending") {
+            const detail = await getIntakeContinuation(recovered.operation_id);
+            if (!isCurrentContinuation(continuation)) return;
+            setLocalAccess({
+              detail,
+              error_code: recovered.error_code,
+              archived: false,
+            });
+            if (
+              detail.can_resume &&
+              detail.request !== null &&
+              detail.idempotency_key !== null
+            ) {
+              next = {
+                ...next,
+                request: detail.request,
+                idempotency_key: detail.idempotency_key,
+              };
+            }
+          } else {
+            setLocalAccess(null);
+          }
           setDraft(next);
+          activeContinuationKeyRef.current = next.idempotency_key;
           try {
             await writeIntakeContinuation(next);
           } catch {
             /* The recovered record stays usable for this session. */
           }
+          if (!isCurrentContinuation(next)) return;
           setNotice("已按同一幂等键从服务器恢复该操作。");
           if (recovered.state === "completed")
             navigate(caseHref(recovered.case_id, null));
           return;
         } catch (recoverError) {
-          if (isAbortError(recoverError)) return;
+          if (isAbortError(recoverError) || !isCurrentContinuation(continuation))
+            return;
+          if (
+            recoverError instanceof ApiError &&
+            recoverError.code === "intake_archived" &&
+            continuation.receipt.operation_id !== null
+          ) {
+            try {
+              const detail = await getIntakeContinuation(
+                continuation.receipt.operation_id,
+              );
+              if (!isCurrentContinuation(continuation)) return;
+              setLocalAccess({
+                detail,
+                error_code: "intake_archived",
+                archived: false,
+              });
+              setNotice(ARCHIVED_NOTICE);
+            } catch (detailError) {
+              if (isCurrentContinuation(continuation))
+                setProblem(problemFromError(detailError));
+            }
+            return;
+          }
           setProblem(problemFromError(recoverError));
           return;
         } finally {
-          setBusy(null);
+          if (isCurrentContinuation(continuation)) setBusy(null);
         }
       }
       setBusy(null);
@@ -364,6 +717,15 @@ export function IntakePrimaryContract({ actor }: { actor: Actor | null }) {
   ) {
     const current = draft;
     if (current === null || busy !== null || submitting.current) return;
+    const allowed =
+      current.receipt.state === "upload_pending"
+        ? canResumeCurrent
+        : canCreate;
+    if (!allowed) {
+      reportError("服务端当前未授权继续该办理；请从未完成办理列表刷新权限状态。打开原案件不会更改办理。 ");
+      return;
+    }
+    const actorKeyAtStart = actorKey;
     if (chosen.size > INTAKE_MAX_FILE_BYTES) {
       reportError("主合同文件不能超过 32 MiB");
       return;
@@ -378,7 +740,13 @@ export function IntakePrimaryContract({ actor }: { actor: Actor | null }) {
       let sha256: string;
       try {
         sha256 = await fileSha256(chosen);
+        if (
+          actorKeyRef.current !== actorKeyAtStart ||
+          !isCurrentContinuation(current)
+        )
+          return;
       } catch {
+        if (!isCurrentContinuation(current)) return;
         setBusy(null);
         reportError("无法读取文件内容，请重新选择主合同文件");
         return;
@@ -407,30 +775,83 @@ export function IntakePrimaryContract({ actor }: { actor: Actor | null }) {
 
   async function refreshState() {
     const current = draft;
-    if (current === null || busy !== null) return;
+    if (current === null || busy !== null || !isCurrentContinuation(current))
+      return;
     setProblem(null);
     setConflict(null);
     setNotice(null);
     setBusy("recovering");
     try {
       const result = await requestReceipt(current);
-      const next = withReceipt(current, result);
+      if (!isCurrentContinuation(current)) return;
+      let next = withReceipt(current, result);
+      if (result.state === "upload_pending") {
+        const detail = await getIntakeContinuation(result.operation_id);
+        if (!isCurrentContinuation(current)) return;
+        setLocalAccess({ detail, error_code: result.error_code, archived: false });
+        if (
+          detail.can_resume &&
+          detail.request !== null &&
+          detail.idempotency_key !== null
+        ) {
+          next = {
+            ...next,
+            request: detail.request,
+            idempotency_key: detail.idempotency_key,
+          };
+        }
+      } else {
+        setLocalAccess(null);
+      }
       setDraft(next);
+      activeContinuationKeyRef.current = next.idempotency_key;
       try {
         await writeIntakeContinuation(next);
       } catch {
         /* Keep the recovered record for this session. */
       }
+      if (!isCurrentContinuation(next)) return;
       setNotice(
         result.state === "completed"
           ? "服务器确认主合同已上传完成。"
           : "服务器确认主合同仍在等待上传。",
       );
     } catch (error) {
-      if (isAbortError(error)) return;
+      if (isAbortError(error) || !isCurrentContinuation(current)) return;
+      if (
+        error instanceof ApiError &&
+        error.code === "intake_archived" &&
+        current.receipt.operation_id !== null
+      ) {
+        blockLocalContinuation(current.receipt.operation_id, "archived");
+        setNotice(ARCHIVED_NOTICE);
+        setResumeFile(null);
+        try {
+          const detail = await getIntakeContinuation(
+            current.receipt.operation_id,
+          );
+          if (!isCurrentContinuation(current)) return;
+          setLocalAccess({ detail, error_code: "intake_archived", archived: false });
+          setNotice(ARCHIVED_NOTICE);
+          return;
+        } catch (detailError) {
+          if (isCurrentContinuation(current))
+            setProblem(problemFromError(detailError));
+          return;
+        }
+      }
       setProblem(problemFromError(error));
+      if (
+        error instanceof ApiError &&
+        ["forbidden", "read_only", "case_not_writable"].includes(error.code)
+      ) {
+        const operationId = current.receipt.operation_id;
+        if (operationId !== null)
+          blockLocalContinuation(operationId, error.code);
+        setResumeFile(null);
+      }
     } finally {
-      setBusy(null);
+      if (isCurrentContinuation(current)) setBusy(null);
     }
   }
 
@@ -782,11 +1203,11 @@ export function IntakePrimaryContract({ actor }: { actor: Actor | null }) {
           type="warning"
           showIcon
           title="案件已建立，主合同上传尚未完成"
-          description={`服务器返回「${
+          description={`${
             receipt.error_code === null
               ? "上传服务暂不可用"
-              : `${INTAKE_ERROR_LABELS[receipt.error_code] ?? "主合同上传没有完成"}（${receipt.error_code}）`
-          }」。案件与操作编号已经保留，继续上传不会重复建案。`}
+              : INTAKE_ERROR_LABELS[receipt.error_code] ?? "主合同上传没有完成"
+          }。案件与操作编号已经保留，继续上传不会重复建案。`}
         />
         <p>
           请重新选择最初提交的主合同文件。系统会先核对 SHA-256，再使用同一幂等键重试；不会替换已有主合同。
@@ -812,7 +1233,7 @@ export function IntakePrimaryContract({ actor }: { actor: Actor | null }) {
             <Button
               type="primary"
               htmlType="submit"
-              disabled={busy !== null || !canCreate}
+              disabled={busy !== null || !canResumeCurrent}
             >
               继续上传同一文件
             </Button>
@@ -841,6 +1262,54 @@ export function IntakePrimaryContract({ actor }: { actor: Actor | null }) {
         <p className="home-intake-note">
           主合同上传完成前，案件不会进入单合同审查；准备清单以案件页的服务端结果为准。
         </p>
+      </div>
+    );
+  }
+
+  function renderBlockedPending(continuation: IntakeContinuation) {
+    const detail = activeAccess?.detail;
+    const reasonCode = detail?.reason_code ?? "";
+    const archived =
+      selectedContinuation?.archived === true ||
+      reasonCode === "archived" ||
+      continuation.receipt.error_code === "intake_archived";
+    const completed = detail?.state === "completed" || reasonCode === "completed";
+    const caseId = detail?.case_id ?? continuation.receipt.case_id;
+    const title = archived
+      ? "该办理已归档"
+      : completed
+        ? "该办理已完成"
+        : "当前不能继续此办理";
+    const description = archived
+      ? CONTINUATION_REASON_LABELS.archived
+      : completed
+        ? CONTINUATION_REASON_LABELS.completed
+        : CONTINUATION_REASON_LABELS[reasonCode] ??
+          "尚未取得服务器续办授权。请从“我的未完成办理”重新选择，或查看原案件。";
+    return (
+      <div className="home-intake-state">
+        <Alert
+          type={archived ? "info" : completed ? "success" : "warning"}
+          showIcon
+          title={title}
+          description={description}
+        />
+        <div className="home-intake-actions">
+          {caseId === null ? null : (
+            <Button type="primary" href={caseHref(caseId, null)}>
+              打开原案件
+            </Button>
+          )}
+          {!archived && !completed ? (
+            <Button
+              htmlType="button"
+              disabled={busy !== null}
+              onClick={() => void refreshState()}
+            >
+              重新检查续办权限
+            </Button>
+          ) : null}
+        </div>
       </div>
     );
   }
@@ -928,7 +1397,14 @@ export function IntakePrimaryContract({ actor }: { actor: Actor | null }) {
           draft.receipt.state === "completed"
             ? renderCompleted(draft)
             : draft.receipt.state === "upload_pending"
-              ? renderPending(draft)
+              ? activeAccess?.archived === true ||
+                activeAccess?.detail.reason_code === "archived" ||
+                activeAccess?.detail.reason_code === "completed" ||
+                activeAccess?.detail.state === "completed" ||
+                draft.receipt.error_code === "intake_archived" ||
+                !canResumeCurrent
+                ? renderBlockedPending(draft)
+                : renderPending(draft)
               : renderLost(draft)
         ) : null}
         <p className="home-intake-local">
@@ -959,7 +1435,7 @@ export function IntakePrimaryContract({ actor }: { actor: Actor | null }) {
                 同一幂等键不能绑定不同的文件或案件信息。系统不会替换已有主合同，也不会再建一个案件。
               </p>
               {conflict.existing === null ? (
-                <p>暂时无法读取该幂等键对应的操作；可以重新查询，或另建一份独立主合同。</p>
+                <p>{client ? "返回当前记录并重新选择原文件，即可继续这项办理。" : "暂时无法读取该办理的服务器状态；请重新查询后再继续。"}</p>
               ) : (
                 <p>
                   服务器已有该幂等键对应的操作：案件{" "}

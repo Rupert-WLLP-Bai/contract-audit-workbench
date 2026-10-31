@@ -1,6 +1,6 @@
 import { isRecord } from "../../api/guards";
 import { idempotencyFingerprint } from "../../api/idempotency";
-import { INTAKE_MAX_FILE_BYTES, type IntakeResult, type IntakeState } from "../../api/intakes";
+import { INTAKE_MAX_FILE_BYTES, type IntakeRequestIdentity, type IntakeResult, type IntakeState, type ServerIntakeContinuation } from "../../api/intakes";
 import type { Actor } from "../../api/types";
 
 /**
@@ -16,16 +16,6 @@ export interface IntakeContinuationScope {
   org_id: string;
 }
 
-export interface IntakeRequestIdentity {
-  title: string;
-  contract_type: string;
-  business_line: string;
-  scenario: string;
-  file_name: string;
-  file_size: number;
-  media_type: string;
-  file_sha256: string;
-}
 
 export interface IntakeReceipt {
   operation_id: string | null;
@@ -45,6 +35,12 @@ export interface IntakeContinuation {
   request: IntakeRequestIdentity;
   receipt: IntakeReceipt;
   updated_at: string;
+}
+
+export interface IntakeContinuationSelection {
+  detail: ServerIntakeContinuation;
+  error_code: string | null;
+  archived: boolean;
 }
 
 const STORAGE_PREFIX = "caw:intake-continuation:";
@@ -326,9 +322,8 @@ export function withReceipt(
 }
 
 /**
- * The server compares canonical filename, media type and content digest under
- * one idempotency key. Reject a visibly different selection before POST so a
- * mismatch becomes an explicit conflict instead of a silent second case.
+ * The server binds a continuation to its original filename, size and digest.
+ * Browser MIME reporting may differ, so replay restores the stored media type.
  */
 export function continuationFileProblem(
   continuation: IntakeContinuation,
@@ -337,17 +332,11 @@ export function continuationFileProblem(
 ): string | null {
   const expected = continuation.request;
   if (sha256 !== expected.file_sha256)
-    return "所选文件的内容与最初提交的主合同不一致。请选择同一个文件，或另建一份主合同。";
+    return "所选文件的内容与最初提交的主合同不一致。请选择同一个文件。";
   if (file.name !== expected.file_name)
-    return "所选文件的文件名与最初提交不一致。请选择同一个文件，或另建一份主合同。";
+    return "所选文件的文件名与最初提交不一致。请选择同一个文件。";
   if (file.size !== expected.file_size)
-    return "所选文件的大小与最初提交不一致。请选择同一个文件，或另建一份主合同。";
-  if (
-    expected.media_type !== "" &&
-    file.type !== "" &&
-    file.type.toLowerCase() !== expected.media_type.toLowerCase()
-  )
-    return "所选文件的类型与最初提交不一致。请选择同一个文件，或另建一份主合同。";
+    return "所选文件的大小与最初提交不一致。请选择同一个文件。";
   return null;
 }
 
