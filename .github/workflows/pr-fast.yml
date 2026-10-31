@@ -4,7 +4,7 @@ name: pr-fast
 # re-pin deliberately, never back to a movable major tag.
 on:
   pull_request:
-    branches: [main]
+    branches: [main, dev]
 
 permissions:
   contents: read
