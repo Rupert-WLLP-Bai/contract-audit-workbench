@@ -31,10 +31,43 @@ async function signIn(page: Page, username: string, credential: string): Promise
 async function login(browser: Browser, username: string, credential: string): Promise<{ context: BrowserContext; page: Page }> {
   const context = await browser.newContext({ viewport: { width: 1440, height: 1000 }, timezoneId: "Asia/Shanghai" });
   const page = await context.newPage();
+  attachDiagnostics(page);
   page.setDefaultTimeout(12_000);
   await page.goto(`${web}/login`);
   await signIn(page, username, credential);
   return { context, page };
+}
+
+// Keep enough runtime context to diagnose a failed journey without rerunning:
+// console errors, uncaught page errors and every >=400 response with its body.
+function attachDiagnostics(page: Page): void {
+  page.on("console", (message) => {
+    if (message.type() === "error") step("browser_console_error", message.text());
+  });
+  page.on("pageerror", (error) => step("page_error", String(error)));
+  page.on("response", (response) => {
+    if (response.status() < 400) return;
+    const record = { status: response.status(), url: response.url() };
+    void response.text()
+      .then((body) => step("http_error_response", { ...record, body: body.slice(0, 2000) }))
+      .catch(() => step("http_error_response", record));
+  });
+}
+
+async function captureFailurePages(contexts: BrowserContext[], output: string): Promise<void> {
+  for (const [contextIndex, context] of contexts.entries()) {
+    for (const [pageIndex, page] of context.pages().entries()) {
+      const prefix = join(output, `d3-failure-${contextIndex}-${pageIndex}`);
+      try {
+        await writeFile(`${prefix}.url.txt`, page.url(), "utf8");
+        await writeFile(`${prefix}.text.txt`, await page.locator("body").innerText(), "utf8");
+        await writeFile(`${prefix}.dom.html`, await page.content(), "utf8");
+        await page.screenshot({ path: `${prefix}.png`, fullPage: true });
+      } catch {
+        // A page may already be mid-navigation or closed; keep the rest.
+      }
+    }
+  }
 }
 
 async function logout(page: Page): Promise<void> {
@@ -301,6 +334,7 @@ async function run(): Promise<void> {
     }, null, 2)}\n`, "utf8");
   } catch (error) {
     failures.push(error instanceof Error ? error.stack ?? error.message : String(error));
+    await captureFailurePages(contexts, output);
     throw error;
   } finally {
     await writeFile(join(output, "d3-subject-trace.json"), `${JSON.stringify({ trace, failures }, null, 2)}\n`, "utf8");
