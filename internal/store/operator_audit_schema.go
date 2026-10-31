@@ -62,6 +62,46 @@ CREATE TABLE IF NOT EXISTS operator_external_snapshot_sets (
 );
 CREATE INDEX IF NOT EXISTS operator_snapshot_sets_case ON operator_external_snapshot_sets (tenant_id,org_id,case_id,created_at);
 
+-- Mutable fencing record for one external read request. Connector I/O happens
+-- outside the owning transaction; only the current generation may publish a
+-- durable snapshot result.
+CREATE TABLE IF NOT EXISTS operator_external_collection_claims (
+ tenant_id text NOT NULL,
+ org_id text NOT NULL,
+ case_id text NOT NULL,
+ actor_id text NOT NULL,
+ idempotency_key text NOT NULL,
+	collection_id text NOT NULL,
+ request_sha256 text NOT NULL,
+ generation bigint NOT NULL CHECK (generation > 0),
+ lease_owner text,
+ lease_until timestamptz,
+ status text NOT NULL CHECK (status IN ('in_progress','retryable','completed')),
+ result_snapshot_set_id text,
+ response_status integer,
+ response_body bytea,
+ created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+ updated_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+ PRIMARY KEY (tenant_id,org_id,case_id,actor_id,idempotency_key),
+ FOREIGN KEY (tenant_id,org_id,case_id) REFERENCES cases (tenant_id,org_id,id),
+ FOREIGN KEY (tenant_id,org_id,case_id,result_snapshot_set_id)
+   REFERENCES operator_external_snapshot_sets (tenant_id,org_id,case_id,snapshot_set_id),
+ CHECK ((status='in_progress' AND lease_owner IS NOT NULL AND lease_until IS NOT NULL
+         AND result_snapshot_set_id IS NULL AND response_status IS NULL AND response_body IS NULL)
+     OR (status='retryable' AND lease_owner IS NULL AND lease_until IS NULL
+         AND result_snapshot_set_id IS NULL AND response_status IS NULL AND response_body IS NULL)
+     OR (status='completed' AND lease_owner IS NULL AND lease_until IS NULL
+         AND result_snapshot_set_id IS NOT NULL AND response_status IS NOT NULL AND response_body IS NOT NULL))
+);
+ALTER TABLE operator_external_collection_claims ADD COLUMN IF NOT EXISTS collection_id text;
+UPDATE operator_external_collection_claims SET collection_id='col_' || md5(tenant_id || ':' || org_id || ':' || case_id || ':' || actor_id || ':' || idempotency_key)
+ WHERE collection_id IS NULL OR collection_id='';
+ALTER TABLE operator_external_collection_claims ALTER COLUMN collection_id SET NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS operator_external_collection_claims_collection_id_uq
+ ON operator_external_collection_claims (tenant_id,org_id,case_id,collection_id);
+CREATE INDEX IF NOT EXISTS operator_external_collection_claims_lease
+ ON operator_external_collection_claims (tenant_id,org_id,case_id,status,lease_until);
+
 CREATE TABLE IF NOT EXISTS operator_external_observations (
  tenant_id text NOT NULL DEFAULT COALESCE(NULLIF(current_setting('app.tenant_id', true), ''), 'local-demo'),
  org_id text NOT NULL DEFAULT COALESCE(NULLIF(current_setting('app.org_id', true), ''), 'demo-org'),

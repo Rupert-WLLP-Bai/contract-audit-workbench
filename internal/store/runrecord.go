@@ -41,19 +41,28 @@ func (s *Store) currentSignatureWithRulePack(docIDs []string, selection []Frozen
 	// changed extraction semantics against a previously frozen run.
 	signature := currentSignatureFor(docIDs, selection, s.currentModels(), compilerRef)
 	signature.RulePackCompilerRef = ""
-	if pack != nil {
-		signature.RulePackCompilerRef = pack.CompilerMarker
-		signature.RulePackID = pack.PackID
-		signature.RulePackVersion = pack.Version
-		signature.RulePackHash = pack.ContentHash
-		signature.RulePackDigest = pack.SnapshotDigest
-		signature.RulePackSnapshot = append([]byte(nil), pack.Snapshot...)
-	}
+	applyActiveRulePackIdentity(&signature, pack)
 	signature.PlannerConfigurationID = plannerConfigurationID
 	if len(plannerPayload) > 0 {
 		signature.PlannerConfiguration = append(json.RawMessage(nil), plannerPayload[0]...)
 	}
 	return signature
+}
+
+// applyActiveRulePackIdentity copies every immutable identity field used by
+// accepted reviews and by preflight validation. Keeping this in one place
+// prevents callers from constructing a partial snapshot that looks frozen but
+// cannot be matched to its governance snapshot.
+func applyActiveRulePackIdentity(snapshot *RunSnapshot, pack *ActiveRulePack) {
+	if snapshot == nil || pack == nil {
+		return
+	}
+	snapshot.RulePackCompilerRef = pack.CompilerMarker
+	snapshot.RulePackID = pack.PackID
+	snapshot.RulePackVersion = pack.Version
+	snapshot.RulePackHash = pack.ContentHash
+	snapshot.RulePackDigest = pack.SnapshotDigest
+	snapshot.RulePackSnapshot = append([]byte(nil), pack.Snapshot...)
 }
 
 func telecomCompilerRefForCase(item Case) string {
@@ -130,6 +139,8 @@ func withFrozenGovernance(current, frozen RunSnapshot) RunSnapshot {
 	current.CloudPolicySnapshot = append(json.RawMessage(nil), frozen.CloudPolicySnapshot...)
 	current.CloudPolicyDigest = frozen.CloudPolicyDigest
 	current.GovernedKnowledge = frozen.GovernedKnowledge
+	current.ServiceObjectContext = cloneServiceObjectReviewContext(frozen.ServiceObjectContext)
+	current.ServiceObjectContextHash = frozen.ServiceObjectContextHash
 	current.PlannerConfigurationID = frozen.PlannerConfigurationID
 	current.PlannerConfiguration = append(json.RawMessage(nil), frozen.PlannerConfiguration...)
 	return current
@@ -221,7 +232,8 @@ func sameRunConfiguration(a, b RunSnapshot) bool {
 		a.ModelRef == b.ModelRef && a.ModelConfigurationID == b.ModelConfigurationID &&
 		a.ComparatorRef == b.ComparatorRef && parserConfigurationMatches && compilerIdentityMatches &&
 		sameRunRulePackIdentity(a, b) && samePlannerConfiguration(a, b) &&
-		a.CloudPolicyDigest == b.CloudPolicyDigest && sameKnowledgeSnapshotIdentity(a.GovernedKnowledge, b.GovernedKnowledge)
+		a.CloudPolicyDigest == b.CloudPolicyDigest && a.ServiceObjectContextHash == b.ServiceObjectContextHash &&
+		sameKnowledgeSnapshotIdentity(a.GovernedKnowledge, b.GovernedKnowledge)
 }
 
 // samePlannerConfiguration treats the absent pair as an explicit legacy state.
@@ -254,6 +266,18 @@ func validatePartyContextSnapshot(snapshot RunSnapshot) error {
 		return errors.New("party context hash does not match its payload")
 	}
 	return nil
+}
+
+func cloneServiceObjectReviewContext(input *ServiceObjectReviewContext) *ServiceObjectReviewContext {
+	if input == nil {
+		return nil
+	}
+	copy := *input
+	copy.Items = append([]ServiceObjectReviewContextItem(nil), input.Items...)
+	for i := range copy.Items {
+		copy.Items[i].CandidateEvidence = append([]ServiceObjectCandidateEvidence(nil), input.Items[i].CandidateEvidence...)
+	}
+	return &copy
 }
 
 func decodePartyContext(payload []byte, hash string) ([]PartyContextItem, error) {
@@ -289,6 +313,9 @@ func sealSnapshot(st *state, runID string, input RunSnapshot) error {
 	if err := validatePartyContextSnapshot(input); err != nil {
 		return err
 	}
+	if err := validateServiceObjectReviewContext(input); err != nil {
+		return err
+	}
 	knowledge, err := copyGovernedKnowledge(input)
 	if err != nil {
 		return err
@@ -300,6 +327,7 @@ func sealSnapshot(st *state, runID string, input RunSnapshot) error {
 	st.Snapshots = append(st.Snapshots, RunSnapshot{
 		RunID: runID, DocumentIDs: frozen.DocumentIDs, ParsedDocumentIDs: frozen.ParsedDocumentIDs,
 		PartyContext: append([]PartyContextItem(nil), input.PartyContext...), PartyContextHash: input.PartyContextHash,
+		ServiceObjectContext: cloneServiceObjectReviewContext(input.ServiceObjectContext), ServiceObjectContextHash: input.ServiceObjectContextHash,
 		ParseSelectionHash: frozen.ParseSelectionHash, ParserConfigurationID: frozen.ParserConfigurationID,
 		RuleSetHash: frozen.RuleSetHash, PlaybookHash: frozen.PlaybookHash, ModelRef: frozen.ModelRef,
 		ComparatorRef: frozen.ComparatorRef, ModelConfigurationID: frozen.ModelConfigurationID,

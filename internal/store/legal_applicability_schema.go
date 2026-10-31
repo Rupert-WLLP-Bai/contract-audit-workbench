@@ -77,16 +77,27 @@ CREATE TABLE IF NOT EXISTS case_legal_applicability_fact_versions (
    WHEN 'contract_clause_kind' THEN value IN ('standard_form','negotiated')
    WHEN 'transaction_kind' THEN value IN ('civil_contract','non_civil')
    ELSE false END),
- CHECK (
+ CONSTRAINT case_legal_applicability_party_pin_complete_check CHECK (
    (party_binding_id IS NULL AND party_binding_version IS NULL AND party_subject_id IS NULL AND party_subject_version IS NULL AND party_side IS NULL AND party_scope_note IS NULL)
    OR
-   (party_binding_id IS NOT NULL AND party_binding_version IS NOT NULL AND party_subject_id IS NOT NULL AND party_subject_version IS NOT NULL AND length(trim(COALESCE(party_scope_note,'')))>0 AND
+   (party_side IS NOT NULL AND party_binding_id IS NOT NULL AND party_binding_version IS NOT NULL AND party_binding_version>0 AND party_subject_id IS NOT NULL AND party_subject_version IS NOT NULL AND party_subject_version>0 AND length(trim(COALESCE(party_scope_note,'')))>0 AND
      ((dimension IN ('buyer_kind','buyer_enterprise_size') AND party_side='buyer') OR (dimension IN ('seller_kind','seller_enterprise_size') AND party_side='seller')))
  ),
  CHECK (dimension IN ('buyer_kind','buyer_enterprise_size','seller_kind','seller_enterprise_size') OR
    (party_binding_id IS NULL AND party_binding_version IS NULL AND party_subject_id IS NULL AND party_subject_version IS NULL AND party_side IS NULL AND party_scope_note IS NULL)),
  CHECK (status<>'established' OR dimension NOT IN ('buyer_kind','buyer_enterprise_size','seller_kind','seller_enterprise_size') OR party_binding_id IS NOT NULL)
 );
+
+DO $$ BEGIN
+ IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid='case_legal_applicability_fact_versions'::regclass AND conname='case_legal_applicability_party_pin_complete_check') THEN
+  ALTER TABLE case_legal_applicability_fact_versions ADD CONSTRAINT case_legal_applicability_party_pin_complete_check CHECK (
+   (party_binding_id IS NULL AND party_binding_version IS NULL AND party_subject_id IS NULL AND party_subject_version IS NULL AND party_side IS NULL AND party_scope_note IS NULL)
+   OR
+   (party_side IS NOT NULL AND party_binding_id IS NOT NULL AND party_binding_version IS NOT NULL AND party_binding_version>0 AND party_subject_id IS NOT NULL AND party_subject_version IS NOT NULL AND party_subject_version>0 AND length(trim(COALESCE(party_scope_note,'')))>0 AND
+     ((dimension IN ('buyer_kind','buyer_enterprise_size') AND party_side='buyer') OR (dimension IN ('seller_kind','seller_enterprise_size') AND party_side='seller')))
+  );
+ END IF;
+END $$;
 
 DO $$ BEGIN
  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid='case_legal_applicability_facts'::regclass AND conname='case_legal_applicability_current_version_fk') THEN

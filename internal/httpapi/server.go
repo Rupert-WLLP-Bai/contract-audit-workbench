@@ -129,7 +129,22 @@ func Handler(st *store.Store, opt Options) http.Handler {
 	mux.HandleFunc("GET /api/cases/{caseID}/documents/{docID}/original", h.original)
 	mux.HandleFunc("POST /api/cases/{caseID}/documents/{docID}/parse", h.reparse)
 	mux.HandleFunc("POST /api/cases/{caseID}/object-bindings", h.createObjectBinding)
+	mux.HandleFunc("POST /api/cases/{caseID}/object-bindings/{mappingID}/changes/preview", h.previewOperatorMappingChange)
+	mux.HandleFunc("POST /api/cases/{caseID}/object-bindings/{mappingID}/changes", h.proposeOperatorMappingChange)
+	mux.HandleFunc("GET /api/cases/{caseID}/object-binding-changes/{requestID}", h.getOperatorMappingChange)
+	mux.HandleFunc("POST /api/cases/{caseID}/object-binding-changes/{requestID}/decision", h.decideOperatorMappingChange)
+	mux.HandleFunc("GET /api/cases/{caseID}/service-objects", h.listServiceObjects)
+	mux.HandleFunc("POST /api/cases/{caseID}/service-objects", h.createServiceObject)
+	mux.HandleFunc("GET /api/cases/{caseID}/service-objects/{objectID}", h.getServiceObject)
+	mux.HandleFunc("GET /api/cases/{caseID}/service-objects/{objectID}/versions", h.listServiceObjectVersions)
+	mux.HandleFunc("GET /api/cases/{caseID}/service-objects/{objectID}/versions/{version}", h.getServiceObjectVersion)
+	mux.HandleFunc("GET /api/cases/{caseID}/service-objects/{objectID}/associations", h.listServiceObjectAssociations)
+	mux.HandleFunc("GET /api/cases/{caseID}/service-objects/{objectID}/associations/{associationVersion}", h.getServiceObjectAssociation)
+	mux.HandleFunc("GET /api/cases/{caseID}/service-objects/{objectID}/association-candidates", h.getServiceObjectAssociationCandidates)
+	mux.HandleFunc("POST /api/cases/{caseID}/service-objects/{objectID}/associations", h.createServiceObjectAssociation)
+	mux.HandleFunc("GET /api/cases/{caseID}/review-readiness", h.reviewReadiness)
 	mux.HandleFunc("POST /api/cases/{caseID}/external-collection-jobs", h.collectExternalSnapshot)
+	mux.HandleFunc("GET /api/cases/{caseID}/external-collection-jobs/{collectionID}", h.getExternalCollectionJob)
 	mux.HandleFunc("GET /api/cases/{caseID}/external-snapshots", h.listExternalSnapshots)
 	mux.HandleFunc("POST /api/cases/{caseID}/fulfillment-evaluations", h.createFulfillmentEvaluation)
 	mux.HandleFunc("GET /api/cases/{caseID}/fulfillment-evaluations/{evaluationID}", h.getFulfillmentEvaluation)
@@ -499,7 +514,8 @@ func (h *handler) startReview(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		BusinessAt string `json:"business_at,omitempty"`
+		BusinessAt       string `json:"business_at,omitempty"`
+		EvidenceCutoffAt string `json:"evidence_cutoff_at,omitempty"`
 	}
 	if err := readJSON(w, r, &body); err != nil {
 		writeErr(w, err)
@@ -508,10 +524,10 @@ func (h *handler) startReview(w http.ResponseWriter, r *http.Request) {
 	if h.durable {
 		var accepted store.JobAcceptance
 		var err error
-		if body.BusinessAt == "" {
+		if body.BusinessAt == "" && body.EvidenceCutoffAt == "" {
 			accepted, err = h.store.StartReviewAsync(r.Context(), user, r.PathValue("caseID"))
 		} else {
-			accepted, err = h.store.StartReviewAsyncAt(r.Context(), user, r.PathValue("caseID"), body.BusinessAt)
+			accepted, err = h.store.StartReviewAsyncAtWithEvidenceCutoff(r.Context(), user, r.PathValue("caseID"), body.BusinessAt, body.EvidenceCutoffAt)
 		}
 		if err != nil {
 			writeErr(w, err)
@@ -522,10 +538,10 @@ func (h *handler) startReview(w http.ResponseWriter, r *http.Request) {
 	}
 	var id string
 	var err error
-	if body.BusinessAt == "" {
+	if body.BusinessAt == "" && body.EvidenceCutoffAt == "" {
 		id, err = h.store.StartReview(r.Context(), user, r.PathValue("caseID"))
 	} else {
-		id, err = h.store.StartReviewAt(r.Context(), user, r.PathValue("caseID"), body.BusinessAt)
+		id, err = h.store.StartReviewAtWithEvidenceCutoff(r.Context(), user, r.PathValue("caseID"), body.BusinessAt, body.EvidenceCutoffAt)
 	}
 	if err != nil {
 		writeErr(w, err)

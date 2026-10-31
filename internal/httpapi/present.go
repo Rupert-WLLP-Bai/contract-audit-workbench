@@ -254,7 +254,7 @@ func workspaceJSON(st *store.Store, ws store.Workspace) map[string]any {
 		attempts = businessAttemptsJSON(ws.Execution)
 		review = businessAgentReviewJSON(ws.Execution.AgentReview)
 	}
-	return map[string]any{
+	out := map[string]any{
 		"run": run, "documents": docs, "findings": findings, "evaluations": evals,
 		"review_attempts": attempts, "agent_review": review,
 		"snapshot":        map[string]any{"document_ids": ws.Snapshot.DocumentIDs},
@@ -266,6 +266,10 @@ func workspaceJSON(st *store.Store, ws store.Workspace) map[string]any {
 		"revision_comparison_reason": nilString(ws.RevisionComparisonReason),
 		"revisions":                  revisionsJSON(ws.Revisions, byID),
 	}
+	if ws.LegalAuthorities != nil {
+		out["legal_authorities"] = ws.LegalAuthorities
+	}
+	return out
 }
 
 func businessAttemptsJSON(execution *store.Execution) map[string]any {

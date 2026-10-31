@@ -111,6 +111,10 @@ func TestKnowledgeAcceptanceFreezesAndRestoresRetryIdentity(t *testing.T) {
 	if frozen == nil || frozen.BusinessAt != "2026-02-03T01:05:06.987654321Z" || frozen.AuthorizationRevision == "" || frozen.SnapshotSHA256 == "" {
 		t.Fatalf("acceptance omitted business time, authorization or digest: %+v", frozen)
 	}
+	if frozen.EvidenceCutoffAt != "" || frozen.EvidenceCutoffMode != "" || frozen.ExplicitEvidenceCutoffAt != "" ||
+		len(frozen.LegalAuthorities) != 0 || frozen.LegalReuseFingerprint != "" {
+		t.Fatalf("nonnormative governed review serialized AUTH03 fields and changed its legacy shape: %+v", frozen)
+	}
 	if len(frozen.RequiredPolicies) != 1 || frozen.RequiredPolicies[0].Ref != policy.Ref ||
 		len(frozen.RequiredPolicies[0].Binding.RuleIDs) != 3 || len(frozen.RequiredPolicies[0].Binding.SourceSpans) != 3 ||
 		len(frozen.OptionalCandidates) != 1 || frozen.OptionalCandidates[0].Ref != guide.Ref || frozen.OptionalTruncated {

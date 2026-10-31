@@ -104,6 +104,34 @@ func TestFrozenReportDigestCoversJSONAndHTMLBytes(t *testing.T) {
 	}
 }
 
+func TestFrozenLegalReportProjectionIsOptionalAndIntegrityBound(t *testing.T) {
+	legacy := RunSnapshot{RunID: "run-legacy"}
+	projection, err := frozenLegalReportProjection(legacy, "run-legacy", "")
+	if err != nil || projection != nil {
+		t.Fatalf("legacy report gained a synthetic legal projection: projection=%+v err=%v", projection, err)
+	}
+	raw, err := json.Marshal(reportEnvelope{SchemaVersion: businessReportSchema, RunSnapshot: legacy})
+	if err != nil || bytes.Contains(raw, []byte(`"legal_review"`)) {
+		t.Fatalf("legacy envelope serialized an AUTH03 field: %s err=%v", raw, err)
+	}
+
+	knowledge, err := sealKnowledgeSnapshot(legalReviewSnapshotFixture("2026-10-31T01:00:00Z", "acceptance_time", "", frozenLegalAuthorityFixture()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	projection, err = frozenLegalReportProjection(RunSnapshot{RunID: "run-auth03", GovernedKnowledge: &knowledge}, "run-auth03", "attempt-auth03")
+	if err != nil || projection == nil || projection.RunID != "run-auth03" || projection.AttemptID != "attempt-auth03" || projection.EvidenceCutoffAt != knowledge.EvidenceCutoffAt || len(projection.Authorities) != 1 ||
+		projection.Authorities[0].CitationID == "" || projection.Authorities[0].Article == nil || projection.Authorities[0].Article.CanonicalBody != knowledge.LegalAuthorities[0].Article.CanonicalBody {
+		t.Fatalf("report projection did not preserve the exact frozen legal authority: projection=%+v err=%v", projection, err)
+	}
+	tampered := knowledge
+	tampered.LegalAuthorities = append([]FrozenLegalAuthority(nil), knowledge.LegalAuthorities...)
+	tampered.LegalAuthorities[0].Outcome = "not_applicable"
+	if _, err := frozenLegalReportProjection(RunSnapshot{RunID: "run-auth03", GovernedKnowledge: &tampered}, "run-auth03", "attempt-auth03"); err == nil {
+		t.Fatal("report accepted a tampered frozen legal projection")
+	}
+}
+
 func TestObjectIdentityComparisonRequiresExactUniqueRefs(t *testing.T) {
 	if !sameStringSet([]string{"LINE-001"}, []string{"LINE-001"}) {
 		t.Fatal("identical object identity did not compare")

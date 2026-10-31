@@ -593,19 +593,21 @@ type Activity struct {
 
 // RunSnapshot is the immutable input of one review run.
 type RunSnapshot struct {
-	RunID                 string             `json:"run_id"`
-	DocumentIDs           []string           `json:"document_ids"`
-	PartyContext          []PartyContextItem `json:"party_context,omitempty"`
-	PartyContextHash      string             `json:"party_context_hash,omitempty"`
-	ParsedDocumentIDs     []string           `json:"parsed_document_ids,omitempty"`
-	ParseSelectionHash    string             `json:"parse_selection_hash,omitempty"`
-	ParserConfigurationID string             `json:"parser_configuration_id,omitempty"`
-	RuleSetHash           string             `json:"rule_set_hash"`
-	PlaybookHash          string             `json:"playbook_hash"`
-	ModelRef              string             `json:"model_ref"`
-	ModelConfigurationID  string             `json:"model_configuration_id,omitempty"`
-	ComparatorRef         string             `json:"comparator_ref"`
-	RulePackCompilerRef   string             `json:"rule_pack_compiler_ref,omitempty"`
+	RunID                    string                      `json:"run_id"`
+	DocumentIDs              []string                    `json:"document_ids"`
+	PartyContext             []PartyContextItem          `json:"party_context,omitempty"`
+	PartyContextHash         string                      `json:"party_context_hash,omitempty"`
+	ServiceObjectContext     *ServiceObjectReviewContext `json:"service_object_context,omitempty"`
+	ServiceObjectContextHash string                      `json:"service_object_context_hash,omitempty"`
+	ParsedDocumentIDs        []string                    `json:"parsed_document_ids,omitempty"`
+	ParseSelectionHash       string                      `json:"parse_selection_hash,omitempty"`
+	ParserConfigurationID    string                      `json:"parser_configuration_id,omitempty"`
+	RuleSetHash              string                      `json:"rule_set_hash"`
+	PlaybookHash             string                      `json:"playbook_hash"`
+	ModelRef                 string                      `json:"model_ref"`
+	ModelConfigurationID     string                      `json:"model_configuration_id,omitempty"`
+	ComparatorRef            string                      `json:"comparator_ref"`
+	RulePackCompilerRef      string                      `json:"rule_pack_compiler_ref,omitempty"`
 	// RulePack identity frozen at acceptance. PackID and PackVersion are empty
 	// when no governed pack applied and the synthetic baseline compiler ran.
 	RulePackID          string          `json:"rule_pack_id,omitempty"`

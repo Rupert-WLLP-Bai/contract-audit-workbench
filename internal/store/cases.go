@@ -334,22 +334,22 @@ func (s *Store) summarize(st *state, item Case) CaseSummary {
 // CaseDetail is the case page.
 type CaseDetail struct {
 	CaseSummary
-	Documents            []Interpreted               `json:"documents"`
-	Materials            []MaterialProjection        `json:"materials"`
-	MaterialVersions     []MaterialVersionProjection `json:"material_versions"`
-	MaterialSelection    MaterialSelectionProjection `json:"material_selection"`
-	Activities           []Activity                  `json:"activities"`
-	RevisionPending      bool                        `json:"revision_pending"`
-	ConfigurationPending bool                        `json:"configuration_pending"`
-	SubjectContextChangedAfterLatestRun bool         `json:"subject_context_changed_after_latest_run"`
-	BusinessLine         string                      `json:"business_line"`
-	Scenario             string                      `json:"scenario"`
-	BusinessStatus       string                      `json:"business_status"`
-	Generations          []GenerationRecord          `json:"generations"`
-	Remediations         []Remediation               `json:"remediations"`
-	Reports              []ReportRecord              `json:"reports"`
-	Archives             []ArchiveRecord             `json:"archives"`
-	ArchivedAt           *string                     `json:"archived_at"`
+	Documents                           []Interpreted               `json:"documents"`
+	Materials                           []MaterialProjection        `json:"materials"`
+	MaterialVersions                    []MaterialVersionProjection `json:"material_versions"`
+	MaterialSelection                   MaterialSelectionProjection `json:"material_selection"`
+	Activities                          []Activity                  `json:"activities"`
+	RevisionPending                     bool                        `json:"revision_pending"`
+	ConfigurationPending                bool                        `json:"configuration_pending"`
+	SubjectContextChangedAfterLatestRun bool                        `json:"subject_context_changed_after_latest_run"`
+	BusinessLine                        string                      `json:"business_line"`
+	Scenario                            string                      `json:"scenario"`
+	BusinessStatus                      string                      `json:"business_status"`
+	Generations                         []GenerationRecord          `json:"generations"`
+	Remediations                        []Remediation               `json:"remediations"`
+	Reports                             []ReportRecord              `json:"reports"`
+	Archives                            []ArchiveRecord             `json:"archives"`
+	ArchivedAt                          *string                     `json:"archived_at"`
 }
 
 func (s *Store) GetCase(user accounts.User, caseID string) (CaseDetail, error) {

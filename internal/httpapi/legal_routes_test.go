@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -17,6 +18,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"contractaudit/internal/accounts"
 	"contractaudit/internal/fault"
@@ -48,6 +50,26 @@ func TestLegalSourceSnapshotPathBindsSourceAndExactCapture(t *testing.T) {
 	}
 }
 
+func TestBusinessWorkspaceIncludesOnlyTheExactFrozenLegalProjection(t *testing.T) {
+	legacy := workspaceJSON(nil, store.Workspace{})
+	if _, exists := legacy["legal_authorities"]; exists {
+		t.Fatal("legacy workspace gained a synthetic AUTH03 projection")
+	}
+	projection := &store.FrozenLegalReviewProjection{RunID: "run-auth03", AttemptID: "attempt-auth03",
+		EvidenceCutoffAt: "2026-10-31T01:00:00Z", EvidenceCutoffMode: "acceptance_time",
+		Authorities: []store.FrozenLegalAuthority{{CitationID: strings.Repeat("a", 64), RuleID: "rule-a", Outcome: "unknown", LegacyRuleGap: true}}}
+	workspace := workspaceJSON(nil, store.Workspace{LegalAuthorities: projection})
+	raw, err := json.Marshal(workspace["legal_authorities"])
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got store.FrozenLegalReviewProjection
+	if err := json.Unmarshal(raw, &got); err != nil || got.RunID != projection.RunID || got.AttemptID != projection.AttemptID ||
+		got.Authorities[0].CitationID != projection.Authorities[0].CitationID || got.Authorities[0].ExactReference != nil || got.Authorities[0].Article != nil {
+		t.Fatalf("workspace omitted exact run/attempt citation identity or fabricated a citation body: got=%+v err=%v", got, err)
+	}
+}
+
 func TestLegalApplicabilityRequestBindsDimensionAndHeaderIdempotencyKey(t *testing.T) {
 	input := store.LegalApplicabilityFactInput{Dimension: "buyer_kind", IdempotencyKey: "fact-write-1"}
 	if err := bindLegalApplicabilityRequest("buyer_kind", "fact-write-1", &input); err != nil {
@@ -73,6 +95,33 @@ func TestLegalApplicabilityRequestBindsDimensionAndHeaderIdempotencyKey(t *testi
 			}
 			if err := bindLegalApplicabilityRequest(test.dimension, test.header, &request); err == nil {
 				t.Fatal("invalid route/body idempotency binding was accepted")
+			}
+		})
+	}
+}
+
+func TestLegalApplicabilityHistoryLimitHasDefaultAndStrictBounds(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		raw  string
+		want int
+		bad  bool
+	}{
+		{name: "omitted selects service default", want: 0},
+		{name: "minimum", raw: "1", want: 1},
+		{name: "maximum", raw: "100", want: 100},
+		{name: "zero", raw: "0", bad: true},
+		{name: "negative", raw: "-1", bad: true},
+		{name: "over maximum", raw: "101", bad: true},
+		{name: "not integer", raw: "many", bad: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			got, err := parseLegalApplicabilityHistoryLimit(test.raw)
+			if test.bad && err == nil {
+				t.Fatalf("invalid limit %q was accepted", test.raw)
+			}
+			if !test.bad && (err != nil || got != test.want) {
+				t.Fatalf("limit %q parsed as %d, %v; want %d", test.raw, got, err, test.want)
 			}
 		})
 	}
@@ -136,6 +185,15 @@ func TestLegalApplicabilityHTTPRecordReplayAndResolve(t *testing.T) {
 		if item.Dimension == "transaction_kind" {
 			if item.Status != "unknown" || item.UnknownReason != "insufficient_evidence" || item.Fact == nil || item.Fact.Version != 1 {
 				t.Fatalf("HTTP read did not separate the immutable version from its resolution: %+v", item)
+			}
+			historyURL := server.URL + "/api/cases/" + caseID + "/legal-applicability-facts/transaction_kind/history?limit=1"
+			historyResponse := routeRequest(t, client, http.MethodGet, historyURL, nil)
+			var history store.LegalApplicabilityFactHistory
+			historyDecodeErr := json.NewDecoder(historyResponse.Body).Decode(&history)
+			historyResponse.Body.Close()
+			if historyResponse.StatusCode != http.StatusOK || historyDecodeErr != nil || history.CaseID != caseID || history.Dimension != "transaction_kind" ||
+				history.CurrentVersion != 1 || len(history.Items) != 1 || history.Items[0].Version != 1 || !history.CanManage || history.NextCursor != nil {
+				t.Fatalf("HTTP history did not return the exact immutable page/current CAS head: HTTP %d history=%+v err=%v", historyResponse.StatusCode, history, historyDecodeErr)
 			}
 			return
 		}
@@ -495,6 +553,132 @@ func TestLegalKnowledgeHTTPImportSearchAndExactCaseReads(t *testing.T) {
 	if response.StatusCode == http.StatusOK {
 		t.Fatal("case exact-version route fell back to another or latest version")
 	}
+
+	// Exercise the compact citation URL against a real accepted snapshot. The
+	// response must be resolved from this exact run/attempt and remain unchanged
+	// after the case receives a later applicability fact.
+	manifest := legalHTTPRulePackManifest(t, admin, version)
+	createdPack, err := st.CreateRulePack(admin, manifest)
+	if err != nil {
+		t.Fatalf("create legal rulepack: %v", err)
+	}
+	validatedPack, err := st.ValidateRulePackVersion(admin, store.GovernanceInput{PackID: "telecom-governed", Version: "1", ExpectedRevision: createdPack.Pack.Revision})
+	if err != nil {
+		t.Fatalf("validate legal rulepack: %v", err)
+	}
+	approvedPack, err := st.ApproveRulePackVersion(admin, store.GovernanceInput{PackID: "telecom-governed", Version: "1", ExpectedRevision: validatedPack.Pack.Revision,
+		ExpectedContentHash: validatedPack.Pack.ContentHash})
+	if err != nil {
+		t.Fatalf("approve legal rulepack: %v", err)
+	}
+	if _, err := st.PublishRulePackVersion(admin, store.GovernanceInput{PackID: "telecom-governed", Version: "1", ExpectedRevision: approvedPack.Pack.Revision,
+		ExpectedPointerRevision: approvedPack.Pack.ActivePointerRevision}); err != nil {
+		t.Fatalf("publish legal rulepack: %v", err)
+	}
+	for _, document := range []struct{ role, name, body string }{
+		{"procurement", "procurement.txt", "采购文件要求电路 LINE-001 的最低带宽为100 Mbit/s。"},
+		{"draft_contract", "draft-contract.txt", "拟签合同约定电路 LINE-001 的最低带宽为100 Mbit/s。"},
+	} {
+		if _, err := st.AddDocument(context.Background(), admin, caseID, document.role, document.name, "text/plain", []byte(document.body)); err != nil {
+			t.Fatalf("add required review material %s: %v", document.role, err)
+		}
+	}
+	businessAt := time.Now().UTC().Format(time.RFC3339Nano)
+	accepted, err := st.StartReviewAsyncAtWithEvidenceCutoff(t.Context(), admin, caseID, businessAt, "")
+	if err != nil {
+		t.Fatalf("accept exact legal review: %v", err)
+	}
+	workspace, err := st.Workspace(admin, caseID, accepted.RunID, accepted.AttemptID)
+	if err != nil || workspace.LegalAuthorities == nil || len(workspace.LegalAuthorities.Authorities) == 0 {
+		t.Fatalf("accepted run omitted its exact legal citation identity: projection=%+v err=%v", workspace.LegalAuthorities, err)
+	}
+	selected := workspace.LegalAuthorities.Authorities[0]
+	if selected.Article == nil || selected.Article.CanonicalBody == "" || selected.CitationID == "" {
+		t.Fatalf("accepted run did not freeze its article body and compact citation id: %+v", selected)
+	}
+	base := server.URL + "/api/cases/" + caseID + "/runs/" + accepted.RunID + "/attempts/" + accepted.AttemptID + "/legal-citations/"
+	readCitation := func(path string) (int, []byte) {
+		t.Helper()
+		response := routeRequest(t, client, http.MethodGet, path, nil)
+		body, readErr := io.ReadAll(response.Body)
+		response.Body.Close()
+		if readErr != nil {
+			t.Fatalf("read frozen citation response: %v", readErr)
+		}
+		return response.StatusCode, body
+	}
+	citationURL := base + selected.CitationID
+	status, firstBody := readCitation(citationURL)
+	var returned store.FrozenLegalAuthority
+	if err := json.Unmarshal(firstBody, &returned); status != http.StatusOK || err != nil || returned.CitationID != selected.CitationID ||
+		returned.Article == nil || returned.Article.CanonicalBody != selected.Article.CanonicalBody ||
+		returned.Article.Source.RawResponseSHA256 == "" || returned.Article.Status.ResponseSHA256 == "" ||
+		returned.LegalReviewStatus != "NOT_RUN" || returned.Reviewer != nil || len(returned.MissingDependencies) == 0 {
+		t.Fatalf("compact exact citation route did not return the frozen article: HTTP %d authority=%+v err=%v body=%s", status, returned, err, firstBody)
+	}
+	legacyURL := server.URL + "/api/cases/" + caseID + "/runs/" + accepted.RunID + "/attempts/" + accepted.AttemptID + "/legal-authorities?exact_ref=Zm9v"
+	if status, _ := readCitation(legacyURL); status != http.StatusNotFound {
+		t.Fatalf("removed oversized exact-reference route is still available: HTTP %d", status)
+	}
+	for _, wrongURL := range []string{
+		server.URL + "/api/cases/other-case/runs/" + accepted.RunID + "/attempts/" + accepted.AttemptID + "/legal-citations/" + selected.CitationID,
+		server.URL + "/api/cases/" + caseID + "/runs/other-run/attempts/" + accepted.AttemptID + "/legal-citations/" + selected.CitationID,
+		server.URL + "/api/cases/" + caseID + "/runs/" + accepted.RunID + "/attempts/other-attempt/legal-citations/" + selected.CitationID,
+		base + strings.Repeat("0", 64),
+	} {
+		if status, _ := readCitation(wrongURL); status != http.StatusNotFound {
+			t.Fatalf("citation reader accepted an identity outside its exact case/run/attempt: URL=%s HTTP %d", wrongURL, status)
+		}
+	}
+	if _, err := st.RecordLegalApplicabilityFact(t.Context(), admin, caseID, store.LegalApplicabilityFactInput{
+		ExpectedVersion: 0, IdempotencyKey: "http-citation-later-fact", Dimension: "transaction_kind", Status: "unknown",
+		UnknownReason: "insufficient_evidence", TemporalBasis: "current_state", BasisNote: "该材料在审查后补充，未改变旧审查冻结依据",
+		BasisRefs: json.RawMessage(`[]`),
+	}); err != nil {
+		t.Fatalf("append later applicability fact: %v", err)
+	}
+	status, laterBody := readCitation(citationURL)
+	if status != http.StatusOK || !bytes.Equal(firstBody, laterBody) {
+		t.Fatalf("later fact changed the old exact citation response: HTTP %d before=%s after=%s", status, firstBody, laterBody)
+	}
+}
+
+func legalHTTPRulePackManifest(t *testing.T, admin accounts.User, article store.GovernedKnowledgeVersion) []byte {
+	t.Helper()
+	raw := readLegalHTTPBytes(t, filepath.Join("..", "rulepack", "testdata", "demo.json"))
+	var manifest map[string]any
+	if err := json.Unmarshal(raw, &manifest); err != nil {
+		t.Fatalf("decode rulepack fixture: %v", err)
+	}
+	tenant := accounts.Tenant(admin)
+	manifest["id"], manifest["version"], manifest["tenant_id"] = "telecom-governed", "1", tenant
+	metadata := article.Content.LegalMetadata
+	quoteRunes := []rune(article.Content.Body)
+	if len(quoteRunes) > 32 {
+		quoteRunes = quoteRunes[:32]
+	}
+	quote := string(quoteRunes)
+	reference := map[string]any{
+		"authority_source_id": metadata.SourceID, "knowledge_id": article.Ref.KnowledgeID, "version_id": article.Ref.VersionID,
+		"content_sha256": article.Ref.ContentSHA256, "source_id": metadata.SourceID, "source_snapshot_id": metadata.SourceSnapshotID,
+		"norm_title": metadata.NormTitle, "norm_version": metadata.NormVersion, "article_number": metadata.ArticleNumber,
+		"document_type": metadata.DocumentType, "source_sha256": metadata.SourceSHA256,
+		"article_text_sha256": metadata.NormTextSHA256, "effective_from": metadata.EffectiveFrom, "effective_until": metadata.EffectiveUntil,
+		"quote_span":    map[string]any{"start": 0, "end": len(quoteRunes), "quote": quote},
+		"applicability": map[string]any{"all_of": []any{map[string]any{"field": "transaction_kind", "one_of": []string{"civil_contract"}}}},
+	}
+	for _, rawRule := range manifest["rules"].([]any) {
+		rule := rawRule.(map[string]any)
+		rule["tenant_id"] = tenant
+		rule["business_scope"] = map[string]any{"business_line": "ENT", "scenario": "telecom_dedicated_line", "contract_type": "service"}
+		rule["authority_sources"] = []any{map[string]any{"id": metadata.SourceID, "version": metadata.NormVersion, "kind": "normative"}}
+		rule["legal_authorities"] = []any{reference}
+	}
+	result, err := json.Marshal(manifest)
+	if err != nil {
+		t.Fatalf("encode legal rulepack fixture: %v", err)
+	}
+	return result
 }
 
 func legalHTTPImportFixture(t *testing.T, assetDir string) store.LegalSourceImportInput {

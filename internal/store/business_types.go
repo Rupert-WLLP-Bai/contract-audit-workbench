@@ -130,25 +130,26 @@ type archiveRecord struct {
 
 // reportEnvelope is the frozen, full-data representation returned as JSON.
 type reportEnvelope struct {
-	SchemaVersion        string           `json:"schema_version"`
-	ReportID             string           `json:"report_id"`
-	ReportVersion        int              `json:"report_version"`
-	CreatedAt            string           `json:"created_at"`
-	Notice               string           `json:"notice"`
-	Case                 reportCase       `json:"case"`
-	Run                  Run              `json:"run"`
-	Attempt              Attempt          `json:"attempt"`
-	Execution            reportExecution  `json:"execution"`
-	RunSnapshot          RunSnapshot      `json:"run_snapshot"`
-	Input                AttemptInput     `json:"input"`
-	Documents            []reportDocument `json:"documents"`
-	Findings             []Finding        `json:"findings"`
-	Evaluations          []ConstraintEval `json:"evaluations"`
-	Decisions            []Decision       `json:"decisions"`
-	RulePack             reportRulePack   `json:"rulepack"`
-	InputHash            string           `json:"input_hash"`
-	OutputHash           string           `json:"output_hash"`
-	DecisionSnapshotHash string           `json:"decision_snapshot_hash"`
+	SchemaVersion        string                       `json:"schema_version"`
+	ReportID             string                       `json:"report_id"`
+	ReportVersion        int                          `json:"report_version"`
+	CreatedAt            string                       `json:"created_at"`
+	Notice               string                       `json:"notice"`
+	Case                 reportCase                   `json:"case"`
+	Run                  Run                          `json:"run"`
+	Attempt              Attempt                      `json:"attempt"`
+	Execution            reportExecution              `json:"execution"`
+	RunSnapshot          RunSnapshot                  `json:"run_snapshot"`
+	LegalReview          *FrozenLegalReviewProjection `json:"legal_review,omitempty"`
+	Input                AttemptInput                 `json:"input"`
+	Documents            []reportDocument             `json:"documents"`
+	Findings             []Finding                    `json:"findings"`
+	Evaluations          []ConstraintEval             `json:"evaluations"`
+	Decisions            []Decision                   `json:"decisions"`
+	RulePack             reportRulePack               `json:"rulepack"`
+	InputHash            string                       `json:"input_hash"`
+	OutputHash           string                       `json:"output_hash"`
+	DecisionSnapshotHash string                       `json:"decision_snapshot_hash"`
 	// AgentReview embeds the projection as JSON for consumers. AgentReviewBytes
 	// preserves the exact persisted bytes so its digest remains independently
 	// verifiable even when JSON encoding compacts the embedded value.
@@ -157,6 +158,17 @@ type reportEnvelope struct {
 	// AgentReviewSHA256 commits the exact bytes above and lets consumers re-derive
 	// the canonical attempt output hash. Both remain absent for legacy attempts.
 	AgentReviewSHA256 string `json:"agent_review_sha256,omitempty"`
+}
+
+// FrozenLegalReviewProjection is the business-facing projection of the exact
+// AUTH03 attempt. Legacy workspaces and reports leave it omitted.
+type FrozenLegalReviewProjection struct {
+	RunID                    string                 `json:"run_id"`
+	AttemptID                string                 `json:"attempt_id"`
+	EvidenceCutoffAt         string                 `json:"evidence_cutoff_at"`
+	EvidenceCutoffMode       string                 `json:"evidence_cutoff_mode"`
+	ExplicitEvidenceCutoffAt string                 `json:"explicit_evidence_cutoff_at,omitempty"`
+	Authorities              []FrozenLegalAuthority `json:"authorities"`
 }
 
 type reportExecution struct {

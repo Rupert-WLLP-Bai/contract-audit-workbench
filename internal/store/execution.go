@@ -38,33 +38,52 @@ var (
 // StartReview retains the existing ungoverned entry point. Governed cases must
 // use StartReviewAt with the business instant being reviewed.
 func (s *Store) StartReview(ctx context.Context, user accounts.User, caseID string) (string, error) {
-	return s.startReview(ctx, user, caseID, "", false)
+	return s.startReview(ctx, user, caseID, "", "", false)
 }
 
 // StartReviewAt accepts an explicit RFC3339 business instant, including a time
 // zone. The caller supplies the time relevant to the contract; the store derives
 // tenant, organization, actor and all knowledge identities from trusted state.
 func (s *Store) StartReviewAt(ctx context.Context, user accounts.User, caseID, businessAt string) (string, error) {
+	return s.StartReviewAtWithEvidenceCutoff(ctx, user, caseID, businessAt, "")
+}
+
+// StartReviewAtWithEvidenceCutoff accepts an optional explicit evidence cutoff
+// in addition to the business instant. The accepted snapshot records whether
+// the cutoff was explicit or sampled by the server.
+func (s *Store) StartReviewAtWithEvidenceCutoff(ctx context.Context, user accounts.User, caseID, businessAt, evidenceCutoffAt string) (string, error) {
 	if _, err := knowledgeTime(businessAt); err != nil {
 		return "", err
 	}
-	return s.startReview(ctx, user, caseID, businessAt, false)
+	cutoff, err := canonicalizeLegalCutoffInput(evidenceCutoffAt)
+	if err != nil {
+		return "", err
+	}
+	return s.startReview(ctx, user, caseID, businessAt, cutoff, false)
 }
 
 func (s *Store) StartReviewAsync(ctx context.Context, user accounts.User, caseID string) (JobAcceptance, error) {
-	return s.startReviewAsync(ctx, user, caseID, "")
+	return s.startReviewAsync(ctx, user, caseID, "", "")
 }
 
 // StartReviewAsyncAt is the durable counterpart of StartReviewAt.
 func (s *Store) StartReviewAsyncAt(ctx context.Context, user accounts.User, caseID, businessAt string) (JobAcceptance, error) {
+	return s.StartReviewAsyncAtWithEvidenceCutoff(ctx, user, caseID, businessAt, "")
+}
+
+func (s *Store) StartReviewAsyncAtWithEvidenceCutoff(ctx context.Context, user accounts.User, caseID, businessAt, evidenceCutoffAt string) (JobAcceptance, error) {
 	if _, err := knowledgeTime(businessAt); err != nil {
 		return JobAcceptance{}, err
 	}
-	return s.startReviewAsync(ctx, user, caseID, businessAt)
+	cutoff, err := canonicalizeLegalCutoffInput(evidenceCutoffAt)
+	if err != nil {
+		return JobAcceptance{}, err
+	}
+	return s.startReviewAsync(ctx, user, caseID, businessAt, cutoff)
 }
 
-func (s *Store) startReviewAsync(ctx context.Context, user accounts.User, caseID, businessAt string) (JobAcceptance, error) {
-	runID, err := s.startReview(ctx, user, caseID, businessAt, true)
+func (s *Store) startReviewAsync(ctx context.Context, user accounts.User, caseID, businessAt, evidenceCutoffAt string) (JobAcceptance, error) {
+	runID, err := s.startReview(ctx, user, caseID, businessAt, evidenceCutoffAt, true)
 	if err != nil {
 		return JobAcceptance{}, err
 	}
@@ -84,9 +103,12 @@ func (s *Store) startReviewAsync(ctx context.Context, user accounts.User, caseID
 	return JobAcceptance{}, fault.Conflict("审查任务没有保存到任务队列")
 }
 
-func (s *Store) startReview(ctx context.Context, user accounts.User, caseID, businessAt string, durable bool) (string, error) {
+func (s *Store) startReview(ctx context.Context, user accounts.User, caseID, businessAt, evidenceCutoffAt string, durable bool) (string, error) {
 	if err := ctx.Err(); err != nil {
 		return "", err
+	}
+	if evidenceCutoffAt != "" && businessAt == "" {
+		return "", fault.Invalid("显式法律证据截止时间需要同时提供业务时间")
 	}
 	if s.ReadOnly() {
 		return "", fault.New(503, "read_only", "只读模式下不能发起审查")
@@ -106,12 +128,17 @@ func (s *Store) startReview(ctx context.Context, user accounts.User, caseID, bus
 	if _, err := s.writableCase(&seen, user, caseID, access.Review); err != nil {
 		return "", err
 	}
-	if materialSelectionPending(seen, caseID) {
-		return "", fault.Conflict("历史材料集合待确认，请先确认本次审查材料")
-	}
 	current := selectedMaterialDocuments(seen, caseID)
-	if len(current) < 2 {
-		return "", fault.Invalid("至少需要两份材料才能开始审查")
+	readinessMaterials := make([]ReviewReadinessMaterial, 0, len(current))
+	for _, doc := range current {
+		readinessMaterials = append(readinessMaterials, ReviewReadinessMaterial{DocumentID: doc.ID, Selected: true})
+	}
+	caseItem, _ := seen.caseByID(caseID)
+	preflight := evaluateReviewReadiness(reviewReadinessInputs{CanRead: true, CanStartRole: true, Writable: true,
+		SelectionConfirmed: !materialSelectionPending(seen, caseID), MinimumMaterials: 2, Materials: readinessMaterials,
+		BusinessAtProvided: businessAt != "" || !isGovernedReviewCase(caseItem)})
+	if err := reviewAdmissionError(preflight.Blockers); err != nil {
+		return "", err
 	}
 	reviewDocumentIDs := documentIDs(current)
 	if err := s.acquireParseLock(ctx); err != nil {
@@ -215,30 +242,41 @@ func (s *Store) startReview(ctx context.Context, user accounts.User, caseID, bus
 		if err != nil {
 			return err
 		}
-		selected, err := selectActiveRulePackTx(ctx, tx, lockedCase.TenantID, lockedCase.BusinessLine, lockedCase.Scenario, lockedCase.ContractType, at)
-		if err != nil {
-			return err
-		}
-		if selected == nil {
-			return fault.Conflict("案件没有适用的已发布规则包")
-		}
-		if err := requireGovernedCapabilitiesForCase(lockedCase, selected.Snapshot); err != nil {
-			return err
-		}
-		knowledge, err := resolveGovernedKnowledgeTx(ctx, tx, user, caseID, businessAt, acceptanceOptionalKnowledgeLimit)
-		if err != nil {
-			return err
-		}
-		if knowledge.RulePack != rulePackRef(selected) {
-			return fault.Conflict("适用制度与规则包的记录不一致")
-		}
-		activePack = selected
-		signature = s.currentSignatureWithRulePack(reviewDocumentIDs, frozenDocs, selected, telecomCompilerRefForCase(lockedCase), plannerConfiguration.ConfigurationID, plannerPayload)
-		signature.GovernedKnowledge = &knowledge
-		if isCloudServicesCase(lockedCase) {
-			if _, err := validateCloudPolicyBindings(signature, knowledge, lockedCase.TenantID); err != nil {
-				return fault.Conflict("云服务治理制度绑定无效：" + err.Error())
+		cutoffNow := time.Now().UTC().Truncate(time.Microsecond)
+		cutoffAt, cutoffMode, explicitCutoff := cutoffNow, "acceptance_time", ""
+		if evidenceCutoffAt != "" {
+			parsed, err := parseCanonicalLegalCutoff(evidenceCutoffAt)
+			if err != nil {
+				return fault.Invalid("显式法律证据截止时间必须是规范UTC微秒时间")
 			}
+			cutoffAt, err = time.Parse(time.RFC3339Nano, parsed)
+			if err != nil || cutoffAt.After(cutoffNow) {
+				return fault.Invalid("证据截止时间必须不晚于审查受理时间")
+			}
+			cutoffMode, explicitCutoff = "explicit", parsed
+		}
+		assessment, err := assessGovernedReviewTx(ctx, tx, user, lockedCase, at, cutoffAt, cutoffMode, explicitCutoff)
+		if err != nil {
+			return err
+		}
+		frozenMaterials := readinessMaterialsForFrozen(seen, frozenDocs)
+		checks := reviewReadinessRuleChecks(assessment.Pack, assessment.Knowledge, frozenMaterials, lockedCase)
+		readiness := evaluateReviewReadiness(reviewReadinessInputs{CanRead: true, CanStartRole: true, Writable: true,
+			SelectionConfirmed: true, BusinessAtProvided: true, MinimumMaterials: 2, Materials: frozenMaterials, Checks: checks})
+		if err := reviewAdmissionError(readiness.Blockers); err != nil {
+			return err
+		}
+		activePack = assessment.Pack
+		signature = s.currentSignatureWithRulePack(reviewDocumentIDs, frozenDocs, assessment.Pack, telecomCompilerRefForCase(lockedCase), plannerConfiguration.ConfigurationID, plannerPayload)
+		if assessment.Knowledge != nil {
+			signature.GovernedKnowledge = assessment.Knowledge
+		}
+		// P3 service-object identity and associations are authoritative SQL
+		// state. Freeze them from this same case-locked acceptance transaction,
+		// using only the material/parse versions already selected above.
+		signature, err = withServiceObjectContextTx(ctx, tx, lockedCase, frozenDocs, signature)
+		if err != nil {
+			return err
 		}
 		return nil
 	}
@@ -401,6 +439,20 @@ func (s *Store) retry(ctx context.Context, user accounts.User, caseID, runID str
 		return fault.NotFound("没有找到对应记录")
 	}
 	frozen := seen.snapshotOf(runID)
+	lastSeen, ok := seen.latestAttempt(runID)
+	if !ok {
+		return fault.Conflict("较早的审查缺少当时保存的执行记录，无法安全重试")
+	}
+	frozenAttemptInput, hasFrozenAttemptInput := seen.attemptInput(lastSeen.ID)
+	serviceContextDocuments := frozenAttemptInput.Documents
+	if !hasFrozenAttemptInput && attemptActive(lastSeen.State) {
+		serviceContextDocuments, ok = frozenDocumentsForActiveAttempt(seen, runID, lastSeen.ID)
+		if !ok {
+			return fault.Conflict("较早的活动审查缺少可验证的冻结解析选择，无法安全确认重试")
+		}
+	} else if !hasFrozenAttemptInput {
+		return fault.Conflict("较早的审查没有保存当时使用的输入，无法安全重试")
+	}
 	// One operation, one client: the retried attempt must keep the identity it
 	// validated, even if the endpoint watcher applies a new revision meanwhile.
 	models := s.currentModels()
@@ -437,6 +489,23 @@ func (s *Store) retry(ctx context.Context, user accounts.User, caseID, runID str
 	var retryTx pgx.Tx
 	err = s.updateCaseAsWith(user, caseID, func(tx pgx.Tx) error {
 		retryTx = tx
+		if frozen.GovernedKnowledge == nil {
+			return nil
+		}
+		if frozen.ServiceObjectContextHash == "" {
+			return fault.Conflict("较早的审查没有保存服务对象上下文，无法安全重试")
+		}
+		lockedCase, err := loadKnowledgeCase(ctx, tx, user, caseID)
+		if err != nil {
+			return err
+		}
+		currentSignature, err = withServiceObjectContextTx(ctx, tx, lockedCase, serviceContextDocuments, currentSignature)
+		if err != nil {
+			return err
+		}
+		if currentSignature.ServiceObjectContextHash != frozen.ServiceObjectContextHash {
+			return fault.Conflict("服务对象或当前映射已变更，请发起新的审查。原审查记录会保留")
+		}
 		return nil
 	}, func(st *state) error {
 		currentCase, err := s.writableCase(st, user, caseID, access.Review)
@@ -2069,6 +2138,44 @@ func frozenInputMatchesSnapshot(snapshot RunSnapshot, docs []FrozenDocument) boo
 	return sameDocumentSet(snapshot.ParsedDocumentIDs, ids) &&
 		snapshot.ParseSelectionHash == selectionHash(docs) &&
 		snapshot.ParserConfigurationID == frozenConfigHash(docs)
+}
+
+// frozenDocumentsForActiveAttempt reconstructs only the parse identities that
+// were already pinned when a run was accepted. It supports the idempotent
+// active-attempt retry path before the worker has materialized AttemptInput;
+// it does not select current documents or parser artifacts.
+func frozenDocumentsForActiveAttempt(st state, runID, attemptID string) ([]FrozenDocument, bool) {
+	snapshot := st.snapshotOf(runID)
+	selections := st.parseSelectionsForAttempt(attemptID)
+	if len(selections) == 0 || len(selections) != len(snapshot.ParsedDocumentIDs) {
+		return nil, false
+	}
+	documents := make([]FrozenDocument, 0, len(selections))
+	for _, selection := range selections {
+		if selection.AttemptID != attemptID || selection.RunID != runID {
+			return nil, false
+		}
+		doc, ok := st.documentByIdentity(selection.DocumentID, selection.OriginalDigest)
+		if !ok {
+			return nil, false
+		}
+		parsed, ok := st.parsedByID(selection.ParsedDocumentID)
+		if !ok || parsed.SelectionOrder != selection.SelectionOrder || parsed.DocumentID != selection.DocumentID ||
+			parsed.OriginalDigest != selection.OriginalDigest || parsed.ParserID != selection.ParserID ||
+			parsed.ParserVersion != selection.ParserVersion || parsed.ConfigHash != selection.ConfigHash ||
+			parsed.NormalizationVersion != selection.NormalizationVersion ||
+			(selection.ArtifactDigest != "" && parsed.ArtifactDigest != selection.ArtifactDigest) {
+			return nil, false
+		}
+		frozen := frozenFromParsed(doc, parsed)
+		bindFrozenMaterialIdentity(st, &frozen)
+		documents = append(documents, frozen)
+	}
+	if !frozenInputMatchesSnapshot(snapshot, documents) ||
+		!attemptSelectionsMatchFrozen(selections, documents) {
+		return nil, false
+	}
+	return documents, true
 }
 
 // attemptOutputHash derives the canonical output identity of one attempt. The

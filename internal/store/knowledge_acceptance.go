@@ -76,7 +76,29 @@ func sameKnowledgeSnapshotIdentity(a, b *ReviewKnowledgeSnapshot) bool {
 	if a == nil || b == nil {
 		return a == nil && b == nil
 	}
-	return a.SnapshotSHA256 == b.SnapshotSHA256
+	if a.LegalReuseFingerprint == "" && b.LegalReuseFingerprint == "" {
+		return a.SnapshotSHA256 == b.SnapshotSHA256
+	}
+	if a.LegalReuseFingerprint == "" || b.LegalReuseFingerprint == "" ||
+		!validLegalReuseFingerprint(a) || !validLegalReuseFingerprint(b) ||
+		a.LegalReuseFingerprint != b.LegalReuseFingerprint {
+		return false
+	}
+	// Acceptance-time cutoffs are sampled for each candidate snapshot. Reuse
+	// ignores that timestamp only after comparing every prior governance input.
+	// The exact selected legal dependencies remain covered by the fingerprint.
+	left, right := *a, *b
+	for _, snapshot := range []*ReviewKnowledgeSnapshot{&left, &right} {
+		snapshot.EvidenceCutoffAt = ""
+		snapshot.EvidenceCutoffMode = ""
+		snapshot.ExplicitEvidenceCutoffAt = ""
+		snapshot.LegalAuthorities = nil
+		snapshot.LegalReuseFingerprint = ""
+		snapshot.SnapshotSHA256 = ""
+	}
+	leftJSON, leftErr := json.Marshal(left)
+	rightJSON, rightErr := json.Marshal(right)
+	return leftErr == nil && rightErr == nil && bytes.Equal(leftJSON, rightJSON)
 }
 
 // revalidateGovernedAttemptTx runs only with the schema lock followed by the
@@ -120,7 +142,7 @@ func revalidateGovernedAttemptTx(ctx context.Context, tx pgx.Tx, runID, attemptI
 	if err != nil {
 		return err
 	}
-	return RevalidateGovernedKnowledgeSnapshotTx(ctx, tx, current, caseID, *frozen)
+	return ValidateFrozenGovernedKnowledgeSnapshotTx(ctx, tx, current, caseID, *frozen)
 }
 
 // updateAuthorizedGovernedExecution rechecks the initiating actor and frozen

@@ -113,13 +113,14 @@ func (s *Store) loadScopedAttemptState(ctx context.Context, tx pgx.Tx, claim Job
 	// Snapshot of the run: the freeze and preparation callbacks read and write it.
 	var snapshot RunSnapshot
 	var documentIDs, parsedDocumentIDs string
-	var packSnapshot, plannerPayload, policySnapshot, knowledge, partyContext []byte
-	if err := tx.QueryRow(ctx, `SELECT run_id, document_ids, rule_set_hash, playbook_hash, model_ref, comparator_ref, model_configuration_id, parsed_document_ids, parse_selection_hash, parser_configuration_id, rule_pack_compiler_ref, rule_pack_id, rule_pack_version, rule_pack_hash, rule_pack_digest, rule_pack_snapshot, planner_configuration_id, planner_configuration, cloud_policy_snapshot, cloud_policy_digest, governed_knowledge, party_context, party_context_hash
+	var packSnapshot, plannerPayload, policySnapshot, knowledge, partyContext, serviceObjectContext []byte
+	if err := tx.QueryRow(ctx, `SELECT run_id, document_ids, rule_set_hash, playbook_hash, model_ref, comparator_ref, model_configuration_id, parsed_document_ids, parse_selection_hash, parser_configuration_id, rule_pack_compiler_ref, rule_pack_id, rule_pack_version, rule_pack_hash, rule_pack_digest, rule_pack_snapshot, planner_configuration_id, planner_configuration, cloud_policy_snapshot, cloud_policy_digest, governed_knowledge, party_context, party_context_hash, service_object_context, service_object_context_hash
 		FROM review_run_snapshots WHERE run_id=$1`, runID).
 		Scan(&snapshot.RunID, &documentIDs, &snapshot.RuleSetHash, &snapshot.PlaybookHash, &snapshot.ModelRef, &snapshot.ComparatorRef,
 			&snapshot.ModelConfigurationID, &parsedDocumentIDs, &snapshot.ParseSelectionHash, &snapshot.ParserConfigurationID, &snapshot.RulePackCompilerRef,
 			&snapshot.RulePackID, &snapshot.RulePackVersion, &snapshot.RulePackHash, &snapshot.RulePackDigest, &packSnapshot, &snapshot.PlannerConfigurationID, &plannerPayload,
-			&policySnapshot, &snapshot.CloudPolicyDigest, &knowledge, &partyContext, &snapshot.PartyContextHash); err != nil {
+			&policySnapshot, &snapshot.CloudPolicyDigest, &knowledge, &partyContext, &snapshot.PartyContextHash,
+			&serviceObjectContext, &snapshot.ServiceObjectContextHash); err != nil {
 		if !errors.Is(err, pgx.ErrNoRows) {
 			return state{}, err
 		}
@@ -142,6 +143,10 @@ func (s *Store) loadScopedAttemptState(ctx context.Context, tx pgx.Tx, claim Job
 		snapshot.PartyContext, err = decodePartyContext(partyContext, snapshot.PartyContextHash)
 		if err != nil {
 			return state{}, fmt.Errorf("invalid party context snapshot for run %s: %w", snapshot.RunID, err)
+		}
+		snapshot.ServiceObjectContext, err = decodeServiceObjectReviewContext(serviceObjectContext, snapshot.ServiceObjectContextHash)
+		if err != nil {
+			return state{}, fmt.Errorf("invalid service object context snapshot for run %s: %w", snapshot.RunID, err)
 		}
 		snapshot.GovernedKnowledge, err = decodeGovernedKnowledge(knowledge)
 		if err != nil {

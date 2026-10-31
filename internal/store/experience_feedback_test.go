@@ -37,8 +37,23 @@ func feedbackGovernedFixture(t *testing.T, action string) (*Store, accounts.User
 }
 
 func createGovernedFeedbackSource(t *testing.T, st *Store, owner, applicant accounts.User, action, key string) ExperienceFeedbackInput {
+	return createGovernedFeedbackSourceWithParty(t, st, owner, applicant, action, key, false)
+}
+
+func createGovernedFeedbackSourceWithParty(t *testing.T, st *Store, owner, applicant accounts.User, action, key string, includeParty bool) ExperienceFeedbackInput {
 	t.Helper()
 	caseID := governanceTestCase(t, st, owner)
+	if includeParty {
+		subject, _, err := st.CreateUnboundSubject(context.Background(), owner, SubjectCreateInput{DisplayName: "冻结审查采购主体"}, key+"-subject")
+		if err != nil {
+			t.Fatalf("create real case subject before source review: %v", err)
+		}
+		if _, _, err := st.BindExistingSubject(context.Background(), owner, caseID, BindExistingSubjectInput{
+			Role: SubjectRoleCustomer, SubjectID: subject.SubjectID, ExpectedSubjectVersion: subject.CurrentVersion,
+		}, key+"-party"); err != nil {
+			t.Fatalf("bind real current case subject before source review: %v", err)
+		}
+	}
 	for role, body := range map[string]string{
 		"procurement":    "采购文件：电路 LINE-001：最低保障带宽 100 Mbit/s。合同总额 100万元。",
 		"draft_contract": "拟签合同：电路 LINE-001：最低保障带宽 80 Mbit/s。合同总额 120万元。",

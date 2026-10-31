@@ -34,22 +34,23 @@ type Event struct {
 
 // Snapshot is the immutable input set of one review run.
 type Snapshot struct {
-	DocumentIDs            []string
-	ParsedDocumentIDs      []string
-	PartyContextHash       string
-	ParseSelectionHash     string
-	ParserConfigurationID  string
-	RuleSetHash            string
-	PlaybookHash           string
-	ModelRef               string
-	ModelConfigurationID   string
-	ComparatorRef          string
-	RulePackCompilerRef    string
-	RulePackID             string
-	RulePackVersion        string
-	RulePackHash           string
-	RulePackDigest         string
-	PlannerConfigurationID string
+	DocumentIDs              []string
+	ParsedDocumentIDs        []string
+	PartyContextHash         string
+	ServiceObjectContextHash string
+	ParseSelectionHash       string
+	ParserConfigurationID    string
+	RuleSetHash              string
+	PlaybookHash             string
+	ModelRef                 string
+	ModelConfigurationID     string
+	ComparatorRef            string
+	RulePackCompilerRef      string
+	RulePackID               string
+	RulePackVersion          string
+	RulePackHash             string
+	RulePackDigest           string
+	PlannerConfigurationID   string
 }
 
 // Append returns next chained after prev. The first event uses seq 1 and an
@@ -132,7 +133,8 @@ func digest(event Event) string {
 
 func same(a, b Snapshot) bool {
 	if !sameRuleHashes(a, b) || !sameModelAndComparator(a, b) ||
-		!sameRulePack(a, b) || !sameParseAndPlannerConfiguration(a, b) || a.PartyContextHash != b.PartyContextHash {
+		!sameRulePack(a, b) || !sameParseAndPlannerConfiguration(a, b) ||
+		a.PartyContextHash != b.PartyContextHash || a.ServiceObjectContextHash != b.ServiceObjectContextHash {
 		return false
 	}
 	return equalStrings(a.DocumentIDs, b.DocumentIDs) && equalStrings(a.ParsedDocumentIDs, b.ParsedDocumentIDs)

@@ -406,6 +406,49 @@ func TestLegalApplicabilityHistoricalTimelineAndPartyCorrectionInPostgres(t *tes
 	write(0, "legal-fact-jan-v1", "2025-01-01T00:00:00Z", "2026-01-01T00:00:00Z", "enterprise")
 	write(1, "legal-fact-july-v2", "2025-07-01T00:00:00Z", "2025-08-01T00:00:00Z", "institution")
 	write(2, "legal-fact-jan-correction-v3", "2025-01-01T00:00:00Z", "2025-07-01T00:00:00Z", "natural_person")
+	history1, err := core.ListLegalApplicabilityFactHistory(ctx, admin, caseID, "buyer_kind", LegalApplicabilityHistoryInput{Limit: 1})
+	if err != nil || !history1.CanManage || history1.CurrentVersion != 3 || len(history1.Items) != 1 || history1.Items[0].Version != 3 || history1.NextCursor == nil {
+		t.Fatalf("history page 1 did not return latest immutable version and current CAS head: history=%+v err=%v", history1, err)
+	}
+	history2, err := core.ListLegalApplicabilityFactHistory(ctx, admin, caseID, "buyer_kind", LegalApplicabilityHistoryInput{Limit: 1, Cursor: *history1.NextCursor})
+	if err != nil || history2.CurrentVersion != 3 || len(history2.Items) != 1 || history2.Items[0].Version != 2 || history2.NextCursor == nil {
+		t.Fatalf("history page 2 repeated/skipped an immutable version: history=%+v err=%v", history2, err)
+	}
+	history3, err := core.ListLegalApplicabilityFactHistory(ctx, admin, caseID, "buyer_kind", LegalApplicabilityHistoryInput{Limit: 1, Cursor: *history2.NextCursor})
+	if err != nil || len(history3.Items) != 1 || history3.Items[0].Version != 1 || history3.NextCursor != nil {
+		t.Fatalf("history final page did not end at the oldest version: history=%+v err=%v", history3, err)
+	}
+	if _, err := core.ListLegalApplicabilityFactHistory(ctx, admin, caseID, "seller_kind", LegalApplicabilityHistoryInput{Limit: 1, Cursor: *history1.NextCursor}); err == nil {
+		t.Fatal("history cursor was accepted for a different dimension")
+	}
+	otherCase, err := core.CreateCase(admin, "法律事实历史游标案件绑定", "procurement_ict")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := core.ListLegalApplicabilityFactHistory(ctx, admin, otherCase, "buyer_kind", LegalApplicabilityHistoryInput{Limit: 1, Cursor: *history1.NextCursor}); err == nil {
+		t.Fatal("history cursor was accepted for a different case")
+	}
+	emptyHistory, err := core.ListLegalApplicabilityFactHistory(ctx, admin, caseID, "funding_kind", LegalApplicabilityHistoryInput{})
+	if err != nil || emptyHistory.CurrentVersion != 0 || len(emptyHistory.Items) != 0 || emptyHistory.NextCursor != nil {
+		t.Fatalf("history fabricated an entry for an unrecorded dimension: %+v err=%v", emptyHistory, err)
+	}
+	if _, err := core.ListLegalApplicabilityFactHistory(ctx, admin, caseID, "buyer_kind", LegalApplicabilityHistoryInput{Limit: 101}); err == nil {
+		t.Fatal("history accepted a page size larger than 100")
+	}
+	reviewer, ok := accounts.ByID("demo-reviewer")
+	if !ok {
+		t.Fatal("reviewer missing")
+	}
+	readOnlyHistory, err := core.ListLegalApplicabilityFactHistory(ctx, reviewer, caseID, "buyer_kind", LegalApplicabilityHistoryInput{Limit: 1})
+	if err != nil || readOnlyHistory.CanManage {
+		t.Fatalf("case Read role did not receive the correct manage affordance: history=%+v err=%v", readOnlyHistory, err)
+	}
+	core.UseReadOnly(true)
+	readOnlyStoreHistory, err := core.ListLegalApplicabilityFactHistory(ctx, admin, caseID, "buyer_kind", LegalApplicabilityHistoryInput{Limit: 1})
+	core.UseReadOnly(false)
+	if err != nil || readOnlyStoreHistory.CanManage {
+		t.Fatalf("read-only store exposed a writable history affordance: history=%+v err=%v", readOnlyStoreHistory, err)
+	}
 	cutoff := time.Now().UTC().Format(time.RFC3339Nano)
 	jan, err := core.ResolveLegalApplicabilityFacts(ctx, admin, caseID, LegalApplicabilityResolutionInput{BusinessAt: "2025-03-01T00:00:00Z", EvidenceCutoffAt: cutoff})
 	if err != nil {
@@ -443,7 +486,7 @@ func TestLegalApplicabilityHistoricalTimelineAndPartyCorrectionInPostgres(t *tes
 	if err != nil || replayed || proposal.RequestID == "" {
 		t.Fatalf("propose source-backed party correction: %+v replay=%v err=%v", proposal, replayed, err)
 	}
-	reviewer, ok := accounts.ByID("demo-reviewer")
+	reviewer, ok = accounts.ByID("demo-reviewer")
 	if !ok {
 		t.Fatal("reviewer missing")
 	}
@@ -458,6 +501,23 @@ func TestLegalApplicabilityHistoricalTimelineAndPartyCorrectionInPostgres(t *tes
 	afterCorrection, err := core.ResolveLegalApplicabilityFacts(ctx, admin, caseID, LegalApplicabilityResolutionInput{BusinessAt: "2025-03-01T00:00:00Z", EvidenceCutoffAt: cutoff})
 	if err != nil || legalResolvedFact(t, afterCorrection, "buyer_kind").UnknownReason != "stale_party_context" {
 		t.Fatalf("fact silently migrated to corrected party identity: %+v err=%v", afterCorrection.Facts, err)
+	}
+	if err := core.updateCaseAs(admin, caseID, func(st *state) error {
+		for i := range st.Cases {
+			if st.Cases[i].ID == caseID {
+				archivedAt := stamp()
+				st.Cases[i].BusinessStatus = "archived"
+				st.Cases[i].ArchivedAt = &archivedAt
+				return nil
+			}
+		}
+		return errors.New("legal applicability history case missing")
+	}); err != nil {
+		t.Fatalf("archive legal applicability case fixture: %v", err)
+	}
+	archivedHistory, err := core.ListLegalApplicabilityFactHistory(ctx, admin, caseID, "buyer_kind", LegalApplicabilityHistoryInput{Limit: 1})
+	if err != nil || archivedHistory.CanManage || len(archivedHistory.Items) != 1 {
+		t.Fatalf("archived case should remain readable without a write affordance: history=%+v err=%v", archivedHistory, err)
 	}
 }
 
@@ -617,6 +677,57 @@ func assertLegalApplicabilityRoleBoundaries(t *testing.T, env *durableRoleEnviro
 		t.Fatalf("mismatched buyer binding/subject pin did not fail its composite foreign key (SQLSTATE 23503): %v", err)
 	}
 	_ = tx.Rollback(ctx)
+
+	columns := []string{"tenant_id", "org_id", "case_id", "fact_id", "version", "dimension", "status", "value", "unknown_reason", "temporal_basis",
+		"valid_from", "valid_until", "basis_note", "basis_refs", "basis_sha256", "basis_obtained_at", "party_side", "party_binding_id",
+		"party_binding_version", "party_subject_id", "party_subject_version", "party_scope_note", "request_digest", "idempotency_key", "actor_user_id",
+		"actor_issuer", "actor_subject", "created_at"}
+	expressions := []string{"source.tenant_id", "source.org_id", "source.case_id", "source.fact_id", "source.version+1", "source.dimension", "source.status",
+		"source.value", "source.unknown_reason", "source.temporal_basis", "source.valid_from", "source.valid_until", "source.basis_note", "source.basis_refs",
+		"source.basis_sha256", "source.basis_obtained_at", "source.party_side", "source.party_binding_id", "source.party_binding_version",
+		"source.party_subject_id", "source.party_subject_version", "source.party_scope_note", "source.request_digest", "source.idempotency_key || '-' || $6",
+		"source.actor_user_id", "source.actor_issuer", "source.actor_subject", "source.created_at"}
+	for _, mutation := range []struct {
+		name       string
+		column     string
+		expression string
+	}{
+		{name: "party_side null", column: "party_side", expression: "NULL::text"},
+		{name: "party_binding_id null", column: "party_binding_id", expression: "NULL::text"},
+		{name: "party_binding_version null", column: "party_binding_version", expression: "NULL::bigint"},
+		{name: "party_binding_version zero", column: "party_binding_version", expression: "0"},
+		{name: "party_subject_id null", column: "party_subject_id", expression: "NULL::text"},
+		{name: "party_subject_version null", column: "party_subject_version", expression: "NULL::bigint"},
+		{name: "party_subject_version zero", column: "party_subject_version", expression: "0"},
+		{name: "party_scope_note null", column: "party_scope_note", expression: "NULL::text"},
+		{name: "party_scope_note empty", column: "party_scope_note", expression: "''"},
+	} {
+		selectExpr := append([]string(nil), expressions...)
+		for i, column := range columns {
+			if column == mutation.column {
+				selectExpr[i] = mutation.expression
+			}
+		}
+		statement := `INSERT INTO case_legal_applicability_fact_versions (` + strings.Join(columns, ",") + `)
+			SELECT ` + strings.Join(selectExpr, ",") + ` FROM case_legal_applicability_fact_versions source
+			WHERE source.tenant_id=$1 AND source.org_id=$2 AND source.case_id=$3 AND source.fact_id=$4 AND source.version=$5`
+		tx, err := env.harness.pool.Begin(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		scope := userScope(admin)
+		scope.CaseID = fact.CaseID
+		if err := setLocalScope(ctx, tx, scope); err != nil {
+			_ = tx.Rollback(ctx)
+			t.Fatal(err)
+		}
+		_, err = tx.Exec(ctx, statement, fact.TenantID, fact.OrgID, fact.CaseID, fact.FactID, fact.Version, strings.ReplaceAll(mutation.name, " ", "-"))
+		if pgErrorCode(err) != "23514" {
+			_ = tx.Rollback(ctx)
+			t.Fatalf("partial/invalid party pin %q was not rejected by the explicit completeness constraint (SQLSTATE 23514): %v", mutation.name, err)
+		}
+		_ = tx.Rollback(ctx)
+	}
 }
 
 func pgErrorCode(err error) string {

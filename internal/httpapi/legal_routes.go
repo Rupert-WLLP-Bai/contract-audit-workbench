@@ -19,11 +19,26 @@ func registerLegalKnowledgeRoutes(mux *http.ServeMux, h *handler) {
 		routeBinding{"GET /api/cases/{caseID}/legal-knowledge", h.searchLegalKnowledgeForCase},
 		routeBinding{"GET /api/cases/{caseID}/legal-knowledge/{knowledgeID}/versions/{versionID}", h.getLegalKnowledgeForCase},
 		routeBinding{"GET /api/cases/{caseID}/legal-sources/snapshots/{captureSnapshotID}", h.getLegalSourceCaptureForCase},
+		routeBinding{"GET /api/cases/{caseID}/runs/{runID}/attempts/{attemptID}/legal-citations/{citationID}", h.getFrozenLegalAuthority},
 		routeBinding{"GET /api/cases/{caseID}/legal-applicability-facts", h.resolveLegalApplicabilityFacts},
+		routeBinding{"GET /api/cases/{caseID}/legal-applicability-facts/{dimension}/history", h.listLegalApplicabilityFactHistory},
 		routeBinding{"PUT /api/cases/{caseID}/legal-applicability-facts/{dimension}", h.recordLegalApplicabilityFact},
 		routeBinding{"GET /api/admin/company-policy-sources", h.adminCompanyPolicySourceStatus},
 		routeBinding{"GET /api/cases/{caseID}/company-policy-sources", h.caseCompanyPolicySourceStatus},
 	)
+}
+
+func (h *handler) getFrozenLegalAuthority(w http.ResponseWriter, r *http.Request) {
+	user, ok := h.actor(w, r)
+	if !ok {
+		return
+	}
+	authority, err := h.store.ReadFrozenLegalAuthority(r.Context(), user, r.PathValue("caseID"), r.PathValue("runID"), r.PathValue("attemptID"), r.PathValue("citationID"))
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, authority)
 }
 
 func (h *handler) recordLegalApplicabilityFact(w http.ResponseWriter, r *http.Request) {
@@ -62,6 +77,40 @@ func (h *handler) resolveLegalApplicabilityFacts(w http.ResponseWriter, r *http.
 		return
 	}
 	writeJSON(w, http.StatusOK, facts)
+}
+
+func (h *handler) listLegalApplicabilityFactHistory(w http.ResponseWriter, r *http.Request) {
+	user, ok := h.actor(w, r)
+	if !ok {
+		return
+	}
+	limit, err := parseLegalApplicabilityHistoryLimit(r.URL.Query().Get("limit"))
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	history, err := h.store.ListLegalApplicabilityFactHistory(r.Context(), user, r.PathValue("caseID"), r.PathValue("dimension"), store.LegalApplicabilityHistoryInput{
+		Cursor: r.URL.Query().Get("cursor"), Limit: limit,
+	})
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, history)
+}
+
+func parseLegalApplicabilityHistoryLimit(raw string) (int, error) {
+	if raw == "" {
+		return 0, nil
+	}
+	parsed, err := strconv.Atoi(raw)
+	if err != nil {
+		return 0, fault.Invalid("法律适用事实历史limit必须是整数")
+	}
+	if parsed < 1 || parsed > 100 {
+		return 0, fault.Invalid("法律适用事实历史limit必须在1到100之间")
+	}
+	return parsed, nil
 }
 
 func bindLegalApplicabilityRequest(dimension, header string, input *store.LegalApplicabilityFactInput) error {

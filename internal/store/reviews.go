@@ -221,6 +221,7 @@ type Workspace struct {
 	Findings                 []Finding
 	Evaluations              []ConstraintEval
 	Snapshot                 RunSnapshot
+	LegalAuthorities         *FrozenLegalReviewProjection `json:"legal_authorities,omitempty"`
 	Audit                    []AuditRecord
 	PreviousRunID            string
 	Revisions                []Revision
@@ -302,11 +303,20 @@ func (s *Store) Workspace(user accounts.User, caseID, runID string, selectedAtte
 		findings = st.findingsForAttempt(runID, attemptID)
 		evaluations = st.evaluationsForAttempt(runID, attemptID)
 	}
+	snapshot := st.snapshotOf(runID)
+	var legalAuthorities *FrozenLegalReviewProjection
+	if attemptID != "" {
+		legalAuthorities, err = frozenLegalReportProjection(snapshot, runID, attemptID)
+		if err != nil {
+			return Workspace{}, fault.Conflict("所选执行记录保存的法律适用快照已损坏")
+		}
+	}
 	return Workspace{
 		Case: item, Documents: docs,
 		View: s.viewRun(&st, run, attemptID), Findings: findings,
 		Evaluations:              evaluations,
-		Snapshot:                 st.snapshotOf(runID),
+		Snapshot:                 snapshot,
+		LegalAuthorities:         legalAuthorities,
 		Audit:                    st.audits(runID),
 		PreviousRunID:            prevID,
 		Revisions:                revisions,

@@ -34,6 +34,10 @@
       "description": "记录审查人员的判断。提交时检查版本，并防止同一请求重复执行。"
     },
     {
+      "name": "服务对象",
+      "description": "案件内服务对象身份、合同关联及其不可变版本。"
+    },
+    {
       "name": "系统",
       "description": "存活、配置状态与接口契约。"
     }
@@ -138,6 +142,23 @@
         }
       }
     },
+    "/api/cases/{caseID}/legal-applicability-facts/{dimension}/history": {
+      "get": {
+        "operationId": "listLegalApplicabilityFactHistory",
+        "tags": ["法律适用事实"],
+        "summary": "按维度读取案件的不可变法律适用事实版本历史",
+        "parameters": [
+          {"name":"caseID","in":"path","required":true,"schema":{"type":"string"}},
+          {"name":"dimension","in":"path","required":true,"schema":{"type":"string","enum":["buyer_kind","seller_kind","buyer_enterprise_size","seller_enterprise_size","funding_kind","procurement_scope","project_kind","contract_clause_kind","transaction_kind"]}},
+          {"name":"cursor","in":"query","required":false,"schema":{"type":"string"}},
+          {"name":"limit","in":"query","required":false,"schema":{"type":"integer","minimum":1,"maximum":100,"default":20}}
+        ],
+        "responses": {
+          "200":{"description":"授权案件下按version降序返回的不可变FactVersion页、当前CAS版本及can_manage","content":{"application/json":{"schema":{"type":"object"}}}},
+          "401":{"$ref":"#/components/responses/Error401"},"403":{"$ref":"#/components/responses/Error403"},"404":{"$ref":"#/components/responses/Error404"},"422":{"$ref":"#/components/responses/Error422"}
+        }
+      }
+    },
     "/api/cases/{caseID}/legal-knowledge": {
       "get": {"operationId":"searchLegalKnowledgeForCase","tags":["制度检索"],"summary":"在案件授权范围内检索已导入法律条文","parameters":[{"name":"caseID","in":"path","required":true,"schema":{"type":"string"}},{"name":"q","in":"query","required":false,"schema":{"type":"string"}},{"name":"source_id","in":"query","required":false,"schema":{"type":"string"}},{"name":"business_at","in":"query","required":false,"schema":{"type":"string","format":"date-time"}},{"name":"article_number","in":"query","required":false,"schema":{"type":"integer","minimum":1}},{"name":"cursor","in":"query","required":false,"schema":{"type":"string"}},{"name":"limit","in":"query","required":false,"schema":{"type":"integer","minimum":1,"maximum":50}}],"responses":{"200":{"description":"只返回来源及案件可见的法律版本","content":{"application/json":{"schema":{"type":"object"}}}},"401":{"$ref":"#/components/responses/Error401"},"403":{"$ref":"#/components/responses/Error403"},"404":{"$ref":"#/components/responses/Error404"},"422":{"$ref":"#/components/responses/Error422"}}}
     },
@@ -146,6 +167,9 @@
     },
     "/api/cases/{caseID}/legal-sources/snapshots/{captureSnapshotID}": {
       "get": {"operationId":"getLegalSourceCaptureForCase","tags":["制度检索"],"summary":"读取案件可见的法律来源采集快照","parameters":[{"name":"caseID","in":"path","required":true,"schema":{"type":"string"}},{"name":"captureSnapshotID","in":"path","required":true,"schema":{"type":"string"}}],"responses":{"200":{"description":"案件授权的来源采集快照","content":{"application/json":{"schema":{"type":"object"}}}},"401":{"$ref":"#/components/responses/Error401"},"403":{"$ref":"#/components/responses/Error403"},"404":{"$ref":"#/components/responses/Error404"}}}
+    },
+    "/api/cases/{caseID}/runs/{runID}/attempts/{attemptID}/legal-citations/{citationID}": {
+      "get": {"operationId":"getFrozenLegalCitation","tags":["法律适用事实"],"summary":"按精确run、attempt和服务端citation_id读取冻结的法律来源、正文及适用事实","description":"citation_id由服务端根据规则、规范来源和完整精确引用计算。只读取该attempt中对应的冻结项；不回退到当前规则指针、最新事实或最新来源capture。","parameters":[{"name":"caseID","in":"path","required":true,"schema":{"type":"string"}},{"name":"runID","in":"path","required":true,"schema":{"type":"string"}},{"name":"attemptID","in":"path","required":true,"schema":{"type":"string"}},{"name":"citationID","in":"path","required":true,"schema":{"type":"string","pattern":"^[a-f0-9]{64}$"}}],"responses":{"200":{"description":"本次审查冻结的法律来源、条文和事实依赖或不可引用缺口","content":{"application/json":{"schema":{"$ref":"#/components/schemas/FrozenLegalAuthority"}}}},"400":{"$ref":"#/components/responses/Error400"},"401":{"$ref":"#/components/responses/Error401"},"403":{"$ref":"#/components/responses/Error403"},"404":{"$ref":"#/components/responses/Error404"},"409":{"$ref":"#/components/responses/Error409"}}}
     },
     "/api/cases/{caseID}/company-policy-sources": {
       "get": {"operationId":"listCaseCompanyPolicySources","tags":["制度检索"],"summary":"读取案件公司制度来源接入状态","parameters":[{"name":"caseID","in":"path","required":true,"schema":{"type":"string"}}],"responses":{"200":{"description":"来源待提供，不是可引用制度，不满足强制依赖","content":{"application/json":{"schema":{"type":"object"}}}},"401":{"$ref":"#/components/responses/Error401"},"403":{"$ref":"#/components/responses/Error403"},"404":{"$ref":"#/components/responses/Error404"}}}
@@ -2761,6 +2785,24 @@
         ]
       }
     },
+    "/api/cases/{caseID}/review-readiness": {
+      "get": {
+        "operationId": "getReviewReadiness",
+        "tags": ["审查准备"],
+        "summary": "读取案件当前完整审查的准备状态",
+        "description": "只读投影；不会创建审查尝试。业务时间必须显式提供，实际受理仍由审查入口在事务内复核授权和依赖。",
+        "parameters": [
+          {"name":"caseID","in":"path","required":true,"schema":{"type":"string"}},
+          {"name":"business_at","in":"query","required":false,"schema":{"type":"string","format":"date-time"}}
+        ],
+        "responses": {
+          "200":{"description":"当前材料、规则依赖与阻断原因","content":{"application/json":{"schema":{"$ref":"#/components/schemas/ReviewReadiness"}}}},
+          "400":{"$ref":"#/components/responses/Error400"},"401":{"$ref":"#/components/responses/Error401"},
+          "403":{"$ref":"#/components/responses/Error403"},"404":{"$ref":"#/components/responses/Error404"},
+          "422":{"$ref":"#/components/responses/Error422"}
+        }
+      }
+    },
     "/api/cases/{caseID}/reviews": {
       "post": {
         "operationId": "startReview",
@@ -3950,7 +3992,7 @@
         "operationId": "createOperatorObjectBinding",
         "tags": ["跨系统核验"],
         "summary": "人工确认合同对象与外部对象的版本化映射",
-        "description": "需要案件管理授权和 Idempotency-Key。相似名称不会自动匹配；confirmed 必须为 true。",
+        "description": "需要案件管理授权和 Idempotency-Key。新映射必须显式固定已确认的服务对象身份版本和合同关联版本，并由服务端核对 contract_object.object_id 与冻结 ObjectRef 一致；未固定的旧请求仅允许精确重放已存在的旧幂等记录。相似名称不会自动匹配；confirmed 必须为 true。",
         "parameters": [
           {"name": "caseID", "in": "path", "required": true, "schema": {"type": "string"}},
           {"name": "Idempotency-Key", "in": "header", "required": true, "schema": {"type": "string", "minLength": 1}}
@@ -3958,6 +4000,9 @@
         "requestBody": {"required": true, "content": {"application/json": {"schema": {"type": "object", "additionalProperties": false, "required": ["contract_object", "external_object", "confirmed"], "properties": {
           "contract_object": {"type": "object", "additionalProperties": false, "required": ["object_type", "object_id", "label"], "properties": {"object_type": {"type": "string"}, "object_id": {"type": "string"}, "label": {"type": ["string", "null"]}}},
           "external_object": {"type": "object", "additionalProperties": false, "required": ["connector_id", "external_object_id"], "properties": {"connector_id": {"type": "string"}, "external_object_id": {"type": "string"}}},
+          "service_object_id": {"type": "string", "minLength": 1},
+          "expected_object_version": {"type": "integer", "minimum": 1},
+          "expected_association_version": {"type": "integer", "minimum": 1},
           "effective_from": {"type": ["string", "null"], "format": "date-time"},
           "effective_until": {"type": ["string", "null"], "format": "date-time"},
           "confirmed": {"const": true}
@@ -3970,6 +4015,59 @@
           "422": {"$ref": "#/components/responses/Error422"},
           "503": {"$ref": "#/components/responses/Error503"}
         }
+      }
+    },
+    "/api/cases/{caseID}/object-bindings/{mappingID}/changes/preview": {
+      "post": {
+        "operationId": "previewOperatorMappingChange",
+        "tags": ["跨系统核验"],
+        "summary": "预览对象映射独立审批更正",
+        "description": "需要案件管理授权。CAS、当前映射/对象/关联版本和材料依据均由服务端解析并重新校验。",
+        "parameters": [{"name": "caseID", "in": "path", "required": true, "schema": {"type": "string"}}, {"name": "mappingID", "in": "path", "required": true, "schema": {"type": "string"}}],
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {"type": "object", "additionalProperties": false, "required": ["cas", "patch", "basis_refs"], "properties": {
+          "cas": {"$ref": "#/components/schemas/OperatorMappingChangeCAS"},
+          "patch": {"$ref": "#/components/schemas/OperatorMappingChangePatch"},
+          "basis_refs": {"type": "array", "minItems": 1, "maxItems": 8, "items": {"$ref": "#/components/schemas/MaterialAnchor"}}
+        }}}}},
+        "responses": {"200": {"description": "冻结的before/after和影响摘要"}, "403": {"$ref": "#/components/responses/Error403"}, "404": {"$ref": "#/components/responses/Error404"}, "409": {"$ref": "#/components/responses/Error409"}, "422": {"$ref": "#/components/responses/Error422"}}
+      }
+    },
+    "/api/cases/{caseID}/object-bindings/{mappingID}/changes": {
+      "post": {
+        "operationId": "proposeOperatorMappingChange",
+        "tags": ["跨系统核验"],
+        "summary": "提交对象映射独立审批更正",
+        "description": "需要案件管理授权和 Idempotency-Key。请求不可变；只有另一可信主体的案件Decide角色可批准。",
+        "parameters": [{"name": "caseID", "in": "path", "required": true, "schema": {"type": "string"}}, {"name": "mappingID", "in": "path", "required": true, "schema": {"type": "string"}}, {"name": "Idempotency-Key", "in": "header", "required": true, "schema": {"type": "string", "minLength": 1}}],
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {"type": "object", "additionalProperties": false, "required": ["cas", "patch", "basis_refs", "impact_sha256"], "properties": {
+          "cas": {"$ref": "#/components/schemas/OperatorMappingChangeCAS"},
+          "patch": {"$ref": "#/components/schemas/OperatorMappingChangePatch"},
+          "basis_refs": {"type": "array", "minItems": 1, "maxItems": 8, "items": {"$ref": "#/components/schemas/MaterialAnchor"}},
+          "impact_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+        }}}}},
+        "responses": {"201": {"description": "待决定的不可变提案；幂等重放保持同一状态码和body"}, "403": {"$ref": "#/components/responses/Error403"}, "404": {"$ref": "#/components/responses/Error404"}, "409": {"$ref": "#/components/responses/Error409"}, "422": {"$ref": "#/components/responses/Error422"}}
+      }
+    },
+    "/api/cases/{caseID}/object-binding-changes/{requestID}": {
+      "get": {
+        "operationId": "getOperatorMappingChange",
+        "tags": ["跨系统核验"],
+        "summary": "读取案件内映射更正提案及决定",
+        "parameters": [{"name": "caseID", "in": "path", "required": true, "schema": {"type": "string"}}, {"name": "requestID", "in": "path", "required": true, "schema": {"type": "string"}}],
+        "responses": {"200": {"description": "映射更正及其追加决定"}, "404": {"$ref": "#/components/responses/Error404"}}
+      }
+    },
+    "/api/cases/{caseID}/object-binding-changes/{requestID}/decision": {
+      "post": {
+        "operationId": "decideOperatorMappingChange",
+        "tags": ["跨系统核验"],
+        "summary": "独立决定对象映射更正",
+        "description": "需要CanDecide和案件Decide授权；提出人或同一可信主体的账号别名不能决定。",
+        "parameters": [{"name": "caseID", "in": "path", "required": true, "schema": {"type": "string"}}, {"name": "requestID", "in": "path", "required": true, "schema": {"type": "string"}}, {"name": "Idempotency-Key", "in": "header", "required": true, "schema": {"type": "string", "minLength": 1}}],
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {"type": "object", "additionalProperties": false, "required": ["decision", "expected_mapping_version", "expected_binding_version", "expected_object_version", "expected_association_version", "expected_after_sha256", "expected_impact_sha256", "reason"], "properties": {
+          "decision": {"type": "string", "enum": ["approve", "reject"]}, "expected_mapping_version": {"type": "integer", "minimum": 1}, "expected_binding_version": {"type": "string"}, "expected_object_version": {"type": "integer", "minimum": 1}, "expected_association_version": {"type": "integer", "minimum": 1}, "expected_after_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}, "expected_impact_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}, "reason": {"type": "string", "minLength": 1, "maxLength": 2000}
+        }}}}},
+        "responses": {"201": {"description": "追加的approved/rejected决定；幂等重放保持同一状态码和body"}, "403": {"$ref": "#/components/responses/Error403"}, "404": {"$ref": "#/components/responses/Error404"}, "409": {"$ref": "#/components/responses/Error409"}, "422": {"$ref": "#/components/responses/Error422"}}
       }
     },
     "/api/cases/{caseID}/external-collection-jobs": {
@@ -3989,10 +4087,29 @@
           "business_at": {"type": "string", "format": "date-time"}
         }}}}},
         "responses": {
-          "201": {"description": "不可变快照集引用；不是审查结论"},
+          "201": {"description": "不可变快照集引用；不是审查结论", "content":{"application/json":{"schema":{"$ref":"#/components/schemas/OperatorCollectionResponse"}}}},
           "403": {"$ref": "#/components/responses/Error403"},
           "404": {"$ref": "#/components/responses/Error404"},
           "409": {"$ref": "#/components/responses/Error409"},
+          "422": {"$ref": "#/components/responses/Error422"},
+          "503": {"$ref": "#/components/responses/Error503"}
+        }
+      }
+    },
+    "/api/cases/{caseID}/external-collection-jobs/{collectionID}": {
+      "get": {
+        "operationId": "getOperatorExternalCollectionJob",
+        "tags": ["跨系统核验"],
+        "summary": "按稳定采集ID恢复授权案件内的外部采集状态",
+        "description": "需要案件读取权限；collectionID是服务端生成的稳定标识，不是Idempotency-Key。POST响应丢失时客户端可用原Idempotency-Key重试POST恢复。",
+        "parameters": [
+          {"name": "caseID", "in": "path", "required": true, "schema": {"type": "string"}},
+          {"name": "collectionID", "in": "path", "required": true, "schema": {"type": "string", "pattern": "^col_(?:[0-9a-f]{16}|[0-9a-f]{32})$"}}
+        ],
+        "responses": {
+          "200": {"description": "采集状态；completed时含不可变snapshot_set，in_progress时含retry_after", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/OperatorCollectionJob"}}}},
+          "403": {"$ref": "#/components/responses/Error403"},
+          "404": {"$ref": "#/components/responses/Error404"},
           "422": {"$ref": "#/components/responses/Error422"},
           "503": {"$ref": "#/components/responses/Error503"}
         }
@@ -4005,12 +4122,59 @@
         "summary": "列出案件内已授权的不可变外部快照元数据",
         "parameters": [{"name": "caseID", "in": "path", "required": true, "schema": {"type": "string"}}],
         "responses": {
-          "200": {"description": "快照集与观测列表"},
+          "200": {"description": "快照集与含temporal_proof的观测列表", "content":{"application/json":{"schema":{"$ref":"#/components/schemas/OperatorSnapshotList"}}}},
           "403": {"$ref": "#/components/responses/Error403"},
           "404": {"$ref": "#/components/responses/Error404"},
           "503": {"$ref": "#/components/responses/Error503"}
         }
       }
+    },
+    "/api/cases/{caseID}/service-objects": {
+      "get": {
+        "operationId": "listServiceObjects",
+        "tags": ["服务对象"],
+        "summary": "分页读取案件服务对象当前身份和关联摘要",
+        "parameters": [
+          {"name":"caseID","in":"path","required":true,"schema":{"type":"string"}},
+          {"name":"cursor","in":"query","required":false,"schema":{"type":"string"}},
+          {"name":"limit","in":"query","required":false,"schema":{"type":"integer","minimum":1,"maximum":100,"default":20}}
+        ],
+        "responses": {"200":{"description":"有界当前摘要页；can_manage由服务端依据当前权限、可写状态和维护模式计算","content":{"application/json":{"schema":{"type":"object","required":["items","next_cursor","can_manage"],"properties":{"items":{"type":"array","items":{"$ref":"#/components/schemas/ServiceObjectSummary"}},"next_cursor":{"type":["string","null"]},"can_manage":{"type":"boolean"}}}}}},"401":{"$ref":"#/components/responses/Error401"},"403":{"$ref":"#/components/responses/Error403"},"404":{"$ref":"#/components/responses/Error404"},"422":{"$ref":"#/components/responses/Error422"}}
+      },
+      "post": {
+        "operationId": "createServiceObject",
+        "tags": ["服务对象"],
+        "summary": "创建待确认的服务对象身份",
+        "parameters": [{"name":"caseID","in":"path","required":true,"schema":{"type":"string"}},{"name":"Idempotency-Key","in":"header","required":true,"schema":{"type":"string","maxLength":200}}],
+        "requestBody": {"required":true,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/ServiceObjectCreateRequest"}}}},
+        "responses": {"201":{"description":"身份版本receipt；同key重放保持相同status/body","content":{"application/json":{"schema":{"$ref":"#/components/schemas/ServiceObjectMutationReceipt"}}}},"400":{"$ref":"#/components/responses/Error400"},"401":{"$ref":"#/components/responses/Error401"},"403":{"$ref":"#/components/responses/Error403"},"404":{"$ref":"#/components/responses/Error404"},"409":{"$ref":"#/components/responses/Error409"},"422":{"$ref":"#/components/responses/Error422"},"503":{"$ref":"#/components/responses/Error503"}}
+      }
+    },
+    "/api/cases/{caseID}/service-objects/{objectID}": {
+      "get": {"operationId":"getServiceObject","tags":["服务对象"],"summary":"读取服务对象当前身份和当前合同关联","parameters":[{"name":"caseID","in":"path","required":true,"schema":{"type":"string"}},{"name":"objectID","in":"path","required":true,"schema":{"type":"string"}}],"responses":{"200":{"description":"只返回当前投影；历史通过分页接口读取","content":{"application/json":{"schema":{"$ref":"#/components/schemas/ServiceObjectDetail"}}}},"401":{"$ref":"#/components/responses/Error401"},"403":{"$ref":"#/components/responses/Error403"},"404":{"$ref":"#/components/responses/Error404"}}}
+    },
+    "/api/cases/{caseID}/service-objects/{objectID}/versions": {
+      "get": {"operationId":"listServiceObjectVersions","tags":["服务对象"],"summary":"分页读取服务对象不可变身份版本","parameters":[{"name":"caseID","in":"path","required":true,"schema":{"type":"string"}},{"name":"objectID","in":"path","required":true,"schema":{"type":"string"}},{"name":"cursor","in":"query","required":false,"schema":{"type":"string"}},{"name":"limit","in":"query","required":false,"schema":{"type":"integer","minimum":1,"maximum":100,"default":20}}],"responses":{"200":{"description":"按版本倒序的有界历史页","content":{"application/json":{"schema":{"$ref":"#/components/schemas/ServiceObjectVersionPage"}}}},"401":{"$ref":"#/components/responses/Error401"},"403":{"$ref":"#/components/responses/Error403"},"404":{"$ref":"#/components/responses/Error404"},"422":{"$ref":"#/components/responses/Error422"}}}
+    },
+    "/api/cases/{caseID}/service-objects/{objectID}/versions/{version}": {
+      "get": {"operationId":"getServiceObjectVersion","tags":["服务对象"],"summary":"读取一个精确身份版本","parameters":[{"name":"caseID","in":"path","required":true,"schema":{"type":"string"}},{"name":"objectID","in":"path","required":true,"schema":{"type":"string"}},{"name":"version","in":"path","required":true,"schema":{"type":"integer","minimum":1}}],"responses":{"200":{"description":"精确不可变身份版本","content":{"application/json":{"schema":{"$ref":"#/components/schemas/ServiceObjectVersion"}}}},"401":{"$ref":"#/components/responses/Error401"},"403":{"$ref":"#/components/responses/Error403"},"404":{"$ref":"#/components/responses/Error404"},"422":{"$ref":"#/components/responses/Error422"}}}
+    },
+    "/api/cases/{caseID}/service-objects/{objectID}/associations": {
+      "get": {"operationId":"listServiceObjectAssociations","tags":["服务对象"],"summary":"分页读取不可变合同关联历史","parameters":[{"name":"caseID","in":"path","required":true,"schema":{"type":"string"}},{"name":"objectID","in":"path","required":true,"schema":{"type":"string"}},{"name":"cursor","in":"query","required":false,"schema":{"type":"string"}},{"name":"limit","in":"query","required":false,"schema":{"type":"integer","minimum":1,"maximum":100,"default":20}}],"responses":{"200":{"description":"按关联版本倒序的有界历史页","content":{"application/json":{"schema":{"$ref":"#/components/schemas/ServiceObjectAssociationPage"}}}},"401":{"$ref":"#/components/responses/Error401"},"403":{"$ref":"#/components/responses/Error403"},"404":{"$ref":"#/components/responses/Error404"},"422":{"$ref":"#/components/responses/Error422"}}},
+      "post": {
+        "operationId": "confirmServiceObjectAssociation",
+        "tags": ["服务对象"],
+        "summary": "显式确认服务对象与冻结合同事实的关联",
+        "parameters": [{"name":"caseID","in":"path","required":true,"schema":{"type":"string"}},{"name":"objectID","in":"path","required":true,"schema":{"type":"string"}},{"name":"Idempotency-Key","in":"header","required":true,"schema":{"type":"string","maxLength":200}}],
+        "requestBody": {"required":true,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/ServiceObjectAssociationConfirmRequest"}}}},
+        "responses": {"201":{"description":"身份/关联版本receipt；确认意图、CAS及冻结候选摘要均经过校验","content":{"application/json":{"schema":{"$ref":"#/components/schemas/ServiceObjectMutationReceipt"}}}},"400":{"$ref":"#/components/responses/Error400"},"401":{"$ref":"#/components/responses/Error401"},"403":{"$ref":"#/components/responses/Error403"},"404":{"$ref":"#/components/responses/Error404"},"409":{"$ref":"#/components/responses/Error409"},"422":{"$ref":"#/components/responses/Error422"},"503":{"$ref":"#/components/responses/Error503"}}
+      }
+    },
+    "/api/cases/{caseID}/service-objects/{objectID}/associations/{associationVersion}": {
+      "get": {"operationId":"getServiceObjectAssociation","tags":["服务对象"],"summary":"读取一个精确合同关联版本及冻结事实","parameters":[{"name":"caseID","in":"path","required":true,"schema":{"type":"string"}},{"name":"objectID","in":"path","required":true,"schema":{"type":"string"}},{"name":"associationVersion","in":"path","required":true,"schema":{"type":"integer","minimum":1}}],"responses":{"200":{"description":"精确不可变关联和完整冻结rulepack事实","content":{"application/json":{"schema":{"$ref":"#/components/schemas/ServiceObjectAssociation"}}}},"401":{"$ref":"#/components/responses/Error401"},"403":{"$ref":"#/components/responses/Error403"},"404":{"$ref":"#/components/responses/Error404"},"422":{"$ref":"#/components/responses/Error422"}}}
+    },
+    "/api/cases/{caseID}/service-objects/{objectID}/association-candidates": {
+      "get": {"operationId":"previewServiceObjectAssociationCandidates","tags":["服务对象"],"summary":"读取指定冻结审查、材料版本和解析的服务对象候选","description":"所有参数必须精确匹配冻结attempt输入和解析选择；候选摘要绑定对象、确认意图、CAS、完整来源tuple与候选facts。","parameters":[{"name":"caseID","in":"path","required":true,"schema":{"type":"string"}},{"name":"objectID","in":"path","required":true,"schema":{"type":"string"}},{"name":"run_id","in":"query","required":true,"schema":{"type":"string"}},{"name":"attempt_id","in":"query","required":true,"schema":{"type":"string"}},{"name":"material_id","in":"query","required":true,"schema":{"type":"string"}},{"name":"material_version","in":"query","required":true,"schema":{"type":"integer","minimum":1}},{"name":"document_id","in":"query","required":true,"schema":{"type":"string"}},{"name":"parsed_document_id","in":"query","required":true,"schema":{"type":"string"}}],"responses":{"200":{"description":"候选列表及candidate_sha256","content":{"application/json":{"schema":{"$ref":"#/components/schemas/ServiceObjectAssociationPreview"}}}},"400":{"$ref":"#/components/responses/Error400"},"401":{"$ref":"#/components/responses/Error401"},"403":{"$ref":"#/components/responses/Error403"},"404":{"$ref":"#/components/responses/Error404"},"409":{"$ref":"#/components/responses/Error409"},"422":{"$ref":"#/components/responses/Error422"}}}
     },
     "/api/cases/{caseID}/fulfillment-evaluations": {
       "post": {
@@ -4030,10 +4194,11 @@
           "contract_version_id": {"type": "string"},
           "object_binding_version": {"type": "string"},
           "snapshot_set_id": {"type": "string"},
-          "business_at": {"type": "string", "format": "date-time"}
+          "business_at": {"type": "string", "format": "date-time"},
+          "evidence_cutoff_at": {"type": "string", "format": "date-time", "description": "可选证据截止时间；省略时使用business_at。按UTC微秒规范化且不得晚于受理时刻。超过此截止时间采集的快照不能用于本次历史核验。"}
         }}}}},
         "responses": {
-          "201": {"description": "不可变核验结果"},
+          "201": {"description": "不可变核验结果；响应 evidence_cutoff_at 明示本次纳入证据的时间上限，省略请求值时等于 business_at。", "content":{"application/json":{"schema":{"$ref":"#/components/schemas/OperatorEvaluation"}}}},
           "403": {"$ref": "#/components/responses/Error403"},
           "404": {"$ref": "#/components/responses/Error404"},
           "409": {"$ref": "#/components/responses/Error409"},
@@ -4052,7 +4217,7 @@
           {"name": "evaluationID", "in": "path", "required": true, "schema": {"type": "string"}}
         ],
         "responses": {
-          "200": {"description": "机器结果；人工决定另存"},
+          "200": {"description": "机器结果；人工决定另存。新结果返回 evidence_cutoff_at，旧结果可能省略。", "content":{"application/json":{"schema":{"$ref":"#/components/schemas/OperatorEvaluation"}}}},
           "403": {"$ref": "#/components/responses/Error403"},
           "404": {"$ref": "#/components/responses/Error404"},
           "503": {"$ref": "#/components/responses/Error503"}
@@ -4096,6 +4261,13 @@
       }
     },
     "schemas": {
+      "OperatorCollectionJob": {"type":"object","additionalProperties":false,"required":["collection_id","case_id","state"],"properties":{"collection_id":{"type":"string"},"case_id":{"type":"string"},"state":{"type":"string","enum":["in_progress","retryable","completed"]},"retry_after":{"type":"string","format":"date-time","nullable":true},"snapshot_set_id":{"type":"string","nullable":true},"snapshot_set":{"type":"object","nullable":true,"description":"completed时返回的不可变外部快照集"}}},
+      "OperatorTemporalProof": {"oneOf":[{"type":"object","additionalProperties":false,"required":["kind","source_as_of"],"properties":{"kind":{"const":"current_state"},"source_catalog_id":{"type":"string"},"dataset_version":{"type":"string"},"record_version":{"type":"string"},"source_as_of":{"type":"string","format":"date-time"}}},{"type":"object","additionalProperties":false,"required":["kind","source_catalog_id","dataset_version","record_version","source_as_of","valid_from","valid_until"],"properties":{"kind":{"const":"historical_interval"},"source_catalog_id":{"type":"string"},"dataset_version":{"type":"string"},"record_version":{"type":"string"},"source_as_of":{"type":"string","format":"date-time"},"valid_from":{"type":"string","format":"date-time"},"valid_until":{"type":"string","format":"date-time"}}}]},
+      "OperatorObservation": {"type":"object","required":["schema_version","snapshot_id","tenant_id","case_id","connector_id","source_system","object_binding_version","external_object_id","record_id","record_version","observed_at","source_updated_at","effective_from","effective_until","availability","reason_code","payload_ref","fields","data_class"],"properties":{"schema_version":{"type":"string"},"snapshot_id":{"type":"string"},"tenant_id":{"type":"string"},"case_id":{"type":"string"},"connector_id":{"type":"string"},"source_system":{"type":"string"},"object_binding_version":{"type":"string"},"external_object_id":{"type":"string"},"record_id":{"type":"string"},"record_version":{"type":"string","nullable":true},"observed_at":{"type":"string","format":"date-time"},"source_updated_at":{"type":"string","format":"date-time","nullable":true},"effective_from":{"type":"string","format":"date-time"},"effective_until":{"type":"string","format":"date-time"},"availability":{"type":"string","enum":["available","unavailable","stale","rejected"]},"reason_code":{"type":"string"},"payload_ref":{"type":"string","nullable":true},"fields":{"type":["array","null"],"items":{"type":"object"}},"data_class":{"type":"string","enum":["synthetic"]},"temporal_proof":{"$ref":"#/components/schemas/OperatorTemporalProof"}}},
+      "OperatorSnapshotSet": {"type":"object","additionalProperties":false,"required":["case_id","snapshot_set_id","binding_version","connector_id","external_object_id","source_system","business_at","status","reason_code","collected_by","collected_at","observations"],"properties":{"case_id":{"type":"string"},"snapshot_set_id":{"type":"string"},"binding_version":{"type":"string"},"connector_id":{"type":"string"},"external_object_id":{"type":"string"},"source_system":{"type":"string"},"business_at":{"type":"string","format":"date-time"},"status":{"type":"string"},"reason_code":{"type":"string"},"collected_by":{"type":"string"},"collected_at":{"type":"string","format":"date-time"},"observations":{"type":"array","items":{"$ref":"#/components/schemas/OperatorObservation"}}}},
+      "OperatorCollectionResponse": {"type":"object","additionalProperties":false,"required":["job_id","collection_id","snapshot_set_id","state","connector_id","external_object_id","accepted_at","snapshot_set"],"properties":{"job_id":{"type":"string"},"collection_id":{"type":"string"},"snapshot_set_id":{"type":"string"},"state":{"type":"string"},"connector_id":{"type":"string"},"external_object_id":{"type":"string"},"accepted_at":{"type":"string","format":"date-time"},"snapshot_set":{"$ref":"#/components/schemas/OperatorSnapshotSet"}}},
+      "OperatorSnapshotList": {"type":"object","additionalProperties":false,"required":["items","sets"],"properties":{"items":{"type":"array","items":{"allOf":[{"$ref":"#/components/schemas/OperatorObservation"},{"type":"object","required":["snapshot_set_id"],"properties":{"snapshot_set_id":{"type":"string"}}}]}},"sets":{"type":"array","items":{"$ref":"#/components/schemas/OperatorSnapshotSet"}}}},
+      "OperatorEvaluation": {"type":"object","additionalProperties":false,"required":["evaluation_id","pack","source_review_id","source_attempt_id","contract_version","rule_pack_version","object_binding_version","snapshot_set_id","business_at","machine_status","checks","contract_facts","data_class","created_at"],"properties":{"evaluation_id":{"type":"string"},"pack":{"type":"object","required":["id","version"],"properties":{"id":{"type":"string"},"version":{"type":"string"}}},"source_review_id":{"type":"string"},"source_attempt_id":{"type":"string"},"contract_version":{"type":"string"},"rule_pack_version":{"type":"string"},"object_binding_version":{"type":"string"},"snapshot_set_id":{"type":"string"},"business_at":{"type":"string","format":"date-time"},"evidence_cutoff_at":{"type":"string","format":"date-time"},"machine_status":{"type":"string"},"checks":{"type":"array","items":{"type":"object"}},"contract_facts":{"type":"array","items":{"type":"object"}},"data_class":{"type":"string"},"created_at":{"type":"string","format":"date-time"}}},
       "EvidenceRequestCreate": {"type":"object","additionalProperties":false,"description":"结果为 compatible 本身不足以完成核验；如果缺少回执与同一检查之间的有效关联，后续核验返回 409，请求保持 received。","required":["task_id","task_version","source_run_id","source_attempt_id","question","verification_condition"],"properties":{"case_id":{"type":"string"},"task_id":{"type":"string"},"task_version":{"type":"integer","minimum":1},"source_run_id":{"type":"string"},"source_attempt_id":{"type":"string"},"source_evaluation_id":{"type":"string"},"source_gap_id":{"type":"string"},"question":{"type":"string"},"material_role":{"type":"string"},"verification_condition":{"type":"string","enum":["compatible","conflict","resolved"]},"idempotency_key":{"type":"string","maxLength":80}}},
       "EvidenceReceiptCreate": {"type":"object","additionalProperties":false,"required":["expected_version"],"properties":{"case_id":{"type":"string"},"request_id":{"type":"string"},"document_id":{"type":"string"},"answer":{"type":"string"},"expected_version":{"type":"integer","minimum":1},"idempotency_key":{"type":"string","maxLength":80}}},
       "EvidenceRequestVerify": {"type":"object","additionalProperties":false,"description":"结果为 compatible 本身不足以完成核验；如果缺少回执与同一检查之间的有效关联，返回 409，请求保持 received。","required":["run_id","attempt_id","evidence","reason","expected_version"],"properties":{"case_id":{"type":"string"},"request_id":{"type":"string"},"receipt_id":{"type":"string"},"run_id":{"type":"string"},"attempt_id":{"type":"string"},"evaluation_id":{"type":"string"},"gap_id":{"type":"string"},"evidence":{"type":"array","items":{"$ref":"#/components/schemas/ExperienceEvidenceRef"}},"reason":{"type":"string"},"expected_version":{"type":"integer","minimum":1},"idempotency_key":{"type":"string","maxLength":80}}},
@@ -4108,7 +4280,36 @@
       "EvidenceReceiptResult": {"type":"object","additionalProperties":false,"required":["request","receipt"],"properties":{"request":{"$ref":"#/components/schemas/EvidenceRequest"},"receipt":{"$ref":"#/components/schemas/EvidenceReceipt"}}},
       "EvidenceRequestEvent": {"type":"object","additionalProperties":false,"required":["type","actor_id","occurred_at","request"],"properties":{"type":{"type":"string"},"actor_id":{"type":"string"},"occurred_at":{"type":"string","format":"date-time"},"request":{"$ref":"#/components/schemas/EvidenceRequest"},"receipt":{"$ref":"#/components/schemas/EvidenceReceipt"}}},
       "EvidenceRequestHistory": {"type":"object","additionalProperties":false,"required":["items"],"properties":{"items":{"type":"array","items":{"$ref":"#/components/schemas/EvidenceRequestEvent"}}}},
-      "ReviewStartRequest": {"type":"object","additionalProperties":false,"properties":{"business_at":{"type":"string","format":"date-time","description":"已治理案件必填，带时区的 RFC3339Nano 业务时间；非治理案件可省略。"}}},
+      "ServiceObjectCreateRequest": {"type":"object","additionalProperties":false,"required":["object_type","display_name"],"properties":{"object_type":{"type":"string","enum":["dedicated_line","service"]},"display_name":{"type":"string"},"business_code":{"type":"string"},"aliases":{"type":"array","items":{"type":"object","additionalProperties":false,"required":["kind","value"],"properties":{"kind":{"type":"string"},"value":{"type":"string"}}}},"basis_summary":{"type":"string"}}},
+      "ServiceObjectMutationReceipt": {"type":"object","additionalProperties":false,"required":["service_object_id","version","association_version"],"properties":{"service_object_id":{"type":"string"},"version":{"type":"integer","minimum":1},"association_version":{"type":"integer","minimum":0}}},
+      "ServiceObjectSummary": {"type":"object","additionalProperties":false,"required":["service_object_id","object_type","state","current_version","current_association_version","display_name","business_code","aliases","current_association","can_manage","needs_reassociation"],"properties":{"service_object_id":{"type":"string"},"object_type":{"type":"string","enum":["dedicated_line","service"]},"state":{"type":"string","enum":["pending_confirmation","confirmed","inactive"]},"current_version":{"type":"integer","minimum":1},"current_association_version":{"type":"integer","minimum":0},"display_name":{"type":"string"},"business_code":{"type":"string"},"aliases":{"type":"array","items":{"$ref":"#/components/schemas/ServiceObjectAlias"}},"current_association":{"anyOf":[{"$ref":"#/components/schemas/ServiceObjectAssociationPin"},{"type":"null"}]},"can_manage":{"type":"boolean"},"needs_reassociation":{"type":"boolean"}}},
+      "ServiceObjectAlias": {"type":"object","additionalProperties":false,"required":["kind","value"],"properties":{"kind":{"type":"string"},"value":{"type":"string"}}},
+      "ServiceObjectAssociationPin": {"type":"object","additionalProperties":false,"required":["association_version","object_version","material_id","material_version","document_id","parsed_document_id","source_run_id","source_attempt_id","object_ref","facts_sha256","confirmed_by","confirmed_at"],"properties":{"association_version":{"type":"integer","minimum":1},"object_version":{"type":"integer","minimum":1},"material_id":{"type":"string"},"material_version":{"type":"integer","minimum":1},"document_id":{"type":"string"},"parsed_document_id":{"type":"string"},"source_run_id":{"type":"string"},"source_attempt_id":{"type":"string"},"object_ref":{"type":"string"},"facts_sha256":{"type":"string","pattern":"^[0-9a-f]{64}$"},"confirmed_by":{"type":"string"},"confirmed_at":{"type":"string","format":"date-time"}}},
+      "ServiceObjectVersion": {"type":"object","additionalProperties":false,"required":["service_object_id","version","object_type","display_name","business_code","aliases","state","basis_refs","basis_summary","created_by","created_at","effective_from","payload_sha256"],"properties":{"service_object_id":{"type":"string"},"version":{"type":"integer","minimum":1},"object_type":{"type":"string","enum":["dedicated_line","service"]},"display_name":{"type":"string"},"business_code":{"type":"string"},"aliases":{"type":"array","items":{"$ref":"#/components/schemas/ServiceObjectAlias"}},"state":{"type":"string","enum":["pending_confirmation","confirmed","inactive"]},"basis_refs":{"type":"array","items":{"type":"object"}},"basis_summary":{"type":"string"},"change_decision_id":{"type":"string"},"created_by":{"type":"string"},"created_at":{"type":"string","format":"date-time"},"effective_from":{"type":"string","format":"date-time"},"payload_sha256":{"type":"string","pattern":"^[0-9a-f]{64}$"}}},
+      "ServiceObjectFactRef": {"type":"object","additionalProperties":false,"required":["fact","document_id","parsed_document_id","canonical_fact_sha256"],"properties":{"fact":{"$ref":"#/components/schemas/ServiceObjectFact"},"document_id":{"type":"string"},"parsed_document_id":{"type":"string"},"canonical_fact_sha256":{"type":"string","pattern":"^[0-9a-f]{64}$"}}},
+      "ServiceObjectFact": {"type":"object","additionalProperties":false,"required":["id","rule_id","dimension","object_ref","value","unit","source_role","citations"],"properties":{"id":{"type":"string"},"rule_id":{"type":"string"},"dimension":{"type":"string"},"object_ref":{"type":"string"},"value":{"type":"string"},"unit":{"type":"string"},"source_role":{"type":"string"},"measurement_window":{"type":"string"},"time_zone":{"type":"string"},"calendar":{"type":"string"},"outage_definition":{"type":"string"},"exclusions":{"type":"array","items":{"type":"string"}},"basis":{"type":"string"},"applicable":{"type":"boolean"},"citations":{"type":"array","items":{"$ref":"#/components/schemas/ServiceObjectFactCitation"}}}},
+      "ServiceObjectFactCitation": {"type":"object","additionalProperties":false,"required":["source_id","source_version","tenant_id","case_id","source_digest","start","end","quote"],"properties":{"source_id":{"type":"string"},"source_version":{"type":"string"},"tenant_id":{"type":"string"},"case_id":{"type":"string"},"source_digest":{"type":"string","pattern":"^[0-9a-f]{64}$"},"start":{"type":"integer","minimum":0},"end":{"type":"integer","minimum":1},"quote":{"type":"string"}}},
+      "ServiceObjectAssociation": {"type":"object","additionalProperties":false,"required":["service_object_id","association_version","object_version","material_id","material_version","document_id","parsed_document_id","source_run_id","source_attempt_id","object_ref","facts","basis_refs","confirmed_by","confirmed_at","facts_sha256","created_at","payload_sha256"],"properties":{"service_object_id":{"type":"string"},"association_version":{"type":"integer","minimum":1},"object_version":{"type":"integer","minimum":1},"material_id":{"type":"string"},"material_version":{"type":"integer","minimum":1},"document_id":{"type":"string"},"parsed_document_id":{"type":"string"},"source_run_id":{"type":"string"},"source_attempt_id":{"type":"string"},"object_ref":{"type":"string"},"facts":{"type":"array","items":{"$ref":"#/components/schemas/ServiceObjectFactRef"}},"basis_refs":{"type":"array","items":{"type":"object"}},"confirmed_by":{"type":"string"},"confirmed_at":{"type":"string","format":"date-time"},"identity_change_decision_id":{"type":"string"},"facts_sha256":{"type":"string","pattern":"^[0-9a-f]{64}$"},"created_at":{"type":"string","format":"date-time"},"payload_sha256":{"type":"string","pattern":"^[0-9a-f]{64}$"}}},
+      "ServiceObjectDetail": {"type":"object","additionalProperties":false,"required":["service_object_id","current_version","identity","association","can_manage","needs_reassociation"],"properties":{"service_object_id":{"type":"string"},"current_version":{"type":"integer","minimum":1},"identity":{"$ref":"#/components/schemas/ServiceObjectVersion"},"association":{"anyOf":[{"$ref":"#/components/schemas/ServiceObjectAssociation"},{"type":"null"}]},"can_manage":{"type":"boolean"},"needs_reassociation":{"type":"boolean"}}},
+      "ServiceObjectVersionPage": {"type":"object","additionalProperties":false,"required":["items","next_cursor"],"properties":{"items":{"type":"array","items":{"$ref":"#/components/schemas/ServiceObjectVersion"}},"next_cursor":{"type":["string","null"]}}},
+      "ServiceObjectAssociationPage": {"type":"object","additionalProperties":false,"required":["items","next_cursor"],"properties":{"items":{"type":"array","items":{"$ref":"#/components/schemas/ServiceObjectAssociation"}},"next_cursor":{"type":["string","null"]}}},
+      "ServiceObjectAssociationConfirmRequest": {"type":"object","additionalProperties":false,"required":["confirmed","expected_object_version","expected_association_version","source","object_ref","facts_sha256","candidate_sha256"],"properties":{"confirmed":{"const":true},"expected_object_version":{"type":"integer","minimum":1},"expected_association_version":{"type":"integer","minimum":0},"source":{"type":"object","additionalProperties":false,"required":["run_id","attempt_id","material_id","material_version","document_id","parsed_document_id"],"properties":{"run_id":{"type":"string"},"attempt_id":{"type":"string"},"material_id":{"type":"string"},"material_version":{"type":"integer","minimum":1},"document_id":{"type":"string"},"parsed_document_id":{"type":"string"}}},"object_ref":{"type":"string"},"facts_sha256":{"type":"string","pattern":"^[0-9a-f]{64}$"},"candidate_sha256":{"type":"string","pattern":"^[0-9a-f]{64}$"}}},
+      "ServiceObjectAssociationPreview": {"type":"object","additionalProperties":false,"required":["service_object_id","expected_object_version","expected_association_version","run_id","attempt_id","material_id","material_version","document_id","parsed_document_id","candidate_sha256","options"],"properties":{"service_object_id":{"type":"string"},"expected_object_version":{"type":"integer","minimum":1},"expected_association_version":{"type":"integer","minimum":0},"run_id":{"type":"string"},"attempt_id":{"type":"string"},"material_id":{"type":"string"},"material_version":{"type":"integer","minimum":1},"document_id":{"type":"string"},"parsed_document_id":{"type":"string"},"candidate_sha256":{"type":"string","pattern":"^[0-9a-f]{64}$"},"options":{"type":"array","items":{"type":"object","required":["object_ref","facts","facts_sha256","basis_refs"],"properties":{"object_ref":{"type":"string"},"facts":{"type":"array","items":{"type":"object"}},"facts_sha256":{"type":"string","pattern":"^[0-9a-f]{64}$"},"basis_refs":{"type":"array","items":{"type":"object"}}}}}}},
+      "OperatorMappingChangeCAS": {"type":"object","additionalProperties":false,"required":["expected_mapping_version","expected_binding_version","expected_object_version","expected_association_version"],"properties":{"expected_mapping_version":{"type":"integer","minimum":1},"expected_binding_version":{"type":"string"},"expected_object_version":{"type":"integer","minimum":1},"expected_association_version":{"type":"integer","minimum":1}}},
+      "OperatorMappingChangePatch": {"type":"object","additionalProperties":false,"required":["kind","effective_from","effective_until"],"properties":{"kind":{"type":"string","enum":["replace_mapping","retire_mapping","reactivate_mapping","correct_identity","correct_identity_and_mapping","retire_service_object"]},"external_object":{"type":"object","additionalProperties":false,"required":["connector_id","external_object_id"],"properties":{"connector_id":{"type":"string"},"external_object_id":{"type":"string"}}},"identity":{"$ref":"#/components/schemas/OperatorServiceIdentityPatch"},"effective_from":{"type":"string","format":"date-time"},"effective_until":{"type":"string","format":"date-time"}}},
+      "OperatorServiceIdentityPatch": {"type":"object","additionalProperties":false,"required":["object_type","display_name","business_code","aliases","basis_summary","basis_refs","state"],"properties":{"object_type":{"type":"string","enum":["dedicated_line","service"]},"display_name":{"type":"string","minLength":1,"maxLength":256},"business_code":{"type":"string","maxLength":256},"aliases":{"type":"array","maxItems":50,"items":{"type":"object","additionalProperties":false,"required":["kind","value"],"properties":{"kind":{"type":"string","maxLength":64},"value":{"type":"string","maxLength":256}}}},"basis_summary":{"type":"string","maxLength":1000},"basis_refs":{"type":"array","minItems":1,"maxItems":100,"items":{"$ref":"#/components/schemas/MaterialAnchor"}},"state":{"type":"string","enum":["confirmed","inactive"]}}},
+      "MaterialAnchor": {"type":"object","additionalProperties":false,"required":["kind","material_id","material_version","document_id","parsed_document_id","start","end","quote_digest"],"properties":{"kind":{"const":"material_anchor"},"material_id":{"type":"string"},"material_version":{"type":"integer","minimum":1},"document_id":{"type":"string"},"parsed_document_id":{"type":"string"},"start":{"type":"integer","minimum":0},"end":{"type":"integer","minimum":1},"quote_digest":{"type":"string","pattern":"^[0-9a-f]{64}$"}}},
+      "OperatorMappingChangePreview": {"type":"object","additionalProperties":false,"required":["mapping_id","service_object_id","cas","before","after","before_sha256","after_sha256","impact_sha256","basis_refs"],"properties":{"mapping_id":{"type":"string"},"service_object_id":{"type":"string"},"cas":{"$ref":"#/components/schemas/OperatorMappingChangeCAS"},"before":{"type":"object"},"after":{"type":"object"},"identity_after":{"$ref":"#/components/schemas/ServiceObjectVersion"},"before_sha256":{"type":"string","pattern":"^[0-9a-f]{64}$"},"after_sha256":{"type":"string","pattern":"^[0-9a-f]{64}$"},"impact_sha256":{"type":"string","pattern":"^[0-9a-f]{64}$"},"basis_refs":{"type":"array","items":{"$ref":"#/components/schemas/MaterialAnchor"}}}},
+      "OperatorMappingChangeRequest": {"type":"object","additionalProperties":false,"required":["request_id","case_id","mapping_id","service_object_id","kind","expected_mapping_version","expected_binding_version","expected_object_version","expected_association_version","before","before_sha256","after","after_sha256","patch","patch_sha256","basis_refs","impact_sha256","state","proposed_by","created_at"],"properties":{"request_id":{"type":"string"},"case_id":{"type":"string"},"mapping_id":{"type":"string"},"service_object_id":{"type":"string"},"kind":{"type":"string"},"expected_mapping_version":{"type":"integer"},"expected_binding_version":{"type":"string"},"expected_object_version":{"type":"integer"},"expected_association_version":{"type":"integer"},"before":{"type":"object"},"before_sha256":{"type":"string","pattern":"^[0-9a-f]{64}$"},"after":{"type":"object"},"after_sha256":{"type":"string","pattern":"^[0-9a-f]{64}$"},"patch":{"$ref":"#/components/schemas/OperatorMappingChangePatch"},"patch_sha256":{"type":"string","pattern":"^[0-9a-f]{64}$"},"basis_refs":{"type":"array","items":{"$ref":"#/components/schemas/MaterialAnchor"}},"impact_sha256":{"type":"string","pattern":"^[0-9a-f]{64}$"},"state":{"type":"string","enum":["pending_decision","approved","rejected"]},"proposed_by":{"type":"object"},"created_at":{"type":"string","format":"date-time"}}},
+      "OperatorMappingChangeDecision": {"type":"object","additionalProperties":false,"required":["decision_id","request_id","decision","reason","decided_by","created_at"],"properties":{"decision_id":{"type":"string"},"request_id":{"type":"string"},"decision":{"type":"string","enum":["approved","rejected"]},"reason":{"type":"string"},"decided_by":{"type":"object"},"created_at":{"type":"string","format":"date-time"}}},
+      "ReviewReadiness": {"type":"object","additionalProperties":false,"required":["case_id","revision","can_start","material_selection_version","materials","scopes"],"properties":{"case_id":{"type":"string"},"revision":{"type":"string","pattern":"^[0-9a-f]{64}$"},"business_at":{"type":"string","format":"date-time"},"can_start":{"type":"boolean"},"material_selection_version":{"type":"integer","minimum":0},"materials":{"type":"array","items":{"$ref":"#/components/schemas/ReviewReadinessMaterial"}},"scopes":{"type":"array","items":{"$ref":"#/components/schemas/ReviewReadinessScope"}}}},
+      "ReviewReadinessMaterial": {"type":"object","additionalProperties":false,"required":["identity_kind","material_id","version","document_id","filename","role","purpose","selected","parse"],"properties":{"identity_kind":{"type":"string"},"material_id":{"type":"string"},"version":{"type":"integer","minimum":1},"document_id":{"type":"string"},"filename":{"type":"string"},"role":{"type":"string"},"purpose":{"type":"string"},"selected":{"type":"boolean"},"parse":{"$ref":"#/components/schemas/ReviewReadinessParse"}}},
+      "ReviewReadinessParse": {"type":"object","additionalProperties":false,"required":["status","next_action"],"properties":{"status":{"type":"string"},"parsed_document_id":{"type":"string"},"parser_id":{"type":"string"},"parser_version":{"type":"string"},"next_action":{"type":"string"}}},
+      "ReviewReadinessScope": {"type":"object","additionalProperties":false,"required":["id","status","can_start","checks","blockers"],"properties":{"id":{"type":"string","enum":["full_review"]},"status":{"type":"string","enum":["ready","blocked"]},"can_start":{"type":"boolean"},"rule_pack":{"$ref":"#/components/schemas/ReviewReadinessRulePack"},"checks":{"type":"array","items":{"$ref":"#/components/schemas/ReviewReadinessCheck"}},"blockers":{"type":"array","items":{"$ref":"#/components/schemas/ReviewReadinessBlocker"}}}},
+      "ReviewReadinessRulePack": {"type":"object","additionalProperties":false,"required":["pack_id","version","snapshot_digest"],"properties":{"pack_id":{"type":"string"},"version":{"type":"string"},"snapshot_digest":{"type":"string","pattern":"^[0-9a-f]{64}$"}}},
+      "ReviewReadinessCheck": {"type":"object","additionalProperties":false,"required":["rule_id","status","missing_dependencies","next_action"],"properties":{"rule_id":{"type":"string"},"status":{"type":"string"},"missing_dependencies":{"type":"array","items":{"type":"string"}},"next_action":{"type":"string"}}},
+      "ReviewReadinessBlocker": {"type":"object","additionalProperties":false,"required":["code","status","message","missing_dependencies","next_action"],"properties":{"code":{"type":"string"},"status":{"type":"string"},"message":{"type":"string"},"missing_dependencies":{"type":"array","items":{"type":"string"}},"next_action":{"type":"string"}}},
+      "ReviewStartRequest": {"type":"object","additionalProperties":false,"properties":{"business_at":{"type":"string","format":"date-time","description":"已治理案件必填，带时区的 RFC3339Nano 业务时间；非治理案件可省略。"},"evidence_cutoff_at":{"type":"string","format":"date-time","description":"可选法律证据截止时间；省略时由受理事务采样。显式值按UTC微秒规范化且不得晚于受理时刻。"}}},
       "ReviewDiagnostics": {
         "type":"object","additionalProperties":false,"required":["case_id","run_id","execution","snapshot","audit_events","documents","evidence"],
         "properties":{"case_id":{"type":"string"},"run_id":{"type":"string"},"execution":{"anyOf":[{"$ref":"#/components/schemas/Execution"},{"type":"null"}]},"snapshot":{"$ref":"#/components/schemas/Snapshot"},"audit_events":{"type":"array","items":{"$ref":"#/components/schemas/AuditEvent"}},"documents":{"type":"array","items":{"$ref":"#/components/schemas/Document"}},"evidence":{"type":"array","items":{"type":"object","additionalProperties":false,"required":["finding_id","anchors"],"properties":{"finding_id":{"type":"string"},"anchors":{"type":"array","items":{"type":"object","additionalProperties":false,"required":["id","document_id","parsed_document_id","normalized_digest"],"properties":{"id":{"type":"string"},"document_id":{"type":"string"},"parsed_document_id":{"type":["string","null"]},"normalized_digest":{"type":["string","null"]}}}}}}}}
@@ -4147,8 +4348,10 @@
       },
       "ReviewKnowledgeSnapshot": {
         "type":"object","additionalProperties":false,"required":["encoding","business_at","scope","authorization_revision","rule_pack","required_policies","optional_candidates","excluded","optional_truncated","snapshot_sha256"],
-        "properties":{"encoding":{"type":"string"},"business_at":{"type":"string","format":"date-time"},"scope":{"$ref":"#/components/schemas/GovernedKnowledgeScope"},"authorization_revision":{"type":"string"},"rule_pack":{"$ref":"#/components/schemas/GovernedRulePackRef"},"required_policies":{"type":["array","null"],"items":{"$ref":"#/components/schemas/GovernedKnowledgeSelection"}},"optional_candidates":{"type":["array","null"],"items":{"$ref":"#/components/schemas/GovernedKnowledgeSelection"}},"excluded":{"type":["array","null"],"items":{"type":"object","additionalProperties":false,"required":["ref","reason"],"properties":{"ref":{"$ref":"#/components/schemas/GovernedKnowledgeRef"},"reason":{"type":"string"}}}},"optional_truncated":{"type":"boolean"},"snapshot_sha256":{"type":"string"}}
+        "properties":{"encoding":{"type":"string"},"business_at":{"type":"string","format":"date-time"},"scope":{"$ref":"#/components/schemas/GovernedKnowledgeScope"},"authorization_revision":{"type":"string"},"rule_pack":{"$ref":"#/components/schemas/GovernedRulePackRef"},"required_policies":{"type":["array","null"],"items":{"$ref":"#/components/schemas/GovernedKnowledgeSelection"}},"optional_candidates":{"type":["array","null"],"items":{"$ref":"#/components/schemas/GovernedKnowledgeSelection"}},"excluded":{"type":["array","null"],"items":{"type":"object","additionalProperties":false,"required":["ref","reason"],"properties":{"ref":{"$ref":"#/components/schemas/GovernedKnowledgeRef"},"reason":{"type":"string"}}}},"optional_truncated":{"type":"boolean"},"snapshot_sha256":{"type":"string"},"evidence_cutoff_at":{"type":"string","format":"date-time"},"evidence_cutoff_mode":{"type":"string","enum":["explicit","acceptance_time"]},"explicit_evidence_cutoff_at":{"type":"string","format":"date-time"},"legal_authorities":{"type":"array","items":{"$ref":"#/components/schemas/FrozenLegalAuthority"}},"legal_reuse_fingerprint":{"type":"string","pattern":"^[0-9a-f]{64}$"}}
       },
+      "FrozenLegalAuthority": {"type":"object","additionalProperties":false,"required":["citation_id","rule_id","authority_source_id","authority_source_version","rulepack_id","rulepack_version","rulepack_content_sha256","outcome","conditions","selected_fact_versions","missing_dependencies","legal_review_status","reviewer"],"properties":{"citation_id":{"type":"string","pattern":"^[a-f0-9]{64}$"},"rule_id":{"type":"string"},"authority_source_id":{"type":"string"},"authority_source_version":{"type":"string"},"rulepack_id":{"type":"string"},"rulepack_version":{"type":"string"},"rulepack_content_sha256":{"type":"string","pattern":"^[0-9a-f]{64}$"},"exact_reference":{"type":"object"},"article":{"type":"object"},"outcome":{"type":"string","enum":["applicable","not_applicable","unknown"]},"outcome_reason":{"type":"string"},"conditions":{"type":"array","items":{"type":"object"}},"selected_fact_versions":{"type":"array","items":{"type":"object"}},"missing_dependencies":{"type":"array","items":{"type":"object"}},"legacy_rule_gap":{"type":"boolean"},"legal_review_status":{"type":"string","enum":["NOT_RUN"]},"reviewer":{"type":["string","null"]}}},
+      "FrozenLegalReviewProjection": {"type":"object","additionalProperties":false,"required":["run_id","attempt_id","evidence_cutoff_at","evidence_cutoff_mode","authorities"],"properties":{"run_id":{"type":"string"},"attempt_id":{"type":"string"},"evidence_cutoff_at":{"type":"string","format":"date-time"},"evidence_cutoff_mode":{"type":"string","enum":["explicit","acceptance_time"]},"explicit_evidence_cutoff_at":{"type":"string","format":"date-time"},"authorities":{"type":"array","items":{"$ref":"#/components/schemas/FrozenLegalAuthority"}}}},
       "ExperienceCandidateContent": {
         "type":"object","additionalProperties":false,"required":["schema_version","applicability","exclusions","check_action","minimum_evidence","counterexamples","valid_from","valid_until","policy_refs","review_diff"],
         "properties":{"schema_version":{"type":"string"},"applicability":{"type":["array","null"],"items":{"type":"string"}},"exclusions":{"type":["array","null"],"items":{"type":"string"}},"check_action":{"type":"string"},"minimum_evidence":{"type":["array","null"],"items":{"type":"string"}},"counterexamples":{"type":["array","null"],"items":{"type":"string"}},"valid_from":{"type":"string"},"valid_until":{"type":"string"},"policy_refs":{"type":["array","null"],"items":{"$ref":"#/components/schemas/GovernedKnowledgeRef"}},"review_diff":{"type":"string"}}
@@ -7298,6 +7501,9 @@
           },
           "snapshot": {
             "$ref": "#/components/schemas/BusinessSnapshot"
+          },
+          "legal_authorities": {
+            "$ref": "#/components/schemas/FrozenLegalReviewProjection"
           },
           "audit_events": {
             "type": "array",

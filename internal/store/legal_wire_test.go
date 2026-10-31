@@ -73,6 +73,18 @@ func TestLegalWireContractFixtures(t *testing.T) {
 	}
 	applicabilitySet := legalApplicabilityWireFixture()
 	applicabilityRecord := legalApplicabilityRecordWireFixture()
+	frozenLegalKnowledge, err := sealKnowledgeSnapshot(legalReviewSnapshotFixture("2026-10-31T01:00:00Z", "acceptance_time", "", frozenLegalAuthorityFixture()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	frozenLegalProjection, err := frozenLegalReportProjection(RunSnapshot{RunID: "run_wire_fixture", GovernedKnowledge: &frozenLegalKnowledge}, "run_wire_fixture", "attempt_wire_fixture")
+	if err != nil {
+		t.Fatal(err)
+	}
+	applicabilityBuyerFact := *applicabilitySet.Facts[0].Fact
+	historyCursor := "cursor_wire_fixture_opaque"
+	applicabilityHistory := LegalApplicabilityFactHistory{CaseID: "case_wire_fixture", Dimension: "buyer_kind", CurrentVersion: 2,
+		Items: []LegalApplicabilityFactVersion{applicabilityBuyerFact}, NextCursor: &historyCursor, CanManage: true}
 	recordRequest := struct {
 		Method  string                      `json:"method"`
 		Path    string                      `json:"path"`
@@ -101,6 +113,8 @@ func TestLegalWireContractFixtures(t *testing.T) {
 		{name: "applicability-record-success.json", value: applicabilityRecord},
 		{name: "applicability-record-replay.json", value: applicabilityRecord},
 		{name: "applicability-record-request.json", value: recordRequest},
+		{name: "applicability-history.json", value: applicabilityHistory},
+		{name: "frozen-legal-authorities.json", value: frozenLegalProjection},
 	}
 	for _, fixture := range fixtures {
 		fixture := fixture

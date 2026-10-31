@@ -336,6 +336,7 @@ func (s *Store) executeTelecomAttempt(parent, ctx context.Context, runID, attemp
 	var request rulepack.Request
 	var report rulepack.Report
 	var frozenSnapshot []byte
+	var legacyFrozenAuthority bool
 	var contentHash, snapshotDigest string
 	var output telecomReviewOutput
 	var modelErr error
@@ -359,18 +360,29 @@ func (s *Store) executeTelecomAttempt(parent, ctx context.Context, runID, attemp
 			return err
 		}
 		caseItem = authorizedCase
-		if isCloudServicesCase(caseItem) {
+		if isGovernedReviewCase(caseItem) {
 			stored := s.snapshotForAttempt(attemptID)
-			if _, err := cloudPoliciesForAttempt(stored, caseItem, runID, attemptID); err != nil {
-				return err
+			attempt, ok := stored.attemptByID(attemptID)
+			if !ok || attempt.RunID != runID {
+				return errors.New("frozen governed attempt identity is unavailable")
 			}
-			actor, err := authorizeAttemptExecution(stored, runID, attemptID)
-			if err != nil {
-				return err
+			if attempt.RulePackCompilerRef == governedCompilerMarker {
+				frozen := stored.snapshotOf(runID)
+				if frozen.RunID != runID || frozen.GovernedKnowledge == nil {
+					return errors.New("frozen governed review snapshot is unavailable")
+				}
+				actor, err := authorizeAttemptExecution(stored, runID, attemptID)
+				if err != nil {
+					return err
+				}
+				if err := s.ValidateFrozenGovernedKnowledgeSnapshot(stageCtx, actor, caseItem.ID, *frozen.GovernedKnowledge); err != nil {
+					return err
+				}
 			}
-			frozen := stored.snapshotOf(runID)
-			if err := s.RevalidateGovernedKnowledgeSnapshot(stageCtx, actor, caseItem.ID, *frozen.GovernedKnowledge); err != nil {
-				return err
+			if isCloudServicesCase(caseItem) {
+				if _, err := cloudPoliciesForAttempt(stored, caseItem, runID, attemptID); err != nil {
+					return err
+				}
 			}
 		}
 		docs, err = s.prepareAttempt(stageCtx, runID, attemptID, models)
@@ -457,6 +469,16 @@ func (s *Store) executeTelecomAttempt(parent, ctx context.Context, runID, attemp
 					frozenSnapshot = append([]byte(nil), attempt.RulePackSnapshot...)
 					contentHash, snapshotDigest = attempt.RulePackHash, attempt.RulePackSnapshotDigest
 					request.Facts = append([]rulepack.Fact(nil), request.Facts...)
+					runSnapshot := stored.snapshotOf(runID)
+					if runSnapshot.GovernedKnowledge != nil {
+						request.AuthorityGates, err = rulepackAuthorityGates(runSnapshot.GovernedKnowledge)
+						if err != nil {
+							return err
+						}
+					} else {
+						request.AuthorityGates = nil
+					}
+					legacyFrozenAuthority = legacyFrozenAuthoritySemantics(runSnapshot, frozenGovernedPack)
 				} else if attempt.RulePackCompilerRef != "" || len(attempt.RulePackSnapshot) > 0 ||
 					attempt.RulePackHash != "" || attempt.RulePackSnapshotDigest != "" {
 					// Historical snapshots keep their original compiler ref. Replaying
@@ -504,7 +526,11 @@ func (s *Store) executeTelecomAttempt(parent, ctx context.Context, runID, attemp
 				}
 				request.Principal, request.Resource = principal, resource
 				if frozenGovernedPack != nil {
-					report, err = telecom.ExecuteFrozen(stageCtx, request, frozenGovernedPack)
+					if legacyFrozenAuthority {
+						report, err = telecom.ExecuteLegacyFrozen(stageCtx, request, frozenGovernedPack)
+					} else {
+						report, err = telecom.ExecuteFrozen(stageCtx, request, frozenGovernedPack)
+					}
 				} else {
 					report, err = telecom.Execute(stageCtx, request)
 				}
@@ -1036,6 +1062,16 @@ func guardTelecomReport(caseItem Case, runID, attemptID string, docs []Interpret
 }
 
 func telecomResultReason(result rulepack.Result) string {
+	if result.LegalAuthorityOutcome == "unknown" {
+		reason := strings.TrimSpace(result.LegalAuthorityReason)
+		if reason == "" {
+			reason = "legal_applicability_unresolved"
+		}
+		return "法律适用所需的来源或事实依据尚未核实（" + reason + "）。"
+	}
+	if result.LegalAuthorityOutcome == "not_applicable" {
+		return "本次审查冻结的事实条件表明该规范不适用于此规则。"
+	}
 	switch result.ReasonCode {
 	case "contractual_authority_missing":
 		return "缺少采购文件或中标文件中的合同依据。"

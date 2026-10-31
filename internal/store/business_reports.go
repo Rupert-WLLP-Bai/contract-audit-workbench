@@ -7,6 +7,7 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"html/template"
 	"sort"
 	"strings"
@@ -136,11 +137,16 @@ func (s *Store) CreateReportContext(ctx context.Context, user accounts.User, cas
 	} else {
 		agentReviewJSON = nil
 	}
+	runSnapshot := st.snapshotOf(runID)
+	legalReview, err := frozenLegalReportProjection(runSnapshot, runID, attemptID)
+	if err != nil {
+		return ReportRecord{}, fault.Conflict("所选执行记录保存的法律适用快照已损坏")
+	}
 	envelope := reportEnvelope{
 		SchemaVersion: businessReportSchema, ReportID: id, ReportVersion: nextVersion, CreatedAt: now,
 		Notice: "本报告记录技术审查结果，不构成法律意见或业务审批。",
 		Case:   reportCase{ID: caseItem.ID, Title: caseItem.Title, ContractType: caseItem.ContractType, BusinessLine: caseItem.BusinessLine, Scenario: caseItem.Scenario},
-		Run:    run, Attempt: attempt, Execution: execution, RunSnapshot: st.snapshotOf(runID), Input: input,
+		Run:    run, Attempt: attempt, Execution: execution, RunSnapshot: runSnapshot, LegalReview: legalReview, Input: input,
 		Documents: parsedDocs, Findings: findings, Evaluations: evaluations, Decisions: decisions,
 		RulePack: reportRulePack{
 			Availability: availability, CompilerRef: attempt.RulePackCompilerRef,
@@ -195,6 +201,27 @@ func (s *Store) CreateReportContext(ctx context.Context, user accounts.User, cas
 		return ReportRecord{}, err
 	}
 	return record, nil
+}
+
+func frozenLegalReportProjection(snapshot RunSnapshot, runID, attemptID string) (*FrozenLegalReviewProjection, error) {
+	knowledge := snapshot.GovernedKnowledge
+	if knowledge == nil {
+		return nil, nil
+	}
+	if len(knowledge.LegalAuthorities) == 0 && knowledge.EvidenceCutoffAt == "" && knowledge.EvidenceCutoffMode == "" &&
+		knowledge.ExplicitEvidenceCutoffAt == "" && knowledge.LegalReuseFingerprint == "" && knowledge.LegalAuthorities == nil {
+		return nil, nil
+	}
+	if runID == "" || snapshot.RunID != runID || attemptID == "" {
+		return nil, errors.New("frozen legal review projection lacks exact run or attempt identity")
+	}
+	sealed, err := sealKnowledgeSnapshot(*knowledge)
+	if err != nil || sealed.SnapshotSHA256 != knowledge.SnapshotSHA256 || !validLegalReuseFingerprint(knowledge) {
+		return nil, errors.New("frozen legal review identity is invalid")
+	}
+	return &FrozenLegalReviewProjection{RunID: runID, AttemptID: attemptID, EvidenceCutoffAt: knowledge.EvidenceCutoffAt, EvidenceCutoffMode: knowledge.EvidenceCutoffMode,
+		ExplicitEvidenceCutoffAt: knowledge.ExplicitEvidenceCutoffAt,
+		Authorities:              append([]FrozenLegalAuthority{}, knowledge.LegalAuthorities...)}, nil
 }
 
 // ReadReport returns the stored bytes only after rechecking case export access
