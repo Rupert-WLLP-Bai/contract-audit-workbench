@@ -96,10 +96,10 @@ type Exporter struct {
 
 	// httpMu guards the HTTP RED aggregates. Producers run on HTTP handler
 	// goroutines; the delivery goroutine drains the active series.
-	httpMu       sync.Mutex
-	httpRequests map[[3]string]*metricSeries
-	httpDuration map[[2]string]*metricSeries
-	httpDropped  atomic.Uint64
+	httpMu        sync.Mutex
+	httpRequests  map[[3]string]*metricSeries
+	httpDurations map[[2]string]*metricSeries
+	httpDropped   atomic.Uint64
 }
 
 // New is disabled when Endpoint is empty. No network request is made at startup.
@@ -137,9 +137,9 @@ func New(cfg Config) (*Exporter, error) {
 		client: &http.Client{Transport: transport, Timeout: 2 * time.Second,
 			CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }},
 		queue: make(chan span, queueCapacity), ctx: ctx, cancel: cancel, done: make(chan struct{}),
-		metricSeries: make(map[[3]string]*metricSeries),
-		httpRequests: make(map[[3]string]*metricSeries),
-		httpDuration: make(map[[2]string]*metricSeries),
+		metricSeries:  make(map[[3]string]*metricSeries),
+		httpRequests:  make(map[[3]string]*metricSeries),
+		httpDurations: make(map[[2]string]*metricSeries),
 	}
 	go e.run()
 	return e, nil
@@ -668,7 +668,9 @@ type scopeMetrics struct {
 	Metrics []metric `json:"metrics"`
 }
 
-func scopeName(name string) (s scopeMetrics) {
-	s.Scope.Name = name
-	return s
+func scopeName(name string) (scope struct {
+	Name string `json:"name"`
+}) {
+	scope.Name = name
+	return scope
 }
