@@ -44,6 +44,7 @@ func configuredTelemetry(service string) (*telemetry.Exporter, error) {
 	return telemetry.New(telemetry.Config{
 		Endpoint: endpoint, Service: "contract-audit." + service,
 		InstanceID: telemetryInstanceID(), SampleRatio: ratio,
+		Environment: strings.TrimSpace(os.Getenv("APP_ENV")),
 	})
 }
 

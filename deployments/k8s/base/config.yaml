@@ -51,10 +51,16 @@ data:
   AGENT_PLANNER_MAX_CALLS: "16"
   AGENT_PLANNER_TIMEOUT: 30s
   AGENT_PLANNER_MAX_EVIDENCE_BYTES: "2097152"
+  # Telemetry ships disabled: no OTLP collector is part of this release and no
+  # external backend is pre-configured. Operators enable export by pointing
+  # this at a real collector; an empty endpoint keeps the exporter off.
   OTEL_EXPORTER_OTLP_ENDPOINT: ""
+  # The in-process exporter speaks OTLP/HTTP JSON only.
   OTEL_EXPORTER_OTLP_PROTOCOL: http/json
-  OTEL_TRACES_SAMPLER: always_on
-  OTEL_TRACES_SAMPLER_ARG: "1"
+  # Production default: 10% of attempts sampled by trace id. Raise only with a
+  # measured volume/cost budget; local observe profiles set always_on instead.
+  OTEL_TRACES_SAMPLER: traceidratio
+  OTEL_TRACES_SAMPLER_ARG: "0.1"
 ---
 apiVersion: v1
 kind: ConfigMap
