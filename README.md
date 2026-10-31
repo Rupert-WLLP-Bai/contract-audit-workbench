@@ -250,15 +250,15 @@ bun run build
 6. **NOT_APPLICABLE：本地 Jeva/Laya。** 适配器与 provider 已删除，仓库不再包含本地 System One 调用路径；仅保留 `internal/jev` 的 TypeSafe 托管调用。
 7. **PASS（代码与测试）：TypeSafe Jev 建议层。** Jev 默认以 `advisory` 配置进入受治理知识 rerank，只重排 optional 候选；结论、引用、算术、证据、状态和人工决定仍由确定性代码负责。全量 `make verify` 在本工作树 20/20 检查 PASS，`artifacts/verification.json` 为 `passed:true`，源码身份摘要 `4c675b22cc5178866d00874f36aa200940f5f8815d329107e81469c54a22fff9`，数据库集成测试 0 跳过、0 失败。浏览器验收和真实托管评测为 `NOT_RUN`。托管端点只接收 `minimized` 元数据，不得发送冻结合同原文。
 
-### TypeSafe Jev：默认开启的建议层，规则拥有结论
+### TypeSafe Jev：受控启用的建议层，规则拥有结论
 
 Jev 有两条路径，二者不共用结论权：
 
-1. **审查路径（默认开启的建议层）**：`TYPESAFE_JEV_MODE=advisory` 时，worker 从审查接受时冻结的 `PlannerConfiguration.Advisory` 读取配置，通过 model-gateway 的 `/v1/systemone` 对受治理知识的 optional 候选做相关性 rerank。它只影响 optional 候选的先后；required 候选、确定性分数、候选全集、预算、`AcceptedRules`、引用定位、关系、缺口状态、严重度和人工决定都不变。0.70/0.30 三档，中间值进入 `uncertain`；失败、超时、预算不足、模型版本不一致或非法响应一律回退到确定性顺序，并记录 `unavailable` 等状态。判断先写入不可变 `advisory_judgments`，再用于排序；同一 run 的同一冻结输入复用已有判断。
+1. **审查路径（显式启用）**：`TYPESAFE_JEV_MODE=advisory` 时，worker 从审查接受时冻结的 `PlannerConfiguration.Advisory` 读取配置，通过 model-gateway 的 `/v1/systemone` 对受治理知识的 optional 候选做相关性 rerank。它只影响 optional 候选的先后；required 候选、确定性分数、候选全集、预算、`AcceptedRules`、引用定位、关系、缺口状态、严重度和人工决定都不变。0.70/0.30 三档，中间值进入 `uncertain`；失败、超时、预算不足、模型版本不一致或非法响应一律回退到确定性顺序，并记录 `unavailable` 等状态。判断先写入不可变 `advisory_judgments`，再用于排序；同一 run 的同一冻结输入复用已有判断。
 2. **影子评测（默认关闭）**：`cmd/ruleshadow -backend jev` 继续只用于 D0 合成 `review_focus` 对照，不进入审查路径。2026-10-28 的单次运行结果仍是 40/40 强制规则输出不变、39/40 标签一致、p50 300ms / p95 427ms；该结果只证明建议层可用，不是生产准确率。
 
 ```text
-TYPESAFE_JEV_MODE=off|fixture|advisory   # 未设置时按 off；部署清单显式写 advisory
+TYPESAFE_JEV_MODE=off|fixture|advisory   # 生产基础清单默认 off；获批环境显式启用
 TYPESAFE_JEV_EGRESS=minimized            # Phase 1 只实现 minimized
 TYPESAFE_JEV_FEATURES=knowledge_rerank
 TYPESAFE_JEV_MODEL=jev-1.14.0            # advisory 必须固定版本，拒绝 jev-latest 等 alias
@@ -268,11 +268,11 @@ TYPESAFE_JEV_MAX_CANDIDATES=16
 TYPESAFE_API_KEY=                        # 只放 model-gateway 的 secret
 ```
 
-- **默认开启的含义是部署默认，不是每次审查必调**：没有 optional 候选、字段无法安全最小化、预算耗尽、feature 未启用或数据审批未完成时都不调用；这些情况在冻结记录和健康页显示为 `not_applicable`/`unavailable`，不能静默当成“不相关”。
+- **生产默认关闭**：生产 Kubernetes 基础清单设置 `off`。完成第三方处理和数据出境审批后，由该环境的部署 overlay 显式设置 `advisory`；没有 optional 候选、字段无法安全最小化、预算耗尽或 feature 未启用时仍不调用，并在冻结记录和健康页显示为 `not_applicable`/`unavailable`。
 - **数据边界**：`minimized` 只发送业务线/场景/合同类型、gap 的 domain/capability/reason 标签、治理知识的 kind/summary/check_action/minimum_evidence 等治理元数据；不发送合同原文、文件名、案件/当事方标识或引用。发送前对 URL、邮箱、电话、日期、金额和长标识做确定性脱敏；治理知识本身也不得写入当事方名称等案件信息。`approved_text` 尚未实现，客户端和网关都会拒绝。冻结合同原文在数据出境/第三方处理审批完成前不得发送。
 - **失败回退**：Jev 关闭、缺 key、超时、429/5xx、非法 JSON、越界概率或观测模型与冻结版本不一致时，审查继续使用确定性结果；Jev 故障不影响 chat/OCR readiness。
 - **密钥位置**：分布式部署只有 `model-gateway` 持有 `TYPESAFE_API_KEY`；worker 只拿 `WORKER_MODEL_TOKEN`，health-monitor 通过网关的 `/health/jev` 读取非秘密状态。单进程本地开发和 `cmd/ruleshadow` 合成评测可直接从环境读取 key。
-- **生产门槛**：仓库清单默认写 `advisory`，但数据出境审批未完成时必须覆盖为 `off`，并在健康页明确显示关闭。健康页只报告 mode/model/egress/feature 和 key 是否存在，不返回 key、state 或答案。
+- **生产门槛**：基础清单检查拒绝默认启用 Jev；启用由获得授权的环境单独配置。健康页明确显示关闭或实际启用的 mode/model/egress/feature 和 key 是否存在，不返回 key、state 或答案。
 
 `make verify` 和单元测试显式设置 `TYPESAFE_JEV_MODE=off` 并移除继承的 `TYPESAFE_API_KEY`；CI 不访问 `api.typesafe.ai`。k3d/Compose fixture profile 用 `TYPESAFE_JEV_MODE=fixture` 的网关返回确定性答案，worker 仍走 advisory→gateway 路径，用于验证预算、审计和回退，不能当作模型质量证据。
 
