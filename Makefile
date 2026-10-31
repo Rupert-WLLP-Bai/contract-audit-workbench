@@ -1,4 +1,4 @@
-.PHONY: help setup db-up db-down dev worker tool-gateway migrate web web-client web-admin web-portal test-unit check-fast verify acceptance browser-distributed test-live evaluate browser-install infra-bootstrap infra-config infra-up infra-down infra-smoke infra-stop app-bootstrap app-config app-preflight app-images-offline apps-up apps-up-fixture apps-down agent-demo rule-shadow decision-baseline decision-baseline-jev
+.PHONY: help setup db-up db-down dev worker tool-gateway migrate web web-client web-admin web-portal test-unit check-fast verify acceptance browser-distributed test-live evaluate browser-install infra-up infra-down infra-smoke app-bootstrap app-config app-preflight app-images-offline apps-up apps-up-fixture apps-down agent-demo rule-shadow decision-baseline decision-baseline-jev
 PYTHON ?= python3
 GO ?= go
 BUN ?= bun
@@ -8,13 +8,11 @@ BASE_REF ?= $(if $(CAW_FAST_BASE),$(CAW_FAST_BASE),origin/main)
 
 help:
 	@echo "setup             install locked Go/web dependencies"
-	@echo "infra-bootstrap   generate private infrastructure and distributed app credentials"
-	@echo "infra-config      validate both local Compose files without starting services"
 	@echo "infra-up          start PostgreSQL + RustFS + NATS and preserve volumes"
 	@echo "infra-down        stop local infrastructure, preserving volumes"
 	@echo "infra-smoke       real SQL/S3 round-trip checks (requires running Docker)"
-	@echo "infra-stop        stop PostgreSQL + RustFS, retain volumes"
 	@echo "app-bootstrap     generate private per-service DB and bearer credentials"
+	@echo "app-config        validate both local Compose files without starting services"
 	@echo "app-preflight     check ports, isolated SQL/S3, OIDC, toolchain and app images"
 	@echo "app-images-offline package current Go binaries and three web entrypoints from cached bases"
 	@echo "apps-up           migrate and start one replica of each service, real model profile"
@@ -26,7 +24,7 @@ help:
 	@echo "                  (need SERVICE_ROLE, the service *_DATABASE_URL, HEALTH_ADDR for the worker, and GATEWAY_ROLE_TOKEN for the tool gateway)"
 	@echo "migrate           one-shot schema and service-role migration"
 	@echo "web-client / web-admin / web-portal  build independent static entry artifacts"
-	@echo "test-unit         run pure Go tests without database or model"
+	@echo "test-unit         discover safe no-database Go tests and run them with race detection"
 	@echo "check-fast        scoped PR checks from BASE_REF (default origin/main; CAW_FAST_BASE also works)"
 	@echo "verify            format, vet, race, coverage, HTTP system tests, web build, evaluator"
 	@echo "acceptance        verify plus real Chromium user journey (release gate)"
@@ -47,12 +45,6 @@ db-up:
 db-down:
 	$(PYTHON) deploy/scripts/infra.py stop
 
-infra-bootstrap:
-	$(PYTHON) deployments/local.py bootstrap --database-target $(DATABASE_TARGET)
-
-infra-config:
-	$(PYTHON) deployments/local.py config --database-target $(DATABASE_TARGET)
-
 infra-up:
 	$(PYTHON) deployments/local.py infra-up --database-target $(DATABASE_TARGET) $(if $(IDENTITY),--identity,)
 
@@ -61,9 +53,6 @@ infra-down:
 
 infra-smoke:
 	$(PYTHON) deploy/scripts/infra.py smoke
-
-infra-stop:
-	$(PYTHON) deployments/local.py infra-down --database-target $(DATABASE_TARGET) $(if $(IDENTITY),--identity,)
 
 app-bootstrap:
 	$(PYTHON) deployments/local.py bootstrap --database-target $(DATABASE_TARGET)
@@ -111,8 +100,7 @@ web:
 	cd web && $(BUN) run dev --host 127.0.0.1
 
 test-unit:
-	TYPESAFE_JEV_MODE=off $(GO) test -race -count=1 ./internal/access ./internal/advisory ./internal/agentflow ./internal/auditext ./internal/capabilitypack ./internal/decision ./internal/externalread ./internal/fulfillment ./internal/jev ./internal/modelgateway ./internal/reviewimpact ./internal/rulepack ./internal/systemhealth ./internal/telecom ./internal/identity ./internal/objectstore ./internal/accounts ./internal/audit ./internal/config ./internal/docir ./internal/docversion ./internal/engine ./internal/fault ./internal/labels ./internal/model ./internal/revise ./internal/compare ./cmd/eval ./cmd/agentdemo ./cmd/ruleshadow
-	TYPESAFE_JEV_MODE=off $(GO) test -race -count=1 ./e2e -run '^TestOperator'
+	GO="$(GO)" $(PYTHON) scripts/go_test_scope.py
 
 check-fast:
 	GO="$(GO)" BUN="$(BUN)" $(PYTHON) scripts/check_fast.py --base "$(BASE_REF)"
