@@ -385,10 +385,10 @@ EXTERNAL_EVIDENCE_SOURCE_SYSTEM=fixture-oss-east
 
 ## 分支工作方式
 
-`main` 保存已验收的交付版本。本批使用 `dev` 接收逐项实现，并通过 `dev` 到 `main` 的草稿 PR 持续展示源码、提交和云端 CI；完成集中验收后再合入 `main`。并行实现使用各自的工作树，公共接口、数据库结构和依赖等共享核心由主 Agent 串行集成。
+`dev` 和 `main` 长期保留：`dev` 接收逐项实现并保留迭代提交，`main` 保存完成验收的交付版本。通过 `dev` 到 `main` 的 PR 展示源码、提交和 CI，固定候选完成集中验收后使用 Squash merge 合入 `main`；合并后继续保留 `dev`，清理已合并短分支。并行实现使用各自的工作树，公共接口、数据库结构和依赖等共享核心由主 Agent 串行集成。
 
-- 分支名：`fix/<issue>-<slug>`，例如 `fix/56-dev-pr-fast`；本批从最新 `dev` 创建，一个分支只处理一个具体问题。
-- 完成方式：向 `dev` 提 PR，快速门禁通过后使用 Squash merge，随后删除工作分支；`dev` 到 `main` 的草稿 PR 同步记录已集成范围与未运行验收。
+- 分支名：`fix/<issue>-<slug>`，例如 `fix/56-dev-pr-fast`；从最新 `dev` 创建，一个分支只处理一个具体问题。
+- 完成方式：向 `dev` 提 PR，快速门禁通过后合入并删除工作分支；`dev` 到 `main` 的 PR 使用 Squash merge，同步记录已集成范围与实际验收，Issue 达到完成条件后关闭。
 - 指向 `main` 或 `dev` 的 PR 均运行 `pr-fast-gate`；完整五阶段只在固定候选或发布时手动派发，普通分支推送不触发全量检查。
 - 需要单人作者时，提交前检查 `git var GIT_AUTHOR_IDENT` 和 `git var GIT_COMMITTER_IDENT`，使用本人身份，不添加代理作者或 `Co-authored-by`。既有已发布提交不重写。
 

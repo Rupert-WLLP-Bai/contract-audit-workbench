@@ -350,8 +350,8 @@ def run(args):
         if args.model_record_dir:
             try:
                 result["model_record_count"] = snapshot_model_calls(args.model_record_dir, output, result["started_at"], result["finished_at"])
-                result["ocr_acceptance"] = ({"status": "RECORDED", "record_count": result["model_record_count"],
-                                             "note": "recorded OCR transcriptions through the local recording proxy"} if result["model_record_count"] else
+                result["ocr_acceptance"] = ({"status": "NOT_RUN", "record_count": result["model_record_count"],
+                                             "note": "model calls are recorded; per-page OCR completeness and fact checks are evaluated separately"} if result["model_record_count"] else
                                             {"status": "NOT_RUN", "record_count": 0,
                                              "reason": "no OCR transcription was needed or reached for this case"})
                 if result["status"] == "complete" and result["model_record_count"] == 0 and result.get("review_scope") != "single_contract_precheck":
