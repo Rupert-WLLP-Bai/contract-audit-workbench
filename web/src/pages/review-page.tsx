@@ -34,6 +34,7 @@ import { RunProvenance } from "../components/run-provenance";
 import { FrozenLegalAuthorities } from "../components/frozen-legal-authorities";
 import { AuditProjection } from "../components/audit-projection";
 import { EvidenceRequestPanel } from "../components/evidence-request-panel";
+import { EvidenceSLADashboard } from "../components/evidence-sla-dashboard";
 import { ExperienceFeedbackPanel } from "../components/experience-feedback-panel";
 import { ManualFindingsPanel } from "../components/manual-findings-panel";
 import { OperatorAuditEntry } from "../features/operator-audit/operator-audit-entry";
@@ -627,6 +628,10 @@ export function ReviewPage() {
         documents={review.data.documents}
         actor={session.data ?? null}
         canCreate={caseDetailReady && !caseArchived && roleCanDecide && selectedAttempt?.history_kind === "frozen"}
+      />
+      <EvidenceSLADashboard
+        mode="reminder"
+        cases={[{ id: caseId, title: caseDetail.data?.title ?? caseId }]}
       />
       <EvidenceRequestPanel
         caseId={caseId}
