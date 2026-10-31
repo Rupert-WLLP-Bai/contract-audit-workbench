@@ -410,10 +410,15 @@ func TestSessionMigrationRemovesOnlyLegacyTokensAcrossTenants(t *testing.T) {
 	if _, err := environment.harness.pool.Exec(ctx, `DROP FUNCTION session_test_reject_second_delete()`); err != nil {
 		t.Fatal(err)
 	}
-	if err := migrate(ctx, environment.harness.pool); err != nil {
+	// This fixture models the old, unversioned database. Already-applied
+	// numbered migrations must remain no-ops on a current database.
+	if _, err := environment.harness.pool.Exec(ctx, `DROP TABLE schema_migrations`); err != nil {
+		t.Fatal(err)
+	}
+	if err := migrate(ctx, environment.harness.pool, environment.harness.schema); err != nil {
 		t.Fatalf("apply legacy session migration: %v", err)
 	}
-	if err := migrate(ctx, environment.harness.pool); err != nil {
+	if err := migrate(ctx, environment.harness.pool, environment.harness.schema); err != nil {
 		t.Fatalf("repeat legacy session migration: %v", err)
 	}
 	// A successful cleanup also leaves row security enabled and forced.
