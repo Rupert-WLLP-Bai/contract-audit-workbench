@@ -407,28 +407,60 @@ func (s *Store) DecisionsFor(user accounts.User, findingID string) ([]Decision, 
 	return decisions, nil
 }
 
-func (s *Store) EventsAfter(user accounts.User, caseID, runID string, after int) ([]Event, error) {
-	st, err := s.snapshotAs(user)
+// EventsAfterContext rechecks the case grant and run binding before reading
+// only events after the caller's cursor, in one tenant-scoped snapshot.
+func (s *Store) EventsAfterContext(ctx context.Context, user accounts.User, caseID, runID string, after int) ([]Event, error) {
+	current, err := trustedUser(user)
 	if err != nil {
 		return nil, err
 	}
-	if _, err := s.visibleCase(&st, user, caseID); err != nil {
+	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
+	if err != nil {
 		return nil, err
 	}
-	found := false
-	for _, run := range st.Runs {
-		if run.ID == runID && run.CaseID == caseID {
-			found = true
-		}
+	defer tx.Rollback(ctx)
+	if err := setLocalScope(ctx, tx, userScope(current)); err != nil {
+		return nil, err
 	}
-	if !found {
+	item, err := loadKnowledgeCase(ctx, tx, current, caseID)
+	if err != nil {
+		return nil, err
+	}
+	var exists bool
+	if err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM review_runs
+		WHERE tenant_id=$1 AND org_id=$2 AND case_id=$3 AND id=$4)`,
+		current.TenantID, item.OwnerOrgID, caseID, runID).Scan(&exists); err != nil {
+		return nil, err
+	}
+	if !exists {
 		return nil, fault.NotFound("没有找到对应记录")
 	}
+	rows, err := tx.Query(ctx, `SELECT run_id,event_seq,event_type,state FROM (
+		SELECT run_id,event_seq,event_type,state FROM run_events
+		WHERE tenant_id=$1 AND org_id=$2 AND run_id=$3 AND event_seq>$4
+		UNION ALL
+		SELECT run_id,event_seq,event_type,state FROM business_run_events
+		WHERE tenant_id=$1 AND org_id=$2 AND run_id=$3 AND event_seq>$4
+	) AS events ORDER BY event_seq`, current.TenantID, item.OwnerOrgID, runID, after)
+	if err != nil {
+		return nil, err
+	}
 	var out []Event
-	for _, event := range st.runEvents(runID) {
-		if event.Seq > after {
-			out = append(out, event)
+	for rows.Next() {
+		var event Event
+		if err := rows.Scan(&event.RunID, &event.Seq, &event.Type, &event.State); err != nil {
+			rows.Close()
+			return nil, err
 		}
+		out = append(out, event)
+	}
+	err = rows.Err()
+	rows.Close()
+	if err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return nil, err
 	}
 	return out, nil
 }

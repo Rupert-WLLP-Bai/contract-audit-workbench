@@ -65,13 +65,13 @@ func TestLoginOriginalAndRetryStayInPostgres(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = held.Close() })
-	if got, err := held.User(token); err != nil || got.ID != user.ID {
+	if got, _, err := held.AuthenticateSession(context.Background(), token); err != nil || got.ID != user.ID {
 		t.Fatal(err, got)
 	}
 	if err := held.Logout(token); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := held.User(token); err == nil {
+	if _, _, err := held.AuthenticateSession(context.Background(), token); err == nil {
 		t.Fatal("session survived logout")
 	}
 
@@ -150,7 +150,7 @@ func TestLoginOriginalAndRetryStayInPostgres(t *testing.T) {
 	if !foundRetry {
 		t.Fatalf("retry audit missing: %+v", ws.Audit)
 	}
-	events, err := held.EventsAfter(admin, caseID, newID, 0)
+	events, err := held.EventsAfterContext(context.Background(), admin, caseID, newID, 0)
 	if err != nil || len(events) == 0 || events[0].Type == "" {
 		t.Fatalf("events %+v %v", events, err)
 	}

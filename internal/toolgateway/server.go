@@ -670,16 +670,12 @@ func (h *handler) authenticate(r *http.Request) (accounts.User, *rpcFailure) {
 	if !ok {
 		return accounts.User{}, unauthorizedFailure()
 	}
-	user, err := h.store.User(token)
+	user, audience, err := h.store.AuthenticateSession(r.Context(), token)
 	if err != nil {
 		return accounts.User{}, authenticationFailure(err)
 	}
 	if user.ID == "" || !user.Enabled {
 		return accounts.User{}, unauthorizedFailure()
-	}
-	audience, err := h.store.SessionAudience(token)
-	if err != nil {
-		return accounts.User{}, authenticationFailure(err)
 	}
 	if audience != "client" {
 		return accounts.User{}, unauthorizedFailure()

@@ -25,8 +25,7 @@ const (
 // Backend is the minimal trusted store boundary required by the gateway.
 // The concrete PostgreSQL Store implements it directly.
 type Backend interface {
-	User(token string) (accounts.User, error)
-	SessionAudience(token string) (string, error)
+	AuthenticateSession(ctx context.Context, token string) (accounts.User, string, error)
 	WorkspaceAttempt(user accounts.User, caseID, runID, attemptID string) (store.Workspace, error)
 	ReserveToolCall(ctx context.Context, user accounts.User, in store.ToolCallRequest) (string, error)
 	FinishToolCall(ctx context.Context, user accounts.User, callID, status string, outputBytes int64) error

@@ -38,7 +38,7 @@ func TestSessionNarrowWritesKeepAuthorityAndRevocation(t *testing.T) {
 		t.Fatal("two sessions shared one token")
 	}
 	for _, token := range []string{first, second} {
-		user, err := st.User(token)
+		user, _, err := st.AuthenticateSession(context.Background(), token)
 		if err != nil || user.ID != admin.ID {
 			t.Fatalf("session did not resolve its actor: user=%+v err=%v", user, err)
 		}
@@ -47,10 +47,10 @@ func TestSessionNarrowWritesKeepAuthorityAndRevocation(t *testing.T) {
 	if err := st.Logout(first); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := st.User(first); err == nil {
+	if _, _, err := st.AuthenticateSession(context.Background(), first); err == nil {
 		t.Fatal("a revoked session still resolved")
 	}
-	if _, err := st.User(second); err != nil {
+	if _, _, err := st.AuthenticateSession(context.Background(), second); err != nil {
 		t.Fatalf("revoking one session revoked another: %v", err)
 	}
 	if err := st.Logout(first); err != nil {
@@ -61,7 +61,7 @@ func TestSessionNarrowWritesKeepAuthorityAndRevocation(t *testing.T) {
 	if _, err := st.CreateCase(admin, "会话投影回归", "procurement_ict"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := st.User(second); err != nil {
+	if _, _, err := st.AuthenticateSession(context.Background(), second); err != nil {
 		t.Fatalf("a whole-state write deleted a live session: %v", err)
 	}
 	// A foreign token cannot revoke a session it does not hold.
@@ -72,10 +72,10 @@ func TestSessionNarrowWritesKeepAuthorityAndRevocation(t *testing.T) {
 	if err := st.Logout("s_not_a_real_token"); err != nil {
 		t.Fatalf("revoking an unknown token must be a no-op: %v", err)
 	}
-	if _, err := st.User(stranger); err != nil {
+	if _, _, err := st.AuthenticateSession(context.Background(), stranger); err != nil {
 		t.Fatalf("an unknown token revoked a live session: %v", err)
 	}
-	if _, err := st.User(second); err != nil {
+	if _, _, err := st.AuthenticateSession(context.Background(), second); err != nil {
 		t.Fatalf("an unknown token revoked a live session: %v", err)
 	}
 	// The narrow path keeps the actor identity exact.
@@ -118,7 +118,7 @@ func TestConcurrentLogoutCannotBeResurrectedByCaseWrite(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := writer.User(token); err != nil {
+	if _, _, err := writer.AuthenticateSession(context.Background(), token); err != nil {
 		t.Fatalf("the second store did not see the session: %v", err)
 	}
 	start := make(chan struct{})
@@ -153,7 +153,7 @@ func TestConcurrentLogoutCannotBeResurrectedByCaseWrite(t *testing.T) {
 		t.Fatalf("concurrent generic case write failed: %v", writeErr)
 	}
 	for name, store := range map[string]*Store{"revoker": revoker, "writer": writer} {
-		if _, err := store.User(token); err == nil {
+		if _, _, err := store.AuthenticateSession(context.Background(), token); err == nil {
 			t.Fatalf("the revoked token reappeared on the %s store", name)
 		}
 	}
@@ -220,13 +220,13 @@ func TestSessionDigestsKeepTenantAndAudienceAuthority(t *testing.T) {
 			if err != nil || expires.Before(before.Add(7*24*time.Hour-time.Second)) || expires.After(time.Now().UTC().Add(7*24*time.Hour)) {
 				t.Fatalf("session expiry is not seven days: expires=%s err=%v", expiresAt, err)
 			}
-			if current, err := reader.User(token); err != nil || current.ID != user.ID || current.TenantID != user.TenantID {
+			if current, _, err := reader.AuthenticateSession(context.Background(), token); err != nil || current.ID != user.ID || current.TenantID != user.TenantID {
 				t.Fatalf("another process could not resolve the session identity: user=%+v err=%v", current, err)
 			}
 			if got, err := reader.SessionAudience(token); err != nil || got != audience {
 				t.Fatalf("another process returned the wrong session audience: audience=%q err=%v", got, err)
 			}
-			if _, err := reader.User(stored); err == nil {
+			if _, _, err := reader.AuthenticateSession(context.Background(), stored); err == nil {
 				t.Fatal("a leaked database digest authenticated as a bearer token")
 			}
 			if _, err := reader.SessionAudience(stored); err == nil {
@@ -235,7 +235,7 @@ func TestSessionDigestsKeepTenantAndAudienceAuthority(t *testing.T) {
 			if err := reader.Logout(stored); err != nil {
 				t.Fatalf("logout with an unknown digest should be idempotent: %v", err)
 			}
-			if _, err := reader.User(token); err != nil {
+			if _, _, err := reader.AuthenticateSession(context.Background(), token); err != nil {
 				t.Fatalf("the leaked digest revoked its original session: %v", err)
 			}
 			issued = append(issued, issuedSession{user: user, audience: audience, token: token, digest: stored})
@@ -275,7 +275,7 @@ func TestSessionDigestsKeepTenantAndAudienceAuthority(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	foreignUser, err := reader.User(issued[2].token)
+	foreignUser, _, err := reader.AuthenticateSession(context.Background(), issued[2].token)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -285,11 +285,11 @@ func TestSessionDigestsKeepTenantAndAudienceAuthority(t *testing.T) {
 	if err := reader.Logout(issued[2].token); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := issuer.User(issued[2].token); err == nil {
+	if _, _, err := issuer.AuthenticateSession(context.Background(), issued[2].token); err == nil {
 		t.Fatal("revocation did not take effect in another process")
 	}
 	for _, item := range []issuedSession{issued[0], issued[1], issued[3]} {
-		if _, err := issuer.User(item.token); err != nil {
+		if _, _, err := issuer.AuthenticateSession(context.Background(), item.token); err != nil {
 			t.Fatalf("revocation affected another audience or tenant: %v", err)
 		}
 	}
@@ -346,7 +346,7 @@ func TestSessionMigrationRemovesOnlyLegacyTokensAcrossTenants(t *testing.T) {
 		if err := tx.Commit(ctx); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := core.User(fixture.legacy); err == nil {
+		if _, _, err := core.AuthenticateSession(context.Background(), fixture.legacy); err == nil {
 			t.Fatal("legacy plaintext session authenticated before cleanup")
 		}
 		if _, err := core.SessionAudience(fixture.legacy); err == nil {
@@ -436,7 +436,7 @@ func TestSessionMigrationRemovesOnlyLegacyTokensAcrossTenants(t *testing.T) {
 		if err != nil || legacyCount != 0 || decoyCount != 1 {
 			t.Fatalf("legacy cleanup affected the wrong rows: legacy=%d other=%d err=%v", legacyCount, decoyCount, err)
 		}
-		if _, err := core.User(fixture.live); err != nil {
+		if _, _, err := core.AuthenticateSession(context.Background(), fixture.live); err != nil {
 			t.Fatalf("legacy cleanup revoked a newly issued session: %v", err)
 		}
 	}

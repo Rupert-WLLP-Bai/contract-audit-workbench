@@ -67,12 +67,19 @@ func (s *Store) EstablishSession(user accounts.User, audience string) (string, e
 	return token, nil
 }
 
-func (s *Store) SessionAudience(token string) (string, error) {
-	current, err := s.sessionFromDB(context.Background(), token)
+// AuthenticateSession resolves identity and audience from one authoritative
+// PostgreSQL read. A caller must start a new read for each HTTP request.
+func (s *Store) AuthenticateSession(ctx context.Context, token string) (accounts.User, string, error) {
+	current, user, err := s.sessionFromDB(ctx, token)
 	if err != nil {
-		return "", err
+		return accounts.User{}, "", err
 	}
-	return current.Audience, nil
+	return user, current.Audience, nil
+}
+
+func (s *Store) SessionAudience(token string) (string, error) {
+	_, audience, err := s.AuthenticateSession(context.Background(), token)
+	return audience, err
 }
 
 // Logout revokes exactly the presented session token. The deletion is scoped to
@@ -102,18 +109,6 @@ func (s *Store) Logout(token string) error {
 	}
 	s.patchSessionProjection(session{Token: digest}, true)
 	return nil
-}
-
-func (s *Store) User(token string) (accounts.User, error) {
-	current, err := s.sessionFromDB(context.Background(), token)
-	if err != nil {
-		return accounts.User{}, err
-	}
-	user, ok := accounts.ByID(current.ActorID)
-	if !ok || !user.Enabled {
-		return accounts.User{}, fault.Unauthenticated("登录已失效或账号不可用")
-	}
-	return user, nil
 }
 
 func (s *Store) CreateCase(user accounts.User, title, contractType string) (string, error) {

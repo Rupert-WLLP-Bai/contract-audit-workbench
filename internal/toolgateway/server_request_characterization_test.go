@@ -209,8 +209,8 @@ type cancelOnUserLookupBackend struct {
 	cancel context.CancelFunc
 }
 
-func (backend *cancelOnUserLookupBackend) User(token string) (accounts.User, error) {
-	user, err := backend.protocolBoundaryBackend.User(token)
+func (backend *cancelOnUserLookupBackend) AuthenticateSession(ctx context.Context, token string) (accounts.User, string, error) {
+	user, audience, err := backend.protocolBoundaryBackend.AuthenticateSession(ctx, token)
 	backend.cancel()
-	return user, err
+	return user, audience, err
 }

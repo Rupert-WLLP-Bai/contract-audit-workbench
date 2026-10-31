@@ -27,6 +27,12 @@ import (
 
 const sessionCookie = "session"
 
+const (
+	maxEventStreams       = 128
+	eventFallbackInterval = 2 * time.Second
+	eventWriteTimeout     = 10 * time.Second
+)
+
 // Options configures the HTTP surface.
 type Options struct {
 	SystemHealth               systemhealth.Reader
@@ -57,7 +63,7 @@ func Handler(st *store.Store, opt Options) http.Handler {
 	if opt.SystemHealth == nil {
 		opt.SystemHealth = systemhealth.New(systemhealth.Config{DatabaseReady: st.Ready})
 	}
-	h := &handler{store: st, loginCounter: newLoginCounter(), cors: opt.CORSOrigins, models: opt.Models, oidc: opt.OIDC, durable: opt.Durable, secureCookies: opt.SecureCookies, systemHealth: opt.SystemHealth, experienceDeliveryEnabled: opt.experienceDeliveryEnabled, operatorAuditEnabled: opt.OperatorAuditEnabled, capabilityPacks: opt.CapabilityPacks, externalConnectors: opt.ExternalConnectors, externalConnectorInfo: opt.ExternalConnectorInfo, intakeUploader: opt.IntakeUploader}
+	h := &handler{store: st, loginCounter: newLoginCounter(), cors: opt.CORSOrigins, models: opt.Models, oidc: opt.OIDC, durable: opt.Durable, secureCookies: opt.SecureCookies, systemHealth: opt.SystemHealth, experienceDeliveryEnabled: opt.experienceDeliveryEnabled, operatorAuditEnabled: opt.OperatorAuditEnabled, capabilityPacks: opt.CapabilityPacks, externalConnectors: opt.ExternalConnectors, externalConnectorInfo: opt.ExternalConnectorInfo, intakeUploader: opt.IntakeUploader, eventStreams: make(chan struct{}, maxEventStreams), eventWakeups: newEventWakeups()}
 	mux := http.NewServeMux()
 	// Every binary in this repository serves the same probe surface so a manifest
 	// can never point at a path no binary answers. Readiness is the shared
@@ -187,6 +193,8 @@ type handler struct {
 	externalConnectorInfo     []OperatorConnectorInfo
 	intakeUploader            store.CaseIntakeUploader
 	loginCounter              *loginCounter
+	eventStreams              chan struct{}
+	eventWakeups              *eventWakeups
 }
 
 func (h *handler) login(w http.ResponseWriter, r *http.Request) {
@@ -679,33 +687,43 @@ func (h *handler) decide(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *handler) events(w http.ResponseWriter, r *http.Request) {
+	select {
+	case h.eventStreams <- struct{}{}:
+		defer func() { <-h.eventStreams }()
+	default:
+		w.Header().Set("Retry-After", "2")
+		writeErr(w, fault.New(http.StatusServiceUnavailable, "stream_capacity", "事件流连接已满，请稍后重试"))
+		return
+	}
 	user, ok := h.actor(w, r)
 	if !ok {
 		return
 	}
-	after := eventCursor(r.Header.Get("Last-Event-ID"))
-	items, err := h.store.EventsAfter(user, r.PathValue("caseID"), r.PathValue("runID"), after)
-	if err != nil {
-		writeErr(w, err)
+	if _, ok := w.(http.Flusher); !ok {
+		writeErr(w, fault.New(http.StatusInternalServerError, "stream_unavailable", "当前服务不支持事件流"))
 		return
 	}
-	flusher, ok := w.(http.Flusher)
-	if !ok {
-		writeErr(w, fault.New(http.StatusInternalServerError, "stream_unavailable", "当前服务不支持事件流"))
+	caseID, runID := r.PathValue("caseID"), r.PathValue("runID")
+	wake, unsubscribe := h.eventWakeups.subscribe(eventWakeupKey{tenantID: user.TenantID, caseID: caseID, runID: runID})
+	defer unsubscribe()
+	after := eventCursor(r.Header.Get("Last-Event-ID"))
+	items, err := h.store.EventsAfterContext(r.Context(), user, caseID, runID, after)
+	if err != nil {
+		writeErr(w, err)
 		return
 	}
 	w.Header().Set("Content-Type", "text/event-stream; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("X-Accel-Buffering", "no")
-	if !writeEventBatch(w, flusher, items) {
+	if !writeEventBatch(w, items) {
 		return
 	}
 	if len(items) > 0 {
 		after = items[len(items)-1].Seq
 	}
-	// Read only committed events; each poll queries the Store and rechecks the current session.
-	// A reconnect resumes strictly after Last-Event-ID, including later decisions.
-	poll := time.NewTicker(250 * time.Millisecond)
+	// Notifications are advisory and cover accepted jobs only. Polling PG also
+	// finds later state/decision events and rechecks session and case access.
+	poll := time.NewTicker(eventFallbackInterval)
 	defer poll.Stop()
 	heartbeat := time.NewTicker(15 * time.Second)
 	defer heartbeat.Stop()
@@ -714,18 +732,22 @@ func (h *handler) events(w http.ResponseWriter, r *http.Request) {
 		case <-r.Context().Done():
 			return
 		case <-poll.C:
-			if _, err := h.store.User(cookieValue(r)); err != nil {
-				return // A logout/expiry also revokes an already-open stream.
-			}
-			after, err = h.pollEventBatch(w, flusher, user, r, after)
-			if err != nil {
-				return
-			}
+		case <-wake:
 		case <-heartbeat.C:
+			controller := http.NewResponseController(w)
+			_ = controller.SetWriteDeadline(time.Now().Add(eventWriteTimeout))
 			if _, err := io.WriteString(w, ": heartbeat\n\n"); err != nil {
 				return
 			}
-			flusher.Flush()
+			if err := controller.Flush(); err != nil {
+				return
+			}
+			_ = controller.SetWriteDeadline(time.Time{})
+			continue
+		}
+		after, err = h.pollEventBatch(w, user, r, after)
+		if err != nil {
+			return
 		}
 	}
 }
@@ -738,26 +760,36 @@ func eventCursor(raw string) int {
 	return n
 }
 
-func writeEventBatch(w http.ResponseWriter, flusher http.Flusher, items []store.Event) bool {
+func writeEventBatch(w http.ResponseWriter, items []store.Event) bool {
+	controller := http.NewResponseController(w)
+	_ = controller.SetWriteDeadline(time.Now().Add(eventWriteTimeout))
+	defer controller.SetWriteDeadline(time.Time{})
 	for _, event := range items {
 		payload, _ := json.Marshal(map[string]any{"seq": event.Seq, "type": event.Type, "state": event.State})
 		if _, err := io.WriteString(w, "id: "+strconv.Itoa(event.Seq)+"\ndata: "+string(payload)+"\n\n"); err != nil {
 			return false
 		}
 	}
-	flusher.Flush()
-	return true
+	return controller.Flush() == nil
 }
 
-func (h *handler) pollEventBatch(w http.ResponseWriter, flusher http.Flusher, user accounts.User, r *http.Request, after int) (int, error) {
-	items, err := h.store.EventsAfter(user, r.PathValue("caseID"), r.PathValue("runID"), after)
+func (h *handler) pollEventBatch(w http.ResponseWriter, user accounts.User, r *http.Request, after int) (int, error) {
+	current, audience, err := h.store.AuthenticateSession(r.Context(), audienceCookieValue(r, "client"))
+	if err != nil {
+		return after, err
+	}
+	if audience != "client" || current.ID != user.ID || current.TenantID != user.TenantID ||
+		current.OrgID != user.OrgID || current.Issuer != user.Issuer || current.Subject != user.Subject {
+		return after, fault.Unauthenticated("登录身份已变更")
+	}
+	items, err := h.store.EventsAfterContext(r.Context(), current, r.PathValue("caseID"), r.PathValue("runID"), after)
 	if err != nil {
 		return after, err
 	}
 	if len(items) == 0 {
 		return after, nil
 	}
-	if !writeEventBatch(w, flusher, items) {
+	if !writeEventBatch(w, items) {
 		return after, io.ErrClosedPipe
 	}
 	return items[len(items)-1].Seq, nil
@@ -765,14 +797,6 @@ func (h *handler) pollEventBatch(w http.ResponseWriter, flusher http.Flusher, us
 
 func (h *handler) actor(w http.ResponseWriter, r *http.Request) (accounts.User, bool) {
 	return h.actorForAudience(w, r, "client")
-}
-
-func cookieValue(r *http.Request) string {
-	c, err := r.Cookie(sessionCookie)
-	if err != nil {
-		return ""
-	}
-	return c.Value
 }
 
 func sessionCookieOf(value string, maxAge int) *http.Cookie {

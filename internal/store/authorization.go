@@ -168,43 +168,43 @@ func validateAudienceUser(user accounts.User, audience string) error {
 	}
 }
 
-func (s *Store) sessionFromDB(ctx context.Context, token string) (session, error) {
+func (s *Store) sessionFromDB(ctx context.Context, token string) (session, accounts.User, error) {
 	if token == "" {
-		return session{}, fault.Unauthenticated("登录已失效或账号密码不正确")
+		return session{}, accounts.User{}, fault.Unauthenticated("登录已失效或账号密码不正确")
 	}
 	digest := sessionTokenDigest(token)
 	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
 	if err != nil {
-		return session{}, err
+		return session{}, accounts.User{}, err
 	}
 	defer tx.Rollback(ctx)
 	if err := setLocalSessionScope(ctx, tx, digest); err != nil {
-		return session{}, err
+		return session{}, accounts.User{}, err
 	}
 	var current session
 	err = tx.QueryRow(ctx, `SELECT token, actor_id, issuer, subject, tenant_id, org_id, audience, expires_at
 		FROM sessions WHERE token=$1`, digest).Scan(&current.Token, &current.ActorID, &current.Issuer,
 		&current.Subject, &current.TenantID, &current.OrgID, &current.Audience, &current.ExpiresAt)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return session{}, fault.Unauthenticated("登录已失效或账号密码不正确")
+		return session{}, accounts.User{}, fault.Unauthenticated("登录已失效或账号密码不正确")
 	}
 	if err != nil {
-		return session{}, err
+		return session{}, accounts.User{}, err
 	}
 	if err := tx.Commit(ctx); err != nil {
-		return session{}, err
+		return session{}, accounts.User{}, err
 	}
 	expires, err := time.Parse(timeLayout, current.ExpiresAt)
 	if err != nil || !expires.After(time.Now().UTC()) {
-		return session{}, fault.Unauthenticated("登录已失效或账号密码不正确")
+		return session{}, accounts.User{}, fault.Unauthenticated("登录已失效或账号密码不正确")
 	}
 	user, ok := accounts.ByID(current.ActorID)
 	if !ok || !user.Enabled || user.TenantID != current.TenantID || user.OrgID != current.OrgID ||
 		user.Issuer != current.Issuer || user.Subject != current.Subject {
-		return session{}, fault.Unauthenticated("登录身份已变更或账号不可用")
+		return session{}, accounts.User{}, fault.Unauthenticated("登录身份已变更或账号不可用")
 	}
 	if err := validateAudienceUser(user, current.Audience); err != nil {
-		return session{}, err
+		return session{}, accounts.User{}, err
 	}
-	return current, nil
+	return current, user, nil
 }
