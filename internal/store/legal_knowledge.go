@@ -861,7 +861,7 @@ func (s *Store) ImportLegalSource(ctx context.Context, user accounts.User, input
 			content := GovernedKnowledgeContent{
 				Encoding: knowledgeContentEncoding, KnowledgeID: versionInput.KnowledgeID, Version: versionInput.DisplayVersion,
 				Kind: "legal", Title: verified.Capture.Title + " " + article.Ref.ArticleLabel,
-				Body: article.FullText, Summary: article.Ref.ArticleLabel, SourceType: "reference",
+				Body: article.FullText, Summary: supplementalLegalSummary(verified.Capture.SourceID, verified.Capture.VersionID, article.Ref.ArticleNumber, article.Ref.ArticleLabel), SourceType: "reference",
 				SourceReference: verified.Capture.OfficialURL, LegalMetadata: legalMetadataFor(verified, article),
 			}
 			if err := validateKnowledgeContent(content); err != nil {
