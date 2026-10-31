@@ -415,10 +415,11 @@ func authorizeShadowReport(ctx context.Context, tx pgx.Tx, admin accounts.User, 
 func (s *Store) RuleShadowReports(ctx context.Context, user accounts.User, packID, version, reportID string) ([]RuleShadowEnvelope, error) {
 	admin, err := trustedAdmin(user)
 	if err != nil { return nil, err }
+	if reportID != "" && (strings.TrimSpace(reportID) != reportID || !validResourceID(reportID)) { return nil, fault.NotFound("没有找到对应影子报告") }
 	tx, err := s.shadowTransaction(ctx, admin, false)
 	if err != nil { return nil, err }
 	defer tx.Rollback(ctx)
-	rows, err := tx.Query(ctx, `SELECT report_bytes,pack_snapshot,report_id,created_by,report_sha256,pack_content_sha256,pack_snapshot_sha256,pack_revision FROM rule_pack_shadow_reports WHERE tenant_id=$1 AND pack_id=$2 AND pack_version=$3 AND ($4='' OR report_id=$4) ORDER BY created_at DESC,report_id DESC LIMIT 50`, accounts.Tenant(admin), packID, version, strings.TrimSpace(reportID))
+	rows, err := tx.Query(ctx, `SELECT report_bytes,pack_snapshot,report_id,created_by,report_sha256,pack_content_sha256,pack_snapshot_sha256,pack_revision FROM rule_pack_shadow_reports WHERE tenant_id=$1 AND pack_id=$2 AND pack_version=$3 AND ($4='' OR report_id=$4) ORDER BY created_at DESC,report_id DESC LIMIT 50`, accounts.Tenant(admin), packID, version, reportID)
 	if err != nil { return nil, err }
 	type rowData struct { raw, pack []byte; id, actor, hash, packHash, packDigest string; revision int64 }
 	var saved []rowData
