@@ -51,6 +51,7 @@ type Config struct {
 	CircuitFailureThreshold int
 	CircuitCooldown         time.Duration
 	Budget                  store.ModelBudgetLimits
+	imageBudget             imageTokenBudget
 	Jev                     JevConfig
 }
 
@@ -98,6 +99,11 @@ func FromEnv() (Config, error) {
 	if err := applyEnvDurationOverrides(&config); err != nil {
 		return Config{}, err
 	}
+	imageBudget, err := imageTokenBudgetFromEnv()
+	if err != nil {
+		return Config{}, err
+	}
+	config.imageBudget = imageBudget
 	config.Budget.LeaseDuration = config.RequestTimeout + 30*time.Second
 	config.Jev = jevConfigFromEnv()
 	return config, nil
@@ -211,6 +217,9 @@ func New(st *store.Store, config Config) (*Service, error) {
 		return nil, err
 	}
 	if err := validateModeConfig(config); err != nil {
+		return nil, err
+	}
+	if err := config.imageBudget.validate(); err != nil {
 		return nil, err
 	}
 	service := newService(st, config)
@@ -359,6 +368,7 @@ type chatRequest struct {
 	body            []byte
 	requestedModel  string
 	requestedTokens int
+	inputTokens     int64
 	scope           model.DelegatedScope
 	upstream        upstreamConfig
 	frozenMatches   bool
@@ -430,11 +440,12 @@ func (s *Service) readChatRequest(w http.ResponseWriter, r *http.Request, caller
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "requested model is not configured", "code": "model_not_configured"})
 		return chatRequest{}, false
 	}
-	if int64(len(body)) > s.config.Budget.MaxInputTokenReservation || int64(requestedTokens) > s.config.Budget.MaxOutputTokenReservation {
+	inputTokens := s.config.imageBudget.inputUpperBound(body, requestedModel, upstream, s.config.Budget.MaxInputTokenReservation)
+	if inputTokens > s.config.Budget.MaxInputTokenReservation || int64(requestedTokens) > s.config.Budget.MaxOutputTokenReservation {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "requested token bound exceeds the configured reservation", "code": "model_token_bound_exceeded"})
 		return chatRequest{}, false
 	}
-	return chatRequest{caller: caller, body: body, requestedModel: requestedModel, requestedTokens: requestedTokens, scope: scope, upstream: upstream, frozenMatches: scope.Kind != "document" || upstream.matchesFrozen(scope)}, true
+	return chatRequest{caller: caller, body: body, requestedModel: requestedModel, requestedTokens: requestedTokens, inputTokens: inputTokens, scope: scope, upstream: upstream, frozenMatches: scope.Kind != "document" || upstream.matchesFrozen(scope)}, true
 }
 
 func (s *Service) runChatAttempts(w http.ResponseWriter, ctx context.Context, request chatRequest, probe circuitProbe) {
@@ -466,7 +477,7 @@ func (s *Service) runChatAttempt(w http.ResponseWriter, ctx context.Context, req
 func (s *Service) reserveChatAttempt(w http.ResponseWriter, ctx context.Context, request chatRequest, attempt int) (store.ModelCallLease, bool) {
 	identity := model.ConfigurationIDFor(request.upstream.ProviderURL, request.upstream.ChatModel, request.upstream.OCRModel)
 	lease, err := s.store.ReserveModelChatCall(ctx, request.caller, request.scope, request.requestedModel, attempt,
-		int64(len(request.body)), int64(request.requestedTokens), s.config.Budget, identity)
+		request.inputTokens, int64(request.requestedTokens), s.config.Budget, identity)
 	if errors.Is(err, store.ErrModelConfigurationChanged) {
 		writeJSON(w, http.StatusConflict, map[string]string{"error": "frozen model configuration no longer matches the configured endpoint", "code": "model_configuration_changed"})
 		return store.ModelCallLease{}, false

@@ -153,7 +153,9 @@ python3 scripts/record_model_proxy.py --upstream http://127.0.0.1:3425/v1 \
 
 第二个命令保持运行，并在独立服务的模型配置中将 `LLM_BASE_URL` 指向该记录器，`LLM_MODEL` 与 `OCR_MODEL` 均设为真实模型目录中的名称。记录器只监听宿主机回环地址；容器服务需要受限的宿主网络转发才能访问。计算冻结模型身份的各服务必须使用相同的地址和模型名称。记录器只转发真实上游响应，不保存请求头，但请求和响应正文可能包含合同、图片及其他敏感数据，必须保存在私有目录。上游是否转发到外部取决于实际模型服务。
 
-扫描页逐页转写。单文件上限为 32 MiB，模型网关仍按请求体字节作保守预算预留；需要根据页面大小和频率调整 `MODEL_MAX_INPUT_TOKEN_RESERVATION`、`MODEL_TENANT_TOKENS_PER_MINUTE`、`MODEL_GLOBAL_TOKENS_PER_MINUTE`。要覆盖最大 33 MiB 模型请求，单次预留至少为 34603008，全局与租户每分钟预算均须大于单次预留和输出额度之和。长文档还需按实际耗时配置 `DOCUMENT_PARSE_TIMEOUT`、`GATEWAY_REQUEST_TIMEOUT` 和 `GATEWAY_UPLOAD_TIMEOUT`；文档解析超时上限为 30 分钟。
+扫描页逐页转写。单文件上限为 32 MiB，模型网关默认按请求体字节作保守预算预留；需要根据页面大小和频率调整 `MODEL_MAX_INPUT_TOKEN_RESERVATION`、`MODEL_TENANT_TOKENS_PER_MINUTE`、`MODEL_GLOBAL_TOKENS_PER_MINUTE`。要覆盖最大 33 MiB 模型请求，单次预留至少为 34603008，全局与租户每分钟预算均须大于单次预留和输出额度之和。长文档还需按实际耗时配置 `DOCUMENT_PARSE_TIMEOUT`、`GATEWAY_REQUEST_TIMEOUT` 和 `GATEWAY_UPLOAD_TIMEOUT`；文档解析超时上限为 30 分钟。
+
+模型服务明确保证单图输入 token 上界时，可同时设置 `MODEL_OCR_IMAGE_PROVIDER_URL`、`MODEL_OCR_IMAGE_MODEL` 和 `MODEL_OCR_IMAGE_TOKEN_UPPER_BOUND`；三项默认均为空。仅当实际 provider 地址与规范化后的 OCR 模型身份完全匹配，且请求是本服务生成的单张内嵌 PNG/JPEG OCR 请求并通过图像校验时，输入预留才使用「非图像 JSON 字节数 + 已配置单图上界」。其他请求继续按完整字节数预留。调用上限、租户及全局预算、租约和未知用量结算仍然生效；上界由部署方依据具体服务保证，不根据少量样本猜测。
 
 逐页 OCR 的输出上限为 8192 tokens，文本审查保持 2048 tokens；两项额度均进入冻结模型配置身份。模型返回截断或过滤状态时仍拒绝将该页作为完整正文，旧尝试的配置身份和解析原文不会被重写。使用新版额度时，Core、Document、Worker 与模型网关需要运行同一版本。
 
