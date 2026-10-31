@@ -3781,14 +3781,17 @@
           "规则治理"
         ],
         "summary": "规则包试算",
-        "description": "用显式提供的合成来源与事实做一次有界试算；临时 published 副本不落库、不读取案件正文。",
+        "description": "运行显式合成单样本，或运行当前版本内嵌的合成套件并可对比精确版本；临时 published 副本不落库、不读取案件正文。",
         "responses": {
           "200": {
             "description": "规则包试算结果",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/RulePackTestResult"
+                  "oneOf": [
+                    {"$ref": "#/components/schemas/RulePackTestResult"},
+                    {"$ref": "#/components/schemas/RulePackFixtureResponse"}
+                  ]
                 }
               }
             }
@@ -8714,7 +8717,7 @@
             "type": "string"
           },
           "exclusions": {
-            "type": "array",
+            "type": ["array", "null"],
             "items": {
               "type": "string"
             }
@@ -8744,6 +8747,91 @@
         ],
         "additionalProperties": false
       },
+      "RulePackFixtureSuite": {
+        "type": "object",
+        "description": "随规则包版本和内容摘要冻结的合成数据；suite ID 可与能力包 fixture_suite 字符串引用对应。",
+        "properties": {
+          "schema_version": {"const": "rulepack-fixture-suite/v1"},
+          "id": {"type": "string", "minLength": 1},
+          "pack_id": {"type": "string", "minLength": 1},
+          "pack_version": {"type": "string", "minLength": 1},
+          "data_class": {"const": "synthetic"},
+          "cases": {"type": "array", "minItems": 3, "maxItems": 32, "items": {"$ref": "#/components/schemas/RulePackFixtureCase"}}
+        },
+        "required": ["schema_version", "id", "pack_id", "pack_version", "data_class", "cases"],
+        "additionalProperties": false
+      },
+      "RulePackFixtureCase": {
+        "type": "object",
+        "properties": {
+          "id": {"type": "string", "minLength": 1},
+          "title": {"type": "string", "minLength": 1},
+          "kind": {"enum": ["positive", "negative", "insufficient"]},
+          "input": {"$ref": "#/components/schemas/RulePackFixtureInput"},
+          "expected": {"type": "array", "minItems": 1, "items": {"$ref": "#/components/schemas/RulePackFixtureExpected"}}
+        },
+        "required": ["id", "title", "kind", "input", "expected"],
+        "additionalProperties": false
+      },
+      "RulePackFixtureInput": {
+        "type": "object",
+        "properties": {
+          "business_line": {"type": "string"}, "scenario": {"type": "string"}, "contract_type": {"type": "string"},
+          "at": {"type": "string", "format": "date-time"},
+          "sources": {"type": "array", "minItems": 1, "maxItems": 16, "items": {"$ref": "#/components/schemas/RulePackTestSource"}},
+          "facts": {"type": "array", "maxItems": 128, "items": {"$ref": "#/components/schemas/RulePackTestFact"}},
+          "authority_gates": {"type": "array", "maxItems": 128, "items": {"type": "object", "properties": {
+            "rule_id": {"type": "string"}, "source_id": {"type": "string"}, "source_version": {"type": "string"},
+            "outcome": {"type": "string"}, "reason": {"type": "string"}, "reference_missing": {"type": "boolean"}
+          }, "required": ["rule_id", "source_id", "source_version", "outcome"], "additionalProperties": false}}
+        },
+        "required": ["business_line", "scenario", "contract_type", "at", "sources", "facts"],
+        "additionalProperties": false
+      },
+      "RulePackFixtureExpected": {
+        "type": "object",
+        "properties": {
+          "rule_id": {"type": "string"}, "rule_version": {"type": "string"},
+          "relation": {"enum": ["compatible", "conflict", "insufficient", "not_applicable"]},
+          "reason_code": {"type": "string"},
+          "citations": {"type": "array", "items": {"$ref": "#/components/schemas/RulePackTestCitation"}}
+        },
+        "required": ["rule_id", "rule_version", "relation", "reason_code", "citations"],
+        "additionalProperties": false
+      },
+      "RulePackFixtureResponse": {
+        "type": "object",
+        "properties": {
+          "revision": {"type": "integer", "minimum": 1}, "content_hash": {"type": "string"},
+          "suite": {"$ref": "#/components/schemas/RulePackFixtureRun"},
+          "compare_revision": {"type": "integer", "minimum": 1},
+          "comparison": {"type": "object", "properties": {
+            "baseline": {"$ref": "#/components/schemas/RulePackFixtureRun"},
+            "changes": {"type": "array", "items": {"$ref": "#/components/schemas/RulePackFixtureChange"}}
+          }, "required": ["baseline", "changes"], "additionalProperties": false}
+        },
+        "required": ["revision", "content_hash", "suite"],
+        "dependentRequired": {"comparison": ["compare_revision"], "compare_revision": ["comparison"]},
+        "additionalProperties": false
+      },
+      "RulePackFixtureRun": {
+        "type": "object", "properties": {
+          "suite_id": {"type": "string"}, "pack_id": {"type": "string"}, "pack_version": {"type": "string"},
+          "pack_hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"}, "passed": {"type": "boolean"},
+          "cases": {"type": "array", "items": {"type": "object", "properties": {
+            "id": {"type": "string"}, "title": {"type": "string"}, "kind": {"type": "string"}, "passed": {"type": "boolean"},
+            "failures": {"type": "array", "items": {"type": "string"}}, "report": {"$ref": "#/components/schemas/RulePackReport"}
+          }, "required": ["id", "title", "kind", "passed", "failures"], "additionalProperties": false}}
+        },
+        "required": ["suite_id", "pack_id", "pack_version", "pack_hash", "passed", "cases"], "additionalProperties": false
+      },
+      "RulePackFixtureChange": {
+        "type": "object", "properties": {
+          "case_id": {"type": "string"}, "rule_id": {"type": "string"},
+          "before": {"$ref": "#/components/schemas/RulePackReportResult"}, "after": {"$ref": "#/components/schemas/RulePackReportResult"},
+          "before_error": {"type": "string"}, "after_error": {"type": "string"}
+        }, "required": ["case_id"], "additionalProperties": false
+      },
       "RulePackTestRequest": {
         "type": "object",
         "description": "合成样例试算输入。只含用户显式提供的合成来源与事实，服务端派生租户、案件/组织身份与来源摘要；不接受 principal、grant 或案件查询。",
@@ -8752,6 +8840,11 @@
             "type": "integer",
             "minimum": 1
           },
+          "run_fixture_suite": {"type": "boolean"},
+          "expected_content_hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+          "compare_version": {"type": "string", "minLength": 1},
+          "compare_expected_revision": {"type": "integer", "minimum": 1},
+          "compare_expected_hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
           "business_line": {
             "type": "string",
             "minLength": 1
@@ -8782,14 +8875,11 @@
             "maxItems": 128
           }
         },
-        "required": [
-          "expected_revision",
-          "business_line",
-          "scenario",
-          "contract_type",
-          "at",
-          "sources",
-          "facts"
+        "required": ["expected_revision"],
+        "dependentRequired": {"compare_version": ["compare_expected_revision", "compare_expected_hash"], "compare_expected_revision": ["compare_version", "compare_expected_hash"], "compare_expected_hash": ["compare_version", "compare_expected_revision"]},
+        "oneOf": [
+          {"required": ["business_line", "scenario", "contract_type", "at", "sources", "facts"], "properties": {"run_fixture_suite": {"const": false}}, "not": {"anyOf": [{"required": ["expected_content_hash"]}, {"required": ["compare_version"]}]}},
+          {"required": ["run_fixture_suite", "expected_content_hash"], "properties": {"run_fixture_suite": {"const": true}}, "not": {"anyOf": [{"required": ["business_line"]}, {"required": ["scenario"]}, {"required": ["contract_type"]}, {"required": ["at"]}, {"required": ["sources"]}, {"required": ["facts"]}]}}
         ],
         "additionalProperties": false
       },
@@ -9894,7 +9984,8 @@
             "items": {
               "type": "object"
             }
-          }
+          },
+          "fixture_suite": {"$ref": "#/components/schemas/RulePackFixtureSuite"}
         },
         "required": [
           "schema_version",
@@ -9939,6 +10030,7 @@
               "type": "object"
             }
           },
+          "fixture_suite": {"$ref": "#/components/schemas/RulePackFixtureSuite"},
           "lifecycle": {
             "$ref": "#/components/schemas/RulePackLifecycle"
           }
@@ -10034,6 +10126,8 @@
           "reason_code": {
             "type": "string"
           },
+          "legal_authority_outcome": {"type": "string"},
+          "legal_authority_reason": {"type": "string"},
           "fact_ids": {
             "type": "array",
             "items": {

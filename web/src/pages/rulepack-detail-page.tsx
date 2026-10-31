@@ -27,6 +27,7 @@ import { DirtyLeaveGuard } from "../components/dirty-leave-guard";
 import { RulePackErrorSummary } from "../components/rulepack-error-summary";
 import { RulePackManifestEditor } from "../components/rulepack-manifest-editor";
 import { RulePackTestPanel } from "../components/rulepack-test-panel";
+import { RulePackSuitePanel } from "../components/rulepack-suite-panel";
 import {
   validateRulePackDraft,
   type RulePackFormIssue,
@@ -783,6 +784,7 @@ export function RulePackDetailPage() {
           <p>还没有生命周期历史。</p>
         ) : null}
       </section>
+      <RulePackSuitePanel packId={pack.id} version={pack.version} revision={pack.revision} contentHash={pack.content_hash} available={manifest.fixture_suite !== undefined} />
       <div id="rulepack-test">
         <RulePackTestPanel
           packId={pack.id}

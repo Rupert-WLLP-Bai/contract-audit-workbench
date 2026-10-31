@@ -239,6 +239,15 @@ func (h *handler) testRulePackVersion(w http.ResponseWriter, r *http.Request) {
 	}
 	body.PackID = r.PathValue("packID")
 	body.Version = r.PathValue("version")
+	if body.RunFixtureSuite {
+		result, err := h.store.TestRulePackSuite(user, body)
+		if err != nil {
+			writeErr(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, result)
+		return
+	}
 	result, err := h.store.TestRulePackVersion(user, body)
 	if err != nil {
 		writeErr(w, err)

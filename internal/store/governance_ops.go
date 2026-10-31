@@ -268,6 +268,20 @@ func (s *Store) ValidateRulePackVersion(user accounts.User, input GovernanceInpu
 		if sha256Bytes(draftSnapshot) != row.Version.SnapshotDigest {
 			return fault.Conflict("保存的规则包摘要与记录不一致，无法校验")
 		}
+		if pack.Manifest().FixtureSuite != nil {
+			suite, err := rulepack.RunFixtureSuite(context.Background(), pack)
+			if err != nil {
+				return fault.Conflict("规则包样本套件无法执行：" + err.Error())
+			}
+			if !suite.Passed {
+				for _, sample := range suite.Cases {
+					if !sample.Passed {
+						return fault.Conflict("规则包样本套件未通过：" + sample.ID + "：" + strings.Join(sample.Failures, "; "))
+					}
+				}
+				return fault.Conflict("规则包样本套件未通过")
+			}
+		}
 		snapshot, err := validated.Snapshot()
 		if err != nil {
 			return err
