@@ -25,11 +25,9 @@ type fakeBackend struct {
 	resolutions atomic.Int64
 }
 
-func (b *fakeBackend) User(token string) (accounts.User, error) {
-	return accounts.User{ID: "demo-admin", Role: "admin", TenantID: "local-demo", OrgID: "demo-org", Enabled: true}, nil
+func (b *fakeBackend) AuthenticateSession(context.Context, string) (accounts.User, string, error) {
+	return accounts.User{ID: "demo-admin", Role: "admin", TenantID: "local-demo", OrgID: "demo-org", Enabled: true}, "client", nil
 }
-
-func (b *fakeBackend) SessionAudience(string) (string, error) { return "client", nil }
 
 func (b *fakeBackend) WorkspaceAttempt(accounts.User, string, string, string) (store.Workspace, error) {
 	return store.Workspace{}, nil
