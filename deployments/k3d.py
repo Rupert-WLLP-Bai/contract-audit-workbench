@@ -204,7 +204,35 @@ def up() -> None:
           f"images={IMAGE_SUFFIX or 'local'}); kubeconfig: {KUBECONFIG}")
 
 
+def cluster_nodes() -> list[str]:
+    """Server and agent container names of the isolated cluster."""
+    result = run(["k3d", "node", "list", "--output", "json"])
+    listing = json.loads(result.stdout)
+    if isinstance(listing, dict):
+        listing = listing.get("nodes", [])
+    if not isinstance(listing, list):
+        raise RuntimeError("k3d returned an unexpected node inventory")
+    nodes: list[str] = []
+    for item in listing:
+        if not isinstance(item, dict) or item.get("role") not in ("server", "agent"):
+            continue
+        labels = item.get("runtimeLabels")
+        owner = item.get("cluster") or (labels.get("k3d.cluster") if isinstance(labels, dict) else None)
+        if owner == CLUSTER:
+            nodes.append(str(item["name"]))
+    return nodes
+
+
 def import_images() -> None:
+    """Load the packaged images into every node's k8s.io containerd namespace.
+
+    ``k3d image import`` is not used: for manifest lists it runs
+    ``ctr image import --all-platforms``, which fails with "content digest ...
+    not found" on every node and still exits 0, leaving the pods to fall back to
+    a registry pull (ImagePullBackOff in a network-restricted host). Saving the
+    image locally and importing only the running platform is verifiable, and the
+    final listing check fails the run instead of silently continuing.
+    """
     docker = os.environ.get("DOCKER_BIN", "docker")
     if not shutil.which(docker):
         raise RuntimeError("Docker CLI is unavailable")
@@ -215,7 +243,64 @@ def import_images() -> None:
             missing.append(image)
     if missing:
         raise RuntimeError("required packaged or cached platform images are missing: " + ", ".join(missing))
-    run(["k3d", "image", "import", "--cluster", CLUSTER, *tags], timeout=600)
+    nodes = cluster_nodes()
+    if not nodes:
+        raise RuntimeError(f"cluster {CLUSTER} has no server or agent nodes to import into")
+    private_dir()
+    archive = ARTIFACTS / ".image-import.tar"
+    try:
+        for image in tags:
+            saved = subprocess.run([docker, "save", image, "-o", str(archive)], text=True, capture_output=True,
+                                   timeout=1800)
+            if saved.returncode:
+                raise RuntimeError(f"docker save failed for {image}: {saved.stderr.strip()}")
+            for node in nodes:
+                with archive.open("rb") as stream:
+                    imported = subprocess.run(
+                        [docker, "exec", "-i", node, "ctr", "-n", "k8s.io", "images", "import",
+                         "--platform", "linux/amd64", "-"],
+                        stdin=stream, text=False, capture_output=True, timeout=1800)
+                if imported.returncode:
+                    detail = (imported.stderr or imported.stdout or b"").decode("utf-8", "replace").strip()
+                    raise RuntimeError(f"ctr import failed for {image} on {node}: {detail}")
+    finally:
+        archive.unlink(missing_ok=True)
+    for image in tags:
+        reference = image if ":" in image.rsplit("/", 1)[-1] else image + ":latest"
+        for node in nodes:
+            listing = run([docker, "exec", node, "ctr", "-n", "k8s.io", "images", "ls", "-q"], timeout=120).stdout
+            if not any(reference == line.strip() or line.strip().endswith("/" + reference)
+                       for line in listing.splitlines()):
+                raise RuntimeError(f"{image} is missing from node {node} after import")
+
+
+def recover_stale_image_pulls() -> None:
+    """Recreate owned pods still waiting on images imported into containerd."""
+    document = json.loads(kubectl("get", "pods", "-n", NAMESPACE, "-o", "json").stdout)
+    for pod in document.get("items", []):
+        metadata = pod.get("metadata", {})
+        name = metadata.get("name")
+        if not name or not metadata.get("ownerReferences"):
+            continue
+        status = pod.get("status") or {}
+        statuses = list(status.get("containerStatuses") or [])
+        statuses.extend(status.get("initContainerStatuses") or [])
+        conditions = {item.get("type"): item.get("status")
+                      for item in status.get("conditions") or []}
+        waiting_images: set[str] = set()
+        for container in statuses:
+            waiting = (container.get("state") or {}).get("waiting") or {}
+            reason = waiting.get("reason")
+            image = container.get("image")
+            if image not in IMAGE_TAGS:
+                continue
+            if reason in {"ErrImagePull", "ImagePullBackOff"}:
+                waiting_images.add(image)
+            elif reason == "ContainerCreating" and conditions.get("PodReadyToStartContainers") == "False":
+                waiting_images.add(image)
+        if waiting_images:
+            kubectl("delete", "pod", str(name), "-n", NAMESPACE, "--wait=true", timeout=120)
+            print(f"Recreated {name} after importing {', '.join(sorted(waiting_images))}.")
 
 
 def apply_private_secret(name: str, keys: tuple[str, ...]) -> None:
@@ -328,6 +413,7 @@ def deploy() -> None:
     ensure_secrets()
     import_images()
     kubectl("apply", "-f", str(ROOT / "deployments/k8s/base/namespace.yaml"))
+    recover_stale_image_pulls()
     apply_private_secret("contract-audit-postgres", ("POSTGRES_PASSWORD",))
     apply_private_secret("contract-audit-db-urls", ("CORE_DATABASE_URL", "DOCUMENT_DATABASE_URL",
                                                       "EXECUTION_DATABASE_URL", "MODEL_DATABASE_URL",
