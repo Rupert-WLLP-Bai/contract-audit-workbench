@@ -18,6 +18,7 @@ import {
 } from "../api/queries";
 import type { WorkbenchPeriod, WorkbenchTask } from "../api/types";
 import { PageStatus } from "../components/page-status";
+import { IntakePrimaryContract } from "../components/intake-primary-contract";
 import { StatusText } from "../components/status-text";
 import {
   caseHref,
@@ -529,6 +530,7 @@ export function HomePage() {
       </dl>
 
       <div className="home-content-grid workbench-content-grid">
+        <IntakePrimaryContract actor={session.data ?? null} />
         <section
           className="home-panel home-tasks"
           aria-labelledby="home-tasks-title"
