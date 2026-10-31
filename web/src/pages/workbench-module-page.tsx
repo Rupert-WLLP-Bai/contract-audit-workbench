@@ -220,7 +220,7 @@ function buildRecords(
   const auditByCase = new Map<string, typeof snapshot.audit>();
   const auditByActor = new Map<string, typeof snapshot.audit>();
   const needsAudit =
-    module === "tasks" || module === "remediation" || module === "audit";
+    module === "tasks" || module === "remediation" || module === "audit" || module === "organization";
   if (needsAudit) {
     for (const item of snapshot.audit) {
       if (item.case_id !== null) {
