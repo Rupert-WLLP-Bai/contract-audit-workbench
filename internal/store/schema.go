@@ -466,6 +466,7 @@ var schemaStatements = []string{
 	experienceDistillSchemaSQL,
 	advisoryJudgmentSchemaSQL,
 	OperatorAuditSchemaSQL,
+	caseIntakeSchemaSQL,
 	`DO $$
 	DECLARE table_name text;
 	BEGIN
@@ -487,6 +488,7 @@ var schemaStatements = []string{
 			'evidence_requests','evidence_receipts','evidence_request_events',
 			'operator_object_bindings','operator_external_snapshot_sets','operator_external_collection_claims','operator_external_observations',
 			'operator_fulfillment_evaluations','operator_fulfillment_checks','operator_impact_plans',
+			'case_intake_operations',
 			'legal_source_captures'
 		] LOOP
 			EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY', table_name);
