@@ -104,16 +104,19 @@ func claimScheduledJob(ctx context.Context, tx pgx.Tx, worker string, lease time
 // hasClaimableJob reports whether any job could currently be claimed. It is a
 // read-only pre-check so an idle claim loop does not open the scheduling
 // transaction, which takes the queue lock and rewrites tenant bookkeeping on
-// every poll even when no work exists. The scheduler's own predicates stay
-// authoritative: a true result can still end in no claim, and a false result
-// cannot hide claimable work because it uses the same job-level eligibility.
-func (s *Store) hasClaimableJob(ctx context.Context) (bool, error) {
+// every poll even when no work exists. It runs under the dedicated queue scope
+// — the same cross-tenant queue-metadata authority the claim transaction uses —
+// because job eligibility is deployment-wide, never tenant-bound. The
+// scheduler's own predicates stay authoritative: a true result can still end in
+// no claim, and a false result cannot hide claimable work because it uses the
+// same job-level eligibility.
+func (s *Store) hasClaimableJob(ctx context.Context, workerID string) (bool, error) {
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return false, err
 	}
 	defer tx.Rollback(ctx)
-	if err := setLocalScope(ctx, tx, dbScope{Role: "worker"}); err != nil {
+	if err := setLocalQueueScope(ctx, tx, workerID); err != nil {
 		return false, err
 	}
 	var exists bool

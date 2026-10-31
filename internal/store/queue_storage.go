@@ -144,7 +144,7 @@ func (s *Store) ClaimNextJob(ctx context.Context, workerID string, lease time.Du
 	// which takes the queue advisory lock and locks tenant rows even when no
 	// work exists. The scheduler predicates stay authoritative — a missed
 	// pre-check only costs one claim attempt, never a lost job.
-	if work, err := s.hasClaimableJob(ctx); err != nil {
+	if work, err := s.hasClaimableJob(ctx, workerID); err != nil {
 		return JobClaim{}, err
 	} else if !work {
 		return JobClaim{}, pgx.ErrNoRows
