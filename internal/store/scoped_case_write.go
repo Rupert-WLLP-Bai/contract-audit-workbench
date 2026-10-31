@@ -24,9 +24,6 @@ func (s *Store) loadScopedCaseWriteState(ctx context.Context, tx pgx.Tx, caseID,
 	if st.AttemptParseSelections, err = loadAttemptParseSelections(ctx, tx, caseID); err != nil {
 		return state{}, err
 	}
-	if st.ExecutionEvents, err = loadExecutionEvents(ctx, tx, caseID); err != nil {
-		return state{}, err
-	}
 	if st.Findings, err = loadFindings(ctx, tx, caseID); err != nil {
 		return state{}, err
 	}
@@ -34,9 +31,6 @@ func (s *Store) loadScopedCaseWriteState(ctx context.Context, tx pgx.Tx, caseID,
 		return state{}, err
 	}
 	if st.Decisions, err = loadDecisions(ctx, tx, caseID); err != nil {
-		return state{}, err
-	}
-	if st.Events, err = loadEvents(ctx, tx, caseID); err != nil {
 		return state{}, err
 	}
 	if st.Activity, err = loadActivity(ctx, tx, caseID); err != nil {
@@ -49,9 +43,6 @@ func (s *Store) loadScopedCaseWriteState(ctx context.Context, tx pgx.Tx, caseID,
 		if err := validateGovernedAttemptSnapshot(attempt, st.snapshotOf(attempt.RunID)); err != nil {
 			return state{}, err
 		}
-	}
-	if st.Audits, err = loadAudits(ctx, tx, caseID); err != nil {
-		return state{}, err
 	}
 	if st.Jobs, err = loadJobs(ctx, tx, caseID); err != nil {
 		return state{}, err

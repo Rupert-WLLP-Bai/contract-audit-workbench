@@ -88,7 +88,11 @@ func (s *Store) loadScopedAttemptState(ctx context.Context, tx pgx.Tx, claim Job
 		return state{}, err
 	}
 
-	runEvents, err := tx.Query(ctx, `SELECT run_id, event_seq, event_type, state FROM `+runEventTableFor(s.serviceOwner)+` WHERE run_id=$1 ORDER BY event_seq`, runID)
+	runEvents, err := tx.Query(ctx, `SELECT * FROM (
+		(SELECT run_id,event_seq,event_type,state FROM run_events WHERE run_id=$1 ORDER BY event_seq DESC LIMIT 1)
+		UNION ALL
+		(SELECT run_id,event_seq,event_type,state FROM business_run_events WHERE run_id=$1 ORDER BY event_seq DESC LIMIT 1)
+	) heads ORDER BY event_seq DESC LIMIT 1`, runID)
 	if err != nil {
 		return state{}, err
 	}
@@ -346,9 +350,8 @@ func mergeExecutionEventSlice(existing, added []ExecutionEvent) []ExecutionEvent
 	return existing
 }
 
-// loadScopedCaseState loads only the records a case-level mutation can touch:
-// the case row, its documents and their parsed artifacts, its activity, its runs
-// and the audit chains of those runs.
+// loadScopedCaseState loads the case, its documents and parsed artifacts,
+// activity and runs. History heads are loaded separately by the writer.
 func (s *Store) loadScopedCaseState(ctx context.Context, tx pgx.Tx, caseID string) (state, error) {
 	var out state
 	var caseItem Case
@@ -508,14 +511,12 @@ func (s *Store) loadScopedCaseState(ctx context.Context, tx pgx.Tx, caseID strin
 		return state{}, err
 	}
 	defer runRows.Close()
-	var runIDs []string
 	for runRows.Next() {
 		var item Run
 		if err := runRows.Scan(&item.ID, &item.CaseID, &item.State, &item.ModelRef, &item.PartialReason, &item.FailureMessage, &item.CreatedAt, &item.UpdatedAt); err != nil {
 			return state{}, err
 		}
 		out.Runs = append(out.Runs, item)
-		runIDs = append(runIDs, item.ID)
 	}
 	if err := runRows.Err(); err != nil {
 		return state{}, err
@@ -556,27 +557,6 @@ func (s *Store) loadScopedCaseState(ctx context.Context, tx pgx.Tx, caseID strin
 	}
 	if err := archiveRows.Err(); err != nil {
 		return state{}, err
-	}
-	if len(runIDs) > 0 {
-		auditRows, err := tx.Query(ctx, `SELECT event_id, run_id, actor, seq, event_type, prev_hash, hash, correlation_ids FROM `+auditTableFor(s.serviceOwner)+` WHERE run_id = ANY($1) ORDER BY seq`, runIDs)
-		if err != nil {
-			return state{}, err
-		}
-		defer auditRows.Close()
-		for auditRows.Next() {
-			var item AuditRecord
-			var correlation string
-			if err := auditRows.Scan(&item.EventID, &item.RunID, &item.Actor, &item.Seq, &item.EventType, &item.PrevHash, &item.Hash, &correlation); err != nil {
-				return state{}, err
-			}
-			if err := json.Unmarshal([]byte(correlation), &item.CorrelationIDs); err != nil {
-				return state{}, err
-			}
-			out.Audits = append(out.Audits, item)
-		}
-		if err := auditRows.Err(); err != nil {
-			return state{}, err
-		}
 	}
 	subjectState, err := loadSubjectCaseState(ctx, tx, caseItem.TenantID, caseItem.OwnerOrgID, caseID)
 	if err != nil {
@@ -684,6 +664,9 @@ func (s *Store) scopedCaseWrite(ctx context.Context, user accounts.User, caseID,
 	}
 	scope.OrgID = caseItem.OwnerOrgID
 	if err := setLocalScope(ctx, tx, scope); err != nil {
+		return err
+	}
+	if err := loadWriteHistory(ctx, tx, &previous, []string{caseID}, attemptID); err != nil {
 		return err
 	}
 	next, err := previous.clone()

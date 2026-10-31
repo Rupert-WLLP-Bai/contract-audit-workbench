@@ -49,7 +49,7 @@ func (s *Store) CreateReportContext(ctx context.Context, user accounts.User, cas
 	if caseID == "" || runID == "" || attemptID == "" {
 		return ReportRecord{}, fault.Invalid("生成报告需要指定案件、审查和执行记录")
 	}
-	st, err := s.snapshotAs(currentUser)
+	st, err := s.snapshotReportState(ctx, currentUser, caseID, runID, attemptID)
 	if err != nil {
 		return ReportRecord{}, err
 	}

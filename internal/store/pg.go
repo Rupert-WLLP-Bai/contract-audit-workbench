@@ -450,9 +450,6 @@ func (s *Store) load(ctx context.Context, scope dbScope) error {
 	return nil
 }
 
-// loadState reads the whole durable state. strict selects whether a persisted
-// artifact that fails integrity verification aborts the load (startup, writes) or
-// is dropped in favour of per-request degradation (reads).
 // canonicalizeLoadedRows rewrites the few row fields whose JSON round trip is
 // lossy, so a freshly loaded state is structurally equal to its own clone when
 // nothing changed. Without it every later write would see these rows as changed
@@ -489,6 +486,9 @@ func emptyStringsToNil(values []string) []string {
 	return values
 }
 
+// loadState excludes event and audit timelines; callers load the case, run or
+// attempt history they need in the same transaction. strict rejects corrupted
+// parse artifacts during startup and writes; read snapshots degrade per item.
 func loadState(ctx context.Context, q queryer, strict bool) (state, error) {
 	var st state
 	var err error
@@ -534,9 +534,6 @@ func loadState(ctx context.Context, q queryer, strict bool) (state, error) {
 	if st.AttemptParseSelections, err = loadAttemptParseSelections(ctx, q); err != nil {
 		return state{}, err
 	}
-	if st.ExecutionEvents, err = loadExecutionEvents(ctx, q); err != nil {
-		return state{}, err
-	}
 	if st.Findings, err = loadFindings(ctx, q); err != nil {
 		return state{}, err
 	}
@@ -544,9 +541,6 @@ func loadState(ctx context.Context, q queryer, strict bool) (state, error) {
 		return state{}, err
 	}
 	if st.Decisions, err = loadDecisions(ctx, q); err != nil {
-		return state{}, err
-	}
-	if st.Events, err = loadEvents(ctx, q); err != nil {
 		return state{}, err
 	}
 	if st.Activity, err = loadActivity(ctx, q); err != nil {
@@ -562,9 +556,6 @@ func loadState(ctx context.Context, q queryer, strict bool) (state, error) {
 		if err := validateGovernedAttemptSnapshot(attempt, st.snapshotOf(attempt.RunID)); err != nil {
 			return state{}, fmt.Errorf("load governed attempt %q: %w", attempt.ID, err)
 		}
-	}
-	if st.Audits, err = loadAudits(ctx, q); err != nil {
-		return state{}, err
 	}
 	if st.Jobs, err = loadJobs(ctx, q); err != nil {
 		return state{}, err
@@ -677,6 +668,9 @@ func (s *Store) updateStateWithLocks(ctx context.Context, scope dbScope, attempt
 				return err
 			}
 		}
+	}
+	if err := loadWriteHistory(ctx, tx, &previous, caseIDs, attemptID); err != nil {
+		return err
 	}
 	next, err := previous.clone()
 	if err != nil {

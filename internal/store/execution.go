@@ -116,20 +116,7 @@ func (s *Store) startReviewAsync(ctx context.Context, user accounts.User, caseID
 	if err != nil {
 		return JobAcceptance{}, err
 	}
-	st, err := s.snapshotAs(user)
-	if err != nil {
-		return JobAcceptance{}, err
-	}
-	attempt, ok := st.latestAttempt(runID)
-	if !ok {
-		return JobAcceptance{}, fault.Conflict("审查任务缺少执行记录")
-	}
-	for _, job := range st.Jobs {
-		if job.AttemptID == attempt.ID {
-			return JobAcceptance{RunID: runID, AttemptID: attempt.ID, JobID: job.ID}, nil
-		}
-	}
-	return JobAcceptance{}, fault.Conflict("审查任务没有保存到任务队列")
+	return s.jobAcceptanceForRun(ctx, user, caseID, runID, "审查任务缺少执行记录", "审查任务没有保存到任务队列")
 }
 
 func (s *Store) startReview(ctx context.Context, user accounts.User, caseID, businessAt, evidenceCutoffAt string, durable bool, requestedScope ...string) (string, error) {
@@ -359,7 +346,16 @@ func (s *Store) startReview(ctx context.Context, user accounts.User, caseID, bus
 		}
 		if run, ok := st.latestRun(caseID); ok {
 			previous := st.snapshotOf(run.ID)
-			if sameRunSignature(previous, signature) && sameRunCompilerIdentity(previous, signature) && (!durable || hasJobForRun(*st, run.ID)) {
+			reusable := sameRunSignature(previous, signature) && sameRunCompilerIdentity(previous, signature)
+			if reusable && durable {
+				if err := acceptanceTx.QueryRow(ctx, `SELECT EXISTS (
+					SELECT 1 FROM review_attempts a JOIN worker_jobs j ON j.attempt_id=a.id
+					WHERE a.run_id=$1 AND j.run_id=$1 AND j.case_id=$2
+				)`, run.ID, caseID).Scan(&reusable); err != nil {
+					return err
+				}
+			}
+			if reusable {
 				if previous.GovernedKnowledge != nil {
 					if err := RevalidateGovernedKnowledgeSnapshotTx(ctx, acceptanceTx, user, caseID, *previous.GovernedKnowledge); err != nil {
 						return err
@@ -457,20 +453,7 @@ func (s *Store) RetryAsync(ctx context.Context, user accounts.User, caseID, runI
 	if err := s.retry(ctx, user, caseID, runID, true); err != nil {
 		return JobAcceptance{}, err
 	}
-	st, err := s.snapshotAs(user)
-	if err != nil {
-		return JobAcceptance{}, err
-	}
-	attempt, ok := st.latestAttempt(runID)
-	if !ok {
-		return JobAcceptance{}, fault.Conflict("重试任务缺少执行记录")
-	}
-	for _, job := range st.Jobs {
-		if job.AttemptID == attempt.ID {
-			return JobAcceptance{RunID: runID, AttemptID: attempt.ID, JobID: job.ID}, nil
-		}
-	}
-	return JobAcceptance{}, fault.Conflict("重试任务没有保存到任务队列")
+	return s.jobAcceptanceForRun(ctx, user, caseID, runID, "重试任务缺少执行记录", "重试任务没有保存到任务队列")
 }
 
 func (s *Store) retry(ctx context.Context, user accounts.User, caseID, runID string, durable bool) error {
@@ -864,34 +847,7 @@ func (s *Store) OperationalMetadata(user accounts.User) (map[string]any, error) 
 	if current.Role != "admin" {
 		return nil, fault.Forbidden("只有管理员可以查看审查运行的运维信息")
 	}
-	st, err := s.snapshotScoped(context.Background(), userScope(current))
-	if err != nil {
-		return nil, err
-	}
-	counts := map[string]any{
-		"total_attempts": 0, "running_attempts": 0, "completed_attempts": 0,
-		"partial_attempts": 0, "failed_attempts": 0, "cancelled_attempts": 0,
-		"model_calls": 0, "unknown_usage_calls": 0, "queue_depth": nil,
-	}
-	for _, attempt := range st.Attempts {
-		counts["total_attempts"] = counts["total_attempts"].(int) + 1
-		switch attempt.State {
-		case "accepted", "running":
-			counts["running_attempts"] = counts["running_attempts"].(int) + 1
-		case "completed":
-			counts["completed_attempts"] = counts["completed_attempts"].(int) + 1
-		case "partial":
-			counts["partial_attempts"] = counts["partial_attempts"].(int) + 1
-		case "failed", "interrupted":
-			counts["failed_attempts"] = counts["failed_attempts"].(int) + 1
-		case "cancelled":
-			counts["cancelled_attempts"] = counts["cancelled_attempts"].(int) + 1
-		}
-	}
-	usage := usageSummary(st.ExecutionEvents, nil)
-	counts["model_calls"] = usage.Calls
-	counts["unknown_usage_calls"] = usage.UnknownCalls
-	return counts, nil
+	return s.operationalHistoryCounts(context.Background(), current)
 }
 
 func (s *Store) reserveExecution() bool {

@@ -12,32 +12,21 @@ import (
 )
 
 func loadJobs(ctx context.Context, q queryer, caseID ...string) ([]Job, error) {
-	rows, err := queryCaseRows(ctx, q, `SELECT id, tenant_id, org_id, case_id, COALESCE(run_id,''), COALESCE(attempt_id,''), actor_id, kind, state, generation, worker_id, lease_until, heartbeat_at, created_at, updated_at FROM worker_jobs`, `case_id=$1`, ` ORDER BY created_at, id`, caseID...)
+	query := jobSelectSQL + ` WHERE state IN ('queued','running')`
+	var args []any
+	if len(caseID) != 0 {
+		query += ` AND case_id=$1`
+		args = append(args, caseID[0])
+	}
+	rows, err := q.Query(ctx, query+` ORDER BY created_at,id`, args...)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	var out []Job
-	for rows.Next() {
-		var item Job
-		var lease, heartbeat pgtype.Timestamptz
-		if err := rows.Scan(&item.ID, &item.TenantID, &item.OrgID, &item.CaseID, &item.RunID, &item.AttemptID, &item.ActorID,
-			&item.Kind, &item.State, &item.Generation, &item.WorkerID, &lease, &heartbeat, &item.CreatedAt, &item.UpdatedAt); err != nil {
-			return nil, err
-		}
-		if lease.Valid {
-			item.LeaseUntil = &lease.Time
-		}
-		if heartbeat.Valid {
-			item.Heartbeat = &heartbeat.Time
-		}
-		out = append(out, item)
-	}
-	return out, rows.Err()
+	return scanJobs(rows)
 }
 
 func loadOutbox(ctx context.Context, q queryer) ([]OutboxRecord, error) {
-	rows, err := q.Query(ctx, `SELECT id, job_id, tenant_id, org_id, case_id, event_type, payload, state, created_at, delivered_at FROM outbox_events ORDER BY created_at, id`)
+	rows, err := q.Query(ctx, `SELECT id, job_id, tenant_id, org_id, case_id, event_type, payload, state, created_at, delivered_at FROM outbox_events WHERE state='pending' ORDER BY created_at, id`)
 	if err != nil {
 		return nil, err
 	}
@@ -94,15 +83,6 @@ func syncOutbox(ctx context.Context, tx pgx.Tx, items []OutboxRecord) error {
 }
 
 var errInvalidOutboxPayload = errors.New("outbox payload must be one JSON value")
-
-func hasJobForRun(st state, runID string) bool {
-	for _, job := range st.Jobs {
-		if job.RunID == runID {
-			return true
-		}
-	}
-	return false
-}
 
 // ErrLeaseLost means a worker lease was superseded or expired.
 var ErrLeaseLost = errors.New("worker job lease was lost")
