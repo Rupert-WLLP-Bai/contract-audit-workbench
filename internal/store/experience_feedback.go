@@ -607,6 +607,10 @@ func scanExperienceCandidate(row pgx.Row) (ExperienceCandidate, error) {
 // immutable revision may contain source-sensitive details from every ancestor,
 // so access to just the newest source case is not sufficient.
 func authorizeExperienceAncestors(ctx context.Context, tx pgx.Tx, current accounts.User, item Case, candidateID, baseVersionID string) error {
+	return authorizeExperienceAncestorsWithCaseLocks(ctx, tx, current, item, candidateID, baseVersionID, true)
+}
+
+func authorizeExperienceAncestorsWithCaseLocks(ctx context.Context, tx pgx.Tx, current accounts.User, item Case, candidateID, baseVersionID string, lockCases bool) error {
 	if baseVersionID == "" {
 		return nil
 	}
@@ -641,16 +645,18 @@ func authorizeExperienceAncestors(ctx context.Context, tx pgx.Tx, current accoun
 		if caseID == item.ID {
 			continue
 		}
-		// The current case is already locked. A nonblocking second lock avoids
-		// a cross-case deadlock when two candidates have opposite ancestry.
-		var acquired bool
-		if err := tx.QueryRow(ctx, `SELECT pg_try_advisory_xact_lock(hashtextextended(current_schema() || ':case:' || $1,0))`, caseID).Scan(&acquired); err != nil {
-			return err
-		}
-		if !acquired {
-			problem := fault.New(503, "case_busy", "关联案件正被修改，请重试")
-			problem.Retryable = true
-			return problem
+		if lockCases {
+			// The current case is already locked. A nonblocking second lock avoids
+			// a cross-case deadlock when two candidates have opposite ancestry.
+			var acquired bool
+			if err := tx.QueryRow(ctx, `SELECT pg_try_advisory_xact_lock(hashtextextended(current_schema() || ':case:' || $1,0))`, caseID).Scan(&acquired); err != nil {
+				return err
+			}
+			if !acquired {
+				problem := fault.New(503, "case_busy", "关联案件正被修改，请重试")
+				problem.Retryable = true
+				return problem
+			}
 		}
 		var ancestor Case
 		var members string
