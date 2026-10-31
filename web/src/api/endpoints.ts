@@ -31,6 +31,7 @@ import type {
   SubjectSourceSnapshotDetail,
   SubjectSourceDirectory,
 } from "./types";
+import type { WireSchemas } from "./wire.generated";
 import { ApiError, jsonInit, requestJson } from "./http";
 import {
   parseAcceptedReview,
@@ -528,7 +529,7 @@ export function submitDecision(
         action: input.action,
         reason: input.reason,
         expected_version: input.expectedVersion,
-      },
+      } satisfies WireSchemas["DecisionRequest"],
       { "Idempotency-Key": crypto.randomUUID() },
     ),
     parseEmpty,

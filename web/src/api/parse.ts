@@ -51,9 +51,10 @@ import type {
 } from "./types";
 import { parseFrozenLegalReviewProjection } from "./legal-citations";
 import { isRecord } from "./guards";
-import { invalidResponse } from "./respond";
+import { enumValue, invalidResponse } from "./respond";
 import { parseAgentReview } from "./agent-review";
 import { parseBusinessAgentReview } from "./business-agent-review";
+import { wireEnums } from "./wire.generated";
 function nonNegativeIntegerOrNull(value: unknown): number | null {
   const result = numberOrNull(value);
   return result !== null && Number.isInteger(result) && result >= 0
@@ -506,38 +507,18 @@ function parseMembers(value: unknown[]): CaseDetail["members"] {
   });
 }
 
-const materialPurposes = new Set([
-  "primary_contract",
-  "supplement",
-  "procurement",
-  "award",
-  "acceptance",
-  "invoice",
-  "correspondence",
-  "other",
-]);
-
 function parseMaterialProjection(value: unknown): MaterialProjection {
   const record = recordOf(value, "material");
-  const role = requiredString(record, "role");
-  const purpose = requiredString(record, "purpose");
-  const legacyStatus = requiredString(record, "legacy_status");
-  if (
-    role !== "procurement" &&
-    role !== "award" &&
-    role !== "draft_contract" &&
-    role !== "attachment"
-  ) fail("material.role 无效");
-  if (!materialPurposes.has(purpose)) fail("material.purpose 无效");
-  if (
-    legacyStatus !== "native" &&
-    legacyStatus !== "pending_confirmation" &&
-    legacyStatus !== "confirmed"
-  ) fail("material.legacy_status 无效");
+  const role = enumValue(requiredString(record, "role"), wireEnums["MaterialProjection.role"]);
+  const purpose = enumValue(requiredString(record, "purpose"), wireEnums["MaterialProjection.purpose"]);
+  const legacyStatus = enumValue(requiredString(record, "legacy_status"), wireEnums["MaterialProjection.legacy_status"]);
+  if (role === null) fail("material.role 无效");
+  if (purpose === null) fail("material.purpose 无效");
+  if (legacyStatus === null) fail("material.legacy_status 无效");
   return {
     material_id: requiredString(record, "material_id"),
     role,
-    purpose: purpose as MaterialProjection["purpose"],
+    purpose,
     legacy_status: legacyStatus,
     legacy_selected: requiredBoolean(record, "legacy_selected"),
     selected: requiredBoolean(record, "selected"),
@@ -559,12 +540,8 @@ function parseMaterialVersionProjection(value: unknown): MaterialVersionProjecti
 
 export function parseMaterialSelectionProjection(value: unknown): MaterialSelectionProjection {
   const record = recordOf(value, "material_selection");
-  const status = requiredString(record, "status");
-  if (
-    status !== "pending_confirmation" &&
-    status !== "confirmed" &&
-    status !== "not_applicable"
-  ) fail("material_selection.status 无效");
+  const status = enumValue(requiredString(record, "status"), wireEnums["MaterialSelectionProjection.status"]);
+  if (status === null) fail("material_selection.status 无效");
   return {
     version: requiredCount(record, "version"),
     status,

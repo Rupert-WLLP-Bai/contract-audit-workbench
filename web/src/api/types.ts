@@ -1,5 +1,6 @@
 import type { BusinessAgentReview } from "./business-agent-review";
 import type { FrozenLegalReviewProjection } from "./legal-citations";
+import type { WireSchemas } from "./wire.generated";
 
 /** Client-side view of the review API. Null means the server omitted the field. */
 
@@ -65,48 +66,18 @@ export interface DocumentVersion {
   superseded?: boolean;
 }
 
-export type MaterialPurpose =
-  | "primary_contract"
-  | "supplement"
-  | "procurement"
-  | "award"
-  | "acceptance"
-  | "invoice"
-  | "correspondence"
-  | "other";
+export type MaterialPurpose = WireSchemas["MaterialProjection"]["purpose"];
+export type MaterialLegacyStatus = WireSchemas["MaterialProjection"]["legacy_status"];
+export type MaterialProjection = WireSchemas["MaterialProjection"];
+export type MaterialVersionProjection = WireSchemas["MaterialVersionProjection"];
 
-export type MaterialLegacyStatus =
-  | "native"
-  | "pending_confirmation"
-  | "confirmed";
-
-export interface MaterialProjection {
-  material_id: string;
-  role: "procurement" | "award" | "draft_contract" | "attachment";
-  purpose: MaterialPurpose;
-  legacy_status: MaterialLegacyStatus;
-  legacy_selected: boolean;
-  selected: boolean;
-  current_document_id: string;
-  current_version: number;
-}
-
-export interface MaterialVersionProjection {
-  material_id: string;
-  version: number;
-  document_id: string;
-  previous_document_id: string | null;
-  created_at: string;
-}
-
-export interface MaterialSelectionProjection {
-  version: number;
-  status: "pending_confirmation" | "confirmed" | "not_applicable";
-  document_ids: string[];
-  /** Server-suggested initial pending selection; never implies confirmation. */
-  candidate_document_ids?: string[];
-  primary_material_id: string | null;
-}
+// Older servers may omit the suggested initial selection from the response.
+export type MaterialSelectionProjection = Omit<
+  WireSchemas["MaterialSelectionProjection"],
+  "candidate_document_ids"
+> & {
+  candidate_document_ids?: WireSchemas["MaterialSelectionProjection"]["candidate_document_ids"];
+};
 
 export interface UploadDocumentInput {
   file: File;
@@ -125,18 +96,8 @@ export interface UploadDocumentResult {
   replayed: boolean;
 }
 
-export interface ActivityItem {
-  id: string;
-  at: string;
-  summary: string;
-}
-
-export interface FindingCounts {
-  total: number;
-  undecided: number;
-  conflict: number;
-  insufficient: number;
-}
+export type ActivityItem = WireSchemas["Activity"];
+export type FindingCounts = WireSchemas["FindingCounts"];
 
 export interface CaseDetail {
   id: string;
@@ -167,10 +128,7 @@ export interface CaseDetail {
   archived_at: string | null;
 }
 
-export interface TextOffset {
-  start: number;
-  end: number;
-}
+export type TextOffset = WireSchemas["TextOffset"];
 
 export interface BoundingBox {
   x: number;
@@ -198,13 +156,10 @@ export interface EvidenceAnchor {
   mismatch_reason: string | null;
 }
 
-export interface HumanDecision {
-  id: string;
-  action: string;
-  reason: string;
-  actor: string;
-  decided_at: string;
-}
+// The UI displays only these fields of the server's decision history.
+export type HumanDecision = Pick<
+  WireSchemas["Decision"], "id" | "action" | "reason" | "actor" | "decided_at"
+>;
 
 export interface FindingSeveritySource {
   policy_id: string;
@@ -750,17 +705,11 @@ export interface ReviewWorkspace {
   legal_authorities?: FrozenLegalReviewProjection;
 }
 
-export type DecisionAction =
-  | "confirm_risk"
-  | "false_positive"
-  | "insufficient_evidence"
-  | "accept_residual";
+export type DecisionAction = WireSchemas["DecisionRequest"]["action"];
 
-export interface DecisionInput {
-  action: DecisionAction;
-  reason: string;
-  expectedVersion: number;
-}
+export type DecisionInput = Omit<WireSchemas["DecisionRequest"], "expected_version"> & {
+  expectedVersion: WireSchemas["DecisionRequest"]["expected_version"];
+};
 
 export interface RunSnapshot {
   document_ids: string[];
@@ -850,11 +799,7 @@ export interface LLMEndpointInput {
   expected_revision?: number;
 }
 
-export interface LLMModelSelectionInput {
-  review_model: string;
-  ocr_model: string;
-  expected_revision?: number;
-}
+export type LLMModelSelectionInput = WireSchemas["LLMModelSelectionInput"];
 export interface GenerationRecord {
   id: string;
   document_id: string;
@@ -946,58 +891,20 @@ export interface ReviewHistoryEntry {
   workspace: ReviewWorkspace;
 }
 
-export interface GenerationInput {
-  template_id: string;
-  fields: Record<string, string>;
-  intent: "add" | "replace";
-  material_id?: string;
-  replaces_document_id?: string;
-}
-
-export interface RemediationCreateInput {
-  run_id: string;
-  attempt_id: string;
-  finding_ids: string[];
-  assignee_id: string;
-  due_at: string;
-  measure: string;
-}
-
-export interface RemediationSubmitInput {
-  document_ids: string[];
-  reason: string;
-  expected_version: number;
-}
-
-export interface RemediationVerifyInput {
-  run_id: string;
-  attempt_id: string;
-  reason: string;
-  expected_version: number;
-}
-
-export interface ReportCreateInput {
-  run_id: string;
-  attempt_id: string;
-}
-
-export interface ArchiveInput {
-  report_id: string;
-  reason: string;
-}
+// The UI always supplies intent, assignee and due date even where the wire
+// schema permits them to be omitted.
+export type GenerationInput = WireSchemas["CreateGenerationRequest"] & {
+  intent: NonNullable<WireSchemas["CreateGenerationRequest"]["intent"]>;
+};
+export type RemediationCreateInput = WireSchemas["RemediationInput"] &
+  Required<Pick<WireSchemas["RemediationInput"], "assignee_id" | "due_at">>;
+export type RemediationSubmitInput = WireSchemas["RemediationSubmitInput"];
+export type RemediationVerifyInput = WireSchemas["RemediationVerifyInput"];
+export type ReportCreateInput = WireSchemas["CreateReportRequest"];
+export type ArchiveInput = WireSchemas["ArchiveRequest"];
 export type WorkbenchPeriod = "day" | "week" | "month";
 
-export interface CaseProfile {
-  case_id: string;
-  number: string;
-  customer: string;
-  supplier: string;
-  contract_category: string;
-  owner_id: string;
-  due_at: string | null;
-  version: number;
-  updated_at: string;
-}
+export type CaseProfile = WireSchemas["CaseProfile"];
 
 export type SubjectRole =
   | "customer"
@@ -1429,21 +1336,7 @@ export interface SubjectChangeDecisionResult {
   binding_versions_appended: number;
 }
 
-export interface WorkbenchTask {
-  id: string;
-  case_id: string;
-  title: string;
-  kind: "review" | "decision" | "remediation" | "general";
-  assignee_id: string;
-  due_at: string | null;
-  status: "open" | "in_progress" | "completed";
-  priority: "high" | "medium" | "low";
-  finding_id: string | null;
-  version: number;
-  created_at: string;
-  created_by: string | null;
-  updated_at: string;
-}
+export type WorkbenchTask = WireSchemas["WorkbenchTask"];
 
 export interface CaseRelation {
   id: string;
@@ -1460,7 +1353,7 @@ export interface Knowledge {
   title: string;
   version: string;
   body: string;
-  source_type: "synthetic_policy" | "reference";
+  source_type: WireSchemas["KnowledgeInput"]["source_type"];
   effective_at: string | null;
   created_by: string;
   created_at: string;
@@ -1566,28 +1459,10 @@ export interface WorkbenchSnapshot {
   }[];
 }
 
-export type CaseProfileInput = Omit<
-  CaseProfile,
-  "case_id" | "version" | "updated_at"
-> & { expected_version: number };
-export type WorkbenchTaskInput = Pick<
-  WorkbenchTask,
-  | "title"
-  | "kind"
-  | "assignee_id"
-  | "due_at"
-  | "status"
-  | "priority"
-  | "finding_id"
->;
-export type WorkbenchTaskUpdateInput = WorkbenchTaskInput & {
-  expected_version: number;
-};
-export type CaseRelationInput = Pick<
-  CaseRelation,
-  "related_case_id" | "reason"
->;
-export type KnowledgeInput = Pick<
-  Knowledge,
-  "title" | "version" | "body" | "source_type" | "effective_at"
-> & { id?: string };
+export type CaseProfileInput = WireSchemas["CaseProfileInput"];
+// The task-create UI does not send the optional initial expected_version.
+export type WorkbenchTaskInput = Omit<WireSchemas["WorkbenchTaskInput"], "expected_version">;
+export type WorkbenchTaskUpdateInput = WireSchemas["WorkbenchTaskUpdateInput"];
+export type CaseRelationInput = WireSchemas["CaseRelationInput"];
+export type KnowledgeInput = WireSchemas["KnowledgeInput"] &
+  Required<Pick<WireSchemas["KnowledgeInput"], "effective_at">>;

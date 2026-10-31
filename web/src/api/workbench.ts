@@ -1,5 +1,6 @@
 import { isRecord } from "./guards";
 import { enumValue, invalidResponse } from "./respond";
+import { wireEnums } from "./wire.generated";
 import {
   parseCaseSummary,
   parseExecutionUsage,
@@ -112,15 +113,11 @@ function profile(value: unknown): CaseProfile {
   };
 }
 
-const taskKinds = ["review", "decision", "remediation", "general"] as const;
-const taskStatuses = ["open", "in_progress", "completed"] as const;
-const taskPriorities = ["high", "medium", "low"] as const;
-
 function task(value: unknown): WorkbenchTask {
   const record = object(value, "任务");
-  const kind = enumValue(string(record, "kind"), taskKinds);
-  const status = enumValue(string(record, "status"), taskStatuses);
-  const priority = enumValue(string(record, "priority"), taskPriorities);
+  const kind = enumValue(string(record, "kind"), wireEnums["WorkbenchTask.kind"]);
+  const status = enumValue(string(record, "status"), wireEnums["WorkbenchTask.status"]);
+  const priority = enumValue(string(record, "priority"), wireEnums["WorkbenchTask.priority"]);
   if (kind === null) return invalid("任务 kind 无效");
   if (status === null) return invalid("任务 status 无效");
   if (priority === null) return invalid("任务 priority 无效");

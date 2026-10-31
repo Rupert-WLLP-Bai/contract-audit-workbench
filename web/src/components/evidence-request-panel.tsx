@@ -21,6 +21,7 @@ import { ErrorNotice } from "./error-notice";
 import { queryKeys, useCreateWorkbenchTask, useStartReview } from "../api/queries";
 import type { Actor, CaseDetail, ConstraintEvaluation, ReviewDocument, ReviewWorkspace, WorkbenchTask } from "../api/types";
 import { caseHref, formatDateTime, relationLabel, roleLabel } from "../domain/review";
+import { beijingInputToUtc } from "./beijing-datetime";
 import { StatusText } from "./status-text";
 
 const materialRoles = [
@@ -318,11 +319,11 @@ function followupReviewInput(
   requiresBusinessAt: boolean,
   businessAt: string,
 ): { business_at?: string } {
-  return requiresBusinessAt ? { business_at: new Date(businessAt).toISOString() } : {};
+  return requiresBusinessAt ? { business_at: beijingInputToUtc(businessAt) } : {};
 }
 
 function validBusinessReviewTime(value: string): boolean {
-  return !Number.isNaN(new Date(value).getTime());
+  return beijingInputToUtc(value) !== "";
 }
 
 function submitRequestForm<Input>(
@@ -693,7 +694,7 @@ function FollowupReview({
       <h4>发起后续审查</h4>
       <p className="meta">审查必须在回执提交之后受理，才能作为该回执的核验依据。</p>
       {requiresBusinessAt ? (
-        <label className="field">审查业务时间（本地时间）
+        <label className="field">审查业务时间（北京时间）
           <Input type="datetime-local" value={businessAt} onChange={(event) => setBusinessAt(event.target.value)} />
         </label>
       ) : null}
