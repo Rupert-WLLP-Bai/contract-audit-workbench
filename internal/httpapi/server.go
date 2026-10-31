@@ -169,6 +169,7 @@ func Handler(st *store.Store, opt Options) http.Handler {
 	mux.HandleFunc("POST /api/cases/{caseID}/remediations/{itemID}/verify", h.verifyRemediation)
 	mux.HandleFunc("POST /api/cases/{caseID}/reports", h.createReport)
 	mux.HandleFunc("GET /api/cases/{caseID}/reports/{reportID}", h.readReport)
+	mux.HandleFunc("GET /api/cases/{caseID}/reports/{reportID}/evidence-bundle", h.downloadEvidenceBundle)
 	mux.HandleFunc("POST /api/cases/{caseID}/archive", h.archive)
 	mux.HandleFunc("POST /api/cases/{caseID}/reviews", h.startReview)
 	mux.HandleFunc("GET /api/cases/{caseID}/reviews/{runID}", h.workspace)

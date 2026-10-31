@@ -555,6 +555,9 @@ func remediationRoute(role string, m routeMethodSet, p []string) bool {
 	return role == "core" && m.post && (len(p) == 3 || len(p) == 5 && (p[4] == "submit" || p[4] == "verify"))
 }
 func reportRoute(role string, m routeMethodSet, p []string) bool {
+	if len(p) == 5 && p[4] == "evidence-bundle" {
+		return role == "document" && m.read
+	}
 	return role == "core" && (len(p) == 3 && m.post || len(p) == 4 && m.read)
 }
 
