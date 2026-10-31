@@ -37,7 +37,7 @@ describe("frozen contract citation parsing", () => {
 
   it("rejects a range that does not reproduce its own quote", () => {
     expect(() => parseFrozenContractCitation(payload({ start: 5 }))).toThrow(/区间与引用原文不一致/);
-    expect(() => parseFrozenContractCitation(payload({ quote: "100万", end: 10 }))).toThrow(/区间与引用原文不一致/);
+    expect(() => parseFrozenContractCitation(payload({ quote: "999万元" }))).toThrow(/区间与引用原文不一致/);
     expect(() => parseFrozenContractCitation(payload({ end: 99 }))).toThrow(/区间无效/);
   });
 
