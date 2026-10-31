@@ -1,5 +1,5 @@
 import { Button } from "antd";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useSearchParams } from "react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import {
@@ -26,6 +26,7 @@ import { paths } from "../api/paths";
 import type { CaseRelationInput, DecisionAction } from "../api/types";
 import { PageStatus } from "../components/page-status";
 import { ReviewWorkspaceView } from "../components/review-workspace";
+import { DirtyLeaveGuard } from "../components/dirty-leave-guard";
 import type { ReviewCaseContext } from "../components/document-stage";
 import { RunProvenance } from "../components/run-provenance";
 import { FrozenLegalAuthorities } from "../components/frozen-legal-authorities";
@@ -40,6 +41,11 @@ import {
   selectedFindingId,
 } from "../domain/review";
 import { useReviewEvents } from "../hooks/use-review-events";
+import {
+  DecisionDraftScopeProvider,
+  decisionDraftUserPrefix,
+  useDecisionDraftsDirty,
+} from "../hooks/decision-drafts";
 import { useReviewLayout } from "../hooks/use-viewport-layout";
 
 export function ReviewPage() {
@@ -75,6 +81,23 @@ export function ReviewPage() {
 
   const execution = review.data?.review_attempts;
   const selectedAttempt = execution?.attempt ?? null;
+  const decisionDraftScope = useMemo(
+    () =>
+      session.data
+        ? {
+            userId: session.data.id,
+            caseId,
+            runId,
+            attemptId: selectedAttempt?.id ?? null,
+          }
+        : null,
+    [session.data, caseId, runId, selectedAttempt?.id],
+  );
+  const decisionDraftsDirty = useDecisionDraftsDirty(
+    session.data === undefined
+      ? null
+      : decisionDraftUserPrefix(session.data.id),
+  );
   const latestAttempt = execution
     ? execution.attempts.reduce(
         (latest, attempt) =>
@@ -411,76 +434,79 @@ export function ReviewPage() {
       ) : caseArchived ? (
         <p className="callout">案件已归档，历史审查仅供查看。</p>
       ) : null}
-      <ReviewWorkspaceView
-        workspace={workspace}
-        layout={layout}
-        showDiagnostics={diagnosticData !== null}
-        selectedId={selectedId}
-        caseContext={caseContext}
-        canEditRelations={canEditRelations}
-        relationPending={relationPending}
-        relationError={relationError}
-        streamStatus={streamStatus}
-        pending={decide.isPending}
-        retrying={retry.isPending}
-        canDecide={canDecide}
-        decisionDisabledReason={decisionDisabledReason}
-        canRetry={canRetry}
-        canCancel={canCancel}
-        cancelling={cancel.isPending}
-        cancelError={cancel.isError ? errorMessage(cancel.error) : null}
-        conflictMessage={
-          conflictFinding === selectedId ? conflictMessage : null
-        }
-        saveError={conflictFinding === selectedId ? saveError : null}
-        onSelect={(findingId) => {
-          const next = new URLSearchParams(params);
-          next.set("finding", findingId);
-          setParams(next);
-        }}
-        onSelectAttempt={(attemptId) => {
-          const next = new URLSearchParams(params);
-          next.set("attempt_id", attemptId);
-          // A citation belongs to its own attempt; never show the previous
-          // attempt's evidence after switching.
-          next.delete("citation");
-          setParams(next);
-        }}
-        selectedEvidenceId={selectedCitation}
-        onSelectEvidence={(evidenceId) => {
-          const next = new URLSearchParams(params);
-          if (selectedAttempt?.id) next.set("attempt_id", selectedAttempt.id);
-          if (evidenceId === null) {
-            next.delete("citation");
-          } else {
-            next.set("citation", evidenceId);
+      <DecisionDraftScopeProvider scope={decisionDraftScope}>
+        <ReviewWorkspaceView
+          workspace={workspace}
+          layout={layout}
+          showDiagnostics={diagnosticData !== null}
+          selectedId={selectedId}
+          caseContext={caseContext}
+          canEditRelations={canEditRelations}
+          relationPending={relationPending}
+          relationError={relationError}
+          streamStatus={streamStatus}
+          pending={decide.isPending}
+          retrying={retry.isPending}
+          canDecide={canDecide}
+          decisionDisabledReason={decisionDisabledReason}
+          canRetry={canRetry}
+          canCancel={canCancel}
+          cancelling={cancel.isPending}
+          cancelError={cancel.isError ? errorMessage(cancel.error) : null}
+          conflictMessage={
+            conflictFinding === selectedId ? conflictMessage : null
           }
-          setParams(next);
-        }}
-        onDecide={onDecide}
-        onRetry={() => {
-          if (!canRetry) return;
-          retry.mutate(undefined, {
-            onSuccess: (accepted) => {
-              const next = new URLSearchParams(params);
-              next.set("attempt_id", accepted.attempt_id);
+          saveError={conflictFinding === selectedId ? saveError : null}
+          onSelect={(findingId) => {
+            const next = new URLSearchParams(params);
+            next.set("finding", findingId);
+            setParams(next);
+          }}
+          onSelectAttempt={(attemptId) => {
+            const next = new URLSearchParams(params);
+            next.set("attempt_id", attemptId);
+            // A citation belongs to its own attempt; never show the previous
+            // attempt's evidence after switching.
+            next.delete("citation");
+            setParams(next);
+          }}
+          selectedEvidenceId={selectedCitation}
+          onSelectEvidence={(evidenceId) => {
+            const next = new URLSearchParams(params);
+            if (selectedAttempt?.id) next.set("attempt_id", selectedAttempt.id);
+            if (evidenceId === null) {
               next.delete("citation");
-              setParams(next);
-            },
-          });
-        }}
-        onCancel={() => {
-          if (canCancel) cancel.mutate();
-        }}
-        onCreateRelation={saveRelation}
-        onDeleteRelation={(relationId) => deleteRelation.mutate(relationId)}
-        diagnosticsLoading={diagnostics.isFetching}
-        onLoadDiagnostics={
-          currentDiagnosticScope && diagnosticScope !== currentDiagnosticScope
-            ? () => setDiagnosticScope(currentDiagnosticScope)
-            : undefined
-        }
-      />
+            } else {
+              next.set("citation", evidenceId);
+            }
+            setParams(next);
+          }}
+          onDecide={onDecide}
+          onRetry={() => {
+            if (!canRetry) return;
+            retry.mutate(undefined, {
+              onSuccess: (accepted) => {
+                const next = new URLSearchParams(params);
+                next.set("attempt_id", accepted.attempt_id);
+                next.delete("citation");
+                setParams(next);
+              },
+            });
+          }}
+          onCancel={() => {
+            if (canCancel) cancel.mutate();
+          }}
+          onCreateRelation={saveRelation}
+          onDeleteRelation={(relationId) => deleteRelation.mutate(relationId)}
+          diagnosticsLoading={diagnostics.isFetching}
+          onLoadDiagnostics={
+            currentDiagnosticScope && diagnosticScope !== currentDiagnosticScope
+              ? () => setDiagnosticScope(currentDiagnosticScope)
+              : undefined
+          }
+        />
+      </DecisionDraftScopeProvider>
+      <DirtyLeaveGuard dirty={decisionDraftsDirty} />
       <EvidenceRequestPanel
         caseId={caseId}
         runId={runId}

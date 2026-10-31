@@ -4,7 +4,7 @@ import zhCN from "antd/locale/zh_CN";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { StrictMode, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
-import { BrowserRouter } from "react-router";
+import { createBrowserRouter, RouterProvider } from "react-router";
 import "./styles.css";
 
 const rootStyle = getComputedStyle(document.documentElement);
@@ -100,7 +100,13 @@ export function mountApplication(
 ) {
   let content = application;
   if (options.routing !== false)
-    content = <BrowserRouter>{content}</BrowserRouter>;
+    // Data router: router-level navigation blocking (useBlocker) for
+    // dirty-form leave guards only works under RouterProvider.
+    content = (
+      <RouterProvider
+        router={createBrowserRouter([{ path: "*", element: content }])}
+      />
+    );
   if (options.queries !== false)
     content = (
       <QueryClientProvider client={queryClient}>{content}</QueryClientProvider>

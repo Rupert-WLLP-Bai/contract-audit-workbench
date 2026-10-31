@@ -2,7 +2,7 @@ import { cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { MemoryRouter, Route, Routes } from "react-router";
+import { createMemoryRouter, RouterProvider } from "react-router";
 import { AdminApp } from "../admin-app";
 import { setSessionIdentity } from "../api/http";
 import type {
@@ -157,11 +157,11 @@ describe("RulePack inactive published version rollback", () => {
     const user = userEvent.setup();
     render(
       <QueryClientProvider client={client}>
-        <MemoryRouter
-          initialEntries={["/admin/rulepacks/telecom-core/versions/1"]}
-        >
-          <AdminApp />
-        </MemoryRouter>
+        <RouterProvider
+          router={createMemoryRouter([{ path: "*", element: <AdminApp /> }], {
+            initialEntries: ["/admin/rulepacks/telecom-core/versions/1"],
+          })}
+        />
       </QueryClientProvider>,
     );
 
@@ -319,16 +319,17 @@ function renderDetail(
   clients.push(client);
   render(
     <QueryClientProvider client={client}>
-      <MemoryRouter
-        initialEntries={["/admin/rulepacks/telecom-core/versions/1"]}
-      >
-        <Routes>
-          <Route
-            path="/admin/rulepacks/:packId/versions/:version"
-            element={<RulePackDetailPage />}
-          />
-        </Routes>
-      </MemoryRouter>
+      <RouterProvider
+        router={createMemoryRouter(
+          [
+            {
+              path: "/admin/rulepacks/:packId/versions/:version",
+              element: <RulePackDetailPage />,
+            },
+          ],
+          { initialEntries: ["/admin/rulepacks/telecom-core/versions/1"] },
+        )}
+      />
     </QueryClientProvider>,
   );
   return requests;
