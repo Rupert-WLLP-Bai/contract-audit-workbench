@@ -20,6 +20,19 @@ const (
 	httpSeriesCapacity = 256
 )
 
+// Explicit, inclusive upper bounds in milliseconds. The final bucket is +Inf.
+var httpDurationBounds = [...]float64{1, 2, 5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10000, 30000, 60000}
+
+type httpHistogram struct {
+	attributes []attribute
+	start      string
+	lastTime   int64
+	count      uint64
+	sum        float64
+	buckets    [len(httpDurationBounds) + 1]uint64
+	active     bool
+}
+
 type httpObservation struct {
 	method     string
 	route      string
@@ -27,8 +40,10 @@ type httpObservation struct {
 	durationMS int64
 }
 
-func httpCounterKey(o httpObservation) [3]string {
-	return [3]string{o.method, o.route, strconv.Itoa(o.status)}
+type httpCounterKey struct {
+	method string
+	route  string
+	status int
 }
 
 func httpDurationKey(o httpObservation) [2]string {
@@ -49,10 +64,10 @@ func (e *Exporter) observeHTTP(o httpObservation) {
 		o.route = "unmatched"
 	}
 	now := time.Now().UnixNano()
-	start := strconv.FormatInt(now, 10)
 	e.httpMu.Lock()
 	defer e.httpMu.Unlock()
-	counter, ok := e.httpRequests[httpCounterKey(o)]
+	key := httpCounterKey{method: o.method, route: o.route, status: o.status}
+	counter, ok := e.httpRequests[key]
 	if !ok && len(e.httpRequests) >= httpSeriesCapacity {
 		e.httpDropped.Add(1)
 		return
@@ -62,8 +77,8 @@ func (e *Exporter) observeHTTP(o httpObservation) {
 			stringAttribute("http.request.method", o.method),
 			stringAttribute("http.route", o.route),
 			stringAttribute("http.response.status_code", strconv.Itoa(o.status)),
-		}, start: start}
-		e.httpRequests[httpCounterKey(o)] = counter
+		}, start: strconv.FormatInt(now, 10)}
+		e.httpRequests[key] = counter
 	}
 	counter.count++
 	counter.latestEnd = now
@@ -74,15 +89,19 @@ func (e *Exporter) observeHTTP(o httpObservation) {
 		return
 	}
 	if !ok {
-		duration = &metricSeries{attributes: []attribute{
+		duration = &httpHistogram{attributes: []attribute{
 			stringAttribute("http.request.method", o.method),
 			stringAttribute("http.route", o.route),
-		}, start: start}
+		}, start: strconv.FormatInt(now, 10)}
 		e.httpDurations[httpDurationKey(o)] = duration
 	}
-	duration.duration = o.durationMS
-	duration.hasDuration = true
-	duration.latestEnd = now
+	duration.count++
+	duration.sum += float64(o.durationMS)
+	bucket := 0
+	for bucket < len(httpDurationBounds) && float64(o.durationMS) > httpDurationBounds[bucket] {
+		bucket++
+	}
+	duration.buckets[bucket]++
 	duration.active = true
 }
 
@@ -90,24 +109,15 @@ func (e *Exporter) observeHTTP(o httpObservation) {
 // that observed exchanges since the last send. The snapshot runs under the
 // producer mutex, so producers either see the pre-send or the post-send state
 // and no observation is lost between copy and reset.
-func (e *Exporter) drainHTTPMetrics() ([]numberPoint, []numberPoint) {
+func (e *Exporter) drainHTTPMetrics() ([]numberPoint, []histogramPoint) {
 	now := time.Now().UnixNano()
 	e.httpMu.Lock()
-	counters := make([]*metricSeries, 0, len(e.httpRequests))
+	events := make([]numberPoint, 0, len(e.httpRequests))
+	points := make([]histogramPoint, 0, len(e.httpDurations))
 	for _, series := range e.httpRequests {
-		if series.active {
-			counters = append(counters, series)
+		if !series.active {
+			continue
 		}
-	}
-	durations := make([]*metricSeries, 0, len(e.httpDurations))
-	for _, series := range e.httpDurations {
-		if series.active {
-			durations = append(durations, series)
-		}
-	}
-	events := make([]numberPoint, 0, len(counters))
-	points := make([]numberPoint, 0, len(durations))
-	for _, series := range counters {
 		series.active = false
 		// Collection timestamps advance monotonically per series even when
 		// observations arrive out of order across concurrent requests.
@@ -116,46 +126,32 @@ func (e *Exporter) drainHTTPMetrics() ([]numberPoint, []numberPoint) {
 		events = append(events, numberPoint{Attributes: series.attributes, Start: series.start,
 			Time: strconv.FormatInt(at, 10), AsInt: strconv.FormatInt(series.count, 10)})
 	}
-	for _, series := range durations {
-		series.active = false
-		if !series.hasDuration {
+	for _, series := range e.httpDurations {
+		if !series.active {
 			continue
 		}
-		at := max(now, series.latestEnd, series.lastTime+1)
+		series.active = false
+		at := max(now, series.lastTime+1)
 		series.lastTime = at
-		points = append(points, numberPoint{Attributes: series.attributes,
-			Time: strconv.FormatInt(series.latestEnd, 10), AsInt: strconv.FormatInt(series.duration, 10)})
+		buckets := make([]string, len(series.buckets))
+		for i, count := range series.buckets {
+			buckets[i] = strconv.FormatUint(count, 10)
+		}
+		points = append(points, histogramPoint{Attributes: series.attributes, Start: series.start,
+			Time: strconv.FormatInt(at, 10), Count: strconv.FormatUint(series.count, 10), Sum: series.sum,
+			BucketCounts: buckets, ExplicitBounds: httpDurationBounds[:]})
 	}
 	e.httpMu.Unlock()
 	return events, points
 }
 
-// hasHTTPObservations reports whether any exchange was recorded but not yet
-// sent, so the periodic flush posts a metrics payload only when one exists.
-func (e *Exporter) hasHTTPObservations() bool {
-	e.httpMu.Lock()
-	defer e.httpMu.Unlock()
-	for _, series := range e.httpRequests {
-		if series.active {
-			return true
-		}
-	}
-	for _, series := range e.httpDurations {
-		if series.active {
-			return true
-		}
-	}
-	return false
-}
-
-// flushHTTPMetrics sends a metrics-only payload for exchanges recorded since
-// the last delivery. It keeps the same accounting rules as the span-driven
-// path: send failures never fail the process and never lose durable records.
-func (e *Exporter) flushHTTPMetrics() {
-	if e == nil || e.ctx.Err() != nil || !e.hasHTTPObservations() {
+// flushMetrics sends pending HTTP observations and, on the periodic tick only,
+// collects runtime state. Shutdown exports counters without starting a new query.
+func (e *Exporter) flushMetrics(collectRuntime bool) {
+	if e == nil || e.ctx.Err() != nil {
 		return
 	}
-	points, rejected, err := e.sendMetrics(nil)
+	points, rejected, err := e.sendMetrics(nil, e.collectRuntimeMetrics(collectRuntime))
 	if err != nil {
 		rejected = points
 	}

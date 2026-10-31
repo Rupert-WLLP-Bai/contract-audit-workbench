@@ -50,8 +50,10 @@ func TestConfiguredTelemetrySelectsOnlyApprovedExporterSettings(t *testing.T) {
 	t.Setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://127.0.0.1:4318")
 	t.Setenv("OTEL_EXPORTER_OTLP_PROTOCOL", "http/json")
 	t.Setenv("OTEL_TRACES_SAMPLER", "always_off")
-	if exporter, err := configuredTelemetry("worker"); exporter != nil || err != nil {
-		t.Fatalf("always_off must disable telemetry: %v %v", exporter, err)
+	if exporter, err := configuredTelemetry("worker"); exporter == nil || err != nil {
+		t.Fatalf("always_off must leave metrics enabled: %v %v", exporter, err)
+	} else {
+		exporter.Close()
 	}
 
 	clearTelemetryEnvironment(t)

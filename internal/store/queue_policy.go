@@ -165,12 +165,16 @@ func (s *Store) admitNewJobs(ctx context.Context, tx pgx.Tx, old, changed []Job)
 			return err
 		}
 		if global > cfg.GlobalPending || tenant > cfg.TenantPending {
+			s.Telemetry().RecordQuotaRejection("queue_capacity")
 			return &fault.Error{Status: 503, Code: "execution_capacity", Message: "审查队列容量已满，请稍后重试", Retryable: true}
 		}
 		if _, err := tx.Exec(ctx, `INSERT INTO execution_queue_tenants(tenant_id) VALUES($1) ON CONFLICT DO NOTHING`, item.TenantID); err != nil {
 			return err
 		}
-		if _, err := tx.Exec(ctx, `UPDATE worker_jobs SET policy_hash=$2,max_claims=$3,deadline_at=clock_timestamp()+($4::int*interval '1 second') WHERE id=$1`, item.ID, cfg.hash, cfg.MaxClaims, cfg.MaxAgeSeconds); err != nil {
+		// Give newly admitted review jobs a PG readiness anchor without changing
+		// an explicit future schedule or backfilling existing jobs.
+		if _, err := tx.Exec(ctx, `UPDATE worker_jobs SET policy_hash=$2,max_claims=$3,deadline_at=clock_timestamp()+($4::int*interval '1 second'),
+			ready_at=CASE WHEN kind='review' AND ready_at=to_timestamp(0) THEN clock_timestamp() ELSE ready_at END WHERE id=$1`, item.ID, cfg.hash, cfg.MaxClaims, cfg.MaxAgeSeconds); err != nil {
 			return err
 		}
 		if _, err := tx.Exec(ctx, `SELECT set_config('app.actor_role',$1,true)`, role); err != nil {

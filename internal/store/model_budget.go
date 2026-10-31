@@ -213,6 +213,7 @@ func (s *Store) reserveModelCall(ctx context.Context, caller string, scope model
 		if err := tx.Commit(ctx); err != nil {
 			return ModelCallLease{}, err
 		}
+		s.Telemetry().RecordQuotaRejection("model_budget")
 		return ModelCallLease{}, ErrModelBudgetExceeded
 	}
 	if err := authorizeModelScope(ctx, tx, caller, scope); err != nil {

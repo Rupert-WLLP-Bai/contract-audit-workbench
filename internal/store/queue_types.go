@@ -44,19 +44,22 @@ type JobAcceptance struct {
 
 // JobClaim carries the fencing generation assigned by PostgreSQL.
 type JobClaim struct {
-	JobID      string
-	TenantID   string
-	OrgID      string
-	CaseID     string
-	RunID      string
-	AttemptID  string
-	ActorID    string
-	Kind       string
-	WorkerID   string
-	Generation int64
-	LeaseUntil time.Time
-	stopReason string
-	deadline   time.Time
+	JobID         string
+	TenantID      string
+	OrgID         string
+	CaseID        string
+	RunID         string
+	AttemptID     string
+	ActorID       string
+	Kind          string
+	WorkerID      string
+	Generation    int64
+	LeaseUntil    time.Time
+	stopReason    string
+	deadline      time.Time
+	reclaimed     bool
+	metricWait    time.Duration
+	metricStarted time.Time
 }
 
 func (claim JobClaim) scope() dbScope {

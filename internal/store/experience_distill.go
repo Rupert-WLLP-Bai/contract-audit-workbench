@@ -389,7 +389,14 @@ func (s *Store) RequestExperienceDistillation(ctx context.Context, user accounts
 			switch pgErr.Code {
 			case "23505":
 				return ExperienceDistillReceipt{}, fault.Conflict("这个请求标识已用于其他经验提炼请求")
-			case "53300", "55000":
+			case "53300":
+				if pgErr.Message == "execution queue capacity exceeded" {
+					s.Telemetry().RecordQuotaRejection("queue_capacity")
+				}
+				problem := fault.New(503, "execution_capacity", "经验提炼队列暂不可用，请稍后重试")
+				problem.Retryable = true
+				return ExperienceDistillReceipt{}, problem
+			case "55000":
 				problem := fault.New(503, "execution_capacity", "经验提炼队列暂不可用，请稍后重试")
 				problem.Retryable = true
 				return ExperienceDistillReceipt{}, problem

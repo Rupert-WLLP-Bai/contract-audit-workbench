@@ -472,6 +472,8 @@ func TestExporterMetricsBoundsSeriesWithoutLosingEvents(t *testing.T) {
 	for i := range 1024 {
 		event := completedEvent("span", "attempt")
 		event.Phase = "phase_" + strconv.Itoa(i)
+		event.NodeKind = "tenant_" + strconv.Itoa(i)
+		event.Status = "actor_" + strconv.Itoa(i)
 		exporter.Record("run", "attempt", event)
 		metrics := decodeMetrics(t, receiveMetrics(t, bodies))
 		sum := metrics["audit.execution.events"].Sum
@@ -479,6 +481,15 @@ func TestExporterMetricsBoundsSeriesWithoutLosingEvents(t *testing.T) {
 			t.Fatalf("each batch must export its one active series: %+v", sum)
 		}
 		point := sum.Points[0]
+		if i == 0 {
+			labels := map[string]string{}
+			for _, attr := range point.Attributes {
+				labels[attr.Key] = attr.Value.String
+			}
+			if labels["audit.phase"] != "other" || labels["audit.node_kind"] != "other" || labels["audit.status"] != "other" {
+				t.Fatalf("unrecognized values escaped into metric labels: %+v", point)
+			}
+		}
 		count, err := strconv.ParseInt(point.Value, 10, 64)
 		if err != nil {
 			t.Fatal(err)

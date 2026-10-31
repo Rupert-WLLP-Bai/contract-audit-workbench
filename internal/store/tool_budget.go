@@ -88,6 +88,7 @@ func (s *Store) ReserveToolCall(ctx context.Context, user accounts.User, in Tool
 		return "", err
 	}
 	if attemptCount >= toolCallAttemptLimit || tenantMinuteCount >= toolCallTenantMinuteLimit {
+		s.Telemetry().RecordQuotaRejection("tool_budget")
 		return "", fault.New(429, "tool_quota_exceeded", "工具调用预算已用尽")
 	}
 	id, err := newID("tool_call_")
