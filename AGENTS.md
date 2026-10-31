@@ -40,7 +40,7 @@ Valkey、Temporal、Kafka、独立搜索引擎、服务网格和微前端不进�
 
 ## 检查节奏
 
-- PR 到 `dev` 或 `main` 只跑 `pr-fast-gate`：`make check-fast` 从 `BASE_REF`（默认 `origin/main`，PR 使用实际目标分支 SHA，也可用 `CAW_FAST_BASE`）的 merge-base 开始，连同本地未提交和新增文件计算差异，正确处理删除、重命名和带空格路径；只跑受影响范围的 Python、Go、web 检查，失败返回非零。
+- PR 到 `main` 只跑 `pr-fast-gate`：`make check-fast` 从 `BASE_REF`（默认 `origin/main`，PR 使用实际目标分支 SHA，也可用 `CAW_FAST_BASE`）的 merge-base 开始，连同本地未提交和新增文件计算差异，正确处理删除、重命名和带空格路径；只跑受影响范围的 Python、Go、web 检查，失败返回非零。
 - 快速 Go 只做格式、编译和受影响无数据库包单测，不跑 `go vet`。`--plan` 的 `go`/`web`/`python`/`database`/`poppler`/`legal_assets` 决定条件准备；只有 `database=true` 才启动 PostgreSQL 18，并用 `scripts/provision_test_db.sh` 做鉴权、迁移、冻结证据等敏感路径定点检查；Poppler 和法律资产各按对应输出准备。快速路径不跑浏览器。
 - 完整五阶段（static、go、web、coverage、browser）只由 `quality.yml` 的 `workflow_dispatch` 手动入口执行；入口固定目标 SHA，所有阶段都是 `success` 才算 PASS，`skipped`、`cancelled` 或未运行的阶段不能冒充完整 PASS。
 - 普通 `main` 推送不自动运行全量；固定候选和发布必须手动派发完整入口，保留覆盖率阈值、数据库和浏览器验收。
@@ -51,6 +51,6 @@ Valkey、Temporal、Kafka、独立搜索引擎、服务网格和微前端不进�
 
 主 Agent 负责公共接口、数据库结构和依赖，并合并最终结果。子 Agent 只改自己拥有的文件。
 
-`main` 是唯一长期主线。当前批次按 #68 → `dev` → #63 → `main` 过渡收口；核对无未合并工作后退役 `dev`，不改写已发布历史。后续从最新 `main` 创建 `fix/<issue>-<slug>`，一个分支处理一个具体问题，直接向 `main` 提 PR；达到轻量门槛后 Squash merge 并删除分支，完整交付由固定候选验收决定。最多并行两个独立代码问题，使用独立 worktree；共享核心与合并串行。
+`main` 是唯一长期主线。从最新 `main` 创建 `fix/<issue>-<slug>`，一个分支处理一个具体问题，直接向 `main` 提 PR；达到轻量门槛后 Squash merge 并删除分支，完整交付由固定候选验收决定。最多并行两个独立代码问题，使用独立 worktree；共享核心与合并串行。
 
 验收结论只用 `PASS`、`FAIL`、`BLOCKED`、`NOT_RUN`、`NOT_APPLICABLE`。没有运行的检查写成 `NOT_RUN`，不能写成通过。
