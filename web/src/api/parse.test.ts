@@ -971,6 +971,7 @@ describe("response parser boundary values", () => {
     expect(detail.title).toBe("");
     expect(detail.revision_pending).toBe(false);
     expect(detail.configuration_pending).toBe(false);
+    expect(detail.subject_context_changed_after_latest_run).toBeUndefined();
     expect(detail.documents[0]).toMatchObject({
       filename: "未命名文件",
       size: -1,
@@ -986,6 +987,11 @@ describe("response parser boundary values", () => {
       created_at: "",
       superseded: false,
     });
+    expect(parseCaseDetail({
+      ...caseDefaults,
+      id: "subject-context-changed",
+      subject_context_changed_after_latest_run: true,
+    }).subject_context_changed_after_latest_run).toBe(true);
 
     const finding = parseFinding({
       id: "f1",

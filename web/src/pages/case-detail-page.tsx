@@ -1,6 +1,6 @@
 import { Button, Input } from "antd";
-import { useState } from "react";
-import { Link, useLocation, useNavigate, useParams } from "react-router";
+import { useEffect, useRef, useState } from "react";
+import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router";
 import { errorMessage, isForbidden } from "../api/http";
 import {
   useCaseDetail,
@@ -10,6 +10,9 @@ import {
 } from "../api/queries";
 import { PageStatus } from "../components/page-status";
 import { MaterialCollectionPanel } from "../components/material-collection-panel";
+import { CaseSubjectRolesPanel } from "../components/case-subject-roles-panel";
+import { CaseSubjectCorrectionsPanel } from "../components/case-subject-corrections-panel";
+import { CaseLegalApplicabilityPanel } from "../components/case-legal-applicability-panel";
 import { ReportArchivePanel } from "../components/report-archive-panel";
 import { RemediationPanel } from "../components/remediation-panel";
 import { TemplateGenerationPanel } from "../components/template-generation-panel";
@@ -27,6 +30,7 @@ export function CaseDetailPage() {
   const { caseId = "" } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
+  const [searchParams, setSearchParams] = useSearchParams();
   const returnState = location.state as {
     returnTo?: unknown;
     scrollY?: unknown;
@@ -40,6 +44,19 @@ export function CaseDetailPage() {
     typeof returnState?.scrollY === "number" ? returnState.scrollY : 0;
   const detail = useCaseDetail(caseId);
   const session = useSession();
+  const actorScope = [session.data?.id ?? "", session.data?.tenant_id ?? "", session.data?.org_id ?? "", session.data?.audience ?? ""].join(":");
+  const previousActorScope = useRef(actorScope);
+  const sourceCaseParam = searchParams.get("source_case");
+  useEffect(() => {
+    const actorChanged = previousActorScope.current !== "" && previousActorScope.current !== actorScope;
+    const caseChanged = sourceCaseParam !== null && sourceCaseParam !== caseId;
+    previousActorScope.current = actorScope;
+    if (!actorChanged && !caseChanged) return;
+    const next = new URLSearchParams(searchParams);
+    next.delete("source_case");
+    next.delete("source_snapshot");
+    setSearchParams(next, { replace: true });
+  }, [actorScope, caseId, searchParams, setSearchParams, sourceCaseParam]);
   const history = useCaseReviewHistory(
     caseId,
     detail.data?.latest_run?.id ?? null,
@@ -109,7 +126,8 @@ export function CaseDetailPage() {
   const failed = failedCount > 0;
   const run = item.latest_run;
   const archived = item.archived_at !== null;
-  const needsNewReview = item.revision_pending || item.configuration_pending;
+  const subjectContextUnknown = run !== null && item.subject_context_changed_after_latest_run === undefined;
+  const needsNewReview = item.revision_pending || item.configuration_pending || item.subject_context_changed_after_latest_run === true;
   const actorRole = session.data?.role ?? "";
   const canUpload =
     !archived && (actorRole === "admin" || actorRole === "clerk");
@@ -144,6 +162,7 @@ export function CaseDetailPage() {
           ，更新于 {formatDateTime(item.updated_at)}
           </p>
         </div>
+        <Button href={`/cases/${encodeURIComponent(item.id)}/legal-knowledge`}>法律知识</Button>
         {run ? (
           <Button
             aria-label={"打开审查工作区"}
@@ -153,10 +172,10 @@ export function CaseDetailPage() {
             打开审查工作区
           </Button>
         ) : null}
-        {!run || needsNewReview ? (
+        {!run || needsNewReview || subjectContextUnknown ? (
           <Button
             aria-label={String(
-              start.isPending ? "正在发起" : run ? "开始复审" : "开始审查",
+              start.isPending ? "正在发起" : subjectContextUnknown ? "主体状态暂不可用" : run ? "开始复审" : "开始审查",
             )}
             type="primary"
             htmlType="button"
@@ -166,6 +185,7 @@ export function CaseDetailPage() {
               item.material_selection?.status === "pending_confirmation" ||
               preparable < 2 ||
               (requiresBusinessAt && !validBusinessAt) ||
+              subjectContextUnknown ||
               start.isPending ||
               archived
             }
@@ -182,7 +202,7 @@ export function CaseDetailPage() {
               });
             }}
           >
-            {start.isPending ? "正在发起" : run ? "开始复审" : "开始审查"}
+            {start.isPending ? "正在发起" : subjectContextUnknown ? "主体状态暂不可用" : run ? "开始复审" : "开始审查"}
           </Button>
         ) : null}
       </header>
@@ -257,6 +277,12 @@ export function CaseDetailPage() {
           规则或模型配置已更新。开始复审会记录当前配置，保留历史运行。
         </p>
       ) : null}
+      {item.subject_context_changed_after_latest_run === true ? (
+        <p className="callout">主体信息已变更，需发起新审查。新审查会冻结当前主体信息，之前的审查和报告保持不变。</p>
+      ) : null}
+      {subjectContextUnknown ? (
+        <p className="callout">服务未提供主体信息变化状态，无法确认当前主体信息是否与最近审查一致。请刷新或联系管理员。</p>
+      ) : null}
       {item.material_selection?.status === "pending_confirmation" ? (
         <p className="callout">请先确认后续审查使用的旧材料集合。确认前不会按角色推断选中文档，也不会启动新审查。</p>
       ) : null}
@@ -275,7 +301,10 @@ export function CaseDetailPage() {
       ) : null}
       {start.isError ? <p role="alert">{errorMessage(start.error)}</p> : null}
 
-      <MaterialCollectionPanel key={`materials:${item.id}:${session.data?.id ?? ""}`} caseDetail={item} canWrite={canUpload} actorId={session.data?.id ?? ""} />
+      <MaterialCollectionPanel key={`materials:${item.id}:${actorScope}`} caseDetail={item} canWrite={canUpload} actorId={session.data?.id ?? ""} />
+      <CaseSubjectRolesPanel key={`subjects:${item.id}:${actorScope}`} caseId={item.id} />
+      <CaseSubjectCorrectionsPanel key={`subject-corrections:${item.id}:${actorScope}`} caseId={item.id} />
+      <CaseLegalApplicabilityPanel key={`legal-applicability:${item.id}:${actorScope}`} caseId={item.id} />
 
       <section
         className="case-business-overview"

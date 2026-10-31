@@ -56,6 +56,7 @@ const NAV_GROUPS: {
     label: "业务管理",
     links: [
       { to: "/cases", label: "案件管理", icon: "case", end: true },
+      { to: "/subjects", label: "主体台账", icon: "subjects" },
       { to: "/workbench/tasks", label: "审查任务", icon: "tasks" },
       { to: "/workbench/remediation", label: "整改中心", icon: "remediation" },
       { to: "/workbench/reports", label: "报告中心", icon: "reports" },
@@ -102,6 +103,7 @@ const NAV_ICONS: Record<string, ReactNode> = {
   compare: <FileTextOutlined />,
   rules: <SafetyCertificateOutlined />,
   case: <FileTextOutlined />,
+  subjects: <TeamOutlined />,
   tasks: <CheckSquareOutlined />,
   remediation: <SafetyCertificateOutlined />,
   reports: <FileTextOutlined />,
@@ -155,6 +157,17 @@ function staticBreadcrumb(pathname: string): Crumb[] | null {
       { label: "工作台", to: "/" },
       { label: "案件管理", to: null },
     ];
+  if (pathname === "/subjects")
+    return [
+      { label: "工作台", to: "/" },
+      { label: "主体台账", to: null },
+    ];
+  if (pathname.startsWith("/subjects/"))
+    return [
+      { label: "工作台", to: "/" },
+      { label: "主体台账", to: "/subjects" },
+      { label: "主体详情", to: null },
+    ];
   return null;
 }
 
@@ -197,7 +210,12 @@ function breadcrumbsFor(
 ): Crumb[] {
   const fixed = staticBreadcrumb(pathname);
   if (fixed) return fixed;
-  if (caseId) return caseBreadcrumbs(caseId, caseTitle, inReview);
+  if (caseId) {
+    const crumbs = caseBreadcrumbs(caseId, caseTitle, inReview);
+    return /^\/cases\/[^/]+\/subject-changes\/[^/]+/.test(pathname)
+      ? [...crumbs, { label: "主体更正复核", to: null }]
+      : crumbs;
+  }
   if (pathname.startsWith("/workbench/")) return workbenchBreadcrumbs(pathname);
   return [
     { label: "开发者", to: null },

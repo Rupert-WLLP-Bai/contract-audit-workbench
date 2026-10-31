@@ -129,6 +129,7 @@ function caseOf(id = "c1"): CaseDetail {
     finding_counts: null,
     activity: [],
     revision_pending: false,
+    subject_context_changed_after_latest_run: false,
     members: [
       {
         id: "u1",
@@ -547,6 +548,7 @@ class Service {
         const review = this.addReview("awaiting_human", id, caseId);
         item.revision_pending = false;
         item.configuration_pending = false;
+        item.subject_context_changed_after_latest_run = false;
         return this.json({ id, attempt_id: review.execution!.attempt.id }, 202);
       }
       const review = this.reviews.get(parts[5]!);
@@ -1015,6 +1017,8 @@ describe("application routes and API contract", () => {
       current_version: 2,
     });
     expect(api.cases.get("c1")!.documents.find((document) => document.id === "d2")?.superseded).toBe(true);
+    expect(api.cases.get("c1")!.revision_pending).toBe(true);
+    await waitFor(() => expect(screen.getByLabelText("审查业务时间（本地时区）")).toBeInTheDocument());
     selectBusinessTime();
     const reReview = await screen.findByRole("button", { name: "开始复审" });
     expect(reReview).toBeEnabled();
@@ -1071,7 +1075,7 @@ describe("application routes and API contract", () => {
     expect(screen.getByRole("button", { name: "开始审查" })).toBeDisabled();
     selectBusinessTime();
     await user.click(screen.getByRole("button", { name: "重新解析 d2.txt" }));
-    expect(await screen.findByRole("alert")).toHaveTextContent("受控失败 503");
+    expect(await screen.findByText("受控失败 503")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "重新解析 d2.txt" }));
     await waitFor(() => expect(item.documents.find((document) => document.id === "d2")?.parse_status).toBe("ready"));
     expect(item.material_selection).toMatchObject({ status: "confirmed", document_ids: ["d1", "d2"] });
@@ -1079,7 +1083,7 @@ describe("application routes and API contract", () => {
       expect(screen.getByRole("button", { name: "开始审查" })).toBeEnabled(),
     );
     await user.click(screen.getByRole("button", { name: "开始审查" }));
-    expect(await screen.findByRole("alert")).toHaveTextContent("受控失败 503");
+    expect(await screen.findByText("受控失败 503")).toBeInTheDocument();
     await user.upload(
       screen.getByLabelText("文件"),
       new File([text], "超限.txt", { type: "text/plain" }),
@@ -1110,6 +1114,33 @@ describe("application routes and API contract", () => {
         (entry) => entry.key === "POST /api/cases/c1/documents",
       ),
     ).toHaveLength(0);
+  });
+
+  it("starts a new review when the server reports changed subject context and clears the notice after freezing it", async () => {
+    const api = new Service();
+    api.addReview();
+    const item = api.cases.get("c1")!;
+    item.subject_context_changed_after_latest_run = true;
+    const originalIds = item.documents.map((entry) => entry.id);
+    const { user } = open(api, "/cases/c1");
+
+    expect(await screen.findByText(/主体信息已变更，需发起新审查/)).toBeInTheDocument();
+    selectBusinessTime();
+    await user.click(screen.getByRole("button", { name: "开始复审" }));
+    expect(await screen.findByRole("heading", { name: "审查工作区" })).toBeInTheDocument();
+    expect(api.reviews.size).toBe(2);
+    expect(item.subject_context_changed_after_latest_run).toBe(false);
+    expect(item.documents.map((entry) => entry.id)).toEqual(originalIds);
+  });
+
+  it("does not interpret a missing subject-context status as no change", async () => {
+    const api = new Service();
+    api.addReview();
+    const item = api.cases.get("c1")!;
+    delete item.subject_context_changed_after_latest_run;
+    open(api, "/cases/c1");
+    expect(await screen.findByText(/无法确认当前主体信息是否与最近审查一致/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "主体状态暂不可用" })).toBeDisabled();
   });
 
   it("refreshes a stale decision, retains the entered reason, and submits the refreshed version", async () => {

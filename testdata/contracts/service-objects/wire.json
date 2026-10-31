@@ -1,0 +1,266 @@
+{
+  "mutation_result": {
+    "service_object_id": "svc-wire-001",
+    "version": 2,
+    "association_version": 1
+  },
+  "summary_page": {
+    "items": [
+      {
+        "service_object_id": "svc-wire-001",
+        "object_type": "dedicated_line",
+        "state": "confirmed",
+        "current_version": 2,
+        "current_association_version": 1,
+        "display_name": "专线 A",
+        "business_code": "LINE-A",
+        "aliases": [
+          {
+            "kind": "circuit",
+            "value": "LINE-A"
+          }
+        ],
+        "current_association": {
+          "association_version": 1,
+          "object_version": 2,
+          "material_id": "material-wire-1",
+          "material_version": 1,
+          "document_id": "doc-wire-1",
+          "parsed_document_id": "parse-wire-1",
+          "source_run_id": "run-wire-1",
+          "source_attempt_id": "attempt-wire-1",
+          "object_ref": "LINE-A",
+          "facts_sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+          "confirmed_by": "demo-admin",
+          "confirmed_at": "2026-10-31T08:09:10.123456Z"
+        },
+        "can_manage": true,
+        "needs_reassociation": false
+      }
+    ],
+    "next_cursor": null,
+    "can_manage": true
+  },
+  "detail": {
+    "service_object_id": "svc-wire-001",
+    "current_version": 2,
+    "identity": {
+      "service_object_id": "svc-wire-001",
+      "version": 2,
+      "object_type": "dedicated_line",
+      "display_name": "专线 A",
+      "business_code": "LINE-A",
+      "aliases": [
+        {
+          "kind": "circuit",
+          "value": "LINE-A"
+        }
+      ],
+      "state": "confirmed",
+      "basis_refs": [],
+      "basis_summary": "合同已确认",
+      "created_by": "demo-admin",
+      "created_at": "2026-10-31T08:09:10.123456Z",
+      "effective_from": "2026-10-31T08:09:10.123456Z",
+      "payload_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    "association": {
+      "service_object_id": "svc-wire-001",
+      "association_version": 1,
+      "object_version": 2,
+      "material_id": "material-wire-1",
+      "material_version": 1,
+      "document_id": "doc-wire-1",
+      "parsed_document_id": "parse-wire-1",
+      "source_run_id": "run-wire-1",
+      "source_attempt_id": "attempt-wire-1",
+      "object_ref": "LINE-A",
+      "facts": [
+        {
+          "fact": {
+            "id": "fact-wire-1",
+            "rule_id": "minimum-bandwidth",
+            "dimension": "minimum_bandwidth",
+            "object_ref": "LINE-A",
+            "value": "100",
+            "unit": "Mbit/s",
+            "source_role": "draft_contract",
+            "measurement_window": "calendar_month",
+            "time_zone": "Asia/Shanghai",
+            "calendar": "gregorian",
+            "outage_definition": "all_service_unavailability",
+            "exclusions": [
+              "planned_maintenance"
+            ],
+            "basis": "最低保障带宽为100 Mbit/s",
+            "applicable": true,
+            "citations": [
+              {
+                "source_id": "doc-wire-1",
+                "source_version": "parse-wire-1",
+                "tenant_id": "local-demo",
+                "case_id": "case-wire-1",
+                "source_digest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                "start": 8,
+                "end": 28,
+                "quote": "最低保障带宽 100 Mbit/s"
+              }
+            ]
+          },
+          "document_id": "doc-wire-1",
+          "parsed_document_id": "parse-wire-1",
+          "canonical_fact_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+        }
+      ],
+      "basis_refs": [],
+      "confirmed_by": "demo-admin",
+      "confirmed_at": "2026-10-31T08:09:10.123456Z",
+      "facts_sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "created_at": "2026-10-31T08:09:10.123456Z",
+      "payload_sha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+    },
+    "can_manage": true,
+    "needs_reassociation": false
+  },
+  "preview": {
+    "service_object_id": "svc-wire-001",
+    "expected_object_version": 2,
+    "expected_association_version": 1,
+    "run_id": "run-wire-2",
+    "attempt_id": "attempt-wire-2",
+    "material_id": "material-wire-2",
+    "material_version": 3,
+    "document_id": "doc-wire-2",
+    "parsed_document_id": "parse-wire-2",
+    "candidate_sha256": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+    "options": [
+      {
+        "object_ref": "LINE-A",
+        "facts": [
+          {
+            "fact": {
+              "id": "fact-wire-1",
+              "rule_id": "minimum-bandwidth",
+              "dimension": "minimum_bandwidth",
+              "object_ref": "LINE-A",
+              "value": "100",
+              "unit": "Mbit/s",
+              "source_role": "draft_contract",
+              "measurement_window": "calendar_month",
+              "time_zone": "Asia/Shanghai",
+              "calendar": "gregorian",
+              "outage_definition": "all_service_unavailability",
+              "exclusions": [
+                "planned_maintenance"
+              ],
+              "basis": "最低保障带宽为100 Mbit/s",
+              "applicable": true,
+              "citations": [
+                {
+                  "source_id": "doc-wire-1",
+                  "source_version": "parse-wire-1",
+                  "tenant_id": "local-demo",
+                  "case_id": "case-wire-1",
+                  "source_digest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                  "start": 8,
+                  "end": 28,
+                  "quote": "最低保障带宽 100 Mbit/s"
+                }
+              ]
+            },
+            "document_id": "doc-wire-2",
+            "parsed_document_id": "parse-wire-2",
+            "canonical_fact_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+          }
+        ],
+        "facts_sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "basis_refs": []
+      }
+    ]
+  },
+  "version_page": {
+    "items": [
+      {
+        "service_object_id": "svc-wire-001",
+        "version": 2,
+        "object_type": "dedicated_line",
+        "display_name": "专线 A",
+        "business_code": "LINE-A",
+        "aliases": [
+          {
+            "kind": "circuit",
+            "value": "LINE-A"
+          }
+        ],
+        "state": "confirmed",
+        "basis_refs": [],
+        "basis_summary": "合同已确认",
+        "created_by": "demo-admin",
+        "created_at": "2026-10-31T08:09:10.123456Z",
+        "effective_from": "2026-10-31T08:09:10.123456Z",
+        "payload_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      }
+    ],
+    "next_cursor": null
+  },
+  "association_page": {
+    "items": [
+      {
+        "service_object_id": "svc-wire-001",
+        "association_version": 1,
+        "object_version": 2,
+        "material_id": "material-wire-1",
+        "material_version": 1,
+        "document_id": "doc-wire-1",
+        "parsed_document_id": "parse-wire-1",
+        "source_run_id": "run-wire-1",
+        "source_attempt_id": "attempt-wire-1",
+        "object_ref": "LINE-A",
+        "facts": [
+          {
+            "fact": {
+              "id": "fact-wire-1",
+              "rule_id": "minimum-bandwidth",
+              "dimension": "minimum_bandwidth",
+              "object_ref": "LINE-A",
+              "value": "100",
+              "unit": "Mbit/s",
+              "source_role": "draft_contract",
+              "measurement_window": "calendar_month",
+              "time_zone": "Asia/Shanghai",
+              "calendar": "gregorian",
+              "outage_definition": "all_service_unavailability",
+              "exclusions": [
+                "planned_maintenance"
+              ],
+              "basis": "最低保障带宽为100 Mbit/s",
+              "applicable": true,
+              "citations": [
+                {
+                  "source_id": "doc-wire-1",
+                  "source_version": "parse-wire-1",
+                  "tenant_id": "local-demo",
+                  "case_id": "case-wire-1",
+                  "source_digest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                  "start": 8,
+                  "end": 28,
+                  "quote": "最低保障带宽 100 Mbit/s"
+                }
+              ]
+            },
+            "document_id": "doc-wire-1",
+            "parsed_document_id": "parse-wire-1",
+            "canonical_fact_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+          }
+        ],
+        "basis_refs": [],
+        "confirmed_by": "demo-admin",
+        "confirmed_at": "2026-10-31T08:09:10.123456Z",
+        "facts_sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "created_at": "2026-10-31T08:09:10.123456Z",
+        "payload_sha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+      }
+    ],
+    "next_cursor": null
+  }
+}

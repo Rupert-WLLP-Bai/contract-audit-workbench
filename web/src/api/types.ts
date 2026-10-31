@@ -1,4 +1,5 @@
 import type { BusinessAgentReview } from "./business-agent-review";
+import type { FrozenLegalReviewProjection } from "./legal-citations";
 
 /** Client-side view of the review API. Null means the server omitted the field. */
 
@@ -154,6 +155,8 @@ export interface CaseDetail {
   activity: ActivityItem[];
   revision_pending?: boolean;
   configuration_pending?: boolean;
+  /** Server-derived comparison of current subject context with the latest frozen review. */
+  subject_context_changed_after_latest_run?: boolean;
   business_line: string;
   scenario: string;
   business_status: string;
@@ -736,6 +739,7 @@ export interface ReviewWorkspace {
   previous_run_id?: string | null;
   revisions?: RevisionComparison[];
   revision_comparison_reason?: string | null;
+  legal_authorities?: FrozenLegalReviewProjection;
 }
 
 export type DecisionAction =
@@ -984,6 +988,436 @@ export interface CaseProfile {
   due_at: string | null;
   version: number;
   updated_at: string;
+}
+
+export type SubjectRole =
+  | "customer"
+  | "supplier"
+  | "contractor"
+  | "service_provider"
+  | "other";
+export type SubjectVerificationState = "pending_verification" | "verified";
+export type SubjectBindingState =
+  | "active"
+  | "inactive"
+  | "pending_confirmation";
+export type SubjectSourceKind =
+  | "user_asserted"
+  | "official_identifier"
+  | "authorized_correction";
+export type SubjectClaimSourceKind = SubjectSourceKind | "synthetic_controlled_snapshot";
+export type SubjectVerificationScope = "synthetic_controlled" | "official_controlled" | "ordinary";
+export type SubjectAliasKind = "legal" | "trade" | "former" | "other";
+
+export interface SubjectPrincipal {
+  user_id: string;
+  issuer: string;
+  subject: string;
+}
+
+export interface SubjectAlias {
+  value: string;
+  kind: SubjectAliasKind;
+  source_note?: string;
+}
+
+export interface SubjectIdentifierInput {
+  namespace: "cn.gov.samr.uscc";
+  identifier_type: "unified_social_credit_code";
+  value: string;
+}
+
+export interface SubjectIdentifierProjection {
+  namespace: "cn.gov.samr.uscc";
+  identifier_type: "unified_social_credit_code";
+  value?: string;
+  masked_value?: string;
+  verification_scope?: SubjectVerificationScope;
+  verification_state: "pending_verification" | "verified";
+  source_kind: SubjectClaimSourceKind;
+  source_time: string | null;
+  payload_hash: string;
+}
+
+export interface MaskedSubjectIdentifier extends SubjectIdentifierProjection {
+  masked_value: string;
+}
+
+export interface SubjectIdentityClaim extends SubjectIdentifierProjection {
+}
+
+export interface SubjectCreateInput {
+  display_name: string;
+  legal_name?: string;
+  identifiers?: SubjectIdentifierInput[];
+  aliases?: SubjectAlias[];
+}
+
+export interface SubjectSummary {
+  subject_id: string;
+  current_version: number;
+  display_name: string;
+  legal_name: string | null;
+  verification_state: SubjectVerificationState | "inactive";
+  verification_scope?: SubjectVerificationScope;
+  aliases: SubjectAlias[];
+  created_at: string;
+  created_by: SubjectPrincipal;
+  identifiers: MaskedSubjectIdentifier[];
+}
+
+export interface SubjectVersionProjection {
+  subject_id: string;
+  version: number;
+  display_name: string;
+  legal_name: string | null;
+  verification_state: SubjectVerificationState;
+  verification_scope?: SubjectVerificationScope;
+  source_kind: SubjectSourceKind;
+  basis_summary: string;
+  payload_hash: string;
+  identity_claims: SubjectIdentityClaim[];
+  aliases: SubjectAlias[];
+  created_by: SubjectPrincipal;
+  created_at: string;
+}
+
+export interface SubjectDetail {
+  subject_id: string;
+  current_version: number;
+  current: SubjectVersionProjection;
+  identifiers: MaskedSubjectIdentifier[];
+}
+
+export interface SubjectCaseLinksProjection {
+  items: SubjectCaseLinkProjection[];
+  visible_count: number;
+  next_cursor: string | null;
+}
+
+export interface SubjectCaseLinkProjection extends CaseRoleBindingProjection {
+  case_title: string;
+  business_status: string;
+}
+
+export interface SubjectChangeEventSummary {
+  event_id: string;
+  kind: "proposal_created" | "decision_approved" | "decision_rejected" | "correction_applied";
+  request_id: string;
+  case_id: string;
+  actor: SubjectPrincipal;
+  created_at: string;
+}
+
+export interface SubjectHistoryProjection {
+  versions: SubjectVersionProjection[];
+  events: SubjectChangeEventSummary[];
+}
+
+export interface CaseRoleBindingProjection {
+  binding_id: string;
+  binding_version: number;
+  case_id: string;
+  role: SubjectRole;
+  binding_state: SubjectBindingState;
+  source_kind: "user_asserted" | "legacy_label" | "authorized_correction";
+  legacy_label: string | null;
+  created_by: SubjectPrincipal;
+  subject: SubjectVersionProjection;
+  created_at: string;
+}
+
+export interface LegacySubjectProfile {
+  version: number;
+  customer: string | null;
+  supplier: string | null;
+}
+
+export interface CaseSubjectsProjection {
+  items: CaseRoleBindingProjection[];
+  legacy_profile: LegacySubjectProfile | null;
+  can_manage: boolean;
+}
+
+export interface CaseRoleCreateInput {
+  role: SubjectRole;
+  subject: SubjectCreateInput;
+  legacy_binding?: {
+    field: "customer" | "supplier";
+    value: string;
+    expected_profile_version: number;
+  };
+}
+
+export interface BindExistingSubjectInput {
+  role: SubjectRole;
+  subject_id: string;
+  expected_subject_version: number;
+}
+
+export interface CaseRoleCreateResult {
+  binding_id: string;
+  binding_version: number;
+  subject_id: string;
+  subject_version: number;
+  role: SubjectRole;
+  display_name: string;
+  verification_state: SubjectVerificationState;
+  source_kind: "user_asserted" | "legacy_label";
+  legacy_label: string | null;
+  binding_state: "active" | "pending_confirmation";
+}
+
+export interface BindExistingSubjectResult {
+  binding_id: string;
+  binding_version: number;
+  subject_id: string;
+  subject_version: number;
+  role: SubjectRole;
+  display_name: string;
+  verification_state: SubjectVerificationState;
+  binding_state: "active";
+  created_at: string;
+  source_kind: "user_asserted";
+}
+
+export interface SubjectChangeSummary {
+  request_id: string;
+  target_kind: "subject" | "case_subject_role";
+  state: "pending_decision" | "approved" | "rejected" | "applied";
+  source_case_id: string;
+  target_subject_id: string;
+  target_binding_id: string | null;
+  expected_subject_version: number;
+  expected_binding_version: number | null;
+  payload_hash: string;
+  proposer: SubjectPrincipal;
+  proposed_by_display_name: string;
+  can_decide: boolean;
+  decision_blocked_reason: string | null;
+  created_at: string;
+}
+
+export interface MaterialAnchorBasisInput {
+  kind: "material_anchor";
+  material_id: string;
+  material_version: number;
+  document_id: string;
+  parsed_document_id: string;
+  start: number;
+  end: number;
+  quote_digest: string;
+}
+
+export type SubjectChangeBasisInput = MaterialAnchorBasisInput;
+
+export type SubjectChangeBasisRef =
+  | (MaterialAnchorBasisInput & { filename: string; quote: string })
+  | {
+      kind: "controlled_source";
+      snapshot_id: string;
+      source_catalog_id: "synthetic.uscc.demo";
+      source_version: number;
+      source_digest: string;
+      source_scope: "synthetic_controlled";
+      captured_at: string;
+      source_as_of: string;
+      valid_from: string;
+      valid_until: string | null;
+    };
+
+export interface SubjectSourceSnapshot {
+  snapshot_id: string;
+  source_catalog_id: "synthetic.uscc.demo";
+  source_version: number;
+  source_digest: string;
+  captured_at: string;
+  source_scope: "synthetic_controlled";
+  record_count: number;
+  label: string;
+}
+
+export interface SubjectSourceSnapshotRecord {
+  snapshot_id: string;
+  source_catalog_id: "synthetic.uscc.demo";
+  source_version: number;
+  source_digest: string;
+  source_scope: "synthetic_controlled";
+  captured_at: string;
+  record_count: number;
+  label: string;
+}
+
+export interface SubjectSourceSnapshotDetail extends SubjectSourceSnapshotRecord {
+  case_id: string;
+}
+
+export interface SubjectSourceSnapshotList {
+  items: SubjectSourceSnapshotRecord[];
+  next_cursor: string | null;
+}
+
+export interface SubjectSourceDirectoryItem {
+  source_id: "synthetic.uscc.demo";
+  source_version: number;
+  display_name: string;
+  verification_scope: "synthetic_controlled";
+}
+
+export interface SubjectSourceDirectory {
+  items: SubjectSourceDirectoryItem[];
+}
+
+export interface MaterialParsedTextPage {
+  material_id: string;
+  material_version: number;
+  document_id: string;
+  parsed_document_id: string;
+  filename: string;
+  original_digest: string;
+  parse_digest: string;
+  offset: number;
+  total_runes: number;
+  text: string;
+  next_offset: number | null;
+}
+
+export interface MaterialParsedDocumentSummary {
+  parsed_document_id: string;
+  status: ParsedDocumentStatus;
+  parser_id: string;
+  parser_version: string;
+  created_at: string;
+  original_digest: string;
+  normalized_digest: string | null;
+}
+
+export interface MaterialParsedDocumentList {
+  material_id: string;
+  material_version: number;
+  document_id: string;
+  items: MaterialParsedDocumentSummary[];
+}
+
+export interface SubjectSourceVerificationResult {
+  request_id: string | null;
+  snapshot_id: string;
+  source_catalog_id: "synthetic.uscc.demo";
+  source_version: number;
+  source_digest: string;
+  source_scope: "synthetic_controlled";
+  source_as_of: string | null;
+  valid_from: string | null;
+  valid_until: string | null;
+  match_outcome: "exact_match" | "no_match" | "ambiguous";
+  state: "pending_decision" | "not_proposed";
+  matched_record: { display_name: string; masked_identifier: string } | null;
+}
+
+export interface SubjectSourceSnapshotInput {
+  source_id: "synthetic.uscc.demo";
+  expected_source_version: number;
+}
+
+export interface SubjectSourceVerificationInput {
+  subject_id: string;
+  expected_subject_version: number;
+  expected_binding_id?: string;
+}
+
+export interface SubjectChangeDetail {
+  summary: SubjectChangeSummary;
+  proposed_by_display_name: string;
+  can_decide: boolean;
+  decision_blocked_reason: string | null;
+  before: SubjectVersionProjection | CaseRoleBindingProjection;
+  after: SubjectVersionProjection | CaseRoleBindingProjection;
+  basis_refs: SubjectChangeBasisRef[];
+  impact_etag: string;
+  authorized_impact_cases: Array<{
+    case_id: string;
+    case_name: string;
+    status: string;
+  }>;
+}
+
+export interface SubjectChangeImpact {
+  request_id: string;
+  proposed_by_display_name: string;
+  can_decide: boolean;
+  decision_blocked_reason: string | null;
+  target_version: number;
+  payload_hash: string;
+  before: SubjectVersionProjection | CaseRoleBindingProjection;
+  after: SubjectVersionProjection | CaseRoleBindingProjection;
+  basis_refs: SubjectChangeBasisRef[];
+  impact_etag: string;
+  visible_affected_count: number;
+  affected_cases: Array<{
+    case_id: string;
+    case_name: string;
+    status: string;
+  }>;
+}
+
+export interface SubjectIdentityChangePatch {
+  display_name?: string;
+  legal_name?: string;
+  identity_claims?: SubjectIdentifierInput[];
+  aliases?: SubjectAlias[];
+}
+
+export interface CaseRoleChangePatch {
+  subject_id?: string;
+  expected_new_subject_version?: number;
+  role?: SubjectRole;
+  binding_state?: SubjectBindingState;
+}
+
+interface SubjectChangeProposalBase {
+  expected_subject_version: number;
+  expected_binding_version: number | null;
+  basis_note: string;
+  basis_refs: SubjectChangeBasisInput[];
+}
+
+export type SubjectChangeProposalInput = SubjectChangeProposalBase & (
+  | {
+      target: { kind: "subject"; subject_id: string; binding_id: null };
+      patch: SubjectIdentityChangePatch;
+    }
+  | {
+      target: { kind: "case_subject_role"; subject_id: string; binding_id: string };
+      patch: CaseRoleChangePatch;
+    }
+);
+
+export interface SubjectChangeProposalResult {
+  request_id: string;
+  target_kind: "subject" | "case_subject_role";
+  expected_subject_version: number;
+  expected_binding_version: number | null;
+  payload_hash: string;
+  state: "pending_decision";
+  proposed_by_display_name: string;
+  can_decide: boolean;
+  decision_blocked_reason: string | null;
+}
+
+export interface SubjectChangeDecisionInput {
+  decision: "approve" | "reject";
+  expected_subject_version: number;
+  expected_binding_version: number | null;
+  expected_payload_hash: string;
+  expected_impact_etag: string;
+  reason: string;
+}
+
+export interface SubjectChangeDecisionResult {
+  request_id: string;
+  decision: "approved" | "rejected";
+  applied_subject_version: number | null;
+  binding_versions_appended: number;
 }
 
 export interface WorkbenchTask {

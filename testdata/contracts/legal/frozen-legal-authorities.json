@@ -1,0 +1,109 @@
+{
+  "run_id": "run_wire_fixture",
+  "attempt_id": "attempt_wire_fixture",
+  "evidence_cutoff_at": "2026-10-31T01:00:00Z",
+  "evidence_cutoff_mode": "acceptance_time",
+  "authorities": [
+    {
+      "citation_id": "cb5e2f9080fbeab32cf2586638fbf10d5de47de93664df21549aea1d89d37363",
+      "rule_id": "rule-1",
+      "authority_source_id": "AUTH-CIVIL",
+      "authority_source_version": "v1",
+      "rulepack_id": "pack-a",
+      "rulepack_version": "v1",
+      "rulepack_content_sha256": "4862f447f2c7f272fa2f4aaf89dadb3b1ac09105bd5864f8d1a0c9452bb0a226",
+      "exact_reference": {
+        "authority_source_id": "AUTH-CIVIL",
+        "knowledge_id": "legal-article-496",
+        "version_id": "5ca4f3850ccc331aaf8a257d6086e526a3b42a63e18cb11d020847985b31d188",
+        "content_sha256": "e6caf9b2f850d57aa512c17b21919466302fdaea0e1f5cc1b69a89b7ceb51819",
+        "source_id": "AUTH-CIVIL",
+        "source_snapshot_id": "capture-a",
+        "norm_title": "法律结构 fixture",
+        "norm_version": "v1",
+        "article_number": 496,
+        "document_type": "law",
+        "source_sha256": "d7439bee24773bcbfa2d0a97947ee36227b10d1022b1a55847e928965bb6bfde",
+        "article_text_sha256": "d5896b985acbea44c7a94d8eb4e03bfaf5dbe37873e5c26328c9575766b6bc20",
+        "effective_from": "2021-01-01",
+        "effective_until": "",
+        "quote_span": {
+          "start": 0,
+          "end": 7,
+          "quote": "fixture"
+        },
+        "applicability": {
+          "all_of": [
+            {
+              "field": "buyer_kind",
+              "one_of": [
+                "enterprise"
+              ]
+            }
+          ]
+        }
+      },
+      "article": {
+        "ref": {
+          "knowledge_id": "legal-article-496",
+          "version_id": "5ca4f3850ccc331aaf8a257d6086e526a3b42a63e18cb11d020847985b31d188",
+          "content_sha256": "e6caf9b2f850d57aa512c17b21919466302fdaea0e1f5cc1b69a89b7ceb51819"
+        },
+        "content_sha256": "e6caf9b2f850d57aa512c17b21919466302fdaea0e1f5cc1b69a89b7ceb51819",
+        "source_id": "AUTH-CIVIL",
+        "source_snapshot_id": "capture-a",
+        "norm_title": "法律结构 fixture",
+        "norm_version": "v1",
+        "article_number": 496,
+        "article_label": "条文 496（fixture）",
+        "document_type": "law",
+        "canonical_full_article_body": "fixture-only body; not a legal quotation",
+        "article_text_sha256": "d5896b985acbea44c7a94d8eb4e03bfaf5dbe37873e5c26328c9575766b6bc20",
+        "quote_span": {
+          "start": 0,
+          "end": 7,
+          "quote": "fixture"
+        },
+        "effective_from": "2021-01-01",
+        "source_provenance": {
+          "source_capture_snapshot_id": "capture-a",
+          "provenance": "fixture_only",
+          "publisher": "fixture publisher",
+          "issuer": "fixture issuer",
+          "official_url": "https://fixture.invalid/source",
+          "raw_response_sha256": "d7439bee24773bcbfa2d0a97947ee36227b10d1022b1a55847e928965bb6bfde",
+          "extracted_full_text_sha256": "8211a26bf522f6e59b6f6466d3733735c6a929bde7f4d6150e9305f3d43bc69f",
+          "extractor_id": "fixture-adapter",
+          "extractor_version": "v1",
+          "canonicalization_version": "fixture-v1",
+          "captured_at": "2026-10-30T00:00:00Z",
+          "response_status": 200
+        },
+        "status_provenance": {
+          "status_observation_capture_snapshot_id": "capture-a",
+          "capture_raw_response_sha256": "d7439bee24773bcbfa2d0a97947ee36227b10d1022b1a55847e928965bb6bfde",
+          "status_observation_id": "status-a",
+          "observed_status": "effective",
+          "status_registry_url": "https://fixture.invalid/status",
+          "observed_at": "2026-10-30T00:00:00Z",
+          "response_sha256": "073c1634c496cdb649d1afe0a312bbb4b7e1741b271542e4a436c3b8824b1761",
+          "response_status": 200
+        }
+      },
+      "outcome": "applicable",
+      "conditions": [
+        {
+          "field": "buyer_kind",
+          "one_of": [
+            "enterprise"
+          ],
+          "outcome": "satisfied"
+        }
+      ],
+      "selected_fact_versions": [],
+      "missing_dependencies": [],
+      "legal_review_status": "NOT_RUN",
+      "reviewer": null
+    }
+  ]
+}

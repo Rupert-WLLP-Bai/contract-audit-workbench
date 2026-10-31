@@ -16,7 +16,9 @@ import {
 import { FulfillmentDiffPanel } from "../features/operator-audit/fulfillment-diff-panel";
 import { useStableIdempotencyKey } from "../features/operator-audit/idempotency";
 import { ImpactPlanPanel } from "../features/operator-audit/impact-plan-panel";
-import { ObjectBindingPanel } from "../features/operator-audit/object-binding-panel";
+import { ObjectBindingPanel, type ContractObjectOption } from "../features/operator-audit/object-binding-panel";
+import { ServiceObjectPanel } from "../features/operator-audit/service-object-panel";
+import type { ServiceObjectSummary } from "../features/operator-audit/service-objects-api";
 import type {
   ExternalCollectionJob,
   FulfillmentComparison,
@@ -67,6 +69,7 @@ export function OperatorAuditPage() {
     "";
 
   const [bindings, setBindings] = useState<ObjectBinding[]>([]);
+  const [serviceObjects, setServiceObjects] = useState<ServiceObjectSummary[]>([]);
   const [selectedBinding, setSelectedBinding] = useState<string>("");
   const [jobs, setJobs] = useState<ExternalCollectionJob[]>([]);
   const [businessAt, setBusinessAt] = useState(() =>
@@ -84,16 +87,11 @@ export function OperatorAuditPage() {
   const [actionError, setActionError] = useState<string | null>(null);
   const idempotencyKey = useStableIdempotencyKey();
 
-  const contractObjects = useMemo(
-    () =>
-      (caseDetail.data?.documents ?? [])
-        .filter((document) => document.role === "draft_contract")
-        .map((document) => ({
-          objectType: "service",
-          objectId: document.id,
-          label: `${document.filename}（v${document.id.slice(-6)}）`,
-        })),
-    [caseDetail.data?.documents],
+  const contractObjects: ContractObjectOption[] = useMemo(
+    () => serviceObjects
+      .filter((item) => item.state === "confirmed")
+      .map((item) => ({ objectType: item.object_type, objectId: item.service_object_id, label: item.display_name })),
+    [serviceObjects],
   );
   const externalObjects = useMemo(
     () =>
@@ -304,6 +302,15 @@ export function OperatorAuditPage() {
           setBindings((current) => [...current, binding]);
           setSelectedBinding(binding.version ?? binding.id);
         }}
+      />
+
+      <ServiceObjectPanel
+        key={caseId}
+        caseId={caseId}
+        initialRunId={runId}
+        initialAttemptId={attemptId || null}
+        caseDetail={caseDetail.data}
+        onObjectsChange={setServiceObjects}
       />
 
       <Card size="small" title="采集外部证据">

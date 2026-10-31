@@ -49,6 +49,7 @@ import type {
   MaterialVersionProjection,
   UploadDocumentResult,
 } from "./types";
+import { parseFrozenLegalReviewProjection } from "./legal-citations";
 import { isRecord } from "./guards";
 import { invalidResponse } from "./respond";
 import { parseAgentReview } from "./agent-review";
@@ -603,6 +604,9 @@ export function parseCaseDetail(value: unknown): CaseDetail {
     activity: parseActivityItems(record.activity),
     revision_pending: record.revision_pending === true,
     configuration_pending: record.configuration_pending === true,
+    ...(typeof record.subject_context_changed_after_latest_run === "boolean"
+      ? { subject_context_changed_after_latest_run: record.subject_context_changed_after_latest_run }
+      : {}),
     business_line: requiredStringValue(record, "business_line"),
     scenario: requiredStringValue(record, "scenario"),
     business_status: requiredStringValue(record, "business_status"),
@@ -785,15 +789,24 @@ export function parseReviewDiagnostics(value: unknown): ReviewDiagnostics {
 export function parseReviewWorkspace(value: unknown): ReviewWorkspace {
   const record = recordOf(value, "review");
   if (!Array.isArray(record.audit_events)) fail("审查工作区缺少 audit_events");
+  const run = parseReviewRun(record.run);
+  const reviewAttempts = parseReviewAttempts(record.review_attempts);
+  const legalAuthorities = record.legal_authorities === undefined
+    ? undefined
+    : parseFrozenLegalReviewProjection(record.legal_authorities);
+  if (legalAuthorities && (legalAuthorities.run_id !== run.id ||
+      legalAuthorities.attempt_id !== reviewAttempts?.attempt?.id)) {
+    fail("冻结法律依据不属于当前审查及所选执行记录");
+  }
   return {
-    run: parseReviewRun(record.run),
+    run,
     documents: Array.isArray(record.documents)
       ? record.documents.map(parseReviewDocument)
       : [],
     findings: Array.isArray(record.findings)
       ? record.findings.map(parseFinding)
       : [],
-    review_attempts: parseReviewAttempts(record.review_attempts),
+    review_attempts: reviewAttempts,
     agent_review: parseBusinessAgentReview(record.agent_review),
     execution: parseExecution(record.execution),
     snapshot: parseSnapshot(record.snapshot),
@@ -812,6 +825,7 @@ export function parseReviewWorkspace(value: unknown): ReviewWorkspace {
       record,
       "revision_comparison_reason",
     ),
+    ...(legalAuthorities === undefined ? {} : { legal_authorities: legalAuthorities }),
   };
 }
 

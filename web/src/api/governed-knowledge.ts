@@ -1,7 +1,9 @@
 import { jsonInit, requestJson } from "./http";
 import { enumValue, responseReader } from "./respond";
 
-export type KnowledgeKind = "policy" | "guidance" | "exception" | "experience";
+import { parseLegalMetadata, type LegalMetadata } from "./legal-knowledge";
+
+export type KnowledgeKind = "policy" | "guidance" | "exception" | "experience" | "legal";
 export type KnowledgeAction = "submit" | "validate" | "approve" | "publish" | "withdraw" | "rollback";
 
 export interface KnowledgeRef {
@@ -60,6 +62,7 @@ export interface KnowledgeContent {
   minimum_evidence?: string;
   counterexamples?: string[];
   policy_refs?: KnowledgeRef[];
+  legal_metadata?: LegalMetadata;
 }
 export interface KnowledgeVersion {
   ref: KnowledgeRef;
@@ -149,6 +152,7 @@ function kind(value: unknown, path: string): KnowledgeKind {
       "guidance",
       "exception",
       "experience",
+      "legal",
     ]) ?? invalid(path)
   );
 }
@@ -177,7 +181,7 @@ function content(value: unknown, path: string): KnowledgeContent {
   return {
     encoding: optionalText(v.encoding, `${path}.encoding`), knowledge_id: text(v.knowledge_id, `${path}.knowledge_id`), version: text(v.version, `${path}.version`), kind: kind(v.kind, `${path}.kind`), title: text(v.title, `${path}.title`), body: text(v.body, `${path}.body`), summary: text(v.summary, `${path}.summary`), source_type: text(v.source_type, `${path}.source_type`), source_reference: text(v.source_reference, `${path}.source_reference`),
     source_case_id: optionalText(v.source_case_id, `${path}.source_case_id`), source_org_id: optionalText(v.source_org_id, `${path}.source_org_id`), source_feedback_id: optionalText(v.source_feedback_id, `${path}.source_feedback_id`), candidate_id: optionalText(v.candidate_id, `${path}.candidate_id`), candidate_version_id: optionalText(v.candidate_version_id, `${path}.candidate_version_id`), candidate_content_sha256: optionalText(v.candidate_content_sha256, `${path}.candidate_content_sha256`), candidate_review_diff: optionalText(v.candidate_review_diff, `${path}.candidate_review_diff`), reviewed_applicability: optionalArray(v.reviewed_applicability, `${path}.reviewed_applicability`, text), reviewed_exclusions: optionalArray(v.reviewed_exclusions, `${path}.reviewed_exclusions`, text),
-    scope: scope(v.scope, `${path}.scope`), valid_from: text(v.valid_from, `${path}.valid_from`), valid_until: text(v.valid_until, `${path}.valid_until`), applicability: nullableArray(v.applicability, `${path}.applicability`, condition), exclusions: nullableArray(v.exclusions, `${path}.exclusions`, condition), binding: binding(v.binding, `${path}.binding`), exception_basis: optionalText(v.exception_basis, `${path}.exception_basis`), check_action: optionalText(v.check_action, `${path}.check_action`), minimum_evidence: optionalText(v.minimum_evidence, `${path}.minimum_evidence`), counterexamples: optionalArray(v.counterexamples, `${path}.counterexamples`, text), policy_refs: optionalArray(v.policy_refs, `${path}.policy_refs`, ref),
+    scope: scope(v.scope, `${path}.scope`), valid_from: text(v.valid_from, `${path}.valid_from`), valid_until: text(v.valid_until, `${path}.valid_until`), applicability: nullableArray(v.applicability, `${path}.applicability`, condition), exclusions: nullableArray(v.exclusions, `${path}.exclusions`, condition), binding: binding(v.binding, `${path}.binding`), exception_basis: optionalText(v.exception_basis, `${path}.exception_basis`), check_action: optionalText(v.check_action, `${path}.check_action`), minimum_evidence: optionalText(v.minimum_evidence, `${path}.minimum_evidence`), counterexamples: optionalArray(v.counterexamples, `${path}.counterexamples`, text), policy_refs: optionalArray(v.policy_refs, `${path}.policy_refs`, ref), legal_metadata: v.legal_metadata === undefined ? undefined : parseLegalMetadata(v.legal_metadata, `${path}.legal_metadata`),
   };
 }
 export function parseKnowledgeVersion(value: unknown): KnowledgeVersion {

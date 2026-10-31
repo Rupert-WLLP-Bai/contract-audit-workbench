@@ -136,8 +136,10 @@ export function validateKnowledgeDraft(value: KnowledgeContent): KnowledgeFormIs
   validateRequiredFields(issues, value);
   validateWindow(issues, value);
   validateScope(issues, value);
-  validateBinding(issues, value);
-  validateSpans(issues, value);
+  if (value.kind !== "legal") {
+    validateBinding(issues, value);
+    validateSpans(issues, value);
+  }
   validateConditions(issues, value);
   validateException(issues, value);
   validateExperience(issues, value);
