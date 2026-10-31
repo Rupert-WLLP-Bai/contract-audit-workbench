@@ -156,6 +156,7 @@ def generated_values(infra: dict[str, str]) -> dict[str, str]:
 		"WORKER_MODEL_TOKEN": secrets.token_urlsafe(48),
 		"WORKER_TOOL_TOKEN": secrets.token_urlsafe(48),
 		"WORKER_CORE_TOKEN": secrets.token_urlsafe(48),
+		"CORE_DOCUMENT_TOKEN": secrets.token_urlsafe(48),
 		"DOCUMENT_MODEL_TOKEN": secrets.token_urlsafe(48),
 		"CORE_URLS": "http://core-api:8081",
 		"DOCUMENT_URL": "http://document-service:8082",

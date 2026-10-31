@@ -622,9 +622,9 @@ func (g *Gateway) upstreamFor(role string) (*upstream, bool) {
 
 // classify keeps in step with OperationOwnedBy and reads the same decoded
 // segments, so an escaped spelling of a segment (for example %64ocuments) gets
-// the same class as its literal form. Only a document upload streams a request
-// body; only the review event feed and the stored original are long-lived
-// responses.
+// the same class as its literal form. Document uploads and Core intake uploads
+// stream a request body; only the review event feed and the stored original are
+// long-lived responses.
 func classify(role, method string, segments []string) class {
 	if isUploadRequest(role, method, segments) {
 		return classUpload
@@ -636,8 +636,13 @@ func classify(role, method string, segments []string) class {
 }
 
 func isUploadRequest(role, method string, s []string) bool {
-	return method == http.MethodPost && role == "document" && len(s) == 4 &&
-		s[0] == "api" && s[1] == "cases" && s[3] == "documents"
+	if method != http.MethodPost {
+		return false
+	}
+	if role == "document" && len(s) == 4 && s[0] == "api" && s[1] == "cases" && s[3] == "documents" {
+		return true
+	}
+	return role == "core" && len(s) == 2 && s[0] == "api" && s[1] == "intakes"
 }
 
 func isStreamRequest(role, method string, s []string) bool {

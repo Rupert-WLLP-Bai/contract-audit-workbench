@@ -29,6 +29,7 @@ import (
 	"contractaudit/internal/externalread"
 	"contractaudit/internal/httpapi"
 	"contractaudit/internal/process"
+	"contractaudit/internal/store"
 	"contractaudit/internal/systemhealth"
 )
 
@@ -71,7 +72,9 @@ func serveLegacy(ctx context.Context) error {
 	}
 	defer app.Close()
 	logStartup(app)
-	return listen(ctx, httpapi.Handler(app.Store, options(app, origins())))
+	apiOptions := options(app, origins())
+	apiOptions.IntakeUploader = store.NewDirectCaseIntakeUploader(app.Store)
+	return listen(ctx, httpapi.Handler(app.Store, apiOptions))
 }
 
 func serveCore(ctx context.Context) error {
@@ -85,7 +88,12 @@ func serveCore(ctx context.Context) error {
 	}
 	// The service filter rejects any operation the core role does not own,
 	// requires the edge credential, and mounts the unified probe surface.
-	handler, err := httpapi.ServiceHandler(app.Store, options(app, origins()), "core", strings.TrimSpace(os.Getenv("GATEWAY_ROLE_TOKEN")))
+	apiOptions := options(app, origins())
+	apiOptions.IntakeUploader, err = bootstrap.ConfiguredIntakeUploader()
+	if err != nil {
+		return err
+	}
+	handler, err := httpapi.ServiceHandler(app.Store, apiOptions, "core", strings.TrimSpace(os.Getenv("GATEWAY_ROLE_TOKEN")))
 	if err != nil {
 		return err
 	}

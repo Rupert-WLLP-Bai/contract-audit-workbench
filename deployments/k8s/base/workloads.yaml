@@ -142,6 +142,8 @@ spec:
               valueFrom: {secretKeyRef: {name: contract-audit-service-tokens, key: GATEWAY_CORE_TOKEN}}
             - name: WORKER_CORE_TOKEN
               valueFrom: {secretKeyRef: {name: contract-audit-service-tokens, key: WORKER_CORE_TOKEN}}
+            - name: CORE_DOCUMENT_TOKEN
+              valueFrom: {secretKeyRef: {name: contract-audit-service-tokens, key: CORE_DOCUMENT_TOKEN}}
             # Seals admin-managed LLM credentials. Optional: absent leaves the
             # endpoint registry readable but refuses saving or probing secrets.
             - name: LLM_CONFIG_KEY
@@ -241,6 +243,8 @@ spec:
               valueFrom: {secretKeyRef: {name: contract-audit-service-tokens, key: DOCUMENT_MODEL_TOKEN}}
             - name: WORKER_DOCUMENT_TOKEN
               valueFrom: {secretKeyRef: {name: contract-audit-service-tokens, key: WORKER_DOCUMENT_TOKEN}}
+            - name: CORE_DOCUMENT_TOKEN
+              valueFrom: {secretKeyRef: {name: contract-audit-service-tokens, key: CORE_DOCUMENT_TOKEN}}
             - name: GATEWAY_ROLE_TOKEN
               valueFrom: {secretKeyRef: {name: contract-audit-service-tokens, key: GATEWAY_DOCUMENT_TOKEN}}
           startupProbe:

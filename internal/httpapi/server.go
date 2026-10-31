@@ -38,6 +38,11 @@ type Options struct {
 	ExperienceWorkerCredential string
 	experienceDeliveryEnabled  bool
 
+	// IntakeUploader is the authenticated Document upload entry used by the
+	// atomic home-page intake flow. A nil uploader keeps newly created
+	// operations pending with a stable, retryable identity.
+	IntakeUploader store.CaseIntakeUploader
+
 	// OperatorAuditEnabled is the server-side feature switch. The extension is
 	// absent from the default review path and returns 503 until an operator
 	// explicitly enables it.
@@ -55,7 +60,7 @@ func Handler(st *store.Store, opt Options) http.Handler {
 	if opt.SystemHealth == nil {
 		opt.SystemHealth = systemhealth.New(systemhealth.Config{DatabaseReady: st.Ready})
 	}
-	h := &handler{store: st, cors: opt.CORSOrigins, models: opt.Models, oidc: opt.OIDC, durable: opt.Durable, secureCookies: opt.SecureCookies, systemHealth: opt.SystemHealth, experienceDeliveryEnabled: opt.experienceDeliveryEnabled, operatorAuditEnabled: opt.OperatorAuditEnabled, capabilityPacks: opt.CapabilityPacks, externalConnectors: opt.ExternalConnectors, externalConnectorInfo: opt.ExternalConnectorInfo}
+	h := &handler{store: st, cors: opt.CORSOrigins, models: opt.Models, oidc: opt.OIDC, durable: opt.Durable, secureCookies: opt.SecureCookies, systemHealth: opt.SystemHealth, experienceDeliveryEnabled: opt.experienceDeliveryEnabled, operatorAuditEnabled: opt.OperatorAuditEnabled, capabilityPacks: opt.CapabilityPacks, externalConnectors: opt.ExternalConnectors, externalConnectorInfo: opt.ExternalConnectorInfo, intakeUploader: opt.IntakeUploader}
 	mux := http.NewServeMux()
 	// Every binary in this repository serves the same probe surface so a manifest
 	// can never point at a path no binary answers. Readiness is the shared
@@ -101,6 +106,9 @@ func Handler(st *store.Store, opt Options) http.Handler {
 	mux.HandleFunc("POST /api/knowledge", h.createKnowledge)
 	mux.HandleFunc("GET /api/knowledge/{knowledgeID}", h.getKnowledge)
 	mux.HandleFunc("GET /api/knowledge/{knowledgeID}/versions/{versionID}", h.getKnowledgeVersion)
+	mux.HandleFunc("GET /api/intakes", h.getIntakeByKey)
+	mux.HandleFunc("POST /api/intakes", h.createIntake)
+	mux.HandleFunc("GET /api/intakes/{operationID}", h.getIntake)
 	mux.HandleFunc("GET /api/cases", h.listCases)
 	mux.HandleFunc("POST /api/cases", h.createCase)
 	mux.HandleFunc("GET /api/cases/{caseID}", h.getCase)
@@ -180,6 +188,7 @@ type handler struct {
 	capabilityPacks           *capabilitypack.Registry
 	externalConnectors        map[string]auditext.ReadConnector
 	externalConnectorInfo     []OperatorConnectorInfo
+	intakeUploader            store.CaseIntakeUploader
 }
 
 func (h *handler) login(w http.ResponseWriter, r *http.Request) {

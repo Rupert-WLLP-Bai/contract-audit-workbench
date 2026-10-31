@@ -16,7 +16,7 @@ import (
 
 func TestFromEnvRejectsUnsafeParseBounds(t *testing.T) {
 	for _, name := range []string{
-		"WORKER_DOCUMENT_TOKEN", "DOCUMENT_CPU_CONCURRENCY", "DOCUMENT_OCR_CONCURRENCY",
+		"WORKER_DOCUMENT_TOKEN", "CORE_DOCUMENT_TOKEN", "DOCUMENT_CPU_CONCURRENCY", "DOCUMENT_OCR_CONCURRENCY",
 		"DOCUMENT_QUEUE_CAPACITY", "DOCUMENT_PARSE_TIMEOUT",
 	} {
 		t.Setenv(name, "")
@@ -53,7 +53,7 @@ func TestFromEnvRejectsUnsafeParseBounds(t *testing.T) {
 
 func TestFromEnvDefaultsAndAcceptsInclusiveBounds(t *testing.T) {
 	for _, name := range []string{
-		"WORKER_DOCUMENT_TOKEN", "DOCUMENT_CPU_CONCURRENCY", "DOCUMENT_OCR_CONCURRENCY",
+		"WORKER_DOCUMENT_TOKEN", "CORE_DOCUMENT_TOKEN", "DOCUMENT_CPU_CONCURRENCY", "DOCUMENT_OCR_CONCURRENCY",
 		"DOCUMENT_QUEUE_CAPACITY", "DOCUMENT_PARSE_TIMEOUT",
 	} {
 		t.Setenv(name, "")

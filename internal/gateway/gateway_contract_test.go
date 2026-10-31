@@ -159,6 +159,7 @@ func TestPublicOperationsUseOnlyTheirOwningServiceCredential(t *testing.T) {
 		method, path, owner string
 	}{
 		{http.MethodGet, "/api/cases", "core"},
+		{http.MethodPost, "/api/intakes", "core"},
 		{http.MethodPost, "/api/cases/c/documents", "document"},
 		{http.MethodGet, "/api/templates", "document"},
 		{http.MethodPost, "/api/cases/c/reviews", "execution"},

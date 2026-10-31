@@ -144,6 +144,8 @@ services:
       OIDC_STATE_KEY: ${OIDC_STATE_KEY:-}
       GATEWAY_ROLE_TOKEN: ${GATEWAY_CORE_TOKEN:?Run make app-bootstrap}
       WORKER_CORE_TOKEN: ${WORKER_CORE_TOKEN:?Add a distinct WORKER_CORE_TOKEN to the private distributed profile}
+      DOCUMENT_SERVICE_URL: ${DOCUMENT_SERVICE_URL:-http://document-service:8082}
+      CORE_DOCUMENT_TOKEN: ${CORE_DOCUMENT_TOKEN:?Run make app-bootstrap}
       # Workspace revision comparisons use the same frozen model identity as the worker.
       LLM_BASE_URL: ${LLM_BASE_URL:-}
       LLM_MODEL: ${LLM_MODEL:-}
@@ -201,6 +203,7 @@ services:
       OCR_MODEL: ${OCR_MODEL:-}
       DOCUMENT_MODEL_TOKEN: ${DOCUMENT_MODEL_TOKEN:?Run make app-bootstrap}
       WORKER_DOCUMENT_TOKEN: ${WORKER_DOCUMENT_TOKEN:?Run make app-bootstrap}
+      CORE_DOCUMENT_TOKEN: ${CORE_DOCUMENT_TOKEN:?Run make app-bootstrap}
       DOCUMENT_PARSE_TIMEOUT: ${DOCUMENT_PARSE_TIMEOUT:-2m}
       GATEWAY_ROLE_TOKEN: ${GATEWAY_DOCUMENT_TOKEN:?Run make app-bootstrap}
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}

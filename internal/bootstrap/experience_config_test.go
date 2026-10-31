@@ -6,7 +6,7 @@ import (
 )
 
 func TestExperienceResultDeliveryRequiresSeparateCompleteConfiguration(t *testing.T) {
-	for _, name := range []string{"CORE_SERVICE_URL", "WORKER_CORE_TOKEN", "WORKER_DOCUMENT_TOKEN", "WORKER_MODEL_TOKEN", "WORKER_TOOL_TOKEN"} {
+	for _, name := range []string{"CORE_SERVICE_URL", "WORKER_CORE_TOKEN", "WORKER_DOCUMENT_TOKEN", "WORKER_MODEL_TOKEN", "WORKER_TOOL_TOKEN", "CORE_DOCUMENT_TOKEN"} {
 		t.Setenv(name, "")
 	}
 	client, err := configuredExperienceResultAcceptor()
