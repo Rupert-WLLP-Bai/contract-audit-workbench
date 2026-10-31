@@ -22,20 +22,49 @@ export function codePoints(text: string): string[] {
   return Array.from(text);
 }
 
+export interface CodePointTextIndex {
+  readonly text: string;
+  readonly codePoints: readonly string[];
+  readonly utf16Offsets: readonly number[];
+  readonly lowercaseCodePoints: readonly string[];
+}
+
+export function createTextIndex(text: string): CodePointTextIndex {
+  const chars = codePoints(text);
+  const utf16Offsets = new Array<number>(chars.length + 1);
+  let utf16Offset = 0;
+  for (let index = 0; index < chars.length; index += 1) {
+    utf16Offsets[index] = utf16Offset;
+    utf16Offset += chars[index]?.length ?? 0;
+  }
+  utf16Offsets[chars.length] = utf16Offset;
+  return {
+    text,
+    codePoints: chars,
+    utf16Offsets,
+    lowercaseCodePoints: chars.map((char) => char.toLowerCase()),
+  };
+}
+
 export function sliceByCodePoints(
   text: string,
   start: number,
   end: number,
+  textIndex?: CodePointTextIndex,
 ): string | null {
-  const chars = codePoints(text);
   if (
     !Number.isInteger(start) ||
     !Number.isInteger(end) ||
     start < 0 ||
-    end > chars.length ||
     start >= end
   ) {
     return null;
+  }
+  const index = textIndex?.text === text ? textIndex : null;
+  const chars = index?.codePoints ?? codePoints(text);
+  if (end > chars.length) return null;
+  if (index) {
+    return text.slice(index.utf16Offsets[start], index.utf16Offsets[end]);
   }
   return chars.slice(start, end).join("");
 }
@@ -63,6 +92,7 @@ export function resolveAnchor(
   anchor: EvidenceAnchor,
   parsedDocument: ParsedDocumentMetadata | null = null,
   publicParsedDocumentId: string | null = null,
+  textIndex?: CodePointTextIndex,
 ): ResolvedAnchor {
   const page = anchor.page;
   if (anchor.status === "missing") {
@@ -103,6 +133,7 @@ export function resolveAnchor(
       text,
       anchor.text_offset.start,
       anchor.text_offset.end,
+      textIndex,
     );
     if (hit !== null && offsetAgrees(hit, anchor.quote)) {
       return {
@@ -161,8 +192,10 @@ export function segmentText(
   highlight: TextOffset | null,
   anchorStarts: number[],
   findRange: TextOffset | null = null,
+  textIndex?: CodePointTextIndex,
 ): TextSegment[] {
-  const chars = codePoints(text);
+  const codePointIndex = textIndex?.text === text ? textIndex : null;
+  const chars = codePointIndex?.codePoints ?? codePoints(text);
   const breaks = new Set<number>([0, chars.length]);
   const addRange = (range: TextOffset | null) => {
     if (
@@ -180,6 +213,7 @@ export function segmentText(
   for (const start of anchorStarts) {
     if (start >= 0 && start < chars.length) breaks.add(start);
   }
+  const anchorStartSet = new Set(anchorStarts);
   const points = [...breaks].sort((left, right) => left - right);
   const segments: TextSegment[] = [];
   for (let index = 0; index < points.length - 1; index += 1) {
@@ -193,31 +227,57 @@ export function segmentText(
       findRange && start >= findRange.start && end <= findRange.end,
     );
     segments.push({
-      text: chars.slice(start, end).join(""),
+      text: codePointIndex
+        ? text.slice(
+            codePointIndex.utf16Offsets[start],
+            codePointIndex.utf16Offsets[end],
+          )
+        : chars.slice(start, end).join(""),
       start,
       highlighted: inEvidence ? "evidence" : inFind ? "find" : null,
-      anchor: anchorStarts.includes(start),
+      anchor: anchorStartSet.has(start),
     });
   }
   return segments;
 }
 
-export function findTextMatches(text: string, query: string): TextOffset[] {
+export function findTextMatches(
+  text: string,
+  query: string,
+  textIndex?: CodePointTextIndex,
+): TextOffset[] {
   const needle = Array.from(query.trim().toLowerCase());
   if (needle.length === 0) return [];
-  const chars = codePoints(text).map((char) => char.toLowerCase());
-  const matches: TextOffset[] = [];
-  for (let index = 0; index <= chars.length - needle.length; index += 1) {
-    let matched = true;
-    for (let offset = 0; offset < needle.length; offset += 1) {
-      if (chars[index + offset] !== needle[offset]) {
-        matched = false;
-        break;
-      }
+  const index = textIndex?.text === text ? textIndex : null;
+  const chars =
+    index?.lowercaseCodePoints ??
+    codePoints(text).map((char) => char.toLowerCase());
+  const prefix = new Array<number>(needle.length).fill(0);
+  for (
+    let position = 1, matched = 0;
+    position < needle.length;
+    position += 1
+  ) {
+    while (matched > 0 && needle[position] !== needle[matched]) {
+      matched = prefix[matched - 1] ?? 0;
     }
-    if (!matched) continue;
-    matches.push({ start: index, end: index + needle.length });
-    index += needle.length - 1;
+    if (needle[position] === needle[matched]) matched += 1;
+    prefix[position] = matched;
+  }
+
+  const matches: TextOffset[] = [];
+  let matched = 0;
+  for (let position = 0; position < chars.length; position += 1) {
+    const char = chars[position];
+    while (matched > 0 && char !== needle[matched]) {
+      matched = prefix[matched - 1] ?? 0;
+    }
+    if (char === needle[matched]) matched += 1;
+    if (matched === needle.length) {
+      const end = position + 1;
+      matches.push({ start: end - needle.length, end });
+      matched = 0;
+    }
   }
   return matches;
 }
