@@ -1774,6 +1774,7 @@ describe("补充材料请求", () => {
     const quoteDocument = { ...document, id: "doc-unicode", parsed_document_id: "parse-unicode", filename: "Unicode合同.txt", text: "A😀质保36个月。" };
     const workspace = makeWorkspace("run-new", "attempt-new", [compatible]);
     workspace.documents = [quoteDocument];
+    workspace.review_attempts!.attempt!.parsed_document_ids = ["parse-unicode"];
     const receipt = { ...rawReceipt, document_id: quoteDocument.id };
     const request = rawRequest("received", 2);
     const { calls, user } = open({ runId: "run-new", attemptId: "attempt-new", evaluations: [compatible], workspace, canManage: false, respond(call) {

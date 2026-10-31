@@ -102,9 +102,7 @@ function anchorsFor(
   finding: Finding | null,
 ): EvidenceAnchor[] {
   return finding?.evidence.filter((anchor) =>
-    anchor.document_version_id === document.id &&
-    evidenceSourceMatches(anchor, document.id, document.parsed_document, document.parsed_document_id),
-  ) ?? [];
+    anchor.document_version_id === document.id) ?? [];
 }
 
 function codePointBoundary(index: CodePointTextIndex, utf16Offset: number): number | null {
