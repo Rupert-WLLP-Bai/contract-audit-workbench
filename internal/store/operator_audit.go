@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"math/big"
 	"sort"
 	"strings"
 	"time"
@@ -1351,8 +1352,23 @@ func operatorFactsForAssociation(association ServiceObjectContractAssociation) (
 		if fact.Dimension == "minimum_bandwidth" {
 			semanticKind = "configured_value"
 		}
+		quantity := auditext.ExactQuantity{Value: fact.Value, Unit: fact.Unit}
+		if !outOfScope && strings.ContainsRune(quantity.Value, '/') {
+			rational, ok := new(big.Rat).SetString(quantity.Value)
+			if !ok || rational.Sign() < 0 {
+				return nil, fault.Conflict("服务对象合同关联事实的精确数值不合法")
+			}
+			precision, exact := rational.FloatPrec()
+			if !exact || precision > 64 {
+				return nil, fault.Conflict("服务对象合同关联事实不能无损表示为精确十进制")
+			}
+			quantity.Value = rational.FloatString(precision)
+			if auditext.ValidateQuantity(quantity) != nil {
+				return nil, fault.Conflict("服务对象合同关联事实的精确数值不合法")
+			}
+		}
 		out = append(out, auditext.Fact{
-			Name: fact.Dimension, Value: auditext.ExactQuantity{Value: fact.Value, Unit: fact.Unit},
+			Name: fact.Dimension, Value: quantity,
 			Evidence: evidence, OutOfScope: outOfScope, SemanticKind: semanticKind,
 			FactID: fact.ID, RuleID: fact.RuleID, Dimension: fact.Dimension, ObjectRef: fact.ObjectRef,
 			Applicable: applicable, Basis: fact.Basis, MeasurementWindow: fact.MeasurementWindow,
