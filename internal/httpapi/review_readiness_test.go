@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-func TestReviewReadinessListsCurrentMaterialsAndRequiresBusinessTime(t *testing.T) {
+func TestReviewReadinessListsCurrentMaterialsAndPreservesLegacyTimePolicy(t *testing.T) {
 	api := newAPI(t)
 	api.login(t, "demo-admin", "admin-demo")
 	status, created := api.do(t, http.MethodPost, "/api/cases", map[string]any{
@@ -25,8 +25,8 @@ func TestReviewReadinessListsCurrentMaterialsAndRequiresBusinessTime(t *testing.
 	if _, exists := readiness["business_at"]; exists {
 		t.Fatalf("server substituted a business time that the user did not provide: %+v", readiness)
 	}
-	if readiness["case_id"] != caseID || readiness["can_start"] != false {
-		t.Fatalf("readiness identity or missing-time admission is wrong: %+v", readiness)
+	if readiness["case_id"] != caseID || readiness["can_start"] != true {
+		t.Fatalf("legacy readiness must preserve admission without a business instant: %+v", readiness)
 	}
 	materials, ok := readiness["materials"].([]any)
 	if !ok || len(materials) != 2 {
@@ -37,12 +37,12 @@ func TestReviewReadinessListsCurrentMaterialsAndRequiresBusinessTime(t *testing.
 		t.Fatalf("only the supported full-review scope should be returned: %+v", readiness["scopes"])
 	}
 	scope, ok := scopes[0].(map[string]any)
-	if !ok || scope["id"] != "full_review" || scope["can_start"] != false {
-		t.Fatalf("full-review scope did not reflect the missing business time: %+v", scopes[0])
+	if !ok || scope["id"] != "full_review" || scope["can_start"] != true {
+		t.Fatalf("full-review scope must preserve legacy business-time policy: %+v", scopes[0])
 	}
 	blockers, ok := scope["blockers"].([]any)
-	if !ok || !readinessHasBlocker(blockers, "business_at_required") {
-		t.Fatalf("missing business time was not an explicit blocker: %+v", scope["blockers"])
+	if !ok || len(blockers) != 0 {
+		t.Fatalf("legacy case without objects must not acquire new blockers: %+v", scope["blockers"])
 	}
 
 	status, ready := api.do(t, http.MethodGet, "/api/cases/"+caseID+"/review-readiness?business_at=2026-10-31T10:00:00Z", nil)

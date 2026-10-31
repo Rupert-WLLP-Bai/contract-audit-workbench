@@ -1799,6 +1799,18 @@
     border-radius: 6px;
     background: var(--surface-raised);
   }
+  .review-readiness-list {
+    display: grid;
+    gap: var(--space-2);
+    margin-block: var(--space-3);
+    padding: 0;
+    list-style: none;
+  }
+  .review-readiness-list > li {
+    padding: var(--space-3);
+    border: 1px solid var(--border-default);
+    background: var(--surface-raised);
+  }
   .workflow-panel > h2,
   .workflow-panel-head h2 {
     margin: 0;

@@ -1,6 +1,10 @@
 import { Button, Input } from "antd";
 import { useEffect, useRef, useState } from "react";
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router";
+import { useQuery } from "@tanstack/react-query";
+import { getReviewReadiness } from "../api/review-readiness";
+import { beijingInputToUtc } from "../components/beijing-datetime";
+import { ReviewReadinessPanel } from "../components/review-readiness-panel";
 import { errorMessage, isForbidden } from "../api/http";
 import {
   useCaseDetail,
@@ -63,6 +67,17 @@ export function CaseDetailPage() {
   );
   const start = useStartReview(caseId);
   const [businessAt, setBusinessAt] = useState("");
+  const businessAtValue = beijingInputToUtc(businessAt);
+  const validBusinessAt = businessAtValue !== "";
+  useEffect(() => setBusinessAt(""), [caseId, actorScope]);
+  const readiness = useQuery({
+    queryKey: ["cases", caseId, "review-readiness", actorScope, businessAtValue,
+      detail.data?.updated_at, detail.data?.material_selection,
+      detail.data?.documents.map((document) => [document.id, document.parse_status])],
+    queryFn: ({ signal }) => getReviewReadiness(caseId, businessAtValue, signal),
+    enabled: detail.isSuccess && session.isSuccess && (businessAt === "" || validBusinessAt),
+    retry: false,
+  });
 
   if (detail.isLoading)
     return <PageStatus kind="loading" title="正在加载案件" />;
@@ -119,7 +134,6 @@ export function CaseDetailPage() {
   const pendingParse = current.filter(
     (document) => document.parse_status === "pending",
   ).length;
-  const preparable = ready + pendingParse;
   const failedCount = current.filter(
     (document) => document.parse_status === "failed",
   ).length;
@@ -134,11 +148,8 @@ export function CaseDetailPage() {
   const canWriteRemediation = actorRole === "admin" || actorRole === "reviewer";
   const canCreateReport = actorRole === "admin" || actorRole === "clerk";
   const canArchive = actorRole === "admin";
-  const requiresBusinessAt =
-    item.business_line === "ENT" &&
-    (item.scenario === "telecom_dedicated_line" ||
-      (item.scenario === "cloud_services" && item.contract_type === "service"));
-  const validBusinessAt = businessAt !== "" && !Number.isNaN(new Date(businessAt).getTime());
+  const requiresBusinessAt = businessAt !== "" ||
+    readiness.data?.scopes.some((scope) => scope.blockers.some((blocker) => blocker.code === "business_at_required")) === true;
 
   return (
     <section className="page">
@@ -181,16 +192,15 @@ export function CaseDetailPage() {
             htmlType="button"
             disabled={
               (!canUpload && actorRole !== "reviewer") ||
-              !hasMaterialProjection ||
-              item.material_selection?.status === "pending_confirmation" ||
-              preparable < 2 ||
-              (requiresBusinessAt && !validBusinessAt) ||
+              readiness.data?.can_start !== true ||
+              readiness.isFetching || readiness.isError ||
+              (businessAt !== "" && !validBusinessAt) ||
               subjectContextUnknown ||
               start.isPending ||
               archived
             }
             onClick={() => {
-              start.mutate(requiresBusinessAt ? { business_at: new Date(businessAt).toISOString() } : {}, {
+              start.mutate(validBusinessAt ? { business_at: businessAtValue } : {}, {
                 onSuccess: (accepted) => {
                   const query = new URLSearchParams({
                     attempt_id: accepted.attempt_id,
@@ -206,17 +216,19 @@ export function CaseDetailPage() {
           </Button>
         ) : null}
       </header>
-      {requiresBusinessAt && (!run || needsNewReview) ? (
-        <label className="field">
-          审查业务时间（本地时区）
+      {requiresBusinessAt ? (
+        <label className="field" id="review-business-time">
+          审查业务时间（北京时间）
           <Input
-            aria-label="审查业务时间（本地时区）"
+            aria-label="审查业务时间（北京时间）"
             type="datetime-local"
             required
+            disabled={archived}
             value={businessAt}
             onChange={(event) => setBusinessAt(event.target.value)}
           />
-          <span className="meta">选择需要适用制度的业务时间。</span>
+          <span className="meta">按北京时间（UTC+08:00）选择适用的业务时点，不以服务器当前时间代替。</span>
+          {businessAt !== "" && !validBusinessAt ? <span role="alert">请输入有效的北京时间。</span> : null}
         </label>
       ) : null}
       <ol className="case-chain" aria-label="案件材料链路">
@@ -250,11 +262,6 @@ export function CaseDetailPage() {
         <p className="callout">
           案件已归档，只能读取案件、运行历史和已有报告。服务端会以 HTTP 409
           拒绝所有业务写入。
-        </p>
-      ) : null}
-      {preparable < 2 && !run ? (
-        <p className="callout">
-          至少需要两份可审查的材料；解析失败的材料需要先重新解析。
         </p>
       ) : null}
       {pendingParse > 0 ? (
@@ -301,7 +308,11 @@ export function CaseDetailPage() {
       ) : null}
       {start.isError ? <p role="alert">{errorMessage(start.error)}</p> : null}
 
-      <MaterialCollectionPanel key={`materials:${item.id}:${actorScope}`} caseDetail={item} canWrite={canUpload} actorId={session.data?.id ?? ""} />
+      <ReviewReadinessPanel caseId={item.id} data={readiness.data} loading={readiness.isFetching}
+        error={readiness.isError ? readiness.error : null} onRefresh={() => void readiness.refetch()} />
+      <div id="case-materials">
+        <MaterialCollectionPanel key={`materials:${item.id}:${actorScope}`} caseDetail={item} canWrite={canUpload} actorId={session.data?.id ?? ""} />
+      </div>
       <CaseSubjectRolesPanel key={`subjects:${item.id}:${actorScope}`} caseId={item.id} />
       <CaseSubjectCorrectionsPanel key={`subject-corrections:${item.id}:${actorScope}`} caseId={item.id} />
       <CaseLegalApplicabilityPanel key={`legal-applicability:${item.id}:${actorScope}`} caseId={item.id} />

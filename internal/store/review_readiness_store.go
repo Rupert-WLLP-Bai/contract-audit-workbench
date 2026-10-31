@@ -60,6 +60,17 @@ func (s *Store) GetReviewReadiness(ctx context.Context, user accounts.User, case
 	if !ok || !authorizeCase(caseItem, current, access.Read) {
 		return ReviewReadiness{}, fault.NotFound("没有找到对应记录")
 	}
+	// Match acceptance: legacy ungoverned cases need an explicit business
+	// instant only after a service object has been registered. Never substitute
+	// the read clock for a missing business instant.
+	businessAtRequired := isGovernedReviewCase(caseItem)
+	if !businessAtRequired {
+		if err := tx.QueryRow(ctx, `SELECT EXISTS (
+			SELECT 1 FROM service_objects WHERE tenant_id=$1 AND org_id=$2 AND case_id=$3
+		)`, caseItem.TenantID, caseItem.OwnerOrgID, caseID).Scan(&businessAtRequired); err != nil {
+			return ReviewReadiness{}, err
+		}
+	}
 
 	selectionVersion, selectionConfirmed := readinessMaterialSelection(st, caseID)
 	materials, _ := currentReadinessMaterials(ctx, s, st, caseID, selectionConfirmed)
@@ -95,8 +106,9 @@ func (s *Store) GetReviewReadiness(ctx context.Context, user accounts.User, case
 
 	scope := evaluateReviewReadiness(reviewReadinessInputs{
 		CanRead: true, CanStartRole: canStartRole, Writable: !s.ReadOnly() && businessWritable(caseItem) == nil,
-		SelectionConfirmed: selectionConfirmed, MinimumMaterials: 2, Materials: materials, BusinessAtProvided: businessAtProvided,
-		RulePack: rulePackProjection, AcceptanceBlockers: acceptanceBlockers, Checks: checks,
+		SelectionConfirmed: selectionConfirmed, MinimumMaterials: 2, Materials: materials,
+		BusinessAtProvided: businessAtProvided || !businessAtRequired,
+		RulePack:           rulePackProjection, AcceptanceBlockers: acceptanceBlockers, Checks: checks,
 	})
 	if admissionErr != nil && len(scope.Blockers) == 0 {
 		return ReviewReadiness{}, admissionErr
@@ -114,14 +126,16 @@ func (s *Store) GetReviewReadiness(ctx context.Context, user accounts.User, case
 		readiness.Scopes = []ReviewReadinessScope{}
 	}
 	additional := struct {
-		BusinessLine  string `json:"business_line"`
-		Scenario      string `json:"scenario"`
-		ContractType  string `json:"contract_type"`
-		BusinessState string `json:"business_status"`
-		ReadOnly      bool   `json:"read_only"`
-		BusinessAtSet bool   `json:"business_at_set"`
-		Governance    any    `json:"governance,omitempty"`
-	}{caseItem.BusinessLine, caseItem.Scenario, caseItem.ContractType, caseItem.BusinessStatus, s.ReadOnly(), businessAtProvided, governanceRevision}
+		BusinessLine       string `json:"business_line"`
+		Scenario           string `json:"scenario"`
+		ContractType       string `json:"contract_type"`
+		BusinessState      string `json:"business_status"`
+		ReadOnly           bool   `json:"read_only"`
+		BusinessAtSet      bool   `json:"business_at_set"`
+		BusinessAtRequired bool   `json:"business_at_required"`
+		Governance         any    `json:"governance,omitempty"`
+	}{caseItem.BusinessLine, caseItem.Scenario, caseItem.ContractType, caseItem.BusinessStatus,
+		s.ReadOnly(), businessAtProvided, businessAtRequired, governanceRevision}
 	readiness.Revision, err = reviewReadinessRevision(reviewReadinessRevisionInput{
 		CaseID: caseID, BusinessAt: at, CaseUpdatedAt: caseItem.UpdatedAt,
 		MaterialSelectionVersion: selectionVersion, Materials: materials, Scope: scope, Additional: additional,
