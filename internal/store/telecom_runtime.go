@@ -612,6 +612,12 @@ func (s *Store) executeTelecomAttempt(parent, ctx context.Context, runID, attemp
 				}
 				request.Principal, request.Resource = principal, resource
 				if frozenGovernedPack != nil {
+					request, err = s.freezeAttemptRuleRequest(stageCtx, runID, attemptID, caseItem, request)
+					if err != nil {
+						return err
+					}
+				}
+				if frozenGovernedPack != nil {
 					if isDeclaredReviewCase(caseItem) {
 						report, err = telecom.ExecuteDeclared(stageCtx, request, frozenGovernedPack)
 					} else if legacyFrozenAuthority {

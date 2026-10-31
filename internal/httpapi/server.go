@@ -91,6 +91,7 @@ func Handler(st *store.Store, opt Options) http.Handler {
 	mux.HandleFunc("POST /api/admin/rulepacks/{packID}/versions/{version}/test", h.testRulePackVersion)
 	mux.HandleFunc("POST /api/admin/rulepacks/{packID}/rollback", h.rollbackRulePackVersion)
 	mux.HandleFunc("GET /api/admin/rulepacks/{packID}/history", h.rulePackHistory)
+	registerRuleShadowRoutes(mux, h)
 	registerGovernanceRoutes(mux, h)
 	registerLegalKnowledgeRoutes(mux, h)
 	registerContractCitationRoutes(mux, h)

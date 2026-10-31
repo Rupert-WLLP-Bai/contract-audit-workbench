@@ -28,6 +28,7 @@ import { RulePackErrorSummary } from "../components/rulepack-error-summary";
 import { RulePackManifestEditor } from "../components/rulepack-manifest-editor";
 import { RulePackTestPanel } from "../components/rulepack-test-panel";
 import { RulePackSuitePanel } from "../components/rulepack-suite-panel";
+import { RulePackShadowPanel } from "../components/rulepack-shadow-panel";
 import {
   validateRulePackDraft,
   type RulePackFormIssue,
@@ -358,6 +359,7 @@ export function RulePackDetailPage() {
         <a href="#rulepack-lifecycle">验证与发布</a>
         <a href="#rulepack-history">历史与回滚</a>
         <a href="#rulepack-test">规则试算</a>
+        <a href="#rulepack-shadow">影子对比</a>
       </nav>
       {!isTenantOwner ? (
         <p className="workflow-error" role="alert">
@@ -793,6 +795,14 @@ export function RulePackDetailPage() {
           revision={pack.revision}
         />
       </div>
+      <RulePackShadowPanel
+        key={`${pack.id}:${pack.version}:${pack.revision}`}
+        packId={pack.id}
+        version={pack.version}
+        revision={pack.revision}
+        contentHash={pack.content_hash}
+        enabled={isTenantOwner && !dirty && hasCurrentRevision}
+      />
       <DirtyLeaveGuard
         dirty={dirty}
         description="规则包草稿修改尚未保存。离开或刷新页面都会丢失这些修改，先保存草稿再离开。"

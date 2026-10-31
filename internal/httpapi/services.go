@@ -259,6 +259,12 @@ func rulePackRoute(m routeMethodSet, p []string) bool {
 	if len(p) == 5 && p[2] == "versions" {
 		return m.post
 	}
+	if len(p) == 6 && p[2] == "versions" && p[4] == "shadow" {
+		return m.read && (p[5] == "samples" || p[5] == "reports")
+	}
+	if len(p) == 7 && p[2] == "versions" && p[4] == "shadow" && p[5] == "reports" {
+		return m.read
+	}
 	if len(p) == 3 && p[2] == "rollback" {
 		return m.post
 	}
