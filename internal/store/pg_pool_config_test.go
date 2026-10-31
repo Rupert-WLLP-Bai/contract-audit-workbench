@@ -20,50 +20,50 @@ func TestPoolConfigPreservesExplicitOptions(t *testing.T) {
 		health      time.Duration
 	}{
 		{
-			name: "url default",
-			dsn: "postgres://user@localhost/example?sslmode=disable",
+			name:     "url default",
+			dsn:      "postgres://user@localhost/example?sslmode=disable",
 			fallback: 4, max: 4,
 			maxLifetime: time.Hour, maxIdle: 30 * time.Minute, health: time.Minute,
 		},
 		{
-			name: "keyword false positive",
-			dsn: "host=localhost user=user dbname=example sslmode=disable application_name='pool_max_conns=19'",
+			name:     "keyword false positive",
+			dsn:      "host=localhost user=user dbname=example sslmode=disable application_name='pool_max_conns=19'",
 			fallback: 4, max: 4,
 			maxLifetime: time.Hour, maxIdle: 30 * time.Minute, health: time.Minute,
 		},
 		{
-			name: "url explicit maximum and other settings",
-			dsn: "postgres://user@localhost/example?sslmode=disable&pool_max_conns=9&pool_min_conns=2&pool_min_idle_conns=3&pool_max_conn_lifetime=2h&pool_max_conn_lifetime_jitter=45s&pool_max_conn_idle_time=5m&pool_health_check_period=20s",
+			name:     "url explicit maximum and other settings",
+			dsn:      "postgres://user@localhost/example?sslmode=disable&pool_max_conns=9&pool_min_conns=2&pool_min_idle_conns=3&pool_max_conn_lifetime=2h&pool_max_conn_lifetime_jitter=45s&pool_max_conn_idle_time=5m&pool_health_check_period=20s",
 			fallback: 4, max: 9, min: 2, minIdle: 3,
 			maxLifetime: 2 * time.Hour, jitter: 45 * time.Second, maxIdle: 5 * time.Minute, health: 20 * time.Second,
 		},
 		{
-			name: "keyword explicit maximum and other settings",
-			dsn: "host=localhost user=user dbname=example sslmode=disable pool_max_conns=7 pool_min_conns=1 pool_max_conn_lifetime=2h pool_max_conn_lifetime_jitter=30s pool_max_conn_idle_time=5m pool_health_check_period=20s",
+			name:     "keyword explicit maximum and other settings",
+			dsn:      "host=localhost user=user dbname=example sslmode=disable pool_max_conns=7 pool_min_conns=1 pool_max_conn_lifetime=2h pool_max_conn_lifetime_jitter=30s pool_max_conn_idle_time=5m pool_health_check_period=20s",
 			fallback: 4, max: 7, min: 1,
 			maxLifetime: 2 * time.Hour, jitter: 30 * time.Second, maxIdle: 5 * time.Minute, health: 20 * time.Second,
 		},
 		{
-			name: "explicit minimum above default",
-			dsn: "postgres://user@localhost/example?sslmode=disable&pool_min_conns=6&pool_min_idle_conns=8",
+			name:     "explicit minimum above default",
+			dsn:      "postgres://user@localhost/example?sslmode=disable&pool_min_conns=6&pool_min_idle_conns=8",
 			fallback: 4, max: 8, min: 6, minIdle: 8,
 			maxLifetime: time.Hour, maxIdle: 30 * time.Minute, health: time.Minute,
 		},
 		{
-			name: "explicit maximum stays explicit",
-			dsn: "host=localhost user=user dbname=example sslmode=disable pool_max_conns=2 pool_min_conns=3",
+			name:     "explicit maximum stays explicit",
+			dsn:      "host=localhost user=user dbname=example sslmode=disable pool_max_conns=2 pool_min_conns=3",
 			fallback: 4, max: 2, min: 3,
 			maxLifetime: time.Hour, maxIdle: 30 * time.Minute, health: time.Minute,
 		},
 		{
-			name: "migrator default",
-			dsn: "postgres://user@localhost/example?sslmode=disable",
+			name:     "migrator default",
+			dsn:      "postgres://user@localhost/example?sslmode=disable",
 			fallback: 2, max: 2,
 			maxLifetime: time.Hour, maxIdle: 30 * time.Minute, health: time.Minute,
 		},
 		{
-			name: "migrator explicit maximum",
-			dsn: "postgres://user@localhost/example?sslmode=disable&pool_max_conns=5",
+			name:     "migrator explicit maximum",
+			dsn:      "postgres://user@localhost/example?sslmode=disable&pool_max_conns=5",
 			fallback: 2, max: 5,
 			maxLifetime: time.Hour, maxIdle: 30 * time.Minute, health: time.Minute,
 		},
@@ -109,11 +109,11 @@ func TestRuntimeTimeoutDefaultsWithParsedDSNs(t *testing.T) {
 		options string
 	}{
 		{
-			dsn: "postgres://user@localhost/example?sslmode=disable&statement_timeout=0&options=-c%20lock_timeout%3D750ms",
+			dsn:     "postgres://user@localhost/example?sslmode=disable&statement_timeout=0&options=-c%20lock_timeout%3D750ms",
 			options: "-c lock_timeout=10s -c idle_in_transaction_session_timeout=5min -c lock_timeout=750ms",
 		},
 		{
-			dsn: "host=localhost user=user dbname=example sslmode=disable statement_timeout=0 options='-c lock_timeout=750ms'",
+			dsn:     "host=localhost user=user dbname=example sslmode=disable statement_timeout=0 options='-c lock_timeout=750ms'",
 			options: "-c lock_timeout=10s -c idle_in_transaction_session_timeout=5min -c lock_timeout=750ms",
 		},
 	} {
@@ -135,28 +135,28 @@ func TestRuntimeTimeoutDefaultsPreserveExplicitSettings(t *testing.T) {
 		options string
 	}{
 		{
-			name: "defaults",
-			params: map[string]string{},
+			name:    "defaults",
+			params:  map[string]string{},
 			options: "-c statement_timeout=60s -c lock_timeout=10s -c idle_in_transaction_session_timeout=5min",
 		},
 		{
-			name: "direct settings and explicit zero",
-			params: map[string]string{"statement_timeout": "0", "lock_timeout": "3s"},
+			name:    "direct settings and explicit zero",
+			params:  map[string]string{"statement_timeout": "0", "lock_timeout": "3s"},
 			options: "-c idle_in_transaction_session_timeout=5min",
 		},
 		{
-			name: "options override defaults",
-			params: map[string]string{"options": "-c statement_timeout=0 --lock_timeout=250ms"},
+			name:    "options override defaults",
+			params:  map[string]string{"options": "-c statement_timeout=0 --lock_timeout=250ms"},
 			options: "-c statement_timeout=60s -c lock_timeout=10s -c idle_in_transaction_session_timeout=5min -c statement_timeout=0 --lock_timeout=250ms",
 		},
 		{
-			name: "direct plus options",
-			params: map[string]string{"statement_timeout": "30s", "options": "-c lock_timeout=500ms"},
+			name:    "direct plus options",
+			params:  map[string]string{"statement_timeout": "30s", "options": "-c lock_timeout=500ms"},
 			options: "-c lock_timeout=10s -c idle_in_transaction_session_timeout=5min -c lock_timeout=500ms",
 		},
 		{
-			name: "all direct settings",
-			params: map[string]string{"statement_timeout": "0", "lock_timeout": "0", "idle_in_transaction_session_timeout": "0", "options": "-c application_name=keep"},
+			name:    "all direct settings",
+			params:  map[string]string{"statement_timeout": "0", "lock_timeout": "0", "idle_in_transaction_session_timeout": "0", "options": "-c application_name=keep"},
 			options: "-c application_name=keep",
 		},
 	}

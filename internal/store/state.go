@@ -397,25 +397,25 @@ type Run struct {
 
 // Attempt is one immutable execution identity within a run.
 type Attempt struct {
-	ID                     string          `json:"id"`
-	RunID                  string          `json:"run_id"`
-	ActorID                string          `json:"actor_id,omitempty"`
-	Ordinal                int             `json:"ordinal"`
-	RetryOfAttemptID       *string         `json:"retry_of_attempt_id"`
-	State                  string          `json:"state"`
-	AcceptedAt             string          `json:"accepted_at"`
-	StartedAt              *string         `json:"started_at"`
-	FinishedAt             *string         `json:"finished_at"`
-	InputHash              *string         `json:"input_hash"`
-	OutputHash             *string         `json:"output_hash"`
-	ErrorCode              *string         `json:"error_code"`
-	HistoryKind            string          `json:"history_kind"`
+	ID                     string               `json:"id"`
+	RunID                  string               `json:"run_id"`
+	ActorID                string               `json:"actor_id,omitempty"`
+	Ordinal                int                  `json:"ordinal"`
+	RetryOfAttemptID       *string              `json:"retry_of_attempt_id"`
+	State                  string               `json:"state"`
+	AcceptedAt             string               `json:"accepted_at"`
+	StartedAt              *string              `json:"started_at"`
+	FinishedAt             *string              `json:"finished_at"`
+	InputHash              *string              `json:"input_hash"`
+	OutputHash             *string              `json:"output_hash"`
+	ErrorCode              *string              `json:"error_code"`
+	HistoryKind            string               `json:"history_kind"`
 	ReviewScope            *ReviewScopeIdentity `json:"review_scope,omitempty"`
-	ParsedDocumentIDs      []string        `json:"parsed_document_ids"`
-	RulePackSnapshot       json.RawMessage `json:"-"`
-	RulePackHash           string          `json:"-"`
-	RulePackSnapshotDigest string          `json:"-"`
-	RulePackCompilerRef    string          `json:"-"`
+	ParsedDocumentIDs      []string             `json:"parsed_document_ids"`
+	RulePackSnapshot       json.RawMessage      `json:"-"`
+	RulePackHash           string               `json:"-"`
+	RulePackSnapshotDigest string               `json:"-"`
+	RulePackCompilerRef    string               `json:"-"`
 	// RulePackID and RulePackVersion name the governed pack frozen at
 	// acceptance; both stay empty for the synthetic baseline compiler.
 	RulePackID              string `json:"-"`

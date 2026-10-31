@@ -121,7 +121,7 @@ func (s *Store) GetReviewReadiness(ctx context.Context, user accounts.User, case
 		CanRead: true, CanStartRole: canStartRole, Writable: !s.ReadOnly() && businessWritable(caseItem) == nil,
 		SelectionConfirmed: selectionConfirmed, MinimumMaterials: 1, Materials: materials,
 		BusinessAtProvided: businessAtProvided || !businessAtRequired,
-		RulePack: rulePackProjection, AcceptanceBlockers: acceptanceBlockers, Checks: singleChecks,
+		RulePack:           rulePackProjection, AcceptanceBlockers: acceptanceBlockers, Checks: singleChecks,
 	})
 	singleScope.RuleSet = snapshotScope(applyReviewScope(RunSnapshot{}, ReviewScopeSingleContract))
 	if admissionErr != nil && len(scope.Blockers) == 0 {

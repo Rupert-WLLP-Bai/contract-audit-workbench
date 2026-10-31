@@ -51,7 +51,9 @@ func run() error {
 	addr := process.Env("ADDR", "127.0.0.1:8080")
 	log.Printf("edge gateway listening on %s", addr)
 	server := &http.Server{
-		Addr: addr, Handler: telemetry.HTTPBoundary(exporter, "gateway", telemetry.HTTPOptions{ResolveRoute: gateway.RouteTemplate}, edge.Handler()),
+		Addr: addr, Handler: telemetry.HTTPBoundary(exporter, "gateway", telemetry.HTTPOptions{
+			ResolveRoute: func(r *http.Request) string { return gateway.RouteTemplate(r.URL.Path) },
+		}, edge.Handler()),
 		ReadHeaderTimeout: 5 * time.Second,
 		// No global ReadTimeout: an upload streams for as long as its own byte
 		// and time bounds allow. No global WriteTimeout: a review event stream
