@@ -109,7 +109,11 @@ func (s *Store) freezeAttemptRuleRequest(ctx context.Context, runID, attemptID s
 		if err != nil { return rulepack.Request{}, err }
 		request = frozen.bind(request)
 	} else { return rulepack.Request{}, err }
-	if _, err := trustedUser(actor); err != nil { return rulepack.Request{}, err }
+	if err := s.reauthorizeAttempt(ctx, tx, runID, attemptID); err != nil { return rulepack.Request{}, err }
+	if err := revalidateGovernedAttemptTx(ctx, tx, runID, attemptID, item.ID); err != nil { return rulepack.Request{}, err }
+	if durable && claim.JobID != "" {
+		if err := s.requireLiveClaim(ctx, tx, claim, runID, attemptID); err != nil { return rulepack.Request{}, err }
+	}
 	if err := tx.Commit(ctx); err != nil { return rulepack.Request{}, err }
 	return request, nil
 }
