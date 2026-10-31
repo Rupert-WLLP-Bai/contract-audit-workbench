@@ -20,14 +20,20 @@ import (
 )
 
 const (
-	pdfMaxBytes       = 32 << 20
-	pdfMaxPages       = 64
+	pdfMaxBytes = 32 << 20
+	// pdfMaxPages admits the frozen 92-page public scan (issue #15) and still
+	// rejects unbounded documents.
+	pdfMaxPages = 128
+	// pdfMaxAllPixels keeps the historical per-page image allowance (600M for 64
+	// pages) and follows the page ceiling, so the budget stays at 9,375,000
+	// embedded pixels per page. The frozen 92-page scan measures 633,032,192
+	// embedded pixels, while its 92 renders at 2400 points total 374,918,400.
+	pdfMaxAllPixels   = 1_200_000_000
 	pdfMaxTextBytes   = 8 << 20
 	pdfMaxPageText    = 1 << 20
 	pdfMaxPNGBytes    = 24 << 20
 	pdfRenderSide     = 2400
 	pdfMaxImagePixels = 40_000_000
-	pdfMaxAllPixels   = 600_000_000
 	pdfMaxImages      = 4096
 	pdfToolTimeout    = 30 * time.Second
 )
@@ -132,7 +138,7 @@ func pdfImageInventory(ctx context.Context, path string, pages int) ([]bool, err
 
 // pdfTextSegments extracts native text and validates the page boundaries.
 func pdfTextSegments(ctx context.Context, path string, pages int) ([]string, error) {
-	text, err := pdfCommand(ctx, pdfMaxTextBytes, "pdftotext", "-layout", "-enc", "UTF-8", "-eol", "unix", path, "-")
+	text, untrusted, err := pdfRun(ctx, pdfMaxTextBytes, "pdftotext", "-layout", "-enc", "UTF-8", "-eol", "unix", path, "-")
 	if err != nil {
 		return nil, err
 	}
@@ -145,6 +151,15 @@ func pdfTextSegments(ctx context.Context, path string, pages int) ([]string, err
 	}
 	if strings.TrimSpace(segments[len(segments)-1]) != "" {
 		return nil, errors.New("PDF text page boundaries do not match observed page count")
+	}
+	if untrusted {
+		// Poppler read a font program that does not match its declared type, so
+		// its glyph mapping is not reliable evidence for the visible page. Keep
+		// the validated page boundaries and drop the text, exactly as for broken
+		// font encodings, so each page is transcribed from its rendering.
+		for i := range segments {
+			segments[i] = ""
+		}
 	}
 	return segments, nil
 }
@@ -440,9 +455,51 @@ func (b *pdfBoundedOutput) Write(p []byte) (int, error) {
 	return b.buffer.Write(p)
 }
 
+// Poppler diagnostics observed on the frozen public originals. Every other line
+// stays an explicit failure: only these four describe damage Poppler repaired
+// without dropping output, because the callers still validate the page count,
+// page geometry, image rows, text page boundaries and the decoded render.
+const (
+	pdfDiagFontWeight = "Syntax Warning: Invalid Font Weight"
+	pdfDiagFontType   = "Syntax Warning: Mismatch between font type and embedded font file"
+	// A raw J2K codestream declared as JPX: Poppler retries it as J2K, and every
+	// observed page still rendered its scanned image.
+	pdfDiagJPXDeclared = "Syntax Error: Malformed JP2 file format: first box must be JPEG 2000 signature box"
+	pdfDiagJPXRetry    = "Syntax Warning: Did no succeed opening JPX Stream as JP2, trying as J2K."
+	// Poppler prints this header complaint as part of the same JP2 attempt, so it
+	// is accepted only after the declared-JPX line, never on its own.
+	pdfDiagJPXHeader = "Syntax Warning: Unable to read header"
+)
+
+// pdfToleratedDiagnostics are the diagnostics that never fail a call on their
+// own. The embedded font type mismatch also leaves the extracted glyph mapping
+// unreliable, which pdfClassifyDiagnostics reports separately.
+var pdfToleratedDiagnostics = []string{
+	pdfDiagFontWeight,
+	pdfDiagFontType,
+	pdfDiagJPXDeclared,
+	pdfDiagJPXRetry,
+}
+
+// pdfUnreliableTextDiagnostics mark diagnostics that leave the document
+// renderable but make Poppler's glyph mapping unreliable evidence.
+var pdfUnreliableTextDiagnostics = []string{
+	pdfDiagFontType,
+}
+
+// pdfCommand runs one Poppler tool and reports the first untolerated diagnostic.
 func pdfCommand(ctx context.Context, limit int, tool string, args ...string) ([]byte, error) {
+	out, _, err := pdfRun(ctx, limit, tool, args...)
+	return out, err
+}
+
+// pdfRun executes one Poppler tool and classifies its diagnostics. Poppler can
+// repair damaged files and still exit zero, so every diagnostic line stays an
+// explicit failure unless it is a tolerated font-metadata warning. The flag
+// reports whether those warnings make extracted native text unreliable.
+func pdfRun(ctx context.Context, limit int, tool string, args ...string) ([]byte, bool, error) {
 	if err := ctx.Err(); err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	toolCtx, cancel := context.WithTimeout(ctx, pdfToolTimeout)
 	defer cancel()
@@ -454,21 +511,66 @@ func pdfCommand(ctx context.Context, limit int, tool string, args ...string) ([]
 	cmd.Stdout, cmd.Stderr = stdout, stderr
 	err := cmd.Run()
 	if ctx.Err() != nil {
-		return nil, ctx.Err()
+		return nil, false, ctx.Err()
 	}
 	if toolCtx.Err() != nil {
-		return nil, fmt.Errorf("PDF tool %s: %w", tool, toolCtx.Err())
+		return nil, false, fmt.Errorf("PDF tool %s: %w", tool, toolCtx.Err())
 	}
 	if stdout.full || stderr.full {
-		return nil, fmt.Errorf("PDF tool %s output exceeds resource limit", tool)
+		return nil, false, fmt.Errorf("PDF tool %s output exceeds resource limit", tool)
 	}
 	if err != nil {
-		return nil, fmt.Errorf("PDF tool %s failed: %w", tool, err)
+		return nil, false, fmt.Errorf("PDF tool %s failed: %w", tool, err)
 	}
-	// Poppler can repair damaged files and still exit zero. Such diagnostics
-	// must not become a successful, apparently complete parse.
-	if strings.TrimSpace(stderr.buffer.String()) != "" {
-		return nil, fmt.Errorf("PDF tool %s reported malformed or unsupported content", tool)
+	untrustedText, err := pdfClassifyDiagnostics(stderr.buffer.String())
+	if err != nil {
+		return nil, false, fmt.Errorf("PDF tool %s %w", tool, err)
 	}
-	return stdout.buffer.Bytes(), nil
+	return stdout.buffer.Bytes(), untrustedText, nil
+}
+
+// pdfClassifyDiagnostics accepts only the enumerated diagnostics and reports
+// whether they leave native text unreliable. Any other line keeps the documented
+// refusal, because it can mean content Poppler could not read. The render-level
+// checks stay the backstop: an image Poppler could not draw leaves the page
+// without a transcript, which fails instead of returning a partial document.
+func pdfClassifyDiagnostics(stderr string) (bool, error) {
+	untrustedText := false
+	jpxFallback := strings.Contains(stderr, pdfDiagJPXDeclared)
+	for _, line := range strings.Split(stderr, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		if jpxFallback && strings.Contains(line, pdfDiagJPXHeader) {
+			continue
+		}
+		if !pdfContainsDiagnostic(pdfToleratedDiagnostics, line) {
+			return false, fmt.Errorf("reported malformed or unsupported content: %s", pdfDiagnosticLine(line))
+		}
+		if pdfContainsDiagnostic(pdfUnreliableTextDiagnostics, line) {
+			untrustedText = true
+		}
+	}
+	return untrustedText, nil
+}
+
+// pdfContainsDiagnostic reports whether a diagnostic line carries one of the
+// expected messages. Poppler sometimes prefixes a message with a location.
+func pdfContainsDiagnostic(messages []string, line string) bool {
+	for _, message := range messages {
+		if strings.Contains(line, message) {
+			return true
+		}
+	}
+	return false
+}
+
+// pdfDiagnosticLine bounds one diagnostic so it can travel in an error without
+// carrying arbitrary tool output.
+func pdfDiagnosticLine(line string) string {
+	if len(line) > 200 {
+		line = line[:200]
+	}
+	return strings.ToValidUTF8(line, "")
 }

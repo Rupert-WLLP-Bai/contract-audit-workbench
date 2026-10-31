@@ -11,9 +11,15 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 )
+
+// pageRangeError names the accepted page range from the configured limit.
+func pageRangeError() string {
+	return fmt.Sprintf("PDF page count must be between 1 and %d", pdfMaxPages)
+}
 
 func pinnedError(t *testing.T, got error, want string) {
 	t.Helper()
@@ -40,12 +46,12 @@ func TestPDFPageCountPinned(t *testing.T) {
 	}{
 		{"valid two pages", validPageCountInfo, 2, ""},
 		{"one page", pageCountInfo("1", "no", "none", "no"), 1, ""},
-		{"maximum pages", pageCountInfo("64", "no", "none", "no"), 64, ""},
-		{"zero pages", pageCountInfo("0", "no", "none", "no"), 0, "PDF page count must be between 1 and 64"},
-		{"too many pages", pageCountInfo("65", "no", "none", "no"), 0, "PDF page count must be between 1 and 64"},
-		{"negative pages", pageCountInfo("-1", "no", "none", "no"), 0, "PDF page count must be between 1 and 64"},
-		{"non numeric pages", pageCountInfo("two", "no", "none", "no"), 0, "PDF page count must be between 1 and 64"},
-		{"missing pages", "Encrypted: no\nForm: none\nJavaScript: no\n", 0, "PDF page count must be between 1 and 64"},
+		{"maximum pages", pageCountInfo(strconv.Itoa(pdfMaxPages), "no", "none", "no"), pdfMaxPages, ""},
+		{"zero pages", pageCountInfo("0", "no", "none", "no"), 0, pageRangeError()},
+		{"too many pages", pageCountInfo(strconv.Itoa(pdfMaxPages+1), "no", "none", "no"), 0, pageRangeError()},
+		{"negative pages", pageCountInfo("-1", "no", "none", "no"), 0, pageRangeError()},
+		{"non numeric pages", pageCountInfo("two", "no", "none", "no"), 0, pageRangeError()},
+		{"missing pages", "Encrypted: no\nForm: none\nJavaScript: no\n", 0, pageRangeError()},
 		{"encrypted yes", pageCountInfo("2", "yes", "none", "no"), 0, "encrypted PDFs are unsupported"},
 		{"encrypted missing", "Pages: 2\nForm: none\nJavaScript: no\n", 0, "encrypted PDFs are unsupported"},
 		{"form present", pageCountInfo("2", "no", "AcroForm", "no"), 0, "PDF forms or JavaScript require a flattened document"},
@@ -58,7 +64,7 @@ func TestPDFPageCountPinned(t *testing.T) {
 		{"ambiguous encrypted", "Pages: 2\nEncrypted: no\nEncrypted: no\nForm: none\nJavaScript: no\n", 0, "PDF metadata has ambiguous required fields"},
 		{"duplicate unknown key is ignored", "Pages: 2\nFoo: 1\nFoo: 2\nEncrypted: no\nForm: none\nJavaScript: no\n", 2, ""},
 		{"unknown and malformed lines are ignored", "Producer: x\nPages: 2\nnot a field\nEncrypted: no\nForm: none\nJavaScript: no\n", 2, ""},
-		{"lowercase pages key is ignored", "pages: 2\nEncrypted: no\nForm: none\nJavaScript: no\n", 0, "PDF page count must be between 1 and 64"},
+		{"lowercase pages key is ignored", "pages: 2\nEncrypted: no\nForm: none\nJavaScript: no\n", 0, pageRangeError()},
 		{"lowercase encryption key is ignored", "Pages: 2\nencrypted: no\nForm: none\nJavaScript: no\n", 0, "encrypted PDFs are unsupported"},
 		{"values are trimmed", "Pages:   2  \nEncrypted:\tno \nForm: none\nJavaScript: no\n", 2, ""},
 		{"carriage returns", "Pages: 2\r\nEncrypted: no\r\nForm: none\r\nJavaScript: no\r\n", 2, ""},
@@ -145,6 +151,13 @@ func TestPDFImagePagesPinned(t *testing.T) {
 		t.Fatalf("valid inventory = %v, %v", pages, err)
 	}
 
+	if pdfMaxAllPixels%pdfMaxImagePixels != 0 {
+		t.Fatalf("total pixel budget %d is not a whole number of images at %d pixels", pdfMaxAllPixels, pdfMaxImagePixels)
+	}
+	// aggregateRows is the largest number of maximum-size images inside the
+	// total budget; every row stays on page 1 so page validation is unchanged.
+	aggregateRows := pdfMaxAllPixels / pdfMaxImagePixels
+
 	tests := []struct {
 		name  string
 		info  string
@@ -169,8 +182,8 @@ func TestPDFImagePagesPinned(t *testing.T) {
 		{"product above pixel limit", rows("1 0 image 10000 4001"), 1, "PDF embedded image exceeds pixel limit or has invalid dimensions"},
 		{"width at pixel limit", rows("1 0 image 40000000 1"), 1, ""},
 		{"height at pixel limit", rows("1 0 image 1 40000000"), 1, ""},
-		{"aggregate at limit", imageInventoryHeader + strings.Repeat("1 0 image 10000 4000\n", 15), 1, ""},
-		{"aggregate above limit", imageInventoryHeader + strings.Repeat("1 0 image 10000 4000\n", 15) + "1 0 image 1 1\n", 1, "PDF embedded images exceed total pixel limit"},
+		{"aggregate at limit", imageInventoryHeader + strings.Repeat("1 0 image 10000 4000\n", aggregateRows), 1, ""},
+		{"aggregate above limit", imageInventoryHeader + strings.Repeat("1 0 image 10000 4000\n", aggregateRows) + "1 0 image 1 1\n", 1, "PDF embedded images exceed total pixel limit"},
 		{"image count above limit", imageInventoryHeader + strings.Repeat("1 0 image 1 1\n", pdfMaxImages+1), 1, "PDF image count exceeds resource limit"},
 		{"image count at limit", imageInventoryHeader + strings.Repeat("1 0 image 1 1\n", pdfMaxImages), 1, ""},
 	}

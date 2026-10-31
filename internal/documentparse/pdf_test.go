@@ -173,7 +173,7 @@ func TestPDFImageInventoryAggregateLimit(t *testing.T) {
 		}
 	}
 
-	atLimit := header + strings.Repeat("1 0 image 10000 4000\n", 15)
+	atLimit := header + strings.Repeat("1 0 image 10000 4000\n", pdfMaxAllPixels/pdfMaxImagePixels)
 	if _, err := pdfImagePages(atLimit, 1); err != nil {
 		t.Fatalf("aggregate pixel limit should be inclusive: %v", err)
 	}
