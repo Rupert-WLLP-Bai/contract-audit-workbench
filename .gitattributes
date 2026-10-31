@@ -3,3 +3,6 @@ internal/documentparse/testdata/pdf/*.pdf binary
 
 # This fixture exercises trailing-space normalization.
 internal/compare/testdata/d0/trailing-spaces.txt -whitespace
+
+# Migration checksums use exact bytes on every build host.
+internal/store/migrations/*.sql text eol=lf
