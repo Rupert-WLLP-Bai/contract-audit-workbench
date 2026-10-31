@@ -30,6 +30,8 @@ data:
   S3_BUCKET: contract-audit-prod
   S3_REGION: us-east-1
   LLM_BASE_URL: https://models.example.com/v1
+  # Explicit exact hosts for administrator-managed private model endpoints.
+  LLM_ENDPOINT_ALLOWED_HOSTS: ""
   LLM_MODEL: operator-configured-openai-compatible-model
   OCR_MODEL: operator-configured-vision-model
   MODEL_GATEWAY_MODE: openai-compatible

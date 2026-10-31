@@ -132,7 +132,7 @@ services:
       EXECUTION_QUEUE_POLICY: ${EXECUTION_QUEUE_POLICY:-}
       ADDR: 0.0.0.0:8081
       DATA_DIR: /var/lib/contract-audit
-      CORS_ORIGIN: ${CORS_ORIGIN:-http://127.0.0.1:18080,http://127.0.0.1:18081,http://127.0.0.1:18082}
+      CORS_ORIGIN: ${CORS_ORIGIN:-}
       COOKIE_SECURE: ${COOKIE_SECURE:-false}
       OIDC_ISSUER: ${OIDC_ISSUER:-}
       OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-}
@@ -151,6 +151,7 @@ services:
       LLM_MODEL: ${LLM_MODEL:-}
       OCR_MODEL: ${OCR_MODEL:-}
       LLM_CONFIG_KEY: ${LLM_CONFIG_KEY:-}
+      LLM_ENDPOINT_ALLOWED_HOSTS: ${LLM_ENDPOINT_ALLOWED_HOSTS:-}
       AGENT_PLANNER_MODE: ${AGENT_PLANNER_MODE:-deterministic}
       AGENT_PLANNER_MAX_ROUNDS: ${AGENT_PLANNER_MAX_ROUNDS:-2}
       AGENT_PLANNER_MAX_CALLS: ${AGENT_PLANNER_MAX_CALLS:-16}
@@ -189,7 +190,7 @@ services:
       DATABASE_SCHEMA: ${DATABASE_SCHEMA:-public}
       APP_READ_ONLY: ${APP_READ_ONLY:-false}
       ADDR: 0.0.0.0:8082
-      CORS_ORIGIN: ${CORS_ORIGIN:-http://127.0.0.1:18080,http://127.0.0.1:18081,http://127.0.0.1:18082}
+      CORS_ORIGIN: ${CORS_ORIGIN:-}
       S3_ENDPOINT: http://rustfs:9000
       S3_BUCKET: ${S3_BUCKET:-contract-audit-dev}
       S3_REGION: ${S3_REGION:-us-east-1}
@@ -236,7 +237,7 @@ services:
       APP_READ_ONLY: ${APP_READ_ONLY:-false}
       EXECUTION_QUEUE_POLICY: ${EXECUTION_QUEUE_POLICY:-}
       ADDR: 0.0.0.0:8083
-      CORS_ORIGIN: ${CORS_ORIGIN:-http://127.0.0.1:18080,http://127.0.0.1:18081,http://127.0.0.1:18082}
+      CORS_ORIGIN: ${CORS_ORIGIN:-}
       GATEWAY_ROLE_TOKEN: ${GATEWAY_EXECUTION_TOKEN:?Run make app-bootstrap}
       # The execution service never calls a model. It computes the run signature
       # from the same endpoint and model identifiers as the worker.
@@ -333,6 +334,7 @@ services:
       OCR_MODEL: ${OCR_MODEL:-}
       LLM_API_KEY: ${LLM_API_KEY:-}
       LLM_CONFIG_KEY: ${LLM_CONFIG_KEY:-}
+      LLM_ENDPOINT_ALLOWED_HOSTS: ${LLM_ENDPOINT_ALLOWED_HOSTS:-}
       MODEL_TENANT_MAX_INFLIGHT: ${MODEL_TENANT_MAX_INFLIGHT:-4}
       MODEL_GLOBAL_MAX_INFLIGHT: ${MODEL_GLOBAL_MAX_INFLIGHT:-32}
       MODEL_TENANT_CALLS_PER_MINUTE: ${MODEL_TENANT_CALLS_PER_MINUTE:-120}
@@ -422,7 +424,7 @@ services:
       ADDR: 0.0.0.0:8085
       GATEWAY_ROLE_TOKEN: ${GATEWAY_TOOL_TOKEN:?Run make app-bootstrap}
       WORKER_TOOL_TOKEN: ${WORKER_TOOL_TOKEN:?Run make app-bootstrap}
-      CORS_ORIGIN: ${CORS_ORIGIN:-http://127.0.0.1:18080,http://127.0.0.1:18081,http://127.0.0.1:18082}
+      CORS_ORIGIN: ${CORS_ORIGIN:-}
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
       OTEL_EXPORTER_OTLP_PROTOCOL: ${OTEL_EXPORTER_OTLP_PROTOCOL:-http/json}
       OTEL_TRACES_SAMPLER: ${OTEL_TRACES_SAMPLER:-always_on}

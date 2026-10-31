@@ -109,6 +109,7 @@ func importSource(client *http.Client, endpoint, assetDir, session, sourceID str
 		return fmt.Errorf("create import request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Origin", req.URL.Scheme+"://"+req.URL.Host)
 	req.Header.Set("Idempotency-Key", key)
 	req.AddCookie(&http.Cookie{Name: "admin_session", Value: session})
 	response, err := client.Do(req)
