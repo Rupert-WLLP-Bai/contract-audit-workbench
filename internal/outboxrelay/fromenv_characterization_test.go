@@ -11,6 +11,7 @@ import (
 var relayEnvironment = []string{
 	"NATS_URL", "OUTBOX_RELAY_OWNER", "OUTBOX_RELAY_BATCH", "NATS_STREAM_REPLICAS",
 	"OUTBOX_RELAY_LEASE", "OUTBOX_RELAY_POLL_INTERVAL", "OUTBOX_RELAY_PUBLISH_TIMEOUT", "OUTBOX_RELAY_MAX_BACKOFF",
+	"OUTBOX_RELAY_CONCURRENCY",
 }
 
 func clearRelayEnvironment(t *testing.T) {
@@ -52,13 +53,14 @@ func TestRelayFromEnvAcceptsEveryBoundedOverride(t *testing.T) {
 	t.Setenv("OUTBOX_RELAY_POLL_INTERVAL", "1m")
 	t.Setenv("OUTBOX_RELAY_PUBLISH_TIMEOUT", "1m")
 	t.Setenv("OUTBOX_RELAY_MAX_BACKOFF", "10m")
+	t.Setenv("OUTBOX_RELAY_CONCURRENCY", "16")
 	config, err := FromEnv()
 	if err != nil {
 		t.Fatalf("FromEnv: %v", err)
 	}
 	if !config.Enabled() || config.URL != "nats://127.0.0.1:4222" || config.Owner != "relay-7" || config.Batch != 512 ||
 		config.Replicas != 5 || config.Lease != 5*time.Minute || config.Poll != time.Minute ||
-		config.PublishTimeout != time.Minute || config.MaxBackoff != 10*time.Minute {
+		config.PublishTimeout != time.Minute || config.MaxBackoff != 10*time.Minute || config.Concurrency != 16 {
 		t.Fatalf("overrides lost: %+v", config)
 	}
 
@@ -86,6 +88,9 @@ func TestRelayFromEnvRejectsOutOfRangeValues(t *testing.T) {
 		{"replicas not an integer", "NATS_STREAM_REPLICAS", "many", "NATS_STREAM_REPLICAS must be an integer in 1..5"},
 		{"replicas zero", "NATS_STREAM_REPLICAS", "0", "NATS_STREAM_REPLICAS must be an integer in 1..5"},
 		{"replicas above maximum", "NATS_STREAM_REPLICAS", "6", "NATS_STREAM_REPLICAS must be an integer in 1..5"},
+		{"concurrency not an integer", "OUTBOX_RELAY_CONCURRENCY", "many", "OUTBOX_RELAY_CONCURRENCY must be an integer in 1..16"},
+		{"concurrency zero", "OUTBOX_RELAY_CONCURRENCY", "0", "OUTBOX_RELAY_CONCURRENCY must be an integer in 1..16"},
+		{"concurrency above maximum", "OUTBOX_RELAY_CONCURRENCY", "17", "OUTBOX_RELAY_CONCURRENCY must be an integer in 1..16"},
 		{"lease below minimum", "OUTBOX_RELAY_LEASE", "500ms", "OUTBOX_RELAY_LEASE must be a duration in [501ms, 5m0s]"},
 		{"lease above maximum", "OUTBOX_RELAY_LEASE", "5m1s", "OUTBOX_RELAY_LEASE must be a duration in [501ms, 5m0s]"},
 		{"lease not a duration", "OUTBOX_RELAY_LEASE", "soon", "OUTBOX_RELAY_LEASE must be a duration in [501ms, 5m0s]"},

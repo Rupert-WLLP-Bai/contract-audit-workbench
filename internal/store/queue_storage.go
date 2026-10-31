@@ -140,6 +140,15 @@ func (s *Store) ClaimNextJob(ctx context.Context, workerID string, lease time.Du
 	if workerID == "" || lease <= 0 {
 		return JobClaim{}, errors.New("worker id and positive lease are required")
 	}
+	// Read-only pre-check: an idle poll must not open the claim transaction,
+	// which takes the queue advisory lock and locks tenant rows even when no
+	// work exists. The scheduler predicates stay authoritative — a missed
+	// pre-check only costs one claim attempt, never a lost job.
+	if work, err := s.hasClaimableJob(ctx); err != nil {
+		return JobClaim{}, err
+	} else if !work {
+		return JobClaim{}, pgx.ErrNoRows
+	}
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return JobClaim{}, err

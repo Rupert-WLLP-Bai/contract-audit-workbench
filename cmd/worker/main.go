@@ -13,8 +13,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"log/slog"
+	"math/rand/v2"
+	"net"
 	"net/http"
 	"os"
 	"strings"
@@ -28,6 +31,7 @@ import (
 
 	"contractaudit/internal/process"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 const (
@@ -35,6 +39,14 @@ const (
 	defaultHeartbeat = 10 * time.Second
 	defaultPoll      = 250 * time.Millisecond
 	shutdownTimeout  = 30 * time.Second
+	// Claim failures retry on a bounded exponential delay: a PostgreSQL outage
+	// must not turn every replica into a hot loop, while a broker wake-up still
+	// cuts the wait short. A successful claim resets the delay.
+	claimRetryFloor = time.Second
+	claimRetryCeil  = 30 * time.Second
+	// heartbeatCallFloor keeps one heartbeat round-trip viable no matter how
+	// short the pacing interval is configured.
+	heartbeatCallFloor = 2 * time.Second
 )
 
 type workerRuntimeConfig struct {
@@ -160,12 +172,28 @@ func serveWorker(runCtx context.Context, abort context.CancelFunc, app *bootstra
 // claimJobs processes persistent review jobs until ctx is canceled. A canceled
 // attempt is left to the lease: another replica reclaims the job after the
 // lease expires, and the lease generation rejects a late commit from this one.
+// A transient claim failure — a PostgreSQL restart, a dropped connection, a
+// saturated pool — backs off with bounded jitter and retries instead of ending
+// the process; configuration and constraint errors still stop the worker so an
+// operator sees them.
 func claimJobs(ctx context.Context, st *store.Store, workerID string, lease, heartbeat, poll time.Duration, wake <-chan struct{}) error {
+	retry := time.Duration(0)
 	for {
 		claim, claimed, err := claimNextJob(ctx, st, workerID, lease, poll, wake)
 		if err != nil {
-			return err
+			if ctx.Err() != nil || !transientClaimError(err) {
+				return err
+			}
+			retry = growClaimRetry(retry)
+			slog.Warn("worker claim failed; retrying", "error", err, "retry_in", retry)
+			// The wake channel also interrupts the retry delay: new work must
+			// not wait out a backoff that a database blip started.
+			if err := waitFor(ctx, retry, wake); err != nil {
+				return err
+			}
+			continue
 		}
+		retry = 0
 		if !claimed {
 			continue
 		}
@@ -173,6 +201,42 @@ func claimJobs(ctx context.Context, st *store.Store, workerID string, lease, hea
 			return err
 		}
 	}
+}
+
+// growClaimRetry doubles the retry delay inside [claimRetryFloor,
+// claimRetryCeil] and jitters the upper half, so replicas recovering from the
+// same database outage do not retry in a synchronized wave. The delay only
+// resets on a successful claim, never on a wake-up.
+func growClaimRetry(previous time.Duration) time.Duration {
+	delay := max(2*previous, claimRetryFloor)
+	delay = min(delay, claimRetryCeil)
+	return delay/2 + rand.N(delay/2+1)
+}
+
+// transientClaimError reports whether a failed claim can be retried without
+// losing work: connection loss, server-side capacity and serialization errors
+// recover on their own, while anything else stops the worker so a permanent
+// misconfiguration cannot hide behind retries.
+func transientClaimError(err error) bool {
+	if err == nil || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return false
+	}
+	if pgconn.SafeToRetry(err) || pgconn.Timeout(err) || errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
+		return true
+	}
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) && len(pgErr.Code) >= 2 {
+		switch pgErr.Code[:2] {
+		case "08", "40", "53", "57":
+			// Connection loss, serialization and deadlock retries, insufficient
+			// resources, and operator intervention. A query cancellation that
+			// this process did not request is a server-side timeout.
+			return true
+		}
+		return false
+	}
+	var netErr net.Error
+	return errors.As(err, &netErr) && (netErr.Timeout() || netErr.Temporary())
 }
 
 func claimNextJob(ctx context.Context, st *store.Store, workerID string, lease, poll time.Duration, wake <-chan struct{}) (store.JobClaim, bool, error) {
@@ -223,22 +287,89 @@ func unexpectedWorkerError(err error) bool {
 	return err != nil && !errors.Is(err, context.Canceled) && !errors.Is(err, store.ErrLeaseLost)
 }
 
+// renewLease keeps the claim's lease alive until the job context ends. The
+// PostgreSQL row stays the write authority: a heartbeat that lost the lease
+// cancels the job immediately, and a transient heartbeat failure only retries
+// while the lease is still valid — the moment not enough lease remains for the
+// next heartbeat, the job stops so it can never commit against an expired
+// lease.
 func renewLease(ctx context.Context, cancel context.CancelFunc, st *store.Store, claim store.JobClaim, lease, interval time.Duration) error {
-	ticker := time.NewTicker(interval)
-	defer ticker.Stop()
+	margin := leaseHeartbeatMargin(interval)
+	timer := time.NewTimer(interval)
+	defer timer.Stop()
 	for {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
-		case <-ticker.C:
-			updated, err := st.HeartbeatJob(ctx, claim, lease)
-			if err != nil {
+		case <-timer.C:
+		}
+		// Once the remaining lease cannot cover the next heartbeat, the job
+		// stops so it can never commit against an expired lease. A claim
+		// without a lease deadline cannot be clocked locally; the heartbeat
+		// result and the PostgreSQL generation check stay the only authority.
+		hasClock := !claim.LeaseUntil.IsZero()
+		var remaining time.Duration
+		if hasClock {
+			remaining = time.Until(claim.LeaseUntil)
+			if remaining <= margin {
 				cancel()
-				return err
+				return fmt.Errorf("job lease cannot be renewed before it expires (remaining %s)", remaining)
 			}
+		}
+		// The call floor keeps a real database round-trip viable even when the
+		// pacing interval is far shorter: a hung heartbeat must still return so
+		// the margin check below can stop the job, and PostgreSQL rejects any
+		// commit that arrives after the lease lapsed anyway.
+		callBudget := interval
+		if hasClock {
+			callBudget = min(interval, remaining-margin)
+		}
+		callCtx, cancelCall := context.WithTimeout(ctx, max(callBudget, heartbeatCallFloor))
+		updated, err := st.HeartbeatJob(callCtx, claim, lease)
+		cancelCall()
+		if err == nil {
 			claim = updated
+			resetRenewTimer(timer, interval)
+			continue
+		}
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		if errors.Is(err, store.ErrLeaseLost) {
+			cancel()
+			return err
+		}
+		// Transient failure: the lease is still valid, so retry sooner than a
+		// full interval but always before the job must stop.
+		retry := interval
+		if hasClock {
+			retry = max(min(interval, remaining-margin), time.Millisecond)
+		}
+		slog.Warn("review job heartbeat failed; retrying within the lease",
+			"job_id", claim.JobID, "run_id", claim.RunID, "attempt_id", claim.AttemptID,
+			"generation", claim.Generation, "lease_remaining", remaining, "retry_in", retry, "error", err)
+		resetRenewTimer(timer, retry)
+	}
+}
+
+func resetRenewTimer(timer *time.Timer, delay time.Duration) {
+	if !timer.Stop() {
+		select {
+		case <-timer.C:
+		default:
 		}
 	}
+	timer.Reset(delay)
+}
+
+// leaseHeartbeatMargin is how much unexpired lease the job keeps in reserve
+// before it stops: it covers local clock skew against the PostgreSQL clock and
+// the tail of the final commit. It stays a fraction of the heartbeat interval,
+// floored so a millisecond interval cannot spin, and capped so a healthy lease
+// keeps almost all of its window.
+func leaseHeartbeatMargin(interval time.Duration) time.Duration {
+	margin := min(interval/2, 2*time.Second)
+	return max(margin, 100*time.Millisecond)
 }
 
 func configuredWorkerID() (string, error) {
