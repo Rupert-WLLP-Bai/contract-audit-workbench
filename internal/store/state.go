@@ -50,7 +50,8 @@ type Store struct {
 	requireRemoteDocuments bool
 	toolEvidence           ToolEvidenceReader
 	experienceAcceptor     ExperienceResultAcceptor
-	telemetry              *telemetry.Exporter
+	telemetry              atomic.Pointer[telemetry.Exporter]
+	metricWorkerID         atomic.Value
 	serviceOwner           string
 	queuePolicy            *queueConfiguration
 	sel                    config.Selection

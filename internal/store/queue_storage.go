@@ -120,6 +120,9 @@ func (s *Store) ClaimNextJob(ctx context.Context, workerID string, lease time.Du
 	if workerID == "" || lease <= 0 {
 		return JobClaim{}, errors.New("worker id and positive lease are required")
 	}
+	if s.serviceOwner == "worker" && s.metricWorkerID.Load() == nil {
+		s.metricWorkerID.CompareAndSwap(nil, workerID)
+	}
 	// Read-only pre-check: an idle poll must not open the claim transaction,
 	// which takes the queue advisory lock and locks tenant rows even when no
 	// work exists. The scheduler predicates stay authoritative — a missed
@@ -149,6 +152,11 @@ func (s *Store) ClaimNextJob(ctx context.Context, workerID string, lease time.Du
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return JobClaim{}, err
+	}
+	started := time.Now()
+	if exporter := s.Telemetry(); exporter != nil {
+		claim.metricStarted = started
+		exporter.RecordQueueClaim(claim.reclaimed, claim.metricWait)
 	}
 	s.setClaim(claim)
 	return claim, nil
@@ -283,5 +291,12 @@ func (s *Store) finishClaim(ctx context.Context, claim JobClaim, state string) e
 	if tag.RowsAffected() != 1 {
 		return errLeaseLost
 	}
-	return tx.Commit(ctx)
+	if err := tx.Commit(ctx); err != nil {
+		return err
+	}
+	if !claim.metricStarted.IsZero() {
+		elapsed := time.Since(claim.metricStarted)
+		s.Telemetry().RecordQueueCompletion(elapsed)
+	}
+	return nil
 }

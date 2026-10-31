@@ -62,6 +62,7 @@ type httpMetricPoint struct {
 		} `json:"value"`
 	} `json:"attributes"`
 	Value string `json:"asInt"`
+	Count string `json:"count"`
 }
 
 func TestHTTPBoundaryRecoversAndExportsSanitizedRED(t *testing.T) {
@@ -137,9 +138,9 @@ func TestHTTPBoundaryRecoversAndExportsSanitizedRED(t *testing.T) {
 					Sum  *struct {
 						Points []httpMetricPoint `json:"dataPoints"`
 					} `json:"sum"`
-					Gauge *struct {
+					Histogram *struct {
 						Points []httpMetricPoint `json:"dataPoints"`
-					} `json:"gauge"`
+					} `json:"histogram"`
 				} `json:"metrics"`
 			} `json:"scopeMetrics"`
 		} `json:"resourceMetrics"`
@@ -160,10 +161,10 @@ func TestHTTPBoundaryRecoversAndExportsSanitizedRED(t *testing.T) {
 					}
 					points = metric.Sum.Points
 				case "audit.http.duration_ms":
-					if metric.Gauge == nil {
-						t.Fatal("HTTP duration metric has no gauge")
+					if metric.Histogram == nil {
+						t.Fatal("HTTP duration metric has no histogram")
 					}
-					points = metric.Gauge.Points
+					points = metric.Histogram.Points
 				default:
 					continue
 				}
@@ -181,7 +182,7 @@ func TestHTTPBoundaryRecoversAndExportsSanitizedRED(t *testing.T) {
 						}
 						statuses[attrs["http.response.status_code"]] = point.Value
 					} else {
-						if len(attrs) != 2 {
+						if len(attrs) != 2 || point.Count != "2" {
 							t.Fatalf("unexpected duration labels: %+v", attrs)
 						}
 						durations++

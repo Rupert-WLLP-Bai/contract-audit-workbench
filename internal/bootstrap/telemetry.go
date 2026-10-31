@@ -68,7 +68,7 @@ func telemetrySampleRatio() (float64, bool, error) {
 	case "", "always_on":
 		return 1.0, true, nil
 	case "always_off":
-		return 0, false, nil
+		return 0, true, nil
 	case "traceidratio":
 		ratio, err := strconv.ParseFloat(strings.TrimSpace(os.Getenv("OTEL_TRACES_SAMPLER_ARG")), 64)
 		if err != nil {

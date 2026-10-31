@@ -97,9 +97,24 @@ type Exporter struct {
 	// httpMu guards the HTTP RED aggregates. Producers run on HTTP handler
 	// goroutines; the delivery goroutine drains the active series.
 	httpMu        sync.Mutex
-	httpRequests  map[[3]string]*metricSeries
-	httpDurations map[[2]string]*metricSeries
+	httpRequests  map[httpCounterKey]*metricSeries
+	httpDurations map[[2]string]*httpHistogram
 	httpDropped   atomic.Uint64
+
+	runtimeMu      sync.Mutex
+	runtimeSource  func(context.Context) RuntimeSnapshot
+	queueWait      runtimeHistogram
+	queueExecution runtimeHistogram
+	sampleCtx      context.Context
+	cancelSample   context.CancelFunc
+	metricStart    string
+	queueClaims    atomic.Uint64
+	queueReclaims  atomic.Uint64
+	quotaQueue     atomic.Uint64
+	quotaModel     atomic.Uint64
+	quotaTool      atomic.Uint64
+	queueErrors    [4]atomic.Uint64
+	outboxErrors   [4]atomic.Uint64
 }
 
 // New is disabled when Endpoint is empty. No network request is made at startup.
@@ -131,15 +146,17 @@ func New(cfg Config) (*Exporter, error) {
 	transport := http.DefaultTransport.(*http.Transport).Clone()
 	transport.Proxy = nil
 	ctx, cancel := context.WithCancel(context.Background())
+	sampleCtx, cancelSample := context.WithCancel(ctx)
 	e := &Exporter{
 		tracesEndpoint: traces, metricsEndpoint: metrics, service: service, instance: instance,
 		environment: environment, ratio: cfg.SampleRatio,
 		client: &http.Client{Transport: transport, Timeout: 2 * time.Second,
 			CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }},
 		queue: make(chan span, queueCapacity), ctx: ctx, cancel: cancel, done: make(chan struct{}),
+		sampleCtx: sampleCtx, cancelSample: cancelSample, metricStart: strconv.FormatInt(time.Now().UnixNano(), 10),
 		metricSeries:  make(map[[3]string]*metricSeries),
-		httpRequests:  make(map[[3]string]*metricSeries),
-		httpDurations: make(map[[2]string]*metricSeries),
+		httpRequests:  make(map[httpCounterKey]*metricSeries),
+		httpDurations: make(map[[2]string]*httpHistogram),
 	}
 	go e.run()
 	return e, nil
@@ -249,6 +266,7 @@ func (e *Exporter) Close() {
 		return
 	}
 	e.close.Do(func() {
+		e.cancelSample()
 		e.mu.Lock()
 		e.closed = true
 		close(e.queue)
@@ -274,12 +292,12 @@ func (e *Exporter) run() {
 		select {
 		case first, ok := <-e.queue:
 			if !ok {
-				e.flushHTTPMetrics()
+				e.flushMetrics(false)
 				return
 			}
 			e.deliver(e.collectBatch(first))
 		case <-ticker.C:
-			e.flushHTTPMetrics()
+			e.flushMetrics(true)
 		}
 	}
 }
@@ -317,7 +335,7 @@ func (e *Exporter) deliver(batch []span) {
 	}
 	e.exported.Add(uint64(len(batch) - rejected))
 	e.dropped.Add(uint64(rejected))
-	points, metricRejected, merr := e.sendMetrics(batch)
+	points, metricRejected, merr := e.sendMetrics(batch, nil)
 	if merr != nil {
 		metricRejected = points
 	}
@@ -387,13 +405,23 @@ func traceRejection(data []byte, count int) (int, error) {
 
 // Only the delivery goroutine accesses metricSeries. Record keeps its bounded,
 // nonblocking queue path and never waits for metric aggregation or the collector.
-// The HTTP RED series ride in the same metrics request under their own scope;
-// flushHTTPMetrics may call this with no span batch for a metrics-only send.
-func (e *Exporter) sendMetrics(batch []span) (int, int, error) {
+// The HTTP RED series and periodic runtime samples use their own scopes.
+func (e *Exporter) sendMetrics(batch []span, runtimeMetrics []metric) (int, int, error) {
 	active := e.aggregateMetrics(batch)
 	events, durations := metricPoints(active)
 	httpEvents, httpDurations := e.drainHTTPMetrics()
 	points := len(events) + len(durations) + len(httpEvents) + len(httpDurations)
+	for _, item := range runtimeMetrics {
+		if item.Sum != nil {
+			points += len(item.Sum.DataPoints)
+		}
+		if item.Gauge != nil {
+			points += len(item.Gauge.DataPoints)
+		}
+		if item.Histogram != nil {
+			points += len(item.Histogram.DataPoints)
+		}
+	}
 	if points == 0 {
 		return 0, 0, nil
 	}
@@ -410,8 +438,13 @@ func (e *Exporter) sendMetrics(batch []span) (int, int, error) {
 		payload.ResourceMetrics[0].ScopeMetrics = append(payload.ResourceMetrics[0].ScopeMetrics, scopeMetrics{
 			Scope: scopeName("contractaudit.http"), Metrics: []metric{
 				{Name: "audit.http.requests", Sum: &sumMetric{AggregationTemporality: 2, IsMonotonic: true, DataPoints: httpEvents}},
-				{Name: "audit.http.duration_ms", Gauge: &gaugeMetric{DataPoints: httpDurations}},
+				{Name: "audit.http.duration_ms", Unit: "ms", Histogram: &histogramMetric{AggregationTemporality: 2, DataPoints: httpDurations}},
 			},
+		})
+	}
+	if len(runtimeMetrics) > 0 {
+		payload.ResourceMetrics[0].ScopeMetrics = append(payload.ResourceMetrics[0].ScopeMetrics, scopeMetrics{
+			Scope: scopeName("contractaudit.runtime"), Metrics: runtimeMetrics,
 		})
 	}
 	body, err := json.Marshal(payload)
@@ -452,9 +485,9 @@ func (e *Exporter) aggregateMetrics(batch []span) []*metricSeries {
 
 func (e *Exporter) seriesFor(item *span) *metricSeries {
 	key := [3]string{
-		attributeValue(item.Attributes[:], "audit.phase"),
-		attributeValue(item.Attributes[:], "audit.node_kind"),
-		attributeValue(item.Attributes[:], "audit.status"),
+		metricPhase(attributeValue(item.Attributes[:], "audit.phase")),
+		metricNodeKind(attributeValue(item.Attributes[:], "audit.node_kind")),
+		metricStatus(attributeValue(item.Attributes[:], "audit.status")),
 	}
 	if series := e.metricSeries[key]; series != nil {
 		return series
@@ -633,7 +666,8 @@ type numberPoint struct {
 	Attributes []attribute `json:"attributes,omitempty"`
 	Start      string      `json:"startTimeUnixNano,omitempty"`
 	Time       string      `json:"timeUnixNano"`
-	AsInt      string      `json:"asInt"`
+	AsInt      string      `json:"asInt,omitempty"`
+	AsDouble   *float64    `json:"asDouble,omitempty"`
 }
 
 type sumMetric struct {
@@ -646,10 +680,27 @@ type gaugeMetric struct {
 	DataPoints []numberPoint `json:"dataPoints"`
 }
 
+type histogramPoint struct {
+	Attributes     []attribute `json:"attributes,omitempty"`
+	Start          string      `json:"startTimeUnixNano"`
+	Time           string      `json:"timeUnixNano"`
+	Count          string      `json:"count"`
+	Sum            float64     `json:"sum"`
+	BucketCounts   []string    `json:"bucketCounts"`
+	ExplicitBounds []float64   `json:"explicitBounds"`
+}
+
+type histogramMetric struct {
+	AggregationTemporality int              `json:"aggregationTemporality"`
+	DataPoints             []histogramPoint `json:"dataPoints"`
+}
+
 type metric struct {
-	Name  string       `json:"name"`
-	Sum   *sumMetric   `json:"sum,omitempty"`
-	Gauge *gaugeMetric `json:"gauge,omitempty"`
+	Name      string           `json:"name"`
+	Unit      string           `json:"unit,omitempty"`
+	Sum       *sumMetric       `json:"sum,omitempty"`
+	Gauge     *gaugeMetric     `json:"gauge,omitempty"`
+	Histogram *histogramMetric `json:"histogram,omitempty"`
 }
 
 type metricsRequest struct {
