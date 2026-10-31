@@ -351,17 +351,17 @@ export function CasesPage() {
               <>
                 <label className="field">
                   业务线标识
-                  <Input value={businessLine} onChange={(event) => setBusinessLine(event.target.value)} required maxLength={128} pattern="[A-Za-z0-9][A-Za-z0-9._:/-]*" />
+                  <Input value={businessLine} onChange={(event) => setBusinessLine(event.target.value)} required maxLength={128} pattern="[A-Za-z0-9](?:[A-Za-z0-9._:]|/|-)*" />
                 </label>
                 <label className="field">
                   业务场景标识
-                  <Input value={scenario} onChange={(event) => setScenario(event.target.value)} required maxLength={128} pattern="[A-Za-z0-9][A-Za-z0-9._:/-]*" />
+                  <Input value={scenario} onChange={(event) => setScenario(event.target.value)} required maxLength={128} pattern="[A-Za-z0-9](?:[A-Za-z0-9._:]|/|-)*" />
                 </label>
                 <label className="field">
                   合同类型标识
-                  <Input value={contractType} onChange={(event) => setContractType(event.target.value)} required maxLength={128} pattern="[A-Za-z0-9][A-Za-z0-9._:/-]*" />
+                  <Input value={contractType} onChange={(event) => setContractType(event.target.value)} required maxLength={128} pattern="[A-Za-z0-9](?:[A-Za-z0-9._:]|/|-)*" />
                 </label>
-                <p>填写已发布且当前生效的规则包中声明的业务范围。</p>
+                <p>填写已发布且当前生效的规则包中声明的业务范围。标识以字母或数字开头，可包含字母、数字及 . _ : / -。</p>
               </>
             ) : (
               <>
