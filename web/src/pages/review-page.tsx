@@ -40,7 +40,10 @@ import {
   isTerminalAttemptState,
   selectedFindingId,
 } from "../domain/review";
-import { useReviewEvents } from "../hooks/use-review-events";
+import {
+  useReviewEvents,
+  type ReviewEventBatch,
+} from "../hooks/use-review-events";
 import {
   DecisionDraftScopeProvider,
   decisionDraftUserPrefix,
@@ -166,21 +169,38 @@ export function ReviewPage() {
               : !roleCanDecide
                 ? "当前角色不能提交审查判断。"
                 : "当前审查状态不允许提交审查判断。";
-  const refresh = useCallback(() => {
-    void queryClient.invalidateQueries({
-      queryKey: queryKeys.reviewPrefix(caseId, runId),
-    });
-    // Exact: the case key is a prefix of the review key, so a non-exact
-    // invalidation would refetch the same workspace twice per event and let a
-    // second, successful read mask a refused (403) one.
-    void queryClient.invalidateQueries({
-      queryKey: queryKeys.case(caseId),
-      exact: true,
-    });
-  }, [caseId, queryClient, runId]);
+  const refresh = useCallback(
+    (batch: ReviewEventBatch) => {
+      const requests = [
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.review(caseId, runId, selectedAttemptId),
+          exact: true,
+        }),
+      ];
+      // The stream carries run state and decision events. Re-read the case
+      // summary at a terminal boundary; case/material mutations use their own
+      // targeted invalidations.
+      if (batch.terminalState !== null) {
+        requests.push(
+          queryClient.invalidateQueries({
+            queryKey: queryKeys.case(caseId),
+            exact: true,
+          }),
+        );
+      }
+      return Promise.all(requests).then(() => undefined);
+    },
+    [caseId, queryClient, runId, selectedAttemptId],
+  );
 
   const streamScope = session.data
-    ? `${session.data.id}\u0000${session.data.role}`
+    ? JSON.stringify([
+        session.data.audience,
+        session.data.id,
+        session.data.role,
+        session.data.tenant_id,
+        session.data.org_id,
+      ])
     : null;
   const streamActive = review.isSuccess && latestRun && selectedAttemptIsLatest;
   const streamStatus = useReviewEvents(
@@ -210,7 +230,8 @@ export function ReviewPage() {
         return;
       }
       await queryClient.invalidateQueries({
-        queryKey: queryKeys.reviewPrefix(caseId, runId),
+        queryKey: queryKeys.review(caseId, runId, selectedAttemptId),
+        exact: true,
       });
       await queryClient.invalidateQueries({
         queryKey: queryKeys.case(caseId),
@@ -220,7 +241,7 @@ export function ReviewPage() {
     return () => {
       active = false;
     };
-  }, [caseId, queryClient, runId, streamStatus]);
+  }, [caseId, queryClient, runId, selectedAttemptId, streamStatus]);
 
   if (review.isLoading)
     return <PageStatus kind="loading" title="正在加载审查工作区" />;
