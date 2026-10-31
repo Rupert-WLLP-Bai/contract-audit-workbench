@@ -217,6 +217,17 @@ Admin 的「基础设施与中间件」页面（`/admin/infrastructure`）列出
 
 ## 开发检查
 
+运行本地 Go 测试或 `make verify` 前，先从固定公开测试资产发布准备仓库外的法律来源快照；脚本会校验归档及文件 SHA256，重复运行可复用相同内容：
+
+```bash
+python3 scripts/fetch_legal_test_assets.py --destination ../contract-audit-delivery/legal-test-assets-20261031-v1
+export CAW_LEGAL_TEST_ROOT="$(realpath ../contract-audit-delivery/legal-test-assets-20261031-v1)"
+export LEGALNORM_ASSET_DIR="$CAW_LEGAL_TEST_ROOT/legal-sources"
+export LEGALNORM_CANONICAL_MANIFEST="$CAW_LEGAL_TEST_ROOT/p4-canonical-articles-v2.json"
+```
+
+这些固定原始快照的采集时间和 SHA256 仅用于可重复回归，不证明法律当前持续有效。CI 会自动准备测试资产；它们不是应用发布内容。
+
 ```bash
 make test-unit                  # 不依赖数据库或模型的 Go 测试，包含 race
 cd web
@@ -229,7 +240,7 @@ bun run build
 
 ## 开发状态与验收记录
 
-以下历史记录分别对应当时的源码候选与摘要，其中 `f427153` 是 Jev 建议层接入前的候选。当前版本以对应提交的 PR / CI 验收为准。切换机器后先确认工作区状态和依赖，再按以下顺序继续；不要因测试失败删除测试、降低覆盖率或跳过数据库和浏览器验收。
+当前原功能开发已暂停，剩余范围跟踪于 [Issue #7](https://github.com/Rupert-WLLP-Bai/contract-audit-workbench/issues/7)。以下历史记录仅对应当时的源码候选与验收，不表示全部交付；其中 `f427153` 是 Jev 建议层接入前的候选。
 
 1. **PASS：修复前端类型检查。** `web/src/app.integration.test.tsx` 的 breadcrumb 查询已收窄为 `HTMLElement`。最终 `make acceptance` 中 `web-typecheck` 通过，`web-tests` 371/371 通过，`web-build` 通过。
 2. **PASS（本地）：完成全量发布验收。** 在隔离 PostgreSQL 18（一次性容器 `caw-accept-pg`）上执行 `make acceptance`；`artifacts/verification.json` 为 `passed:true`，21 项检查全部返回 0，源码身份摘要 `0285f4b2cb0d7d90ef4d6edf3f93fb2082dea969a42155d55a31e75697ff7f82` 与最终可执行工作树一致；`browser-system` 耗时 90.1s，`TestBrowserWarrantyConflictAndConfirm` 与 `TestBrowserTelecomC1BFullJourney` 均 PASS。远端 CI 在推送后另行记录，不能把本地结果当作远端通过。
