@@ -240,6 +240,18 @@ python3 deployments/k3d.py smoke    # Service DNS/HTTP、数据库 DNS、Pod 重
 
 三个前端站点通过端口转发访问 18080（client）、18081（admin）、18082（portal）。集群内使用 fixture 模型配置，不调用外部付费模型。
 
+默认值只适合单人在本机开发。需要与其它集群、Compose 栈或并行验收共存时，用环境变量把集群名、端口、凭据目录和镜像标签全部改到自己的前缀下，互不覆盖：
+
+```bash
+export CAW_K3D_CLUSTER=caw-i17-k3d-20261031     # 独立集群名，不会复用或删除其它集群
+export CAW_K3D_IMAGE_SUFFIX=i17-20261031        # 部署 contract-audit-*:<后缀>，不动共享 :local 镜像
+export CAW_K3D_API_PORT=28170
+export CAW_K3D_CLIENT_PORT=28171 CAW_K3D_ADMIN_PORT=28172 CAW_K3D_PORTAL_PORT=28173
+export CAW_K3D_ARTIFACT_DIR=/abs/path/outside/repo
+```
+
+`CAW_K3D_IMAGE_SUFFIX` 对应的镜像由 `deployments/scripts/package-app-images.py --tag-suffix <后缀>` 打包；`deploy` 通过仓外生成的父级 Kustomization 改写镜像标签，不在源码树写文件。CORS 与 OIDC 回调地址会同步改成上面三个 UI 端口。
+
 三个节点的容器仍共享同一台物理主机，因此该结果只能证明部署、调度、副本伸缩、滚动更新和 Pod 故障恢复行为，不能当作物理机高可用或跨故障域容灾的验收证据。需要独立存储故障域、异地备份或真实性能结论时，应在多台主机组成的集群上另行测量。
 
 Admin 的「基础设施与中间件」页面（`/admin/infrastructure`）列出生产目标架构的组件、依赖边界、当前观测接入情况和生产验收状态。没有集群观测来源的组件显示为未接入，单实例容器健康不会被写成生产高可用；生产验收未执行时保持 `NOT_RUN`。
