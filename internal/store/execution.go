@@ -1189,18 +1189,12 @@ func (s *Store) markAttemptStarted(ctx context.Context, runID, attemptID string)
 			return markAttemptStartedInState(next, runID, attemptID, &generation, occurred, recorded)
 		})
 	}
-	scope := claim.scope()
-	var occurred, recorded string
-	if err := s.lockExecutionContext(ctx); err != nil {
-		return err
-	}
-	defer s.mu.Unlock()
-	return s.updateStateWith(ctx, scope, attemptID, func(tx pgx.Tx) error {
-		var err error
-		occurred, recorded, err = attemptStartTimestamps(ctx, tx)
-		return err
-	}, func(st *state) error {
-		return markAttemptStartedInState(st, runID, attemptID, nil, occurred, recorded)
+	return s.scopedAttemptMutationWithTx(ctx, runID, attemptID, false, func(tx pgx.Tx, next *state) error {
+		occurred, recorded, err := attemptStartTimestamps(ctx, tx)
+		if err != nil {
+			return err
+		}
+		return markAttemptStartedInState(next, runID, attemptID, nil, occurred, recorded)
 	})
 }
 
@@ -1697,19 +1691,7 @@ func (s *Store) updateExecutionContext(ctx context.Context, attemptID string, fn
 	if !hasClaim || claim.AttemptID != attemptID {
 		return errExecutionEventScope
 	}
-	if claim.JobID != "" {
-		// Durable worker path: every attempt mutation (freeze, preparation,
-		// results, phase updates, finalize) runs through the bounded
-		// attempt-scope adapter with the shared case/attempt locks, the claim
-		// fence and the same validation/persist path.
-		return s.scopedAttemptMutation(ctx, claim.RunID, attemptID, fn)
-	}
-	scope := claim.scope()
-	if err := s.lockExecutionContext(ctx); err != nil {
-		return err
-	}
-	defer s.mu.Unlock()
-	return s.updateState(ctx, scope, attemptID, fn)
+	return s.scopedAttemptMutation(ctx, claim.RunID, attemptID, fn)
 }
 
 func insertExecutionEvent(ctx context.Context, tx pgx.Tx, event ExecutionEvent) error {
@@ -1890,16 +1872,15 @@ func (s *Store) persistLateModelEvent(ctx context.Context, attemptID string, eve
 	if s.serviceOwner != "" || claim.JobID != "" {
 		return s.persistLateModelEventNarrow(ctx, attemptID, event)
 	}
-	if err := s.lockExecutionContext(ctx); err != nil {
-		return err
-	}
-	defer s.mu.Unlock()
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback(ctx)
 	if err := setLocalScope(ctx, tx, claim.scope()); err != nil {
+		return err
+	}
+	if err := scopedCaseLock(ctx, tx, claim.CaseID); err != nil {
 		return err
 	}
 	if err := scopedAttemptLock(ctx, tx, attemptID); err != nil {
@@ -1942,50 +1923,41 @@ func (s *Store) persistLateModelEvent(ctx context.Context, attemptID string, eve
 	if err := tx.Commit(ctx); err != nil {
 		return err
 	}
-	next, err := s.st.clone()
-	if err != nil {
-		return err
+	if err := s.lockExecutionContext(ctx); err != nil {
+		return nil // The event was already committed.
 	}
-	for i := range next.Attempts {
-		if next.Attempts[i].ID == attemptID {
-			next.Attempts[i].State = stateName
-			next.Attempts[i].FinishedAt = finishedAt
-			next.Attempts[i].ErrorCode = errorCode
+	defer s.mu.Unlock()
+	for i := range s.st.Attempts {
+		if s.st.Attempts[i].ID == attemptID {
+			s.st.Attempts[i].State = stateName
+			s.st.Attempts[i].FinishedAt = finishedAt
+			s.st.Attempts[i].ErrorCode = errorCode
 		}
 	}
-	for i := range next.Runs {
-		if next.Runs[i].ID == runID {
-			next.Runs[i].State = runState
+	latest, hasLatest := s.st.latestAttempt(runID)
+	if !hasLatest || latest.ID == attemptID {
+		for i := range s.st.Runs {
+			if s.st.Runs[i].ID == runID {
+				s.st.Runs[i].State = runState
+			}
 		}
 	}
 	if jobErr == nil {
-		for i := range next.Jobs {
-			if next.Jobs[i].ID == jobID {
-				next.Jobs[i].State = jobState
-				next.Jobs[i].WorkerID = jobWorkerID
-				next.Jobs[i].Generation = jobGeneration
+		for i := range s.st.Jobs {
+			if s.st.Jobs[i].ID == jobID && s.st.Jobs[i].Generation <= jobGeneration {
+				s.st.Jobs[i].State = jobState
+				s.st.Jobs[i].WorkerID = jobWorkerID
+				s.st.Jobs[i].Generation = jobGeneration
 				if jobLease.Valid {
 					lease := jobLease.Time
-					next.Jobs[i].LeaseUntil = &lease
+					s.st.Jobs[i].LeaseUntil = &lease
 				} else {
-					next.Jobs[i].LeaseUntil = nil
+					s.st.Jobs[i].LeaseUntil = nil
 				}
 			}
 		}
 	}
-	// The row insert above is idempotent on (attempt_id, event_seq); mirror that
-	// in the projection so a repeated late event never doubles in memory.
-	duplicate := false
-	for _, existing := range next.ExecutionEvents {
-		if existing.AttemptID == attemptID && existing.Seq == event.Seq {
-			duplicate = true
-			break
-		}
-	}
-	if !duplicate {
-		next.ExecutionEvents = append(next.ExecutionEvents, event)
-	}
-	s.st = next
+	s.st.ExecutionEvents = mergeExecutionEventSlice(s.st.ExecutionEvents, []ExecutionEvent{event})
 	return nil
 }
 
@@ -2100,6 +2072,8 @@ func (s *Store) markUnfinishedInterrupted(st state) error {
 // attempt is re-read under those locks; an attempt that became terminal or
 // finished in the meantime is left untouched.
 func (s *Store) interruptAttempt(ctx context.Context, attemptID, runID string, scope dbScope) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	return s.updateState(ctx, scope, attemptID, func(next *state) error {
 		finishedAt := stamp()
 		code := "process_interrupted"

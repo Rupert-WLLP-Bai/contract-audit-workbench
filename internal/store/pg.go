@@ -688,13 +688,17 @@ func (s *Store) updateStateWithLocks(ctx context.Context, scope dbScope, attempt
 	if err := validateAppendOnly(previous, next); err != nil {
 		return err
 	}
+	old, changed, err := stateDelta(previous, next)
+	if err != nil {
+		return err
+	}
 	if err := s.persist(ctx, tx, previous, next, expectedAttemptVersion); err != nil {
 		return err
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return err
 	}
-	s.st = next
+	s.patchStateProjectionLocked(previous, old, changed)
 	return nil
 }
 
@@ -1308,8 +1312,8 @@ func loadRuns(ctx context.Context, q queryer) ([]Run, error) {
 	return out, rows.Err()
 }
 
-func loadAttempts(ctx context.Context, q queryer) ([]Attempt, error) {
-	rows, err := q.Query(ctx, `SELECT id, run_id, ordinal, retry_of_attempt_id, state, accepted_at, started_at, finished_at, input_hash, output_hash, error_code, history_kind, actor_id, rule_pack_snapshot, rule_pack_hash, rule_pack_snapshot_digest, rule_pack_compiler_ref, rule_pack_id, rule_pack_version, rule_pack_pointer_revision, planner_configuration_id, planner_configuration FROM review_attempts ORDER BY run_id, ordinal`)
+func loadAttempts(ctx context.Context, q queryer, caseID ...string) ([]Attempt, error) {
+	rows, err := queryCaseRows(ctx, q, `SELECT id, run_id, ordinal, retry_of_attempt_id, state, accepted_at, started_at, finished_at, input_hash, output_hash, error_code, history_kind, actor_id, rule_pack_snapshot, rule_pack_hash, rule_pack_snapshot_digest, rule_pack_compiler_ref, rule_pack_id, rule_pack_version, rule_pack_pointer_revision, planner_configuration_id, planner_configuration FROM review_attempts`, `run_id IN (SELECT id FROM review_runs WHERE case_id=$1)`, ` ORDER BY run_id, ordinal`, caseID...)
 	if err != nil {
 		return nil, err
 	}
@@ -1330,8 +1334,8 @@ func loadAttempts(ctx context.Context, q queryer) ([]Attempt, error) {
 	return out, rows.Err()
 }
 
-func loadAttemptInputs(ctx context.Context, q queryer) ([]AttemptInput, error) {
-	rows, err := q.Query(ctx, `SELECT attempt_id, run_id, input_hash, frozen_at, documents FROM review_attempt_inputs ORDER BY attempt_id`)
+func loadAttemptInputs(ctx context.Context, q queryer, caseID ...string) ([]AttemptInput, error) {
+	rows, err := queryCaseRows(ctx, q, `SELECT attempt_id, run_id, input_hash, frozen_at, documents FROM review_attempt_inputs`, `run_id IN (SELECT id FROM review_runs WHERE case_id=$1)`, ` ORDER BY attempt_id`, caseID...)
 	if err != nil {
 		return nil, err
 	}
@@ -1351,8 +1355,8 @@ func loadAttemptInputs(ctx context.Context, q queryer) ([]AttemptInput, error) {
 	return out, rows.Err()
 }
 
-func loadAttemptParseSelections(ctx context.Context, q queryer) ([]AttemptParseSelection, error) {
-	rows, err := q.Query(ctx, `SELECT attempt_id, run_id, document_id, original_digest, parsed_document_id, selection_order, parser_id, parser_version, config_hash, normalization_version, artifact_digest FROM review_attempt_parse_selections ORDER BY seq`)
+func loadAttemptParseSelections(ctx context.Context, q queryer, caseID ...string) ([]AttemptParseSelection, error) {
+	rows, err := queryCaseRows(ctx, q, `SELECT attempt_id, run_id, document_id, original_digest, parsed_document_id, selection_order, parser_id, parser_version, config_hash, normalization_version, artifact_digest FROM review_attempt_parse_selections`, `run_id IN (SELECT id FROM review_runs WHERE case_id=$1)`, ` ORDER BY seq`, caseID...)
 	if err != nil {
 		return nil, err
 	}
@@ -1369,8 +1373,8 @@ func loadAttemptParseSelections(ctx context.Context, q queryer) ([]AttemptParseS
 	return out, rows.Err()
 }
 
-func loadExecutionEvents(ctx context.Context, q queryer) ([]ExecutionEvent, error) {
-	rows, err := q.Query(ctx, `SELECT attempt_id, event_seq, span_id, parent_span_id, node_kind, phase, event_type, occurred_at, duration_ms, status, error_code, model_ref, usage, trace, recorded_at, event_key, generation FROM execution_events ORDER BY attempt_id, event_seq`)
+func loadExecutionEvents(ctx context.Context, q queryer, caseID ...string) ([]ExecutionEvent, error) {
+	rows, err := queryCaseRows(ctx, q, `SELECT attempt_id, event_seq, span_id, parent_span_id, node_kind, phase, event_type, occurred_at, duration_ms, status, error_code, model_ref, usage, trace, recorded_at, event_key, generation FROM execution_events`, `attempt_id IN (SELECT a.id FROM review_attempts a JOIN review_runs r ON r.id=a.run_id WHERE r.case_id=$1)`, ` ORDER BY attempt_id, event_seq`, caseID...)
 	if err != nil {
 		return nil, err
 	}
@@ -1401,8 +1405,8 @@ func loadExecutionEvents(ctx context.Context, q queryer) ([]ExecutionEvent, erro
 	return out, rows.Err()
 }
 
-func loadFindings(ctx context.Context, q queryer) ([]Finding, error) {
-	rows, err := q.Query(ctx, `SELECT id, run_id, attempt_id, case_id, origin, domain, rule_id, capability_id, object_ref, claim, relation, disposition_suggestion, unverified_reason, version, severity, severity_source, anchors, created_at FROM findings ORDER BY seq`)
+func loadFindings(ctx context.Context, q queryer, caseID ...string) ([]Finding, error) {
+	rows, err := queryCaseRows(ctx, q, `SELECT id, run_id, attempt_id, case_id, origin, domain, rule_id, capability_id, object_ref, claim, relation, disposition_suggestion, unverified_reason, version, severity, severity_source, anchors, created_at FROM findings`, `case_id=$1`, ` ORDER BY seq`, caseID...)
 	if err != nil {
 		return nil, err
 	}
@@ -1428,8 +1432,8 @@ func loadFindings(ctx context.Context, q queryer) ([]Finding, error) {
 	}
 	return out, rows.Err()
 }
-func loadEvaluations(ctx context.Context, q queryer) ([]ConstraintEval, error) {
-	rows, err := q.Query(ctx, `SELECT id, run_id, attempt_id, case_id, domain, relation, rule_version, reason, finding_id, rule_id, capability_id, reason_code, fact_ids, object_refs, mandatory, evidence FROM constraint_evaluations ORDER BY seq`)
+func loadEvaluations(ctx context.Context, q queryer, caseID ...string) ([]ConstraintEval, error) {
+	rows, err := queryCaseRows(ctx, q, `SELECT id, run_id, attempt_id, case_id, domain, relation, rule_version, reason, finding_id, rule_id, capability_id, reason_code, fact_ids, object_refs, mandatory, evidence FROM constraint_evaluations`, `case_id=$1`, ` ORDER BY seq`, caseID...)
 	if err != nil {
 		return nil, err
 	}
@@ -1461,8 +1465,8 @@ func loadEvaluations(ctx context.Context, q queryer) ([]ConstraintEval, error) {
 	return out, rows.Err()
 }
 
-func loadDecisions(ctx context.Context, q queryer) ([]Decision, error) {
-	rows, err := q.Query(ctx, `SELECT id, finding_id, run_id, case_id, actor_id, actor_name, action, reason, old_disposition, new_disposition, created_at FROM decisions ORDER BY seq`)
+func loadDecisions(ctx context.Context, q queryer, caseID ...string) ([]Decision, error) {
+	rows, err := queryCaseRows(ctx, q, `SELECT id, finding_id, run_id, case_id, actor_id, actor_name, action, reason, old_disposition, new_disposition, created_at FROM decisions`, `case_id=$1`, ` ORDER BY seq`, caseID...)
 	if err != nil {
 		return nil, err
 	}
@@ -1478,8 +1482,14 @@ func loadDecisions(ctx context.Context, q queryer) ([]Decision, error) {
 	return out, rows.Err()
 }
 
-func loadEvents(ctx context.Context, q queryer) ([]Event, error) {
-	rows, err := q.Query(ctx, `SELECT run_id,event_seq,event_type,state FROM run_events UNION ALL SELECT run_id,event_seq,event_type,state FROM business_run_events ORDER BY run_id,event_seq`)
+func loadEvents(ctx context.Context, q queryer, caseID ...string) ([]Event, error) {
+	var rows pgx.Rows
+	var err error
+	if len(caseID) == 0 {
+		rows, err = q.Query(ctx, `SELECT run_id,event_seq,event_type,state FROM run_events UNION ALL SELECT run_id,event_seq,event_type,state FROM business_run_events ORDER BY run_id,event_seq`)
+	} else {
+		rows, err = q.Query(ctx, `SELECT run_id,event_seq,event_type,state FROM (SELECT run_id,event_seq,event_type,state FROM run_events UNION ALL SELECT run_id,event_seq,event_type,state FROM business_run_events) AS event_rows WHERE run_id IN (SELECT id FROM review_runs WHERE case_id=$1) ORDER BY run_id,event_seq`, caseID[0])
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -1495,8 +1505,14 @@ func loadEvents(ctx context.Context, q queryer) ([]Event, error) {
 	return out, rows.Err()
 }
 
-func loadActivity(ctx context.Context, q queryer) ([]Activity, error) {
-	rows, err := q.Query(ctx, `SELECT id,case_id,occurred_at,summary FROM activity UNION ALL SELECT id,case_id,occurred_at,summary FROM document_activity UNION ALL SELECT id,case_id,occurred_at,summary FROM execution_activity ORDER BY occurred_at,id`)
+func loadActivity(ctx context.Context, q queryer, caseID ...string) ([]Activity, error) {
+	var rows pgx.Rows
+	var err error
+	if len(caseID) == 0 {
+		rows, err = q.Query(ctx, `SELECT id,case_id,occurred_at,summary FROM activity UNION ALL SELECT id,case_id,occurred_at,summary FROM document_activity UNION ALL SELECT id,case_id,occurred_at,summary FROM execution_activity ORDER BY occurred_at,id`)
+	} else {
+		rows, err = q.Query(ctx, `SELECT id,case_id,occurred_at,summary FROM (SELECT id,case_id,occurred_at,summary FROM activity UNION ALL SELECT id,case_id,occurred_at,summary FROM document_activity UNION ALL SELECT id,case_id,occurred_at,summary FROM execution_activity) AS activity_rows WHERE case_id=$1 ORDER BY occurred_at,id`, caseID[0])
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -1529,8 +1545,8 @@ func loadIdempotency(ctx context.Context, q queryer) ([]Idem, error) {
 	return out, rows.Err()
 }
 
-func loadSnapshots(ctx context.Context, q queryer) ([]RunSnapshot, error) {
-	rows, err := q.Query(ctx, `SELECT run_id, document_ids, rule_set_hash, playbook_hash, model_ref, comparator_ref, model_configuration_id, parsed_document_ids, parse_selection_hash, parser_configuration_id, rule_pack_compiler_ref, rule_pack_id, rule_pack_version, rule_pack_hash, rule_pack_digest, rule_pack_snapshot, planner_configuration_id, planner_configuration, cloud_policy_snapshot, cloud_policy_digest, governed_knowledge, party_context, party_context_hash, service_object_context, service_object_context_hash FROM review_run_snapshots ORDER BY run_id`)
+func loadSnapshots(ctx context.Context, q queryer, caseID ...string) ([]RunSnapshot, error) {
+	rows, err := queryCaseRows(ctx, q, `SELECT run_id, document_ids, rule_set_hash, playbook_hash, model_ref, comparator_ref, model_configuration_id, parsed_document_ids, parse_selection_hash, parser_configuration_id, rule_pack_compiler_ref, rule_pack_id, rule_pack_version, rule_pack_hash, rule_pack_digest, rule_pack_snapshot, planner_configuration_id, planner_configuration, cloud_policy_snapshot, cloud_policy_digest, governed_knowledge, party_context, party_context_hash, service_object_context, service_object_context_hash FROM review_run_snapshots`, `run_id IN (SELECT id FROM review_runs WHERE case_id=$1)`, ` ORDER BY run_id`, caseID...)
 	if err != nil {
 		return nil, err
 	}
@@ -1582,8 +1598,14 @@ func loadSnapshots(ctx context.Context, q queryer) ([]RunSnapshot, error) {
 	return out, rows.Err()
 }
 
-func loadAudits(ctx context.Context, q queryer) ([]AuditRecord, error) {
-	rows, err := q.Query(ctx, `SELECT event_id,run_id,actor,seq,event_type,prev_hash,hash,correlation_ids FROM audit_events UNION ALL SELECT event_id,run_id,actor,seq,event_type,prev_hash,hash,correlation_ids FROM business_audit_events ORDER BY seq,event_id`)
+func loadAudits(ctx context.Context, q queryer, caseID ...string) ([]AuditRecord, error) {
+	var rows pgx.Rows
+	var err error
+	if len(caseID) == 0 {
+		rows, err = q.Query(ctx, `SELECT event_id,run_id,actor,seq,event_type,prev_hash,hash,correlation_ids FROM audit_events UNION ALL SELECT event_id,run_id,actor,seq,event_type,prev_hash,hash,correlation_ids FROM business_audit_events ORDER BY seq,event_id`)
+	} else {
+		rows, err = q.Query(ctx, `SELECT event_id,run_id,actor,seq,event_type,prev_hash,hash,correlation_ids FROM (SELECT event_id,run_id,actor,seq,event_type,prev_hash,hash,correlation_ids FROM audit_events UNION ALL SELECT event_id,run_id,actor,seq,event_type,prev_hash,hash,correlation_ids FROM business_audit_events) AS audit_rows WHERE run_id IN (SELECT id FROM review_runs WHERE case_id=$1) ORDER BY seq,event_id`, caseID[0])
+	}
 	if err != nil {
 		return nil, err
 	}

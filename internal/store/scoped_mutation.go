@@ -215,25 +215,15 @@ func (s *Store) loadScopedAttemptState(ctx context.Context, tx pgx.Tx, claim Job
 		return state{}, err
 	}
 
-	parsedRows, err := tx.Query(ctx, `SELECT parsed.payload FROM review_attempt_parse_selections AS selection
+	parsedRows, err := tx.Query(ctx, `SELECT parsed.id, parsed.selection_order, parsed.document_id, parsed.original_digest, parsed.parser_id, parsed.parser_version, parsed.config_hash, parsed.normalization_version, parsed.normalized_digest, parsed.ir_digest, parsed.artifact_digest, parsed.created_at, parsed.status, parsed.payload
+		FROM review_attempt_parse_selections AS selection
 		JOIN parsed_documents AS parsed ON parsed.id=selection.parsed_document_id
 		WHERE selection.attempt_id=$1 AND selection.run_id=$2 ORDER BY selection.selection_order`, attemptID, runID)
 	if err != nil {
 		return state{}, err
 	}
-	defer parsedRows.Close()
-	for parsedRows.Next() {
-		var payload string
-		if err := parsedRows.Scan(&payload); err != nil {
-			return state{}, err
-		}
-		parsed, err := parsePayload(payload)
-		if err != nil {
-			return state{}, err
-		}
-		out.ParsedDocuments = append(out.ParsedDocuments, parsed)
-	}
-	if err := parsedRows.Err(); err != nil {
+	out.ParsedDocuments, err = decodeScopedParsedRows(parsedRows, out.Documents)
+	if err != nil {
 		return state{}, err
 	}
 	return out, nil
@@ -260,7 +250,7 @@ func (s *Store) scopedAttemptMutationWithGovernance(ctx context.Context, runID, 
 
 func (s *Store) scopedAttemptMutationWithTx(ctx context.Context, runID, attemptID string, governance bool, fn func(pgx.Tx, *state) error) error {
 	claim, ok := s.claimForAttempt(attemptID)
-	if !ok || claim.JobID == "" || claim.AttemptID != attemptID || claim.RunID != runID {
+	if !ok || claim.CaseID == "" || claim.AttemptID != attemptID || claim.RunID != runID {
 		return errExecutionEventScope
 	}
 	if !claimMatchesExecutionScope(ctx, claim) {
@@ -296,11 +286,13 @@ func (s *Store) scopedAttemptMutationWithTx(ctx context.Context, runID, attemptI
 	if !attemptActive(currentState) {
 		return errAttemptTerminal
 	}
-	if err := s.requireLiveClaim(ctx, tx, claim, runID, attemptID); err != nil {
-		return err
-	}
-	if err := s.reauthorizeAttempt(ctx, tx, runID, attemptID); err != nil {
-		return err
+	if claim.JobID != "" {
+		if err := s.requireLiveClaim(ctx, tx, claim, runID, attemptID); err != nil {
+			return err
+		}
+		if err := s.reauthorizeAttempt(ctx, tx, runID, attemptID); err != nil {
+			return err
+		}
 	}
 	previous, err := s.loadScopedAttemptState(ctx, tx, claim, runID, attemptID)
 	if err != nil {
@@ -334,152 +326,8 @@ func (s *Store) scopedAttemptMutationWithTx(ctx context.Context, runID, attemptI
 	if err := tx.Commit(ctx); err != nil {
 		return err
 	}
-	s.patchScopedAttemptProjection(ctx, changed)
+	s.patchStateProjection(ctx, previous, old, changed)
 	return nil
-}
-
-func (s *Store) patchScopedAttemptProjection(ctx context.Context, changed state) {
-	if !s.mu.TryLock() {
-		ticker := time.NewTicker(time.Millisecond)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-ticker.C:
-			}
-			if s.mu.TryLock() {
-				break
-			}
-		}
-	}
-	if ctx.Err() != nil {
-		s.mu.Unlock()
-		return
-	}
-	defer s.mu.Unlock()
-
-	for _, item := range changed.Cases {
-		for i := range s.st.Cases {
-			if s.st.Cases[i].ID == item.ID {
-				s.st.Cases[i] = item
-			}
-		}
-	}
-	for _, item := range changed.Runs {
-		for i := range s.st.Runs {
-			if s.st.Runs[i].ID == item.ID {
-				s.st.Runs[i] = item
-			}
-		}
-	}
-	for _, item := range changed.Attempts {
-		for i := range s.st.Attempts {
-			if s.st.Attempts[i].ID == item.ID {
-				s.st.Attempts[i] = item
-			}
-		}
-	}
-	s.st.ExecutionEvents = mergeExecutionEventSlice(s.st.ExecutionEvents, changed.ExecutionEvents)
-	s.st.Events = mergeRunEventSlice(s.st.Events, changed.Events)
-	s.st.Findings = mergeFindingSlice(s.st.Findings, changed.Findings)
-	s.st.Evaluations = mergeEvaluationSlice(s.st.Evaluations, changed.Evaluations)
-	s.st.Audits = mergeAuditSlice(s.st.Audits, changed.Audits)
-	for _, item := range changed.Reports {
-		replaced := false
-		for i := range s.st.Reports {
-			if s.st.Reports[i].Record.ID == item.Record.ID {
-				s.st.Reports[i] = item
-				replaced = true
-				break
-			}
-		}
-		if !replaced {
-			s.st.Reports = append(s.st.Reports, item)
-		}
-	}
-	for _, item := range changed.Archives {
-		duplicate := false
-		for _, current := range s.st.Archives {
-			if current.Record.ID == item.Record.ID {
-				duplicate = true
-				break
-			}
-		}
-		if !duplicate {
-			s.st.Archives = append(s.st.Archives, item)
-		}
-	}
-	for _, item := range changed.Documents {
-		replaced := false
-		for i := range s.st.Documents {
-			if s.st.Documents[i].ID == item.ID {
-				s.st.Documents[i] = item
-				replaced = true
-				break
-			}
-		}
-		if !replaced {
-			s.st.Documents = append(s.st.Documents, item)
-		}
-	}
-	for _, item := range changed.Materials {
-		replaced := false
-		for i := range s.st.Materials {
-			if s.st.Materials[i].TenantID == item.TenantID && s.st.Materials[i].OrgID == item.OrgID && s.st.Materials[i].CaseID == item.CaseID && s.st.Materials[i].ID == item.ID {
-				s.st.Materials[i] = item
-				replaced = true
-				break
-			}
-		}
-		if !replaced {
-			s.st.Materials = append(s.st.Materials, item)
-		}
-	}
-	for _, item := range changed.MaterialVersions {
-		s.st.MaterialVersions = append(s.st.MaterialVersions, item)
-	}
-	for _, item := range changed.MaterialChains {
-		for i := range s.st.MaterialChains {
-			if s.st.MaterialChains[i].CaseID == item.CaseID {
-				s.st.MaterialChains[i] = item
-				item.CaseID = ""
-				break
-			}
-		}
-		if item.CaseID != "" {
-			s.st.MaterialChains = append(s.st.MaterialChains, item)
-		}
-	}
-	for _, item := range changed.UploadIdempotency {
-		s.st.UploadIdempotency = append(s.st.UploadIdempotency, item)
-	}
-	for _, item := range changed.ParsedDocuments {
-		replaced := false
-		for i := range s.st.ParsedDocuments {
-			if s.st.ParsedDocuments[i].ID == item.ID {
-				s.st.ParsedDocuments[i] = item
-				replaced = true
-				break
-			}
-		}
-		if !replaced {
-			s.st.ParsedDocuments = append(s.st.ParsedDocuments, item)
-		}
-	}
-	for _, item := range changed.Generations {
-		duplicate := false
-		for _, current := range s.st.Generations {
-			if current.Record.ID == item.Record.ID {
-				duplicate = true
-				break
-			}
-		}
-		if !duplicate {
-			s.st.Generations = append(s.st.Generations, item)
-		}
-	}
-
 }
 
 func mergeExecutionEventSlice(existing, added []ExecutionEvent) []ExecutionEvent {
@@ -487,72 +335,6 @@ func mergeExecutionEventSlice(existing, added []ExecutionEvent) []ExecutionEvent
 		duplicate := false
 		for _, current := range existing {
 			if current.AttemptID == item.AttemptID && current.Seq == item.Seq {
-				duplicate = true
-				break
-			}
-		}
-		if !duplicate {
-			existing = append(existing, item)
-		}
-	}
-	return existing
-}
-
-func mergeRunEventSlice(existing, added []Event) []Event {
-	for _, item := range added {
-		duplicate := false
-		for _, current := range existing {
-			if current.RunID == item.RunID && current.Seq == item.Seq {
-				duplicate = true
-				break
-			}
-		}
-		if !duplicate {
-			existing = append(existing, item)
-		}
-	}
-	return existing
-}
-
-func mergeFindingSlice(existing, added []Finding) []Finding {
-	for _, item := range added {
-		replaced := false
-		for i := range existing {
-			if existing[i].ID == item.ID {
-				existing[i] = item
-				replaced = true
-				break
-			}
-		}
-		if !replaced {
-			existing = append(existing, item)
-		}
-	}
-	return existing
-}
-
-func mergeEvaluationSlice(existing, added []ConstraintEval) []ConstraintEval {
-	for _, item := range added {
-		replaced := false
-		for i := range existing {
-			if existing[i].ID == item.ID {
-				existing[i] = item
-				replaced = true
-				break
-			}
-		}
-		if !replaced {
-			existing = append(existing, item)
-		}
-	}
-	return existing
-}
-
-func mergeAuditSlice(existing, added []AuditRecord) []AuditRecord {
-	for _, item := range added {
-		duplicate := false
-		for _, current := range existing {
-			if current.EventID == item.EventID {
 				duplicate = true
 				break
 			}
@@ -670,23 +452,12 @@ func (s *Store) loadScopedCaseState(ctx context.Context, tx pgx.Tx, caseID strin
 	}
 	uploadRows.Close()
 	if len(documentIDs) > 0 {
-		parsedRows, err := tx.Query(ctx, `SELECT payload FROM parsed_documents WHERE document_id = ANY($1) ORDER BY seq`, documentIDs)
+		parsedRows, err := tx.Query(ctx, `SELECT id, selection_order, document_id, original_digest, parser_id, parser_version, config_hash, normalization_version, normalized_digest, ir_digest, artifact_digest, created_at, status, payload FROM parsed_documents WHERE document_id = ANY($1) ORDER BY seq`, documentIDs)
 		if err != nil {
 			return state{}, err
 		}
-		defer parsedRows.Close()
-		for parsedRows.Next() {
-			var payload string
-			if err := parsedRows.Scan(&payload); err != nil {
-				return state{}, err
-			}
-			parsed, err := parsePayload(payload)
-			if err != nil {
-				return state{}, err
-			}
-			out.ParsedDocuments = append(out.ParsedDocuments, parsed)
-		}
-		if err := parsedRows.Err(); err != nil {
+		out.ParsedDocuments, err = decodeScopedParsedRows(parsedRows, out.Documents)
+		if err != nil {
 			return state{}, err
 		}
 	}
@@ -762,6 +533,9 @@ func (s *Store) loadScopedCaseState(ctx context.Context, tx pgx.Tx, caseID strin
 			&item.Record.Digest, &item.Record.CreatedAt, &item.JSONBytes, &item.HTMLBytes); err != nil {
 			return state{}, err
 		}
+		if err := validateFrozenReport(item); err != nil {
+			return state{}, err
+		}
 		out.Reports = append(out.Reports, item)
 	}
 	if err := reportRows.Err(); err != nil {
@@ -823,7 +597,13 @@ func (s *Store) loadScopedCaseState(ctx context.Context, tx pgx.Tx, caseID strin
 // case load, the same validation and delta persistence as the whole-state
 // writer, and a projection patch limited to the bounded slices. The transaction
 // scope comes from the trusted caller, exactly like the whole-state writer's.
-func (s *Store) scopedCaseMutation(ctx context.Context, user accounts.User, caseID string, fn func(*state) error) (result error) {
+func (s *Store) scopedCaseMutation(ctx context.Context, user accounts.User, caseID string, fn func(*state) error) error {
+	return s.scopedCaseWrite(ctx, user, caseID, "", "", false, false, nil, fn)
+}
+
+// scopedCaseWrite optionally includes the case's review and business state and
+// preserves the governance, decision-key and attempt fences when required.
+func (s *Store) scopedCaseWrite(ctx context.Context, user accounts.User, caseID, attemptID, decisionKey string, full, governance bool, hook func(pgx.Tx) error, fn func(*state) error) (result error) {
 	if ctx == nil {
 		return errors.New("case mutation context is nil")
 	}
@@ -848,21 +628,59 @@ func (s *Store) scopedCaseMutation(ctx context.Context, user accounts.User, case
 		defer cancel()
 		_ = tx.Rollback(rollbackCtx)
 	}()
+	if governance {
+		if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended(current_schema(),0))`); err != nil {
+			return err
+		}
+	}
 	scope := userScope(current)
 	scope.CaseID = caseID
 	if err := setLocalScope(ctx, tx, scope); err != nil {
 		return err
 	}
+	if decisionKey != "" {
+		if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended(current_schema() || ':decision:' || jsonb_build_array($1::text,$2::text)::text,0))`, current.ID, decisionKey); err != nil {
+			return err
+		}
+	}
 	if err := scopedCaseLock(ctx, tx, caseID); err != nil {
 		return err
 	}
-	previous, err := s.loadScopedCaseState(ctx, tx, caseID)
+	var expectedAttemptVersion *int64
+	if attemptID != "" {
+		if err := scopedAttemptLock(ctx, tx, attemptID); err != nil {
+			return err
+		}
+		var currentState string
+		var version int64
+		if err := tx.QueryRow(ctx, `SELECT state, entity_version FROM review_attempts WHERE id=$1 AND run_id IN (SELECT id FROM review_runs WHERE case_id=$2) FOR UPDATE`, attemptID, caseID).Scan(&currentState, &version); err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return errAttemptMissing
+			}
+			return err
+		}
+		if !attemptActive(currentState) {
+			return errAttemptTerminal
+		}
+		expectedAttemptVersion = &version
+	}
+	var previous state
+	if full {
+		previous, err = s.loadScopedCaseWriteState(ctx, tx, caseID, current.ID, decisionKey)
+	} else {
+		previous, err = s.loadScopedCaseState(ctx, tx, caseID)
+	}
 	if err != nil {
 		return err
 	}
 	caseItem, ok := previous.caseByID(caseID)
 	if !ok || caseItem.TenantID != scope.TenantID {
 		return fault.NotFound("没有找到对应记录")
+	}
+	if hook != nil {
+		if err := hook(tx); err != nil {
+			return err
+		}
 	}
 	scope.OrgID = caseItem.OwnerOrgID
 	if err := setLocalScope(ctx, tx, scope); err != nil {
@@ -885,12 +703,12 @@ func (s *Store) scopedCaseMutation(ctx context.Context, user accounts.User, case
 	if err := s.validateServiceDelta(old, changed); err != nil {
 		return err
 	}
-	if err := s.persist(ctx, tx, previous, next, nil); err != nil {
+	if err := s.persist(ctx, tx, previous, next, expectedAttemptVersion); err != nil {
 		return err
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return err
 	}
-	s.patchScopedAttemptProjection(ctx, changed)
+	s.patchStateProjection(ctx, previous, old, changed)
 	return nil
 }

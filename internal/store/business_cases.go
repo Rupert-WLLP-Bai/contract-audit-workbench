@@ -90,7 +90,7 @@ func (s *Store) CreateCaseWithBusiness(user accounts.User, title, contractType, 
 		return "", err
 	}
 	now := stamp()
-	err = s.updateAs(current, func(st *state) error {
+	err = s.scopedCreateCaseWrite(context.Background(), current, id, nil, func(st *state) error {
 		return appendBusinessCase(st, current, input, id, now)
 	})
 	return id, err

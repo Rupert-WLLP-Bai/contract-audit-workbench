@@ -154,7 +154,7 @@ func (s *Store) updateAuthorizedGovernedExecution(ctx context.Context, runID, at
 	if executionScopeRequiresClaim(ctx) && (!hasClaim || !claimMatchesExecutionScope(ctx, claim)) {
 		return errLeaseLost
 	}
-	if hasClaim && claim.JobID != "" && claim.RunID == runID && claim.AttemptID == attemptID {
+	if hasClaim && claim.RunID == runID && claim.AttemptID == attemptID {
 		return s.scopedGovernedAttemptMutation(ctx, runID, attemptID, func(st *state) error {
 			if _, err := authorizeAttemptExecution(*st, runID, attemptID); err != nil {
 				return err

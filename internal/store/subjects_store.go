@@ -198,7 +198,7 @@ func (s *Store) CreateCaseSubject(ctx context.Context, user accounts.User, caseI
 	}
 	var result CreateCaseSubjectResult
 	replayed := false
-	err = s.updateCaseAsContext(ctx, current, caseID, func(st *state) error {
+	err = s.scopedCaseWrite(ctx, current, caseID, "", "", true, false, nil, func(st *state) error {
 		caseItem, err := s.writableCase(st, current, caseID, access.Manage)
 		if err != nil {
 			return err

@@ -111,7 +111,7 @@ func (s *Store) Decide(user accounts.User, caseID, runID, findingID, key, action
 	if len(key) > 80 {
 		return fault.Invalid("请求标识（幂等键）过长")
 	}
-	return s.updateCaseAs(user, caseID, func(st *state) error {
+	return s.scopedCaseWrite(context.Background(), user, caseID, "", key, true, false, nil, func(st *state) error {
 		if _, err := s.writableCase(st, user, caseID, access.Decide); err != nil {
 			return err
 		}

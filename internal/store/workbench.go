@@ -11,6 +11,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode"
 	"unicode/utf8"
 
 	"contractaudit/internal/access"
@@ -100,7 +101,30 @@ func (s *Store) UpdateCaseProfile(user accounts.User, caseID string, input CaseP
 	profile := CaseProfile{CaseID: caseID, Number: input.Number, Customer: input.Customer, Supplier: input.Supplier,
 		ContractCategory: input.ContractCategory, OwnerID: input.OwnerID, DueAt: dueAt, Version: version, UpdatedAt: now}
 	record := caseProfileRecord{Profile: profile, TenantID: item.TenantID, OrgID: item.OwnerOrgID}
-	if err := s.updateCaseAs(current, caseID, func(next *state) error {
+	if err := s.scopedCaseWrite(context.Background(), current, caseID, "", "", true, false, func(tx pgx.Tx) error {
+		ctx := context.Background()
+		if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended(current_schema() || ':profile-number:' || jsonb_build_array($1::text,$2::text)::text,0))`, current.TenantID, foldedProfileNumber(input.Number)); err != nil {
+			return err
+		}
+		rows, err := tx.Query(ctx, `SELECT number FROM business_case_profiles WHERE tenant_id=$1 AND case_id<>$2`, current.TenantID, caseID)
+		if err != nil {
+			return err
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var number string
+			if err := rows.Scan(&number); err != nil {
+				return err
+			}
+			if strings.EqualFold(number, input.Number) {
+				return fault.Conflict("案件编号已被当前租户使用")
+			}
+		}
+		if err := rows.Err(); err != nil {
+			return err
+		}
+		return nil
+	}, func(next *state) error {
 		currentCase, err := s.requireBusinessWrite(next, current, caseID)
 		if err != nil {
 			return err
@@ -111,11 +135,6 @@ func (s *Store) UpdateCaseProfile(user accounts.User, caseID string, input CaseP
 		prior, exists := profileFor(*next, currentCase)
 		if exists && prior.Version != input.ExpectedVersion || !exists && input.ExpectedVersion != 0 {
 			return fault.Conflict("案件资料版本已变化，请刷新后重试")
-		}
-		for _, other := range next.Profiles {
-			if other.Profile.CaseID != caseID && other.TenantID == currentCase.TenantID && strings.EqualFold(other.Profile.Number, input.Number) {
-				return fault.Conflict("案件编号已被当前租户使用")
-			}
 		}
 		if exists {
 			for i := range next.Profiles {
@@ -135,6 +154,23 @@ func (s *Store) UpdateCaseProfile(user accounts.User, caseID string, input CaseP
 		return CaseProfile{}, err
 	}
 	return profile, nil
+}
+
+// EqualFold uses Unicode simple folds, so equivalent numbers must share a lock
+// even where PostgreSQL lower() does not match Go's case folding.
+func foldedProfileNumber(number string) string {
+	var folded strings.Builder
+	folded.Grow(len(number))
+	for _, r := range number {
+		minimum := r
+		for next := unicode.SimpleFold(r); next != r; next = unicode.SimpleFold(next) {
+			if next < minimum {
+				minimum = next
+			}
+		}
+		folded.WriteRune(minimum)
+	}
+	return folded.String()
 }
 
 func (s *Store) CreateWorkbenchTask(user accounts.User, caseID string, input WorkbenchTaskInput) (WorkbenchTask, error) {
@@ -346,7 +382,7 @@ func (s *Store) CreateCaseRelation(user accounts.User, caseID string, input Case
 	now := stamp()
 	relation := CaseRelation{ID: id, CaseID: caseID, RelatedCaseID: related.ID, Reason: input.Reason, CreatedBy: current.ID, CreatedAt: now}
 	record := caseRelationRecord{Relation: relation, TenantID: item.TenantID, OrgID: item.OwnerOrgID, RelatedOrgID: related.OwnerOrgID, PairKey: key}
-	if err := s.updateCaseAs(current, caseID, func(next *state) error {
+	if err := s.updateSubjectCasesAs(context.Background(), current, nil, []string{caseID, related.ID}, func(next *state) error {
 		currentCase, err := s.requireBusinessWrite(next, current, caseID)
 		if err != nil {
 			return err
@@ -407,7 +443,7 @@ func (s *Store) DeleteCaseRelation(user accounts.User, caseID, relationID string
 		return err
 	}
 	now := stamp()
-	return s.updateCaseAs(current, caseID, func(next *state) error {
+	return s.updateSubjectCasesAs(context.Background(), current, nil, []string{caseID, related.ID}, func(next *state) error {
 		currentCase, err := s.requireBusinessWrite(next, current, caseID)
 		if err != nil {
 			return err

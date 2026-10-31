@@ -11,8 +11,8 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-func loadJobs(ctx context.Context, q queryer) ([]Job, error) {
-	rows, err := q.Query(ctx, `SELECT id, tenant_id, org_id, case_id, COALESCE(run_id,''), COALESCE(attempt_id,''), actor_id, kind, state, generation, worker_id, lease_until, heartbeat_at, created_at, updated_at FROM worker_jobs ORDER BY created_at, id`)
+func loadJobs(ctx context.Context, q queryer, caseID ...string) ([]Job, error) {
+	rows, err := queryCaseRows(ctx, q, `SELECT id, tenant_id, org_id, case_id, COALESCE(run_id,''), COALESCE(attempt_id,''), actor_id, kind, state, generation, worker_id, lease_until, heartbeat_at, created_at, updated_at FROM worker_jobs`, `case_id=$1`, ` ORDER BY created_at, id`, caseID...)
 	if err != nil {
 		return nil, err
 	}
