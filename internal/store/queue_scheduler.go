@@ -50,13 +50,16 @@ func claimScheduledJob(ctx context.Context, tx pgx.Tx, worker string, lease time
 		var claim JobClaim
 		var count, maxClaims int
 		var expired bool
-		err = tx.QueryRow(ctx, `SELECT id,tenant_id,org_id,case_id,COALESCE(run_id,''),COALESCE(attempt_id,''),actor_id,kind,claim_count,max_claims,deadline_at,deadline_at<=clock_timestamp()
+		var eligibleAt, claimedAt time.Time
+		var createdAt string
+		err = tx.QueryRow(ctx, `SELECT id,tenant_id,org_id,case_id,COALESCE(run_id,''),COALESCE(attempt_id,''),actor_id,kind,state='running',claim_count,max_claims,deadline_at,deadline_at<=clock_timestamp(),created_at,
+			CASE WHEN state='queued' THEN ready_at ELSE GREATEST(lease_until,LEAST(ready_at,deadline_at)) END
 			FROM worker_jobs WHERE tenant_id=$1 AND
 			((state='queued' AND ready_at<=clock_timestamp()) OR
 			(state='running' AND lease_until<=clock_timestamp() AND (ready_at<=clock_timestamp() OR deadline_at<=clock_timestamp())))
 			ORDER BY created_at,id LIMIT 1 FOR UPDATE SKIP LOCKED`, tenant).Scan(
-			&claim.JobID, &claim.TenantID, &claim.OrgID, &claim.CaseID, &claim.RunID, &claim.AttemptID, &claim.ActorID, &claim.Kind,
-			&count, &maxClaims, &claim.deadline, &expired)
+			&claim.JobID, &claim.TenantID, &claim.OrgID, &claim.CaseID, &claim.RunID, &claim.AttemptID, &claim.ActorID, &claim.Kind, &claim.reclaimed,
+			&count, &maxClaims, &claim.deadline, &expired, &createdAt, &eligibleAt)
 		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 			return JobClaim{}, err
 		}
@@ -91,9 +94,20 @@ func claimScheduledJob(ctx context.Context, tx pgx.Tx, worker string, lease time
 		err = tx.QueryRow(ctx, `UPDATE worker_jobs SET state='running',generation=generation+1,claim_count=claim_count+1,worker_id=$2,
 			lease_until=clock_timestamp()+($3::bigint*interval '1 microsecond'),heartbeat_at=clock_timestamp(),
 			ready_at=clock_timestamp()+(($3::bigint+$4::bigint)*interval '1 microsecond'),updated_at=$5
-			WHERE id=$1 RETURNING generation,lease_until`, claim.JobID, worker, lease.Microseconds(), delay.Microseconds(), stamp()).Scan(&claim.Generation, &claim.LeaseUntil)
+			WHERE id=$1 RETURNING generation,lease_until,clock_timestamp()`, claim.JobID, worker, lease.Microseconds(), delay.Microseconds(), stamp()).Scan(&claim.Generation, &claim.LeaseUntil, &claimedAt)
 		if err != nil {
 			return JobClaim{}, err
+		}
+		// A pre-existing review with the epoch sentinel has no PG-clock anchor.
+		// Experience enqueue records its creation time inside PostgreSQL.
+		claim.metricWait = -1
+		if !eligibleAt.After(time.Unix(0, 0)) && claim.Kind == "experience_distill" {
+			if parsed, ok := parseQueuePGTime(createdAt); ok {
+				eligibleAt = parsed
+			}
+		}
+		if eligibleAt.After(time.Unix(0, 0)) {
+			claim.metricWait = claimedAt.Sub(eligibleAt)
 		}
 		claim.WorkerID = worker
 		return claim, nil

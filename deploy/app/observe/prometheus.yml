@@ -6,9 +6,23 @@ scrape_configs:
   #   audit_execution_events        Sum per (audit_phase, audit_node_kind, audit_status)
   #   audit_execution_duration_ms   Gauge, latest duration per series
   #   audit_http_requests           Sum per (http_request_method, http_route, http_response_status_code)
-  #   audit_http_duration_ms        Gauge, latest duration per (http_request_method, http_route)
+  #   audit_http_duration_ms        Cumulative Histogram (ms), bucket/sum/count per method/route
+  # Collector default translation adds the ms unit as _milliseconds; use
+  # audit_http_duration_ms_milliseconds_bucket / _sum / _count for quantiles.
   # http_route is the matched route template (never the raw path or query);
   # no case, user or tenant attributes are exported.
+  # Queue and Outbox gauges are repeated PG snapshots from each worker:
+  # aggregate replicas with max (never sum); claims/reclaims are per-process counters.
+  # Before max, filter each instance by its corresponding *_available=1;
+  # Collector can retain the previous gauge series after a failed collection.
+  # Age queries also require wait_age_available / age_available for that instance.
+  # queued includes backoff/capacity-blocked work; ready applies scheduler quotas.
+  # audit_queue_wait_age_available=0 omits wait ages when any legacy queued review
+  # still has the epoch ready_at sentinel; existing tasks are never backfilled.
+  # Collection failure sets availability=0 and omits values, rather than emitting zero.
+  # Outbox age uses recorded creation times and can include cross-host clock skew;
+  # audit_outbox_age_available=0 omits age without hiding the pending count.
+  # Pool acquire_duration includes all acquisitions; empty_acquire_wait is actual wait.
   - job_name: otel-collector
     static_configs:
       - targets: ["otel-collector:8889"]

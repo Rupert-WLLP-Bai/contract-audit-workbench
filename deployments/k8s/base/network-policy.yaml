@@ -13,6 +13,24 @@
 # NetworkPolicy under the default host-endpoint behavior of the policy-capable
 # CNIs (Calico, Cilium). audit-worker therefore receives no in-cluster ingress
 # peer at all.
+# Optional OTLP/HTTP export to the existing in-namespace Collector only.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: otlp-collector-egress
+  namespace: contract-audit
+  labels: {app.kubernetes.io/part-of: contract-audit}
+spec:
+  podSelector:
+    matchExpressions:
+      - key: app.kubernetes.io/name
+        operator: In
+        values: [gateway, core-api, document-service, audit-execution, audit-worker, model-gateway, tool-gateway]
+  policyTypes: [Egress]
+  egress:
+    - to: [{podSelector: {matchLabels: {app.kubernetes.io/name: otel-collector}}}]
+      ports: [{protocol: TCP, port: 4318}]
+---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:

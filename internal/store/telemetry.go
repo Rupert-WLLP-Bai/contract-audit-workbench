@@ -7,10 +7,10 @@ import (
 
 // UseTelemetry transfers lifecycle ownership to Store. Configure before serving.
 func (s *Store) UseTelemetry(exporter *telemetry.Exporter) {
-	s.mu.Lock()
-	previous := s.telemetry
-	s.telemetry = exporter
-	s.mu.Unlock()
+	if exporter != nil && s.pool != nil {
+		exporter.SetRuntimeMetricsSource(s.runtimeMetrics)
+	}
+	previous := s.telemetry.Swap(exporter)
 	if previous != exporter {
 		previous.Close()
 	}
@@ -20,16 +20,11 @@ func (s *Store) UseTelemetry(exporter *telemetry.Exporter) {
 // it for the HTTP boundary instead of building a second one. It may be nil
 // when telemetry is disabled.
 func (s *Store) Telemetry() *telemetry.Exporter {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.telemetry
+	return s.telemetry.Load()
 }
 
 func (s *Store) recordTelemetry(runID, attemptID string, event execution.Event) {
-	s.mu.Lock()
-	exporter := s.telemetry
-	s.mu.Unlock()
-	exporter.Record(runID, attemptID, event)
+	s.Telemetry().Record(runID, attemptID, event)
 }
 
 func (s *Store) closeTelemetry() {
