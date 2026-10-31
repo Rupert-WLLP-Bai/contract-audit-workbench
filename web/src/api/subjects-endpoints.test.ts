@@ -154,15 +154,14 @@ describe("subject API endpoints", () => {
       expected_binding_version: null, payload_hash: "c".repeat(64), proposer: principal,
       proposed_by_display_name: "经办人甲", can_decide: false, decision_blocked_reason: "本人不能复核", created_at: "2026-10-31T01:00:00Z",
     };
-    setResponse({ detail: {
+    setResponse({
       summary: changeSummary,
       proposed_by_display_name: "经办人甲", can_decide: false, decision_blocked_reason: "本人不能复核",
       before: version,
       after: { ...version, version: 2, display_name: "示例企业" },
+      basis_note: "依据材料更正名称",
       basis_refs: [{ ...basis, filename: "主体资料.txt", quote: "示例公司" }],
-      impact_etag: "opaque-etag",
-      authorized_impact_cases: [],
-    } });
+    });
     expect((await getCaseSubjectChange("case-1", "change/1")).summary.request_id).toBe("change-1");
 
     setResponse({ request_id: "change-1", proposed_by_display_name: "经办人甲", can_decide: false, decision_blocked_reason: "本人不能复核", target_version: 1, payload_hash: "c".repeat(64), before: version,

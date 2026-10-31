@@ -281,7 +281,6 @@ function invalidateSubjectChangeViews(
     );
   }
   const affectedCaseIds = new Set([
-    ...(detail?.authorized_impact_cases.map((item) => item.case_id) ?? []),
     ...(impact?.affected_cases.map((item) => item.case_id) ?? []),
   ]);
   for (const affectedCaseId of affectedCaseIds) {

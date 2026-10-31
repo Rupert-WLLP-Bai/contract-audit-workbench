@@ -46,13 +46,12 @@ const request = {
   proposed_by_display_name: "提案经办人", can_decide: true, decision_blocked_reason: null,
   before,
   after,
+  basis_note: "依据材料更正名称",
   basis_refs: [{
     kind: "material_anchor", material_id: "material-1", material_version: 3,
     document_id: "document-1", parsed_document_id: "parse-1", start: 0, end: 15,
     quote_digest: "d".repeat(64), filename: "专线合同.pdf", quote: "供应商名称为示例网络有限公司。",
   }],
-  impact_etag: "impact-secret-etag",
-  authorized_impact_cases: [{ case_id: "case-1", case_name: "政企专线采购", status: "active" }],
 };
 
 function renderPage() {

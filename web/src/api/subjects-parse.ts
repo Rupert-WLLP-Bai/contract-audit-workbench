@@ -619,11 +619,10 @@ export function parseSubjectChangeProposalResult(value: unknown): SubjectChangeP
 export function parseSubjectChangeDetail(value: unknown): SubjectChangeDetail {
   const path = "subject change detail";
   const record = object(value, path);
-  const detail = object(record.detail, `${path}.detail`);
-  const subjectSummary = summary(detail.summary);
-  const proposedBy = text(detail, "proposed_by_display_name", `${path}.detail`);
-  const canDecide = booleanField(detail, "can_decide", `${path}.detail`);
-  const blockedReason = nullableText(detail, "decision_blocked_reason", `${path}.detail`);
+  const subjectSummary = summary(record.summary);
+  const proposedBy = text(record, "proposed_by_display_name", path);
+  const canDecide = booleanField(record, "can_decide", path);
+  const blockedReason = nullableText(record, "decision_blocked_reason", path);
   if (subjectSummary.proposed_by_display_name !== proposedBy || subjectSummary.can_decide !== canDecide || subjectSummary.decision_blocked_reason !== blockedReason)
     return fail(`${path}.decision_capability`);
   return {
@@ -631,11 +630,10 @@ export function parseSubjectChangeDetail(value: unknown): SubjectChangeDetail {
     proposed_by_display_name: proposedBy,
     can_decide: canDecide,
     decision_blocked_reason: blockedReason,
-    before: targetProjection(detail.before, subjectSummary.target_kind),
-    after: targetProjection(detail.after, subjectSummary.target_kind),
-    basis_refs: array(detail, "basis_refs", `${path}.detail`, basisRef),
-    impact_etag: text(detail, "impact_etag", `${path}.detail`),
-    authorized_impact_cases: impactCases(detail.authorized_impact_cases, `${path}.detail.authorized_impact_cases`),
+    before: targetProjection(record.before, subjectSummary.target_kind),
+    after: targetProjection(record.after, subjectSummary.target_kind),
+    basis_note: textAllowEmpty(record, "basis_note", path),
+    basis_refs: array(record, "basis_refs", path, basisRef),
   };
 }
 

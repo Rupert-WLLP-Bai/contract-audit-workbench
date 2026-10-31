@@ -1248,13 +1248,8 @@ export interface SubjectChangeDetail {
   decision_blocked_reason: string | null;
   before: SubjectVersionProjection | CaseRoleBindingProjection;
   after: SubjectVersionProjection | CaseRoleBindingProjection;
+  basis_note: string;
   basis_refs: SubjectChangeBasisRef[];
-  impact_etag: string;
-  authorized_impact_cases: Array<{
-    case_id: string;
-    case_name: string;
-    status: string;
-  }>;
 }
 
 export interface SubjectChangeImpact {
