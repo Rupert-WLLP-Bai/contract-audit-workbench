@@ -7,6 +7,8 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"contractaudit/internal/llmendpoint"
 )
 
 func loginAdminAudience(t *testing.T, api *testAPI) {
@@ -22,6 +24,9 @@ func loginAdminAudience(t *testing.T, api *testAPI) {
 func TestLLMEndpointAdminConfigurationKeepsTheCredentialServerSide(t *testing.T) {
 	const providerKey = "{{SECRET_4vaahdme}}"
 	t.Setenv("LLM_CONFIG_KEY", base64.StdEncoding.EncodeToString([]byte(strings.Repeat("h", 32))))
+	// The httptest providers are loopback addresses; the deployment allowlist
+	// is the sanctioned way a private target stays reachable.
+	t.Setenv(llmendpoint.AllowedHostsEnv, "127.0.0.1")
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/models" {
 			http.NotFound(w, r)

@@ -189,7 +189,7 @@ func anchorDocument(anchor store.Anchor, docs map[string]store.Interpreted) stor
 	return docs[anchor.DocumentID]
 }
 
-func workspaceJSON(st *store.Store, ws store.Workspace) map[string]any {
+func workspaceJSON(decisions map[string][]store.Decision, ws store.Workspace) map[string]any {
 	inSnapshot := map[string]bool{}
 	for _, id := range ws.Snapshot.DocumentIDs {
 		inSnapshot[id] = true
@@ -212,7 +212,7 @@ func workspaceJSON(st *store.Store, ws store.Workspace) map[string]any {
 	}
 	findings := make([]any, len(ws.Findings))
 	for i, finding := range ws.Findings {
-		findings[i] = findingJSON(st, finding, byID, markOf[finding.ID])
+		findings[i] = findingJSON(finding, decisions[finding.ID], byID, markOf[finding.ID])
 	}
 	state := ws.View.State
 	actualState := ws.View.Run.State
@@ -266,6 +266,9 @@ func workspaceJSON(st *store.Store, ws store.Workspace) map[string]any {
 		"revision_comparison_reason": nilString(ws.RevisionComparisonReason),
 		"revisions":                  revisionsJSON(ws.Revisions, byID),
 	}
+	if ws.Snapshot.ReviewScope != nil {
+		out["snapshot"].(map[string]any)["review_scope"] = ws.Snapshot.ReviewScope
+	}
 	if ws.LegalAuthorities != nil {
 		out["legal_authorities"] = ws.LegalAuthorities
 	}
@@ -285,12 +288,16 @@ func businessAttemptsJSON(execution *store.Execution) map[string]any {
 }
 
 func businessAttemptJSON(attempt store.Attempt) map[string]any {
-	return map[string]any{
+	out := map[string]any{
 		"id": attempt.ID, "run_id": attempt.RunID, "ordinal": attempt.Ordinal,
 		"retry_of_attempt_id": attempt.RetryOfAttemptID, "state": attempt.State,
 		"accepted_at": attempt.AcceptedAt, "started_at": attempt.StartedAt, "finished_at": attempt.FinishedAt,
 		"history_kind": attempt.HistoryKind, "parsed_document_ids": attempt.ParsedDocumentIDs,
 	}
+	if attempt.ReviewScope != nil {
+		out["review_scope"] = attempt.ReviewScope
+	}
+	return out
 }
 
 // Decode only the business fields. Unknown technical fields in a persisted
@@ -453,10 +460,14 @@ func snapshotJSON(snap store.RunSnapshot) map[string]any {
 	if ids == nil {
 		ids = []any{}
 	}
-	return map[string]any{
+	out := map[string]any{
 		"document_ids": ids, "rule_set_hash": snap.RuleSetHash, "playbook_hash": snap.PlaybookHash,
 		"model_ref": nilString(snap.ModelRef), "comparator_ref": nilString(snap.ComparatorRef),
 	}
+	if snap.ReviewScope != nil {
+		out["review_scope"] = snap.ReviewScope
+	}
+	return out
 }
 
 func auditJSON(events []store.AuditRecord) []any {
@@ -478,12 +489,11 @@ func auditJSON(events []store.AuditRecord) []any {
 	return out
 }
 
-func findingJSON(st *store.Store, finding store.Finding, docs map[string]store.Interpreted, mark string) map[string]any {
+func findingJSON(finding store.Finding, decisions []store.Decision, docs map[string]store.Interpreted, mark string) map[string]any {
 	evidence := make([]any, len(finding.Anchors))
 	for i, anchor := range finding.Anchors {
 		evidence[i] = anchorJSON(anchor, anchorDocument(anchor, docs))
 	}
-	decisions := st.DecisionsFor(finding.ID)
 	history := make([]any, len(decisions))
 	for i, decision := range decisions {
 		history[i] = map[string]any{

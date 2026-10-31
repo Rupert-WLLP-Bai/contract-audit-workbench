@@ -36,6 +36,24 @@ type Config struct {
 	Service     string
 	InstanceID  string
 	SampleRatio float64
+	// Environment labels the deployment environment, for example the APP_ENV
+	// value. An empty value omits the attribute instead of exporting an empty
+	// label.
+	Environment string
+}
+
+// resourceAttributes builds the OTLP resource identity shared by every payload:
+// the logical service, the replica instance, and the deployment environment
+// when one is configured.
+func (e *Exporter) resourceAttributes() []attribute {
+	attributes := []attribute{
+		stringAttribute("service.name", e.service),
+		stringAttribute("service.instance.id", e.instance),
+	}
+	if e.environment != "" {
+		attributes = append(attributes, stringAttribute("deployment.environment.name", e.environment))
+	}
+	return attributes
 }
 
 // Stats separates trace delivery from metric data-point delivery. MetricsExported
@@ -48,6 +66,9 @@ type Stats struct {
 	SampledOut      uint64
 	MetricsExported uint64
 	MetricsFailed   uint64
+	// HTTPDropped counts HTTP RED observations that exceeded the bounded
+	// metric series allocation. They never block or fail the exchange.
+	HTTPDropped uint64
 }
 
 type Exporter struct {
@@ -55,6 +76,7 @@ type Exporter struct {
 	metricsEndpoint string
 	service         string
 	instance        string
+	environment     string
 	ratio           float64
 	client          *http.Client
 	queue           chan span
@@ -71,6 +93,13 @@ type Exporter struct {
 	metricsExported atomic.Uint64
 	metricsFailed   atomic.Uint64
 	metricSeries    map[[3]string]*metricSeries
+
+	// httpMu guards the HTTP RED aggregates. Producers run on HTTP handler
+	// goroutines; the delivery goroutine drains the active series.
+	httpMu        sync.Mutex
+	httpRequests  map[[3]string]*metricSeries
+	httpDurations map[[2]string]*metricSeries
+	httpDropped   atomic.Uint64
 }
 
 // New is disabled when Endpoint is empty. No network request is made at startup.
@@ -90,6 +119,7 @@ func New(cfg Config) (*Exporter, error) {
 	if service == "" {
 		return nil, errors.New("OTLP service identity is required")
 	}
+	environment := strings.TrimSpace(cfg.Environment)
 	// service.instance.id separates replicas behind one logical service. An
 	// unset/invalid value falls back to the service identity so a misconfigured
 	// deployment stays exportable instead of silently dropping telemetry.
@@ -102,11 +132,14 @@ func New(cfg Config) (*Exporter, error) {
 	transport.Proxy = nil
 	ctx, cancel := context.WithCancel(context.Background())
 	e := &Exporter{
-		tracesEndpoint: traces, metricsEndpoint: metrics, service: service, instance: instance, ratio: cfg.SampleRatio,
+		tracesEndpoint: traces, metricsEndpoint: metrics, service: service, instance: instance,
+		environment: environment, ratio: cfg.SampleRatio,
 		client: &http.Client{Transport: transport, Timeout: 2 * time.Second,
 			CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }},
 		queue: make(chan span, queueCapacity), ctx: ctx, cancel: cancel, done: make(chan struct{}),
-		metricSeries: make(map[[3]string]*metricSeries),
+		metricSeries:  make(map[[3]string]*metricSeries),
+		httpRequests:  make(map[[3]string]*metricSeries),
+		httpDurations: make(map[[2]string]*metricSeries),
 	}
 	go e.run()
 	return e, nil
@@ -205,6 +238,7 @@ func (e *Exporter) Stats() Stats {
 	return Stats{
 		Exported: e.exported.Load(), Dropped: e.dropped.Load(), FailedRequests: e.failed.Load(), SampledOut: e.sampled.Load(),
 		MetricsExported: e.metricsExported.Load(), MetricsFailed: e.metricsFailed.Load(),
+		HTTPDropped: e.httpDropped.Load(),
 	}
 }
 
@@ -231,8 +265,22 @@ func (e *Exporter) Close() {
 
 func (e *Exporter) run() {
 	defer close(e.done)
-	for first := range e.queue {
-		e.deliver(e.collectBatch(first))
+	// A deployment that only serves HTTP (the edge gateway, the tool gateway)
+	// never enqueues an execution span, so RED aggregates flush on their own
+	// schedule instead of waiting for a span that may never arrive.
+	ticker := time.NewTicker(httpFlushInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case first, ok := <-e.queue:
+			if !ok {
+				e.flushHTTPMetrics()
+				return
+			}
+			e.deliver(e.collectBatch(first))
+		case <-ticker.C:
+			e.flushHTTPMetrics()
+		}
 	}
 }
 
@@ -281,8 +329,7 @@ func (e *Exporter) deliver(batch []span) {
 
 func (e *Exporter) send(batch []span) (int, error) {
 	var payload exportRequest
-	payload.ResourceSpans[0].Resource.Attributes[0] = stringAttribute("service.name", e.service)
-	payload.ResourceSpans[0].Resource.Attributes[1] = stringAttribute("service.instance.id", e.instance)
+	payload.ResourceSpans[0].Resource.Attributes = e.resourceAttributes()
 	payload.ResourceSpans[0].ScopeSpans[0].Scope.Name = "contractaudit.execution"
 	payload.ResourceSpans[0].ScopeSpans[0].Spans = batch
 	body, err := json.Marshal(payload)
@@ -340,17 +387,32 @@ func traceRejection(data []byte, count int) (int, error) {
 
 // Only the delivery goroutine accesses metricSeries. Record keeps its bounded,
 // nonblocking queue path and never waits for metric aggregation or the collector.
+// The HTTP RED series ride in the same metrics request under their own scope;
+// flushHTTPMetrics may call this with no span batch for a metrics-only send.
 func (e *Exporter) sendMetrics(batch []span) (int, int, error) {
 	active := e.aggregateMetrics(batch)
 	events, durations := metricPoints(active)
-	points := len(events) + len(durations)
+	httpEvents, httpDurations := e.drainHTTPMetrics()
+	points := len(events) + len(durations) + len(httpEvents) + len(httpDurations)
+	if points == 0 {
+		return 0, 0, nil
+	}
 	var payload metricsRequest
-	payload.ResourceMetrics[0].Resource.Attributes[0] = stringAttribute("service.name", e.service)
-	payload.ResourceMetrics[0].Resource.Attributes[1] = stringAttribute("service.instance.id", e.instance)
-	payload.ResourceMetrics[0].ScopeMetrics[0].Scope.Name = "contractaudit.execution"
-	payload.ResourceMetrics[0].ScopeMetrics[0].Metrics = []metric{
+	payload.ResourceMetrics[0].Resource.Attributes = e.resourceAttributes()
+	metrics := []metric{
 		{Name: "audit.execution.events", Sum: &sumMetric{AggregationTemporality: 2, IsMonotonic: true, DataPoints: events}},
 		{Name: "audit.execution.duration_ms", Gauge: &gaugeMetric{DataPoints: durations}},
+	}
+	payload.ResourceMetrics[0].ScopeMetrics = []scopeMetrics{
+		{Scope: scopeName("contractaudit.execution"), Metrics: metrics},
+	}
+	if len(httpEvents) > 0 || len(httpDurations) > 0 {
+		payload.ResourceMetrics[0].ScopeMetrics = append(payload.ResourceMetrics[0].ScopeMetrics, scopeMetrics{
+			Scope: scopeName("contractaudit.http"), Metrics: []metric{
+				{Name: "audit.http.requests", Sum: &sumMetric{AggregationTemporality: 2, IsMonotonic: true, DataPoints: httpEvents}},
+				{Name: "audit.http.duration_ms", Gauge: &gaugeMetric{DataPoints: httpDurations}},
+			},
+		})
 	}
 	body, err := json.Marshal(payload)
 	if err != nil {
@@ -556,7 +618,7 @@ type span struct {
 type exportRequest struct {
 	ResourceSpans [1]struct {
 		Resource struct {
-			Attributes [2]attribute `json:"attributes"`
+			Attributes []attribute `json:"attributes"`
 		} `json:"resource"`
 		ScopeSpans [1]struct {
 			Scope struct {
@@ -593,13 +655,22 @@ type metric struct {
 type metricsRequest struct {
 	ResourceMetrics [1]struct {
 		Resource struct {
-			Attributes [2]attribute `json:"attributes"`
+			Attributes []attribute `json:"attributes"`
 		} `json:"resource"`
-		ScopeMetrics [1]struct {
-			Scope struct {
-				Name string `json:"name"`
-			} `json:"scope"`
-			Metrics []metric `json:"metrics"`
-		} `json:"scopeMetrics"`
+		ScopeMetrics []scopeMetrics `json:"scopeMetrics"`
 	} `json:"resourceMetrics"`
+}
+
+type scopeMetrics struct {
+	Scope struct {
+		Name string `json:"name"`
+	} `json:"scope"`
+	Metrics []metric `json:"metrics"`
+}
+
+func scopeName(name string) (scope struct {
+	Name string `json:"name"`
+}) {
+	scope.Name = name
+	return scope
 }

@@ -210,7 +210,10 @@ func cloudPoliciesForAttempt(st state, caseItem Case, runID, attemptID string) (
 }
 
 func (s *Store) cloudPolicyForReview(ctx context.Context, caseItem Case, runID, attemptID string, wanted cloudPolicyRef) (model.CloudPolicy, error) {
-	st := s.snapshotForAttempt(attemptID)
+	st, err := s.snapshotForAttemptContext(ctx, attemptID)
+	if err != nil {
+		return model.CloudPolicy{}, err
+	}
 	currentCase, ok := st.caseByID(caseItem.ID)
 	if !ok || !isCloudServicesCase(currentCase) {
 		return model.CloudPolicy{}, errors.New("cloud review case scope changed")
@@ -304,8 +307,11 @@ func (s *Store) telecomAttempt(st state, runID string) bool {
 	return ok && isGovernedReviewCase(item)
 }
 
-func (s *Store) authorizeTelecomStage(runID, attemptID string) (Case, access.Principal, access.Resource, error) {
-	st := s.snapshotForAttempt(attemptID)
+func (s *Store) authorizeTelecomStage(ctx context.Context, runID, attemptID string) (Case, access.Principal, access.Resource, error) {
+	st, err := s.snapshotForAttemptContext(ctx, attemptID)
+	if err != nil {
+		return Case{}, access.Principal{}, access.Resource{}, err
+	}
 	run, ok := st.runByID(runID)
 	if !ok {
 		return Case{}, access.Principal{}, access.Resource{}, errors.New("governed review run is unavailable")
@@ -319,14 +325,18 @@ func (s *Store) authorizeTelecomStage(runID, attemptID string) (Case, access.Pri
 }
 
 func (s *Store) executeTelecomAttempt(parent, ctx context.Context, runID, attemptID string, models Models, recorder attemptRecorder) {
-	initial := s.snapshotForAttempt(attemptID)
+	initial, err := s.snapshotForAttemptContext(ctx, attemptID)
+	if err != nil {
+		_ = s.finishAttemptAfterExecution(parent, ctx, runID, attemptID, "failed", "", "execution_persistence_failed")
+		return
+	}
 	if attempt, ok := initial.attemptByID(attemptID); !ok || attempt.RunID != runID || !attemptActive(attempt.State) {
 		return
 	}
 	priorResults, resultErr := telecomEvaluationsPresent(initial, attemptID)
 	if resultErr != nil {
 		if parent.Err() == nil {
-			_ = s.finishAttempt(runID, attemptID, "failed", "", "execution_failed")
+			_ = s.finishAttemptAfterExecution(parent, ctx, runID, attemptID, "failed", "", "execution_failed")
 		}
 		return
 	}
@@ -343,25 +353,28 @@ func (s *Store) executeTelecomAttempt(parent, ctx context.Context, runID, attemp
 	var toolEvidenceNote string
 	var agentReviewIncomplete bool
 	var agentReviewFailed bool
-	if _, _, _, err := s.authorizeTelecomStage(runID, attemptID); err != nil {
+	if _, _, _, err := s.authorizeTelecomStage(ctx, runID, attemptID); err != nil {
 		if parent.Err() == nil {
 			code := "execution_failed"
 			if errors.Is(err, errAttemptAuthorizationRevoked) {
 				code = "authorization_revoked"
 			}
-			_ = s.finishAttempt(runID, attemptID, "failed", "", code)
+			_ = s.finishAttemptAfterExecution(parent, ctx, runID, attemptID, "failed", "", code)
 		}
 		return
 	}
 
 	authorizeAndPrepare := execution.Stage{Name: "authorized_input", Run: func(stageCtx context.Context) error {
-		authorizedCase, principal, resource, err := s.authorizeTelecomStage(runID, attemptID)
+		authorizedCase, principal, resource, err := s.authorizeTelecomStage(stageCtx, runID, attemptID)
 		if err != nil {
 			return err
 		}
 		caseItem = authorizedCase
 		if isGovernedReviewCase(caseItem) {
-			stored := s.snapshotForAttempt(attemptID)
+			stored, err := s.snapshotForAttemptContext(stageCtx, attemptID)
+			if err != nil {
+				return err
+			}
 			attempt, ok := stored.attemptByID(attemptID)
 			if !ok || attempt.RunID != runID {
 				return errors.New("frozen governed attempt identity is unavailable")
@@ -404,7 +417,7 @@ func (s *Store) executeTelecomAttempt(parent, ctx context.Context, runID, attemp
 	if priorResults == 0 {
 		stages = append(stages,
 			execution.Stage{Name: "fact_extraction", Run: func(stageCtx context.Context) error {
-				_, principal, resource, authErr := s.authorizeTelecomStage(runID, attemptID)
+				_, principal, resource, authErr := s.authorizeTelecomStage(stageCtx, runID, attemptID)
 				if authErr != nil {
 					return authErr
 				}
@@ -421,6 +434,9 @@ func (s *Store) executeTelecomAttempt(parent, ctx context.Context, runID, attemp
 				// tool: the legacy in-process pipeline keeps its established
 				// behaviour, and a missing reader is never treated as success.
 				claim, ok := s.claimForAttempt(attemptID)
+				if executionScopeRequiresClaim(stageCtx) && (!ok || !claimMatchesExecutionScope(stageCtx, claim)) {
+					return errLeaseLost
+				}
 				if !ok || claim.JobID == "" || s.toolEvidenceReader() == nil {
 					return nil
 				}
@@ -445,17 +461,19 @@ func (s *Store) executeTelecomAttempt(parent, ctx context.Context, runID, attemp
 				return nil
 			}},
 			execution.Stage{Name: "rulepack", Run: func(stageCtx context.Context) error {
-				_, principal, resource, authErr := s.authorizeTelecomStage(runID, attemptID)
+				_, principal, resource, authErr := s.authorizeTelecomStage(stageCtx, runID, attemptID)
 				if authErr != nil {
 					return authErr
 				}
 				request.Principal, request.Resource = principal, resource
-				stored := s.snapshotForAttempt(attemptID)
+				stored, err := s.snapshotForAttemptContext(stageCtx, attemptID)
+				if err != nil {
+					return err
+				}
 				attempt, ok := stored.attemptByID(attemptID)
 				if !ok || attempt.RunID != runID || !attemptActive(attempt.State) {
 					return errAttemptTerminal
 				}
-				var err error
 				var frozenGovernedPack *rulepack.Pack
 				hasGovernedIdentity := attempt.RulePackID != "" || attempt.RulePackVersion != "" || attempt.RulePackPointerRevision != 0
 				if attempt.RulePackCompilerRef == governedCompilerMarker || hasGovernedIdentity {
@@ -520,7 +538,7 @@ func (s *Store) executeTelecomAttempt(parent, ctx context.Context, runID, attemp
 						return errors.New("telecom compiler did not produce a published RulePack")
 					}
 				}
-				_, principal, resource, authErr = s.authorizeTelecomStage(runID, attemptID)
+				_, principal, resource, authErr = s.authorizeTelecomStage(stageCtx, runID, attemptID)
 				if authErr != nil {
 					return authErr
 				}
@@ -543,7 +561,7 @@ func (s *Store) executeTelecomAttempt(parent, ctx context.Context, runID, attemp
 				return nil
 			}},
 			execution.Stage{Name: "evidence_guard", Run: func(stageCtx context.Context) error {
-				_, principal, resource, err := s.authorizeTelecomStage(runID, attemptID)
+				_, principal, resource, err := s.authorizeTelecomStage(stageCtx, runID, attemptID)
 				if err != nil {
 					return err
 				}
@@ -566,7 +584,10 @@ func (s *Store) executeTelecomAttempt(parent, ctx context.Context, runID, attemp
 			if err := s.persistTelecomOutput(stageCtx, runID, attemptID, caseItem, telecomReviewOutput{}, docs, true); err != nil {
 				return err
 			}
-			st := s.snapshotForAttempt(attemptID)
+			st, err := s.snapshotForAttemptContext(stageCtx, attemptID)
+			if err != nil {
+				return err
+			}
 			findings := st.findingsForAttempt(runID, attemptID)
 			if isCloudServicesCase(caseItem) {
 				for _, finding := range findings {
@@ -589,18 +610,22 @@ func (s *Store) executeTelecomAttempt(parent, ctx context.Context, runID, attemp
 		if recorder.err() != nil {
 			code = "execution_persistence_failed"
 		}
-		_ = s.finishAttempt(runID, attemptID, "failed", "", code)
+		_ = s.finishAttemptAfterExecution(parent, ctx, runID, attemptID, "failed", "", code)
 		return
 	}
 	if parent.Err() != nil {
 		return
 	}
 	if recorder.err() != nil {
-		_ = s.finishAttempt(runID, attemptID, "failed", "", "execution_persistence_failed")
+		_ = s.finishAttemptAfterExecution(parent, ctx, runID, attemptID, "failed", "", "execution_persistence_failed")
 		return
 	}
 
-	latest := s.snapshotForAttempt(attemptID)
+	latest, err := s.snapshotForAttemptContext(ctx, attemptID)
+	if err != nil {
+		_ = s.finishAttemptAfterExecution(parent, ctx, runID, attemptID, "failed", "", "execution_persistence_failed")
+		return
+	}
 	if modelStage, done := telecomStageTerminal(latest.executionEvents(attemptID), "model_review"); done {
 		if modelStage == "failed" {
 			modelErr = errors.New("model_review_incomplete")
@@ -616,18 +641,25 @@ func (s *Store) executeTelecomAttempt(parent, ctx context.Context, runID, attemp
 		return
 	}
 	if recorder.err() != nil {
-		_ = s.finishAttempt(runID, attemptID, "failed", "", "execution_persistence_failed")
+		_ = s.finishAttemptAfterExecution(parent, ctx, runID, attemptID, "failed", "", "execution_persistence_failed")
 		return
 	}
-	latest = s.snapshotForAttempt(attemptID)
+	latest, err = s.snapshotForAttemptContext(ctx, attemptID)
+	if err != nil {
+		_ = s.finishAttemptAfterExecution(parent, ctx, runID, attemptID, "failed", "", "execution_persistence_failed")
+		return
+	}
 	if attempt, ok := latest.attemptByID(attemptID); ok {
 		_, stageRequired, configErr := frozenTelecomPlannerConfiguration(attempt)
 		if configErr != nil {
-			_ = s.finishAttempt(runID, attemptID, "failed", "", "planner_configuration_integrity_failed")
+			_ = s.finishAttemptAfterExecution(parent, ctx, runID, attemptID, "failed", "", "planner_configuration_integrity_failed")
 			return
 		}
 		if stageRequired {
 			claim, durable := s.claimForAttempt(attemptID)
+			if executionScopeRequiresClaim(ctx) && (!durable || !claimMatchesExecutionScope(ctx, claim)) {
+				return
+			}
 			if durable && claim.JobID != "" && claim.RunID == runID {
 				agentEvents := latest.executionEvents(attemptID)
 				if stageStatus, done := telecomStageTerminal(agentEvents, "agent_review"); done {
@@ -636,7 +668,7 @@ func (s *Store) executeTelecomAttempt(parent, ctx context.Context, runID, attemp
 						if resultCode == "" {
 							resultCode = "agent_review_failed"
 						}
-						_ = s.finishAttempt(runID, attemptID, "failed", "", resultCode)
+						_ = s.finishAttemptAfterExecution(parent, ctx, runID, attemptID, "failed", "", resultCode)
 						return
 					}
 					agentReviewFailed = resultStatus == "partial" && resultCode == "agent_review_failed"
@@ -658,7 +690,7 @@ func (s *Store) executeTelecomAttempt(parent, ctx context.Context, runID, attemp
 						return
 					}
 					if recorder.err() != nil {
-						_ = s.finishAttempt(runID, attemptID, "failed", "", "execution_persistence_failed")
+						_ = s.finishAttemptAfterExecution(parent, ctx, runID, attemptID, "failed", "", "execution_persistence_failed")
 						return
 					}
 					if reviewRunErr != nil {
@@ -676,18 +708,18 @@ func (s *Store) executeTelecomAttempt(parent, ctx context.Context, runID, attemp
 						case errors.Is(reviewRunErr, errAgentReviewPersistence):
 							status, errorCode = "failed", "agent_review_persistence_failed"
 						}
-						if eventErr := recordTelecomAgentReviewResult(parent, recorder, status, errorCode); eventErr != nil {
+						if eventErr := recordTelecomAgentReviewResult(ctx, recorder, status, errorCode); eventErr != nil {
 							failureCode := "execution_persistence_failed"
 							if errors.Is(eventErr, errAttemptAuthorizationRevoked) {
 								failureCode = "authorization_revoked"
 							}
 							if !errors.Is(eventErr, errAttemptTerminal) {
-								_ = s.finishAttempt(runID, attemptID, "failed", "", failureCode)
+								_ = s.finishAttemptAfterExecution(parent, ctx, runID, attemptID, "failed", "", failureCode)
 							}
 							return
 						}
 						if status == "failed" {
-							_ = s.finishAttempt(runID, attemptID, "failed", "", errorCode)
+							_ = s.finishAttemptAfterExecution(parent, ctx, runID, attemptID, "failed", "", errorCode)
 							return
 						}
 						agentReviewIncomplete = true
@@ -701,7 +733,7 @@ func (s *Store) executeTelecomAttempt(parent, ctx context.Context, runID, attemp
 		return
 	}
 	if recorder.err() != nil {
-		_ = s.finishAttempt(runID, attemptID, "failed", "", "execution_persistence_failed")
+		_ = s.finishAttemptAfterExecution(parent, ctx, runID, attemptID, "failed", "", "execution_persistence_failed")
 		return
 	}
 
@@ -742,7 +774,7 @@ func (s *Store) executeTelecomAttempt(parent, ctx context.Context, runID, attemp
 		partialReason = "有材料解析失败，结果不能当成完整审查。"
 		errorCode = "document_parse_incomplete"
 	}
-	_ = s.finishAttempt(runID, attemptID, terminalState, partialReason, errorCode)
+	_ = s.finishAttemptAfterExecution(parent, ctx, runID, attemptID, terminalState, partialReason, errorCode)
 }
 
 func trustedTelecomReviewIdentity(st state, runID, attemptID string, caseItem Case) (access.Principal, access.Resource, error) {
@@ -1294,7 +1326,7 @@ func (s *Store) runTelecomModelReview(ctx context.Context, runID, attemptID stri
 	var modelErr error
 	stages := []execution.Stage{
 		{Name: "model_review", Run: func(stageCtx context.Context) error {
-			if _, _, _, err := s.authorizeTelecomStage(runID, attemptID); err != nil {
+			if _, _, _, err := s.authorizeTelecomStage(stageCtx, runID, attemptID); err != nil {
 				modelErr = err
 				return err
 			}
@@ -1320,7 +1352,11 @@ func (s *Store) runTelecomModelReview(ctx context.Context, runID, attemptID stri
 					modelErr = errModelNotConfigured
 					return modelErr
 				}
-				stored := s.snapshotForAttempt(attemptID)
+				stored, err := s.snapshotForAttemptContext(stageCtx, attemptID)
+				if err != nil {
+					modelErr = err
+					return err
+				}
 				policies, err := cloudPoliciesForAttempt(stored, caseItem, runID, attemptID)
 				if err != nil {
 					modelErr = err
@@ -1359,7 +1395,7 @@ func (s *Store) runTelecomModelReview(ctx context.Context, runID, attemptID stri
 			return modelErr
 		}},
 		{Name: "citation_verification", Run: func(stageCtx context.Context) error {
-			if _, _, _, err := s.authorizeTelecomStage(runID, attemptID); err != nil {
+			if _, _, _, err := s.authorizeTelecomStage(stageCtx, runID, attemptID); err != nil {
 				modelErr = err
 				return err
 			}

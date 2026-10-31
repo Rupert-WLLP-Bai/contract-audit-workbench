@@ -1,6 +1,8 @@
 package accounts
 
 import (
+	"os"
+	"path/filepath"
 	"reflect"
 	"testing"
 	"time"
@@ -101,7 +103,7 @@ func TestDemoIdentityAndCapabilities(t *testing.T) {
 	}
 }
 
-func TestDemoIdentityCannotRunInProduction(t *testing.T) {
+func TestValidateEnvironmentGatesProductionOnTheEnterpriseDirectory(t *testing.T) {
 	for _, mode := range []string{"", "dev", "development", "test"} {
 		if err := ValidateEnvironment(mode); err != nil {
 			t.Fatalf("%q: %v", mode, err)
@@ -109,7 +111,28 @@ func TestDemoIdentityCannotRunInProduction(t *testing.T) {
 	}
 	for _, mode := range []string{"production", "prod", "PRODUCTION", "unknown"} {
 		if err := ValidateEnvironment(mode); err == nil {
-			t.Fatalf("%q accepted fixed demo passwords", mode)
+			t.Fatalf("%q accepted without an enterprise identity directory", mode)
 		}
+	}
+
+	valid := `{"users":[{"id":"alice","display_name":"经办人","role":"reviewer","tenant_id":"TA","org_id":"sales","enabled":true,"issuer":"https://identity.example/realms/a","subject":"subject-a","grants":[{"role":"reviewer","scope":"org","org_id":"sales"}]}]}`
+	path := filepath.Join(t.TempDir(), "directory.json")
+	if err := os.WriteFile(path, []byte(valid), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := ConfigureDirectory(path); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = ConfigureDirectory("") })
+	if err := ValidateEnvironment("production"); err != nil {
+		t.Fatalf("loaded enterprise directory rejected: %v", err)
+	}
+	for _, mode := range []string{"", "dev", "development", "test"} {
+		if err := ValidateEnvironment(mode); err != nil {
+			t.Fatalf("%q with a loaded enterprise directory: %v", mode, err)
+		}
+	}
+	if _, ok := Authenticate("demo-admin", "admin-demo"); ok {
+		t.Fatal("enterprise directory still serves demonstration passwords")
 	}
 }

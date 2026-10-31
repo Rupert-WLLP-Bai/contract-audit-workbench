@@ -1,6 +1,7 @@
 package modelgateway
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"crypto/subtle"
@@ -18,6 +19,7 @@ import (
 	"time"
 
 	"contractaudit/internal/jev"
+	"contractaudit/internal/llmendpoint"
 	"contractaudit/internal/model"
 	"contractaudit/internal/store"
 )
@@ -177,20 +179,21 @@ func applyEnvDurationOverrides(config *Config) error {
 }
 
 type Service struct {
-	store       *store.Store
-	config      Config
-	client      *http.Client
-	queue       chan struct{}
-	concurrency chan struct{}
-	circuit     circuitBreaker
-	catalogMu   sync.Mutex
-	catalogAt   time.Time
-	catalogKey  string
-	catalogIDs  []string
-	upstreamMu  sync.Mutex
-	upstreamAt  time.Time
-	upstreamCfg upstreamConfig
-	upstreamErr error
+	store         *store.Store
+	config        Config
+	client        *http.Client
+	guardedClient *http.Client
+	queue         chan struct{}
+	concurrency   chan struct{}
+	circuit       circuitBreaker
+	catalogMu     sync.Mutex
+	catalogAt     time.Time
+	catalogKey    string
+	catalogIDs    []string
+	upstreamMu    sync.Mutex
+	upstreamAt    time.Time
+	upstreamCfg   upstreamConfig
+	upstreamErr   error
 
 	jev        JevConfig
 	jevClient  *jev.Client
@@ -265,7 +268,8 @@ func validateFixtureConfig(config Config) error {
 func newService(st *store.Store, config Config) *Service {
 	return &Service{
 		store: st, config: config, client: &http.Client{Timeout: config.RequestTimeout},
-		queue: make(chan struct{}, config.QueueCapacity), concurrency: make(chan struct{}, config.MaxConcurrency),
+		guardedClient: llmendpoint.GuardedClient(config.RequestTimeout),
+		queue:         make(chan struct{}, config.QueueCapacity), concurrency: make(chan struct{}, config.MaxConcurrency),
 		circuit: circuitBreaker{threshold: config.CircuitFailureThreshold, cooldown: config.CircuitCooldown},
 		jev:     config.Jev, jevQueue: make(chan struct{}, jevQueueCapacity), jevSlots: make(chan struct{}, jevMaxConcurrency),
 		jevCircuit: circuitBreaker{threshold: config.CircuitFailureThreshold, cooldown: config.CircuitCooldown},
@@ -620,7 +624,7 @@ func decodeRequest(w http.ResponseWriter, r *http.Request) ([]byte, string, int,
 	if r.ContentLength > maxRequestBytes {
 		return nil, "", 0, model.DelegatedScope{}, errors.New("request body is invalid")
 	}
-	payload, err := io.ReadAll(body)
+	payload, err := readChatPayload(body, r.ContentLength)
 	if err != nil || len(payload) == 0 {
 		return nil, "", 0, model.DelegatedScope{}, errors.New("request body is invalid")
 	}
@@ -637,6 +641,38 @@ func decodeRequest(w http.ResponseWriter, r *http.Request) ([]byte, string, int,
 		return nil, "", 0, model.DelegatedScope{}, err
 	}
 	return payload, strings.TrimSpace(request.Model), request.MaxTokens, scope, nil
+}
+
+// readChatPayload keeps large known-length requests to one final buffer after
+// at least half the advertised body has actually arrived. Content-Length is
+// only an allocation hint: the caller validates and reserves the bytes read.
+func readChatPayload(body io.Reader, declared int64) ([]byte, error) {
+	if declared < 128<<10 {
+		return io.ReadAll(body)
+	}
+	half := declared / 2
+	first, err := io.ReadAll(io.LimitReader(body, half))
+	if err != nil || int64(len(first)) < half {
+		return first, err
+	}
+	payload := make([]byte, int(declared)+1)
+	length := copy(payload, first)
+	for length < len(payload) {
+		n, readErr := body.Read(payload[length:])
+		length += n
+		if readErr != nil {
+			if readErr == io.EOF {
+				return payload[:length], nil
+			}
+			return nil, readErr
+		}
+	}
+	// A mismatched declaration is never used as the reservation length.
+	rest, err := io.ReadAll(body)
+	if err != nil {
+		return nil, err
+	}
+	return append(payload, rest...), nil
 }
 
 func decodeDelegatedScope(r *http.Request) (model.DelegatedScope, error) {
@@ -668,7 +704,7 @@ func (s *Service) dispatchUpstream(ctx context.Context, upstream upstreamConfig,
 	if upstream.BaseURL == "" {
 		return nil, http.StatusServiceUnavailable, nil, errors.New("model upstream is not configured"), false, true
 	}
-	request, err := http.NewRequestWithContext(ctx, http.MethodPost, upstream.BaseURL+"/chat/completions", strings.NewReader(string(body)))
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, upstream.BaseURL+"/chat/completions", bytes.NewReader(body))
 	if err != nil {
 		return nil, http.StatusBadGateway, nil, err, false, true
 	}
@@ -677,7 +713,7 @@ func (s *Service) dispatchUpstream(ctx context.Context, upstream upstreamConfig,
 	if upstream.APIKey != "" {
 		request.Header.Set("Authorization", "Bearer "+upstream.APIKey)
 	}
-	response, err := s.client.Do(request)
+	response, err := s.clientFor(upstream).Do(request)
 	if err != nil {
 		return nil, http.StatusBadGateway, nil, err, retryableTransport(err, ctx), false
 	}
@@ -944,7 +980,7 @@ func (s *Service) catalogResponse(ctx context.Context, upstream upstreamConfig) 
 	if upstream.APIKey != "" {
 		request.Header.Set("Authorization", "Bearer "+upstream.APIKey)
 	}
-	response, err := s.client.Do(request)
+	response, err := s.clientFor(upstream).Do(request)
 	if err != nil {
 		return nil, err
 	}
@@ -1011,8 +1047,21 @@ func requestErrCode(err error, status int) string {
 	return fmt.Sprintf("provider_http_%d", status)
 }
 
+// clientFor pins provider calls to the right outbound client. A stored,
+// operator-configured upstream (revision >= 1) is guarded: its connections
+// land only on policy-verified addresses and never follow redirects. The
+// deployment-configured upstream keeps the default client, because
+// process-to-process environment URLs are not operator-supplied endpoints.
+func (s *Service) clientFor(upstream upstreamConfig) *http.Client {
+	if upstream.Revision > 0 && s.guardedClient != nil {
+		return s.guardedClient
+	}
+	return s.client
+}
+
 func retryableTransport(err error, ctx context.Context) bool {
-	if ctx.Err() != nil || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+	if ctx.Err() != nil || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) ||
+		errors.Is(err, llmendpoint.ErrEndpointForbidden) {
 		return false
 	}
 	return true

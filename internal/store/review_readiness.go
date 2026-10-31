@@ -49,6 +49,7 @@ type ReviewReadinessScope struct {
 	CanStart bool                     `json:"can_start"`
 	RulePack *ReviewReadinessRulePack `json:"rule_pack,omitempty"`
 	Checks   []ReviewReadinessCheck   `json:"checks"`
+	RuleSet  *ReviewScopeIdentity     `json:"rule_set,omitempty"`
 	Blockers []ReviewReadinessBlocker `json:"blockers"`
 }
 
@@ -74,6 +75,8 @@ type ReviewReadinessBlocker struct {
 }
 
 type reviewReadinessInputs struct {
+	Scope                    string
+	PrimaryDocumentID        string
 	CaseID                   string
 	BusinessAt               time.Time
 	MaterialSelectionVersion int64
@@ -115,7 +118,28 @@ func evaluateReviewReadiness(input reviewReadinessInputs) ReviewReadinessScope {
 		input.MinimumMaterials = 2
 	}
 	if len(input.Materials) < input.MinimumMaterials {
-		blockers = append(blockers, readinessBlocker("required_materials_missing", "missing", "当前完整审查需要更多材料", []string{"review_materials"}, "补充所需材料后重新检查准备状态"))
+		message := "当前完整审查需要更多材料"
+		if input.Scope == ReviewScopeSingleContract {
+			message = "单合同预审需要选择主合同"
+		}
+		blockers = append(blockers, readinessBlocker("required_materials_missing", "missing", message, []string{"review_materials"}, "补充所需材料后重新检查准备状态"))
+	}
+	if input.Scope == ReviewScopeSingleContract {
+		found, draftCount := false, 0
+		for _, material := range input.Materials {
+			if material.Selected && material.Role == "draft_contract" {
+				draftCount++
+				if material.DocumentID == input.PrimaryDocumentID {
+					found = true
+				}
+			}
+		}
+		if !found {
+			blockers = append(blockers, readinessBlocker("primary_contract_required", "missing", "请先选择案件主合同", []string{"material_role:draft_contract"}, "上传或选择案件主合同后重新检查"))
+		}
+		if draftCount > 1 {
+			blockers = append(blockers, readinessBlocker("primary_contract_ambiguous", "blocked", "本次材料集合包含多个主合同，请先确认唯一主合同", []string{"material_role:draft_contract"}, "确认材料集合并仅选择当前主合同"))
+		}
 	}
 
 	checks := append([]ReviewReadinessCheck(nil), input.Checks...)
@@ -143,7 +167,11 @@ func evaluateReviewReadiness(input reviewReadinessInputs) ReviewReadinessScope {
 	if blockers == nil {
 		blockers = []ReviewReadinessBlocker{}
 	}
-	return ReviewReadinessScope{ID: ReviewScopeFull, Status: status, CanStart: canStart,
+	scope := input.Scope
+	if scope == "" {
+		scope = ReviewScopeFull
+	}
+	return ReviewReadinessScope{ID: scope, Status: status, CanStart: canStart,
 		RulePack: input.RulePack, Checks: checks, Blockers: blockers}
 }
 
@@ -161,6 +189,7 @@ type reviewReadinessRevisionInput struct {
 	MaterialSelectionVersion int64                     `json:"material_selection_version"`
 	Materials                []ReviewReadinessMaterial `json:"materials"`
 	Scope                    ReviewReadinessScope      `json:"scope"`
+	Scopes                   []ReviewReadinessScope    `json:"scopes,omitempty"`
 	Additional               any                       `json:"additional,omitempty"`
 }
 

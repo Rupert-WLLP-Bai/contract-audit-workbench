@@ -99,11 +99,12 @@ class API:
         if parsed.scheme not in ("http", "https") or not parsed.hostname or parsed.username or getattr(parsed, "pass" + "word") or parsed.query or parsed.fragment:
             raise RunnerError("invalid API base URL")
         self.base = base.rstrip("/")
+        self.origin = f"{parsed.scheme}://{parsed.netloc}"
         self.timeout = timeout
         self.client = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
 
     def request(self, method, path, payload=None, content_type=None, timeout=None):
-        headers = {"Accept": "application/json"}
+        headers = {"Accept": "application/json", "Origin": self.origin}
         if payload is not None and not isinstance(payload, bytes):
             payload = json.dumps(payload, ensure_ascii=False).encode("utf-8")
             headers["Content-Type"] = "application/json"

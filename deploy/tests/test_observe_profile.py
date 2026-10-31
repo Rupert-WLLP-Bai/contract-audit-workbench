@@ -30,7 +30,9 @@ class ObserveProfileTest(unittest.TestCase):
         pipelines = collector["service"]["pipelines"]
         self.assertEqual(pipelines["traces"]["exporters"], ["debug", "otlp/tempo"])
         self.assertEqual(pipelines["metrics"]["exporters"], ["debug", "prometheus"])
-        self.assertEqual(pipelines["logs"]["exporters"], ["debug"])
+        # No log backend ships, so the collector declares no logs pipeline;
+        # container stdout read via docker/kubectl logs is the log capability.
+        self.assertNotIn("logs", pipelines)
         self.assertEqual(collector["exporters"]["otlp/tempo"]["endpoint"], "tempo:4317")
         self.assertEqual(collector["exporters"]["prometheus"]["endpoint"], "0.0.0.0:8889")
 

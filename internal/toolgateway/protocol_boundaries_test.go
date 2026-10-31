@@ -32,19 +32,16 @@ type protocolBoundaryBackend struct {
 	onReserve     func(context.Context)
 }
 
-func (b *protocolBoundaryBackend) User(token string) (accounts.User, error) {
+func (b *protocolBoundaryBackend) AuthenticateSession(ctx context.Context, token string) (accounts.User, string, error) {
 	if b.userErr != nil {
 		b.userCalls++
-		return accounts.User{}, b.userErr
+		return accounts.User{}, "", b.userErr
 	}
-	return b.gatewayFakeStore.User(token)
-}
-
-func (b *protocolBoundaryBackend) SessionAudience(token string) (string, error) {
-	if b.audienceErr != nil {
-		return "", b.audienceErr
+	user, audience, err := b.gatewayFakeStore.AuthenticateSession(ctx, token)
+	if err == nil && b.audienceErr != nil {
+		return accounts.User{}, "", b.audienceErr
 	}
-	return b.gatewayFakeStore.SessionAudience(token)
+	return user, audience, err
 }
 
 func (b *protocolBoundaryBackend) WorkspaceAttempt(user accounts.User, caseID, runID, attemptID string) (store.Workspace, error) {

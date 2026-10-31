@@ -1,6 +1,6 @@
 import { act, render, screen } from "@testing-library/react";
-import { useReviewEvents } from "./use-review-events";
-import type { RunEvent } from "../domain/review";
+import { describe, expect, it, vi } from "vitest";
+import { useReviewEvents, type ReviewEventBatch } from "./use-review-events";
 
 class FakeEventSource {
   static latest: FakeEventSource | null = null;
@@ -32,7 +32,7 @@ function Probe({
 }: {
   scope?: string;
   enabled?: boolean;
-  onEvent: (event: RunEvent) => void;
+  onEvent: (batch: ReviewEventBatch) => void | Promise<void>;
 }) {
   const status = useReviewEvents(
     "/api/cases/c1/reviews/r1/events",
@@ -72,9 +72,12 @@ describe("review event stream", () => {
       source?.onmessage?.({ data: "{" });
     });
     expect(onEvent).toHaveBeenCalledWith({
-      seq: 7,
-      type: "run_state",
-      state: "awaiting_human",
+      latest: {
+        seq: 7,
+        type: "run_state",
+        state: "awaiting_human",
+      },
+      terminalState: "awaiting_human",
     });
     expect(onEvent).toHaveBeenCalledTimes(1);
     act(() => source?.onerror?.());
@@ -120,9 +123,12 @@ describe("review event stream", () => {
     });
     expect(onEvent).toHaveBeenCalledTimes(1);
     expect(onEvent).toHaveBeenCalledWith({
-      seq: 10,
-      type: "run_state",
-      state: "awaiting_human",
+      latest: {
+        seq: 10,
+        type: "run_state",
+        state: "awaiting_human",
+      },
+      terminalState: "awaiting_human",
     });
   });
 
@@ -144,5 +150,92 @@ describe("review event stream", () => {
     render(<Probe enabled={false} onEvent={vi.fn()} />);
     expect(screen.getByText("inactive")).toBeInTheDocument();
     expect(FakeEventSource.instances).toHaveLength(0);
+  });
+
+  it("coalesces progress while preserving terminal and latest events across scopes", async () => {
+    globalThis.EventSource = FakeEventSource as unknown as typeof EventSource;
+    vi.useFakeTimers();
+    try {
+      const completion = Promise.withResolvers<void>();
+      const onEvent = vi.fn((batch: ReviewEventBatch) =>
+        batch.latest.seq === 2 ? completion.promise : undefined,
+      );
+      const { rerender, unmount } = render(
+        <Probe scope="identity-a" onEvent={onEvent} />,
+      );
+      const first = FakeEventSource.latest!;
+      act(() => {
+        first.onmessage?.({
+          data: JSON.stringify({ seq: 1, type: "state", state: "running" }),
+        });
+        first.onmessage?.({
+          data: JSON.stringify({ seq: 2, type: "state", state: "running" }),
+        });
+      });
+      expect(onEvent).not.toHaveBeenCalled();
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(100);
+      });
+      expect(onEvent).toHaveBeenCalledTimes(1);
+      expect(onEvent.mock.calls[0]?.[0]).toEqual({
+        latest: { seq: 2, type: "state", state: "running" },
+        terminalState: null,
+      });
+
+      act(() => {
+        first.onmessage?.({
+          data: JSON.stringify({ seq: 3, type: "state", state: "running" }),
+        });
+        first.onmessage?.({
+          data: JSON.stringify({
+            seq: 4,
+            type: "state",
+            state: "awaiting_human",
+          }),
+        });
+        first.onmessage?.({
+          data: JSON.stringify({
+            seq: 5,
+            type: "decision",
+            state: "awaiting_human",
+          }),
+        });
+      });
+      expect(onEvent).toHaveBeenCalledTimes(1);
+      await act(async () => {
+        completion.resolve();
+        await completion.promise;
+      });
+      expect(onEvent).toHaveBeenCalledTimes(2);
+      expect(onEvent.mock.calls[1]?.[0]).toEqual({
+        latest: { seq: 5, type: "decision", state: "awaiting_human" },
+        terminalState: "awaiting_human",
+      });
+
+      act(() => {
+        first.onmessage?.({
+          data: JSON.stringify({ seq: 6, type: "state", state: "running" }),
+        });
+      });
+      rerender(<Probe scope="identity-b" onEvent={onEvent} />);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(100);
+      });
+      expect(onEvent).toHaveBeenCalledTimes(2);
+
+      const second = FakeEventSource.latest!;
+      act(() => {
+        second.onmessage?.({
+          data: JSON.stringify({ seq: 7, type: "state", state: "running" }),
+        });
+      });
+      unmount();
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(100);
+      });
+      expect(onEvent).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

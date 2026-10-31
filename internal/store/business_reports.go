@@ -14,6 +14,7 @@ import (
 
 	"contractaudit/internal/access"
 	"contractaudit/internal/accounts"
+	"contractaudit/internal/engine"
 	"contractaudit/internal/fault"
 	"contractaudit/internal/rulepack"
 )
@@ -62,7 +63,16 @@ func (s *Store) CreateReportContext(ctx context.Context, user accounts.User, cas
 	if err := requireCaseAction(caseItem, currentUser, access.Export); err != nil {
 		return ReportRecord{}, err
 	}
-	run, attempt, input, _, err := s.validateFrozenTerminalAttempt(st, caseItem, runID, attemptID)
+	runSnapshot := st.snapshotOf(runID)
+	precheck := isSingleContractSnapshot(runSnapshot)
+	var run Run
+	var attempt Attempt
+	var input AttemptInput
+	if precheck && !isGovernedReviewCase(caseItem) {
+		run, attempt, input, err = s.validateSingleContractReport(st, caseItem, runID, attemptID)
+	} else {
+		run, attempt, input, _, err = s.validateFrozenTerminalAttempt(st, caseItem, runID, attemptID)
+	}
 	if err != nil {
 		return ReportRecord{}, err
 	}
@@ -110,13 +120,19 @@ func (s *Store) CreateReportContext(ctx context.Context, user accounts.User, cas
 	availability := "frozen"
 	unavailableReason := ""
 	if len(attempt.RulePackSnapshot) == 0 {
-		if attempt.RulePackHash != "" || attempt.RulePackSnapshotDigest != "" || attempt.RulePackCompilerRef == "" ||
-			!completeNoAuthorityRuleEvidence(caseItem, runID, attemptID, evaluations, findings) {
-			return ReportRecord{}, fault.Conflict("缺少已授权 RulePack，且三项强制能力没有完整的授权不足证据")
+		if precheck && !isGovernedReviewCase(caseItem) {
+			availability = "not_applicable"
+			unavailableReason = "本次仅执行单合同预审映射，未执行正式治理规则包。"
+			manifestBytes = json.RawMessage("null")
+		} else {
+			if attempt.RulePackHash != "" || attempt.RulePackSnapshotDigest != "" || attempt.RulePackCompilerRef == "" ||
+				!completeNoAuthorityRuleEvidence(caseItem, runID, attemptID, evaluations, findings) {
+				return ReportRecord{}, fault.Conflict("缺少已授权 RulePack，且三项强制能力没有完整的授权不足证据")
+			}
+			availability = "unavailable"
+			unavailableReason = "此尝试未冻结可用 RulePack；带宽、月度可用率和预付款三项强制能力均以 insufficient / contractual_authority_missing 记录，采购或中标文件缺少合同依据。"
+			manifestBytes = json.RawMessage("null")
 		}
-		availability = "unavailable"
-		unavailableReason = "此尝试未冻结可用 RulePack；带宽、月度可用率和预付款三项强制能力均以 insufficient / contractual_authority_missing 记录，采购或中标文件缺少合同依据。"
-		manifestBytes = json.RawMessage("null")
 	} else {
 		manifestBytes, err = manifestSnapshot(attempt.RulePackSnapshot)
 		if err != nil {
@@ -137,7 +153,10 @@ func (s *Store) CreateReportContext(ctx context.Context, user accounts.User, cas
 	} else {
 		agentReviewJSON = nil
 	}
-	runSnapshot := st.snapshotOf(runID)
+	if runSnapshot.ReviewScope != nil {
+		attempt.ReviewScope = runSnapshot.ReviewScope
+		input.ReviewScope = runSnapshot.ReviewScope
+	}
 	legalReview, err := frozenLegalReportProjection(runSnapshot, runID, attemptID)
 	if err != nil {
 		return ReportRecord{}, fault.Conflict("所选执行记录保存的法律适用快照已损坏")
@@ -155,6 +174,10 @@ func (s *Store) CreateReportContext(ctx context.Context, user accounts.User, cas
 		},
 		InputHash: *attempt.InputHash, OutputHash: *attempt.OutputHash, DecisionSnapshotHash: decisionHash,
 		AgentReview: agentReviewJSON, AgentReviewBytes: agentReviewBytes, AgentReviewSHA256: agentReviewDigest,
+	}
+	if precheck {
+		envelope.PrecheckMapping = json.RawMessage(engine.SingleContractPrecheckManifest)
+		envelope.CoverageNotice = "仅核对主合同中可识别的付款比例；跨材料比对、正式制度审查及其他风险未执行。应补齐材料后发起完整审查，识别结果仍需人工核对。"
 	}
 	jsonBytes, err := json.Marshal(envelope)
 	if err != nil {

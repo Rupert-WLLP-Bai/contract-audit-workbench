@@ -13,7 +13,6 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -29,6 +28,7 @@ import (
 	"contractaudit/internal/externalread"
 	"contractaudit/internal/httpapi"
 	"contractaudit/internal/process"
+	"contractaudit/internal/store"
 	"contractaudit/internal/systemhealth"
 )
 
@@ -71,7 +71,9 @@ func serveLegacy(ctx context.Context) error {
 	}
 	defer app.Close()
 	logStartup(app)
-	return listen(ctx, httpapi.Handler(app.Store, options(app, origins())))
+	apiOptions := options(app, origins())
+	apiOptions.IntakeUploader = store.NewDirectCaseIntakeUploader(app.Store)
+	return listen(ctx, app.Boundary("core", httpapi.Handler(app.Store, apiOptions)))
 }
 
 func serveCore(ctx context.Context) error {
@@ -85,12 +87,17 @@ func serveCore(ctx context.Context) error {
 	}
 	// The service filter rejects any operation the core role does not own,
 	// requires the edge credential, and mounts the unified probe surface.
-	handler, err := httpapi.ServiceHandler(app.Store, options(app, origins()), "core", strings.TrimSpace(os.Getenv("GATEWAY_ROLE_TOKEN")))
+	apiOptions := options(app, origins())
+	apiOptions.IntakeUploader, err = bootstrap.ConfiguredIntakeUploader()
+	if err != nil {
+		return err
+	}
+	handler, err := httpapi.ServiceHandler(app.Store, apiOptions, "core", strings.TrimSpace(os.Getenv("GATEWAY_ROLE_TOKEN")))
 	if err != nil {
 		return err
 	}
 	logStartup(app)
-	return listen(ctx, handler)
+	return listen(ctx, app.Boundary("core", handler))
 }
 
 func options(app *bootstrap.Runtime, cors []string) httpapi.Options {
@@ -247,20 +254,9 @@ func splitList(raw string) []string {
 	return out
 }
 
-// origins reads the extra browser origins the deployment allows. An empty value
-// keeps the handler's development defaults.
+// origins applies the deployment's browser origin list and environment defaults.
 func origins() []string {
-	extra := strings.TrimSpace(os.Getenv("CORS_ORIGIN"))
-	if extra == "" {
-		return nil
-	}
-	result := []string{"http://localhost:5173", "http://127.0.0.1:5173"}
-	for _, origin := range strings.Split(extra, ",") {
-		if origin = strings.TrimSpace(origin); origin != "" {
-			result = append(result, origin)
-		}
-	}
-	return result
+	return config.BrowserOrigins(os.Getenv("CORS_ORIGIN"), os.Getenv("APP_ENV"))
 }
 
 func logStartup(app *bootstrap.Runtime) {
@@ -283,22 +279,5 @@ func listen(ctx context.Context, handler http.Handler) error {
 		// SSE is a long-lived response. A global WriteTimeout would terminate
 		// valid streams; a reverse proxy should enforce its own client limits.
 	}
-	server.BaseContext = func(_ net.Listener) context.Context { return ctx }
-	finished := make(chan error, 1)
-	go func() { finished <- server.ListenAndServe() }()
-	select {
-	case err := <-finished:
-		return err
-	case <-ctx.Done():
-		shutdown, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-		if err := server.Shutdown(shutdown); err != nil {
-			_ = server.Close()
-			return err
-		}
-		if err := <-finished; !errors.Is(err, http.ErrServerClosed) {
-			return err
-		}
-		return nil
-	}
+	return process.Serve(ctx, server, 10*time.Second)
 }

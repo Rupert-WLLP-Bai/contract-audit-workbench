@@ -625,6 +625,7 @@ func requestHTTPBody(t *testing.T, client *http.Client, base, method, path strin
 	if err != nil {
 		t.Fatal(err)
 	}
+	request.Header.Set("Origin", request.URL.Scheme+"://"+request.URL.Host)
 	if payload != nil {
 		request.Header.Set("Content-Type", "application/json")
 	}

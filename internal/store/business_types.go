@@ -140,6 +140,8 @@ type reportEnvelope struct {
 	Attempt              Attempt                      `json:"attempt"`
 	Execution            reportExecution              `json:"execution"`
 	RunSnapshot          RunSnapshot                  `json:"run_snapshot"`
+	PrecheckMapping      json.RawMessage              `json:"precheck_mapping,omitempty"`
+	CoverageNotice       string                       `json:"coverage_notice,omitempty"`
 	LegalReview          *FrozenLegalReviewProjection `json:"legal_review,omitempty"`
 	Input                AttemptInput                 `json:"input"`
 	Documents            []reportDocument             `json:"documents"`

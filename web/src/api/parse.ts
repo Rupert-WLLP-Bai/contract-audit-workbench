@@ -172,6 +172,14 @@ function parseUsage(value: unknown): ExecutionUsage | null {
     cost: null,
   };
 }
+function parseReviewScope(value: unknown) {
+  if (!isRecord(value)) return undefined;
+  const id = optionalString(value, "id"), rule_set_id = optionalString(value, "rule_set_id");
+  const rule_set_version = optionalString(value, "rule_set_version"), rule_set_hash = optionalString(value, "rule_set_hash");
+  if (!id || !rule_set_id || !rule_set_version || !rule_set_hash) return undefined;
+  return { id, rule_set_id, rule_set_version, rule_set_hash };
+}
+
 
 function parseExecutionAttempt(value: unknown): ExecutionAttempt {
   const record = recordOf(value, "attempt");
@@ -188,6 +196,7 @@ function parseExecutionAttempt(value: unknown): ExecutionAttempt {
     input_hash: nullableString(record, "input_hash"),
     output_hash: nullableString(record, "output_hash"),
     error_code: nullableString(record, "error_code"),
+    review_scope: parseReviewScope(record.review_scope),
     history_kind: requiredString(record, "history_kind"),
   };
 }
@@ -838,6 +847,7 @@ function parseSnapshot(value: unknown): RunSnapshot | null {
     rule_set_hash: optionalString(value, "rule_set_hash") ?? "",
     playbook_hash: optionalString(value, "playbook_hash") ?? "",
     model_ref: optionalString(value, "model_ref"),
+    review_scope: parseReviewScope(value.review_scope),
     comparator_ref: optionalString(value, "comparator_ref"),
   };
 }

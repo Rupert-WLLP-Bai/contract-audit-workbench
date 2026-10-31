@@ -33,22 +33,15 @@ type gatewayFakeStore struct {
 	cancelRequest    context.CancelFunc
 }
 
-func (f *gatewayFakeStore) User(token string) (accounts.User, error) {
+func (f *gatewayFakeStore) AuthenticateSession(_ context.Context, token string) (accounts.User, string, error) {
 	f.userCalls++
 	if token != "session-token" {
-		return accounts.User{}, fault.Unauthenticated("invalid token")
-	}
-	return f.user, nil
-}
-
-func (f *gatewayFakeStore) SessionAudience(token string) (string, error) {
-	if token != "session-token" {
-		return "", fault.Unauthenticated("invalid token")
+		return accounts.User{}, "", fault.Unauthenticated("invalid token")
 	}
 	if f.sessionAudience == "" {
-		return "client", nil
+		return f.user, "client", nil
 	}
-	return f.sessionAudience, nil
+	return f.user, f.sessionAudience, nil
 }
 
 func (f *gatewayFakeStore) WorkspaceAttempt(_ accounts.User, _, _, _ string) (store.Workspace, error) {

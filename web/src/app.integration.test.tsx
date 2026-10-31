@@ -10,7 +10,8 @@ import userEvent from "@testing-library/user-event";
 import { chooseOption, renderWithAntd as render } from "./test/antd";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ReactNode } from "react";
-import { MemoryRouter } from "react-router";
+import { createMemoryRouter, RouterProvider } from "react-router";
+import { clearAllDecisionDrafts } from "./hooks/decision-drafts";
 import { AdminApp } from "./admin-app";
 import { App } from "./app";
 import type {
@@ -763,9 +764,13 @@ function open(
     },
   });
   clients.push(client);
+  const router = createMemoryRouter(
+    [{ path: "*", element: application }],
+    { initialEntries: [path] },
+  );
   const view = render(
     <QueryClientProvider client={client}>
-      <MemoryRouter initialEntries={[path]}>{application}</MemoryRouter>
+      <RouterProvider router={router} />
     </QueryClientProvider>,
   );
   return { ...view, user: userEvent.setup(), client };
@@ -777,6 +782,7 @@ afterEach(() => {
   vi.unstubAllEnvs();
   Stream.latest = null;
   Stream.instances = [];
+  clearAllDecisionDrafts();
 });
 
 function selectBusinessTime() {

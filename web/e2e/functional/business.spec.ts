@@ -138,8 +138,8 @@ test("maintenance read-only preserves history and rejects business mutations", o
   await login(request);
   const caseID = await createCase(request, "维护只读");
   const docID = await upload(request, caseID, "procurement", "readonly.txt", "采购文件要求质保36个月。");
-  const readOnly = await playwright.request.newContext();
   const base = process.env.E2E_READONLY_API!;
+  const readOnly = await playwright.request.newContext({ extraHTTPHeaders: { Referer: base } });
   try {
     await login(readOnly, "demo-admin", "admin-demo", "client", base);
     const observed = await body(await readOnly.get(`${base}/api/cases/${caseID}`));

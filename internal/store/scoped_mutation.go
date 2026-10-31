@@ -263,6 +263,9 @@ func (s *Store) scopedAttemptMutationWithTx(ctx context.Context, runID, attemptI
 	if !ok || claim.JobID == "" || claim.AttemptID != attemptID || claim.RunID != runID {
 		return errExecutionEventScope
 	}
+	if !claimMatchesExecutionScope(ctx, claim) {
+		return errLeaseLost
+	}
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return err

@@ -6,6 +6,8 @@ resources:
   - ../../k8s/base/services-ingress.yaml
   - ../health-monitor.yaml
   - ../observe.yaml
+  - ../../k8s/base/network-policy.yaml
+  - ../network-policy.yaml
 patches:
   - path: ../workload-patch.yaml
   - path: ../workload-patch-5node.yaml

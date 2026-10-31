@@ -243,6 +243,13 @@ export interface ReviewDocument extends DocumentVersion {
 }
 
 export type FindingVerification = "verified" | "unverified" | "unknown";
+export interface ReviewScopeIdentity {
+  id: string;
+  rule_set_id: string;
+  rule_set_version: string;
+  rule_set_hash: string;
+}
+
 
 export interface ExecutionAttempt {
   id: string;
@@ -257,6 +264,7 @@ export interface ExecutionAttempt {
   input_hash: string | null;
   output_hash: string | null;
   error_code: string | null;
+  review_scope?: ReviewScopeIdentity;
   history_kind: string;
 }
 
@@ -759,6 +767,7 @@ export interface RunSnapshot {
   rule_set_hash: string;
   playbook_hash: string;
   model_ref: string | null;
+  review_scope?: ReviewScopeIdentity;
   comparator_ref: string | null;
 }
 

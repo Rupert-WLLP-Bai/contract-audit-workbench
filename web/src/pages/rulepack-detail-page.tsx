@@ -23,6 +23,7 @@ import type {
   RulePackMutationResult,
 } from "../api/rulepacks";
 import { PageStatus } from "../components/page-status";
+import { DirtyLeaveGuard } from "../components/dirty-leave-guard";
 import { RulePackErrorSummary } from "../components/rulepack-error-summary";
 import { RulePackManifestEditor } from "../components/rulepack-manifest-editor";
 import { RulePackTestPanel } from "../components/rulepack-test-panel";
@@ -790,6 +791,10 @@ export function RulePackDetailPage() {
           revision={pack.revision}
         />
       </div>
+      <DirtyLeaveGuard
+        dirty={dirty}
+        description="规则包草稿修改尚未保存。离开或刷新页面都会丢失这些修改，先保存草稿再离开。"
+      />
     </section>
   );
 }

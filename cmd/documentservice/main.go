@@ -12,16 +12,15 @@
 package main
 
 import (
-	"context"
 	"errors"
 	"log"
-	"net"
 	"net/http"
 	"os"
 	"strings"
 	"time"
 
 	"contractaudit/internal/bootstrap"
+	"contractaudit/internal/config"
 	"contractaudit/internal/documentservice"
 	"contractaudit/internal/httpapi"
 	"contractaudit/internal/process"
@@ -83,7 +82,7 @@ func run() error {
 	mux.Handle("/", service.Handler(public))
 	server := &http.Server{
 		Addr:    addr,
-		Handler: mux,
+		Handler: app.Boundary("document", mux),
 		// Upload and parse requests are streamed and bounded inside the handler
 		// (MaxBytesReader plus the per-request parse deadline), so no global
 		// ReadTimeout or WriteTimeout may cut a valid long request.
@@ -91,28 +90,13 @@ func run() error {
 		IdleTimeout:       60 * time.Second,
 		MaxHeaderBytes:    1 << 20,
 	}
-	server.BaseContext = func(net.Listener) context.Context { return ctx }
 	return process.Serve(ctx, server, shutdownTimeout)
 }
 
 // serve runs server until ctx is canceled or the listener fails, then drains
 // in-flight requests within timeout. It mirrors the lifecycle of the other
 // process entrypoints in this repository.
-// origins reads the extra browser origins the deployment allows, using the same
-// convention as the core service: an empty CORS_ORIGIN keeps the handler's
-// development defaults. The browser sends its Origin through the edge, so this
-// hop must accept the same site origins or it would refuse writes the edge
-// already authorized.
+// origins applies the same browser origin policy as the core service.
 func origins() []string {
-	extra := strings.TrimSpace(os.Getenv("CORS_ORIGIN"))
-	if extra == "" {
-		return nil
-	}
-	result := []string{"http://localhost:5173", "http://127.0.0.1:5173"}
-	for _, origin := range strings.Split(extra, ",") {
-		if origin = strings.TrimSpace(origin); origin != "" {
-			result = append(result, origin)
-		}
-	}
-	return result
+	return config.BrowserOrigins(os.Getenv("CORS_ORIGIN"), os.Getenv("APP_ENV"))
 }

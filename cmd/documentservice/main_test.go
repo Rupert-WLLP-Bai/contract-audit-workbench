@@ -17,9 +17,10 @@ import (
 )
 
 func TestOriginsPreservesDefaultsAndTrimsConfiguredValues(t *testing.T) {
+	t.Setenv("APP_ENV", "development")
 	t.Setenv("CORS_ORIGIN", " \t")
-	if got := origins(); got != nil {
-		t.Fatalf("origins() with blank configuration = %#v, want nil", got)
+	if got := origins(); !equalStrings(got, []string{"http://localhost:5173", "http://127.0.0.1:5173"}) {
+		t.Fatalf("origins() with blank configuration = %#v", got)
 	}
 
 	t.Setenv("CORS_ORIGIN", " https://east.example , ,https://west.example  ")
@@ -129,6 +130,7 @@ func configureDocumentCommandEnvironment(t *testing.T) {
 	t.Setenv("MODEL_GATEWAY_URL", "http://127.0.0.1:1")
 	t.Setenv("DOCUMENT_MODEL_TOKEN", strings.Repeat("d", 40))
 	t.Setenv("WORKER_DOCUMENT_TOKEN", strings.Repeat("w", 40))
+	t.Setenv("CORE_DOCUMENT_TOKEN", "")
 	t.Setenv("GATEWAY_ROLE_TOKEN", strings.Repeat("g", 40))
 }
 

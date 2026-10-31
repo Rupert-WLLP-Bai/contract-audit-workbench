@@ -1,0 +1,48 @@
+# Local-only network edges for the k3d profile. NetworkPolicies are additive:
+# this grant extends deployments/k8s/base/network-policy.yaml without touching
+# the production rules. core-api reads the system-health snapshot from the
+# health-monitor deployment (SYSTEM_HEALTH_URL in workload-patch.yaml), an edge
+# that exists only in the local cluster; production renders no health-monitor
+# pods, so this allowance is inert there.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: core-api-local-health-monitor-egress
+  namespace: contract-audit
+  labels: {app.kubernetes.io/part-of: contract-audit}
+spec:
+  podSelector: {matchLabels: {app.kubernetes.io/name: core-api}}
+  policyTypes: [Egress]
+  egress:
+    - to: [{podSelector: {matchLabels: {app.kubernetes.io/name: health-monitor}}}]
+      ports: [{protocol: TCP, port: 8092}]
+---
+# The existing service-dns-smoke Job probes core readiness directly.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: core-api-local-smoke-ingress
+  namespace: contract-audit
+  labels: {app.kubernetes.io/part-of: contract-audit}
+spec:
+  podSelector: {matchLabels: {app.kubernetes.io/name: core-api}}
+  policyTypes: [Ingress]
+  ingress:
+    - from: [{podSelector: {matchLabels: {app.kubernetes.io/name: service-dns-smoke}}}]
+      ports: [{protocol: TCP, port: 8081}]
+---
+# The same trusted local Job checks the three existing web entry points.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: web-tiers-local-smoke-ingress
+  namespace: contract-audit
+  labels: {app.kubernetes.io/part-of: contract-audit}
+spec:
+  podSelector:
+    matchExpressions:
+      - {key: app.kubernetes.io/name, operator: In, values: [client, admin, portal]}
+  policyTypes: [Ingress]
+  ingress:
+    - from: [{podSelector: {matchLabels: {app.kubernetes.io/name: service-dns-smoke}}}]
+      ports: [{protocol: TCP, port: 8080}]

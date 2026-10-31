@@ -51,11 +51,14 @@ func TestReviewReadinessReadsCurrentMaterialsWithoutCreatingReviewState(t *testi
 	if err != nil {
 		t.Fatalf("read readiness without business time: %v", err)
 	}
-	if missingTime.BusinessAt != nil || missingTime.CanStart || len(missingTime.Materials) != 2 || len(missingTime.Scopes) != 1 {
+	if missingTime.BusinessAt != nil || missingTime.CanStart || len(missingTime.Materials) != 2 || len(missingTime.Scopes) != 2 {
 		t.Fatalf("readiness did not expose the exact current two-material selection and explicit missing-time state: %+v", missingTime)
 	}
 	if !hasReadinessBlocker(missingTime.Scopes[0], "business_at_required") {
 		t.Fatalf("missing business time was not a blocker: %+v", missingTime.Scopes[0])
+	}
+	if !hasReadinessBlocker(missingTime.Scopes[1], "business_at_required") {
+		t.Fatalf("single-contract precheck bypassed the business-time gate: %+v", missingTime.Scopes[1])
 	}
 	for _, material := range missingTime.Materials {
 		if !material.Selected || material.Parse.Status != "ready" || material.DocumentID == "" || material.MaterialID == "" || material.Version < 1 {
@@ -72,6 +75,9 @@ func TestReviewReadinessReadsCurrentMaterialsWithoutCreatingReviewState(t *testi
 	}
 	if withTime.CanStart || !hasReadinessBlocker(withTime.Scopes[0], "governed_dependencies_incomplete") {
 		t.Fatalf("missing published pack must block admission instead of advertising a ruleset: %+v", withTime.Scopes[0])
+	}
+	if withTime.Scopes[1].CanStart || !hasReadinessBlocker(withTime.Scopes[1], "governed_dependencies_incomplete") {
+		t.Fatalf("single-contract precheck bypassed required governed dependencies: %+v", withTime.Scopes[1])
 	}
 
 	var runs, attempts int

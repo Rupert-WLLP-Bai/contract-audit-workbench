@@ -28,10 +28,9 @@ type extractedArticle struct {
 	end    int
 }
 
-// VerifyCapture selects a fixed adapter for one of the first five captured
-// official sources, verifies raw and registry response identities, extracts
-// all article blocks from raw HTML, and checks every asserted article against
-// that extraction. New source captures require an explicit adapter/version.
+// VerifyCapture selects a registered source edition, verifies the raw and
+// registry response identities, and checks asserted articles against the
+// versioned extraction. New source captures require an explicit adapter.
 func VerifyCapture(input CaptureInput) (VerifiedCapture, error) {
 	adapter, err := adapterForSource(input.SourceID, input.VersionID)
 	if err != nil {
@@ -66,6 +65,9 @@ func verifyCaptureWithAdapter(input CaptureInput, adapter sourceAdapter) (Verifi
 	}
 	if len(blocks) == 0 {
 		return VerifiedCapture{}, fmt.Errorf("source HTML contains no readable text blocks")
+	}
+	if err := applyEditorialAnnotations(blocks, input, adapter); err != nil {
+		return VerifiedCapture{}, err
 	}
 	fullText := NormalizeWhitespace(strings.Join(blocks, " "))
 	if fullText == "" {
@@ -113,6 +115,9 @@ func validateCaptureMetadata(input CaptureInput, adapter sourceAdapter) error {
 	}
 	if input.PromulgatedOn != adapter.promulgatedOn || input.EffectiveFrom != adapter.effectiveFrom {
 		return fmt.Errorf("capture promulgation/effective dates do not match the registered edition")
+	}
+	if adapter.pinEffectiveUntil && input.EffectiveUntil != adapter.effectiveUntil {
+		return fmt.Errorf("capture effective-until date does not match the registered edition")
 	}
 	if input.StatusEvidenceID == "" || input.ExpectedStatusSHA256 == "" {
 		return fmt.Errorf("status evidence identity and digest are required")
@@ -184,10 +189,19 @@ func verifyStatusEvidence(input CaptureInput, adapter sourceAdapter) (string, er
 				continue
 			}
 			if normalizeHTMLFragment(row.Title) != adapter.registryTitle || row.Issued != adapter.promulgatedOn ||
-				row.Active != adapter.statusEffectiveAt || row.Status != 3 {
-				return "", fmt.Errorf("NPC status record does not match source title, dates, or effective status")
+				row.Active != adapter.statusEffectiveAt {
+				return "", fmt.Errorf("NPC status record does not match source title or version dates")
 			}
-			return StatusEffective, nil
+			switch row.Status {
+			case 1:
+				return StatusRepealed, nil
+			case 3:
+				return StatusEffective, nil
+			case 4:
+				return StatusNotYetEffective, nil
+			default:
+				return "", fmt.Errorf("unsupported NPC status code %d", row.Status)
+			}
 		}
 		return "", fmt.Errorf("NPC status evidence does not contain the registered record")
 	case statusMOJHTML:
@@ -215,6 +229,47 @@ func verifyStatusEvidence(input CaptureInput, adapter sourceAdapter) (string, er
 	default:
 		return "", fmt.Errorf("unsupported status evidence format %q", adapter.statusFormat)
 	}
+}
+
+// The IPC website inserts editorial headings in brackets immediately after
+// these five article labels. Remove only the exact documented insertions when
+// producing the canonical statutory text; the untouched response remains in
+// the immutable raw capture. Offsets refer to the resulting extracted text.
+func applyEditorialAnnotations(blocks []string, input CaptureInput, adapter sourceAdapter) error {
+	if adapter.extractorID != "spc-ipc-contract-history-html" {
+		return nil
+	}
+	annotations := map[int]string{
+		39: "格式合同条款定义及使用人义务", 40: "格式合同条款的无效", 41: "格式合同的解释",
+		107: "违约责任", 114: "违约金",
+	}
+	for _, ref := range input.Articles {
+		if _, ok := annotations[ref.ArticleNumber]; !ok {
+			return fmt.Errorf("historical article %d has no documented editorial annotation", ref.ArticleNumber)
+		}
+	}
+	for i, block := range blocks {
+		match := articleHeading.FindStringSubmatch(block)
+		if len(match) == 0 {
+			continue
+		}
+		number, err := parseChineseNumber(match[1])
+		if err != nil {
+			return fmt.Errorf("invalid historical article label: %w", err)
+		}
+		annotation, ok := annotations[number]
+		if !ok {
+			continue
+		}
+		label := "第" + match[1] + "条"
+		marker := "【" + annotation + "】"
+		prefix := label + " " + marker
+		if !strings.HasPrefix(block, prefix) || strings.Count(block, marker) != 1 {
+			return fmt.Errorf("historical article %s editorial annotation differs from the documented source", label)
+		}
+		blocks[i] = NormalizeWhitespace(label + " " + strings.TrimPrefix(block, prefix))
+	}
+	return nil
 }
 
 func htmlPlainText(raw []byte, contentType string) (string, error) {

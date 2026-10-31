@@ -62,9 +62,9 @@ func TestApplyStoredLLMEndpointKeepsGatewayCredentialSeparate(t *testing.T) {
 
 func TestLoadStoredLLMEndpointWithoutDatabaseKeepsEnvironmentIdentity(t *testing.T) {
 	base := model.Config{ProviderURL: "https://env.example.com/v1", ChatModel: "env-review", OCRModel: "env-ocr"}
-	got, revision := loadStoredLLMEndpoint(t.Context(), &store.Store{}, "worker", base)
-	if got != base || revision != 0 {
-		t.Fatalf("loaded %+v revision %d", got, revision)
+	got, revision, storedDirect := loadStoredLLMEndpoint(t.Context(), &store.Store{}, "worker", base)
+	if got != base || revision != 0 || storedDirect {
+		t.Fatalf("loaded %+v revision %d direct %t", got, revision, storedDirect)
 	}
 }
 
@@ -112,9 +112,9 @@ func TestWatcherAppliesRevisionChangedDuringStartup(t *testing.T) {
 	second := store.LLMEndpointSettings{Protocol: llmendpoint.ProtocolOpenAICompatible, BaseURL: "https://second.example/v1", Models: []string{"chat-two", "ocr-two"}, ReviewModel: "chat-two", OCRModel: "ocr-two", Revision: 2}
 	st := &endpointWatchTestStore{endpoint: first, database: true, updates: make(chan store.Models, 2)}
 	settings := runtimeSettings{modelConfig: model.Config{Gateway: true, BaseURL: "http://gateway/v1"}}
-	config, revision := configuredLLMEndpoint(t.Context(), st, settings, "worker")
-	if config.ProviderURL != first.BaseURL || revision != first.Revision {
-		t.Fatalf("initial endpoint = %+v, revision = %d", config, revision)
+	config, revision, storedDirect := configuredLLMEndpoint(t.Context(), st, settings, "worker")
+	if config.ProviderURL != first.BaseURL || revision != first.Revision || storedDirect {
+		t.Fatalf("initial endpoint = %+v, revision = %d, direct = %t", config, revision, storedDirect)
 	}
 	// An administrator saves another revision after the client is built but
 	// before the watcher starts. It must not treat that revision as applied.

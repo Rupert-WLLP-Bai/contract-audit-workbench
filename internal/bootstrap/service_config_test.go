@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"net"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -21,7 +23,7 @@ func bootstrapStartupEnvironment(t *testing.T) (string, *atomic.Int32) {
 		"OIDC_CLIENT_ID", "OIDC_ADMIN_CLIENT_ID", "OIDC_REDIRECT_URL", "OIDC_ADMIN_REDIRECT_URL",
 		"S3_ENDPOINT", "S3_BUCKET", "S3_ACCESS_KEY", "S3_SECRET_KEY", "RUSTFS_ACCESS_KEY", "RUSTFS_SECRET_KEY",
 		"OTEL_EXPORTER_OTLP_ENDPOINT", "OTEL_EXPORTER_OTLP_PROTOCOL", "OTEL_TRACES_SAMPLER", "OTEL_TRACES_SAMPLER_ARG",
-		"EXECUTION_QUEUE_POLICY", "MODEL_GATEWAY_URL", "DOCUMENT_SERVICE_URL", "WORKER_DOCUMENT_TOKEN",
+		"EXECUTION_QUEUE_POLICY", "MODEL_GATEWAY_URL", "DOCUMENT_SERVICE_URL", "WORKER_DOCUMENT_TOKEN", "CORE_DOCUMENT_TOKEN",
 		"TOOL_GATEWAY_URL", "WORKER_TOOL_TOKEN", "WORKER_MODEL_TOKEN", "DOCUMENT_MODEL_TOKEN", "CORE_SERVICE_URL", "WORKER_CORE_TOKEN",
 		"LLM_API_KEY", "LLM_BASE_URL", "LLM_MODEL", "OCR_MODEL", "DATA_DIR", "DATABASE_SCHEMA",
 		"DEV_DATABASE_URL", "TEST_DATABASE_URL", "PROD_DATABASE_URL", "CORE_DATABASE_URL", "DOCUMENT_DATABASE_URL",
@@ -89,6 +91,17 @@ func TestOpenServiceRejectsInvalidConfigurationBeforeDatabaseContact(t *testing.
 			t.Setenv("APP_ENV", "production")
 			t.Setenv("CORE_DATABASE_URL", strings.Replace(dsn, "contract_audit_bootstrap_unit", "contract_audit_bootstrap_prod", 1))
 		}},
+		{"production worker without an enterprise directory", "worker", func(t *testing.T, dsn string) {
+			t.Setenv("APP_ENV", "production")
+			t.Setenv("COOKIE_SECURE", "true")
+			t.Setenv("EXECUTION_DATABASE_URL", strings.Replace(dsn, "contract_audit_bootstrap_unit", "contract_audit_bootstrap_prod", 1))
+		}},
+		{"production core without an identity provider", "core", func(t *testing.T, dsn string) {
+			t.Setenv("APP_ENV", "production")
+			t.Setenv("COOKIE_SECURE", "true")
+			t.Setenv("CORE_DATABASE_URL", strings.Replace(dsn, "contract_audit_bootstrap_unit", "contract_audit_bootstrap_prod", 1))
+			t.Setenv("IDENTITY_DIRECTORY_FILE", writeEnterpriseIdentityDirectory(t))
+		}},
 		{"invalid read-only setting", "core", func(t *testing.T, _ string) { t.Setenv("APP_READ_ONLY", "yes") }},
 		{"invalid database mode", "core", func(t *testing.T, _ string) { t.Setenv("APP_DATABASE_MODE", "embedded-file") }},
 		{"invalid execution mode", "execution", func(t *testing.T, _ string) { t.Setenv("EXECUTION_MODE", "volatile") }},
@@ -108,6 +121,40 @@ func TestOpenServiceRejectsInvalidConfigurationBeforeDatabaseContact(t *testing.
 				t.Fatalf("invalid configuration reached startup dependencies: runtime=%v err=%v database_contacts=%d", runtime != nil, err, contacted.Load())
 			}
 		})
+	}
+}
+
+// writeEnterpriseIdentityDirectory mounts a minimal trusted directory so the
+// production cases satisfy the loaded-enterprise-directory prerequisite.
+func writeEnterpriseIdentityDirectory(t *testing.T) string {
+	t.Helper()
+	valid := `{"users":[{"id":"alice","display_name":"经办人","role":"reviewer","tenant_id":"TA","org_id":"sales","enabled":true,"issuer":"https://identity.example/realms/a","subject":"subject-a"}]}`
+	path := filepath.Join(t.TempDir(), "directory.json")
+	if err := os.WriteFile(path, []byte(valid), 0600); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+// A complete production identity configuration must pass the environment gate
+// and reach the database peer; any earlier refusal means the gate rejected a
+// legitimate enterprise deployment.
+func TestOpenServiceProductionIdentityConfigurationReachesOnlyTheIsolatedDatabasePeer(t *testing.T) {
+	dsn, contacted := bootstrapStartupEnvironment(t)
+	t.Setenv("APP_ENV", "production")
+	t.Setenv("COOKIE_SECURE", "true")
+	t.Setenv("CORE_DATABASE_URL", strings.Replace(dsn, "contract_audit_bootstrap_unit", "contract_audit_bootstrap_prod", 1))
+	t.Setenv("IDENTITY_DIRECTORY_FILE", writeEnterpriseIdentityDirectory(t))
+	t.Setenv("OIDC_ISSUER", "https://identity.example/realms/prod")
+	t.Setenv("OIDC_CLIENT_ID", "contract-audit-web")
+	t.Setenv("OIDC_CLIENT_SECRET", "web-secret-not-a-real-credential")
+	t.Setenv("OIDC_ADMIN_CLIENT_ID", "contract-audit-admin")
+	t.Setenv("OIDC_ADMIN_CLIENT_SECRET", "admin-secret-not-a-real-credential")
+	t.Setenv("OIDC_REDIRECT_URL", "https://core.example/auth/callback")
+	t.Setenv("OIDC_STATE_KEY", "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=")
+	runtime, err := OpenService(context.Background(), "core")
+	if err == nil || runtime != nil || contacted.Load() == 0 {
+		t.Fatalf("production identity configuration bypassed the isolated database prerequisite: runtime=%v err=%v contacts=%d", runtime != nil, err, contacted.Load())
 	}
 }
 

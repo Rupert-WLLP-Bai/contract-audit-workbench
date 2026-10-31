@@ -1351,8 +1351,17 @@ function RequestCard({ item, caseId, runId, attemptId, documents, evaluations, a
       setUploaded({ id: result.id, filename: input.selectedFile.name, role: input.selectedRole });
       setDocumentId(result.id);
       setFile(null);
-      await client.invalidateQueries({ queryKey: queryKeys.case(caseId) });
-      await client.invalidateQueries({ queryKey: queryKeys.cases });
+      await Promise.all([
+        client.invalidateQueries({
+          queryKey: queryKeys.case(caseId),
+          exact: true,
+        }),
+        client.invalidateQueries({
+          queryKey: queryKeys.cases,
+          exact: true,
+        }),
+        client.invalidateQueries({ queryKey: queryKeys.workbenchPrefix }),
+      ]);
     },
   });
   const submitReceipt = useMutation({

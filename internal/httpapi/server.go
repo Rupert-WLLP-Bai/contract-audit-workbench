@@ -27,6 +27,12 @@ import (
 
 const sessionCookie = "session"
 
+const (
+	maxEventStreams       = 128
+	eventFallbackInterval = 2 * time.Second
+	eventWriteTimeout     = 10 * time.Second
+)
+
 // Options configures the HTTP surface.
 type Options struct {
 	SystemHealth               systemhealth.Reader
@@ -37,6 +43,11 @@ type Options struct {
 	SecureCookies              bool
 	ExperienceWorkerCredential string
 	experienceDeliveryEnabled  bool
+
+	// IntakeUploader is the authenticated Document upload entry used by the
+	// atomic home-page intake flow. A nil uploader keeps newly created
+	// operations pending with a stable, retryable identity.
+	IntakeUploader store.CaseIntakeUploader
 
 	// OperatorAuditEnabled is the server-side feature switch. The extension is
 	// absent from the default review path and returns 503 until an operator
@@ -49,13 +60,10 @@ type Options struct {
 
 // Handler serves the review API the web client calls.
 func Handler(st *store.Store, opt Options) http.Handler {
-	if len(opt.CORSOrigins) == 0 {
-		opt.CORSOrigins = []string{"http://localhost:5173", "http://127.0.0.1:5173"}
-	}
 	if opt.SystemHealth == nil {
 		opt.SystemHealth = systemhealth.New(systemhealth.Config{DatabaseReady: st.Ready})
 	}
-	h := &handler{store: st, cors: opt.CORSOrigins, models: opt.Models, oidc: opt.OIDC, durable: opt.Durable, secureCookies: opt.SecureCookies, systemHealth: opt.SystemHealth, experienceDeliveryEnabled: opt.experienceDeliveryEnabled, operatorAuditEnabled: opt.OperatorAuditEnabled, capabilityPacks: opt.CapabilityPacks, externalConnectors: opt.ExternalConnectors, externalConnectorInfo: opt.ExternalConnectorInfo}
+	h := &handler{store: st, loginCounter: newLoginCounter(), cors: opt.CORSOrigins, models: opt.Models, oidc: opt.OIDC, durable: opt.Durable, secureCookies: opt.SecureCookies, systemHealth: opt.SystemHealth, experienceDeliveryEnabled: opt.experienceDeliveryEnabled, operatorAuditEnabled: opt.OperatorAuditEnabled, capabilityPacks: opt.CapabilityPacks, externalConnectors: opt.ExternalConnectors, externalConnectorInfo: opt.ExternalConnectorInfo, intakeUploader: opt.IntakeUploader, eventStreams: make(chan struct{}, maxEventStreams), eventWakeups: newEventWakeups()}
 	mux := http.NewServeMux()
 	// Every binary in this repository serves the same probe surface so a manifest
 	// can never point at a path no binary answers. Readiness is the shared
@@ -101,6 +109,9 @@ func Handler(st *store.Store, opt Options) http.Handler {
 	mux.HandleFunc("POST /api/knowledge", h.createKnowledge)
 	mux.HandleFunc("GET /api/knowledge/{knowledgeID}", h.getKnowledge)
 	mux.HandleFunc("GET /api/knowledge/{knowledgeID}/versions/{versionID}", h.getKnowledgeVersion)
+	mux.HandleFunc("GET /api/intakes", h.getIntakeByKey)
+	mux.HandleFunc("POST /api/intakes", h.createIntake)
+	mux.HandleFunc("GET /api/intakes/{operationID}", h.getIntake)
 	mux.HandleFunc("GET /api/cases", h.listCases)
 	mux.HandleFunc("POST /api/cases", h.createCase)
 	mux.HandleFunc("GET /api/cases/{caseID}", h.getCase)
@@ -164,7 +175,7 @@ func Handler(st *store.Store, opt Options) http.Handler {
 	mux.HandleFunc("POST /api/cases/{caseID}/reviews/{runID}/cancel", h.cancelReview)
 	mux.HandleFunc("POST /api/cases/{caseID}/reviews/{runID}/findings/{findingID}/decisions", h.decide)
 	mux.HandleFunc("GET /api/cases/{caseID}/reviews/{runID}/events", h.events)
-	return cors(opt.CORSOrigins, mux)
+	return cors(opt.CORSOrigins, opt.SecureCookies, mux)
 }
 
 type handler struct {
@@ -180,6 +191,10 @@ type handler struct {
 	capabilityPacks           *capabilitypack.Registry
 	externalConnectors        map[string]auditext.ReadConnector
 	externalConnectorInfo     []OperatorConnectorInfo
+	intakeUploader            store.CaseIntakeUploader
+	loginCounter              *loginCounter
+	eventStreams              chan struct{}
+	eventWakeups              *eventWakeups
 }
 
 func (h *handler) login(w http.ResponseWriter, r *http.Request) {
@@ -197,17 +212,27 @@ func (h *handler) login(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
+	username := strings.TrimSpace(body.Username)
+	source := loginSource(r)
+	if !h.loginCounter.allowed(source, username) {
+		// A lockout answers exactly like any other failed login so a
+		// throttled guess never confirms that a username exists.
+		writeErr(w, fault.Unauthenticated("账号或密码不正确"))
+		return
+	}
 	var token string
 	var user accounts.User
 	if audience == "client" {
-		token, user, err = h.store.Login(body.Username, body.Password)
+		token, user, err = h.store.Login(username, body.Password)
 	} else {
 		var authenticated bool
-		user, authenticated = accounts.Authenticate(strings.TrimSpace(body.Username), body.Password)
+		user, authenticated = accounts.Authenticate(username, body.Password)
 		if !authenticated {
+			h.loginCounter.recordFailure(source, username)
 			writeErr(w, fault.Unauthenticated("账号或密码不正确"))
 			return
 		}
+		h.loginCounter.recordSuccess(username)
 		if user.Role != "admin" {
 			writeErr(w, fault.Forbidden("需要平台管理权限"))
 			return
@@ -215,6 +240,13 @@ func (h *handler) login(w http.ResponseWriter, r *http.Request) {
 		token, err = h.store.EstablishSession(user, audience)
 	}
 	if err != nil {
+		// store.Login reports a failed credential check as unauthenticated;
+		// only that counts against the budget, session establishment errors
+		// do not.
+		var faultErr *fault.Error
+		if errors.As(err, &faultErr) && faultErr.Code == "unauthenticated" {
+			h.loginCounter.recordFailure(source, username)
+		}
 		writeErr(w, err)
 		return
 	}
@@ -392,13 +424,15 @@ func (h *handler) upload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer file.Close()
-	body, err := io.ReadAll(io.LimitReader(file, 32<<20+1))
-	if err != nil {
-		writeErr(w, err)
+	if header.Size > 32<<20 {
+		writeErr(w, fault.TooLarge("文件超过 32 MiB"))
 		return
 	}
-	if len(body) > 32<<20 {
-		writeErr(w, fault.TooLarge("文件超过 32 MiB"))
+	// The multipart parser has already measured the part, so keep a single
+	// exact-size copy for the existing immutable object upload contract.
+	body := make([]byte, int(header.Size))
+	if _, err := io.ReadFull(file, body); err != nil {
+		writeErr(w, err)
 		return
 	}
 	media := http.DetectContentType(body)
@@ -517,6 +551,7 @@ func (h *handler) startReview(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		BusinessAt       string `json:"business_at,omitempty"`
 		EvidenceCutoffAt string `json:"evidence_cutoff_at,omitempty"`
+		Scope            string `json:"scope,omitempty"`
 	}
 	if err := readJSON(w, r, &body); err != nil {
 		writeErr(w, err)
@@ -525,11 +560,7 @@ func (h *handler) startReview(w http.ResponseWriter, r *http.Request) {
 	if h.durable {
 		var accepted store.JobAcceptance
 		var err error
-		if body.BusinessAt == "" && body.EvidenceCutoffAt == "" {
-			accepted, err = h.store.StartReviewAsync(r.Context(), user, r.PathValue("caseID"))
-		} else {
-			accepted, err = h.store.StartReviewAsyncAtWithEvidenceCutoff(r.Context(), user, r.PathValue("caseID"), body.BusinessAt, body.EvidenceCutoffAt)
-		}
+		accepted, err = h.store.StartReviewAsyncScope(r.Context(), user, r.PathValue("caseID"), body.BusinessAt, body.EvidenceCutoffAt, body.Scope)
 		if err != nil {
 			writeErr(w, err)
 			return
@@ -539,11 +570,7 @@ func (h *handler) startReview(w http.ResponseWriter, r *http.Request) {
 	}
 	var id string
 	var err error
-	if body.BusinessAt == "" && body.EvidenceCutoffAt == "" {
-		id, err = h.store.StartReview(r.Context(), user, r.PathValue("caseID"))
-	} else {
-		id, err = h.store.StartReviewAtWithEvidenceCutoff(r.Context(), user, r.PathValue("caseID"), body.BusinessAt, body.EvidenceCutoffAt)
-	}
+	id, err = h.store.StartReviewScope(r.Context(), user, r.PathValue("caseID"), body.BusinessAt, body.EvidenceCutoffAt, body.Scope)
 	if err != nil {
 		writeErr(w, err)
 		return
@@ -566,7 +593,20 @@ func (h *handler) workspace(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, workspaceJSON(h.store, ws))
+	decisions := make(map[string][]store.Decision, len(ws.Findings))
+	for _, finding := range ws.Findings {
+		if finding.CaseID != ws.Case.ID {
+			writeErr(w, fault.NotFound("没有找到对应记录"))
+			return
+		}
+		history, err := h.store.DecisionsFor(user, finding.ID)
+		if err != nil {
+			writeErr(w, err)
+			return
+		}
+		decisions[finding.ID] = history
+	}
+	writeJSON(w, http.StatusOK, workspaceJSON(decisions, ws))
 }
 
 func (h *handler) retry(w http.ResponseWriter, r *http.Request) {
@@ -647,33 +687,43 @@ func (h *handler) decide(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *handler) events(w http.ResponseWriter, r *http.Request) {
+	select {
+	case h.eventStreams <- struct{}{}:
+		defer func() { <-h.eventStreams }()
+	default:
+		w.Header().Set("Retry-After", "2")
+		writeErr(w, fault.New(http.StatusServiceUnavailable, "stream_capacity", "事件流连接已满，请稍后重试"))
+		return
+	}
 	user, ok := h.actor(w, r)
 	if !ok {
 		return
 	}
-	after := eventCursor(r.Header.Get("Last-Event-ID"))
-	items, err := h.store.EventsAfter(user, r.PathValue("caseID"), r.PathValue("runID"), after)
-	if err != nil {
-		writeErr(w, err)
+	if _, ok := w.(http.Flusher); !ok {
+		writeErr(w, fault.New(http.StatusInternalServerError, "stream_unavailable", "当前服务不支持事件流"))
 		return
 	}
-	flusher, ok := w.(http.Flusher)
-	if !ok {
-		writeErr(w, fault.New(http.StatusInternalServerError, "stream_unavailable", "当前服务不支持事件流"))
+	caseID, runID := r.PathValue("caseID"), r.PathValue("runID")
+	wake, unsubscribe := h.eventWakeups.subscribe(eventWakeupKey{tenantID: user.TenantID, caseID: caseID, runID: runID})
+	defer unsubscribe()
+	after := eventCursor(r.Header.Get("Last-Event-ID"))
+	items, err := h.store.EventsAfterContext(r.Context(), user, caseID, runID, after)
+	if err != nil {
+		writeErr(w, err)
 		return
 	}
 	w.Header().Set("Content-Type", "text/event-stream; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("X-Accel-Buffering", "no")
-	if !writeEventBatch(w, flusher, items) {
+	if !writeEventBatch(w, items) {
 		return
 	}
 	if len(items) > 0 {
 		after = items[len(items)-1].Seq
 	}
-	// Read only committed events; each poll queries the Store and rechecks the current session.
-	// A reconnect resumes strictly after Last-Event-ID, including later decisions.
-	poll := time.NewTicker(250 * time.Millisecond)
+	// Notifications are advisory and cover accepted jobs only. Polling PG also
+	// finds later state/decision events and rechecks session and case access.
+	poll := time.NewTicker(eventFallbackInterval)
 	defer poll.Stop()
 	heartbeat := time.NewTicker(15 * time.Second)
 	defer heartbeat.Stop()
@@ -682,18 +732,22 @@ func (h *handler) events(w http.ResponseWriter, r *http.Request) {
 		case <-r.Context().Done():
 			return
 		case <-poll.C:
-			if _, err := h.store.User(cookieValue(r)); err != nil {
-				return // A logout/expiry also revokes an already-open stream.
-			}
-			after, err = h.pollEventBatch(w, flusher, user, r, after)
-			if err != nil {
-				return
-			}
+		case <-wake:
 		case <-heartbeat.C:
+			controller := http.NewResponseController(w)
+			_ = controller.SetWriteDeadline(time.Now().Add(eventWriteTimeout))
 			if _, err := io.WriteString(w, ": heartbeat\n\n"); err != nil {
 				return
 			}
-			flusher.Flush()
+			if err := controller.Flush(); err != nil {
+				return
+			}
+			_ = controller.SetWriteDeadline(time.Time{})
+			continue
+		}
+		after, err = h.pollEventBatch(w, user, r, after)
+		if err != nil {
+			return
 		}
 	}
 }
@@ -706,26 +760,36 @@ func eventCursor(raw string) int {
 	return n
 }
 
-func writeEventBatch(w http.ResponseWriter, flusher http.Flusher, items []store.Event) bool {
+func writeEventBatch(w http.ResponseWriter, items []store.Event) bool {
+	controller := http.NewResponseController(w)
+	_ = controller.SetWriteDeadline(time.Now().Add(eventWriteTimeout))
+	defer controller.SetWriteDeadline(time.Time{})
 	for _, event := range items {
 		payload, _ := json.Marshal(map[string]any{"seq": event.Seq, "type": event.Type, "state": event.State})
 		if _, err := io.WriteString(w, "id: "+strconv.Itoa(event.Seq)+"\ndata: "+string(payload)+"\n\n"); err != nil {
 			return false
 		}
 	}
-	flusher.Flush()
-	return true
+	return controller.Flush() == nil
 }
 
-func (h *handler) pollEventBatch(w http.ResponseWriter, flusher http.Flusher, user accounts.User, r *http.Request, after int) (int, error) {
-	items, err := h.store.EventsAfter(user, r.PathValue("caseID"), r.PathValue("runID"), after)
+func (h *handler) pollEventBatch(w http.ResponseWriter, user accounts.User, r *http.Request, after int) (int, error) {
+	current, audience, err := h.store.AuthenticateSession(r.Context(), audienceCookieValue(r, "client"))
+	if err != nil {
+		return after, err
+	}
+	if audience != "client" || current.ID != user.ID || current.TenantID != user.TenantID ||
+		current.OrgID != user.OrgID || current.Issuer != user.Issuer || current.Subject != user.Subject {
+		return after, fault.Unauthenticated("登录身份已变更")
+	}
+	items, err := h.store.EventsAfterContext(r.Context(), current, r.PathValue("caseID"), r.PathValue("runID"), after)
 	if err != nil {
 		return after, err
 	}
 	if len(items) == 0 {
 		return after, nil
 	}
-	if !writeEventBatch(w, flusher, items) {
+	if !writeEventBatch(w, items) {
 		return after, io.ErrClosedPipe
 	}
 	return items[len(items)-1].Seq, nil
@@ -733,14 +797,6 @@ func (h *handler) pollEventBatch(w http.ResponseWriter, flusher http.Flusher, us
 
 func (h *handler) actor(w http.ResponseWriter, r *http.Request) (accounts.User, bool) {
 	return h.actorForAudience(w, r, "client")
-}
-
-func cookieValue(r *http.Request) string {
-	c, err := r.Cookie(sessionCookie)
-	if err != nil {
-		return ""
-	}
-	return c.Value
 }
 
 func sessionCookieOf(value string, maxAge int) *http.Cookie {
@@ -804,30 +860,46 @@ func actorJSON(user accounts.User) map[string]string {
 	return map[string]string{"id": user.ID, "display_name": user.DisplayName, "role": user.Role, "tenant_id": accounts.Tenant(user), "org_id": user.OrgID}
 }
 
-func cors(origins []string, next http.Handler) http.Handler {
-	allow := map[string]bool{}
-	for _, origin := range origins {
-		allow[origin] = true
+// cors applies the same origin boundary to browser writes and CORS responses.
+// The configured origins are external browser origins, not proxy headers.
+func cors(origins []string, secureCookies bool, next http.Handler) http.Handler {
+	allow := make(map[string]struct{}, len(origins))
+	invalidOrigins := false
+	for _, raw := range origins {
+		if origin, ok := browserOrigin(raw, false); ok {
+			allow[origin] = struct{}{}
+		} else {
+			invalidOrigins = true
+		}
 	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		origin := r.Header.Get("Origin")
-		scheme := "http"
-		if r.TLS != nil {
-			scheme = "https"
+		w.Header().Add("Vary", "Origin")
+		ownOrigin := directRequestOrigin(r, secureCookies)
+		trusted := func(origin string) bool {
+			if invalidOrigins {
+				return false
+			}
+			_, configured := allow[origin]
+			return configured || ownOrigin != "" && origin == ownOrigin
 		}
-		trusted := allow[origin] || origin == scheme+"://"+r.Host
-		// CORS alone only hides responses. Reject untrusted browser writes so
-		// another same-site origin cannot use the authenticated cookie for CSRF.
-		if origin != "" && !trusted && r.Method != http.MethodGet && r.Method != http.MethodHead {
+
+		values := r.Header.Values("Origin")
+		allowed := false
+		if len(values) == 1 {
+			if origin, ok := browserOrigin(values[0], false); ok {
+				allowed = trusted(origin)
+			}
+		}
+		unsafe := r.Method != http.MethodGet && r.Method != http.MethodHead
+		if unsafe && (len(values) > 0 && !allowed || len(values) == 0 && !originlessWriteAllowed(r, trusted)) {
 			writeErr(w, fault.Forbidden("请求来源不在允许列表内"))
 			return
 		}
-		if allow[origin] {
-			w.Header().Set("Access-Control-Allow-Origin", origin)
+		if allowed {
+			w.Header().Set("Access-Control-Allow-Origin", values[0])
 			w.Header().Set("Access-Control-Allow-Credentials", "true")
 			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Idempotency-Key, Last-Event-ID")
-			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
-			w.Header().Set("Vary", "Origin")
+			w.Header().Set("Access-Control-Allow-Methods", "GET, HEAD, POST, PUT, DELETE, OPTIONS")
 		}
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusNoContent)

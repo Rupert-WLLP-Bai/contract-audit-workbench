@@ -167,11 +167,12 @@ type FrozenMaterialSelection struct {
 
 // AttemptInput is the immutable input record reused by retries.
 type AttemptInput struct {
-	AttemptID string           `json:"attempt_id"`
-	RunID     string           `json:"run_id"`
-	InputHash string           `json:"input_hash"`
-	FrozenAt  string           `json:"frozen_at"`
-	Documents []FrozenDocument `json:"documents"`
+	AttemptID   string               `json:"attempt_id"`
+	RunID       string               `json:"run_id"`
+	InputHash   string               `json:"input_hash"`
+	FrozenAt    string               `json:"frozen_at"`
+	ReviewScope *ReviewScopeIdentity `json:"review_scope,omitempty"`
+	Documents   []FrozenDocument     `json:"documents"`
 }
 
 func (st state) parseSelectionsForAttempt(attemptID string) []AttemptParseSelection {
@@ -396,24 +397,25 @@ type Run struct {
 
 // Attempt is one immutable execution identity within a run.
 type Attempt struct {
-	ID                     string          `json:"id"`
-	RunID                  string          `json:"run_id"`
-	ActorID                string          `json:"actor_id,omitempty"`
-	Ordinal                int             `json:"ordinal"`
-	RetryOfAttemptID       *string         `json:"retry_of_attempt_id"`
-	State                  string          `json:"state"`
-	AcceptedAt             string          `json:"accepted_at"`
-	StartedAt              *string         `json:"started_at"`
-	FinishedAt             *string         `json:"finished_at"`
-	InputHash              *string         `json:"input_hash"`
-	OutputHash             *string         `json:"output_hash"`
-	ErrorCode              *string         `json:"error_code"`
-	HistoryKind            string          `json:"history_kind"`
-	ParsedDocumentIDs      []string        `json:"parsed_document_ids"`
-	RulePackSnapshot       json.RawMessage `json:"-"`
-	RulePackHash           string          `json:"-"`
-	RulePackSnapshotDigest string          `json:"-"`
-	RulePackCompilerRef    string          `json:"-"`
+	ID                     string               `json:"id"`
+	RunID                  string               `json:"run_id"`
+	ActorID                string               `json:"actor_id,omitempty"`
+	Ordinal                int                  `json:"ordinal"`
+	RetryOfAttemptID       *string              `json:"retry_of_attempt_id"`
+	State                  string               `json:"state"`
+	AcceptedAt             string               `json:"accepted_at"`
+	StartedAt              *string              `json:"started_at"`
+	FinishedAt             *string              `json:"finished_at"`
+	InputHash              *string              `json:"input_hash"`
+	OutputHash             *string              `json:"output_hash"`
+	ErrorCode              *string              `json:"error_code"`
+	HistoryKind            string               `json:"history_kind"`
+	ReviewScope            *ReviewScopeIdentity `json:"review_scope,omitempty"`
+	ParsedDocumentIDs      []string             `json:"parsed_document_ids"`
+	RulePackSnapshot       json.RawMessage      `json:"-"`
+	RulePackHash           string               `json:"-"`
+	RulePackSnapshotDigest string               `json:"-"`
+	RulePackCompilerRef    string               `json:"-"`
 	// RulePackID and RulePackVersion name the governed pack frozen at
 	// acceptance; both stay empty for the synthetic baseline compiler.
 	RulePackID              string `json:"-"`
@@ -605,6 +607,7 @@ type RunSnapshot struct {
 	ParsedDocumentIDs        []string                    `json:"parsed_document_ids,omitempty"`
 	ParseSelectionHash       string                      `json:"parse_selection_hash,omitempty"`
 	ParserConfigurationID    string                      `json:"parser_configuration_id,omitempty"`
+	ReviewScope              *ReviewScopeIdentity        `json:"review_scope,omitempty"`
 	RuleSetHash              string                      `json:"rule_set_hash"`
 	PlaybookHash             string                      `json:"playbook_hash"`
 	ModelRef                 string                      `json:"model_ref"`
@@ -721,27 +724,6 @@ func (s *Store) acquireParseLock(ctx context.Context) error {
 
 func (s *Store) releaseParseLock() {
 	<-s.parseMu
-}
-
-func (s *Store) update(fn func(*state) error) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.updateState(context.Background(), localDemoScope("system"), "", fn)
-}
-
-func (s *Store) snapshot() state {
-	st, err := s.snapshotScoped(context.Background(), localDemoScope("system"))
-	if err != nil {
-		return state{}
-	}
-	s.mu.Lock()
-	s.st = st
-	s.mu.Unlock()
-	out, err := st.clone()
-	if err != nil {
-		return st
-	}
-	return out
 }
 
 func newID(prefix string) (string, error) {

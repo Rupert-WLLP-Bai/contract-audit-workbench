@@ -2,7 +2,7 @@ import { Button, Input } from "antd";
 import { useEffect, useRef, useState } from "react";
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router";
 import { useQuery } from "@tanstack/react-query";
-import { getReviewReadiness } from "../api/review-readiness";
+import { getReviewReadiness, type ReviewScope } from "../api/review-readiness";
 import { beijingInputToUtc } from "../components/beijing-datetime";
 import { ReviewReadinessPanel } from "../components/review-readiness-panel";
 import { errorMessage, isForbidden } from "../api/http";
@@ -67,9 +67,10 @@ export function CaseDetailPage() {
   );
   const start = useStartReview(caseId);
   const [businessAt, setBusinessAt] = useState("");
+  const [reviewScope, setReviewScope] = useState<ReviewScope>("full_review");
   const businessAtValue = beijingInputToUtc(businessAt);
   const validBusinessAt = businessAtValue !== "";
-  useEffect(() => setBusinessAt(""), [caseId, actorScope]);
+  useEffect(() => { setBusinessAt(""); setReviewScope("full_review"); }, [caseId, actorScope]);
   const readiness = useQuery({
     queryKey: ["cases", caseId, "review-readiness", actorScope, businessAtValue,
       detail.data?.updated_at, detail.data?.material_selection,
@@ -150,6 +151,7 @@ export function CaseDetailPage() {
   const canArchive = actorRole === "admin";
   const requiresBusinessAt = businessAt !== "" ||
     readiness.data?.scopes.some((scope) => scope.blockers.some((blocker) => blocker.code === "business_at_required")) === true;
+  const selectedReadiness = readiness.data?.scopes.find((scope) => scope.id === reviewScope);
 
   return (
     <section className="page">
@@ -183,7 +185,7 @@ export function CaseDetailPage() {
             打开审查工作区
           </Button>
         ) : null}
-        {!run || needsNewReview || subjectContextUnknown ? (
+        {!run || needsNewReview || subjectContextUnknown || !["accepted", "queued", "running"].includes(run.state) ? (
           <Button
             aria-label={String(
               start.isPending ? "正在发起" : subjectContextUnknown ? "主体状态暂不可用" : run ? "开始复审" : "开始审查",
@@ -192,7 +194,7 @@ export function CaseDetailPage() {
             htmlType="button"
             disabled={
               (!canUpload && actorRole !== "reviewer") ||
-              readiness.data?.can_start !== true ||
+              selectedReadiness?.can_start !== true ||
               readiness.isFetching || readiness.isError ||
               (businessAt !== "" && !validBusinessAt) ||
               subjectContextUnknown ||
@@ -200,7 +202,7 @@ export function CaseDetailPage() {
               archived
             }
             onClick={() => {
-              start.mutate(validBusinessAt ? { business_at: businessAtValue } : {}, {
+              start.mutate({ ...(validBusinessAt ? { business_at: businessAtValue } : {}), ...(reviewScope === "single_contract_precheck" ? { scope: reviewScope } : {}) }, {
                 onSuccess: (accepted) => {
                   const query = new URLSearchParams({
                     attempt_id: accepted.attempt_id,
@@ -309,7 +311,8 @@ export function CaseDetailPage() {
       {start.isError ? <p role="alert">{errorMessage(start.error)}</p> : null}
 
       <ReviewReadinessPanel caseId={item.id} data={readiness.data} loading={readiness.isFetching}
-        error={readiness.isError ? readiness.error : null} onRefresh={() => void readiness.refetch()} />
+        error={readiness.isError ? readiness.error : null} onRefresh={() => void readiness.refetch()}
+        selectedScope={reviewScope} onSelectScope={setReviewScope} />
       <div id="case-materials">
         <MaterialCollectionPanel key={`materials:${item.id}:${actorScope}`} caseDetail={item} canWrite={canUpload} actorId={session.data?.id ?? ""} />
       </div>

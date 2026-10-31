@@ -258,7 +258,7 @@ func TestRetryAndReopenUseFrozenOCRWithoutHistoricalCalls(t *testing.T) {
 	if findDocumentText(old.Documents, imageID) != frozenText || len(old.Execution.Events) != len(oldEvents) || !equalEvents(old.Execution.Events, oldEvents) || !equalOptionalString(old.Execution.Attempt.OutputHash, oldOutputHash) {
 		t.Fatalf("retry rewrote the original attempt: %+v", old.Execution)
 	}
-	if decisions := st.DecisionsFor(findingID); len(decisions) != 1 || decisions[0].Action != "confirm_risk" {
+	if decisions := mustDecisionsFor(t, st, admin, findingID); len(decisions) != 1 || decisions[0].Action != "confirm_risk" {
 		t.Fatalf("retry removed the original decision: %+v", decisions)
 	}
 

@@ -1,6 +1,6 @@
 import { Collapse } from "antd";
 import { Button, Select } from "antd";
-import { useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import type {
   ConstraintEvaluation,
   Execution,
@@ -701,19 +701,27 @@ function FindingButton({
 
 function ResultsSection({
   findings,
+  locatedFindings,
   evaluations,
   selectedFindingId,
   onSelectFinding,
 }: {
   findings: Finding[];
+  locatedFindings: Finding[];
   evaluations: ConstraintEvaluation[];
   selectedFindingId: string | null;
   onSelectFinding: (findingId: string) => void;
 }) {
-  const locatedFindings = locatedFindingsOf(findings);
-  const pendingCitations = pendingFindingsOf(findings, locatedFindings);
-  const gaps = evaluations.filter(
-    (evaluation) => evaluation.relation === "insufficient",
+  const pendingCitations = useMemo(
+    () => pendingFindingsOf(findings, locatedFindings),
+    [findings, locatedFindings],
+  );
+  const gaps = useMemo(
+    () =>
+      evaluations.filter(
+        (evaluation) => evaluation.relation === "insufficient",
+      ),
+    [evaluations],
   );
   return (
     <div className="execution-results">
@@ -818,29 +826,45 @@ function ExecutionHeader({
 
 function ExecutionBody({
   execution,
+  events,
   caseId,
   findings,
   evaluations,
+  locatedFindings,
   selectedFindingId,
   onSelectFinding,
   onSelectAttempt,
 }: {
   execution: Execution;
+  events: ExecutionEvent[];
   caseId: string;
   findings: Finding[];
   evaluations: ConstraintEvaluation[];
+  locatedFindings: Finding[];
   selectedFindingId: string | null;
   onSelectFinding: (findingId: string) => void;
   onSelectAttempt: (attemptId: string) => void;
 }) {
   const selected = execution.attempt;
-  const attempts = attemptsOf(execution);
-  const latest = latestAttemptOf(attempts, selected);
-  const events = selectedEventsOf(execution, selected);
+  const attempts = useMemo(
+    () => attemptsOf(execution),
+    [execution.attempt, execution.attempts],
+  );
+  const latest = useMemo(
+    () => latestAttemptOf(attempts, selected),
+    [attempts, selected],
+  );
   const duration = durationLabel(execution, selected);
   const [selectedSeq, setSelectedSeq] = useState<number | null>(null);
-  const event = events.find((item) => item.seq === selectedSeq) ?? events[0] ?? null;
-  const trees = buildSpanTree(events);
+  const eventBySeq = useMemo(
+    () => new Map(events.map((item) => [item.seq, item])),
+    [events],
+  );
+  const event =
+    (selectedSeq === null ? undefined : eventBySeq.get(selectedSeq)) ??
+    events[0] ??
+    null;
+  const trees = useMemo(() => buildSpanTree(events), [events]);
   return (
     <div className="execution-inspector-body">
       <div className="execution-overview">
@@ -874,6 +898,7 @@ function ExecutionBody({
       />
       <ResultsSection
         findings={findings}
+        locatedFindings={locatedFindings}
         evaluations={evaluations}
         selectedFindingId={selectedFindingId}
         onSelectFinding={onSelectFinding}
@@ -903,9 +928,15 @@ export function ExecutionInspector({
   onCancel,
 }: ExecutionInspectorProps) {
   const selected = execution.attempt;
-  const events = selectedEventsOf(execution, selected);
+  const events = useMemo(
+    () => selectedEventsOf(execution, selected),
+    [execution.events, selected.id],
+  );
   const latestEvent = events.at(-1);
-  const locatedFindings = locatedFindingsOf(findings);
+  const locatedFindings = useMemo(
+    () => locatedFindingsOf(findings),
+    [findings],
+  );
   return (
     <section
       id="execution-inspector"
@@ -930,8 +961,10 @@ export function ExecutionInspector({
               children: (
                 <ExecutionBody
                   execution={execution}
+                  events={events}
                   caseId={caseId}
                   findings={findings}
+                  locatedFindings={locatedFindings}
                   evaluations={evaluations}
                   selectedFindingId={selectedFindingId}
                   onSelectFinding={onSelectFinding}

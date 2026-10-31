@@ -29,6 +29,13 @@ func telemetryInstanceID() string {
 	return fmt.Sprintf("%s-%d", host, os.Getpid())
 }
 
+// HTTPExporter builds the exporter for a process HTTP boundary that owns no
+// database runtime, for example the edge gateway or the health monitor. It is
+// nil when telemetry is disabled, and the caller owns Close.
+func HTTPExporter(service string) (*telemetry.Exporter, error) {
+	return configuredTelemetry(service)
+}
+
 func configuredTelemetry(service string) (*telemetry.Exporter, error) {
 	endpoint := strings.TrimSpace(os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT"))
 	if endpoint == "" {
@@ -44,6 +51,7 @@ func configuredTelemetry(service string) (*telemetry.Exporter, error) {
 	return telemetry.New(telemetry.Config{
 		Endpoint: endpoint, Service: "contract-audit." + service,
 		InstanceID: telemetryInstanceID(), SampleRatio: ratio,
+		Environment: strings.TrimSpace(os.Getenv("APP_ENV")),
 	})
 }
 

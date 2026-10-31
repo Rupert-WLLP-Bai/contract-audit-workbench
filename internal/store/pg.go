@@ -104,12 +104,17 @@ func openStore(dir string, sel config.Selection, schema string, drop bool) (*Sto
 	if err := createSchema(ctx, sel.DSN, schema); err != nil {
 		return nil, err
 	}
-	pool, err := newPool(ctx, sel.DSN, schema)
+	migrationPool, err := newStorePool(ctx, sel.DSN, schema, false)
 	if err != nil {
 		return nil, err
 	}
-	if err := migrate(ctx, pool); err != nil {
-		pool.Close()
+	err = migrate(ctx, migrationPool, schema)
+	migrationPool.Close()
+	if err != nil {
+		return nil, err
+	}
+	pool, err := newPool(ctx, sel.DSN, schema)
+	if err != nil {
 		return nil, err
 	}
 	s := &Store{
@@ -120,16 +125,7 @@ func openStore(dir string, sel config.Selection, schema string, drop bool) (*Sto
 		pool.Close()
 		return nil, err
 	}
-	if err := s.load(ctx); err != nil {
-		pool.Close()
-		return nil, err
-	}
-	s.st.normalize()
-	if err := s.validateLoadedParseHistory(); err != nil {
-		pool.Close()
-		return nil, err
-	}
-	if err := s.markUnfinishedInterrupted(); err != nil {
+	if err := s.initializeKnownTenants(ctx, true); err != nil {
 		pool.Close()
 		return nil, err
 	}
@@ -155,7 +151,7 @@ func ensureDatabase(ctx context.Context, sel config.Selection) error {
 	if err != nil {
 		return err
 	}
-	conn, err := pgx.Connect(ctx, admin)
+	conn, err := connectPoolDSN(ctx, admin)
 	if err != nil {
 		return err
 	}
@@ -191,7 +187,7 @@ func createSchema(ctx context.Context, dsn, schema string) error {
 	if err != nil {
 		return err
 	}
-	conn, err := pgx.Connect(ctx, dsn)
+	conn, err := connectPoolDSN(ctx, dsn)
 	if err != nil {
 		return err
 	}
@@ -200,12 +196,61 @@ func createSchema(ctx context.Context, dsn, schema string) error {
 	return err
 }
 
-func newPool(ctx context.Context, dsn, schema string) (*pgxpool.Pool, error) {
+const (
+	defaultStorePoolMaxConns    int32 = 4
+	defaultMigratorPoolMaxConns int32 = 2
+)
+
+// parsePoolConfig preserves pgx's explicit pool options while keeping the
+// unconfigured maximum independent of the host's CPU count.
+func parsePoolConfig(dsn string, defaultMaxConns int32) (*pgxpool.Config, error) {
 	cfg, err := pgxpool.ParseConfig(dsn)
 	if err != nil {
 		return nil, err
 	}
-	cfg.MaxConns = 4
+	// pgxpool removes pool options from RuntimeParams, so use pgx's parser to
+	// distinguish an explicit maximum from its CPU-dependent default. This also
+	// handles keyword DSNs, escaping and pgx service-file settings.
+	connConfig, err := pgx.ParseConfig(dsn)
+	if err != nil {
+		return nil, err
+	}
+	if _, explicit := connConfig.RuntimeParams["pool_max_conns"]; !explicit {
+		cfg.MaxConns = defaultMaxConns
+		// Explicit minimums also express a connection requirement; do not leave
+		// them unattainable just because no maximum was supplied.
+		if cfg.MinConns > cfg.MaxConns {
+			cfg.MaxConns = cfg.MinConns
+		}
+		if cfg.MinIdleConns > cfg.MaxConns {
+			cfg.MaxConns = cfg.MinIdleConns
+		}
+	}
+	return cfg, nil
+}
+
+// connectPoolDSN removes pgxpool-only settings before opening a direct
+// connection for database or schema initialization.
+func connectPoolDSN(ctx context.Context, dsn string) (*pgx.Conn, error) {
+	cfg, err := pgxpool.ParseConfig(dsn)
+	if err != nil {
+		return nil, err
+	}
+	return pgx.ConnectConfig(ctx, cfg.ConnConfig)
+}
+
+func newPool(ctx context.Context, dsn, schema string) (*pgxpool.Pool, error) {
+	return newStorePool(ctx, dsn, schema, true)
+}
+
+func newStorePool(ctx context.Context, dsn, schema string, application bool) (*pgxpool.Pool, error) {
+	cfg, err := parsePoolConfig(dsn, defaultStorePoolMaxConns)
+	if err != nil {
+		return nil, err
+	}
+	if application {
+		applyRuntimeTimeoutDefaults(cfg.ConnConfig.RuntimeParams)
+	}
 	cfg.AfterConnect = func(ctx context.Context, conn *pgx.Conn) error {
 		_, err := conn.Exec(ctx, `SELECT
 			set_config('search_path', $1, false),
@@ -218,33 +263,38 @@ func newPool(ctx context.Context, dsn, schema string) (*pgxpool.Pool, error) {
 	return pgxpool.NewWithConfig(ctx, cfg)
 }
 
-func migrate(ctx context.Context, pool *pgxpool.Pool) error {
-	for _, stmt := range schemaStatements {
-		if _, err := pool.Exec(ctx, stmt); err != nil {
-			return fmt.Errorf("migrate: %w", err)
+// Defaults go first in PostgreSQL's options parameter so explicit -c/-- options
+// win. Direct startup parameters are left alone and receive no competing default.
+func applyRuntimeTimeoutDefaults(params map[string]string) {
+	var defaults strings.Builder
+	for _, setting := range [...]struct{ name, option string }{
+		{"statement_timeout", "-c statement_timeout=60s"},
+		{"lock_timeout", "-c lock_timeout=10s"},
+		{"idle_in_transaction_session_timeout", "-c idle_in_transaction_session_timeout=5min"},
+	} {
+		explicit := false
+		for name := range params {
+			if strings.EqualFold(name, setting.name) {
+				explicit = true
+				break
+			}
 		}
+		if explicit {
+			continue
+		}
+		if defaults.Len() > 0 {
+			defaults.WriteByte(' ')
+		}
+		defaults.WriteString(setting.option)
 	}
-	if err := migrateMaterials(ctx, pool); err != nil {
-		return err
+	if defaults.Len() == 0 {
+		return
 	}
-	// Service-object association constraints pin a material version and parse
-	// selection, so install them only after those immutable tables exist.
-	if _, err := pool.Exec(ctx, serviceObjectSchemaSQL); err != nil {
-		return fmt.Errorf("migrate service objects: %w", err)
+	if options := params["options"]; options != "" {
+		defaults.WriteByte(' ')
+		defaults.WriteString(options)
 	}
-	if _, err := pool.Exec(ctx, operatorMappingChangesSchemaSQL); err != nil {
-		return fmt.Errorf("migrate operator mapping lineages: %w", err)
-	}
-	if err := migrateSubjects(ctx, pool); err != nil {
-		return err
-	}
-	if err := migrateLegalApplicability(ctx, pool); err != nil {
-		return err
-	}
-	if err := migrateModelBudgetFunctions(ctx, pool); err != nil {
-		return err
-	}
-	return migrateExperienceDistillFunctions(ctx, pool)
+	params["options"] = defaults.String()
 }
 
 // Migrate applies the schema using MIGRATOR_DATABASE_URL. The URL must select
@@ -272,11 +322,10 @@ func Migrate(ctx context.Context) error {
 	if err := createSchema(ctx, migratorDSN, schema); err != nil {
 		return err
 	}
-	cfg, err := pgxpool.ParseConfig(migratorDSN)
+	cfg, err := parsePoolConfig(migratorDSN, defaultMigratorPoolMaxConns)
 	if err != nil {
 		return err
 	}
-	cfg.MaxConns = 2
 	cfg.AfterConnect = func(ctx context.Context, conn *pgx.Conn) error {
 		_, err := conn.Exec(ctx, `SELECT set_config('search_path', $1, false)`, schema)
 		return err
@@ -286,7 +335,7 @@ func Migrate(ctx context.Context) error {
 		return err
 	}
 	defer pool.Close()
-	return migrate(ctx, pool)
+	return migrate(ctx, pool, schema)
 }
 
 func applicationSchema() (string, error) {
@@ -316,6 +365,10 @@ func openApplicationStore(dir string, sel config.Selection, schema string) (*Sto
 		pool.Close()
 		return nil, err
 	}
+	if err := checkSchemaCompatibility(ctx, pool); err != nil {
+		pool.Close()
+		return nil, err
+	}
 	s := &Store{
 		dir: dir, sel: sel, schema: schema, pool: pool,
 		executionSlots: make(chan struct{}, maxConcurrentReviews), running: make(map[string]func()), claims: make(map[string]JobClaim),
@@ -324,12 +377,7 @@ func openApplicationStore(dir string, sel config.Selection, schema string) (*Sto
 		pool.Close()
 		return nil, err
 	}
-	if err := s.load(ctx); err != nil {
-		pool.Close()
-		return nil, err
-	}
-	s.st.normalize()
-	if err := s.validateLoadedParseHistory(); err != nil {
+	if err := s.initializeKnownTenants(ctx, false); err != nil {
 		pool.Close()
 		return nil, err
 	}
@@ -351,13 +399,45 @@ func rejectPrivilegedApplicationRole(ctx context.Context, pool *pgxpool.Pool, sc
 	return nil
 }
 
-func (s *Store) load(ctx context.Context) error {
+// Startup only inspects tenants present in the trusted directory. Each read and
+// legacy restart recovery uses that tenant's own RLS scope.
+func (s *Store) initializeKnownTenants(ctx context.Context, recoverAttempts bool) error {
+	s.st.normalize()
+	seen := make(map[string]struct{})
+	for _, user := range accounts.List() {
+		if !user.Enabled {
+			continue
+		}
+		if strings.TrimSpace(user.TenantID) == "" {
+			return errors.New("trusted directory user has no tenant")
+		}
+		if _, ok := seen[user.TenantID]; ok {
+			continue
+		}
+		seen[user.TenantID] = struct{}{}
+		scope := dbScope{ActorID: "startup", TenantID: user.TenantID, OrgID: user.OrgID, Role: "api"}
+		if err := s.load(ctx, scope); err != nil {
+			return err
+		}
+		if err := s.validateLoadedParseHistory(s.st); err != nil {
+			return err
+		}
+		if recoverAttempts {
+			if err := s.markUnfinishedInterrupted(s.st); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func (s *Store) load(ctx context.Context, scope dbScope) error {
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback(ctx)
-	if err := setLocalScope(ctx, tx, dbScope{}); err != nil {
+	if err := setLocalScope(ctx, tx, scope); err != nil {
 		return err
 	}
 	st, err := loadState(ctx, tx, true)
@@ -592,11 +672,7 @@ func (s *Store) updateStateWithLocks(ctx context.Context, scope dbScope, attempt
 	}
 	if scope.CaseID != "" {
 		caseItem, ok := previous.caseByID(scope.CaseID)
-		tenantID := scope.TenantID
-		if tenantID == "" {
-			tenantID = accounts.LocalDemoTenant
-		}
-		if ok && caseItem.TenantID == tenantID {
+		if ok && caseItem.TenantID == scope.TenantID {
 			scope.OrgID = caseItem.OwnerOrgID
 			if err := setLocalScope(ctx, tx, scope); err != nil {
 				return err
@@ -1059,7 +1135,7 @@ type queryer interface {
 }
 
 func loadSessions(ctx context.Context, q queryer) ([]session, error) {
-	rows, err := q.Query(ctx, `SELECT token, actor_id, issuer, subject, tenant_id, org_id, audience, expires_at FROM sessions ORDER BY seq`)
+	rows, err := q.Query(ctx, `SELECT token, actor_id, issuer, subject, tenant_id, org_id, audience, expires_at FROM sessions WHERE token COLLATE "C" ~ '^sha256:[0-9a-f]{64}$' ORDER BY seq`)
 	if err != nil {
 		return nil, err
 	}

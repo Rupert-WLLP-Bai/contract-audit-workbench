@@ -547,7 +547,7 @@ func TestExperienceBudgetReservationSerializesWithReclamation(t *testing.T) {
 		{"input", func(s *model.DelegatedScope, _ *dbScope) { s.InputSHA256 = sha256Bytes([]byte("different input")) }},
 		{"session tenant", func(_ *model.DelegatedScope, s *dbScope) { s.TenantID += "-other" }},
 		{"session org", func(_ *model.DelegatedScope, s *dbScope) { s.OrgID += "-other" }},
-		{"session role", func(_ *model.DelegatedScope, s *dbScope) { s.Role = "worker" }},
+		{"session role", func(_ *model.DelegatedScope, s *dbScope) { s.Role = "api" }},
 	}
 	lockQuery := `SELECT ` + pgx.Identifier{st.schema, "model_budget_lock_experience_job"}.Sanitize() + `($1,$2,$3,$4,$5,$6,$7,$8)`
 	for _, mutation := range mutations {

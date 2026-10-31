@@ -140,7 +140,7 @@ test("experience feedback, distillation and candidate review", operations("creat
   testInfo.annotations.push({ type: "fixture-model", description: "fixture model: deterministic test double" });
   await testInfo.attach("fixture-model.txt", { body: "fixture model: deterministic test double\nThis test verifies workflow behavior, not model quality.\n", contentType: "text/plain" });
   const stamp = Date.now();
-  const adminApi = await playwright.request.newContext();
+  const adminApi = await playwright.request.newContext({ extraHTTPHeaders: { Referer: apiURL } });
   try {
     const admin = await login(adminApi, "demo-admin", "admin-demo", "admin");
     expect(admin.audience).toBe("admin");
@@ -240,7 +240,7 @@ test("governed knowledge lifecycle through the admin UI", operations("createSess
   test.setTimeout(360_000);
   page.setDefaultTimeout(30_000);
   const stamp = Date.now();
-  const adminApi = await playwright.request.newContext();
+  const adminApi = await playwright.request.newContext({ extraHTTPHeaders: { Referer: apiURL } });
   try {
     const admin = await login(adminApi, "demo-admin", "admin-demo", "admin");
     expect(admin.audience).toBe("admin");
@@ -454,7 +454,7 @@ test("report business view hides raw identities", operations("createSession", "c
   test.setTimeout(360_000);
   page.setDefaultTimeout(30_000);
   const stamp = Date.now();
-  const adminApi = await playwright.request.newContext();
+  const adminApi = await playwright.request.newContext({ extraHTTPHeaders: { Referer: apiURL } });
   try {
     const admin = await login(adminApi, "demo-admin", "admin-demo", "admin");
     await disableActiveGovernance(adminApi);

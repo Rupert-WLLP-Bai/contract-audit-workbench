@@ -16,6 +16,15 @@ func (s *Store) UseTelemetry(exporter *telemetry.Exporter) {
 	}
 }
 
+// Telemetry returns the exporter the Store owns, so the same process can reuse
+// it for the HTTP boundary instead of building a second one. It may be nil
+// when telemetry is disabled.
+func (s *Store) Telemetry() *telemetry.Exporter {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.telemetry
+}
+
 func (s *Store) recordTelemetry(runID, attemptID string, event execution.Event) {
 	s.mu.Lock()
 	exporter := s.telemetry

@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"contractaudit/internal/store"
+	"contractaudit/internal/telemetry"
 )
 
 const maxPreparedDocumentBytes = 64 << 20
@@ -66,6 +67,13 @@ func (c *Client) PrepareAttemptDocument(ctx context.Context, request store.Prepa
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("X-Contract-Service-Key", c.credential)
+	// The call joins the attempt's deterministic trace and carries a bounded
+	// request identity, so the document owner's access log correlates with the
+	// worker's attempt.
+	req.Header.Set("X-Request-Id", telemetry.NewRequestID())
+	if traceparent := telemetry.AttemptTraceparent(request.AttemptID); traceparent != "" {
+		req.Header.Set("Traceparent", traceparent)
+	}
 	response, err := c.http.Do(req)
 	if err != nil {
 		return store.FrozenDocument{}, fmt.Errorf("document preparation request failed: %w", err)

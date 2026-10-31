@@ -10,6 +10,8 @@ import (
 	"contractaudit/internal/engine"
 	"contractaudit/internal/fault"
 	"contractaudit/internal/model"
+
+	"github.com/jackc/pgx/v5"
 )
 
 var decisionActions = map[string]string{
@@ -304,6 +306,14 @@ func (s *Store) Workspace(user accounts.User, caseID, runID string, selectedAtte
 		evaluations = st.evaluationsForAttempt(runID, attemptID)
 	}
 	snapshot := st.snapshotOf(runID)
+	if snapshot.ReviewScope != nil && executionView != nil {
+		if executionView.Attempt != nil {
+			executionView.Attempt.ReviewScope = snapshot.ReviewScope
+		}
+		for i := range executionView.Attempts {
+			executionView.Attempts[i].ReviewScope = snapshot.ReviewScope
+		}
+	}
 	var legalAuthorities *FrozenLegalReviewProjection
 	if attemptID != "" {
 		legalAuthorities, err = frozenLegalReportProjection(snapshot, runID, attemptID)
@@ -333,33 +343,124 @@ func (s *Store) WorkspaceAttempt(user accounts.User, caseID, runID, attemptID st
 	return s.Workspace(user, caseID, runID, attemptID)
 }
 
-func (s *Store) DecisionsFor(findingID string) []Decision {
-	st := s.snapshot()
-	return st.decisions(findingID)
-}
-
-func (s *Store) EventsAfter(user accounts.User, caseID, runID string, after int) ([]Event, error) {
-	st, err := s.snapshotAs(user)
+// DecisionsFor returns the history of one finding only while the caller can
+// still read its case. The finding, case and decisions must share their scope.
+func (s *Store) DecisionsFor(user accounts.User, findingID string) ([]Decision, error) {
+	current, err := trustedUser(user)
 	if err != nil {
 		return nil, err
 	}
-	if _, err := s.visibleCase(&st, user, caseID); err != nil {
+	ctx := context.Background()
+	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted, AccessMode: pgx.ReadOnly})
+	if err != nil {
 		return nil, err
 	}
-	found := false
-	for _, run := range st.Runs {
-		if run.ID == runID && run.CaseID == caseID {
-			found = true
-		}
+	defer tx.Rollback(ctx)
+	if err := setLocalScope(ctx, tx, userScope(current)); err != nil {
+		return nil, err
 	}
-	if !found {
+	var caseID, orgID, runID string
+	err = tx.QueryRow(ctx, `SELECT case_id,org_id,run_id FROM findings WHERE tenant_id=$1 AND id=$2`, current.TenantID, findingID).Scan(&caseID, &orgID, &runID)
+	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, fault.NotFound("没有找到对应记录")
 	}
-	var out []Event
-	for _, event := range st.runEvents(runID) {
-		if event.Seq > after {
-			out = append(out, event)
+	if err != nil {
+		return nil, err
+	}
+	if err := scopedCaseLock(ctx, tx, caseID); err != nil {
+		return nil, err
+	}
+	item, err := loadKnowledgeCase(ctx, tx, current, caseID)
+	if err != nil {
+		return nil, err
+	}
+	if item.OwnerOrgID != orgID {
+		return nil, fault.NotFound("没有找到对应记录")
+	}
+	rows, err := tx.Query(ctx, `SELECT id,finding_id,run_id,case_id,actor_id,actor_name,action,reason,old_disposition,new_disposition,created_at
+		FROM decisions WHERE tenant_id=$1 AND org_id=$2 AND case_id=$3 AND run_id=$4 AND finding_id=$5 ORDER BY seq`,
+		current.TenantID, orgID, caseID, runID, findingID)
+	if err != nil {
+		return nil, err
+	}
+	var decisions []Decision
+	for rows.Next() {
+		var decision Decision
+		if err := rows.Scan(&decision.ID, &decision.FindingID, &decision.RunID, &decision.CaseID, &decision.ActorID,
+			&decision.ActorName, &decision.Action, &decision.Reason, &decision.OldDisposition, &decision.NewDisposition, &decision.CreatedAt); err != nil {
+			rows.Close()
+			return nil, err
 		}
+		decisions = append(decisions, decision)
+	}
+	err = rows.Err()
+	rows.Close()
+	if err != nil {
+		return nil, err
+	}
+	if !authorizeCase(item, current, access.Read) {
+		return nil, fault.NotFound("没有找到对应记录")
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return nil, err
+	}
+	return decisions, nil
+}
+
+// EventsAfterContext rechecks the case grant and run binding before reading
+// only events after the caller's cursor, in one tenant-scoped snapshot.
+func (s *Store) EventsAfterContext(ctx context.Context, user accounts.User, caseID, runID string, after int) ([]Event, error) {
+	current, err := trustedUser(user)
+	if err != nil {
+		return nil, err
+	}
+	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback(ctx)
+	if err := setLocalScope(ctx, tx, userScope(current)); err != nil {
+		return nil, err
+	}
+	item, err := loadKnowledgeCase(ctx, tx, current, caseID)
+	if err != nil {
+		return nil, err
+	}
+	var exists bool
+	if err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM review_runs
+		WHERE tenant_id=$1 AND org_id=$2 AND case_id=$3 AND id=$4)`,
+		current.TenantID, item.OwnerOrgID, caseID, runID).Scan(&exists); err != nil {
+		return nil, err
+	}
+	if !exists {
+		return nil, fault.NotFound("没有找到对应记录")
+	}
+	rows, err := tx.Query(ctx, `SELECT run_id,event_seq,event_type,state FROM (
+		SELECT run_id,event_seq,event_type,state FROM run_events
+		WHERE tenant_id=$1 AND org_id=$2 AND run_id=$3 AND event_seq>$4
+		UNION ALL
+		SELECT run_id,event_seq,event_type,state FROM business_run_events
+		WHERE tenant_id=$1 AND org_id=$2 AND run_id=$3 AND event_seq>$4
+	) AS events ORDER BY event_seq`, current.TenantID, item.OwnerOrgID, runID, after)
+	if err != nil {
+		return nil, err
+	}
+	var out []Event
+	for rows.Next() {
+		var event Event
+		if err := rows.Scan(&event.RunID, &event.Seq, &event.Type, &event.State); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		out = append(out, event)
+	}
+	err = rows.Err()
+	rows.Close()
+	if err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return nil, err
 	}
 	return out, nil
 }

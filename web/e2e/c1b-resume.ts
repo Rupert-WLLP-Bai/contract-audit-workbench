@@ -189,6 +189,7 @@ try {
   assert.ok(detail.archived_at, "archive timestamp was not retained");
 
   const deniedWrite = await page.request.post(`${web}/api/cases/${caseID}/generations`, {
+    headers: { Origin: new URL(web).origin },
     data: { template_id: rawDataset.template_id, fields: scenario.fields },
   });
   observations.archived_generation_status = deniedWrite.status();

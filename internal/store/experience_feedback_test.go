@@ -14,6 +14,41 @@ import (
 	"contractaudit/internal/fault"
 )
 
+// These helpers keep legacy fixtures explicitly scoped to the first demo tenant.
+func localDemoScope(actorID string) dbScope {
+	return dbScope{ActorID: actorID, TenantID: accounts.LocalDemoTenant, OrgID: "demo-org", Role: "api"}
+}
+
+func (s *Store) update(fn func(*state) error) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.updateState(context.Background(), localDemoScope("test"), "", fn)
+}
+
+func (s *Store) snapshot() state {
+	st, err := s.snapshotScoped(context.Background(), localDemoScope("test"))
+	if err != nil {
+		return state{}
+	}
+	s.mu.Lock()
+	s.st = st
+	s.mu.Unlock()
+	out, err := st.clone()
+	if err != nil {
+		return st
+	}
+	return out
+}
+
+func mustDecisionsFor(t *testing.T, st *Store, user accounts.User, findingID string) []Decision {
+	t.Helper()
+	decisions, err := st.DecisionsFor(user, findingID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return decisions
+}
+
 func feedbackFixture(t *testing.T, action string) (*Store, accounts.User, ExperienceFeedbackInput, Decision) {
 	t.Helper()
 	st, user, input, decision, _, _ := feedbackGovernedFixture(t, action)
@@ -29,7 +64,7 @@ func feedbackGovernedFixture(t *testing.T, action string) (*Store, accounts.User
 	pack := publishSyntheticAcceptancePack(t, st, owner)
 	policy := publishSyntheticAcceptancePolicy(t, st, owner, pack)
 	input := createGovernedFeedbackSource(t, st, owner, owner, action, "feedback-key")
-	decisions := st.DecisionsFor(input.FindingID)
+	decisions := mustDecisionsFor(t, st, owner, input.FindingID)
 	if len(decisions) != 1 {
 		t.Fatalf("expected one decision, got %+v", decisions)
 	}
@@ -74,7 +109,7 @@ func createGovernedFeedbackSourceWithParty(t *testing.T, st *Store, owner, appli
 	if err := st.Decide(owner, caseID, runID, finding.ID, key+"-decision", action, "按证据确认人工决定", finding.Version); err != nil {
 		t.Fatal(err)
 	}
-	decisions := st.DecisionsFor(finding.ID)
+	decisions := mustDecisionsFor(t, st, owner, finding.ID)
 	if len(decisions) != 1 {
 		t.Fatalf("expected one decision, got %+v", decisions)
 	}
@@ -131,7 +166,7 @@ func TestFeedbackPreservesDecisionAndReturnsSameReceiptOnReplay(t *testing.T) {
 	if err != nil || !reflect.DeepEqual(first, read) {
 		t.Fatalf("exact feedback read: got=%+v err=%v", read, err)
 	}
-	if got := st.DecisionsFor(input.FindingID); len(got) != 1 || !reflect.DeepEqual(got[0], decision) || got[0].NewDisposition != "accepted_residual" {
+	if got := mustDecisionsFor(t, st, user, input.FindingID); len(got) != 1 || !reflect.DeepEqual(got[0], decision) || got[0].NewDisposition != "accepted_residual" {
 		t.Fatalf("feedback altered the original residual-risk decision: %+v", got)
 	}
 	input.Reason = "另一条不同的纠正理由"
@@ -359,7 +394,7 @@ func TestCandidateUsesLeasedResultAndReplaysAfterJobCompletion(t *testing.T) {
 	if err != nil || !reflect.DeepEqual(persisted, candidate) {
 		t.Fatalf("candidate did not survive reopening: got=%+v err=%v", persisted, err)
 	}
-	if got := st.DecisionsFor(input.FindingID); len(got) != 1 || !reflect.DeepEqual(got[0], decision) || got[0].NewDisposition != "accepted_residual" {
+	if got := mustDecisionsFor(t, st, user, input.FindingID); len(got) != 1 || !reflect.DeepEqual(got[0], decision) || got[0].NewDisposition != "accepted_residual" {
 		t.Fatalf("distillation converted or rewrote residual risk: %+v", got)
 	}
 }
@@ -589,7 +624,7 @@ func TestFeedbackCannotCiteEvidenceAddedAfterItsAttempt(t *testing.T) {
 	if err := st.Decide(user, input.CaseID, runID, newFinding.ID, "later-decision", "confirm_risk", "按新材料确认", newFinding.Version); err != nil {
 		t.Fatal(err)
 	}
-	newDecisions := st.DecisionsFor(newFinding.ID)
+	newDecisions := mustDecisionsFor(t, st, user, newFinding.ID)
 	if len(newDecisions) != 1 {
 		t.Fatal("new finding decision missing")
 	}

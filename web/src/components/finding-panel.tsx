@@ -9,6 +9,7 @@ import type {
   HumanDecision,
   ReviewDocument,
 } from "../api/types";
+import { useDecisionDraft } from "../hooks/decision-drafts";
 import type { FindingFilter } from "../domain/review";
 import {
   DECISION_ACTIONS,
@@ -630,32 +631,39 @@ function DecisionForm({
 }) {
   const reasonId = useId();
   const hintId = useId();
-  const [action, setAction] = useState<DecisionAction | null>(null);
-  const [reason, setReason] = useState("");
+  const draft = useDecisionDraft(finding.id);
   const [attempted, setAttempted] = useState(false);
-  const reasonError = attempted ? validateDecisionReason(reason) : null;
+  const reasonError = attempted ? validateDecisionReason(draft.reason) : null;
   const canSubmit = canSubmitDecision(
     canDecide,
-    action,
+    draft.action,
     finding.version,
-    reason,
+    draft.reason,
     pending,
   );
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setAttempted(true);
-    if (!canSubmitDecision(canDecide, action, finding.version, reason, pending))
+    if (
+      !canSubmitDecision(
+        canDecide,
+        draft.action,
+        finding.version,
+        draft.reason,
+        pending,
+      )
+    )
       return;
-    if (action === null || finding.version === null) return;
+    if (draft.action === null || finding.version === null) return;
     const saved = await onDecide({
       findingId: finding.id,
-      action,
-      reason: reason.trim(),
+      action: draft.action,
+      reason: draft.reason.trim(),
       expectedVersion: finding.version,
     });
     if (saved) {
-      setReason("");
+      draft.clear();
       setAttempted(false);
     }
   }
@@ -667,17 +675,24 @@ function DecisionForm({
       ) : null}
       <DecisionCard
         finding={finding}
-        action={action}
+        action={draft.action}
         canDecide={canDecide}
-        onAction={setAction}
+        onAction={(action) =>
+          draft.update((current) => ({ ...current, action }))
+        }
       />
       <label className="field" htmlFor={reasonId}>
         理由
       </label>
       <Input.TextArea
         id={reasonId}
-        value={reason}
-        onChange={(event) => setReason(event.target.value)}
+        value={draft.reason}
+        onChange={(event) =>
+          draft.update((current) => ({
+            ...current,
+            reason: event.target.value,
+          }))
+        }
         aria-describedby={hintId}
         rows={4}
         disabled={!canDecide}

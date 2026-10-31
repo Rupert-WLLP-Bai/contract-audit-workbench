@@ -365,7 +365,7 @@ func (s *Store) verifyParsedRecordContext(ctx context.Context, p ParsedDocument,
 		defer cancel()
 		_ = tx.Rollback(rollbackCtx)
 	}()
-	if err := setLocalScope(ctx, tx, dbScope{TenantID: doc.TenantID, OrgID: doc.OrgID, CaseID: doc.CaseID}); err != nil {
+	if err := setLocalScope(ctx, tx, dbScope{ActorID: "document-verifier", Role: "api", TenantID: doc.TenantID, OrgID: doc.OrgID, CaseID: doc.CaseID}); err != nil {
 		return err
 	}
 	var id, documentID, originalDigest, parserID, parserVersion, configHash, normalizationVersion string
@@ -558,7 +558,7 @@ func (s *Store) interpretUnpersistedWithModels(ctx context.Context, doc Document
 }
 
 func (s *Store) interpretStored(doc Document) Interpreted {
-	st, err := s.snapshotScoped(context.Background(), dbScope{TenantID: doc.TenantID, OrgID: doc.OrgID, CaseID: doc.CaseID})
+	st, err := s.snapshotScoped(context.Background(), dbScope{ActorID: "document-reader", Role: "api", TenantID: doc.TenantID, OrgID: doc.OrgID, CaseID: doc.CaseID})
 	if err != nil {
 		return Interpreted{Document: doc, ParseError: "已保存解析状态暂不可读取。"}
 	}
@@ -745,8 +745,7 @@ func attemptSelectionsMatchFrozen(selections []AttemptParseSelection, docs []Fro
 	return true
 }
 
-func (s *Store) validateLoadedParseHistory() error {
-	st := s.snapshot()
+func (s *Store) validateLoadedParseHistory(st state) error {
 	for _, attempt := range st.Attempts {
 		input, hasInput := st.attemptInput(attempt.ID)
 		selections := st.parseSelectionsForAttempt(attempt.ID)
@@ -828,6 +827,10 @@ func (s *Store) verifyAttemptSelectionSnapshot(st state, attempt Attempt, select
 	return nil
 }
 func (s *Store) verifyFrozenDocuments(st state, docs []FrozenDocument) error {
+	return s.verifyFrozenDocumentsContext(context.Background(), st, docs)
+}
+
+func (s *Store) verifyFrozenDocumentsContext(ctx context.Context, st state, docs []FrozenDocument) error {
 	for _, frozen := range docs {
 		if !validParsedID(frozen.ParsedDocumentID) {
 			if frozen.SelectionOrder != 0 || frozen.ParsedArtifactDigest != "" || frozen.ConfigHash != "" || frozen.ParserID != "" ||
@@ -845,7 +848,7 @@ func (s *Store) verifyFrozenDocuments(st state, docs []FrozenDocument) error {
 		if !ok || doc.Digest != frozen.Document.Digest {
 			return errors.New("frozen input original identity is missing")
 		}
-		if err := s.verifyParsedRecordContext(context.Background(), parsed, doc); err != nil {
+		if err := s.verifyParsedRecordContext(ctx, parsed, doc); err != nil {
 			return err
 		}
 		left, _ := json.Marshal(frozen.IR)

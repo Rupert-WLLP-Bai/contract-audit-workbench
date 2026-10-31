@@ -1,6 +1,7 @@
 package toolgateway
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -127,19 +128,12 @@ type boundaryCredentialBackend struct {
 	acceptedToken string
 }
 
-func (backend *boundaryCredentialBackend) User(token string) (accounts.User, error) {
+func (backend *boundaryCredentialBackend) AuthenticateSession(_ context.Context, token string) (accounts.User, string, error) {
 	backend.userCalls++
 	if token != backend.acceptedToken {
-		return accounts.User{}, fault.Unauthenticated("invalid token")
+		return accounts.User{}, "", fault.Unauthenticated("invalid token")
 	}
-	return backend.user, nil
-}
-
-func (backend *boundaryCredentialBackend) SessionAudience(token string) (string, error) {
-	if token != backend.acceptedToken {
-		return "", fault.Unauthenticated("invalid token")
-	}
-	return "client", nil
+	return backend.user, "client", nil
 }
 
 func TestOriginAndResponseMediaValidationKeepTheirOrder(t *testing.T) {

@@ -29,7 +29,7 @@ test("client/admin audiences, anonymous reads, malformed requests and Origin gua
   await login(request);
   expect((await request.get(`${apiURL}/api/session?audience=admin`)).status()).toBe(401);
   expect((await request.get(`${apiURL}/api/admin/settings`)).status()).toBe(401);
-  const admin = await playwright.request.newContext();
+  const admin = await playwright.request.newContext({ extraHTTPHeaders: { Referer: apiURL } });
   try {
     await login(admin, "demo-admin", "admin-demo", "admin");
     expect((await admin.get(`${apiURL}/api/cases`)).status()).toBe(401);
@@ -53,7 +53,7 @@ test("case membership grants only the named case and viewer writes remain forbid
   const caseID = await createCase(request, "私有成员案件");
   const docID = await upload(request, caseID, "procurement", "private.txt", "只允许案件成员读取的合成质保36个月。");
   const other = await createCase(request, "其它私有案件");
-  const viewer = await playwright.request.newContext();
+  const viewer = await playwright.request.newContext({ extraHTTPHeaders: { Referer: apiURL } });
   try {
     await login(viewer, "demo-viewer", "viewer-demo");
     for (const suffix of ["", `/documents/${docID}/original`, "/reviews/run_nonexistent"]) expect((await viewer.get(`${apiURL}/api/cases/${caseID}${suffix}`)).status()).toBe(404);

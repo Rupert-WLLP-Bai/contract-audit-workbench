@@ -29,14 +29,20 @@ var (
 
 func (s *Store) runTelecomAgentReview(ctx context.Context, runID, attemptID string, docs []Interpreted, models Models, recorder attemptRecorder) (bool, error) {
 	claim, durable := s.claimForAttempt(attemptID)
+	if executionScopeRequiresClaim(ctx) && (!durable || !claimMatchesExecutionScope(ctx, claim)) {
+		return true, errLeaseLost
+	}
 	if !durable || claim.JobID == "" || claim.RunID != runID || claim.AttemptID != attemptID {
 		return false, nil
 	}
-	caseItem, principal, resource, err := s.authorizeAgentReviewStage(runID, attemptID)
+	caseItem, principal, resource, err := s.authorizeAgentReviewStage(ctx, runID, attemptID)
 	if err != nil {
 		return true, err
 	}
-	st := s.snapshotForAttempt(attemptID)
+	st, err := s.snapshotForAttemptContext(ctx, attemptID)
+	if err != nil {
+		return true, err
+	}
 	attempt, ok := st.attemptByID(attemptID)
 	if !ok || attempt.RunID != runID || !attemptActive(attempt.State) {
 		return true, errAttemptTerminal
@@ -78,6 +84,10 @@ func (s *Store) runTelecomAgentReview(ctx context.Context, runID, attemptID stri
 		return true, err
 	}
 	tools := append(agentflow.BaselineTools(), agentflow.SourceFactTools()...)
+	singleContract := isSingleContractSnapshot(st.snapshotOf(runID))
+	if singleContract {
+		tools = agentflow.SingleContractTools()
+	}
 	runtime, err := agentflow.New(ctx, agentflow.Config{
 		Planner: planner, Tools: tools, PlannerConfiguration: configuration,
 		EventSink: agentReviewEventSink(recorder), AuthorizePlanning: authorizePlanning, ReadKnowledge: readKnowledge,
@@ -93,6 +103,12 @@ func (s *Store) runTelecomAgentReview(ctx context.Context, runID, attemptID stri
 		RequestID: attemptID, AttemptID: attemptID, Principal: principal, Case: resource,
 		Scope: agentflow.Domains(), Gaps: telecomAgentReviewGaps(), Evidence: evidence,
 		SourceSnapshot: sourceSnapshot, CanonicalEvaluations: telecomAgentReviewEvaluations(st, runID, attemptID),
+	}
+	if singleContract {
+		request.Scope = []agentflow.Domain{agentflow.Commercial}
+		request.Gaps = []agentflow.Gap{{ID: "gap_single_contract_payment_sum", Domain: agentflow.Commercial,
+			Capability: agentflow.SingleContractPaymentCapability, Question: "核对主合同中可识别的付款比例，保留遗漏和付款基数未知"}}
+		request.CanonicalEvaluations = nil
 	}
 	if err := s.applyPriorAttemptRecovery(ctx, st, actor, caseItem, attempt, tools, &request); err != nil {
 		return true, err
@@ -291,8 +307,11 @@ func (m observedPlannerChatModel) Generate(ctx context.Context, messages []*sche
 var _ agentflow.PlannerChatModel = observedPlannerChatModel{}
 var _ model.CallObserver = attemptRecorder{}
 
-func (s *Store) authorizeAgentReviewStage(runID, attemptID string) (Case, access.Principal, access.Resource, error) {
-	st := s.snapshotForAttempt(attemptID)
+func (s *Store) authorizeAgentReviewStage(ctx context.Context, runID, attemptID string) (Case, access.Principal, access.Resource, error) {
+	st, err := s.snapshotForAttemptContext(ctx, attemptID)
+	if err != nil {
+		return Case{}, access.Principal{}, access.Resource{}, err
+	}
 	run, ok := st.runByID(runID)
 	if !ok {
 		return Case{}, access.Principal{}, access.Resource{}, errors.New("agent review run is unavailable")
@@ -316,7 +335,7 @@ func (s *Store) authorizeAgentReviewStage(runID, attemptID string) (Case, access
 // A fresh actor and stored snapshot are resolved for each planner round. The
 // later adoption transaction must repeat this check under its own locks.
 func (s *Store) revalidateAgentPlannerKnowledge(ctx context.Context, runID, attemptID string, resource access.Resource, actorID string, expected *ReviewKnowledgeSnapshot) error {
-	actor, current, err := s.agentPlannerAuthority(runID, attemptID, resource, actorID, expected)
+	actor, current, err := s.agentPlannerAuthority(ctx, runID, attemptID, resource, actorID, expected)
 	if err != nil {
 		return err
 	}
@@ -326,8 +345,11 @@ func (s *Store) revalidateAgentPlannerKnowledge(ctx context.Context, runID, atte
 	return nil
 }
 
-func (s *Store) agentPlannerAuthority(runID, attemptID string, resource access.Resource, actorID string, expected *ReviewKnowledgeSnapshot) (accounts.User, *ReviewKnowledgeSnapshot, error) {
-	st := s.snapshotForAttempt(attemptID)
+func (s *Store) agentPlannerAuthority(ctx context.Context, runID, attemptID string, resource access.Resource, actorID string, expected *ReviewKnowledgeSnapshot) (accounts.User, *ReviewKnowledgeSnapshot, error) {
+	st, err := s.snapshotForAttemptContext(ctx, attemptID)
+	if err != nil {
+		return accounts.User{}, nil, err
+	}
 	actor, err := authorizeAttemptExecution(st, runID, attemptID)
 	if err != nil {
 		return accounts.User{}, nil, err
@@ -362,7 +384,7 @@ func (s *Store) readAgentPlannerKnowledge(ctx context.Context, runID, attemptID 
 	if read.Start < 0 || read.End <= read.Start || read.End-read.Start > agentflow.KnowledgeReadMaxRunes {
 		return "", errors.New("invalid governed knowledge span")
 	}
-	actor, current, err := s.agentPlannerAuthority(runID, attemptID, resource, actorID, expected)
+	actor, current, err := s.agentPlannerAuthority(ctx, runID, attemptID, resource, actorID, expected)
 	if err != nil {
 		return "", err
 	}

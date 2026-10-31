@@ -226,13 +226,10 @@ func newServiceFixture(t *testing.T, queueCapacity int, parseTimeout time.Durati
 
 func serveFixture(t *testing.T, document *store.Store, queueCapacity int, parseTimeout time.Duration) (*httptest.Server, *http.Client) {
 	t.Helper()
-	service, err := documentservice.New(document, documentservice.Config{
-		WorkerCredential: testWorkerCredential,
-		CPUConcurrency:   1,
-		OCRConcurrency:   1,
-		QueueCapacity:    queueCapacity,
-		ParseTimeout:     parseTimeout,
-	})
+	service, err := documentservice.New(document, documentservice.Config{WorkerCredential: testWorkerCredential, IntakeCredential: "core-intake-test-private-credential-0000000000", CPUConcurrency: 1,
+		OCRConcurrency: 1,
+		QueueCapacity:  queueCapacity,
+		ParseTimeout:   parseTimeout})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -344,6 +341,7 @@ func (f *serviceFixture) doAs(token, method, path, contentType string, body []by
 	if err != nil {
 		return httpResult{err: err}
 	}
+	req.Header.Set("Origin", f.server.URL)
 	if contentType != "" {
 		req.Header.Set("Content-Type", contentType)
 	}

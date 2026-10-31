@@ -57,6 +57,9 @@ func TestNormalizeKeepsRoleSelectionsOptionalAndValidatesMembership(t *testing.T
 
 func TestProbeReadsCatalogWithoutLeakingTheCredential(t *testing.T) {
 	const apiKey = "sk-probe-secret"
+	// httptest endpoints are loopback addresses; the deployment allowlist is
+	// the sanctioned way a private target stays reachable.
+	t.Setenv(AllowedHostsEnv, "127.0.0.1")
 	var authorization string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/v1/models" {
@@ -92,6 +95,7 @@ func TestProbeReadsCatalogWithoutLeakingTheCredential(t *testing.T) {
 }
 
 func TestProbeAcceptsOllamaStyleCatalog(t *testing.T) {
+	t.Setenv(AllowedHostsEnv, "127.0.0.1")
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_ = json.NewEncoder(w).Encode(map[string]any{"models": []map[string]string{{"name": "qwen3"}}})
 	}))

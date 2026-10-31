@@ -2,6 +2,8 @@ import { Tabs } from "antd";
 import { Collapse } from "antd";
 import { Button, Input, Select } from "antd";
 import {
+  memo,
+  useDeferredValue,
   useEffect,
   useMemo,
   useState,
@@ -25,10 +27,13 @@ import {
   roleLabel,
 } from "../domain/review";
 import {
+  createTextIndex,
   evidenceSourceMatches,
   findTextMatches,
   resolveAnchor,
   segmentText,
+  type CodePointTextIndex,
+  type ResolvedAnchor,
   type TextSegment,
 } from "../domain/text";
 import { ParsedDocumentSummary } from "./parsed-document-summary";
@@ -158,7 +163,11 @@ function DiagnosticsCollapse({
   );
 }
 
-function DocSegments({ segments }: { segments: TextSegment[] }) {
+const DocSegments = memo(function DocSegments({
+  segments,
+}: {
+  segments: TextSegment[];
+}) {
   return (
     <>
       {segments.map((segment) =>
@@ -188,7 +197,7 @@ function DocSegments({ segments }: { segments: TextSegment[] }) {
       )}
     </>
   );
-}
+});
 
 function FailedParseBody({
   document,
@@ -197,7 +206,7 @@ function FailedParseBody({
   activeSource,
 }: {
   document: ReviewDocument;
-  resolved: ReturnType<typeof resolveAnchor> | null;
+  resolved: ResolvedAnchor | null;
   showDiagnostics: boolean;
   activeSource: boolean;
 }) {
@@ -228,7 +237,7 @@ function HighlightBody({
   activeSource,
 }: {
   document: ReviewDocument;
-  resolved: Extract<ReturnType<typeof resolveAnchor>, { kind: "highlight" }>;
+  resolved: Extract<ResolvedAnchor, { kind: "highlight" }>;
   segments: TextSegment[];
   showDiagnostics: boolean;
   activeSource: boolean;
@@ -254,7 +263,7 @@ function HighlightBody({
 function SnapshotCallout({
   resolved,
 }: {
-  resolved: Extract<ReturnType<typeof resolveAnchor>, { kind: "snapshot" }>;
+  resolved: Extract<ResolvedAnchor, { kind: "snapshot" }>;
 }) {
   return (
     <div className="callout">
@@ -268,17 +277,17 @@ function SnapshotCallout({
 function EmptyOrText({
   resolved,
   document,
-  findRange,
+  segments,
 }: {
-  resolved: ReturnType<typeof resolveAnchor> | null;
+  resolved: ResolvedAnchor | null;
   document: ReviewDocument;
-  findRange: { start: number; end: number } | null;
+  segments: TextSegment[];
 }) {
   if (resolved !== null) return null;
   if (document.text === null) return <p>这份材料还没有可阅读的正文。</p>;
   return (
     <div className="doc-text">
-      <DocSegments segments={segmentText(document.text, null, [], findRange)} />
+      <DocSegments segments={segments} />
     </div>
   );
 }
@@ -287,13 +296,13 @@ function PlainBody({
   document,
   resolved,
   showDiagnostics,
-  findRange,
+  segments,
   activeSource,
 }: {
   document: ReviewDocument;
-  resolved: ReturnType<typeof resolveAnchor> | null;
+  resolved: ResolvedAnchor | null;
   showDiagnostics: boolean;
-  findRange: { start: number; end: number } | null;
+  segments: TextSegment[];
   activeSource: boolean;
 }) {
   return (
@@ -318,29 +327,78 @@ function PlainBody({
       <EmptyOrText
         resolved={resolved}
         document={document}
-        findRange={findRange}
+        segments={segments}
       />
     </DocPane>
   );
 }
 
-function DocumentBody({
+const DocumentBody = memo(function DocumentBody({
   document,
   finding,
   findRange,
   activeSource,
   showDiagnostics,
+  textIndex: providedTextIndex,
 }: {
   document: ReviewDocument;
   finding: Finding | null;
   findRange: { start: number; end: number } | null;
   activeSource: boolean;
   showDiagnostics: boolean;
+  textIndex: CodePointTextIndex | null;
 }) {
-  const anchor = anchorOf(document, finding);
-  const resolved = anchor
-    ? resolveAnchor(document.text, anchor, document.parsed_document, document.parsed_document_id)
-    : null;
+  const textIndex = useMemo(
+    () =>
+      providedTextIndex ??
+      (document.text === null ? null : createTextIndex(document.text)),
+    [
+      document,
+      document.parsed_document,
+      document.parsed_document_id,
+      document.text,
+      providedTextIndex,
+    ],
+  );
+  const anchor = useMemo(
+    () => anchorOf(document, finding),
+    [document, finding],
+  );
+  const resolved = useMemo(
+    () =>
+      anchor
+        ? resolveAnchor(
+            document.text,
+            anchor,
+            document.parsed_document,
+            document.parsed_document_id,
+            textIndex ?? undefined,
+          )
+        : null,
+    [anchor, document, textIndex],
+  );
+  const clauseStarts = useMemo(
+    () => document.clauses.map((clause) => clause.text_offset.start),
+    [document, document.clauses],
+  );
+  const segments = useMemo(() => {
+    if (
+      document.text === null ||
+      document.parse_status === "failed"
+    ) return null;
+    const highlight =
+      resolved?.kind === "highlight"
+        ? { start: resolved.start, end: resolved.end }
+        : null;
+    if (resolved !== null && highlight === null) return null;
+    return segmentText(
+      document.text,
+      highlight,
+      highlight ? clauseStarts : [],
+      findRange,
+      textIndex ?? undefined,
+    );
+  }, [clauseStarts, document, findRange, resolved, textIndex]);
 
   if (document.parse_status === "failed") {
     return (
@@ -354,17 +412,11 @@ function DocumentBody({
   }
 
   if (resolved?.kind === "highlight" && document.text !== null) {
-    const segments = segmentText(
-      document.text,
-      { start: resolved.start, end: resolved.end },
-      document.clauses.map((clause) => clause.text_offset.start),
-      findRange,
-    );
     return (
       <HighlightBody
         document={document}
         resolved={resolved}
-        segments={segments}
+        segments={segments ?? []}
         showDiagnostics={showDiagnostics}
         activeSource={activeSource}
       />
@@ -376,11 +428,11 @@ function DocumentBody({
       document={document}
       resolved={resolved}
       showDiagnostics={showDiagnostics}
-      findRange={findRange}
+      segments={segments ?? []}
       activeSource={activeSource}
     />
   );
-}
+});
 
 function ownerLabel(context: ReviewCaseContext): string {
   return context.ownerName || (context.ownerId ? "姓名未返回" : "未分配");
@@ -509,11 +561,13 @@ function MaterialTabs({
 
 function MaterialSearch({
   query,
+  resultQuery,
   onQuery,
   matches,
   onNext,
 }: {
   query: string;
+  resultQuery: string;
   onQuery: (value: string) => void;
   matches: { start: number; end: number }[];
   onNext: () => void;
@@ -529,7 +583,7 @@ function MaterialSearch({
         />
       </label>
       <p className="meta">
-        {query.trim() === ""
+        {resultQuery.trim() === ""
           ? "输入后在当前材料中查找"
           : `正文匹配 ${matches.length} 处`}
       </p>
@@ -542,7 +596,7 @@ function MaterialSearch({
   );
 }
 
-function ClauseList({
+const ClauseList = memo(function ClauseList({
   clauses,
   onFocus,
 }: {
@@ -571,9 +625,9 @@ function ClauseList({
       </ul>
     </>
   );
-}
+});
 
-function RelatedFindings({
+const RelatedFindings = memo(function RelatedFindings({
   findings,
   selectedFindingId,
   onSelectFinding,
@@ -605,12 +659,13 @@ function RelatedFindings({
       )}
     </>
   );
-}
+});
 
 function MaterialPane({
   documents,
   active,
   query,
+  resultQuery,
   matches,
   clauses,
   relatedFindings,
@@ -624,6 +679,7 @@ function MaterialPane({
   documents: ReviewDocument[];
   active: ReviewDocument | null;
   query: string;
+  resultQuery: string;
   matches: { start: number; end: number }[];
   clauses: ReviewDocument["clauses"];
   relatedFindings: Finding[];
@@ -650,6 +706,7 @@ function MaterialPane({
         <>
           <MaterialSearch
             query={query}
+            resultQuery={resultQuery}
             onQuery={onQuery}
             matches={matches}
             onNext={onNextMatch}
@@ -905,6 +962,7 @@ function DocumentView({
   documents,
   finding,
   active,
+  textIndex,
   currentMatch,
   showDiagnostics,
   split,
@@ -913,6 +971,7 @@ function DocumentView({
   documents: ReviewDocument[];
   finding: Finding | null;
   active: ReviewDocument | null;
+  textIndex: CodePointTextIndex | null;
   currentMatch: { start: number; end: number } | null;
   showDiagnostics: boolean;
   split: boolean;
@@ -928,6 +987,7 @@ function DocumentView({
             document={item}
             finding={finding}
             findRange={item === active ? currentMatch : null}
+            textIndex={item === active ? textIndex : null}
             showDiagnostics={showDiagnostics}
             activeSource={item === active}
           />
@@ -940,6 +1000,7 @@ function DocumentView({
       document={active}
       finding={finding}
       findRange={currentMatch}
+      textIndex={textIndex}
       showDiagnostics={showDiagnostics}
       activeSource
     />
@@ -1075,12 +1136,6 @@ function shouldSplit(
   );
 }
 
-function matchesOf(
-  active: ReviewDocument | null,
-  query: string,
-): { start: number; end: number }[] {
-  return active?.text ? findTextMatches(active.text, query) : [];
-}
 
 function currentMatchOf(
   matches: { start: number; end: number }[],
@@ -1140,6 +1195,7 @@ function DocumentColumn({
   documents,
   finding,
   active,
+  textIndex,
   currentMatch,
   showDiagnostics,
   split,
@@ -1153,6 +1209,7 @@ function DocumentColumn({
   documents: ReviewDocument[];
   finding: Finding | null;
   active: ReviewDocument | null;
+  textIndex: CodePointTextIndex | null;
   currentMatch: { start: number; end: number } | null;
   showDiagnostics: boolean;
   split: boolean;
@@ -1184,6 +1241,7 @@ function DocumentColumn({
         documents={documents}
         finding={finding}
         active={active}
+        textIndex={textIndex}
         currentMatch={currentMatch}
         showDiagnostics={showDiagnostics}
         split={split}
@@ -1227,6 +1285,7 @@ export function DocumentStage({
     initialDocument ? documentKey(initialDocument) : "",
   );
   const [query, setQuery] = useState("");
+  const deferredQuery = useDeferredValue(query);
   const [matchIndex, setMatchIndex] = useState(0);
   const [compareSources, setCompareSources] = useState(false);
   const [leftTab, setLeftTab] = useState<"材料" | "审查成员" | "相关案件">(
@@ -1235,12 +1294,22 @@ export function DocumentStage({
   const [relatedCaseId, setRelatedCaseId] = useState("");
   const [relationReason, setRelationReason] = useState("");
   const active = activeDocumentOf(documents, activeKey);
+  const activeTextIndex = useMemo(
+    () =>
+      active === null || active.text === null
+        ? null
+        : createTextIndex(active.text),
+    [active, active?.parsed_document, active?.parsed_document_id, active?.text],
+  );
   const evidenceDocs = useMemo(
     () => evidenceDocumentsOf(finding, documents),
     [documents, finding],
   );
   useEvidenceAutoSwitch(finding, active, documents, setActiveKey);
-  const relatedFindings = relatedFindingsOf(active, findings);
+  const relatedFindings = useMemo(
+    () => relatedFindingsOf(active, findings),
+    [active, findings],
+  );
   const activeIsEvidence = isActiveEvidence(active, evidenceDocs);
   const split = shouldSplit(
     compareSources,
@@ -1249,12 +1318,22 @@ export function DocumentStage({
     activeIsEvidence,
   );
   const matches = useMemo(
-    () => matchesOf(active, query),
-    [active, query],
+    () =>
+      active?.text
+        ? findTextMatches(
+            active.text,
+            deferredQuery,
+            activeTextIndex ?? undefined,
+          )
+        : [],
+    [active, activeTextIndex, deferredQuery],
   );
   const currentMatch = currentMatchOf(matches, matchIndex);
   useScrollToEvidence(finding, active);
-  const visibleClauses = visibleClausesOf(active, query);
+  const visibleClauses = useMemo(
+    () => visibleClausesOf(active, deferredQuery),
+    [active, deferredQuery],
+  );
 
   function submitRelation(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -1306,6 +1385,7 @@ export function DocumentStage({
             documents={documents}
             active={active}
             query={query}
+            resultQuery={deferredQuery}
             matches={matches}
             clauses={visibleClauses}
             relatedFindings={relatedFindings}
@@ -1327,6 +1407,7 @@ export function DocumentStage({
       <DocumentColumn
         documents={documents}
         finding={finding}
+        textIndex={activeTextIndex}
         active={active}
         currentMatch={currentMatch}
         showDiagnostics={showDiagnostics}

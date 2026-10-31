@@ -102,7 +102,7 @@ func TestRevisedRunLeavesOldSnapshotRow(t *testing.T) {
 	if len(oldWS.Findings) != 1 || oldWS.Findings[0].ID != findingID {
 		t.Fatalf("old findings %+v", oldWS.Findings)
 	}
-	kept := st.DecisionsFor(findingID)
+	kept := mustDecisionsFor(t, st, admin, findingID)
 	if len(kept) != 1 || kept[0].Action != "confirm_risk" || kept[0].RunID != oldID {
 		t.Fatalf("old decisions %+v", kept)
 	}
@@ -116,7 +116,7 @@ func TestRevisedRunLeavesOldSnapshotRow(t *testing.T) {
 	if len(newWS.Findings) != 1 || newWS.Findings[0].ID == findingID || newWS.Findings[0].Relation != "conflict" {
 		t.Fatalf("new findings %+v", newWS.Findings)
 	}
-	if len(st.DecisionsFor(newWS.Findings[0].ID)) != 0 {
+	if len(mustDecisionsFor(t, st, admin, newWS.Findings[0].ID)) != 0 {
 		t.Fatal("new run copied the old decision")
 	}
 	if len(newWS.Revisions) != 1 || newWS.Revisions[0].Mark != "持续" {

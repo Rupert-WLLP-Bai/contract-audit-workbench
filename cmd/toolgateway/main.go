@@ -11,13 +11,13 @@ import (
 	"crypto/subtle"
 	"errors"
 	"log"
-	"net"
 	"net/http"
 	"os"
 	"strings"
 	"time"
 
 	"contractaudit/internal/bootstrap"
+	"contractaudit/internal/config"
 	"contractaudit/internal/httpapi"
 	"contractaudit/internal/process"
 	"contractaudit/internal/toolgateway"
@@ -62,7 +62,7 @@ func run() error {
 	host, _ := os.Hostname()
 	log.Printf("tool gateway instance %s pid %d listening on %s", host, os.Getpid(), addr)
 	server := &http.Server{
-		Addr: addr, Handler: mux,
+		Addr: addr, Handler: app.Boundary("tool", mux),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       30 * time.Second,
 		// A tool call carries its own deadline (60s); the write timeout only has
@@ -71,7 +71,6 @@ func run() error {
 		IdleTimeout:    60 * time.Second,
 		MaxHeaderBytes: 1 << 20,
 	}
-	server.BaseContext = func(net.Listener) context.Context { return ctx }
 	return process.Serve(ctx, server, shutdownTimeout)
 }
 
@@ -124,18 +123,7 @@ func writeUnauthorized(w http.ResponseWriter) {
 }
 
 func configuredOrigins() []string {
-	configured := strings.TrimSpace(os.Getenv("CORS_ORIGIN"))
-	if configured == "" {
-		return nil
-	}
-	origins := []string{"http://localhost:5173", "http://127.0.0.1:5173"}
-	for _, origin := range strings.Split(configured, ",") {
-		origin = strings.TrimSpace(origin)
-		if origin != "" {
-			origins = append(origins, origin)
-		}
-	}
-	return origins
+	return config.BrowserOrigins(os.Getenv("CORS_ORIGIN"), os.Getenv("APP_ENV"))
 }
 
 // serve runs server until ctx is canceled or the listener fails, then drains

@@ -154,6 +154,9 @@ func routeOwned(role string, methods routeMethodSet, parts []string) bool {
 	if parts[0] == "auth" {
 		return role == "core" && methods.read && oidcRoute(parts)
 	}
+	if parts[0] == "intakes" {
+		return role == "core" && len(parts) == 2 && methods.read
+	}
 	return caseRoute(role, methods, parts)
 }
 
@@ -177,6 +180,7 @@ var topLevelRoutes = map[string]topLevelRouteRule{
 	"cases":            {role: "core", methods: routeMethodSet{read: true, post: true}},
 	"knowledge":        {role: "core", methods: routeMethodSet{post: true}},
 	"subjects":         {role: "core", methods: routeMethodSet{read: true, post: true}},
+	"intakes":          {role: "core", methods: routeMethodSet{read: true, post: true}},
 }
 
 func routeMethodsMatch(got, allowed routeMethodSet) bool {

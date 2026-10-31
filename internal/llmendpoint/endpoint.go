@@ -96,6 +96,9 @@ func Normalize(name, protocol, baseURL string, models []string, reviewModel, ocr
 	if err != nil {
 		return Config{}, err
 	}
+	if err := CheckBaseURLPolicy(baseURL); err != nil {
+		return Config{}, err
+	}
 	normalized, err := normalizeModels(models)
 	if err != nil {
 		return Config{}, err
@@ -179,6 +182,9 @@ func Probe(ctx context.Context, protocol, baseURL, apiKey string) (ProbeResult, 
 	if err != nil {
 		return ProbeResult{}, err
 	}
+	if err := CheckBaseURLPolicy(baseURL); err != nil {
+		return ProbeResult{}, err
+	}
 	ctx, cancel := context.WithTimeout(ctx, probeTimeout)
 	defer cancel()
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, baseURL+"/models", nil)
@@ -189,10 +195,16 @@ func Probe(ctx context.Context, protocol, baseURL, apiKey string) (ProbeResult, 
 	if key := strings.TrimSpace(apiKey); key != "" {
 		request.Header.Set("Authorization", "Bearer "+key)
 	}
-	client := &http.Client{Timeout: probeTimeout}
+	// The guarded client never follows redirects, so the probe credential and
+	// request cannot be moved to another origin, and every connection lands on
+	// a policy-verified address.
+	client := GuardedClient(probeTimeout)
 	started := time.Now()
 	response, err := client.Do(request)
 	if err != nil {
+		if errors.Is(err, ErrEndpointForbidden) {
+			return ProbeResult{}, ErrEndpointForbidden
+		}
 		return ProbeResult{}, fmt.Errorf("model endpoint is unreachable")
 	}
 	defer response.Body.Close()

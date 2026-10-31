@@ -32,21 +32,20 @@ func (s *Store) EstablishSession(user accounts.User, audience string) (string, e
 	if err := validateAudienceUser(current, audience); err != nil {
 		return "", err
 	}
-	token, err := newID("s")
+	token, err := newSessionToken()
 	if err != nil {
 		return "", err
 	}
 	item := session{
-		Token: token, ActorID: current.ID, Issuer: current.Issuer, Subject: current.Subject,
+		Token: sessionTokenDigest(token), ActorID: current.ID, Issuer: current.Issuer, Subject: current.Subject,
 		TenantID: current.TenantID, OrgID: current.OrgID, Audience: audience,
 		ExpiresAt: time.Now().UTC().Add(7 * 24 * time.Hour).Format(timeLayout),
 	}
 	// Sessions are read straight from PostgreSQL and revoked by deleting the row,
-	// so establishing one is a narrow single-row write: the token is the
+	// so establishing one is a narrow single-row write: the token digest is the
 	// transaction key, the tenant/actor authority comes from the trusted
-	// identity, and no other entity is touched. The in-memory list is patched
-	// afterwards only so in-process reads see the new session; general
-	// persistence no longer writes sessions at all.
+	// identity, and no other entity is touched. The in-memory projection contains
+	// the digest only; general persistence does not write sessions.
 	ctx := context.Background()
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
@@ -57,7 +56,7 @@ func (s *Store) EstablishSession(user accounts.User, audience string) (string, e
 		return "", err
 	}
 	if _, err := tx.Exec(ctx, `INSERT INTO sessions (token, actor_id, expires_at, issuer, subject, tenant_id, org_id, audience)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT (token) DO NOTHING`,
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
 		item.Token, item.ActorID, item.ExpiresAt, item.Issuer, item.Subject, item.TenantID, item.OrgID, item.Audience); err != nil {
 		return "", err
 	}
@@ -68,16 +67,23 @@ func (s *Store) EstablishSession(user accounts.User, audience string) (string, e
 	return token, nil
 }
 
-func (s *Store) SessionAudience(token string) (string, error) {
-	current, err := s.sessionFromDB(context.Background(), token)
+// AuthenticateSession resolves identity and audience from one authoritative
+// PostgreSQL read. A caller must start a new read for each HTTP request.
+func (s *Store) AuthenticateSession(ctx context.Context, token string) (accounts.User, string, error) {
+	current, user, err := s.sessionFromDB(ctx, token)
 	if err != nil {
-		return "", err
+		return accounts.User{}, "", err
 	}
-	return current.Audience, nil
+	return user, current.Audience, nil
+}
+
+func (s *Store) SessionAudience(token string) (string, error) {
+	_, audience, err := s.AuthenticateSession(context.Background(), token)
+	return audience, err
 }
 
 // Logout revokes exactly the presented session token. The deletion is scoped to
-// that token (row level security only exposes token = app.session_token), so one
+// its digest (row level security only exposes token = app.session_token), so one
 // session can never revoke another, and the revocation is durable immediately
 // for every reader because sessions are read from PostgreSQL. Revoking an
 // unknown or already revoked token is a no-op, which keeps logout idempotent.
@@ -85,35 +91,24 @@ func (s *Store) Logout(token string) error {
 	if token == "" {
 		return nil
 	}
+	digest := sessionTokenDigest(token)
 	ctx := context.Background()
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback(ctx)
-	if err := setLocalScope(ctx, tx, dbScope{SessionToken: token, Role: "api"}); err != nil {
+	if err := setLocalSessionScope(ctx, tx, digest); err != nil {
 		return err
 	}
-	if _, err := tx.Exec(ctx, `DELETE FROM sessions WHERE token=$1`, token); err != nil {
+	if _, err := tx.Exec(ctx, `DELETE FROM sessions WHERE token=$1`, digest); err != nil {
 		return err
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return err
 	}
-	s.patchSessionProjection(session{Token: token}, true)
+	s.patchSessionProjection(session{Token: digest}, true)
 	return nil
-}
-
-func (s *Store) User(token string) (accounts.User, error) {
-	current, err := s.sessionFromDB(context.Background(), token)
-	if err != nil {
-		return accounts.User{}, err
-	}
-	user, ok := accounts.ByID(current.ActorID)
-	if !ok || !user.Enabled {
-		return accounts.User{}, fault.Unauthenticated("登录已失效或账号不可用")
-	}
-	return user, nil
 }
 
 func (s *Store) CreateCase(user accounts.User, title, contractType string) (string, error) {

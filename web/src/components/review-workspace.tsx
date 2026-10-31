@@ -22,6 +22,7 @@ const STREAM_LABEL: Record<StreamStatus, string> = {
   connecting: "正在连接运行状态",
   live: "运行状态已连接",
   reconnecting: "连接中断，正在按游标重连",
+  exhausted: "运行状态流自动重连次数已用尽；可以手动重新连接。",
   closed: "运行状态流已关闭，不会自动重连；请刷新页面或重新登录后再试。",
   inactive: "本次执行没有活动的事件流",
 };
@@ -379,6 +380,9 @@ export function ReviewWorkspaceView({
         diagnosticsLoading={diagnosticsLoading}
         onLoadDiagnostics={onLoadDiagnostics}
       />
+      {workspace.snapshot?.review_scope?.id === "single_contract_precheck" ? (
+        <p className="callout">本次是单合同预审（规则 {workspace.snapshot.review_scope.rule_set_id} 第 {workspace.snapshot.review_scope.rule_set_version} 版）。仅核对主合同中可识别的付款比例；跨材料、正式制度及其他风险尚未检查，结果仍需人工核对。请补齐材料后发起完整审查。</p>
+      ) : null}
       <RunCallouts run={run} />
       <div className={`workspace-grid layout-${layout}`}>
         <DocumentStage

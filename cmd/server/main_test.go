@@ -92,9 +92,10 @@ func TestInvalidReadOnlySettingStopsBeforeOpeningStorage(t *testing.T) {
 }
 
 func TestOriginsPreservesDefaultsAndConfiguredOrder(t *testing.T) {
+	t.Setenv("APP_ENV", "development")
 	t.Setenv("CORS_ORIGIN", " \t")
-	if got := origins(); got != nil {
-		t.Fatalf("origins() with blank configuration = %#v, want nil", got)
+	if got := origins(); !reflect.DeepEqual(got, []string{"http://localhost:5173", "http://127.0.0.1:5173"}) {
+		t.Fatalf("origins() with blank configuration = %#v", got)
 	}
 
 	t.Setenv("CORS_ORIGIN", " https://east.example , ,https://west.example,https://east.example ")
@@ -525,7 +526,7 @@ func configureServerCommandEnvironment(t *testing.T) {
 		"DATA_DIR", "ADDR", "DATABASE_SCHEMA", "IDENTITY_DIRECTORY_FILE", "CORS_ORIGIN",
 		"OPERATOR_AUDIT_ENABLED", "EXTERNAL_EVIDENCE_MODE", "EXTERNAL_EVIDENCE_CONNECTOR_ID", "EXTERNAL_EVIDENCE_SOURCE_SYSTEM",
 		"EXTERNAL_EVIDENCE_BASE_URL", "EXTERNAL_EVIDENCE_ALLOWED_OBJECTS", "EXTERNAL_EVIDENCE_PAYLOAD_PREFIX", "EXTERNAL_EVIDENCE_FIXTURE_FILE",
-		"GATEWAY_ROLE_TOKEN", "WORKER_CORE_TOKEN", "MODEL_GATEWAY_URL", "DOCUMENT_SERVICE_URL", "WORKER_DOCUMENT_TOKEN",
+		"GATEWAY_ROLE_TOKEN", "WORKER_CORE_TOKEN", "MODEL_GATEWAY_URL", "DOCUMENT_SERVICE_URL", "WORKER_DOCUMENT_TOKEN", "CORE_DOCUMENT_TOKEN",
 		"TOOL_GATEWAY_URL", "WORKER_TOOL_TOKEN", "WORKER_MODEL_TOKEN", "DOCUMENT_MODEL_TOKEN", "LLM_BASE_URL", "LLM_MODEL", "OCR_MODEL",
 		"DEV_DATABASE_URL", "PROD_DATABASE_URL", "CORE_DATABASE_URL", "DOCUMENT_DATABASE_URL",
 		"EXECUTION_DATABASE_URL", "MODEL_DATABASE_URL", "TOOL_DATABASE_URL", "OTEL_EXPORTER_OTLP_ENDPOINT", "S3_ENDPOINT",

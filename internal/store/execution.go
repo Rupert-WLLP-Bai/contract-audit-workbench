@@ -25,8 +25,9 @@ import (
 )
 
 const (
-	maxConcurrentReviews = 2
-	reviewExecutionLimit = 90 * time.Second
+	maxConcurrentReviews   = 2
+	reviewExecutionLimit   = 90 * time.Second
+	attemptFinalizeTimeout = 5 * time.Second
 )
 
 var (
@@ -62,6 +63,34 @@ func (s *Store) StartReviewAtWithEvidenceCutoff(ctx context.Context, user accoun
 	return s.startReview(ctx, user, caseID, businessAt, cutoff, false)
 }
 
+// StartReviewScope accepts an explicit review scope while keeping the legacy
+// empty scope and business-time behavior for existing clients.
+func (s *Store) StartReviewScope(ctx context.Context, user accounts.User, caseID, businessAt, evidenceCutoffAt, scope string) (string, error) {
+	if businessAt != "" {
+		if _, err := knowledgeTime(businessAt); err != nil {
+			return "", err
+		}
+	}
+	cutoff, err := canonicalizeLegalCutoffInput(evidenceCutoffAt)
+	if err != nil {
+		return "", err
+	}
+	return s.startReview(ctx, user, caseID, businessAt, cutoff, false, scope)
+}
+
+func (s *Store) StartReviewAsyncScope(ctx context.Context, user accounts.User, caseID, businessAt, evidenceCutoffAt, scope string) (JobAcceptance, error) {
+	if businessAt != "" {
+		if _, err := knowledgeTime(businessAt); err != nil {
+			return JobAcceptance{}, err
+		}
+	}
+	cutoff, err := canonicalizeLegalCutoffInput(evidenceCutoffAt)
+	if err != nil {
+		return JobAcceptance{}, err
+	}
+	return s.startReviewAsync(ctx, user, caseID, businessAt, cutoff, scope)
+}
+
 func (s *Store) StartReviewAsync(ctx context.Context, user accounts.User, caseID string) (JobAcceptance, error) {
 	return s.startReviewAsync(ctx, user, caseID, "", "")
 }
@@ -82,8 +111,8 @@ func (s *Store) StartReviewAsyncAtWithEvidenceCutoff(ctx context.Context, user a
 	return s.startReviewAsync(ctx, user, caseID, businessAt, cutoff)
 }
 
-func (s *Store) startReviewAsync(ctx context.Context, user accounts.User, caseID, businessAt, evidenceCutoffAt string) (JobAcceptance, error) {
-	runID, err := s.startReview(ctx, user, caseID, businessAt, evidenceCutoffAt, true)
+func (s *Store) startReviewAsync(ctx context.Context, user accounts.User, caseID, businessAt, evidenceCutoffAt string, scope ...string) (JobAcceptance, error) {
+	runID, err := s.startReview(ctx, user, caseID, businessAt, evidenceCutoffAt, true, scope...)
 	if err != nil {
 		return JobAcceptance{}, err
 	}
@@ -103,9 +132,21 @@ func (s *Store) startReviewAsync(ctx context.Context, user accounts.User, caseID
 	return JobAcceptance{}, fault.Conflict("审查任务没有保存到任务队列")
 }
 
-func (s *Store) startReview(ctx context.Context, user accounts.User, caseID, businessAt, evidenceCutoffAt string, durable bool) (string, error) {
+func (s *Store) startReview(ctx context.Context, user accounts.User, caseID, businessAt, evidenceCutoffAt string, durable bool, requestedScope ...string) (string, error) {
 	if err := ctx.Err(); err != nil {
 		return "", err
+	}
+	rawScope := ""
+	if len(requestedScope) > 0 {
+		rawScope = requestedScope[0]
+	}
+	scope, err := normalizeReviewScope(rawScope)
+	if err != nil {
+		return "", err
+	}
+	minimumMaterials := 2
+	if scope == ReviewScopeSingleContract {
+		minimumMaterials = 1
 	}
 	if evidenceCutoffAt != "" && businessAt == "" {
 		return "", fault.Invalid("显式法律证据截止时间需要同时提供业务时间")
@@ -131,11 +172,11 @@ func (s *Store) startReview(ctx context.Context, user accounts.User, caseID, bus
 	current := selectedMaterialDocuments(seen, caseID)
 	readinessMaterials := make([]ReviewReadinessMaterial, 0, len(current))
 	for _, doc := range current {
-		readinessMaterials = append(readinessMaterials, ReviewReadinessMaterial{DocumentID: doc.ID, Selected: true})
+		readinessMaterials = append(readinessMaterials, ReviewReadinessMaterial{DocumentID: doc.ID, Role: doc.Role, Selected: true})
 	}
 	caseItem, _ := seen.caseByID(caseID)
-	preflight := evaluateReviewReadiness(reviewReadinessInputs{CanRead: true, CanStartRole: true, Writable: true,
-		SelectionConfirmed: !materialSelectionPending(seen, caseID), MinimumMaterials: 2, Materials: readinessMaterials,
+	preflight := evaluateReviewReadiness(reviewReadinessInputs{Scope: scope, PrimaryDocumentID: currentPrimaryDraftID(seen, caseID), CanRead: true, CanStartRole: true, Writable: true,
+		SelectionConfirmed: !materialSelectionPending(seen, caseID), MinimumMaterials: minimumMaterials, Materials: readinessMaterials,
 		BusinessAtProvided: businessAt != "" || !isGovernedReviewCase(caseItem)})
 	if err := reviewAdmissionError(preflight.Blockers); err != nil {
 		return "", err
@@ -196,7 +237,7 @@ func (s *Store) startReview(ctx context.Context, user accounts.User, caseID, bus
 	if payloadErr != nil {
 		return "", payloadErr
 	}
-	signature := s.currentSignatureWithRulePack(reviewDocumentIDs, frozenDocs, nil, telecomCompilerRefForCase(caseItem), plannerConfiguration.ConfigurationID, plannerPayload)
+	signature := applyReviewScope(s.currentSignatureWithRulePack(reviewDocumentIDs, frozenDocs, nil, telecomCompilerRefForCase(caseItem), plannerConfiguration.ConfigurationID, plannerPayload), scope)
 	reserved := false
 	jobID, outboxID := "", ""
 	if durable {
@@ -251,7 +292,7 @@ func (s *Store) startReview(ctx context.Context, user accounts.User, caseID, bus
 		// association and mapping pins, and it must name the business instant
 		// itself instead of borrowing the server clock.
 		if !isGovernedReviewCase(lockedCase) {
-			signature = s.currentSignatureWithRulePack(reviewDocumentIDs, frozenDocs, nil, telecomCompilerRefForCase(lockedCase), plannerConfiguration.ConfigurationID, plannerPayload)
+			signature = applyReviewScope(s.currentSignatureWithRulePack(reviewDocumentIDs, frozenDocs, nil, telecomCompilerRefForCase(lockedCase), plannerConfiguration.ConfigurationID, plannerPayload), scope)
 			signature, err = withServiceObjectContextTx(ctx, tx, lockedCase, at, serviceObjectDocuments, signature)
 			return err
 		}
@@ -277,13 +318,13 @@ func (s *Store) startReview(ctx context.Context, user accounts.User, caseID, bus
 		}
 		frozenMaterials := readinessMaterialsForFrozen(seen, frozenDocs)
 		checks := reviewReadinessRuleChecks(assessment.Pack, assessment.Knowledge, frozenMaterials, lockedCase)
-		readiness := evaluateReviewReadiness(reviewReadinessInputs{CanRead: true, CanStartRole: true, Writable: true,
-			SelectionConfirmed: true, BusinessAtProvided: true, MinimumMaterials: 2, Materials: frozenMaterials, Checks: checks})
+		readiness := evaluateReviewReadiness(reviewReadinessInputs{Scope: scope, PrimaryDocumentID: currentPrimaryDraftID(seen, caseID), CanRead: true, CanStartRole: true, Writable: true,
+			SelectionConfirmed: true, BusinessAtProvided: true, MinimumMaterials: minimumMaterials, Materials: frozenMaterials, Checks: checks})
 		if err := reviewAdmissionError(readiness.Blockers); err != nil {
 			return err
 		}
 		activePack = assessment.Pack
-		signature = s.currentSignatureWithRulePack(reviewDocumentIDs, frozenDocs, assessment.Pack, telecomCompilerRefForCase(lockedCase), plannerConfiguration.ConfigurationID, plannerPayload)
+		signature = applyReviewScope(s.currentSignatureWithRulePack(reviewDocumentIDs, frozenDocs, assessment.Pack, telecomCompilerRefForCase(lockedCase), plannerConfiguration.ConfigurationID, plannerPayload), scope)
 		if assessment.Knowledge != nil {
 			signature.GovernedKnowledge = assessment.Knowledge
 		}
@@ -308,6 +349,13 @@ func (s *Store) startReview(ctx context.Context, user accounts.User, caseID, bus
 		}
 		if materialSelectionPending(*st, caseID) || !sameDocumentSet(documentIDs(selectedMaterialDocuments(*st, caseID)), reviewDocumentIDs) || !parsedSelectionCurrent(*st, frozenDocs) {
 			return fault.Conflict("所选的材料解析版本刚被更新，请重新发起审查")
+		}
+		if scope == ReviewScopeSingleContract {
+			selected := readinessMaterialsForFrozen(*st, frozenDocs)
+			gate := evaluateReviewReadiness(reviewReadinessInputs{Scope: scope, PrimaryDocumentID: currentPrimaryDraftID(*st, caseID), CanRead: true, CanStartRole: true, Writable: true, SelectionConfirmed: true, BusinessAtProvided: true, MinimumMaterials: 1, Materials: selected})
+			if err := reviewAdmissionError(gate.Blockers); err != nil {
+				return err
+			}
 		}
 		if run, ok := st.latestRun(caseID); ok {
 			previous := st.snapshotOf(run.ID)
@@ -339,6 +387,7 @@ func (s *Store) startReview(ctx context.Context, user accounts.User, caseID, bus
 		}
 		// The accepted attempt carries the exact frozen pack bytes and planner
 		// configuration, so the worker never resolves latest.
+		attempt.ReviewScope = signature.ReviewScope
 		attempt.RulePackSnapshot = append(json.RawMessage(nil), signature.RulePackSnapshot...)
 		attempt.RulePackHash = signature.RulePackHash
 		attempt.RulePackSnapshotDigest = signature.RulePackDigest
@@ -808,10 +857,17 @@ func (s *Store) cancelAttemptInState(st *state, user accounts.User, caseID, runI
 }
 
 func (s *Store) OperationalMetadata(user accounts.User) (map[string]any, error) {
-	if user.Role != "admin" {
+	current, err := trustedUser(user)
+	if err != nil {
+		return nil, err
+	}
+	if current.Role != "admin" {
 		return nil, fault.Forbidden("只有管理员可以查看审查运行的运维信息")
 	}
-	st := s.snapshot()
+	st, err := s.snapshotScoped(context.Background(), userScope(current))
+	if err != nil {
+		return nil, err
+	}
 	counts := map[string]any{
 		"total_attempts": 0, "running_attempts": 0, "completed_attempts": 0,
 		"partial_attempts": 0, "failed_attempts": 0, "cancelled_attempts": 0,
@@ -885,12 +941,15 @@ func (s *Store) executeAttempt(runID, attemptID string, models Models) {
 func (s *Store) executeAttemptContext(parent context.Context, runID, attemptID string, models Models) {
 	ctx, cancel := context.WithTimeout(parent, reviewExecutionLimit)
 	defer cancel()
-	if claim, ok := s.claimForAttempt(attemptID); ok {
-		ctx = model.WithDelegatedScope(ctx, modelScope(model.DelegatedScope{
-			Kind: "execution", TenantID: claim.TenantID, OrgID: claim.OrgID, CaseID: claim.CaseID,
-			ActorID: claim.ActorID, JobID: claim.JobID, RunID: runID, AttemptID: attemptID,
-			WorkerID: claim.WorkerID, Generation: claim.Generation,
-		}, models))
+	scope, bound := model.DelegatedScopeFromContext(ctx)
+	if !bound || scope.Kind != "execution" {
+		if claim, ok := s.claimForAttempt(attemptID); ok {
+			ctx = withExecutionClaim(ctx, claim)
+			scope, bound = model.DelegatedScopeFromContext(ctx)
+		}
+	}
+	if bound && scope.Kind == "execution" {
+		ctx = model.WithDelegatedScope(ctx, modelScope(scope, models))
 	}
 	s.runningMu.Lock()
 	s.running[attemptID] = cancel
@@ -902,11 +961,25 @@ func (s *Store) executeAttemptContext(parent context.Context, runID, attemptID s
 	}()
 
 	recorder := attemptRecorder{store: s, attemptID: attemptID, failure: &recorderFailure{}}
-	if err := s.markAttemptStarted(runID, attemptID); err != nil {
-		_ = s.finishAttempt(runID, attemptID, "failed", "", "execution_persistence_failed")
+	if err := s.markAttemptStarted(ctx, runID, attemptID); err != nil {
+		_ = s.finishAttemptAfterExecution(parent, ctx, runID, attemptID, "failed", "", "execution_persistence_failed")
 		return
 	}
-	if s.telecomAttempt(s.snapshotForAttempt(attemptID), runID) {
+	initial, err := s.snapshotForAttemptContext(ctx, attemptID)
+	if err != nil {
+		_ = s.finishAttemptAfterExecution(parent, ctx, runID, attemptID, "failed", "", "execution_persistence_failed")
+		return
+	}
+	frozenScope := initial.snapshotOf(runID)
+	if frozenScope.RuleSetHash == engine.SingleContractRuleSetHash() || frozenScope.PlaybookHash == engine.SingleContractPlaybookHash() {
+		if !isSingleContractSnapshot(frozenScope) {
+			_ = s.finishAttemptAfterExecution(parent, ctx, runID, attemptID, "failed", "", "rule_mapping_integrity_failed")
+			return
+		}
+		s.executeSingleContractPrecheck(parent, ctx, runID, attemptID, models, recorder)
+		return
+	}
+	if s.telecomAttempt(initial, runID) {
 		telecomRecorder := recorder
 		telecomRecorder.runID = runID
 		telecomCtx := execution.WithSpan(ctx, attemptID)
@@ -970,7 +1043,7 @@ func (s *Store) executeAttemptContext(parent context.Context, runID, attemptID s
 				return err
 			}
 			var added []Finding
-			if err := s.updateExecution(attemptID, func(next *state) error {
+			if err := s.updateExecutionContext(stageCtx, attemptID, func(next *state) error {
 				for _, draft := range drafts {
 					idx := -1
 					for i := range next.Findings {
@@ -1028,19 +1101,32 @@ func (s *Store) executeAttemptContext(parent context.Context, runID, attemptID s
 	if parent.Err() != nil {
 		return
 	}
-	if !rulesPublished {
-		latest := s.snapshotForAttempt(attemptID)
-		rulesPublished = len(latest.findingsForAttempt(runID, attemptID)) > 0 || len(latest.evaluationsForAttempt(runID, attemptID)) > 0
+	if !rulesPublished || pipelineErr != nil {
+		readCtx := ctx
+		cancelRead := func() {}
+		if ctx.Err() != nil {
+			readCtx, cancelRead = context.WithTimeout(parent, attemptFinalizeTimeout)
+		}
+		latest, err := s.snapshotForAttemptContext(readCtx, attemptID)
+		cancelRead()
+		if err != nil {
+			_ = s.finishAttemptAfterExecution(parent, ctx, runID, attemptID, "failed", "", "execution_persistence_failed")
+			return
+		}
+		if !rulesPublished {
+			rulesPublished = len(latest.findingsForAttempt(runID, attemptID)) > 0 || len(latest.evaluationsForAttempt(runID, attemptID)) > 0
+		}
+		if pipelineErr != nil {
+			if current, ok := latest.attemptByID(attemptID); !ok || !attemptActive(current.State) {
+				return
+			}
+		}
 	}
 
 	partialReason := ""
 	terminalState := "completed"
 	errorCode := ""
 	if pipelineErr != nil {
-		latest := s.snapshotForAttempt(attemptID)
-		if current, ok := latest.attemptByID(attemptID); !ok || !attemptActive(current.State) {
-			return
-		}
 		if recorder.err() != nil {
 			terminalState = "failed"
 			errorCode = "execution_persistence_failed"
@@ -1077,16 +1163,21 @@ func (s *Store) executeAttemptContext(parent context.Context, runID, attemptID s
 		partialReason = "有材料解析失败，结果不能当成完整审查。"
 		errorCode = "document_parse_incomplete"
 	}
-	if err := s.finishAttempt(runID, attemptID, terminalState, partialReason, errorCode); err != nil {
+	if err := s.finishAttemptAfterExecution(parent, ctx, runID, attemptID, terminalState, partialReason, errorCode); err != nil {
 		return
 	}
 }
 
-func (s *Store) markAttemptStarted(runID, attemptID string) error {
-	ctx := context.Background()
+func (s *Store) markAttemptStarted(ctx context.Context, runID, attemptID string) error {
 	claim, hasClaim := s.claimForAttempt(attemptID)
-	if hasClaim && claim.JobID != "" {
-		if claim.AttemptID != attemptID || claim.RunID != runID || claim.Generation <= 0 || claim.stopReason != "" {
+	if executionScopeRequiresClaim(ctx) && (!hasClaim || !claimMatchesExecutionScope(ctx, claim)) {
+		return errLeaseLost
+	}
+	if !hasClaim || claim.AttemptID != attemptID || claim.RunID != runID {
+		return errExecutionEventScope
+	}
+	if claim.JobID != "" {
+		if claim.Generation <= 0 || claim.stopReason != "" {
 			return errExecutionEventScope
 		}
 		generation := claim.Generation
@@ -1098,12 +1189,11 @@ func (s *Store) markAttemptStarted(runID, attemptID string) error {
 			return markAttemptStartedInState(next, runID, attemptID, &generation, occurred, recorded)
 		})
 	}
-	scope := dbScope{ActorID: "worker", TenantID: "local-demo", OrgID: "local-demo", Role: "worker"}
-	if hasClaim {
-		scope = claim.scope()
-	}
+	scope := claim.scope()
 	var occurred, recorded string
-	s.mu.Lock()
+	if err := s.lockExecutionContext(ctx); err != nil {
+		return err
+	}
 	defer s.mu.Unlock()
 	return s.updateStateWith(ctx, scope, attemptID, func(tx pgx.Tx) error {
 		var err error
@@ -1179,7 +1269,10 @@ func (s *Store) prepareAttempt(ctx context.Context, runID, attemptID string, mod
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	st := s.snapshotForAttempt(attemptID)
+	st, err := s.snapshotForAttemptContext(ctx, attemptID)
+	if err != nil {
+		return nil, err
+	}
 	snapshot := st.snapshotOf(runID)
 	if input, ok := st.attemptInput(attemptID); ok {
 		if input.RunID != runID || input.AttemptID != attemptID {
@@ -1190,7 +1283,7 @@ func (s *Store) prepareAttempt(ctx context.Context, runID, attemptID string, mod
 			!attemptSelectionsMatchFrozen(st.parseSelectionsForAttempt(attemptID), input.Documents) {
 			return nil, errors.New("attempt frozen input integrity check failed")
 		}
-		if err := s.verifyFrozenDocuments(st, input.Documents); err != nil {
+		if err := s.verifyFrozenDocumentsContext(ctx, st, input.Documents); err != nil {
 			return nil, fmt.Errorf("attempt parsed artifact integrity check failed: %w", err)
 		}
 		return interpretedFromFrozen(input.Documents), nil
@@ -1215,6 +1308,9 @@ func (s *Store) prepareAttempt(ctx context.Context, runID, attemptID string, mod
 		claim, hasClaim = s.claimForAttempt(attemptID)
 		if !hasClaim || claim.JobID == "" || claim.AttemptID != attemptID || claim.RunID != runID {
 			return nil, errors.New("remote document preparation requires the current durable job claim")
+		}
+		if !claimMatchesExecutionScope(ctx, claim) {
+			return nil, errLeaseLost
 		}
 	}
 	for i, selection := range selections {
@@ -1289,7 +1385,7 @@ func (s *Store) prepareAttempt(ctx context.Context, runID, attemptID string, mod
 		return nil, err
 	}
 	input := AttemptInput{AttemptID: attemptID, RunID: runID, InputHash: inputHash, FrozenAt: stamp(), Documents: frozen}
-	if err := s.updateExecution(attemptID, func(next *state) error {
+	if err := s.updateExecutionContext(ctx, attemptID, func(next *state) error {
 		if s.telecomAttempt(*next, runID) {
 			if _, err := authorizeAttemptExecution(*next, runID, attemptID); err != nil {
 				return err
@@ -1345,8 +1441,11 @@ func (s *Store) prepareAttempt(ctx context.Context, runID, attemptID string, mod
 	}); err != nil {
 		return nil, err
 	}
-	latest := s.snapshotForAttempt(attemptID)
-	if err := s.verifyFrozenDocuments(latest, frozen); err != nil {
+	latest, err := s.snapshotForAttemptContext(ctx, attemptID)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.verifyFrozenDocumentsContext(ctx, latest, frozen); err != nil {
 		return nil, fmt.Errorf("attempt parsed artifact integrity check failed: %w", err)
 	}
 	return interpretedFromFrozen(frozen), nil
@@ -1360,7 +1459,10 @@ func (s *Store) publishRuleResults(ctx context.Context, runID, attemptID string,
 	for _, extra := range extras {
 		drafts = append(drafts, engine.Findings(extra)...)
 	}
-	attemptState := s.snapshotForAttempt(attemptID)
+	attemptState, err := s.snapshotForAttemptContext(ctx, attemptID)
+	if err != nil {
+		return err
+	}
 	made, err := materialize(runIDCase(attemptState, runID), runID, attemptID, stamp(), drafts, docs)
 	if err != nil {
 		return err
@@ -1397,7 +1499,7 @@ func (s *Store) publishRuleResults(ctx context.Context, runID, attemptID string,
 			return err
 		}
 	}
-	if err := s.updateExecution(attemptID, func(st *state) error {
+	if err := s.updateExecutionContext(ctx, attemptID, func(st *state) error {
 		st.Findings = append(st.Findings, made...)
 		st.Evaluations = append(st.Evaluations, evaluations...)
 		return nil
@@ -1411,7 +1513,10 @@ func (s *Store) publishRuleResults(ctx context.Context, runID, attemptID string,
 }
 
 func (s *Store) recordFirstVerifiedFinding(ctx context.Context, recorder attemptRecorder, attemptID string) error {
-	st := s.snapshotForAttempt(attemptID)
+	st, err := s.snapshotForAttemptContext(ctx, attemptID)
+	if err != nil {
+		return err
+	}
 	for _, event := range st.executionEvents(attemptID) {
 		if event.EventType == "finding_verified" {
 			return nil
@@ -1434,15 +1539,82 @@ func (s *Store) recordFirstVerifiedFinding(ctx context.Context, recorder attempt
 	return finish(execution.SpanCompletion{EventType: "span_completed", Status: "completed"})
 }
 
-func (s *Store) finishAttempt(runID, attemptID, stateName, partialReason, errorCode string) error {
-	if claim, ok := s.claimForAttempt(attemptID); ok && claim.JobID != "" && claim.AttemptID == attemptID && claim.RunID == runID {
+// A failed or partial attempt may need to settle after the execution deadline,
+// but worker shutdown or lease loss still cancels its bounded cleanup context.
+func (s *Store) finishAttemptAfterExecution(parent, workCtx context.Context, runID, attemptID, stateName, partialReason, errorCode string) error {
+	if stateName == "completed" {
+		return s.finishAttempt(workCtx, runID, attemptID, stateName, partialReason, errorCode)
+	}
+	ctx, cancel := context.WithTimeout(parent, attemptFinalizeTimeout)
+	defer cancel()
+	if scope, ok := model.DelegatedScopeFromContext(workCtx); ok {
+		ctx = model.WithDelegatedScope(ctx, scope)
+	}
+	return s.finishAttempt(ctx, runID, attemptID, stateName, partialReason, errorCode)
+}
+
+// Wait for the shared projection lock only while the operation remains live.
+func (s *Store) lockExecutionContext(ctx context.Context) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if s.mu.TryLock() {
+		return nil
+	}
+	ticker := time.NewTicker(time.Millisecond)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-ticker.C:
+			if s.mu.TryLock() {
+				return nil
+			}
+		}
+	}
+}
+
+func withExecutionClaim(ctx context.Context, claim JobClaim) context.Context {
+	return model.WithDelegatedScope(ctx, model.DelegatedScope{
+		Kind: "execution", TenantID: claim.TenantID, OrgID: claim.OrgID, CaseID: claim.CaseID,
+		ActorID: claim.ActorID, JobID: claim.JobID, RunID: claim.RunID, AttemptID: claim.AttemptID,
+		WorkerID: claim.WorkerID, Generation: claim.Generation,
+	})
+}
+
+func executionScopeRequiresClaim(ctx context.Context) bool {
+	scope, ok := model.DelegatedScopeFromContext(ctx)
+	return ok && scope.Kind == "execution" && scope.JobID != ""
+}
+
+// A delayed cleanup must not adopt another execution's newer in-process claim.
+func claimMatchesExecutionScope(ctx context.Context, claim JobClaim) bool {
+	scope, ok := model.DelegatedScopeFromContext(ctx)
+	if !ok || scope.Kind != "execution" {
+		return true
+	}
+	return scope.TenantID == claim.TenantID && scope.OrgID == claim.OrgID && scope.CaseID == claim.CaseID &&
+		scope.ActorID == claim.ActorID && scope.JobID == claim.JobID && scope.RunID == claim.RunID &&
+		scope.AttemptID == claim.AttemptID && scope.WorkerID == claim.WorkerID && scope.Generation == claim.Generation
+}
+
+func (s *Store) finishAttempt(ctx context.Context, runID, attemptID, stateName, partialReason, errorCode string) error {
+	claim, ok := s.claimForAttempt(attemptID)
+	if executionScopeRequiresClaim(ctx) && (!ok || !claimMatchesExecutionScope(ctx, claim)) {
+		return errLeaseLost
+	}
+	if ok && claim.JobID != "" {
+		if claim.AttemptID != attemptID || claim.RunID != runID {
+			return errExecutionEventScope
+		}
 		// Durable worker path: the terminal transition is committed under the
 		// shared case/attempt keys with the attempt version CAS and the claim
 		// fence, using the same canonical output hash.
-		return s.finishAttemptNarrow(context.Background(), runID, attemptID, stateName, partialReason, errorCode)
+		return s.finishAttemptNarrow(ctx, runID, attemptID, stateName, partialReason, errorCode)
 	}
 	finishedAt := stamp()
-	return s.updateExecution(attemptID, func(st *state) error {
+	return s.updateExecutionContext(ctx, attemptID, func(st *state) error {
 		attempt, ok := st.attemptByID(attemptID)
 		if !ok || !attemptActive(attempt.State) {
 			return errAttemptTerminal
@@ -1487,7 +1659,7 @@ func (s *Store) finishAttempt(runID, attemptID, stateName, partialReason, errorC
 		reviewDigest := ""
 		if run, ok := st.runByID(runID); ok {
 			if caseItem, ok := st.caseByID(run.CaseID); ok {
-				digest, digestErr := s.agentReviewDigestFor(caseItem.TenantID, caseItem.OwnerOrgID, attemptID)
+				digest, digestErr := s.agentReviewDigestForContext(ctx, caseItem.TenantID, caseItem.OwnerOrgID, attemptID)
 				if digestErr != nil {
 					return digestErr
 				}
@@ -1517,24 +1689,25 @@ func (s *Store) finishAttempt(runID, attemptID, stateName, partialReason, errorC
 	})
 }
 
-func (s *Store) updateExecution(attemptID string, fn func(*state) error) error {
-	return s.updateExecutionContext(context.Background(), attemptID, fn)
-}
-
 func (s *Store) updateExecutionContext(ctx context.Context, attemptID string, fn func(*state) error) error {
 	claim, hasClaim := s.claimForAttempt(attemptID)
-	if hasClaim && claim.JobID != "" && claim.AttemptID == attemptID {
+	if executionScopeRequiresClaim(ctx) && (!hasClaim || !claimMatchesExecutionScope(ctx, claim)) {
+		return errLeaseLost
+	}
+	if !hasClaim || claim.AttemptID != attemptID {
+		return errExecutionEventScope
+	}
+	if claim.JobID != "" {
 		// Durable worker path: every attempt mutation (freeze, preparation,
 		// results, phase updates, finalize) runs through the bounded
 		// attempt-scope adapter with the shared case/attempt locks, the claim
 		// fence and the same validation/persist path.
 		return s.scopedAttemptMutation(ctx, claim.RunID, attemptID, fn)
 	}
-	scope := dbScope{ActorID: "worker", TenantID: "local-demo", OrgID: "local-demo", Role: "worker"}
-	if hasClaim {
-		scope = claim.scope()
+	scope := claim.scope()
+	if err := s.lockExecutionContext(ctx); err != nil {
+		return err
 	}
-	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.updateState(ctx, scope, attemptID, fn)
 }
@@ -1615,8 +1788,17 @@ func (r attemptRecorder) RecordExecutionEvent(ctx context.Context, event executi
 			return nil
 		})
 	}
-	if errors.Is(err, errAttemptTerminal) && event.NodeKind == "model_call" && (event.EventType == "model_completed" || event.EventType == "model_failed") {
-		err = r.store.persistLateModelEvent(r.attemptID, stored)
+	if event.NodeKind == "model_call" && (event.EventType == "model_completed" || event.EventType == "model_failed") &&
+		(errors.Is(err, errAttemptTerminal) || ctx.Err() != nil) {
+		lateCtx := ctx
+		cancelLate := func() {}
+		if ctx.Err() != nil {
+			// Only a late physical model observation may outlive the work context.
+			// Retain its claim identity and bound the cancelled-attempt write.
+			lateCtx, cancelLate = context.WithTimeout(context.WithoutCancel(ctx), attemptFinalizeTimeout)
+		}
+		err = r.store.persistLateModelEvent(lateCtx, r.attemptID, stored)
+		cancelLate()
 	}
 	if err == nil {
 		r.store.recordTelemetry(r.runID, r.attemptID, event)
@@ -1696,18 +1878,30 @@ func (o attemptModelObserver) StartModelCall(ctx context.Context, modelRef strin
 	return o.recorder.StartModelCall(ctx, modelRef)
 }
 
-func (s *Store) persistLateModelEvent(attemptID string, event ExecutionEvent) error {
-	if s.serviceOwner != "" {
-		return s.persistLateModelEventNarrow(attemptID, event)
+func (s *Store) persistLateModelEvent(ctx context.Context, attemptID string, event ExecutionEvent) error {
+	claim, claimed := s.claimForAttempt(attemptID)
+	if scope, scoped := model.DelegatedScopeFromContext(ctx); scoped && scope.Kind == "execution" && scope.JobID != "" &&
+		(!claimed || !claimMatchesExecutionScope(ctx, claim)) {
+		return errLeaseLost
 	}
-	s.mu.Lock()
+	if !claimed || claim.AttemptID != attemptID {
+		return errExecutionEventScope
+	}
+	if s.serviceOwner != "" || claim.JobID != "" {
+		return s.persistLateModelEventNarrow(ctx, attemptID, event)
+	}
+	if err := s.lockExecutionContext(ctx); err != nil {
+		return err
+	}
 	defer s.mu.Unlock()
-	ctx := context.Background()
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback(ctx)
+	if err := setLocalScope(ctx, tx, claim.scope()); err != nil {
+		return err
+	}
 	if err := scopedAttemptLock(ctx, tx, attemptID); err != nil {
 		return err
 	}
@@ -1795,10 +1989,13 @@ func (s *Store) persistLateModelEvent(attemptID string, event ExecutionEvent) er
 	return nil
 }
 
-func (s *Store) persistLateModelEventNarrow(attemptID string, event ExecutionEvent) error {
+func (s *Store) persistLateModelEventNarrow(ctx context.Context, attemptID string, event ExecutionEvent) error {
 	claim, ok := s.claimForAttempt(attemptID)
 	if !ok || claim.JobID == "" || claim.AttemptID != attemptID || claim.RunID == "" || claim.Generation <= 0 {
 		return errExecutionEventScope
+	}
+	if !claimMatchesExecutionScope(ctx, claim) {
+		return errLeaseLost
 	}
 	if event.AttemptID != "" && event.AttemptID != attemptID {
 		return errExecutionEventScope
@@ -1807,7 +2004,6 @@ func (s *Store) persistLateModelEventNarrow(attemptID string, event ExecutionEve
 		return errAttemptTerminal
 	}
 	event.AttemptID = attemptID
-	ctx := context.Background()
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return err
@@ -1858,21 +2054,40 @@ func (s *Store) persistLateModelEventNarrow(attemptID string, event ExecutionEve
 	if err := tx.Commit(ctx); err != nil {
 		return err
 	}
-	s.mu.Lock()
+	if err := s.lockExecutionContext(ctx); err != nil {
+		return nil // The authoritative event was already committed.
+	}
 	s.st.ExecutionEvents = mergeExecutionEventSlice(s.st.ExecutionEvents, []ExecutionEvent{event})
 	s.mu.Unlock()
 	return nil
 }
 
-func (s *Store) markUnfinishedInterrupted() error {
-	ids := make([]string, 0)
-	for _, attempt := range s.snapshot().Attempts {
-		if attemptActive(attempt.State) {
-			ids = append(ids, attempt.ID)
+func (s *Store) markUnfinishedInterrupted(st state) error {
+	// Durable jobs are recovered by their queue lease; only in-process attempts
+	// without an active durable job are interrupted on restart.
+	durable := make(map[string]struct{})
+	for _, job := range st.Jobs {
+		if job.AttemptID != "" && (job.State == "queued" || job.State == "running") {
+			durable[job.AttemptID] = struct{}{}
 		}
 	}
-	for _, id := range ids {
-		if err := s.interruptAttempt(context.Background(), id); err != nil {
+	for _, attempt := range st.Attempts {
+		if !attemptActive(attempt.State) {
+			continue
+		}
+		if _, ok := durable[attempt.ID]; ok {
+			continue
+		}
+		run, ok := st.runByID(attempt.RunID)
+		if !ok {
+			return errors.New("restart recovery attempt has no run")
+		}
+		item, ok := st.caseByID(run.CaseID)
+		if !ok || item.TenantID == "" {
+			return errors.New("restart recovery attempt has no tenant-scoped case")
+		}
+		scope := dbScope{ActorID: "restart-recovery", Role: "api", TenantID: item.TenantID, OrgID: item.OwnerOrgID, CaseID: item.ID}
+		if err := s.interruptAttempt(context.Background(), attempt.ID, run.ID, scope); err != nil {
 			return err
 		}
 	}
@@ -1884,22 +2099,14 @@ func (s *Store) markUnfinishedInterrupted() error {
 // it cannot interleave with a narrow attempt writer or a case transition. The
 // attempt is re-read under those locks; an attempt that became terminal or
 // finished in the meantime is left untouched.
-func (s *Store) interruptAttempt(ctx context.Context, attemptID string) error {
-	runID, caseID, err := s.attemptScope(ctx, attemptID)
-	if err != nil {
-		return err
-	}
-	if runID == "" {
-		return nil
-	}
-	scope := dbScope{ActorID: "system", Role: "worker", CaseID: caseID}
+func (s *Store) interruptAttempt(ctx context.Context, attemptID, runID string, scope dbScope) error {
 	return s.updateState(ctx, scope, attemptID, func(next *state) error {
 		finishedAt := stamp()
 		code := "process_interrupted"
 		var runIDForEvent string
 		interrupted := false
 		for i := range next.Attempts {
-			if next.Attempts[i].ID != attemptID || !attemptActive(next.Attempts[i].State) {
+			if next.Attempts[i].ID != attemptID || next.Attempts[i].RunID != runID || !attemptActive(next.Attempts[i].State) {
 				continue
 			}
 			next.Attempts[i].State = "interrupted"
@@ -1924,29 +2131,6 @@ func (s *Store) interruptAttempt(ctx context.Context, attemptID string) error {
 		appendRunEvent(next, runIDForEvent, "interrupted")
 		return nil
 	})
-}
-
-// attemptScope reads only the run and case identity of one attempt, so recovery
-// can take the case key before loading anything else.
-func (s *Store) attemptScope(ctx context.Context, attemptID string) (string, string, error) {
-	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted, AccessMode: pgx.ReadOnly})
-	if err != nil {
-		return "", "", err
-	}
-	defer tx.Rollback(ctx)
-	if err := setLocalScope(ctx, tx, dbScope{ActorID: "system", Role: "worker"}); err != nil {
-		return "", "", err
-	}
-	var runID, caseID string
-	if err := tx.QueryRow(ctx, `SELECT a.run_id, r.case_id FROM review_attempts AS a
-		JOIN review_runs AS r ON r.tenant_id=a.tenant_id AND r.org_id=a.org_id AND r.id=a.run_id
-		WHERE a.id=$1`, attemptID).Scan(&runID, &caseID); err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return "", "", nil
-		}
-		return "", "", err
-	}
-	return runID, caseID, tx.Commit(ctx)
 }
 
 func (st state) latestAttempt(runID string) (Attempt, bool) {
@@ -2143,6 +2327,7 @@ func interpretedFromFrozen(frozen []FrozenDocument) []Interpreted {
 }
 
 func frozenInputHash(snapshot RunSnapshot, docs []FrozenDocument) (string, error) {
+	snapshot = scopeSnapshot(snapshot)
 	snapshot.RunID = ""
 	sort.Strings(snapshot.DocumentIDs)
 	sort.Strings(snapshot.ParsedDocumentIDs)
@@ -2203,18 +2388,22 @@ func attemptOutputHash(st state, runID, attemptID, agentReviewDigest string) (st
 // outside a transaction. It returns empty when the store has no pool (pure state
 // tests) or the attempt has no record.
 func (s *Store) agentReviewDigestFor(tenantID, orgID, attemptID string) (string, error) {
+	return s.agentReviewDigestForContext(context.Background(), tenantID, orgID, attemptID)
+}
+
+func (s *Store) agentReviewDigestForContext(ctx context.Context, tenantID, orgID, attemptID string) (string, error) {
 	if s == nil || s.pool == nil || attemptID == "" || tenantID == "" || orgID == "" {
 		return "", nil
 	}
-	tx, err := s.pool.BeginTx(context.Background(), pgx.TxOptions{AccessMode: pgx.ReadOnly})
+	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{AccessMode: pgx.ReadOnly})
 	if err != nil {
 		return "", err
 	}
-	defer tx.Rollback(context.Background())
-	if err := setLocalScope(context.Background(), tx, dbScope{ActorID: "system", Role: "api", TenantID: tenantID, OrgID: orgID}); err != nil {
+	defer tx.Rollback(ctx)
+	if err := setLocalScope(ctx, tx, dbScope{ActorID: "system", Role: "api", TenantID: tenantID, OrgID: orgID}); err != nil {
 		return "", err
 	}
-	return agentReviewDigestForOutput(context.Background(), tx, tenantID, orgID, attemptID)
+	return agentReviewDigestForOutput(ctx, tx, tenantID, orgID, attemptID)
 }
 
 func hasVerifiedFinding(findings []Finding) bool {

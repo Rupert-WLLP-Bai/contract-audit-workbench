@@ -56,7 +56,7 @@ func TestLateModelEventCannotRewriteTerminalOrDecidedState(t *testing.T) {
 	before := durableSnapshot(t, api, claim)
 	firstBeforeLateEvent := before.findingsForAttempt(fixture.runID, fixture.attemptID)
 	beforeDecisionCount, beforeFindingCount := len(before.Decisions), len(before.Findings)
-	if err := fixture.execution.persistLateModelEvent(accepted.AttemptID, ExecutionEvent{
+	if err := fixture.execution.persistLateModelEvent(ctx, accepted.AttemptID, ExecutionEvent{
 		AttemptID: accepted.AttemptID, NodeKind: "model_call", EventType: "model_completed",
 		At: stamp(), Status: "completed",
 	}); err != nil {
