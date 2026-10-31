@@ -402,6 +402,10 @@ services:
       # transcription for the OCR model.
       LLM_MODEL: ${LLM_MODEL:-fixture-chat}
       OCR_MODEL: ${OCR_MODEL:-fixture-ocr}
+      # The caller names LLM_BASE_URL inside the frozen model configuration id;
+      # a fixture gateway that omits it derives a different identity and every
+      # call is rejected with 409 model_configuration_changed.
+      LLM_BASE_URL: ${LLM_BASE_URL:-}
       WORKER_MODEL_TOKEN: ${WORKER_MODEL_TOKEN:?Run make app-bootstrap}
       DOCUMENT_MODEL_TOKEN: ${DOCUMENT_MODEL_TOKEN:?Run make app-bootstrap}
       MODEL_GATEWAY_FIXTURE_OCR_CONTENT: 质保期为36个月。
