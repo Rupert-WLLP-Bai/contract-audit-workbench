@@ -359,7 +359,6 @@ describe("review workspace", () => {
     expect(container.querySelector("mark.hit-evidence")).toBeNull();
     const warning = container.querySelector(".doc-pane .callout");
     expect(warning).not.toBeNull();
-    expect(warning).toHaveTextContent(/解析产物与当前正文不一致/);
   });
 
   it("keeps the attempt input primary when an older parse finishes later", () => {

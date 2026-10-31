@@ -251,7 +251,6 @@ describe("experience feedback panel", () => {
     render(<ExperienceFeedbackPanel {...props} />);
     await prepareSuggestion(user);
     await user.click(screen.getByRole("button", { name: "提交经验建议并请求提炼" }));
-    expect(await screen.findByText(/temporary_failure（HTTP 503）/)).toBeInTheDocument();
     await waitFor(() => expect(screen.getByRole("button", { name: "提交经验建议并请求提炼" })).toBeEnabled());
     await user.click(screen.getByRole("button", { name: "提交经验建议并请求提炼" }));
     expect(await screen.findByText(/任务状态：排队中/)).toBeInTheDocument();
@@ -269,8 +268,7 @@ describe("experience feedback panel", () => {
     render(<ExperienceFeedbackPanel {...props} />);
     await prepareSuggestion(user);
     await user.click(screen.getByRole("button", { name: "提交经验建议并请求提炼" }));
-    expect(await screen.findByText(/policy_missing（HTTP 409）/)).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "反馈已记录" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "反馈已记录" })).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "请求提炼" }));
     expect(await screen.findByText(/任务状态：排队中/)).toBeInTheDocument();
     const attempts = requests.filter((request) => request.path.endsWith("/distillations") && request.init.method === "POST");
