@@ -290,8 +290,8 @@ func wireRuntimeStore(ctx context.Context, st *store.Store, settings runtimeSett
 	}
 	// The stored endpoint overrides the deployment identity before the client
 	// is built, so the configuration id a review freezes is the configured one.
-	config, revision := configuredLLMEndpoint(ctx, st, settings, service)
-	models := model.New(config)
+	config, revision, storedDirect := configuredLLMEndpoint(ctx, st, settings, service)
+	models := newModelClient(config, storedDirect)
 	st.UseModels(models)
 	if provider := configuredAdvisoryProvider(service, models); provider != nil {
 		st.UseAdvisory(provider)
@@ -305,10 +305,11 @@ func wireRuntimeStore(ctx context.Context, st *store.Store, settings runtimeSett
 }
 
 // configuredLLMEndpoint merges the platform endpoint with the deployment
-// identity. Read-only deployments keep the deployment configuration.
-func configuredLLMEndpoint(ctx context.Context, st llmEndpointStore, settings runtimeSettings, service string) (model.Config, int64) {
+// identity. Read-only deployments keep the deployment configuration. The
+// boolean reports that a stored endpoint was adopted for direct calls.
+func configuredLLMEndpoint(ctx context.Context, st llmEndpointStore, settings runtimeSettings, service string) (model.Config, int64, bool) {
 	if settings.readOnly {
-		return settings.modelConfig, 0
+		return settings.modelConfig, 0, false
 	}
 	return loadStoredLLMEndpoint(ctx, st, service, settings.modelConfig)
 }

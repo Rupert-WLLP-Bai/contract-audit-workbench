@@ -121,9 +121,17 @@ type Client struct {
 
 // New returns a client. The timeout covers one review or one image.
 func New(cfg Config) *Client {
+	return NewWithHTTPClient(cfg, &http.Client{Timeout: 120 * time.Second})
+}
+
+// NewWithHTTPClient returns a client that sends every call through the
+// supplied HTTP client. Callers own its transport and redirect policy; the
+// operator-configured endpoint paths use it to pin provider traffic to the
+// guarded outbound client.
+func NewWithHTTPClient(cfg Config, client *http.Client) *Client {
 	cfg.BaseURL = strings.TrimRight(strings.TrimSpace(cfg.BaseURL), "/")
 	cfg.ProviderURL = strings.TrimRight(strings.TrimSpace(cfg.ProviderURL), "/")
-	return &Client{cfg: cfg, http: &http.Client{Timeout: 120 * time.Second}, configurationID: configurationID(cfg)}
+	return &Client{cfg: cfg, http: client, configurationID: configurationID(cfg)}
 }
 
 // WithTransport replaces the HTTP transport. Tests use it to record status codes.

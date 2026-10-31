@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"contractaudit/internal/jev"
+	"contractaudit/internal/llmendpoint"
 	"contractaudit/internal/model"
 	"contractaudit/internal/store"
 )
@@ -177,20 +178,21 @@ func applyEnvDurationOverrides(config *Config) error {
 }
 
 type Service struct {
-	store       *store.Store
-	config      Config
-	client      *http.Client
-	queue       chan struct{}
-	concurrency chan struct{}
-	circuit     circuitBreaker
-	catalogMu   sync.Mutex
-	catalogAt   time.Time
-	catalogKey  string
-	catalogIDs  []string
-	upstreamMu  sync.Mutex
-	upstreamAt  time.Time
-	upstreamCfg upstreamConfig
-	upstreamErr error
+	store         *store.Store
+	config        Config
+	client        *http.Client
+	guardedClient *http.Client
+	queue         chan struct{}
+	concurrency   chan struct{}
+	circuit       circuitBreaker
+	catalogMu     sync.Mutex
+	catalogAt     time.Time
+	catalogKey    string
+	catalogIDs    []string
+	upstreamMu    sync.Mutex
+	upstreamAt    time.Time
+	upstreamCfg   upstreamConfig
+	upstreamErr   error
 
 	jev        JevConfig
 	jevClient  *jev.Client
@@ -265,7 +267,8 @@ func validateFixtureConfig(config Config) error {
 func newService(st *store.Store, config Config) *Service {
 	return &Service{
 		store: st, config: config, client: &http.Client{Timeout: config.RequestTimeout},
-		queue: make(chan struct{}, config.QueueCapacity), concurrency: make(chan struct{}, config.MaxConcurrency),
+		guardedClient: llmendpoint.GuardedClient(config.RequestTimeout),
+		queue:         make(chan struct{}, config.QueueCapacity), concurrency: make(chan struct{}, config.MaxConcurrency),
 		circuit: circuitBreaker{threshold: config.CircuitFailureThreshold, cooldown: config.CircuitCooldown},
 		jev:     config.Jev, jevQueue: make(chan struct{}, jevQueueCapacity), jevSlots: make(chan struct{}, jevMaxConcurrency),
 		jevCircuit: circuitBreaker{threshold: config.CircuitFailureThreshold, cooldown: config.CircuitCooldown},
@@ -677,7 +680,7 @@ func (s *Service) dispatchUpstream(ctx context.Context, upstream upstreamConfig,
 	if upstream.APIKey != "" {
 		request.Header.Set("Authorization", "Bearer "+upstream.APIKey)
 	}
-	response, err := s.client.Do(request)
+	response, err := s.clientFor(upstream).Do(request)
 	if err != nil {
 		return nil, http.StatusBadGateway, nil, err, retryableTransport(err, ctx), false
 	}
@@ -944,7 +947,7 @@ func (s *Service) catalogResponse(ctx context.Context, upstream upstreamConfig) 
 	if upstream.APIKey != "" {
 		request.Header.Set("Authorization", "Bearer "+upstream.APIKey)
 	}
-	response, err := s.client.Do(request)
+	response, err := s.clientFor(upstream).Do(request)
 	if err != nil {
 		return nil, err
 	}
@@ -1011,8 +1014,21 @@ func requestErrCode(err error, status int) string {
 	return fmt.Sprintf("provider_http_%d", status)
 }
 
+// clientFor pins provider calls to the right outbound client. A stored,
+// operator-configured upstream (revision >= 1) is guarded: its connections
+// land only on policy-verified addresses and never follow redirects. The
+// deployment-configured upstream keeps the default client, because
+// process-to-process environment URLs are not operator-supplied endpoints.
+func (s *Service) clientFor(upstream upstreamConfig) *http.Client {
+	if upstream.Revision > 0 && s.guardedClient != nil {
+		return s.guardedClient
+	}
+	return s.client
+}
+
 func retryableTransport(err error, ctx context.Context) bool {
-	if ctx.Err() != nil || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+	if ctx.Err() != nil || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) ||
+		errors.Is(err, llmendpoint.ErrEndpointForbidden) {
 		return false
 	}
 	return true
