@@ -18,7 +18,7 @@ func (s *Store) readUploadReceipt(ctx context.Context, user accounts.User, caseI
 	if err != nil {
 		return DocumentUploadResult{}, false, err
 	}
-	defer tx.Rollback(ctx)
+	defer tx.Rollback(context.Background())
 	if err := setLocalScope(ctx, tx, userScope(user)); err != nil {
 		return DocumentUploadResult{}, false, err
 	}

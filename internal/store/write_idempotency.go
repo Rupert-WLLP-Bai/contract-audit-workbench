@@ -13,15 +13,15 @@ import (
 )
 
 const (
-	coreWriteReceipts = "core_write_receipts"
+	coreWriteReceipts      = "core_write_receipts"
 	executionWriteReceipts = "execution_write_receipts"
 )
 
 type writeReceipt struct {
-	CaseID string
-	OrgID string
+	CaseID        string
+	OrgID         string
 	RequestDigest string
-	Response json.RawMessage
+	Response      json.RawMessage
 }
 
 func optionalIdempotencyKey(key string) (string, error) {
@@ -120,7 +120,7 @@ func (s *Store) readWriteReceipt(ctx context.Context, user accounts.User, table,
 	if err != nil {
 		return writeReceipt{}, false, err
 	}
-	defer tx.Rollback(ctx)
+	defer tx.Rollback(context.Background())
 	if err := setLocalScope(ctx, tx, userScope(user)); err != nil {
 		return writeReceipt{}, false, err
 	}
@@ -162,15 +162,15 @@ func (s *Store) readWriteReceipt(ctx context.Context, user accounts.User, table,
 type reviewIdempotencyContextKey struct{}
 
 type reviewIdempotency struct {
-	key string
+	key        string
 	acceptance JobAcceptance
-	durable bool
-	present bool
+	durable    bool
+	present    bool
 }
 
 type reviewWriteReceipt struct {
 	Acceptance JobAcceptance `json:"acceptance"`
-	Durable bool `json:"durable"`
+	Durable    bool          `json:"durable"`
 }
 
 // WithReviewIdempotency binds an optional HTTP operation key to one admission.

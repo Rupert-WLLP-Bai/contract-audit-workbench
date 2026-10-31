@@ -95,7 +95,9 @@ func (s *Store) CreateCaseWithBusinessContext(ctx context.Context, user accounts
 			if err := checkWriteReceipt(receipt, item, digest); err != nil {
 				return err
 			}
-			var result struct { ID string `json:"id"` }
+			var result struct {
+				ID string `json:"id"`
+			}
 			if err := json.Unmarshal(receipt.Response, &result); err != nil {
 				return err
 			}

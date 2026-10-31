@@ -26,6 +26,7 @@ CREATE TABLE execution_write_receipts (
  FOREIGN KEY (tenant_id, org_id, case_id) REFERENCES cases (tenant_id, org_id, id) DEFERRABLE INITIALLY DEFERRED
 );
 ALTER TABLE core_write_receipts ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON TABLE core_write_receipts, execution_write_receipts FROM PUBLIC;
 ALTER TABLE core_write_receipts FORCE ROW LEVEL SECURITY;
 CREATE POLICY tenant_boundary ON core_write_receipts
  USING (tenant_id = current_setting('app.tenant_id', true))
