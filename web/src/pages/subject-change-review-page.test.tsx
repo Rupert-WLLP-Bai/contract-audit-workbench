@@ -65,7 +65,7 @@ beforeEach(() => {
   mocks.useSession.mockReturnValue({ data: { id: "reviewer-2", tenant_id: "tenant-1", org_id: "org-1", audience: "client" } });
   mocks.useCaseSubjectChange.mockReturnValue({ data: request, isLoading: false, isError: false });
   mocks.useCaseSubjectChangeImpact.mockReturnValue({ data: {
-    visible_affected_count: 1, affected_cases: [{ case_id: "case-1", case_name: "政企专线采购", status: "active" }],
+    visible_affected_count: 1, authorized_impact_cases: [{ case_id: "case-1", case_title: "政企专线采购", business_status: "active" }],
     impact_etag: "impact-secret-etag",
     proposed_by_display_name: "提案经办人", can_decide: true, decision_blocked_reason: null,
   }, isLoading: false, isError: false, refetch: vi.fn() });

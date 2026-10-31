@@ -281,7 +281,7 @@ function invalidateSubjectChangeViews(
     );
   }
   const affectedCaseIds = new Set([
-    ...(impact?.affected_cases.map((item) => item.case_id) ?? []),
+    ...(impact?.authorized_impact_cases.map((item) => item.case_id) ?? []),
   ]);
   for (const affectedCaseId of affectedCaseIds) {
     if (affectedCaseId === caseId) continue;

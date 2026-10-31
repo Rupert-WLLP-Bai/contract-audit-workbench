@@ -225,7 +225,7 @@ describe("subject API response parsing", () => {
       basis_refs: [],
       impact_etag: "etag",
       visible_affected_count: 1,
-      affected_cases: [],
+      authorized_impact_cases: [{ case_id: "c-1", case_title: "可见案件", business_status: "active" }],
     }, "case_subject_role").after).toMatchObject({ binding_version: 2 });
   });
 

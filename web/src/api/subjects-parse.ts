@@ -579,8 +579,8 @@ function impactCases(value: unknown, path: string) {
     const record = object(item, itemPath);
     return {
       case_id: text(record, "case_id", itemPath),
-      case_name: text(record, "case_name", itemPath),
-      status: text(record, "status", itemPath),
+      case_title: text(record, "case_title", itemPath),
+      business_status: text(record, "business_status", itemPath),
     };
   });
 }
@@ -654,7 +654,7 @@ export function parseSubjectChangeImpact(
     basis_refs: array(record, "basis_refs", path, basisRef),
     impact_etag: text(record, "impact_etag", path),
     visible_affected_count: nonNegativeInteger(record, "visible_affected_count", path),
-    affected_cases: impactCases(record.affected_cases, path),
+    authorized_impact_cases: impactCases(record.authorized_impact_cases, `${path}.authorized_impact_cases`),
   };
 }
 

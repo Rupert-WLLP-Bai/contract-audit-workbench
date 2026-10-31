@@ -166,7 +166,7 @@ describe("subject API endpoints", () => {
 
     setResponse({ request_id: "change-1", proposed_by_display_name: "经办人甲", can_decide: false, decision_blocked_reason: "本人不能复核", target_version: 1, payload_hash: "c".repeat(64), before: version,
       after: { ...version, version: 2, display_name: "示例企业" }, basis_refs: [{ ...basis, filename: "主体资料.txt", quote: "示例公司" }],
-      impact_etag: "opaque-etag", visible_affected_count: 0, affected_cases: [] });
+      impact_etag: "opaque-etag", visible_affected_count: 0, authorized_impact_cases: [{ case_id: "case-1", case_title: "可见案件", business_status: "active" }] });
     expect((await getCaseSubjectChangeImpact("case-1", "change/1", "subject")).impact_etag).toBe("opaque-etag");
 
     const decisionFetch = setResponse({ request_id: "change-1", decision: "approved", applied_subject_version: 2, binding_versions_appended: 1 });

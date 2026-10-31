@@ -1263,10 +1263,10 @@ export interface SubjectChangeImpact {
   basis_refs: SubjectChangeBasisRef[];
   impact_etag: string;
   visible_affected_count: number;
-  affected_cases: Array<{
+  authorized_impact_cases: Array<{
     case_id: string;
-    case_name: string;
-    status: string;
+    case_title: string;
+    business_status: string;
   }>;
 }
 
