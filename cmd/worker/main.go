@@ -133,9 +133,11 @@ func serveWorker(runCtx context.Context, abort context.CancelFunc, app *bootstra
 	// The probe surface is the only way an orchestrator can observe this
 	// process, so a listener failure must end the process instead of leaving an
 	// unobservable worker running.
+	healthCtx, stopHealth := context.WithCancel(runCtx)
+	defer stopHealth()
 	healthFailed := make(chan error, 1)
 	go func() {
-		err := process.Serve(runCtx, health, shutdownTimeout)
+		err := process.Serve(healthCtx, health, shutdownTimeout)
 		if err != nil {
 			abort()
 		}
@@ -144,6 +146,7 @@ func serveWorker(runCtx context.Context, abort context.CancelFunc, app *bootstra
 
 	log.Printf("worker %s claiming jobs from %s", workerID, app.Selection.Database.Name)
 	claimErr := claimJobs(runCtx, app.Store, workerID, config.lease, config.heartbeat, config.poll, wake)
+	stopHealth()
 
 	if healthErr := <-healthFailed; healthErr != nil {
 		return fmt.Errorf("worker health server: %w", healthErr)
