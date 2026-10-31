@@ -50,7 +50,7 @@ func TestGovernanceServiceRoleBoundaries(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer tx.Rollback(ctx)
-	if err := setLocalScope(ctx, tx, dbScope{ActorID: "worker", Role: "worker", TenantID: accounts.Tenant(admin), OrgID: admin.OrgID}); err != nil {
+	if err := setLocalScope(ctx, tx, dbScope{ActorID: "worker", Role: "api", TenantID: accounts.Tenant(admin), OrgID: admin.OrgID}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := tx.Exec(ctx, `UPDATE rule_pack_pointers SET version=version WHERE tenant_id=$1`, accounts.Tenant(admin)); err == nil {

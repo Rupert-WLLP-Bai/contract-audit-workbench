@@ -90,10 +90,10 @@ func TestRuleResultsSurviveMissingOrUnusableModel(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if len(st.DecisionsFor(f.ID)) != 1 || len(old.Findings) != len(ws.Findings) || len(old.Execution.Events) != len(ws.Execution.Events) {
+			if len(mustDecisionsFor(t, st, admin, f.ID)) != 1 || len(old.Findings) != len(ws.Findings) || len(old.Execution.Events) != len(ws.Execution.Events) {
 				t.Fatalf("retry changed old results, events, or decision: old=%+v latest=%+v", old.Execution, latest.Execution)
 			}
-			if latest.View.State != "partial" || len(st.DecisionsFor(f.ID)) != 1 || len(latest.Findings) != len(ws.Findings) {
+			if latest.View.State != "partial" || len(mustDecisionsFor(t, st, admin, f.ID)) != 1 || len(latest.Findings) != len(ws.Findings) {
 				t.Fatalf("degraded review became complete or lost a decision: %+v", latest.View)
 			}
 			if err := audit.Verify(asEvents(latest.Audit)); err != nil {

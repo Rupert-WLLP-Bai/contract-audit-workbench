@@ -189,7 +189,7 @@ func anchorDocument(anchor store.Anchor, docs map[string]store.Interpreted) stor
 	return docs[anchor.DocumentID]
 }
 
-func workspaceJSON(st *store.Store, ws store.Workspace) map[string]any {
+func workspaceJSON(decisions map[string][]store.Decision, ws store.Workspace) map[string]any {
 	inSnapshot := map[string]bool{}
 	for _, id := range ws.Snapshot.DocumentIDs {
 		inSnapshot[id] = true
@@ -212,7 +212,7 @@ func workspaceJSON(st *store.Store, ws store.Workspace) map[string]any {
 	}
 	findings := make([]any, len(ws.Findings))
 	for i, finding := range ws.Findings {
-		findings[i] = findingJSON(st, finding, byID, markOf[finding.ID])
+		findings[i] = findingJSON(finding, decisions[finding.ID], byID, markOf[finding.ID])
 	}
 	state := ws.View.State
 	actualState := ws.View.Run.State
@@ -478,12 +478,11 @@ func auditJSON(events []store.AuditRecord) []any {
 	return out
 }
 
-func findingJSON(st *store.Store, finding store.Finding, docs map[string]store.Interpreted, mark string) map[string]any {
+func findingJSON(finding store.Finding, decisions []store.Decision, docs map[string]store.Interpreted, mark string) map[string]any {
 	evidence := make([]any, len(finding.Anchors))
 	for i, anchor := range finding.Anchors {
 		evidence[i] = anchorJSON(anchor, anchorDocument(anchor, docs))
 	}
-	decisions := st.DecisionsFor(finding.ID)
 	history := make([]any, len(decisions))
 	for i, decision := range decisions {
 		history[i] = map[string]any{

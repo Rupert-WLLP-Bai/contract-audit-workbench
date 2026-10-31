@@ -127,16 +127,7 @@ func openStore(dir string, sel config.Selection, schema string, drop bool) (*Sto
 		pool.Close()
 		return nil, err
 	}
-	if err := s.load(ctx); err != nil {
-		pool.Close()
-		return nil, err
-	}
-	s.st.normalize()
-	if err := s.validateLoadedParseHistory(); err != nil {
-		pool.Close()
-		return nil, err
-	}
-	if err := s.markUnfinishedInterrupted(); err != nil {
+	if err := s.initializeKnownTenants(ctx, true); err != nil {
 		pool.Close()
 		return nil, err
 	}
@@ -413,12 +404,7 @@ func openApplicationStore(dir string, sel config.Selection, schema string) (*Sto
 		pool.Close()
 		return nil, err
 	}
-	if err := s.load(ctx); err != nil {
-		pool.Close()
-		return nil, err
-	}
-	s.st.normalize()
-	if err := s.validateLoadedParseHistory(); err != nil {
+	if err := s.initializeKnownTenants(ctx, false); err != nil {
 		pool.Close()
 		return nil, err
 	}
@@ -440,13 +426,45 @@ func rejectPrivilegedApplicationRole(ctx context.Context, pool *pgxpool.Pool, sc
 	return nil
 }
 
-func (s *Store) load(ctx context.Context) error {
+// Startup only inspects tenants present in the trusted directory. Each read and
+// legacy restart recovery uses that tenant's own RLS scope.
+func (s *Store) initializeKnownTenants(ctx context.Context, recoverAttempts bool) error {
+	s.st.normalize()
+	seen := make(map[string]struct{})
+	for _, user := range accounts.List() {
+		if !user.Enabled {
+			continue
+		}
+		if strings.TrimSpace(user.TenantID) == "" {
+			return errors.New("trusted directory user has no tenant")
+		}
+		if _, ok := seen[user.TenantID]; ok {
+			continue
+		}
+		seen[user.TenantID] = struct{}{}
+		scope := dbScope{ActorID: "startup", TenantID: user.TenantID, OrgID: user.OrgID, Role: "api"}
+		if err := s.load(ctx, scope); err != nil {
+			return err
+		}
+		if err := s.validateLoadedParseHistory(s.st); err != nil {
+			return err
+		}
+		if recoverAttempts {
+			if err := s.markUnfinishedInterrupted(s.st); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func (s *Store) load(ctx context.Context, scope dbScope) error {
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback(ctx)
-	if err := setLocalScope(ctx, tx, dbScope{}); err != nil {
+	if err := setLocalScope(ctx, tx, scope); err != nil {
 		return err
 	}
 	st, err := loadState(ctx, tx, true)
@@ -681,11 +699,7 @@ func (s *Store) updateStateWithLocks(ctx context.Context, scope dbScope, attempt
 	}
 	if scope.CaseID != "" {
 		caseItem, ok := previous.caseByID(scope.CaseID)
-		tenantID := scope.TenantID
-		if tenantID == "" {
-			tenantID = accounts.LocalDemoTenant
-		}
-		if ok && caseItem.TenantID == tenantID {
+		if ok && caseItem.TenantID == scope.TenantID {
 			scope.OrgID = caseItem.OwnerOrgID
 			if err := setLocalScope(ctx, tx, scope); err != nil {
 				return err

@@ -14,7 +14,7 @@ import (
 
 func trustedUser(user accounts.User) (accounts.User, error) {
 	current, ok := accounts.ByID(user.ID)
-	if !ok || !current.Enabled {
+	if !ok || !current.Enabled || current.TenantID == "" {
 		return accounts.User{}, fault.Unauthenticated("登录已失效或账号不可用")
 	}
 	if (user.TenantID != "" && user.TenantID != current.TenantID) ||
@@ -43,7 +43,7 @@ func (s *Store) snapshotAsContext(ctx context.Context, user accounts.User) (stat
 }
 
 func (s *Store) snapshotForClaim(claim JobClaim) (state, error) {
-	return s.snapshotScoped(context.Background(), claim.scope())
+	return s.snapshotScopedClaim(context.Background(), claim.scope(), &claim)
 }
 
 func (s *Store) snapshotForAttempt(attemptID string) state {
@@ -54,10 +54,14 @@ func (s *Store) snapshotForAttempt(attemptID string) state {
 		}
 		return state{}
 	}
-	return s.snapshot()
+	return state{}
 }
 
 func (s *Store) snapshotScoped(ctx context.Context, scope dbScope) (state, error) {
+	return s.snapshotScopedClaim(ctx, scope, nil)
+}
+
+func (s *Store) snapshotScopedClaim(ctx context.Context, scope dbScope, claim *JobClaim) (state, error) {
 	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
 	if err != nil {
 		return state{}, err
@@ -65,6 +69,20 @@ func (s *Store) snapshotScoped(ctx context.Context, scope dbScope) (state, error
 	defer tx.Rollback(ctx)
 	if err := setLocalScope(ctx, tx, scope); err != nil {
 		return state{}, err
+	}
+	if claim != nil && claim.JobID != "" {
+		var live bool
+		err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM worker_jobs
+			WHERE id=$1 AND tenant_id=$2 AND org_id=$3 AND case_id=$4 AND run_id=$5 AND attempt_id=$6
+				AND actor_id=$7 AND worker_id=$8 AND generation=$9 AND state='running' AND lease_until > clock_timestamp())`,
+			claim.JobID, claim.TenantID, claim.OrgID, claim.CaseID, claim.RunID, claim.AttemptID,
+			claim.ActorID, claim.WorkerID, claim.Generation).Scan(&live)
+		if err != nil {
+			return state{}, err
+		}
+		if !live {
+			return state{}, errLeaseLost
+		}
 	}
 	// Per-request reads degrade a corrupted artifact to a per-document parse
 	// failure instead of failing the whole request; startup and writes stay strict.
@@ -79,7 +97,7 @@ func (s *Store) snapshotScoped(ctx context.Context, scope dbScope) (state, error
 }
 
 func userScope(user accounts.User) dbScope {
-	return dbScope{ActorID: user.ID, TenantID: accounts.Tenant(user), OrgID: user.OrgID, Role: "api"}
+	return dbScope{ActorID: user.ID, TenantID: user.TenantID, OrgID: user.OrgID, Role: "api"}
 }
 
 func (s *Store) updateAs(user accounts.User, fn func(*state) error) error {
@@ -137,14 +155,6 @@ func caseReadAllowed(item Case, user accounts.User) bool {
 	return authorizeCase(item, user, access.Read)
 }
 
-func workerScope(job Job) dbScope {
-	return dbScope{ActorID: job.ActorID, TenantID: job.TenantID, OrgID: job.OrgID, Role: "worker"}
-}
-
-func localDemoScope(actorID string) dbScope {
-	return dbScope{ActorID: actorID, TenantID: accounts.LocalDemoTenant, OrgID: "demo-org", Role: "api"}
-}
-
 func validateAudienceUser(user accounts.User, audience string) error {
 	switch audience {
 	case "client":
@@ -169,7 +179,7 @@ func (s *Store) sessionFromDB(ctx context.Context, token string) (session, error
 		return session{}, err
 	}
 	defer tx.Rollback(ctx)
-	if err := setLocalScope(ctx, tx, dbScope{ActorID: "session", SessionToken: digest, Role: "api"}); err != nil {
+	if err := setLocalSessionScope(ctx, tx, digest); err != nil {
 		return session{}, err
 	}
 	var current session

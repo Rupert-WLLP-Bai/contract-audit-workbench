@@ -723,27 +723,6 @@ func (s *Store) releaseParseLock() {
 	<-s.parseMu
 }
 
-func (s *Store) update(fn func(*state) error) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.updateState(context.Background(), localDemoScope("system"), "", fn)
-}
-
-func (s *Store) snapshot() state {
-	st, err := s.snapshotScoped(context.Background(), localDemoScope("system"))
-	if err != nil {
-		return state{}
-	}
-	s.mu.Lock()
-	s.st = st
-	s.mu.Unlock()
-	out, err := st.clone()
-	if err != nil {
-		return st
-	}
-	return out
-}
-
 func newID(prefix string) (string, error) {
 	var buf [8]byte
 	if _, err := rand.Read(buf[:]); err != nil {

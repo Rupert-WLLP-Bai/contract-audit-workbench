@@ -808,10 +808,17 @@ func (s *Store) cancelAttemptInState(st *state, user accounts.User, caseID, runI
 }
 
 func (s *Store) OperationalMetadata(user accounts.User) (map[string]any, error) {
-	if user.Role != "admin" {
+	current, err := trustedUser(user)
+	if err != nil {
+		return nil, err
+	}
+	if current.Role != "admin" {
 		return nil, fault.Forbidden("只有管理员可以查看审查运行的运维信息")
 	}
-	st := s.snapshot()
+	st, err := s.snapshotScoped(context.Background(), userScope(current))
+	if err != nil {
+		return nil, err
+	}
 	counts := map[string]any{
 		"total_attempts": 0, "running_attempts": 0, "completed_attempts": 0,
 		"partial_attempts": 0, "failed_attempts": 0, "cancelled_attempts": 0,
@@ -1085,8 +1092,11 @@ func (s *Store) executeAttemptContext(parent context.Context, runID, attemptID s
 func (s *Store) markAttemptStarted(runID, attemptID string) error {
 	ctx := context.Background()
 	claim, hasClaim := s.claimForAttempt(attemptID)
-	if hasClaim && claim.JobID != "" {
-		if claim.AttemptID != attemptID || claim.RunID != runID || claim.Generation <= 0 || claim.stopReason != "" {
+	if !hasClaim || claim.AttemptID != attemptID || claim.RunID != runID {
+		return errExecutionEventScope
+	}
+	if claim.JobID != "" {
+		if claim.Generation <= 0 || claim.stopReason != "" {
 			return errExecutionEventScope
 		}
 		generation := claim.Generation
@@ -1098,10 +1108,7 @@ func (s *Store) markAttemptStarted(runID, attemptID string) error {
 			return markAttemptStartedInState(next, runID, attemptID, &generation, occurred, recorded)
 		})
 	}
-	scope := dbScope{ActorID: "worker", TenantID: "local-demo", OrgID: "local-demo", Role: "worker"}
-	if hasClaim {
-		scope = claim.scope()
-	}
+	scope := claim.scope()
 	var occurred, recorded string
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -1523,17 +1530,17 @@ func (s *Store) updateExecution(attemptID string, fn func(*state) error) error {
 
 func (s *Store) updateExecutionContext(ctx context.Context, attemptID string, fn func(*state) error) error {
 	claim, hasClaim := s.claimForAttempt(attemptID)
-	if hasClaim && claim.JobID != "" && claim.AttemptID == attemptID {
+	if !hasClaim || claim.AttemptID != attemptID {
+		return errExecutionEventScope
+	}
+	if claim.JobID != "" {
 		// Durable worker path: every attempt mutation (freeze, preparation,
 		// results, phase updates, finalize) runs through the bounded
 		// attempt-scope adapter with the shared case/attempt locks, the claim
 		// fence and the same validation/persist path.
 		return s.scopedAttemptMutation(ctx, claim.RunID, attemptID, fn)
 	}
-	scope := dbScope{ActorID: "worker", TenantID: "local-demo", OrgID: "local-demo", Role: "worker"}
-	if hasClaim {
-		scope = claim.scope()
-	}
+	scope := claim.scope()
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.updateState(ctx, scope, attemptID, fn)
@@ -1697,7 +1704,11 @@ func (o attemptModelObserver) StartModelCall(ctx context.Context, modelRef strin
 }
 
 func (s *Store) persistLateModelEvent(attemptID string, event ExecutionEvent) error {
-	if s.serviceOwner != "" {
+	claim, ok := s.claimForAttempt(attemptID)
+	if !ok || claim.AttemptID != attemptID {
+		return errExecutionEventScope
+	}
+	if s.serviceOwner != "" || claim.JobID != "" {
 		return s.persistLateModelEventNarrow(attemptID, event)
 	}
 	s.mu.Lock()
@@ -1708,6 +1719,9 @@ func (s *Store) persistLateModelEvent(attemptID string, event ExecutionEvent) er
 		return err
 	}
 	defer tx.Rollback(ctx)
+	if err := setLocalScope(ctx, tx, claim.scope()); err != nil {
+		return err
+	}
 	if err := scopedAttemptLock(ctx, tx, attemptID); err != nil {
 		return err
 	}
@@ -1864,15 +1878,32 @@ func (s *Store) persistLateModelEventNarrow(attemptID string, event ExecutionEve
 	return nil
 }
 
-func (s *Store) markUnfinishedInterrupted() error {
-	ids := make([]string, 0)
-	for _, attempt := range s.snapshot().Attempts {
-		if attemptActive(attempt.State) {
-			ids = append(ids, attempt.ID)
+func (s *Store) markUnfinishedInterrupted(st state) error {
+	// Durable jobs are recovered by their queue lease; only in-process attempts
+	// without an active durable job are interrupted on restart.
+	durable := make(map[string]struct{})
+	for _, job := range st.Jobs {
+		if job.AttemptID != "" && (job.State == "queued" || job.State == "running") {
+			durable[job.AttemptID] = struct{}{}
 		}
 	}
-	for _, id := range ids {
-		if err := s.interruptAttempt(context.Background(), id); err != nil {
+	for _, attempt := range st.Attempts {
+		if !attemptActive(attempt.State) {
+			continue
+		}
+		if _, ok := durable[attempt.ID]; ok {
+			continue
+		}
+		run, ok := st.runByID(attempt.RunID)
+		if !ok {
+			return errors.New("restart recovery attempt has no run")
+		}
+		item, ok := st.caseByID(run.CaseID)
+		if !ok || item.TenantID == "" {
+			return errors.New("restart recovery attempt has no tenant-scoped case")
+		}
+		scope := dbScope{ActorID: "restart-recovery", Role: "api", TenantID: item.TenantID, OrgID: item.OwnerOrgID, CaseID: item.ID}
+		if err := s.interruptAttempt(context.Background(), attempt.ID, run.ID, scope); err != nil {
 			return err
 		}
 	}
@@ -1884,22 +1915,14 @@ func (s *Store) markUnfinishedInterrupted() error {
 // it cannot interleave with a narrow attempt writer or a case transition. The
 // attempt is re-read under those locks; an attempt that became terminal or
 // finished in the meantime is left untouched.
-func (s *Store) interruptAttempt(ctx context.Context, attemptID string) error {
-	runID, caseID, err := s.attemptScope(ctx, attemptID)
-	if err != nil {
-		return err
-	}
-	if runID == "" {
-		return nil
-	}
-	scope := dbScope{ActorID: "system", Role: "worker", CaseID: caseID}
+func (s *Store) interruptAttempt(ctx context.Context, attemptID, runID string, scope dbScope) error {
 	return s.updateState(ctx, scope, attemptID, func(next *state) error {
 		finishedAt := stamp()
 		code := "process_interrupted"
 		var runIDForEvent string
 		interrupted := false
 		for i := range next.Attempts {
-			if next.Attempts[i].ID != attemptID || !attemptActive(next.Attempts[i].State) {
+			if next.Attempts[i].ID != attemptID || next.Attempts[i].RunID != runID || !attemptActive(next.Attempts[i].State) {
 				continue
 			}
 			next.Attempts[i].State = "interrupted"
@@ -1924,29 +1947,6 @@ func (s *Store) interruptAttempt(ctx context.Context, attemptID string) error {
 		appendRunEvent(next, runIDForEvent, "interrupted")
 		return nil
 	})
-}
-
-// attemptScope reads only the run and case identity of one attempt, so recovery
-// can take the case key before loading anything else.
-func (s *Store) attemptScope(ctx context.Context, attemptID string) (string, string, error) {
-	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted, AccessMode: pgx.ReadOnly})
-	if err != nil {
-		return "", "", err
-	}
-	defer tx.Rollback(ctx)
-	if err := setLocalScope(ctx, tx, dbScope{ActorID: "system", Role: "worker"}); err != nil {
-		return "", "", err
-	}
-	var runID, caseID string
-	if err := tx.QueryRow(ctx, `SELECT a.run_id, r.case_id FROM review_attempts AS a
-		JOIN review_runs AS r ON r.tenant_id=a.tenant_id AND r.org_id=a.org_id AND r.id=a.run_id
-		WHERE a.id=$1`, attemptID).Scan(&runID, &caseID); err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return "", "", nil
-		}
-		return "", "", err
-	}
-	return runID, caseID, tx.Commit(ctx)
 }
 
 func (st state) latestAttempt(runID string) (Attempt, bool) {

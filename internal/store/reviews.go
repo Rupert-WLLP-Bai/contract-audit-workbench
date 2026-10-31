@@ -10,6 +10,8 @@ import (
 	"contractaudit/internal/engine"
 	"contractaudit/internal/fault"
 	"contractaudit/internal/model"
+
+	"github.com/jackc/pgx/v5"
 )
 
 var decisionActions = map[string]string{
@@ -333,9 +335,68 @@ func (s *Store) WorkspaceAttempt(user accounts.User, caseID, runID, attemptID st
 	return s.Workspace(user, caseID, runID, attemptID)
 }
 
-func (s *Store) DecisionsFor(findingID string) []Decision {
-	st := s.snapshot()
-	return st.decisions(findingID)
+// DecisionsFor returns the history of one finding only while the caller can
+// still read its case. The finding, case and decisions must share their scope.
+func (s *Store) DecisionsFor(user accounts.User, findingID string) ([]Decision, error) {
+	current, err := trustedUser(user)
+	if err != nil {
+		return nil, err
+	}
+	ctx := context.Background()
+	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted, AccessMode: pgx.ReadOnly})
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback(ctx)
+	if err := setLocalScope(ctx, tx, userScope(current)); err != nil {
+		return nil, err
+	}
+	var caseID, orgID, runID string
+	err = tx.QueryRow(ctx, `SELECT case_id,org_id,run_id FROM findings WHERE tenant_id=$1 AND id=$2`, current.TenantID, findingID).Scan(&caseID, &orgID, &runID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, fault.NotFound("没有找到对应记录")
+	}
+	if err != nil {
+		return nil, err
+	}
+	if err := scopedCaseLock(ctx, tx, caseID); err != nil {
+		return nil, err
+	}
+	item, err := loadKnowledgeCase(ctx, tx, current, caseID)
+	if err != nil {
+		return nil, err
+	}
+	if item.OwnerOrgID != orgID {
+		return nil, fault.NotFound("没有找到对应记录")
+	}
+	rows, err := tx.Query(ctx, `SELECT id,finding_id,run_id,case_id,actor_id,actor_name,action,reason,old_disposition,new_disposition,created_at
+		FROM decisions WHERE tenant_id=$1 AND org_id=$2 AND case_id=$3 AND run_id=$4 AND finding_id=$5 ORDER BY seq`,
+		current.TenantID, orgID, caseID, runID, findingID)
+	if err != nil {
+		return nil, err
+	}
+	var decisions []Decision
+	for rows.Next() {
+		var decision Decision
+		if err := rows.Scan(&decision.ID, &decision.FindingID, &decision.RunID, &decision.CaseID, &decision.ActorID,
+			&decision.ActorName, &decision.Action, &decision.Reason, &decision.OldDisposition, &decision.NewDisposition, &decision.CreatedAt); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		decisions = append(decisions, decision)
+	}
+	err = rows.Err()
+	rows.Close()
+	if err != nil {
+		return nil, err
+	}
+	if !authorizeCase(item, current, access.Read) {
+		return nil, fault.NotFound("没有找到对应记录")
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return nil, err
+	}
+	return decisions, nil
 }
 
 func (s *Store) EventsAfter(user accounts.User, caseID, runID string, after int) ([]Event, error) {

@@ -29,19 +29,37 @@ type dbScope struct {
 	Generation   int64
 }
 
+// setLocalScope applies a tenant-bound business scope. Cross-tenant queue
+// operations and token-only session lookup use their own narrow entry points.
 func setLocalScope(ctx context.Context, tx pgx.Tx, scope dbScope) error {
-	if scope.ActorID == "" {
-		scope.ActorID = "system"
+	if strings.TrimSpace(scope.TenantID) == "" {
+		return errors.New("database tenant scope is required")
 	}
-	if scope.TenantID == "" {
-		scope.TenantID = "local-demo"
+	if strings.TrimSpace(scope.ActorID) == "" || scope.Role == "" || scope.Role == "worker" || scope.SessionToken != "" {
+		return errors.New("database actor and tenant-bound role are required")
 	}
-	if scope.OrgID == "" {
-		scope.OrgID = "demo-org"
+	return applyLocalScope(ctx, tx, scope)
+}
+
+// Session lookup is authorized by the exact token, before its tenant is known.
+// An empty tenant leaves every tenant-protected business table inaccessible.
+func setLocalSessionScope(ctx context.Context, tx pgx.Tx, token string) error {
+	if strings.TrimSpace(token) == "" {
+		return errors.New("session token is required")
 	}
-	if scope.Role == "" {
-		scope.Role = "api"
+	return applyLocalScope(ctx, tx, dbScope{ActorID: "session", Role: "api", SessionToken: token})
+}
+
+// Only scheduler and outbox claim transactions use the cross-tenant queue
+// policy. They have no tenant or session scope and touch queue metadata alone.
+func setLocalQueueScope(ctx context.Context, tx pgx.Tx, workerID string) error {
+	if strings.TrimSpace(workerID) == "" {
+		return errors.New("queue worker identity is required")
 	}
+	return applyLocalScope(ctx, tx, dbScope{ActorID: "queue", Role: "worker", WorkerID: workerID})
+}
+
+func applyLocalScope(ctx context.Context, tx pgx.Tx, scope dbScope) error {
 	_, err := tx.Exec(ctx, `SELECT
 		set_config('app.actor_id', $1, true),
 		set_config('app.tenant_id', $2, true),

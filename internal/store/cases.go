@@ -91,7 +91,7 @@ func (s *Store) Logout(token string) error {
 		return err
 	}
 	defer tx.Rollback(ctx)
-	if err := setLocalScope(ctx, tx, dbScope{SessionToken: digest, Role: "api"}); err != nil {
+	if err := setLocalSessionScope(ctx, tx, digest); err != nil {
 		return err
 	}
 	if _, err := tx.Exec(ctx, `DELETE FROM sessions WHERE token=$1`, digest); err != nil {

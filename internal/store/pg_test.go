@@ -16,6 +16,15 @@ import (
 	"contractaudit/internal/store"
 )
 
+func mustDecisionsFor(t *testing.T, st *store.Store, user accounts.User, findingID string) []store.Decision {
+	t.Helper()
+	decisions, err := st.DecisionsFor(user, findingID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return decisions
+}
+
 func TestOpenRefusesDevAndProductionDatabases(t *testing.T) {
 	for _, dsn := range []string{
 		"postgres://contractaudit:contractaudit@127.0.0.1:5432/contract_audit_dev?sslmode=disable",
@@ -224,7 +233,7 @@ func TestStoredReviewSurvivesReopen(t *testing.T) {
 	if !foundDecision {
 		t.Fatalf("decision audit missing: %+v", ws.Audit)
 	}
-	decisions := again.DecisionsFor(payment.ID)
+	decisions := mustDecisionsFor(t, again, admin, payment.ID)
 	if len(decisions) != 1 || decisions[0].Action != "confirm_risk" || decisions[0].NewDisposition != "confirmed" {
 		t.Fatalf("decisions %+v", decisions)
 	}

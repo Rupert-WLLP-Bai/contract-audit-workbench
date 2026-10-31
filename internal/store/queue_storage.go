@@ -145,7 +145,7 @@ func (s *Store) ClaimNextJob(ctx context.Context, workerID string, lease time.Du
 		return JobClaim{}, err
 	}
 	defer tx.Rollback(ctx)
-	if err := setLocalScope(ctx, tx, dbScope{ActorID: workerID, TenantID: "local-demo", OrgID: "local-demo", Role: "worker"}); err != nil {
+	if err := setLocalQueueScope(ctx, tx, workerID); err != nil {
 		return JobClaim{}, err
 	}
 	claim, err := claimScheduledJob(ctx, tx, workerID, lease, s.executionQueuePolicy())

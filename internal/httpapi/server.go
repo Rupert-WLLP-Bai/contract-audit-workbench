@@ -572,7 +572,20 @@ func (h *handler) workspace(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, workspaceJSON(h.store, ws))
+	decisions := make(map[string][]store.Decision, len(ws.Findings))
+	for _, finding := range ws.Findings {
+		if finding.CaseID != ws.Case.ID {
+			writeErr(w, fault.NotFound("没有找到对应记录"))
+			return
+		}
+		history, err := h.store.DecisionsFor(user, finding.ID)
+		if err != nil {
+			writeErr(w, err)
+			return
+		}
+		decisions[finding.ID] = history
+	}
+	writeJSON(w, http.StatusOK, workspaceJSON(decisions, ws))
 }
 
 func (h *handler) retry(w http.ResponseWriter, r *http.Request) {
