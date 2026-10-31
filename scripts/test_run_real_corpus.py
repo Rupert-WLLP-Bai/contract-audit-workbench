@@ -96,6 +96,71 @@ class RealCorpusRunnerTest(unittest.TestCase):
         self.assertEqual(result["model_record_time"], "record-time")
         self.assertEqual(output.stat().st_mode & 0o777, 0o700)
 
+    def test_precheck_accepts_designed_partial_frozen_attempt(self):
+        class FakeAPI:
+            def __init__(self, base, timeout):
+                pass
+            def upload(self, case_id, material):
+                return {"id": "doc"}
+            def request(self, method, path, payload=None, **kwargs):
+                if path == "/api/session":
+                    return {"actor": {"id": "actor"}}
+                if path == "/api/cases":
+                    return {"id": "case"}
+                if path == "/api/cases/case":
+                    return {"documents": [{"id": "doc", "parse_status": "ready"}]}
+                if method == "POST" and path.endswith("/reviews"):
+                    self.scope = (payload or {}).get("scope")
+                    return {"id": "run", "attempt_id": "attempt"}
+                return {"run": {"state": "partial", "partial_reason": "单合同预审仅核对已识别的付款比例"},
+                        "snapshot": {"document_ids": ["doc"]},
+                        "findings": [{"id": "finding"}], "evaluations": [{"id": "evaluation"}],
+                        "review_attempts": {"attempt": {"id": "attempt", "finished_at": "t",
+                                                        "frozen_result_available": True,
+                                                        "review_scope": {"id": "single_contract_precheck",
+                                                                         "rule_set_id": "single-contract-precheck"}}}}
+        api = FakeAPI("http://localhost", 10)
+        args = self.args()
+        args.review_scope = "single_contract_precheck"
+        with patch.dict(os.environ, {"CAW_DELIVERY_DIR": str(self.root / "delivery")}):
+            with patch.object(runner, "API", lambda base, timeout: api):
+                output = runner.run(args)
+        result = json.loads((output / "result.json").read_text())
+        self.assertEqual(result["status"], "complete")
+        self.assertEqual(api.scope, "single_contract_precheck")
+        case = result["cases"][0]
+        self.assertEqual(case["run_state"], "partial")
+        self.assertEqual(case["precheck"]["findings"], 1)
+        self.assertEqual(case["precheck"]["rule_set"], "single-contract-precheck")
+
+    def test_precheck_rejects_unfinished_attempt(self):
+        class FakeAPI:
+            def __init__(self, base, timeout):
+                pass
+            def upload(self, case_id, material):
+                return {"id": "doc"}
+            def request(self, method, path, payload=None, **kwargs):
+                if path == "/api/session":
+                    return {"actor": {"id": "actor"}}
+                if path == "/api/cases":
+                    return {"id": "case"}
+                if path == "/api/cases/case":
+                    return {"documents": [{"id": "doc", "parse_status": "ready"}]}
+                if method == "POST" and path.endswith("/reviews"):
+                    return {"id": "run", "attempt_id": "attempt"}
+                return {"run": {"state": "partial"}, "snapshot": {"document_ids": ["doc"]},
+                        "review_attempts": {"attempt": {"id": "attempt", "finished_at": "t",
+                                                        "frozen_result_available": False,
+                                                        "review_scope": {"id": "single_contract_precheck"}}}}
+        args = self.args()
+        args.review_scope = "single_contract_precheck"
+        with patch.dict(os.environ, {"CAW_DELIVERY_DIR": str(self.root / "delivery")}):
+            with patch.object(runner, "API", FakeAPI):
+                with self.assertRaises(runner.RunnerError):
+                    runner.run(args)
+        result = json.loads(next((self.root / "delivery").glob("test-runs/real-corpus-*/result.json")).read_text())
+        self.assertEqual(result["cases"][0]["status"], "failed")
+
     def test_invalid_input_leaves_failure_checkpoint(self):
         self.original.write_bytes(b"changed")
         with patch.dict(os.environ, {"CAW_DELIVERY_DIR": str(self.root / "delivery")}):

@@ -278,13 +278,36 @@ def run(args):
                     break
                 time.sleep(min(0.5, max(0, deadline - time.monotonic())))
             current["review_finished_at"] = dt.datetime.now(dt.timezone.utc).isoformat()
-            if state not in {"completed", "awaiting_human"}:
-                raise RunnerError(f"review ended in {state}")
             execution = workspace.get("execution") or {}
             attempt = execution.get("attempt") or {}
             events = execution.get("events") or []
-            if attempt.get("state") != "completed" or not any(event.get("node_kind") == "model_call" and event.get("event_type") == "model_completed" for event in events):
-                raise RunnerError("review lacks a completed model execution")
+            if args.review_scope == "single_contract_precheck":
+                # Precheck attempts terminate as run state "partial" by design
+                # (precheck_scope_limited): the scope runs the deterministic
+                # single-contract rules and defers everything else to a full
+                # review. Success is a finished, frozen attempt under the
+                # precheck rule set; model calls are optional on this path.
+                summary = (workspace.get("review_attempts") or {}).get("attempt") or {}
+                scope_id = (summary.get("review_scope") or {}).get("id")
+                if state not in {"completed", "awaiting_human", "partial"}:
+                    raise RunnerError(f"review ended in {state}")
+                if scope_id != "single_contract_precheck":
+                    raise RunnerError("review scope does not match the requested precheck scope")
+                if not summary.get("finished_at") or not summary.get("frozen_result_available"):
+                    raise RunnerError("precheck attempt is not a finished frozen attempt")
+                current["precheck"] = {
+                    "frozen": True,
+                    "attempt_id": summary.get("id"),
+                    "findings": len(workspace.get("findings") or []),
+                    "evaluations": len(workspace.get("evaluations") or []),
+                    "partial_reason": (workspace.get("run") or {}).get("partial_reason"),
+                    "rule_set": (summary.get("review_scope") or {}).get("rule_set_id"),
+                }
+            else:
+                if state not in {"completed", "awaiting_human"}:
+                    raise RunnerError(f"review ended in {state}")
+                if attempt.get("state") != "completed" or not any(event.get("node_kind") == "model_call" and event.get("event_type") == "model_completed" for event in events):
+                    raise RunnerError("review lacks a completed model execution")
             current["status"] = "complete"
             current["finished_at"] = dt.datetime.now(dt.timezone.utc).isoformat()
             save(result_path, result)
@@ -310,7 +333,7 @@ def run(args):
         if args.model_record_dir:
             try:
                 result["model_record_count"] = snapshot_model_calls(args.model_record_dir, output, result["started_at"], result["finished_at"])
-                if result["status"] == "complete" and result["model_record_count"] == 0:
+                if result["status"] == "complete" and result["model_record_count"] == 0 and result.get("review_scope") != "single_contract_precheck":
                     raise RunnerError("completed review has no recorded model call")
             except (OSError, ValueError, KeyError, RunnerError) as exc:
                 result["model_record_error"] = type(exc).__name__
