@@ -1,7 +1,8 @@
 # Prepare this dependency base while Alpine repositories are reachable, then
 # transport/cache it for the offline packaging commands. No application source
 # or user data is included. Both offline packagers reject bases missing Poppler.
-ARG BASE=nginx:alpine
+# BASE is pinned to a multi-arch registry manifest digest; re-pin deliberately.
+ARG BASE=nginx:alpine@sha256:785835ea65db4bba6f021acc0f3be91b0fef76a53fe41f8588c6698d2aed0606
 FROM ${BASE}
 USER root
 RUN apk add --no-cache poppler-utils poppler-data
