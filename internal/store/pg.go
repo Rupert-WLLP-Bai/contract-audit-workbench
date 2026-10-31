@@ -104,12 +104,19 @@ func openStore(dir string, sel config.Selection, schema string, drop bool) (*Sto
 	if err := createSchema(ctx, sel.DSN, schema); err != nil {
 		return nil, err
 	}
-	pool, err := newPool(ctx, sel.DSN, schema)
+	// The legacy in-process migration uses the same DSN but not the runtime
+	// timeout defaults; explicit DSN timeouts still apply to both pools.
+	migrationPool, err := newStorePool(ctx, sel.DSN, schema, false)
 	if err != nil {
 		return nil, err
 	}
-	if err := migrate(ctx, pool); err != nil {
-		pool.Close()
+	err = migrate(ctx, migrationPool)
+	migrationPool.Close()
+	if err != nil {
+		return nil, err
+	}
+	pool, err := newPool(ctx, sel.DSN, schema)
+	if err != nil {
 		return nil, err
 	}
 	s := &Store{
@@ -155,7 +162,7 @@ func ensureDatabase(ctx context.Context, sel config.Selection) error {
 	if err != nil {
 		return err
 	}
-	conn, err := pgx.Connect(ctx, admin)
+	conn, err := connectPoolDSN(ctx, admin)
 	if err != nil {
 		return err
 	}
@@ -191,7 +198,7 @@ func createSchema(ctx context.Context, dsn, schema string) error {
 	if err != nil {
 		return err
 	}
-	conn, err := pgx.Connect(ctx, dsn)
+	conn, err := connectPoolDSN(ctx, dsn)
 	if err != nil {
 		return err
 	}
@@ -200,12 +207,61 @@ func createSchema(ctx context.Context, dsn, schema string) error {
 	return err
 }
 
-func newPool(ctx context.Context, dsn, schema string) (*pgxpool.Pool, error) {
+const (
+	defaultStorePoolMaxConns    int32 = 4
+	defaultMigratorPoolMaxConns int32 = 2
+)
+
+// parsePoolConfig preserves pgx's explicit pool options while keeping the
+// unconfigured maximum independent of the host's CPU count.
+func parsePoolConfig(dsn string, defaultMaxConns int32) (*pgxpool.Config, error) {
 	cfg, err := pgxpool.ParseConfig(dsn)
 	if err != nil {
 		return nil, err
 	}
-	cfg.MaxConns = 4
+	// pgxpool removes pool options from RuntimeParams, so use pgx's parser to
+	// distinguish an explicit maximum from its CPU-dependent default. This also
+	// handles keyword DSNs, escaping and pgx service-file settings.
+	connConfig, err := pgx.ParseConfig(dsn)
+	if err != nil {
+		return nil, err
+	}
+	if _, explicit := connConfig.RuntimeParams["pool_max_conns"]; !explicit {
+		cfg.MaxConns = defaultMaxConns
+		// Explicit minimums also express a connection requirement; do not leave
+		// them unattainable just because no maximum was supplied.
+		if cfg.MinConns > cfg.MaxConns {
+			cfg.MaxConns = cfg.MinConns
+		}
+		if cfg.MinIdleConns > cfg.MaxConns {
+			cfg.MaxConns = cfg.MinIdleConns
+		}
+	}
+	return cfg, nil
+}
+
+// connectPoolDSN removes pgxpool-only settings before opening a direct
+// connection for database or schema initialization.
+func connectPoolDSN(ctx context.Context, dsn string) (*pgx.Conn, error) {
+	cfg, err := pgxpool.ParseConfig(dsn)
+	if err != nil {
+		return nil, err
+	}
+	return pgx.ConnectConfig(ctx, cfg.ConnConfig)
+}
+
+func newPool(ctx context.Context, dsn, schema string) (*pgxpool.Pool, error) {
+	return newStorePool(ctx, dsn, schema, true)
+}
+
+func newStorePool(ctx context.Context, dsn, schema string, application bool) (*pgxpool.Pool, error) {
+	cfg, err := parsePoolConfig(dsn, defaultStorePoolMaxConns)
+	if err != nil {
+		return nil, err
+	}
+	if application {
+		applyRuntimeTimeoutDefaults(cfg.ConnConfig.RuntimeParams)
+	}
 	cfg.AfterConnect = func(ctx context.Context, conn *pgx.Conn) error {
 		_, err := conn.Exec(ctx, `SELECT
 			set_config('search_path', $1, false),
@@ -216,6 +272,40 @@ func newPool(ctx context.Context, dsn, schema string) (*pgxpool.Pool, error) {
 		return err
 	}
 	return pgxpool.NewWithConfig(ctx, cfg)
+}
+
+// Defaults go first in PostgreSQL's options parameter so explicit -c/-- options
+// win. Direct startup parameters are left alone and receive no competing default.
+func applyRuntimeTimeoutDefaults(params map[string]string) {
+	var defaults strings.Builder
+	for _, setting := range [...]struct{ name, option string }{
+		{"statement_timeout", "-c statement_timeout=60s"},
+		{"lock_timeout", "-c lock_timeout=10s"},
+		{"idle_in_transaction_session_timeout", "-c idle_in_transaction_session_timeout=5min"},
+	} {
+		explicit := false
+		for name := range params {
+			if strings.EqualFold(name, setting.name) {
+				explicit = true
+				break
+			}
+		}
+		if explicit {
+			continue
+		}
+		if defaults.Len() > 0 {
+			defaults.WriteByte(' ')
+		}
+		defaults.WriteString(setting.option)
+	}
+	if defaults.Len() == 0 {
+		return
+	}
+	if options := params["options"]; options != "" {
+		defaults.WriteByte(' ')
+		defaults.WriteString(options)
+	}
+	params["options"] = defaults.String()
 }
 
 func migrate(ctx context.Context, pool *pgxpool.Pool) error {
@@ -272,11 +362,10 @@ func Migrate(ctx context.Context) error {
 	if err := createSchema(ctx, migratorDSN, schema); err != nil {
 		return err
 	}
-	cfg, err := pgxpool.ParseConfig(migratorDSN)
+	cfg, err := parsePoolConfig(migratorDSN, defaultMigratorPoolMaxConns)
 	if err != nil {
 		return err
 	}
-	cfg.MaxConns = 2
 	cfg.AfterConnect = func(ctx context.Context, conn *pgx.Conn) error {
 		_, err := conn.Exec(ctx, `SELECT set_config('search_path', $1, false)`, schema)
 		return err

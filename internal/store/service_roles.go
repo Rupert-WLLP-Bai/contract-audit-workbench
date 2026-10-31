@@ -122,7 +122,7 @@ func MigrateServiceRoles(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	conn, err := pgx.Connect(ctx, dsn)
+	conn, err := connectPoolDSN(ctx, dsn)
 	if err != nil {
 		return errors.New("cannot connect to the service role migrator")
 	}
