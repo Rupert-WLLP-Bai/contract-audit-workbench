@@ -24,6 +24,7 @@ import {
 } from "../api/queries";
 import { paths } from "../api/paths";
 import type { CaseRelationInput, DecisionAction } from "../api/types";
+import type { FrozenQuoteScope, FrozenQuoteSelection } from "../domain/frozen-quote";
 import { PageStatus } from "../components/page-status";
 import { ReviewWorkspaceView } from "../components/review-workspace";
 import { DirtyLeaveGuard } from "../components/dirty-leave-guard";
@@ -85,9 +86,23 @@ export function ReviewPage() {
   const [conflictMessage, setConflictMessage] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [conflictFinding, setConflictFinding] = useState<string | null>(null);
+  const [quoteSelection, setQuoteSelection] = useState<FrozenQuoteSelection | null>(null);
 
   const execution = review.data?.review_attempts;
   const selectedAttempt = execution?.attempt ?? null;
+  const quoteScope = useMemo<FrozenQuoteScope>(
+    () => ({
+      caseId,
+      runId,
+      attemptId: selectedAttempt?.id ?? null,
+      isFrozenAttempt: selectedAttempt?.history_kind === "frozen",
+      parsedDocumentIds: (review.data?.documents ?? []).flatMap((document) =>
+        document.parsed_document_id ? [document.parsed_document_id] : [],
+      ),
+    }),
+    [caseId, runId, selectedAttempt?.history_kind, selectedAttempt?.id, review.data?.documents],
+  );
+  useEffect(() => setQuoteSelection(null), [caseId, runId, session.data?.id, selectedAttempt?.id]);
   const decisionDraftScope = useMemo(
     () =>
       session.data
@@ -527,6 +542,8 @@ export function ReviewPage() {
           workspace={workspace}
           layout={layout}
           showDiagnostics={diagnosticData !== null}
+          quoteScope={quoteScope}
+          onQuoteSelectionChange={setQuoteSelection}
           selectedId={selectedId}
           caseContext={caseContext}
           canEditRelations={canEditRelations}
@@ -606,6 +623,8 @@ export function ReviewPage() {
         evaluations={review.data.evaluations ?? []}
         agentReview={review.data.agent_review ?? null}
         documents={caseDetail.data?.documents ?? []}
+        quoteScope={quoteScope}
+        quoteSelection={quoteSelection}
       />
       <OperatorAuditEntry
         caseId={caseId}
@@ -619,6 +638,8 @@ export function ReviewPage() {
         finding={review.data.findings.find((item) => item.id === selectedId) ?? null}
         documents={review.data.documents}
         canSubmit={roleCanDecide && selectedAttempt?.history_kind === "frozen"}
+        quoteScope={quoteScope}
+        quoteSelection={quoteSelection}
       />
       <RunProvenance workspace={workspace} showDiagnostics={diagnosticData !== null} />
       <FrozenLegalAuthorities
