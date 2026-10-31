@@ -439,7 +439,8 @@ func (s *Store) executeTelecomAttempt(parent, ctx context.Context, runID, attemp
 			Scenario: caseItem.Scenario, ContractType: caseItem.ContractType, At: time.Now().UTC(), Sources: sources,
 		}
 		if isDeclaredReviewCase(caseItem) {
-			frozen := s.snapshotForAttempt(attemptID).snapshotOf(runID)
+			stored := s.snapshotForAttempt(attemptID)
+			frozen := stored.snapshotOf(runID)
 			if frozen.ComparatorRef != engine.ComparatorRef+"+"+telecom.DeclaredCompilerRef || frozen.GovernedKnowledge == nil {
 				return errors.New("declared extractor identity or business time was not frozen")
 			}
