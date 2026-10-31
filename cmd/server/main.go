@@ -254,20 +254,9 @@ func splitList(raw string) []string {
 	return out
 }
 
-// origins reads the extra browser origins the deployment allows. An empty value
-// keeps the handler's development defaults.
+// origins applies the deployment's browser origin list and environment defaults.
 func origins() []string {
-	extra := strings.TrimSpace(os.Getenv("CORS_ORIGIN"))
-	if extra == "" {
-		return nil
-	}
-	result := []string{"http://localhost:5173", "http://127.0.0.1:5173"}
-	for _, origin := range strings.Split(extra, ",") {
-		if origin = strings.TrimSpace(origin); origin != "" {
-			result = append(result, origin)
-		}
-	}
-	return result
+	return config.BrowserOrigins(os.Getenv("CORS_ORIGIN"), os.Getenv("APP_ENV"))
 }
 
 func logStartup(app *bootstrap.Runtime) {

@@ -26,7 +26,7 @@ for (const audience of ["client", "admin"]) test(`real Keycloak ${audience} auth
   expect(actor.audience).toBe(audience);
   const opposite = audience === "client" ? "/api/admin/settings" : "/api/cases";
   expect((await page.request.get(app+opposite)).status()).toBe(401);
-  expect((await page.request.delete(`${app}/api/session?audience=${audience}`)).status()).toBe(204);
+  expect((await page.request.delete(`${app}/api/session?audience=${audience}`, { headers: { Origin: new URL(app).origin } })).status()).toBe(204);
   expect((await page.request.get(`${app}/api/session?audience=${audience}`)).status()).toBe(401);
 });
 

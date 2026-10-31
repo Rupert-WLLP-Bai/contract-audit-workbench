@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"contractaudit/internal/bootstrap"
+	"contractaudit/internal/config"
 	"contractaudit/internal/httpapi"
 	"contractaudit/internal/process"
 	"contractaudit/internal/toolgateway"
@@ -122,18 +123,7 @@ func writeUnauthorized(w http.ResponseWriter) {
 }
 
 func configuredOrigins() []string {
-	configured := strings.TrimSpace(os.Getenv("CORS_ORIGIN"))
-	if configured == "" {
-		return nil
-	}
-	origins := []string{"http://localhost:5173", "http://127.0.0.1:5173"}
-	for _, origin := range strings.Split(configured, ",") {
-		origin = strings.TrimSpace(origin)
-		if origin != "" {
-			origins = append(origins, origin)
-		}
-	}
-	return origins
+	return config.BrowserOrigins(os.Getenv("CORS_ORIGIN"), os.Getenv("APP_ENV"))
 }
 
 // serve runs server until ctx is canceled or the listener fails, then drains

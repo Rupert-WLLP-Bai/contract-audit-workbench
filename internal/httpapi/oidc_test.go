@@ -336,6 +336,9 @@ func (f *oidcHTTPFixture) request(t *testing.T, client *http.Client, method, pat
 	if err != nil {
 		t.Fatal(err)
 	}
+	if method != http.MethodGet && method != http.MethodHead {
+		request.Header.Set("Origin", target.Scheme+"://"+target.Host)
+	}
 	if cookie != nil {
 		request.AddCookie(cookie)
 	}

@@ -341,6 +341,7 @@ func (f *serviceFixture) doAs(token, method, path, contentType string, body []by
 	if err != nil {
 		return httpResult{err: err}
 	}
+	req.Header.Set("Origin", f.server.URL)
 	if contentType != "" {
 		req.Header.Set("Content-Type", contentType)
 	}

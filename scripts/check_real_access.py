@@ -40,10 +40,12 @@ class NoRedirect(urllib.request.HTTPRedirectHandler):
 class Client:
     def __init__(self, base):
         self.base = base
+        parsed = urllib.parse.urlsplit(base)
+        self.origin = f"{parsed.scheme}://{parsed.netloc}"
         self.opener = urllib.request.build_opener(NoRedirect(), urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
 
     def request(self, method, path, payload=None, content_type=None):
-        headers = {"Accept": "application/json"}
+        headers = {"Accept": "application/json", "Origin": self.origin}
         if payload is not None and not isinstance(payload, bytes):
             payload = json.dumps(payload).encode()
             content_type = "application/json"

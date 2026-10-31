@@ -17,9 +17,10 @@ import (
 )
 
 func TestOriginsPreservesDefaultsAndTrimsConfiguredValues(t *testing.T) {
+	t.Setenv("APP_ENV", "development")
 	t.Setenv("CORS_ORIGIN", " \t")
-	if got := origins(); got != nil {
-		t.Fatalf("origins() with blank configuration = %#v, want nil", got)
+	if got := origins(); !equalStrings(got, []string{"http://localhost:5173", "http://127.0.0.1:5173"}) {
+		t.Fatalf("origins() with blank configuration = %#v", got)
 	}
 
 	t.Setenv("CORS_ORIGIN", " https://east.example , ,https://west.example  ")

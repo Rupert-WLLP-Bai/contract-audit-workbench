@@ -90,7 +90,7 @@ test("durable cancellation and retry append attempts while freezing original inp
 
 test("missing live planner model rejects acceptance while preserving ready materials", operations("startReview", "getCase", "uploadDocument"), async ({ playwright }) => {
   const base = process.env.E2E_MISSING_API!;
-  const api = await playwright.request.newContext();
+  const api = await playwright.request.newContext({ extraHTTPHeaders: { Referer: base } });
   try {
     await login(api, "demo-admin", "admin-demo", "client", base);
     const created = await body(await api.post(`${base}/api/cases`, { data: { title: "未配置模型保留确定性冲突", contract_type: "procurement_ict" } }), 201);

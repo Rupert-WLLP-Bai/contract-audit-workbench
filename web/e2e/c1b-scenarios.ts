@@ -297,6 +297,7 @@ try {
     assert.deepEqual(afterArchiveBytes.html, reportBytes.html, `${scenario.id} archive changed frozen HTML bytes`);
 
     const deniedWrite = await page.request.post(`${web}/api/cases/${caseID}/generations`, {
+      headers: { Origin: new URL(web).origin },
       data: { template_id: dataset.template_id, fields: scenario.fields },
     });
     assert.equal(deniedWrite.status(), 409, `${scenario.id} archived case accepted a new generation`);
@@ -484,6 +485,7 @@ async function finishExistingScenario(
   assert.deepEqual(afterArchiveBytes.html, reportBytes.html, "compatible archive changed frozen HTML bytes");
 
   const deniedWrite = await currentPage.request.post(`${web}/api/cases/${detail.id}/generations`, {
+    headers: { Origin: new URL(web).origin },
     data: { template_id: dataset.template_id, fields: scenario.fields },
   });
   assert.equal(deniedWrite.status(), 409, "archived compatible case accepted a new generation");
@@ -560,6 +562,7 @@ async function finishExistingInsufficientScenario(
   assert.deepEqual(afterArchiveBytes.html, reportBytes.html, "insufficient archive changed frozen HTML bytes");
 
   const deniedWrite = await currentPage.request.post(`${web}/api/cases/${initialDetail.id}/generations`, {
+    headers: { Origin: new URL(web).origin },
     data: { template_id: dataset.template_id, fields: scenario.fields },
   });
   assert.equal(deniedWrite.status(), 409, "archived insufficient case accepted a new generation");

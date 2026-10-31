@@ -214,6 +214,7 @@ func do(t *testing.T, client *http.Client, base, method, path string, payload an
 	if err != nil {
 		t.Fatal(err)
 	}
+	req.Header.Set("Origin", req.URL.Scheme+"://"+req.URL.Host)
 	if payload != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
@@ -303,6 +304,7 @@ func upload(t *testing.T, client *http.Client, base, caseID, role, name string, 
 	if err != nil {
 		t.Fatal(err)
 	}
+	req.Header.Set("Origin", req.URL.Scheme+"://"+req.URL.Host)
 	req.Header.Set("Content-Type", w.FormDataContentType())
 	res, err := client.Do(req)
 	if err != nil {

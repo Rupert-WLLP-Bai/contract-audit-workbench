@@ -54,9 +54,6 @@ type Options struct {
 
 // Handler serves the review API the web client calls.
 func Handler(st *store.Store, opt Options) http.Handler {
-	if len(opt.CORSOrigins) == 0 {
-		opt.CORSOrigins = []string{"http://localhost:5173", "http://127.0.0.1:5173"}
-	}
 	if opt.SystemHealth == nil {
 		opt.SystemHealth = systemhealth.New(systemhealth.Config{DatabaseReady: st.Ready})
 	}
@@ -172,7 +169,7 @@ func Handler(st *store.Store, opt Options) http.Handler {
 	mux.HandleFunc("POST /api/cases/{caseID}/reviews/{runID}/cancel", h.cancelReview)
 	mux.HandleFunc("POST /api/cases/{caseID}/reviews/{runID}/findings/{findingID}/decisions", h.decide)
 	mux.HandleFunc("GET /api/cases/{caseID}/reviews/{runID}/events", h.events)
-	return cors(opt.CORSOrigins, mux)
+	return cors(opt.CORSOrigins, opt.SecureCookies, mux)
 }
 
 type handler struct {
@@ -813,30 +810,46 @@ func actorJSON(user accounts.User) map[string]string {
 	return map[string]string{"id": user.ID, "display_name": user.DisplayName, "role": user.Role, "tenant_id": accounts.Tenant(user), "org_id": user.OrgID}
 }
 
-func cors(origins []string, next http.Handler) http.Handler {
-	allow := map[string]bool{}
-	for _, origin := range origins {
-		allow[origin] = true
+// cors applies the same origin boundary to browser writes and CORS responses.
+// The configured origins are external browser origins, not proxy headers.
+func cors(origins []string, secureCookies bool, next http.Handler) http.Handler {
+	allow := make(map[string]struct{}, len(origins))
+	invalidOrigins := false
+	for _, raw := range origins {
+		if origin, ok := browserOrigin(raw, false); ok {
+			allow[origin] = struct{}{}
+		} else {
+			invalidOrigins = true
+		}
 	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		origin := r.Header.Get("Origin")
-		scheme := "http"
-		if r.TLS != nil {
-			scheme = "https"
+		w.Header().Add("Vary", "Origin")
+		ownOrigin := directRequestOrigin(r, secureCookies)
+		trusted := func(origin string) bool {
+			if invalidOrigins {
+				return false
+			}
+			_, configured := allow[origin]
+			return configured || ownOrigin != "" && origin == ownOrigin
 		}
-		trusted := allow[origin] || origin == scheme+"://"+r.Host
-		// CORS alone only hides responses. Reject untrusted browser writes so
-		// another same-site origin cannot use the authenticated cookie for CSRF.
-		if origin != "" && !trusted && r.Method != http.MethodGet && r.Method != http.MethodHead {
+
+		values := r.Header.Values("Origin")
+		allowed := false
+		if len(values) == 1 {
+			if origin, ok := browserOrigin(values[0], false); ok {
+				allowed = trusted(origin)
+			}
+		}
+		unsafe := r.Method != http.MethodGet && r.Method != http.MethodHead
+		if unsafe && (len(values) > 0 && !allowed || len(values) == 0 && !originlessWriteAllowed(r, trusted)) {
 			writeErr(w, fault.Forbidden("请求来源不在允许列表内"))
 			return
 		}
-		if allow[origin] {
-			w.Header().Set("Access-Control-Allow-Origin", origin)
+		if allowed {
+			w.Header().Set("Access-Control-Allow-Origin", values[0])
 			w.Header().Set("Access-Control-Allow-Credentials", "true")
 			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Idempotency-Key, Last-Event-ID")
-			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
-			w.Header().Set("Vary", "Origin")
+			w.Header().Set("Access-Control-Allow-Methods", "GET, HEAD, POST, PUT, DELETE, OPTIONS")
 		}
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusNoContent)
