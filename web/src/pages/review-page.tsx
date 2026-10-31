@@ -27,6 +27,7 @@ import type { CaseRelationInput, DecisionAction } from "../api/types";
 import { PageStatus } from "../components/page-status";
 import { ReviewWorkspaceView } from "../components/review-workspace";
 import { DirtyLeaveGuard } from "../components/dirty-leave-guard";
+import { ReviewDiff } from "../components/review-diff";
 import type { ReviewCaseContext } from "../components/document-stage";
 import { RunProvenance } from "../components/run-provenance";
 import { FrozenLegalAuthorities } from "../components/frozen-legal-authorities";
@@ -513,6 +514,13 @@ export function ReviewPage() {
         </p>
       ) : caseArchived ? (
         <p className="callout">案件已归档，历史审查仅供查看。</p>
+      ) : null}
+      {session.isSuccess && !session.isFetching ? (
+        <ReviewDiff
+          caseId={caseId}
+          latestRunId={caseDetail.data?.latest_run?.id ?? runId}
+          actorScope={JSON.stringify([session.data.id, session.data.tenant_id, session.data.org_id, session.data.role, session.data.audience])}
+        />
       ) : null}
       <DecisionDraftScopeProvider scope={decisionDraftScope}>
         <ReviewWorkspaceView
