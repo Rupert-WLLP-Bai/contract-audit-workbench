@@ -70,7 +70,7 @@ export function SessionGate({
   }
   return (
     <Outlet
-      key={`${actor?.audience ?? ""}\u0000${actor?.id ?? ""}\u0000${actor?.role ?? ""}`}
+      key={`${actor?.audience ?? ""}\u0000${actor?.id ?? ""}\u0000${actor?.role ?? ""}\u0000${actor?.tenant_id ?? ""}\u0000${actor?.org_id ?? ""}`}
     />
   );
 }

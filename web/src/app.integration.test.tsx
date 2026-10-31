@@ -422,6 +422,8 @@ class Service {
     }
     if (path === "/api/templates" && method === "GET")
       return this.json({ items: [] });
+    if (path === "/api/admin/rulepacks" && method === "GET")
+      return this.json({ items: [] });
     if (path === "/api/cases") {
       if (method === "GET")
         return this.json({
@@ -440,6 +442,8 @@ class Service {
       this.ensureMaterialProjection(item);
       return this.json(item);
     }
+    if (parts[4] === "experience-usage" && method === "GET")
+      return this.json({ items: [], can_record: true });
     if (parts[4] === "review-readiness" && parts.length === 5 && method === "GET") {
       this.ensureMaterialProjection(item);
       const businessAt = url.searchParams.get("business_at");
@@ -583,6 +587,8 @@ class Service {
       }
       const review = this.reviews.get(parts[5]!);
       if (!review) return this.json({ error: "审查不存在" }, 404);
+      if (parts[6] === "attempts" && parts[8] === "manual-findings" && method === "GET")
+        return this.json({ items: [] });
       if (parts[6] === "retry") {
         const execution = review.execution!;
         const previous = execution.attempt;
@@ -859,7 +865,7 @@ describe("application routes and API contract", () => {
     const api = new Service();
     api.signedIn = false;
     api.cases.clear();
-    const { user } = open(api, "/");
+    const { user } = open(api, "/cases");
     expect(
       await screen.findByRole("heading", { name: "登录合同审查" }),
     ).toBeInTheDocument();
@@ -1939,7 +1945,7 @@ describe("application routes and API contract", () => {
     await user.type(screen.getByLabelText("密码"), "admin-demo");
     await user.click(screen.getByRole("button", { name: "登录" }));
     expect(
-      await screen.findByRole("heading", { name: "设置", level: 1 }),
+      await screen.findByRole("heading", { name: "规则库 / RulePack 治理", level: 1 }),
     ).toBeInTheDocument();
     expect(
       api.requests.some(
@@ -2029,7 +2035,7 @@ describe("application routes and API contract", () => {
     const api = new Service();
     api.signedIn = false;
     api.cases.clear();
-    const { user } = open(api, "/");
+    const { user } = open(api, "/cases");
     await screen.findByRole("heading", { name: "登录合同审查" });
     await user.type(screen.getByLabelText("账号"), "demo-admin");
     await user.type(screen.getByLabelText("密码"), "admin-demo");
