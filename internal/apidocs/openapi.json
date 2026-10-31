@@ -231,6 +231,21 @@
         "responses":{"200":{"description":"已验证的请求","content":{"application/json":{"schema":{"$ref":"#/components/schemas/EvidenceRequest"}}}},"401":{"$ref":"#/components/responses/Error401"},"403":{"$ref":"#/components/responses/Error403"},"404":{"$ref":"#/components/responses/Error404"},"409":{"$ref":"#/components/responses/Error409"},"413":{"$ref":"#/components/responses/Error413"},"422":{"$ref":"#/components/responses/Error422"},"500":{"$ref":"#/components/responses/Error500"},"503":{"$ref":"#/components/responses/Error503"}}
       }
     },
+    "/api/cases/{caseID}/experience-usage": {
+      "get": {
+        "operationId":"listExperienceUsageOptions","tags":["人工复核"],"summary":"读取该发现可参考的冻结经验版本",
+        "description":"从精确审查执行的冻结知识快照读取经验，并检查当前案件、来源案件和祖先授权。候选或检索命中不代表已经使用。",
+        "parameters":[{"name":"caseID","in":"path","required":true,"schema":{"type":"string"}},{"name":"run_id","in":"query","required":true,"schema":{"type":"string"}},{"name":"attempt_id","in":"query","required":true,"schema":{"type":"string"}},{"name":"finding_id","in":"query","required":true,"schema":{"type":"string"}}],
+        "responses":{"200":{"description":"冻结经验及已登记引用","content":{"application/json":{"schema":{"$ref":"#/components/schemas/ExperienceUsageOptions"}}}},"401":{"$ref":"#/components/responses/Error401"},"403":{"$ref":"#/components/responses/Error403"},"404":{"$ref":"#/components/responses/Error404"},"409":{"$ref":"#/components/responses/Error409"},"503":{"$ref":"#/components/responses/Error503"}}
+      },
+      "post": {
+        "operationId":"recordExperienceUsage","tags":["人工复核"],"summary":"登记发现实际参考的经验",
+        "description":"仅当前有决定权限的审查员可在最新终态执行的首次决定之前登记已实际参考的冻结精确经验。预期方向由审查员明确陈述；同一执行、经验版本和发现只能记录一次，同一请求可安全重放。不会修改人工判断。",
+        "parameters":[{"name":"caseID","in":"path","required":true,"schema":{"type":"string"}}],
+        "requestBody":{"required":true,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/ExperienceUsageRequest"}}}},
+        "responses":{"201":{"description":"不可变引用记录","content":{"application/json":{"schema":{"$ref":"#/components/schemas/ExperienceUsage"}}}},"401":{"$ref":"#/components/responses/Error401"},"403":{"$ref":"#/components/responses/Error403"},"404":{"$ref":"#/components/responses/Error404"},"409":{"$ref":"#/components/responses/Error409"},"422":{"$ref":"#/components/responses/Error422"},"503":{"$ref":"#/components/responses/Error503"}}
+      }
+    },
     "/api/cases/{caseID}/experience-feedback": {
       "post": {
         "operationId": "submitExperienceFeedback",
@@ -311,6 +326,14 @@
         "description":"读取前重新检查当前管理员、租户和来源案件权限，不回退到其他版本。",
         "parameters":[{"name":"knowledgeID","in":"path","required":true,"schema":{"type":"string"}},{"name":"versionID","in":"path","required":true,"schema":{"type":"string"}}],
         "responses":{"200":{"description":"精确版本","content":{"application/json":{"schema":{"$ref":"#/components/schemas/GovernedKnowledgeVersion"}}}},"401":{"$ref":"#/components/responses/Error401"},"403":{"$ref":"#/components/responses/Error403"},"404":{"$ref":"#/components/responses/Error404"},"500":{"$ref":"#/components/responses/Error500"},"503":{"$ref":"#/components/responses/Error503"}}
+      }
+    },
+    "/api/admin/governed-knowledge/{knowledgeID}/versions/{versionID}/experience-metrics": {
+      "get": {
+        "operationId":"getExperienceMetrics","tags":["规则治理"],"summary":"读取经验精确版本的使用及人工判断指标","security":[{"adminSessionCookie":[]}],
+        "description":"仅汇总当前管理员可读取的案件，检查经验来源及祖先授权；不暴露不可见案件计数。采纳或推翻比较登记的明确预期方向与最新人工决定，其他决定和未裁决分别统计。最多返回20条可追溯样本；不回填历史检索，不改变治理状态。",
+        "parameters":[{"name":"knowledgeID","in":"path","required":true,"schema":{"type":"string"}},{"name":"versionID","in":"path","required":true,"schema":{"type":"string"}}],
+        "responses":{"200":{"description":"精确版本的授权范围内使用指标","content":{"application/json":{"schema":{"$ref":"#/components/schemas/ExperienceMetrics"}}}},"401":{"$ref":"#/components/responses/Error401"},"403":{"$ref":"#/components/responses/Error403"},"404":{"$ref":"#/components/responses/Error404"},"409":{"$ref":"#/components/responses/Error409"},"503":{"$ref":"#/components/responses/Error503"}}
       }
     },
     "/api/admin/governed-knowledge/{knowledgeID}/versions/{versionID}/preview": {
@@ -4383,6 +4406,12 @@
       "ExperienceDistillationReceipt": {"type":"object","additionalProperties":false,"required":["job_id"],"properties":{"job_id":{"type":"string"}}},
       "ExperienceDistillationStatus": {"type":"object","additionalProperties":false,"required":["job_id","feedback_id","state"],"properties":{"job_id":{"type":"string"},"feedback_id":{"type":"string"},"state":{"type":"string"},"failure_code":{"type":"string"},"candidate_id":{"type":"string"},"version_id":{"type":"string"}}},
       "GovernedKnowledgeRef": {"type":"object","additionalProperties":false,"required":["knowledge_id","version_id","content_sha256"],"properties":{"knowledge_id":{"type":"string"},"version_id":{"type":"string"},"content_sha256":{"type":"string"}}},
+      "ExperienceUsageRequest": {"type":"object","additionalProperties":false,"required":["run_id","attempt_id","finding_id","ref","expected_action"],"properties":{"case_id":{"type":"string"},"run_id":{"type":"string"},"attempt_id":{"type":"string"},"finding_id":{"type":"string"},"ref":{"$ref":"#/components/schemas/GovernedKnowledgeRef"},"expected_action":{"type":"string","enum":["","confirm_risk","false_positive"]}}},
+      "ExperienceUsage": {"type":"object","additionalProperties":false,"required":["case_id","run_id","attempt_id","finding_id","ref","snapshot_sha256","input_sha256","expected_action","recorded_by","usage_sha256","recorded_at"],"properties":{"case_id":{"type":"string"},"run_id":{"type":"string"},"attempt_id":{"type":"string"},"finding_id":{"type":"string"},"ref":{"$ref":"#/components/schemas/GovernedKnowledgeRef"},"snapshot_sha256":{"type":"string"},"input_sha256":{"type":"string"},"expected_action":{"type":"string","enum":["","confirm_risk","false_positive"]},"recorded_by":{"type":"string"},"usage_sha256":{"type":"string"},"recorded_at":{"type":"string","format":"date-time"}}},
+      "ExperienceUsageOption": {"type":"object","additionalProperties":false,"required":["ref","title","body","summary","check_action","minimum_evidence","reviewed_applicability","reviewed_exclusions","counterexamples","usage"],"properties":{"ref":{"$ref":"#/components/schemas/GovernedKnowledgeRef"},"title":{"type":"string"},"body":{"type":"string"},"summary":{"type":"string"},"check_action":{"type":"string"},"minimum_evidence":{"type":"string"},"reviewed_applicability":{"type":["array","null"],"items":{"type":"string"}},"reviewed_exclusions":{"type":["array","null"],"items":{"type":"string"}},"counterexamples":{"type":["array","null"],"items":{"type":"string"}},"usage":{"anyOf":[{"$ref":"#/components/schemas/ExperienceUsage"},{"type":"null"}]}}},
+      "ExperienceUsageOptions": {"type":"object","additionalProperties":false,"required":["items","can_record"],"properties":{"items":{"type":"array","items":{"$ref":"#/components/schemas/ExperienceUsageOption"}},"can_record":{"type":"boolean"}}},
+      "ExperienceMetricsSample": {"type":"object","additionalProperties":false,"required":["case_id","run_id","attempt_id","finding_id","input_sha256","snapshot_sha256","usage_sha256","expected_action","decision_id","decision_action","decision_disposition","outcome","used_at"],"properties":{"case_id":{"type":"string"},"run_id":{"type":"string"},"attempt_id":{"type":"string"},"finding_id":{"type":"string"},"input_sha256":{"type":"string"},"snapshot_sha256":{"type":"string"},"usage_sha256":{"type":"string"},"expected_action":{"type":"string","enum":["","confirm_risk","false_positive"]},"decision_id":{"type":"string"},"decision_action":{"type":"string"},"decision_disposition":{"type":"string"},"outcome":{"type":"string","enum":["pending","adopted","overturned","other"]},"used_at":{"type":"string","format":"date-time"}}},
+      "ExperienceMetrics": {"type":"object","additionalProperties":false,"required":["ref","has_been_published","usage_count","pending_count","adopted_count","overturned_count","other_count","samples"],"properties":{"ref":{"$ref":"#/components/schemas/GovernedKnowledgeRef"},"has_been_published":{"type":"boolean"},"usage_count":{"type":"integer","minimum":0},"pending_count":{"type":"integer","minimum":0},"adopted_count":{"type":"integer","minimum":0},"overturned_count":{"type":"integer","minimum":0},"other_count":{"type":"integer","minimum":0},"samples":{"type":"array","maxItems":20,"items":{"$ref":"#/components/schemas/ExperienceMetricsSample"}}}},
       "PolicyThresholdCandidate": {"type":"object","additionalProperties":false,"required":["comparator","value","unit","start","end","quote"],"properties":{"comparator":{"type":"string"},"value":{"type":"string"},"unit":{"type":"string"},"basis":{"type":"string"},"start":{"type":"integer","minimum":0},"end":{"type":"integer","minimum":0},"quote":{"type":"string"}}},
       "PolicyRuleThreshold": {"type":"object","additionalProperties":false,"required":["value","unit"],"properties":{"value":{"type":"string"},"unit":{"type":"string"},"basis":{"type":"string"}}},
       "PolicyRuleComparison": {"type":"object","additionalProperties":false,"required":["rule_id","comparator","rule_threshold","status"],"properties":{"rule_id":{"type":"string"},"comparator":{"type":"string"},"candidate":{"$ref":"#/components/schemas/PolicyThresholdCandidate"},"rule_threshold":{"$ref":"#/components/schemas/PolicyRuleThreshold"},"status":{"type":"string","enum":["match","different","ambiguous","unexpressible"]},"reason":{"type":"string"}}},

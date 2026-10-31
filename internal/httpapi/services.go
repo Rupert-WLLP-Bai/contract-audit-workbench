@@ -246,7 +246,7 @@ func governedKnowledgeRoute(m routeMethodSet, p []string) bool {
 }
 
 func governedVersionCommand(m routeMethodSet, command string) bool {
-	return command == "commands" && m.post || command == "preview" && m.read
+	return command == "commands" && m.post || (command == "preview" || command == "experience-metrics") && m.read
 }
 
 func rulePackRoute(m routeMethodSet, p []string) bool {
@@ -289,6 +289,7 @@ type caseRouteHandler func(string, routeMethodSet, []string) bool
 
 var caseRouteHandlers = map[string]caseRouteHandler{
 	"experience-feedback": experienceFeedbackRoute, "experience-candidates": experienceCandidateRoute,
+	"experience-usage": func(role string, m routeMethodSet, p []string) bool { return role == "core" && len(p) == 3 && (m.read || m.post) },
 	"evidence-requests": evidenceRequestHandlerRoute, "profile": profileRoute,
 	"tasks": taskRoute, "relations": relationRoute, "documents": documentRoute,
 	"materials":                 materialRoute,

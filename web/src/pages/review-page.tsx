@@ -37,6 +37,7 @@ import { EvidenceRequestPanel } from "../components/evidence-request-panel";
 import { EvidenceSLADashboard } from "../components/evidence-sla-dashboard";
 import { ExperienceFeedbackPanel } from "../components/experience-feedback-panel";
 import { ManualFindingsPanel } from "../components/manual-findings-panel";
+import { ExperienceUsagePanel } from "../components/experience-usage-panel";
 import { OperatorAuditEntry } from "../features/operator-audit/operator-audit-entry";
 import {
   contractTypeLabel,
@@ -658,6 +659,13 @@ export function ReviewPage() {
         canSubmit={roleCanDecide && selectedAttempt?.history_kind === "frozen"}
         quoteScope={quoteScope}
         quoteSelection={quoteSelection}
+      />
+      <ExperienceUsagePanel
+        caseId={caseId}
+        runId={runId}
+        attemptId={selectedAttempt?.history_kind === "frozen" ? selectedAttempt.id : null}
+        findingId={selectedId}
+        canDecide={canDecide}
       />
       <RunProvenance workspace={workspace} showDiagnostics={diagnosticData !== null} />
       <FrozenLegalAuthorities
