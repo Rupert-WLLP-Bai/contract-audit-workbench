@@ -71,6 +71,8 @@ export function CasesPage() {
   const [title, setTitle] = useState("");
   const [contractType, setContractType] = useState("service");
   const [scenario, setScenario] = useState("telecom_dedicated_line");
+  const [businessLine, setBusinessLine] = useState("ENT");
+  const [customScope, setCustomScope] = useState(false);
   const [titleError, setTitleError] = useState<string | null>(null);
 
   useLayoutEffect(() => {
@@ -123,7 +125,7 @@ export function CasesPage() {
       {
         title: title.trim(),
         contract_type: contractType,
-        business_line: "ENT",
+        business_line: businessLine,
         scenario,
       },
       {
@@ -331,37 +333,70 @@ export function CasesPage() {
                 required
               />
             </label>
-            <label className="field">
-              业务场景
-              <Select<string>
-                aria-label="业务场景"
-                value={String(scenario)}
-                onChange={(selectedValue) => {
-                  setScenario(selectedValue);
-                  if (selectedValue === "cloud_services")
-                    setContractType("service");
-                }}
-                options={[
-                  { value: "telecom_dedicated_line", label: "政企专线" },
-                  { value: "cloud_services", label: "云服务采购" },
-                ]}
-              />
-            </label>
-            <label className="field">
-              合同类型
-              <Select<string>
-                aria-label="合同类型"
-                value={String(contractType)}
-                disabled={scenario === "cloud_services"}
-                onChange={(selectedValue) => setContractType(selectedValue)}
-                options={[
-                  { value: "procurement_ict", label: "采购 / ICT" },
-                  { value: "network_engineering", label: "网络工程" },
-                  { value: "service", label: "服务合同" },
-                  { value: "unspecified", label: "未分类" },
-                ]}
-              />
-            </label>
+            <Button
+              type="link"
+              htmlType="button"
+              onClick={() => {
+                setCustomScope(!customScope);
+                if (customScope) {
+                  setBusinessLine("ENT");
+                  setScenario("telecom_dedicated_line");
+                  setContractType("service");
+                }
+              }}
+            >
+              {customScope ? "选择常用业务场景" : "使用其他已发布业务范围"}
+            </Button>
+            {customScope ? (
+              <>
+                <label className="field">
+                  业务线标识
+                  <Input value={businessLine} onChange={(event) => setBusinessLine(event.target.value)} required maxLength={128} pattern="[A-Za-z0-9][A-Za-z0-9._:/-]*" />
+                </label>
+                <label className="field">
+                  业务场景标识
+                  <Input value={scenario} onChange={(event) => setScenario(event.target.value)} required maxLength={128} pattern="[A-Za-z0-9][A-Za-z0-9._:/-]*" />
+                </label>
+                <label className="field">
+                  合同类型标识
+                  <Input value={contractType} onChange={(event) => setContractType(event.target.value)} required maxLength={128} pattern="[A-Za-z0-9][A-Za-z0-9._:/-]*" />
+                </label>
+                <p>填写已发布且当前生效的规则包中声明的业务范围。</p>
+              </>
+            ) : (
+              <>
+                <label className="field">
+                  业务场景
+                  <Select<string>
+                    aria-label="业务场景"
+                    value={String(scenario)}
+                    onChange={(selectedValue) => {
+                      setScenario(selectedValue);
+                      if (selectedValue === "cloud_services") setContractType("service");
+                    }}
+                    options={[
+                      { value: "telecom_dedicated_line", label: "政企专线" },
+                      { value: "cloud_services", label: "云服务采购" },
+                    ]}
+                  />
+                </label>
+                <label className="field">
+                  合同类型
+                  <Select<string>
+                    aria-label="合同类型"
+                    value={String(contractType)}
+                    disabled={scenario === "cloud_services"}
+                    onChange={(selectedValue) => setContractType(selectedValue)}
+                    options={[
+                      { value: "procurement_ict", label: "采购 / ICT" },
+                      { value: "network_engineering", label: "网络工程" },
+                      { value: "service", label: "服务合同" },
+                      { value: "unspecified", label: "未分类" },
+                    ]}
+                  />
+                </label>
+              </>
+            )}
             {titleError ? <p role="alert">{titleError}</p> : null}
             {createCase.isError ? (
               <p role="alert">{errorMessage(createCase.error)}</p>

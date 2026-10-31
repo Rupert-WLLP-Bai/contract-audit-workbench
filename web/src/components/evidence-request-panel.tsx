@@ -187,9 +187,10 @@ function quoteMatchesFrozenDocument(
 }
 
 function requiresBusinessReviewTime(detail: CaseDetail | undefined): boolean {
-  return detail?.business_line === "ENT" &&
-    (detail.scenario === "telecom_dedicated_line" ||
-      (detail.scenario === "cloud_services" && detail.contract_type === "service"));
+  if (!detail) return false;
+  if (detail.business_line === "ENT" && detail.scenario === "telecom_dedicated_line") return true;
+  return !!detail.business_line && detail.business_line !== "unspecified" &&
+    !!detail.scenario && detail.scenario !== "unspecified" && !!detail.contract_type;
 }
 
 function requestCardReviewFacts(

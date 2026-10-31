@@ -66,6 +66,9 @@ func applyActiveRulePackIdentity(snapshot *RunSnapshot, pack *ActiveRulePack) {
 }
 
 func telecomCompilerRefForCase(item Case) string {
+	if isDeclaredReviewCase(item) {
+		return telecom.DeclaredCompilerRef
+	}
 	if isTelecomDedicatedLineCase(item) || isCloudServicesCase(item) {
 		return telecom.CompilerRef
 	}
@@ -74,6 +77,14 @@ func telecomCompilerRefForCase(item Case) string {
 
 func requireGovernedCapabilitiesForCase(caseItem Case, snapshot []byte) error {
 	switch {
+	case isDeclaredReviewCase(caseItem):
+		pack, err := rulepack.Parse(snapshot)
+		if err != nil || telecom.ValidateDeclaredPack(pack, rulepack.BusinessScope{
+			BusinessLine: caseItem.BusinessLine, Scenario: caseItem.Scenario, ContractType: caseItem.ContractType,
+		}, caseItem.TenantID) != nil {
+			return fault.Conflict("已发布规则包不支持案件业务范围或所声明的事实算子")
+		}
+		return nil
 	case isTelecomDedicatedLineCase(caseItem):
 		return requireTelecomGovernedCapabilities(snapshot)
 	case isCloudServicesCase(caseItem):

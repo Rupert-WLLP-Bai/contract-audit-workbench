@@ -277,9 +277,7 @@ func (m Manifest) validateDisplay() error {
 	if m.DisplayName == "" || utf8.RuneCountInString(m.DisplayName) > 256 {
 		return fmt.Errorf("%w: display_name", auditext.ErrInvalidRequest)
 	}
-	switch m.Scenario {
-	case ScenarioTelecomDedicatedLine, ScenarioCloudServices:
-	default:
+	if err := auditext.ValidateID(m.Scenario); err != nil {
 		return fmt.Errorf("%w: scenario %q", auditext.ErrInvalidRequest, m.Scenario)
 	}
 	return nil

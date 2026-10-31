@@ -11,6 +11,8 @@ import (
 	"contractaudit/internal/accounts"
 	"contractaudit/internal/docversion"
 	"contractaudit/internal/fault"
+
+	"github.com/jackc/pgx/v5"
 )
 
 // businessWritable is shared by every business mutation path. Call it only
@@ -58,6 +60,31 @@ func (s *Store) CreateCaseWithBusiness(user accounts.User, title, contractType, 
 	if err != nil {
 		return "", err
 	}
+	scope := Case{TenantID: accounts.Tenant(current), BusinessLine: input.businessLine, Scenario: input.scenario, ContractType: input.contractType}
+	if isDeclaredReviewCase(scope) {
+		ctx := context.Background()
+		tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{AccessMode: pgx.ReadOnly})
+		if err != nil {
+			return "", err
+		}
+		defer tx.Rollback(ctx)
+		if err := setLocalScope(ctx, tx, userScope(current)); err != nil {
+			return "", err
+		}
+		pack, err := selectActiveRulePackTx(ctx, tx, scope.TenantID, scope.BusinessLine, scope.Scenario, scope.ContractType, time.Now().UTC())
+		if err != nil {
+			return "", err
+		}
+		if pack == nil {
+			return "", fault.Conflict("该业务范围没有生效的已发布规则包")
+		}
+		if err := requireGovernedCapabilitiesForCase(scope, pack.Snapshot); err != nil {
+			return "", err
+		}
+		if err := tx.Commit(ctx); err != nil {
+			return "", err
+		}
+	}
 	id, err := newID("case_")
 	if err != nil {
 		return "", err
@@ -100,12 +127,10 @@ func validateBusinessCaseTitle(title string) (string, error) {
 }
 
 func validateBusinessContractType(contractType string) error {
-	switch contractType {
-	case "procurement_ict", "network_engineering", "unspecified", "service":
-		return nil
-	default:
-		return fault.Invalid("合同类型不在本版范围内")
+	if !validIdentifier(contractType) {
+		return fault.Invalid("合同类型需要有效的标识")
 	}
+	return nil
 }
 
 func normalizeBusinessCaseScope(businessLine, scenario string) (string, string, error) {
@@ -121,13 +146,16 @@ func normalizeBusinessCaseScope(businessLine, scenario string) (string, string, 
 }
 
 func validBusinessCaseScope(businessLine, scenario string) bool {
-	if businessLine != "ENT" {
-		return false
+	if businessLine == "unspecified" && scenario == "unspecified" {
+		return true
 	}
-	return scenario == "telecom_dedicated_line" || scenario == "cloud_services"
+	return validIdentifier(businessLine) && validIdentifier(scenario) && businessLine != "unspecified" && scenario != "unspecified"
 }
 
 func validateBusinessContractScope(contractType, businessLine, scenario string) error {
+	if businessLine == "unspecified" && contractType != "procurement_ict" && contractType != "network_engineering" && contractType != "unspecified" && contractType != "service" {
+		return fault.Invalid("扩展合同类型需要明确业务线和场景")
+	}
 	if businessLine == "ENT" && contractType == "unspecified" {
 		return fault.Invalid("政企业务案件需要明确合同类型")
 	}

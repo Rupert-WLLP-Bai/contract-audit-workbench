@@ -1692,8 +1692,8 @@ describe("补充材料请求", () => {
   });
 
   it.each([
-    ["a non-ENT case", { ...detail, business_line: "SMB", scenario: "standard", contract_type: "service" }],
-    ["a cloud agreement outside the service contract branch", { ...detail, business_line: "ENT", scenario: "cloud_services", contract_type: "goods" }],
+    ["an unspecified business scope", { ...detail, business_line: "unspecified", scenario: "unspecified", contract_type: "procurement_ict" }],
+    ["an incomplete legacy scope", { ...detail, business_line: "", scenario: "unspecified", contract_type: "service" }],
   ] as const)("does not require business time for %s", async (_caseName, caseDetail) => {
     const { calls, user } = open({ caseDetail, respond(call) {
       if (call.pathname.endsWith("/evidence-requests")) return Response.json({ items: [rawRequest("received", 2)] });

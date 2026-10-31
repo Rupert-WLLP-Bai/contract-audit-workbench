@@ -765,6 +765,9 @@ func selectActiveRulePackTx(ctx context.Context, tx pgx.Tx, tenantID, businessLi
 			return nil, fault.Conflict("已发布规则包内容损坏，不能用于审查")
 		}
 		content := pack.Manifest()
+		if content.ID != candidate.PackID || content.Version != candidate.Version || content.TenantID != tenantID {
+			return nil, fault.Conflict("已发布规则包身份与记录不一致，不能用于审查")
+		}
 		if content.Lifecycle.State != rulepack.StatePublished {
 			continue
 		}
@@ -852,6 +855,9 @@ func (s *Store) SelectActiveRulePack(ctx context.Context, tenantID, businessLine
 				return fault.Conflict("已发布规则包内容损坏，不能用于审查")
 			}
 			content := pack.Manifest()
+			if content.ID != candidate.PackID || content.Version != candidate.Version || content.TenantID != tenantID {
+				return fault.Conflict("已发布规则包身份与记录不一致，不能用于审查")
+			}
 			if content.Lifecycle.State != rulepack.StatePublished {
 				continue
 			}
@@ -1035,8 +1041,8 @@ func ParseFrozenGovernedRulePack(attempt Attempt, caseItem Case) (*rulepack.Pack
 	switch {
 	case attempt.RulePackCompilerRef == "" || telecom.IsSyntheticCompiler(attempt.RulePackCompilerRef):
 		if !hasPackIdentity {
-			if isCloudServicesCase(caseItem) {
-				return nil, errors.New("cloud review has no frozen governed RulePack")
+			if isCloudServicesCase(caseItem) || isDeclaredReviewCase(caseItem) {
+				return nil, errors.New("governed review has no frozen published RulePack")
 			}
 			return nil, nil
 		}
@@ -1045,7 +1051,7 @@ func ParseFrozenGovernedRulePack(attempt Attempt, caseItem Case) (*rulepack.Pack
 	default:
 		return nil, errors.New("attempt has an unknown RulePack compiler identity")
 	}
-	if !isGovernedReviewCase(caseItem) || caseItem.TenantID == "" || caseItem.ContractType != "service" {
+	if !isGovernedReviewCase(caseItem) || caseItem.TenantID == "" {
 		return nil, errors.New("frozen governed RulePack is outside the case scope")
 	}
 	if attempt.RulePackID == "" || attempt.RulePackVersion == "" || attempt.RulePackPointerRevision < 1 ||

@@ -6211,29 +6211,18 @@
           },
           "contract_type": {
             "type": "string",
-            "enum": [
-              "procurement_ict",
-              "network_engineering",
-              "service",
-              "unspecified"
-            ]
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$",
+            "description": "扩展合同类型须对应本租户已发布且生效的规则包；旧版未指定业务范围的类型仍可使用。"
           },
           "business_line": {
             "type": "string",
-            "enum": [
-              "ENT",
-              "unspecified"
-            ],
-            "description": "与 scenario 同时提供；两者均省略时记录为 unspecified，不从客户端推断租户。"
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$",
+            "description": "与 scenario 同时提供；两者均省略时记录为 unspecified，不从客户端推断租户。扩展范围须有本租户已发布且生效的规则包。"
           },
           "scenario": {
             "type": "string",
-            "enum": [
-              "telecom_dedicated_line",
-              "cloud_services",
-              "unspecified"
-            ],
-            "description": "与 business_line 同时提供；ENT 支持 telecom_dedicated_line 或 cloud_services，云服务使用 service 合同类型。"
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$",
+            "description": "与 business_line 同时提供；云服务使用 service 合同类型，扩展场景须在已发布规则包中声明。"
           }
         },
         "required": [
