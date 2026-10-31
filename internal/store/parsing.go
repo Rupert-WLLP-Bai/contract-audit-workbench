@@ -827,6 +827,10 @@ func (s *Store) verifyAttemptSelectionSnapshot(st state, attempt Attempt, select
 	return nil
 }
 func (s *Store) verifyFrozenDocuments(st state, docs []FrozenDocument) error {
+	return s.verifyFrozenDocumentsContext(context.Background(), st, docs)
+}
+
+func (s *Store) verifyFrozenDocumentsContext(ctx context.Context, st state, docs []FrozenDocument) error {
 	for _, frozen := range docs {
 		if !validParsedID(frozen.ParsedDocumentID) {
 			if frozen.SelectionOrder != 0 || frozen.ParsedArtifactDigest != "" || frozen.ConfigHash != "" || frozen.ParserID != "" ||
@@ -844,7 +848,7 @@ func (s *Store) verifyFrozenDocuments(st state, docs []FrozenDocument) error {
 		if !ok || doc.Digest != frozen.Document.Digest {
 			return errors.New("frozen input original identity is missing")
 		}
-		if err := s.verifyParsedRecordContext(context.Background(), parsed, doc); err != nil {
+		if err := s.verifyParsedRecordContext(ctx, parsed, doc); err != nil {
 			return err
 		}
 		left, _ := json.Marshal(frozen.IR)

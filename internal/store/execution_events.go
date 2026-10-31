@@ -29,6 +29,9 @@ func (s *Store) appendExecutionEventFenced(ctx context.Context, runID, attemptID
 	if !ok || claim.JobID == "" || claim.AttemptID != attemptID || claim.RunID != runID {
 		return errExecutionEventScope
 	}
+	if !claimMatchesExecutionScope(ctx, claim) {
+		return errLeaseLost
+	}
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return err
@@ -107,15 +110,17 @@ func (s *Store) appendExecutionEventFenced(ctx context.Context, runID, attemptID
 	if err := tx.Commit(ctx); err != nil {
 		return err
 	}
-	s.patchExecutionEventProjection(event)
+	s.patchExecutionEventProjection(ctx, event)
 	return nil
 }
 
 // patchExecutionEventProjection appends the committed event to the in-memory
 // read model without cloning or rewriting any other entity; the event list is
 // append-only and the sequence was allocated under the attempt row lock.
-func (s *Store) patchExecutionEventProjection(event ExecutionEvent) {
-	s.mu.Lock()
+func (s *Store) patchExecutionEventProjection(ctx context.Context, event ExecutionEvent) {
+	if err := s.lockExecutionContext(ctx); err != nil {
+		return
+	}
 	defer s.mu.Unlock()
 	for _, existing := range s.st.ExecutionEvents {
 		if existing.AttemptID == event.AttemptID && existing.Seq == event.Seq {

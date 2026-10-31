@@ -234,10 +234,14 @@ func (s *Store) RunClaimedJob(ctx context.Context, claim JobClaim) error {
 	if claim.Kind != "review" || claim.RunID == "" || claim.AttemptID == "" {
 		return errors.New("unsupported or incomplete worker job")
 	}
+	ctx = withExecutionClaim(ctx, claim)
 	s.setClaim(claim)
 	defer s.clearClaim(claim)
 	if claim.stopReason != "" {
-		if err := s.finishAttempt(claim.RunID, claim.AttemptID, "failed", "", claim.stopReason); err != nil && !errors.Is(err, errAttemptTerminal) {
+		settleCtx, cancel := context.WithTimeout(ctx, attemptFinalizeTimeout)
+		err := s.finishAttempt(settleCtx, claim.RunID, claim.AttemptID, "failed", "", claim.stopReason)
+		cancel()
+		if err != nil && !errors.Is(err, errAttemptTerminal) {
 			return err
 		}
 	} else {
@@ -252,7 +256,9 @@ func (s *Store) RunClaimedJob(ctx context.Context, claim JobClaim) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	st, err := s.snapshotForClaim(claim)
+	finishCtx, cancel := context.WithTimeout(ctx, attemptFinalizeTimeout)
+	defer cancel()
+	st, err := s.snapshotScoped(finishCtx, claim.scope())
 	if err != nil {
 		return err
 	}
@@ -273,7 +279,7 @@ func (s *Store) RunClaimedJob(ctx context.Context, claim JobClaim) error {
 	if attempt.State != "completed" && attempt.State != "partial" && attempt.State != "failed" && attempt.State != "cancelled" {
 		return errors.New("attempt has an unsupported terminal state")
 	}
-	return s.finishClaim(ctx, claim, attempt.State)
+	return s.finishClaim(finishCtx, claim, attempt.State)
 }
 
 func (s *Store) finishClaim(ctx context.Context, claim JobClaim, state string) error {

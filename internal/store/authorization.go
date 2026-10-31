@@ -42,19 +42,18 @@ func (s *Store) snapshotAsContext(ctx context.Context, user accounts.User) (stat
 	return s.snapshotScoped(ctx, userScope(current))
 }
 
-func (s *Store) snapshotForClaim(claim JobClaim) (state, error) {
-	return s.snapshotScopedClaim(context.Background(), claim.scope(), &claim)
-}
-
-func (s *Store) snapshotForAttempt(attemptID string) state {
-	if claim, ok := s.claimForAttempt(attemptID); ok {
-		st, err := s.snapshotForClaim(claim)
-		if err == nil {
-			return st
-		}
-		return state{}
+func (s *Store) snapshotForAttemptContext(ctx context.Context, attemptID string) (state, error) {
+	if err := ctx.Err(); err != nil {
+		return state{}, err
 	}
-	return state{}
+	claim, ok := s.claimForAttempt(attemptID)
+	if executionScopeRequiresClaim(ctx) && (!ok || !claimMatchesExecutionScope(ctx, claim)) {
+		return state{}, errLeaseLost
+	}
+	if !ok || claim.AttemptID != attemptID {
+		return state{}, errExecutionEventScope
+	}
+	return s.snapshotScopedClaim(ctx, claim.scope(), &claim)
 }
 
 func (s *Store) snapshotScoped(ctx context.Context, scope dbScope) (state, error) {

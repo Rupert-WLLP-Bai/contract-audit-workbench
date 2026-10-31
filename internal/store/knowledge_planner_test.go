@@ -309,7 +309,10 @@ func TestGovernedPlannerRechecksActorAndPolicyWithdrawal(t *testing.T) {
 	if err != nil || claim.JobID != accepted.JobID {
 		t.Fatalf("claim: %+v %v", claim, err)
 	}
-	state := st.snapshotForAttempt(claim.AttemptID)
+	state, err := st.snapshotForAttemptContext(context.Background(), claim.AttemptID)
+	if err != nil {
+		t.Fatal(err)
+	}
 	item, ok := state.caseByID(caseID)
 	if !ok {
 		t.Fatal("missing claimed case")

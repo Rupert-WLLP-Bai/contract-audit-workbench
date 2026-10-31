@@ -121,6 +121,9 @@ func (s *Store) finishAttemptNarrow(ctx context.Context, runID, attemptID, state
 	if !ok || claim.JobID == "" || claim.AttemptID != attemptID || claim.RunID != runID {
 		return errExecutionEventScope
 	}
+	if !claimMatchesExecutionScope(ctx, claim) {
+		return errLeaseLost
+	}
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return err
@@ -242,7 +245,7 @@ func (s *Store) finishAttemptNarrow(ctx context.Context, runID, attemptID, state
 	if err := tx.Commit(ctx); err != nil {
 		return err
 	}
-	s.patchAttemptOutcomeProjection(outcome)
+	s.patchAttemptOutcomeProjection(ctx, outcome)
 	return nil
 }
 
@@ -326,8 +329,10 @@ func (s *Store) requireLiveClaim(ctx context.Context, tx pgx.Tx, claim JobClaim,
 
 // patchAttemptOutcomeProjection publishes the committed transition to the read
 // model. Only the affected attempt, run and event slices are touched.
-func (s *Store) patchAttemptOutcomeProjection(outcome attemptOutcome) {
-	s.mu.Lock()
+func (s *Store) patchAttemptOutcomeProjection(ctx context.Context, outcome attemptOutcome) {
+	if err := s.lockExecutionContext(ctx); err != nil {
+		return
+	}
 	defer s.mu.Unlock()
 	for i := range s.st.Attempts {
 		if s.st.Attempts[i].ID == outcome.AttemptID {
@@ -561,6 +566,6 @@ func (s *Store) cancelAttemptNarrow(ctx context.Context, user accounts.User, cas
 	if err := tx.Commit(ctx); err != nil {
 		return err
 	}
-	s.patchAttemptOutcomeProjection(outcome)
+	s.patchAttemptOutcomeProjection(ctx, outcome)
 	return nil
 }
