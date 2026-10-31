@@ -23,8 +23,6 @@ const maxPrepareRequestBytes = 1 << 20
 type Config struct {
 	WorkerCredential string
 	// IntakeCredential authenticates Core's dedicated intake upload entry.
-	// Empty falls back to WorkerCredential so existing single-credential
-	// deployments keep the same internal authentication boundary.
 	IntakeCredential string
 	CPUConcurrency   int
 	OCRConcurrency   int
@@ -36,9 +34,9 @@ type Config struct {
 // bounded parse capacity settings.
 func FromEnv() (Config, error) {
 	config := Config{
-		WorkerCredential:  strings.TrimSpace(os.Getenv("WORKER_DOCUMENT_TOKEN")),
-		IntakeCredential:  strings.TrimSpace(os.Getenv("CORE_DOCUMENT_TOKEN")),
-		CPUConcurrency:    4,
+		WorkerCredential: strings.TrimSpace(os.Getenv("WORKER_DOCUMENT_TOKEN")),
+		IntakeCredential: strings.TrimSpace(os.Getenv("CORE_DOCUMENT_TOKEN")),
+		CPUConcurrency:   4,
 		OCRConcurrency:   1,
 		QueueCapacity:    32,
 		ParseTimeout:     2 * time.Minute,
@@ -94,12 +92,9 @@ type Service struct {
 }
 
 func New(st *store.Store, config Config) (*Service, error) {
-	if config.IntakeCredential == "" {
-		config.IntakeCredential = config.WorkerCredential
-	}
-	if st == nil || len(config.WorkerCredential) < 32 || len(config.IntakeCredential) < 32 || config.CPUConcurrency < 1 || config.OCRConcurrency < 1 ||
-		config.QueueCapacity < 1 || config.ParseTimeout <= 0 {
-		return nil, errors.New("document service requires a Store, private worker credential, and positive bounded capacities")
+	if st == nil || len(config.WorkerCredential) < 32 || len(config.IntakeCredential) < 32 || config.IntakeCredential == config.WorkerCredential ||
+		config.CPUConcurrency < 1 || config.OCRConcurrency < 1 || config.QueueCapacity < 1 || config.ParseTimeout <= 0 {
+		return nil, errors.New("document service requires a Store, distinct private worker and intake credentials, and positive bounded capacities")
 	}
 	return &Service{
 		store: st, config: config, queue: make(chan struct{}, config.QueueCapacity),

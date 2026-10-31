@@ -162,24 +162,15 @@ func configuredDocumentPreparer() (store.DocumentPreparer, error) {
 }
 
 // ConfiguredIntakeUploader assembles Core's authenticated Document upload
-// entry. CORE_DOCUMENT_TOKEN is the dedicated credential; empty falls back to
-// the existing document-service internal credential. Both unset leaves intake
-// uploads unavailable without failing the rest of Core; a credential without
-// an endpoint is a configuration error.
+// entry using a dedicated credential distinct from the worker's read/parse key.
 func ConfiguredIntakeUploader() (store.CaseIntakeUploader, error) {
 	endpoint := strings.TrimRight(strings.TrimSpace(os.Getenv("DOCUMENT_SERVICE_URL")), "/")
 	credential := strings.TrimSpace(os.Getenv("CORE_DOCUMENT_TOKEN"))
-	if credential == "" {
-		credential = strings.TrimSpace(os.Getenv("WORKER_DOCUMENT_TOKEN"))
+	if endpoint == "" || len(credential) < 32 {
+		return nil, errors.New("DOCUMENT_SERVICE_URL and a private CORE_DOCUMENT_TOKEN of at least 32 bytes are required")
 	}
-	if endpoint == "" {
-		if credential != "" {
-			return nil, errors.New("DOCUMENT_SERVICE_URL is required with an intake upload credential")
-		}
-		return nil, nil
-	}
-	if len(credential) < 32 {
-		return nil, errors.New("a private document intake upload credential is required")
+	if credential == strings.TrimSpace(os.Getenv("WORKER_DOCUMENT_TOKEN")) {
+		return nil, errors.New("CORE_DOCUMENT_TOKEN must differ from WORKER_DOCUMENT_TOKEN")
 	}
 	return documentclient.NewIntakeUploader(endpoint, credential, 5*time.Minute)
 }

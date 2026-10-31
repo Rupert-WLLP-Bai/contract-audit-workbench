@@ -559,9 +559,7 @@ func newWorkerCommandEnvironment(t *testing.T, modelHandler http.Handler) *worke
 	env.core = env.open(t, "core")
 	env.document = env.open(t, "document")
 	env.execution = env.open(t, "execution")
-	service, err := documentservice.New(env.document.Store, documentservice.Config{
-		WorkerCredential: os.Getenv("WORKER_DOCUMENT_TOKEN"), CPUConcurrency: 1, OCRConcurrency: 1, QueueCapacity: 4, ParseTimeout: 5 * time.Second,
-	})
+	service, err := documentservice.New(env.document.Store, documentservice.Config{WorkerCredential: os.Getenv("WORKER_DOCUMENT_TOKEN"), IntakeCredential: "core-intake-test-private-credential-0000000000", CPUConcurrency: 1, OCRConcurrency: 1, QueueCapacity: 4, ParseTimeout: 5 * time.Second})
 	if err != nil {
 		t.Fatalf("create document test service (%T)", err)
 	}

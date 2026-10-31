@@ -97,7 +97,7 @@ func TestFromEnvDefaultsAndAcceptsInclusiveBounds(t *testing.T) {
 }
 
 func TestNewRequiresAStorePrivateCredentialAndPositiveCapacities(t *testing.T) {
-	valid := Config{WorkerCredential: strings.Repeat("d", 32), CPUConcurrency: 2, OCRConcurrency: 1, QueueCapacity: 3, ParseTimeout: time.Second}
+	valid := Config{WorkerCredential: strings.Repeat("d", 32), IntakeCredential: "core-intake-test-private-credential-0000000000", CPUConcurrency: 2, OCRConcurrency: 1, QueueCapacity: 3, ParseTimeout: time.Second}
 	cases := []struct {
 		name   string
 		store  *store.Store
@@ -105,6 +105,9 @@ func TestNewRequiresAStorePrivateCredentialAndPositiveCapacities(t *testing.T) {
 	}{
 		{"missing store", nil, valid},
 		{"short delegated credential", &store.Store{}, func() Config { c := valid; c.WorkerCredential = "short"; return c }()},
+		{"missing intake credential", &store.Store{}, func() Config { c := valid; c.IntakeCredential = ""; return c }()},
+		{"short intake credential", &store.Store{}, func() Config { c := valid; c.IntakeCredential = "short"; return c }()},
+		{"worker credential reused for intake", &store.Store{}, func() Config { c := valid; c.IntakeCredential = c.WorkerCredential; return c }()},
 		{"zero cpu permits", &store.Store{}, func() Config { c := valid; c.CPUConcurrency = 0; return c }()},
 		{"zero ocr permits", &store.Store{}, func() Config { c := valid; c.OCRConcurrency = 0; return c }()},
 		{"zero queue capacity", &store.Store{}, func() Config { c := valid; c.QueueCapacity = 0; return c }()},
@@ -179,7 +182,7 @@ func TestPublicParseCapacityAndDeadlineReturnStableFaults(t *testing.T) {
 }
 
 func TestDocumentHealthAndDelegatedMethodErrorsAreStable(t *testing.T) {
-	service, err := New(&store.Store{}, Config{WorkerCredential: strings.Repeat("d", 32), CPUConcurrency: 1, OCRConcurrency: 1, QueueCapacity: 1, ParseTimeout: time.Second})
+	service, err := New(&store.Store{}, Config{WorkerCredential: strings.Repeat("d", 32), IntakeCredential: "core-intake-test-private-credential-0000000000", CPUConcurrency: 1, OCRConcurrency: 1, QueueCapacity: 1, ParseTimeout: time.Second})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -205,7 +208,7 @@ func TestDocumentHealthAndDelegatedMethodErrorsAreStable(t *testing.T) {
 }
 
 func TestDelegatedHandlerRejectsAmbiguousCredentialsAndMalformedClaimsBeforePersistence(t *testing.T) {
-	service, err := New(&store.Store{}, Config{WorkerCredential: strings.Repeat("d", 32), CPUConcurrency: 1, OCRConcurrency: 1, QueueCapacity: 1, ParseTimeout: time.Second})
+	service, err := New(&store.Store{}, Config{WorkerCredential: strings.Repeat("d", 32), IntakeCredential: "core-intake-test-private-credential-0000000000", CPUConcurrency: 1, OCRConcurrency: 1, QueueCapacity: 1, ParseTimeout: time.Second})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -250,7 +253,7 @@ func TestDelegatedHandlerRejectsAmbiguousCredentialsAndMalformedClaimsBeforePers
 
 func TestDelegatedPrepareCredentialAndRequestSizeBoundaries(t *testing.T) {
 	const credential = "dddddddddddddddddddddddddddddddd"
-	service, err := New(&store.Store{}, Config{WorkerCredential: credential, CPUConcurrency: 1, OCRConcurrency: 1, QueueCapacity: 1, ParseTimeout: time.Second})
+	service, err := New(&store.Store{}, Config{WorkerCredential: credential, IntakeCredential: "core-intake-test-private-credential-0000000000", CPUConcurrency: 1, OCRConcurrency: 1, QueueCapacity: 1, ParseTimeout: time.Second})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -297,7 +300,7 @@ func TestDelegatedPrepareCredentialAndRequestSizeBoundaries(t *testing.T) {
 
 func TestDelegatedPrepareCallerCancellationDoesNotEnterStore(t *testing.T) {
 	const credential = "dddddddddddddddddddddddddddddddd"
-	service, err := New(&store.Store{}, Config{WorkerCredential: credential, CPUConcurrency: 1, OCRConcurrency: 1, QueueCapacity: 1, ParseTimeout: time.Second})
+	service, err := New(&store.Store{}, Config{WorkerCredential: credential, IntakeCredential: "core-intake-test-private-credential-0000000000", CPUConcurrency: 1, OCRConcurrency: 1, QueueCapacity: 1, ParseTimeout: time.Second})
 	if err != nil {
 		t.Fatal(err)
 	}
