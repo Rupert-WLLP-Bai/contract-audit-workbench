@@ -64,6 +64,8 @@ metadata:
     app.kubernetes.io/part-of: contract-audit
 data:
   backend-proxy.conf: |
+    set $gateway_backend gateway:8080;
+
     location = /api {
         proxy_pass http://gateway:8080;
         include /etc/nginx/snippets/proxy-headers.conf;
