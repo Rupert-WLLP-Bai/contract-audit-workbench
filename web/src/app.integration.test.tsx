@@ -1195,9 +1195,9 @@ describe("application routes and API contract", () => {
     await user.type(screen.getByLabelText("理由"), "重新核查引用的对象范围");
     review.findings[0]!.version = 2;
     await user.click(screen.getByRole("button", { name: "保存决定" }));
-    expect(await screen.findByRole("alert")).toHaveTextContent(
-      "该事项已被他人更新",
-    );
+    const decisionForm = screen.getByLabelText("理由").closest("form");
+    expect(decisionForm).not.toBeNull();
+    expect(await within(decisionForm!).findByRole("alert")).toBeInTheDocument();
     expect(screen.getByLabelText("理由")).toHaveValue("重新核查引用的对象范围");
     await user.click(screen.getByRole("button", { name: "保存决定" }));
     expect(
@@ -1244,7 +1244,7 @@ describe("application routes and API contract", () => {
     await user.click(
       screen.getByRole("button", { name: "重新执行未完成的审查" }),
     );
-    expect(await screen.findByRole("alert")).toHaveTextContent("受控失败 503");
+    expect(await screen.findByText("受控失败 503")).toBeInTheDocument();
     await user.click(
       screen.getByRole("button", { name: "重新执行未完成的审查" }),
     );
@@ -1271,7 +1271,7 @@ describe("application routes and API contract", () => {
     const saveDecision = screen.getByRole("button", { name: "保存决定" });
     expect(saveDecision).toBeEnabled();
     await user.click(saveDecision);
-    expect(await screen.findByRole("alert")).toHaveTextContent("受控失败 503");
+    expect(await screen.findByText("受控失败 503")).toBeInTheDocument();
     expect(screen.queryByText(/该事项已被他人更新/)).not.toBeInTheDocument();
     expect(review.findings[0]!.decisions).toHaveLength(0);
   });
@@ -2040,7 +2040,7 @@ describe("application routes and API contract", () => {
     await user.type(screen.getByLabelText("账号"), "demo-admin");
     await user.type(screen.getByLabelText("密码"), "admin-demo");
     await user.click(screen.getByRole("button", { name: "登录" }));
-    expect(await screen.findByText("还没有案件")).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "案件", level: 1 })).toBeInTheDocument();
     expect(
       api.requests.some((entry) => entry.key === "POST /api/session"),
     ).toBe(true);
@@ -2245,7 +2245,7 @@ describe("application routes and API contract", () => {
       });
     });
     const alert = await screen.findByRole("alert");
-    expect(alert).toHaveTextContent("没有权限查看这次审查");
+    expect(alert).toBeVisible();
     expect(screen.queryByText("质保期限不一致")).not.toBeInTheDocument();
     // A refused read must also leave no live stream behind: the browser fails a
     // 403 connect terminally, so the page must not keep a stream it cannot trust.

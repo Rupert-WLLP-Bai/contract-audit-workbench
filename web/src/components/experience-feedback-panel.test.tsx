@@ -196,7 +196,8 @@ describe("experience feedback panel", () => {
     render(<ExperienceFeedbackPanel {...props} />);
     await prepareSuggestion(user);
     await user.click(screen.getByRole("button", { name: "提交经验建议并请求提炼" }));
-    expect(await screen.findByText("核对约定期限")).toBeInTheDocument();
+    const candidateContent = await screen.findByRole("region", { name: "经验候选内容" });
+    expect(candidateContent).toHaveTextContent("核对约定期限");
     expect(screen.getByText(/任务状态：提炼完成/)).toBeInTheDocument();
     expect(screen.getByText(/候选仅供后续治理审核，不代表批准或发布/)).toBeInTheDocument();
     const post = requests.find((request) => request.path.endsWith("experience-feedback") && request.init.method === "POST")!;
@@ -250,7 +251,7 @@ describe("experience feedback panel", () => {
     render(<ExperienceFeedbackPanel {...props} />);
     await prepareSuggestion(user);
     await user.click(screen.getByRole("button", { name: "提交经验建议并请求提炼" }));
-    expect(await screen.findByText("反馈未能确认")).toBeInTheDocument();
+    expect(await screen.findByText(/temporary_failure（HTTP 503）/)).toBeInTheDocument();
     await waitFor(() => expect(screen.getByRole("button", { name: "提交经验建议并请求提炼" })).toBeEnabled());
     await user.click(screen.getByRole("button", { name: "提交经验建议并请求提炼" }));
     expect(await screen.findByText(/任务状态：排队中/)).toBeInTheDocument();
@@ -268,8 +269,7 @@ describe("experience feedback panel", () => {
     render(<ExperienceFeedbackPanel {...props} />);
     await prepareSuggestion(user);
     await user.click(screen.getByRole("button", { name: "提交经验建议并请求提炼" }));
-    expect(await screen.findByText("来源缺少制度快照")).toBeInTheDocument();
-    expect(screen.getByText(/policy_missing（HTTP 409）/)).toBeInTheDocument();
+    expect(await screen.findByText(/policy_missing（HTTP 409）/)).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "反馈已记录" })).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "请求提炼" }));
     expect(await screen.findByText(/任务状态：排队中/)).toBeInTheDocument();

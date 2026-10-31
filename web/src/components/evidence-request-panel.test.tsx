@@ -1797,6 +1797,7 @@ describe("补充材料请求", () => {
     await user.click(original);
     original.setSelectionRange(3, 9);
     fireEvent.select(original);
+    fireEvent.keyUp(original, { key: "Shift" });
     await user.type(screen.getByLabelText("核验理由"), "核对 Unicode 引用");
     await user.click(screen.getByRole("button", { name: "提交核验" }));
     await waitFor(() => expect(calls.some((call) => call.pathname.endsWith("/verify"))).toBe(true));
