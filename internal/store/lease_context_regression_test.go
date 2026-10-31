@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"contractaudit/internal/accounts"
 	"errors"
 	"reflect"
 	"slices"
@@ -283,7 +284,11 @@ func TestCancelledWorkCanSettleOnlyWithLiveParentAndLease(t *testing.T) {
 }
 
 func TestNarrowAttemptReadPreservesFrozenParseAndInitiatingActor(t *testing.T) {
-	fixture, ok := newDurableFixtureAs(t, mustUser("demo-reviewer"))
+	reviewer, ok := accounts.ByID("demo-reviewer")
+	if !ok {
+		t.Fatal("reviewer fixture is unavailable")
+	}
+	fixture, ok := newDurableFixtureAs(t, reviewer)
 	if !ok {
 		t.Skip("TEST_DATABASE_URL and MIGRATOR_DATABASE_URL are required for isolated durable role checks")
 	}

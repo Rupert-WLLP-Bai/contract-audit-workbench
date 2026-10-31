@@ -33,9 +33,8 @@ export interface ReviewDiffRow {
 
 // The public scope projection is optional; older histories do not have it.
 export function reviewScope(workspace: ReviewWorkspace): ReviewScopeIdentity | null {
-  const value = (workspace.snapshot as (typeof workspace.snapshot & { review_scope?: unknown }))?.review_scope;
-  if (typeof value !== "object" || value === null) return null;
-  const row = value as Record<string, unknown>;
+  const row = workspace.snapshot?.review_scope;
+  if (typeof row !== "object" || row === null) return null;
   if (typeof row.id !== "string" || !row.id ||
       typeof row.rule_set_id !== "string" || !row.rule_set_id ||
       typeof row.rule_set_version !== "string" || !row.rule_set_version ||

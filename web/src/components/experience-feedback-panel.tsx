@@ -1283,6 +1283,11 @@ function FeedbackPanelContent({ state }: { state: FeedbackPanelState }) {
           chosenEvidence={state.chosenEvidence}
           validEvidence={state.validEvidence}
           reason={state.reason}
+          canSubmit={state.canSubmit}
+          ready={state.ready}
+          pending={state.pending}
+          recovering={state.recovering}
+          submitError={state.submitError}
           canUseFrozenSelection={state.canUseFrozenSelection}
           onUseFrozenSelection={state.useFrozenSelection}
           onDecision={state.setDecisionId}

@@ -34,7 +34,7 @@ class RealCorpusRunnerTest(unittest.TestCase):
     def args(self):
         return argparse.Namespace(manifest=self.manifest_path, case_id=None, base="http://localhost", username=None,
                                   env_file=self.root / "absent", review_timeout=10, request_timeout=10,
-                                  model_record_dir=None, model_record_time="record-time")
+                                  model_record_dir=None, model_record_time="record-time", review_scope="full_review")
 
     def test_manifest_rejects_traversal_and_digest_mismatch(self):
         self.manifest["cases"][0]["materials"][0]["path"] = "../contract.pdf"
