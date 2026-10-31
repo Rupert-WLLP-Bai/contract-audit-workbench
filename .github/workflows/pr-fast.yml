@@ -103,6 +103,7 @@ jobs:
           python3 scripts/fetch_legal_test_assets.py --destination "$RUNNER_TEMP/caw-legal-fast"
           {
             echo "LEGALNORM_ASSET_DIR=$RUNNER_TEMP/caw-legal-fast/legal-sources"
+            echo "LEGALNORM_SUPPLEMENTAL_ASSET_DIR=$RUNNER_TEMP/caw-legal-fast/legal-sources"
             echo "LEGALNORM_CANONICAL_MANIFEST=$RUNNER_TEMP/caw-legal-fast/p4-canonical-articles-v2.json"
           } >> "$GITHUB_ENV"
 

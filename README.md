@@ -288,13 +288,15 @@ bun run build
 运行本地 Go 测试或完整验收前，先从固定公开测试资产发布准备仓库外的法律来源快照；脚本会校验归档及文件 SHA256，重复运行可复用相同内容：
 
 ```bash
-python3 scripts/fetch_legal_test_assets.py --destination ../contract-audit-delivery/legal-test-assets-20261031-v1
-export CAW_LEGAL_TEST_ROOT="$(realpath ../contract-audit-delivery/legal-test-assets-20261031-v1)"
+python3 scripts/fetch_legal_test_assets.py --destination ../contract-audit-delivery/legal-test-assets-20261101-v2
+export CAW_LEGAL_TEST_ROOT="$(realpath ../contract-audit-delivery/legal-test-assets-20261101-v2)"
 export LEGALNORM_ASSET_DIR="$CAW_LEGAL_TEST_ROOT/legal-sources"
+export LEGALNORM_SUPPLEMENTAL_ASSET_DIR="$CAW_LEGAL_TEST_ROOT/legal-sources"
 export LEGALNORM_CANONICAL_MANIFEST="$CAW_LEGAL_TEST_ROOT/p4-canonical-articles-v2.json"
 ```
 
 这些固定原始快照的采集时间和 SHA256 仅用于可重复回归，不证明法律当前持续有效。CI 会自动准备测试资产；它们不是应用发布内容。
+v2 资产包保留原有 15 个文件的字节和哈希，并补齐合同法历史版本、两份司法解释及独立校核原文，覆盖全部 8 组已登记官方效力快照；快速与完整 Go 门禁均使用同一锁定版本。
 
 官方登记效力用只读命令核对，不写数据库、capture、条文版本或冻结引用：
 
