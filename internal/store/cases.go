@@ -250,7 +250,7 @@ func (s *Store) ListCasesChecked(user accounts.User) ([]CaseSummary, error) {
 	if err != nil {
 		return nil, err
 	}
-	st, err := s.snapshotScoped(context.Background(), userScope(current))
+	st, err := s.snapshotCaseList(context.Background(), current)
 	if err != nil {
 		return nil, err
 	}
@@ -348,7 +348,7 @@ type CaseDetail struct {
 }
 
 func (s *Store) GetCase(user accounts.User, caseID string) (CaseDetail, error) {
-	st, err := s.snapshotAs(user)
+	st, err := s.snapshotCaseDetail(context.Background(), user, caseID)
 	if err != nil {
 		return CaseDetail{}, err
 	}
@@ -358,7 +358,7 @@ func (s *Store) GetCase(user accounts.User, caseID string) (CaseDetail, error) {
 	}
 	detail := CaseDetail{
 		CaseSummary:     s.summarize(&st, item),
-		Documents:       s.interpretAll(st.documents(item.ID)),
+		Documents:       interpretLoaded(st, st.documents(item.ID)),
 		RevisionPending: revisionPending(&st, item.ID),
 		BusinessLine:    item.BusinessLine, Scenario: item.Scenario, BusinessStatus: item.BusinessStatus,
 		ArchivedAt: item.ArchivedAt,
@@ -710,7 +710,7 @@ func (s *Store) Reparse(ctx context.Context, user accounts.User, caseID, docID s
 }
 
 func (s *Store) Original(user accounts.User, caseID, docID string) (Document, []byte, error) {
-	st, err := s.snapshotAs(user)
+	st, err := s.snapshotCaseOriginal(context.Background(), user, caseID, docID)
 	if err != nil {
 		return Document{}, nil, err
 	}

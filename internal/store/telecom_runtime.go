@@ -246,7 +246,7 @@ func cloudPoliciesForAttempt(st state, caseItem Case, runID, attemptID string) (
 }
 
 func (s *Store) cloudPolicyForReview(ctx context.Context, caseItem Case, runID, attemptID string, wanted cloudPolicyRef) (model.CloudPolicy, error) {
-	st, err := s.snapshotForAttemptContext(ctx, attemptID)
+	st, err := s.snapshotForAttemptMetadataContext(ctx, attemptID)
 	if err != nil {
 		return model.CloudPolicy{}, err
 	}
@@ -344,7 +344,7 @@ func (s *Store) telecomAttempt(st state, runID string) bool {
 }
 
 func (s *Store) authorizeTelecomStage(ctx context.Context, runID, attemptID string) (Case, access.Principal, access.Resource, error) {
-	st, err := s.snapshotForAttemptContext(ctx, attemptID)
+	st, err := s.snapshotForAttemptMetadataContext(ctx, attemptID)
 	if err != nil {
 		return Case{}, access.Principal{}, access.Resource{}, err
 	}
@@ -361,7 +361,7 @@ func (s *Store) authorizeTelecomStage(ctx context.Context, runID, attemptID stri
 }
 
 func (s *Store) executeTelecomAttempt(parent, ctx context.Context, runID, attemptID string, models Models, recorder attemptRecorder) {
-	initial, err := s.snapshotForAttemptContext(ctx, attemptID)
+	initial, err := s.snapshotForAttemptMetadataContext(ctx, attemptID)
 	if err != nil {
 		_ = s.finishAttemptAfterExecution(parent, ctx, runID, attemptID, "failed", "", "execution_persistence_failed")
 		return
@@ -407,7 +407,7 @@ func (s *Store) executeTelecomAttempt(parent, ctx context.Context, runID, attemp
 		}
 		caseItem = authorizedCase
 		if isGovernedReviewCase(caseItem) {
-			stored, err := s.snapshotForAttemptContext(stageCtx, attemptID)
+			stored, err := s.snapshotForAttemptMetadataContext(stageCtx, attemptID)
 			if err != nil {
 				return err
 			}
@@ -534,7 +534,7 @@ func (s *Store) executeTelecomAttempt(parent, ctx context.Context, runID, attemp
 					return authErr
 				}
 				request.Principal, request.Resource = principal, resource
-				stored, err := s.snapshotForAttemptContext(stageCtx, attemptID)
+				stored, err := s.snapshotForAttemptMetadataContext(stageCtx, attemptID)
 				if err != nil {
 					return err
 				}
@@ -654,7 +654,7 @@ func (s *Store) executeTelecomAttempt(parent, ctx context.Context, runID, attemp
 			if err := s.persistTelecomOutput(stageCtx, runID, attemptID, caseItem, telecomReviewOutput{}, docs, true); err != nil {
 				return err
 			}
-			st, err := s.snapshotForAttemptContext(stageCtx, attemptID)
+			st, err := s.snapshotForAttemptMetadataContext(stageCtx, attemptID)
 			if err != nil {
 				return err
 			}
@@ -691,7 +691,7 @@ func (s *Store) executeTelecomAttempt(parent, ctx context.Context, runID, attemp
 		return
 	}
 
-	latest, err := s.snapshotForAttemptContext(ctx, attemptID)
+	latest, err := s.snapshotForAttemptMetadataContext(ctx, attemptID)
 	if err != nil {
 		_ = s.finishAttemptAfterExecution(parent, ctx, runID, attemptID, "failed", "", "execution_persistence_failed")
 		return
@@ -714,7 +714,7 @@ func (s *Store) executeTelecomAttempt(parent, ctx context.Context, runID, attemp
 		_ = s.finishAttemptAfterExecution(parent, ctx, runID, attemptID, "failed", "", "execution_persistence_failed")
 		return
 	}
-	latest, err = s.snapshotForAttemptContext(ctx, attemptID)
+	latest, err = s.snapshotForAttemptMetadataContext(ctx, attemptID)
 	if err != nil {
 		_ = s.finishAttemptAfterExecution(parent, ctx, runID, attemptID, "failed", "", "execution_persistence_failed")
 		return
@@ -1445,7 +1445,7 @@ func (s *Store) runTelecomModelReview(ctx context.Context, runID, attemptID stri
 					modelErr = errModelNotConfigured
 					return modelErr
 				}
-				stored, err := s.snapshotForAttemptContext(stageCtx, attemptID)
+				stored, err := s.snapshotForAttemptMetadataContext(stageCtx, attemptID)
 				if err != nil {
 					modelErr = err
 					return err

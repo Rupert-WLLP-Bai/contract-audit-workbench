@@ -965,7 +965,7 @@ func (s *Store) executeAttemptContext(parent context.Context, runID, attemptID s
 		_ = s.finishAttemptAfterExecution(parent, ctx, runID, attemptID, "failed", "", "execution_persistence_failed")
 		return
 	}
-	initial, err := s.snapshotForAttemptContext(ctx, attemptID)
+	initial, err := s.snapshotForAttemptMetadataContext(ctx, attemptID)
 	if err != nil {
 		_ = s.finishAttemptAfterExecution(parent, ctx, runID, attemptID, "failed", "", "execution_persistence_failed")
 		return
@@ -1107,7 +1107,7 @@ func (s *Store) executeAttemptContext(parent context.Context, runID, attemptID s
 		if ctx.Err() != nil {
 			readCtx, cancelRead = context.WithTimeout(parent, attemptFinalizeTimeout)
 		}
-		latest, err := s.snapshotForAttemptContext(readCtx, attemptID)
+		latest, err := s.snapshotForAttemptMetadataContext(readCtx, attemptID)
 		cancelRead()
 		if err != nil {
 			_ = s.finishAttemptAfterExecution(parent, ctx, runID, attemptID, "failed", "", "execution_persistence_failed")
@@ -1453,7 +1453,7 @@ func (s *Store) publishRuleResults(ctx context.Context, runID, attemptID string,
 	for _, extra := range extras {
 		drafts = append(drafts, engine.Findings(extra)...)
 	}
-	attemptState, err := s.snapshotForAttemptContext(ctx, attemptID)
+	attemptState, err := s.snapshotForAttemptMetadataContext(ctx, attemptID)
 	if err != nil {
 		return err
 	}
@@ -1507,7 +1507,7 @@ func (s *Store) publishRuleResults(ctx context.Context, runID, attemptID string,
 }
 
 func (s *Store) recordFirstVerifiedFinding(ctx context.Context, recorder attemptRecorder, attemptID string) error {
-	st, err := s.snapshotForAttemptContext(ctx, attemptID)
+	st, err := s.snapshotForAttemptMetadataContext(ctx, attemptID)
 	if err != nil {
 		return err
 	}

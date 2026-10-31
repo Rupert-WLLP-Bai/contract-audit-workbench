@@ -755,7 +755,7 @@ func (s *Store) WorkbenchSnapshot(ctx context.Context, user accounts.User, perio
 	if err != nil {
 		return WorkbenchSnapshot{}, err
 	}
-	st, err := s.snapshotScoped(ctx, userScope(current))
+	st, err := s.snapshotWorkbench(ctx, current)
 	if err != nil {
 		return WorkbenchSnapshot{}, err
 	}

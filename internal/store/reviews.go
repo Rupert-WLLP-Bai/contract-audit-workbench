@@ -239,7 +239,7 @@ func (s *Store) Workspace(user accounts.User, caseID, runID string, selectedAtte
 	if len(selectedAttemptID) == 1 {
 		selectedID = selectedAttemptID[0]
 	}
-	st, err := s.snapshotAs(user)
+	st, err := s.snapshotWorkspace(context.Background(), user, caseID, runID, selectedID)
 	if err != nil {
 		return Workspace{}, err
 	}

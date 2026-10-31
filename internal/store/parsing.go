@@ -557,20 +557,6 @@ func (s *Store) interpretUnpersistedWithModels(ctx context.Context, doc Document
 	return Interpreted{Document: doc, Ready: true, Text: ir.NormalizedText, IR: ir}
 }
 
-func (s *Store) interpretStored(doc Document) Interpreted {
-	st, err := s.snapshotScoped(context.Background(), dbScope{ActorID: "document-reader", Role: "api", TenantID: doc.TenantID, OrgID: doc.OrgID, CaseID: doc.CaseID})
-	if err != nil {
-		return Interpreted{Document: doc, ParseError: "已保存解析状态暂不可读取。"}
-	}
-	parsed, ok := st.latestParsed(doc.ID, "")
-	if !ok {
-		return Interpreted{Document: doc, ParsePending: true}
-	}
-	if err := s.verifyParsedRecordContext(context.Background(), parsed, doc); err != nil {
-		return Interpreted{Document: doc, ParseError: "已保存解析产物完整性校验失败：" + err.Error()}
-	}
-	return parsedInterpreted(doc, parsed)
-}
 
 func frozenFromParsed(doc Document, parsed ParsedDocument) FrozenDocument {
 	var normalizedHash *string

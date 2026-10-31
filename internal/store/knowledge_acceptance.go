@@ -162,7 +162,7 @@ func (s *Store) updateAuthorizedGovernedExecution(ctx context.Context, runID, at
 			return fn(st)
 		})
 	}
-	seen, err := s.snapshotForAttemptContext(ctx, attemptID)
+	seen, err := s.snapshotForAttemptMetadataContext(ctx, attemptID)
 	if err != nil {
 		return err
 	}

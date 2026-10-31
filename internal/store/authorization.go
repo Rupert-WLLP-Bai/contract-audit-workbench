@@ -43,6 +43,14 @@ func (s *Store) snapshotAsContext(ctx context.Context, user accounts.User) (stat
 }
 
 func (s *Store) snapshotForAttemptContext(ctx context.Context, attemptID string) (state, error) {
+	return s.snapshotAttemptRead(ctx, attemptID, true)
+}
+
+func (s *Store) snapshotForAttemptMetadataContext(ctx context.Context, attemptID string) (state, error) {
+	return s.snapshotAttemptRead(ctx, attemptID, false)
+}
+
+func (s *Store) snapshotAttemptRead(ctx context.Context, attemptID string, withInput bool) (state, error) {
 	if err := ctx.Err(); err != nil {
 		return state{}, err
 	}
@@ -53,7 +61,14 @@ func (s *Store) snapshotForAttemptContext(ctx context.Context, attemptID string)
 	if !ok || claim.AttemptID != attemptID {
 		return state{}, errExecutionEventScope
 	}
-	return s.snapshotScopedClaim(ctx, claim.scope(), &claim)
+	st, err := s.readAttemptState(ctx, claim, withInput)
+	if err != nil {
+		return state{}, err
+	}
+	if claim.RunID != "" && (len(st.Runs) != 1 || st.Runs[0].ID != claim.RunID) {
+		return state{}, errExecutionEventScope
+	}
+	return st, nil
 }
 
 func (s *Store) snapshotScoped(ctx context.Context, scope dbScope) (state, error) {

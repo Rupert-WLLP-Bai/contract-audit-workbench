@@ -258,7 +258,7 @@ func (s *Store) RunClaimedJob(ctx context.Context, claim JobClaim) error {
 	}
 	finishCtx, cancel := context.WithTimeout(ctx, attemptFinalizeTimeout)
 	defer cancel()
-	st, err := s.snapshotScoped(finishCtx, claim.scope())
+	st, err := s.snapshotForAttemptMetadataContext(finishCtx, claim.AttemptID)
 	if err != nil {
 		return err
 	}

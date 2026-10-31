@@ -257,7 +257,7 @@ func (s *Store) ReadReport(user accounts.User, caseID, reportID, format string) 
 	if format != "json" && format != "html" {
 		return ReportRecord{}, nil, fault.Invalid("报告格式只能是 json 或 html")
 	}
-	st, err := s.snapshotAs(currentUser)
+	st, err := s.snapshotCaseReport(context.Background(), currentUser, caseID, reportID)
 	if err != nil {
 		return ReportRecord{}, nil, err
 	}
