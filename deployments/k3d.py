@@ -19,7 +19,25 @@ FULL = PROFILE == "full"
 CLUSTER = os.environ.get("CAW_K3D_CLUSTER", "caw-local-full" if FULL else "caw-local")
 CLUSTER_CONFIG = "cluster-5node.yaml" if FULL else "cluster.yaml"
 APPS_OVERLAY = "apps-5node" if FULL else "apps"
-API_PORT = "6446" if FULL else "6445"
+
+
+def port_setting(name: str, default: str) -> str:
+    raw = os.environ.get(name, "").strip()
+    if not raw:
+        return default
+    if not raw.isascii() or not raw.isdigit() or not 1 <= int(raw) <= 65535:
+        print(f"BLOCKED: {name} must be a TCP port between 1 and 65535, got {raw!r}", file=sys.stderr)
+        raise SystemExit(2)
+    return raw
+
+
+API_PORT = port_setting("CAW_K3D_API_PORT", "6446" if FULL else "6445")
+# Browser-facing host ports for the UI services; they only materialize through
+# kubectl port-forward and must match CORS_ORIGIN and the OIDC redirect URLs.
+DEFAULT_UI_PORTS = ("18080", "18081", "18082")
+CLIENT_PORT = port_setting("CAW_K3D_CLIENT_PORT", DEFAULT_UI_PORTS[0])
+ADMIN_PORT = port_setting("CAW_K3D_ADMIN_PORT", DEFAULT_UI_PORTS[1])
+PORTAL_PORT = port_setting("CAW_K3D_PORTAL_PORT", DEFAULT_UI_PORTS[2])
 SERVER_MEMORY = "1g" if FULL else "768m"
 # 2 GiB agents leave room for ztunnel/CNI and a surge pod in the full profile.
 AGENTS_MEMORY = "2g"
@@ -30,11 +48,26 @@ OBSERVE_IMAGES = (
     "prom/prometheus:v3.15.1",
     "grafana/grafana:13.2.4",
 )
-IMAGE_TAGS = (
-    "contract-audit-backend:local",
-    "contract-audit-client:local",
-    "contract-audit-admin:local",
-    "contract-audit-portal:local",
+# Frontends and backend are packaged by deployments/scripts/package-app-images.py.
+# The default suffix keeps the shared :local tags the Compose stack uses; an
+# isolated acceptance passes CAW_K3D_IMAGE_SUFFIX to deploy images that were
+# packaged under its own tag (--tag-suffix) and never retags the shared ones.
+IMAGE_SUFFIX = os.environ.get("CAW_K3D_IMAGE_SUFFIX", "").strip()
+_ALLOWED_SUFFIX = frozenset("abcdefghijklmnopqrstuvwxyz0123456789_.-")
+if IMAGE_SUFFIX and (not IMAGE_SUFFIX.isascii() or len(IMAGE_SUFFIX) > 49
+                     or set(IMAGE_SUFFIX) - _ALLOWED_SUFFIX
+                     or not IMAGE_SUFFIX[0].isalnum() or not IMAGE_SUFFIX[0].isascii()):
+    print(f"BLOCKED: CAW_K3D_IMAGE_SUFFIX must match [a-z0-9][a-z0-9_.-]{{0,48}}, got {IMAGE_SUFFIX!r}",
+          file=sys.stderr)
+    raise SystemExit(2)
+APP_IMAGES = ("backend", "client", "admin", "portal")
+
+
+def app_image(name: str) -> str:
+    return f"contract-audit-{name}:{IMAGE_SUFFIX or 'local'}"
+
+
+IMAGE_TAGS = tuple(app_image(name) for name in APP_IMAGES) + (
     "postgres:18.6-bookworm",
     "rustfs/rustfs:1.0.3",
     "nats:2.11.8-alpine",
@@ -158,7 +191,7 @@ def up() -> None:
         print(f"Cluster {CLUSTER} already exists; reusing it without touching the default kubeconfig.")
     else:
         run([
-            "k3d", "cluster", "create", "--config", str(ROOT / "deployments/k3d" / CLUSTER_CONFIG),
+            "k3d", "cluster", "create", CLUSTER, "--config", str(ROOT / "deployments/k3d" / CLUSTER_CONFIG),
             "--api-port", "127.0.0.1:" + API_PORT, "--servers-memory", SERVER_MEMORY,
             "--agents-memory", AGENTS_MEMORY,
             "--kubeconfig-update-default=false", "--kubeconfig-switch-context=false",
@@ -167,10 +200,39 @@ def up() -> None:
     write_kubeconfig()
     kubectl("wait", "--for=condition=Ready", "nodes", "--all", "--timeout=120s", timeout=150)
     agents = 4 if FULL else 2
-    print(f"Cluster: {CLUSTER} (1 server, {agents} agents, profile={PROFILE}); kubeconfig: {KUBECONFIG}")
+    print(f"Cluster: {CLUSTER} (1 server, {agents} agents, profile={PROFILE}, "
+          f"images={IMAGE_SUFFIX or 'local'}); kubeconfig: {KUBECONFIG}")
+
+
+def cluster_nodes() -> list[str]:
+    """Server and agent container names of the isolated cluster."""
+    result = run(["k3d", "node", "list", "--output", "json"])
+    listing = json.loads(result.stdout)
+    if isinstance(listing, dict):
+        listing = listing.get("nodes", [])
+    if not isinstance(listing, list):
+        raise RuntimeError("k3d returned an unexpected node inventory")
+    nodes: list[str] = []
+    for item in listing:
+        if not isinstance(item, dict) or item.get("role") not in ("server", "agent"):
+            continue
+        labels = item.get("runtimeLabels")
+        owner = item.get("cluster") or (labels.get("k3d.cluster") if isinstance(labels, dict) else None)
+        if owner == CLUSTER:
+            nodes.append(str(item["name"]))
+    return nodes
 
 
 def import_images() -> None:
+    """Load the packaged images into every node's k8s.io containerd namespace.
+
+    ``k3d image import`` is not used: for manifest lists it runs
+    ``ctr image import --all-platforms``, which fails with "content digest ...
+    not found" on every node and still exits 0, leaving the pods to fall back to
+    a registry pull (ImagePullBackOff in a network-restricted host). Saving the
+    image locally and importing only the running platform is verifiable, and the
+    final listing check fails the run instead of silently continuing.
+    """
     docker = os.environ.get("DOCKER_BIN", "docker")
     if not shutil.which(docker):
         raise RuntimeError("Docker CLI is unavailable")
@@ -181,7 +243,64 @@ def import_images() -> None:
             missing.append(image)
     if missing:
         raise RuntimeError("required packaged or cached platform images are missing: " + ", ".join(missing))
-    run(["k3d", "image", "import", "--cluster", CLUSTER, *tags], timeout=600)
+    nodes = cluster_nodes()
+    if not nodes:
+        raise RuntimeError(f"cluster {CLUSTER} has no server or agent nodes to import into")
+    private_dir()
+    archive = ARTIFACTS / ".image-import.tar"
+    try:
+        for image in tags:
+            saved = subprocess.run([docker, "save", image, "-o", str(archive)], text=True, capture_output=True,
+                                   timeout=1800)
+            if saved.returncode:
+                raise RuntimeError(f"docker save failed for {image}: {saved.stderr.strip()}")
+            for node in nodes:
+                with archive.open("rb") as stream:
+                    imported = subprocess.run(
+                        [docker, "exec", "-i", node, "ctr", "-n", "k8s.io", "images", "import",
+                         "--platform", "linux/amd64", "-"],
+                        stdin=stream, text=False, capture_output=True, timeout=1800)
+                if imported.returncode:
+                    detail = (imported.stderr or imported.stdout or b"").decode("utf-8", "replace").strip()
+                    raise RuntimeError(f"ctr import failed for {image} on {node}: {detail}")
+    finally:
+        archive.unlink(missing_ok=True)
+    for image in tags:
+        reference = image if ":" in image.rsplit("/", 1)[-1] else image + ":latest"
+        for node in nodes:
+            listing = run([docker, "exec", node, "ctr", "-n", "k8s.io", "images", "ls", "-q"], timeout=120).stdout
+            if not any(reference == line.strip() or line.strip().endswith("/" + reference)
+                       for line in listing.splitlines()):
+                raise RuntimeError(f"{image} is missing from node {node} after import")
+
+
+def recover_stale_image_pulls() -> None:
+    """Recreate owned pods still waiting on images imported into containerd."""
+    document = json.loads(kubectl("get", "pods", "-n", NAMESPACE, "-o", "json").stdout)
+    for pod in document.get("items", []):
+        metadata = pod.get("metadata", {})
+        name = metadata.get("name")
+        if not name or not metadata.get("ownerReferences"):
+            continue
+        status = pod.get("status") or {}
+        statuses = list(status.get("containerStatuses") or [])
+        statuses.extend(status.get("initContainerStatuses") or [])
+        conditions = {item.get("type"): item.get("status")
+                      for item in status.get("conditions") or []}
+        waiting_images: set[str] = set()
+        for container in statuses:
+            waiting = (container.get("state") or {}).get("waiting") or {}
+            reason = waiting.get("reason")
+            image = container.get("image")
+            if image not in IMAGE_TAGS:
+                continue
+            if reason in {"ErrImagePull", "ImagePullBackOff"}:
+                waiting_images.add(image)
+            elif reason == "ContainerCreating" and conditions.get("PodReadyToStartContainers") == "False":
+                waiting_images.add(image)
+        if waiting_images:
+            kubectl("delete", "pod", str(name), "-n", NAMESPACE, "--wait=true", timeout=120)
+            print(f"Recreated {name} after importing {', '.join(sorted(waiting_images))}.")
 
 
 def apply_private_secret(name: str, keys: tuple[str, ...]) -> None:
@@ -206,9 +325,34 @@ def apply_private_secret(name: str, keys: tuple[str, ...]) -> None:
         private_env.unlink(missing_ok=True)
 
 
+def staged_overlay(overlay: Path) -> Path:
+    """Point an overlay at the isolated application image tags.
+
+    Kustomize only accepts resources below its own root, so the generated
+    parent kustomization stays under the private artifact directory and refers
+    back to the checked-in overlay with a relative path. Nothing is written
+    inside the source tree, and the default suffix bypasses this entirely.
+    """
+    staged = ARTIFACTS / "kustomize" / overlay.name
+    private_dir()
+    staged.mkdir(parents=True, exist_ok=True, mode=0o700)
+    lines = [
+        "apiVersion: kustomize.config.k8s.io/v1beta1",
+        "kind: Kustomization",
+        "resources:",
+        f"  - {os.path.relpath(overlay, staged)}",
+        "images:",
+    ]
+    lines.extend(f"  - {{name: contract-audit-{name}, newTag: {IMAGE_SUFFIX}}}" for name in APP_IMAGES)
+    (staged / "kustomization.yaml").write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return staged
+
+
 def apply_phase(path: str) -> None:
-    overlay = str(ROOT / "deployments/k3d" / path)
-    manifest = run(["kubectl", "kustomize", overlay, "--load-restrictor", "LoadRestrictionsNone"], timeout=300).stdout
+    overlay = ROOT / "deployments/k3d" / path
+    if IMAGE_SUFFIX:
+        overlay = staged_overlay(overlay)
+    manifest = run(["kubectl", "kustomize", str(overlay), "--load-restrictor", "LoadRestrictionsNone"], timeout=300).stdout
     applied = subprocess.run(
         ["kubectl", "--kubeconfig", str(KUBECONFIG), "apply", "-f", "-"],
         input=manifest, text=True, capture_output=True, timeout=300,
@@ -245,6 +389,22 @@ def apply_observe_configs() -> None:
     apply_configmap("grafana-datasources", "datasources.yaml", ROOT / "deploy/app/observe/grafana-datasources.yaml")
 
 
+def apply_runtime_origin_override() -> None:
+    # The in-repo config patch pins CORS/OIDC to the default UI ports; when the
+    # isolated acceptance binds free ports, keep the runtime ConfigMap consistent
+    # with the port-forward URLs instead of editing tracked manifests.
+    patch = {"data": {
+        "CORS_ORIGIN": ",".join(f"http://127.0.0.1:{port}" for port in (CLIENT_PORT, ADMIN_PORT, PORTAL_PORT)),
+        "OIDC_REDIRECT_URL": f"http://127.0.0.1:{CLIENT_PORT}/api/auth/oidc/callback",
+        "OIDC_ADMIN_REDIRECT_URL": f"http://127.0.0.1:{ADMIN_PORT}/api/auth/oidc/callback",
+    }}
+    applied = run(["kubectl", "--kubeconfig", str(KUBECONFIG), "-n", NAMESPACE, "patch",
+                   "configmap", "contract-audit-runtime", "--type", "merge", "-p", json.dumps(patch)],
+                  check=False)
+    if applied.returncode:
+        raise RuntimeError(f"failed applying runtime origin override: {applied.stderr.strip()}")
+
+
 def deploy() -> None:
     if not cluster_exists():
         raise RuntimeError(f"cluster {CLUSTER} does not exist; run 'up' first")
@@ -253,6 +413,7 @@ def deploy() -> None:
     ensure_secrets()
     import_images()
     kubectl("apply", "-f", str(ROOT / "deployments/k8s/base/namespace.yaml"))
+    recover_stale_image_pulls()
     apply_private_secret("contract-audit-postgres", ("POSTGRES_PASSWORD",))
     apply_private_secret("contract-audit-db-urls", ("CORE_DATABASE_URL", "DOCUMENT_DATABASE_URL",
                                                       "EXECUTION_DATABASE_URL", "MODEL_DATABASE_URL",
@@ -264,6 +425,8 @@ def deploy() -> None:
     apply_private_secret("contract-audit-model", ("LLM_API_KEY", "LLM_CONFIG_KEY"))
     kubectl("delete", "job/rustfs-bucket-init", "-n", NAMESPACE, "--ignore-not-found=true", check=False)
     apply_phase("bootstrap")
+    if (CLIENT_PORT, ADMIN_PORT, PORTAL_PORT) != DEFAULT_UI_PORTS:
+        apply_runtime_origin_override()
     wait_platform()
     kubectl("delete", "job/contract-audit-migrate", "-n", NAMESPACE, "--ignore-not-found=true", check=False)
     apply_phase("migrate")
@@ -277,7 +440,8 @@ def deploy() -> None:
     for deployment in ("gateway", "core-api", "document-service", "audit-execution", "audit-worker",
                        "model-gateway", "tool-gateway", "client", "admin", "portal", "health-monitor"):
         kubectl("rollout", "status", f"deployment/{deployment}", "-n", NAMESPACE, "--timeout=240s", timeout=270)
-    print("Local resources applied; application and health-monitor images were imported from Docker.")
+    images = ", ".join(app_image(name) for name in APP_IMAGES)
+    print(f"Local resources applied; imported application images: {images}.")
 
 
 def status() -> None:
@@ -289,10 +453,11 @@ def status() -> None:
     print(kubectl("get", "nodes", "-o", "wide").stdout, end="")
     result = kubectl("get", "all", "-n", NAMESPACE, "-o", "wide", check=False)
     print(result.stdout, end="")
-    print("Ports: client http://127.0.0.1:18080, admin http://127.0.0.1:18081, portal http://127.0.0.1:18082")
-    print(f"kubectl --kubeconfig {KUBECONFIG} -n {NAMESPACE} port-forward svc/client 18080:80")
-    print(f"kubectl --kubeconfig {KUBECONFIG} -n {NAMESPACE} port-forward svc/admin 18081:80")
-    print(f"kubectl --kubeconfig {KUBECONFIG} -n {NAMESPACE} port-forward svc/portal 18082:80")
+    print(f"Ports: client http://127.0.0.1:{CLIENT_PORT}, admin http://127.0.0.1:{ADMIN_PORT}, "
+          f"portal http://127.0.0.1:{PORTAL_PORT}")
+    print(f"kubectl --kubeconfig {KUBECONFIG} -n {NAMESPACE} port-forward svc/client {CLIENT_PORT}:80")
+    print(f"kubectl --kubeconfig {KUBECONFIG} -n {NAMESPACE} port-forward svc/admin {ADMIN_PORT}:80")
+    print(f"kubectl --kubeconfig {KUBECONFIG} -n {NAMESPACE} port-forward svc/portal {PORTAL_PORT}:80")
 
 
 def smoke() -> None:

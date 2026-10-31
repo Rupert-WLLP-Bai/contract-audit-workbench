@@ -66,6 +66,9 @@ func applyActiveRulePackIdentity(snapshot *RunSnapshot, pack *ActiveRulePack) {
 }
 
 func telecomCompilerRefForCase(item Case) string {
+	if isDeclaredReviewCase(item) {
+		return telecom.DeclaredCompilerRef
+	}
 	if isTelecomDedicatedLineCase(item) || isCloudServicesCase(item) {
 		return telecom.CompilerRef
 	}
@@ -74,6 +77,17 @@ func telecomCompilerRefForCase(item Case) string {
 
 func requireGovernedCapabilitiesForCase(caseItem Case, snapshot []byte) error {
 	switch {
+	case isDeclaredReviewCase(caseItem):
+		pack, err := rulepack.Parse(snapshot)
+		if err != nil || telecom.ValidateDeclaredPack(pack, rulepack.BusinessScope{
+			BusinessLine: caseItem.BusinessLine, Scenario: caseItem.Scenario, ContractType: caseItem.ContractType,
+		}, caseItem.TenantID) != nil {
+			return fault.Conflict("已发布规则包不支持案件业务范围或所声明的事实算子")
+		}
+		if isTelecomDedicatedLineCase(caseItem) {
+			return requireTelecomGovernedCapabilitiesForType(snapshot, caseItem.ContractType)
+		}
+		return nil
 	case isTelecomDedicatedLineCase(caseItem):
 		return requireTelecomGovernedCapabilities(snapshot)
 	case isCloudServicesCase(caseItem):
@@ -90,6 +104,10 @@ func requireGovernedCapabilitiesForCase(caseItem Case, snapshot []byte) error {
 // mandatory telecom capability with its comparator, exact business scope and
 // nonempty authority source, so governance cannot disable mandatory coverage.
 func requireTelecomGovernedCapabilities(snapshot []byte) error {
+	return requireTelecomGovernedCapabilitiesForType(snapshot, "service")
+}
+
+func requireTelecomGovernedCapabilitiesForType(snapshot []byte, contractType string) error {
 	pack, err := rulepack.Parse(snapshot)
 	if err != nil {
 		return fault.Conflict("已发布规则包内容损坏，不能用于审查")
@@ -111,11 +129,16 @@ func requireTelecomGovernedCapabilities(snapshot []byte) error {
 		if !rule.Mandatory || rule.Comparator != comparator {
 			return fault.Conflict("已发布规则包不能取消或更改强制能力 " + rule.RuleID + " 的比较器")
 		}
-		if rule.BusinessScope.BusinessLine != "ENT" || rule.BusinessScope.Scenario != "telecom_dedicated_line" || rule.BusinessScope.ContractType != "service" {
+		if rule.BusinessScope.BusinessLine != "ENT" || rule.BusinessScope.Scenario != "telecom_dedicated_line" || rule.BusinessScope.ContractType != contractType {
 			return fault.Conflict("已发布规则包不能更改强制能力的业务范围")
 		}
 		if len(rule.AuthoritySources) == 0 {
 			return fault.Conflict("已发布规则包不能移除强制能力的授权来源")
+		}
+		for _, capability := range telecomCapabilities {
+			if capability.ruleID == rule.RuleID && (capability.capabilityID != rule.CapabilityID || capability.domain != rule.Domain) {
+				return fault.Conflict("已发布规则包不能更改强制能力的身份 " + rule.RuleID)
+			}
 		}
 		seen[rule.RuleID] = true
 	}

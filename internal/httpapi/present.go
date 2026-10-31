@@ -293,6 +293,7 @@ func businessAttemptJSON(attempt store.Attempt) map[string]any {
 		"retry_of_attempt_id": attempt.RetryOfAttemptID, "state": attempt.State,
 		"accepted_at": attempt.AcceptedAt, "started_at": attempt.StartedAt, "finished_at": attempt.FinishedAt,
 		"history_kind": attempt.HistoryKind, "parsed_document_ids": attempt.ParsedDocumentIDs,
+		"frozen_result_available": attempt.InputHash != nil && *attempt.InputHash != "" && attempt.OutputHash != nil && *attempt.OutputHash != "",
 	}
 	if attempt.ReviewScope != nil {
 		out["review_scope"] = attempt.ReviewScope

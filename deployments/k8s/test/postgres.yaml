@@ -12,7 +12,7 @@ kind: ObjectStore
 metadata:
   name: contract-audit-test-backups
   namespace: contract-audit-test
-  labels: {app.kubernetes.io/part-of: contract-audit}
+  labels: {app.kubernetes.io/part-of: contract-audit, environment: test}
 spec:
   configuration:
     destinationPath: s3://contract-audit-test-backups/drills
@@ -29,7 +29,7 @@ kind: Cluster
 metadata:
   name: contract-audit-test-db
   namespace: contract-audit-test
-  labels: {app.kubernetes.io/part-of: contract-audit}
+  labels: {app.kubernetes.io/part-of: contract-audit, environment: test}
 spec:
   instances: 1
   imageName: ghcr.io/cloudnative-pg/postgresql:18.6-standard-trixie

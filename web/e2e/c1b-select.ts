@@ -33,20 +33,17 @@ function cssQuoted(value: string): string {
 
 async function controlledDropdown(page: Page, select: Locator): Promise<Locator> {
   let controls = (await select.getAttribute("aria-controls"))?.trim() ?? "";
-  let ariaListbox = controls ? page.locator(`[id=${cssQuoted(controls)}]`) : null;
-  let dropdown = ariaListbox
-    ? page.locator(".ant-select-dropdown:visible").filter({ has: ariaListbox })
-    : null;
-  if (!dropdown || (await dropdown.count()) === 0) {
-    await select.click();
-    controls = (await select.getAttribute("aria-controls"))?.trim() ?? "";
-    assert.ok(controls, "Ant Design combobox omitted its controlled popup ID");
-    ariaListbox = page.locator(`[id=${cssQuoted(controls)}]`);
-    dropdown = page.locator(".ant-select-dropdown:visible").filter({ has: ariaListbox });
-  }
-  assert.ok(await dropdown.count() > 0, `no visible Ant Design popup is associated with aria-controls=${controls}`);
+  if ((await select.getAttribute("aria-expanded")) !== "true") await select.click();
+  controls = (await select.getAttribute("aria-controls"))?.trim() ?? controls;
+  assert.ok(controls, "Ant Design combobox omitted its controlled popup ID");
+  const ariaListbox = page.locator(`[id=${cssQuoted(controls)}]`);
+  const dropdown = page.locator(".ant-select-dropdown:visible").filter({ has: ariaListbox });
   const visibleDropdown = dropdown.first();
-  await visibleDropdown.waitFor({ state: "visible", timeout: 5000 });
+  try {
+    await visibleDropdown.waitFor({ state: "visible", timeout: 5000 });
+  } catch {
+    assert.fail(`no visible Ant Design popup is associated with aria-controls=${controls}`);
+  }
   return visibleDropdown;
 }
 

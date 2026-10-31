@@ -21,6 +21,7 @@ import (
 	"testing"
 	"time"
 
+	"contractaudit/internal/accounts"
 	"contractaudit/internal/auditext"
 	"contractaudit/internal/bootstrap"
 	"contractaudit/internal/capabilitypack"
@@ -41,9 +42,17 @@ func TestProductionStartupRejectsDemoAccountsBeforeOpeningStorage(t *testing.T) 
 	t.Setenv("CORE_DATABASE_URL", "postgres://user:secret@127.0.0.1:1/contract_audit_prod?sslmode=disable")
 	t.Setenv("DEV_DATABASE_URL", "")
 	t.Setenv("TEST_DATABASE_URL", "")
+	t.Setenv("IDENTITY_DIRECTORY_FILE", "")
+	if err := accounts.ConfigureDirectory(""); err != nil {
+		t.Fatal(err)
+	}
+	wantIdentityError := accounts.ValidateEnvironment(config.ModeProduction)
+	if wantIdentityError == nil {
+		t.Fatal("production unexpectedly accepted an empty identity directory")
+	}
 	t.Setenv("DATA_DIR", dir)
 	err := run()
-	if err == nil || !strings.Contains(err.Error(), "demo accounts") {
+	if err == nil || err.Error() != wantIdentityError.Error() {
 		t.Fatalf("production did not stop at identity boundary: %v", err)
 	}
 	if _, err := os.Stat(dir); !os.IsNotExist(err) {
@@ -542,6 +551,8 @@ func configureServerCommandEnvironment(t *testing.T) {
 	t.Setenv("DATA_DIR", t.TempDir())
 	t.Setenv("GATEWAY_ROLE_TOKEN", strings.Repeat("g", 40))
 	t.Setenv("WORKER_CORE_TOKEN", strings.Repeat("c", 40))
+	t.Setenv("DOCUMENT_SERVICE_URL", "http://127.0.0.1:1")
+	t.Setenv("CORE_DOCUMENT_TOKEN", strings.Repeat("i", 40))
 	t.Setenv("LLM_BASE_URL", "http://127.0.0.1:1/v1")
 	t.Setenv("LLM_MODEL", "server-core-test-chat")
 	t.Setenv("OCR_MODEL", "server-core-test-ocr")

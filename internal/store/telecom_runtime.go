@@ -33,19 +33,20 @@ const (
 )
 
 type governedCapability struct {
-	ruleID, capabilityID, domain string
+	ruleID, capabilityID, domain, version string
+	mandatory                             bool
 }
 
 var telecomCapabilities = []governedCapability{
-	{telecomBandwidthRule, "dedicated_line.minimum_bandwidth", "technical"},
-	{telecomSLARule, "dedicated_line.monthly_availability", "technical"},
-	{telecomAdvanceRule, "payment.advance_ratio.ceiling", "commercial"},
+	{ruleID: telecomBandwidthRule, capabilityID: "dedicated_line.minimum_bandwidth", domain: "technical", mandatory: true},
+	{ruleID: telecomSLARule, capabilityID: "dedicated_line.monthly_availability", domain: "technical", mandatory: true},
+	{ruleID: telecomAdvanceRule, capabilityID: "payment.advance_ratio.ceiling", domain: "commercial", mandatory: true},
 }
 
 var cloudCapabilities = []governedCapability{
-	{cloudBandwidthRule, "cloud_services.minimum_bandwidth", "technical"},
-	{cloudSLARule, "cloud_services.monthly_availability", "technical"},
-	{cloudAdvanceRule, "cloud_services.advance_payment_ceiling", "commercial"},
+	{ruleID: cloudBandwidthRule, capabilityID: "cloud_services.minimum_bandwidth", domain: "technical", mandatory: true},
+	{ruleID: cloudSLARule, capabilityID: "cloud_services.monthly_availability", domain: "technical", mandatory: true},
+	{ruleID: cloudAdvanceRule, capabilityID: "cloud_services.advance_payment_ceiling", domain: "commercial", mandatory: true},
 }
 
 func capabilitiesForCase(item Case) []governedCapability {
@@ -56,6 +57,25 @@ func capabilitiesForCase(item Case) []governedCapability {
 		return cloudCapabilities
 	}
 	return nil
+}
+
+func capabilitiesForSnapshot(item Case, snapshot []byte) ([]governedCapability, error) {
+	if !isDeclaredReviewCase(item) {
+		return capabilitiesForCase(item), nil
+	}
+	pack, err := rulepack.Parse(snapshot)
+	if err != nil || telecom.ValidateDeclaredPack(pack, rulepack.BusinessScope{
+		BusinessLine: item.BusinessLine, Scenario: item.Scenario, ContractType: item.ContractType,
+	}, item.TenantID) != nil {
+		return nil, errors.New("declared RulePack snapshot does not match the case")
+	}
+	manifest := pack.Manifest()
+	capabilities := make([]governedCapability, 0, len(manifest.Rules))
+	for _, rule := range manifest.Rules {
+		capabilities = append(capabilities, governedCapability{ruleID: rule.RuleID, capabilityID: rule.CapabilityID,
+			domain: rule.Domain, version: rule.Version, mandatory: rule.Mandatory})
+	}
+	return capabilities, nil
 }
 
 type telecomSourceKey struct {
@@ -76,8 +96,24 @@ func isCloudServicesCase(item Case) bool {
 	return item.BusinessLine == "ENT" && item.Scenario == "cloud_services" && item.ContractType == "service"
 }
 
+func isDeclaredReviewCase(item Case) bool {
+	if item.BusinessLine == "" || item.Scenario == "" || item.ContractType == "" ||
+		item.BusinessLine == "unspecified" || item.Scenario == "unspecified" {
+		return false
+	}
+	if isTelecomDedicatedLineCase(item) {
+		switch item.ContractType {
+		case "service", "procurement_ict", "network_engineering", "unspecified":
+			return false
+		default:
+			return true
+		}
+	}
+	return !(item.BusinessLine == "ENT" && item.Scenario == "cloud_services")
+}
+
 func isGovernedReviewCase(item Case) bool {
-	return isTelecomDedicatedLineCase(item) || isCloudServicesCase(item)
+	return isTelecomDedicatedLineCase(item) || isCloudServicesCase(item) || isDeclaredReviewCase(item)
 }
 
 type cloudPolicyRef struct {
@@ -210,7 +246,7 @@ func cloudPoliciesForAttempt(st state, caseItem Case, runID, attemptID string) (
 }
 
 func (s *Store) cloudPolicyForReview(ctx context.Context, caseItem Case, runID, attemptID string, wanted cloudPolicyRef) (model.CloudPolicy, error) {
-	st, err := s.snapshotForAttemptContext(ctx, attemptID)
+	st, err := s.snapshotForAttemptMetadataContext(ctx, attemptID)
 	if err != nil {
 		return model.CloudPolicy{}, err
 	}
@@ -308,7 +344,7 @@ func (s *Store) telecomAttempt(st state, runID string) bool {
 }
 
 func (s *Store) authorizeTelecomStage(ctx context.Context, runID, attemptID string) (Case, access.Principal, access.Resource, error) {
-	st, err := s.snapshotForAttemptContext(ctx, attemptID)
+	st, err := s.snapshotForAttemptMetadataContext(ctx, attemptID)
 	if err != nil {
 		return Case{}, access.Principal{}, access.Resource{}, err
 	}
@@ -325,7 +361,7 @@ func (s *Store) authorizeTelecomStage(ctx context.Context, runID, attemptID stri
 }
 
 func (s *Store) executeTelecomAttempt(parent, ctx context.Context, runID, attemptID string, models Models, recorder attemptRecorder) {
-	initial, err := s.snapshotForAttemptContext(ctx, attemptID)
+	initial, err := s.snapshotForAttemptMetadataContext(ctx, attemptID)
 	if err != nil {
 		_ = s.finishAttemptAfterExecution(parent, ctx, runID, attemptID, "failed", "", "execution_persistence_failed")
 		return
@@ -371,7 +407,7 @@ func (s *Store) executeTelecomAttempt(parent, ctx context.Context, runID, attemp
 		}
 		caseItem = authorizedCase
 		if isGovernedReviewCase(caseItem) {
-			stored, err := s.snapshotForAttemptContext(stageCtx, attemptID)
+			stored, err := s.snapshotForAttemptMetadataContext(stageCtx, attemptID)
 			if err != nil {
 				return err
 			}
@@ -408,7 +444,21 @@ func (s *Store) executeTelecomAttempt(parent, ctx context.Context, runID, attemp
 		}
 		request = rulepack.Request{
 			Principal: principal, Resource: resource, BusinessLine: caseItem.BusinessLine,
-			Scenario: caseItem.Scenario, ContractType: "service", At: time.Now().UTC(), Sources: sources,
+			Scenario: caseItem.Scenario, ContractType: caseItem.ContractType, At: time.Now().UTC(), Sources: sources,
+		}
+		if isDeclaredReviewCase(caseItem) {
+			stored, err := s.snapshotForAttemptMetadataContext(stageCtx, attemptID)
+			if err != nil {
+				return err
+			}
+			frozen := stored.snapshotOf(runID)
+			if frozen.ComparatorRef != engine.ComparatorRef+"+"+telecom.DeclaredCompilerRef || frozen.GovernedKnowledge == nil {
+				return errors.New("declared extractor identity or business time was not frozen")
+			}
+			request.At, err = time.Parse(time.RFC3339Nano, frozen.GovernedKnowledge.BusinessAt)
+			if err != nil || request.At.IsZero() {
+				return errors.New("declared review business time is invalid")
+			}
 		}
 		return nil
 	}}
@@ -422,7 +472,28 @@ func (s *Store) executeTelecomAttempt(parent, ctx context.Context, runID, attemp
 					return authErr
 				}
 				request.Principal, request.Resource = principal, resource
-				facts, err := telecom.Extract(request)
+				var facts []rulepack.Fact
+				var err error
+				if isDeclaredReviewCase(caseItem) {
+					stored, loadErr := s.snapshotForAttemptMetadataContext(stageCtx, attemptID)
+					if loadErr != nil {
+						return loadErr
+					}
+					attempt, ok := stored.attemptByID(attemptID)
+					if !ok || attempt.RunID != runID {
+						return errors.New("declared review attempt is unavailable")
+					}
+					pack, loadErr := ParseFrozenGovernedRulePack(attempt, caseItem)
+					if loadErr != nil {
+						return loadErr
+					}
+					if pack == nil {
+						return errors.New("declared review requires a frozen published RulePack")
+					}
+					facts, err = telecom.ExtractDeclared(request, pack)
+				} else {
+					facts, err = telecom.Extract(request)
+				}
 				if err != nil {
 					return err
 				}
@@ -430,6 +501,9 @@ func (s *Store) executeTelecomAttempt(parent, ctx context.Context, runID, attemp
 				return nil
 			}},
 			execution.Stage{Name: "tool_evidence", Run: func(stageCtx context.Context) error {
+				if isDeclaredReviewCase(caseItem) {
+					return nil
+				}
 				// Only a durable worker claim with a configured reader consumes the
 				// tool: the legacy in-process pipeline keeps its established
 				// behaviour, and a missing reader is never treated as success.
@@ -466,7 +540,7 @@ func (s *Store) executeTelecomAttempt(parent, ctx context.Context, runID, attemp
 					return authErr
 				}
 				request.Principal, request.Resource = principal, resource
-				stored, err := s.snapshotForAttemptContext(stageCtx, attemptID)
+				stored, err := s.snapshotForAttemptMetadataContext(stageCtx, attemptID)
 				if err != nil {
 					return err
 				}
@@ -544,7 +618,15 @@ func (s *Store) executeTelecomAttempt(parent, ctx context.Context, runID, attemp
 				}
 				request.Principal, request.Resource = principal, resource
 				if frozenGovernedPack != nil {
-					if legacyFrozenAuthority {
+					request, err = s.freezeAttemptRuleRequest(stageCtx, runID, attemptID, caseItem, request)
+					if err != nil {
+						return err
+					}
+				}
+				if frozenGovernedPack != nil {
+					if isDeclaredReviewCase(caseItem) {
+						report, err = telecom.ExecuteDeclared(stageCtx, request, frozenGovernedPack)
+					} else if legacyFrozenAuthority {
 						report, err = telecom.ExecuteLegacyFrozen(stageCtx, request, frozenGovernedPack)
 					} else {
 						report, err = telecom.ExecuteFrozen(stageCtx, request, frozenGovernedPack)
@@ -584,7 +666,7 @@ func (s *Store) executeTelecomAttempt(parent, ctx context.Context, runID, attemp
 			if err := s.persistTelecomOutput(stageCtx, runID, attemptID, caseItem, telecomReviewOutput{}, docs, true); err != nil {
 				return err
 			}
-			st, err := s.snapshotForAttemptContext(stageCtx, attemptID)
+			st, err := s.snapshotForAttemptMetadataContext(stageCtx, attemptID)
 			if err != nil {
 				return err
 			}
@@ -621,7 +703,7 @@ func (s *Store) executeTelecomAttempt(parent, ctx context.Context, runID, attemp
 		return
 	}
 
-	latest, err := s.snapshotForAttemptContext(ctx, attemptID)
+	latest, err := s.snapshotForAttemptMetadataContext(ctx, attemptID)
 	if err != nil {
 		_ = s.finishAttemptAfterExecution(parent, ctx, runID, attemptID, "failed", "", "execution_persistence_failed")
 		return
@@ -644,7 +726,7 @@ func (s *Store) executeTelecomAttempt(parent, ctx context.Context, runID, attemp
 		_ = s.finishAttemptAfterExecution(parent, ctx, runID, attemptID, "failed", "", "execution_persistence_failed")
 		return
 	}
-	latest, err = s.snapshotForAttemptContext(ctx, attemptID)
+	latest, err = s.snapshotForAttemptMetadataContext(ctx, attemptID)
 	if err != nil {
 		_ = s.finishAttemptAfterExecution(parent, ctx, runID, attemptID, "failed", "", "execution_persistence_failed")
 		return
@@ -877,15 +959,22 @@ func (s *Store) freezeTelecomRulePack(ctx context.Context, runID, attemptID, com
 }
 
 func guardTelecomReport(caseItem Case, runID, attemptID string, docs []Interpreted, request rulepack.Request, report rulepack.Report, frozenSnapshot []byte) (telecomReviewOutput, error) {
-	capabilityList := capabilitiesForCase(caseItem)
-	if len(capabilityList) != 3 || len(report.Results) != len(capabilityList) {
-		return telecomReviewOutput{}, errors.New("governed report does not contain all mandatory results")
+	capabilityList, err := capabilitiesForSnapshot(caseItem, frozenSnapshot)
+	if err != nil {
+		return telecomReviewOutput{}, err
 	}
-	capabilities := make(map[string]string, len(capabilityList))
-	domains := make(map[string]string, len(capabilityList))
+	if len(capabilityList) == 0 || len(report.Results) != len(capabilityList) {
+		return telecomReviewOutput{}, errors.New("governed report does not contain all declared results")
+	}
+	if isDeclaredReviewCase(caseItem) {
+		pack, parseErr := rulepack.Parse(frozenSnapshot)
+		if parseErr != nil || report.PackHash != pack.Hash() || report.PackID != pack.Manifest().ID || report.PackVersion != pack.Manifest().Version {
+			return telecomReviewOutput{}, errors.New("declared report differs from its frozen RulePack")
+		}
+	}
+	capabilities := make(map[string]governedCapability, len(capabilityList))
 	for _, capability := range capabilityList {
-		capabilities[capability.ruleID] = capability.capabilityID
-		domains[capability.ruleID] = capability.domain
+		capabilities[capability.ruleID] = capability
 	}
 	facts := make(map[string]rulepack.Fact, len(request.Facts))
 	for _, fact := range request.Facts {
@@ -951,8 +1040,10 @@ func guardTelecomReport(caseItem Case, runID, attemptID string, docs []Interpret
 	var draftResultIndexes []int
 	var draftObjectRefs []string
 	for _, result := range report.Results {
-		if capabilities[result.RuleID] == "" || result.CapabilityID != capabilities[result.RuleID] || result.Domain != domains[result.RuleID] ||
-			result.RuleVersion == "" || !result.Mandatory || result.ReasonCode == "" || seenRules[result.RuleID] || seenCapabilities[result.CapabilityID] {
+		expected, known := capabilities[result.RuleID]
+		if !known || result.CapabilityID != expected.capabilityID || result.Domain != expected.domain ||
+			result.RuleVersion == "" || (expected.version != "" && result.RuleVersion != expected.version) || result.Mandatory != expected.mandatory ||
+			result.ReasonCode == "" || seenRules[result.RuleID] || (!isDeclaredReviewCase(caseItem) && seenCapabilities[result.CapabilityID]) {
 			return telecomReviewOutput{}, errors.New("telecom result identity is incomplete or duplicated")
 		}
 		if result.Relation != rulepack.RelationCompatible && result.Relation != rulepack.RelationConflict &&
@@ -1066,7 +1157,7 @@ func guardTelecomReport(caseItem Case, runID, attemptID string, docs []Interpret
 		draftResultIndexes = append(draftResultIndexes, len(output.evaluations)-1)
 		draftObjectRefs = append(draftObjectRefs, objectRef)
 	}
-	if len(seenRules) != len(capabilities) || len(seenCapabilities) != len(capabilities) {
+	if len(seenRules) != len(capabilities) || (!isDeclaredReviewCase(caseItem) && len(seenCapabilities) != len(capabilities)) {
 		return telecomReviewOutput{}, errors.New("telecom report omitted a mandatory rule")
 	}
 	if len(frozenSnapshot) == 0 {
@@ -1252,20 +1343,24 @@ func (s *Store) persistTelecomOutput(ctx context.Context, runID, attemptID strin
 		if err != nil {
 			return err
 		}
+		capabilities, err := capabilitiesForSnapshot(currentCase, attempt.RulePackSnapshot)
+		if err != nil || len(capabilities) == 0 {
+			return errors.New("frozen governed rule coverage is unavailable")
+		}
 		if alreadyPresent {
-			if count != 3 {
+			if count != len(capabilities) {
 				return errors.New("persisted telecom results are incomplete")
 			}
 			return nil
 		}
 		if count != 0 {
-			if count == len(output.evaluations) && len(output.evaluations) == 3 {
+			if count == len(output.evaluations) && len(output.evaluations) == len(capabilities) {
 				return nil
 			}
 			return errors.New("telecom results would overwrite an existing partial report")
 		}
-		if len(output.evaluations) != 3 {
-			return errors.New("telecom persistence requires all three mandatory results")
+		if len(output.evaluations) != len(capabilities) {
+			return errors.New("governed persistence requires every declared result")
 		}
 		if attempt.RulePackCompilerRef != telecom.CompilerRef && attempt.RulePackCompilerRef != governedCompilerMarker {
 			return errors.New("telecom RulePack compiler identity was not frozen before results")
@@ -1292,8 +1387,18 @@ func telecomEvaluationsPresent(st state, attemptID string) (int, error) {
 	if !ok {
 		return 0, errors.New("governed review case is unavailable")
 	}
-	known := make(map[string]bool, 3)
-	for _, capability := range capabilitiesForCase(caseItem) {
+	if isDeclaredReviewCase(caseItem) {
+		pack, err := ParseFrozenGovernedRulePack(attempt, caseItem)
+		if err != nil || pack == nil {
+			return 0, errors.New("declared review has no valid frozen RulePack")
+		}
+	}
+	capabilities, err := capabilitiesForSnapshot(caseItem, attempt.RulePackSnapshot)
+	if err != nil {
+		return 0, err
+	}
+	known := make(map[string]bool, len(capabilities))
+	for _, capability := range capabilities {
 		known[capability.ruleID] = true
 	}
 	if len(known) == 0 {
@@ -1352,7 +1457,7 @@ func (s *Store) runTelecomModelReview(ctx context.Context, runID, attemptID stri
 					modelErr = errModelNotConfigured
 					return modelErr
 				}
-				stored, err := s.snapshotForAttemptContext(stageCtx, attemptID)
+				stored, err := s.snapshotForAttemptMetadataContext(stageCtx, attemptID)
 				if err != nil {
 					modelErr = err
 					return err

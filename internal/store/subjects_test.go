@@ -87,6 +87,29 @@ func TestSubjectWireContractFixtures(t *testing.T) {
 	}
 }
 
+func TestProjectSubjectVersionSerializesEmptyCollectionsAsArrays(t *testing.T) {
+	projected := projectSubjectVersion(SubjectVersion{
+		TenantID: "local-demo", SubjectID: "subject-1", Version: 1,
+		DisplayName: "示例企业", VerificationState: "pending_verification",
+		SourceKind: "user_asserted", BasisSummary: "user supplied",
+		PayloadHash:   "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+		CreatedByUser: "demo-admin", CreatedAt: time.Date(2026, 10, 31, 9, 0, 0, 0, time.UTC),
+	}, false)
+	encoded, err := json.Marshal(projected)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(encoded)
+	for _, key := range []string{`"identity_claims":[]`, `"aliases":[]`} {
+		if !strings.Contains(text, key) {
+			t.Errorf("projection JSON lacks %s: %s", key, text)
+		}
+	}
+	if strings.Contains(text, `"aliases":null`) || strings.Contains(text, `"identity_claims":null`) {
+		t.Errorf("projection serialized empty collections as null: %s", text)
+	}
+}
+
 func TestCaseSubjectCanManageProjectionRequiresManageWritableAndNotReadOnly(t *testing.T) {
 	admin, ok := accounts.ByID("demo-admin")
 	if !ok {

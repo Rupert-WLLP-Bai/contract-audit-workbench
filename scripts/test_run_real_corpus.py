@@ -34,7 +34,7 @@ class RealCorpusRunnerTest(unittest.TestCase):
     def args(self):
         return argparse.Namespace(manifest=self.manifest_path, case_id=None, base="http://localhost", username=None,
                                   env_file=self.root / "absent", review_timeout=10, request_timeout=10,
-                                  model_record_dir=None, model_record_time="record-time")
+                                  model_record_dir=None, model_record_time="record-time", review_scope="full_review")
 
     def test_manifest_rejects_traversal_and_digest_mismatch(self):
         self.manifest["cases"][0]["materials"][0]["path"] = "../contract.pdf"
@@ -95,6 +95,110 @@ class RealCorpusRunnerTest(unittest.TestCase):
         self.assertEqual(result["cases"][0]["attempt_id"], "attempt")
         self.assertEqual(result["model_record_time"], "record-time")
         self.assertEqual(output.stat().st_mode & 0o777, 0o700)
+
+    def test_precheck_accepts_designed_partial_frozen_attempt(self):
+        class FakeAPI:
+            def __init__(self, base, timeout):
+                pass
+            def upload(self, case_id, material):
+                return {"id": "doc"}
+            def request(self, method, path, payload=None, **kwargs):
+                if path == "/api/session":
+                    return {"actor": {"id": "actor"}}
+                if path == "/api/cases":
+                    return {"id": "case"}
+                if path == "/api/cases/case":
+                    return {"documents": [{"id": "doc", "parse_status": "ready"}]}
+                if method == "POST" and path.endswith("/reviews"):
+                    self.scope = (payload or {}).get("scope")
+                    return {"id": "run", "attempt_id": "attempt"}
+                return {"run": {"id": "run", "state": "partial", "partial_reason": "单合同预审仅核对已识别的付款比例"},
+                        "snapshot": {"document_ids": ["doc"]},
+                        "findings": [{"id": "finding"}], "evaluations": [{"id": "evaluation"}],
+                        "review_attempts": {"attempt": {"id": "attempt", "run_id": "run", "finished_at": "t",
+                                                        "history_kind": "frozen", "frozen_result_available": True,
+                                                        "review_scope": {"id": "single_contract_precheck",
+                                                                         "rule_set_id": "single-contract-precheck"}}}}
+        api = FakeAPI("http://localhost", 10)
+        args = self.args()
+        args.review_scope = "single_contract_precheck"
+        with patch.dict(os.environ, {"CAW_DELIVERY_DIR": str(self.root / "delivery")}):
+            with patch.object(runner, "API", lambda base, timeout: api):
+                output = runner.run(args)
+        result = json.loads((output / "result.json").read_text())
+        self.assertEqual(result["status"], "complete")
+        self.assertEqual(api.scope, "single_contract_precheck")
+        case = result["cases"][0]
+        self.assertEqual(case["run_state"], "partial")
+        self.assertEqual(case["precheck"]["findings"], 1)
+        self.assertEqual(case["precheck"]["rule_set"], "single-contract-precheck")
+        self.assertEqual(case["precheck"]["history_kind"], "frozen")
+        self.assertEqual(case["model_call_acceptance"]["status"], "NOT_APPLICABLE")
+
+    def test_precheck_rejects_unfinished_attempt(self):
+        class FakeAPI:
+            def __init__(self, base, timeout):
+                pass
+            def upload(self, case_id, material):
+                return {"id": "doc"}
+            def request(self, method, path, payload=None, **kwargs):
+                if path == "/api/session":
+                    return {"actor": {"id": "actor"}}
+                if path == "/api/cases":
+                    return {"id": "case"}
+                if path == "/api/cases/case":
+                    return {"documents": [{"id": "doc", "parse_status": "ready"}]}
+                if method == "POST" and path.endswith("/reviews"):
+                    return {"id": "run", "attempt_id": "attempt"}
+                return {"run": {"id": "run", "state": "partial"}, "snapshot": {"document_ids": ["doc"]},
+                        "review_attempts": {"attempt": {"id": "attempt", "run_id": "run", "finished_at": "t",
+                                                        "history_kind": "frozen", "frozen_result_available": False,
+                                                        "review_scope": {"id": "single_contract_precheck"}}}}
+        args = self.args()
+        args.review_scope = "single_contract_precheck"
+        with patch.dict(os.environ, {"CAW_DELIVERY_DIR": str(self.root / "delivery")}):
+            with patch.object(runner, "API", FakeAPI):
+                with self.assertRaises(runner.RunnerError):
+                    runner.run(args)
+        result = json.loads(next((self.root / "delivery").glob("test-runs/real-corpus-*/result.json")).read_text())
+        self.assertEqual(result["cases"][0]["status"], "failed")
+
+    def precheck_workspace(self, **attempt):
+        base = {"id": "attempt", "run_id": "run", "finished_at": "t", "history_kind": "frozen",
+                "frozen_result_available": True,
+                "review_scope": {"id": "single_contract_precheck", "rule_set_id": "single-contract-precheck"}}
+        base.update(attempt)
+        return {"run": {"id": "run", "state": "partial"}, "snapshot": {"document_ids": ["doc"]},
+                "review_attempts": {"attempt": base}}
+
+    def run_precheck_workspace(self, workspace):
+        class FakeAPI:
+            def __init__(self, base, timeout):
+                pass
+            def upload(self, case_id, material):
+                return {"id": "doc"}
+            def request(self, method, path, payload=None, **kwargs):
+                if path == "/api/session":
+                    return {"actor": {"id": "actor"}}
+                if path == "/api/cases":
+                    return {"id": "case"}
+                if path == "/api/cases/case":
+                    return {"documents": [{"id": "doc", "parse_status": "ready"}]}
+                if method == "POST" and path.endswith("/reviews"):
+                    return {"id": "run", "attempt_id": "attempt"}
+                return workspace
+        args = self.args()
+        args.review_scope = "single_contract_precheck"
+        with patch.dict(os.environ, {"CAW_DELIVERY_DIR": str(self.root / "delivery")}):
+            with patch.object(runner, "API", FakeAPI):
+                with self.assertRaises(runner.RunnerError):
+                    runner.run(args)
+
+    def test_precheck_rejects_foreign_attempt_identity(self):
+        self.run_precheck_workspace(self.precheck_workspace(id="other-attempt"))
+
+    def test_precheck_rejects_unfrozen_history(self):
+        self.run_precheck_workspace(self.precheck_workspace(history_kind="live"))
 
     def test_invalid_input_leaves_failure_checkpoint(self):
         self.original.write_bytes(b"changed")

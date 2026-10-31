@@ -51,7 +51,7 @@ export function SubjectSourceVerificationPanel({
     setError(null);
     setResult(null);
     try {
-      const input = { source_id: source.source_id, expected_source_version: source.source_version };
+      const input = { source_catalog_id: source.source_id, expected_source_version: source.source_version };
       const pending = await pendingMutationKey(
         "subject.source-snapshot.create",
         idempotencyActorScope(session.data),
@@ -89,7 +89,6 @@ export function SubjectSourceVerificationPanel({
     const input = {
       subject_id: binding.subject.subject_id,
       expected_subject_version: binding.subject.version,
-      expected_binding_id: binding.binding_id,
     };
     try {
       const pending = await pendingMutationKey(

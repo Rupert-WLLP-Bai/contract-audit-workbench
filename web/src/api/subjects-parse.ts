@@ -125,8 +125,11 @@ function principal(value: unknown, path: string): SubjectPrincipal {
   const record = object(value, path);
   return {
     user_id: text(record, "user_id", path),
-    issuer: text(record, "issuer", path),
-    subject: text(record, "subject", path),
+    // The fixed local demonstration directory carries no SSO identity; only
+    // enterprise directory records must have issuer/subject, so both stay
+    // required keys that may be empty strings.
+    issuer: textAllowEmpty(record, "issuer", path),
+    subject: textAllowEmpty(record, "subject", path),
   };
 }
 
@@ -368,13 +371,12 @@ function summary(value: unknown): SubjectChangeSummary {
     request_id: text(record, "request_id", path),
     target_kind: enumField(record, "target_kind", changeTargets, path),
     state: enumField(record, "state", changeStates, path),
-    source_case_id: text(record, "source_case_id", path),
     target_subject_id: text(record, "target_subject_id", path),
     target_binding_id: nullableText(record, "target_binding_id", path),
     expected_subject_version: positiveInteger(record, "expected_subject_version", path),
     expected_binding_version: record.expected_binding_version === null ? null : positiveInteger(record, "expected_binding_version", path),
     payload_hash: hash(record, "payload_hash", path),
-    proposer: principal(record.proposer, `${path}.proposer`),
+    proposed_by: principal(record.proposed_by, `${path}.proposed_by`),
     proposed_by_display_name: text(record, "proposed_by_display_name", path),
     can_decide: booleanField(record, "can_decide", path),
     decision_blocked_reason: nullableText(record, "decision_blocked_reason", path),
@@ -577,8 +579,8 @@ function impactCases(value: unknown, path: string) {
     const record = object(item, itemPath);
     return {
       case_id: text(record, "case_id", itemPath),
-      case_name: text(record, "case_name", itemPath),
-      status: text(record, "status", itemPath),
+      case_title: text(record, "case_title", itemPath),
+      business_status: text(record, "business_status", itemPath),
     };
   });
 }
@@ -616,11 +618,10 @@ export function parseSubjectChangeProposalResult(value: unknown): SubjectChangeP
 export function parseSubjectChangeDetail(value: unknown): SubjectChangeDetail {
   const path = "subject change detail";
   const record = object(value, path);
-  const detail = object(record.detail, `${path}.detail`);
-  const subjectSummary = summary(detail.summary);
-  const proposedBy = text(detail, "proposed_by_display_name", `${path}.detail`);
-  const canDecide = booleanField(detail, "can_decide", `${path}.detail`);
-  const blockedReason = nullableText(detail, "decision_blocked_reason", `${path}.detail`);
+  const subjectSummary = summary(record.summary);
+  const proposedBy = text(record, "proposed_by_display_name", path);
+  const canDecide = booleanField(record, "can_decide", path);
+  const blockedReason = nullableText(record, "decision_blocked_reason", path);
   if (subjectSummary.proposed_by_display_name !== proposedBy || subjectSummary.can_decide !== canDecide || subjectSummary.decision_blocked_reason !== blockedReason)
     return fail(`${path}.decision_capability`);
   return {
@@ -628,11 +629,10 @@ export function parseSubjectChangeDetail(value: unknown): SubjectChangeDetail {
     proposed_by_display_name: proposedBy,
     can_decide: canDecide,
     decision_blocked_reason: blockedReason,
-    before: targetProjection(detail.before, subjectSummary.target_kind),
-    after: targetProjection(detail.after, subjectSummary.target_kind),
-    basis_refs: array(detail, "basis_refs", `${path}.detail`, basisRef),
-    impact_etag: text(detail, "impact_etag", `${path}.detail`),
-    authorized_impact_cases: impactCases(detail.authorized_impact_cases, `${path}.detail.authorized_impact_cases`),
+    before: targetProjection(record.before, subjectSummary.target_kind),
+    after: targetProjection(record.after, subjectSummary.target_kind),
+    basis_note: textAllowEmpty(record, "basis_note", path),
+    basis_refs: array(record, "basis_refs", path, basisRef),
   };
 }
 
@@ -654,7 +654,7 @@ export function parseSubjectChangeImpact(
     basis_refs: array(record, "basis_refs", path, basisRef),
     impact_etag: text(record, "impact_etag", path),
     visible_affected_count: nonNegativeInteger(record, "visible_affected_count", path),
-    affected_cases: impactCases(record.affected_cases, path),
+    authorized_impact_cases: impactCases(record.authorized_impact_cases, `${path}.authorized_impact_cases`),
   };
 }
 

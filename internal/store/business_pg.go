@@ -187,10 +187,10 @@ func loadBusinessState(ctx context.Context, q queryer, st *state) error {
 	return nil
 }
 
-func loadBusinessGenerations(ctx context.Context, q queryer) ([]generationRecord, error) {
-	rows, err := q.Query(ctx, `SELECT g.id, g.tenant_id, g.org_id, g.case_id, g.document_id, g.template_id, g.template_version,
+func loadBusinessGenerations(ctx context.Context, q queryer, caseID ...string) ([]generationRecord, error) {
+	rows, err := queryCaseRows(ctx, q, `SELECT g.id, g.tenant_id, g.org_id, g.case_id, g.document_id, g.template_id, g.template_version,
         g.digest, d.digest, g.created_at FROM business_generations g JOIN documents d
-        ON d.tenant_id=g.tenant_id AND d.org_id=g.org_id AND d.case_id=g.case_id AND d.id=g.document_id ORDER BY g.seq`)
+        ON d.tenant_id=g.tenant_id AND d.org_id=g.org_id AND d.case_id=g.case_id AND d.id=g.document_id`, `g.case_id=$1`, ` ORDER BY g.seq`, caseID...)
 	if err != nil {
 		return nil, fmt.Errorf("load business generations: %w", err)
 	}
@@ -214,10 +214,10 @@ func loadBusinessGenerations(ctx context.Context, q queryer) ([]generationRecord
 	return out, nil
 }
 
-func loadBusinessRemediations(ctx context.Context, q queryer) ([]remediationRecord, error) {
-	rows, err := q.Query(ctx, `SELECT id, tenant_id, org_id, case_id, run_id, attempt_id, finding_ids, assignee_id, due_at,
+func loadBusinessRemediations(ctx context.Context, q queryer, caseID ...string) ([]remediationRecord, error) {
+	rows, err := queryCaseRows(ctx, q, `SELECT id, tenant_id, org_id, case_id, run_id, attempt_id, finding_ids, assignee_id, due_at,
 		measure, status, version, document_ids, reason, verification_run_id, verification_attempt_id, created_at, updated_at
-		FROM business_remediations ORDER BY seq`)
+		FROM business_remediations`, `case_id=$1`, ` ORDER BY seq`, caseID...)
 	if err != nil {
 		return nil, fmt.Errorf("load business remediations: %w", err)
 	}
@@ -251,8 +251,8 @@ func loadBusinessRemediations(ctx context.Context, q queryer) ([]remediationReco
 	}
 	rows.Close()
 
-	revisions, err := q.Query(ctx, `SELECT remediation_id, tenant_id, org_id, case_id, version, recorded_at, record_json::text
-		FROM business_remediation_revisions ORDER BY seq`)
+	revisions, err := queryCaseRows(ctx, q, `SELECT remediation_id, tenant_id, org_id, case_id, version, recorded_at, record_json::text
+		FROM business_remediation_revisions`, `case_id=$1`, ` ORDER BY seq`, caseID...)
 	if err != nil {
 		return nil, fmt.Errorf("load business remediation revisions: %w", err)
 	}

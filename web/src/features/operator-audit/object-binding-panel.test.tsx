@@ -24,11 +24,13 @@ const contractObjects: ContractObjectOption[] = [
     objectType: "contract_line",
     objectId: "line-1",
     label: "政企专线合同",
+    serviceObjectId: "svc-1", objectVersion: 2, associationVersion: 1,
   },
   {
     objectType: "contract_line",
     objectId: "line-2",
     label: "政企专线合同（扩容）",
+    serviceObjectId: "svc-2", objectVersion: 2, associationVersion: 1,
   },
 ];
 
@@ -116,6 +118,9 @@ describe("object binding panel", () => {
         connector_id: "fixture.oss",
         external_object_id: "fixture-line-001",
       },
+      service_object_id: "svc-1",
+      expected_object_version: 2,
+      expected_association_version: 1,
       effective_from: null,
       effective_until: null,
       confirmed: true,

@@ -1,11 +1,19 @@
+# Rendered by restore-test-db.sh; do not apply this template directly.
 apiVersion: postgresql.cnpg.io/v1
 kind: Cluster
 metadata:
-  generateName: contract-audit-test-restore-
+  name: __RESTORE_NAME__
   namespace: contract-audit-test
-  labels: {app.kubernetes.io/part-of: contract-audit}
+  labels: {app.kubernetes.io/part-of: contract-audit, environment: test}
+  annotations:
+    contract-audit.test/backup-name: __BACKUP_NAME__
+    contract-audit.test/backup-uid: __BACKUP_UID__
+    contract-audit.test/source-uid: __SOURCE_UID__
+    contract-audit.test/backup-id: __BACKUP_ID_ANNOTATION__
+    contract-audit.test/target-time: __TARGET_TIME_ANNOTATION__
 spec:
   instances: 1
+  imageName: __POSTGRES_IMAGE__
   enablePDB: false
   storage: {size: 20Gi}
   walStorage: {size: 5Gi}
@@ -13,19 +21,16 @@ spec:
     recovery:
       source: contract-audit-test-backup-source
       recoveryTarget:
-        targetImmediate: true
+        backupID: __BACKUP_ID__
+        targetTime: __TARGET_TIME__
   externalClusters:
     - name: contract-audit-test-backup-source
       plugin:
         name: barman-cloud.cloudnative-pg.io
         parameters:
           barmanObjectName: contract-audit-test-backups
-          serverName: contract-audit-test-db
-  plugins:
-    - name: barman-cloud.cloudnative-pg.io
-      isWALArchiver: true
-      parameters:
-        barmanObjectName: contract-audit-test-backups
+          serverName: __SERVER_NAME__
+  # The restored cluster must not archive or write backups to the source store.
   resources:
     requests: {cpu: 250m, memory: 512Mi}
     limits: {cpu: "1", memory: 2Gi}

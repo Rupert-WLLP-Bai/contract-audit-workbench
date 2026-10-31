@@ -18,6 +18,7 @@ import { CaseSubjectRolesPanel } from "../components/case-subject-roles-panel";
 import { CaseSubjectCorrectionsPanel } from "../components/case-subject-corrections-panel";
 import { CaseLegalApplicabilityPanel } from "../components/case-legal-applicability-panel";
 import { ReportArchivePanel } from "../components/report-archive-panel";
+import { EvidenceSLADashboard } from "../components/evidence-sla-dashboard";
 import { RemediationPanel } from "../components/remediation-panel";
 import { TemplateGenerationPanel } from "../components/template-generation-panel";
 import { StatusText } from "../components/status-text";
@@ -175,6 +176,10 @@ export function CaseDetailPage() {
           ，更新于 {formatDateTime(item.updated_at)}
           </p>
         </div>
+        <EvidenceSLADashboard
+          mode="reminder"
+          cases={[{ id: item.id, title: item.title }]}
+        />
         <Button href={`/cases/${encodeURIComponent(item.id)}/legal-knowledge`}>法律知识</Button>
         {run ? (
           <Button

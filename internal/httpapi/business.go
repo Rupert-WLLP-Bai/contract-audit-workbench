@@ -85,7 +85,12 @@ func (h *handler) createReport(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
-	item, err := h.store.CreateReportContext(r.Context(), user, r.PathValue("caseID"), body.RunID, body.AttemptID)
+	key, err := writeIdempotencyKey(r)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	item, err := h.store.CreateReportWithIdempotency(r.Context(), user, r.PathValue("caseID"), body.RunID, body.AttemptID, key)
 	if err != nil {
 		writeErr(w, err)
 		return

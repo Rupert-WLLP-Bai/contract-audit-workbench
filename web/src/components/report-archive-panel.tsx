@@ -383,6 +383,9 @@ function ReportHistory({
                   >
                     查看 JSON 报告
                   </a>
+                  <a href={paths.reportEvidenceBundle(caseId, report.id)}>
+                    下载可验签证据包（含 PDF 和原件）
+                  </a>
                 </div>
               ) : (
                 <p className="meta">当前身份没有报告读取权限。</p>

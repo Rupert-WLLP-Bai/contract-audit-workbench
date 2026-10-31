@@ -556,7 +556,8 @@ func projectSubjectVersion(version SubjectVersion, revealIdentifiers bool) Subje
 	for _, claim := range version.IdentityClaims {
 		identityClaims = append(identityClaims, projectIdentityClaim(claim, revealIdentifiers))
 	}
-	aliases := append([]SubjectAlias(nil), version.Aliases...)
+	aliases := make([]SubjectAlias, len(version.Aliases))
+	copy(aliases, version.Aliases)
 	return SubjectVersionProjection{
 		SubjectID: version.SubjectID, Version: version.Version, DisplayName: version.DisplayName,
 		LegalName: nullableSubjectName(version.LegalName), VerificationState: version.VerificationState,

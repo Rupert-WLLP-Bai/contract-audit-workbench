@@ -133,8 +133,8 @@ func loadWorkbenchState(ctx context.Context, q queryer, st *state) error {
 	return nil
 }
 
-func loadWorkbenchProfiles(ctx context.Context, q queryer) ([]caseProfileRecord, error) {
-	rows, err := q.Query(ctx, `SELECT tenant_id, org_id, case_id, number, version, record_json FROM business_case_profiles ORDER BY seq`)
+func loadWorkbenchProfiles(ctx context.Context, q queryer, caseID ...string) ([]caseProfileRecord, error) {
+	rows, err := queryCaseRows(ctx, q, `SELECT tenant_id, org_id, case_id, number, version, record_json FROM business_case_profiles`, `case_id=$1`, ` ORDER BY seq`, caseID...)
 	if err != nil {
 		return nil, err
 	}
@@ -159,8 +159,8 @@ func loadWorkbenchProfiles(ctx context.Context, q queryer) ([]caseProfileRecord,
 	return out, rows.Err()
 }
 
-func loadWorkbenchTasks(ctx context.Context, q queryer) ([]workbenchTaskRecord, error) {
-	rows, err := q.Query(ctx, `SELECT tenant_id, org_id, id, case_id, version, record_json FROM business_workbench_tasks ORDER BY seq`)
+func loadWorkbenchTasks(ctx context.Context, q queryer, caseID ...string) ([]workbenchTaskRecord, error) {
+	rows, err := queryCaseRows(ctx, q, `SELECT tenant_id, org_id, id, case_id, version, record_json FROM business_workbench_tasks`, `case_id=$1`, ` ORDER BY seq`, caseID...)
 	if err != nil {
 		return nil, err
 	}

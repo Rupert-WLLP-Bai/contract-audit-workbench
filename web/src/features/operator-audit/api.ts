@@ -27,6 +27,7 @@ import type {
   ExternalObservation,
   FulfillmentEvaluation,
   FulfillmentEvaluationInput,
+  FulfillmentObject,
   FulfillmentEvaluationRef,
   ImpactAction,
   ImpactCheck,
@@ -386,15 +387,54 @@ export function parseFulfillmentEvaluationRef(
   };
 }
 
+function parseFulfillmentObject(value: unknown): FulfillmentObject {
+  const item = asRecord(value, "evaluation object");
+  const source = item.source == null ? null : asRecord(item.source, "evaluation object source");
+  return {
+    objectRef: requiredString(item.object_ref, "object_ref"),
+    serviceObjectId: optionalString(item.service_object_id),
+    objectVersion: optionalNumber(item.object_version),
+    associationVersion: optionalNumber(item.association_version),
+    associationRunId: optionalString(item.association_run_id),
+    associationAttemptId: optionalString(item.association_attempt_id),
+    mappingId: optionalString(item.mapping_id),
+    mappingVersion: optionalNumber(item.mapping_version),
+    bindingVersion: optionalString(item.binding_version),
+    snapshotSetId: optionalString(item.snapshot_set_id),
+    snapshotCollectedAt: optionalString(item.snapshot_collected_at),
+    status: optionalString(item.status),
+    reasonCode: optionalString(item.reason_code),
+    factsSha256: optionalString(item.facts_sha256),
+    factRefs: recordList(item.fact_refs, "fact_refs"),
+    facts: recordList(item.facts, "object facts").map(parseContractFact),
+    checks: recordList(item.checks, "object checks").map(parseCheckResult),
+    source: source === null ? null : {
+      runId: optionalString(source.run_id),
+      attemptId: optionalString(source.attempt_id),
+      associationRunId: optionalString(source.association_run_id),
+      associationAttemptId: optionalString(source.association_attempt_id),
+      materialId: optionalString(source.material_id),
+      materialVersion: optionalNumber(source.material_version),
+      documentId: optionalString(source.document_id),
+      parsedDocumentId: optionalString(source.parsed_document_id),
+      purpose: optionalString(source.purpose),
+    },
+  };
+}
+
 export function parseFulfillmentEvaluation(
   value: unknown,
 ): FulfillmentEvaluation {
   const item = unwrap(value, "evaluation", "fulfillment evaluation");
+  const scope = item.scope == null ? null : asRecord(item.scope, "evaluation scope");
+  const coverage = item.coverage == null ? null : asRecord(item.coverage, "evaluation coverage");
   return {
     evaluationId: requiredString(
       item.evaluation_id ?? item.id,
       "evaluation_id",
     ),
+    sourceReviewId: optionalString(item.source_review_id),
+    sourceAttemptId: optionalString(item.source_attempt_id),
     pack: parsePackRef(item.pack_ref ?? item.pack),
     contractVersion: optionalString(
       item.contract_version ?? item.contract_version_id,
@@ -403,6 +443,21 @@ export function parseFulfillmentEvaluation(
     objectBindingVersion: optionalString(item.object_binding_version),
     snapshotSetId: optionalString(item.snapshot_set_id),
     businessAt: optionalString(item.business_at),
+    evidenceCutoffAt: optionalString(item.evidence_cutoff_at),
+    scope: scope === null ? null : {
+      kind: optionalString(scope.kind),
+      serviceObjectIds: stringList(scope.service_object_ids),
+    },
+    coverage: coverage === null ? null : {
+      scopeKind: optionalString(coverage.scope_kind),
+      candidateCount: optionalNumber(coverage.candidate_count),
+      evaluatedCount: optionalNumber(coverage.evaluated_count),
+      unresolvedCount: optionalNumber(coverage.unresolved_count),
+      insufficientCount: optionalNumber(coverage.insufficient_count),
+      status: optionalString(coverage.status),
+      reasonCode: optionalString(coverage.reason_code),
+    },
+    objects: recordList(item.objects, "evaluation objects").map(parseFulfillmentObject),
     checks: recordList(item.checks, "checks").map(parseCheckResult),
     contractFacts: recordList(item.contract_facts, "contract_facts").map(
       parseContractFact,

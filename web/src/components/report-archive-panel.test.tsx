@@ -11,6 +11,7 @@ import { ReportArchivePanel } from "./report-archive-panel";
 
 const at = "2026-10-21T06:00:00Z";
 const clients: QueryClient[] = [];
+const actor = { id: "reviewer-1", display_name: "审查员", role: "reviewer", tenant_id: "tenant-1", org_id: "org-1", audience: "client" };
 const detail: CaseDetail = {
   id: "case-1",
   title: "合同",
@@ -135,6 +136,8 @@ function open(
       mutations: { retry: false },
     },
   });
+  client.setQueryDefaults(["session", "client"], { gcTime: Infinity });
+  client.setQueryData(["session", "client"], actor);
   clients.push(client);
   render(
     <QueryClientProvider client={client}>
@@ -348,6 +351,8 @@ function renderArchive(options: {
       mutations: { retry: false },
     },
   });
+  client.setQueryDefaults(["session", "client"], { gcTime: Infinity });
+  client.setQueryData(["session", "client"], actor);
   clients.push(client);
   const caseDetail = options.detail ?? detail;
   const view = render(

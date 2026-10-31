@@ -289,7 +289,11 @@ func TestReopenMarksUnfinishedAttemptInterrupted(t *testing.T) {
 	seen := st.snapshot()
 	documents := currentDocuments(seen.documents(caseID))
 	documentSet := documentIDs(documents)
-	signature := st.currentSignature(documentSet)
+	frozen, selections, err := st.acceptanceParsePlan(context.Background(), seen, seen.documents(caseID), st.currentModels())
+	if err != nil {
+		t.Fatal(err)
+	}
+	signature := st.currentSignature(documentSet, frozen)
 	runID, err := newID("run_")
 	if err != nil {
 		t.Fatal(err)
@@ -304,8 +308,16 @@ func TestReopenMarksUnfinishedAttemptInterrupted(t *testing.T) {
 		if err := sealSnapshot(next, runID, signature); err != nil {
 			return err
 		}
-		attempt := Attempt{ID: attemptID, RunID: runID, Ordinal: 1, State: "accepted", AcceptedAt: acceptedAt, HistoryKind: "frozen"}
+		// A durable review is accepted as "preparing": the parse selection is
+		// already pinned but the input stays unfrozen until the worker prepares
+		// it, so this is exactly the state a crash can leave behind.
+		attempt := Attempt{ID: attemptID, RunID: runID, Ordinal: 1, State: "accepted", AcceptedAt: acceptedAt, HistoryKind: "preparing"}
 		next.Attempts = append(next.Attempts, attempt)
+		for _, selection := range selections {
+			selection.AttemptID = attemptID
+			selection.RunID = runID
+			next.AttemptParseSelections = append(next.AttemptParseSelections, selection)
+		}
 		next.ExecutionEvents = append(next.ExecutionEvents, acceptedEvent(attempt))
 		appendRunEvent(next, runID, "accepted")
 		return nil

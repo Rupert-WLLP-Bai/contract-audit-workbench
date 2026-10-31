@@ -122,10 +122,6 @@ func textual(filename, media string, body []byte) bool {
 	}
 }
 
-func (s *Store) interpret(doc Document) Interpreted {
-	return s.interpretStored(doc)
-}
-
 func (st *state) caseByID(id string) (Case, bool) {
 	for _, item := range st.Cases {
 		if item.ID == id {
@@ -327,14 +323,6 @@ func (st *state) runEvents(runID string) []Event {
 		if item.RunID == runID {
 			out = append(out, item)
 		}
-	}
-	return out
-}
-
-func (s *Store) interpretAll(docs []Document) []Interpreted {
-	out := make([]Interpreted, len(docs))
-	for i, doc := range docs {
-		out[i] = s.interpret(doc)
 	}
 	return out
 }

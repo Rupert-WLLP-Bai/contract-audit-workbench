@@ -815,6 +815,11 @@ def evaluate_relationships(pg: PgAccess, database: str, schema: str, snapshot: s
     return result
 
 
+def remote_object_key(tenant: str, case: str, digest: str) -> str:
+    """Match internal/store.objectKey for immutable originals."""
+    return f"{tenant}/{case}/{digest}"
+
+
 def copy_objects(referenced: list[tuple[str, str, str, int, str]], local_objects: LocalObjects | None,
                  s3: S3Objects | None, source_bucket: str, destination_bucket: str,
                  destination_root: Path) -> dict[str, object]:
@@ -824,7 +829,7 @@ def copy_objects(referenced: list[tuple[str, str, str, int, str]], local_objects
     local_failures: list[str] = local_report["failures"]  # type: ignore[assignment]
     remote_failures: list[str] = remote_report["failures"]  # type: ignore[assignment]
     seen_local: set[str] = set()
-    seen_remote: set[tuple[str, str, str]] = set()
+    seen_remote: set[str] = set()
     for tenant, case, digest, size, backend in referenced:
         if backend == "local":
             if digest in seen_local:
@@ -852,7 +857,7 @@ def copy_objects(referenced: list[tuple[str, str, str, int, str]], local_objects
                     stream.write(data)
             local_report["copied"] = int(local_report["copied"]) + 1
         else:
-            key = f"{tenant}/{case}/{digest}"
+            key = remote_object_key(tenant, case, digest)
             if key in seen_remote:
                 continue
             seen_remote.add(key)
@@ -880,7 +885,7 @@ def verify_object_layout(referenced: list[tuple[str, str, str, int, str]], desti
     failures: list[str] = []
     report: dict[str, object] = {}
     expected_local = {digest for _t, _c, digest, _s, backend in referenced if backend == "local"}
-    expected_remote = {f"{tenant}/{case}/{digest}" for tenant, case, digest, _s, backend in referenced
+    expected_remote = {remote_object_key(tenant, case, digest) for tenant, case, digest, _s, backend in referenced
                        if backend == "remote"}
     if expected_local:
         blobs = destination_root / "blobs" if destination_root else None
@@ -925,7 +930,7 @@ def verify_destination_bytes(pg: PgAccess, database: str, schema: str, destinati
                 failures.append(f"{digest}: no destination bucket client")
                 continue
             try:
-                data = s3.read(destination_bucket, f"{tenant}/{case}/{digest}")
+                data = s3.read(destination_bucket, remote_object_key(tenant, case, digest))
             except Failure as error:
                 failures.append(f"{tenant}/{case}/{digest}: {error}")
                 continue

@@ -43,21 +43,14 @@ func (s *Store) GetReviewReadiness(ctx context.Context, user accounts.User, case
 	}
 	cutoffNow := time.Now().UTC().Truncate(time.Microsecond)
 
-	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
+	tx, _, caseItem, err := s.beginCaseRead(ctx, current, caseID)
 	if err != nil {
 		return ReviewReadiness{}, err
 	}
 	defer tx.Rollback(ctx)
-	if err := setLocalScope(ctx, tx, userScope(current)); err != nil {
-		return ReviewReadiness{}, err
-	}
-	st, err := loadState(ctx, tx, false)
+	st, err := loadReadinessCaseState(ctx, tx, caseItem)
 	if err != nil {
 		return ReviewReadiness{}, err
-	}
-	caseItem, ok := st.caseByID(caseID)
-	if !ok || !authorizeCase(caseItem, current, access.Read) {
-		return ReviewReadiness{}, fault.NotFound("没有找到对应记录")
 	}
 	// Match acceptance: legacy ungoverned cases need an explicit business
 	// instant only after a service object has been registered. Never substitute

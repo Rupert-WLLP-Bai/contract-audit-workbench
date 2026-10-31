@@ -9,6 +9,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5"
+
 	"contractaudit/internal/access"
 	"contractaudit/internal/accounts"
 	"contractaudit/internal/fault"
@@ -25,18 +27,80 @@ func (s *Store) update(fn func(*state) error) error {
 	return s.updateState(context.Background(), localDemoScope("test"), "", fn)
 }
 
+// fixtureSnapshot explicitly reloads history for assertions that inspect the
+// durable store. Production snapshots intentionally omit these timelines.
+func (s *Store) fixtureSnapshot(scope dbScope, runID, attemptID string) (state, error) {
+	ctx := context.Background()
+	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
+	if err != nil {
+		return state{}, err
+	}
+	defer tx.Rollback(ctx)
+	if err := setLocalScope(ctx, tx, scope); err != nil {
+		return state{}, err
+	}
+	st, err := loadState(ctx, tx, false)
+	if err != nil {
+		return state{}, err
+	}
+	var executionQuery, timelineQuery queryer = tx, tx
+	var attemptIDs []string
+	if attemptID != "" {
+		executionQuery = readRows(tx, "attempt_id=$1", attemptID)
+		attemptIDs = []string{attemptID}
+	} else {
+		for _, attempt := range st.Attempts {
+			attemptIDs = append(attemptIDs, attempt.ID)
+		}
+	}
+	if runID != "" {
+		timelineQuery = unionReadRows{tx: tx, predicate: "run_id=$1", order: "run_id,event_seq", args: []any{runID}}
+	}
+	if st.ExecutionEvents, err = loadExecutionEvents(ctx, executionQuery); err != nil {
+		return state{}, err
+	}
+	if st.Events, err = loadEvents(ctx, timelineQuery); err != nil {
+		return state{}, err
+	}
+	var auditQuery queryer = tx
+	if runID != "" {
+		auditQuery = unionReadRows{tx: tx, predicate: "run_id=$1", order: "seq,event_id", args: []any{runID}}
+	}
+	if st.Audits, err = loadAudits(ctx, auditQuery); err != nil {
+		return state{}, err
+	}
+	if len(attemptIDs) != 0 {
+		rows, err := tx.Query(ctx, jobSelectSQL+` WHERE attempt_id=ANY($1) ORDER BY created_at,id`, attemptIDs)
+		if err != nil {
+			return state{}, err
+		}
+		if st.Jobs, err = scanJobs(rows); err != nil {
+			return state{}, err
+		}
+	}
+	st.normalize()
+	if err := tx.Commit(ctx); err != nil {
+		return state{}, err
+	}
+	return st, nil
+}
+
 func (s *Store) snapshot() state {
-	st, err := s.snapshotScoped(context.Background(), localDemoScope("test"))
+	st, err := s.fixtureSnapshot(localDemoScope("test"), "", "")
 	if err != nil {
 		return state{}
 	}
-	s.mu.Lock()
-	s.st = st
-	s.mu.Unlock()
+	// Clone before publishing: the assignment below makes the freshly loaded
+	// row slices reachable from s.st, and a concurrent writer holding mu mutates
+	// those same slices in place. Cloning afterwards would read shared memory
+	// without mu and race with patchStateProjectionLocked.
 	out, err := st.clone()
 	if err != nil {
 		return st
 	}
+	s.mu.Lock()
+	s.st = st
+	s.mu.Unlock()
 	return out
 }
 

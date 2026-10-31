@@ -10,6 +10,7 @@ import {
   type KnowledgeVersion, type PolicyPreview,
 } from "../api/governed-knowledge";
 import { KnowledgeEditor, emptyKnowledgeContent, validateKnowledgeDraft, type KnowledgeFormIssue } from "../components/governed-knowledge-editor";
+import { ExperienceMetricsPanel } from "../components/experience-metrics-panel";
 import { PageStatus } from "../components/page-status";
 import { StatusText } from "../components/status-text";
 import { LegalKnowledgeAdminList } from "./legal-knowledge-page";
@@ -467,6 +468,7 @@ function GovernedKnowledgeDetail() {
     <DetailHeader knowledgeId={knowledgeId} versionId={versionId} content={content} version={version} />
     <VersionSection version={version} content={content} />
     <PreviewSection kind={content.kind} preview={preview} />
+    {content.kind === "experience" && <ExperienceMetricsPanel version={version} />}
     <ActionSection version={version} action={action} detailKey={detailKey} detail={detail} command={command} />
     <HistorySection history={history} />
   </section>;

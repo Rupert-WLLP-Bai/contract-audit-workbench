@@ -45,6 +45,45 @@ describe("service object API", () => {
     expect(parseServiceObjectMutationResult(raw.mutation_result)).toEqual({ service_object_id: "svc-wire-001", version: 2, association_version: 1 });
   });
 
+  it("accepts empty business fields returned by the store", () => {
+    const raw = fixture();
+    const summaryPage = raw.summary_page as { items: Array<Record<string, unknown>> };
+    expect(parseServiceObjectList({
+      ...raw.summary_page as object,
+      items: [{ ...summaryPage.items[0], business_code: "" }],
+    }).items[0]?.business_code).toBe("");
+
+    const detail = raw.detail as { identity: Record<string, unknown> };
+    expect(parseServiceObjectDetail({
+      ...raw.detail as object,
+      identity: { ...detail.identity, business_code: "", basis_summary: "" },
+    }).identity).toMatchObject({ business_code: "", basis_summary: "" });
+  });
+
+  it("accepts Go JSON timestamps with explicit UTC offsets", () => {
+    const raw = fixture();
+    const timestamp = "2026-11-01T00:44:30.013916+08:00";
+    const detail = raw.detail as { identity: Record<string, unknown>; association: Record<string, unknown> };
+    const parsedDetail = parseServiceObjectDetail({
+      ...raw.detail as object,
+      identity: { ...detail.identity, created_at: timestamp, effective_from: timestamp },
+      association: { ...detail.association, created_at: timestamp, confirmed_at: timestamp },
+    });
+    expect(parsedDetail.identity).toMatchObject({ created_at: timestamp, effective_from: timestamp });
+    expect(parsedDetail.association).toMatchObject({ created_at: timestamp, confirmed_at: timestamp });
+
+    const versionPage = raw.version_page as { items: Array<Record<string, unknown>> };
+    expect(parseServiceObjectVersionPage({
+      ...raw.version_page as object,
+      items: [{ ...versionPage.items[0], created_at: timestamp, effective_from: timestamp }],
+    }).items[0]).toMatchObject({ created_at: timestamp, effective_from: timestamp });
+
+    const associationPage = raw.association_page as { items: Array<Record<string, unknown>> };
+    expect(parseServiceObjectAssociationPage({
+      ...raw.association_page as object,
+      items: [{ ...associationPage.items[0], created_at: timestamp, confirmed_at: timestamp }],
+    }).items[0]).toMatchObject({ created_at: timestamp, confirmed_at: timestamp });
+  });
   it("rejects invalid digest, lifecycle state, and permission values", () => {
     const raw = fixture();
     const list = raw.summary_page as { items: Array<Record<string, unknown>>; next_cursor: null };

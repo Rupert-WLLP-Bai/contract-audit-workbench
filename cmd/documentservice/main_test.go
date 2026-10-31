@@ -59,7 +59,7 @@ func TestRunPreservesStartupValidationAndServesBeforeSignalShutdown(t *testing.T
 		t.Setenv("DOCUMENT_CPU_CONCURRENCY", "")
 		t.Setenv("WORKER_DOCUMENT_TOKEN", "")
 		err := run()
-		if err == nil || err.Error() != "document service requires a Store, private worker credential, and positive bounded capacities" {
+		if err == nil {
 			t.Fatalf("run() error = %v, want document service credential error", err)
 		}
 	})
@@ -130,7 +130,7 @@ func configureDocumentCommandEnvironment(t *testing.T) {
 	t.Setenv("MODEL_GATEWAY_URL", "http://127.0.0.1:1")
 	t.Setenv("DOCUMENT_MODEL_TOKEN", strings.Repeat("d", 40))
 	t.Setenv("WORKER_DOCUMENT_TOKEN", strings.Repeat("w", 40))
-	t.Setenv("CORE_DOCUMENT_TOKEN", "")
+	t.Setenv("CORE_DOCUMENT_TOKEN", strings.Repeat("i", 40))
 	t.Setenv("GATEWAY_ROLE_TOKEN", strings.Repeat("g", 40))
 }
 

@@ -250,7 +250,7 @@ func (s *Store) ListCasesChecked(user accounts.User) ([]CaseSummary, error) {
 	if err != nil {
 		return nil, err
 	}
-	st, err := s.snapshotScoped(context.Background(), userScope(current))
+	st, err := s.snapshotCaseList(context.Background(), current)
 	if err != nil {
 		return nil, err
 	}
@@ -348,7 +348,7 @@ type CaseDetail struct {
 }
 
 func (s *Store) GetCase(user accounts.User, caseID string) (CaseDetail, error) {
-	st, err := s.snapshotAs(user)
+	st, err := s.snapshotCaseDetail(context.Background(), user, caseID)
 	if err != nil {
 		return CaseDetail{}, err
 	}
@@ -358,7 +358,7 @@ func (s *Store) GetCase(user accounts.User, caseID string) (CaseDetail, error) {
 	}
 	detail := CaseDetail{
 		CaseSummary:     s.summarize(&st, item),
-		Documents:       s.interpretAll(st.documents(item.ID)),
+		Documents:       interpretLoaded(st, st.documents(item.ID)),
 		RevisionPending: revisionPending(&st, item.ID),
 		BusinessLine:    item.BusinessLine, Scenario: item.Scenario, BusinessStatus: item.BusinessStatus,
 		ArchivedAt: item.ArchivedAt,
@@ -485,22 +485,12 @@ func (s *Store) UploadMaterial(ctx context.Context, user accounts.User, caseID, 
 	}
 	requestHash := uploadRequestHash("upload", currentUser.ID, caseID, role, purpose, filename, media, body, options)
 	if options.IdempotencyKey != "" {
-		st, err := s.snapshotScoped(ctx, userScope(currentUser))
+		result, found, err := s.readUploadReceipt(ctx, currentUser, caseID, options.IdempotencyKey, requestHash)
 		if err != nil {
 			return DocumentUploadResult{}, err
 		}
-		for _, prior := range st.UploadIdempotency {
-			if prior.CaseID == caseID && prior.ActorID == currentUser.ID && prior.Key == options.IdempotencyKey {
-				if !bytes.Equal(prior.RequestHash, requestHash[:]) {
-					return DocumentUploadResult{}, fault.Conflict("Idempotency-Key已用于不同上传内容")
-				}
-				for _, v := range st.MaterialVersions {
-					if v.CaseID == caseID && v.MaterialID == prior.MaterialID && v.DocumentID == prior.DocumentID {
-						return DocumentUploadResult{DocumentID: prior.DocumentID, MaterialID: prior.MaterialID, Version: v.Version, Replayed: true}, nil
-					}
-				}
-				return DocumentUploadResult{}, errors.New("upload idempotency record has no material version")
-			}
+		if found {
+			return result, nil
 		}
 	}
 	id, err := newID("doc_")
@@ -547,6 +537,13 @@ func (s *Store) UploadMaterial(ctx context.Context, user accounts.User, caseID, 
 	defer persistCancel()
 	var uploadResult DocumentUploadResult
 	err = s.scopedCaseMutation(persistCtx, currentUser, caseID, func(st *state) error {
+		currentUser, err = trustedUser(currentUser)
+		if err != nil {
+			return err
+		}
+		if !accounts.CanUpload(currentUser.Role) {
+			return fault.Forbidden("当前角色不能执行文档操作")
+		}
 		if _, err := s.writableCase(st, currentUser, caseID, access.Manage); err != nil {
 			return err
 		}
@@ -710,7 +707,13 @@ func (s *Store) Reparse(ctx context.Context, user accounts.User, caseID, docID s
 }
 
 func (s *Store) Original(user accounts.User, caseID, docID string) (Document, []byte, error) {
-	st, err := s.snapshotAs(user)
+	return s.OriginalContext(context.Background(), user, caseID, docID)
+}
+
+// OriginalContext preserves current case authorization while allowing a
+// disconnected export to cancel an in-flight object read.
+func (s *Store) OriginalContext(ctx context.Context, user accounts.User, caseID, docID string) (Document, []byte, error) {
+	st, err := s.snapshotCaseOriginal(ctx, user, caseID, docID)
 	if err != nil {
 		return Document{}, nil, err
 	}
@@ -721,8 +724,11 @@ func (s *Store) Original(user accounts.User, caseID, docID string) (Document, []
 		if doc.ID != docID {
 			continue
 		}
-		body, err := s.getObject(context.Background(), doc)
+		body, err := s.getObject(ctx, doc)
 		if err != nil {
+			if ctx.Err() != nil {
+				return Document{}, nil, ctx.Err()
+			}
 			if err == errObjectIntegrity {
 				return Document{}, nil, fault.New(409, "digest_mismatch", "原件摘要与保存的字节不一致")
 			}

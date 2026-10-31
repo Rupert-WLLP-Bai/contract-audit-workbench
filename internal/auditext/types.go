@@ -395,8 +395,15 @@ type FrozenInput struct {
 	PlannerConfigurationID string
 	ParserConfigurationID  string
 	BusinessAt             time.Time
-	EvidenceCutoffAt       *time.Time `json:"evidence_cutoff_at,omitempty"`
+	EvidenceCutoffAt       *time.Time       `json:"evidence_cutoff_at,omitempty"`
+	EvaluationScope        *EvaluationScope `json:"evaluation_scope,omitempty"`
 	Facts                  []Fact
+}
+
+// EvaluationScope identifies the objects covered by an operator evaluation.
+type EvaluationScope struct {
+	Kind             string   `json:"kind"`
+	ServiceObjectIDs []string `json:"service_object_ids,omitempty"`
 }
 
 // FactByName returns the first contract fact with the given name.
