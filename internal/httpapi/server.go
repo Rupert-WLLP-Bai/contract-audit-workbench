@@ -57,7 +57,7 @@ func Handler(st *store.Store, opt Options) http.Handler {
 	if opt.SystemHealth == nil {
 		opt.SystemHealth = systemhealth.New(systemhealth.Config{DatabaseReady: st.Ready})
 	}
-	h := &handler{store: st, cors: opt.CORSOrigins, models: opt.Models, oidc: opt.OIDC, durable: opt.Durable, secureCookies: opt.SecureCookies, systemHealth: opt.SystemHealth, experienceDeliveryEnabled: opt.experienceDeliveryEnabled, operatorAuditEnabled: opt.OperatorAuditEnabled, capabilityPacks: opt.CapabilityPacks, externalConnectors: opt.ExternalConnectors, externalConnectorInfo: opt.ExternalConnectorInfo, intakeUploader: opt.IntakeUploader}
+	h := &handler{store: st, loginCounter: newLoginCounter(), cors: opt.CORSOrigins, models: opt.Models, oidc: opt.OIDC, durable: opt.Durable, secureCookies: opt.SecureCookies, systemHealth: opt.SystemHealth, experienceDeliveryEnabled: opt.experienceDeliveryEnabled, operatorAuditEnabled: opt.OperatorAuditEnabled, capabilityPacks: opt.CapabilityPacks, externalConnectors: opt.ExternalConnectors, externalConnectorInfo: opt.ExternalConnectorInfo, intakeUploader: opt.IntakeUploader}
 	mux := http.NewServeMux()
 	// Every binary in this repository serves the same probe surface so a manifest
 	// can never point at a path no binary answers. Readiness is the shared
@@ -186,6 +186,7 @@ type handler struct {
 	externalConnectors        map[string]auditext.ReadConnector
 	externalConnectorInfo     []OperatorConnectorInfo
 	intakeUploader            store.CaseIntakeUploader
+	loginCounter              *loginCounter
 }
 
 func (h *handler) login(w http.ResponseWriter, r *http.Request) {
@@ -203,17 +204,27 @@ func (h *handler) login(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
+	username := strings.TrimSpace(body.Username)
+	source := loginSource(r)
+	if !h.loginCounter.allowed(source, username) {
+		// A lockout answers exactly like any other failed login so a
+		// throttled guess never confirms that a username exists.
+		writeErr(w, fault.Unauthenticated("账号或密码不正确"))
+		return
+	}
 	var token string
 	var user accounts.User
 	if audience == "client" {
-		token, user, err = h.store.Login(body.Username, body.Password)
+		token, user, err = h.store.Login(username, body.Password)
 	} else {
 		var authenticated bool
-		user, authenticated = accounts.Authenticate(strings.TrimSpace(body.Username), body.Password)
+		user, authenticated = accounts.Authenticate(username, body.Password)
 		if !authenticated {
+			h.loginCounter.recordFailure(source, username)
 			writeErr(w, fault.Unauthenticated("账号或密码不正确"))
 			return
 		}
+		h.loginCounter.recordSuccess(username)
 		if user.Role != "admin" {
 			writeErr(w, fault.Forbidden("需要平台管理权限"))
 			return
@@ -221,6 +232,13 @@ func (h *handler) login(w http.ResponseWriter, r *http.Request) {
 		token, err = h.store.EstablishSession(user, audience)
 	}
 	if err != nil {
+		// store.Login reports a failed credential check as unauthenticated;
+		// only that counts against the budget, session establishment errors
+		// do not.
+		var faultErr *fault.Error
+		if errors.As(err, &faultErr) && faultErr.Code == "unauthenticated" {
+			h.loginCounter.recordFailure(source, username)
+		}
 		writeErr(w, err)
 		return
 	}
