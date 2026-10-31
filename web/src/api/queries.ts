@@ -185,12 +185,12 @@ function invalidateReviewHistory(
   });
 }
 
-export function invalidateReviewMutationViews(
+export async function invalidateReviewMutationViews(
   queryClient: QueryClient,
   caseId: string,
   runId: string,
-): Promise<void[]> {
-  return Promise.all([
+): Promise<void> {
+  await Promise.all([
     queryClient.invalidateQueries({
       queryKey: queryKeys.reviewPrefix(caseId, runId),
     }),
