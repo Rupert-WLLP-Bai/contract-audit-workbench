@@ -7,6 +7,7 @@ import { chooseAntOption, clickAntOptionByAttribute, selectedAntLabel } from "./
 import { replacePrimaryMaterial, selectMaterialOption, uploadNewMaterial } from "./materials-ui";
 import { parseReviewWorkspace } from "../src/api/parse";
 import type { Finding, ReviewWorkspace } from "../src/api/types";
+import { parseServiceObjectDetail, type ServiceObjectDetail } from "../src/features/operator-audit/service-objects-api";
 
 const web = required("E2E_WEB").replace(/\/$/, "");
 const output = required("E2E_OBJECT_HISTORY_OUT");
@@ -131,6 +132,18 @@ async function createObject(target: Page, name: string, code: string): Promise<s
   assert.ok(created.service_object_id);
   assert.equal(created.version, 1);
   assert.equal(created.association_version, 0);
+
+  const detailResponse = await target.request.get(`${web}/api/cases/${caseID}/service-objects/${encodeURIComponent(created.service_object_id)}`);
+  assert.equal(detailResponse.status(), 200, `read ${name} after create returned HTTP ${detailResponse.status()}`);
+  const rawDetail: unknown = await detailResponse.json();
+  let detail: ServiceObjectDetail;
+  try {
+    detail = parseServiceObjectDetail(rawDetail);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`service-object detail parser rejected server response: ${message}; response=${JSON.stringify(rawDetail)}`);
+  }
+  assert.equal(detail.identity.display_name, name);
   await target.getByRole("heading", { name: `${name} · 身份第 1 版`, exact: true }).waitFor();
   return created.service_object_id;
 }
