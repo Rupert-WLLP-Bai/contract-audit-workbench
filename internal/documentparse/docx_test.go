@@ -809,12 +809,15 @@ func TestDOCXShapeTextBoxCarriesVisibleParagraphs(t *testing.T) {
 
 func TestDOCXAlternateContentReadsExactlyOneBranch(t *testing.T) {
 	plain := docxFixture(t, "plain.docx")
-	alternate := func(requires, choice, fallback string) string {
-		attribute := ""
-		if requires != "" {
-			attribute = ` Requires="` + requires + `"`
+	// alternate builds one AlternateContent whose single Choice carries the given
+	// attributes, so prefix aliases, rebinding and undeclared prefixes are all
+	// expressible without assuming a literal wps spelling.
+	alternate := func(choiceAttrs, choice, fallback string) string {
+		fallbackXML := ""
+		if fallback != "" {
+			fallbackXML = `<mc:Fallback>` + fallback + `</mc:Fallback>`
 		}
-		return `<w:p><w:r><mc:AlternateContent><mc:Choice` + attribute + `>` + choice + `</mc:Choice><mc:Fallback>` + fallback + `</mc:Fallback></mc:AlternateContent></w:r></w:p>`
+		return `<w:p><w:r><mc:AlternateContent><mc:Choice ` + choiceAttrs + `>` + choice + `</mc:Choice>` + fallbackXML + `</mc:AlternateContent></w:r></w:p>`
 	}
 	fallbackVML := `<w:pict><v:shape><v:textbox>` + docxTextBoxParagraph("回退分支") + `</v:textbox></v:shape></w:pict>`
 	for _, item := range []struct {
@@ -822,18 +825,50 @@ func TestDOCXAlternateContentReadsExactlyOneBranch(t *testing.T) {
 		content string
 		want    string
 		absent  string
+		ordered []string
 	}{
 		{
 			name:    "supported choice wins",
-			content: alternate("wps", docxShapeBody(docxTextBoxParagraph("首选分支")), fallbackVML),
+			content: alternate(`Requires="wps"`, docxShapeBody(docxTextBoxParagraph("首选分支")), fallbackVML),
 			want:    "首选分支",
 			absent:  "回退分支",
 		},
 		{
-			name:    "unsupported requirement uses fallback",
-			content: alternate("wpg", `<w:drawing/>`, `<w:r><w:t>回退文本</w:t></w:r>`),
+			name:    "alias prefix bound to the shape namespace is supported",
+			content: alternate(`Requires="shape" xmlns:shape="`+docxWPSNS+`"`, docxShapeBody(docxTextBoxParagraph("别名分支")), `<w:r><w:t>回退文本</w:t></w:r>`),
+			want:    "别名分支",
+			absent:  "回退文本",
+		},
+		{
+			name:    "bound unknown requirement uses fallback",
+			content: alternate(`Requires="wpg" xmlns:wpg="http://schemas.microsoft.com/office/word/2010/wordprocessingGroup"`, `<w:drawing/>`, `<w:r><w:t>回退文本</w:t></w:r>`),
 			want:    "回退文本",
 			absent:  "",
+		},
+		{
+			name:    "rebound wps prefix is not the shape namespace",
+			content: alternate(`Requires="wps" xmlns:wps="urn:unknown-shape"`, docxShapeBody(docxTextBoxParagraph("误绑分支")), `<w:r><w:t>回退文本</w:t></w:r>`),
+			want:    "回退文本",
+			absent:  "误绑分支",
+		},
+		{
+			name:    "one unsupported requirement skips the choice",
+			content: alternate(`Requires="wps w14" xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml"`, docxShapeBody(docxTextBoxParagraph("多前缀分支")), `<w:r><w:t>回退文本</w:t></w:r>`),
+			want:    "回退文本",
+			absent:  "多前缀分支",
+		},
+		{
+			name:    "later supported choice wins over fallback",
+			content: `<w:p><w:r><mc:AlternateContent><mc:Choice Requires="wpg" xmlns:wpg="urn:group">` + docxShapeBody(docxTextBoxParagraph("首选项分支")) + `</mc:Choice><mc:Choice Requires="wps">` + docxShapeBody(docxTextBoxParagraph("次选分支")) + `</mc:Choice><mc:Fallback><w:r><w:t>回退文本</w:t></w:r></mc:Fallback></mc:AlternateContent></w:r></w:p>`,
+			want:    "次选分支",
+			absent:  "首选项分支",
+		},
+		{
+			name:    "selected branch keeps surrounding visible order once",
+			content: `<w:p><w:r><w:t>前文</w:t></w:r><w:r><mc:AlternateContent><mc:Choice Requires="wps">` + docxShapeBody(docxTextBoxParagraph("框内分支")) + `</mc:Choice><mc:Fallback>` + docxTextBoxParagraph("回退文本") + `</mc:Fallback></mc:AlternateContent></w:r><w:r><w:t>后文</w:t></w:r></w:p>`,
+			want:    "框内分支",
+			absent:  "回退文本",
+			ordered: []string{"前文", "框内分支", "后文"},
 		},
 		{
 			name:    "fallback only",
@@ -859,7 +894,37 @@ func TestDOCXAlternateContentReadsExactlyOneBranch(t *testing.T) {
 			if item.absent != "" && strings.Contains(result.IR.NormalizedText, item.absent) {
 				t.Fatalf("unrendered branch leaked %q into %q", item.absent, result.IR.NormalizedText)
 			}
+			previous := -1
+			for _, quote := range item.ordered {
+				if count := strings.Count(result.IR.NormalizedText, quote); count != 1 {
+					t.Fatalf("%q appears %d times, want exactly once in %q", quote, count, result.IR.NormalizedText)
+				}
+				if at := strings.Index(result.IR.NormalizedText, quote); at <= previous {
+					t.Fatalf("visible order changed around %q in %q", quote, result.IR.NormalizedText)
+				} else {
+					previous = at
+				}
+			}
 		})
+	}
+}
+
+func TestDOCXNamespaceDeclarationsAreNotAttributes(t *testing.T) {
+	plain := docxFixture(t, "plain.docx")
+	// A declaration named after a real attribute must not shadow it, and the
+	// shape namespace itself may be declared through any prefix.
+	document := docxAltContentDocument(
+		`<w:p><w:r>` + docxShapeBody(docxTextBoxParagraph("声明不遮蔽")) + `</w:r></w:p>` +
+			`<mc:AlternateContent><mc:Choice Requires="s" xmlns:s="` + docxWPSNS + `">` + docxTextBoxParagraph("别名声明正文") + `</mc:Choice></mc:AlternateContent>`)
+	document = bytes.Replace(document, []byte(`<a:graphicData uri="`+docxWPSNS+`">`), []byte(`<a:graphicData xmlns:uri="urn:bogus" uri="`+docxWPSNS+`">`), 1)
+	result, err := ParseDOCX(context.Background(), docxRewrite(t, plain, map[string][]byte{"word/document.xml": document}), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"声明不遮蔽", "别名声明正文"} {
+		if !strings.Contains(result.IR.NormalizedText, want) {
+			t.Fatalf("missing %q in %q", want, result.IR.NormalizedText)
+		}
 	}
 }
 
@@ -870,6 +935,26 @@ func TestDOCXAlternateContentFailuresStayClosed(t *testing.T) {
 		content string
 		want    string
 	}{
+		{
+			name:    "choice without requires",
+			content: `<w:p><w:r><mc:AlternateContent><mc:Choice>` + docxShapeBody(docxTextBoxParagraph("无声明分支")) + `</mc:Choice><mc:Fallback><w:r><w:t>回退文本</w:t></w:r></mc:Fallback></mc:AlternateContent></w:r></w:p>`,
+			want:    "choice has no Requires",
+		},
+		{
+			name:    "choice with empty requires",
+			content: `<w:p><w:r><mc:AlternateContent><mc:Choice Requires="  ">` + docxShapeBody(docxTextBoxParagraph("空声明分支")) + `</mc:Choice></mc:AlternateContent></w:r></w:p>`,
+			want:    "choice has no Requires",
+		},
+		{
+			name:    "undeclared requires prefix",
+			content: `<w:p><w:r><mc:AlternateContent><mc:Choice Requires="nope">` + docxShapeBody(docxTextBoxParagraph("未声明分支")) + `</mc:Choice><mc:Fallback><w:r><w:t>回退文本</w:t></w:r></mc:Fallback></mc:AlternateContent></w:r></w:p>`,
+			want:    `requires undeclared prefix "nope"`,
+		},
+		{
+			name:    "rebound wps without fallback",
+			content: `<w:p><w:r><mc:AlternateContent><mc:Choice Requires="wps" xmlns:wps="urn:unknown-shape">` + docxShapeBody(docxTextBoxParagraph("误绑分支")) + `</mc:Choice></mc:AlternateContent></w:r></w:p>`,
+			want:    "no supported branch",
+		},
 		{
 			name:    "choice after fallback",
 			content: `<w:p><w:r><mc:AlternateContent><mc:Fallback><w:r><w:t>回退</w:t></w:r></mc:Fallback><mc:Choice Requires="wps"><w:r><w:t>首选</w:t></w:r></mc:Choice></mc:AlternateContent></w:r></w:p>`,

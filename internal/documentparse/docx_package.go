@@ -39,6 +39,11 @@ type docxNode struct {
 	attrs    []xml.Attr
 	text     string
 	children []*docxNode
+	// namespaces holds the in-scope prefix bindings at this element. It is
+	// shared with the parent until an element declares xmlns itself, so markup
+	// compatibility Requires prefixes resolve exactly as the document declares
+	// them rather than by literal prefix spelling.
+	namespaces map[string]string
 }
 
 func (n *docxNode) word(local string) bool {
@@ -56,9 +61,15 @@ func (n *docxNode) child(local string) *docxNode {
 	return nil
 }
 
+// attr reads one unqualified attribute. Namespace declarations are kept as
+// attributes by the XML decoder, so they are skipped here: a declaration such as
+// xmlns:uri must never stand in for a real uri attribute.
 func (n *docxNode) attr(local string) string {
 	if n != nil {
 		for _, attr := range n.attrs {
+			if attr.Name.Space == "xmlns" || (attr.Name.Space == "" && attr.Name.Local == "xmlns") {
+				continue
+			}
 			if attr.Name.Local == local {
 				return attr.Value
 			}
@@ -490,6 +501,11 @@ func (tree *docxXMLTree) start(token xml.StartElement) error {
 	}
 	node := &docxNode{name: token.Name, attrs: token.Attr}
 	if len(tree.stack) == 0 {
+		node.namespaces = docxNamespaceScope(nil, token.Attr)
+	} else {
+		node.namespaces = docxNamespaceScope(tree.stack[len(tree.stack)-1].namespaces, token.Attr)
+	}
+	if len(tree.stack) == 0 {
 		if tree.root != nil {
 			return fmt.Errorf("DOCX: XML has multiple roots")
 		}
@@ -500,6 +516,42 @@ func (tree *docxXMLTree) start(token xml.StartElement) error {
 	}
 	tree.stack = append(tree.stack, node)
 	return nil
+}
+
+// docxNamespaceScope returns the prefix bindings in scope for one element. The
+// parent map is reused when the element declares no namespace, so only declaring
+// elements allocate.
+func docxNamespaceScope(parent map[string]string, attrs []xml.Attr) map[string]string {
+	declared := 0
+	for _, attr := range attrs {
+		if attr.Name.Space == "xmlns" || (attr.Name.Space == "" && attr.Name.Local == "xmlns") {
+			declared++
+		}
+	}
+	if declared == 0 {
+		return parent
+	}
+	scope := make(map[string]string, len(parent)+declared)
+	for prefix, uri := range parent {
+		scope[prefix] = uri
+	}
+	for _, attr := range attrs {
+		switch {
+		case attr.Name.Space == "xmlns":
+			if attr.Value == "" {
+				delete(scope, attr.Name.Local)
+				continue
+			}
+			scope[attr.Name.Local] = attr.Value
+		case attr.Name.Space == "" && attr.Name.Local == "xmlns":
+			if attr.Value == "" {
+				delete(scope, "")
+				continue
+			}
+			scope[""] = attr.Value
+		}
+	}
+	return scope
 }
 
 func (tree *docxXMLTree) characters(token xml.CharData) error {

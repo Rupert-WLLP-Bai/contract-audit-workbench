@@ -161,7 +161,7 @@ python3 scripts/record_model_proxy.py --upstream http://127.0.0.1:3425/v1 \
 
 DOCX 正文中的 Adobe Symbol 字体字符按 Unicode 映射保留；不支持的符号字体、无可靠文本映射的字形或无效编码会使解析失败，不会被静默丢弃。
 
-DOCX 只读取渲染后可见的内容：`mc:AlternateContent` 按标记兼容规则只取一个分支（`Requires` 全部受支持时取 `mc:Choice`，否则取 `mc:Fallback`），两个等价表示不会被重复计入；`wordprocessingShape` 文本框内的段落计入正文，页眉页脚仍按首次引用只读一次。`PAGE`、`NUMPAGES`、`SECTIONPAGES`、`SECTION` 字段的结果只是随版式变化的页码，与「不编造页码」一致地排除在合同正文之外；其他字段仍读取缓存结果。图表、组合形状、VML 回退内容、文本框内表格等无法完整定位的内容会使解析失败，不会被静默丢弃或猜测。
+DOCX 只读取渲染后可见的内容：`mc:AlternateContent` 按标记兼容规则只取一个分支（`Requires` 的前缀按该元素在作用域的 `xmlns` 解析为命名空间，全部受支持才取该 `mc:Choice`，否则取 `mc:Fallback`；缺失、空或未声明的 `Requires` 视为无效标记而失败），两个等价表示不会被重复计入；`wordprocessingShape` 文本框内的段落计入正文，页眉页脚仍按首次引用只读一次。`PAGE`、`NUMPAGES`、`SECTIONPAGES`、`SECTION` 字段的结果只是随版式变化的页码，与「不编造页码」一致地排除在合同正文之外；其他字段仍读取缓存结果。图表、组合形状、VML 回退内容、文本框内表格等无法完整定位的内容会使解析失败，不会被静默丢弃或猜测。
 
 服务就绪后执行：
 

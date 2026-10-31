@@ -127,7 +127,11 @@ func docxAlternateBranch(node *docxNode) (*docxNode, error) {
 			if chosen != nil {
 				continue
 			}
-			if docxRequiresSupported(child.attr("Requires")) {
+			supported, err := docxChoiceSupported(child)
+			if err != nil {
+				return nil, err
+			}
+			if supported {
 				chosen = child
 			}
 		case "Fallback":
@@ -148,16 +152,27 @@ func docxAlternateBranch(node *docxNode) (*docxNode, error) {
 	return chosen, nil
 }
 
-// docxRequiresSupported reports whether every extension a mc:Choice requires is
-// implemented here. Only wordprocessingShape text is understood; any other
-// extension must be served by the fallback alternative.
-func docxRequiresSupported(requires string) bool {
+// docxChoiceSupported resolves every prefix a mc:Choice requires against the
+// namespaces actually in scope and reports whether this parser implements all of
+// them. Only the wordprocessingShape namespace is understood, so an alias bound
+// to it is supported while that spelling bound to anything else is not. A choice
+// without Requires, or one naming an undeclared prefix, is invalid markup rather
+// than an alternative this parser may silently skip.
+func docxChoiceSupported(node *docxNode) (bool, error) {
+	requires := strings.TrimSpace(node.attr("Requires"))
+	if requires == "" {
+		return false, fmt.Errorf("DOCX: AlternateContent choice has no Requires")
+	}
 	for _, prefix := range strings.Fields(requires) {
-		if prefix != "wps" {
-			return false
+		uri, bound := node.namespaces[prefix]
+		if !bound || uri == "" {
+			return false, fmt.Errorf("DOCX: AlternateContent requires undeclared prefix %q", prefix)
+		}
+		if uri != docxWPSNS {
+			return false, nil
 		}
 	}
-	return true
+	return true, nil
 }
 
 func (p *docxParser) inlineChildren(node *docxNode, part string, visibility docxVisibility, text *strings.Builder) error {
