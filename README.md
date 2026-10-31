@@ -87,6 +87,8 @@ compose.app.yaml     独立服务部署配置
 
 文件说明优先记录职责、输入输出和业务边界。手写源码与测试放在对应模块，生成类型随契约重新生成；本机配置、模型调用记录和验收材料仍放在仓库外。
 
+合同引用读取由 Execution 服务负责；路由所有权检查只接受声明的 OpenAPI 引用模板，实际请求使用具体的案件、执行和引用身份。
+
 ## 本地启动
 
 需要 Go 1.26.7+、Bun 1.4.3、Node.js 22.12+、Python 3.10+，以及可用的 Docker Engine/Desktop 和 Compose v2。解析 PDF 还需要 Poppler 的 `pdfinfo`、`pdftotext`、`pdfimages`、`pdftoppm` 及 CJK mappings。

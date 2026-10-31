@@ -410,9 +410,16 @@ func TestSessionMigrationRemovesOnlyLegacyTokensAcrossTenants(t *testing.T) {
 	if _, err := environment.harness.pool.Exec(ctx, `DROP FUNCTION session_test_reject_second_delete()`); err != nil {
 		t.Fatal(err)
 	}
-	// This fixture models the old, unversioned database. Already-applied
-	// numbered migrations must remain no-ops on a current database.
-	if _, err := environment.harness.pool.Exec(ctx, `DROP TABLE schema_migrations`); err != nil {
+	// Reconstruct the schema at version 7: later tables are absent before the
+	// numbered session cleanup and must be recreated by the migration runner.
+	for _, table := range []string{"experience_finding_usage", "rule_pack_shadow_reports", "review_rulepack_inputs", "manual_finding_records", "execution_write_receipts", "core_write_receipts"} {
+		var count int
+		if err := environment.harness.pool.QueryRow(ctx, `SELECT count(*) FROM `+table).Scan(&count); err != nil || count != 0 {
+			t.Fatalf("version-7 fixture requires an empty %s: count=%d err=%v", table, count, err)
+		}
+	}
+	if _, err := environment.harness.pool.Exec(ctx, `DROP TABLE experience_finding_usage, rule_pack_shadow_reports, review_rulepack_inputs, manual_finding_records, execution_write_receipts, core_write_receipts;
+		DELETE FROM schema_migrations WHERE version >= 8`); err != nil {
 		t.Fatal(err)
 	}
 	if err := migrate(ctx, environment.harness.pool, environment.harness.schema); err != nil {

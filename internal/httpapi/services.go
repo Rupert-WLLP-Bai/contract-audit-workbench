@@ -403,8 +403,8 @@ func caseContractCitationRoute(role string, m routeMethodSet, p []string) bool {
 	if role != "execution" || !m.read || len(p) != 8 || p[0] != "cases" || p[2] != "runs" || p[4] != "attempts" || p[6] != "contract-citations" {
 		return false
 	}
-	if p[1] == "{caseID}" && p[3] == "{runID}" && p[5] == "{attemptID}" && p[7] == "{evidenceID}" {
-		return true
+	if p[1] == "{caseID}" && p[3] == "{runID}" && p[5] == "{attemptID}" {
+		return p[7] == "{evidenceID}"
 	}
 	return p[1] != "" && p[3] != "" && p[5] != "" && p[7] != ""
 }

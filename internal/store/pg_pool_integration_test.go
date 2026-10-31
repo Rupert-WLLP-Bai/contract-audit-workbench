@@ -104,7 +104,7 @@ func TestRuntimePoolTimeoutsAndTransactionScope(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer tx.Rollback(ctx)
-	scope := dbScope{TenantID: "other-tenant", OrgID: "other-org", ActorID: "other-actor", Role: "worker"}
+	scope := dbScope{TenantID: "other-tenant", OrgID: "other-org", ActorID: "other-actor", Role: "api"}
 	if err := setLocalScope(ctx, tx, scope); err != nil {
 		t.Fatal(err)
 	}
