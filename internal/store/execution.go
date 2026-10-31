@@ -227,6 +227,10 @@ func (s *Store) startReview(ctx context.Context, user accounts.User, caseID, bus
 	// The same schema-then-case locked transaction resolves the case, active
 	// pack and approved knowledge, and commits the resulting snapshot with the
 	// run, attempt and durable job. Nothing is selected from a client identity.
+	// The context planner must see the same immutable material identities the
+	// worker will later freeze into AttemptInput; otherwise a retry could not
+	// recompute the accepted context from the exact frozen materials.
+	serviceObjectDocuments := serviceObjectFrozenMaterials(seen, frozenDocs)
 	var acceptanceTx pgx.Tx
 	hook := func(tx pgx.Tx) error {
 		acceptanceTx = tx
@@ -234,13 +238,25 @@ func (s *Store) startReview(ctx context.Context, user accounts.User, caseID, bus
 		if err != nil {
 			return err
 		}
+		var at time.Time
+		if businessAt != "" {
+			at, err = knowledgeTime(businessAt)
+			if err != nil {
+				return err
+			}
+		}
+		// Service-object dependencies are authoritative for every case, not
+		// only for cases that selected a governed pack. An ungoverned case that
+		// already registered an object still freezes the exact version,
+		// association and mapping pins, and it must name the business instant
+		// itself instead of borrowing the server clock.
 		if !isGovernedReviewCase(lockedCase) {
 			signature = s.currentSignatureWithRulePack(reviewDocumentIDs, frozenDocs, nil, telecomCompilerRefForCase(lockedCase), plannerConfiguration.ConfigurationID, plannerPayload)
-			return nil
-		}
-		at, err := knowledgeTime(businessAt)
-		if err != nil {
+			signature, err = withServiceObjectContextTx(ctx, tx, lockedCase, at, serviceObjectDocuments, signature)
 			return err
+		}
+		if at.IsZero() {
+			return fault.Invalid("必须提供带时区的业务时间")
 		}
 		cutoffNow := time.Now().UTC().Truncate(time.Microsecond)
 		cutoffAt, cutoffMode, explicitCutoff := cutoffNow, "acceptance_time", ""
@@ -274,7 +290,7 @@ func (s *Store) startReview(ctx context.Context, user accounts.User, caseID, bus
 		// P3 service-object identity and associations are authoritative SQL
 		// state. Freeze them from this same case-locked acceptance transaction,
 		// using only the material/parse versions already selected above.
-		signature, err = withServiceObjectContextTx(ctx, tx, lockedCase, frozenDocs, signature)
+		signature, err = withServiceObjectContextTx(ctx, tx, lockedCase, at, serviceObjectDocuments, signature)
 		if err != nil {
 			return err
 		}
@@ -439,20 +455,12 @@ func (s *Store) retry(ctx context.Context, user accounts.User, caseID, runID str
 		return fault.NotFound("没有找到对应记录")
 	}
 	frozen := seen.snapshotOf(runID)
-	lastSeen, ok := seen.latestAttempt(runID)
-	if !ok {
+	if _, ok := seen.latestAttempt(runID); !ok {
 		return fault.Conflict("较早的审查缺少当时保存的执行记录，无法安全重试")
 	}
-	frozenAttemptInput, hasFrozenAttemptInput := seen.attemptInput(lastSeen.ID)
-	serviceContextDocuments := frozenAttemptInput.Documents
-	if !hasFrozenAttemptInput && attemptActive(lastSeen.State) {
-		serviceContextDocuments, ok = frozenDocumentsForActiveAttempt(seen, runID, lastSeen.ID)
-		if !ok {
-			return fault.Conflict("较早的活动审查缺少可验证的冻结解析选择，无法安全确认重试")
-		}
-	} else if !hasFrozenAttemptInput {
-		return fault.Conflict("较早的审查没有保存当时使用的输入，无法安全重试")
-	}
+	// A duplicate request for an active run is an idempotent no-op. It must not
+	// depend on AttemptInput, which the worker has not prepared yet; the locked
+	// retry transaction re-checks the live attempt state before creating one.
 	// One operation, one client: the retried attempt must keep the identity it
 	// validated, even if the endpoint watcher applies a new revision meanwhile.
 	models := s.currentModels()
@@ -488,24 +496,10 @@ func (s *Store) retry(ctx context.Context, user accounts.User, caseID, runID str
 	var executionCase Case
 	var retryTx pgx.Tx
 	err = s.updateCaseAsWith(user, caseID, func(tx pgx.Tx) error {
+		// The locked callback below re-reads the live attempt state and then
+		// validates the frozen object dependencies on this same transaction, so
+		// an active duplicate and a real retry cannot race each other.
 		retryTx = tx
-		if frozen.GovernedKnowledge == nil {
-			return nil
-		}
-		if frozen.ServiceObjectContextHash == "" {
-			return fault.Conflict("较早的审查没有保存服务对象上下文，无法安全重试")
-		}
-		lockedCase, err := loadKnowledgeCase(ctx, tx, user, caseID)
-		if err != nil {
-			return err
-		}
-		currentSignature, err = withServiceObjectContextTx(ctx, tx, lockedCase, serviceContextDocuments, currentSignature)
-		if err != nil {
-			return err
-		}
-		if currentSignature.ServiceObjectContextHash != frozen.ServiceObjectContextHash {
-			return fault.Conflict("服务对象或当前映射已变更，请发起新的审查。原审查记录会保留")
-		}
 		return nil
 	}, func(st *state) error {
 		currentCase, err := s.writableCase(st, user, caseID, access.Review)
@@ -565,6 +559,39 @@ func (s *Store) retry(ctx context.Context, user accounts.User, caseID, runID str
 		expectedHash, err := frozenInputHash(frozen, frozenInput.Documents)
 		if err != nil || expectedHash != frozenInput.InputHash || last.InputHash == nil || *last.InputHash != frozenInput.InputHash {
 			return fault.Conflict("本次审查保存的输入摘要未通过校验，无法安全重试")
+		}
+		// A real retry recomputes the object and mapping dependencies under the
+		// current authorization and the exact frozen material/parse pairs. Any
+		// change rejects this retry before an attempt row is written, and the
+		// historical snapshot keeps its original bytes.
+		lockedCase, err := loadKnowledgeCase(ctx, retryTx, user, caseID)
+		if err != nil {
+			return err
+		}
+		if (frozen.ServiceObjectContext == nil) != (frozen.ServiceObjectContextHash == "") {
+			return fault.Conflict("审查记录的服务对象上下文不完整，无法安全重试")
+		}
+		if frozen.ServiceObjectContext == nil {
+			// A legacy run without a frozen object dependency keeps its nil
+			// extension. It cannot silently adopt an object registered after the
+			// run was accepted, so a newly present inventory is a conflict, not a
+			// backfill.
+			sources, err := serviceObjectReviewContextSourcesTx(ctx, retryTx, lockedCase)
+			if err != nil {
+				return err
+			}
+			if len(sources) > 0 {
+				return fault.Conflict("本次审查未保存服务对象上下文，请发起新的审查。原审查记录会保留")
+			}
+		} else {
+			recomputed := withFrozenGovernance(currentSignatureFor(frozen.DocumentIDs, nil, models, telecomCompilerRefForCase(*currentCase)), frozen)
+			recomputed, err = withServiceObjectContextTx(ctx, retryTx, lockedCase, frozen.ServiceObjectContext.BusinessAt, frozenInput.Documents, recomputed)
+			if err != nil {
+				return err
+			}
+			if recomputed.ServiceObjectContextHash != frozen.ServiceObjectContextHash {
+				return fault.Conflict("服务对象或当前映射已变更，请发起新的审查。原审查记录会保留")
+			}
 		}
 		if !durable {
 			if !s.reserveExecution() {
@@ -2138,44 +2165,6 @@ func frozenInputMatchesSnapshot(snapshot RunSnapshot, docs []FrozenDocument) boo
 	return sameDocumentSet(snapshot.ParsedDocumentIDs, ids) &&
 		snapshot.ParseSelectionHash == selectionHash(docs) &&
 		snapshot.ParserConfigurationID == frozenConfigHash(docs)
-}
-
-// frozenDocumentsForActiveAttempt reconstructs only the parse identities that
-// were already pinned when a run was accepted. It supports the idempotent
-// active-attempt retry path before the worker has materialized AttemptInput;
-// it does not select current documents or parser artifacts.
-func frozenDocumentsForActiveAttempt(st state, runID, attemptID string) ([]FrozenDocument, bool) {
-	snapshot := st.snapshotOf(runID)
-	selections := st.parseSelectionsForAttempt(attemptID)
-	if len(selections) == 0 || len(selections) != len(snapshot.ParsedDocumentIDs) {
-		return nil, false
-	}
-	documents := make([]FrozenDocument, 0, len(selections))
-	for _, selection := range selections {
-		if selection.AttemptID != attemptID || selection.RunID != runID {
-			return nil, false
-		}
-		doc, ok := st.documentByIdentity(selection.DocumentID, selection.OriginalDigest)
-		if !ok {
-			return nil, false
-		}
-		parsed, ok := st.parsedByID(selection.ParsedDocumentID)
-		if !ok || parsed.SelectionOrder != selection.SelectionOrder || parsed.DocumentID != selection.DocumentID ||
-			parsed.OriginalDigest != selection.OriginalDigest || parsed.ParserID != selection.ParserID ||
-			parsed.ParserVersion != selection.ParserVersion || parsed.ConfigHash != selection.ConfigHash ||
-			parsed.NormalizationVersion != selection.NormalizationVersion ||
-			(selection.ArtifactDigest != "" && parsed.ArtifactDigest != selection.ArtifactDigest) {
-			return nil, false
-		}
-		frozen := frozenFromParsed(doc, parsed)
-		bindFrozenMaterialIdentity(st, &frozen)
-		documents = append(documents, frozen)
-	}
-	if !frozenInputMatchesSnapshot(snapshot, documents) ||
-		!attemptSelectionsMatchFrozen(selections, documents) {
-		return nil, false
-	}
-	return documents, true
 }
 
 // attemptOutputHash derives the canonical output identity of one attempt. The
