@@ -822,6 +822,7 @@ function parseSnapshot(value: unknown): RunSnapshot | null {
     document_ids: Array.isArray(value.document_ids)
       ? value.document_ids.filter((id): id is string => typeof id === "string")
       : [],
+    business_at: optionalString(value, "business_at"),
     rule_set_hash: optionalString(value, "rule_set_hash") ?? "",
     playbook_hash: optionalString(value, "playbook_hash") ?? "",
     model_ref: optionalString(value, "model_ref"),

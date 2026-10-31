@@ -25,7 +25,7 @@ func TestEvidenceHTTPCompatibleRulepackCitation(t *testing.T) {
 	api.upload(t, caseID, "procurement", "purchase.txt", "text/plain", []byte("政企专线采购依据\n电路 LINE-001：最低保障带宽 100 Mbit/s。"))
 	initialDraftID := api.upload(t, caseID, "draft_contract", "initial.txt", "text/plain", []byte("拟签合同尚未写明电路带宽。"))
 	status, source := api.do(t, http.MethodPost, "/api/cases/"+caseID+"/reviews", map[string]any{
-		"business_at": "2026-02-03T01:05:06Z",
+		"business_at": "2026-02-03T01:05:06.123456789Z",
 	})
 	if status != http.StatusCreated {
 		t.Fatalf("start governed source review: %d %v", status, source)
@@ -64,6 +64,20 @@ func TestEvidenceHTTPCompatibleRulepackCitation(t *testing.T) {
 	requestPath := base + "/" + request["id"].(string)
 	materialID, currentDocumentID := api.materialForCurrentDocument(t, caseID, initialDraftID)
 	api.base = legacyURL
+	status, otherTime := api.do(t, http.MethodPost, "/api/cases/"+caseID+"/reviews", map[string]any{
+		"business_at": "2026-03-01T04:00:00Z",
+	})
+	if status != http.StatusCreated {
+		t.Fatalf("start independent review at another business time: %d %v", status, otherTime)
+	}
+	status, sourceWorkspace = api.do(t, http.MethodGet, "/api/cases/"+caseID+"/reviews/"+sourceRun+"?attempt_id="+sourceAttempt, nil)
+	if status != http.StatusOK {
+		t.Fatalf("reopen the source attempt after another review: %d %v", status, sourceWorkspace)
+	}
+	frozenBusinessAt, ok := sourceWorkspace["snapshot"].(map[string]any)["business_at"].(string)
+	if !ok || frozenBusinessAt == "" {
+		t.Fatalf("source attempt did not provide its frozen business time: %v", sourceWorkspace["snapshot"])
+	}
 	documentID := api.replaceUpload(t, caseID, "draft_contract", "supplement.txt", "text/plain", []byte("拟签合同\n电路 LINE-001：最低保障带宽 100 Mbit/s。"), materialID, currentDocumentID)
 	api.base = coreURL
 	status, submitted := api.send(t, http.MethodPost, requestPath+"/receipts", map[string]any{
@@ -75,7 +89,7 @@ func TestEvidenceHTTPCompatibleRulepackCitation(t *testing.T) {
 	receiptID := submitted["receipt"].(map[string]any)["id"].(string)
 	api.base = legacyURL
 	status, later := api.do(t, http.MethodPost, "/api/cases/"+caseID+"/reviews", map[string]any{
-		"business_at": "2026-02-03T01:05:06Z",
+		"business_at": frozenBusinessAt,
 	})
 	if status != http.StatusCreated || later["attempt_id"] == sourceAttempt {
 		t.Fatalf("start later governed review: %d %v", status, later)

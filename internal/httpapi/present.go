@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"encoding/json"
+	"time"
 
 	"contractaudit/internal/accounts"
 	"contractaudit/internal/agentflow"
@@ -257,7 +258,7 @@ func workspaceJSON(decisions map[string][]store.Decision, ws store.Workspace) ma
 	out := map[string]any{
 		"run": run, "documents": docs, "findings": findings, "evaluations": evals,
 		"review_attempts": attempts, "agent_review": review,
-		"snapshot":        map[string]any{"document_ids": ws.Snapshot.DocumentIDs},
+		"snapshot":        map[string]any{"document_ids": ws.Snapshot.DocumentIDs, "business_at": snapshotBusinessAt(&ws.Snapshot)},
 		"business_events": businessAuditJSON(ws.Audit),
 		// Older clients require these fields even though the detailed records are
 		// only available from the separately authorized diagnostic endpoint.
@@ -273,6 +274,16 @@ func workspaceJSON(decisions map[string][]store.Decision, ws store.Workspace) ma
 		out["legal_authorities"] = ws.LegalAuthorities
 	}
 	return out
+}
+
+func snapshotBusinessAt(snapshot *store.RunSnapshot) any {
+	if snapshot.GovernedKnowledge != nil && snapshot.GovernedKnowledge.BusinessAt != "" {
+		return snapshot.GovernedKnowledge.BusinessAt
+	}
+	if snapshot.ServiceObjectContext != nil && !snapshot.ServiceObjectContext.BusinessAt.IsZero() {
+		return snapshot.ServiceObjectContext.BusinessAt.UTC().Format(time.RFC3339Nano)
+	}
+	return nil
 }
 
 func businessAttemptsJSON(execution *store.Execution) map[string]any {
