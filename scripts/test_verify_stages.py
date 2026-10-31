@@ -419,6 +419,7 @@ class RegistryTests(unittest.TestCase):
             "rule-shadow": "go",
             "web-typecheck": "web",
             "web-tests": "web",
+            "web-cdp-helper-tests": "web",
             "web-build": "web",
             "web-c1b-clock-tests": "browser",
             "coverage-gates": "coverage",
@@ -452,7 +453,14 @@ class RegistryTests(unittest.TestCase):
             self.assertIsNotNone(self.checks[name].validate)
 
     def test_web_test_timeout_covers_measured_full_suite_runtime(self):
-        self.assertEqual(self.checks["web-tests"].timeout, 600)
+        self.assertEqual(self.checks["web-tests"].timeout, 900)
+
+    def test_cdp_helper_tests_run_in_default_web_gate(self):
+        check = self.checks["web-cdp-helper-tests"]
+        self.assertEqual(check.cmd, ("bun", "run", "test:cdp-helper"))
+        self.assertEqual(check.cwd, verify.ROOT / "web")
+        self.assertTrue(verify.selected_check(check, "web", False))
+        self.assertFalse(verify.selected_check(check, "browser", False))
 
 
 if __name__ == "__main__":

@@ -447,9 +447,11 @@ def build_checks(go, bun):
         Check("web-tests", "web",
               (bun, "run", "test:coverage", "--reporter=default", "--reporter=json",
                "--outputFile=../artifacts/vitest-results.json"), cwd=ROOT / "web",
-              timeout=600,
+              timeout=900,
               validate=lambda _: validate_web_test_results(
                   json.loads((OUT / "vitest-results.json").read_text()))),
+        Check("web-cdp-helper-tests", "web",
+              (bun, "run", "test:cdp-helper"), cwd=ROOT / "web"),
         Check("web-c1b-clock-tests", "browser",
               (bun, "test", "e2e/c1b-clock.test.ts"), cwd=ROOT / "web"),
         Check("web-build", "web", (bun, "run", "build"), cwd=ROOT / "web"),

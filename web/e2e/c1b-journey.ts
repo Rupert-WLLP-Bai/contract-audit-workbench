@@ -1,12 +1,15 @@
 import { chromiumExecutable } from "./chromium";
 import { C1B_BUSINESS_AT_UTC, C1B_BUSINESS_TIME_ZONE, enterC1BBusinessAt } from "./c1b-clock";
+import { parseReviewWorkspace } from "../src/api/parse";
+import type { ConstraintEvaluation, ReviewDiagnostics as ReviewDiagnosticsDTO, ReviewWorkspace } from "../src/api/types";
+import { readFrozenGovernance, type FrozenRulepack } from "./c1b-frozen-governance";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { mkdir } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
 import { chromium, type Locator, type Page } from "playwright";
 import { replaceMaterial, replacePrimaryMaterial, uploadNewMaterial } from "./materials-ui";
+import { chooseAntOption, selectReportOption, selectReviewAttempt } from "./c1b-select";
 
 type Material = { role: string; filename: string; text: string };
 type RulePackIdentity = { id: string; version: string; content_sha256: string };
@@ -27,19 +30,6 @@ type Dataset = {
   rulepack?: RulePackIdentity;
   scenarios: Scenario[];
 };
-type Workspace = {
-  run: { id: string; state: string };
-  findings: Array<Record<string, unknown>>;
-  evaluations: Array<Record<string, unknown>>;
-  documents: Array<Record<string, unknown>>;
-  execution?: {
-    attempt?: { id?: string; state?: string; parsed_document_ids?: string[] };
-    agent_review?: { rulepack?: RulePackIdentity | null } | null;
-  };
-  previous_run_id?: string | null;
-  revisions?: Array<Record<string, unknown>>;
-  revision_comparison_reason?: string | null;
-};
 type CaseDetail = {
   id: string;
   business_line: string;
@@ -48,14 +38,20 @@ type CaseDetail = {
   materials?: Array<{ material_id: string; role: string; purpose: string; current_document_id: string; current_version: number }>;
   generations: Array<Record<string, unknown>>;
   remediations: Array<Record<string, unknown>>;
-  reports: Array<Record<string, unknown>>;
+  reports: Array<{ id: string; run_id: string; attempt_id: string; version: number; created_at: string }>;
   archives: Array<Record<string, unknown>>;
   archived_at: string | null;
 };
-type ReviewDiagnostics = {
-  snapshot: { document_ids: string[] };
-  execution?: { attempt?: { input_hash?: string | null; parsed_document_ids?: string[] } };
-  documents: Array<{ id: string; digest: string; parsed_document?: { id: string; original_digest?: string; artifact_digest?: string; normalized_digest?: string | null } | null }>;
+type DiagnosticDocument = {
+  id: string;
+  digest: string;
+  parsed_document?: { id: string; original_digest?: string; artifact_digest?: string; normalized_digest?: string | null } | null;
+};
+type ReviewDiagnostics = Omit<ReviewDiagnosticsDTO, "snapshot" | "execution"> & {
+  snapshot: NonNullable<ReviewDiagnosticsDTO["snapshot"]>;
+  execution: NonNullable<ReviewDiagnosticsDTO["execution"]>;
+  governed_rulepack: FrozenRulepack;
+  documents: DiagnosticDocument[];
 };
 
 const web = required("E2E_WEB").replace(/\/$/, "");
@@ -81,7 +77,7 @@ page.on("response", async (response) => {
   const url = response.url();
   if (!/\/api\/cases\/[^/]+\/reviews\/[^/]+/.test(url) || response.status() !== 200) return;
   try {
-    const data = await response.json() as Record<string, any>;
+    const data = parseReviewWorkspace(await response.json());
     reviewResponses.set(url, {
       run_id: data.run?.id,
       run_state: data.run?.state,
@@ -205,7 +201,7 @@ try {
     response.request().method() === "POST" && response.url().endsWith(`/api/cases/${caseID}/reviews`));
   await page.getByRole("button", { name: "开始审查", exact: true }).click();
   const firstReviewResponse = await firstReviewResponsePromise;
-  assert.ok(firstReviewResponse.status() === 200 || firstReviewResponse.status() === 202, `review start returned HTTP ${firstReviewResponse.status()}`);
+  assert.ok(firstReviewResponse.status() === 201 || firstReviewResponse.status() === 202, `review start returned HTTP ${firstReviewResponse.status()}`);
   assert.deepEqual(firstReviewResponse.request().postDataJSON(), { business_at: C1B_BUSINESS_AT_UTC }, "review did not submit the frozen business time");
   try {
     await page.waitForURL(/\/cases\/[^/]+\/reviews\/[^/]+/);
@@ -217,14 +213,15 @@ try {
   const firstRunID = firstURL.pathname.split("/").at(-1) ?? "";
   assert.ok(firstRunID, "initial review run ID was not in the route");
   const firstWorkspace = await waitForWorkspace(page, caseID, firstRunID);
-  const firstRulepack = firstWorkspace.execution?.agent_review?.rulepack;
-  assert.ok(firstRulepack?.id && firstRulepack.version, "initial attempt did not resolve a governed rule pack");
-  if (dataset.rulepack) assert.deepEqual(firstRulepack, dataset.rulepack, "initial attempt froze a different governed policy");
   const firstAttemptID = getAttemptID(firstWorkspace, firstURL.searchParams.get("attempt_id"));
+  const firstReviewDiagnostics = await readReviewDiagnostics(page, caseID, firstRunID, firstAttemptID);
+  const firstRulepack = firstReviewDiagnostics.governed_rulepack;
+  assertFrozenRulepack(firstReviewDiagnostics, firstRulepack, "initial attempt");
+  if (firstWorkspace.agent_review?.rulepack)
+    assertWorkspaceRulepack(firstWorkspace.agent_review.rulepack, firstRulepack, "initial attempt workspace");
   assertRelations(firstWorkspace, scenario.expected_relations);
-  const firstAttachmentDiagnostics = samePurposePair
-    ? await readReviewDiagnostics(page, caseID, firstRunID, firstAttemptID)
-    : null;
+  if (dataset.rulepack) assertFrozenRulepack(firstReviewDiagnostics, dataset.rulepack, "initial attempt");
+  const firstAttachmentDiagnostics = samePurposePair ? firstReviewDiagnostics : null;
   if (samePurposePair && firstAttachmentDiagnostics) {
     const snapshotIDs = new Set(firstAttachmentDiagnostics.snapshot.document_ids);
     for (const upload of [samePurposePair.first, samePurposePair.second]) {
@@ -245,7 +242,7 @@ try {
   assert.ok(bandwidthFinding, "bandwidth finding is absent from workspace");
   const claim = String(bandwidthFinding.claim ?? "");
   assert.ok(claim, "bandwidth finding has no claim");
-  const evidence = Array.isArray(bandwidthFinding.evidence) ? bandwidthFinding.evidence as Array<Record<string, unknown>> : [];
+  const evidence = bandwidthFinding.evidence;
   const citedDocumentIDs = new Set(evidence.map((item) => String(item.document_version_id ?? "")));
   assert.ok(citedDocumentIDs.has(uploaded.procurement), "bandwidth evidence does not cite the procurement source");
   assert.ok(citedDocumentIDs.has(generationResponse.document_id), "bandwidth evidence does not cite the generated draft");
@@ -277,12 +274,12 @@ try {
 
   await page.goto(`${web}/cases/${caseID}`);
   await page.getByRole("heading", { name: title, exact: true }).waitFor();
-  await selectRunAndAttempt(page.getByLabel("选择审查和执行记录", { exact: true }), 1, 1);
+  await selectReviewAttempt(page, web, caseID, firstRunID, firstAttemptID, page.getByLabel("选择审查和执行记录", { exact: true }));
   await page.getByRole("button", { name: "生成报告", exact: true }).click();
   const firstReport = await waitForReport(page, caseID, firstRunID, firstAttemptID);
   const firstReportBytes = await readReportLinks(page, firstReport.id as string);
 
-  await selectRunAndAttempt(page.getByLabel("选择原审查和执行记录", { exact: true }), 1, 1);
+  await selectReviewAttempt(page, web, caseID, firstRunID, firstAttemptID, page.getByLabel("选择原审查和执行记录", { exact: true }));
   const remediationGroup = page.getByRole("group", { name: "绑定发现（至少选择一项）", exact: true });
   await remediationGroup.getByRole("checkbox").first().check();
   await page.getByLabel("负责人 ID", { exact: true }).fill("demo-admin");
@@ -318,49 +315,12 @@ try {
   assert.equal(updatedPrimary?.current_version, primaryMaterial.current_version + 1, "the UI replacement did not create the next material version");
 
   let attachmentA2: Awaited<ReturnType<typeof replaceMaterial>> | null = null;
-  if (samePurposePair) {
-    const attachmentTarget = afterReplacement.materials?.find((item) => item.material_id === samePurposePair.first.material_id);
-    const attachmentB = afterReplacement.materials?.find((item) => item.material_id === samePurposePair.second.material_id);
-    assert.ok(attachmentTarget, "contact note A has no current material projection");
-    assert.ok(attachmentB, "contact note B has no current material projection");
-    assert.equal(attachmentTarget.current_document_id, samePurposePair.first.id, "contact note A changed before explicit replacement");
-    const attachmentA1Doc = afterReplacement.documents.find((item) => item.id === samePurposePair.first.id);
-    assert.ok(attachmentA1Doc, "current document for contact note A is absent");
-    attachmentA2 = await replaceMaterial(page, {
-      role: "attachment",
-      purpose: "supplement",
-      filename: "联系人说明-A2.txt",
-      text: "项目联系人说明：甲方联系人为联系人甲，电话 010-10000001；本次更新了联系人说明文件。",
-    }, attachmentTarget, String(attachmentA1Doc.filename ?? ""), "补充协议");
-    const afterAttachmentReplacement = await waitForCase(page, caseID, (detail) =>
-      detail.documents.some((item) => item.id === attachmentA2?.id),
-    );
-    const updatedA = afterAttachmentReplacement.materials?.find((item) => item.material_id === samePurposePair.first.material_id);
-    const unchangedB = afterAttachmentReplacement.materials?.find((item) => item.material_id === samePurposePair.second.material_id);
-    assert.equal(attachmentA2.material_id, attachmentTarget.material_id, "attachment A replacement changed material identity");
-    assert.equal(attachmentA2.version, attachmentTarget.current_version + 1, "attachment A replacement did not increment its version");
-    assert.equal(updatedA?.current_document_id, attachmentA2.id, "attachment A replacement is not current after refresh");
-    assert.equal(updatedA?.current_version, attachmentTarget.current_version + 1, "attachment A current version did not increment after refresh");
-    assert.equal(unchangedB?.current_document_id, samePurposePair.second.id, "replacing attachment A changed attachment B's current document");
-    assert.equal(unchangedB?.current_version, 1, "replacing attachment A changed attachment B's version");
-    await page.reload();
-    await page.getByRole("heading", { name: title, exact: true }).waitFor();
-    const currentA = page.locator(`.material-current-set li[data-material-id="${samePurposePair.first.material_id}"]`);
-    const currentB = page.locator(`.material-current-set li[data-material-id="${samePurposePair.second.material_id}"]`);
-    await currentA.getByText("联系人说明-A2.txt", { exact: true }).waitFor();
-    await currentB.getByText("联系人说明-B.txt", { exact: true }).waitFor();
-    assert.match(await currentA.innerText(), /当前版本 v2/);
-    assert.match(await currentB.innerText(), /当前版本 v1/);
-    assert.doesNotMatch(await currentA.innerText(), /联系人说明-A1\.txt/);
-    await waitForCurrentMaterialParsed(page, samePurposePair.first.material_id);
-  }
-
   await enterC1BBusinessAt(page);
   const reReviewResponsePromise = page.waitForResponse((response) =>
     response.request().method() === "POST" && response.url().endsWith(`/api/cases/${caseID}/reviews`));
   await page.getByRole("button", { name: "开始复审", exact: true }).click();
   const reReviewResponse = await reReviewResponsePromise;
-  assert.ok(reReviewResponse.status() === 200 || reReviewResponse.status() === 202, `re-review start returned HTTP ${reReviewResponse.status()}`);
+  assert.ok(reReviewResponse.status() === 201 || reReviewResponse.status() === 202, `re-review start returned HTTP ${reReviewResponse.status()}`);
   assert.deepEqual(reReviewResponse.request().postDataJSON(), { business_at: C1B_BUSINESS_AT_UTC }, "re-review did not submit the frozen business time");
   try {
     await page.waitForURL(/\/cases\/[^/]+\/reviews\/[^/]+/);
@@ -372,34 +332,15 @@ try {
   const secondRunID = secondURL.pathname.split("/").at(-1) ?? "";
   assert.ok(secondRunID && secondRunID !== firstRunID, "re-review overwrote the original run");
   const secondWorkspace = await waitForWorkspace(page, caseID, secondRunID);
-  const secondRulepack = secondWorkspace.execution?.agent_review?.rulepack;
-  assert.ok(secondRulepack?.id && secondRulepack.version, "re-review did not resolve a governed rule pack");
-  if (dataset.rulepack) assert.deepEqual(secondRulepack, dataset.rulepack, "re-review froze a different governed policy");
   const secondAttemptID = getAttemptID(secondWorkspace, secondURL.searchParams.get("attempt_id"));
   assert.notEqual(secondAttemptID, firstAttemptID, "re-review reused the previous attempt");
+  const secondReviewDiagnostics = await readReviewDiagnostics(page, caseID, secondRunID, secondAttemptID);
+  const secondRulepack = secondReviewDiagnostics.governed_rulepack;
+  assertFrozenRulepack(secondReviewDiagnostics, firstRulepack, "re-review");
+  if (secondWorkspace.agent_review?.rulepack)
+    assertWorkspaceRulepack(secondWorkspace.agent_review.rulepack, secondRulepack, "re-review workspace");
+  if (dataset.rulepack) assertFrozenRulepack(secondReviewDiagnostics, dataset.rulepack, "re-review");
   assertRelations(secondWorkspace, compatible.expected_relations);
-  if (samePurposePair && attachmentA2 && firstAttachmentDiagnostics) {
-    const currentAttachmentDiagnostics = await readReviewDiagnostics(page, caseID, secondRunID, secondAttemptID);
-    const currentSnapshotIDs = new Set(currentAttachmentDiagnostics.snapshot.document_ids);
-    for (const id of [attachmentA2.id, samePurposePair.second.id]) {
-      assert.ok(currentSnapshotIDs.has(id), `new attempt did not freeze current attachment ${id}`);
-      assert.ok(secondWorkspace.documents.some((document) => document.id === id), `new workspace omitted current attachment ${id}`);
-    }
-    assert.ok(!currentSnapshotIDs.has(samePurposePair.first.id), "new attempt still selected replaced attachment A1");
-    const firstDiagnosticsAfterReplacement = await readReviewDiagnostics(page, caseID, firstRunID, firstAttemptID);
-    const oldPairBefore = [samePurposePair.first.id, samePurposePair.second.id].map((id) => diagnosticDocument(firstAttachmentDiagnostics, id));
-    const oldPairAfter = [samePurposePair.first.id, samePurposePair.second.id].map((id) => diagnosticDocument(firstDiagnosticsAfterReplacement, id));
-    assert.deepEqual(oldPairAfter, oldPairBefore, "later material replacement changed the original attempt's frozen attachment hashes");
-    assert.equal(firstDiagnosticsAfterReplacement.execution?.attempt?.input_hash, firstAttachmentDiagnostics.execution?.attempt?.input_hash,
-      "later material replacement changed the original attempt input hash");
-    const secondA = diagnosticDocument(currentAttachmentDiagnostics, attachmentA2.id);
-    const secondB = diagnosticDocument(currentAttachmentDiagnostics, samePurposePair.second.id);
-    assert.equal(secondA?.digest, createHash("sha256").update("项目联系人说明：甲方联系人为联系人甲，电话 010-10000001；本次更新了联系人说明文件。", "utf8").digest("hex"),
-      "new attempt A2 content hash differs from the uploaded bytes");
-    assert.equal(secondB?.digest, diagnosticDocument(firstAttachmentDiagnostics, samePurposePair.second.id)?.digest,
-      "unchanged attachment B content hash changed between attempts");
-  }
-
   await page.goto(`${web}/cases/${caseID}`);
   await page.getByRole("heading", { name: title, exact: true }).waitFor();
   const itemForm = page.getByRole("group", { name: "本案当前的拟签合同修改稿", exact: true });
@@ -408,7 +349,7 @@ try {
   await page.getByRole("button", { name: "提交修改稿", exact: true }).click();
   await page.getByLabel("选择复核的审查和执行记录", { exact: true }).waitFor();
   // The record list is rendered newest-first, so the latest run is record 1.
-  await selectRunAndAttempt(page.getByLabel("选择复核的审查和执行记录", { exact: true }), 1, 1);
+  await selectReviewAttempt(page, web, caseID, secondRunID, secondAttemptID, page.getByLabel("选择复核的审查和执行记录", { exact: true }));
   const verifyReason = page.getByLabel("复核理由", { exact: true });
   await verifyReason.waitFor({ state: "visible", timeout: 15000 });
   // Readiness requires matching run/attempt metadata and complete same-scope compatible rule evaluations.
@@ -425,13 +366,13 @@ try {
     const uniqueObjectRefs = (value: unknown): value is string[] => Array.isArray(value) && value.length > 0 &&
       value.every((item) => typeof item === "string" && item.trim() !== "") && new Set(value).size === value.length;
     const evaluationChecks = findingIDs.map((findingID) => {
-      const sourceRows = firstWorkspace.evaluations.filter((evaluation) => evaluation.finding_id === findingID);
+      const sourceRows = workspaceEvaluations(firstWorkspace).filter((evaluation) => evaluation.finding_id === findingID);
       const source = sourceRows[0];
       const sourceRefs = source && uniqueObjectRefs(source.object_refs) ? source.object_refs : null;
       const matching = source && sourceRefs !== null && typeof source.rule_id === "string" && source.rule_id.trim() !== "" &&
         typeof source.rule_version === "string" && source.rule_version.trim() !== "" &&
         typeof source.capability_id === "string" && source.capability_id.trim() !== ""
-        ? secondWorkspace.evaluations.filter((evaluation) => {
+        ? workspaceEvaluations(secondWorkspace).filter((evaluation) => {
           const candidateRefs = evaluation.object_refs;
           return evaluation.rule_id === source.rule_id && evaluation.rule_version === source.rule_version &&
             evaluation.capability_id === source.capability_id && uniqueObjectRefs(candidateRefs) &&
@@ -471,9 +412,9 @@ try {
       candidate_run_id: secondWorkspace.run.id,
       expected_candidate_run_id: secondRunID,
       source_attempt_id: firstAttemptID,
-      candidate_attempt_id: secondWorkspace.execution?.attempt?.id ?? null,
+      candidate_attempt_id: secondWorkspace.review_attempts?.attempt?.id ?? null,
       expected_candidate_attempt_id: secondAttemptID,
-      candidate_attempt_state: secondWorkspace.execution?.attempt?.state ?? null,
+      candidate_attempt_state: secondWorkspace.review_attempts?.attempt?.state ?? null,
       revision_comparison_reason: secondWorkspace.revision_comparison_reason ?? null,
       evaluation_checks: evaluationChecks,
       every_finding_compatible: findingIDs.length > 0 && evaluationChecks.every((check) => check.exactly_one_compatible),
@@ -492,6 +433,31 @@ try {
     ),
     page.getByRole("button", { name: "提交复核", exact: true }).click(),
   ]);
+  const verifyResponseBody = await verifyResponse.text();
+  const caseDetailResponse = await page.request.get(`${web}/api/cases/${caseID}`);
+  const caseDetailRaw = caseDetailResponse.status() === 200 ? await caseDetailResponse.json() : null;
+  await saveRawEvidence(`remediation-verification-${remediationID}.json`, {
+    response: {
+      status: verifyResponse.status(),
+      url: verifyResponse.url(),
+      body: verifyResponseBody,
+    },
+    scope: {
+      case_id: caseID,
+      remediation_id: remediationID,
+      source_run_id: firstRunID,
+      source_attempt_id: firstAttemptID,
+      target_run_id: secondRunID,
+      target_attempt_id: secondAttemptID,
+      finding_ids: remediation.finding_ids ?? null,
+      source_evaluations: firstWorkspace.evaluations,
+      target_evaluations: secondWorkspace.evaluations,
+      source_report_id: firstReport.id,
+      case_detail_http_status: caseDetailResponse.status(),
+      case_detail_remediations: caseDetailRaw?.remediations ?? null,
+      case_detail_reports: caseDetailRaw?.reports ?? null,
+    },
+  });
   assert.equal(verifyResponse.status(), 200, "compatible re-review did not close remediation");
   const verifiedDetail = await waitForCase(page, caseID, (detail) => detail.remediations.some((item) => item.id === remediationID && item.status === "closed"));
   assert.equal(verifiedDetail.remediations.find((item) => item.id === remediationID)?.status, "closed");
@@ -513,7 +479,7 @@ try {
   await page.goto(`${web}/cases/${caseID}`);
   await page.getByRole("heading", { name: title, exact: true }).waitFor();
   // Record 1 is the newest saved run, which is the re-review after run 1.
-  await selectRunAndAttempt(page.getByLabel("选择审查和执行记录", { exact: true }), 1, 1);
+  await selectReviewAttempt(page, web, caseID, secondRunID, secondAttemptID, page.getByLabel("选择审查和执行记录", { exact: true }));
   await page.getByRole("button", { name: "生成报告", exact: true }).click();
   const secondReport = await waitForReport(page, caseID, secondRunID, secondAttemptID);
   const secondReportBytes = await readReportLinks(page, secondReport.id as string);
@@ -521,8 +487,116 @@ try {
   const firstReportBytesAfter = await readReportLinks(page, firstReport.id as string);
   assert.deepEqual(firstReportBytesAfter.json, firstReportBytes.json, "later report creation changed frozen JSON bytes");
   assert.deepEqual(firstReportBytesAfter.html, firstReportBytes.html, "later report creation changed frozen HTML bytes");
+  const secondReportBytesBeforeAttachmentUpdate = secondReportBytes;
+  const firstReportBytesBeforeAttachmentUpdate = firstReportBytes;
+  const secondAttachmentDiagnostics = secondReviewDiagnostics;
 
-  await selectReport(page.getByLabel("归档所依据的报告", { exact: true }), Number(secondReport.version));
+  if (samePurposePair) {
+    const attachmentTarget = afterReplacement.materials?.find((item) => item.material_id === samePurposePair.first.material_id);
+    const attachmentB = afterReplacement.materials?.find((item) => item.material_id === samePurposePair.second.material_id);
+    assert.ok(attachmentTarget, "contact note A has no current material projection");
+    assert.ok(attachmentB, "contact note B has no current material projection");
+    assert.equal(attachmentTarget.current_document_id, samePurposePair.first.id, "contact note A changed before explicit replacement");
+    const attachmentA1Doc = afterReplacement.documents.find((item) => item.id === samePurposePair.first.id);
+    assert.ok(attachmentA1Doc, "current document for contact note A is absent");
+    attachmentA2 = await replaceMaterial(page, {
+      role: "attachment",
+      purpose: "supplement",
+      filename: "联系人说明-A2.txt",
+      text: "项目联系人说明：甲方联系人为联系人甲，电话 010-10000001；本次更新了联系人说明文件。",
+    }, attachmentTarget, String(attachmentA1Doc.filename ?? ""), "补充协议");
+    const afterAttachmentReplacement = await waitForCase(page, caseID, (detail) =>
+      detail.documents.some((item) => item.id === attachmentA2?.id),
+    );
+    const updatedA = afterAttachmentReplacement.materials?.find((item) => item.material_id === samePurposePair.first.material_id);
+    const unchangedB = afterAttachmentReplacement.materials?.find((item) => item.material_id === samePurposePair.second.material_id);
+    assert.equal(attachmentA2.material_id, attachmentTarget.material_id, "attachment A replacement changed material identity");
+    assert.equal(attachmentA2.version, attachmentTarget.current_version + 1, "attachment A replacement did not increment its version");
+    assert.equal(updatedA?.current_document_id, attachmentA2.id, "attachment A replacement is not current after refresh");
+    assert.equal(updatedA?.current_version, attachmentTarget.current_version + 1, "attachment A current version did not increment after refresh");
+    assert.equal(unchangedB?.current_document_id, samePurposePair.second.id, "replacing attachment A changed attachment B's current document");
+    assert.equal(unchangedB?.current_version, 1, "replacing attachment A changed attachment B's version");
+    await page.reload();
+    await page.getByRole("heading", { name: title, exact: true }).waitFor();
+    const currentA = page.locator(`.material-current-set li[data-material-id="${samePurposePair.first.material_id}"]`);
+    const currentB = page.locator(`.material-current-set li[data-material-id="${samePurposePair.second.material_id}"]`);
+    await currentA.getByText("联系人说明-A2.txt", { exact: true }).waitFor();
+    await currentB.getByText("联系人说明-B.txt", { exact: true }).waitFor();
+    assert.match(await currentA.innerText(), /当前版本 v2/);
+    assert.match(await currentB.innerText(), /当前版本 v1/);
+    assert.doesNotMatch(await currentA.innerText(), /联系人说明-A1\.txt/);
+    await waitForCurrentMaterialParsed(page, samePurposePair.first.material_id);
+  }
+
+  let thirdRunID = "";
+  let thirdAttemptID = "";
+  let thirdWorkspace: ReviewWorkspace | null = null;
+  let thirdReviewDiagnostics: ReviewDiagnostics | null = null;
+  if (samePurposePair && attachmentA2) {
+    await enterC1BBusinessAt(page);
+    const thirdReviewResponsePromise = page.waitForResponse((response) =>
+      response.request().method() === "POST" && response.url().endsWith(`/api/cases/${caseID}/reviews`));
+    await page.getByRole("button", { name: "开始复审", exact: true }).click();
+    const thirdReviewResponse = await thirdReviewResponsePromise;
+    assert.ok(thirdReviewResponse.status() === 201 || thirdReviewResponse.status() === 202, `attachment re-review start returned HTTP ${thirdReviewResponse.status()}`);
+    assert.deepEqual(thirdReviewResponse.request().postDataJSON(), { business_at: C1B_BUSINESS_AT_UTC }, "attachment re-review changed the frozen business time");
+    await page.waitForURL(/\/cases\/[^/]+\/reviews\/[^/]+/);
+    const thirdURL = new URL(page.url());
+    thirdRunID = thirdURL.pathname.split("/").at(-1) ?? "";
+    assert.ok(thirdRunID && thirdRunID !== firstRunID && thirdRunID !== secondRunID, "attachment re-review did not create a distinct run");
+    thirdWorkspace = await waitForWorkspace(page, caseID, thirdRunID);
+    thirdAttemptID = getAttemptID(thirdWorkspace, thirdURL.searchParams.get("attempt_id"));
+    assert.notEqual(thirdAttemptID, firstAttemptID, "attachment re-review reused the initial attempt");
+    assert.notEqual(thirdAttemptID, secondAttemptID, "attachment re-review reused the draft re-review attempt");
+    thirdReviewDiagnostics = await readReviewDiagnostics(page, caseID, thirdRunID, thirdAttemptID);
+    assertFrozenRulepack(thirdReviewDiagnostics, firstRulepack, "attachment re-review");
+    if (thirdWorkspace.agent_review?.rulepack)
+      assertWorkspaceRulepack(thirdWorkspace.agent_review.rulepack, firstRulepack, "attachment re-review workspace");
+    if (dataset.rulepack) assertFrozenRulepack(thirdReviewDiagnostics, dataset.rulepack, "attachment re-review");
+    assertRelations(thirdWorkspace, compatible.expected_relations);
+    const thirdSnapshotIDs = new Set(thirdReviewDiagnostics.snapshot.document_ids);
+    for (const id of [attachmentA2.id, samePurposePair.second.id]) {
+      assert.ok(thirdSnapshotIDs.has(id), `attachment re-review did not freeze current attachment ${id}`);
+      assert.ok(thirdWorkspace.documents.some((document) => document.id === id), `attachment re-review workspace omitted current attachment ${id}`);
+    }
+    assert.ok(!thirdSnapshotIDs.has(samePurposePair.first.id), "attachment re-review still selected replaced attachment A1");
+    const currentA2 = diagnosticDocument(thirdReviewDiagnostics, attachmentA2.id);
+    const currentB = diagnosticDocument(thirdReviewDiagnostics, samePurposePair.second.id);
+    assert.equal(currentA2?.digest, createHash("sha256").update("项目联系人说明：甲方联系人为联系人甲，电话 010-10000001；本次更新了联系人说明文件。", "utf8").digest("hex"),
+      "attachment re-review A2 content hash differs from uploaded bytes");
+    assert.equal(currentB?.digest, diagnosticDocument(firstAttachmentDiagnostics!, samePurposePair.second.id)?.digest,
+      "unchanged attachment B hash changed between attempts");
+    const firstAfterAttachment = await readReviewDiagnostics(page, caseID, firstRunID, firstAttemptID);
+    const secondAfterAttachment = await readReviewDiagnostics(page, caseID, secondRunID, secondAttemptID);
+    for (const id of [samePurposePair.first.id, samePurposePair.second.id]) {
+      assert.deepEqual(diagnosticDocument(firstAfterAttachment, id), diagnosticDocument(firstAttachmentDiagnostics!, id),
+        `later attachment replacement changed original attempt document ${id}`);
+      assert.deepEqual(diagnosticDocument(secondAfterAttachment, id), diagnosticDocument(secondAttachmentDiagnostics, id),
+        `later attachment replacement changed draft re-review document ${id}`);
+    }
+    assert.equal(firstAfterAttachment.execution?.attempt?.input_hash, firstAttachmentDiagnostics?.execution?.attempt?.input_hash,
+      "later attachment replacement changed initial attempt input hash");
+    assert.equal(secondAfterAttachment.execution?.attempt?.input_hash, secondReviewDiagnostics.execution?.attempt?.input_hash,
+      "later attachment replacement changed draft re-review input hash");
+  }
+
+  await page.goto(`${web}/cases/${caseID}`);
+  await page.getByRole("heading", { name: title, exact: true }).waitFor();
+  const reportRunID = thirdRunID || secondRunID;
+  const reportAttemptID = thirdAttemptID || secondAttemptID;
+  await selectReviewAttempt(page, web, caseID, reportRunID, reportAttemptID, page.getByLabel("选择审查和执行记录", { exact: true }));
+  await page.getByRole("button", { name: "生成报告", exact: true }).click();
+  const finalReport = await waitForReport(page, caseID, reportRunID, reportAttemptID);
+  const finalReportBytes = await readReportLinks(page, finalReport.id as string);
+  assert.ok(finalReportBytes.json.length > 0 && finalReportBytes.html.length > 0);
+  const firstReportBytesAfterAttachmentReview = await readReportLinks(page, firstReport.id as string);
+  const secondReportBytesAfterAttachmentReview = await readReportLinks(page, secondReport.id as string);
+  assert.deepEqual(firstReportBytesAfterAttachmentReview.json, firstReportBytesBeforeAttachmentUpdate.json, "attachment re-review changed original frozen JSON report bytes");
+  assert.deepEqual(firstReportBytesAfterAttachmentReview.html, firstReportBytesBeforeAttachmentUpdate.html, "attachment re-review changed original frozen HTML report bytes");
+  assert.deepEqual(secondReportBytesAfterAttachmentReview.json, secondReportBytesBeforeAttachmentUpdate.json, "attachment re-review changed draft re-review JSON report bytes");
+  assert.deepEqual(secondReportBytesAfterAttachmentReview.html, secondReportBytesBeforeAttachmentUpdate.html, "attachment re-review changed draft re-review HTML report bytes");
+
+  await selectReportOption(page, page.getByLabel("归档所依据的报告", { exact: true }), finalReport);
   await page.getByLabel("归档理由", { exact: true }).fill("已完成复审并归档冻结报告。");
   const [archiveResponse] = await Promise.all([
     page.waitForResponse((response) =>
@@ -532,6 +606,8 @@ try {
   ]);
   assert.equal(archiveResponse.status(), 200, "archive action was not accepted");
   const archived = await waitForCase(page, caseID, (detail) => Boolean(detail.archived_at) && detail.archives.length > 0);
+  const finalArchive = archived.archives.find((item) => item.report_id === finalReport.id);
+  assert.ok(finalArchive, `final archive did not point to the third report ${String(finalReport.id)}`);
   assert.ok(archived.archived_at, "archive timestamp was not retained");
 
   const deniedWrite = await page.request.post(`${web}/api/cases/${caseID}/generations`, {
@@ -565,9 +641,12 @@ try {
     original_run_id: firstRunID,
     re_review_run_id: secondRunID,
     first_report_id: firstReport.id,
-    final_report_id: secondReport.id,
+    final_report_id: finalReport.id,
+    attachment_re_review_run_id: thirdRunID || null,
+    attachment_re_review_attempt_id: thirdAttemptID || null,
     remediation_status: "closed",
-    archive_id: archived.archives.at(-1)?.id,
+    archive_id: finalArchive.id,
+    archived_report_id: finalArchive.report_id,
     result: "real Chromium C1-B journey passed",
   }, null, 2));
 } finally {
@@ -607,99 +686,6 @@ async function postFromUI(page: Page, pathPrefix: string, suffix: string, action
   return await response.json() as Record<string, any>;
 }
 
-// page.getByLabel() resolves to antd's inner input[role=combobox], not the
-// .ant-select root, so selected-value lookups must walk up to the ancestor.
-function antSelectRoot(select: Locator): Locator {
-  return select.locator(
-    "xpath=ancestor-or-self::*[contains(concat(' ', normalize-space(@class), ' '), ' ant-select ')][1]",
-  );
-}
-
-async function selectedAntLabel(select: Locator): Promise<string> {
-  const item = antSelectRoot(select).locator(".ant-select-content").first();
-  if ((await item.count()) === 0) return "";
-  const title = await item.getAttribute("title");
-  return (title ?? (await item.textContent()) ?? "").replace(/\s+/g, " ").trim();
-}
-
-async function selectionApplied(
-  select: Locator,
-  matches: (label: string) => boolean,
-): Promise<boolean> {
-  const deadline = Date.now() + 2000;
-  do {
-    const label = await selectedAntLabel(select);
-    if (label && matches(label)) return true;
-    await Bun.sleep(50);
-  } while (Date.now() < deadline);
-  return false;
-}
-
-async function captureAntSelectFailure(page: Page, labels: string[]): Promise<void> {
-  const directory = process.env.E2E_SCREENSHOT_DIR?.trim()
-    || fileURLToPath(new URL("../../artifacts/screenshots/", import.meta.url));
-  const slug = labels.join("-").replace(/[^\p{L}\p{N}-]+/gu, "_").slice(0, 60) || "unknown";
-  try {
-    await mkdir(directory, { recursive: true });
-    await page.screenshot({ path: join(directory, `ant-select-${slug}-${Date.now()}.png`) });
-  } catch {
-    // Screenshots are diagnostic; they must never mask the original failure.
-  }
-}
-
-async function chooseAntOption(
-  page: Page,
-  select: Locator,
-  matches: (label: string) => boolean,
-): Promise<void> {
-  // The production build can close or re-render a popup between the click and
-  // the option measurement, especially when a run transitions to a terminal
-  // state. Re-open and re-measure a few times instead of failing on one frame.
-  let labels: string[] = [];
-  for (let attempt = 0; attempt < 5; attempt++) {
-    // antd may already hold the target value. Clicking it again races the
-    // dropdown closing and burns Playwright's 30s actionability timeout.
-    if (matches(await selectedAntLabel(select))) return;
-    if ((await page.locator(".ant-select-dropdown:visible").count()) === 0) {
-      await select.click();
-    }
-    const dropdown = page.locator(".ant-select-dropdown:visible").last();
-    try {
-      await dropdown.waitFor({ state: "visible", timeout: 5000 });
-    } catch {
-      await Bun.sleep(100);
-      continue;
-    }
-    const options = dropdown.locator(".ant-select-item-option");
-    try {
-      await options.first().waitFor({ state: "visible", timeout: 5000 });
-    } catch {
-      await Bun.sleep(100);
-      continue;
-    }
-    const measured = await options.evaluateAll((elements) => elements.map((element) => ({
-      label: element.getAttribute("title") ?? element.textContent?.trim() ?? "",
-      visible: element.getBoundingClientRect().height > 0,
-    })));
-    labels = measured.map((option) => option.label);
-    const index = measured.findIndex((option) => option.visible && matches(option.label));
-    if (index >= 0) {
-      await options.nth(index).click({ timeout: 2000 }).catch(() => {});
-      if (await selectionApplied(select, matches)) return;
-      await page.keyboard.press("Escape").catch(() => {});
-      await Bun.sleep(100);
-      continue;
-    }
-    if (attempt === 2) {
-      await page.keyboard.press("Escape").catch(() => {});
-      await select.click().catch(() => {});
-    }
-    await Bun.sleep(100);
-  }
-  await captureAntSelectFailure(page, labels);
-  throw new Error(`no visible select option matched ${labels.join(" | ")}`);
-}
-
 async function chooseAntSelect(page: Page, select: Locator, optionText: string): Promise<void> {
   await chooseAntOption(page, select, (label) => label === optionText);
 }
@@ -729,28 +715,64 @@ async function waitForCurrentMaterialParsed(page: Page, materialID: string): Pro
   }, materialID, { timeout: 30000 });
 }
 
-async function waitForWorkspace(page: Page, caseID: string, runID: string): Promise<Workspace> {
+async function waitForWorkspace(page: Page, caseID: string, runID: string): Promise<ReviewWorkspace> {
   const deadline = Date.now() + 90000;
-  let last: Workspace | null = null;
+  let last: ReviewWorkspace | null = null;
   while (Date.now() < deadline) {
     const response = await page.request.get(`${web}/api/cases/${caseID}/reviews/${runID}`);
     assert.equal(response.status(), 200, `review ${runID} returned HTTP ${response.status()}`);
-    last = await response.json() as Workspace;
+    const raw = await response.json();
+    await saveRawEvidence(`workspace-${runID}.json`, raw);
+    last = parseReviewWorkspace(raw);
     if (!["accepted", "queued", "running"].includes(last.run.state)) return last;
     await page.waitForTimeout(200);
   }
   throw new Error(`review ${runID} did not terminate; last workspace=${JSON.stringify(last)}`);
 }
 
+async function saveRawEvidence(filename: string, value: unknown): Promise<void> {
+  const directory = process.env.CAW_DELIVERY_DIR;
+  if (!directory) return;
+  const target = join(directory, "browser-evidence");
+  await mkdir(target, { recursive: true });
+  await writeFile(join(target, filename), `${JSON.stringify(value, null, 2)}\n`, "utf8");
+}
+
 async function readReviewDiagnostics(page: Page, caseID: string, runID: string, attemptID: string): Promise<ReviewDiagnostics> {
-  const response = await page.request.get(
-    `${web}/api/cases/${caseID}/reviews/${runID}/diagnostics?attempt_id=${encodeURIComponent(attemptID)}`,
-  );
-  assert.equal(response.status(), 200, `review diagnostics returned HTTP ${response.status()}`);
-  const diagnostics = await response.json() as ReviewDiagnostics;
+  const { raw, diagnostics, rulepack } = await readFrozenGovernance(page, web, caseID, runID, attemptID);
+  await saveRawEvidence(`diagnostics-${runID}-${attemptID}.json`, raw);
+  assert.ok(diagnostics.snapshot, "review diagnostics omitted the snapshot");
+  assert.ok(diagnostics.execution, "review diagnostics omitted frozen execution details");
+  const documents = parseDiagnosticDocuments(raw);
   assert.equal(diagnostics.snapshot.document_ids instanceof Array, true, "review diagnostics omitted frozen document identities");
-  assert.match(diagnostics.execution?.attempt?.input_hash ?? "", /^[0-9a-f]{64}$/, "review diagnostics omitted a valid frozen attempt input hash");
-  return diagnostics;
+  return { ...diagnostics, snapshot: diagnostics.snapshot, execution: diagnostics.execution, governed_rulepack: rulepack, documents };
+}
+
+function parseDiagnosticDocuments(value: unknown): DiagnosticDocument[] {
+  assert.ok(value !== null && typeof value === "object" && !Array.isArray(value), "review diagnostics must be an object");
+  const rawDocuments = (value as Record<string, unknown>).documents;
+  assert.ok(Array.isArray(rawDocuments), "review diagnostics omitted document rows");
+  return rawDocuments.map((raw, index) => {
+    assert.ok(raw !== null && typeof raw === "object" && !Array.isArray(raw), `review diagnostic document ${index} must be an object`);
+    const record = raw as Record<string, unknown>;
+    assert.equal(typeof record.id, "string", `review diagnostic document ${index} omitted ID`);
+    assert.equal(typeof record.digest, "string", `review diagnostic document ${index} omitted original digest`);
+    const parsed = record.parsed_document;
+    if (parsed === null || parsed === undefined) return { id: record.id as string, digest: record.digest as string, parsed_document: null };
+    assert.ok(typeof parsed === "object" && !Array.isArray(parsed), `review diagnostic document ${index} parse must be an object`);
+    const parseRecord = parsed as Record<string, unknown>;
+    assert.equal(typeof parseRecord.id, "string", `review diagnostic document ${index} omitted parse ID`);
+    return {
+      id: record.id as string,
+      digest: record.digest as string,
+      parsed_document: {
+        id: parseRecord.id as string,
+        original_digest: typeof parseRecord.original_digest === "string" ? parseRecord.original_digest : undefined,
+        artifact_digest: typeof parseRecord.artifact_digest === "string" ? parseRecord.artifact_digest : undefined,
+        normalized_digest: typeof parseRecord.normalized_digest === "string" ? parseRecord.normalized_digest : null,
+      },
+    };
+  });
 }
 
 function diagnosticDocument(diagnostics: ReviewDiagnostics, documentID: string) {
@@ -771,23 +793,46 @@ function diagnosticDocument(diagnostics: ReviewDiagnostics, documentID: string) 
   };
 }
 
-function getAttemptID(workspace: Workspace, routeAttempt: string | null): string {
-  const attemptID = routeAttempt || workspace.execution?.attempt?.id || "";
+function getAttemptID(workspace: ReviewWorkspace, routeAttempt: string | null): string {
+  const attemptID = routeAttempt || workspace.review_attempts?.attempt?.id || "";
   assert.ok(attemptID, `review ${workspace.run.id} has no attempt identity`);
   return attemptID;
 }
 
-function assertRelations(workspace: Workspace, expected: Record<string, string>): void {
+function assertWorkspaceRulepack(
+  actual: { id: string; version: string } | null | undefined,
+  expected: RulePackIdentity,
+  stage: string,
+): void {
+  assert.ok(actual, `${stage} did not resolve a governed rule pack`);
+  assert.equal(actual.id, expected.id, `${stage} resolved a different governed rule pack ID`);
+  assert.equal(actual.version, expected.version, `${stage} resolved a different governed rule pack version`);
+}
+
+function assertFrozenRulepack(diagnostics: ReviewDiagnostics, expected: RulePackIdentity | FrozenRulepack, stage: string): void {
+  const actual = diagnostics.governed_rulepack;
+  assert.ok(actual, `${stage} diagnostics omitted the frozen governed rule pack`);
+  assert.equal(actual.id, expected.id, `${stage} froze a different governed rule pack ID`);
+  assert.equal(actual.version, expected.version, `${stage} froze a different governed rule pack version`);
+  assert.equal(actual.content_sha256, expected.content_sha256, `${stage} froze a different governed rule pack hash`);
+}
+
+function workspaceEvaluations(workspace: ReviewWorkspace): ConstraintEvaluation[] {
+  assert.ok(Array.isArray(workspace.evaluations), `review ${workspace.run.id} omitted evaluations`);
+  return workspace.evaluations;
+}
+
+function assertRelations(workspace: ReviewWorkspace, expected: Record<string, string>): void {
   for (const [ruleID, relation] of Object.entries(expected)) {
     const observed = evaluation(workspace, ruleID).relation;
     assert.equal(observed, relation, `${ruleID} relation`);
   }
 }
 
-function evaluation(workspace: Workspace, ruleID: string): Record<string, any> {
-  const result = workspace.evaluations.find((item) => item.rule_id === ruleID);
-  assert.ok(result, `evaluation ${ruleID} is missing: ${JSON.stringify(workspace.evaluations)}`);
-  return result as Record<string, any>;
+function evaluation(workspace: ReviewWorkspace, ruleID: string): ConstraintEvaluation {
+  const result = workspaceEvaluations(workspace).find((item) => item.rule_id === ruleID);
+  assert.ok(result, `evaluation ${ruleID} is missing: ${JSON.stringify(workspaceEvaluations(workspace))}`);
+  return result;
 }
 
 function renderDraft(fields: Record<string, string>): string {
@@ -808,29 +853,11 @@ function renderDraft(fields: Record<string, string>): string {
   ].join("\n");
 }
 
-async function selectRunAndAttempt(
-  select: Locator,
-  runOrder: number,
-  attemptOrdinal: number,
-): Promise<void> {
-  const page = select.page();
-  await chooseAntOption(page, select, (label) =>
-    label.startsWith(`审查记录 ${runOrder}，第 ${attemptOrdinal} 次`),
-  );
-}
-
-async function selectReport(select: Locator, version: number): Promise<void> {
-  const page = select.page();
-  await chooseAntOption(page, select, (label) =>
-    label.startsWith(`版本 ${version}，`),
-  );
-}
-
-async function waitForReport(page: Page, caseID: string, runID: string, attemptID: string): Promise<Record<string, any>> {
+async function waitForReport(page: Page, caseID: string, runID: string, attemptID: string): Promise<{ id: string; version: number; created_at: string }> {
   const detail = await waitForCase(page, caseID, (value) => value.reports.some((item) => item.run_id === runID && item.attempt_id === attemptID));
   const report = detail.reports.find((item) => item.run_id === runID && item.attempt_id === attemptID);
   assert.ok(report, `report for ${runID}/${attemptID} is absent`);
-  return report as Record<string, any>;
+  return report;
 }
 
 async function readReportLinks(page: Page, reportID: string): Promise<{ json: Buffer; html: Buffer }> {

@@ -1,3 +1,4 @@
+import { readCDPRequestPostData } from "./cdp-request-post-data";
 import assert from "node:assert/strict";
 import type { Locator, Page } from "playwright";
 
@@ -104,26 +105,28 @@ export async function replaceMaterial(
     await selectMaterialOption(page, "附件用途", purposeLabels[purpose]!);
   }
   await selectMaterialOption(page, "材料操作", "替换选中的材料");
-  const targetField = page.getByLabel("要替换的材料", { exact: true });
+  const targetField = page.locator('.upload-form input[role="combobox"][aria-label="要替换的材料"]');
   await targetField.waitFor({ state: "visible" });
-  const targetLabel = await targetField.evaluate((element) => {
-    const wrapper = element.closest(".ant-select");
-    return wrapper?.querySelector(".ant-select-content")?.getAttribute("title") ??
-      wrapper?.querySelector(".ant-select-content")?.textContent?.trim() ?? "";
-  });
-  if (!targetLabel.startsWith(targetFilename)) {
-    await targetField.click();
-    const dropdown = page.locator(".ant-select-dropdown:visible").last();
-    await dropdown.waitFor({ state: "visible", timeout: 5000 });
-    const options = dropdown.locator(".ant-select-item-option");
-    const labels = await options.evaluateAll((elements) => elements.map((element) => ({
-      label: element.getAttribute("title") ?? element.textContent?.trim() ?? "",
-      visible: element.getBoundingClientRect().height > 0,
-    })));
-    const index = labels.findIndex((item) => item.visible && item.label.startsWith(targetFilename));
-    assert.notEqual(index, -1, `current target ${targetFilename} not present in ${labels.map((item) => item.label).join(" | ")}`);
-    await options.nth(index).click();
-  }
+  await page.keyboard.press("Escape").catch(() => {});
+  await targetField.click();
+  const listboxId = await targetField.getAttribute("aria-controls");
+  assert.ok(listboxId, "target material combobox omitted its controlled listbox ID");
+  const identityOptions = await page.locator(`#${listboxId} [role="option"]`).evaluateAll((elements) => elements.map((element) => ({
+    label: element.getAttribute("aria-label") ?? "",
+    materialId: element.textContent?.trim() ?? "",
+  })));
+  const identityOption = identityOptions.find((item) => item.materialId === target.material_id && item.label.startsWith(targetFilename));
+  assert.ok(identityOption, `target material ID ${target.material_id} did not map to ${targetFilename} in its own listbox: ${JSON.stringify(identityOptions)}`);
+  await page.waitForFunction(({ label }) => [...document.querySelectorAll(".ant-select-dropdown .ant-select-item-option")]
+    .some((item) => item.getAttribute("title") === label && item.getBoundingClientRect().height > 0), { label: identityOption.label }, { timeout: 5000 });
+  const visibleOptions = page.locator(".ant-select-dropdown .ant-select-item-option");
+  const visibleLabels = await visibleOptions.evaluateAll((elements) => elements.map((element) => ({
+    label: element.getAttribute("title") ?? element.textContent?.trim() ?? "",
+    visible: element.getBoundingClientRect().height > 0,
+  })));
+  const index = visibleLabels.findIndex((item) => item.visible && item.label === identityOption.label);
+  assert.notEqual(index, -1, `target material ID ${target.material_id} option did not render in the visible target list: ${JSON.stringify(visibleLabels)}`);
+  await visibleOptions.nth(index).click();
   const filenameLabel = await targetField.evaluate((element) => {
     const wrapper = element.closest(".ant-select");
     return wrapper?.querySelector(".ant-select-content")?.getAttribute("title") ??
@@ -162,6 +165,33 @@ async function submitMaterial(
   replacement?: { materialId: string; replacesDocumentId: string },
 ): Promise<UploadResult & { id: string; material_id: string; version: number }> {
   await button.scrollIntoViewIfNeeded();
+  const cdp = replacement ? await page.context().newCDPSession(page) : null;
+  let cdpRequestId: string | null = null;
+  const cdpSessionId = cdp ? "playwright-page-target" : null;
+  let cdpPostData = "";
+  let cdpPostDataError = "";
+  let cdpPostDataReady: Promise<void> | null = null;
+  if (cdp) {
+    await cdp.send("Network.enable");
+    cdp.on("Network.requestWillBeSent", (event: { requestId: string; request: { url: string; method: string; postData?: string } }) => {
+      if (event.request.method === "POST" && event.request.url.endsWith("/documents")) {
+        cdpRequestId = event.requestId;
+        cdpPostDataReady = readCDPRequestPostData({
+          requestId: event.requestId,
+          sessionId: cdpSessionId ?? undefined,
+          postData: event.request.postData,
+          getRequestPostData: (requestId, sessionId) => {
+            if (!cdp || sessionId !== cdpSessionId) throw new Error(`unexpected CDP target session ${sessionId}`);
+            return cdp.send("Network.getRequestPostData", { requestId });
+          },
+        }).then((body) => {
+          cdpPostData = body;
+        }).catch((error: unknown) => {
+          cdpPostDataError = error instanceof Error ? error.message : String(error);
+        });
+      }
+    });
+  }
   const [request, response] = await Promise.all([
     page.waitForRequest((candidate) => candidate.method() === "POST" && candidate.url().endsWith("/documents")),
     page.waitForResponse((candidate) => candidate.request().method() === "POST" && candidate.url().endsWith("/documents")),
@@ -172,11 +202,20 @@ async function submitMaterial(
   assert.ok(result.id && result.material_id && result.version, `upload ${filename} omitted material version identity`);
   if (replacement) {
     const contentType = request.headers()["content-type"] ?? "";
-    const body = request.postDataBuffer()?.toString("utf8") ?? "";
     assert.ok(contentType.includes("multipart/form-data"), `replacement request was not multipart: ${contentType}`);
+    assert.ok(cdp && cdpRequestId && cdpSessionId, "replacement request did not expose its CDP request and target session IDs");
+    assert.ok(cdpPostDataReady, `CDP request-body capture was not started for request ${cdpRequestId} in session ${cdpSessionId}`);
+    await Promise.race([
+      cdpPostDataReady,
+      new Promise<never>((_, reject) => setTimeout(() => reject(new Error(`timed out awaiting request ${cdpRequestId} body in session ${cdpSessionId}`)), 10000)),
+    ]);
+    assert.ok(!cdpPostDataError, `CDP request-body capture failed for request ${cdpRequestId} in session ${cdpSessionId}: ${cdpPostDataError}`);
+    assert.ok(cdpPostData, `CDP request-body capture was empty for request ${cdpRequestId} in session ${cdpSessionId}`);
+    const body = cdpPostData;
     assert.ok(body.includes(`name="material_id"\r\n\r\n${replacement.materialId}\r\n`), "replacement request omitted the selected material identity");
     assert.ok(body.includes(`name="replaces_document_id"\r\n\r\n${replacement.replacesDocumentId}\r\n`), "replacement request omitted the expected current document for CAS");
   }
+  if (cdp) await cdp.detach();
   const currentMaterial = page.locator(`.material-current-set li[data-material-id="${result.material_id}"]`);
   await currentMaterial.getByText(filename, { exact: true }).waitFor();
   return result as UploadResult & { id: string; material_id: string; version: number };

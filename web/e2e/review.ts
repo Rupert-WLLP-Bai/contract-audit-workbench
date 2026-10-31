@@ -1,5 +1,6 @@
 import { request as httpRequest } from "node:http";
 import { chromiumExecutable } from "./chromium";
+import { readCDPRequestPostData } from "./cdp-request-post-data";
 import { C1B_BUSINESS_AT_UTC, C1B_BUSINESS_TIME_ZONE, c1bBusinessAtInput } from "./c1b-clock";
 // Drives the installed Chromium against the Vite dev server.
 // The Go test starts the API and Vite, then sets the environment below.
@@ -511,25 +512,20 @@ class Page {
             postData: params.request.postData,
             postDataReady: Promise.resolve(),
           };
-          if (upload.postData === undefined) {
-            if (!params.requestId || !message.sessionId) {
-              upload.postDataError = "CDP request did not include requestId or target sessionId";
-            } else {
-              upload.postDataReady = this.send(
-                "Network.getRequestPostData",
-                { requestId: params.requestId },
-                message.sessionId,
-              ).then((raw) => {
-                const response = raw as { postData?: string; base64Encoded?: boolean };
-                if (typeof response.postData !== "string") throw new Error("CDP returned no postData");
-                upload.postData = response.base64Encoded
-                  ? new TextDecoder().decode(Uint8Array.from(atob(response.postData), (char) => char.charCodeAt(0)))
-                  : response.postData;
-              }).catch((error: unknown) => {
-                upload.postDataError = error instanceof Error ? error.message : String(error);
-              });
-            }
-          }
+          upload.postDataReady = readCDPRequestPostData({
+            requestId: upload.requestId,
+            sessionId: upload.sessionId,
+            postData: upload.postData,
+            getRequestPostData: (requestId, sessionId) => this.send(
+              "Network.getRequestPostData",
+              { requestId },
+              sessionId,
+            ),
+          }).then((postData) => {
+            upload.postData = postData;
+          }).catch((error: unknown) => {
+            upload.postDataError = error instanceof Error ? error.message : String(error);
+          });
           this.documentUploads.push(upload);
         }
         return;

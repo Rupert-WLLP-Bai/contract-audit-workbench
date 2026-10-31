@@ -1,27 +1,12 @@
 import { chromiumExecutable } from "./chromium";
+import { parseReviewWorkspace } from "../src/api/parse";
+import type { ConstraintEvaluation, ReviewWorkspace } from "../src/api/types";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { chromium, type Locator, type Page } from "playwright";
 
-type RuleEvaluation = {
-  finding_id: string | null;
-  rule_id: string;
-  rule_version: string;
-  capability_id: string;
-  object_refs: string[];
-  relation: string;
-};
-type ReviewWorkspace = {
-  run: { id: string; state: string };
-  execution: { attempt: { id: string; state: string } } | null;
-  findings: Array<{ id: string; claim: string }>;
-  evaluations: RuleEvaluation[];
-  previous_run_id?: string | null;
-  revision_comparison_reason?: string | null;
-  revisions?: Array<Record<string, unknown>>;
-};
 type Remediation = {
   id: string;
   run_id: string;
@@ -110,8 +95,8 @@ try {
 
   const source = await loadWorkspace(sourceRunID, sourceAttemptID);
   const candidate = await loadWorkspace(candidateRunID, candidateAttemptID);
-  observations.source_attempt_state = source.execution?.attempt.state ?? null;
-  observations.candidate_attempt_state = candidate.execution?.attempt.state ?? null;
+  observations.source_attempt_state = source.review_attempts?.attempt.state ?? null;
+  observations.candidate_attempt_state = candidate.review_attempts?.attempt.state ?? null;
   observations.candidate_previous_run_id = candidate.previous_run_id ?? null;
   observations.revision_comparison_reason = candidate.revision_comparison_reason ?? null;
   observations.candidate_revision_marks = (candidate.revisions ?? []).map((revision) => ({
@@ -119,17 +104,17 @@ try {
     mark: revision.mark,
     relation: revision.relation,
   }));
-  assert.equal(source.execution?.attempt.id, sourceAttemptID);
-  assert.equal(candidate.execution?.attempt.id, candidateAttemptID);
+  assert.equal(source.review_attempts?.attempt.id, sourceAttemptID);
+  assert.equal(candidate.review_attempts?.attempt.id, candidateAttemptID);
   assert.equal(candidate.previous_run_id, sourceRunID);
   assert.equal(candidate.revision_comparison_reason ?? null, null, "candidate workspace still reports an incomparable run");
-  assert.ok(isTerminal(source.execution?.attempt.state ?? ""), "source attempt is not terminal");
-  assert.ok(isTerminal(candidate.execution?.attempt.state ?? ""), "candidate attempt is not terminal");
+  assert.ok(isTerminal(source.review_attempts?.attempt.state ?? ""), "source attempt is not terminal");
+  assert.ok(isTerminal(candidate.review_attempts?.attempt.state ?? ""), "candidate attempt is not terminal");
   const sourceFindingIDs = source.findings.map((finding) => finding.id);
   assert.equal(new Set(sourceFindingIDs).size, sourceFindingIDs.length, "source finding IDs are not unique");
-  const allSourceFindingsCompatible = assertCompatible(sourceFindingIDs, source.evaluations, candidate.evaluations);
+  const allSourceFindingsCompatible = assertCompatible(sourceFindingIDs, workspaceEvaluations(source), workspaceEvaluations(candidate));
   observations.all_source_findings_compatible = allSourceFindingsCompatible;
-  const eligibility = assertCompatible(remediation.finding_ids, source.evaluations, candidate.evaluations);
+  const eligibility = assertCompatible(remediation.finding_ids, workspaceEvaluations(source), workspaceEvaluations(candidate));
   observations.evaluation_eligibility = eligibility;
   await page.goto(`${web}/cases/${caseID}`);
   await page.getByRole("heading", { name: detail.title, exact: true }).waitFor();
@@ -269,7 +254,7 @@ process.exit(exitCode);
 async function loadWorkspace(runID: string, attemptID: string): Promise<ReviewWorkspace> {
   const response = await page.request.get(`${web}/api/cases/${caseID}/reviews/${runID}?attempt_id=${encodeURIComponent(attemptID)}`);
   assert.equal(response.status(), 200, `review ${runID}/${attemptID} returned HTTP ${response.status()}`);
-  return await response.json() as ReviewWorkspace;
+  return parseReviewWorkspace(await response.json());
 }
 
 async function waitForCase(ready: (detail: CaseDetail) => boolean): Promise<CaseDetail> {
@@ -348,7 +333,12 @@ async function selectReport(select: Locator, reportID: string): Promise<void> {
   await select.selectOption(target.value);
 }
 
-function assertCompatible(findingIDs: string[], sourceEvaluations: RuleEvaluation[], candidateEvaluations: RuleEvaluation[]) {
+function workspaceEvaluations(workspace: ReviewWorkspace): ConstraintEvaluation[] {
+  assert.ok(Array.isArray(workspace.evaluations), `review ${workspace.run.id} omitted evaluations`);
+  return workspace.evaluations;
+}
+
+function assertCompatible(findingIDs: string[], sourceEvaluations: ConstraintEvaluation[], candidateEvaluations: ConstraintEvaluation[]) {
   return findingIDs.map((findingID) => {
     const sourceRows = sourceEvaluations.filter((evaluation) => evaluation.finding_id === findingID);
     assert.equal(sourceRows.length, 1, `source finding ${findingID} has ${sourceRows.length} rule evaluations`);
