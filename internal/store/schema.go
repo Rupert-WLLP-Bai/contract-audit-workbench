@@ -386,6 +386,7 @@ var schemaStatements = []string{
 	`ALTER TABLE sessions ADD COLUMN IF NOT EXISTS issuer text NOT NULL DEFAULT ''`,
 	`ALTER TABLE sessions ADD COLUMN IF NOT EXISTS subject text NOT NULL DEFAULT ''`,
 	`ALTER TABLE sessions ADD COLUMN IF NOT EXISTS audience text NOT NULL DEFAULT 'client'`,
+	sessionLegacyCleanupSQL,
 	`ALTER TABLE cases ADD COLUMN IF NOT EXISTS business_line text NOT NULL DEFAULT 'unspecified'`,
 	`ALTER TABLE cases ADD COLUMN IF NOT EXISTS entity_version bigint NOT NULL DEFAULT 1`,
 	`ALTER TABLE review_attempts ADD COLUMN IF NOT EXISTS entity_version bigint NOT NULL DEFAULT 1`,

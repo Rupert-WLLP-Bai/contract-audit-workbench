@@ -159,28 +159,22 @@ func validateAudienceUser(user accounts.User, audience string) error {
 	}
 }
 
-func (s *Store) snapshotForSession(ctx context.Context, token string) (state, error) {
-	if token == "" {
-		return state{}, fault.Unauthenticated("登录已失效或账号密码不正确")
-	}
-	return s.snapshotScoped(ctx, dbScope{ActorID: "session", SessionToken: token, Role: "api"})
-}
-
 func (s *Store) sessionFromDB(ctx context.Context, token string) (session, error) {
 	if token == "" {
 		return session{}, fault.Unauthenticated("登录已失效或账号密码不正确")
 	}
+	digest := sessionTokenDigest(token)
 	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
 	if err != nil {
 		return session{}, err
 	}
 	defer tx.Rollback(ctx)
-	if err := setLocalScope(ctx, tx, dbScope{ActorID: "session", SessionToken: token, Role: "api"}); err != nil {
+	if err := setLocalScope(ctx, tx, dbScope{ActorID: "session", SessionToken: digest, Role: "api"}); err != nil {
 		return session{}, err
 	}
 	var current session
 	err = tx.QueryRow(ctx, `SELECT token, actor_id, issuer, subject, tenant_id, org_id, audience, expires_at
-		FROM sessions WHERE token=$1`, token).Scan(&current.Token, &current.ActorID, &current.Issuer,
+		FROM sessions WHERE token=$1`, digest).Scan(&current.Token, &current.ActorID, &current.Issuer,
 		&current.Subject, &current.TenantID, &current.OrgID, &current.Audience, &current.ExpiresAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return session{}, fault.Unauthenticated("登录已失效或账号密码不正确")

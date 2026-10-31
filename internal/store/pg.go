@@ -1059,7 +1059,7 @@ type queryer interface {
 }
 
 func loadSessions(ctx context.Context, q queryer) ([]session, error) {
-	rows, err := q.Query(ctx, `SELECT token, actor_id, issuer, subject, tenant_id, org_id, audience, expires_at FROM sessions ORDER BY seq`)
+	rows, err := q.Query(ctx, `SELECT token, actor_id, issuer, subject, tenant_id, org_id, audience, expires_at FROM sessions WHERE token COLLATE "C" ~ '^sha256:[0-9a-f]{64}$' ORDER BY seq`)
 	if err != nil {
 		return nil, err
 	}
