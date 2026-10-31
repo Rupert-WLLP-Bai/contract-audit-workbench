@@ -1,8 +1,14 @@
 name: deterministic-quality
+
 on:
-  push:
-  pull_request:
   workflow_dispatch:
+    inputs:
+      ref:
+        description: "Commit SHA, tag, or branch to verify; defaults to the dispatched revision"
+        required: false
+        type: string
+        default: ""
+
 permissions:
   contents: read
 concurrency:
@@ -11,14 +17,36 @@ concurrency:
 env:
   APP_ENV: test
 jobs:
+  prepare:
+    name: resolve target SHA
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      sha: ${{ steps.resolve.outputs.sha }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+          fetch-depth: 1
+      - name: Pin the exact commit verified by every stage
+        id: resolve
+        run: |
+          set -euo pipefail
+          sha="$(git rev-parse HEAD)"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "full quality entry verifies $sha" >> "$GITHUB_STEP_SUMMARY"
+
   static:
     name: static checks
+    needs: [prepare]
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     env:
       GOFLAGS: -mod=readonly
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.prepare.outputs.sha }}
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
@@ -39,6 +67,7 @@ jobs:
 
   go:
     name: go tests
+    needs: [prepare]
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     services:
@@ -59,6 +88,8 @@ jobs:
       MODEL_DATABASE_URL: postgres://contract_audit_model:contractaudit@127.0.0.1:5432/contract_audit_test?sslmode=disable
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.prepare.outputs.sha }}
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
@@ -112,10 +143,13 @@ jobs:
 
   web:
     name: web tests
+    needs: [prepare]
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.prepare.outputs.sha }}
       - uses: actions/setup-node@v7
         with:
           node-version: '24'
@@ -147,13 +181,15 @@ jobs:
 
   coverage:
     name: coverage gates
-    needs: [go, web]
+    needs: [prepare, go, web]
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     env:
       GOFLAGS: -mod=readonly
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.prepare.outputs.sha }}
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
@@ -187,7 +223,7 @@ jobs:
 
   browser:
     name: browser acceptance
-    needs: [static]
+    needs: [prepare, static]
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     services:
@@ -208,6 +244,8 @@ jobs:
       MODEL_DATABASE_URL: postgres://contract_audit_model:contractaudit@127.0.0.1:5432/contract_audit_test?sslmode=disable
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.prepare.outputs.sha }}
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
@@ -252,26 +290,32 @@ jobs:
   quality-gate:
     name: quality gate
     if: always()
-    needs: [static, go, web, coverage, browser]
+    needs: [prepare, static, go, web, coverage, browser]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
       - name: Require every gate
         env:
+          RESULT_PREPARE: ${{ needs.prepare.result }}
           RESULT_STATIC: ${{ needs.static.result }}
           RESULT_GO: ${{ needs.go.result }}
           RESULT_WEB: ${{ needs.web.result }}
           RESULT_COVERAGE: ${{ needs.coverage.result }}
           RESULT_BROWSER: ${{ needs.browser.result }}
+          VERIFIED_SHA: ${{ needs.prepare.outputs.sha }}
         run: |
           set -euo pipefail
           failed=0
           {
+            echo "## full quality entry"
+            echo ""
+            echo "verified commit: \`$VERIFIED_SHA\`"
+            echo ""
             echo "| gate | result |"
             echo "| --- | --- |"
           } >> "$GITHUB_STEP_SUMMARY"
-          for entry in "static=$RESULT_STATIC" "go=$RESULT_GO" "web=$RESULT_WEB" \
-                       "coverage=$RESULT_COVERAGE" "browser=$RESULT_BROWSER"; do
+          for entry in "prepare=$RESULT_PREPARE" "static=$RESULT_STATIC" "go=$RESULT_GO" \
+                       "web=$RESULT_WEB" "coverage=$RESULT_COVERAGE" "browser=$RESULT_BROWSER"; do
             name="${entry%%=*}"
             result="${entry#*=}"
             echo "| $name | $result |" >> "$GITHUB_STEP_SUMMARY"
@@ -280,6 +324,6 @@ jobs:
             fi
           done
           if [ "$failed" -ne 0 ]; then
-            echo "::error title=quality gate::one or more required gates did not succeed; see the per-gate jobs above"
+            echo "::error title=quality gate::the full quality entry requires every stage to succeed; skipped, cancelled, or failed stages are not a PASS"
             exit 1
           fi
