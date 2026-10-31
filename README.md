@@ -175,6 +175,8 @@ python3 scripts/run_real_corpus.py \
 
 使用 `--case-id` 指定清单中的单个案例；省略时顺序运行全部案例。每次创建新的案件，在 `contract-audit-delivery/test-runs/` 保存输入哈希、解析状态、案件及审查标识、冻结快照、执行事件和发现；失败时保留已完成的记录。必须指定已存在的记录器目录，运行期间的模型调用会复制到本次结果的 `model-calls/`。请为每次运行使用独立记录器或顺序执行，避免按时间归档时混入并发调用。模型正文可能包含敏感材料，记录器不保存凭据头。报告和人工决定不会自动创建。
 
+签名证据包需要 `EVIDENCE_SIGNING_KEY_FILE` 指向 Ed25519 PKCS#8 私钥，`EVIDENCE_PDF_FONT_FILE` 指向包含合同文字的 CJK TrueType 字体；密钥与字体由部署方提供，Compose 将其只读挂载到 Document 服务。Kubernetes 可使用 `deployments/k8s/optional/evidence-export.yaml`，先准备其中指定的 Secret 和字体 PVC，再对 Document Deployment 应用补丁。创建报告后可下载 `/api/cases/{caseID}/reports/{reportID}/evidence-bundle`，并通过 `go run ./cmd/verify-evidence -public-key <独立取得的公钥.pem> <证据包.zip>` 验证；包内自带公钥不能单独作为信任依据。
+
 验证演示账号的案件授权和租户隔离，可对真实运行的 API 执行：
 
 ```bash
