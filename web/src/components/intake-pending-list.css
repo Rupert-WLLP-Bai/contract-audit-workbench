@@ -1,0 +1,147 @@
+.home-pending-intakes {
+  grid-column: 1 / -1;
+  min-width: 0;
+  background: var(--surface-raised);
+}
+
+.intake-pending-summary {
+  margin: 12px 0 0;
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.intake-pending-feedback {
+  margin-top: 12px;
+}
+
+.intake-pending-empty {
+  margin: 12px 0 0;
+  padding: 18px 16px;
+  border: 1px dashed var(--border-default);
+  border-radius: var(--radius-control);
+  color: var(--text-secondary);
+  font-size: 13px;
+  text-align: center;
+}
+
+.intake-pending-rows {
+  display: grid;
+  gap: 10px;
+  margin: 14px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.intake-pending-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 16px;
+  min-width: 0;
+  padding: 14px 16px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-control);
+  background: var(--surface-raised);
+}
+
+.intake-pending-copy {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.intake-pending-title-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.intake-pending-title-line h3 {
+  min-width: 0;
+  margin: 0;
+  color: var(--text-primary);
+  font-size: 14px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.intake-pending-copy > p {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.intake-pending-copy a {
+  color: var(--action-primary);
+  text-decoration: none;
+}
+
+.intake-pending-copy a:hover {
+  text-decoration: underline;
+}
+
+.intake-pending-reason {
+  color: var(--state-insufficient);
+}
+
+.intake-pending-inline-alert {
+  margin-top: 4px;
+}
+
+.intake-pending-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.intake-pending-archive-confirm {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  padding: 10px;
+  border: 1px solid var(--state-insufficient);
+  border-radius: var(--radius-control);
+  background: var(--state-insufficient-bg);
+}
+
+.intake-pending-archive-confirm p {
+  flex: 1 1 100%;
+  margin: 0;
+  color: var(--text-primary);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.intake-pending-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 14px;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+@media (max-width: 620px) {
+  .intake-pending-row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 12px;
+    padding: 12px;
+  }
+
+  .intake-pending-actions {
+    justify-content: flex-start;
+  }
+
+  .intake-pending-pagination {
+    justify-content: space-between;
+  }
+}

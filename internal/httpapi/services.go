@@ -155,7 +155,13 @@ func routeOwned(role string, methods routeMethodSet, parts []string) bool {
 		return role == "core" && methods.read && oidcRoute(parts)
 	}
 	if parts[0] == "intakes" {
-		return role == "core" && len(parts) == 2 && methods.read
+		if role != "core" {
+			return false
+		}
+		if len(parts) == 2 {
+			return methods.read
+		}
+		return len(parts) == 3 && (parts[2] == "continuation" && methods.read || parts[2] == "archive" && methods.post)
 	}
 	return caseRoute(role, methods, parts)
 }

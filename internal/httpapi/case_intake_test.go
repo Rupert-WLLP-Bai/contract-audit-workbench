@@ -383,3 +383,100 @@ func TestCaseIntakeHTTPRechecksIdentityAndPermission(t *testing.T) {
 		t.Fatalf("read-only recovery lost the frozen receipt: status=%d body=%s", status, body)
 	}
 }
+
+func TestCaseIntakeHTTPResumesAcrossSessionsAndArchivesPersonalPending(t *testing.T) {
+	st := newIntakeStore(t)
+	firstDevice := newIntakeAPI(t, st, nil)
+	firstDevice.login(t, "demo-admin", "admin-demo")
+	firstFile := []byte("第一份原始主合同。")
+	firstType, firstPayload := intakeForm(t, intakeFields("跨设备第一项"), "first.txt", firstFile)
+	secondType, secondPayload := intakeForm(t, intakeFields("跨设备第二项"), "second.txt", []byte("第二份原始主合同。"))
+	first := postIntakeBytes(firstDevice.client, firstDevice.base, "multi-device-first", firstType, firstPayload)
+	second := postIntakeBytes(firstDevice.client, firstDevice.base, "multi-device-second", secondType, secondPayload)
+	if first.err != nil || second.err != nil || first.status != http.StatusAccepted || second.status != http.StatusAccepted {
+		t.Fatalf("create pending first=%+v second=%+v", first, second)
+	}
+	firstReceipt, secondReceipt := intakeJSON(t, first.body), intakeJSON(t, second.body)
+	firstID, firstCase := requiredString(t, firstReceipt, "operation_id"), requiredString(t, firstReceipt, "case_id")
+	secondID, secondCase := requiredString(t, secondReceipt, "operation_id"), requiredString(t, secondReceipt, "case_id")
+	status, body := firstDevice.bytes(t, http.MethodPost, "/api/cases/"+firstCase+"/members", strings.NewReader(`{"actor_id":"demo-reviewer"}`), "application/json")
+	if status != http.StatusOK {
+		t.Fatalf("grant case access: status=%d body=%s", status, body)
+	}
+
+	// A fresh cookie jar has no browser continuation and must authenticate again.
+	secondDevice := newIntakeAPI(t, st, store.NewDirectCaseIntakeUploader(st))
+	status, body = secondDevice.bytes(t, http.MethodGet, "/api/intakes/pending", nil, "")
+	if status != http.StatusUnauthorized {
+		t.Fatalf("anonymous pending list: status=%d body=%s", status, body)
+	}
+	secondDevice.login(t, "demo-reviewer", "reviewer-demo")
+	status, body = secondDevice.bytes(t, http.MethodGet, "/api/cases/"+firstCase, nil, "")
+	if status != http.StatusOK {
+		t.Fatalf("member cannot read case fixture: status=%d body=%s", status, body)
+	}
+	status, body = secondDevice.bytes(t, http.MethodGet, "/api/intakes/"+firstID+"/continuation", nil, "")
+	if status != http.StatusNotFound {
+		t.Fatalf("case membership exposed another actor's replay identity: status=%d body=%s", status, body)
+	}
+	status, body = secondDevice.bytes(t, http.MethodPost, "/api/intakes/"+firstID+"/archive", strings.NewReader(`{}`), "application/json")
+	if status != http.StatusNotFound {
+		t.Fatalf("member archived another actor's command: status=%d body=%s", status, body)
+	}
+
+	secondDevice.login(t, "demo-admin", "admin-demo")
+	status, body = secondDevice.bytes(t, http.MethodGet, "/api/intakes/pending?limit=1", nil, "")
+	var page store.PendingCaseIntakesPage
+	if status != http.StatusOK || json.Unmarshal(body, &page) != nil || len(page.Items) != 1 || page.Items[0].OperationID != secondID || page.NextCursor == nil {
+		t.Fatalf("fresh session first pending page: status=%d body=%s", status, body)
+	}
+	status, body = secondDevice.bytes(t, http.MethodGet, "/api/intakes/pending?limit=1&cursor="+url.QueryEscape(*page.NextCursor), nil, "")
+	if status != http.StatusOK || json.Unmarshal(body, &page) != nil || len(page.Items) != 1 || page.Items[0].OperationID != firstID || page.NextCursor != nil {
+		t.Fatalf("second pending page duplicated or lost command: status=%d body=%s", status, body)
+	}
+	status, body = secondDevice.bytes(t, http.MethodGet, "/api/intakes/"+firstID+"/continuation", nil, "")
+	var continuation store.CaseIntakeContinuation
+	if status != http.StatusOK || json.Unmarshal(body, &continuation) != nil || !continuation.CanResume || continuation.IdempotencyKey == nil || *continuation.IdempotencyKey != "multi-device-first" || continuation.Request == nil {
+		t.Fatalf("fresh session lost replay identity: status=%d body=%s", status, body)
+	}
+	if continuation.Request.Title != "跨设备第一项" || continuation.Request.FileName != "first.txt" || continuation.Request.FileSize != int64(len(firstFile)) || continuation.CaseID != firstCase {
+		t.Fatalf("restored another request: %+v", continuation)
+	}
+	wrongType, wrongPayload := intakeForm(t, intakeFields("跨设备第一项"), "first.txt", []byte("内容已发生变化。"))
+	wrong := postIntakeBytes(secondDevice.client, secondDevice.base, *continuation.IdempotencyKey, wrongType, wrongPayload)
+	if wrong.err != nil || wrong.status != http.StatusConflict {
+		t.Fatalf("different file resumed old command: status=%d err=%v body=%s", wrong.status, wrong.err, wrong.body)
+	}
+	completed := postIntakeBytes(secondDevice.client, secondDevice.base, *continuation.IdempotencyKey, firstType, firstPayload)
+	if completed.err != nil || completed.status != http.StatusCreated || requiredString(t, intakeJSON(t, completed.body), "case_id") != firstCase {
+		t.Fatalf("resume created another case: status=%d err=%v body=%s", completed.status, completed.err, completed.body)
+	}
+	status, archived := secondDevice.bytes(t, http.MethodPost, "/api/intakes/"+secondID+"/archive", strings.NewReader(`{}`), "application/json")
+	if status != http.StatusOK || requiredString(t, intakeJSON(t, archived), "case_id") != secondCase {
+		t.Fatalf("archive pending: status=%d body=%s", status, archived)
+	}
+	status, body = secondDevice.bytes(t, http.MethodPost, "/api/intakes/"+secondID+"/archive", strings.NewReader(`{}`), "application/json")
+	if status != http.StatusOK || !bytes.Equal(body, archived) {
+		t.Fatalf("archive fact changed on replay: status=%d body=%s want=%s", status, body, archived)
+	}
+	status, body = secondDevice.bytes(t, http.MethodGet, "/api/intakes/"+secondID, nil, "")
+	if status != http.StatusConflict || !bytes.Contains(body, []byte(`"code":"intake_archived"`)) {
+		t.Fatalf("archived command advertised pending retry: status=%d body=%s", status, body)
+	}
+	retried := postIntakeBytes(secondDevice.client, secondDevice.base, "multi-device-second", secondType, secondPayload)
+	if retried.err != nil || retried.status != http.StatusConflict {
+		t.Fatalf("archived command restarted: status=%d err=%v body=%s", retried.status, retried.err, retried.body)
+	}
+	status, body = secondDevice.bytes(t, http.MethodGet, "/api/cases/"+secondCase, nil, "")
+	if status != http.StatusOK {
+		t.Fatalf("personal archive removed original case: status=%d body=%s", status, body)
+	}
+	status, body = secondDevice.bytes(t, http.MethodGet, "/api/intakes/pending", nil, "")
+	if status != http.StatusOK || json.Unmarshal(body, &page) != nil || len(page.Items) != 0 || page.NextCursor != nil {
+		t.Fatalf("completed or archived commands remain pending: status=%d body=%s", status, body)
+	}
+	status, body = secondDevice.bytes(t, http.MethodGet, "/api/intakes/"+firstID, nil, "")
+	if status != http.StatusOK || !bytes.Equal(body, completed.body) {
+		t.Fatalf("completed receipt changed: status=%d body=%s want=%s", status, body, completed.body)
+	}
+}

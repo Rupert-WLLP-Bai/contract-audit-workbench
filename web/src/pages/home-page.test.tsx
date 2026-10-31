@@ -225,6 +225,8 @@ class HomeService {
     this.requests.push({ method, path: `${url.pathname}${url.search}`, body });
     if (url.pathname === "/api/session")
       return json({ audience: "client", actor: this.data.members[0] });
+    if (url.pathname === "/api/intakes/pending")
+      return json({ items: [], next_cursor: null });
     if (url.pathname === "/api/workbench") {
       if (this.snapshotGate) await this.snapshotGate.promise;
       const failure = this.snapshotFailures.shift();

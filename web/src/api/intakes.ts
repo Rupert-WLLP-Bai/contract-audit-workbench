@@ -21,6 +21,54 @@ export interface IntakeResult {
   error_code: string | null;
 }
 
+export interface IntakeRequestIdentity {
+  title: string;
+  contract_type: string;
+  business_line: string;
+  scenario: string;
+  file_name: string;
+  file_size: number;
+  media_type: string;
+  file_sha256: string;
+}
+
+export interface PendingIntake {
+  operation_id: string;
+  case_id: string;
+  title: string;
+  state: "upload_pending";
+  file_name: string | null;
+  file_size: number | null;
+  created_at: string;
+  updated_at: string;
+  error_code: string | null;
+  can_resume: boolean;
+  can_archive: boolean;
+  reason_code: string;
+}
+
+export interface PendingIntakesPage {
+  items: PendingIntake[];
+  next_cursor: string | null;
+}
+
+export interface ServerIntakeContinuation {
+  operation_id: string;
+  case_id: string;
+  state: IntakeState;
+  request: IntakeRequestIdentity | null;
+  idempotency_key: string | null;
+  can_resume: boolean;
+  can_archive: boolean;
+  reason_code: string;
+}
+
+export interface IntakeArchiveResult {
+  operation_id: string;
+  case_id: string;
+  archived_at: string;
+}
+
 export interface IntakeCreateInput {
   title: string;
   contract_type: string;
@@ -132,4 +180,115 @@ export function getIntake(
     { method: "GET", signal },
     parseIntakeResult,
   );
+}
+
+export function parseIntakeRequestIdentity(
+  value: unknown,
+  path = "intake.request",
+): IntakeRequestIdentity {
+  const record = object(value, path);
+  const identity: IntakeRequestIdentity = {
+    title: text(record.title, `${path}.title`),
+    contract_type: text(record.contract_type, `${path}.contract_type`),
+    business_line: text(record.business_line, `${path}.business_line`),
+    scenario: text(record.scenario, `${path}.scenario`),
+    file_name: text(record.file_name, `${path}.file_name`),
+    file_size: integer(record.file_size, `${path}.file_size`, 0),
+    media_type: text(record.media_type, `${path}.media_type`),
+    file_sha256: text(record.file_sha256, `${path}.file_sha256`),
+  };
+  for (const field of ["title", "contract_type", "business_line", "scenario", "file_name"] as const) {
+    if (identity[field].trim() === "") invalid(`${path}.${field}`);
+  }
+  if (identity.file_size > INTAKE_MAX_FILE_BYTES || !/^[a-f0-9]{64}$/.test(identity.file_sha256)) invalid(path);
+  return identity;
+}
+
+function requiredId(record: Record<string, unknown>, field: string, path: string): string {
+  const result = text(record[field], `${path}.${field}`);
+  if (result.trim() === "") invalid(`${path}.${field}`);
+  return result;
+}
+
+function parsePendingIntake(value: unknown, path: string): PendingIntake {
+  const record = object(value, path);
+  if (record.state !== "upload_pending") invalid(`${path}.state`);
+  const fileSize = record.file_size === null
+    ? null
+    : integer(record.file_size, `${path}.file_size`, 0);
+  if (fileSize !== null && fileSize > INTAKE_MAX_FILE_BYTES) invalid(`${path}.file_size`);
+  return {
+    operation_id: requiredId(record, "operation_id", path),
+    case_id: requiredId(record, "case_id", path),
+    title: requiredId(record, "title", path),
+    state: "upload_pending",
+    file_name: optionalId(record.file_name, `${path}.file_name`),
+    file_size: fileSize,
+    created_at: text(record.created_at, `${path}.created_at`),
+    updated_at: text(record.updated_at, `${path}.updated_at`),
+    error_code: optionalId(record.error_code, `${path}.error_code`),
+    can_resume: bool(record.can_resume, `${path}.can_resume`),
+    can_archive: bool(record.can_archive, `${path}.can_archive`),
+    reason_code: text(record.reason_code, `${path}.reason_code`),
+  };
+}
+
+function parsePendingIntakesPage(value: unknown): PendingIntakesPage {
+  const record = object(value, "pending_intakes");
+  if (!Array.isArray(record.items)) invalid("pending_intakes.items");
+  return {
+    items: record.items.map((item, index) => parsePendingIntake(item, `pending_intakes.items[${index}]`)),
+    next_cursor: optionalId(record.next_cursor, "pending_intakes.next_cursor"),
+  };
+}
+
+function parseServerIntakeContinuation(value: unknown): ServerIntakeContinuation {
+  const path = "intake_continuation";
+  const record = object(value, path);
+  if (record.state !== "upload_pending" && record.state !== "completed") invalid(`${path}.state`);
+  const request = record.request === null ? null : parseIntakeRequestIdentity(record.request, `${path}.request`);
+  const key = optionalId(record.idempotency_key, `${path}.idempotency_key`);
+  const canResume = bool(record.can_resume, `${path}.can_resume`);
+  const reasonCode = text(record.reason_code, `${path}.reason_code`);
+  if (key !== null && !/^[\x21-\x7e]{1,200}$/.test(key)) invalid(`${path}.idempotency_key`);
+  if (canResume && (record.state !== "upload_pending" || request === null || key === null || reasonCode !== "")) invalid(path);
+  if (!canResume && key !== null) invalid(`${path}.idempotency_key`);
+  return {
+    operation_id: requiredId(record, "operation_id", path),
+    case_id: requiredId(record, "case_id", path),
+    state: record.state,
+    request,
+    idempotency_key: key,
+    can_resume: canResume,
+    can_archive: bool(record.can_archive, `${path}.can_archive`),
+    reason_code: reasonCode,
+  };
+}
+
+function parseIntakeArchiveResult(value: unknown): IntakeArchiveResult {
+  const path = "intake_archive";
+  const record = object(value, path);
+  return {
+    operation_id: requiredId(record, "operation_id", path),
+    case_id: requiredId(record, "case_id", path),
+    archived_at: text(record.archived_at, `${path}.archived_at`),
+  };
+}
+
+export function listPendingIntakes(cursor: string | null, signal?: AbortSignal): Promise<PendingIntakesPage> {
+  const params = new URLSearchParams({ limit: "10" });
+  if (cursor !== null) params.set("cursor", cursor);
+  return requestJson(`${INTAKES_PATH}/pending?${params}`, { method: "GET", signal }, parsePendingIntakesPage);
+}
+
+export function getIntakeContinuation(operationId: string, signal?: AbortSignal): Promise<ServerIntakeContinuation> {
+  return requestJson(`${INTAKES_PATH}/${encodeURIComponent(operationId)}/continuation`, { method: "GET", signal }, parseServerIntakeContinuation);
+}
+
+export function archiveIntake(operationId: string): Promise<IntakeArchiveResult> {
+  return requestJson(`${INTAKES_PATH}/${encodeURIComponent(operationId)}/archive`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: "{}",
+  }, parseIntakeArchiveResult);
 }

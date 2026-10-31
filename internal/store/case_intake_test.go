@@ -9,14 +9,14 @@ import (
 func TestCaseIntakeDigestPinsNormalizedMetadataAndFileBytes(t *testing.T) {
 	base := CaseIntakeInput{Title: "合同", ContractType: "service", BusinessLine: "ENT", Scenario: "cloud_services",
 		Filename: "draft.pdf", MediaType: "application/pdf", Body: []byte("contract bytes"), IdempotencyKey: "key-1"}
-	normalized, _, first, err := normalizeCaseIntakeInput(base)
+	normalized, _, _, first, err := normalizeCaseIntakeInput(base)
 	if err != nil {
 		t.Fatal(err)
 	}
 	base.Title = "  合同  "
 	base.Filename = "folder\\draft.pdf"
 	base.MediaType = "application/pdf; charset=binary"
-	_, _, normalizedDigest, err := normalizeCaseIntakeInput(base)
+	_, _, _, normalizedDigest, err := normalizeCaseIntakeInput(base)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -38,7 +38,7 @@ func TestCaseIntakeDigestPinsNormalizedMetadataAndFileBytes(t *testing.T) {
 			input := base
 			input.Title, input.Filename, input.MediaType = "合同", "draft.pdf", "application/pdf"
 			mutate(&input)
-			_, _, got, err := normalizeCaseIntakeInput(input)
+			_, _, _, got, err := normalizeCaseIntakeInput(input)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -52,24 +52,24 @@ func TestCaseIntakeDigestPinsNormalizedMetadataAndFileBytes(t *testing.T) {
 func TestCaseIntakeInputRequiresExactFixedUploadContract(t *testing.T) {
 	valid := CaseIntakeInput{Title: "合同", ContractType: "service", BusinessLine: "ENT", Scenario: "cloud_services",
 		Filename: "draft.pdf", MediaType: "application/pdf", Body: []byte("x"), IdempotencyKey: "visible-ASCII_09"}
-	if _, _, _, err := normalizeCaseIntakeInput(valid); err != nil {
+	if _, _, _, _, err := normalizeCaseIntakeInput(valid); err != nil {
 		t.Fatal(err)
 	}
 	for _, key := range []string{"", "has space", strings.Repeat("a", 201), "bad\nkey"} {
 		input := valid
 		input.IdempotencyKey = key
-		if _, _, _, err := normalizeCaseIntakeInput(input); err == nil {
+		if _, _, _, _, err := normalizeCaseIntakeInput(input); err == nil {
 			t.Errorf("Idempotency-Key %q unexpectedly accepted", key)
 		}
 	}
 	tooLarge := valid
 	tooLarge.Body = make([]byte, caseIntakeMaxFileBytes+1)
-	if _, _, _, err := normalizeCaseIntakeInput(tooLarge); err == nil {
+	if _, _, _, _, err := normalizeCaseIntakeInput(tooLarge); err == nil {
 		t.Fatal("oversized file unexpectedly accepted")
 	}
 	controlName := valid
 	controlName.Filename = "draft\r\nInjected.txt"
-	if _, _, _, err := normalizeCaseIntakeInput(controlName); err == nil {
+	if _, _, _, _, err := normalizeCaseIntakeInput(controlName); err == nil {
 		t.Fatal("control characters in a filename were accepted")
 	}
 }

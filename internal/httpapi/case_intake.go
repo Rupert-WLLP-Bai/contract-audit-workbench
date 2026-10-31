@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 
 	"contractaudit/internal/accounts"
@@ -124,6 +125,66 @@ func (h *handler) getIntakeByKey(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeIntakeOperation(w, operation, http.StatusOK)
+}
+
+// listPendingIntakes resolves personal unfinished operations from PostgreSQL.
+func (h *handler) listPendingIntakes(w http.ResponseWriter, r *http.Request) {
+	user, ok := h.actor(w, r)
+	if !ok {
+		return
+	}
+	query, err := url.ParseQuery(r.URL.RawQuery)
+	if err != nil || len(query["limit"]) > 1 || len(query["cursor"]) > 1 {
+		writeIntakeError(w, fault.Invalid("待办查询参数格式不正确"))
+		return
+	}
+	limit := 10
+	if values := query["limit"]; len(values) == 1 {
+		limit, err = strconv.Atoi(values[0])
+		if err != nil || limit < 1 || limit > 50 {
+			writeIntakeError(w, fault.Invalid("待办每页数量必须为1至50"))
+			return
+		}
+	}
+	page, err := h.store.ListPendingCaseIntakes(r.Context(), user, limit, query.Get("cursor"))
+	if err != nil {
+		writeIntakeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, page)
+}
+
+// getIntakeContinuation exposes replay identity only to the original actor.
+func (h *handler) getIntakeContinuation(w http.ResponseWriter, r *http.Request) {
+	user, ok := h.actor(w, r)
+	if !ok {
+		return
+	}
+	continuation, err := h.store.GetCaseIntakeContinuation(r.Context(), user, r.PathValue("operationID"))
+	if err != nil {
+		writeIntakeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, continuation)
+}
+
+// archiveIntake appends a personal archive fact without changing the case.
+func (h *handler) archiveIntake(w http.ResponseWriter, r *http.Request) {
+	user, ok := h.actor(w, r)
+	if !ok {
+		return
+	}
+	var input struct{}
+	if err := readJSON(w, r, &input); err != nil {
+		writeIntakeError(w, err)
+		return
+	}
+	archived, err := h.store.ArchiveCaseIntake(r.Context(), user, r.PathValue("operationID"))
+	if err != nil {
+		writeIntakeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, archived)
 }
 
 func parseIntakeRequest(w http.ResponseWriter, r *http.Request) (intakeUpload, string, error) {

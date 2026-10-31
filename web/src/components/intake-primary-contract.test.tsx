@@ -9,7 +9,9 @@ import {
   scopeOf,
   writeIntakeContinuation,
   type IntakeContinuation,
+  type IntakeContinuationSelection,
 } from "../features/intake/intake-continuation";
+import type { ServerIntakeContinuation } from "../api/intakes";
 import { renderWithAntd as render } from "../test/antd";
 import { IntakePrimaryContract } from "./intake-primary-contract";
 
@@ -70,6 +72,33 @@ function pendingResult(caseId = "case_pending") {
   };
 }
 
+async function serverPendingContinuation(
+  operationId = "intake_pending",
+): Promise<ServerIntakeContinuation> {
+  const file = new File([SOURCE_BYTES], "专线采购合同.txt", {
+    type: "text/plain",
+  });
+  return {
+    operation_id: operationId,
+    case_id: "case_pending",
+    state: "upload_pending",
+    request: {
+      title: "专线采购合同",
+      contract_type: "service",
+      business_line: "ENT",
+      scenario: "telecom_dedicated_line",
+      file_name: file.name,
+      file_size: file.size,
+      media_type: file.type,
+      file_sha256: await fileSha256(file),
+    },
+    idempotency_key: "key-pending-1",
+    can_resume: true,
+    can_archive: true,
+    reason_code: "",
+  };
+}
+
 interface Call {
   method: string;
   url: string;
@@ -95,6 +124,9 @@ class IntakeService {
     json(pendingResult(), 200);
   getById: (operationId: string) => Response | Promise<Response> = () =>
     json(pendingResult(), 200);
+  getContinuation: (operationId: string) => Response | Promise<Response> = async (
+    operationId,
+  ) => json(await serverPendingContinuation(operationId), 200);
   fetch = async (
     input: RequestInfo | URL,
     init?: RequestInit,
@@ -112,10 +144,14 @@ class IntakeService {
     if (method === "POST" && url.pathname === "/api/intakes") return this.post();
     if (method === "GET" && url.pathname === "/api/intakes")
       return this.getByKey(url.searchParams.get("key") ?? "");
-    if (method === "GET" && url.pathname.startsWith("/api/intakes/"))
-      return this.getById(
-        decodeURIComponent(url.pathname.slice("/api/intakes/".length)),
+    if (method === "GET" && url.pathname.startsWith("/api/intakes/")) {
+      const path = decodeURIComponent(
+        url.pathname.slice("/api/intakes/".length),
       );
+      if (path.endsWith("/continuation"))
+        return this.getContinuation(path.slice(0, -"/continuation".length));
+      return this.getById(path);
+    }
     return json(
       { error: { message: `unexpected ${method} ${url.pathname}` } },
       404,
@@ -133,11 +169,22 @@ function openWithService(service: IntakeService) {
   return { user: userEvent.setup() };
 }
 
-function renderIntake(actor: Actor) {
+function renderIntake(
+  actor: Actor,
+  selectedContinuation: IntakeContinuationSelection | null = null,
+) {
   render(
     <MemoryRouter initialEntries={["/"]}>
       <Routes>
-        <Route path="/" element={<IntakePrimaryContract actor={actor} />} />
+        <Route
+          path="/"
+          element={
+            <IntakePrimaryContract
+              actor={actor}
+              selectedContinuation={selectedContinuation}
+            />
+          }
+        />
         <Route path="/cases/:caseId" element={<RouteProbe />} />
       </Routes>
     </MemoryRouter>,
@@ -277,16 +324,25 @@ describe("homepage primary-contract intake", () => {
       throw new TypeError("network down");
     };
     service.getByKey = () => json(pendingResult("case_lost"), 202);
+    service.getContinuation = async (operationId) => {
+      const detail = await serverPendingContinuation(operationId);
+      detail.case_id = "case_lost";
+      const key = service.calls.find((call) => call.method === "POST")?.key;
+      if (key === null || key === undefined)
+        throw new Error("the initial request must have an idempotency key");
+      detail.idempotency_key = key;
+      return json(detail);
+    };
     const { user } = openWithService(service);
     renderIntake(clerk);
     await user.type(
       await screen.findByRole("textbox", { name: "案件标题" }),
       "专线采购合同",
     );
-    await user.upload(
-      screen.getByLabelText("主合同文件"),
-      new File([SOURCE_BYTES], "专线采购合同.txt", { type: "text/plain" }),
-    );
+    const file = new File([SOURCE_BYTES], "专线采购合同.txt", {
+      type: "text/plain",
+    });
+    await user.upload(screen.getByLabelText("主合同文件"), file);
     await user.click(
       screen.getByRole("button", { name: "上传主合同并建立案件" }),
     );
@@ -294,10 +350,21 @@ describe("homepage primary-contract intake", () => {
     expect(
       await screen.findByText("案件已建立，主合同上传尚未完成"),
     ).toBeInTheDocument();
+    await screen.findByRole("button", { name: "继续上传同一文件" });
+    await user.upload(screen.getByLabelText("重新选择主合同文件"), file);
+    expect(
+      screen.getByRole("button", { name: "继续上传同一文件" }),
+    ).toBeEnabled();
     const post = service.calls.find((call) => call.method === "POST");
     const recovery = service.calls.find((call) => call.method === "GET");
     expect(recovery?.url).toBe(
       `/api/intakes?key=${encodeURIComponent(post?.key ?? "")}`,
+    );
+    expect(service.calls).toContainEqual(
+      expect.objectContaining({
+        method: "GET",
+        url: "/api/intakes/intake_pending/continuation",
+      }),
     );
     expect(service.calls.filter((call) => call.method === "POST")).toHaveLength(
       1,
@@ -498,5 +565,151 @@ describe("homepage primary-contract intake", () => {
     ).not.toBeInTheDocument();
     expect(screen.queryByLabelText("主合同文件")).not.toBeInTheDocument();
     expect(service.calls).toHaveLength(0);
+  });
+
+  it("replays the selected server request and MIME without uploading before confirmation", async () => {
+    const detail = await serverPendingContinuation("intake_server");
+    detail.idempotency_key = "server-key-17";
+    detail.request!.media_type = "application/pdf";
+    const selection: IntakeContinuationSelection = {
+      detail,
+      error_code: "document_upload_unavailable",
+      archived: false,
+    };
+    const service = new IntakeService();
+    service.post = () => json(completedResult("case_pending"), 201);
+    const { user } = openWithService(service);
+    renderIntake(clerk, selection);
+
+    expect(
+      await screen.findByText("案件已建立，主合同上传尚未完成"),
+    ).toBeInTheDocument();
+    expect(service.calls.some((call) => call.method === "POST")).toBe(false);
+
+    const selectedFile = new File([SOURCE_BYTES], detail.request!.file_name, {
+      type: "application/x-cross-browser",
+    });
+    await user.upload(
+      screen.getByLabelText("重新选择主合同文件"),
+      selectedFile,
+    );
+    await user.click(
+      screen.getByRole("button", { name: "继续上传同一文件" }),
+    );
+
+    expect(await screen.findByTestId("route")).toHaveTextContent(
+      "/cases/case_pending",
+    );
+    const post = service.calls.find((call) => call.method === "POST");
+    expect(post?.key).toBe("server-key-17");
+    const replayedFile = post?.form?.get("file") as File;
+    expect(replayedFile.name).toBe(detail.request!.file_name);
+    expect(replayedFile.size).toBe(detail.request!.file_size);
+    expect(replayedFile.type).toBe("application/pdf");
+  });
+
+  it("rejects a same-name and same-size file with a different digest before POST", async () => {
+    const detail = await serverPendingContinuation("intake_server");
+    const selection: IntakeContinuationSelection = {
+      detail,
+      error_code: "document_upload_unavailable",
+      archived: false,
+    };
+    const service = new IntakeService();
+    const { user } = openWithService(service);
+    renderIntake(clerk, selection);
+
+    expect(
+      await screen.findByText("案件已建立，主合同上传尚未完成"),
+    ).toBeInTheDocument();
+    const different = new File(
+      ["x".repeat(detail.request!.file_size)],
+      detail.request!.file_name,
+      { type: "application/x-other" },
+    );
+    await user.upload(
+      screen.getByLabelText("重新选择主合同文件"),
+      different,
+    );
+    await user.click(
+      screen.getByRole("button", { name: "继续上传同一文件" }),
+    );
+
+    expect(
+      await screen.findByText("所选文件与最初提交的主合同不一致"),
+    ).toBeInTheDocument();
+    expect(service.calls.some((call) => call.method === "POST")).toBe(false);
+  });
+
+  it("keeps an archived server selection read-only and links to the original case", async () => {
+    const detail = await serverPendingContinuation("intake_archived");
+    const selection: IntakeContinuationSelection = {
+      detail,
+      error_code: "intake_archived",
+      archived: true,
+    };
+    const service = new IntakeService();
+    openWithService(service);
+    renderIntake(clerk, selection);
+
+    expect(await screen.findByText("该办理已归档")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "该办理已归档。归档只从未完成列表中隐藏办理，不会删除原案件；已开始的上传仍可能完成。",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: "打开原案件" }),
+    ).toHaveAttribute("href", "/cases/case_pending");
+    expect(
+      screen.queryByLabelText("重新选择主合同文件"),
+    ).not.toBeInTheDocument();
+    expect(service.calls).toHaveLength(0);
+  });
+
+  it("blocks future uploads after the server denies a retry", async () => {
+    const detail = await serverPendingContinuation("intake_readonly");
+    detail.idempotency_key = "readonly-key";
+    const selection: IntakeContinuationSelection = {
+      detail,
+      error_code: "document_upload_unavailable",
+      archived: false,
+    };
+    const service = new IntakeService();
+    service.post = () =>
+      json(
+        { error: { code: "read_only", message: "工作区已切换为只读" } },
+        403,
+      );
+    service.getContinuation = async (operationId) =>
+      json({
+        ...(await serverPendingContinuation(operationId)),
+        can_resume: false,
+        idempotency_key: null,
+        reason_code: "read_only",
+      });
+    const { user } = openWithService(service);
+    renderIntake(clerk, selection);
+
+    const file = new File([SOURCE_BYTES], detail.request!.file_name, {
+      type: detail.request!.media_type,
+    });
+    await user.upload(
+      await screen.findByLabelText("重新选择主合同文件"),
+      file,
+    );
+    await user.click(
+      screen.getByRole("button", { name: "继续上传同一文件" }),
+    );
+
+    expect(
+      await screen.findByText("当前工作区处于只读状态，不能继续上传。"),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByLabelText("重新选择主合同文件"),
+    ).not.toBeInTheDocument();
+    expect(service.calls.filter((call) => call.method === "POST")).toHaveLength(
+      1,
+    );
   });
 });

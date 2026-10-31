@@ -7,7 +7,7 @@ import {
 import { Tabs } from "antd";
 import { Select } from "antd";
 import { Button, Input, Table, type TableProps } from "antd";
-import { useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { Link } from "react-router";
 import { errorMessage } from "../api/http";
 import {
@@ -19,6 +19,8 @@ import {
 import type { WorkbenchPeriod, WorkbenchTask } from "../api/types";
 import { PageStatus } from "../components/page-status";
 import { IntakePrimaryContract } from "../components/intake-primary-contract";
+import { IntakePendingList } from "../components/intake-pending-list";
+import type { IntakeContinuationSelection } from "../features/intake/intake-continuation";
 import { StatusText } from "../components/status-text";
 import {
   caseHref,
@@ -254,8 +256,26 @@ export function HomePage() {
   const [taskFilter, setTaskFilter] = useState<"mine" | "all" | "completed">(
     "mine",
   );
+  const [selectedIntake, setSelectedIntake] = useState<{
+    actorScope: string;
+    selection: IntakeContinuationSelection;
+  } | null>(null);
   const snapshot = useWorkbench(period);
   const session = useSession();
+  const actor = session.data ?? null;
+  const intakeActorScope = actor
+    ? [actor.audience, actor.tenant_id, actor.org_id, actor.id].join("\u0000")
+    : "";
+  const activeIntakeSelection =
+    selectedIntake?.actorScope === intakeActorScope
+      ? selectedIntake.selection
+      : null;
+  const intakeActorScopeRef = useRef(intakeActorScope);
+  useEffect(() => {
+    if (intakeActorScopeRef.current === intakeActorScope) return;
+    intakeActorScopeRef.current = intakeActorScope;
+    setSelectedIntake(null);
+  }, [intakeActorScope]);
   const createTask = useCreateWorkbenchTask(taskCaseId);
   const updateTask = useUpdateWorkbenchTask();
   const caseTitles = useMemo(
@@ -529,8 +549,32 @@ export function HomePage() {
         ))}
       </dl>
 
+      <IntakePendingList
+        key={intakeActorScope}
+        actor={actor}
+        selectedOperationId={activeIntakeSelection?.detail.operation_id ?? null}
+        onSelectContinuation={(selection) =>
+          setSelectedIntake({ actorScope: intakeActorScope, selection })
+        }
+        onArchived={(operationId) => {
+          setSelectedIntake((current) =>
+            current?.actorScope === intakeActorScope &&
+            current.selection.detail.operation_id === operationId
+              ? {
+                  ...current,
+                  selection: { ...current.selection, archived: true },
+                }
+              : current,
+          );
+        }}
+      />
+
       <div className="home-content-grid workbench-content-grid">
-        <IntakePrimaryContract actor={session.data ?? null} />
+        <IntakePrimaryContract
+          key={intakeActorScope}
+          actor={actor}
+          selectedContinuation={activeIntakeSelection}
+        />
         <section
           className="home-panel home-tasks"
           aria-labelledby="home-tasks-title"
