@@ -1861,6 +1861,30 @@
         }
       }
     },
+    "/api/cases/{caseID}/reports/{reportID}/evidence-bundle": {
+      "get": {
+        "operationId": "downloadReportEvidenceBundle",
+        "tags": ["案件"],
+        "summary": "下载可独立验签的报告证据包",
+        "description": "重新检查案件与报告读取权限后，下载包含报告冻结内容、中文 PDF、原件及追加历史、摘要清单和 Ed25519 签名的 ZIP。验证方必须使用独立取得的可信公钥；包内自带公钥不是信任依据。未配置签名密钥或中文字体时返回 503，原件、报告身份或摘要校验冲突时返回 409。",
+        "parameters": [
+          {"name": "caseID", "in": "path", "required": true, "schema": {"type": "string", "minLength": 1}},
+          {"name": "reportID", "in": "path", "required": true, "schema": {"type": "string", "minLength": 1}}
+        ],
+        "responses": {
+          "200": {
+            "description": "Ed25519 签名证据 ZIP，以附件返回",
+            "content": {"application/zip": {"schema": {"type": "string", "format": "binary"}}}
+          },
+          "401": {"$ref": "#/components/responses/Error401"},
+          "403": {"$ref": "#/components/responses/Error403"},
+          "404": {"$ref": "#/components/responses/Error404"},
+          "409": {"$ref": "#/components/responses/Error409"},
+          "503": {"$ref": "#/components/responses/Error503"},
+          "500": {"$ref": "#/components/responses/Error500"}
+        }
+      }
+    },
     "/api/cases/{caseID}/archive": {
       "post": {
         "operationId": "archiveCase",
