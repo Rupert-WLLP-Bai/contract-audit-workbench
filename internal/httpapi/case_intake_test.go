@@ -83,6 +83,7 @@ func postIntakeBytes(client *http.Client, base, key, contentType string, payload
 	if err != nil {
 		return intakeHTTPResult{err: err}
 	}
+	request.Header.Set("Origin", request.URL.Scheme+"://"+request.URL.Host)
 	request.Header.Set("Content-Type", contentType)
 	request.Header.Set("Idempotency-Key", key)
 	response, err := client.Do(request)
@@ -350,6 +351,7 @@ func TestCaseIntakeHTTPRechecksIdentityAndPermission(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	request.Header.Set("Origin", request.URL.Scheme+"://"+request.URL.Host)
 	request.Header.Set("Content-Type", contentType)
 	request.Header.Add("Idempotency-Key", key)
 	request.Header.Add("Idempotency-Key", key)

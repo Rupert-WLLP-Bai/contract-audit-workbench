@@ -371,6 +371,28 @@ func Extract(request rulepack.Request) ([]rulepack.Fact, error) {
 	return facts, nil
 }
 
+// ExtractContractMaterial extracts facts from one caller-verified frozen
+// contract material. The caller must check the material purpose and role;
+// the source role and citation identity are retained exactly as supplied.
+func ExtractContractMaterial(request rulepack.Request, source rulepack.Source) ([]rulepack.Fact, error) {
+	definitions := rulesFor(request)
+	if len(definitions) != 3 || (source.Role != "draft_contract" && source.Role != "attachment") {
+		return nil, rulepack.ErrInvalidRequest
+	}
+	facts := make([]rulepack.Fact, 0)
+	for index := range definitions {
+		for _, sentence := range sourceSentences(source.Text) {
+			if !eligibleClauseSentence(sentence.text, index, false) {
+				continue
+			}
+			if item, ok := parseClause(source, sentence.text, sentence.offset, index, definitions, request.Scenario == "cloud_services"); ok {
+				facts = append(facts, item.fact)
+			}
+		}
+	}
+	return facts, nil
+}
+
 func sameClause(a, b clause) bool {
 	x, y := a.fact, b.fact
 	return sameClauseFact(x, y) && a.tax == b.tax && a.direction == b.direction && sameClauseExclusions(x.Exclusions, y.Exclusions)

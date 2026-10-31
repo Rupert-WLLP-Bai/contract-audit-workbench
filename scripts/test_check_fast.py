@@ -89,6 +89,13 @@ class PlanSelectionTests(unittest.TestCase):
         write(self.root, "internal/leaf/leaf.go", "package leaf\n")
         write(self.root, "internal/decision/decision.go",
               "package decision\n\nvar Value = 1\n")
+        write(self.root, "internal/decision/decision_test.go",
+              '''package decision
+
+import "testing"
+
+func TestValue(t *testing.T) { if Value != 1 { t.Fatal(Value) } }
+              ''')
         write(self.root, "web/src/app.tsx", "export const app = true\n")
         write(self.root, "web/public/logo.png", "")
         write(self.root, "web/vite.config.ts", "export default {}\n")

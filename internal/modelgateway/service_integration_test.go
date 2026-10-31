@@ -302,6 +302,7 @@ func TestGatewayWorkerAndDocumentFixtureConsumersSettleUnknownUsage(t *testing.T
 	config := gatewayTestConfig("fixture", "")
 	config.ProviderURL = "https://fixture-provider.example/v1"
 	config.FixtureOCRContent = "质保期为36个月。"
+	config.Budget.MaxOutputTokenReservation = 8192
 	_, gateway := startGatewayServer(t, st, config)
 
 	workerClient := model.New(model.Config{
@@ -380,6 +381,7 @@ func TestExplicitImageReparseUsesAuthorizedDocumentScopeBeforeReview(t *testing.
 	config := gatewayTestConfig("fixture", "")
 	config.ProviderURL = "https://fixture-provider.example/v1"
 	config.FixtureOCRContent = "采购文件要求质保36个月。"
+	config.Budget.MaxOutputTokenReservation = 8192
 	_, gateway := startGatewayServer(t, st, config)
 	st.UseModels(model.New(model.Config{
 		BaseURL: gateway.URL + "/v1", ProviderURL: config.ProviderURL, Gateway: true, APIKey: config.DocumentCredential,

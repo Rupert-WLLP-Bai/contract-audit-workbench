@@ -308,7 +308,7 @@ var _ agentflow.PlannerChatModel = observedPlannerChatModel{}
 var _ model.CallObserver = attemptRecorder{}
 
 func (s *Store) authorizeAgentReviewStage(ctx context.Context, runID, attemptID string) (Case, access.Principal, access.Resource, error) {
-	st, err := s.snapshotForAttemptContext(ctx, attemptID)
+	st, err := s.snapshotForAttemptMetadataContext(ctx, attemptID)
 	if err != nil {
 		return Case{}, access.Principal{}, access.Resource{}, err
 	}
@@ -346,7 +346,7 @@ func (s *Store) revalidateAgentPlannerKnowledge(ctx context.Context, runID, atte
 }
 
 func (s *Store) agentPlannerAuthority(ctx context.Context, runID, attemptID string, resource access.Resource, actorID string, expected *ReviewKnowledgeSnapshot) (accounts.User, *ReviewKnowledgeSnapshot, error) {
-	st, err := s.snapshotForAttemptContext(ctx, attemptID)
+	st, err := s.snapshotForAttemptMetadataContext(ctx, attemptID)
 	if err != nil {
 		return accounts.User{}, nil, err
 	}

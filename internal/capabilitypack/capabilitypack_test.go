@@ -541,9 +541,9 @@ func TestParseRejectsInvalidManifests(t *testing.T) {
 			},
 		},
 		{
-			name: "unknown scenario",
+			name: "invalid scenario identifier",
 			mutate: func(document map[string]any) {
-				document["scenario"] = "telecom"
+				document["scenario"] = "invalid scenario"
 			},
 		},
 		{

@@ -1,5 +1,6 @@
 import { jsonInit, requestJson } from "./http";
 import { responseReader } from "./respond";
+import type { WireSchemas } from "./wire.generated";
 
 export interface EvidenceSourceEvaluation {
   id: string;
@@ -20,13 +21,7 @@ export interface EvidenceSourceGap {
   reason_code: string;
 }
 
-export interface EvidenceQuote {
-  document_id: string;
-  parsed_document_id: string;
-  quote: string;
-  start: number;
-  end: number;
-}
+export type EvidenceQuote = WireSchemas["ExperienceEvidenceView"];
 
 export interface EvidenceVerification {
   run_id: string;
@@ -82,33 +77,17 @@ export interface EvidenceRequestEvent {
   receipt: EvidenceReceipt | null;
 }
 
-export interface CreateEvidenceRequestInput {
-  task_id: string;
-  task_version: number;
-  source_run_id: string;
-  source_attempt_id: string;
-  source_evaluation_id?: string;
-  source_gap_id?: string;
-  question: string;
-  material_role?: string;
-  verification_condition: "compatible" | "conflict" | "resolved";
-}
-
-export interface CreateEvidenceReceiptInput {
-  document_id?: string;
-  answer?: string;
-  expected_version: number;
-}
-
-export interface VerifyEvidenceRequestInput {
-  run_id: string;
-  attempt_id: string;
-  evaluation_id?: string;
-  gap_id?: string;
-  evidence: EvidenceQuote[];
-  reason: string;
-  expected_version: number;
-}
+// Identity comes from the URL and the idempotency key from the header.
+export type CreateEvidenceRequestInput = Omit<
+  WireSchemas["EvidenceRequestCreate"], "case_id" | "idempotency_key"
+>;
+export type CreateEvidenceReceiptInput = Omit<
+  WireSchemas["EvidenceReceiptCreate"], "case_id" | "request_id" | "idempotency_key"
+>;
+export type VerifyEvidenceRequestInput = Omit<
+  WireSchemas["EvidenceRequestVerify"],
+  "case_id" | "request_id" | "receipt_id" | "idempotency_key"
+>;
 
 const { invalid, object, text, optionalText, array, integer: safeInteger } =
   responseReader((field) => `补充材料响应中的 ${field} 无法识别`);
@@ -277,11 +256,11 @@ export function verifyEvidenceRequest(caseId: string, requestId: string, receipt
   return requestJson(`${requestPath(caseId, requestId)}/receipts/${encodeURIComponent(receiptId)}/verify`, jsonInit("POST", input, { "Idempotency-Key": key }), parseEvidenceRequest);
 }
 
-export function uploadEvidenceDocument(caseId: string, file: File, role: string) {
+export function uploadEvidenceDocument(caseId: string, file: File, role: string, idempotencyKey?: string) {
   const body = new FormData();
   body.set("file", file);
   body.set("role", role);
-  return requestJson(`/api/cases/${encodeURIComponent(caseId)}/documents`, { method: "POST", body }, (value) => {
+  return requestJson(`/api/cases/${encodeURIComponent(caseId)}/documents`, { method: "POST", body, headers: idempotencyKey ? { "Idempotency-Key": idempotencyKey } : undefined }, (value) => {
     const id = text(object(value, "uploaded document").id, "uploaded document.id");
     if (!id) return invalid("uploaded document.id");
     return { id };

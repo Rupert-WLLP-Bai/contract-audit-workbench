@@ -9,13 +9,21 @@ import { useStableIdempotencyKey } from "./idempotency";
 import {
   confirmServiceObjectAssociation,
   createServiceObject,
+  decideMappingAssociation,
   getAssociationCandidates,
   getServiceObject,
+  getMappingAssociationChange,
   listServiceObjectAssociations,
   listServiceObjectVersions,
   listServiceObjects,
+  previewMappingAssociation,
+  proposeMappingAssociation,
   type AssociationPreview,
   type AssociationSource,
+  type MappingChangeDraft,
+  type MappingChangePreview,
+  type MappingDecisionInput,
+  type ServiceObjectAssociation,
   type ServiceObjectAssociationConfirmation,
   type ServiceObjectCreateInput,
   type ServiceObjectSummary,
@@ -32,14 +40,16 @@ function candidateKey(candidate: AssociationSource): string {
 
 function frozenContractCandidates(caseDetail: CaseDetail | undefined, workspace: Awaited<ReturnType<typeof getReview>> | undefined): FrozenContractCandidate[] {
   if (!caseDetail || !workspace) return [];
-  const primaryMaterials = (caseDetail.materials ?? []).filter((material) =>
-    material.role === "draft_contract" && material.purpose === "primary_contract",
+  const contractMaterials = (caseDetail.materials ?? []).filter((material) =>
+    (material.role === "draft_contract" && material.purpose === "primary_contract") ||
+    (material.role === "attachment" && material.purpose === "supplement"),
   );
   const versions = caseDetail.material_versions ?? [];
   const result: FrozenContractCandidate[] = [];
   for (const document of workspace.documents) {
-    if (document.role !== "draft_contract" || document.parsed_document_id === null) continue;
-    for (const material of primaryMaterials) {
+    if (document.parsed_document_id === null) continue;
+    for (const material of contractMaterials) {
+      if (document.role !== material.role) continue;
       const version = versions.find((item) => item.material_id === material.material_id && item.document_id === document.id);
       if (!version) continue;
       result.push({
@@ -50,7 +60,7 @@ function frozenContractCandidates(caseDetail: CaseDetail | undefined, workspace:
         document_id: version.document_id,
         parsed_document_id: document.parsed_document_id,
         filename: document.filename,
-        label: `${document.filename} · 主合同材料第 ${version.version} 版`,
+        label: `${document.filename} · ${material.purpose === "supplement" ? "补充协议" : "主合同"}材料第 ${version.version} 版`,
       });
     }
   }
@@ -75,6 +85,21 @@ function summaryLabel(item: ServiceObjectSummary): string {
 
 function timeLabel(value: string | null): string {
   return value ? formatDateTime(value) : "时间未记录";
+}
+
+function associationBasis(association: ServiceObjectAssociation): MappingChangeDraft["basis_refs"] {
+  for (const value of association.basis_refs) {
+    if (typeof value !== "object" || value === null || Array.isArray(value)) continue;
+    const ref = value as Record<string, unknown>;
+    if (ref.document_id !== association.document_id || ref.parsed_document_id !== association.parsed_document_id ||
+      typeof ref.start !== "number" || !Number.isInteger(ref.start) || ref.start < 0 ||
+      typeof ref.end !== "number" || !Number.isInteger(ref.end) || ref.end <= ref.start ||
+      typeof ref.quote_sha256 !== "string" || !/^[a-f0-9]{64}$/.test(ref.quote_sha256)) continue;
+    return [{ kind: "material_anchor", material_id: association.material_id, material_version: association.material_version,
+      document_id: association.document_id, parsed_document_id: association.parsed_document_id,
+      start: ref.start, end: ref.end, quote_digest: ref.quote_sha256 }];
+  }
+  throw new Error("原合同关联缺少可核对的原文依据，无法提交更正。");
 }
 
 function CandidateFacts({ preview, selectedRef, onSelect }: { preview: AssociationPreview; selectedRef: string; onSelect: (value: string) => void }) {
@@ -123,6 +148,8 @@ export function ServiceObjectPanel({ caseId, initialRunId, initialAttemptId, cas
   const [selectedObjectRef, setSelectedObjectRef] = useState("");
   const [confirmed, setConfirmed] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const [mappingDraft, setMappingDraft] = useState<{ draft: MappingChangeDraft; preview: MappingChangePreview; mappingId: string; objectId: string; caseId: string } | null>(null);
+  const [decisionReason, setDecisionReason] = useState("");
 
   useEffect(() => {
     if (lastCaseId.current === caseId) return;
@@ -133,13 +160,22 @@ export function ServiceObjectPanel({ caseId, initialRunId, initialAttemptId, cas
     setSelectedObjectRef("");
     setConfirmed(false);
     setFormError(null);
+    setMappingDraft(null);
+    setDecisionReason("");
     if (params.has("service_object_id")) {
       const next = new URLSearchParams(params);
       next.delete("service_object_id");
       next.delete("service_document");
+      next.delete("mapping_change");
       setParams(next, { replace: true });
     }
   }, [caseId, params, setParams]);
+
+  useEffect(() => {
+    setMappingDraft(null);
+    setConfirmed(false);
+    setSelectedObjectRef("");
+  }, [caseId, objectId]);
 
   const list = useInfiniteQuery({
     queryKey: ["service-objects", caseId],
@@ -203,7 +239,7 @@ export function ServiceObjectPanel({ caseId, initialRunId, initialAttemptId, cas
   const preview = useQuery({
     queryKey: ["service-objects", caseId, objectId, "candidates", previewSource],
     queryFn: ({ signal }) => getAssociationCandidates(caseId, objectId, previewSource!, signal),
-    enabled: objectId !== "" && detail.data?.can_manage === true && detail.data.association === null && previewSource !== null,
+    enabled: objectId !== "" && detail.data?.can_manage === true && previewSource !== null,
     retry: false,
   });
 
@@ -230,6 +266,37 @@ export function ServiceObjectPanel({ caseId, initialRunId, initialAttemptId, cas
     },
   });
 
+  const mappingRequestId = params.get("mapping_change") ?? "";
+  const mappingChange = useQuery({
+    queryKey: ["service-objects", caseId, "mapping-change", mappingRequestId],
+    queryFn: ({ signal }) => getMappingAssociationChange(caseId, mappingRequestId, signal),
+    enabled: caseId !== "" && mappingRequestId !== "",
+    retry: false,
+  });
+  const mappingPreview = useMutation({
+    mutationFn: async ({ mappingId, draft, objectId, caseId: draftCaseId }: { mappingId: string; draft: MappingChangeDraft; objectId: string; caseId: string }) => ({ mappingId, draft, objectId, caseId: draftCaseId, preview: await previewMappingAssociation(draftCaseId, mappingId, draft) }),
+    onSuccess: setMappingDraft,
+  });
+  const mappingPropose = useMutation({
+    mutationFn: ({ mappingId, draft, preview, caseId: draftCaseId }: { mappingId: string; draft: MappingChangeDraft; preview: MappingChangePreview; caseId: string }) =>
+      proposeMappingAssociation(draftCaseId, mappingId, draft, preview, keyFor("mapping-reassociation-proposal", [draftCaseId, mappingId, draft, preview])),
+    onSuccess: (result) => {
+      setMappingDraft(null);
+      const next = new URLSearchParams(params);
+      next.set("mapping_change", result.request_id);
+      next.set("service_object_id", result.service_object_id);
+      setParams(next);
+    },
+  });
+  const mappingDecide = useMutation({
+    mutationFn: (input: MappingDecisionInput) => decideMappingAssociation(caseId, mappingRequestId, input,
+      keyFor("mapping-reassociation-decision", [caseId, mappingRequestId, input])),
+    onSuccess: async () => {
+      setDecisionReason("");
+      await Promise.all([queryClient.invalidateQueries({ queryKey: ["service-objects", caseId] }), mappingChange.refetch()]);
+    },
+  });
+
   const attempts = review.data?.review_attempts?.attempts ?? [];
   const selectedAttemptId = review.data?.review_attempts?.attempt?.id ?? requestedAttemptId;
   const versions = objectVersions.data?.pages.flatMap((page) => page.items) ?? [];
@@ -244,12 +311,14 @@ export function ServiceObjectPanel({ caseId, initialRunId, initialAttemptId, cas
     setSelectedCandidateKey("");
     setSelectedObjectRef("");
     setConfirmed(false);
+    setMappingDraft(null);
   }
 
   function selectCandidate(candidateValue: FrozenContractCandidate) {
     setSelectedCandidateKey(candidateKey(candidateValue));
     setSelectedObjectRef("");
     setConfirmed(false);
+    setMappingDraft(null);
     const next = new URLSearchParams(params);
     next.set("service_document", candidateKey(candidateValue));
     setParams(next);
@@ -271,7 +340,7 @@ export function ServiceObjectPanel({ caseId, initialRunId, initialAttemptId, cas
     if (!confirmed || !preview.data || !previewSource || !detail.data?.can_manage) return;
     const option = preview.data.options.find((item) => item.object_ref === selectedObjectRef);
     if (!option) return;
-    confirmAssociation.mutate({
+    const input: ServiceObjectAssociationConfirmation = {
       confirmed: true,
       expected_object_version: preview.data.expected_object_version,
       expected_association_version: preview.data.expected_association_version,
@@ -279,7 +348,39 @@ export function ServiceObjectPanel({ caseId, initialRunId, initialAttemptId, cas
       object_ref: option.object_ref,
       facts_sha256: option.facts_sha256,
       candidate_sha256: preview.data.candidate_sha256,
-    }, { onError: (error) => setFormError(errorMessage(error)) });
+    };
+    const mapping = detail.data.mapping;
+    if (mapping) {
+      if (!detail.data.association || mapping.object_version !== input.expected_object_version || mapping.association_version !== input.expected_association_version) {
+        setFormError("对象映射与当前关联版本不一致，请刷新后重试。");
+        return;
+      }
+      try {
+        const draft: MappingChangeDraft = {
+          cas: { expected_mapping_version: mapping.mapping_version, expected_binding_version: mapping.binding_version,
+            expected_object_version: mapping.object_version, expected_association_version: mapping.association_version },
+          patch: { kind: "replace_mapping", external_object: mapping.external_object, effective_from: mapping.effective_from,
+            effective_until: mapping.effective_until, contract_association: input },
+          basis_refs: associationBasis(detail.data.association),
+        };
+        setFormError(null);
+        setMappingDraft(null);
+        mappingPreview.mutate({ mappingId: mapping.mapping_id, draft, objectId, caseId }, { onError: (error) => setFormError(errorMessage(error)) });
+      } catch (error) {
+        setFormError(errorMessage(error));
+      }
+      return;
+    }
+    confirmAssociation.mutate(input, { onError: (error) => setFormError(errorMessage(error)) });
+  }
+
+  function submitDecision(decision: "approve" | "reject") {
+    const request = mappingChange.data;
+    if (!request || request.service_object_id !== objectId || request.state !== "pending_decision" || !decisionReason.trim()) return;
+    mappingDecide.mutate({ decision, reason: decisionReason.trim(), expected_mapping_version: request.expected_mapping_version,
+      expected_binding_version: request.expected_binding_version, expected_object_version: request.expected_object_version,
+      expected_association_version: request.expected_association_version, expected_after_sha256: request.after_sha256,
+      expected_impact_sha256: request.impact_sha256 });
   }
 
   return (
@@ -336,9 +437,9 @@ export function ServiceObjectPanel({ caseId, initialRunId, initialAttemptId, cas
             </div>
           ) : null}
 
-          {detail.data.can_manage && detail.data.association === null ? (
+          {detail.data.can_manage ? (
             <div>
-              <h4>确认首个冻结事实关联</h4>
+              <h4>{detail.data.association ? "重新关联冻结合同事实" : "确认首个冻结事实关联"}</h4>
               <label className="field">
                 审查执行记录
                 <select aria-label="服务对象审查执行记录" value={selectedAttemptId ?? ""} onChange={(event) => changeAttempt(event.target.value)} disabled={attempts.length === 0}>
@@ -347,28 +448,56 @@ export function ServiceObjectPanel({ caseId, initialRunId, initialAttemptId, cas
                 </select>
               </label>
               {review.isError ? <div role="alert"><p>冻结审查读取失败：{errorMessage(review.error)}</p><button type="button" onClick={() => void review.refetch()}>重试</button></div> : null}
-              {candidates.length === 0 && review.isSuccess ? <p>所选执行记录没有可用的主合同解析版本。</p> : null}
+              {candidates.length === 0 && review.isSuccess ? <p>所选执行记录没有可用的主合同或补充协议解析版本。</p> : null}
               {candidates.length > 0 ? (
                 <label className="field">
-                  冻结主合同版本
-                  <select aria-label="服务对象冻结主合同" value={candidate ? candidateKey(candidate) : ""} onChange={(event) => { const next = candidates.find((item) => candidateKey(item) === event.target.value); if (next) selectCandidate(next); }}>
+                  冻结合同材料版本
+                  <select aria-label="服务对象冻结合同材料" value={candidate ? candidateKey(candidate) : ""} onChange={(event) => { const next = candidates.find((item) => candidateKey(item) === event.target.value); if (next) selectCandidate(next); }}>
                     {candidates.map((item) => <option key={candidateKey(item)} value={candidateKey(item)}>{item.label}</option>)}
                   </select>
                 </label>
               ) : null}
               {preview.isFetching ? <p role="status">正在从该次冻结审查读取候选事实…</p> : null}
               {preview.isError ? <div role="alert"><p>候选读取失败：{errorMessage(preview.error)}</p><button type="button" onClick={() => void preview.refetch()}>重试</button></div> : null}
-              {preview.data ? <CandidateFacts preview={preview.data} selectedRef={selectedObjectRef} onSelect={setSelectedObjectRef} /> : null}
+              {preview.data ? <CandidateFacts preview={preview.data} selectedRef={selectedObjectRef} onSelect={(value) => { setSelectedObjectRef(value); setConfirmed(false); setMappingDraft(null); }} /> : null}
               {preview.data && preview.data.options.length === 0 ? <p>该冻结材料没有可关联的已核对对象事实。</p> : null}
               {preview.data && preview.data.options.some((option) => option.object_ref === selectedObjectRef) ? (
-                <label><input type="checkbox" checked={confirmed} onChange={(event) => setConfirmed(event.target.checked)} />我已核对所选审查、材料版本和对象事实，可确认该首个关联。</label>
+                <label><input type="checkbox" checked={confirmed} onChange={(event) => { setConfirmed(event.target.checked); setMappingDraft(null); }} />我已核对所选审查、材料版本和对象事实。</label>
               ) : null}
-              <p className="meta">首次确认会固定此处展示的冻结事实。后续变更需单独审批；本操作不自动认定履约结果。</p>
-              <button type="button" disabled={!confirmed || !selectedObjectRef || confirmAssociation.isPending || !preview.data} onClick={submitAssociation}>{confirmAssociation.isPending ? "正在确认…" : "确认首个冻结事实关联"}</button>
+              <p className="meta">{detail.data.mapping ? "已映射对象的合同重关联需由另一人审批；批准后关联与映射同时生效。" : "确认会固定此处展示的冻结事实，不自动认定履约结果。"}</p>
+              <button type="button" disabled={!confirmed || !selectedObjectRef || confirmAssociation.isPending || mappingPreview.isPending || !preview.data} onClick={submitAssociation}>{confirmAssociation.isPending || mappingPreview.isPending ? "正在处理…" : detail.data.mapping ? "预览关联更正" : detail.data.association ? "确认新的冻结事实关联" : "确认首个冻结事实关联"}</button>
               {confirmAssociation.isError ? <p role="alert">关联确认失败：{errorMessage(confirmAssociation.error)}</p> : null}
-              {confirmAssociation.isSuccess ? <p role="status">首个事实关联已确认，第 {confirmAssociation.data.association_version} 版。</p> : null}
+              {confirmAssociation.isSuccess ? <p role="status">事实关联已确认，第 {confirmAssociation.data.association_version} 版。</p> : null}
+              {mappingDraft && mappingDraft.caseId === caseId && mappingDraft.objectId === objectId && confirmed && mappingDraft.draft.patch.contract_association.object_ref === selectedObjectRef && JSON.stringify(mappingDraft.draft.patch.contract_association.source) === JSON.stringify(previewSource) ? <div className="callout">
+                <h4>核对关联更正预览</h4>
+                <p>目标对象 {mappingDraft.preview.association_after.object_ref} · 材料第 {mappingDraft.preview.association_after.material_version} 版 · 来源审查 {mappingDraft.preview.association_after.source_run_id} / {mappingDraft.preview.association_after.source_attempt_id}</p>
+                <p>将产生关联第 {mappingDraft.preview.association_after.association_version} 版；既有外部对象不变。</p>
+                <button type="button" disabled={mappingPropose.isPending} onClick={() => mappingPropose.mutate(mappingDraft)}>{mappingPropose.isPending ? "正在提交…" : "提交异人审批"}</button>
+                {mappingPropose.isError ? <p role="alert">提交失败：{errorMessage(mappingPropose.error)}</p> : null}
+              </div> : null}
             </div>
           ) : null}
+
+          {mappingRequestId ? <section aria-label="合同关联更正审批">
+            <h4>合同关联更正申请</h4>
+            {mappingChange.isLoading ? <p role="status">正在读取审批记录…</p> : null}
+            {mappingChange.isError ? <div role="alert">审批记录读取失败：{errorMessage(mappingChange.error)} <button type="button" onClick={() => void mappingChange.refetch()}>重试</button></div> : null}
+            {mappingChange.data && mappingChange.data.service_object_id !== objectId ? <p role="alert">此审批属于服务对象 {mappingChange.data.service_object_id}，请先选择该对象。</p> : null}
+            {mappingChange.data && mappingChange.data.service_object_id === objectId ? <>
+              <p>申请 {mappingChange.data.request_id} · 状态 {mappingChange.data.state} · 提交于 {formatDateTime(mappingChange.data.created_at)}</p>
+              <p>目标对象 {mappingChange.data.after.object_ref} · 材料 {mappingChange.data.after.material_id} 第 {mappingChange.data.after.material_version} 版 · 文档 {mappingChange.data.after.document_id} / 解析 {mappingChange.data.after.parsed_document_id}</p>
+              <p>来源审查 {mappingChange.data.after.source_run_id} / {mappingChange.data.after.source_attempt_id} · 新关联第 {mappingChange.data.after.association_version} 版</p>
+              <ul className="history">{mappingChange.data.after.facts.map((fact) => <li key={fact.fact.id}><strong>{fact.fact.dimension}</strong><p>{fact.fact.value} {fact.fact.unit}</p>{fact.fact.basis ? <p>{fact.fact.basis}</p> : null}</li>)}</ul>
+              <p className="meta">可复制当前页面地址交由另一位有决定权限的人员核对。审批会重新校验冻结材料、摘要及当前版本。</p>
+              {mappingChange.data.state === "pending_decision" ? <>
+                <label className="field">决定理由<textarea value={decisionReason} maxLength={2000} onChange={(event) => setDecisionReason(event.target.value)} /></label>
+                <button type="button" disabled={!decisionReason.trim() || mappingDecide.isPending} onClick={() => submitDecision("approve")}>批准关联更正</button>{" "}
+                <button type="button" disabled={!decisionReason.trim() || mappingDecide.isPending} onClick={() => submitDecision("reject")}>拒绝关联更正</button>
+              </> : null}
+              {mappingDecide.isError ? <p role="alert">审批失败：{errorMessage(mappingDecide.error)}</p> : null}
+              {mappingDecide.isSuccess ? <p role="status">审批决定已记录。</p> : null}
+            </> : null}
+          </section> : null}
 
           <details>
             <summary>身份版本历史</summary>

@@ -24,21 +24,28 @@ import {
 } from "../api/queries";
 import { paths } from "../api/paths";
 import type { CaseRelationInput, DecisionAction } from "../api/types";
+import type { FrozenQuoteScope, FrozenQuoteSelection } from "../domain/frozen-quote";
 import { PageStatus } from "../components/page-status";
 import { ReviewWorkspaceView } from "../components/review-workspace";
 import { DirtyLeaveGuard } from "../components/dirty-leave-guard";
+import { ReviewDiff } from "../components/review-diff";
 import type { ReviewCaseContext } from "../components/document-stage";
 import { RunProvenance } from "../components/run-provenance";
 import { FrozenLegalAuthorities } from "../components/frozen-legal-authorities";
 import { AuditProjection } from "../components/audit-projection";
 import { EvidenceRequestPanel } from "../components/evidence-request-panel";
+import { EvidenceSLADashboard } from "../components/evidence-sla-dashboard";
 import { ExperienceFeedbackPanel } from "../components/experience-feedback-panel";
+import { ManualFindingsPanel } from "../components/manual-findings-panel";
+import { ExperienceUsagePanel } from "../components/experience-usage-panel";
 import { OperatorAuditEntry } from "../features/operator-audit/operator-audit-entry";
 import {
   contractTypeLabel,
   isActiveAttemptState,
   isTerminalAttemptState,
   selectedFindingId,
+  type FindingDecisionInput,
+  type FindingDecisionOutcome,
 } from "../domain/review";
 import {
   useReviewEvents,
@@ -82,9 +89,23 @@ export function ReviewPage() {
   const [conflictMessage, setConflictMessage] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [conflictFinding, setConflictFinding] = useState<string | null>(null);
+  const [quoteSelection, setQuoteSelection] = useState<FrozenQuoteSelection | null>(null);
 
   const execution = review.data?.review_attempts;
   const selectedAttempt = execution?.attempt ?? null;
+  const quoteScope = useMemo<FrozenQuoteScope>(
+    () => ({
+      caseId,
+      runId,
+      attemptId: selectedAttempt?.id ?? null,
+      isFrozenAttempt: selectedAttempt?.history_kind === "frozen",
+      parsedDocumentIds: (review.data?.documents ?? []).flatMap((document) =>
+        document.parsed_document_id ? [document.parsed_document_id] : [],
+      ),
+    }),
+    [caseId, runId, selectedAttempt?.history_kind, selectedAttempt?.id, review.data?.documents],
+  );
+  useEffect(() => setQuoteSelection(null), [caseId, runId, session.data?.id, selectedAttempt?.id]);
   const decisionDraftScope = useMemo(
     () =>
       session.data
@@ -448,6 +469,35 @@ export function ReviewPage() {
     }
   }
 
+  async function onBatchDecide(input: FindingDecisionInput): Promise<FindingDecisionOutcome> {
+    if (!canDecide) return { status: "failed", message: "当前审查状态不允许提交。", stop: true };
+    try {
+      await decide.mutateAsync({ findingId: input.findingId, decision: input });
+      return { status: "success", message: "决定已保存。" };
+    } catch (error) {
+      let refreshFailed = false;
+      try {
+        refreshFailed = (await review.refetch()).isError;
+      } catch {
+        refreshFailed = true;
+      }
+      if (isConflict(error)) {
+        return {
+          status: "conflict",
+          message: refreshFailed
+            ? `${errorMessage(error)}；最新内容刷新失败，请刷新后再确认。`
+            : `${errorMessage(error)}；请查看最新内容后重新确认。`,
+          stop: refreshFailed,
+        };
+      }
+      return {
+        status: "failed",
+        message: refreshFailed ? `${errorMessage(error)}；最新内容刷新失败。` : errorMessage(error),
+        stop: refreshFailed || isUnauthenticated(error) || isForbidden(error),
+      };
+    }
+  }
+
   return (
     <section className="page page-review">
       <header className="page-head">
@@ -483,11 +533,20 @@ export function ReviewPage() {
       ) : caseArchived ? (
         <p className="callout">案件已归档，历史审查仅供查看。</p>
       ) : null}
+      {session.isSuccess && !session.isFetching ? (
+        <ReviewDiff
+          caseId={caseId}
+          latestRunId={caseDetail.data?.latest_run?.id ?? runId}
+          actorScope={JSON.stringify([session.data.id, session.data.tenant_id, session.data.org_id, session.data.role, session.data.audience])}
+        />
+      ) : null}
       <DecisionDraftScopeProvider scope={decisionDraftScope}>
         <ReviewWorkspaceView
           workspace={workspace}
           layout={layout}
           showDiagnostics={diagnosticData !== null}
+          quoteScope={quoteScope}
+          onQuoteSelectionChange={setQuoteSelection}
           selectedId={selectedId}
           caseContext={caseContext}
           canEditRelations={canEditRelations}
@@ -507,9 +566,11 @@ export function ReviewPage() {
           }
           saveError={conflictFinding === selectedId ? saveError : null}
           onSelect={(findingId) => {
-            const next = new URLSearchParams(params);
-            next.set("finding", findingId);
-            setParams(next);
+            setParams((current) => {
+              const next = new URLSearchParams(current);
+              next.set("finding", findingId);
+              return next;
+            });
           }}
           onSelectAttempt={(attemptId) => {
             const next = new URLSearchParams(params);
@@ -531,6 +592,7 @@ export function ReviewPage() {
             setParams(next);
           }}
           onDecide={onDecide}
+          onBatchDecide={onBatchDecide}
           onRetry={() => {
             if (!canRetry) return;
             retry.mutate(undefined, {
@@ -556,6 +618,22 @@ export function ReviewPage() {
         />
       </DecisionDraftScopeProvider>
       <DirtyLeaveGuard dirty={decisionDraftsDirty} />
+      <ManualFindingsPanel
+        key={`${caseId}:${runId}:${selectedAttempt?.id ?? "none"}:${session.data?.tenant_id ?? ""}:${session.data?.org_id ?? ""}:${session.data?.id ?? ""}:${session.data?.role ?? ""}`}
+        caseId={caseId}
+        runId={runId}
+        attemptId={selectedAttempt?.id ?? null}
+        isFrozenAttempt={selectedAttempt?.history_kind === "frozen"}
+        parsedDocumentIds={selectedAttempt?.parsed_document_ids ?? []}
+        selection={quoteSelection}
+        documents={review.data.documents}
+        actor={session.data ?? null}
+        canCreate={caseDetailReady && !caseArchived && roleCanDecide && selectedAttempt?.history_kind === "frozen"}
+      />
+      <EvidenceSLADashboard
+        mode="reminder"
+        cases={[{ id: caseId, title: caseDetail.data?.title ?? caseId }]}
+      />
       <EvidenceRequestPanel
         caseId={caseId}
         runId={runId}
@@ -564,6 +642,8 @@ export function ReviewPage() {
         evaluations={review.data.evaluations ?? []}
         agentReview={review.data.agent_review ?? null}
         documents={caseDetail.data?.documents ?? []}
+        quoteScope={quoteScope}
+        quoteSelection={quoteSelection}
       />
       <OperatorAuditEntry
         caseId={caseId}
@@ -577,6 +657,15 @@ export function ReviewPage() {
         finding={review.data.findings.find((item) => item.id === selectedId) ?? null}
         documents={review.data.documents}
         canSubmit={roleCanDecide && selectedAttempt?.history_kind === "frozen"}
+        quoteScope={quoteScope}
+        quoteSelection={quoteSelection}
+      />
+      <ExperienceUsagePanel
+        caseId={caseId}
+        runId={runId}
+        attemptId={selectedAttempt?.history_kind === "frozen" ? selectedAttempt.id : null}
+        findingId={selectedId}
+        canDecide={canDecide}
       />
       <RunProvenance workspace={workspace} showDiagnostics={diagnosticData !== null} />
       <FrozenLegalAuthorities

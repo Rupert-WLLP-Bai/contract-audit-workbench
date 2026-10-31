@@ -3,6 +3,7 @@ package store
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"strings"
 	"time"
@@ -11,7 +12,128 @@ import (
 	"contractaudit/internal/accounts"
 	"contractaudit/internal/docversion"
 	"contractaudit/internal/fault"
+
+	"github.com/jackc/pgx/v5"
 )
+
+func (s *Store) CreateCaseWithBusiness(user accounts.User, title, contractType, businessLine, scenario string) (string, error) {
+	return s.CreateCaseWithBusinessContext(context.Background(), user, title, contractType, businessLine, scenario, "")
+}
+
+// CreateCaseWithBusinessContext records an optional request key in the same
+// transaction as the case and its creation activity.
+func (s *Store) CreateCaseWithBusinessContext(ctx context.Context, user accounts.User, title, contractType, businessLine, scenario, key string) (string, error) {
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
+	if s.ReadOnly() {
+		return "", fault.New(503, "read_only", "只读模式下不能创建案件")
+	}
+	current, err := trustedUser(user)
+	if err != nil {
+		return "", err
+	}
+	if !accounts.CanCreate(current.Role) {
+		return "", fault.Forbidden("当前角色不能创建案件")
+	}
+	input, err := validateBusinessCaseInput(title, contractType, businessLine, scenario)
+	if err != nil {
+		return "", err
+	}
+	key, err = optionalIdempotencyKey(key)
+	if err != nil {
+		return "", err
+	}
+	digest := ""
+	if key != "" {
+		digest, err = canonicalHash([]string{input.title, input.contractType, input.businessLine, input.scenario})
+		if err != nil {
+			return "", err
+		}
+	}
+	id, err := newID("case_")
+	if err != nil {
+		return "", err
+	}
+	const route = "POST /api/cases"
+	now := stamp()
+	var receipt writeReceipt
+	var found bool
+	var receiptTx pgx.Tx
+	err = s.scopedCreateCaseWrite(ctx, current, id, func(tx pgx.Tx) (string, error) {
+		receiptTx = tx
+		if key == "" {
+			return "", nil
+		}
+		if err := lockWriteReceipt(ctx, tx, current, route, key); err != nil {
+			return "", err
+		}
+		receipt, found, err = loadWriteReceipt(ctx, tx, coreWriteReceipts, current, route, key)
+		if err != nil {
+			return "", err
+		}
+		if found {
+			return receipt.CaseID, nil
+		}
+		return "", nil
+	}, func(st *state) error {
+		current, err = trustedUser(current)
+		if err != nil {
+			return err
+		}
+		if !accounts.CanCreate(current.Role) {
+			return fault.Forbidden("当前角色不能创建案件")
+		}
+		if found {
+			item, err := s.visibleCase(st, current, receipt.CaseID)
+			if err != nil {
+				return err
+			}
+			if err := requireCaseAction(item, current, access.Manage); err != nil {
+				return err
+			}
+			if err := checkWriteReceipt(receipt, item, digest); err != nil {
+				return err
+			}
+			var result struct {
+				ID string `json:"id"`
+			}
+			if err := json.Unmarshal(receipt.Response, &result); err != nil {
+				return err
+			}
+			if result.ID != item.ID {
+				return errors.New("case idempotency receipt has an invalid case identity")
+			}
+			id = result.ID
+			return nil
+		}
+		scope := Case{TenantID: accounts.Tenant(current), BusinessLine: input.businessLine, Scenario: input.scenario, ContractType: input.contractType}
+		if isDeclaredReviewCase(scope) {
+			pack, err := selectActiveRulePackTx(ctx, receiptTx, scope.TenantID, scope.BusinessLine, scope.Scenario, scope.ContractType, time.Now().UTC())
+			if err != nil {
+				return err
+			}
+			if pack == nil {
+				return fault.Conflict("该业务范围没有生效的已发布规则包")
+			}
+			if err := requireGovernedCapabilitiesForCase(scope, pack.Snapshot); err != nil {
+				return err
+			}
+		}
+		if err := appendBusinessCase(st, current, input, id, now); err != nil {
+			return err
+		}
+		if key != "" {
+			item, _ := st.caseByID(id)
+			return insertWriteReceipt(ctx, receiptTx, coreWriteReceipts, current, item, route, key, digest, map[string]string{"id": id})
+		}
+		return nil
+	})
+	if err != nil {
+		return "", err
+	}
+	return id, nil
+}
 
 // businessWritable is shared by every business mutation path. Call it only
 // after the current case has been resolved inside the state transaction.
@@ -38,35 +160,6 @@ func requireCaseAction(item Case, user accounts.User, action access.Action) erro
 		return fault.Forbidden("当前身份无权执行此案件操作")
 	}
 	return nil
-}
-
-// CreateCaseWithBusiness creates a case with the business scope frozen at
-// creation. The ordinary C1-A CreateCase path remains available for legacy
-// callers and explicitly uses the unspecified scope.
-func (s *Store) CreateCaseWithBusiness(user accounts.User, title, contractType, businessLine, scenario string) (string, error) {
-	if s.ReadOnly() {
-		return "", fault.New(503, "read_only", "只读模式下不能创建案件")
-	}
-	current, err := trustedUser(user)
-	if err != nil {
-		return "", err
-	}
-	if !accounts.CanCreate(current.Role) {
-		return "", fault.Forbidden("当前角色不能创建案件")
-	}
-	input, err := validateBusinessCaseInput(title, contractType, businessLine, scenario)
-	if err != nil {
-		return "", err
-	}
-	id, err := newID("case_")
-	if err != nil {
-		return "", err
-	}
-	now := stamp()
-	err = s.updateAs(current, func(st *state) error {
-		return appendBusinessCase(st, current, input, id, now)
-	})
-	return id, err
 }
 
 type businessCaseInput struct {
@@ -100,12 +193,10 @@ func validateBusinessCaseTitle(title string) (string, error) {
 }
 
 func validateBusinessContractType(contractType string) error {
-	switch contractType {
-	case "procurement_ict", "network_engineering", "unspecified", "service":
-		return nil
-	default:
-		return fault.Invalid("合同类型不在本版范围内")
+	if !validIdentifier(contractType) {
+		return fault.Invalid("合同类型需要有效的标识")
 	}
+	return nil
 }
 
 func normalizeBusinessCaseScope(businessLine, scenario string) (string, string, error) {
@@ -121,13 +212,16 @@ func normalizeBusinessCaseScope(businessLine, scenario string) (string, string, 
 }
 
 func validBusinessCaseScope(businessLine, scenario string) bool {
-	if businessLine != "ENT" {
-		return false
+	if businessLine == "unspecified" && scenario == "unspecified" {
+		return true
 	}
-	return scenario == "telecom_dedicated_line" || scenario == "cloud_services"
+	return validIdentifier(businessLine) && validIdentifier(scenario) && businessLine != "unspecified" && scenario != "unspecified"
 }
 
 func validateBusinessContractScope(contractType, businessLine, scenario string) error {
+	if businessLine == "unspecified" && contractType != "procurement_ict" && contractType != "network_engineering" && contractType != "unspecified" && contractType != "service" {
+		return fault.Invalid("扩展合同类型需要明确业务线和场景")
+	}
 	if businessLine == "ENT" && contractType == "unspecified" {
 		return fault.Invalid("政企业务案件需要明确合同类型")
 	}

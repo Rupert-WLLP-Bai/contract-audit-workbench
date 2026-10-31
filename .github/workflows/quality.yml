@@ -121,6 +121,7 @@ jobs:
       - name: Go gate
         env:
           LEGALNORM_ASSET_DIR: ${{ runner.temp }}/caw-legal-test-assets/legal-sources
+          LEGALNORM_SUPPLEMENTAL_ASSET_DIR: ${{ runner.temp }}/caw-legal-test-assets/legal-sources
           LEGALNORM_CANONICAL_MANIFEST: ${{ runner.temp }}/caw-legal-test-assets/p4-canonical-articles-v2.json
         run: python3 scripts/verify.py --stage go
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7

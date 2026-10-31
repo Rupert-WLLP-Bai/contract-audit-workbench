@@ -287,7 +287,7 @@ describe("document stage materials and search", () => {
     });
     await user.type(screen.getByLabelText("文内搜索"), "质保");
     expect(screen.getByText("正文匹配 2 处")).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "下一处" }));
+    await user.click(screen.getByRole("button", { name: "搜索下一处" }));
     expect(container.querySelectorAll(".hit-find").length).toBe(1);
     expect(
       screen.getByRole("button", { name: "第 2 页，第一条 质保" }),

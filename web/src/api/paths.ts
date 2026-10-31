@@ -106,6 +106,8 @@ export const paths = {
   reports: (caseId: string) => `/api/cases/${id(caseId)}/reports`,
   report: (caseId: string, reportId: string, format: "json" | "html") =>
     `/api/cases/${id(caseId)}/reports/${id(reportId)}?format=${format}`,
+  reportEvidenceBundle: (caseId: string, reportId: string) =>
+    `/api/cases/${id(caseId)}/reports/${id(reportId)}/evidence-bundle`,
   archive: (caseId: string) => `/api/cases/${id(caseId)}/archive`,
   documents: (caseId: string) => `/api/cases/${id(caseId)}/documents`,
   materialSelection: (caseId: string) =>

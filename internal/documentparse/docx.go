@@ -28,13 +28,16 @@ type docxParser struct {
 	tables      int
 	stories     []docxStory
 	seenStories map[string]bool
-	fields      []bool
+	fields      []docxField
 }
 
 // ParseDOCX reads the current visible OOXML story, then each referenced header
 // and footer once in first-reference order. Deleted/moved-from and hidden text
-// are excluded. Cached field results are read without evaluating fields. DOCX
-// pagination is a layout artifact, so no pages or geometric boxes are invented.
+// are excluded. One markup-compatibility branch is read, so an alternative
+// representation is never duplicated; text boxes drawn by shapes contribute
+// their visible paragraphs. Cached field results are read without evaluating
+// fields, except page and section numbers, which follow layout. DOCX pagination
+// is a layout artifact, so no pages or geometric boxes are invented.
 func ParseDOCX(ctx context.Context, body []byte, ocr OCR) (Result, error) {
 	pkg, main, err := docxOpen(ctx, body)
 	if err != nil {
@@ -240,6 +243,12 @@ func (p *docxParser) block(child *docxNode, part string) ([]docxFragment, error)
 		return p.blocks(child, part)
 	case "sdt":
 		return p.blockSDT(child, part)
+	case "alternate":
+		branch, err := docxAlternateBranch(child)
+		if err != nil {
+			return nil, err
+		}
+		return p.blocks(branch, part)
 	default:
 		return nil, fmt.Errorf("DOCX: unsupported block %s", child.name.Local)
 	}
@@ -275,6 +284,8 @@ func docxBlockKind(child *docxNode) string {
 		return "wrapper"
 	case child.word("sdt"):
 		return "sdt"
+	case child.name.Space == docxMCNS && child.name.Local == "AlternateContent":
+		return "alternate"
 	default:
 		return "unsupported"
 	}

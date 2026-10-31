@@ -242,15 +242,16 @@ func (h *handler) createFulfillmentEvaluation(w http.ResponseWriter, r *http.Req
 		return
 	}
 	var body struct {
-		PackID               string `json:"pack_id"`
-		PackVersion          string `json:"pack_version"`
-		SourceReviewID       string `json:"source_review_id"`
-		SourceAttemptID      string `json:"source_attempt_id"`
-		ContractVersionID    string `json:"contract_version_id"`
-		ObjectBindingVersion string `json:"object_binding_version"`
-		SnapshotSetID        string `json:"snapshot_set_id"`
-		BusinessAt           string `json:"business_at"`
-		EvidenceCutoffAt     string `json:"evidence_cutoff_at,omitempty"`
+		PackID               string                         `json:"pack_id"`
+		PackVersion          string                         `json:"pack_version"`
+		SourceReviewID       string                         `json:"source_review_id"`
+		SourceAttemptID      string                         `json:"source_attempt_id"`
+		ContractVersionID    string                         `json:"contract_version_id"`
+		ObjectBindingVersion string                         `json:"object_binding_version"`
+		SnapshotSetID        string                         `json:"snapshot_set_id"`
+		BusinessAt           string                         `json:"business_at"`
+		EvidenceCutoffAt     string                         `json:"evidence_cutoff_at,omitempty"`
+		Scope                *store.OperatorEvaluationScope `json:"scope,omitempty"`
 	}
 	if err := readJSON(w, r, &body); err != nil {
 		writeErr(w, err)
@@ -281,7 +282,7 @@ func (h *handler) createFulfillmentEvaluation(w http.ResponseWriter, r *http.Req
 			PackID: body.PackID, PackVersion: body.PackVersion, SourceReviewID: body.SourceReviewID,
 			SourceAttemptID: body.SourceAttemptID, ContractVersionID: body.ContractVersionID,
 			ObjectBindingVersion: body.ObjectBindingVersion, SnapshotSetID: body.SnapshotSetID,
-			BusinessAt: businessAt, EvidenceCutoffAt: evidenceCutoffAt,
+			BusinessAt: businessAt, EvidenceCutoffAt: evidenceCutoffAt, Scope: body.Scope,
 		}, pack, fulfillment.New(), strings.TrimSpace(r.Header.Get("Idempotency-Key")))
 	if err != nil {
 		writeOperatorErr(w, err, "没有找到来源审查、对象映射或快照集")
@@ -354,6 +355,11 @@ func operatorEvaluationJSON(evaluation store.OperatorEvaluation) map[string]any 
 	}
 	if evaluation.EvidenceCutoffAt != nil {
 		projection["evidence_cutoff_at"] = evaluation.EvidenceCutoffAt.UTC().Format(time.RFC3339Nano)
+	}
+	if evaluation.Scope != nil {
+		projection["scope"] = evaluation.Scope
+		projection["coverage"] = evaluation.Coverage
+		projection["objects"] = evaluation.Objects
 	}
 	return projection
 }

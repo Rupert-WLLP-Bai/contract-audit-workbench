@@ -80,19 +80,11 @@ func (s *Store) writableCase(st *state, user accounts.User, caseID string, actio
 // governed active pack inside the same transaction that freezes it, so the
 // selection and the freeze are one linearised operation.
 func (s *Store) updateCaseAsWith(user accounts.User, caseID string, hook func(pgx.Tx) error, fn func(*state) error) error {
-	current, err := trustedUser(user)
-	if err != nil {
-		return err
-	}
-	scope := userScope(current)
-	scope.CaseID = caseID
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.updateStateWith(context.Background(), scope, "", hook, fn)
+	return s.scopedCaseWrite(context.Background(), user, caseID, "", "", true, true, hook, fn)
 }
 
 func (s *Store) updateCaseAs(user accounts.User, caseID string, fn func(*state) error) error {
-	return s.updateCaseAsContext(context.Background(), user, caseID, fn)
+	return s.scopedCaseWrite(context.Background(), user, caseID, "", "", true, false, nil, fn)
 }
 
 func (s *Store) updateCaseAsContext(ctx context.Context, user accounts.User, caseID string, fn func(*state) error) error {
@@ -130,16 +122,5 @@ func (s *Store) updateSubjectCasesAs(ctx context.Context, user accounts.User, su
 // transaction. Cancellation uses it so it cannot interleave with a worker phase
 // write or a late model event for the same attempt: both take the same row lock.
 func (s *Store) updateCaseAttemptAs(user accounts.User, caseID, attemptID string, fn func(*state) error) error {
-	current, err := trustedUser(user)
-	if err != nil {
-		return err
-	}
-	if attemptID == "" {
-		return s.updateCaseAs(user, caseID, fn)
-	}
-	scope := userScope(current)
-	scope.CaseID = caseID
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.updateState(context.Background(), scope, attemptID, fn)
+	return s.scopedCaseWrite(context.Background(), user, caseID, attemptID, "", true, false, nil, fn)
 }

@@ -1,0 +1,129 @@
+.evidence-sla-dashboard {
+  display: grid;
+  gap: var(--space-4);
+  min-width: 0;
+}
+
+.evidence-sla-dashboard-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.evidence-sla-dashboard-head h2 {
+  margin: 0;
+}
+
+.evidence-sla-dashboard-head p {
+  margin: var(--space-1) 0 0;
+  color: var(--text-secondary);
+}
+
+.evidence-sla-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--space-4);
+  margin: 0;
+  padding: var(--space-3) 0;
+  border-block: 1px solid var(--border-default);
+  background: transparent;
+}
+
+.evidence-sla-summary > div {
+  display: grid;
+  align-content: start;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.evidence-sla-summary dt {
+  color: var(--text-secondary);
+}
+
+.evidence-sla-summary dd {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: 20px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.evidence-sla-summary small {
+  color: var(--text-secondary);
+}
+
+.evidence-sla-method {
+  margin: calc(-1 * var(--space-2)) 0 0;
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+
+.evidence-sla-table,
+.evidence-sla-table .ant-table,
+.evidence-sla-table .ant-table-container {
+  background: var(--surface-raised);
+}
+
+.evidence-sla-table .ant-table-container {
+  border: 1px solid var(--border-default);
+  border-radius: var(--panel-radius);
+}
+
+.evidence-sla-case,
+.evidence-sla-request,
+.evidence-sla-response {
+  display: grid;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.evidence-sla-request strong {
+  overflow-wrap: anywhere;
+  font-weight: 500;
+}
+
+.evidence-sla-deadline {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.evidence-sla-response strong {
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.evidence-sla-pre-review {
+  flex: 1 1 100%;
+  min-width: min(100%, 520px);
+}
+
+.evidence-sla-reminder-list {
+  display: grid;
+  gap: var(--space-1);
+  margin: 0;
+  padding-inline-start: 20px;
+}
+
+.evidence-sla-reminder-list li {
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 900px) {
+  .evidence-sla-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 600px) {
+  .evidence-sla-summary {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .evidence-sla-pre-review {
+    min-width: 0;
+  }
+}

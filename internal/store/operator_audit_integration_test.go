@@ -708,9 +708,9 @@ func TestDurableOperatorAuditFlow(t *testing.T) {
 		*completedByID.SnapshotSetID != set.SnapshotSetID {
 		t.Fatalf("collection state could not be recovered by stable collection ID with case read: job=%+v err=%v", completedByID, err)
 	}
-	// Exercise an actual pre-collection_id row shape: drop only the additive
-	// column/index from this isolated schema, then reopen so the current
-	// migration backfills the durable public ID without losing the old claim.
+	// Exercise a pre-collection_id row using the actual unversioned baseline
+	// migration. The current ledger already records that baseline, so a normal
+	// Migrate call is correctly a no-op until its legacy SQL is applied here.
 	legacyConn, err := environment.harness.pool.Acquire(ctx)
 	if err != nil {
 		t.Fatalf("acquire isolated connection for legacy collection migration fixture: %v", err)
@@ -732,6 +732,17 @@ func TestDurableOperatorAuditFlow(t *testing.T) {
 		_ = legacyTx.Rollback(ctx)
 		legacyConn.Release()
 		t.Fatalf("restore legacy collection claim shape: %v", err)
+	}
+	catalog, err := migrationCatalog()
+	if err != nil {
+		_ = legacyTx.Rollback(ctx)
+		legacyConn.Release()
+		t.Fatalf("read the legacy migration catalog: %v", err)
+	}
+	if err := executeMigrationSQL(ctx, legacyTx, environment.harness.schema, catalog[0].sql); err != nil {
+		_ = legacyTx.Rollback(ctx)
+		legacyConn.Release()
+		t.Fatalf("apply the unversioned legacy collection migration: %v", err)
 	}
 	if err := legacyTx.Commit(ctx); err != nil {
 		legacyConn.Release()
@@ -774,7 +785,7 @@ func TestDurableOperatorAuditFlow(t *testing.T) {
 		PackID: manifest.PackID, PackVersion: manifest.Version, SourceReviewID: accepted.RunID,
 		SourceAttemptID: accepted.AttemptID, ContractVersionID: contractID,
 		ObjectBindingVersion: binding.Version, SnapshotSetID: set.SnapshotSetID, BusinessAt: binding.EffectiveUntil,
-		EvidenceCutoffAt: &evaluationCutoffAt,
+		EvidenceCutoffAt: &evaluationCutoffAt, Scope: &OperatorEvaluationScope{Kind: "explicit_subset", ServiceObjectIDs: []string{serviceObject.ServiceObjectID}},
 	}, manifest, fulfillment.New(), "operator-evaluation-outside-binding"); !isConflictFault(err) {
 		t.Fatalf("evaluation accepted business_at at the end-exclusive binding boundary: %v", err)
 	}
@@ -782,7 +793,7 @@ func TestDurableOperatorAuditFlow(t *testing.T) {
 		PackID: manifest.PackID, PackVersion: manifest.Version, SourceReviewID: accepted.RunID,
 		SourceAttemptID: accepted.AttemptID, ContractVersionID: contractID,
 		ObjectBindingVersion: binding.Version, SnapshotSetID: set.SnapshotSetID, BusinessAt: businessAt,
-		EvidenceCutoffAt: &evaluationCutoffAt,
+		EvidenceCutoffAt: &evaluationCutoffAt, Scope: &OperatorEvaluationScope{Kind: "explicit_subset", ServiceObjectIDs: []string{serviceObject.ServiceObjectID}},
 	}, manifest, fulfillment.New(), "operator-evaluation-1")
 	if err != nil {
 		t.Fatalf("evaluate: %v", err)
@@ -843,7 +854,7 @@ func TestDurableOperatorAuditFlow(t *testing.T) {
 		PackID: manifest.PackID, PackVersion: manifest.Version, SourceReviewID: accepted.RunID,
 		SourceAttemptID: accepted.AttemptID, ContractVersionID: contractID,
 		ObjectBindingVersion: binding.Version, SnapshotSetID: set.SnapshotSetID, BusinessAt: businessAt,
-		EvidenceCutoffAt: &evaluationCutoffAt,
+		EvidenceCutoffAt: &evaluationCutoffAt, Scope: &OperatorEvaluationScope{Kind: "explicit_subset", ServiceObjectIDs: []string{serviceObject.ServiceObjectID}},
 	}, manifest, fulfillment.New(), "operator-evaluation-1")
 	if err != nil || replay.EvaluationID != evaluation.EvaluationID {
 		t.Fatalf("idempotent replay: id=%q err=%v", replay.EvaluationID, err)
@@ -856,7 +867,7 @@ func TestDurableOperatorAuditFlow(t *testing.T) {
 		PackID: manifest.PackID, PackVersion: manifest.Version, SourceReviewID: accepted.RunID,
 		SourceAttemptID: accepted.AttemptID, ContractVersionID: contractID,
 		ObjectBindingVersion: binding.Version, SnapshotSetID: set.SnapshotSetID, BusinessAt: businessAt,
-		EvidenceCutoffAt: &evaluationCutoffAt,
+		EvidenceCutoffAt: &evaluationCutoffAt, Scope: &OperatorEvaluationScope{Kind: "explicit_subset", ServiceObjectIDs: []string{serviceObject.ServiceObjectID}},
 	}, manifest, fulfillment.New(), "operator-evaluation-2")
 	if err != nil {
 		t.Fatalf("second evaluation: %v", err)

@@ -91,10 +91,12 @@ func Handler(st *store.Store, opt Options) http.Handler {
 	mux.HandleFunc("POST /api/admin/rulepacks/{packID}/versions/{version}/test", h.testRulePackVersion)
 	mux.HandleFunc("POST /api/admin/rulepacks/{packID}/rollback", h.rollbackRulePackVersion)
 	mux.HandleFunc("GET /api/admin/rulepacks/{packID}/history", h.rulePackHistory)
+	registerRuleShadowRoutes(mux, h)
 	registerGovernanceRoutes(mux, h)
 	registerLegalKnowledgeRoutes(mux, h)
 	registerContractCitationRoutes(mux, h)
 	registerEvidenceRoutes(mux, h)
+	registerManualFindingRoutes(mux, h)
 	mux.HandleFunc("GET /api/auth/oidc/login", h.oidcLogin)
 	mux.HandleFunc("GET /api/auth/oidc/callback", h.oidcCallback)
 	mux.HandleFunc("GET /api/templates", h.templates)
@@ -167,6 +169,7 @@ func Handler(st *store.Store, opt Options) http.Handler {
 	mux.HandleFunc("POST /api/cases/{caseID}/remediations/{itemID}/verify", h.verifyRemediation)
 	mux.HandleFunc("POST /api/cases/{caseID}/reports", h.createReport)
 	mux.HandleFunc("GET /api/cases/{caseID}/reports/{reportID}", h.readReport)
+	mux.HandleFunc("GET /api/cases/{caseID}/reports/{reportID}/evidence-bundle", h.downloadEvidenceBundle)
 	mux.HandleFunc("POST /api/cases/{caseID}/archive", h.archive)
 	mux.HandleFunc("POST /api/cases/{caseID}/reviews", h.startReview)
 	mux.HandleFunc("GET /api/cases/{caseID}/reviews/{runID}", h.workspace)
@@ -363,7 +366,12 @@ func (h *handler) createCase(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
-	id, err := h.store.CreateCaseWithBusiness(user, body.Title, body.ContractType, body.BusinessLine, body.Scenario)
+	key, err := writeIdempotencyKey(r)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	id, err := h.store.CreateCaseWithBusinessContext(r.Context(), user, body.Title, body.ContractType, body.BusinessLine, body.Scenario, key)
 	if err != nil {
 		writeErr(w, err)
 		return
@@ -557,22 +565,35 @@ func (h *handler) startReview(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
+	key, err := writeIdempotencyKey(r)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	ctx := store.WithReviewIdempotency(r.Context(), key)
 	if h.durable {
 		var accepted store.JobAcceptance
 		var err error
-		accepted, err = h.store.StartReviewAsyncScope(r.Context(), user, r.PathValue("caseID"), body.BusinessAt, body.EvidenceCutoffAt, body.Scope)
+		accepted, err = h.store.StartReviewAsyncScope(ctx, user, r.PathValue("caseID"), body.BusinessAt, body.EvidenceCutoffAt, body.Scope)
 		if err != nil {
 			writeErr(w, err)
+			return
+		}
+		if accepted, durable, ok := store.ReviewIdempotentAcceptance(ctx); ok {
+			writeAcceptedReviewReceipt(w, accepted, durable)
 			return
 		}
 		writeJSON(w, http.StatusAccepted, accepted)
 		return
 	}
 	var id string
-	var err error
-	id, err = h.store.StartReviewScope(r.Context(), user, r.PathValue("caseID"), body.BusinessAt, body.EvidenceCutoffAt, body.Scope)
+	id, err = h.store.StartReviewScope(ctx, user, r.PathValue("caseID"), body.BusinessAt, body.EvidenceCutoffAt, body.Scope)
 	if err != nil {
 		writeErr(w, err)
+		return
+	}
+	if accepted, durable, ok := store.ReviewIdempotentAcceptance(ctx); ok {
+		writeAcceptedReviewReceipt(w, accepted, durable)
 		return
 	}
 	ws, err := h.store.Workspace(user, r.PathValue("caseID"), id)

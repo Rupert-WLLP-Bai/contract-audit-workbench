@@ -194,8 +194,8 @@ services:
       S3_ENDPOINT: http://rustfs:9000
       S3_BUCKET: ${S3_BUCKET:-contract-audit-dev}
       S3_REGION: ${S3_REGION:-us-east-1}
-      S3_ACCESS_KEY: ${RUSTFS_ACCESS_KEY:?Run make infra-bootstrap}
-      S3_SECRET_KEY: ${RUSTFS_SECRET_KEY:?Run make infra-bootstrap}
+      S3_ACCESS_KEY: ${RUSTFS_ACCESS_KEY:?Run make app-bootstrap}
+      S3_SECRET_KEY: ${RUSTFS_SECRET_KEY:?Run make app-bootstrap}
       MODEL_GATEWAY_URL: ${MODEL_GATEWAY_URL:-http://model-gateway:8084/v1}
       # The endpoint and model identifiers are part of the run signature
       # identity: the execution service, the worker, and this service must agree.
@@ -205,12 +205,25 @@ services:
       DOCUMENT_MODEL_TOKEN: ${DOCUMENT_MODEL_TOKEN:?Run make app-bootstrap}
       WORKER_DOCUMENT_TOKEN: ${WORKER_DOCUMENT_TOKEN:?Run make app-bootstrap}
       CORE_DOCUMENT_TOKEN: ${CORE_DOCUMENT_TOKEN:?Run make app-bootstrap}
+      EVIDENCE_SIGNING_KEY_FILE: /run/contract-audit/evidence-signing-key.pem
+      EVIDENCE_PDF_FONT_FILE: /run/contract-audit/evidence-font.ttf
       DOCUMENT_PARSE_TIMEOUT: ${DOCUMENT_PARSE_TIMEOUT:-2m}
       GATEWAY_ROLE_TOKEN: ${GATEWAY_DOCUMENT_TOKEN:?Run make app-bootstrap}
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
       OTEL_EXPORTER_OTLP_PROTOCOL: ${OTEL_EXPORTER_OTLP_PROTOCOL:-http/json}
       OTEL_TRACES_SAMPLER: ${OTEL_TRACES_SAMPLER:-always_on}
       OTEL_TRACES_SAMPLER_ARG: ${OTEL_TRACES_SAMPLER_ARG:-1}
+    volumes:
+      - type: bind
+        source: ${EVIDENCE_SIGNING_KEY_FILE:-/dev/null}
+        target: /run/contract-audit/evidence-signing-key.pem
+        read_only: true
+        bind: {create_host_path: false}
+      - type: bind
+        source: ${EVIDENCE_PDF_FONT_FILE:-/dev/null}
+        target: /run/contract-audit/evidence-font.ttf
+        read_only: true
+        bind: {create_host_path: false}
     expose:
       - "8082"
     depends_on:
@@ -389,6 +402,10 @@ services:
       # transcription for the OCR model.
       LLM_MODEL: ${LLM_MODEL:-fixture-chat}
       OCR_MODEL: ${OCR_MODEL:-fixture-ocr}
+      # The caller names LLM_BASE_URL inside the frozen model configuration id;
+      # a fixture gateway that omits it derives a different identity and every
+      # call is rejected with 409 model_configuration_changed.
+      LLM_BASE_URL: ${LLM_BASE_URL:-}
       WORKER_MODEL_TOKEN: ${WORKER_MODEL_TOKEN:?Run make app-bootstrap}
       DOCUMENT_MODEL_TOKEN: ${DOCUMENT_MODEL_TOKEN:?Run make app-bootstrap}
       MODEL_GATEWAY_FIXTURE_OCR_CONTENT: 质保期为36个月。

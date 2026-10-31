@@ -220,7 +220,7 @@ function buildRecords(
   const auditByCase = new Map<string, typeof snapshot.audit>();
   const auditByActor = new Map<string, typeof snapshot.audit>();
   const needsAudit =
-    module === "tasks" || module === "remediation" || module === "audit";
+    module === "tasks" || module === "remediation" || module === "audit" || module === "organization";
   if (needsAudit) {
     for (const item of snapshot.audit) {
       if (item.case_id !== null) {
@@ -1184,6 +1184,22 @@ function WorkbenchModule({ module }: { module: WorkbenchModuleKey }) {
     module === "knowledge" ? (selected?.knowledgeId ?? "") : "",
     module === "knowledge" ? (selected?.id ?? "") : "",
   );
+  const exactKnowledge =
+    module === "knowledge" &&
+    !knowledge.isError &&
+    !knowledge.isFetching &&
+    knowledge.data?.id === selected?.knowledgeId &&
+    knowledge.data?.version_id === selected?.id &&
+    knowledge.data?.version === selected?.knowledgeVersion
+      ? knowledge.data
+      : null;
+  const knowledgePanelSet = useMemo(
+    () =>
+      exactKnowledge
+        ? knowledgePanels(exactKnowledge, memberById)
+        : null,
+    [exactKnowledge, memberById],
+  );
   const refresh = () => void query.refetch();
 
   if (query.isLoading)
@@ -1214,22 +1230,6 @@ function WorkbenchModule({ module }: { module: WorkbenchModuleKey }) {
   const snapshot = query.data;
 
   const selectedTask = selected?.task ?? null;
-  const exactKnowledge =
-    module === "knowledge" &&
-    !knowledge.isError &&
-    !knowledge.isFetching &&
-    knowledge.data?.id === selected?.knowledgeId &&
-    knowledge.data?.version_id === selected?.id &&
-    knowledge.data?.version === selected?.knowledgeVersion
-      ? knowledge.data
-      : null;
-  const knowledgePanelSet = useMemo(
-    () =>
-      exactKnowledge
-        ? knowledgePanels(exactKnowledge, memberById)
-        : null,
-    [exactKnowledge, memberById],
-  );
   const currentPanel =
     module === "knowledge"
       ? (knowledgePanelSet?.[detailTab] ?? null)

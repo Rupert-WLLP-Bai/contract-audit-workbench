@@ -118,6 +118,8 @@ func TestOperationOwnedByRouteOwnershipMatrix(t *testing.T) {
 		{"review-retry", "/api/cases/c/reviews/r/retry", "execution", []string{http.MethodPost}},
 		{"review-cancel", "/api/cases/c/reviews/r/cancel", "execution", []string{http.MethodPost}},
 		{"review-decision", "/api/cases/c/reviews/r/findings/f/decisions", "core", []string{http.MethodPost}},
+		{"manual-findings", "/api/cases/c/reviews/r/attempts/a/manual-findings", "core", []string{http.MethodGet, http.MethodPost}},
+		{"manual-findings-openapi-template", "/api/cases/{caseID}/reviews/{runID}/attempts/{attemptID}/manual-findings", "core", []string{http.MethodGet, http.MethodPost}},
 		{"member", "/api/cases/c/members", "core", []string{http.MethodPost}},
 		{"archive", "/api/cases/c/archive", "core", []string{http.MethodPost}},
 		{"remediation", "/api/cases/c/remediations", "core", []string{http.MethodPost}},

@@ -36,23 +36,22 @@ const before = {
 const after = { ...before, version: 2, display_name: "示例网络有限公司", payload_hash: "b".repeat(64) };
 const request = {
   summary: {
-    request_id: "change-1", target_kind: "subject", state: "pending_decision", source_case_id: "case-1",
+    request_id: "change-1", target_kind: "subject", state: "pending_decision",
     target_subject_id: "subject-1", target_binding_id: null, expected_subject_version: 1,
     expected_binding_version: null, payload_hash: "c".repeat(64),
-    proposer: { user_id: "requester-1", issuer: "issuer", subject: "principal-1" },
+    proposed_by: { user_id: "requester-1", issuer: "issuer", subject: "principal-1" },
     proposed_by_display_name: "提案经办人", can_decide: true, decision_blocked_reason: null,
     created_at: "2026-10-30T00:00:00Z",
   },
   proposed_by_display_name: "提案经办人", can_decide: true, decision_blocked_reason: null,
   before,
   after,
+  basis_note: "依据材料更正名称",
   basis_refs: [{
     kind: "material_anchor", material_id: "material-1", material_version: 3,
     document_id: "document-1", parsed_document_id: "parse-1", start: 0, end: 15,
     quote_digest: "d".repeat(64), filename: "专线合同.pdf", quote: "供应商名称为示例网络有限公司。",
   }],
-  impact_etag: "impact-secret-etag",
-  authorized_impact_cases: [{ case_id: "case-1", case_name: "政企专线采购", status: "active" }],
 };
 
 function renderPage() {
@@ -66,7 +65,7 @@ beforeEach(() => {
   mocks.useSession.mockReturnValue({ data: { id: "reviewer-2", tenant_id: "tenant-1", org_id: "org-1", audience: "client" } });
   mocks.useCaseSubjectChange.mockReturnValue({ data: request, isLoading: false, isError: false });
   mocks.useCaseSubjectChangeImpact.mockReturnValue({ data: {
-    visible_affected_count: 1, affected_cases: [{ case_id: "case-1", case_name: "政企专线采购", status: "active" }],
+    visible_affected_count: 1, authorized_impact_cases: [{ case_id: "case-1", case_title: "政企专线采购", business_status: "active" }],
     impact_etag: "impact-secret-etag",
     proposed_by_display_name: "提案经办人", can_decide: true, decision_blocked_reason: null,
   }, isLoading: false, isError: false, refetch: vi.fn() });

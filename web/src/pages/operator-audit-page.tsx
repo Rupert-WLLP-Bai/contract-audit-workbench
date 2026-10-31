@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Alert, Button, Card, Input, Select, Space } from "antd";
 import { useParams, useSearchParams } from "react-router";
@@ -14,24 +14,32 @@ import {
   type OperatorAuditFlags,
 } from "../features/operator-audit/feature-flags";
 import { FulfillmentDiffPanel } from "../features/operator-audit/fulfillment-diff-panel";
+import { FulfillmentObjectsPanel } from "../features/operator-audit/fulfillment-objects-panel";
 import { useStableIdempotencyKey } from "../features/operator-audit/idempotency";
-import { ImpactPlanPanel } from "../features/operator-audit/impact-plan-panel";
 import { ObjectBindingPanel, type ContractObjectOption } from "../features/operator-audit/object-binding-panel";
 import { ServiceObjectPanel } from "../features/operator-audit/service-object-panel";
 import type { ServiceObjectSummary } from "../features/operator-audit/service-objects-api";
 import type {
   ExternalCollectionJob,
   FulfillmentComparison,
-  FulfillmentEvaluation,
-  ImpactPlan,
   ObjectBinding,
 } from "../features/operator-audit/types";
 
 const client = defaultOperatorAuditClient;
 
+function beijingInputNow(): string {
+  return new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString().slice(0, 19);
+}
+
+function beijingInstant(value: string): string | null {
+  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2})?$/.test(value)) return null;
+  const instant = new Date(`${value.length === 16 ? `${value}:00` : value}+08:00`);
+  return Number.isFinite(instant.getTime()) ? instant.toISOString() : null;
+}
+
 export function OperatorAuditPage() {
   const { caseId = "" } = useParams();
-  const [params] = useSearchParams();
+  const [params, setParams] = useSearchParams();
   const settings = useSettings("client");
   const caseDetail = useCaseDetail(caseId);
   const enabled = settings.data?.operator_audit?.enabled === true;
@@ -72,25 +80,33 @@ export function OperatorAuditPage() {
   const [serviceObjects, setServiceObjects] = useState<ServiceObjectSummary[]>([]);
   const [selectedBinding, setSelectedBinding] = useState<string>("");
   const [jobs, setJobs] = useState<ExternalCollectionJob[]>([]);
-  const [businessAt, setBusinessAt] = useState(() =>
-    new Date().toISOString(),
-  );
+  const [businessAt, setBusinessAt] = useState(beijingInputNow);
+  const [evidenceCutoffAt, setEvidenceCutoffAt] = useState("");
+  const [scopeKind, setScopeKind] = useState<"whole_case" | "explicit_subset">("whole_case");
+  const [selectedObjects, setSelectedObjects] = useState<string[]>([]);
+  const implicitCutoffs = useRef(new Map<string, string>());
   const [selectedPack, setSelectedPack] = useState<string>("");
-  const [selectedContract, setSelectedContract] = useState<string>("");
-  const [selectedSnapshotSet, setSelectedSnapshotSet] =
-    useState<string>("");
-  const [evaluation, setEvaluation] = useState<FulfillmentEvaluation | null>(
-    null,
-  );
-  const [plan, setPlan] = useState<ImpactPlan | null>(null);
+  const evaluationId = params.get("evaluation_id") ?? "";
+  const evaluationQuery = useQuery({
+    queryKey: ["operator-audit", "fulfillment-evaluation", caseId, evaluationId],
+    queryFn: ({ signal }) => client.getFulfillmentEvaluation(caseId, evaluationId, signal),
+    enabled: enabled && caseId !== "" && evaluationId !== "",
+    retry: false,
+  });
+  const evaluation = evaluationQuery.data ?? null;
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const idempotencyKey = useStableIdempotencyKey();
 
   const contractObjects: ContractObjectOption[] = useMemo(
-    () => serviceObjects
-      .filter((item) => item.state === "confirmed")
-      .map((item) => ({ objectType: item.object_type, objectId: item.service_object_id, label: item.display_name })),
+    () => serviceObjects.flatMap((item) => {
+      const association = item.current_association;
+      return item.state === "confirmed" && association !== null
+        ? [{ objectType: item.object_type, objectId: association.object_ref, label: item.display_name,
+            serviceObjectId: item.service_object_id, objectVersion: item.current_version,
+            associationVersion: association.association_version }]
+        : [];
+    }),
     [serviceObjects],
   );
   const externalObjects = useMemo(
@@ -124,17 +140,6 @@ export function OperatorAuditPage() {
         })),
     [packs.data],
   );
-  const snapshotSetOptions = useMemo(() => {
-    const seen = new Set<string>();
-    const options: { value: string; label: string }[] = [];
-    for (const snapshot of snapshots.data ?? []) {
-      const id = snapshot.snapshotSetId;
-      if (id === null || seen.has(id)) continue;
-      seen.add(id);
-      options.push({ value: id, label: id });
-    }
-    return options;
-  }, [snapshots.data]);
 
   const selectedBindingRecord = bindings.find(
     (binding) => (binding.version ?? binding.id) === selectedBinding,
@@ -143,6 +148,11 @@ export function OperatorAuditPage() {
   async function collect() {
     if (!selectedBindingRecord) {
       setActionError("请先确认一个合同对象与外部对象的映射");
+      return;
+    }
+    const instant = beijingInstant(businessAt);
+    if (instant === null) {
+      setActionError("请填写有效的北京时间业务时间");
       return;
     }
     setBusy(true);
@@ -154,7 +164,7 @@ export function OperatorAuditPage() {
           selectedBindingRecord.externalObject.externalObjectId ?? "",
         object_binding_version:
           selectedBindingRecord.version ?? selectedBindingRecord.id,
-        business_at: businessAt,
+        business_at: instant,
       };
       const job = await client.createExternalCollectionJob(
         caseId,
@@ -171,18 +181,21 @@ export function OperatorAuditPage() {
   }
 
   async function evaluate() {
-    if (
-      selectedPack === "" ||
-      selectedBindingRecord === undefined ||
-      selectedContract === "" ||
-      selectedSnapshotSet === "" ||
-      runId === "" ||
-      attemptId === ""
-    ) {
-      setActionError("请选择能力包、合同版本、对象映射、快照集，并确保来源审查已完成");
+    const instant = beijingInstant(businessAt);
+    const requestedCutoff = evidenceCutoffAt === "" ? null : beijingInstant(evidenceCutoffAt);
+    if (selectedPack === "" || runId === "" || attemptId === "" || instant === null ||
+        (scopeKind === "explicit_subset" && selectedObjects.length === 0) ||
+        (evidenceCutoffAt !== "" && requestedCutoff === null)) {
+      setActionError("请选择能力包、核验范围和有效的北京时间，并确保来源审查已完成");
       return;
     }
     const [packId = "", packVersion = ""] = selectedPack.split("@");
+    const identity = JSON.stringify([packId, packVersion, runId, attemptId, instant, scopeKind, [...selectedObjects].sort()]);
+    let cutoff = requestedCutoff ?? implicitCutoffs.current.get(identity);
+    if (!cutoff) {
+      cutoff = new Date().toISOString();
+      implicitCutoffs.current.set(identity, cutoff);
+    }
     setBusy(true);
     setActionError(null);
     try {
@@ -191,23 +204,21 @@ export function OperatorAuditPage() {
         pack_version: packVersion,
         source_review_id: runId,
         source_attempt_id: attemptId,
-        contract_version_id: selectedContract,
-        object_binding_version:
-          selectedBindingRecord.version ?? selectedBindingRecord.id,
-        snapshot_set_id: selectedSnapshotSet,
-        business_at: businessAt,
+        business_at: instant,
+        evidence_cutoff_at: cutoff,
+        scope: scopeKind === "whole_case"
+          ? { kind: "whole_case" as const }
+          : { kind: "explicit_subset" as const, service_object_ids: [...selectedObjects].sort() },
       };
       const reference = await client.createFulfillmentEvaluation(
-        caseId,
-        input,
-        idempotencyKey("fulfillment-evaluation", input),
+        caseId, input, idempotencyKey("fulfillment-evaluation", input),
       );
-      const current = await client.getFulfillmentEvaluation(
-        caseId,
-        reference.evaluationId,
-      );
-      setEvaluation(current);
-      setPlan(await client.getImpactPlan(caseId, reference.evaluationId));
+      setParams((current) => {
+        const next = new URLSearchParams(current);
+        next.set("evaluation_id", reference.evaluationId);
+        return next;
+      });
+      if (reference.evaluationId === evaluationId) await evaluationQuery.refetch();
     } catch (error) {
       setActionError(errorMessage(error));
     } finally {
@@ -326,9 +337,12 @@ export function OperatorAuditPage() {
             onChange={setSelectedBinding}
             style={{ maxWidth: 560 }}
           />
+          <label htmlFor="operator-business-at">业务时间（北京时间）</label>
           <Input
-            aria-label="业务时间"
-            placeholder="业务时间（RFC3339）"
+            id="operator-business-at"
+            aria-label="业务时间（北京时间）"
+            type="datetime-local"
+            step={1}
             value={businessAt}
             onChange={(event) => setBusinessAt(event.target.value)}
           />
@@ -348,12 +362,12 @@ export function OperatorAuditPage() {
         client={client}
         flags={flags}
         jobs={jobs}
-        businessAt={businessAt}
+        businessAt={beijingInstant(businessAt) ?? ""}
       />
 
       <Card size="small" title="受理核验">
         <p className="meta">
-          核验绑定冻结合同、规则包、对象映射与快照集；一次受理不会追加到旧审查。
+          默认核验整案；也可明确选择对象范围。每个对象单独固定合同事实、映射和外部快照。
         </p>
         <Space orientation="vertical" style={{ width: "100%" }}>
           <Select
@@ -365,35 +379,31 @@ export function OperatorAuditPage() {
             style={{ maxWidth: 560 }}
           />
           <Select
-            aria-label="选择合同版本"
-            placeholder="选择冻结合同版本"
-            value={selectedContract || undefined}
-            options={contractObjects.map((item) => ({
-              value: item.objectId,
-              label: item.label,
-            }))}
-            onChange={setSelectedContract}
+            aria-label="核验范围"
+            value={scopeKind}
+            options={[{ value: "whole_case", label: "整案全部对象" }, { value: "explicit_subset", label: "明确选择对象" }]}
+            onChange={setScopeKind}
             style={{ maxWidth: 560 }}
           />
-          <Select
-            aria-label="选择快照集"
-            placeholder="选择不可变快照集"
-            value={selectedSnapshotSet || undefined}
-            options={snapshotSetOptions}
-            onChange={setSelectedSnapshotSet}
-            style={{ maxWidth: 560 }}
-          />
+          {scopeKind === "explicit_subset" ? (
+            <Select
+              aria-label="选择核验对象"
+              mode="multiple"
+              placeholder="选择一个或多个已登记对象"
+              value={selectedObjects}
+              options={serviceObjects.map((item) => ({ value: item.service_object_id, label: `${item.display_name} · ${item.service_object_id}` }))}
+              onChange={setSelectedObjects}
+              style={{ width: "100%", maxWidth: 560 }}
+            />
+          ) : null}
+          <label htmlFor="operator-evidence-cutoff">证据截止时间（北京时间，可选）</label>
+          <Input id="operator-evidence-cutoff" aria-label="证据截止时间（北京时间）" type="datetime-local" step={1} value={evidenceCutoffAt} onChange={(event) => setEvidenceCutoffAt(event.target.value)} />
+          <p className="meta">不填写时使用首次受理时间作为截止时间；重试保持相同截止时间。</p>
           <Button
             htmlType="button"
             loading={busy}
-            disabled={
-              selectedPack === "" ||
-              selectedBindingRecord === undefined ||
-              selectedContract === "" ||
-              selectedSnapshotSet === "" ||
-              runId === "" ||
-              attemptId === ""
-            }
+            disabled={selectedPack === "" || runId === "" || attemptId === "" ||
+              (scopeKind === "explicit_subset" && selectedObjects.length === 0)}
             onClick={() => void evaluate()}
           >
             受理确定性核验
@@ -404,16 +414,23 @@ export function OperatorAuditPage() {
       {actionError !== null ? (
         <Alert type="error" showIcon message={actionError} />
       ) : null}
-      {evaluation !== null ? (
+      {evaluationQuery.isError ? <Alert type="error" showIcon message={`核验结果读取失败：${errorMessage(evaluationQuery.error)}`} /> : null}
+      {evaluationQuery.isLoading && evaluationId !== "" ? <PageStatus kind="loading" title="正在读取核验结果" /> : null}
+      {evaluation !== null && evaluation.scope ? (
+        <FulfillmentObjectsPanel
+          evaluation={evaluation}
+          objects={serviceObjects}
+          snapshots={snapshots.data ?? []}
+          flags={flags}
+          humanReviewHref={() => `/cases/${caseId}/reviews/${encodeURIComponent(evaluation.sourceReviewId ?? runId)}?attempt_id=${encodeURIComponent(evaluation.sourceAttemptId ?? attemptId)}`}
+        />
+      ) : evaluation !== null ? (
         <FulfillmentDiffPanel
           items={comparisons}
           flags={flags}
-          humanReviewHref={() =>
-            `/cases/${caseId}/reviews/${runId}?attempt_id=${encodeURIComponent(attemptId)}`
-          }
+          humanReviewHref={() => `/cases/${caseId}/reviews/${runId}?attempt_id=${encodeURIComponent(attemptId)}`}
         />
       ) : null}
-      {plan !== null ? <ImpactPlanPanel plan={plan} flags={flags} /> : null}
     </section>
   );
 }

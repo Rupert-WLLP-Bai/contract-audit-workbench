@@ -116,20 +116,10 @@ func (s *Store) startReviewAsync(ctx context.Context, user accounts.User, caseID
 	if err != nil {
 		return JobAcceptance{}, err
 	}
-	st, err := s.snapshotAs(user)
-	if err != nil {
-		return JobAcceptance{}, err
+	if accepted, _, ok := ReviewIdempotentAcceptance(ctx); ok {
+		return accepted, nil
 	}
-	attempt, ok := st.latestAttempt(runID)
-	if !ok {
-		return JobAcceptance{}, fault.Conflict("审查任务缺少执行记录")
-	}
-	for _, job := range st.Jobs {
-		if job.AttemptID == attempt.ID {
-			return JobAcceptance{RunID: runID, AttemptID: attempt.ID, JobID: job.ID}, nil
-		}
-	}
-	return JobAcceptance{}, fault.Conflict("审查任务没有保存到任务队列")
+	return s.jobAcceptanceForRun(ctx, user, caseID, runID, "审查任务缺少执行记录", "审查任务没有保存到任务队列")
 }
 
 func (s *Store) startReview(ctx context.Context, user accounts.User, caseID, businessAt, evidenceCutoffAt string, durable bool, requestedScope ...string) (string, error) {
@@ -168,6 +158,30 @@ func (s *Store) startReview(ctx context.Context, user accounts.User, caseID, bus
 	}
 	if _, err := s.writableCase(&seen, user, caseID, access.Review); err != nil {
 		return "", err
+	}
+	idempotency, _ := ctx.Value(reviewIdempotencyContextKey{}).(*reviewIdempotency)
+	key, route, digest := "", "POST /api/cases/"+caseID+"/reviews", ""
+	if idempotency != nil {
+		key, err = optionalIdempotencyKey(idempotency.key)
+		if err != nil {
+			return "", err
+		}
+	}
+	if key != "" {
+		digest, err = canonicalHash([]string{caseID, businessAt, evidenceCutoffAt, scope})
+		if err != nil {
+			return "", err
+		}
+		if receipt, found, err := s.readWriteReceipt(ctx, user, executionWriteReceipts, route, key, digest, access.Review); err != nil {
+			return "", err
+		} else if found {
+			accepted, err := decodeReviewWriteReceipt(receipt.Response)
+			if err != nil {
+				return "", err
+			}
+			idempotency.acceptance, idempotency.durable, idempotency.present = accepted.Acceptance, accepted.Durable, true
+			return accepted.Acceptance.RunID, nil
+		}
 	}
 	current := selectedMaterialDocuments(seen, caseID)
 	readinessMaterials := make([]ReviewReadinessMaterial, 0, len(current))
@@ -273,8 +287,21 @@ func (s *Store) startReview(ctx context.Context, user accounts.User, caseID, bus
 	// recompute the accepted context from the exact frozen materials.
 	serviceObjectDocuments := serviceObjectFrozenMaterials(seen, frozenDocs)
 	var acceptanceTx pgx.Tx
+	var receipt writeReceipt
+	var receiptFound bool
+	var receiptResult reviewWriteReceipt
 	hook := func(tx pgx.Tx) error {
 		acceptanceTx = tx
+		if key != "" {
+			if err := lockWriteReceipt(ctx, tx, user, route, key); err != nil {
+				return err
+			}
+			var err error
+			receipt, receiptFound, err = loadWriteReceipt(ctx, tx, executionWriteReceipts, user, route, key)
+			if err != nil || receiptFound {
+				return err
+			}
+		}
 		lockedCase, err := loadKnowledgeCase(ctx, tx, user, caseID)
 		if err != nil {
 			return err
@@ -337,10 +364,54 @@ func (s *Store) startReview(ctx context.Context, user accounts.User, caseID, bus
 		}
 		return nil
 	}
+	saveReceipt := func(st *state, item Case) error {
+		if key == "" {
+			return nil
+		}
+		acceptedAttempt, ok := st.latestAttempt(runID)
+		if !ok {
+			return fault.Conflict("审查任务缺少执行记录")
+		}
+		accepted := JobAcceptance{RunID: runID, AttemptID: acceptedAttempt.ID}
+		if durable {
+			for _, job := range st.Jobs {
+				if job.RunID == runID && job.AttemptID == acceptedAttempt.ID {
+					accepted.JobID = job.ID
+					break
+				}
+			}
+			if accepted.JobID == "" {
+				return fault.Conflict("审查任务没有保存到任务队列")
+			}
+		}
+		receiptResult = reviewWriteReceipt{Acceptance: accepted, Durable: durable}
+		return insertWriteReceipt(ctx, acceptanceTx, executionWriteReceipts, user, item, route, key, digest, receiptResult)
+	}
 	err = s.updateCaseAsWith(user, caseID, hook, func(st *state) error {
+		user, err = trustedUser(user)
+		if err != nil {
+			return err
+		}
+		if !accounts.CanStart(user.Role) {
+			return fault.Forbidden("当前角色不能发起审查")
+		}
 		currentCase, err := s.writableCase(st, user, caseID, access.Review)
 		if err != nil {
 			return err
+		}
+		if receiptFound {
+			if err := checkWriteReceipt(receipt, *currentCase, digest); err != nil {
+				return err
+			}
+			if err := validateWriteReceiptTarget(ctx, acceptanceTx, executionWriteReceipts, *currentCase, receipt); err != nil {
+				return err
+			}
+			receiptResult, err = decodeReviewWriteReceipt(receipt.Response)
+			if err != nil {
+				return err
+			}
+			runID = receiptResult.Acceptance.RunID
+			return nil
 		}
 		executionCase = *currentCase
 		signature, err = withPartyContext(*st, caseID, signature)
@@ -359,7 +430,16 @@ func (s *Store) startReview(ctx context.Context, user accounts.User, caseID, bus
 		}
 		if run, ok := st.latestRun(caseID); ok {
 			previous := st.snapshotOf(run.ID)
-			if sameRunSignature(previous, signature) && sameRunCompilerIdentity(previous, signature) && (!durable || hasJobForRun(*st, run.ID)) {
+			reusable := sameRunSignature(previous, signature) && sameRunCompilerIdentity(previous, signature)
+			if reusable && durable {
+				if err := acceptanceTx.QueryRow(ctx, `SELECT EXISTS (
+					SELECT 1 FROM review_attempts a JOIN worker_jobs j ON j.attempt_id=a.id
+					WHERE a.run_id=$1 AND j.run_id=$1 AND j.case_id=$2
+				)`, run.ID, caseID).Scan(&reusable); err != nil {
+					return err
+				}
+			}
+			if reusable {
 				if previous.GovernedKnowledge != nil {
 					if err := RevalidateGovernedKnowledgeSnapshotTx(ctx, acceptanceTx, user, caseID, *previous.GovernedKnowledge); err != nil {
 						return err
@@ -371,7 +451,7 @@ func (s *Store) startReview(ctx context.Context, user accounts.User, caseID, bus
 					}
 				}
 				runID = run.ID
-				return nil
+				return saveReceipt(st, *currentCase)
 			}
 		}
 		if !durable {
@@ -432,11 +512,17 @@ func (s *Store) startReview(ctx context.Context, user accounts.User, caseID, bus
 			summary = "开始了一次修改稿复审"
 		}
 		st.Activity = append(st.Activity, Activity{ID: activityID, CaseID: caseID, At: now, Summary: summary})
+		if err := saveReceipt(st, *currentCase); err != nil {
+			return err
+		}
 		created = true
 		return nil
 	})
 	s.releaseParseLock()
 	parseLocked = false
+	if err == nil && key != "" {
+		idempotency.acceptance, idempotency.durable, idempotency.present = receiptResult.Acceptance, receiptResult.Durable, true
+	}
 	if err != nil || !created {
 		if reserved {
 			s.releaseExecution()
@@ -457,20 +543,7 @@ func (s *Store) RetryAsync(ctx context.Context, user accounts.User, caseID, runI
 	if err := s.retry(ctx, user, caseID, runID, true); err != nil {
 		return JobAcceptance{}, err
 	}
-	st, err := s.snapshotAs(user)
-	if err != nil {
-		return JobAcceptance{}, err
-	}
-	attempt, ok := st.latestAttempt(runID)
-	if !ok {
-		return JobAcceptance{}, fault.Conflict("重试任务缺少执行记录")
-	}
-	for _, job := range st.Jobs {
-		if job.AttemptID == attempt.ID {
-			return JobAcceptance{RunID: runID, AttemptID: attempt.ID, JobID: job.ID}, nil
-		}
-	}
-	return JobAcceptance{}, fault.Conflict("重试任务没有保存到任务队列")
+	return s.jobAcceptanceForRun(ctx, user, caseID, runID, "重试任务缺少执行记录", "重试任务没有保存到任务队列")
 }
 
 func (s *Store) retry(ctx context.Context, user accounts.User, caseID, runID string, durable bool) error {
@@ -864,34 +937,7 @@ func (s *Store) OperationalMetadata(user accounts.User) (map[string]any, error) 
 	if current.Role != "admin" {
 		return nil, fault.Forbidden("只有管理员可以查看审查运行的运维信息")
 	}
-	st, err := s.snapshotScoped(context.Background(), userScope(current))
-	if err != nil {
-		return nil, err
-	}
-	counts := map[string]any{
-		"total_attempts": 0, "running_attempts": 0, "completed_attempts": 0,
-		"partial_attempts": 0, "failed_attempts": 0, "cancelled_attempts": 0,
-		"model_calls": 0, "unknown_usage_calls": 0, "queue_depth": nil,
-	}
-	for _, attempt := range st.Attempts {
-		counts["total_attempts"] = counts["total_attempts"].(int) + 1
-		switch attempt.State {
-		case "accepted", "running":
-			counts["running_attempts"] = counts["running_attempts"].(int) + 1
-		case "completed":
-			counts["completed_attempts"] = counts["completed_attempts"].(int) + 1
-		case "partial":
-			counts["partial_attempts"] = counts["partial_attempts"].(int) + 1
-		case "failed", "interrupted":
-			counts["failed_attempts"] = counts["failed_attempts"].(int) + 1
-		case "cancelled":
-			counts["cancelled_attempts"] = counts["cancelled_attempts"].(int) + 1
-		}
-	}
-	usage := usageSummary(st.ExecutionEvents, nil)
-	counts["model_calls"] = usage.Calls
-	counts["unknown_usage_calls"] = usage.UnknownCalls
-	return counts, nil
+	return s.operationalHistoryCounts(context.Background(), current)
 }
 
 func (s *Store) reserveExecution() bool {
@@ -965,7 +1011,7 @@ func (s *Store) executeAttemptContext(parent context.Context, runID, attemptID s
 		_ = s.finishAttemptAfterExecution(parent, ctx, runID, attemptID, "failed", "", "execution_persistence_failed")
 		return
 	}
-	initial, err := s.snapshotForAttemptContext(ctx, attemptID)
+	initial, err := s.snapshotForAttemptMetadataContext(ctx, attemptID)
 	if err != nil {
 		_ = s.finishAttemptAfterExecution(parent, ctx, runID, attemptID, "failed", "", "execution_persistence_failed")
 		return
@@ -1107,7 +1153,7 @@ func (s *Store) executeAttemptContext(parent context.Context, runID, attemptID s
 		if ctx.Err() != nil {
 			readCtx, cancelRead = context.WithTimeout(parent, attemptFinalizeTimeout)
 		}
-		latest, err := s.snapshotForAttemptContext(readCtx, attemptID)
+		latest, err := s.snapshotForAttemptMetadataContext(readCtx, attemptID)
 		cancelRead()
 		if err != nil {
 			_ = s.finishAttemptAfterExecution(parent, ctx, runID, attemptID, "failed", "", "execution_persistence_failed")
@@ -1189,18 +1235,12 @@ func (s *Store) markAttemptStarted(ctx context.Context, runID, attemptID string)
 			return markAttemptStartedInState(next, runID, attemptID, &generation, occurred, recorded)
 		})
 	}
-	scope := claim.scope()
-	var occurred, recorded string
-	if err := s.lockExecutionContext(ctx); err != nil {
-		return err
-	}
-	defer s.mu.Unlock()
-	return s.updateStateWith(ctx, scope, attemptID, func(tx pgx.Tx) error {
-		var err error
-		occurred, recorded, err = attemptStartTimestamps(ctx, tx)
-		return err
-	}, func(st *state) error {
-		return markAttemptStartedInState(st, runID, attemptID, nil, occurred, recorded)
+	return s.scopedAttemptMutationWithTx(ctx, runID, attemptID, false, func(tx pgx.Tx, next *state) error {
+		occurred, recorded, err := attemptStartTimestamps(ctx, tx)
+		if err != nil {
+			return err
+		}
+		return markAttemptStartedInState(next, runID, attemptID, nil, occurred, recorded)
 	})
 }
 
@@ -1459,7 +1499,7 @@ func (s *Store) publishRuleResults(ctx context.Context, runID, attemptID string,
 	for _, extra := range extras {
 		drafts = append(drafts, engine.Findings(extra)...)
 	}
-	attemptState, err := s.snapshotForAttemptContext(ctx, attemptID)
+	attemptState, err := s.snapshotForAttemptMetadataContext(ctx, attemptID)
 	if err != nil {
 		return err
 	}
@@ -1513,7 +1553,7 @@ func (s *Store) publishRuleResults(ctx context.Context, runID, attemptID string,
 }
 
 func (s *Store) recordFirstVerifiedFinding(ctx context.Context, recorder attemptRecorder, attemptID string) error {
-	st, err := s.snapshotForAttemptContext(ctx, attemptID)
+	st, err := s.snapshotForAttemptMetadataContext(ctx, attemptID)
 	if err != nil {
 		return err
 	}
@@ -1697,19 +1737,7 @@ func (s *Store) updateExecutionContext(ctx context.Context, attemptID string, fn
 	if !hasClaim || claim.AttemptID != attemptID {
 		return errExecutionEventScope
 	}
-	if claim.JobID != "" {
-		// Durable worker path: every attempt mutation (freeze, preparation,
-		// results, phase updates, finalize) runs through the bounded
-		// attempt-scope adapter with the shared case/attempt locks, the claim
-		// fence and the same validation/persist path.
-		return s.scopedAttemptMutation(ctx, claim.RunID, attemptID, fn)
-	}
-	scope := claim.scope()
-	if err := s.lockExecutionContext(ctx); err != nil {
-		return err
-	}
-	defer s.mu.Unlock()
-	return s.updateState(ctx, scope, attemptID, fn)
+	return s.scopedAttemptMutation(ctx, claim.RunID, attemptID, fn)
 }
 
 func insertExecutionEvent(ctx context.Context, tx pgx.Tx, event ExecutionEvent) error {
@@ -1890,16 +1918,15 @@ func (s *Store) persistLateModelEvent(ctx context.Context, attemptID string, eve
 	if s.serviceOwner != "" || claim.JobID != "" {
 		return s.persistLateModelEventNarrow(ctx, attemptID, event)
 	}
-	if err := s.lockExecutionContext(ctx); err != nil {
-		return err
-	}
-	defer s.mu.Unlock()
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback(ctx)
 	if err := setLocalScope(ctx, tx, claim.scope()); err != nil {
+		return err
+	}
+	if err := scopedCaseLock(ctx, tx, claim.CaseID); err != nil {
 		return err
 	}
 	if err := scopedAttemptLock(ctx, tx, attemptID); err != nil {
@@ -1942,50 +1969,41 @@ func (s *Store) persistLateModelEvent(ctx context.Context, attemptID string, eve
 	if err := tx.Commit(ctx); err != nil {
 		return err
 	}
-	next, err := s.st.clone()
-	if err != nil {
-		return err
+	if err := s.lockExecutionContext(ctx); err != nil {
+		return nil // The event was already committed.
 	}
-	for i := range next.Attempts {
-		if next.Attempts[i].ID == attemptID {
-			next.Attempts[i].State = stateName
-			next.Attempts[i].FinishedAt = finishedAt
-			next.Attempts[i].ErrorCode = errorCode
+	defer s.mu.Unlock()
+	for i := range s.st.Attempts {
+		if s.st.Attempts[i].ID == attemptID {
+			s.st.Attempts[i].State = stateName
+			s.st.Attempts[i].FinishedAt = finishedAt
+			s.st.Attempts[i].ErrorCode = errorCode
 		}
 	}
-	for i := range next.Runs {
-		if next.Runs[i].ID == runID {
-			next.Runs[i].State = runState
+	latest, hasLatest := s.st.latestAttempt(runID)
+	if !hasLatest || latest.ID == attemptID {
+		for i := range s.st.Runs {
+			if s.st.Runs[i].ID == runID {
+				s.st.Runs[i].State = runState
+			}
 		}
 	}
 	if jobErr == nil {
-		for i := range next.Jobs {
-			if next.Jobs[i].ID == jobID {
-				next.Jobs[i].State = jobState
-				next.Jobs[i].WorkerID = jobWorkerID
-				next.Jobs[i].Generation = jobGeneration
+		for i := range s.st.Jobs {
+			if s.st.Jobs[i].ID == jobID && s.st.Jobs[i].Generation <= jobGeneration {
+				s.st.Jobs[i].State = jobState
+				s.st.Jobs[i].WorkerID = jobWorkerID
+				s.st.Jobs[i].Generation = jobGeneration
 				if jobLease.Valid {
 					lease := jobLease.Time
-					next.Jobs[i].LeaseUntil = &lease
+					s.st.Jobs[i].LeaseUntil = &lease
 				} else {
-					next.Jobs[i].LeaseUntil = nil
+					s.st.Jobs[i].LeaseUntil = nil
 				}
 			}
 		}
 	}
-	// The row insert above is idempotent on (attempt_id, event_seq); mirror that
-	// in the projection so a repeated late event never doubles in memory.
-	duplicate := false
-	for _, existing := range next.ExecutionEvents {
-		if existing.AttemptID == attemptID && existing.Seq == event.Seq {
-			duplicate = true
-			break
-		}
-	}
-	if !duplicate {
-		next.ExecutionEvents = append(next.ExecutionEvents, event)
-	}
-	s.st = next
+	s.st.ExecutionEvents = mergeExecutionEventSlice(s.st.ExecutionEvents, []ExecutionEvent{event})
 	return nil
 }
 
@@ -2100,6 +2118,8 @@ func (s *Store) markUnfinishedInterrupted(st state) error {
 // attempt is re-read under those locks; an attempt that became terminal or
 // finished in the meantime is left untouched.
 func (s *Store) interruptAttempt(ctx context.Context, attemptID, runID string, scope dbScope) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	return s.updateState(ctx, scope, attemptID, func(next *state) error {
 		finishedAt := stamp()
 		code := "process_interrupted"

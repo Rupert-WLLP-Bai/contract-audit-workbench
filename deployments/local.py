@@ -30,6 +30,7 @@ else:
 	DISTRIBUTED_ENV_PATH = ROOT / ".env.distributed"
 FIXTURE_CHAT_MODEL = "fixture-chat"
 FIXTURE_OCR_MODEL = "fixture-ocr"
+FIXTURE_MODEL_GATEWAY_URL = "http://model-gateway-fixture:8084/v1"
 DATABASE_TARGETS = {"development": "DEV_DATABASE_URL", "test": "TEST_DATABASE_URL"}
 APP_SERVICES = (
 	"health-monitor",
@@ -475,6 +476,10 @@ def start_apps(fixture: bool, offline_images: bool, planner_mode: str | None) ->
 		# signature identity must agree across Execution, Worker, and Document.
 		os.environ["LLM_MODEL"] = FIXTURE_CHAT_MODEL
 		os.environ["OCR_MODEL"] = FIXTURE_OCR_MODEL
+		# The fixture profile runs its own gateway service; without this the
+		# default http://model-gateway:8084/v1 host does not exist and every
+		# model call fails before reaching the fixture.
+		os.environ["MODEL_GATEWAY_URL"] = FIXTURE_MODEL_GATEWAY_URL
 		# The worker still takes the advisory/gateway path and records the
 		# frozen suggestion trace; only the gateway answers deterministically.
 		# Keep the worker and gateway model identities identical.

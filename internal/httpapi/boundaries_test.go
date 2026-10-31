@@ -90,7 +90,9 @@ func TestOriginGuardBlocksBrowserWritesBeforeHandler(t *testing.T) {
 				w.WriteHeader(http.StatusNoContent)
 			}))
 			r := httptest.NewRequest(tc.method, "http://api.example/api/cases", nil)
-			r.Header.Set("Origin", tc.origin)
+			if tc.origin != "" {
+				r.Header.Set("Origin", tc.origin)
+			}
 			if tc.tls {
 				r.TLS = &tls.ConnectionState{}
 			}

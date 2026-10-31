@@ -48,13 +48,12 @@ const summary = {
   request_id: "change-1",
   target_kind: "subject",
   state: "pending_decision",
-  source_case_id: "c-1",
   target_subject_id: "s-1",
   target_binding_id: null,
   expected_subject_version: 1,
   expected_binding_version: null,
   payload_hash: "c".repeat(64),
-  proposer: principal,
+  proposed_by: principal,
   proposed_by_display_name: "经办人甲",
   can_decide: true,
   decision_blocked_reason: null,
@@ -117,6 +116,10 @@ describe("subject API response parsing", () => {
     });
     expect(value.identifiers[0]?.masked_value).toBe("9132••••••••••01X3");
     expect(() => parseSubjectSummary({ ...value, created_by: { user_id: "u-1" } })).toThrow(/created_by/);
+    // The fixed local demonstration directory records principals without an
+    // SSO issuer/subject; the keys must exist but may be empty strings.
+    expect(parseSubjectSummary({ ...value, created_by: { user_id: "demo-admin", issuer: "", subject: "" } }).created_by).toEqual({ user_id: "demo-admin", issuer: "", subject: "" });
+    expect(parseSubjectSummary({ ...value, created_by: { user_id: "u-1", issuer: "", subject: "" } }).created_by).toEqual({ user_id: "u-1", issuer: "", subject: "" });
     const currentBinding = binding();
     expect(() => parseCaseRoleBinding({
       ...currentBinding,
@@ -176,43 +179,40 @@ describe("subject API response parsing", () => {
   it("parses correction before/after from its target kind and keeps impact data authorized-only", () => {
     const after = subjectVersion({ version: 2, display_name: "示例企业" });
     const detail = parseSubjectChangeDetail({
-      detail: {
-        summary,
-        proposed_by_display_name: "经办人甲",
-        can_decide: true,
-        decision_blocked_reason: null,
-        before: subjectVersion(),
-        after,
-        basis_refs: [{
-          kind: "material_anchor",
-          material_id: "m-1",
-          material_version: 1,
-          document_id: "d-1",
-          parsed_document_id: "p-1",
-          start: 10,
-          end: 14,
-          quote_digest: "d".repeat(64),
-          filename: "主体名称记载.txt",
-          quote: "示例企业",
-        }, {
-          kind: "controlled_source",
-          snapshot_id: "snap-1",
-          source_catalog_id: "synthetic.uscc.demo",
-          source_version: 1,
-          source_digest: "e".repeat(64),
-          source_scope: "synthetic_controlled",
-          captured_at: "2026-10-31T01:00:00Z",
-          source_as_of: "2026-10-30T00:00:00Z",
-          valid_from: "2026-01-01T00:00:00Z",
-          valid_until: null,
-        }],
-        impact_etag: "opaque-etag",
-        authorized_impact_cases: [{ case_id: "c-1", case_name: "可见案件", status: "active" }],
-      },
+      summary,
+      proposed_by_display_name: "经办人甲",
+      can_decide: true,
+      decision_blocked_reason: null,
+      before: subjectVersion(),
+      after,
+      basis_note: "依据材料更正名称",
+      basis_refs: [{
+        kind: "material_anchor",
+        material_id: "m-1",
+        material_version: 1,
+        document_id: "d-1",
+        parsed_document_id: "p-1",
+        start: 10,
+        end: 14,
+        quote_digest: "d".repeat(64),
+        filename: "主体名称记载.txt",
+        quote: "示例企业",
+      }, {
+        kind: "controlled_source",
+        snapshot_id: "snap-1",
+        source_catalog_id: "synthetic.uscc.demo",
+        source_version: 1,
+        source_digest: "e".repeat(64),
+        source_scope: "synthetic_controlled",
+        captured_at: "2026-10-31T01:00:00Z",
+        source_as_of: "2026-10-30T00:00:00Z",
+        valid_from: "2026-01-01T00:00:00Z",
+        valid_until: null,
+      }],
     });
     expect(detail.before).toMatchObject({ version: 1, display_name: "旧档案客户" });
     expect(detail.after).toMatchObject({ version: 2, display_name: "示例企业" });
-    expect(detail.authorized_impact_cases).toHaveLength(1);
+    expect(detail.basis_refs).toHaveLength(2);
     expect(parseSubjectChangeImpact({
       request_id: "change-1",
       proposed_by_display_name: "经办人甲",
@@ -225,7 +225,7 @@ describe("subject API response parsing", () => {
       basis_refs: [],
       impact_etag: "etag",
       visible_affected_count: 1,
-      affected_cases: [],
+      authorized_impact_cases: [{ case_id: "c-1", case_title: "可见案件", business_status: "active" }],
     }, "case_subject_role").after).toMatchObject({ binding_version: 2 });
   });
 

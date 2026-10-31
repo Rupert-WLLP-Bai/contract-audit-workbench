@@ -1,9 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button, Input, Select } from "antd";
-import { useRef, useState, type FormEvent, type SyntheticEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent, type SyntheticEvent } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router";
 import type { BusinessAgentCapability, BusinessAgentGap, BusinessAgentReview } from "../api/business-agent-review";
 import { getCase, getReview, getSession, getWorkbench } from "../api/endpoints";
+import { clearPendingMutationKey, fileSha256, idempotencyActorScope, newIdempotencyKey, pendingMutationKey } from "../api/idempotency";
 import {
   createEvidenceReceipt,
   createEvidenceRequest,
@@ -21,6 +22,13 @@ import { ErrorNotice } from "./error-notice";
 import { queryKeys, useCreateWorkbenchTask, useStartReview } from "../api/queries";
 import type { Actor, CaseDetail, ConstraintEvaluation, ReviewDocument, ReviewWorkspace, WorkbenchTask } from "../api/types";
 import { caseHref, formatDateTime, relationLabel, roleLabel } from "../domain/review";
+import { beijingInputToUtc } from "./beijing-datetime";
+import {
+  createFrozenQuoteSelection,
+  frozenQuoteMatchesDocument,
+  type FrozenQuoteScope,
+  type FrozenQuoteSelection,
+} from "../domain/frozen-quote";
 import { StatusText } from "./status-text";
 
 const materialRoles = [
@@ -176,20 +184,21 @@ function matchesReceiptAnswer(document: ReviewDocument, receipt: EvidenceReceipt
 }
 
 function quoteMatchesFrozenDocument(
-  quote: EvidenceQuote | null,
+  quote: FrozenQuoteSelection | null,
+  scope: FrozenQuoteScope | null,
   document: ReviewDocument | undefined,
   receipt: EvidenceReceipt | undefined,
 ): boolean {
-  return !!quote && !!document && quote.document_id === document.id &&
-    quote.parsed_document_id === document.parsed_document_id &&
-    Array.from(quote.quote).length <= 4096 &&
+  return quote !== null && frozenQuoteMatchesDocument(quote, scope, document) &&
     (!receipt?.answer || quote.quote.includes(receipt.answer));
 }
 
 function requiresBusinessReviewTime(detail: CaseDetail | undefined): boolean {
-  return detail?.business_line === "ENT" &&
-    (detail.scenario === "telecom_dedicated_line" ||
-      (detail.scenario === "cloud_services" && detail.contract_type === "service"));
+  if (!detail) return false;
+  if (detail.business_line === "ENT" && detail.scenario === "telecom_dedicated_line") return true;
+  if (detail.business_line === "ENT" && detail.scenario === "cloud_services") return detail.contract_type === "service";
+  return !!detail.business_line && detail.business_line !== "unspecified" &&
+    !!detail.scenario && detail.scenario !== "unspecified" && !!detail.contract_type;
 }
 
 function requestCardReviewFacts(
@@ -261,19 +270,41 @@ function requestDocumentOptions(
   return options;
 }
 
+function originalOffset(text: string, displayedOffset: number): number | null {
+  let source = 0;
+  let displayed = 0;
+  while (displayed < displayedOffset && source < text.length) {
+    source += text[source] === "\r" && text[source + 1] === "\n" ? 2 : 1;
+    displayed += 1;
+  }
+  return displayed === displayedOffset ? source : null;
+}
+
 function quoteFromSelection(
   document: ReviewDocument | undefined,
+  scope: FrozenQuoteScope | null,
   selectionStart: number,
   selectionEnd: number,
-): EvidenceQuote | null {
-  if (!document?.text || !document.parsed_document_id || selectionEnd <= selectionStart)
-    return null;
+): FrozenQuoteSelection | null {
+  if (!document?.text || selectionEnd <= selectionStart) return null;
+  const startOffset = originalOffset(document.text, selectionStart);
+  const endOffset = originalOffset(document.text, selectionEnd);
+  if (startOffset === null || endOffset === null) return null;
+  const text = document.text.replace(/\r\n?/g, "\n");
+  const quote = text.slice(selectionStart, selectionEnd);
+  const start = Array.from(document.text.slice(0, startOffset)).length;
+  const end = Array.from(document.text.slice(0, endOffset)).length;
+  const selection = createFrozenQuoteSelection(scope, document, { start, end });
+  return selection?.quote === quote ? selection : null;
+}
+
+function evidenceQuoteOf(selection: FrozenQuoteSelection): EvidenceQuote {
   return {
-    document_id: document.id,
-    parsed_document_id: document.parsed_document_id,
-    quote: document.text.slice(selectionStart, selectionEnd),
-    start: Array.from(document.text.slice(0, selectionStart)).length,
-    end: Array.from(document.text.slice(0, selectionEnd)).length,
+    document_id: selection.documentId,
+    parsed_document_id: selection.parsedDocumentId,
+    quote: selection.quote,
+    start: selection.start,
+    end: selection.end,
   };
 }
 
@@ -316,11 +347,11 @@ function followupReviewInput(
   requiresBusinessAt: boolean,
   businessAt: string,
 ): { business_at?: string } {
-  return requiresBusinessAt ? { business_at: new Date(businessAt).toISOString() } : {};
+  return requiresBusinessAt ? { business_at: beijingInputToUtc(businessAt) } : {};
 }
 
 function validBusinessReviewTime(value: string): boolean {
-  return !Number.isNaN(new Date(value).getTime());
+  return beijingInputToUtc(value) !== "";
 }
 
 function submitRequestForm<Input>(
@@ -691,7 +722,7 @@ function FollowupReview({
       <h4>发起后续审查</h4>
       <p className="meta">审查必须在回执提交之后受理，才能作为该回执的核验依据。</p>
       {requiresBusinessAt ? (
-        <label className="field">审查业务时间（本地时间）
+        <label className="field">审查业务时间（北京时间）
           <Input type="datetime-local" value={businessAt} onChange={(event) => setBusinessAt(event.target.value)} />
         </label>
       ) : null}
@@ -733,6 +764,8 @@ function VerificationEvidenceFields({
   onSelectQuote,
   quote,
   quoteValid,
+  canUseDocumentSelection,
+  onUseDocumentSelection,
 }: {
   receiptId: string;
   onReceiptChange: (id: string) => void;
@@ -744,8 +777,10 @@ function VerificationEvidenceFields({
   frozenDocuments: ReviewDocument[];
   frozenDocument: ReviewDocument | undefined;
   onSelectQuote: (event: SyntheticEvent<HTMLTextAreaElement>) => void;
-  quote: EvidenceQuote | null;
+  quote: FrozenQuoteSelection | null;
   quoteValid: boolean;
+  canUseDocumentSelection: boolean;
+  onUseDocumentSelection: () => void;
 }) {
   return (
     <>
@@ -753,7 +788,9 @@ function VerificationEvidenceFields({
         receipts={receipts} documents={documents} />
       <RequestFrozenDocumentChoice receipt={receipt} frozenDocuments={frozenDocuments}
         quoteDocumentId={quoteDocumentId} onQuoteDocumentChange={onQuoteDocumentChange} />
-      <RequestQuoteText document={frozenDocument} onSelectQuote={onSelectQuote} />
+      <RequestQuoteText document={frozenDocument} onSelectQuote={onSelectQuote}
+        canUseDocumentSelection={canUseDocumentSelection}
+        onUseDocumentSelection={onUseDocumentSelection} />
       <RequestSelectedQuote quote={quote} quoteValid={quoteValid} />
     </>
   );
@@ -802,17 +839,26 @@ function RequestFrozenDocumentChoice({
 function RequestQuoteText({
   document,
   onSelectQuote,
+  canUseDocumentSelection,
+  onUseDocumentSelection,
 }: {
   document: ReviewDocument | undefined;
   onSelectQuote: (event: SyntheticEvent<HTMLTextAreaElement>) => void;
+  canUseDocumentSelection: boolean;
+  onUseDocumentSelection: () => void;
 }) {
   if (!document?.text) return null;
   return (
-    <label className="field">在本次审查使用的原文中选择引用内容
-      <Input.TextArea aria-label="本次审查使用的原文" readOnly rows={8}
-        value={document.text} onSelect={onSelectQuote} />
-      <span className="meta">用鼠标或键盘选择覆盖该检查引用内容的完整原文，最多 4096 个字符；过短的片段可能无法通过核验。</span>
-    </label>
+    <div className="field">
+      <label>在本次审查使用的原文中选择引用内容
+        <Input.TextArea aria-label="本次审查使用的原文" readOnly rows={8}
+          value={document.text} onSelect={onSelectQuote} />
+      </label>
+      <span className="meta">用鼠标或键盘选择完整原文，或填入工作区正文当前选区；引用最多 4096 个 Unicode 字符。</span>
+      <Button htmlType="button" disabled={!canUseDocumentSelection} onClick={onUseDocumentSelection}>
+        填入工作区正文当前选区
+      </Button>
+    </div>
   );
 }
 
@@ -887,6 +933,8 @@ type EvidencePanelProps = {
   evaluations: ConstraintEvaluation[];
   agentReview: BusinessAgentReview | null;
   documents: CaseDetail["documents"];
+  quoteSelection?: FrozenQuoteSelection | null;
+  quoteScope?: FrozenQuoteScope | null;
 };
 
 type PanelContext = {
@@ -911,6 +959,29 @@ function isFrozenRequestSourceAttempt(
   return !!attemptId && attempt?.id === attemptId && attempt.run_id === runId &&
     attempt.history_kind === "frozen" && !!attempt.finished_at &&
     (attempt.state === "completed" || attempt.state === "partial");
+}
+function quoteScopeForRequest(
+  scope: FrozenQuoteScope | null | undefined,
+  caseId: string,
+  runId: string,
+  attemptId: string | null,
+  workspace: ReviewWorkspace | undefined,
+): FrozenQuoteScope | null {
+  if (scope) {
+    return scope.caseId === caseId && scope.runId === runId &&
+      scope.attemptId === attemptId && scope.isFrozenAttempt
+      ? scope
+      : null;
+  }
+  const attempt = workspace?.review_attempts?.attempt;
+  if (!isFrozenRequestSourceAttempt(attempt, attemptId, runId) || !attemptId) return null;
+  return {
+    caseId,
+    runId,
+    attemptId,
+    isFrozenAttempt: true,
+    parsedDocumentIds: attempt?.parsed_document_ids ?? [],
+  };
 }
 
 function countRequestSourceIds<T>(items: T[], getId: (item: T) => string): Map<string, number> {
@@ -1311,7 +1382,18 @@ function CreateRequest({ caseId, runId, attemptId, evaluations, agentReview, can
   );
 }
 
-function RequestCard({ item, caseId, runId, attemptId, documents, evaluations, agentReview, context }: EvidencePanelProps & { item: EvidenceRequest; context: PanelContext }) {
+function RequestCard({
+  item,
+  caseId,
+  runId,
+  attemptId,
+  documents,
+  evaluations,
+  agentReview,
+  quoteSelection,
+  quoteScope,
+  context,
+}: EvidencePanelProps & { item: EvidenceRequest; context: PanelContext }) {
   const client = useQueryClient();
   const navigate = useNavigate();
   const start = useStartReview(caseId);
@@ -1329,7 +1411,7 @@ function RequestCard({ item, caseId, runId, attemptId, documents, evaluations, a
   const [uploaded, setUploaded] = useState<{ id: string; filename: string; role: string } | null>(null);
   const [receiptId, setReceiptId] = useState("");
   const [quoteDocumentId, setQuoteDocumentId] = useState("");
-  const [quote, setQuote] = useState<EvidenceQuote | null>(null);
+  const [quote, setQuote] = useState<FrozenQuoteSelection | null>(null);
   const [reason, setReason] = useState("");
   const [businessAt, setBusinessAt] = useState("");
   const { canSubmit, canUpload, canVerify } = requestPermissions(context);
@@ -1339,14 +1421,46 @@ function RequestCard({ item, caseId, runId, attemptId, documents, evaluations, a
   const { source, matchingEvaluations, gap, observed, frozenLater, requiresBusinessAt } = reviewFacts;
   const frozenDocuments = receiptFrozenDocuments(context.workspace?.documents, item, receipt);
   const frozenDocument = frozenDocuments.find((document) => document.id === quoteDocumentId);
-  const quoteValid = quoteMatchesFrozenDocument(quote, frozenDocument, receipt);
+  const activeQuoteScope = quoteScopeForRequest(quoteScope, caseId, runId, attemptId, context.workspace);
+  const quoteScopeParsedIds = activeQuoteScope?.parsedDocumentIds.join("\u0000") ?? "";
+  const canUseDocumentSelection = quoteMatchesFrozenDocument(
+    quoteSelection ?? null, activeQuoteScope, frozenDocument, receipt,
+  );
+  const quoteValid = quoteMatchesFrozenDocument(quote, activeQuoteScope, frozenDocument, receipt);
+  useEffect(() => {
+    setQuote(null);
+  }, [
+    activeQuoteScope?.attemptId,
+    activeQuoteScope?.caseId,
+    activeQuoteScope?.isFrozenAttempt,
+    activeQuoteScope?.runId,
+    caseId,
+    frozenDocument?.digest,
+    frozenDocument?.id,
+    frozenDocument?.parsed_document_id,
+    frozenDocument?.text,
+    quoteScopeParsedIds,
+    receipt?.id,
+    runId,
+  ]);
   const verifiedReady = requestVerificationReady(canVerify, item.status, receipt, frozenLater, observed, quoteValid, reason);
   const validBusinessAt = validBusinessReviewTime(businessAt);
   const availableDocuments = availableRequestDocuments(documents, item.material_role);
   const documentOptions = requestDocumentOptions(availableDocuments, uploaded);
 
   const upload = useMutation({
-    mutationFn: ({ selectedFile, selectedRole }: { selectedFile: File; selectedRole: string }) => uploadEvidenceDocument(caseId, selectedFile, selectedRole),
+    mutationFn: async ({ selectedFile, selectedRole }: { selectedFile: File; selectedRole: string }) => {
+      if (!context.actor) throw new Error("登录状态不可用，请刷新后重试");
+      const payload = { role: selectedRole, name: selectedFile.name, type: selectedFile.type, size: selectedFile.size, sha256: await fileSha256(selectedFile) };
+      const pending = await pendingMutationKey("evidence.upload", idempotencyActorScope(context.actor), caseId, payload);
+      const result = await uploadEvidenceDocument(caseId, selectedFile, selectedRole, pending.key);
+      try {
+        clearPendingMutationKey(pending.storageKey);
+      } catch {
+        try { sessionStorage.setItem(pending.storageKey, newIdempotencyKey()); } catch { /* response already succeeded */ }
+      }
+      return result;
+    },
     onSuccess: async (result, input) => {
       setUploaded({ id: result.id, filename: input.selectedFile.name, role: input.selectedRole });
       setDocumentId(result.id);
@@ -1383,9 +1497,12 @@ function RequestCard({ item, caseId, runId, attemptId, documents, evaluations, a
   });
 
   function selectQuote(event: SyntheticEvent<HTMLTextAreaElement>) {
-    if (!frozenDocument?.text || !frozenDocument.parsed_document_id) return;
     const { selectionStart, selectionEnd } = event.currentTarget;
-    setQuote(quoteFromSelection(frozenDocument, selectionStart, selectionEnd));
+    setQuote(quoteFromSelection(frozenDocument, activeQuoteScope, selectionStart, selectionEnd));
+  }
+
+  function useDocumentSelection() {
+    if (canUseDocumentSelection && quoteSelection) setQuote(quoteSelection);
   }
 
   function startFollowupReview() {
@@ -1410,7 +1527,8 @@ function RequestCard({ item, caseId, runId, attemptId, documents, evaluations, a
   const matchDescription = requestMatchDescription(source, matchingEvaluations, gap);
   const receiptInput = requestReceiptInput(mode, documentId, answer, item.version);
   const verificationInput = requestVerificationInput(
-    verifiedReady, attemptId, runId, quote, source, matchingEvaluations, gap, reason, item.version,
+    verifiedReady, attemptId, runId, quote ? evidenceQuoteOf(quote) : null,
+    source, matchingEvaluations, gap, reason, item.version,
   );
 
   return (
@@ -1445,7 +1563,8 @@ function RequestCard({ item, caseId, runId, attemptId, documents, evaluations, a
             historyError={history.isError}
             evidence={{ receiptId, onReceiptChange: changeReceipt, receipts, documents, receipt,
               quoteDocumentId, onQuoteDocumentChange: changeQuoteDocument, frozenDocuments,
-              frozenDocument, onSelectQuote: selectQuote, quote, quoteValid }}
+              frozenDocument, onSelectQuote: selectQuote, quote, quoteValid,
+              canUseDocumentSelection, onUseDocumentSelection: useDocumentSelection }}
             canVerify={canVerify} reason={reason} setReason={setReason} verifyError={verify.error}
             verifyPending={verify.isPending} verifiedReady={verifiedReady}
             onSubmit={(event) => submitRequestForm(event, verificationInput, verify.mutate)}

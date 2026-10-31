@@ -98,6 +98,7 @@ func TestStoredEndpointDrivesGatewayCatalogAndDispatch(t *testing.T) {
 		}
 	}))
 	defer upstream.Close()
+	t.Setenv(llmendpoint.AllowedHostsEnv, strings.TrimPrefix(upstream.URL, "http://"))
 	_, err = st.SaveLLMEndpoint(context.Background(), admin, store.LLMEndpointInput{
 		Name: "平台端点", Protocol: llmendpoint.ProtocolOpenAICompatible, BaseURL: upstream.URL,
 		Models: []string{"stored-review", "stored-ocr"}, ReviewModel: "stored-review", OCRModel: "stored-ocr",

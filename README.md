@@ -68,6 +68,27 @@ compose.app.yaml     独立服务部署配置
 
 仓库保留源码、配置、依赖锁文件和必要的小型测试资源。合同样本、演示预置材料、设计文档、截图、课件、模型权重和运行产物不随源码提供。
 
+主要入口和维护位置：
+
+| 文件或目录 | 职责 |
+|---|---|
+| `cmd/server/main.go`、`internal/bootstrap/` | 装配本地单进程或 Core 服务，加载身份、存储与执行配置 |
+| `cmd/gateway/`、`internal/gateway/` | 对外 API 路由与独立服务凭据转发 |
+| `cmd/worker/`、`cmd/auditexecution/` | 领取 PostgreSQL 任务、维护租约并执行审查 |
+| `cmd/documentservice/`、`internal/documentparse/` | 授权材料上传、解析、PDF 页面与 DOCX 图像转写 |
+| `cmd/modelgateway/`、`cmd/toolgateway/` | 模型预算和受控调用、只读证据工具 |
+| `internal/store/`、`internal/httpapi/` | 业务事务、冻结记录、授权查询和 HTTP 契约 |
+| `internal/engine/`、`internal/agentflow/` | 确定性规则、智能体编排及引用核验 |
+| `internal/rulepack/`、`capability-packs/` | 版本化规则、业务范围与作者样本自检 |
+| `internal/evidencebundle/`、`cmd/verify-evidence/` | 证据包签名、文件摘要与独立验签 |
+| `internal/apidocs/openapi.json` | HTTP wire 契约；由 `scripts/generate_openapi_types.py` 生成前端类型 |
+| `web/src/app.tsx`、`web/src/admin-app.tsx` | 客户端和管理端路由；页面、组件、API 与状态 hooks 分目录维护 |
+| `scripts/verify.py`、`scripts/check_fast.py` | 固定候选完整验收和按差异执行的快速检查 |
+
+文件说明优先记录职责、输入输出和业务边界。手写源码与测试放在对应模块，生成类型随契约重新生成；本机配置、模型调用记录和验收材料仍放在仓库外。
+
+合同引用读取由 Execution 服务负责；路由所有权检查只接受声明的 OpenAPI 引用模板，实际请求使用具体的案件、执行和引用身份。
+
 ## 本地启动
 
 需要 Go 1.26.7+、Bun 1.4.3、Node.js 22.12+、Python 3.10+，以及可用的 Docker Engine/Desktop 和 Compose v2。解析 PDF 还需要 Poppler 的 `pdfinfo`、`pdftotext`、`pdfimages`、`pdftoppm` 及 CJK mappings。
@@ -76,13 +97,13 @@ compose.app.yaml     独立服务部署配置
 
 ```bash
 make setup
-make infra-bootstrap
-make infra-config
+make app-bootstrap
+make app-config
 make infra-up
 make infra-smoke
 ```
 
-`infra-bootstrap` 生成私有的 `.env` 和 `.env.distributed`，已有文件不会被覆盖。配置项见 [.env.example](.env.example)。数据库和对象存储凭据保存在本机，不提交到 Git。
+`app-bootstrap` 生成私有的 `.env` 和 `.env.distributed`，已有文件不会被覆盖。配置项见 [.env.example](.env.example)。数据库和对象存储凭据保存在本机，不提交到 Git。
 
 Go 不会自动加载 `.env`。在第一个终端启动 API：
 
@@ -102,6 +123,8 @@ make web
 默认 API 地址为 `http://127.0.0.1:8080`，前端为 `http://127.0.0.1:5173`。Vite 将 `/api` 和 `/openapi.json` 代理到 API，可通过 `VITE_DEV_API_PROXY` 修改目标地址。
 
 开发和测试模式提供以下固定演示账号；生产环境禁止使用这些账号，配置企业身份目录时本地密码登录也会停用。账号默认仅能访问自己创建或明确加入的案件，租户和组织由服务端绑定。
+
+浏览器会话的身份范围包含工作区、账号、角色、租户和组织；这些信息变化时，前端会清理旧身份数据并重新建立页面与审查事件连接。服务端仍逐次校验访问权限。
 
 | 账号 | 密码 | 角色 | 租户 | 组织 |
 |---|---|---|---|---|
@@ -132,11 +155,15 @@ python3 scripts/record_model_proxy.py --upstream http://127.0.0.1:3425/v1 \
 
 扫描页逐页转写。单文件上限为 32 MiB，模型网关仍按请求体字节作保守预算预留；需要根据页面大小和频率调整 `MODEL_MAX_INPUT_TOKEN_RESERVATION`、`MODEL_TENANT_TOKENS_PER_MINUTE`、`MODEL_GLOBAL_TOKENS_PER_MINUTE`。要覆盖最大 33 MiB 模型请求，单次预留至少为 34603008，全局与租户每分钟预算均须大于单次预留和输出额度之和。长文档还需按实际耗时配置 `DOCUMENT_PARSE_TIMEOUT`、`GATEWAY_REQUEST_TIMEOUT` 和 `GATEWAY_UPLOAD_TIMEOUT`；文档解析超时上限为 30 分钟。
 
+逐页 OCR 的输出上限为 8192 tokens，文本审查保持 2048 tokens；两项额度均进入冻结模型配置身份。模型返回截断或过滤状态时仍拒绝将该页作为完整正文，旧尝试的配置身份和解析原文不会被重写。使用新版额度时，Core、Document、Worker 与模型网关需要运行同一版本。
+
 模型网关对已声明超过 33 MiB 的请求在读取正文前拒绝；未声明长度的流仍在读取时按相同字节上限限制。
 
 材料上传、重新解析和草稿生成在进入解析队列前检查角色与案件权限，提交时再次检查；队列满时仅对已授权请求返回容量不足。
 
 DOCX 正文中的 Adobe Symbol 字体字符按 Unicode 映射保留；不支持的符号字体、无可靠文本映射的字形或无效编码会使解析失败，不会被静默丢弃。
+
+DOCX 只读取渲染后可见的内容：`mc:AlternateContent` 按标记兼容规则只取一个分支（`Requires` 的前缀按该元素在作用域的 `xmlns` 解析为命名空间，全部受支持才取该 `mc:Choice`，否则取 `mc:Fallback`；缺失、空或未声明的 `Requires` 视为无效标记而失败），两个等价表示不会被重复计入；`wordprocessingShape` 文本框内的段落计入正文，页眉页脚仍按首次引用只读一次。`PAGE`、`NUMPAGES`、`SECTIONPAGES`、`SECTION` 字段的结果只是随版式变化的页码，与「不编造页码」一致地排除在合同正文之外；其他字段仍读取缓存结果。图表、组合形状、VML 回退内容、文本框内表格等无法完整定位的内容会使解析失败，不会被静默丢弃或猜测。
 
 服务就绪后执行：
 
@@ -150,6 +177,8 @@ python3 scripts/run_real_corpus.py \
 
 使用 `--case-id` 指定清单中的单个案例；省略时顺序运行全部案例。每次创建新的案件，在 `contract-audit-delivery/test-runs/` 保存输入哈希、解析状态、案件及审查标识、冻结快照、执行事件和发现；失败时保留已完成的记录。必须指定已存在的记录器目录，运行期间的模型调用会复制到本次结果的 `model-calls/`。请为每次运行使用独立记录器或顺序执行，避免按时间归档时混入并发调用。模型正文可能包含敏感材料，记录器不保存凭据头。报告和人工决定不会自动创建。
 
+签名证据包需要 `EVIDENCE_SIGNING_KEY_FILE` 指向 Ed25519 PKCS#8 私钥，`EVIDENCE_PDF_FONT_FILE` 指向包含合同文字的 CJK TrueType 字体；密钥与字体由部署方提供，Compose 将其只读挂载到 Document 服务。Kubernetes 可使用 `deployments/k8s/optional/evidence-export.yaml`，先准备其中指定的 Secret 和字体 PVC，再对 Document Deployment 应用补丁。创建报告后可下载 `/api/cases/{caseID}/reports/{reportID}/evidence-bundle`，并通过 `go run ./cmd/verify-evidence -public-key <独立取得的公钥.pem> <证据包.zip>` 验证；包内自带公钥不能单独作为信任依据。
+
 验证演示账号的案件授权和租户隔离，可对真实运行的 API 执行：
 
 ```bash
@@ -159,7 +188,7 @@ python3 scripts/check_real_access.py --base http://127.0.0.1:8080 \
 
 命令创建独立验证案件，记录不同账号对案件列表、原件、成员和写操作的实际状态码；结果保存在仓库外的 `test-runs/`。
 
-本地停止基础设施可执行 `make infra-stop`，该命令保留数据卷。
+本地停止基础设施可执行 `make infra-down`，该命令保留数据卷。
 
 业务数据库使用 PostgreSQL 18，数据卷为 `pgdata18`，挂载到 `/var/lib/postgresql`。旧 PostgreSQL 17 数据卷不能直接交给 18 使用：先备份、创建新卷，再用 `pg_dump` / `pg_restore` 迁移并验证。旧卷应保留到回退窗口结束；新库有业务写入后，回退还需要处理新增数据。Keycloak 的身份库独立保留 PostgreSQL 17，不随业务库升级。
 
@@ -194,6 +223,8 @@ make apps-up
 
 此入口通过 `compose.app.yaml` 启动 Gateway、Core、Document、Execution、Worker、Model/Tool Gateway 和三个前端站点。模型接口必须在容器网络中可达；容器内的 `127.0.0.1` 指向容器自身。主机端口由 `.env` 中的 `EDGE_PORT`、`CLIENT_PORT`、`ADMIN_PORT` 和 `PORTAL_PORT` 控制。
 
+`make apps-up-fixture` 会在 Compose 启动环境中自动将 `MODEL_GATEWAY_URL` 指向 `http://model-gateway-fixture:8084/v1`，并使用 `fixture-chat` / `fixture-ocr`；无需手工改写分布式私有配置。`make apps-up` 继续使用已配置的 Model Gateway。
+
 在私有配置中设置 `OBSERVE=1` 和 `GRAFANA_ADMIN_PASSWORD` 后，`apps-up` / `apps-up-fixture` 同时启动 Collector、Tempo、Prometheus 和 Grafana，`apps-down` 同时停止这些服务。应用的 `OTEL_EXPORTER_OTLP_ENDPOINT` 应设置为 `http://otel-collector:4318`。Grafana、Tempo、Prometheus 默认仅绑定主机回环端口 13000、13200、19090。导出只包含执行元数据；事件指标使用累计计数，最多保留 256 个标签组合，溢出组合汇总到 `__overflow__`。`MetricsExported` / `MetricsFailed` 分别统计被接收和被拒绝或未确认的数据点。
 
 分站部署时，通过 `VITE_ADMIN_URL` 指定 Admin 地址；留空时使用同源 `/admin/rulepacks`。三个站点也可以分别构建：
@@ -216,6 +247,18 @@ python3 deployments/k3d.py smoke    # Service DNS/HTTP、数据库 DNS、Pod 重
 ```
 
 三个前端站点通过端口转发访问 18080（client）、18081（admin）、18082（portal）。集群内使用 fixture 模型配置，不调用外部付费模型。
+
+默认值只适合单人在本机开发。需要与其它集群、Compose 栈或并行验收共存时，用环境变量把集群名、端口、凭据目录和镜像标签全部改到自己的前缀下，互不覆盖：
+
+```bash
+export CAW_K3D_CLUSTER=caw-i17-k3d-20261031     # 独立集群名，不会复用或删除其它集群
+export CAW_K3D_IMAGE_SUFFIX=i17-20261031        # 部署 contract-audit-*:<后缀>，不动共享 :local 镜像
+export CAW_K3D_API_PORT=28170
+export CAW_K3D_CLIENT_PORT=28171 CAW_K3D_ADMIN_PORT=28172 CAW_K3D_PORTAL_PORT=28173
+export CAW_K3D_ARTIFACT_DIR=/abs/path/outside/repo
+```
+
+`CAW_K3D_IMAGE_SUFFIX` 对应的镜像由 `deployments/scripts/package-app-images.py --tag-suffix <后缀>` 打包；`deploy` 通过仓外生成的父级 Kustomization 改写镜像标签，不在源码树写文件。CORS 与 OIDC 回调地址会同步改成上面三个 UI 端口。
 
 三个节点的容器仍共享同一台物理主机，因此该结果只能证明部署、调度、副本伸缩、滚动更新和 Pod 故障恢复行为，不能当作物理机高可用或跨故障域容灾的验收证据。需要独立存储故障域、异地备份或真实性能结论时，应在多台主机组成的集群上另行测量。
 
@@ -249,13 +292,26 @@ bun run build
 运行本地 Go 测试或完整验收前，先从固定公开测试资产发布准备仓库外的法律来源快照；脚本会校验归档及文件 SHA256，重复运行可复用相同内容：
 
 ```bash
-python3 scripts/fetch_legal_test_assets.py --destination ../contract-audit-delivery/legal-test-assets-20261031-v1
-export CAW_LEGAL_TEST_ROOT="$(realpath ../contract-audit-delivery/legal-test-assets-20261031-v1)"
+python3 scripts/fetch_legal_test_assets.py --destination ../contract-audit-delivery/legal-test-assets-20261101-v2
+export CAW_LEGAL_TEST_ROOT="$(realpath ../contract-audit-delivery/legal-test-assets-20261101-v2)"
 export LEGALNORM_ASSET_DIR="$CAW_LEGAL_TEST_ROOT/legal-sources"
+export LEGALNORM_SUPPLEMENTAL_ASSET_DIR="$CAW_LEGAL_TEST_ROOT/legal-sources"
 export LEGALNORM_CANONICAL_MANIFEST="$CAW_LEGAL_TEST_ROOT/p4-canonical-articles-v2.json"
 ```
 
 这些固定原始快照的采集时间和 SHA256 仅用于可重复回归，不证明法律当前持续有效。CI 会自动准备测试资产；它们不是应用发布内容。
+v2 资产包保留原有 15 个文件的字节和哈希，并补齐合同法历史版本、两份司法解释及独立校核原文，覆盖全部 8 组已登记官方效力快照；快速与完整 Go 门禁均使用同一锁定版本。
+
+官方登记效力用只读命令核对，不写数据库、capture、条文版本或冻结引用：
+
+```bash
+go run ./cmd/legalstatuscheck -asset-dir "$LEGALNORM_ASSET_DIR"    # 离线：核对已捕获官方响应
+go run ./cmd/legalstatuscheck -capture-dir /tmp/legal-status-<ts>  # 在线：抓取已登记官方端点、落盘原始响应后核对
+```
+
+- 在线模式只访问 `internal/legalnorm` 登记的 HTTPS 端点，跨主机重定向拒绝，响应上限 8 MiB、失败重试一次；原始响应、响应状态、媒体类型、观察时间、字节数与 SHA256 写入仓外 `-capture-dir/raw` 与 `capture-observation.json`，是否导入为新来源版本仍由人工治理决定。
+- 退出码：`0` 全部未变；`2` 存在变更（需新 capture，旧引用不变）；`1` 失败（缺失候选、证据无效、抓取失败或 IO），失败优先于变更。
+- 输出的 `decision` 是核对结论（`UNCHANGED`、`CHANGED_NEW_CAPTURE_REQUIRED`、`CHANGED_UNVERIFIED`、`CANDIDATE_MISSING`、`CANDIDATE_INVALID`、`CAPTURED`、`CAPTURE_FAILED`），不是验收状态；本仓验收状态只使用 `PASS`/`FAIL`/`BLOCKED`/`NOT_RUN`/`NOT_APPLICABLE`。
 
 需要数据库的集成测试使用隔离的 `TEST_DATABASE_URL`，`MIGRATOR_DATABASE_URL` 指向同一测试库的迁移角色；`MODEL_DATABASE_URL` 指向同库的独立非特权登录角色。专用角色不能是超级用户、表所有者或具有 `BYPASSRLS`，配置示例见 CI 的数据库角色准备步骤。真实模型/OCR 联调由 `make test-live` 单独启用。
 
@@ -268,7 +324,7 @@ CI 分层如下：
 
 ## 开发状态与验收记录
 
-当前原功能开发已暂停，剩余范围跟踪于 [Issue #7](https://github.com/Rupert-WLLP-Bai/contract-audit-workbench/issues/7)。以下历史记录仅对应当时的源码候选与验收，不表示全部交付；其中 `f427153` 是 Jev 建议层接入前的候选。
+当前工作在 `dev` 集成，产品与交付范围跟踪于 [Issue #7](https://github.com/Rupert-WLLP-Bai/contract-audit-workbench/issues/7) 和 [PR #68](https://github.com/Rupert-WLLP-Bai/contract-audit-workbench/pull/68)。PR 持续记录当前源码的快速检查、定点复验及完整验收结果。以下历史记录只对应各自的源码候选；其中 `f427153` 是 Jev 建议层接入前的候选，不能用于证明当前版本通过。
 
 1. **PASS：修复前端类型检查。** `web/src/app.integration.test.tsx` 的 breadcrumb 查询已收窄为 `HTMLElement`。最终 `make acceptance` 中 `web-typecheck` 通过，`web-tests` 371/371 通过，`web-build` 通过。
 2. **PASS（本地）：完成全量发布验收。** 在隔离 PostgreSQL 18（一次性容器 `caw-accept-pg`）上执行 `make acceptance`；`artifacts/verification.json` 为 `passed:true`，21 项检查全部返回 0，源码身份摘要 `0285f4b2cb0d7d90ef4d6edf3f93fb2082dea969a42155d55a31e75697ff7f82` 与最终可执行工作树一致；`browser-system` 耗时 90.1s，`TestBrowserWarrantyConflictAndConfirm` 与 `TestBrowserTelecomC1BFullJourney` 均 PASS。远端 CI 在推送后另行记录，不能把本地结果当作远端通过。
@@ -322,6 +378,7 @@ TYPESAFE_API_KEY=                        # 只放 model-gateway 的 secret
 - 能力包只声明场景、材料角色、RulePack 精确版本、只读能力和比较器；不加载脚本、SQL 或可执行插件。
 - 对象映射必须由人工确认；采集与核验受理分开，失败读只形成 `unavailable`/`rejected` 观测。
 - 核验使用精确十进制和单位归一；配置带宽不等于实际吞吐，不自动确认风险、不计算赔偿。
+- 核验边界把能用有限位小数表示的有理数无损转换为十进制（如 `999/10` → `99.9`）；原始关联事实、摘要和引用保持冻结。`1/3` 这类不能无损转换的分数会拒绝受理，不舍入。
 - 影响计划只提供 explain/shadow；依赖不完整、集合成员变化、旧证据不可重绑定或候选/全量结果不一致时强制 full，业务结果始终来自完整执行，reuse 保持关闭。
 
 默认 `OPERATOR_AUDIT_ENABLED=false`，路由返回 503，前端入口不显示。开发/测试可显式启用合成连接器：
@@ -337,14 +394,15 @@ EXTERNAL_EVIDENCE_SOURCE_SYSTEM=fixture-oss-east
 
 ## 分支工作方式
 
-`main` 保存已验收的交付版本。本批使用 `dev` 接收逐项实现，并通过 `dev` 到 `main` 的草稿 PR 持续展示源码、提交和云端 CI；完成集中验收后再合入 `main`。并行实现使用各自的工作树，公共接口、数据库结构和依赖等共享核心由主 Agent 串行集成。
+`main` 是唯一长期开发主线，达到轻量集成门槛后合入；只有完成固定候选集中验收的版本才称为可交付。当前累计批次按 [PR #68](https://github.com/Rupert-WLLP-Bai/contract-audit-workbench/pull/68) → `dev` → [PR #63](https://github.com/Rupert-WLLP-Bai/contract-audit-workbench/pull/63) → `main` 收口，核对无未合并工作后退役 `dev`。既有提交和依赖不重写；后续计划与证据按 [Issue #7](https://github.com/Rupert-WLLP-Bai/contract-audit-workbench/issues/7) 的五阶段路线图推进。
 
-- 分支名：`fix/<issue>-<slug>`，例如 `fix/56-dev-pr-fast`；本批从最新 `dev` 创建，一个分支只处理一个具体问题。
-- 完成方式：向 `dev` 提 PR，快速门禁通过后使用 Squash merge，随后删除工作分支；`dev` 到 `main` 的草稿 PR 同步记录已集成范围与未运行验收。
-- 指向 `main` 或 `dev` 的 PR 均运行 `pr-fast-gate`；完整五阶段只在固定候选或发布时手动派发，普通分支推送不触发全量检查。
+- 分支名：`fix/<issue>-<slug>`，例如 `fix/8-case-next-step`；从最新 `main` 创建，一个分支处理一个具体问题，直接 PR 到 `main`。
+- 完成方式：通过实际配置的快速门禁后 Squash merge，删除已合并短分支；Issue 仅在对应承诺和验收条件完成后关闭。固定 RC 使用不可移动的标签、配置身份和镜像 digest，不随主线继续开发而漂移。
+- `pr-fast-gate` 用于日常 PR；当前过渡批次同时支持目标 `dev`，收口后只保留 `main` 路径。Phase 0–3 只验证受影响范围，完整五阶段、真实模型/OCR、容量和恢复在 Phase 4 的集中窗口执行；失败后只复验相关范围。
 - 需要单人作者时，提交前检查 `git var GIT_AUTHOR_IDENT` 和 `git var GIT_COMMITTER_IDENT`，使用本人身份，不添加代理作者或 `Co-authored-by`。既有已发布提交不重写。
 
 ```bash
-git switch dev
-git switch -c fix/56-dev-pr-fast
+git switch main
+git pull --ff-only
+git switch -c fix/8-case-next-step
 ```

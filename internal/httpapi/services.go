@@ -246,7 +246,7 @@ func governedKnowledgeRoute(m routeMethodSet, p []string) bool {
 }
 
 func governedVersionCommand(m routeMethodSet, command string) bool {
-	return command == "commands" && m.post || command == "preview" && m.read
+	return command == "commands" && m.post || (command == "preview" || command == "experience-metrics") && m.read
 }
 
 func rulePackRoute(m routeMethodSet, p []string) bool {
@@ -258,6 +258,12 @@ func rulePackRoute(m routeMethodSet, p []string) bool {
 	}
 	if len(p) == 5 && p[2] == "versions" {
 		return m.post
+	}
+	if len(p) == 6 && p[2] == "versions" && p[4] == "shadow" {
+		return m.read && (p[5] == "samples" || p[5] == "reports")
+	}
+	if len(p) == 7 && p[2] == "versions" && p[4] == "shadow" && p[5] == "reports" {
+		return m.read
 	}
 	if len(p) == 3 && p[2] == "rollback" {
 		return m.post
@@ -283,6 +289,9 @@ type caseRouteHandler func(string, routeMethodSet, []string) bool
 
 var caseRouteHandlers = map[string]caseRouteHandler{
 	"experience-feedback": experienceFeedbackRoute, "experience-candidates": experienceCandidateRoute,
+	"experience-usage": func(role string, m routeMethodSet, p []string) bool {
+		return role == "core" && len(p) == 3 && (m.read || m.post)
+	},
 	"evidence-requests": evidenceRequestHandlerRoute, "profile": profileRoute,
 	"tasks": taskRoute, "relations": relationRoute, "documents": documentRoute,
 	"materials":                 materialRoute,
@@ -394,8 +403,8 @@ func caseContractCitationRoute(role string, m routeMethodSet, p []string) bool {
 	if role != "execution" || !m.read || len(p) != 8 || p[0] != "cases" || p[2] != "runs" || p[4] != "attempts" || p[6] != "contract-citations" {
 		return false
 	}
-	if p[1] == "{caseID}" && p[3] == "{runID}" && p[5] == "{attemptID}" && p[7] == "{evidenceID}" {
-		return true
+	if p[1] == "{caseID}" && p[3] == "{runID}" && p[5] == "{attemptID}" {
+		return p[7] == "{evidenceID}"
 	}
 	return p[1] != "" && p[3] != "" && p[5] != "" && p[7] != ""
 }
@@ -548,6 +557,9 @@ func remediationRoute(role string, m routeMethodSet, p []string) bool {
 	return role == "core" && m.post && (len(p) == 3 || len(p) == 5 && (p[4] == "submit" || p[4] == "verify"))
 }
 func reportRoute(role string, m routeMethodSet, p []string) bool {
+	if len(p) == 5 && p[4] == "evidence-bundle" {
+		return role == "document" && m.read
+	}
 	return role == "core" && (len(p) == 3 && m.post || len(p) == 4 && m.read)
 }
 
@@ -558,6 +570,9 @@ func evidenceRequestRoute(m routeMethodSet, p []string) bool {
 }
 
 func reviewRoute(role string, m routeMethodSet, p []string) bool {
+	if len(p) == 7 && p[4] == "attempts" && p[5] != "" && p[6] == "manual-findings" {
+		return role == "core" && (m.read || m.post)
+	}
 	if len(p) == 7 && p[4] == "findings" && p[6] == "decisions" {
 		return role == "core" && m.post
 	}

@@ -1,3 +1,11 @@
+import {
+  useEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type PointerEvent as ReactPointerEvent,
+} from "react";
 import { Button, Select } from "antd";
 import type {
   CaseRelationInput,
@@ -8,7 +16,8 @@ import type {
   ReviewRun,
   ReviewWorkspace,
 } from "../api/types";
-import type { ReviewLayout } from "../domain/review";
+import type { FindingDecisionInput, FindingDecisionOutcome, ReviewLayout } from "../domain/review";
+import type { FrozenQuoteScope, FrozenQuoteSelection } from "../domain/frozen-quote";
 import { runLabel, runTone } from "../domain/review";
 import type { StreamStatus } from "../hooks/use-review-events";
 import { DocumentStage, type ReviewCaseContext } from "./document-stage";
@@ -296,6 +305,140 @@ function attemptsOf(workspace: ReviewWorkspace): {
   };
 }
 
+const MIN_FINDING_COLUMN_WIDTH = 300;
+const MAX_FINDING_COLUMN_WIDTH = 600;
+const MIN_DOCUMENT_COLUMN_WIDTH = 320;
+const WORKSPACE_NAV_COLUMN_WIDTH = 220;
+const WORKSPACE_WIDE_NAV_COLUMN_WIDTH = 240;
+const WORKSPACE_RESIZER_WIDTH = 12;
+
+type ResizeDrag = {
+  pointerId: number;
+  startX: number;
+  startWidth: number;
+  gridWidth: number;
+};
+
+function maximumFindingColumnWidth(gridWidth: number): number {
+  return Math.max(
+    MIN_FINDING_COLUMN_WIDTH,
+    Math.min(
+      MAX_FINDING_COLUMN_WIDTH,
+      gridWidth -
+        (window.innerWidth >= 1440
+          ? WORKSPACE_WIDE_NAV_COLUMN_WIDTH
+          : window.innerWidth >= 1100
+            ? WORKSPACE_NAV_COLUMN_WIDTH
+            : 0) -
+        WORKSPACE_RESIZER_WIDTH -
+        MIN_DOCUMENT_COLUMN_WIDTH,
+    ),
+  );
+}
+
+function clampFindingColumnWidth(width: number, gridWidth: number): number {
+  return Math.round(
+    Math.max(
+      MIN_FINDING_COLUMN_WIDTH,
+      Math.min(maximumFindingColumnWidth(gridWidth), width),
+    ),
+  );
+}
+
+function WorkspaceResizeHandle({
+  value,
+  onChange,
+}: {
+  value: number;
+  onChange: (width: number) => void;
+}) {
+  const handleRef = useRef<HTMLDivElement>(null);
+  const dragRef = useRef<ResizeDrag | null>(null);
+  const [maximumWidth, setMaximumWidth] = useState(MAX_FINDING_COLUMN_WIDTH);
+
+  useEffect(() => {
+    const grid = handleRef.current?.parentElement;
+    if (!grid) return;
+    const updateMaximum = () => {
+      setMaximumWidth(maximumFindingColumnWidth(grid.clientWidth));
+    };
+    window.addEventListener("resize", updateMaximum);
+    updateMaximum();
+    return () => window.removeEventListener("resize", updateMaximum);
+  }, []);
+
+  useEffect(() => {
+    if (value > maximumWidth) onChange(maximumWidth);
+  }, [maximumWidth, onChange, value]);
+
+  function beginResize(event: ReactPointerEvent<HTMLDivElement>) {
+    if (event.button !== 0) return;
+    const grid = event.currentTarget.parentElement;
+    const findings = grid?.querySelector<HTMLElement>(".col-findings");
+    if (!grid || !findings) return;
+    event.preventDefault();
+    dragRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startWidth: findings.getBoundingClientRect().width,
+      gridWidth: grid.clientWidth,
+    };
+    event.currentTarget.setPointerCapture(event.pointerId);
+  }
+
+  function resize(event: ReactPointerEvent<HTMLDivElement>) {
+    const drag = dragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    onChange(clampFindingColumnWidth(
+      drag.startWidth + drag.startX - event.clientX,
+      drag.gridWidth,
+    ));
+  }
+
+  function finishResize(event: ReactPointerEvent<HTMLDivElement>) {
+    if (dragRef.current?.pointerId !== event.pointerId) return;
+    dragRef.current = null;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+  }
+
+  function resizeWithKeyboard(event: ReactKeyboardEvent<HTMLDivElement>) {
+    if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+    event.preventDefault();
+    const gridWidth = event.currentTarget.parentElement?.clientWidth ?? window.innerWidth;
+    const next = event.key === "Home"
+      ? MIN_FINDING_COLUMN_WIDTH
+      : event.key === "End"
+        ? maximumFindingColumnWidth(gridWidth)
+        : value + (event.key === "ArrowLeft" ? 16 : -16);
+    onChange(clampFindingColumnWidth(next, gridWidth));
+  }
+
+  return (
+    <div
+      ref={handleRef}
+      className="workspace-resize-handle"
+      role="separator"
+      aria-label="调整审查结论栏宽度"
+      aria-orientation="vertical"
+      aria-valuemin={MIN_FINDING_COLUMN_WIDTH}
+      aria-valuemax={maximumWidth}
+      aria-valuenow={Math.min(value, maximumWidth)}
+      aria-valuetext={`${Math.min(value, maximumWidth)} 像素`}
+      title="拖动，或使用左右方向键调整宽度"
+      tabIndex={0}
+      onPointerDown={beginResize}
+      onPointerMove={resize}
+      onPointerUp={finishResize}
+      onPointerCancel={finishResize}
+      onKeyDown={resizeWithKeyboard}
+    >
+      <span className="sr-only">拖动分隔线或使用左右方向键调整审查结论栏宽度</span>
+    </div>
+  );
+}
+
 export function ReviewWorkspaceView({
   workspace,
   layout,
@@ -317,6 +460,7 @@ export function ReviewWorkspaceView({
   onSelect,
   onSelectAttempt,
   onDecide,
+  onBatchDecide,
   onRetry,
   onCancel,
   caseContext,
@@ -325,6 +469,8 @@ export function ReviewWorkspaceView({
   relationError = null,
   onCreateRelation,
   onDeleteRelation,
+  quoteScope,
+  onQuoteSelectionChange,
   selectedEvidenceId = null,
   onSelectEvidence,
 }: {
@@ -353,6 +499,7 @@ export function ReviewWorkspaceView({
     reason: string;
     expectedVersion: number;
   }) => Promise<boolean>;
+  onBatchDecide?: (input: FindingDecisionInput) => Promise<FindingDecisionOutcome>;
   onRetry: () => void;
   onCancel: () => void;
   caseContext?: ReviewCaseContext | null;
@@ -361,11 +508,17 @@ export function ReviewWorkspaceView({
   relationError?: string | null;
   onCreateRelation?: (input: CaseRelationInput) => Promise<void>;
   onDeleteRelation?: (relationId: string) => void;
+  quoteScope?: FrozenQuoteScope | null;
+  onQuoteSelectionChange?: (selection: FrozenQuoteSelection | null) => void;
   selectedEvidenceId?: string | null;
   onSelectEvidence?: (evidenceId: string | null) => void;
 }) {
   const { run } = workspace;
   const { selected, attempts } = attemptsOf(workspace);
+  const [findingColumnWidth, setFindingColumnWidth] = useState(360);
+  const gridStyle = {
+    "--finding-column-width": `${findingColumnWidth}px`,
+  } as CSSProperties;
   return (
     <div className="workspace">
       <WorkspaceBanner
@@ -384,7 +537,7 @@ export function ReviewWorkspaceView({
         <p className="callout">本次是单合同预审（规则 {workspace.snapshot.review_scope.rule_set_id} 第 {workspace.snapshot.review_scope.rule_set_version} 版）。仅核对主合同中可识别的付款比例；跨材料、正式制度及其他风险尚未检查，结果仍需人工核对。请补齐材料后发起完整审查。</p>
       ) : null}
       <RunCallouts run={run} />
-      <div className={`workspace-grid layout-${layout}`}>
+      <div className={`workspace-grid layout-${layout}`} style={gridStyle}>
         <DocumentStage
           key={`${run.id}:${workspace.review_attempts?.attempt.id ?? "legacy"}`}
           documents={workspace.documents}
@@ -402,9 +555,16 @@ export function ReviewWorkspaceView({
           relationError={relationError}
           onCreateRelation={onCreateRelation}
           onDeleteRelation={onDeleteRelation}
+          quoteScope={quoteScope}
+          onQuoteSelectionChange={onQuoteSelectionChange}
+        />
+        <WorkspaceResizeHandle
+          value={findingColumnWidth}
+          onChange={setFindingColumnWidth}
         />
         <FindingPanel
           findings={workspace.findings}
+          evaluations={workspace.evaluations ?? []}
           documents={workspace.documents}
           selectedId={selectedId}
           onSelect={onSelect}
@@ -415,6 +575,7 @@ export function ReviewWorkspaceView({
           conflictMessage={conflictMessage}
           saveError={saveError}
           onDecide={onDecide}
+          onBatchDecide={onBatchDecide}
         />
       </div>
       <BusinessAgentReviewView

@@ -180,19 +180,12 @@ func (s *Store) AgentReviewForAttempt(ctx context.Context, user accounts.User, c
 	if err := ctx.Err(); err != nil {
 		return nil, false, err
 	}
-	current, err := trustedUser(user)
+	authTx, current, caseItem, err := s.beginCaseRead(ctx, user, caseID)
 	if err != nil {
 		return nil, false, err
 	}
-	st, err := s.snapshotScoped(ctx, dbScope{
-		ActorID: current.ID, TenantID: accounts.Tenant(current), OrgID: current.OrgID,
-		CaseID: caseID, Role: "api",
-	})
-	if err != nil {
-		return nil, false, err
-	}
-	caseItem, err := s.visibleCase(&st, current, caseID)
-	if err != nil {
+	if err := authTx.Commit(ctx); err != nil {
+		_ = authTx.Rollback(ctx)
 		return nil, false, err
 	}
 	if caseItem.TenantID != accounts.Tenant(current) {

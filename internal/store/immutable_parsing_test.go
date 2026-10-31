@@ -492,8 +492,11 @@ func TestLegacyAttemptMigrationIsRepeatableAndRetryIsRejected(t *testing.T) {
 	// dropping the legacy parse tables. This intentionally avoids CASCADE: the
 	// subsequent reopen must recreate every current constraint from migrations.
 	for _, table := range []string{
+		"operator_fulfillment_evaluation_objects",
 		"operator_mapping_change_decisions", "operator_mapping_change_requests", "operator_mapping_lineages",
 		"service_object_contract_associations", "service_object_versions", "service_object_mutation_receipts", "service_objects",
+		"experience_finding_usage", "rule_pack_shadow_reports", "review_rulepack_inputs",
+		"manual_finding_records", "execution_write_receipts", "core_write_receipts",
 	} {
 		var count int64
 		if err := st.pool.QueryRow(context.Background(), `SELECT count(*) FROM `+table).Scan(&count); err != nil {
@@ -507,6 +510,7 @@ func TestLegacyAttemptMigrationIsRepeatableAndRetryIsRejected(t *testing.T) {
 		SELECT rel.relname, con.conname FROM pg_constraint con
 		JOIN pg_class rel ON rel.oid=con.conrelid
 		WHERE con.contype='f' AND con.conrelid IN (
+			'operator_fulfillment_evaluation_objects'::regclass,
 			'operator_object_bindings'::regclass, 'operator_mapping_lineages'::regclass,
 			'operator_mapping_change_requests'::regclass, 'operator_mapping_change_decisions'::regclass,
 			'service_objects'::regclass, 'service_object_versions'::regclass,
@@ -538,6 +542,8 @@ func TestLegacyAttemptMigrationIsRepeatableAndRetryIsRejected(t *testing.T) {
 		t.Fatal(err)
 	}
 	legacyStatements := []string{
+		`DROP TABLE experience_finding_usage, rule_pack_shadow_reports, review_rulepack_inputs, manual_finding_records, execution_write_receipts, core_write_receipts`,
+		`DROP TABLE operator_fulfillment_evaluation_objects`,
 		`DROP TABLE schema_migrations`,
 		`ALTER TABLE operator_object_bindings DROP CONSTRAINT IF EXISTS operator_binding_mapping_lineage_fk, DROP CONSTRAINT IF EXISTS operator_binding_service_association_fk, DROP CONSTRAINT IF EXISTS operator_binding_mapping_decision_fk, DROP CONSTRAINT IF EXISTS operator_binding_mapping_pin_null_group, DROP CONSTRAINT IF EXISTS operator_binding_decision_outcome_pair`,
 		`ALTER TABLE service_objects DROP CONSTRAINT IF EXISTS service_objects_current_association_fk, DROP CONSTRAINT IF EXISTS service_objects_current_version_fk`,
