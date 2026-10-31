@@ -337,14 +337,14 @@ EXTERNAL_EVIDENCE_SOURCE_SYSTEM=fixture-oss-east
 
 ## 分支工作方式
 
-`main` 是唯一长期分支，保存通过验收的交付版本；日常改动都走短分支。一个工作批次最多并行处理两个互不依赖的问题，涉及公共接口、数据库结构或依赖等共享核心的改动必须串行，由主 Agent 统一合并。
+`main` 保存已验收的交付版本。本批使用 `dev` 接收逐项实现，并通过 `dev` 到 `main` 的草稿 PR 持续展示源码、提交和云端 CI；完成集中验收后再合入 `main`。并行实现使用各自的工作树，公共接口、数据库结构和依赖等共享核心由主 Agent 串行集成。
 
-- 分支名：`fix/<issue>-<slug>`，例如 `fix/56-fast-workflow`；从最新 `main` 创建，一个分支只处理一个 Issue。
-- 完成方式：向 `main` 提 PR，快速门禁通过后使用 Squash merge，合并后删除远程和本地分支。
-- 完整五阶段只在固定候选或发布时手动派发；普通 `main` 推送不触发全量检查。
+- 分支名：`fix/<issue>-<slug>`，例如 `fix/56-dev-pr-fast`；本批从最新 `dev` 创建，一个分支只处理一个具体问题。
+- 完成方式：向 `dev` 提 PR，快速门禁通过后使用 Squash merge，随后删除工作分支；`dev` 到 `main` 的草稿 PR 同步记录已集成范围与未运行验收。
+- 指向 `main` 或 `dev` 的 PR 均运行 `pr-fast-gate`；完整五阶段只在固定候选或发布时手动派发，普通分支推送不触发全量检查。
 - 需要单人作者时，提交前检查 `git var GIT_AUTHOR_IDENT` 和 `git var GIT_COMMITTER_IDENT`，使用本人身份，不添加代理作者或 `Co-authored-by`。既有已发布提交不重写。
 
 ```bash
-git switch main
-git switch -c fix/56-fast-workflow
+git switch dev
+git switch -c fix/56-dev-pr-fast
 ```
