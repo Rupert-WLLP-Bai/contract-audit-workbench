@@ -59,8 +59,11 @@ async function signIn(target: Page, username: string, password: string): Promise
   await target.goto(`${web}/login`);
   await target.getByLabel("账号", { exact: true }).fill(username);
   await target.getByLabel("密码", { exact: true }).fill(password);
+  const authenticated = target.waitForResponse((response) => response.request().method() === "POST" && new URL(response.url()).pathname === "/api/session");
   await target.getByRole("button", { name: "登录", exact: true }).click();
-  await target.getByRole("heading", { name: "案件", exact: true }).waitFor();
+  const response = await authenticated;
+  assert.equal(response.status(), 200, `login failed: ${await response.text()}`);
+  await target.waitForURL((url) => url.origin === new URL(web).origin && url.pathname !== "/login");
 }
 async function caseDetail(target: Page): Promise<CaseDetail> {
   const response = await target.request.get(`${web}/api/cases/${caseID}`);
