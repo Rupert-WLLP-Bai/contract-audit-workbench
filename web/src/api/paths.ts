@@ -124,6 +124,8 @@ export const paths = {
   },
   frozenLegalCitation: (caseId: string, runId: string, attemptId: string, citationId: string) =>
     `/api/cases/${id(caseId)}/runs/${id(runId)}/attempts/${id(attemptId)}/legal-citations/${id(citationId)}`,
+  frozenContractCitation: (caseId: string, runId: string, attemptId: string, evidenceId: string) =>
+    `/api/cases/${id(caseId)}/runs/${id(runId)}/attempts/${id(attemptId)}/contract-citations/${id(evidenceId)}`,
   retryReview: (caseId: string, runId: string) =>
     `/api/cases/${id(caseId)}/reviews/${id(runId)}/retry`,
   cancelReview: (caseId: string, runId: string) =>
