@@ -454,11 +454,11 @@ func TestRetryRejectsLegitimateMappingVersionChangeAfterObjectContextFreeze(t *t
 		t.Fatal(err)
 	}
 	binding, err := core.CreateOperatorObjectBinding(ctx, admin, caseID, OperatorObjectBindingInput{
-		ContractObject: OperatorContractObject{ObjectType: "service", ObjectID: "LINE-001"},
-		ExternalObject: OperatorExternalObject{ConnectorID: "fixture.oss", ExternalObjectID: "fixture-line-001"},
+		ContractObject:  OperatorContractObject{ObjectType: "service", ObjectID: "LINE-001"},
+		ExternalObject:  OperatorExternalObject{ConnectorID: "fixture.oss", ExternalObjectID: "fixture-line-001"},
 		ServiceObjectID: object.ServiceObjectID, ExpectedObjectVersion: confirmed.Version,
 		ExpectedAssociationVersion: confirmed.AssociationVersion,
-		EffectiveFrom: businessAt.Add(-24 * time.Hour), EffectiveUntil: businessAt.Add(24 * time.Hour), Confirmed: true,
+		EffectiveFrom:              businessAt.Add(-24 * time.Hour), EffectiveUntil: businessAt.Add(24 * time.Hour), Confirmed: true,
 	}, "mapping-change-binding-1")
 	if err != nil {
 		t.Fatalf("create confirmed operator mapping: %v", err)
