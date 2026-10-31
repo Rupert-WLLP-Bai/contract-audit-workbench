@@ -20,7 +20,7 @@ DATABASE_OPERATION = re.compile(
     r"\b(?:pgx|pgxpool)\.(?:Connect|ConnectConfig|New|NewWithConfig)\s*\(|"
     r"\bsql\.Open(?:DB)?\s*\(|\b(?:store\.)?OpenTest\s*\(|"
     r"\bstore\.Open[A-Za-z0-9_]*\s*\(|"
-    r"\b[A-Za-z_]\w*\.(?:Exec|Query|QueryRow|Begin|BeginTx)\s*\(|"
+    r"\b(?i:[A-Za-z_]\w*(?:db|database|pool|conn|connection|tx|transaction))\.(?:Exec|Query|QueryRow|Begin|BeginTx)\s*\(|"
     r"\b(?:exec|command)\.Command(?:Context)?\s*\(\s*\"(?:psql|postgres)\""
 )
 FUNCTION = re.compile(r"(?m)^func\s+(?:\([^\n)]*\)\s*)?([A-Za-z_][A-Za-z0-9_]*)\s*\(")
