@@ -707,7 +707,13 @@ func (s *Store) Reparse(ctx context.Context, user accounts.User, caseID, docID s
 }
 
 func (s *Store) Original(user accounts.User, caseID, docID string) (Document, []byte, error) {
-	st, err := s.snapshotCaseOriginal(context.Background(), user, caseID, docID)
+	return s.OriginalContext(context.Background(), user, caseID, docID)
+}
+
+// OriginalContext preserves current case authorization while allowing a
+// disconnected export to cancel an in-flight object read.
+func (s *Store) OriginalContext(ctx context.Context, user accounts.User, caseID, docID string) (Document, []byte, error) {
+	st, err := s.snapshotCaseOriginal(ctx, user, caseID, docID)
 	if err != nil {
 		return Document{}, nil, err
 	}
@@ -718,8 +724,11 @@ func (s *Store) Original(user accounts.User, caseID, docID string) (Document, []
 		if doc.ID != docID {
 			continue
 		}
-		body, err := s.getObject(context.Background(), doc)
+		body, err := s.getObject(ctx, doc)
 		if err != nil {
+			if ctx.Err() != nil {
+				return Document{}, nil, ctx.Err()
+			}
 			if err == errObjectIntegrity {
 				return Document{}, nil, fault.New(409, "digest_mismatch", "原件摘要与保存的字节不一致")
 			}

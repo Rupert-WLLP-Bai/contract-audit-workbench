@@ -91,7 +91,7 @@ func (h *handler) downloadEvidenceBundle(w http.ResponseWriter, r *http.Request)
 			if err := r.Context().Err(); err != nil {
 				return nil, err
 			}
-			doc, body, err := h.store.Original(user, caseID, original.DocumentID)
+			doc, body, err := h.store.OriginalContext(r.Context(), user, caseID, original.DocumentID)
 			if err != nil {
 				return nil, err
 			}
