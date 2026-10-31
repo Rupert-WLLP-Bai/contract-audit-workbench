@@ -48,11 +48,26 @@ OBSERVE_IMAGES = (
     "prom/prometheus:v3.15.1",
     "grafana/grafana:13.2.4",
 )
-IMAGE_TAGS = (
-    "contract-audit-backend:local",
-    "contract-audit-client:local",
-    "contract-audit-admin:local",
-    "contract-audit-portal:local",
+# Frontends and backend are packaged by deployments/scripts/package-app-images.py.
+# The default suffix keeps the shared :local tags the Compose stack uses; an
+# isolated acceptance passes CAW_K3D_IMAGE_SUFFIX to deploy images that were
+# packaged under its own tag (--tag-suffix) and never retags the shared ones.
+IMAGE_SUFFIX = os.environ.get("CAW_K3D_IMAGE_SUFFIX", "").strip()
+_ALLOWED_SUFFIX = frozenset("abcdefghijklmnopqrstuvwxyz0123456789_.-")
+if IMAGE_SUFFIX and (not IMAGE_SUFFIX.isascii() or len(IMAGE_SUFFIX) > 49
+                     or set(IMAGE_SUFFIX) - _ALLOWED_SUFFIX
+                     or not IMAGE_SUFFIX[0].isalnum() or not IMAGE_SUFFIX[0].isascii()):
+    print(f"BLOCKED: CAW_K3D_IMAGE_SUFFIX must match [a-z0-9][a-z0-9_.-]{{0,48}}, got {IMAGE_SUFFIX!r}",
+          file=sys.stderr)
+    raise SystemExit(2)
+APP_IMAGES = ("backend", "client", "admin", "portal")
+
+
+def app_image(name: str) -> str:
+    return f"contract-audit-{name}:{IMAGE_SUFFIX or 'local'}"
+
+
+IMAGE_TAGS = tuple(app_image(name) for name in APP_IMAGES) + (
     "postgres:18.6-bookworm",
     "rustfs/rustfs:1.0.3",
     "nats:2.11.8-alpine",
@@ -185,7 +200,8 @@ def up() -> None:
     write_kubeconfig()
     kubectl("wait", "--for=condition=Ready", "nodes", "--all", "--timeout=120s", timeout=150)
     agents = 4 if FULL else 2
-    print(f"Cluster: {CLUSTER} (1 server, {agents} agents, profile={PROFILE}); kubeconfig: {KUBECONFIG}")
+    print(f"Cluster: {CLUSTER} (1 server, {agents} agents, profile={PROFILE}, "
+          f"images={IMAGE_SUFFIX or 'local'}); kubeconfig: {KUBECONFIG}")
 
 
 def import_images() -> None:
@@ -224,9 +240,34 @@ def apply_private_secret(name: str, keys: tuple[str, ...]) -> None:
         private_env.unlink(missing_ok=True)
 
 
+def staged_overlay(overlay: Path) -> Path:
+    """Point an overlay at the isolated application image tags.
+
+    Kustomize only accepts resources below its own root, so the generated
+    parent kustomization stays under the private artifact directory and refers
+    back to the checked-in overlay with a relative path. Nothing is written
+    inside the source tree, and the default suffix bypasses this entirely.
+    """
+    staged = ARTIFACTS / "kustomize" / overlay.name
+    private_dir()
+    staged.mkdir(parents=True, exist_ok=True, mode=0o700)
+    lines = [
+        "apiVersion: kustomize.config.k8s.io/v1beta1",
+        "kind: Kustomization",
+        "resources:",
+        f"  - {os.path.relpath(overlay, staged)}",
+        "images:",
+    ]
+    lines.extend(f"  - {{name: contract-audit-{name}, newTag: {IMAGE_SUFFIX}}}" for name in APP_IMAGES)
+    (staged / "kustomization.yaml").write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return staged
+
+
 def apply_phase(path: str) -> None:
-    overlay = str(ROOT / "deployments/k3d" / path)
-    manifest = run(["kubectl", "kustomize", overlay, "--load-restrictor", "LoadRestrictionsNone"], timeout=300).stdout
+    overlay = ROOT / "deployments/k3d" / path
+    if IMAGE_SUFFIX:
+        overlay = staged_overlay(overlay)
+    manifest = run(["kubectl", "kustomize", str(overlay), "--load-restrictor", "LoadRestrictionsNone"], timeout=300).stdout
     applied = subprocess.run(
         ["kubectl", "--kubeconfig", str(KUBECONFIG), "apply", "-f", "-"],
         input=manifest, text=True, capture_output=True, timeout=300,
@@ -313,7 +354,8 @@ def deploy() -> None:
     for deployment in ("gateway", "core-api", "document-service", "audit-execution", "audit-worker",
                        "model-gateway", "tool-gateway", "client", "admin", "portal", "health-monitor"):
         kubectl("rollout", "status", f"deployment/{deployment}", "-n", NAMESPACE, "--timeout=240s", timeout=270)
-    print("Local resources applied; application and health-monitor images were imported from Docker.")
+    images = ", ".join(app_image(name) for name in APP_IMAGES)
+    print(f"Local resources applied; imported application images: {images}.")
 
 
 def status() -> None:
