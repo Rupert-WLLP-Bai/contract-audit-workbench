@@ -105,7 +105,7 @@ def observation_services(values: dict[str, str]) -> tuple[str, ...]:
 	return ()
 
 
-def compose_prefix() -> list[str]:
+def compose_prefix(distributed_env_path: Path | None = None) -> list[str]:
 	binary = os.environ.get("COMPOSE_BIN")
 	if binary:
 		command = [binary]
@@ -120,11 +120,11 @@ def compose_prefix() -> list[str]:
 	command.extend([
 		"--project-directory", str(ROOT),
 		"--env-file", str(ENV_PATH),
-		"--env-file", str(DISTRIBUTED_ENV_PATH),
+		"--env-file", str(distributed_env_path or DISTRIBUTED_ENV_PATH),
 		"-f", str(ROOT / "compose.yaml"),
 		"-f", str(ROOT / "compose.app.yaml"),
 	])
-	values = {**read_env(ENV_PATH), **read_env(DISTRIBUTED_ENV_PATH), **os.environ}
+	values = {**read_env(ENV_PATH), **read_env(distributed_env_path or DISTRIBUTED_ENV_PATH), **os.environ}
 	if values.get("IDENTITY_DIRECTORY_ROOT", "").strip():
 		command.extend(["-f", str(ROOT / "deployments/compose.identity.yaml")])
 	elif values.get("OIDC_ISSUER", "").strip():

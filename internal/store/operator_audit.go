@@ -1,6 +1,7 @@
 package store
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -15,8 +16,6 @@ import (
 	"contractaudit/internal/auditext"
 	"contractaudit/internal/capabilitypack"
 	"contractaudit/internal/fault"
-	"contractaudit/internal/rulepack"
-	"contractaudit/internal/telecom"
 
 	"github.com/jackc/pgx/v5"
 )
@@ -40,32 +39,45 @@ type OperatorExternalObject struct {
 type OperatorObjectBindingInput struct {
 	ContractObject OperatorContractObject `json:"contract_object"`
 	ExternalObject OperatorExternalObject `json:"external_object"`
-	EffectiveFrom  time.Time              `json:"effective_from"`
-	EffectiveUntil time.Time              `json:"effective_until"`
-	Confirmed      bool                   `json:"confirmed"`
+	// ServiceObjectID and the two expected versions pin a new operator mapping
+	// to the exact confirmed object identity and contract association. They are
+	// optional only so an already persisted legacy idempotency request can be
+	// replayed byte-for-byte; fresh writes require all three values.
+	ServiceObjectID            string    `json:"service_object_id,omitempty"`
+	ExpectedObjectVersion      int       `json:"expected_object_version,omitempty"`
+	ExpectedAssociationVersion int       `json:"expected_association_version,omitempty"`
+	EffectiveFrom              time.Time `json:"effective_from"`
+	EffectiveUntil             time.Time `json:"effective_until"`
+	Confirmed                  bool      `json:"confirmed"`
 }
 
 // OperatorObjectBinding is the immutable persisted mapping.
 type OperatorObjectBinding struct {
-	CaseID         string                 `json:"case_id"`
-	BindingID      string                 `json:"binding_id"`
-	Version        string                 `json:"version"`
-	Status         string                 `json:"status"`
-	ContractObject OperatorContractObject `json:"contract_object"`
-	ExternalObject OperatorExternalObject `json:"external_object"`
-	SourceSystem   string                 `json:"source_system"`
-	ConfirmedBy    string                 `json:"confirmed_by"`
-	ConfirmedAt    time.Time              `json:"confirmed_at"`
-	EffectiveFrom  time.Time              `json:"effective_from"`
-	EffectiveUntil time.Time              `json:"effective_until"`
-	CreatedAt      time.Time              `json:"created_at"`
-	requestSHA256  string
+	CaseID             string                 `json:"case_id"`
+	BindingID          string                 `json:"binding_id"`
+	Version            string                 `json:"version"`
+	Status             string                 `json:"status"`
+	ContractObject     OperatorContractObject `json:"contract_object"`
+	ExternalObject     OperatorExternalObject `json:"external_object"`
+	SourceSystem       string                 `json:"source_system"`
+	ConfirmedBy        string                 `json:"confirmed_by"`
+	ConfirmedAt        time.Time              `json:"confirmed_at"`
+	EffectiveFrom      time.Time              `json:"effective_from"`
+	EffectiveUntil     time.Time              `json:"effective_until"`
+	CreatedAt          time.Time              `json:"created_at"`
+	MappingID          string                 `json:"mapping_id,omitempty"`
+	MappingVersion     int64                  `json:"mapping_version,omitempty"`
+	ServiceObjectID    string                 `json:"service_object_id,omitempty"`
+	ObjectVersion      int                    `json:"object_version,omitempty"`
+	AssociationVersion int                    `json:"association_version,omitempty"`
+	requestSHA256      string
 }
 
 // OperatorSnapshotSet is one immutable collection result. A failed read is
 // persisted as unavailable/rejected evidence, never as a successful snapshot.
 type OperatorSnapshotSet struct {
 	CaseID           string                 `json:"case_id"`
+	CollectionID     string                 `json:"-"`
 	SnapshotSetID    string                 `json:"snapshot_set_id"`
 	BindingVersion   string                 `json:"binding_version"`
 	ConnectorID      string                 `json:"connector_id"`
@@ -77,20 +89,34 @@ type OperatorSnapshotSet struct {
 	CollectedBy      string                 `json:"collected_by"`
 	CollectedAt      time.Time              `json:"collected_at"`
 	Observations     []auditext.Observation `json:"observations"`
+	requestSHA256    string                 `json:"-"`
+}
+
+// OperatorCollectionJob exposes only the caller's own durable collection
+// claim. It supports refresh/recovery without making the claim table a general
+// cross-service workflow API.
+type OperatorCollectionJob struct {
+	CollectionID  string               `json:"collection_id"`
+	CaseID        string               `json:"case_id"`
+	State         string               `json:"state"`
+	RetryAfter    *time.Time           `json:"retry_after,omitempty"`
+	SnapshotSetID *string              `json:"snapshot_set_id,omitempty"`
+	SnapshotSet   *OperatorSnapshotSet `json:"snapshot_set,omitempty"`
 }
 
 // OperatorEvaluationInput is the frozen identity accepted for one deterministic
 // evaluation. The server resolves every referenced version; none is trusted
 // from another tenant.
 type OperatorEvaluationInput struct {
-	PackID               string    `json:"pack_id"`
-	PackVersion          string    `json:"pack_version"`
-	SourceReviewID       string    `json:"source_review_id"`
-	SourceAttemptID      string    `json:"source_attempt_id"`
-	ContractVersionID    string    `json:"contract_version_id"`
-	ObjectBindingVersion string    `json:"object_binding_version"`
-	SnapshotSetID        string    `json:"snapshot_set_id"`
-	BusinessAt           time.Time `json:"business_at"`
+	PackID               string     `json:"pack_id"`
+	PackVersion          string     `json:"pack_version"`
+	SourceReviewID       string     `json:"source_review_id"`
+	SourceAttemptID      string     `json:"source_attempt_id"`
+	ContractVersionID    string     `json:"contract_version_id"`
+	ObjectBindingVersion string     `json:"object_binding_version"`
+	SnapshotSetID        string     `json:"snapshot_set_id"`
+	BusinessAt           time.Time  `json:"business_at"`
+	EvidenceCutoffAt     *time.Time `json:"evidence_cutoff_at,omitempty"`
 }
 
 // OperatorEvaluation is the persisted deterministic result plus its frozen
@@ -107,6 +133,7 @@ type OperatorEvaluation struct {
 	ObjectBindingVersion string                 `json:"object_binding_version"`
 	SnapshotSetID        string                 `json:"snapshot_set_id"`
 	BusinessAt           time.Time              `json:"business_at"`
+	EvidenceCutoffAt     *time.Time             `json:"evidence_cutoff_at,omitempty"`
 	MachineStatus        string                 `json:"machine_status"`
 	Checks               []auditext.CheckResult `json:"checks"`
 	CreatedAt            time.Time              `json:"created_at"`
@@ -252,7 +279,7 @@ func (s *Store) CreateOperatorObjectBinding(ctx context.Context, user accounts.U
 	if err != nil {
 		return OperatorObjectBinding{}, err
 	}
-	requestSHA, err := operatorHash(struct {
+	legacyRequestSHA, err := operatorHash(struct {
 		CaseID         string
 		ContractObject OperatorContractObject
 		ExternalObject OperatorExternalObject
@@ -262,17 +289,64 @@ func (s *Store) CreateOperatorObjectBinding(ctx context.Context, user accounts.U
 	if err != nil {
 		return OperatorObjectBinding{}, err
 	}
+	requestSHA := legacyRequestSHA
+	if input.ServiceObjectID != "" || input.ExpectedObjectVersion != 0 || input.ExpectedAssociationVersion != 0 {
+		requestSHA, err = operatorHash(struct {
+			CaseID                     string
+			ContractObject             OperatorContractObject
+			ExternalObject             OperatorExternalObject
+			From, Until                time.Time
+			Confirmed                  bool
+			ServiceObjectID            string
+			ExpectedObjectVersion      int
+			ExpectedAssociationVersion int
+		}{caseID, input.ContractObject, input.ExternalObject, from, until, true,
+			input.ServiceObjectID, input.ExpectedObjectVersion, input.ExpectedAssociationVersion})
+		if err != nil {
+			return OperatorObjectBinding{}, err
+		}
+	}
 	var out OperatorObjectBinding
 	err = s.withOperatorTx(ctx, user, caseID, true, func(tx pgx.Tx) error {
 		existing, err := loadOperatorBindingByKey(ctx, tx, item.TenantID, item.OwnerOrgID, caseID, current.ID, key)
 		if err == nil {
-			if existing.requestSHA256 != requestSHA {
+			// Old unpinned requests remain replayable only when this exact legacy
+			// idempotency record already exists. They cannot create new mappings.
+			matches := existing.requestSHA256 == requestSHA ||
+				(input.ServiceObjectID == "" && input.ExpectedObjectVersion == 0 && input.ExpectedAssociationVersion == 0 && existing.requestSHA256 == legacyRequestSHA)
+			if !matches {
 				return fault.Conflict("同一幂等键对应了不同的对象映射")
 			}
 			out = existing
 			return nil
 		}
 		if !errors.Is(err, pgx.ErrNoRows) {
+			return err
+		}
+		if strings.TrimSpace(input.ServiceObjectID) == "" || input.ExpectedObjectVersion < 1 || input.ExpectedAssociationVersion < 1 {
+			return fault.Conflict("新建对象映射必须绑定已确认的服务对象和合同关联版本")
+		}
+		head, err := loadServiceObjectHead(ctx, tx, item.TenantID, item.OwnerOrgID, caseID, input.ServiceObjectID)
+		if err != nil {
+			return err
+		}
+		if head.CurrentVersion != input.ExpectedObjectVersion || head.CurrentAssociationVersion != input.ExpectedAssociationVersion {
+			return fault.Conflict("服务对象身份或合同关联已变化，请刷新后重试")
+		}
+		identity, err := loadServiceObjectVersionValue(ctx, tx, item.TenantID, item.OwnerOrgID, caseID, head)
+		if err != nil {
+			return err
+		}
+		association, err := loadServiceObjectAssociation(ctx, tx, item.TenantID, item.OwnerOrgID, caseID, input.ServiceObjectID, head.CurrentAssociationVersion)
+		if err != nil {
+			return err
+		}
+		if identity.State != ServiceObjectConfirmed || association.ObjectVersion != input.ExpectedObjectVersion ||
+			association.AssociationVersion != input.ExpectedAssociationVersion || association.ObjectRef != input.ContractObject.ObjectID {
+			return fault.Conflict("合同对象与已确认的服务对象关联不一致")
+		}
+		mappingID, err := newID("omap_")
+		if err != nil {
 			return err
 		}
 		contractObj, err := json.Marshal(input.ContractObject)
@@ -283,22 +357,38 @@ func (s *Store) CreateOperatorObjectBinding(ctx context.Context, user accounts.U
 		if err != nil {
 			return err
 		}
-		now := time.Now().UTC()
-		_, err = tx.Exec(ctx, `INSERT INTO operator_object_bindings
-			(tenant_id,org_id,case_id,binding_id,binding_version,status,contract_object,external_object,
-			 connector_id,external_object_id,source_system,confirmed_by,confirmed_at,effective_from,effective_until,
-			 actor_id,idempotency_key,request_sha256,created_at)
-			VALUES ($1,$2,$3,$4,$4,'confirmed',$5,$6,$7,$8,'',$9,$10,$11,$12,$9,$13,$14,$10)`,
-			item.TenantID, item.OwnerOrgID, caseID, bindingID, contractObj, externalObj,
-			input.ExternalObject.ConnectorID, input.ExternalObject.ExternalObjectID, current.ID, now, from, until, key, requestSHA)
-		if err != nil {
-			return err
-		}
+		// PostgreSQL timestamptz persists microseconds. Normalize before both
+		// constructing the first response and storing it so replay returns the
+		// exact same JSON bytes.
+		now := time.Now().UTC().Truncate(time.Microsecond)
 		out = OperatorObjectBinding{
 			CaseID: caseID, BindingID: bindingID, Version: bindingID, Status: "confirmed",
 			ContractObject: input.ContractObject, ExternalObject: input.ExternalObject,
 			ConfirmedBy: current.ID, ConfirmedAt: now, EffectiveFrom: from, EffectiveUntil: until,
-			CreatedAt: now, requestSHA256: requestSHA,
+			CreatedAt: now, MappingID: mappingID, MappingVersion: 1, ServiceObjectID: input.ServiceObjectID,
+			ObjectVersion: input.ExpectedObjectVersion, AssociationVersion: input.ExpectedAssociationVersion, requestSHA256: requestSHA,
+		}
+		responseBody, err := json.Marshal(out)
+		if err != nil {
+			return err
+		}
+		_, err = tx.Exec(ctx, `INSERT INTO operator_object_bindings
+			(tenant_id,org_id,case_id,binding_id,binding_version,status,contract_object,external_object,
+			 connector_id,external_object_id,source_system,confirmed_by,confirmed_at,effective_from,effective_until,
+			 actor_id,idempotency_key,request_sha256,created_at,mapping_id,mapping_version,service_object_id,object_version,association_version,
+			 response_status,response_body)
+			VALUES ($1,$2,$3,$4,$4,'confirmed',$5,$6,$7,$8,'',$9,$10,$11,$12,$9,$13,$14,$10,$15,1,$16,$17,$18,201,$19)`,
+			item.TenantID, item.OwnerOrgID, caseID, bindingID, contractObj, externalObj,
+			input.ExternalObject.ConnectorID, input.ExternalObject.ExternalObjectID, current.ID, now, from, until, key, requestSHA,
+			mappingID, input.ServiceObjectID, input.ExpectedObjectVersion, input.ExpectedAssociationVersion, responseBody)
+		if err != nil {
+			return err
+		}
+		if _, err := tx.Exec(ctx, `INSERT INTO operator_mapping_lineages
+			(tenant_id,org_id,case_id,mapping_id,service_object_id,current_version,current_binding_version,created_by,created_at,updated_at)
+			VALUES ($1,$2,$3,$4,$5,1,$6,$7,$8,$8)`,
+			item.TenantID, item.OwnerOrgID, caseID, mappingID, input.ServiceObjectID, bindingID, current.ID, now); err != nil {
+			return err
 		}
 		return nil
 	})
@@ -313,12 +403,10 @@ func (s *Store) CollectOperatorExternalSnapshot(ctx context.Context, user accoun
 	if key == "" {
 		return OperatorSnapshotSet{}, fault.Invalid("缺少幂等键")
 	}
-	if connector == nil {
-		return OperatorSnapshotSet{}, fault.New(503, "external_evidence_unavailable", "外部证据连接器未配置")
-	}
 	if !operatorValidTimestamp(businessAt) {
 		return OperatorSnapshotSet{}, fault.Invalid("业务时间不合法")
 	}
+	businessAt = businessAt.UTC().Truncate(time.Microsecond)
 	current, _, item, _, _, err := s.operatorCaseState(ctx, user, caseID, access.Review)
 	if err != nil {
 		return OperatorSnapshotSet{}, err
@@ -333,8 +421,146 @@ func (s *Store) CollectOperatorExternalSnapshot(ctx context.Context, user accoun
 	if binding.Status != "confirmed" {
 		return OperatorSnapshotSet{}, fault.Conflict("对象映射尚未确认，不能采集外部证据")
 	}
+	// A confirmed binding is still time-bounded evidence. Do not let callers
+	// use today's mapping to imply that the external object was associated at
+	// an unrelated historical business time.
+	if businessAt.Before(binding.EffectiveFrom) || !businessAt.Before(binding.EffectiveUntil) {
+		return OperatorSnapshotSet{}, fault.Conflict("业务时间不在已确认对象映射的有效期间内")
+	}
 	if connectorID != binding.ExternalObject.ConnectorID || externalObjectID != binding.ExternalObject.ExternalObjectID {
 		return OperatorSnapshotSet{}, fault.Conflict("采集请求与已确认的对象映射不一致")
+	}
+	requestSHA, err := operatorHash(struct {
+		TenantID, OrgID, CaseID, ActorID, BindingVersion, ConnectorID, ExternalObjectID string
+		BusinessAt                                                                      time.Time
+	}{item.TenantID, item.OwnerOrgID, caseID, current.ID, binding.Version,
+		binding.ExternalObject.ConnectorID, binding.ExternalObject.ExternalObjectID, businessAt})
+	if err != nil {
+		return OperatorSnapshotSet{}, err
+	}
+	leaseOwner, err := newID("collect_")
+	if err != nil {
+		return OperatorSnapshotSet{}, err
+	}
+	collectionID, err := newID("col_")
+	if err != nil {
+		return OperatorSnapshotSet{}, err
+	}
+	var generation int64
+	var out OperatorSnapshotSet
+	var alreadyComplete bool
+	err = s.withOperatorTx(ctx, user, caseID, true, func(tx pgx.Tx) error {
+		freshState, err := loadState(ctx, tx, true)
+		if err != nil {
+			return err
+		}
+		freshCase, err := s.visibleCase(&freshState, current, caseID)
+		if err != nil {
+			return err
+		}
+		freshActor, err := trustedUser(user)
+		if err != nil {
+			return err
+		}
+		if !authorizeCase(freshCase, freshActor, access.Review) {
+			return fault.Forbidden("当前授权不能读取此案件的外部证据")
+		}
+		current, item = freshActor, freshCase
+		var storedSHA, status string
+		var storedCollectionID string
+		var owner *string
+		var leaseUntil *time.Time
+		var resultID *string
+		err = tx.QueryRow(ctx, `SELECT collection_id,request_sha256,generation,lease_owner,lease_until,status,result_snapshot_set_id
+			FROM operator_external_collection_claims WHERE tenant_id=$1 AND org_id=$2 AND case_id=$3
+			AND actor_id=$4 AND idempotency_key=$5 FOR UPDATE`, item.TenantID, item.OwnerOrgID, caseID, current.ID, key).
+			Scan(&storedCollectionID, &storedSHA, &generation, &owner, &leaseUntil, &status, &resultID)
+		if errors.Is(err, pgx.ErrNoRows) {
+			// Preserve replay behavior for rows written before the fenced-claim
+			// table existed. The old immutable result is authoritative.
+			existing, legacyErr := loadOperatorSnapshotSetByKey(ctx, tx, item.TenantID, item.OwnerOrgID, caseID, current.ID, key)
+			if legacyErr == nil {
+				legacySHA, hashErr := operatorHash(struct {
+					CaseID, BindingVersion, ConnectorID, ExternalObjectID string
+					BusinessAt                                            time.Time
+				}{caseID, binding.Version, binding.ExternalObject.ConnectorID, binding.ExternalObject.ExternalObjectID, businessAt})
+				if hashErr != nil {
+					return hashErr
+				}
+				if existing.requestSHA256 != legacySHA {
+					return fault.Conflict("同一幂等键对应了不同的采集请求")
+				}
+				body, marshalErr := json.Marshal(existing)
+				if marshalErr != nil {
+					return marshalErr
+				}
+				generation = 1
+				out, alreadyComplete = existing, true
+				out.CollectionID = collectionID
+				_, err = tx.Exec(ctx, `INSERT INTO operator_external_collection_claims
+					(tenant_id,org_id,case_id,actor_id,idempotency_key,collection_id,request_sha256,generation,status,
+					 result_snapshot_set_id,response_status,response_body)
+					VALUES ($1,$2,$3,$4,$5,$6,$7,1,'completed',$8,201,$9)`,
+					item.TenantID, item.OwnerOrgID, caseID, current.ID, key, collectionID, requestSHA, existing.SnapshotSetID, body)
+				return err
+			}
+			if !errors.Is(legacyErr, pgx.ErrNoRows) {
+				return legacyErr
+			}
+			if connector == nil {
+				return fault.New(503, "external_evidence_unavailable", "外部证据连接器未配置")
+			}
+			if err := businessWritable(item); err != nil {
+				return err
+			}
+			generation = 1
+			_, err = tx.Exec(ctx, `INSERT INTO operator_external_collection_claims
+				(tenant_id,org_id,case_id,actor_id,idempotency_key,collection_id,request_sha256,generation,lease_owner,lease_until,status)
+				VALUES ($1,$2,$3,$4,$5,$6,$7,1,$8,clock_timestamp()+interval '5 minutes','in_progress')`,
+				item.TenantID, item.OwnerOrgID, caseID, current.ID, key, collectionID, requestSHA, leaseOwner)
+			return err
+		}
+		if err != nil {
+			return err
+		}
+		collectionID = storedCollectionID
+		if storedSHA != requestSHA {
+			return fault.Conflict("同一幂等键对应了不同的采集请求")
+		}
+		if status == "completed" {
+			if resultID == nil {
+				return fault.New(500, "integrity_error", "采集幂等回执缺少快照结果")
+			}
+			out, err = loadOperatorSnapshotSetByID(ctx, tx, caseID, *resultID)
+			if err != nil {
+				return fault.New(500, "integrity_error", "采集幂等回执引用的快照不存在")
+			}
+			out.CollectionID = collectionID
+			alreadyComplete = true
+			return nil
+		}
+		now := time.Now().UTC()
+		if status == "in_progress" && owner != nil && *owner != "" && leaseUntil != nil && leaseUntil.After(now) {
+			return fault.Conflict("相同采集请求仍在执行，请稍后重试")
+		}
+		if connector == nil {
+			return fault.New(503, "external_evidence_unavailable", "外部证据连接器未配置")
+		}
+		if err := businessWritable(item); err != nil {
+			return err
+		}
+		generation++
+		_, err = tx.Exec(ctx, `UPDATE operator_external_collection_claims SET generation=$6,lease_owner=$7,
+			lease_until=clock_timestamp()+interval '5 minutes',status='in_progress',updated_at=clock_timestamp()
+			WHERE tenant_id=$1 AND org_id=$2 AND case_id=$3 AND actor_id=$4 AND idempotency_key=$5`,
+			item.TenantID, item.OwnerOrgID, caseID, current.ID, key, generation, leaseOwner)
+		return err
+	})
+	if err != nil {
+		return OperatorSnapshotSet{}, err
+	}
+	if alreadyComplete {
+		return out, nil
 	}
 	scope := auditext.AuthorizedScope{
 		TenantID: item.TenantID, CaseID: caseID, ActorID: current.ID,
@@ -346,6 +572,7 @@ func (s *Store) CollectOperatorExternalSnapshot(ctx context.Context, user accoun
 		BusinessAt: businessAt,
 	})
 	if err != nil {
+		_ = s.releaseOperatorCollectionLease(ctx, user, item.TenantID, item.OwnerOrgID, caseID, current.ID, key, generation, leaseOwner)
 		switch {
 		case errors.Is(err, auditext.ErrUnauthorized):
 			return OperatorSnapshotSet{}, fault.Forbidden("外部来源拒绝了本次读取")
@@ -356,6 +583,7 @@ func (s *Store) CollectOperatorExternalSnapshot(ctx context.Context, user accoun
 		}
 	}
 	if err := observation.Validate(scope); err != nil {
+		_ = s.releaseOperatorCollectionLease(ctx, user, item.TenantID, item.OwnerOrgID, caseID, current.ID, key, generation, leaseOwner)
 		if errors.Is(err, auditext.ErrUnauthorized) {
 			return OperatorSnapshotSet{}, fault.Forbidden("外部证据不属于当前租户或案件")
 		}
@@ -374,13 +602,6 @@ func (s *Store) CollectOperatorExternalSnapshot(ctx context.Context, user accoun
 	if err != nil {
 		return OperatorSnapshotSet{}, err
 	}
-	requestSHA, err := operatorHash(struct {
-		CaseID, BindingVersion, ConnectorID, ExternalObjectID string
-		BusinessAt                                            time.Time
-	}{caseID, bindingVersion, binding.ExternalObject.ConnectorID, binding.ExternalObject.ExternalObjectID, businessAt})
-	if err != nil {
-		return OperatorSnapshotSet{}, err
-	}
 	observationJSON, err := json.Marshal(observation)
 	if err != nil {
 		return OperatorSnapshotSet{}, err
@@ -393,20 +614,44 @@ func (s *Store) CollectOperatorExternalSnapshot(ctx context.Context, user accoun
 	if err != nil {
 		return OperatorSnapshotSet{}, err
 	}
-	var out OperatorSnapshotSet
 	err = s.withOperatorTx(ctx, user, caseID, true, func(tx pgx.Tx) error {
-		existing, err := loadOperatorSnapshotSetByKey(ctx, tx, item.TenantID, item.OwnerOrgID, caseID, current.ID, key)
-		if err == nil {
-			if existing.Status != string(observation.Availability) {
-				return fault.Conflict("同一幂等键对应了不同的采集结果")
-			}
-			out = existing
-			return nil
-		}
-		if !errors.Is(err, pgx.ErrNoRows) {
+		var storedGeneration int64
+		var storedOwner *string
+		var storedStatus string
+		var leaseStillValid bool
+		if err := tx.QueryRow(ctx, `SELECT generation,lease_owner,status,COALESCE(lease_until > clock_timestamp(),false) FROM operator_external_collection_claims
+			WHERE tenant_id=$1 AND org_id=$2 AND case_id=$3 AND actor_id=$4 AND idempotency_key=$5 FOR UPDATE`,
+			item.TenantID, item.OwnerOrgID, caseID, current.ID, key).Scan(&storedGeneration, &storedOwner, &storedStatus, &leaseStillValid); err != nil {
 			return err
 		}
-		now := time.Now().UTC()
+		if storedStatus != "in_progress" || !leaseStillValid || storedGeneration != generation || storedOwner == nil || *storedOwner != leaseOwner {
+			return fault.Conflict("采集租约已被更新的请求接管")
+		}
+		freshState, err := loadState(ctx, tx, true)
+		if err != nil {
+			return err
+		}
+		freshCase, err := s.visibleCase(&freshState, current, caseID)
+		if err != nil {
+			return err
+		}
+		freshActor, err := trustedUser(user)
+		if err != nil {
+			return err
+		}
+		if err := businessWritable(freshCase); err != nil {
+			return err
+		}
+		if !authorizeCase(freshCase, freshActor, access.Review) {
+			return fault.Forbidden("采集期间案件授权已变化")
+		}
+		freshGrantVersion := operatorGrantVersion(freshCase, freshActor)
+		if freshGrantVersion != scope.GrantVersion {
+			return fault.Forbidden("采集期间案件授权已变化")
+		}
+		// timestamptz persists microseconds. Normalize before constructing the
+		// response receipt so an idempotent replay returns identical JSON bytes.
+		now := time.Now().UTC().Truncate(time.Microsecond)
 		if _, err := tx.Exec(ctx, `INSERT INTO operator_external_snapshot_sets
 			(tenant_id,org_id,case_id,snapshot_set_id,binding_version,connector_id,external_object_id,source_system,
 			 business_at,status,reason_code,collected_by,collected_at,observation_count,set_sha256,actor_id,idempotency_key,request_sha256,created_at)
@@ -438,27 +683,55 @@ func (s *Store) CollectOperatorExternalSnapshot(ctx context.Context, user accoun
 			return err
 		}
 		out = OperatorSnapshotSet{
-			CaseID: caseID, SnapshotSetID: snapshotSetID, BindingVersion: binding.Version,
+			CaseID: caseID, CollectionID: collectionID, SnapshotSetID: snapshotSetID, BindingVersion: binding.Version,
 			ConnectorID: observation.ConnectorID, ExternalObjectID: observation.ExternalObjectID,
 			SourceSystem: observation.SourceSystem, BusinessAt: businessAt,
 			Status: string(observation.Availability), ReasonCode: observation.ReasonCode,
 			CollectedBy: current.ID, CollectedAt: now, Observations: []auditext.Observation{observation},
+		}
+		responseBody, err := json.Marshal(out)
+		if err != nil {
+			return err
+		}
+		tag, err := tx.Exec(ctx, `UPDATE operator_external_collection_claims SET status='completed',lease_owner=NULL,lease_until=NULL,
+			result_snapshot_set_id=$6,response_status=201,response_body=$7,updated_at=$8
+			WHERE tenant_id=$1 AND org_id=$2 AND case_id=$3 AND actor_id=$4 AND idempotency_key=$5
+			AND generation=$9 AND lease_owner=$10 AND status='in_progress' AND lease_until>clock_timestamp()`,
+			item.TenantID, item.OwnerOrgID, caseID, current.ID, key, snapshotSetID, responseBody, now, generation, leaseOwner)
+		if err != nil {
+			return err
+		}
+		if tag.RowsAffected() != 1 {
+			return fault.Conflict("采集租约已被更新的请求接管")
 		}
 		return nil
 	})
 	return out, err
 }
 
+func (s *Store) releaseOperatorCollectionLease(ctx context.Context, user accounts.User, tenantID, orgID, caseID, actorID, key string, generation int64, owner string) error {
+	return s.withOperatorTx(ctx, user, caseID, true, func(tx pgx.Tx) error {
+		_, err := tx.Exec(ctx, `UPDATE operator_external_collection_claims SET status='retryable',lease_owner=NULL,
+			lease_until=NULL,updated_at=clock_timestamp() WHERE tenant_id=$1 AND org_id=$2 AND case_id=$3 AND actor_id=$4
+			AND idempotency_key=$5 AND generation=$6 AND lease_owner=$7 AND status='in_progress'`,
+			tenantID, orgID, caseID, actorID, key, generation, owner)
+		return err
+	})
+}
+
 func (s *Store) operatorReadBinding(ctx context.Context, user accounts.User, caseID, bindingVersion string) (OperatorObjectBinding, error) {
 	var out OperatorObjectBinding
 	err := s.withOperatorTx(ctx, user, caseID, false, func(tx pgx.Tx) error {
 		return tx.QueryRow(ctx, `SELECT case_id,binding_id,binding_version,status,contract_object,external_object,
-			source_system,confirmed_by,confirmed_at,effective_from,effective_until,created_at,request_sha256
+			source_system,confirmed_by,confirmed_at,effective_from,effective_until,created_at,request_sha256,
+			COALESCE(mapping_id,''),COALESCE(mapping_version,0),COALESCE(service_object_id,''),
+			COALESCE(object_version,0),COALESCE(association_version,0)
 			FROM operator_object_bindings WHERE tenant_id=current_setting('app.tenant_id',true)
 			AND org_id=current_setting('app.org_id',true) AND case_id=$1 AND binding_version=$2`,
 			caseID, bindingVersion).Scan(&out.CaseID, &out.BindingID, &out.Version, &out.Status,
 			&out.ContractObject, &out.ExternalObject, &out.SourceSystem, &out.ConfirmedBy, &out.ConfirmedAt,
-			&out.EffectiveFrom, &out.EffectiveUntil, &out.CreatedAt, &out.requestSHA256)
+			&out.EffectiveFrom, &out.EffectiveUntil, &out.CreatedAt, &out.requestSHA256, &out.MappingID,
+			&out.MappingVersion, &out.ServiceObjectID, &out.ObjectVersion, &out.AssociationVersion)
 	})
 	if errors.Is(err, pgx.ErrNoRows) {
 		return out, fault.NotFound("没有找到对象映射")
@@ -528,7 +801,16 @@ func (s *Store) CreateOperatorFulfillmentEvaluation(ctx context.Context, user ac
 	if !operatorValidTimestamp(input.BusinessAt) {
 		return OperatorEvaluation{}, fault.Invalid("业务时间不合法")
 	}
-	current, st, item, principal, resource, err := s.operatorCaseState(ctx, user, caseID, access.Review)
+	input.BusinessAt = input.BusinessAt.UTC().Truncate(time.Microsecond)
+	evidenceCutoffAt := input.BusinessAt.UTC().Truncate(time.Microsecond)
+	if input.EvidenceCutoffAt != nil {
+		evidenceCutoffAt = input.EvidenceCutoffAt.UTC().Truncate(time.Microsecond)
+		input.EvidenceCutoffAt = &evidenceCutoffAt
+	}
+	if evidenceCutoffAt.After(time.Now().UTC()) {
+		return OperatorEvaluation{}, fault.Invalid("证据截止时间不能晚于当前受理时间")
+	}
+	current, st, item, _, _, err := s.operatorCaseState(ctx, user, caseID, access.Review)
 	if err != nil {
 		return OperatorEvaluation{}, err
 	}
@@ -542,12 +824,18 @@ func (s *Store) CreateOperatorFulfillmentEvaluation(ctx context.Context, user ac
 	if binding.Status != "confirmed" {
 		return OperatorEvaluation{}, fault.Conflict("对象映射尚未确认")
 	}
+	if input.BusinessAt.Before(binding.EffectiveFrom) || !input.BusinessAt.Before(binding.EffectiveUntil) {
+		return OperatorEvaluation{}, fault.Conflict("业务时间不在已确认对象映射的有效期间内")
+	}
 	snapshot, err := s.operatorReadSnapshotSet(ctx, user, caseID, input.SnapshotSetID)
 	if err != nil {
 		return OperatorEvaluation{}, err
 	}
 	if snapshot.BindingVersion != binding.Version {
 		return OperatorEvaluation{}, fault.Conflict("快照集不属于该对象映射")
+	}
+	if !snapshot.BusinessAt.Equal(input.BusinessAt) {
+		return OperatorEvaluation{}, fault.Conflict("快照集业务时间与核验请求不一致")
 	}
 	if len(snapshot.Observations) == 0 {
 		return OperatorEvaluation{}, fault.Conflict("快照集没有可用观测")
@@ -562,6 +850,16 @@ func (s *Store) CreateOperatorFulfillmentEvaluation(ctx context.Context, user ac
 	if !operatorFrozenHasContract(attemptInput, input.ContractVersionID) {
 		return OperatorEvaluation{}, fault.Conflict("合同版本不在冻结输入中")
 	}
+	if binding.ServiceObjectID == "" || binding.ObjectVersion < 1 || binding.AssociationVersion < 1 {
+		return OperatorEvaluation{}, fault.Conflict("历史对象映射尚未绑定已确认的服务对象，不能发起新的核验")
+	}
+	association, err := s.GetServiceObjectAssociation(ctx, user, caseID, binding.ServiceObjectID, binding.AssociationVersion)
+	if err != nil {
+		return OperatorEvaluation{}, err
+	}
+	if !operatorAssociationMatchesFrozenAttempt(association, binding, input, attemptInput) {
+		return OperatorEvaluation{}, fault.Conflict("对象映射未固定到请求所选的合同材料、解析和审查尝试")
+	}
 	rulePackVersion := attempt.RulePackVersion
 	if rulePackVersion == "" {
 		rulePackVersion = pack.RulePackRef.Version
@@ -570,19 +868,19 @@ func (s *Store) CreateOperatorFulfillmentEvaluation(ctx context.Context, user ac
 		(attempt.RulePackID != "" && attempt.RulePackID != pack.RulePackRef.ID) {
 		return OperatorEvaluation{}, fault.Conflict("来源审查使用的规则包与能力包不一致")
 	}
-	sources, err := telecomSources(interpretedFromFrozen(attemptInput.Documents))
-	if err != nil {
+	var selectedSource []Interpreted
+	for _, source := range interpretedFromFrozen(attemptInput.Documents) {
+		if source.Document.ID == association.DocumentID && source.ParsedDocument != nil && source.ParsedDocument.ID == association.ParsedDocumentID {
+			selectedSource = append(selectedSource, source)
+		}
+	}
+	if len(selectedSource) != 1 {
+		return OperatorEvaluation{}, fault.Conflict("服务对象合同关联未固定到唯一的审查解析")
+	}
+	if _, err := telecomSources(selectedSource); err != nil {
 		return OperatorEvaluation{}, fault.Conflict("冻结合同输入未通过完整性校验")
 	}
-	request := rulepack.Request{
-		Principal: principal, Resource: resource, BusinessLine: item.BusinessLine,
-		Scenario: item.Scenario, ContractType: item.ContractType, At: input.BusinessAt, Sources: sources,
-	}
-	facts, err := telecom.Extract(request)
-	if err != nil {
-		return OperatorEvaluation{}, fault.Conflict("合同阈值无法从冻结原文中确定性提取")
-	}
-	frozenFacts, err := operatorFacts(facts)
+	frozenFacts, err := operatorFactsForAssociation(association)
 	if err != nil {
 		return OperatorEvaluation{}, err
 	}
@@ -616,12 +914,14 @@ func (s *Store) CreateOperatorFulfillmentEvaluation(ctx context.Context, user ac
 		PlannerConfigurationID: plannerID,
 		ParserConfigurationID:  parserID,
 		BusinessAt:             input.BusinessAt,
+		EvidenceCutoffAt:       &evidenceCutoffAt,
 		Facts:                  frozenFacts,
 	}
 	if err := frozen.Validate(); err != nil {
 		return OperatorEvaluation{}, fault.Conflict("冻结核验输入不完整")
 	}
-	checks, err := evaluator.Evaluate(ctx, frozen, snapshot.Observations)
+	observations := operatorObservationsForEvaluation(snapshot, input.BusinessAt, evidenceCutoffAt)
+	checks, err := evaluator.Evaluate(ctx, frozen, observations)
 	if err != nil {
 		if errors.Is(err, auditext.ErrUnauthorized) {
 			return OperatorEvaluation{}, fault.Forbidden("当前授权不能核验该案件")
@@ -703,7 +1003,8 @@ func (s *Store) CreateOperatorFulfillmentEvaluation(ctx context.Context, user ac
 			SourceReviewID: input.SourceReviewID, SourceAttemptID: input.SourceAttemptID,
 			ContractVersionID: input.ContractVersionID, RulePackVersion: rulePackVersion,
 			ObjectBindingVersion: binding.Version, SnapshotSetID: snapshot.SnapshotSetID,
-			BusinessAt: input.BusinessAt, MachineStatus: machineStatus, Checks: checks,
+			BusinessAt: input.BusinessAt, EvidenceCutoffAt: &evidenceCutoffAt,
+			MachineStatus: machineStatus, Checks: checks,
 			CreatedAt: now, Input: frozen, ResultSHA256: resultSHA,
 		}
 		return nil
@@ -822,53 +1123,263 @@ func operatorFrozenHasContract(input AttemptInput, contractVersion string) bool 
 	return false
 }
 
-func operatorFacts(facts []rulepack.Fact) ([]auditext.Fact, error) {
-	var out []auditext.Fact
-	for _, fact := range facts {
-		if fact.Dimension != "minimum_bandwidth" {
+func operatorAssociationMatchesFrozenAttempt(association ServiceObjectContractAssociation, binding OperatorObjectBinding,
+	input OperatorEvaluationInput, attemptInput AttemptInput) bool {
+	if association.ServiceObjectID != binding.ServiceObjectID || association.ObjectVersion != binding.ObjectVersion ||
+		association.AssociationVersion != binding.AssociationVersion || association.DocumentID != input.ContractVersionID ||
+		association.SourceRunID != input.SourceReviewID || association.SourceAttemptID != input.SourceAttemptID ||
+		association.MaterialID == "" || association.MaterialVersion < 1 || association.ParsedDocumentID == "" {
+		return false
+	}
+	for _, frozen := range attemptInput.Documents {
+		if frozen.Document.ID != association.DocumentID || frozen.ParsedDocumentID != association.ParsedDocumentID ||
+			frozen.Document.Role != "draft_contract" || frozen.Material == nil ||
+			frozen.Material.MaterialID != association.MaterialID || frozen.Material.Version != association.MaterialVersion || !frozen.Ready {
 			continue
 		}
+		return true
+	}
+	return false
+}
+
+func operatorFactsForAssociation(association ServiceObjectContractAssociation) ([]auditext.Fact, error) {
+	canonical, digest, err := canonicalServiceObjectFacts(association.FactRefs)
+	if err != nil || len(association.FactsCanonicalJSON) == 0 || !bytes.Equal(canonical, association.FactsCanonicalJSON) ||
+		digest != association.FactsSHA256 || !validServiceObjectSHA256(association.FactsSHA256) {
+		return nil, fault.Conflict("服务对象合同关联事实未通过完整性校验")
+	}
+	if err := validateServiceObjectFactRefs(association); err != nil {
+		return nil, fault.Conflict("服务对象合同关联事实与材料解析不一致")
+	}
+	out := make([]auditext.Fact, 0, len(association.FactRefs))
+	for _, reference := range association.FactRefs {
+		fact := reference.Fact
 		evidence := make([]auditext.EvidenceRef, 0, len(fact.Citations))
 		for _, citation := range fact.Citations {
+			if citation.SourceID != association.DocumentID || citation.SourceVersion != association.ParsedDocumentID {
+				return nil, fault.Conflict("服务对象合同关联引用了不同的冻结材料或解析")
+			}
 			evidence = append(evidence, auditext.EvidenceRef{
 				Kind: auditext.EvidenceDocument, DocumentVersionID: citation.SourceID,
-				ParsedVersionID: citation.SourceVersion, Start: citation.Start, End: citation.End, Quote: citation.Quote,
+				ParsedVersionID: citation.SourceVersion, Start: citation.Start, End: citation.End,
+				Quote: citation.Quote, SourceDigest: citation.SourceDigest,
 			})
 		}
+		var applicable *bool
+		outOfScope := false
+		if fact.Applicable != nil {
+			value := *fact.Applicable
+			applicable = &value
+			outOfScope = !value
+		}
+		semanticKind := ""
+		if fact.Dimension == "minimum_bandwidth" {
+			semanticKind = "configured_value"
+		}
 		out = append(out, auditext.Fact{
-			Name: "minimum_bandwidth", Value: auditext.ExactQuantity{Value: fact.Value, Unit: fact.Unit},
-			Evidence: evidence, SemanticKind: "configured_value",
+			Name: fact.Dimension, Value: auditext.ExactQuantity{Value: fact.Value, Unit: fact.Unit},
+			Evidence: evidence, OutOfScope: outOfScope, SemanticKind: semanticKind,
+			FactID: fact.ID, RuleID: fact.RuleID, Dimension: fact.Dimension, ObjectRef: fact.ObjectRef,
+			Applicable: applicable, Basis: fact.Basis, MeasurementWindow: fact.MeasurementWindow,
+			TimeZone: fact.TimeZone, Calendar: fact.Calendar, OutageDefinition: fact.OutageDefinition,
+			Exclusions: append([]string(nil), fact.Exclusions...),
 		})
-	}
-	if len(out) > 1 {
-		return nil, fault.Conflict("冻结合同中有多个带宽约定，无法唯一核验")
 	}
 	return out, nil
 }
 
+// operatorObservationsForEvaluation derives a safe evaluation view without
+// rewriting the collected snapshot. A collection can be immutable and still
+// be unusable for a requested historical instant if its evidence was
+// collected after the cutoff or lacks an immutable temporal proof.
+func operatorObservationsForEvaluation(snapshot OperatorSnapshotSet, businessAt, cutoff time.Time) []auditext.Observation {
+	observations := append([]auditext.Observation(nil), snapshot.Observations...)
+	businessAt = businessAt.UTC().Truncate(time.Microsecond)
+	cutoff = cutoff.UTC().Truncate(time.Microsecond)
+	for i := range observations {
+		observation := &observations[i]
+		if observation.Availability != auditext.AvailabilityAvailable {
+			continue
+		}
+		if snapshot.CollectedAt.After(cutoff) || observation.ObservedAt.After(cutoff) {
+			operatorMarkObservationInsufficient(observation, "evidence_after_cutoff")
+			continue
+		}
+		proof := observation.TemporalProof
+		if proof == nil {
+			operatorMarkObservationInsufficient(observation, "historical_proof_missing")
+			continue
+		}
+		if proof.SourceAsOf == nil || proof.SourceAsOf.After(cutoff) {
+			operatorMarkObservationInsufficient(observation, "temporal_proof_unavailable")
+			continue
+		}
+		switch proof.Kind {
+		case auditext.TemporalProofHistoricalInterval:
+			if proof.ValidFrom == nil || proof.ValidUntil == nil ||
+				proof.ValidFrom.After(businessAt) || !businessAt.Before(*proof.ValidUntil) ||
+				!proof.ValidFrom.Equal(observation.EffectiveFrom) || !proof.ValidUntil.Equal(observation.EffectiveUntil) {
+				operatorMarkObservationInsufficient(observation, "historical_proof_unavailable")
+			}
+		case auditext.TemporalProofCurrentState:
+			if !proof.SourceAsOf.Equal(businessAt) {
+				operatorMarkObservationInsufficient(observation, "historical_proof_missing")
+			}
+		default:
+			operatorMarkObservationInsufficient(observation, "temporal_proof_unavailable")
+		}
+	}
+	return observations
+}
+
+func operatorMarkObservationInsufficient(observation *auditext.Observation, reason string) {
+	observation.Availability = auditext.AvailabilityRejected
+	observation.ReasonCode = reason
+	observation.PayloadRef = nil
+	observation.Fields = nil
+	// The derived evaluation view does not carry a proof that was insufficient
+	// for this business instant. The immutable collected snapshot is untouched.
+	observation.TemporalProof = nil
+}
+
 func loadOperatorBindingByKey(ctx context.Context, tx pgx.Tx, tenantID, orgID, caseID, actorID, key string) (OperatorObjectBinding, error) {
 	var out OperatorObjectBinding
+	var receipt []byte
 	err := tx.QueryRow(ctx, `SELECT case_id,binding_id,binding_version,status,contract_object,external_object,
-		source_system,confirmed_by,confirmed_at,effective_from,effective_until,created_at,request_sha256
+		source_system,confirmed_by,confirmed_at,effective_from,effective_until,created_at,request_sha256,
+		COALESCE(mapping_id,''),COALESCE(mapping_version,0),COALESCE(service_object_id,''),
+		COALESCE(object_version,0),COALESCE(association_version,0),response_body
 		FROM operator_object_bindings WHERE tenant_id=$1 AND org_id=$2 AND case_id=$3 AND actor_id=$4 AND idempotency_key=$5`,
 		tenantID, orgID, caseID, actorID, key).Scan(&out.CaseID, &out.BindingID, &out.Version, &out.Status,
 		&out.ContractObject, &out.ExternalObject, &out.SourceSystem, &out.ConfirmedBy, &out.ConfirmedAt,
-		&out.EffectiveFrom, &out.EffectiveUntil, &out.CreatedAt, &out.requestSHA256)
+		&out.EffectiveFrom, &out.EffectiveUntil, &out.CreatedAt, &out.requestSHA256, &out.MappingID,
+		&out.MappingVersion, &out.ServiceObjectID, &out.ObjectVersion, &out.AssociationVersion, &receipt)
+	if err == nil && len(receipt) > 0 {
+		requestSHA := out.requestSHA256
+		if err := json.Unmarshal(receipt, &out); err != nil {
+			return OperatorObjectBinding{}, fault.New(500, "integrity_error", "对象映射幂等回执损坏")
+		}
+		out.requestSHA256 = requestSHA
+	}
 	return out, err
 }
 
 func loadOperatorSnapshotSetByKey(ctx context.Context, tx pgx.Tx, tenantID, orgID, caseID, actorID, key string) (OperatorSnapshotSet, error) {
 	var out OperatorSnapshotSet
 	err := tx.QueryRow(ctx, `SELECT case_id,snapshot_set_id,binding_version,connector_id,external_object_id,source_system,
-		business_at,status,reason_code,collected_by,collected_at
+		business_at,status,reason_code,collected_by,collected_at,request_sha256
 		FROM operator_external_snapshot_sets WHERE tenant_id=$1 AND org_id=$2 AND case_id=$3 AND actor_id=$4 AND idempotency_key=$5`,
 		tenantID, orgID, caseID, actorID, key).Scan(&out.CaseID, &out.SnapshotSetID, &out.BindingVersion,
 		&out.ConnectorID, &out.ExternalObjectID, &out.SourceSystem, &out.BusinessAt, &out.Status, &out.ReasonCode,
-		&out.CollectedBy, &out.CollectedAt)
+		&out.CollectedBy, &out.CollectedAt, &out.requestSHA256)
 	if err != nil {
 		return out, err
 	}
+	normalizeOperatorSnapshotSetTimes(&out)
 	out.Observations, err = loadOperatorObservations(ctx, tx, caseID, out.SnapshotSetID)
+	return out, err
+}
+
+func (s *Store) GetOperatorCollectionJob(ctx context.Context, user accounts.User, caseID, key string) (OperatorCollectionJob, error) {
+	key = strings.TrimSpace(key)
+	if err := validateIdempotencyKey(key); err != nil {
+		return OperatorCollectionJob{}, err
+	}
+	return s.getOperatorCollectionJob(ctx, user, caseID, key, true)
+}
+
+// GetOperatorCollectionJobByID is the user-facing recovery route. The
+// generated collection ID is safe to put in a URL; the caller's raw
+// Idempotency-Key remains a POST-only recovery credential and is never exposed
+// in the path.
+func (s *Store) GetOperatorCollectionJobByID(ctx context.Context, user accounts.User, caseID, collectionID string) (OperatorCollectionJob, error) {
+	collectionID = strings.TrimSpace(collectionID)
+	if !validOperatorCollectionID(collectionID) {
+		return OperatorCollectionJob{}, fault.NotFound("没有找到采集请求")
+	}
+	return s.getOperatorCollectionJob(ctx, user, caseID, collectionID, false)
+}
+
+func validOperatorCollectionID(value string) bool {
+	if !strings.HasPrefix(value, "col_") || (len(value) != 20 && len(value) != 36) {
+		return false
+	}
+	for _, c := range value[4:] {
+		if !(c >= '0' && c <= '9') && !(c >= 'a' && c <= 'f') {
+			return false
+		}
+	}
+	return true
+}
+
+func (s *Store) getOperatorCollectionJob(ctx context.Context, user accounts.User, caseID, selector string, byKey bool) (OperatorCollectionJob, error) {
+	var out OperatorCollectionJob
+	permission := access.Read
+	if byKey {
+		permission = access.Review
+	}
+	current, _, _, _, _, err := s.operatorCaseState(ctx, user, caseID, permission)
+	if err != nil {
+		return out, err
+	}
+	err = s.withOperatorTx(ctx, current, caseID, false, func(tx pgx.Tx) error {
+		freshState, err := loadState(ctx, tx, false)
+		if err != nil {
+			return err
+		}
+		freshCase, err := s.visibleCase(&freshState, current, caseID)
+		if err != nil {
+			return err
+		}
+		freshActor, err := trustedUser(user)
+		if err != nil {
+			return err
+		}
+		if !authorizeCase(freshCase, freshActor, permission) {
+			return fault.Forbidden("当前授权不能读取此案件的外部采集状态")
+		}
+		var leaseUntil *time.Time
+		var resultID *string
+		var leaseExpired bool
+		var query string
+		args := []any{freshCase.TenantID, freshCase.OwnerOrgID, caseID, selector}
+		if byKey {
+			query = `SELECT collection_id,status,lease_until,result_snapshot_set_id,COALESCE(lease_until <= clock_timestamp(),false) FROM operator_external_collection_claims
+				WHERE tenant_id=$1 AND org_id=$2 AND case_id=$3 AND actor_id=$4 AND idempotency_key=$5`
+			args = append(args[:3], freshActor.ID, selector)
+		} else {
+			query = `SELECT collection_id,status,lease_until,result_snapshot_set_id,COALESCE(lease_until <= clock_timestamp(),false) FROM operator_external_collection_claims
+				WHERE tenant_id=$1 AND org_id=$2 AND case_id=$3 AND collection_id=$4`
+		}
+		if err := tx.QueryRow(ctx, query, args...).
+			Scan(&out.CollectionID, &out.State, &leaseUntil, &resultID, &leaseExpired); err != nil {
+			return err
+		}
+		if out.State == "in_progress" && leaseExpired {
+			out.State = "retryable"
+		}
+		out.CaseID = caseID
+		if out.State == "in_progress" && leaseUntil != nil {
+			retryAfter := leaseUntil.UTC()
+			out.RetryAfter = &retryAfter
+		}
+		if out.State == "completed" {
+			if resultID == nil {
+				return fault.New(500, "integrity_error", "采集幂等回执缺少快照结果")
+			}
+			set, err := loadOperatorSnapshotSetByID(ctx, tx, caseID, *resultID)
+			if err != nil {
+				return fault.New(500, "integrity_error", "采集幂等回执引用的快照不存在")
+			}
+			set.CollectionID = out.CollectionID
+			out.SnapshotSetID = resultID
+			out.SnapshotSet = &set
+		}
+		return nil
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return OperatorCollectionJob{}, fault.NotFound("没有找到采集请求")
+	}
 	return out, err
 }
 
@@ -897,8 +1408,17 @@ func loadOperatorSnapshotSetByID(ctx context.Context, tx pgx.Tx, caseID, snapsho
 	if err != nil {
 		return out, err
 	}
+	normalizeOperatorSnapshotSetTimes(&out)
 	out.Observations, err = loadOperatorObservations(ctx, tx, caseID, out.SnapshotSetID)
 	return out, err
+}
+
+func normalizeOperatorSnapshotSetTimes(set *OperatorSnapshotSet) {
+	if set == nil {
+		return
+	}
+	set.BusinessAt = set.BusinessAt.UTC()
+	set.CollectedAt = set.CollectedAt.UTC()
 }
 
 func loadOperatorObservations(ctx context.Context, tx pgx.Tx, caseID, snapshotSetID string) ([]auditext.Observation, error) {
@@ -952,6 +1472,7 @@ func loadOperatorEvaluation(ctx context.Context, tx pgx.Tx, caseID, evaluationID
 	if err := json.Unmarshal(inputJSON, &out.Input); err != nil {
 		return out, err
 	}
+	out.EvidenceCutoffAt = out.Input.EvidenceCutoffAt
 	checks, err := loadOperatorChecks(ctx, tx, caseID, evaluationID)
 	if err != nil {
 		return out, err

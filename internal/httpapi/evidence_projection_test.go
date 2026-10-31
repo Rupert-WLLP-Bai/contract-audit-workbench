@@ -23,7 +23,7 @@ func TestEvidenceHTTPCompatibleRulepackCitation(t *testing.T) {
 	}
 	caseID := created["id"].(string)
 	api.upload(t, caseID, "procurement", "purchase.txt", "text/plain", []byte("政企专线采购依据\n电路 LINE-001：最低保障带宽 100 Mbit/s。"))
-	api.upload(t, caseID, "draft_contract", "initial.txt", "text/plain", []byte("拟签合同尚未写明电路带宽。"))
+	initialDraftID := api.upload(t, caseID, "draft_contract", "initial.txt", "text/plain", []byte("拟签合同尚未写明电路带宽。"))
 	status, source := api.do(t, http.MethodPost, "/api/cases/"+caseID+"/reviews", map[string]any{
 		"business_at": "2026-02-03T01:05:06Z",
 	})
@@ -62,8 +62,9 @@ func TestEvidenceHTTPCompatibleRulepackCitation(t *testing.T) {
 		t.Fatalf("source evaluation exposed canonical citation metadata: %v", request)
 	}
 	requestPath := base + "/" + request["id"].(string)
+	materialID, currentDocumentID := api.materialForCurrentDocument(t, caseID, initialDraftID)
 	api.base = legacyURL
-	documentID := api.upload(t, caseID, "draft_contract", "supplement.txt", "text/plain", []byte("拟签合同\n电路 LINE-001：最低保障带宽 100 Mbit/s。"))
+	documentID := api.replaceUpload(t, caseID, "draft_contract", "supplement.txt", "text/plain", []byte("拟签合同\n电路 LINE-001：最低保障带宽 100 Mbit/s。"), materialID, currentDocumentID)
 	api.base = coreURL
 	status, submitted := api.send(t, http.MethodPost, requestPath+"/receipts", map[string]any{
 		"document_id": documentID, "expected_version": 1,

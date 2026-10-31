@@ -1,0 +1,44 @@
+{
+  "tenant_id": "tenant_wire_fixture",
+  "org_id": "org_wire_fixture",
+  "case_id": "case_wire_fixture",
+  "fact_id": "laf_wire_buyer_kind",
+  "dimension": "buyer_kind",
+  "version": 1,
+  "status": "established",
+  "value": "enterprise",
+  "temporal_basis": "historical_interval",
+  "valid_from": "2025-04-30T16:00:00.123456Z",
+  "valid_until": "2025-05-31T16:00:00.123456Z",
+  "basis_obtained_at": "2025-05-02T00:00:00Z",
+  "basis_note": "fixture-only evidence; not a legal quotation",
+  "basis_refs": [
+    {
+      "document_id": "document_fixture",
+      "end": 21,
+      "filename": "wire-fixture.txt",
+      "kind": "material_anchor",
+      "material_id": "material_fixture",
+      "material_version": 1,
+      "parsed_document_id": "parsed_fixture",
+      "quote": "fixture evidence text",
+      "quote_digest": "c6eeda9036a5d24d30d7e95e66b0876c5853ff91298b7d4093446fa3f6d53626",
+      "start": 0
+    }
+  ],
+  "basis_sha256": "618598cc0cb3736a18755fe21085e3bc4521a0cdf7c4d23dc6af075d82b7cc2a",
+  "party": {
+    "side": "buyer",
+    "binding_id": "binding_fixture",
+    "binding_version": 2,
+    "subject_id": "subject_fixture",
+    "subject_version": 3,
+    "scope_note": "fixture buyer role"
+  },
+  "request_digest": "9999999999999999999999999999999999999999999999999999999999999999",
+  "idempotency_key": "wire-fact-buyer-1",
+  "actor_user_id": "fixture-user",
+  "actor_issuer": "fixture-issuer",
+  "actor_subject": "fixture-subject",
+  "created_at": "2026-10-31T00:00:00.123456Z"
+}

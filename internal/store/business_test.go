@@ -3,6 +3,9 @@ package store
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"reflect"
 	"strings"
@@ -98,6 +101,34 @@ func TestFrozenReportDigestCoversJSONAndHTMLBytes(t *testing.T) {
 	}
 	if base == reportDigest(jsonBytes, []byte("<p>attempt-b</p>")) {
 		t.Fatal("HTML changes did not change report digest")
+	}
+}
+
+func TestFrozenLegalReportProjectionIsOptionalAndIntegrityBound(t *testing.T) {
+	legacy := RunSnapshot{RunID: "run-legacy"}
+	projection, err := frozenLegalReportProjection(legacy, "run-legacy", "")
+	if err != nil || projection != nil {
+		t.Fatalf("legacy report gained a synthetic legal projection: projection=%+v err=%v", projection, err)
+	}
+	raw, err := json.Marshal(reportEnvelope{SchemaVersion: businessReportSchema, RunSnapshot: legacy})
+	if err != nil || bytes.Contains(raw, []byte(`"legal_review"`)) {
+		t.Fatalf("legacy envelope serialized an AUTH03 field: %s err=%v", raw, err)
+	}
+
+	knowledge, err := sealKnowledgeSnapshot(legalReviewSnapshotFixture("2026-10-31T01:00:00Z", "acceptance_time", "", frozenLegalAuthorityFixture()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	projection, err = frozenLegalReportProjection(RunSnapshot{RunID: "run-auth03", GovernedKnowledge: &knowledge}, "run-auth03", "attempt-auth03")
+	if err != nil || projection == nil || projection.RunID != "run-auth03" || projection.AttemptID != "attempt-auth03" || projection.EvidenceCutoffAt != knowledge.EvidenceCutoffAt || len(projection.Authorities) != 1 ||
+		projection.Authorities[0].CitationID == "" || projection.Authorities[0].Article == nil || projection.Authorities[0].Article.CanonicalBody != knowledge.LegalAuthorities[0].Article.CanonicalBody {
+		t.Fatalf("report projection did not preserve the exact frozen legal authority: projection=%+v err=%v", projection, err)
+	}
+	tampered := knowledge
+	tampered.LegalAuthorities = append([]FrozenLegalAuthority(nil), knowledge.LegalAuthorities...)
+	tampered.LegalAuthorities[0].Outcome = "not_applicable"
+	if _, err := frozenLegalReportProjection(RunSnapshot{RunID: "run-auth03", GovernedKnowledge: &tampered}, "run-auth03", "attempt-auth03"); err == nil {
+		t.Fatal("report accepted a tampered frozen legal projection")
 	}
 }
 
@@ -551,6 +582,43 @@ func TestSubmitRemediationPinsExactDraftAndVersion(t *testing.T) {
 // insertLegacyTelecomReportAttempt reconstructs a pending pre-governance run.
 // Its empty policy and RulePack identities are inserted at creation; no frozen
 // snapshot or input is rewritten to simulate historical evidence.
+func TestGenerationIdempotencySeparatesUploadOperation(t *testing.T) {
+	ctx := context.Background()
+	st, err := OpenTest(t.TempDir(), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	admin, ok := accounts.ByID("demo-admin")
+	if !ok {
+		t.Fatal("demo admin missing")
+	}
+	caseID, err := st.CreateCaseWithBusiness(admin, "生成幂等操作隔离", "service", "ENT", "telecom_dedicated_line")
+	if err != nil {
+		t.Fatal(err)
+	}
+	fields := validTelecomTemplateFields()
+	options := MaterialUploadOptions{IdempotencyKey: "shared-operation-key"}
+	first, err := st.GenerateWithOptions(ctx, admin, caseID, telecomTemplateID, fields, options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	replay, err := st.GenerateWithOptions(ctx, admin, caseID, telecomTemplateID, fields, options)
+	if err != nil || !replay.Replayed || replay.DocumentID != first.DocumentID || replay.MaterialID != first.MaterialID || replay.Version != first.Version {
+		t.Fatalf("generation retry did not return its original result: first=%+v replay=%+v err=%v", first, replay, err)
+	}
+	filename, _ := businessDraftIdentity(telecomTemplateID)
+	body, err := renderBusinessTemplate(telecomTemplateID, fields)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = st.UploadMaterial(ctx, admin, caseID, "draft_contract", filename, "text/plain", body, options)
+	var apiErr *fault.Error
+	if !errors.As(err, &apiErr) || apiErr.Status != 409 || apiErr.Code != "conflict" {
+		t.Fatalf("cross-operation key reuse should return 409 instead of generation replay failure: %v", err)
+	}
+}
+
 func insertLegacyTelecomReportAttempt(t *testing.T, st *Store, user accounts.User, caseID string) string {
 	t.Helper()
 	ctx := context.Background()
@@ -677,6 +745,7 @@ func TestCreateReportFreezesAttemptAndDecisionBytes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	secondJSON, secondHTML := []byte(nil), []byte(nil)
 	finding := workspace.Findings[0]
 	decisionReason := "按实际规则复核报告版本"
 	if err := st.Decide(admin, caseID, runID, finding.ID, "freeze-report-decision", "insufficient_evidence", decisionReason, finding.Version); err != nil {
@@ -702,6 +771,75 @@ func TestCreateReportFreezesAttemptAndDecisionBytes(t *testing.T) {
 	if err != nil || !bytes.Contains(nextJSON, []byte(decisionReason)) {
 		t.Fatalf("new report omitted the actual human decision: err=%v", err)
 	}
+	_, secondJSON, err = st.ReadReport(admin, caseID, second.ID, "json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, secondHTML, err = st.ReadReport(admin, caseID, second.ID, "html")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := st.AddMember(admin, caseID, "demo-reviewer"); err != nil {
+		t.Fatal(err)
+	}
+	created, replayed, err := st.CreateCaseSubject(context.Background(), admin, caseID, CaseSubjectCreateInput{Role: SubjectRoleSupplier,
+		Subject: SubjectCreateInput{DisplayName: "报告冻结前的历史主体"}}, "report-subject-create")
+	if err != nil || replayed || created.SubjectID == "" {
+		t.Fatalf("create subject before report-preservation change: %+v replayed=%v err=%v", created, replayed, err)
+	}
+	current, err := st.snapshotAs(admin)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var source Document
+	for _, item := range current.Documents {
+		if item.CaseID == caseID && item.Role == "procurement" {
+			source = item
+			break
+		}
+	}
+	if source.ID == "" {
+		t.Fatal("procurement evidence for the subject correction is missing")
+	}
+	parsed, err := st.ensureParsed(context.Background(), admin, source, false)
+	if err != nil || parsed.Status != "ready" {
+		t.Fatalf("parse report subject evidence: parsed=%+v err=%v", parsed, err)
+	}
+	var materialVersion MaterialVersion
+	for _, item := range current.MaterialVersions {
+		if item.DocumentID == source.ID && item.CaseID == caseID {
+			materialVersion = item
+			break
+		}
+	}
+	if materialVersion.MaterialID == "" {
+		t.Fatal("pinned material version for report evidence is missing")
+	}
+	quote := []rune(parsed.Text)
+	quoteDigest := sha256.Sum256([]byte(string(quote)))
+	basis, err := json.Marshal([]materialAnchorInput{{Kind: "material_anchor", MaterialID: materialVersion.MaterialID, MaterialVersion: materialVersion.Version,
+		DocumentID: source.ID, ParsedDocumentID: parsed.ID, Start: 0, End: len(quote), QuoteDigest: hex.EncodeToString(quoteDigest[:])}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	proposal, replayed, err := st.ProposeSubjectChange(context.Background(), admin, caseID, SubjectChangeCreateInput{Target: SubjectChangeTarget{Kind: "subject", SubjectID: created.SubjectID},
+		ExpectedSubjectVersion: 1, Patch: json.RawMessage(`{"display_name":"报告审批后的新主体"}`), BasisNote: "依据已冻结材料更正主体名称", BasisRefs: basis}, "report-subject-correction")
+	if err != nil || replayed || proposal.RequestID == "" {
+		t.Fatalf("propose source-backed subject change: %+v replayed=%v err=%v", proposal, replayed, err)
+	}
+	reviewer, ok := accounts.ByID("demo-reviewer")
+	if !ok {
+		t.Fatal("reviewer missing")
+	}
+	impact, err := st.GetSubjectChangeImpact(context.Background(), reviewer, caseID, proposal.RequestID)
+	if err != nil || !impact.CanDecide {
+		t.Fatalf("independent reviewer could not see subject change: %+v err=%v", impact, err)
+	}
+	decision, replayed, err := st.DecideSubjectChange(context.Background(), reviewer, caseID, proposal.RequestID, SubjectChangeDecisionInput{Decision: "approve", ExpectedSubjectVersion: 1,
+		ExpectedPayloadHash: proposal.PayloadHash, ExpectedImpactETag: impact.ImpactETag, Reason: "复核主体更正依据"}, "report-subject-correction-decision")
+	if err != nil || replayed || decision.Decision != "approved" || decision.AppliedSubjectVersion == nil || *decision.AppliedSubjectVersion != 2 {
+		t.Fatalf("independent approver did not apply subject correction: %+v replayed=%v err=%v", decision, replayed, err)
+	}
 	governedRunID, err := st.StartReviewAt(context.Background(), admin, caseID, acceptanceBusinessTime)
 	if err != nil {
 		t.Fatal(err)
@@ -713,6 +851,22 @@ func TestCreateReportFreezesAttemptAndDecisionBytes(t *testing.T) {
 	_, afterGovernedJSON, err := st.ReadReport(admin, caseID, first.ID, "json")
 	if err != nil || !bytes.Equal(afterGovernedJSON, originalJSON) {
 		t.Fatalf("governed review rewrote historical report JSON: %v", err)
+	}
+	firstAfter, firstAfterJSON, err := st.ReadReport(admin, caseID, first.ID, "json")
+	if err != nil || firstAfter.Digest != first.Digest || firstAfter.InputHash != first.InputHash || firstAfter.OutputHash != first.OutputHash || !bytes.Equal(firstAfterJSON, originalJSON) {
+		t.Fatalf("approved subject and new review changed the original report record/JSON: report=%+v err=%v", firstAfter, err)
+	}
+	_, firstAfterHTML, err := st.ReadReport(admin, caseID, first.ID, "html")
+	if err != nil || !bytes.Equal(firstAfterHTML, originalHTML) {
+		t.Fatalf("approved subject and new review changed the original report HTML: %v", err)
+	}
+	secondAfter, secondAfterJSON, err := st.ReadReport(admin, caseID, second.ID, "json")
+	if err != nil || secondAfter.Digest != second.Digest || !bytes.Equal(secondAfterJSON, secondJSON) {
+		t.Fatalf("approved subject and new review changed the decision-version report/JSON: report=%+v err=%v", secondAfter, err)
+	}
+	_, secondAfterHTML, err := st.ReadReport(admin, caseID, second.ID, "html")
+	if err != nil || !bytes.Equal(secondAfterHTML, secondHTML) {
+		t.Fatalf("approved subject and new review changed the decision-version report HTML: %v", err)
 	}
 }
 

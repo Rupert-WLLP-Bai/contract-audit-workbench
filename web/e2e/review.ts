@@ -1,4 +1,7 @@
+import { request as httpRequest } from "node:http";
 import { chromiumExecutable } from "./chromium";
+import { readCDPRequestPostData } from "./cdp-request-post-data";
+import { C1B_BUSINESS_AT_UTC, C1B_BUSINESS_TIME_ZONE, c1bBusinessAtInput } from "./c1b-clock";
 // Drives the installed Chromium against the Vite dev server.
 // The Go test starts the API and Vite, then sets the environment below.
 const web = required("E2E_WEB");
@@ -8,7 +11,10 @@ const revised = required("E2E_REVISED");
 const cdpPort = required("E2E_CDP_PORT");
 const profile = required("E2E_CHROME_PROFILE");
 const parsingScreenshot = process.env.E2E_PARSING_SCREENSHOT;
+const failureScreenshot = process.env.E2E_FAILURE_SCREENSHOT;
+const failureDOM = process.env.E2E_FAILURE_DOM;
 
+async function run(): Promise<void> {
 const chrome = Bun.spawn(
   [
     chromiumExecutable(),
@@ -23,23 +29,49 @@ const chrome = Bun.spawn(
   ],
   { stdout: "ignore", stderr: "inherit" },
 );
+let chromeStop: Promise<void> | undefined;
+const stopChrome = (): Promise<void> => {
+  if (chromeStop) return chromeStop;
+  chromeStop = (async () => {
+    chrome.kill("SIGTERM");
+    const code = await Promise.race([chrome.exited, Bun.sleep(2500).then(() => null)]);
+    if (code === null) {
+      chrome.kill("SIGKILL");
+      const finalCode = await Promise.race([chrome.exited, Bun.sleep(1500).then(() => null)]);
+      console.error(finalCode === null
+        ? "[browser] chromium exitCode unavailable 1500ms after SIGKILL"
+        : `[browser] chromium exitCode after SIGKILL=${finalCode}`);
+      return;
+    }
+    console.log(`[browser] chromium exitCode=${code}`);
+  })();
+  return chromeStop;
+};
+process.once("SIGTERM", () => {
+  void stopChrome().finally(() => process.exit(143));
+});
 
 let failed = false;
+let page: Page | undefined;
+let pageSession: string | undefined;
 try {
   const version = await waitJSON(`http://127.0.0.1:${cdpPort}/json/version`);
   const browser = version.webSocketDebuggerUrl as string;
   if (!browser) throw new Error("chromium did not expose a debugger socket");
-  const page = await new Page(browser);
+  page = await new Page(browser);
+  step("Chromium debugger websocket connected");
   await page.send("Target.setDiscoverTargets", { discover: true });
   const created = (await page.send("Target.createTarget", { url: web })) as { targetId: string };
   const attached = (await page.send("Target.attachToTarget", { targetId: created.targetId, flatten: true })) as {
     sessionId: string;
   };
   const session = attached.sessionId;
+  pageSession = session;
   await page.send("Page.enable", {}, session);
   await page.send("Runtime.enable", {}, session);
   await page.send("DOM.enable", {}, session);
-  await page.send("Network.enable", {}, session);
+  await page.send("Network.enable", { maxPostDataSize: 1024 * 1024 }, session);
+  await page.send("Emulation.setTimezoneOverride", { timezoneId: C1B_BUSINESS_TIME_ZONE }, session);
   if (process.env.E2E_DOCS_SCREENSHOT || process.env.E2E_EXECUTION_SCREENSHOT || parsingScreenshot) {
     await page.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 1000, deviceScaleFactor: 1, mobile: false }, session);
   }
@@ -50,6 +82,7 @@ try {
   await fill(page, session, "input[name=password]", "admin-demo");
   await clickText(page, session, "button", "登录");
   await page.wait(session, "document.body.innerText.includes('新建案件')");
+  step("authenticated demo-admin");
 
   const seededCase = process.env.E2E_CASE_ID;
   if (seededCase) {
@@ -64,13 +97,15 @@ try {
   }
 
   await upload(page, session, procurement);
-  await clickText(page, session, "button", "上传");
+  await clickText(page, session, "button", "新增材料");
   await waitParsedDocument(page, session, "purchase.txt");
+  step("procurement source uploaded and parsed");
 
   await selectAntOption(page, session, "材料角色", "拟签合同");
   await upload(page, session, draft);
-  await clickText(page, session, "button", "上传");
+  await clickText(page, session, "button", "新增材料");
   await waitParsedDocument(page, session, "draft.txt");
+  step("primary contract uploaded and parsed");
 
   const initialProcurementParse = await readDocumentMetadata(page, session, "purchase.txt");
   const initialDraftParse = await readDocumentMetadata(page, session, "draft.txt");
@@ -80,6 +115,7 @@ try {
   await fillReviewBusinessTime(page, session);
   await clickText(page, session, "button", "开始审查");
   await loadDiagnostics(page, session);
+  step("initial warranty review submitted");
   await page.wait(session, `[...document.querySelectorAll('button')].some((item) => item.textContent.trim() === '重新执行未完成的审查' && !item.disabled)`);
   await clickText(page, session, "button", "重新执行未完成的审查");
   await page.wait(session, `(() => {
@@ -88,6 +124,7 @@ try {
       row.getAttribute('data-attempt-ordinal') === '2' &&
       document.querySelector('.execution-inspector-summary p')?.innerText.includes('第 2 次执行');
   })()`);
+  step("synthetic retry completed; attempt 2 selected");
   await selectAttemptNumber(page, session, 1);
   await page.wait(session, "document.querySelector('.execution-inspector-summary p')?.innerText.includes('第 1 次执行')");
   const firstAttemptInputs = await readWorkspaceParseMetadata(page, session);
@@ -150,13 +187,32 @@ try {
   await fill(page, session, "textarea", "两份材料写明的质保月数不同");
   await clickText(page, session, "button", "保存决定");
   await page.wait(session, "document.body.innerText.includes('已记录确认风险')");
+  step("attempt 2 decision recorded");
   const oldRunURL = await page.eval(session, "location.href");
   await clickText(page, session, "a", "返回案件");
   await page.wait(session, "document.querySelector('input[type=file]')");
   await selectAntOption(page, session, "材料角色", "拟签合同");
+  const beforeReplacement = await readCaseDetail(page, session, oldRunURL);
+  const primaryMaterial = beforeReplacement.materials?.find((item) => item.purpose === "primary_contract");
+  if (!primaryMaterial) throw new Error("current main contract has no material identity");
+  if (primaryMaterial.current_document_id !== initialDraftParse.documentVersionId) {
+    throw new Error(`current primary document ${primaryMaterial.current_document_id} differs from the frozen initial draft ${initialDraftParse.documentVersionId}`);
+  }
+  await selectAntOption(page, session, "操作", "替换选中的材料");
+  const replacementNotice = `将替换“draft.txt”（主合同）当前第 ${primaryMaterial.current_version} 版；若版本已更新，请刷新重试。`;
+  await page.wait(session, `document.body.innerText.includes(${JSON.stringify(replacementNotice)})`);
+  const replacementRequestStart = page.documentUploads.length;
   await upload(page, session, revised);
-  await clickText(page, session, "button", "上传");
+  await clickText(page, session, "button", "替换材料");
   await waitParsedDocument(page, session, "draft-revised.txt");
+  await assertReplacementMultipart(page.documentUploads.slice(replacementRequestStart), primaryMaterial.material_id, primaryMaterial.current_document_id);
+  const revisedMetadata = await readDocumentMetadata(page, session, "draft-revised.txt");
+  const afterReplacement = await readCaseDetail(page, session, oldRunURL);
+  const revisedPrimary = afterReplacement.materials?.find((item) => item.material_id === primaryMaterial.material_id);
+  if (!revisedPrimary || revisedPrimary.current_document_id !== revisedMetadata.documentVersionId || revisedPrimary.current_version !== primaryMaterial.current_version + 1) {
+    throw new Error(`explicit primary replacement did not append a version: before=${JSON.stringify(primaryMaterial)} after=${JSON.stringify(revisedPrimary)} new_document=${revisedMetadata.documentVersionId}`);
+  }
+  step("primary material explicitly replaced; version increment verified");
   await fillReviewBusinessTime(page, session);
   await page.wait(session, `[...document.querySelectorAll('button')].some(
     (item) => item.textContent.trim() === '开始复审' && !item.disabled,
@@ -186,9 +242,9 @@ try {
   if (!revisionRunParsedIds.includes(previousParse.parsedDocumentId)) {
     throw new Error("revision run does not reference its displayed pre-reparse document parse");
   }
-  await clickDocumentRowButton(page, session, "draft-revised.txt", "重新解析");
+  await clickDocumentRowButton(page, session, primaryMaterial.material_id, "draft-revised.txt", "重新解析");
   await page.wait(session, `(() => {
-    const row = [...document.querySelectorAll('.document-list li')].find((item) => item.innerText.includes('draft-revised.txt'));
+    const row = [...document.querySelectorAll('.material-current-set .document-list li[data-material-id]')].find((item) => item.innerText.includes('draft-revised.txt'));
     const summary = row?.querySelector('.parsed-document-summary');
     return Boolean(summary && summary.dataset.parsedDocumentId !== ${JSON.stringify(previousParse.parsedDocumentId)} && document.body.innerText.includes('材料已更新'));
   })()`);
@@ -212,6 +268,7 @@ try {
   await clickText(page, session, "button", "开始复审");
   await loadDiagnostics(page, session);
   await page.wait(session, `document.querySelector('.execution-inspector') && [...document.querySelectorAll('.review-material-context [role=tab] [data-parsed-document-id]')].some((item) => item.dataset.parsedDocumentId === ${JSON.stringify(reparsedDocument.parsedDocumentId)})`);
+  step("reparse review submitted and selected parse verified");
   await selectParsedDocumentTab(page, session, reparsedDocument.parsedDocumentId);
   const reparsedRunURL = await page.eval(session, "location.href");
   if (new URL(reparsedRunURL).pathname === new URL(revisionRunURL).pathname) {
@@ -323,10 +380,31 @@ try {
 } catch (error) {
   failed = true;
   console.error(error);
+  if (page && failureDOM) {
+    try {
+      await Bun.write(failureDOM, await page.eval(pageSession ?? "", "document.body ? document.body.innerText : 'no body'"));
+    } catch (snapshotError) {
+      console.error(`[diagnostic] DOM snapshot unavailable: ${snapshotError instanceof Error ? snapshotError.message : String(snapshotError)}`);
+    }
+  }
+  if (page && failureScreenshot) {
+    try {
+      const shot = await page.send("Page.captureScreenshot", { format: "png", captureBeyondViewport: false }, pageSession) as { data: string };
+      await Bun.write(failureScreenshot, Buffer.from(shot.data, "base64"));
+    } catch (snapshotError) {
+      console.error(`[diagnostic] screenshot unavailable: ${snapshotError instanceof Error ? snapshotError.message : String(snapshotError)}`);
+    }
+  }
   process.exitCode = 1;
 } finally {
-  chrome.kill();
+  page?.close();
+  await stopChrome();
   if (failed) process.exitCode = 1;
+}
+}
+
+function step(message: string): void {
+  console.log(`[step] ${message}`);
 }
 
 function required(name: string): string {
@@ -340,9 +418,8 @@ async function waitJSON(url: string): Promise<Record<string, unknown>> {
   let last = "";
   while (Date.now() < deadline) {
     try {
-      const response = await fetch(url);
-      if (response.ok) return (await response.json()) as Record<string, unknown>;
-      last = `${response.status}`;
+      const value = await localJSON(url);
+      if (value) return value;
     } catch (error) {
       last = String(error);
     }
@@ -351,18 +428,56 @@ async function waitJSON(url: string): Promise<Record<string, unknown>> {
   throw new Error(`chromium debugger did not answer: ${last}`);
 }
 
+async function localJSON(url: string): Promise<Record<string, unknown> | null> {
+  return await new Promise((resolve, reject) => {
+    const request = httpRequest(url, { timeout: 1500 }, (response) => {
+      let body = "";
+      response.setEncoding("utf8");
+      response.on("data", (chunk: string) => { body += chunk; });
+      response.on("end", () => {
+        if ((response.statusCode ?? 0) < 200 || (response.statusCode ?? 0) >= 300) {
+          resolve(null);
+          return;
+        }
+        try {
+          resolve(JSON.parse(body) as Record<string, unknown>);
+        } catch (error) {
+          reject(error);
+        }
+      });
+    });
+    request.on("timeout", () => request.destroy(new Error("loopback debugger request timed out after 1500ms")));
+    request.on("error", reject);
+    request.end();
+  });
+}
+
 class Page {
   private socket: WebSocket;
   private next = 0;
-  private pending = new Map<number, (message: { result?: unknown; error?: { message: string } }) => void>();
+  private pending = new Map<number, {
+    timer: ReturnType<typeof setTimeout>;
+    resolve: (message: { result?: unknown; error?: { message: string } }) => void;
+    reject: (error: Error) => void;
+  }>();
   private opened: Promise<void>;
   readonly consoleErrors: string[] = [];
+  readonly documentUploads: Array<{
+    url: string;
+    method: string;
+    requestId?: string;
+    sessionId?: string;
+    postData?: string;
+    postDataError?: string;
+    postDataReady: Promise<void>;
+  }> = [];
 
   constructor(url: string) {
     this.socket = new WebSocket(url);
     this.socket.addEventListener("message", (event) => {
       const message = JSON.parse(String(event.data)) as {
         id?: number;
+        sessionId?: string;
         result?: unknown;
         error?: { message: string };
         method?: string;
@@ -370,6 +485,8 @@ class Page {
           type?: string;
           args?: { value?: unknown; description?: string }[];
           exceptionDetails?: { text?: string; exception?: { description?: string } };
+          requestId?: string;
+          request?: { url?: string; method?: string; postData?: string };
         };
       };
       if (message.id === undefined) {
@@ -378,17 +495,61 @@ class Page {
           this.consoleErrors.push(params?.exceptionDetails?.text ?? params?.exceptionDetails?.exception?.description ?? "uncaught browser exception");
         } else if (message.method === "Runtime.consoleAPICalled" && params?.type === "error") {
           this.consoleErrors.push(params.args?.map((argument) => argument.value ?? argument.description ?? "").join(" ") || "console.error");
+        } else if (message.method === "Network.requestWillBeSent" && params?.request?.method === "POST" && params.request.url?.endsWith("/documents")) {
+          const upload: {
+            url: string;
+            method: string;
+            requestId?: string;
+            sessionId?: string;
+            postData?: string;
+            postDataError?: string;
+            postDataReady: Promise<void>;
+          } = {
+            url: params.request.url,
+            method: params.request.method,
+            requestId: params.requestId,
+            sessionId: message.sessionId,
+            postData: params.request.postData,
+            postDataReady: Promise.resolve(),
+          };
+          upload.postDataReady = readCDPRequestPostData({
+            requestId: upload.requestId,
+            sessionId: upload.sessionId,
+            postData: upload.postData,
+            getRequestPostData: (requestId, sessionId) => this.send(
+              "Network.getRequestPostData",
+              { requestId },
+              sessionId,
+            ),
+          }).then((postData) => {
+            upload.postData = postData;
+          }).catch((error: unknown) => {
+            upload.postDataError = error instanceof Error ? error.message : String(error);
+          });
+          this.documentUploads.push(upload);
         }
         return;
       }
-      const done = this.pending.get(message.id);
-      if (!done) return;
+      const pending = this.pending.get(message.id);
+      if (!pending) return;
       this.pending.delete(message.id);
-      done(message);
+      clearTimeout(pending.timer);
+      pending.resolve(message);
     });
     this.opened = new Promise<void>((resolve, reject) => {
-      this.socket.addEventListener("open", () => resolve(), { once: true });
-      this.socket.addEventListener("error", () => reject(new Error("chromium socket failed")), { once: true });
+      const timer = setTimeout(() => reject(new Error("Chromium debugger websocket open timed out after 10000ms")), 10000);
+      this.socket.addEventListener("open", () => {
+        clearTimeout(timer);
+        resolve();
+      }, { once: true });
+      this.socket.addEventListener("error", () => {
+        clearTimeout(timer);
+        this.rejectPending(new Error("chromium socket failed"));
+        reject(new Error("chromium socket failed"));
+      }, { once: true });
+      this.socket.addEventListener("close", () => {
+        this.rejectPending(new Error("chromium debugger websocket closed"));
+      }, { once: true });
     });
   }
 
@@ -398,19 +559,36 @@ class Page {
     const body: Record<string, unknown> = { id, method, params };
     if (sessionId) body.sessionId = sessionId;
     const result = new Promise((resolve, reject) => {
-      this.pending.set(id, (message) => {
+      const timer = setTimeout(() => {
+        this.pending.delete(id);
+        reject(new Error(`CDP method timed out after 10000ms: ${method}`));
+      }, 10000);
+      this.pending.set(id, { timer, resolve: (message) => {
         if (message.error) reject(new Error(`${method}: ${message.error.message}`));
         else resolve(message.result);
-      });
+      }, reject });
     });
     this.socket.send(JSON.stringify(body));
     return result;
   }
 
+  close(): void {
+    this.rejectPending(new Error("Chromium debugger page closed"));
+    this.socket.close();
+  }
+
+  private rejectPending(error: Error): void {
+    for (const pending of this.pending.values()) {
+      clearTimeout(pending.timer);
+      pending.reject(error);
+    }
+    this.pending.clear();
+  }
+
   async eval(session: string, expression: string): Promise<string> {
     const result = (await this.send(
       "Runtime.evaluate",
-      { expression, returnByValue: true },
+      { expression, returnByValue: true, awaitPromise: true },
       session,
     )) as { result?: { value?: string }; exceptionDetails?: { text?: string; exception?: { description?: string } } };
     if (result.exceptionDetails) throw new Error(`${result.exceptionDetails.exception?.description ?? result.exceptionDetails.text ?? "browser evaluation failed"}\nExpression: ${expression}`);
@@ -454,7 +632,10 @@ async function fillReviewBusinessTime(page: Page, session: string): Promise<void
     `Boolean(document.querySelector(${JSON.stringify(selector)}))`,
   );
   if (present !== "true") return;
-  await fill(page, session, selector, "2026-01-15T09:00");
+  const input = c1bBusinessAtInput(C1B_BUSINESS_TIME_ZONE);
+  await fill(page, session, selector, input);
+  const resolved = new Date(`${input}:00+08:00`).toISOString();
+  if (resolved !== C1B_BUSINESS_AT_UTC) throw new Error(`business time ${input} resolved to ${resolved}, expected ${C1B_BUSINESS_AT_UTC}`);
 }
 
 async function clickText(page: Page, session: string, tag: string, text: string): Promise<void> {
@@ -605,6 +786,20 @@ async function upload(page: Page, session: string, path: string): Promise<void> 
   }
 }
 
+async function readCaseDetail(
+  page: Page,
+  session: string,
+  runURL: string,
+): Promise<{ materials?: Array<{ material_id: string; purpose: string; current_document_id: string; current_version: number }> }> {
+  const caseID = new URL(runURL).pathname.split("/")[2] ?? "";
+  if (!caseID) throw new Error(`case ID missing from review URL ${runURL}`);
+  const raw = await page.eval(session, `fetch(${JSON.stringify(`/api/cases/${caseID}`)}).then(async (response) => {
+    if (!response.ok) throw new Error('case detail HTTP ' + response.status);
+    return JSON.stringify(await response.json());
+  })`);
+  return JSON.parse(raw) as { materials?: Array<{ material_id: string; purpose: string; current_document_id: string; current_version: number }> };
+}
+
 interface DocumentMetadataSnapshot {
   documentVersionId: string;
   parsedDocumentId: string;
@@ -651,7 +846,7 @@ async function readWorkspaceSourceTabs(page: Page, session: string): Promise<Doc
 
 async function waitParsedDocument(page: Page, session: string, filename: string): Promise<void> {
   await page.wait(session, `(() => {
-    const row = [...document.querySelectorAll('.document-list li')].find(
+    const row = [...document.querySelectorAll('.material-current-set .document-list li[data-material-id]')].find(
       (item) => item.innerText.includes(${JSON.stringify(filename)}),
     );
     return row?.querySelector('.parsed-document-summary')?.dataset.status === 'ready';
@@ -660,7 +855,7 @@ async function waitParsedDocument(page: Page, session: string, filename: string)
 
 async function readDocumentMetadata(page: Page, session: string, filename: string): Promise<DocumentMetadataSnapshot> {
   const raw = await page.eval(session, `(() => {
-    const row = [...document.querySelectorAll('.document-list li')].find((item) => item.innerText.includes(${JSON.stringify(filename)}));
+    const row = [...document.querySelectorAll('.material-current-set .document-list li[data-material-id]')].find((item) => item.innerText.includes(${JSON.stringify(filename)}));
     const summary = row?.querySelector('.parsed-document-summary');
     if (!summary) return '';
     const data = summary.dataset;
@@ -899,9 +1094,27 @@ function assertAttemptParseRefsMatchDisplayed(attemptIds: string[], displayed: D
   if (missing.length > 0) throw new Error(`${label} references undisplayed parses: ${missing.join(", ")}`);
 }
 
-async function clickDocumentRowButton(page: Page, session: string, filename: string, text: string): Promise<void> {
+async function assertReplacementMultipart(
+  requests: Array<{ url: string; method: string; postData?: string; postDataError?: string; postDataReady: Promise<void> }>,
+  materialId: string,
+  replacesDocumentId: string,
+): Promise<void> {
+  await Promise.all(requests.map((item) => item.postDataReady));
+  const request = requests.find((item) => item.method === "POST" && item.url.endsWith("/documents"));
+  if (request?.postDataError) throw new Error(`could not inspect replacement upload request body: ${request.postDataError}`);
+  if (!request?.postData) throw new Error("replacement upload request did not expose multipart fields");
+  if (!request.postData.includes(`name="material_id"\r\n\r\n${materialId}\r\n`)) {
+    throw new Error("replacement request did not send the selected material identity");
+  }
+  if (!request.postData.includes(`name="replaces_document_id"\r\n\r\n${replacesDocumentId}\r\n`)) {
+    throw new Error("replacement request did not send the expected current document for CAS");
+  }
+}
+
+async function clickDocumentRowButton(page: Page, session: string, materialId: string, filename: string, text: string): Promise<void> {
   const status = await page.eval(session, `(() => {
-    const row = [...document.querySelectorAll('.document-list li[data-document-id]')].find((item) => item.innerText.includes(${JSON.stringify(filename)}));
+    const row = [...document.querySelectorAll('.material-current-set .document-list li[data-material-id]')].find((item) => item.dataset.materialId === ${JSON.stringify(materialId)});
+    if (row && !row.innerText.includes(${JSON.stringify(filename)})) return 'filename-mismatch';
     const button = [...(row?.querySelectorAll('button') ?? [])].find((item) => item.textContent?.trim() === ${JSON.stringify(text)} && !item.disabled);
     if (!button) return 'missing';
     button.click();
@@ -926,3 +1139,5 @@ async function selectParsedDocumentTab(page: Page, session: string, parsedDocume
       Boolean(label?.closest('.ant-tabs-tab.ant-tabs-tab-active'));
   })()`);
 }
+
+await run();

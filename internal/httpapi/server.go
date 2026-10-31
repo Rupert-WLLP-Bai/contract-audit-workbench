@@ -84,6 +84,7 @@ func Handler(st *store.Store, opt Options) http.Handler {
 	mux.HandleFunc("POST /api/admin/rulepacks/{packID}/rollback", h.rollbackRulePackVersion)
 	mux.HandleFunc("GET /api/admin/rulepacks/{packID}/history", h.rulePackHistory)
 	registerGovernanceRoutes(mux, h)
+	registerLegalKnowledgeRoutes(mux, h)
 	registerEvidenceRoutes(mux, h)
 	mux.HandleFunc("GET /api/auth/oidc/login", h.oidcLogin)
 	mux.HandleFunc("GET /api/auth/oidc/callback", h.oidcCallback)
@@ -102,12 +103,48 @@ func Handler(st *store.Store, opt Options) http.Handler {
 	mux.HandleFunc("GET /api/cases", h.listCases)
 	mux.HandleFunc("POST /api/cases", h.createCase)
 	mux.HandleFunc("GET /api/cases/{caseID}", h.getCase)
+	mux.HandleFunc("GET /api/cases/{caseID}/subjects", h.listCaseSubjects)
+	mux.HandleFunc("POST /api/cases/{caseID}/subjects", h.createCaseSubject)
+	mux.HandleFunc("POST /api/cases/{caseID}/subjects/bind-existing", h.bindExistingSubject)
+	mux.HandleFunc("GET /api/cases/{caseID}/subject-sources", h.listConfiguredSubjectSources)
+	mux.HandleFunc("GET /api/cases/{caseID}/subject-source-snapshots", h.listSubjectSourceSnapshots)
+	mux.HandleFunc("POST /api/cases/{caseID}/subject-source-snapshots", h.createSubjectSourceSnapshot)
+	mux.HandleFunc("GET /api/cases/{caseID}/subject-source-snapshots/{snapshotID}", h.getSubjectSourceSnapshot)
+	mux.HandleFunc("POST /api/cases/{caseID}/subject-source-snapshots/{snapshotID}/verify", h.verifySubjectSourceSnapshot)
+	mux.HandleFunc("GET /api/cases/{caseID}/materials/{materialID}/versions/{version}/parsed-documents", h.listMaterialVersionParses)
+	mux.HandleFunc("GET /api/cases/{caseID}/materials/{materialID}/versions/{version}/parsed-documents/{parsedDocumentID}", h.getMaterialVersionParsedChunk)
+	mux.HandleFunc("GET /api/cases/{caseID}/subject-changes", h.listSubjectChanges)
+	mux.HandleFunc("POST /api/cases/{caseID}/subject-changes", h.proposeSubjectChange)
+	mux.HandleFunc("GET /api/cases/{caseID}/subject-changes/{requestID}", h.getSubjectChange)
+	mux.HandleFunc("GET /api/cases/{caseID}/subject-changes/{requestID}/impact", h.getSubjectChangeImpact)
+	mux.HandleFunc("POST /api/cases/{caseID}/subject-changes/{requestID}/decisions", h.decideSubjectChange)
+	mux.HandleFunc("GET /api/subjects", h.listSubjects)
+	mux.HandleFunc("POST /api/subjects", h.createUnboundSubject)
+	mux.HandleFunc("GET /api/subjects/{subjectID}", h.getSubject)
+	mux.HandleFunc("GET /api/subjects/{subjectID}/history", h.getSubjectHistory)
+	mux.HandleFunc("GET /api/subjects/{subjectID}/case-links", h.listSubjectCaseLinks)
 	mux.HandleFunc("POST /api/cases/{caseID}/members", h.addMember)
 	mux.HandleFunc("POST /api/cases/{caseID}/documents", h.upload)
+	mux.HandleFunc("POST /api/cases/{caseID}/materials/selection", h.confirmMaterialSelection)
 	mux.HandleFunc("GET /api/cases/{caseID}/documents/{docID}/original", h.original)
 	mux.HandleFunc("POST /api/cases/{caseID}/documents/{docID}/parse", h.reparse)
 	mux.HandleFunc("POST /api/cases/{caseID}/object-bindings", h.createObjectBinding)
+	mux.HandleFunc("POST /api/cases/{caseID}/object-bindings/{mappingID}/changes/preview", h.previewOperatorMappingChange)
+	mux.HandleFunc("POST /api/cases/{caseID}/object-bindings/{mappingID}/changes", h.proposeOperatorMappingChange)
+	mux.HandleFunc("GET /api/cases/{caseID}/object-binding-changes/{requestID}", h.getOperatorMappingChange)
+	mux.HandleFunc("POST /api/cases/{caseID}/object-binding-changes/{requestID}/decision", h.decideOperatorMappingChange)
+	mux.HandleFunc("GET /api/cases/{caseID}/service-objects", h.listServiceObjects)
+	mux.HandleFunc("POST /api/cases/{caseID}/service-objects", h.createServiceObject)
+	mux.HandleFunc("GET /api/cases/{caseID}/service-objects/{objectID}", h.getServiceObject)
+	mux.HandleFunc("GET /api/cases/{caseID}/service-objects/{objectID}/versions", h.listServiceObjectVersions)
+	mux.HandleFunc("GET /api/cases/{caseID}/service-objects/{objectID}/versions/{version}", h.getServiceObjectVersion)
+	mux.HandleFunc("GET /api/cases/{caseID}/service-objects/{objectID}/associations", h.listServiceObjectAssociations)
+	mux.HandleFunc("GET /api/cases/{caseID}/service-objects/{objectID}/associations/{associationVersion}", h.getServiceObjectAssociation)
+	mux.HandleFunc("GET /api/cases/{caseID}/service-objects/{objectID}/association-candidates", h.getServiceObjectAssociationCandidates)
+	mux.HandleFunc("POST /api/cases/{caseID}/service-objects/{objectID}/associations", h.createServiceObjectAssociation)
+	mux.HandleFunc("GET /api/cases/{caseID}/review-readiness", h.reviewReadiness)
 	mux.HandleFunc("POST /api/cases/{caseID}/external-collection-jobs", h.collectExternalSnapshot)
+	mux.HandleFunc("GET /api/cases/{caseID}/external-collection-jobs/{collectionID}", h.getExternalCollectionJob)
 	mux.HandleFunc("GET /api/cases/{caseID}/external-snapshots", h.listExternalSnapshots)
 	mux.HandleFunc("POST /api/cases/{caseID}/fulfillment-evaluations", h.createFulfillmentEvaluation)
 	mux.HandleFunc("GET /api/cases/{caseID}/fulfillment-evaluations/{evaluationID}", h.getFulfillmentEvaluation)
@@ -365,19 +402,46 @@ func (h *handler) upload(w http.ResponseWriter, r *http.Request) {
 	}
 	media := http.DetectContentType(body)
 	caseID := r.PathValue("caseID")
-	var id string
+	var result store.DocumentUploadResult
 	err = documentservice.WithPublicParse(r.Context(), func(ctx context.Context) (string, error) {
 		return h.store.DocumentUploadKind(ctx, user, caseID, header.Filename, media)
 	}, func(ctx context.Context) error {
 		var err error
-		id, err = h.store.AddDocument(ctx, user, caseID, r.FormValue("role"), header.Filename, media, body)
+		options := store.MaterialUploadOptions{Intent: r.FormValue("intent"), MaterialID: r.FormValue("material_id"), ReplacesDocumentID: r.FormValue("replaces_document_id"), Purpose: r.FormValue("purpose"), IdempotencyKey: r.Header.Get("Idempotency-Key")}
+		result, err = h.store.UploadMaterial(ctx, user, caseID, r.FormValue("role"), header.Filename, media, body, options)
 		return err
 	})
 	if err != nil {
 		writeErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusCreated, map[string]string{"id": id})
+	status := http.StatusCreated
+	if result.Replayed {
+		status = http.StatusOK
+	}
+	writeJSON(w, status, result)
+}
+
+func (h *handler) confirmMaterialSelection(w http.ResponseWriter, r *http.Request) {
+	user, ok := h.actor(w, r)
+	if !ok {
+		return
+	}
+	var body store.MaterialSelectionInput
+	if err := readJSON(w, r, &body); err != nil {
+		writeErr(w, err)
+		return
+	}
+	if err := h.store.ConfirmMaterialSelection(r.Context(), user, r.PathValue("caseID"), body.Version, body.DocumentIDs); err != nil {
+		writeErr(w, err)
+		return
+	}
+	detail, err := h.store.GetCase(user, r.PathValue("caseID"))
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, detail.MaterialSelection)
 }
 
 func (h *handler) original(w http.ResponseWriter, r *http.Request) {
@@ -450,7 +514,8 @@ func (h *handler) startReview(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		BusinessAt string `json:"business_at,omitempty"`
+		BusinessAt       string `json:"business_at,omitempty"`
+		EvidenceCutoffAt string `json:"evidence_cutoff_at,omitempty"`
 	}
 	if err := readJSON(w, r, &body); err != nil {
 		writeErr(w, err)
@@ -459,10 +524,10 @@ func (h *handler) startReview(w http.ResponseWriter, r *http.Request) {
 	if h.durable {
 		var accepted store.JobAcceptance
 		var err error
-		if body.BusinessAt == "" {
+		if body.BusinessAt == "" && body.EvidenceCutoffAt == "" {
 			accepted, err = h.store.StartReviewAsync(r.Context(), user, r.PathValue("caseID"))
 		} else {
-			accepted, err = h.store.StartReviewAsyncAt(r.Context(), user, r.PathValue("caseID"), body.BusinessAt)
+			accepted, err = h.store.StartReviewAsyncAtWithEvidenceCutoff(r.Context(), user, r.PathValue("caseID"), body.BusinessAt, body.EvidenceCutoffAt)
 		}
 		if err != nil {
 			writeErr(w, err)
@@ -473,10 +538,10 @@ func (h *handler) startReview(w http.ResponseWriter, r *http.Request) {
 	}
 	var id string
 	var err error
-	if body.BusinessAt == "" {
+	if body.BusinessAt == "" && body.EvidenceCutoffAt == "" {
 		id, err = h.store.StartReview(r.Context(), user, r.PathValue("caseID"))
 	} else {
-		id, err = h.store.StartReviewAt(r.Context(), user, r.PathValue("caseID"), body.BusinessAt)
+		id, err = h.store.StartReviewAtWithEvidenceCutoff(r.Context(), user, r.PathValue("caseID"), body.BusinessAt, body.EvidenceCutoffAt)
 	}
 	if err != nil {
 		writeErr(w, err)
@@ -721,9 +786,11 @@ func writeJSON(w http.ResponseWriter, status int, body any) {
 func writeErr(w http.ResponseWriter, err error) {
 	var fe *fault.Error
 	if errors.As(err, &fe) {
-		writeJSON(w, fe.Status, map[string]any{
-			"error": map[string]any{"code": fe.Code, "message": fe.Message, "retryable": fe.Retryable},
-		})
+		body := map[string]any{"code": fe.Code, "message": fe.Message, "retryable": fe.Retryable}
+		if len(fe.NextActions) > 0 {
+			body["next_actions"] = fe.NextActions
+		}
+		writeJSON(w, fe.Status, map[string]any{"error": body})
 		return
 	}
 	log.Printf("request failed: %v", err)

@@ -2,6 +2,7 @@ import type { CaseSummary, Finding } from "../api/types";
 import {
   filterCases,
   filterFindings,
+  formatDateTime,
   parseRunEvent,
   parseRunFilter,
   reviewLayout,
@@ -124,5 +125,11 @@ describe("layout and events", () => {
       type: "run_state",
       state: "running",
     });
+  });
+});
+
+describe("business display time", () => {
+  it("formats UTC timestamps in the fixed Asia/Shanghai zone", () => {
+    expect(formatDateTime("2026-01-15T01:00:00.000Z")).toContain("2026/01/15 09:00");
   });
 });

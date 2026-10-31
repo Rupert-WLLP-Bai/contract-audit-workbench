@@ -44,7 +44,12 @@ import type {
   TextOffset,
   ParsedDocumentMetadata,
   FindingSeveritySource,
+  MaterialProjection,
+  MaterialSelectionProjection,
+  MaterialVersionProjection,
+  UploadDocumentResult,
 } from "./types";
+import { parseFrozenLegalReviewProjection } from "./legal-citations";
 import { isRecord } from "./guards";
 import { invalidResponse } from "./respond";
 import { parseAgentReview } from "./agent-review";
@@ -435,6 +440,15 @@ function recordList<T>(
   return Array.isArray(value) ? value.map(parse) : [];
 }
 
+function requiredRecordList<T>(
+  value: unknown,
+  field: string,
+  parse: (entry: unknown) => T,
+): T[] {
+  if (!Array.isArray(value)) fail(`${field}不是数组`);
+  return value.map(parse);
+}
+
 function stringList(value: unknown): string[] {
   return Array.isArray(value)
     ? value.filter((item): item is string => typeof item === "string")
@@ -483,9 +497,93 @@ function parseMembers(value: unknown[]): CaseDetail["members"] {
   });
 }
 
+const materialPurposes = new Set([
+  "primary_contract",
+  "supplement",
+  "procurement",
+  "award",
+  "acceptance",
+  "invoice",
+  "correspondence",
+  "other",
+]);
+
+function parseMaterialProjection(value: unknown): MaterialProjection {
+  const record = recordOf(value, "material");
+  const role = requiredString(record, "role");
+  const purpose = requiredString(record, "purpose");
+  const legacyStatus = requiredString(record, "legacy_status");
+  if (
+    role !== "procurement" &&
+    role !== "award" &&
+    role !== "draft_contract" &&
+    role !== "attachment"
+  ) fail("material.role 无效");
+  if (!materialPurposes.has(purpose)) fail("material.purpose 无效");
+  if (
+    legacyStatus !== "native" &&
+    legacyStatus !== "pending_confirmation" &&
+    legacyStatus !== "confirmed"
+  ) fail("material.legacy_status 无效");
+  return {
+    material_id: requiredString(record, "material_id"),
+    role,
+    purpose: purpose as MaterialProjection["purpose"],
+    legacy_status: legacyStatus,
+    legacy_selected: requiredBoolean(record, "legacy_selected"),
+    selected: requiredBoolean(record, "selected"),
+    current_document_id: requiredString(record, "current_document_id"),
+    current_version: requiredPositiveInteger(record, "current_version"),
+  };
+}
+
+function parseMaterialVersionProjection(value: unknown): MaterialVersionProjection {
+  const record = recordOf(value, "material version");
+  return {
+    material_id: requiredString(record, "material_id"),
+    version: requiredPositiveInteger(record, "version"),
+    document_id: requiredString(record, "document_id"),
+    previous_document_id: optionalNullableString(record, "previous_document_id"),
+    created_at: requiredString(record, "created_at"),
+  };
+}
+
+export function parseMaterialSelectionProjection(value: unknown): MaterialSelectionProjection {
+  const record = recordOf(value, "material_selection");
+  const status = requiredString(record, "status");
+  if (
+    status !== "pending_confirmation" &&
+    status !== "confirmed" &&
+    status !== "not_applicable"
+  ) fail("material_selection.status 无效");
+  return {
+    version: requiredCount(record, "version"),
+    status,
+    document_ids: stringArrayValue(record.document_ids, "material_selection.document_ids"),
+    ...(Object.hasOwn(record, "candidate_document_ids")
+      ? { candidate_document_ids: stringArrayValue(record.candidate_document_ids, "material_selection.candidate_document_ids") }
+      : {}),
+    primary_material_id: optionalNullableString(record, "primary_material_id"),
+  };
+}
+
+export function parseUploadDocumentResult(value: unknown): UploadDocumentResult {
+  const record = recordOf(value, "uploaded document");
+  return {
+    id: requiredString(record, "id"),
+    material_id: requiredString(record, "material_id"),
+    version: requiredPositiveInteger(record, "version"),
+    replayed: requiredBoolean(record, "replayed"),
+  };
+}
+
 export function parseCaseDetail(value: unknown): CaseDetail {
   const record = recordOf(value, "case");
   if (!hasCaseRecordArrays(record)) fail("案件缺少业务记录数组");
+  const materialProjectionKeys = ["materials", "material_versions", "material_selection"];
+  const projectionPresence = materialProjectionKeys.map((key) => Object.hasOwn(record, key));
+  if (projectionPresence.some(Boolean) && !projectionPresence.every(Boolean))
+    fail("案件材料投影字段不完整");
   return {
     id: requiredString(record, "id"),
     title: optionalString(record, "title") ?? "未命名案件",
@@ -493,12 +591,22 @@ export function parseCaseDetail(value: unknown): CaseDetail {
     created_at: optionalString(record, "created_at") ?? "",
     updated_at: optionalString(record, "updated_at") ?? "",
     documents: recordList(record.documents, parseDocument),
+    ...(projectionPresence.every(Boolean)
+      ? {
+          materials: requiredRecordList(record.materials, "materials", parseMaterialProjection),
+          material_versions: requiredRecordList(record.material_versions, "material_versions", parseMaterialVersionProjection),
+          material_selection: parseMaterialSelectionProjection(record.material_selection),
+        }
+      : {}),
     members: parseMembers(record.members as unknown[]),
     latest_run: parseRunSummary(record.latest_run),
     finding_counts: parseCounts(record.finding_counts),
     activity: parseActivityItems(record.activity),
     revision_pending: record.revision_pending === true,
     configuration_pending: record.configuration_pending === true,
+    ...(typeof record.subject_context_changed_after_latest_run === "boolean"
+      ? { subject_context_changed_after_latest_run: record.subject_context_changed_after_latest_run }
+      : {}),
     business_line: requiredStringValue(record, "business_line"),
     scenario: requiredStringValue(record, "scenario"),
     business_status: requiredStringValue(record, "business_status"),
@@ -681,15 +789,24 @@ export function parseReviewDiagnostics(value: unknown): ReviewDiagnostics {
 export function parseReviewWorkspace(value: unknown): ReviewWorkspace {
   const record = recordOf(value, "review");
   if (!Array.isArray(record.audit_events)) fail("审查工作区缺少 audit_events");
+  const run = parseReviewRun(record.run);
+  const reviewAttempts = parseReviewAttempts(record.review_attempts);
+  const legalAuthorities = record.legal_authorities === undefined
+    ? undefined
+    : parseFrozenLegalReviewProjection(record.legal_authorities);
+  if (legalAuthorities && (legalAuthorities.run_id !== run.id ||
+      legalAuthorities.attempt_id !== reviewAttempts?.attempt?.id)) {
+    fail("冻结法律依据不属于当前审查及所选执行记录");
+  }
   return {
-    run: parseReviewRun(record.run),
+    run,
     documents: Array.isArray(record.documents)
       ? record.documents.map(parseReviewDocument)
       : [],
     findings: Array.isArray(record.findings)
       ? record.findings.map(parseFinding)
       : [],
-    review_attempts: parseReviewAttempts(record.review_attempts),
+    review_attempts: reviewAttempts,
     agent_review: parseBusinessAgentReview(record.agent_review),
     execution: parseExecution(record.execution),
     snapshot: parseSnapshot(record.snapshot),
@@ -708,6 +825,7 @@ export function parseReviewWorkspace(value: unknown): ReviewWorkspace {
       record,
       "revision_comparison_reason",
     ),
+    ...(legalAuthorities === undefined ? {} : { legal_authorities: legalAuthorities }),
   };
 }
 
@@ -796,13 +914,26 @@ export function parseTemplateList(value: unknown): Template[] {
 }
 
 export function parseGenerationRecord(value: unknown): GenerationRecord {
-  return requiredStringRecord(value, "generation", [
+  const parsed = requiredStringRecord(value, "generation", [
     "document_id",
     "template_id",
     "template_version",
     "digest",
     "created_at",
   ]);
+  const record = recordOf(value, "generation");
+  const materialId = optionalString(record, "material_id");
+  const version = record.version === undefined ? null : numberOrNull(record.version);
+  if (record.version !== undefined && (version === null || !Number.isInteger(version) || version < 1))
+    fail("generation.version 无效");
+  if (record.replayed !== undefined && typeof record.replayed !== "boolean")
+    fail("generation.replayed 无效");
+  return {
+    ...parsed,
+    ...(materialId === null ? {} : { material_id: materialId }),
+    ...(version === null ? {} : { version }),
+    ...(record.replayed === undefined ? {} : { replayed: record.replayed as boolean }),
+  };
 }
 
 export function parseRemediation(value: unknown): Remediation {

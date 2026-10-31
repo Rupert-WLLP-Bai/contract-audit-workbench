@@ -190,6 +190,42 @@ describe("RulePack API parsers", () => {
     });
   });
 
+  it("round-trips exact legal citations while keeping old rules free of the optional field", () => {
+    const legalAuthority = {
+      authority_source_id: "civil-code",
+      knowledge_id: "civil-code-art-1",
+      version_id: "1".repeat(64),
+      content_sha256: "2".repeat(64),
+      source_id: "civil-code",
+      source_snapshot_id: "capture-civil-2026",
+      norm_title: "中华人民共和国民法典",
+      norm_version: "2020-05-28",
+      article_number: 1,
+      document_type: "law",
+      source_sha256: "3".repeat(64),
+      article_text_sha256: "2".repeat(64),
+      effective_from: "2021-01-01",
+      effective_until: "",
+      quote_span: { start: 0, end: 5, quote: "民法典第一" },
+      applicability: { all_of: [{ field: "transaction_kind", one_of: ["civil_contract"] }] },
+    };
+    const parsedLegacy = parseRulePackManifest(manifestSnapshot);
+    expect(parsedLegacy.rules[0]).not.toHaveProperty("legal_authorities");
+    const parsed = parseRulePackManifest({
+      ...manifestSnapshot,
+      rules: [{ ...manifest.rules[0], legal_authorities: [legalAuthority] }],
+    });
+    expect(parsed.rules[0]?.legal_authorities).toEqual([legalAuthority]);
+    expect(() => parseRulePackManifest({
+      ...manifestSnapshot,
+      rules: [{ ...manifest.rules[0], legal_authorities: [{ ...legalAuthority, quote_span: { start: 0, end: 3, quote: "民法典第一" } }] }],
+    })).toThrow(/legal_authorities/);
+    expect(() => parseRulePackManifest({
+      ...manifestSnapshot,
+      rules: [{ ...manifest.rules[0], legal_authorities: [{ ...legalAuthority, applicability: { all_of: [{ field: "funding_kind", one_of: ["unknown"] }] } }] }],
+    })).toThrow(/legal_authorities/);
+  });
+
   it("rejects malformed required-fact fields", () => {
     const withRequiredFact = (patch: Record<string, unknown>) => ({
       ...manifestSnapshot,

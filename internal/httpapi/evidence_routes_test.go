@@ -120,7 +120,7 @@ func TestEvidenceRequestHTTPCaseAuthorizationAndFrozenLifecycle(t *testing.T) {
 	}
 	otherCaseID := otherCase["id"].(string)
 	api.upload(t, caseID, "procurement", "purchase.txt", "text/plain", []byte("采购文件要求质保36个月。"))
-	api.upload(t, caseID, "draft_contract", "initial.txt", "text/plain", []byte("拟签合同未写明质保期限。"))
+	initialDraftID := api.upload(t, caseID, "draft_contract", "initial.txt", "text/plain", []byte("拟签合同未写明质保期限。"))
 	status, source := api.do(t, http.MethodPost, "/api/cases/"+caseID+"/reviews", map[string]any{})
 	if status != http.StatusCreated {
 		t.Fatalf("start source review: %d %v", status, source)
@@ -245,8 +245,9 @@ func TestEvidenceRequestHTTPCaseAuthorizationAndFrozenLifecycle(t *testing.T) {
 	requireEvidenceHTTPError(t, status, http.StatusNotFound, body)
 
 	api.login(t, "demo-admin", "admin-demo")
+	materialID, currentDocumentID := api.materialForCurrentDocument(t, caseID, initialDraftID)
 	api.base = legacyURL
-	documentID := api.upload(t, caseID, "draft_contract", "supplement.txt", "text/plain", []byte("拟签合同约定质保24个月。"))
+	documentID := api.replaceUpload(t, caseID, "draft_contract", "supplement.txt", "text/plain", []byte("拟签合同约定质保24个月。"), materialID, currentDocumentID)
 	api.base = coreURL
 	status, secondReceiptResult := api.send(t, http.MethodPost, secondPath+"/receipts", map[string]any{
 		"answer": "另一份提交", "expected_version": 1,
@@ -425,8 +426,9 @@ func TestEvidenceRequestHTTPCaseAuthorizationAndFrozenLifecycle(t *testing.T) {
 	// A matching result cannot close a request if the stored check does not
 	// independently identify the submitted material as its evidence.
 	api.login(t, "demo-admin", "admin-demo")
+	materialID, currentDocumentID = api.materialForCurrentDocument(t, caseID, documentID)
 	api.base = legacyURL
-	compatibleDocID := api.upload(t, caseID, "draft_contract", "compatible.txt", "text/plain", []byte("拟签合同约定质保36个月。"))
+	compatibleDocID := api.replaceUpload(t, caseID, "draft_contract", "compatible.txt", "text/plain", []byte("拟签合同约定质保36个月。"), materialID, currentDocumentID)
 	api.base = coreURL
 	status, compatibleReceipt := api.send(t, http.MethodPost, secondPath+"/receipts", map[string]any{
 		"document_id": compatibleDocID, "expected_version": 2,

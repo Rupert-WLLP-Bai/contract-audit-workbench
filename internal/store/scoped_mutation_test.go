@@ -490,6 +490,30 @@ func TestCompletedJobDeltaIgnoresLocationDifferences(t *testing.T) {
 	}
 }
 
+func TestStateCloneDoesNotCreateMaterialDeltaInUTC(t *testing.T) {
+	createdAt := time.Date(2026, 10, 22, 19, 17, 44, 123000000, time.UTC)
+	previous := state{
+		Materials:         []MaterialEntity{{TenantID: "tenant", OrgID: "org", CaseID: "case", ID: "material", CreatedAt: createdAt}},
+		MaterialVersions:  []MaterialVersion{{TenantID: "tenant", OrgID: "org", CaseID: "case", MaterialID: "material", Version: 1, CreatedAt: createdAt}},
+		MaterialChains:    []CaseMaterialChain{{TenantID: "tenant", OrgID: "org", CaseID: "case", CreatedAt: createdAt, UpdatedAt: createdAt}},
+		UploadIdempotency: []UploadIdempotencyRecord{{TenantID: "tenant", OrgID: "org", CaseID: "case", ActorID: "actor", Key: "key", CreatedAt: createdAt}},
+	}
+	previous.normalize()
+
+	next, err := previous.clone()
+	if err != nil {
+		t.Fatalf("clone state: %v", err)
+	}
+	old, changed, err := stateDelta(previous, next)
+	if err != nil {
+		t.Fatalf("calculate state delta: %v", err)
+	}
+	if len(old.Materials)+len(changed.Materials)+len(old.MaterialVersions)+len(changed.MaterialVersions)+
+		len(old.MaterialChains)+len(changed.MaterialChains)+len(old.UploadIdempotency)+len(changed.UploadIdempotency) != 0 {
+		t.Fatalf("JSON clone created a false material delta: old=%+v changed=%+v", old, changed)
+	}
+}
+
 // TestDurableCoreCreateCaseLeavesCompletedWorkerJobUnchanged keeps a real
 // completed worker row in the shared database while Core performs an unrelated
 // write. A false delta would either trip the service-owner guard or rewrite the

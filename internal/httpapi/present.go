@@ -60,14 +60,32 @@ func detailJSON(detail store.CaseDetail) map[string]any {
 	} else {
 		body["archives"] = detail.Archives
 	}
-	replaced := supersededIDs(detail.Documents)
+	replaced := map[string]bool{}
+	for _, version := range detail.MaterialVersions {
+		if version.PreviousDocumentID != nil && *version.PreviousDocumentID != "" {
+			replaced[*version.PreviousDocumentID] = true
+		}
+	}
 	docs := make([]any, len(detail.Documents))
 	for i, doc := range detail.Documents {
 		docs[i] = documentJSON(doc, false, replaced[doc.Document.ID])
 	}
 	body["documents"] = docs
+	if detail.Materials == nil {
+		detail.Materials = []store.MaterialProjection{}
+	}
+	if detail.MaterialVersions == nil {
+		detail.MaterialVersions = []store.MaterialVersionProjection{}
+	}
+	if detail.MaterialSelection.DocumentIDs == nil {
+		detail.MaterialSelection.DocumentIDs = []string{}
+	}
+	body["materials"] = detail.Materials
+	body["material_versions"] = detail.MaterialVersions
+	body["material_selection"] = detail.MaterialSelection
 	body["revision_pending"] = detail.RevisionPending
 	body["configuration_pending"] = detail.ConfigurationPending
+	body["subject_context_changed_after_latest_run"] = detail.SubjectContextChangedAfterLatestRun
 	if detail.Counts == nil {
 		body["finding_counts"] = nil
 	} else {
@@ -89,20 +107,6 @@ func detailJSON(detail store.CaseDetail) map[string]any {
 	}
 	body["members"] = members
 	return body
-}
-
-func supersededIDs(docs []store.Interpreted) map[string]bool {
-	latest := map[string]string{}
-	for _, doc := range docs {
-		latest[doc.Document.Role] = doc.Document.ID
-	}
-	out := map[string]bool{}
-	for _, doc := range docs {
-		if latest[doc.Document.Role] != doc.Document.ID {
-			out[doc.Document.ID] = true
-		}
-	}
-	return out
 }
 
 func documentJSON(doc store.Interpreted, withText, superseded bool) map[string]any {
@@ -250,7 +254,7 @@ func workspaceJSON(st *store.Store, ws store.Workspace) map[string]any {
 		attempts = businessAttemptsJSON(ws.Execution)
 		review = businessAgentReviewJSON(ws.Execution.AgentReview)
 	}
-	return map[string]any{
+	out := map[string]any{
 		"run": run, "documents": docs, "findings": findings, "evaluations": evals,
 		"review_attempts": attempts, "agent_review": review,
 		"snapshot":        map[string]any{"document_ids": ws.Snapshot.DocumentIDs},
@@ -262,6 +266,10 @@ func workspaceJSON(st *store.Store, ws store.Workspace) map[string]any {
 		"revision_comparison_reason": nilString(ws.RevisionComparisonReason),
 		"revisions":                  revisionsJSON(ws.Revisions, byID),
 	}
+	if ws.LegalAuthorities != nil {
+		out["legal_authorities"] = ws.LegalAuthorities
+	}
+	return out
 }
 
 func businessAttemptsJSON(execution *store.Execution) map[string]any {

@@ -101,7 +101,7 @@ func TestTelecomBusinessHTTPWorkflowFreezesReportsAndRejectsInsufficientClosure(
 		"电路 LINE-001：SLA 可用率 99.9%；统计周期：自然月；时区 Asia/Shanghai；公历 gregorian；故障口径 all_service_unavailability；无排除项。\n" +
 		"电路 LINE-001：预付款比例 20%，预付款以合同总额为基础，含税。\n" +
 		"电路 LINE-001：合同总额 100000 元，含税。"
-	correctedID := api.upload(t, caseID, "draft_contract", "telecom-revised-draft.txt", "text/plain", []byte(correctedDraft))
+	correctedID := api.replaceUpload(t, caseID, "draft_contract", "telecom-revised-draft.txt", "text/plain", []byte(correctedDraft), requiredString(t, generation, "material_id"), requiredString(t, generation, "document_id"))
 	status, submitted := api.do(t, http.MethodPost,
 		fmt.Sprintf("/api/cases/%s/remediations/%s/submit", caseID, itemID),
 		map[string]any{
@@ -202,14 +202,19 @@ func TestTelecomBusinessHTTPWorkflowFreezesReportsAndRejectsInsufficientClosure(
 	}
 
 	insufficientCase := createTelecomCase(t, api, "C1-B HTTP insufficient evidence")
-	generateTelecomDraft(t, api, insufficientCase, templateID, insufficient.Fields)
+	insufficientGeneration := generateTelecomDraft(t, api, insufficientCase, templateID, insufficient.Fields)
 	for _, material := range insufficient.Materials {
-		api.upload(t, insufficientCase, material.Role, material.Filename, "text/plain", []byte(material.Text))
+		if material.Role == "draft_contract" {
+			api.replaceUpload(t, insufficientCase, material.Role, material.Filename, "text/plain", []byte(material.Text), requiredString(t, insufficientGeneration, "material_id"), requiredString(t, insufficientGeneration, "document_id"))
+		} else {
+			api.upload(t, insufficientCase, material.Role, material.Filename, "text/plain", []byte(material.Text))
+		}
 	}
 	if insufficient.DraftOverride == nil {
 		t.Fatal("frozen insufficient scenario has no missing-period/wrong-circuit draft")
 	}
-	api.upload(t, insufficientCase, "draft_contract", insufficient.DraftOverride.Filename, "text/plain", []byte(insufficient.DraftOverride.Text))
+	currentMaterial, currentDocument := api.materialForDocument(t, insufficientCase, requiredString(t, insufficientGeneration, "material_id"))
+	api.replaceUpload(t, insufficientCase, "draft_contract", insufficient.DraftOverride.Filename, "text/plain", []byte(insufficient.DraftOverride.Text), currentMaterial, currentDocument)
 	insufficientRunID, insufficientAttemptID, insufficientWorkspace := startTelecomReview(t, api, insufficientCase)
 	assertTelecomRelations(t, insufficientWorkspace, insufficient.ExpectedRelations)
 	advance := evaluationForRule(t, insufficientWorkspace, "ENT-COM-ADV-001")
@@ -223,7 +228,8 @@ func TestTelecomBusinessHTTPWorkflowFreezesReportsAndRejectsInsufficientClosure(
 		t.Fatalf("create insufficient remediation: status=%d body=%v", status, blockedItem)
 	}
 	blockedItemID := requiredString(t, blockedItem, "id")
-	newDraftID := api.upload(t, insufficientCase, "draft_contract", "telecom-payment-corrected.txt", "text/plain", []byte(correctedDraft))
+	currentMaterial, currentDocument = api.materialForDocument(t, insufficientCase, currentMaterial)
+	newDraftID := api.replaceUpload(t, insufficientCase, "draft_contract", "telecom-payment-corrected.txt", "text/plain", []byte(correctedDraft), currentMaterial, currentDocument)
 	status, _ = api.do(t, http.MethodPost,
 		fmt.Sprintf("/api/cases/%s/remediations/%s/submit", insufficientCase, blockedItemID),
 		map[string]any{"document_ids": []string{newDraftID}, "reason": "拟签条款已回到 20%，尚待审批依据。", "expected_version": 1})
@@ -252,6 +258,46 @@ func TestTelecomBusinessHTTPWorkflowFreezesReportsAndRejectsInsufficientClosure(
 	}
 }
 
+func TestGeneratedMaterialHTTPIdempotencyAndExplicitReplacement(t *testing.T) {
+	api := newAPI(t)
+	api.login(t, "demo-admin", "admin-demo")
+	caseID := createTelecomCase(t, api, "生成材料幂等与显式替换")
+	dataset := readTelecomDataset(t)
+	templateID := requireTelecomTemplate(t, api, dataset.Template, dataset.TemplateVersion)
+	fields := telecomScenario(t, dataset, "compatible").Fields
+	path := "/api/cases/" + caseID + "/generations"
+	status, first := api.send(t, http.MethodPost, path, map[string]any{"template_id": templateID, "fields": fields}, "generation-add-key")
+	if status != http.StatusCreated || first["replayed"] != false || first["version"] != float64(1) {
+		t.Fatalf("create generated material: status=%d body=%v", status, first)
+	}
+	materialID, documentID := requiredString(t, first, "material_id"), requiredString(t, first, "document_id")
+	status, replay := api.send(t, http.MethodPost, path, map[string]any{"template_id": templateID, "fields": fields}, "generation-add-key")
+	if status != http.StatusOK || replay["replayed"] != true || replay["material_id"] != materialID || replay["document_id"] != documentID || replay["version"] != float64(1) {
+		t.Fatalf("replay generated material: status=%d first=%v replay=%v", status, first, replay)
+	}
+	changed := map[string]string{}
+	for key, value := range fields {
+		changed[key] = value
+	}
+	changed["bandwidth_mbps"] = "200"
+	status, conflict := api.send(t, http.MethodPost, path, map[string]any{"template_id": templateID, "fields": changed}, "generation-add-key")
+	if status != http.StatusConflict {
+		t.Fatalf("changed payload with same key should conflict: status=%d body=%v", status, conflict)
+	}
+	status, replaced := api.send(t, http.MethodPost, path, map[string]any{
+		"template_id": templateID, "fields": changed, "intent": "replace", "material_id": materialID, "replaces_document_id": documentID,
+	}, "generation-replace-key")
+	if status != http.StatusCreated || replaced["material_id"] != materialID || replaced["version"] != float64(2) || replaced["replayed"] != false {
+		t.Fatalf("explicitly replace generated material: status=%d body=%v", status, replaced)
+	}
+	status, secondConflict := api.send(t, http.MethodPost, path, map[string]any{"template_id": templateID, "fields": fields}, "generation-add-second-key")
+	errorBody, _ := secondConflict["error"].(map[string]any)
+	actions, _ := errorBody["next_actions"].([]any)
+	if status != http.StatusConflict || errorBody["code"] != "primary_contract_exists" || len(actions) != 2 || actions[0] != "separate_case" || actions[1] != "explicit_replace" {
+		t.Fatalf("default add to existing primary should provide explicit next actions: status=%d body=%v", status, secondConflict)
+	}
+}
+
 func TestTelecomRevisionKeepsMissingClausesUnknown(t *testing.T) {
 	api := newAPI(t)
 	publishTelecomBusinessPolicy(t, api)
@@ -260,7 +306,7 @@ func TestTelecomRevisionKeepsMissingClausesUnknown(t *testing.T) {
 	conflict := telecomScenario(t, dataset, "conflict")
 	templateID := requireTelecomTemplate(t, api, dataset.Template, dataset.TemplateVersion)
 	caseID := createTelecomCase(t, api, "RulePack revision transitions")
-	generateTelecomDraft(t, api, caseID, templateID, conflict.Fields)
+	revisionGeneration := generateTelecomDraft(t, api, caseID, templateID, conflict.Fields)
 	for _, material := range conflict.Materials {
 		api.upload(t, caseID, material.Role, material.Filename, "text/plain", []byte(material.Text))
 	}
@@ -284,7 +330,8 @@ func TestTelecomRevisionKeepsMissingClausesUnknown(t *testing.T) {
 			if step.name == "restored_requirement" && len(stringSlice(t, priorEvaluation["object_refs"])) != 0 {
 				t.Fatalf("missing-clause risk unexpectedly acquired an object identity: %v", priorEvaluation)
 			}
-			api.upload(t, caseID, "draft_contract", step.name+".txt", "text/plain", []byte(step.bandwidth+unchanged))
+			materialID, currentDocumentID := api.materialForDocument(t, caseID, requiredString(t, revisionGeneration, "material_id"))
+			api.replaceUpload(t, caseID, "draft_contract", step.name+".txt", "text/plain", []byte(step.bandwidth+unchanged), materialID, currentDocumentID)
 			_, _, current := startTelecomReview(t, api, caseID)
 			evaluation := evaluationForRule(t, current, "ENT-TECH-BW-001")
 			if evaluation["relation"] != step.relation || current["revision_comparison_reason"] != nil {

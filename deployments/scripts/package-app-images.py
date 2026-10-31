@@ -118,6 +118,15 @@ def frontend_files() -> dict[str, list[Path]]:
     return result
 
 
+def image_tags(suffix: str = "") -> tuple[str, dict[str, tuple[str, str]]]:
+    backend = f"contract-audit-backend:{suffix}" if suffix else BACKEND_TAG
+    frontends = {
+        name: (f"contract-audit-{name}:{suffix}" if suffix else tag, entrypoint)
+        for name, (tag, entrypoint) in FRONTENDS.items()
+    }
+    return backend, frontends
+
+
 def source_snapshot(fronts: dict[str, list[Path]]) -> dict[str, object]:
     identity = source_identity(ROOT)
     web_inputs = regular_files([ROOT / "web" / "src"])
@@ -126,12 +135,13 @@ def source_snapshot(fronts: dict[str, list[Path]]) -> dict[str, object]:
         "vite.config.ts", "tsconfig.json", "tsconfig.test.json",
     ))
     web_inputs.extend(regular_files([ROOT / "deploy/app/nginx"]))
-    web_inputs.append(Path(__file__).resolve())
+    packager_script = ROOT / "deployments/scripts/package-app-images.py"
+    web_inputs.append(packager_script)
     backend_roots = [ROOT / "cmd" / name for name in COMMANDS]
-    backend_roots.append(ROOT / "internal")
+    backend_roots.extend([ROOT / "internal", ROOT / "capability-packs"])
     backend_inputs = [path for path in regular_files(backend_roots) if not path.name.endswith("_test.go")]
     backend_inputs.extend(ROOT / name for name in ("go.mod", "go.sum", "deploy/app/entrypoint.sh"))
-    backend_inputs.append(Path(__file__).resolve())
+    backend_inputs.append(packager_script)
     components = {
         "backend": file_manifest(backend_inputs),
         **{name: file_manifest([*web_inputs, *files]) for name, files in fronts.items()},
@@ -293,11 +303,12 @@ def build_image(docker: list[str], tag: str, base: str, base_info: dict[str, obj
             "component_identity_sha256": component_digest, "packaging": packaging}
 
 
-def verify_images(source: dict[str, object], base: str, targets: list[str]) -> tuple[list[dict[str, object]], list[str]]:
+def verify_images(source: dict[str, object], base: str, targets: list[str], backend_tag: str,
+                  frontends: dict[str, tuple[str, str]]) -> tuple[list[dict[str, object]], list[str]]:
     failures: list[str] = []
     expected = source["component_identity_sha256"]
     assert isinstance(expected, dict)
-    all_tags = [(BACKEND_TAG, "backend"), *((tag, name) for name, (tag, _) in FRONTENDS.items())]
+    all_tags = [(backend_tag, "backend"), *((tag, name) for name, (tag, _) in frontends.items())]
     tags = [(tag, component) for tag, component in all_tags if component in targets]
     images: list[dict[str, object]] = []
     for tag, component in tags:
@@ -331,9 +342,14 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--preflight", action="store_true", help="record toolchain, image cache and frontend preflight")
     parser.add_argument("--verify", action="store_true", help="verify the current component inputs for all four Compose tags")
     parser.add_argument("--only", default="all", help="comma-separated build targets: backend,client,admin,portal (default all)")
+    parser.add_argument("--tag-suffix", default="", help="isolated local image tag suffix; never retags the shared :local images")
     parser.add_argument("--report", default="", help="new evidence JSON path; existing reports are never overwritten")
     parser.add_argument("--export", default="", help="optional Docker archive for an explicitly authorized offline transfer")
     args = parser.parse_args(argv)
+    if args.tag_suffix:
+        if not re.fullmatch(r"[a-z0-9][a-z0-9_.-]{0,48}", args.tag_suffix):
+            parser.error("--tag-suffix must match [a-z0-9][a-z0-9_.-]{0,48}")
+    backend_tag, frontends = image_tags(args.tag_suffix)
     if args.preflight and args.verify:
         parser.error("--preflight and --verify are separate modes")
     targets = ["backend", "client", "admin", "portal"] if args.only == "all" else args.only.split(",")
@@ -370,7 +386,8 @@ def main(argv: list[str] | None = None) -> int:
             report["frontend_files_sha256"] = source["frontend_files_sha256"]
             report["component_identity_sha256"] = source["component_identity_sha256"]
             if args.verify:
-                images, verification_failures = verify_images(source, args.base, targets)
+                images, verification_failures = verify_images(source, args.base, targets,
+                                                               backend_tag, frontends)
                 report["images"] = images
                 report["reasons"] = verification_failures
                 report["status"] = "PASS" if not verification_failures else "BLOCKED"
@@ -407,9 +424,9 @@ def main(argv: list[str] | None = None) -> int:
                             raise RuntimeError(f"host build did not produce required commands: {', '.join(missing)}")
                         (backend / "entrypoint").write_text((ROOT / "deploy/app/entrypoint.sh").read_text(encoding="utf-8"), encoding="utf-8")
                         (backend / "Dockerfile").write_text(backend_dockerfile(args.base), encoding="utf-8")
-                        images.append(build_image(docker, BACKEND_TAG, args.base, base_info, source_digest,
+                        images.append(build_image(docker, backend_tag, args.base, base_info, source_digest,
                                                   str(components["backend"]), backend, "offline-host-binaries"))
-                    for name, (tag, _) in FRONTENDS.items():
+                    for name, (tag, _) in frontends.items():
                         if name not in targets:
                             continue
                         context = workspace / name
@@ -424,7 +441,8 @@ def main(argv: list[str] | None = None) -> int:
                                                   str(components[name]), context, "offline-static-web-dist"))
                 report["binary_sha256"] = binaries if "backend" in targets else None
                 report["images_built"] = images
-                verified_images, verification_failures = verify_images(source, args.base, targets)
+                verified_images, verification_failures = verify_images(source, args.base, targets,
+                                                                         backend_tag, frontends)
                 report["images"] = verified_images
                 if verification_failures:
                     report["status"] = "BLOCKED"
@@ -436,7 +454,7 @@ def main(argv: list[str] | None = None) -> int:
                         if archive.exists():
                             raise FileExistsError(f"refusing to overwrite offline image archive: {archive}")
                         archive.parent.mkdir(parents=True, exist_ok=True)
-                        tags = [BACKEND_TAG, *(tag for tag, _ in FRONTENDS.values())]
+                        tags = [backend_tag, *(tag for tag, _ in frontends.values())]
                         save_command = docker + ["image", "save", "--output", str(archive), *tags]
                         saved = run(save_command, timeout=1800)
                         if saved.returncode != 0:
@@ -464,7 +482,14 @@ def main(argv: list[str] | None = None) -> int:
         exit_code = 1
     report["finished_at_unix_ns"] = time.time_ns()
     report["parent_exit_code"] = exit_code
-    report_path = Path(args.report) if args.report else Path("artifacts/c1c/ev-02") / f"app-images-{report['started_at_unix_ns']}.json"
+    if args.report:
+        report_path = Path(args.report)
+    elif os.environ.get("CAW_DELIVERY_DIR"):
+        report_path = Path(os.environ["CAW_DELIVERY_DIR"]).expanduser() / "image-packaging" / f"app-images-{report['started_at_unix_ns']}.json"
+    elif os.environ.get("GITHUB_ACTIONS") == "true":
+        report_path = Path("artifacts/c1c/ev-02") / f"app-images-{report['started_at_unix_ns']}.json"
+    else:
+        report_path = ROOT.parent / "contract-audit-delivery" / "image-packaging" / f"app-images-{report['started_at_unix_ns']}.json"
     try:
         write_report(report_path, report)
     except OSError as error:

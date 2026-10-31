@@ -92,6 +92,26 @@ func (a Availability) Valid() bool {
 	}
 }
 
+type TemporalProofKind string
+
+const (
+	TemporalProofCurrentState       TemporalProofKind = "current_state"
+	TemporalProofHistoricalInterval TemporalProofKind = "historical_interval"
+)
+
+// TemporalProof is supplied by the deployment-controlled connector and is
+// frozen with the observation. Historical proof must identify an immutable
+// source record and the interval asserted by that source.
+type TemporalProof struct {
+	Kind            TemporalProofKind `json:"kind"`
+	SourceCatalogID string            `json:"source_catalog_id,omitempty"`
+	DatasetVersion  string            `json:"dataset_version,omitempty"`
+	RecordVersion   string            `json:"record_version,omitempty"`
+	SourceAsOf      *time.Time        `json:"source_as_of,omitempty"`
+	ValidFrom       *time.Time        `json:"valid_from,omitempty"`
+	ValidUntil      *time.Time        `json:"valid_until,omitempty"`
+}
+
 // EvidenceKind separates contract text from an external snapshot. An API
 // response must never be turned into a synthetic document citation.
 type EvidenceKind string
@@ -147,12 +167,23 @@ func (s BindingStatus) Valid() bool {
 // Fact is a contract-bound value with its document evidence. Facts are frozen
 // into the evaluation input; callers must not fill them from a model response.
 type Fact struct {
-	Name         string        `json:"name"`
-	Value        ExactQuantity `json:"value"`
-	Evidence     []EvidenceRef `json:"evidence"`
-	Uncertain    bool          `json:"uncertain"`
-	OutOfScope   bool          `json:"out_of_scope"`
-	SemanticKind string        `json:"semantic_kind"`
+	Name              string        `json:"name"`
+	Value             ExactQuantity `json:"value"`
+	Evidence          []EvidenceRef `json:"evidence"`
+	Uncertain         bool          `json:"uncertain"`
+	OutOfScope        bool          `json:"out_of_scope"`
+	SemanticKind      string        `json:"semantic_kind"`
+	FactID            string        `json:"fact_id,omitempty"`
+	RuleID            string        `json:"rule_id,omitempty"`
+	Dimension         string        `json:"dimension,omitempty"`
+	ObjectRef         string        `json:"object_ref,omitempty"`
+	Applicable        *bool         `json:"applicable,omitempty"`
+	Basis             string        `json:"basis,omitempty"`
+	MeasurementWindow string        `json:"measurement_window,omitempty"`
+	TimeZone          string        `json:"time_zone,omitempty"`
+	Calendar          string        `json:"calendar,omitempty"`
+	OutageDefinition  string        `json:"outage_definition,omitempty"`
+	Exclusions        []string      `json:"exclusions,omitempty"`
 }
 
 // ReadRequest asks a registered connector for a bounded, read-only record.
@@ -176,25 +207,26 @@ type Field struct {
 
 // Observation is an immutable normalized snapshot of one external record.
 type Observation struct {
-	SchemaVersion        string       `json:"schema_version"`
-	SnapshotID           string       `json:"snapshot_id"`
-	TenantID             string       `json:"tenant_id"`
-	CaseID               string       `json:"case_id"`
-	ConnectorID          string       `json:"connector_id"`
-	SourceSystem         string       `json:"source_system"`
-	ObjectBindingVersion string       `json:"object_binding_version"`
-	ExternalObjectID     string       `json:"external_object_id"`
-	RecordID             string       `json:"record_id"`
-	RecordVersion        *string      `json:"record_version"`
-	ObservedAt           time.Time    `json:"observed_at"`
-	SourceUpdatedAt      *time.Time   `json:"source_updated_at"`
-	EffectiveFrom        time.Time    `json:"effective_from"`
-	EffectiveUntil       time.Time    `json:"effective_until"`
-	Availability         Availability `json:"availability"`
-	ReasonCode           string       `json:"reason_code"`
-	PayloadRef           *string      `json:"payload_ref"`
-	Fields               []Field      `json:"fields"`
-	DataClass            string       `json:"data_class"`
+	SchemaVersion        string         `json:"schema_version"`
+	SnapshotID           string         `json:"snapshot_id"`
+	TenantID             string         `json:"tenant_id"`
+	CaseID               string         `json:"case_id"`
+	ConnectorID          string         `json:"connector_id"`
+	SourceSystem         string         `json:"source_system"`
+	ObjectBindingVersion string         `json:"object_binding_version"`
+	ExternalObjectID     string         `json:"external_object_id"`
+	RecordID             string         `json:"record_id"`
+	RecordVersion        *string        `json:"record_version"`
+	ObservedAt           time.Time      `json:"observed_at"`
+	SourceUpdatedAt      *time.Time     `json:"source_updated_at"`
+	EffectiveFrom        time.Time      `json:"effective_from"`
+	EffectiveUntil       time.Time      `json:"effective_until"`
+	Availability         Availability   `json:"availability"`
+	ReasonCode           string         `json:"reason_code"`
+	PayloadRef           *string        `json:"payload_ref"`
+	Fields               []Field        `json:"fields"`
+	DataClass            string         `json:"data_class"`
+	TemporalProof        *TemporalProof `json:"temporal_proof,omitempty"`
 }
 
 // FieldByName returns the first field with the given normalized name.
@@ -231,6 +263,7 @@ type EvidenceRef struct {
 	Start             int
 	End               int
 	Quote             string
+	SourceDigest      string
 	SnapshotID        string
 	RecordID          string
 	FieldPointer      string
@@ -252,6 +285,7 @@ func (e *EvidenceRef) UnmarshalJSON(data []byte) error {
 		Start             int       `json:"start"`
 		End               int       `json:"end"`
 		Quote             string    `json:"quote"`
+		SourceDigest      string    `json:"source_digest,omitempty"`
 		SnapshotID        string    `json:"snapshot_id"`
 		RecordID          string    `json:"record_id"`
 		FieldPointer      string    `json:"field_pointer"`
@@ -264,7 +298,8 @@ func (e *EvidenceRef) UnmarshalJSON(data []byte) error {
 	evidence := EvidenceRef{
 		Kind: EvidenceKind(wire.Kind), DocumentVersionID: wire.DocumentVersionID,
 		ParsedVersionID: wire.ParsedVersionID, Start: wire.Start, End: wire.End, Quote: wire.Quote,
-		SnapshotID: wire.SnapshotID, RecordID: wire.RecordID, FieldPointer: wire.FieldPointer,
+		SourceDigest: wire.SourceDigest,
+		SnapshotID:   wire.SnapshotID, RecordID: wire.RecordID, FieldPointer: wire.FieldPointer,
 		DisplayValue: wire.DisplayValue, ObservedAt: wire.ObservedAt,
 	}
 	switch evidence.Kind {
@@ -272,6 +307,9 @@ func (e *EvidenceRef) UnmarshalJSON(data []byte) error {
 		evidence.SnapshotID, evidence.RecordID, evidence.FieldPointer = "", "", ""
 		evidence.DisplayValue, evidence.ObservedAt = "", time.Time{}
 	case EvidenceExternalSnapshot:
+		if wire.SourceDigest != "" {
+			return ErrInvalidRequest
+		}
 		evidence.DocumentVersionID, evidence.ParsedVersionID = "", ""
 		evidence.Start, evidence.End, evidence.Quote = 0, 0, ""
 	default:
@@ -291,8 +329,12 @@ func (e EvidenceRef) MarshalJSON() ([]byte, error) {
 			Start             int    `json:"start"`
 			End               int    `json:"end"`
 			Quote             string `json:"quote"`
-		}{string(EvidenceDocument), e.DocumentVersionID, e.ParsedVersionID, e.Start, e.End, e.Quote})
+			SourceDigest      string `json:"source_digest,omitempty"`
+		}{string(EvidenceDocument), e.DocumentVersionID, e.ParsedVersionID, e.Start, e.End, e.Quote, e.SourceDigest})
 	case EvidenceExternalSnapshot:
+		if e.SourceDigest != "" {
+			return nil, ErrInvalidRequest
+		}
 		return json.Marshal(struct {
 			Kind         string    `json:"kind"`
 			SnapshotID   string    `json:"snapshot_id"`
@@ -353,6 +395,7 @@ type FrozenInput struct {
 	PlannerConfigurationID string
 	ParserConfigurationID  string
 	BusinessAt             time.Time
+	EvidenceCutoffAt       *time.Time `json:"evidence_cutoff_at,omitempty"`
 	Facts                  []Fact
 }
 
@@ -364,6 +407,16 @@ func (f FrozenInput) FactByName(name string) (Fact, bool) {
 		}
 	}
 	return Fact{}, false
+}
+
+func (f FrozenInput) FactsByName(name string) []Fact {
+	var matches []Fact
+	for _, fact := range f.Facts {
+		if fact.Name == name {
+			matches = append(matches, fact)
+		}
+	}
+	return matches
 }
 
 // CheckResult is the machine output for one deterministic check. Human

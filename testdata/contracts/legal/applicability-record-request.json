@@ -1,0 +1,40 @@
+{
+  "method": "PUT",
+  "path": "/api/cases/case_wire_fixture/legal-applicability-facts/buyer_kind",
+  "headers": {
+    "Idempotency-Key": "wire-fact-buyer-1"
+  },
+  "body": {
+    "expected_version": 0,
+    "idempotency_key": "wire-fact-buyer-1",
+    "dimension": "buyer_kind",
+    "status": "established",
+    "value": "enterprise",
+    "temporal_basis": "historical_interval",
+    "valid_from": "2025-05-01T00:00:00.123456789+08:00",
+    "valid_until": "2025-06-01T00:00:00.123456789+08:00",
+    "basis_note": "fixture-only evidence; not a legal quotation",
+    "basis_refs": [
+      {
+        "document_id": "document_fixture",
+        "end": 21,
+        "filename": "wire-fixture.txt",
+        "kind": "material_anchor",
+        "material_id": "material_fixture",
+        "material_version": 1,
+        "parsed_document_id": "parsed_fixture",
+        "quote": "fixture evidence text",
+        "quote_digest": "c6eeda9036a5d24d30d7e95e66b0876c5853ff91298b7d4093446fa3f6d53626",
+        "start": 0
+      }
+    ],
+    "party": {
+      "side": "buyer",
+      "binding_id": "binding_fixture",
+      "binding_version": 2,
+      "subject_id": "subject_fixture",
+      "subject_version": 3,
+      "scope_note": "fixture buyer role"
+    }
+  }
+}

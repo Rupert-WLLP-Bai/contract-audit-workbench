@@ -321,7 +321,7 @@ func (s *Store) revalidateAgentPlannerKnowledge(ctx context.Context, runID, atte
 		return err
 	}
 	if current != nil {
-		return s.RevalidateGovernedKnowledgeSnapshot(ctx, actor, resource.CaseID, *current)
+		return s.ValidateFrozenGovernedKnowledgeSnapshot(ctx, actor, resource.CaseID, *current)
 	}
 	return nil
 }

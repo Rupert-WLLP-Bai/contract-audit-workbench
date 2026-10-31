@@ -54,7 +54,7 @@ func TestRevisedRunLeavesOldSnapshotRow(t *testing.T) {
 	beforeDecision := decisionRow(t, st, oldID)
 
 	revised := []byte("根据谈判，拟签合同约定质保24个月。其余义务不变。")
-	docC, err := st.AddDocument(context.Background(), admin, caseID, "draft_contract", "draft-v2.txt", "text/plain", revised)
+	docC, err := replaceCurrentPrimaryForTest(t, st, admin, caseID, "draft-v2.txt", revised)
 	if err != nil {
 		t.Fatal(err)
 	}

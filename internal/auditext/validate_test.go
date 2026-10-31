@@ -1,8 +1,10 @@
 package auditext
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 )
@@ -150,6 +152,9 @@ func TestEvidenceRefMarshalJSON(t *testing.T) {
 	if err != nil {
 		t.Fatalf("marshal document evidence: %v", err)
 	}
+	if string(raw) != `{"kind":"document","document_version_id":"doc-001","parsed_version_id":"parse-001","start":0,"end":24,"quote":"本线路最低保障带宽100Mbit/s。"}` {
+		t.Fatalf("legacy document evidence JSON bytes changed without an optional source digest: %s", raw)
+	}
 	var fields map[string]any
 	if err := json.Unmarshal(raw, &fields); err != nil {
 		t.Fatalf("decode document evidence: %v", err)
@@ -163,6 +168,15 @@ func TestEvidenceRefMarshalJSON(t *testing.T) {
 		if _, ok := fields[key]; ok {
 			t.Fatalf("document evidence unexpectedly contains %q: %s", key, raw)
 		}
+	}
+	document.SourceDigest = strings.Repeat("a", 64)
+	raw, err = json.Marshal(document)
+	if err != nil {
+		t.Fatalf("marshal document evidence with source digest: %v", err)
+	}
+	var digestProjection EvidenceRef
+	if err := json.Unmarshal(raw, &digestProjection); err != nil || digestProjection.SourceDigest != document.SourceDigest {
+		t.Fatalf("document source digest did not round-trip: got=%+v err=%v", digestProjection, err)
 	}
 
 	snapshot := EvidenceRef{
@@ -190,6 +204,14 @@ func TestEvidenceRefMarshalJSON(t *testing.T) {
 		if _, ok := fields[key]; ok {
 			t.Fatalf("snapshot evidence unexpectedly contains %q: %s", key, raw)
 		}
+	}
+	snapshotWithDocumentDigest := snapshot
+	snapshotWithDocumentDigest.SourceDigest = strings.Repeat("a", 64)
+	if _, err := json.Marshal(snapshotWithDocumentDigest); !errors.Is(err, ErrInvalidRequest) {
+		t.Fatalf("snapshot evidence carrying a document digest must be rejected, got %v", err)
+	}
+	if err := json.Unmarshal([]byte(`{"kind":"external_snapshot","snapshot_id":"snapshot-001","record_id":"line-001","source_digest":"`+strings.Repeat("a", 64)+`"}`), &digestProjection); !errors.Is(err, ErrInvalidRequest) {
+		t.Fatalf("snapshot JSON carrying a document digest must be rejected, got %v", err)
 	}
 
 	if _, err := json.Marshal(EvidenceRef{}); !errors.Is(err, ErrInvalidRequest) {
@@ -224,5 +246,75 @@ func TestImpactPlanValidate(t *testing.T) {
 	badSource.BusinessResultSource = "shadow"
 	if err := badSource.Validate(); !errors.Is(err, ErrInvalidRequest) {
 		t.Fatalf("business result source other than full must be invalid, got %v", err)
+	}
+}
+
+func TestObservationTemporalProofRequiresExactImmutableHistoricalInterval(t *testing.T) {
+	scope := validScope()
+	base := validObservation(scope)
+	recordVersion := "record-v3"
+	base.RecordVersion = &recordVersion
+	validFrom := base.EffectiveFrom
+	validUntil := base.EffectiveUntil
+	sourceAsOf := base.ObservedAt
+	base.TemporalProof = &TemporalProof{Kind: TemporalProofHistoricalInterval, SourceCatalogID: "catalog.line",
+		DatasetVersion: "dataset-2026-10", RecordVersion: recordVersion, SourceAsOf: &sourceAsOf,
+		ValidFrom: &validFrom, ValidUntil: &validUntil}
+	if err := base.Validate(scope); err != nil {
+		t.Fatalf("exact connector interval proof rejected: %v", err)
+	}
+	for name, mutate := range map[string]func(*Observation){
+		"record version mismatch": func(o *Observation) { o.TemporalProof.RecordVersion = "record-other" },
+		"validity does not match observation": func(o *Observation) {
+			until := o.TemporalProof.ValidUntil.Add(time.Hour)
+			o.TemporalProof.ValidUntil = &until
+		},
+		"missing source catalog":  func(o *Observation) { o.TemporalProof.SourceCatalogID = "" },
+		"missing dataset version": func(o *Observation) { o.TemporalProof.DatasetVersion = "" },
+		"missing source as-of":    func(o *Observation) { o.TemporalProof.SourceAsOf = nil },
+		"empty interval":          func(o *Observation) { until := *o.TemporalProof.ValidFrom; o.TemporalProof.ValidUntil = &until },
+	} {
+		t.Run(name, func(t *testing.T) {
+			candidate := base
+			proof := *base.TemporalProof
+			candidate.TemporalProof = &proof
+			mutate(&candidate)
+			if err := candidate.Validate(scope); err == nil {
+				t.Fatal("invalid historical proof was accepted")
+			}
+		})
+	}
+	current := validObservation(scope)
+	current.TemporalProof = &TemporalProof{Kind: TemporalProofCurrentState, SourceAsOf: &sourceAsOf}
+	if err := current.Validate(scope); err != nil {
+		t.Fatalf("current-state proof was rejected: %v", err)
+	}
+}
+
+func TestObservationTemporalProofIsOmittedForLegacySnapshots(t *testing.T) {
+	observation := validObservation(validScope())
+	encoded, err := json.Marshal(observation)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(encoded, []byte(`"temporal_proof"`)) {
+		t.Fatalf("legacy observation JSON unexpectedly gained an empty proof field: %s", encoded)
+	}
+}
+
+func TestFrozenInputEvidenceCutoffIsOptionalForLegacyWire(t *testing.T) {
+	legacy, err := json.Marshal(validFrozenInput())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(legacy, []byte(`"evidence_cutoff_at"`)) {
+		t.Fatalf("legacy frozen input wire unexpectedly gained an empty cutoff: %s", legacy)
+	}
+	cutoff := time.Date(2026, 10, 31, 9, 0, 0, 0, time.UTC)
+	current := validFrozenInput()
+	current.EvidenceCutoffAt = &cutoff
+	encoded, err := json.Marshal(current)
+	if err != nil || !bytes.Contains(encoded, []byte(`"evidence_cutoff_at":"2026-10-31T09:00:00Z"`)) {
+		t.Fatalf("frozen input cutoff did not use the stable optional wire field: json=%s err=%v", encoded, err)
 	}
 }

@@ -486,15 +486,83 @@ func TestLegacyAttemptMigrationIsRepeatableAndRetryIsRejected(t *testing.T) {
 	if err := st.pool.QueryRow(context.Background(), rowCountQuery).Scan(beforeDest...); err != nil {
 		t.Fatal(err)
 	}
-	for _, statement := range []string{
+	// Recreate the pre-parse schema only inside this isolated test schema. The
+	// current P3 tables are empty here, but their exact tuple FK closes over
+	// parse selections, so remove that additive closure explicitly before
+	// dropping the legacy parse tables. This intentionally avoids CASCADE: the
+	// subsequent reopen must recreate every current constraint from migrations.
+	for _, table := range []string{
+		"operator_mapping_change_decisions", "operator_mapping_change_requests", "operator_mapping_lineages",
+		"service_object_contract_associations", "service_object_versions", "service_object_mutation_receipts", "service_objects",
+	} {
+		var count int64
+		if err := st.pool.QueryRow(context.Background(), `SELECT count(*) FROM `+table).Scan(&count); err != nil {
+			t.Fatal(err)
+		}
+		if count != 0 {
+			t.Fatalf("legacy migration fixture unexpectedly has %d rows in %s", count, table)
+		}
+	}
+	rows, err := st.pool.Query(context.Background(), `
+		SELECT rel.relname, con.conname FROM pg_constraint con
+		JOIN pg_class rel ON rel.oid=con.conrelid
+		WHERE con.contype='f' AND con.conrelid IN (
+			'operator_object_bindings'::regclass, 'operator_mapping_lineages'::regclass,
+			'operator_mapping_change_requests'::regclass, 'operator_mapping_change_decisions'::regclass,
+			'service_objects'::regclass, 'service_object_versions'::regclass,
+			'service_object_contract_associations'::regclass, 'service_object_mutation_receipts'::regclass)
+		ORDER BY rel.relname, con.conname`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	type namedForeignKey struct{ table, name string }
+	var expectedP3ForeignKeys []namedForeignKey
+	for rows.Next() {
+		var key namedForeignKey
+		if err := rows.Scan(&key.table, &key.name); err != nil {
+			rows.Close()
+			t.Fatal(err)
+		}
+		expectedP3ForeignKeys = append(expectedP3ForeignKeys, key)
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		t.Fatal(err)
+	}
+	rows.Close()
+	if len(expectedP3ForeignKeys) == 0 {
+		t.Fatal("current fixture has no P3 foreign keys to restore")
+	}
+	legacyTx, err := st.pool.Begin(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	legacyStatements := []string{
+		`ALTER TABLE operator_object_bindings DROP CONSTRAINT IF EXISTS operator_binding_mapping_lineage_fk, DROP CONSTRAINT IF EXISTS operator_binding_service_association_fk, DROP CONSTRAINT IF EXISTS operator_binding_mapping_decision_fk, DROP CONSTRAINT IF EXISTS operator_binding_mapping_pin_null_group, DROP CONSTRAINT IF EXISTS operator_binding_decision_outcome_pair`,
+		`ALTER TABLE service_objects DROP CONSTRAINT IF EXISTS service_objects_current_association_fk, DROP CONSTRAINT IF EXISTS service_objects_current_version_fk`,
+		`ALTER TABLE service_object_versions DROP CONSTRAINT IF EXISTS service_object_version_mapping_decision_fk, DROP CONSTRAINT IF EXISTS service_object_version_decision_outcome_pair`,
+		`ALTER TABLE service_object_contract_associations DROP CONSTRAINT IF EXISTS service_object_association_mapping_decision_fk, DROP CONSTRAINT IF EXISTS service_object_association_decision_outcome_pair`,
+		`DROP TABLE operator_mapping_change_decisions`,
+		`DROP TABLE operator_mapping_change_requests`,
+		`DROP TABLE operator_mapping_lineages`,
+		`DROP TABLE service_object_contract_associations`,
+		`DROP TABLE service_object_versions`,
+		`DROP TABLE service_object_mutation_receipts`,
+		`DROP TABLE service_objects`,
+		`ALTER TABLE operator_object_bindings DROP COLUMN mapping_id, DROP COLUMN mapping_version, DROP COLUMN service_object_id, DROP COLUMN object_version, DROP COLUMN association_version, DROP COLUMN mapping_change_decision_id, DROP COLUMN mapping_change_decision, DROP COLUMN response_status, DROP COLUMN response_body`,
 		`DROP TABLE review_attempt_parse_selections`,
 		`DROP TABLE parsed_documents`,
 		`DROP SEQUENCE parsed_selection_order_seq`,
 		`ALTER TABLE review_run_snapshots DROP COLUMN parsed_document_ids, DROP COLUMN parse_selection_hash, DROP COLUMN parser_configuration_id`,
-	} {
-		if _, err := st.pool.Exec(context.Background(), statement); err != nil {
-			t.Fatal(err)
+	}
+	for _, statement := range legacyStatements {
+		if _, err := legacyTx.Exec(context.Background(), statement); err != nil {
+			_ = legacyTx.Rollback(context.Background())
+			t.Fatalf("construct isolated pre-parse schema with %q: %v", statement, err)
 		}
+	}
+	if err := legacyTx.Commit(context.Background()); err != nil {
+		t.Fatal(err)
 	}
 
 	first, err := st.Reopen()
@@ -502,6 +570,15 @@ func TestLegacyAttemptMigrationIsRepeatableAndRetryIsRejected(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = first.Close() })
+	for _, key := range expectedP3ForeignKeys {
+		var restored bool
+		if err := first.pool.QueryRow(context.Background(), `SELECT EXISTS (SELECT 1 FROM pg_constraint WHERE conname=$1 AND contype='f' AND conrelid=to_regclass($2))`, key.name, key.table).Scan(&restored); err != nil {
+			t.Fatal(err)
+		}
+		if !restored {
+			t.Errorf("current additive FK %s.%s was not restored after legacy migration", key.table, key.name)
+		}
+	}
 	afterCounts := make([]int64, 14)
 	afterDest := make([]any, len(afterCounts))
 	for i := range afterCounts {

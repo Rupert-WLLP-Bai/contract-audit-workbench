@@ -28,6 +28,29 @@ export interface RulePackAuthoritySource {
   kind: string;
 }
 
+export interface RulePackLegalApplicabilityCondition {
+  field: string;
+  one_of: string[];
+}
+export interface RulePackLegalAuthority {
+  authority_source_id: string;
+  knowledge_id: string;
+  version_id: string;
+  content_sha256: string;
+  source_id: string;
+  source_snapshot_id: string;
+  norm_title: string;
+  norm_version: string;
+  article_number: number;
+  document_type: string;
+  source_sha256: string;
+  article_text_sha256: string;
+  effective_from: string;
+  effective_until: string;
+  quote_span: { start: number; end: number; quote: string };
+  applicability: { all_of: RulePackLegalApplicabilityCondition[] };
+}
+
 export interface RulePackThreshold {
   value: string;
   unit: string;
@@ -63,6 +86,7 @@ export interface RulePackRule {
   threshold: RulePackThreshold;
   required_fact: RulePackRequiredFact;
   authority_sources: RulePackAuthoritySource[];
+  legal_authorities?: RulePackLegalAuthority[];
 }
 
 export interface RulePackLifecycle {
@@ -300,6 +324,65 @@ function parseAuthoritySource(
   };
 }
 
+const legalApplicabilityValues: Record<string, readonly string[]> = {
+  buyer_kind: ["state_organ", "institution", "social_organization", "enterprise", "natural_person"],
+  seller_kind: ["state_organ", "institution", "social_organization", "enterprise", "natural_person"],
+  buyer_enterprise_size: ["large", "sme", "not_enterprise"],
+  seller_enterprise_size: ["large", "sme", "not_enterprise"],
+  funding_kind: ["fiscal", "mixed_with_fiscal", "state_owned_non_fiscal", "private"],
+  procurement_scope: ["centralized_catalog", "above_limit", "catalog_and_above_limit", "outside_catalog_and_below_limit"],
+  project_kind: ["construction", "construction_related_goods", "construction_related_services", "standalone_goods", "standalone_services"],
+  contract_clause_kind: ["standard_form", "negotiated"],
+  transaction_kind: ["civil_contract", "non_civil"],
+};
+const legalDocumentTypes = ["law", "administrative_regulation", "judicial_interpretation", "normative_notice", "draft", "legislative_plan"] as const;
+
+function parseLegalApplicabilityCondition(value: unknown, path: string): RulePackLegalApplicabilityCondition {
+  const record = object(value, path, ["field", "one_of"]);
+  const field = string(record.field, `${path}.field`);
+  const allowed = legalApplicabilityValues[field];
+  const oneOf = array(record.one_of, `${path}.one_of`, string);
+  if (!allowed || oneOf.length === 0 || oneOf.length > 16 || oneOf.some((item) => !allowed.includes(item))) return fail(path);
+  return { field, one_of: oneOf };
+}
+
+function parseLegalAuthority(value: unknown, path: string): RulePackLegalAuthority {
+  const record = object(value, path, [
+    "authority_source_id", "knowledge_id", "version_id", "content_sha256", "source_id",
+    "source_snapshot_id", "norm_title", "norm_version", "article_number", "document_type",
+    "source_sha256", "article_text_sha256", "effective_from", "effective_until", "quote_span", "applicability",
+  ]);
+  const quote = object(record.quote_span, `${path}.quote_span`, ["start", "end", "quote"]);
+  const applicability = object(record.applicability, `${path}.applicability`, ["all_of"]);
+  const start = integer(quote.start, `${path}.quote_span.start`);
+  const end = integer(quote.end, `${path}.quote_span.end`);
+  const quoteText = string(quote.quote, `${path}.quote_span.quote`);
+  const allOf = array(applicability.all_of, `${path}.applicability.all_of`, parseLegalApplicabilityCondition);
+  const documentType = string(record.document_type, `${path}.document_type`);
+  const effectiveFrom = string(record.effective_from, `${path}.effective_from`);
+  const effectiveUntil = string(record.effective_until, `${path}.effective_until`);
+  const validDate = (value: string) => /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(`${value}T00:00:00Z`)) && new Date(`${value}T00:00:00Z`).toISOString().slice(0, 10) === value;
+  if (end <= start || Array.from(quoteText).length !== end - start || quoteText.trim() === "" || allOf.length === 0 || allOf.length > 9 || !legalDocumentTypes.includes(documentType as typeof legalDocumentTypes[number]) || !validDate(effectiveFrom) || (effectiveUntil !== "" && (!validDate(effectiveUntil) || effectiveUntil <= effectiveFrom))) return fail(path);
+  return {
+    authority_source_id: nonEmptyString(record.authority_source_id, `${path}.authority_source_id`),
+    knowledge_id: nonEmptyString(record.knowledge_id, `${path}.knowledge_id`),
+    version_id: sha256(record.version_id, `${path}.version_id`),
+    content_sha256: sha256(record.content_sha256, `${path}.content_sha256`),
+    source_id: nonEmptyString(record.source_id, `${path}.source_id`),
+    source_snapshot_id: nonEmptyString(record.source_snapshot_id, `${path}.source_snapshot_id`),
+    norm_title: nonEmptyString(record.norm_title, `${path}.norm_title`),
+    norm_version: nonEmptyString(record.norm_version, `${path}.norm_version`),
+    article_number: positiveInteger(record.article_number, `${path}.article_number`),
+    document_type: documentType,
+    source_sha256: sha256(record.source_sha256, `${path}.source_sha256`),
+    article_text_sha256: sha256(record.article_text_sha256, `${path}.article_text_sha256`),
+    effective_from: effectiveFrom,
+    effective_until: effectiveUntil,
+    quote_span: { start, end, quote: quoteText },
+    applicability: { all_of: allOf },
+  };
+}
+
 function parseSummary(value: unknown, path = "pack"): RulePackSummary {
   const keys = [
     "id",
@@ -413,8 +496,9 @@ function parseRule(value: unknown, path: string): RulePackRule {
     "threshold",
     "required_fact",
     "authority_sources",
+    "legal_authorities",
   ] as const;
-  const record = object(value, path, keys);
+  const record = object(value, path, keys, keys.filter((key) => key !== "legal_authorities"));
   const scope = object(record.business_scope, `${path}.business_scope`, [
     "business_line",
     "scenario",
@@ -459,6 +543,15 @@ function parseRule(value: unknown, path: string): RulePackRule {
       `${path}.authority_sources`,
       parseAuthoritySource,
     ),
+    ...(record.legal_authorities === undefined
+      ? {}
+      : {
+          legal_authorities: array(
+            record.legal_authorities,
+            `${path}.legal_authorities`,
+            parseLegalAuthority,
+          ),
+        }),
   };
 }
 

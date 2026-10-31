@@ -26,6 +26,15 @@ import type {
   LLMEndpointInput,
   LLMModelSelectionInput,
   ReviewWorkspace,
+  UploadDocumentInput,
+  BindExistingSubjectInput,
+  CaseRoleCreateInput,
+  SubjectChangeDecisionInput,
+  SubjectChangeProposalInput,
+  SubjectChangeSummary,
+  SubjectCreateInput,
+  SubjectSourceSnapshotInput,
+  SubjectSourceVerificationInput,
 } from "./types";
 import { isActiveAttemptState } from "../domain/review";
 import type { RulePackManifestInput, RulePackTestInput } from "./rulepacks";
@@ -59,6 +68,24 @@ export const queryKeys = {
     ["admin", "rulepacks", "history", packId] as const,
   workbench: (period: WorkbenchPeriod) => ["workbench", period] as const,
   workbenchPrefix: ["workbench"] as const,
+  subjectsPrefix: ["subjects"] as const,
+  subjects: (query: string, cursor: string | null, caseId?: string) =>
+    ["subjects", "list", caseId ?? null, query, cursor] as const,
+  subject: (subjectId: string) => ["subjects", "detail", subjectId] as const,
+  subjectHistory: (subjectId: string) => ["subjects", "history", subjectId] as const,
+  subjectCaseLinks: (subjectId: string, cursor: string | null) => ["subjects", "case-links", subjectId, cursor] as const,
+  caseSubjects: (caseId: string) => ["cases", caseId, "subjects"] as const,
+  caseSubjectChanges: (caseId: string, cursor: string | null) =>
+    ["cases", caseId, "subject-changes", cursor] as const,
+  caseSubjectChange: (caseId: string, requestId: string) =>
+    ["cases", caseId, "subject-changes", requestId] as const,
+  caseSubjectChangeImpact: (caseId: string, requestId: string) =>
+    ["cases", caseId, "subject-changes", requestId, "impact"] as const,
+  caseSubjectSourceSnapshots: (caseId: string, cursor: string | null) => ["cases", caseId, "subject-source-snapshots", cursor] as const,
+  caseSubjectSources: (caseId: string) => ["cases", caseId, "subject-sources"] as const,
+  caseSubjectSourceSnapshot: (caseId: string, snapshotId: string) => ["cases", caseId, "subject-source-snapshots", snapshotId] as const,
+  materialParsedDocuments: (caseId: string, materialId: string, version: number) => ["cases", caseId, "materials", materialId, "versions", version, "parsed-documents"] as const,
+  materialParsedText: (caseId: string, materialId: string, version: number, parsedDocumentId: string, offset: number) => ["cases", caseId, "materials", materialId, "versions", version, "parsed-documents", parsedDocumentId, offset] as const,
 };
 export function clearIdentityQueries(queryClient: QueryClient): void {
   const filter = {
@@ -229,6 +256,213 @@ export function useCaseDetail(caseId: string) {
   });
 }
 
+export function useSubjects(query: string, cursor: string | null, caseId?: string) {
+  return useQuery({
+    queryKey: queryKeys.subjects(query, cursor, caseId),
+    queryFn: ({ signal }) => api.listSubjects(caseId, query, cursor, 50, signal),
+    enabled: caseId === undefined || caseId !== "",
+  });
+}
+
+export function useSubject(subjectId: string) {
+  return useQuery({
+    queryKey: queryKeys.subject(subjectId),
+    queryFn: ({ signal }) => api.getSubject(subjectId, signal),
+    enabled: subjectId !== "",
+  });
+}
+
+export function useSubjectCaseLinks(subjectId: string, cursor: string | null = null) {
+  return useQuery({
+    queryKey: queryKeys.subjectCaseLinks(subjectId, cursor),
+    queryFn: ({ signal }) => api.getSubjectCaseLinks(subjectId, cursor, 50, signal),
+    enabled: subjectId !== "",
+  });
+}
+
+export function useMaterialParsedDocuments(caseId: string, materialId: string | undefined, version: number | undefined) {
+  return useQuery({
+    queryKey: queryKeys.materialParsedDocuments(caseId, materialId ?? "", version ?? 0),
+    queryFn: ({ signal }) => {
+      if (!materialId || !version) throw new Error("缺少材料版本");
+      return api.listMaterialParsedDocuments(caseId, materialId, version, signal);
+    },
+    enabled: caseId !== "" && materialId !== undefined && version !== undefined,
+  });
+}
+
+export function useMaterialParsedTextPage(caseId: string, materialId: string | undefined, version: number | undefined, parsedDocumentId: string | undefined, offset: number) {
+  return useQuery({
+    queryKey: queryKeys.materialParsedText(caseId, materialId ?? "", version ?? 0, parsedDocumentId ?? "", offset),
+    queryFn: ({ signal }) => {
+      if (!materialId || !version || !parsedDocumentId) throw new Error("缺少固定解析版本");
+      return api.getMaterialParsedTextPage(caseId, materialId, version, parsedDocumentId, offset, 32768, signal);
+    },
+    enabled: caseId !== "" && materialId !== undefined && version !== undefined && parsedDocumentId !== undefined,
+  });
+}
+
+export function useSubjectHistory(subjectId: string) {
+  return useQuery({
+    queryKey: queryKeys.subjectHistory(subjectId),
+    queryFn: ({ signal }) => api.getSubjectHistory(subjectId, signal),
+    enabled: subjectId !== "",
+  });
+}
+
+export function useCaseSubjects(caseId: string) {
+  return useQuery({
+    queryKey: queryKeys.caseSubjects(caseId),
+    queryFn: ({ signal }) => api.getCaseSubjects(caseId, signal),
+    enabled: caseId !== "",
+  });
+}
+
+export function useCreateSubject() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { subject: SubjectCreateInput; idempotencyKey: string }) =>
+      api.createSubject(input.subject, input.idempotencyKey),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: queryKeys.subjectsPrefix });
+    },
+  });
+}
+
+export function useCreateCaseRole(caseId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { value: CaseRoleCreateInput; idempotencyKey: string }) =>
+      api.createCaseRole(caseId, input.value, input.idempotencyKey),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: queryKeys.caseSubjects(caseId) });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.case(caseId) });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.subjectsPrefix });
+    },
+  });
+}
+
+export function useBindExistingSubject(caseId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { value: BindExistingSubjectInput; idempotencyKey: string }) =>
+      api.bindExistingSubject(caseId, input.value, input.idempotencyKey),
+    onSuccess: async (_result, input) => {
+      await queryClient.invalidateQueries({ queryKey: queryKeys.caseSubjects(caseId) });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.case(caseId) });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.subject(input.value.subject_id) });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.subjectsPrefix });
+    },
+  });
+}
+
+export function useCaseSubjectChanges(caseId: string, cursor: string | null = null) {
+  return useQuery({
+    queryKey: queryKeys.caseSubjectChanges(caseId, cursor),
+    queryFn: ({ signal }) => api.listCaseSubjectChanges(caseId, cursor, 50, signal),
+    enabled: caseId !== "",
+  });
+}
+
+export function useCaseSubjectChange(caseId: string, requestId: string) {
+  return useQuery({
+    queryKey: queryKeys.caseSubjectChange(caseId, requestId),
+    queryFn: ({ signal }) => api.getCaseSubjectChange(caseId, requestId, signal),
+    enabled: caseId !== "" && requestId !== "",
+  });
+}
+
+export function useCaseSubjectChangeImpact(
+  caseId: string,
+  requestId: string,
+  targetKind: SubjectChangeSummary["target_kind"] | null,
+) {
+  return useQuery({
+    queryKey: queryKeys.caseSubjectChangeImpact(caseId, requestId),
+    queryFn: ({ signal }) => {
+      if (targetKind === null) throw new Error("缺少更正目标类型");
+      return api.getCaseSubjectChangeImpact(caseId, requestId, targetKind, signal);
+    },
+    enabled: caseId !== "" && requestId !== "" && targetKind !== null,
+  });
+}
+
+export function useProposeSubjectChange(caseId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { value: SubjectChangeProposalInput; idempotencyKey: string }) =>
+      api.proposeSubjectChange(caseId, input.value, input.idempotencyKey),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: queryKeys.caseSubjectChanges(caseId, null) });
+    },
+  });
+}
+
+export function useDecideSubjectChange(caseId: string, requestId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { value: SubjectChangeDecisionInput; idempotencyKey: string }) =>
+      api.decideSubjectChange(caseId, requestId, input.value, input.idempotencyKey),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: queryKeys.caseSubjectChange(caseId, requestId) });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.caseSubjectChangeImpact(caseId, requestId) });
+      await queryClient.invalidateQueries({ queryKey: ["cases", caseId, "subject-changes"] });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.caseSubjects(caseId) });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.case(caseId) });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.subjectsPrefix });
+    },
+  });
+}
+
+export function useCreateSubjectSourceSnapshot(caseId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { value: SubjectSourceSnapshotInput; idempotencyKey: string }) =>
+      api.createSubjectSourceSnapshot(caseId, input.value, input.idempotencyKey),
+    onSuccess: async (snapshot) => {
+      await queryClient.invalidateQueries({ queryKey: ["cases", caseId, "subject-source-snapshots"] });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.caseSubjectSourceSnapshot(caseId, snapshot.snapshot_id), exact: true });
+    },
+  });
+}
+
+export function useSubjectSourceSnapshots(caseId: string, cursor: string | null = null) {
+  return useQuery({
+    queryKey: queryKeys.caseSubjectSourceSnapshots(caseId, cursor),
+    queryFn: ({ signal }) => api.listSubjectSourceSnapshots(caseId, cursor, 50, signal),
+    enabled: caseId !== "",
+  });
+}
+
+export function useSubjectSourceDirectory(caseId: string) {
+  return useQuery({
+    queryKey: queryKeys.caseSubjectSources(caseId),
+    queryFn: ({ signal }) => api.getSubjectSourceDirectory(caseId, signal),
+    enabled: caseId !== "",
+  });
+}
+
+export function useSubjectSourceSnapshot(caseId: string, snapshotId: string) {
+  return useQuery({
+    queryKey: queryKeys.caseSubjectSourceSnapshot(caseId, snapshotId),
+    queryFn: ({ signal }) => api.getSubjectSourceSnapshot(caseId, snapshotId, signal),
+    enabled: caseId !== "" && snapshotId !== "",
+  });
+}
+
+export function useVerifySubjectAgainstSourceSnapshot(caseId: string, snapshotId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { value: SubjectSourceVerificationInput; idempotencyKey: string }) =>
+      api.verifySubjectAgainstSourceSnapshot(caseId, snapshotId, input.value, input.idempotencyKey),
+    onSuccess: async (result) => {
+      if (result.request_id !== null) {
+        await queryClient.invalidateQueries({ queryKey: queryKeys.caseSubjectChanges(caseId, null) });
+      }
+    },
+  });
+}
+
 export function useTemplates(enabled = true) {
   return useQuery({
     queryKey: queryKeys.templates,
@@ -252,11 +486,22 @@ export function useCaseReviewHistory(
 export function useUploadDocument(caseId: string) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (input: { file: File; role: string }) =>
-      api.uploadDocument(caseId, input.file, input.role),
+    mutationFn: (input: UploadDocumentInput) =>
+      api.uploadDocument(caseId, input),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: queryKeys.case(caseId) });
       await queryClient.invalidateQueries({ queryKey: queryKeys.cases });
+    },
+  });
+}
+
+export function useConfirmLegacyMaterialSelection(caseId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { version: number; document_ids: string[] }) =>
+      api.confirmLegacyMaterialSelection(caseId, input),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: queryKeys.case(caseId) });
     },
   });
 }
@@ -448,7 +693,8 @@ export function useSubmitDecision(caseId: string, runId: string) {
 export function useCreateGeneration(caseId: string) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (input: GenerationInput) => api.createGeneration(caseId, input),
+    mutationFn: (command: { input: GenerationInput; idempotencyKey: string }) =>
+      api.createGeneration(caseId, command.input, command.idempotencyKey),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: queryKeys.case(caseId) });
       await queryClient.invalidateQueries({ queryKey: queryKeys.cases });

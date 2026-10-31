@@ -1,0 +1,43 @@
+{
+  "items": [
+    {
+      "binding_id": "binding-legacy-1",
+      "binding_version": 1,
+      "case_id": "case-1",
+      "role": "customer",
+      "binding_state": "pending_confirmation",
+      "source_kind": "legacy_label",
+      "legacy_label": "旧档案客户",
+      "subject": {
+        "subject_id": "subject-legacy-1",
+        "version": 1,
+        "display_name": "旧档案客户",
+        "legal_name": null,
+        "verification_state": "pending_verification",
+        "source_kind": "user_asserted",
+        "basis_summary": "legacy label adoption",
+        "payload_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "identity_claims": [],
+        "aliases": [],
+        "created_by": {
+          "user_id": "user-1",
+          "issuer": "issuer.example",
+          "subject": "principal-1"
+        },
+        "created_at": "2026-10-31T09:00:00Z"
+      },
+      "created_by": {
+        "user_id": "user-1",
+        "issuer": "issuer.example",
+        "subject": "principal-1"
+      },
+      "created_at": "2026-10-31T09:00:00Z"
+    }
+  ],
+  "legacy_profile": {
+    "version": 1,
+    "customer": "旧档案客户",
+    "supplier": null
+  },
+  "can_manage": true
+}

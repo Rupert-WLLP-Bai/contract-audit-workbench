@@ -503,6 +503,67 @@ func (a *testAPI) login(t *testing.T, username, password string) map[string]any 
 }
 
 func (a *testAPI) upload(t *testing.T, caseID, role, name, media string, content []byte) string {
+	return a.uploadWithIntent(t, caseID, role, name, media, content, "", "", "")
+}
+
+func (a *testAPI) replaceUpload(t *testing.T, caseID, role, name, media string, content []byte, materialID, currentDocumentID string) string {
+	t.Helper()
+	if materialID == "" || currentDocumentID == "" {
+		t.Fatal("explicit replacement requires material identity and current document CAS target")
+	}
+	return a.uploadWithIntent(t, caseID, role, name, media, content, "replace", materialID, currentDocumentID)
+}
+
+func (a *testAPI) materialForDocument(t *testing.T, caseID, materialID string) (string, string) {
+	t.Helper()
+	status, detail := a.do(t, http.MethodGet, "/api/cases/"+caseID, nil)
+	if status != http.StatusOK {
+		t.Fatalf("read case materials: status=%d body=%v", status, detail)
+	}
+	materials, ok := detail["materials"].([]any)
+	if !ok {
+		t.Fatalf("case detail omitted materials projection: %v", detail)
+	}
+	for _, raw := range materials {
+		material, ok := raw.(map[string]any)
+		if ok && material["material_id"] == materialID {
+			return requiredString(t, material, "material_id"), requiredString(t, material, "current_document_id")
+		}
+	}
+	t.Fatalf("material %s missing from case %s", materialID, caseID)
+	return "", ""
+}
+
+func (a *testAPI) materialForCurrentDocument(t *testing.T, caseID, documentID string) (string, string) {
+	t.Helper()
+	status, detail := a.do(t, http.MethodGet, "/api/cases/"+caseID, nil)
+	if status != http.StatusOK {
+		t.Fatalf("read case materials: status=%d body=%v", status, detail)
+	}
+	materials, ok := detail["materials"].([]any)
+	if !ok {
+		t.Fatalf("case detail omitted materials projection: %v", detail)
+	}
+	for _, raw := range materials {
+		material, ok := raw.(map[string]any)
+		if ok && material["current_document_id"] == documentID {
+			return requiredString(t, material, "material_id"), requiredString(t, material, "current_document_id")
+		}
+	}
+	t.Fatalf("current material for document %s in case %s was not found", documentID, caseID)
+	return "", ""
+}
+
+func (a *testAPI) uploadWithIntent(t *testing.T, caseID, role, name, media string, content []byte, intent, materialID, currentDocumentID string) string {
+	t.Helper()
+	status, payload := a.uploadRequest(t, caseID, role, name, media, content, intent, materialID, currentDocumentID, "")
+	if status != http.StatusCreated {
+		t.Fatalf("upload %d %v", status, payload)
+	}
+	return requiredString(t, payload, "id")
+}
+
+func (a *testAPI) uploadRequest(t *testing.T, caseID, role, name, media string, content []byte, intent, materialID, currentDocumentID, idempotencyKey string) (int, map[string]any) {
 	t.Helper()
 	var buf bytes.Buffer
 	w := multipart.NewWriter(&buf)
@@ -519,18 +580,45 @@ func (a *testAPI) upload(t *testing.T, caseID, role, name, media string, content
 	if err := w.WriteField("role", role); err != nil {
 		t.Fatal(err)
 	}
+	if intent != "" {
+		if err := w.WriteField("intent", intent); err != nil {
+			t.Fatal(err)
+		}
+		if err := w.WriteField("material_id", materialID); err != nil {
+			t.Fatal(err)
+		}
+		if err := w.WriteField("replaces_document_id", currentDocumentID); err != nil {
+			t.Fatal(err)
+		}
+	}
 	if err := w.Close(); err != nil {
 		t.Fatal(err)
 	}
-	status, body := a.bytes(t, http.MethodPost, "/api/cases/"+caseID+"/documents", bytes.NewReader(buf.Bytes()), w.FormDataContentType())
-	if status != http.StatusCreated {
-		t.Fatalf("upload %d %s", status, body)
-	}
-	var payload map[string]any
-	if err := json.Unmarshal(body, &payload); err != nil {
+	req, err := http.NewRequest(http.MethodPost, a.base+"/api/cases/"+caseID+"/documents", bytes.NewReader(buf.Bytes()))
+	if err != nil {
 		t.Fatal(err)
 	}
-	return payload["id"].(string)
+	req.Header.Set("Content-Type", w.FormDataContentType())
+	if idempotencyKey != "" {
+		req.Header.Set("Idempotency-Key", idempotencyKey)
+	}
+	res, err := a.client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	raw, err := io.ReadAll(res.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(bytes.TrimSpace(raw)) == 0 {
+		return res.StatusCode, nil
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(raw, &payload); err != nil {
+		t.Fatalf("json %d %s", res.StatusCode, raw)
+	}
+	return res.StatusCode, payload
 }
 
 func (a *testAPI) do(t *testing.T, method, path string, payload any) (int, map[string]any) {

@@ -33,6 +33,7 @@ const (
 	semanticConfiguredValue = "configured_value"
 
 	reasonContractFactMissing          = "contract_fact_missing"
+	reasonContractFactAmbiguous        = "contract_fact_ambiguous"
 	reasonContractFactUncertain        = "contract_fact_uncertain"
 	reasonProvenOutOfScope             = "proven_out_of_scope"
 	reasonContractEvidenceMissing      = "contract_evidence_missing"
@@ -132,11 +133,20 @@ func validateEvaluationRequest(ctx context.Context, input auditext.FrozenInput, 
 }
 
 func evaluateContractFact(input auditext.FrozenInput) (auditext.Fact, []auditext.EvidenceRef, []auditext.CheckResult, error) {
-	fact, found := input.FactByName(ContractFieldMinimumBandwidth)
-	if !found {
+	facts := input.FactsByName(ContractFieldMinimumBandwidth)
+	if len(facts) == 0 {
 		results, err := newResult(input, auditext.RelationInsufficient, reasonContractFactMissing, nil, false, "")
 		return auditext.Fact{}, nil, results, err
 	}
+	if len(facts) > 1 {
+		var evidence []auditext.EvidenceRef
+		for _, fact := range facts {
+			evidence = append(evidence, fact.Evidence...)
+		}
+		results, err := newResult(input, auditext.RelationInsufficient, reasonContractFactAmbiguous, evidence, false, "")
+		return auditext.Fact{}, evidence, results, err
+	}
+	fact := facts[0]
 	contractEvidence := append([]auditext.EvidenceRef(nil), fact.Evidence...)
 
 	// Contract-side checks stay ordered from "no fact" to "fact not usable".
@@ -216,13 +226,28 @@ func validateObservationBinding(input auditext.FrozenInput, observation auditext
 	if observation.SourceSystem != input.SourceSystem {
 		return newResult(input, auditext.RelationInsufficient, reasonSourceSystemMismatch, evidence, false, recordVersion)
 	}
-	if observation.ObservedAt.After(input.BusinessAt) {
+	if observation.ObservedAt.After(input.BusinessAt) && !historicalObservationCoversBusinessAt(input, observation) {
 		return newResult(input, auditext.RelationInsufficient, reasonObservationTimeMismatch, evidence, false, recordVersion)
 	}
 	if !observation.EffectiveAt(input.BusinessAt) {
 		return newResult(input, auditext.RelationInsufficient, reasonEffectiveTimeMismatch, evidence, false, recordVersion)
 	}
 	return nil, nil
+}
+
+func historicalObservationCoversBusinessAt(input auditext.FrozenInput, observation auditext.Observation) bool {
+	cutoff := input.EvidenceCutoffAt
+	proof := observation.TemporalProof
+	if cutoff == nil || proof == nil || proof.Kind != auditext.TemporalProofHistoricalInterval ||
+		auditext.ValidateID(proof.SourceCatalogID) != nil || auditext.ValidateID(proof.DatasetVersion) != nil ||
+		proof.SourceAsOf == nil || proof.SourceAsOf.IsZero() || proof.SourceAsOf.After(*cutoff) || observation.ObservedAt.After(*cutoff) ||
+		observation.RecordVersion == nil || proof.RecordVersion == "" || len(proof.RecordVersion) > 128 || proof.RecordVersion != *observation.RecordVersion ||
+		proof.ValidFrom == nil || proof.ValidUntil == nil ||
+		!proof.ValidFrom.Before(*proof.ValidUntil) ||
+		!proof.ValidFrom.Equal(observation.EffectiveFrom) || !proof.ValidUntil.Equal(observation.EffectiveUntil) {
+		return false
+	}
+	return !proof.ValidFrom.After(input.BusinessAt) && input.BusinessAt.Before(*proof.ValidUntil)
 }
 
 func evaluateConfiguredBandwidth(input auditext.FrozenInput, fact auditext.Fact, observation auditext.Observation, evidence []auditext.EvidenceRef, recordVersion string) ([]auditext.CheckResult, error) {

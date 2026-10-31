@@ -1,0 +1,53 @@
+{
+  "items": [
+    {
+      "ref": {
+        "knowledge_id": "legal-wire-fixture-article-1",
+        "version_id": "1111111111111111111111111111111111111111111111111111111111111111",
+        "content_sha256": "2222222222222222222222222222222222222222222222222222222222222222"
+      },
+      "title": "法律知识 wire fixture（非真实条文）",
+      "body": "fixture-only body; not a statutory quotation",
+      "snippet": "fixture-only body",
+      "summary": "wire shape fixture",
+      "governance_status": "published",
+      "active": true,
+      "legal_metadata": {
+        "source_id": "FIXTURE-LEGAL-SOURCE",
+        "norm_title": "法律知识 wire fixture（非真实条文）",
+        "document_type": "law",
+        "norm_version": "fixture-v1",
+        "article_number": 1,
+        "article_label": "条文 1（fixture）",
+        "issuer": "fixture issuer",
+        "publisher": "fixture publisher",
+        "official_url": "https://fixture.invalid/legal-source",
+        "promulgated_on": "2020-01-01",
+        "effective_from": "2021-01-01",
+        "official_status_observation_id": "fixture-status-1",
+        "official_status": "effective",
+        "status_registry_url": "https://fixture.invalid/status",
+        "status_observed_at": "2026-10-30T00:00:00Z",
+        "status_evidence_sha256": "5555555555555555555555555555555555555555555555555555555555555555",
+        "status_response_status": 200,
+        "status_content_type": "application/json",
+        "source_snapshot_id": "lsc_wire_fixture_1",
+        "source_provenance": "fixture_only",
+        "source_captured_at": "2026-10-30T00:00:00Z",
+        "source_response_status": 200,
+        "source_content_type": "text/html",
+        "source_sha256": "4444444444444444444444444444444444444444444444444444444444444444",
+        "norm_text_sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+        "canonical_text_version": "legalnorm-whitespace-v1",
+        "source_text_start": 0,
+        "source_text_end": 44,
+        "extractor_id": "fixture-adapter",
+        "extractor_version": "v1",
+        "text_check_status": "PASS",
+        "legal_review_status": "NOT_RUN",
+        "reviewer": null
+      },
+      "applicability": "unknown"
+    }
+  ]
+}

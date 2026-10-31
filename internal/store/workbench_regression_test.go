@@ -381,6 +381,30 @@ func TestWorkbenchDocumentUsesPublicParsedMetadataProjection(t *testing.T) {
 	}
 }
 
+func TestWorkbenchSupersededUsesMaterialVersionLineageNotDocumentRole(t *testing.T) {
+	documents := []Document{
+		{ID: "draft-a-v1", CaseID: "case-materials", Role: "draft_contract"},
+		{ID: "draft-a-v2", CaseID: "case-materials", Role: "draft_contract"},
+		{ID: "draft-b", CaseID: "case-materials", Role: "draft_contract"},
+		{ID: "legacy-unselected", CaseID: "case-materials", Role: "draft_contract"},
+	}
+	versions := []MaterialVersion{
+		{CaseID: "case-materials", MaterialID: "material-a", Version: 1, DocumentID: "draft-a-v1"},
+		{CaseID: "case-materials", MaterialID: "material-a", Version: 2, DocumentID: "draft-a-v2", PreviousDocument: "draft-a-v1"},
+		{CaseID: "case-materials", MaterialID: "material-b", Version: 1, DocumentID: "draft-b"},
+		{CaseID: "case-materials", MaterialID: "legacy_other", Version: 1, DocumentID: "legacy-unselected"},
+	}
+	items := workbenchDocumentsForCase(state{Documents: documents, MaterialVersions: versions}, Case{ID: "case-materials", Title: "多份同角色材料"})
+	got := make(map[string]bool, len(items))
+	for _, item := range items {
+		got[item.ID] = item.Superseded
+	}
+	want := map[string]bool{"draft-a-v1": true, "draft-a-v2": false, "draft-b": false, "legacy-unselected": false}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("workbench inferred superseded state by role instead of version lineage: got=%v want=%v", got, want)
+	}
+}
+
 func TestWorkbenchOperationsRespectCaseAccessAndReadOnly(t *testing.T) {
 	st, owner := openExecutionStore(t)
 	caseID, err := st.CreateCase(owner, "工作台权限回归", "procurement_ict")

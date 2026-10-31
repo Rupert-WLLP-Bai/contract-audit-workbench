@@ -237,6 +237,17 @@ var schemaStatements = []string{
 	`ALTER TABLE review_run_snapshots ADD COLUMN IF NOT EXISTS parsed_document_ids text NOT NULL DEFAULT '[]'`,
 	`ALTER TABLE review_run_snapshots ADD COLUMN IF NOT EXISTS parse_selection_hash text NOT NULL DEFAULT ''`,
 	`ALTER TABLE review_run_snapshots ADD COLUMN IF NOT EXISTS parser_configuration_id text NOT NULL DEFAULT ''`,
+	`ALTER TABLE review_run_snapshots ADD COLUMN IF NOT EXISTS party_context bytea`,
+	`ALTER TABLE review_run_snapshots ADD COLUMN IF NOT EXISTS party_context_hash text NOT NULL DEFAULT ''`,
+	`ALTER TABLE review_run_snapshots ADD COLUMN IF NOT EXISTS service_object_context bytea`,
+	`ALTER TABLE review_run_snapshots ADD COLUMN IF NOT EXISTS service_object_context_hash text NOT NULL DEFAULT ''`,
+	`DO $$ BEGIN
+		IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='review_run_snapshots_service_object_context_pair' AND conrelid='review_run_snapshots'::regclass) THEN
+			ALTER TABLE review_run_snapshots ADD CONSTRAINT review_run_snapshots_service_object_context_pair CHECK (
+				(service_object_context IS NULL AND service_object_context_hash='') OR
+				(service_object_context IS NOT NULL AND octet_length(service_object_context)>0 AND service_object_context_hash ~ '^[0-9a-f]{64}$'));
+		END IF;
+	END $$`,
 	`CREATE TABLE IF NOT EXISTS audit_events (
 		event_id text PRIMARY KEY,
 		run_id text NOT NULL,
@@ -390,6 +401,7 @@ var schemaStatements = []string{
 	`CREATE UNIQUE INDEX IF NOT EXISTS sessions_token_identity ON sessions (tenant_id, org_id, token)`,
 	`CREATE UNIQUE INDEX IF NOT EXISTS cases_tenant_org_identity ON cases (tenant_id, org_id, id)`,
 	`CREATE UNIQUE INDEX IF NOT EXISTS documents_tenant_org_identity ON documents (tenant_id, org_id, id)`,
+	`CREATE UNIQUE INDEX IF NOT EXISTS documents_case_scoped_identity ON documents (tenant_id, org_id, case_id, id)`,
 	`CREATE UNIQUE INDEX IF NOT EXISTS review_runs_tenant_org_identity ON review_runs (tenant_id, org_id, id)`,
 	`CREATE UNIQUE INDEX IF NOT EXISTS review_attempts_tenant_org_identity ON review_attempts (tenant_id, org_id, id)`,
 	`DO $$
@@ -434,6 +446,7 @@ var schemaStatements = []string{
 	queueSchedulerSchemaSQL,
 	ExperienceFeedbackSchemaSQL,
 	knowledgeGovernanceSchemaSQL,
+	legalKnowledgeSchemaSQL,
 	knowledgeAcceptanceSchemaSQL,
 	EvidenceRequestSchemaSQL,
 	EvaluationProvenanceSchemaSQL,
@@ -472,8 +485,9 @@ var schemaStatements = []string{
 			'experience_distill_inputs','experience_distill_results','experience_distill_failures',
 			'advisory_judgments',
 			'evidence_requests','evidence_receipts','evidence_request_events',
-			'operator_object_bindings','operator_external_snapshot_sets','operator_external_observations',
-			'operator_fulfillment_evaluations','operator_fulfillment_checks','operator_impact_plans'
+			'operator_object_bindings','operator_external_snapshot_sets','operator_external_collection_claims','operator_external_observations',
+			'operator_fulfillment_evaluations','operator_fulfillment_checks','operator_impact_plans',
+			'legal_source_captures'
 		] LOOP
 			EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY', table_name);
 			EXECUTE format('ALTER TABLE %I FORCE ROW LEVEL SECURITY', table_name);

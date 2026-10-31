@@ -92,6 +92,13 @@ func (s *Store) updateCaseAsWith(user accounts.User, caseID string, hook func(pg
 }
 
 func (s *Store) updateCaseAs(user accounts.User, caseID string, fn func(*state) error) error {
+	return s.updateCaseAsContext(context.Background(), user, caseID, fn)
+}
+
+func (s *Store) updateCaseAsContext(ctx context.Context, user accounts.User, caseID string, fn func(*state) error) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	current, err := trustedUser(user)
 	if err != nil {
 		return err
@@ -102,7 +109,21 @@ func (s *Store) updateCaseAs(user accounts.User, caseID string, fn func(*state) 
 	defer s.mu.Unlock()
 	// updateState takes the case-scoped advisory key before loading state, so this
 	// general writer and the narrow case writers share one ordering.
-	return s.updateState(context.Background(), scope, "", fn)
+	return s.updateState(ctx, scope, "", fn)
+}
+
+// updateSubjectCasesAs preserves the writer's schema-wide lock and then takes
+// subject locks before sorted case locks. Subject corrections use it when one
+// immutable subject version fans out to active bindings in several cases.
+func (s *Store) updateSubjectCasesAs(ctx context.Context, user accounts.User, subjectIDs, caseIDs []string, fn func(*state) error) error {
+	current, err := trustedUser(user)
+	if err != nil {
+		return err
+	}
+	scope := userScope(current)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.updateStateWithLocks(ctx, scope, "", subjectIDs, caseIDs, nil, fn)
 }
 
 // updateCaseAttemptAs is updateCaseAs with the attempt row locked for the whole

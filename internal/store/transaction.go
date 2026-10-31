@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"reflect"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -68,6 +69,38 @@ func scopedCaseLock(ctx context.Context, tx pgx.Tx, caseID string) error {
 	return err
 }
 
+func scopedSubjectLocks(ctx context.Context, tx pgx.Tx, subjectIDs []string) error {
+	ids := append([]string(nil), subjectIDs...)
+	sort.Strings(ids)
+	previous := ""
+	for _, subjectID := range ids {
+		if subjectID == "" || subjectID == previous {
+			continue
+		}
+		if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended(current_schema() || ':subject:' || $1, 0))`, subjectID); err != nil {
+			return err
+		}
+		previous = subjectID
+	}
+	return nil
+}
+
+func scopedCaseLocks(ctx context.Context, tx pgx.Tx, caseIDs []string) error {
+	ids := append([]string(nil), caseIDs...)
+	sort.Strings(ids)
+	previous := ""
+	for _, caseID := range ids {
+		if caseID == "" || caseID == previous {
+			continue
+		}
+		if err := scopedCaseLock(ctx, tx, caseID); err != nil {
+			return err
+		}
+		previous = caseID
+	}
+	return nil
+}
+
 // scopedAttemptLock serialises writers of one attempt without the global schema
 // lock. Every attempt-owned writer (narrow appends and the whole-state writer
 // when it targets an attempt) takes the same key, so the two lock classes cannot
@@ -93,6 +126,30 @@ func validateAppendOnly(previous, next state) error {
 		return err
 	}
 	if err := requireAppendOnly("parsed documents", previous.ParsedDocuments, next.ParsedDocuments); err != nil {
+		return err
+	}
+	if err := requireAppendOnly("material versions", previous.MaterialVersions, next.MaterialVersions); err != nil {
+		return err
+	}
+	if err := requireAppendOnly("subject versions", previous.SubjectVersions, next.SubjectVersions); err != nil {
+		return err
+	}
+	if err := requireAppendOnly("case subject role versions", previous.CaseSubjectRoleVersions, next.CaseSubjectRoleVersions); err != nil {
+		return err
+	}
+	if err := requireAppendOnly("subject change requests", previous.SubjectChangeRequests, next.SubjectChangeRequests); err != nil {
+		return err
+	}
+	if err := requireAppendOnly("subject change decisions", previous.SubjectChangeDecisions, next.SubjectChangeDecisions); err != nil {
+		return err
+	}
+	if err := requireAppendOnly("subject idempotency records", previous.SubjectIdempotency, next.SubjectIdempotency); err != nil {
+		return err
+	}
+	if err := requireAppendOnly("subject source snapshots", previous.SubjectSourceSnapshots, next.SubjectSourceSnapshots); err != nil {
+		return err
+	}
+	if err := requireAppendOnly("document upload idempotency records", previous.UploadIdempotency, next.UploadIdempotency); err != nil {
 		return err
 	}
 	if err := requireAppendOnly("attempt inputs", previous.AttemptInputs, next.AttemptInputs); err != nil {
@@ -381,6 +438,22 @@ func stateDelta(previous, next state) (state, state, error) {
 	if old.Documents, changed.Documents, err = deltaRows(previous.Documents, next.Documents, func(v Document) string { return v.ID }, false); err != nil {
 		return state{}, state{}, err
 	}
+	if old.Materials, changed.Materials, err = deltaRows(previous.Materials, next.Materials, func(v MaterialEntity) [4]string { return [4]string{v.TenantID, v.OrgID, v.CaseID, v.ID} }, false); err != nil {
+		return state{}, state{}, err
+	}
+	if old.MaterialVersions, changed.MaterialVersions, err = deltaRows(previous.MaterialVersions, next.MaterialVersions, func(v MaterialVersion) [5]string {
+		return [5]string{v.TenantID, v.OrgID, v.CaseID, v.MaterialID, strconv.Itoa(v.Version)}
+	}, false); err != nil {
+		return state{}, state{}, err
+	}
+	if old.MaterialChains, changed.MaterialChains, err = deltaRows(previous.MaterialChains, next.MaterialChains, func(v CaseMaterialChain) [3]string { return [3]string{v.TenantID, v.OrgID, v.CaseID} }, false); err != nil {
+		return state{}, state{}, err
+	}
+	if old.UploadIdempotency, changed.UploadIdempotency, err = deltaRows(previous.UploadIdempotency, next.UploadIdempotency, func(v UploadIdempotencyRecord) [5]string {
+		return [5]string{v.TenantID, v.OrgID, v.CaseID, v.ActorID, v.Key}
+	}, false); err != nil {
+		return state{}, state{}, err
+	}
 	if old.ParsedDocuments, changed.ParsedDocuments, err = deltaRows(previous.ParsedDocuments, next.ParsedDocuments, func(v ParsedDocument) string { return v.ID }, false); err != nil {
 		return state{}, state{}, err
 	}
@@ -454,6 +527,36 @@ func stateDelta(previous, next state) (state, state, error) {
 		return state{}, state{}, err
 	}
 	if old.WorkbenchAudit, changed.WorkbenchAudit, err = deltaRows(previous.WorkbenchAudit, next.WorkbenchAudit, func(v workbenchAuditRecord) string { return v.Item.ID }, false); err != nil {
+		return state{}, state{}, err
+	}
+	if old.Subjects, changed.Subjects, err = deltaRows(previous.Subjects, next.Subjects, func(v Subject) [2]string { return [2]string{v.TenantID, v.ID} }, true); err != nil {
+		return state{}, state{}, err
+	}
+	if old.SubjectVersions, changed.SubjectVersions, err = deltaRows(previous.SubjectVersions, next.SubjectVersions, func(v SubjectVersion) [3]string {
+		return [3]string{v.TenantID, v.SubjectID, strconv.FormatInt(v.Version, 10)}
+	}, false); err != nil {
+		return state{}, state{}, err
+	}
+	if old.CaseSubjectRoles, changed.CaseSubjectRoles, err = deltaRows(previous.CaseSubjectRoles, next.CaseSubjectRoles, func(v CaseSubjectRole) [4]string { return [4]string{v.TenantID, v.OrgID, v.CaseID, v.BindingID} }, true); err != nil {
+		return state{}, state{}, err
+	}
+	if old.CaseSubjectRoleVersions, changed.CaseSubjectRoleVersions, err = deltaRows(previous.CaseSubjectRoleVersions, next.CaseSubjectRoleVersions, func(v CaseSubjectRoleVersion) [5]string {
+		return [5]string{v.TenantID, v.OrgID, v.CaseID, v.BindingID, strconv.FormatInt(v.Version, 10)}
+	}, false); err != nil {
+		return state{}, state{}, err
+	}
+	if old.SubjectChangeRequests, changed.SubjectChangeRequests, err = deltaRows(previous.SubjectChangeRequests, next.SubjectChangeRequests, func(v SubjectChangeRequest) [2]string { return [2]string{v.TenantID, v.RequestID} }, false); err != nil {
+		return state{}, state{}, err
+	}
+	if old.SubjectChangeDecisions, changed.SubjectChangeDecisions, err = deltaRows(previous.SubjectChangeDecisions, next.SubjectChangeDecisions, func(v SubjectChangeDecision) [2]string { return [2]string{v.TenantID, v.DecisionID} }, false); err != nil {
+		return state{}, state{}, err
+	}
+	if old.SubjectIdempotency, changed.SubjectIdempotency, err = deltaRows(previous.SubjectIdempotency, next.SubjectIdempotency, func(v SubjectIdempotencyRecord) [5]string {
+		return [5]string{v.TenantID, v.ActorUserID, v.Operation, v.TargetID, v.Key}
+	}, false); err != nil {
+		return state{}, state{}, err
+	}
+	if old.SubjectSourceSnapshots, changed.SubjectSourceSnapshots, err = deltaRows(previous.SubjectSourceSnapshots, next.SubjectSourceSnapshots, func(v SubjectSourceSnapshot) [4]string { return [4]string{v.TenantID, v.OrgID, v.CaseID, v.SnapshotID} }, false); err != nil {
 		return state{}, state{}, err
 	}
 	return old, changed, nil

@@ -607,6 +607,10 @@ func TestGovernedUnredactedExperienceRechecksAncestorGrants(t *testing.T) {
 	if err != nil || len(current.RequiredPolicies) == 0 || len(current.OptionalCandidates) != 0 || len(current.Excluded) != 0 {
 		t.Fatalf("unauthorized ancestor content was disclosed in resolution: %+v %v", current, err)
 	}
+	// Worker adoption must recheck source and ancestor grants against the exact
+	// frozen candidate without replacing the candidate or resolving new facts.
+	err = st.ValidateFrozenGovernedKnowledgeSnapshot(ctx, reviewer, secondFeedback.CaseID, snapshot)
+	requireKnowledgeFault(t, err, 409)
 	err = st.RevalidateGovernedKnowledgeSnapshot(ctx, reviewer, secondFeedback.CaseID, snapshot)
 	requireKnowledgeFault(t, err, 409)
 	_, err = st.ReadFrozenGovernedKnowledge(ctx, reviewer, secondFeedback.CaseID, snapshot, v.Ref)

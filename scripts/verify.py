@@ -9,6 +9,7 @@ import json
 import os
 from pathlib import Path
 import re
+import signal
 import shutil
 import subprocess
 import sys
@@ -19,7 +20,19 @@ from typing import Callable
 from source_identity import source_identity
 
 ROOT = Path(__file__).resolve().parents[1]
-OUT = ROOT / "artifacts"
+# CI keeps collecting the historical in-repository paths. Other runs keep
+# verifier-owned artifacts in the sibling delivery tree.
+def default_output(root, environ):
+    if environ.get("CAW_DELIVERY_DIR"):
+        return Path(environ["CAW_DELIVERY_DIR"]).expanduser().resolve() / "verification"
+    if environ.get("GITHUB_ACTIONS") == "true":
+        # Keep the paths consumed by existing CI artifact-upload steps.
+        return root / "artifacts"
+    return root.parent / "contract-audit-delivery" / "verification"
+
+
+OUT = default_output(ROOT, os.environ)
+OUT_IS_EXTERNAL = OUT.resolve() != (ROOT / "artifacts").resolve()
 
 STAGES = ("static", "go", "web", "coverage", "browser")
 # Only the outputs a stage owns are removed before it runs. The coverage stage
@@ -231,7 +244,12 @@ def save_report(report):
 
 def clean_outputs(paths):
     for relative in paths:
-        path = ROOT / relative
+        if relative.startswith("artifacts/") and OUT_IS_EXTERNAL:
+            path = OUT / relative.removeprefix("artifacts/")
+        elif relative == "web/coverage" and OUT_IS_EXTERNAL:
+            path = OUT / "web-coverage"
+        else:
+            path = ROOT / relative
         if path.is_dir() and not path.is_symlink():
             shutil.rmtree(path)
         else:
@@ -242,6 +260,142 @@ def selected_check(check, stage, browser):
     if stage == "all":
         return check.stage != "browser" or browser
     return check.stage == stage
+
+
+def command_with_output_dir(check):
+    """Keep generated artifacts with the run outside source/CI collection paths."""
+    if not OUT_IS_EXTERNAL:
+        return list(check.cmd)
+    if check.name == "coverage-gates":
+        return [*check.cmd, "--go", str(OUT / "go-coverage.out"),
+                "--web", str(OUT / "web-coverage" / "coverage-summary.json"),
+                "--out", str(OUT / "coverage-summary.json")]
+    def relocate(argument):
+        option, separator, value = argument.partition("=")
+        path_value = value if separator else argument
+        if path_value.startswith("artifacts/"):
+            path_value = str(OUT / path_value.removeprefix("artifacts/"))
+        elif path_value.startswith("../artifacts/") and check.cwd == ROOT / "web":
+            path_value = str(OUT / path_value.removeprefix("../artifacts/"))
+        return f"{option}={path_value}" if separator else path_value
+
+    command = [relocate(argument) for argument in check.cmd]
+    if check.name == "web-tests":
+        command.append(f"--coverage.reportsDirectory={OUT / 'web-coverage'}")
+    return command
+
+
+def _process_group_has_live_members(process_group):
+    """Return whether a command's isolated process group still has live members."""
+    proc_root = Path("/proc")
+    if proc_root.is_dir():
+        for entry in proc_root.iterdir():
+            if not entry.name.isdecimal():
+                continue
+            try:
+                stat = (entry / "stat").read_text()
+                fields = stat[stat.rfind(")") + 2:].split()
+                # After comm, fields start with state, ppid, pgrp.
+                if len(fields) > 2 and fields[2].isdecimal() and int(fields[2]) == process_group:
+                    if fields[0] != "Z":
+                        return True
+            except (OSError, ValueError):
+                continue
+        return False
+    try:
+        os.killpg(process_group, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
+
+
+def _signal_process_group(process_group, sig):
+    try:
+        os.killpg(process_group, sig)
+    except ProcessLookupError:
+        pass
+
+
+def _terminate_process_group(process_group, grace=3.0):
+    """Stop only members of a process group created for one verifier check."""
+    had_live_members = _process_group_has_live_members(process_group)
+    _signal_process_group(process_group, signal.SIGTERM)
+    deadline = time.monotonic() + grace
+    while _process_group_has_live_members(process_group) and time.monotonic() < deadline:
+        time.sleep(min(0.05, max(0, deadline - time.monotonic())))
+    sigkill_sent = _process_group_has_live_members(process_group)
+    if sigkill_sent:
+        _signal_process_group(process_group, signal.SIGKILL)
+        deadline = time.monotonic() + grace
+        while _process_group_has_live_members(process_group) and time.monotonic() < deadline:
+            time.sleep(min(0.05, max(0, deadline - time.monotonic())))
+    return {
+        "performed": had_live_members,
+        "sigkill_sent": sigkill_sent,
+        "remaining_live_members": _process_group_has_live_members(process_group),
+    }
+
+
+def run_supervised(command, cwd, env, stdout, timeout):
+    """Run a check in its own session and clean up only its child processes."""
+    try:
+        process = subprocess.Popen(command, cwd=cwd, env=env, stdout=stdout,
+                                   stderr=subprocess.STDOUT, start_new_session=True)
+    except OSError as error:
+        return None, type(error).__name__, str(error), False, None
+
+    timed_out = False
+    error_kind = None
+    error_detail = None
+    cleanup = None
+    try:
+        try:
+            process.wait(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            timed_out = True
+            error_kind = "TimeoutExpired"
+            cleanup = _terminate_process_group(process.pid, grace=3.0)
+        else:
+            # A completed parent can leave children holding resources or an
+            # inherited output handle. Reap only its isolated process group.
+            if _process_group_has_live_members(process.pid):
+                cleanup = _terminate_process_group(process.pid, grace=3.0)
+        if process.poll() is None:
+            _signal_process_group(process.pid, signal.SIGKILL)
+            try:
+                process.wait(timeout=1.0)
+            except subprocess.TimeoutExpired:
+                error_kind = "ProcessReapTimeout"
+                error_detail = "direct child did not exit within 1s after SIGKILL"
+        if cleanup and cleanup["remaining_live_members"]:
+            error_kind = "ProcessGroupCleanupTimeout"
+            error_detail = "live members remain in verifier process group after SIGKILL"
+    except OSError as error:
+        error_kind = type(error).__name__
+        error_detail = str(error)
+        if cleanup is None:
+            cleanup = {"performed": False, "sigkill_sent": False,
+                       "remaining_live_members": _process_group_has_live_members(process.pid)}
+    if process.poll() is None:
+        _signal_process_group(process.pid, signal.SIGKILL)
+        try:
+            process.wait(timeout=1.0)
+        except subprocess.TimeoutExpired:
+            error_kind = "ProcessReapTimeout"
+            error_detail = "direct child did not exit within 1s after final SIGKILL"
+    if cleanup and cleanup["remaining_live_members"]:
+        error_kind = "ProcessGroupCleanupTimeout"
+        error_detail = "live members remain in verifier process group after bounded cleanup"
+    return process.returncode, error_kind, error_detail, timed_out, cleanup
+
+
+def evidence_path(path):
+    try:
+        return str(path.relative_to(ROOT))
+    except ValueError:
+        return str(path.resolve())
 
 
 def prepare_browser(env):
@@ -278,6 +432,8 @@ def build_checks(go, bun):
               (sys.executable, "-m", "unittest", "discover", "-s", "scripts", "-p", "test_*.py")),
         Check("infra-tests", "static",
               (sys.executable, "-m", "unittest", "discover", "-s", "deploy/tests", "-v")),
+        Check("fault-harness-tests", "static",
+              (sys.executable, "-m", "unittest", "deployments.scripts.test_fault_test_local")),
         Check("format", "static", (sys.executable, "scripts/check_format.py")),
         Check("modules", "static", (go, "mod", "verify")),
         Check("vet", "static", (go, "vet", "./...")),
@@ -291,8 +447,13 @@ def build_checks(go, bun):
         Check("web-tests", "web",
               (bun, "run", "test:coverage", "--reporter=default", "--reporter=json",
                "--outputFile=../artifacts/vitest-results.json"), cwd=ROOT / "web",
+              timeout=900,
               validate=lambda _: validate_web_test_results(
                   json.loads((OUT / "vitest-results.json").read_text()))),
+        Check("web-cdp-helper-tests", "web",
+              (bun, "run", "test:cdp-helper"), cwd=ROOT / "web"),
+        Check("web-c1b-clock-tests", "browser",
+              (bun, "test", "e2e/c1b-clock.test.ts"), cwd=ROOT / "web"),
         Check("web-build", "web", (bun, "run", "build"), cwd=ROOT / "web"),
         Check("backend-build", "go",
               (go, "build", "-buildvcs=false", "-trimpath",
@@ -328,23 +489,44 @@ def build_checks(go, bun):
                "./e2e", "-run", "^TestBrowserTelecomC1BFullJourney$"),
               timeout=360, jsonl=True, continue_on_failure=True,
               validate=lambda path: validate_go_test_results(path.read_text())),
+        Check("browser-telecom-compatible", "browser",
+              (go, "test", "-tags", "browser", "-count=1", "-json", "-timeout=330s",
+               "./e2e", "-run", "^TestBrowserTelecomC1BCompatibleScenario$"),
+              timeout=360, jsonl=True, continue_on_failure=True,
+              validate=lambda path: validate_go_test_results(path.read_text())),
+        Check("browser-telecom-insufficient", "browser",
+              (go, "test", "-tags", "browser", "-count=1", "-json", "-timeout=330s",
+               "./e2e", "-run", "^TestBrowserTelecomC1BInsufficientScenario$"),
+              timeout=360, jsonl=True, continue_on_failure=True,
+              validate=lambda path: validate_go_test_results(path.read_text())),
     )
 
 
 def run_check(check, env, report, logs):
-    print(f"[{check.name}] {' '.join(check.cmd)}", flush=True)
+    command = command_with_output_dir(check)
+    print(f"[{check.name}] {' '.join(command)}", flush=True)
     before = time.monotonic()
     raw = logs / (check.name + (".jsonl" if check.jsonl else ".txt"))
     display_path = logs / (check.name + ".txt")
+    command_returncode = None
+    error_kind = None
+    error_detail = None
+    timed_out = False
+    process_group_cleanup = None
     try:
         with raw.open("w") as handle:
-            result = subprocess.run(list(check.cmd), cwd=check.cwd, env=env, stdout=handle,
-                                    stderr=subprocess.STDOUT, timeout=check.timeout, check=False)
-        code = result.returncode
-    except (OSError, subprocess.TimeoutExpired) as error:
+            command_returncode, error_kind, error_detail, timed_out, process_group_cleanup = run_supervised(
+                command, check.cwd, env, handle, check.timeout)
+    except OSError as error:
         with raw.open("a") as handle:
-            handle.write(str(error) + "\n")
-        code = 127
+            handle.write(f"COMMAND SUPERVISION FAILED: {error}\n")
+        error_kind = type(error).__name__
+    if timed_out:
+        with raw.open("a") as handle:
+            handle.write(f"COMMAND TIMED OUT after {check.timeout}s\n")
+    elif error_kind:
+        with raw.open("a") as handle:
+            handle.write(f"COMMAND FAILED: {error_kind}: {error_detail or ''}\n")
     raw_text = raw.read_text(errors="replace")
     if check.jsonl:
         display = decode_go_test_log(raw_text)
@@ -353,7 +535,7 @@ def run_check(check, env, report, logs):
         display = raw_text
     evidence = None
     failure = None
-    if code == 0 and check.validate is not None:
+    if command_returncode == 0 and error_kind is None and check.validate is not None:
         try:
             evidence = check.validate(raw)
         except (OSError, ValueError, KeyError, TypeError) as error:
@@ -361,24 +543,34 @@ def run_check(check, env, report, logs):
             with display_path.open("a") as handle:
                 handle.write(f"\n{failure}\n")
             display += f"\n{failure}"
-            code = 1
+    cleanup_failed = bool(process_group_cleanup and process_group_cleanup["remaining_live_members"])
+    passed = command_returncode == 0 and error_kind is None and failure is None and not cleanup_failed
     record = {
         "name": check.name,
         "stage": check.stage,
-        "status": "PASS" if code == 0 else "FAIL",
-        "returncode": code,
+        "status": "PASS" if passed else "FAIL",
+        "returncode": command_returncode,
+        "command_returncode": command_returncode,
         "seconds": round(time.monotonic() - before, 3),
-        "log": str(display_path.relative_to(ROOT)),
+        "log": evidence_path(display_path),
     }
+    if error_kind:
+        record["error_kind"] = error_kind
+    if timed_out:
+        record["timed_out"] = True
+    if process_group_cleanup is not None:
+        record["process_group_cleanup"] = process_group_cleanup
+    if error_detail:
+        record["error_detail"] = error_detail
     if check.jsonl:
-        record["raw_log"] = str(raw.relative_to(ROOT))
+        record["raw_log"] = evidence_path(raw)
     if evidence is not None:
         record["evidence"] = evidence
     if failure:
         record["failure"] = failure
     report["checks"].append(record)
     save_report(report)
-    if code:
+    if not passed:
         emit_failure_annotations(check.name, display)
         print(display[-6000:], file=sys.stderr)
         return False
@@ -392,7 +584,7 @@ def main():
     parser.add_argument("--stage", choices=(*STAGES, "all"), default="all",
                         help="run only one gate stage (default: all)")
     args = parser.parse_args()
-    OUT.mkdir(exist_ok=True)
+    OUT.mkdir(parents=True, exist_ok=True)
     logs = OUT / "logs"
     logs.mkdir(exist_ok=True)
     stages = STAGE_OUTPUTS if args.stage == "all" else (args.stage,)
@@ -403,6 +595,9 @@ def main():
     # mode explicitly, so an inherited developer shell cannot turn this into a
     # paid external run.
     env = dict(os.environ, APP_ENV="test", TYPESAFE_JEV_MODE="off")
+    if OUT_IS_EXTERNAL:
+        env["CAW_DELIVERY_DIR"] = str(OUT.parent)
+        env["E2E_SCREENSHOT_DIR"] = str(OUT / "screenshots")
     env.pop("TYPESAFE_API_KEY", None)
     browser_selected = args.browser or args.stage == "browser"
     report = {

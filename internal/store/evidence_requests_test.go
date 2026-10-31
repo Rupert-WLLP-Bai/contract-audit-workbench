@@ -96,9 +96,9 @@ func (f evidenceRequestFixture) create(t *testing.T) EvidenceRequest {
 	return request
 }
 
-func (f evidenceRequestFixture) upload(t *testing.T, text string) string {
+func (f evidenceRequestFixture) replaceDraft(t *testing.T, text string) string {
 	t.Helper()
-	id, err := f.store.AddDocument(context.Background(), f.owner, f.caseID, "draft_contract", "draft.txt", "text/plain", []byte(text))
+	id, err := replaceCurrentPrimaryForTest(t, f.store, f.owner, f.caseID, "draft.txt", []byte(text))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -176,7 +176,7 @@ func TestEvidenceRequestReceiptAndAuthorizedVerificationPreserveHistory(t *testi
 	_, err = f.store.CreateEvidenceRequest(ctx, f.owner, f.caseID, changed)
 	requireEvidenceFault(t, err, 409)
 
-	documentID := f.upload(t, "拟签合同约定质保24个月。")
+	documentID := f.replaceDraft(t, "拟签合同约定质保24个月。")
 	submit := EvidenceReceiptInput{DocumentID: documentID, ExpectedVersion: request.Version, IdempotencyKey: "receipt-key"}
 	received, receipt, err := f.store.SubmitEvidenceReceipt(ctx, f.owner, f.caseID, request.ID, submit)
 	if err != nil {
@@ -240,7 +240,7 @@ func TestEvidenceRequestRefusesUnobservedOrUnlocatedVerification(t *testing.T) {
 	f := makeEvidenceRequestFixture(t)
 	ctx := context.Background()
 	request := f.create(t)
-	documentID := f.upload(t, "拟签合同约定质保24个月。")
+	documentID := f.replaceDraft(t, "拟签合同约定质保24个月。")
 	received, receipt, err := f.store.SubmitEvidenceReceipt(ctx, f.owner, f.caseID, request.ID,
 		EvidenceReceiptInput{DocumentID: documentID, ExpectedVersion: request.Version, IdempotencyKey: "receipt"})
 	if err != nil {
@@ -288,7 +288,7 @@ func TestEvidenceRequestAnswerRequiresLaterFrozenQuotation(t *testing.T) {
 	if err != nil || received.Status != "received" || receipt.Answer != answer {
 		t.Fatalf("answer receipt: %+v %+v %v", received, receipt, err)
 	}
-	documentID := f.upload(t, "拟签合同约定质保24个月。")
+	documentID := f.replaceDraft(t, "拟签合同约定质保24个月。")
 	later := f.laterReview(t, receipt)
 	verify := evidenceVerificationInput(t, received, receipt, later, documentID)
 	if _, err := f.store.VerifyEvidenceRequest(ctx, f.owner, f.caseID, request.ID, verify); err == nil {
@@ -298,7 +298,7 @@ func TestEvidenceRequestAnswerRequiresLaterFrozenQuotation(t *testing.T) {
 	if err != nil || current.Status != "received" {
 		t.Fatalf("unmatched answer did not stay unresolved: %+v %v", current, err)
 	}
-	matchingDoc := f.upload(t, "拟签合同补充答复：质保期限为24个月。")
+	matchingDoc := f.replaceDraft(t, "拟签合同补充答复：质保期限为24个月。")
 	later = f.laterReview(t, receipt)
 	verify = evidenceVerificationInput(t, received, receipt, later, matchingDoc)
 	verified, err := f.store.VerifyEvidenceRequest(ctx, f.owner, f.caseID, request.ID, verify)
@@ -368,7 +368,7 @@ func TestEvidenceRequestAuthorizationAndVersionConflicts(t *testing.T) {
 	if _, err := f.store.GetEvidenceRequest(ctx, f.owner, otherCase, request.ID); err == nil {
 		t.Fatal("request leaked through another case")
 	}
-	documentID := f.upload(t, "拟签合同约定质保36个月。")
+	documentID := f.replaceDraft(t, "拟签合同约定质保36个月。")
 	_, _, err = f.store.SubmitEvidenceReceipt(ctx, f.owner, f.caseID, request.ID,
 		EvidenceReceiptInput{DocumentID: documentID, ExpectedVersion: 2, IdempotencyKey: "stale"})
 	requireEvidenceFault(t, err, 409)
@@ -488,7 +488,7 @@ func TestEvidenceRequestInsufficientCheckCannotBeVerified(t *testing.T) {
 	f := makeEvidenceRequestFixture(t)
 	f.createInput.Question = "请提供含例外范围的质保条款"
 	request := f.create(t)
-	documentID := f.upload(t, "除电池外，质保36个月。")
+	documentID := f.replaceDraft(t, "除电池外，质保36个月。")
 	received, receipt, err := f.store.SubmitEvidenceReceipt(context.Background(), f.owner, f.caseID, request.ID,
 		EvidenceReceiptInput{DocumentID: documentID, ExpectedVersion: request.Version, IdempotencyKey: "qualified-receipt"})
 	if err != nil {
@@ -643,7 +643,7 @@ func TestEvidenceRequestUsesPersistedAgentGapAndLaterObservedCheck(t *testing.T)
 	if err != nil || request.SourceGap == nil || request.SourceGap.GapID != missing.GapID {
 		t.Fatalf("gap was not captured: %+v %v", request, err)
 	}
-	documentID, err := st.AddDocument(ctx, owner, caseID, "draft_contract", "updated.txt", "text/plain",
+	documentID, err := replaceCurrentPrimaryForTest(t, st, owner, caseID, "updated.txt",
 		[]byte("拟签合同：电路 LINE-001 最低保障带宽 100 Mbit/s。合同总价：100万元。质保36个月。"))
 	if err != nil {
 		t.Fatal(err)
@@ -751,7 +751,7 @@ func TestEvidenceRequestRejectsReviewAcceptedBeforeReceipt(t *testing.T) {
 	f := makeEvidenceRequestFixture(t)
 	ctx := context.Background()
 	request := f.create(t)
-	documentID := f.upload(t, "拟签合同约定质保36个月。")
+	documentID := f.replaceDraft(t, "拟签合同约定质保36个月。")
 	runID, err := f.store.StartReview(ctx, f.owner, f.caseID)
 	if err != nil {
 		t.Fatal(err)
@@ -776,7 +776,7 @@ func TestEvidenceRequestRequiresTheSpecifiedResultAndReceiptProvenance(t *testin
 		f := makeEvidenceRequestFixture(t)
 		f.createInput.VerificationCondition = "compatible"
 		request := f.create(t)
-		documentID := f.upload(t, "拟签合同约定质保24个月。")
+		documentID := f.replaceDraft(t, "拟签合同约定质保24个月。")
 		received, receipt, err := f.store.SubmitEvidenceReceipt(context.Background(), f.owner, f.caseID, request.ID,
 			EvidenceReceiptInput{DocumentID: documentID, ExpectedVersion: 1, IdempotencyKey: "different-result"})
 		if err != nil {
@@ -800,7 +800,7 @@ func TestEvidenceRequestRequiresTheSpecifiedResultAndReceiptProvenance(t *testin
 		if err != nil {
 			t.Fatal(err)
 		}
-		f.upload(t, "拟签合同约定质保24个月。")
+		f.replaceDraft(t, "拟签合同约定质保24个月。")
 		later := f.laterReview(t, receipt)
 		verification := evidenceVerificationInput(t, received, receipt, later, documentID)
 		_, err = f.store.VerifyEvidenceRequest(context.Background(), f.owner, f.caseID, request.ID, verification)
@@ -814,7 +814,7 @@ func TestEvidenceRequestRequiresTheSpecifiedResultAndReceiptProvenance(t *testin
 		f := makeEvidenceRequestFixture(t)
 		f.createInput.VerificationCondition = "compatible"
 		request := f.create(t)
-		documentID := f.upload(t, "拟签合同约定质保36个月。")
+		documentID := f.replaceDraft(t, "拟签合同约定质保36个月。")
 		received, receipt, err := f.store.SubmitEvidenceReceipt(context.Background(), f.owner, f.caseID, request.ID,
 			EvidenceReceiptInput{DocumentID: documentID, ExpectedVersion: 1, IdempotencyKey: "no-provenance"})
 		if err != nil {
@@ -896,7 +896,7 @@ func TestEvidenceRequestVerifiesCompatibleGovernedFactWithFrozenCitation(t *test
 	if err != nil {
 		t.Fatal(err)
 	}
-	documentID, err := st.AddDocument(ctx, owner, caseID, "draft_contract", "bandwidth.txt", "text/plain",
+	documentID, err := replaceCurrentPrimaryForTest(t, st, owner, caseID, "bandwidth.txt",
 		[]byte("拟签合同。电路 LINE-001：最低保障带宽 100 Mbit/s。"))
 	if err != nil {
 		t.Fatal(err)
@@ -1023,7 +1023,7 @@ func TestEvidenceRequestVerifiesResolvedAgentGapWithCitedReceipt(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	documentID, err := st.AddDocument(ctx, owner, caseID, "draft_contract", "revised.txt", "text/plain",
+	documentID, err := replaceCurrentPrimaryForTest(t, st, owner, caseID, "revised.txt",
 		[]byte("拟签合同。电路 LINE-001：最低保障带宽 100 Mbit/s。质保24个月。"))
 	if err != nil {
 		t.Fatal(err)

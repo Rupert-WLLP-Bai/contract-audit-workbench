@@ -81,7 +81,14 @@ jobs:
           PGUSER: contractaudit
           PGPASSWORD: contractaudit
         run: bash scripts/provision_test_db.sh
+      - name: Test legal asset preparation
+        run: python3 scripts/test_fetch_legal_test_assets.py
+      - name: Prepare pinned legal test assets
+        run: python3 scripts/fetch_legal_test_assets.py --destination "$RUNNER_TEMP/caw-legal-test-assets"
       - name: Go gate
+        env:
+          LEGALNORM_ASSET_DIR: ${{ runner.temp }}/caw-legal-test-assets/legal-sources
+          LEGALNORM_CANONICAL_MANIFEST: ${{ runner.temp }}/caw-legal-test-assets/p4-canonical-articles-v2.json
         run: python3 scripts/verify.py --stage go
       - uses: actions/upload-artifact@v7
         if: always()

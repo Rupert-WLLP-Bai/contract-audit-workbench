@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
 	"time"
 	"unicode/utf8"
 
@@ -41,6 +42,8 @@ type Store struct {
 	st                     state
 	modelsMu               sync.RWMutex
 	models                 Models
+	subjectSourcesMu       sync.RWMutex
+	subjectSources         *SubjectSourceManifest
 	advisoryProvider       advisory.Provider
 	objects                ObjectStore
 	documentPreparer       DocumentPreparer
@@ -54,20 +57,18 @@ type Store struct {
 	schema                 string
 	dropSchema             bool
 	pool                   *pgxpool.Pool
-	readOnly               bool
+	readOnly               atomic.Bool
 }
 
 // UseReadOnly disables business writes. Session maintenance and forward migrations remain available.
 func (s *Store) UseReadOnly(readOnly bool) {
 	s.mu.Lock()
-	s.readOnly = readOnly
+	s.readOnly.Store(readOnly)
 	s.mu.Unlock()
 }
 
 func (s *Store) ReadOnly() bool {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.readOnly
+	return s.readOnly.Load()
 }
 
 // HasDatabase reports whether this store was opened against PostgreSQL. Tests
@@ -76,34 +77,46 @@ func (s *Store) ReadOnly() bool {
 func (s *Store) HasDatabase() bool { return s != nil && s.pool != nil }
 
 type state struct {
-	Sessions               []session               `json:"sessions"`
-	Cases                  []Case                  `json:"cases"`
-	Documents              []Document              `json:"documents"`
-	ParsedDocuments        []ParsedDocument        `json:"parsed_documents"`
-	Runs                   []Run                   `json:"runs"`
-	Attempts               []Attempt               `json:"attempts"`
-	AttemptInputs          []AttemptInput          `json:"attempt_inputs"`
-	AttemptParseSelections []AttemptParseSelection `json:"attempt_parse_selections"`
-	ExecutionEvents        []ExecutionEvent        `json:"execution_events"`
-	Findings               []Finding               `json:"findings"`
-	Evaluations            []ConstraintEval        `json:"evaluations"`
-	Decisions              []Decision              `json:"decisions"`
-	Events                 []Event                 `json:"events"`
-	Activity               []Activity              `json:"activity"`
-	Idempotency            []Idem                  `json:"idempotency"`
-	Snapshots              []RunSnapshot           `json:"snapshots"`
-	Audits                 []AuditRecord           `json:"audits"`
-	Jobs                   []Job                   `json:"jobs"`
-	Outbox                 []OutboxRecord          `json:"outbox"`
-	Generations            []generationRecord      `json:"generations"`
-	Remediations           []remediationRecord     `json:"remediations"`
-	Reports                []frozenReport          `json:"reports"`
-	Archives               []archiveRecord         `json:"archives"`
-	Profiles               []caseProfileRecord     `json:"profiles"`
-	Tasks                  []workbenchTaskRecord   `json:"tasks"`
-	Relations              []caseRelationRecord    `json:"relations"`
-	Knowledge              []knowledgeRecord       `json:"knowledge"`
-	WorkbenchAudit         []workbenchAuditRecord  `json:"workbench_audit"`
+	Sessions                []session                  `json:"sessions"`
+	Cases                   []Case                     `json:"cases"`
+	Documents               []Document                 `json:"documents"`
+	Materials               []MaterialEntity           `json:"materials"`
+	MaterialVersions        []MaterialVersion          `json:"material_versions"`
+	MaterialChains          []CaseMaterialChain        `json:"material_chains"`
+	UploadIdempotency       []UploadIdempotencyRecord  `json:"upload_idempotency"`
+	ParsedDocuments         []ParsedDocument           `json:"parsed_documents"`
+	Runs                    []Run                      `json:"runs"`
+	Attempts                []Attempt                  `json:"attempts"`
+	AttemptInputs           []AttemptInput             `json:"attempt_inputs"`
+	AttemptParseSelections  []AttemptParseSelection    `json:"attempt_parse_selections"`
+	ExecutionEvents         []ExecutionEvent           `json:"execution_events"`
+	Findings                []Finding                  `json:"findings"`
+	Evaluations             []ConstraintEval           `json:"evaluations"`
+	Decisions               []Decision                 `json:"decisions"`
+	Events                  []Event                    `json:"events"`
+	Activity                []Activity                 `json:"activity"`
+	Idempotency             []Idem                     `json:"idempotency"`
+	Snapshots               []RunSnapshot              `json:"snapshots"`
+	Audits                  []AuditRecord              `json:"audits"`
+	Jobs                    []Job                      `json:"jobs"`
+	Outbox                  []OutboxRecord             `json:"outbox"`
+	Generations             []generationRecord         `json:"generations"`
+	Remediations            []remediationRecord        `json:"remediations"`
+	Reports                 []frozenReport             `json:"reports"`
+	Archives                []archiveRecord            `json:"archives"`
+	Profiles                []caseProfileRecord        `json:"profiles"`
+	Tasks                   []workbenchTaskRecord      `json:"tasks"`
+	Relations               []caseRelationRecord       `json:"relations"`
+	Knowledge               []knowledgeRecord          `json:"knowledge"`
+	WorkbenchAudit          []workbenchAuditRecord     `json:"workbench_audit"`
+	Subjects                []Subject                  `json:"subjects"`
+	SubjectVersions         []SubjectVersion           `json:"subject_versions"`
+	CaseSubjectRoles        []CaseSubjectRole          `json:"case_subject_roles"`
+	CaseSubjectRoleVersions []CaseSubjectRoleVersion   `json:"case_subject_role_versions"`
+	SubjectChangeRequests   []SubjectChangeRequest     `json:"subject_change_requests"`
+	SubjectChangeDecisions  []SubjectChangeDecision    `json:"subject_change_decisions"`
+	SubjectIdempotency      []SubjectIdempotencyRecord `json:"subject_idempotency"`
+	SubjectSourceSnapshots  []SubjectSourceSnapshot    `json:"subject_source_snapshots"`
 }
 
 // AttemptParseSelection pins parser identity and a reserved artifact ID at acceptance.
@@ -123,25 +136,33 @@ type AttemptParseSelection struct {
 
 // FrozenDocument stores parser output bound to an immutable original and parse identity.
 type FrozenDocument struct {
-	Document             Document `json:"document"`
-	Ready                bool     `json:"ready"`
-	FromOCR              bool     `json:"from_ocr"`
-	ParseError           string   `json:"parse_error"`
-	Text                 string   `json:"text"`
-	IR                   docir.IR `json:"ir"`
-	OriginalHash         string   `json:"original_hash"`
-	NormalizedHash       *string  `json:"normalized_hash"`
-	ParserRef            string   `json:"parser_ref"`
-	ParsedDocumentID     string   `json:"parsed_document_id,omitempty"`
-	SelectionOrder       int64    `json:"selection_order,omitempty"`
-	ParsedArtifactDigest string   `json:"parsed_artifact_digest,omitempty"`
-	ConfigHash           string   `json:"config_hash,omitempty"`
-	ParserID             string   `json:"parser_id,omitempty"`
-	ParserVersion        string   `json:"parser_version,omitempty"`
-	NormalizationVersion string   `json:"normalization_version,omitempty"`
-	IRDigest             string   `json:"ir_digest,omitempty"`
-	ParsedCreatedAt      string   `json:"parsed_created_at,omitempty"`
-	ParsedStatus         string   `json:"parsed_status,omitempty"`
+	Document             Document                 `json:"document"`
+	Material             *FrozenMaterialSelection `json:"material,omitempty"`
+	Ready                bool                     `json:"ready"`
+	FromOCR              bool                     `json:"from_ocr"`
+	ParseError           string                   `json:"parse_error"`
+	Text                 string                   `json:"text"`
+	IR                   docir.IR                 `json:"ir"`
+	OriginalHash         string                   `json:"original_hash"`
+	NormalizedHash       *string                  `json:"normalized_hash"`
+	ParserRef            string                   `json:"parser_ref"`
+	ParsedDocumentID     string                   `json:"parsed_document_id,omitempty"`
+	SelectionOrder       int64                    `json:"selection_order,omitempty"`
+	ParsedArtifactDigest string                   `json:"parsed_artifact_digest,omitempty"`
+	ConfigHash           string                   `json:"config_hash,omitempty"`
+	ParserID             string                   `json:"parser_id,omitempty"`
+	ParserVersion        string                   `json:"parser_version,omitempty"`
+	NormalizationVersion string                   `json:"normalization_version,omitempty"`
+	IRDigest             string                   `json:"ir_digest,omitempty"`
+	ParsedCreatedAt      string                   `json:"parsed_created_at,omitempty"`
+	ParsedStatus         string                   `json:"parsed_status,omitempty"`
+}
+
+type FrozenMaterialSelection struct {
+	MaterialID string `json:"material_id"`
+	Role       string `json:"role"`
+	Purpose    string `json:"purpose"`
+	Version    int    `json:"version"`
 }
 
 // AttemptInput is the immutable input record reused by retries.
@@ -248,6 +269,30 @@ func (st *state) normalize() {
 	if st.WorkbenchAudit == nil {
 		st.WorkbenchAudit = []workbenchAuditRecord{}
 	}
+	if st.Subjects == nil {
+		st.Subjects = []Subject{}
+	}
+	if st.SubjectVersions == nil {
+		st.SubjectVersions = []SubjectVersion{}
+	}
+	if st.CaseSubjectRoles == nil {
+		st.CaseSubjectRoles = []CaseSubjectRole{}
+	}
+	if st.CaseSubjectRoleVersions == nil {
+		st.CaseSubjectRoleVersions = []CaseSubjectRoleVersion{}
+	}
+	if st.SubjectChangeRequests == nil {
+		st.SubjectChangeRequests = []SubjectChangeRequest{}
+	}
+	if st.SubjectChangeDecisions == nil {
+		st.SubjectChangeDecisions = []SubjectChangeDecision{}
+	}
+	if st.SubjectIdempotency == nil {
+		st.SubjectIdempotency = []SubjectIdempotencyRecord{}
+	}
+	if st.SubjectSourceSnapshots == nil {
+		st.SubjectSourceSnapshots = []SubjectSourceSnapshot{}
+	}
 }
 
 func (st state) clone() (state, error) {
@@ -292,6 +337,10 @@ func (st state) clone() (state, error) {
 		out.Snapshots[i].RulePackSnapshot = append([]byte(nil), st.Snapshots[i].RulePackSnapshot...)
 		out.Snapshots[i].PlannerConfiguration = append(json.RawMessage(nil), st.Snapshots[i].PlannerConfiguration...)
 	}
+	// JSON encodes UTC instants with a Z suffix. When the process timezone is
+	// UTC, decoding may attach time.Local instead of time.UTC; normalize rows
+	// before reflect-based delta checks so a clone cannot appear to mutate them.
+	canonicalizeLoadedRows(&out)
 	out.normalize()
 	return out, nil
 }
@@ -547,17 +596,21 @@ type Activity struct {
 
 // RunSnapshot is the immutable input of one review run.
 type RunSnapshot struct {
-	RunID                 string   `json:"run_id"`
-	DocumentIDs           []string `json:"document_ids"`
-	ParsedDocumentIDs     []string `json:"parsed_document_ids,omitempty"`
-	ParseSelectionHash    string   `json:"parse_selection_hash,omitempty"`
-	ParserConfigurationID string   `json:"parser_configuration_id,omitempty"`
-	RuleSetHash           string   `json:"rule_set_hash"`
-	PlaybookHash          string   `json:"playbook_hash"`
-	ModelRef              string   `json:"model_ref"`
-	ModelConfigurationID  string   `json:"model_configuration_id,omitempty"`
-	ComparatorRef         string   `json:"comparator_ref"`
-	RulePackCompilerRef   string   `json:"rule_pack_compiler_ref,omitempty"`
+	RunID                    string                      `json:"run_id"`
+	DocumentIDs              []string                    `json:"document_ids"`
+	PartyContext             []PartyContextItem          `json:"party_context,omitempty"`
+	PartyContextHash         string                      `json:"party_context_hash,omitempty"`
+	ServiceObjectContext     *ServiceObjectReviewContext `json:"service_object_context,omitempty"`
+	ServiceObjectContextHash string                      `json:"service_object_context_hash,omitempty"`
+	ParsedDocumentIDs        []string                    `json:"parsed_document_ids,omitempty"`
+	ParseSelectionHash       string                      `json:"parse_selection_hash,omitempty"`
+	ParserConfigurationID    string                      `json:"parser_configuration_id,omitempty"`
+	RuleSetHash              string                      `json:"rule_set_hash"`
+	PlaybookHash             string                      `json:"playbook_hash"`
+	ModelRef                 string                      `json:"model_ref"`
+	ModelConfigurationID     string                      `json:"model_configuration_id,omitempty"`
+	ComparatorRef            string                      `json:"comparator_ref"`
+	RulePackCompilerRef      string                      `json:"rule_pack_compiler_ref,omitempty"`
 	// RulePack identity frozen at acceptance. PackID and PackVersion are empty
 	// when no governed pack applied and the synthetic baseline compiler ran.
 	RulePackID          string          `json:"rule_pack_id,omitempty"`

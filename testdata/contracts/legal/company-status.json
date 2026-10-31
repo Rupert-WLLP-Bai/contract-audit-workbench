@@ -1,0 +1,16 @@
+{
+  "items": [
+    {
+      "catalog_key": "company-policy-source-pending",
+      "display_label": "公司制度资料待提供",
+      "state": "awaiting_source",
+      "requested_owner": null,
+      "has_body": false,
+      "has_published_version": false,
+      "has_content_hash": false,
+      "knowledge_ref": null,
+      "can_be_cited": false,
+      "satisfies_mandatory_dependencies": false
+    }
+  ]
+}

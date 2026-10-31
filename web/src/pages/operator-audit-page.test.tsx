@@ -15,6 +15,7 @@ const mocks = vi.hoisted(() => ({
   useSettings: vi.fn(),
   useCaseDetail: vi.fn(),
   getReview: vi.fn(),
+  listServiceObjects: vi.fn(),
 }));
 
 vi.mock("../features/operator-audit/api", () => ({
@@ -34,6 +35,10 @@ vi.mock("../api/queries", () => ({
 vi.mock("../api/endpoints", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../api/endpoints")>();
   return { ...actual, getReview: mocks.getReview };
+});
+vi.mock("../features/operator-audit/service-objects-api", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../features/operator-audit/service-objects-api")>();
+  return { ...actual, listServiceObjects: mocks.listServiceObjects };
 });
 
 const pack = {
@@ -59,6 +64,7 @@ const caseDetail = {
 };
 const workspace = {
   review_attempts: { attempt: { id: "attempt-1" } },
+  documents: [],
 };
 
 function renderPage() {
@@ -88,6 +94,7 @@ describe("OperatorAuditPage", () => {
     mocks.listCapabilityPacks.mockResolvedValue([pack]);
     mocks.listExternalSnapshots.mockResolvedValue([]);
     mocks.getReview.mockResolvedValue(workspace);
+    mocks.listServiceObjects.mockResolvedValue({ items: [], next_cursor: null, can_manage: false });
     mocks.useCaseDetail.mockReturnValue({
       data: caseDetail,
       isLoading: false,
@@ -126,6 +133,7 @@ describe("OperatorAuditPage", () => {
       screen.getByRole("button", { name: "受理确定性核验" }),
     ).toBeDisabled();
     expect(mocks.listCapabilityPacks).toHaveBeenCalled();
+    expect(mocks.listServiceObjects).toHaveBeenCalledWith("case-1", null, expect.any(AbortSignal));
     expect(mocks.listExternalSnapshots).toHaveBeenCalledWith(
       "case-1",
       expect.anything(),

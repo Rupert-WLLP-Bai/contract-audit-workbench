@@ -587,6 +587,17 @@ func Execute(ctx context.Context, request rulepack.Request) (rulepack.Report, er
 // attempt. It keeps the contractual-authority, circuit-object, amount/tax and
 // SLA-annex checks, while never compiling a replacement policy.
 func ExecuteFrozen(ctx context.Context, request rulepack.Request, pack *rulepack.Pack) (rulepack.Report, error) {
+	return executeFrozen(ctx, request, pack, false)
+}
+
+// ExecuteLegacyFrozen is reserved for a store-validated pre-AUTH03 attempt
+// whose persisted governed snapshot has no legal extension. New acceptances
+// must call ExecuteFrozen so missing normative gates remain insufficient.
+func ExecuteLegacyFrozen(ctx context.Context, request rulepack.Request, pack *rulepack.Pack) (rulepack.Report, error) {
+	return executeFrozen(ctx, request, pack, true)
+}
+
+func executeFrozen(ctx context.Context, request rulepack.Request, pack *rulepack.Pack, legacyFrozen bool) (rulepack.Report, error) {
 	request, err := prepareExecutionRequest(ctx, request)
 	if err != nil {
 		return rulepack.Report{}, err
@@ -595,7 +606,7 @@ func ExecuteFrozen(ctx context.Context, request rulepack.Request, pack *rulepack
 		return rulepack.Report{}, err
 	}
 	missing, bases := authorityBaselines(request)
-	return executePack(ctx, request, pack, missing, bases)
+	return executePackWithMode(ctx, request, pack, missing, bases, legacyFrozen)
 }
 
 func prepareExecutionRequest(ctx context.Context, request rulepack.Request) (rulepack.Request, error) {
@@ -784,6 +795,10 @@ func authorityBaselines(request rulepack.Request) (map[string]string, map[string
 }
 
 func executePack(ctx context.Context, request rulepack.Request, pack *rulepack.Pack, missing map[string]string, bases map[string]clause) (rulepack.Report, error) {
+	return executePackWithMode(ctx, request, pack, missing, bases, false)
+}
+
+func executePackWithMode(ctx context.Context, request rulepack.Request, pack *rulepack.Pack, missing map[string]string, bases map[string]clause, legacyFrozen bool) (rulepack.Report, error) {
 	definitions := rulesFor(request)
 	if len(definitions) != 3 {
 		return rulepack.Report{}, rulepack.ErrInvalidRequest
@@ -796,7 +811,7 @@ func executePack(ctx context.Context, request rulepack.Request, pack *rulepack.P
 		Relations: []rulepack.Relation{rulepack.RelationCompatible, rulepack.RelationConflict, rulepack.RelationInsufficient, rulepack.RelationNotApplicable},
 		Results:   []rulepack.Result{}}
 	var err error
-	report, err = executeRulePack(ctx, request, pack, missing, report)
+	report, err = executeRulePack(ctx, request, pack, missing, report, legacyFrozen)
 	if err != nil {
 		return rulepack.Report{}, err
 	}
@@ -805,7 +820,7 @@ func executePack(ctx context.Context, request rulepack.Request, pack *rulepack.P
 	return report, nil
 }
 
-func executeRulePack(ctx context.Context, request rulepack.Request, pack *rulepack.Pack, missing map[string]string, empty rulepack.Report) (rulepack.Report, error) {
+func executeRulePack(ctx context.Context, request rulepack.Request, pack *rulepack.Pack, missing map[string]string, empty rulepack.Report, legacyFrozen bool) (rulepack.Report, error) {
 	if pack == nil {
 		return empty, nil
 	}
@@ -816,6 +831,9 @@ func executeRulePack(ctx context.Context, request rulepack.Request, pack *rulepa
 		}
 	}
 	request.Facts = filtered
+	if legacyFrozen {
+		return pack.ExecuteLegacyFrozen(ctx, request)
+	}
 	return pack.Execute(ctx, request)
 }
 
@@ -825,6 +843,10 @@ func appendMissingResults(report *rulepack.Report, definitions []ruleDefinition,
 			found := false
 			for index := range report.Results {
 				if report.Results[index].RuleID != definition.id {
+					continue
+				}
+				if legalAuthorityBlocks(report.Results[index]) {
+					found = true
 					continue
 				}
 				report.Results[index].Relation = rulepack.RelationInsufficient
@@ -844,6 +866,9 @@ func appendMissingResults(report *rulepack.Report, definitions []ruleDefinition,
 func applyBaselineChecks(report *rulepack.Report, request rulepack.Request, definitions []ruleDefinition, bases map[string]clause) {
 	for index := range report.Results {
 		result := &report.Results[index]
+		if legalAuthorityBlocks(*result) {
+			continue
+		}
 		base, exists := bases[result.RuleID]
 		if !exists {
 			continue
@@ -852,6 +877,10 @@ func applyBaselineChecks(report *rulepack.Report, request rulepack.Request, defi
 		checkSLAResult(result, request, definitions, base)
 		result.Citations = append(result.Citations, base.fact.Citations...)
 	}
+}
+
+func legalAuthorityBlocks(result rulepack.Result) bool {
+	return result.LegalAuthorityOutcome == "unknown" || result.LegalAuthorityOutcome == "not_applicable"
 }
 
 func checkResultFacts(result *rulepack.Result, request rulepack.Request, definitions []ruleDefinition, base clause) {

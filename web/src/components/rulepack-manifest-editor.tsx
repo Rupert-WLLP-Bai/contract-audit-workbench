@@ -3,9 +3,11 @@ import { Button, Checkbox, Input, Select } from "antd";
 import { useRef, useState } from "react";
 import type {
   RulePackAuthoritySource,
+  RulePackLegalAuthority,
   RulePackManifestInput,
   RulePackRule,
 } from "../api/rulepacks";
+import { RulePackLegalAuthorityEditor } from "./rulepack-legal-authority-editor";
 import { toLocalInputValue, toUtcInstant } from "./local-datetime";
 import { OptionalFactField } from "./optional-fact-field";
 
@@ -736,6 +738,8 @@ function RuleCard({
   onAddAuthority,
   onUpdateAuthority,
   onRemoveAuthority,
+  onAddLegalAuthority,
+  onRemoveLegalAuthority,
   onRemoveRule,
 }: {
   rule: RulePackRule;
@@ -751,6 +755,8 @@ function RuleCard({
     patch: Partial<RulePackAuthoritySource>,
   ) => void;
   onRemoveAuthority: (sourceIndex: number) => void;
+  onAddLegalAuthority: (authority: RulePackLegalAuthority) => void;
+  onRemoveLegalAuthority: (index: number) => void;
   onRemoveRule: () => void;
 }) {
   return (
@@ -786,6 +792,12 @@ function RuleCard({
         onAdd={onAddAuthority}
         onUpdate={onUpdateAuthority}
         onRemove={onRemoveAuthority}
+      />
+      <RulePackLegalAuthorityEditor
+        value={rule.legal_authorities ?? []}
+        disabled={disabled}
+        onAdd={onAddLegalAuthority}
+        onRemove={onRemoveLegalAuthority}
       />
       {canRemove ? (
         <Button
@@ -877,6 +889,33 @@ export function RulePackManifestEditor({
     });
   }
 
+  function addLegalAuthority(ruleIndex: number, authority: RulePackLegalAuthority) {
+    const rule = value.rules[ruleIndex];
+    if (!rule) return;
+    const sourceExists = rule.authority_sources.some((source) =>
+      source.id === authority.source_id && source.version === authority.norm_version && source.kind === "normative",
+    );
+    const sources = sourceExists
+      ? rule.authority_sources
+      : [...rule.authority_sources, { id: authority.source_id, version: authority.norm_version, kind: "normative" }];
+    if (!sourceExists) {
+      const key = nextLocalKey("source");
+      setAuthorityKeys((current) => current.map((keys, index) => index === ruleIndex ? [...keys, key] : keys));
+    }
+    updateRule(value, onChange, ruleIndex, {
+      authority_sources: sources,
+      legal_authorities: [...(rule.legal_authorities ?? []), authority],
+    });
+  }
+
+  function removeLegalAuthority(ruleIndex: number, authorityIndex: number) {
+    const rule = value.rules[ruleIndex];
+    if (!rule) return;
+    updateRule(value, onChange, ruleIndex, {
+      legal_authorities: (rule.legal_authorities ?? []).filter((_, index) => index !== authorityIndex),
+    });
+  }
+
   return (
     <div className="rulepack-editor">
       <RuleIdentitySection
@@ -927,6 +966,12 @@ export function RulePackManifestEditor({
             }
             onRemoveAuthority={(sourceIndex) =>
               removeAuthority(ruleIndex, sourceIndex)
+            }
+            onAddLegalAuthority={(authority) =>
+              addLegalAuthority(ruleIndex, authority)
+            }
+            onRemoveLegalAuthority={(authorityIndex) =>
+              removeLegalAuthority(ruleIndex, authorityIndex)
             }
             onRemoveRule={() => removeRule(ruleIndex)}
           />

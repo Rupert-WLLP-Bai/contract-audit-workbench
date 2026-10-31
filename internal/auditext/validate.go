@@ -7,6 +7,7 @@ import (
 
 var (
 	idPattern       = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.:/-]{0,127}$`)
+	digestPattern   = regexp.MustCompile(`^[0-9a-f]{64}$`)
 	versionPattern  = regexp.MustCompile(`^\d+\.\d+\.\d+$`)
 	quantityPattern = regexp.MustCompile(`^\d+(\.\d+)?$`)
 )
@@ -108,6 +109,9 @@ func (o Observation) Validate(scope AuthorizedScope) error {
 	if err := validateObservationTimes(o); err != nil {
 		return err
 	}
+	if err := validateObservationTemporalProof(o); err != nil {
+		return err
+	}
 	if err := validateObservationPayload(o); err != nil {
 		return err
 	}
@@ -116,6 +120,34 @@ func (o Observation) Validate(scope AuthorizedScope) error {
 	}
 	if o.DataClass != DataClassSynthetic {
 		return fmt.Errorf("%w: data class", ErrInvalidRequest)
+	}
+	return nil
+}
+
+func validateObservationTemporalProof(o Observation) error {
+	proof := o.TemporalProof
+	if proof == nil {
+		return nil // legacy/current observations remain readable, but prove no historical interval.
+	}
+	switch proof.Kind {
+	case TemporalProofCurrentState:
+		if proof.SourceAsOf == nil || proof.ValidFrom != nil || proof.ValidUntil != nil {
+			return fmt.Errorf("%w: current-state temporal proof", ErrInvalidRequest)
+		}
+	case TemporalProofHistoricalInterval:
+		if ValidateID(proof.SourceCatalogID) != nil || ValidateID(proof.DatasetVersion) != nil ||
+			proof.RecordVersion == "" || len(proof.RecordVersion) > 128 || proof.SourceAsOf == nil || proof.ValidFrom == nil || proof.ValidUntil == nil ||
+			!proof.ValidFrom.Before(*proof.ValidUntil) || !proof.ValidFrom.Equal(o.EffectiveFrom) || !proof.ValidUntil.Equal(o.EffectiveUntil) {
+			return fmt.Errorf("%w: historical temporal proof", ErrInvalidRequest)
+		}
+		if o.RecordVersion == nil || *o.RecordVersion != proof.RecordVersion {
+			return fmt.Errorf("%w: historical record version mismatch", ErrInvalidRequest)
+		}
+	default:
+		return fmt.Errorf("%w: temporal proof kind", ErrInvalidRequest)
+	}
+	if proof.SourceAsOf != nil && proof.SourceAsOf.IsZero() {
+		return fmt.Errorf("%w: temporal source time", ErrInvalidRequest)
 	}
 	return nil
 }
@@ -206,6 +238,17 @@ func (f Fact) Validate() error {
 	if ValidateID(f.Name) != nil {
 		return fmt.Errorf("%w: fact name", ErrInvalidRequest)
 	}
+	for _, value := range []string{f.FactID, f.RuleID, f.Dimension, f.ObjectRef} {
+		if value != "" && ValidateID(value) != nil {
+			return fmt.Errorf("%w: fact identity", ErrInvalidRequest)
+		}
+	}
+	if f.Applicable != nil && f.OutOfScope == *f.Applicable {
+		return fmt.Errorf("%w: fact applicability projection", ErrInvalidRequest)
+	}
+	if len(f.Exclusions) > 32 {
+		return fmt.Errorf("%w: too many fact exclusions", ErrInvalidRequest)
+	}
 	if err := ValidateQuantity(f.Value); err != nil {
 		return err
 	}
@@ -240,6 +283,9 @@ func (f FrozenInput) Validate() error {
 	}
 	if f.BusinessAt.IsZero() {
 		return fmt.Errorf("%w: business time", ErrInvalidRequest)
+	}
+	if f.EvidenceCutoffAt != nil && f.EvidenceCutoffAt.IsZero() {
+		return fmt.Errorf("%w: evidence cutoff time", ErrInvalidRequest)
 	}
 	if err := validateFrozenFacts(f); err != nil {
 		return err
@@ -302,10 +348,14 @@ func validateFrozenFacts(f FrozenInput) error {
 	}
 	seen := make(map[string]bool, len(f.Facts))
 	for _, fact := range f.Facts {
-		if seen[fact.Name] {
+		identity := fact.Name
+		if fact.ObjectRef != "" && fact.FactID != "" {
+			identity += "\x00" + fact.ObjectRef + "\x00" + fact.FactID
+		}
+		if seen[identity] {
 			return fmt.Errorf("%w: duplicate fact", ErrInvalidRequest)
 		}
-		seen[fact.Name] = true
+		seen[identity] = true
 		if err := fact.Validate(); err != nil {
 			return err
 		}
@@ -339,6 +389,9 @@ func (e EvidenceRef) Validate() error {
 func validateDocumentEvidenceIdentity(e EvidenceRef) error {
 	if ValidateID(e.DocumentVersionID) != nil || ValidateID(e.ParsedVersionID) != nil {
 		return fmt.Errorf("%w: document evidence identity", ErrInvalidRequest)
+	}
+	if e.SourceDigest != "" && !digestPattern.MatchString(e.SourceDigest) {
+		return fmt.Errorf("%w: document evidence digest", ErrInvalidRequest)
 	}
 	if e.Start < 0 || e.End <= e.Start {
 		return fmt.Errorf("%w: document evidence range", ErrInvalidRequest)
@@ -378,7 +431,7 @@ func validateSnapshotEvidenceIdentity(e EvidenceRef) error {
 
 // validateSnapshotEvidenceContent rejects document fields on snapshot evidence.
 func validateSnapshotEvidenceContent(e EvidenceRef) error {
-	if e.DocumentVersionID != "" || e.ParsedVersionID != "" || e.Start != 0 || e.End != 0 || e.Quote != "" {
+	if e.DocumentVersionID != "" || e.ParsedVersionID != "" || e.Start != 0 || e.End != 0 || e.Quote != "" || e.SourceDigest != "" {
 		return fmt.Errorf("%w: mixed snapshot evidence", ErrInvalidRequest)
 	}
 	return nil

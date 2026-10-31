@@ -19,6 +19,7 @@ func TestOperatorAuditRoutesAreDisabledByDefault(t *testing.T) {
 		{http.MethodGet, "/api/capability-packs", nil},
 		{http.MethodPost, "/api/cases/case-1/object-bindings", map[string]any{}},
 		{http.MethodPost, "/api/cases/case-1/external-collection-jobs", map[string]any{}},
+		{http.MethodGet, "/api/cases/case-1/external-collection-jobs/col_0123456789abcdef", nil},
 		{http.MethodGet, "/api/cases/case-1/external-snapshots", nil},
 		{http.MethodPost, "/api/cases/case-1/fulfillment-evaluations", map[string]any{}},
 		{http.MethodGet, "/api/cases/case-1/fulfillment-evaluations/eval-1", nil},

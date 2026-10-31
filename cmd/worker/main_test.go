@@ -231,6 +231,7 @@ func TestWorkerRunValidatesConfigAndDrainsIdlePostgresQueue(t *testing.T) {
 	})
 
 	t.Run("claimed job starts and joins heartbeat before parent cancellation", func(t *testing.T) {
+		env := newWorkerCommandEnvironment(t, http.NotFoundHandler())
 		accepted := env.createReview(t)
 		entered := make(chan struct{}, 1)
 		env.worker.Store.UseModels(blockingWorkerModel{entered: entered})
@@ -249,7 +250,7 @@ func TestWorkerRunValidatesConfigAndDrainsIdlePostgresQueue(t *testing.T) {
 			t.Fatal("PostgreSQL worker claim did not reach the blocked model call")
 		}
 		initial := waitForInitialWorkerHeartbeat(t, env, accepted.JobID, workerID)
-		last := waitForWorkerHeartbeatChange(t, env, accepted.JobID, workerID, initial, 2*time.Second)
+		waitForWorkerHeartbeatChange(t, env, accepted.JobID, workerID, initial, 2*time.Second)
 		cancelClaim()
 		select {
 		case err := <-done:
@@ -259,14 +260,19 @@ func TestWorkerRunValidatesConfigAndDrainsIdlePostgresQueue(t *testing.T) {
 		case <-time.After(5 * time.Second):
 			t.Fatal("claimJobs did not join the canceled job and heartbeat")
 		}
+		_, _, _, heartbeatAtReturn, err := env.workerJobState(accepted.JobID)
+		if err != nil || !heartbeatAtReturn.Valid {
+			t.Fatalf("heartbeat after claimJobs returned: valid=%t err=%v", heartbeatAtReturn.Valid, err)
+		}
 		time.Sleep(2 * heartbeat)
 		_, _, _, current, err := env.workerJobState(accepted.JobID)
-		if err != nil || !current.Valid || !current.Time.Equal(last) {
+		if err != nil || !current.Valid || !current.Time.Equal(heartbeatAtReturn.Time) {
 			t.Fatalf("heartbeat changed after claimJobs returned: valid=%t err=%v", current.Valid, err)
 		}
 	})
 
 	t.Run("successive PostgreSQL claims finish and log both jobs", func(t *testing.T) {
+		env := newWorkerCommandEnvironment(t, http.NotFoundHandler())
 		first := env.createReview(t)
 		second := env.createReview(t)
 		modelCalls := make(chan struct{}, 2)

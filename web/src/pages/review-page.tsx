@@ -28,6 +28,7 @@ import { PageStatus } from "../components/page-status";
 import { ReviewWorkspaceView } from "../components/review-workspace";
 import type { ReviewCaseContext } from "../components/document-stage";
 import { RunProvenance } from "../components/run-provenance";
+import { FrozenLegalAuthorities } from "../components/frozen-legal-authorities";
 import { AuditProjection } from "../components/audit-projection";
 import { EvidenceRequestPanel } from "../components/evidence-request-panel";
 import { ExperienceFeedbackPanel } from "../components/experience-feedback-panel";
@@ -487,6 +488,13 @@ export function ReviewPage() {
         canSubmit={roleCanDecide && selectedAttempt?.history_kind === "frozen"}
       />
       <RunProvenance workspace={workspace} showDiagnostics={diagnosticData !== null} />
+      <FrozenLegalAuthorities
+        key={`${caseId}:${runId}:${selectedAttempt?.id ?? "none"}`}
+        caseId={caseId}
+        runId={runId}
+        attemptId={selectedAttempt?.id ?? null}
+        projection={review.data.legal_authorities}
+      />
       <AuditProjection
         runId={review.data.run.id}
         events={diagnosticData?.audit_events ?? review.data.business_events ?? []}

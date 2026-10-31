@@ -62,6 +62,10 @@ func TestOpenAPITracksAllRegisteredRoutesAndJSONFields(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	legalRoutes, err := parser.ParseFile(token.NewFileSet(), "legal_routes.go", nil, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
 	storePackages, err := parser.ParseDir(token.NewFileSet(), "../store", func(info os.FileInfo) bool { return !strings.HasSuffix(info.Name(), "_test.go") }, 0)
 	if err != nil {
 		t.Fatal(err)
@@ -84,7 +88,7 @@ func TestOpenAPITracksAllRegisteredRoutesAndJSONFields(t *testing.T) {
 		}
 		return route
 	}
-	for _, parsed := range []*ast.File{file, health, governance, evidence} {
+	for _, parsed := range []*ast.File{file, health, governance, evidence, legalRoutes} {
 		// Route coverage reads the declarations the server mounts. Both forms
 		// are accepted: an explicit HandleFunc, and the shared mountRoutes whose
 		// variadic argument is a list of literal routeBinding entries. A
@@ -314,7 +318,7 @@ func TestOpenAPIResponseShapesAgainstRealHTTP(t *testing.T) {
 	assertWireSchema(t, spec, "ID", body)
 	caseID := body["id"].(string)
 	api.upload(t, caseID, "procurement", "source.txt", "text/plain", []byte("采购文件质保36个月。"))
-	api.upload(t, caseID, "draft_contract", "draft.txt", "text/plain", []byte("拟签合同质保24个月。"))
+	draftID := api.upload(t, caseID, "draft_contract", "draft.txt", "text/plain", []byte("拟签合同质保24个月。"))
 	_, body = api.do(t, http.MethodGet, "/api/cases/"+caseID, nil)
 	assertWireSchema(t, spec, "CaseDetail", body)
 	_, body = api.do(t, http.MethodPost, "/api/cases/"+caseID+"/reviews", map[string]any{})
@@ -330,13 +334,43 @@ func TestOpenAPIResponseShapesAgainstRealHTTP(t *testing.T) {
 	}
 	_, body = api.do(t, http.MethodGet, "/api/cases/"+caseID+"/reviews/"+runID, nil)
 	assertWireSchema(t, spec, "Workspace", body)
-	api.upload(t, caseID, "draft_contract", "revised.txt", "text/plain", []byte("拟签合同质保36个月。"))
+	materialID, currentDocumentID := api.materialForCurrentDocument(t, caseID, draftID)
+	api.replaceUpload(t, caseID, "draft_contract", "revised.txt", "text/plain", []byte("拟签合同质保36个月。"), materialID, currentDocumentID)
 	_, body = api.do(t, http.MethodPost, "/api/cases/"+caseID+"/reviews", map[string]any{})
 	nextID := body["id"].(string)
 	_, body = api.do(t, http.MethodGet, "/api/cases/"+caseID+"/reviews/"+nextID, nil)
 	assertWireSchema(t, spec, "Workspace", body)
 	if len(body["revisions"].([]any)) == 0 {
 		t.Fatal("test must exercise revision response, not only empty arrays")
+	}
+}
+
+func TestMaterialUploadHTTPIdempotencyAndExplicitCAS(t *testing.T) {
+	api := newAPI(t)
+	api.login(t, "demo-admin", "admin-demo")
+	_, created := api.do(t, http.MethodPost, "/api/cases", map[string]any{"title": "材料上传HTTP幂等", "contract_type": "procurement_ict"})
+	caseID := requiredString(t, created, "id")
+	status, first := api.uploadRequest(t, caseID, "draft_contract", "primary.txt", "text/plain", []byte("第一版主合同"), "", "", "", "upload-http-key")
+	if status != http.StatusCreated || first["id"] == nil || first["material_id"] == nil || first["version"] != float64(1) || first["replayed"] != false {
+		t.Fatalf("upload response omitted stable material identity: status=%d body=%v", status, first)
+	}
+	materialID, documentID := requiredString(t, first, "material_id"), requiredString(t, first, "id")
+	status, replay := api.uploadRequest(t, caseID, "draft_contract", "primary.txt", "text/plain", []byte("第一版主合同"), "", "", "", "upload-http-key")
+	if status != http.StatusOK || replay["id"] != documentID || replay["material_id"] != materialID || replay["version"] != float64(1) || replay["replayed"] != true {
+		t.Fatalf("upload retry did not return the original response: status=%d first=%v replay=%v", status, first, replay)
+	}
+	status, conflict := api.uploadRequest(t, caseID, "draft_contract", "primary.txt", "text/plain", []byte("不同内容"), "", "", "", "upload-http-key")
+	if status != http.StatusConflict || conflict["error"].(map[string]any)["code"] != "conflict" {
+		t.Fatalf("changed payload with reused key should return conflict: status=%d body=%v", status, conflict)
+	}
+	status, replaced := api.uploadRequest(t, caseID, "draft_contract", "primary-v2.txt", "text/plain", []byte("第二版主合同"), "replace", materialID, documentID, "upload-http-v2")
+	if status != http.StatusCreated || replaced["material_id"] != materialID || replaced["version"] != float64(2) || replaced["replayed"] != false {
+		t.Fatalf("explicit CAS replacement response: status=%d body=%v", status, replaced)
+	}
+	status, secondPrimary := api.uploadRequest(t, caseID, "draft_contract", "second.txt", "text/plain", []byte("第二份主合同"), "", "", "", "upload-http-v3")
+	primaryError, _ := secondPrimary["error"].(map[string]any)
+	if status != http.StatusConflict || primaryError["code"] != "primary_contract_exists" {
+		t.Fatalf("default add should reject a second primary contract: status=%d body=%v", status, secondPrimary)
 	}
 }
 

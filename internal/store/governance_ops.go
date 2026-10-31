@@ -248,6 +248,9 @@ func (s *Store) ValidateRulePackVersion(user accounts.User, input GovernanceInpu
 		if err != nil {
 			return fault.Conflict("规则包内容已损坏，不能校验")
 		}
+		if err := validatePackLegalSources(context.Background(), tx, accounts.Tenant(admin), row, pack); err != nil {
+			return err
+		}
 		validated, err := pack.Validate()
 		if err != nil {
 			return fault.Conflict("规则包校验失败")
@@ -298,6 +301,52 @@ func (s *Store) ValidateRulePackVersion(user accounts.User, input GovernanceInpu
 		return RulePackDetail{}, err
 	}
 	return detail, nil
+}
+
+func validatePackLegalSources(ctx context.Context, tx pgx.Tx, tenant string, row governanceRow, candidate *rulepack.Pack) error {
+	manifest := candidate.Manifest()
+	var previous map[string]rulepack.Rule
+	if row.PointerVersion != "" && row.PointerVersion != row.Version.Version {
+		prior, err := loadGovernanceRow(ctx, tx, tenant, row.Version.ID, row.PointerVersion)
+		if err == nil {
+			priorPack, parseErr := rulepack.Parse(prior.Version.Manifest)
+			if parseErr != nil {
+				return fault.Conflict("当前发布规则包内容损坏，不能比较法律来源")
+			}
+			previous = make(map[string]rulepack.Rule)
+			for _, rule := range priorPack.Manifest().Rules {
+				previous[rule.RuleID] = rule
+			}
+		} else if !errors.Is(err, errGovernanceVersionMissing) {
+			return err
+		}
+	}
+	if err := validateNormativeRuleReferenceChanges(previous, manifest.Rules); err != nil {
+		return err
+	}
+	return validateLegalAuthorityReferences(ctx, tx, tenant, candidate)
+}
+
+func validateNormativeRuleReferenceChanges(previous map[string]rulepack.Rule, rules []rulepack.Rule) error {
+	for _, rule := range rules {
+		normative := false
+		for _, source := range rule.AuthoritySources {
+			if source.Kind == "normative" {
+				normative = true
+				break
+			}
+		}
+		if !normative || len(rule.LegalAuthorities) != 0 {
+			continue
+		}
+		old, exists := previous[rule.RuleID]
+		oldBytes, oldErr := json.Marshal(old)
+		newBytes, newErr := json.Marshal(rule)
+		if !exists || oldErr != nil || newErr != nil || string(oldBytes) != string(newBytes) {
+			return fault.Conflict("新增或变更的规范性规则必须绑定精确法律条文引用")
+		}
+	}
+	return nil
 }
 
 // ApproveRulePackVersion binds the trusted admin identity to the exact content
@@ -417,6 +466,9 @@ func (s *Store) PublishRulePackVersion(user accounts.User, input GovernanceInput
 		pack, err := rulepack.Parse(row.Version.Manifest)
 		if err != nil {
 			return RulePackDetail{}, fault.Conflict("规则包内容已损坏，不能发布")
+		}
+		if err := validatePackLegalSources(context.Background(), tx, accounts.Tenant(admin), row, pack); err != nil {
+			return RulePackDetail{}, err
 		}
 		published, err := pack.Publish()
 		if err != nil {

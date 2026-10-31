@@ -12,6 +12,7 @@
     "build:portal": "vite build --mode portal --outDir dist/portal --emptyOutDir",
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.test.json",
     "test": "vitest run",
+    "test:cdp-helper": "bun test e2e/cdp-request-post-data.test.ts",
     "test:functional": "playwright test --config playwright.functional.config.ts",
     "preview": "vite preview",
     "test:coverage": "vitest run --coverage",

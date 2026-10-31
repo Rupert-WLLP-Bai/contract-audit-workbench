@@ -7,11 +7,13 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
 	"contractaudit/internal/access"
 	"contractaudit/internal/accounts"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 func TestCrossOrganizationGenerationPreservesCaseIdentity(t *testing.T) {
@@ -53,7 +55,7 @@ func TestCrossOrganizationGenerationPreservesCaseIdentity(t *testing.T) {
 	}
 	fields := validTelecomTemplateFields()
 	fields["bandwidth_mbps"] = "200"
-	second, err := document.Generate(ctx, collaborator, caseID, telecomTemplateID, fields)
+	second, err := document.GenerateWithOptions(ctx, collaborator, caseID, telecomTemplateID, fields, MaterialUploadOptions{Intent: "replace", MaterialID: first.MaterialID, ReplacesDocumentID: first.DocumentID})
 	if err != nil {
 		t.Fatalf("append cross-organization generation: %v", err)
 	}
@@ -219,4 +221,165 @@ func TestCrossOrganizationGenerationPreservesCaseIdentity(t *testing.T) {
 			t.Fatalf("revoked cross-organization grant still authorized frozen tool evidence: %v", err)
 		}
 	})
+}
+
+func TestMaterialTablesEnforceTenantRLSAndAppendOnlyServiceOwnership(t *testing.T) {
+	env, ok := newDurableRoleEnvironment(t)
+	if !ok {
+		t.Skip("isolated database and migrator required")
+	}
+	admin, ok := accounts.ByID("demo-admin")
+	if !ok {
+		t.Fatal("demo admin missing")
+	}
+	core := env.openRole(t, "core")
+	document := env.openRole(t, "document")
+	execution := env.openRole(t, "execution")
+	caseID, err := core.CreateCase(admin, "材料角色与租户隔离", "procurement_ict")
+	if err != nil {
+		t.Fatal(err)
+	}
+	upload, err := document.UploadMaterial(context.Background(), admin, caseID, "draft_contract", "main.txt", "text/plain", []byte("主合同"), MaterialUploadOptions{IdempotencyKey: "material-rls-test"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	tables := []string{"case_contract_chains", "material_entities", "material_versions", "document_upload_idempotency"}
+	for _, table := range tables {
+		t.Run(table+" own row visible", func(t *testing.T) {
+			tx, err := document.pool.Begin(context.Background())
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer tx.Rollback(context.Background())
+			if err := setLocalScope(context.Background(), tx, userScope(admin)); err != nil {
+				t.Fatal(err)
+			}
+			var count int
+			if err := tx.QueryRow(context.Background(), "SELECT count(*) FROM "+table+" WHERE case_id=$1", caseID).Scan(&count); err != nil || count == 0 {
+				t.Fatalf("document owner cannot read its material rows: count=%d err=%v", count, err)
+			}
+		})
+
+		t.Run(table+" foreign tenant hidden", func(t *testing.T) {
+			tx, err := document.pool.Begin(context.Background())
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer tx.Rollback(context.Background())
+			scope := userScope(admin)
+			scope.TenantID = "different-tenant"
+			if err := setLocalScope(context.Background(), tx, scope); err != nil {
+				t.Fatal(err)
+			}
+			var count int
+			if err := tx.QueryRow(context.Background(), "SELECT count(*) FROM "+table+" WHERE case_id=$1", caseID).Scan(&count); err != nil || count != 0 {
+				t.Fatalf("foreign tenant rows leaked from %s: count=%d err=%v", table, count, err)
+			}
+		})
+	}
+
+	insertions := []struct {
+		table string
+		query string
+		args  []any
+	}{
+		{"case_contract_chains", `INSERT INTO case_contract_chains (tenant_id,org_id,case_id) VALUES ($1,$2,$3)`, []any{admin.TenantID, admin.OrgID, caseID}},
+		{"material_entities", `INSERT INTO material_entities (tenant_id,org_id,case_id,material_id,role,purpose,legacy_status,current_document_id,current_version,created_by) VALUES ($1,$2,$3,'foreign-material','attachment','other','native',$4,1,$5)`, []any{admin.TenantID, admin.OrgID, caseID, upload.DocumentID, admin.ID}},
+		{"material_versions", `INSERT INTO material_versions (tenant_id,org_id,case_id,material_id,version,document_id,created_by) VALUES ($1,$2,$3,$4,9,$5,$6)`, []any{admin.TenantID, admin.OrgID, caseID, upload.MaterialID, upload.DocumentID, admin.ID}},
+		{"document_upload_idempotency", `INSERT INTO document_upload_idempotency (tenant_id,org_id,case_id,actor_id,idempotency_key,request_hash,document_id,material_id) VALUES ($1,$2,$3,$4,'foreign-key',decode('00','hex'),$5,$6)`, []any{admin.TenantID, admin.OrgID, caseID, admin.ID, upload.DocumentID, upload.MaterialID}},
+	}
+	for _, attempt := range insertions {
+		t.Run(attempt.table+" rejects foreign tenant insert", func(t *testing.T) {
+			tx, err := document.pool.Begin(context.Background())
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer tx.Rollback(context.Background())
+			scope := userScope(admin)
+			scope.TenantID = "different-tenant"
+			if err := setLocalScope(context.Background(), tx, scope); err != nil {
+				t.Fatal(err)
+			}
+			_, err = tx.Exec(context.Background(), attempt.query, attempt.args...)
+			if !isPostgresError(err, "42501", "row-level security") {
+				t.Fatalf("foreign-tenant insert into %s did not fail its RLS check: %v", attempt.table, err)
+			}
+		})
+	}
+
+	for _, role := range []*Store{core, execution} {
+		for _, table := range tables {
+			t.Run(role.serviceOwner+" cannot write "+table, func(t *testing.T) {
+				tx, err := role.pool.Begin(context.Background())
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer tx.Rollback(context.Background())
+				if err := setLocalScope(context.Background(), tx, userScope(admin)); err != nil {
+					t.Fatal(err)
+				}
+				var canInsert, canUpdate, canDelete bool
+				if err := tx.QueryRow(context.Background(), `SELECT has_table_privilege(current_user,$1,'INSERT'), has_table_privilege(current_user,$1,'UPDATE'), has_table_privilege(current_user,$1,'DELETE')`, table).Scan(&canInsert, &canUpdate, &canDelete); err != nil {
+					t.Fatal(err)
+				}
+				if canInsert || canUpdate || canDelete {
+					t.Fatalf("%s has material table write privileges: %s insert=%v update=%v delete=%v", role.serviceOwner, table, canInsert, canUpdate, canDelete)
+				}
+				query := map[string]string{
+					"case_contract_chains":        `UPDATE case_contract_chains SET selected_document_ids=selected_document_ids WHERE case_id=$1`,
+					"material_entities":           `UPDATE material_entities SET created_by=created_by WHERE case_id=$1`,
+					"material_versions":           `UPDATE material_versions SET created_by=created_by WHERE case_id=$1`,
+					"document_upload_idempotency": `UPDATE document_upload_idempotency SET idempotency_key=idempotency_key WHERE case_id=$1`,
+				}[table]
+				_, execErr := tx.Exec(context.Background(), query, caseID)
+				if !isPostgresError(execErr, "42501", "permission denied") {
+					t.Fatalf("%s UPDATE of %s was not denied by database privileges: %v", role.serviceOwner, table, execErr)
+				}
+			})
+		}
+	}
+
+	t.Run("document role cannot update or delete material versions", func(t *testing.T) {
+		tx, err := document.pool.Begin(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := setLocalScope(context.Background(), tx, userScope(admin)); err != nil {
+			t.Fatal(err)
+		}
+		var canUpdate, canDelete bool
+		if err := tx.QueryRow(context.Background(), `SELECT has_table_privilege(current_user,'material_versions','UPDATE'), has_table_privilege(current_user,'material_versions','DELETE')`).Scan(&canUpdate, &canDelete); err != nil {
+			t.Fatal(err)
+		}
+		_ = tx.Rollback(context.Background())
+		if canUpdate || canDelete {
+			t.Fatalf("document role can mutate append-only material versions: update=%v delete=%v", canUpdate, canDelete)
+		}
+	})
+
+	for name, query := range map[string]string{
+		"update": `UPDATE material_versions SET created_by='rewritten' WHERE tenant_id=$1 AND org_id=$2 AND case_id=$3 AND document_id=$4`,
+		"delete": `DELETE FROM material_versions WHERE tenant_id=$1 AND org_id=$2 AND case_id=$3 AND document_id=$4`,
+	} {
+		t.Run("append-only trigger rejects "+name, func(t *testing.T) {
+			tx, err := env.harness.pool.Begin(context.Background())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := setLocalScope(context.Background(), tx, userScope(admin)); err != nil {
+				_ = tx.Rollback(context.Background())
+				t.Fatal(err)
+			}
+			_, err = tx.Exec(context.Background(), query, admin.TenantID, admin.OrgID, caseID, upload.DocumentID)
+			_ = tx.Rollback(context.Background())
+			if !isPostgresError(err, "P0001", "append-only") {
+				t.Fatalf("material version %s did not hit the append-only trigger: %v", name, err)
+			}
+		})
+	}
+}
+
+func isPostgresError(err error, code, message string) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && pgErr.Code == code && strings.Contains(strings.ToLower(pgErr.Message), strings.ToLower(message))
 }

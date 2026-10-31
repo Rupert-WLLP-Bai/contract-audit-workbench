@@ -1,8 +1,14 @@
 import { chromiumExecutable } from "./chromium";
+import { C1B_BUSINESS_AT_UTC, C1B_BUSINESS_TIME_ZONE, enterC1BBusinessAt } from "./c1b-clock";
+import { parseReviewWorkspace } from "../src/api/parse";
+import { readFrozenGovernance } from "./c1b-frozen-governance";
+import type { ConstraintEvaluation, ReviewWorkspace } from "../src/api/types";
 import assert from "node:assert/strict";
 import { mkdir, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
-import { chromium, type Locator, type Page } from "playwright";
+import { chromium, type Page } from "playwright";
+import { replacePrimaryMaterial, selectMaterialOption, uploadNewMaterial } from "./materials-ui";
+import { selectReportOption, selectReviewAttempt } from "./c1b-select";
 
 type Material = { role: string; filename: string; text: string };
 type Scenario = {
@@ -21,13 +27,6 @@ type Dataset = {
   sha256: string;
   scenarios: Scenario[];
 };
-type Workspace = {
-  run: { id: string; state: string };
-  findings: Array<Record<string, any>>;
-  evaluations: Array<Record<string, any>>;
-  documents: Array<Record<string, any>>;
-  execution?: { attempt?: { id?: string; state?: string } };
-};
 type CaseDetail = {
   id: string;
   title: string;
@@ -35,7 +34,8 @@ type CaseDetail = {
   scenario: string;
   generations: Array<Record<string, any>>;
   documents: Array<Record<string, any>>;
-  reports: Array<{ id: string; run_id: string; attempt_id: string }>;
+  materials?: Array<{ material_id: string; purpose: string; current_document_id: string; current_version: number }>;
+  reports: Array<{ id: string; run_id: string; attempt_id: string; version: number; created_at: string }>;
   archives: Array<{ id: string; report_id: string }>;
   archived_at: string | null;
 };
@@ -64,17 +64,49 @@ const browser = await chromium.launch({
   executablePath: chromiumExecutable(),
   args: ["--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu"],
 });
-const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
+const page = await browser.newPage({
+  viewport: { width: 1440, height: 1000 },
+  timezoneId: C1B_BUSINESS_TIME_ZONE,
+});
 const consoleErrors: string[] = [];
 const httpErrors: string[] = [];
 const expectedHTTPFailures = new Set(["GET /api/session 401"]);
+const decisionHTTPTrace: Array<{ method: string; path: string; status?: number }> = [];
 const results: Array<Record<string, unknown>> = [];
+
+async function submitFindingDecision(targetPage: Page, findingID: string, claim: string): Promise<void> {
+  await targetPage.getByRole("button", { name: `选择线索：${claim}`, exact: true }).click();
+  await targetPage.waitForURL((url) => url.searchParams.get("finding") === findingID);
+  const detail = targetPage.locator(".finding-detail");
+  const action = detail.locator(`input[type="radio"][name="decision-${findingID}"][value="insufficient_evidence"]`);
+  await action.waitFor({ state: "attached", timeout: 10_000 });
+  assert.equal(await action.count(), 1, `${findingID} decision control is not uniquely rendered`);
+  await action.check();
+  await detail.getByLabel("理由", { exact: true }).fill("当前材料没有证明同一电路对象达到采购指标，保留为证据不足。");
+  const decisionResponse = targetPage.waitForResponse((response) => {
+    if (response.request().method() !== "POST") return false;
+    const path = new URL(response.url()).pathname;
+    return path.includes("/findings/") && path.endsWith("/decisions");
+  });
+  await detail.getByRole("button", { name: "保存决定", exact: true }).click();
+  const response = await decisionResponse;
+  const path = new URL(response.url()).pathname;
+  assert.ok(path.endsWith(`/findings/${findingID}/decisions`), `decision targeted a different finding: ${path}`);
+  assert.equal(response.status(), 204, "insufficient evidence decision was not recorded");
+  await targetPage.getByText("已记录证据不足", { exact: false }).waitFor();
+}
 page.on("console", (message) => {
   if (message.type() === "error") consoleErrors.push(message.text());
 });
 page.on("pageerror", (error) => consoleErrors.push(error.message));
+page.on("request", (request) => {
+  const pathname = new URL(request.url()).pathname;
+  if (pathname.includes("/findings/") && pathname.endsWith("/decisions")) decisionHTTPTrace.push({ method: request.method(), path: pathname });
+});
 page.on("response", (response) => {
-  if (response.status() >= 400) httpErrors.push(`${response.request().method()} ${new URL(response.url()).pathname} ${response.status()}`);
+  const pathname = new URL(response.url()).pathname;
+  if (pathname.includes("/findings/") && pathname.endsWith("/decisions")) decisionHTTPTrace.push({ method: response.request().method(), path: pathname, status: response.status() });
+  if (response.status() >= 400) httpErrors.push(`${response.request().method()} ${pathname} ${response.status()}`);
 });
 
 let exitCode = 0;
@@ -109,7 +141,7 @@ try {
     await page.getByRole("button", { name: "新建案件", exact: true }).click();
     const dialog = page.getByRole("dialog");
     await dialog.getByLabel("标题", { exact: true }).fill(title);
-    await dialog.getByLabel("合同类型", { exact: true }).selectOption("service");
+    await selectMaterialOption(page, "合同类型", "服务合同");
     await dialog.getByRole("button", { name: "创建", exact: true }).click();
     await page.waitForURL(/\/cases\/[^/]+$/);
     const caseID = new URL(page.url()).pathname.split("/").at(-1) ?? "";
@@ -121,12 +153,12 @@ try {
 
     const templateResponse = await page.request.get(`${web}/api/templates`);
     assert.equal(templateResponse.status(), 200, "template listing failed");
-    const templateData = await templateResponse.json() as { items: Array<{ id: string; version: string; fields: Array<{ key: string; label: string; required: boolean }> }> };
+    const templateData = await templateResponse.json() as { items: Array<{ id: string; name: string; version: string; fields: Array<{ key: string; label: string; required: boolean }> }> };
     const template = templateData.items.find((item) => item.id === dataset.template_id);
     assert.ok(template, `template ${dataset.template_id} not returned by the API`);
     assert.equal(template.version, dataset.template_version, "template version differs from the frozen dataset");
     assert.deepEqual(new Set(template.fields.map((field) => field.key)), new Set(Object.keys(scenario.fields)));
-    await page.getByLabel("模板", { exact: true }).selectOption(dataset.template_id);
+    await selectMaterialOption(page, "模板", `${template.name}，${template.version}`);
     for (const field of template.fields) {
       const value = scenario.fields[field.key];
       assert.notEqual(value, undefined, `fixture field ${field.key} is missing`);
@@ -146,31 +178,54 @@ try {
     const uploaded: Record<string, string> = {};
     for (const material of scenario.materials) uploaded[material.role] = await uploadMaterial(page, material);
     if (scenario.draft_override) {
-      uploaded.draft_contract = await uploadMaterial(page, {
+      const beforeReplacement = await waitForCase(page, caseID, (detail) =>
+        detail.materials?.some((material) => material.purpose === "primary_contract" && material.current_document_id === generation.document_id) === true,
+      );
+      const primaryMaterial = beforeReplacement.materials?.find((material) => material.purpose === "primary_contract");
+      assert.ok(primaryMaterial, `${scenario.id} generated primary contract has no material identity`);
+      const currentDocument = beforeReplacement.documents.find((document) => document.id === primaryMaterial.current_document_id);
+      assert.ok(currentDocument, `${scenario.id} current primary document is absent from case detail`);
+      const result = await replacePrimaryMaterial(page, {
         role: "draft_contract",
         filename: scenario.draft_override.filename,
         text: scenario.draft_override.text,
-      });
+      }, primaryMaterial, String(currentDocument.filename ?? ""));
+      uploaded.draft_contract = result.id;
     }
     assert.ok(uploaded.procurement, `${scenario.id} procurement evidence was not uploaded`);
     const detailWithMaterials = await waitForCase(page, caseID, (detail) =>
       Object.values(uploaded).every((documentID) => detail.documents.some((document) => document.id === documentID)));
     Object.assign(scenarioResult, { uploaded_document_ids: uploaded, case_document_count: detailWithMaterials.documents.length, stage: "materials_ready" });
 
+    await enterC1BBusinessAt(page);
+    const startReviewResponsePromise = page.waitForResponse((response) =>
+      response.request().method() === "POST" && response.url().endsWith(`/api/cases/${caseID}/reviews`));
     await page.getByRole("button", { name: "开始审查", exact: true }).click();
+    const startReviewResponse = await startReviewResponsePromise;
+    assert.ok(startReviewResponse.status() === 201 || startReviewResponse.status() === 202, `${scenario.id} review start returned HTTP ${startReviewResponse.status()}`);
+    assert.deepEqual(startReviewResponse.request().postDataJSON(), { business_at: C1B_BUSINESS_AT_UTC }, `${scenario.id} did not submit the frozen business time`);
     await page.waitForURL(/\/cases\/[^/]+\/reviews\/[^/]+/);
     const reviewURL = new URL(page.url());
     const runID = reviewURL.pathname.split("/").at(-1) ?? "";
     assert.ok(runID, `${scenario.id} review run ID was not in the route`);
     const workspace = await waitForWorkspace(page, caseID, runID);
-    const attemptID = workspace.execution?.attempt?.id ?? "";
+    const attemptID = workspace.review_attempts?.attempt?.id ?? "";
     assert.ok(attemptID, `${scenario.id} review has no attempt identity`);
+    const frozenGovernance = await readFrozenGovernance(page, web, caseID, runID, attemptID);
+    const rulepack = frozenGovernance.rulepack;
+    if (workspace.agent_review?.rulepack) {
+      assert.equal(workspace.agent_review.rulepack.id, rulepack.id, `${scenario.id} workspace rulepack ID differs from its frozen snapshot`);
+      assert.equal(workspace.agent_review.rulepack.version, rulepack.version, `${scenario.id} workspace rulepack version differs from its frozen snapshot`);
+    }
     assertRelations(workspace, scenario.expected_relations);
     Object.assign(scenarioResult, {
       run_id: runID,
       attempt_id: attemptID,
       run_state: workspace.run.state,
       finding_count: workspace.findings.length,
+      business_at: C1B_BUSINESS_AT_UTC,
+      business_time_zone: C1B_BUSINESS_TIME_ZONE,
+      rulepack,
       expected_relations: scenario.expected_relations,
       stage: "reviewed",
     });
@@ -185,29 +240,38 @@ try {
       assert.equal(workspace.findings.length, 0, "compatible scenario unexpectedly produced findings");
     } else {
       assert.ok(workspace.findings.length > 0, "insufficient scenario produced no findings");
-      const bandwidthEvaluation = workspace.evaluations.find((item) => item.rule_id === "ENT-TECH-BW-001");
+      const bandwidthEvaluation = workspaceEvaluations(workspace).find((item) => item.rule_id === "ENT-TECH-BW-001");
       assert.equal(bandwidthEvaluation?.relation, "insufficient");
       decisionFindingID = String(bandwidthEvaluation?.finding_id ?? "");
       assert.ok(decisionFindingID, "insufficient bandwidth result is not linked to a finding");
       const finding = workspace.findings.find((item) => item.id === decisionFindingID);
       assert.ok(finding, "insufficient bandwidth finding is absent from the workspace");
       assert.ok(typeof finding.claim === "string" && finding.claim.trim() !== "", "insufficient bandwidth finding has no claim");
-      const evidence = Array.isArray(finding.evidence) ? finding.evidence as Array<Record<string, unknown>> : [];
+      const evidence = finding.evidence;
       assert.ok(evidence.length > 0, "insufficient bandwidth finding has no evidence trace");
       assert.ok(evidence.some((item) => item.document_version_id === uploaded.procurement), "insufficient finding does not preserve the procurement source identity");
-      await page.getByRole("button", { name: `选择线索：${finding.claim}`, exact: true }).click();
-      await page.locator('input[type="radio"][value="insufficient_evidence"]').check();
-      await page.getByLabel("理由", { exact: true }).fill("当前材料没有证明同一电路对象达到采购指标，保留为证据不足。");
-      const decisionResponse = page.waitForResponse((response) => response.request().method() === "POST" && response.url().endsWith(`/findings/${decisionFindingID}/decisions`));
-      await page.getByRole("button", { name: "保存决定", exact: true }).click();
-      assert.equal((await decisionResponse).status(), 204, "insufficient evidence decision was not recorded");
-      await page.getByText("已记录证据不足", { exact: false }).waitFor();
+      try {
+        await submitFindingDecision(page, decisionFindingID, finding.claim);
+      } catch (cause) {
+        const decisionDOM = await page.evaluate(() => ({
+          url: location.href,
+          radios: Array.from(document.querySelectorAll<HTMLInputElement>('input[type="radio"]')).map((radio) => ({ name: radio.name, value: radio.value, checked: radio.checked, disabled: radio.disabled, group: radio.closest('[role="group"]')?.getAttribute('aria-label') ?? null })),
+          buttons: Array.from(document.querySelectorAll<HTMLButtonElement>('button')).filter((button) => (button.innerText ?? "").includes("保存决定") || button.getAttribute("aria-label") === "保存决定").map((button) => ({ text: button.innerText, ariaLabel: button.getAttribute("aria-label"), disabled: button.disabled, outerHTML: button.outerHTML.slice(0, 3000) })),
+          reasonFields: Array.from(document.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>('input,textarea')).filter((field) => field.value.includes("当前材料没有证明同一电路对象")).map((field) => ({ value: field.value, tag: field.tagName, disabled: field.disabled, ariaLabel: field.getAttribute("aria-label") })),
+          alerts: Array.from(document.querySelectorAll<HTMLElement>('[role="alert"],[role="status"]')).map((element) => element.innerText),
+          visibleText: document.body.innerText.slice(0, 18000),
+        }));
+        const evidenceDirectory = resolve(process.env.CAW_DELIVERY_DIR ?? outDir, "browser-evidence");
+        await mkdir(evidenceDirectory, { recursive: true });
+        await writeFile(resolve(evidenceDirectory, `insufficient-decision-${caseID}-${runID}-${attemptID}.json`), `${JSON.stringify({ case_id: caseID, run_id: runID, attempt_id: attemptID, decision_finding_id: decisionFindingID, request_trace: decisionHTTPTrace, http_errors: httpErrors, dom: decisionDOM, error: cause instanceof Error ? cause.message : String(cause) }, null, 2)}\n`, "utf8");
+        throw cause;
+      }
     }
     scenarioResult.decision_finding_id = decisionFindingID;
 
     await page.goto(`${web}/cases/${caseID}`);
     await page.getByRole("heading", { name: title, exact: true }).waitFor();
-    await selectRunAndAttempt(page.getByLabel("选择审查和执行记录", { exact: true }), runID, attemptID);
+    await selectReviewAttempt(page, web, caseID, runID, attemptID, page.getByLabel("选择审查和执行记录", { exact: true }));
     const reportResponse = page.waitForResponse((response) => response.request().method() === "POST" && response.url().endsWith("/reports"));
     await page.getByRole("button", { name: "生成报告", exact: true }).click();
     const createdReport = await reportResponse;
@@ -222,7 +286,7 @@ try {
     const reportRelations = collectRelations(frozenJSON);
     for (const relation of Object.values(scenario.expected_relations)) assert.ok(reportRelations.includes(relation), `frozen report omitted ${relation} for ${scenario.id}`);
 
-    await selectReport(page.getByLabel("归档所依据的报告", { exact: true }), report.id);
+    await selectReportOption(page, page.getByLabel("归档所依据的报告", { exact: true }), report);
     await page.getByLabel("归档理由", { exact: true }).fill(`已完成 ${scenario.id} 场景审查并归档冻结报告。`);
     const archiveResponse = page.waitForResponse((response) => response.request().method() === "POST" && response.url().endsWith(`/api/cases/${caseID}/archive`));
     await page.getByRole("button", { name: "归档案件", exact: true }).click();
@@ -239,7 +303,44 @@ try {
     expectedHTTPFailures.add(`POST /api/cases/${caseID}/generations 409`);
     await page.goto(`${web}/cases/${caseID}/reviews/${runID}?attempt_id=${encodeURIComponent(attemptID)}`);
     await page.getByRole("heading", { name: "审查工作区", exact: true }).waitFor();
-    assert.ok((await page.locator("body").innerText()).includes(runID), `${scenario.id} archived historical review is not readable`);
+    await page.getByText("案件已归档，历史审查仅供查看。", { exact: true }).waitFor({ state: "visible" });
+    const archivedReviewBodyText = await page.locator("body").innerText();
+    const archivedReviewWorkspaceResponse = await page.request.get(`${web}/api/cases/${caseID}/reviews/${runID}?attempt_id=${encodeURIComponent(attemptID)}`);
+    const archivedReviewWorkspaceRaw = await archivedReviewWorkspaceResponse.text();
+    const historyEvidenceDirectory = resolve(process.env.CAW_DELIVERY_DIR ?? outDir, "browser-evidence");
+    await mkdir(historyEvidenceDirectory, { recursive: true });
+    await writeFile(resolve(historyEvidenceDirectory, `archived-history-${caseID}-${runID}-${attemptID}.json`), `${JSON.stringify({
+      page_url: page.url(),
+      expected_run_id: runID,
+      expected_attempt_id: attemptID,
+      page_text: archivedReviewBodyText.slice(0, 24000),
+      workspace_http_status: archivedReviewWorkspaceResponse.status(),
+      workspace_raw: archivedReviewWorkspaceRaw.slice(0, 60000),
+    }, null, 2)}\n`, "utf8");
+    assert.equal(archivedReviewWorkspaceResponse.status(), 200, `${scenario.id} archived historical workspace was not readable`);
+    const archivedReviewWorkspace = parseReviewWorkspace(JSON.parse(archivedReviewWorkspaceRaw));
+    assert.equal(archivedReviewWorkspace.run.id, runID, `${scenario.id} archived workspace returned a different review run`);
+    assert.equal(archivedReviewWorkspace.review_attempts?.attempt?.id, attemptID, `${scenario.id} archived workspace returned a different review attempt`);
+    const expectedArchivedRunState = scenario.id === "compatible" ? "completed" : "awaiting_human";
+    assert.equal(archivedReviewWorkspace.run.state, expectedArchivedRunState, `${scenario.id} archived workspace run state did not retain its expected ${expectedArchivedRunState} status`);
+    assert.equal(archivedReviewWorkspace.review_attempts?.attempt?.state, "completed", `${scenario.id} archived workspace did not retain its completed attempt state`);
+    const archivedFrozenDocuments = expectedWorkspaceDocumentIDs.map((documentID) => archivedReviewWorkspace.documents.find((document) => document.id === documentID));
+    assert.ok(archivedFrozenDocuments.every((document) => document && document.parsed_document_id && document.parse_status === "ready"), `${scenario.id} archived workspace omitted a frozen parsed material or its ready status`);
+    assert.ok(archivedReviewBodyText.includes("合同与证据原文"), `${scenario.id} archived review page omitted the frozen source section`);
+    const visiblePrimaryDocument = archivedFrozenDocuments.find((document) => document?.role === "draft_contract");
+    assert.ok(visiblePrimaryDocument, `${scenario.id} archived workspace omitted its frozen primary contract`);
+    const primaryParseID = visiblePrimaryDocument.parsed_document_id ?? visiblePrimaryDocument.parsed_document?.id ?? "";
+    assert.ok(primaryParseID, `${scenario.id} archived primary has no frozen parse identity`);
+    const primaryTab = page.locator(`.ant-tabs-tab [data-document-version-id="${visiblePrimaryDocument.id}"][data-parsed-document-id="${primaryParseID}"]`);
+    await primaryTab.click();
+    const primaryPane = page.locator(`.doc-pane[data-document-version-id="${visiblePrimaryDocument.id}"][data-parsed-document-id="${primaryParseID}"][data-active-source="true"]`);
+    await primaryPane.waitFor({ state: "visible" });
+    const primaryPaneText = await primaryPane.innerText();
+    assert.ok(primaryPaneText.includes(visiblePrimaryDocument.filename), `${scenario.id} archived review page omitted its selected frozen primary filename`);
+    assert.ok(primaryPaneText.includes("已解析"), `${scenario.id} archived review page omitted its selected frozen parse status`);
+    for (const roleLabel of ["拟签合同", "采购文件", "中标文件", "技术附件"]) assert.ok(archivedReviewBodyText.includes(roleLabel), `${scenario.id} archived review page omitted material role ${roleLabel}`);
+    assert.ok(archivedReviewBodyText.includes(title), `${scenario.id} archived review page omitted its visible case title`);
+    assert.ok(archivedReviewBodyText.includes("案件已归档，历史审查仅供查看。"), `${scenario.id} archived review page omitted the read-only history notice`);
     await assertArchivedReviewWriteControls(page, scenario.id, scenario.id === "insufficient");
     assert.equal(archived.archives.at(-1)?.report_id, report.id);
 
@@ -312,23 +413,7 @@ function canonical(value: unknown): string {
 }
 
 async function uploadMaterial(currentPage: Page, material: Material): Promise<string> {
-  const roleSelect = currentPage.getByLabel("材料角色", { exact: true });
-  const fileInput = currentPage.getByLabel("文件", { exact: true });
-  const uploadButton = currentPage.getByRole("button", { name: "上传", exact: true });
-  await roleSelect.selectOption(material.role);
-  for (let attempt = 0; attempt < 4; attempt++) {
-    await fileInput.setInputFiles({ name: material.filename, mimeType: "text/plain", buffer: Buffer.from(material.text, "utf8") });
-    await currentPage.waitForTimeout(150);
-    if (!(await uploadButton.isDisabled().catch(() => true))) break;
-  }
-  const responsePromise = currentPage.waitForResponse((response) => response.request().method() === "POST" && response.url().endsWith("/documents"));
-  await uploadButton.scrollIntoViewIfNeeded();
-  await uploadButton.click();
-  const response = await responsePromise;
-  assert.equal(response.status(), 201, `upload ${material.filename} returned HTTP ${response.status()}`);
-  const result = await response.json() as { id?: string };
-  assert.ok(result.id, `upload ${material.filename} returned no document ID`);
-  await currentPage.getByText(material.filename, { exact: true }).waitFor();
+  const result = await uploadNewMaterial(currentPage, material);
   return result.id;
 }
 
@@ -371,7 +456,9 @@ async function finishExistingScenario(
   const report = detail.reports.find((item) => item.id === reportID);
   assert.ok(report, `scenario report ${reportID} is absent from case ${detail.id}`);
   const workspace = await waitForWorkspace(currentPage, detail.id, report.run_id);
-  assert.equal(workspace.execution?.attempt?.id, report.attempt_id, "existing report attempt differs from its review workspace");
+  assert.equal(workspace.review_attempts?.attempt?.id, report.attempt_id, "existing report attempt differs from its review workspace");
+  const frozenGovernance = await readFrozenGovernance(currentPage, web, detail.id, report.run_id, report.attempt_id);
+  Object.assign(result, { rulepack: frozenGovernance.rulepack });
   assertRelations(workspace, scenario.expected_relations);
   assert.equal(workspace.findings.length, 0, "compatible scenario unexpectedly produced findings");
   Object.assign(result, { title: detail.title, run_id: report.run_id, attempt_id: report.attempt_id, finding_count: 0, expected_relations: scenario.expected_relations, stage: "reviewed" });
@@ -384,7 +471,7 @@ async function finishExistingScenario(
 
   let archived = detail;
   if (!detail.archived_at) {
-    await selectReport(currentPage.getByLabel("归档所依据的报告", { exact: true }), reportID);
+    await selectReportOption(currentPage, currentPage.getByLabel("归档所依据的报告", { exact: true }), report);
     await currentPage.getByLabel("归档理由", { exact: true }).fill("已完成符合场景复核并归档冻结报告。");
     const archiveResponse = currentPage.waitForResponse((response) => response.request().method() === "POST" && response.url().endsWith(`/api/cases/${detail.id}/archive`));
     await currentPage.getByRole("button", { name: "归档案件", exact: true }).click();
@@ -424,8 +511,9 @@ async function finishExistingInsufficientScenario(
 ): Promise<void> {
   assert.equal(initialDetail.archived_at, null, "insufficient scenario case was already archived");
   const workspace = await waitForWorkspace(currentPage, initialDetail.id, runID);
-  const attemptID = workspace.execution?.attempt?.id ?? "";
+  const attemptID = workspace.review_attempts?.attempt?.id ?? "";
   assert.ok(attemptID, "insufficient scenario review has no attempt identity");
+  const frozenGovernance = await readFrozenGovernance(currentPage, web, initialDetail.id, runID, attemptID);
   assertRelations(workspace, scenario.expected_relations);
   const procurementID = initialDetail.documents.find((document) => document.role === "procurement")?.id;
   assert.ok(procurementID, "insufficient scenario has no procurement document identity");
@@ -434,7 +522,7 @@ async function finishExistingInsufficientScenario(
   for (const documentID of [procurementID, reviewDraft]) {
     assert.ok(workspace.documents.some((document) => document.id === documentID), `insufficient review omitted document ${documentID}`);
   }
-  Object.assign(result, { attempt_id: attemptID, run_state: workspace.run.state, finding_count: workspace.findings.length, expected_relations: scenario.expected_relations, stage: "reviewed" });
+  Object.assign(result, { attempt_id: attemptID, run_state: workspace.run.state, finding_count: workspace.findings.length, rulepack: frozenGovernance.rulepack, expected_relations: scenario.expected_relations, stage: "reviewed" });
 
   const findingID = await recordInsufficientDecision(currentPage, initialDetail.id, runID, workspace, procurementID);
   result.decision_finding_id = findingID;
@@ -444,7 +532,7 @@ async function finishExistingInsufficientScenario(
   let currentDetail = await waitForCase(currentPage, initialDetail.id, (detail) => detail.id === initialDetail.id);
   let report = currentDetail.reports.find((item) => item.run_id === runID && item.attempt_id === attemptID);
   if (!report) {
-    await selectRunAndAttempt(currentPage.getByLabel("选择审查和执行记录", { exact: true }), runID, attemptID);
+    await selectReviewAttempt(currentPage, web, initialDetail.id, runID, attemptID, currentPage.getByLabel("选择审查和执行记录", { exact: true }));
     const reportResponse = currentPage.waitForResponse((response) => response.request().method() === "POST" && response.url().endsWith("/reports"));
     await currentPage.getByRole("button", { name: "生成报告", exact: true }).click();
     const createdReport = await reportResponse;
@@ -459,7 +547,7 @@ async function finishExistingInsufficientScenario(
   for (const relation of Object.values(scenario.expected_relations)) assert.ok(reportRelations.includes(relation), `insufficient frozen report omitted ${relation}`);
 
   if (!currentDetail.archived_at) {
-    await selectReport(currentPage.getByLabel("归档所依据的报告", { exact: true }), report.id);
+    await selectReportOption(currentPage, currentPage.getByLabel("归档所依据的报告", { exact: true }), report);
     await currentPage.getByLabel("归档理由", { exact: true }).fill("已记录证据不足决定并归档冻结报告。");
     const archiveResponse = currentPage.waitForResponse((response) => response.request().method() === "POST" && response.url().endsWith(`/api/cases/${initialDetail.id}/archive`));
     await currentPage.getByRole("button", { name: "归档案件", exact: true }).click();
@@ -510,51 +598,50 @@ async function recordInsufficientDecision(
   currentPage: Page,
   caseID: string,
   runID: string,
-  workspace: Workspace,
+  workspace: ReviewWorkspace,
   procurementID: string,
 ): Promise<string> {
-  const evaluation = workspace.evaluations.find((item) => item.rule_id === "ENT-TECH-BW-001");
+  const evaluation = workspaceEvaluations(workspace).find((item) => item.rule_id === "ENT-TECH-BW-001");
   assert.equal(evaluation?.relation, "insufficient", "bandwidth rule is not insufficient");
   const findingID = String(evaluation?.finding_id ?? "");
   assert.ok(findingID, "insufficient bandwidth evaluation is not linked to a finding");
   const finding = workspace.findings.find((item) => item.id === findingID);
   assert.ok(finding, "insufficient bandwidth finding is missing");
   assert.ok(typeof finding.claim === "string" && finding.claim.trim() !== "", "insufficient bandwidth finding has no claim");
-  const evidence = Array.isArray(finding.evidence) ? finding.evidence as Array<Record<string, unknown>> : [];
+  const evidence = finding.evidence;
   assert.ok(evidence.length > 0, "insufficient bandwidth finding has no evidence trace");
   assert.ok(evidence.some((item) => item.document_version_id === procurementID), "insufficient finding lost its procurement source identity");
-  const decisions = Array.isArray(finding.decisions) ? finding.decisions as Array<Record<string, unknown>> : [];
+  const decisions = finding.decisions;
   if (decisions.length > 0) {
     assert.ok(decisions.some((decision) => decision.action === "insufficient_evidence"), "insufficient finding already has a different decision");
     return findingID;
   }
   await currentPage.goto(`${web}/cases/${caseID}/reviews/${runID}`);
   await currentPage.getByRole("heading", { name: "审查工作区", exact: true }).waitFor();
-  await currentPage.getByRole("button", { name: `选择线索：${finding.claim}`, exact: true }).click();
-  await currentPage.locator('input[type="radio"][value="insufficient_evidence"]').check();
-  await currentPage.getByLabel("理由", { exact: true }).fill("当前材料没有证明同一电路对象达到采购指标，保留为证据不足。");
-  const decisionResponse = currentPage.waitForResponse((response) => response.request().method() === "POST" && response.url().endsWith(`/findings/${findingID}/decisions`));
-  await currentPage.getByRole("button", { name: "保存决定", exact: true }).click();
-  assert.equal((await decisionResponse).status(), 204, "insufficient evidence decision was not recorded");
-  await currentPage.getByText("已记录证据不足", { exact: false }).waitFor();
+  await submitFindingDecision(currentPage, findingID, finding.claim);
   return findingID;
 }
-async function waitForWorkspace(currentPage: Page, caseID: string, runID: string): Promise<Workspace> {
+async function waitForWorkspace(currentPage: Page, caseID: string, runID: string): Promise<ReviewWorkspace> {
   const deadline = Date.now() + 90000;
-  let last: Workspace | null = null;
+  let last: ReviewWorkspace | null = null;
   while (Date.now() < deadline) {
     const response = await currentPage.request.get(`${web}/api/cases/${caseID}/reviews/${runID}`);
     assert.equal(response.status(), 200, `review ${runID} returned HTTP ${response.status()}`);
-    last = await response.json() as Workspace;
+    last = parseReviewWorkspace(await response.json());
     if (!["accepted", "queued", "running"].includes(last.run.state)) return last;
     await currentPage.waitForTimeout(200);
   }
   throw new Error(`review ${runID} did not terminate; last workspace=${JSON.stringify(last)}`);
 }
 
-function assertRelations(workspace: Workspace, expected: Record<string, string>): void {
+function workspaceEvaluations(workspace: ReviewWorkspace): ConstraintEvaluation[] {
+  assert.ok(Array.isArray(workspace.evaluations), `review ${workspace.run.id} omitted evaluations`);
+  return workspace.evaluations;
+}
+
+function assertRelations(workspace: ReviewWorkspace, expected: Record<string, string>): void {
   for (const [ruleID, relation] of Object.entries(expected)) {
-    const evaluation = workspace.evaluations.find((item) => item.rule_id === ruleID);
+    const evaluation = workspaceEvaluations(workspace).find((item) => item.rule_id === ruleID);
     assert.ok(evaluation, `evaluation ${ruleID} is missing`);
     assert.equal(evaluation.relation, relation, `${ruleID} relation`);
   }
@@ -565,28 +652,6 @@ function collectRelations(value: unknown): string[] {
   const record = value as Record<string, unknown>;
   const current = typeof record.relation === "string" ? [record.relation] : [];
   return [...current, ...Object.values(record).flatMap(collectRelations)];
-}
-
-async function selectRunAndAttempt(select: Locator, runID: string, attemptID: string): Promise<void> {
-  await select.locator("option").filter({ hasText: runID }).first().waitFor({ state: "attached", timeout: 15000 });
-  const options = await select.locator("option").evaluateAll((elements) => elements.map((element) => {
-    const option = element as HTMLOptionElement;
-    return { value: option.value, text: option.textContent ?? "" };
-  }));
-  const target = options.find((option) => option.value.includes(runID) || option.text.includes(runID) || option.value.includes(attemptID) || option.text.includes(attemptID));
-  assert.ok(target, `no option matches ${runID}/${attemptID}: ${JSON.stringify(options)}`);
-  await select.selectOption(target.value);
-}
-
-async function selectReport(select: Locator, reportID: string): Promise<void> {
-  await select.locator("option").filter({ hasText: reportID }).first().waitFor({ state: "attached", timeout: 15000 });
-  const options = await select.locator("option").evaluateAll((elements) => elements.map((element) => {
-    const option = element as HTMLOptionElement;
-    return { value: option.value, text: option.textContent ?? "" };
-  }));
-  const target = options.find((option) => option.value.includes(reportID) || option.text.includes(reportID));
-  assert.ok(target, `report ${reportID} was unavailable: ${JSON.stringify(options)}`);
-  await select.selectOption(target.value);
 }
 
 async function readReportLinks(currentPage: Page, reportID: string): Promise<{ json: Buffer; html: Buffer }> {

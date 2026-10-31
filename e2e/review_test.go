@@ -157,13 +157,37 @@ func TestProcurementWarrantyConflictAndConfirm(t *testing.T) {
 		t.Fatalf("state %+v", ws["run"])
 	}
 
-	revisedDoc := upload(t, client, srv.URL, caseID, "draft_contract", "draft-v2.txt", []byte("拟签合同约定质保36个月。"))
+	primaryMaterialID, currentPrimaryDocumentID, primaryVersion := primaryMaterialForReplacement(t, client, srv.URL, caseID)
+	revisedDoc := upload(t, client, srv.URL, caseID, "draft_contract", "draft-v2.txt", []byte("拟签合同约定质保36个月。"), materialReplacement{
+		materialID: primaryMaterialID, documentID: currentPrimaryDocumentID, currentVersion: primaryVersion,
+	})
 	if revisedDoc == docA || revisedDoc == docB {
 		t.Fatal("revised document was not distinct")
 	}
 	status, detail := do(t, client, srv.URL, http.MethodGet, "/api/cases/"+caseID, nil, "")
 	if status != http.StatusOK || detail["revision_pending"] != true {
 		t.Fatalf("revised document not reflected in case: %d %v", status, detail)
+	}
+	materials := detail["materials"].([]any)
+	materialVersions := detail["material_versions"].([]any)
+	if len(materials) != 2 || len(materialVersions) != 3 {
+		t.Fatalf("replacement did not preserve procurement and primary material history: materials=%v versions=%v", materials, materialVersions)
+	}
+	currentDocuments := map[string]bool{}
+	for _, value := range materials {
+		material := value.(map[string]any)
+		currentDocuments[material["current_document_id"].(string)] = true
+	}
+	if !currentDocuments[docA] || !currentDocuments[revisedDoc] || currentDocuments[docB] {
+		t.Fatalf("current material set is not procurement plus the replacement primary contract: %v", currentDocuments)
+	}
+	historicalVersions := map[string]bool{}
+	for _, value := range materialVersions {
+		version := value.(map[string]any)
+		historicalVersions[version["document_id"].(string)] = true
+	}
+	if !historicalVersions[docA] || !historicalVersions[docB] || !historicalVersions[revisedDoc] {
+		t.Fatalf("material history did not retain procurement, replaced primary, and replacement: %v", historicalVersions)
 	}
 	status, oldWorkspace := do(t, client, srv.URL, http.MethodGet, reviewPath+"?attempt_id="+attemptID, nil, "")
 	if status != http.StatusOK || !reflect.DeepEqual(oldWorkspace["snapshot"], publicSnapshot) {
@@ -234,8 +258,16 @@ func do(t *testing.T, client *http.Client, base, method, path string, payload an
 	return res.StatusCode, out
 }
 
-func upload(t *testing.T, client *http.Client, base, caseID, role, name string, content []byte) string {
+type materialReplacement struct {
+	materialID, documentID string
+	currentVersion         int
+}
+
+func upload(t *testing.T, client *http.Client, base, caseID, role, name string, content []byte, replacement ...materialReplacement) string {
 	t.Helper()
+	if len(replacement) > 1 {
+		t.Fatal("an upload can replace at most one material")
+	}
 	var buf bytes.Buffer
 	w := multipart.NewWriter(&buf)
 	part, err := w.CreatePart(map[string][]string{
@@ -250,6 +282,19 @@ func upload(t *testing.T, client *http.Client, base, caseID, role, name string, 
 	}
 	if err := w.WriteField("role", role); err != nil {
 		t.Fatal(err)
+	}
+	if len(replacement) == 1 {
+		target := replacement[0]
+		if target.materialID == "" || target.documentID == "" || target.currentVersion < 1 {
+			t.Fatalf("replacement target is incomplete: %+v", target)
+		}
+		for _, field := range []struct{ name, value string }{
+			{"intent", "replace"}, {"material_id", target.materialID}, {"replaces_document_id", target.documentID},
+		} {
+			if err := w.WriteField(field.name, field.value); err != nil {
+				t.Fatal(err)
+			}
+		}
 	}
 	if err := w.Close(); err != nil {
 		t.Fatal(err)
@@ -272,7 +317,38 @@ func upload(t *testing.T, client *http.Client, base, caseID, role, name string, 
 	if err := json.Unmarshal(raw, &payload); err != nil {
 		t.Fatal(err)
 	}
-	return payload["id"].(string)
+	documentID, ok := payload["id"].(string)
+	if !ok || documentID == "" {
+		t.Fatalf("upload response omitted the document identity: %v", payload)
+	}
+	if len(replacement) == 1 {
+		target := replacement[0]
+		if payload["material_id"] != target.materialID || payload["version"] != float64(target.currentVersion+1) {
+			t.Fatalf("replacement changed material identity or did not advance its version: %v", payload)
+		}
+	}
+	return documentID
+}
+
+func primaryMaterialForReplacement(t *testing.T, client *http.Client, base, caseID string) (string, string, int) {
+	t.Helper()
+	status, detail := do(t, client, base, http.MethodGet, "/api/cases/"+caseID, nil, "")
+	if status != http.StatusOK {
+		t.Fatalf("read case material projection before replacement: %d %v", status, detail)
+	}
+	for _, value := range detail["materials"].([]any) {
+		material := value.(map[string]any)
+		if material["role"] == "draft_contract" && material["purpose"] == "primary_contract" {
+			materialID, materialOK := material["material_id"].(string)
+			documentID, documentOK := material["current_document_id"].(string)
+			version, versionOK := material["current_version"].(float64)
+			if materialOK && materialID != "" && documentOK && documentID != "" && versionOK && version >= 1 {
+				return materialID, documentID, int(version)
+			}
+		}
+	}
+	t.Fatalf("case has no current primary-contract material: %v", detail["materials"])
+	return "", "", 0
 }
 
 type e2eModels struct{}

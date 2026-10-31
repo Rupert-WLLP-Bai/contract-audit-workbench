@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type ReactElement } from "react";
 import {
   cleanup,
   fireEvent,
@@ -14,7 +14,7 @@ import {
   RulePackManifestEditor,
 } from "./rulepack-manifest-editor";
 import { RulePackTestPanel } from "./rulepack-test-panel";
-import { chooseOption, renderWithAntd as render } from "../test/antd";
+import { chooseOption, renderWithAntd } from "../test/antd";
 import type {
   RulePackManifestInput,
   RulePackManifest,
@@ -22,6 +22,19 @@ import type {
 } from "../api/rulepacks";
 
 const clients: QueryClient[] = [];
+
+function render(ui: ReactElement) {
+  const client = new QueryClient({
+    defaultOptions: {
+      queries: { retry: false, gcTime: 0 },
+      mutations: { retry: false },
+    },
+  });
+  clients.push(client);
+  return renderWithAntd(
+    <QueryClientProvider client={client}>{ui}</QueryClientProvider>,
+  );
+}
 
 afterEach(() => {
   cleanup();
@@ -316,7 +329,7 @@ function renderPanel(
     },
   });
   clients.push(client);
-  render(
+  renderWithAntd(
     <QueryClientProvider client={client}>
       <RulePackTestPanel
         packId={inputManifest.id}

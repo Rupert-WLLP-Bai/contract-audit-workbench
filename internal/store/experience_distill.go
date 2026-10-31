@@ -85,14 +85,15 @@ func (s *Store) AcceptExperienceResult(ctx context.Context, delivery ExperienceR
 func experiencePolicyContext(ctx context.Context, tx pgx.Tx, item Case, feedback ExperienceFeedback) (ExperienceDistillPolicyContext, error) {
 	var snapshot RunSnapshot
 	var attempt Attempt
-	var sourceInput, documentsJSON, documentIDsJSON, parsedIDsJSON string
-	var knowledge, plannerPayload, cloudPolicy []byte
+	var sourceInput, documentsJSON, documentIDsJSON, parsedIDsJSON, partyContextHash, serviceObjectContextHash string
+	var knowledge, plannerPayload, cloudPolicy, partyContext, serviceObjectContext []byte
 	snapshot.RunID, attempt.RunID = feedback.RunID, feedback.RunID
 	err := tx.QueryRow(ctx, `SELECT a.input_hash,a.rule_pack_id,a.rule_pack_version,a.rule_pack_hash,
 		a.rule_pack_snapshot_digest,a.rule_pack_compiler_ref,a.rule_pack_pointer_revision,a.rule_pack_snapshot,
 		s.rule_pack_id,s.rule_pack_version,s.rule_pack_hash,s.rule_pack_digest,s.rule_pack_compiler_ref,s.rule_pack_snapshot,s.governed_knowledge,
 		s.document_ids,s.parsed_document_ids,s.rule_set_hash,s.playbook_hash,s.model_ref,s.comparator_ref,s.model_configuration_id,
-		s.parse_selection_hash,s.parser_configuration_id,s.planner_configuration_id,s.planner_configuration,s.cloud_policy_snapshot,s.cloud_policy_digest,i.documents
+		s.parse_selection_hash,s.parser_configuration_id,s.planner_configuration_id,s.planner_configuration,s.cloud_policy_snapshot,s.cloud_policy_digest,
+		s.party_context,s.party_context_hash,s.service_object_context,s.service_object_context_hash,i.documents
 		FROM review_runs r
 		JOIN review_attempts a ON a.tenant_id=r.tenant_id AND a.org_id=r.org_id AND a.run_id=r.id
 		JOIN review_attempt_inputs i ON i.tenant_id=a.tenant_id AND i.org_id=a.org_id AND i.run_id=a.run_id AND i.attempt_id=a.id AND i.input_hash=a.input_hash
@@ -105,7 +106,8 @@ func experiencePolicyContext(ctx context.Context, tx pgx.Tx, item Case, feedback
 			&snapshot.RulePackCompilerRef, &snapshot.RulePackSnapshot, &knowledge, &documentIDsJSON, &parsedIDsJSON,
 			&snapshot.RuleSetHash, &snapshot.PlaybookHash, &snapshot.ModelRef, &snapshot.ComparatorRef, &snapshot.ModelConfigurationID,
 			&snapshot.ParseSelectionHash, &snapshot.ParserConfigurationID, &snapshot.PlannerConfigurationID, &plannerPayload,
-			&cloudPolicy, &snapshot.CloudPolicyDigest, &documentsJSON)
+			&cloudPolicy, &snapshot.CloudPolicyDigest, &partyContext, &partyContextHash,
+			&serviceObjectContext, &serviceObjectContextHash, &documentsJSON)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return ExperienceDistillPolicyContext{}, fault.Conflict("反馈来源缺少已保存的审查执行记录")
 	}
@@ -138,6 +140,16 @@ func experiencePolicyContext(ctx context.Context, tx pgx.Tx, item Case, feedback
 	if len(cloudPolicy) > 0 {
 		snapshot.CloudPolicySnapshot = append(json.RawMessage(nil), cloudPolicy...)
 	}
+	snapshot.PartyContext, err = decodePartyContext(partyContext, partyContextHash)
+	if err != nil {
+		return ExperienceDistillPolicyContext{}, fault.Conflict("反馈来源的主体冻结上下文无效")
+	}
+	snapshot.PartyContextHash = partyContextHash
+	snapshot.ServiceObjectContext, err = decodeServiceObjectReviewContext(serviceObjectContext, serviceObjectContextHash)
+	if err != nil {
+		return ExperienceDistillPolicyContext{}, fault.Conflict("反馈来源的服务对象冻结上下文无效")
+	}
+	snapshot.ServiceObjectContextHash = serviceObjectContextHash
 	inputHash, err := frozenInputHash(snapshot, documents)
 	if err != nil || inputHash != sourceInput || !frozenInputMatchesSnapshot(snapshot, documents) ||
 		!sameDocumentSet(snapshot.DocumentIDs, frozenDocumentIDs(documents)) {

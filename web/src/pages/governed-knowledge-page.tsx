@@ -12,10 +12,11 @@ import {
 import { KnowledgeEditor, emptyKnowledgeContent, validateKnowledgeDraft, type KnowledgeFormIssue } from "../components/governed-knowledge-editor";
 import { PageStatus } from "../components/page-status";
 import { StatusText } from "../components/status-text";
+import { LegalKnowledgeAdminList } from "./legal-knowledge-page";
 
 const root = "/admin/governed-knowledge";
 const queryRoot = ["admin", "governed-knowledge"] as const;
-const labels: Record<string, string> = { policy: "政策制度", guidance: "操作指引", exception: "例外", experience: "审查经验", draft: "草稿", submitted: "已提交", validated: "已校验", approved: "已批准", published: "已发布", withdrawn: "已撤回", create: "创建", submit: "提交", validate: "校验", approve: "批准", publish: "发布", withdraw: "撤回", rollback: "回滚" };
+const labels: Record<string, string> = { policy: "政策制度", guidance: "操作指引", exception: "例外", experience: "审查经验", legal: "法律规范", draft: "草稿", submitted: "已提交", validated: "已校验", approved: "已批准", published: "已发布", withdrawn: "已撤回", create: "创建", submit: "提交", validate: "校验", approve: "批准", publish: "发布", withdraw: "撤回", rollback: "回滚" };
 const comparisonLabels: Record<string, string> = { match: "一致", different: "存在差异", ambiguous: "无法唯一确认", unexpressible: "无法表达" };
 const detailPath = (knowledgeId: string, versionId: string) => `${root}/${encodeURIComponent(knowledgeId)}/versions/${encodeURIComponent(versionId)}`;
 const display = (value: string) => labels[value] ?? value;
@@ -40,9 +41,10 @@ function ScopeCell({ scope }: { scope: KnowledgeScope }) {
 }
 
 export function GovernedKnowledgeListPage() {
-  const list = useQuery({ queryKey: [...queryRoot, "list"], queryFn: ({ signal }) => listGovernedKnowledge(signal), retry: false });
   const [search, setSearch] = useState("");
   const [kind, setKind] = useState("all");
+  const list = useQuery({ queryKey: [...queryRoot, "list"], queryFn: ({ signal }) => listGovernedKnowledge(signal), retry: false, enabled: kind !== "legal" });
+  if (kind === "legal") return <LegalKnowledgeAdminList search={search} onSearch={setSearch} onSelectOtherKind={() => setKind("all")} />;
   if (list.isLoading) return <PageStatus kind="loading" title="正在读取知识版本" />;
   if (list.isError) return <PageStatus kind={isForbidden(list.error) ? "denied" : "error"} title="知识版本列表没有加载" action={<><ServerError error={list.error} /><Button htmlType="button" onClick={() => void list.refetch()}>重试</Button></>} />;
   const filtered = (list.data ?? []).filter((item) => matchesKnowledge(item, kind, search));
@@ -58,7 +60,7 @@ export function GovernedKnowledgeListPage() {
     <header className="page-head"><div><h1>知识治理</h1><p>管理政策、指引、例外和审查经验的精确版本及发布状态。列表只显示当前管理员可访问的版本。</p></div><Button type="primary" href={`${root}/new`}>创建知识草稿</Button></header>
     <div className="governance-filters">
       <label className="field" htmlFor="knowledge-search">查找知识<Input id="knowledge-search" type="search" value={search} placeholder="标题、知识 ID 或版本" onChange={(event) => setSearch(event.target.value)} /></label>
-      <label className="field" htmlFor="knowledge-kind-filter">知识类型<Select id="knowledge-kind-filter" style={{ width: "100%" }} value={kind} onChange={setKind} options={[{ value: "all", label: "全部类型" }, { value: "policy", label: "政策制度" }, { value: "guidance", label: "操作指引" }, { value: "exception", label: "例外" }, { value: "experience", label: "审查经验" }]} /></label>
+      <label className="field" htmlFor="knowledge-kind-filter">知识类型<Select id="knowledge-kind-filter" style={{ width: "100%" }} value={kind} onChange={setKind} options={[{ value: "all", label: "全部类型" }, { value: "policy", label: "政策制度" }, { value: "guidance", label: "操作指引" }, { value: "exception", label: "例外" }, { value: "experience", label: "审查经验" }, { value: "legal", label: "法律规范" }]} /></label>
     </div>
     <Table rowKey={(item) => `${item.ref.knowledge_id}:${item.ref.version_id}`} dataSource={filtered} columns={columns} pagination={{ pageSize: 10 }} scroll={{ x: 950 }} locale={{ emptyText: "没有可显示的知识版本" }} />
   </section>;
@@ -256,7 +258,7 @@ type Replay = { command: KnowledgeCommand; key: string };
 function DetailHeader({ knowledgeId, versionId, content, version }: { knowledgeId: string; versionId: string; content: KnowledgeContent; version: KnowledgeVersion }) {
   return <>
     <nav className="page-back" aria-label="知识治理导航"><Link to={root}>返回知识列表</Link></nav>
-    <header className="page-head"><div><h1>{content.title}</h1><p>{display(content.kind)} · {content.knowledge_id} · v{content.version}</p><ResultStatus status={version.status} active={version.active} /></div><Button href={`${root}/new?from_knowledge=${encodeURIComponent(knowledgeId)}&from_version=${encodeURIComponent(versionId)}`}>编辑并创建新版本</Button></header>
+    <header className="page-head"><div><h1>{content.title}</h1><p>{display(content.kind)} · {content.knowledge_id} · v{content.version}</p><ResultStatus status={version.status} active={version.active} /></div>{content.kind !== "legal" && <Button href={`${root}/new?from_knowledge=${encodeURIComponent(knowledgeId)}&from_version=${encodeURIComponent(versionId)}`}>编辑并创建新版本</Button>}</header>
   </>;
 }
 
@@ -282,8 +284,12 @@ function ContentSummary({ content }: { content: KnowledgeContent }) {
     <h3>来源与范围</h3><SourceLine content={content} />
     <ScopeLine scope={content.scope} /><p>有效期：{content.valid_from} 至 {content.valid_until}（不含结束）</p>
     <ConditionLines content={content} />
+    {content.kind === "legal" && content.legal_metadata && <LegalMetadataSection metadata={content.legal_metadata} />}
     {content.exception_basis && <p>例外依据：{content.exception_basis}</p>}
   </>;
+}
+function LegalMetadataSection({ metadata }: { metadata: NonNullable<KnowledgeContent["legal_metadata"]> }) {
+  return <section aria-label="来源和效力证据"><h3>来源与效力证据</h3><dl><dt>法规范版本</dt><dd>{metadata.norm_title} · {metadata.norm_version} · {metadata.article_label}</dd><dt>制定机关</dt><dd>{metadata.issuer}</dd><dt>公布 / 施行</dt><dd>{metadata.promulgated_on} / {metadata.effective_from}{metadata.effective_until ? ` 至 ${metadata.effective_until}` : "起"}</dd><dt>效力观察</dt><dd>{metadata.official_status} · {metadata.status_observed_at}</dd><dt>来源捕获</dt><dd>{metadata.source_snapshot_id} · {metadata.source_captured_at}</dd><dt>来源摘要</dt><dd>{metadata.source_sha256}</dd><dt>条文摘要</dt><dd>{metadata.norm_text_sha256}</dd><dt>法律审阅</dt><dd>{metadata.legal_review_status} · {metadata.reviewer ?? "审阅人未记录"}</dd><dt>官方来源</dt><dd><a href={metadata.official_url} target="_blank" rel="noreferrer">{metadata.official_url}</a></dd></dl></section>;
 }
 function ExperienceReview({ content }: { content: KnowledgeContent }) {
   if (content.kind !== "experience") return null;
@@ -305,7 +311,7 @@ function VersionSection({ version, content }: { version: KnowledgeVersion; conte
     <ContentSummary content={content} />
     <ExperienceReview content={content} />
     <PolicyRefList content={content} />
-    <DetailBinding content={content} />
+    {content.kind !== "legal" && <DetailBinding content={content} />}
   </section>;
 }
 

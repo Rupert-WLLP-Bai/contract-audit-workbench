@@ -16,6 +16,20 @@ import type {
   KnowledgeInput,
   LLMEndpointInput,
   LLMModelSelectionInput,
+  UploadDocumentInput,
+  BindExistingSubjectInput,
+  CaseRoleCreateInput,
+  SubjectCreateInput,
+  SubjectChangeDecisionInput,
+  SubjectChangeProposalInput,
+  SubjectChangeSummary,
+  SubjectSourceSnapshotInput,
+  SubjectSourceVerificationInput,
+  MaterialParsedTextPage,
+  MaterialParsedDocumentList,
+  SubjectSourceSnapshotList,
+  SubjectSourceSnapshotDetail,
+  SubjectSourceDirectory,
 } from "./types";
 import { ApiError, jsonInit, requestJson } from "./http";
 import {
@@ -35,6 +49,8 @@ import {
   parseReviewWorkspace,
   parseSettings,
   parseTemplateList,
+  parseMaterialSelectionProjection,
+  parseUploadDocumentResult,
 } from "./parse";
 import {
   parseCaseProfile,
@@ -44,6 +60,28 @@ import {
   parseWorkbenchTask,
 } from "./workbench";
 import { paths } from "./paths";
+import {
+  parseBindExistingSubjectResult,
+  parseCaseRoleCreateResult,
+  parseCaseSubjects,
+  parseSubjectChangeDecisionResult,
+  parseSubjectChangeDetail,
+  parseSubjectChangeImpact,
+  parseSubjectChangeList,
+  parseSubjectChangeProposalResult,
+  parseSubjectCreateResult,
+  parseSubjectCaseLinks,
+  parseSubjectDetail,
+  parseSubjectHistory,
+  parseSubjectList,
+  parseSubjectSourceSnapshot,
+  parseSubjectSourceSnapshotList,
+  parseSubjectSourceSnapshotDetail,
+  parseSubjectSourceDirectory,
+  parseSubjectSourceVerificationResult,
+  parseMaterialParsedTextPage,
+  parseMaterialParsedDocumentList,
+} from "./subjects-parse";
 
 export function getSession(
   audience: SessionAudience = "client",
@@ -105,10 +143,14 @@ export function listTemplates(signal?: AbortSignal) {
   );
 }
 
-export function createGeneration(caseId: string, input: GenerationInput) {
+export function createGeneration(
+  caseId: string,
+  input: GenerationInput,
+  idempotencyKey: string,
+) {
   return requestJson(
     paths.generations(caseId),
-    jsonInit("POST", input),
+    jsonInit("POST", input, { "Idempotency-Key": idempotencyKey }),
     parseGenerationRecord,
   );
 }
@@ -164,14 +206,223 @@ export function archiveCase(caseId: string, input: ArchiveInput) {
   );
 }
 
-export function uploadDocument(caseId: string, file: File, role: string) {
+export function uploadDocument(caseId: string, input: UploadDocumentInput) {
   const body = new FormData();
-  body.set("file", file);
-  body.set("role", role);
+  body.set("file", input.file);
+  body.set("role", input.role);
+  body.set("intent", input.intent);
+  if (input.purpose !== undefined) body.set("purpose", input.purpose);
+  if (input.intent === "replace") {
+    if (!input.material_id || !input.replaces_document_id)
+      throw new Error("替换材料必须提供材料 ID 和当前文档 ID");
+    body.set("material_id", input.material_id);
+    body.set("replaces_document_id", input.replaces_document_id);
+  }
   return requestJson(
     paths.documents(caseId),
-    { method: "POST", body },
-    parseEmpty,
+    { method: "POST", body, headers: { "Idempotency-Key": input.idempotency_key } },
+    parseUploadDocumentResult,
+  );
+}
+
+export function confirmLegacyMaterialSelection(
+  caseId: string,
+  input: { version: number; document_ids: string[] },
+) {
+  return requestJson(
+    paths.materialSelection(caseId),
+    jsonInit(
+      "POST",
+      { version: input.version, document_ids: input.document_ids },
+    ),
+    parseMaterialSelectionProjection,
+  );
+}
+
+export function listSubjects(
+  caseId?: string,
+  query?: string,
+  cursor?: string | null,
+  limit = 50,
+  signal?: AbortSignal,
+) {
+  return requestJson(
+    paths.subjects(caseId, query, cursor, limit),
+    { method: "GET", signal },
+    parseSubjectList,
+  );
+}
+
+export function getSubject(subjectId: string, signal?: AbortSignal) {
+  return requestJson(paths.subject(subjectId), { method: "GET", signal }, parseSubjectDetail);
+}
+
+export function getSubjectCaseLinks(subjectId: string, cursor: string | null = null, limit = 50, signal?: AbortSignal) {
+  return requestJson(paths.subjectCaseLinks(subjectId, cursor, limit), { method: "GET", signal }, parseSubjectCaseLinks);
+}
+
+export function getSubjectHistory(subjectId: string, signal?: AbortSignal) {
+  return requestJson(paths.subjectHistory(subjectId), { method: "GET", signal }, parseSubjectHistory);
+}
+
+export function getCaseSubjects(caseId: string, signal?: AbortSignal) {
+  return requestJson(paths.caseSubjects(caseId), { method: "GET", signal }, parseCaseSubjects);
+}
+
+export function createSubject(input: SubjectCreateInput, idempotencyKey: string) {
+  return requestJson(
+    paths.subjects(),
+    jsonInit("POST", input, { "Idempotency-Key": idempotencyKey }),
+    parseSubjectCreateResult,
+  );
+}
+
+export function createCaseRole(
+  caseId: string,
+  input: CaseRoleCreateInput,
+  idempotencyKey: string,
+) {
+  return requestJson(
+    paths.caseSubjects(caseId),
+    jsonInit("POST", input, { "Idempotency-Key": idempotencyKey }),
+    parseCaseRoleCreateResult,
+  );
+}
+
+export function bindExistingSubject(
+  caseId: string,
+  input: BindExistingSubjectInput,
+  idempotencyKey: string,
+) {
+  return requestJson(
+    paths.caseSubjectsBindExisting(caseId),
+    jsonInit("POST", input, { "Idempotency-Key": idempotencyKey }),
+    parseBindExistingSubjectResult,
+  );
+}
+
+export function listCaseSubjectChanges(
+  caseId: string,
+  cursor?: string | null,
+  limit = 50,
+  signal?: AbortSignal,
+) {
+  return requestJson(
+    paths.caseSubjectChanges(caseId, cursor, limit),
+    { method: "GET", signal },
+    parseSubjectChangeList,
+  );
+}
+
+export function getCaseSubjectChange(caseId: string, requestId: string, signal?: AbortSignal) {
+  return requestJson(
+    paths.caseSubjectChange(caseId, requestId),
+    { method: "GET", signal },
+    parseSubjectChangeDetail,
+  );
+}
+
+export function getCaseSubjectChangeImpact(
+  caseId: string,
+  requestId: string,
+  targetKind: SubjectChangeSummary["target_kind"],
+  signal?: AbortSignal,
+) {
+  return requestJson(
+    paths.caseSubjectChangeImpact(caseId, requestId),
+    { method: "GET", signal },
+    (value) => parseSubjectChangeImpact(value, targetKind),
+  );
+}
+
+export function proposeSubjectChange(
+  caseId: string,
+  input: SubjectChangeProposalInput,
+  idempotencyKey: string,
+) {
+  return requestJson(
+    paths.caseSubjectChanges(caseId),
+    jsonInit("POST", input, { "Idempotency-Key": idempotencyKey }),
+    parseSubjectChangeProposalResult,
+  );
+}
+
+export function decideSubjectChange(
+  caseId: string,
+  requestId: string,
+  input: SubjectChangeDecisionInput,
+  idempotencyKey: string,
+) {
+  return requestJson(
+    paths.caseSubjectChangeDecisions(caseId, requestId),
+    jsonInit("POST", input, { "Idempotency-Key": idempotencyKey }),
+    parseSubjectChangeDecisionResult,
+  );
+}
+
+export function createSubjectSourceSnapshot(
+  caseId: string,
+  input: SubjectSourceSnapshotInput,
+  idempotencyKey: string,
+) {
+  return requestJson(
+    paths.caseSubjectSourceSnapshots(caseId),
+    jsonInit("POST", input, { "Idempotency-Key": idempotencyKey }),
+    parseSubjectSourceSnapshot,
+  );
+}
+
+export function listSubjectSourceSnapshots(caseId: string, cursor: string | null = null, limit = 50, signal?: AbortSignal): Promise<SubjectSourceSnapshotList> {
+  return requestJson(paths.caseSubjectSourceSnapshots(caseId, cursor, limit), { method: "GET", signal }, parseSubjectSourceSnapshotList);
+}
+
+export function getSubjectSourceDirectory(caseId: string, signal?: AbortSignal): Promise<SubjectSourceDirectory> {
+  return requestJson(paths.caseSubjectSources(caseId), { method: "GET", signal }, parseSubjectSourceDirectory);
+}
+
+export function getSubjectSourceSnapshot(caseId: string, snapshotId: string, signal?: AbortSignal): Promise<SubjectSourceSnapshotDetail> {
+  return requestJson(paths.caseSubjectSourceSnapshot(caseId, snapshotId), { method: "GET", signal }, parseSubjectSourceSnapshotDetail);
+}
+
+export function getMaterialParsedTextPage(
+  caseId: string,
+  materialId: string,
+  materialVersion: number,
+  parsedDocumentId: string,
+  offset = 0,
+  limit = 32768,
+  signal?: AbortSignal,
+): Promise<MaterialParsedTextPage> {
+  return requestJson(
+    paths.materialParsedText(caseId, materialId, materialVersion, parsedDocumentId, offset, limit),
+    { method: "GET", signal },
+    parseMaterialParsedTextPage,
+  );
+}
+
+export function listMaterialParsedDocuments(
+  caseId: string,
+  materialId: string,
+  materialVersion: number,
+  signal?: AbortSignal,
+): Promise<MaterialParsedDocumentList> {
+  return requestJson(
+    paths.materialParsedDocuments(caseId, materialId, materialVersion),
+    { method: "GET", signal },
+    parseMaterialParsedDocumentList,
+  );
+}
+
+export function verifySubjectAgainstSourceSnapshot(
+  caseId: string,
+  snapshotId: string,
+  input: SubjectSourceVerificationInput,
+  idempotencyKey: string,
+) {
+  return requestJson(
+    paths.caseSubjectSourceSnapshotVerify(caseId, snapshotId),
+    jsonInit("POST", input, { "Idempotency-Key": idempotencyKey }),
+    parseSubjectSourceVerificationResult,
   );
 }
 

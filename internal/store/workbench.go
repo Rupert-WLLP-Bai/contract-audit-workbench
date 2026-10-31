@@ -1005,9 +1005,11 @@ func profilePointer(profile CaseProfile) *CaseProfile {
 
 func workbenchDocumentsForCase(st state, item Case) []WorkbenchDocument {
 	documents := st.documents(item.ID)
-	latest := make(map[string]string)
-	for _, document := range documents {
-		latest[document.Role] = document.ID
+	replaced := make(map[string]bool)
+	for _, version := range st.MaterialVersions {
+		if version.CaseID == item.ID && version.PreviousDocument != "" {
+			replaced[version.PreviousDocument] = true
+		}
 	}
 	out := make([]WorkbenchDocument, 0, len(documents))
 	for _, document := range documents {
@@ -1015,7 +1017,7 @@ func workbenchDocumentsForCase(st state, item Case) []WorkbenchDocument {
 		entry := WorkbenchDocument{
 			ID: document.ID, Role: document.Role, Filename: document.Filename, MediaType: document.MediaType,
 			Digest: document.Digest, Size: document.Size, CaseID: item.ID, CaseTitle: item.Title,
-			ParseStatus: "pending", Superseded: latest[document.Role] != document.ID, CreatedAt: document.CreatedAt,
+			ParseStatus: "pending", Superseded: replaced[document.ID], CreatedAt: document.CreatedAt,
 		}
 		if hasParsed {
 			normalizedDigest := stringPointer(parsed.NormalizedDigest)

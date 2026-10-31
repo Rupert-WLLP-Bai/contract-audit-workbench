@@ -97,9 +97,7 @@ func TestBrowserWarrantyConflictAndConfirm(t *testing.T) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
 	defer cancel()
-	script := exec.CommandContext(ctx, "bun", "e2e/review.ts")
-	script.Dir = root
-	script.Env = append(os.Environ(),
+	scriptEnv := append(os.Environ(),
 		"CHROMIUM_BIN="+chrome,
 		"E2E_WEB=http://127.0.0.1:"+webPort,
 		"E2E_CASE_ID="+caseID,
@@ -111,8 +109,10 @@ func TestBrowserWarrantyConflictAndConfirm(t *testing.T) {
 		"E2E_EXECUTION_SCREENSHOT="+filepath.Join(screenshots, "execution-inspector.png"),
 		"E2E_DOCS_SCREENSHOT="+filepath.Join(screenshots, "scalar-portal.png"),
 		"E2E_PARSING_SCREENSHOT="+filepath.Join(screenshots, "parsed-source.png"),
+		"E2E_FAILURE_SCREENSHOT="+filepath.Join(screenshots, "failure.png"),
+		"E2E_FAILURE_DOM="+filepath.Join(screenshots, "failure-dom.txt"),
 	)
-	out, err := script.CombinedOutput()
+	out, err := runBrowserScript(ctx, root, scriptEnv, "e2e/review.ts")
 	t.Log(string(out))
 	if err != nil {
 		t.Fatal(err)

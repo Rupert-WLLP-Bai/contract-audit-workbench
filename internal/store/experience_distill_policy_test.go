@@ -76,7 +76,11 @@ func (a canceledExperienceDelivery) AcceptExperienceResult(ctx context.Context, 
 }
 
 func TestDistillationFreezesSourcePolicyAndReconcilesLostResponse(t *testing.T) {
-	st, user, source, _, _, policy := feedbackGovernedFixture(t, "false_positive")
+	st, user := openExecutionStore(t)
+	st.UseModels(&frozenOCRModel{})
+	pack := publishSyntheticAcceptancePack(t, st, user)
+	policy := publishSyntheticAcceptancePolicy(t, st, user, pack)
+	source := createGovernedFeedbackSourceWithParty(t, st, user, user, "false_positive", "feedback-key", true)
 	ctx := context.Background()
 	feedback, err := st.SubmitExperienceFeedback(ctx, user, source)
 	if err != nil {

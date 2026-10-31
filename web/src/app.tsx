@@ -16,6 +16,16 @@ const CaseDetailPage = lazy(() =>
     default: module.CaseDetailPage,
   })),
 );
+const SubjectsPage = lazy(() =>
+  import("./pages/subjects-page").then((module) => ({ default: module.SubjectsPage })),
+);
+const SubjectDetailPage = lazy(() =>
+  import("./pages/subjects-page").then((module) => ({ default: module.SubjectDetailPage })),
+);
+const SubjectChangeReviewPage = lazy(() =>
+  import("./pages/subject-change-review-page").then((module) => ({ default: module.SubjectChangeReviewPage })),
+);
+const LegalKnowledgePage = lazy(() => import("./pages/legal-knowledge-page").then((module) => ({ default: module.LegalKnowledgePage })));
 const CasesPage = lazy(() =>
   import("./pages/cases-page").then((module) => ({
     default: module.CasesPage,
@@ -94,6 +104,9 @@ export function App() {
             <Route path="/review" element={<ReviewEntryPage />} />
             <Route path="/cases" element={<CasesPage />} />
             <Route path="/cases/:caseId" element={<CaseDetailPage />} />
+            <Route path="/cases/:caseId/legal-knowledge" element={<LegalKnowledgePage />} />
+            <Route path="/subjects" element={<SubjectsPage />} />
+            <Route path="/subjects/:subjectId" element={<SubjectDetailPage />} />
             <Route
               path="/cases/:caseId/operator-audit"
               element={<OperatorAuditPage />}
@@ -101,6 +114,10 @@ export function App() {
             <Route
               path="/cases/:caseId/reviews/:runId"
               element={<ReviewPage />}
+            />
+            <Route
+              path="/cases/:caseId/subject-changes/:requestId"
+              element={<SubjectChangeReviewPage />}
             />
             <Route path="/compare" element={<CompareRoute />} />
             <Route path="/workbench/health" element={<SystemHealthPage />} />

@@ -457,6 +457,26 @@ func TestEvaluateGigabitContractFact(t *testing.T) {
 	}
 }
 
+func TestEvaluateAmbiguousFactsForOneObjectIsInsufficient(t *testing.T) {
+	input := validInput()
+	input.Facts[0].ObjectRef = "line-001"
+	input.Facts[0].FactID = "fact-minimum-100"
+	second := input.Facts[0]
+	second.FactID = "fact-minimum-200"
+	second.Value = auditext.ExactQuantity{Value: "200", Unit: "Mbit/s"}
+	second.Evidence = []auditext.EvidenceRef{documentEvidence("200")}
+	input.Facts = append(input.Facts, second)
+
+	checks, err := fulfillment.New().Evaluate(context.Background(), input, []auditext.Observation{validObservation()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(checks) != 1 || checks[0].MachineStatus != auditext.MachineCompleted ||
+		checks[0].Relation != auditext.RelationInsufficient || checks[0].ReasonCode != "contract_fact_ambiguous" {
+		t.Fatalf("conflicting same-object facts were not represented as explicit insufficient evidence: %+v", checks)
+	}
+}
+
 func TestEvaluateEvidenceKeepsDocumentAndSnapshotSeparate(t *testing.T) {
 	results, err := fulfillment.New().Evaluate(context.Background(), validInput(), defaultObservations())
 	result := requireResult(t, results, err, auditext.RelationConflict, "configured_bandwidth_below_contract")
@@ -888,6 +908,43 @@ func TestEvaluateEvidenceLimitKeepsSnapshotEvidence(t *testing.T) {
 	if last.Kind != auditext.EvidenceExternalSnapshot {
 		t.Fatalf("last evidence kind = %q, want external_snapshot", last.Kind)
 	}
+}
+
+func TestHistoricalObservationRequiresExplicitCutoffAndVersionedInterval(t *testing.T) {
+	observation := validObservation()
+	observation.ObservedAt = businessAt.Add(time.Hour)
+	recordVersion := *observation.RecordVersion
+	validFrom, validUntil := observation.EffectiveFrom, observation.EffectiveUntil
+	sourceAsOf := businessAt.Add(time.Hour)
+	observation.TemporalProof = &auditext.TemporalProof{Kind: auditext.TemporalProofHistoricalInterval,
+		SourceCatalogID: "catalog-oss", DatasetVersion: "dataset-v1", RecordVersion: recordVersion,
+		SourceAsOf: &sourceAsOf, ValidFrom: &validFrom, ValidUntil: &validUntil}
+
+	legacy := validInput()
+	legacyChecks, err := fulfillment.New().Evaluate(context.Background(), legacy, []auditext.Observation{observation})
+	requireResult(t, legacyChecks, err, auditext.RelationInsufficient, "observation_time_mismatch")
+
+	cutoff := businessAt.Add(2 * time.Hour)
+	input := validInput()
+	input.EvidenceCutoffAt = &cutoff
+	checks, err := fulfillment.New().Evaluate(context.Background(), input, []auditext.Observation{observation})
+	requireResult(t, checks, err, auditext.RelationConflict, "configured_bandwidth_below_contract")
+
+	tooLate := observation
+	tooLate.ObservedAt = cutoff.Add(time.Second)
+	lateChecks, lateErr := fulfillment.New().Evaluate(context.Background(), input, []auditext.Observation{tooLate})
+	requireResult(t, lateChecks, lateErr, auditext.RelationInsufficient, "observation_time_mismatch")
+
+	wrongVersion := observation
+	wrongRecordVersion := "record-v2"
+	wrongVersion.RecordVersion = &wrongRecordVersion
+	wrongChecks, wrongErr := fulfillment.New().Evaluate(context.Background(), input, []auditext.Observation{wrongVersion})
+	requireResult(t, wrongChecks, wrongErr, auditext.RelationInsufficient, "observation_time_mismatch")
+
+	currentState := observation
+	currentState.TemporalProof = &auditext.TemporalProof{Kind: auditext.TemporalProofCurrentState, SourceAsOf: &sourceAsOf}
+	currentChecks, currentErr := fulfillment.New().Evaluate(context.Background(), input, []auditext.Observation{currentState})
+	requireResult(t, currentChecks, currentErr, auditext.RelationInsufficient, "observation_time_mismatch")
 }
 
 func TestEvaluateNeverAutoConfirmsRisk(t *testing.T) {

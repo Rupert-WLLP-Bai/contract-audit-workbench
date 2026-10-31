@@ -54,27 +54,42 @@ type Fact struct {
 	Citations         []Citation `json:"citations"`
 }
 
+// AuthorityGate is supplied only by the persisted review snapshot reader. A
+// normative rule cannot run its comparator unless every normative source has
+// an exact frozen gate with an applicable outcome.
+type AuthorityGate struct {
+	RuleID           string `json:"rule_id"`
+	SourceID         string `json:"source_id"`
+	SourceVersion    string `json:"source_version"`
+	Outcome          string `json:"outcome"`
+	Reason           string `json:"reason,omitempty"`
+	ReferenceMissing bool   `json:"reference_missing,omitempty"`
+}
+
 type Request struct {
-	Principal    access.Principal `json:"principal"`
-	Resource     access.Resource  `json:"resource"`
-	BusinessLine string           `json:"business_line"`
-	Scenario     string           `json:"scenario"`
-	ContractType string           `json:"contract_type"`
-	At           time.Time        `json:"at"`
-	Sources      []Source         `json:"sources"`
-	Facts        []Fact           `json:"facts"`
+	Principal      access.Principal `json:"principal"`
+	Resource       access.Resource  `json:"resource"`
+	BusinessLine   string           `json:"business_line"`
+	Scenario       string           `json:"scenario"`
+	ContractType   string           `json:"contract_type"`
+	At             time.Time        `json:"at"`
+	Sources        []Source         `json:"sources"`
+	Facts          []Fact           `json:"facts"`
+	AuthorityGates []AuthorityGate  `json:"authority_gates,omitempty"`
 }
 
 type Result struct {
-	RuleID       string     `json:"rule_id"`
-	RuleVersion  string     `json:"rule_version"`
-	Domain       string     `json:"domain"`
-	CapabilityID string     `json:"capability_id"`
-	Mandatory    bool       `json:"mandatory"`
-	Relation     Relation   `json:"relation"`
-	ReasonCode   string     `json:"reason_code"`
-	FactIDs      []string   `json:"fact_ids,omitempty"`
-	Citations    []Citation `json:"citations,omitempty"`
+	RuleID                string     `json:"rule_id"`
+	RuleVersion           string     `json:"rule_version"`
+	Domain                string     `json:"domain"`
+	CapabilityID          string     `json:"capability_id"`
+	Mandatory             bool       `json:"mandatory"`
+	Relation              Relation   `json:"relation"`
+	ReasonCode            string     `json:"reason_code"`
+	FactIDs               []string   `json:"fact_ids,omitempty"`
+	Citations             []Citation `json:"citations,omitempty"`
+	LegalAuthorityOutcome string     `json:"legal_authority_outcome,omitempty"`
+	LegalAuthorityReason  string     `json:"legal_authority_reason,omitempty"`
 }
 
 type Report struct {
@@ -90,6 +105,21 @@ type sourceKey struct{ id, version string }
 // Execute checks case.review authorization before inspecting facts, then runs every
 // rule whose exact business scope matches the request. Model output is not an input.
 func (p *Pack) Execute(ctx context.Context, request Request) (Report, error) {
+	return p.execute(ctx, request, false)
+}
+
+// ExecuteLegacyFrozen preserves the evaluator semantics for a pre-AUTH03
+// accepted attempt whose exact persisted snapshot has been validated by the
+// store and contains no legal authority extension. Callers must not select this
+// path from request or HTTP data; new acceptance snapshots must use Execute.
+func (p *Pack) ExecuteLegacyFrozen(ctx context.Context, request Request) (Report, error) {
+	if len(request.AuthorityGates) != 0 {
+		return Report{}, fmt.Errorf("%w: legacy frozen execution cannot accept legal gates", ErrInvalidRequest)
+	}
+	return p.execute(ctx, request, true)
+}
+
+func (p *Pack) execute(ctx context.Context, request Request, legacyFrozen bool) (Report, error) {
 	if err := validateExecutionRequest(p, ctx, request); err != nil {
 		return Report{}, err
 	}
@@ -101,7 +131,7 @@ func (p *Pack) Execute(ctx context.Context, request Request) (Report, error) {
 	if err != nil {
 		return Report{}, err
 	}
-	return executeRules(ctx, p, request, sources, factsByRule)
+	return executeRules(ctx, p, request, sources, factsByRule, legacyFrozen)
 }
 
 func validateExecutionRequest(p *Pack, ctx context.Context, request Request) error {
@@ -183,7 +213,7 @@ func indexFacts(rules []Rule, facts []Fact) (map[string][]Fact, error) {
 	return factsByRule, nil
 }
 
-func executeRules(ctx context.Context, p *Pack, request Request, sources map[sourceKey]Source, factsByRule map[string][]Fact) (Report, error) {
+func executeRules(ctx context.Context, p *Pack, request Request, sources map[sourceKey]Source, factsByRule map[string][]Fact, legacyFrozen bool) (Report, error) {
 	report := Report{
 		PackID:      p.content.ID,
 		PackVersion: p.content.Version,
@@ -198,14 +228,114 @@ func executeRules(ctx context.Context, p *Pack, request Request, sources map[sou
 		if !scopeMatches(rule.BusinessScope, request) {
 			continue
 		}
+		var gate AuthorityGate
+		var required bool
+		if !legacyFrozen {
+			var err error
+			gate, required, err = evaluateRuleAuthorityGate(rule, request.AuthorityGates)
+			if err != nil {
+				return Report{}, err
+			}
+			if required && gate.Outcome != "applicable" {
+				result := ruleResult(rule)
+				result.LegalAuthorityOutcome = gate.Outcome
+				result.LegalAuthorityReason = gate.Reason
+				if gate.Outcome == "not_applicable" {
+					result.Relation, result.ReasonCode = RelationNotApplicable, "legal_authority_not_applicable"
+				} else {
+					result.Relation, result.ReasonCode = RelationInsufficient, "legal_authority_unresolved"
+				}
+				report.Results = append(report.Results, result)
+				continue
+			}
+		}
 		facts := factsByRule[rule.RuleID]
 		result, err := evaluateRule(rule, facts, sources, request)
 		if err != nil {
 			return Report{}, err
 		}
+		if required {
+			result.LegalAuthorityOutcome = gate.Outcome
+		}
 		report.Results = append(report.Results, result)
 	}
 	return report, nil
+}
+
+func evaluateRuleAuthorityGate(rule Rule, gates []AuthorityGate) (AuthorityGate, bool, error) {
+	var normative []AuthoritySource
+	for _, source := range rule.AuthoritySources {
+		if source.Kind == "normative" {
+			normative = append(normative, source)
+		}
+	}
+	if len(normative) == 0 {
+		return AuthorityGate{}, false, nil
+	}
+	sort.Slice(normative, func(i, j int) bool {
+		if normative[i].ID != normative[j].ID {
+			return normative[i].ID < normative[j].ID
+		}
+		return normative[i].Version < normative[j].Version
+	})
+	combined := AuthorityGate{RuleID: rule.RuleID, Outcome: "applicable"}
+	unknown := false
+	notApplicable := false
+	missingFreeze := false
+	explicitMissingReference := false
+	var unknownReason string
+	for _, source := range normative {
+		var match *AuthorityGate
+		for index := range gates {
+			gate := &gates[index]
+			if gate.RuleID == rule.RuleID && gate.SourceID == source.ID && gate.SourceVersion == source.Version {
+				if match != nil {
+					return AuthorityGate{}, true, fmt.Errorf("%w: duplicate legal authority gate", ErrInvalidRequest)
+				}
+				match = gate
+			}
+		}
+		if match == nil {
+			missingFreeze = true
+			continue
+		}
+		if match.ReferenceMissing {
+			if match.Outcome != "unknown" {
+				return AuthorityGate{}, true, fmt.Errorf("%w: missing-reference gate must be unknown", ErrInvalidRequest)
+			}
+			explicitMissingReference = true
+			continue
+		}
+		switch match.Outcome {
+		case "applicable":
+		case "not_applicable":
+			notApplicable = true
+		case "unknown":
+			unknown = true
+			if unknownReason == "" {
+				unknownReason = match.Reason
+				if unknownReason == "" {
+					unknownReason = "legal_authority_unknown"
+				}
+			}
+		default:
+			return AuthorityGate{}, true, fmt.Errorf("%w: invalid legal authority outcome", ErrInvalidRequest)
+		}
+	}
+	// A missing exact reference is an authority gap, not a fact-level outcome,
+	// so it remains unknown even if another bound source is not applicable.
+	if missingFreeze || explicitMissingReference {
+		reason := "legal_authority_missing_freeze"
+		if explicitMissingReference {
+			reason = "legal_reference_missing"
+		}
+		combined.Outcome, combined.Reason, combined.ReferenceMissing = "unknown", reason, true
+	} else if notApplicable {
+		combined.Outcome, combined.Reason = "not_applicable", "legal_authority_not_applicable"
+	} else if unknown {
+		combined.Outcome, combined.Reason = "unknown", unknownReason
+	}
+	return combined, true, nil
 }
 
 func scopeMatches(scope BusinessScope, request Request) bool {

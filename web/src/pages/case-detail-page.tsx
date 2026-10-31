@@ -1,45 +1,36 @@
-import { Button, Input, Select, Upload } from "antd";
-import { useState, type FormEvent } from "react";
-import { Link, useLocation, useNavigate, useParams } from "react-router";
+import { Button, Input } from "antd";
+import { useEffect, useRef, useState } from "react";
+import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router";
 import { errorMessage, isForbidden } from "../api/http";
 import {
   useCaseDetail,
   useCaseReviewHistory,
-  useReparse,
   useSession,
   useStartReview,
-  useUploadDocument,
 } from "../api/queries";
 import { PageStatus } from "../components/page-status";
-import { ParsedDocumentSummary } from "../components/parsed-document-summary";
+import { MaterialCollectionPanel } from "../components/material-collection-panel";
+import { CaseSubjectRolesPanel } from "../components/case-subject-roles-panel";
+import { CaseSubjectCorrectionsPanel } from "../components/case-subject-corrections-panel";
+import { CaseLegalApplicabilityPanel } from "../components/case-legal-applicability-panel";
 import { ReportArchivePanel } from "../components/report-archive-panel";
 import { RemediationPanel } from "../components/remediation-panel";
-import { StatusText } from "../components/status-text";
 import { TemplateGenerationPanel } from "../components/template-generation-panel";
+import { StatusText } from "../components/status-text";
 import {
   businessStatusLabel,
   contractTypeLabel,
-  formatBytes,
   formatDateTime,
-  parseLabel,
-  parseTone,
   readyDocumentCount,
-  roleLabel,
   runLabel,
   runTone,
 } from "../domain/review";
-
-const ROLES = [
-  { value: "procurement", label: "采购文件" },
-  { value: "award", label: "中标文件" },
-  { value: "draft_contract", label: "拟签合同" },
-  { value: "attachment", label: "技术附件" },
-];
 
 export function CaseDetailPage() {
   const { caseId = "" } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
+  const [searchParams, setSearchParams] = useSearchParams();
   const returnState = location.state as {
     returnTo?: unknown;
     scrollY?: unknown;
@@ -53,15 +44,24 @@ export function CaseDetailPage() {
     typeof returnState?.scrollY === "number" ? returnState.scrollY : 0;
   const detail = useCaseDetail(caseId);
   const session = useSession();
+  const actorScope = [session.data?.id ?? "", session.data?.tenant_id ?? "", session.data?.org_id ?? "", session.data?.audience ?? ""].join(":");
+  const previousActorScope = useRef(actorScope);
+  const sourceCaseParam = searchParams.get("source_case");
+  useEffect(() => {
+    const actorChanged = previousActorScope.current !== "" && previousActorScope.current !== actorScope;
+    const caseChanged = sourceCaseParam !== null && sourceCaseParam !== caseId;
+    previousActorScope.current = actorScope;
+    if (!actorChanged && !caseChanged) return;
+    const next = new URLSearchParams(searchParams);
+    next.delete("source_case");
+    next.delete("source_snapshot");
+    setSearchParams(next, { replace: true });
+  }, [actorScope, caseId, searchParams, setSearchParams, sourceCaseParam]);
   const history = useCaseReviewHistory(
     caseId,
     detail.data?.latest_run?.id ?? null,
   );
-  const upload = useUploadDocument(caseId);
-  const reparse = useReparse(caseId);
   const start = useStartReview(caseId);
-  const [role, setRole] = useState("procurement");
-  const [file, setFile] = useState<File | null>(null);
   const [businessAt, setBusinessAt] = useState("");
 
   if (detail.isLoading)
@@ -102,7 +102,17 @@ export function CaseDetailPage() {
   if (!detail.data) return <PageStatus kind="empty" title="没有案件数据" />;
 
   const item = detail.data;
-  const current = item.documents.filter((document) => !document.superseded);
+  const hasMaterialProjection = Boolean(
+    item.materials && item.material_versions && item.material_selection,
+  );
+  const confirmedDocumentIds = new Set(
+    hasMaterialProjection && item.material_selection?.status !== "pending_confirmation"
+      ? item.material_selection?.document_ids ?? []
+      : [],
+  );
+  const current = hasMaterialProjection
+    ? item.documents.filter((document) => confirmedDocumentIds.has(document.id))
+    : [];
   const ready = readyDocumentCount(
     current.map((document) => document.parse_status),
   );
@@ -116,9 +126,8 @@ export function CaseDetailPage() {
   const failed = failedCount > 0;
   const run = item.latest_run;
   const archived = item.archived_at !== null;
-  const needsNewReview = item.revision_pending || item.configuration_pending;
-  const atLimit =
-    current.length >= 4 && !current.some((document) => document.role === role);
+  const subjectContextUnknown = run !== null && item.subject_context_changed_after_latest_run === undefined;
+  const needsNewReview = item.revision_pending || item.configuration_pending || item.subject_context_changed_after_latest_run === true;
   const actorRole = session.data?.role ?? "";
   const canUpload =
     !archived && (actorRole === "admin" || actorRole === "clerk");
@@ -130,19 +139,6 @@ export function CaseDetailPage() {
     (item.scenario === "telecom_dedicated_line" ||
       (item.scenario === "cloud_services" && item.contract_type === "service"));
   const validBusinessAt = businessAt !== "" && !Number.isNaN(new Date(businessAt).getTime());
-
-  function onUpload(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!file) return;
-    upload.mutate(
-      { file, role },
-      {
-        onSuccess: () => {
-          setFile(null);
-        },
-      },
-    );
-  }
 
   return (
     <section className="page">
@@ -166,6 +162,7 @@ export function CaseDetailPage() {
           ，更新于 {formatDateTime(item.updated_at)}
           </p>
         </div>
+        <Button href={`/cases/${encodeURIComponent(item.id)}/legal-knowledge`}>法律知识</Button>
         {run ? (
           <Button
             aria-label={"打开审查工作区"}
@@ -175,17 +172,20 @@ export function CaseDetailPage() {
             打开审查工作区
           </Button>
         ) : null}
-        {!run || needsNewReview ? (
+        {!run || needsNewReview || subjectContextUnknown ? (
           <Button
             aria-label={String(
-              start.isPending ? "正在发起" : run ? "开始复审" : "开始审查",
+              start.isPending ? "正在发起" : subjectContextUnknown ? "主体状态暂不可用" : run ? "开始复审" : "开始审查",
             )}
             type="primary"
             htmlType="button"
             disabled={
               (!canUpload && actorRole !== "reviewer") ||
+              !hasMaterialProjection ||
+              item.material_selection?.status === "pending_confirmation" ||
               preparable < 2 ||
               (requiresBusinessAt && !validBusinessAt) ||
+              subjectContextUnknown ||
               start.isPending ||
               archived
             }
@@ -202,7 +202,7 @@ export function CaseDetailPage() {
               });
             }}
           >
-            {start.isPending ? "正在发起" : run ? "开始复审" : "开始审查"}
+            {start.isPending ? "正在发起" : subjectContextUnknown ? "主体状态暂不可用" : run ? "开始复审" : "开始审查"}
           </Button>
         ) : null}
       </header>
@@ -277,6 +277,18 @@ export function CaseDetailPage() {
           规则或模型配置已更新。开始复审会记录当前配置，保留历史运行。
         </p>
       ) : null}
+      {item.subject_context_changed_after_latest_run === true ? (
+        <p className="callout">主体信息已变更，需发起新审查。新审查会冻结当前主体信息，之前的审查和报告保持不变。</p>
+      ) : null}
+      {subjectContextUnknown ? (
+        <p className="callout">服务未提供主体信息变化状态，无法确认当前主体信息是否与最近审查一致。请刷新或联系管理员。</p>
+      ) : null}
+      {item.material_selection?.status === "pending_confirmation" ? (
+        <p className="callout">请先确认后续审查使用的旧材料集合。确认前不会按角色推断选中文档，也不会启动新审查。</p>
+      ) : null}
+      {!hasMaterialProjection ? (
+        <p className="callout">服务未提供材料集合与版本信息，当前不能启动新审查。</p>
+      ) : null}
       {run &&
       !needsNewReview &&
       (run.state === "failed" || run.state === "partial") ? (
@@ -289,123 +301,10 @@ export function CaseDetailPage() {
       ) : null}
       {start.isError ? <p role="alert">{errorMessage(start.error)}</p> : null}
 
-      <section id="case-materials">
-        <h2>材料</h2>
-        {item.documents.length === 0 ? (
-          <p>还没有材料。上传采购文件、中标文件或拟签合同。</p>
-        ) : null}
-        <ul className="document-list">
-          {item.documents.map((document) => (
-            <li key={document.id} data-document-id={document.id}>
-              <div className="document-main">
-                <strong>{document.filename}</strong>
-                {document.superseded ? (
-                  <span className="meta">，历史版本</span>
-                ) : null}
-                <p className="meta">
-                  {roleLabel(document.role)}，{formatBytes(document.size)}
-                </p>
-                <ParsedDocumentSummary document={document} />
-                {document.parse_status === "failed" && document.parse_error ? (
-                  <p>{document.parse_error}</p>
-                ) : null}
-              </div>
-              <div className="document-actions">
-                <StatusText tone={parseTone(document.parse_status)}>
-                  {parseLabel(document.parse_status)}
-                </StatusText>
-                {!document.superseded ? (
-                  <Button
-                    type="text"
-                    htmlType="button"
-                    aria-label={`${reparse.isPending && reparse.variables === document.id ? "正在重新解析" : "重新解析"} ${document.filename}`}
-                    disabled={!canUpload || reparse.isPending}
-                    onClick={() => reparse.mutate(document.id)}
-                  >
-                    {reparse.isPending && reparse.variables === document.id
-                      ? "正在重新解析"
-                      : "重新解析"}
-                  </Button>
-                ) : null}
-              </div>
-            </li>
-          ))}
-        </ul>
-        {reparse.isError ? (
-          <p role="alert">{errorMessage(reparse.error)}</p>
-        ) : null}
-        <form className="upload-form" onSubmit={onUpload}>
-          <h3>登记材料</h3>
-          <p className="meta">
-            每案最多 4 类当前材料；同角色上传形成新版本并保留历史。单文件不超过
-            32 MiB。支持 txt/md、png/jpeg、pdf 与 docx
-            正文解析；扫描页和内嵌图片通过已配置模型转写，最终以解析状态为准。
-          </p>
-          {!canUpload ? (
-            <p>当前角色只能查看材料，不能上传或重新解析。</p>
-          ) : null}
-          <label className="field">
-            材料角色
-            <Select<string>
-              aria-label="材料角色"
-              value={String(role)}
-              onChange={(selectedValue) => setRole(selectedValue)}
-              disabled={!canUpload}
-              options={[
-                ...ROLES.map((itemRole) => ({
-                  value: String(itemRole.value),
-                  label: String(itemRole.label ?? ""),
-                })),
-              ]}
-            />
-          </label>
-          <div className="field">
-            <label htmlFor="case-original-file">文件</label>
-            <Upload
-              id="case-original-file"
-              onChange={({ fileList: chosen }) => {
-                if (chosen.length === 0) setFile(null);
-                else if (chosen[0]?.originFileObj)
-                  setFile(chosen[0].originFileObj);
-              }}
-              accept=".txt,.md,.png,.jpg,.jpeg,.pdf,.docx,text/plain,text/markdown,image/png,image/jpeg,application/pdf"
-              disabled={!canUpload || atLimit || upload.isPending}
-              maxCount={1}
-              fileList={
-                file ? [{ uid: "selected-original", name: file.name }] : []
-              }
-              beforeUpload={(original) => {
-                setFile(original);
-                return false;
-              }}
-              onRemove={() => {
-                setFile(null);
-              }}
-            >
-              <Button
-                aria-label={"选择合同原件"}
-                disabled={!canUpload || atLimit || upload.isPending}
-              >
-                选择合同原件
-              </Button>
-            </Upload>
-          </div>
-          {atLimit ? (
-            <p>已有 4 类当前材料，请选择已有角色登记新版本。</p>
-          ) : null}
-          {upload.isError ? (
-            <p role="alert">{errorMessage(upload.error)}</p>
-          ) : null}
-          <Button
-            aria-label={String(upload.isPending ? "正在上传" : "上传")}
-            type="primary"
-            htmlType="submit"
-            disabled={!canUpload || atLimit || !file || upload.isPending}
-          >
-            {upload.isPending ? "正在上传" : "上传"}
-          </Button>
-        </form>
-      </section>
+      <MaterialCollectionPanel key={`materials:${item.id}:${actorScope}`} caseDetail={item} canWrite={canUpload} actorId={session.data?.id ?? ""} />
+      <CaseSubjectRolesPanel key={`subjects:${item.id}:${actorScope}`} caseId={item.id} />
+      <CaseSubjectCorrectionsPanel key={`subject-corrections:${item.id}:${actorScope}`} caseId={item.id} />
+      <CaseLegalApplicabilityPanel key={`legal-applicability:${item.id}:${actorScope}`} caseId={item.id} />
 
       <section
         className="case-business-overview"
@@ -436,8 +335,13 @@ export function CaseDetailPage() {
         </dl>
       </section>
       <TemplateGenerationPanel
+        key={`generation:${item.id}:${session.data?.id ?? ""}`}
         caseId={caseId}
         records={item.generations}
+        materials={item.materials}
+        documents={item.documents}
+        materialSelection={item.material_selection}
+        actorId={session.data?.id ?? ""}
         canWrite={actorRole === "admin" || actorRole === "clerk"}
         archived={archived}
       />

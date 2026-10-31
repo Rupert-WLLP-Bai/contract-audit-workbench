@@ -69,9 +69,12 @@ func (h *handler) createObjectBinding(w http.ResponseWriter, r *http.Request) {
 			ConnectorID      string `json:"connector_id"`
 			ExternalObjectID string `json:"external_object_id"`
 		} `json:"external_object"`
-		EffectiveFrom  *string `json:"effective_from"`
-		EffectiveUntil *string `json:"effective_until"`
-		Confirmed      bool    `json:"confirmed"`
+		ServiceObjectID            string  `json:"service_object_id"`
+		ExpectedObjectVersion      int     `json:"expected_object_version"`
+		ExpectedAssociationVersion int     `json:"expected_association_version"`
+		EffectiveFrom              *string `json:"effective_from"`
+		EffectiveUntil             *string `json:"effective_until"`
+		Confirmed                  bool    `json:"confirmed"`
 	}
 	if err := readJSON(w, r, &body); err != nil {
 		writeErr(w, err)
@@ -99,7 +102,9 @@ func (h *handler) createObjectBinding(w http.ResponseWriter, r *http.Request) {
 		ExternalObject: store.OperatorExternalObject{
 			ConnectorID: body.ExternalObject.ConnectorID, ExternalObjectID: body.ExternalObject.ExternalObjectID,
 		},
-		EffectiveFrom: from, EffectiveUntil: until, Confirmed: body.Confirmed,
+		ServiceObjectID: body.ServiceObjectID, ExpectedObjectVersion: body.ExpectedObjectVersion,
+		ExpectedAssociationVersion: body.ExpectedAssociationVersion,
+		EffectiveFrom:              from, EffectiveUntil: until, Confirmed: body.Confirmed,
 	}, key)
 	if err != nil {
 		writeOperatorErr(w, err, "没有找到对应案件")
@@ -126,28 +131,80 @@ func (h *handler) collectExternalSnapshot(w http.ResponseWriter, r *http.Request
 		writeErr(w, err)
 		return
 	}
-	connector, registered := h.externalConnectors[body.ConnectorID]
-	if !registered {
-		writeErr(w, fault.Invalid("外部连接器未登记"))
-		return
-	}
 	businessAt, err := parseOperatorRequiredTime(body.BusinessAt)
 	if err != nil {
 		writeErr(w, fault.Invalid("业务时间不合法"))
 		return
 	}
-	set, err := h.store.CollectOperatorExternalSnapshot(r.Context(), user, r.PathValue("caseID"),
+	caseID := r.PathValue("caseID")
+	key := strings.TrimSpace(r.Header.Get("Idempotency-Key"))
+	job, jobErr := h.store.GetOperatorCollectionJob(r.Context(), user, caseID, key)
+	if jobErr == nil {
+		switch job.State {
+		case "completed", "in_progress", "retryable":
+			// Let the store compare this POST's complete canonical request hash
+			// before replaying a result or reporting an active claim. Passing a nil
+			// connector is safe here: existing claims are resolved first, while a
+			// retryable claim reports unavailable without starting a new read.
+			set, replayErr := h.store.CollectOperatorExternalSnapshot(r.Context(), user, caseID,
+				body.ObjectBindingVersion, businessAt, body.ConnectorID, body.ExternalObjectID, nil, key)
+			if replayErr == nil {
+				writeOperatorExternalSnapshotResponse(w, set)
+				return
+			}
+			var apiErr *fault.Error
+			if !errors.As(replayErr, &apiErr) || apiErr.Status != http.StatusServiceUnavailable || job.State != "retryable" {
+				writeOperatorErr(w, replayErr, "没有找到对象映射")
+				return
+			}
+		default:
+			writeErr(w, fault.New(500, "integrity_error", "采集请求状态无效"))
+			return
+		}
+	} else {
+		var apiErr *fault.Error
+		if !errors.As(jobErr, &apiErr) || apiErr.Status != http.StatusNotFound {
+			writeOperatorErr(w, jobErr, "没有找到采集请求")
+			return
+		}
+	}
+	connector, registered := h.externalConnectors[body.ConnectorID]
+	if !registered {
+		writeErr(w, fault.Invalid("外部连接器未登记"))
+		return
+	}
+	set, err := h.store.CollectOperatorExternalSnapshot(r.Context(), user, caseID,
 		body.ObjectBindingVersion, businessAt, body.ConnectorID, body.ExternalObjectID, connector,
-		strings.TrimSpace(r.Header.Get("Idempotency-Key")))
+		key)
 	if err != nil {
 		writeOperatorErr(w, err, "没有找到对象映射")
 		return
 	}
+	writeOperatorExternalSnapshotResponse(w, set)
+}
+
+func writeOperatorExternalSnapshotResponse(w http.ResponseWriter, set store.OperatorSnapshotSet) {
 	writeJSON(w, http.StatusCreated, map[string]any{
-		"job_id": set.SnapshotSetID, "snapshot_set_id": set.SnapshotSetID, "state": set.Status,
+		"job_id": set.CollectionID, "collection_id": set.CollectionID, "snapshot_set_id": set.SnapshotSetID, "state": set.Status,
 		"connector_id": set.ConnectorID, "external_object_id": set.ExternalObjectID,
-		"accepted_at": set.CollectedAt.Format(time.RFC3339), "snapshot_set": set,
+		"accepted_at": set.CollectedAt.UTC().Format(time.RFC3339Nano), "snapshot_set": set,
 	})
+}
+
+func (h *handler) getExternalCollectionJob(w http.ResponseWriter, r *http.Request) {
+	user, ok := h.actor(w, r)
+	if !ok {
+		return
+	}
+	if !h.operatorAuditReady(w) {
+		return
+	}
+	job, err := h.store.GetOperatorCollectionJobByID(r.Context(), user, r.PathValue("caseID"), r.PathValue("collectionID"))
+	if err != nil {
+		writeOperatorErr(w, err, "没有找到采集请求")
+		return
+	}
+	writeJSON(w, http.StatusOK, job)
 }
 
 func (h *handler) listExternalSnapshots(w http.ResponseWriter, r *http.Request) {
@@ -193,6 +250,7 @@ func (h *handler) createFulfillmentEvaluation(w http.ResponseWriter, r *http.Req
 		ObjectBindingVersion string `json:"object_binding_version"`
 		SnapshotSetID        string `json:"snapshot_set_id"`
 		BusinessAt           string `json:"business_at"`
+		EvidenceCutoffAt     string `json:"evidence_cutoff_at,omitempty"`
 	}
 	if err := readJSON(w, r, &body); err != nil {
 		writeErr(w, err)
@@ -208,12 +266,22 @@ func (h *handler) createFulfillmentEvaluation(w http.ResponseWriter, r *http.Req
 		writeErr(w, fault.Invalid("业务时间不合法"))
 		return
 	}
+	var evidenceCutoffAt *time.Time
+	if strings.TrimSpace(body.EvidenceCutoffAt) != "" {
+		parsed, err := parseOperatorRequiredTime(body.EvidenceCutoffAt)
+		if err != nil {
+			writeErr(w, fault.Invalid("证据截止时间不合法"))
+			return
+		}
+		parsed = parsed.UTC().Truncate(time.Microsecond)
+		evidenceCutoffAt = &parsed
+	}
 	evaluation, err := h.store.CreateOperatorFulfillmentEvaluation(r.Context(), user, r.PathValue("caseID"),
 		store.OperatorEvaluationInput{
 			PackID: body.PackID, PackVersion: body.PackVersion, SourceReviewID: body.SourceReviewID,
 			SourceAttemptID: body.SourceAttemptID, ContractVersionID: body.ContractVersionID,
 			ObjectBindingVersion: body.ObjectBindingVersion, SnapshotSetID: body.SnapshotSetID,
-			BusinessAt: businessAt,
+			BusinessAt: businessAt, EvidenceCutoffAt: evidenceCutoffAt,
 		}, pack, fulfillment.New(), strings.TrimSpace(r.Header.Get("Idempotency-Key")))
 	if err != nil {
 		writeOperatorErr(w, err, "没有找到来源审查、对象映射或快照集")
@@ -268,7 +336,7 @@ func operatorEvaluationJSON(evaluation store.OperatorEvaluation) map[string]any 
 	if facts == nil {
 		facts = []auditext.Fact{}
 	}
-	return map[string]any{
+	projection := map[string]any{
 		"evaluation_id":          evaluation.EvaluationID,
 		"pack":                   map[string]string{"id": evaluation.PackID, "version": evaluation.PackVersion},
 		"source_review_id":       evaluation.SourceReviewID,
@@ -277,13 +345,17 @@ func operatorEvaluationJSON(evaluation store.OperatorEvaluation) map[string]any 
 		"rule_pack_version":      evaluation.RulePackVersion,
 		"object_binding_version": evaluation.ObjectBindingVersion,
 		"snapshot_set_id":        evaluation.SnapshotSetID,
-		"business_at":            evaluation.BusinessAt.Format(time.RFC3339),
+		"business_at":            evaluation.BusinessAt.UTC().Format(time.RFC3339Nano),
 		"machine_status":         evaluation.MachineStatus,
 		"checks":                 evaluation.Checks,
 		"contract_facts":         facts,
 		"data_class":             auditext.DataClassSynthetic,
-		"created_at":             evaluation.CreatedAt.Format(time.RFC3339),
+		"created_at":             evaluation.CreatedAt.UTC().Format(time.RFC3339Nano),
 	}
+	if evaluation.EvidenceCutoffAt != nil {
+		projection["evidence_cutoff_at"] = evaluation.EvidenceCutoffAt.UTC().Format(time.RFC3339Nano)
+	}
+	return projection
 }
 
 func parseOperatorTime(raw *string) (time.Time, error) {

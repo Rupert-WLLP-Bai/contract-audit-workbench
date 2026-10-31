@@ -741,7 +741,7 @@ func submittedDraftMatches(st state, caseID string, ids []string) error {
 	if !oneSubmittedDraftID(ids) {
 		return fault.Invalid("整改提交必须绑定一个修改稿版本")
 	}
-	currentDraft := currentDraftID(st.documents(caseID))
+	currentDraft := currentPrimaryDraftID(st, caseID)
 	if currentDraft == "" || ids[0] != currentDraft {
 		return fault.Conflict("提交的修改稿不是案件当前版本")
 	}
@@ -755,8 +755,19 @@ func oneSubmittedDraftID(ids []string) bool {
 	return len(ids) == 1 && uniqueNonempty(ids)
 }
 
-func currentDraftID(documents []Document) string {
-	for _, doc := range currentDocuments(documents) {
+func currentPrimaryDraftID(st state, caseID string) string {
+	if materialSelectionPending(st, caseID) {
+		return ""
+	}
+	if materialID := casePrimaryMaterialID(st, caseID); materialID != "" {
+		for _, material := range st.Materials {
+			if material.CaseID == caseID && material.ID == materialID && material.Role == "draft_contract" {
+				return material.CurrentDocumentID
+			}
+		}
+		return ""
+	}
+	for _, doc := range selectedMaterialDocuments(st, caseID) {
 		if doc.Role == "draft_contract" {
 			return doc.ID
 		}

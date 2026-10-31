@@ -13,8 +13,9 @@ import { chooseOption, renderWithAntd as render } from "../test/antd";
 import { EvidenceRequestPanel } from "./evidence-request-panel";
 
 const at = "2026-10-21T06:00:00Z";
-const localAt = new Intl.DateTimeFormat("zh-CN", {
+const beijingAt = new Intl.DateTimeFormat("zh-CN", {
   year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23",
+  timeZone: "Asia/Shanghai",
 }).format(new Date(at));
 const clients: QueryClient[] = [];
 const actor: Actor = { id: "owner", display_name: "审查人", role: "admin", tenant_id: "tenant", org_id: "org", audience: "client" };
@@ -351,7 +352,7 @@ describe("补充材料请求", () => {
     await chooseOption(user, screen.getByRole("combobox", { name: "关联任务" }), "选择已有任务");
     const taskOptions = await openActiveListbox(user, screen.getByRole("combobox", { name: "选择已有任务" }));
     expect(within(taskOptions).getAllByRole("option").map((option) => option.textContent?.trim())).toEqual([
-      `可关联任务 · 审查人 · ${localAt}`,
+      `可关联任务 · 审查人 · ${beijingAt}`,
     ]);
     expect(screen.queryByText("暂无包含责任人和期限的未完成案件任务。")).not.toBeInTheDocument();
   });
@@ -427,7 +428,7 @@ describe("补充材料请求", () => {
     await chooseOption(user, screen.getByRole("combobox", { name: "关联任务" }), "选择已有任务");
     const taskOptions = await openActiveListbox(user, screen.getByRole("combobox", { name: "选择已有任务" }));
     const taskOption = within(taskOptions).getByRole("option", { name: /空姓名任务/ });
-    expect(taskOption).toHaveTextContent(`空姓名任务 · · ${localAt}`);
+    expect(taskOption).toHaveTextContent(`空姓名任务 · · ${beijingAt}`);
     expect(taskOption).not.toHaveTextContent("责任人姓名未报告");
     await user.click(taskOption);
     const selectedTask = screen.getByRole("combobox", { name: "选择已有任务" });

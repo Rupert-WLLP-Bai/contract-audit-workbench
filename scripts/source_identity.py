@@ -10,8 +10,8 @@ EXCLUDED_FILES = {".github/hooks/impeccable.json"}
 def source_identity(root):
     root = Path(root)
     files = []
-    for directory in ("cmd", "internal", "e2e", "web", "scripts", ".github", "deploy", "deployments",
-                      "testdata"):
+    for directory in ("cmd", "internal", "capability-packs", "e2e", "web", "scripts", ".github", "deploy",
+                      "deployments", "testdata"):
         for path in (root / directory).rglob("*"):
             relative = path.relative_to(root)
             if (not path.is_file() or path.is_symlink() or relative.as_posix() in EXCLUDED_FILES or
