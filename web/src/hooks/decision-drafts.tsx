@@ -12,6 +12,24 @@ export type DecisionDraft = {
   reason: string;
 };
 
+export type BatchDecisionResult = {
+  findingId: string;
+  claim: string;
+  status: "success" | "conflict" | "failed";
+  message: string;
+  confirmedVersion: number | null;
+};
+
+export type BatchDecisionDraft = DecisionDraft & {
+  selectedIds: string[];
+  results: BatchDecisionResult[];
+};
+
+export type BatchDecisionDraftHandle = BatchDecisionDraft & {
+  scopeKey: string | null;
+  update: (update: (draft: BatchDecisionDraft) => BatchDecisionDraft) => void;
+};
+
 export type DecisionDraftScope = {
   userId: string;
   caseId: string;
@@ -20,12 +38,19 @@ export type DecisionDraftScope = {
 };
 
 const EMPTY_DECISION_DRAFT: DecisionDraft = { action: null, reason: "" };
+const EMPTY_BATCH_DRAFT: BatchDecisionDraft = {
+  action: null,
+  reason: "",
+  selectedIds: [],
+  results: [],
+};
 const DECISION_DRAFT_FIELD_SEPARATOR = "\u0000";
 
 // Drafts hold review reasoning, so they stay in tab memory only: nothing is
 // written to storage that outlives the page or could be read by another
 // account sharing the browser.
 const draftStore = new Map<string, DecisionDraft>();
+const batchDraftStore = new Map<string, BatchDecisionDraft>();
 const draftListeners = new Set<() => void>();
 
 function notifyDraftListeners(): void {
@@ -67,14 +92,18 @@ export function clearDecisionDraft(key: string): void {
 // Test suites share one module registry across cases; suites that mount the
 // review workspace reset the store so drafts never leak between tests.
 export function clearAllDecisionDrafts(): void {
-  if (draftStore.size === 0) return;
+  if (draftStore.size === 0 && batchDraftStore.size === 0) return;
   draftStore.clear();
+  batchDraftStore.clear();
   notifyDraftListeners();
 }
 
 function hasDecisionDrafts(prefix: string): boolean {
   for (const key of draftStore.keys()) {
     if (key.startsWith(prefix)) return true;
+  }
+  for (const [key, draft] of batchDraftStore) {
+    if (key.startsWith(prefix) && (draft.action !== null || draft.reason !== "" || draft.selectedIds.length > 0)) return true;
   }
   return false;
 }
@@ -144,5 +173,32 @@ export function useDecisionDraft(findingId: string): {
     reason: stored.reason,
     update: (update) => writeDecisionDraft(key, update),
     clear: () => clearDecisionDraft(key),
+  };
+}
+
+export function useBatchDecisionDraft(): BatchDecisionDraftHandle {
+  const scope = useContext(DecisionDraftScopeContext);
+  const key = scope === null ? null : decisionDraftKey(scope, "\u0000batch");
+  const [unscoped, setUnscoped] = useState<BatchDecisionDraft>(EMPTY_BATCH_DRAFT);
+  const stored = useSyncExternalStore(
+    subscribeDecisionDrafts,
+    () => key === null ? EMPTY_BATCH_DRAFT : (batchDraftStore.get(key) ?? EMPTY_BATCH_DRAFT),
+  );
+  return {
+    ...(key === null ? unscoped : stored),
+    scopeKey: key,
+    update: (update) => {
+      if (key === null) {
+        setUnscoped(update);
+        return;
+      }
+      const next = update(batchDraftStore.get(key) ?? EMPTY_BATCH_DRAFT);
+      if (next.action === null && next.reason === "" && next.selectedIds.length === 0 && next.results.length === 0) {
+        batchDraftStore.delete(key);
+      } else {
+        batchDraftStore.set(key, next);
+      }
+      notifyDraftListeners();
+    },
   };
 }

@@ -8,7 +8,7 @@ import type {
   ReviewRun,
   ReviewWorkspace,
 } from "../api/types";
-import type { ReviewLayout } from "../domain/review";
+import type { FindingDecisionInput, FindingDecisionOutcome, ReviewLayout } from "../domain/review";
 import { runLabel, runTone } from "../domain/review";
 import type { StreamStatus } from "../hooks/use-review-events";
 import { DocumentStage, type ReviewCaseContext } from "./document-stage";
@@ -317,6 +317,7 @@ export function ReviewWorkspaceView({
   onSelect,
   onSelectAttempt,
   onDecide,
+  onBatchDecide,
   onRetry,
   onCancel,
   caseContext,
@@ -353,6 +354,7 @@ export function ReviewWorkspaceView({
     reason: string;
     expectedVersion: number;
   }) => Promise<boolean>;
+  onBatchDecide?: (input: FindingDecisionInput) => Promise<FindingDecisionOutcome>;
   onRetry: () => void;
   onCancel: () => void;
   caseContext?: ReviewCaseContext | null;
@@ -405,6 +407,7 @@ export function ReviewWorkspaceView({
         />
         <FindingPanel
           findings={workspace.findings}
+          evaluations={workspace.evaluations ?? []}
           documents={workspace.documents}
           selectedId={selectedId}
           onSelect={onSelect}
@@ -415,6 +418,7 @@ export function ReviewWorkspaceView({
           conflictMessage={conflictMessage}
           saveError={saveError}
           onDecide={onDecide}
+          onBatchDecide={onBatchDecide}
         />
       </div>
       <BusinessAgentReviewView

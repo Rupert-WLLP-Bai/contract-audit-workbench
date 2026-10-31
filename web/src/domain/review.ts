@@ -1,6 +1,8 @@
 import type {
   CaseSummary,
+  ConstraintEvaluation,
   DecisionAction,
+  DecisionInput,
   Finding,
   WorkbenchRun,
 } from "../api/types";
@@ -41,6 +43,13 @@ export const FINDING_FILTERS = [
   "undecided",
 ] as const;
 export type FindingFilter = (typeof FINDING_FILTERS)[number];
+
+export type FindingDecisionInput = DecisionInput & { findingId: string };
+export type FindingDecisionOutcome = {
+  status: "success" | "conflict" | "failed";
+  message: string;
+  stop?: boolean;
+};
 
 export type ReviewLayout = "split" | "switch";
 
@@ -312,6 +321,62 @@ export function filterFindings(
   return findings.filter((finding) => latestDecision(finding) === null);
 }
 
+const FINDING_SEVERITY_ORDER: Record<string, number> = {
+  high: 0,
+  medium: 1,
+  low: 2,
+  info: 3,
+};
+
+/** Preserve the source order when state and severity are equal. */
+export function sortFindings(findings: readonly Finding[]): Finding[] {
+  return findings
+    .map((finding, index) => ({ finding, index }))
+    .sort((left, right) => {
+      const decided = Number(latestDecision(left.finding) !== null) - Number(latestDecision(right.finding) !== null);
+      if (decided !== 0) return decided;
+      const severity = (FINDING_SEVERITY_ORDER[left.finding.severity ?? ""] ?? 4) -
+        (FINDING_SEVERITY_ORDER[right.finding.severity ?? ""] ?? 4);
+      return severity || left.index - right.index;
+    })
+    .map(({ finding }) => finding);
+}
+
+export function findingQueue(findings: Finding[], filter: FindingFilter): Finding[] {
+  return filterFindings(sortFindings(findings), filter);
+}
+
+export function adjacentFindingId(queue: Finding[], selectedId: string | null, direction: -1 | 1): string | null {
+  if (queue.length === 0) return null;
+  const index = queue.findIndex((finding) => finding.id === selectedId);
+  if (index === -1) return queue[direction === 1 ? 0 : queue.length - 1]?.id ?? null;
+  return queue[index + direction]?.id ?? null;
+}
+
+export function nextUndecidedFindingId(queue: Finding[], selectedId: string): string | null {
+  const index = queue.findIndex((finding) => finding.id === selectedId);
+  const start = index < 0 ? 0 : index + 1;
+  const candidates = [...queue.slice(start), ...queue.slice(0, Math.max(index, 0))];
+  return candidates.find((finding) => finding.id !== selectedId && latestDecision(finding) === null)?.id ?? null;
+}
+
+export type FindingBatchGroup = { ruleId: string; ruleVersion: string; relation: string };
+
+/** Only a unique, linked rule evaluation proves that findings share a rule. */
+export function findingBatchGroup(finding: Finding, evaluations: readonly ConstraintEvaluation[]): FindingBatchGroup | null {
+  if (finding.origin !== "rule" || !finding.relation || finding.relation === "unknown") return null;
+  const linked = evaluations.filter((evaluation) => evaluation.finding_id === finding.id);
+  if (linked.length !== 1) return null;
+  const evaluation = linked[0];
+  if (!evaluation || !evaluation.rule_id.trim() || evaluation.domain !== finding.domain || evaluation.relation !== finding.relation) return null;
+  return { ruleId: evaluation.rule_id, ruleVersion: evaluation.rule_version, relation: finding.relation };
+}
+
+export function sameFindingBatchGroup(left: FindingBatchGroup | null, right: FindingBatchGroup | null): boolean {
+  return left !== null && right !== null && left.ruleId === right.ruleId &&
+    left.ruleVersion === right.ruleVersion && left.relation === right.relation;
+}
+
 export function reviewLayout(viewportWidth: number): ReviewLayout {
   return viewportWidth >= 1440 ? "split" : "switch";
 }
@@ -403,10 +468,8 @@ export function selectedFindingId(
 ): string | null {
   if (requested && findings.some((finding) => finding.id === requested))
     return requested;
-  const undecided = findings.find(
-    (finding) => latestDecision(finding) === null,
-  );
-  return undecided?.id ?? findings[0]?.id ?? null;
+  const ordered = sortFindings(findings);
+  return ordered[0]?.id ?? null;
 }
 
 /** Most recent run wins; equal timestamps fall back to the descending id. */

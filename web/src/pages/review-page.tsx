@@ -39,6 +39,8 @@ import {
   isActiveAttemptState,
   isTerminalAttemptState,
   selectedFindingId,
+  type FindingDecisionInput,
+  type FindingDecisionOutcome,
 } from "../domain/review";
 import {
   useReviewEvents,
@@ -448,6 +450,35 @@ export function ReviewPage() {
     }
   }
 
+  async function onBatchDecide(input: FindingDecisionInput): Promise<FindingDecisionOutcome> {
+    if (!canDecide) return { status: "failed", message: "当前审查状态不允许提交。", stop: true };
+    try {
+      await decide.mutateAsync({ findingId: input.findingId, decision: input });
+      return { status: "success", message: "决定已保存。" };
+    } catch (error) {
+      let refreshFailed = false;
+      try {
+        refreshFailed = (await review.refetch()).isError;
+      } catch {
+        refreshFailed = true;
+      }
+      if (isConflict(error)) {
+        return {
+          status: "conflict",
+          message: refreshFailed
+            ? `${errorMessage(error)}；最新内容刷新失败，请刷新后再确认。`
+            : `${errorMessage(error)}；请查看最新内容后重新确认。`,
+          stop: refreshFailed,
+        };
+      }
+      return {
+        status: "failed",
+        message: refreshFailed ? `${errorMessage(error)}；最新内容刷新失败。` : errorMessage(error),
+        stop: refreshFailed || isUnauthenticated(error) || isForbidden(error),
+      };
+    }
+  }
+
   return (
     <section className="page page-review">
       <header className="page-head">
@@ -507,9 +538,11 @@ export function ReviewPage() {
           }
           saveError={conflictFinding === selectedId ? saveError : null}
           onSelect={(findingId) => {
-            const next = new URLSearchParams(params);
-            next.set("finding", findingId);
-            setParams(next);
+            setParams((current) => {
+              const next = new URLSearchParams(current);
+              next.set("finding", findingId);
+              return next;
+            });
           }}
           onSelectAttempt={(attemptId) => {
             const next = new URLSearchParams(params);
@@ -531,6 +564,7 @@ export function ReviewPage() {
             setParams(next);
           }}
           onDecide={onDecide}
+          onBatchDecide={onBatchDecide}
           onRetry={() => {
             if (!canRetry) return;
             retry.mutate(undefined, {

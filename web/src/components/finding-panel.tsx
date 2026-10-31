@@ -1,31 +1,37 @@
 import { Tabs } from "antd";
 import { Card } from "antd";
-import { Button, Input, Radio } from "antd";
-import { useId, useState, type FormEvent } from "react";
+import { Button, Checkbox, Input, Radio } from "antd";
+import { useCallback, useEffect, useId, useRef, useState, type FormEvent } from "react";
 import type {
+  ConstraintEvaluation,
   DecisionAction,
   EvidenceAnchor,
   Finding,
   HumanDecision,
   ReviewDocument,
 } from "../api/types";
-import { useDecisionDraft } from "../hooks/decision-drafts";
-import type { FindingFilter } from "../domain/review";
+import { useBatchDecisionDraft, useDecisionDraft } from "../hooks/decision-drafts";
+import type { FindingDecisionInput, FindingDecisionOutcome, FindingFilter } from "../domain/review";
 import {
   DECISION_ACTIONS,
   confidenceLabel,
   decisionLabel,
-  filterFindings,
+  adjacentFindingId,
+  findingBatchGroup,
+  findingQueue,
   formatDateTime,
   latestDecision,
+  nextUndecidedFindingId,
   originLabel,
   parseLabel,
   relationLabel,
   roleLabel,
+  sameFindingBatchGroup,
   shortDigest,
   validateDecisionReason,
 } from "../domain/review";
 import { evidenceSourceMatches, resolveAnchor } from "../domain/text";
+import { FindingBatchControls } from "./finding-batch-controls";
 const FILTERS: { id: FindingFilter; label: string }[] = [
   { id: "all", label: "全部" },
   { id: "conflict", label: "冲突" },
@@ -98,14 +104,30 @@ function FindingListRow({
   finding,
   selectedId,
   onSelect,
+  checked,
+  selectionDisabled,
+  selectionHint,
+  onToggleSelection,
 }: {
   finding: Finding;
   selectedId: string | null;
   onSelect: (findingId: string) => void;
+  checked: boolean;
+  selectionDisabled: boolean;
+  selectionHint: string;
+  onToggleSelection: (checked: boolean) => void;
 }) {
   const decision = latestDecision(finding);
   return (
     <li>
+      <div style={{ display: "flex", alignItems: "flex-start", gap: "var(--space-2)" }}>
+      <Checkbox
+        aria-label={`批量选择线索：${finding.claim || "未命名线索"}`}
+        title={selectionHint}
+        checked={checked}
+        disabled={selectionDisabled}
+        onChange={(event) => onToggleSelection(event.target.checked)}
+      />
       <Button
         htmlType="button"
         className="finding-button"
@@ -131,6 +153,7 @@ function FindingListRow({
             : "，待裁决"}
         </span>
       </Button>
+      </div>
     </li>
   );
 }
@@ -615,6 +638,7 @@ function DecisionForm({
   conflictMessage,
   saveError,
   onDecide,
+  onSaved,
 }: {
   finding: Finding;
   pending: boolean;
@@ -628,6 +652,7 @@ function DecisionForm({
     reason: string;
     expectedVersion: number;
   }) => Promise<boolean>;
+  onSaved: (findingId: string) => void;
 }) {
   const reasonId = useId();
   const hintId = useId();
@@ -665,18 +690,27 @@ function DecisionForm({
     if (saved) {
       draft.clear();
       setAttempted(false);
+      onSaved(finding.id);
     }
   }
 
   return (
-    <form onSubmit={onSubmit}>
+    <form
+      onSubmit={onSubmit}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" && (event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey) {
+          event.preventDefault();
+          event.currentTarget.requestSubmit();
+        }
+      }}
+    >
       {!canDecide ? (
         <p>{decisionDisabledReason ?? "当前角色不能提交审查判断。"}</p>
       ) : null}
       <DecisionCard
         finding={finding}
         action={draft.action}
-        canDecide={canDecide}
+        canDecide={canDecide && !pending}
         onAction={(action) =>
           draft.update((current) => ({ ...current, action }))
         }
@@ -695,10 +729,10 @@ function DecisionForm({
         }
         aria-describedby={hintId}
         rows={4}
-        disabled={!canDecide}
+        disabled={!canDecide || pending}
       />
       <p id={hintId} className="meta">
-        四种决定都要写理由。保存后写入审查记录。
+        四种决定都要写理由。保存后写入审查记录。按 Ctrl+Enter 可保存。
       </p>
       <DecisionAlerts
         version={finding.version}
@@ -721,6 +755,7 @@ function FindingDetail({
   saveError,
   showDiagnostics,
   onDecide,
+  onSaved,
 }: {
   finding: Finding;
   documents: ReviewDocument[];
@@ -736,6 +771,7 @@ function FindingDetail({
     reason: string;
     expectedVersion: number;
   }) => Promise<boolean>;
+  onSaved: (findingId: string) => void;
 }) {
   return (
     <article className="finding-detail" aria-live="polite">
@@ -754,6 +790,7 @@ function FindingDetail({
         conflictMessage={conflictMessage}
         saveError={saveError}
         onDecide={onDecide}
+        onSaved={onSaved}
       />
     </article>
   );
@@ -761,6 +798,7 @@ function FindingDetail({
 
 export function FindingPanel({
   findings,
+  evaluations = [],
   documents,
   selectedId,
   onSelect,
@@ -771,8 +809,10 @@ export function FindingPanel({
   conflictMessage,
   saveError,
   onDecide,
+  onBatchDecide,
 }: {
   findings: Finding[];
+  evaluations?: ConstraintEvaluation[];
   documents: ReviewDocument[];
   selectedId: string | null;
   onSelect: (findingId: string) => void;
@@ -788,10 +828,105 @@ export function FindingPanel({
     reason: string;
     expectedVersion: number;
   }) => Promise<boolean>;
+  onBatchDecide?: (input: FindingDecisionInput) => Promise<FindingDecisionOutcome>;
 }) {
   const [filter, setFilter] = useState<FindingFilter>("all");
   const [panel, setPanel] = useState("风险审查");
-  const visible = filterFindings(findings, filter);
+  const visible = findingQueue(findings, filter);
+  const batch = useBatchDecisionDraft();
+  const [busyScope, setBusyScope] = useState<{ key: string | null } | null>(null);
+  const batchPending = busyScope !== null && busyScope.key === batch.scopeKey;
+  const scopeEpoch = useRef(0);
+  const submittingScopes = useRef(new Set<string | null>());
+  const selectedRef = useRef(selectedId);
+  const scopeRef = useRef(batch.scopeKey);
+  useEffect(() => {
+    selectedRef.current = selectedId;
+    scopeRef.current = batch.scopeKey;
+  }, [selectedId, batch.scopeKey]);
+  useEffect(() => () => { scopeEpoch.current += 1; }, [batch.scopeKey]);
+  const selectedForBatch = batch.selectedIds.flatMap((id) => {
+    const finding = findings.find((item) => item.id === id);
+    return finding ? [finding] : [];
+  });
+  const group = selectedForBatch[0] ? findingBatchGroup(selectedForBatch[0], evaluations) : null;
+  const membersValid = selectedForBatch.length === batch.selectedIds.length &&
+    selectedForBatch.length > 0 && group !== null &&
+    selectedForBatch.every((finding) => finding.version !== null && sameFindingBatchGroup(group, findingBatchGroup(finding, evaluations)));
+  const retryingSingle = batch.selectedIds.length === 1 && batch.results.some((result) =>
+    result.findingId === batch.selectedIds[0] && result.status !== "success");
+  const needsReconfirmation = batch.results.some((result) => {
+    if (result.status === "success" || !batch.selectedIds.includes(result.findingId)) return false;
+    const current = findings.find((finding) => finding.id === result.findingId);
+    return current?.version == null || result.confirmedVersion !== current.version;
+  });
+  const canBatchSubmit = Boolean(onBatchDecide) && canDecide && !pending && !batchPending &&
+    (batch.selectedIds.length >= 2 || retryingSingle) && membersValid && !needsReconfirmation && batch.action !== null &&
+    validateDecisionReason(batch.reason) === null;
+  const navigate = useCallback((direction: -1 | 1) => {
+    const next = adjacentFindingId(visible, selectedId, direction);
+    if (next !== null) onSelect(next);
+  }, [visible, selectedId, onSelect]);
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.defaultPrevented || event.isComposing || event.repeat || !event.altKey || event.ctrlKey || event.metaKey || event.shiftKey || panel !== "风险审查" || pending || batchPending) return;
+      const target = event.target;
+      if (target instanceof Element && target.closest("input, textarea, select, [contenteditable]:not([contenteditable='false']), [role='dialog']")) return;
+      const direction = event.key.toLowerCase() === "j" ? 1 : event.key.toLowerCase() === "k" ? -1 : null;
+      if (direction === null) return;
+      event.preventDefault();
+      navigate(direction);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [batchPending, navigate, panel, pending]);
+
+  async function submitBatch() {
+    const action = batch.action;
+    if (!canBatchSubmit || !onBatchDecide || action === null) return;
+    const items: { finding: Finding; input: FindingDecisionInput }[] = [];
+    for (const finding of selectedForBatch) {
+      if (finding.version === null) return;
+      items.push({ finding, input: { findingId: finding.id, action, reason: batch.reason.trim(), expectedVersion: finding.version } });
+    }
+    const epoch = scopeEpoch.current;
+    if (submittingScopes.current.has(batch.scopeKey)) return;
+    submittingScopes.current.add(batch.scopeKey);
+    const startingSelection = selectedId;
+    const successes = new Set<string>();
+    let stopped = false;
+    setBusyScope({ key: batch.scopeKey });
+    for (const { finding, input } of items) {
+      let outcome: FindingDecisionOutcome;
+      if (scopeEpoch.current !== epoch || stopped) {
+        outcome = { status: "failed", message: "未提交：审查范围或权限已变化。" };
+      } else {
+        try {
+          outcome = await onBatchDecide(input);
+        } catch (error) {
+          outcome = { status: "failed", message: error instanceof Error ? error.message : "请求没有完成" };
+        }
+      }
+      if (outcome.stop) stopped = true;
+      if (outcome.status === "success") successes.add(finding.id);
+      batch.update((current) => ({
+        ...current,
+        selectedIds: outcome.status === "success" ? current.selectedIds.filter((id) => id !== finding.id) : current.selectedIds,
+        results: [...current.results.filter((result) => result.findingId !== finding.id), { findingId: finding.id, claim: finding.claim, status: outcome.status, message: outcome.message, confirmedVersion: null }],
+      }));
+    }
+    if (successes.size === items.length) {
+      batch.update((current) => ({ ...current, action: null, reason: "" }));
+    }
+    submittingScopes.current.delete(batch.scopeKey);
+    if (scopeEpoch.current !== epoch) return;
+    setBusyScope(null);
+    if (startingSelection && selectedRef.current === startingSelection && successes.has(startingSelection)) {
+      const remaining = visible.filter((finding) => finding.id === startingSelection || !successes.has(finding.id));
+      const next = nextUndecidedFindingId(remaining, startingSelection);
+      if (next !== null) onSelect(next);
+    }
+  }
   const selected =
     findings.find((finding) => finding.id === selectedId) ?? null;
   const selectedHidden =
@@ -810,19 +945,60 @@ export function FindingPanel({
       <div hidden={panel !== "风险审查"}>
         <SeverityCounts findings={findings} />
         <FindingFilterButtons filter={filter} onChange={setFilter} />
+        <p className="meta" aria-live="polite">当前筛选显示 {visible.length} / {findings.length} 条线索。</p>
+        <div className="filter-row" role="group" aria-label="浏览线索队列">
+          <Button htmlType="button" disabled={pending || batchPending || adjacentFindingId(visible, selectedId, -1) === null} onClick={() => navigate(-1)}>上一条</Button>
+          <Button htmlType="button" disabled={pending || batchPending || adjacentFindingId(visible, selectedId, 1) === null} onClick={() => navigate(1)}>下一条</Button>
+        </div>
+        <p className="meta">待裁决优先，再按严重度排序。Alt+J 下一条，Alt+K 上一条。</p>
         {findings.length === 0 ? (
           <p>本次审查还没有生成风险线索。这不代表材料没有风险。</p>
         ) : null}
+        {findings.length > 0 && visible.length === 0 ? <p>当前筛选条件下没有线索。</p> : null}
         <ul className="finding-list">
-          {visible.map((finding) => (
-            <FindingListRow
-              key={finding.id}
-              finding={finding}
-              selectedId={selectedId}
-              onSelect={onSelect}
-            />
-          ))}
+          {visible.map((finding) => {
+            const checked = batch.selectedIds.includes(finding.id);
+            const candidateGroup = findingBatchGroup(finding, evaluations);
+            const compatible = candidateGroup !== null && (batch.selectedIds.length === 0 || sameFindingBatchGroup(group, candidateGroup));
+            const selectionDisabled = pending || batchPending || (!checked && (!canDecide || !onBatchDecide || finding.version === null || !compatible));
+            const selectionHint = candidateGroup === null
+              ? "缺少唯一关联规则，不能批量裁决"
+              : finding.version === null
+                ? "缺少版本号，不能批量裁决"
+                : !compatible ? "只能选择同一规则、同类结论的线索" : "勾选参与批量裁决";
+            return (
+              <FindingListRow
+                key={finding.id}
+                finding={finding}
+                selectedId={selectedId}
+                onSelect={onSelect}
+                checked={checked}
+                selectionDisabled={selectionDisabled}
+                selectionHint={selectionHint}
+                onToggleSelection={(nextChecked) => batch.update((current) => ({
+                  ...current,
+                  selectedIds: nextChecked
+                    ? current.selectedIds.includes(finding.id) ? current.selectedIds : [...current.selectedIds, finding.id]
+                    : current.selectedIds.filter((id) => id !== finding.id),
+                }))}
+              />
+            );
+          })}
         </ul>
+        <FindingBatchControls
+          draft={batch}
+          selected={selectedForBatch}
+          selectedId={selectedId}
+          group={group}
+          membersValid={membersValid}
+          retryingSingle={retryingSingle}
+          needsReconfirmation={needsReconfirmation}
+          canSubmit={canBatchSubmit}
+          canDecide={Boolean(onBatchDecide) && canDecide}
+          pending={pending || batchPending}
+          onSelect={onSelect}
+          onSubmit={() => void submitBatch()}
+        />
         {selectedHidden ? (
           <p className="meta">当前线索不在这个筛选结果里，右侧仍保留它。</p>
         ) : null}
@@ -831,13 +1007,18 @@ export function FindingPanel({
             key={selected.id}
             finding={selected}
             documents={documents}
-            pending={pending}
+            pending={pending || batchPending}
             showDiagnostics={showDiagnostics}
             canDecide={canDecide}
             decisionDisabledReason={decisionDisabledReason}
             conflictMessage={conflictMessage}
             saveError={saveError}
             onDecide={onDecide}
+            onSaved={(findingId) => {
+              if (scopeRef.current !== batch.scopeKey || selectedRef.current !== findingId) return;
+              const next = nextUndecidedFindingId(visible, findingId);
+              if (next !== null) onSelect(next);
+            }}
           />
         ) : null}
       </div>
