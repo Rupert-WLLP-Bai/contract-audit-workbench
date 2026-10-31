@@ -397,11 +397,11 @@ EXTERNAL_EVIDENCE_SOURCE_SYSTEM=fixture-oss-east
 
 ## 分支工作方式
 
-`main` 是唯一长期开发主线，达到轻量集成门槛后合入；只有完成固定候选集中验收的版本才称为可交付。当前累计批次按 [PR #68](https://github.com/Rupert-WLLP-Bai/contract-audit-workbench/pull/68) → `dev` → [PR #63](https://github.com/Rupert-WLLP-Bai/contract-audit-workbench/pull/63) → `main` 收口，核对无未合并工作后退役 `dev`。既有提交和依赖不重写；后续计划与证据按 [Issue #7](https://github.com/Rupert-WLLP-Bai/contract-audit-workbench/issues/7) 的五阶段路线图推进。
+`main` 是唯一长期开发主线，达到轻量集成门槛后合入；只有完成固定候选集中验收的版本才称为可交付。后续计划与证据按 [Issue #7](https://github.com/Rupert-WLLP-Bai/contract-audit-workbench/issues/7) 的五阶段路线图推进。
 
 - 分支名：`fix/<issue>-<slug>`，例如 `fix/8-case-next-step`；从最新 `main` 创建，一个分支处理一个具体问题，直接 PR 到 `main`。
 - 完成方式：通过实际配置的快速门禁后 Squash merge，删除已合并短分支；Issue 仅在对应承诺和验收条件完成后关闭。固定 RC 使用不可移动的标签、配置身份和镜像 digest，不随主线继续开发而漂移。
-- `pr-fast-gate` 用于日常 PR；当前过渡批次同时支持目标 `dev`，收口后只保留 `main` 路径。Phase 0–3 只验证受影响范围，完整五阶段、真实模型/OCR、容量和恢复在 Phase 4 的集中窗口执行；失败后只复验相关范围。
+- `pr-fast-gate` 用于目标为 `main` 的日常 PR。Phase 0–3 只验证受影响范围，完整五阶段、真实模型/OCR、容量和恢复在 Phase 4 的集中窗口执行；失败后只复验相关范围。
 - 需要单人作者时，提交前检查 `git var GIT_AUTHOR_IDENT` 和 `git var GIT_COMMITTER_IDENT`，使用本人身份，不添加代理作者或 `Co-authored-by`。既有已发布提交不重写。
 
 ```bash
