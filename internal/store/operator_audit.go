@@ -108,37 +108,137 @@ type OperatorCollectionJob struct {
 // evaluation. The server resolves every referenced version; none is trusted
 // from another tenant.
 type OperatorEvaluationInput struct {
-	PackID               string     `json:"pack_id"`
-	PackVersion          string     `json:"pack_version"`
-	SourceReviewID       string     `json:"source_review_id"`
-	SourceAttemptID      string     `json:"source_attempt_id"`
-	ContractVersionID    string     `json:"contract_version_id"`
-	ObjectBindingVersion string     `json:"object_binding_version"`
-	SnapshotSetID        string     `json:"snapshot_set_id"`
-	BusinessAt           time.Time  `json:"business_at"`
-	EvidenceCutoffAt     *time.Time `json:"evidence_cutoff_at,omitempty"`
+	PackID               string                   `json:"pack_id"`
+	PackVersion          string                   `json:"pack_version"`
+	SourceReviewID       string                   `json:"source_review_id"`
+	SourceAttemptID      string                   `json:"source_attempt_id"`
+	ContractVersionID    string                   `json:"contract_version_id"`
+	ObjectBindingVersion string                   `json:"object_binding_version"`
+	SnapshotSetID        string                   `json:"snapshot_set_id"`
+	BusinessAt           time.Time                `json:"business_at"`
+	EvidenceCutoffAt     *time.Time               `json:"evidence_cutoff_at,omitempty"`
+	Scope                *OperatorEvaluationScope `json:"scope,omitempty"`
+}
+
+type OperatorEvaluationScope struct {
+	Kind             string   `json:"kind"`
+	ServiceObjectIDs []string `json:"service_object_ids,omitempty"`
+}
+
+func normalizedOperatorEvaluationScope(input OperatorEvaluationInput) (OperatorEvaluationScope, error) {
+	scope := OperatorEvaluationScope{Kind: "whole_case"}
+	if input.Scope != nil {
+		scope = *input.Scope
+	}
+	if len(scope.ServiceObjectIDs) > 100 {
+		return OperatorEvaluationScope{}, fault.TooLarge("单次核验最多包含100个服务对象")
+	}
+	scope.Kind = strings.TrimSpace(scope.Kind)
+	ids := make([]string, 0, len(scope.ServiceObjectIDs))
+	seen := make(map[string]struct{}, len(scope.ServiceObjectIDs))
+	for _, raw := range scope.ServiceObjectIDs {
+		id := strings.TrimSpace(raw)
+		if auditext.ValidateID(id) != nil {
+			return OperatorEvaluationScope{}, fault.Invalid("核验范围内的服务对象标识无效")
+		}
+		if _, exists := seen[id]; exists {
+			return OperatorEvaluationScope{}, fault.Invalid("核验范围不能重复选择服务对象")
+		}
+		seen[id] = struct{}{}
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	scope.ServiceObjectIDs = ids
+	switch scope.Kind {
+	case "whole_case":
+		if len(ids) != 0 {
+			return OperatorEvaluationScope{}, fault.Invalid("整案核验不能携带单独的服务对象列表")
+		}
+		if input.ObjectBindingVersion != "" || input.SnapshotSetID != "" || input.ContractVersionID != "" {
+			return OperatorEvaluationScope{}, fault.Invalid("整案核验由服务端解析对象与证据，不能只提交单个对象映射")
+		}
+	case "explicit_subset":
+		if len(ids) == 0 {
+			return OperatorEvaluationScope{}, fault.Invalid("明确范围至少需要一个服务对象")
+		}
+		hasLegacyPins := input.ObjectBindingVersion != "" || input.SnapshotSetID != "" || input.ContractVersionID != ""
+		if hasLegacyPins && (len(ids) != 1 || input.ObjectBindingVersion == "" || input.SnapshotSetID == "" || input.ContractVersionID == "") {
+			return OperatorEvaluationScope{}, fault.Invalid("单对象兼容映射必须同时提供来源合同、映射和快照")
+		}
+	default:
+		return OperatorEvaluationScope{}, fault.Invalid("核验范围类型无效")
+	}
+	return scope, nil
 }
 
 // OperatorEvaluation is the persisted deterministic result plus its frozen
 // input. Human decisions remain in the existing decision flow.
 type OperatorEvaluation struct {
-	CaseID               string                 `json:"case_id"`
-	EvaluationID         string                 `json:"evaluation_id"`
-	PackID               string                 `json:"pack_id"`
-	PackVersion          string                 `json:"pack_version"`
-	SourceReviewID       string                 `json:"source_review_id"`
-	SourceAttemptID      string                 `json:"source_attempt_id"`
-	ContractVersionID    string                 `json:"contract_version_id"`
-	RulePackVersion      string                 `json:"rule_pack_version"`
-	ObjectBindingVersion string                 `json:"object_binding_version"`
-	SnapshotSetID        string                 `json:"snapshot_set_id"`
-	BusinessAt           time.Time              `json:"business_at"`
-	EvidenceCutoffAt     *time.Time             `json:"evidence_cutoff_at,omitempty"`
-	MachineStatus        string                 `json:"machine_status"`
-	Checks               []auditext.CheckResult `json:"checks"`
-	CreatedAt            time.Time              `json:"created_at"`
-	Input                auditext.FrozenInput   `json:"-"`
-	ResultSHA256         string                 `json:"-"`
+	CaseID               string                      `json:"case_id"`
+	EvaluationID         string                      `json:"evaluation_id"`
+	PackID               string                      `json:"pack_id"`
+	PackVersion          string                      `json:"pack_version"`
+	SourceReviewID       string                      `json:"source_review_id"`
+	SourceAttemptID      string                      `json:"source_attempt_id"`
+	ContractVersionID    string                      `json:"contract_version_id,omitempty"`
+	RulePackVersion      string                      `json:"rule_pack_version"`
+	ObjectBindingVersion string                      `json:"object_binding_version,omitempty"`
+	SnapshotSetID        string                      `json:"snapshot_set_id,omitempty"`
+	BusinessAt           time.Time                   `json:"business_at"`
+	EvidenceCutoffAt     *time.Time                  `json:"evidence_cutoff_at,omitempty"`
+	MachineStatus        string                      `json:"machine_status"`
+	Checks               []auditext.CheckResult      `json:"checks"`
+	CreatedAt            time.Time                   `json:"created_at"`
+	Input                auditext.FrozenInput        `json:"-"`
+	ResultSHA256         string                      `json:"-"`
+	Scope                *OperatorEvaluationScope    `json:"scope,omitempty"`
+	Coverage             *OperatorEvaluationCoverage `json:"coverage,omitempty"`
+	Objects              []OperatorEvaluationObject  `json:"objects,omitempty"`
+	requestSHA256        string
+}
+
+type OperatorEvaluationCoverage struct {
+	ScopeKind         string `json:"scope_kind"`
+	CandidateCount    int    `json:"candidate_count"`
+	EvaluatedCount    int    `json:"evaluated_count"`
+	UnresolvedCount   int    `json:"unresolved_count"`
+	InsufficientCount int    `json:"insufficient_count"`
+	Status            string `json:"status"`
+	ReasonCode        string `json:"reason_code,omitempty"`
+}
+
+type OperatorEvaluationObject struct {
+	ObjectRef          string                    `json:"object_ref"`
+	Source             *OperatorEvaluationSource `json:"source"`
+	ServiceObjectID    *string                   `json:"service_object_id"`
+	ObjectVersion      *int                      `json:"object_version"`
+	AssociationVersion *int                      `json:"association_version"`
+	AssociationRunID     string                  `json:"association_run_id,omitempty"`
+	AssociationAttemptID string                  `json:"association_attempt_id,omitempty"`
+	MappingID          *string                   `json:"mapping_id"`
+	MappingVersion     *int64                    `json:"mapping_version"`
+	BindingVersion     *string                   `json:"binding_version"`
+	SnapshotSetID      *string                   `json:"snapshot_set_id"`
+	Status             string                    `json:"status"`
+	ReasonCode         string                    `json:"reason_code"`
+	FactsSHA256        string                    `json:"facts_sha256,omitempty"`
+	FactRefs            []ServiceObjectFactRef    `json:"fact_refs"`
+	SnapshotCollectedAt *time.Time                `json:"snapshot_collected_at,omitempty"`
+	Facts              []auditext.Fact           `json:"facts"`
+	Checks             []auditext.CheckResult    `json:"checks"`
+}
+
+type OperatorEvaluationSource struct {
+	RunID            string `json:"run_id"`
+	AttemptID        string `json:"attempt_id"`
+	AssociationRunID     string `json:"association_run_id,omitempty"`
+	AssociationAttemptID string `json:"association_attempt_id,omitempty"`
+	DocumentID       string `json:"document_id"`
+	ParsedDocumentID string `json:"parsed_document_id"`
+	MaterialID       string `json:"material_id"`
+	MaterialVersion  int    `json:"material_version"`
+	Purpose          string `json:"purpose"`
+	Role             string `json:"role"`
 }
 
 func (s *Store) operatorReady(write bool) error {
@@ -795,6 +895,11 @@ func (s *Store) CreateOperatorFulfillmentEvaluation(ctx context.Context, user ac
 	if evaluator == nil {
 		return OperatorEvaluation{}, fault.New(503, "fulfillment_unavailable", "履约核验器未配置")
 	}
+	scope, err := normalizedOperatorEvaluationScope(input)
+	if err != nil {
+		return OperatorEvaluation{}, err
+	}
+	input.Scope = &scope
 	if input.PackID != pack.PackID || input.PackVersion != pack.Version {
 		return OperatorEvaluation{}, fault.Conflict("能力包版本与请求不一致")
 	}
@@ -805,8 +910,8 @@ func (s *Store) CreateOperatorFulfillmentEvaluation(ctx context.Context, user ac
 	evidenceCutoffAt := input.BusinessAt.UTC().Truncate(time.Microsecond)
 	if input.EvidenceCutoffAt != nil {
 		evidenceCutoffAt = input.EvidenceCutoffAt.UTC().Truncate(time.Microsecond)
-		input.EvidenceCutoffAt = &evidenceCutoffAt
 	}
+	input.EvidenceCutoffAt = &evidenceCutoffAt
 	if evidenceCutoffAt.After(time.Now().UTC()) {
 		return OperatorEvaluation{}, fault.Invalid("证据截止时间不能晚于当前受理时间")
 	}
@@ -816,6 +921,28 @@ func (s *Store) CreateOperatorFulfillmentEvaluation(ctx context.Context, user ac
 	}
 	if item.Scenario != pack.Scenario {
 		return OperatorEvaluation{}, fault.Conflict("能力包场景与案件不一致")
+	}
+	requestDigest, err := operatorHash(input)
+	if err != nil {
+		return OperatorEvaluation{}, err
+	}
+	var replay OperatorEvaluation
+	err = s.withOperatorTx(ctx, user, caseID, false, func(tx pgx.Tx) error {
+		var loadErr error
+		replay, loadErr = loadOperatorEvaluationByKey(ctx, tx, item.TenantID, item.OwnerOrgID, caseID, current.ID, key)
+		return loadErr
+	})
+	if err == nil {
+		if replay.requestSHA256 != requestDigest {
+			return OperatorEvaluation{}, fault.Conflict("同一幂等键对应了不同的核验请求")
+		}
+		return replay, nil
+	}
+	if !errors.Is(err, pgx.ErrNoRows) {
+		return OperatorEvaluation{}, err
+	}
+	if scope.Kind == "whole_case" || input.ObjectBindingVersion == "" || input.SnapshotSetID == "" || input.ContractVersionID == "" {
+		return s.createAggregateOperatorFulfillmentEvaluation(ctx, user, current, st, item, input, scope, pack, evaluator, key)
 	}
 	binding, err := s.operatorReadBinding(ctx, user, caseID, input.ObjectBindingVersion)
 	if err != nil {
@@ -860,6 +987,10 @@ func (s *Store) CreateOperatorFulfillmentEvaluation(ctx context.Context, user ac
 	if !operatorAssociationMatchesFrozenAttempt(association, binding, input, attemptInput) {
 		return OperatorEvaluation{}, fault.Conflict("对象映射未固定到请求所选的合同材料、解析和审查尝试")
 	}
+	if association.CreatedAt.After(evidenceCutoffAt) || association.ConfirmedAt.After(evidenceCutoffAt) ||
+		binding.CreatedAt.After(evidenceCutoffAt) || binding.ConfirmedAt.After(evidenceCutoffAt) {
+		return OperatorEvaluation{}, fault.Conflict("对象关联或映射晚于证据截止时间")
+	}
 	rulePackVersion := attempt.RulePackVersion
 	if rulePackVersion == "" {
 		rulePackVersion = pack.RulePackRef.Version
@@ -876,6 +1007,18 @@ func (s *Store) CreateOperatorFulfillmentEvaluation(ctx context.Context, user ac
 	}
 	if len(selectedSource) != 1 {
 		return OperatorEvaluation{}, fault.Conflict("服务对象合同关联未固定到唯一的审查解析")
+	}
+	selectedPurpose := ""
+	for _, frozenDocument := range attemptInput.Documents {
+		if frozenDocument.Document.ID == association.DocumentID && frozenDocument.ParsedDocumentID == association.ParsedDocumentID && frozenDocument.Material != nil {
+			originalAt, originalErr := time.Parse(time.RFC3339Nano, frozenDocument.Document.CreatedAt)
+			parsedAt, parsedErr := time.Parse(time.RFC3339Nano, frozenDocument.ParsedCreatedAt)
+			if originalErr != nil || parsedErr != nil || originalAt.After(evidenceCutoffAt) || parsedAt.After(evidenceCutoffAt) {
+				return OperatorEvaluation{}, fault.Conflict("合同或解析取得时间晚于证据截止时间，或无法核实")
+			}
+			selectedPurpose = frozenDocument.Material.Purpose
+			break
+		}
 	}
 	if _, err := telecomSources(selectedSource); err != nil {
 		return OperatorEvaluation{}, fault.Conflict("冻结合同输入未通过完整性校验")
@@ -916,6 +1059,7 @@ func (s *Store) CreateOperatorFulfillmentEvaluation(ctx context.Context, user ac
 		BusinessAt:             input.BusinessAt,
 		EvidenceCutoffAt:       &evidenceCutoffAt,
 		Facts:                  frozenFacts,
+		EvaluationScope:        &auditext.EvaluationScope{Kind: scope.Kind, ServiceObjectIDs: append([]string(nil), scope.ServiceObjectIDs...)},
 	}
 	if err := frozen.Validate(); err != nil {
 		return OperatorEvaluation{}, fault.Conflict("冻结核验输入不完整")
@@ -962,7 +1106,7 @@ func (s *Store) CreateOperatorFulfillmentEvaluation(ctx context.Context, user ac
 	err = s.withOperatorTx(ctx, user, caseID, true, func(tx pgx.Tx) error {
 		existing, err := loadOperatorEvaluationByKey(ctx, tx, item.TenantID, item.OwnerOrgID, caseID, current.ID, key)
 		if err == nil {
-			if existing.ResultSHA256 != resultSHA {
+			if existing.ResultSHA256 != resultSHA || existing.requestSHA256 != requestSHA {
 				return fault.Conflict("同一幂等键对应了不同的核验结果")
 			}
 			out = existing
@@ -971,16 +1115,16 @@ func (s *Store) CreateOperatorFulfillmentEvaluation(ctx context.Context, user ac
 		if !errors.Is(err, pgx.ErrNoRows) {
 			return err
 		}
-		now := time.Now().UTC()
+		now := time.Now().UTC().Truncate(time.Microsecond)
 		if _, err := tx.Exec(ctx, `INSERT INTO operator_fulfillment_evaluations
 			(tenant_id,org_id,case_id,evaluation_id,pack_id,pack_version,source_run_id,source_attempt_id,
 			 contract_version_id,rule_pack_version,binding_version,snapshot_set_id,business_at,input_json,input_sha256,
 			 result_json,result_sha256,machine_status,created_by,actor_id,idempotency_key,request_sha256,created_at)
-			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$19,$20,$21,clock_timestamp())`,
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$19,$20,$21,$22)`,
 			item.TenantID, item.OwnerOrgID, caseID, evaluationID, pack.PackID, pack.Version,
 			input.SourceReviewID, input.SourceAttemptID, input.ContractVersionID, rulePackVersion,
 			binding.Version, snapshot.SnapshotSetID, input.BusinessAt, inputJSON, requestSHA, resultJSON, resultSHA,
-			machineStatus, current.ID, key, requestSHA); err != nil {
+			machineStatus, current.ID, key, requestSHA, now); err != nil {
 			return err
 		}
 		for _, check := range checks {
@@ -1005,7 +1149,33 @@ func (s *Store) CreateOperatorFulfillmentEvaluation(ctx context.Context, user ac
 			ObjectBindingVersion: binding.Version, SnapshotSetID: snapshot.SnapshotSetID,
 			BusinessAt: input.BusinessAt, EvidenceCutoffAt: &evidenceCutoffAt,
 			MachineStatus: machineStatus, Checks: checks,
-			CreatedAt: now, Input: frozen, ResultSHA256: resultSHA,
+			CreatedAt: now, Input: frozen, ResultSHA256: resultSHA, requestSHA256: requestSHA,
+			Scope: &scope,
+		}
+		evaluationObject, err := operatorEvaluationObjectForAssociation(scope, input, binding, association, snapshot, selectedPurpose, selectedSource[0].Document.Role, frozenFacts, checks, machineStatus)
+		if err != nil {
+			return err
+		}
+		out.Objects = []OperatorEvaluationObject{evaluationObject}
+		coverage := summarizeOperatorEvaluationObjects(scope.Kind, out.Objects)
+		out.Coverage = &coverage
+		objectJSON, err := json.Marshal(evaluationObject)
+		if err != nil {
+			return err
+		}
+		objectSum := sha256.Sum256(objectJSON)
+		if _, err := tx.Exec(ctx, `INSERT INTO operator_fulfillment_evaluation_objects
+			(tenant_id,org_id,case_id,evaluation_id,ordinal,object_ref,source_run_id,source_attempt_id,material_id,material_version,
+			 document_id,parsed_document_id,purpose,source_role,facts_canonical_json,facts_sha256,service_object_id,object_version,
+			 association_version,mapping_id,mapping_version,binding_version,snapshot_set_id,status,reason_code,result_json,result_sha256,created_at)
+			VALUES ($1,$2,$3,$4,1,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,clock_timestamp())`,
+			item.TenantID, item.OwnerOrgID, caseID, evaluationID, association.ObjectRef, input.SourceReviewID, input.SourceAttemptID,
+			association.MaterialID, association.MaterialVersion, association.DocumentID, association.ParsedDocumentID,
+			selectedPurpose, selectedSource[0].Document.Role, association.FactsCanonicalJSON, association.FactsSHA256,
+			binding.ServiceObjectID, binding.ObjectVersion, binding.AssociationVersion, binding.MappingID, binding.MappingVersion,
+			binding.Version, snapshot.SnapshotSetID, evaluationObject.Status, evaluationObject.ReasonCode, objectJSON,
+			hex.EncodeToString(objectSum[:])); err != nil {
+			return err
 		}
 		return nil
 	})
@@ -1116,7 +1286,9 @@ func (s *Store) GetOperatorImpactPlan(ctx context.Context, user accounts.User, c
 
 func operatorFrozenHasContract(input AttemptInput, contractVersion string) bool {
 	for _, frozen := range input.Documents {
-		if frozen.Document.ID == contractVersion && frozen.Document.Role == "draft_contract" {
+		if frozen.Document.ID == contractVersion && frozen.Material != nil &&
+			((frozen.Material.Purpose == "primary_contract" && frozen.Document.Role == "draft_contract") ||
+				(frozen.Material.Purpose == "supplement" && frozen.Document.Role == "attachment")) {
 			return true
 		}
 	}
@@ -1127,13 +1299,16 @@ func operatorAssociationMatchesFrozenAttempt(association ServiceObjectContractAs
 	input OperatorEvaluationInput, attemptInput AttemptInput) bool {
 	if association.ServiceObjectID != binding.ServiceObjectID || association.ObjectVersion != binding.ObjectVersion ||
 		association.AssociationVersion != binding.AssociationVersion || association.DocumentID != input.ContractVersionID ||
-		association.SourceRunID != input.SourceReviewID || association.SourceAttemptID != input.SourceAttemptID ||
+		association.SourceRunID == "" || association.SourceAttemptID == "" ||
 		association.MaterialID == "" || association.MaterialVersion < 1 || association.ParsedDocumentID == "" {
 		return false
 	}
 	for _, frozen := range attemptInput.Documents {
+		isContractSource := frozen.Material != nil &&
+			((frozen.Material.Purpose == "primary_contract" && frozen.Document.Role == "draft_contract") ||
+				(frozen.Material.Purpose == "supplement" && frozen.Document.Role == "attachment"))
 		if frozen.Document.ID != association.DocumentID || frozen.ParsedDocumentID != association.ParsedDocumentID ||
-			frozen.Document.Role != "draft_contract" || frozen.Material == nil ||
+			!isContractSource ||
 			frozen.Material.MaterialID != association.MaterialID || frozen.Material.Version != association.MaterialVersion || !frozen.Ready {
 			continue
 		}
@@ -1186,6 +1361,65 @@ func operatorFactsForAssociation(association ServiceObjectContractAssociation) (
 		})
 	}
 	return out, nil
+}
+
+func operatorEvaluationObjectForAssociation(scope OperatorEvaluationScope, input OperatorEvaluationInput, binding OperatorObjectBinding,
+	association ServiceObjectContractAssociation, snapshot OperatorSnapshotSet, purpose, role string,
+	facts []auditext.Fact, checks []auditext.CheckResult, machineStatus string) (OperatorEvaluationObject, error) {
+	inScope := scope.Kind == "whole_case"
+	for _, id := range scope.ServiceObjectIDs {
+		if id == binding.ServiceObjectID {
+			inScope = true
+		}
+	}
+	if (scope.Kind != "whole_case" && !inScope) ||
+		purpose == "" || role == "" || association.DocumentID == "" || association.ParsedDocumentID == "" {
+		return OperatorEvaluationObject{}, fault.Conflict("单对象结果未固定到明确的服务对象与合同来源")
+	}
+	serviceObjectID := binding.ServiceObjectID
+	objectVersion := binding.ObjectVersion
+	associationVersion := binding.AssociationVersion
+	mappingID := binding.MappingID
+	mappingVersion := binding.MappingVersion
+	bindingVersion := binding.Version
+	snapshotSetID := snapshot.SnapshotSetID
+	status := "evaluated"
+	reason := ""
+	allNotApplicable := len(checks) > 0
+	for _, check := range checks {
+		if check.Relation != auditext.RelationNotApplicable {
+			allNotApplicable = false
+		}
+		if check.Relation == auditext.RelationInsufficient {
+			status = "insufficient"
+			if reason == "" {
+				reason = check.ReasonCode
+			}
+		}
+	}
+	if allNotApplicable {
+		status = "not_applicable"
+	}
+	if machineStatus != "completed" || len(checks) == 0 || len(facts) == 0 {
+		status = "insufficient"
+		if reason == "" {
+			reason = "evaluation_partial"
+		}
+	}
+
+	return OperatorEvaluationObject{
+		ObjectRef: association.ObjectRef,
+		Source: &OperatorEvaluationSource{RunID: input.SourceReviewID, AttemptID: input.SourceAttemptID,
+			DocumentID: association.DocumentID, ParsedDocumentID: association.ParsedDocumentID,
+			MaterialID: association.MaterialID, MaterialVersion: association.MaterialVersion, Purpose: purpose, Role: role,
+			AssociationRunID: association.SourceRunID, AssociationAttemptID: association.SourceAttemptID},
+		ServiceObjectID: &serviceObjectID, ObjectVersion: &objectVersion, AssociationVersion: &associationVersion,
+		AssociationRunID: association.SourceRunID, AssociationAttemptID: association.SourceAttemptID,
+		MappingID: &mappingID, MappingVersion: &mappingVersion, BindingVersion: &bindingVersion, SnapshotSetID: &snapshotSetID,
+		SnapshotCollectedAt: &snapshot.CollectedAt, Status: status, ReasonCode: reason, FactsSHA256: association.FactsSHA256,
+		FactRefs: append([]ServiceObjectFactRef{}, association.FactRefs...),
+		Facts: append([]auditext.Fact{}, facts...), Checks: append([]auditext.CheckResult{}, checks...),
+	}, nil
 }
 
 // operatorObservationsForEvaluation derives a safe evaluation view without
@@ -1458,21 +1692,27 @@ func loadOperatorEvaluation(ctx context.Context, tx pgx.Tx, caseID, evaluationID
 	var out OperatorEvaluation
 	var inputJSON, resultJSON []byte
 	err := tx.QueryRow(ctx, `SELECT case_id,evaluation_id,pack_id,pack_version,source_run_id,source_attempt_id,
-		contract_version_id,rule_pack_version,binding_version,snapshot_set_id,business_at,input_json,result_json,
-		result_sha256,machine_status,created_at
+		COALESCE(contract_version_id,''),rule_pack_version,COALESCE(binding_version,''),COALESCE(snapshot_set_id,''),business_at,input_json,result_json,
+		result_sha256,machine_status,created_at,request_sha256
 		FROM operator_fulfillment_evaluations WHERE tenant_id=current_setting('app.tenant_id',true)
 		AND org_id=current_setting('app.org_id',true) AND case_id=$1 AND evaluation_id=$2`,
 		caseID, evaluationID).Scan(&out.CaseID, &out.EvaluationID, &out.PackID, &out.PackVersion,
 		&out.SourceReviewID, &out.SourceAttemptID, &out.ContractVersionID, &out.RulePackVersion,
 		&out.ObjectBindingVersion, &out.SnapshotSetID, &out.BusinessAt, &inputJSON, &resultJSON,
-		&out.ResultSHA256, &out.MachineStatus, &out.CreatedAt)
+		&out.ResultSHA256, &out.MachineStatus, &out.CreatedAt, &out.requestSHA256)
 	if err != nil {
 		return out, err
 	}
+	out.BusinessAt = out.BusinessAt.UTC()
+	out.CreatedAt = out.CreatedAt.UTC()
 	if err := json.Unmarshal(inputJSON, &out.Input); err != nil {
 		return out, err
 	}
 	out.EvidenceCutoffAt = out.Input.EvidenceCutoffAt
+	if out.Input.EvaluationScope != nil {
+		scope := OperatorEvaluationScope{Kind: out.Input.EvaluationScope.Kind, ServiceObjectIDs: append([]string(nil), out.Input.EvaluationScope.ServiceObjectIDs...)}
+		out.Scope = &scope
+	}
 	checks, err := loadOperatorChecks(ctx, tx, caseID, evaluationID)
 	if err != nil {
 		return out, err
@@ -1483,7 +1723,65 @@ func loadOperatorEvaluation(ctx context.Context, tx pgx.Tx, caseID, evaluationID
 		}
 	}
 	out.Checks = checks
+	if out.Input.EvaluationScope != nil {
+		objects, err := loadOperatorEvaluationObjects(ctx, tx, caseID, evaluationID)
+		if err != nil {
+			return out, err
+		}
+		out.Objects = objects
+		coverage := summarizeOperatorEvaluationObjects(scopeKind(out.Input.EvaluationScope), objects)
+		out.Coverage = &coverage
+		if len(checks) == 0 {
+			canonicalObjects, err := json.Marshal(objects)
+			if err != nil {
+				return out, err
+			}
+			sum := sha256.Sum256(canonicalObjects)
+			if hex.EncodeToString(sum[:]) != out.ResultSHA256 {
+				return out, fault.New(500, "integrity_error", "整案核验结果摘要不匹配")
+			}
+		}
+	}
 	return out, nil
+}
+
+func loadOperatorEvaluationObjects(ctx context.Context, tx pgx.Tx, caseID, evaluationID string) ([]OperatorEvaluationObject, error) {
+	rows, err := tx.Query(ctx, `SELECT object_ref,facts_canonical_json,facts_sha256,result_json,result_sha256
+		FROM operator_fulfillment_evaluation_objects WHERE tenant_id=current_setting('app.tenant_id',true)
+		AND org_id=current_setting('app.org_id',true) AND case_id=$1 AND evaluation_id=$2 ORDER BY ordinal`, caseID, evaluationID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	objects := make([]OperatorEvaluationObject, 0)
+	for rows.Next() {
+		var objectRef, factsSHA, resultSHA string
+		var factsRaw, resultRaw []byte
+		if err := rows.Scan(&objectRef, &factsRaw, &factsSHA, &resultRaw, &resultSHA); err != nil {
+			return nil, err
+		}
+		factsSum := sha256.Sum256(factsRaw)
+		resultSum := sha256.Sum256(resultRaw)
+		if hex.EncodeToString(factsSum[:]) != factsSHA || hex.EncodeToString(resultSum[:]) != resultSHA {
+			return nil, fault.New(500, "integrity_error", "核验对象冻结事实或结果摘要不匹配")
+		}
+		var object OperatorEvaluationObject
+		if err := json.Unmarshal(resultRaw, &object); err != nil || object.ObjectRef != objectRef || object.FactsSHA256 != factsSHA {
+			return nil, fault.New(500, "integrity_error", "核验对象冻结结果损坏")
+		}
+		objects = append(objects, object)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return objects, nil
+}
+
+func scopeKind(scope *auditext.EvaluationScope) string {
+	if scope == nil {
+		return ""
+	}
+	return scope.Kind
 }
 
 func loadOperatorChecks(ctx context.Context, tx pgx.Tx, caseID, evaluationID string) ([]auditext.CheckResult, error) {

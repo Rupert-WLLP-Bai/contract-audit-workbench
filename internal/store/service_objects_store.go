@@ -70,11 +70,23 @@ type ServiceObjectSummary struct {
 	NeedsReassociation        bool                         `json:"needs_reassociation"`
 }
 
+type ServiceObjectMappingPin struct {
+	MappingID string `json:"mapping_id"`
+	MappingVersion int64 `json:"mapping_version"`
+	BindingVersion string `json:"binding_version"`
+	ObjectVersion int `json:"object_version"`
+	AssociationVersion int `json:"association_version"`
+	ExternalObject OperatorExternalObject `json:"external_object"`
+	EffectiveFrom time.Time `json:"effective_from"`
+	EffectiveUntil time.Time `json:"effective_until"`
+}
+
 type ServiceObjectDetail struct {
 	ServiceObjectID    string                            `json:"service_object_id"`
 	CurrentVersion     int                               `json:"current_version"`
 	Identity           ServiceObjectVersion              `json:"identity"`
 	Association        *ServiceObjectContractAssociation `json:"association"`
+	Mapping            *ServiceObjectMappingPin          `json:"mapping"`
 	CanManage          bool                              `json:"can_manage"`
 	NeedsReassociation bool                              `json:"needs_reassociation"`
 }
@@ -337,12 +349,30 @@ func (s *Store) GetServiceObject(ctx context.Context, user accounts.User, caseID
 		}
 		association = &currentAssociation
 	}
+	var mapping *ServiceObjectMappingPin
+	var mappingID string
+	err = tx.QueryRow(ctx, `SELECT mapping_id FROM operator_mapping_lineages
+		WHERE tenant_id=$1 AND org_id=$2 AND case_id=$3 AND service_object_id=$4`,
+		accounts.Tenant(current), caseItem.OwnerOrgID, caseID, objectID).Scan(&mappingID)
+	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		return ServiceObjectDetail{}, err
+	}
+	if err == nil {
+		mappingHead, mappingVersion, _, _, err := loadOperatorMappingCurrent(ctx, tx, accounts.Tenant(current), caseItem.OwnerOrgID, caseID, mappingID)
+		if err != nil {
+			return ServiceObjectDetail{}, err
+		}
+		mapping = &ServiceObjectMappingPin{MappingID: mappingID, MappingVersion: mappingHead.CurrentVersion,
+			BindingVersion: mappingHead.CurrentBindingVersion, ObjectVersion: mappingVersion.ObjectVersion,
+			AssociationVersion: mappingVersion.AssociationVersion, ExternalObject: mappingVersion.Binding.ExternalObject,
+			EffectiveFrom: mappingVersion.Binding.EffectiveFrom, EffectiveUntil: mappingVersion.Binding.EffectiveUntil}
+	}
 	st, err := loadState(ctx, tx, false)
 	if err != nil {
 		return ServiceObjectDetail{}, err
 	}
 	result := ServiceObjectDetail{ServiceObjectID: head.ID, CurrentVersion: head.CurrentVersion, Identity: version,
-		Association: association, CanManage: serviceObjectCanManage(s, current, caseItem),
+		Association: association, Mapping: mapping, CanManage: serviceObjectCanManage(s, current, caseItem),
 		NeedsReassociation: serviceObjectNeedsReassociation(st, caseID, associationPinPointer(association))}
 	if err := tx.Commit(ctx); err != nil {
 		return ServiceObjectDetail{}, err
@@ -527,7 +557,7 @@ func (s *Store) PreviewServiceObjectAssociation(ctx context.Context, user accoun
 	if err != nil {
 		return ServiceObjectAssociationPreview{}, err
 	}
-	preview, err := deriveServiceObjectAssociationPreview(s, st, current, caseItem, head, input)
+	preview, err := deriveServiceObjectAssociationPreview(ctx, tx, s, st, current, caseItem, head, input)
 	if err != nil {
 		return ServiceObjectAssociationPreview{}, err
 	}
@@ -597,11 +627,22 @@ func (s *Store) ConfirmServiceObjectAssociation(ctx context.Context, user accoun
 	if err != nil {
 		return empty, false, err
 	}
+	if head.CurrentAssociationVersion > 0 {
+		var hasMapping bool
+		if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM operator_mapping_lineages
+			WHERE tenant_id=$1 AND org_id=$2 AND case_id=$3 AND service_object_id=$4)`,
+			accounts.Tenant(current), caseItem.OwnerOrgID, caseID, objectID).Scan(&hasMapping); err != nil {
+			return empty, false, err
+		}
+		if hasMapping {
+			return empty, false, fault.Conflict("已映射对象的合同关联变更须通过映射异人审批流程")
+		}
+	}
 	var currentVersion ServiceObjectVersion
 	if err := loadServiceObjectVersion(ctx, tx, accounts.Tenant(current), caseItem.OwnerOrgID, caseID, head, &currentVersion); err != nil {
 		return empty, false, err
 	}
-	preview, err := deriveServiceObjectAssociationPreview(s, st, current, caseItem, head, input.Source)
+	preview, err := deriveServiceObjectAssociationPreview(ctx, tx, s, st, current, caseItem, head, input.Source)
 	if err != nil {
 		return empty, false, err
 	}
@@ -670,14 +711,42 @@ func (s *Store) ConfirmServiceObjectAssociation(ctx context.Context, user accoun
 	return result, false, nil
 }
 
-func deriveServiceObjectAssociationPreview(s *Store, st state, user accounts.User, caseItem Case, head ServiceObjectHead, input ServiceObjectAssociationPreviewInput) (ServiceObjectAssociationPreview, error) {
+// validateOperatorFrozenAttempt verifies immutable input and output using the
+// caller's transaction, so association approval observes one scoped snapshot.
+func (s *Store) validateOperatorFrozenAttempt(ctx context.Context, tx pgx.Tx, st state, item Case, runID, attemptID string) (Attempt, AttemptInput, error) {
+	_, attempt, err := terminalRunAndAttempt(st, item, runID, attemptID)
+	if err != nil {
+		return Attempt{}, AttemptInput{}, err
+	}
+	if err := requireFrozenAttemptHashes(attempt); err != nil {
+		return Attempt{}, AttemptInput{}, err
+	}
+	input, ok := st.attemptInput(attemptID)
+	if !ok || input.RunID != runID || input.AttemptID != attemptID || input.InputHash != *attempt.InputHash ||
+		!frozenAttemptInputMatches(st, runID, attemptID, input) {
+		return Attempt{}, AttemptInput{}, fault.Conflict("来源审查的冻结输入未通过校验")
+	}
+	if err := s.verifyFrozenDocuments(st, input.Documents); err != nil {
+		return Attempt{}, AttemptInput{}, fault.Conflict("来源审查的冻结材料未通过校验")
+	}
+	digest, err := agentReviewDigestForOutput(ctx, tx, item.TenantID, item.OwnerOrgID, attemptID)
+	if err != nil || !frozenAttemptOutputMatches(st, runID, attemptID, attempt, digest) {
+		return Attempt{}, AttemptInput{}, fault.Conflict("来源审查的冻结输出未通过校验")
+	}
+	if _, err := validateRemediationRulePack(attempt, item); err != nil {
+		return Attempt{}, AttemptInput{}, fault.Conflict("来源审查缺少有效的冻结规则包")
+	}
+	return attempt, input, nil
+}
+
+func deriveServiceObjectAssociationPreview(ctx context.Context, tx pgx.Tx, s *Store, st state, user accounts.User, caseItem Case, head ServiceObjectHead, input ServiceObjectAssociationPreviewInput) (ServiceObjectAssociationPreview, error) {
 	input.RunID, input.AttemptID = strings.TrimSpace(input.RunID), strings.TrimSpace(input.AttemptID)
 	input.MaterialID, input.DocumentID = strings.TrimSpace(input.MaterialID), strings.TrimSpace(input.DocumentID)
 	input.ParsedDocumentID = strings.TrimSpace(input.ParsedDocumentID)
 	if input.RunID == "" || input.AttemptID == "" || input.MaterialID == "" || input.MaterialVersion < 1 || input.DocumentID == "" || input.ParsedDocumentID == "" {
 		return ServiceObjectAssociationPreview{}, fault.Invalid("冻结审查及材料解析选择无效")
 	}
-	_, attempt, attemptInput, _, err := s.validateFrozenTerminalAttempt(st, caseItem, input.RunID, input.AttemptID)
+	attempt, attemptInput, err := s.validateOperatorFrozenAttempt(ctx, tx, st, caseItem, input.RunID, input.AttemptID)
 	if err != nil {
 		return ServiceObjectAssociationPreview{}, err
 	}
@@ -692,7 +761,7 @@ func deriveServiceObjectAssociationPreview(s *Store, st state, user accounts.Use
 			break
 		}
 	}
-	if selected == nil || selected.Material == nil || selected.Material.MaterialID != input.MaterialID || selected.Material.Purpose != "primary_contract" || selected.Document.Role != "draft_contract" {
+	if selected == nil || !isOperatorContractSource(*selected) || selected.Material.MaterialID != input.MaterialID || selected.Material.Version != input.MaterialVersion {
 		return ServiceObjectAssociationPreview{}, fault.Conflict("合同材料不在该次冻结审查中")
 	}
 	var materialVersionFound bool
@@ -716,7 +785,7 @@ func deriveServiceObjectAssociationPreview(s *Store, st state, user accounts.Use
 	if !selectedParse {
 		return ServiceObjectAssociationPreview{}, fault.Conflict("解析版本不在该次冻结审查中")
 	}
-	interpreted := interpretedFromFrozen(attemptInput.Documents)
+	interpreted := interpretedFromFrozen([]FrozenDocument{*selected})
 	sources, err := telecomSources(interpreted)
 	if err != nil {
 		return ServiceObjectAssociationPreview{}, fault.Conflict("冻结合同原文未通过完整性校验")
@@ -725,7 +794,7 @@ func deriveServiceObjectAssociationPreview(s *Store, st state, user accounts.Use
 	resource := access.Resource{TenantID: caseItem.TenantID, OrgID: caseItem.OwnerOrgID, CaseID: caseItem.ID, OwnerID: caseItem.OwnerID}
 	request := rulepack.Request{Principal: principal, Resource: resource, BusinessLine: caseItem.BusinessLine, Scenario: caseItem.Scenario,
 		ContractType: caseItem.ContractType, At: time.Now().UTC(), Sources: sources}
-	facts, err := telecom.Extract(request)
+	facts, err := telecom.ExtractContractMaterial(request, sources[0])
 	if err != nil {
 		return ServiceObjectAssociationPreview{}, fault.Conflict("冻结合同中没有可用的服务对象事实")
 	}
@@ -788,6 +857,34 @@ func deriveServiceObjectAssociationPreview(s *Store, st state, user accounts.Use
 		return ServiceObjectAssociationPreview{}, err
 	}
 	return preview, nil
+}
+
+// operatorSupplementCandidates reads only explicit supplements from the
+// already verified attempt input and keeps each fact tied to its own parse.
+func operatorSupplementCandidates(caseItem Case, input AttemptInput) ([]operatorEvaluationCandidate, error) {
+	request := rulepack.Request{BusinessLine: caseItem.BusinessLine, Scenario: caseItem.Scenario, ContractType: caseItem.ContractType}
+	var candidates []operatorEvaluationCandidate
+	for _, frozen := range input.Documents {
+		if !isOperatorContractSource(frozen) || frozen.Material.Purpose != "supplement" {
+			continue
+		}
+		sources, err := telecomSources(interpretedFromFrozen([]FrozenDocument{frozen}))
+		if err != nil || len(sources) != 1 {
+			return nil, fault.Conflict("冻结补充协议未通过完整性校验")
+		}
+		facts, err := telecom.ExtractContractMaterial(request, sources[0])
+		if err != nil {
+			return nil, fault.Conflict("冻结补充协议的对象事实无法提取")
+		}
+		seen := make(map[string]bool)
+		for _, fact := range facts {
+			if fact.ObjectRef != "" && !seen[fact.ObjectRef] {
+				seen[fact.ObjectRef] = true
+				candidates = append(candidates, operatorEvaluationCandidate{ObjectRef: fact.ObjectRef, Source: frozen})
+			}
+		}
+	}
+	return candidates, nil
 }
 
 func (s *Store) serviceObjectMutationTx(ctx context.Context, user accounts.User, caseID string) (accounts.User, Case, pgx.Tx, error) {

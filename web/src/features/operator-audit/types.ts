@@ -111,6 +111,9 @@ export interface CreateObjectBindingInput {
     connector_id: string;
     external_object_id: string;
   };
+  service_object_id: string;
+  expected_object_version: number;
+  expected_association_version: number;
   effective_from: string | null;
   effective_until: string | null;
   confirmed: true;
@@ -225,10 +228,12 @@ export interface FulfillmentEvaluationInput {
   pack_version: string;
   source_review_id: string;
   source_attempt_id: string;
-  contract_version_id: string;
-  object_binding_version: string;
-  snapshot_set_id: string;
+  contract_version_id?: string;
+  object_binding_version?: string;
+  snapshot_set_id?: string;
   business_at: string;
+  evidence_cutoff_at?: string;
+  scope?: { kind: "whole_case" | "explicit_subset"; service_object_ids?: string[] };
 }
 
 export interface FulfillmentEvaluationRef {
@@ -244,14 +249,61 @@ export interface ContractFact {
   semanticKind: string | null;
 }
 
+export interface FulfillmentObject {
+  objectRef: string;
+  serviceObjectId: string | null;
+  objectVersion: number | null;
+  associationVersion: number | null;
+  associationRunId: string | null;
+  associationAttemptId: string | null;
+  mappingId: string | null;
+  mappingVersion: number | null;
+  bindingVersion: string | null;
+  snapshotSetId: string | null;
+  snapshotCollectedAt: string | null;
+  status: string | null;
+  reasonCode: string | null;
+  factsSha256: string | null;
+  factRefs: unknown[];
+  facts: ContractFact[];
+  checks: CheckResult[];
+  source: {
+    runId: string | null;
+    attemptId: string | null;
+    associationRunId: string | null;
+    associationAttemptId: string | null;
+    materialId: string | null;
+    materialVersion: number | null;
+    documentId: string | null;
+    parsedDocumentId: string | null;
+    purpose: string | null;
+  } | null;
+}
+
+export interface FulfillmentCoverage {
+  scopeKind: string | null;
+  candidateCount: number | null;
+  evaluatedCount: number | null;
+  unresolvedCount: number | null;
+  insufficientCount: number | null;
+  status: string | null;
+  reasonCode: string | null;
+}
+
 export interface FulfillmentEvaluation {
   evaluationId: string;
+  sourceReviewId?: string | null;
+  sourceAttemptId?: string | null;
   pack: PackRef | null;
   contractVersion: string | null;
   rulePackVersion: string | null;
   objectBindingVersion: string | null;
   snapshotSetId: string | null;
   businessAt: string | null;
+  evidenceCutoffAt?: string | null;
+  scope?: { kind: string | null; serviceObjectIds: string[] } | null;
+  coverage?: FulfillmentCoverage | null;
+  objects?: FulfillmentObject[];
   checks: CheckResult[];
   contractFacts: ContractFact[];
   dataClass: string | null;

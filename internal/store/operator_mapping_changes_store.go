@@ -23,10 +23,79 @@ type OperatorMappingChangePreview struct {
 	Before          OperatorMappingVersion   `json:"before"`
 	After           OperatorMappingVersion   `json:"after"`
 	IdentityAfter   *ServiceObjectVersion    `json:"identity_after,omitempty"`
+	AssociationAfter *operatorMappingAssociationAfter `json:"association_after,omitempty"`
 	BeforeSHA256    string                   `json:"before_sha256"`
 	AfterSHA256     string                   `json:"after_sha256"`
 	ImpactSHA256    string                   `json:"impact_sha256"`
 	BasisRefs       json.RawMessage          `json:"basis_refs"`
+}
+
+func (s *Store) mappingAssociationTarget(ctx context.Context, tx pgx.Tx, st state, user accounts.User, item Case,
+	head OperatorMappingHead, version OperatorMappingVersion, identity ServiceObjectVersion, input *ServiceObjectAssociationConfirmInput) (*ServiceObjectContractAssociation, *operatorMappingAssociationAfter, error) {
+	if input == nil {
+		return nil, nil, nil
+	}
+	objectHead, err := loadServiceObjectHead(ctx, tx, item.TenantID, item.OwnerOrgID, item.ID, head.ServiceObjectID)
+	if err != nil {
+		return nil, nil, err
+	}
+	if objectHead.CurrentVersion != version.ObjectVersion || objectHead.CurrentAssociationVersion != version.AssociationVersion ||
+		input.ExpectedObjectVersion != objectHead.CurrentVersion || input.ExpectedAssociationVersion != objectHead.CurrentAssociationVersion || !input.Confirmed {
+		return nil, nil, fault.Conflict("服务对象身份或关联版本已变化")
+	}
+	preview, err := deriveServiceObjectAssociationPreview(ctx, tx, s, st, user, item, objectHead, input.Source)
+	if err != nil {
+		return nil, nil, err
+	}
+	var selected *ServiceObjectAssociationOption
+	for i := range preview.Options {
+		if preview.Options[i].ObjectRef == input.ObjectRef {
+			selected = &preview.Options[i]
+			break
+		}
+	}
+	if selected == nil || selected.FactsSHA256 != input.FactsSHA256 || preview.CandidatesSHA256 != input.CandidatesSHA256 {
+		return nil, nil, fault.Conflict("目标合同对象或冻结事实已变化，请重新预览")
+	}
+	association := ServiceObjectContractAssociation{MaterialID: preview.MaterialID, MaterialVersion: preview.MaterialVersion,
+		DocumentID: preview.DocumentID, ParsedDocumentID: preview.ParsedDocumentID, SourceRunID: preview.RunID,
+		SourceAttemptID: preview.AttemptID, ObjectRef: selected.ObjectRef, FactRefs: selected.Facts, BasisRefs: selected.BasisRefs}
+	plan, err := PlanServiceObjectAssociation(objectHead, identity, ServiceObjectAssociationCandidate{
+		ExpectedObjectVersion: input.ExpectedObjectVersion, ExpectedAssociationVersion: input.ExpectedAssociationVersion,
+		Confirmed: true, Association: association}, user.ID, time.Now().UTC())
+	if err != nil || plan.ObjectVersion.Version != identity.Version {
+		return nil, nil, fault.Conflict("目标合同关联不能应用于当前服务对象")
+	}
+	association = plan.Association
+	projection := &operatorMappingAssociationAfter{ServiceObjectID: association.ServiceObjectID, ObjectVersion: association.ObjectVersion,
+		AssociationVersion: association.AssociationVersion, MaterialID: association.MaterialID, MaterialVersion: association.MaterialVersion,
+		DocumentID: association.DocumentID, ParsedDocumentID: association.ParsedDocumentID, SourceRunID: association.SourceRunID,
+		SourceAttemptID: association.SourceAttemptID, ObjectRef: association.ObjectRef, FactRefs: association.FactRefs,
+		FactsSHA256: association.FactsSHA256, BasisRefs: append(json.RawMessage(nil), association.BasisRefs...)}
+	return &association, projection, nil
+}
+
+func bindMappingAssociation(plan *OperatorMappingChangePlan, association *operatorMappingAssociationAfter) error {
+	if association == nil {
+		return nil
+	}
+	digest, err := operatorMappingApprovedDigest(canonicalOperatorMappingState(plan.NextVersion), nil, association)
+	if err == nil {
+		plan.AfterSHA256 = digest
+	}
+	return err
+}
+
+func mappingImpactWithAssociation(head OperatorMappingHead, version OperatorMappingVersion, identity ServiceObjectVersion,
+	current ServiceObjectContractAssociation, target *operatorMappingAssociationAfter) (string, error) {
+	base, err := operatorMappingImpactSHA256(head, version, identity, current)
+	if err != nil || target == nil {
+		return base, err
+	}
+	return operatorHash(struct {
+		CurrentImpact string `json:"current_impact"`
+		Target *operatorMappingAssociationAfter `json:"target_association"`
+	}{base, target})
 }
 
 // PreviewOperatorMappingChange returns the exact current tuple and proposed
@@ -81,7 +150,14 @@ func (s *Store) PreviewOperatorMappingChange(ctx context.Context, user accounts.
 		if err != nil {
 			return fault.Conflict("对象映射更正内容或版本不匹配")
 		}
-		impactSHA, err := operatorMappingImpactSHA256(head, version, identity, association)
+		_, targetAssociation, err := s.mappingAssociationTarget(ctx, tx, fresh, current, freshCase, head, version, identity, patch.ContractAssociation)
+		if err != nil {
+			return err
+		}
+		if err := bindMappingAssociation(&plan, targetAssociation); err != nil {
+			return err
+		}
+		impactSHA, err := mappingImpactWithAssociation(head, version, identity, association, targetAssociation)
 		if err != nil {
 			return err
 		}
@@ -95,7 +171,7 @@ func (s *Store) PreviewOperatorMappingChange(ctx context.Context, user accounts.
 		}
 		out = OperatorMappingChangePreview{MappingID: mappingID, ServiceObjectID: head.ServiceObjectID, CAS: cas,
 			Before: version, After: plan.NextVersion, BeforeSHA256: plan.BeforeSHA256, AfterSHA256: plan.AfterSHA256,
-			IdentityAfter: identityAfter, ImpactSHA256: impactSHA, BasisRefs: append(json.RawMessage(nil), basisRefs...)}
+			IdentityAfter: identityAfter, AssociationAfter: targetAssociation, ImpactSHA256: impactSHA, BasisRefs: append(json.RawMessage(nil), basisRefs...)}
 		return nil
 	})
 	return out, err
@@ -180,7 +256,15 @@ func (s *Store) ProposeOperatorMappingChange(ctx context.Context, user accounts.
 		if !operatorMappingCASMatches(head, version, input.CAS) {
 			return fault.Conflict("对象映射版本已变化，请刷新后重试")
 		}
-		if input.ImpactSHA256 != mustOperatorMappingImpactSHA256(head, version, identity, association) {
+		_, targetAssociation, err := s.mappingAssociationTarget(ctx, tx, fresh, current, caseItem, head, version, identity, input.Patch.ContractAssociation)
+		if err != nil {
+			return err
+		}
+		impactSHA, err := mappingImpactWithAssociation(head, version, identity, association, targetAssociation)
+		if err != nil {
+			return err
+		}
+		if input.ImpactSHA256 != impactSHA {
 			return fault.Conflict("对象映射影响预览已变化，请重新查看")
 		}
 		if err := validateMappingChangeBasis(fresh, &caseItem, input.BasisRefs, association); err != nil {
@@ -196,6 +280,9 @@ func (s *Store) ProposeOperatorMappingChange(ctx context.Context, user accounts.
 		if err != nil {
 			return fault.Conflict("对象映射更正内容或版本不匹配")
 		}
+		if err := bindMappingAssociation(&plan, targetAssociation); err != nil {
+			return err
+		}
 		patchJSON, err := json.Marshal(input.Patch)
 		if err != nil {
 			return err
@@ -205,7 +292,9 @@ func (s *Store) ProposeOperatorMappingChange(ctx context.Context, user accounts.
 			return err
 		}
 		var afterJSON []byte
-		if input.Patch.Identity == nil {
+		if targetAssociation != nil {
+			afterJSON, err = json.Marshal(operatorMappingApprovedAfter{Mapping: canonicalOperatorMappingState(plan.NextVersion), Association: targetAssociation})
+		} else if input.Patch.Identity == nil {
 			afterJSON, err = json.Marshal(canonicalOperatorMappingState(plan.NextVersion))
 		} else {
 			proposedIdentity, identityErr := proposedOperatorIdentityVersion(head.ServiceObjectID, identity.Version, *input.Patch.Identity, input.Patch.EffectiveFrom)
@@ -393,7 +482,11 @@ func (s *Store) DecideOperatorMappingChange(ctx context.Context, user accounts.U
 		cas := OperatorMappingChangeCAS{ExpectedMappingVersion: request.ExpectedMappingVersion,
 			ExpectedBindingVersion: request.ExpectedBindingVersion, ExpectedObjectVersion: request.ExpectedObjectVersion,
 			ExpectedAssociationVersion: request.ExpectedAssociationVersion}
-		impactSHA, err := operatorMappingImpactSHA256(head, version, identity, association)
+		target, targetAssociation, err := s.mappingAssociationTarget(ctx, tx, fresh, current, caseItem, head, version, identity, request.Patch.ContractAssociation)
+		if err != nil {
+			return err
+		}
+		impactSHA, err := mappingImpactWithAssociation(head, version, identity, association, targetAssociation)
 		if err != nil {
 			return err
 		}
@@ -412,8 +505,21 @@ func (s *Store) DecideOperatorMappingChange(ctx context.Context, user accounts.U
 			}
 		}
 		proposalPlan, err := PlanOperatorMappingChange(head, version, cas, request.Patch, "binding_proposal", request.ProposedBy.UserID, time.Now().UTC())
-		if err != nil || proposalPlan.AfterSHA256 != request.AfterSHA256 {
+		if err != nil {
 			return fault.Conflict("对象映射更正摘要与提案内容不一致")
+		}
+		if err := bindMappingAssociation(&proposalPlan, targetAssociation); err != nil || proposalPlan.AfterSHA256 != request.AfterSHA256 {
+			return fault.Conflict("对象映射更正摘要与提案内容不一致")
+		}
+		if targetAssociation != nil {
+			var saved operatorMappingApprovedAfter
+			if err := json.Unmarshal(request.After, &saved); err != nil {
+				return fault.Conflict("目标合同关联提案记录损坏")
+			}
+			savedDigest, err := operatorMappingApprovedDigest(saved.Mapping, saved.Identity, saved.Association)
+			if err != nil || savedDigest != request.AfterSHA256 {
+				return fault.Conflict("目标合同关联提案摘要不一致")
+			}
 		}
 		decisionID, err := newID("omcd_")
 		if err != nil {
@@ -453,8 +559,23 @@ func (s *Store) DecideOperatorMappingChange(ctx context.Context, user accounts.U
 		if err != nil {
 			return fault.Conflict("映射更正内容已失效")
 		}
+		if err := bindMappingAssociation(&plan, targetAssociation); err != nil {
+			return err
+		}
 		newBinding := plan.NextVersion.Binding
 		objectVersion, associationVersion := request.ExpectedObjectVersion, request.ExpectedAssociationVersion
+		if target != nil {
+			target.ConfirmedBy, target.ConfirmedAt, target.CreatedAt = current.ID, now, now
+			target.IdentityChangeDecisionID = decisionID
+			target.PayloadSHA256, err = canonicalServiceObjectAssociationSHA256(*target)
+			if err != nil {
+				return err
+			}
+			if err := insertServiceObjectAssociation(ctx, tx, current, caseItem, *target); err != nil {
+				return err
+			}
+			associationVersion = target.AssociationVersion
+		}
 		if request.Patch.Identity != nil {
 			proposed, err := proposedOperatorIdentityVersion(request.ServiceObjectID, identity.Version, *request.Patch.Identity, request.Patch.EffectiveFrom)
 			if err != nil {
@@ -513,6 +634,18 @@ func (s *Store) DecideOperatorMappingChange(ctx context.Context, user accounts.U
 			decisionID, newBindingJSON)
 		if err != nil {
 			return err
+		}
+		if target != nil {
+			updatedObject, err := tx.Exec(ctx, `UPDATE service_objects SET current_association_version=$1
+				WHERE tenant_id=$2 AND org_id=$3 AND case_id=$4 AND service_object_id=$5 AND current_version=$6 AND current_association_version=$7`,
+				associationVersion, current.TenantID, caseItem.OwnerOrgID, caseID, request.ServiceObjectID,
+				request.ExpectedObjectVersion, request.ExpectedAssociationVersion)
+			if err != nil {
+				return err
+			}
+			if updatedObject.RowsAffected() != 1 {
+				return fault.Conflict("服务对象合同关联已被并发更新")
+			}
 		}
 		command, err := tx.Exec(ctx, `UPDATE operator_mapping_lineages SET current_version=$1,current_binding_version=$2,updated_at=$3
 			WHERE tenant_id=$4 AND org_id=$5 AND case_id=$6 AND mapping_id=$7 AND current_version=$8 AND current_binding_version=$9`,

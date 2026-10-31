@@ -49,7 +49,8 @@ export interface ServiceObjectSummary {
   can_manage: boolean; needs_reassociation: boolean;
 }
 export interface ServiceObjectList { items: ServiceObjectSummary[]; next_cursor: string | null; can_manage: boolean }
-export interface ServiceObjectDetail { service_object_id: string; current_version: number; identity: ServiceObjectVersion; association: ServiceObjectAssociation | null; can_manage: boolean; needs_reassociation: boolean }
+export interface ServiceObjectMappingPin { mapping_id: string; mapping_version: number; binding_version: string; object_version: number; association_version: number; external_object: { connector_id: string; external_object_id: string }; effective_from: string; effective_until: string }
+export interface ServiceObjectDetail { service_object_id: string; current_version: number; identity: ServiceObjectVersion; association: ServiceObjectAssociation | null; mapping: ServiceObjectMappingPin | null; can_manage: boolean; needs_reassociation: boolean }
 export interface ServiceObjectVersionPage { items: ServiceObjectVersion[]; next_cursor: string | null }
 export interface ServiceObjectAssociationPage { items: ServiceObjectAssociation[]; next_cursor: string | null }
 export interface AssociationSource { run_id: string; attempt_id: string; material_id: string; material_version: number; document_id: string; parsed_document_id: string }
@@ -60,6 +61,12 @@ export interface AssociationPreview extends AssociationSource {
 export interface ServiceObjectMutationResult { service_object_id: string; version: number; association_version: number }
 export interface ServiceObjectCreateInput { object_type: ServiceObjectType; display_name: string; business_code?: string; aliases: ServiceObjectAlias[]; basis_summary?: string }
 export interface ServiceObjectAssociationConfirmation { confirmed: true; expected_object_version: number; expected_association_version: number; source: AssociationSource; object_ref: string; facts_sha256: string; candidate_sha256: string }
+export interface MappingChangeCAS { expected_mapping_version: number; expected_binding_version: string; expected_object_version: number; expected_association_version: number }
+export interface MappingChangeDraft { cas: MappingChangeCAS; patch: { kind: "replace_mapping"; external_object: ServiceObjectMappingPin["external_object"]; effective_from: string; effective_until: string; contract_association: ServiceObjectAssociationConfirmation }; basis_refs: Array<{ kind: "material_anchor"; material_id: string; material_version: number; document_id: string; parsed_document_id: string; start: number; end: number; quote_digest: string }> }
+export interface MappingAssociationAfter { service_object_id: string; object_version: number; association_version: number; material_id: string; material_version: number; document_id: string; parsed_document_id: string; source_run_id: string; source_attempt_id: string; object_ref: string; facts: ServiceObjectFactRef[]; facts_sha256: string; basis_refs: unknown[] }
+export interface MappingChangePreview { after_sha256: string; impact_sha256: string; association_after: MappingAssociationAfter }
+export interface MappingChangeRequest { request_id: string; case_id: string; service_object_id: string; mapping_id: string; expected_mapping_version: number; expected_binding_version: string; expected_object_version: number; expected_association_version: number; after_sha256: string; impact_sha256: string; state: string; created_at: string; after: MappingAssociationAfter }
+export interface MappingDecisionInput extends MappingChangeCAS { decision: "approve" | "reject"; expected_after_sha256: string; expected_impact_sha256: string; reason: string }
 
 const { record, object, text, integer, bool, array, nullableText } = responseReader((path) => `服务对象响应中的 ${path} 无法识别`);
 const sha = (value: unknown, path: string) => { const result = text(value, path); if (!/^[a-f0-9]{64}$/.test(result)) throw new Error(`服务对象响应中的 ${path} 不是 SHA-256`); return result; };
@@ -107,7 +114,16 @@ export function parseServiceObjectList(value: unknown): ServiceObjectList {
   }
   return { items, next_cursor: pageCursor(row.next_cursor, "service_objects.next_cursor"), can_manage: canManage };
 }
-export function parseServiceObjectDetail(value: unknown): ServiceObjectDetail { const row = record(value, "service_object", ["service_object_id", "current_version", "identity", "association", "can_manage", "needs_reassociation"]); return { service_object_id: text(row.service_object_id, "service_object.service_object_id"), current_version: integer(row.current_version, "service_object.current_version", 1), identity: parseServiceObjectVersion(row.identity, "service_object.identity"), association: row.association === null ? null : parseServiceObjectAssociation(row.association, "service_object.association"), can_manage: bool(row.can_manage, "service_object.can_manage"), needs_reassociation: bool(row.needs_reassociation, "service_object.needs_reassociation") }; }
+function parseMappingPin(value: unknown): ServiceObjectMappingPin | null {
+  if (value === null) return null;
+  const row = record(value, "service_object.mapping", ["mapping_id", "mapping_version", "binding_version", "object_version", "association_version", "external_object", "effective_from", "effective_until"]);
+  const external = record(row.external_object, "service_object.mapping.external_object", ["connector_id", "external_object_id"]);
+  return { mapping_id: text(row.mapping_id, "mapping_id"), mapping_version: integer(row.mapping_version, "mapping_version", 1), binding_version: text(row.binding_version, "binding_version"), object_version: integer(row.object_version, "object_version", 1), association_version: integer(row.association_version, "association_version", 1), external_object: { connector_id: text(external.connector_id, "connector_id"), external_object_id: text(external.external_object_id, "external_object_id") }, effective_from: text(row.effective_from, "effective_from"), effective_until: text(row.effective_until, "effective_until") };
+}
+export function parseServiceObjectDetail(value: unknown): ServiceObjectDetail {
+  const row = record(value, "service_object", ["service_object_id", "current_version", "identity", "association", "mapping", "can_manage", "needs_reassociation"]);
+  return { service_object_id: text(row.service_object_id, "service_object.service_object_id"), current_version: integer(row.current_version, "service_object.current_version", 1), identity: parseServiceObjectVersion(row.identity, "service_object.identity"), association: row.association === null ? null : parseServiceObjectAssociation(row.association, "service_object.association"), mapping: parseMappingPin(row.mapping), can_manage: bool(row.can_manage, "service_object.can_manage"), needs_reassociation: bool(row.needs_reassociation, "service_object.needs_reassociation") };
+}
 export function parseServiceObjectVersionPage(value: unknown): ServiceObjectVersionPage { const row = record(value, "service_object_versions", ["items", "next_cursor"]); return { items: array(row.items, "service_object_versions.items", parseServiceObjectVersion), next_cursor: pageCursor(row.next_cursor, "service_object_versions.next_cursor") }; }
 export function parseServiceObjectAssociationPage(value: unknown): ServiceObjectAssociationPage { const row = record(value, "service_object_associations", ["items", "next_cursor"]); return { items: array(row.items, "service_object_associations.items", parseServiceObjectAssociation), next_cursor: pageCursor(row.next_cursor, "service_object_associations.next_cursor") }; }
 export function parseAssociationPreview(value: unknown): AssociationPreview {
@@ -125,3 +141,25 @@ export function listServiceObjectAssociations(caseId: string, objectId: string, 
 export function getServiceObjectAssociation(caseId: string, objectId: string, version: number, signal?: AbortSignal) { return requestJson(serviceObjectPaths.association(caseId, objectId, version), { method: "GET", signal }, (value) => parseServiceObjectAssociation(value)); }
 export function getAssociationCandidates(caseId: string, objectId: string, source: AssociationSource, signal?: AbortSignal) { return requestJson(serviceObjectPaths.candidates(caseId, objectId, source), { method: "GET", signal }, parseAssociationPreview); }
 export function confirmServiceObjectAssociation(caseId: string, objectId: string, input: ServiceObjectAssociationConfirmation, key: string) { return requestJson(serviceObjectPaths.confirmAssociation(caseId, objectId), jsonInit("POST", input, { "Idempotency-Key": key }), parseServiceObjectMutationResult); }
+
+function parseMappingAssociation(value: unknown, path: string): MappingAssociationAfter {
+  const row = object(value, path);
+  return { service_object_id: text(row.service_object_id, `${path}.service_object_id`), object_version: integer(row.object_version, `${path}.object_version`, 1), association_version: integer(row.association_version, `${path}.association_version`, 1), material_id: text(row.material_id, `${path}.material_id`), material_version: integer(row.material_version, `${path}.material_version`, 1), document_id: text(row.document_id, `${path}.document_id`), parsed_document_id: text(row.parsed_document_id, `${path}.parsed_document_id`), source_run_id: text(row.source_run_id, `${path}.source_run_id`), source_attempt_id: text(row.source_attempt_id, `${path}.source_attempt_id`), object_ref: text(row.object_ref, `${path}.object_ref`), facts: array(row.facts, `${path}.facts`, parseFactRef), facts_sha256: sha(row.facts_sha256, `${path}.facts_sha256`), basis_refs: array(row.basis_refs, `${path}.basis_refs`, (item) => item) };
+}
+function parseMappingChange(value: unknown): MappingChangeRequest {
+  const row = object(value, "mapping_change");
+  const after = object(row.after, "mapping_change.after");
+  return { request_id: text(row.request_id, "request_id"), case_id: text(row.case_id, "case_id"), service_object_id: text(row.service_object_id, "service_object_id"), mapping_id: text(row.mapping_id, "mapping_id"), expected_mapping_version: integer(row.expected_mapping_version, "expected_mapping_version", 1), expected_binding_version: text(row.expected_binding_version, "expected_binding_version"), expected_object_version: integer(row.expected_object_version, "expected_object_version", 1), expected_association_version: integer(row.expected_association_version, "expected_association_version", 1), after_sha256: sha(row.after_sha256, "after_sha256"), impact_sha256: sha(row.impact_sha256, "impact_sha256"), state: text(row.state, "state"), created_at: text(row.created_at, "created_at"), after: parseMappingAssociation(after.association, "mapping_change.after.association") };
+}
+export function previewMappingAssociation(caseId: string, mappingId: string, draft: MappingChangeDraft) {
+  return requestJson(`/api/cases/${id(caseId)}/object-bindings/${id(mappingId)}/changes/preview`, jsonInit("POST", draft), (value): MappingChangePreview => { const row = object(value, "mapping_preview"); return { after_sha256: sha(row.after_sha256, "after_sha256"), impact_sha256: sha(row.impact_sha256, "impact_sha256"), association_after: parseMappingAssociation(row.association_after, "mapping_preview.association_after") }; });
+}
+export function proposeMappingAssociation(caseId: string, mappingId: string, draft: MappingChangeDraft, preview: MappingChangePreview, key: string) {
+  return requestJson(`/api/cases/${id(caseId)}/object-bindings/${id(mappingId)}/changes`, jsonInit("POST", { ...draft, impact_sha256: preview.impact_sha256 }, { "Idempotency-Key": key }), parseMappingChange);
+}
+export function getMappingAssociationChange(caseId: string, requestId: string, signal?: AbortSignal) {
+  return requestJson(`/api/cases/${id(caseId)}/object-binding-changes/${id(requestId)}`, { method: "GET", signal }, (value) => parseMappingChange(object(value, "mapping_change_response").request));
+}
+export function decideMappingAssociation(caseId: string, requestId: string, input: MappingDecisionInput, key: string) {
+  return requestJson(`/api/cases/${id(caseId)}/object-binding-changes/${id(requestId)}/decision`, jsonInit("POST", input, { "Idempotency-Key": key }), (value) => { const row = object(value, "mapping_decision"); return { decision: text(row.decision, "mapping_decision.decision") }; });
+}

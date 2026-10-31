@@ -52,6 +52,7 @@ type OperatorMappingChangePatch struct {
 	Kind           string                        `json:"kind"`
 	ExternalObject *OperatorExternalObject       `json:"external_object,omitempty"`
 	Identity       *OperatorServiceIdentityPatch `json:"identity,omitempty"`
+	ContractAssociation *ServiceObjectAssociationConfirmInput `json:"contract_association,omitempty"`
 	EffectiveFrom  time.Time                     `json:"effective_from"`
 	EffectiveUntil time.Time                     `json:"effective_until"`
 }
@@ -165,6 +166,7 @@ type operatorMappingCanonicalState struct {
 type operatorMappingApprovedAfter struct {
 	Mapping  operatorMappingCanonicalState `json:"mapping"`
 	Identity *operatorMappingIdentityAfter `json:"identity,omitempty"`
+	Association *operatorMappingAssociationAfter `json:"association,omitempty"`
 }
 
 type operatorMappingIdentityAfter struct {
@@ -177,6 +179,24 @@ type operatorMappingIdentityAfter struct {
 	BasisRefs    json.RawMessage      `json:"basis_refs"`
 	BasisSummary string               `json:"basis_summary"`
 	PayloadSHA   string               `json:"payload_sha256"`
+}
+
+// operatorMappingAssociationAfter freezes the complete proposed source and
+// canonical facts without inventing the later approval actor or timestamp.
+type operatorMappingAssociationAfter struct {
+	ServiceObjectID    string                 `json:"service_object_id"`
+	ObjectVersion      int                    `json:"object_version"`
+	AssociationVersion int                    `json:"association_version"`
+	MaterialID         string                 `json:"material_id"`
+	MaterialVersion    int                    `json:"material_version"`
+	DocumentID         string                 `json:"document_id"`
+	ParsedDocumentID   string                 `json:"parsed_document_id"`
+	SourceRunID        string                 `json:"source_run_id"`
+	SourceAttemptID    string                 `json:"source_attempt_id"`
+	ObjectRef          string                 `json:"object_ref"`
+	FactRefs           []ServiceObjectFactRef `json:"facts"`
+	FactsSHA256        string                 `json:"facts_sha256"`
+	BasisRefs          json.RawMessage        `json:"basis_refs"`
 }
 
 // PlanOperatorMappingChange applies only a typed, CAS-bound mapping change.
@@ -202,6 +222,15 @@ func PlanOperatorMappingChange(head OperatorMappingHead, current OperatorMapping
 	if !validMappingInstant(patch.EffectiveFrom) || !validMappingInstant(patch.EffectiveUntil) || !patch.EffectiveFrom.Before(patch.EffectiveUntil) {
 		return empty, errors.New("operator mapping effective interval is invalid")
 	}
+	if patch.ContractAssociation != nil {
+		target := patch.ContractAssociation
+		if patch.Kind != OperatorMappingReplace || patch.Identity != nil || !target.Confirmed ||
+			target.ExpectedObjectVersion != cas.ExpectedObjectVersion || target.ExpectedAssociationVersion != cas.ExpectedAssociationVersion ||
+			strings.TrimSpace(target.ObjectRef) != target.ObjectRef || target.ObjectRef == "" ||
+			!validServiceObjectSHA256(target.FactsSHA256) || !validServiceObjectSHA256(target.CandidatesSHA256) {
+			return empty, errors.New("contract association proposal is invalid")
+		}
+	}
 	nextBinding := current.Binding
 	nextBinding.CaseID = head.CaseID
 	nextBinding.BindingID = newBindingVersion
@@ -221,6 +250,9 @@ func PlanOperatorMappingChange(head OperatorMappingHead, current OperatorMapping
 		}
 		nextBinding.ExternalObject = *patch.ExternalObject
 		nextBinding.Status = "confirmed"
+		if patch.ContractAssociation != nil {
+			nextBinding.ContractObject.ObjectID = patch.ContractAssociation.ObjectRef
+		}
 	case OperatorMappingRetire:
 		if current.Binding.Status != "confirmed" || patch.ExternalObject != nil {
 			return empty, errors.New("retirement requires an active mapping and cannot change its external identity")
@@ -263,6 +295,10 @@ func PlanOperatorMappingChange(head OperatorMappingHead, current OperatorMapping
 		MappingID: head.MappingID, MappingVersion: current.MappingVersion + 1, ServiceObjectID: head.ServiceObjectID,
 		ObjectVersion: current.ObjectVersion, AssociationVersion: current.AssociationVersion, Binding: nextBinding,
 	}
+	if patch.ContractAssociation != nil {
+		afterVersion.AssociationVersion++
+		afterVersion.Binding.AssociationVersion = afterVersion.AssociationVersion
+	}
 	after := canonicalOperatorMappingState(afterVersion)
 	var identityAfter *operatorMappingIdentityAfter
 	if patch.Identity != nil {
@@ -289,7 +325,7 @@ func PlanOperatorMappingChange(head OperatorMappingHead, current OperatorMapping
 	if err != nil {
 		return empty, err
 	}
-	afterHash, err := operatorMappingApprovedDigest(after, identityAfter)
+	afterHash, err := operatorMappingApprovedDigest(after, identityAfter, nil)
 	if err != nil {
 		return empty, err
 	}
@@ -303,11 +339,11 @@ func PlanOperatorMappingChange(head OperatorMappingHead, current OperatorMapping
 	}, nil
 }
 
-func operatorMappingApprovedDigest(mapping operatorMappingCanonicalState, identity *operatorMappingIdentityAfter) (string, error) {
-	if identity == nil {
+func operatorMappingApprovedDigest(mapping operatorMappingCanonicalState, identity *operatorMappingIdentityAfter, association *operatorMappingAssociationAfter) (string, error) {
+	if identity == nil && association == nil {
 		return operatorMappingDigest(mapping)
 	}
-	encoded, err := json.Marshal(operatorMappingApprovedAfter{Mapping: mapping, Identity: identity})
+	encoded, err := json.Marshal(operatorMappingApprovedAfter{Mapping: mapping, Identity: identity, Association: association})
 	if err != nil {
 		return "", err
 	}

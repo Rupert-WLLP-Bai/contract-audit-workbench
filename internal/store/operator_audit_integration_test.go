@@ -774,7 +774,7 @@ func TestDurableOperatorAuditFlow(t *testing.T) {
 		PackID: manifest.PackID, PackVersion: manifest.Version, SourceReviewID: accepted.RunID,
 		SourceAttemptID: accepted.AttemptID, ContractVersionID: contractID,
 		ObjectBindingVersion: binding.Version, SnapshotSetID: set.SnapshotSetID, BusinessAt: binding.EffectiveUntil,
-		EvidenceCutoffAt: &evaluationCutoffAt,
+		EvidenceCutoffAt: &evaluationCutoffAt, Scope: &OperatorEvaluationScope{Kind: "explicit_subset", ServiceObjectIDs: []string{serviceObject.ServiceObjectID}},
 	}, manifest, fulfillment.New(), "operator-evaluation-outside-binding"); !isConflictFault(err) {
 		t.Fatalf("evaluation accepted business_at at the end-exclusive binding boundary: %v", err)
 	}
@@ -782,7 +782,7 @@ func TestDurableOperatorAuditFlow(t *testing.T) {
 		PackID: manifest.PackID, PackVersion: manifest.Version, SourceReviewID: accepted.RunID,
 		SourceAttemptID: accepted.AttemptID, ContractVersionID: contractID,
 		ObjectBindingVersion: binding.Version, SnapshotSetID: set.SnapshotSetID, BusinessAt: businessAt,
-		EvidenceCutoffAt: &evaluationCutoffAt,
+		EvidenceCutoffAt: &evaluationCutoffAt, Scope: &OperatorEvaluationScope{Kind: "explicit_subset", ServiceObjectIDs: []string{serviceObject.ServiceObjectID}},
 	}, manifest, fulfillment.New(), "operator-evaluation-1")
 	if err != nil {
 		t.Fatalf("evaluate: %v", err)
@@ -843,7 +843,7 @@ func TestDurableOperatorAuditFlow(t *testing.T) {
 		PackID: manifest.PackID, PackVersion: manifest.Version, SourceReviewID: accepted.RunID,
 		SourceAttemptID: accepted.AttemptID, ContractVersionID: contractID,
 		ObjectBindingVersion: binding.Version, SnapshotSetID: set.SnapshotSetID, BusinessAt: businessAt,
-		EvidenceCutoffAt: &evaluationCutoffAt,
+		EvidenceCutoffAt: &evaluationCutoffAt, Scope: &OperatorEvaluationScope{Kind: "explicit_subset", ServiceObjectIDs: []string{serviceObject.ServiceObjectID}},
 	}, manifest, fulfillment.New(), "operator-evaluation-1")
 	if err != nil || replay.EvaluationID != evaluation.EvaluationID {
 		t.Fatalf("idempotent replay: id=%q err=%v", replay.EvaluationID, err)
@@ -856,7 +856,7 @@ func TestDurableOperatorAuditFlow(t *testing.T) {
 		PackID: manifest.PackID, PackVersion: manifest.Version, SourceReviewID: accepted.RunID,
 		SourceAttemptID: accepted.AttemptID, ContractVersionID: contractID,
 		ObjectBindingVersion: binding.Version, SnapshotSetID: set.SnapshotSetID, BusinessAt: businessAt,
-		EvidenceCutoffAt: &evaluationCutoffAt,
+		EvidenceCutoffAt: &evaluationCutoffAt, Scope: &OperatorEvaluationScope{Kind: "explicit_subset", ServiceObjectIDs: []string{serviceObject.ServiceObjectID}},
 	}, manifest, fulfillment.New(), "operator-evaluation-2")
 	if err != nil {
 		t.Fatalf("second evaluation: %v", err)

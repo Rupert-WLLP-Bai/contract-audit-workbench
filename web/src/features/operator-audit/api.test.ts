@@ -42,6 +42,9 @@ const bindingInput: CreateObjectBindingInput = {
     connector_id: "fixture.oss",
     external_object_id: "fixture-line-001",
   },
+  service_object_id: "service-object-1",
+  expected_object_version: 2,
+  expected_association_version: 1,
   effective_from: null,
   effective_until: null,
   confirmed: true,
@@ -52,9 +55,7 @@ const evaluationInput: FulfillmentEvaluationInput = {
   pack_version: "1.0.0",
   source_review_id: "review-1",
   source_attempt_id: "attempt-1",
-  contract_version_id: "doc-1",
-  object_binding_version: "binding-1",
-  snapshot_set_id: "set-1",
+  scope: { kind: "explicit_subset", service_object_ids: ["service-object-1"] },
   business_at: "2026-10-28T08:00:00Z",
 };
 
