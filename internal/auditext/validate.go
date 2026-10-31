@@ -272,11 +272,26 @@ func (f FrozenInput) Validate() error {
 	if err := f.Pack.Validate(); err != nil {
 		return err
 	}
-	if err := validateIDGroup("frozen input identity", f.ContractVersion, f.SnapshotSetID, f.ModelConfigurationID, f.PlannerConfigurationID, f.ParserConfigurationID); err != nil {
+	if f.EvaluationScope != nil {
+		if err := validateEvaluationScope(*f.EvaluationScope); err != nil {
+			return err
+		}
+	}
+	aggregate := f.EvaluationScope != nil && f.ContractVersion == "" && f.SnapshotSetID == "" && f.BindingVersion == ""
+	if aggregate && (f.BindingStatus != "" || f.ExternalObjectID != "" || f.SourceSystem != "" || len(f.Facts) != 0) {
+		return fmt.Errorf("%w: aggregate input contains a single-object binding or facts", ErrInvalidRequest)
+	}
+	identity := []string{f.ModelConfigurationID, f.PlannerConfigurationID, f.ParserConfigurationID}
+	if !aggregate {
+		identity = append(identity, f.ContractVersion, f.SnapshotSetID)
+	}
+	if err := validateIDGroup("frozen input identity", identity...); err != nil {
 		return err
 	}
-	if err := validateFrozenBinding(f); err != nil {
-		return err
+	if !aggregate {
+		if err := validateFrozenBinding(f); err != nil {
+			return err
+		}
 	}
 	if f.RulePackVersion == "" || len(f.RulePackVersion) > 128 {
 		return fmt.Errorf("%w: rule pack version", ErrInvalidRequest)
@@ -289,6 +304,35 @@ func (f FrozenInput) Validate() error {
 	}
 	if err := validateFrozenFacts(f); err != nil {
 		return err
+	}
+	return nil
+}
+
+func validateEvaluationScope(scope EvaluationScope) error {
+	if len(scope.ServiceObjectIDs) > 100 {
+		return fmt.Errorf("%w: too many service objects", ErrInvalidRequest)
+	}
+	seen := make(map[string]struct{}, len(scope.ServiceObjectIDs))
+	for _, id := range scope.ServiceObjectIDs {
+		if err := ValidateID(id); err != nil {
+			return fmt.Errorf("%w: evaluation service object", ErrInvalidRequest)
+		}
+		if _, exists := seen[id]; exists {
+			return fmt.Errorf("%w: duplicate evaluation service object", ErrInvalidRequest)
+		}
+		seen[id] = struct{}{}
+	}
+	switch scope.Kind {
+	case "whole_case":
+		if len(scope.ServiceObjectIDs) != 0 {
+			return fmt.Errorf("%w: whole-case scope has object subset", ErrInvalidRequest)
+		}
+	case "explicit_subset":
+		if len(scope.ServiceObjectIDs) == 0 {
+			return fmt.Errorf("%w: empty evaluation subset", ErrInvalidRequest)
+		}
+	default:
+		return fmt.Errorf("%w: evaluation scope", ErrInvalidRequest)
 	}
 	return nil
 }

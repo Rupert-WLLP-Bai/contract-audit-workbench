@@ -14,6 +14,7 @@ export default defineConfig({
   reporter: [["list"], ["json", { outputFile: `../artifacts/documents-functional/${runID}/playwright-results.json` }], ["./e2e/functional/reporter.ts"]],
   use: {
     baseURL: process.env.E2E_WEB,
+    ...(process.env.E2E_API ? { extraHTTPHeaders: { Referer: process.env.E2E_API } } : {}),
     browserName: "chromium",
     headless: true,
     viewport: { width: 1440, height: 1000 },

@@ -63,6 +63,7 @@ infra-*.json
 *.md
 !/README.md
 !/AGENTS.md
+!/.github/pull_request_template.md
 *.pdf
 *.doc
 *.docx

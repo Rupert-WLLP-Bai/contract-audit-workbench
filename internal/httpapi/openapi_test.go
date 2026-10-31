@@ -70,6 +70,14 @@ func TestOpenAPITracksAllRegisteredRoutesAndJSONFields(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	manualFindings, err := parser.ParseFile(token.NewFileSet(), "manual_findings.go", nil, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ruleShadow, err := parser.ParseFile(token.NewFileSet(), "rulepack_shadow.go", nil, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
 	storePackages, err := parser.ParseDir(token.NewFileSet(), "../store", func(info os.FileInfo) bool { return !strings.HasSuffix(info.Name(), "_test.go") }, 0)
 	if err != nil {
 		t.Fatal(err)
@@ -92,7 +100,7 @@ func TestOpenAPITracksAllRegisteredRoutesAndJSONFields(t *testing.T) {
 		}
 		return route
 	}
-	for _, parsed := range []*ast.File{file, health, governance, evidence, legalRoutes, contractCitations} {
+	for _, parsed := range []*ast.File{file, health, governance, evidence, legalRoutes, contractCitations, manualFindings, ruleShadow} {
 		// Route coverage reads the declarations the server mounts. Both forms
 		// are accepted: an explicit HandleFunc, and the shared mountRoutes whose
 		// variadic argument is a list of literal routeBinding entries. A
@@ -182,7 +190,7 @@ func TestOpenAPITracksAllRegisteredRoutesAndJSONFields(t *testing.T) {
 		sort.Strings(fields)
 		return fields
 	}
-	for _, parsed := range []*ast.File{file, governance, evidence, workbench, business} {
+	for _, parsed := range []*ast.File{file, governance, evidence, workbench, business, manualFindings, ruleShadow} {
 		for _, decl := range parsed.Decls {
 			fn, ok := decl.(*ast.FuncDecl)
 			if !ok {
@@ -238,6 +246,12 @@ func TestOpenAPITracksAllRegisteredRoutesAndJSONFields(t *testing.T) {
 	seenRoutes := map[string]bool{}
 	for path, raw := range spec["paths"].(map[string]any) {
 		for method, rawOp := range raw.(map[string]any) {
+			if method == "parameters" {
+				if _, ok := rawOp.([]any); !ok {
+					t.Fatalf("path parameters for %s must be an array", path)
+				}
+				continue
+			}
 			key := strings.ToUpper(method) + " " + path
 			handler, ok := routes[key]
 			if !ok {

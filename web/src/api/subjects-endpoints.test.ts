@@ -149,25 +149,24 @@ describe("subject API endpoints", () => {
     }));
 
     const changeSummary = {
-      request_id: "change-1", target_kind: "subject", state: "pending_decision", source_case_id: "case-1",
+      request_id: "change-1", target_kind: "subject", state: "pending_decision",
       target_subject_id: "s-1", target_binding_id: null, expected_subject_version: 1,
-      expected_binding_version: null, payload_hash: "c".repeat(64), proposer: principal,
+      expected_binding_version: null, payload_hash: "c".repeat(64), proposed_by: principal,
       proposed_by_display_name: "经办人甲", can_decide: false, decision_blocked_reason: "本人不能复核", created_at: "2026-10-31T01:00:00Z",
     };
-    setResponse({ detail: {
+    setResponse({
       summary: changeSummary,
       proposed_by_display_name: "经办人甲", can_decide: false, decision_blocked_reason: "本人不能复核",
       before: version,
       after: { ...version, version: 2, display_name: "示例企业" },
+      basis_note: "依据材料更正名称",
       basis_refs: [{ ...basis, filename: "主体资料.txt", quote: "示例公司" }],
-      impact_etag: "opaque-etag",
-      authorized_impact_cases: [],
-    } });
+    });
     expect((await getCaseSubjectChange("case-1", "change/1")).summary.request_id).toBe("change-1");
 
     setResponse({ request_id: "change-1", proposed_by_display_name: "经办人甲", can_decide: false, decision_blocked_reason: "本人不能复核", target_version: 1, payload_hash: "c".repeat(64), before: version,
       after: { ...version, version: 2, display_name: "示例企业" }, basis_refs: [{ ...basis, filename: "主体资料.txt", quote: "示例公司" }],
-      impact_etag: "opaque-etag", visible_affected_count: 0, affected_cases: [] });
+      impact_etag: "opaque-etag", visible_affected_count: 0, authorized_impact_cases: [{ case_id: "case-1", case_title: "可见案件", business_status: "active" }] });
     expect((await getCaseSubjectChangeImpact("case-1", "change/1", "subject")).impact_etag).toBe("opaque-etag");
 
     const decisionFetch = setResponse({ request_id: "change-1", decision: "approved", applied_subject_version: 2, binding_versions_appended: 1 });
@@ -188,11 +187,11 @@ describe("subject API endpoints", () => {
       label: "已对照核验（受控来源，合成演示）",
     }, 201);
     const snapshot = await createSubjectSourceSnapshot("case-1", {
-      source_id: "synthetic.uscc.demo", expected_source_version: 1,
+      source_catalog_id: "synthetic.uscc.demo", expected_source_version: 1,
     }, "snapshot-key-1");
     expect(sourceFetch).toHaveBeenCalledWith("/api/cases/case-1/subject-source-snapshots", expect.objectContaining({
       headers: expect.objectContaining({ "Idempotency-Key": "snapshot-key-1" }),
-      body: JSON.stringify({ source_id: "synthetic.uscc.demo", expected_source_version: 1 }),
+      body: JSON.stringify({ source_catalog_id: "synthetic.uscc.demo", expected_source_version: 1 }),
     }));
 
     const verifyFetch = setResponse({
@@ -203,11 +202,11 @@ describe("subject API endpoints", () => {
       matched_record: { display_name: "示例公司", masked_identifier: "9135••••••••••0Y43" },
     }, 202);
     const result = await verifySubjectAgainstSourceSnapshot("case-1", snapshot.snapshot_id, {
-      subject_id: "s-1", expected_subject_version: 1, expected_binding_id: "b-1",
+      subject_id: "s-1", expected_subject_version: 1,
     }, "verify-key-1");
     expect(verifyFetch).toHaveBeenCalledWith("/api/cases/case-1/subject-source-snapshots/snap-1/verify", expect.objectContaining({
       headers: expect.objectContaining({ "Idempotency-Key": "verify-key-1" }),
-      body: JSON.stringify({ subject_id: "s-1", expected_subject_version: 1, expected_binding_id: "b-1" }),
+      body: JSON.stringify({ subject_id: "s-1", expected_subject_version: 1 }),
     }));
     expect(result.state).toBe("pending_decision");
   });

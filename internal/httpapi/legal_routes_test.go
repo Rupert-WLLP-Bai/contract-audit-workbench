@@ -152,6 +152,7 @@ func TestLegalApplicabilityHTTPRecordReplayAndResolve(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		req.Header.Set("Origin", server.URL)
 		req.Header.Set("Idempotency-Key", "legal-fact-http-write")
 		response, err := client.Do(req)
 		if err != nil {
@@ -261,6 +262,7 @@ func TestLegalApplicabilityHTTPCanonicalAnchorReplayAndChangedAnchorConflict(t *
 		if err != nil {
 			t.Fatal(err)
 		}
+		req.Header.Set("Origin", server.URL)
 		req.Header.Set("Idempotency-Key", "legal-http-anchor-canonical-replay")
 		response, err := client.Do(req)
 		if err != nil {
@@ -829,6 +831,7 @@ func routeRequest(t *testing.T, client *http.Client, method, target string, body
 	if err != nil {
 		t.Fatal(err)
 	}
+	request.Header.Set("Origin", request.URL.Scheme+"://"+request.URL.Host)
 	if body != nil {
 		request.Header.Set("Content-Type", "application/json")
 	}

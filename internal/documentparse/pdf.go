@@ -20,14 +20,19 @@ import (
 )
 
 const (
-	pdfMaxBytes       = 32 << 20
-	pdfMaxPages       = 64
+	pdfMaxBytes = 32 << 20
+	// pdfMaxPages admits the frozen 92-page public scan (issue #15) and still
+	// rejects unbounded documents.
+	pdfMaxPages = 128
+	// pdfMaxAllPixels admits the frozen 92-page scan, which measures 633,032,192
+	// embedded pixels, with about 10% headroom; its 92 renders at 2400 points
+	// total 374,918,400 pixels.
+	pdfMaxAllPixels   = 700_000_000
 	pdfMaxTextBytes   = 8 << 20
 	pdfMaxPageText    = 1 << 20
 	pdfMaxPNGBytes    = 24 << 20
 	pdfRenderSide     = 2400
 	pdfMaxImagePixels = 40_000_000
-	pdfMaxAllPixels   = 600_000_000
 	pdfMaxImages      = 4096
 	pdfToolTimeout    = 30 * time.Second
 )
@@ -132,7 +137,7 @@ func pdfImageInventory(ctx context.Context, path string, pages int) ([]bool, err
 
 // pdfTextSegments extracts native text and validates the page boundaries.
 func pdfTextSegments(ctx context.Context, path string, pages int) ([]string, error) {
-	text, err := pdfCommand(ctx, pdfMaxTextBytes, "pdftotext", "-layout", "-enc", "UTF-8", "-eol", "unix", path, "-")
+	text, untrusted, err := pdfRun(ctx, pdfMaxTextBytes, "pdftotext", "-layout", "-enc", "UTF-8", "-eol", "unix", path, "-")
 	if err != nil {
 		return nil, err
 	}
@@ -145,6 +150,15 @@ func pdfTextSegments(ctx context.Context, path string, pages int) ([]string, err
 	}
 	if strings.TrimSpace(segments[len(segments)-1]) != "" {
 		return nil, errors.New("PDF text page boundaries do not match observed page count")
+	}
+	if untrusted {
+		// Poppler read a font program that does not match its declared type, so
+		// its glyph mapping is not reliable evidence for the visible page. Keep
+		// the validated page boundaries and drop the text, exactly as for broken
+		// font encodings, so each page is transcribed from its rendering.
+		for i := range segments {
+			segments[i] = ""
+		}
 	}
 	return segments, nil
 }
@@ -440,9 +454,28 @@ func (b *pdfBoundedOutput) Write(p []byte) (int, error) {
 	return b.buffer.Write(p)
 }
 
+// These complete Poppler diagnostics were observed on the frozen originals.
+// Any other diagnostic remains an error even if the tool exited successfully.
+const (
+	pdfDiagFontWeight  = "Syntax Warning: Invalid Font Weight"
+	pdfDiagFontType    = "Syntax Warning: Mismatch between font type and embedded font file"
+	pdfDiagJPXDeclared = "Syntax Error: Malformed JP2 file format: first box must be JPEG 2000 signature box<0a>"
+	pdfDiagJPXHeader   = "Syntax Warning: Unable to read header"
+	pdfDiagJPXRetry    = "Syntax Warning: Did no succeed opening JPX Stream as JP2, trying as J2K."
+)
+
+// pdfCommand runs one Poppler tool and reports the first untolerated diagnostic.
 func pdfCommand(ctx context.Context, limit int, tool string, args ...string) ([]byte, error) {
+	out, _, err := pdfRun(ctx, limit, tool, args...)
+	return out, err
+}
+
+// pdfRun executes one Poppler tool and classifies its diagnostics. Poppler can
+// exit zero after errors, so unknown diagnostics remain failures. The flag
+// reports whether an observed font mismatch makes native text unreliable.
+func pdfRun(ctx context.Context, limit int, tool string, args ...string) ([]byte, bool, error) {
 	if err := ctx.Err(); err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	toolCtx, cancel := context.WithTimeout(ctx, pdfToolTimeout)
 	defer cancel()
@@ -454,21 +487,61 @@ func pdfCommand(ctx context.Context, limit int, tool string, args ...string) ([]
 	cmd.Stdout, cmd.Stderr = stdout, stderr
 	err := cmd.Run()
 	if ctx.Err() != nil {
-		return nil, ctx.Err()
+		return nil, false, ctx.Err()
 	}
 	if toolCtx.Err() != nil {
-		return nil, fmt.Errorf("PDF tool %s: %w", tool, toolCtx.Err())
+		return nil, false, fmt.Errorf("PDF tool %s: %w", tool, toolCtx.Err())
 	}
 	if stdout.full || stderr.full {
-		return nil, fmt.Errorf("PDF tool %s output exceeds resource limit", tool)
+		return nil, false, fmt.Errorf("PDF tool %s output exceeds resource limit", tool)
 	}
 	if err != nil {
-		return nil, fmt.Errorf("PDF tool %s failed: %w", tool, err)
+		return nil, false, fmt.Errorf("PDF tool %s failed: %w", tool, err)
 	}
-	// Poppler can repair damaged files and still exit zero. Such diagnostics
-	// must not become a successful, apparently complete parse.
-	if strings.TrimSpace(stderr.buffer.String()) != "" {
-		return nil, fmt.Errorf("PDF tool %s reported malformed or unsupported content", tool)
+	untrusted, err := pdfClassifyDiagnostics(stderr.buffer.String())
+	if err != nil {
+		return nil, false, fmt.Errorf("PDF tool %s %w", tool, err)
 	}
-	return stdout.buffer.Bytes(), nil
+	return stdout.buffer.Bytes(), untrusted, nil
+}
+
+// pdfClassifyDiagnostics accepts only complete observed lines. JPX retries
+// must form a sequence: the declaration error, an optional header complaint,
+// and the explicit J2K retry. Other errors, including decoder failures after
+// the retry, still reject the entire document.
+func pdfClassifyDiagnostics(stderr string) (bool, error) {
+	untrusted := false
+	jpxPending, jpxHeader := false, false
+	for _, line := range strings.Split(stderr, "\n") {
+		line = strings.TrimSuffix(line, "\r")
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		switch {
+		case line == pdfDiagFontWeight:
+		case line == pdfDiagFontType:
+			untrusted = true
+		case line == pdfDiagJPXDeclared && !jpxPending:
+			jpxPending, jpxHeader = true, false
+		case line == pdfDiagJPXHeader && jpxPending && !jpxHeader:
+			jpxHeader = true
+		case line == pdfDiagJPXRetry && jpxPending:
+			jpxPending, jpxHeader = false, false
+		default:
+			return false, fmt.Errorf("reported malformed or unsupported content: %s", pdfDiagnosticLine(line))
+		}
+	}
+	if jpxPending {
+		return false, errors.New("reported malformed or unsupported content: incomplete JPX fallback")
+	}
+	return untrusted, nil
+}
+
+// pdfDiagnosticLine bounds one diagnostic so it can travel in an error without
+// carrying arbitrary tool output.
+func pdfDiagnosticLine(line string) string {
+	if len(line) > 200 {
+		line = line[:200]
+	}
+	return strings.ToValidUTF8(line, "")
 }

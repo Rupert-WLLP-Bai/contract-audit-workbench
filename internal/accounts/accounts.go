@@ -3,10 +3,10 @@
 package accounts
 
 import (
-	"crypto/sha256"
-	"crypto/subtle"
 	"errors"
 	"strings"
+
+	"golang.org/x/crypto/bcrypt"
 
 	"contractaudit/internal/access"
 )
@@ -24,22 +24,56 @@ type User struct {
 	Subject     string         `json:"subject,omitempty"`
 }
 
+// hash is a fixed, pre-computed bcrypt digest of the account's demonstration
+// password (cost bcrypt.DefaultCost). The literals are legal salted test
+// material: bcrypt carries a per-digest random salt, and these records exist
+// only for development/test logins — ValidateEnvironment refuses every other
+// mode, so they never guard a production login.
 type record struct {
 	User
-	hash [32]byte
+	hash []byte
 }
+
+// demoHashes holds one fixed pre-computed bcrypt digest per demonstration
+// account, generated once from the credentials documented in init with
+// golang.org/x/crypto/bcrypt (bcrypt.DefaultCost). Recomputing slow digests on
+// every process start would spend real time on material that never changes.
+var demoHashes = map[string]string{
+	"demo-admin":            "$2a$10$IwfyN3w2ppmRgHykt4O4r.6lD0NxhTUdjrE6zYSjMkZMmLA2u1CNS",
+	"demo-reviewer":         "$2a$10$SpTb61VaPWzXOBuhd9Rpvuc616B82X.KgehksD9PVCyx4l916cS4y",
+	"demo-clerk":            "$2a$10$7p/4PnutQp4F6vwuDA90meEnQXRB2ezCLlECRw6EgrKkgwI/X3Svm",
+	"demo-viewer":           "$2a$10$nmmX1OAnZfkI9t/PNT.3yuuPHdWVPiginLyzTLM.DNbcgBLNbZJ.S",
+	"demo-otherorg-clerk":   "$2a$10$cvSUfHIAmSd3QY/ndirM5u2ubQZRnlLVQKUvP3CvH2RI0OAMv3rta",
+	"demo-tenant2-admin":    "$2a$10$qNpJIK3pHGyqNg/LA2lXKupU/aWSZlU/JK0UEBUpGStTZp5xqF3ki",
+	"demo-tenant2-clerk":    "$2a$10$lR1NE78ZTxduU3hNXadQiO24Ozb.AeuY3VsY8zNryieApnOklxH9C",
+	"demo-tenant2-viewer":   "$2a$10$YgTosFTKHP8NY0cctIH59eOuzXia1.X.faZ3KdXpHZx6VIqbUiIoy",
+	"demo-tenant2-reviewer": "$2a$10$3QFiqYivSTLRTL6zavYQKeIKZUfRAk/ibs7kAO0m5M6l.vIRY0fNa",
+}
+
+// unknownUserHash is a bcrypt digest of an unrelated fixed string. It lets an
+// unknown username spend the same verification cost as a known one.
+var unknownUserHash = []byte("$2a$10$2eOVmp7XaEuKJ3g0fqcRF.D1jRhnmD8.aLpW.M1xiuaUKsiqHnpvW")
 
 var directory []record
 
-// ValidateEnvironment prevents the fixed demonstration directory from being
-// mistaken for a production identity provider. Production requires a separately
-// implemented identity provider; no environment flag bypasses this guard.
+// ValidateEnvironment reports whether this process may start in the given mode
+// with the identity sources loaded so far. Development and test keep the fixed
+// demonstration directory. Production requires the enterprise directory to be
+// loaded already, so callers must configure it first: an absent, unreadable, or
+// invalid directory file refuses startup instead of leaving the fixed
+// demonstration passwords as the only identity source. No environment flag
+// bypasses this guard.
 func ValidateEnvironment(mode string) error {
 	switch strings.ToLower(strings.TrimSpace(mode)) {
 	case "", "development", "dev", "test":
 		return nil
+	case "production":
+		if directoryConfigured() {
+			return nil
+		}
+		return errors.New("production requires a loaded enterprise identity directory; the fixed demonstration passwords are never available")
 	default:
-		return errors.New("demo accounts are unavailable in production; configure an audited identity provider before deployment")
+		return errors.New("unknown application environment")
 	}
 }
 
@@ -57,8 +91,11 @@ func init() {
 	}
 }
 
-func seed(id, name, role, password string) record {
-	return record{User: demoIdentity(id, name, role), hash: digest(id, password)}
+// seed builds one demonstration record. The credential argument documents the
+// login in the source and must stay identical to the input of the pre-computed
+// digest in demoHashes; it is intentionally never re-hashed at process start.
+func seed(id, name, role, _ string) record {
+	return record{User: demoIdentity(id, name, role), hash: []byte(demoHashes[id])}
 }
 
 func seedIn(id, name, role, password, tenantID, orgID string) record {
@@ -67,22 +104,24 @@ func seedIn(id, name, role, password, tenantID, orgID string) record {
 	return item
 }
 
-func digest(id, password string) [32]byte {
-	return sha256.Sum256([]byte(id + "\x00" + password))
-}
-
 // Authenticate checks a username and password. Unknown users and bad passwords
-// take the same failure path.
+// take the same failure path and the same bcrypt verification cost.
 func Authenticate(username, password string) (User, bool) {
 	if directoryConfigured() {
 		return User{}, false
 	}
-	got := digest(username, password)
 	for _, item := range directory {
-		if subtle.ConstantTimeCompare(item.hash[:], got[:]) == 1 && item.ID == username {
-			return copyUser(item.User), item.Enabled
+		if item.ID != username {
+			continue
 		}
+		if bcrypt.CompareHashAndPassword(item.hash, []byte(password)) != nil {
+			return User{}, false
+		}
+		return copyUser(item.User), item.Enabled
 	}
+	// Unknown username: burn one bcrypt verification so the response cost
+	// matches a known account with a wrong password.
+	_ = bcrypt.CompareHashAndPassword(unknownUserHash, []byte(password))
 	return User{}, false
 }
 

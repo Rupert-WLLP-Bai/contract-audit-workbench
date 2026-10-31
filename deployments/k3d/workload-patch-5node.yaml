@@ -16,6 +16,12 @@ spec:
               valueFrom: {fieldRef: {fieldPath: metadata.uid}}
             - name: OTEL_EXPORTER_OTLP_ENDPOINT
               value: http://otel-collector:4318
+            # Local verification wants every attempt exported; the production
+            # base samples 10% via traceidratio instead.
+            - name: OTEL_TRACES_SAMPLER
+              value: always_on
+            - name: OTEL_TRACES_SAMPLER_ARG
+              value: "1"
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -43,6 +49,12 @@ spec:
               valueFrom: {fieldRef: {fieldPath: metadata.uid}}
             - name: OTEL_EXPORTER_OTLP_ENDPOINT
               value: http://otel-collector:4318
+            # Local verification wants every attempt exported; the production
+            # base samples 10% via traceidratio instead.
+            - name: OTEL_TRACES_SAMPLER
+              value: always_on
+            - name: OTEL_TRACES_SAMPLER_ARG
+              value: "1"
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -59,6 +71,12 @@ spec:
               valueFrom: {fieldRef: {fieldPath: metadata.uid}}
             - name: OTEL_EXPORTER_OTLP_ENDPOINT
               value: http://otel-collector:4318
+            # Local verification wants every attempt exported; the production
+            # base samples 10% via traceidratio instead.
+            - name: OTEL_TRACES_SAMPLER
+              value: always_on
+            - name: OTEL_TRACES_SAMPLER_ARG
+              value: "1"
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -75,6 +93,12 @@ spec:
               valueFrom: {fieldRef: {fieldPath: metadata.uid}}
             - name: OTEL_EXPORTER_OTLP_ENDPOINT
               value: http://otel-collector:4318
+            # Local verification wants every attempt exported; the production
+            # base samples 10% via traceidratio instead.
+            - name: OTEL_TRACES_SAMPLER
+              value: always_on
+            - name: OTEL_TRACES_SAMPLER_ARG
+              value: "1"
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -108,6 +132,12 @@ spec:
               valueFrom: {fieldRef: {fieldPath: metadata.uid}}
             - name: OTEL_EXPORTER_OTLP_ENDPOINT
               value: http://otel-collector:4318
+            # Local verification wants every attempt exported; the production
+            # base samples 10% via traceidratio instead.
+            - name: OTEL_TRACES_SAMPLER
+              value: always_on
+            - name: OTEL_TRACES_SAMPLER_ARG
+              value: "1"
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -139,6 +169,12 @@ spec:
               value: '{"schema_version":"experience-candidate/v1","applicability":["付款发生在验收后"],"exclusions":["验收前付款"],"check_action":"核对验收日期与付款条款","minimum_evidence":["验收记录"],"counterexamples":["验收前付款仍需核查"],"valid_from":"2020-01-01T00:00:00Z","valid_until":"2100-01-01T00:00:00Z","policy_refs":[],"review_diff":""}'
             - name: OTEL_EXPORTER_OTLP_ENDPOINT
               value: http://otel-collector:4318
+            # Local verification wants every attempt exported; the production
+            # base samples 10% via traceidratio instead.
+            - name: OTEL_TRACES_SAMPLER
+              value: always_on
+            - name: OTEL_TRACES_SAMPLER_ARG
+              value: "1"
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -166,6 +202,12 @@ spec:
               valueFrom: {fieldRef: {fieldPath: metadata.uid}}
             - name: OTEL_EXPORTER_OTLP_ENDPOINT
               value: http://otel-collector:4318
+            # Local verification wants every attempt exported; the production
+            # base samples 10% via traceidratio instead.
+            - name: OTEL_TRACES_SAMPLER
+              value: always_on
+            - name: OTEL_TRACES_SAMPLER_ARG
+              value: "1"
 ---
 apiVersion: apps/v1
 kind: Deployment

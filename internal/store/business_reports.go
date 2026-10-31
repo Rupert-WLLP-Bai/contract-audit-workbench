@@ -14,8 +14,11 @@ import (
 
 	"contractaudit/internal/access"
 	"contractaudit/internal/accounts"
+	"contractaudit/internal/engine"
 	"contractaudit/internal/fault"
 	"contractaudit/internal/rulepack"
+
+	"github.com/jackc/pgx/v5"
 )
 
 const (
@@ -34,6 +37,11 @@ func (s *Store) CreateReport(user accounts.User, caseID, runID, attemptID string
 // object-integrity and agent-review reads when the HTTP request is gone while
 // keeping the existing CreateReport signature for internal and test callers.
 func (s *Store) CreateReportContext(ctx context.Context, user accounts.User, caseID, runID, attemptID string) (ReportRecord, error) {
+	return s.CreateReportWithIdempotency(ctx, user, caseID, runID, attemptID, "")
+}
+
+// CreateReportWithIdempotency commits the optional receipt with the frozen report.
+func (s *Store) CreateReportWithIdempotency(ctx context.Context, user accounts.User, caseID, runID, attemptID, key string) (ReportRecord, error) {
 	if err := ctx.Err(); err != nil {
 		return ReportRecord{}, err
 	}
@@ -48,7 +56,28 @@ func (s *Store) CreateReportContext(ctx context.Context, user accounts.User, cas
 	if caseID == "" || runID == "" || attemptID == "" {
 		return ReportRecord{}, fault.Invalid("生成报告需要指定案件、审查和执行记录")
 	}
-	st, err := s.snapshotAs(currentUser)
+	key, err = optionalIdempotencyKey(key)
+	if err != nil {
+		return ReportRecord{}, err
+	}
+	route := "POST /api/cases/" + caseID + "/reports"
+	digest := ""
+	if key != "" {
+		digest, err = canonicalHash([]string{caseID, runID, attemptID})
+		if err != nil {
+			return ReportRecord{}, err
+		}
+	}
+	if receipt, found, err := s.readWriteReceipt(ctx, currentUser, coreWriteReceipts, route, key, digest, access.Export); err != nil {
+		return ReportRecord{}, err
+	} else if found {
+		var record ReportRecord
+		if err := json.Unmarshal(receipt.Response, &record); err != nil || record.ID == "" || record.RunID != runID || record.AttemptID != attemptID {
+			return ReportRecord{}, errors.New("invalid report idempotency receipt")
+		}
+		return record, nil
+	}
+	st, err := s.snapshotReportState(ctx, currentUser, caseID, runID, attemptID)
 	if err != nil {
 		return ReportRecord{}, err
 	}
@@ -62,7 +91,16 @@ func (s *Store) CreateReportContext(ctx context.Context, user accounts.User, cas
 	if err := requireCaseAction(caseItem, currentUser, access.Export); err != nil {
 		return ReportRecord{}, err
 	}
-	run, attempt, input, _, err := s.validateFrozenTerminalAttempt(st, caseItem, runID, attemptID)
+	runSnapshot := st.snapshotOf(runID)
+	precheck := isSingleContractSnapshot(runSnapshot)
+	var run Run
+	var attempt Attempt
+	var input AttemptInput
+	if precheck && !isGovernedReviewCase(caseItem) {
+		run, attempt, input, err = s.validateSingleContractReport(st, caseItem, runID, attemptID)
+	} else {
+		run, attempt, input, _, err = s.validateFrozenTerminalAttempt(st, caseItem, runID, attemptID)
+	}
 	if err != nil {
 		return ReportRecord{}, err
 	}
@@ -110,13 +148,19 @@ func (s *Store) CreateReportContext(ctx context.Context, user accounts.User, cas
 	availability := "frozen"
 	unavailableReason := ""
 	if len(attempt.RulePackSnapshot) == 0 {
-		if attempt.RulePackHash != "" || attempt.RulePackSnapshotDigest != "" || attempt.RulePackCompilerRef == "" ||
-			!completeNoAuthorityRuleEvidence(caseItem, runID, attemptID, evaluations, findings) {
-			return ReportRecord{}, fault.Conflict("缺少已授权 RulePack，且三项强制能力没有完整的授权不足证据")
+		if precheck && !isGovernedReviewCase(caseItem) {
+			availability = "not_applicable"
+			unavailableReason = "本次仅执行单合同预审映射，未执行正式治理规则包。"
+			manifestBytes = json.RawMessage("null")
+		} else {
+			if attempt.RulePackHash != "" || attempt.RulePackSnapshotDigest != "" || attempt.RulePackCompilerRef == "" ||
+				!completeNoAuthorityRuleEvidence(caseItem, runID, attemptID, evaluations, findings) {
+				return ReportRecord{}, fault.Conflict("缺少已授权 RulePack，且三项强制能力没有完整的授权不足证据")
+			}
+			availability = "unavailable"
+			unavailableReason = "此尝试未冻结可用 RulePack；带宽、月度可用率和预付款三项强制能力均以 insufficient / contractual_authority_missing 记录，采购或中标文件缺少合同依据。"
+			manifestBytes = json.RawMessage("null")
 		}
-		availability = "unavailable"
-		unavailableReason = "此尝试未冻结可用 RulePack；带宽、月度可用率和预付款三项强制能力均以 insufficient / contractual_authority_missing 记录，采购或中标文件缺少合同依据。"
-		manifestBytes = json.RawMessage("null")
 	} else {
 		manifestBytes, err = manifestSnapshot(attempt.RulePackSnapshot)
 		if err != nil {
@@ -137,7 +181,10 @@ func (s *Store) CreateReportContext(ctx context.Context, user accounts.User, cas
 	} else {
 		agentReviewJSON = nil
 	}
-	runSnapshot := st.snapshotOf(runID)
+	if runSnapshot.ReviewScope != nil {
+		attempt.ReviewScope = runSnapshot.ReviewScope
+		input.ReviewScope = runSnapshot.ReviewScope
+	}
 	legalReview, err := frozenLegalReportProjection(runSnapshot, runID, attemptID)
 	if err != nil {
 		return ReportRecord{}, fault.Conflict("所选执行记录保存的法律适用快照已损坏")
@@ -156,6 +203,10 @@ func (s *Store) CreateReportContext(ctx context.Context, user accounts.User, cas
 		InputHash: *attempt.InputHash, OutputHash: *attempt.OutputHash, DecisionSnapshotHash: decisionHash,
 		AgentReview: agentReviewJSON, AgentReviewBytes: agentReviewBytes, AgentReviewSHA256: agentReviewDigest,
 	}
+	if precheck {
+		envelope.PrecheckMapping = json.RawMessage(engine.SingleContractPrecheckManifest)
+		envelope.CoverageNotice = "仅核对主合同中可识别的付款比例；跨材料比对、正式制度审查及其他风险未执行。应补齐材料后发起完整审查，识别结果仍需人工核对。"
+	}
 	jsonBytes, err := json.Marshal(envelope)
 	if err != nil {
 		return ReportRecord{}, err
@@ -169,13 +220,42 @@ func (s *Store) CreateReportContext(ctx context.Context, user accounts.User, cas
 		InputHash: *attempt.InputHash, OutputHash: *attempt.OutputHash,
 		DecisionSnapshotHash: decisionHash, Digest: reportDigest(jsonBytes, htmlBytes), CreatedAt: now,
 	}
-	if err := s.updateCaseAs(currentUser, caseID, func(next *state) error {
+	var receipt writeReceipt
+	var found bool
+	var receiptTx pgx.Tx
+	if err := s.scopedCaseWrite(ctx, currentUser, caseID, "", "", true, false, func(tx pgx.Tx) error {
+		receiptTx = tx
+		if key == "" {
+			return nil
+		}
+		if err := lockWriteReceipt(ctx, tx, currentUser, route, key); err != nil {
+			return err
+		}
+		receipt, found, err = loadWriteReceipt(ctx, tx, coreWriteReceipts, currentUser, route, key)
+		return err
+	}, func(next *state) error {
+		currentUser, err = trustedUser(currentUser)
+		if err != nil {
+			return err
+		}
 		currentCase, err := s.requireBusinessWrite(next, currentUser, caseID)
 		if err != nil {
 			return err
 		}
 		if err := requireCaseAction(currentCase, currentUser, access.Export); err != nil {
 			return err
+		}
+		if found {
+			if err := checkWriteReceipt(receipt, currentCase, digest); err != nil {
+				return err
+			}
+			if err := validateWriteReceiptTarget(ctx, receiptTx, coreWriteReceipts, currentCase, receipt); err != nil {
+				return err
+			}
+			if err := json.Unmarshal(receipt.Response, &record); err != nil || record.ID == "" || record.RunID != runID || record.AttemptID != attemptID {
+				return errors.New("invalid report idempotency receipt")
+			}
+			return nil
 		}
 		currentAttempt, ok := next.attemptByID(attemptID)
 		if !ok || currentAttempt.RunID != runID || currentAttempt.InputHash == nil || currentAttempt.OutputHash == nil ||
@@ -196,6 +276,9 @@ func (s *Store) CreateReportContext(ctx context.Context, user accounts.User, cas
 			Record: record, TenantID: currentCase.TenantID, OrgID: currentCase.OwnerOrgID, CaseID: caseID,
 			JSONBytes: append([]byte(nil), jsonBytes...), HTMLBytes: append([]byte(nil), htmlBytes...),
 		})
+		if key != "" {
+			return insertWriteReceipt(ctx, receiptTx, coreWriteReceipts, currentUser, currentCase, route, key, digest, record)
+		}
 		return nil
 	}); err != nil {
 		return ReportRecord{}, err
@@ -234,7 +317,7 @@ func (s *Store) ReadReport(user accounts.User, caseID, reportID, format string) 
 	if format != "json" && format != "html" {
 		return ReportRecord{}, nil, fault.Invalid("报告格式只能是 json 或 html")
 	}
-	st, err := s.snapshotAs(currentUser)
+	st, err := s.snapshotCaseReport(context.Background(), currentUser, caseID, reportID)
 	if err != nil {
 		return ReportRecord{}, nil, err
 	}

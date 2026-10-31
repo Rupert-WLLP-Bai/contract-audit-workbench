@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"io"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -22,6 +23,7 @@ type callTraceInput struct {
 	RequestedModel string
 	ReportedModel  string
 	Payload        []byte
+	PayloadReader  io.Reader
 	Messages       []chatMessage
 	StartedAt      time.Time
 	FinishedAt     time.Time
@@ -34,7 +36,17 @@ type callTraceInput struct {
 // exact digests and byte counts of the full bodies. Images and over-budget
 // text are omitted; the flags and sizes keep that omission explicit.
 func buildModelCallTrace(input callTraceInput) *execution.ModelCallTrace {
-	requestSum := sha256.Sum256(input.Payload)
+	var requestSum [sha256.Size]byte
+	requestBytes := len(input.Payload)
+	if input.PayloadReader == nil {
+		requestSum = sha256.Sum256(input.Payload)
+	} else {
+		hash := sha256.New()
+		// Streaming request readers are built entirely from in-memory bytes.
+		count, _ := io.Copy(hash, input.PayloadReader)
+		hash.Sum(requestSum[:0])
+		requestBytes = int(count)
+	}
 	messages, requestTruncated := traceRequestMessages(input.Messages)
 	trace := &execution.ModelCallTrace{
 		RequestedModel:    input.RequestedModel,
@@ -44,7 +56,7 @@ func buildModelCallTrace(input callTraceInput) *execution.ModelCallTrace {
 		StartedAt:         input.StartedAt.UTC().Format(time.RFC3339Nano),
 		FinishedAt:        input.FinishedAt.UTC().Format(time.RFC3339Nano),
 		RequestSHA256:     hex.EncodeToString(requestSum[:]),
-		RequestBytes:      len(input.Payload),
+		RequestBytes:      requestBytes,
 		RequestMessages:   messages,
 		RequestTruncated:  requestTruncated,
 		ResponseBytes:     len(input.ResponseText),

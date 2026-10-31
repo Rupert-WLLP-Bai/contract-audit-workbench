@@ -469,7 +469,7 @@ func TestLegacyFeedbackCannotInventPolicyContext(t *testing.T) {
 	if err := st.Decide(user, caseID, runID, finding.ID, "legacy-decision", "false_positive", "按证据确认", finding.Version); err != nil {
 		t.Fatal(err)
 	}
-	decisions := st.DecisionsFor(finding.ID)
+	decisions := mustDecisionsFor(t, st, user, finding.ID)
 	if len(decisions) != 1 {
 		t.Fatal("legacy decision missing")
 	}

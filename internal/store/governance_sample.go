@@ -66,15 +66,20 @@ type RulePackTestFact struct {
 
 // RulePackTestInput is one bounded synthetic sample execution request.
 type RulePackTestInput struct {
-	PackID           string               `json:"-"`
-	Version          string               `json:"-"`
-	ExpectedRevision int64                `json:"expected_revision"`
-	BusinessLine     string               `json:"business_line"`
-	Scenario         string               `json:"scenario"`
-	ContractType     string               `json:"contract_type"`
-	At               string               `json:"at"`
-	Sources          []RulePackTestSource `json:"sources"`
-	Facts            []RulePackTestFact   `json:"facts"`
+	PackID                  string               `json:"-"`
+	Version                 string               `json:"-"`
+	ExpectedRevision        int64                `json:"expected_revision"`
+	RunFixtureSuite         bool                 `json:"run_fixture_suite,omitempty"`
+	ExpectedContentHash     string               `json:"expected_content_hash,omitempty"`
+	CompareVersion          string               `json:"compare_version,omitempty"`
+	CompareExpectedRevision int64                `json:"compare_expected_revision,omitempty"`
+	CompareExpectedHash     string               `json:"compare_expected_hash,omitempty"`
+	BusinessLine            string               `json:"business_line"`
+	Scenario                string               `json:"scenario"`
+	ContractType            string               `json:"contract_type"`
+	At                      string               `json:"at"`
+	Sources                 []RulePackTestSource `json:"sources"`
+	Facts                   []RulePackTestFact   `json:"facts"`
 }
 
 // RulePackTestResult returns the deterministic report of the sample execution.
@@ -85,6 +90,9 @@ type RulePackTestResult struct {
 }
 
 func validateRulePackTestInput(input RulePackTestInput) error {
+	if input.RunFixtureSuite || input.ExpectedContentHash != "" || input.CompareVersion != "" || input.CompareExpectedRevision != 0 || input.CompareExpectedHash != "" {
+		return errors.New("fixture suite options are only accepted for a suite run")
+	}
 	if !validIdentifier(input.BusinessLine) || !validIdentifier(input.Scenario) || !validIdentifier(input.ContractType) {
 		return errors.New("business_line, scenario and contract_type are required canonical identifiers")
 	}

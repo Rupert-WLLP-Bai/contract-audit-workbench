@@ -21,6 +21,7 @@ import (
 	"testing"
 	"time"
 
+	"contractaudit/internal/accounts"
 	"contractaudit/internal/auditext"
 	"contractaudit/internal/bootstrap"
 	"contractaudit/internal/capabilitypack"
@@ -41,9 +42,17 @@ func TestProductionStartupRejectsDemoAccountsBeforeOpeningStorage(t *testing.T) 
 	t.Setenv("CORE_DATABASE_URL", "postgres://user:secret@127.0.0.1:1/contract_audit_prod?sslmode=disable")
 	t.Setenv("DEV_DATABASE_URL", "")
 	t.Setenv("TEST_DATABASE_URL", "")
+	t.Setenv("IDENTITY_DIRECTORY_FILE", "")
+	if err := accounts.ConfigureDirectory(""); err != nil {
+		t.Fatal(err)
+	}
+	wantIdentityError := accounts.ValidateEnvironment(config.ModeProduction)
+	if wantIdentityError == nil {
+		t.Fatal("production unexpectedly accepted an empty identity directory")
+	}
 	t.Setenv("DATA_DIR", dir)
 	err := run()
-	if err == nil || !strings.Contains(err.Error(), "demo accounts") {
+	if err == nil || err.Error() != wantIdentityError.Error() {
 		t.Fatalf("production did not stop at identity boundary: %v", err)
 	}
 	if _, err := os.Stat(dir); !os.IsNotExist(err) {
@@ -92,9 +101,10 @@ func TestInvalidReadOnlySettingStopsBeforeOpeningStorage(t *testing.T) {
 }
 
 func TestOriginsPreservesDefaultsAndConfiguredOrder(t *testing.T) {
+	t.Setenv("APP_ENV", "development")
 	t.Setenv("CORS_ORIGIN", " \t")
-	if got := origins(); got != nil {
-		t.Fatalf("origins() with blank configuration = %#v, want nil", got)
+	if got := origins(); !reflect.DeepEqual(got, []string{"http://localhost:5173", "http://127.0.0.1:5173"}) {
+		t.Fatalf("origins() with blank configuration = %#v", got)
 	}
 
 	t.Setenv("CORS_ORIGIN", " https://east.example , ,https://west.example,https://east.example ")
@@ -525,7 +535,7 @@ func configureServerCommandEnvironment(t *testing.T) {
 		"DATA_DIR", "ADDR", "DATABASE_SCHEMA", "IDENTITY_DIRECTORY_FILE", "CORS_ORIGIN",
 		"OPERATOR_AUDIT_ENABLED", "EXTERNAL_EVIDENCE_MODE", "EXTERNAL_EVIDENCE_CONNECTOR_ID", "EXTERNAL_EVIDENCE_SOURCE_SYSTEM",
 		"EXTERNAL_EVIDENCE_BASE_URL", "EXTERNAL_EVIDENCE_ALLOWED_OBJECTS", "EXTERNAL_EVIDENCE_PAYLOAD_PREFIX", "EXTERNAL_EVIDENCE_FIXTURE_FILE",
-		"GATEWAY_ROLE_TOKEN", "WORKER_CORE_TOKEN", "MODEL_GATEWAY_URL", "DOCUMENT_SERVICE_URL", "WORKER_DOCUMENT_TOKEN",
+		"GATEWAY_ROLE_TOKEN", "WORKER_CORE_TOKEN", "MODEL_GATEWAY_URL", "DOCUMENT_SERVICE_URL", "WORKER_DOCUMENT_TOKEN", "CORE_DOCUMENT_TOKEN",
 		"TOOL_GATEWAY_URL", "WORKER_TOOL_TOKEN", "WORKER_MODEL_TOKEN", "DOCUMENT_MODEL_TOKEN", "LLM_BASE_URL", "LLM_MODEL", "OCR_MODEL",
 		"DEV_DATABASE_URL", "PROD_DATABASE_URL", "CORE_DATABASE_URL", "DOCUMENT_DATABASE_URL",
 		"EXECUTION_DATABASE_URL", "MODEL_DATABASE_URL", "TOOL_DATABASE_URL", "OTEL_EXPORTER_OTLP_ENDPOINT", "S3_ENDPOINT",
@@ -541,6 +551,8 @@ func configureServerCommandEnvironment(t *testing.T) {
 	t.Setenv("DATA_DIR", t.TempDir())
 	t.Setenv("GATEWAY_ROLE_TOKEN", strings.Repeat("g", 40))
 	t.Setenv("WORKER_CORE_TOKEN", strings.Repeat("c", 40))
+	t.Setenv("DOCUMENT_SERVICE_URL", "http://127.0.0.1:1")
+	t.Setenv("CORE_DOCUMENT_TOKEN", strings.Repeat("i", 40))
 	t.Setenv("LLM_BASE_URL", "http://127.0.0.1:1/v1")
 	t.Setenv("LLM_MODEL", "server-core-test-chat")
 	t.Setenv("OCR_MODEL", "server-core-test-ocr")

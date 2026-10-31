@@ -14,7 +14,7 @@ import (
 
 func trustedUser(user accounts.User) (accounts.User, error) {
 	current, ok := accounts.ByID(user.ID)
-	if !ok || !current.Enabled {
+	if !ok || !current.Enabled || current.TenantID == "" {
 		return accounts.User{}, fault.Unauthenticated("登录已失效或账号不可用")
 	}
 	if (user.TenantID != "" && user.TenantID != current.TenantID) ||
@@ -42,22 +42,40 @@ func (s *Store) snapshotAsContext(ctx context.Context, user accounts.User) (stat
 	return s.snapshotScoped(ctx, userScope(current))
 }
 
-func (s *Store) snapshotForClaim(claim JobClaim) (state, error) {
-	return s.snapshotScoped(context.Background(), claim.scope())
+func (s *Store) snapshotForAttemptContext(ctx context.Context, attemptID string) (state, error) {
+	return s.snapshotAttemptRead(ctx, attemptID, true)
 }
 
-func (s *Store) snapshotForAttempt(attemptID string) state {
-	if claim, ok := s.claimForAttempt(attemptID); ok {
-		st, err := s.snapshotForClaim(claim)
-		if err == nil {
-			return st
-		}
-		return state{}
+func (s *Store) snapshotForAttemptMetadataContext(ctx context.Context, attemptID string) (state, error) {
+	return s.snapshotAttemptRead(ctx, attemptID, false)
+}
+
+func (s *Store) snapshotAttemptRead(ctx context.Context, attemptID string, withInput bool) (state, error) {
+	if err := ctx.Err(); err != nil {
+		return state{}, err
 	}
-	return s.snapshot()
+	claim, ok := s.claimForAttempt(attemptID)
+	if executionScopeRequiresClaim(ctx) && (!ok || !claimMatchesExecutionScope(ctx, claim)) {
+		return state{}, errLeaseLost
+	}
+	if !ok || claim.AttemptID != attemptID {
+		return state{}, errExecutionEventScope
+	}
+	st, err := s.readAttemptState(ctx, claim, withInput)
+	if err != nil {
+		return state{}, err
+	}
+	if claim.RunID != "" && (len(st.Runs) != 1 || st.Runs[0].ID != claim.RunID) {
+		return state{}, errExecutionEventScope
+	}
+	return st, nil
 }
 
 func (s *Store) snapshotScoped(ctx context.Context, scope dbScope) (state, error) {
+	return s.snapshotScopedClaim(ctx, scope, nil)
+}
+
+func (s *Store) snapshotScopedClaim(ctx context.Context, scope dbScope, claim *JobClaim) (state, error) {
 	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
 	if err != nil {
 		return state{}, err
@@ -65,6 +83,20 @@ func (s *Store) snapshotScoped(ctx context.Context, scope dbScope) (state, error
 	defer tx.Rollback(ctx)
 	if err := setLocalScope(ctx, tx, scope); err != nil {
 		return state{}, err
+	}
+	if claim != nil && claim.JobID != "" {
+		var live bool
+		err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM worker_jobs
+			WHERE id=$1 AND tenant_id=$2 AND org_id=$3 AND case_id=$4 AND run_id=$5 AND attempt_id=$6
+				AND actor_id=$7 AND worker_id=$8 AND generation=$9 AND state='running' AND lease_until > clock_timestamp())`,
+			claim.JobID, claim.TenantID, claim.OrgID, claim.CaseID, claim.RunID, claim.AttemptID,
+			claim.ActorID, claim.WorkerID, claim.Generation).Scan(&live)
+		if err != nil {
+			return state{}, err
+		}
+		if !live {
+			return state{}, errLeaseLost
+		}
 	}
 	// Per-request reads degrade a corrupted artifact to a per-document parse
 	// failure instead of failing the whole request; startup and writes stay strict.
@@ -79,7 +111,7 @@ func (s *Store) snapshotScoped(ctx context.Context, scope dbScope) (state, error
 }
 
 func userScope(user accounts.User) dbScope {
-	return dbScope{ActorID: user.ID, TenantID: accounts.Tenant(user), OrgID: user.OrgID, Role: "api"}
+	return dbScope{ActorID: user.ID, TenantID: user.TenantID, OrgID: user.OrgID, Role: "api"}
 }
 
 func (s *Store) updateAs(user accounts.User, fn func(*state) error) error {
@@ -137,14 +169,6 @@ func caseReadAllowed(item Case, user accounts.User) bool {
 	return authorizeCase(item, user, access.Read)
 }
 
-func workerScope(job Job) dbScope {
-	return dbScope{ActorID: job.ActorID, TenantID: job.TenantID, OrgID: job.OrgID, Role: "worker"}
-}
-
-func localDemoScope(actorID string) dbScope {
-	return dbScope{ActorID: actorID, TenantID: accounts.LocalDemoTenant, OrgID: "demo-org", Role: "api"}
-}
-
 func validateAudienceUser(user accounts.User, audience string) error {
 	switch audience {
 	case "client":
@@ -159,49 +183,43 @@ func validateAudienceUser(user accounts.User, audience string) error {
 	}
 }
 
-func (s *Store) snapshotForSession(ctx context.Context, token string) (state, error) {
+func (s *Store) sessionFromDB(ctx context.Context, token string) (session, accounts.User, error) {
 	if token == "" {
-		return state{}, fault.Unauthenticated("登录已失效或账号密码不正确")
+		return session{}, accounts.User{}, fault.Unauthenticated("登录已失效或账号密码不正确")
 	}
-	return s.snapshotScoped(ctx, dbScope{ActorID: "session", SessionToken: token, Role: "api"})
-}
-
-func (s *Store) sessionFromDB(ctx context.Context, token string) (session, error) {
-	if token == "" {
-		return session{}, fault.Unauthenticated("登录已失效或账号密码不正确")
-	}
+	digest := sessionTokenDigest(token)
 	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
 	if err != nil {
-		return session{}, err
+		return session{}, accounts.User{}, err
 	}
 	defer tx.Rollback(ctx)
-	if err := setLocalScope(ctx, tx, dbScope{ActorID: "session", SessionToken: token, Role: "api"}); err != nil {
-		return session{}, err
+	if err := setLocalSessionScope(ctx, tx, digest); err != nil {
+		return session{}, accounts.User{}, err
 	}
 	var current session
 	err = tx.QueryRow(ctx, `SELECT token, actor_id, issuer, subject, tenant_id, org_id, audience, expires_at
-		FROM sessions WHERE token=$1`, token).Scan(&current.Token, &current.ActorID, &current.Issuer,
+		FROM sessions WHERE token=$1`, digest).Scan(&current.Token, &current.ActorID, &current.Issuer,
 		&current.Subject, &current.TenantID, &current.OrgID, &current.Audience, &current.ExpiresAt)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return session{}, fault.Unauthenticated("登录已失效或账号密码不正确")
+		return session{}, accounts.User{}, fault.Unauthenticated("登录已失效或账号密码不正确")
 	}
 	if err != nil {
-		return session{}, err
+		return session{}, accounts.User{}, err
 	}
 	if err := tx.Commit(ctx); err != nil {
-		return session{}, err
+		return session{}, accounts.User{}, err
 	}
 	expires, err := time.Parse(timeLayout, current.ExpiresAt)
 	if err != nil || !expires.After(time.Now().UTC()) {
-		return session{}, fault.Unauthenticated("登录已失效或账号密码不正确")
+		return session{}, accounts.User{}, fault.Unauthenticated("登录已失效或账号密码不正确")
 	}
 	user, ok := accounts.ByID(current.ActorID)
 	if !ok || !user.Enabled || user.TenantID != current.TenantID || user.OrgID != current.OrgID ||
 		user.Issuer != current.Issuer || user.Subject != current.Subject {
-		return session{}, fault.Unauthenticated("登录身份已变更或账号不可用")
+		return session{}, accounts.User{}, fault.Unauthenticated("登录身份已变更或账号不可用")
 	}
 	if err := validateAudienceUser(user, current.Audience); err != nil {
-		return session{}, err
+		return session{}, accounts.User{}, err
 	}
-	return current, nil
+	return current, user, nil
 }

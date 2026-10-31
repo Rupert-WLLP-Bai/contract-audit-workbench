@@ -1,19 +1,25 @@
 package main
 
 import (
-	"context"
 	"encoding/json"
-	"errors"
 	"log"
 	"net/http"
 	"os"
-	"os/signal"
 	"strings"
-	"syscall"
 	"time"
 
+	"contractaudit/internal/bootstrap"
+	"contractaudit/internal/process"
 	"contractaudit/internal/systemhealth"
+	"contractaudit/internal/telemetry"
 )
+
+// telemetryExporter builds the OTLP exporter for this monitor's HTTP boundary.
+// It is nil, and the boundary still logs and recovers, when no collector is
+// configured.
+func telemetryExporter() (*telemetry.Exporter, error) {
+	return bootstrap.HTTPExporter("healthmonitor")
+}
 
 func main() {
 	kubernetes := systemhealth.KubernetesConfigFromEnv()
@@ -43,16 +49,15 @@ func main() {
 		_ = json.NewEncoder(w).Encode(monitor.Snapshot(r.Context()))
 	})
 	mux.HandleFunc("GET /health", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	exporter, err := telemetryExporter()
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer exporter.Close()
+	ctx, stop := process.SignalContext()
 	defer stop()
-	server := &http.Server{Addr: ":8092", Handler: mux, ReadHeaderTimeout: 3 * time.Second, ReadTimeout: 5 * time.Second, WriteTimeout: 8 * time.Second, IdleTimeout: 30 * time.Second}
-	go func() {
-		<-ctx.Done()
-		shutdown, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		_ = server.Shutdown(shutdown)
-	}()
-	if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+	server := &http.Server{Addr: ":8092", Handler: telemetry.HTTPBoundary(exporter, "healthmonitor", telemetry.HTTPOptions{}, mux), ReadHeaderTimeout: 3 * time.Second, ReadTimeout: 5 * time.Second, WriteTimeout: 8 * time.Second, IdleTimeout: 30 * time.Second}
+	if err := process.Serve(ctx, server, 5*time.Second); err != nil {
 		log.Fatal(err)
 	}
 }

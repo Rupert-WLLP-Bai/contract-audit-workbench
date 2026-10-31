@@ -187,10 +187,10 @@ function SubjectChangeReviewPageContents({ caseId, requestId, actor }: { caseId:
         {impact.data ? (
           <>
             <p>当前账号可见影响案件：{impact.data.visible_affected_count} 项。隐藏案件信息不会显示。</p>
-            {impact.data.affected_cases.length ? (
+            {impact.data.authorized_impact_cases.length ? (
               <ul>
-                {impact.data.affected_cases.map((item) => (
-                  <li key={item.case_id}><Link to={`/cases/${encodeURIComponent(item.case_id)}`}>{item.case_name}</Link> · {item.status}</li>
+                {impact.data.authorized_impact_cases.map((item) => (
+                  <li key={item.case_id}><Link to={`/cases/${encodeURIComponent(item.case_id)}`}>{item.case_title}</Link> · {item.business_status}</li>
                 ))}
               </ul>
             ) : <Empty description="没有当前可见的影响案件" />}

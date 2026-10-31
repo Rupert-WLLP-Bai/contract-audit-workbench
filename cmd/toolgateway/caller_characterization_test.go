@@ -145,9 +145,10 @@ func TestEdgeCredentialUsesPublicSessionBranch(t *testing.T) {
 }
 
 func TestConfiguredOriginsPreservesDefaultsAndConfiguredOrder(t *testing.T) {
+	t.Setenv("APP_ENV", "development")
 	t.Setenv("CORS_ORIGIN", " \t")
-	if got := configuredOrigins(); got != nil {
-		t.Fatalf("configuredOrigins() with blank value = %#v, want nil", got)
+	if got := configuredOrigins(); len(got) != 2 || got[0] != "http://localhost:5173" || got[1] != "http://127.0.0.1:5173" {
+		t.Fatalf("configuredOrigins() with blank value = %#v", got)
 	}
 	t.Setenv("CORS_ORIGIN", " https://east.example , ,https://west.example  ")
 	want := []string{"http://localhost:5173", "http://127.0.0.1:5173", "https://east.example", "https://west.example"}

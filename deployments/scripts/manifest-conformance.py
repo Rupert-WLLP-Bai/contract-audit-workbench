@@ -46,7 +46,7 @@ SECRET_CONTRACT = {
     },
     "contract-audit-service-tokens": {
         "GATEWAY_CORE_TOKEN", "GATEWAY_DOCUMENT_TOKEN", "GATEWAY_EXECUTION_TOKEN", "GATEWAY_TOOL_TOKEN",
-        "WORKER_DOCUMENT_TOKEN", "WORKER_MODEL_TOKEN", "WORKER_TOOL_TOKEN", "WORKER_CORE_TOKEN", "DOCUMENT_MODEL_TOKEN",
+        "WORKER_DOCUMENT_TOKEN", "WORKER_MODEL_TOKEN", "WORKER_TOOL_TOKEN", "WORKER_CORE_TOKEN", "CORE_DOCUMENT_TOKEN", "DOCUMENT_MODEL_TOKEN",
     },
     "contract-audit-oidc": {"OIDC_CLIENT_SECRET", "OIDC_ADMIN_CLIENT_SECRET", "OIDC_STATE_KEY"},
     "contract-audit-rustfs": {"RUSTFS_ACCESS_KEY", "RUSTFS_SECRET_KEY"},
@@ -54,10 +54,10 @@ SECRET_CONTRACT = {
 }
 
 REQUIRED = {
-    "core": ("CORE_DATABASE_URL", "GATEWAY_ROLE_TOKEN", "WORKER_CORE_TOKEN"),
+    "core": ("CORE_DATABASE_URL", "GATEWAY_ROLE_TOKEN", "WORKER_CORE_TOKEN", "CORE_DOCUMENT_TOKEN"),
     "document": (
         "DOCUMENT_DATABASE_URL", "GATEWAY_ROLE_TOKEN", "MODEL_GATEWAY_URL",
-        "DOCUMENT_MODEL_TOKEN", "WORKER_DOCUMENT_TOKEN",
+        "DOCUMENT_MODEL_TOKEN", "WORKER_DOCUMENT_TOKEN", "CORE_DOCUMENT_TOKEN",
         "S3_ENDPOINT", "S3_BUCKET", "S3_ACCESS_KEY", "S3_SECRET_KEY",
     ),
     "execution": ("EXECUTION_DATABASE_URL", "GATEWAY_ROLE_TOKEN"),
@@ -82,7 +82,7 @@ JEV_ADVISORY_KEYS = (
     "TYPESAFE_JEV_MODEL", "TYPESAFE_JEV_PROVIDER",
 )
 JEV_MODEL_KEYS = JEV_ADVISORY_KEYS + ("TYPESAFE_JEV_BASE_URL",)
-INTERNAL_TOKEN_KEYS = ("WORKER_MODEL_TOKEN", "WORKER_DOCUMENT_TOKEN", "WORKER_TOOL_TOKEN", "WORKER_CORE_TOKEN", "DOCUMENT_MODEL_TOKEN")
+INTERNAL_TOKEN_KEYS = ("WORKER_MODEL_TOKEN", "WORKER_DOCUMENT_TOKEN", "WORKER_TOOL_TOKEN", "WORKER_CORE_TOKEN", "CORE_DOCUMENT_TOKEN", "DOCUMENT_MODEL_TOKEN")
 PROBES = ("startupProbe", "readinessProbe", "livenessProbe")
 HTTP_PORT_HINT = {"core": 8081, "document": 8082, "execution": 8083, "worker": 8086, "model": 8084, "tool": 8085}
 
@@ -455,7 +455,7 @@ def check_kustomize(root: Path, entrypoints: set[str], roles: set[str], dsn_keys
         for key in ("CORE_DATABASE_URL", "DOCUMENT_DATABASE_URL", "EXECUTION_DATABASE_URL", "MODEL_DATABASE_URL", "TOOL_DATABASE_URL", "MIGRATOR_DATABASE_URL"):
             if key not in env:
                 fail(f"the migration Job is missing {key}")
-        notes.append("apply order: deployments/k8s/migrate (wait for completion) then deployments/k8s/base")
+        notes.append("release order: release-k8s.py bootstrap, migrate-k8s.sh <candidate-lock>, then release-k8s.py deploy <candidate-lock>")
     notes.append("cluster runtime: NOT_RUN (static manifest evidence only)")
 
 

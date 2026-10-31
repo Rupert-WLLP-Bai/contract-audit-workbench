@@ -10,6 +10,8 @@ resources:
   - ../k8s/migrate/migration-job.yaml
   - platform.yaml
   - health-monitor.yaml
+  - ../k8s/base/network-policy.yaml
+  - network-policy.yaml
 patches:
   - path: workload-patch.yaml
   - path: config-patch.yaml

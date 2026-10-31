@@ -53,7 +53,7 @@ func (s *Store) ClaimOutbox(ctx context.Context, owner string, limit int, lease 
 	defer tx.Rollback(ctx)
 	// The execution/worker role drains the queue across tenants; the policy for
 	// outbox_events explicitly grants that to the worker actor role.
-	if err := setLocalScope(ctx, tx, dbScope{ActorID: owner, Role: "worker", WorkerID: owner}); err != nil {
+	if err := setLocalQueueScope(ctx, tx, owner); err != nil {
 		return nil, err
 	}
 	rows, err := tx.Query(ctx, `WITH candidate AS (
@@ -112,13 +112,13 @@ func (s *Store) AckOutbox(ctx context.Context, claim OutboxClaim) error {
 		return err
 	}
 	defer tx.Rollback(ctx)
-	if err := setLocalScope(ctx, tx, dbScope{ActorID: claim.Owner, Role: "worker", WorkerID: claim.Owner}); err != nil {
+	if err := setLocalScope(ctx, tx, dbScope{ActorID: claim.Owner, Role: "api", TenantID: claim.Event.TenantID, OrgID: claim.Event.OrgID, WorkerID: claim.Owner}); err != nil {
 		return err
 	}
 	tag, err := tx.Exec(ctx, `UPDATE outbox_events
 		SET state='delivered', delivered_at=$4, claim_owner='', claim_until=NULL, last_error=''
-		WHERE id=$1 AND state='pending' AND claim_owner=$2 AND attempts=$3 AND claim_until > clock_timestamp()`,
-		claim.Event.ID, claim.Owner, claim.Token, stamp())
+		WHERE id=$1 AND state='pending' AND claim_owner=$2 AND attempts=$3 AND claim_until > clock_timestamp() AND tenant_id=$5`,
+		claim.Event.ID, claim.Owner, claim.Token, stamp(), claim.Event.TenantID)
 	if err != nil {
 		return fmt.Errorf("acknowledge outbox event: %w", err)
 	}
@@ -148,14 +148,14 @@ func (s *Store) ReleaseOutbox(ctx context.Context, claim OutboxClaim, reasonCode
 		return err
 	}
 	defer tx.Rollback(ctx)
-	if err := setLocalScope(ctx, tx, dbScope{ActorID: claim.Owner, Role: "worker", WorkerID: claim.Owner}); err != nil {
+	if err := setLocalScope(ctx, tx, dbScope{ActorID: claim.Owner, Role: "api", TenantID: claim.Event.TenantID, OrgID: claim.Event.OrgID, WorkerID: claim.Owner}); err != nil {
 		return err
 	}
 	tag, err := tx.Exec(ctx, `UPDATE outbox_events
 		SET claim_owner='', claim_until=NULL, last_error=$4,
 			next_attempt_at=clock_timestamp()+($5::bigint*interval '1 microsecond')
-		WHERE id=$1 AND state='pending' AND claim_owner=$2 AND attempts=$3 AND claim_until > clock_timestamp()`,
-		claim.Event.ID, claim.Owner, claim.Token, reasonCode, retryAfter.Microseconds())
+		WHERE id=$1 AND state='pending' AND claim_owner=$2 AND attempts=$3 AND claim_until > clock_timestamp() AND tenant_id=$6`,
+		claim.Event.ID, claim.Owner, claim.Token, reasonCode, retryAfter.Microseconds(), claim.Event.TenantID)
 	if err != nil {
 		return fmt.Errorf("release outbox event: %w", err)
 	}

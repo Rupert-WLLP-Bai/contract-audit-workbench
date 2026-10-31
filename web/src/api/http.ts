@@ -63,6 +63,25 @@ export function isForbidden(error: unknown): boolean {
   );
 }
 
+const MAX_QUERY_RETRIES = 2;
+
+/** Retry only explicitly retryable API reads; auth and conflict outcomes are final. */
+export function shouldRetryQuery(failureCount: number, error: unknown): boolean {
+  return (
+    failureCount < MAX_QUERY_RETRIES &&
+    error instanceof ApiError &&
+    error.retryable &&
+    !isUnauthenticated(error) &&
+    !isForbidden(error) &&
+    !isConflict(error)
+  );
+}
+
+/** Exponential backoff with a fixed upper bound for query retries. */
+export function queryRetryDelay(failureCount: number): number {
+  return Math.min(500 * 2 ** Math.max(0, failureCount), 4_000);
+}
+
 export function errorMessage(error: unknown): string {
   if (error instanceof ApiError) return error.message;
   return "请求没有完成";

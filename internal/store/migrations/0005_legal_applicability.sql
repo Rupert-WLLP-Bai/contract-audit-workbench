@@ -1,14 +1,5 @@
-package store
+-- Legal applicability follows subject version and binding creation.
 
-import (
-	"context"
-
-	"github.com/jackc/pgx/v5/pgxpool"
-)
-
-// legalApplicabilitySchemaSQL is registered by the Core schema migrator after
-// cases, governed knowledge and case subject versions have been created.
-const legalApplicabilitySchemaSQL = `
 CREATE UNIQUE INDEX IF NOT EXISTS case_subject_role_version_party_pin_unique
  ON case_subject_role_versions(tenant_id,org_id,case_id,binding_id,version,subject_id,subject_version);
 
@@ -120,23 +111,12 @@ BEGIN
 END $$;
 DROP TRIGGER IF EXISTS case_legal_applicability_facts_head_advance ON case_legal_applicability_facts;
 CREATE TRIGGER case_legal_applicability_facts_head_advance BEFORE UPDATE OR DELETE ON case_legal_applicability_facts FOR EACH ROW EXECUTE FUNCTION advance_legal_applicability_fact_head();
-`
 
-func migrateLegalApplicability(ctx context.Context, pool *pgxpool.Pool) error {
-	if _, err := pool.Exec(ctx, legalApplicabilitySchemaSQL); err != nil {
-		return err
-	}
-	for _, table := range []string{"case_legal_applicability_facts", "case_legal_applicability_fact_versions"} {
-		for _, statement := range []string{
-			`ALTER TABLE ` + table + ` ENABLE ROW LEVEL SECURITY`,
-			`ALTER TABLE ` + table + ` FORCE ROW LEVEL SECURITY`,
-			`DROP POLICY IF EXISTS tenant_boundary ON ` + table,
-			`CREATE POLICY tenant_boundary ON ` + table + ` USING (tenant_id = current_setting('app.tenant_id', true)) WITH CHECK (tenant_id = current_setting('app.tenant_id', true))`,
-		} {
-			if _, err := pool.Exec(ctx, statement); err != nil {
-				return err
-			}
-		}
-	}
-	return nil
-}
+DO $migration$ DECLARE table_name text; BEGIN
+ FOREACH table_name IN ARRAY ARRAY['case_legal_applicability_facts','case_legal_applicability_fact_versions'] LOOP
+  EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY',table_name);
+  EXECUTE format('ALTER TABLE %I FORCE ROW LEVEL SECURITY',table_name);
+  EXECUTE format('DROP POLICY IF EXISTS tenant_boundary ON %I',table_name);
+  EXECUTE format('CREATE POLICY tenant_boundary ON %I USING (tenant_id = current_setting(''app.tenant_id'', true)) WITH CHECK (tenant_id = current_setting(''app.tenant_id'', true))',table_name);
+ END LOOP;
+END $migration$;

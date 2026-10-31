@@ -32,21 +32,20 @@ func (s *Store) EstablishSession(user accounts.User, audience string) (string, e
 	if err := validateAudienceUser(current, audience); err != nil {
 		return "", err
 	}
-	token, err := newID("s")
+	token, err := newSessionToken()
 	if err != nil {
 		return "", err
 	}
 	item := session{
-		Token: token, ActorID: current.ID, Issuer: current.Issuer, Subject: current.Subject,
+		Token: sessionTokenDigest(token), ActorID: current.ID, Issuer: current.Issuer, Subject: current.Subject,
 		TenantID: current.TenantID, OrgID: current.OrgID, Audience: audience,
 		ExpiresAt: time.Now().UTC().Add(7 * 24 * time.Hour).Format(timeLayout),
 	}
 	// Sessions are read straight from PostgreSQL and revoked by deleting the row,
-	// so establishing one is a narrow single-row write: the token is the
+	// so establishing one is a narrow single-row write: the token digest is the
 	// transaction key, the tenant/actor authority comes from the trusted
-	// identity, and no other entity is touched. The in-memory list is patched
-	// afterwards only so in-process reads see the new session; general
-	// persistence no longer writes sessions at all.
+	// identity, and no other entity is touched. The in-memory projection contains
+	// the digest only; general persistence does not write sessions.
 	ctx := context.Background()
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
@@ -57,7 +56,7 @@ func (s *Store) EstablishSession(user accounts.User, audience string) (string, e
 		return "", err
 	}
 	if _, err := tx.Exec(ctx, `INSERT INTO sessions (token, actor_id, expires_at, issuer, subject, tenant_id, org_id, audience)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT (token) DO NOTHING`,
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
 		item.Token, item.ActorID, item.ExpiresAt, item.Issuer, item.Subject, item.TenantID, item.OrgID, item.Audience); err != nil {
 		return "", err
 	}
@@ -68,16 +67,23 @@ func (s *Store) EstablishSession(user accounts.User, audience string) (string, e
 	return token, nil
 }
 
-func (s *Store) SessionAudience(token string) (string, error) {
-	current, err := s.sessionFromDB(context.Background(), token)
+// AuthenticateSession resolves identity and audience from one authoritative
+// PostgreSQL read. A caller must start a new read for each HTTP request.
+func (s *Store) AuthenticateSession(ctx context.Context, token string) (accounts.User, string, error) {
+	current, user, err := s.sessionFromDB(ctx, token)
 	if err != nil {
-		return "", err
+		return accounts.User{}, "", err
 	}
-	return current.Audience, nil
+	return user, current.Audience, nil
+}
+
+func (s *Store) SessionAudience(token string) (string, error) {
+	_, audience, err := s.AuthenticateSession(context.Background(), token)
+	return audience, err
 }
 
 // Logout revokes exactly the presented session token. The deletion is scoped to
-// that token (row level security only exposes token = app.session_token), so one
+// its digest (row level security only exposes token = app.session_token), so one
 // session can never revoke another, and the revocation is durable immediately
 // for every reader because sessions are read from PostgreSQL. Revoking an
 // unknown or already revoked token is a no-op, which keeps logout idempotent.
@@ -85,35 +91,24 @@ func (s *Store) Logout(token string) error {
 	if token == "" {
 		return nil
 	}
+	digest := sessionTokenDigest(token)
 	ctx := context.Background()
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback(ctx)
-	if err := setLocalScope(ctx, tx, dbScope{SessionToken: token, Role: "api"}); err != nil {
+	if err := setLocalSessionScope(ctx, tx, digest); err != nil {
 		return err
 	}
-	if _, err := tx.Exec(ctx, `DELETE FROM sessions WHERE token=$1`, token); err != nil {
+	if _, err := tx.Exec(ctx, `DELETE FROM sessions WHERE token=$1`, digest); err != nil {
 		return err
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return err
 	}
-	s.patchSessionProjection(session{Token: token}, true)
+	s.patchSessionProjection(session{Token: digest}, true)
 	return nil
-}
-
-func (s *Store) User(token string) (accounts.User, error) {
-	current, err := s.sessionFromDB(context.Background(), token)
-	if err != nil {
-		return accounts.User{}, err
-	}
-	user, ok := accounts.ByID(current.ActorID)
-	if !ok || !user.Enabled {
-		return accounts.User{}, fault.Unauthenticated("登录已失效或账号不可用")
-	}
-	return user, nil
 }
 
 func (s *Store) CreateCase(user accounts.User, title, contractType string) (string, error) {
@@ -255,7 +250,7 @@ func (s *Store) ListCasesChecked(user accounts.User) ([]CaseSummary, error) {
 	if err != nil {
 		return nil, err
 	}
-	st, err := s.snapshotScoped(context.Background(), userScope(current))
+	st, err := s.snapshotCaseList(context.Background(), current)
 	if err != nil {
 		return nil, err
 	}
@@ -353,7 +348,7 @@ type CaseDetail struct {
 }
 
 func (s *Store) GetCase(user accounts.User, caseID string) (CaseDetail, error) {
-	st, err := s.snapshotAs(user)
+	st, err := s.snapshotCaseDetail(context.Background(), user, caseID)
 	if err != nil {
 		return CaseDetail{}, err
 	}
@@ -363,7 +358,7 @@ func (s *Store) GetCase(user accounts.User, caseID string) (CaseDetail, error) {
 	}
 	detail := CaseDetail{
 		CaseSummary:     s.summarize(&st, item),
-		Documents:       s.interpretAll(st.documents(item.ID)),
+		Documents:       interpretLoaded(st, st.documents(item.ID)),
 		RevisionPending: revisionPending(&st, item.ID),
 		BusinessLine:    item.BusinessLine, Scenario: item.Scenario, BusinessStatus: item.BusinessStatus,
 		ArchivedAt: item.ArchivedAt,
@@ -490,22 +485,12 @@ func (s *Store) UploadMaterial(ctx context.Context, user accounts.User, caseID, 
 	}
 	requestHash := uploadRequestHash("upload", currentUser.ID, caseID, role, purpose, filename, media, body, options)
 	if options.IdempotencyKey != "" {
-		st, err := s.snapshotScoped(ctx, userScope(currentUser))
+		result, found, err := s.readUploadReceipt(ctx, currentUser, caseID, options.IdempotencyKey, requestHash)
 		if err != nil {
 			return DocumentUploadResult{}, err
 		}
-		for _, prior := range st.UploadIdempotency {
-			if prior.CaseID == caseID && prior.ActorID == currentUser.ID && prior.Key == options.IdempotencyKey {
-				if !bytes.Equal(prior.RequestHash, requestHash[:]) {
-					return DocumentUploadResult{}, fault.Conflict("Idempotency-Key已用于不同上传内容")
-				}
-				for _, v := range st.MaterialVersions {
-					if v.CaseID == caseID && v.MaterialID == prior.MaterialID && v.DocumentID == prior.DocumentID {
-						return DocumentUploadResult{DocumentID: prior.DocumentID, MaterialID: prior.MaterialID, Version: v.Version, Replayed: true}, nil
-					}
-				}
-				return DocumentUploadResult{}, errors.New("upload idempotency record has no material version")
-			}
+		if found {
+			return result, nil
 		}
 	}
 	id, err := newID("doc_")
@@ -552,6 +537,13 @@ func (s *Store) UploadMaterial(ctx context.Context, user accounts.User, caseID, 
 	defer persistCancel()
 	var uploadResult DocumentUploadResult
 	err = s.scopedCaseMutation(persistCtx, currentUser, caseID, func(st *state) error {
+		currentUser, err = trustedUser(currentUser)
+		if err != nil {
+			return err
+		}
+		if !accounts.CanUpload(currentUser.Role) {
+			return fault.Forbidden("当前角色不能执行文档操作")
+		}
 		if _, err := s.writableCase(st, currentUser, caseID, access.Manage); err != nil {
 			return err
 		}
@@ -715,7 +707,13 @@ func (s *Store) Reparse(ctx context.Context, user accounts.User, caseID, docID s
 }
 
 func (s *Store) Original(user accounts.User, caseID, docID string) (Document, []byte, error) {
-	st, err := s.snapshotAs(user)
+	return s.OriginalContext(context.Background(), user, caseID, docID)
+}
+
+// OriginalContext preserves current case authorization while allowing a
+// disconnected export to cancel an in-flight object read.
+func (s *Store) OriginalContext(ctx context.Context, user accounts.User, caseID, docID string) (Document, []byte, error) {
+	st, err := s.snapshotCaseOriginal(ctx, user, caseID, docID)
 	if err != nil {
 		return Document{}, nil, err
 	}
@@ -726,8 +724,11 @@ func (s *Store) Original(user accounts.User, caseID, docID string) (Document, []
 		if doc.ID != docID {
 			continue
 		}
-		body, err := s.getObject(context.Background(), doc)
+		body, err := s.getObject(ctx, doc)
 		if err != nil {
+			if ctx.Err() != nil {
+				return Document{}, nil, ctx.Err()
+			}
 			if err == errObjectIntegrity {
 				return Document{}, nil, fault.New(409, "digest_mismatch", "原件摘要与保存的字节不一致")
 			}

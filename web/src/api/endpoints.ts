@@ -31,6 +31,7 @@ import type {
   SubjectSourceSnapshotDetail,
   SubjectSourceDirectory,
 } from "./types";
+import type { WireSchemas } from "./wire.generated";
 import { ApiError, jsonInit, requestJson } from "./http";
 import {
   parseAcceptedReview,
@@ -123,8 +124,8 @@ export function createCase(input: {
   contract_type: string;
   business_line?: string;
   scenario?: string;
-}) {
-  return requestJson(paths.cases, jsonInit("POST", input), parseId);
+}, idempotencyKey?: string) {
+  return requestJson(paths.cases, jsonInit("POST", input, idempotencyKey ? { "Idempotency-Key": idempotencyKey } : undefined), parseId);
 }
 
 export function getCase(caseId: string, signal?: AbortSignal) {
@@ -190,10 +191,10 @@ export function verifyRemediation(
   );
 }
 
-export function createReport(caseId: string, input: ReportCreateInput) {
+export function createReport(caseId: string, input: ReportCreateInput, idempotencyKey?: string) {
   return requestJson(
     paths.reports(caseId),
-    jsonInit("POST", input),
+    jsonInit("POST", input, idempotencyKey ? { "Idempotency-Key": idempotencyKey } : undefined),
     parseReportRecord,
   );
 }
@@ -434,10 +435,10 @@ export function reparseDocument(caseId: string, documentId: string) {
   );
 }
 
-export function startReview(caseId: string, input: { business_at?: string } = {}) {
+export function startReview(caseId: string, input: { business_at?: string; scope?: "full_review" | "single_contract_precheck" } = {}, idempotencyKey?: string) {
   return requestJson(
     paths.reviews(caseId),
-    jsonInit("POST", input),
+    jsonInit("POST", input, idempotencyKey ? { "Idempotency-Key": idempotencyKey } : undefined),
     parseAcceptedReview,
   );
 }
@@ -528,7 +529,7 @@ export function submitDecision(
         action: input.action,
         reason: input.reason,
         expected_version: input.expectedVersion,
-      },
+      } satisfies WireSchemas["DecisionRequest"],
       { "Idempotency-Key": crypto.randomUUID() },
     ),
     parseEmpty,

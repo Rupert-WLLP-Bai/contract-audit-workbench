@@ -129,9 +129,7 @@ func newServiceEnvironment(t *testing.T, upstream http.Handler) *serviceEnvironm
 	env.core = env.open(t, "core")
 	env.document = env.open(t, "document")
 	env.execution = env.open(t, "execution")
-	document, err := documentservice.New(env.document.Store, documentservice.Config{
-		WorkerCredential: documentWorkerKey, CPUConcurrency: 1, OCRConcurrency: 1, QueueCapacity: 1, ParseTimeout: 5 * time.Second,
-	})
+	document, err := documentservice.New(env.document.Store, documentservice.Config{WorkerCredential: documentWorkerKey, IntakeCredential: "core-intake-test-private-credential-0000000000", CPUConcurrency: 1, OCRConcurrency: 1, QueueCapacity: 1, ParseTimeout: 5 * time.Second})
 	if err != nil {
 		t.Fatal(err)
 	}

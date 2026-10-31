@@ -18,6 +18,9 @@ export interface ContractObjectOption {
   objectType: string;
   objectId: string;
   label: string;
+  serviceObjectId: string;
+  objectVersion: number;
+  associationVersion: number;
 }
 
 export interface ExternalObjectOption {
@@ -38,7 +41,7 @@ export interface ObjectBindingPanelProps {
 }
 
 function contractKey(option: ContractObjectOption): string {
-  return `${option.objectType}\u0000${option.objectId}`;
+  return `${option.objectType}\u0000${option.objectId}\u0000${option.serviceObjectId}`;
 }
 
 function externalKey(option: ExternalObjectOption): string {
@@ -180,6 +183,9 @@ function ObjectBindingPanelContent({
           connector_id: external.connectorId,
           external_object_id: external.externalObjectId,
         },
+        service_object_id: contract.serviceObjectId,
+        expected_object_version: contract.objectVersion,
+        expected_association_version: contract.associationVersion,
         effective_from: effectiveFromIso,
         effective_until: effectiveUntilIso,
         confirmed: true,

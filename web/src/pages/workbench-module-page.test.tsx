@@ -1382,7 +1382,7 @@ describe("workbench remediation and frozen artifacts", () => {
       details().queryByRole("link", { name: "打开复核审查" }),
     ).not.toBeInTheDocument();
     await category(user, "整改中心", "待复核");
-    expect(rows.getAllByRole("button")).toHaveLength(1);
+    expect(within(rows.getByRole("table")).getAllByRole("button")).toHaveLength(1);
     expect(
       rows.getByRole("button", { name: /等待复核签章/ }),
     ).toBeInTheDocument();
@@ -1394,7 +1394,7 @@ describe("workbench remediation and frozen artifacts", () => {
     await detailTab(user, "操作历史");
     expect(details().getByText(/提交签章材料/)).toBeInTheDocument();
     await category(user, "整改中心", "已关闭");
-    expect(rows.getAllByRole("button")).toHaveLength(1);
+    expect(within(rows.getByRole("table")).getAllByRole("button")).toHaveLength(1);
     expect(
       rows.getByRole("button", { name: /已关闭签章整改/ }),
     ).toBeInTheDocument();
@@ -1429,7 +1429,7 @@ describe("workbench remediation and frozen artifacts", () => {
   it("shows frozen report versions without exposing raw IDs or digests in the business view", async () => {
     const { user } = open("reports");
     const rows = await list("报告中心");
-    expect(rows.getAllByRole("button")).toHaveLength(3);
+    expect(within(rows.getByRole("table")).getAllByRole("button")).toHaveLength(3);
     expect(details().queryByText("报告 ID")).not.toBeInTheDocument();
     expect(details().queryByText("report/frozen-2")).not.toBeInTheDocument();
     expect(details().getByText("审查报告 v2")).toBeInTheDocument();
@@ -1467,12 +1467,12 @@ describe("workbench remediation and frozen artifacts", () => {
       expect(details().queryByText(digest)).not.toBeInTheDocument();
     }
     await category(user, "报告中心", "版本对比");
-    expect(rows.getAllByRole("button")).toHaveLength(2);
+    expect(within(rows.getByRole("table")).getAllByRole("button")).toHaveLength(2);
     expect(
       rows.queryByRole("button", { name: /独立单版案件/ }),
     ).not.toBeInTheDocument();
     await user.type(screen.getByRole("searchbox"), "  审查报告 V1  ");
-    expect(rows.getAllByRole("button")).toHaveLength(1);
+    expect(within(rows.getByRole("table")).getAllByRole("button")).toHaveLength(1);
     expectField("报告版本", "1");
     expect(details().queryByText("report-v1-sha256")).not.toBeInTheDocument();
     await user.clear(screen.getByRole("searchbox"));
@@ -1599,7 +1599,7 @@ describe("workbench execution and platform projections", () => {
     expectField("总 tokens", "150");
     expectField("成本", "未报告");
     await user.type(screen.getByRole("searchbox"), " FAILED ");
-    expect(rows.getAllByRole("button")).toHaveLength(1);
+    expect(within(rows.getByRole("table")).getAllByRole("button")).toHaveLength(1);
     expectField("输入 tokens", "未报告");
     expectField("输出 tokens", "未报告");
     expectField("总 tokens", "未报告");
@@ -1689,7 +1689,7 @@ describe("workbench public directory, templates and audit", () => {
     await category(user, "组织与权限", "组织架构");
     expect(screen.getByRole("status")).toHaveTextContent("不包含组织的上下级关系");
     await user.type(screen.getByRole("searchbox"), "org-beta");
-    expect(rows.getAllByRole("button")).toHaveLength(2);
+    expect(within(rows.getByRole("table")).getAllByRole("button")).toHaveLength(2);
     expect(
       rows.queryByRole("button", { name: /审查员甲/ }),
     ).not.toBeInTheDocument();
@@ -1774,7 +1774,7 @@ describe("workbench public directory, templates and audit", () => {
     ).toBeInTheDocument();
     await category(user, "审计日志", "操作日志");
     expect(screen.getByRole("status")).toHaveTextContent("与当前用户有关的业务审计记录");
-    expect(rows.getAllByRole("button")).toHaveLength(2);
+    expect(within(rows.getByRole("table")).getAllByRole("button")).toHaveLength(2);
     expect(
       rows.getByRole("button", { name: /task.created/ }),
     ).toBeInTheDocument();
@@ -1816,7 +1816,7 @@ describe("workbench snapshot boundaries", () => {
     expect(screen.queryByRole("complementary")).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "重试" }));
     const rows = await list("证据中心");
-    expect(rows.getAllByRole("button")).toHaveLength(1);
+    expect(within(rows.getByRole("table")).getAllByRole("button")).toHaveLength(1);
     expect(
       details().getByRole("heading", { name: "授权材料.pdf" }),
     ).toBeInTheDocument();

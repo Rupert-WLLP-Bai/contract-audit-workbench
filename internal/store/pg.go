@@ -104,12 +104,17 @@ func openStore(dir string, sel config.Selection, schema string, drop bool) (*Sto
 	if err := createSchema(ctx, sel.DSN, schema); err != nil {
 		return nil, err
 	}
-	pool, err := newPool(ctx, sel.DSN, schema)
+	migrationPool, err := newStorePool(ctx, sel.DSN, schema, false)
 	if err != nil {
 		return nil, err
 	}
-	if err := migrate(ctx, pool); err != nil {
-		pool.Close()
+	err = migrate(ctx, migrationPool, schema)
+	migrationPool.Close()
+	if err != nil {
+		return nil, err
+	}
+	pool, err := newPool(ctx, sel.DSN, schema)
+	if err != nil {
 		return nil, err
 	}
 	s := &Store{
@@ -120,16 +125,7 @@ func openStore(dir string, sel config.Selection, schema string, drop bool) (*Sto
 		pool.Close()
 		return nil, err
 	}
-	if err := s.load(ctx); err != nil {
-		pool.Close()
-		return nil, err
-	}
-	s.st.normalize()
-	if err := s.validateLoadedParseHistory(); err != nil {
-		pool.Close()
-		return nil, err
-	}
-	if err := s.markUnfinishedInterrupted(); err != nil {
+	if err := s.initializeKnownTenants(ctx, true); err != nil {
 		pool.Close()
 		return nil, err
 	}
@@ -155,7 +151,7 @@ func ensureDatabase(ctx context.Context, sel config.Selection) error {
 	if err != nil {
 		return err
 	}
-	conn, err := pgx.Connect(ctx, admin)
+	conn, err := connectPoolDSN(ctx, admin)
 	if err != nil {
 		return err
 	}
@@ -191,7 +187,7 @@ func createSchema(ctx context.Context, dsn, schema string) error {
 	if err != nil {
 		return err
 	}
-	conn, err := pgx.Connect(ctx, dsn)
+	conn, err := connectPoolDSN(ctx, dsn)
 	if err != nil {
 		return err
 	}
@@ -200,12 +196,61 @@ func createSchema(ctx context.Context, dsn, schema string) error {
 	return err
 }
 
-func newPool(ctx context.Context, dsn, schema string) (*pgxpool.Pool, error) {
+const (
+	defaultStorePoolMaxConns    int32 = 4
+	defaultMigratorPoolMaxConns int32 = 2
+)
+
+// parsePoolConfig preserves pgx's explicit pool options while keeping the
+// unconfigured maximum independent of the host's CPU count.
+func parsePoolConfig(dsn string, defaultMaxConns int32) (*pgxpool.Config, error) {
 	cfg, err := pgxpool.ParseConfig(dsn)
 	if err != nil {
 		return nil, err
 	}
-	cfg.MaxConns = 4
+	// pgxpool removes pool options from RuntimeParams, so use pgx's parser to
+	// distinguish an explicit maximum from its CPU-dependent default. This also
+	// handles keyword DSNs, escaping and pgx service-file settings.
+	connConfig, err := pgx.ParseConfig(dsn)
+	if err != nil {
+		return nil, err
+	}
+	if _, explicit := connConfig.RuntimeParams["pool_max_conns"]; !explicit {
+		cfg.MaxConns = defaultMaxConns
+		// Explicit minimums also express a connection requirement; do not leave
+		// them unattainable just because no maximum was supplied.
+		if cfg.MinConns > cfg.MaxConns {
+			cfg.MaxConns = cfg.MinConns
+		}
+		if cfg.MinIdleConns > cfg.MaxConns {
+			cfg.MaxConns = cfg.MinIdleConns
+		}
+	}
+	return cfg, nil
+}
+
+// connectPoolDSN removes pgxpool-only settings before opening a direct
+// connection for database or schema initialization.
+func connectPoolDSN(ctx context.Context, dsn string) (*pgx.Conn, error) {
+	cfg, err := pgxpool.ParseConfig(dsn)
+	if err != nil {
+		return nil, err
+	}
+	return pgx.ConnectConfig(ctx, cfg.ConnConfig)
+}
+
+func newPool(ctx context.Context, dsn, schema string) (*pgxpool.Pool, error) {
+	return newStorePool(ctx, dsn, schema, true)
+}
+
+func newStorePool(ctx context.Context, dsn, schema string, application bool) (*pgxpool.Pool, error) {
+	cfg, err := parsePoolConfig(dsn, defaultStorePoolMaxConns)
+	if err != nil {
+		return nil, err
+	}
+	if application {
+		applyRuntimeTimeoutDefaults(cfg.ConnConfig.RuntimeParams)
+	}
 	cfg.AfterConnect = func(ctx context.Context, conn *pgx.Conn) error {
 		_, err := conn.Exec(ctx, `SELECT
 			set_config('search_path', $1, false),
@@ -218,33 +263,38 @@ func newPool(ctx context.Context, dsn, schema string) (*pgxpool.Pool, error) {
 	return pgxpool.NewWithConfig(ctx, cfg)
 }
 
-func migrate(ctx context.Context, pool *pgxpool.Pool) error {
-	for _, stmt := range schemaStatements {
-		if _, err := pool.Exec(ctx, stmt); err != nil {
-			return fmt.Errorf("migrate: %w", err)
+// Defaults go first in PostgreSQL's options parameter so explicit -c/-- options
+// win. Direct startup parameters are left alone and receive no competing default.
+func applyRuntimeTimeoutDefaults(params map[string]string) {
+	var defaults strings.Builder
+	for _, setting := range [...]struct{ name, option string }{
+		{"statement_timeout", "-c statement_timeout=60s"},
+		{"lock_timeout", "-c lock_timeout=10s"},
+		{"idle_in_transaction_session_timeout", "-c idle_in_transaction_session_timeout=5min"},
+	} {
+		explicit := false
+		for name := range params {
+			if strings.EqualFold(name, setting.name) {
+				explicit = true
+				break
+			}
 		}
+		if explicit {
+			continue
+		}
+		if defaults.Len() > 0 {
+			defaults.WriteByte(' ')
+		}
+		defaults.WriteString(setting.option)
 	}
-	if err := migrateMaterials(ctx, pool); err != nil {
-		return err
+	if defaults.Len() == 0 {
+		return
 	}
-	// Service-object association constraints pin a material version and parse
-	// selection, so install them only after those immutable tables exist.
-	if _, err := pool.Exec(ctx, serviceObjectSchemaSQL); err != nil {
-		return fmt.Errorf("migrate service objects: %w", err)
+	if options := params["options"]; options != "" {
+		defaults.WriteByte(' ')
+		defaults.WriteString(options)
 	}
-	if _, err := pool.Exec(ctx, operatorMappingChangesSchemaSQL); err != nil {
-		return fmt.Errorf("migrate operator mapping lineages: %w", err)
-	}
-	if err := migrateSubjects(ctx, pool); err != nil {
-		return err
-	}
-	if err := migrateLegalApplicability(ctx, pool); err != nil {
-		return err
-	}
-	if err := migrateModelBudgetFunctions(ctx, pool); err != nil {
-		return err
-	}
-	return migrateExperienceDistillFunctions(ctx, pool)
+	params["options"] = defaults.String()
 }
 
 // Migrate applies the schema using MIGRATOR_DATABASE_URL. The URL must select
@@ -272,11 +322,10 @@ func Migrate(ctx context.Context) error {
 	if err := createSchema(ctx, migratorDSN, schema); err != nil {
 		return err
 	}
-	cfg, err := pgxpool.ParseConfig(migratorDSN)
+	cfg, err := parsePoolConfig(migratorDSN, defaultMigratorPoolMaxConns)
 	if err != nil {
 		return err
 	}
-	cfg.MaxConns = 2
 	cfg.AfterConnect = func(ctx context.Context, conn *pgx.Conn) error {
 		_, err := conn.Exec(ctx, `SELECT set_config('search_path', $1, false)`, schema)
 		return err
@@ -286,7 +335,7 @@ func Migrate(ctx context.Context) error {
 		return err
 	}
 	defer pool.Close()
-	return migrate(ctx, pool)
+	return migrate(ctx, pool, schema)
 }
 
 func applicationSchema() (string, error) {
@@ -316,6 +365,10 @@ func openApplicationStore(dir string, sel config.Selection, schema string) (*Sto
 		pool.Close()
 		return nil, err
 	}
+	if err := checkSchemaCompatibility(ctx, pool); err != nil {
+		pool.Close()
+		return nil, err
+	}
 	s := &Store{
 		dir: dir, sel: sel, schema: schema, pool: pool,
 		executionSlots: make(chan struct{}, maxConcurrentReviews), running: make(map[string]func()), claims: make(map[string]JobClaim),
@@ -324,12 +377,7 @@ func openApplicationStore(dir string, sel config.Selection, schema string) (*Sto
 		pool.Close()
 		return nil, err
 	}
-	if err := s.load(ctx); err != nil {
-		pool.Close()
-		return nil, err
-	}
-	s.st.normalize()
-	if err := s.validateLoadedParseHistory(); err != nil {
+	if err := s.initializeKnownTenants(ctx, false); err != nil {
 		pool.Close()
 		return nil, err
 	}
@@ -351,13 +399,45 @@ func rejectPrivilegedApplicationRole(ctx context.Context, pool *pgxpool.Pool, sc
 	return nil
 }
 
-func (s *Store) load(ctx context.Context) error {
+// Startup only inspects tenants present in the trusted directory. Each read and
+// legacy restart recovery uses that tenant's own RLS scope.
+func (s *Store) initializeKnownTenants(ctx context.Context, recoverAttempts bool) error {
+	s.st.normalize()
+	seen := make(map[string]struct{})
+	for _, user := range accounts.List() {
+		if !user.Enabled {
+			continue
+		}
+		if strings.TrimSpace(user.TenantID) == "" {
+			return errors.New("trusted directory user has no tenant")
+		}
+		if _, ok := seen[user.TenantID]; ok {
+			continue
+		}
+		seen[user.TenantID] = struct{}{}
+		scope := dbScope{ActorID: "startup", TenantID: user.TenantID, OrgID: user.OrgID, Role: "api"}
+		if err := s.load(ctx, scope); err != nil {
+			return err
+		}
+		if err := s.validateLoadedParseHistory(s.st); err != nil {
+			return err
+		}
+		if recoverAttempts {
+			if err := s.markUnfinishedInterrupted(s.st); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func (s *Store) load(ctx context.Context, scope dbScope) error {
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback(ctx)
-	if err := setLocalScope(ctx, tx, dbScope{}); err != nil {
+	if err := setLocalScope(ctx, tx, scope); err != nil {
 		return err
 	}
 	st, err := loadState(ctx, tx, true)
@@ -371,9 +451,6 @@ func (s *Store) load(ctx context.Context) error {
 	return nil
 }
 
-// loadState reads the whole durable state. strict selects whether a persisted
-// artifact that fails integrity verification aborts the load (startup, writes) or
-// is dropped in favour of per-request degradation (reads).
 // canonicalizeLoadedRows rewrites the few row fields whose JSON round trip is
 // lossy, so a freshly loaded state is structurally equal to its own clone when
 // nothing changed. Without it every later write would see these rows as changed
@@ -410,6 +487,9 @@ func emptyStringsToNil(values []string) []string {
 	return values
 }
 
+// loadState excludes event and audit timelines; callers load the case, run or
+// attempt history they need in the same transaction. strict rejects corrupted
+// parse artifacts during startup and writes; read snapshots degrade per item.
 func loadState(ctx context.Context, q queryer, strict bool) (state, error) {
 	var st state
 	var err error
@@ -455,9 +535,6 @@ func loadState(ctx context.Context, q queryer, strict bool) (state, error) {
 	if st.AttemptParseSelections, err = loadAttemptParseSelections(ctx, q); err != nil {
 		return state{}, err
 	}
-	if st.ExecutionEvents, err = loadExecutionEvents(ctx, q); err != nil {
-		return state{}, err
-	}
 	if st.Findings, err = loadFindings(ctx, q); err != nil {
 		return state{}, err
 	}
@@ -465,9 +542,6 @@ func loadState(ctx context.Context, q queryer, strict bool) (state, error) {
 		return state{}, err
 	}
 	if st.Decisions, err = loadDecisions(ctx, q); err != nil {
-		return state{}, err
-	}
-	if st.Events, err = loadEvents(ctx, q); err != nil {
 		return state{}, err
 	}
 	if st.Activity, err = loadActivity(ctx, q); err != nil {
@@ -483,9 +557,6 @@ func loadState(ctx context.Context, q queryer, strict bool) (state, error) {
 		if err := validateGovernedAttemptSnapshot(attempt, st.snapshotOf(attempt.RunID)); err != nil {
 			return state{}, fmt.Errorf("load governed attempt %q: %w", attempt.ID, err)
 		}
-	}
-	if st.Audits, err = loadAudits(ctx, q); err != nil {
-		return state{}, err
 	}
 	if st.Jobs, err = loadJobs(ctx, q); err != nil {
 		return state{}, err
@@ -592,16 +663,15 @@ func (s *Store) updateStateWithLocks(ctx context.Context, scope dbScope, attempt
 	}
 	if scope.CaseID != "" {
 		caseItem, ok := previous.caseByID(scope.CaseID)
-		tenantID := scope.TenantID
-		if tenantID == "" {
-			tenantID = accounts.LocalDemoTenant
-		}
-		if ok && caseItem.TenantID == tenantID {
+		if ok && caseItem.TenantID == scope.TenantID {
 			scope.OrgID = caseItem.OwnerOrgID
 			if err := setLocalScope(ctx, tx, scope); err != nil {
 				return err
 			}
 		}
+	}
+	if err := loadWriteHistory(ctx, tx, &previous, caseIDs, attemptID); err != nil {
+		return err
 	}
 	next, err := previous.clone()
 	if err != nil {
@@ -613,13 +683,17 @@ func (s *Store) updateStateWithLocks(ctx context.Context, scope dbScope, attempt
 	if err := validateAppendOnly(previous, next); err != nil {
 		return err
 	}
+	old, changed, err := stateDelta(previous, next)
+	if err != nil {
+		return err
+	}
 	if err := s.persist(ctx, tx, previous, next, expectedAttemptVersion); err != nil {
 		return err
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return err
 	}
-	s.st = next
+	s.patchStateProjectionLocked(previous, old, changed)
 	return nil
 }
 
@@ -1059,7 +1133,7 @@ type queryer interface {
 }
 
 func loadSessions(ctx context.Context, q queryer) ([]session, error) {
-	rows, err := q.Query(ctx, `SELECT token, actor_id, issuer, subject, tenant_id, org_id, audience, expires_at FROM sessions ORDER BY seq`)
+	rows, err := q.Query(ctx, `SELECT token, actor_id, issuer, subject, tenant_id, org_id, audience, expires_at FROM sessions WHERE token COLLATE "C" ~ '^sha256:[0-9a-f]{64}$' ORDER BY seq`)
 	if err != nil {
 		return nil, err
 	}
@@ -1233,8 +1307,8 @@ func loadRuns(ctx context.Context, q queryer) ([]Run, error) {
 	return out, rows.Err()
 }
 
-func loadAttempts(ctx context.Context, q queryer) ([]Attempt, error) {
-	rows, err := q.Query(ctx, `SELECT id, run_id, ordinal, retry_of_attempt_id, state, accepted_at, started_at, finished_at, input_hash, output_hash, error_code, history_kind, actor_id, rule_pack_snapshot, rule_pack_hash, rule_pack_snapshot_digest, rule_pack_compiler_ref, rule_pack_id, rule_pack_version, rule_pack_pointer_revision, planner_configuration_id, planner_configuration FROM review_attempts ORDER BY run_id, ordinal`)
+func loadAttempts(ctx context.Context, q queryer, caseID ...string) ([]Attempt, error) {
+	rows, err := queryCaseRows(ctx, q, `SELECT id, run_id, ordinal, retry_of_attempt_id, state, accepted_at, started_at, finished_at, input_hash, output_hash, error_code, history_kind, actor_id, rule_pack_snapshot, rule_pack_hash, rule_pack_snapshot_digest, rule_pack_compiler_ref, rule_pack_id, rule_pack_version, rule_pack_pointer_revision, planner_configuration_id, planner_configuration FROM review_attempts`, `run_id IN (SELECT id FROM review_runs WHERE case_id=$1)`, ` ORDER BY run_id, ordinal`, caseID...)
 	if err != nil {
 		return nil, err
 	}
@@ -1255,8 +1329,8 @@ func loadAttempts(ctx context.Context, q queryer) ([]Attempt, error) {
 	return out, rows.Err()
 }
 
-func loadAttemptInputs(ctx context.Context, q queryer) ([]AttemptInput, error) {
-	rows, err := q.Query(ctx, `SELECT attempt_id, run_id, input_hash, frozen_at, documents FROM review_attempt_inputs ORDER BY attempt_id`)
+func loadAttemptInputs(ctx context.Context, q queryer, caseID ...string) ([]AttemptInput, error) {
+	rows, err := queryCaseRows(ctx, q, `SELECT attempt_id, run_id, input_hash, frozen_at, documents FROM review_attempt_inputs`, `run_id IN (SELECT id FROM review_runs WHERE case_id=$1)`, ` ORDER BY attempt_id`, caseID...)
 	if err != nil {
 		return nil, err
 	}
@@ -1276,8 +1350,8 @@ func loadAttemptInputs(ctx context.Context, q queryer) ([]AttemptInput, error) {
 	return out, rows.Err()
 }
 
-func loadAttemptParseSelections(ctx context.Context, q queryer) ([]AttemptParseSelection, error) {
-	rows, err := q.Query(ctx, `SELECT attempt_id, run_id, document_id, original_digest, parsed_document_id, selection_order, parser_id, parser_version, config_hash, normalization_version, artifact_digest FROM review_attempt_parse_selections ORDER BY seq`)
+func loadAttemptParseSelections(ctx context.Context, q queryer, caseID ...string) ([]AttemptParseSelection, error) {
+	rows, err := queryCaseRows(ctx, q, `SELECT attempt_id, run_id, document_id, original_digest, parsed_document_id, selection_order, parser_id, parser_version, config_hash, normalization_version, artifact_digest FROM review_attempt_parse_selections`, `run_id IN (SELECT id FROM review_runs WHERE case_id=$1)`, ` ORDER BY seq`, caseID...)
 	if err != nil {
 		return nil, err
 	}
@@ -1294,8 +1368,8 @@ func loadAttemptParseSelections(ctx context.Context, q queryer) ([]AttemptParseS
 	return out, rows.Err()
 }
 
-func loadExecutionEvents(ctx context.Context, q queryer) ([]ExecutionEvent, error) {
-	rows, err := q.Query(ctx, `SELECT attempt_id, event_seq, span_id, parent_span_id, node_kind, phase, event_type, occurred_at, duration_ms, status, error_code, model_ref, usage, trace, recorded_at, event_key, generation FROM execution_events ORDER BY attempt_id, event_seq`)
+func loadExecutionEvents(ctx context.Context, q queryer, caseID ...string) ([]ExecutionEvent, error) {
+	rows, err := queryCaseRows(ctx, q, `SELECT attempt_id, event_seq, span_id, parent_span_id, node_kind, phase, event_type, occurred_at, duration_ms, status, error_code, model_ref, usage, trace, recorded_at, event_key, generation FROM execution_events`, `attempt_id IN (SELECT a.id FROM review_attempts a JOIN review_runs r ON r.id=a.run_id WHERE r.case_id=$1)`, ` ORDER BY attempt_id, event_seq`, caseID...)
 	if err != nil {
 		return nil, err
 	}
@@ -1326,8 +1400,8 @@ func loadExecutionEvents(ctx context.Context, q queryer) ([]ExecutionEvent, erro
 	return out, rows.Err()
 }
 
-func loadFindings(ctx context.Context, q queryer) ([]Finding, error) {
-	rows, err := q.Query(ctx, `SELECT id, run_id, attempt_id, case_id, origin, domain, rule_id, capability_id, object_ref, claim, relation, disposition_suggestion, unverified_reason, version, severity, severity_source, anchors, created_at FROM findings ORDER BY seq`)
+func loadFindings(ctx context.Context, q queryer, caseID ...string) ([]Finding, error) {
+	rows, err := queryCaseRows(ctx, q, `SELECT id, run_id, attempt_id, case_id, origin, domain, rule_id, capability_id, object_ref, claim, relation, disposition_suggestion, unverified_reason, version, severity, severity_source, anchors, created_at FROM findings`, `case_id=$1`, ` ORDER BY seq`, caseID...)
 	if err != nil {
 		return nil, err
 	}
@@ -1353,8 +1427,8 @@ func loadFindings(ctx context.Context, q queryer) ([]Finding, error) {
 	}
 	return out, rows.Err()
 }
-func loadEvaluations(ctx context.Context, q queryer) ([]ConstraintEval, error) {
-	rows, err := q.Query(ctx, `SELECT id, run_id, attempt_id, case_id, domain, relation, rule_version, reason, finding_id, rule_id, capability_id, reason_code, fact_ids, object_refs, mandatory, evidence FROM constraint_evaluations ORDER BY seq`)
+func loadEvaluations(ctx context.Context, q queryer, caseID ...string) ([]ConstraintEval, error) {
+	rows, err := queryCaseRows(ctx, q, `SELECT id, run_id, attempt_id, case_id, domain, relation, rule_version, reason, finding_id, rule_id, capability_id, reason_code, fact_ids, object_refs, mandatory, evidence FROM constraint_evaluations`, `case_id=$1`, ` ORDER BY seq`, caseID...)
 	if err != nil {
 		return nil, err
 	}
@@ -1386,8 +1460,8 @@ func loadEvaluations(ctx context.Context, q queryer) ([]ConstraintEval, error) {
 	return out, rows.Err()
 }
 
-func loadDecisions(ctx context.Context, q queryer) ([]Decision, error) {
-	rows, err := q.Query(ctx, `SELECT id, finding_id, run_id, case_id, actor_id, actor_name, action, reason, old_disposition, new_disposition, created_at FROM decisions ORDER BY seq`)
+func loadDecisions(ctx context.Context, q queryer, caseID ...string) ([]Decision, error) {
+	rows, err := queryCaseRows(ctx, q, `SELECT id, finding_id, run_id, case_id, actor_id, actor_name, action, reason, old_disposition, new_disposition, created_at FROM decisions`, `case_id=$1`, ` ORDER BY seq`, caseID...)
 	if err != nil {
 		return nil, err
 	}
@@ -1403,8 +1477,14 @@ func loadDecisions(ctx context.Context, q queryer) ([]Decision, error) {
 	return out, rows.Err()
 }
 
-func loadEvents(ctx context.Context, q queryer) ([]Event, error) {
-	rows, err := q.Query(ctx, `SELECT run_id,event_seq,event_type,state FROM run_events UNION ALL SELECT run_id,event_seq,event_type,state FROM business_run_events ORDER BY run_id,event_seq`)
+func loadEvents(ctx context.Context, q queryer, caseID ...string) ([]Event, error) {
+	var rows pgx.Rows
+	var err error
+	if len(caseID) == 0 {
+		rows, err = q.Query(ctx, `SELECT run_id,event_seq,event_type,state FROM run_events UNION ALL SELECT run_id,event_seq,event_type,state FROM business_run_events ORDER BY run_id,event_seq`)
+	} else {
+		rows, err = q.Query(ctx, `SELECT run_id,event_seq,event_type,state FROM (SELECT run_id,event_seq,event_type,state FROM run_events UNION ALL SELECT run_id,event_seq,event_type,state FROM business_run_events) AS event_rows WHERE run_id IN (SELECT id FROM review_runs WHERE case_id=$1) ORDER BY run_id,event_seq`, caseID[0])
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -1420,8 +1500,14 @@ func loadEvents(ctx context.Context, q queryer) ([]Event, error) {
 	return out, rows.Err()
 }
 
-func loadActivity(ctx context.Context, q queryer) ([]Activity, error) {
-	rows, err := q.Query(ctx, `SELECT id,case_id,occurred_at,summary FROM activity UNION ALL SELECT id,case_id,occurred_at,summary FROM document_activity UNION ALL SELECT id,case_id,occurred_at,summary FROM execution_activity ORDER BY occurred_at,id`)
+func loadActivity(ctx context.Context, q queryer, caseID ...string) ([]Activity, error) {
+	var rows pgx.Rows
+	var err error
+	if len(caseID) == 0 {
+		rows, err = q.Query(ctx, `SELECT id,case_id,occurred_at,summary FROM activity UNION ALL SELECT id,case_id,occurred_at,summary FROM document_activity UNION ALL SELECT id,case_id,occurred_at,summary FROM execution_activity ORDER BY occurred_at,id`)
+	} else {
+		rows, err = q.Query(ctx, `SELECT id,case_id,occurred_at,summary FROM (SELECT id,case_id,occurred_at,summary FROM activity UNION ALL SELECT id,case_id,occurred_at,summary FROM document_activity UNION ALL SELECT id,case_id,occurred_at,summary FROM execution_activity) AS activity_rows WHERE case_id=$1 ORDER BY occurred_at,id`, caseID[0])
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -1454,8 +1540,8 @@ func loadIdempotency(ctx context.Context, q queryer) ([]Idem, error) {
 	return out, rows.Err()
 }
 
-func loadSnapshots(ctx context.Context, q queryer) ([]RunSnapshot, error) {
-	rows, err := q.Query(ctx, `SELECT run_id, document_ids, rule_set_hash, playbook_hash, model_ref, comparator_ref, model_configuration_id, parsed_document_ids, parse_selection_hash, parser_configuration_id, rule_pack_compiler_ref, rule_pack_id, rule_pack_version, rule_pack_hash, rule_pack_digest, rule_pack_snapshot, planner_configuration_id, planner_configuration, cloud_policy_snapshot, cloud_policy_digest, governed_knowledge, party_context, party_context_hash, service_object_context, service_object_context_hash FROM review_run_snapshots ORDER BY run_id`)
+func loadSnapshots(ctx context.Context, q queryer, caseID ...string) ([]RunSnapshot, error) {
+	rows, err := queryCaseRows(ctx, q, `SELECT run_id, document_ids, rule_set_hash, playbook_hash, model_ref, comparator_ref, model_configuration_id, parsed_document_ids, parse_selection_hash, parser_configuration_id, rule_pack_compiler_ref, rule_pack_id, rule_pack_version, rule_pack_hash, rule_pack_digest, rule_pack_snapshot, planner_configuration_id, planner_configuration, cloud_policy_snapshot, cloud_policy_digest, governed_knowledge, party_context, party_context_hash, service_object_context, service_object_context_hash FROM review_run_snapshots`, `run_id IN (SELECT id FROM review_runs WHERE case_id=$1)`, ` ORDER BY run_id`, caseID...)
 	if err != nil {
 		return nil, err
 	}
@@ -1507,8 +1593,14 @@ func loadSnapshots(ctx context.Context, q queryer) ([]RunSnapshot, error) {
 	return out, rows.Err()
 }
 
-func loadAudits(ctx context.Context, q queryer) ([]AuditRecord, error) {
-	rows, err := q.Query(ctx, `SELECT event_id,run_id,actor,seq,event_type,prev_hash,hash,correlation_ids FROM audit_events UNION ALL SELECT event_id,run_id,actor,seq,event_type,prev_hash,hash,correlation_ids FROM business_audit_events ORDER BY seq,event_id`)
+func loadAudits(ctx context.Context, q queryer, caseID ...string) ([]AuditRecord, error) {
+	var rows pgx.Rows
+	var err error
+	if len(caseID) == 0 {
+		rows, err = q.Query(ctx, `SELECT event_id,run_id,actor,seq,event_type,prev_hash,hash,correlation_ids FROM audit_events UNION ALL SELECT event_id,run_id,actor,seq,event_type,prev_hash,hash,correlation_ids FROM business_audit_events ORDER BY seq,event_id`)
+	} else {
+		rows, err = q.Query(ctx, `SELECT event_id,run_id,actor,seq,event_type,prev_hash,hash,correlation_ids FROM (SELECT event_id,run_id,actor,seq,event_type,prev_hash,hash,correlation_ids FROM audit_events UNION ALL SELECT event_id,run_id,actor,seq,event_type,prev_hash,hash,correlation_ids FROM business_audit_events) AS audit_rows WHERE run_id IN (SELECT id FROM review_runs WHERE case_id=$1) ORDER BY seq,event_id`, caseID[0])
+	}
 	if err != nil {
 		return nil, err
 	}

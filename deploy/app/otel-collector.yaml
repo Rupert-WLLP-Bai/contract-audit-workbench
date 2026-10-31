@@ -1,3 +1,21 @@
+# OTLP collector for the optional observation profile (compose otel profile and
+# the k3d observe overlay mount this same file). This is the local verification
+# stack, not a production telemetry deployment.
+#
+# Real routes in this delivery:
+#   traces  -> Tempo (otlp/tempo); queryable through Grafana.
+#   metrics -> Prometheus exporter on :8889; scraped by the otel-collector job
+#              in deploy/app/observe/prometheus.yml.
+#   logs    -> none. No OTLP log backend ships with this release and the audit
+#              process emits no OTLP logs; application logs go to container
+#              stdout and are read with docker logs / kubectl logs. The debug
+#              exporter is console visibility for the local profile only and
+#              must never be treated as a queryable production log store.
+#
+# Production routing is an operator decision: run a real collector (this file
+# or an operator-owned equivalent) and point the services at it via
+# OTEL_EXPORTER_OTLP_ENDPOINT. No external backend is pre-configured here;
+# every exporter below targets the local observe stack.
 receivers:
   otlp:
     protocols:
@@ -33,7 +51,3 @@ service:
       receivers: [otlp]
       processors: [memory_limiter, batch]
       exporters: [debug, prometheus]
-    logs:
-      receivers: [otlp]
-      processors: [memory_limiter, batch]
-      exporters: [debug]

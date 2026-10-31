@@ -1,8 +1,8 @@
 {
   "schema_version": "legal-test-assets/v1",
-  "release_url": "https://github.com/Rupert-WLLP-Bai/contract-audit-workbench/releases/download/legal-test-assets-20261031-v1/legal-test-assets-20261031-v1.tar.gz",
-  "archive_sha256": "863af8dbbad0a581a5c3f3ba4e427ff872d3ad4b3ccdbcbb67b3ff121be2cfc8",
-  "archive_size_bytes": 122803,
+  "release_url": "https://github.com/Rupert-WLLP-Bai/contract-audit-workbench/releases/download/legal-test-assets-20261101-v2/legal-test-assets-20261101-v2.tar.gz",
+  "archive_sha256": "89f68bef3bbbb9d0cb5db2685b330e55fa187b4158e587dfe8dc769b80000ac2",
+  "archive_size_bytes": 232146,
   "files": [
     {
       "path": "legal-sources/articles.json",
@@ -78,6 +78,46 @@
       "path": "p4-canonical-articles-v2.json",
       "size_bytes": 30179,
       "sha256": "099574ffd7bddaa542821ccd88a0f4147e73ac0cdde239b2ff1bbb4d8e52e752"
+    },
+    {
+      "path": "legal-sources/supplemental_articles.json",
+      "size_bytes": 32969,
+      "sha256": "e5ed3dc2c6537adfe69926c9eab34fcc918029ab0e07dd33fc11213dd4b4b41e"
+    },
+    {
+      "path": "legal-sources/raw/S10_contract_law_history.html",
+      "size_bytes": 148683,
+      "sha256": "34fbedabb99a3c671b50ceeb019c389976264b616cabeed41f266b0d2b350047"
+    },
+    {
+      "path": "legal-sources/raw/S12_sc_time_effect_2020_15.html",
+      "size_bytes": 19820,
+      "sha256": "04438ce4f63060abfa5c2bb61dd34b6be7a965f761981aa5da4e2849c93f14bc"
+    },
+    {
+      "path": "legal-sources/raw/S13_sc_contract_general_2023_13.html",
+      "size_bytes": 64503,
+      "sha256": "60dd9e30c5eb6e9079cf113efd414fd6cd08827ca175bf62fa2e51f86d80155b"
+    },
+    {
+      "path": "legal-sources/raw/S8D_npc_contract_law_status.json",
+      "size_bytes": 3557,
+      "sha256": "7702e08f57cb3b1f130f3306648ece1c874f1e35e42a3886e64e1a1742de078b"
+    },
+    {
+      "path": "legal-sources/raw/S8E_npc_time_effect_status.json",
+      "size_bytes": 2334,
+      "sha256": "9e42fe13818fe443c2500c122ceb6eae0f95996e13eb04e5a52aa939c4dc1b9d"
+    },
+    {
+      "path": "legal-sources/raw/S8F_npc_contract_general_status.json",
+      "size_bytes": 2532,
+      "sha256": "fcced433ae2ec216fc6d0b62a1d18fde4f1be6124100e674983f86e3286379fc"
+    },
+    {
+      "path": "legal-sources/raw/S15_audit_official_contract_law_crosscheck.html",
+      "size_bytes": 519259,
+      "sha256": "33807920b25020a2bcc37e58977e71bb368cf277b4e66f80be9b33ff81373d99"
     }
   ]
 }

@@ -268,6 +268,20 @@ func (s *Store) ValidateRulePackVersion(user accounts.User, input GovernanceInpu
 		if sha256Bytes(draftSnapshot) != row.Version.SnapshotDigest {
 			return fault.Conflict("保存的规则包摘要与记录不一致，无法校验")
 		}
+		if pack.Manifest().FixtureSuite != nil {
+			suite, err := rulepack.RunFixtureSuite(context.Background(), pack)
+			if err != nil {
+				return fault.Conflict("规则包样本套件无法执行：" + err.Error())
+			}
+			if !suite.Passed {
+				for _, sample := range suite.Cases {
+					if !sample.Passed {
+						return fault.Conflict("规则包样本套件未通过：" + sample.ID + "：" + strings.Join(sample.Failures, "; "))
+					}
+				}
+				return fault.Conflict("规则包样本套件未通过")
+			}
+		}
 		snapshot, err := validated.Snapshot()
 		if err != nil {
 			return err
@@ -765,6 +779,9 @@ func selectActiveRulePackTx(ctx context.Context, tx pgx.Tx, tenantID, businessLi
 			return nil, fault.Conflict("已发布规则包内容损坏，不能用于审查")
 		}
 		content := pack.Manifest()
+		if content.ID != candidate.PackID || content.Version != candidate.Version || content.TenantID != tenantID {
+			return nil, fault.Conflict("已发布规则包身份与记录不一致，不能用于审查")
+		}
 		if content.Lifecycle.State != rulepack.StatePublished {
 			continue
 		}
@@ -852,6 +869,9 @@ func (s *Store) SelectActiveRulePack(ctx context.Context, tenantID, businessLine
 				return fault.Conflict("已发布规则包内容损坏，不能用于审查")
 			}
 			content := pack.Manifest()
+			if content.ID != candidate.PackID || content.Version != candidate.Version || content.TenantID != tenantID {
+				return fault.Conflict("已发布规则包身份与记录不一致，不能用于审查")
+			}
 			if content.Lifecycle.State != rulepack.StatePublished {
 				continue
 			}
@@ -1035,8 +1055,8 @@ func ParseFrozenGovernedRulePack(attempt Attempt, caseItem Case) (*rulepack.Pack
 	switch {
 	case attempt.RulePackCompilerRef == "" || telecom.IsSyntheticCompiler(attempt.RulePackCompilerRef):
 		if !hasPackIdentity {
-			if isCloudServicesCase(caseItem) {
-				return nil, errors.New("cloud review has no frozen governed RulePack")
+			if isCloudServicesCase(caseItem) || isDeclaredReviewCase(caseItem) {
+				return nil, errors.New("governed review has no frozen published RulePack")
 			}
 			return nil, nil
 		}
@@ -1045,7 +1065,7 @@ func ParseFrozenGovernedRulePack(attempt Attempt, caseItem Case) (*rulepack.Pack
 	default:
 		return nil, errors.New("attempt has an unknown RulePack compiler identity")
 	}
-	if !isGovernedReviewCase(caseItem) || caseItem.TenantID == "" || caseItem.ContractType != "service" {
+	if !isGovernedReviewCase(caseItem) || caseItem.TenantID == "" {
 		return nil, errors.New("frozen governed RulePack is outside the case scope")
 	}
 	if attempt.RulePackID == "" || attempt.RulePackVersion == "" || attempt.RulePackPointerRevision < 1 ||

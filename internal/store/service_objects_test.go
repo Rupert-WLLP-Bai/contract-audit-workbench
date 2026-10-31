@@ -72,7 +72,7 @@ func TestOperatorFactsForAssociationPreservesExactPinnedObjectAndMeasurementSema
 				SourceVersion: "parse-a-v4", SourceDigest: digest, Start: 10, End: 13, Quote: "100"}}},
 			DocumentID: "doc-a-v4", ParsedDocumentID: "parse-a-v4"},
 		{Fact: rulepack.Fact{ID: "fact-a-sla", RuleID: "rule-sla", Dimension: "monthly_availability",
-			ObjectRef: "LINE-A", Value: "99.9", Unit: "percent", SourceRole: "draft_contract",
+			ObjectRef: "LINE-A", Value: "999/10", Unit: "percent", SourceRole: "draft_contract",
 			MeasurementWindow: "calendar_month", TimeZone: "Asia/Shanghai", Calendar: "gregorian",
 			OutageDefinition: "all_service_unavailability", Exclusions: []string{"planned_maintenance"},
 			Applicable: &applicable, Citations: []rulepack.Citation{{SourceID: "doc-a-v4", SourceVersion: "parse-a-v4",
@@ -106,10 +106,34 @@ func TestOperatorFactsForAssociationPreservesExactPinnedObjectAndMeasurementSema
 		facts[0].Evidence[0].SourceDigest != digest || facts[0].Basis != "contract_total" || facts[0].Applicable == nil || !*facts[0].Applicable {
 		t.Fatalf("evaluation projection lost pinned object/fact/citation identity: %+v", facts)
 	}
-	if facts[1].Dimension != "monthly_availability" || facts[1].MeasurementWindow != "calendar_month" ||
+	if facts[1].Value.Value != "99.9" || facts[1].Value.Unit != "percent" ||
+		facts[1].Dimension != "monthly_availability" || facts[1].MeasurementWindow != "calendar_month" ||
 		facts[1].TimeZone != "Asia/Shanghai" || facts[1].Calendar != "gregorian" ||
 		facts[1].OutageDefinition != "all_service_unavailability" || !reflect.DeepEqual(facts[1].Exclusions, []string{"planned_maintenance"}) {
 		t.Fatalf("evaluation projection lost measurement semantics or exceptions: %+v", facts[1])
+	}
+	if association.FactRefs[1].Fact.Value != "999/10" || association.FactsSHA256 != hash ||
+		string(association.FactsCanonicalJSON) != string(canonical) {
+		t.Fatal("evaluation conversion rewrote the pinned association facts")
+	}
+
+	// A non-terminating fraction cannot be rounded into a confirmed quantity.
+	repeating := association
+	repeating.FactRefs = append([]ServiceObjectFactRef(nil), association.FactRefs...)
+	repeating.FactRefs[1].Fact.Value = "1/3"
+	repeating.FactRefs[1].Fact.Citations = append([]rulepack.Citation(nil), association.FactRefs[1].Fact.Citations...)
+	repeating.FactRefs[1].Fact.Citations[0].Quote = "1/3"
+	repeating.FactRefs[1].Fact.Citations[0].End = 23
+	repeating.FactRefs[1].CanonicalFactSHA256, err = canonicalRuleFactSHA256(repeating.FactRefs[1].Fact)
+	if err != nil {
+		t.Fatal(err)
+	}
+	repeating.FactsCanonicalJSON, repeating.FactsSHA256, err = canonicalServiceObjectFacts(repeating.FactRefs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := operatorFactsForAssociation(repeating); err == nil {
+		t.Fatal("non-terminating frozen fact was rounded into an evaluation quantity")
 	}
 
 	// Object B's rulepack facts cannot be attached to A's immutable association.

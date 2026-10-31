@@ -5,12 +5,17 @@ import (
 	"errors"
 	"net/http"
 	"strings"
+	"time"
 
 	"contractaudit/internal/fault"
 	"contractaudit/internal/llmendpoint"
 	"contractaudit/internal/model"
 	"contractaudit/internal/store"
 )
+
+// llmStatusTimeout bounds the stored endpoint health check, matching the
+// default model client request timeout.
+const llmStatusTimeout = 120 * time.Second
 
 type llmEndpointView struct {
 	Configured  bool     `json:"configured"`
@@ -100,6 +105,10 @@ func (h *handler) probeLLMEndpoint(w http.ResponseWriter, r *http.Request) {
 	}
 	result, err := llmendpoint.Probe(r.Context(), body.Protocol, body.BaseURL, key)
 	if err != nil {
+		if errors.Is(err, llmendpoint.ErrEndpointForbidden) {
+			writeErr(w, fault.New(502, "llm_probe_failed", "模型端点探测失败：目标地址被部署出站策略拒绝"))
+			return
+		}
 		writeErr(w, fault.New(502, "llm_probe_failed", "模型端点探测失败："+err.Error()))
 		return
 	}
@@ -256,9 +265,11 @@ func (h *handler) llmEndpointStatus(ctx context.Context) (status, label string, 
 	if err != nil && len(settings.SecretCiphertext) > 0 {
 		return "unknown", "已保存模型端点，但本进程无法读取密钥", true
 	}
-	client := model.New(model.Config{
+	// The stored endpoint is operator control data: its health check uses the
+	// guarded outbound client, exactly like the probe and provider calls.
+	client := model.NewWithHTTPClient(model.Config{
 		BaseURL: settings.BaseURL, ChatModel: settings.ReviewModel, OCRModel: settings.OCRModel, APIKey: key,
-	})
+	}, llmendpoint.GuardedClient(llmStatusTimeout))
 	status, label = client.Reachable(ctx)
 	return status, label, true
 }

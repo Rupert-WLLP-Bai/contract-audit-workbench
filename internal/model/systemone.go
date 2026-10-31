@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"contractaudit/internal/jev"
+	"contractaudit/internal/telemetry"
 )
 
 const maxSystemOneResponseBytes = 128 << 10
@@ -161,6 +162,13 @@ func applySystemOneHeaders(ctx context.Context, req *http.Request, serviceKey st
 		return fmt.Errorf("%w: execution scope cannot be encoded", ErrRequest)
 	}
 	req.Header.Set("X-Audit-Execution-Scope", string(metadata))
+	// The advisory hop joins the attempt's deterministic trace and carries a
+	// bounded request identity, so the model gateway's access log correlates
+	// with the attempt that paid for the call.
+	req.Header.Set("X-Request-Id", telemetry.NewRequestID())
+	if traceparent := telemetry.AttemptTraceparent(scope.AttemptID); traceparent != "" {
+		req.Header.Set("Traceparent", traceparent)
+	}
 	return nil
 }
 

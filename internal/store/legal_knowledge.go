@@ -285,35 +285,66 @@ func validateKnowledgeVersionFamily(ctx context.Context, tx pgx.Tx, tenant strin
 	return nil
 }
 
+type legalCaptureReference struct {
+	id, sourceID, versionID, normTitle, documentType, publisher, issuer, officialURL, provenance                 string
+	promulgatedOn, effectiveFrom, effectiveUntil                                                                 string
+	sourceCapturedAt, statusObservedAt                                                                           time.Time
+	responseStatus, statusResponseStatus                                                                         int
+	mediaType, statusMediaType, rawSHA, extracted, extractedSHA, extractorID, extractorVersion, canonicalVersion string
+	statusID, status, statusRegistryURL, statusMethod, statusSHA                                                 string
+	articleManifestSHA                                                                                           string
+	raw, statusRaw, statusRequestBody, articleRaw                                                                []byte
+	digestsChecked, digestsValid                                                                                 bool
+	articlesChecked                                                                                              bool
+	articlesErr                                                                                                  error
+	articles                                                                                                     []legalnorm.VerifiedArticle
+	extractedRunes                                                                                               []rune
+}
+
+const legalCaptureReferenceColumns = `capture_snapshot_id,source_id,norm_version,norm_title,document_type,publisher,issuer,official_url,provenance,
+	source_captured_at,promulgated_on::text,effective_from::text,COALESCE(effective_until::text,''),response_status,media_type,raw_response_bytes,raw_response_sha256,extracted_full_text,extracted_full_text_sha256,
+	extractor_id,extractor_version,canonicalization_version,status_observation_id,observed_status,status_registry_url,
+	status_request_method,status_request_body,status_observed_at,status_response_status,status_media_type,status_response_bytes,status_response_sha256,article_manifest,article_manifest_sha256`
+
+func (capture *legalCaptureReference) scan(row pgx.Row) error {
+	return row.Scan(
+		&capture.id, &capture.sourceID, &capture.versionID, &capture.normTitle, &capture.documentType, &capture.publisher, &capture.issuer, &capture.officialURL, &capture.provenance,
+		&capture.sourceCapturedAt, &capture.promulgatedOn, &capture.effectiveFrom, &capture.effectiveUntil, &capture.responseStatus, &capture.mediaType, &capture.raw, &capture.rawSHA, &capture.extracted, &capture.extractedSHA,
+		&capture.extractorID, &capture.extractorVersion, &capture.canonicalVersion, &capture.statusID, &capture.status, &capture.statusRegistryURL,
+		&capture.statusMethod, &capture.statusRequestBody, &capture.statusObservedAt, &capture.statusResponseStatus, &capture.statusMediaType, &capture.statusRaw, &capture.statusSHA, &capture.articleRaw, &capture.articleManifestSHA)
+}
+
 func validateLegalCaptureReference(ctx context.Context, tx pgx.Tx, tenant string, content GovernedKnowledgeContent) error {
-	metadata := content.LegalMetadata
-	if err := validateLegalMetadata(metadata, content.Body); err != nil {
+	if err := validateLegalMetadata(content.LegalMetadata, content.Body); err != nil {
 		return fault.Conflict("已保存的法律条文元数据无效")
 	}
-	var sourceID, versionID, normTitle, documentType, publisher, issuer, officialURL, provenance string
-	var promulgatedOn, effectiveFrom, effectiveUntil string
-	var sourceCapturedAt, statusObservedAt time.Time
-	var responseStatus, statusResponseStatus int
-	var mediaType, statusMediaType, rawSHA, extracted, extractedSHA, extractorID, extractorVersion, canonicalVersion string
-	var statusID, status, statusRegistryURL, statusMethod, statusSHA string
-	var articleManifestSHA string
-	var raw, statusRaw, statusRequestBody, articleRaw []byte
-	err := tx.QueryRow(ctx, `SELECT source_id,norm_version,norm_title,document_type,publisher,issuer,official_url,provenance,
-		source_captured_at,promulgated_on::text,effective_from::text,COALESCE(effective_until::text,''),response_status,media_type,raw_response_bytes,raw_response_sha256,extracted_full_text,extracted_full_text_sha256,
-		extractor_id,extractor_version,canonicalization_version,status_observation_id,observed_status,status_registry_url,
-		status_request_method,status_request_body,status_observed_at,status_response_status,status_media_type,status_response_bytes,status_response_sha256,article_manifest,article_manifest_sha256
-		FROM legal_source_captures WHERE tenant_id=$1 AND capture_snapshot_id=$2`, tenant, metadata.SourceSnapshotID).Scan(
-		&sourceID, &versionID, &normTitle, &documentType, &publisher, &issuer, &officialURL, &provenance,
-		&sourceCapturedAt, &promulgatedOn, &effectiveFrom, &effectiveUntil, &responseStatus, &mediaType, &raw, &rawSHA, &extracted, &extractedSHA,
-		&extractorID, &extractorVersion, &canonicalVersion, &statusID, &status, &statusRegistryURL,
-		&statusMethod, &statusRequestBody, &statusObservedAt, &statusResponseStatus, &statusMediaType, &statusRaw, &statusSHA, &articleRaw, &articleManifestSHA)
+	var capture legalCaptureReference
+	err := capture.scan(tx.QueryRow(ctx, `SELECT `+legalCaptureReferenceColumns+` FROM legal_source_captures WHERE tenant_id=$1 AND capture_snapshot_id=$2`, tenant, content.LegalMetadata.SourceSnapshotID))
 	if errors.Is(err, pgx.ErrNoRows) {
 		return fault.Conflict("法律条文引用的原始来源快照不存在")
 	}
 	if err != nil {
 		return err
 	}
-	if sha256Bytes(raw) != rawSHA || sha256Bytes([]byte(extracted)) != extractedSHA || sha256Bytes(statusRaw) != statusSHA {
+	return verifyLegalCaptureReference(content, &capture)
+}
+
+func verifyLegalCaptureReference(content GovernedKnowledgeContent, capture *legalCaptureReference) error {
+	metadata := content.LegalMetadata
+	sourceID, versionID, normTitle, documentType := capture.sourceID, capture.versionID, capture.normTitle, capture.documentType
+	publisher, issuer, officialURL, provenance := capture.publisher, capture.issuer, capture.officialURL, capture.provenance
+	promulgatedOn, effectiveFrom, effectiveUntil := capture.promulgatedOn, capture.effectiveFrom, capture.effectiveUntil
+	sourceCapturedAt, statusObservedAt := capture.sourceCapturedAt, capture.statusObservedAt
+	responseStatus, statusResponseStatus := capture.responseStatus, capture.statusResponseStatus
+	mediaType, statusMediaType, rawSHA, extracted, extractedSHA := capture.mediaType, capture.statusMediaType, capture.rawSHA, capture.extracted, capture.extractedSHA
+	extractorID, extractorVersion, canonicalVersion := capture.extractorID, capture.extractorVersion, capture.canonicalVersion
+	statusID, status, statusRegistryURL, statusSHA := capture.statusID, capture.status, capture.statusRegistryURL, capture.statusSHA
+	articleManifestSHA := capture.articleManifestSHA
+	if !capture.digestsChecked {
+		capture.digestsValid = sha256Bytes(capture.raw) == rawSHA && sha256Bytes([]byte(extracted)) == extractedSHA && sha256Bytes(capture.statusRaw) == statusSHA
+		capture.digestsChecked = true
+	}
+	if !capture.digestsValid {
 		return fault.Conflict("法律来源快照内容摘要不匹配")
 	}
 	if metadata.SourceID != sourceID || metadata.NormVersion != versionID || metadata.NormTitle != normTitle || metadata.DocumentType != documentType ||
@@ -326,19 +357,25 @@ func validateLegalCaptureReference(ctx context.Context, tx pgx.Tx, tenant string
 		metadata.ExtractorID != extractorID || metadata.ExtractorVersion != extractorVersion || metadata.CanonicalTextVersion != canonicalVersion {
 		return fault.Conflict("法律条文元数据与不可变来源快照不一致")
 	}
-	var articles []legalnorm.VerifiedArticle
-	if err := json.Unmarshal(articleRaw, &articles); err != nil || len(articles) == 0 {
-		return fault.Conflict("法律来源快照的条文索引无效")
+	if !capture.articlesChecked {
+		capture.articlesChecked = true
+		if err := json.Unmarshal(capture.articleRaw, &capture.articles); err != nil || len(capture.articles) == 0 {
+			capture.articlesErr = fault.Conflict("法律来源快照的条文索引无效")
+		} else if canonical, err := legalArticleManifest(capture.articles); err != nil || sha256Bytes(canonical) != articleManifestSHA {
+			capture.articlesErr = fault.Conflict("法律来源快照的条文索引不是规范编码")
+		}
 	}
-	canonical, err := legalArticleManifest(articles)
-	if err != nil || sha256Bytes(canonical) != articleManifestSHA {
-		return fault.Conflict("法律来源快照的条文索引不是规范编码")
+	if capture.articlesErr != nil {
+		return capture.articlesErr
 	}
-	for _, article := range articles {
+	for _, article := range capture.articles {
 		if article.Ref.ArticleNumber != metadata.ArticleNumber {
 			continue
 		}
-		runes := []rune(extracted)
+		if capture.extractedRunes == nil {
+			capture.extractedRunes = []rune(extracted)
+		}
+		runes := capture.extractedRunes
 		if article.Ref.SourceID != sourceID || article.Ref.SourceSnapshotID != metadata.SourceSnapshotID || article.Ref.VersionID != versionID ||
 			article.FullText != content.Body || article.Ref.FullText != article.FullText || article.TextSHA256 != metadata.NormTextSHA256 ||
 			article.Start != metadata.SourceTextStart || article.End != metadata.SourceTextEnd || article.Start < 0 || article.End > len(runes) ||
@@ -558,15 +595,12 @@ func (s *Store) readLegalAdmin(ctx context.Context, admin accounts.User, fn func
 	if s.serviceOwner != "" && s.serviceOwner != "core" {
 		return fault.Forbidden("当前服务不能读取法律知识")
 	}
-	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead})
+	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback(ctx)
-	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended(current_schema(),0))`); err != nil {
-		return err
-	}
-	if err := setLocalScope(ctx, tx, governanceScope(admin)); err != nil {
+	if err := setLocalScope(ctx, tx, userScope(admin)); err != nil {
 		return err
 	}
 	if err := fn(tx); err != nil {
@@ -720,8 +754,29 @@ func searchLegalKnowledgeTx(ctx context.Context, tx pgx.Tx, tenant string, filte
 		ids = ids[:limit]
 	}
 	page := LegalKnowledgePage{Items: make([]LegalKnowledgeHit, 0, len(ids))}
+	if len(ids) == 0 {
+		return page, nil
+	}
+	knowledgeIDs, versionIDs := make([]string, 0, len(ids)), make([]string, 0, len(ids))
 	for _, id := range ids {
-		version, _, _, _, err := loadGovernedKnowledge(ctx, tx, tenant, id.knowledgeID, id.versionID)
+		knowledgeIDs = append(knowledgeIDs, id.knowledgeID)
+		versionIDs = append(versionIDs, id.versionID)
+	}
+	versions, captures, err := queryGovernedKnowledgeRows(ctx, tx, tenant,
+		`AND (v.knowledge_id,v.version_id) IN (SELECT * FROM unnest($2::text[],$3::text[]))`, knowledgeIDs, versionIDs)
+	if err != nil {
+		return LegalKnowledgePage{}, err
+	}
+	byID := make(map[identity]governedKnowledgeRow, len(versions))
+	for _, version := range versions {
+		byID[identity{version.version.Ref.KnowledgeID, version.version.Ref.VersionID}] = version
+	}
+	for _, id := range ids {
+		stored, ok := byID[id]
+		if !ok {
+			return LegalKnowledgePage{}, fault.NotFound("没有找到对应制度版本")
+		}
+		version, _, _, _, err := validateGovernedKnowledgeRow(ctx, tx, tenant, stored, captures)
 		if err != nil {
 			return LegalKnowledgePage{}, err
 		}
@@ -861,7 +916,7 @@ func (s *Store) ImportLegalSource(ctx context.Context, user accounts.User, input
 			content := GovernedKnowledgeContent{
 				Encoding: knowledgeContentEncoding, KnowledgeID: versionInput.KnowledgeID, Version: versionInput.DisplayVersion,
 				Kind: "legal", Title: verified.Capture.Title + " " + article.Ref.ArticleLabel,
-				Body: article.FullText, Summary: article.Ref.ArticleLabel, SourceType: "reference",
+				Body: article.FullText, Summary: supplementalLegalSummary(verified.Capture.SourceID, verified.Capture.VersionID, article.Ref.ArticleNumber, article.Ref.ArticleLabel), SourceType: "reference",
 				SourceReference: verified.Capture.OfficialURL, LegalMetadata: legalMetadataFor(verified, article),
 			}
 			if err := validateKnowledgeContent(content); err != nil {

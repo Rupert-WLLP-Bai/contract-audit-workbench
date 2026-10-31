@@ -151,7 +151,10 @@ func revalidateGovernedAttemptTx(ctx context.Context, tx pgx.Tx, runID, attemptI
 // use the normal actor authorization check.
 func (s *Store) updateAuthorizedGovernedExecution(ctx context.Context, runID, attemptID string, fn func(*state) error) error {
 	claim, hasClaim := s.claimForAttempt(attemptID)
-	if hasClaim && claim.JobID != "" && claim.RunID == runID && claim.AttemptID == attemptID {
+	if executionScopeRequiresClaim(ctx) && (!hasClaim || !claimMatchesExecutionScope(ctx, claim)) {
+		return errLeaseLost
+	}
+	if hasClaim && claim.RunID == runID && claim.AttemptID == attemptID {
 		return s.scopedGovernedAttemptMutation(ctx, runID, attemptID, func(st *state) error {
 			if _, err := authorizeAttemptExecution(*st, runID, attemptID); err != nil {
 				return err
@@ -159,7 +162,10 @@ func (s *Store) updateAuthorizedGovernedExecution(ctx context.Context, runID, at
 			return fn(st)
 		})
 	}
-	seen := s.snapshotForAttempt(attemptID)
+	seen, err := s.snapshotForAttemptMetadataContext(ctx, attemptID)
+	if err != nil {
+		return err
+	}
 	run, ok := seen.runByID(runID)
 	if !ok {
 		return errAttemptMissing
@@ -174,7 +180,9 @@ func (s *Store) updateAuthorizedGovernedExecution(ctx context.Context, runID, at
 	}
 	scope := userScope(actor)
 	scope.CaseID = run.CaseID
-	s.mu.Lock()
+	if err := s.lockExecutionContext(ctx); err != nil {
+		return err
+	}
 	defer s.mu.Unlock()
 	return s.updateStateWith(ctx, scope, attemptID, func(tx pgx.Tx) error {
 		return revalidateGovernedAttemptTx(ctx, tx, runID, attemptID, run.CaseID)

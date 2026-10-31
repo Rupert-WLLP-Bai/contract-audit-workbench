@@ -121,6 +121,9 @@ func (s *Store) finishAttemptNarrow(ctx context.Context, runID, attemptID, state
 	if !ok || claim.JobID == "" || claim.AttemptID != attemptID || claim.RunID != runID {
 		return errExecutionEventScope
 	}
+	if !claimMatchesExecutionScope(ctx, claim) {
+		return errLeaseLost
+	}
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return err
@@ -231,7 +234,9 @@ func (s *Store) finishAttemptNarrow(ctx context.Context, runID, attemptID, state
 		return err
 	}
 	runEvent := Event{RunID: runID, Type: "state", State: runState}
-	if err := tx.QueryRow(ctx, `SELECT COALESCE(MAX(event_seq),0)+1 FROM `+runEventTableFor(s.serviceOwner)+` WHERE run_id=$1`, runID).Scan(&runEvent.Seq); err != nil {
+	if err := tx.QueryRow(ctx, `SELECT GREATEST(
+		COALESCE((SELECT MAX(event_seq) FROM run_events WHERE run_id=$1),0),
+		COALESCE((SELECT MAX(event_seq) FROM business_run_events WHERE run_id=$1),0))+1`, runID).Scan(&runEvent.Seq); err != nil {
 		return err
 	}
 	if _, err := tx.Exec(ctx, `INSERT INTO `+runEventTableFor(s.serviceOwner)+` (run_id, event_seq, event_type, state) VALUES ($1,$2,$3,$4)`,
@@ -242,7 +247,7 @@ func (s *Store) finishAttemptNarrow(ctx context.Context, runID, attemptID, state
 	if err := tx.Commit(ctx); err != nil {
 		return err
 	}
-	s.patchAttemptOutcomeProjection(outcome)
+	s.patchAttemptOutcomeProjection(ctx, outcome)
 	return nil
 }
 
@@ -282,12 +287,15 @@ func (s *Store) reauthorizeAttempt(ctx context.Context, tx pgx.Tx, runID, attemp
 	return nil
 }
 
-// loadRunAuditChain reads the authoritative audit chain of one run from its
-// routed table, so a narrow writer chains exactly like the whole-state writer:
-// the previous hash comes from PostgreSQL, never from a possibly stale memory.
+// loadRunAuditChain reads the newest audit row across both routed tables. The
+// preceding hash always comes from PostgreSQL under the shared run/case lock;
+// full history is loaded only when the run is inspected.
 func (s *Store) loadRunAuditChain(ctx context.Context, tx pgx.Tx, runID string) (state, error) {
-	rows, err := tx.Query(ctx, `SELECT event_id, run_id, actor, seq, event_type, prev_hash, hash, correlation_ids FROM `+
-		auditTableFor(s.serviceOwner)+` WHERE run_id=$1 ORDER BY seq`, runID)
+	rows, err := tx.Query(ctx, `SELECT * FROM (
+		(SELECT event_id,run_id,actor,seq,event_type,prev_hash,hash,correlation_ids FROM audit_events WHERE run_id=$1 ORDER BY seq DESC,event_id DESC LIMIT 1)
+		UNION ALL
+		(SELECT event_id,run_id,actor,seq,event_type,prev_hash,hash,correlation_ids FROM business_audit_events WHERE run_id=$1 ORDER BY seq DESC,event_id DESC LIMIT 1)
+	) heads ORDER BY seq DESC,event_id DESC LIMIT 1`, runID)
 	if err != nil {
 		return state{}, err
 	}
@@ -326,8 +334,10 @@ func (s *Store) requireLiveClaim(ctx context.Context, tx pgx.Tx, claim JobClaim,
 
 // patchAttemptOutcomeProjection publishes the committed transition to the read
 // model. Only the affected attempt, run and event slices are touched.
-func (s *Store) patchAttemptOutcomeProjection(outcome attemptOutcome) {
-	s.mu.Lock()
+func (s *Store) patchAttemptOutcomeProjection(ctx context.Context, outcome attemptOutcome) {
+	if err := s.lockExecutionContext(ctx); err != nil {
+		return
+	}
 	defer s.mu.Unlock()
 	for i := range s.st.Attempts {
 		if s.st.Attempts[i].ID == outcome.AttemptID {
@@ -535,7 +545,9 @@ func (s *Store) cancelAttemptNarrow(ctx context.Context, user accounts.User, cas
 	}
 	outcome.Events = append(outcome.Events, cancelled)
 	runEvent := Event{RunID: runID, Type: "state", State: "cancelled"}
-	if err := tx.QueryRow(ctx, `SELECT COALESCE(MAX(event_seq),0)+1 FROM `+runEventTableFor(s.serviceOwner)+` WHERE run_id=$1`, runID).Scan(&runEvent.Seq); err != nil {
+	if err := tx.QueryRow(ctx, `SELECT GREATEST(
+		COALESCE((SELECT MAX(event_seq) FROM run_events WHERE run_id=$1),0),
+		COALESCE((SELECT MAX(event_seq) FROM business_run_events WHERE run_id=$1),0))+1`, runID).Scan(&runEvent.Seq); err != nil {
 		return err
 	}
 	if _, err := tx.Exec(ctx, `INSERT INTO `+runEventTableFor(s.serviceOwner)+` (run_id, event_seq, event_type, state) VALUES ($1,$2,$3,$4)`,
@@ -561,6 +573,6 @@ func (s *Store) cancelAttemptNarrow(ctx context.Context, user accounts.User, cas
 	if err := tx.Commit(ctx); err != nil {
 		return err
 	}
-	s.patchAttemptOutcomeProjection(outcome)
+	s.patchAttemptOutcomeProjection(ctx, outcome)
 	return nil
 }

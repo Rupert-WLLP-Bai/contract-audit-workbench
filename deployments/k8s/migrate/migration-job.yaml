@@ -1,8 +1,8 @@
 apiVersion: batch/v1
 kind: Job
 metadata:
-  # Kustomize requires a concrete name; delete this Job before the next migration
-  # so the new release renders and runs it again (one migration per release).
+  # Local k3d uses this template name; the release entrypoint derives a unique
+  # Job name from the candidate lock and retains the Job as migration evidence.
   name: contract-audit-migrate
   namespace: contract-audit
   labels:

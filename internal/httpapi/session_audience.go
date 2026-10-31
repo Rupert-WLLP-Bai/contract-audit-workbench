@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"net/http"
 
 	"contractaudit/internal/accounts"
@@ -39,14 +40,21 @@ func (h *handler) setSessionCookie(w http.ResponseWriter, r *http.Request, token
 	http.SetCookie(w, cookie)
 }
 
+type authenticatedRequestKey struct{}
+
+type authenticatedRequest struct {
+	user     accounts.User
+	audience string
+	token    string
+}
+
 func (h *handler) actorForAudience(w http.ResponseWriter, r *http.Request, audience string) (accounts.User, bool) {
 	token := audienceCookieValue(r, audience)
-	user, err := h.store.User(token)
-	if err != nil {
-		writeErr(w, err)
-		return accounts.User{}, false
+	if cached, ok := r.Context().Value(authenticatedRequestKey{}).(authenticatedRequest); ok &&
+		cached.audience == audience && cached.token == token {
+		return cached.user, true
 	}
-	actual, err := h.store.SessionAudience(token)
+	user, actual, err := h.store.AuthenticateSession(r.Context(), token)
 	if err != nil {
 		writeErr(w, err)
 		return accounts.User{}, false
@@ -55,6 +63,11 @@ func (h *handler) actorForAudience(w http.ResponseWriter, r *http.Request, audie
 		writeErr(w, fault.Forbidden("会话不具备此入口的授权"))
 		return accounts.User{}, false
 	}
+	// The unexported value is tied to this request and cookie; it is never shared
+	// across requests or used for periodic revalidation of a long-lived stream.
+	*r = *r.WithContext(context.WithValue(r.Context(), authenticatedRequestKey{}, authenticatedRequest{
+		user: user, audience: audience, token: token,
+	}))
 	return user, true
 }
 

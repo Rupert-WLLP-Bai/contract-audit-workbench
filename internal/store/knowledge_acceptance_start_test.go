@@ -28,7 +28,7 @@ func TestAttemptStartedEventIsFencedAndGenerationBound(t *testing.T) {
 	if err := fixture.environment.harness.pool.QueryRow(ctx, `SELECT clock_timestamp()`).Scan(&before); err != nil {
 		t.Fatal(err)
 	}
-	if err := fixture.execution.markAttemptStarted(fixture.runID, fixture.attemptID); err != nil {
+	if err := fixture.execution.markAttemptStarted(ctx, fixture.runID, fixture.attemptID); err != nil {
 		t.Fatalf("start live claim: %v", err)
 	}
 	if err := fixture.environment.harness.pool.QueryRow(ctx, `SELECT clock_timestamp()`).Scan(&after); err != nil {
@@ -52,7 +52,7 @@ func TestAttemptStartedEventIsFencedAndGenerationBound(t *testing.T) {
 	if err != nil || recorded.Before(before) || recorded.After(after) {
 		t.Fatalf("start recording time was not read from PostgreSQL inside the transition: %q %v", *first.RecordedAt, err)
 	}
-	if err := fixture.execution.markAttemptStarted(fixture.runID, fixture.attemptID); err != nil {
+	if err := fixture.execution.markAttemptStarted(ctx, fixture.runID, fixture.attemptID); err != nil {
 		t.Fatalf("same generation replay: %v", err)
 	}
 	replayed := durableSnapshot(t, fixture.execution, fixture.claim)
@@ -66,14 +66,14 @@ func TestAttemptStartedEventIsFencedAndGenerationBound(t *testing.T) {
 	if err != nil || takeover.JobID != fixture.jobID || takeover.Generation != fixture.claim.Generation+1 {
 		t.Fatalf("takeover claim: %+v %v", takeover, err)
 	}
-	if err := fixture.execution.markAttemptStarted(fixture.runID, fixture.attemptID); !errors.Is(err, ErrLeaseLost) {
+	if err := fixture.execution.markAttemptStarted(ctx, fixture.runID, fixture.attemptID); !errors.Is(err, ErrLeaseLost) {
 		t.Fatalf("stale generation started after takeover: %v", err)
 	}
 	stale := durableSnapshot(t, takeoverStore, takeover)
 	if got := startedEvents(stale.executionEvents(fixture.attemptID)); !reflect.DeepEqual(got, starts) {
 		t.Fatalf("stale generation appended a start event: %+v", got)
 	}
-	if err := takeoverStore.markAttemptStarted(takeover.RunID, takeover.AttemptID); err != nil {
+	if err := takeoverStore.markAttemptStarted(ctx, takeover.RunID, takeover.AttemptID); err != nil {
 		t.Fatalf("takeover start: %v", err)
 	}
 	resumed := durableSnapshot(t, takeoverStore, takeover)
@@ -83,7 +83,7 @@ func TestAttemptStartedEventIsFencedAndGenerationBound(t *testing.T) {
 		got[1].Generation == nil || *got[1].Generation != takeover.Generation || got[1].EventKey == nil || *got[1].EventKey != "attempt/started" || got[1].RecordedAt == nil {
 		t.Fatalf("takeover lost the original start or its own generation: attempt=%+v events=%+v", resumedAttempt, got)
 	}
-	if err := takeoverStore.markAttemptStarted(takeover.RunID, takeover.AttemptID); err != nil {
+	if err := takeoverStore.markAttemptStarted(ctx, takeover.RunID, takeover.AttemptID); err != nil {
 		t.Fatalf("takeover replay: %v", err)
 	}
 	if again := startedEvents(durableSnapshot(t, takeoverStore, takeover).executionEvents(takeover.AttemptID)); !reflect.DeepEqual(again, got) {
@@ -103,7 +103,7 @@ func TestAttemptStartedEventFailureRollsBackState(t *testing.T) {
 		FOR EACH ROW EXECUTE FUNCTION reject_attempt_started_test()`); err != nil {
 		t.Fatal(err)
 	}
-	if err := fixture.execution.markAttemptStarted(fixture.runID, fixture.attemptID); err == nil {
+	if err := fixture.execution.markAttemptStarted(ctx, fixture.runID, fixture.attemptID); err == nil {
 		t.Fatal("start succeeded when its lifecycle event could not be inserted")
 	}
 	state := durableSnapshot(t, fixture.execution, fixture.claim)

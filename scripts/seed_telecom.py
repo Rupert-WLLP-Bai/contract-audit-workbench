@@ -11,6 +11,7 @@ import re
 import sys
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 import uuid
 
@@ -94,12 +95,14 @@ def load_dataset(path: Path) -> dict:
 class API:
     def __init__(self, base: str):
         self.base = base.rstrip("/")
+        parsed = urllib.parse.urlsplit(base)
+        self.origin = f"{parsed.scheme}://{parsed.netloc}"
         cookies = http.cookiejar.CookieJar()
         self.client = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(cookies))
 
     def request(self, method: str, path: str, payload=None, content_type=None, timeout=30):
         raw = None
-        headers = {"Accept": "application/json"}
+        headers = {"Accept": "application/json", "Origin": self.origin}
         if isinstance(payload, bytes):
             raw = payload
         elif payload is not None:

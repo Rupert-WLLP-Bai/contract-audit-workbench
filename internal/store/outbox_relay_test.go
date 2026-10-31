@@ -131,7 +131,7 @@ func resetOutboxBackoff(t *testing.T, store *Store, eventID string) {
 		t.Fatal(err)
 	}
 	defer tx.Rollback(ctx)
-	if err := setLocalScope(ctx, tx, dbScope{ActorID: "relay-a", Role: "worker", WorkerID: "relay-a"}); err != nil {
+	if err := setLocalQueueScope(ctx, tx, "relay-a"); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := tx.Exec(ctx, `UPDATE outbox_events SET next_attempt_at=to_timestamp(0) WHERE id=$1`, eventID); err != nil {
@@ -150,7 +150,7 @@ func outboxPending(t *testing.T, store *Store, jobID string) int {
 		t.Fatal(err)
 	}
 	defer tx.Rollback(ctx)
-	if err := setLocalScope(ctx, tx, dbScope{ActorID: "outbox-inspector", Role: "worker", WorkerID: "outbox-inspector"}); err != nil {
+	if err := setLocalQueueScope(ctx, tx, "outbox-inspector"); err != nil {
 		t.Fatal(err)
 	}
 	var pending int

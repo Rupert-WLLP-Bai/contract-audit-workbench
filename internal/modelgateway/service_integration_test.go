@@ -302,6 +302,7 @@ func TestGatewayWorkerAndDocumentFixtureConsumersSettleUnknownUsage(t *testing.T
 	config := gatewayTestConfig("fixture", "")
 	config.ProviderURL = "https://fixture-provider.example/v1"
 	config.FixtureOCRContent = "质保期为36个月。"
+	config.Budget.MaxOutputTokenReservation = 8192
 	_, gateway := startGatewayServer(t, st, config)
 
 	workerClient := model.New(model.Config{
@@ -380,6 +381,7 @@ func TestExplicitImageReparseUsesAuthorizedDocumentScopeBeforeReview(t *testing.
 	config := gatewayTestConfig("fixture", "")
 	config.ProviderURL = "https://fixture-provider.example/v1"
 	config.FixtureOCRContent = "采购文件要求质保36个月。"
+	config.Budget.MaxOutputTokenReservation = 8192
 	_, gateway := startGatewayServer(t, st, config)
 	st.UseModels(model.New(model.Config{
 		BaseURL: gateway.URL + "/v1", ProviderURL: config.ProviderURL, Gateway: true, APIKey: config.DocumentCredential,
@@ -1305,6 +1307,7 @@ func TestGatewayFromEnvOverridesAndRejectsInvalidValues(t *testing.T) {
 		"MODEL_MAX_CONCURRENCY", "MODEL_QUEUE_CAPACITY", "MODEL_RETRIES", "MODEL_CIRCUIT_FAILURES",
 		"MODEL_GLOBAL_MAX_INFLIGHT", "MODEL_TENANT_MAX_INFLIGHT", "MODEL_GLOBAL_CALLS_PER_MINUTE", "MODEL_TENANT_CALLS_PER_MINUTE",
 		"MODEL_GLOBAL_TOKENS_PER_MINUTE", "MODEL_TENANT_TOKENS_PER_MINUTE", "MODEL_MAX_INPUT_TOKEN_RESERVATION", "MODEL_MAX_OUTPUT_TOKEN_RESERVATION",
+		"MODEL_OCR_IMAGE_PROVIDER_URL", "MODEL_OCR_IMAGE_MODEL", "MODEL_OCR_IMAGE_TOKEN_UPPER_BOUND",
 		"MODEL_REQUEST_TIMEOUT", "MODEL_CIRCUIT_COOLDOWN",
 	} {
 		t.Setenv(key, "")

@@ -1,0 +1,38 @@
+# Opt-in strategic merge patch for an existing document-service Deployment.
+# Provision the signing Secret and a PVC containing evidence-font.ttf first.
+# Apply with kubectl patch deployment/document-service --type strategic --patch-file <this file>.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: document-service
+spec:
+  template:
+    spec:
+      securityContext:
+        fsGroup: 10001
+      containers:
+        - name: document-service
+          env:
+            - name: EVIDENCE_SIGNING_KEY_FILE
+              value: /run/contract-audit/evidence-signing/signing-key.pem
+            - name: EVIDENCE_PDF_FONT_FILE
+              value: /run/contract-audit/evidence-font/evidence-font.ttf
+          volumeMounts:
+            - name: evidence-signing
+              mountPath: /run/contract-audit/evidence-signing
+              readOnly: true
+            - name: evidence-font
+              mountPath: /run/contract-audit/evidence-font
+              readOnly: true
+      volumes:
+        - name: evidence-signing
+          secret:
+            secretName: contract-audit-evidence-signing
+            defaultMode: 0440
+            items:
+              - key: signing-key.pem
+                path: signing-key.pem
+        - name: evidence-font
+          persistentVolumeClaim:
+            claimName: contract-audit-evidence-font
+            readOnly: true

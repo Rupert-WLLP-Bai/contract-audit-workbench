@@ -54,6 +54,8 @@ class Journey:
 
     def __init__(self, base: str, deadline: float) -> None:
         self.base = base
+        parsed = urlsplit(base)
+        self.origin = f"{parsed.scheme}://{parsed.netloc}"
         self.deadline = deadline
         self.opener = build_opener(HTTPCookieProcessor(http.cookiejar.CookieJar()))
 
@@ -70,7 +72,7 @@ class Journey:
         if time.monotonic() > self.deadline:
             raise Failure(f"journey deadline exceeded before {method} {path}")
         data = body
-        headers = {"Accept": "application/json"}
+        headers = {"Accept": "application/json", "Origin": self.origin}
         if payload is not None:
             data = json.dumps(payload).encode("utf-8")
         if data is not None:

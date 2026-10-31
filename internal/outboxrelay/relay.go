@@ -20,6 +20,8 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"contractaudit/internal/store"
@@ -38,6 +40,8 @@ const (
 	defaultPoll           = 500 * time.Millisecond
 	defaultPublishTimeout = 5 * time.Second
 	defaultMaxBackoff     = time.Minute
+	defaultConcurrency    = 1
+	maxConcurrency        = 16
 	// leaseSafetyMargin keeps a publish strictly inside the claim's lease.
 	leaseSafetyMargin = 500 * time.Millisecond
 	// reconnectBackoff bounds how often a relay retries a missing broker.
@@ -54,6 +58,7 @@ type Config struct {
 	Poll           time.Duration
 	PublishTimeout time.Duration
 	MaxBackoff     time.Duration
+	Concurrency    int
 	Subject        string
 	Stream         string
 	Replicas       int
@@ -67,7 +72,8 @@ func FromEnv() (Config, error) {
 		Owner: strings.TrimSpace(os.Getenv("OUTBOX_RELAY_OWNER")),
 		Batch: defaultBatch, Lease: defaultLease, Poll: defaultPoll,
 		PublishTimeout: defaultPublishTimeout, MaxBackoff: defaultMaxBackoff,
-		Subject: Subject, Stream: Stream, Replicas: 1,
+		Concurrency: defaultConcurrency,
+		Subject:     Subject, Stream: Stream, Replicas: 1,
 	}
 	if config.Owner == "" {
 		owner, err := defaultRelayOwner()
@@ -77,6 +83,13 @@ func FromEnv() (Config, error) {
 		config.Owner = owner
 	}
 	if err := config.applyBoundedInteger("OUTBOX_RELAY_BATCH", 1, 512, &config.Batch); err != nil {
+		return Config{}, err
+	}
+	// Concurrency bounds how many rows of one claimed batch publish in
+	// parallel. Rows are independent notifications, so parallel delivery only
+	// reorders wake-ups, never acknowledgements: each row is still published
+	// before it is acknowledged, and PostgreSQL stays the authority.
+	if err := config.applyBoundedInteger("OUTBOX_RELAY_CONCURRENCY", 1, maxConcurrency, &config.Concurrency); err != nil {
 		return Config{}, err
 	}
 	// Replicas is the JetStream stream replication factor, not the number of
@@ -177,6 +190,9 @@ func New(st Store, broker Broker, config Config) (*Relay, error) {
 	if !config.Enabled() {
 		return nil, errors.New("outbox relay requires a broker URL")
 	}
+	if config.Concurrency <= 0 {
+		config.Concurrency = defaultConcurrency
+	}
 	if !config.valid() {
 		return nil, errors.New("outbox relay configuration is incomplete or invalid")
 	}
@@ -188,7 +204,7 @@ func (c Config) valid() bool {
 }
 
 func (c Config) validBatchAndLease() bool {
-	return c.Batch >= 1 && c.Lease > leaseSafetyMargin && c.Poll > 0
+	return c.Batch >= 1 && c.Concurrency >= 1 && c.Concurrency <= maxConcurrency && c.Lease > leaseSafetyMargin && c.Poll > 0
 }
 
 func (c Config) validTimeouts() bool {
@@ -256,10 +272,12 @@ func growRelayBackoff(delay, maximum time.Duration) time.Duration {
 }
 
 // Run publishes until the context ends. Every step is independent: a broker
-// outage releases the claimed rows with a bounded retry delay and never
-// disables the PostgreSQL scan path.
+// outage releases the claimed rows with a bounded retry delay, a failing step
+// backs off instead of hot-looping, and neither disables the PostgreSQL scan
+// path.
 func (r *Relay) Run(ctx context.Context) error {
 	log.Printf("outbox relay %s publishing %s to %s", r.config.Owner, r.config.Subject, r.config.Stream)
+	delay := r.config.Poll
 	for {
 		if err := ctx.Err(); err != nil {
 			return err
@@ -269,8 +287,14 @@ func (r *Relay) Run(ctx context.Context) error {
 			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 				return ctx.Err()
 			}
-			log.Printf("outbox relay step failed: %v", err)
+			log.Printf("outbox relay step failed: %v (retrying in %s)", err, delay)
+			if waitErr := wait(ctx, delay); waitErr != nil {
+				return waitErr
+			}
+			delay = growRelayBackoff(delay, r.config.MaxBackoff)
+			continue
 		}
+		delay = r.config.Poll
 		if published == 0 {
 			if err := wait(ctx, r.config.Poll); err != nil {
 				return err
@@ -285,47 +309,96 @@ func (r *Relay) Run(ctx context.Context) error {
 // Every claim's publish deadline is clamped to that claim's own remaining lease:
 // a batch can outlive a single timeout, and publishing a row whose lease has
 // expired would race the takeover owner. A claim without enough lease left is
-// skipped and left to expire; an acknowledge failure is returned instead of
-// being counted as a delivered row.
+// released for the next cycle instead of being held until its lease lapses, and
+// an acknowledge failure is returned instead of being counted as a delivered
+// row.
 func (r *Relay) Step(ctx context.Context) (int, error) {
 	claims, err := r.store.ClaimOutbox(ctx, r.config.Owner, r.config.Batch, r.config.Lease)
 	if err != nil {
 		return 0, fmt.Errorf("claim outbox: %w", err)
 	}
-	published := 0
-	for _, claim := range claims {
-		deadline := r.publishDeadline(claim)
-		if deadline <= 0 {
-			// Too little lease left to publish safely: leave the row pending for
-			// the next lease window instead of racing the takeover owner.
-			continue
-		}
-		payload, err := encodeClaim(claim)
-		if err != nil {
-			r.release(ctx, claim, "payload_encode_failed")
-			continue
-		}
-		publishCtx, cancel := context.WithTimeout(ctx, deadline)
-		// A publish error does not prove the broker stored nothing: the
-		// acknowledgement itself can be lost. The stable message id plus the
-		// broker's duplicate window keep at-least-once delivery safe, so the row
-		// stays pending and is retried with a bounded delay.
-		publishErr := r.broker.Publish(publishCtx, r.config.Subject, claim.Event.ID, payload)
-		cancel()
-		if publishErr != nil {
-			r.release(ctx, claim, "broker_unavailable")
-			continue
-		}
-		// The broker acknowledged durably; only now may the row be delivered.
-		if err := r.store.AckOutbox(ctx, claim); err != nil {
-			if errors.Is(err, store.ErrOutboxClaimLost) {
-				continue // another relay owns it; drop the claim silently
-			}
-			return published, fmt.Errorf("acknowledge outbox %s: %w", claim.Event.ID, err)
-		}
-		published++
+	if len(claims) == 0 {
+		return 0, nil
 	}
-	return published, nil
+	if r.config.Concurrency <= 1 {
+		published, firstErr := 0, error(nil)
+		for _, claim := range claims {
+			delivered, err := r.deliver(ctx, claim)
+			published += delivered
+			if err != nil && firstErr == nil {
+				firstErr = err
+			}
+		}
+		return published, firstErr
+	}
+	// Bounded parallel delivery: one stalled publish must not sit on the whole
+	// batch, and cancelling the context fails every in-flight publish quickly.
+	var (
+		wg        sync.WaitGroup
+		mu        sync.Mutex
+		firstErr  error
+		published atomic.Int64
+	)
+	work := make(chan store.OutboxClaim)
+	for range r.config.Concurrency {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for claim := range work {
+				delivered, err := r.deliver(ctx, claim)
+				published.Add(int64(delivered))
+				if err != nil {
+					mu.Lock()
+					if firstErr == nil {
+						firstErr = err
+					}
+					mu.Unlock()
+				}
+			}
+		}()
+	}
+	for _, claim := range claims {
+		work <- claim
+	}
+	close(work)
+	wg.Wait()
+	return int(published.Load()), firstErr
+}
+
+// deliver publishes one claimed row and acknowledges it only after the broker
+// confirmed durability. A publish error does not prove the broker stored
+// nothing — the acknowledgement itself can be lost — so the row stays pending
+// and is retried with a bounded delay; the stable message id plus the broker's
+// duplicate window keep at-least-once delivery safe.
+func (r *Relay) deliver(ctx context.Context, claim store.OutboxClaim) (int, error) {
+	deadline := r.publishDeadline(claim)
+	if deadline <= 0 {
+		// Too little lease left to publish safely: hand the row back for the
+		// next lease window instead of racing the takeover owner or holding it
+		// until the lease lapses.
+		r.releaseAfter(ctx, claim, "lease_window_exhausted", r.config.Poll)
+		return 0, nil
+	}
+	payload, err := encodeClaim(claim)
+	if err != nil {
+		r.release(ctx, claim, "payload_encode_failed")
+		return 0, nil
+	}
+	publishCtx, cancel := context.WithTimeout(ctx, deadline)
+	publishErr := r.broker.Publish(publishCtx, r.config.Subject, claim.Event.ID, payload)
+	cancel()
+	if publishErr != nil {
+		r.release(ctx, claim, "broker_unavailable")
+		return 0, nil
+	}
+	// The broker acknowledged durably; only now may the row be delivered.
+	if err := r.store.AckOutbox(ctx, claim); err != nil {
+		if errors.Is(err, store.ErrOutboxClaimLost) {
+			return 0, nil // another relay owns it; drop the claim silently
+		}
+		return 0, fmt.Errorf("acknowledge outbox %s: %w", claim.Event.ID, err)
+	}
+	return 1, nil
 }
 
 // publishDeadline bounds one publish inside the claim's own lease, leaving a
@@ -342,7 +415,14 @@ func (r *Relay) publishDeadline(claim store.OutboxClaim) time.Duration {
 }
 
 func (r *Relay) release(ctx context.Context, claim store.OutboxClaim, reason string) {
-	delay := r.nextBackoff(reason)
+	r.releaseAfter(ctx, claim, reason, r.nextBackoff(reason))
+}
+
+// releaseAfter returns a claimed row to the pending scan with an explicit retry
+// delay. The release runs without the caller's cancellation: a shutdown must
+// still hand rows back, otherwise they would sit claimed until their lease
+// expires.
+func (r *Relay) releaseAfter(ctx context.Context, claim store.OutboxClaim, reason string, delay time.Duration) {
 	releaseCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), r.config.PublishTimeout)
 	defer cancel()
 	if err := r.store.ReleaseOutbox(releaseCtx, claim, reason, delay); err != nil && !errors.Is(err, store.ErrOutboxClaimLost) {

@@ -74,7 +74,7 @@ func TestOriginGuardBlocksBrowserWritesBeforeHandler(t *testing.T) {
 		status               int
 	}{
 		{"trusted-ui", "POST", "http://localhost:5173", false, 204},
-		{"same-origin", "POST", "http://api.example", false, 204},
+		{"unconfigured-plain-http", "POST", "http://api.example", false, 403},
 		{"tls-same-origin", "POST", "https://api.example", true, 204},
 		{"untrusted-write", "POST", "http://attacker.example", false, 403},
 		{"untrusted-delete", "DELETE", "http://attacker.example", false, 403},
@@ -85,12 +85,14 @@ func TestOriginGuardBlocksBrowserWritesBeforeHandler(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			hit := false
-			h := cors([]string{"http://localhost:5173"}, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			h := cors([]string{"http://localhost:5173"}, false, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 				hit = true
 				w.WriteHeader(http.StatusNoContent)
 			}))
 			r := httptest.NewRequest(tc.method, "http://api.example/api/cases", nil)
-			r.Header.Set("Origin", tc.origin)
+			if tc.origin != "" {
+				r.Header.Set("Origin", tc.origin)
+			}
 			if tc.tls {
 				r.TLS = &tls.ConnectionState{}
 			}

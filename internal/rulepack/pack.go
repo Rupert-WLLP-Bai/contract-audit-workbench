@@ -73,14 +73,15 @@ const maxCanonicalRationalBytes = 128
 // Manifest is a detached copy of pack content and its hash-bound lifecycle.
 // Mutating its slices or lifecycle pointers cannot change a Pack.
 type Manifest struct {
-	SchemaVersion  string    `json:"schema_version"`
-	ID             string    `json:"id"`
-	Version        string    `json:"version"`
-	TenantID       string    `json:"tenant_id"`
-	EffectiveFrom  string    `json:"effective_from"`
-	EffectiveUntil string    `json:"effective_until"`
-	Rules          []Rule    `json:"rules"`
-	Lifecycle      Lifecycle `json:"lifecycle"`
+	SchemaVersion  string        `json:"schema_version"`
+	ID             string        `json:"id"`
+	Version        string        `json:"version"`
+	TenantID       string        `json:"tenant_id"`
+	EffectiveFrom  string        `json:"effective_from"`
+	EffectiveUntil string        `json:"effective_until"`
+	Rules          []Rule        `json:"rules"`
+	FixtureSuite   *FixtureSuite `json:"fixture_suite,omitempty"`
+	Lifecycle      Lifecycle     `json:"lifecycle"`
 }
 
 type Rule struct {
@@ -155,24 +156,26 @@ type Release struct {
 }
 
 type manifestContent struct {
-	SchemaVersion  string `json:"schema_version"`
-	ID             string `json:"id"`
-	Version        string `json:"version"`
-	TenantID       string `json:"tenant_id"`
-	EffectiveFrom  string `json:"effective_from"`
-	EffectiveUntil string `json:"effective_until"`
-	Rules          []Rule `json:"rules"`
+	SchemaVersion  string        `json:"schema_version"`
+	ID             string        `json:"id"`
+	Version        string        `json:"version"`
+	TenantID       string        `json:"tenant_id"`
+	EffectiveFrom  string        `json:"effective_from"`
+	EffectiveUntil string        `json:"effective_until"`
+	FixtureSuite   *FixtureSuite `json:"fixture_suite,omitempty"`
+	Rules          []Rule        `json:"rules"`
 }
 
 type manifestInput struct {
-	SchemaVersion  string     `json:"schema_version"`
-	ID             string     `json:"id"`
-	Version        string     `json:"version"`
-	TenantID       string     `json:"tenant_id"`
-	EffectiveFrom  string     `json:"effective_from"`
-	EffectiveUntil string     `json:"effective_until"`
-	Rules          []Rule     `json:"rules"`
-	Lifecycle      *Lifecycle `json:"lifecycle,omitempty"`
+	SchemaVersion  string        `json:"schema_version"`
+	ID             string        `json:"id"`
+	Version        string        `json:"version"`
+	TenantID       string        `json:"tenant_id"`
+	EffectiveFrom  string        `json:"effective_from"`
+	EffectiveUntil string        `json:"effective_until"`
+	FixtureSuite   *FixtureSuite `json:"fixture_suite,omitempty"`
+	Rules          []Rule        `json:"rules"`
+	Lifecycle      *Lifecycle    `json:"lifecycle,omitempty"`
 }
 
 type Pack struct {
@@ -198,6 +201,7 @@ func Parse(raw []byte) (*Pack, error) {
 		EffectiveFrom:  input.EffectiveFrom,
 		EffectiveUntil: input.EffectiveUntil,
 		Rules:          input.Rules,
+		FixtureSuite:   input.FixtureSuite,
 	}
 	if err := normalizeAndValidate(&content); err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrInvalidManifest, err)
@@ -238,6 +242,7 @@ func (p *Pack) Manifest() Manifest {
 		EffectiveFrom:  c.EffectiveFrom,
 		EffectiveUntil: c.EffectiveUntil,
 		Rules:          c.Rules,
+		FixtureSuite:   c.FixtureSuite,
 		Lifecycle:      cloneLifecycle(p.lifecycle),
 	}
 }
@@ -308,7 +313,10 @@ func normalizeAndValidate(c *manifestContent) error {
 	if err := normalizeManifestWindow(c); err != nil {
 		return err
 	}
-	return normalizeManifestRules(c)
+	if err := normalizeManifestRules(c); err != nil {
+		return err
+	}
+	return validateFixtureSuite(*c)
 }
 
 func validateManifestIdentity(c *manifestContent) error {
@@ -899,6 +907,7 @@ func cloneContent(c manifestContent) manifestContent {
 	for i, rule := range c.Rules {
 		copy.Rules[i] = cloneRule(rule)
 	}
+	copy.FixtureSuite = cloneFixtureSuite(c.FixtureSuite)
 	return copy
 }
 

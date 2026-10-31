@@ -598,6 +598,7 @@ func (a *testAPI) uploadRequest(t *testing.T, caseID, role, name, media string, 
 	if err != nil {
 		t.Fatal(err)
 	}
+	req.Header.Set("Origin", a.base)
 	req.Header.Set("Content-Type", w.FormDataContentType())
 	if idempotencyKey != "" {
 		req.Header.Set("Idempotency-Key", idempotencyKey)
@@ -819,6 +820,7 @@ func (a *testAPI) send(t *testing.T, method, path string, payload any, idem stri
 	if err != nil {
 		t.Fatal(err)
 	}
+	req.Header.Set("Origin", a.base)
 	req.Header.Set("Content-Type", "application/json")
 	if idem != "" {
 		req.Header.Set("Idempotency-Key", idem)
@@ -848,6 +850,7 @@ func (a *testAPI) bytes(t *testing.T, method, path string, body io.Reader, conte
 	if err != nil {
 		t.Fatal(err)
 	}
+	req.Header.Set("Origin", a.base)
 	if contentType != "" && method != http.MethodGet {
 		req.Header.Set("Content-Type", contentType)
 	}

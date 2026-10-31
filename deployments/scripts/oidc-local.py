@@ -953,7 +953,7 @@ def run_harness(recorder: Recorder, infra_env: dict[str, str], provider_image: s
             raise Failure("a subject absent from the directory was not refused")
 
         logout = http("DELETE", app + "/api/session?audience=client",
-                      headers={"Cookie": cookie_header(admin_opener)})
+                      headers={"Cookie": cookie_header(admin_opener), "Origin": app})
         after = http("GET", app + "/api/session", headers={"Cookie": cookie_header(admin_opener)})
         report["checks"]["logout"] = {"logout_status": logout[0], "session_after": after[0]}
         if logout[0] != 204 or after[0] != 401:

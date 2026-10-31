@@ -159,6 +159,7 @@ func TestPublicOperationsUseOnlyTheirOwningServiceCredential(t *testing.T) {
 		method, path, owner string
 	}{
 		{http.MethodGet, "/api/cases", "core"},
+		{http.MethodPost, "/api/intakes", "core"},
 		{http.MethodPost, "/api/cases/c/documents", "document"},
 		{http.MethodGet, "/api/templates", "document"},
 		{http.MethodPost, "/api/cases/c/reviews", "execution"},
@@ -193,8 +194,8 @@ func TestPublicOperationsUseOnlyTheirOwningServiceCredential(t *testing.T) {
 
 	mu.Lock()
 	defer mu.Unlock()
-	if len(calls) != 7 {
-		t.Fatalf("the edge sent %d operations to services, want 7", len(calls))
+	if len(calls) != len(expectedOwner) {
+		t.Fatalf("the edge sent %d operations to services, want %d", len(calls), len(expectedOwner))
 	}
 	for _, call := range calls {
 		want, ok := expectedOwner[call.path]

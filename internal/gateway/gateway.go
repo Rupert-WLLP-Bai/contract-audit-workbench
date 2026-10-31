@@ -31,6 +31,7 @@ import (
 	"time"
 
 	"contractaudit/internal/httpapi"
+	"contractaudit/internal/telemetry"
 )
 
 const (
@@ -385,6 +386,56 @@ func (g *Gateway) Handler() http.Handler {
 	})
 }
 
+// RouteTemplate renders the bounded route template the HTTP boundary records
+// for one proxied request: route words stay literal and every identity segment
+// becomes a {id} placeholder, so the RED metric series cannot grow with the
+// number of cases, documents, reviews, or findings. The proxy never records
+// the raw path anywhere: the owning service's own boundary logs the template,
+// and durable audit events carry the identifiers.
+func RouteTemplate(path string) string {
+	segments, ok := httpapi.RouteSegments(path)
+	if !ok {
+		return "unmatched"
+	}
+	for i, segment := range segments {
+		if idLikeSegment(segment) {
+			segments[i] = "{id}"
+		}
+	}
+	template := "/" + strings.Join(segments, "/")
+	if len(template) > 128 {
+		return "unmatched"
+	}
+	return template
+}
+
+// idLikeSegment decides whether one decoded path segment is an identity rather
+// than a route word. Identifiers in this repository are underscore-prefixed
+// random hex strings or bare hex, so any segment containing an underscore, or
+// one made entirely of hex or decimal characters, is treated as an identity.
+// A false positive can only rename a bounded series bucket; it can never make
+// a series grow with business data.
+func idLikeSegment(segment string) bool {
+	if segment == "" {
+		return false
+	}
+	if strings.Contains(segment, "_") {
+		return true
+	}
+	hasHexOrDigit := false
+	for _, c := range segment {
+		if c >= '0' && c <= '9' {
+			hasHexOrDigit = true
+			continue
+		}
+		if (c < 'a' || c > 'f') && (c < 'A' || c > 'F') {
+			return false
+		}
+		hasHexOrDigit = true
+	}
+	return hasHexOrDigit && len(segment) >= 6
+}
+
 // Start launches the bounded readiness monitor and waits for its first probe pass.
 func (g *Gateway) Start(ctx context.Context) error {
 	if ctx == nil {
@@ -622,9 +673,9 @@ func (g *Gateway) upstreamFor(role string) (*upstream, bool) {
 
 // classify keeps in step with OperationOwnedBy and reads the same decoded
 // segments, so an escaped spelling of a segment (for example %64ocuments) gets
-// the same class as its literal form. Only a document upload streams a request
-// body; only the review event feed and the stored original are long-lived
-// responses.
+// the same class as its literal form. Document uploads and Core intake uploads
+// stream a request body; only the review event feed and the stored original are
+// long-lived responses.
 func classify(role, method string, segments []string) class {
 	if isUploadRequest(role, method, segments) {
 		return classUpload
@@ -636,8 +687,13 @@ func classify(role, method string, segments []string) class {
 }
 
 func isUploadRequest(role, method string, s []string) bool {
-	return method == http.MethodPost && role == "document" && len(s) == 4 &&
-		s[0] == "api" && s[1] == "cases" && s[3] == "documents"
+	if method != http.MethodPost {
+		return false
+	}
+	if role == "document" && len(s) == 4 && s[0] == "api" && s[1] == "cases" && s[3] == "documents" {
+		return true
+	}
+	return role == "core" && len(s) == 2 && s[0] == "api" && s[1] == "intakes"
 }
 
 func isStreamRequest(role, method string, s []string) bool {
@@ -735,6 +791,22 @@ func upstreamTransport(headerTimeout time.Duration, keepAlives bool) *http.Trans
 	}
 }
 
+// propagateBoundaryHeaders continues the trace and request identity the edge
+// boundary assigned onto the proxied request. Both identities live in the
+// request context the boundary established, so a caller-supplied header is
+// replaced by the validated bounded identity rather than forwarded as-is.
+// The next hop's own boundary revalidates them: defense in depth, not trust.
+func propagateBoundaryHeaders(request *http.Request) {
+	boundary, ok := telemetry.BoundaryFromContext(request.Context())
+	if !ok {
+		request.Header.Del("X-Request-Id")
+		request.Header.Del("Traceparent")
+		return
+	}
+	request.Header.Set("X-Request-Id", boundary.RequestID)
+	request.Header.Set("Traceparent", boundary.Traceparent())
+}
+
 // idempotent reports whether the transport may reuse a connection for this
 // method. Only methods the frozen contract treats as safe are pooled.
 func idempotent(method string) bool {
@@ -763,6 +835,14 @@ func (up *upstream) newProxy(transport http.RoundTripper, streamHeaderBudget tim
 		FlushInterval: -1,
 		ErrorLog:      log.New(log.Writer(), "gateway "+up.role+": ", log.LstdFlags),
 		ErrorHandler:  proxyError,
+		// The edge boundary already wrote the authoritative request identity,
+		// and the upstream echoes the same propagated identity. Its copy is
+		// dropped so the client sees exactly one value.
+		ModifyResponse: func(response *http.Response) error {
+			response.Header.Del("X-Request-Id")
+			response.Header.Del("Traceparent")
+			return nil
+		},
 		Director: func(request *http.Request) {
 			// ReverseProxy requires an absolute target before it invokes Transport.
 			// replicaTransport replaces this placeholder with a currently healthy target.
@@ -774,6 +854,7 @@ func (up *upstream) newProxy(transport http.RoundTripper, streamHeaderBudget tim
 			// that check without adding any authority here.
 			stripForgedHeaders(request.Header)
 			request.Header.Set("X-Contract-Service-Key", up.token)
+			propagateBoundaryHeaders(request)
 		},
 	}
 }

@@ -1,24 +1,15 @@
 import { jsonInit, requestJson } from "./http";
 import { responseReader } from "./respond";
+import type { WireSchemas } from "./wire.generated";
 
-export interface ExperienceEvidenceRef {
-  document_id: string;
-  parsed_document_id: string;
-  quote: string;
-  start: number;
-  end: number;
-}
+export type ExperienceEvidenceRef = WireSchemas["ExperienceEvidenceView"];
+// The case identity and idempotency key are supplied by the route and header.
+export type ExperienceFeedbackInput = Omit<
+  WireSchemas["ExperienceFeedbackRequest"], "case_id" | "idempotency_key"
+>;
 
-export interface ExperienceFeedbackInput {
-  run_id: string;
-  attempt_id: string;
-  finding_id: string;
-  decision_id: string;
-  reason: string;
+export interface ExperienceFeedback extends Omit<ExperienceFeedbackInput, "evidence_refs"> {
   evidence_refs: ExperienceEvidenceRef[];
-}
-
-export interface ExperienceFeedback extends ExperienceFeedbackInput {
   feedback_id: string;
   case_id: string;
   decision_action: string;

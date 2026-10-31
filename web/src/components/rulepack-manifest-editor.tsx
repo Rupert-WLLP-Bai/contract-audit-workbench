@@ -1,12 +1,13 @@
 import { Card } from "antd";
 import { Button, Checkbox, Input, Select } from "antd";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type {
   RulePackAuthoritySource,
   RulePackLegalAuthority,
   RulePackManifestInput,
   RulePackRule,
 } from "../api/rulepacks";
+import { parseRulePackFixtureSuite } from "../api/rulepacks";
 import { RulePackLegalAuthorityEditor } from "./rulepack-legal-authority-editor";
 import { toLocalInputValue, toUtcInstant } from "./local-datetime";
 import { OptionalFactField } from "./optional-fact-field";
@@ -814,6 +815,54 @@ function RuleCard({
   );
 }
 
+function FixtureSuiteEditor({ value, disabled, onChange }: {
+  value: RulePackManifestInput;
+  disabled: boolean;
+  onChange: (next: RulePackManifestInput) => void;
+}) {
+  const [raw, setRaw] = useState(() => value.fixture_suite ? JSON.stringify(value.fixture_suite, null, 2) : "");
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    setRaw(value.fixture_suite ? JSON.stringify(value.fixture_suite, null, 2) : "");
+    setError(null);
+  }, [value.fixture_suite]);
+
+  function apply() {
+    try {
+      const suite = parseRulePackFixtureSuite(JSON.parse(raw));
+      if (suite.schema_version !== "rulepack-fixture-suite/v1" || suite.data_class !== "synthetic" || suite.pack_id !== value.id || suite.pack_version !== value.version) {
+        setError("套件须为合成数据，且规则包 ID、版本与当前草稿完全一致。");
+        return;
+      }
+      onChange({ ...value, fixture_suite: suite });
+      setError(null);
+    } catch {
+      setError("套件 JSON 格式无效或缺少必填字段；请修正后再次应用。");
+    }
+  }
+
+  function remove() {
+    const { fixture_suite: _suite, ...rest } = value;
+    onChange(rest);
+    setRaw("");
+    setError(null);
+  }
+
+  return (
+    <section className="rulepack-editor-section" aria-labelledby="rulepack-fixture-title">
+      <h2 id="rulepack-fixture-title">合成样本套件</h2>
+      <p className="meta">粘贴套件 JSON 并先应用到草稿，再保存。套件包含正例、反例和信息不足样本，随版本与内容摘要冻结；校验时逐样本执行。套件格式可参考仓库内的 author-demo.json。</p>
+      <label className="field" htmlFor="rulepack-fixture-json">
+        样本套件 JSON
+        <Input.TextArea id="rulepack-fixture-json" rows={10} value={raw} disabled={disabled} onChange={(event) => setRaw(event.target.value)} aria-describedby="rulepack-fixture-error" />
+      </label>
+      {error ? <p id="rulepack-fixture-error" role="alert">{error}</p> : null}
+      <Button htmlType="button" disabled={disabled || !raw.trim()} onClick={apply}>应用套件到草稿</Button>{" "}
+      {value.fixture_suite ? <Button htmlType="button" disabled={disabled} onClick={remove}>移除套件</Button> : null}
+    </section>
+  );
+}
+
 export function RulePackManifestEditor({
   value,
   tenantId,
@@ -977,6 +1026,7 @@ export function RulePackManifestEditor({
           />
         ))}
       </section>
+      <FixtureSuiteEditor value={value} disabled={disabled} onChange={onChange} />
     </div>
   );
 }

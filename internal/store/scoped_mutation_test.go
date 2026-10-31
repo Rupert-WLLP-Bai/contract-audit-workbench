@@ -291,7 +291,7 @@ type durableMutationState struct {
 
 func durableSnapshot(t *testing.T, store *Store, claim JobClaim) state {
 	t.Helper()
-	snapshot, err := store.snapshotScoped(context.Background(), claim.scope())
+	snapshot, err := store.fixtureSnapshot(claim.scope(), claim.RunID, claim.AttemptID)
 	if err != nil {
 		t.Fatalf("read durable service state: %v", err)
 	}

@@ -14,13 +14,13 @@ import (
 	"fmt"
 	"log"
 	"log/slog"
-	"net"
 	"net/http"
 	"os"
 	"strings"
 	"time"
 
 	"contractaudit/internal/bootstrap"
+	"contractaudit/internal/config"
 	"contractaudit/internal/httpapi"
 	"contractaudit/internal/outboxrelay"
 	"contractaudit/internal/process"
@@ -94,15 +94,15 @@ func run() error {
 	addr := process.Env("ADDR", "127.0.0.1:8083")
 	slog.Info("execution service listening", "addr", addr)
 	server := &http.Server{
-		Addr: addr, Handler: service,
+		Addr: addr, Handler: app.Boundary("execution", service),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       30 * time.Second,
 		IdleTimeout:       60 * time.Second,
 		MaxHeaderBytes:    1 << 20,
 		// Review events stream over SSE; a global WriteTimeout would cut a valid
-		// stream, and the request context ends when the process is asked to stop.
+		// stream. process.Serve keeps the request context live for the whole
+		// drain window, so an in-flight stream survives the stop signal.
 	}
-	server.BaseContext = func(net.Listener) context.Context { return ctx }
 	serveErr := process.Serve(ctx, server, shutdownTimeout)
 	stopRelay()
 	return errors.Join(serveErr, waitRelay(relayDone, shutdownTimeout))
@@ -131,21 +131,7 @@ func waitRelay(done <-chan error, timeout time.Duration) error {
 // serve runs server until ctx is canceled or the listener fails, then drains
 // in-flight requests within timeout. It mirrors the lifecycle of the other
 // process entrypoints in this repository.
-// origins reads the extra browser origins the deployment allows, using the same
-// convention as the core service: an empty CORS_ORIGIN keeps the handler's
-// development defaults. The browser sends its Origin through the edge, so this
-// hop must accept the same site origins or it would refuse writes the edge
-// already authorized.
+// origins applies the same browser origin policy as the core service.
 func origins() []string {
-	extra := strings.TrimSpace(os.Getenv("CORS_ORIGIN"))
-	if extra == "" {
-		return nil
-	}
-	result := []string{"http://localhost:5173", "http://127.0.0.1:5173"}
-	for _, origin := range strings.Split(extra, ",") {
-		if origin = strings.TrimSpace(origin); origin != "" {
-			result = append(result, origin)
-		}
-	}
-	return result
+	return config.BrowserOrigins(os.Getenv("CORS_ORIGIN"), os.Getenv("APP_ENV"))
 }

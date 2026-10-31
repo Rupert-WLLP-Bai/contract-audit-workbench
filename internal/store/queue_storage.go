@@ -11,33 +11,22 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-func loadJobs(ctx context.Context, q queryer) ([]Job, error) {
-	rows, err := q.Query(ctx, `SELECT id, tenant_id, org_id, case_id, COALESCE(run_id,''), COALESCE(attempt_id,''), actor_id, kind, state, generation, worker_id, lease_until, heartbeat_at, created_at, updated_at FROM worker_jobs ORDER BY created_at, id`)
+func loadJobs(ctx context.Context, q queryer, caseID ...string) ([]Job, error) {
+	query := jobSelectSQL + ` WHERE state IN ('queued','running')`
+	var args []any
+	if len(caseID) != 0 {
+		query += ` AND case_id=$1`
+		args = append(args, caseID[0])
+	}
+	rows, err := q.Query(ctx, query+` ORDER BY created_at,id`, args...)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	var out []Job
-	for rows.Next() {
-		var item Job
-		var lease, heartbeat pgtype.Timestamptz
-		if err := rows.Scan(&item.ID, &item.TenantID, &item.OrgID, &item.CaseID, &item.RunID, &item.AttemptID, &item.ActorID,
-			&item.Kind, &item.State, &item.Generation, &item.WorkerID, &lease, &heartbeat, &item.CreatedAt, &item.UpdatedAt); err != nil {
-			return nil, err
-		}
-		if lease.Valid {
-			item.LeaseUntil = &lease.Time
-		}
-		if heartbeat.Valid {
-			item.Heartbeat = &heartbeat.Time
-		}
-		out = append(out, item)
-	}
-	return out, rows.Err()
+	return scanJobs(rows)
 }
 
 func loadOutbox(ctx context.Context, q queryer) ([]OutboxRecord, error) {
-	rows, err := q.Query(ctx, `SELECT id, job_id, tenant_id, org_id, case_id, event_type, payload, state, created_at, delivered_at FROM outbox_events ORDER BY created_at, id`)
+	rows, err := q.Query(ctx, `SELECT id, job_id, tenant_id, org_id, case_id, event_type, payload, state, created_at, delivered_at FROM outbox_events WHERE state='pending' ORDER BY created_at, id`)
 	if err != nil {
 		return nil, err
 	}
@@ -95,15 +84,6 @@ func syncOutbox(ctx context.Context, tx pgx.Tx, items []OutboxRecord) error {
 
 var errInvalidOutboxPayload = errors.New("outbox payload must be one JSON value")
 
-func hasJobForRun(st state, runID string) bool {
-	for _, job := range st.Jobs {
-		if job.RunID == runID {
-			return true
-		}
-	}
-	return false
-}
-
 // ErrLeaseLost means a worker lease was superseded or expired.
 var ErrLeaseLost = errors.New("worker job lease was lost")
 
@@ -140,12 +120,21 @@ func (s *Store) ClaimNextJob(ctx context.Context, workerID string, lease time.Du
 	if workerID == "" || lease <= 0 {
 		return JobClaim{}, errors.New("worker id and positive lease are required")
 	}
+	// Read-only pre-check: an idle poll must not open the claim transaction,
+	// which takes the queue advisory lock and locks tenant rows even when no
+	// work exists. The scheduler predicates stay authoritative — a missed
+	// pre-check only costs one claim attempt, never a lost job.
+	if work, err := s.hasClaimableJob(ctx, workerID); err != nil {
+		return JobClaim{}, err
+	} else if !work {
+		return JobClaim{}, pgx.ErrNoRows
+	}
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return JobClaim{}, err
 	}
 	defer tx.Rollback(ctx)
-	if err := setLocalScope(ctx, tx, dbScope{ActorID: workerID, TenantID: "local-demo", OrgID: "local-demo", Role: "worker"}); err != nil {
+	if err := setLocalQueueScope(ctx, tx, workerID); err != nil {
 		return JobClaim{}, err
 	}
 	claim, err := claimScheduledJob(ctx, tx, workerID, lease, s.executionQueuePolicy())
@@ -225,10 +214,14 @@ func (s *Store) RunClaimedJob(ctx context.Context, claim JobClaim) error {
 	if claim.Kind != "review" || claim.RunID == "" || claim.AttemptID == "" {
 		return errors.New("unsupported or incomplete worker job")
 	}
+	ctx = withExecutionClaim(ctx, claim)
 	s.setClaim(claim)
 	defer s.clearClaim(claim)
 	if claim.stopReason != "" {
-		if err := s.finishAttempt(claim.RunID, claim.AttemptID, "failed", "", claim.stopReason); err != nil && !errors.Is(err, errAttemptTerminal) {
+		settleCtx, cancel := context.WithTimeout(ctx, attemptFinalizeTimeout)
+		err := s.finishAttempt(settleCtx, claim.RunID, claim.AttemptID, "failed", "", claim.stopReason)
+		cancel()
+		if err != nil && !errors.Is(err, errAttemptTerminal) {
 			return err
 		}
 	} else {
@@ -243,7 +236,9 @@ func (s *Store) RunClaimedJob(ctx context.Context, claim JobClaim) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	st, err := s.snapshotForClaim(claim)
+	finishCtx, cancel := context.WithTimeout(ctx, attemptFinalizeTimeout)
+	defer cancel()
+	st, err := s.snapshotForAttemptMetadataContext(finishCtx, claim.AttemptID)
 	if err != nil {
 		return err
 	}
@@ -264,7 +259,7 @@ func (s *Store) RunClaimedJob(ctx context.Context, claim JobClaim) error {
 	if attempt.State != "completed" && attempt.State != "partial" && attempt.State != "failed" && attempt.State != "cancelled" {
 		return errors.New("attempt has an unsupported terminal state")
 	}
-	return s.finishClaim(ctx, claim, attempt.State)
+	return s.finishClaim(finishCtx, claim, attempt.State)
 }
 
 func (s *Store) finishClaim(ctx context.Context, claim JobClaim, state string) error {

@@ -22,17 +22,20 @@ const maxPrepareRequestBytes = 1 << 20
 // and waiting requests.
 type Config struct {
 	WorkerCredential string
+	// IntakeCredential authenticates Core's dedicated intake upload entry.
+	IntakeCredential string
 	CPUConcurrency   int
 	OCRConcurrency   int
 	QueueCapacity    int
 	ParseTimeout     time.Duration
 }
 
-// FromEnv reads only the document service's internal worker credential and
+// FromEnv reads the document service's internal worker/intake credentials and
 // bounded parse capacity settings.
 func FromEnv() (Config, error) {
 	config := Config{
 		WorkerCredential: strings.TrimSpace(os.Getenv("WORKER_DOCUMENT_TOKEN")),
+		IntakeCredential: strings.TrimSpace(os.Getenv("CORE_DOCUMENT_TOKEN")),
 		CPUConcurrency:   4,
 		OCRConcurrency:   1,
 		QueueCapacity:    32,
@@ -89,9 +92,9 @@ type Service struct {
 }
 
 func New(st *store.Store, config Config) (*Service, error) {
-	if st == nil || len(config.WorkerCredential) < 32 || config.CPUConcurrency < 1 || config.OCRConcurrency < 1 ||
-		config.QueueCapacity < 1 || config.ParseTimeout <= 0 {
-		return nil, errors.New("document service requires a Store, private worker credential, and positive bounded capacities")
+	if st == nil || len(config.WorkerCredential) < 32 || len(config.IntakeCredential) < 32 || config.IntakeCredential == config.WorkerCredential ||
+		config.CPUConcurrency < 1 || config.OCRConcurrency < 1 || config.QueueCapacity < 1 || config.ParseTimeout <= 0 {
+		return nil, errors.New("document service requires a Store, distinct private worker and intake credentials, and positive bounded capacities")
 	}
 	return &Service{
 		store: st, config: config, queue: make(chan struct{}, config.QueueCapacity),
@@ -129,6 +132,7 @@ func WithPublicParse(ctx context.Context, resolveKind func(context.Context) (str
 func (s *Service) Handler(public http.Handler) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/internal/v1/prepare", s.prepare)
+	mux.HandleFunc("/internal/v1/intake-uploads", s.intakeUpload)
 	mux.HandleFunc("/health/live", healthLive)
 	mux.HandleFunc("/health/ready", s.healthReady)
 	if public == nil {
@@ -136,7 +140,14 @@ func (s *Service) Handler(public http.Handler) http.Handler {
 	}
 	mux.Handle("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctx := context.WithValue(r.Context(), publicServiceContextKey{}, s)
-		public.ServeHTTP(w, r.WithContext(ctx))
+		served := r.WithContext(ctx)
+		public.ServeHTTP(w, served)
+		// The inner API mux records the matched template on the context copy it
+		// receives. Write it back so the process HTTP boundary reports the real
+		// route instead of this fallback arm, now that the exchange has ended.
+		if served.Pattern != "" {
+			r.Pattern = served.Pattern
+		}
 	}))
 	return mux
 }

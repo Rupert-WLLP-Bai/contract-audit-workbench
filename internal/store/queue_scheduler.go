@@ -61,7 +61,9 @@ func claimScheduledJob(ctx context.Context, tx pgx.Tx, worker string, lease time
 			return JobClaim{}, err
 		}
 		if errors.Is(err, pgx.ErrNoRows) {
-			if _, err := tx.Exec(ctx, `UPDATE execution_queue_tenants SET deficit=0 WHERE tenant_id=$1`, tenant); err != nil {
+			// The deficit reset only bookkeeps credit the tenant no longer has
+			// work to spend; guarding it keeps an idle claim write-free.
+			if _, err := tx.Exec(ctx, `UPDATE execution_queue_tenants SET deficit=0 WHERE tenant_id=$1 AND deficit<>0`, tenant); err != nil {
 				return JobClaim{}, err
 			}
 			cursor = tenant
@@ -97,6 +99,36 @@ func claimScheduledJob(ctx context.Context, tx pgx.Tx, worker string, lease time
 		return claim, nil
 	}
 	return JobClaim{}, pgx.ErrNoRows
+}
+
+// hasClaimableJob reports whether any job could currently be claimed. It is a
+// read-only pre-check so an idle claim loop does not open the scheduling
+// transaction, which takes the queue lock and rewrites tenant bookkeeping on
+// every poll even when no work exists. It runs under the dedicated queue scope
+// — the same cross-tenant queue-metadata authority the claim transaction uses —
+// because job eligibility is deployment-wide, never tenant-bound. The
+// scheduler's own predicates stay authoritative: a true result can still end in
+// no claim, and a false result cannot hide claimable work because it uses the
+// same job-level eligibility.
+func (s *Store) hasClaimableJob(ctx context.Context, workerID string) (bool, error) {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return false, err
+	}
+	defer tx.Rollback(ctx)
+	if err := setLocalQueueScope(ctx, tx, workerID); err != nil {
+		return false, err
+	}
+	var exists bool
+	if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM worker_jobs WHERE
+		(state='queued' AND ready_at<=clock_timestamp()) OR
+		(state='running' AND lease_until<=clock_timestamp() AND (ready_at<=clock_timestamp() OR deadline_at<=clock_timestamp())))`).Scan(&exists); err != nil {
+		return false, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return false, err
+	}
+	return exists, nil
 }
 
 func queueRetryDelay(cfg *queueConfiguration, id string, count int) time.Duration {

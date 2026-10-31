@@ -740,11 +740,11 @@ describe("补充材料请求", () => {
     const receiptCall = calls.find((call) => call.pathname.endsWith("/receipts"));
     expect(JSON.parse(String(receiptCall?.init?.body))).toEqual({ document_id: "doc-2", expected_version: 1 });
     expect(calls.some((call) => call.pathname.endsWith("/verify"))).toBe(false);
-    fireEvent.change(screen.getByLabelText("审查业务时间（本地时间）"), { target: { value: "2026-11-01T10:00" } });
+    fireEvent.change(screen.getByLabelText("审查业务时间（北京时间）"), { target: { value: "2026-11-01T10:00" } });
     await user.click(screen.getByRole("button", { name: "发起后续审查" }));
     await waitFor(() => expect(screen.getByLabelText("当前位置")).toHaveTextContent("/cases/case-1/reviews/run-new?attempt_id=attempt-new"));
     const start = calls.find((call) => call.pathname.endsWith("/reviews") && call.method === "POST");
-    expect(JSON.parse(String(start?.init?.body))).toEqual({ business_at: new Date("2026-11-01T10:00").toISOString() });
+    expect(JSON.parse(String(start?.init?.body))).toEqual({ business_at: "2026-11-01T02:00:00.000Z" });
   });
 
   it("adds a newly uploaded document to receipt choices and submits its ID", async () => {
@@ -1681,18 +1681,18 @@ describe("补充材料请求", () => {
     } });
     await screen.findByText("已提交，待复核");
     expect(screen.getByRole("button", { name: "发起后续审查" })).toBeDisabled();
-    const businessAt = screen.getByLabelText("审查业务时间（本地时间）") as HTMLInputElement;
+    const businessAt = screen.getByLabelText("审查业务时间（北京时间）") as HTMLInputElement;
     fireEvent.change(businessAt, { target: { value: "2026-11-02T10:30" } });
     const readyStart = screen.getByRole("button", { name: "发起后续审查" });
     expect(readyStart).toBeEnabled();
     await user.click(readyStart);
     await waitFor(() => expect(screen.getByLabelText("当前位置")).toHaveTextContent("run-next"));
     const call = calls.find((entry) => entry.pathname.endsWith("/reviews") && entry.method === "POST");
-    expect(JSON.parse(String(call?.init?.body))).toEqual({ business_at: new Date("2026-11-02T10:30").toISOString() });
+    expect(JSON.parse(String(call?.init?.body))).toEqual({ business_at: "2026-11-02T02:30:00.000Z" });
   });
 
   it.each([
-    ["a non-ENT case", { ...detail, business_line: "SMB", scenario: "standard", contract_type: "service" }],
+    ["an unspecified business scope", { ...detail, business_line: "unspecified", scenario: "unspecified", contract_type: "procurement_ict" }],
     ["a cloud agreement outside the service contract branch", { ...detail, business_line: "ENT", scenario: "cloud_services", contract_type: "goods" }],
   ] as const)("does not require business time for %s", async (_caseName, caseDetail) => {
     const { calls, user } = open({ caseDetail, respond(call) {
@@ -1702,7 +1702,7 @@ describe("补充材料请求", () => {
       return Response.json({ error: { message: "unexpected" } }, { status: 404 });
     } });
     await screen.findByText("已提交，待复核");
-    expect(screen.queryByLabelText("审查业务时间（本地时间）")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("审查业务时间（北京时间）")).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "发起后续审查" }));
     await waitFor(() => expect(screen.getByLabelText("当前位置")).toHaveTextContent("run-next"));
     const call = calls.find((entry) => entry.pathname.endsWith("/reviews") && entry.method === "POST");
@@ -1774,6 +1774,7 @@ describe("补充材料请求", () => {
     const quoteDocument = { ...document, id: "doc-unicode", parsed_document_id: "parse-unicode", filename: "Unicode合同.txt", text: "A😀质保36个月。" };
     const workspace = makeWorkspace("run-new", "attempt-new", [compatible]);
     workspace.documents = [quoteDocument];
+    workspace.review_attempts!.attempt!.parsed_document_ids = ["parse-unicode"];
     const receipt = { ...rawReceipt, document_id: quoteDocument.id };
     const request = rawRequest("received", 2);
     const { calls, user } = open({ runId: "run-new", attemptId: "attempt-new", evaluations: [compatible], workspace, canManage: false, respond(call) {
@@ -1796,6 +1797,7 @@ describe("补充材料请求", () => {
     await user.click(original);
     original.setSelectionRange(3, 9);
     fireEvent.select(original);
+    fireEvent.keyUp(original, { key: "Shift" });
     await user.type(screen.getByLabelText("核验理由"), "核对 Unicode 引用");
     await user.click(screen.getByRole("button", { name: "提交核验" }));
     await waitFor(() => expect(calls.some((call) => call.pathname.endsWith("/verify"))).toBe(true));

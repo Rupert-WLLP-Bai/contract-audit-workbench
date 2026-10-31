@@ -15,9 +15,7 @@
 package main
 
 import (
-	"context"
 	"log"
-	"net"
 	"net/http"
 	"time"
 
@@ -57,16 +55,16 @@ func run() error {
 	addr := process.Env("ADDR", "127.0.0.1:8084")
 	log.Printf("model gateway listening on %s (mode %s, chat %s, ocr %s)", addr, config.Mode, config.ChatModel, config.OCRModel)
 	server := &http.Server{
-		Addr: addr, Handler: service.Handler(),
+		Addr: addr, Handler: app.Boundary("model", service.Handler()),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       30 * time.Second,
 		IdleTimeout:       60 * time.Second,
 		MaxHeaderBytes:    1 << 20,
 		// A completion may legitimately take as long as MODEL_REQUEST_TIMEOUT;
-		// a global WriteTimeout would cut a valid call, and the request context
-		// ends when the process is asked to stop.
+		// a global WriteTimeout would cut a valid call. process.Serve keeps the
+		// request context live for the whole drain window, so an in-flight
+		// completion survives the stop signal.
 	}
-	server.BaseContext = func(net.Listener) context.Context { return ctx }
 	return process.Serve(ctx, server, shutdownTimeout)
 }
 

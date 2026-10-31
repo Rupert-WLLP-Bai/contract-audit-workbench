@@ -2,7 +2,7 @@ import { Tabs, Table } from "antd";
 import { Flex } from "antd";
 import { Select } from "antd";
 import { Input, Button } from "antd";
-import { useState, type FormEvent } from "react";
+import { useMemo, useState, type FormEvent } from "react";
 import { Navigate, useParams, useSearchParams } from "react-router";
 import { errorMessage } from "../api/http";
 import { paths } from "../api/paths";
@@ -219,16 +219,27 @@ function buildRecords(
   );
   const auditByCase = new Map<string, typeof snapshot.audit>();
   const auditByActor = new Map<string, typeof snapshot.audit>();
-  for (const item of snapshot.audit) {
-    if (item.case_id !== null)
-      auditByCase.set(item.case_id, [
-        ...(auditByCase.get(item.case_id) ?? []),
-        item,
-      ]);
-    auditByActor.set(item.actor_id, [
-      ...(auditByActor.get(item.actor_id) ?? []),
-      item,
-    ]);
+  const needsAudit =
+    module === "tasks" || module === "remediation" || module === "audit" || module === "organization";
+  if (needsAudit) {
+    for (const item of snapshot.audit) {
+      if (item.case_id !== null) {
+        const caseEvents = auditByCase.get(item.case_id);
+        if (caseEvents) caseEvents.push(item);
+        else auditByCase.set(item.case_id, [item]);
+      }
+      const actorEvents = auditByActor.get(item.actor_id);
+      if (actorEvents) actorEvents.push(item);
+      else auditByActor.set(item.actor_id, [item]);
+    }
+  }
+  const documentsByCase = new Map<string, typeof snapshot.documents>();
+  if (module === "tasks" || module === "remediation") {
+    for (const document of snapshot.documents) {
+      const caseDocuments = documentsByCase.get(document.case_id);
+      if (caseDocuments) caseDocuments.push(document);
+      else documentsByCase.set(document.case_id, [document]);
+    }
   }
   const make = (values: Omit<ModuleRecord, "searchText">): ModuleRecord => ({
     ...values,
@@ -247,9 +258,7 @@ function buildRecords(
     return snapshot.tasks.map((task) => {
       const relatedCase = caseById.get(task.case_id);
       const caseAudit = auditByCase.get(task.case_id) ?? [];
-      const documents = snapshot.documents.filter(
-        (item) => item.case_id === task.case_id,
-      );
+      const documents = documentsByCase.get(task.case_id) ?? [];
       const panels: Record<string, DetailPanel> = {
         任务详情: panel([
           field("任务 ID", task.id),
@@ -317,10 +326,9 @@ function buildRecords(
 
   if (module === "remediation")
     return snapshot.remediations.map((item) => {
-      const documents = snapshot.documents.filter(
-        (document) =>
-          document.case_id === item.case_id &&
-          item.document_ids.includes(document.id),
+      const documentIds = new Set(item.document_ids);
+      const documents = (documentsByCase.get(item.case_id) ?? []).filter(
+        (document) => documentIds.has(document.id),
       );
       const caseAudit = auditByCase.get(item.case_id) ?? [];
       const panels: Record<string, DetailPanel> = {
@@ -1118,29 +1126,79 @@ function WorkbenchModule({ module }: { module: WorkbenchModuleKey }) {
   const query = useWorkbench("week");
   const updateTask = useUpdateWorkbenchTask();
   const availableSnapshot = query.isError ? undefined : query.data;
-  const allRecords = availableSnapshot
-    ? buildRecords(availableSnapshot, module)
-    : [];
+  const allRecords = useMemo(
+    () =>
+      availableSnapshot ? buildRecords(availableSnapshot, module) : [],
+    [availableSnapshot, module],
+  );
+  const memberById = useMemo(
+    () =>
+      new Map(
+        (availableSnapshot?.members ?? []).map((item) => [
+          item.id,
+          item.display_name,
+        ]),
+      ),
+    [availableSnapshot?.members],
+  );
   const queryText = search.trim().toLocaleLowerCase("zh-CN");
-  const records = availableSnapshot
-    ? allRecords.filter(
-        (record) =>
-          (module !== "knowledge" || tab !== "检索测试" || queryText !== "") &&
-          tabMatches(module, tab, record, session.data?.id, availableSnapshot) &&
-          record.searchText.includes(queryText),
-      )
-    : [];
+  const records = useMemo(
+    () =>
+      availableSnapshot
+        ? allRecords.filter(
+            (record) =>
+              (module !== "knowledge" ||
+                tab !== "检索测试" ||
+                queryText !== "") &&
+              tabMatches(
+                module,
+                tab,
+                record,
+                session.data?.id,
+                availableSnapshot,
+              ) &&
+              record.searchText.includes(queryText),
+          )
+        : [],
+    [
+      allRecords,
+      availableSnapshot,
+      module,
+      queryText,
+      session.data?.id,
+      tab,
+    ],
+  );
   const requestedVersion =
     module === "knowledge" ? searchParams.get("version") : null;
-  const selected =
-    module === "knowledge" && requestedVersion !== null
-      ? (records.find((record) => record.id === requestedVersion) ?? null)
-      : (records.find((record) => record.id === selectedId) ??
-        records[0] ??
-        null);
+  const selected = useMemo(
+    () =>
+      module === "knowledge" && requestedVersion !== null
+        ? (records.find((record) => record.id === requestedVersion) ?? null)
+        : (records.find((record) => record.id === selectedId) ??
+          records[0] ??
+          null),
+    [module, records, requestedVersion, selectedId],
+  );
   const knowledge = useKnowledge(
     module === "knowledge" ? (selected?.knowledgeId ?? "") : "",
     module === "knowledge" ? (selected?.id ?? "") : "",
+  );
+  const exactKnowledge =
+    module === "knowledge" &&
+    !knowledge.isError &&
+    !knowledge.isFetching &&
+    knowledge.data?.id === selected?.knowledgeId &&
+    knowledge.data?.version_id === selected?.id &&
+    knowledge.data?.version === selected?.knowledgeVersion
+      ? knowledge.data
+      : null;
+  const knowledgePanelSet = useMemo(
+    () =>
+      exactKnowledge
+        ? knowledgePanels(exactKnowledge, memberById)
+        : null,
+    [exactKnowledge, memberById],
   );
   const refresh = () => void query.refetch();
 
@@ -1172,25 +1230,9 @@ function WorkbenchModule({ module }: { module: WorkbenchModuleKey }) {
   const snapshot = query.data;
 
   const selectedTask = selected?.task ?? null;
-  const exactKnowledge =
-    module === "knowledge" &&
-    !knowledge.isError &&
-    !knowledge.isFetching &&
-    knowledge.data?.id === selected?.knowledgeId &&
-    knowledge.data?.version_id === selected?.id &&
-    knowledge.data?.version === selected?.knowledgeVersion
-      ? knowledge.data
-      : null;
   const currentPanel =
     module === "knowledge"
-      ? exactKnowledge
-        ? (knowledgePanels(
-            exactKnowledge,
-            new Map(
-              snapshot.members.map((item) => [item.id, item.display_name]),
-            ),
-          )[detailTab] ?? null)
-        : null
+      ? (knowledgePanelSet?.[detailTab] ?? null)
       : module === "evidence" && tab === "完整性校验"
         ? (selected?.panels["完整性校验"] ?? null)
         : (selected?.panels[detailTab] ?? null);
@@ -1371,7 +1413,13 @@ function WorkbenchModule({ module }: { module: WorkbenchModuleKey }) {
             <Table
               rowKey="id"
               dataSource={records}
-              pagination={false}
+              pagination={{
+                defaultPageSize: 20,
+                pageSizeOptions: [10, 20, 50],
+                showSizeChanger: true,
+                showTotal: (total, range) =>
+                  `显示 ${range[0]}-${range[1]} 条，共 ${total} 条`,
+              }}
               size="small"
               scroll={{ x: 440 }}
               rowSelection={{

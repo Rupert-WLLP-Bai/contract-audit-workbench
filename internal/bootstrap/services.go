@@ -161,6 +161,20 @@ func configuredDocumentPreparer() (store.DocumentPreparer, error) {
 	return documentclient.New(endpoint, credential, 2*time.Minute)
 }
 
+// ConfiguredIntakeUploader assembles Core's authenticated Document upload
+// entry using a dedicated credential distinct from the worker's read/parse key.
+func ConfiguredIntakeUploader() (store.CaseIntakeUploader, error) {
+	endpoint := strings.TrimRight(strings.TrimSpace(os.Getenv("DOCUMENT_SERVICE_URL")), "/")
+	credential := strings.TrimSpace(os.Getenv("CORE_DOCUMENT_TOKEN"))
+	if endpoint == "" || len(credential) < 32 {
+		return nil, errors.New("DOCUMENT_SERVICE_URL and a private CORE_DOCUMENT_TOKEN of at least 32 bytes are required")
+	}
+	if credential == strings.TrimSpace(os.Getenv("WORKER_DOCUMENT_TOKEN")) {
+		return nil, errors.New("CORE_DOCUMENT_TOKEN must differ from WORKER_DOCUMENT_TOKEN")
+	}
+	return documentclient.NewIntakeUploader(endpoint, credential, 5*time.Minute)
+}
+
 func configuredExperienceResultAcceptor() (store.ExperienceResultAcceptor, error) {
 	endpoint := strings.TrimSpace(os.Getenv("CORE_SERVICE_URL"))
 	credential := strings.TrimSpace(os.Getenv("WORKER_CORE_TOKEN"))

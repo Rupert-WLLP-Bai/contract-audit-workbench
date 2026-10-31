@@ -585,6 +585,7 @@ func serviceObjectHTTPJSON(t *testing.T, client *http.Client, method, target str
 	if err != nil {
 		t.Fatal(err)
 	}
+	request.Header.Set("Origin", request.URL.Scheme+"://"+request.URL.Host)
 	if payload != nil {
 		request.Header.Set("Content-Type", "application/json")
 	}
@@ -619,6 +620,7 @@ func serviceObjectHTTPRawJSON(t *testing.T, client *http.Client, target string, 
 	if err != nil {
 		t.Fatal(err)
 	}
+	request.Header.Set("Origin", request.URL.Scheme+"://"+request.URL.Host)
 	request.Header.Set("Content-Type", "application/json")
 	request.Header.Set("Idempotency-Key", idempotency)
 	response, err := client.Do(request)
@@ -660,6 +662,7 @@ func serviceObjectHTTPUpload(t *testing.T, client *http.Client, base, caseID, ro
 	if err != nil {
 		t.Fatal(err)
 	}
+	request.Header.Set("Origin", request.URL.Scheme+"://"+request.URL.Host)
 	request.Header.Set("Content-Type", writer.FormDataContentType())
 	response, err := client.Do(request)
 	if err != nil {

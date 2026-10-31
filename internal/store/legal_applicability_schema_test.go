@@ -6,6 +6,10 @@ import (
 )
 
 func TestLegalApplicabilitySchemaUsesAppendOnlyVersionedFacts(t *testing.T) {
+	schema, err := migrationFiles.ReadFile("migrations/0005_legal_applicability.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
 	for _, required := range []string{
 		"CREATE TABLE IF NOT EXISTS case_legal_applicability_facts",
 		"CREATE TABLE IF NOT EXISTS case_legal_applicability_fact_versions",
@@ -16,11 +20,11 @@ func TestLegalApplicabilitySchemaUsesAppendOnlyVersionedFacts(t *testing.T) {
 		"current_version<>OLD.current_version+1",
 		"status<>'established' OR dimension NOT IN",
 	} {
-		if !strings.Contains(legalApplicabilitySchemaSQL, required) {
+		if !strings.Contains(string(schema), required) {
 			t.Errorf("legal applicability schema is missing %q", required)
 		}
 	}
-	if strings.Contains(legalApplicabilitySchemaSQL, "basis_obtained_at timestamptz NOT NULL") {
+	if strings.Contains(string(schema), "basis_obtained_at timestamptz NOT NULL") {
 		t.Fatal("unknown facts without evidence must not invent basis_obtained_at")
 	}
 }

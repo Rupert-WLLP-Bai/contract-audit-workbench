@@ -60,12 +60,8 @@ type JobClaim struct {
 }
 
 func (claim JobClaim) scope() dbScope {
-	role := "worker"
-	if claim.JobID == "" {
-		role = "api"
-	}
 	return dbScope{
-		ActorID: claim.ActorID, TenantID: claim.TenantID, OrgID: claim.OrgID, CaseID: claim.CaseID, Role: role,
+		ActorID: claim.ActorID, TenantID: claim.TenantID, OrgID: claim.OrgID, CaseID: claim.CaseID, Role: "api",
 		WorkerID: claim.WorkerID, JobID: claim.JobID, Generation: claim.Generation,
 	}
 }

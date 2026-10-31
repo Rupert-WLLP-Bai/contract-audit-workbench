@@ -99,11 +99,12 @@ class API:
         if parsed.scheme not in ("http", "https") or not parsed.hostname or parsed.username or getattr(parsed, "pass" + "word") or parsed.query or parsed.fragment:
             raise RunnerError("invalid API base URL")
         self.base = base.rstrip("/")
+        self.origin = f"{parsed.scheme}://{parsed.netloc}"
         self.timeout = timeout
         self.client = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
 
     def request(self, method, path, payload=None, content_type=None, timeout=None):
-        headers = {"Accept": "application/json"}
+        headers = {"Accept": "application/json", "Origin": self.origin}
         if payload is not None and not isinstance(payload, bytes):
             payload = json.dumps(payload, ensure_ascii=False).encode("utf-8")
             headers["Content-Type"] = "application/json"
@@ -185,7 +186,7 @@ def run(args):
     parent.mkdir(mode=0o700, parents=True, exist_ok=True)
     output = Path(tempfile.mkdtemp(prefix="real-corpus-", dir=parent))
     result_path = output / "result.json"
-    result = {"status": "running", "started_at": dt.datetime.now(dt.timezone.utc).isoformat(), "manifest": str(args.manifest.resolve()), "model_record_dir": str(args.model_record_dir.resolve()) if args.model_record_dir else None, "model_record_time": args.model_record_time, "cases": []}
+    result = {"status": "running", "started_at": dt.datetime.now(dt.timezone.utc).isoformat(), "manifest": str(args.manifest.resolve()), "model_record_dir": str(args.model_record_dir.resolve()) if args.model_record_dir else None, "model_record_time": args.model_record_time, "review_scope": args.review_scope, "cases": []}
     save(result_path, result)
     print(f"output: {output}", flush=True)
     current = None
@@ -211,7 +212,7 @@ def run(args):
         save(result_path, result)
         for case_id in selected:
             case = by_id[case_id]
-            current = {"manifest_case_id": case_id, "title": case["title"], "status": "creating", "started_at": dt.datetime.now(dt.timezone.utc).isoformat(), "materials": []}
+            current = {"manifest_case_id": case_id, "title": case["title"], "review_scope": args.review_scope, "status": "creating", "started_at": dt.datetime.now(dt.timezone.utc).isoformat(), "materials": []}
             result["cases"].append(current)
             save(result_path, result)
             created = api.request("POST", "/api/cases", {"title": case["title"], "contract_type": case["contract_type"]})
@@ -252,7 +253,7 @@ def run(args):
             current["status"] = "starting_review"
             save(result_path, result)
             current["review_started_at"] = dt.datetime.now(dt.timezone.utc).isoformat()
-            accepted = api.request("POST", f"{prefix}/reviews", {})
+            accepted = api.request("POST", f"{prefix}/reviews", {"scope": args.review_scope})
             current["accepted"] = accepted
             current["run_id"] = accepted.get("id")
             current["attempt_id"] = accepted.get("attempt_id")
@@ -277,13 +278,53 @@ def run(args):
                     break
                 time.sleep(min(0.5, max(0, deadline - time.monotonic())))
             current["review_finished_at"] = dt.datetime.now(dt.timezone.utc).isoformat()
-            if state not in {"completed", "awaiting_human"}:
-                raise RunnerError(f"review ended in {state}")
             execution = workspace.get("execution") or {}
             attempt = execution.get("attempt") or {}
             events = execution.get("events") or []
-            if attempt.get("state") != "completed" or not any(event.get("node_kind") == "model_call" and event.get("event_type") == "model_completed" for event in events):
-                raise RunnerError("review lacks a completed model execution")
+            if args.review_scope == "single_contract_precheck":
+                # Precheck attempts terminate as run state "partial" by design
+                # (precheck_scope_limited): the scope runs the deterministic
+                # single-contract rules and defers everything else to a full
+                # review. Success is a finished, frozen attempt under the
+                # precheck rule set; model calls are optional on this path.
+                summary = (workspace.get("review_attempts") or {}).get("attempt") or {}
+                run_view = workspace.get("run") or {}
+                scope_id = (summary.get("review_scope") or {}).get("id")
+                if state not in {"completed", "awaiting_human", "partial"}:
+                    raise RunnerError(f"review ended in {state}")
+                # Terminal identity: the frozen summary must be the attempt this
+                # runner accepted, for the same run, under frozen history.
+                if not current["attempt_id"] or summary.get("id") != current["attempt_id"]:
+                    raise RunnerError("precheck summary is not the accepted attempt")
+                if summary.get("run_id") != current["run_id"] or run_view.get("id") not in (None, current["run_id"]):
+                    raise RunnerError("precheck summary is not the accepted run")
+                if summary.get("history_kind") != "frozen":
+                    raise RunnerError("precheck attempt history is not frozen")
+                if scope_id != "single_contract_precheck":
+                    raise RunnerError("review scope does not match the requested precheck scope")
+                if not summary.get("finished_at") or not summary.get("frozen_result_available"):
+                    raise RunnerError("precheck attempt is not a finished frozen attempt")
+                current["precheck"] = {
+                    "frozen": True,
+                    "attempt_id": summary.get("id"),
+                    "run_id": summary.get("run_id"),
+                    "history_kind": summary.get("history_kind"),
+                    "findings": len(workspace.get("findings") or []),
+                    "evaluations": len(workspace.get("evaluations") or []),
+                    "partial_reason": run_view.get("partial_reason"),
+                    "rule_set": (summary.get("review_scope") or {}).get("rule_set_id"),
+                }
+                current["model_call_acceptance"] = {
+                    "status": "NOT_APPLICABLE",
+                    "reason": "single_contract_precheck on a non-governed public case runs deterministic payment-rule checks only; no agent review or text-model call is executed in this scope",
+                }
+            else:
+                if state not in {"completed", "awaiting_human"}:
+                    raise RunnerError(f"review ended in {state}")
+                if attempt.get("state") != "completed" or not any(event.get("node_kind") == "model_call" and event.get("event_type") == "model_completed" for event in events):
+                    raise RunnerError("review lacks a completed model execution")
+                current["model_call_acceptance"] = {"status": "PASS",
+                                                    "reason": "full review completed with a recorded model_completed event"}
             current["status"] = "complete"
             current["finished_at"] = dt.datetime.now(dt.timezone.utc).isoformat()
             save(result_path, result)
@@ -309,7 +350,11 @@ def run(args):
         if args.model_record_dir:
             try:
                 result["model_record_count"] = snapshot_model_calls(args.model_record_dir, output, result["started_at"], result["finished_at"])
-                if result["status"] == "complete" and result["model_record_count"] == 0:
+                result["ocr_acceptance"] = ({"status": "NOT_RUN", "record_count": result["model_record_count"],
+                                             "note": "model calls are recorded; per-page OCR completeness and fact checks are evaluated separately"} if result["model_record_count"] else
+                                            {"status": "NOT_RUN", "record_count": 0,
+                                             "reason": "no OCR transcription was needed or reached for this case"})
+                if result["status"] == "complete" and result["model_record_count"] == 0 and result.get("review_scope") != "single_contract_precheck":
                     raise RunnerError("completed review has no recorded model call")
             except (OSError, ValueError, KeyError, RunnerError) as exc:
                 result["model_record_error"] = type(exc).__name__
@@ -338,6 +383,7 @@ def main():
     parser.add_argument("--base", help="API base URL; defaults to API_BASE_URL")
     parser.add_argument("--username", help="login name; defaults to DEMO_USERNAME")
     parser.add_argument("--env-file", type=Path, default=Path(".env"))
+    parser.add_argument("--review-scope", choices=("full_review", "single_contract_precheck"), default="full_review", help="scope sent in POST /api/cases/{caseID}/reviews; single_contract_precheck is required for single-material cases")
     parser.add_argument("--review-timeout", type=positive, default=900)
     parser.add_argument("--request-timeout", type=positive, default=600)
     parser.add_argument("--model-record-dir", required=True, type=Path, help="independent model recorder output directory")

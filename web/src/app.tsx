@@ -66,6 +66,11 @@ const WorkbenchModulePage = lazy(() =>
     default: module.WorkbenchModulePage,
   })),
 );
+const EvidenceSLAPage = lazy(() =>
+  import("./pages/evidence-sla-page").then((module) => ({
+    default: module.EvidenceSLAPage,
+  })),
+);
 const SystemHealthPage = lazy(() =>
   import("./pages/system-health-page").then((module) => ({
     default: module.SystemHealthPage,
@@ -121,6 +126,7 @@ export function App() {
             />
             <Route path="/compare" element={<CompareRoute />} />
             <Route path="/workbench/health" element={<SystemHealthPage />} />
+            <Route path="/workbench/evidence-sla" element={<EvidenceSLAPage />} />
             <Route
               path="/workbench/:module"
               element={<WorkbenchModulePage />}

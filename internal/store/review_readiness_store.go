@@ -14,9 +14,8 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-// GetReviewReadiness returns the current full-review inputs visible to a case
-// reader. It performs one read-only transaction and never creates parse jobs,
-// runs, or attempts. StartReview still revalidates every input at acceptance.
+// GetReviewReadiness projects both published review scopes without creating an
+// attempt. StartReview revalidates authorization and dependencies at acceptance.
 func (s *Store) GetReviewReadiness(ctx context.Context, user accounts.User, caseID, businessAt string) (ReviewReadiness, error) {
 	if ctx == nil {
 		return ReviewReadiness{}, fault.Invalid("准备清单读取需要请求上下文")
@@ -44,21 +43,14 @@ func (s *Store) GetReviewReadiness(ctx context.Context, user accounts.User, case
 	}
 	cutoffNow := time.Now().UTC().Truncate(time.Microsecond)
 
-	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
+	tx, _, caseItem, err := s.beginCaseRead(ctx, current, caseID)
 	if err != nil {
 		return ReviewReadiness{}, err
 	}
 	defer tx.Rollback(ctx)
-	if err := setLocalScope(ctx, tx, userScope(current)); err != nil {
-		return ReviewReadiness{}, err
-	}
-	st, err := loadState(ctx, tx, false)
+	st, err := loadReadinessCaseState(ctx, tx, caseItem)
 	if err != nil {
 		return ReviewReadiness{}, err
-	}
-	caseItem, ok := st.caseByID(caseID)
-	if !ok || !authorizeCase(caseItem, current, access.Read) {
-		return ReviewReadiness{}, fault.NotFound("没有找到对应记录")
 	}
 	// Match acceptance: legacy ungoverned cases need an explicit business
 	// instant only after a service object has been registered. Never substitute
@@ -110,11 +102,26 @@ func (s *Store) GetReviewReadiness(ctx context.Context, user accounts.User, case
 		BusinessAtProvided: businessAtProvided || !businessAtRequired,
 		RulePack:           rulePackProjection, AcceptanceBlockers: acceptanceBlockers, Checks: checks,
 	})
+	primaryID := currentPrimaryDraftID(st, caseID)
+	singleChecks := singleContractChecks(materials, primaryID)
+	for _, check := range checks {
+		check.Status = "not_executed"
+		check.NextAction = "本范围不执行正式治理规则；补齐材料后发起完整审查"
+		singleChecks = append(singleChecks, check)
+	}
+	singleScope := evaluateReviewReadiness(reviewReadinessInputs{
+		Scope: ReviewScopeSingleContract, PrimaryDocumentID: primaryID,
+		CanRead: true, CanStartRole: canStartRole, Writable: !s.ReadOnly() && businessWritable(caseItem) == nil,
+		SelectionConfirmed: selectionConfirmed, MinimumMaterials: 1, Materials: materials,
+		BusinessAtProvided: businessAtProvided || !businessAtRequired,
+		RulePack:           rulePackProjection, AcceptanceBlockers: acceptanceBlockers, Checks: singleChecks,
+	})
+	singleScope.RuleSet = snapshotScope(applyReviewScope(RunSnapshot{}, ReviewScopeSingleContract))
 	if admissionErr != nil && len(scope.Blockers) == 0 {
 		return ReviewReadiness{}, admissionErr
 	}
 	readiness := ReviewReadiness{CaseID: caseID, CanStart: scope.CanStart,
-		MaterialSelectionVersion: selectionVersion, Materials: materials, Scopes: []ReviewReadinessScope{scope}}
+		MaterialSelectionVersion: selectionVersion, Materials: materials, Scopes: []ReviewReadinessScope{scope, singleScope}}
 	if businessAtProvided {
 		businessAtValue := at
 		readiness.BusinessAt = &businessAtValue
@@ -138,7 +145,7 @@ func (s *Store) GetReviewReadiness(ctx context.Context, user accounts.User, case
 		s.ReadOnly(), businessAtProvided, businessAtRequired, governanceRevision}
 	readiness.Revision, err = reviewReadinessRevision(reviewReadinessRevisionInput{
 		CaseID: caseID, BusinessAt: at, CaseUpdatedAt: caseItem.UpdatedAt,
-		MaterialSelectionVersion: selectionVersion, Materials: materials, Scope: scope, Additional: additional,
+		MaterialSelectionVersion: selectionVersion, Materials: materials, Scope: scope, Scopes: readiness.Scopes, Additional: additional,
 	})
 	if err != nil {
 		return ReviewReadiness{}, err
@@ -414,8 +421,8 @@ func reviewAdmissionError(blockers []ReviewReadinessBlocker) error {
 		switch blocker.Code {
 		case "material_selection_pending":
 			return fault.Conflict("历史材料集合待确认，请先确认本次审查材料")
-		case "required_materials_missing":
-			return fault.Invalid("至少需要两份材料才能开始审查")
+		case "required_materials_missing", "primary_contract_required", "primary_contract_ambiguous":
+			return fault.Invalid(blocker.Message)
 		case "business_at_required":
 			return fault.Invalid("必须提供带时区的业务时间")
 		case "review_start_role_required", "review_permission_required":

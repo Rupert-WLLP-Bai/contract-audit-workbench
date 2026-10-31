@@ -184,8 +184,8 @@ func TestBusinessCaseCreationPreservesValidationOrderAndDefaults(t *testing.T) {
 		name, title, contractType, line, scenario, want string
 	}{
 		{"title precedes contract type", " ", "invalid", "bad", "bad", "案件标题需要 1 到 120 个字"},
-		{"contract type precedes business scope", "合同标题", "invalid", "bad", "bad", "合同类型不在本版范围内"},
-		{"scope precedes contract requirements", "合同标题", "unspecified", "ENT", "bad", "业务线与场景不在本版范围内"},
+		{"contract type precedes business scope", "合同标题", "invalid value", "bad", "bad", "合同类型需要有效的标识"},
+		{"scope precedes contract requirements", "合同标题", "unspecified", "ENT", "bad value", "业务线与场景不在本版范围内"},
 		{"business contract requirement", "合同标题", "unspecified", "ENT", "telecom_dedicated_line", "政企业务案件需要明确合同类型"},
 		{"cloud service contract requirement", "合同标题", "procurement_ict", "ENT", "cloud_services", "云服务案件需要服务合同类型"},
 	}

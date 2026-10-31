@@ -1,12 +1,32 @@
 # Autoscaling specifications, deliberately outside every rendered kustomization.
 #
 # The default rendered base and the test overlay must contain zero
-# HorizontalPodAutoscaler objects: this release ships no metrics adapter or
-# exporter, so any HPA that is applied would either do nothing or scale on a
-# signal nobody produces. Apply this file explicitly, per workload, only after a
-# real metrics source exists and the service is known to be safe across replicas
-# (see the D2 preconditions). The job-depth metric contract_audit_ready_jobs is
-# SPEC_ONLY and must not be restored before its exporter ships.
+# HorizontalPodAutoscaler objects: this release ships no metrics adapter and no
+# metrics exporter, so any HPA that is applied would either do nothing or scale
+# on a signal nobody produces. Apply this file explicitly, per workload, only
+# after the preconditions below hold.
+#
+# CPU (Resource metric) preconditions, real and measurable once met:
+#   - The cluster runs a metrics server exposing metrics.k8s.io (verify with
+#     kubectl get --raw /apis/metrics.k8s.io/v1beta1). It is a platform
+#     component; this release deliberately does not add, bundle or configure
+#     one, and no custom-metrics adapter ships either.
+#   - Utilization is measured against each container's CPU request; every
+#     workload in deployments/k8s/base/workloads.yaml declares requests, so
+#     the percentage is meaningful as soon as the metrics server exists.
+#
+# The job-depth metric contract_audit_ready_jobs is SPEC_ONLY and must not be
+# restored before its exporter ships. Its measured definition, for whoever
+# implements that exporter: a gauge counting worker_jobs rows claimable right
+# now, i.e. (state='queued' AND ready_at<=clock_timestamp()) OR
+# (state='running' AND lease_until<=clock_timestamp()). Serving it to an HPA
+# additionally requires a custom.metrics.k8s.io adapter; neither the exporter
+# nor the adapter ships here, and the exporter reads the PostgreSQL authority,
+# so both need an explicit operator decision.
+#
+# Replica safety: minReplicas 2 matches the base workload replicas. Scaling
+# audit-worker multiplies database connections; check the per-replica pool
+# size against PostgreSQL max_connections before raising its maxReplicas.
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
@@ -116,3 +136,6 @@ spec:
   metrics:
     - type: Resource
       resource: {name: cpu, target: {type: Utilization, averageUtilization: 70}}
+  behavior:
+    scaleUp: {stabilizationWindowSeconds: 0, policies: [{type: Pods, value: 4, periodSeconds: 60}]}
+    scaleDown: {stabilizationWindowSeconds: 300, policies: [{type: Percent, value: 25, periodSeconds: 60}]}

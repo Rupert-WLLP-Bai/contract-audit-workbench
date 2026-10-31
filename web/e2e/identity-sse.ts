@@ -109,7 +109,7 @@ const browser = await chromium.launch({
   executablePath: chromiumExecutable(),
   args: ["--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu"],
 });
-const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, extraHTTPHeaders: { Referer: web } });
 const page = await context.newPage();
 
 page.on("request", (request) => {

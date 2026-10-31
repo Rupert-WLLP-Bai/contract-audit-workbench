@@ -30,6 +30,7 @@ import sys
 import time
 import tokenize
 from typing import Callable, Iterable
+from go_test_scope import discover_unit_test_packages, unit_test_environment
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_BASE = "origin/main"
@@ -43,20 +44,6 @@ SKIP_PARTS = frozenset({".git", ".mypy_cache", ".pytest_cache", ".ruff_cache",
 GO_SKIP_PARTS = frozenset({".git", ".venv", "artifacts", "dist", "node_modules",
                            "vendor", "web"})
 DB_ENV_KEYS = ("TEST_DATABASE_URL", "MIGRATOR_DATABASE_URL", "MODEL_DATABASE_URL")
-
-# The repository's database-free Go packages (the ``make test-unit`` set).
-UNIT_TEST_PACKAGES = frozenset({
-    "./internal/access", "./internal/advisory", "./internal/agentflow",
-    "./internal/auditext", "./internal/capabilitypack", "./internal/decision",
-    "./internal/externalread", "./internal/fulfillment", "./internal/jev",
-    "./internal/modelgateway", "./internal/reviewimpact", "./internal/rulepack",
-    "./internal/systemhealth", "./internal/telecom", "./internal/identity",
-    "./internal/objectstore", "./internal/accounts", "./internal/audit",
-    "./internal/config", "./internal/docir", "./internal/docversion",
-    "./internal/engine", "./internal/fault", "./internal/labels",
-    "./internal/model", "./internal/revise", "./internal/compare",
-    "./cmd/eval", "./cmd/agentdemo", "./cmd/ruleshadow",
-})
 
 WEB_BUILD_FILES = frozenset({
     "admin.html", "bun.lock", "bun.lockb", "bunfig.toml", "index.html",
@@ -547,9 +534,7 @@ def build_plan(root: Path, changes: Iterable[Change]) -> Plan:
                                            for importer in importers):
                 plan.go_build_all = True
                 plan.reasons.add("shared-package")
-    plan.go_unit_packages = {package for package in plan.go_packages
-                             if package in UNIT_TEST_PACKAGES and
-                             (root / package.removeprefix("./")).is_dir()}
+    plan.go_unit_packages = plan.go_packages & discover_unit_test_packages(root)
     plan.poppler = bool(plan.go_unit_packages & POPPLER_TEST_PACKAGES)
     plan.legal_assets = bool(plan.go_unit_packages & LEGAL_ASSET_TEST_PACKAGES)
     changed_python = sorted({path for change in changes
@@ -636,7 +621,7 @@ def _build_checks(plan: Plan, root: Path, python: str) -> list[FastCheck]:
                 "go-unit",
                 (go, "test", "-count=1", "-json", "-timeout=600s",
                  *sorted(plan.go_unit_packages)),
-                cwd=root, env=env, timeout=660, kind="json", required=False))
+                cwd=root, env=unit_test_environment(env), timeout=660, kind="json", required=False))
     if plan.python:
         if plan.python_syntax_files:
             checks.append(FastCheck("python-syntax", cwd=root, env=env,

@@ -119,6 +119,7 @@
       "created_at": "2026-10-31T08:09:10.123456Z",
       "payload_sha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
     },
+    "mapping": null,
     "can_manage": true,
     "needs_reassociation": false
   },
