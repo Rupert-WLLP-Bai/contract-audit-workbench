@@ -519,7 +519,7 @@ export function useReparse(caseId: string) {
 export function useStartReview(caseId: string) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (input: { business_at?: string }) => api.startReview(caseId, input),
+    mutationFn: (input: { business_at?: string; scope?: "full_review" | "single_contract_precheck" }) => api.startReview(caseId, input),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: queryKeys.case(caseId) });
     },

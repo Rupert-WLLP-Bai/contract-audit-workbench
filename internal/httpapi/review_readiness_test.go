@@ -33,8 +33,8 @@ func TestReviewReadinessListsCurrentMaterialsAndPreservesLegacyTimePolicy(t *tes
 		t.Fatalf("readiness did not return the current two-material collection: %+v", readiness["materials"])
 	}
 	scopes, ok := readiness["scopes"].([]any)
-	if !ok || len(scopes) != 1 {
-		t.Fatalf("only the supported full-review scope should be returned: %+v", readiness["scopes"])
+	if !ok || len(scopes) != 2 {
+		t.Fatalf("both published review scopes should be returned: %+v", readiness["scopes"])
 	}
 	scope, ok := scopes[0].(map[string]any)
 	if !ok || scope["id"] != "full_review" || scope["can_start"] != true {
@@ -43,6 +43,10 @@ func TestReviewReadinessListsCurrentMaterialsAndPreservesLegacyTimePolicy(t *tes
 	blockers, ok := scope["blockers"].([]any)
 	if !ok || len(blockers) != 0 {
 		t.Fatalf("legacy case without objects must not acquire new blockers: %+v", scope["blockers"])
+	}
+	single, ok := scopes[1].(map[string]any)
+	if !ok || single["id"] != "single_contract_precheck" || single["can_start"] != true || single["rule_set"] == nil {
+		t.Fatalf("single-contract scope is not startable with its published mapping: %+v", scopes[1])
 	}
 
 	status, ready := api.do(t, http.MethodGet, "/api/cases/"+caseID+"/review-readiness?business_at=2026-10-31T10:00:00Z", nil)
@@ -59,13 +63,18 @@ func TestReviewReadinessListsCurrentMaterialsAndPreservesLegacyTimePolicy(t *tes
 		t.Fatalf("viewer should read readiness but must not receive start permission: status=%d body=%+v", status, viewerReadiness)
 	}
 	viewerScopes, ok := viewerReadiness["scopes"].([]any)
-	if !ok || len(viewerScopes) != 1 {
+	if !ok || len(viewerScopes) != 2 {
 		t.Fatalf("viewer lost the readiness scope: %+v", viewerReadiness["scopes"])
 	}
 	viewerScope, ok := viewerScopes[0].(map[string]any)
 	viewerBlockers, blockersOK := viewerScope["blockers"].([]any)
 	if !ok || !blockersOK || viewerScope["can_start"] != false || !readinessHasBlocker(viewerBlockers, "review_start_role_required") {
 		t.Fatalf("viewer readiness must explain the start-role boundary: %+v", viewerScopes[0])
+	}
+	viewerSingle, ok := viewerScopes[1].(map[string]any)
+	viewerSingleBlockers, blockersOK := viewerSingle["blockers"].([]any)
+	if !ok || !blockersOK || viewerSingle["can_start"] != false || !readinessHasBlocker(viewerSingleBlockers, "review_start_role_required") {
+		t.Fatalf("single-contract readiness must preserve the start-role boundary: %+v", viewerScopes[1])
 	}
 }
 

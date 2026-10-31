@@ -434,7 +434,7 @@ export function reparseDocument(caseId: string, documentId: string) {
   );
 }
 
-export function startReview(caseId: string, input: { business_at?: string } = {}) {
+export function startReview(caseId: string, input: { business_at?: string; scope?: "full_review" | "single_contract_precheck" } = {}) {
   return requestJson(
     paths.reviews(caseId),
     jsonInit("POST", input),

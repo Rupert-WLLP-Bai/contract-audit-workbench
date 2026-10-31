@@ -2793,8 +2793,8 @@
       "get": {
         "operationId": "getReviewReadiness",
         "tags": ["审查准备"],
-        "summary": "读取案件当前完整审查的准备状态",
-        "description": "只读投影；不会创建审查尝试。业务时间必须显式提供，实际受理仍由审查入口在事务内复核授权和依赖。",
+        "summary": "读取完整审查与单合同预审的准备状态",
+        "description": "只读投影；不会创建审查尝试。各范围分别报告门禁、检查和未执行项目；顶层 can_start 保持表示完整审查。业务时间使用带时区的 RFC3339，实际受理时重新校验。",
         "parameters": [
           {"name":"caseID","in":"path","required":true,"schema":{"type":"string"}},
           {"name":"business_at","in":"query","required":false,"schema":{"type":"string","format":"date-time"}}
@@ -4311,11 +4311,12 @@
       "ReviewReadiness": {"type":"object","additionalProperties":false,"required":["case_id","revision","can_start","material_selection_version","materials","scopes"],"properties":{"case_id":{"type":"string"},"revision":{"type":"string","pattern":"^[0-9a-f]{64}$"},"business_at":{"type":"string","format":"date-time"},"can_start":{"type":"boolean"},"material_selection_version":{"type":"integer","minimum":0},"materials":{"type":"array","items":{"$ref":"#/components/schemas/ReviewReadinessMaterial"}},"scopes":{"type":"array","items":{"$ref":"#/components/schemas/ReviewReadinessScope"}}}},
       "ReviewReadinessMaterial": {"type":"object","additionalProperties":false,"required":["identity_kind","material_id","version","document_id","filename","role","purpose","selected","parse"],"properties":{"identity_kind":{"type":"string"},"material_id":{"type":"string"},"version":{"type":"integer","minimum":1},"document_id":{"type":"string"},"filename":{"type":"string"},"role":{"type":"string"},"purpose":{"type":"string"},"selected":{"type":"boolean"},"parse":{"$ref":"#/components/schemas/ReviewReadinessParse"}}},
       "ReviewReadinessParse": {"type":"object","additionalProperties":false,"required":["status","next_action"],"properties":{"status":{"type":"string"},"parsed_document_id":{"type":"string"},"parser_id":{"type":"string"},"parser_version":{"type":"string"},"next_action":{"type":"string"}}},
-      "ReviewReadinessScope": {"type":"object","additionalProperties":false,"required":["id","status","can_start","checks","blockers"],"properties":{"id":{"type":"string","enum":["full_review"]},"status":{"type":"string","enum":["ready","blocked"]},"can_start":{"type":"boolean"},"rule_pack":{"$ref":"#/components/schemas/ReviewReadinessRulePack"},"checks":{"type":"array","items":{"$ref":"#/components/schemas/ReviewReadinessCheck"}},"blockers":{"type":"array","items":{"$ref":"#/components/schemas/ReviewReadinessBlocker"}}}},
+      "ReviewReadinessScope": {"type":"object","additionalProperties":false,"required":["id","status","can_start","checks","blockers"],"properties":{"id":{"type":"string","enum":["full_review","single_contract_precheck"]},"status":{"type":"string","enum":["ready","blocked"]},"can_start":{"type":"boolean"},"rule_pack":{"$ref":"#/components/schemas/ReviewReadinessRulePack"},"rule_set":{"$ref":"#/components/schemas/ReviewScopeIdentity"},"checks":{"type":"array","items":{"$ref":"#/components/schemas/ReviewReadinessCheck"}},"blockers":{"type":"array","items":{"$ref":"#/components/schemas/ReviewReadinessBlocker"}}}},
+      "ReviewScopeIdentity": {"type":"object","additionalProperties":false,"required":["id","rule_set_id","rule_set_version","rule_set_hash"],"properties":{"id":{"type":"string","const":"single_contract_precheck"},"rule_set_id":{"type":"string"},"rule_set_version":{"type":"string"},"rule_set_hash":{"type":"string","pattern":"^[0-9a-f]{64}$"}}},
       "ReviewReadinessRulePack": {"type":"object","additionalProperties":false,"required":["pack_id","version","snapshot_digest"],"properties":{"pack_id":{"type":"string"},"version":{"type":"string"},"snapshot_digest":{"type":"string","pattern":"^[0-9a-f]{64}$"}}},
       "ReviewReadinessCheck": {"type":"object","additionalProperties":false,"required":["rule_id","status","missing_dependencies","next_action"],"properties":{"rule_id":{"type":"string"},"status":{"type":"string"},"missing_dependencies":{"type":"array","items":{"type":"string"}},"next_action":{"type":"string"}}},
       "ReviewReadinessBlocker": {"type":"object","additionalProperties":false,"required":["code","status","message","missing_dependencies","next_action"],"properties":{"code":{"type":"string"},"status":{"type":"string"},"message":{"type":"string"},"missing_dependencies":{"type":"array","items":{"type":"string"}},"next_action":{"type":"string"}}},
-      "ReviewStartRequest": {"type":"object","additionalProperties":false,"properties":{"business_at":{"type":"string","format":"date-time","description":"已治理案件必填，带时区的 RFC3339Nano 业务时间；非治理案件可省略。"},"evidence_cutoff_at":{"type":"string","format":"date-time","description":"可选法律证据截止时间；省略时由受理事务采样。显式值按UTC微秒规范化且不得晚于受理时刻。"}}},
+      "ReviewStartRequest": {"type":"object","additionalProperties":false,"properties":{"scope":{"type":"string","enum":["full_review","single_contract_precheck"],"default":"full_review","description":"单合同预审仅执行版本固定的单合同检查，不替代完整审查。"},"business_at":{"type":"string","format":"date-time","description":"已治理案件必填，带时区的 RFC3339Nano 业务时间；界面按北京时间输入并提交 UTC。"},"evidence_cutoff_at":{"type":"string","format":"date-time","description":"可选法律证据截止时间；省略时由受理事务采样。显式值按UTC微秒规范化且不得晚于受理时刻。"}}},
       "ReviewDiagnostics": {
         "type":"object","additionalProperties":false,"required":["case_id","run_id","execution","snapshot","audit_events","documents","evidence"],
         "properties":{"case_id":{"type":"string"},"run_id":{"type":"string"},"execution":{"anyOf":[{"$ref":"#/components/schemas/Execution"},{"type":"null"}]},"snapshot":{"$ref":"#/components/schemas/Snapshot"},"audit_events":{"type":"array","items":{"$ref":"#/components/schemas/AuditEvent"}},"documents":{"type":"array","items":{"$ref":"#/components/schemas/Document"}},"evidence":{"type":"array","items":{"type":"object","additionalProperties":false,"required":["finding_id","anchors"],"properties":{"finding_id":{"type":"string"},"anchors":{"type":"array","items":{"type":"object","additionalProperties":false,"required":["id","document_id","parsed_document_id","normalized_digest"],"properties":{"id":{"type":"string"},"document_id":{"type":"string"},"parsed_document_id":{"type":["string","null"]},"normalized_digest":{"type":["string","null"]}}}}}}}}
@@ -7285,6 +7286,7 @@
               }
             ]
           },
+          "review_scope": {"$ref":"#/components/schemas/ReviewScopeIdentity"},
           "governed_knowledge": {"anyOf":[{"$ref":"#/components/schemas/ReviewKnowledgeSnapshot"},{"type":"null"}]}
         },
         "required": [
@@ -7566,8 +7568,8 @@
         ],
         "additionalProperties": false
       },
-      "BusinessSnapshot": {"type":"object","additionalProperties":false,"required":["document_ids"],"properties":{"document_ids":{"type":["array","null"],"items":{"type":"string"}}}},
-      "BusinessAttempt": {"type":"object","additionalProperties":false,"required":["id","run_id","ordinal","retry_of_attempt_id","state","accepted_at","started_at","finished_at","history_kind","parsed_document_ids"],"properties":{"id":{"type":"string"},"run_id":{"type":"string"},"ordinal":{"type":"integer"},"retry_of_attempt_id":{"type":["string","null"]},"state":{"type":"string"},"accepted_at":{"type":"string"},"started_at":{"type":["string","null"]},"finished_at":{"type":["string","null"]},"history_kind":{"type":"string"},"parsed_document_ids":{"type":["array","null"],"items":{"type":"string"}}}},
+      "BusinessSnapshot": {"type":"object","additionalProperties":false,"required":["document_ids"],"properties":{"document_ids":{"type":["array","null"],"items":{"type":"string"}},"review_scope":{"$ref":"#/components/schemas/ReviewScopeIdentity"}}},
+      "BusinessAttempt": {"type":"object","additionalProperties":false,"required":["id","run_id","ordinal","retry_of_attempt_id","state","accepted_at","started_at","finished_at","history_kind","parsed_document_ids"],"properties":{"id":{"type":"string"},"run_id":{"type":"string"},"ordinal":{"type":"integer"},"retry_of_attempt_id":{"type":["string","null"]},"state":{"type":"string"},"accepted_at":{"type":"string"},"started_at":{"type":["string","null"]},"finished_at":{"type":["string","null"]},"history_kind":{"type":"string"},"parsed_document_ids":{"type":["array","null"],"items":{"type":"string"}},"review_scope":{"$ref":"#/components/schemas/ReviewScopeIdentity"}}},
       "BusinessAttempts": {"type":"object","additionalProperties":false,"required":["attempt","attempts"],"properties":{"attempt":{"anyOf":[{"$ref":"#/components/schemas/BusinessAttempt"},{"type":"null"}]},"attempts":{"type":"array","items":{"$ref":"#/components/schemas/BusinessAttempt"}}}},
       "BusinessAuditEvent": {"type":"object","additionalProperties":false,"required":["event_id","run_id","actor","seq","event_type","correlation_ids"],"properties":{"event_id":{"type":"string"},"run_id":{"type":"string"},"actor":{"type":"string"},"seq":{"type":"integer"},"event_type":{"type":"string"},"correlation_ids":{"type":["array","null"],"items":{"type":"string"}}}},
       "BusinessAgentScope": {"type":"object","additionalProperties":false,"required":["domain","capability_ids","source_ids"],"properties":{"domain":{"type":"string"},"capability_ids":{"type":["array","null"],"items":{"type":"string"}},"source_ids":{"type":["array","null"],"items":{"type":"string"}}}},
@@ -7972,6 +7974,7 @@
       "ReviewAttempt": {
         "type": "object",
         "properties": {
+          "review_scope": {"$ref":"#/components/schemas/ReviewScopeIdentity"},
           "id": {
             "type": "string"
           },

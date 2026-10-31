@@ -306,6 +306,14 @@ func (s *Store) Workspace(user accounts.User, caseID, runID string, selectedAtte
 		evaluations = st.evaluationsForAttempt(runID, attemptID)
 	}
 	snapshot := st.snapshotOf(runID)
+	if snapshot.ReviewScope != nil && executionView != nil {
+		if executionView.Attempt != nil {
+			executionView.Attempt.ReviewScope = snapshot.ReviewScope
+		}
+		for i := range executionView.Attempts {
+			executionView.Attempts[i].ReviewScope = snapshot.ReviewScope
+		}
+	}
 	var legalAuthorities *FrozenLegalReviewProjection
 	if attemptID != "" {
 		legalAuthorities, err = frozenLegalReportProjection(snapshot, runID, attemptID)

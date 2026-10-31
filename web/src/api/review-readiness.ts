@@ -1,6 +1,9 @@
 import { requestJson } from "./http";
 import { paths } from "./paths";
 import { responseReader } from "./respond";
+export type ReviewScope = "full_review" | "single_contract_precheck";
+export interface ReviewScopeIdentity { id: string; rule_set_id: string; rule_set_version: string; rule_set_hash: string }
+
 
 export interface ReviewReadinessMaterial {
   identity_kind: string;
@@ -25,6 +28,7 @@ export interface ReviewReadinessScope {
   status: string;
   can_start: boolean;
   rule_pack: { pack_id: string; version: string; snapshot_digest: string } | null;
+  rule_set: ReviewScopeIdentity | null;
   checks: { rule_id: string; status: string; missing_dependencies: string[]; next_action: string }[];
   blockers: ReviewReadinessBlocker[];
 }
@@ -59,8 +63,9 @@ function material(value: unknown, path: string): ReviewReadinessMaterial {
   };
 }
 function scope(value: unknown, path: string): ReviewReadinessScope {
-  const row = reader.record(value, path, ["id", "status", "can_start", "rule_pack", "checks", "blockers"], ["id", "status", "can_start", "checks", "blockers"]);
+  const row = reader.record(value, path, ["id", "status", "can_start", "rule_pack", "rule_set", "checks", "blockers"], ["id", "status", "can_start", "checks", "blockers"]);
   const pack = row.rule_pack == null ? null : reader.record(row.rule_pack, `${path}.rule_pack`, ["pack_id", "version", "snapshot_digest"]);
+  const ruleSet = row.rule_set == null ? null : reader.record(row.rule_set, `${path}.rule_set`, ["id", "rule_set_id", "rule_set_version", "rule_set_hash"]);
   return {
     id: reader.text(row.id, `${path}.id`),
     status: reader.text(row.status, `${path}.status`),
@@ -69,6 +74,10 @@ function scope(value: unknown, path: string): ReviewReadinessScope {
       pack_id: reader.text(pack.pack_id, `${path}.rule_pack.pack_id`),
       version: reader.text(pack.version, `${path}.rule_pack.version`),
       snapshot_digest: reader.text(pack.snapshot_digest, `${path}.rule_pack.snapshot_digest`),
+    },
+    rule_set: ruleSet === null ? null : {
+      id: reader.text(ruleSet.id, `${path}.rule_set.id`), rule_set_id: reader.text(ruleSet.rule_set_id, `${path}.rule_set.rule_set_id`),
+      rule_set_version: reader.text(ruleSet.rule_set_version, `${path}.rule_set.rule_set_version`), rule_set_hash: reader.text(ruleSet.rule_set_hash, `${path}.rule_set.rule_set_hash`),
     },
     checks: reader.array(row.checks, `${path}.checks`, (value, path) => {
       const check = reader.record(value, path, ["rule_id", "status", "missing_dependencies", "next_action"]);

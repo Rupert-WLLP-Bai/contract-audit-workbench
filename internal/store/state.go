@@ -167,11 +167,12 @@ type FrozenMaterialSelection struct {
 
 // AttemptInput is the immutable input record reused by retries.
 type AttemptInput struct {
-	AttemptID string           `json:"attempt_id"`
-	RunID     string           `json:"run_id"`
-	InputHash string           `json:"input_hash"`
-	FrozenAt  string           `json:"frozen_at"`
-	Documents []FrozenDocument `json:"documents"`
+	AttemptID   string               `json:"attempt_id"`
+	RunID       string               `json:"run_id"`
+	InputHash   string               `json:"input_hash"`
+	FrozenAt    string               `json:"frozen_at"`
+	ReviewScope *ReviewScopeIdentity `json:"review_scope,omitempty"`
+	Documents   []FrozenDocument     `json:"documents"`
 }
 
 func (st state) parseSelectionsForAttempt(attemptID string) []AttemptParseSelection {
@@ -409,6 +410,7 @@ type Attempt struct {
 	OutputHash             *string         `json:"output_hash"`
 	ErrorCode              *string         `json:"error_code"`
 	HistoryKind            string          `json:"history_kind"`
+	ReviewScope            *ReviewScopeIdentity `json:"review_scope,omitempty"`
 	ParsedDocumentIDs      []string        `json:"parsed_document_ids"`
 	RulePackSnapshot       json.RawMessage `json:"-"`
 	RulePackHash           string          `json:"-"`
@@ -605,6 +607,7 @@ type RunSnapshot struct {
 	ParsedDocumentIDs        []string                    `json:"parsed_document_ids,omitempty"`
 	ParseSelectionHash       string                      `json:"parse_selection_hash,omitempty"`
 	ParserConfigurationID    string                      `json:"parser_configuration_id,omitempty"`
+	ReviewScope              *ReviewScopeIdentity        `json:"review_scope,omitempty"`
 	RuleSetHash              string                      `json:"rule_set_hash"`
 	PlaybookHash             string                      `json:"playbook_hash"`
 	ModelRef                 string                      `json:"model_ref"`

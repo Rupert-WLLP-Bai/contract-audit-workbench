@@ -543,6 +543,7 @@ func (h *handler) startReview(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		BusinessAt       string `json:"business_at,omitempty"`
 		EvidenceCutoffAt string `json:"evidence_cutoff_at,omitempty"`
+		Scope            string `json:"scope,omitempty"`
 	}
 	if err := readJSON(w, r, &body); err != nil {
 		writeErr(w, err)
@@ -551,11 +552,7 @@ func (h *handler) startReview(w http.ResponseWriter, r *http.Request) {
 	if h.durable {
 		var accepted store.JobAcceptance
 		var err error
-		if body.BusinessAt == "" && body.EvidenceCutoffAt == "" {
-			accepted, err = h.store.StartReviewAsync(r.Context(), user, r.PathValue("caseID"))
-		} else {
-			accepted, err = h.store.StartReviewAsyncAtWithEvidenceCutoff(r.Context(), user, r.PathValue("caseID"), body.BusinessAt, body.EvidenceCutoffAt)
-		}
+		accepted, err = h.store.StartReviewAsyncScope(r.Context(), user, r.PathValue("caseID"), body.BusinessAt, body.EvidenceCutoffAt, body.Scope)
 		if err != nil {
 			writeErr(w, err)
 			return
@@ -565,11 +562,7 @@ func (h *handler) startReview(w http.ResponseWriter, r *http.Request) {
 	}
 	var id string
 	var err error
-	if body.BusinessAt == "" && body.EvidenceCutoffAt == "" {
-		id, err = h.store.StartReview(r.Context(), user, r.PathValue("caseID"))
-	} else {
-		id, err = h.store.StartReviewAtWithEvidenceCutoff(r.Context(), user, r.PathValue("caseID"), body.BusinessAt, body.EvidenceCutoffAt)
-	}
+	id, err = h.store.StartReviewScope(r.Context(), user, r.PathValue("caseID"), body.BusinessAt, body.EvidenceCutoffAt, body.Scope)
 	if err != nil {
 		writeErr(w, err)
 		return

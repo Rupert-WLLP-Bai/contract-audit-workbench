@@ -63,6 +63,34 @@ func (s *Store) StartReviewAtWithEvidenceCutoff(ctx context.Context, user accoun
 	return s.startReview(ctx, user, caseID, businessAt, cutoff, false)
 }
 
+// StartReviewScope accepts an explicit review scope while keeping the legacy
+// empty scope and business-time behavior for existing clients.
+func (s *Store) StartReviewScope(ctx context.Context, user accounts.User, caseID, businessAt, evidenceCutoffAt, scope string) (string, error) {
+	if businessAt != "" {
+		if _, err := knowledgeTime(businessAt); err != nil {
+			return "", err
+		}
+	}
+	cutoff, err := canonicalizeLegalCutoffInput(evidenceCutoffAt)
+	if err != nil {
+		return "", err
+	}
+	return s.startReview(ctx, user, caseID, businessAt, cutoff, false, scope)
+}
+
+func (s *Store) StartReviewAsyncScope(ctx context.Context, user accounts.User, caseID, businessAt, evidenceCutoffAt, scope string) (JobAcceptance, error) {
+	if businessAt != "" {
+		if _, err := knowledgeTime(businessAt); err != nil {
+			return JobAcceptance{}, err
+		}
+	}
+	cutoff, err := canonicalizeLegalCutoffInput(evidenceCutoffAt)
+	if err != nil {
+		return JobAcceptance{}, err
+	}
+	return s.startReviewAsync(ctx, user, caseID, businessAt, cutoff, scope)
+}
+
 func (s *Store) StartReviewAsync(ctx context.Context, user accounts.User, caseID string) (JobAcceptance, error) {
 	return s.startReviewAsync(ctx, user, caseID, "", "")
 }
@@ -83,8 +111,8 @@ func (s *Store) StartReviewAsyncAtWithEvidenceCutoff(ctx context.Context, user a
 	return s.startReviewAsync(ctx, user, caseID, businessAt, cutoff)
 }
 
-func (s *Store) startReviewAsync(ctx context.Context, user accounts.User, caseID, businessAt, evidenceCutoffAt string) (JobAcceptance, error) {
-	runID, err := s.startReview(ctx, user, caseID, businessAt, evidenceCutoffAt, true)
+func (s *Store) startReviewAsync(ctx context.Context, user accounts.User, caseID, businessAt, evidenceCutoffAt string, scope ...string) (JobAcceptance, error) {
+	runID, err := s.startReview(ctx, user, caseID, businessAt, evidenceCutoffAt, true, scope...)
 	if err != nil {
 		return JobAcceptance{}, err
 	}
@@ -104,9 +132,21 @@ func (s *Store) startReviewAsync(ctx context.Context, user accounts.User, caseID
 	return JobAcceptance{}, fault.Conflict("审查任务没有保存到任务队列")
 }
 
-func (s *Store) startReview(ctx context.Context, user accounts.User, caseID, businessAt, evidenceCutoffAt string, durable bool) (string, error) {
+func (s *Store) startReview(ctx context.Context, user accounts.User, caseID, businessAt, evidenceCutoffAt string, durable bool, requestedScope ...string) (string, error) {
 	if err := ctx.Err(); err != nil {
 		return "", err
+	}
+	rawScope := ""
+	if len(requestedScope) > 0 {
+		rawScope = requestedScope[0]
+	}
+	scope, err := normalizeReviewScope(rawScope)
+	if err != nil {
+		return "", err
+	}
+	minimumMaterials := 2
+	if scope == ReviewScopeSingleContract {
+		minimumMaterials = 1
 	}
 	if evidenceCutoffAt != "" && businessAt == "" {
 		return "", fault.Invalid("显式法律证据截止时间需要同时提供业务时间")
@@ -132,11 +172,11 @@ func (s *Store) startReview(ctx context.Context, user accounts.User, caseID, bus
 	current := selectedMaterialDocuments(seen, caseID)
 	readinessMaterials := make([]ReviewReadinessMaterial, 0, len(current))
 	for _, doc := range current {
-		readinessMaterials = append(readinessMaterials, ReviewReadinessMaterial{DocumentID: doc.ID, Selected: true})
+		readinessMaterials = append(readinessMaterials, ReviewReadinessMaterial{DocumentID: doc.ID, Role: doc.Role, Selected: true})
 	}
 	caseItem, _ := seen.caseByID(caseID)
-	preflight := evaluateReviewReadiness(reviewReadinessInputs{CanRead: true, CanStartRole: true, Writable: true,
-		SelectionConfirmed: !materialSelectionPending(seen, caseID), MinimumMaterials: 2, Materials: readinessMaterials,
+	preflight := evaluateReviewReadiness(reviewReadinessInputs{Scope: scope, PrimaryDocumentID: currentPrimaryDraftID(seen, caseID), CanRead: true, CanStartRole: true, Writable: true,
+		SelectionConfirmed: !materialSelectionPending(seen, caseID), MinimumMaterials: minimumMaterials, Materials: readinessMaterials,
 		BusinessAtProvided: businessAt != "" || !isGovernedReviewCase(caseItem)})
 	if err := reviewAdmissionError(preflight.Blockers); err != nil {
 		return "", err
@@ -197,7 +237,7 @@ func (s *Store) startReview(ctx context.Context, user accounts.User, caseID, bus
 	if payloadErr != nil {
 		return "", payloadErr
 	}
-	signature := s.currentSignatureWithRulePack(reviewDocumentIDs, frozenDocs, nil, telecomCompilerRefForCase(caseItem), plannerConfiguration.ConfigurationID, plannerPayload)
+	signature := applyReviewScope(s.currentSignatureWithRulePack(reviewDocumentIDs, frozenDocs, nil, telecomCompilerRefForCase(caseItem), plannerConfiguration.ConfigurationID, plannerPayload), scope)
 	reserved := false
 	jobID, outboxID := "", ""
 	if durable {
@@ -252,7 +292,7 @@ func (s *Store) startReview(ctx context.Context, user accounts.User, caseID, bus
 		// association and mapping pins, and it must name the business instant
 		// itself instead of borrowing the server clock.
 		if !isGovernedReviewCase(lockedCase) {
-			signature = s.currentSignatureWithRulePack(reviewDocumentIDs, frozenDocs, nil, telecomCompilerRefForCase(lockedCase), plannerConfiguration.ConfigurationID, plannerPayload)
+			signature = applyReviewScope(s.currentSignatureWithRulePack(reviewDocumentIDs, frozenDocs, nil, telecomCompilerRefForCase(lockedCase), plannerConfiguration.ConfigurationID, plannerPayload), scope)
 			signature, err = withServiceObjectContextTx(ctx, tx, lockedCase, at, serviceObjectDocuments, signature)
 			return err
 		}
@@ -278,13 +318,13 @@ func (s *Store) startReview(ctx context.Context, user accounts.User, caseID, bus
 		}
 		frozenMaterials := readinessMaterialsForFrozen(seen, frozenDocs)
 		checks := reviewReadinessRuleChecks(assessment.Pack, assessment.Knowledge, frozenMaterials, lockedCase)
-		readiness := evaluateReviewReadiness(reviewReadinessInputs{CanRead: true, CanStartRole: true, Writable: true,
-			SelectionConfirmed: true, BusinessAtProvided: true, MinimumMaterials: 2, Materials: frozenMaterials, Checks: checks})
+		readiness := evaluateReviewReadiness(reviewReadinessInputs{Scope: scope, PrimaryDocumentID: currentPrimaryDraftID(seen, caseID), CanRead: true, CanStartRole: true, Writable: true,
+			SelectionConfirmed: true, BusinessAtProvided: true, MinimumMaterials: minimumMaterials, Materials: frozenMaterials, Checks: checks})
 		if err := reviewAdmissionError(readiness.Blockers); err != nil {
 			return err
 		}
 		activePack = assessment.Pack
-		signature = s.currentSignatureWithRulePack(reviewDocumentIDs, frozenDocs, assessment.Pack, telecomCompilerRefForCase(lockedCase), plannerConfiguration.ConfigurationID, plannerPayload)
+		signature = applyReviewScope(s.currentSignatureWithRulePack(reviewDocumentIDs, frozenDocs, assessment.Pack, telecomCompilerRefForCase(lockedCase), plannerConfiguration.ConfigurationID, plannerPayload), scope)
 		if assessment.Knowledge != nil {
 			signature.GovernedKnowledge = assessment.Knowledge
 		}
@@ -309,6 +349,13 @@ func (s *Store) startReview(ctx context.Context, user accounts.User, caseID, bus
 		}
 		if materialSelectionPending(*st, caseID) || !sameDocumentSet(documentIDs(selectedMaterialDocuments(*st, caseID)), reviewDocumentIDs) || !parsedSelectionCurrent(*st, frozenDocs) {
 			return fault.Conflict("所选的材料解析版本刚被更新，请重新发起审查")
+		}
+		if scope == ReviewScopeSingleContract {
+			selected := readinessMaterialsForFrozen(*st, frozenDocs)
+			gate := evaluateReviewReadiness(reviewReadinessInputs{Scope: scope, PrimaryDocumentID: currentPrimaryDraftID(*st, caseID), CanRead: true, CanStartRole: true, Writable: true, SelectionConfirmed: true, BusinessAtProvided: true, MinimumMaterials: 1, Materials: selected})
+			if err := reviewAdmissionError(gate.Blockers); err != nil {
+				return err
+			}
 		}
 		if run, ok := st.latestRun(caseID); ok {
 			previous := st.snapshotOf(run.ID)
@@ -340,6 +387,7 @@ func (s *Store) startReview(ctx context.Context, user accounts.User, caseID, bus
 		}
 		// The accepted attempt carries the exact frozen pack bytes and planner
 		// configuration, so the worker never resolves latest.
+		attempt.ReviewScope = signature.ReviewScope
 		attempt.RulePackSnapshot = append(json.RawMessage(nil), signature.RulePackSnapshot...)
 		attempt.RulePackHash = signature.RulePackHash
 		attempt.RulePackSnapshotDigest = signature.RulePackDigest
@@ -920,6 +968,15 @@ func (s *Store) executeAttemptContext(parent context.Context, runID, attemptID s
 	initial, err := s.snapshotForAttemptContext(ctx, attemptID)
 	if err != nil {
 		_ = s.finishAttemptAfterExecution(parent, ctx, runID, attemptID, "failed", "", "execution_persistence_failed")
+		return
+	}
+	frozenScope := initial.snapshotOf(runID)
+	if frozenScope.RuleSetHash == engine.SingleContractRuleSetHash() || frozenScope.PlaybookHash == engine.SingleContractPlaybookHash() {
+		if !isSingleContractSnapshot(frozenScope) {
+			_ = s.finishAttemptAfterExecution(parent, ctx, runID, attemptID, "failed", "", "rule_mapping_integrity_failed")
+			return
+		}
+		s.executeSingleContractPrecheck(parent, ctx, runID, attemptID, models, recorder)
 		return
 	}
 	if s.telecomAttempt(initial, runID) {
@@ -2270,6 +2327,7 @@ func interpretedFromFrozen(frozen []FrozenDocument) []Interpreted {
 }
 
 func frozenInputHash(snapshot RunSnapshot, docs []FrozenDocument) (string, error) {
+	snapshot = scopeSnapshot(snapshot)
 	snapshot.RunID = ""
 	sort.Strings(snapshot.DocumentIDs)
 	sort.Strings(snapshot.ParsedDocumentIDs)

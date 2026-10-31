@@ -84,6 +84,10 @@ func (s *Store) runTelecomAgentReview(ctx context.Context, runID, attemptID stri
 		return true, err
 	}
 	tools := append(agentflow.BaselineTools(), agentflow.SourceFactTools()...)
+	singleContract := isSingleContractSnapshot(st.snapshotOf(runID))
+	if singleContract {
+		tools = agentflow.SingleContractTools()
+	}
 	runtime, err := agentflow.New(ctx, agentflow.Config{
 		Planner: planner, Tools: tools, PlannerConfiguration: configuration,
 		EventSink: agentReviewEventSink(recorder), AuthorizePlanning: authorizePlanning, ReadKnowledge: readKnowledge,
@@ -99,6 +103,12 @@ func (s *Store) runTelecomAgentReview(ctx context.Context, runID, attemptID stri
 		RequestID: attemptID, AttemptID: attemptID, Principal: principal, Case: resource,
 		Scope: agentflow.Domains(), Gaps: telecomAgentReviewGaps(), Evidence: evidence,
 		SourceSnapshot: sourceSnapshot, CanonicalEvaluations: telecomAgentReviewEvaluations(st, runID, attemptID),
+	}
+	if singleContract {
+		request.Scope = []agentflow.Domain{agentflow.Commercial}
+		request.Gaps = []agentflow.Gap{{ID: "gap_single_contract_payment_sum", Domain: agentflow.Commercial,
+			Capability: agentflow.SingleContractPaymentCapability, Question: "核对主合同中可识别的付款比例，保留遗漏和付款基数未知"}}
+		request.CanonicalEvaluations = nil
 	}
 	if err := s.applyPriorAttemptRecovery(ctx, st, actor, caseItem, attempt, tools, &request); err != nil {
 		return true, err

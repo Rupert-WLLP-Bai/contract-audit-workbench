@@ -266,6 +266,9 @@ func workspaceJSON(decisions map[string][]store.Decision, ws store.Workspace) ma
 		"revision_comparison_reason": nilString(ws.RevisionComparisonReason),
 		"revisions":                  revisionsJSON(ws.Revisions, byID),
 	}
+	if ws.Snapshot.ReviewScope != nil {
+		out["snapshot"].(map[string]any)["review_scope"] = ws.Snapshot.ReviewScope
+	}
 	if ws.LegalAuthorities != nil {
 		out["legal_authorities"] = ws.LegalAuthorities
 	}
@@ -285,12 +288,16 @@ func businessAttemptsJSON(execution *store.Execution) map[string]any {
 }
 
 func businessAttemptJSON(attempt store.Attempt) map[string]any {
-	return map[string]any{
+	out := map[string]any{
 		"id": attempt.ID, "run_id": attempt.RunID, "ordinal": attempt.Ordinal,
 		"retry_of_attempt_id": attempt.RetryOfAttemptID, "state": attempt.State,
 		"accepted_at": attempt.AcceptedAt, "started_at": attempt.StartedAt, "finished_at": attempt.FinishedAt,
 		"history_kind": attempt.HistoryKind, "parsed_document_ids": attempt.ParsedDocumentIDs,
 	}
+	if attempt.ReviewScope != nil {
+		out["review_scope"] = attempt.ReviewScope
+	}
+	return out
 }
 
 // Decode only the business fields. Unknown technical fields in a persisted
@@ -453,10 +460,14 @@ func snapshotJSON(snap store.RunSnapshot) map[string]any {
 	if ids == nil {
 		ids = []any{}
 	}
-	return map[string]any{
+	out := map[string]any{
 		"document_ids": ids, "rule_set_hash": snap.RuleSetHash, "playbook_hash": snap.PlaybookHash,
 		"model_ref": nilString(snap.ModelRef), "comparator_ref": nilString(snap.ComparatorRef),
 	}
+	if snap.ReviewScope != nil {
+		out["review_scope"] = snap.ReviewScope
+	}
+	return out
 }
 
 func auditJSON(events []store.AuditRecord) []any {

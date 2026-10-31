@@ -130,6 +130,9 @@ func requireTelecomGovernedCapabilities(snapshot []byte) error {
 // withFrozenGovernance pins the governed pack, policy source and planner
 // identity of an already frozen run onto a freshly computed signature.
 func withFrozenGovernance(current, frozen RunSnapshot) RunSnapshot {
+	if isSingleContractSnapshot(frozen) {
+		current = applyReviewScope(current, ReviewScopeSingleContract)
+	}
 	current.RulePackCompilerRef = frozen.RulePackCompilerRef
 	current.RulePackID = frozen.RulePackID
 	current.RulePackVersion = frozen.RulePackVersion
@@ -393,6 +396,7 @@ func appendEvaluation(st *state, caseID, runID string, ev engine.Evaluation, fin
 func (st *state) snapshotOf(runID string) RunSnapshot {
 	for _, item := range st.Snapshots {
 		if item.RunID == runID {
+			item = scopeSnapshot(item)
 			if item.DocumentIDs == nil {
 				item.DocumentIDs = []string{}
 			}
