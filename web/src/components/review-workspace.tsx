@@ -22,6 +22,7 @@ const STREAM_LABEL: Record<StreamStatus, string> = {
   connecting: "正在连接运行状态",
   live: "运行状态已连接",
   reconnecting: "连接中断，正在按游标重连",
+  exhausted: "运行状态流自动重连次数已用尽；可以手动重新连接。",
   closed: "运行状态流已关闭，不会自动重连；请刷新页面或重新登录后再试。",
   inactive: "本次执行没有活动的事件流",
 };

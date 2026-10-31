@@ -57,6 +57,7 @@ export function ReviewPage() {
   const selectedAttemptId = params.get("attempt_id");
   const selectedCitation = params.get("citation");
   const [streamLive, setStreamLive] = useState(false);
+  const [streamReconnectKey, setStreamReconnectKey] = useState(0);
   const review = useReview(caseId, runId, selectedAttemptId, streamLive);
   const workbench = useWorkbench("week");
   const createRelation = useCreateCaseRelation(caseId);
@@ -193,6 +194,19 @@ export function ReviewPage() {
     [caseId, queryClient, runId, selectedAttemptId],
   );
 
+  // Reconcile persisted state after recovery; a manually created EventSource
+  // starts without the previous Last-Event-ID.
+  const reconcileAfterReconnect = useCallback(() => {
+    void queryClient.invalidateQueries({
+      queryKey: queryKeys.review(caseId, runId, selectedAttemptId),
+      exact: true,
+    });
+    void queryClient.invalidateQueries({
+      queryKey: queryKeys.case(caseId),
+      exact: true,
+    });
+  }, [caseId, queryClient, runId, selectedAttemptId]);
+
   const streamScope = session.data
     ? JSON.stringify([
         session.data.audience,
@@ -208,6 +222,8 @@ export function ReviewPage() {
     streamActive,
     refresh,
     streamScope,
+    streamReconnectKey,
+    reconcileAfterReconnect,
   );
 
   useEffect(() => {
@@ -446,6 +462,18 @@ export function ReviewPage() {
           返回案件
         </Button>
       </header>
+      {streamStatus === "exhausted" || streamStatus === "closed" ? (
+        <section className="callout" role="status" aria-live="polite">
+          <span>运行状态更新已停止，可以重新连接以同步最新审查结果。</span>
+          <Button
+            type="primary"
+            htmlType="button"
+            onClick={() => setStreamReconnectKey((key) => key + 1)}
+          >
+            重新连接运行状态
+          </Button>
+        </section>
+      ) : null}
       {!caseDetailReady ? (
         <p className="callout">
           {caseDetail.isError
