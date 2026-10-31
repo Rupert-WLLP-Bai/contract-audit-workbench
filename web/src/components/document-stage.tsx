@@ -36,6 +36,7 @@ import {
   type ResolvedAnchor,
   type TextSegment,
 } from "../domain/text";
+import { ParsedDocumentSummary } from "./parsed-document-summary";
 import { StatusText } from "./status-text";
 
 export interface ReviewCaseContext {

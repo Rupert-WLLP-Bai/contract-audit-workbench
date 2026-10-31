@@ -9,6 +9,7 @@ import * as api from "./endpoints";
 import { isForbidden, isUnauthenticated, setSessionIdentity } from "./http";
 import type {
   Actor,
+  CaseDetail,
   ArchiveInput,
   DecisionInput,
   GenerationInput,
@@ -32,6 +33,8 @@ import type {
   SubjectChangeDecisionInput,
   SubjectChangeProposalInput,
   SubjectChangeSummary,
+  SubjectChangeDetail,
+  SubjectChangeImpact,
   SubjectCreateInput,
   SubjectSourceSnapshotInput,
   SubjectSourceVerificationInput,
@@ -144,19 +147,155 @@ export function useWorkbench(period: WorkbenchPeriod = "week") {
     staleTime: 30_000,
   });
 }
+function invalidateCaseViews(
+  queryClient: QueryClient,
+  caseId: string,
+  options: { caseList?: boolean; workbench?: boolean } = {},
+): Promise<void[]> {
+  const invalidations: Promise<void>[] = [
+    queryClient.invalidateQueries({
+      queryKey: queryKeys.case(caseId),
+      exact: true,
+    }),
+  ];
+  if (options.caseList) {
+    invalidations.push(
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.cases,
+        exact: true,
+      }),
+    );
+  }
+  if (options.workbench) {
+    invalidations.push(
+      queryClient.invalidateQueries({ queryKey: queryKeys.workbenchPrefix }),
+    );
+  }
+  return Promise.all(invalidations);
+}
+
+function invalidateReviewHistory(
+  queryClient: QueryClient,
+  caseId: string,
+  runId: string,
+): Promise<void> {
+  return queryClient.invalidateQueries({
+    queryKey: queryKeys.reviewHistory(caseId, runId),
+    exact: true,
+  });
+}
+
+export async function invalidateReviewMutationViews(
+  queryClient: QueryClient,
+  caseId: string,
+  runId: string,
+): Promise<void> {
+  await Promise.all([
+    queryClient.invalidateQueries({
+      queryKey: queryKeys.reviewPrefix(caseId, runId),
+    }),
+    invalidateReviewHistory(queryClient, caseId, runId),
+    invalidateCaseViews(queryClient, caseId, {
+      caseList: true,
+      workbench: true,
+    }),
+  ]);
+}
+
+function invalidateSubjectChangeViews(
+  queryClient: QueryClient,
+  caseId: string,
+  requestId: string,
+  approved: boolean,
+): Promise<void[]> {
+  const detail = queryClient.getQueryData<SubjectChangeDetail>(
+    queryKeys.caseSubjectChange(caseId, requestId),
+  );
+  const impact = queryClient.getQueryData<SubjectChangeImpact>(
+    queryKeys.caseSubjectChangeImpact(caseId, requestId),
+  );
+  const invalidations: Promise<void>[] = [
+    queryClient.invalidateQueries({
+      queryKey: queryKeys.caseSubjectChange(caseId, requestId),
+      exact: true,
+    }),
+    queryClient.invalidateQueries({
+      queryKey: queryKeys.caseSubjectChangeImpact(caseId, requestId),
+      exact: true,
+    }),
+    queryClient.invalidateQueries({
+      queryKey: ["cases", caseId, "subject-changes"],
+    }),
+    queryClient.invalidateQueries({
+      queryKey: queryKeys.case(caseId),
+      exact: true,
+    }),
+    queryClient.invalidateQueries({
+      queryKey: queryKeys.cases,
+      exact: true,
+    }),
+  ];
+  if (!approved) return Promise.all(invalidations);
+
+  invalidations.push(
+    queryClient.invalidateQueries({
+      queryKey: queryKeys.caseSubjects(caseId),
+      exact: true,
+    }),
+    queryClient.invalidateQueries({ queryKey: ["subjects", "list"] }),
+  );
+  const subjectId =
+    detail?.summary.target_subject_id ??
+    (impact
+      ? "subject_id" in impact.after
+        ? impact.after.subject_id
+        : impact.after.subject.subject_id
+      : undefined);
+  if (subjectId) {
+    invalidations.push(
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.subject(subjectId),
+        exact: true,
+      }),
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.subjectHistory(subjectId),
+        exact: true,
+      }),
+      queryClient.invalidateQueries({
+        queryKey: ["subjects", "case-links", subjectId],
+      }),
+    );
+  }
+  const affectedCaseIds = new Set([
+    ...(detail?.authorized_impact_cases.map((item) => item.case_id) ?? []),
+    ...(impact?.affected_cases.map((item) => item.case_id) ?? []),
+  ]);
+  for (const affectedCaseId of affectedCaseIds) {
+    if (affectedCaseId === caseId) continue;
+    invalidations.push(
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.case(affectedCaseId),
+        exact: true,
+      }),
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.caseSubjects(affectedCaseId),
+        exact: true,
+      }),
+    );
+  }
+  return Promise.all(invalidations);
+}
 
 export function useUpdateCaseProfile(caseId: string) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (input: CaseProfileInput) =>
       api.updateCaseProfile(caseId, input),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({
-        queryKey: queryKeys.workbenchPrefix,
-      });
-      await queryClient.invalidateQueries({ queryKey: queryKeys.case(caseId) });
-      await queryClient.invalidateQueries({ queryKey: queryKeys.cases });
-    },
+    onSuccess: () =>
+      invalidateCaseViews(queryClient, caseId, {
+        caseList: true,
+        workbench: true,
+      }),
   });
 }
 
@@ -165,11 +304,8 @@ export function useCreateWorkbenchTask(caseId: string) {
   return useMutation({
     mutationFn: (input: WorkbenchTaskInput) =>
       api.createWorkbenchTask(caseId, input),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({
-        queryKey: queryKeys.workbenchPrefix,
-      });
-    },
+    onSuccess: () =>
+      invalidateCaseViews(queryClient, caseId, { workbench: true }),
   });
 }
 
@@ -181,14 +317,8 @@ export function useUpdateWorkbenchTask() {
       taskId: string;
       update: WorkbenchTaskUpdateInput;
     }) => api.updateWorkbenchTask(input.caseId, input.taskId, input.update),
-    onSuccess: async (_task, input) => {
-      await queryClient.invalidateQueries({
-        queryKey: queryKeys.workbenchPrefix,
-      });
-      await queryClient.invalidateQueries({
-        queryKey: queryKeys.case(input.caseId),
-      });
-    },
+    onSuccess: (_task, input) =>
+      invalidateCaseViews(queryClient, input.caseId, { workbench: true }),
   });
 }
 
@@ -197,11 +327,11 @@ export function useCreateCaseRelation(caseId: string) {
   return useMutation({
     mutationFn: (input: CaseRelationInput) =>
       api.createCaseRelation(caseId, input),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({
-        queryKey: queryKeys.workbenchPrefix,
-      });
-    },
+    onSuccess: () =>
+      invalidateCaseViews(queryClient, caseId, {
+        caseList: true,
+        workbench: true,
+      }),
   });
 }
 
@@ -210,11 +340,11 @@ export function useDeleteCaseRelation(caseId: string) {
   return useMutation({
     mutationFn: (relationId: string) =>
       api.deleteCaseRelation(caseId, relationId),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({
-        queryKey: queryKeys.workbenchPrefix,
-      });
-    },
+    onSuccess: () =>
+      invalidateCaseViews(queryClient, caseId, {
+        caseList: true,
+        workbench: true,
+      }),
   });
 }
 
@@ -242,9 +372,16 @@ export function useCreateCase() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: api.createCase,
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: queryKeys.cases });
-    },
+    onSuccess: () =>
+      Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.cases,
+          exact: true,
+        }),
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.workbenchPrefix,
+        }),
+      ]),
   });
 }
 
@@ -323,9 +460,10 @@ export function useCreateSubject() {
   return useMutation({
     mutationFn: (input: { subject: SubjectCreateInput; idempotencyKey: string }) =>
       api.createSubject(input.subject, input.idempotencyKey),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: queryKeys.subjectsPrefix });
-    },
+    onSuccess: () =>
+      queryClient.invalidateQueries({
+        queryKey: ["subjects", "list", null],
+      }),
   });
 }
 
@@ -334,10 +472,39 @@ export function useCreateCaseRole(caseId: string) {
   return useMutation({
     mutationFn: (input: { value: CaseRoleCreateInput; idempotencyKey: string }) =>
       api.createCaseRole(caseId, input.value, input.idempotencyKey),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: queryKeys.caseSubjects(caseId) });
-      await queryClient.invalidateQueries({ queryKey: queryKeys.case(caseId) });
-      await queryClient.invalidateQueries({ queryKey: queryKeys.subjectsPrefix });
+    onSuccess: async (result) => {
+      const subjectId = result.subject_id;
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.caseSubjects(caseId),
+          exact: true,
+        }),
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.case(caseId),
+          exact: true,
+        }),
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.cases,
+          exact: true,
+        }),
+        queryClient.invalidateQueries({
+          queryKey: ["subjects", "list", null],
+        }),
+        queryClient.invalidateQueries({
+          queryKey: ["subjects", "list", caseId],
+        }),
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.subject(subjectId),
+          exact: true,
+        }),
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.subjectHistory(subjectId),
+          exact: true,
+        }),
+        queryClient.invalidateQueries({
+          queryKey: ["subjects", "case-links", subjectId],
+        }),
+      ]);
     },
   });
 }
@@ -348,10 +515,27 @@ export function useBindExistingSubject(caseId: string) {
     mutationFn: (input: { value: BindExistingSubjectInput; idempotencyKey: string }) =>
       api.bindExistingSubject(caseId, input.value, input.idempotencyKey),
     onSuccess: async (_result, input) => {
-      await queryClient.invalidateQueries({ queryKey: queryKeys.caseSubjects(caseId) });
-      await queryClient.invalidateQueries({ queryKey: queryKeys.case(caseId) });
-      await queryClient.invalidateQueries({ queryKey: queryKeys.subject(input.value.subject_id) });
-      await queryClient.invalidateQueries({ queryKey: queryKeys.subjectsPrefix });
+      const subjectId = input.value.subject_id;
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.caseSubjects(caseId),
+          exact: true,
+        }),
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.case(caseId),
+          exact: true,
+        }),
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.cases,
+          exact: true,
+        }),
+        queryClient.invalidateQueries({
+          queryKey: ["subjects", "list", caseId],
+        }),
+        queryClient.invalidateQueries({
+          queryKey: ["subjects", "case-links", subjectId],
+        }),
+      ]);
     },
   });
 }
@@ -392,9 +576,11 @@ export function useProposeSubjectChange(caseId: string) {
   return useMutation({
     mutationFn: (input: { value: SubjectChangeProposalInput; idempotencyKey: string }) =>
       api.proposeSubjectChange(caseId, input.value, input.idempotencyKey),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: queryKeys.caseSubjectChanges(caseId, null) });
-    },
+    onSuccess: () =>
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.caseSubjectChanges(caseId, null),
+        exact: true,
+      }),
   });
 }
 
@@ -403,14 +589,13 @@ export function useDecideSubjectChange(caseId: string, requestId: string) {
   return useMutation({
     mutationFn: (input: { value: SubjectChangeDecisionInput; idempotencyKey: string }) =>
       api.decideSubjectChange(caseId, requestId, input.value, input.idempotencyKey),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: queryKeys.caseSubjectChange(caseId, requestId) });
-      await queryClient.invalidateQueries({ queryKey: queryKeys.caseSubjectChangeImpact(caseId, requestId) });
-      await queryClient.invalidateQueries({ queryKey: ["cases", caseId, "subject-changes"] });
-      await queryClient.invalidateQueries({ queryKey: queryKeys.caseSubjects(caseId) });
-      await queryClient.invalidateQueries({ queryKey: queryKeys.case(caseId) });
-      await queryClient.invalidateQueries({ queryKey: queryKeys.subjectsPrefix });
-    },
+    onSuccess: (result) =>
+      invalidateSubjectChangeViews(
+        queryClient,
+        caseId,
+        requestId,
+        result.decision === "approved",
+      ),
   });
 }
 
@@ -420,7 +605,10 @@ export function useCreateSubjectSourceSnapshot(caseId: string) {
     mutationFn: (input: { value: SubjectSourceSnapshotInput; idempotencyKey: string }) =>
       api.createSubjectSourceSnapshot(caseId, input.value, input.idempotencyKey),
     onSuccess: async (snapshot) => {
-      await queryClient.invalidateQueries({ queryKey: ["cases", caseId, "subject-source-snapshots"] });
+      await queryClient.invalidateQueries({
+        queryKey: queryKeys.caseSubjectSourceSnapshots(caseId, null),
+        exact: true,
+      });
       await queryClient.invalidateQueries({ queryKey: queryKeys.caseSubjectSourceSnapshot(caseId, snapshot.snapshot_id), exact: true });
     },
   });
@@ -457,7 +645,10 @@ export function useVerifySubjectAgainstSourceSnapshot(caseId: string, snapshotId
       api.verifySubjectAgainstSourceSnapshot(caseId, snapshotId, input.value, input.idempotencyKey),
     onSuccess: async (result) => {
       if (result.request_id !== null) {
-        await queryClient.invalidateQueries({ queryKey: queryKeys.caseSubjectChanges(caseId, null) });
+        await queryClient.invalidateQueries({
+          queryKey: queryKeys.caseSubjectChanges(caseId, null),
+          exact: true,
+        });
       }
     },
   });
@@ -488,10 +679,11 @@ export function useUploadDocument(caseId: string) {
   return useMutation({
     mutationFn: (input: UploadDocumentInput) =>
       api.uploadDocument(caseId, input),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: queryKeys.case(caseId) });
-      await queryClient.invalidateQueries({ queryKey: queryKeys.cases });
-    },
+    onSuccess: () =>
+      invalidateCaseViews(queryClient, caseId, {
+        caseList: true,
+        workbench: true,
+      }),
   });
 }
 
@@ -500,9 +692,7 @@ export function useConfirmLegacyMaterialSelection(caseId: string) {
   return useMutation({
     mutationFn: (input: { version: number; document_ids: string[] }) =>
       api.confirmLegacyMaterialSelection(caseId, input),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: queryKeys.case(caseId) });
-    },
+    onSuccess: () => invalidateCaseViews(queryClient, caseId),
   });
 }
 
@@ -510,8 +700,24 @@ export function useReparse(caseId: string) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (documentId: string) => api.reparseDocument(caseId, documentId),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: queryKeys.case(caseId) });
+    onSuccess: async (_result, documentId) => {
+      const detail = queryClient.getQueryData<CaseDetail>(
+        queryKeys.case(caseId),
+      );
+      const materialVersion = detail?.material_versions?.find(
+        (version) => version.document_id === documentId,
+      );
+      const parsedDocumentsKey = materialVersion
+        ? queryKeys.materialParsedDocuments(
+            caseId,
+            materialVersion.material_id,
+            materialVersion.version,
+          )
+        : (["cases", caseId, "materials"] as const);
+      await Promise.all([
+        invalidateCaseViews(queryClient, caseId, { workbench: true }),
+        queryClient.invalidateQueries({ queryKey: parsedDocumentsKey }),
+      ]);
     },
   });
 }
@@ -520,9 +726,11 @@ export function useStartReview(caseId: string) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (input: { business_at?: string; scope?: "full_review" | "single_contract_precheck" }) => api.startReview(caseId, input),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: queryKeys.case(caseId) });
-    },
+    onSuccess: () =>
+      invalidateCaseViews(queryClient, caseId, {
+        caseList: true,
+        workbench: true,
+      }),
   });
 }
 
@@ -654,12 +862,8 @@ export function useRetryReview(caseId: string, runId: string) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: () => api.retryReview(caseId, runId),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({
-        queryKey: queryKeys.reviewPrefix(caseId, runId),
-      });
-      await queryClient.invalidateQueries({ queryKey: queryKeys.case(caseId) });
-    },
+    onSuccess: () =>
+      invalidateReviewMutationViews(queryClient, caseId, runId),
   });
 }
 
@@ -667,12 +871,8 @@ export function useCancelReview(caseId: string, runId: string) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: () => api.cancelReview(caseId, runId),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({
-        queryKey: queryKeys.reviewPrefix(caseId, runId),
-      });
-      await queryClient.invalidateQueries({ queryKey: queryKeys.case(caseId) });
-    },
+    onSuccess: () =>
+      invalidateReviewMutationViews(queryClient, caseId, runId),
   });
 }
 
@@ -681,13 +881,8 @@ export function useSubmitDecision(caseId: string, runId: string) {
   return useMutation({
     mutationFn: (input: { findingId: string; decision: DecisionInput }) =>
       api.submitDecision(caseId, runId, input.findingId, input.decision),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({
-        queryKey: queryKeys.reviewPrefix(caseId, runId),
-      });
-      await queryClient.invalidateQueries({ queryKey: queryKeys.case(caseId) });
-      await queryClient.invalidateQueries({ queryKey: queryKeys.cases });
-    },
+    onSuccess: () =>
+      invalidateReviewMutationViews(queryClient, caseId, runId),
   });
 }
 export function useCreateGeneration(caseId: string) {
@@ -695,10 +890,11 @@ export function useCreateGeneration(caseId: string) {
   return useMutation({
     mutationFn: (command: { input: GenerationInput; idempotencyKey: string }) =>
       api.createGeneration(caseId, command.input, command.idempotencyKey),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: queryKeys.case(caseId) });
-      await queryClient.invalidateQueries({ queryKey: queryKeys.cases });
-    },
+    onSuccess: () =>
+      invalidateCaseViews(queryClient, caseId, {
+        caseList: true,
+        workbench: true,
+      }),
   });
 }
 
@@ -707,10 +903,11 @@ export function useCreateRemediation(caseId: string) {
   return useMutation({
     mutationFn: (input: RemediationCreateInput) =>
       api.createRemediation(caseId, input),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: queryKeys.case(caseId) });
-      await queryClient.invalidateQueries({ queryKey: queryKeys.cases });
-    },
+    onSuccess: () =>
+      invalidateCaseViews(queryClient, caseId, {
+        caseList: true,
+        workbench: true,
+      }),
   });
 }
 
@@ -719,10 +916,11 @@ export function useSubmitRemediation(caseId: string, itemId: string) {
   return useMutation({
     mutationFn: (input: RemediationSubmitInput) =>
       api.submitRemediation(caseId, itemId, input),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: queryKeys.case(caseId) });
-      await queryClient.invalidateQueries({ queryKey: queryKeys.cases });
-    },
+    onSuccess: () =>
+      invalidateCaseViews(queryClient, caseId, {
+        caseList: true,
+        workbench: true,
+      }),
   });
 }
 
@@ -731,10 +929,11 @@ export function useVerifyRemediation(caseId: string, itemId: string) {
   return useMutation({
     mutationFn: (input: RemediationVerifyInput) =>
       api.verifyRemediation(caseId, itemId, input),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: queryKeys.case(caseId) });
-      await queryClient.invalidateQueries({ queryKey: queryKeys.cases });
-    },
+    onSuccess: () =>
+      invalidateCaseViews(queryClient, caseId, {
+        caseList: true,
+        workbench: true,
+      }),
   });
 }
 
@@ -742,10 +941,11 @@ export function useCreateReport(caseId: string) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (input: ReportCreateInput) => api.createReport(caseId, input),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: queryKeys.case(caseId) });
-      await queryClient.invalidateQueries({ queryKey: queryKeys.cases });
-    },
+    onSuccess: () =>
+      invalidateCaseViews(queryClient, caseId, {
+        caseList: true,
+        workbench: true,
+      }),
   });
 }
 
@@ -753,10 +953,11 @@ export function useArchiveCase(caseId: string) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (input: ArchiveInput) => api.archiveCase(caseId, input),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: queryKeys.case(caseId) });
-      await queryClient.invalidateQueries({ queryKey: queryKeys.cases });
-    },
+    onSuccess: () =>
+      invalidateCaseViews(queryClient, caseId, {
+        caseList: true,
+        workbench: true,
+      }),
   });
 }
 
