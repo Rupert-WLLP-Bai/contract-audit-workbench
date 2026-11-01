@@ -47,6 +47,7 @@ import { ContractSigningPanel } from "../components/contract-signing-panel";
 import { ContractFulfillmentPanel } from "../components/contract-fulfillment-panel";
 import { ContractPaymentsPanel } from "../components/contract-payments-panel";
 import { ContractAssetsPanel } from "../components/contract-assets-panel";
+import { ContractSourceCapabilityPanel } from "../components/contract-source-capability-panel";
 import { formatDateTime } from "../domain/review";
 import "./contracts-page.css";
 
@@ -104,6 +105,7 @@ const CONTRACT_STATE_OPTIONS = [
   { value: "performing", label: "履约中" },
   { value: "closed", label: "已关闭" },
   { value: "terminated", label: "已终止" },
+  { value: "external_observed", label: "外部来源已观测" },
 ];
 
 const WORKFLOW_STATE_OPTIONS = [
@@ -131,6 +133,7 @@ function stateLabel(state: string): string {
 }
 
 function workflowStateLabel(state: string): string {
+  if (state === "external_observed") return "外部来源已观测";
   return WORKFLOW_STATE_OPTIONS.find((option) => option.value === state)?.label ?? state;
 }
 
@@ -222,6 +225,7 @@ export function ContractsPage() {
   const currentActorScope = fullActorScope(actor);
   editorIdentityRef.current = { contractID, actorScope: currentActorScope };
   const [contractDetail, setContractDetail] = useState<ContractDetail | null>(null);
+  const [detailActorScope, setDetailActorScope] = useState("");
   const [rowVersion, setRowVersion] = useState<number | null>(null);
   const [draft, setDraft] = useState<DraftContent>(emptyDraft);
   const [loaded, setLoaded] = useState<DraftContent>(emptyDraft);
@@ -254,6 +258,7 @@ export function ContractsPage() {
   function resetEditor(detail: ContractDetail | null) {
     if (detail === null) {
       setContractDetail(null);
+      setDetailActorScope("");
       setContractID(null);
       setRowVersion(null);
       setDraft(emptyDraft());
@@ -265,17 +270,42 @@ export function ContractsPage() {
     }
     const next = detail.draft ?? emptyDraft();
     setContractDetail(detail);
+    setDetailActorScope(currentActorScope);
     setContractID(detail.summary.contract_id);
     setRowVersion(detail.summary.row_version);
     setDraft(next);
     setLoaded(next);
     setAllowed(detail.allowed_commands);
     setWarnings(detail.warnings);
-    setSourceLabel(
-      detail.source_ref === undefined
-        ? null
-        : `${detail.source_ref.system} · ${detail.source_ref.id} · 版本 ${detail.source_ref.source_version}`,
-    );
+    setSourceLabel(detail.source_ref === undefined
+      ? null
+      : [detail.source_ref.system, detail.source_ref.id,
+          detail.source_ref.source_version ? `版本 ${detail.source_ref.source_version}` : null]
+          .filter((part): part is string => part !== null)
+          .join(" · "));
+  }
+
+  useEffect(() => {
+    if (contractDetail === null || detailActorScope === currentActorScope) return;
+    resetEditor(null);
+    setMessage({
+      kind: "error",
+      text: "登录身份已变化，旧合同详情已清除。请重新选择合同。",
+    });
+  }, [contractDetail, currentActorScope, detailActorScope, resetEditor]);
+
+  function invalidateSourceAccess(expectedContractId: string, expectedActorScope: string) {
+    const current = editorIdentityRef.current;
+    if (
+      current.contractID !== expectedContractId ||
+      current.actorScope !== expectedActorScope
+    )
+      return;
+    resetEditor(null);
+    setMessage({
+      kind: "error",
+      text: "合同来源或查看授权已变化，当前详情已清除。请重新选择合同。",
+    });
   }
 
   async function refreshContractAfterFact(expectedContractID: string, expectedActorScope: string) {
@@ -915,6 +945,17 @@ export function ContractsPage() {
             <PageStatus kind="loading" title="正在读取合同详情" />
           ) : (
             <>
+              {contractDetail !== null && detailActorScope !== currentActorScope ? (
+                <PageStatus kind="loading" title="登录身份已变化，正在清除旧合同详情" />
+              ) : contractDetail?.summary.authority_mode === "external" ? (
+                <ContractSourceCapabilityPanel
+                  key={`${contractID}-source-${currentActorScope}`}
+                  detail={contractDetail}
+                  actor={actor}
+                  onAccessInvalidated={invalidateSourceAccess}
+                />
+              ) : (
+                <>
               {sourceLabel !== null ? (
                 <Alert
                   type="info"
@@ -1466,6 +1507,8 @@ export function ContractsPage() {
                   保存草稿
                 </Button>
               </div>
+                </>
+              )}
             </>
           )}
         </div>

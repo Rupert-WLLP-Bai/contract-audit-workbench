@@ -20,6 +20,7 @@ export type ContractPaymentEligibilityRequest = WireSchemas["ContractPaymentElig
 export type ContractAssetList = WireSchemas["ContractAssetList"];
 export type ContractAssetHandover = WireSchemas["ContractAssetHandover"];
 export type ContractAssetHandoverRequest = WireSchemas["ContractAssetHandoverRequest"];
+export type ContractSourceCapability = WireSchemas["ContractSourceCapability"];
 
 /**
  * Contract registration and resumable drafts.
@@ -255,14 +256,23 @@ export interface SourceRef {
   source_version: string;
 }
 
+export interface ContractDetailSourceRef {
+  system: string;
+  id: string;
+  source_version?: string;
+}
+
 export interface ContractDetail {
   summary: ContractSummary;
   current_revision_id: string | null;
   draft?: DraftContent;
   active_round_id: string | null;
   allowed_commands: string[];
-  source_ref?: SourceRef;
+  source_id?: WireSchemas["ContractDetail"]["source_id"];
+  source_ref?: ContractDetailSourceRef;
   source_observed_at?: string;
+  source_observed_state?: WireSchemas["ContractDetail"]["source_observed_state"];
+  source_observation_disposition?: WireSchemas["ContractDetail"]["source_observation_disposition"];
   warnings: string[];
   signing_registration?: ContractSigningRegistration;
 }
@@ -335,13 +345,27 @@ const CONTRACTS_PATH = "/api/contracts";
 const { object, record, text, optionalText, nullableText, integer, bool, array } =
   responseReader((path) => `合同响应中的 ${path} 无法识别`);
 
-function parseSourceRef(value: unknown, path: string): SourceRef {
+function parseSourceRef(value: unknown, path: string): ContractDetailSourceRef {
   const row = object(value, path);
   return {
     system: text(row.system, `${path}.system`),
     id: text(row.id, `${path}.id`),
-    source_version: text(row.source_version, `${path}.source_version`),
+    source_version: optionalText(row.source_version, `${path}.source_version`) ?? undefined,
   };
+}
+
+function parseSourceObservationDisposition(
+  value: unknown,
+  path: string,
+): NonNullable<WireSchemas["ContractDetail"]["source_observation_disposition"]> {
+  const disposition = text(value, path);
+  if (
+    disposition !== "applied" &&
+    disposition !== "observation_only" &&
+    disposition !== "unknown"
+  )
+    throw new Error(`合同响应中的 ${path} 无法识别`);
+  return disposition;
 }
 
 function parseMaterialRef(value: unknown, path: string): MaterialRef {
@@ -473,8 +497,11 @@ export function parseContractDetail(
       "draft",
       "active_round_id",
       "allowed_commands",
+      "source_id",
       "source_ref",
       "source_observed_at",
+      "source_observed_state",
+      "source_observation_disposition",
       "signing_registration",
       "warnings",
     ],
@@ -496,6 +523,7 @@ export function parseContractDetail(
       `${path}.allowed_commands`,
       (entry, entryPath) => text(entry, entryPath),
     ),
+    source_id: optionalText(row.source_id, `${path}.source_id`) ?? undefined,
     source_ref:
       row.source_ref === undefined || row.source_ref === null
         ? undefined
@@ -504,6 +532,17 @@ export function parseContractDetail(
       row.source_observed_at,
       `${path}.source_observed_at`,
     ) ?? undefined,
+    source_observed_state: optionalText(
+      row.source_observed_state,
+      `${path}.source_observed_state`,
+    ) ?? undefined,
+    source_observation_disposition:
+      row.source_observation_disposition === undefined || row.source_observation_disposition === null
+        ? undefined
+        : parseSourceObservationDisposition(
+            row.source_observation_disposition,
+            `${path}.source_observation_disposition`,
+          ),
     warnings: array(row.warnings, `${path}.warnings`, (entry, entryPath) =>
       text(entry, entryPath),
     ),
@@ -858,6 +897,40 @@ export function getContract(
     `${CONTRACTS_PATH}/${encodeURIComponent(contractId)}`,
     { method: "GET", signal },
     (value) => parseContractDetail(value),
+  );
+}
+
+export function getContractSourceCapability(
+  contractId: string,
+  signal?: AbortSignal,
+): Promise<ContractSourceCapability> {
+  return requestJson(
+    `${CONTRACTS_PATH}/${encodeURIComponent(contractId)}/source-capability`,
+    { method: "GET", signal },
+    (value) => {
+      const row = object(value, "contract_source_capability");
+      const responseContractId = text(row.contract_id, "contract_source_capability.contract_id");
+      if (responseContractId !== contractId)
+        throw new Error("合同来源响应与请求的合同标识不一致");
+      const sourceKind = text(row.source_kind, "contract_source_capability.source_kind");
+      const versionOrdering = text(row.version_ordering, "contract_source_capability.version_ordering");
+      if (sourceKind !== "mock" && sourceKind !== "real" && sourceKind !== "unconfigured")
+        throw new Error("合同来源响应中的 source_kind 无法识别");
+      if (versionOrdering !== "opaque" && versionOrdering !== "monotonic-sequence" && versionOrdering !== "unknown")
+        throw new Error("合同来源响应中的 version_ordering 无法识别");
+      if (row.authority_mode !== "external" || row.read_only !== true || row.connection_status !== "not_probed")
+        throw new Error("合同来源响应与只读、未探测契约不符");
+      return {
+        contract_id: responseContractId,
+        source_id: text(row.source_id, "contract_source_capability.source_id"),
+        source_kind: sourceKind,
+        authority_mode: "external",
+        read_only: true,
+        can_read_contract: parseBoolean(row.can_read_contract, "contract_source_capability.can_read_contract"),
+        version_ordering: versionOrdering,
+        connection_status: "not_probed",
+      };
+    },
   );
 }
 
