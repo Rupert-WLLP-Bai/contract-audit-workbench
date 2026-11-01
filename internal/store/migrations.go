@@ -175,10 +175,17 @@ func migrate(ctx context.Context, pool *pgxpool.Pool, schema string) error {
 	}()
 
 	// Serialize creation too: two migrators may target the same new test or
-	// application schema. Public is created by PostgreSQL and needs no CREATE.
+	// application schema. Existing schema migrations need only the schema's
+	// CREATE privilege; database-level CREATE is needed only for a missing schema.
 	if schema != "public" {
-		if _, err := conn.Exec(ctx, `CREATE SCHEMA IF NOT EXISTS `+pgx.Identifier{schema}.Sanitize()); err != nil {
-			return fmt.Errorf("create migration schema: %w", err)
+		var schemaExists bool
+		if err := conn.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM pg_namespace WHERE nspname=$1)`, schema).Scan(&schemaExists); err != nil {
+			return fmt.Errorf("inspect migration schema: %w", err)
+		}
+		if !schemaExists {
+			if _, err := conn.Exec(ctx, `CREATE SCHEMA `+pgx.Identifier{schema}.Sanitize()); err != nil {
+				return fmt.Errorf("create migration schema: %w", err)
+			}
 		}
 	}
 	var activeSchema *string
@@ -241,8 +248,21 @@ func ensureCLMMaintenanceRole(ctx context.Context, conn *pgxpool.Conn, schema st
 	}
 	quotedRole := pgx.Identifier{role}.Sanitize()
 	if !exists {
+		var migratorIsSuperuser bool
+		if err := conn.QueryRow(ctx, `SELECT rolsuper FROM pg_roles WHERE rolname=$1`, migrator).Scan(&migratorIsSuperuser); err != nil {
+			return fmt.Errorf("inspect CLM maintenance owner bootstrap authority: %w", err)
+		}
+		if !migratorIsSuperuser {
+			return fmt.Errorf("CLM maintenance owner %q is missing for database %q schema %q; run `cmd/migrate provision-clm-maintenance` with CLM_ADMIN_DATABASE_URL and a dedicated MIGRATOR_DATABASE_URL to pre-provision the bound NOLOGIN owner with ADMIN FALSE, INHERIT FALSE, SET TRUE membership (binding %q)", role, database, schema, clmMaintenanceRoleBinding(database, schema))
+		}
 		if _, err := conn.Exec(ctx, `CREATE ROLE `+quotedRole+` NOLOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION`); err != nil {
 			return fmt.Errorf("migration identity lacks authority to create the bounded maintenance role: %w", err)
+		}
+		// PostgreSQL gives a role creator an implicit ADMIN membership, whose
+		// grantor may be the bootstrap superuser. Remove it before adding the
+		// explicitly SET-only migrator membership below.
+		if _, err := conn.Exec(ctx, `REVOKE `+quotedRole+` FROM `+pgx.Identifier{migrator}.Sanitize()); err != nil {
+			return fmt.Errorf("cannot remove implicit creator membership from CLM maintenance role: %w", err)
 		}
 		binding := clmMaintenanceRoleBinding(database, schema)
 		commentSQL := `COMMENT ON ROLE ` + quotedRole + ` IS '` + strings.ReplaceAll(binding, "'", "''") + `'`
@@ -285,7 +305,7 @@ func ensureCLMMaintenanceRole(ctx context.Context, conn *pgxpool.Conn, schema st
 		hasMigrator = true
 	}
 	if memberCount != 1 || !hasMigrator || !onlyMigrator {
-		return errors.New("CLM maintenance role membership is not limited to this migrator")
+		return fmt.Errorf("CLM maintenance role membership is not limited to this migrator (members=%d has_migrator=%t only_migrator=%t current_user=%q)", memberCount, hasMigrator, onlyMigrator, migrator)
 	}
 	var ownerHasMembership bool
 	if err := conn.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM pg_auth_members WHERE member=$1::regrole)`, role).Scan(&ownerHasMembership); err != nil {
@@ -401,7 +421,7 @@ func verifyCLMMaintenanceRolePrivileges(ctx context.Context, q clmRoleQueryer, d
 						AND pg_get_expr(policy.polqual,policy.polrelid)='true' AND policy.polwithcheck IS NULL)))<>3
 				OR EXISTS (SELECT 1 FROM pg_class relation JOIN pg_namespace namespace ON namespace.oid=relation.relnamespace
 					WHERE namespace.oid=target.namespace_oid AND relation.relname IN ('clm_outbox_delivery','clm_business_events','clm_approval_rounds')
-					AND (NOT relation.relrowsecurity OR NOT relation.relforcerowsecurity)))
+					AND (NOT relation.relrowsecurity OR NOT relation.relforcerowsecurity))))
 		OR EXISTS (SELECT 1 FROM target WHERE
 			(SELECT count(*) FROM pg_proc function WHERE function.pronamespace=target.namespace_oid AND function.proname IN
 				('clm_outbox_claim','clm_outbox_ack','clm_outbox_release','clm_metrics_snapshot'))=4

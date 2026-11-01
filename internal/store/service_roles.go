@@ -372,10 +372,10 @@ func MigrateServiceRoles(ctx context.Context) error {
 	}
 	var clmFunctionGrantUnsafe bool
 	if err := tx.QueryRow(ctx, `WITH expected AS (
-		SELECT to_regprocedure(format('%I.clm_outbox_claim(integer,bigint)',$1))::oid AS oid UNION ALL
-		SELECT to_regprocedure(format('%I.clm_outbox_ack(text,uuid,bigint)',$1))::oid UNION ALL
-		SELECT to_regprocedure(format('%I.clm_outbox_release(text,uuid,bigint,bigint)',$1))::oid UNION ALL
-		SELECT to_regprocedure(format('%I.clm_metrics_snapshot(bigint)',$1))::oid
+		SELECT to_regprocedure(format('%I.clm_outbox_claim(integer,bigint)',$1::text))::oid AS oid UNION ALL
+		SELECT to_regprocedure(format('%I.clm_outbox_ack(text,uuid,bigint)',$1::text))::oid UNION ALL
+		SELECT to_regprocedure(format('%I.clm_outbox_release(text,uuid,bigint,bigint)',$1::text))::oid UNION ALL
+		SELECT to_regprocedure(format('%I.clm_metrics_snapshot(bigint)',$1::text))::oid
 	), function_acl AS (
 		SELECT function.oid,acl.grantee,acl.privilege_type
 		FROM expected JOIN pg_proc function ON function.oid=expected.oid
@@ -383,10 +383,10 @@ func MigrateServiceRoles(ctx context.Context) error {
 	)
 	SELECT (SELECT count(*) FROM expected WHERE oid IS NOT NULL)<>4
 		OR EXISTS (SELECT 1 FROM function_acl WHERE grantee=0 OR grantee NOT IN
-			((SELECT oid FROM pg_roles WHERE rolname=$2),(SELECT oid FROM pg_roles WHERE rolname=$3)))
-		OR EXISTS (SELECT 1 FROM function_acl WHERE grantee=(SELECT oid FROM pg_roles WHERE rolname=$2)
+			((SELECT oid FROM pg_roles WHERE rolname=$2::text),(SELECT oid FROM pg_roles WHERE rolname=$3::text)))
+		OR EXISTS (SELECT 1 FROM function_acl WHERE grantee=(SELECT oid FROM pg_roles WHERE rolname=$2::text)
 			AND privilege_type<>'EXECUTE')
-		OR EXISTS (SELECT 1 FROM expected WHERE oid IS NOT NULL AND NOT has_function_privilege($3,oid,'EXECUTE'))`, schema, maintenanceRole, coreRoleName).Scan(&clmFunctionGrantUnsafe); err != nil {
+		OR EXISTS (SELECT 1 FROM expected WHERE oid IS NOT NULL AND NOT has_function_privilege($3::text,oid,'EXECUTE'))`, schema, maintenanceRole, coreRoleName).Scan(&clmFunctionGrantUnsafe); err != nil {
 		return fmt.Errorf("cannot verify Core-only CLM function grants: %w", err)
 	}
 	if clmFunctionGrantUnsafe {

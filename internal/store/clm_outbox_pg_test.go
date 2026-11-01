@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"strings"
 	"sync"
@@ -64,11 +65,20 @@ func TestCLMMaintenanceRoleNonSuperuserBootstrapAndRerun(t *testing.T) {
 	if _, err := admin.Exec(ctx, `CREATE ROLE `+pgx.Identifier{migratorRole}.Sanitize()+` LOGIN PASSWORD '`+migratorPassword+`' NOSUPERUSER NOBYPASSRLS NOCREATEDB CREATEROLE`); err != nil {
 		t.Fatalf("create test-local non-superuser migrator: %v", err)
 	}
-	if _, err := admin.Exec(ctx, `CREATE SCHEMA `+pgx.Identifier{schema}.Sanitize()); err != nil {
+	if _, err := admin.Exec(ctx, `CREATE SCHEMA `+pgx.Identifier{schema}.Sanitize()+` AUTHORIZATION `+pgx.Identifier{migratorRole}.Sanitize()); err != nil {
 		t.Fatalf("create isolated migration schema: %v", err)
 	}
-	if _, err := admin.Exec(ctx, `GRANT USAGE,CREATE ON SCHEMA `+pgx.Identifier{schema}.Sanitize()+` TO `+pgx.Identifier{migratorRole}.Sanitize()); err != nil {
-		t.Fatalf("grant temporary migration schema privileges: %v", err)
+	migratorURL, err := url.Parse(testDSN)
+	if err != nil {
+		t.Fatalf("parse test administrator URL for the isolated migrator: %v", err)
+	}
+	migratorURL.User = url.UserPassword(migratorRole, migratorPassword)
+	migratorDSN := migratorURL.String()
+	if err := ProvisionCLMMaintenanceRole(ctx, testDSN, migratorDSN, schema); err != nil {
+		t.Fatalf("pre-provision isolated CLM owner using the production helper: %v", err)
+	}
+	if err := ProvisionCLMMaintenanceRole(ctx, testDSN, migratorDSN, schema); err != nil {
+		t.Fatalf("repeat CLM owner provisioning should validate the exact existing setup: %v", err)
 	}
 	migrationPoolConfig, err := parsePoolConfig(testDSN, defaultMigratorPoolMaxConns)
 	if err != nil {
@@ -86,13 +96,14 @@ func TestCLMMaintenanceRoleNonSuperuserBootstrapAndRerun(t *testing.T) {
 	}
 	defer migrator.Close()
 	var sessionUser, currentUser string
-	var superuser, bypassRLS, createDB, createRole, replication bool
-	if err := migrator.QueryRow(ctx, `SELECT session_user,current_user,rolsuper,rolbypassrls,rolcreatedb,rolcreaterole,rolreplication
-		FROM pg_roles WHERE rolname=current_user`).Scan(&sessionUser, &currentUser, &superuser, &bypassRLS, &createDB, &createRole, &replication); err != nil {
+	var superuser, bypassRLS, createDB, createRole, replication, databaseCreate bool
+	if err := migrator.QueryRow(ctx, `SELECT session_user,current_user,rolsuper,rolbypassrls,rolcreatedb,rolcreaterole,rolreplication,
+		has_database_privilege(current_user,current_database(),'CREATE')
+		FROM pg_roles WHERE rolname=current_user`).Scan(&sessionUser, &currentUser, &superuser, &bypassRLS, &createDB, &createRole, &replication, &databaseCreate); err != nil {
 		t.Fatal(err)
 	}
-	if sessionUser != migratorRole || currentUser != migratorRole || superuser || bypassRLS || createDB || !createRole || replication {
-		t.Fatalf("migration did not use the expected bounded non-superuser session identity: session=%q current=%q superuser=%v bypassrls=%v createdb=%v createrole=%v replication=%v", sessionUser, currentUser, superuser, bypassRLS, createDB, createRole, replication)
+	if sessionUser != migratorRole || currentUser != migratorRole || superuser || bypassRLS || createDB || !createRole || replication || databaseCreate {
+		t.Fatalf("migration did not use the expected bounded non-superuser session identity: session=%q current=%q superuser=%v bypassrls=%v createdb=%v createrole=%v replication=%v database_create=%v", sessionUser, currentUser, superuser, bypassRLS, createDB, createRole, replication, databaseCreate)
 	}
 	var inheritedAdmin bool
 	if err := migrator.QueryRow(ctx, `SELECT pg_has_role(current_user,$1,'MEMBER')`, testConfig.User).Scan(&inheritedAdmin); err != nil || inheritedAdmin {
@@ -149,6 +160,16 @@ func TestCLMMaintenanceRoleNonSuperuserBootstrapAndRerun(t *testing.T) {
 	// though the grantee has the expected role name and owner attributes.
 	if _, err := migrator.Exec(ctx, `GRANT SELECT ON TABLE `+pgx.Identifier{schema, "clm_contracts"}.Sanitize()+` TO `+pgx.Identifier{ownerRole}.Sanitize()); err != nil {
 		t.Fatalf("inject unexpected owner grant: %v", err)
+	}
+	if err := ProvisionCLMMaintenanceRole(ctx, testDSN, migratorURL.String(), schema); err == nil || !strings.Contains(err.Error(), "extra privileges") {
+		t.Fatalf("shared provisioning helper accepted an unexpected owner table grant: %v", err)
+	}
+	var membershipCount int
+	var exactMembership bool
+	if err := migrator.QueryRow(ctx, `SELECT count(*),COALESCE(bool_and(member.rolname=$2 AND NOT m.admin_option AND NOT m.inherit_option AND m.set_option),false)
+		FROM pg_auth_members m JOIN pg_roles target ON target.oid=m.roleid JOIN pg_roles member ON member.oid=m.member
+		WHERE target.rolname=$1`, ownerRole, migratorRole).Scan(&membershipCount, &exactMembership); err != nil || membershipCount != 1 || !exactMembership {
+		t.Fatalf("failed provisioning did not preserve the exact existing SET-only membership: count=%d exact=%v err=%v", membershipCount, exactMembership, err)
 	}
 	if err := migrate(ctx, migrator, schema); err == nil {
 		t.Fatal("migration rerun accepted an unexpected sensitive table grant")
