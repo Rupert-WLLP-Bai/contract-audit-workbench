@@ -6,7 +6,7 @@ The diff spans every commit since the merge-base of ``--base`` (or
 worktree files. Deletions, renames, and paths containing spaces are preserved.
 
 ``--plan`` prints one JSON line with the booleans ``go``, ``web``, ``python``,
-``database`` and ``docs_build`` (plus ``poppler`` and ``legal_assets``). ``--github-output``
+``database``, ``docs_build`` and ``architecture`` (plus ``poppler`` and ``legal_assets``). ``--github-output``
 appends those names as ``true`` or ``false`` so a GitHub Actions job can
 conditionally install tools or databases.
 
@@ -34,7 +34,7 @@ from go_test_scope import discover_unit_test_packages, unit_test_environment
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_BASE = "origin/main"
-PLAN_KEYS = ("go", "web", "python", "database", "docs_build")
+PLAN_KEYS = ("go", "web", "python", "database", "docs_build", "architecture")
 GITHUB_KEYS = PLAN_KEYS + ("poppler", "legal_assets")
 POPPLER_TEST_PACKAGES = frozenset({"./internal/documentparse"})
 LEGAL_ASSET_TEST_PACKAGES = frozenset({"./internal/httpapi", "./internal/legalnorm"})
@@ -129,6 +129,7 @@ class Plan:
     poppler: bool = False
     legal_assets: bool = False
     docs_build: bool = False
+    architecture: bool = False
     go_build_all: bool = False
     web_build: bool = False
     go_format_files: list[str] = field(default_factory=list)
@@ -148,6 +149,7 @@ class Plan:
             "poppler": self.poppler,
             "legal_assets": self.legal_assets,
             "docs_build": self.docs_build,
+            "architecture": self.architecture,
             "go_compile": "all" if self.go_build_all else "affected",
             "go_build_all": self.go_build_all,
             "go_format_files": list(self.go_format_files),
@@ -433,6 +435,15 @@ def _docs_build_relevant(path: str) -> bool:
                      "scripts/check_fast.py", ".github/workflows/pr-fast.yml"})
 
 
+def _architecture_relevant(path: str) -> bool:
+    if path.startswith(("scripts/architecture/", "internal/contractmoney/")):
+        return True
+    return path in {
+        "scripts/check_fast.py", ".github/workflows/pr-fast.yml",
+        "go.mod", "go.sum", "go.work", "go.work.sum", "go.env",
+    }
+
+
 def _python_module(path: str) -> str:
     return path[:-3].replace("/", ".")
 
@@ -552,6 +563,8 @@ def build_plan(root: Path, changes: Iterable[Change]) -> Plan:
                 plan.web_build = plan.web_build or _web_build_config(path)
             if _docs_build_relevant(path):
                 plan.docs_build = True
+            if _architecture_relevant(path):
+                plan.architecture = True
             if path.endswith(".py"):
                 plan.python = True
                 if path == change.path and not change.deleted:
@@ -642,9 +655,16 @@ def _check_env(database: bool = False) -> dict[str, str]:
     return env
 
 
-def _build_checks(plan: Plan, root: Path, python: str) -> list[FastCheck]:
+def _build_checks(plan: Plan, root: Path, python: str, out: Path) -> list[FastCheck]:
     checks: list[FastCheck] = []
     env = _check_env()
+    if plan.architecture:
+        _ensure_outside_repo(root, out)
+        checks.append(FastCheck(
+            "architecture-dependencies",
+            (python, "scripts/architecture/check_architecture.py", "--repo",
+             str(root), "--out", str(out / "architecture-check.json")),
+            cwd=root, env=env, timeout=120))
     if plan.go:
         go = _resolve_binary("go")
         if plan.go_format_files:
@@ -1002,7 +1022,7 @@ def run_checks(root: Path, plan: Plan, base: str, merge_base: str,
         return 1
 
     try:
-        checks = _build_checks(plan, root, python)
+        checks = _build_checks(plan, root, python, out)
     except FastError as error:
         report["error"] = str(error)
         report["finished_at"] = datetime.now(timezone.utc).isoformat()

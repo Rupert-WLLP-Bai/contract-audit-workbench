@@ -42,14 +42,14 @@ jobs:
           --github-output "$GITHUB_OUTPUT"
 
       - name: Set up Go
-        if: steps.plan.outputs.go == 'true'
+        if: steps.plan.outputs.go == 'true' || steps.plan.outputs.architecture == 'true'
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
           go-version-file: go.mod
           cache: true
 
       - name: Download Go modules
-        if: steps.plan.outputs.go == 'true'
+        if: steps.plan.outputs.go == 'true' || steps.plan.outputs.architecture == 'true'
         run: go mod download
 
       - name: Set up Bun

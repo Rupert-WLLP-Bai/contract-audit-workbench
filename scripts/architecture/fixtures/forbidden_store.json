@@ -1,0 +1,17 @@
+{
+  "ImportPath": "contractaudit/internal/contractmoney",
+  "Name": "contractmoney",
+  "GoFiles": [
+    "decimal.go",
+    "validate.go"
+  ],
+  "Imports": [
+    "errors",
+    "fmt",
+    "math/big",
+    "strconv",
+    "strings",
+    "contractaudit/internal/store"
+  ]
+}
+

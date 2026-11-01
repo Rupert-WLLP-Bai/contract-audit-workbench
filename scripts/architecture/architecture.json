@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "module": "contractaudit",
+  "pilot": "internal/contractmoney",
+  "allowed_direct_imports": [
+    "errors",
+    "fmt",
+    "math/big",
+    "strconv",
+    "strings"
+  ]
+}
