@@ -9437,7 +9437,7 @@
       "header_state": "pending-header-application"
     },
     "internal/bootstrap/queue.go": {
-      "purpose": "Resolves queue policy from the service role and runtime configuration so startup wires only the consumer limits and concurrency allowed for that process.",
+      "purpose": "Reads EXECUTION_QUEUE_POLICY, returns store.DefaultQueuePolicy when unset, and otherwise accepts exactly one strict JSON object up to 32 KiB; malformed, oversized, unknown-field or trailing-value input is rejected.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -29962,7 +29962,7 @@
       }
     },
     "internal/store/migrations/0007_experience_functions.sql": {
-      "purpose": "Adds the database changes create or replace function for migration objects. This ordered migration is applied by the PostgreSQL migration runner and must remain byte-stable after deployment; contract, role, or index state is part of its purpose.",
+      "purpose": "Adds two experience-distillation functions: one locks and returns a result only for a live leased job with matching tenant, actor, input digest and result digest; the other validates feedback/input identity, rechecks idempotency under the execution-queue advisory lock, enforces queue policy/capacity and atomically enqueues the job, input and outbox event.",
       "authors": [
         {
           "name": "Bai Junhao",
