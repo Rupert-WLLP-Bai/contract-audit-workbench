@@ -393,6 +393,8 @@ func TestValue(t *testing.T) { if Value != 1 { t.Fatal(Value) } }
             "internal/store/contract_sources_crypto.go",
             "internal/store/contract_sources_crypto_test.go",
             "internal/store/contract_sources_pg_test.go",
+            "internal/store/contract_approval_decision.go",
+            "internal/store/contract_approval_decision_pg_test.go",
             "internal/store/contract_draft.go",
             "internal/store/migrations/0031_contract_source_observations.sql",
             "internal/store/migrations.go",
@@ -404,7 +406,7 @@ func TestValue(t *testing.T) { if Value != 1 { t.Fatal(Value) } }
             "cmd/server/main.go",
             "cmd/server/main_test.go",
         )
-        target = check_fast.CONTRACT_SOURCE_TESTS[0]
+        targets = check_fast.CONTRACT_SOURCE_TESTS
         for path in paths:
             with self.subTest(path=path):
                 plan = self.plan(check_fast.Change("M", path))
@@ -413,13 +415,23 @@ func TestValue(t *testing.T) { if Value != 1 { t.Fatal(Value) } }
                 pg_target = plan.database_tests[0]
                 self.assertEqual(pg_target.package, "./internal/store")
                 self.assertIn("contract-source", pg_target.reasons)
-                self.assertIn(target, pg_target.tests)
+                for target in targets:
+                    self.assertIn(target, pg_target.tests)
                 self.assertFalse(pg_target.needs_model)
+
+        legacy_approval_plan = self.plan(
+            check_fast.Change("M", "internal/store/contract_approval_decision_pg_test.go"))
+        legacy_approval_target = legacy_approval_plan.database_tests[0]
+        self.assertTrue(legacy_approval_plan.database)
+        self.assertIn("contract-source", legacy_approval_target.reasons)
+        for target in targets:
+            self.assertIn(target, legacy_approval_target.tests)
 
         shared_core_plan = self.plan(
             check_fast.Change("M", "internal/store/contract_draft.go"))
         shared_core_target = shared_core_plan.database_tests[0]
-        self.assertIn(target, shared_core_target.tests)
+        for target in targets:
+            self.assertIn(target, shared_core_target.tests)
         self.assertIn(check_fast.CONTRACT_PAYMENT_TESTS[0], shared_core_target.tests)
         self.assertIn(check_fast.CONTRACT_ASSET_TESTS[0], shared_core_target.tests)
 

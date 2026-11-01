@@ -79,7 +79,10 @@ CONTRACT_FULFILLMENT_TESTS = (
 )
 CONTRACT_PAYMENT_TESTS = ("TestContractPaymentEligibilityAndTrustedReceiptFacts",)
 CONTRACT_ASSET_TESTS = ("TestContractAssetHandoverAndERPReceiptFacts",)
-CONTRACT_SOURCE_TESTS = ("TestExternalContractSourceObservationOrderingAndAuthorization",)
+CONTRACT_SOURCE_TESTS = (
+    "TestExternalContractSourceObservationOrderingAndAuthorization",
+    "TestExternalLegacyActiveApprovalRejectsNewDecisionButKeepsReceiptReplay",
+)
 
 
 class FastError(RuntimeError):
@@ -341,6 +344,8 @@ def _is_contract_source(path: str) -> bool:
         "internal/httpapi/server.go",
         "internal/httpapi/services.go",
         "internal/store/contract_draft.go",
+        "internal/store/contract_approval_decision.go",
+        "internal/store/contract_approval_decision_pg_test.go",
         "internal/store/contract_sources.go",
         "internal/store/contract_sources_crypto.go",
         "internal/store/contract_sources_crypto_test.go",
