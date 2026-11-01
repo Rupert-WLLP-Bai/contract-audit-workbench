@@ -1,5 +1,5 @@
-import { jsonInit, requestJson } from "./http";
-import { responseReader } from "./respond";
+import { jsonInit, requestJson } from "../../../api/http";
+import { responseReader } from "../../../api/respond";
 
 export type ManualFindingSeverity = "high" | "medium" | "low" | "info";
 export interface ManualFindingEvidence {
