@@ -498,6 +498,7 @@ func TestLegacyAttemptMigrationIsRepeatableAndRetryIsRejected(t *testing.T) {
 		"experience_finding_usage", "rule_pack_shadow_reports", "review_rulepack_inputs",
 		"manual_finding_records", "execution_write_receipts", "core_write_receipts",
 		"clm_contracts", "clm_contract_revisions", "clm_contract_cases", "clm_approval_rounds", "clm_business_events", "clm_outbox_delivery",
+		"clm_contract_drafts", "clm_contract_write_receipts", "clm_legacy_imports",
 		"case_intake_requests", "case_intake_archives",
 	} {
 		var count int64
@@ -544,7 +545,7 @@ func TestLegacyAttemptMigrationIsRepeatableAndRetryIsRejected(t *testing.T) {
 		t.Fatal(err)
 	}
 	legacyStatements := []string{
-		`DROP TABLE clm_outbox_delivery, clm_business_events, clm_approval_rounds, clm_contract_cases, clm_contract_revisions, clm_contracts`,
+		`DROP TABLE clm_contract_drafts, clm_contract_write_receipts, clm_legacy_imports, clm_outbox_delivery, clm_business_events, clm_approval_rounds, clm_contract_cases, clm_contract_revisions, clm_contracts`,
 		`DROP TABLE case_intake_requests, case_intake_archives`,
 		`DROP INDEX case_intake_pending_owner`,
 		`DROP TABLE experience_finding_usage, rule_pack_shadow_reports, review_rulepack_inputs, manual_finding_records, execution_write_receipts, core_write_receipts`,

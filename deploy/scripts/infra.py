@@ -189,6 +189,15 @@ def bootstrap(root=ROOT):
 	)
 	if "\nLLM_CONFIG_KEY=\n" in template:
 		raise ValueError("LLM_CONFIG_KEY must be generated for the local profile")
+	# Contract restricted fields use an independent 32-byte key; it is never
+	# derived from LLM_CONFIG_KEY.
+	template = template.replace(
+		"CLM_DATA_KEY=\n",
+		f"CLM_DATA_KEY={base64.b64encode(secrets.token_bytes(32)).decode('ascii')}\n",
+		1,
+	)
+	if "\nCLM_DATA_KEY=\n" in template:
+		raise ValueError("CLM_DATA_KEY must be generated for the local profile")
 	if "__GENERATE_" in template:
 		raise ValueError("Unresolved configuration placeholder")
 	if destination != root / ".env":

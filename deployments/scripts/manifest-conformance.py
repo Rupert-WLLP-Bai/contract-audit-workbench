@@ -51,6 +51,7 @@ SECRET_CONTRACT = {
     "contract-audit-oidc": {"OIDC_CLIENT_SECRET", "OIDC_ADMIN_CLIENT_SECRET", "OIDC_STATE_KEY"},
     "contract-audit-rustfs": {"RUSTFS_ACCESS_KEY", "RUSTFS_SECRET_KEY"},
     "contract-audit-model": {"LLM_API_KEY", "LLM_CONFIG_KEY", "TYPESAFE_API_KEY"},
+    "contract-audit-clm": {"CLM_DATA_KEY"},
 }
 
 REQUIRED = {

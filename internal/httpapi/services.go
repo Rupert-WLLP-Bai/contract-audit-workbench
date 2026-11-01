@@ -154,6 +154,9 @@ func routeOwned(role string, methods routeMethodSet, parts []string) bool {
 	if parts[0] == "auth" {
 		return role == "core" && methods.read && oidcRoute(parts)
 	}
+	if parts[0] == "contracts" {
+		return contractDraftRoute(role, methods, parts)
+	}
 	if parts[0] == "intakes" {
 		if role != "core" {
 			return false
@@ -186,11 +189,29 @@ var topLevelRoutes = map[string]topLevelRouteRule{
 	"cases":            {role: "core", methods: routeMethodSet{read: true, post: true}},
 	"knowledge":        {role: "core", methods: routeMethodSet{post: true}},
 	"subjects":         {role: "core", methods: routeMethodSet{read: true, post: true}},
+	"contracts":        {role: "core", methods: routeMethodSet{post: true}},
 	"intakes":          {role: "core", methods: routeMethodSet{read: true, post: true}},
 }
 
 func routeMethodsMatch(got, allowed routeMethodSet) bool {
 	return got.read && allowed.read || got.post && allowed.post || got.put && allowed.put || got.delete && allowed.delete
+}
+
+func contractDraftRoute(role string, methods routeMethodSet, parts []string) bool {
+	if role != "core" {
+		return false
+	}
+	if len(parts) == 2 {
+		switch parts[1] {
+		case "drafts":
+			return methods.read
+		case "legacy-imports":
+			return methods.post
+		default:
+			return methods.read
+		}
+	}
+	return len(parts) == 3 && parts[2] == "draft" && methods.put
 }
 
 func knowledgeRoute(parts []string) bool {
