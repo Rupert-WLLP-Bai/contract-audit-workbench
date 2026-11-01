@@ -161,10 +161,11 @@ class FastCheck:
     cwd: Path = REPO_ROOT
     env: dict[str, str] | None = None
     timeout: int = 600
-    kind: str = "command"  # command, gofmt, json, unittest, python-syntax
+    kind: str = "command"  # command, gofmt, json, unittest, python-syntax, not-run
     files: tuple[str, ...] = ()
     expected_tests: tuple[str, ...] = ()
     required: bool = True
+    note: str = ""
 
 
 @dataclass(frozen=True)
@@ -535,7 +536,16 @@ def build_plan(root: Path, changes: Iterable[Change]) -> Plan:
                                            for importer in importers):
                 plan.go_build_all = True
                 plan.reasons.add("shared-package")
-    plan.go_unit_packages = plan.go_packages & discover_unit_test_packages(root)
+    unit_packages = discover_unit_test_packages(root)
+    plan.go_unit_packages = plan.go_packages & unit_packages
+    if not plan.go_unit_packages and plan.go_build_all:
+        # Issue #53: a change whose compile blast radius is the whole module
+        # (go.mod, root package, deleted package, shared package) must not lose
+        # the only stage that executes tests; widen the unit run to the
+        # module's database-safe packages instead of skipping it silently.
+        plan.go_unit_packages = set(unit_packages)
+        if plan.go_unit_packages:
+            plan.reasons.add("unit-scope-widened")
     plan.poppler = bool(plan.go_unit_packages & POPPLER_TEST_PACKAGES)
     plan.legal_assets = bool(plan.go_unit_packages & LEGAL_ASSET_TEST_PACKAGES)
     changed_python = sorted({path for change in changes
@@ -623,6 +633,13 @@ def _build_checks(plan: Plan, root: Path, python: str) -> list[FastCheck]:
                 (go, "test", "-count=1", "-json", "-timeout=600s",
                  *sorted(plan.go_unit_packages)),
                 cwd=root, env=unit_test_environment(env), timeout=660, kind="json", required=False))
+        elif plan.go_packages or plan.go_build_all:
+            # Go change with an empty unit selection: keep the stage visible in
+            # the report instead of letting the gate pass as if the unit stage
+            # never existed (#53).
+            checks.append(FastCheck(
+                "go-unit", cwd=root, kind="not-run", required=False,
+                note="no database-safe Go unit test packages discovered for the affected scope"))
     if plan.python:
         if plan.python_syntax_files:
             checks.append(FastCheck("python-syntax", cwd=root, env=env,
@@ -771,6 +788,10 @@ def execute_check(check: FastCheck, logs: Path, root: Path) -> CheckResult:
     status = "PASS"
     output = ""
 
+    if check.kind == "not-run":
+        _write_text(log_path, check.note)
+        return CheckResult(check.name, "NOT_RUN", 0.0, command_text,
+                           str(log_path), check.note)
     if check.kind == "python-syntax":
         checked, errors = _syntax_evidence(root, check.files)
         evidence = {"checked": checked, "errors": errors}

@@ -126,11 +126,19 @@ func TestValue(t *testing.T) { if Value != 1 { t.Fatal(Value) } }
         self.assertTrue(plan.go_build_all)
         self.assertIn("shared-package", plan.reasons)
 
-    def test_dependency_change_compiles_all_without_tests(self):
+    def test_shared_package_without_tests_widens_unit_scope(self):
+        plan = self.plan(check_fast.Change("M", "internal/shared/shared.go"))
+        self.assertEqual(plan.go_unit_packages, {"./internal/decision"})
+        self.assertIn("unit-scope-widened", plan.reasons)
+
+    def test_dependency_change_widens_unit_scope_to_safe_packages(self):
+        # Issue #53: a go.mod change has no affected packages, so the unit
+        # stage widens to the module's database-safe packages.
         plan = self.plan(check_fast.Change("M", "go.mod"))
         self.assertTrue(plan.go)
         self.assertTrue(plan.go_build_all)
-        self.assertEqual(plan.go_unit_packages, set())
+        self.assertEqual(plan.go_unit_packages, {"./internal/decision"})
+        self.assertIn("unit-scope-widened", plan.reasons)
 
     def test_web_source_requires_typecheck_but_not_build(self):
         plan = self.plan(check_fast.Change("M", "web/src/app.tsx"))
@@ -200,6 +208,7 @@ func TestValue(t *testing.T) { if Value != 1 { t.Fatal(Value) } }
         self.assertTrue(plan.database)
         self.assertTrue(plan.go)
         self.assertFalse(plan.go_build_all)
+        self.assertEqual(plan.go_unit_packages, set())
 
     def test_schema_change_requires_real_database_migration_check(self):
         plan = self.plan(check_fast.Change("M", "internal/store/schema.go"))
@@ -311,6 +320,88 @@ class CliBoundaryTests(unittest.TestCase):
         report = json.loads((out / "fast-check.json").read_text(encoding="utf-8"))
         self.assertFalse(report["passed"])
         self.assertEqual(report["checks"][0]["status"], "NOT_RUN")
+
+    def test_go_unit_failure_fails_gate_when_unit_selection_falls_back(self):
+        # Issue #53 regression: a go.mod-only change empties the affected
+        # package set; the widened unit run must still fail the gate when the
+        # unit tests fail, instead of returning 0 without running any test.
+        write(self.root, "internal/decision/decision_test.go",
+              '''package decision
+
+import "testing"
+
+func TestValue(t *testing.T) { if Value != 2 { t.Fatal(Value) } }
+              ''')
+        new_base = commit(self.root, "add decision test")
+        write(self.root, "go.mod", "module example.test/project\n\ngo 1.26\n")
+        binaries, marker = self.fake_binaries()
+        go = binaries / "go"
+        go.write_text("#!/bin/sh\nfor argument in \"$@\"; do\n"
+                      "  if [ \"$argument\" = \"-json\" ]; then\n    exit 1\n  fi\n"
+                      "done\nexit 0\n", encoding="utf-8")
+        go.chmod(0o755)
+        out = Path(self.temporary.name) / "fast-out"
+        env = script_env(PATH=str(binaries) + os.pathsep + os.environ["PATH"],
+                         FAKE_MARKER=str(marker))
+        result = run_script("--root", str(self.root), "--base", new_base,
+                            "--out", str(out), env=env)
+        self.assertEqual(result.returncode, 1, result.stderr)
+        report = json.loads((out / "fast-check.json").read_text(encoding="utf-8"))
+        self.assertFalse(report["passed"])
+        checks = {check["name"]: check for check in report["checks"]}
+        self.assertIn("go-unit", checks)
+        self.assertEqual(checks["go-unit"]["status"], "FAIL")
+
+    def test_go_unit_failure_fails_gate_when_compile_expands_to_all(self):
+        write(self.root, "internal/decision/decision_test.go",
+              '''package decision
+
+import "testing"
+
+func TestValue(t *testing.T) { if Value != 2 { t.Fatal(Value) } }
+              ''')
+        write(self.root, "cmd/app/main.go",
+              'package main\n\nimport (\n\t"example.test/project/internal/decision"\n'
+              '\t"example.test/project/internal/shared"\n)\n\n'
+              'func main() { _ = decision.Value; _ = shared.Value }\n')
+        binaries, marker = self.fake_binaries()
+        go = binaries / "go"
+        go.write_text("#!/bin/sh\nfor argument in \"$@\"; do\n"
+                      "  if [ \"$argument\" = \"-json\" ]; then\n    exit 1\n  fi\n"
+                      "done\nexit 0\n", encoding="utf-8")
+        go.chmod(0o755)
+        out = Path(self.temporary.name) / "fast-out"
+        env = script_env(PATH=str(binaries) + os.pathsep + os.environ["PATH"],
+                         FAKE_MARKER=str(marker))
+        result = run_script("--root", str(self.root), "--base", self.base,
+                            "--out", str(out), env=env)
+        self.assertEqual(result.returncode, 1, result.stderr)
+        report = json.loads((out / "fast-check.json").read_text(encoding="utf-8"))
+        self.assertFalse(report["passed"])
+        checks = {check["name"]: check for check in report["checks"]}
+        self.assertEqual(checks["go-unit"]["status"], "FAIL")
+
+    def test_affected_go_change_without_unit_tests_reports_not_run(self):
+        # Issue #53: an affected Go change whose packages hold no database-safe
+        # unit tests keeps an explicit go-unit NOT_RUN in the report instead of
+        # dropping the stage silently; it does not fabricate a failure.
+        write(self.root, "cmd/tool/main.go", "package main\n\nfunc main() {}\n")
+        new_base = commit(self.root, "add tool without unit tests")
+        write(self.root, "internal/leaf/leaf.go", "package leaf\n")
+        binaries, marker = self.fake_binaries()
+        out = Path(self.temporary.name) / "fast-out"
+        env = script_env(PATH=str(binaries) + os.pathsep + os.environ["PATH"],
+                         FAKE_MARKER=str(marker))
+        result = run_script("--root", str(self.root), "--base", new_base,
+                            "--out", str(out), env=env)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        report = json.loads((out / "fast-check.json").read_text(encoding="utf-8"))
+        self.assertTrue(report["passed"])
+        checks = {check["name"]: check for check in report["checks"]}
+        self.assertIn("go-unit", checks)
+        self.assertEqual(checks["go-unit"]["status"], "NOT_RUN")
+        self.assertIn("no database-safe", checks["go-unit"]["reason"])
+        self.assertEqual(checks["go-unit"]["command"], "")
 
     def test_output_inside_repository_is_rejected(self):
         write(self.root, "internal/leaf/leaf.go", "package leaf\n")
