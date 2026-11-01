@@ -166,6 +166,48 @@ func TestValue(t *testing.T) { if Value != 1 { t.Fatal(Value) } }
         self.assertTrue(plan.python)
         self.assertEqual(plan.python_tests, [])
 
+    def test_docs_only_selects_docs_build_without_application_scopes(self):
+        plan = self.plan(check_fast.Change("M", "docs/index.md"),
+                         check_fast.Change("M", "docs/glossary/concepts.json"))
+        self.assertTrue(plan.docs_build)
+        self.assertFalse(plan.go or plan.web or plan.python or plan.database)
+        self.assertFalse(plan.poppler or plan.legal_assets)
+
+    def test_docs_gate_sources_select_docs_build(self):
+        for path in ("docs-site/package.json", "docs-site/bun.lock",
+                     "scripts/check_docs.py", "scripts/check_glossary.py",
+                     "scripts/check_fast.py", ".github/workflows/pr-fast.yml"):
+            with self.subTest(path=path):
+                self.assertTrue(self.plan(check_fast.Change("M", path)).docs_build)
+
+    def test_web_only_does_not_select_docs_build(self):
+        plan = self.plan(check_fast.Change("M", "web/src/app.tsx"))
+        self.assertTrue(plan.web)
+        self.assertFalse(plan.docs_build)
+
+    def test_docs_rename_deletion_and_space_paths_keep_docs_scope(self):
+        renamed = self.plan(check_fast.Change(
+            "R", "docs-site/handbook config.js", "docs/old handbook.md"))
+        deleted = self.plan(check_fast.Change("D", "docs/removed handbook.md"))
+        self.assertTrue(renamed.docs_build)
+        self.assertTrue(deleted.docs_build)
+
+    def test_docs_dependency_check_requires_frozen_lockfile(self):
+        package_dir = self.root / "docs-site"
+        package_dir.mkdir()
+        bun = self.root / "fake-bun"
+        bun.write_text("#!/bin/sh\nif [ ! -f bun.lock ]; then "
+                       "echo 'missing docs lockfile' >&2; exit 2; fi\nexit 0\n",
+                       encoding="utf-8")
+        bun.chmod(0o755)
+        check = check_fast.FastCheck(
+            "docs-dependencies", (str(bun), "install", "--frozen-lockfile"),
+            cwd=package_dir, env=dict(os.environ), timeout=10)
+        result = check_fast.execute_check(check, self.root / "logs", self.root)
+        self.assertEqual(result.status, "FAIL")
+        self.assertIn("missing docs lockfile",
+                      Path(result.log).read_text(encoding="utf-8"))
+
     def test_deleted_go_file_keeps_format_and_compile_scope(self):
         plan = self.plan(check_fast.Change("D", "internal/leaf/leaf.go"))
         self.assertTrue(plan.go)
@@ -278,8 +320,8 @@ class CliBoundaryTests(unittest.TestCase):
         appended = output.read_text(encoding="utf-8").splitlines()
         self.assertEqual(appended[0], "keep=1")
         self.assertEqual(appended[1:], ["go=true", "web=true", "python=true",
-                                        "database=false", "poppler=false",
-                                        "legal_assets=false"])
+                                        "database=false", "docs_build=false",
+                                        "poppler=false", "legal_assets=false"])
 
     def test_plan_uses_caw_fast_base_when_base_flag_is_omitted(self):
         write(self.root, "internal/leaf/leaf.go", "package leaf\n")

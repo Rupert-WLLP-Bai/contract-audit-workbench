@@ -1,0 +1,19 @@
+:root {
+  --ifm-color-primary: #1677ff;
+  --ifm-color-primary-dark: #0958d9;
+  --ifm-color-primary-darker: #003eb3;
+  --ifm-color-primary-darkest: #002c8c;
+  --ifm-color-primary-light: #4096ff;
+  --ifm-color-primary-lighter: #69b1ff;
+  --ifm-color-primary-lightest: #91caff;
+  --ifm-font-family-base: system-ui, -apple-system, "Segoe UI", sans-serif;
+  --ifm-line-height-base: 1.75;
+}
+
+.markdown img {
+  max-width: 100%;
+}
+
+.markdown a {
+  text-underline-offset: 0.16em;
+}

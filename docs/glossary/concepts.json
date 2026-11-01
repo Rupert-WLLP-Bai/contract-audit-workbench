@@ -1,0 +1,2452 @@
+{
+  "schema_version": 1,
+  "artifact_kind": "CANONICAL_CONCEPT_SOURCE",
+  "title": "用户与系统双术语唯一概念源",
+  "generated_views": [
+    "docs/glossary/user-terms.md",
+    "docs/glossary/system-terms.md"
+  ],
+  "application_test_status": "NOT_RUN",
+  "governance": {
+    "stable_ids": "T01–T36 是当前概念身份，不因展示文案变化重编号；删除概念应标废弃并保留引用。",
+    "single_source": "This JSON is the only maintained concept source. User and system reading views derive their concept IDs and mappings from this file.",
+    "code_compatibility": "文案治理不重命名历史 API、代码、表、schema、事件或持久化标识；若确需改协议，另立兼容变更。",
+    "source_rules": "Anchors name source files and symbols inspected in the current checkout. They document source evidence only; application behavior remains NOT_RUN unless separately verified.",
+    "doc_policy": "Long-lived glossary content belongs under docs/. Generated reading views must derive from this file.",
+    "application_evidence": "已有类型或表不代表端到端产品通过；本轮仅源码阅读及文档静态一致性检查。"
+  },
+  "status_legend": {
+    "CODE_ANCHORED_NOT_RUNTIME_VERIFIED": "当前源码可定位对应概念或行为；本次未运行应用验证。",
+    "FOUNDATION_ONLY_NOT_FULL_WORKFLOW": "当前源码包含相关类型、策略或数据结构，但不足以证明完整用户流程已交付。",
+    "PLANNED_NOT_CODE_VERIFIED": "提案或需求概念；当前源码没有完整实现。若保留源码锚点，只用于说明现状边界或计划上下文。"
+  },
+  "context_policies": [
+    {
+      "id": "CTX-ATTEMPT",
+      "scope": "审查和会签用户界面",
+      "rule": "Attempt 显示为“执行尝试”；Run/ReviewRun 与 ApprovalRound 分开。不要仅为统一文案而把 Attempt、审查执行或会签轮次的身份合并。AgentReviewPlanRound 的内部规划轮次不受全局禁词影响。",
+      "code_anchors": [
+        {
+          "path": "internal/store/state.go",
+          "symbol": "store.Attempt",
+          "relation": "defines_concept",
+          "verification": "READ_CURRENT_SOURCE"
+        },
+        {
+          "path": "web/src/api/types.ts",
+          "symbol": "web.AgentReviewPlanRound",
+          "relation": "contrast_not_equivalent",
+          "verification": "READ_CURRENT_SOURCE"
+        }
+      ]
+    },
+    {
+      "id": "CTX-TENANT",
+      "scope": "管理员、工程、多租户身份与隔离界面",
+      "rule": "‘租户’是合法且精确的领域词，不得全局禁用。普通业务页面可以补充解释；只有产品已确认实际对应关系时才用工作区展示名，不将 tenant_id 替换成 org_id。",
+      "code_anchors": [
+        {
+          "path": "internal/accounts/accounts.go",
+          "symbol": "accounts.User.TenantID",
+          "relation": "defines_concept",
+          "verification": "READ_CURRENT_SOURCE"
+        }
+      ]
+    },
+    {
+      "id": "CTX-SIGNATURE",
+      "scope": "证据包验证、工程诊断和验签工具",
+      "rule": "‘验签’在签名验证语境合法，不能全局禁词。面向普通用户可写‘证据包签名验证’。它只说明可信签名和包内容校验，不等于合同法律签署、部门审批、供应商身份或付款完成。",
+      "code_anchors": [
+        {
+          "path": "internal/evidencebundle/bundle.go",
+          "symbol": "evidencebundle.Verify",
+          "relation": "defines_concept",
+          "verification": "READ_CURRENT_SOURCE"
+        }
+      ]
+    },
+    {
+      "id": "CTX-TERMINOLOGY-CHECK",
+      "scope": "文档与 UI 文案检查",
+      "rule": "检查概念 ID、映射、具体页面语境和禁止混同关系，不对全部源代码执行关键词禁用；日志、历史 API 和技术字段保留准确标识。",
+      "code_anchors": []
+    }
+  ],
+  "concepts": [
+    {
+      "id": "T01",
+      "slug": "term-t01",
+      "user_term": "审查案件",
+      "system_term": "store.Case",
+      "definition": "组织某项合同审查的材料、访问范围和办理活动的业务容器。",
+      "boundaries": [
+        "案件 ID 与合同 ID 分属不同对象。",
+        "创建案件不等于合同已经签订或会签通过。"
+      ],
+      "misuse_examples": [
+        {
+          "incorrect": "把 case_id 显示为正式合同编号。",
+          "why_incorrect": "案件办理身份不能替代合同登记编号。",
+          "preferred": "分别展示案件编号和已知合同编号；未知合同编号保留未知。"
+        }
+      ],
+      "implementation": {
+        "status": "CODE_ANCHORED_NOT_RUNTIME_VERIFIED",
+        "note": "Case 类型可定位；本轮未运行案件流程。",
+        "assessment": "SOURCE_READ_ONLY",
+        "application_test_status": "NOT_RUN"
+      },
+      "ui_scope": {
+        "business": [
+          "案件列表",
+          "案件详情",
+          "材料和整改入口"
+        ],
+        "engineering": [
+          "API 文档中的 case_id",
+          "授权与审计诊断"
+        ],
+        "avoid": [
+          "合同签订编号字段"
+        ]
+      },
+      "code_anchors": [
+        {
+          "path": "internal/store/state.go",
+          "symbol": "store.Case",
+          "relation": "defines_concept",
+          "verification": "READ_CURRENT_SOURCE"
+        }
+      ],
+      "compatibility": {
+        "rename_existing_identifiers": false,
+        "preserved_identifiers": [
+          "case_id",
+          "Case"
+        ],
+        "contextual_aliases": []
+      },
+      "related_concepts": [
+        "T02",
+        "T07"
+      ]
+    },
+    {
+      "id": "T02",
+      "slug": "term-t02",
+      "user_term": "合同",
+      "system_term": "Contract / clm_contracts",
+      "definition": "具有独立稳定身份的合同登记聚合，组织草稿、冻结版本和与案件的关系。",
+      "boundaries": [
+        "合同可以关联审查案件，但两种身份不能互相覆盖。",
+        "合同聚合状态不证明外部实际签署、付款或资产入账。"
+      ],
+      "misuse_examples": [
+        {
+          "incorrect": "已有合同表，所以会签和履约已经全部可用。",
+          "why_incorrect": "基础登记与完整流程的交付状态需要分别证明。",
+          "preferred": "在能力说明中分别标明登记、会签、履约的实际状态。"
+        }
+      ],
+      "implementation": {
+        "status": "CODE_ANCHORED_NOT_RUNTIME_VERIFIED",
+        "note": "合同表、ContractSummary 和登记读取代码可定位；不据此推定全部流程可用。",
+        "assessment": "SOURCE_READ_ONLY",
+        "application_test_status": "NOT_RUN"
+      },
+      "ui_scope": {
+        "business": [
+          "合同台账",
+          "合同详情",
+          "合同登记"
+        ],
+        "engineering": [
+          "ContractSummary",
+          "clm_contracts 和 contract_id"
+        ],
+        "avoid": [
+          "代替审查 Run 或案件 Case 的名称"
+        ]
+      },
+      "code_anchors": [
+        {
+          "path": "internal/store/migrations/0018_contract_aggregate.sql",
+          "symbol": "clm_contracts",
+          "relation": "defines_concept",
+          "verification": "READ_CURRENT_SOURCE"
+        },
+        {
+          "path": "internal/store/contract_draft.go",
+          "symbol": "store.ContractSummary",
+          "relation": "defines_concept",
+          "verification": "READ_CURRENT_SOURCE"
+        }
+      ],
+      "compatibility": {
+        "rename_existing_identifiers": false,
+        "preserved_identifiers": [
+          "contract_id",
+          "clm_contracts",
+          "ContractSummary"
+        ],
+        "contextual_aliases": []
+      },
+      "related_concepts": [
+        "T01",
+        "T03",
+        "T04"
+      ]
+    },
+    {
+      "id": "T03",
+      "slug": "term-t03",
+      "user_term": "合同草稿",
+      "system_term": "DraftContent / ContractDraftSummary",
+      "definition": "尚可编辑的结构化合同内容，允许在暂存阶段缺少后续提交必需信息。",
+      "boundaries": [
+        "保存草稿不等于提交会签。",
+        "草稿更新不能改写已冻结合同版本。"
+      ],
+      "misuse_examples": [
+        {
+          "incorrect": "将‘保存草稿成功’提示为‘合同审核通过’。",
+          "why_incorrect": "保存仅确认草稿写入，不产生审批结论。",
+          "preferred": "草稿已保存；需要时继续补充资料并执行明确的下一步。"
+        }
+      ],
+      "implementation": {
+        "status": "CODE_ANCHORED_NOT_RUNTIME_VERIFIED",
+        "note": "草稿类型及创建/替换方法可定位；本轮未执行保存或冲突测试。",
+        "assessment": "SOURCE_READ_ONLY",
+        "application_test_status": "NOT_RUN"
+      },
+      "ui_scope": {
+        "business": [
+          "合同分步登记",
+          "草稿箱",
+          "字段错误与冲突恢复"
+        ],
+        "engineering": [
+          "DraftContent",
+          "CreateContractDraft / ReplaceContractDraft"
+        ],
+        "avoid": [
+          "签署证明",
+          "审批决定"
+        ]
+      },
+      "code_anchors": [
+        {
+          "path": "internal/store/contract_draft_types.go",
+          "symbol": "store.DraftContent",
+          "relation": "defines_concept",
+          "verification": "READ_CURRENT_SOURCE"
+        },
+        {
+          "path": "internal/store/contract_draft.go",
+          "symbol": "store.ContractDraftSummary",
+          "relation": "defines_concept",
+          "verification": "READ_CURRENT_SOURCE"
+        }
+      ],
+      "compatibility": {
+        "rename_existing_identifiers": false,
+        "preserved_identifiers": [
+          "DraftContent",
+          "ContractDraftSummary",
+          "row_version"
+        ],
+        "contextual_aliases": []
+      },
+      "related_concepts": [
+        "T02",
+        "T04"
+      ]
+    },
+    {
+      "id": "T04",
+      "slug": "term-t04",
+      "user_term": "合同版本",
+      "system_term": "ContractRevision / ContractVersionSummary",
+      "definition": "冻结后的合同结构化内容及其选定材料关联，用于后续精确引用和版本差异比较。",
+      "boundaries": [
+        "合同版本与材料版本分别有身份。",
+        "冻结表示内容定版，不能自动推导已签订、已批准或真实合同合法有效。"
+      ],
+      "misuse_examples": [
+        {
+          "incorrect": "后续更换附件后直接覆盖旧冻结版本。",
+          "why_incorrect": "旧版本的内容和材料依据必须仍可追溯。",
+          "preferred": "追加新合同版本，并保留旧版本及各自材料身份。"
+        }
+      ],
+      "implementation": {
+        "status": "CODE_ANCHORED_NOT_RUNTIME_VERIFIED",
+        "note": "冻结方法、版本读取类型和修订表可定位；产品运行验证未执行。",
+        "assessment": "SOURCE_READ_ONLY",
+        "application_test_status": "NOT_RUN"
+      },
+      "ui_scope": {
+        "business": [
+          "合同版本列表",
+          "版本差异",
+          "送审内容核对"
+        ],
+        "engineering": [
+          "clm_contract_revisions",
+          "FreezeContractVersion 和版本摘要"
+        ],
+        "avoid": [
+          "将 revision_number 称为审批次数"
+        ]
+      },
+      "code_anchors": [
+        {
+          "path": "internal/store/contract_version.go",
+          "symbol": "store.ContractVersionSummary",
+          "relation": "defines_concept",
+          "verification": "READ_CURRENT_SOURCE"
+        },
+        {
+          "path": "internal/store/contract_version.go",
+          "symbol": "store.FreezeContractVersion",
+          "relation": "defines_concept",
+          "verification": "READ_CURRENT_SOURCE"
+        },
+        {
+          "path": "internal/store/migrations/0018_contract_aggregate.sql",
+          "symbol": "clm_contract_revisions",
+          "relation": "defines_concept",
+          "verification": "READ_CURRENT_SOURCE"
+        }
+      ],
+      "compatibility": {
+        "rename_existing_identifiers": false,
+        "preserved_identifiers": [
+          "contract_revision_id",
+          "revision_number",
+          "ContractVersionSummary"
+        ],
+        "contextual_aliases": []
+      },
+      "related_concepts": [
+        "T03",
+        "T06",
+        "T09"
+      ]
+    },
+    {
+      "id": "T05",
+      "slug": "term-t05",
+      "user_term": "材料",
+      "system_term": "MaterialEntity",
+      "definition": "一份材料的逻辑身份，用来关联其不同文件版本和业务用途。",
+      "boundaries": [
+        "同一材料可以有多个版本；当前版本与历史引用版本不能混用。",
+        "文件名相同不证明材料内容或版本相同。"
+      ],
+      "misuse_examples": [
+        {
+          "incorrect": "按 filename 覆盖原文件并沿用所有旧引用。",
+          "why_incorrect": "文件名不足以证明内容身份。",
+          "preferred": "显示材料名称，同时按材料 ID、版本与摘要定位实际内容。"
+        }
+      ],
+      "implementation": {
+        "status": "CODE_ANCHORED_NOT_RUNTIME_VERIFIED",
+        "note": "材料实体及版本关联类型可定位；本轮未运行上传。",
+        "assessment": "SOURCE_READ_ONLY",
+        "application_test_status": "NOT_RUN"
+      },
+      "ui_scope": {
+        "business": [
+          "材料清单",
+          "补件选择",
+          "材料用途与版本切换"
+        ],
+        "engineering": [
+          "MaterialEntity",
+          "material_id"
+        ],
+        "avoid": [
+          "把文件名当主键"
+        ]
+      },
+      "code_anchors": [
+        {
+          "path": "internal/store/materials.go",
+          "symbol": "store.MaterialEntity",
+          "relation": "defines_concept",
+          "verification": "READ_CURRENT_SOURCE"
+        }
+      ],
+      "compatibility": {
+        "rename_existing_identifiers": false,
+        "preserved_identifiers": [
+          "MaterialEntity",
+          "material_id",
+          "CurrentDocumentID"
+        ],
+        "contextual_aliases": []
+      },
+      "related_concepts": [
+        "T06",
+        "T22"
+      ]
+    },
+    {
+      "id": "T06",
+      "slug": "term-t06",
+      "user_term": "材料版本",
+      "system_term": "MaterialVersion",
+      "definition": "某材料一次具体文件内容的版本身份，关联实际 document_id 及前一版本。",
+      "boundaries": [
+        "文件版本、解析结果版本和合同结构化修订不是同一序号。",
+        "旧审查引用必须指向当时冻结的材料和解析内容。"
+      ],
+      "misuse_examples": [
+        {
+          "incorrect": "打开旧审查引用时直接显示该材料最新上传文件。",
+          "why_incorrect": "最新文件可能已改变被引用原文。",
+          "preferred": "打开所选执行尝试使用的冻结材料版本。"
+        }
+      ],
+      "implementation": {
+        "status": "CODE_ANCHORED_NOT_RUNTIME_VERIFIED",
+        "note": "MaterialVersion 类型和材料身份函数可定位；本轮未运行引用定位。",
+        "assessment": "SOURCE_READ_ONLY",
+        "application_test_status": "NOT_RUN"
+      },
+      "ui_scope": {
+        "business": [
+          "材料历史",
+          "原文定位",
+          "合同版本附件清单"
+        ],
+        "engineering": [
+          "MaterialVersion",
+          "document_id / material_id / version"
+        ],
+        "avoid": [
+          "把 version 与 contract_revision_id 或 attempt ordinal 混为一列"
+        ]
+      },
+      "code_anchors": [
+        {
+          "path": "internal/store/materials.go",
+          "symbol": "store.MaterialVersion",
+          "relation": "defines_concept",
+          "verification": "READ_CURRENT_SOURCE"
+        },
+        {
+          "path": "internal/store/materials.go",
+          "symbol": "store.MaterialIdentity",
+          "relation": "defines_concept",
+          "verification": "READ_CURRENT_SOURCE"
+        }
+      ],
+      "compatibility": {
+        "rename_existing_identifiers": false,
+        "preserved_identifiers": [
+          "MaterialVersion",
+          "DocumentID",
+          "version"
+        ],
+        "contextual_aliases": []
+      },
+      "related_concepts": [
+        "T04",
+        "T05",
+        "T08",
+        "T22"
+      ]
+    },
+    {
+      "id": "T07",
+      "slug": "term-t07",
+      "user_term": "审查执行",
+      "system_term": "store.Run / web.ReviewRun",
+      "definition": "用户发起审查后可追踪的一项执行身份；它与其下属具体执行尝试分别保存 ID。",
+      "boundaries": [
+        "一次 Run 可关联执行尝试和重试关系，不能用 attempt_id 替代 run_id。",
+        "AuditRun 在设计讨论中可指此概念，但本轮实际锚点是 Run/ReviewRun，不把它虚构成已验证代码类型。"
+      ],
+      "misuse_examples": [
+        {
+          "incorrect": "把每次 Worker 接管计为新的审查执行或新的会签轮次。",
+          "why_incorrect": "Worker 接管代次属于后台租约；Run、Attempt、ApprovalRound 身份不同。",
+          "preferred": "分别展示审查执行、执行尝试；后台接管代次只在诊断中展示。"
+        }
+      ],
+      "implementation": {
+        "status": "CODE_ANCHORED_NOT_RUNTIME_VERIFIED",
+        "note": "后端 Run 和前端 ReviewRun 类型已读取；本轮未证明名为 AuditRun 的现有声明。",
+        "assessment": "SOURCE_READ_ONLY",
+        "application_test_status": "NOT_RUN"
+      },
+      "ui_scope": {
+        "business": [
+          "审查记录列表",
+          "审查工作区的执行选择"
+        ],
+        "engineering": [
+          "store.Run",
+          "web.ReviewRun",
+          "run_id"
+        ],
+        "avoid": [
+          "审批轮次标题",
+          "以日志事件数量推导审查次数"
+        ]
+      },
+      "code_anchors": [
+        {
+          "path": "internal/store/state.go",
+          "symbol": "store.Run",
+          "relation": "defines_concept",
+          "verification": "READ_CURRENT_SOURCE"
+        },
+        {
+          "path": "web/src/api/types.ts",
+          "symbol": "web.ReviewRun",
+          "relation": "defines_concept",
+          "verification": "READ_CURRENT_SOURCE"
+        }
+      ],
+      "compatibility": {
+        "rename_existing_identifiers": false,
+        "preserved_identifiers": [
+          "Run",
+          "ReviewRun",
+          "run_id"
+        ],
+        "contextual_aliases": [
+          {
+            "term": "AuditRun",
+            "scope": "设计讨论别名，仅指审查执行；不是本轮确认的代码声明",
+            "rename_instruction": false
+          }
+        ]
+      },
+      "related_concepts": [
+        "T08",
+        "T09",
+        "T27"
+      ]
+    },
+    {
+      "id": "T08",
+      "slug": "term-t08",
+      "user_term": "执行尝试",
+      "system_term": "store.Attempt / web.ExecutionAttempt",
+      "definition": "某一 Run 之下的一次执行或执行尝试，具有独立 attempt_id、顺序号和重试来源；执行身份及冻结上下文固定，运行状态按既有生命周期变化。",
+      "boundaries": [
+        "Attempt 不是 AuditRun/Run 本身。",
+        "Attempt 绝不是 ApprovalRound 会签轮次，也不应改叫‘审查轮次’。",
+        "重试关系、Worker 接管 generation、Agent 内部计划轮次是不同层级。"
+      ],
+      "misuse_examples": [
+        {
+          "incorrect": "将 ReviewAttempt 文案统一替换成‘审查轮次’，并用于显示会签第几轮。",
+          "why_incorrect": "这样把执行尝试与业务审批混为一体，导致身份、历史和退回规则含义错误。",
+          "preferred": "用户界面用‘执行尝试’或带上下文的‘审查执行尝试’；会签仅用‘会签轮次’。"
+        }
+      ],
+      "implementation": {
+        "status": "CODE_ANCHORED_NOT_RUNTIME_VERIFIED",
+        "note": "state.go 明确注释 Attempt 是 Run 内的不可变执行身份；前端 ExecutionAttempt 同时保留 id 和 run_id。",
+        "assessment": "SOURCE_READ_ONLY",
+        "application_test_status": "NOT_RUN"
+      },
+      "ui_scope": {
+        "business": [
+          "审查详情中的执行历史",
+          "失败重试说明",
+          "原文与结果所属尝试"
+        ],
+        "engineering": [
+          "Attempt",
+          "ExecutionAttempt",
+          "attempt_id / retry_of_attempt_id / ordinal"
+        ],
+        "avoid": [
+          "会签轨迹",
+          "审批次数",
+          "普通首页无需展示原始 attempt_id"
+        ]
+      },
+      "code_anchors": [
+        {
+          "path": "internal/store/state.go",
+          "symbol": "store.Attempt",
+          "relation": "defines_concept",
+          "verification": "READ_CURRENT_SOURCE"
+        },
+        {
+          "path": "web/src/api/types.ts",
+          "symbol": "web.ExecutionAttempt",
+          "relation": "defines_concept",
+          "verification": "READ_CURRENT_SOURCE"
+        }
+      ],
+      "compatibility": {
+        "rename_existing_identifiers": false,
+        "preserved_identifiers": [
+          "Attempt",
+          "ExecutionAttempt",
+          "attempt_id",
+          "retry_of_attempt_id",
+          "ordinal"
+        ],
+        "contextual_aliases": [
+          {
+            "term": "审查尝试",
+            "scope": "审查执行详情的可接受旧文案；不得解释为审批轮次",
+            "rename_instruction": false
+          },
+          {
+            "term": "ReviewAttempt",
+            "scope": "设计资料中的概念别名，映射到 Attempt；保留历史接口和代码标识",
+            "rename_instruction": false
+          }
+        ]
+      },
+      "related_concepts": [
+        "T07",
+        "T09",
+        "T27"
+      ]
+    },
+    {
+      "id": "T09",
+      "slug": "term-t09",
+      "user_term": "会签轮次",
+      "system_term": "ApprovalRound / clm_approval_rounds",
+      "definition": "某合同版本从一次送审开始直到该次审批周期结束的业务轮次。",
+      "boundaries": [
+        "关联合同修订，而不是模型执行 attempt。",
+        "退回后重新提交应开启新轮；旧批准不能自动算作新轮批准。"
+      ],
+      "misuse_examples": [
+        {
+          "incorrect": "把审查任务重试后的 attempt ordinal 显示为合同第二轮会签。",
+          "why_incorrect": "机器执行重试不等于重新提交业务审批。",
+          "preferred": "仅使用真实 approval_round_id 和 round_number 展示会签轮次。"
+        }
+      ],
+      "implementation": {
+        "status": "CODE_ANCHORED_NOT_RUNTIME_VERIFIED",
+        "note": "当前仓库有固定审批流程、版本化路由模板、会签轮次读写与历史决定结构；本次未运行会签流程。",
+        "assessment": "SOURCE_READ_ONLY",
+        "application_test_status": "NOT_RUN"
+      },
+      "ui_scope": {
+        "business": [
+          "拟实现的会签轨迹",
+          "拟实现的本轮与历史轮次比较"
+        ],
+        "engineering": [
+          "clm_approval_rounds",
+          "approval_round_id / round_number"
+        ],
+        "avoid": [
+          "AI 执行检查器",
+          "Worker 接管记录"
+        ]
+      },
+      "code_anchors": [
+        {
+          "path": "internal/store/contract_approval_types.go",
+          "symbol": "store.ApprovalRoundSummary",
+          "relation": "defines_concept",
+          "verification": "READ_CURRENT_SOURCE"
+        },
+        {
+          "path": "internal/store/approval_read.go",
+          "symbol": "store.ApprovalRoundReadSummary",
+          "relation": "defines_concept",
+          "verification": "READ_CURRENT_SOURCE"
+        }
+      ],
+      "compatibility": {
+        "rename_existing_identifiers": false,
+        "preserved_identifiers": [
+          "approval_round_id",
+          "round_number",
+          "clm_approval_rounds"
+        ],
+        "contextual_aliases": []
+      },
+      "related_concepts": [
+        "T04",
+        "T08",
+        "T10",
+        "T13"
+      ]
+    },
+    {
+      "id": "T10",
+      "slug": "term-t10",
+      "user_term": "审批待办",
+      "system_term": "ApprovalTask / clm_approval_tasks",
+      "definition": "某一会签轮次中某节点分配给当前合格办理人的审批工作项。",
+      "boundaries": [
+        "不是后台 Worker Job，也不是既有通用 WorkbenchTask 的无条件改名。",
+        "任务是否可办由当前服务端权限和状态决定，不只看界面按钮。"
+      ],
+      "misuse_examples": [
+        {
+          "incorrect": "把后台 OCR Job 标成‘律师审批待办’。",
+          "why_incorrect": "机器作业与人工审批责任不同。",
+          "preferred": "分别显示执行任务和审批待办，并保留各自身份。"
+        }
+      ],
+      "implementation": {
+        "status": "CODE_ANCHORED_NOT_RUNTIME_VERIFIED",
+        "note": "当前仓库已有会签轮次、审批待办和追加决定历史的类型、读写代码及迁移；本次未运行会签流程。",
+        "assessment": "SOURCE_READ_ONLY",
+        "application_test_status": "NOT_RUN"
+      },
+      "ui_scope": {
+        "business": [
+          "拟实现的我的会签待办",
+          "拟实现的审批详情"
+        ],
+        "engineering": [
+          "未来审批任务契约；具体符号实施时核对"
+        ],
+        "avoid": [
+          "复用 worker_jobs 记录人工审批"
+        ]
+      },
+      "code_anchors": [
+        {
+          "path": "internal/store/contract_approval_types.go",
+          "symbol": "store.ApprovalTaskSummary",
+          "relation": "defines_concept",
+          "verification": "READ_CURRENT_SOURCE"
+        },
+        {
+          "path": "internal/store/approval_read.go",
+          "symbol": "store.ApprovalInboxItem",
+          "relation": "defines_concept",
+          "verification": "READ_CURRENT_SOURCE"
+        }
+      ],
+      "compatibility": {
+        "rename_existing_identifiers": false,
+        "preserved_identifiers": [],
+        "contextual_aliases": []
+      },
+      "related_concepts": [
+        "T09",
+        "T13",
+        "T27"
+      ]
+    },
+    {
+      "id": "T11",
+      "slug": "term-t11",
+      "user_term": "审查发现",
+      "system_term": "store.Finding / web.Finding",
+      "definition": "规则或模型审查产生的具体发现，保留来源、引用和核验信息供人工处理。",
+      "boundaries": [
+        "发现不天然等于已确认风险。",
+        "发现的来源证据与后来人工处理意见分别保存。"
+      ],
+      "misuse_examples": [
+        {
+          "incorrect": "模型返回疑点后直接标注‘风险已确认’。",
+          "why_incorrect": "模型建议不能替代人工决定或确定性核验。",
+          "preferred": "显示发现与待核实状态，由具备权限的人作出处理。"
+        }
+      ],
+      "implementation": {
+        "status": "CODE_ANCHORED_NOT_RUNTIME_VERIFIED",
+        "note": "Finding 类型及前端映射可定位；本轮未运行规则或模型。",
+        "assessment": "SOURCE_READ_ONLY",
+        "application_test_status": "NOT_RUN"
+      },
+      "ui_scope": {
+        "business": [
+          "审查发现列表",
+          "风险说明",
+          "原文引用入口"
+        ],
+        "engineering": [
+          "Finding",
+          "finding_id"
+        ],
+        "avoid": [
+          "作为合同审批通过/退回决定"
+        ]
+      },
+      "code_anchors": [
+        {
+          "path": "internal/store/state.go",
+          "symbol": "store.Finding",
+          "relation": "defines_concept",
+          "verification": "READ_CURRENT_SOURCE"
+        },
+        {
+          "path": "web/src/api/types.ts",
+          "symbol": "web.Finding",
+          "relation": "defines_concept",
+          "verification": "READ_CURRENT_SOURCE"
+        }
+      ],
+      "compatibility": {
+        "rename_existing_identifiers": false,
+        "preserved_identifiers": [
+          "Finding",
+          "finding_id"
+        ],
+        "contextual_aliases": []
+      },
+      "related_concepts": [
+        "T12",
+        "T22"
+      ]
+    },
+    {
+      "id": "T12",
+      "slug": "term-t12",
+      "user_term": "发现处理意见",
+      "system_term": "store.Decision / web.HumanDecision",
+      "definition": "人工对特定审查发现作出的确认、误报、证据不足或接受残余风险等处置记录。",
+      "boundaries": [
+        "旧 Decision 字段和接口保持原义。",
+        "发现处理意见不是部门会签批准，不产生签订合同的授权。"
+      ],
+      "misuse_examples": [
+        {
+          "incorrect": "用户点击 confirm_risk 后自动推进部门审批节点。",
+          "why_incorrect": "对审查发现的处置与会签决定是两个业务行为。",
+          "preferred": "仅更新发现处理轨迹；会签需独立审批命令。"
+        }
+      ],
+      "implementation": {
+        "status": "CODE_ANCHORED_NOT_RUNTIME_VERIFIED",
+        "note": "Decision 与 Decide 方法可定位，动作映射可读；未执行本轮产品验证。",
+        "assessment": "SOURCE_READ_ONLY",
+        "application_test_status": "NOT_RUN"
+      },
+      "ui_scope": {
+        "business": [
+          "审查发现处理",
+          "人工判断历史"
+        ],
+        "engineering": [
+          "store.Decision",
+          "Decide",
+          "HumanDecision"
+        ],
+        "avoid": [
+          "会签通过按钮的后端对象"
+        ]
+      },
+      "code_anchors": [
+        {
+          "path": "internal/store/state.go",
+          "symbol": "store.Decision",
+          "relation": "defines_concept",
+          "verification": "READ_CURRENT_SOURCE"
+        },
+        {
+          "path": "internal/store/reviews.go",
+          "symbol": "store.Decide",
+          "relation": "defines_concept",
+          "verification": "READ_CURRENT_SOURCE"
+        },
+        {
+          "path": "web/src/api/types.ts",
+          "symbol": "web.HumanDecision",
+          "relation": "defines_concept",
+          "verification": "READ_CURRENT_SOURCE"
+        }
+      ],
+      "compatibility": {
+        "rename_existing_identifiers": false,
+        "preserved_identifiers": [
+          "Decision",
+          "HumanDecision",
+          "confirm_risk",
+          "false_positive",
+          "insufficient_evidence",
+          "accept_residual"
+        ],
+        "contextual_aliases": []
+      },
+      "related_concepts": [
+        "T11",
+        "T13"
+      ]
+    },
+    {
+      "id": "T13",
+      "slug": "term-t13",
+      "user_term": "会签决定",
+      "system_term": "ApprovalDecision / approval decision history",
+      "definition": "当前授权审批人对特定审批待办作出的同意、退回等业务决定。",
+      "boundaries": [
+        "与 store.Decision 的发现处置语义分开。",
+        "签名图片或模型建议不能替代真实审批身份、内容版本和决定记录。"
+      ],
+      "misuse_examples": [
+        {
+          "incorrect": "复用 finding 的 Decision 表记录各部门通过，并把原意见覆盖掉。",
+          "why_incorrect": "会破坏既有发现处置历史和业务边界。",
+          "preferred": "定义独立的审批决定契约，保存任务、轮次和审阅版本身份。"
+        }
+      ],
+      "implementation": {
+        "status": "CODE_ANCHORED_NOT_RUNTIME_VERIFIED",
+        "note": "当前仓库已有会签轮次、审批待办和追加决定历史的类型、读写代码及迁移；本次未运行会签流程。",
+        "assessment": "SOURCE_READ_ONLY",
+        "application_test_status": "NOT_RUN"
+      },
+      "ui_scope": {
+        "business": [
+          "拟实现的审批操作",
+          "拟实现的会签历史决定"
+        ],
+        "engineering": [
+          "未来审批决定契约；不得重命名既有 Decision"
+        ],
+        "avoid": [
+          "自动模型判断",
+          "一般发现处理"
+        ]
+      },
+      "code_anchors": [
+        {
+          "path": "internal/store/approval_read.go",
+          "symbol": "store.ApprovalReadDecision",
+          "relation": "defines_concept",
+          "verification": "READ_CURRENT_SOURCE"
+        },
+        {
+          "path": "internal/store/contract_approval_decision.go",
+          "symbol": "store.ApprovalDecisionResult",
+          "relation": "defines_concept",
+          "verification": "READ_CURRENT_SOURCE"
+        }
+      ],
+      "compatibility": {
+        "rename_existing_identifiers": false,
+        "preserved_identifiers": [
+          "Decision",
+          "FindingID",
+          "RunID",
+          "CaseID",
+          "Action"
+        ],
+        "contextual_aliases": []
+      },
+      "related_concepts": [
+        "T09",
+        "T10",
+        "T12"
+      ]
+    },
+    {
+      "id": "T14",
+      "slug": "term-t14",
+      "user_term": "规则包版本",
+      "system_term": "RulePackVersion",
+      "definition": "一组受治理规则及其精确版本身份，用于确定审查采用哪些规则和参数。",
+      "boundaries": [
+        "规则说明网页不是可执行规则包。",
+        "后续发布规则不能改写旧执行冻结的规则依据。"
+      ],
+      "misuse_examples": [
+        {
+          "incorrect": "用当前最新规则结果解释历史审查，而不显示原规则版本。",
+          "why_incorrect": "审查依据发生变化后历史结论不可直接替换。",
+          "preferred": "显示本次尝试使用的规则包及版本。"
+        }
+      ],
+      "implementation": {
+        "status": "CODE_ANCHORED_NOT_RUNTIME_VERIFIED",
+        "note": "RulePackVersion 类型及尝试中的冻结引用可定位；未运行规则发布。",
+        "assessment": "SOURCE_READ_ONLY",
+        "application_test_status": "NOT_RUN"
+      },
+      "ui_scope": {
+        "business": [
+          "审查依据",
+          "规则管理发布与历史"
+        ],
+        "engineering": [
+          "RulePackVersion",
+          "规则包 ID、版本和冻结摘要"
+        ],
+        "avoid": [
+          "把文档版本号作为规则包版本"
+        ]
+      },
+      "code_anchors": [
+        {
+          "path": "internal/store/governance_types.go",
+          "symbol": "store.RulePackVersion",
+          "relation": "defines_concept",
+          "verification": "READ_CURRENT_SOURCE"
+        },
+        {
+          "path": "internal/store/state.go",
+          "symbol": "store.Attempt.RulePackPointerRevision",
+          "relation": "references_concept",
+          "verification": "READ_CURRENT_SOURCE"
+        }
+      ],
+      "compatibility": {
+        "rename_existing_identifiers": false,
+        "preserved_identifiers": [
+          "RulePackVersion",
+          "RulePackID",
+          "RulePackPointerRevision"
+        ],
+        "contextual_aliases": []
+      },
+      "related_concepts": [
+        "T08",
+        "T15"
+      ]
+    },
+    {
+      "id": "T15",
+      "slug": "term-t15",
+      "user_term": "知识版本",
+      "system_term": "GovernedKnowledgeVersion",
+      "definition": "制度、指引、例外或经验的受治理内容版本，附带当前治理状态和适用范围。",
+      "boundaries": [
+        "草稿或待审知识不能统称‘已发布知识’。",
+        "检索命中不等于该案件有权使用，也不证明条文当前有效。"
+      ],
+      "misuse_examples": [
+        {
+          "incorrect": "把所有 GovernedKnowledgeVersion 记录显示为‘已发布制度’。",
+          "why_incorrect": "类型同时承载状态，不能忽略发布和适用性。",
+          "preferred": "显示‘知识版本’并单列实际状态；仅已发布且适用时显示可用。"
+        }
+      ],
+      "implementation": {
+        "status": "CODE_ANCHORED_NOT_RUNTIME_VERIFIED",
+        "note": "治理知识版本及选择快照类型可定位；未运行审批或发布。",
+        "assessment": "SOURCE_READ_ONLY",
+        "application_test_status": "NOT_RUN"
+      },
+      "ui_scope": {
+        "business": [
+          "知识管理",
+          "审查依据详情",
+          "经验审阅"
+        ],
+        "engineering": [
+          "GovernedKnowledgeVersion",
+          "KnowledgeRef",
+          "status / active / pointer_revision"
+        ],
+        "avoid": [
+          "将全文检索命中标为法律审核通过"
+        ]
+      },
+      "code_anchors": [
+        {
+          "path": "internal/store/knowledge_governance.go",
+          "symbol": "store.GovernedKnowledgeVersion",
+          "relation": "defines_concept",
+          "verification": "READ_CURRENT_SOURCE"
+        },
+        {
+          "path": "internal/store/knowledge_governance.go",
+          "symbol": "store.ReviewKnowledgeSnapshot",
+          "relation": "references_concept",
+          "verification": "READ_CURRENT_SOURCE"
+        }
+      ],
+      "compatibility": {
+        "rename_existing_identifiers": false,
+        "preserved_identifiers": [
+          "GovernedKnowledgeVersion",
+          "KnowledgeRef",
+          "status",
+          "active"
+        ],
+        "contextual_aliases": []
+      },
+      "related_concepts": [
+        "T14",
+        "T23"
+      ]
+    },
+    {
+      "id": "T16",
+      "slug": "term-t16",
+      "user_term": "合同相关方",
+      "system_term": "Subject / SubjectVersion",
+      "definition": "采购方、供应方等业务主体的身份及其版本，可与案件中的具体角色关联。",
+      "boundaries": [
+        "主体不是登录账号，也不是服务对象。",
+        "更新主体主数据不应静默改写旧合同付款或审查依据。"
+      ],
+      "misuse_examples": [
+        {
+          "incorrect": "把 actor_id 当供应商的主体 ID。",
+          "why_incorrect": "操作者身份与合同当事方身份不同。",
+          "preferred": "分别使用当前操作者和所选合同相关方。"
+        }
+      ],
+      "implementation": {
+        "status": "CODE_ANCHORED_NOT_RUNTIME_VERIFIED",
+        "note": "主体及案件角色版本类型可定位；未运行主体核验。",
+        "assessment": "SOURCE_READ_ONLY",
+        "application_test_status": "NOT_RUN"
+      },
+      "ui_scope": {
+        "business": [
+          "相关方选择",
+          "主体档案",
+          "主体变更复核"
+        ],
+        "engineering": [
+          "Subject / SubjectVersion",
+          "CaseSubjectRole"
+        ],
+        "avoid": [
+          "账户管理列表的用户标签"
+        ]
+      },
+      "code_anchors": [
+        {
+          "path": "internal/store/subjects.go",
+          "symbol": "store.Subject",
+          "relation": "defines_concept",
+          "verification": "READ_CURRENT_SOURCE"
+        },
+        {
+          "path": "internal/store/subjects.go",
+          "symbol": "store.SubjectVersion",
+          "relation": "defines_concept",
+          "verification": "READ_CURRENT_SOURCE"
+        }
+      ],
+      "compatibility": {
+        "rename_existing_identifiers": false,
+        "preserved_identifiers": [
+          "Subject",
+          "SubjectVersion",
+          "subject_id"
+        ],
+        "contextual_aliases": []
+      },
+      "related_concepts": [
+        "T17",
+        "T24",
+        "T25"
+      ]
+    },
+    {
+      "id": "T17",
+      "slug": "term-t17",
+      "user_term": "服务对象",
+      "system_term": "ServiceObjectHead / ServiceObjectVersion",
+      "definition": "合同约定或跨系统核验所指的专线、站点等具体对象及其版本和关联。",
+      "boundaries": [
+        "服务对象与供应商主体不同。",
+        "对象映射必须有可信来源和确认，不能仅按名称相似自动认定。"
+      ],
+      "misuse_examples": [
+        {
+          "incorrect": "把供应商名称当作专线对象的唯一标识。",
+          "why_incorrect": "供应商可对应多个服务对象。",
+          "preferred": "单独选择服务对象，并查看确认后的合同关联。"
+        }
+      ],
+      "implementation": {
+        "status": "CODE_ANCHORED_NOT_RUNTIME_VERIFIED",
+        "note": "服务对象及关联类型可定位；未运行真实外部映射。",
+        "assessment": "SOURCE_READ_ONLY",
+        "application_test_status": "NOT_RUN"
+      },
+      "ui_scope": {
+        "business": [
+          "服务对象详情",
+          "跨系统核验映射",
+          "审查对象上下文"
+        ],
+        "engineering": [
+          "ServiceObjectHead",
+          "ServiceObjectVersion",
+          "ServiceObjectContractAssociation"
+        ],
+        "avoid": [
+          "替代 Subject 或 Contract 的身份"
+        ]
+      },
+      "code_anchors": [
+        {
+          "path": "internal/store/service_objects.go",
+          "symbol": "store.ServiceObjectHead",
+          "relation": "defines_concept",
+          "verification": "READ_CURRENT_SOURCE"
+        },
+        {
+          "path": "internal/store/service_objects.go",
+          "symbol": "store.ServiceObjectVersion",
+          "relation": "defines_concept",
+          "verification": "READ_CURRENT_SOURCE"
+        }
+      ],
+      "compatibility": {
+        "rename_existing_identifiers": false,
+        "preserved_identifiers": [
+          "ServiceObjectHead",
+          "ServiceObjectVersion",
+          "ServiceObjectContractAssociation"
+        ],
+        "contextual_aliases": []
+      },
+      "related_concepts": [
+        "T16",
+        "T23"
+      ]
+    },
+    {
+      "id": "T18",
+      "slug": "term-t18",
+      "user_term": "补充材料请求",
+      "system_term": "EvidenceRequest",
+      "definition": "针对已知待补充事项向办理人提出的有来源、状态和历史的补件要求。",
+      "boundaries": [
+        "提出请求与接收材料分开。",
+        "补件请求完成应有后续核验依据，不由文件上传成功直接推导。"
+      ],
+      "misuse_examples": [
+        {
+          "incorrect": "上传一个附件后把所有补件请求自动标成已核验。",
+          "why_incorrect": "接收事实不能证明各项缺证已经解决。",
+          "preferred": "按请求关联接收回执，并按后续审查结果完成核验。"
+        }
+      ],
+      "implementation": {
+        "status": "CODE_ANCHORED_NOT_RUNTIME_VERIFIED",
+        "note": "请求类型与创建、核验方法可定位；本轮未运行补件闭环。",
+        "assessment": "SOURCE_READ_ONLY",
+        "application_test_status": "NOT_RUN"
+      },
+      "ui_scope": {
+        "business": [
+          "补件清单",
+          "补件请求详情",
+          "责任与期限提醒"
+        ],
+        "engineering": [
+          "EvidenceRequest",
+          "CreateEvidenceRequest",
+          "VerifyEvidenceRequest"
+        ],
+        "avoid": [
+          "作为一般上传按钮的别名"
+        ]
+      },
+      "code_anchors": [
+        {
+          "path": "internal/store/evidence_requests.go",
+          "symbol": "store.EvidenceRequest",
+          "relation": "defines_concept",
+          "verification": "READ_CURRENT_SOURCE"
+        },
+        {
+          "path": "internal/store/evidence_requests.go",
+          "symbol": "store.CreateEvidenceRequest",
+          "relation": "defines_concept",
+          "verification": "READ_CURRENT_SOURCE"
+        }
+      ],
+      "compatibility": {
+        "rename_existing_identifiers": false,
+        "preserved_identifiers": [
+          "EvidenceRequest",
+          "request_id"
+        ],
+        "contextual_aliases": []
+      },
+      "related_concepts": [
+        "T19",
+        "T08"
+      ]
+    },
+    {
+      "id": "T19",
+      "slug": "term-t19",
+      "user_term": "材料接收回执",
+      "system_term": "EvidenceReceipt",
+      "definition": "确认某个补件请求收到哪些材料及相关来源的记录。",
+      "boundaries": [
+        "收到不等于内容合格或补件核验通过。",
+        "与银行支付回执不是同一种记录。"
+      ],
+      "misuse_examples": [
+        {
+          "incorrect": "将 evidence receipt 翻译为‘付款成功回执’。",
+          "why_incorrect": "两者所属业务、来源和金额含义不同。",
+          "preferred": "使用‘材料接收回执’，实际支付另用 PaymentReceipt 概念。"
+        }
+      ],
+      "implementation": {
+        "status": "CODE_ANCHORED_NOT_RUNTIME_VERIFIED",
+        "note": "接收回执类型和提交方法可定位；本轮未运行接收。",
+        "assessment": "SOURCE_READ_ONLY",
+        "application_test_status": "NOT_RUN"
+      },
+      "ui_scope": {
+        "business": [
+          "补件接收记录",
+          "材料关联与提交结果"
+        ],
+        "engineering": [
+          "EvidenceReceipt",
+          "SubmitEvidenceReceipt"
+        ],
+        "avoid": [
+          "支付结果列"
+        ]
+      },
+      "code_anchors": [
+        {
+          "path": "internal/store/evidence_requests.go",
+          "symbol": "store.EvidenceReceipt",
+          "relation": "defines_concept",
+          "verification": "READ_CURRENT_SOURCE"
+        },
+        {
+          "path": "internal/store/evidence_requests.go",
+          "symbol": "store.SubmitEvidenceReceipt",
+          "relation": "defines_concept",
+          "verification": "READ_CURRENT_SOURCE"
+        }
+      ],
+      "compatibility": {
+        "rename_existing_identifiers": false,
+        "preserved_identifiers": [
+          "EvidenceReceipt",
+          "receipt_id"
+        ],
+        "contextual_aliases": []
+      },
+      "related_concepts": [
+        "T18",
+        "T30"
+      ]
+    },
+    {
+      "id": "T20",
+      "slug": "term-t20",
+      "user_term": "整改事项",
+      "system_term": "Remediation",
+      "definition": "对问题的整改安排、提交与复核过程，保留原问题和后续处理关系。",
+      "boundaries": [
+        "整改完成与原发现消失不是一回事。",
+        "后续复核应核对明确来源，不能仅凭最近一次执行无问题就关闭全部整改。"
+      ],
+      "misuse_examples": [
+        {
+          "incorrect": "重新审查后删除原风险和整改历史。",
+          "why_incorrect": "会丢失发现、措施和复核之间的证据链。",
+          "preferred": "保留原记录，用后续复核结果说明是否完成。"
+        }
+      ],
+      "implementation": {
+        "status": "CODE_ANCHORED_NOT_RUNTIME_VERIFIED",
+        "note": "整改及复核输入类型可定位；未运行本轮整改复审。",
+        "assessment": "SOURCE_READ_ONLY",
+        "application_test_status": "NOT_RUN"
+      },
+      "ui_scope": {
+        "business": [
+          "整改清单",
+          "整改提交",
+          "整改复核"
+        ],
+        "engineering": [
+          "Remediation",
+          "RemediationVerifyInput"
+        ],
+        "avoid": [
+          "把整改状态作为合同会签状态"
+        ]
+      },
+      "code_anchors": [
+        {
+          "path": "internal/store/business_types.go",
+          "symbol": "store.Remediation",
+          "relation": "defines_concept",
+          "verification": "READ_CURRENT_SOURCE"
+        },
+        {
+          "path": "internal/store/business_types.go",
+          "symbol": "store.RemediationVerifyInput",
+          "relation": "defines_concept",
+          "verification": "READ_CURRENT_SOURCE"
+        }
+      ],
+      "compatibility": {
+        "rename_existing_identifiers": false,
+        "preserved_identifiers": [
+          "Remediation",
+          "RemediationVerifyInput"
+        ],
+        "contextual_aliases": []
+      },
+      "related_concepts": [
+        "T11",
+        "T12",
+        "T21"
+      ]
+    },
+    {
+      "id": "T21",
+      "slug": "term-t21",
+      "user_term": "审查报告",
+      "system_term": "ReportRecord",
+      "definition": "根据指定审查及相关人工处理形成、可以追溯来源的报告记录。",
+      "boundaries": [
+        "报告不是当前页面所有最新数据的无身份拼接。",
+        "有报告文件不表示所有真实外部依赖已完成验收。"
+      ],
+      "misuse_examples": [
+        {
+          "incorrect": "材料更新后原报告字节随查询自动变化。",
+          "why_incorrect": "历史报告需要保持当时输出和来源关系。",
+          "preferred": "生成新的报告记录并保留原报告。"
+        }
+      ],
+      "implementation": {
+        "status": "CODE_ANCHORED_NOT_RUNTIME_VERIFIED",
+        "note": "ReportRecord 及冻结报告类型可定位；本轮未生成或下载报告。",
+        "assessment": "SOURCE_READ_ONLY",
+        "application_test_status": "NOT_RUN"
+      },
+      "ui_scope": {
+        "business": [
+          "报告列表",
+          "报告预览与下载",
+          "整改复核输出"
+        ],
+        "engineering": [
+          "ReportRecord",
+          "冻结报告与证据包接口"
+        ],
+        "avoid": [
+          "直接称为合同批准书"
+        ]
+      },
+      "code_anchors": [
+        {
+          "path": "internal/store/business_types.go",
+          "symbol": "store.ReportRecord",
+          "relation": "defines_concept",
+          "verification": "READ_CURRENT_SOURCE"
+        },
+        {
+          "path": "internal/store/business_types.go",
+          "symbol": "store.frozenReport",
+          "relation": "persistence_context",
+          "verification": "READ_CURRENT_SOURCE"
+        }
+      ],
+      "compatibility": {
+        "rename_existing_identifiers": false,
+        "preserved_identifiers": [
+          "ReportRecord",
+          "report_id"
+        ],
+        "contextual_aliases": []
+      },
+      "related_concepts": [
+        "T08",
+        "T12",
+        "T22"
+      ]
+    },
+    {
+      "id": "T22",
+      "slug": "term-t22",
+      "user_term": "原文引用",
+      "system_term": "Anchor / contractCitation",
+      "definition": "指向指定执行尝试所用冻结原文的引用，包含材料、解析、文本位置和核验所需身份。",
+      "boundaries": [
+        "任意搜索摘录不等于已核验引用。",
+        "引用定位成功不等于法律结论或付款条件已成立。"
+      ],
+      "misuse_examples": [
+        {
+          "incorrect": "用后来重解析的文本偏移定位旧审查引用。",
+          "why_incorrect": "旧偏移可能落在不同句子或遗漏否定词。",
+          "preferred": "按所选尝试的原文、解析摘要和位置读取并核对引用。"
+        }
+      ],
+      "implementation": {
+        "status": "CODE_ANCHORED_NOT_RUNTIME_VERIFIED",
+        "note": "冻结引用 HTTP 类型与 Anchor 可定位；本轮未执行原文核验。",
+        "assessment": "SOURCE_READ_ONLY",
+        "application_test_status": "NOT_RUN"
+      },
+      "ui_scope": {
+        "business": [
+          "审查发现的查看原文",
+          "报告引用",
+          "材料对照"
+        ],
+        "engineering": [
+          "contractCitation",
+          "Anchor",
+          "attempt_id / parsed_document_id / start / end"
+        ],
+        "avoid": [
+          "用向量排名显示引用可信度"
+        ]
+      },
+      "code_anchors": [
+        {
+          "path": "internal/httpapi/contract_citations.go",
+          "symbol": "httpapi.contractCitation",
+          "relation": "defines_concept",
+          "verification": "READ_CURRENT_SOURCE"
+        },
+        {
+          "path": "internal/store/state.go",
+          "symbol": "store.Anchor",
+          "relation": "defines_concept",
+          "verification": "READ_CURRENT_SOURCE"
+        }
+      ],
+      "compatibility": {
+        "rename_existing_identifiers": false,
+        "preserved_identifiers": [
+          "Anchor",
+          "contractCitation",
+          "parsed_document_id",
+          "start",
+          "end"
+        ],
+        "contextual_aliases": []
+      },
+      "related_concepts": [
+        "T06",
+        "T08",
+        "T11"
+      ]
+    },
+    {
+      "id": "T23",
+      "slug": "term-t23",
+      "user_term": "业务时间",
+      "system_term": "BusinessAt / business_at",
+      "definition": "用于确定本次业务与规则适用性的时点，在审查知识选择上下文中保存。",
+      "boundaries": [
+        "不是页面加载时间、数据库创建时间或任意浏览器本地时区。",
+        "更改业务时间需要重新核对适用依据，不修改旧执行的冻结时点。"
+      ],
+      "misuse_examples": [
+        {
+          "incorrect": "用户换时区后把原业务日期自动当成另一时点提交。",
+          "why_incorrect": "显示时区与业务判断时点不能悄然变化。",
+          "preferred": "按明确时区录入和解释，并保留冻结 business_at。"
+        }
+      ],
+      "implementation": {
+        "status": "CODE_ANCHORED_NOT_RUNTIME_VERIFIED",
+        "note": "BusinessAt 字段和 StartReviewAt 方法可定位；本轮未运行时区边界验证。",
+        "assessment": "SOURCE_READ_ONLY",
+        "application_test_status": "NOT_RUN"
+      },
+      "ui_scope": {
+        "business": [
+          "审查准备清单",
+          "规则适用性说明"
+        ],
+        "engineering": [
+          "ReviewKnowledgeSnapshot.BusinessAt",
+          "StartReviewAt"
+        ],
+        "avoid": [
+          "用 created_at 替代业务适用时点"
+        ]
+      },
+      "code_anchors": [
+        {
+          "path": "internal/store/knowledge_governance.go",
+          "symbol": "store.ReviewKnowledgeSnapshot.BusinessAt",
+          "relation": "defines_concept",
+          "verification": "READ_CURRENT_SOURCE"
+        },
+        {
+          "path": "internal/store/execution.go",
+          "symbol": "store.StartReviewAt",
+          "relation": "defines_concept",
+          "verification": "READ_CURRENT_SOURCE"
+        }
+      ],
+      "compatibility": {
+        "rename_existing_identifiers": false,
+        "preserved_identifiers": [
+          "BusinessAt",
+          "business_at"
+        ],
+        "contextual_aliases": []
+      },
+      "related_concepts": [
+        "T08",
+        "T14",
+        "T15"
+      ]
+    },
+    {
+      "id": "T24",
+      "slug": "term-t24",
+      "user_term": "租户",
+      "system_term": "Tenant / accounts.User.TenantID",
+      "definition": "服务端可信身份绑定的数据隔离范围，当前租户标识为不透明字符串。",
+      "boundaries": [
+        "租户不等于部门，也不保证对应一个法人或一个物理部署。",
+        "不能把 tenant_id 强制改为 UUID 或接受普通请求任意自报租户。",
+        "‘租户’在管理员、工程和多租户选择场景是准确用词，不作全局禁词。"
+      ],
+      "misuse_examples": [
+        {
+          "incorrect": "为让界面更易懂，把所有 tenant_id 和租户权限改成部门 ID。",
+          "why_incorrect": "这会合并不同隔离维度并破坏兼容。",
+          "preferred": "业务页面按需要说明当前租户；仅在关系已经明确时使用工作区展示名，后端标识不变。"
+        }
+      ],
+      "implementation": {
+        "status": "CODE_ANCHORED_NOT_RUNTIME_VERIFIED",
+        "note": "accounts.User.TenantID 和合同表 text tenant_id 可定位；本轮未运行隔离测试。",
+        "assessment": "SOURCE_READ_ONLY",
+        "application_test_status": "NOT_RUN"
+      },
+      "ui_scope": {
+        "business": [
+          "有实际多租户选择的身份区域",
+          "需要解释隔离范围的错误提示"
+        ],
+        "engineering": [
+          "身份目录",
+          "租户预算",
+          "服务端 TenantID 与 RLS"
+        ],
+        "avoid": [
+          "无依据把租户、组织、公司三个词互换"
+        ]
+      },
+      "code_anchors": [
+        {
+          "path": "internal/accounts/accounts.go",
+          "symbol": "accounts.User.TenantID",
+          "relation": "defines_concept",
+          "verification": "READ_CURRENT_SOURCE"
+        },
+        {
+          "path": "internal/store/migrations/0018_contract_aggregate.sql",
+          "symbol": "clm_contracts.tenant_id",
+          "relation": "persistence_context",
+          "verification": "READ_CURRENT_SOURCE"
+        }
+      ],
+      "compatibility": {
+        "rename_existing_identifiers": false,
+        "preserved_identifiers": [
+          "tenant_id",
+          "TenantID",
+          "local-demo"
+        ],
+        "contextual_aliases": []
+      },
+      "related_concepts": [
+        "T25",
+        "T26"
+      ]
+    },
+    {
+      "id": "T25",
+      "slug": "term-t25",
+      "user_term": "组织/部门",
+      "system_term": "Organization / accounts.User.OrgID",
+      "definition": "租户内用于身份和业务数据范围的组织标识；显示名称可以采用机构的部门名称。",
+      "boundaries": [
+        "组织与租户是两个维度。",
+        "界面筛选不构成服务端授权。"
+      ],
+      "misuse_examples": [
+        {
+          "incorrect": "把列表按部门过滤后就认为后端无需重验 org_id。",
+          "why_incorrect": "其他路径仍可能访问不该读取的数据。",
+          "preferred": "界面展示所属组织，服务端每次执行真实数据范围校验。"
+        }
+      ],
+      "implementation": {
+        "status": "CODE_ANCHORED_NOT_RUNTIME_VERIFIED",
+        "note": "OrgID 和 Case.OwnerOrgID 字段可定位；本轮未运行跨组织请求。",
+        "assessment": "SOURCE_READ_ONLY",
+        "application_test_status": "NOT_RUN"
+      },
+      "ui_scope": {
+        "business": [
+          "所属部门",
+          "案件归属与角色范围"
+        ],
+        "engineering": [
+          "accounts.User.OrgID",
+          "Case.OwnerOrgID"
+        ],
+        "avoid": [
+          "代替 tenant_id",
+          "把过滤条件当权限结论"
+        ]
+      },
+      "code_anchors": [
+        {
+          "path": "internal/accounts/accounts.go",
+          "symbol": "accounts.User.OrgID",
+          "relation": "defines_concept",
+          "verification": "READ_CURRENT_SOURCE"
+        },
+        {
+          "path": "internal/store/state.go",
+          "symbol": "store.Case.OwnerOrgID",
+          "relation": "defines_concept",
+          "verification": "READ_CURRENT_SOURCE"
+        }
+      ],
+      "compatibility": {
+        "rename_existing_identifiers": false,
+        "preserved_identifiers": [
+          "org_id",
+          "OrgID",
+          "owner_org_id"
+        ],
+        "contextual_aliases": []
+      },
+      "related_concepts": [
+        "T01",
+        "T24"
+      ]
+    },
+    {
+      "id": "T26",
+      "slug": "term-t26",
+      "user_term": "重复操作识别",
+      "system_term": "IdempotencyKey / writeReceipt",
+      "definition": "按具体命令契约识别同一主体的重复请求，并核对请求内容与已有回执。",
+      "boundaries": [
+        "同键同内容可以复用原回执；同键不同内容不能当正常重试。",
+        "各现有端点契约保持原样，不因为词表统一而全站强加同一字段或长度。"
+      ],
+      "misuse_examples": [
+        {
+          "incorrect": "重试时重新生成请求键，然后把重复写入称为幂等成功。",
+          "why_incorrect": "新键可能表示另一次业务命令，无法靠旧回执去重。",
+          "preferred": "保留原命令身份与请求内容，按服务端回执恢复结果。"
+        }
+      ],
+      "implementation": {
+        "status": "CODE_ANCHORED_NOT_RUNTIME_VERIFIED",
+        "note": "既有写回执、CLM 键校验与内容摘要字段可定位；本轮未做重放验证。",
+        "assessment": "SOURCE_READ_ONLY",
+        "application_test_status": "NOT_RUN"
+      },
+      "ui_scope": {
+        "business": [
+          "重复提交后的恢复提示",
+          "网络失败后继续办理"
+        ],
+        "engineering": [
+          "Idempotency-Key",
+          "RequestDigest",
+          "writeReceipt / clmWriteReceipt"
+        ],
+        "avoid": [
+          "普通用户表单中要求手填内部幂等键"
+        ]
+      },
+      "code_anchors": [
+        {
+          "path": "internal/store/write_idempotency.go",
+          "symbol": "store.writeReceipt",
+          "relation": "defines_concept",
+          "verification": "READ_CURRENT_SOURCE"
+        },
+        {
+          "path": "internal/store/contract_draft.go",
+          "symbol": "store.clmWriteReceipt",
+          "relation": "defines_concept",
+          "verification": "READ_CURRENT_SOURCE"
+        }
+      ],
+      "compatibility": {
+        "rename_existing_identifiers": false,
+        "preserved_identifiers": [
+          "Idempotency-Key",
+          "RequestDigest",
+          "writeReceipt",
+          "clmWriteReceipt"
+        ],
+        "contextual_aliases": []
+      },
+      "related_concepts": [
+        "T24",
+        "T27"
+      ]
+    },
+    {
+      "id": "T27",
+      "slug": "term-t27",
+      "user_term": "执行租约与接管代次",
+      "system_term": "JobClaim / Worker Lease / Generation",
+      "definition": "PostgreSQL 任务领取和接管时用于确认当前 Worker 有效身份的机制。",
+      "boundaries": [
+        "generation 不是审查次数、会签轮次或合同版本号。",
+        "接管同一任务可改变代次，但不自动建立新的 Run 或业务会签。"
+      ],
+      "misuse_examples": [
+        {
+          "incorrect": "Worker generation 从 1 到 2 后显示‘合同第二轮审批’。",
+          "why_incorrect": "后台失效隔离状态与业务审批无关。",
+          "preferred": "工程诊断显示‘接管代次’，业务界面只显示可理解的处理或恢复状态。"
+        }
+      ],
+      "implementation": {
+        "status": "CODE_ANCHORED_NOT_RUNTIME_VERIFIED",
+        "note": "Job、JobClaim 的 run_id、attempt_id 和 generation 同时可定位；本轮未运行故障接管。",
+        "assessment": "SOURCE_READ_ONLY",
+        "application_test_status": "NOT_RUN"
+      },
+      "ui_scope": {
+        "business": [
+          "需要时展示正在恢复处理，不展示代次数字"
+        ],
+        "engineering": [
+          "JobClaim",
+          "worker_jobs",
+          "generation / lease_until"
+        ],
+        "avoid": [
+          "会签进度条",
+          "合同版本比较"
+        ]
+      },
+      "code_anchors": [
+        {
+          "path": "internal/store/queue_types.go",
+          "symbol": "store.JobClaim",
+          "relation": "defines_concept",
+          "verification": "READ_CURRENT_SOURCE"
+        },
+        {
+          "path": "internal/store/queue_types.go",
+          "symbol": "store.Job",
+          "relation": "defines_concept",
+          "verification": "READ_CURRENT_SOURCE"
+        }
+      ],
+      "compatibility": {
+        "rename_existing_identifiers": false,
+        "preserved_identifiers": [
+          "Job",
+          "JobClaim",
+          "generation",
+          "lease_until"
+        ],
+        "contextual_aliases": []
+      },
+      "related_concepts": [
+        "T07",
+        "T08",
+        "T10"
+      ]
+    },
+    {
+      "id": "T28",
+      "slug": "term-t28",
+      "user_term": "业务事件与通知投递",
+      "system_term": "Core Domain Event / Outbox Delivery",
+      "definition": "业务事务保存领域事件，再由投递记录跟踪通知的异步发送与重试。",
+      "boundaries": [
+        "Core 的合同领域事件与 Execution 的 job Outbox 具有不同所有权和用途。",
+        "通知发出或消息 ACK 不等于审批、支付或最终用户送达已成功。"
+      ],
+      "misuse_examples": [
+        {
+          "incorrect": "为复用执行 Outbox，给合同审批事件伪造一个 worker job。",
+          "why_incorrect": "会混淆服务角色、外键和业务事实。",
+          "preferred": "保留 Core 领域事件和投递记录的独立语义。"
+        }
+      ],
+      "implementation": {
+        "status": "FOUNDATION_ONLY_NOT_FULL_WORKFLOW",
+        "note": "Core 领域事件和投递表已有锚点；本轮不证明全部扫描、通知与多副本投递行为已实现。",
+        "assessment": "SOURCE_READ_ONLY",
+        "application_test_status": "NOT_RUN"
+      },
+      "ui_scope": {
+        "business": [
+          "必要时显示业务操作已保存、通知待发送"
+        ],
+        "engineering": [
+          "clm_business_events / clm_outbox_delivery",
+          "Execution OutboxRecord 作为对照"
+        ],
+        "avoid": [
+          "以通知状态推导合同业务状态"
+        ]
+      },
+      "code_anchors": [
+        {
+          "path": "internal/store/migrations/0018_contract_aggregate.sql",
+          "symbol": "clm_business_events",
+          "relation": "defines_concept",
+          "verification": "READ_CURRENT_SOURCE"
+        },
+        {
+          "path": "internal/store/migrations/0018_contract_aggregate.sql",
+          "symbol": "clm_outbox_delivery",
+          "relation": "defines_concept",
+          "verification": "READ_CURRENT_SOURCE"
+        },
+        {
+          "path": "internal/store/queue_types.go",
+          "symbol": "store.OutboxRecord",
+          "relation": "contrast_not_equivalent",
+          "verification": "READ_CURRENT_SOURCE"
+        }
+      ],
+      "compatibility": {
+        "rename_existing_identifiers": false,
+        "preserved_identifiers": [
+          "clm_business_events",
+          "clm_outbox_delivery",
+          "outbox_events",
+          "OutboxRecord"
+        ],
+        "contextual_aliases": []
+      },
+      "related_concepts": [
+        "T02",
+        "T27"
+      ]
+    },
+    {
+      "id": "T29",
+      "slug": "term-t29",
+      "user_term": "验收记录",
+      "system_term": "AcceptanceRecord（计划概念）",
+      "definition": "记录实际交付范围、验收结论、合格或不合格数量和依据的业务事实。",
+      "boundaries": [
+        "当前 DraftAcceptancePlan 是验收计划，不是实际验收记录。",
+        "预计交货时间不等于实际验收时间，部分合格不能代表全部验收。"
+      ],
+      "misuse_examples": [
+        {
+          "incorrect": "把验收计划的 planned_date 显示成‘已验收日期’并放行全部尾款。",
+          "why_incorrect": "计划未证明实际交付和合格结果。",
+          "preferred": "分别显示验收计划与实际验收；只按已确认范围判断后续条件。"
+        }
+      ],
+      "implementation": {
+        "status": "PLANNED_NOT_CODE_VERIFIED",
+        "note": "当前仅有验收/付款计划结构；计划不是实际验收或支付回执。本概念未定位到实际记录实现。",
+        "assessment": "SOURCE_READ_ONLY",
+        "application_test_status": "NOT_RUN"
+      },
+      "ui_scope": {
+        "business": [
+          "拟实现的实际验收详情",
+          "当前草稿只展示验收计划"
+        ],
+        "engineering": [
+          "未来 AcceptanceRecord；现有 DraftAcceptancePlan 仅作计划锚点"
+        ],
+        "avoid": [
+          "以计划字段声明验收成功"
+        ]
+      },
+      "code_anchors": [
+        {
+          "path": "internal/store/contract_draft_types.go",
+          "symbol": "store.DraftAcceptancePlan",
+          "relation": "related_plan_not_actual_record",
+          "verification": "READ_CURRENT_SOURCE"
+        }
+      ],
+      "compatibility": {
+        "rename_existing_identifiers": false,
+        "preserved_identifiers": [
+          "DraftAcceptancePlan",
+          "planned_date",
+          "Criteria"
+        ],
+        "contextual_aliases": []
+      },
+      "related_concepts": [
+        "T04",
+        "T30"
+      ]
+    },
+    {
+      "id": "T30",
+      "slug": "term-t30",
+      "user_term": "实际支付回执",
+      "system_term": "PaymentReceipt（计划概念）",
+      "definition": "来自可信来源、用于证明实际支付事实及其金额和关联的回执记录。",
+      "boundaries": [
+        "付款计划、付款条件满足和付款申请都不是实际支付。",
+        "预付款与尾款各有约定条件，不能用一种条件概括全部付款。"
+      ],
+      "misuse_examples": [
+        {
+          "incorrect": "DraftPaymentPlan 的 amount 有值，就显示银行已支付成功。",
+          "why_incorrect": "计划金额没有支付事实或可信回执。",
+          "preferred": "计划与实际回执分栏；未取得可信事实时保持未确认。"
+        }
+      ],
+      "implementation": {
+        "status": "PLANNED_NOT_CODE_VERIFIED",
+        "note": "当前仅有验收/付款计划结构；计划不是实际验收或支付回执。本概念未定位到实际记录实现。",
+        "assessment": "SOURCE_READ_ONLY",
+        "application_test_status": "NOT_RUN"
+      },
+      "ui_scope": {
+        "business": [
+          "拟实现的实际支付记录",
+          "当前草稿的付款计划明确标计划"
+        ],
+        "engineering": [
+          "未来 PaymentReceipt；现有 DraftPaymentPlan 和 PaymentCondition 仅作计划锚点"
+        ],
+        "avoid": [
+          "将本系统登记直接宣称银行完成支付"
+        ]
+      },
+      "code_anchors": [
+        {
+          "path": "internal/store/contract_draft_types.go",
+          "symbol": "store.DraftPaymentPlan",
+          "relation": "related_plan_not_actual_record",
+          "verification": "READ_CURRENT_SOURCE"
+        },
+        {
+          "path": "internal/store/contract_draft_types.go",
+          "symbol": "store.PaymentCondition",
+          "relation": "related_plan_not_actual_record",
+          "verification": "READ_CURRENT_SOURCE"
+        }
+      ],
+      "compatibility": {
+        "rename_existing_identifiers": false,
+        "preserved_identifiers": [
+          "DraftPaymentPlan",
+          "PaymentCondition",
+          "amount",
+          "is_advance"
+        ],
+        "contextual_aliases": []
+      },
+      "related_concepts": [
+        "T19",
+        "T29"
+      ]
+    },
+    {
+      "id": "T31",
+      "slug": "principal",
+      "user_term": "身份主体",
+      "system_term": "Principal / (issuer, subject)",
+      "definition": "能被可信身份来源稳定识别的主体；显示名变化不应被误当成主体变化。",
+      "boundaries": [
+        "Principal 是授权策略输入中的主体概念；它不等于浏览器自报的角色或租户。当前账户目录的 User 与 access.Principal 是不同类型。"
+      ],
+      "misuse_examples": [
+        {
+          "incorrect": "把用户显示名当成永久身份键。",
+          "why_incorrect": "显示名可变且不证明身份来源相同。",
+          "preferred": "以可信 issuer/subject 或系统既有 actor ID 表示身份，并按当前接口契约使用。"
+        }
+      ],
+      "implementation": {
+        "status": "FOUNDATION_ONLY_NOT_FULL_WORKFLOW",
+        "note": "accounts.User 与 access.Principal 类型可定位；access 包注释说明其尚未接入 legacy HTTP 应用。",
+        "assessment": "SOURCE_READ_ONLY",
+        "application_test_status": "NOT_RUN"
+      },
+      "ui_scope": {
+        "business": [
+          "身份主体"
+        ],
+        "engineering": [
+          "Principal / (issuer, subject)"
+        ],
+        "avoid": []
+      },
+      "code_anchors": [
+        {
+          "path": "internal/accounts/accounts.go",
+          "symbol": "accounts.User",
+          "relation": "contrast_not_equivalent",
+          "verification": "READ_CURRENT_SOURCE"
+        },
+        {
+          "path": "internal/access/policy.go",
+          "symbol": "access.Principal",
+          "relation": "defines_concept",
+          "verification": "READ_CURRENT_SOURCE"
+        }
+      ],
+      "compatibility": {
+        "rename_existing_identifiers": false,
+        "preserved_identifiers": [
+          "Principal"
+        ],
+        "contextual_aliases": []
+      },
+      "related_concepts": [
+        "T24"
+      ]
+    },
+    {
+      "id": "T32",
+      "slug": "tenant-membership",
+      "user_term": "租户成员资格",
+      "system_term": "TenantMembership / membership (proposed)",
+      "definition": "某身份在特定租户中的有效成员关系及其状态、角色和授权范围。",
+      "boundaries": [
+        "成员资格不是账号副本；同一主体可以在设计上关联多个租户，但当前 User 只有一个 TenantID，不能据此声称多租户成员关系已实现。"
+      ],
+      "misuse_examples": [
+        {
+          "incorrect": "仅在客户端改 tenant_id 就视为加入另一个租户。",
+          "why_incorrect": "租户选择与成员授权必须由可信服务端来源校验。",
+          "preferred": "只有具备当前有效成员关系且通过具体对象授权，才进入对应租户办理。"
+        }
+      ],
+      "implementation": {
+        "status": "PLANNED_NOT_CODE_VERIFIED",
+        "note": "当前源码没有多租户 membership 实体；User.TenantID 是一个静态租户绑定字段。",
+        "assessment": "SOURCE_READ_ONLY",
+        "application_test_status": "NOT_RUN"
+      },
+      "ui_scope": {
+        "business": [
+          "租户成员资格"
+        ],
+        "engineering": [
+          "TenantMembership / membership (proposed)"
+        ],
+        "avoid": []
+      },
+      "code_anchors": [
+        {
+          "path": "internal/accounts/accounts.go",
+          "symbol": "accounts.User.TenantID",
+          "relation": "contrast_not_equivalent",
+          "verification": "READ_CURRENT_SOURCE"
+        }
+      ],
+      "compatibility": {
+        "rename_existing_identifiers": false,
+        "preserved_identifiers": [
+          "TenantMembership"
+        ],
+        "contextual_aliases": []
+      },
+      "related_concepts": [
+        "T24",
+        "T31",
+        "T33"
+      ]
+    },
+    {
+      "id": "T33",
+      "slug": "active-context",
+      "user_term": "当前租户上下文",
+      "system_term": "ActiveTenantContext / active context (proposed)",
+      "definition": "用户在已验证身份与授权范围内，当前办理请求所绑定的租户上下文。",
+      "boundaries": [
+        "当前上下文是服务器解析的请求范围；不能由浏览器 query、Host 或表单字段自行选择。当前 session 含 tenant_id，但没有多成员切换的 active-context 版本模型。"
+      ],
+      "misuse_examples": [
+        {
+          "incorrect": "把页面下拉框选中的 tenant_id 当成授权凭证。",
+          "why_incorrect": "界面选择只表达意图，服务端必须校验身份、成员资格与对象权限。",
+          "preferred": "显示当前租户可帮助用户辨认办理位置；所有读写仍按服务端有效上下文授权。"
+        }
+      ],
+      "implementation": {
+        "status": "PLANNED_NOT_CODE_VERIFIED",
+        "note": "当前 session 只保存一个 tenant_id；具有成员选择、切换版本和失效围栏的 active context 尚未在当前代码中定位。",
+        "assessment": "SOURCE_READ_ONLY",
+        "application_test_status": "NOT_RUN"
+      },
+      "ui_scope": {
+        "business": [
+          "当前租户上下文"
+        ],
+        "engineering": [
+          "ActiveTenantContext / active context (proposed)"
+        ],
+        "avoid": []
+      },
+      "code_anchors": [
+        {
+          "path": "internal/store/state.go",
+          "symbol": "store.session",
+          "relation": "contrast_not_equivalent",
+          "verification": "READ_CURRENT_SOURCE"
+        },
+        {
+          "path": "internal/store/transaction.go",
+          "symbol": "store.dbScope",
+          "relation": "related_context_only",
+          "verification": "READ_CURRENT_SOURCE"
+        }
+      ],
+      "compatibility": {
+        "rename_existing_identifiers": false,
+        "preserved_identifiers": [
+          "ActiveTenantContext"
+        ],
+        "contextual_aliases": []
+      },
+      "related_concepts": [
+        "T24",
+        "T31",
+        "T32",
+        "T34"
+      ]
+    },
+    {
+      "id": "T34",
+      "slug": "authorization-scope",
+      "user_term": "授权范围",
+      "system_term": "Grant.Scope / dbScope",
+      "definition": "授权范围限定主体在特定资源上可执行的动作，包括 self、case、org、org_subtree 或 tenant 等明确范围。",
+      "boundaries": [
+        "角色说明做什么，范围说明对哪些数据对象做；租户、组织、案件范围不能彼此替代。服务端负责解析范围，未知范围默认不匹配。"
+      ],
+      "misuse_examples": [
+        {
+          "incorrect": "同租户就代表可以读取租户内所有合同。",
+          "why_incorrect": "租户归属只是一层边界，具体动作仍需有效角色和对象范围。",
+          "preferred": "同时核验动作、主体、租户、组织/案件范围及资源身份。"
+        }
+      ],
+      "implementation": {
+        "status": "CODE_ANCHORED_NOT_RUNTIME_VERIFIED",
+        "note": "access.Check 明确分开角色与范围并默认拒绝；本次未运行授权场景。",
+        "assessment": "SOURCE_READ_ONLY",
+        "application_test_status": "NOT_RUN"
+      },
+      "ui_scope": {
+        "business": [
+          "授权范围"
+        ],
+        "engineering": [
+          "Grant.Scope / dbScope"
+        ],
+        "avoid": []
+      },
+      "code_anchors": [
+        {
+          "path": "internal/access/policy.go",
+          "symbol": "access.Grant",
+          "relation": "defines_concept",
+          "verification": "READ_CURRENT_SOURCE"
+        },
+        {
+          "path": "internal/access/policy.go",
+          "symbol": "access.Check",
+          "relation": "defines_concept",
+          "verification": "READ_CURRENT_SOURCE"
+        }
+      ],
+      "compatibility": {
+        "rename_existing_identifiers": false,
+        "preserved_identifiers": [
+          "Grant.Scope"
+        ],
+        "contextual_aliases": []
+      },
+      "related_concepts": [
+        "T24",
+        "T25",
+        "T31",
+        "T33"
+      ]
+    },
+    {
+      "id": "T35",
+      "slug": "attempt-snapshot",
+      "user_term": "执行尝试冻结快照",
+      "system_term": "AttemptInput / RunSnapshot",
+      "definition": "与一次执行尝试关联、用于解释该次输入与解析身份的不可变材料、解析选择及规则等快照。",
+      "boundaries": [
+        "Run 是审查执行聚合；Attempt 是其中一次执行身份；ApprovalRound 是另一条会签业务历史。重试可以复用冻结输入但仍产生新的尝试身份。"
+      ],
+      "misuse_examples": [
+        {
+          "incorrect": "把重新解析后的最新材料覆盖旧 attempt 的输入。",
+          "why_incorrect": "旧结论必须按当次冻结证据解释，后续材料变化应发起新执行。",
+          "preferred": "按 attempt_id 读取对应冻结输入和规则身份，并把新尝试另行记录。"
+        }
+      ],
+      "implementation": {
+        "status": "CODE_ANCHORED_NOT_RUNTIME_VERIFIED",
+        "note": "AttemptInput、RunSnapshot 与冻结解析选择可定位；本次未运行冻结或重试流程。",
+        "assessment": "SOURCE_READ_ONLY",
+        "application_test_status": "NOT_RUN"
+      },
+      "ui_scope": {
+        "business": [
+          "执行尝试冻结快照"
+        ],
+        "engineering": [
+          "AttemptInput / RunSnapshot"
+        ],
+        "avoid": []
+      },
+      "code_anchors": [
+        {
+          "path": "internal/store/state.go",
+          "symbol": "store.AttemptInput",
+          "relation": "defines_concept",
+          "verification": "READ_CURRENT_SOURCE"
+        },
+        {
+          "path": "internal/store/state.go",
+          "symbol": "store.RunSnapshot",
+          "relation": "defines_concept",
+          "verification": "READ_CURRENT_SOURCE"
+        }
+      ],
+      "compatibility": {
+        "rename_existing_identifiers": false,
+        "preserved_identifiers": [
+          "AttemptInput"
+        ],
+        "contextual_aliases": []
+      },
+      "related_concepts": [
+        "T07",
+        "T08",
+        "T09",
+        "T14",
+        "T22"
+      ]
+    },
+    {
+      "id": "T36",
+      "slug": "retrieval-relevance",
+      "user_term": "检索相关度",
+      "system_term": "KnowledgeCandidate.Score / governedRelevance",
+      "definition": "用于候选知识选择或排序的相关性信号，帮助决定哪些内容进入本次上下文。",
+      "boundaries": [
+        "相关度、向量距离或排序分数不是风险可信度、法律效力、来源真实性或审查结论；被检索到也不代表证据已核实。"
+      ],
+      "misuse_examples": [
+        {
+          "incorrect": "检索分数高，所以条款风险已经确认。",
+          "why_incorrect": "召回与排序不证明内容适用于案件，也不代替原文引用和规则核验。",
+          "preferred": "以可核验来源和冻结原文证据支持结论；相关度仅解释选择过程。"
+        }
+      ],
+      "implementation": {
+        "status": "CODE_ANCHORED_NOT_RUNTIME_VERIFIED",
+        "note": "知识规划器存在确定性候选 score；不据此推断存在向量检索或风险置信度。",
+        "assessment": "SOURCE_READ_ONLY",
+        "application_test_status": "NOT_RUN"
+      },
+      "ui_scope": {
+        "business": [
+          "检索相关度"
+        ],
+        "engineering": [
+          "KnowledgeCandidate.Score / governedRelevance"
+        ],
+        "avoid": []
+      },
+      "code_anchors": [
+        {
+          "path": "internal/store/knowledge_planner.go",
+          "symbol": "governedRelevance",
+          "relation": "defines_concept",
+          "verification": "READ_CURRENT_SOURCE"
+        },
+        {
+          "path": "internal/agentflow/types.go",
+          "symbol": "KnowledgeCandidate.Score",
+          "relation": "related_context_only",
+          "verification": "READ_CURRENT_SOURCE"
+        }
+      ],
+      "compatibility": {
+        "rename_existing_identifiers": false,
+        "preserved_identifiers": [
+          "KnowledgeCandidate.Score"
+        ],
+        "contextual_aliases": []
+      },
+      "related_concepts": [
+        "T11",
+        "T14",
+        "T15",
+        "T22"
+      ]
+    }
+  ],
+  "installed_authoring_source": "docs/glossary/concepts.json",
+  "authoring_source": "docs/glossary/concepts.json",
+  "distinctions": [
+    {
+      "concept_ids": [
+        "T07",
+        "T08",
+        "T09"
+      ],
+      "rule": "Run 是一次审查执行，Attempt 是 Run 内的一次执行尝试，ApprovalRound 是针对合同版本的一次会签流程；三类身份不可互换。"
+    },
+    {
+      "concept_ids": [
+        "T08",
+        "T27"
+      ],
+      "rule": "worker generation 是 PostgreSQL 任务租约接管的 fencing 身份，不代表审查次数、会签轮次或合同版本。"
+    },
+    {
+      "concept_ids": [
+        "T11",
+        "T12",
+        "T13"
+      ],
+      "rule": "Finding 是审查发现建议；Finding Decision 是人工处置历史；Approval Decision 是会签节点的同意或退回历史。"
+    },
+    {
+      "concept_ids": [
+        "T29",
+        "T30"
+      ],
+      "rule": "草稿中的验收/付款计划不等于实际验收记录或可信支付回执。"
+    },
+    {
+      "concept_ids": [
+        "T24",
+        "T25",
+        "T32",
+        "T33",
+        "T34"
+      ],
+      "rule": "Tenant、Organization、Membership、Active Context 与 Authorization Scope 分别表示数据边界、内部组织、成员关系、当前请求上下文和资源授权范围。"
+    }
+  ]
+}
