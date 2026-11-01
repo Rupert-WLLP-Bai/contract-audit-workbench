@@ -9,6 +9,7 @@ import (
 
 	"contractaudit/internal/access"
 	"contractaudit/internal/accounts"
+	"contractaudit/internal/contractmoney"
 	"contractaudit/internal/fault"
 
 	"github.com/jackc/pgx/v5"
@@ -440,6 +441,9 @@ func (s *Store) CreateContractDraft(ctx context.Context, user accounts.User, inp
 	if err := validateDraftContent(&input.Draft); err != nil {
 		return ContractDetail{}, err
 	}
+	if err := validateDraftAmounts(&input.Draft, contractmoney.StageDraft); err != nil {
+		return ContractDetail{}, err
+	}
 	_, sealedBytes, _, err := sealDraftContent(input.Draft)
 	if err != nil {
 		return ContractDetail{}, err
@@ -760,6 +764,9 @@ func (s *Store) ReplaceContractDraft(ctx context.Context, user accounts.User, in
 	if err := validateDraftContent(&input.Draft); err != nil {
 		return ContractDetail{}, err
 	}
+	if err := validateDraftAmounts(&input.Draft, contractmoney.StageDraft); err != nil {
+		return ContractDetail{}, err
+	}
 	_, sealedBytes, _, err := sealDraftContent(input.Draft)
 	if err != nil {
 		return ContractDetail{}, err
@@ -911,6 +918,14 @@ func (s *Store) ImportLegacySignedContract(ctx context.Context, user accounts.Us
 	input.Reason = reason
 	if err := validateDraftContent(&input.Snapshot); err != nil {
 		return ContractDetail{}, err
+	}
+	if legacyAmountsKnown(&input.Snapshot) {
+		// The imported snapshot freezes revision 1, so its amounts must
+		// reconcile exactly like a submit would. Unknown historical amounts
+		// stay legal and are not validated here.
+		if err := validateDraftAmounts(&input.Snapshot, contractmoney.StageFinal); err != nil {
+			return ContractDetail{}, err
+		}
 	}
 	_, sealedSnapshot, _, err := sealDraftContent(input.Snapshot)
 	if err != nil {
