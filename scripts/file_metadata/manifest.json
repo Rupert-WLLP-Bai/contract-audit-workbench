@@ -1556,7 +1556,7 @@
       "header_state": "pending-header-application"
     },
     "cmd/migrate/main.go": {
-      "purpose": "Implements operations main, run for internal package behavior; callers use these package-level declarations to pass typed inputs and receive the module’s result or error.",
+      "purpose": "Runs PostgreSQL migrations on startup, optionally applying service database roles when SERVICE_DATABASE_ROLES=true; rejects invalid role settings and exits nonzero on migration failure.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -3738,9 +3738,10 @@
       "created": {
         "value": "2026-10-25",
         "source": {
-          "kind": "git-first-introduction",
+          "kind": "rename-history",
           "commit": "4e73a6bbc29e69f9787c2bb790112cd8291554a5",
-          "reason": "Earliest available introduction in the fixed HEAD history, following Git-detected renames; UTC date comes from the commit committer timestamp and does not claim actual authoring date. Repository history begins at fd5be1c3a71282a9115a7c38648923eb1a6d4074."
+          "reason": "The recorded introduction commit contains the source path shown here, not the current path. Git similarity-based --follow associates this older path with the current file; this trace is lineage evidence, not a claim about actual authorship or creation date. UTC date is the commit committer date; repository history is compacted.",
+          "path": "deployments/k3d/apps/kustomization.yaml"
         }
       },
       "updated": {
@@ -3876,9 +3877,10 @@
       "created": {
         "value": "2026-10-25",
         "source": {
-          "kind": "git-first-introduction",
+          "kind": "rename-history",
           "commit": "4e73a6bbc29e69f9787c2bb790112cd8291554a5",
-          "reason": "Earliest available introduction in the fixed HEAD history, following Git-detected renames; UTC date comes from the commit committer timestamp and does not claim actual authoring date. Repository history begins at fd5be1c3a71282a9115a7c38648923eb1a6d4074."
+          "reason": "The recorded introduction commit contains the source path shown here, not the current path. Git similarity-based --follow associates this older path with the current file; this trace is lineage evidence, not a claim about actual authorship or creation date. UTC date is the commit committer date; repository history is compacted.",
+          "path": "deployments/k3d/cluster.yaml"
         }
       },
       "updated": {
@@ -5834,7 +5836,7 @@
       "header_state": "pending-header-application"
     },
     "deployments/scripts/package-backend-image.py": {
-      "purpose": "Implements operations run, local_image_digest, main; inputs come from the declared arguments or caller, and outputs are the returned result or documented local verification artifact.",
+      "purpose": "Builds the nine Go command binaries offline with the host toolchain, adds them to an already-cached runtime base image, labels source/base digests and writes packaging evidence. It refuses to pull a missing base image, keeping this path separate from the Docker Hub image build.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -7958,7 +7960,7 @@
       "header_state": "pending-header-application"
     },
     "internal/agentflow/knowledge_advisory_validation.go": {
-      "purpose": "Implements operations validateKnowledgeAdvisory, advisoryRankedCandidate, compareAdvisoryCandidates, advisoryCandidateRanks for review planning, evidence citation, and structured model-output orchestration; callers use these package-level declarations to pass typed inputs and receive the module’s result or error.",
+      "purpose": "Validates ranked knowledge advisories against candidate identity, scope, evidence citations and frozen knowledge reads before review planning can use them; compares candidates deterministically and rejects unsupported or mismatched advisory claims.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -9435,7 +9437,7 @@
       "header_state": "pending-header-application"
     },
     "internal/bootstrap/queue.go": {
-      "purpose": "Implements operations configuredQueuePolicy for service startup wiring, runtime profiles, and dependency assembly; callers use these package-level declarations to pass typed inputs and receive the module’s result or error.",
+      "purpose": "Resolves queue policy from the service role and runtime configuration so startup wires only the consumer limits and concurrency allowed for that process.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -11565,7 +11567,7 @@
       "header_state": "pending-header-application"
     },
     "internal/documentparse/docx_styles.go": {
-      "purpose": "Implements operations loadStyles, stylesPart, loadStyleDefaults, addStyles for bounded PDF/DOCX parsing and visible-text extraction; callers use these package-level declarations to pass typed inputs and receive the module’s result or error.",
+      "purpose": "Reads DOCX styles.xml and document defaults to resolve inherited run/paragraph visibility; identifies hidden and special text so extraction can omit non-visible content consistently.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -11661,7 +11663,7 @@
       }
     },
     "internal/documentparse/docx_tables.go": {
-      "purpose": "Implements operations docxGridValue, docxTableChildren, docxTableChild, docxTableIgnorable for bounded PDF/DOCX parsing and visible-text extraction; callers use these package-level declarations to pass typed inputs and receive the module’s result or error.",
+      "purpose": "Walks DOCX table cells and grid spans, preserving cell order and merged-column placement while emitting visible table text for bounded document parsing.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -12758,9 +12760,10 @@
       "created": {
         "value": "2026-10-25",
         "source": {
-          "kind": "git-first-introduction",
+          "kind": "rename-history",
           "commit": "fd5be1c3a71282a9115a7c38648923eb1a6d4074",
-          "reason": "Earliest available introduction in the fixed HEAD history, following Git-detected renames; UTC date comes from the commit committer timestamp and does not claim actual authoring date. Repository history begins at fd5be1c3a71282a9115a7c38648923eb1a6d4074."
+          "reason": "The recorded introduction commit contains the source path shown here, not the current path. Git similarity-based --follow associates this older path with the current file; this trace is lineage evidence, not a claim about actual authorship or creation date. UTC date is the commit committer date; repository history is compacted.",
+          "path": "internal/documentparse/testdata/pdf/native-chinese-table.pdf"
         }
       },
       "updated": {
@@ -14628,7 +14631,7 @@
       "header_state": "pending-header-application"
     },
     "internal/evidencebundle/verify_content.go": {
-      "purpose": "Implements operations verifyContents, verifyHistory, verifyOriginals, decodeJSONEntry for signed evidence-bundle construction and independent verification; callers use these package-level declarations to pass typed inputs and receive the module’s result or error.",
+      "purpose": "Checks evidence-bundle entry hashes, frozen history and original-document bytes against the signed manifest; rejects missing, substituted or extra content during independent bundle verification.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -15502,7 +15505,7 @@
       "header_state": "pending-header-application"
     },
     "internal/httpapi/business.go": {
-      "purpose": "Implements operations templates, generate, createRemediation, submitRemediation for HTTP handlers, request validation, authorization, and response contracts; callers use these package-level declarations to pass typed inputs and receive the module’s result or error.",
+      "purpose": "Serves template retrieval, AI-assisted draft generation and remediation create/submit routes. It validates the request and authenticated case scope before calling business services; mutation authority remains in the server and store.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -16790,7 +16793,7 @@
       "header_state": "pending-header-application"
     },
     "internal/httpapi/experience_usage_routes.go": {
-      "purpose": "Implements operations listExperienceUsageOptions, recordExperienceUsage, getExperienceMetrics for HTTP handlers, request validation, authorization, and response contracts; callers use these package-level declarations to pass typed inputs and receive the module’s result or error.",
+      "purpose": "Serves case-scoped experience-usage option, recording and metrics endpoints; checks the authenticated actor and evidence identity before appending usage or returning aggregated results.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -17204,7 +17207,7 @@
       "header_state": "pending-header-application"
     },
     "internal/httpapi/manual_findings.go": {
-      "purpose": "Implements operations registerManualFindingRoutes, listManualFindings, createManualFinding for HTTP handlers, request validation, authorization, and response contracts; callers use these package-level declarations to pass typed inputs and receive the module’s result or error.",
+      "purpose": "Registers manual-finding routes and handles case-scoped listing/creation, validating finding evidence and actor permissions before the store appends a decision-history record.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -17296,7 +17299,7 @@
       "header_state": "pending-header-application"
     },
     "internal/httpapi/oidc.go": {
-      "purpose": "Implements operations oidcLogin, oidcCallback, oidcCallbackValues, oidcDestination for HTTP handlers, request validation, authorization, and response contracts; callers use these package-level declarations to pass typed inputs and receive the module’s result or error.",
+      "purpose": "Starts OIDC login and validates callbacks using one-time state, issuer and nonce checks; only redirects to validated same-origin destinations and establishes the audience-specific session after identity verification.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -17572,7 +17575,7 @@
       "header_state": "pending-header-application"
     },
     "internal/httpapi/operator_mapping_changes.go": {
-      "purpose": "Implements operations previewOperatorMappingChange, proposeOperatorMappingChange, getOperatorMappingChange, decideOperatorMappingChange for HTTP handlers, request validation, authorization, and response contracts; callers use these package-level declarations to pass typed inputs and receive the module’s result or error.",
+      "purpose": "Previews, proposes, reads and decides service-object mapping changes through authenticated admin routes; validates CAS revisions and evidence references while leaving approval and persistence to the server-side store.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -17940,7 +17943,7 @@
       "header_state": "pending-header-application"
     },
     "internal/httpapi/review_readiness.go": {
-      "purpose": "Implements operations reviewReadiness for HTTP handlers, request validation, authorization, and response contracts; callers use these package-level declarations to pass typed inputs and receive the module’s result or error.",
+      "purpose": "Returns a case-scoped readiness projection for the selected review inputs, including missing or incompatible dependencies; it reports prerequisites and does not start or certify a review.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -18078,7 +18081,7 @@
       "header_state": "pending-header-application"
     },
     "internal/httpapi/rulepack_shadow.go": {
-      "purpose": "Implements operations registerRuleShadowRoutes, ruleShadowSamples, createRuleShadow, ruleShadowReports for HTTP handlers, request validation, authorization, and response contracts; callers use these package-level declarations to pass typed inputs and receive the module’s result or error.",
+      "purpose": "Exposes admin-only rule-pack shadow sample and report routes; records candidate evaluations separately from published rule decisions and never changes the active rule pack.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -18308,7 +18311,7 @@
       "header_state": "pending-header-application"
     },
     "internal/httpapi/service_objects.go": {
-      "purpose": "Implements operations listServiceObjects, createServiceObject, getServiceObject, listServiceObjectVersions for HTTP handlers, request validation, authorization, and response contracts; callers use these package-level declarations to pass typed inputs and receive the module’s result or error.",
+      "purpose": "Handles service-object registry and version routes, including listing, creation, detail, preview and associations; derives tenant/admin access from the authenticated request and delegates durable state to PostgreSQL.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -18538,7 +18541,7 @@
       "header_state": "pending-header-application"
     },
     "internal/httpapi/session_audience.go": {
-      "purpose": "Implements operations validAudience, audienceCookieValue, setSessionCookie, actorForAudience for HTTP handlers, request validation, authorization, and response contracts; callers use these package-level declarations to pass typed inputs and receive the module’s result or error.",
+      "purpose": "Resolves the session audience and actor from validated session state, applies audience-specific cookie attributes and keeps client/admin identity scopes separate.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -18676,7 +18679,7 @@
       "header_state": "pending-header-application"
     },
     "internal/httpapi/signed_evidence.go": {
-      "purpose": "Implements operations downloadEvidenceBundle, evidenceIdentity, evidencePDFSections, decisionPDFLines for HTTP handlers, request validation, authorization, and response contracts; callers use these package-level declarations to pass typed inputs and receive the module’s result or error.",
+      "purpose": "Builds a signed evidence PDF from a cutoff-bounded audit history and frozen original files; excludes later writes, verifies the selected evidence identity and returns the downloadable bundle.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -18768,7 +18771,7 @@
       "header_state": "pending-header-application"
     },
     "internal/httpapi/subjects.go": {
-      "purpose": "Implements operations createUnboundSubject, createCaseSubject, bindExistingSubject, listCaseSubjects for HTTP handlers, request validation, authorization, and response contracts; callers use these package-level declarations to pass typed inputs and receive the module’s result or error.",
+      "purpose": "Handles subject directory creation, case binding and case-scoped reads; validates explicit identity and role inputs against the authenticated actor before persisting subject history.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -18860,7 +18863,7 @@
       "header_state": "pending-header-application"
     },
     "internal/httpapi/system_health.go": {
-      "purpose": "Implements operations healthSnapshot, adminSystemHealth for HTTP handlers, request validation, authorization, and response contracts; callers use these package-level declarations to pass typed inputs and receive the module’s result or error.",
+      "purpose": "Builds read-only system health snapshots for service and admin routes, separating configured expectations from observed instances and requiring admin audience for topology details.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -18906,7 +18909,7 @@
       "header_state": "pending-header-application"
     },
     "internal/httpapi/tenant_operations.go": {
-      "purpose": "Implements operations tenantOperations for HTTP handlers, request validation, authorization, and response contracts; callers use these package-level declarations to pass typed inputs and receive the module’s result or error.",
+      "purpose": "Returns tenant-scoped usage, budget and capacity projections for the authenticated organization; the API does not accept a client-selected tenant as authority.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -18952,7 +18955,7 @@
       "header_state": "pending-header-application"
     },
     "internal/httpapi/workbench.go": {
-      "purpose": "Implements operations workbench, updateCaseProfile, createWorkbenchTask, updateWorkbenchTask for HTTP handlers, request validation, authorization, and response contracts; callers use these package-level declarations to pass typed inputs and receive the module’s result or error.",
+      "purpose": "Serves case workbench projections and case-profile/task mutations; validates actor scope, task ownership and revision preconditions before delegating writes to the store.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -19090,7 +19093,7 @@
       "header_state": "pending-header-application"
     },
     "internal/identity/jwt.go": {
-      "purpose": "Implements operations verifyIDToken, parseIDToken, validJWTShape, decodeJWTHeader for authenticated principal and OIDC session/claim handling; callers use these package-level declarations to pass typed inputs and receive the module’s result or error.",
+      "purpose": "Parses and verifies OIDC ID tokens against trusted issuer keys, signature, issuer, audience and time claims before exposing a typed authenticated identity; malformed or untrusted tokens fail closed.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -19412,7 +19415,7 @@
       "header_state": "pending-header-application"
     },
     "internal/identity/state.go": {
-      "purpose": "Implements operations sealState, openState, validStateCookieShape, openSealedState for authenticated principal and OIDC session/claim handling; callers use these package-level declarations to pass typed inputs and receive the module’s result or error.",
+      "purpose": "Seals and opens short-lived OIDC state cookies with authenticated encryption and fixed purpose binding; rejects tampering, expiry and payloads outside the login callback flow.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -19964,7 +19967,7 @@
       "header_state": "pending-header-application"
     },
     "internal/legalnorm/sources.go": {
-      "purpose": "Implements operations adapterForSnapshot, adapterForSource for legal-source capture, normalization, and article-span lookup; callers use these package-level declarations to pass typed inputs and receive the module’s result or error.",
+      "purpose": "Selects a read-only legal-source adapter for a frozen source snapshot, normalizes the captured article text and maps article spans without fetching or silently updating authority content.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -25003,7 +25006,7 @@
       "header_state": "pending-header-application"
     },
     "internal/store/case_intake_schema.go": {
-      "purpose": "Implements constants caseIntakeSchemaSQL for tenant-scoped PostgreSQL transactions and authoritative business history; callers use these package-level declarations to pass typed inputs and receive the module’s result or error.",
+      "purpose": "Defines the PostgreSQL schema and validation queries for idempotent primary-contract intake, retaining the request identity, original-material registration and completion receipt in the authoritative store.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -29327,7 +29330,7 @@
       "header_state": "pending-header-application"
     },
     "internal/store/material_parse_read.go": {
-      "purpose": "Implements operations pinnedMaterialVersion, authorizePinnedMaterialRead, ListMaterialVersionParses, GetMaterialVersionParsedChunk for tenant-scoped PostgreSQL transactions and authoritative business history; callers use these package-level declarations to pass typed inputs and receive the module’s result or error.",
+      "purpose": "Reads parses pinned to an immutable material version and authorizes tenant/case scope in the PostgreSQL transaction; returns paged summaries and exact parsed-text chunks without changing the frozen source.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -29465,7 +29468,7 @@
       "header_state": "pending-header-application"
     },
     "internal/store/materials_schema.go": {
-      "purpose": "Implements operations loadMaterialState, loadUploadIdempotency for tenant-scoped PostgreSQL transactions and authoritative business history; callers use these package-level declarations to pass typed inputs and receive the module’s result or error.",
+      "purpose": "Loads and validates persisted material/version state and upload idempotency records inside store transactions; prevents retries from changing an already-registered original.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -29720,9 +29723,10 @@
       "created": {
         "value": "2026-10-31",
         "source": {
-          "kind": "git-first-introduction",
+          "kind": "rename-history",
           "commit": "7e53ed3c139fd7c833b6acad41655245636fb4c2",
-          "reason": "Earliest available introduction in the fixed HEAD history, following Git-detected renames; UTC date comes from the commit committer timestamp and does not claim actual authoring date. Repository history begins at fd5be1c3a71282a9115a7c38648923eb1a6d4074."
+          "reason": "The recorded introduction commit contains the source path shown here, not the current path. Git similarity-based --follow associates this older path with the current file; this trace is lineage evidence, not a claim about actual authorship or creation date. UTC date is the commit committer date; repository history is compacted.",
+          "path": "internal/store/materials_schema.go"
         }
       },
       "updated": {
@@ -29773,8 +29777,8 @@
         "source": {
           "kind": "rename-history",
           "commit": "7e53ed3c139fd7c833b6acad41655245636fb4c2",
-          "reason": "Earliest available introduction in the fixed HEAD history, following Git-detected renames; UTC date comes from the commit committer timestamp and does not claim actual authoring date. Repository history begins at fd5be1c3a71282a9115a7c38648923eb1a6d4074.",
-          "path": "\n:100644 100644 abb0481 02dc94b R061"
+          "reason": "Earliest traceable Git content introduction is in the renamed source path shown here. Git detected the later rename by content similarity; this is a recoverable repository lineage, not a claim about the actual authoring date. UTC date is the introducing commit committer date; repository history begins at fd5be1c3a71282a9115a7c38648923eb1a6d4074.",
+          "path": "internal/store/operator_mapping_changes_schema.go"
         }
       },
       "updated": {
@@ -29876,8 +29880,8 @@
         "source": {
           "kind": "rename-history",
           "commit": "7e53ed3c139fd7c833b6acad41655245636fb4c2",
-          "reason": "Earliest available introduction in the fixed HEAD history, following Git-detected renames; UTC date comes from the commit committer timestamp and does not claim actual authoring date. Repository history begins at fd5be1c3a71282a9115a7c38648923eb1a6d4074.",
-          "path": "\n:100644 100644 ccbd712 20f5382 R089"
+          "reason": "Earliest traceable Git content introduction is in the renamed source path shown here. Git detected the later rename by content similarity; this is a recoverable repository lineage, not a claim about the actual authoring date. UTC date is the introducing commit committer date; repository history begins at fd5be1c3a71282a9115a7c38648923eb1a6d4074.",
+          "path": "internal/store/legal_applicability_schema.go"
         }
       },
       "updated": {
@@ -29928,8 +29932,8 @@
         "source": {
           "kind": "rename-history",
           "commit": "fd5be1c3a71282a9115a7c38648923eb1a6d4074",
-          "reason": "Earliest available introduction in the fixed HEAD history, following Git-detected renames; UTC date comes from the commit committer timestamp and does not claim actual authoring date. Repository history begins at fd5be1c3a71282a9115a7c38648923eb1a6d4074.",
-          "path": "\n:100644 100644 eabc6a8 5531dcc R078"
+          "reason": "Earliest traceable Git content introduction is in the renamed source path shown here. Git detected the later rename by content similarity; this is a recoverable repository lineage, not a claim about the actual authoring date. UTC date is the introducing commit committer date; repository history begins at fd5be1c3a71282a9115a7c38648923eb1a6d4074.",
+          "path": "internal/store/model_budget_ledger.go"
         }
       },
       "updated": {
@@ -29980,8 +29984,8 @@
         "source": {
           "kind": "rename-history",
           "commit": "dea4ca14a86678b38ab2b052c3eec3ecbed63589",
-          "reason": "Earliest available introduction in the fixed HEAD history, following Git-detected renames; UTC date comes from the commit committer timestamp and does not claim actual authoring date. Repository history begins at fd5be1c3a71282a9115a7c38648923eb1a6d4074.",
-          "path": "\n:100644 100644 b9a448d 5dfcb70 R057"
+          "reason": "Earliest traceable Git content introduction is in the renamed source path shown here. Git detected the later rename by content similarity; this is a recoverable repository lineage, not a claim about the actual authoring date. UTC date is the introducing commit committer date; repository history begins at fd5be1c3a71282a9115a7c38648923eb1a6d4074.",
+          "path": "internal/store/experience_distill_schema.go"
         }
       },
       "updated": {
@@ -31301,7 +31305,7 @@
       "header_state": "pending-header-application"
     },
     "internal/store/ocr.go": {
-      "purpose": "Implements operations fileKind, mediaBase, binaryReason, interpretImage for tenant-scoped PostgreSQL transactions and authoritative business history; callers use these package-level declarations to pass typed inputs and receive the module’s result or error.",
+      "purpose": "Classifies source media and image payloads, bounds image decoding and reports explicit unsupported/corrupt-input reasons to the document parsing pipeline.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -34475,7 +34479,7 @@
       "header_state": "pending-header-application"
     },
     "internal/store/subject_changes.go": {
-      "purpose": "Implements operations ProposeSubjectChange, ListSubjectChanges, paginateSubjectChangeSummaries, GetSubjectChange for tenant-scoped PostgreSQL transactions and authoritative business history; callers use these package-level declarations to pass typed inputs and receive the module’s result or error.",
+      "purpose": "Appends subject-change proposals and decisions, lists case-scoped history and returns decision summaries using transaction-bound authorization and revision checks.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -34889,7 +34893,7 @@
       "header_state": "pending-header-application"
     },
     "internal/store/subjects_schema.go": {
-      "purpose": "Implements operations loadSubjectState, loadSubjectCaseState, normalizeSubjectStateTimes for tenant-scoped PostgreSQL transactions and authoritative business history; callers use these package-level declarations to pass typed inputs and receive the module’s result or error.",
+      "purpose": "Decodes and normalizes stored subject directory and case-binding state, validating identifiers and timestamps before transactional store operations use it.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -34981,7 +34985,7 @@
       "header_state": "pending-header-application"
     },
     "internal/store/subjects_store.go": {
-      "purpose": "Implements operations CreateUnboundSubject, CreateCaseSubject, BindExistingSubject, ListCaseSubjects for tenant-scoped PostgreSQL transactions and authoritative business history; callers use these package-level declarations to pass typed inputs and receive the module’s result or error.",
+      "purpose": "Creates or binds subjects, reads case-scoped subject summaries and records identity corrections in PostgreSQL; every write checks case membership, tenant scope and expected revision.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -35855,7 +35859,7 @@
       "header_state": "pending-header-application"
     },
     "internal/store/workbench_history.go": {
-      "purpose": "Implements operations validateWorkbenchHistory, validateWorkbenchProfileHistory, validWorkbenchProfile, validateWorkbenchProfileRevision for tenant-scoped PostgreSQL transactions and authoritative business history; callers use these package-level declarations to pass typed inputs and receive the module’s result or error.",
+      "purpose": "Validates append-only workbench profile and task histories, including parent/revision links and legal state transitions, before the store accepts a write.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -35947,7 +35951,7 @@
       "header_state": "pending-header-application"
     },
     "internal/store/workbench_pg.go": {
-      "purpose": "Implements operations loadWorkbenchState, loadWorkbenchProfiles, loadWorkbenchTasks, loadWorkbenchRelations for tenant-scoped PostgreSQL transactions and authoritative business history; callers use these package-level declarations to pass typed inputs and receive the module’s result or error.",
+      "purpose": "Loads case workbench profiles, tasks and relations from PostgreSQL under tenant and case scope; assembles one consistent projection without making client-visible identifiers authoritative.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -37833,7 +37837,7 @@
       "header_state": "pending-header-application"
     },
     "internal/toolgateway/server.go": {
-      "purpose": "Implements operations newHandler, ServeHTTP, validateHTTPRequest, readAndParseRequest for read-only evidence tools with caller and scope enforcement; callers use these package-level declarations to pass typed inputs and receive the module’s result or error.",
+      "purpose": "Implements the read-only tool-gateway HTTP/MCP server: validates request size, caller identity and allowed evidence scope before dispatching reads, and rejects mutation or out-of-scope tool calls.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -41972,7 +41976,7 @@
       "header_state": "pending-header-application"
     },
     "web/e2e/c1b-clock.ts": {
-      "purpose": "Implements the web component/hook exports c1bBusinessAtInput, enterC1BBusinessAt, C1B_BUSINESS_TIME_ZONE, C1B_BUSINESS_AT_UTC, translating application state into its visible or typed interface.",
+      "purpose": "Converts the fixed C1-B business instant between UTC and Asia/Shanghai input fields so browser scenarios assert the same contract business time on every host.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -42018,7 +42022,7 @@
       "header_state": "pending-header-application"
     },
     "web/e2e/c1b-frozen-governance.ts": {
-      "purpose": "Implements the web component/hook exports readFrozenGovernance, assertSameFrozenRulepack, FrozenRulepack, translating application state into its visible or typed interface. It connects to ../src/api/parse.",
+      "purpose": "Reads the frozen rule-pack and review-governance projection through the running API, compares its exact version and digest, and writes browser evidence under CAW_DELIVERY_DIR.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -42064,7 +42068,7 @@
       "header_state": "pending-header-application"
     },
     "web/e2e/c1b-journey.ts": {
-      "purpose": "Implements the web component/hook exports loadDataset, sortKeys, required, postFromUI, chooseAntSelect, translating application state into its visible or typed interface. It connects to ./chromium, ./c1b-clock, ../src/api/parse.",
+      "purpose": "Drives the configured C1-B browser journey from its delivery dataset: signs in, registers materials, selects the frozen rule pack and runs the case review while collecting diagnostic evidence.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -42110,7 +42114,7 @@
       "header_state": "pending-header-application"
     },
     "web/e2e/c1b-resume.ts": {
-      "purpose": "Implements the web component/hook exports required, loadWorkspace, waitForCase, ensureReport, readReportLinks, translating application state into its visible or typed interface. It connects to ./chromium, ../src/api/parse, ../src/api/types.",
+      "purpose": "Resumes an existing case from configured E2E identifiers, waits for parsed materials and review completion, then verifies the persisted report and its run/attempt links.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -42156,7 +42160,7 @@
       "header_state": "pending-header-application"
     },
     "web/e2e/c1b-scenarios.ts": {
-      "purpose": "Implements the web component/hook exports required, submitFindingDecision, signIn, loadDataset, canonical, translating application state into its visible or typed interface. It connects to ./chromium, ./c1b-clock, ../src/api/parse.",
+      "purpose": "Loads configured synthetic C1-B case scenarios and executes their browser/API steps, including sign-in, material registration and finding decisions against the running workbench.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -42202,7 +42206,7 @@
       "header_state": "pending-header-application"
     },
     "web/e2e/c1b-select.ts": {
-      "purpose": "Implements the web component/hook exports antSelectRoot, selectedAntLabel, selectionApplied, cssQuoted, controlledDropdown, translating application state into its visible or typed interface. It connects to ../src/api/parse, ../src/domain/review.",
+      "purpose": "Selects and verifies Ant Design controlled dropdown values in browser journeys, waiting for the selected label to be applied instead of assuming a click succeeded.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -42294,7 +42298,7 @@
       "header_state": "pending-header-application"
     },
     "web/e2e/cdp-request-post-data.ts": {
-      "purpose": "Implements the web component/hook exports readCDPRequestPostData, CDPRequestPostDataInput, translating application state into its visible or typed interface.",
+      "purpose": "Reads a captured Chromium DevTools Protocol request body from the event when available, otherwise retrieves it from the matching target session; reports unavailable bodies instead of guessing.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -42340,7 +42344,7 @@
       "header_state": "pending-header-application"
     },
     "web/e2e/chromium.ts": {
-      "purpose": "Implements the web component/hook exports chromiumExecutable, SYSTEM_FALLBACKS, translating application state into its visible or typed interface.",
+      "purpose": "Resolves the browser executable from CHROMIUM_BIN, Playwright-managed Chromium or conventional system paths, with an actionable failure when none is installed.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -42386,7 +42390,7 @@
       "header_state": "pending-header-application"
     },
     "web/e2e/d3-subject-controlled-source.ts": {
-      "purpose": "Implements the web component/hook exports step, signIn, login, attachDiagnostics, captureFailurePages, translating application state into its visible or typed interface. It connects to ./chromium, ./c1b-select.",
+      "purpose": "Runs the D3 two-case subject-controlled-source browser scenario using configured case/source identities and records console, page, HTTP-error and failure-page diagnostics.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -42718,7 +42722,7 @@
       "header_state": "pending-header-application"
     },
     "web/e2e/functional/helpers.ts": {
-      "purpose": "Implements the web component/hook exports record, rows, operations, body, login, translating application state into its visible or typed interface. It connects to ../../src/api/parse, ../../src/api/types.",
+      "purpose": "Provides real-API browser test helpers using the configured client/admin/workbench URLs, including authenticated requests, response parsing and row extraction for functional specs.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -43086,7 +43090,7 @@
       "header_state": "pending-header-application"
     },
     "web/e2e/materials-ui.ts": {
-      "purpose": "Implements the web component/hook exports selectMaterialOption, uploadNewMaterial, replacePrimaryMaterial, replaceMaterial, setMaterialFile, translating application state into its visible or typed interface. It connects to ./cdp-request-post-data, ./c1b-select.",
+      "purpose": "Automates material upload, primary-material replacement and version selection through visible workbench controls, returning server-assigned material/version identities.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -43132,7 +43136,7 @@
       "header_state": "pending-header-application"
     },
     "web/e2e/object-history.ts": {
-      "purpose": "Implements the web component/hook exports step, required, signIn, caseDetail, waitParsed, translating application state into its visible or typed interface. It connects to ./chromium, ./c1b-select, ./materials-ui.",
+      "purpose": "Exercises object-history flows against configured case and legal-source fixtures, creating successive draft/source revisions and checking that associations remain pinned to their original versions.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -43178,7 +43182,7 @@
       "header_state": "pending-header-application"
     },
     "web/e2e/review.ts": {
-      "purpose": "Implements the web component/hook exports run, step, required, waitJSON, localJSON, translating application state into its visible or typed interface. It connects to ./chromium, ./cdp-request-post-data, ./c1b-clock.",
+      "purpose": "Drives a real Chromium review using configured procurement, draft and revised documents, captures parsing/failure evidence and waits for the persisted review result.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -43367,7 +43371,7 @@
       }
     },
     "web/playwright.functional.config.ts": {
-      "purpose": "Implements the web component/hook exports runID, translating application state into its visible or typed interface. It connects to ./e2e/chromium.",
+      "purpose": "Configures Playwright functional projects, browser launch, test timeouts and per-run evidence identity for the explicitly invoked browser suite.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -43605,7 +43609,7 @@
       }
     },
     "web/src/admin-app.tsx": {
-      "purpose": "Implements the web component/hook exports AdminApp, SystemHealthPage, SettingsPage, RulePacksPage, RulePackCreatePage, translating application state into its visible or typed interface. It connects to ./components/admin-shell, ./components/page-status, ./pages/login-page.",
+      "purpose": "Defines the admin route tree and lazy-loads settings, health, rule-pack and governed-knowledge pages behind the admin session gate.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -43743,7 +43747,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/api/agent-review.ts": {
-      "purpose": "Implements the web API or domain adapter exports optionalRecord, boundedInteger, strings, nullableText, nullableInteger, translating application state into its visible or typed interface. It connects to ./respond.",
+      "purpose": "Parses agent-review event and result projections, validating planner limits, evidence references and structured tool/model output before the review UI consumes them.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -43789,7 +43793,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/api/approval-queries.ts": {
-      "purpose": "Implements the web API or domain adapter exports useApprovalInbox, useApprovalTaskDetail, useContractApprovalRounds, useContractApprovalRound, nextApprovalCursor, translating application state into its visible or typed interface. It connects to ./queries, ./types.",
+      "purpose": "Defines cache keys and query/mutation hooks for approval inboxes, frozen round details and append-only decisions; sends decisions through the approval API and renders server-owned status.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -43881,7 +43885,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/api/approvals.ts": {
-      "purpose": "Implements the web API or domain adapter exports nullableInteger, roundState, taskState, decisionAction, optionalAction, translating application state into its visible or typed interface. It connects to ./http, ./respond.",
+      "purpose": "Defines typed contract-approval projections and validates round, task and decision-action values; preserves the frozen-round and append-only-decision boundary.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -43973,7 +43977,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/api/business-agent-review.ts": {
-      "purpose": "Implements the web API or domain adapter exports scope, capability, domain, gap, evidence, translating application state into its visible or typed interface. It connects to ./respond.",
+      "purpose": "Parses the public business-agent review projection into typed scope, capability, domain, gap and evidence values; malformed required fields fail instead of being interpreted as findings.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -44065,7 +44069,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/api/contract-citations.ts": {
-      "purpose": "Implements the web API or domain adapter exports digest, parseFrozenContractCitation, getFrozenContractCitation, FrozenContractCitation, FIELDS, translating application state into its visible or typed interface. It connects to ./paths, ./http, ./respond.",
+      "purpose": "Parses and fetches frozen contract citations, checking digest, material identity and Unicode quote offsets so a citation is shown only when it matches its immutable source.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -44157,7 +44161,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/api/contracts.ts": {
-      "purpose": "Implements the web API or domain adapter exports isMaskedRestricted, parseSourceRef, parseMaterialRef, parseSha256, parseBoolean, translating application state into its visible or typed interface. It connects to ./http, ./respond.",
+      "purpose": "Defines contract registration and resumable-draft models, parses masked restricted fields and source/material references, and submits full-replacement drafts without treating client values as authoritative.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -44203,7 +44207,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/api/endpoints.ts": {
-      "purpose": "Implements the web API or domain adapter exports getSession, login, logout, listCases, createCase, translating application state into its visible or typed interface. It connects to ./wire.generated, ./http, ./paths.",
+      "purpose": "Maps session, login/logout, case, template and workbench operations to same-origin HTTP endpoints using generated wire types; server session and authorization determine visible data.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -44295,7 +44299,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/api/evidence-workflow.ts": {
-      "purpose": "Implements the web API or domain adapter exports parseQuote, parseVerification, optionalSourceObject, parseSourceEvaluation, parseSourceGap, translating application state into its visible or typed interface. It connects to ./http, ./respond, ./wire.generated.",
+      "purpose": "Defines and parses evidence request, receipt, verification and source-gap projections; posts evidence workflow commands with server-returned identities and references.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -44387,7 +44391,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/api/experience-feedback.ts": {
-      "purpose": "Implements the web API or domain adapter exports identity, optionalIdentity, stringArray, evidence, parseFeedback, translating application state into its visible or typed interface. It connects to ./http, ./respond, ./wire.generated.",
+      "purpose": "Submits case-scoped feedback with exact source identities, Unicode evidence spans and idempotency keys, then parses the server’s feedback/distillation status.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -44433,7 +44437,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/api/experience-metrics.ts": {
-      "purpose": "Implements the web API or domain adapter exports digest, sample, getExperienceMetrics, ExperienceOutcome, ExperienceMetricsSample, translating application state into its visible or typed interface. It connects to ./http, ./respond, ./governed-knowledge.",
+      "purpose": "Loads and validates governed experience outcome samples and aggregate metrics for a selected knowledge reference; values remain server-reported statistics.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -44479,7 +44483,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/api/experience-usage.ts": {
-      "purpose": "Implements the web API or domain adapter exports digest, reference, direction, usage, sameRef, translating application state into its visible or typed interface. It connects to ./http, ./respond, ./governed-knowledge.",
+      "purpose": "Loads and records case-scoped usage references and feedback direction, validating knowledge identities and evidence links before exposing options or metrics.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -44571,7 +44575,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/api/governed-knowledge.ts": {
-      "purpose": "Implements the web API or domain adapter exports kind, ref, scope, condition, span, translating application state into its visible or typed interface. It connects to ./http, ./respond, ./legal-knowledge.",
+      "purpose": "Defines typed governed-knowledge content, scope, conditions, citations and lifecycle actions; routes reads and mutations through the authenticated governance API.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -44617,7 +44621,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/api/guards.ts": {
-      "purpose": "Implements the web API or domain adapter exports isRecord, translating application state into its visible or typed interface.",
+      "purpose": "Provides the shared runtime type guard for object-shaped server values before domain-specific API parsers inspect fields.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -44709,7 +44713,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/api/http.ts": {
-      "purpose": "Implements the web API or domain adapter exports setSessionIdentity, isUnauthenticated, isConflict, isForbidden, shouldRetryQuery, translating application state into its visible or typed interface.",
+      "purpose": "Owns the same-origin HTTP transport, session identity cache invalidation, API error decoding and conservative retry classification; it does not grant authorization.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -44801,7 +44805,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/api/idempotency.ts": {
-      "purpose": "Implements the web API or domain adapter exports newIdempotencyKey, pendingMutationKey, idempotencyActorScope, clearPendingMutationKey, idempotencyFingerprint, translating application state into its visible or typed interface.",
+      "purpose": "Creates random mutation keys and scopes pending keys to actor, target and payload fingerprint so retries reuse only an identical in-flight write.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -44847,7 +44851,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/api/intakes.ts": {
-      "purpose": "Implements the web API or domain adapter exports invalid, optionalId, parseIntakeResult, createIntake, getIntakeByKey, translating application state into its visible or typed interface. It connects to ./http, ./respond.",
+      "purpose": "Creates and resumes homepage primary-contract intake, parses continuation receipts and archives; the server fixes initial material role/purpose and owns idempotent completion.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -44939,7 +44943,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/api/legal-applicability.ts": {
-      "purpose": "Implements the web API or domain adapter exports instant, enumValue, optionalEnumValue, parseParty, parseMaterialRef, translating application state into its visible or typed interface. It connects to ./http, ./paths, ./respond.",
+      "purpose": "Defines and parses controlled legal-applicability facts, party pins, temporal basis and versioned resolutions; rejects contradictory or unpinned facts before display.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -45031,7 +45035,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/api/legal-citations.ts": {
-      "purpose": "Implements the web API or domain adapter exports parseCondition, parseGap, parseArticle, parseFrozenLegalAuthority, parseFrozenLegalReviewProjection, translating application state into its visible or typed interface. It connects to ./paths, ./http, ./respond.",
+      "purpose": "Parses frozen legal authorities, article spans, applicability conditions and review projections against their stored identities; missing source evidence remains explicit.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -45123,7 +45127,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/api/legal-knowledge.ts": {
-      "purpose": "Implements the web API or domain adapter exports date, instant, sha256, ref, parseLegalMetadata, translating application state into its visible or typed interface. It connects to ./http, ./respond, ./governed-knowledge.",
+      "purpose": "Searches and parses governed legal knowledge and company-source status, retaining exact version identities; company sources are read-only in this client adapter.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -45169,7 +45173,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/api/manual-findings.ts": {
-      "purpose": "Implements the web API or domain adapter exports identity, parseManualFinding, path, checkScope, listManualFindings, translating application state into its visible or typed interface. It connects to ./http, ./respond.",
+      "purpose": "Parses and submits case-scoped manual findings with evidence references and severity, requiring server authorization and preserving manual decisions as history.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -45307,7 +45311,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/api/openapi-request.ts": {
-      "purpose": "Implements the web API or domain adapter exports inputKey, isRecord, failureMessage, parameterSchema, parameterType, translating application state into its visible or typed interface.",
+      "purpose": "Derives stable UI input keys and request-body controls from OpenAPI operation, parameter location and schema; does not issue or authorize requests.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -45399,7 +45403,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/api/openapi.ts": {
-      "purpose": "Implements the web API or domain adapter exports recordOf, stringValue, optionalString, optionalBoolean, arrayValue, translating application state into its visible or typed interface.",
+      "purpose": "Parses the local OpenAPI document, resolves schema references and builds operation metadata for the API explorer without changing the contract.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -45491,7 +45495,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/api/parse.ts": {
-      "purpose": "Implements the web API or domain adapter exports nonNegativeIntegerOrNull, requiredCount, nullableString, stringArrayValue, stringArrayOrEmpty, translating application state into its visible or typed interface. It connects to ./legal-citations, ./guards, ./respond.",
+      "purpose": "Provides shared strict response readers for counts, nullable text, arrays and domain values; malformed API shapes are rejected instead of silently coerced.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -45583,7 +45587,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/api/paths.ts": {
-      "purpose": "Implements the web API or domain adapter exports id, paths, translating application state into its visible or typed interface.",
+      "purpose": "Builds encoded same-origin API paths from validated identifiers so caller-supplied IDs cannot alter route structure.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -45675,7 +45679,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/api/queries.ts": {
-      "purpose": "Implements the web API or domain adapter exports keyedMutation, clearIdentityQueries, useSession, useLogin, useLogout, translating application state into its visible or typed interface. It connects to ./endpoints, ./http, ./idempotency.",
+      "purpose": "Defines React Query session/case/review queries and mutations, clears private cache on identity changes and applies bounded polling/idempotency behavior.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -45767,7 +45771,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/api/respond.ts": {
-      "purpose": "Implements the web API or domain adapter exports invalidResponse, enumValue, objectReader, recordReader, textReader, translating application state into its visible or typed interface. It connects to ./http.",
+      "purpose": "Provides strict response/object/enum readers and typed invalid-response failures shared by API adapters; it never invents defaults for malformed required data.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -45813,7 +45817,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/api/review-readiness.ts": {
-      "purpose": "Implements the web API or domain adapter exports material, scope, parseReviewReadiness, getReviewReadiness, ReviewScope, translating application state into its visible or typed interface. It connects to ./http, ./paths, ./respond.",
+      "purpose": "Fetches and parses readiness for a selected case/material scope, preserving missing, stale and incompatible prerequisites rather than claiming review eligibility.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -45859,7 +45863,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/api/rulepack-shadow.ts": {
-      "purpose": "Implements the web API or domain adapter exports text, digest, ref, option, change, translating application state into its visible or typed interface. It connects to ./http, ./respond.",
+      "purpose": "Parses shadow evaluation samples and reports for candidate rule packs; these read-only results remain distinct from published rule outcomes.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -45951,7 +45955,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/api/rulepacks.ts": {
-      "purpose": "Implements the web API or domain adapter exports nonEmptyString, sha256, positiveInteger, optionalString, parseState, translating application state into its visible or typed interface. It connects to ./http, ./paths, ./respond.",
+      "purpose": "Parses published and draft rule-pack manifests, capabilities, versions and lifecycle state, retaining server validation errors and exact citations.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -46089,7 +46093,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/api/subjects-parse.ts": {
-      "purpose": "Implements the web API or domain adapter exports fail, object, text, textAllowEmpty, literal, translating application state into its visible or typed interface. It connects to ./respond, ./guards.",
+      "purpose": "Parses subject directory, verification and pinned-source projections, preserving legacy profile text and explicit case roles without inferring identity.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -46135,7 +46139,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/api/system-health.ts": {
-      "purpose": "Implements the web API or domain adapter exports invalid, text, counter, optionalText, healthStatus, translating application state into its visible or typed interface. It connects to ./http, ./guards, ./types.",
+      "purpose": "Parses service health and topology observations, preserving stale/unknown state and counters as reported by the authenticated health API.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -46181,7 +46185,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/api/tenant-operations.ts": {
-      "purpose": "Implements the web API or domain adapter exports capacity, revision, timestamp, parseTenantOperations, useTenantOperations, translating application state into its visible or typed interface. It connects to ./http, ./respond.",
+      "purpose": "Fetches and parses tenant usage, capacity and budget counters from the server; tenant identity is taken from session scope, not a client argument.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -46227,7 +46231,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/api/types.ts": {
-      "purpose": "Implements the web API or domain adapter exports SessionAudience, Actor, ReviewRunSummary, CaseSummary, ParsedDocumentStatus, translating application state into its visible or typed interface. It connects to ./business-agent-review, ./legal-citations, ./wire.generated.",
+      "purpose": "Collects client-side types for server wire projections such as sessions, cases, reviews and parsed documents; these declarations do not authorize access.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -46273,7 +46277,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/api/wire.generated.ts": {
-      "purpose": "Implements the web API or domain adapter exports WireSchemas, wireEnums, translating application state into its visible or typed interface.",
+      "purpose": "Generated TypeScript request/response schemas and enums derived from internal/apidocs/openapi.json by scripts/generate_openapi_types.py; web API adapters consume this contract, so edit the OpenAPI source and regenerate rather than hand-editing this file.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -46376,7 +46380,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/api/workbench.ts": {
-      "purpose": "Implements the web API or domain adapter exports invalid, object, string, nullableString, count, translating application state into its visible or typed interface. It connects to ./guards, ./respond, ./wire.generated.",
+      "purpose": "Parses workbench cases, profiles and tasks and issues revision-bound task/profile mutations through the shared transport; the server resolves actor and case scope.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -46468,7 +46472,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/app.tsx": {
-      "purpose": "Implements the web component/hook exports CompareRoute, App, AdminApp, HomePage, ApiDocsPage, translating application state into its visible or typed interface. It connects to ./components/app-shell, ./components/page-status, ./pages/session-gate.",
+      "purpose": "Composes client and admin route trees, session gates and shared application shells; route visibility follows the authenticated server audience and API session state.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -46514,7 +46518,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/bootstrap.tsx": {
-      "purpose": "Implements the web component/hook exports rootElement, mountApplication, rootStyle, cssToken, uiTheme, translating application state into its visible or typed interface. It connects to ./api/http.",
+      "purpose": "Mounts the web application into the root DOM element and configures its Ant Design theme/tokens and API session identity before React renders routes.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -46606,7 +46610,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/components/admin-shell.tsx": {
-      "purpose": "Implements the web component/hook exports versionedRouteTitle, adminBreadcrumb, adminMenuKey, AdminTopbar, AdminSidebar, translating application state into its visible or typed interface. It connects to ../api/queries, ../domain/organization, ../domain/review.",
+      "purpose": "Renders AdminShell, the admin shell workbench UI, from the selected case/workspace projection and the module’s query/state inputs; writes are sent through the existing API and remain subject to server authorization.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -46698,7 +46702,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/components/agent-review-inspector.tsx": {
-      "purpose": "Implements the web component/hook exports capabilityExpression, reviewTone, evidenceVerified, relationTone, domainTone, translating application state into its visible or typed interface. It connects to ./status-text.",
+      "purpose": "Renders AgentReviewInspector, the agent review inspector workbench UI, from the selected case/workspace projection and the module’s query/state inputs; it displays server-derived state and does not establish business authorization or evidence validity.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -46790,7 +46794,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/components/app-shell.tsx": {
-      "purpose": "Implements the web component/hook exports staticBreadcrumb, caseBreadcrumbs, moduleTitle, workbenchBreadcrumbs, breadcrumbsFor, translating application state into its visible or typed interface. It connects to ../api/queries, ../domain/organization, ../domain/review.",
+      "purpose": "Renders AppShell, the app shell workbench UI, from the selected case/workspace projection and the module’s query/state inputs; writes are sent through the existing API and remain subject to server authorization.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -46882,7 +46886,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/components/audit-projection.tsx": {
-      "purpose": "Implements the web component/hook exports eventLabel, AuditProjection, EVENT_LABELS, AuditProjectionProps, translating application state into its visible or typed interface. It connects to ../api/types.",
+      "purpose": "Renders AuditProjection, the audit projection workbench UI, from the selected case/workspace projection and the module’s query/state inputs; it displays server-derived state and does not establish business authorization or evidence validity.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -46974,7 +46978,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/components/beijing-datetime.ts": {
-      "purpose": "Implements the web component/hook exports toBeijingInputValue, beijingInputToUtc, BEIJING_OFFSET_MINUTES, translating application state into its visible or typed interface.",
+      "purpose": "Converts between local Asia/Shanghai datetime input strings and UTC instants using the fixed Beijing offset required by the contract business-time fields.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -47066,7 +47070,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/components/business-agent-review.tsx": {
-      "purpose": "Implements the web component/hook exports label, arrayOr, gapGuidance, domainLabel, capabilityLabel, translating application state into its visible or typed interface. It connects to ./contract-citation-reader, ./status-text.",
+      "purpose": "Renders BusinessAgentReviewView, the business agent review workbench UI, from the selected case/workspace projection and the module’s query/state inputs; writes are sent through the existing API and remain subject to server authorization.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -47158,7 +47162,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/components/case-legal-applicability-panel.tsx": {
-      "purpose": "Implements the web component/hook exports initialDraft, eligiblePartyBindings, sha256, CaseLegalApplicabilityPanel, labels, translating application state into its visible or typed interface. It connects to ../api/http, ../api/idempotency, ../api/legal-applicability.",
+      "purpose": "Renders CaseLegalApplicabilityPanel, the case legal applicability panel workbench UI, from the selected case/workspace projection and the module’s query/state inputs; writes are sent through the existing API and remain subject to server authorization.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -47250,7 +47254,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/components/case-next-step.tsx": {
-      "purpose": "Implements the web component/hook exports roleFocus, readinessAction, newReviewReason, remediationOwner, planFor, translating application state into its visible or typed interface. It connects to ../api/types, ../api/review-readiness, ../api/http.",
+      "purpose": "Renders CaseNextStep, the case next step workbench UI, from the selected case/workspace projection and the module’s query/state inputs; it displays server-derived state and does not establish business authorization or evidence validity.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -47342,7 +47346,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/components/case-subject-corrections-panel.tsx": {
-      "purpose": "Implements the web component/hook exports sha256, subjectOptions, CaseSubjectCorrectionsPanel, ChangeTargetKind, IdentifierAction, translating application state into its visible or typed interface. It connects to ../api/http, ../api/idempotency, ../api/types.",
+      "purpose": "Renders CaseSubjectCorrectionsPanel, the case subject corrections panel workbench UI, from the selected case/workspace projection and the module’s query/state inputs; writes are sent through the existing API and remain subject to server authorization.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -47388,7 +47392,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/components/case-subject-roles-panel.tsx": {
-      "purpose": "Implements the web component/hook exports CaseSubjectRolesPanel, roleOptions, translating application state into its visible or typed interface. It connects to ../api/http, ../api/idempotency, ../api/types.",
+      "purpose": "Renders CaseSubjectRolesPanel, the case subject roles panel workbench UI, from the selected case/workspace projection and the module’s query/state inputs; writes are sent through the existing API and remain subject to server authorization.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -47480,7 +47484,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/components/cases-table.tsx": {
-      "purpose": "Implements the web component/hook exports sortOrderFor, sortFieldOf, CaseTitleCell, businessSummary, CaseStatusCell, translating application state into its visible or typed interface. It connects to ../api/types, ../domain/review, ./status-text.",
+      "purpose": "Renders CasesTable, the cases table workbench UI, from the selected case/workspace projection and the module’s query/state inputs; it displays server-derived state and does not establish business authorization or evidence validity.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -47526,7 +47530,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/components/circuit-mark.tsx": {
-      "purpose": "Implements the web component/hook exports CircuitMark, translating application state into its visible or typed interface.",
+      "purpose": "Renders CircuitMark, the circuit mark workbench UI, from the selected case/workspace projection and the module’s query/state inputs; it displays server-derived state and does not establish business authorization or evidence validity.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -47572,7 +47576,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/components/competition-identity.tsx": {
-      "purpose": "Implements the web component/hook exports CompetitionIdentity, translating application state into its visible or typed interface.",
+      "purpose": "Renders CompetitionIdentity, the competition identity workbench UI, from the selected case/workspace projection and the module’s query/state inputs; it displays server-derived state and does not establish business authorization or evidence validity.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -47664,7 +47668,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/components/contract-citation-reader.tsx": {
-      "purpose": "Implements the web component/hook exports identityProblem, FrozenText, CitationBody, FrozenContractCitationReader, translating application state into its visible or typed interface. It connects to ../api/contract-citations, ../api/business-agent-review.",
+      "purpose": "Renders FrozenContractCitationReader, the contract citation reader workbench UI, from the selected case/workspace projection and the module’s query/state inputs; it displays server-derived state and does not establish business authorization or evidence validity.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -47710,7 +47714,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/components/contract-references-panel.tsx": {
-      "purpose": "Implements the web component/hook exports ContractReferencesPanel, translating application state into its visible or typed interface. It connects to ../api/http, ../api/queries.",
+      "purpose": "Renders ContractReferencesPanel, the contract references panel workbench UI, from the selected case/workspace projection and the module’s query/state inputs; it displays server-derived state and does not establish business authorization or evidence validity.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -47756,7 +47760,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/components/dirty-leave-guard.tsx": {
-      "purpose": "Implements the web component/hook exports DirtyLeaveGuard, translating application state into its visible or typed interface.",
+      "purpose": "Renders DirtyLeaveGuard, the dirty leave guard workbench UI, from the selected case/workspace projection and the module’s query/state inputs; it displays server-derived state and does not establish business authorization or evidence validity.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -47848,7 +47852,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/components/document-stage.tsx": {
-      "purpose": "Implements the web component/hook exports documentKey, documentLabel, documentForAnchor, anchorsFor, codePointBoundary, translating application state into its visible or typed interface. It connects to ../domain/review, ./parsed-document-summary, ./status-text.",
+      "purpose": "Renders DocumentStage, the document stage workbench UI, from the selected case/workspace projection and the module’s query/state inputs; writes are sent through the existing API and remain subject to server authorization.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -47894,7 +47898,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/components/error-notice.tsx": {
-      "purpose": "Implements the web component/hook exports ErrorNotice, translating application state into its visible or typed interface. It connects to ../api/http.",
+      "purpose": "Renders ErrorNotice, the error notice workbench UI, from the selected case/workspace projection and the module’s query/state inputs; it displays server-derived state and does not establish business authorization or evidence validity.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -47914,9 +47918,10 @@
       "created": {
         "value": "2026-10-29",
         "source": {
-          "kind": "git-first-introduction",
+          "kind": "rename-history",
           "commit": "5a8d42406290f52c18b6273032d39ae52ff0b527",
-          "reason": "Earliest available introduction in the fixed HEAD history, following Git-detected renames; UTC date comes from the commit committer timestamp and does not claim actual authoring date. Repository history begins at fd5be1c3a71282a9115a7c38648923eb1a6d4074."
+          "reason": "The recorded introduction commit contains the source path shown here, not the current path. Git similarity-based --follow associates this older path with the current file; this trace is lineage evidence, not a claim about actual authorship or creation date. UTC date is the commit committer date; repository history is compacted.",
+          "path": "web/src/features/operator-audit/error-notice.tsx"
         }
       },
       "updated": {
@@ -47986,7 +47991,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/components/evidence-request-panel.tsx": {
-      "purpose": "Implements the web component/hook exports useOperationKeys, sameObjects, displayGap, roleHasPermission, requestPermissions, translating application state into its visible or typed interface. It connects to ../api/business-agent-review, ../api/endpoints, ../api/idempotency.",
+      "purpose": "Renders EvidenceRequestPanel, the evidence request panel workbench UI, from the selected case/workspace projection and the module’s query/state inputs; writes are sent through the existing API and remain subject to server authorization.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -48078,7 +48083,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/components/evidence-sla-dashboard.tsx": {
-      "purpose": "Implements the web component/hook exports withSLASlot, responseCell, EvidenceSLADashboard, EvidenceSLACase, EvidenceSLARow, translating application state into its visible or typed interface. It connects to ../api/http, ../domain/review, ./status-text.",
+      "purpose": "Renders EvidenceSLADashboard, the evidence sla dashboard workbench UI, from the selected case/workspace projection and the module’s query/state inputs; it displays server-derived state and does not establish business authorization or evidence validity.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -48170,7 +48175,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/components/execution-inspector.tsx": {
-      "purpose": "Implements the web component/hook exports UsageDetails, CallUsageDetails, collectSpanNodes, linkSpanRoots, spanOrder, translating application state into its visible or typed interface. It connects to ./status-text, ./agent-review-inspector.",
+      "purpose": "Renders ExecutionInspector, the execution inspector workbench UI, from the selected case/workspace projection and the module’s query/state inputs; it displays server-derived state and does not establish business authorization or evidence validity.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -48262,7 +48267,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/components/experience-feedback-panel.tsx": {
-      "purpose": "Implements the web component/hook exports distillationBlocked, recoveryBlocked, selectFromSource, savedJobId, savedDistillKey, translating application state into its visible or typed interface. It connects to ../api/http, ../api/types, ../domain/review.",
+      "purpose": "Renders ExperienceFeedbackPanel, the experience feedback panel workbench UI, from caller-supplied ExperienceFeedbackPanelProps data and the module’s query/state inputs; writes are sent through the existing API and remain subject to server authorization.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -48308,7 +48313,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/components/experience-metrics-panel.tsx": {
-      "purpose": "Implements the web component/hook exports reviewUrl, ExperienceMetricsPanel, outcomeLabels, actionLabels, translating application state into its visible or typed interface. It connects to ../api/experience-metrics, ../api/governed-knowledge, ../api/http.",
+      "purpose": "Renders ExperienceMetricsPanel, the experience metrics panel workbench UI, from the selected case/workspace projection and the module’s query/state inputs; it displays server-derived state and does not establish business authorization or evidence validity.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -48354,7 +48359,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/components/experience-usage-panel.tsx": {
-      "purpose": "Implements the web component/hook exports ExperienceReference, ExperienceUsagePanel, directionLabels, translating application state into its visible or typed interface. It connects to ../api/experience-usage, ../api/http, ../domain/review.",
+      "purpose": "Renders ExperienceUsagePanel, the experience usage panel workbench UI, from the selected case/workspace projection and the module’s query/state inputs; writes are sent through the existing API and remain subject to server authorization.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -48400,7 +48405,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/components/finding-batch-controls.tsx": {
-      "purpose": "Implements the web component/hook exports FindingBatchControls, translating application state into its visible or typed interface. It connects to ../api/types, ../domain/review, ../hooks/decision-drafts.",
+      "purpose": "Renders FindingBatchControls, the finding batch controls workbench UI, from the selected case/workspace projection and the module’s query/state inputs; it displays server-derived state and does not establish business authorization or evidence validity.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -48492,7 +48497,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/components/finding-panel.tsx": {
-      "purpose": "Implements the web component/hook exports SeverityCounts, FindingFilterButtons, FindingListRow, ClauseComparisonTab, ContractInfoTab, translating application state into its visible or typed interface. It connects to ../hooks/decision-drafts, ../domain/review, ../domain/text.",
+      "purpose": "Renders FindingPanel, the finding panel workbench UI, from the selected case/workspace projection and the module’s query/state inputs; writes are sent through the existing API and remain subject to server authorization.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -48584,7 +48589,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/components/frozen-legal-authorities.tsx": {
-      "purpose": "Implements the web component/hook exports outcomeLabel, CitationReader, FrozenLegalAuthorities, translating application state into its visible or typed interface. It connects to ../api/legal-citations.",
+      "purpose": "Renders FrozenLegalAuthorities, the frozen legal authorities workbench UI, from the selected case/workspace projection and the module’s query/state inputs; it displays server-derived state and does not establish business authorization or evidence validity.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -48676,7 +48681,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/components/governed-knowledge-editor.tsx": {
-      "purpose": "Implements the web component/hook exports emptyKnowledgeContent, lines, textOrEmpty, linesOrEmpty, lookupError, translating application state into its visible or typed interface. It connects to ../api/http, ../api/governed-knowledge, ../api/queries.",
+      "purpose": "Renders KnowledgeEditor, the governed knowledge editor workbench UI, from the selected case/workspace projection and the module’s query/state inputs; it displays server-derived state and does not establish business authorization or evidence validity.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -48814,7 +48819,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/components/intake-pending-list.tsx": {
-      "purpose": "Implements the web component/hook exports actorScopeKey, reasonMessage, pendingStatus, IntakePendingList, REASON_MESSAGES, translating application state into its visible or typed interface. It connects to ../api/http, ../api/queries, ../api/types.",
+      "purpose": "Renders IntakePendingList, the intake pending list workbench UI, from the selected case/workspace projection and the module’s query/state inputs; it displays server-derived state and does not establish business authorization or evidence validity.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -48906,7 +48911,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/components/intake-primary-contract.tsx": {
-      "purpose": "Implements the web component/hook exports problemFromError, isAbortError, requestReceipt, continuationFromSelection, IntakePrimaryContract, translating application state into its visible or typed interface. It connects to ../api/idempotency, ../api/types.",
+      "purpose": "Renders IntakePrimaryContract, the intake primary contract workbench UI, from the selected case/workspace projection and the module’s query/state inputs; writes are sent through the existing API and remain subject to server authorization.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -48998,7 +49003,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/components/llm-endpoint.tsx": {
-      "purpose": "Implements the web component/hook exports endpointActive, endpointState, LLMEndpointDialog, LLMEndpointPanel, LLMModelSelection, translating application state into its visible or typed interface. It connects to ../api/http, ../api/types.",
+      "purpose": "Renders LLMEndpointPanel, the llm endpoint workbench UI, from the selected case/workspace projection and the module’s query/state inputs; writes are sent through the existing API and remain subject to server authorization.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -49044,7 +49049,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/components/local-datetime.ts": {
-      "purpose": "Implements the web component/hook exports toLocalInputValue, toUtcInstant, INPUT_LENGTH, translating application state into its visible or typed interface.",
+      "purpose": "Converts browser-local datetime input strings to/from UTC instants for fields whose business meaning follows the operator’s local timezone.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -49090,7 +49095,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/components/manual-findings-panel.tsx": {
-      "purpose": "Implements the web component/hook exports sourceFor, ManualFindingsPanel, severities, ManualFindingsPanelProps, translating application state into its visible or typed interface. It connects to ../api/manual-findings, ../api/http, ../api/idempotency.",
+      "purpose": "Renders ManualFindingsPanel, the manual findings panel workbench UI, from the selected case/workspace projection and the module’s query/state inputs; writes are sent through the existing API and remain subject to server authorization.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -49182,7 +49187,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/components/material-collection-panel.tsx": {
-      "purpose": "Implements the web component/hook exports fixedPurpose, legacyStatusLabel, MaterialCollectionPanel, roles, attachmentPurposes, translating application state into its visible or typed interface. It connects to ../api/http, ../api/idempotency, ../api/types.",
+      "purpose": "Renders MaterialCollectionPanel, the material collection panel workbench UI, from the selected case/workspace projection and the module’s query/state inputs; writes are sent through the existing API and remain subject to server authorization.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -49228,7 +49233,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/components/optional-fact-field.tsx": {
-      "purpose": "Implements the web component/hook exports OptionalFactField, translating application state into its visible or typed interface.",
+      "purpose": "Renders OptionalFactField, the optional fact field workbench UI, from the selected case/workspace projection and the module’s query/state inputs; it displays server-derived state and does not establish business authorization or evidence validity.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -49274,7 +49279,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/components/page-status.tsx": {
-      "purpose": "Implements the web component/hook exports PageStatus, translating application state into its visible or typed interface.",
+      "purpose": "Renders PageStatus, the page status workbench UI, from the selected case/workspace projection and the module’s query/state inputs; it displays server-derived state and does not establish business authorization or evidence validity.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -49366,7 +49371,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/components/parsed-document-summary.tsx": {
-      "purpose": "Implements the web component/hook exports hash, attribute, titleOf, parsedSummaryAttributes, ParsedMetadata, translating application state into its visible or typed interface. It connects to ../api/types, ../domain/review.",
+      "purpose": "Renders ParsedDocumentSummary, the parsed document summary workbench UI, from the selected case/workspace projection and the module’s query/state inputs; it displays server-derived state and does not establish business authorization or evidence validity.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -49412,7 +49417,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/components/remediation-panel.tsx": {
-      "purpose": "Implements the web component/hook exports uniqueObjectRefs, hasCompatibleRuleEvaluations, RemediationCard, RemediationPanel, REMEDIATION_LABELS, translating application state into its visible or typed interface. It connects to ../api/http, ./review-choice-select, ./status-text.",
+      "purpose": "Renders RemediationPanel, the remediation panel workbench UI, from the selected case/workspace projection and the module’s query/state inputs; writes are sent through the existing API and remain subject to server authorization.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -49504,7 +49509,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/components/report-archive-panel.tsx": {
-      "purpose": "Implements the web component/hook exports choiceRunMatches, choiceAttemptMatches, reviewMatchesChoice, reportPrepared, documentName, translating application state into its visible or typed interface. It connects to ../api/http, ../api/paths, ../api/queries.",
+      "purpose": "Renders ReportArchivePanel, the report archive panel workbench UI, from the selected case/workspace projection and the module’s query/state inputs; writes are sent through the existing API and remain subject to server authorization.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -49550,7 +49555,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/components/review-choice-select.tsx": {
-      "purpose": "Implements the web component/hook exports ReviewChoiceSelect, translating application state into its visible or typed interface. It connects to ../domain/workflow, ../domain/review.",
+      "purpose": "Renders ReviewChoiceSelect, the review choice select workbench UI, from the selected case/workspace projection and the module’s query/state inputs; it displays server-derived state and does not establish business authorization or evidence validity.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -49642,7 +49647,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/components/review-diff.tsx": {
-      "purpose": "Implements the web component/hook exports choiceProblem, Choice, stateText, sameIds, SnapshotSide, translating application state into its visible or typed interface. It connects to ../api/endpoints, ../api/http, ../api/types.",
+      "purpose": "Renders ReviewDiff, the review diff workbench UI, from the selected case/workspace projection and the module’s query/state inputs; it displays server-derived state and does not establish business authorization or evidence validity.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -49688,7 +49693,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/components/review-readiness-panel.tsx": {
-      "purpose": "Implements the web component/hook exports dependencyLabel, repairLink, ReviewReadinessPanel, parseStates, checkStates, translating application state into its visible or typed interface. It connects to ../api/review-readiness, ../api/http, ../domain/review.",
+      "purpose": "Renders ReviewReadinessPanel, the review readiness panel workbench UI, from the selected case/workspace projection and the module’s query/state inputs; it displays server-derived state and does not establish business authorization or evidence validity.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -49780,7 +49785,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/components/review-workspace.tsx": {
-      "purpose": "Implements the web component/hook exports isRetryableRun, citationMessage, WorkspaceCircuit, RetryButton, WorkspaceBanner, translating application state into its visible or typed interface. It connects to ../domain/review, ../domain/frozen-quote.",
+      "purpose": "Renders ReviewWorkspaceView, the review workspace workbench UI, from the selected case/workspace projection and the module’s query/state inputs; writes are sent through the existing API and remain subject to server authorization.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -49872,7 +49877,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/components/rulepack-error-summary.tsx": {
-      "purpose": "Implements the web component/hook exports RulePackErrorSummary, translating application state into its visible or typed interface. It connects to ../domain/rulepack-form.",
+      "purpose": "Renders RulePackErrorSummary, the rulepack error summary workbench UI, from the selected case/workspace projection and the module’s query/state inputs; it displays server-derived state and does not establish business authorization or evidence validity.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -49918,7 +49923,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/components/rulepack-legal-authority-editor.tsx": {
-      "purpose": "Implements the web component/hook exports refKey, canBeRuleAuthority, RulePackLegalAuthorityEditor, fieldOptions, valuesByField, translating application state into its visible or typed interface. It connects to ../api/governed-knowledge, ../api/rulepacks, ../api/http.",
+      "purpose": "Renders RulePackLegalAuthorityEditor, the rulepack legal authority editor workbench UI, from the selected case/workspace projection and the module’s query/state inputs; writes are sent through the existing API and remain subject to server authorization.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -49964,7 +49969,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/components/rulepack-manifest-editor.tsx": {
-      "purpose": "Implements the web component/hook exports isCoreCapability, blankRule, createEmptyRulePackDraft, updateRule, updateAuthority, translating application state into its visible or typed interface. It connects to ../api/rulepacks, ./rulepack-legal-authority-editor, ./local-datetime.",
+      "purpose": "Renders RulePackManifestEditor, the rulepack manifest editor workbench UI, from the selected case/workspace projection and the module’s query/state inputs; writes are sent through the existing API and remain subject to server authorization.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -50010,7 +50015,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/components/rulepack-shadow-panel.tsx": {
-      "purpose": "Implements the web component/hook exports sampleKey, ShadowReportView, RulePackShadowPanel, statusText, changeText, translating application state into its visible or typed interface. It connects to ../api/http, ../api/rulepack-shadow.",
+      "purpose": "Renders RulePackShadowPanel, the rulepack shadow panel workbench UI, from the selected case/workspace projection and the module’s query/state inputs; writes are sent through the existing API and remain subject to server authorization.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -50056,7 +50061,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/components/rulepack-suite-panel.tsx": {
-      "purpose": "Implements the web component/hook exports resultText, FixtureRun, RulePackSuitePanel, translating application state into its visible or typed interface. It connects to ../api/http, ../api/queries, ../api/rulepacks.",
+      "purpose": "Renders RulePackSuitePanel, the rulepack suite panel workbench UI, from the selected case/workspace projection and the module’s query/state inputs; writes are sent through the existing API and remain subject to server authorization.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -50102,7 +50107,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/components/rulepack-test-panel.tsx": {
-      "purpose": "Implements the web component/hook exports selectionKey, toCodePointOffset, newSampleSource, newSampleFact, readSelection, translating application state into its visible or typed interface. It connects to ../api/http, ../api/queries, ./status-text.",
+      "purpose": "Renders RulePackTestPanel, the rulepack test panel workbench UI, from the selected case/workspace projection and the module’s query/state inputs; writes are sent through the existing API and remain subject to server authorization.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -50194,7 +50199,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/components/run-provenance.tsx": {
-      "purpose": "Implements the web component/hook exports orFallback, SnapshotDetails, EvaluationDiagnostics, EvaluationList, EvidenceSection, translating application state into its visible or typed interface. It connects to ../domain/review.",
+      "purpose": "Renders RunProvenance, the run provenance workbench UI, from the selected case/workspace projection and the module’s query/state inputs; it displays server-derived state and does not establish business authorization or evidence validity.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -50332,7 +50337,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/components/single-contract-scope-coverage.tsx": {
-      "purpose": "Implements the web component/hook exports PaymentExpressions, ScopeLimits, ReadinessCoverage, WorkspaceCoverage, SingleContractScopeCoverage, translating application state into its visible or typed interface. It connects to ../api/review-readiness, ../api/types, ../features/review/single-contract-coverage.",
+      "purpose": "Renders SingleContractScopeCoverage, the single contract scope coverage workbench UI, from the selected case/workspace projection and the module’s query/state inputs; it displays server-derived state and does not establish business authorization or evidence validity.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -50378,7 +50383,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/components/status-text.tsx": {
-      "purpose": "Implements the web component/hook exports StatusText, translating application state into its visible or typed interface. It connects to ../domain/review.",
+      "purpose": "Renders StatusText, the status text workbench UI, from the selected case/workspace projection and the module’s query/state inputs; it displays server-derived state and does not establish business authorization or evidence validity.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -50470,7 +50475,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/components/subject-create-fields.tsx": {
-      "purpose": "Implements the web component/hook exports SubjectCreateFields, subjectCreateInput, SubjectCreateFormValues, usccPattern, translating application state into its visible or typed interface. It connects to ../api/types.",
+      "purpose": "Renders SubjectCreateFields, the subject create fields workbench UI, from the selected case/workspace projection and the module’s query/state inputs; it displays server-derived state and does not establish business authorization or evidence validity.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -50562,7 +50567,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/components/subject-source-verification-panel.tsx": {
-      "purpose": "Implements the web component/hook exports SubjectSourceVerificationPanel, translating application state into its visible or typed interface. It connects to ../api/http, ../api/idempotency, ../api/types.",
+      "purpose": "Renders SubjectSourceVerificationPanel, the subject source verification panel workbench UI, from the selected case/workspace projection and the module’s query/state inputs; writes are sent through the existing API and remain subject to server authorization.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -50654,7 +50659,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/components/template-generation-panel.tsx": {
-      "purpose": "Implements the web component/hook exports templateControlType, TemplateFieldControl, TemplateFieldRow, selectedTemplateOf, templateOptions, translating application state into its visible or typed interface. It connects to ../api/http, ../api/idempotency, ../api/queries.",
+      "purpose": "Renders TemplateGenerationPanel, the template generation panel workbench UI, from the selected case/workspace projection and the module’s query/state inputs; writes are sent through the existing API and remain subject to server authorization.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -50746,7 +50751,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/components/tenant-operations-panel.tsx": {
-      "purpose": "Implements the web component/hook exports TenantOperationsPanel, BudgetRow, columns, translating application state into its visible or typed interface. It connects to ../api/http, ../api/tenant-operations.",
+      "purpose": "Renders TenantOperationsPanel, the tenant operations panel workbench UI, from the selected case/workspace projection and the module’s query/state inputs; it displays server-derived state and does not establish business authorization or evidence validity.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -50838,7 +50843,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/components/trajectory-view.tsx": {
-      "purpose": "Implements the web component/hook exports statusLabel, statusTone, sectionText, EntryBody, Entry, translating application state into its visible or typed interface. It connects to ../api/types, ../domain/execution-labels, ./status-text.",
+      "purpose": "Renders TrajectoryView, the trajectory view workbench UI, from the selected case/workspace projection and the module’s query/state inputs; it displays server-derived state and does not establish business authorization or evidence validity.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -50884,7 +50889,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/domain/approval.ts": {
-      "purpose": "Implements the web API or domain adapter exports approvalNodeLabel, approvalRoundStateLabel, approvalTaskStateLabel, approvalActionLabel, approvalRoundTone, translating application state into its visible or typed interface. It connects to ./review.",
+      "purpose": "Maps approval round, task and action states to labels/tones so approval histories are displayed consistently with the server projection.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -50930,7 +50935,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/domain/evidence-sla.ts": {
-      "purpose": "Implements the web API or domain adapter exports timestamp, isOutstandingEvidenceRequest, hasEvidenceDeadline, isEvidenceRequestOverdue, firstRegisteredEvidenceReceipt, translating application state into its visible or typed interface.",
+      "purpose": "Classifies evidence requests as outstanding, due or overdue from status and RFC3339 deadlines, and resolves the first registered receipt without altering request history.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -50976,7 +50981,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/domain/execution-labels.ts": {
-      "purpose": "Implements the web API or domain adapter exports labelFrom, elapsed, instant, tokenCount, PHASE_LABELS, translating application state into its visible or typed interface.",
+      "purpose": "Formats review phase/event/status labels, elapsed duration and token counts for the execution timeline; unknown event values remain visible as unknown.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -51022,7 +51027,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/domain/frozen-quote.ts": {
-      "purpose": "Implements the web API or domain adapter exports parsedDocumentIdOf, scopeMatchesDocument, createFrozenQuoteSelection, frozenQuoteMatchesDocument, FrozenQuoteSelection, translating application state into its visible or typed interface. It connects to ../api/types, ./text.",
+      "purpose": "Creates frozen quote selections only when case, document, parsed-version and scope identities agree; verifies the selected quote against exact source text before highlighting.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -51068,7 +51073,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/domain/legal-applicability.ts": {
-      "purpose": "Implements the web API or domain adapter exports isLegalApplicabilityControlledValue, legalApplicabilityControlledValues, translating application state into its visible or typed interface.",
+      "purpose": "Exposes the controlled fact values accepted by legal-applicability forms and API validation; rejects unrecognized fields instead of creating free-form authority.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -51160,7 +51165,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/domain/material-anchor.ts": {
-      "purpose": "Implements the web API or domain adapter exports materialAnchorVersionOptions, runeSpanFromUTF16, RuneSpan, MaterialAnchorVersionOption, purposeLabels, translating application state into its visible or typed interface. It connects to ../api/types.",
+      "purpose": "Builds material/version selection options and converts browser UTF-16 positions to code-point ranges used by frozen parsed-text citations.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -51252,7 +51257,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/domain/organization.ts": {
-      "purpose": "Implements the web API or domain adapter exports organizationName, ORGANIZATION_NAMES, translating application state into its visible or typed interface.",
+      "purpose": "Maps known organization identifiers to display names and preserves a fallback for unknown IDs; this presentation mapping does not define tenant authorization.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -51298,7 +51303,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/domain/review-diff.ts": {
-      "purpose": "Implements the web API or domain adapter exports reviewScope, reviewScopeDescription, agentScopeKey, scopeDifference, ruleDifference, translating application state into its visible or typed interface. It connects to ../api/business-agent-review, ./text.",
+      "purpose": "Compares two review workspaces by frozen scope, rule and finding identities, distinguishing added, changed, missing and unknown values rather than treating absent history as equal.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -51390,7 +51395,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/domain/review.ts": {
-      "purpose": "Implements the web API or domain adapter exports labelOf, runLabel, isActiveAttemptState, isTerminalAttemptState, parseLabel, translating application state into its visible or typed interface.",
+      "purpose": "Defines review filters, finding decision inputs and display labels, while preserving active/terminal attempt-state distinctions from the server.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -51482,7 +51487,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/domain/rulepack-form.ts": {
-      "purpose": "Implements the web API or domain adapter exports addRequiredIssue, validateRulePackDraft, REQUIRED_RULE_CAPABILITIES, RulePackFormIssue, translating application state into its visible or typed interface. It connects to ../api/rulepacks.",
+      "purpose": "Validates editable rule-pack drafts locally, checking required capabilities, effective dates and field relationships before the server performs authoritative publication validation.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -51574,7 +51579,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/domain/subjects.ts": {
-      "purpose": "Implements the web API or domain adapter exports subjectRoleLabel, subjectBindingStateLabel, subjectVerificationLabel, translating application state into its visible or typed interface. It connects to ../api/types.",
+      "purpose": "Maps subject roles, binding states and verification outcomes to user-facing labels while leaving unknown server values explicit.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -51666,7 +51671,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/domain/text.ts": {
-      "purpose": "Implements the web API or domain adapter exports codePoints, createTextIndex, sliceByCodePoints, offsetAgrees, snapshotOrUnavailable, translating application state into its visible or typed interface.",
+      "purpose": "Indexes source text by Unicode code point, slices exact quote spans and verifies offsets/quotes before the UI highlights evidence; mismatches remain unverified.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -51758,7 +51763,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/domain/trajectory.ts": {
-      "purpose": "Implements the web API or domain adapter exports agentEventLabel, buildTrajectory, distinctCalls, compareEntries, spanEntries, translating application state into its visible or typed interface.",
+      "purpose": "Builds a chronological review trajectory from stage, model, tool, knowledge and event records, coalescing related calls while retaining failures and source spans.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -51804,7 +51809,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/domain/workflow.ts": {
-      "purpose": "Implements the web API or domain adapter exports reviewChoiceKey, reviewChoices, reviewChoiceForKey, ReviewChoice, translating application state into its visible or typed interface.",
+      "purpose": "Derives selectable run/attempt choices from persisted review history and keys a choice by both IDs so the UI cannot switch to a different frozen attempt implicitly.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -51850,7 +51855,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/features/intake/intake-continuation.ts": {
-      "purpose": "Implements the web component/hook exports pendingReceipt, receiptFromResult, scopeOf, scopeMatches, storageKey, translating application state into its visible or typed interface. It connects to ../../api/guards, ../../api/idempotency, ../../api/intakes.",
+      "purpose": "Persists only actor/tenant/audience-scoped intake continuation identity, file digest, idempotency key and server receipt; contract bytes, cookies and credentials remain outside browser storage.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -51942,7 +51947,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/features/operator-audit/api.ts": {
-      "purpose": "Implements the web component/hook exports unwrap, optionalString, requiredString, optionalNumber, optionalBoolean, translating application state into its visible or typed interface. It connects to ../../api/http, ../../api/respond.",
+      "purpose": "Implements the isolated operator-audit draft client for additive extension endpoints, parsing response fields while delegating transport and errors to the shared HTTP layer; it does not modify shared APIs or authorize writes.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -52034,7 +52039,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/features/operator-audit/capability-pack-panel.tsx": {
-      "purpose": "Implements the web component/hook exports PackDetails, CapabilityPackPanelContent, CapabilityPackPanel, CapabilityPackPanelProps, packQueryKey, translating application state into its visible or typed interface. It connects to ../../api/http, ../../components/page-status, ../../components/status-text.",
+      "purpose": "Renders the operator-audit capability pack panel extension from its typed case/run projections and explicit feature flags; any command uses the draft extension client and remains disabled unless the server and deployment enable that surface.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -52126,7 +52131,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/features/operator-audit/external-evidence-gate.tsx": {
-      "purpose": "Implements the web component/hook exports ExternalEvidenceGate, translating application state into its visible or typed interface.",
+      "purpose": "Renders the operator-audit external evidence gate extension from its typed case/run projections and explicit feature flags; any command uses the draft extension client and remains disabled unless the server and deployment enable that surface.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -52218,7 +52223,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/features/operator-audit/external-evidence-panel.tsx": {
-      "purpose": "Implements the web component/hook exports effectiveWindowLabel, coversBusinessAt, availabilityNote, SnapshotCard, ExternalEvidencePanelContent, translating application state into its visible or typed interface. It connects to ../../api/http, ../../components/page-status, ../../components/status-text.",
+      "purpose": "Renders the operator-audit external evidence panel extension from its typed case/run projections and explicit feature flags; any command uses the draft extension client and remains disabled unless the server and deployment enable that surface.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -52310,7 +52315,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/features/operator-audit/feature-flags.ts": {
-      "purpose": "Implements the web component/hook exports externalEvidenceEnabled, anyOperatorAuditFeatureEnabled, ExternalEvidenceMode, ReviewImpactMode, OperatorAuditFlags, translating application state into its visible or typed interface.",
+      "purpose": "Defines operator-audit extension flags with all surfaces off by default; panel mounting remains conditional so disabled deployments gain no write controls.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -52356,7 +52361,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/features/operator-audit/fixture.ts": {
-      "purpose": "Implements the web component/hook exports dedicatedLinePack, cloudServicesPack, capabilityPacks, confirmedBinding, ambiguousBinding, translating application state into its visible or typed interface.",
+      "purpose": "Supplies synthetic-only operator-audit capability packs, bindings, observations and impact plans for tests/demo panels; production components do not import these fixtures.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -52448,7 +52453,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/features/operator-audit/fulfillment-diff-panel.tsx": {
-      "purpose": "Implements the web component/hook exports observedAtOf, relationNote, DocumentEvidenceList, SnapshotEvidenceList, UnknownEvidenceList, translating application state into its visible or typed interface. It connects to ../../components/page-status, ../../components/status-text.",
+      "purpose": "Renders the operator-audit fulfillment diff panel extension from its typed case/run projections and explicit feature flags; any command uses the draft extension client and remains disabled unless the server and deployment enable that surface.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -52494,7 +52499,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/features/operator-audit/fulfillment-objects-panel.tsx": {
-      "purpose": "Implements the web component/hook exports beijingTime, FulfillmentObjectsPanel, objectStatus, reasons, translating application state into its visible or typed interface. It connects to ./fulfillment-diff-panel, ./feature-flags, ./service-objects-api.",
+      "purpose": "Renders the operator-audit fulfillment objects panel extension from its typed case/run projections and explicit feature flags; any command uses the draft extension client and remains disabled unless the server and deployment enable that surface.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -52540,7 +52545,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/features/operator-audit/idempotency.ts": {
-      "purpose": "Implements the web component/hook exports useStableIdempotencyKey, IdempotencyKeyFor, translating application state into its visible or typed interface.",
+      "purpose": "Keeps stable idempotency keys per identical operator-audit operation and payload during a mounted session so retries cannot accidentally become new writes.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -52632,7 +52637,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/features/operator-audit/impact-plan-panel.tsx": {
-      "purpose": "Implements the web component/hook exports ImpactPlanPanel, ImpactPlanPanelProps, checkColumns, translating application state into its visible or typed interface. It connects to ../../components/status-text, ./types.",
+      "purpose": "Renders the operator-audit impact plan panel extension from its typed case/run projections and explicit feature flags; any command uses the draft extension client and remains disabled unless the server and deployment enable that surface.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -52678,7 +52683,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/features/operator-audit/labels.ts": {
-      "purpose": "Implements the web component/hook exports labelMap, toneMap, timeLabel, quantityLabel, dependencyCompleteLabel, translating application state into its visible or typed interface. It connects to ../../domain/review.",
+      "purpose": "Maps operator-audit relation, availability and machine-status values to display labels/tones while preserving unknown values as unknown.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -52770,7 +52775,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/features/operator-audit/object-binding-panel.tsx": {
-      "purpose": "Implements the web component/hook exports contractKey, externalKey, localDateTimeToIso, windowLabel, ObjectBindingPanelContent, translating application state into its visible or typed interface. It connects to ../../components/page-status, ../../components/status-text, ./api.",
+      "purpose": "Renders the operator-audit object binding panel extension from its typed case/run projections and explicit feature flags; any command uses the draft extension client and remains disabled unless the server and deployment enable that surface.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -52862,7 +52867,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/features/operator-audit/operator-audit-entry.tsx": {
-      "purpose": "Implements the web component/hook exports OperatorAuditEntry, translating application state into its visible or typed interface. It connects to ../../api/queries.",
+      "purpose": "Adds a link into the operator-audit extension only when the server enables it for the current run; disabled deployments render no extension write surface.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -52954,7 +52959,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/features/operator-audit/service-object-panel.tsx": {
-      "purpose": "Implements the web component/hook exports candidateKey, frozenContractCandidates, useSelectedObjectId, summaryLabel, timeLabel, translating application state into its visible or typed interface. It connects to ../../api/http, ../../api/endpoints, ../../api/types.",
+      "purpose": "Renders the operator-audit service object panel extension from its typed case/run projections and explicit feature flags; any command uses the draft extension client and remains disabled unless the server and deployment enable that surface.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -53046,7 +53051,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/features/operator-audit/service-objects-api.ts": {
-      "purpose": "Implements the web component/hook exports page, enumField, parseAlias, parseFact, parseFactRef, translating application state into its visible or typed interface. It connects to ../../api/http, ../../api/respond.",
+      "purpose": "Builds and parses operator-audit service-object registry, preview, history and association requests using encoded IDs and revision-bound server responses.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -53092,7 +53097,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/features/operator-audit/test-utils.tsx": {
-      "purpose": "Implements the web component/hook exports renderOperatorAudit, operatorAuditClient, deferred, translating application state into its visible or typed interface. It connects to ../../test/antd, ./api.",
+      "purpose": "Provides test-only React/Ant Design rendering, a stub operator-audit client and deferred promises for isolated extension-panel tests.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -53138,7 +53143,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/features/operator-audit/types.ts": {
-      "purpose": "Implements the web component/hook exports Relation, MachineStatus, Availability, BindingStatus, ImpactMode, translating application state into its visible or typed interface.",
+      "purpose": "Defines the narrow client view models for the operator-audit draft contract, retaining unknown/null server states so panels do not overstate unavailable external evidence.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -53184,7 +53189,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/features/review/single-contract-coverage.ts": {
-      "purpose": "Implements the web component/hook exports isSingleContractV1, noPaymentResult, singleContractCoverage, SINGLE_CONTRACT_V1_HASH, PAYMENT_RULE, translating application state into its visible or typed interface. It connects to ../../api/review-readiness, ../../api/types.",
+      "purpose": "Implements the web single contract coverage module used by its importing routes, transforming the named domain/API inputs into the module output while leaving persisted business state and access decisions to the server.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -53230,7 +53235,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/hooks/decision-drafts.tsx": {
-      "purpose": "Implements the web component/hook exports notifyDraftListeners, decisionDraftKey, decisionDraftUserPrefix, writeDecisionDraft, clearDecisionDraft, translating application state into its visible or typed interface. It connects to ../api/types.",
+      "purpose": "Stores per-actor, per-finding decision drafts and batch selections in browser storage, notifying workspace views when a draft is saved or cleared; drafts are not persisted decisions.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -53322,7 +53327,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/hooks/use-review-events.ts": {
-      "purpose": "Implements the web component/hook exports isProgressEvent, isTerminalStateEvent, useReviewEvents, StreamStatus, ReviewEventBatch, translating application state into its visible or typed interface.",
+      "purpose": "Subscribes to review progress through the authenticated event stream, coalesces progress refreshes, reconnects within a bounded retry policy and reports terminal states to the active workspace.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -53368,7 +53373,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/hooks/use-viewport-layout.ts": {
-      "purpose": "Implements the web component/hook exports useReviewLayout, translating application state into its visible or typed interface. It connects to ../domain/review.",
+      "purpose": "Chooses split or single-column review layout from the viewport breakpoint and updates when the browser media query changes.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -53506,7 +53511,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/pages/api-docs-page.tsx": {
-      "purpose": "Implements the web page/view exports MethodStamp, pretty, uploadFileUid, operationGroups, ContractLoader, translating application state into its visible or typed interface. It connects to ../api/queries, ../components/circuit-mark.",
+      "purpose": "Loads the repository OpenAPI contract, groups routes and schemas for browsing, and sends optional same-origin requests from the API explorer using the documented parameters and session.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -53690,7 +53695,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/pages/approval-tasks-page.tsx": {
-      "purpose": "Implements the web page/view exports parseView, actorScope, selectionKey, itemSelection, itemStatus, translating application state into its visible or typed interface. It connects to ../api/http, ../api/queries, ../api/types.",
+      "purpose": "Shows the authenticated actor’s contract-approval inbox by todo/done/initiated view, loads frozen round/task details and submits only the server-provided decision actions with revision/idempotency context.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -53736,7 +53741,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/pages/case-detail-page.tsx": {
-      "purpose": "Implements the web page/view exports CaseDetailPage, translating application state into its visible or typed interface. It connects to ../api/review-readiness, ../components/beijing-datetime, ../components/review-readiness-panel.",
+      "purpose": "Composes one case workspace from the case profile, material versions, review readiness, pending work and review history; all mutations remain routed through case-scoped API commands.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -53782,7 +53787,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/pages/cases-page.tsx": {
-      "purpose": "Implements the web page/view exports CasesPage, FILTERS, PAGE_SIZES, collator, scrollPositions, translating application state into its visible or typed interface. It connects to ../api/http, ../api/queries, ../components/cases-table.",
+      "purpose": "Lists and searches the cases visible to the current session, with server-backed filtering, sorting and pagination before opening a case workspace.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -53874,7 +53879,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/pages/compare-entry-page.tsx": {
-      "purpose": "Implements the web page/view exports customerLabel, CompareEntryPage, translating application state into its visible or typed interface. It connects to ../api/http, ../api/queries, ../api/types.",
+      "purpose": "Resolves the selected case and comparison target, then routes into a side-by-side comparison of persisted review runs without creating a new review.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -54012,7 +54017,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/pages/compare-page.tsx": {
-      "purpose": "Implements the web page/view exports latestFirst, primaryContract, RunSelect, MaterialPane, ComparePage, translating application state into its visible or typed interface. It connects to ../api/http, ../api/paths, ../api/queries.",
+      "purpose": "Compares two selected frozen review runs and their primary contract/material snapshots, showing matching and changed findings with source identities rather than recomputing outcomes.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -54104,7 +54109,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/pages/contracts-page.tsx": {
-      "purpose": "Implements the web page/view exports newId, optionalText, actorScope, emptyItem, emptyFunding, translating application state into its visible or typed interface. It connects to ../api/http, ../api/types, ../components/page-status.",
+      "purpose": "Creates and edits contract registrations and resumable drafts from the selected case; restricted party fields remain masked by server projections and writes use the server’s current draft revision.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -54150,7 +54155,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/pages/evidence-sla-page.tsx": {
-      "purpose": "Implements the web page/view exports EvidenceSLAPage, translating application state into its visible or typed interface. It connects to ../api/http, ../api/queries, ../components/evidence-sla-dashboard.",
+      "purpose": "Loads evidence requests across authorized cases and presents receipt status and due/overdue timing from the server projection; it does not infer that unreceived evidence was supplied.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -54242,7 +54247,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/pages/governed-knowledge-page.tsx": {
-      "purpose": "Implements the web page/view exports ServerError, ResultStatus, matchesKnowledge, ScopeCell, GovernedKnowledgeListPage, translating application state into its visible or typed interface. It connects to ../api/http, ../components/governed-knowledge-editor, ../components/experience-metrics-panel.",
+      "purpose": "Provides admin list, draft creation and version-detail routes for governed knowledge lifecycle; scope, content revision and submit/approve/publish actions are checked by the governance API.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -54380,7 +54385,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/pages/home-page.tsx": {
-      "purpose": "Implements the web page/view exports barWidth, progressColor, ProgressDonut, ProgressList, CircuitStrip, translating application state into its visible or typed interface. It connects to ../api/http, ../api/types, ../components/page-status.",
+      "purpose": "Presents server-derived case/workflow summaries and starts primary-contract intake through the explicit upload flow; displayed counts and risk summaries are not recalculated from hidden client data.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -54472,7 +54477,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/pages/legal-knowledge-page.tsx": {
-      "purpose": "Implements the web page/view exports LegalKnowledgePage, isImportInput, LegalKnowledgeAdminList, LegalVersionDetail, detailPath, translating application state into its visible or typed interface. It connects to ../api/http, ../api/legal-knowledge, ../api/queries.",
+      "purpose": "Searches case-relevant legal knowledge with URL-backed filters and opens exact article/version content; admin imports use governance endpoints while company-source catalogs remain read-only.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -54518,7 +54523,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/pages/login-page.tsx": {
-      "purpose": "Implements the web page/view exports LoginPage, translating application state into its visible or typed interface. It connects to ../api/http, ../api/paths, ../api/queries.",
+      "purpose": "Starts the configured client or admin audience login and returns through the server-validated OIDC flow; credentials and callback state are not stored by the page.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -54564,7 +54569,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/pages/not-found-page.tsx": {
-      "purpose": "Implements the web page/view exports NotFoundPage, translating application state into its visible or typed interface.",
+      "purpose": "Renders the application’s unmatched-route state and navigation recovery link without querying or mutating case data.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -54656,7 +54661,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/pages/operator-audit-page.tsx": {
-      "purpose": "Implements the web page/view exports beijingInputNow, beijingInstant, OperatorAuditPage, client, translating application state into its visible or typed interface. It connects to ../api/endpoints, ../api/http, ../api/queries.",
+      "purpose": "Shows the operator-audit extension only when enabled by the server/deployment flags, then composes versioned service-object, evidence and impact views; no extension write path is offered while disabled.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -54794,7 +54799,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/pages/review-entry-page.tsx": {
-      "purpose": "Implements the web page/view exports indexRunsByCase, latestRunForCase, ReviewEntryCaseCell, ReviewEntryStatusCell, ReviewEntryRunCell, translating application state into its visible or typed interface. It connects to ../api/http, ../api/queries, ../api/types.",
+      "purpose": "Lists cases and persisted review runs visible to the actor, selects the newest eligible run/attempt by explicit identity and opens its frozen workspace.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -54840,7 +54845,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/pages/review-page.tsx": {
-      "purpose": "Implements the web page/view exports ReviewPage, translating application state into its visible or typed interface. It connects to ../api/paths, ../api/types, ../domain/frozen-quote.",
+      "purpose": "Loads the selected run and immutable attempt into the review workspace, including findings, evidence citations, event stream and manual decisions; client rendering does not turn model advice into confirmed findings.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -54932,7 +54937,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/pages/rulepack-create-page.tsx": {
-      "purpose": "Implements the web page/view exports RulePackCreatePage, translating application state into its visible or typed interface. It connects to ../api/queries, ../api/rulepacks, ../components/page-status.",
+      "purpose": "Creates an editable rule-pack draft from an existing published version, validates form input for feedback and submits with server revision/lifecycle checks.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -55024,7 +55029,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/pages/rulepack-detail-page.tsx": {
-      "purpose": "Implements the web page/view exports editableManifest, detailFromMutation, pointerImage, pointerTransition, RulePackDetailPage, translating application state into its visible or typed interface. It connects to ../api/http, ../components/page-status, ../components/dirty-leave-guard.",
+      "purpose": "Edits and publishes a selected rule-pack version using compare-and-swap revisions, displays validation errors and supports explicit lifecycle rollback without rewriting prior publications.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -55116,7 +55121,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/pages/rulepacks-page.tsx": {
-      "purpose": "Implements the web page/view exports RulePacksPage, STATE_LABELS, translating application state into its visible or typed interface. It connects to ../api/http, ../api/queries, ../components/page-status.",
+      "purpose": "Lists rule-pack versions and lifecycle states for the admin audience, linking to drafts, published detail and creation flows without treating shadow results as active rules.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -55162,7 +55167,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/pages/session-gate.tsx": {
-      "purpose": "Implements the web page/view exports SessionGate, translating application state into its visible or typed interface. It connects to ../api/queries, ../api/types, ../components/page-status.",
+      "purpose": "Waits for the authenticated audience/session query before rendering protected routes, redirects unauthenticated users to login and clears private route state when identity expires.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -55254,7 +55259,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/pages/settings-page.tsx": {
-      "purpose": "Implements the web page/view exports modelFacts, SettingsPage, ModelFact, translating application state into its visible or typed interface. It connects to ../api/http, ../api/queries, ../components/page-status.",
+      "purpose": "Provides admin-only model endpoint and system configuration views; credentials are never exposed in the client workbench and server authorization controls settings access.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -55346,7 +55351,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/pages/subject-change-review-page.tsx": {
-      "purpose": "Implements the web page/view exports isSubjectVersion, IdentityProjection, BasisItem, SubjectChangeReviewPage, SubjectChangeReviewPageContents, translating application state into its visible or typed interface. It connects to ../api/http, ../api/idempotency, ../api/types.",
+      "purpose": "Shows the proposed subject identity change, before/after values and linked evidence history, then submits an authorized review decision only when the reviewer is not the proposer.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -55438,7 +55443,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/pages/subjects-page.tsx": {
-      "purpose": "Implements the web page/view exports verificationTone, SubjectsPage, SubjectDetailPage, translating application state into its visible or typed interface. It connects to ../components/subject-create-fields, ../components/page-status.",
+      "purpose": "Lists subjects visible to the case and opens case-scoped subject details, verification and binding history; case roles and permissions come from server projections.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -55576,7 +55581,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/pages/system-health-page.tsx": {
-      "purpose": "Implements the web page/view exports HealthTag, GroupTable, Topology, ProductionArchitecture, SystemHealthPage, translating application state into its visible or typed interface. It connects to ../api/types, ../components/page-status, ../domain/review.",
+      "purpose": "Displays admin health snapshots with configured topology expectations separated from observed instances and stale observations, using the health API as source of operational status.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -55714,7 +55719,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/pages/workbench-module-page.tsx": {
-      "purpose": "Implements the web page/view exports isWorkbenchModuleKey, statusLabel, field, panel, emptyPanel, translating application state into its visible or typed interface. It connects to ../api/http, ../api/paths, ../components/page-status.",
+      "purpose": "Routes the selected case workbench module to its task or knowledge panel, preserving actor assignment, case scope and task revision from the server API.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -55852,7 +55857,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/test/antd.tsx": {
-      "purpose": "Implements the web component/hook exports renderWithAntd, chooseOption, translating application state into its visible or typed interface.",
+      "purpose": "Provides a React Testing Library renderer with Ant Design context and helpers for selecting accessible dropdown options in component tests; production modules do not import this test harness.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -55944,7 +55949,7 @@
       "header_state": "pending-header-application"
     },
     "web/src/test/matchers.d.ts": {
-      "purpose": "Implements the web component/hook exports module, translating application state into its visible or typed interface.",
+      "purpose": "Adds Testing Library matcher types to Vitest assertions so DOM expectation calls in web tests are type-checked.",
       "authors": [
         {
           "name": "Bai Junhao",
