@@ -9,11 +9,11 @@
 - 材料引用保留跨行否定词和限制条件，并记录本次审查原文位置；经核验的引用能打开冻结原文并按 Unicode 码点高亮，展示材料版本、正文及解析摘要。缺少身份、摘要或精确原文校验时拒绝定位。
 - 人工决定、整改和复核保留历史，不覆盖旧审查记录。
 - 文档上传、重新解析和审查提交会校验角色与案件权限；异步任务由 PostgreSQL 状态驱动。
-- 合同聚合、合同版本、案件关联、合同草稿、存量合同导入来源和顺序会签决定已有独立持久化模型。[PR #140](https://github.com/Rupert-WLLP-Bai/contract-audit-workbench/pull/140) 已合入 main，当前应用源码接受 schema 28：0027 记录签署登记及补充协议关系，0028 记录交付、验收、缺陷和整改事实。代码合入不表示数据库已升级；这些记录不表示外部电子签名已验证、付款已完成或完整合同生命周期已验收。部署与完整候选验收为 `NOT_RUN`。
+- 合同聚合、合同版本、案件关联、合同草稿、存量导入来源和顺序会签决定已有独立持久化模型。PR [#144](https://github.com/Rupert-WLLP-Bai/contract-audit-workbench/pull/144) 已合入 main `1a9eae0`，在签署和履约记录基础上增加本地付款资格核验、可信付款/冲正回执、冻结固定资产计划、人工移交及独立可信 ERP 入账/冲正事实。没有银行转账或外部系统写回。PR 的 [`pr-fast-gate`](https://github.com/Rupert-WLLP-Bai/contract-audit-workbench/actions/runs/41339271202) 为 `PASS`；真实 finance/ERP 来源接入仍 `BLOCKED`，部署和完整候选验收为 `NOT_RUN`。
 
 ## 合同功能的状态边界
 
-历史固定基线 `0421831c5ca86fdf56ea6d32939da4f825f08c3d` 的兼容 schema 为 `[26,26]`；PR [#140](https://github.com/Rupert-WLLP-Bai/contract-audit-workbench/pull/140) 已合入 main `595fe2f`，当前应用源码接受 `[28,28]`。0027/0028 增加签署登记、补充协议关系及按冻结修订记录的交付、验收、缺陷和整改事实。代码合入与完整交付验收是不同状态；数据库部署和完整候选验收仍为 `NOT_RUN`。这些能力不证明外部电子签名验证、付款处理或整个合同生命周期均已交付。使用前应查看目标环境和对应验收状态。
+历史固定基线 `0421831c5ca86fdf56ea6d32939da4f825f08c3d` 的兼容 schema 为 `[26,26]`；PR [#140](https://github.com/Rupert-WLLP-Bai/contract-audit-workbench/pull/140) 合入后的固定源码 `595fe2f` 接受 `[28,28]`。PR [#144](https://github.com/Rupert-WLLP-Bai/contract-audit-workbench/pull/144) 已合入 main `1a9eae0`，当前应用源码接受 `[30,30]`：0029 增加本地付款资格核验与可信付款事实，0030 增加冻结资产计划、人工移交及可信 ERP 事实。迁移与兼容范围的权威来源为 [`internal/store/migrations.go`](../../internal/store/migrations.go)、[0029 付款迁移](../../internal/store/migrations/0029_contract_payments.sql) 和 [0030 资产迁移](../../internal/store/migrations/0030_contract_assets.sql)；应用打开连接时核对迁移账本，不自动执行迁移（[`internal/store/pg.go`](../../internal/store/pg.go)）。PR 的 `pr-fast-gate` 为 `PASS`，不等同目标环境部署或完整候选验收；两者为 `NOT_RUN`。真实 finance/ERP 来源接入仍 `BLOCKED`。签署、付款资格、可信回执或人工移交记录均不证明外部系统已接通、银行已转账或完整合同生命周期已验收。
 
 会签记录中的审批决定、任务材料白名单与转交有现存代码模型。它们不能被描述为外部电子签名、真实签署或履约完成凭证。已签存量导入需要保留真实来源；历史会签未知时不会伪造签名或会签轮次。受限供应方字段（收款方、开户行、账号、纳税人识别号）以独立 `CLM_DATA_KEY` 加密封存；未配置密钥时，包含此类字段的写入返回 503，不落明文。该密钥不复用 `LLM_CONFIG_KEY`。
 

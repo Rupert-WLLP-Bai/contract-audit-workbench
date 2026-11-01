@@ -2,7 +2,7 @@
 
 ## 主线版本与升级
 
-历史固定基线 `0421831c5ca86fdf56ea6d32939da4f825f08c3d` 的应用兼容 schema 为 `[26,26]`。PR [#140](https://github.com/Rupert-WLLP-Bai/contract-audit-workbench/pull/140) 已合入 main `595fe2f`，当前应用源码接受 schema `[28,28]`：既有迁移 0020–0026 建立合同台账、冻结版本、顺序会签及审计关联；0027 增加签署登记与补充协议关系；0028 增加履约交付、验收、缺陷和整改事实。代码合入不代表任一数据库已迁移；数据库升级、部署、回退演练和完整交付验收均为 `NOT_RUN`。实际升级前停写并保留数据库与对象存储恢复点，迁移后使用兼容该 schema 的同版服务。旧二进制不可直接对已升级数据库继续写入；回退只能使用已验证兼容版本或恢复同批快照，不支持删除迁移记录伪造降级。
+历史固定基线 `0421831c5ca86fdf56ea6d32939da4f825f08c3d` 的应用兼容 schema 为 `[26,26]`；PR [#140](https://github.com/Rupert-WLLP-Bai/contract-audit-workbench/pull/140) 合入后的固定源码 `595fe2f` 接受 `[28,28]`。PR [#144](https://github.com/Rupert-WLLP-Bai/contract-audit-workbench/pull/144) 已合入 main `1a9eae0`，当前源码接受 schema `[30,30]`：0029 增加本地付款资格核验和可信付款/冲正事实，0030 增加冻结资产计划、人工移交及可信 ERP 入账/冲正事实。完整迁移目录和兼容范围以 [`internal/store/migrations.go`](../../internal/store/migrations.go)、[0029 付款迁移](../../internal/store/migrations/0029_contract_payments.sql) 和 [0030 资产迁移](../../internal/store/migrations/0030_contract_assets.sql) 为准；应用连接通过 [`internal/store/pg.go`](../../internal/store/pg.go) 校验迁移名称、校验和与兼容范围，不会在应用启动时自动迁移。独立迁移作业由部署流程运行（本地编排见 [`deployments/local.py`](../../deployments/local.py)）。Schema 是数据库兼容边界，不是产品发布版本。PR #144 的 `pr-fast-gate` 为 `PASS`；目标环境数据库升级、部署、回退演练和完整候选验收仍为 `NOT_RUN`。真实 finance/ERP 来源接入仍为 `BLOCKED`，本地可信回执处理不代表生产来源已连接。升级前停写并保留数据库与对象存储恢复点，迁移后使用兼容同一 schema 的服务。旧二进制不可直接对已升级数据库继续写入；回退只能使用已验证兼容版本或恢复同批快照，不支持删除迁移记录伪造降级。服务 `/ready` 仅确认服务数据库连接可用（[`internal/httpapi/health.go`](../../internal/httpapi/health.go)），不代表完整业务验收。
 
 ## 本地 Compose
 
