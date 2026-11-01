@@ -225,7 +225,11 @@ func TestValue(t *testing.T) { if Value != 1 { t.Fatal(Value) } }
 
     def test_architecture_trigger_paths_and_rename_deletion(self):
         for path in ("scripts/architecture/check_architecture.py",
+                     "scripts/architecture/architecture.schema.json",
                      "scripts/architecture/fixtures/allowed.json",
+                     "internal/modelgateway/jev.go",
+                     "internal/agentflow/advisory.go",
+                     "internal/advisorycontract/contract.go",
                      "go.mod", "go.sum", "go.work", "go.work.sum", "go.env",
                      "scripts/check_fast.py", ".github/workflows/pr-fast.yml"):
             with self.subTest(path=path):
@@ -394,7 +398,13 @@ class CliBoundaryTests(unittest.TestCase):
             "if [ \"$1\" = list ]; then\n"
             "  printf '%s\\n' '{\"ImportPath\":\"contractaudit/internal/contractmoney\","
             "\"Name\":\"contractmoney\",\"GoFiles\":[\"decimal.go\"],"
-            "\"Imports\":[\"errors\",\"fmt\",\"math/big\",\"strconv\",\"strings\"]}'\n"
+            "\"Imports\":[\"errors\",\"fmt\",\"math/big\",\"strconv\",\"strings\"]}' "
+            "'{\"ImportPath\":\"contractaudit/internal/modelgateway\","
+            "\"Name\":\"modelgateway\",\"GoFiles\":[\"jev.go\"],"
+            "\"Imports\":[\"contractaudit/internal/store\"]}' "
+            "'{\"ImportPath\":\"contractaudit/internal/advisorycontract\","
+            "\"Name\":\"advisorycontract\",\"GoFiles\":[\"contract.go\"],"
+            "\"Imports\":[\"time\"]}'\n"
             "  exit 0\nfi\n"
             "for argument in \"$@\"; do\n"
             "  if [ \"$argument\" = \"-json\" ]; then exit 1; fi\n"

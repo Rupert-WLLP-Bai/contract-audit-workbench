@@ -1,12 +1,48 @@
 {
-  "schema_version": 1,
+  "$schema": "./architecture.schema.json",
+  "schema_version": 2,
   "module": "contractaudit",
-  "pilot": "internal/contractmoney",
-  "allowed_direct_imports": [
-    "errors",
-    "fmt",
-    "math/big",
-    "strconv",
-    "strings"
+  "policies": [
+    {
+      "id": "contractmoney-pure-domain",
+      "description": "Keep contractmoney limited to its reviewed direct production imports.",
+      "checks": [
+        {
+          "id": "contractmoney-allowlist",
+          "package": "internal/contractmoney",
+          "mode": "allowlist",
+          "allowed_direct_imports": [
+            "errors",
+            "fmt",
+            "math/big",
+            "strconv",
+            "strings"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "advisory-contract-boundary",
+      "description": "Forbid direct modelgateway imports of agentflow and the old advisory facade; keep advisorycontract standard-library-only. The existing modelgateway to store to agentflow path is outside this direct-import rule.",
+      "checks": [
+        {
+          "id": "modelgateway-no-orchestration-or-facade",
+          "package": "internal/modelgateway",
+          "mode": "forbid",
+          "forbidden_direct_imports": [
+            "internal/agentflow",
+            "internal/advisory"
+          ]
+        },
+        {
+          "id": "advisorycontract-stdlib-only",
+          "package": "internal/advisorycontract",
+          "mode": "allowlist",
+          "allowed_direct_imports": [
+            "time"
+          ]
+        }
+      ]
+    }
   ]
 }

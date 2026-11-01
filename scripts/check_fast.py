@@ -436,7 +436,9 @@ def _docs_build_relevant(path: str) -> bool:
 
 
 def _architecture_relevant(path: str) -> bool:
-    if path.startswith(("scripts/architecture/", "internal/contractmoney/")):
+    if path.startswith(("scripts/architecture/", "internal/contractmoney/",
+                        "internal/modelgateway/", "internal/agentflow/",
+                        "internal/advisorycontract/", "internal/advisory/")):
         return True
     return path in {
         "scripts/check_fast.py", ".github/workflows/pr-fast.yml",

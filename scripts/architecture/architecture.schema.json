@@ -1,0 +1,86 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Architecture direct-import policies",
+  "x-caw-config-version": 2,
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["$schema", "schema_version", "module", "policies"],
+  "properties": {
+    "$schema": { "const": "./architecture.schema.json" },
+    "schema_version": { "const": 2 },
+    "module": { "type": "string", "minLength": 1, "pattern": "^[^\\s/]+(?:/[^\\s/]+)*$" },
+    "policies": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/policy" }
+    }
+  },
+  "$defs": {
+    "identifier": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]*$"
+    },
+    "packagePath": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[^./\\\\][^\\\\\\s]*(?:/[^./\\\\][^\\\\\\s]*)*$"
+    },
+    "importPath": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^\\S+$"
+    },
+    "policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "checks"],
+      "properties": {
+        "id": { "$ref": "#/$defs/identifier" },
+        "description": { "type": "string" },
+        "checks": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/check" }
+        }
+      }
+    },
+    "check": {
+      "oneOf": [
+        { "$ref": "#/$defs/allowlistCheck" },
+        { "$ref": "#/$defs/forbidCheck" }
+      ]
+    },
+    "allowlistCheck": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "package", "mode", "allowed_direct_imports"],
+      "properties": {
+        "id": { "$ref": "#/$defs/identifier" },
+        "package": { "$ref": "#/$defs/packagePath" },
+        "mode": { "const": "allowlist" },
+        "allowed_direct_imports": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/importPath" }
+        }
+      }
+    },
+    "forbidCheck": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "package", "mode", "forbidden_direct_imports"],
+      "properties": {
+        "id": { "$ref": "#/$defs/identifier" },
+        "package": { "$ref": "#/$defs/packagePath" },
+        "mode": { "const": "forbid" },
+        "forbidden_direct_imports": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/packagePath" }
+        }
+      }
+    }
+  }
+}
