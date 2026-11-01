@@ -59,7 +59,8 @@ func TestContractDraftCreateRecoverReplayAndReplace(t *testing.T) {
 	if detail.Summary.ContractState != "draft" || detail.Summary.RowVersion != 1 {
 		t.Fatalf("unexpected summary %+v", detail.Summary)
 	}
-	if len(detail.AllowedCommands) != 1 || detail.AllowedCommands[0] != "replace_draft" {
+	if len(detail.AllowedCommands) != 2 || detail.AllowedCommands[0] != "replace_draft" ||
+		detail.AllowedCommands[1] != clmCommandFreezeVersion {
 		t.Fatalf("allowed commands %v", detail.AllowedCommands)
 	}
 	if detail.Draft == nil || detail.Draft.Supplier.BankAccount != testRestrictedBankAccount {

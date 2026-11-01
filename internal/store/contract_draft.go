@@ -563,7 +563,7 @@ func clmDraftCommands(record clmContractRecord, canManage bool) []string {
 		return []string{}
 	}
 	if record.AuthorityMode == "native" && record.LifecycleState == "draft" && record.ValidityState == "active" {
-		return []string{"replace_draft"}
+		return []string{"replace_draft", clmCommandFreezeVersion}
 	}
 	return []string{}
 }
@@ -625,26 +625,42 @@ func (s *Store) LoadContractDetail(ctx context.Context, user accounts.User, cont
 func (s *Store) buildContractDetail(ctx context.Context, tx pgx.Tx, record clmContractRecord, current accounts.User) (ContractDetail, []byte, error) {
 	var contentBytes []byte
 	var updatedAt *time.Time
-	err := tx.QueryRow(ctx, `SELECT content, updated_at FROM clm_contract_drafts
-		WHERE tenant_id=$1 AND contract_id=$2`, accounts.Tenant(current), record.ContractID).Scan(&contentBytes, &updatedAt)
-	if errors.Is(err, pgx.ErrNoRows) {
-		if record.CurrentRevisionID != nil {
-			err := tx.QueryRow(ctx, `SELECT snapshot FROM clm_contract_revisions
-				WHERE tenant_id=$1 AND contract_id=$2 AND contract_revision_id=$3`,
-				accounts.Tenant(current), record.ContractID, *record.CurrentRevisionID).Scan(&contentBytes)
-			if errors.Is(err, pgx.ErrNoRows) {
-				return ContractDetail{}, nil, fault.NotFound("没有找到对应记录")
-			}
-			if err != nil {
-				return ContractDetail{}, nil, err
-			}
-		} else {
-			contentBytes = nil
+	if record.CurrentRevisionID != nil && record.LifecycleState != "draft" {
+		// A frozen version is authoritative once the contract has left the
+		// editable draft state; the working draft row is never consulted
+		// ahead of it.
+		err := tx.QueryRow(ctx, `SELECT snapshot FROM clm_contract_revisions
+			WHERE tenant_id=$1 AND contract_id=$2 AND contract_revision_id=$3`,
+			accounts.Tenant(current), record.ContractID, *record.CurrentRevisionID).Scan(&contentBytes)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return ContractDetail{}, nil, fault.NotFound("没有找到对应记录")
 		}
-	} else if err != nil {
-		return ContractDetail{}, nil, err
+		if err != nil {
+			return ContractDetail{}, nil, err
+		}
+	} else {
+		err := tx.QueryRow(ctx, `SELECT content, updated_at FROM clm_contract_drafts
+			WHERE tenant_id=$1 AND contract_id=$2`, accounts.Tenant(current), record.ContractID).Scan(&contentBytes, &updatedAt)
+		if errors.Is(err, pgx.ErrNoRows) {
+			if record.CurrentRevisionID != nil {
+				err := tx.QueryRow(ctx, `SELECT snapshot FROM clm_contract_revisions
+					WHERE tenant_id=$1 AND contract_id=$2 AND contract_revision_id=$3`,
+					accounts.Tenant(current), record.ContractID, *record.CurrentRevisionID).Scan(&contentBytes)
+				if errors.Is(err, pgx.ErrNoRows) {
+					return ContractDetail{}, nil, fault.NotFound("没有找到对应记录")
+				}
+				if err != nil {
+					return ContractDetail{}, nil, err
+				}
+			} else {
+				contentBytes = nil
+			}
+		} else if err != nil {
+			return ContractDetail{}, nil, err
+		}
 	}
 	name, amount, currency := "", (*string)(nil), (*string)(nil)
+	var err error
 	if contentBytes != nil {
 		if name, amount, currency, err = draftContentSummaryFacts(contentBytes); err != nil {
 			return ContractDetail{}, nil, err
@@ -929,13 +945,17 @@ func (s *Store) ImportLegacySignedContract(ctx context.Context, user accounts.Us
 	if err := validateDraftContent(&input.Snapshot); err != nil {
 		return ContractDetail{}, err
 	}
+	amountsReconciled := false
 	if legacyAmountsKnown(&input.Snapshot) {
-		// The imported snapshot freezes revision 1, so its amounts must
-		// reconcile exactly like a submit would. Unknown historical amounts
-		// stay legal and are not validated here.
+		// Legacy registration is not the #81 freeze command: it stays a
+		// gated path so an unknown historical amount remains legal (#77).
+		// The revision records whether StageFinal actually ran, so an
+		// unreconciled unknown-amount import can never be mistaken for a
+		// reconciled frozen version.
 		if err := validateDraftAmounts(&input.Snapshot, contractmoney.StageFinal); err != nil {
 			return ContractDetail{}, err
 		}
+		amountsReconciled = true
 	}
 	digest, err := clmRequestDigest(clmRouteLegacyImport, "POST", "/api/contracts/legacy-imports", input.ExpectedRowVersion, input)
 	if err != nil {
@@ -1013,10 +1033,10 @@ func (s *Store) ImportLegacySignedContract(ctx context.Context, user accounts.Us
 		return ContractDetail{}, clmUniqueViolation(err, "合同编号或来源合同已存在")
 	}
 	if _, err := tx.Exec(ctx, `INSERT INTO clm_contract_revisions
-		(tenant_id,contract_id,contract_revision_id,revision_number,amount,currency,snapshot,snapshot_digest,frozen_by)
-		VALUES ($1,$2,$3,1,$4,$5,$6::jsonb,$7,$8)`,
+		(tenant_id,contract_id,contract_revision_id,revision_number,amount,currency,snapshot,snapshot_digest,frozen_by,amounts_reconciled)
+		VALUES ($1,$2,$3,1,$4,$5,$6::jsonb,$7,$8,$9)`,
 		accounts.Tenant(current), contractID, revisionID, amount, currency,
-		string(sealedSnapshot), sha256Bytes(sealedSnapshot), current.ID); err != nil {
+		string(sealedSnapshot), sha256Bytes(sealedSnapshot), current.ID, amountsReconciled); err != nil {
 		return ContractDetail{}, err
 	}
 	if _, err := tx.Exec(ctx, `UPDATE clm_contracts SET current_revision_id=$3, updated_at=clock_timestamp()
