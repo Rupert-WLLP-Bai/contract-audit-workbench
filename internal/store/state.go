@@ -14,6 +14,7 @@ import (
 
 	"contractaudit/internal/accounts"
 	"contractaudit/internal/advisory"
+	"contractaudit/internal/approval"
 	"contractaudit/internal/config"
 	"contractaudit/internal/docir"
 	"contractaudit/internal/docversion"
@@ -58,6 +59,7 @@ type Store struct {
 	schema                 string
 	dropSchema             bool
 	pool                   *pgxpool.Pool
+	approvalKeyring        *approval.Keyring
 	readOnly               atomic.Bool
 }
 

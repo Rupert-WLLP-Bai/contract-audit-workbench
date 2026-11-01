@@ -250,6 +250,9 @@ func contractDraftRoute(role string, methods routeMethodSet, parts []string) boo
 	if (len(parts) == 3 || len(parts) == 4) && parts[2] == "approval-rounds" {
 		return methods.read
 	}
+	if len(parts) == 5 && parts[2] == "revisions" && parts[4] == "audit-links" {
+		return methods.read || methods.post
+	}
 	if len(parts) == 3 {
 		switch parts[2] {
 		case "draft":
@@ -275,7 +278,7 @@ func approvalTaskRoute(methods routeMethodSet, parts []string) bool {
 	case 1, 2:
 		return methods.read
 	case 3:
-		return parts[2] == "decisions" && methods.post
+		return (parts[2] == "decisions" || parts[2] == "credentials" || parts[2] == "transfers") && methods.post
 	default:
 		return false
 	}

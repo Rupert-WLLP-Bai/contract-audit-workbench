@@ -19,6 +19,14 @@ function jsonResponse(value: unknown, status = 200): Response {
   });
 }
 
+function errorResponse(
+  status: number,
+  code: string,
+  message: string,
+): Response {
+  return jsonResponse({ error: { code, message, retryable: false } }, status);
+}
+
 export function inboxItem(
   overrides: Partial<ApprovalInboxItem> = {},
 ): ApprovalInboxItem {
@@ -214,37 +222,32 @@ describe("approval response parsers", () => {
   it("sends the current row version and reuses the caller's idempotency key", async () => {
     const fetch = vi.spyOn(globalThis, "fetch").mockResolvedValue(
       jsonResponse({
-        contract_id: "contract-1",
-        contract_state: "in_approval",
+        decision_id: "decision-1",
+        decision: "approve",
         round: {
           approval_round_id: "round-2",
+          contract_revision_id: "revision-2",
           round_number: 2,
           state: "in_review",
-        },
-        task: {
-          task_id: "task-1",
-          node_order: 1,
-          state: "approved",
           row_version: 4,
         },
-        decision: {
-          decision_id: "decision-1",
-          task_id: "task-1",
-          action: "approve",
-          opinion: "同意",
-          decided_at: at,
+        task: {
+          approval_task_id: "task-1",
+          node_order: 1,
+          state: "approved",
         },
+        next_task: null,
+        contract_state: "draft",
+        workflow_state: "approved",
+        row_version: 5,
       }),
     );
     const result = await decideApprovalTask(
       {
         task_id: "task-1",
-        contract_id: "contract-1",
-        approval_round_id: "round-2",
-        contract_revision_id: "revision-2",
-        expected_row_version: 3,
-        action: "approve",
-        opinion: "同意",
+        expected_round_row_version: 3,
+        decision: "approve",
+        comment: "同意",
       },
       "idem-key-1",
     );
@@ -255,12 +258,63 @@ describe("approval response parsers", () => {
       "idem-key-1",
     );
     expect(JSON.parse(String(init?.body))).toEqual({
-      contract_id: "contract-1",
-      approval_round_id: "round-2",
-      contract_revision_id: "revision-2",
-      expected_row_version: 3,
-      action: "approve",
-      opinion: "同意",
+      decision: "approve",
+      comment: "同意",
+      expected_round_row_version: 3,
+    });
+  });
+
+  it("requests a short-lived credential after a credential-required refusal and retries once", async () => {
+    const fetch = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(
+        errorResponse(403, "forbidden", "审批决定必须携带内部身份凭证"),
+      )
+      .mockResolvedValueOnce(jsonResponse({ credential: "caw-approval-token" }))
+      .mockResolvedValueOnce(
+        jsonResponse({
+          decision_id: "decision-1",
+          decision: "approve",
+          round: {
+            approval_round_id: "round-2",
+            contract_revision_id: "revision-2",
+            round_number: 2,
+            state: "in_review",
+            row_version: 4,
+          },
+          task: {
+            approval_task_id: "task-1",
+            node_order: 1,
+            state: "approved",
+          },
+          next_task: null,
+          contract_state: "draft",
+          workflow_state: "approved",
+          row_version: 5,
+        }),
+      );
+    await decideApprovalTask(
+      {
+        task_id: "task-1",
+        expected_round_row_version: 3,
+        decision: "approve",
+        comment: "同意",
+      },
+      "idem-key-2",
+    );
+    expect(fetch).toHaveBeenCalledTimes(3);
+    expect(String(fetch.mock.calls[1]?.[0])).toBe(
+      "/api/approval-tasks/task-1/credentials",
+    );
+    const retried = fetch.mock.calls[2]!;
+    expect(new Headers(retried[1]?.headers).get("Idempotency-Key")).toBe(
+      "idem-key-2",
+    );
+    expect(JSON.parse(String(retried[1]?.body))).toEqual({
+      decision: "approve",
+      comment: "同意",
+      expected_round_row_version: 3,
+      credential: "caw-approval-token",
     });
   });
 });

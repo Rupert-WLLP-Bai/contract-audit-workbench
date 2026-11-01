@@ -132,6 +132,19 @@ func operatorAuditConfig(mode string) (bool, *capabilitypack.Registry, map[strin
 	return true, registry, connectors, catalog
 }
 
+func contractAuditBindingsEnabled() bool {
+	raw := strings.TrimSpace(os.Getenv("CONTRACT_AUDIT_BINDINGS_ENABLED"))
+	if raw == "" {
+		return false
+	}
+	enabled, err := strconv.ParseBool(raw)
+	if err != nil {
+		log.Printf("contract audit bindings disabled: CONTRACT_AUDIT_BINDINGS_ENABLED is not a boolean")
+		return false
+	}
+	return enabled
+}
+
 func operatorAuditEnabled() bool {
 	rawEnabled := strings.TrimSpace(os.Getenv("OPERATOR_AUDIT_ENABLED"))
 	if rawEnabled == "" {

@@ -137,7 +137,7 @@ function taskRoundDetail(overrides: Record<string, unknown> = {}) {
         role_code: "legal_counsel",
         assignee_subject_id: "actor-2",
         assignee_display: "法务乙",
-        state: "queued",
+        state: "pending",
         row_version: 1,
         activated_at: null,
         decided_at: null,
@@ -311,26 +311,24 @@ class ApprovalService {
         );
       }
       return json({
-        contract_id: "contract-1",
-        contract_state: "in_approval",
+        decision_id: "decision-3",
+        decision: "approve",
         round: {
           approval_round_id: "round-2",
+          contract_revision_id: "revision-2",
           round_number: 2,
           state: "in_review",
-        },
-        task: {
-          task_id: "task-1",
-          node_order: 1,
-          state: "approved",
           row_version: 4,
         },
-        decision: {
-          decision_id: "decision-3",
-          task_id: "task-1",
-          action: "approve",
-          opinion: "同意进入法务节点",
-          decided_at: at,
+        task: {
+          approval_task_id: "task-1",
+          node_order: 1,
+          state: "approved",
         },
+        next_task: null,
+        contract_state: "in_approval",
+        workflow_state: "approved",
+        row_version: 5,
       });
     }
     return json({ error: { code: "not_found", message: "没有找到记录" } }, 404);
@@ -437,12 +435,9 @@ describe("approval tasks page", () => {
     expect(posts[0]?.path).toBe("/api/approval-tasks/task-1/decisions");
     expect(posts[0]?.idempotencyKey).not.toBeNull();
     expect(JSON.parse(posts[0]?.body ?? "{}")).toMatchObject({
-      contract_id: "contract-1",
-      approval_round_id: "round-2",
-      contract_revision_id: "revision-2",
-      expected_row_version: 3,
-      action: "approve",
-      opinion: "同意进入法务节点",
+      decision: "approve",
+      comment: "同意进入法务节点",
+      expected_round_row_version: 4,
     });
 
     await waitFor(() =>

@@ -50,6 +50,11 @@ type ContractVersionSummary struct {
 	MaterialCount      int       `json:"material_count"`
 	FrozenBy           string    `json:"frozen_by"`
 	FrozenAt           time.Time `json:"frozen_at"`
+	// AuditState reports whether a bound audit belongs to the current revision.
+	// AuditGateState is the last immutable gate snapshot; not_applicable means
+	// no audit has been bound to this revision.
+	AuditState     string `json:"audit_state"`
+	AuditGateState string `json:"audit_gate_state"`
 }
 
 // FreezeContractVersionResult is the idempotent freeze response.
@@ -326,6 +331,7 @@ func (s *Store) FreezeContractVersion(ctx context.Context, user accounts.User, i
 			SnapshotDigest: sha256Bytes(contentBytes), MaterialsDigest: materialsDigest,
 			ContentFingerprint: contentFingerprint, AmountsReconciled: true,
 			MaterialCount: len(materials), FrozenBy: current.ID, FrozenAt: frozenAt,
+			AuditState: auditStateUnbound, AuditGateState: auditGateNotApplicable,
 		},
 		ContractState:     record.LifecycleState,
 		CurrentRevisionID: revisionID,
@@ -446,6 +452,18 @@ func (s *Store) ListContractVersions(ctx context.Context, user accounts.User, co
 	if err := rows.Err(); err != nil {
 		return ContractVersionList{}, err
 	}
+	bindings, err := loadLatestContractAuditBindings(ctx, tx, accounts.Tenant(current), id)
+	if err != nil {
+		return ContractVersionList{}, err
+	}
+	for i := range items {
+		var binding *ContractAuditBinding
+		if latest, ok := bindings[items[i].ContractRevisionID]; ok {
+			binding = &latest
+		}
+		items[i].AuditState, items[i].AuditGateState = contractAuditStateFor(
+			items[i].ContractRevisionID, record.CurrentRevisionID, binding)
+	}
 	if err := tx.Commit(ctx); err != nil {
 		return ContractVersionList{}, err
 	}
@@ -524,6 +542,12 @@ func (s *Store) LoadContractVersion(ctx context.Context, user accounts.User, con
 		detail.Version.MaterialsDigest = seal.MaterialsDigest
 		detail.Version.ContentFingerprint = seal.ContentFingerprint
 	}
+	binding, err := loadLatestContractAuditBinding(ctx, tx, accounts.Tenant(current), id, revision)
+	if err != nil {
+		return ContractVersionDetail{}, err
+	}
+	detail.Version.AuditState, detail.Version.AuditGateState = contractAuditStateFor(
+		revision, record.CurrentRevisionID, binding)
 	for _, material := range materials {
 		detail.Materials = append(detail.Materials, ContractVersionMaterial{
 			MaterialID: material.MaterialID, MaterialVersionID: material.MaterialVersionID,

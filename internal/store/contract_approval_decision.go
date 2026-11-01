@@ -35,6 +35,7 @@ type DecideApprovalTaskInput struct {
 	Decision                string `json:"decision"`
 	Comment                 string `json:"comment,omitempty"`
 	ExpectedRoundRowVersion int64  `json:"expected_round_row_version"`
+	Credential              string `json:"credential,omitempty"`
 	IdempotencyKey          string `json:"-"`
 }
 
@@ -119,6 +120,19 @@ func (s *Store) DecideApprovalTask(ctx context.Context, user accounts.User, inpu
 		return ApprovalDecisionResult{}, err
 	}
 	defer rollbackCLM(tx)
+	// The credential envelope must name this tenant, subject and task before a
+	// stored receipt can be replayed. The full row-version and snapshot match
+	// follows after the task and round locks.
+	if s.approvalKeyring != nil {
+		claims, err := s.approvalKeyring.Verify(input.Credential)
+		if err != nil {
+			return ApprovalDecisionResult{}, fault.Forbidden("审批身份凭证无效或已过期")
+		}
+		if claims.TenantID != accounts.Tenant(current) || claims.SubjectID != current.ID ||
+			claims.TaskID != taskID {
+			return ApprovalDecisionResult{}, fault.Forbidden("审批身份凭证与当前任务、版本或范围不匹配")
+		}
+	}
 	if err := lockWriteReceipt(ctx, tx, current, clmRouteApprovalDecision, input.IdempotencyKey); err != nil {
 		return ApprovalDecisionResult{}, err
 	}
@@ -156,6 +170,9 @@ func (s *Store) DecideApprovalTask(ctx context.Context, user accounts.User, inpu
 	if !authorizeContract(record, current, access.Decide) {
 		return ApprovalDecisionResult{}, fault.Forbidden("当前授权不能审批此合同")
 	}
+	if !accounts.CanDecide(current.Role) {
+		return ApprovalDecisionResult{}, fault.Forbidden("当前角色不能审批合同")
+	}
 	if record.ValidityState != "active" || record.LifecycleState != "draft" {
 		return ApprovalDecisionResult{}, fault.Conflict("合同当前状态不允许继续会签")
 	}
@@ -165,6 +182,9 @@ func (s *Store) DecideApprovalTask(ctx context.Context, user accounts.User, inpu
 	}
 	if round.State != "in_review" {
 		return ApprovalDecisionResult{}, fault.Conflict("会签轮次已结束")
+	}
+	if record.CurrentRevisionID == nil || *record.CurrentRevisionID != round.ContractRevisionID {
+		return ApprovalDecisionResult{}, fault.Conflict("审批轮次引用的不是当前冻结版本")
 	}
 	if round.RowVersion != input.ExpectedRoundRowVersion {
 		return ApprovalDecisionResult{}, fault.Conflict("审批轮次已变化，请刷新待办后重试")
@@ -196,6 +216,39 @@ func (s *Store) DecideApprovalTask(ctx context.Context, user accounts.User, inpu
 	if !bound {
 		return ApprovalDecisionResult{}, fault.Forbidden("会签角色绑定已撤销，不能继续审批")
 	}
+	// A transferred task belongs to the latest target only. Assignment rows are
+	// append-only history, so the transfer fact is what removes the live right
+	// from the original approver.
+	transferTarget, transferred, err := latestApprovalTransfer(ctx, tx, tenantID, task)
+	if err != nil {
+		return ApprovalDecisionResult{}, err
+	}
+	if transferred && transferTarget != current.ID {
+		return ApprovalDecisionResult{}, fault.Forbidden("审批任务已转交，原受理人不能再作决定")
+	}
+	scope, err := loadApprovalRevisionScope(ctx, tx, tenantID, task.ContractID, round.ContractRevisionID)
+	if err != nil {
+		return ApprovalDecisionResult{}, err
+	}
+	claims, err := s.verifyApprovalCredential(ctx, tx, current, task, record, round, scope, input.Credential)
+	if err != nil {
+		return ApprovalDecisionResult{}, err
+	}
+	var actorOrgID, credentialID, credentialKeyID, credentialDigest, snapshotDigest, amountLimit, currency any
+	var credentialIssuedAt, credentialExpiresAt any
+	var contractRowVersion any
+	if claims != nil {
+		actorOrgID = claims.OrgID
+		credentialID = claims.CredentialID
+		credentialKeyID = claims.KeyID
+		credentialDigest = sha256Bytes([]byte(input.Credential))
+		credentialIssuedAt = time.Unix(claims.IssuedAt, 0).UTC()
+		credentialExpiresAt = time.Unix(claims.ExpiresAt, 0).UTC()
+		snapshotDigest = claims.SnapshotDigest
+		amountLimit = claims.AmountLimit
+		currency = claims.Currency
+		contractRowVersion = claims.ContractRowVersion
+	}
 	nextTask, err := lockNextPendingApprovalTask(ctx, tx, tenantID, task)
 	if err != nil {
 		return ApprovalDecisionResult{}, err
@@ -210,11 +263,16 @@ func (s *Store) DecideApprovalTask(ctx context.Context, user accounts.User, inpu
 	}
 	if _, err := tx.Exec(ctx, `INSERT INTO clm_approval_decisions
 		(tenant_id,decision_id,contract_id,approval_round_id,approval_task_id,contract_revision_id,
-		 node_code,node_order,role_code,decision,comment,decided_by,round_row_version_after,workflow_state_after)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
+		 node_code,node_order,role_code,decision,comment,decided_by,round_row_version_after,workflow_state_after,
+		 actor_org_id,credential_id,credential_key_id,credential_digest,credential_issued_at,
+		 credential_expires_at,snapshot_digest,amount_limit,currency,contract_row_version)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,
+		 $15,$16,$17,$18,$19,$20,$21,$22::text::numeric,$23,$24)`,
 		tenantID, decisionID, task.ContractID, task.ApprovalRoundID, task.ApprovalTaskID,
 		round.ContractRevisionID, task.NodeCode, task.NodeOrder, task.RoleCode, input.Decision,
-		input.Comment, current.ID, round.RowVersion+1, workflowState); err != nil {
+		input.Comment, current.ID, round.RowVersion+1, workflowState,
+		actorOrgID, credentialID, credentialKeyID, credentialDigest, credentialIssuedAt,
+		credentialExpiresAt, snapshotDigest, amountLimit, currency, contractRowVersion); err != nil {
 		return ApprovalDecisionResult{}, clmUniqueViolation(err, "该审批节点已有决定")
 	}
 	if input.Decision == clmDecisionReturn {

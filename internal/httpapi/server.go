@@ -56,6 +56,11 @@ type Options struct {
 	CapabilityPacks       *capabilitypack.Registry
 	ExternalConnectors    map[string]auditext.ReadConnector
 	ExternalConnectorInfo []OperatorConnectorInfo
+
+	// ContractAuditBindingsEnabled gates binding an existing review attempt to
+	// a frozen contract revision. Committed bindings remain readable after the
+	// switch is turned off.
+	ContractAuditBindingsEnabled bool
 }
 
 // Handler serves the review API the web client calls.
@@ -63,7 +68,7 @@ func Handler(st *store.Store, opt Options) http.Handler {
 	if opt.SystemHealth == nil {
 		opt.SystemHealth = systemhealth.New(systemhealth.Config{DatabaseReady: st.Ready})
 	}
-	h := &handler{store: st, loginCounter: newLoginCounter(), cors: opt.CORSOrigins, models: opt.Models, oidc: opt.OIDC, durable: opt.Durable, secureCookies: opt.SecureCookies, systemHealth: opt.SystemHealth, experienceDeliveryEnabled: opt.experienceDeliveryEnabled, operatorAuditEnabled: opt.OperatorAuditEnabled, capabilityPacks: opt.CapabilityPacks, externalConnectors: opt.ExternalConnectors, externalConnectorInfo: opt.ExternalConnectorInfo, intakeUploader: opt.IntakeUploader, eventStreams: make(chan struct{}, maxEventStreams), eventWakeups: newEventWakeups()}
+	h := &handler{store: st, loginCounter: newLoginCounter(), cors: opt.CORSOrigins, models: opt.Models, oidc: opt.OIDC, durable: opt.Durable, secureCookies: opt.SecureCookies, systemHealth: opt.SystemHealth, experienceDeliveryEnabled: opt.experienceDeliveryEnabled, operatorAuditEnabled: opt.OperatorAuditEnabled, capabilityPacks: opt.CapabilityPacks, externalConnectors: opt.ExternalConnectors, externalConnectorInfo: opt.ExternalConnectorInfo, intakeUploader: opt.IntakeUploader, contractAuditBindingsEnabled: opt.ContractAuditBindingsEnabled, eventStreams: make(chan struct{}, maxEventStreams), eventWakeups: newEventWakeups()}
 	h.modelBudgetGateway = systemhealth.ModelGatewayBaseURLFromEnv()
 	mux := http.NewServeMux()
 	// Every binary in this repository serves the same probe surface so a manifest
@@ -102,6 +107,7 @@ func Handler(st *store.Store, opt Options) http.Handler {
 	registerEvidenceRoutes(mux, h)
 	registerManualFindingRoutes(mux, h)
 	registerContractDraftRoutes(mux, h)
+	registerContractAuditRoutes(mux, h)
 	registerContractReferenceRoutes(mux, h)
 	registerContractVersionRoutes(mux, h)
 	registerContractApprovalReadRoutes(mux, h)
@@ -193,23 +199,24 @@ func Handler(st *store.Store, opt Options) http.Handler {
 }
 
 type handler struct {
-	systemHealth              systemhealth.Reader
-	modelBudgetGateway        string
-	store                     *store.Store
-	cors                      []string
-	models                    *model.Client
-	oidc                      *identity.Manager
-	durable                   bool
-	secureCookies             bool
-	experienceDeliveryEnabled bool
-	operatorAuditEnabled      bool
-	capabilityPacks           *capabilitypack.Registry
-	externalConnectors        map[string]auditext.ReadConnector
-	externalConnectorInfo     []OperatorConnectorInfo
-	intakeUploader            store.CaseIntakeUploader
-	loginCounter              *loginCounter
-	eventStreams              chan struct{}
-	eventWakeups              *eventWakeups
+	systemHealth                 systemhealth.Reader
+	modelBudgetGateway           string
+	store                        *store.Store
+	cors                         []string
+	models                       *model.Client
+	oidc                         *identity.Manager
+	durable                      bool
+	secureCookies                bool
+	experienceDeliveryEnabled    bool
+	operatorAuditEnabled         bool
+	capabilityPacks              *capabilitypack.Registry
+	externalConnectors           map[string]auditext.ReadConnector
+	externalConnectorInfo        []OperatorConnectorInfo
+	intakeUploader               store.CaseIntakeUploader
+	contractAuditBindingsEnabled bool
+	loginCounter                 *loginCounter
+	eventStreams                 chan struct{}
+	eventWakeups                 *eventWakeups
 }
 
 func (h *handler) login(w http.ResponseWriter, r *http.Request) {

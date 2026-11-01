@@ -19,7 +19,7 @@ export const APPROVAL_ROUND_STATE_LABELS: Record<string, string> = {
 };
 
 export const APPROVAL_TASK_STATE_LABELS: Record<string, string> = {
-  queued: "待激活",
+  pending: "待激活",
   active: "待处理",
   approved: "已通过",
   returned: "已退回",

@@ -156,9 +156,13 @@ type ApprovalRoundReadDetail struct {
 
 // ApprovalTaskReadDetail answers the task detail route: the selected task plus
 // the complete round history needed to locate its opinions and revision diff.
+// Materials is the intersection of the frozen revision materials and this
+// task's submission-time whitelist; an empty list is the default-deny result,
+// never a signal to fall back to all revision materials.
 type ApprovalTaskReadDetail struct {
-	SelectedTaskID string                  `json:"selected_task_id"`
-	RoundDetail    ApprovalRoundReadDetail `json:"round_detail"`
+	SelectedTaskID string                    `json:"selected_task_id"`
+	RoundDetail    ApprovalRoundReadDetail   `json:"round_detail"`
+	Materials      []ContractVersionMaterial `json:"materials"`
 }
 
 // ApprovalRoundHistoryItem is one round in a contract's history. TaskCount and
@@ -991,6 +995,10 @@ func (s *Store) GetApprovalTask(ctx context.Context, user accounts.User, taskID 
 	if detail.ActiveTaskID == nil || *detail.ActiveTaskID != task.TaskID {
 		detail.AllowedActions = []string{}
 	}
+	materials, err := loadApprovalTaskMaterials(ctx, tx, accounts.Tenant(current), contractID, roundID, task.TaskID)
+	if err != nil {
+		return ApprovalTaskReadDetail{}, err
+	}
 	if _, err := trustedUser(current); err != nil {
 		return ApprovalTaskReadDetail{}, err
 	}
@@ -1000,7 +1008,39 @@ func (s *Store) GetApprovalTask(ctx context.Context, user accounts.User, taskID 
 	if err := s.attachApprovalRevisionDiff(ctx, user, record, &detail); err != nil {
 		return ApprovalTaskReadDetail{}, err
 	}
-	return ApprovalTaskReadDetail{SelectedTaskID: task.TaskID, RoundDetail: detail}, nil
+	return ApprovalTaskReadDetail{SelectedTaskID: task.TaskID, RoundDetail: detail, Materials: materials}, nil
+}
+
+// loadApprovalTaskMaterials reads only the rows explicitly whitelisted for the
+// task. Restricted supplier fields are already absent from the frozen
+// projection; material metadata and references are returned per whitelist.
+func loadApprovalTaskMaterials(ctx context.Context, tx pgx.Tx, tenantID, contractID, roundID, taskID string) ([]ContractVersionMaterial, error) {
+	rows, err := tx.Query(ctx, `SELECT material.material_id,material.material_version_id,
+			material.material_version,material.filename,material.digest,material.purpose,
+			material.case_id,material.case_org_id
+		FROM clm_approval_task_materials allowed
+		JOIN clm_contract_version_materials material
+		  ON material.tenant_id=allowed.tenant_id AND material.contract_id=allowed.contract_id
+		 AND material.contract_revision_id=allowed.contract_revision_id
+		 AND material.material_id=allowed.material_id
+		WHERE allowed.tenant_id=$1 AND allowed.contract_id=$2
+		  AND allowed.approval_round_id=$3 AND allowed.approval_task_id=$4
+		ORDER BY material.material_id`, tenantID, contractID, roundID, taskID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	materials := []ContractVersionMaterial{}
+	for rows.Next() {
+		var material ContractVersionMaterial
+		if err := rows.Scan(&material.MaterialID, &material.MaterialVersionID,
+			&material.MaterialVersion, &material.Filename, &material.Digest,
+			&material.Purpose, &material.CaseID, &material.CaseOrgID); err != nil {
+			return nil, err
+		}
+		materials = append(materials, material)
+	}
+	return materials, rows.Err()
 }
 
 // GetContractApprovalRound returns one visible contract's historical round.

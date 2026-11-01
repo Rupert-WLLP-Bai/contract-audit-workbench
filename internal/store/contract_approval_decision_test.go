@@ -93,9 +93,10 @@ func TestApprovalDecisionCorruptSequenceIsConflict(t *testing.T) {
 }
 
 // The database compatibility range is derived from the immutable numbered
-// catalog. A renumbered integration must move 0024 with the range, not leave
-// the application accepting a schema it cannot migrate.
-func TestApprovalDecisionMigrationIsCatalogHead(t *testing.T) {
+// catalog. Later approval migrations may become head; the decision migration
+// must remain a catalog member and the application must advertise the newest
+// version it can migrate.
+func TestApprovalMigrationsAreCatalogHead(t *testing.T) {
 	catalog, err := migrationCatalog()
 	if err != nil {
 		t.Fatal(err)
@@ -104,7 +105,13 @@ func TestApprovalDecisionMigrationIsCatalogHead(t *testing.T) {
 		t.Fatalf("schemaMaxCompatibleVersion=%d catalog=%d", schemaMaxCompatibleVersion, len(catalog))
 	}
 	head := catalog[len(catalog)-1]
-	if head.version != 24 || head.name != "approval_decisions" {
-		t.Fatalf("approval decision migration is not catalog head: %+v", head)
+	if head.version != schemaMaxCompatibleVersion {
+		t.Fatalf("catalog head %d does not match advertised schema %d", head.version, schemaMaxCompatibleVersion)
 	}
+	for _, migration := range catalog {
+		if migration.version == 24 && migration.name == "approval_decisions" {
+			return
+		}
+	}
+	t.Fatalf("approval decision migration missing from catalog head %+v", head)
 }

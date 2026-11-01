@@ -19,6 +19,8 @@ func registerContractVersionRoutes(mux *http.ServeMux, h *handler) {
 		routeBinding{"GET /api/contracts/{contractID}/revision-diff", h.diffContractVersions},
 		routeBinding{"POST /api/contracts/{contractID}/submissions", h.submitContractApproval},
 		routeBinding{"POST /api/approval-tasks/{taskID}/decisions", h.decideApprovalTask},
+		routeBinding{"POST /api/approval-tasks/{taskID}/credentials", h.issueApprovalCredential},
+		routeBinding{"POST /api/approval-tasks/{taskID}/transfers", h.transferApprovalTask},
 	)
 }
 
