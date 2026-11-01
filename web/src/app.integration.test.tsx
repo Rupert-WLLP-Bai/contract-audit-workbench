@@ -516,7 +516,7 @@ class Service {
         item.material_selection!.status = "confirmed";
         if (purpose === "primary_contract") item.material_selection!.primary_material_id = materialId;
       }
-      item.revision_pending = true;
+      item.revision_pending = item.latest_run !== null;
       return this.json({ id, material_id: materialId, version, replayed: false }, 201);
     }
     if (parts[4] === "materials" && parts[5] === "selection" && method === "POST") {
@@ -849,7 +849,8 @@ describe("application routes and API contract", () => {
     const { user } = open(api, "/cases/c1");
     await screen.findByText("新增补充材料.txt");
     await selectBusinessTime();
-    expect(screen.getByRole("button", { name: "开始审查" })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "开始审查" })).not.toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "先确认后续审查使用的材料" })).toBeInTheDocument();
     expect(screen.getByRole("checkbox", { name: /旧采购材料/ })).toBeChecked();
     expect(screen.getByRole("checkbox", { name: /新增补充材料/ })).toBeChecked();
     await user.click(screen.getByRole("button", { name: "确认本次材料集合" }));
@@ -894,7 +895,8 @@ describe("application routes and API contract", () => {
       business_line: "ENT",
       scenario: "telecom_dedicated_line",
     });
-    expect(screen.getByRole("button", { name: "开始审查" })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "开始审查" })).not.toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "先处理服务端列出的缺项" })).toBeInTheDocument();
     await selectBusinessTime();
     await user.upload(
       screen.getByLabelText("文件"),
@@ -902,12 +904,16 @@ describe("application routes and API contract", () => {
     );
     await user.click(screen.getByRole("button", { name: "新增材料" }));
     expect(await screen.findAllByText("采购.txt")).not.toHaveLength(0);
+    expect(await screen.findByText(/材料已登记/)).toBeInTheDocument();
     await chooseOption(user, screen.getByLabelText("材料角色"), "拟签合同");
     await user.upload(
       screen.getByLabelText("文件"),
       new File(["质保24个月"], "合同.txt", { type: "text/plain" }),
     );
     await user.click(screen.getByRole("button", { name: "新增材料" }));
+    await waitFor(() =>
+      expect(api.cases.get("c1")!.materials).toHaveLength(2),
+    );
     await waitFor(() =>
       expect(screen.getByRole("button", { name: "开始审查" })).toBeEnabled(),
     );
@@ -1086,9 +1092,10 @@ describe("application routes and API contract", () => {
     ];
     const { user } = open(api, "/cases/c1");
     expect(await screen.findByText("待转写.png")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "开始审查" })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "开始审查" })).not.toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "先处理服务端列出的缺项" })).toBeInTheDocument();
     await selectBusinessTime();
-    const startReview = screen.getByRole("button", { name: "开始审查" });
+    const startReview = await screen.findByRole("button", { name: "开始审查" });
     await waitFor(() => expect(startReview).toBeEnabled());
     await user.click(startReview);
     expect(
@@ -1113,7 +1120,8 @@ describe("application routes and API contract", () => {
     api.fail("POST /api/cases/c1/documents", 413);
     const { user } = open(api, "/cases/c1");
     expect(await screen.findByText("无法解码")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "开始审查" })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "开始审查" })).not.toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "先处理服务端列出的缺项" })).toBeInTheDocument();
     await selectBusinessTime();
     await user.click(screen.getByRole("button", { name: "重新解析 d2.txt" }));
     expect(await screen.findByText("受控失败 503")).toBeInTheDocument();
@@ -1124,7 +1132,7 @@ describe("application routes and API contract", () => {
       expect(screen.getByRole("button", { name: "开始审查" })).toBeEnabled(),
     );
     await user.click(screen.getByRole("button", { name: "开始审查" }));
-    expect(await screen.findByText("受控失败 503")).toBeInTheDocument();
+    expect(await screen.findByText(/受控失败 503/)).toBeInTheDocument();
     await user.upload(
       screen.getByLabelText("文件"),
       new File([text], "超限.txt", { type: "text/plain" }),
@@ -1183,7 +1191,9 @@ describe("application routes and API contract", () => {
     delete item.subject_context_changed_after_latest_run;
     open(api, "/cases/c1");
     expect(await screen.findByText(/无法确认当前主体信息是否与最近审查一致/)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "主体状态暂不可用" })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "主体状态暂不可用" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "开始审查" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "开始复审" })).not.toBeInTheDocument();
   });
 
   it("refreshes a stale decision, retains the entered reason, and submits the refreshed version", async () => {
@@ -1829,7 +1839,8 @@ describe("application routes and API contract", () => {
     await user.click(screen.getByRole("link", { name: "接入设备采购" }));
     await screen.findByRole("heading", { name: "接入设备采购" });
     expect(screen.getByRole("button", { name: "选择文件" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "开始审查" })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "开始审查" })).not.toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "先处理服务端列出的缺项" })).toBeInTheDocument();
     expect(screen.getByText(/当前角色只能查看材料/)).toBeInTheDocument();
   });
 

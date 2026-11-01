@@ -116,7 +116,7 @@ describe("synthetic source verification flow", () => {
     await user.click(screen.getByRole("button", { name: "对照合成来源并发起审批" }));
     await waitFor(() => expect(screen.getByTestId("location")).toHaveTextContent("/cases/case-1/subject-changes/change-1"));
     expect(verify).toHaveBeenCalledWith({
-      value: { subject_id: "subject-1", expected_subject_version: 3, expected_binding_id: "binding-1" },
+      value: { subject_id: "subject-1", expected_subject_version: 3 },
       idempotencyKey: "request-key",
     });
     const createCall = mocks.useCreateSubjectSourceSnapshot.mock.results[0]?.value.mutateAsync.mock.calls[0]?.[0];

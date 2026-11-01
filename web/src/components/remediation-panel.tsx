@@ -181,6 +181,12 @@ function RemediationCard({
     candidate !== null && candidate.attempt.id !== item.attempt_id;
   const comparesSourceRun =
     candidateWorkspace.data?.previous_run_id === item.run_id;
+  // The server only closes a remediation when the source and verification runs
+  // share the same rule/model configuration. When the selected run is compared
+  // against the source run, its comparison reason is the client-side signal for
+  // that check; enabling the form would only produce an avoidable 409.
+  const sourceComparisonReason =
+    comparesSourceRun ? candidateWorkspace.data?.revision_comparison_reason ?? null : null;
   const comparisonRows = item.finding_ids.map((findingId) => {
     const rows =
       candidateWorkspace.data?.revisions?.filter(
@@ -210,6 +216,7 @@ function RemediationCard({
     isNewAttempt &&
     isTerminalAttemptState(selectedAttempt?.state ?? "") &&
     candidateBusinessTimeMatches &&
+    sourceComparisonReason === null &&
     everyFindingCompatible;
   let verificationBlockReason =
     "当前复审没有返回与整改来源一致的兼容规则评估。";
@@ -221,6 +228,8 @@ function RemediationCard({
     verificationBlockReason = "正在读取所选的复核执行记录。";
   else if (candidateWorkspace.isError)
     verificationBlockReason = `无法读取所选复核尝试：${errorMessage(candidateWorkspace.error)}`;
+  else if (sourceComparisonReason !== null)
+    verificationBlockReason = sourceComparisonReason;
   else if (!candidateBusinessTimeMatches)
     verificationBlockReason = businessTimeMismatchReason;
   else if (candidateWorkspace.data && !everyFindingCompatible)
