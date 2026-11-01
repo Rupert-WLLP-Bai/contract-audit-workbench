@@ -119,15 +119,6 @@ func computeRestrictedFingerprints(draft *DraftContent) (clmRestrictedFingerprin
 	return set, nil
 }
 
-func (set clmRestrictedFingerprintSet) anyPresent() bool {
-	for _, state := range set.Fields {
-		if state.Present {
-			return true
-		}
-	}
-	return false
-}
-
 func validCLMHex64(value string) bool {
 	return digestPattern.MatchString(value)
 }

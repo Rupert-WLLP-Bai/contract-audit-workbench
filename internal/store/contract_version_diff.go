@@ -449,6 +449,10 @@ func flattenContractDraft(draft DraftContent) map[string]any {
 	return fields
 }
 
+func clmServerPinFieldPath(path string) bool {
+	return strings.HasSuffix(path, ".reference_snapshot") || strings.HasSuffix(path, ".source_snapshot")
+}
+
 func flattenStructFields(prefix string, value reflect.Value, out map[string]any) {
 	typ := value.Type()
 	for index := 0; index < value.NumField(); index++ {
@@ -471,6 +475,13 @@ func flattenStructFields(prefix string, value reflect.Value, out map[string]any)
 
 func flattenFieldValue(path string, value reflect.Value, out map[string]any) {
 	if clmRestrictedFieldPath(path) {
+		return
+	}
+	// reference_snapshot/source_snapshot are server-resolved pins written by
+	// the freeze transaction. Their captured_at changes on every resolution,
+	// so they must not become business differences or fingerprint inputs; the
+	// sealed snapshot digest already covers the exact pinned bytes.
+	if clmServerPinFieldPath(path) {
 		return
 	}
 	for value.Kind() == reflect.Pointer {

@@ -157,7 +157,11 @@ func (s *Store) CheckContractReferences(ctx context.Context, user accounts.User,
 }
 
 func loadContractReferenceContent(ctx context.Context, tx pgx.Tx, current accounts.User, record clmContractRecord) ([]byte, string, *string, error) {
-	if record.CurrentRevisionID != nil {
+	// The draft stays editable after a freeze (design #81 §3.4), so a
+	// reference check must inspect the same source the editor shows: while the
+	// contract is still in draft lifecycle, that is the draft row, not the last
+	// frozen revision.
+	if record.CurrentRevisionID != nil && record.LifecycleState != "draft" {
 		var content []byte
 		err := tx.QueryRow(ctx, `SELECT snapshot FROM clm_contract_revisions
 			WHERE tenant_id=$1 AND contract_id=$2 AND contract_revision_id=$3`,

@@ -545,6 +545,7 @@ func TestLegacyAttemptMigrationIsRepeatableAndRetryIsRejected(t *testing.T) {
 		t.Fatal(err)
 	}
 	legacyStatements := []string{
+		`DROP TABLE clm_contract_version_seals, clm_contract_version_materials, clm_contract_saved_views, clm_contract_exports`,
 		`DROP TABLE clm_contract_drafts, clm_contract_write_receipts, clm_legacy_imports, clm_outbox_delivery, clm_business_events, clm_approval_rounds, clm_contract_cases, clm_contract_revisions, clm_contracts`,
 		`DROP TABLE case_intake_requests, case_intake_archives`,
 		`DROP INDEX case_intake_pending_owner`,

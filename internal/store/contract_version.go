@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"sort"
+	"strings"
 	"time"
 
 	"contractaudit/internal/access"
@@ -31,6 +32,7 @@ const (
 type FreezeContractVersionInput struct {
 	ContractID         string
 	ExpectedRowVersion int64
+	CaseID             string
 	IdempotencyKey     string
 }
 
@@ -55,6 +57,7 @@ type FreezeContractVersionResult struct {
 	Version           ContractVersionSummary `json:"version"`
 	ContractState     string                 `json:"contract_state"`
 	CurrentRevisionID string                 `json:"current_revision_id"`
+	SourceCaseID      string                 `json:"source_case_id"`
 	RowVersion        int64                  `json:"row_version"`
 	AllowedCommands   []string               `json:"allowed_commands"`
 }
@@ -110,7 +113,11 @@ func (s *Store) FreezeContractVersion(ctx context.Context, user accounts.User, i
 	if err := validateCLMIdempotencyKey(input.IdempotencyKey); err != nil {
 		return FreezeContractVersionResult{}, err
 	}
-	digest, err := clmRequestDigest(clmRouteFreezeVersion, "POST", "/api/contracts/"+id+"/revisions", input.ExpectedRowVersion, struct{}{})
+	caseID := strings.TrimSpace(input.CaseID)
+	digest, err := clmRequestDigest(clmRouteFreezeVersion, "POST", "/api/contracts/"+id+"/revisions", input.ExpectedRowVersion,
+		struct {
+			CaseID string `json:"case_id"`
+		}{CaseID: caseID})
 	if err != nil {
 		return FreezeContractVersionResult{}, err
 	}
@@ -173,10 +180,10 @@ func (s *Store) FreezeContractVersion(ctx context.Context, user accounts.User, i
 	if err != nil {
 		return FreezeContractVersionResult{}, err
 	}
-	// #80 seam: reference pins are written only into the frozen snapshot, not
-	// into the editable draft. When resolveContractReferences(referenceModeImport)
-	// lands, seal its annotated plaintext here and use those bytes as the
-	// revision snapshot; the draft row above stays unchanged.
+	// Pins are written only into the frozen snapshot, never into the editable
+	// draft row. The strict #80 resolver is the single validator for subject
+	// bindings, anchored-case material references and procurement snapshots;
+	// this path must not grow a second, divergent set of checks.
 	plaintext, err := unsealDraftForFreeze(contentBytes)
 	if err != nil {
 		return FreezeContractVersionResult{}, err
@@ -191,7 +198,23 @@ func (s *Store) FreezeContractVersion(ctx context.Context, user accounts.User, i
 	if err := validateDraftAmounts(&plaintext, contractmoney.StageFinal); err != nil {
 		return FreezeContractVersionResult{}, err
 	}
-	materials, err := s.resolveFreezeMaterials(ctx, tx, current, plaintext.Materials)
+	anchor, err := loadContractReferenceAnchor(ctx, tx, current, record, caseID)
+	if err != nil {
+		return FreezeContractVersionResult{}, err
+	}
+	references, err := resolveContractReferences(ctx, tx, current, anchor, &plaintext, referenceModeImport)
+	if err != nil {
+		return FreezeContractVersionResult{}, err
+	}
+	materials, err := frozenMaterialsFromReferences(anchor, references.Materials)
+	if err != nil {
+		return FreezeContractVersionResult{}, err
+	}
+	_, sealedSnapshot, _, err := sealDraftContent(plaintext)
+	if err != nil {
+		return FreezeContractVersionResult{}, err
+	}
+	contentBytes, err = canonicalStoredJSON(ctx, tx, sealedSnapshot)
 	if err != nil {
 		return FreezeContractVersionResult{}, err
 	}
@@ -296,6 +319,7 @@ func (s *Store) FreezeContractVersion(ctx context.Context, user accounts.User, i
 		},
 		ContractState:     record.LifecycleState,
 		CurrentRevisionID: revisionID,
+		SourceCaseID:      anchor.ID,
 		RowVersion:        rowVersion,
 		AllowedCommands:   clmDraftCommands(record, true),
 	}
@@ -323,40 +347,25 @@ func loadContractDraftBytes(ctx context.Context, tx pgx.Tx, tenantID, contractID
 	return content, err
 }
 
-// resolveFreezeMaterials verifies every material reference against the
-// append-only material_versions/documents rows under the caller's tenant and
-// case-read authority. The frozen row keeps the exact filename and digest of
-// the cited document version, so a later same-name upload cannot rewrite it.
-//
-// #80 integration seam: when the strict reference resolver from CLM-05 lands
-// (resolveContractReferences with referenceModeImport), this function becomes
-// its caller: the resolver owns anchor-case/party/procurement checks and writes
-// the reference pins into the snapshot before sealDraftContent, while this
-// function only projects the resolved material rows into
-// clm_contract_version_materials. Do not add a second, divergent subject or
-// procurement validator here.
-func (s *Store) resolveFreezeMaterials(ctx context.Context, tx pgx.Tx, current accounts.User, refs []MaterialRef) ([]frozenVersionMaterial, error) {
+// frozenMaterialsFromReferences projects the strict resolver's material rows
+// into the frozen summary table. The resolver already enforced that each
+// version belongs to the anchor case, so every row carries the same case
+// identity. clm_contract_version_materials keys on material_id, so a draft
+// that cites two versions of the same material is rejected here instead of
+// surfacing a primary-key error later.
+func frozenMaterialsFromReferences(anchor Case, refs []ContractMaterialReference) ([]frozenVersionMaterial, error) {
 	seenMaterial := make(map[string]bool, len(refs))
-	seenVersion := make(map[string]bool, len(refs))
 	materials := make([]frozenVersionMaterial, 0, len(refs))
 	for _, ref := range refs {
-		resolved, err := resolveMaterialVersion(ctx, tx, accounts.Tenant(current), ref)
-		if err != nil {
-			return nil, err
+		if seenMaterial[ref.MaterialID] {
+			return nil, fault.Invalid("同一材料在冻结合同中只能引用一个版本")
 		}
-		if seenMaterial[resolved.MaterialID] || seenVersion[resolved.DocumentID] {
-			return nil, fault.Invalid("同一材料版本在冻结合同中重复引用")
-		}
-		seenMaterial[resolved.MaterialID] = true
-		seenVersion[resolved.DocumentID] = true
-		if _, err := loadCLMCase(ctx, tx, current, resolved.CaseOrgID, resolved.CaseID); err != nil {
-			return nil, err
-		}
+		seenMaterial[ref.MaterialID] = true
 		materials = append(materials, frozenVersionMaterial{
-			MaterialID: resolved.MaterialID, MaterialVersionID: resolved.DocumentID,
-			CaseOrgID: resolved.CaseOrgID, CaseID: resolved.CaseID,
-			MaterialVersion: resolved.Version, Filename: resolved.Filename,
-			Digest: resolved.Digest, Purpose: ref.Purpose,
+			MaterialID: ref.MaterialID, MaterialVersionID: ref.MaterialVersionID,
+			CaseOrgID: anchor.OwnerOrgID, CaseID: anchor.ID,
+			MaterialVersion: ref.MaterialVersion, Filename: ref.Filename,
+			Digest: ref.SHA256, Purpose: ref.Purpose,
 		})
 	}
 	sort.Slice(materials, func(i, j int) bool {
