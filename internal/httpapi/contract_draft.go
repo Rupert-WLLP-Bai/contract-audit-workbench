@@ -21,12 +21,18 @@ import (
 func registerContractDraftRoutes(mux *http.ServeMux, h *handler) {
 	mountRoutes(mux,
 		routeBinding{"GET /api/contracts", h.listContractLedger},
-		routeBinding{"GET /api/contracts/views", h.listContractSavedViews},
-		routeBinding{"POST /api/contracts/views", h.createContractSavedView},
-		routeBinding{"POST /api/contracts/views/{viewID}", h.replaceContractSavedView},
-		routeBinding{"DELETE /api/contracts/views/{viewID}", h.deleteContractSavedView},
-		routeBinding{"POST /api/contracts/exports", h.createContractExport},
-		routeBinding{"GET /api/contracts/exports/{exportID}/download", h.downloadContractExport},
+		// Saved views and exports live under the literal /ledger segment. Without
+		// it, POST /api/contracts/views/{viewID} and
+		// GET /api/contracts/exports/{exportID}/download overlap
+		// /api/contracts/{contractID}/revisions* and Go's ServeMux rejects the
+		// pair at registration: neither pattern is more specific, so Handler
+		// panics before the server ever starts.
+		routeBinding{"GET /api/contracts/ledger/views", h.listContractSavedViews},
+		routeBinding{"POST /api/contracts/ledger/views", h.createContractSavedView},
+		routeBinding{"POST /api/contracts/ledger/views/{viewID}", h.replaceContractSavedView},
+		routeBinding{"DELETE /api/contracts/ledger/views/{viewID}", h.deleteContractSavedView},
+		routeBinding{"POST /api/contracts/ledger/exports", h.createContractExport},
+		routeBinding{"GET /api/contracts/ledger/exports/{exportID}/download", h.downloadContractExport},
 		routeBinding{"POST /api/contracts", h.createContractDraft},
 		routeBinding{"GET /api/contracts/drafts", h.listMyContractDrafts},
 		routeBinding{"GET /api/contracts/{contractID}", h.getContractDraft},

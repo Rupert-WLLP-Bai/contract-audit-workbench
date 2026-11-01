@@ -21,7 +21,8 @@ func registerContractVersionRoutes(mux *http.ServeMux, h *handler) {
 }
 
 type contractVersionFreezeRequest struct {
-	ExpectedRowVersion int64 `json:"expected_row_version"`
+	ExpectedRowVersion int64  `json:"expected_row_version"`
+	CaseID             string `json:"case_id,omitempty"`
 }
 
 func (h *handler) freezeContractVersion(w http.ResponseWriter, r *http.Request) {
@@ -33,6 +34,7 @@ func (h *handler) freezeContractVersion(w http.ResponseWriter, r *http.Request) 
 		return h.store.FreezeContractVersion(req.Context(), user, store.FreezeContractVersionInput{
 			ContractID:         req.PathValue("contractID"),
 			ExpectedRowVersion: body.ExpectedRowVersion,
+			CaseID:             body.CaseID,
 			IdempotencyKey:     key,
 		})
 	})

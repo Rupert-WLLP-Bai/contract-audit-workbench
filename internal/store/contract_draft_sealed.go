@@ -1,6 +1,7 @@
 package store
 
 import (
+	"context"
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
@@ -12,6 +13,8 @@ import (
 	"strings"
 
 	"contractaudit/internal/fault"
+
+	"github.com/jackc/pgx/v5"
 )
 
 // Restricted supplier fields (docs/04 敏感级别 restricted) are sealed with an
@@ -169,6 +172,19 @@ func sealDraftContent(draft DraftContent) (DraftContent, []byte, string, error) 
 		return DraftContent{}, nil, "", err
 	}
 	return sealed, encoded, sha256Bytes(encoded), nil
+}
+
+// canonicalStoredJSON returns the exact text PostgreSQL will hand back for a
+// jsonb value. Both revision snapshots are persisted as jsonb, which
+// reorders object keys and inserts separators, so a digest computed on the
+// pre-insert Go bytes would never match SELECT output. Normalising through
+// jsonb first keeps snapshot_digest verifiable from the stored row.
+func canonicalStoredJSON(ctx context.Context, tx pgx.Tx, raw []byte) ([]byte, error) {
+	var canonical string
+	if err := tx.QueryRow(ctx, `SELECT ($1::jsonb)::text`, string(raw)).Scan(&canonical); err != nil {
+		return nil, err
+	}
+	return []byte(canonical), nil
 }
 
 // unmarshalStoredDraft decodes persisted content bytes strictly; a corrupted

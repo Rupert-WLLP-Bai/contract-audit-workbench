@@ -29,6 +29,7 @@ func freezeTestContract(t *testing.T, fixture durableCaseFixture) (string, Freez
 		t.Fatal(err)
 	}
 	result, err := fixture.core.FreezeContractVersion(ctx, fixture.admin, FreezeContractVersionInput{
+		CaseID:     fixture.caseID,
 		ContractID: detail.Summary.ContractID, ExpectedRowVersion: detail.Summary.RowVersion,
 		IdempotencyKey: "freeze-version-0001",
 	})
@@ -50,6 +51,7 @@ func TestContractVersionFreezeIsImmutableAndIdempotent(t *testing.T) {
 		t.Fatalf("freeze row version = %d", result.RowVersion)
 	}
 	replayed, err := fixture.core.FreezeContractVersion(ctx, fixture.admin, FreezeContractVersionInput{
+		CaseID:     fixture.caseID,
 		ContractID: contractID, ExpectedRowVersion: 1, IdempotencyKey: "freeze-version-0001",
 	})
 	if err != nil {
@@ -92,12 +94,12 @@ func TestContractVersionFreezeIsImmutableAndIdempotent(t *testing.T) {
 	if sealCount != 1 || materialCount != 0 {
 		t.Fatalf("seal=%d materials=%d", sealCount, materialCount)
 	}
-	if _, err := fixture.core.pool.Exec(ctx, `UPDATE clm_contract_revisions SET snapshot='{}'::jsonb
+	if _, err := fixture.environment.harness.pool.Exec(ctx, `UPDATE clm_contract_revisions SET snapshot='{}'::jsonb
 		WHERE tenant_id=$1 AND contract_id=$2`, fixture.admin.TenantID, contractID); err == nil ||
 		!strings.Contains(err.Error(), "append-only") {
 		t.Fatalf("revision update must be rejected by append-only trigger: %v", err)
 	}
-	if _, err := fixture.core.pool.Exec(ctx, `INSERT INTO clm_contract_version_seals
+	if _, err := fixture.environment.harness.pool.Exec(ctx, `INSERT INTO clm_contract_version_seals
 		(tenant_id,contract_id,contract_revision_id,snapshot_digest,materials_digest,content_fingerprint,restricted_fingerprints)
 		VALUES ($1,$2,$3,$4,$4,$4,'{}'::jsonb)`,
 		fixture.admin.TenantID, contractID, result.Version.ContractRevisionID, digest); err == nil ||
@@ -107,6 +109,7 @@ func TestContractVersionFreezeIsImmutableAndIdempotent(t *testing.T) {
 	// The draft stays editable; a second freeze appends revision 2 without
 	// touching revision 1.
 	second, err := fixture.core.FreezeContractVersion(ctx, fixture.admin, FreezeContractVersionInput{
+		CaseID:     fixture.caseID,
 		ContractID: contractID, ExpectedRowVersion: result.RowVersion, IdempotencyKey: "freeze-version-0002",
 	})
 	if err != nil {
@@ -130,6 +133,7 @@ func TestContractVersionFreezeIsImmutableAndIdempotent(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, err = fixture.core.FreezeContractVersion(ctx, fixture.admin, FreezeContractVersionInput{
+		CaseID:     fixture.caseID,
 		ContractID: contractID, ExpectedRowVersion: 1, IdempotencyKey: "freeze-version-0001",
 	})
 	assertFaultStatus(t, err, 404, "replay after losing visibility")
@@ -147,6 +151,7 @@ func TestFreezeRunsStageFinalWithoutLegacyGate(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, err = fixture.core.FreezeContractVersion(ctx, fixture.admin, FreezeContractVersionInput{
+		CaseID:     fixture.caseID,
 		ContractID: detail.Summary.ContractID, ExpectedRowVersion: 1, IdempotencyKey: "freeze-version-0003",
 	})
 	assertFaultStatus(t, err, 422, "amount-unknown freeze must fail StageFinal")
@@ -206,6 +211,7 @@ func TestFrozenMaterialSummarySurvivesSameNameReplacement(t *testing.T) {
 		t.Fatalf("same-name replacement did not create version 2: %+v", replaced)
 	}
 	first, err := fixture.core.FreezeContractVersion(ctx, fixture.admin, FreezeContractVersionInput{
+		CaseID:     fixture.caseID,
 		ContractID: contractID, ExpectedRowVersion: created.Summary.RowVersion, IdempotencyKey: "freeze-version-0004",
 	})
 	if err != nil {
@@ -222,7 +228,7 @@ func TestFrozenMaterialSummarySurvivesSameNameReplacement(t *testing.T) {
 	if frozenDigest != hex.EncodeToString(firstDigest[:]) || frozenVersion != 1 || filename != "same-name.txt" {
 		t.Fatalf("frozen material summary was rewritten: digest=%s version=%d file=%s", frozenDigest, frozenVersion, filename)
 	}
-	if _, err := fixture.core.pool.Exec(ctx, `UPDATE clm_contract_version_materials SET filename='overwritten.txt'
+	if _, err := fixture.environment.harness.pool.Exec(ctx, `UPDATE clm_contract_version_materials SET filename='overwritten.txt'
 		WHERE tenant_id=$1 AND contract_id=$2 AND contract_revision_id=$3`,
 		fixture.admin.TenantID, contractID, first.Version.ContractRevisionID); err == nil ||
 		!strings.Contains(err.Error(), "append-only") {
@@ -242,6 +248,7 @@ func TestFrozenMaterialSummarySurvivesSameNameReplacement(t *testing.T) {
 		t.Fatal(err)
 	}
 	second, err := fixture.core.FreezeContractVersion(ctx, fixture.admin, FreezeContractVersionInput{
+		CaseID:     fixture.caseID,
 		ContractID: contractID, ExpectedRowVersion: first.RowVersion + 1, IdempotencyKey: "freeze-version-0005",
 	})
 	if err != nil {
@@ -281,6 +288,7 @@ func TestVersionDiffMasksRestrictedAndEnforcesVisibility(t *testing.T) {
 	}
 	contractID := created.Summary.ContractID
 	first, err := fixture.core.FreezeContractVersion(ctx, fixture.admin, FreezeContractVersionInput{
+		CaseID:     fixture.caseID,
 		ContractID: contractID, ExpectedRowVersion: 1, IdempotencyKey: "freeze-version-0006",
 	})
 	if err != nil {
@@ -300,6 +308,7 @@ func TestVersionDiffMasksRestrictedAndEnforcesVisibility(t *testing.T) {
 		t.Fatal(err)
 	}
 	second, err := fixture.core.FreezeContractVersion(ctx, fixture.admin, FreezeContractVersionInput{
+		CaseID:     fixture.caseID,
 		ContractID: contractID, ExpectedRowVersion: first.RowVersion + 1, IdempotencyKey: "freeze-version-0007",
 	})
 	if err != nil {
@@ -370,6 +379,7 @@ func TestVersionDiffMasksRestrictedAndEnforcesVisibility(t *testing.T) {
 		t.Fatalf("viewer with read authority must see the diff: %v", err)
 	}
 	_, err = fixture.core.FreezeContractVersion(ctx, viewer, FreezeContractVersionInput{
+		CaseID:     fixture.caseID,
 		ContractID: contractID, ExpectedRowVersion: second.RowVersion, IdempotencyKey: "freeze-version-0008",
 	})
 	assertFaultStatus(t, err, 403, "viewer cannot freeze")
@@ -394,6 +404,7 @@ func TestFreezeRejectsInvisibleContractsWith404(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			_, err := fixture.core.FreezeContractVersion(ctx, tc.user, FreezeContractVersionInput{
+				CaseID:     fixture.caseID,
 				ContractID: created.Summary.ContractID, ExpectedRowVersion: 1, IdempotencyKey: "freeze-denied-" + tc.name,
 			})
 			var fe *fault.Error

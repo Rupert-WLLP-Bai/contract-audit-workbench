@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strings"
 	"testing"
+	"time"
 
 	"contractaudit/internal/contractmoney"
 	"contractaudit/internal/fault"
@@ -52,6 +53,65 @@ func TestFreezeStageFinalIsUnconditional(t *testing.T) {
 	complete := freezeCompleteDraft()
 	if err := validateDraftAmounts(&complete, contractmoney.StageFinal); err != nil {
 		t.Fatalf("complete draft must pass StageFinal: %v", err)
+	}
+}
+
+// The freeze transaction writes server-resolved pins into the snapshot. Their
+// captured_at changes on every resolution, so flattening them would report a
+// field difference (and change the content fingerprint) for two versions whose
+// business content is identical.
+func TestFlattenContractDraftOmitsServerPins(t *testing.T) {
+	draft := freezeCompleteDraft()
+	draft.Contract.RelatedParties = []PartyRef{{
+		PartyID: "subject-1", Role: "supplier", NameSnapshot: "示例供应商有限公司",
+		ReferenceSnapshot: &PartyReferenceSnapshot{
+			BindingID: "binding-1", BindingVersion: 3, CaseRole: "supplier",
+			BindingState: "active", SubjectID: "subject-1", SubjectVersion: 2,
+			SubjectPayloadHash: "hash", VerificationState: "verified",
+			DisplayName: "示例供应商有限公司", CapturedAt: time.Now().UTC(),
+		},
+	}}
+	draft.Contract.ProcurementResultPackage = &ProcurementRef{
+		System: "purchase", ResultID: "result-1", PackageID: "package-1", SnapshotRef: "doc-1",
+		SourceSnapshot: &ProcurementSourceSnapshot{
+			System: "purchase", ResultID: "result-1", PackageID: "package-1",
+			SnapshotRef: "doc-1", MaterialID: "material-1", MaterialVersionID: "doc-1",
+			MaterialVersion: 1, MaterialRole: "procurement", SHA256: strings.Repeat("a", 64),
+			CapturedAt: time.Now().UTC(),
+		},
+	}
+	fields := flattenContractDraft(draft)
+	for path := range fields {
+		if strings.Contains(path, "reference_snapshot") || strings.Contains(path, "source_snapshot") {
+			t.Fatalf("server pin leaked into business fields: %s", path)
+		}
+	}
+	first := flattenContractDraft(draft)
+	draft.Contract.RelatedParties[0].ReferenceSnapshot.CapturedAt = time.Now().Add(time.Hour).UTC()
+	draft.Contract.ProcurementResultPackage.SourceSnapshot.CapturedAt = time.Now().Add(time.Hour).UTC()
+	second := flattenContractDraft(draft)
+	if len(first) != len(second) {
+		t.Fatalf("pin timestamp changed the field set: %d vs %d", len(first), len(second))
+	}
+	for path, value := range first {
+		if second[path] != value {
+			t.Fatalf("pin timestamp changed business field %s", path)
+		}
+	}
+}
+
+func TestFrozenMaterialsRejectTwoVersionsOfOneMaterial(t *testing.T) {
+	anchor := Case{ID: "case-1", OwnerOrgID: "org-1"}
+	refs := []ContractMaterialReference{
+		{MaterialID: "material-1", MaterialVersionID: "doc-1", MaterialVersion: 1},
+		{MaterialID: "material-1", MaterialVersionID: "doc-2", MaterialVersion: 2},
+	}
+	if _, err := frozenMaterialsFromReferences(anchor, refs); err == nil {
+		t.Fatal("two versions of one material must be rejected before the primary key does")
+	}
+	materials, err := frozenMaterialsFromReferences(anchor, refs[:1])
+	if err != nil || len(materials) != 1 || materials[0].CaseID != anchor.ID || materials[0].CaseOrgID != anchor.OwnerOrgID {
+		t.Fatalf("unexpected projection: %+v err=%v", materials, err)
 	}
 }
 

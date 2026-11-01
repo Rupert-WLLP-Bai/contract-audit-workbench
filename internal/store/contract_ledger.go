@@ -802,7 +802,7 @@ func (s *Store) ReplaceContractSavedView(ctx context.Context, user accounts.User
 		accounts.Tenant(current), viewID, current.ID, name, string(filterJSON), string(columnsJSON), input.ExpectedRowVersion).Scan(
 		&item.RowVersion, &item.CreatedAt, &item.UpdatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return ContractSavedView{}, s.savedViewMutationMiss(ctx, tx, current, viewID, true)
+		return ContractSavedView{}, s.savedViewMutationMiss(ctx, tx, current, viewID)
 	}
 	if err != nil {
 		return ContractSavedView{}, clmUniqueViolation(err, "同一名称的保存视图已存在")
@@ -838,7 +838,7 @@ func (s *Store) DeleteContractSavedView(ctx context.Context, user accounts.User,
 		return err
 	}
 	if tag.RowsAffected() == 0 {
-		return s.savedViewMutationMiss(ctx, tx, current, normalized, false)
+		return s.savedViewMutationMiss(ctx, tx, current, normalized)
 	}
 	if _, err := trustedUser(current); err != nil {
 		return err
@@ -846,7 +846,10 @@ func (s *Store) DeleteContractSavedView(ctx context.Context, user accounts.User,
 	return tx.Commit(ctx)
 }
 
-func (s *Store) savedViewMutationMiss(ctx context.Context, tx pgx.Tx, current accounts.User, viewID string, versionConflict bool) error {
+// savedViewMutationMiss distinguishes a missing/foreign view (404) from a
+// stale expected_row_version (409). Both mutation paths share the same miss
+// handling because ownership is rechecked in the WHERE clause.
+func (s *Store) savedViewMutationMiss(ctx context.Context, tx pgx.Tx, current accounts.User, viewID string) error {
 	var liveVersion int64
 	err := tx.QueryRow(ctx, `SELECT row_version FROM clm_contract_saved_views
 		WHERE tenant_id=$1 AND view_id=$2 AND owner_user_id=$3`,
@@ -856,9 +859,6 @@ func (s *Store) savedViewMutationMiss(ctx context.Context, tx pgx.Tx, current ac
 	}
 	if err != nil {
 		return err
-	}
-	if versionConflict {
-		return fault.Conflict("保存视图已被修改，请刷新后重试")
 	}
 	return fault.Conflict("保存视图已被修改，请刷新后重试")
 }
@@ -939,7 +939,8 @@ func (s *Store) CreateContractExport(ctx context.Context, user accounts.User, in
 	if err != nil {
 		return ContractExport{}, err
 	}
-	tx, current, err := s.beginCLMWrite(ctx, user, "只读模式下不能创建导出", nil)
+	tx, current, err := s.beginCLMWriteIsolated(ctx, user, "只读模式下不能创建导出", nil,
+		pgx.TxOptions{IsoLevel: pgx.RepeatableRead})
 	if err != nil {
 		return ContractExport{}, err
 	}

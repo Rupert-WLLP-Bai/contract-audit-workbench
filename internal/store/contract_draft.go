@@ -212,6 +212,14 @@ func clmCreatorGate(current accounts.User) error {
 }
 
 func (s *Store) beginCLMWrite(ctx context.Context, user accounts.User, readOnlyMessage string, gate func(accounts.User) error) (pgx.Tx, accounts.User, error) {
+	return s.beginCLMWriteIsolated(ctx, user, readOnlyMessage, gate, pgx.TxOptions{})
+}
+
+// beginCLMWriteIsolated is the explicit-isolation form of beginCLMWrite. The
+// ledger export uses RepeatableRead because it scans the frozen row set in
+// batches: ReadCommitted would let concurrent writes produce a row set that
+// never existed at any single instant.
+func (s *Store) beginCLMWriteIsolated(ctx context.Context, user accounts.User, readOnlyMessage string, gate func(accounts.User) error, options pgx.TxOptions) (pgx.Tx, accounts.User, error) {
 	if s.pool == nil {
 		return nil, accounts.User{}, fault.New(503, "database_unavailable", "服务数据库不可用")
 	}
@@ -230,7 +238,7 @@ func (s *Store) beginCLMWrite(ctx context.Context, user accounts.User, readOnlyM
 			return nil, accounts.User{}, err
 		}
 	}
-	tx, err := s.pool.Begin(ctx)
+	tx, err := s.pool.BeginTx(ctx, options)
 	if err != nil {
 		return nil, accounts.User{}, err
 	}
@@ -1003,6 +1011,12 @@ func (s *Store) ImportLegacySignedContract(ctx context.Context, user accounts.Us
 		return ContractDetail{}, err
 	}
 	_, sealedSnapshot, _, err := sealDraftContent(input.Snapshot)
+	if err != nil {
+		return ContractDetail{}, err
+	}
+	// The revision stores jsonb, not the raw Go bytes. Digest the exact
+	// canonical text the row will return so later reads can verify it.
+	sealedSnapshot, err = canonicalStoredJSON(ctx, tx, sealedSnapshot)
 	if err != nil {
 		return ContractDetail{}, err
 	}
