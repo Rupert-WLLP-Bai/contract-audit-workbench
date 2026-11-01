@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "scope": "web/src/features/review/manual-findings/manual-findings-panel.tsx",
+  "canonical_concepts": {
+    "attempt": "T08",
+    "approval_round": "T09",
+    "manual_finding": "T37",
+    "machine_finding": "T11",
+    "human_finding_decision": "T12",
+    "approval_decision": "T13"
+  },
+  "definite_confusions": [
+    {
+      "id": "attempt-is-approval-round",
+      "concepts": ["attempt", "approval_round"],
+      "mode": "must_not_equate",
+      "patterns": [
+        "(?:本次|当前)?执行尝试(?:是|即|属于|代表|作为)会签轮次",
+        "会签轮次(?:是|即|代表)(?:本次|当前)?执行尝试"
+      ]
+    },
+    {
+      "id": "manual-finding-is-approval",
+      "concepts": ["manual_finding", "machine_finding", "human_finding_decision", "approval_decision"],
+      "mode": "must_not_equate",
+      "patterns": [
+        "人工发现(?:是|即|属于|代表|作为)合同批准",
+        "人工发现(?:是|即|属于|代表|作为)会签决定",
+        "人工发现(?:是|即|属于|代表|作为)审批通过",
+        "人工发现(?:是|即|属于|代表|作为)确认结论",
+        "合同批准(?:是|即|代表)人工发现",
+        "会签决定(?:是|即|代表)人工发现",
+        "审批通过(?:是|即|代表)人工发现"
+      ]
+    }
+  ],
+  "uncertain_advisories": ["轮次", "发现处理意见"]
+}

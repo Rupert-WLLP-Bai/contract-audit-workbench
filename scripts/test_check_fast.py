@@ -185,6 +185,25 @@ func TestValue(t *testing.T) { if Value != 1 { t.Fatal(Value) } }
         plan = self.plan(check_fast.Change("M", "web/src/app.tsx"))
         self.assertTrue(plan.web)
         self.assertFalse(plan.docs_build)
+        self.assertFalse(plan.ui_terminology)
+
+    def test_manual_findings_and_glossary_select_only_bounded_term_guard(self):
+        for path in ("web/src/features/review/manual-findings/manual-findings-panel.tsx",
+                     "docs/glossary/concepts.json",
+                     "scripts/ui-terminology/policy.json",
+                     "scripts/check_ui_terminology.py",
+                     "scripts/test_ui_terminology.py"):
+            with self.subTest(path=path):
+                plan = self.plan(check_fast.Change("M", path))
+                self.assertTrue(plan.ui_terminology)
+        ui_only = self.plan(check_fast.Change(
+            "M", "web/src/features/review/manual-findings/manual-findings-panel.tsx"))
+        self.assertTrue(ui_only.web)
+        self.assertFalse(ui_only.docs_build)
+        checks = check_fast._build_checks(
+            ui_only, self.root, sys.executable, self.root.parent / "check-output")
+        self.assertEqual([check.name for check in checks],
+                         ["ui-terminology", "web-typecheck"])
 
     def test_docs_rename_deletion_and_space_paths_keep_docs_scope(self):
         renamed = self.plan(check_fast.Change(
@@ -359,7 +378,8 @@ class CliBoundaryTests(unittest.TestCase):
         self.assertEqual(appended[0], "keep=1")
         self.assertEqual(appended[1:], ["go=true", "web=true", "python=true",
                                         "database=false", "docs_build=false",
-                                        "architecture=false", "poppler=false",
+                                        "architecture=false", "ui_terminology=false",
+                                        "poppler=false",
                                         "legal_assets=false"])
 
     def test_plan_uses_caw_fast_base_when_base_flag_is_omitted(self):
