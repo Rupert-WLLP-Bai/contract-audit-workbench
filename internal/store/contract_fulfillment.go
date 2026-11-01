@@ -947,11 +947,12 @@ func (s *Store) CreateContractAcceptance(ctx context.Context, user accounts.User
 	}
 	var itemID, itemName, unit, deliveredQuantity string
 	var deliveryPlanSequence *int
+	// Fact rows are immutable; scopedContractLock serializes allocation and
+	// retests without requesting UPDATE privileges on append-only tables.
 	err = tx.QueryRow(ctx, `SELECT delivery.item_id::text,revision_item.unit,delivery.quantity::text,delivery.delivery_plan_sequence
 		FROM clm_contract_deliveries delivery
 		JOIN clm_contract_revision_items revision_item USING (tenant_id,contract_id,contract_revision_id,item_id)
-		WHERE delivery.tenant_id=$1 AND delivery.contract_id=$2 AND delivery.contract_revision_id=$3 AND delivery.delivery_id=$4
-		FOR UPDATE OF delivery`, record.TenantID, contractID, input.ContractRevisionID, input.DeliveryID).Scan(&itemID, &unit, &deliveredQuantity, &deliveryPlanSequence)
+		WHERE delivery.tenant_id=$1 AND delivery.contract_id=$2 AND delivery.contract_revision_id=$3 AND delivery.delivery_id=$4`, record.TenantID, contractID, input.ContractRevisionID, input.DeliveryID).Scan(&itemID, &unit, &deliveredQuantity, &deliveryPlanSequence)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return ContractAcceptance{}, fault.NotFound("没有找到对应交付批次")
 	}
@@ -1025,7 +1026,7 @@ func (s *Store) CreateContractAcceptance(ctx context.Context, user accounts.User
 		parentID = &input.ReinspectionOf
 		err := tx.QueryRow(ctx, `SELECT scope_start::text,scope_end::text,accepted_quantity::text,result
 			FROM clm_contract_acceptances WHERE tenant_id=$1 AND contract_id=$2 AND acceptance_id=$3
-			AND contract_revision_id=$4 AND delivery_id=$5 AND item_id=$6 FOR UPDATE`,
+			AND contract_revision_id=$4 AND delivery_id=$5 AND item_id=$6`,
 			record.TenantID, contractID, input.ReinspectionOf, input.ContractRevisionID, input.DeliveryID, itemID).Scan(&parentStart, &parentEnd, &parentAccepted, &parentResult)
 		if errors.Is(err, pgx.ErrNoRows) {
 			return ContractAcceptance{}, fault.NotFound("没有找到可复验的验收事实")
@@ -1345,7 +1346,7 @@ func (s *Store) RecordContractRectification(ctx context.Context, user accounts.U
 		return ContractRectification{}, fault.Conflict("整改事实必须对应合同当前冻结修订")
 	}
 	var result string
-	err = tx.QueryRow(ctx, `SELECT result FROM clm_contract_acceptances WHERE tenant_id=$1 AND contract_id=$2 AND acceptance_id=$3 AND contract_revision_id=$4 FOR UPDATE`, record.TenantID, contractID, input.AcceptanceID, input.ContractRevisionID).Scan(&result)
+	err = tx.QueryRow(ctx, `SELECT result FROM clm_contract_acceptances WHERE tenant_id=$1 AND contract_id=$2 AND acceptance_id=$3 AND contract_revision_id=$4`, record.TenantID, contractID, input.AcceptanceID, input.ContractRevisionID).Scan(&result)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return ContractRectification{}, fault.NotFound("没有找到对应的验收事实")
 	}

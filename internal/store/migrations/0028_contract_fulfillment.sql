@@ -190,7 +190,7 @@ BEGIN
           AND parent.delivery_id = NEW.delivery_id AND parent.item_id = NEW.item_id;
         IF parent_start IS NULL OR parent_result = 'passed'
            OR NEW.scope_start <> parent_start + parent_accepted OR NEW.scope_end <> parent_end THEN
-            RAISE EXCEPTION 'reinspection must exactly cover the parent's failed suffix';
+            RAISE EXCEPTION 'reinspection must exactly cover the parent failed suffix';
         END IF;
     END IF;
     RETURN NEW;

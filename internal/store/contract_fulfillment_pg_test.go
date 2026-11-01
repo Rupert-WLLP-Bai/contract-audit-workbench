@@ -5,8 +5,10 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"math/big"
 	"strings"
 	"testing"
+	"time"
 )
 
 // This focused durable scenario covers explicit pending ranges, append-only
@@ -31,14 +33,21 @@ func TestContractFulfillmentPartialAcceptanceAndLinearRetest(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	rowVersion := submitted.Round.RowVersion
+	var rowVersion int64 // Contract version; approval commands use the round version.
 	for index, task := range submitted.Tasks {
 		actor := approvalTestUser(t, "demo-reviewer")
 		if task.Final {
 			actor = fixture.admin
 		}
+		currentTask, err := fixture.core.GetApprovalTask(ctx, actor, task.ApprovalTaskID)
+		if err != nil {
+			t.Fatalf("refresh node %d: %v", task.NodeOrder, err)
+		}
+		if active := currentTask.RoundDetail.ActiveTaskID; active == nil || *active != task.ApprovalTaskID {
+			t.Fatalf("node %d is not the active approval task", task.NodeOrder)
+		}
 		decision, err := fixture.core.DecideApprovalTask(ctx, actor, DecideApprovalTaskInput{
-			TaskID: task.ApprovalTaskID, Decision: clmDecisionApprove, ExpectedRoundRowVersion: rowVersion,
+			TaskID: task.ApprovalTaskID, Decision: clmDecisionApprove, ExpectedRoundRowVersion: currentTask.RoundDetail.Round.RowVersion,
 			IdempotencyKey: fmt.Sprintf("fulfillment-approval-%02d", index),
 		})
 		if err != nil {
@@ -51,7 +60,7 @@ func TestContractFulfillmentPartialAcceptanceAndLinearRetest(t *testing.T) {
 	signed := MaterialRef{MaterialID: baseMaterial.MaterialID, MaterialVersionID: baseMaterial.MaterialVersionID, SHA256: baseMaterial.SHA256, Purpose: "signed_contract"}
 	registration, err := fixture.core.RegisterContractSigning(ctx, fixture.admin, ContractSigningRegistrationInput{
 		ContractID: contractID, ExpectedRowVersion: rowVersion, BaselineRevisionID: frozen.Version.ContractRevisionID,
-		SigningDate: "2026-11-02", SignedEvidence: signed, SignedContent: freezeCompleteDraft(), ManualComparison: manual,
+		SigningDate: time.Now().UTC().Format("2006-01-02"), SignedEvidence: signed, SignedContent: freezeCompleteDraft(), ManualComparison: manual,
 		Parties: []ContractSigningParty{{Role: "buyer", Name: "采购方"}}, IdempotencyKey: "fulfillment-signing-register",
 	})
 	if err != nil {
@@ -161,7 +170,9 @@ func TestContractFulfillmentPartialAcceptanceAndLinearRetest(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if afterRetest.Summary[0].QualifiedQuantity != "10.000000" || afterRetest.Summary[0].PendingReinspectionQuantity != "0.000000" {
+	// An empty SQL aggregate may render zero without a fractional scale.
+	pending, validPending := new(big.Rat).SetString(afterRetest.Summary[0].PendingReinspectionQuantity)
+	if afterRetest.Summary[0].QualifiedQuantity != "10.000000" || !validPending || pending.Sign() != 0 {
 		t.Fatalf("linear retests must bring cumulative qualified quantity to 10, not double-count: %+v", afterRetest.Summary)
 	}
 	assertFaultStatus(t, func() error {
