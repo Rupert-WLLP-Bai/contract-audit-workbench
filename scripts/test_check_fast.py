@@ -447,6 +447,7 @@ func TestValue(t *testing.T) { if Value != 1 { t.Fatal(Value) } }
             "internal/store/clm_outbox_pg_test.go",
             "internal/store/migrations/0032_clm_outbox_metrics.sql",
             "internal/store/migrations.go",
+            "internal/store/clm_role_provision.go",
             "internal/store/service_roles.go",
             "internal/store/runtime_metrics.go",
             "internal/store/state.go",

@@ -383,6 +383,7 @@ def _is_clm_outbox_core(path: str) -> bool:
         "internal/bootstrap/services_integration_test.go",
         "internal/store/migrations.go",
         "internal/store/migrations/0032_clm_outbox_metrics.sql",
+        "internal/store/clm_role_provision.go",
         "internal/store/runtime_metrics.go",
         "internal/store/runtime_metrics_test.go",
         "internal/store/service_roles.go",
