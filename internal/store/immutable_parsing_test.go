@@ -497,6 +497,7 @@ func TestLegacyAttemptMigrationIsRepeatableAndRetryIsRejected(t *testing.T) {
 		"service_object_contract_associations", "service_object_versions", "service_object_mutation_receipts", "service_objects",
 		"experience_finding_usage", "rule_pack_shadow_reports", "review_rulepack_inputs",
 		"manual_finding_records", "execution_write_receipts", "core_write_receipts",
+		"clm_contract_signing_registrations", "clm_contract_supplements",
 		"clm_approval_decisions", "clm_approval_task_assignments", "clm_approval_tasks",
 		"clm_workflow_role_bindings", "clm_workflow_roles",
 		"clm_workflow_template_pointers", "clm_workflow_template_nodes", "clm_workflow_templates",
@@ -548,6 +549,7 @@ func TestLegacyAttemptMigrationIsRepeatableAndRetryIsRejected(t *testing.T) {
 		t.Fatal(err)
 	}
 	legacyStatements := []string{
+		`DROP TABLE clm_contract_signing_registrations, clm_contract_supplements`,
 		`DROP TABLE clm_contract_audit_bindings, clm_approval_task_transfers, clm_approval_task_materials, clm_approval_decisions, clm_approval_task_assignments, clm_approval_tasks, clm_workflow_role_bindings, clm_workflow_roles, clm_workflow_template_pointers, clm_workflow_template_nodes, clm_workflow_templates`,
 		`DROP TABLE clm_contract_version_seals, clm_contract_version_materials, clm_contract_saved_views, clm_contract_exports`,
 		`DROP TABLE clm_contract_drafts, clm_contract_write_receipts, clm_legacy_imports, clm_outbox_delivery, clm_business_events, clm_approval_rounds, clm_contract_cases, clm_contract_revisions, clm_contracts`,

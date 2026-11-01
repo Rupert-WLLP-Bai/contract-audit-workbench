@@ -67,14 +67,15 @@ type ContractSummary struct {
 // draft (restricted fields revealed or masked by authorization) and routing
 // facts for imported sources.
 type ContractDetail struct {
-	Summary           ContractSummary `json:"summary"`
-	CurrentRevisionID *string         `json:"current_revision_id"`
-	Draft             *DraftContent   `json:"draft,omitempty"`
-	ActiveRoundID     *string         `json:"active_round_id"`
-	AllowedCommands   []string        `json:"allowed_commands"`
-	SourceRef         *SourceRef      `json:"source_ref,omitempty"`
-	SourceObservedAt  *time.Time      `json:"source_observed_at,omitempty"`
-	Warnings          []string        `json:"warnings"`
+	Summary             ContractSummary              `json:"summary"`
+	CurrentRevisionID   *string                      `json:"current_revision_id"`
+	Draft               *DraftContent                `json:"draft,omitempty"`
+	ActiveRoundID       *string                      `json:"active_round_id"`
+	AllowedCommands     []string                     `json:"allowed_commands"`
+	SourceRef           *SourceRef                   `json:"source_ref,omitempty"`
+	SourceObservedAt    *time.Time                   `json:"source_observed_at,omitempty"`
+	SigningRegistration *ContractSigningRegistration `json:"signing_registration,omitempty"`
+	Warnings            []string                     `json:"warnings"`
 }
 
 // ContractDraftSummary is one own-draft row for recovery after an interruption.
@@ -720,6 +721,11 @@ func (s *Store) buildContractDetail(ctx context.Context, tx pgx.Tx, record clmCo
 		// frozen revision is under review.
 		detail.AllowedCommands = []string{}
 	}
+	registration, err := s.loadContractSigningSummary(ctx, tx, current, record)
+	if err != nil {
+		return ContractDetail{}, nil, err
+	}
+	detail.SigningRegistration = registration
 	if contentBytes == nil {
 		return detail, nil, nil
 	}

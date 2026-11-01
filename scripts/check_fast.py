@@ -69,6 +69,9 @@ DATABASE_CORE_TESTS = ("TestLoginOriginalAndRetryStayInPostgres",)
 FROZEN_EVIDENCE_TESTS = (
     "TestDurableReviewFreezesServiceObjectContextAndRejectsChangedRetryAfterReopen",
 )
+CONTRACT_SIGNING_TESTS = (
+    "TestContractSigningRequiresHumanSourceAttestationAndApprovedRevision",
+)
 
 
 class FastError(RuntimeError):
@@ -257,6 +260,14 @@ def _is_frozen_evidence(path: str) -> bool:
         ("frozen", "snapshot", "service_object_context", "attempt_input", "material"))
 
 
+def _is_contract_signing(path: str) -> bool:
+    return path in (
+        "internal/store/contract_signing.go",
+        "internal/store/contract_signing_pg_test.go",
+        "internal/store/migrations/0027_contract_signing.sql",
+    )
+
+
 SENSITIVE_RULES = (
     SensitiveRule("auth", _is_auth, AUTH_TESTS),
     SensitiveRule("session", _is_session, SESSION_TESTS),
@@ -266,6 +277,7 @@ SENSITIVE_RULES = (
     SensitiveRule("lease", _is_lease, LEASE_TESTS),
     SensitiveRule("database-core", _is_database_core, DATABASE_CORE_TESTS),
     SensitiveRule("frozen-evidence", _is_frozen_evidence, FROZEN_EVIDENCE_TESTS),
+    SensitiveRule("contract-signing", _is_contract_signing, CONTRACT_SIGNING_TESTS),
 )
 
 

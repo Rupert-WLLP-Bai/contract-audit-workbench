@@ -43,6 +43,7 @@ import {
 import type { Actor } from "../api/types";
 import { PageStatus } from "../components/page-status";
 import { ContractReferencesPanel } from "../components/contract-references-panel";
+import { ContractSigningPanel } from "../components/contract-signing-panel";
 import { formatDateTime } from "../domain/review";
 import "./contracts-page.css";
 
@@ -208,6 +209,7 @@ export function ContractsPage() {
   const deleteSavedView = useDeleteContractSavedView();
 
   const [contractID, setContractID] = useState<string | null>(null);
+  const [contractDetail, setContractDetail] = useState<ContractDetail | null>(null);
   const [rowVersion, setRowVersion] = useState<number | null>(null);
   const [draft, setDraft] = useState<DraftContent>(emptyDraft);
   const [loaded, setLoaded] = useState<DraftContent>(emptyDraft);
@@ -223,8 +225,9 @@ export function ContractsPage() {
     () => JSON.stringify(draft) !== JSON.stringify(loaded),
     [draft, loaded],
   );
-  const canSave = allowed.includes("replace_draft") || contractID === null;
-  const readOnly = contractID !== null && !allowed.includes("replace_draft");
+  const isEditableDraft = contractID === null || contractDetail?.summary.contract_state === "draft";
+  const canSave = contractID === null || (isEditableDraft && allowed.includes("replace_draft"));
+  const readOnly = contractID !== null && (!isEditableDraft || !allowed.includes("replace_draft"));
 
   useEffect(() => {
     if (!dirty) return;
@@ -238,6 +241,7 @@ export function ContractsPage() {
 
   function resetEditor(detail: ContractDetail | null) {
     if (detail === null) {
+      setContractDetail(null);
       setContractID(null);
       setRowVersion(null);
       setDraft(emptyDraft());
@@ -248,6 +252,7 @@ export function ContractsPage() {
       return;
     }
     const next = detail.draft ?? emptyDraft();
+    setContractDetail(detail);
     setContractID(detail.summary.contract_id);
     setRowVersion(detail.summary.row_version);
     setDraft(next);
@@ -262,6 +267,10 @@ export function ContractsPage() {
   }
 
   async function openDraft(id: string) {
+    await openContractDetail(id);
+  }
+
+  async function openContractDetail(id: string) {
     if (dirty) {
       const discard = await confirmDiscard();
       if (!discard) return;
@@ -496,13 +505,25 @@ export function ContractsPage() {
   );
   const ledgerTableColumns = useMemo(
     () =>
-      ledgerColumns.map((column) => ({
-        title: LEDGER_COLUMN_OPTIONS.find((option) => option.value === column)?.label ?? column,
-        dataIndex: column,
-        key: column,
-        render: (_: unknown, item: ContractLedgerItem) => ledgerCellValue(item, column),
-      })),
-    [ledgerColumns],
+      [
+        ...ledgerColumns.map((column) => ({
+          title: LEDGER_COLUMN_OPTIONS.find((option) => option.value === column)?.label ?? column,
+          dataIndex: column,
+          key: column,
+          render: (_: unknown, item: ContractLedgerItem) => ledgerCellValue(item, column),
+        })),
+        {
+          title: "操作",
+          key: "contract_detail_action",
+          fixed: "right" as const,
+          render: (_: unknown, item: ContractLedgerItem) => (
+            <Button type="link" disabled={loading} onClick={() => void openContractDetail(item.contract_id)}>
+              查看详情
+            </Button>
+          ),
+        },
+      ],
+    [ledgerColumns, loading, dirty],
   );
   const activeLedgerFilters = Object.values(ledgerFilter).filter(
     (value) => value !== undefined && value !== "",
@@ -864,7 +885,7 @@ export function ContractsPage() {
 
         <div className="contracts-page-editor">
           {loading ? (
-            <PageStatus kind="loading" title="正在读取合同草稿" />
+            <PageStatus kind="loading" title="正在读取合同详情" />
           ) : (
             <>
               {sourceLabel !== null ? (
@@ -1368,6 +1389,16 @@ export function ContractsPage() {
                 )}
                 <ContractReferencesPanel contractID={contractID} draft={draft} />
               </fieldset>
+
+              {contractID !== null && contractDetail !== null ? (
+                <ContractSigningPanel
+                  key={contractID}
+                  detail={contractDetail}
+                  actor={actor}
+                  onRefresh={async () => resetEditor(await getContract(contractID))}
+                  onOpenDraft={(id) => void openDraft(id)}
+                />
+              ) : null}
 
               <div className="contracts-page-savebar">
                 <span role="status">

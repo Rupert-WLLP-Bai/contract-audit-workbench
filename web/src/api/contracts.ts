@@ -1,5 +1,13 @@
 import { ApiError, errorFromResponse, jsonInit, requestJson } from "./http";
 import { responseReader } from "./respond";
+import type { WireSchemas } from "./wire.generated";
+
+export type ContractSigningCheckResult = WireSchemas["ContractSigningCheckResult"];
+export type ContractSigningRegistration = WireSchemas["ContractSigningRegistration"];
+export type ContractSupplement = WireSchemas["ContractSupplement"];
+export type ContractSupplementList = WireSchemas["ContractSupplementList"];
+export type ContractSupplementResult = WireSchemas["ContractSupplementResult"];
+export type ManualSigningComparison = WireSchemas["ManualSigningComparison"];
 
 /**
  * Contract registration and resumable drafts.
@@ -244,6 +252,7 @@ export interface ContractDetail {
   source_ref?: SourceRef;
   source_observed_at?: string;
   warnings: string[];
+  signing_registration?: ContractSigningRegistration;
 }
 
 export interface LegacyImportInput {
@@ -454,6 +463,7 @@ export function parseContractDetail(
       "allowed_commands",
       "source_ref",
       "source_observed_at",
+      "signing_registration",
       "warnings",
     ],
     ["summary", "current_revision_id", "active_round_id", "allowed_commands", "warnings"],
@@ -485,6 +495,10 @@ export function parseContractDetail(
     warnings: array(row.warnings, `${path}.warnings`, (entry, entryPath) =>
       text(entry, entryPath),
     ),
+    signing_registration:
+      row.signing_registration === undefined || row.signing_registration === null
+        ? undefined
+        : (row.signing_registration as ContractSigningRegistration),
   };
 }
 
@@ -832,6 +846,63 @@ export function getContract(
     `${CONTRACTS_PATH}/${encodeURIComponent(contractId)}`,
     { method: "GET", signal },
     (value) => parseContractDetail(value),
+  );
+}
+
+export async function checkContractSigning(
+  contractId: string,
+  input: WireSchemas["ContractSigningCheckRequest"],
+): Promise<ContractSigningCheckResult> {
+  return requestJson(
+    `${CONTRACTS_PATH}/${encodeURIComponent(contractId)}/signing-checks`,
+    jsonInit("POST", input),
+    (value) => object(value, "contract_signing_check") as unknown as ContractSigningCheckResult,
+  );
+}
+
+export async function registerContractSigning(
+  contractId: string,
+  input: WireSchemas["ContractSigningRegistrationRequest"],
+  idempotencyKey: string,
+): Promise<ContractSigningRegistration> {
+  return requestJson(
+    `${CONTRACTS_PATH}/${encodeURIComponent(contractId)}/registrations`,
+    jsonInit("POST", input, { "Idempotency-Key": idempotencyKey }),
+    (value) => object(value, "contract_signing_registration") as unknown as ContractSigningRegistration,
+  );
+}
+
+export async function listContractSigningRegistrations(
+  contractId: string,
+  signal?: AbortSignal,
+): Promise<ContractSigningRegistration[]> {
+  return requestJson(
+    `${CONTRACTS_PATH}/${encodeURIComponent(contractId)}/registrations`,
+    { method: "GET", signal },
+    (value) => array(object(value, "contract_signing_registrations").items, "contract_signing_registrations.items", (entry) => object(entry, "contract_signing_registration") as unknown as ContractSigningRegistration),
+  );
+}
+
+export function listContractSupplements(
+  contractId: string,
+  signal?: AbortSignal,
+): Promise<ContractSupplementList> {
+  return requestJson(
+    `${CONTRACTS_PATH}/${encodeURIComponent(contractId)}/supplements`,
+    { method: "GET", signal },
+    (value) => object(value, "contract_supplements") as unknown as ContractSupplementList,
+  );
+}
+
+export function createContractSupplement(
+  contractId: string,
+  input: WireSchemas["ContractSupplementRequest"],
+  idempotencyKey: string,
+): Promise<ContractSupplementResult> {
+  return requestJson(
+    `${CONTRACTS_PATH}/${encodeURIComponent(contractId)}/supplements`,
+    jsonInit("POST", input, { "Idempotency-Key": idempotencyKey }),
+    (value) => object(value, "contract_supplement_result") as unknown as ContractSupplementResult,
   );
 }
 
