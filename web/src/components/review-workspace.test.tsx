@@ -674,7 +674,7 @@ describe("review workspace lifecycle", () => {
     partial.run.partial_reason = "模型输出超时";
     const view = renderView({ workspace: partial });
     expect(
-      screen.getByText(/模型输出超时.*模型步骤未完成/),
+      screen.getByText(/模型输出超时.*保存的审查判断/),
     ).toBeInTheDocument();
     view.unmount();
     const failed = workspace();
@@ -695,7 +695,7 @@ describe("review workspace lifecycle", () => {
     const partial = workspace();
     partial.run.state = "partial";
     const view = renderView({ workspace: partial });
-    expect(screen.getByText(/部分结果已保留。.*模型步骤未完成/)).toBeInTheDocument();
+    expect(screen.getByText(/部分结果已保留。.*保存的审查判断/)).toBeInTheDocument();
     view.unmount();
     const failed = workspace();
     failed.run.state = "failed";

@@ -2,6 +2,8 @@ import { Button, Radio } from "antd";
 import type { ReviewReadiness, ReviewReadinessBlocker, ReviewScope } from "../api/review-readiness";
 import { errorMessage } from "../api/http";
 import { roleLabel } from "../domain/review";
+import { isSingleContractV1 } from "../features/review/single-contract-coverage";
+import { SingleContractScopeCoverage } from "./single-contract-scope-coverage";
 import { StatusText } from "./status-text";
 
 const parseStates: Record<string, string> = { ready: "已解析", pending: "待解析", failed: "解析失败", stale: "需要重新解析", not_required: "无需解析" };
@@ -55,8 +57,10 @@ export function ReviewReadinessPanel({ caseId, data, loading, error, onRefresh, 
           <Radio value="full_review">完整审查</Radio>
           <Radio value="single_contract_precheck" disabled={!data?.scopes.some((item) => item.id === "single_contract_precheck")}>单合同预审</Radio>
         </Radio.Group>
-        {selectedScope === "single_contract_precheck" ? <span className="meta">只核对主合同中可识别的付款比例；跨材料、正式制度及其他风险未检查。补齐材料后请发起完整审查。</span> : null}
       </fieldset>
+      {selectedScope === "single_contract_precheck" ? <SingleContractScopeCoverage
+        mode="readiness" scope={selected} disabled={loading || Boolean(error)} onSelectFullReview={() => onSelectScope("full_review")}
+      /> : <p className="meta">核对完整审查准备状态后，<a href="#case-next-step-title">返回下一步操作</a>。</p>}
       {loading ? <p role="status">正在核对审查准备状态…</p> : null}
       {error ? <p role="alert">准备清单读取失败：{errorMessage(error)}。请刷新后再开始审查。</p> : null}
       {data ? <>
@@ -65,8 +69,7 @@ export function ReviewReadinessPanel({ caseId, data, loading, error, onRefresh, 
         </StatusText></p>
         {data.scopes.filter((scope) => scope.id === selectedScope).map((scope) => <div key={scope.id}>
           <h3>{scope.id === "full_review" ? "完整审查" : "单合同预审"}</h3>
-          {scope.rule_pack ? <p className="meta">规则包 {scope.rule_pack.pack_id} · 第 {scope.rule_pack.version} 版</p> : null}
-          {scope.rule_set ? <p className="meta">检查规则 {scope.rule_set.rule_set_id} · 第 {scope.rule_set.rule_set_version} 版</p> : null}
+          {scope.id !== "single_contract_precheck" && scope.rule_pack ? <p className="meta">规则包 {scope.rule_pack.pack_id} · 第 {scope.rule_pack.version} 版</p> : null}
           {scope.blockers.length ? <ul className="review-readiness-list" aria-label="开始审查前需要补齐的事项">
             {scope.blockers.map((blocker) => {
               const link = repairLink(caseId, blocker);
@@ -77,11 +80,11 @@ export function ReviewReadinessPanel({ caseId, data, loading, error, onRefresh, 
               </li>;
             })}
           </ul> : null}
-          {scope.checks.length ? <>
+          {scope.checks.length && (scope.id !== "single_contract_precheck" || isSingleContractV1(scope.rule_set)) ? <>
             <h4>本次检查项目</h4>
             <ul className="review-readiness-list" aria-label="规则准备状态">
               {scope.checks.map((check) => <li key={check.rule_id}>
-                <strong>{checkLabels[check.rule_id] ?? check.rule_id}</strong>{" "}<StatusText tone={check.status === "missing_basis" || check.status === "not_executed" ? "attention" : "neutral"}>{checkStates[check.status] ?? "状态待核对"}</StatusText>
+                <strong>{checkLabels[check.rule_id] ?? (scope.id === "single_contract_precheck" ? "其他范围外检查" : check.rule_id)}</strong>{" "}<StatusText tone={check.status === "missing_basis" || check.status === "not_executed" ? "attention" : "neutral"}>{checkStates[check.status] ?? "状态待核对"}</StatusText>
                 {check.missing_dependencies.length ? <p>待补齐：{check.missing_dependencies.map(dependencyLabel).join("；")}</p> : null}
                 {check.next_action ? <p>{checkActions[check.next_action] ?? check.next_action}</p> : null}
                 {check.next_action === "reparse_material" ? <Button type="link" href="#case-materials">到材料列表重新解析</Button> : null}
