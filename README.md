@@ -431,3 +431,7 @@ git switch main
 git pull --ff-only
 git switch -c fix/8-case-next-step
 ```
+
+## 许可
+
+项目第一方材料依照 [LICENSE](LICENSE) 中的 `LicenseRef-CAW-NC-1.0.0` 使用（版权 © 2026 Bai Junhao；生效日期 2026-11-01）。许可仅允许约定范围内的非商业使用；组织运营或业务用途、商业部署、托管服务，以及独立发布或分发衍生版本须另行取得书面许可。公开 GitHub Fork 可用于修改、测试并向上游提交 PR；第三方材料保留各自许可。本项目为限制性源码可用项目，不宣称为 OSI 开源。详见[许可与贡献说明](docs/engineering/licensing.md)。
