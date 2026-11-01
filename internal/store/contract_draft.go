@@ -571,7 +571,13 @@ func clmDraftCommands(record clmContractRecord, canManage bool) []string {
 		return []string{}
 	}
 	if record.AuthorityMode == "native" && record.LifecycleState == "draft" && record.ValidityState == "active" {
-		return []string{"replace_draft", clmCommandFreezeVersion}
+		commands := []string{"replace_draft", clmCommandFreezeVersion}
+		// Submission always uses the frozen current revision. Offering it before
+		// the first freeze would only produce a conflict.
+		if record.CurrentRevisionID != nil {
+			commands = append(commands, clmCommandSubmitApproval)
+		}
+		return commands
 	}
 	return []string{}
 }
@@ -700,13 +706,20 @@ func (s *Store) buildContractDetail(ctx context.Context, tx pgx.Tx, record clmCo
 			detail.Warnings = append(detail.Warnings, "approval_history_unknown")
 		}
 	}
-	var activeRound *string
-	if err := tx.QueryRow(ctx, `SELECT approval_round_id FROM clm_approval_rounds
-		WHERE tenant_id=$1 AND contract_id=$2 AND state='in_review' LIMIT 1`,
-		accounts.Tenant(current), record.ContractID).Scan(&activeRound); err != nil && !errors.Is(err, pgx.ErrNoRows) {
+	workflowState := "not_started"
+	var latestRoundID *string
+	if err := tx.QueryRow(ctx, `SELECT state,approval_round_id FROM clm_approval_rounds
+		WHERE tenant_id=$1 AND contract_id=$2 ORDER BY round_number DESC LIMIT 1`,
+		accounts.Tenant(current), record.ContractID).Scan(&workflowState, &latestRoundID); err != nil && !errors.Is(err, pgx.ErrNoRows) {
 		return ContractDetail{}, nil, err
 	}
-	detail.ActiveRoundID = activeRound
+	detail.Summary.WorkflowState = workflowState
+	if workflowState == "in_review" {
+		detail.ActiveRoundID = latestRoundID
+		// Freeze, draft replacement and re-submission are all closed while the
+		// frozen revision is under review.
+		detail.AllowedCommands = []string{}
+	}
 	if contentBytes == nil {
 		return detail, nil, nil
 	}
@@ -855,6 +868,15 @@ func (s *Store) ReplaceContractDraft(ctx context.Context, user accounts.User, in
 	}
 	if record.RowVersion != input.ExpectedRowVersion {
 		return ContractDetail{}, fault.Conflict("合同内容已被他人修改，请刷新后确认")
+	}
+	var inReview bool
+	if err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM clm_approval_rounds
+		WHERE tenant_id=$1 AND contract_id=$2 AND state='in_review')`,
+		accounts.Tenant(current), id).Scan(&inReview); err != nil {
+		return ContractDetail{}, err
+	}
+	if inReview {
+		return ContractDetail{}, fault.Conflict("合同已有进行中的会签轮次，不能修改草稿")
 	}
 	var updatedRowVersion int64
 	err = tx.QueryRow(ctx, `UPDATE clm_contracts SET row_version=row_version+1, updated_at=clock_timestamp()
