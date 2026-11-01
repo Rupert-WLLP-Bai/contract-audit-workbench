@@ -25,6 +25,7 @@ import { ExecutionInspector } from "./execution-inspector";
 import { FindingPanel } from "./finding-panel";
 import { BusinessAgentReviewView } from "./business-agent-review";
 import { TrajectoryView } from "./trajectory-view";
+import { SingleContractScopeCoverage } from "./single-contract-scope-coverage";
 import { StatusText } from "./status-text";
 
 const STREAM_LABEL: Record<StreamStatus, string> = {
@@ -198,7 +199,7 @@ function RunCallouts({ run }: { run: ReviewRun }) {
       {run.state === "partial" ? (
         <p className="callout">
           {run.partial_reason ?? "部分结果已保留。"}
-          模型步骤未完成。已经保存的审查判断不会因为重试被重复提交。
+          已经保存的审查判断不会因为重试被重复提交。
         </p>
       ) : null}
       {run.state === "failed" ? (
@@ -533,9 +534,7 @@ export function ReviewWorkspaceView({
         diagnosticsLoading={diagnosticsLoading}
         onLoadDiagnostics={onLoadDiagnostics}
       />
-      {workspace.snapshot?.review_scope?.id === "single_contract_precheck" ? (
-        <p className="callout">本次是单合同预审（规则 {workspace.snapshot.review_scope.rule_set_id} 第 {workspace.snapshot.review_scope.rule_set_version} 版）。仅核对主合同中可识别的付款比例；跨材料、正式制度及其他风险尚未检查，结果仍需人工核对。请补齐材料后发起完整审查。</p>
-      ) : null}
+      <SingleContractScopeCoverage mode="workspace" workspace={workspace} />
       <RunCallouts run={run} />
       <div className={`workspace-grid layout-${layout}`} style={gridStyle}>
         <DocumentStage

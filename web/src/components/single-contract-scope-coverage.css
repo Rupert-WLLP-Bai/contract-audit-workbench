@@ -1,0 +1,54 @@
+@layer components {
+  .single-contract-coverage {
+    min-width: 0;
+    margin-block: var(--space-4);
+  }
+
+  .single-contract-coverage-workspace {
+    margin: 0;
+    padding: var(--space-4);
+    border-bottom: 1px solid var(--border-default);
+  }
+
+  .single-contract-coverage h2,
+  .single-contract-coverage h3 {
+    margin: 0;
+    font-size: 1rem;
+  }
+
+  .single-contract-coverage-summary {
+    margin-block: var(--space-2) var(--space-3);
+  }
+
+  .single-contract-coverage-list {
+    display: grid;
+    gap: var(--space-2);
+    margin: var(--space-3) 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .single-contract-coverage-list > li {
+    min-width: 0;
+    padding: var(--space-3);
+    border: 1px solid var(--border-default);
+    background: var(--surface-raised);
+  }
+
+  .single-contract-coverage-row,
+  .single-contract-coverage-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-2) var(--space-3);
+  }
+
+  .single-contract-coverage-list p {
+    margin: var(--space-2) 0 0;
+    overflow-wrap: anywhere;
+  }
+
+  .single-contract-coverage-actions {
+    margin-top: var(--space-2);
+  }
+}
