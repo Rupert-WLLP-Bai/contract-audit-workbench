@@ -14,7 +14,7 @@ import (
 	"strings"
 	"time"
 
-	"contractaudit/internal/agentflow"
+	"contractaudit/internal/advisorycontract"
 	"contractaudit/internal/jev"
 	"contractaudit/internal/model"
 	"contractaudit/internal/store"
@@ -49,18 +49,18 @@ func jevConfigFromEnv() JevConfig {
 		APIKey:  strings.TrimSpace(os.Getenv("TYPESAFE_API_KEY")),
 		Model:   strings.TrimSpace(os.Getenv("TYPESAFE_JEV_MODEL")),
 		Egress:  strings.ToLower(strings.TrimSpace(os.Getenv("TYPESAFE_JEV_EGRESS"))),
-		Timeout: agentflow.DefaultAdvisoryTimeout, MaxOutputTokens: 2048,
+		Timeout: advisorycontract.DefaultTimeout, MaxOutputTokens: 2048,
 	}
 	if config.Mode == "" {
-		config.Mode = agentflow.AdvisoryModeOff
+		config.Mode = advisorycontract.ModeOff
 	}
 	if config.BaseURL == "" {
 		config.BaseURL = jev.DefaultBaseURL
 	}
 	if config.Egress == "" {
-		config.Egress = agentflow.AdvisoryEgressMinimized
+		config.Egress = advisorycontract.EgressMinimized
 	}
-	if config.Egress != agentflow.AdvisoryEgressMinimized {
+	if config.Egress != advisorycontract.EgressMinimized {
 		config.Problem = "unsupported_egress"
 	}
 	config.Features, config.Problem = configuredJevFeatures(os.Getenv("TYPESAFE_JEV_FEATURES"), config.Problem)
@@ -71,7 +71,7 @@ func jevConfigFromEnv() JevConfig {
 func configuredJevFeatures(rawValue, problem string) ([]string, string) {
 	rawValue = strings.TrimSpace(rawValue)
 	if rawValue == "" {
-		return []string{agentflow.AdvisoryFeatureKnowledgeRerank}, problem
+		return []string{advisorycontract.FeatureKnowledgeRerank}, problem
 	}
 	seen := map[string]bool{}
 	features := make([]string, 0)
@@ -80,7 +80,7 @@ func configuredJevFeatures(rawValue, problem string) ([]string, string) {
 		if feature == "" {
 			continue
 		}
-		if feature != agentflow.AdvisoryFeatureKnowledgeRerank {
+		if feature != advisorycontract.FeatureKnowledgeRerank {
 			problem = "unsupported_feature"
 			continue
 		}
@@ -99,7 +99,7 @@ func configuredJevFeatures(rawValue, problem string) ([]string, string) {
 func applyJevTimingOverrides(config *JevConfig) {
 	if raw := strings.TrimSpace(os.Getenv("TYPESAFE_JEV_TIMEOUT")); raw != "" {
 		value, err := time.ParseDuration(raw)
-		if err != nil || value < agentflow.MinAdvisoryTimeout || value > agentflow.MaxAdvisoryTimeout {
+		if err != nil || value < advisorycontract.MinTimeout || value > advisorycontract.MaxTimeout {
 			config.Problem = "invalid_timeout"
 		} else {
 			config.Timeout = value
@@ -118,7 +118,7 @@ func applyJevTimingOverrides(config *JevConfig) {
 // normalizeJev keeps an advisory misconfiguration local to the Jev route. It
 // never blocks chat/OCR readiness and never makes the gateway fail to start.
 func normalizeJev(config *JevConfig, budget store.ModelBudgetLimits) (status, reason string, client *jev.Client) {
-	if config.Mode == agentflow.AdvisoryModeOff {
+	if config.Mode == advisorycontract.ModeOff {
 		return "off", "disabled", nil
 	}
 	if config.Problem != "" {
@@ -128,25 +128,25 @@ func normalizeJev(config *JevConfig, budget store.ModelBudgetLimits) (status, re
 		return "unavailable", reason, nil
 	}
 	switch config.Mode {
-	case agentflow.AdvisoryModeFixture:
+	case advisorycontract.ModeFixture:
 		return normalizeFixtureJev(config)
-	case agentflow.AdvisoryModeAdvisory:
+	case advisorycontract.ModeAdvisory:
 		return normalizeRemoteJev(config)
 	}
 	return "unavailable", "invalid_mode", nil
 }
 
 func jevConfigurationProblem(config *JevConfig, budget store.ModelBudgetLimits) string {
-	if config.Mode != agentflow.AdvisoryModeAdvisory && config.Mode != agentflow.AdvisoryModeFixture {
+	if config.Mode != advisorycontract.ModeAdvisory && config.Mode != advisorycontract.ModeFixture {
 		return "invalid_mode"
 	}
-	if config.Egress != agentflow.AdvisoryEgressMinimized {
+	if config.Egress != advisorycontract.EgressMinimized {
 		return "unsupported_egress"
 	}
 	if !supportsConfiguredFeatures(config.Features) {
 		return "unsupported_feature"
 	}
-	if config.Timeout < agentflow.MinAdvisoryTimeout || config.Timeout > agentflow.MaxAdvisoryTimeout {
+	if config.Timeout < advisorycontract.MinTimeout || config.Timeout > advisorycontract.MaxTimeout {
 		return "invalid_timeout"
 	}
 	if config.MaxOutputTokens < 1 || config.MaxOutputTokens > budget.MaxOutputTokenReservation {
@@ -160,7 +160,7 @@ func supportsConfiguredFeatures(features []string) bool {
 		return false
 	}
 	for _, feature := range features {
-		if feature != agentflow.AdvisoryFeatureKnowledgeRerank {
+		if feature != advisorycontract.FeatureKnowledgeRerank {
 			return false
 		}
 	}
@@ -169,9 +169,9 @@ func supportsConfiguredFeatures(features []string) bool {
 
 func normalizeFixtureJev(config *JevConfig) (string, string, *jev.Client) {
 	if config.Model == "" {
-		config.Model = agentflow.AdvisoryFixtureModel
+		config.Model = advisorycontract.FixtureModel
 	}
-	if config.Model != agentflow.AdvisoryFixtureModel {
+	if config.Model != advisorycontract.FixtureModel {
 		return "unavailable", "fixture_model_mismatch", nil
 	}
 	environment := strings.ToLower(strings.TrimSpace(os.Getenv("APP_ENV")))
@@ -325,7 +325,7 @@ func (s *Service) validateSystemOneHeaders(w http.ResponseWriter, r *http.Reques
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "data classification is required", "code": "jev_classification_missing"})
 		return false
 	}
-	if classification == agentflow.AdvisoryEgressApprovedText {
+	if classification == advisorycontract.EgressApprovedText {
 		writeJSON(w, http.StatusForbidden, map[string]string{"error": "approved text egress is not enabled", "code": "jev_egress_not_approved"})
 		return false
 	}

@@ -1,0 +1,56 @@
+{
+  "ImportPath": "contractaudit/internal/contractmoney",
+  "Name": "contractmoney",
+  "GoFiles": [
+    "decimal.go",
+    "validate.go"
+  ],
+  "Imports": [
+    "errors",
+    "fmt",
+    "math/big",
+    "strconv",
+    "strings"
+  ],
+  "TestImports": [
+    "testing",
+    "contractaudit/internal/store"
+  ]
+}
+{
+  "ImportPath": "contractaudit/internal/modelgateway",
+  "Name": "modelgateway",
+  "GoFiles": [
+    "jev.go"
+  ],
+  "Imports": [
+    "bytes",
+    "context",
+    "encoding/json",
+    "errors",
+    "io",
+    "net/http",
+    "os",
+    "regexp",
+    "sort",
+    "strconv",
+    "strings",
+    "time",
+    "contractaudit/internal/advisorycontract",
+    "contractaudit/internal/jev",
+    "contractaudit/internal/model",
+    "contractaudit/internal/store",
+    "contractaudit/internal/agentflow",
+    "contractaudit/internal/advisory"
+  ]
+}
+{
+  "ImportPath": "contractaudit/internal/advisorycontract",
+  "Name": "advisorycontract",
+  "GoFiles": [
+    "contract.go"
+  ],
+  "Imports": [
+    "time"
+  ]
+}

@@ -2,6 +2,7 @@
 import json
 import os
 from pathlib import Path
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -208,6 +209,41 @@ func TestValue(t *testing.T) { if Value != 1 { t.Fatal(Value) } }
         self.assertIn("missing docs lockfile",
                       Path(result.log).read_text(encoding="utf-8"))
 
+    def test_architecture_only_changes_select_guard_without_application_go(self):
+        plan = self.plan(check_fast.Change(
+            "M", "scripts/architecture/architecture.json"))
+        self.assertTrue(plan.architecture)
+        self.assertFalse(plan.go or plan.database or plan.web or plan.docs_build)
+        checks = check_fast._build_checks(
+            plan, self.root, sys.executable, self.root.parent / "check-output")
+        self.assertEqual([check.name for check in checks],
+                         ["architecture-dependencies"])
+        self.assertIn("--out", checks[0].command)
+        self.assertEqual(checks[0].command[-1],
+                         str((self.root.parent / "check-output" /
+                              "architecture-check.json").resolve()))
+
+    def test_architecture_trigger_paths_and_rename_deletion(self):
+        for path in ("scripts/architecture/check_architecture.py",
+                     "scripts/architecture/architecture.schema.json",
+                     "scripts/architecture/fixtures/allowed.json",
+                     "internal/modelgateway/jev.go",
+                     "internal/agentflow/advisory.go",
+                     "internal/advisorycontract/contract.go",
+                     "go.mod", "go.sum", "go.work", "go.work.sum", "go.env",
+                     "scripts/check_fast.py", ".github/workflows/pr-fast.yml"):
+            with self.subTest(path=path):
+                self.assertTrue(self.plan(check_fast.Change("M", path)).architecture)
+        package = self.plan(check_fast.Change("M", "internal/contractmoney/decimal.go"))
+        self.assertTrue(package.architecture)
+        self.assertTrue(package.go)
+        moved = self.plan(check_fast.Change(
+            "R", "internal/other/new file.go",
+            "internal/contractmoney/old file.go"))
+        removed = self.plan(check_fast.Change("D", "internal/contractmoney/old file.go"))
+        self.assertTrue(moved.architecture)
+        self.assertTrue(removed.architecture)
+
     def test_deleted_go_file_keeps_format_and_compile_scope(self):
         plan = self.plan(check_fast.Change("D", "internal/leaf/leaf.go"))
         self.assertTrue(plan.go)
@@ -274,6 +310,8 @@ class CliBoundaryTests(unittest.TestCase):
         self.addCleanup(self.temporary.cleanup)
         self.root = Path(self.temporary.name) / "repo"
         self.root.mkdir()
+        shutil.copytree(SCRIPT.parent / "architecture",
+                        self.root / "scripts/architecture")
         git(self.root, "init", "-b", "main")
         git(self.root, "config", "user.name", "Fast Check Test")
         git(self.root, "config", "user.email", "fast-check@example.test")
@@ -321,7 +359,8 @@ class CliBoundaryTests(unittest.TestCase):
         self.assertEqual(appended[0], "keep=1")
         self.assertEqual(appended[1:], ["go=true", "web=true", "python=true",
                                         "database=false", "docs_build=false",
-                                        "poppler=false", "legal_assets=false"])
+                                        "architecture=false", "poppler=false",
+                                        "legal_assets=false"])
 
     def test_plan_uses_caw_fast_base_when_base_flag_is_omitted(self):
         write(self.root, "internal/leaf/leaf.go", "package leaf\n")
@@ -347,6 +386,31 @@ class CliBoundaryTests(unittest.TestCase):
             path.chmod(0o755)
         return directory, marker
 
+    @staticmethod
+    def fake_go_with_unit_failure(path: Path):
+        path.write_text(
+            "#!/bin/sh\n"
+            "if [ \"$1\" = env ]; then\n"
+            "  printf '%s\\n' '{\"GOOS\":\"linux\",\"GOARCH\":\"amd64\","
+            "\"GOVERSION\":\"go1.26.0\",\"CGO_ENABLED\":\"1\","
+            "\"GOFLAGS\":\"\",\"GOENV\":\"\",\"GOWORK\":\"\"}'\n"
+            "  exit 0\nfi\n"
+            "if [ \"$1\" = list ]; then\n"
+            "  printf '%s\\n' '{\"ImportPath\":\"contractaudit/internal/contractmoney\","
+            "\"Name\":\"contractmoney\",\"GoFiles\":[\"decimal.go\"],"
+            "\"Imports\":[\"errors\",\"fmt\",\"math/big\",\"strconv\",\"strings\"]}' "
+            "'{\"ImportPath\":\"contractaudit/internal/modelgateway\","
+            "\"Name\":\"modelgateway\",\"GoFiles\":[\"jev.go\"],"
+            "\"Imports\":[\"contractaudit/internal/store\"]}' "
+            "'{\"ImportPath\":\"contractaudit/internal/advisorycontract\","
+            "\"Name\":\"advisorycontract\",\"GoFiles\":[\"contract.go\"],"
+            "\"Imports\":[\"time\"]}'\n"
+            "  exit 0\nfi\n"
+            "for argument in \"$@\"; do\n"
+            "  if [ \"$argument\" = \"-json\" ]; then exit 1; fi\n"
+            "done\nexit 0\n", encoding="utf-8")
+        path.chmod(0o755)
+
     def test_missing_database_environment_blocks_before_checks(self):
         write(self.root, "internal/store/session_lifecycle.go",
               "package store\n")
@@ -363,6 +427,31 @@ class CliBoundaryTests(unittest.TestCase):
         self.assertFalse(report["passed"])
         self.assertEqual(report["checks"][0]["status"], "NOT_RUN")
 
+    def test_architecture_blocked_report_fails_the_fast_gate(self):
+        config_path = self.root / "scripts/architecture/architecture.json"
+        config = json.loads(config_path.read_text(encoding="utf-8"))
+        config["review_marker"] = "architecture-trigger"
+        config_path.write_text(json.dumps(config) + "\n", encoding="utf-8")
+        binaries, marker = self.fake_binaries()
+        go = binaries / "go"
+        go.write_text("#!/bin/sh\necho 'synthetic Go environment unavailable' >&2\nexit 7\n",
+                      encoding="utf-8")
+        go.chmod(0o755)
+        out = Path(self.temporary.name) / "fast-out"
+        env = script_env(PATH=str(binaries) + os.pathsep + os.environ["PATH"],
+                         FAKE_MARKER=str(marker))
+        result = run_script("--root", str(self.root), "--base", self.base,
+                            "--out", str(out), env=env)
+        self.assertEqual(result.returncode, 1, result.stderr)
+        fast_report = json.loads((out / "fast-check.json").read_text(encoding="utf-8"))
+        self.assertFalse(fast_report["passed"])
+        self.assertEqual(fast_report["checks"][0]["name"],
+                         "architecture-dependencies")
+        self.assertEqual(fast_report["checks"][0]["status"], "FAIL")
+        guard_report = json.loads((out / "architecture-check.json").read_text(encoding="utf-8"))
+        self.assertEqual(guard_report["status"], "BLOCKED")
+        self.assertEqual(guard_report["exit_code"], 2)
+
     def test_go_unit_failure_fails_gate_when_unit_selection_falls_back(self):
         # Issue #53 regression: a go.mod-only change empties the affected
         # package set; the widened unit run must still fail the gate when the
@@ -378,10 +467,7 @@ func TestValue(t *testing.T) { if Value != 2 { t.Fatal(Value) } }
         write(self.root, "go.mod", "module example.test/project\n\ngo 1.26\n")
         binaries, marker = self.fake_binaries()
         go = binaries / "go"
-        go.write_text("#!/bin/sh\nfor argument in \"$@\"; do\n"
-                      "  if [ \"$argument\" = \"-json\" ]; then\n    exit 1\n  fi\n"
-                      "done\nexit 0\n", encoding="utf-8")
-        go.chmod(0o755)
+        self.fake_go_with_unit_failure(go)
         out = Path(self.temporary.name) / "fast-out"
         env = script_env(PATH=str(binaries) + os.pathsep + os.environ["PATH"],
                          FAKE_MARKER=str(marker))
@@ -408,10 +494,7 @@ func TestValue(t *testing.T) { if Value != 2 { t.Fatal(Value) } }
               'func main() { _ = decision.Value; _ = shared.Value }\n')
         binaries, marker = self.fake_binaries()
         go = binaries / "go"
-        go.write_text("#!/bin/sh\nfor argument in \"$@\"; do\n"
-                      "  if [ \"$argument\" = \"-json\" ]; then\n    exit 1\n  fi\n"
-                      "done\nexit 0\n", encoding="utf-8")
-        go.chmod(0o755)
+        self.fake_go_with_unit_failure(go)
         out = Path(self.temporary.name) / "fast-out"
         env = script_env(PATH=str(binaries) + os.pathsep + os.environ["PATH"],
                          FAKE_MARKER=str(marker))

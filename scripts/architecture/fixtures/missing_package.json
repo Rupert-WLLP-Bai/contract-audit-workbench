@@ -1,0 +1,10 @@
+{
+  "ImportPath": "contractaudit/internal/engine",
+  "Name": "engine",
+  "GoFiles": [
+    "ruleset.go"
+  ],
+  "Imports": [
+    "strings"
+  ]
+}
