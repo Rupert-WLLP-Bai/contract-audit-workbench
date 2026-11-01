@@ -148,6 +148,10 @@ spec:
             # endpoint registry readable but refuses saving or probing secrets.
             - name: LLM_CONFIG_KEY
               valueFrom: {secretKeyRef: {name: contract-audit-model, key: LLM_CONFIG_KEY, optional: true}}
+            # Seals restricted supplier fields before persistence. Optional:
+            # absent makes restricted-field writes fail closed.
+            - name: CLM_DATA_KEY
+              valueFrom: {secretKeyRef: {name: contract-audit-clm, key: CLM_DATA_KEY, optional: true}}
             - name: OIDC_CLIENT_SECRET
               valueFrom: {secretKeyRef: {name: contract-audit-oidc, key: OIDC_CLIENT_SECRET, optional: true}}
             - name: OIDC_ADMIN_CLIENT_SECRET

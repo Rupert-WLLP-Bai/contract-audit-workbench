@@ -78,6 +78,14 @@ func TestOpenAPITracksAllRegisteredRoutesAndJSONFields(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Contract draft handlers carry a mandatory header-derived idempotency key,
+	// so their request structs are local to the HTTP layer rather than store
+	// command types. They are still parsed for route coverage: every mounted
+	// contract route must appear in the published contract.
+	contractDraft, err := parser.ParseFile(token.NewFileSet(), "contract_draft.go", nil, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
 	storePackages, err := parser.ParseDir(token.NewFileSet(), "../store", func(info os.FileInfo) bool { return !strings.HasSuffix(info.Name(), "_test.go") }, 0)
 	if err != nil {
 		t.Fatal(err)
@@ -100,7 +108,7 @@ func TestOpenAPITracksAllRegisteredRoutesAndJSONFields(t *testing.T) {
 		}
 		return route
 	}
-	for _, parsed := range []*ast.File{file, health, governance, evidence, legalRoutes, contractCitations, manualFindings, ruleShadow} {
+	for _, parsed := range []*ast.File{file, health, governance, evidence, legalRoutes, contractCitations, manualFindings, ruleShadow, contractDraft} {
 		// Route coverage reads the declarations the server mounts. Both forms
 		// are accepted: an explicit HandleFunc, and the shared mountRoutes whose
 		// variadic argument is a list of literal routeBinding entries. A

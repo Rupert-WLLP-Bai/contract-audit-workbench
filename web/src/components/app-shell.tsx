@@ -18,6 +18,7 @@ import {
   BookOutlined,
   CheckSquareOutlined,
   ClockCircleOutlined,
+  ContainerOutlined,
   FileSearchOutlined,
   FileTextOutlined,
   HomeOutlined,
@@ -57,6 +58,7 @@ const NAV_GROUPS: {
     label: "业务管理",
     links: [
       { to: "/cases", label: "案件管理", icon: "case", end: true },
+      { to: "/contracts", label: "合同登记", icon: "contracts", end: true },
       { to: "/subjects", label: "主体台账", icon: "subjects" },
       { to: "/workbench/tasks", label: "审查任务", icon: "tasks" },
       { to: "/workbench/remediation", label: "整改中心", icon: "remediation" },
@@ -105,6 +107,7 @@ const NAV_ICONS: Record<string, ReactNode> = {
   compare: <FileTextOutlined />,
   rules: <SafetyCertificateOutlined />,
   case: <FileTextOutlined />,
+  contracts: <ContainerOutlined />,
   subjects: <TeamOutlined />,
   tasks: <CheckSquareOutlined />,
   remediation: <SafetyCertificateOutlined />,
@@ -160,6 +163,11 @@ function staticBreadcrumb(pathname: string): Crumb[] | null {
     return [
       { label: "工作台", to: "/" },
       { label: "案件管理", to: null },
+    ];
+  if (pathname === "/contracts")
+    return [
+      { label: "工作台", to: "/" },
+      { label: "合同登记", to: null },
     ];
   if (pathname === "/subjects")
     return [

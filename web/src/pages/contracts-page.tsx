@@ -1,0 +1,1038 @@
+import { Alert, Button, Empty, Input, InputNumber, Modal, Select, Table, Tag } from "antd";
+import { useEffect, useMemo, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { ApiError, errorMessage } from "../api/http";
+import {
+  createContractDraft,
+  emptyDraft,
+  getContract,
+  importLegacyContract,
+  isMaskedRestricted,
+  listMyContractDrafts,
+  replaceContractDraft,
+  type ContractDetail,
+  type ContractDraftSummary,
+  type DraftContent,
+  type DraftFunding,
+  type DraftItem,
+  type MaterialRef,
+} from "../api/contracts";
+import { queryKeys, useCaseDetail, useCases, useSession } from "../api/queries";
+import {
+  clearPendingMutationKey,
+  idempotencyActorScope,
+  pendingMutationKey,
+} from "../api/idempotency";
+import type { Actor } from "../api/types";
+import { PageStatus } from "../components/page-status";
+import { formatDateTime } from "../domain/review";
+import "./contracts-page.css";
+
+const DRAFTING_PARTIES = [
+  { value: "buyer", label: "采购方拟定" },
+  { value: "supplier", label: "供应方拟定" },
+  { value: "joint", label: "双方共同拟定" },
+  { value: "other", label: "其他（备注说明）" },
+];
+
+const SETTLEMENT_MODES = [
+  { value: "fixed_total_price", label: "固定总价" },
+  { value: "framework", label: "框架协议" },
+  { value: "by_quantity", label: "按量结算" },
+];
+
+function newId(): string {
+  return crypto.randomUUID();
+}
+
+function optionalText(value: string): string | undefined {
+  const trimmed = value.trim();
+  return trimmed === "" ? undefined : trimmed;
+}
+
+function actorScope(actor: Actor | null): string {
+  return actor === null
+    ? ""
+    : [actor.audience, actor.tenant_id, actor.org_id, actor.id].join("\u0000");
+}
+
+function emptyItem(): DraftItem {
+  return { item_id: newId() };
+}
+
+function emptyFunding(): DraftFunding {
+  return {};
+}
+
+function amountLabel(amount: string | null, currency: string | null): string {
+  if (amount === null || currency === null) return "金额未知";
+  return `${currency} ${amount}`;
+}
+
+function stateLabel(state: string): string {
+  if (state === "draft") return "草稿";
+  if (state === "registered") return "已登记";
+  return state;
+}
+
+export function ContractsPage() {
+  const queryClient = useQueryClient();
+  const session = useSession();
+  const actor = session.data ?? null;
+  const drafts = useQuery({
+    queryKey: queryKeys.contractDrafts(actorScope(actor)),
+    queryFn: ({ signal }) => listMyContractDrafts(signal),
+    enabled: actor !== null,
+  });
+
+  const [contractID, setContractID] = useState<string | null>(null);
+  const [rowVersion, setRowVersion] = useState<number | null>(null);
+  const [draft, setDraft] = useState<DraftContent>(emptyDraft);
+  const [loaded, setLoaded] = useState<DraftContent>(emptyDraft);
+  const [allowed, setAllowed] = useState<string[]>([]);
+  const [warnings, setWarnings] = useState<string[]>([]);
+  const [sourceLabel, setSourceLabel] = useState<string | null>(null);
+  const [message, setMessage] = useState<{ kind: "saved" | "error" | "conflict"; text: string } | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
+
+  const dirty = useMemo(
+    () => JSON.stringify(draft) !== JSON.stringify(loaded),
+    [draft, loaded],
+  );
+  const canSave = allowed.includes("replace_draft") || contractID === null;
+  const readOnly = contractID !== null && !allowed.includes("replace_draft");
+
+  useEffect(() => {
+    if (!dirty) return;
+    function warn(event: BeforeUnloadEvent) {
+      event.preventDefault();
+      event.returnValue = "";
+    }
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [dirty]);
+
+  function resetEditor(detail: ContractDetail | null) {
+    if (detail === null) {
+      setContractID(null);
+      setRowVersion(null);
+      setDraft(emptyDraft());
+      setLoaded(emptyDraft());
+      setAllowed([]);
+      setWarnings([]);
+      setSourceLabel(null);
+      return;
+    }
+    const next = detail.draft ?? emptyDraft();
+    setContractID(detail.summary.contract_id);
+    setRowVersion(detail.summary.row_version);
+    setDraft(next);
+    setLoaded(next);
+    setAllowed(detail.allowed_commands);
+    setWarnings(detail.warnings);
+    setSourceLabel(
+      detail.source_ref === undefined
+        ? null
+        : `${detail.source_ref.system} · ${detail.source_ref.id} · 版本 ${detail.source_ref.source_version}`,
+    );
+  }
+
+  async function openDraft(id: string) {
+    if (dirty) {
+      const discard = await confirmDiscard();
+      if (!discard) return;
+    }
+    setLoading(true);
+    setMessage(null);
+    try {
+      resetEditor(await getContract(id));
+    } catch (error) {
+      setMessage({ kind: "error", text: errorMessage(error) });
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function confirmDiscard(): Promise<boolean> {
+    // The project's TS lib target predates Promise.withResolvers, so the
+    // executor form is the only available construction here.
+    return new Promise((resolve) => {
+      Modal.confirm({
+        title: "当前草稿有未保存的修改",
+        content: "切换后会丢失本页尚未保存的内容。",
+        okText: "放弃并切换",
+        cancelText: "留在本页",
+        onOk: () => resolve(true),
+        onCancel: () => resolve(false),
+      });
+    });
+  }
+
+  async function startNew() {
+    if (dirty) {
+      const discard = await confirmDiscard();
+      if (!discard) return;
+    }
+    resetEditor(null);
+    setMessage(null);
+  }
+
+  function update(patch: Partial<DraftContent["contract"]>) {
+    setDraft((current) => ({ ...current, contract: { ...current.contract, ...patch } }));
+  }
+
+  function updateSupplier(patch: NonNullable<DraftContent["supplier"]>) {
+    setDraft((current) => ({ ...current, supplier: { ...current.supplier, ...patch } }));
+  }
+
+  async function save() {
+    if (actor === null || saving || !canSave) return;
+    setSaving(true);
+    setMessage(null);
+    const operation = contractID === null ? "clm-create-draft" : "clm-replace-draft";
+    const target = contractID ?? "new";
+    try {
+      const pending = await pendingMutationKey(
+        operation,
+        idempotencyActorScope(actor),
+        target,
+        { rowVersion, draft },
+      );
+      try {
+        const detail =
+          contractID === null
+            ? await createContractDraft(draft, pending.key)
+            : await replaceContractDraft(contractID, rowVersion ?? 1, draft, pending.key);
+        clearPendingMutationKey(pending.storageKey);
+        resetEditor(detail);
+        setMessage({ kind: "saved", text: `已保存于 ${new Date().toLocaleTimeString()}` });
+        void queryClient.invalidateQueries({ queryKey: queryKeys.contractDraftsPrefix });
+      } catch (error) {
+        if (error instanceof ApiError && error.status === 409) {
+          setMessage({
+            kind: "conflict",
+            text: "服务端已有更新的内容。请先刷新查看最新版本；本页输入仍保留，未覆盖他人修改。",
+          });
+        } else {
+          setMessage({ kind: "error", text: errorMessage(error) });
+        }
+      }
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const draftsData = drafts.data ?? [];
+
+  return (
+    <section className="page contracts-page">
+      <header className="page-head">
+        <div>
+          <h1>合同登记</h1>
+          <p>
+            草稿可以暂不完整；保存后可随时恢复继续填写。受限账户字段加密保存，只有具备管理授权者可见明文。
+          </p>
+        </div>
+        <div className="contracts-page-actions">
+          <Button type="text" onClick={() => setImportOpen(true)} disabled={actor === null}>
+            导入已签存量合同
+          </Button>
+          <Button type="primary" onClick={() => void startNew()} disabled={actor === null}>
+            新建合同草稿
+          </Button>
+        </div>
+      </header>
+
+      <div className="contracts-page-summary" aria-label="合同草稿摘要">
+        <span>我的草稿</span>
+        <strong>{draftsData.length}</strong>
+        <span>本页状态</span>
+        <strong>{contractID === null ? "新建" : `版本 ${rowVersion ?? "?"}`}</strong>
+        <span>未保存修改</span>
+        <strong>{dirty ? "有" : "无"}</strong>
+      </div>
+
+      <div className="contracts-page-layout">
+        <aside className="contracts-page-list" aria-label="我的合同草稿">
+          <h2>我的草稿</h2>
+          {drafts.isLoading ? (
+            <p role="status">正在读取草稿</p>
+          ) : drafts.isError ? (
+            <Alert type="error" showIcon message="草稿列表没有加载" description={errorMessage(drafts.error)} />
+          ) : draftsData.length === 0 ? (
+            <Empty description="还没有草稿" />
+          ) : (
+            <ul>
+              {draftsData.map((item: ContractDraftSummary) => (
+                <li key={item.contract_id}>
+                  <button
+                    type="button"
+                    className={item.contract_id === contractID ? "is-current" : undefined}
+                    onClick={() => void openDraft(item.contract_id)}
+                    disabled={loading}
+                  >
+                    <span className="contracts-page-list-name">{item.name || "未命名合同"}</span>
+                    <span className="contracts-page-list-meta">
+                      {item.number ?? "尚无编号"} · {amountLabel(item.amount, item.currency)} ·{" "}
+                      {stateLabel(item.contract_state)}
+                    </span>
+                    <span className="contracts-page-list-meta">
+                      更新 {formatDateTime(item.updated_at ?? item.created_at)}
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </aside>
+
+        <div className="contracts-page-editor">
+          {loading ? (
+            <PageStatus kind="loading" title="正在读取合同草稿" />
+          ) : (
+            <>
+              {sourceLabel !== null ? (
+                <Alert
+                  type="info"
+                  showIcon
+                  message="已签存量合同"
+                  description={`来源：${sourceLabel}。登记保留历史缺口，不补造会签或签名。`}
+                />
+              ) : null}
+              {warnings.includes("approval_history_unknown") ? (
+                <Alert
+                  type="warning"
+                  showIcon
+                  message="未取得原会签记录"
+                  description="该合同按存量事实登记；历史审批状态未知，不会被当作已通过会签。"
+                />
+              ) : null}
+              {message !== null ? (
+                <Alert
+                  type={message.kind === "saved" ? "success" : message.kind === "conflict" ? "warning" : "error"}
+                  showIcon
+                  message={message.text}
+                  action={
+                    message.kind === "conflict" && contractID !== null ? (
+                      <Button size="small" onClick={() => void openDraft(contractID)}>
+                        刷新最新版本
+                      </Button>
+                    ) : undefined
+                  }
+                />
+              ) : null}
+              {readOnly ? (
+                <Alert type="info" showIcon message="当前身份只能查看该合同" description="没有合同管理授权，不能保存修改；受限字段显示为掩码。" />
+              ) : null}
+
+              <fieldset className="contracts-page-section" disabled={readOnly}>
+                <legend>一、合同基本信息</legend>
+                <div className="contracts-page-fields">
+                  <label className="field">
+                    合同名称
+                    <Input
+                      value={draft.contract.name ?? ""}
+                      maxLength={200}
+                      placeholder="例如：2026 年传输设备采购合同"
+                      onChange={(event) => update({ name: event.target.value })}
+                    />
+                  </label>
+                  <label className="field">
+                    合同编号
+                    <Input
+                      value={draft.contract.number ?? ""}
+                      maxLength={100}
+                      placeholder="会签阶段可以留空"
+                      onChange={(event) => update({ number: optionalText(event.target.value) })}
+                    />
+                  </label>
+                  <label className="field">
+                    项目号
+                    <Input
+                      value={draft.contract.project_number ?? ""}
+                      maxLength={100}
+                      onChange={(event) => update({ project_number: optionalText(event.target.value) })}
+                    />
+                  </label>
+                  <label className="field">
+                    合同分类
+                    <Input
+                      value={draft.contract.classification ?? ""}
+                      maxLength={100}
+                      onChange={(event) => update({ classification: optionalText(event.target.value) })}
+                    />
+                  </label>
+                  <label className="field">
+                    合同类别
+                    <Input
+                      value={draft.contract.category ?? ""}
+                      maxLength={100}
+                      onChange={(event) => update({ category: optionalText(event.target.value) })}
+                    />
+                  </label>
+                  <label className="field">
+                    合同等级
+                    <Input
+                      value={draft.contract.grade ?? ""}
+                      maxLength={100}
+                      onChange={(event) => update({ grade: optionalText(event.target.value) })}
+                    />
+                  </label>
+                  <label className="field">
+                    合同拟定方
+                    <Select
+                      allowClear
+                      value={draft.contract.drafting_party}
+                      options={DRAFTING_PARTIES}
+                      onChange={(value) => update({ drafting_party: value })}
+                      placeholder="选择拟定方"
+                    />
+                  </label>
+                  <label className="field">
+                    申请部门
+                    <Input
+                      value={draft.contract.department_id ?? ""}
+                      maxLength={100}
+                      onChange={(event) => update({ department_id: optionalText(event.target.value) })}
+                    />
+                  </label>
+                  <label className="field">
+                    部门经办人
+                    <Input
+                      value={draft.contract.handler_user_id ?? ""}
+                      maxLength={100}
+                      onChange={(event) => update({ handler_user_id: optionalText(event.target.value) })}
+                    />
+                  </label>
+                  <label className="field">
+                    经办人联系方式
+                    <Input
+                      value={draft.contract.handler_contact ?? ""}
+                      maxLength={100}
+                      onChange={(event) => update({ handler_contact: optionalText(event.target.value) })}
+                    />
+                  </label>
+                  <label className="field field-wide">
+                    备注
+                    <Input.TextArea
+                      value={draft.contract.remark ?? ""}
+                      maxLength={4000}
+                      autoSize={{ minRows: 2, maxRows: 5 }}
+                      onChange={(event) => update({ remark: optionalText(event.target.value) })}
+                    />
+                  </label>
+                </div>
+              </fieldset>
+
+              <fieldset className="contracts-page-section" disabled={readOnly}>
+                <legend>二、相关方与标的</legend>
+                <div className="contracts-page-fields">
+                  <label className="field">
+                    供应商全称
+                    <Input
+                      value={draft.supplier?.name ?? ""}
+                      maxLength={200}
+                      onChange={(event) => updateSupplier({ name: event.target.value })}
+                    />
+                  </label>
+                  <label className="field">
+                    社会信用代码
+                    <Input
+                      value={draft.supplier?.credit_code ?? ""}
+                      maxLength={100}
+                      onChange={(event) => updateSupplier({ credit_code: event.target.value })}
+                    />
+                  </label>
+                  <label className="field">
+                    供应方联系人
+                    <Input
+                      value={draft.supplier?.contact_name ?? ""}
+                      maxLength={100}
+                      onChange={(event) => updateSupplier({ contact_name: event.target.value })}
+                    />
+                  </label>
+                  <label className="field">
+                    供应方联系电话
+                    <Input
+                      value={draft.supplier?.contact_phone ?? ""}
+                      maxLength={100}
+                      onChange={(event) => updateSupplier({ contact_phone: event.target.value })}
+                    />
+                  </label>
+                  <label className="field">
+                    收款方
+                    <Input
+                      value={draft.supplier?.payee_name ?? ""}
+                      maxLength={200}
+                      readOnly={isMaskedRestricted(draft.supplier?.payee_name)}
+                      onChange={(event) => updateSupplier({ payee_name: event.target.value })}
+                    />
+                  </label>
+                  <label className="field">
+                    开户行
+                    <Input
+                      value={draft.supplier?.bank_name ?? ""}
+                      maxLength={200}
+                      readOnly={isMaskedRestricted(draft.supplier?.bank_name)}
+                      onChange={(event) => updateSupplier({ bank_name: event.target.value })}
+                    />
+                  </label>
+                  <label className="field">
+                    账号
+                    <Input
+                      value={draft.supplier?.bank_account ?? ""}
+                      maxLength={64}
+                      readOnly={isMaskedRestricted(draft.supplier?.bank_account)}
+                      onChange={(event) => updateSupplier({ bank_account: event.target.value })}
+                    />
+                  </label>
+                  <label className="field">
+                    纳税人识别号
+                    <Input
+                      value={draft.supplier?.tax_identifier ?? ""}
+                      maxLength={100}
+                      readOnly={isMaskedRestricted(draft.supplier?.tax_identifier)}
+                      onChange={(event) => updateSupplier({ tax_identifier: event.target.value })}
+                    />
+                  </label>
+                  <label className="field">
+                    合同金额
+                    <Input
+                      value={draft.contract.amount ?? ""}
+                      placeholder="例如 100000.00"
+                      onChange={(event) => update({ amount: optionalText(event.target.value) })}
+                    />
+                  </label>
+                  <label className="field">
+                    币种
+                    <Input
+                      value={draft.contract.currency ?? ""}
+                      maxLength={3}
+                      placeholder="CNY"
+                      onChange={(event) => update({ currency: optionalText(event.target.value.toUpperCase()) })}
+                    />
+                  </label>
+                  <label className="field">
+                    结算模式
+                    <Select
+                      allowClear
+                      value={draft.contract.settlement_mode}
+                      options={SETTLEMENT_MODES}
+                      onChange={(value) => update({ settlement_mode: value })}
+                      placeholder="固定总价、框架或按量"
+                    />
+                  </label>
+                  <label className="field">
+                    单价是否含税
+                    <Select
+                      allowClear
+                      value={draft.contract.prices_include_tax}
+                      options={[
+                        { value: true, label: "含税" },
+                        { value: false, label: "不含税" },
+                      ]}
+                      onChange={(value) => update({ prices_include_tax: value })}
+                      placeholder="未知时留空"
+                    />
+                  </label>
+                </div>
+
+                <h3>商品或服务明细</h3>
+                <Table<DraftItem>
+                  size="small"
+                  rowKey="item_id"
+                  dataSource={draft.items ?? []}
+                  pagination={false}
+                  locale={{ emptyText: "还没有明细行" }}
+                  columns={[
+                    {
+                      title: "名称",
+                      key: "name",
+                      render: (_, row, index) => (
+                        <Input
+                          value={row.name ?? ""}
+                          maxLength={200}
+                          aria-label={`第 ${index + 1} 行名称`}
+                          onChange={(event) => patchItem(index, { name: event.target.value })}
+                        />
+                      ),
+                    },
+                    {
+                      title: "数量",
+                      key: "quantity",
+                      width: 130,
+                      render: (_, row, index) => (
+                        <Input
+                          value={row.quantity ?? ""}
+                          placeholder="10.000000"
+                          aria-label={`第 ${index + 1} 行数量`}
+                          onChange={(event) => patchItem(index, { quantity: optionalText(event.target.value) })}
+                        />
+                      ),
+                    },
+                    {
+                      title: "单位",
+                      key: "unit",
+                      width: 90,
+                      render: (_, row, index) => (
+                        <Input
+                          value={row.unit ?? ""}
+                          maxLength={40}
+                          aria-label={`第 ${index + 1} 行单位`}
+                          onChange={(event) => patchItem(index, { unit: optionalText(event.target.value) })}
+                        />
+                      ),
+                    },
+                    {
+                      title: "单价",
+                      key: "unit_price",
+                      width: 150,
+                      render: (_, row, index) => (
+                        <Input
+                          value={row.unit_price ?? ""}
+                          placeholder="10000.0000"
+                          aria-label={`第 ${index + 1} 行单价`}
+                          onChange={(event) => patchItem(index, { unit_price: optionalText(event.target.value) })}
+                        />
+                      ),
+                    },
+                    {
+                      title: "明细金额",
+                      key: "line_amount",
+                      width: 150,
+                      render: (_, row, index) => (
+                        <Input
+                          value={row.line_amount ?? ""}
+                          placeholder="100000.00"
+                          aria-label={`第 ${index + 1} 行明细金额`}
+                          onChange={(event) => patchItem(index, { line_amount: optionalText(event.target.value) })}
+                        />
+                      ),
+                    },
+                    {
+                      title: "",
+                      key: "remove",
+                      width: 70,
+                      render: (_, row) => (
+                        <Button
+                          type="link"
+                          size="small"
+                          aria-label={`删除第 ${(draft.items ?? []).indexOf(row) + 1} 行`}
+                          onClick={() => removeItem(row.item_id)}
+                        >
+                          删除
+                        </Button>
+                      ),
+                    },
+                  ]}
+                />
+                <Button
+                  type="dashed"
+                  size="small"
+                  onClick={() => setDraft((current) => ({ ...current, items: [...(current.items ?? []), emptyItem()] }))}
+                >
+                  添加明细行
+                </Button>
+              </fieldset>
+
+              <fieldset className="contracts-page-section" disabled={readOnly}>
+                <legend>三、资金与付款计划</legend>
+                <h3>资金来源</h3>
+                {(draft.funding ?? []).length === 0 ? (
+                  <p className="meta">还没有资金来源。固定总价合同在提交时必须与合同金额一致。</p>
+                ) : null}
+                <div className="contracts-page-rows">
+                  {(draft.funding ?? []).map((row, index) => (
+                    <div className="contracts-page-row" key={`funding-${index}`}>
+                      <Input
+                        value={row.nature ?? ""}
+                        placeholder="资金性质"
+                        aria-label={`第 ${index + 1} 项资金性质`}
+                        onChange={(event) => patchFunding(index, { nature: optionalText(event.target.value) })}
+                      />
+                      <Input
+                        value={row.channel ?? ""}
+                        placeholder="支付渠道"
+                        aria-label={`第 ${index + 1} 项支付渠道`}
+                        onChange={(event) => patchFunding(index, { channel: optionalText(event.target.value) })}
+                      />
+                      <Input
+                        value={row.amount ?? ""}
+                        placeholder="金额 50000.00"
+                        aria-label={`第 ${index + 1} 项资金金额`}
+                        onChange={(event) => patchFunding(index, { amount: optionalText(event.target.value) })}
+                      />
+                      <InputNumber
+                        value={row.funding_year ?? null}
+                        min={1900}
+                        max={2999}
+                        placeholder="年度"
+                        aria-label={`第 ${index + 1} 项资金年度`}
+                        onChange={(value) => patchFunding(index, { funding_year: value ?? undefined })}
+                      />
+                      <Input
+                        value={row.cost_center ?? ""}
+                        placeholder="成本中心"
+                        aria-label={`第 ${index + 1} 项成本中心`}
+                        onChange={(event) => patchFunding(index, { cost_center: optionalText(event.target.value) })}
+                      />
+                      <Button type="link" size="small" onClick={() => removeFunding(index)}>
+                        删除
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+                <Button
+                  type="dashed"
+                  size="small"
+                  onClick={() => setDraft((current) => ({ ...current, funding: [...(current.funding ?? []), emptyFunding()] }))}
+                >
+                  添加资金来源
+                </Button>
+
+                <h3>付款期次</h3>
+                <div className="contracts-page-rows">
+                  {(draft.payments ?? []).map((row, index) => (
+                    <div className="contracts-page-row" key={`payment-${index}`}>
+                      <InputNumber
+                        value={row.sequence}
+                        min={1}
+                        max={1000}
+                        aria-label={`第 ${index + 1} 期期次`}
+                        onChange={(value) => patchPayment(index, { sequence: value ?? index + 1 })}
+                      />
+                      <Select
+                        value={row.is_advance ?? false}
+                        aria-label={`第 ${index + 1} 期是否预付`}
+                        options={[
+                          { value: false, label: "非预付" },
+                          { value: true, label: "预付款" },
+                        ]}
+                        onChange={(value) => patchPayment(index, { is_advance: value })}
+                      />
+                      <Input
+                        value={row.amount ?? ""}
+                        placeholder="本期金额 80000.00"
+                        aria-label={`第 ${index + 1} 期金额`}
+                        onChange={(event) => patchPayment(index, { amount: optionalText(event.target.value) })}
+                      />
+                      <Input
+                        value={row.advance_amount ?? ""}
+                        placeholder="预付款金额 0.00"
+                        aria-label={`第 ${index + 1} 期预付款金额`}
+                        onChange={(event) => patchPayment(index, { advance_amount: optionalText(event.target.value) })}
+                      />
+                      <Input
+                        value={row.unit_amount ?? ""}
+                        placeholder="单位支付 80000.00"
+                        aria-label={`第 ${index + 1} 期单位支付金额`}
+                        onChange={(event) => patchPayment(index, { unit_amount: optionalText(event.target.value) })}
+                      />
+                      <Input
+                        value={row.fiscal_amount ?? ""}
+                        placeholder="财政支付 0.00"
+                        aria-label={`第 ${index + 1} 期财政支付金额`}
+                        onChange={(event) => patchPayment(index, { fiscal_amount: optionalText(event.target.value) })}
+                      />
+                      <Input
+                        value={row.ratio ?? ""}
+                        placeholder="比例 0.200000"
+                        aria-label={`第 ${index + 1} 期比例`}
+                        onChange={(event) => patchPayment(index, { ratio: optionalText(event.target.value) })}
+                      />
+                      <Input
+                        value={row.ratio_base ?? ""}
+                        placeholder="比例基数说明"
+                        aria-label={`第 ${index + 1} 期比例基数`}
+                        onChange={(event) => patchPayment(index, { ratio_base: optionalText(event.target.value) })}
+                      />
+                      <Button type="link" size="small" onClick={() => removePayment(index)}>
+                        删除
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+                <Button
+                  type="dashed"
+                  size="small"
+                  onClick={() =>
+                    setDraft((current) => ({
+                      ...current,
+                      payments: [
+                        ...(current.payments ?? []),
+                        { sequence: (current.payments?.length ?? 0) + 1, is_advance: false },
+                      ],
+                    }))
+                  }
+                >
+                  添加付款期次
+                </Button>
+                <p className="meta">
+                  预付款是本期的分类值，不重复计入单位支付与财政支付合计；金额恒等式在提交时由服务端校验。
+                </p>
+              </fieldset>
+
+              <fieldset className="contracts-page-section" disabled={readOnly}>
+                <legend>四、材料与核对</legend>
+                <p className="meta">
+                  当前切片保存结构化登记内容。真实材料版本在“导入已签存量合同”时按来源案件关联并核对摘要；上传、解析与提取结果随合同材料链后续切片接入。
+                </p>
+                {(draft.materials ?? []).length === 0 ? (
+                  <p className="meta">尚未关联材料。</p>
+                ) : (
+                  <ul className="contracts-page-materials">
+                    {(draft.materials ?? []).map((ref: MaterialRef) => (
+                      <li key={`${ref.material_id}-${ref.material_version_id}`}>
+                        <Tag>{ref.purpose}</Tag>
+                        <span>{ref.material_id}</span>
+                        <span className="contracts-page-hash">{ref.sha256}</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </fieldset>
+
+              <div className="contracts-page-savebar">
+                <span role="status">
+                  {dirty ? "有未保存的修改" : contractID === null ? "尚未创建草稿" : "与服务端一致"}
+                </span>
+                <Button
+                  type="primary"
+                  loading={saving}
+                  disabled={!canSave || !dirty}
+                  onClick={() => void save()}
+                >
+                  保存草稿
+                </Button>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+
+      <LegacyImportDialog
+        open={importOpen}
+        onClose={() => setImportOpen(false)}
+        snapshot={draft}
+        actor={actor}
+        onImported={(detail) => {
+          resetEditor(detail);
+          setImportOpen(false);
+          setMessage({ kind: "saved", text: "已登记存量合同并保留历史未知" });
+          void queryClient.invalidateQueries({ queryKey: queryKeys.contractDraftsPrefix });
+        }}
+      />
+    </section>
+  );
+
+  function patchItem(index: number, patch: Partial<DraftItem>) {
+    setDraft((current) => {
+      const items = [...(current.items ?? [])];
+      items[index] = { ...items[index]!, ...patch };
+      return { ...current, items };
+    });
+  }
+
+  function removeItem(itemID: string) {
+    setDraft((current) => ({
+      ...current,
+      items: (current.items ?? []).filter((item) => item.item_id !== itemID),
+    }));
+  }
+
+  function patchFunding(index: number, patch: Partial<DraftFunding>) {
+    setDraft((current) => {
+      const funding = [...(current.funding ?? [])];
+      funding[index] = { ...funding[index]!, ...patch };
+      return { ...current, funding };
+    });
+  }
+
+  function removeFunding(index: number) {
+    setDraft((current) => ({
+      ...current,
+      funding: (current.funding ?? []).filter((_, position) => position !== index),
+    }));
+  }
+
+  function patchPayment(index: number, patch: Partial<NonNullable<DraftContent["payments"]>[number]>) {
+    setDraft((current) => {
+      const payments = [...(current.payments ?? [])];
+      payments[index] = { ...payments[index]!, ...patch };
+      return { ...current, payments };
+    });
+  }
+
+  function removePayment(index: number) {
+    setDraft((current) => ({
+      ...current,
+      payments: (current.payments ?? []).filter((_, position) => position !== index),
+    }));
+  }
+}
+
+function LegacyImportDialog({
+  open,
+  onClose,
+  snapshot,
+  actor,
+  onImported,
+}: {
+  open: boolean;
+  onClose: () => void;
+  snapshot: DraftContent;
+  actor: Actor | null;
+  onImported: (detail: ContractDetail) => void;
+}) {
+  const cases = useCases();
+  const [caseID, setCaseID] = useState<string | null>(null);
+  const detail = useCaseDetail(caseID ?? "");
+  const [materialVersionID, setMaterialVersionID] = useState<string | null>(null);
+  const [reason, setReason] = useState("");
+  const [sourceSystem, setSourceSystem] = useState("");
+  const [sourceID, setSourceID] = useState("");
+  const [sourceVersion, setSourceVersion] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const materials = useMemo(() => {
+    if (detail.data === undefined) return [];
+    const documents = new Map(detail.data.documents.map((document) => [document.id, document]));
+    return (detail.data.material_versions ?? []).flatMap((version) => {
+      const document = documents.get(version.document_id);
+      if (document === undefined) return [];
+      return [
+        {
+          value: version.document_id,
+          label: `${document.filename} · v${version.version} · ${document.digest.slice(0, 12)}…`,
+          ref: {
+            material_id: version.material_id,
+            material_version_id: version.document_id,
+            sha256: document.digest,
+            purpose: "signed_contract",
+          } satisfies MaterialRef,
+        },
+      ];
+    });
+  }, [detail.data]);
+
+  const selected = materials.find((item) => item.value === materialVersionID) ?? null;
+  const ready =
+    actor !== null &&
+    caseID !== null &&
+    selected !== null &&
+    reason.trim() !== "" &&
+    sourceSystem.trim() !== "" &&
+    sourceID.trim() !== "" &&
+    sourceVersion.trim() !== "";
+
+  async function submit() {
+    if (!ready || actor === null || selected === null || caseID === null) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const input = {
+        source_ref: { system: sourceSystem.trim(), id: sourceID.trim(), source_version: sourceVersion.trim() },
+        source_evidence: selected.ref,
+        snapshot,
+        approval_history_status: "unknown" as const,
+        historical_approval_materials: [] as MaterialRef[],
+        reason: reason.trim(),
+      };
+      const pending = await pendingMutationKey(
+        "clm-legacy-import",
+        idempotencyActorScope(actor),
+        `${sourceSystem}:${sourceID}`,
+        input,
+      );
+      const result = await importLegacyContract(input, pending.key);
+      clearPendingMutationKey(pending.storageKey);
+      onImported(result);
+      setReason("");
+    } catch (caught) {
+      setError(errorMessage(caught));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Modal
+      open={open}
+      onCancel={onClose}
+      title="导入已签存量合同"
+      width={720}
+      footer={[
+        <Button key="cancel" onClick={onClose}>
+          取消
+        </Button>,
+        <Button key="submit" type="primary" loading={busy} disabled={!ready} onClick={() => void submit()}>
+          登记存量合同
+        </Button>,
+      ]}
+    >
+      <p className="meta">
+        登记会冻结第 1 版并保留来源信息。历史会签无法取得时保持“未知”，不会生成会签轮次或签名；使用当前编辑区内容作为合同快照。
+      </p>
+      {error !== null ? <Alert type="error" showIcon message={error} /> : null}
+      <div className="contracts-page-fields">
+        <label className="field">
+          来源系统
+          <Input value={sourceSystem} maxLength={100} placeholder="例如 oa-contract" onChange={(event) => setSourceSystem(event.target.value)} />
+        </label>
+        <label className="field">
+          来源合同 ID
+          <Input value={sourceID} maxLength={200} onChange={(event) => setSourceID(event.target.value)} />
+        </label>
+        <label className="field">
+          来源版本
+          <Input value={sourceVersion} maxLength={100} onChange={(event) => setSourceVersion(event.target.value)} />
+        </label>
+        <label className="field">
+          来源案件
+          <Select
+            showSearch
+            optionFilterProp="label"
+            value={caseID}
+            placeholder="选择有权访问的案件"
+            loading={cases.isLoading}
+            options={(cases.data ?? []).map((item) => ({ value: item.id, label: item.title }))}
+            onChange={(value) => {
+              setCaseID(value);
+              setMaterialVersionID(null);
+            }}
+          />
+        </label>
+        <label className="field field-wide">
+          签署件材料版本
+          <Select
+            showSearch
+            optionFilterProp="label"
+            value={materialVersionID}
+            placeholder={caseID === null ? "先选择来源案件" : "选择真实材料版本"}
+            loading={detail.isLoading}
+            disabled={caseID === null}
+            options={materials}
+            onChange={(value) => setMaterialVersionID(value)}
+          />
+        </label>
+        <label className="field field-wide">
+          导入原因
+          <Input.TextArea
+            value={reason}
+            maxLength={2000}
+            autoSize={{ minRows: 2, maxRows: 4 }}
+            placeholder="说明来源、历史缺口以及为何按存量登记"
+            onChange={(event) => setReason(event.target.value)}
+          />
+        </label>
+      </div>
+      <p className="meta">
+        合同快照名称：{snapshot.contract.name ?? "未填写"}；金额：
+        {snapshot.contract.amount ?? "未知"} {snapshot.contract.currency ?? ""}。金额或币种缺失时按未知成对保存。
+      </p>
+    </Modal>
+  );
+}

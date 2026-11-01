@@ -48,6 +48,9 @@ export const queryKeys = {
   sessionFor: (audience: SessionAudience) =>
     audience === "admin" ? (["session", "admin"] as const) : queryKeys.session,
   pendingIntakesPrefix: ["intakes", "pending"] as const,
+  contractDraftsPrefix: ["contracts", "drafts"] as const,
+  contractDrafts: (actorScope: string) =>
+    ["contracts", "drafts", actorScope] as const,
   pendingIntakes: (actorScope: string, cursor: string | null) =>
     ["intakes", "pending", actorScope, cursor] as const,
   cases: ["cases"] as const,

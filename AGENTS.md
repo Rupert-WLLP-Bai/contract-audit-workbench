@@ -49,8 +49,8 @@ Valkey、Temporal、Kafka、独立搜索引擎、服务网格和微前端不进�
 
 ## 协作与结论
 
-主 Agent 负责公共接口、数据库结构和依赖，并合并最终结果。子 Agent 只改自己拥有的文件。
+主 Agent 负责公共接口、数据库结构和依赖，并合并最终结果。实施默认串行，在主检出上推进，不新建 worktree；确需并行时才由子 Agent 在独立 worktree 修改自己拥有的文件。
 
-`main` 是唯一长期主线。从最新 `main` 创建 `fix/<issue>-<slug>`，一个分支处理一个具体问题，直接向 `main` 提 PR；达到轻量门槛后 Squash merge 并删除分支，完整交付由固定候选验收决定。最多并行两个独立代码问题，使用独立 worktree；共享核心与合并串行。
+`main` 是唯一长期主线。从最新 `main` 创建 `fix/<issue>-<slug>`，分支名可列出同域强相关的多个编号（如 `fix/77-78-<slug>`），一个分支覆盖同一业务域内 2~3 个 Issue，分支内提交按 Issue 拆分；直接向 `main` 提 PR 并用 `Closes` 逐个列出编号，达到轻量门槛后 Squash merge 并删除分支，完整交付由固定候选验收决定。共享核心、数据库结构和授权的改动串行；同批某个 Issue 验收失败时只退回受影响提交，不整批重做。
 
 验收结论只用 `PASS`、`FAIL`、`BLOCKED`、`NOT_RUN`、`NOT_APPLICABLE`。没有运行的检查写成 `NOT_RUN`，不能写成通过。

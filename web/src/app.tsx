@@ -31,6 +31,11 @@ const CasesPage = lazy(() =>
     default: module.CasesPage,
   })),
 );
+const ContractsPage = lazy(() =>
+  import("./pages/contracts-page").then((module) => ({
+    default: module.ContractsPage,
+  })),
+);
 const LoginPage = lazy(() =>
   import("./pages/login-page").then((module) => ({
     default: module.LoginPage,
@@ -108,6 +113,7 @@ export function App() {
             <Route index element={<HomePage />} />
             <Route path="/review" element={<ReviewEntryPage />} />
             <Route path="/cases" element={<CasesPage />} />
+            <Route path="/contracts" element={<ContractsPage />} />
             <Route path="/cases/:caseId" element={<CaseDetailPage />} />
             <Route path="/cases/:caseId/legal-knowledge" element={<LegalKnowledgePage />} />
             <Route path="/subjects" element={<SubjectsPage />} />
