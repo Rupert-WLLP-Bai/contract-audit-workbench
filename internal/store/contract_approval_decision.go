@@ -164,8 +164,11 @@ func (s *Store) DecideApprovalTask(ctx context.Context, user accounts.User, inpu
 	if err != nil {
 		return ApprovalDecisionResult{}, err
 	}
-	if !authorizeContract(record, current, access.Read) {
+	if !authorizeContractRead(ctx, tx, record, current) {
 		return ApprovalDecisionResult{}, fault.NotFound("没有找到对应记录")
+	}
+	if record.AuthorityMode != "native" {
+		return ApprovalDecisionResult{}, fault.Forbidden("外部权威合同不能在本地提交审批决定")
 	}
 	if !authorizeContract(record, current, access.Decide) {
 		return ApprovalDecisionResult{}, fault.Forbidden("当前授权不能审批此合同")

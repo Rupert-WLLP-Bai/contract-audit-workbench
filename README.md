@@ -6,7 +6,7 @@
 
 系统支持案件材料准备、冻结审查尝试、版本化规则和知识、人工决定、整改复核与报告。模型输出只是建议；引用必须与本次尝试冻结原文相匹配。租户、组织、角色和案件范围由服务端校验。工具网关只读，外部系统写回须经人工授权。
 
-合同、不可变版本、案件关联、草稿、存量导入来源及部分顺序会签记录已有实现。PR [#140](https://github.com/Rupert-WLLP-Bai/contract-audit-workbench/pull/140) 已合入 main `595fe2f`，当前源码接受 schema `[28,28]`：0027 记录签署登记与补充协议修订关系，0028 记录交付、验收、缺陷和整改事实。代码合入不代表数据库已升级或完整交付已验收；部署与完整候选验收仍为 `NOT_RUN`。签署登记保存人工核对事实，不等于电子签名验证；履约记录不等于已付款，也不证明所有签署、履约和付款流程已交付。
+合同、不可变版本、案件关联、草稿、存量导入来源及部分顺序会签记录已有实现。PR [#144](https://github.com/Rupert-WLLP-Bai/contract-audit-workbench/pull/144) 已合入 main `1a9eae0`，增加本地付款条件核验、可信付款回执、固定资产移交与独立可信 ERP 回执记录；系统不发起银行转账或写回外部系统。当前兼容 schema 范围与迁移目录由 [`internal/store/migrations.go`](internal/store/migrations.go) 管理；应用连接会按 [`internal/store/pg.go`](internal/store/pg.go) 校验已应用迁移账本，启动不自动迁移。`/ready` 只检查服务自身数据库连接（见 [`internal/httpapi/health.go`](internal/httpapi/health.go)）。Schema 是存储兼容边界，不是产品版本。PR #144 的 `pr-fast-gate` 为 `PASS`，但目标环境部署、完整候选验收仍为 `NOT_RUN`。真实 finance/ERP 来源接入仍为 `BLOCKED`；本地资格核验和可信事实模型不代表外部系统已连接。
 
 ## 最短本地启动
 

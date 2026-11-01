@@ -32,7 +32,7 @@ var architectureTargets = []architectureTarget{
 	{"tool-waypoint", "工具 Waypoint", "platform", "工具 API 流量经 Istio Ambient 工具 Waypoint 执行 L7 策略路由", "https://istio.io/latest/docs/ambient/usage/waypoint/", []string{"tool-waypoint"}},
 	{"postgres-ha", "CloudNativePG / PostgreSQL 3 节点", "storage", "CloudNativePG 管理 PostgreSQL 3 节点高可用集群", "https://cloudnative-pg.io/documentation/current/", []string{"db"}},
 	{"rustfs-erasure", "RustFS 4 节点 / 16 PVC", "storage", "RustFS 4 节点，每节点 4 个持久卷声明（共 16 PVC）", "https://docs.rustfs.com/", []string{"rustfs"}},
-	{"nats-jetstream", "NATS JetStream 3 节点 R=3", "messaging", "NATS JetStream 3 节点集群，stream 副本数 R=3", "https://docs.nats.io/nats-concepts/jetstream", []string{"nats"}},
+	{"nats-jetstream", "NATS JetStream（本地 R=1 / 生产目标3节点 R=3）", "messaging", "本地单节点配置 stream R=1；生产目标由三节点集群承载 R=3 stream。观察到容器或实例数量不能证明 JetStream 实际副本与故障域。", "https://docs.nats.io/learn/clustering/", []string{"nats"}},
 	{"keda-postgres", "KEDA（PostgreSQL 权威任务状态）", "platform", "KEDA Prometheus scaler 查询由 PostgreSQL 权威任务状态导出的可领取与等待作业指标；不使用 NATS 原始队列深度，也不增加直接 PostgreSQL scaler 查询", "https://keda.sh/docs/latest/scalers/prometheus/", []string{"keda-operator", "keda"}},
 	{"hpa", "Horizontal Pod Autoscaler", "platform", "使用 Kubernetes HPA 管理工作负载副本数", "https://kubernetes.io/docs/tasks/run-application/horizontal-pod-autoscale/", nil},
 	{"oidc-enterprise", "企业 OIDC 身份提供方", "identity", "优先使用企业 OIDC 身份提供方；自托管回退时使用独立 Keycloak 与 identity-db", "https://openid.net/developers/how-connect/", nil},

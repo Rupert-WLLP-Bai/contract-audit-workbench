@@ -123,7 +123,7 @@ func (s *Store) CheckContractReferences(ctx context.Context, user accounts.User,
 	if err != nil {
 		return ContractReferenceCheck{}, err
 	}
-	if !authorizeContract(record, current, access.Read) {
+	if !authorizeContractRead(ctx, tx, record, current) {
 		return ContractReferenceCheck{}, fault.NotFound("没有找到对应记录")
 	}
 	contentBytes, source, revisionID, err := loadContractReferenceContent(ctx, tx, current, record)

@@ -22,6 +22,10 @@ scrape_configs:
   # Collection failure sets availability=0 and omits values, rather than emitting zero.
   # Outbox age uses recorded creation times and can include cross-host clock skew;
   # audit_outbox_age_available=0 omits age without hiding the pending count.
+  # CLM approval and Core-Outbox snapshots are repeated global PG scalar gauges
+  # from each Core replica. Aggregate replicas with max (never sum); absent aged
+  # in-review threshold means the aged proxy is unavailable, not zero. Outbox
+  # pending measures broker publish ACK only, not worker wake or human delivery.
   # Pool acquire_duration includes all acquisitions; empty_acquire_wait is actual wait.
   - job_name: otel-collector
     static_configs:

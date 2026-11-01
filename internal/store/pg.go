@@ -199,8 +199,17 @@ func createSchema(ctx context.Context, dsn, schema string) error {
 		return err
 	}
 	defer conn.Close(ctx)
-	_, err = conn.Exec(ctx, "CREATE SCHEMA IF NOT EXISTS "+quoted)
-	return err
+	var exists bool
+	if err := conn.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM pg_namespace WHERE nspname=$1)`, schema).Scan(&exists); err != nil {
+		return fmt.Errorf("inspect database schema: %w", err)
+	}
+	if exists {
+		return nil
+	}
+	if _, err := conn.Exec(ctx, "CREATE SCHEMA "+quoted); err != nil {
+		return fmt.Errorf("create database schema: %w", err)
+	}
+	return nil
 }
 
 const (

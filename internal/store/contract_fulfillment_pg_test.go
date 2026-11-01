@@ -260,7 +260,17 @@ func TestContractFulfillmentLegacyMigrationSkipsUnknownPlans(t *testing.T) {
 	if _, err := pool.Exec(ctx, `DELETE FROM schema_migrations WHERE version>=28`); err != nil {
 		t.Fatal(err)
 	}
-	if err := migrate(ctx, pool, fixture.environment.harness.schema); err != nil {
+	catalog, err := migrationCatalog()
+	if err != nil {
+		t.Fatal(err)
+	}
+	connection, err := pool.Acquire(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = applyMigration(ctx, connection, fixture.environment.harness.schema, catalog[27], false)
+	connection.Release()
+	if err != nil {
 		t.Fatalf("reapply migration 28 to malformed historical snapshots: %v", err)
 	}
 

@@ -79,6 +79,17 @@ CONTRACT_FULFILLMENT_TESTS = (
 )
 CONTRACT_PAYMENT_TESTS = ("TestContractPaymentEligibilityAndTrustedReceiptFacts",)
 CONTRACT_ASSET_TESTS = ("TestContractAssetHandoverAndERPReceiptFacts",)
+CONTRACT_SOURCE_TESTS = (
+    "TestExternalContractSourceObservationOrderingAndAuthorization",
+    "TestExternalLegacyActiveApprovalRejectsNewDecisionButKeepsReceiptReplay",
+)
+CLM_OUTBOX_STORE_TESTS = (
+    "TestCLMMaintenanceRoleNonSuperuserBootstrapAndRerun",
+    "TestCLMOutboxMaintenanceRoleClaimLeaseAndMetrics",
+)
+CLM_OUTBOX_RELAY_TESTS = (
+    "TestCLMOutboxRelayRetryConsumerRefreshDoesNotChangeBusinessFacts",
+)
 
 
 class FastError(RuntimeError):
@@ -108,6 +119,7 @@ class SensitiveRule:
     matches: Callable[[str], bool]
     tests: tuple[str, ...]
     needs_model: bool = False
+    package: str = "./internal/store"
 
 
 @dataclass(frozen=True)
@@ -329,6 +341,58 @@ def _is_contract_asset(path: str) -> bool:
     )
 
 
+def _is_contract_source(path: str) -> bool:
+    return path in (
+        "cmd/server/main.go",
+        "cmd/server/main_test.go",
+        "internal/clmsource/contract.go",
+        "internal/clmsource/contract_test.go",
+        "internal/httpapi/contract_sources.go",
+        "internal/httpapi/contract_sources_test.go",
+        "internal/httpapi/server.go",
+        "internal/httpapi/services.go",
+        "internal/store/contract_draft.go",
+        "internal/store/contract_approval_decision.go",
+        "internal/store/contract_approval_decision_pg_test.go",
+        "internal/store/contract_sources.go",
+        "internal/store/contract_sources_crypto.go",
+        "internal/store/contract_sources_crypto_test.go",
+        "internal/store/contract_sources_pg_test.go",
+        "internal/store/migrations.go",
+        "internal/store/migrations/0031_contract_source_observations.sql",
+        "internal/store/service_roles.go",
+    )
+
+
+def _is_clm_outbox_relay(path: str) -> bool:
+    # This package contains the Core-Outbox relay and its real PostgreSQL
+    # bridge test. Keep it a separate go test target: its test cannot be
+    # executed by selecting names in ./internal/store.
+    return path.startswith("internal/clmoutbox/")
+
+
+def _is_clm_outbox_core(path: str) -> bool:
+    if path.startswith("internal/store/") and any(
+        token in _stem(path) for token in ("clm_outbox", "clm_metrics")
+    ):
+        return True
+    return path in {
+        "cmd/server/main.go",
+        "cmd/server/main_test.go",
+        "internal/bootstrap/services.go",
+        "internal/bootstrap/services_integration_test.go",
+        "internal/store/migrations.go",
+        "internal/store/migrations/0032_clm_outbox_metrics.sql",
+        "internal/store/clm_role_provision.go",
+        "internal/store/runtime_metrics.go",
+        "internal/store/runtime_metrics_test.go",
+        "internal/store/service_roles.go",
+        "internal/store/state.go",
+        "internal/telemetry/runtimemetrics.go",
+        "internal/telemetry/runtimemetrics_test.go",
+    }
+
+
 SENSITIVE_RULES = (
     SensitiveRule("auth", _is_auth, AUTH_TESTS),
     SensitiveRule("session", _is_session, SESSION_TESTS),
@@ -342,6 +406,10 @@ SENSITIVE_RULES = (
     SensitiveRule("contract-fulfillment", _is_contract_fulfillment, CONTRACT_FULFILLMENT_TESTS),
     SensitiveRule("contract-payment", _is_contract_payment, CONTRACT_PAYMENT_TESTS),
     SensitiveRule("contract-asset", _is_contract_asset, CONTRACT_ASSET_TESTS),
+    SensitiveRule("contract-source", _is_contract_source, CONTRACT_SOURCE_TESTS),
+    SensitiveRule("clm-outbox-core", _is_clm_outbox_core, CLM_OUTBOX_STORE_TESTS),
+    SensitiveRule("clm-outbox-relay", _is_clm_outbox_relay,
+                  CLM_OUTBOX_RELAY_TESTS, package="./internal/clmoutbox"),
 )
 
 
@@ -575,20 +643,22 @@ def python_tests_for(root: Path, changed_paths: Iterable[str]) -> list[str]:
 
 
 def _database_targets(changes: Iterable[Change]) -> tuple[DatabaseTarget, ...]:
-    reasons: set[str] = set()
-    tests: set[str] = set()
-    needs_model = False
+    selections: dict[str, dict[str, set[str] | bool]] = {}
     for change in changes:
         for path in change.affected_paths():
             for rule in SENSITIVE_RULES:
                 if rule.matches(path):
-                    reasons.add(rule.reason)
-                    tests.update(rule.tests)
-                    needs_model = needs_model or rule.needs_model
-    if not reasons:
-        return ()
-    return (DatabaseTarget("./internal/store", tuple(sorted(tests)),
-                           tuple(sorted(reasons)), needs_model),)
+                    selection = selections.setdefault(rule.package, {
+                        "reasons": set(), "tests": set(), "needs_model": False,
+                    })
+                    selection["reasons"].add(rule.reason)
+                    selection["tests"].update(rule.tests)
+                    selection["needs_model"] = selection["needs_model"] or rule.needs_model
+    return tuple(
+        DatabaseTarget(package, tuple(sorted(selection["tests"])),
+                       tuple(sorted(selection["reasons"])), selection["needs_model"])
+        for package, selection in sorted(selections.items())
+    )
 
 
 def build_plan(root: Path, changes: Iterable[Change]) -> Plan:
@@ -797,8 +867,12 @@ def _build_checks(plan: Plan, root: Path, python: str, out: Path) -> list[FastCh
     for target in plan.database_tests:
         go = _resolve_binary("go")
         pattern = "^(" + "|".join(re.escape(name) for name in target.tests) + ")$"
+        check_name = "database-fixed-point"
+        if len(plan.database_tests) > 1:
+            package_label = target.package.removeprefix("./").replace("/", "-")
+            check_name += ":" + package_label
         checks.append(FastCheck(
-            "database-fixed-point",
+            check_name,
             (go, "test", "-vet=off", "-count=1", "-json", "-timeout=900s", "-run", pattern,
              target.package),
             cwd=root, env=_check_env(database=True), timeout=960,

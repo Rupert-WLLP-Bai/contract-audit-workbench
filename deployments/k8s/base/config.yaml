@@ -26,6 +26,14 @@ data:
   MODEL_GATEWAY_URL: http://model-gateway:8084/v1
   TOOL_GATEWAY_URL: http://tool-gateway:8085
   NATS_URL: nats://nats:4222
+  # Legacy Execution and Core CLM streams each explicitly use the three-peer production template.
+  NATS_STREAM_REPLICAS: "3"
+  CLM_OUTBOX_STREAM: CONTRACT_AUDIT_CLM_OUTBOX
+  CLM_OUTBOX_SUBJECT: contract-audit.clm-outbox.v1
+  # This production overlay pairs with deployments/k8s/nats-values.yaml's three-server cluster.
+  CLM_OUTBOX_STREAM_REPLICAS: "3"
+  # No threshold is asserted until an operator configures one.
+  CLM_APPROVAL_AGED_AFTER: ""
   S3_ENDPOINT: http://rustfs:9000
   S3_BUCKET: contract-audit-prod
   S3_REGION: us-east-1

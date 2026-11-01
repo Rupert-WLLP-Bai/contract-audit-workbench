@@ -350,7 +350,7 @@ func (s *Store) SubmitContractApproval(ctx context.Context, user accounts.User, 
 		if err != nil {
 			return SubmitContractApprovalResult{}, err
 		}
-		if !authorizeContract(record, current, access.Read) {
+		if !authorizeContractRead(ctx, tx, record, current) {
 			return SubmitContractApprovalResult{}, fault.NotFound("没有找到对应记录")
 		}
 		var result SubmitContractApprovalResult
@@ -369,7 +369,7 @@ func (s *Store) SubmitContractApproval(ctx context.Context, user accounts.User, 
 	if err != nil {
 		return SubmitContractApprovalResult{}, err
 	}
-	if !authorizeContract(record, current, access.Read) {
+	if !authorizeContractRead(ctx, tx, record, current) {
 		return SubmitContractApprovalResult{}, fault.NotFound("没有找到对应记录")
 	}
 	if !authorizeContract(record, current, access.Manage) {

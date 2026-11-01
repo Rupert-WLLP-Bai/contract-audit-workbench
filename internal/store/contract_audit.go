@@ -613,7 +613,7 @@ func (s *Store) LoadContractAuditBindings(ctx context.Context, user accounts.Use
 	if err != nil {
 		return ContractAuditBindingList{}, err
 	}
-	if !authorizeContract(record, current, access.Read) {
+	if !authorizeContractRead(ctx, tx, record, current) {
 		return ContractAuditBindingList{}, fault.NotFound("没有找到对应记录")
 	}
 	if _, err := loadFrozenContractVersion(ctx, tx, accounts.Tenant(current), contractID, revisionID); err != nil {

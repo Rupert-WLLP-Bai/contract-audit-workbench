@@ -18,7 +18,8 @@ config:
 container:
   image:
     repository: nats
-    tag: 2.15.1
+    tag: 2.15.1-alpine
+    digest: sha256:7ae34c25dfd6fe2e01c6483eabef20d796690fdcac6c4d94ca780a6cf9877fde
     pullPolicy: IfNotPresent
   merge:
     resources:
