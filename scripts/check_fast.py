@@ -69,6 +69,13 @@ DATABASE_CORE_TESTS = ("TestLoginOriginalAndRetryStayInPostgres",)
 FROZEN_EVIDENCE_TESTS = (
     "TestDurableReviewFreezesServiceObjectContextAndRejectsChangedRetryAfterReopen",
 )
+CONTRACT_SIGNING_TESTS = (
+    "TestContractSigningRequiresHumanSourceAttestationAndApprovedRevision",
+)
+CONTRACT_FULFILLMENT_TESTS = (
+    "TestContractFulfillmentPartialAcceptanceAndLinearRetest",
+    "TestContractFulfillmentLegacyMigrationSkipsUnknownPlans",
+)
 
 
 class FastError(RuntimeError):
@@ -257,6 +264,22 @@ def _is_frozen_evidence(path: str) -> bool:
         ("frozen", "snapshot", "service_object_context", "attempt_input", "material"))
 
 
+def _is_contract_signing(path: str) -> bool:
+    return path in (
+        "internal/store/contract_signing.go",
+        "internal/store/contract_signing_pg_test.go",
+        "internal/store/migrations/0027_contract_signing.sql",
+    )
+
+
+def _is_contract_fulfillment(path: str) -> bool:
+    return path in (
+        "internal/store/contract_fulfillment.go",
+        "internal/store/contract_fulfillment_pg_test.go",
+        "internal/store/migrations/0028_contract_fulfillment.sql",
+    )
+
+
 SENSITIVE_RULES = (
     SensitiveRule("auth", _is_auth, AUTH_TESTS),
     SensitiveRule("session", _is_session, SESSION_TESTS),
@@ -266,6 +289,8 @@ SENSITIVE_RULES = (
     SensitiveRule("lease", _is_lease, LEASE_TESTS),
     SensitiveRule("database-core", _is_database_core, DATABASE_CORE_TESTS),
     SensitiveRule("frozen-evidence", _is_frozen_evidence, FROZEN_EVIDENCE_TESTS),
+    SensitiveRule("contract-signing", _is_contract_signing, CONTRACT_SIGNING_TESTS),
+    SensitiveRule("contract-fulfillment", _is_contract_fulfillment, CONTRACT_FULFILLMENT_TESTS),
 )
 
 
@@ -620,17 +645,17 @@ def _build_checks(plan: Plan, root: Path, python: str) -> list[FastCheck]:
         if plan.go_build_all:
             checks.append(FastCheck(
                 "go-compile-all",
-                (go, "test", "-run", "^$", "-count=1", "-timeout=300s", "./..."),
+                (go, "test", "-vet=off", "-run", "^$", "-count=1", "-timeout=300s", "./..."),
                 cwd=root, env=env, timeout=360))
         elif packages:
             checks.append(FastCheck(
                 "go-compile",
-                (go, "test", "-run", "^$", "-count=1", "-timeout=300s", *packages),
+                (go, "test", "-vet=off", "-run", "^$", "-count=1", "-timeout=300s", *packages),
                 cwd=root, env=env, timeout=360))
         if plan.go_unit_packages:
             checks.append(FastCheck(
                 "go-unit",
-                (go, "test", "-count=1", "-json", "-timeout=600s",
+                (go, "test", "-vet=off", "-count=1", "-json", "-timeout=600s",
                  *sorted(plan.go_unit_packages)),
                 cwd=root, env=unit_test_environment(env), timeout=660, kind="json", required=False))
         elif plan.go_packages or plan.go_build_all:
@@ -664,7 +689,7 @@ def _build_checks(plan: Plan, root: Path, python: str) -> list[FastCheck]:
         pattern = "^(" + "|".join(re.escape(name) for name in target.tests) + ")$"
         checks.append(FastCheck(
             "database-fixed-point",
-            (go, "test", "-count=1", "-json", "-timeout=900s", "-run", pattern,
+            (go, "test", "-vet=off", "-count=1", "-json", "-timeout=900s", "-run", pattern,
              target.package),
             cwd=root, env=_check_env(database=True), timeout=960,
             kind="json", expected_tests=target.tests))

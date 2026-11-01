@@ -110,6 +110,8 @@ func Handler(st *store.Store, opt Options) http.Handler {
 	registerContractAuditRoutes(mux, h)
 	registerContractReferenceRoutes(mux, h)
 	registerContractVersionRoutes(mux, h)
+	registerContractSigningRoutes(mux, h)
+	registerContractFulfillmentRoutes(mux, h)
 	registerContractApprovalReadRoutes(mux, h)
 	mux.HandleFunc("GET /api/auth/oidc/login", h.oidcLogin)
 	mux.HandleFunc("GET /api/auth/oidc/callback", h.oidcCallback)

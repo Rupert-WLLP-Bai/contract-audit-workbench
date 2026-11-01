@@ -1,5 +1,19 @@
 import { ApiError, errorFromResponse, jsonInit, requestJson } from "./http";
 import { responseReader } from "./respond";
+import type { WireSchemas } from "./wire.generated";
+
+export type ContractSigningCheckResult = WireSchemas["ContractSigningCheckResult"];
+export type ContractSigningRegistration = WireSchemas["ContractSigningRegistration"];
+export type ContractSupplement = WireSchemas["ContractSupplement"];
+export type ContractSupplementList = WireSchemas["ContractSupplementList"];
+export type ContractSupplementResult = WireSchemas["ContractSupplementResult"];
+export type ManualSigningComparison = WireSchemas["ManualSigningComparison"];
+export type ContractDelivery = WireSchemas["ContractDelivery"];
+export type ContractDeliveryList = WireSchemas["ContractDeliveryList"];
+export type ContractAcceptance = WireSchemas["ContractAcceptance"];
+export type ContractAcceptanceList = WireSchemas["ContractAcceptanceList"];
+export type ContractAcceptanceDefectInput = WireSchemas["ContractAcceptanceDefectInput"];
+export type ContractRectification = WireSchemas["ContractRectification"];
 
 /**
  * Contract registration and resumable drafts.
@@ -244,6 +258,7 @@ export interface ContractDetail {
   source_ref?: SourceRef;
   source_observed_at?: string;
   warnings: string[];
+  signing_registration?: ContractSigningRegistration;
 }
 
 export interface LegacyImportInput {
@@ -454,6 +469,7 @@ export function parseContractDetail(
       "allowed_commands",
       "source_ref",
       "source_observed_at",
+      "signing_registration",
       "warnings",
     ],
     ["summary", "current_revision_id", "active_round_id", "allowed_commands", "warnings"],
@@ -485,6 +501,10 @@ export function parseContractDetail(
     warnings: array(row.warnings, `${path}.warnings`, (entry, entryPath) =>
       text(entry, entryPath),
     ),
+    signing_registration:
+      row.signing_registration === undefined || row.signing_registration === null
+        ? undefined
+        : (row.signing_registration as ContractSigningRegistration),
   };
 }
 
@@ -832,6 +852,88 @@ export function getContract(
     `${CONTRACTS_PATH}/${encodeURIComponent(contractId)}`,
     { method: "GET", signal },
     (value) => parseContractDetail(value),
+  );
+}
+
+export async function checkContractSigning(
+  contractId: string,
+  input: WireSchemas["ContractSigningCheckRequest"],
+): Promise<ContractSigningCheckResult> {
+  return requestJson(
+    `${CONTRACTS_PATH}/${encodeURIComponent(contractId)}/signing-checks`,
+    jsonInit("POST", input),
+    (value) => object(value, "contract_signing_check") as unknown as ContractSigningCheckResult,
+  );
+}
+
+export async function registerContractSigning(
+  contractId: string,
+  input: WireSchemas["ContractSigningRegistrationRequest"],
+  idempotencyKey: string,
+): Promise<ContractSigningRegistration> {
+  return requestJson(
+    `${CONTRACTS_PATH}/${encodeURIComponent(contractId)}/registrations`,
+    jsonInit("POST", input, { "Idempotency-Key": idempotencyKey }),
+    (value) => object(value, "contract_signing_registration") as unknown as ContractSigningRegistration,
+  );
+}
+
+export async function listContractSigningRegistrations(
+  contractId: string,
+  signal?: AbortSignal,
+): Promise<ContractSigningRegistration[]> {
+  return requestJson(
+    `${CONTRACTS_PATH}/${encodeURIComponent(contractId)}/registrations`,
+    { method: "GET", signal },
+    (value) => array(object(value, "contract_signing_registrations").items, "contract_signing_registrations.items", (entry) => object(entry, "contract_signing_registration") as unknown as ContractSigningRegistration),
+  );
+}
+
+export function listContractDeliveries(contractId: string, signal?: AbortSignal): Promise<ContractDeliveryList> {
+  return requestJson(`${CONTRACTS_PATH}/${encodeURIComponent(contractId)}/deliveries`, { method: "GET", signal },
+    (value) => object(value, "contract_deliveries") as unknown as ContractDeliveryList);
+}
+
+export function createContractDelivery(contractId: string, input: WireSchemas["ContractDeliveryRequest"], idempotencyKey: string): Promise<ContractDelivery> {
+  return requestJson(`${CONTRACTS_PATH}/${encodeURIComponent(contractId)}/deliveries`, jsonInit("POST", input, { "Idempotency-Key": idempotencyKey }),
+    (value) => object(value, "contract_delivery") as unknown as ContractDelivery);
+}
+
+export function listContractAcceptances(contractId: string, signal?: AbortSignal): Promise<ContractAcceptanceList> {
+  return requestJson(`${CONTRACTS_PATH}/${encodeURIComponent(contractId)}/acceptances`, { method: "GET", signal },
+    (value) => object(value, "contract_acceptances") as unknown as ContractAcceptanceList);
+}
+
+export function createContractAcceptance(contractId: string, input: WireSchemas["ContractAcceptanceRequest"], idempotencyKey: string): Promise<ContractAcceptance> {
+  return requestJson(`${CONTRACTS_PATH}/${encodeURIComponent(contractId)}/acceptances`, jsonInit("POST", input, { "Idempotency-Key": idempotencyKey }),
+    (value) => object(value, "contract_acceptance") as unknown as ContractAcceptance);
+}
+
+export function recordContractRectification(contractId: string, acceptanceId: string, input: WireSchemas["ContractRectificationRequest"], idempotencyKey: string): Promise<ContractRectification> {
+  return requestJson(`${CONTRACTS_PATH}/${encodeURIComponent(contractId)}/acceptances/${encodeURIComponent(acceptanceId)}/rectifications`, jsonInit("POST", input, { "Idempotency-Key": idempotencyKey }),
+    (value) => object(value, "contract_rectification") as unknown as ContractRectification);
+}
+
+export function listContractSupplements(
+  contractId: string,
+  signal?: AbortSignal,
+): Promise<ContractSupplementList> {
+  return requestJson(
+    `${CONTRACTS_PATH}/${encodeURIComponent(contractId)}/supplements`,
+    { method: "GET", signal },
+    (value) => object(value, "contract_supplements") as unknown as ContractSupplementList,
+  );
+}
+
+export function createContractSupplement(
+  contractId: string,
+  input: WireSchemas["ContractSupplementRequest"],
+  idempotencyKey: string,
+): Promise<ContractSupplementResult> {
+  return requestJson(
+    `${CONTRACTS_PATH}/${encodeURIComponent(contractId)}/supplements`,
+    jsonInit("POST", input, { "Idempotency-Key": idempotencyKey }),
+    (value) => object(value, "contract_supplement_result") as unknown as ContractSupplementResult,
   );
 }
 

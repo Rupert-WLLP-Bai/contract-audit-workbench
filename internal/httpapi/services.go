@@ -263,6 +263,10 @@ func contractDraftRoute(role string, methods routeMethodSet, parts []string) boo
 			return methods.read
 		case "submissions":
 			return methods.post
+		case "signing-checks":
+			return methods.post
+		case "registrations", "supplements":
+			return methods.read || methods.post
 		default:
 			return false
 		}

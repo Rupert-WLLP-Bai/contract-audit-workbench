@@ -67,14 +67,15 @@ type ContractSummary struct {
 // draft (restricted fields revealed or masked by authorization) and routing
 // facts for imported sources.
 type ContractDetail struct {
-	Summary           ContractSummary `json:"summary"`
-	CurrentRevisionID *string         `json:"current_revision_id"`
-	Draft             *DraftContent   `json:"draft,omitempty"`
-	ActiveRoundID     *string         `json:"active_round_id"`
-	AllowedCommands   []string        `json:"allowed_commands"`
-	SourceRef         *SourceRef      `json:"source_ref,omitempty"`
-	SourceObservedAt  *time.Time      `json:"source_observed_at,omitempty"`
-	Warnings          []string        `json:"warnings"`
+	Summary             ContractSummary              `json:"summary"`
+	CurrentRevisionID   *string                      `json:"current_revision_id"`
+	Draft               *DraftContent                `json:"draft,omitempty"`
+	ActiveRoundID       *string                      `json:"active_round_id"`
+	AllowedCommands     []string                     `json:"allowed_commands"`
+	SourceRef           *SourceRef                   `json:"source_ref,omitempty"`
+	SourceObservedAt    *time.Time                   `json:"source_observed_at,omitempty"`
+	SigningRegistration *ContractSigningRegistration `json:"signing_registration,omitempty"`
+	Warnings            []string                     `json:"warnings"`
 }
 
 // ContractDraftSummary is one own-draft row for recovery after an interruption.
@@ -720,6 +721,11 @@ func (s *Store) buildContractDetail(ctx context.Context, tx pgx.Tx, record clmCo
 		// frozen revision is under review.
 		detail.AllowedCommands = []string{}
 	}
+	registration, err := s.loadContractSigningSummary(ctx, tx, current, record)
+	if err != nil {
+		return ContractDetail{}, nil, err
+	}
+	detail.SigningRegistration = registration
 	if contentBytes == nil {
 		return detail, nil, nil
 	}
@@ -1073,6 +1079,9 @@ func (s *Store) ImportLegacySignedContract(ctx context.Context, user accounts.Us
 		VALUES ($1,$2,$3,1,$4,$5,$6::jsonb,$7,$8,$9)`,
 		accounts.Tenant(current), contractID, revisionID, amount, currency,
 		string(sealedSnapshot), sha256Bytes(sealedSnapshot), current.ID, amountsReconciled); err != nil {
+		return ContractDetail{}, err
+	}
+	if err := insertFrozenContractRevisionItems(ctx, tx, accounts.Tenant(current), contractID, revisionID, input.Snapshot.Items); err != nil {
 		return ContractDetail{}, err
 	}
 	if _, err := tx.Exec(ctx, `UPDATE clm_contracts SET current_revision_id=$3, updated_at=clock_timestamp()

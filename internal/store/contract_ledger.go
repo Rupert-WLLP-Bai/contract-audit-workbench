@@ -504,10 +504,10 @@ func appendContractLedgerFilter(where *strings.Builder, args *[]any, filter Cont
 		add(` AND (CASE WHEN k.content->'contract'->>'amount' ~ '`+contractLedgerContentAmount+`' THEN (k.content->'contract'->>'amount')::numeric END) <= $%d::numeric`, *filter.AmountMax)
 	}
 	if filter.SigningDateFrom != nil {
-		add(` AND k.content->'contract'->>'signing_date' >= $%d`, *filter.SigningDateFrom)
+		add(` AND k.signing_date >= $%d`, *filter.SigningDateFrom)
 	}
 	if filter.SigningDateTo != nil {
-		add(` AND k.content->'contract'->>'signing_date' <= $%d`, *filter.SigningDateTo)
+		add(` AND k.signing_date <= $%d`, *filter.SigningDateTo)
 	}
 	if filter.CreatedFrom != nil {
 		add(` AND k.created_at >= $%d::timestamptz`, filter.CreatedFrom.UTC())
@@ -530,11 +530,14 @@ func queryContractLedgerRows(ctx context.Context, tx pgx.Tx, tenant string, filt
 	args = append(args, limit)
 	query := `SELECT k.tenant_id,k.contract_id,k.owner_org_id,k.authority_mode,k.contract_number,
 		k.lifecycle_state,k.validity_state,k.row_version,k.created_by,k.created_at,k.updated_at,
-		k.source_system,k.in_review,k.content
+		k.source_system,k.in_review,k.content,k.signing_date
 	FROM (
 		SELECT c.tenant_id,c.contract_id,c.owner_org_id,c.authority_mode,c.contract_number,
 			c.lifecycle_state,c.validity_state,c.row_version,c.created_by,c.created_at,c.updated_at,
 			c.source_system,COALESCE(d.content,r.snapshot) AS content,
+			COALESCE((SELECT registration.signing_date::text FROM clm_contract_signing_registrations registration
+				WHERE registration.tenant_id=c.tenant_id AND registration.contract_id=c.contract_id),
+				COALESCE(d.content->'contract'->>'signing_date',r.snapshot->'contract'->>'signing_date')) AS signing_date,
 			EXISTS(SELECT 1 FROM clm_approval_rounds ar
 				WHERE ar.tenant_id=c.tenant_id AND ar.contract_id=c.contract_id AND ar.state='in_review') AS in_review
 		FROM clm_contracts c
@@ -552,15 +555,17 @@ func queryContractLedgerRows(ctx context.Context, tx pgx.Tx, tenant string, filt
 		var record clmContractRecord
 		var content []byte
 		var inReview bool
+		var signingDate *string
 		if err := rows.Scan(&record.TenantID, &record.ContractID, &record.OwnerOrgID, &record.AuthorityMode,
 			&record.ContractNumber, &record.LifecycleState, &record.ValidityState, &record.RowVersion,
-			&record.CreatedBy, &record.CreatedAt, &record.UpdatedAt, &record.SourceSystem, &inReview, &content); err != nil {
+			&record.CreatedBy, &record.CreatedAt, &record.UpdatedAt, &record.SourceSystem, &inReview, &content, &signingDate); err != nil {
 			return nil, err
 		}
 		item, err := contractLedgerItemFrom(record, content, inReview)
 		if err != nil {
 			return nil, err
 		}
+		item.SigningDate = signingDate
 		out = append(out, contractLedgerRow{record: record, item: item, sortKey: record.CreatedAt})
 	}
 	if err := rows.Err(); err != nil {
