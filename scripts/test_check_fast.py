@@ -321,6 +321,70 @@ func TestValue(t *testing.T) { if Value != 1 { t.Fatal(Value) } }
         self.assertIn("TestDurableReviewFreezesServiceObjectContextAndRejectsChangedRetryAfterReopen",
                       plan.database_tests[0].tests)
 
+    def test_contract_payment_sources_select_focused_postgres_guard(self):
+        paths = (
+            "internal/store/migrations/0029_contract_payments.sql",
+            "internal/store/migrations.go",
+            "internal/store/contract_payments.go",
+            "internal/store/contract_payments_pg_test.go",
+            "internal/store/contract_draft.go",
+            "internal/store/service_roles.go",
+            "internal/store/contract_fulfillment_pg_test.go",
+            "internal/httpapi/contract_payments.go",
+            "internal/httpapi/contract_payments_test.go",
+            "internal/httpapi/server.go",
+            "internal/httpapi/services.go",
+            "internal/httpapi/services_ownership_test.go",
+            "cmd/server/main.go",
+            "cmd/server/main_test.go",
+        )
+        target = check_fast.CONTRACT_PAYMENT_TESTS[0]
+        for path in paths:
+            with self.subTest(path=path):
+                plan = self.plan(check_fast.Change("M", path))
+                self.assertTrue(plan.database)
+                payment_target = plan.database_tests[0]
+                self.assertEqual(payment_target.package, "./internal/store")
+                self.assertIn("contract-payment", payment_target.reasons)
+                self.assertIn(target, payment_target.tests)
+                self.assertFalse(payment_target.needs_model)
+
+    def test_contract_asset_sources_select_focused_postgres_guard(self):
+        paths = (
+            "internal/store/migrations/0030_contract_assets.sql",
+            "internal/store/migrations.go",
+            "internal/store/contract_assets.go",
+            "internal/store/contract_assets_pg_test.go",
+            "internal/store/contract_draft.go",
+            "internal/store/service_roles.go",
+            "internal/store/contract_fulfillment_pg_test.go",
+            "internal/store/immutable_parsing_test.go",
+            "internal/store/session_lifecycle_test.go",
+            "internal/httpapi/contract_assets.go",
+            "internal/httpapi/contract_assets_test.go",
+            "internal/httpapi/server.go",
+            "internal/httpapi/services.go",
+            "internal/httpapi/services_ownership_test.go",
+            "cmd/server/main.go",
+            "cmd/server/main_test.go",
+        )
+        target = check_fast.CONTRACT_ASSET_TESTS[0]
+        for path in paths:
+            with self.subTest(path=path):
+                plan = self.plan(check_fast.Change("M", path))
+                self.assertTrue(plan.database)
+                asset_target = plan.database_tests[0]
+                self.assertEqual(asset_target.package, "./internal/store")
+                self.assertIn("contract-asset", asset_target.reasons)
+                self.assertIn(target, asset_target.tests)
+                self.assertFalse(asset_target.needs_model)
+
+        shared_core_plan = self.plan(
+            check_fast.Change("M", "internal/store/contract_draft.go"))
+        shared_core_target = shared_core_plan.database_tests[0]
+        self.assertIn(check_fast.CONTRACT_PAYMENT_TESTS[0], shared_core_target.tests)
+        self.assertIn(target, shared_core_target.tests)
+
 
 
 class CliBoundaryTests(unittest.TestCase):

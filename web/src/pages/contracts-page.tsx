@@ -1,5 +1,5 @@
 import { Alert, Button, Empty, Input, InputNumber, Modal, Select, Table, Tag } from "antd";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApiError, errorMessage } from "../api/http";
 import {
@@ -45,6 +45,8 @@ import { PageStatus } from "../components/page-status";
 import { ContractReferencesPanel } from "../components/contract-references-panel";
 import { ContractSigningPanel } from "../components/contract-signing-panel";
 import { ContractFulfillmentPanel } from "../components/contract-fulfillment-panel";
+import { ContractPaymentsPanel } from "../components/contract-payments-panel";
+import { ContractAssetsPanel } from "../components/contract-assets-panel";
 import { formatDateTime } from "../domain/review";
 import "./contracts-page.css";
 
@@ -74,6 +76,12 @@ function actorScope(actor: Actor | null): string {
   return actor === null
     ? ""
     : [actor.audience, actor.tenant_id, actor.org_id, actor.id].join("\u0000");
+}
+
+function fullActorScope(actor: Actor | null): string {
+  return actor === null
+    ? ""
+    : [actor.audience, actor.tenant_id, actor.org_id, actor.id, actor.role].join("\u0000");
 }
 
 function emptyItem(): DraftItem {
@@ -210,6 +218,9 @@ export function ContractsPage() {
   const deleteSavedView = useDeleteContractSavedView();
 
   const [contractID, setContractID] = useState<string | null>(null);
+  const editorIdentityRef = useRef({ contractID: null as string | null, actorScope: "" });
+  const currentActorScope = fullActorScope(actor);
+  editorIdentityRef.current = { contractID, actorScope: currentActorScope };
   const [contractDetail, setContractDetail] = useState<ContractDetail | null>(null);
   const [rowVersion, setRowVersion] = useState<number | null>(null);
   const [draft, setDraft] = useState<DraftContent>(emptyDraft);
@@ -265,6 +276,21 @@ export function ContractsPage() {
         ? null
         : `${detail.source_ref.system} · ${detail.source_ref.id} · 版本 ${detail.source_ref.source_version}`,
     );
+  }
+
+  async function refreshContractAfterFact(expectedContractID: string, expectedActorScope: string) {
+    let latest: ContractDetail;
+    try {
+      latest = await getContract(expectedContractID);
+    } catch (caught) {
+      const current = editorIdentityRef.current;
+      if (current.contractID === expectedContractID && current.actorScope === expectedActorScope)
+        resetEditor(null);
+      throw caught;
+    }
+    const current = editorIdentityRef.current;
+    if (current.contractID === expectedContractID && current.actorScope === expectedActorScope)
+      resetEditor(latest);
   }
 
   async function openDraft(id: string) {
@@ -1406,6 +1432,24 @@ export function ContractsPage() {
                   detail={contractDetail}
                   actor={actor}
                   onRefresh={async () => resetEditor(await getContract(contractID))}
+                />
+              ) : null}
+              {contractID !== null && contractDetail !== null ? (
+                <ContractPaymentsPanel
+                  key={`${contractID}-payments-${currentActorScope}`}
+                  detail={contractDetail}
+                  actor={actor}
+                  canCheck={!dirty && !saving && !loading}
+                  onRefresh={() => refreshContractAfterFact(contractID, currentActorScope)}
+                />
+              ) : null}
+              {contractID !== null && contractDetail !== null ? (
+                <ContractAssetsPanel
+                  key={`${contractID}-assets-${currentActorScope}`}
+                  detail={contractDetail}
+                  actor={actor}
+                  canManage={!dirty && !saving && !loading}
+                  onRefresh={() => refreshContractAfterFact(contractID, currentActorScope)}
                 />
               ) : null}
 

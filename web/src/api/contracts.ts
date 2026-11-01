@@ -14,6 +14,12 @@ export type ContractAcceptance = WireSchemas["ContractAcceptance"];
 export type ContractAcceptanceList = WireSchemas["ContractAcceptanceList"];
 export type ContractAcceptanceDefectInput = WireSchemas["ContractAcceptanceDefectInput"];
 export type ContractRectification = WireSchemas["ContractRectification"];
+export type ContractPaymentSummary = WireSchemas["ContractPaymentSummary"];
+export type ContractPaymentEligibility = WireSchemas["ContractPaymentEligibility"];
+export type ContractPaymentEligibilityRequest = WireSchemas["ContractPaymentEligibilityRequest"];
+export type ContractAssetList = WireSchemas["ContractAssetList"];
+export type ContractAssetHandover = WireSchemas["ContractAssetHandover"];
+export type ContractAssetHandoverRequest = WireSchemas["ContractAssetHandoverRequest"];
 
 /**
  * Contract registration and resumable drafts.
@@ -912,6 +918,107 @@ export function createContractAcceptance(contractId: string, input: WireSchemas[
 export function recordContractRectification(contractId: string, acceptanceId: string, input: WireSchemas["ContractRectificationRequest"], idempotencyKey: string): Promise<ContractRectification> {
   return requestJson(`${CONTRACTS_PATH}/${encodeURIComponent(contractId)}/acceptances/${encodeURIComponent(acceptanceId)}/rectifications`, jsonInit("POST", input, { "Idempotency-Key": idempotencyKey }),
     (value) => object(value, "contract_rectification") as unknown as ContractRectification);
+}
+
+function parseContractPaymentReceipt(value: unknown, path: string): WireSchemas["ContractPaymentReceipt"] {
+  const row = object(value, path);
+  const eventType = text(row.event_type, `${path}.event_type`);
+  if (eventType !== "payment" && eventType !== "reversal")
+    throw new Error(`合同响应中的 ${path}.event_type 无法识别`);
+  return {
+    amount: text(row.amount, `${path}.amount`),
+    contract_id: text(row.contract_id, `${path}.contract_id`),
+    contract_revision_id: text(row.contract_revision_id, `${path}.contract_revision_id`),
+    currency: text(row.currency, `${path}.currency`),
+    event_type: eventType,
+    occurred_at: text(row.occurred_at, `${path}.occurred_at`),
+    ...(row.original_source_event_id === undefined ? {} : { original_source_event_id: text(row.original_source_event_id, `${path}.original_source_event_id`) }),
+    payload_digest: text(row.payload_digest, `${path}.payload_digest`),
+    payment_sequence: integer(row.payment_sequence, `${path}.payment_sequence`, 1),
+    receipt_id: text(row.receipt_id, `${path}.receipt_id`),
+    recorded_at: text(row.recorded_at, `${path}.recorded_at`),
+    source_event_id: text(row.source_event_id, `${path}.source_event_id`),
+    source_id: text(row.source_id, `${path}.source_id`),
+    source_key_id: text(row.source_key_id, `${path}.source_key_id`),
+  };
+}
+
+function parseContractPaymentSummary(value: unknown, path: string): ContractPaymentSummary {
+  const row = object(value, path);
+  const state = text(row.state, `${path}.state`);
+  if (!["unpaid", "partial", "paid", "overpaid", "unknown"].includes(state))
+    throw new Error(`合同响应中的 ${path}.state 无法识别`);
+  return {
+    contract_id: text(row.contract_id, `${path}.contract_id`),
+    contract_revision_id: text(row.contract_revision_id, `${path}.contract_revision_id`),
+    ...(row.currency === undefined ? {} : { currency: text(row.currency, `${path}.currency`) }),
+    net_paid: text(row.net_paid, `${path}.net_paid`),
+    payment_sequence: integer(row.payment_sequence, `${path}.payment_sequence`, 1),
+    ...(row.planned_amount === undefined ? {} : { planned_amount: text(row.planned_amount, `${path}.planned_amount`) }),
+    receipts: array(row.receipts, `${path}.receipts`, parseContractPaymentReceipt),
+    state: state as ContractPaymentSummary["state"],
+  };
+}
+
+function parseContractPaymentEligibility(value: unknown): ContractPaymentEligibility {
+  const row = object(value, "contract_payment_eligibility");
+  const status = text(row.status, "contract_payment_eligibility.status");
+  if (status !== "eligible" && status !== "blocked" && status !== "unknown")
+    throw new Error("合同响应中的 contract_payment_eligibility.status 无法识别");
+  if (bool(row.initiates_payment, "contract_payment_eligibility.initiates_payment"))
+    throw new Error("付款资格核验响应不能发起付款");
+  return {
+    check_id: text(row.check_id, "contract_payment_eligibility.check_id"),
+    checked_at: text(row.checked_at, "contract_payment_eligibility.checked_at"),
+    contract_id: text(row.contract_id, "contract_payment_eligibility.contract_id"),
+    contract_revision_id: text(row.contract_revision_id, "contract_payment_eligibility.contract_revision_id"),
+    contract_row_version: integer(row.contract_row_version, "contract_payment_eligibility.contract_row_version", 1),
+    evidence: array(row.evidence, "contract_payment_eligibility.evidence", (entry, path) => text(entry, path)),
+    initiates_payment: false,
+    payment_sequence: integer(row.payment_sequence, "contract_payment_eligibility.payment_sequence", 1),
+    reasons: array(row.reasons, "contract_payment_eligibility.reasons", (entry, path) => text(entry, path)),
+    status,
+  };
+}
+
+export function listContractPayments(contractId: string, signal?: AbortSignal): Promise<ContractPaymentSummary[]> {
+  return requestJson(
+    `${CONTRACTS_PATH}/${encodeURIComponent(contractId)}/payments`,
+    { method: "GET", signal },
+    (value) => array(value, "contract_payments", parseContractPaymentSummary),
+  );
+}
+
+export function checkContractPaymentEligibility(
+  contractId: string,
+  input: ContractPaymentEligibilityRequest,
+  idempotencyKey: string,
+): Promise<ContractPaymentEligibility> {
+  return requestJson(
+    `${CONTRACTS_PATH}/${encodeURIComponent(contractId)}/payment-eligibility-checks`,
+    jsonInit("POST", input, { "Idempotency-Key": idempotencyKey }),
+    parseContractPaymentEligibility,
+  );
+}
+
+export function listContractAssets(contractId: string, signal?: AbortSignal): Promise<ContractAssetList> {
+  return requestJson(
+    `${CONTRACTS_PATH}/${encodeURIComponent(contractId)}/assets`,
+    { method: "GET", signal },
+    (value) => object(value, "contract_assets") as unknown as ContractAssetList,
+  );
+}
+
+export function createContractAssetHandover(
+  contractId: string,
+  input: ContractAssetHandoverRequest,
+  idempotencyKey: string,
+): Promise<ContractAssetHandover> {
+  return requestJson(
+    `${CONTRACTS_PATH}/${encodeURIComponent(contractId)}/asset-handovers`,
+    jsonInit("POST", input, { "Idempotency-Key": idempotencyKey }),
+    (value) => object(value, "contract_asset_handover") as unknown as ContractAssetHandover,
+  );
 }
 
 export function listContractSupplements(
