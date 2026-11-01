@@ -176,6 +176,15 @@ func (s *Store) FreezeContractVersion(ctx context.Context, user accounts.User, i
 	if record.RowVersion != input.ExpectedRowVersion {
 		return FreezeContractVersionResult{}, fault.Conflict("合同内容已被他人修改，请刷新后确认")
 	}
+	var inReview bool
+	if err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM clm_approval_rounds
+		WHERE tenant_id=$1 AND contract_id=$2 AND state='in_review')`,
+		accounts.Tenant(current), id).Scan(&inReview); err != nil {
+		return FreezeContractVersionResult{}, err
+	}
+	if inReview {
+		return FreezeContractVersionResult{}, fault.Conflict("合同已有进行中的会签轮次，不能重新冻结版本")
+	}
 	contentBytes, err := loadContractDraftBytes(ctx, tx, accounts.Tenant(current), id)
 	if err != nil {
 		return FreezeContractVersionResult{}, err
@@ -309,6 +318,7 @@ func (s *Store) FreezeContractVersion(ctx context.Context, user accounts.User, i
 		accounts.Tenant(current), eventID); err != nil {
 		return FreezeContractVersionResult{}, err
 	}
+	record.CurrentRevisionID = &revisionID
 	result := FreezeContractVersionResult{
 		Version: ContractVersionSummary{
 			ContractRevisionID: revisionID, RevisionNumber: revisionNumber,

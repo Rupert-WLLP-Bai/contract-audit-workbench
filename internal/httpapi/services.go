@@ -157,6 +157,9 @@ func routeOwned(role string, methods routeMethodSet, parts []string) bool {
 	if parts[0] == "contracts" {
 		return contractDraftRoute(role, methods, parts) || contractReferenceRoute(role, methods, parts)
 	}
+	if parts[0] == "approval-tasks" {
+		return role == "core" && len(parts) == 3 && parts[2] == "decisions" && methods.post
+	}
 	if parts[0] == "intakes" {
 		if role != "core" {
 			return false
@@ -216,11 +219,18 @@ func contractDraftRoute(role string, methods routeMethodSet, parts []string) boo
 		}
 	}
 	if len(parts) == 3 && parts[1] == "views" {
-		return methods.post || methods.delete
+		return methods.delete
+	}
+	// A POST saved-view replacement collides with POST /contracts/{id}/revisions
+	// in Go's ServeMux (neither pattern is more specific). The explicit command
+	// suffix keeps both operations addressable without a wildcard dispatcher.
+	if len(parts) == 4 && parts[1] == "views" && parts[3] == "replace" {
+		return methods.post
 	}
 	if len(parts) == 4 && parts[1] == "exports" && parts[3] == "download" {
 		return methods.read
 	}
+
 	if len(parts) == 3 {
 		switch parts[2] {
 		case "draft":
@@ -229,11 +239,13 @@ func contractDraftRoute(role string, methods routeMethodSet, parts []string) boo
 			return methods.read || methods.post
 		case "revision-diff":
 			return methods.read
+		case "submissions":
+			return methods.post
 		default:
 			return false
 		}
 	}
-	return len(parts) == 4 && parts[2] == "revisions" && methods.read
+	return len(parts) == 5 && parts[2] == "revisions" && parts[4] == "content" && methods.read
 }
 
 func knowledgeRoute(parts []string) bool {
@@ -261,6 +273,11 @@ func adminRoute(role string, m routeMethodSet, parts []string) bool {
 		return legalSourceAdminRoute(m, parts[1:])
 	case "rulepacks":
 		return rulePackRoute(m, parts[1:])
+	case "contract-workflow":
+		if len(parts) == 3 && parts[2] == "templates" {
+			return m.post
+		}
+		return len(parts) == 4 && parts[2] == "roles" && m.put
 	}
 	return false
 }
