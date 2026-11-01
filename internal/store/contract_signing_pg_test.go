@@ -38,14 +38,21 @@ func TestContractSigningRequiresHumanSourceAttestationAndApprovedRevision(t *tes
 	if err != nil {
 		t.Fatal(err)
 	}
-	rowVersion := submitted.Round.RowVersion
+	var rowVersion int64 // Contract version; approval commands use the round version.
 	for index, task := range submitted.Tasks {
 		actor := approvalTestUser(t, "demo-reviewer")
 		if task.Final {
 			actor = fixture.admin
 		}
+		currentTask, err := fixture.core.GetApprovalTask(ctx, actor, task.ApprovalTaskID)
+		if err != nil {
+			t.Fatalf("refresh node %d: %v", task.NodeOrder, err)
+		}
+		if active := currentTask.RoundDetail.ActiveTaskID; active == nil || *active != task.ApprovalTaskID {
+			t.Fatalf("node %d is not the active approval task", task.NodeOrder)
+		}
 		decision, err := fixture.core.DecideApprovalTask(ctx, actor, DecideApprovalTaskInput{
-			TaskID: task.ApprovalTaskID, Decision: clmDecisionApprove, ExpectedRoundRowVersion: rowVersion,
+			TaskID: task.ApprovalTaskID, Decision: clmDecisionApprove, ExpectedRoundRowVersion: currentTask.RoundDetail.Round.RowVersion,
 			IdempotencyKey: fmt.Sprintf("signing-approved-decision-%02d", index),
 		})
 		if err != nil {
@@ -116,7 +123,8 @@ func TestContractSigningRequiresHumanSourceAttestationAndApprovedRevision(t *tes
 	// signed material's source case. Sensitive material facts must be omitted.
 	dir := t.TempDir()
 	directory := filepath.Join(dir, "directory.json")
-	bodyJSON := `{"users":[{"id":"demo-admin","display_name":"合同管理员","role":"admin","tenant_id":"` + fixture.admin.TenantID + `","org_id":"` + fixture.admin.OrgID + `","enabled":true,"issuer":"signing-test","subject":"admin-revoked","grants":[{"role":"case_owner","scope":"case","case_id":"` + contractID + `"}]},{"id":"signing-reader","display_name":"合同只读","role":"reviewer","tenant_id":"` + fixture.admin.TenantID + `","org_id":"` + fixture.admin.OrgID + `","enabled":true,"issuer":"signing-test","subject":"reader","grants":[{"role":"case_owner","scope":"case","case_id":"` + contractID + `"}]}]}`
+	// Revoke source-case grants without changing the administrator's identity.
+	bodyJSON := `{"users":[{"id":"demo-admin","display_name":"合同管理员","role":"admin","tenant_id":"` + fixture.admin.TenantID + `","org_id":"` + fixture.admin.OrgID + `","enabled":true,"issuer":"` + fixture.admin.Issuer + `","subject":"` + fixture.admin.Subject + `","grants":[{"role":"case_owner","scope":"case","case_id":"` + contractID + `"}]},{"id":"signing-reader","display_name":"合同只读","role":"reviewer","tenant_id":"` + fixture.admin.TenantID + `","org_id":"` + fixture.admin.OrgID + `","enabled":true,"issuer":"signing-test","subject":"reader","grants":[{"role":"case_owner","scope":"case","case_id":"` + contractID + `"}]}]}`
 	if err := os.WriteFile(directory, []byte(bodyJSON), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -141,7 +149,7 @@ func TestContractSigningRequiresHumanSourceAttestationAndApprovedRevision(t *tes
 
 	// A returned round on the exact revision remains a negative approval fact;
 	// it cannot fall through to the legacy unknown-history branch.
-	accounts.ConfigureDirectory("")
+	approvalDecisionTestDirectory(t)
 	negative, err := fixture.core.CreateContractDraft(ctx, fixture.admin, CreateContractDraftInput{
 		ExpectedRowVersion: 0, AuthorityMode: "native", Draft: freezeCompleteDraft(), IdempotencyKey: "signing-negative-draft",
 	})
