@@ -26,6 +26,8 @@ ROOTS = (
 	"ContractAcceptance", "ContractAcceptanceDefect", "ContractAcceptanceDefectInput", "ContractAcceptanceList", "ContractAcceptanceRequest",
 	"ContractDelivery", "ContractDeliveryList", "ContractDeliveryRequest", "ContractFulfillmentItemSummary", "ContractRectification", "ContractRectificationRequest",
     "ContractPaymentEligibilityRequest", "ContractPaymentEligibility", "ContractPaymentReceiptRequest", "ContractPaymentReceipt", "ContractPaymentSummary",
+    "ContractAssetList", "ContractAssetPlanSummary", "ContractAssetHandover", "ContractAssetReceipt",
+    "ContractAssetHandoverRequest", "ContractAssetReceiptRequest",
     "ContractSigningCheckRequest", "ContractSigningCheckResult", "ManualSigningComparison", "ContractSigningRegistration",
     "ContractSigningRegistrationList", "ContractSigningRegistrationRequest", "ContractSupplement",
     "ContractSupplementList", "ContractSupplementRequest", "ContractSupplementResult",

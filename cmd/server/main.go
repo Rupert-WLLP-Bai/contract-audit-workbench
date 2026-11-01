@@ -94,6 +94,10 @@ func serveCore(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	apiOptions.AssetReceiptSources, err = assetReceiptSourcesFromEnv()
+	if err != nil {
+		return err
+	}
 	apiOptions.IntakeUploader, err = bootstrap.ConfiguredIntakeUploader()
 	if err != nil {
 		return err
@@ -104,6 +108,24 @@ func serveCore(ctx context.Context) error {
 	}
 	logStartup(app)
 	return listen(ctx, app.Boundary("core", handler))
+}
+
+func assetReceiptSourcesFromEnv() ([]httpapi.AssetReceiptSourceCredential, error) {
+	raw := strings.TrimSpace(os.Getenv("ASSET_RECEIPT_SOURCES_JSON"))
+	if raw == "" {
+		return nil, nil
+	}
+	decoder := json.NewDecoder(strings.NewReader(raw))
+	decoder.DisallowUnknownFields()
+	var sources []httpapi.AssetReceiptSourceCredential
+	if err := decoder.Decode(&sources); err != nil {
+		return nil, errors.New("asset receipt source configuration is invalid")
+	}
+	var trailing any
+	if err := decoder.Decode(&trailing); err != io.EOF || len(sources) == 0 {
+		return nil, errors.New("asset receipt source configuration is invalid")
+	}
+	return sources, nil
 }
 
 func paymentReceiptSourcesFromEnv() ([]httpapi.PaymentReceiptSourceCredential, error) {

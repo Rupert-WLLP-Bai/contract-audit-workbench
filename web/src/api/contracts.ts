@@ -17,6 +17,9 @@ export type ContractRectification = WireSchemas["ContractRectification"];
 export type ContractPaymentSummary = WireSchemas["ContractPaymentSummary"];
 export type ContractPaymentEligibility = WireSchemas["ContractPaymentEligibility"];
 export type ContractPaymentEligibilityRequest = WireSchemas["ContractPaymentEligibilityRequest"];
+export type ContractAssetList = WireSchemas["ContractAssetList"];
+export type ContractAssetHandover = WireSchemas["ContractAssetHandover"];
+export type ContractAssetHandoverRequest = WireSchemas["ContractAssetHandoverRequest"];
 
 /**
  * Contract registration and resumable drafts.
@@ -995,6 +998,26 @@ export function checkContractPaymentEligibility(
     `${CONTRACTS_PATH}/${encodeURIComponent(contractId)}/payment-eligibility-checks`,
     jsonInit("POST", input, { "Idempotency-Key": idempotencyKey }),
     parseContractPaymentEligibility,
+  );
+}
+
+export function listContractAssets(contractId: string, signal?: AbortSignal): Promise<ContractAssetList> {
+  return requestJson(
+    `${CONTRACTS_PATH}/${encodeURIComponent(contractId)}/assets`,
+    { method: "GET", signal },
+    (value) => object(value, "contract_assets") as unknown as ContractAssetList,
+  );
+}
+
+export function createContractAssetHandover(
+  contractId: string,
+  input: ContractAssetHandoverRequest,
+  idempotencyKey: string,
+): Promise<ContractAssetHandover> {
+  return requestJson(
+    `${CONTRACTS_PATH}/${encodeURIComponent(contractId)}/asset-handovers`,
+    jsonInit("POST", input, { "Idempotency-Key": idempotencyKey }),
+    (value) => object(value, "contract_asset_handover") as unknown as ContractAssetHandover,
   );
 }
 

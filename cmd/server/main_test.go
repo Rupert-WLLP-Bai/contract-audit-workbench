@@ -82,6 +82,28 @@ func TestPaymentReceiptSourceConfigurationIsStrictAndOffByDefault(t *testing.T) 
 	}
 }
 
+func TestAssetReceiptSourceConfigurationIsStrictAndOffByDefault(t *testing.T) {
+	t.Setenv("ASSET_RECEIPT_SOURCES_JSON", "")
+	sources, err := assetReceiptSourcesFromEnv()
+	if err != nil || len(sources) != 0 {
+		t.Fatalf("unset source config: sources=%d err=%v", len(sources), err)
+	}
+	secret := strings.Repeat("x", 40)
+	t.Setenv("ASSET_RECEIPT_SOURCES_JSON", `[{"tenant_id":"tenant-a","source_id":"erp-a","key_id":"asset-key-1","secret":"`+secret+`"}]`)
+	sources, err = assetReceiptSourcesFromEnv()
+	if err != nil || len(sources) != 1 || sources[0].KeyID != "asset-key-1" {
+		t.Fatalf("valid source config not parsed: count=%d err=%v", len(sources), err)
+	}
+	t.Setenv("ASSET_RECEIPT_SOURCES_JSON", `[{"tenant_id":"tenant-a","source_id":"erp-a","key_id":"asset-key-1","secret":"`+secret+`","active":true}]`)
+	if _, err = assetReceiptSourcesFromEnv(); err == nil {
+		t.Fatal("unknown configuration field must fail closed")
+	}
+	t.Setenv("ASSET_RECEIPT_SOURCES_JSON", `[] []`)
+	if _, err = assetReceiptSourcesFromEnv(); err == nil {
+		t.Fatal("trailing JSON value must fail closed")
+	}
+}
+
 func TestProductionRequiresExplicitServiceRole(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "must-not-be-created")
 	t.Setenv("APP_ENV", "production")

@@ -46,6 +46,7 @@ import { ContractReferencesPanel } from "../components/contract-references-panel
 import { ContractSigningPanel } from "../components/contract-signing-panel";
 import { ContractFulfillmentPanel } from "../components/contract-fulfillment-panel";
 import { ContractPaymentsPanel } from "../components/contract-payments-panel";
+import { ContractAssetsPanel } from "../components/contract-assets-panel";
 import { formatDateTime } from "../domain/review";
 import "./contracts-page.css";
 
@@ -277,7 +278,7 @@ export function ContractsPage() {
     );
   }
 
-  async function refreshPaymentContract(expectedContractID: string, expectedActorScope: string) {
+  async function refreshContractAfterFact(expectedContractID: string, expectedActorScope: string) {
     let latest: ContractDetail;
     try {
       latest = await getContract(expectedContractID);
@@ -1439,7 +1440,16 @@ export function ContractsPage() {
                   detail={contractDetail}
                   actor={actor}
                   canCheck={!dirty && !saving && !loading}
-                  onRefresh={() => refreshPaymentContract(contractID, currentActorScope)}
+                  onRefresh={() => refreshContractAfterFact(contractID, currentActorScope)}
+                />
+              ) : null}
+              {contractID !== null && contractDetail !== null ? (
+                <ContractAssetsPanel
+                  key={`${contractID}-assets-${currentActorScope}`}
+                  detail={contractDetail}
+                  actor={actor}
+                  canManage={!dirty && !saving && !loading}
+                  onRefresh={() => refreshContractAfterFact(contractID, currentActorScope)}
                 />
               ) : null}
 

@@ -23,7 +23,33 @@ func ServiceHandler(st *store.Store, opt Options, role, credential string) (http
 	if err := validatePaymentReceiptSources(role, credential, &opt); err != nil {
 		return nil, err
 	}
+	if err := validateAssetReceiptSources(role, credential, &opt); err != nil {
+		return nil, err
+	}
 	return buildServiceHandler(st, opt, role, credential), nil
+}
+
+func validateAssetReceiptSources(role, gatewayCredential string, opt *Options) error {
+	if len(opt.AssetReceiptSources) == 0 {
+		return nil
+	}
+	if role != "core" {
+		return errors.New("asset receipt sources are accepted only by Core")
+	}
+	if err := validateAssetReceiptSourceCredentials(opt.AssetReceiptSources); err != nil {
+		return err
+	}
+	for _, asset := range opt.AssetReceiptSources {
+		if subtle.ConstantTimeCompare([]byte(asset.Secret), []byte(gatewayCredential)) == 1 || asset.Secret == opt.ExperienceWorkerCredential {
+			return errors.New("asset receipt credentials must be private and action-specific")
+		}
+		for _, payment := range opt.PaymentReceiptSources {
+			if asset.KeyID == payment.KeyID || subtle.ConstantTimeCompare([]byte(asset.Secret), []byte(payment.Secret)) == 1 {
+				return errors.New("payment and asset receipt credentials must use distinct action-specific keys")
+			}
+		}
+	}
+	return nil
 }
 
 func validatePaymentReceiptSources(role, gatewayCredential string, opt *Options) error {
@@ -92,6 +118,9 @@ func buildServiceHandler(st *store.Store, opt Options, role, credential string) 
 	}
 	if len(opt.PaymentReceiptSources) > 0 {
 		mux.Handle("/internal/v1/payment-receipts", paymentReceiptHandler(st, opt.PaymentReceiptSources))
+	}
+	if len(opt.AssetReceiptSources) > 0 {
+		mux.Handle("/internal/v1/asset-receipts", assetReceiptHandler(st, opt.AssetReceiptSources))
 	}
 	mux.Handle("/", serviceRequestHandler(api, role, credential))
 	return mux
@@ -305,6 +334,10 @@ func contractDraftRoute(role string, methods routeMethodSet, parts []string) boo
 			return methods.post
 		case "payments":
 			return methods.read
+		case "assets":
+			return methods.read
+		case "asset-handovers":
+			return methods.post
 		case "payment-eligibility-checks":
 			return methods.post
 		case "registrations", "supplements":
