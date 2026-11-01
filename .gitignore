@@ -53,7 +53,6 @@ blob-report/
 infra-*.json
 
 # Design, source materials, presentations and prototypes
-/docs/
 /demos/
 /presentation/
 /materials/
@@ -63,7 +62,28 @@ infra-*.json
 *.md
 !/README.md
 !/AGENTS.md
+!/CHANGELOG.md
+!/CONTRIBUTING.md
 !/.github/pull_request_template.md
+# Curated long-lived handbook sources and the standalone reader package.
+!/docs/
+!/docs/**/
+!/docs/**/*.md
+!/docs/glossary/concepts.json
+# Original research, prompts, samples and run evidence remain external.
+/docs/research/
+/docs/prompts/
+/docs/samples/
+/docs/reports/
+/docs/screenshots/
+!/docs-site/
+!/docs-site/**/
+!/docs-site/README.md
+# Keep reader dependencies, caches and generated output out of the source repo.
+/docs-site/node_modules/
+/docs-site/build/
+/docs-site/.docusaurus/
+/docs-site/.cache/
 *.pdf
 *.doc
 *.docx
