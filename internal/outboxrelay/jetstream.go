@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
+	"sync"
 	"time"
 
 	"github.com/nats-io/nats.go"
@@ -20,6 +22,61 @@ type JetStreamBroker struct {
 	conn   *nats.Conn
 	js     jetstream.JetStream
 	stream jetstream.Stream
+}
+
+// WakeSubscription is a coalesced Core NATS notification channel. It deliberately
+// exposes no message bytes: callers use notifications only to refresh durable
+// PostgreSQL state and cannot treat a payload as authorization.
+type WakeSubscription interface {
+	Wake() <-chan struct{}
+	Close() error
+}
+
+type wakeSubscription struct {
+	sub  *nats.Subscription
+	wake chan struct{}
+	once sync.Once
+	err  error
+}
+
+func (s *wakeSubscription) Wake() <-chan struct{} { return s.wake }
+
+func (s *wakeSubscription) Close() error {
+	s.once.Do(func() {
+		if s.sub != nil {
+			s.err = s.sub.Drain()
+		}
+	})
+	return s.err
+}
+
+// SubscribeWake listens on a Core NATS subject using the same authenticated,
+// TLS-configured connection that publishes JetStream messages. Duplicate or
+// burst notifications are coalesced to one wake token; message bodies are
+// discarded without parsing.
+func (b *JetStreamBroker) SubscribeWake(subject string) (WakeSubscription, error) {
+	if b == nil || b.conn == nil || b.conn.IsClosed() {
+		return nil, errors.New("NATS wake subscription requires an open broker connection")
+	}
+	subject = strings.TrimSpace(subject)
+	if subject == "" {
+		return nil, errors.New("NATS wake subscription requires a subject")
+	}
+	wake := make(chan struct{}, 1)
+	sub, err := b.conn.Subscribe(subject, func(*nats.Msg) {
+		select {
+		case wake <- struct{}{}:
+		default:
+		}
+	})
+	if err != nil {
+		return nil, err
+	}
+	if err := b.conn.FlushTimeout(5 * time.Second); err != nil {
+		_ = sub.Unsubscribe()
+		return nil, err
+	}
+	return &wakeSubscription{sub: sub, wake: wake}, nil
 }
 
 // Dial connects to the broker and ensures the notification stream exists. It is

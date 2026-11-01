@@ -53,6 +53,7 @@ type Store struct {
 	experienceAcceptor     ExperienceResultAcceptor
 	telemetry              atomic.Pointer[telemetry.Exporter]
 	metricWorkerID         atomic.Value
+	clmMetrics             atomic.Pointer[CLMMetricsSnapshot]
 	serviceOwner           string
 	queuePolicy            *queueConfiguration
 	sel                    config.Selection

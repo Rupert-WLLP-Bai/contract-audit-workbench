@@ -26,9 +26,11 @@ import (
 	"contractaudit/internal/auditext"
 	"contractaudit/internal/bootstrap"
 	"contractaudit/internal/capabilitypack"
+	"contractaudit/internal/clmoutbox"
 	"contractaudit/internal/config"
 	"contractaudit/internal/externalread"
 	"contractaudit/internal/httpapi"
+	"contractaudit/internal/outboxrelay"
 	"contractaudit/internal/process"
 	"contractaudit/internal/store"
 	"contractaudit/internal/systemhealth"
@@ -106,12 +108,105 @@ func serveCore(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	clmConfig, agedInReviewAfter, err := clmOutboxConfigFromEnv()
+	if err != nil {
+		return err
+	}
 	handler, err := httpapi.ServiceHandler(app.Store, apiOptions, "core", strings.TrimSpace(os.Getenv("GATEWAY_ROLE_TOKEN")))
 	if err != nil {
 		return err
 	}
 	logStartup(app)
-	return listen(ctx, app.Boundary("core", handler))
+	dialCLMBroker := func(dialCtx context.Context, relayConfig outboxrelay.Config) (clmoutbox.Broker, error) {
+		return outboxrelay.Dial(dialCtx, relayConfig)
+	}
+	relayCtx, stopRelay := context.WithCancel(ctx)
+	defer stopRelay()
+	clmDone := make(chan error, 1)
+	go func() {
+		clmDone <- clmoutbox.Serve(relayCtx, app.Store, clmConfig, app.Store, agedInReviewAfter, dialCLMBroker)
+	}()
+	listenErr := listen(ctx, app.Boundary("core", handler))
+	stopRelay()
+	relayErr := <-clmDone
+	if listenErr != nil {
+		return listenErr
+	}
+	if relayErr != nil && !errors.Is(relayErr, context.Canceled) {
+		return fmt.Errorf("CLM outbox service stopped: %w", relayErr)
+	}
+	return nil
+}
+
+func clmOutboxConfigFromEnv() (outboxrelay.Config, *time.Duration, error) {
+	config := outboxrelay.Config{
+		URL:   strings.TrimSpace(os.Getenv("NATS_URL")),
+		Batch: 32, Lease: 30 * time.Second, Poll: 500 * time.Millisecond,
+		PublishTimeout: 5 * time.Second, MaxBackoff: time.Minute, Concurrency: 1,
+		Stream: clmoutbox.DefaultStream, Subject: clmoutbox.DefaultSubject, Replicas: 1,
+	}
+	if value := strings.TrimSpace(os.Getenv("CLM_OUTBOX_STREAM")); value != "" {
+		if !validCLMStreamName(value) {
+			return outboxrelay.Config{}, nil, errors.New("CLM_OUTBOX_STREAM is invalid")
+		}
+		config.Stream = value
+	}
+	if value := strings.TrimSpace(os.Getenv("CLM_OUTBOX_SUBJECT")); value != "" {
+		if !validCLMSubject(value) {
+			return outboxrelay.Config{}, nil, errors.New("CLM_OUTBOX_SUBJECT is invalid")
+		}
+		config.Subject = value
+	}
+	if config.Stream == outboxrelay.Stream || config.Subject == outboxrelay.Subject {
+		return outboxrelay.Config{}, nil, errors.New("CLM outbox stream and subject must be isolated from Execution")
+	}
+	if raw := strings.TrimSpace(os.Getenv("CLM_OUTBOX_STREAM_REPLICAS")); raw != "" {
+		value, err := strconv.Atoi(raw)
+		if err != nil || value < 1 || value > 5 {
+			return outboxrelay.Config{}, nil, errors.New("CLM_OUTBOX_STREAM_REPLICAS must be an integer in 1..5")
+		}
+		config.Replicas = value
+	}
+	var agedAfter *time.Duration
+	if raw := strings.TrimSpace(os.Getenv("CLM_APPROVAL_AGED_AFTER")); raw != "" {
+		value, err := time.ParseDuration(raw)
+		if err != nil || value <= 0 || value > 365*24*time.Hour {
+			return outboxrelay.Config{}, nil, errors.New("CLM_APPROVAL_AGED_AFTER must be a duration in (0,365 days]")
+		}
+		agedAfter = &value
+	}
+	return config, agedAfter, nil
+}
+
+func validCLMStreamName(value string) bool {
+	if value == "" || len(value) > 127 {
+		return false
+	}
+	for _, c := range value {
+		if (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_' || c == '-' {
+			continue
+		}
+		return false
+	}
+	return true
+}
+
+func validCLMSubject(value string) bool {
+	if value == "" || len(value) > 255 {
+		return false
+	}
+	for _, token := range strings.Split(value, ".") {
+		if token == "" {
+			return false
+		}
+		for _, c := range token {
+			if (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_' || c == '-' {
+				continue
+			}
+			return false
+		}
+	}
+	return true
 }
 
 func contractSourceCredentialsFromEnv() ([]httpapi.ContractSourceCredential, error) {

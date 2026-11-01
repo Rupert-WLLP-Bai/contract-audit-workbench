@@ -30,6 +30,9 @@ func (s *Store) runtimeMetrics(ctx context.Context) telemetry.RuntimeSnapshot {
 	result.PoolAcquireDurationMS = float64(stats.AcquireDuration()) / float64(time.Millisecond)
 	result.PoolEmptyAcquireWaitMS = float64(stats.EmptyAcquireWaitTime()) / float64(time.Millisecond)
 	if s.serviceOwner != "worker" {
+		if s.serviceOwner == "core" {
+			s.applyCLMMetricsRuntimeSnapshot(&result)
+		}
 		return result
 	}
 	result.QueueObserved = true

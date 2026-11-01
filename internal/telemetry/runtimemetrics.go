@@ -37,6 +37,27 @@ type RuntimeSnapshot struct {
 	OutboxFailure      string
 	OutboxAgeAvailable bool
 	OutboxOldestMS     float64
+
+	CLMObserved              bool
+	CLMAvailable             bool
+	CLMFailure               string
+	CLMPending               int64
+	CLMPendingAgeAvailable   bool
+	CLMOldestPendingMS       float64
+	CLMApproved              CLMApprovalSnapshot
+	CLMReturned              CLMApprovalSnapshot
+	CLMWithdrawn             CLMApprovalSnapshot
+	CLMTerminated            CLMApprovalSnapshot
+	CLMAgedInReviewAvailable bool
+	CLMAgedInReview          int64
+}
+
+// CLMApprovalSnapshot is a bounded, global summary for one fixed round outcome.
+type CLMApprovalSnapshot struct {
+	Count             int64
+	DurationAvailable bool
+	P50MS             float64
+	P95MS             float64
 }
 
 // Millisecond bounds include long queues and executions; the last bucket is +Inf.
@@ -243,6 +264,63 @@ func (e *Exporter) collectRuntimeMetrics(collect bool) []metric {
 			)
 			if snapshot.OutboxAgeAvailable {
 				metrics = append(metrics, gaugeDuration("audit.outbox.oldest_pending_ms", snapshot.OutboxOldestMS))
+			}
+		}
+	}
+	if snapshot.CLMObserved {
+		available := int64(0)
+		if snapshot.CLMAvailable {
+			available = 1
+		}
+		metrics = append(metrics, gaugeInt("audit.clm.available", available))
+		if snapshot.CLMAvailable {
+			ageAvailable := int64(0)
+			if snapshot.CLMPendingAgeAvailable {
+				ageAvailable = 1
+			}
+			metrics = append(metrics,
+				gaugeInt("audit.clm.outbox.pending", snapshot.CLMPending),
+				gaugeInt("audit.clm.outbox.pending_age_available", ageAvailable),
+			)
+			if snapshot.CLMPendingAgeAvailable {
+				metrics = append(metrics, gaugeDuration("audit.clm.outbox.oldest_pending_ms", snapshot.CLMOldestPendingMS))
+			}
+			for _, outcome := range []struct {
+				name    string
+				latency CLMApprovalSnapshot
+			}{
+				{"approved", snapshot.CLMApproved},
+				{"returned", snapshot.CLMReturned},
+				{"withdrawn", snapshot.CLMWithdrawn},
+				{"terminated", snapshot.CLMTerminated},
+			} {
+				outcomeCount := numberPoint{Attributes: []attribute{stringAttribute("outcome", outcome.name)}, Time: now,
+					AsInt: strconv.FormatInt(outcome.latency.Count, 10)}
+				durationAvailable := int64(0)
+				if outcome.latency.DurationAvailable {
+					durationAvailable = 1
+				}
+				availabilityPoint := numberPoint{Attributes: []attribute{stringAttribute("outcome", outcome.name)}, Time: now,
+					AsInt: strconv.FormatInt(durationAvailable, 10)}
+				metrics = append(metrics,
+					metric{Name: "audit.clm.approval_rounds.completed", Gauge: &gaugeMetric{DataPoints: []numberPoint{outcomeCount}}},
+					metric{Name: "audit.clm.approval_rounds.duration_available", Gauge: &gaugeMetric{DataPoints: []numberPoint{availabilityPoint}}},
+				)
+				if outcome.latency.DurationAvailable {
+					p50, p95 := outcome.latency.P50MS, outcome.latency.P95MS
+					metrics = append(metrics,
+						metric{Name: "audit.clm.approval_rounds.duration_p50_ms", Unit: "ms", Gauge: &gaugeMetric{DataPoints: []numberPoint{{Attributes: []attribute{stringAttribute("outcome", outcome.name)}, Time: now, AsDouble: &p50}}}},
+						metric{Name: "audit.clm.approval_rounds.duration_p95_ms", Unit: "ms", Gauge: &gaugeMetric{DataPoints: []numberPoint{{Attributes: []attribute{stringAttribute("outcome", outcome.name)}, Time: now, AsDouble: &p95}}}},
+					)
+				}
+			}
+			agedAvailable := int64(0)
+			if snapshot.CLMAgedInReviewAvailable {
+				agedAvailable = 1
+			}
+			metrics = append(metrics, gaugeInt("audit.clm.approval_rounds.aged_in_review_available", agedAvailable))
+			if snapshot.CLMAgedInReviewAvailable {
+				metrics = append(metrics, gaugeInt("audit.clm.approval_rounds.aged_in_review", snapshot.CLMAgedInReview))
 			}
 		}
 	}
