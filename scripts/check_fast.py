@@ -79,6 +79,7 @@ CONTRACT_FULFILLMENT_TESTS = (
 )
 CONTRACT_PAYMENT_TESTS = ("TestContractPaymentEligibilityAndTrustedReceiptFacts",)
 CONTRACT_ASSET_TESTS = ("TestContractAssetHandoverAndERPReceiptFacts",)
+CONTRACT_SOURCE_TESTS = ("TestExternalContractSourceObservationOrderingAndAuthorization",)
 
 
 class FastError(RuntimeError):
@@ -329,6 +330,27 @@ def _is_contract_asset(path: str) -> bool:
     )
 
 
+def _is_contract_source(path: str) -> bool:
+    return path in (
+        "cmd/server/main.go",
+        "cmd/server/main_test.go",
+        "internal/clmsource/contract.go",
+        "internal/clmsource/contract_test.go",
+        "internal/httpapi/contract_sources.go",
+        "internal/httpapi/contract_sources_test.go",
+        "internal/httpapi/server.go",
+        "internal/httpapi/services.go",
+        "internal/store/contract_draft.go",
+        "internal/store/contract_sources.go",
+        "internal/store/contract_sources_crypto.go",
+        "internal/store/contract_sources_crypto_test.go",
+        "internal/store/contract_sources_pg_test.go",
+        "internal/store/migrations.go",
+        "internal/store/migrations/0031_contract_source_observations.sql",
+        "internal/store/service_roles.go",
+    )
+
+
 SENSITIVE_RULES = (
     SensitiveRule("auth", _is_auth, AUTH_TESTS),
     SensitiveRule("session", _is_session, SESSION_TESTS),
@@ -342,6 +364,7 @@ SENSITIVE_RULES = (
     SensitiveRule("contract-fulfillment", _is_contract_fulfillment, CONTRACT_FULFILLMENT_TESTS),
     SensitiveRule("contract-payment", _is_contract_payment, CONTRACT_PAYMENT_TESTS),
     SensitiveRule("contract-asset", _is_contract_asset, CONTRACT_ASSET_TESTS),
+    SensitiveRule("contract-source", _is_contract_source, CONTRACT_SOURCE_TESTS),
 )
 
 
