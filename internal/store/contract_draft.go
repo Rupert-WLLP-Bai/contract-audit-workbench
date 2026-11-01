@@ -1081,6 +1081,9 @@ func (s *Store) ImportLegacySignedContract(ctx context.Context, user accounts.Us
 		string(sealedSnapshot), sha256Bytes(sealedSnapshot), current.ID, amountsReconciled); err != nil {
 		return ContractDetail{}, err
 	}
+	if err := insertFrozenContractRevisionItems(ctx, tx, accounts.Tenant(current), contractID, revisionID, input.Snapshot.Items); err != nil {
+		return ContractDetail{}, err
+	}
 	if _, err := tx.Exec(ctx, `UPDATE clm_contracts SET current_revision_id=$3, updated_at=clock_timestamp()
 		WHERE tenant_id=$1 AND contract_id=$2`, accounts.Tenant(current), contractID, revisionID); err != nil {
 		return ContractDetail{}, err

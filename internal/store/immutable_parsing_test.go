@@ -492,6 +492,8 @@ func TestLegacyAttemptMigrationIsRepeatableAndRetryIsRejected(t *testing.T) {
 	// dropping the legacy parse tables. This intentionally avoids CASCADE: the
 	// subsequent reopen must recreate every current constraint from migrations.
 	for _, table := range []string{
+		"clm_contract_acceptance_rectifications", "clm_contract_rectifications", "clm_contract_acceptance_defects",
+		"clm_contract_acceptances", "clm_contract_deliveries", "clm_contract_revision_items",
 		"operator_fulfillment_evaluation_objects",
 		"operator_mapping_change_decisions", "operator_mapping_change_requests", "operator_mapping_lineages",
 		"service_object_contract_associations", "service_object_versions", "service_object_mutation_receipts", "service_objects",
@@ -549,6 +551,7 @@ func TestLegacyAttemptMigrationIsRepeatableAndRetryIsRejected(t *testing.T) {
 		t.Fatal(err)
 	}
 	legacyStatements := []string{
+		`DROP TABLE clm_contract_acceptance_rectifications, clm_contract_rectifications, clm_contract_acceptance_defects, clm_contract_acceptances, clm_contract_deliveries, clm_contract_revision_items`,
 		`DROP TABLE clm_contract_signing_registrations, clm_contract_supplements`,
 		`DROP TABLE clm_contract_audit_bindings, clm_approval_task_transfers, clm_approval_task_materials, clm_approval_decisions, clm_approval_task_assignments, clm_approval_tasks, clm_workflow_role_bindings, clm_workflow_roles, clm_workflow_template_pointers, clm_workflow_template_nodes, clm_workflow_templates`,
 		`DROP TABLE clm_contract_version_seals, clm_contract_version_materials, clm_contract_saved_views, clm_contract_exports`,

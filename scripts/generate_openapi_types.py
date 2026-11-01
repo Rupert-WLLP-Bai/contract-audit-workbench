@@ -23,6 +23,8 @@ SCHEMA = ROOT / "internal/apidocs/openapi.json"
 OUTPUT = ROOT / "web/src/api/wire.generated.ts"
 ROOTS = (
 	"Activity", "ArchiveRequest", "CaseProfile", "CaseProfileInput", "CaseRelationInput",
+	"ContractAcceptance", "ContractAcceptanceDefect", "ContractAcceptanceDefectInput", "ContractAcceptanceList", "ContractAcceptanceRequest",
+	"ContractDelivery", "ContractDeliveryList", "ContractDeliveryRequest", "ContractFulfillmentItemSummary", "ContractRectification", "ContractRectificationRequest",
     "ContractSigningCheckRequest", "ContractSigningCheckResult", "ManualSigningComparison", "ContractSigningRegistration",
     "ContractSigningRegistrationList", "ContractSigningRegistrationRequest", "ContractSupplement",
     "ContractSupplementList", "ContractSupplementRequest", "ContractSupplementResult",

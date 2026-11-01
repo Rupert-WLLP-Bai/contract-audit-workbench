@@ -268,6 +268,9 @@ func (s *Store) FreezeContractVersion(ctx context.Context, user accounts.User, i
 	if err != nil {
 		return FreezeContractVersionResult{}, clmUniqueViolation(err, "合同版本已被他人冻结，请刷新后确认")
 	}
+	if err := insertFrozenContractRevisionItems(ctx, tx, accounts.Tenant(current), id, revisionID, plaintext.Items); err != nil {
+		return FreezeContractVersionResult{}, err
+	}
 	for _, material := range materials {
 		if _, err := tx.Exec(ctx, `INSERT INTO clm_contract_version_materials
 			(tenant_id,contract_id,contract_revision_id,material_id,material_version_id,case_org_id,case_id,material_version,filename,digest,purpose)

@@ -72,6 +72,10 @@ FROZEN_EVIDENCE_TESTS = (
 CONTRACT_SIGNING_TESTS = (
     "TestContractSigningRequiresHumanSourceAttestationAndApprovedRevision",
 )
+CONTRACT_FULFILLMENT_TESTS = (
+    "TestContractFulfillmentPartialAcceptanceAndLinearRetest",
+    "TestContractFulfillmentLegacyMigrationSkipsUnknownPlans",
+)
 
 
 class FastError(RuntimeError):
@@ -268,6 +272,14 @@ def _is_contract_signing(path: str) -> bool:
     )
 
 
+def _is_contract_fulfillment(path: str) -> bool:
+    return path in (
+        "internal/store/contract_fulfillment.go",
+        "internal/store/contract_fulfillment_pg_test.go",
+        "internal/store/migrations/0028_contract_fulfillment.sql",
+    )
+
+
 SENSITIVE_RULES = (
     SensitiveRule("auth", _is_auth, AUTH_TESTS),
     SensitiveRule("session", _is_session, SESSION_TESTS),
@@ -278,6 +290,7 @@ SENSITIVE_RULES = (
     SensitiveRule("database-core", _is_database_core, DATABASE_CORE_TESTS),
     SensitiveRule("frozen-evidence", _is_frozen_evidence, FROZEN_EVIDENCE_TESTS),
     SensitiveRule("contract-signing", _is_contract_signing, CONTRACT_SIGNING_TESTS),
+    SensitiveRule("contract-fulfillment", _is_contract_fulfillment, CONTRACT_FULFILLMENT_TESTS),
 )
 
 

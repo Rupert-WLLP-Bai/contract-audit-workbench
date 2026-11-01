@@ -44,6 +44,7 @@ import type { Actor } from "../api/types";
 import { PageStatus } from "../components/page-status";
 import { ContractReferencesPanel } from "../components/contract-references-panel";
 import { ContractSigningPanel } from "../components/contract-signing-panel";
+import { ContractFulfillmentPanel } from "../components/contract-fulfillment-panel";
 import { formatDateTime } from "../domain/review";
 import "./contracts-page.css";
 
@@ -1397,6 +1398,14 @@ export function ContractsPage() {
                   actor={actor}
                   onRefresh={async () => resetEditor(await getContract(contractID))}
                   onOpenDraft={(id) => void openDraft(id)}
+                />
+              ) : null}
+              {contractID !== null && contractDetail !== null ? (
+                <ContractFulfillmentPanel
+                  key={`${contractID}-fulfillment-${actor?.audience ?? "anonymous"}-${actor?.tenant_id ?? ""}-${actor?.org_id ?? ""}-${actor?.id ?? ""}-${actor?.role ?? ""}`}
+                  detail={contractDetail}
+                  actor={actor}
+                  onRefresh={async () => resetEditor(await getContract(contractID))}
                 />
               ) : null}
 
