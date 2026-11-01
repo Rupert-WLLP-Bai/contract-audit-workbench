@@ -200,6 +200,7 @@ type Service struct {
 	upstreamAt    time.Time
 	upstreamCfg   upstreamConfig
 	upstreamErr   error
+	budgetStatus  []byte
 
 	jev        JevConfig
 	jevClient  *jev.Client
@@ -277,6 +278,7 @@ func validateFixtureConfig(config Config) error {
 func newService(st *store.Store, config Config) *Service {
 	return &Service{
 		store: st, config: config, client: &http.Client{Timeout: config.RequestTimeout},
+		budgetStatus:  encodeModelBudgetStatus(config),
 		guardedClient: llmendpoint.GuardedClient(config.RequestTimeout),
 		queue:         make(chan struct{}, config.QueueCapacity), concurrency: make(chan struct{}, config.MaxConcurrency),
 		circuit: circuitBreaker{threshold: config.CircuitFailureThreshold, cooldown: config.CircuitCooldown},
@@ -295,6 +297,7 @@ func (s *Service) Handler() http.Handler {
 	mux.HandleFunc("/v1/chat/completions", s.chatCompletions)
 	mux.HandleFunc("/v1/systemone", s.systemOne)
 	mux.HandleFunc("/health/jev", s.jevHealth)
+	mux.HandleFunc("/health/model-budget", s.modelBudgetHealth)
 	return mux
 }
 

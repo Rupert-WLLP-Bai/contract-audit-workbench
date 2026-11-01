@@ -206,7 +206,7 @@ func adminRoute(role string, m routeMethodSet, parts []string) bool {
 		return false
 	}
 	switch parts[1] {
-	case "settings", "system-health":
+	case "settings", "system-health", "tenant-operations":
 		return len(parts) == 2 && m.read
 	case "company-policy-sources":
 		return len(parts) == 2 && m.read

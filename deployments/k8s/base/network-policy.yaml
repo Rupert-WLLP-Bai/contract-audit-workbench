@@ -71,8 +71,8 @@ spec:
 ---
 # core-api: edge-forwarded API traffic (gateway) and worker result delivery.
 # Egress: PostgreSQL authority store, RustFS intake object writes, document
-# intake upload, DNS, and external HTTP(S) for OIDC issuer discovery/token
-# exchange plus admin-managed LLM endpoint probes (sealed credentials).
+# intake upload, credential-free model budget metadata, DNS, and external
+# HTTP(S) for OIDC exchange plus admin-managed LLM endpoint probes.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -104,6 +104,8 @@ spec:
       ports: [{protocol: TCP, port: 9000}]
     - to: [{podSelector: {matchLabels: {app.kubernetes.io/name: document-service}}}]
       ports: [{protocol: TCP, port: 8082}]
+    - to: [{podSelector: {matchLabels: {app.kubernetes.io/name: model-gateway}}}]
+      ports: [{protocol: TCP, port: 8084}]
     - to: [{ipBlock: {cidr: 0.0.0.0/0}}]
       ports:
         - {protocol: TCP, port: 80}
@@ -209,10 +211,10 @@ spec:
     - to: [{podSelector: {matchLabels: {app.kubernetes.io/name: tool-gateway}}}]
       ports: [{protocol: TCP, port: 8085}]
 ---
-# model-gateway: worker and document callers, plus health-monitor snapshots in
-# the local k3d profile (no such pods exist in production). Egress: PostgreSQL
-# and external HTTP(S) for the deployment LLM_BASE_URL and admin-managed
-# endpoint rows.
+# model-gateway: worker and document callers, Core budget metadata reads, plus
+# health-monitor snapshots in the local k3d profile. Core holds no model caller
+# credential. Egress: PostgreSQL and external HTTP(S) for deployment or stored
+# provider endpoints.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -226,6 +228,8 @@ spec:
     - from: [{podSelector: {matchLabels: {app.kubernetes.io/name: audit-worker}}}]
       ports: [{protocol: TCP, port: 8084}]
     - from: [{podSelector: {matchLabels: {app.kubernetes.io/name: document-service}}}]
+      ports: [{protocol: TCP, port: 8084}]
+    - from: [{podSelector: {matchLabels: {app.kubernetes.io/name: core-api}}}]
       ports: [{protocol: TCP, port: 8084}]
     - from: [{podSelector: {matchLabels: {app.kubernetes.io/name: health-monitor}}}]
       ports: [{protocol: TCP, port: 8084}]
