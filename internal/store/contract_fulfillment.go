@@ -729,7 +729,7 @@ func (s *Store) ListContractDeliveries(ctx context.Context, user accounts.User, 
 	if err != nil {
 		return ContractDeliveryList{}, err
 	}
-	if !authorizeContract(record, current, access.Read) {
+	if !authorizeContractRead(ctx, tx, record, current) {
 		return ContractDeliveryList{}, fault.NotFound("没有找到对应记录")
 	}
 	rows, err := tx.Query(ctx, `SELECT delivery.delivery_id::text,delivery.contract_revision_id::text,delivery.delivery_plan_sequence,
@@ -1433,7 +1433,7 @@ func (s *Store) ListContractAcceptances(ctx context.Context, user accounts.User,
 	if err != nil {
 		return ContractAcceptanceList{}, err
 	}
-	if !authorizeContract(record, current, access.Read) {
+	if !authorizeContractRead(ctx, tx, record, current) {
 		return ContractAcceptanceList{}, fault.NotFound("没有找到对应记录")
 	}
 	rows, err := tx.Query(ctx, `SELECT acceptance.acceptance_id::text,acceptance.contract_revision_id::text,acceptance.delivery_id::text,acceptance.item_id::text,

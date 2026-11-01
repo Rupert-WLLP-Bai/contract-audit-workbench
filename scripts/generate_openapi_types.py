@@ -24,6 +24,7 @@ OUTPUT = ROOT / "web/src/api/wire.generated.ts"
 ROOTS = (
 	"Activity", "ArchiveRequest", "CaseProfile", "CaseProfileInput", "CaseRelationInput",
 	"ContractAcceptance", "ContractAcceptanceDefect", "ContractAcceptanceDefectInput", "ContractAcceptanceList", "ContractAcceptanceRequest",
+	"ContractSourceCapability",
 	"ContractDelivery", "ContractDeliveryList", "ContractDeliveryRequest", "ContractFulfillmentItemSummary", "ContractRectification", "ContractRectificationRequest",
     "ContractPaymentEligibilityRequest", "ContractPaymentEligibility", "ContractPaymentReceiptRequest", "ContractPaymentReceipt", "ContractPaymentSummary",
     "ContractAssetList", "ContractAssetPlanSummary", "ContractAssetHandover", "ContractAssetReceipt",

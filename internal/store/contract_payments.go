@@ -11,7 +11,6 @@ import (
 	"strings"
 	"time"
 
-	"contractaudit/internal/access"
 	"contractaudit/internal/accounts"
 	"contractaudit/internal/fault"
 	"github.com/jackc/pgx/v5"
@@ -477,7 +476,7 @@ func (s *Store) ListContractPayments(ctx context.Context, user accounts.User, co
 	if err != nil {
 		return nil, err
 	}
-	if !authorizeContract(record, current, access.Read) {
+	if !authorizeContractRead(ctx, tx, record, current) {
 		return nil, fault.NotFound("没有找到对应记录")
 	}
 	revisions, err := tx.Query(ctx, `SELECT contract_revision_id::text,snapshot FROM clm_contract_revisions WHERE tenant_id=$1 AND contract_id=$2 ORDER BY revision_number DESC`, record.TenantID, record.ContractID)

@@ -11,7 +11,6 @@ import (
 	"strings"
 	"time"
 
-	"contractaudit/internal/access"
 	"contractaudit/internal/accounts"
 	"contractaudit/internal/fault"
 	"github.com/jackc/pgx/v5"
@@ -591,7 +590,7 @@ func (s *Store) ListContractAssets(ctx context.Context, user accounts.User, cont
 	if err != nil {
 		return out, err
 	}
-	if !authorizeContract(record, current, access.Read) {
+	if !authorizeContractRead(ctx, tx, record, current) {
 		return out, fault.NotFound("没有找到对应记录")
 	}
 	out = ContractAssetList{ContractID: record.ContractID, RowVersion: record.RowVersion, FixedAssetStatus: "unknown", Items: []ContractAssetPlanSummary{}}

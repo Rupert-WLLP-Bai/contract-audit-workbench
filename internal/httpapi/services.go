@@ -26,6 +26,9 @@ func ServiceHandler(st *store.Store, opt Options, role, credential string) (http
 	if err := validateAssetReceiptSources(role, credential, &opt); err != nil {
 		return nil, err
 	}
+	if err := validateContractSources(role, credential, &opt); err != nil {
+		return nil, err
+	}
 	return buildServiceHandler(st, opt, role, credential), nil
 }
 
@@ -122,8 +125,39 @@ func buildServiceHandler(st *store.Store, opt Options, role, credential string) 
 	if len(opt.AssetReceiptSources) > 0 {
 		mux.Handle("/internal/v1/asset-receipts", assetReceiptHandler(st, opt.AssetReceiptSources))
 	}
+	if len(opt.ContractSourceCredentials) > 0 {
+		mux.Handle("/internal/v1/contract-source-observations", contractSourceObservationHandler(st, opt.ContractSourceCredentials))
+	}
 	mux.Handle("/", serviceRequestHandler(api, role, credential))
 	return mux
+}
+
+func validateContractSources(role, gatewayCredential string, opt *Options) error {
+	if len(opt.ContractSourceCredentials) == 0 {
+		return nil
+	}
+	if role != "core" {
+		return errors.New("contract source credentials are accepted only by Core")
+	}
+	if err := validateContractSourceCredentials(opt.ContractSourceCredentials); err != nil {
+		return err
+	}
+	for _, source := range opt.ContractSourceCredentials {
+		if subtle.ConstantTimeCompare([]byte(source.Secret), []byte(gatewayCredential)) == 1 || subtle.ConstantTimeCompare([]byte(source.Secret), []byte(opt.ExperienceWorkerCredential)) == 1 {
+			return errors.New("contract source credentials must be private and action-specific")
+		}
+		for _, payment := range opt.PaymentReceiptSources {
+			if source.KeyID == payment.KeyID || subtle.ConstantTimeCompare([]byte(source.Secret), []byte(payment.Secret)) == 1 {
+				return errors.New("contract source and payment receipt credentials must use distinct action-specific keys")
+			}
+		}
+		for _, asset := range opt.AssetReceiptSources {
+			if source.KeyID == asset.KeyID || subtle.ConstantTimeCompare([]byte(source.Secret), []byte(asset.Secret)) == 1 {
+				return errors.New("contract source and asset receipt credentials must use distinct action-specific keys")
+			}
+		}
+	}
+	return nil
 }
 
 func serviceRequestHandler(api http.Handler, role, credential string) http.Handler {

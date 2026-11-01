@@ -9,7 +9,6 @@ import (
 	"strconv"
 	"strings"
 
-	"contractaudit/internal/access"
 	"contractaudit/internal/accounts"
 	"contractaudit/internal/fault"
 
@@ -104,7 +103,7 @@ func (s *Store) DiffContractVersions(ctx context.Context, user accounts.User, co
 	if err != nil {
 		return ContractVersionDiff{}, err
 	}
-	if !authorizeContract(record, current, access.Read) {
+	if !authorizeContractRead(ctx, tx, record, current) {
 		return ContractVersionDiff{}, fault.NotFound("没有找到对应记录")
 	}
 	if err := setLocalScope(ctx, tx, dbScope{ActorID: current.ID, TenantID: accounts.Tenant(current), OrgID: record.OwnerOrgID, Role: "api"}); err != nil {

@@ -98,6 +98,10 @@ func serveCore(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	apiOptions.ContractSourceCredentials, err = contractSourceCredentialsFromEnv()
+	if err != nil {
+		return err
+	}
 	apiOptions.IntakeUploader, err = bootstrap.ConfiguredIntakeUploader()
 	if err != nil {
 		return err
@@ -108,6 +112,24 @@ func serveCore(ctx context.Context) error {
 	}
 	logStartup(app)
 	return listen(ctx, app.Boundary("core", handler))
+}
+
+func contractSourceCredentialsFromEnv() ([]httpapi.ContractSourceCredential, error) {
+	raw := strings.TrimSpace(os.Getenv("CONTRACT_SOURCE_CREDENTIALS_JSON"))
+	if raw == "" {
+		return nil, nil
+	}
+	decoder := json.NewDecoder(strings.NewReader(raw))
+	decoder.DisallowUnknownFields()
+	var sources []httpapi.ContractSourceCredential
+	if err := decoder.Decode(&sources); err != nil {
+		return nil, errors.New("contract source configuration is invalid")
+	}
+	var trailing any
+	if err := decoder.Decode(&trailing); err != io.EOF || len(sources) == 0 {
+		return nil, errors.New("contract source configuration is invalid")
+	}
+	return sources, nil
 }
 
 func assetReceiptSourcesFromEnv() ([]httpapi.AssetReceiptSourceCredential, error) {

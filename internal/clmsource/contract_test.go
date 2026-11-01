@@ -92,8 +92,24 @@ func TestCompareVersionOpaqueAndOutOfOrder(t *testing.T) {
 }
 
 func TestCompareVersionSameVersionReplayOrConflict(t *testing.T) {
+	decision, err := CompareVersion(SnapshotVersion{}, SnapshotVersion{Version: "first", Digest: digestA}, VersionOpaque)
+	if err != nil || decision != VersionArchiveObservationOnly {
+		t.Fatalf("first opaque version must remain observation-only: decision=%q err=%v", decision, err)
+	}
+	decision, err = CompareVersion(SnapshotVersion{}, SnapshotVersion{Version: "first", Digest: digestA}, VersionMonotonicSequence)
+	if err != nil || decision != VersionArchiveObservationOnly {
+		t.Fatalf("first monotonic version without sequence must remain observation-only: decision=%q err=%v", decision, err)
+	}
+	decision, err = CompareVersion(SnapshotVersion{}, SnapshotVersion{Version: "first", Digest: digestA, Sequence: 7}, VersionMonotonicSequence)
+	if err != nil || decision != VersionAdvanceCurrent {
+		t.Fatalf("first authenticated sequenced version: decision=%q err=%v", decision, err)
+	}
+	decision, err = CompareVersion(SnapshotVersion{Version: "unsequenced", Digest: digestA}, SnapshotVersion{Version: "first-sequenced", Digest: digestB, Sequence: 2}, VersionMonotonicSequence)
+	if err != nil || decision != VersionAdvanceCurrent {
+		t.Fatalf("first trusted sequence after unsequenced observations: decision=%q err=%v", decision, err)
+	}
 	current := SnapshotVersion{Version: "opaque:abc", Digest: digestA}
-	decision, err := CompareVersion(current, current, VersionOpaque)
+	decision, err = CompareVersion(current, current, VersionOpaque)
 	if err != nil || decision != VersionReplay {
 		t.Fatalf("same version/digest: decision=%q err=%v", decision, err)
 	}

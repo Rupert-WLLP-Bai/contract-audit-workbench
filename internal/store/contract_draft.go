@@ -67,15 +67,18 @@ type ContractSummary struct {
 // draft (restricted fields revealed or masked by authorization) and routing
 // facts for imported sources.
 type ContractDetail struct {
-	Summary             ContractSummary              `json:"summary"`
-	CurrentRevisionID   *string                      `json:"current_revision_id"`
-	Draft               *DraftContent                `json:"draft,omitempty"`
-	ActiveRoundID       *string                      `json:"active_round_id"`
-	AllowedCommands     []string                     `json:"allowed_commands"`
-	SourceRef           *SourceRef                   `json:"source_ref,omitempty"`
-	SourceObservedAt    *time.Time                   `json:"source_observed_at,omitempty"`
-	SigningRegistration *ContractSigningRegistration `json:"signing_registration,omitempty"`
-	Warnings            []string                     `json:"warnings"`
+	Summary                      ContractSummary              `json:"summary"`
+	CurrentRevisionID            *string                      `json:"current_revision_id"`
+	Draft                        *DraftContent                `json:"draft,omitempty"`
+	ActiveRoundID                *string                      `json:"active_round_id"`
+	AllowedCommands              []string                     `json:"allowed_commands"`
+	SourceRef                    *SourceRef                   `json:"source_ref,omitempty"`
+	SourceID                     string                       `json:"source_id,omitempty"`
+	SourceObservedAt             *time.Time                   `json:"source_observed_at,omitempty"`
+	SourceObservedState          string                       `json:"source_observed_state,omitempty"`
+	SourceObservationDisposition string                       `json:"source_observation_disposition,omitempty"`
+	SigningRegistration          *ContractSigningRegistration `json:"signing_registration,omitempty"`
+	Warnings                     []string                     `json:"warnings"`
 }
 
 // ContractDraftSummary is one own-draft row for recovery after an interruption.
@@ -193,6 +196,17 @@ func authorizeContract(record clmContractRecord, user accounts.User, action acce
 		OrgID: record.OwnerOrgID, OwnerID: record.CreatedBy,
 	}
 	return access.Check(action, principal, resource, time.Now().UTC()).Allowed
+}
+
+func authorizeContractRead(ctx context.Context, tx pgx.Tx, record clmContractRecord, user accounts.User) bool {
+	if record.AuthorityMode != "external" {
+		return authorizeContract(record, user, access.Read)
+	}
+	current, err := trustedUser(user)
+	if err != nil {
+		return false
+	}
+	return checkExternalContractCaseRead(ctx, tx, record, current)
 }
 
 // scopedContractLock serialises contract writers without touching the legacy
@@ -331,7 +345,7 @@ func replayCLMWriteReceipt(ctx context.Context, tx pgx.Tx, current accounts.User
 	if err != nil {
 		return clmWriteReceipt{}, false, err
 	}
-	if !authorizeContract(record, current, access.Read) {
+	if !authorizeContractRead(ctx, tx, record, current) {
 		return clmWriteReceipt{}, false, fault.NotFound("没有找到对应记录")
 	}
 	return receipt, true, nil
@@ -376,7 +390,7 @@ func draftContentSummaryFacts(contentJSON []byte) (string, *string, *string, err
 }
 
 func clmSummary(record clmContractRecord, name string, amount, currency *string) ContractSummary {
-	return ContractSummary{
+	item := ContractSummary{
 		ContractID:    record.ContractID,
 		AuthorityMode: record.AuthorityMode,
 		Name:          name,
@@ -388,6 +402,11 @@ func clmSummary(record clmContractRecord, name string, amount, currency *string)
 		RowVersion:    record.RowVersion,
 		CreatedAt:     record.CreatedAt,
 	}
+	if record.AuthorityMode == "external" {
+		item.ContractState = "external_observed"
+		item.WorkflowState = "external_observed"
+	}
+	return item
 }
 
 func contractSourceRef(record clmContractRecord) *SourceRef {
@@ -626,7 +645,7 @@ func (s *Store) LoadContractDetail(ctx context.Context, user accounts.User, cont
 	if err != nil {
 		return ContractDetail{}, err
 	}
-	if !authorizeContract(record, current, access.Read) {
+	if !authorizeContractRead(ctx, tx, record, current) {
 		return ContractDetail{}, fault.NotFound("没有找到对应记录")
 	}
 	if err := setLocalScope(ctx, tx, dbScope{ActorID: current.ID, TenantID: accounts.Tenant(current), OrgID: record.OwnerOrgID, Role: "api"}); err != nil {
@@ -696,14 +715,32 @@ func (s *Store) buildContractDetail(ctx context.Context, tx pgx.Tx, record clmCo
 		SourceRef:         contractSourceRef(record),
 		Warnings:          []string{},
 	}
-	if detail.SourceRef != nil {
+	if record.SourceSystem != nil {
+		detail.SourceID = *record.SourceSystem
+	}
+	if record.AuthorityMode == "external" {
+		detail.Summary.ContractState = "external_observed"
+		detail.Summary.WorkflowState = "external_observed"
+		detail.SourceObservedState = "unknown"
+		var observedAt time.Time
+		var state, disposition string
+		err := tx.QueryRow(ctx, `SELECT source_observed_state,disposition,recorded_at
+			FROM clm_contract_source_observations WHERE tenant_id=$1 AND contract_id=$2
+			ORDER BY recorded_at DESC,observation_id DESC LIMIT 1`, accounts.Tenant(current), record.ContractID).
+			Scan(&state, &disposition, &observedAt)
+		if err == nil {
+			detail.SourceObservedState = state
+			detail.SourceObservationDisposition = disposition
+			detail.SourceObservedAt = &observedAt
+		} else if !errors.Is(err, pgx.ErrNoRows) {
+			return ContractDetail{}, nil, err
+		}
+	} else if detail.SourceRef != nil {
 		var importedAt time.Time
 		var historyStatus string
 		err := tx.QueryRow(ctx, `SELECT approval_history_status, imported_at FROM clm_legacy_imports
 			WHERE tenant_id=$1 AND contract_id=$2`, accounts.Tenant(current), record.ContractID).Scan(&historyStatus, &importedAt)
 		if errors.Is(err, pgx.ErrNoRows) {
-			// Source columns without a legacy import row are an inconsistent
-			// aggregate; fail rather than invent provenance.
 			return ContractDetail{}, nil, fault.NotFound("没有找到对应记录")
 		}
 		if err != nil {
@@ -716,7 +753,9 @@ func (s *Store) buildContractDetail(ctx context.Context, tx pgx.Tx, record clmCo
 	}
 	workflowState := "not_started"
 	var latestRoundID *string
-	if err := tx.QueryRow(ctx, `SELECT state,approval_round_id FROM clm_approval_rounds
+	if record.AuthorityMode == "external" {
+		workflowState = "external_observed"
+	} else if err := tx.QueryRow(ctx, `SELECT state,approval_round_id FROM clm_approval_rounds
 		WHERE tenant_id=$1 AND contract_id=$2 ORDER BY round_number DESC LIMIT 1`,
 		accounts.Tenant(current), record.ContractID).Scan(&workflowState, &latestRoundID); err != nil && !errors.Is(err, pgx.ErrNoRows) {
 		return ContractDetail{}, nil, err
@@ -867,7 +906,7 @@ func (s *Store) ReplaceContractDraft(ctx context.Context, user accounts.User, in
 	if err != nil {
 		return ContractDetail{}, err
 	}
-	if !authorizeContract(record, current, access.Read) {
+	if !authorizeContractRead(ctx, tx, record, current) {
 		return ContractDetail{}, fault.NotFound("没有找到对应记录")
 	}
 	if !authorizeContract(record, current, access.Manage) {

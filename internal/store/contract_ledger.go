@@ -181,10 +181,10 @@ var contractLedgerDefaultColumns = []string{
 
 var contractLifecycleStates = map[string]bool{
 	"draft": true, "ready_to_sign": true, "registered": true,
-	"performing": true, "closed": true, "terminated": true,
+	"performing": true, "closed": true, "terminated": true, "external_observed": true,
 }
 
-var contractWorkflowStates = map[string]bool{"not_started": true, "in_review": true}
+var contractWorkflowStates = map[string]bool{"not_started": true, "in_review": true, "external_observed": true}
 var contractAuthorityModes = map[string]bool{"native": true, "external": true}
 var contractValidityStates = map[string]bool{"active": true, "voided": true}
 
@@ -437,7 +437,10 @@ func contractLedgerItemFrom(record clmContractRecord, content []byte, inReview b
 		SourceSystem: record.SourceSystem, RowVersion: record.RowVersion,
 		CreatedAt: record.CreatedAt, UpdatedAt: record.UpdatedAt,
 	}
-	if inReview {
+	if record.AuthorityMode == "external" {
+		item.ContractState = "external_observed"
+		item.WorkflowState = "external_observed"
+	} else if inReview {
 		item.WorkflowState = "in_review"
 	}
 	if basics := draft.Contract; basics != nil {
@@ -484,7 +487,7 @@ func appendContractLedgerFilter(where *strings.Builder, args *[]any, filter Cont
 		add(` AND k.content->'contract'->>'procurement_method'=$%d`, filter.ProcurementMethod)
 	}
 	if filter.ContractState != "" {
-		add(` AND k.lifecycle_state=$%d`, filter.ContractState)
+		add(` AND (CASE WHEN k.authority_mode='external' THEN 'external_observed' ELSE k.lifecycle_state END)=$%d`, filter.ContractState)
 	}
 	if filter.AuthorityMode != "" {
 		add(` AND k.authority_mode=$%d`, filter.AuthorityMode)
@@ -493,9 +496,11 @@ func appendContractLedgerFilter(where *strings.Builder, args *[]any, filter Cont
 		add(` AND k.validity_state=$%d`, filter.ValidityState)
 	}
 	if filter.WorkflowState == "in_review" {
-		where.WriteString(` AND k.in_review`)
+		where.WriteString(` AND k.authority_mode='native' AND k.in_review`)
 	} else if filter.WorkflowState == "not_started" {
-		where.WriteString(` AND NOT k.in_review`)
+		where.WriteString(` AND k.authority_mode='native' AND NOT k.in_review`)
+	} else if filter.WorkflowState == "external_observed" {
+		where.WriteString(` AND k.authority_mode='external'`)
 	}
 	if filter.AmountMin != nil {
 		add(` AND (CASE WHEN k.content->'contract'->>'amount' ~ '`+contractLedgerContentAmount+`' THEN (k.content->'contract'->>'amount')::numeric END) >= $%d::numeric`, *filter.AmountMin)
@@ -619,7 +624,7 @@ func (s *Store) ListContractLedger(ctx context.Context, user accounts.User, quer
 		foundExtra := false
 		for _, row := range rows {
 			afterSet, afterKey, afterID = true, row.sortKey, row.item.ContractID
-			if !authorizeContract(row.record, current, access.Read) {
+			if !authorizeContractRead(ctx, tx, row.record, current) {
 				continue
 			}
 			if len(page.Items) == limit {
@@ -1076,7 +1081,7 @@ func collectContractExportRows(ctx context.Context, tx pgx.Tx, current accounts.
 			if scanned > contractExportMaxScanned {
 				return nil, nil, fault.Invalid("筛选范围过大，请缩小条件后重试")
 			}
-			if !authorizeContract(row.record, current, access.Read) {
+			if !authorizeContractRead(ctx, tx, row.record, current) {
 				continue
 			}
 			if !authorizeContract(row.record, current, access.Export) {
@@ -1158,7 +1163,7 @@ func (s *Store) LoadContractExportForDownload(ctx context.Context, user accounts
 		}
 		records = append(records, record)
 	}
-	if !contractExportAuthorized(records, current) {
+	if !contractExportAuthorized(ctx, tx, records, current) {
 		return ContractExportDownload{}, fault.NotFound("没有找到对应的导出")
 	}
 	for _, row := range rows {
@@ -1192,9 +1197,9 @@ func ReauthorizeContractExportDownload(user accounts.User) error {
 
 // contractExportAuthorized is the single download-time policy check. It is a
 // pure function so the revocation case can be tested without a live directory.
-func contractExportAuthorized(records []clmContractRecord, current accounts.User) bool {
+func contractExportAuthorized(ctx context.Context, tx pgx.Tx, records []clmContractRecord, current accounts.User) bool {
 	for _, record := range records {
-		if !authorizeContract(record, current, access.Read) || !authorizeContract(record, current, access.Export) {
+		if !authorizeContractRead(ctx, tx, record, current) || !authorizeContract(record, current, access.Export) {
 			return false
 		}
 	}

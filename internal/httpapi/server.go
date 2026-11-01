@@ -44,6 +44,7 @@ type Options struct {
 	ExperienceWorkerCredential string
 	PaymentReceiptSources      []PaymentReceiptSourceCredential
 	AssetReceiptSources        []AssetReceiptSourceCredential
+	ContractSourceCredentials  []ContractSourceCredential
 	experienceDeliveryEnabled  bool
 
 	// IntakeUploader is the authenticated Document upload entry used by the
@@ -70,7 +71,7 @@ func Handler(st *store.Store, opt Options) http.Handler {
 	if opt.SystemHealth == nil {
 		opt.SystemHealth = systemhealth.New(systemhealth.Config{DatabaseReady: st.Ready})
 	}
-	h := &handler{store: st, loginCounter: newLoginCounter(), cors: opt.CORSOrigins, models: opt.Models, oidc: opt.OIDC, durable: opt.Durable, secureCookies: opt.SecureCookies, systemHealth: opt.SystemHealth, experienceDeliveryEnabled: opt.experienceDeliveryEnabled, operatorAuditEnabled: opt.OperatorAuditEnabled, capabilityPacks: opt.CapabilityPacks, externalConnectors: opt.ExternalConnectors, externalConnectorInfo: opt.ExternalConnectorInfo, intakeUploader: opt.IntakeUploader, contractAuditBindingsEnabled: opt.ContractAuditBindingsEnabled, eventStreams: make(chan struct{}, maxEventStreams), eventWakeups: newEventWakeups()}
+	h := &handler{store: st, loginCounter: newLoginCounter(), cors: opt.CORSOrigins, models: opt.Models, oidc: opt.OIDC, durable: opt.Durable, secureCookies: opt.SecureCookies, systemHealth: opt.SystemHealth, experienceDeliveryEnabled: opt.experienceDeliveryEnabled, operatorAuditEnabled: opt.OperatorAuditEnabled, capabilityPacks: opt.CapabilityPacks, externalConnectors: opt.ExternalConnectors, externalConnectorInfo: opt.ExternalConnectorInfo, intakeUploader: opt.IntakeUploader, contractAuditBindingsEnabled: opt.ContractAuditBindingsEnabled, contractSources: opt.ContractSourceCredentials, eventStreams: make(chan struct{}, maxEventStreams), eventWakeups: newEventWakeups()}
 	h.modelBudgetGateway = systemhealth.ModelGatewayBaseURLFromEnv()
 	mux := http.NewServeMux()
 	// Every binary in this repository serves the same probe surface so a manifest
@@ -116,6 +117,7 @@ func Handler(st *store.Store, opt Options) http.Handler {
 	registerContractFulfillmentRoutes(mux, h)
 	registerContractPaymentRoutes(mux, h)
 	registerContractAssetRoutes(mux, h)
+	registerContractSourceRoutes(mux, h)
 	registerContractApprovalReadRoutes(mux, h)
 	mux.HandleFunc("GET /api/auth/oidc/login", h.oidcLogin)
 	mux.HandleFunc("GET /api/auth/oidc/callback", h.oidcCallback)
@@ -220,6 +222,7 @@ type handler struct {
 	externalConnectorInfo        []OperatorConnectorInfo
 	intakeUploader               store.CaseIntakeUploader
 	contractAuditBindingsEnabled bool
+	contractSources              []ContractSourceCredential
 	loginCounter                 *loginCounter
 	eventStreams                 chan struct{}
 	eventWakeups                 *eventWakeups

@@ -373,7 +373,7 @@ func (s *Store) CheckContractSigning(ctx context.Context, user accounts.User, in
 	if err != nil {
 		return ContractSigningCheckResult{}, err
 	}
-	if !authorizeContract(record, current, access.Read) {
+	if !authorizeContractRead(ctx, tx, record, current) {
 		return ContractSigningCheckResult{}, fault.NotFound("没有找到对应记录")
 	}
 	if !authorizeContract(record, current, access.Manage) {
@@ -491,7 +491,7 @@ func (s *Store) RegisterContractSigning(ctx context.Context, user accounts.User,
 			return ContractSigningRegistration{}, err
 		}
 		record, err := loadCLMContract(ctx, tx, accounts.Tenant(current), id)
-		if err != nil || !authorizeContract(record, current, access.Read) {
+		if err != nil || !authorizeContractRead(ctx, tx, record, current) {
 			return ContractSigningRegistration{}, fault.NotFound("没有找到对应记录")
 		}
 		if err := requireSigningCaseRead(ctx, tx, current, result.SignedMaterial.CaseOrgID, result.SignedMaterial.CaseID); err != nil {
@@ -509,7 +509,7 @@ func (s *Store) RegisterContractSigning(ctx context.Context, user accounts.User,
 	if err != nil {
 		return ContractSigningRegistration{}, err
 	}
-	if !authorizeContract(record, current, access.Read) {
+	if !authorizeContractRead(ctx, tx, record, current) {
 		return ContractSigningRegistration{}, fault.NotFound("没有找到对应记录")
 	}
 	if !authorizeContract(record, current, access.Manage) {
@@ -719,7 +719,7 @@ func (s *Store) ListContractSigningRegistrations(ctx context.Context, user accou
 	if err != nil {
 		return ContractSigningRegistrationList{}, err
 	}
-	if !authorizeContract(record, current, access.Read) {
+	if !authorizeContractRead(ctx, tx, record, current) {
 		return ContractSigningRegistrationList{}, fault.NotFound("没有找到对应记录")
 	}
 	rows, err := tx.Query(ctx, `SELECT registration_id,contract_revision_id,signing_date::text,

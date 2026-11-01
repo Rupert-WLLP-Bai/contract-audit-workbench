@@ -199,6 +199,88 @@ func TestApprovalDecisionRejectsStaleVersionAndWrongActor(t *testing.T) {
 	}
 }
 
+func TestExternalLegacyActiveApprovalRejectsNewDecisionButKeepsReceiptReplay(t *testing.T) {
+	fixture, _ := newApprovalDecisionEnv(t)
+	ctx := context.Background()
+	contractID, submitted := submitApprovalForDecisionTest(t, fixture, "decision-external-legacy-submit")
+	reviewer := approvalTestUser(t, "demo-reviewer")
+	first, second := submitted.Tasks[0], submitted.Tasks[1]
+	firstResult, err := fixture.core.DecideApprovalTask(ctx, reviewer, DecideApprovalTaskInput{
+		TaskID: first.ApprovalTaskID, Decision: clmDecisionApprove,
+		ExpectedRoundRowVersion: submitted.Round.RowVersion, IdempotencyKey: "decision-external-legacy-first",
+	})
+	if err != nil {
+		t.Fatalf("prepare prior native decision receipt: %v", err)
+	}
+
+	tx, err := fixture.core.pool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := setLocalScope(ctx, tx, userScope(fixture.admin)); err != nil {
+		_ = tx.Rollback(ctx)
+		t.Fatal(err)
+	}
+	if _, err := tx.Exec(ctx, `UPDATE clm_contracts SET authority_mode='external',
+		source_system='legacy-approval-source',external_contract_id='legacy-approval-contract',source_version='legacy-v1'
+		WHERE tenant_id=$1 AND contract_id=$2`, accounts.Tenant(fixture.admin), contractID); err != nil {
+		_ = tx.Rollback(ctx)
+		t.Fatalf("preserve legacy draft with active external approval task: %v", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	replayed, err := fixture.core.DecideApprovalTask(ctx, reviewer, DecideApprovalTaskInput{
+		TaskID: first.ApprovalTaskID, Decision: clmDecisionApprove,
+		ExpectedRoundRowVersion: submitted.Round.RowVersion, IdempotencyKey: "decision-external-legacy-first",
+	})
+	if err != nil || replayed.DecisionID != firstResult.DecisionID {
+		t.Fatalf("authorized prior decision receipt should remain replayable: %+v err=%v", replayed, err)
+	}
+
+	counts := func() (decisions, events, outbox int) {
+		t.Helper()
+		readTx, err := fixture.core.pool.Begin(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer rollbackCLM(readTx)
+		if err := setLocalScope(ctx, readTx, userScope(fixture.admin)); err != nil {
+			t.Fatal(err)
+		}
+		if err := readTx.QueryRow(ctx, `SELECT
+			(SELECT count(*) FROM clm_approval_decisions WHERE tenant_id=$1 AND contract_id=$2),
+			(SELECT count(*) FROM clm_business_events WHERE tenant_id=$1 AND contract_id=$2),
+			(SELECT count(*) FROM clm_outbox_delivery d JOIN clm_business_events e
+			 ON e.tenant_id=d.tenant_id AND e.event_id=d.event_id WHERE e.tenant_id=$1 AND e.contract_id=$2)`,
+			accounts.Tenant(fixture.admin), contractID).Scan(&decisions, &events, &outbox); err != nil {
+			t.Fatal(err)
+		}
+		return decisions, events, outbox
+	}
+	beforeDecisionCount, beforeEventCount, beforeOutboxCount := counts()
+	_, err = fixture.core.DecideApprovalTask(ctx, reviewer, DecideApprovalTaskInput{
+		TaskID: second.ApprovalTaskID, Decision: clmDecisionApprove,
+		ExpectedRoundRowVersion: firstResult.Round.RowVersion, IdempotencyKey: "decision-external-legacy-denied",
+	})
+	assertFaultStatus(t, err, 403, "new local decision on a legacy external contract")
+	afterDecisionCount, afterEventCount, afterOutboxCount := counts()
+	if beforeDecisionCount != afterDecisionCount || beforeEventCount != afterEventCount || beforeOutboxCount != afterOutboxCount {
+		t.Fatalf("external decision rejection changed facts/outbox: decisions %d→%d events %d→%d outbox %d→%d",
+			beforeDecisionCount, afterDecisionCount, beforeEventCount, afterEventCount, beforeOutboxCount, afterOutboxCount)
+	}
+	var taskState, roundState string
+	if err := fixture.core.pool.QueryRow(ctx, `SELECT task.state,round.state FROM clm_approval_tasks task
+		JOIN clm_approval_rounds round ON round.tenant_id=task.tenant_id AND round.contract_id=task.contract_id AND round.approval_round_id=task.approval_round_id
+		WHERE task.tenant_id=$1 AND task.approval_task_id=$2`, accounts.Tenant(fixture.admin), second.ApprovalTaskID).Scan(&taskState, &roundState); err != nil {
+		t.Fatal(err)
+	}
+	if taskState != "active" || roundState != "in_review" {
+		t.Fatalf("legacy external approval history changed after rejected write: task=%s round=%s", taskState, roundState)
+	}
+}
+
 func TestApprovalDecisionIdempotencyAndReturnCancelsRemainingTasks(t *testing.T) {
 	fixture, _ := newApprovalDecisionEnv(t)
 	ctx := context.Background()

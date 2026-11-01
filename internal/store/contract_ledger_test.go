@@ -2,6 +2,7 @@ package store
 
 import (
 	"bytes"
+	"context"
 	"encoding/base64"
 	"errors"
 	"strings"
@@ -10,6 +11,7 @@ import (
 
 	"contractaudit/internal/accounts"
 	"contractaudit/internal/fault"
+	"github.com/jackc/pgx/v5"
 )
 
 func textPointer(value string) *string { return &value }
@@ -112,6 +114,7 @@ func TestContractLedgerCursorBindsActorFilterAndTenant(t *testing.T) {
 }
 
 func TestContractExportAuthorizedRequiresExportForEveryRow(t *testing.T) {
+	var tx pgx.Tx
 	contractID := "22222222-2222-4222-8222-222222222222"
 	admin, ok := accounts.ByID("demo-admin")
 	if !ok {
@@ -121,7 +124,7 @@ func TestContractExportAuthorizedRequiresExportForEveryRow(t *testing.T) {
 		TenantID: accounts.LocalDemoTenant, ContractID: contractID,
 		OwnerOrgID: "demo-org", CreatedBy: "demo-admin",
 	}
-	if !contractExportAuthorized([]clmContractRecord{adminRecord}, admin) {
+	if !contractExportAuthorized(context.Background(), tx, []clmContractRecord{adminRecord}, admin) {
 		t.Fatal("case owner cannot export a visible contract")
 	}
 	reviewer, ok := accounts.ByID("demo-reviewer")
@@ -133,7 +136,7 @@ func TestContractExportAuthorizedRequiresExportForEveryRow(t *testing.T) {
 	if !authorizeContract(reviewerRecord, reviewer, "case.read") {
 		t.Fatal("reviewer should be able to read the bound contract")
 	}
-	if contractExportAuthorized([]clmContractRecord{reviewerRecord}, reviewer) {
+	if contractExportAuthorized(context.Background(), tx, []clmContractRecord{reviewerRecord}, reviewer) {
 		t.Fatal("reviewer without case.export was allowed to download")
 	}
 	if err := ReauthorizeContractExportDownload(accounts.User{ID: "missing", TenantID: accounts.LocalDemoTenant}); faultStatus(err) != 404 {

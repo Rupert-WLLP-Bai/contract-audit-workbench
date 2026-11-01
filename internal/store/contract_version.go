@@ -147,7 +147,7 @@ func (s *Store) FreezeContractVersion(ctx context.Context, user accounts.User, i
 		if err != nil {
 			return FreezeContractVersionResult{}, err
 		}
-		if !authorizeContract(record, current, access.Read) {
+		if !authorizeContractRead(ctx, tx, record, current) {
 			return FreezeContractVersionResult{}, fault.NotFound("没有找到对应记录")
 		}
 		var result FreezeContractVersionResult
@@ -166,7 +166,7 @@ func (s *Store) FreezeContractVersion(ctx context.Context, user accounts.User, i
 	if err != nil {
 		return FreezeContractVersionResult{}, err
 	}
-	if !authorizeContract(record, current, access.Read) {
+	if !authorizeContractRead(ctx, tx, record, current) {
 		return FreezeContractVersionResult{}, fault.NotFound("没有找到对应记录")
 	}
 	if !authorizeContract(record, current, access.Manage) {
@@ -422,7 +422,7 @@ func (s *Store) ListContractVersions(ctx context.Context, user accounts.User, co
 	if err != nil {
 		return ContractVersionList{}, err
 	}
-	if !authorizeContract(record, current, access.Read) {
+	if !authorizeContractRead(ctx, tx, record, current) {
 		return ContractVersionList{}, fault.NotFound("没有找到对应记录")
 	}
 	if err := setLocalScope(ctx, tx, dbScope{ActorID: current.ID, TenantID: accounts.Tenant(current), OrgID: record.OwnerOrgID, Role: "api"}); err != nil {
@@ -504,7 +504,7 @@ func (s *Store) LoadContractVersion(ctx context.Context, user accounts.User, con
 	if err != nil {
 		return ContractVersionDetail{}, err
 	}
-	if !authorizeContract(record, current, access.Read) {
+	if !authorizeContractRead(ctx, tx, record, current) {
 		return ContractVersionDetail{}, fault.NotFound("没有找到对应记录")
 	}
 	if err := setLocalScope(ctx, tx, dbScope{ActorID: current.ID, TenantID: accounts.Tenant(current), OrgID: record.OwnerOrgID, Role: "api"}); err != nil {

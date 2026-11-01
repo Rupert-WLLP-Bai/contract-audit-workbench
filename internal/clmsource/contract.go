@@ -226,7 +226,7 @@ func CompareVersion(current, incoming SnapshotVersion, ordering VersionOrdering)
 		return "", errors.New("incoming snapshot requires version and a lowercase SHA-256 digest")
 	}
 	if current.Version == "" {
-		if ordering == VersionMonotonicSequence && incoming.Sequence == 0 {
+		if ordering == VersionOpaque || incoming.Sequence == 0 {
 			return VersionArchiveObservationOnly, nil
 		}
 		return VersionAdvanceCurrent, nil
@@ -253,8 +253,11 @@ func CompareVersion(current, incoming SnapshotVersion, ordering VersionOrdering)
 		}
 		return VersionReplay, nil
 	}
-	if incoming.Sequence == 0 || current.Sequence == 0 || incoming.Sequence < current.Sequence {
+	if incoming.Sequence == 0 || incoming.Sequence < current.Sequence {
 		return VersionArchiveObservationOnly, nil
+	}
+	if current.Sequence == 0 {
+		return VersionAdvanceCurrent, nil
 	}
 	if incoming.Sequence == current.Sequence {
 		return VersionConflict, nil
