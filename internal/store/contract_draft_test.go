@@ -244,6 +244,26 @@ func TestContractUUIDHelper(t *testing.T) {
 	}
 }
 
+func TestContractDraftCommandsFollowManageAuthority(t *testing.T) {
+	record := clmContractRecord{AuthorityMode: "native", LifecycleState: "draft", ValidityState: "active"}
+	if got := clmDraftCommands(record, true); len(got) != 1 || got[0] != "replace_draft" {
+		t.Fatalf("manager commands = %v", got)
+	}
+	if got := clmDraftCommands(record, false); len(got) != 0 {
+		t.Fatalf("viewer must not receive a write command: %v", got)
+	}
+	closed := record
+	closed.LifecycleState = "registered"
+	if got := clmDraftCommands(closed, true); len(got) != 0 {
+		t.Fatalf("registered contract commands = %v", got)
+	}
+	external := record
+	external.AuthorityMode = "external"
+	if got := clmDraftCommands(external, true); len(got) != 0 {
+		t.Fatalf("external mirror commands = %v", got)
+	}
+}
+
 func TestDraftSummaryFactsIgnoreRestrictedFields(t *testing.T) {
 	testCLMDataKey(t)
 	_, encoded, _, err := sealDraftContent(sampleDraftContent())

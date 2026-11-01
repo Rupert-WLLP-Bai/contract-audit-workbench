@@ -503,7 +503,7 @@ func (s *Store) CreateContractDraft(ctx context.Context, user accounts.User, inp
 	sealedDetail := ContractDetail{
 		Summary:         clmSummary(record, name, amount, currency),
 		ActiveRoundID:   nil,
-		AllowedCommands: clmDraftCommands(record),
+		AllowedCommands: clmDraftCommands(record, true),
 		Draft:           sealedDraftOf(sealedBytes),
 		Warnings:        []string{},
 	}
@@ -542,7 +542,14 @@ func clmUniqueViolation(err error, message string) error {
 	return err
 }
 
-func clmDraftCommands(record clmContractRecord) []string {
+// clmDraftCommands lists the commands the caller may actually issue. A viewer
+// without manage authority must not see replace_draft: the masked restricted
+// fields are not writable, so offering the command would only invite a
+// conflict with the stored sealed values.
+func clmDraftCommands(record clmContractRecord, canManage bool) []string {
+	if !canManage {
+		return []string{}
+	}
 	if record.AuthorityMode == "native" && record.LifecycleState == "draft" && record.ValidityState == "active" {
 		return []string{"replace_draft"}
 	}
@@ -635,7 +642,7 @@ func (s *Store) buildContractDetail(ctx context.Context, tx pgx.Tx, record clmCo
 		Summary:           clmSummary(record, name, amount, currency),
 		CurrentRevisionID: record.CurrentRevisionID,
 		ActiveRoundID:     nil,
-		AllowedCommands:   clmDraftCommands(record),
+		AllowedCommands:   clmDraftCommands(record, authorizeContract(record, current, access.Manage)),
 		SourceRef:         contractSourceRef(record),
 		Warnings:          []string{},
 	}
@@ -836,7 +843,7 @@ func (s *Store) ReplaceContractDraft(ctx context.Context, user accounts.User, in
 	sealedDetail := ContractDetail{
 		Summary:         clmSummary(record, name, amount, currency),
 		ActiveRoundID:   nil,
-		AllowedCommands: clmDraftCommands(record),
+		AllowedCommands: clmDraftCommands(record, true),
 		Draft:           sealedDraftOf(sealedBytes),
 		Warnings:        []string{},
 	}
@@ -1051,7 +1058,7 @@ func (s *Store) ImportLegacySignedContract(ctx context.Context, user accounts.Us
 		Summary:           clmSummary(record, detailName, detailAmount, detailCurrency),
 		CurrentRevisionID: new(revisionID),
 		ActiveRoundID:     nil,
-		AllowedCommands:   clmDraftCommands(record),
+		AllowedCommands:   clmDraftCommands(record, true),
 		SourceRef:         contractSourceRef(record),
 		SourceObservedAt:  new(importedAt),
 		Warnings:          clmImportWarnings(input.ApprovalHistoryStatus),
