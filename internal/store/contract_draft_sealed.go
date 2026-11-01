@@ -31,11 +31,11 @@ var errCLMKeyUnavailable = fault.New(503, "clm_data_key_unavailable",
 
 var errCLMStoredValue = errors.New("合同敏感字段存储格式无效或与数据密钥不匹配")
 
-// clmDataKey parses the configured base64 key on every use. The parse is
+// clmDataKeyBytes parses the configured base64 key on every use. The parse is
 // cheap, and refusing to cache keeps a reconfigured or cleared environment
 // authoritative for every later call; a missing, malformed or wrong-length
 // key is an explicit configuration failure, never a fallback.
-func clmDataKey() (cipher.AEAD, error) {
+func clmDataKeyBytes() ([]byte, error) {
 	raw := strings.TrimSpace(os.Getenv(clmDataKeyEnv))
 	if raw == "" {
 		return nil, errCLMKeyUnavailable
@@ -47,9 +47,19 @@ func clmDataKey() (cipher.AEAD, error) {
 	if err != nil || len(decoded) != 32 {
 		return nil, errCLMKeyUnavailable
 	}
+	return decoded, nil
+}
+
+// clmDataKey returns the AEAD used to seal restricted supplier fields. The key
+// bytes are parsed afresh each call; see clmDataKeyBytes.
+func clmDataKey() (cipher.AEAD, error) {
+	decoded, err := clmDataKeyBytes()
+	if err != nil {
+		return nil, err
+	}
 	block, err := aes.NewCipher(decoded)
 	if err != nil {
-		return nil, errCLMKeyUnavailable
+		return nil, err
 	}
 	return cipher.NewGCM(block)
 }

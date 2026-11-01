@@ -221,7 +221,19 @@ func contractDraftRoute(role string, methods routeMethodSet, parts []string) boo
 	if len(parts) == 4 && parts[1] == "exports" && parts[3] == "download" {
 		return methods.read
 	}
-	return len(parts) == 3 && parts[2] == "draft" && methods.put
+	if len(parts) == 3 {
+		switch parts[2] {
+		case "draft":
+			return methods.put
+		case "revisions":
+			return methods.read || methods.post
+		case "revision-diff":
+			return methods.read
+		default:
+			return false
+		}
+	}
+	return len(parts) == 4 && parts[2] == "revisions" && methods.read
 }
 
 func knowledgeRoute(parts []string) bool {

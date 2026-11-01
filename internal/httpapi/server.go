@@ -101,6 +101,7 @@ func Handler(st *store.Store, opt Options) http.Handler {
 	registerManualFindingRoutes(mux, h)
 	registerContractDraftRoutes(mux, h)
 	registerContractReferenceRoutes(mux, h)
+	registerContractVersionRoutes(mux, h)
 	mux.HandleFunc("GET /api/auth/oidc/login", h.oidcLogin)
 	mux.HandleFunc("GET /api/auth/oidc/callback", h.oidcCallback)
 	mux.HandleFunc("GET /api/templates", h.templates)

@@ -246,7 +246,7 @@ func TestContractUUIDHelper(t *testing.T) {
 
 func TestContractDraftCommandsFollowManageAuthority(t *testing.T) {
 	record := clmContractRecord{AuthorityMode: "native", LifecycleState: "draft", ValidityState: "active"}
-	if got := clmDraftCommands(record, true); len(got) != 1 || got[0] != "replace_draft" {
+	if got := clmDraftCommands(record, true); len(got) != 2 || got[0] != "replace_draft" || got[1] != clmCommandFreezeVersion {
 		t.Fatalf("manager commands = %v", got)
 	}
 	if got := clmDraftCommands(record, false); len(got) != 0 {
