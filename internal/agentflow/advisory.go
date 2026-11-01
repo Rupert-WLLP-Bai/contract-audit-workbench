@@ -8,33 +8,35 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"contractaudit/internal/advisorycontract"
 )
 
 const (
 	AdvisoryQuestionSetVersion = "knowledge-relevance/v1"
 
-	AdvisoryModeOff      = "off"
-	AdvisoryModeFixture  = "fixture"
-	AdvisoryModeAdvisory = "advisory"
+	AdvisoryModeOff      = advisorycontract.ModeOff
+	AdvisoryModeFixture  = advisorycontract.ModeFixture
+	AdvisoryModeAdvisory = advisorycontract.ModeAdvisory
 
 	AdvisoryProviderGateway = "model-gateway"
 	AdvisoryProviderFixture = "local-fixture"
 	// AdvisoryFixtureModel is a reserved fake model, not a provider alias. It
 	// may only be used with the gateway fixture route in development/test.
-	AdvisoryFixtureModel = "jev-fixture"
+	AdvisoryFixtureModel = advisorycontract.FixtureModel
 	// AdvisoryProviderDirect is the single-process development path. It is
 	// never accepted outside development/test because no gateway ledger or
 	// caller identity sits between the worker and the provider.
 	AdvisoryProviderDirect = "direct"
 
-	AdvisoryFeatureKnowledgeRerank = "knowledge_rerank"
+	AdvisoryFeatureKnowledgeRerank = advisorycontract.FeatureKnowledgeRerank
 
-	AdvisoryEgressMinimized    = "minimized"
-	AdvisoryEgressApprovedText = "approved_text"
+	AdvisoryEgressMinimized    = advisorycontract.EgressMinimized
+	AdvisoryEgressApprovedText = advisorycontract.EgressApprovedText
 
-	DefaultAdvisoryTimeout       = 3 * time.Second
-	MinAdvisoryTimeout           = 100 * time.Millisecond
-	MaxAdvisoryTimeout           = 30 * time.Second
+	DefaultAdvisoryTimeout       = advisorycontract.DefaultTimeout
+	MinAdvisoryTimeout           = advisorycontract.MinTimeout
+	MaxAdvisoryTimeout           = advisorycontract.MaxTimeout
 	DefaultAdvisoryMaxCandidates = 16
 	MaxAdvisoryMaxCandidates     = 16
 
