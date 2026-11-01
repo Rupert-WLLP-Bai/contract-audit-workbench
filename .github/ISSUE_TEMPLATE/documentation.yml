@@ -1,0 +1,79 @@
+name: 文档与术语
+description: 登记文档、术语或文件说明维护
+title: "[DOCS] "
+labels:
+  - documentation
+  - 阶段/待实现
+  - 验收/NOT_RUN
+body:
+  - type: markdown
+    attributes:
+      value: 新 Issue 默认阶段为待实现、验收状态为 NOT_RUN。只选一个主 area；提交后给 Issue 加上对应的 area 标签。
+  - type: dropdown
+    id: area
+    attributes:
+      label: 主 area 标签
+      options:
+        - area:audit
+        - area:docs
+        - area:infra
+        - area:tenant
+        - area:web
+    validations:
+      required: true
+  - type: textarea
+    id: goal
+    attributes:
+      label: 问题与目标
+      description: 说明复现条件、当前行为和期望行为。
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: 范围与排除项
+      description: 列出本 Issue 包含和不包含的工作。
+    validations:
+      required: true
+  - type: textarea
+    id: dependencies
+    attributes:
+      label: 依赖
+      description: 列出阻塞、相关 Issue 或写“无”。
+    validations:
+      required: true
+  - type: textarea
+    id: ownership
+    attributes:
+      label: 文件所有权
+      description: 列出允许修改的文件或目录。
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: 验收条件
+      description: 写成可逐项核对的结果。
+    validations:
+      required: true
+  - type: textarea
+    id: verification
+    attributes:
+      label: 最小验证
+      description: 指定受影响的局部检查；未执行时记录 NOT_RUN。
+    validations:
+      required: true
+  - type: textarea
+    id: rollback
+    attributes:
+      label: 回退
+      description: 说明回退方式和数据/兼容性限制。
+    validations:
+      required: true
+  - type: textarea
+    id: docs_terms
+    attributes:
+      label: 文档、概念与文件说明影响
+      description: 说明需维护的文档/术语，或写“无”。
+    validations:
+      required: true
