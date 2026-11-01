@@ -273,3 +273,62 @@ func TestApprovalDecisionIdempotencyAndReturnCancelsRemainingTasks(t *testing.T)
 		t.Fatalf("old round decisions changed: %d", firstRoundDecisions)
 	}
 }
+
+// A stale page and a double click are the same race: both carry the round
+// row_version they saw. The contract advisory lock serializes them, so exactly
+// one decision commits and the other receives 409; no ghost successor task is
+// created.
+func TestConcurrentApprovalDecisionsCommitExactlyOnce(t *testing.T) {
+	fixture, _ := newApprovalDecisionEnv(t)
+	ctx := context.Background()
+	contractID, submitted := submitApprovalForDecisionTest(t, fixture, "decision-race-submit")
+	reviewer := approvalTestUser(t, "demo-reviewer")
+	type outcome struct {
+		result ApprovalDecisionResult
+		err    error
+	}
+	start := make(chan struct{})
+	results := make(chan outcome, 2)
+	for index := 0; index < 2; index++ {
+		go func(index int) {
+			<-start
+			result, err := fixture.core.DecideApprovalTask(ctx, reviewer, DecideApprovalTaskInput{
+				TaskID: submitted.Tasks[0].ApprovalTaskID, Decision: clmDecisionApprove,
+				Comment: "并发决定", ExpectedRoundRowVersion: submitted.Round.RowVersion,
+				IdempotencyKey: fmt.Sprintf("decision-race-%02d", index),
+			})
+			results <- outcome{result: result, err: err}
+		}(index)
+	}
+	close(start)
+	successes, conflicts := 0, 0
+	for index := 0; index < 2; index++ {
+		select {
+		case got := <-results:
+			switch {
+			case got.err == nil:
+				successes++
+			case faultStatus(got.err) == 409:
+				conflicts++
+			default:
+				t.Fatalf("unexpected concurrent decision error: %v", got.err)
+			}
+		case <-ctx.Done():
+			t.Fatal(ctx.Err())
+		}
+	}
+	if successes != 1 || conflicts != 1 {
+		t.Fatalf("successes=%d conflicts=%d", successes, conflicts)
+	}
+	var decisions, approved, active int
+	if err := fixture.core.pool.QueryRow(ctx, `SELECT
+		(SELECT count(*) FROM clm_approval_decisions WHERE tenant_id=$1 AND contract_id=$2),
+		(SELECT count(*) FROM clm_approval_tasks WHERE tenant_id=$1 AND contract_id=$2 AND state='approved'),
+		(SELECT count(*) FROM clm_approval_tasks WHERE tenant_id=$1 AND contract_id=$2 AND state='active')`,
+		fixture.admin.TenantID, contractID).Scan(&decisions, &approved, &active); err != nil {
+		t.Fatal(err)
+	}
+	if decisions != 1 || approved != 1 || active != 1 {
+		t.Fatalf("decisions=%d approved=%d active=%d", decisions, approved, active)
+	}
+}

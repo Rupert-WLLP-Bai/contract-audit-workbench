@@ -36,6 +36,11 @@ const ContractsPage = lazy(() =>
     default: module.ContractsPage,
   })),
 );
+const ApprovalTasksPage = lazy(() =>
+  import("./pages/approval-tasks-page").then((module) => ({
+    default: module.ApprovalTasksPage,
+  })),
+);
 const LoginPage = lazy(() =>
   import("./pages/login-page").then((module) => ({
     default: module.LoginPage,
@@ -114,6 +119,7 @@ export function App() {
             <Route path="/review" element={<ReviewEntryPage />} />
             <Route path="/cases" element={<CasesPage />} />
             <Route path="/contracts" element={<ContractsPage />} />
+            <Route path="/workbench/approvals" element={<ApprovalTasksPage />} />
             <Route path="/cases/:caseId" element={<CaseDetailPage />} />
             <Route path="/cases/:caseId/legal-knowledge" element={<LegalKnowledgePage />} />
             <Route path="/subjects" element={<SubjectsPage />} />
