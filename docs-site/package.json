@@ -1,0 +1,26 @@
+{
+  "name": "contract-audit-docs-site",
+  "private": true,
+  "description": "Local reader for the canonical docs/ handbook source.",
+  "scripts": {
+    "start": "docusaurus start",
+    "build": "docusaurus build",
+    "serve": "docusaurus serve",
+    "clear": "docusaurus clear"
+  },
+  "dependencies": {
+    "@docusaurus/core": "3.10.2",
+    "@docusaurus/plugin-content-docs": "3.10.2",
+    "@docusaurus/theme-classic": "3.10.2",
+    "@docusaurus/theme-mermaid": "3.10.2",
+    "@mermaid-js/layout-elk": "0.1.9",
+    "react": "19.2.0",
+    "react-dom": "19.2.0"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "overrides": {
+    "mermaid": "11.12.2"
+  }
+}

@@ -6,7 +6,7 @@ The diff spans every commit since the merge-base of ``--base`` (or
 worktree files. Deletions, renames, and paths containing spaces are preserved.
 
 ``--plan`` prints one JSON line with the booleans ``go``, ``web``, ``python``,
-and ``database`` (plus ``poppler`` and ``legal_assets``). ``--github-output``
+``database`` and ``docs_build`` (plus ``poppler`` and ``legal_assets``). ``--github-output``
 appends those names as ``true`` or ``false`` so a GitHub Actions job can
 conditionally install tools or databases.
 
@@ -34,7 +34,7 @@ from go_test_scope import discover_unit_test_packages, unit_test_environment
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_BASE = "origin/main"
-PLAN_KEYS = ("go", "web", "python", "database")
+PLAN_KEYS = ("go", "web", "python", "database", "docs_build")
 GITHUB_KEYS = PLAN_KEYS + ("poppler", "legal_assets")
 POPPLER_TEST_PACKAGES = frozenset({"./internal/documentparse"})
 LEGAL_ASSET_TEST_PACKAGES = frozenset({"./internal/httpapi", "./internal/legalnorm"})
@@ -128,6 +128,7 @@ class Plan:
     database: bool = False
     poppler: bool = False
     legal_assets: bool = False
+    docs_build: bool = False
     go_build_all: bool = False
     web_build: bool = False
     go_format_files: list[str] = field(default_factory=list)
@@ -146,6 +147,7 @@ class Plan:
             "database": self.database,
             "poppler": self.poppler,
             "legal_assets": self.legal_assets,
+            "docs_build": self.docs_build,
             "go_compile": "all" if self.go_build_all else "affected",
             "go_build_all": self.go_build_all,
             "go_format_files": list(self.go_format_files),
@@ -425,6 +427,12 @@ def _web_build_config(path: str) -> bool:
                                                        "vitest.config"))
 
 
+def _docs_build_relevant(path: str) -> bool:
+    return (path.startswith("docs/") or path.startswith("docs-site/") or
+            path in {"scripts/check_docs.py", "scripts/check_glossary.py",
+                     "scripts/check_fast.py", ".github/workflows/pr-fast.yml"})
+
+
 def _python_module(path: str) -> str:
     return path[:-3].replace("/", ".")
 
@@ -542,6 +550,8 @@ def build_plan(root: Path, changes: Iterable[Change]) -> Plan:
             if path.startswith("web/") and _web_relevant(path):
                 plan.web = True
                 plan.web_build = plan.web_build or _web_build_config(path)
+            if _docs_build_relevant(path):
+                plan.docs_build = True
             if path.endswith(".py"):
                 plan.python = True
                 if path == change.path and not change.deleted:
@@ -684,6 +694,21 @@ def _build_checks(plan: Plan, root: Path, python: str) -> list[FastCheck]:
         if plan.web_build:
             checks.append(FastCheck("web-build", (bun, "run", "build"),
                                     cwd=root / "web", env=env, timeout=900))
+    if plan.docs_build:
+        bun = _resolve_binary("bun")
+        preview = Path(os.environ.get(
+            "CAW_DOCS_PREVIEW_DIR",
+            str(root.parent / "contract-audit-delivery" / "verification" /
+                "docs-site-preview"))).expanduser().resolve()
+        _ensure_outside_repo(root, preview)
+        checks.append(FastCheck("docs-local-check", (python, "scripts/check_docs.py"),
+                                cwd=root, env=env, timeout=120))
+        checks.append(FastCheck("docs-dependencies",
+                                (bun, "install", "--frozen-lockfile"),
+                                cwd=root / "docs-site", env=env, timeout=900))
+        checks.append(FastCheck("docs-build",
+                                (bun, "run", "build", "--", "--out-dir", str(preview)),
+                                cwd=root / "docs-site", env=env, timeout=900))
     for target in plan.database_tests:
         go = _resolve_binary("go")
         pattern = "^(" + "|".join(re.escape(name) for name in target.tests) + ")$"
@@ -1037,7 +1062,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--plan", action="store_true",
                         help="print the one-line selection JSON without running checks")
     parser.add_argument("--github-output", default=None,
-                        help="append go/web/python/database/poppler/legal_assets=true|false")
+                        help="append scoped check booleans for GitHub Actions")
     parser.add_argument("--out", default=None,
                         help="log/report directory outside the repository")
     parser.add_argument("--root", default=None, help=argparse.SUPPRESS)
