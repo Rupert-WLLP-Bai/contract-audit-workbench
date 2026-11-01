@@ -40,6 +40,7 @@
 | T34 | 授权范围 | `Grant.Scope / dbScope` |
 | T35 | 执行尝试冻结快照 | `AttemptInput / RunSnapshot` |
 | T36 | 检索相关度 | `KnowledgeCandidate.Score / governedRelevance` |
+| T37 | 人工发现 | `store.ManualFinding` |
 
 ## T01 · 审查案件
 
@@ -1006,3 +1007,30 @@ AttemptInput、RunSnapshot 与冻结解析选择可定位；本次未运行冻�
 - `KnowledgeCandidate.Score` — [`internal/agentflow/types.go`](../../internal/agentflow/types.go)
 
 相关概念：`T11`, `T14`, `T15`, `T22`
+
+
+## T37 · 人工发现
+
+**系统映射：** `store.ManualFinding`
+
+审查人员基于一次执行尝试中的冻结原文，追加记录的人工观察。
+
+边界：
+- 人工发现保留记录者与原文依据，不覆盖自动生成的 store.Finding，也不修改已有审查结论或报告。
+- 人工发现不是对自动发现的处理决定（store.Decision），也不是合同会签或批准决定（ApprovalDecision）。
+- 每条记录关联具体 case、run 和 attempt；执行尝试（T08）与会签轮次（T09）是不同业务身份。
+
+**误用：** 将新增人工发现显示成合同已批准或审查结论已确认。
+
+**原因：** ManualFinding 是附带冻结证据的人工观察，不表达审批通过，也不替代审查决定。
+
+**建议：** 将人工发现作为独立记录展示，并单独呈现审查决定或会签决定。
+
+**实现状态：** `CODE_ANCHORED_NOT_RUNTIME_VERIFIED` — 当前源码可定位对应概念或行为；本次未运行应用验证。
+
+store.ManualFinding 是追加式人工观察，写入时核对对应执行尝试和冻结原文；本次仅核对源码与 UI 文案，没有运行产品流程。
+
+源码锚点：
+- `store.ManualFinding` — [`internal/store/manual_findings.go`](../../internal/store/manual_findings.go)
+
+相关概念：`T08`, `T09`, `T11`, `T12`, `T13`

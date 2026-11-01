@@ -6,7 +6,7 @@ The diff spans every commit since the merge-base of ``--base`` (or
 worktree files. Deletions, renames, and paths containing spaces are preserved.
 
 ``--plan`` prints one JSON line with the booleans ``go``, ``web``, ``python``,
-``database``, ``docs_build`` and ``architecture`` (plus ``poppler`` and ``legal_assets``). ``--github-output``
+``database``, ``docs_build``, ``architecture`` and ``ui_terminology`` (plus ``poppler`` and ``legal_assets``). ``--github-output``
 appends those names as ``true`` or ``false`` so a GitHub Actions job can
 conditionally install tools or databases.
 
@@ -34,7 +34,8 @@ from go_test_scope import discover_unit_test_packages, unit_test_environment
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_BASE = "origin/main"
-PLAN_KEYS = ("go", "web", "python", "database", "docs_build", "architecture")
+PLAN_KEYS = ("go", "web", "python", "database", "docs_build", "architecture",
+             "ui_terminology")
 GITHUB_KEYS = PLAN_KEYS + ("poppler", "legal_assets")
 POPPLER_TEST_PACKAGES = frozenset({"./internal/documentparse"})
 LEGAL_ASSET_TEST_PACKAGES = frozenset({"./internal/httpapi", "./internal/legalnorm"})
@@ -130,6 +131,7 @@ class Plan:
     legal_assets: bool = False
     docs_build: bool = False
     architecture: bool = False
+    ui_terminology: bool = False
     go_build_all: bool = False
     web_build: bool = False
     go_format_files: list[str] = field(default_factory=list)
@@ -150,6 +152,7 @@ class Plan:
             "legal_assets": self.legal_assets,
             "docs_build": self.docs_build,
             "architecture": self.architecture,
+            "ui_terminology": self.ui_terminology,
             "go_compile": "all" if self.go_build_all else "affected",
             "go_build_all": self.go_build_all,
             "go_format_files": list(self.go_format_files),
@@ -446,6 +449,15 @@ def _architecture_relevant(path: str) -> bool:
     }
 
 
+def _ui_terminology_relevant(path: str) -> bool:
+    return (path.startswith("web/src/features/review/manual-findings/") or
+            path.startswith("scripts/ui-terminology/") or
+            path in {"docs/glossary/concepts.json",
+                     "scripts/check_ui_terminology.py",
+                     "scripts/test_ui_terminology.py",
+                     "scripts/check_fast.py"})
+
+
 def _python_module(path: str) -> str:
     return path[:-3].replace("/", ".")
 
@@ -567,6 +579,8 @@ def build_plan(root: Path, changes: Iterable[Change]) -> Plan:
                 plan.docs_build = True
             if _architecture_relevant(path):
                 plan.architecture = True
+            if _ui_terminology_relevant(path):
+                plan.ui_terminology = True
             if path.endswith(".py"):
                 plan.python = True
                 if path == change.path and not change.deleted:
@@ -666,6 +680,11 @@ def _build_checks(plan: Plan, root: Path, python: str, out: Path) -> list[FastCh
             "architecture-dependencies",
             (python, "scripts/architecture/check_architecture.py", "--repo",
              str(root), "--out", str(out / "architecture-check.json")),
+            cwd=root, env=env, timeout=120))
+    if plan.ui_terminology:
+        checks.append(FastCheck(
+            "ui-terminology",
+            (python, "scripts/check_ui_terminology.py"),
             cwd=root, env=env, timeout=120))
     if plan.go:
         go = _resolve_binary("go")

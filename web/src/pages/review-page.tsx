@@ -36,7 +36,7 @@ import { AuditProjection } from "../components/audit-projection";
 import { EvidenceRequestPanel } from "../components/evidence-request-panel";
 import { EvidenceSLADashboard } from "../components/evidence-sla-dashboard";
 import { ExperienceFeedbackPanel } from "../components/experience-feedback-panel";
-import { ManualFindingsPanel } from "../components/manual-findings-panel";
+import { ManualFindingsPanel } from "../features/review/manual-findings";
 import { ExperienceUsagePanel } from "../components/experience-usage-panel";
 import { OperatorAuditEntry } from "../features/operator-audit/operator-audit-entry";
 import {

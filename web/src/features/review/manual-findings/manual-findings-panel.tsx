@@ -1,12 +1,12 @@
 import { Button, Input, Select } from "antd";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState, type FormEvent } from "react";
-import { createManualFinding, listManualFindings, type ManualFindingInput, type ManualFindingSeverity } from "../api/manual-findings";
-import { errorMessage } from "../api/http";
-import { clearPendingMutationKey, idempotencyActorScope, pendingMutationKey } from "../api/idempotency";
-import type { Actor, ReviewDocument } from "../api/types";
-import { frozenQuoteMatchesDocument, type FrozenQuoteSelection } from "../domain/frozen-quote";
-import { formatDateTime } from "../domain/review";
+import { createManualFinding, listManualFindings, type ManualFindingInput, type ManualFindingSeverity } from "./api";
+import { errorMessage } from "../../../api/http";
+import { clearPendingMutationKey, idempotencyActorScope, pendingMutationKey } from "../../../api/idempotency";
+import type { Actor, ReviewDocument } from "../../../api/types";
+import { frozenQuoteMatchesDocument, type FrozenQuoteSelection } from "../../../domain/frozen-quote";
+import { formatDateTime } from "../../../domain/review";
 
 const severities: Record<ManualFindingSeverity, string> = {
   high: "高", medium: "中", low: "低", info: "提示",
@@ -84,7 +84,7 @@ export function ManualFindingsPanel(props: ManualFindingsPanelProps) {
   return (
     <section className="workflow-panel" aria-labelledby="manual-findings-heading">
       <h2 id="manual-findings-heading">人工发现</h2>
-      <p>人工记录会保留作者和本次执行的原文依据，独立于自动发现与已有审查判断。</p>
+      <p>人工记录会保留作者和本次执行尝试的原文依据，独立于自动发现与已有审查判断。</p>
       {attemptId && canCreate ? (
         <form onSubmit={(event) => void submit(event)}>
           <p>在上方冻结正文中选择文字，再用于新增人工发现。</p>
@@ -102,10 +102,10 @@ export function ManualFindingsPanel(props: ManualFindingsPanelProps) {
             options={Object.entries(severities).map(([value, label]) => ({ value, label }))} />
           <p><Button type="primary" htmlType="submit" loading={pending} disabled={!selectedSource || claimLength < 2 || claimLength > 1000}>保存人工发现</Button></p>
         </form>
-      ) : <p>当前执行或身份不支持新增人工发现。</p>}
+      ) : <p>当前执行尝试或身份不支持新增人工发现。</p>}
       {error ? <p role="alert">{error}</p> : null}
       {notice ? <p role="status">{notice}</p> : null}
-      {!attemptId ? <p>请选择一条执行记录。</p> : !actor ? <p>正在确认访问权限。</p> : findings.isLoading ? <p>正在读取人工发现。</p> : findings.isError ? (
+      {!attemptId ? <p>请选择一次执行尝试。</p> : !actor ? <p>正在确认访问权限。</p> : findings.isLoading ? <p>正在读取人工发现。</p> : findings.isError ? (
         <p role="alert">无法读取人工发现：{errorMessage(findings.error)} <Button htmlType="button" onClick={() => void findings.refetch()}>重试</Button></p>
       ) : findings.data?.length ? (
         <ul>
@@ -121,7 +121,7 @@ export function ManualFindingsPanel(props: ManualFindingsPanelProps) {
             </li>;
           })}
         </ul>
-      ) : <p>本次执行还没有人工发现。</p>}
+      ) : <p>本次执行尝试还没有人工发现。</p>}
     </section>
   );
 }
