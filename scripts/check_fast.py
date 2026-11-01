@@ -61,7 +61,8 @@ SESSION_TESTS = ("TestConcurrentLogoutCannotBeResurrectedByCaseWrite",
 TENANT_TESTS = ("TestCrossOrganizationGenerationPreservesCaseIdentity",
                 "TestGovernanceCrossTenantIsolation",
                 "TestMaterialTablesEnforceTenantRLSAndAppendOnlyServiceOwnership")
-MIGRATION_TESTS = ("TestEvaluationProvenanceMigrationPreservesHistoricalRows",)
+MIGRATION_TESTS = ("TestEvaluationProvenanceMigrationPreservesHistoricalRows",
+                   "TestContractAggregateMigrationBoundaries")
 BUDGET_TESTS = ("TestModelBudgetRoleIsolationAndFunctionPrivileges",)
 LEASE_TESTS = ("TestStaleGenerationCompletionIsRejected",)
 DATABASE_CORE_TESTS = ("TestLoginOriginalAndRetryStayInPostgres",)

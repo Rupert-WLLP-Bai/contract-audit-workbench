@@ -412,13 +412,16 @@ func TestSessionMigrationRemovesOnlyLegacyTokensAcrossTenants(t *testing.T) {
 	}
 	// Reconstruct the schema at version 7: later tables are absent before the
 	// numbered session cleanup and must be recreated by the migration runner.
-	for _, table := range []string{"experience_finding_usage", "rule_pack_shadow_reports", "review_rulepack_inputs", "manual_finding_records", "execution_write_receipts", "core_write_receipts"} {
+	for _, table := range []string{"experience_finding_usage", "rule_pack_shadow_reports", "review_rulepack_inputs", "manual_finding_records", "execution_write_receipts", "core_write_receipts", "clm_contracts", "clm_contract_revisions", "clm_contract_cases", "clm_approval_rounds", "clm_business_events", "clm_outbox_delivery", "case_intake_requests", "case_intake_archives"} {
 		var count int
 		if err := environment.harness.pool.QueryRow(ctx, `SELECT count(*) FROM `+table).Scan(&count); err != nil || count != 0 {
 			t.Fatalf("version-7 fixture requires an empty %s: count=%d err=%v", table, count, err)
 		}
 	}
-	if _, err := environment.harness.pool.Exec(ctx, `DROP TABLE experience_finding_usage, rule_pack_shadow_reports, review_rulepack_inputs, manual_finding_records, execution_write_receipts, core_write_receipts;
+	if _, err := environment.harness.pool.Exec(ctx, `DROP TABLE clm_outbox_delivery, clm_business_events, clm_approval_rounds, clm_contract_cases, clm_contract_revisions, clm_contracts;
+		DROP TABLE case_intake_requests, case_intake_archives;
+		DROP INDEX case_intake_pending_owner;
+		DROP TABLE experience_finding_usage, rule_pack_shadow_reports, review_rulepack_inputs, manual_finding_records, execution_write_receipts, core_write_receipts;
 		DELETE FROM schema_migrations WHERE version >= 8`); err != nil {
 		t.Fatal(err)
 	}
