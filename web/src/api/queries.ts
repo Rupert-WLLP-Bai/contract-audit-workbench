@@ -1,5 +1,6 @@
 import { useRef } from "react";
 import {
+  useInfiniteQuery,
   useMutation,
   useQuery,
   useQueryClient,
@@ -8,6 +9,15 @@ import {
 import * as api from "./endpoints";
 import { isForbidden, isUnauthenticated, setSessionIdentity } from "./http";
 import { clearPendingMutationKey, idempotencyActorScope, newIdempotencyKey, pendingMutationKey } from "./idempotency";
+import {
+  createContractSavedView,
+  deleteContractSavedView,
+  listContractLedger,
+  listContractSavedViews,
+  replaceContractSavedView,
+  type ContractLedgerColumn,
+  type ContractLedgerFilter,
+} from "./contracts";
 import type {
   Actor,
   CaseDetail,
@@ -51,6 +61,12 @@ export const queryKeys = {
   contractDraftsPrefix: ["contracts", "drafts"] as const,
   contractDrafts: (actorScope: string) =>
     ["contracts", "drafts", actorScope] as const,
+  contractLedgerPrefix: ["contracts", "ledger"] as const,
+  contractLedger: (actorScope: string, query: string) =>
+    ["contracts", "ledger", actorScope, query] as const,
+  contractSavedViewsPrefix: ["contracts", "views"] as const,
+  contractSavedViews: (actorScope: string) =>
+    ["contracts", "views", actorScope] as const,
   pendingIntakes: (actorScope: string, cursor: string | null) =>
     ["intakes", "pending", actorScope, cursor] as const,
   cases: ["cases"] as const,
@@ -1158,5 +1174,81 @@ export function useTestRulePack(packId: string, version: string) {
     mutationFn: (input: RulePackTestInput) =>
       api.testRulePack(packId, version, input),
     retry: false,
+  });
+}
+
+export function useContractLedger(
+  filter: ContractLedgerFilter,
+  actorScope: string,
+  enabled: boolean,
+) {
+  const query = JSON.stringify(filter);
+  return useInfiniteQuery({
+    queryKey: queryKeys.contractLedger(actorScope, query),
+    queryFn: ({ pageParam, signal }) =>
+      listContractLedger(filter, pageParam, 25, signal),
+    initialPageParam: null as string | null,
+    getNextPageParam: (lastPage) =>
+      lastPage.has_more ? lastPage.next_cursor : undefined,
+    enabled,
+  });
+}
+
+export function useContractSavedViews(actorScope: string, enabled: boolean) {
+  return useQuery({
+    queryKey: queryKeys.contractSavedViews(actorScope),
+    queryFn: ({ signal }) => listContractSavedViews(signal),
+    enabled,
+  });
+}
+
+export function useCreateContractSavedView() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: {
+      name: string;
+      filter: ContractLedgerFilter;
+      columns: ContractLedgerColumn[];
+    }) => createContractSavedView(input.name, input.filter, input.columns),
+    onSuccess: () =>
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.contractSavedViewsPrefix,
+      }),
+  });
+}
+
+export function useReplaceContractSavedView() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: {
+      viewId: string;
+      expectedRowVersion: number;
+      name: string;
+      filter: ContractLedgerFilter;
+      columns: ContractLedgerColumn[];
+    }) =>
+      replaceContractSavedView(
+        input.viewId,
+        input.expectedRowVersion,
+        input.name,
+        input.filter,
+        input.columns,
+      ),
+    onSuccess: () =>
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.contractSavedViewsPrefix,
+      }),
+  });
+}
+
+export function useDeleteContractSavedView() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { viewId: string; expectedRowVersion: number }) =>
+      deleteContractSavedView(input.viewId, input.expectedRowVersion),
+    onSuccess: () =>
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.contractSavedViewsPrefix,
+      }),
   });
 }

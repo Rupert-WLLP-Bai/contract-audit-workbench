@@ -128,12 +128,15 @@ type LegacyImportInput struct {
 
 // resolvedMaterialVersion is a verified material version with its owning case.
 type resolvedMaterialVersion struct {
-	CaseOrgID  string
-	CaseID     string
-	MaterialID string
-	Version    int
-	DocumentID string
-	Digest     string
+	CaseOrgID    string
+	CaseID       string
+	MaterialID   string
+	Version      int
+	DocumentID   string
+	Digest       string
+	MaterialRole string
+	Filename     string
+	MediaType    string
 }
 
 type clmWriteReceipt struct {
@@ -384,12 +387,16 @@ func contractSourceRef(record clmContractRecord) *SourceRef {
 // matched pair resolves to at most one case.
 func resolveMaterialVersion(ctx context.Context, tx pgx.Tx, tenantID string, ref MaterialRef) (resolvedMaterialVersion, error) {
 	var resolved resolvedMaterialVersion
-	err := tx.QueryRow(ctx, `SELECT mv.org_id, mv.case_id, mv.material_id, mv.version, mv.document_id, d.digest
+	err := tx.QueryRow(ctx, `SELECT mv.org_id, mv.case_id, mv.material_id, mv.version, mv.document_id, d.digest,
+			me.role, d.filename, d.media_type
 		FROM material_versions mv
+		JOIN material_entities me
+		  ON me.tenant_id=mv.tenant_id AND me.org_id=mv.org_id AND me.case_id=mv.case_id AND me.material_id=mv.material_id
 		JOIN documents d ON d.tenant_id=mv.tenant_id AND d.org_id=mv.org_id AND d.case_id=mv.case_id AND d.id=mv.document_id
 		WHERE mv.tenant_id=$1 AND mv.material_id=$2 AND mv.document_id=$3`,
 		tenantID, ref.MaterialID, ref.MaterialVersionID).Scan(
-		&resolved.CaseOrgID, &resolved.CaseID, &resolved.MaterialID, &resolved.Version, &resolved.DocumentID, &resolved.Digest)
+		&resolved.CaseOrgID, &resolved.CaseID, &resolved.MaterialID, &resolved.Version, &resolved.DocumentID,
+		&resolved.Digest, &resolved.MaterialRole, &resolved.Filename, &resolved.MediaType)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return resolvedMaterialVersion{}, fault.NotFound("没有找到可核实的材料版本")
 	}
@@ -438,6 +445,7 @@ func (s *Store) CreateContractDraft(ctx context.Context, user accounts.User, inp
 	if err := validateCLMIdempotencyKey(input.IdempotencyKey); err != nil {
 		return ContractDetail{}, err
 	}
+	sanitizeDraftReferences(&input.Draft)
 	if err := validateDraftContent(&input.Draft); err != nil {
 		return ContractDetail{}, err
 	}
@@ -761,6 +769,7 @@ func (s *Store) ReplaceContractDraft(ctx context.Context, user accounts.User, in
 	if err := validateCLMIdempotencyKey(input.IdempotencyKey); err != nil {
 		return ContractDetail{}, err
 	}
+	sanitizeDraftReferences(&input.Draft)
 	if err := validateDraftContent(&input.Draft); err != nil {
 		return ContractDetail{}, err
 	}
@@ -916,6 +925,7 @@ func (s *Store) ImportLegacySignedContract(ctx context.Context, user accounts.Us
 		return ContractDetail{}, fault.Invalid("请填写存量导入原因（1 到 2000 字）")
 	}
 	input.Reason = reason
+	sanitizeDraftReferences(&input.Snapshot)
 	if err := validateDraftContent(&input.Snapshot); err != nil {
 		return ContractDetail{}, err
 	}
@@ -926,10 +936,6 @@ func (s *Store) ImportLegacySignedContract(ctx context.Context, user accounts.Us
 		if err := validateDraftAmounts(&input.Snapshot, contractmoney.StageFinal); err != nil {
 			return ContractDetail{}, err
 		}
-	}
-	_, sealedSnapshot, _, err := sealDraftContent(input.Snapshot)
-	if err != nil {
-		return ContractDetail{}, err
 	}
 	digest, err := clmRequestDigest(clmRouteLegacyImport, "POST", "/api/contracts/legacy-imports", input.ExpectedRowVersion, input)
 	if err != nil {
@@ -966,6 +972,17 @@ func (s *Store) ImportLegacySignedContract(ctx context.Context, user accounts.Us
 		return ContractDetail{}, err
 	}
 	sourceCase, err := loadCLMCase(ctx, tx, current, source.CaseOrgID, source.CaseID)
+	if err != nil {
+		return ContractDetail{}, err
+	}
+	// The source case is the anchor of the frozen reference chain. Resolve
+	// every subject, material and procurement result against tables owned by
+	// the subject/document services before sealing the snapshot; the pins are
+	// written into the JSONB snapshot, never into upstream tables.
+	if _, err := resolveContractReferences(ctx, tx, current, sourceCase, &input.Snapshot, referenceModeImport); err != nil {
+		return ContractDetail{}, err
+	}
+	_, sealedSnapshot, _, err := sealDraftContent(input.Snapshot)
 	if err != nil {
 		return ContractDetail{}, err
 	}

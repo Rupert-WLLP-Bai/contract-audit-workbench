@@ -180,3 +180,110 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* Contract ledger: list surface stays white; its summary stays transparent. */
+.contracts-ledger {
+  margin: 0 0 var(--space-8);
+  padding: var(--space-4);
+  border: 1px solid var(--card-border);
+  border-radius: var(--panel-radius);
+  background: var(--surface-raised);
+}
+
+.contracts-ledger-head {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: var(--space-3);
+  align-items: flex-start;
+}
+
+.contracts-ledger-head h2 {
+  margin: 0 0 var(--space-1);
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.contracts-ledger-head p {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.contracts-ledger-actions,
+.contracts-ledger-filter-actions,
+.contracts-ledger-viewbar,
+.contracts-ledger-more {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: center;
+}
+
+.contracts-ledger-filters,
+.contracts-ledger-advanced {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: var(--space-3) var(--space-4);
+  margin-top: var(--space-4);
+}
+
+.contracts-ledger-advanced {
+  margin-top: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border-default);
+}
+
+.contracts-ledger-filters .field,
+.contracts-ledger-advanced .field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.contracts-ledger-filter-actions,
+.contracts-ledger-viewbar {
+  margin-top: var(--space-3);
+}
+
+.contracts-ledger-view-select {
+  min-width: 180px;
+}
+
+.contracts-ledger-view-name {
+  min-width: 200px;
+  flex: 1 1 200px;
+}
+
+.contracts-ledger-columns {
+  min-width: 240px;
+  flex: 2 1 260px;
+}
+
+.contracts-ledger-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-6);
+  align-items: baseline;
+  margin: var(--space-4) 0 var(--space-2);
+  color: var(--text-secondary);
+  background: transparent;
+}
+
+.contracts-ledger-summary strong {
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.contracts-ledger .ant-table-wrapper {
+  margin-top: var(--space-2);
+}
+
+.contracts-ledger-more {
+  justify-content: center;
+  margin-top: var(--space-3);
+  color: var(--text-secondary);
+  font-size: 13px;
+}
