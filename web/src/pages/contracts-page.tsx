@@ -47,6 +47,7 @@ import { ContractSigningPanel } from "../components/contract-signing-panel";
 import { ContractFulfillmentPanel } from "../components/contract-fulfillment-panel";
 import { ContractPaymentsPanel } from "../components/contract-payments-panel";
 import { ContractAssetsPanel } from "../components/contract-assets-panel";
+import { ContractLifecycleOverviewPanel } from "../components/contract-lifecycle-overview-panel";
 import { ContractSourceCapabilityPanel } from "../components/contract-source-capability-panel";
 import { formatDateTime } from "../domain/review";
 import "./contracts-page.css";
@@ -302,6 +303,9 @@ export function ContractsPage() {
     )
       return;
     resetEditor(null);
+    queryClient.setQueryData<ContractDraftSummary[]>(queryKeys.contractDrafts(scope), (current) =>
+      current?.filter((item) => item.contract_id !== expectedContractId),
+    );
     setMessage({
       kind: "error",
       text: "合同来源或查看授权已变化，当前详情已清除。请重新选择合同。",
@@ -988,6 +992,14 @@ export function ContractsPage() {
               ) : null}
               {readOnly ? (
                 <Alert type="info" showIcon message="当前身份只能查看该合同" description="没有合同管理授权，不能保存修改；受限字段显示为掩码。" />
+              ) : null}
+              {contractID !== null && contractDetail !== null ? (
+                <ContractLifecycleOverviewPanel
+                  key={`${contractID}-lifecycle-${currentActorScope}`}
+                  detail={contractDetail}
+                  actor={actor}
+                  onAccessDenied={() => invalidateSourceAccess(contractDetail.summary.contract_id, currentActorScope)}
+                />
               ) : null}
 
               <fieldset className="contracts-page-section" disabled={readOnly}>
