@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"strings"
 	"testing"
@@ -421,5 +422,205 @@ func TestContractDraftReceiptScopeIsolation(t *testing.T) {
 	}
 	if responseStatus != 201 {
 		t.Fatalf("receipt status %d", responseStatus)
+	}
+}
+
+func TestLegacyImportPinsReferenceChainAndCheckReusesOriginalEndpoint(t *testing.T) {
+	fixture, recovery := newContractDraftTestEnv(t)
+	ctx := context.Background()
+	admin := fixture.admin
+
+	subject, _, err := fixture.core.CreateUnboundSubject(ctx, admin,
+		SubjectCreateInput{DisplayName: "示例采购方"}, "reference-subject-0001")
+	if err != nil {
+		t.Fatal(err)
+	}
+	bound, _, err := fixture.core.BindExistingSubject(ctx, admin, fixture.caseID, BindExistingSubjectInput{
+		Role: SubjectRoleCustomer, SubjectID: subject.SubjectID, ExpectedSubjectVersion: subject.CurrentVersion,
+	}, "reference-subject-bind-0001")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	awardBody := []byte("中标通知书：包件 PKG-01。")
+	award, err := fixture.document.UploadMaterial(ctx, admin, fixture.caseID, "award",
+		"award.txt", "text/plain", awardBody, MaterialUploadOptions{IdempotencyKey: "reference-award-0001"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	awardDigest := sha256.Sum256(awardBody)
+
+	sourceBody := []byte("存量已签合同原件。")
+	source, err := fixture.document.UploadMaterial(ctx, admin, fixture.caseID, "attachment",
+		"legacy-source.txt", "text/plain", sourceBody, MaterialUploadOptions{IdempotencyKey: "reference-source-0001"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sourceDigest := sha256.Sum256(sourceBody)
+	sourceRef := MaterialRef{
+		MaterialID: source.MaterialID, MaterialVersionID: source.DocumentID,
+		SHA256: hex.EncodeToString(sourceDigest[:]), Purpose: "signed_contract",
+	}
+
+	snapshot := sampleDraftContent()
+	snapshot.Contract.RelatedParties = []PartyRef{{
+		PartyID: subject.SubjectID, Role: "buyer", NameSnapshot: bound.DisplayName, BindingID: bound.BindingID,
+	}}
+	snapshot.Materials = []MaterialRef{{
+		MaterialID: award.MaterialID, MaterialVersionID: award.DocumentID,
+		SHA256: hex.EncodeToString(awardDigest[:]), Purpose: "supporting",
+	}}
+	snapshot.Contract.ProcurementResultPackage = &ProcurementRef{
+		System: "erp-procurement", ResultID: "PR-2026-0001", PackageID: "PKG-01",
+		SnapshotRef: award.DocumentID,
+	}
+
+	input := LegacyImportInput{
+		ExpectedRowVersion: 0, AuthorityMode: "native",
+		SourceRef:             SourceRef{System: "legacy-erp", ID: "HT-2026-REF-01", SourceVersion: "1"},
+		SourceEvidence:        sourceRef,
+		Snapshot:              snapshot,
+		ApprovalHistoryStatus: "unknown",
+		Reason:                "核验主体材料链与采购结果来源快照",
+		IdempotencyKey:        "reference-import-0001",
+	}
+	detail, err := fixture.core.ImportLegacySignedContract(ctx, admin, input)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var storedSnapshot string
+	if err := fixture.core.pool.QueryRow(ctx,
+		`SELECT snapshot::text FROM clm_contract_revisions
+		 WHERE tenant_id=$1 AND contract_id=$2 AND contract_revision_id=$3`,
+		admin.TenantID, detail.Summary.ContractID, *detail.CurrentRevisionID).Scan(&storedSnapshot); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(storedSnapshot, `"reference_snapshot"`) ||
+		!strings.Contains(storedSnapshot, `"source_snapshot"`) ||
+		!strings.Contains(storedSnapshot, bound.BindingID) ||
+		!strings.Contains(storedSnapshot, award.DocumentID) {
+		t.Fatal("frozen revision does not pin the resolved reference chain")
+	}
+
+	check, err := recovery.CheckContractReferences(ctx, admin, detail.Summary.ContractID, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if check.Source != "revision" || check.ContractRevisionID == nil || *check.ContractRevisionID != *detail.CurrentRevisionID {
+		t.Fatalf("check source %+v", check)
+	}
+	if len(check.Subjects) != 1 || check.Subjects[0].BindingID != bound.BindingID ||
+		check.Subjects[0].BindingVersion != bound.BindingVersion || !check.Subjects[0].Frozen {
+		t.Fatalf("subject reference %+v", check.Subjects)
+	}
+	if len(check.Materials) != 1 || check.Materials[0].OriginalPath !=
+		"/api/cases/"+fixture.caseID+"/documents/"+award.DocumentID+"/original" {
+		t.Fatalf("material reference %+v", check.Materials)
+	}
+	if check.ProcurementResult == nil || check.ProcurementResult.MaterialRole != "award" ||
+		check.ProcurementResult.MaterialVersionID != award.DocumentID {
+		t.Fatalf("procurement reference %+v", check.ProcurementResult)
+	}
+
+	// Replacing the source material after freeze must not drift the frozen
+	// revision: the pin keeps pointing at the document that was verified.
+	replacement, err := fixture.document.UploadMaterial(ctx, admin, fixture.caseID, "award",
+		"award-v2.txt", "text/plain", []byte("中标通知书修订版：包件 PKG-01。"),
+		MaterialUploadOptions{Intent: "replace", MaterialID: award.MaterialID,
+			ReplacesDocumentID: award.DocumentID, IdempotencyKey: "reference-award-0002"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if replacement.DocumentID == award.DocumentID || replacement.Version != award.Version+1 {
+		t.Fatalf("replacement material version %+v", replacement)
+	}
+	afterReplacement, err := recovery.CheckContractReferences(ctx, admin, detail.Summary.ContractID, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(afterReplacement.Materials) != 1 || afterReplacement.Materials[0].MaterialVersionID != award.DocumentID ||
+		afterReplacement.Materials[0].SHA256 != hex.EncodeToString(awardDigest[:]) ||
+		afterReplacement.Materials[0].MaterialVersion != award.Version || !afterReplacement.Materials[0].Frozen {
+		t.Fatalf("frozen material drifted after replacement: %+v", afterReplacement.Materials)
+	}
+	if afterReplacement.ProcurementResult == nil ||
+		afterReplacement.ProcurementResult.MaterialVersionID != award.DocumentID ||
+		afterReplacement.ProcurementResult.SHA256 != hex.EncodeToString(awardDigest[:]) {
+		t.Fatalf("procurement snapshot drifted after replacement: %+v", afterReplacement.ProcurementResult)
+	}
+
+	otherTenant, _ := accounts.ByID("demo-tenant2-admin")
+	_, err = recovery.CheckContractReferences(ctx, otherTenant, detail.Summary.ContractID, "")
+	assertFaultStatus(t, err, 404, "cross-tenant reference check")
+
+	otherCaseID, err := fixture.core.CreateCase(admin, "引用链其他案件", "procurement_ict")
+	if err != nil {
+		t.Fatal(err)
+	}
+	foreignBody := []byte("其他案件的中标材料。")
+	foreign, err := fixture.document.UploadMaterial(ctx, admin, otherCaseID, "award",
+		"foreign-award.txt", "text/plain", foreignBody, MaterialUploadOptions{IdempotencyKey: "reference-foreign-award-01"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	foreignDigest := sha256.Sum256(foreignBody)
+	foreignSnapshot := sampleDraftContent()
+	foreignSnapshot.Materials = []MaterialRef{{
+		MaterialID: foreign.MaterialID, MaterialVersionID: foreign.DocumentID,
+		SHA256: hex.EncodeToString(foreignDigest[:]), Purpose: "supporting",
+	}}
+	foreignInput := input
+	foreignInput.IdempotencyKey = "reference-import-0002"
+	foreignInput.SourceRef = SourceRef{System: "legacy-erp", ID: "HT-2026-REF-02", SourceVersion: "1"}
+	foreignInput.Snapshot = foreignSnapshot
+	_, err = fixture.core.ImportLegacySignedContract(ctx, admin, foreignInput)
+	assertFaultStatus(t, err, 422, "cross-case material reference")
+
+	var pinned DraftContent
+	if err := json.Unmarshal([]byte(storedSnapshot), &pinned); err != nil {
+		t.Fatal(err)
+	}
+	tx, err := fixture.core.pool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback(ctx)
+	if err := setLocalScope(ctx, tx, userScope(admin)); err != nil {
+		t.Fatal(err)
+	}
+	anchor := Case{ID: fixture.caseID, TenantID: admin.TenantID, OwnerOrgID: admin.OrgID,
+		OwnerID: admin.ID, MemberIDs: []string{admin.ID}, BusinessStatus: "active"}
+	tamperedProcurement := pinned
+	tamperedContract := *pinned.Contract
+	tamperedResult := *pinned.Contract.ProcurementResultPackage
+	tamperedSource := *tamperedResult.SourceSnapshot
+	tamperedSource.SHA256 = strings.Repeat("d", 64)
+	tamperedResult.SourceSnapshot = &tamperedSource
+	tamperedContract.ProcurementResultPackage = &tamperedResult
+	tamperedProcurement.Contract = &tamperedContract
+	tamperedProcurement.Materials = []MaterialRef{pinned.Materials[0]}
+	_, err = resolveContractReferences(ctx, tx, admin, anchor, &tamperedProcurement, referenceModeFrozen)
+	assertFaultStatus(t, err, 409, "tampered procurement source snapshot")
+
+	tamperedSubject := pinned
+	tamperedSubject.Contract.RelatedParties = []PartyRef{pinned.Contract.RelatedParties[0]}
+	tamperedSubject.Contract.RelatedParties[0].ReferenceSnapshot = new(PartyReferenceSnapshot)
+	*tamperedSubject.Contract.RelatedParties[0].ReferenceSnapshot = *pinned.Contract.RelatedParties[0].ReferenceSnapshot
+	tamperedSubject.Contract.RelatedParties[0].ReferenceSnapshot.SubjectPayloadHash = strings.Repeat("f", 64)
+	_, err = resolveContractReferences(ctx, tx, admin, anchor, &tamperedSubject, referenceModeFrozen)
+	assertFaultStatus(t, err, 409, "tampered frozen subject pin")
+
+	tamperedMaterial := pinned
+	tamperedMaterial.Materials = []MaterialRef{pinned.Materials[0]}
+	tamperedMaterial.Materials[0].SHA256 = strings.Repeat("e", 64)
+	tamperedMaterial.Contract.ProcurementResultPackage = nil
+	_, err = resolveContractReferences(ctx, tx, admin, anchor, &tamperedMaterial, referenceModeFrozen)
+	assertFaultStatus(t, err, 409, "tampered frozen material digest")
+
+	if _, err := fixture.core.pool.Exec(ctx,
+		`UPDATE clm_contract_revisions SET snapshot=snapshot WHERE tenant_id=$1 AND contract_id=$2`,
+		admin.TenantID, detail.Summary.ContractID); err == nil {
+		t.Fatal("frozen revision must reject rewrite")
 	}
 }

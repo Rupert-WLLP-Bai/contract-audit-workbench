@@ -155,7 +155,7 @@ func routeOwned(role string, methods routeMethodSet, parts []string) bool {
 		return role == "core" && methods.read && oidcRoute(parts)
 	}
 	if parts[0] == "contracts" {
-		return contractDraftRoute(role, methods, parts)
+		return contractDraftRoute(role, methods, parts) || contractReferenceRoute(role, methods, parts)
 	}
 	if parts[0] == "intakes" {
 		if role != "core" {
@@ -189,7 +189,7 @@ var topLevelRoutes = map[string]topLevelRouteRule{
 	"cases":            {role: "core", methods: routeMethodSet{read: true, post: true}},
 	"knowledge":        {role: "core", methods: routeMethodSet{post: true}},
 	"subjects":         {role: "core", methods: routeMethodSet{read: true, post: true}},
-	"contracts":        {role: "core", methods: routeMethodSet{post: true}},
+	"contracts":        {role: "core", methods: routeMethodSet{read: true, post: true}},
 	"intakes":          {role: "core", methods: routeMethodSet{read: true, post: true}},
 }
 
@@ -207,9 +207,19 @@ func contractDraftRoute(role string, methods routeMethodSet, parts []string) boo
 			return methods.read
 		case "legacy-imports":
 			return methods.post
+		case "views":
+			return methods.read || methods.post
+		case "exports":
+			return methods.post
 		default:
 			return methods.read
 		}
+	}
+	if len(parts) == 3 && parts[1] == "views" {
+		return methods.post || methods.delete
+	}
+	if len(parts) == 4 && parts[1] == "exports" && parts[3] == "download" {
+		return methods.read
 	}
 	return len(parts) == 3 && parts[2] == "draft" && methods.put
 }

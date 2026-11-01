@@ -169,10 +169,34 @@ type DueRule struct {
 	PolicyRef string `json:"policy_ref,omitempty"`
 }
 
+// PartyReferenceSnapshot is the server-captured binding of one contract party
+// to the source case's subject chain. Clients may read it but never author it:
+// draft writes strip it and strict resolution recomputes it from the source
+// case. The pin makes a frozen contract keep pointing at the version that was
+// verified even after the case binds the subject to a newer version.
+type PartyReferenceSnapshot struct {
+	BindingID          string    `json:"binding_id"`
+	BindingVersion     int64     `json:"binding_version"`
+	CaseRole           string    `json:"case_role"`
+	BindingState       string    `json:"binding_state"`
+	SubjectID          string    `json:"subject_id"`
+	SubjectVersion     int64     `json:"subject_version"`
+	SubjectPayloadHash string    `json:"subject_payload_hash"`
+	VerificationState  string    `json:"verification_state"`
+	DisplayName        string    `json:"display_name"`
+	CapturedAt         time.Time `json:"captured_at"`
+}
+
 type PartyRef struct {
 	PartyID      string `json:"party_id"`
 	Role         string `json:"role"`
 	NameSnapshot string `json:"name_snapshot"`
+	// BindingID is an optional client hint selecting one case binding. It is
+	// revalidated against the source case and canonicalized on freeze.
+	BindingID string `json:"binding_id,omitempty"`
+	// ReferenceSnapshot is server-managed. Draft and import writers clear any
+	// client-supplied value before validation and sealing.
+	ReferenceSnapshot *PartyReferenceSnapshot `json:"reference_snapshot,omitempty"`
 }
 
 type UnitRef struct {
@@ -180,11 +204,31 @@ type UnitRef struct {
 	Name string `json:"name"`
 }
 
+// ProcurementSourceSnapshot pins the material version that evidenced a
+// procurement result. It intentionally stores no filename or media type:
+// frozen contract content is readable by every contract viewer, while the
+// document metadata stays behind the source-case read check.
+type ProcurementSourceSnapshot struct {
+	System            string    `json:"system"`
+	ResultID          string    `json:"result_id"`
+	PackageID         string    `json:"package_id"`
+	SnapshotRef       string    `json:"snapshot_ref"`
+	MaterialID        string    `json:"material_id"`
+	MaterialVersionID string    `json:"material_version_id"`
+	MaterialVersion   int       `json:"material_version"`
+	MaterialRole      string    `json:"material_role"`
+	SHA256            string    `json:"sha256"`
+	CapturedAt        time.Time `json:"captured_at"`
+}
+
 type ProcurementRef struct {
 	System      string `json:"system"`
 	ResultID    string `json:"result_id"`
 	PackageID   string `json:"package_id"`
 	SnapshotRef string `json:"snapshot_ref"`
+	// SourceSnapshot is server-managed. Draft and import writers clear any
+	// client-supplied value before validation and sealing.
+	SourceSnapshot *ProcurementSourceSnapshot `json:"source_snapshot,omitempty"`
 }
 
 type Attribute struct {
@@ -394,6 +438,9 @@ func validateDraftContent(draft *DraftContent) error {
 		}
 		if !partyRoleValues[party.Role] {
 			return fault.Invalid("related_parties.role 不是有效取值")
+		}
+		if party.BindingID != "" && (!validIdentifier(party.BindingID) || runeCount(party.BindingID) > 100) {
+			return fault.Invalid("related_parties.binding_id 无效")
 		}
 		if err := validateDraftText("related_parties.name_snapshot", party.NameSnapshot, 200); err != nil {
 			return err
@@ -768,6 +815,57 @@ func validateMaterialRef(ref *MaterialRef) error {
 		return fault.Invalid("材料引用的 purpose 不是有效取值")
 	}
 	return nil
+}
+
+// sanitizeDraftReferences removes server-managed reference snapshots before a
+// draft or import payload is validated, hashed or sealed. The client may still
+// send binding_id as a selection hint, but never a claimed verification result.
+// The slices are copied so sanitizing a command input cannot mutate a caller's
+// backing array.
+func sanitizeDraftReferences(draft *DraftContent) {
+	if draft == nil || draft.Contract == nil {
+		return
+	}
+	if len(draft.Contract.RelatedParties) > 0 {
+		parties := make([]PartyRef, len(draft.Contract.RelatedParties))
+		for i, party := range draft.Contract.RelatedParties {
+			party.ReferenceSnapshot = nil
+			parties[i] = party
+		}
+		draft.Contract.RelatedParties = parties
+	}
+	if draft.Contract.ProcurementResultPackage != nil {
+		ref := *draft.Contract.ProcurementResultPackage
+		ref.SourceSnapshot = nil
+		draft.Contract.ProcurementResultPackage = &ref
+	}
+}
+
+// caseRoleAllowsContractRole maps the contract's display role onto the case
+// subject role prepared by the subject service. It is deliberately explicit:
+// a buyer must be the case customer, a supplier must be the case supplier, and
+// peripheral roles may use the generic case roles.
+func caseRoleAllowsContractRole(contractRole, caseRole string) bool {
+	switch contractRole {
+	case "buyer":
+		return caseRole == SubjectRoleCustomer
+	case "supplier":
+		return caseRole == SubjectRoleSupplier
+	case "guarantor":
+		return caseRole == SubjectRoleContractor || caseRole == SubjectRoleServiceProvider || caseRole == SubjectRoleOther
+	case "consortium_member":
+		return caseRole == SubjectRoleSupplier || caseRole == SubjectRoleContractor ||
+			caseRole == SubjectRoleServiceProvider || caseRole == SubjectRoleOther
+	case "other":
+		return caseRole == SubjectRoleCustomer || caseRole == SubjectRoleSupplier ||
+			caseRole == SubjectRoleContractor || caseRole == SubjectRoleServiceProvider || caseRole == SubjectRoleOther
+	default:
+		return false
+	}
+}
+
+func procurementMaterialRole(role string) bool {
+	return role == "procurement" || role == "award"
 }
 
 func validateSourceRef(ref *SourceRef) error {
