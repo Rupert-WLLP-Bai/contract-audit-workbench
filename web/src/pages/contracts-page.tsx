@@ -527,6 +527,15 @@ export function ContractsPage() {
         </div>
       </header>
 
+      <div className="contracts-ledger-summary" aria-label="合同台账摘要">
+        <span>生效筛选</span>
+        <strong>{activeLedgerFilters}</strong>
+        <span>已加载</span>
+        <strong>{ledgerItems.length}</strong>
+        <span>还有更多</span>
+        <strong>{ledger.hasNextPage ? "是" : "否"}</strong>
+      </div>
+
       <section className="contracts-ledger" aria-label="合同台账">
         <div className="contracts-ledger-head">
           <div>
@@ -775,15 +784,6 @@ export function ContractsPage() {
             onClose={() => setExportMessage(null)}
           />
         ) : null}
-
-        <div className="contracts-ledger-summary" aria-label="合同台账摘要">
-          <span>生效筛选</span>
-          <strong>{activeLedgerFilters}</strong>
-          <span>已加载</span>
-          <strong>{ledgerItems.length}</strong>
-          <span>还有更多</span>
-          <strong>{ledger.hasNextPage ? "是" : "否"}</strong>
-        </div>
 
         {ledger.isError ? (
           <Alert
