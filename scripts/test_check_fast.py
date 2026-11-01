@@ -437,6 +437,82 @@ func TestValue(t *testing.T) { if Value != 1 { t.Fatal(Value) } }
 
 
 
+    def test_clm_outbox_changes_select_store_and_bridge_packages_separately(self):
+        paths = (
+            "internal/clmoutbox/relay.go",
+            "internal/clmoutbox/relay_pg_test.go",
+            "internal/clmoutbox/consumer/cache.go",
+            "internal/store/clm_outbox.go",
+            "internal/store/clm_metrics.go",
+            "internal/store/clm_outbox_pg_test.go",
+            "internal/store/migrations/0032_clm_outbox_metrics.sql",
+            "internal/store/migrations.go",
+            "internal/store/service_roles.go",
+            "internal/store/runtime_metrics.go",
+            "internal/store/state.go",
+            "internal/bootstrap/services.go",
+            "internal/bootstrap/services_integration_test.go",
+            "internal/telemetry/runtimemetrics.go",
+            "cmd/server/main.go",
+            "cmd/server/main_test.go",
+        )
+        plan = self.plan(*(check_fast.Change("M", path) for path in paths))
+        self.assertTrue(plan.database)
+        targets = {target.package: target for target in plan.database_tests}
+        self.assertEqual(set(targets), {"./internal/store", "./internal/clmoutbox"})
+        for test in check_fast.CLM_OUTBOX_STORE_TESTS:
+            self.assertIn(test, targets["./internal/store"].tests)
+        self.assertEqual(targets["./internal/clmoutbox"].tests,
+                         tuple(sorted(check_fast.CLM_OUTBOX_RELAY_TESTS)))
+        self.assertFalse(any(target.needs_model for target in targets.values()))
+
+        checks = check_fast._build_checks(
+            plan, self.root, sys.executable, self.root.parent / "check-output")
+        db_checks = [check for check in checks if check.name.startswith("database-fixed-point")]
+        self.assertEqual(len(db_checks), 2)
+        self.assertEqual(len({check.name for check in db_checks}), 2)
+        for check in db_checks:
+            package = check.command[-1]
+            self.assertIn(package, targets)
+            self.assertEqual(set(check.expected_tests), set(targets[package].tests))
+            self.assertIn("-vet=off", check.command)
+            self.assertIn("-run", check.command)
+        self.assertEqual(
+            {check.command[-1] for check in db_checks},
+            {"./internal/store", "./internal/clmoutbox"},
+        )
+
+    def test_clm_outbox_scope_unions_existing_source_payment_and_asset_checks(self):
+        plan = self.plan(
+            check_fast.Change("M", "internal/store/clm_outbox.go"),
+            check_fast.Change("M", "internal/store/contract_sources.go"),
+            check_fast.Change("M", "internal/store/contract_payments.go"),
+            check_fast.Change("M", "internal/store/contract_assets.go"),
+            check_fast.Change("M", "internal/clmoutbox/relay.go"),
+        )
+        targets = {target.package: target for target in plan.database_tests}
+        store_target = targets["./internal/store"]
+        self.assertIn("contract-source", store_target.reasons)
+        self.assertIn("contract-payment", store_target.reasons)
+        self.assertIn("contract-asset", store_target.reasons)
+        self.assertIn("clm-outbox-core", store_target.reasons)
+        self.assertIn("TestExternalContractSourceObservationOrderingAndAuthorization", store_target.tests)
+        self.assertIn(check_fast.CONTRACT_PAYMENT_TESTS[0], store_target.tests)
+        self.assertIn(check_fast.CONTRACT_ASSET_TESTS[0], store_target.tests)
+        for test in check_fast.CLM_OUTBOX_STORE_TESTS:
+            self.assertIn(test, store_target.tests)
+        self.assertIn("./internal/clmoutbox", targets)
+        self.assertIn(check_fast.CLM_OUTBOX_RELAY_TESTS[0], targets["./internal/clmoutbox"].tests)
+        self.assertFalse(any(target.needs_model for target in targets.values()))
+
+    def test_clm_outbox_pure_nats_transport_or_deployment_config_does_not_require_database(self):
+        for path in ("internal/outboxrelay/jetstream.go", "deploy/nats/jetstream.yaml"):
+            with self.subTest(path=path):
+                plan = self.plan(check_fast.Change("M", path))
+                self.assertFalse(plan.database)
+                self.assertEqual(plan.database_tests, ())
+
+
 class CliBoundaryTests(unittest.TestCase):
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
