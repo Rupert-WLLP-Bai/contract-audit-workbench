@@ -250,11 +250,12 @@ func TestContractFulfillmentLegacyMigrationSkipsUnknownPlans(t *testing.T) {
 	}
 
 	pool := fixture.environment.harness.pool
-	if _, err := pool.Exec(ctx, `DROP TABLE clm_contract_acceptance_rectifications, clm_contract_rectifications,
+	if _, err := pool.Exec(ctx, `DROP TABLE clm_contract_payment_eligibility_checks, clm_contract_payment_receipts;
+		DROP TABLE clm_contract_acceptance_rectifications, clm_contract_rectifications,
 		clm_contract_acceptance_defects, clm_contract_acceptances, clm_contract_deliveries, clm_contract_revision_items`); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := pool.Exec(ctx, `DELETE FROM schema_migrations WHERE version=28`); err != nil {
+	if _, err := pool.Exec(ctx, `DELETE FROM schema_migrations WHERE version>=28`); err != nil {
 		t.Fatal(err)
 	}
 	if err := migrate(ctx, pool, fixture.environment.harness.schema); err != nil {

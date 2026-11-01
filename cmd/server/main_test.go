@@ -60,6 +60,28 @@ func TestProductionStartupRejectsDemoAccountsBeforeOpeningStorage(t *testing.T) 
 	}
 }
 
+func TestPaymentReceiptSourceConfigurationIsStrictAndOffByDefault(t *testing.T) {
+	t.Setenv("PAYMENT_RECEIPT_SOURCES_JSON", "")
+	sources, err := paymentReceiptSourcesFromEnv()
+	if err != nil || len(sources) != 0 {
+		t.Fatalf("unset source config: sources=%d err=%v", len(sources), err)
+	}
+	secret := strings.Repeat("s", 40)
+	t.Setenv("PAYMENT_RECEIPT_SOURCES_JSON", `[{"tenant_id":"tenant-a","source_id":"finance-a","key_id":"finance-key-1","secret":"`+secret+`"}]`)
+	sources, err = paymentReceiptSourcesFromEnv()
+	if err != nil || len(sources) != 1 || sources[0].TenantID != "tenant-a" || sources[0].SourceID != "finance-a" || sources[0].KeyID != "finance-key-1" || sources[0].Secret != secret {
+		t.Fatalf("configured source identity was not parsed: count=%d err=%v", len(sources), err)
+	}
+	t.Setenv("PAYMENT_RECEIPT_SOURCES_JSON", `[{"tenant_id":"tenant-a","source_id":"finance-a","key_id":"finance-key-1","secret":"`+secret+`","active":true}]`)
+	if _, err = paymentReceiptSourcesFromEnv(); err == nil {
+		t.Fatal("unknown config fields must fail closed")
+	}
+	t.Setenv("PAYMENT_RECEIPT_SOURCES_JSON", `[] []`)
+	if _, err = paymentReceiptSourcesFromEnv(); err == nil {
+		t.Fatal("trailing JSON value must fail closed")
+	}
+}
+
 func TestProductionRequiresExplicitServiceRole(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "must-not-be-created")
 	t.Setenv("APP_ENV", "production")

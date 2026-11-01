@@ -224,11 +224,8 @@ func (s *Store) beginCLMWriteIsolated(ctx context.Context, user accounts.User, r
 	if s.pool == nil {
 		return nil, accounts.User{}, fault.New(503, "database_unavailable", "服务数据库不可用")
 	}
-	if s.serviceOwner != "" && s.serviceOwner != "core" {
-		return nil, accounts.User{}, fault.Forbidden("当前服务不能执行合同写操作")
-	}
-	if s.ReadOnly() {
-		return nil, accounts.User{}, fault.New(503, "read_only", readOnlyMessage)
+	if err := s.checkCLMWriteAllowed(readOnlyMessage); err != nil {
+		return nil, accounts.User{}, err
 	}
 	current, err := trustedUser(user)
 	if err != nil {
@@ -251,6 +248,16 @@ func (s *Store) beginCLMWriteIsolated(ctx context.Context, user accounts.User, r
 		return fail(err)
 	}
 	return tx, current, nil
+}
+
+func (s *Store) checkCLMWriteAllowed(readOnlyMessage string) error {
+	if s.serviceOwner != "" && s.serviceOwner != "core" {
+		return fault.Forbidden("当前服务不能执行合同写操作")
+	}
+	if s.ReadOnly() {
+		return fault.New(503, "read_only", readOnlyMessage)
+	}
+	return nil
 }
 
 func rollbackCLM(tx pgx.Tx) {

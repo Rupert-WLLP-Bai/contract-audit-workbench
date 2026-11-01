@@ -10,8 +10,10 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"net/http/httptest"
@@ -88,6 +90,10 @@ func serveCore(ctx context.Context) error {
 	// The service filter rejects any operation the core role does not own,
 	// requires the edge credential, and mounts the unified probe surface.
 	apiOptions := options(app, origins())
+	apiOptions.PaymentReceiptSources, err = paymentReceiptSourcesFromEnv()
+	if err != nil {
+		return err
+	}
 	apiOptions.IntakeUploader, err = bootstrap.ConfiguredIntakeUploader()
 	if err != nil {
 		return err
@@ -98,6 +104,27 @@ func serveCore(ctx context.Context) error {
 	}
 	logStartup(app)
 	return listen(ctx, app.Boundary("core", handler))
+}
+
+func paymentReceiptSourcesFromEnv() ([]httpapi.PaymentReceiptSourceCredential, error) {
+	raw := strings.TrimSpace(os.Getenv("PAYMENT_RECEIPT_SOURCES_JSON"))
+	if raw == "" {
+		return nil, nil
+	}
+	decoder := json.NewDecoder(strings.NewReader(raw))
+	decoder.DisallowUnknownFields()
+	var sources []httpapi.PaymentReceiptSourceCredential
+	if err := decoder.Decode(&sources); err != nil {
+		return nil, errors.New("payment receipt source configuration is invalid")
+	}
+	var trailing any
+	if err := decoder.Decode(&trailing); err != io.EOF {
+		return nil, errors.New("payment receipt source configuration is invalid")
+	}
+	if len(sources) == 0 {
+		return nil, errors.New("payment receipt source configuration is invalid")
+	}
+	return sources, nil
 }
 
 func options(app *bootstrap.Runtime, cors []string) httpapi.Options {

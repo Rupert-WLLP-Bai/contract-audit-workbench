@@ -25,6 +25,7 @@ ROOTS = (
 	"Activity", "ArchiveRequest", "CaseProfile", "CaseProfileInput", "CaseRelationInput",
 	"ContractAcceptance", "ContractAcceptanceDefect", "ContractAcceptanceDefectInput", "ContractAcceptanceList", "ContractAcceptanceRequest",
 	"ContractDelivery", "ContractDeliveryList", "ContractDeliveryRequest", "ContractFulfillmentItemSummary", "ContractRectification", "ContractRectificationRequest",
+    "ContractPaymentEligibilityRequest", "ContractPaymentEligibility", "ContractPaymentReceiptRequest", "ContractPaymentReceipt", "ContractPaymentSummary",
     "ContractSigningCheckRequest", "ContractSigningCheckResult", "ManualSigningComparison", "ContractSigningRegistration",
     "ContractSigningRegistrationList", "ContractSigningRegistrationRequest", "ContractSupplement",
     "ContractSupplementList", "ContractSupplementRequest", "ContractSupplementResult",

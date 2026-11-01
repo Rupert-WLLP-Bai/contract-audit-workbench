@@ -42,6 +42,7 @@ type Options struct {
 	Durable                    bool
 	SecureCookies              bool
 	ExperienceWorkerCredential string
+	PaymentReceiptSources      []PaymentReceiptSourceCredential
 	experienceDeliveryEnabled  bool
 
 	// IntakeUploader is the authenticated Document upload entry used by the
@@ -112,6 +113,7 @@ func Handler(st *store.Store, opt Options) http.Handler {
 	registerContractVersionRoutes(mux, h)
 	registerContractSigningRoutes(mux, h)
 	registerContractFulfillmentRoutes(mux, h)
+	registerContractPaymentRoutes(mux, h)
 	registerContractApprovalReadRoutes(mux, h)
 	mux.HandleFunc("GET /api/auth/oidc/login", h.oidcLogin)
 	mux.HandleFunc("GET /api/auth/oidc/callback", h.oidcCallback)
