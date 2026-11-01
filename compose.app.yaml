@@ -55,7 +55,7 @@ services:
       test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8092/health"]
 
   nats:
-    image: ${NATS_IMAGE:-nats:2.11.8-alpine}
+    image: ${NATS_IMAGE:-nats:2.15.1-alpine@sha256:7ae34c25dfd6fe2e01c6483eabef20d796690fdcac6c4d94ca780a6cf9877fde}
     restart: unless-stopped
     command: ["--jetstream", "--store_dir=/data/jetstream", "--http_port=8222"]
     volumes:
@@ -161,6 +161,10 @@ services:
       AGENT_PLANNER_MAX_EVIDENCE_BYTES: ${AGENT_PLANNER_MAX_EVIDENCE_BYTES:-2097152}
       <<: *jev-advisory
       NATS_URL: ${NATS_URL:-nats://nats:4222}
+      CLM_OUTBOX_STREAM: ${CLM_OUTBOX_STREAM:-CONTRACT_AUDIT_CLM_OUTBOX}
+      CLM_OUTBOX_SUBJECT: ${CLM_OUTBOX_SUBJECT:-contract-audit.clm-outbox.v1}
+      CLM_OUTBOX_STREAM_REPLICAS: ${CLM_OUTBOX_STREAM_REPLICAS:-1}
+      CLM_APPROVAL_AGED_AFTER: ${CLM_APPROVAL_AGED_AFTER:-}
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
       OTEL_EXPORTER_OTLP_PROTOCOL: ${OTEL_EXPORTER_OTLP_PROTOCOL:-http/json}
       OTEL_TRACES_SAMPLER: ${OTEL_TRACES_SAMPLER:-always_on}
@@ -266,6 +270,7 @@ services:
       AGENT_PLANNER_MAX_EVIDENCE_BYTES: ${AGENT_PLANNER_MAX_EVIDENCE_BYTES:-2097152}
       <<: *jev-advisory
       NATS_URL: ${NATS_URL:-nats://nats:4222}
+      NATS_STREAM_REPLICAS: ${NATS_STREAM_REPLICAS:-1}
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
       OTEL_EXPORTER_OTLP_PROTOCOL: ${OTEL_EXPORTER_OTLP_PROTOCOL:-http/json}
       OTEL_TRACES_SAMPLER: ${OTEL_TRACES_SAMPLER:-always_on}

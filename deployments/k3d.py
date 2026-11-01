@@ -70,7 +70,7 @@ def app_image(name: str) -> str:
 IMAGE_TAGS = tuple(app_image(name) for name in APP_IMAGES) + (
     "postgres:18.6-bookworm",
     "rustfs/rustfs:1.0.3",
-    "nats:2.11.8-alpine",
+    "nats:2.15.1-alpine@sha256:7ae34c25dfd6fe2e01c6483eabef20d796690fdcac6c4d94ca780a6cf9877fde",
     "amazon/aws-cli:2.31.14",
 )
 DELIVERY = Path(os.environ.get("CAW_DELIVERY_DIR", str(ROOT.parent / "contract-audit-delivery"))).expanduser().resolve()

@@ -40,6 +40,14 @@ spec:
           env:
             - name: SYSTEM_HEALTH_URL
               value: http://health-monitor:8092
+            - name: CLM_OUTBOX_STREAM
+              value: CONTRACT_AUDIT_CLM_OUTBOX
+            - name: CLM_OUTBOX_SUBJECT
+              value: contract-audit.clm-outbox.v1
+            - name: CLM_OUTBOX_STREAM_REPLICAS
+              value: "1"
+            - name: CLM_APPROVAL_AGED_AFTER
+              value: ""
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -80,6 +88,9 @@ spec:
           image: contract-audit-backend:local
           volumeMounts:
             - {name: local-data, mountPath: /var/lib/contract-audit}
+          env:
+            - name: NATS_STREAM_REPLICAS
+              value: "1"
 ---
 apiVersion: apps/v1
 kind: Deployment
