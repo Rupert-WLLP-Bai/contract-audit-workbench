@@ -227,6 +227,12 @@ func TestExternalLegacyActiveApprovalRejectsNewDecisionButKeepsReceiptReplay(t *
 		_ = tx.Rollback(ctx)
 		t.Fatalf("preserve legacy draft with active external approval task: %v", err)
 	}
+	if _, err := tx.Exec(ctx, `INSERT INTO clm_contract_cases
+		(tenant_id,contract_id,case_org_id,case_id,linked_by) VALUES($1,$2,$3,$4,$5)`,
+		accounts.Tenant(fixture.admin), contractID, fixture.admin.OrgID, fixture.caseID, fixture.admin.ID); err != nil {
+		_ = tx.Rollback(ctx)
+		t.Fatalf("bind legacy external contract to its authorized case: %v", err)
+	}
 	if err := tx.Commit(ctx); err != nil {
 		t.Fatal(err)
 	}

@@ -543,8 +543,13 @@ func sourceObservationResult(item storedSourceObservation, eventID string, repla
 }
 
 func loadSourceContractForUpdate(ctx context.Context, tx pgx.Tx, tenantID, sourceID, externalID string) (clmContractRecord, bool, error) {
-	record, err := scanCLMContract(tx.QueryRow(ctx, `SELECT `+clmContractColumns+` FROM clm_contracts
-		WHERE tenant_id=$1 AND source_system=$2 AND external_contract_id=$3 FOR UPDATE`, tenantID, sourceID, externalID))
+	var record clmContractRecord
+	err := tx.QueryRow(ctx, `SELECT `+clmContractColumns+` FROM clm_contracts
+		WHERE tenant_id=$1 AND source_system=$2 AND external_contract_id=$3 FOR UPDATE`, tenantID, sourceID, externalID).Scan(
+		&record.TenantID, &record.ContractID, &record.OwnerOrgID, &record.AuthorityMode,
+		&record.ContractNumber, &record.SourceSystem, &record.ExternalContractID, &record.SourceVersion,
+		&record.LifecycleState, &record.ValidityState, &record.CurrentRevisionID, &record.RowVersion,
+		&record.CreatedBy, &record.CreatedAt, &record.UpdatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return clmContractRecord{}, false, nil
 	}
