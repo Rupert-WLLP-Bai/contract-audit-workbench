@@ -497,6 +497,8 @@ func TestLegacyAttemptMigrationIsRepeatableAndRetryIsRejected(t *testing.T) {
 		"service_object_contract_associations", "service_object_versions", "service_object_mutation_receipts", "service_objects",
 		"experience_finding_usage", "rule_pack_shadow_reports", "review_rulepack_inputs",
 		"manual_finding_records", "execution_write_receipts", "core_write_receipts",
+		"clm_contracts", "clm_contract_revisions", "clm_contract_cases", "clm_approval_rounds", "clm_business_events", "clm_outbox_delivery",
+		"case_intake_requests", "case_intake_archives",
 	} {
 		var count int64
 		if err := st.pool.QueryRow(context.Background(), `SELECT count(*) FROM `+table).Scan(&count); err != nil {
@@ -542,6 +544,9 @@ func TestLegacyAttemptMigrationIsRepeatableAndRetryIsRejected(t *testing.T) {
 		t.Fatal(err)
 	}
 	legacyStatements := []string{
+		`DROP TABLE clm_outbox_delivery, clm_business_events, clm_approval_rounds, clm_contract_cases, clm_contract_revisions, clm_contracts`,
+		`DROP TABLE case_intake_requests, case_intake_archives`,
+		`DROP INDEX case_intake_pending_owner`,
 		`DROP TABLE experience_finding_usage, rule_pack_shadow_reports, review_rulepack_inputs, manual_finding_records, execution_write_receipts, core_write_receipts`,
 		`DROP TABLE operator_fulfillment_evaluation_objects`,
 		`DROP TABLE schema_migrations`,
