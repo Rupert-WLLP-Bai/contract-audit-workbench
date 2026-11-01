@@ -1,4 +1,4 @@
-import { jsonInit, requestJson } from "./http";
+import { ApiError, jsonInit, requestJson } from "./http";
 import { enumValue, responseReader } from "./respond";
 
 /**
@@ -14,7 +14,7 @@ export type ApprovalRoundState =
   | "approved"
   | "terminated";
 export type ApprovalTaskState =
-  | "queued"
+  | "pending"
   | "active"
   | "approved"
   | "returned"
@@ -161,35 +161,35 @@ export interface ApprovalRoundHistoryPage {
 
 export interface ApprovalDecisionInput {
   task_id: string;
-  contract_id: string;
-  approval_round_id: string;
-  contract_revision_id: string;
-  expected_row_version: number;
-  action: ApprovalDecisionAction;
-  opinion: string;
+  expected_round_row_version: number;
+  decision: ApprovalDecisionAction;
+  comment: string;
+  credential?: string;
 }
 
 export interface ApprovalDecisionResult {
-  contract_id: string;
-  contract_state: string;
+  decision_id: string;
+  decision: ApprovalDecisionAction;
   round: {
     approval_round_id: string;
+    contract_revision_id: string;
     round_number: number;
     state: ApprovalRoundState;
+    row_version: number;
   };
   task: {
     task_id: string;
     node_order: number;
     state: ApprovalTaskState;
-    row_version: number;
   };
-  decision: {
-    decision_id: string;
+  next_task: {
     task_id: string;
-    action: ApprovalDecisionAction;
-    opinion: string;
-    decided_at: string;
-  };
+    node_order: number;
+    state: ApprovalTaskState;
+  } | null;
+  contract_state: string;
+  workflow_state: string;
+  row_version: number;
 }
 
 const reader = responseReader(
@@ -204,7 +204,7 @@ const roundStates: readonly ApprovalRoundState[] = [
   "terminated",
 ];
 const taskStates: readonly ApprovalTaskState[] = [
-  "queued",
+  "pending",
   "active",
   "approved",
   "returned",
@@ -602,26 +602,37 @@ export function parseApprovalRoundHistoryPage(
   };
 }
 
+function decisionTask(value: unknown, path: string) {
+  const task = reader.object(value, path);
+  return {
+    task_id: reader.text(task.approval_task_id, `${path}.approval_task_id`),
+    node_order: reader.integer(task.node_order, `${path}.node_order`, 1),
+    state: taskState(task.state, `${path}.state`),
+  };
+}
+
 export function parseApprovalDecisionResult(
   value: unknown,
 ): ApprovalDecisionResult {
   const row = reader.object(value, "approval_decision");
   const round = reader.object(row.round, "approval_decision.round");
-  const task = reader.object(row.task, "approval_decision.task");
-  const decision = reader.object(row.decision, "approval_decision.decision");
   return {
-    contract_id: reader.text(
-      row.contract_id,
-      "approval_decision.contract_id",
+    decision_id: reader.text(
+      row.decision_id,
+      "approval_decision.decision_id",
     ),
-    contract_state: reader.text(
-      row.contract_state,
-      "approval_decision.contract_state",
+    decision: decisionAction(
+      row.decision,
+      "approval_decision.decision",
     ),
     round: {
       approval_round_id: reader.text(
         round.approval_round_id,
         "approval_decision.round.approval_round_id",
+      ),
+      contract_revision_id: reader.text(
+        round.contract_revision_id,
+        "approval_decision.round.contract_revision_id",
       ),
       round_number: reader.integer(
         round.round_number,
@@ -629,43 +640,30 @@ export function parseApprovalDecisionResult(
         1,
       ),
       state: roundState(round.state, "approval_decision.round.state"),
-    },
-    task: {
-      task_id: reader.text(task.task_id, "approval_decision.task.task_id"),
-      node_order: reader.integer(
-        task.node_order,
-        "approval_decision.task.node_order",
-        1,
-      ),
-      state: taskState(task.state, "approval_decision.task.state"),
       row_version: reader.integer(
-        task.row_version,
-        "approval_decision.task.row_version",
+        round.row_version,
+        "approval_decision.round.row_version",
         1,
       ),
     },
-    decision: {
-      decision_id: reader.text(
-        decision.decision_id,
-        "approval_decision.decision.decision_id",
-      ),
-      task_id: reader.text(
-        decision.task_id,
-        "approval_decision.decision.task_id",
-      ),
-      action: decisionAction(
-        decision.action,
-        "approval_decision.decision.action",
-      ),
-      opinion: reader.text(
-        decision.opinion,
-        "approval_decision.decision.opinion",
-      ),
-      decided_at: reader.text(
-        decision.decided_at,
-        "approval_decision.decision.decided_at",
-      ),
-    },
+    task: decisionTask(row.task, "approval_decision.task"),
+    next_task:
+      row.next_task === null
+        ? null
+        : decisionTask(row.next_task, "approval_decision.next_task"),
+    contract_state: reader.text(
+      row.contract_state,
+      "approval_decision.contract_state",
+    ),
+    workflow_state: reader.text(
+      row.workflow_state,
+      "approval_decision.workflow_state",
+    ),
+    row_version: reader.integer(
+      row.row_version,
+      "approval_decision.row_version",
+      1,
+    ),
   };
 }
 
@@ -730,24 +728,62 @@ export function getContractApprovalRound(
   );
 }
 
-export function decideApprovalTask(
+function parseApprovalCredential(value: unknown): string {
+  const row = reader.object(value, "approval_credential");
+  return reader.text(row.credential, "approval_credential.credential");
+}
+
+async function requestApprovalCredential(taskId: string): Promise<string> {
+  return requestJson(
+    `/api/approval-tasks/${encodeURIComponent(taskId)}/credentials`,
+    jsonInit("POST", {}),
+    parseApprovalCredential,
+  );
+}
+
+/**
+ * Submits one decision. A deployment with internal approval credentials
+ * enabled rejects the first attempt with 403; the client then requests the
+ * short-lived credential for this task and retries with the same idempotency
+ * key. A genuine authorization refusal is surfaced unchanged because the
+ * credential request fails too. When the capability is off the decision
+ * succeeds on the first request and no extra call is made.
+ */
+export async function decideApprovalTask(
   input: ApprovalDecisionInput,
   idempotencyKey: string,
 ): Promise<ApprovalDecisionResult> {
-  return requestJson(
-    `/api/approval-tasks/${encodeURIComponent(input.task_id)}/decisions`,
-    jsonInit(
-      "POST",
-      {
-        contract_id: input.contract_id,
-        approval_round_id: input.approval_round_id,
-        contract_revision_id: input.contract_revision_id,
-        expected_row_version: input.expected_row_version,
-        action: input.action,
-        opinion: input.opinion,
-      },
-      { "Idempotency-Key": idempotencyKey },
-    ),
-    parseApprovalDecisionResult,
-  );
+  const body = {
+    decision: input.decision,
+    comment: input.comment,
+    expected_round_row_version: input.expected_round_row_version,
+  };
+  const send = (credential?: string) =>
+    requestJson(
+      `/api/approval-tasks/${encodeURIComponent(input.task_id)}/decisions`,
+      jsonInit(
+        "POST",
+        credential === undefined ? body : { ...body, credential },
+        { "Idempotency-Key": idempotencyKey },
+      ),
+      parseApprovalDecisionResult,
+    );
+  try {
+    return await send(input.credential);
+  } catch (error) {
+    if (
+      input.credential !== undefined ||
+      !(error instanceof ApiError) ||
+      error.status !== 403
+    ) {
+      throw error;
+    }
+    let credential: string;
+    try {
+      credential = await requestApprovalCredential(input.task_id);
+    } catch {
+      throw error;
+    }
+    return send(credential);
+  }
 }

@@ -28,6 +28,7 @@ func approvalDecisionTestDirectory(t *testing.T) {
 	body := `{"users":[
 		{"id":"demo-admin","display_name":"演示管理员","role":"admin","tenant_id":"local-demo","org_id":"demo-org","enabled":true,"issuer":"directory-demo","subject":"admin-demo","grants":[{"role":"case_owner","scope":"tenant"}]},
 		{"id":"demo-reviewer","display_name":"演示审查员","role":"reviewer","tenant_id":"local-demo","org_id":"demo-org","enabled":true,"issuer":"directory-demo","subject":"reviewer-demo","grants":[{"role":"reviewer","scope":"tenant"}]},
+		{"id":"demo-reviewer-2","display_name":"演示审查员二","role":"reviewer","tenant_id":"local-demo","org_id":"demo-org","enabled":true,"issuer":"directory-demo","subject":"reviewer-demo-2","grants":[{"role":"reviewer","scope":"tenant"}]},
 		{"id":"demo-viewer","display_name":"演示只读","role":"viewer","tenant_id":"local-demo","org_id":"demo-org","enabled":true,"issuer":"directory-demo","subject":"viewer-demo","grants":[{"role":"viewer","scope":"tenant"}]}
 	]}`
 	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {

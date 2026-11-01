@@ -486,6 +486,18 @@ func (s *Store) SubmitContractApproval(ctx context.Context, user accounts.User, 
 				return SubmitContractApprovalResult{}, err
 			}
 		}
+		// The material whitelist is written in the same transaction as the task.
+		// There is no later expansion path; a task with no rows exposes no
+		// materials, which is the default-deny case for external lawyers.
+		if _, err := tx.Exec(ctx, `INSERT INTO clm_approval_task_materials
+			(tenant_id,contract_id,approval_round_id,approval_task_id,contract_revision_id,
+			 material_id,material_version_id)
+			SELECT $1,$2,$3,$4,material.contract_revision_id,material.material_id,material.material_version_id
+			FROM clm_contract_version_materials material
+			WHERE material.tenant_id=$1 AND material.contract_id=$2 AND material.contract_revision_id=$5`,
+			accounts.Tenant(current), id, roundID, taskID, revisionID); err != nil {
+			return SubmitContractApprovalResult{}, err
+		}
 		tasks = append(tasks, ApprovalTaskSummary{
 			ApprovalTaskID: taskID, NodeCode: node.NodeCode, NodeOrder: node.NodeOrder,
 			Title: node.Title, RoleCode: node.RoleCode, Final: node.Final, State: state,

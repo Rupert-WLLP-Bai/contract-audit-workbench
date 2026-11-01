@@ -332,12 +332,9 @@ function DecisionForm({
     mutation.mutate(
       {
         task_id: activeTask.task_id,
-        contract_id: detail.contract_id,
-        approval_round_id: detail.round.approval_round_id,
-        contract_revision_id: detail.round.contract_revision_id,
-        expected_row_version: activeTask.row_version,
-        action,
-        opinion: trimmed,
+        expected_round_row_version: detail.round.row_version,
+        decision: action,
+        comment: trimmed,
       },
       {
         onSuccess: (result) => {
