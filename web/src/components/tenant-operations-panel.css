@@ -1,0 +1,31 @@
+@layer components {
+  .tenant-operations-panel {
+    min-width: 0;
+    margin-bottom: var(--space-6);
+    padding: var(--space-6);
+    border: 1px solid var(--border-default);
+    border-radius: var(--panel-radius);
+    background: var(--surface-raised);
+  }
+
+  .tenant-operations-panel .settings-panel-head {
+    flex-wrap: wrap;
+    gap: var(--space-3);
+  }
+
+  .tenant-operations-panel .settings-facts > div {
+    grid-template-columns: 112px minmax(0, 1fr);
+  }
+
+  .tenant-operations-panel .settings-facts dd {
+    overflow-wrap: anywhere;
+  }
+
+  .tenant-operations-panel .ant-table-wrapper {
+    margin-block: var(--space-4);
+  }
+
+  .tenant-operations-panel .ant-table {
+    background: var(--surface-raised);
+  }
+}

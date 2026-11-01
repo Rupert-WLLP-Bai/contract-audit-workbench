@@ -61,6 +61,9 @@ function renderPage(
   vi.spyOn(api, "getSettings").mockResolvedValue(settings);
   vi.spyOn(api, "getSession").mockResolvedValue(actor(role, audience));
   const getEndpoint = vi.spyOn(api, "getLLMEndpoint").mockResolvedValue(view);
+  vi.spyOn(globalThis, "fetch").mockResolvedValue(
+    new Response(JSON.stringify({ error: { code: "model_usage_unavailable", message: "用量账本暂不可用", retryable: false } }), { status: 503, headers: { "Content-Type": "application/json" } }),
+  );
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
@@ -81,7 +84,7 @@ describe("settings LLM endpoint access", () => {
     expect(getEndpoint).not.toHaveBeenCalled();
   });
 
-  it("shows endpoint facts and role selectors only to an admin session", async () => {
+  it("keeps endpoint configuration available to admins when tenant usage is unavailable", async () => {
     const getEndpoint = renderPage("admin", "admin");
     expect(await screen.findByText("LLM 端点")).toBeInTheDocument();
     expect(getEndpoint).toHaveBeenCalledTimes(1);

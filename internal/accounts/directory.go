@@ -1,6 +1,9 @@
 package accounts
 
 import (
+	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"io"
@@ -17,12 +20,21 @@ const LocalDemoTenant = "local-demo"
 // LocalDemoTenant2 identifies the second development/test demo tenant.
 const LocalDemoTenant2 = "local-demo-2"
 
+const (
+	directoryFileLimit            = 1 << 20
+	directoryVerificationInterval = time.Second
+)
+
 var enterpriseDirectory struct {
 	sync.Mutex
-	path     string
-	modified time.Time
-	size     int64
-	users    map[string]User
+	path             string
+	info             os.FileInfo
+	users            map[string]User
+	revision         string
+	lastGoodRevision string
+	checkedAt        time.Time
+	loadedAt         time.Time
+	verifiedAt       time.Time
 }
 
 func demoIdentity(id, name, role string) User {
@@ -71,23 +83,56 @@ func Principal(user User) access.Principal {
 	return access.Principal{UserID: user.ID, TenantID: user.TenantID, Enabled: user.Enabled, Grants: user.Grants}
 }
 
-// ConfigureDirectory enables enterprise-only authentication. Changes to this trusted
-// mounted file are reloaded on lookup, so all API/worker processes observe revocation.
-// Invalid/missing replacement files deny access rather than preserving stale grants.
+// ConfigureDirectory enables enterprise-only authentication. Each process checks
+// the trusted file on lookup and periodically verifies unchanged file metadata.
+// The local verification interval does not bound mount propagation. Invalid or
+// missing active files deny access rather than preserving stale grants.
 func ConfigureDirectory(path string) error {
 	enterpriseDirectory.Lock()
 	defer enterpriseDirectory.Unlock()
 	if path == "" {
-		enterpriseDirectory.path, enterpriseDirectory.users = "", nil
+		resetDirectoryLocked()
 		return nil
 	}
-	users, info, err := readDirectory(path)
-	if err != nil {
-		return err
+	verificationStarted := time.Now()
+	data, info, revision, err := readDirectory(path)
+	checkedAt := time.Now()
+	if err == nil {
+		if path == enterpriseDirectory.path && enterpriseDirectory.users != nil && revision == enterpriseDirectory.revision {
+			enterpriseDirectory.info = info
+			enterpriseDirectory.checkedAt, enterpriseDirectory.verifiedAt = checkedAt, verificationStarted
+			return nil
+		}
+		var users map[string]User
+		users, err = decodeDirectory(bytes.NewReader(data))
+		if err == nil {
+			loadedAt := time.Now()
+			resetDirectoryLocked()
+			enterpriseDirectory.path, enterpriseDirectory.info, enterpriseDirectory.users = path, info, users
+			enterpriseDirectory.revision, enterpriseDirectory.lastGoodRevision = revision, revision
+			enterpriseDirectory.checkedAt, enterpriseDirectory.loadedAt, enterpriseDirectory.verifiedAt = checkedAt, loadedAt, verificationStarted
+			return nil
+		}
 	}
-	enterpriseDirectory.path, enterpriseDirectory.users = path, users
-	enterpriseDirectory.modified, enterpriseDirectory.size = info.ModTime(), info.Size()
-	return nil
+	// A rejected new configuration leaves the active directory in place. If
+	// the active file itself failed, revoke its effective users immediately.
+	if path == enterpriseDirectory.path {
+		directoryUnavailableLocked()
+	}
+	return err
+}
+
+func resetDirectoryLocked() {
+	enterpriseDirectory.path = ""
+	enterpriseDirectory.info, enterpriseDirectory.users = nil, nil
+	enterpriseDirectory.revision, enterpriseDirectory.lastGoodRevision = "", ""
+	enterpriseDirectory.checkedAt, enterpriseDirectory.loadedAt, enterpriseDirectory.verifiedAt = time.Time{}, time.Time{}, time.Time{}
+}
+
+func directoryUnavailableLocked() {
+	enterpriseDirectory.info, enterpriseDirectory.users = nil, nil
+	enterpriseDirectory.revision = ""
+	enterpriseDirectory.checkedAt, enterpriseDirectory.verifiedAt = time.Now(), time.Time{}
 }
 
 func directoryConfigured() bool {
@@ -96,24 +141,46 @@ func directoryConfigured() bool {
 	return enterpriseDirectory.path != ""
 }
 
-func readDirectory(path string) (map[string]User, os.FileInfo, error) {
+// readDirectory hashes exactly the bytes decoded by the caller. File identity
+// and metadata must remain stable until the configured path is checked again.
+func readDirectory(path string) ([]byte, os.FileInfo, string, error) {
 	file, err := os.Open(path)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, "", err
 	}
 	defer file.Close()
 	info, err := file.Stat()
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, "", err
 	}
-	if !info.Mode().IsRegular() || info.Size() > 1<<20 {
-		return nil, nil, errors.New("invalid trusted directory file")
+	if !info.Mode().IsRegular() || info.Size() > directoryFileLimit {
+		return nil, nil, "", errors.New("invalid trusted directory file")
 	}
-	users, err := decodeDirectory(file)
+	data, err := io.ReadAll(io.LimitReader(file, directoryFileLimit+1))
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, "", err
 	}
-	return users, info, nil
+	if len(data) > directoryFileLimit {
+		return nil, nil, "", errors.New("invalid trusted directory file")
+	}
+	after, err := file.Stat()
+	if err != nil {
+		return nil, nil, "", err
+	}
+	current, err := os.Stat(path)
+	if err != nil {
+		return nil, nil, "", err
+	}
+	if int64(len(data)) != info.Size() || !sameDirectoryFile(info, after) || !sameDirectoryFile(after, current) {
+		return nil, nil, "", errors.New("trusted directory changed during read")
+	}
+	digest := sha256.Sum256(data)
+	return data, current, hex.EncodeToString(digest[:]), nil
+}
+
+func sameDirectoryFile(a, b os.FileInfo) bool {
+	return a != nil && b != nil && os.SameFile(a, b) && a.Mode() == b.Mode() &&
+		a.Size() == b.Size() && a.ModTime().Equal(b.ModTime())
 }
 
 func decodeDirectory(file io.Reader) (map[string]User, error) {
@@ -152,27 +219,47 @@ func addDirectoryUser(users map[string]User, subjects map[string]bool, user User
 
 func refreshDirectoryLocked() error {
 	info, err := os.Stat(enterpriseDirectory.path)
+	now := time.Now()
+	enterpriseDirectory.checkedAt = now
 	if err != nil {
-		enterpriseDirectory.users = nil
+		directoryUnavailableLocked()
 		return err
 	}
-	if enterpriseDirectory.users != nil && info.ModTime().Equal(enterpriseDirectory.modified) && info.Size() == enterpriseDirectory.size {
+	if !info.Mode().IsRegular() || info.Size() > directoryFileLimit {
+		directoryUnavailableLocked()
+		return errors.New("invalid trusted directory file")
+	}
+	if enterpriseDirectory.users != nil && sameDirectoryFile(info, enterpriseDirectory.info) &&
+		now.Sub(enterpriseDirectory.verifiedAt) < directoryVerificationInterval {
 		return nil
 	}
-	users, info, err := readDirectory(enterpriseDirectory.path)
+	// Start the interval before reading so a long read or decode cannot extend
+	// the bound for a same-metadata write that occurs during verification.
+	data, info, revision, err := readDirectory(enterpriseDirectory.path)
+	checkedAt := time.Now()
 	if err != nil {
-		enterpriseDirectory.users = nil
+		directoryUnavailableLocked()
 		return err
 	}
-	enterpriseDirectory.users = users
-	enterpriseDirectory.modified, enterpriseDirectory.size = info.ModTime(), info.Size()
+	if enterpriseDirectory.users == nil || revision != enterpriseDirectory.revision {
+		users, err := decodeDirectory(bytes.NewReader(data))
+		if err != nil {
+			directoryUnavailableLocked()
+			return err
+		}
+		enterpriseDirectory.users = users
+		enterpriseDirectory.revision, enterpriseDirectory.lastGoodRevision = revision, revision
+		enterpriseDirectory.loadedAt = time.Now()
+	}
+	enterpriseDirectory.info = info
+	enterpriseDirectory.checkedAt, enterpriseDirectory.verifiedAt = checkedAt, now
 	return nil
 }
 
 func directoryUser(id string) (User, bool) {
 	enterpriseDirectory.Lock()
 	defer enterpriseDirectory.Unlock()
-	if refreshDirectoryLocked() != nil {
+	if enterpriseDirectory.path == "" || refreshDirectoryLocked() != nil {
 		return User{}, false
 	}
 	user, ok := enterpriseDirectory.users[id]
@@ -182,7 +269,7 @@ func directoryUser(id string) (User, bool) {
 func directoryUsers() []User {
 	enterpriseDirectory.Lock()
 	defer enterpriseDirectory.Unlock()
-	if refreshDirectoryLocked() != nil {
+	if enterpriseDirectory.path == "" || refreshDirectoryLocked() != nil {
 		return []User{}
 	}
 	users := make([]User, 0, len(enterpriseDirectory.users))

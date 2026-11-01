@@ -64,6 +64,7 @@ func Handler(st *store.Store, opt Options) http.Handler {
 		opt.SystemHealth = systemhealth.New(systemhealth.Config{DatabaseReady: st.Ready})
 	}
 	h := &handler{store: st, loginCounter: newLoginCounter(), cors: opt.CORSOrigins, models: opt.Models, oidc: opt.OIDC, durable: opt.Durable, secureCookies: opt.SecureCookies, systemHealth: opt.SystemHealth, experienceDeliveryEnabled: opt.experienceDeliveryEnabled, operatorAuditEnabled: opt.OperatorAuditEnabled, capabilityPacks: opt.CapabilityPacks, externalConnectors: opt.ExternalConnectors, externalConnectorInfo: opt.ExternalConnectorInfo, intakeUploader: opt.IntakeUploader, eventStreams: make(chan struct{}, maxEventStreams), eventWakeups: newEventWakeups()}
+	h.modelBudgetGateway = systemhealth.ModelGatewayBaseURLFromEnv()
 	mux := http.NewServeMux()
 	// Every binary in this repository serves the same probe surface so a manifest
 	// can never point at a path no binary answers. Readiness is the shared
@@ -80,6 +81,7 @@ func Handler(st *store.Store, opt Options) http.Handler {
 	mux.HandleFunc("POST /api/admin/llm-endpoint/probe", h.probeLLMEndpoint)
 	mux.HandleFunc("PUT /api/admin/llm-endpoint/models", h.saveLLMModels)
 	mux.HandleFunc("GET /api/admin/system-health", h.adminSystemHealth)
+	mux.HandleFunc("GET /api/admin/tenant-operations", h.tenantOperations)
 	mux.HandleFunc("GET /api/admin/rulepacks", h.listRulePacks)
 	mux.HandleFunc("POST /api/admin/rulepacks", h.createRulePack)
 	mux.HandleFunc("GET /api/admin/rulepacks/{packID}/versions/{version}", h.getRulePackVersion)
@@ -186,6 +188,7 @@ func Handler(st *store.Store, opt Options) http.Handler {
 
 type handler struct {
 	systemHealth              systemhealth.Reader
+	modelBudgetGateway        string
 	store                     *store.Store
 	cors                      []string
 	models                    *model.Client
