@@ -1,0 +1,591 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contract-audit-workbench.invalid/file-metadata/manifest.schema.json",
+  "title": "Contract Audit Workbench file metadata manifest",
+  "description": "Schema for the canonical per-tracked-file manifest populated from the fixed baseline in issue #115; issue #124 applies eligible source headers and refreshes this same manifest.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "inventory",
+    "files"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "files": {
+      "type": "object",
+      "description": "The object key is the exact repository-relative path; object form gives each path one manifest record.",
+      "propertyNames": {
+        "$ref": "#/$defs/path"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/record"
+      }
+    },
+    "inventory": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "baseline_head",
+        "baseline_timestamp",
+        "tracked_file_count",
+        "explicit_additions",
+        "excluded_untracked_paths"
+      ],
+      "properties": {
+        "baseline_head": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$"
+        },
+        "baseline_timestamp": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "tracked_file_count": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "explicit_additions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/path"
+          },
+          "uniqueItems": true
+        },
+        "excluded_untracked_paths": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "path",
+              "reason"
+            ],
+            "properties": {
+              "path": {
+                "$ref": "#/$defs/path"
+              },
+              "reason": {
+                "type": "string",
+                "minLength": 12
+              }
+            }
+          },
+          "uniqueItems": true
+        }
+      }
+    }
+  },
+  "$defs": {
+    "path": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*\\\\)[^\\u0000]+$",
+      "description": "Repository-relative POSIX path, exactly as returned by git ls-files."
+    },
+    "dateEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "value",
+        "source"
+      ],
+      "properties": {
+        "value": {
+          "oneOf": [
+            {
+              "type": "string",
+              "format": "date",
+              "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-([0-2][0-9]|3[01])$"
+            },
+            {
+              "const": "unknown"
+            }
+          ]
+        },
+        "source": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "reason"
+          ],
+          "properties": {
+            "kind": {
+              "enum": [
+                "git-first-introduction",
+                "git-last-content-change",
+                "rename-history",
+                "copy-origin",
+                "unknown"
+              ]
+            },
+            "commit": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{40,64}$"
+            },
+            "path": {
+              "$ref": "#/$defs/path"
+            },
+            "reason": {
+              "type": "string",
+              "minLength": 8
+            }
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "value": {
+                "const": "unknown"
+              }
+            },
+            "required": [
+              "value"
+            ]
+          },
+          "then": {
+            "properties": {
+              "source": {
+                "properties": {
+                  "kind": {
+                    "const": "unknown"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "value": {
+                "type": "string",
+                "format": "date",
+                "not": {
+                  "const": "unknown"
+                }
+              }
+            },
+            "required": [
+              "value"
+            ]
+          },
+          "then": {
+            "properties": {
+              "source": {
+                "properties": {
+                  "kind": {
+                    "not": {
+                      "const": "unknown"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "source": {
+                "properties": {
+                  "kind": {
+                    "enum": [
+                      "git-first-introduction",
+                      "git-last-content-change",
+                      "rename-history",
+                      "copy-origin"
+                    ]
+                  }
+                },
+                "required": [
+                  "kind"
+                ]
+              }
+            },
+            "required": [
+              "source"
+            ]
+          },
+          "then": {
+            "properties": {
+              "source": {
+                "required": [
+                  "commit"
+                ]
+              }
+            }
+          }
+        }
+      ],
+      "description": "Date is UTC YYYY-MM-DD; format and lexical pattern are declared here, and the future checker must reject impossible calendar dates."
+    },
+    "person": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "role",
+        "source"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "pattern": "^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$"
+        },
+        "contact": {
+          "type": "string",
+          "minLength": 1
+        },
+        "role": {
+          "enum": [
+            "project-author",
+            "upstream-author",
+            "unknown"
+          ]
+        },
+        "source": {
+          "type": "string",
+          "minLength": 1
+        },
+        "verbatim_attribution": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "role": {
+                "const": "project-author"
+              }
+            },
+            "required": [
+              "role"
+            ]
+          },
+          "then": {
+            "required": [
+              "email",
+              "contact"
+            ],
+            "properties": {
+              "name": {
+                "const": "Bai Junhao"
+              },
+              "email": {
+                "const": "baijunhao@cq.chinamobile.com"
+              },
+              "contact": {
+                "const": "+86 13617696321"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "role": {
+                "const": "upstream-author"
+              }
+            },
+            "required": [
+              "role"
+            ]
+          },
+          "then": {
+            "required": [
+              "verbatim_attribution"
+            ]
+          }
+        }
+      ]
+    },
+    "maintainer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "email",
+        "contact"
+      ],
+      "properties": {
+        "name": {
+          "const": "Bai Junhao"
+        },
+        "email": {
+          "const": "baijunhao@cq.chinamobile.com"
+        },
+        "contact": {
+          "const": "+86 13617696321"
+        }
+      }
+    },
+    "copyrightNotice": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "holder",
+        "notice",
+        "source"
+      ],
+      "properties": {
+        "holder": {
+          "type": "string",
+          "minLength": 1
+        },
+        "notice": {
+          "type": "string",
+          "minLength": 1
+        },
+        "source": {
+          "type": "string",
+          "minLength": 1
+        },
+        "verbatim": {
+          "type": "boolean"
+        }
+      }
+    },
+    "exception": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "rule_id",
+        "reason"
+      ],
+      "properties": {
+        "rule_id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]*$"
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 12
+        },
+        "source": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "record": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "purpose",
+        "authors",
+        "maintainers",
+        "created",
+        "updated",
+        "revision",
+        "copyright",
+        "handling",
+        "header_state"
+      ],
+      "properties": {
+        "purpose": {
+          "type": "string",
+          "minLength": 20
+        },
+        "authors": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/person"
+          }
+        },
+        "maintainers": {
+          "type": "array",
+          "minItems": 1,
+          "contains": {
+            "$ref": "#/$defs/maintainer"
+          }
+        },
+        "created": {
+          "$ref": "#/$defs/dateEvidence"
+        },
+        "updated": {
+          "$ref": "#/$defs/dateEvidence"
+        },
+        "revision": {
+          "type": "string",
+          "pattern": "^r[1-9][0-9]*$"
+        },
+        "copyright": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/copyrightNotice"
+          }
+        },
+        "handling": {
+          "enum": [
+            "header-and-manifest",
+            "manifest-only",
+            "preserve-notice-and-manifest",
+            "generated-manifest-only"
+          ]
+        },
+        "exception": {
+          "$ref": "#/$defs/exception"
+        },
+        "generator": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "tool",
+            "inputs"
+          ],
+          "properties": {
+            "tool": {
+              "$ref": "#/$defs/path"
+            },
+            "inputs": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "$ref": "#/$defs/path"
+              }
+            }
+          }
+        },
+        "header_state": {
+          "enum": [
+            "pending-header-application",
+            "manifest-only",
+            "upstream-notice-preserved",
+            "generator-owned-output"
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "handling": {
+                "enum": [
+                  "manifest-only",
+                  "preserve-notice-and-manifest",
+                  "generated-manifest-only"
+                ]
+              }
+            },
+            "required": [
+              "handling"
+            ]
+          },
+          "then": {
+            "required": [
+              "exception"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "handling": {
+                "const": "generated-manifest-only"
+              }
+            },
+            "required": [
+              "handling"
+            ]
+          },
+          "then": {
+            "required": [
+              "generator"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "handling": {
+                "const": "header-and-manifest"
+              }
+            },
+            "required": [
+              "handling"
+            ]
+          },
+          "then": {
+            "properties": {
+              "header_state": {
+                "const": "pending-header-application"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "handling": {
+                "const": "manifest-only"
+              }
+            },
+            "required": [
+              "handling"
+            ]
+          },
+          "then": {
+            "properties": {
+              "header_state": {
+                "const": "manifest-only"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "handling": {
+                "const": "preserve-notice-and-manifest"
+              }
+            },
+            "required": [
+              "handling"
+            ]
+          },
+          "then": {
+            "properties": {
+              "header_state": {
+                "const": "upstream-notice-preserved"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "handling": {
+                "const": "generated-manifest-only"
+              }
+            },
+            "required": [
+              "handling"
+            ]
+          },
+          "then": {
+            "properties": {
+              "header_state": {
+                "const": "generator-owned-output"
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+}
