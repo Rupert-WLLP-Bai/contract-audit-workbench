@@ -154,11 +154,11 @@ func routeOwned(role string, methods routeMethodSet, parts []string) bool {
 	if parts[0] == "auth" {
 		return role == "core" && methods.read && oidcRoute(parts)
 	}
+	if parts[0] == "approval-tasks" {
+		return role == "core" && approvalTaskRoute(methods, parts)
+	}
 	if parts[0] == "contracts" {
 		return contractDraftRoute(role, methods, parts) || contractReferenceRoute(role, methods, parts)
-	}
-	if parts[0] == "approval-tasks" {
-		return role == "core" && len(parts) == 3 && parts[2] == "decisions" && methods.post
 	}
 	if parts[0] == "intakes" {
 		if role != "core" {
@@ -193,6 +193,7 @@ var topLevelRoutes = map[string]topLevelRouteRule{
 	"knowledge":        {role: "core", methods: routeMethodSet{post: true}},
 	"subjects":         {role: "core", methods: routeMethodSet{read: true, post: true}},
 	"contracts":        {role: "core", methods: routeMethodSet{read: true, post: true}},
+	"approval-tasks":   {role: "core", methods: routeMethodSet{read: true}},
 	"intakes":          {role: "core", methods: routeMethodSet{read: true, post: true}},
 }
 
@@ -203,6 +204,22 @@ func routeMethodsMatch(got, allowed routeMethodSet) bool {
 func contractDraftRoute(role string, methods routeMethodSet, parts []string) bool {
 	if role != "core" {
 		return false
+	}
+	// Saved views and exports live under a literal ledger namespace so their
+	// routes cannot collide with the contract-ID wildcard in ServeMux.
+	if len(parts) >= 3 && parts[1] == "ledger" {
+		switch {
+		case len(parts) == 3 && parts[2] == "views":
+			return methods.read || methods.post
+		case len(parts) == 4 && parts[2] == "views":
+			return methods.post || methods.delete
+		case len(parts) == 3 && parts[2] == "exports":
+			return methods.post
+		case len(parts) == 5 && parts[2] == "exports" && parts[4] == "download":
+			return methods.read
+		default:
+			return false
+		}
 	}
 	if len(parts) == 2 {
 		switch parts[1] {
@@ -230,7 +247,9 @@ func contractDraftRoute(role string, methods routeMethodSet, parts []string) boo
 	if len(parts) == 4 && parts[1] == "exports" && parts[3] == "download" {
 		return methods.read
 	}
-
+	if (len(parts) == 3 || len(parts) == 4) && parts[2] == "approval-rounds" {
+		return methods.read
+	}
 	if len(parts) == 3 {
 		switch parts[2] {
 		case "draft":
@@ -245,7 +264,21 @@ func contractDraftRoute(role string, methods routeMethodSet, parts []string) boo
 			return false
 		}
 	}
-	return len(parts) == 5 && parts[2] == "revisions" && parts[4] == "content" && methods.read
+	return len(parts) == 4 && parts[2] == "revisions" && methods.read
+}
+
+// approvalTaskRoute owns the read views and the decision command. The command
+// is registered by the approval module; both share core ownership because both
+// re-authorize the contract inside the store transaction.
+func approvalTaskRoute(methods routeMethodSet, parts []string) bool {
+	switch len(parts) {
+	case 1, 2:
+		return methods.read
+	case 3:
+		return parts[2] == "decisions" && methods.post
+	default:
+		return false
+	}
 }
 
 func knowledgeRoute(parts []string) bool {

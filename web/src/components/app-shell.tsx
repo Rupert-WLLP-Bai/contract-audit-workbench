@@ -59,6 +59,7 @@ const NAV_GROUPS: {
     links: [
       { to: "/cases", label: "案件管理", icon: "case", end: true },
       { to: "/contracts", label: "合同登记", icon: "contracts", end: true },
+      { to: "/workbench/approvals", label: "合同会签", icon: "contracts" },
       { to: "/subjects", label: "主体台账", icon: "subjects" },
       { to: "/workbench/tasks", label: "审查任务", icon: "tasks" },
       { to: "/workbench/remediation", label: "整改中心", icon: "remediation" },
@@ -168,6 +169,11 @@ function staticBreadcrumb(pathname: string): Crumb[] | null {
     return [
       { label: "工作台", to: "/" },
       { label: "合同登记", to: null },
+    ];
+  if (pathname === "/workbench/approvals")
+    return [
+      { label: "工作台", to: "/" },
+      { label: "合同会签", to: null },
     ];
   if (pathname === "/subjects")
     return [

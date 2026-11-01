@@ -130,6 +130,16 @@ func TestOperationOwnedByRouteOwnershipMatrix(t *testing.T) {
 		{"remediation-verify", "/api/cases/c/remediations/r/verify", "core", []string{http.MethodPost}},
 		{"report-create", "/api/cases/c/reports", "core", []string{http.MethodPost}},
 		{"report-item", "/api/cases/c/reports/r", "core", []string{http.MethodGet}},
+		{"approval-inbox", "/api/approval-tasks", "core", []string{http.MethodGet}},
+		{"approval-task-detail", "/api/approval-tasks/t", "core", []string{http.MethodGet}},
+		{"approval-decision", "/api/approval-tasks/t/decisions", "core", []string{http.MethodPost}},
+		{"approval-round-history", "/api/contracts/c/approval-rounds", "core", []string{http.MethodGet}},
+		{"approval-round-detail", "/api/contracts/c/approval-rounds/r", "core", []string{http.MethodGet}},
+		{"contract-version-detail", "/api/contracts/c/revisions/r", "core", []string{http.MethodGet}},
+		{"contract-saved-views", "/api/contracts/ledger/views", "core", []string{http.MethodGet, http.MethodPost}},
+		{"contract-saved-view-replace", "/api/contracts/ledger/views/v", "core", []string{http.MethodPost, http.MethodDelete}},
+		{"contract-exports", "/api/contracts/ledger/exports", "core", []string{http.MethodPost}},
+		{"contract-export-download", "/api/contracts/ledger/exports/e/download", "core", []string{http.MethodGet}},
 	}
 	roles := []string{"core", "document", "execution"}
 	methods := []string{http.MethodGet, http.MethodHead, http.MethodOptions, http.MethodPost, http.MethodPut, http.MethodDelete, http.MethodPatch}
