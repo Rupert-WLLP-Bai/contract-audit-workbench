@@ -682,7 +682,8 @@ func (s *Store) updateStateWithLocks(ctx context.Context, scope dbScope, attempt
 		expectedAttemptVersion = &attemptVersion
 		if scope.JobID != "" {
 			var jobID string
-			err := tx.QueryRow(ctx, `SELECT id FROM worker_jobs WHERE id=$1 AND tenant_id=$2 AND org_id=$3 AND attempt_id=$4 AND worker_id=$5 AND generation=$6 AND state='running' AND lease_until > clock_timestamp() FOR UPDATE`, scope.JobID, scope.TenantID, scope.OrgID, attemptID, scope.WorkerID, scope.Generation).Scan(&jobID)
+			err := tx.QueryRow(ctx, `SELECT id FROM worker_jobs WHERE id=$1 AND tenant_id=$2 AND org_id=$3 AND attempt_id=$4 AND worker_id=$5 AND generation=$6 AND state='running' AND lease_until > clock_timestamp()
+				AND tenant_runtime_fence(tenant_id,tenant_live_epoch,$7) AND EXISTS (SELECT 1 FROM review_attempts a WHERE a.id=worker_jobs.attempt_id AND a.run_id=worker_jobs.run_id AND a.tenant_id=worker_jobs.tenant_id AND a.org_id=worker_jobs.org_id AND a.tenant_live_epoch=worker_jobs.tenant_live_epoch) FOR UPDATE`, scope.JobID, scope.TenantID, scope.OrgID, attemptID, scope.WorkerID, scope.Generation, s.sel.Mode != config.ModeProduction).Scan(&jobID)
 			if errors.Is(err, pgx.ErrNoRows) {
 				return errLeaseLost
 			}
@@ -724,6 +725,9 @@ func (s *Store) updateStateWithLocks(ctx context.Context, scope dbScope, attempt
 	if err := fn(&next); err != nil {
 		return err
 	}
+	if err := s.freezeTenantConfigSnapshot(ctx, tx, previous, &next); err != nil {
+		return err
+	}
 	if err := validateAppendOnly(previous, next); err != nil {
 		return err
 	}
@@ -761,7 +765,7 @@ func (s *Store) persist(ctx context.Context, tx pgx.Tx, previous, next state, ex
 	if err := syncAudits(ctx, tx, changed.Audits, s.serviceOwner); err != nil {
 		return err
 	}
-	if err := syncJobs(ctx, tx, changed.Jobs); err != nil {
+	if err := syncJobs(ctx, tx, changed.Jobs, s.sel.Mode != config.ModeProduction); err != nil {
 		return err
 	}
 	if err := s.admitNewJobs(ctx, tx, old.Jobs, changed.Jobs); err != nil {
@@ -967,8 +971,8 @@ func replaceRows(ctx context.Context, tx pgx.Tx, previous, st state, owner strin
 		if expectedAttemptVersion != nil {
 			expectedVersion = *expectedAttemptVersion
 		}
-		tag, err := tx.Exec(ctx, `INSERT INTO review_attempts (id, run_id, ordinal, retry_of_attempt_id, state, accepted_at, started_at, finished_at, input_hash, output_hash, error_code, history_kind, actor_id, rule_pack_snapshot, rule_pack_hash, rule_pack_snapshot_digest, rule_pack_compiler_ref, rule_pack_id, rule_pack_version, rule_pack_pointer_revision, planner_configuration_id, planner_configuration)
-			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)
+		tag, err := tx.Exec(ctx, `INSERT INTO review_attempts (id, run_id, ordinal, retry_of_attempt_id, state, accepted_at, started_at, finished_at, input_hash, output_hash, error_code, history_kind, actor_id, rule_pack_snapshot, rule_pack_hash, rule_pack_snapshot_digest, rule_pack_compiler_ref, rule_pack_id, rule_pack_version, rule_pack_pointer_revision, planner_configuration_id, planner_configuration, tenant_live_epoch)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$24)
 			ON CONFLICT (id) DO UPDATE SET state=EXCLUDED.state, started_at=EXCLUDED.started_at, finished_at=EXCLUDED.finished_at, input_hash=EXCLUDED.input_hash, output_hash=EXCLUDED.output_hash, error_code=EXCLUDED.error_code, history_kind=EXCLUDED.history_kind,
 			rule_pack_snapshot=EXCLUDED.rule_pack_snapshot, rule_pack_hash=EXCLUDED.rule_pack_hash, rule_pack_snapshot_digest=EXCLUDED.rule_pack_snapshot_digest, rule_pack_compiler_ref=EXCLUDED.rule_pack_compiler_ref,
 			rule_pack_id=EXCLUDED.rule_pack_id, rule_pack_version=EXCLUDED.rule_pack_version, rule_pack_pointer_revision=EXCLUDED.rule_pack_pointer_revision,
@@ -978,10 +982,11 @@ func replaceRows(ctx context.Context, tx pgx.Tx, previous, st state, owner strin
 				AND ($23::bigint IS NULL OR review_attempts.entity_version=$23)
 				AND ((review_attempts.rule_pack_snapshot IS NULL AND review_attempts.rule_pack_hash='' AND review_attempts.rule_pack_snapshot_digest='' AND review_attempts.rule_pack_compiler_ref='') OR
 					(review_attempts.rule_pack_snapshot IS NOT DISTINCT FROM EXCLUDED.rule_pack_snapshot AND review_attempts.rule_pack_hash=EXCLUDED.rule_pack_hash AND review_attempts.rule_pack_snapshot_digest=EXCLUDED.rule_pack_snapshot_digest AND review_attempts.rule_pack_compiler_ref=EXCLUDED.rule_pack_compiler_ref))
+				AND review_attempts.tenant_live_epoch IS NOT DISTINCT FROM EXCLUDED.tenant_live_epoch
 				AND review_attempts.planner_configuration_id=EXCLUDED.planner_configuration_id
 				AND review_attempts.planner_configuration IS NOT DISTINCT FROM EXCLUDED.planner_configuration`,
 			item.ID, item.RunID, item.Ordinal, item.RetryOfAttemptID, item.State, item.AcceptedAt, item.StartedAt, item.FinishedAt, item.InputHash, item.OutputHash, item.ErrorCode, item.HistoryKind, item.ActorID, []byte(item.RulePackSnapshot), item.RulePackHash, item.RulePackSnapshotDigest, item.RulePackCompilerRef,
-			item.RulePackID, item.RulePackVersion, item.RulePackPointerRevision, item.PlannerConfigurationID, plannerPayloadValue(item.PlannerConfiguration), expectedVersion)
+			item.RulePackID, item.RulePackVersion, item.RulePackPointerRevision, item.PlannerConfigurationID, plannerPayloadValue(item.PlannerConfiguration), expectedVersion, item.TenantLiveEpoch)
 		if err != nil {
 			return err
 		}
@@ -1144,13 +1149,13 @@ func syncSnapshots(ctx context.Context, tx pgx.Tx, items []RunSnapshot) error {
 		if err != nil {
 			return err
 		}
-		if _, err := tx.Exec(ctx, `INSERT INTO review_run_snapshots (run_id, document_ids, rule_set_hash, playbook_hash, model_ref, comparator_ref, model_configuration_id, parsed_document_ids, parse_selection_hash, parser_configuration_id, rule_pack_compiler_ref, rule_pack_id, rule_pack_version, rule_pack_hash, rule_pack_digest, rule_pack_snapshot, planner_configuration_id, planner_configuration, cloud_policy_snapshot, cloud_policy_digest, governed_knowledge, party_context, party_context_hash, service_object_context, service_object_context_hash) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25)`,
+		if _, err := tx.Exec(ctx, `INSERT INTO review_run_snapshots (run_id, document_ids, rule_set_hash, playbook_hash, model_ref, comparator_ref, model_configuration_id, parsed_document_ids, parse_selection_hash, parser_configuration_id, rule_pack_compiler_ref, rule_pack_id, rule_pack_version, rule_pack_hash, rule_pack_digest, rule_pack_snapshot, planner_configuration_id, planner_configuration, cloud_policy_snapshot, cloud_policy_digest, governed_knowledge, party_context, party_context_hash, service_object_context, service_object_context_hash, adopted_tenant_config_version_id, adopted_tenant_config_digest, input_hash_version) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28)`,
 			item.RunID, raw, item.RuleSetHash, item.PlaybookHash, item.ModelRef, item.ComparatorRef, item.ModelConfigurationID,
 			parsedRaw, item.ParseSelectionHash, item.ParserConfigurationID, item.RulePackCompilerRef,
 			item.RulePackID, item.RulePackVersion, item.RulePackHash, item.RulePackDigest,
 			[]byte(item.RulePackSnapshot), item.PlannerConfigurationID, plannerPayloadValue(item.PlannerConfiguration),
 			[]byte(item.CloudPolicySnapshot), item.CloudPolicyDigest, knowledge, partyContext, item.PartyContextHash,
-			serviceObjectContext, item.ServiceObjectContextHash); err != nil {
+			serviceObjectContext, item.ServiceObjectContextHash, item.AdoptedTenantConfigVersionID, item.AdoptedTenantConfigDigest, inputHashVersion(item)); err != nil {
 			return err
 		}
 	}
@@ -1352,7 +1357,7 @@ func loadRuns(ctx context.Context, q queryer) ([]Run, error) {
 }
 
 func loadAttempts(ctx context.Context, q queryer, caseID ...string) ([]Attempt, error) {
-	rows, err := queryCaseRows(ctx, q, `SELECT id, run_id, ordinal, retry_of_attempt_id, state, accepted_at, started_at, finished_at, input_hash, output_hash, error_code, history_kind, actor_id, rule_pack_snapshot, rule_pack_hash, rule_pack_snapshot_digest, rule_pack_compiler_ref, rule_pack_id, rule_pack_version, rule_pack_pointer_revision, planner_configuration_id, planner_configuration FROM review_attempts`, `run_id IN (SELECT id FROM review_runs WHERE case_id=$1)`, ` ORDER BY run_id, ordinal`, caseID...)
+	rows, err := queryCaseRows(ctx, q, `SELECT id, run_id, ordinal, retry_of_attempt_id, state, accepted_at, started_at, finished_at, input_hash, output_hash, error_code, history_kind, actor_id, rule_pack_snapshot, rule_pack_hash, rule_pack_snapshot_digest, rule_pack_compiler_ref, rule_pack_id, rule_pack_version, rule_pack_pointer_revision, planner_configuration_id, planner_configuration, tenant_live_epoch FROM review_attempts`, `run_id IN (SELECT id FROM review_runs WHERE case_id=$1)`, ` ORDER BY run_id, ordinal`, caseID...)
 	if err != nil {
 		return nil, err
 	}
@@ -1362,7 +1367,7 @@ func loadAttempts(ctx context.Context, q queryer, caseID ...string) ([]Attempt, 
 		var item Attempt
 		var plannerPayload []byte
 		if err := rows.Scan(&item.ID, &item.RunID, &item.Ordinal, &item.RetryOfAttemptID, &item.State, &item.AcceptedAt, &item.StartedAt, &item.FinishedAt, &item.InputHash, &item.OutputHash, &item.ErrorCode, &item.HistoryKind, &item.ActorID, &item.RulePackSnapshot, &item.RulePackHash, &item.RulePackSnapshotDigest, &item.RulePackCompilerRef,
-			&item.RulePackID, &item.RulePackVersion, &item.RulePackPointerRevision, &item.PlannerConfigurationID, &plannerPayload); err != nil {
+			&item.RulePackID, &item.RulePackVersion, &item.RulePackPointerRevision, &item.PlannerConfigurationID, &plannerPayload, &item.TenantLiveEpoch); err != nil {
 			return nil, err
 		}
 		if len(plannerPayload) > 0 {
@@ -1585,7 +1590,7 @@ func loadIdempotency(ctx context.Context, q queryer) ([]Idem, error) {
 }
 
 func loadSnapshots(ctx context.Context, q queryer, caseID ...string) ([]RunSnapshot, error) {
-	rows, err := queryCaseRows(ctx, q, `SELECT run_id, document_ids, rule_set_hash, playbook_hash, model_ref, comparator_ref, model_configuration_id, parsed_document_ids, parse_selection_hash, parser_configuration_id, rule_pack_compiler_ref, rule_pack_id, rule_pack_version, rule_pack_hash, rule_pack_digest, rule_pack_snapshot, planner_configuration_id, planner_configuration, cloud_policy_snapshot, cloud_policy_digest, governed_knowledge, party_context, party_context_hash, service_object_context, service_object_context_hash FROM review_run_snapshots`, `run_id IN (SELECT id FROM review_runs WHERE case_id=$1)`, ` ORDER BY run_id`, caseID...)
+	rows, err := queryCaseRows(ctx, q, `SELECT run_id, document_ids, rule_set_hash, playbook_hash, model_ref, comparator_ref, model_configuration_id, parsed_document_ids, parse_selection_hash, parser_configuration_id, rule_pack_compiler_ref, rule_pack_id, rule_pack_version, rule_pack_hash, rule_pack_digest, rule_pack_snapshot, planner_configuration_id, planner_configuration, cloud_policy_snapshot, cloud_policy_digest, governed_knowledge, party_context, party_context_hash, service_object_context, service_object_context_hash, adopted_tenant_config_version_id, adopted_tenant_config_digest, input_hash_version FROM review_run_snapshots`, `run_id IN (SELECT id FROM review_runs WHERE case_id=$1)`, ` ORDER BY run_id`, caseID...)
 	if err != nil {
 		return nil, err
 	}
@@ -1599,7 +1604,7 @@ func loadSnapshots(ctx context.Context, q queryer, caseID ...string) ([]RunSnaps
 			&item.ComparatorRef, &item.ModelConfigurationID, &parsedRaw, &item.ParseSelectionHash, &item.ParserConfigurationID, &item.RulePackCompilerRef,
 			&item.RulePackID, &item.RulePackVersion, &item.RulePackHash, &item.RulePackDigest, &snapshot, &item.PlannerConfigurationID, &plannerPayload,
 			&policySnapshot, &item.CloudPolicyDigest, &knowledge, &partyContext, &item.PartyContextHash,
-			&serviceObjectContext, &item.ServiceObjectContextHash); err != nil {
+			&serviceObjectContext, &item.ServiceObjectContextHash, &item.AdoptedTenantConfigVersionID, &item.AdoptedTenantConfigDigest, &item.InputHashVersion); err != nil {
 			return nil, err
 		}
 		if err := json.Unmarshal([]byte(raw), &item.DocumentIDs); err != nil {

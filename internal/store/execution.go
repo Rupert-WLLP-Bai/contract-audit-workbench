@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"slices"
 	"sort"
+	"strconv"
 	"sync"
 	"time"
 
@@ -424,9 +425,22 @@ func (s *Store) startReview(ctx context.Context, user accounts.User, caseID, bus
 			return nil
 		}
 		executionCase = *currentCase
+		epoch, err := s.admissionEpoch(ctx, acceptanceTx, currentCase.TenantID)
+		if err != nil {
+			return err
+		}
 		signature, err = withPartyContext(*st, caseID, signature)
 		if err != nil {
 			return err
+		}
+		configVersion, configDigest, err := s.acceptedTenantConfig(ctx, acceptanceTx, currentCase.TenantID)
+		if err != nil {
+			return err
+		}
+		signature.AdoptedTenantConfigVersionID, signature.AdoptedTenantConfigDigest = configVersion, configDigest
+		signature.InputHashVersion = 1
+		if configVersion != "" {
+			signature.InputHashVersion = 2
 		}
 		if materialSelectionPending(*st, caseID) || !sameDocumentSet(documentIDs(selectedMaterialDocuments(*st, caseID)), reviewDocumentIDs) || !parsedSelectionCurrent(*st, frozenDocs) {
 			return fault.Conflict("所选的材料解析版本刚被更新，请重新发起审查")
@@ -441,6 +455,9 @@ func (s *Store) startReview(ctx context.Context, user accounts.User, caseID, bus
 		if run, ok := st.latestRun(caseID); ok {
 			previous := st.snapshotOf(run.ID)
 			reusable := sameRunSignature(previous, signature) && sameRunCompilerIdentity(previous, signature)
+			if latest, ok := st.latestAttempt(run.ID); ok && attemptActive(latest.State) && (latest.TenantLiveEpoch == nil || *latest.TenantLiveEpoch != *epoch) {
+				reusable = false
+			}
 			if reusable && durable {
 				if err := acceptanceTx.QueryRow(ctx, `SELECT EXISTS (
 					SELECT 1 FROM review_attempts a JOIN worker_jobs j ON j.attempt_id=a.id
@@ -475,6 +492,7 @@ func (s *Store) startReview(ctx context.Context, user accounts.User, caseID, bus
 		if err := sealSnapshot(st, runID, signature); err != nil {
 			return err
 		}
+		attempt.TenantLiveEpoch = epoch
 		// The accepted attempt carries the exact frozen pack bytes and planner
 		// configuration, so the worker never resolves latest.
 		attempt.ReviewScope = signature.ReviewScope
@@ -500,7 +518,7 @@ func (s *Store) startReview(ctx context.Context, user accounts.User, caseID, bus
 			if err != nil {
 				return err
 			}
-			st.Jobs = append(st.Jobs, Job{ID: jobID, TenantID: caseItem.TenantID, OrgID: caseItem.OwnerOrgID, CaseID: caseID, RunID: runID, AttemptID: attemptID, ActorID: user.ID, PrincipalID: user.PrincipalID, MembershipID: user.MembershipID, IdentityCaptured: true, Kind: "review", State: "queued", CreatedAt: acceptedAt, UpdatedAt: acceptedAt})
+			st.Jobs = append(st.Jobs, Job{ID: jobID, TenantID: caseItem.TenantID, OrgID: caseItem.OwnerOrgID, CaseID: caseID, RunID: runID, AttemptID: attemptID, ActorID: user.ID, PrincipalID: user.PrincipalID, MembershipID: user.MembershipID, IdentityCaptured: true, Kind: "review", State: "queued", TenantLiveEpoch: epoch, CreatedAt: acceptedAt, UpdatedAt: acceptedAt})
 			st.Outbox = append(st.Outbox, OutboxRecord{ID: outboxID, JobID: jobID, TenantID: caseItem.TenantID, OrgID: caseItem.OwnerOrgID, CaseID: caseID, EventType: "review.accepted", Payload: string(payload), State: "pending", CreatedAt: acceptedAt})
 		}
 		for _, selection := range selections {
@@ -682,8 +700,15 @@ func (s *Store) retry(ctx context.Context, user accounts.User, caseID, runID str
 		if !ok {
 			return fault.Conflict("较早的审查没有保存当时使用的输入，无法安全重试；请发起新的审查")
 		}
-		if attemptActive(last.State) {
+		epoch, err := s.admissionEpoch(ctx, retryTx, currentCase.TenantID)
+		if err != nil {
+			return err
+		}
+		if attemptActive(last.State) && last.TenantLiveEpoch != nil && *last.TenantLiveEpoch == *epoch {
 			return nil
+		}
+		if attemptActive(last.State) && last.HistoryKind != "frozen" {
+			return fault.Conflict("原审查未冻结输入，请发起新的审查")
 		}
 		frozenInput, ok := st.attemptInput(last.ID)
 		if !ok || last.HistoryKind != "frozen" || !frozenInputMatchesSnapshot(frozen, frozenInput.Documents) ||
@@ -739,7 +764,8 @@ func (s *Store) retry(ctx context.Context, user accounts.User, caseID, runID str
 		}
 		retryOf := last.ID
 		attempt := Attempt{
-			ID: attemptID, RunID: runID, Ordinal: last.Ordinal + 1, ActorID: user.ID, RetryOfAttemptID: &retryOf,
+			TenantLiveEpoch: epoch,
+			ID:              attemptID, RunID: runID, Ordinal: last.Ordinal + 1, ActorID: user.ID, RetryOfAttemptID: &retryOf,
 			State: "accepted", AcceptedAt: acceptedAt, HistoryKind: "frozen",
 			RulePackSnapshot: append([]byte(nil), last.RulePackSnapshot...), RulePackHash: last.RulePackHash,
 			RulePackSnapshotDigest: last.RulePackSnapshotDigest, RulePackCompilerRef: last.RulePackCompilerRef,
@@ -771,7 +797,7 @@ func (s *Store) retry(ctx context.Context, user accounts.User, caseID, runID str
 			if err != nil {
 				return err
 			}
-			st.Jobs = append(st.Jobs, Job{ID: jobID, TenantID: caseItem.TenantID, OrgID: caseItem.OwnerOrgID, CaseID: caseID, RunID: runID, AttemptID: attemptID, ActorID: user.ID, PrincipalID: user.PrincipalID, MembershipID: user.MembershipID, IdentityCaptured: true, Kind: "review", State: "queued", CreatedAt: acceptedAt, UpdatedAt: acceptedAt})
+			st.Jobs = append(st.Jobs, Job{ID: jobID, TenantID: caseItem.TenantID, OrgID: caseItem.OwnerOrgID, CaseID: caseID, RunID: runID, AttemptID: attemptID, ActorID: user.ID, PrincipalID: user.PrincipalID, MembershipID: user.MembershipID, IdentityCaptured: true, Kind: "review", State: "queued", TenantLiveEpoch: epoch, CreatedAt: acceptedAt, UpdatedAt: acceptedAt})
 			st.Outbox = append(st.Outbox, OutboxRecord{ID: outboxID, JobID: jobID, TenantID: caseItem.TenantID, OrgID: caseItem.OwnerOrgID, CaseID: caseID, EventType: "review.accepted", Payload: string(payload), State: "pending", CreatedAt: acceptedAt})
 		}
 		for i := range st.Runs {
@@ -992,6 +1018,11 @@ func (s *Store) launchAttempt(ctx context.Context, runID, attemptID string, mode
 			return err
 		}
 	} else {
+		st, err := s.embeddedAuthorityState(ctx, user, scope)
+		if err != nil || len(st.Attempts) != 1 || st.Attempts[0].TenantLiveEpoch == nil {
+			return errAttemptAuthorizationRevoked
+		}
+		scope.TenantLiveEpoch = strconv.FormatInt(*st.Attempts[0].TenantLiveEpoch, 10)
 		ticket, err := s.issueOperationTicket(ctx, user, scope)
 		if err != nil {
 			return err
@@ -2442,15 +2473,40 @@ func interpretedFromFrozen(frozen []FrozenDocument) []Interpreted {
 	return out
 }
 
+func inputHashVersion(snapshot RunSnapshot) int {
+	if snapshot.InputHashVersion == 0 {
+		return 1
+	}
+	return snapshot.InputHashVersion
+}
+
 func frozenInputHash(snapshot RunSnapshot, docs []FrozenDocument) (string, error) {
 	snapshot = scopeSnapshot(snapshot)
 	snapshot.RunID = ""
 	sort.Strings(snapshot.DocumentIDs)
 	sort.Strings(snapshot.ParsedDocumentIDs)
-	raw, err := json.Marshal(struct {
-		Snapshot  RunSnapshot      `json:"snapshot"`
-		Documents []FrozenDocument `json:"documents"`
-	}{Snapshot: snapshot, Documents: docs})
+	var raw []byte
+	var err error
+	switch inputHashVersion(snapshot) {
+	case 1:
+		raw, err = json.Marshal(struct {
+			Snapshot  RunSnapshot      `json:"snapshot"`
+			Documents []FrozenDocument `json:"documents"`
+		}{Snapshot: snapshot, Documents: docs})
+	case 2:
+		if snapshot.AdoptedTenantConfigVersionID == "" || !validPreparationHash(snapshot.AdoptedTenantConfigDigest) {
+			return "", errors.New("invalid adopted tenant config for frozen input")
+		}
+		raw, err = json.Marshal(struct {
+			Domain          string           `json:"domain"`
+			ConfigVersionID string           `json:"config_version_id"`
+			ConfigDigest    string           `json:"config_digest"`
+			Snapshot        RunSnapshot      `json:"snapshot"`
+			Documents       []FrozenDocument `json:"documents"`
+		}{Domain: "review-frozen-input/v2", ConfigVersionID: snapshot.AdoptedTenantConfigVersionID, ConfigDigest: snapshot.AdoptedTenantConfigDigest, Snapshot: snapshot, Documents: docs})
+	default:
+		return "", errors.New("unsupported frozen input hash version")
+	}
 	if err != nil {
 		return "", err
 	}

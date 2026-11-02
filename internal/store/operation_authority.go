@@ -186,11 +186,23 @@ func (s *Store) CreateOperationTicket(ctx context.Context, user accounts.User, s
 	if err = setLocalScope(ctx, tx, userScope(current)); err != nil {
 		return "", err
 	}
-	_, err = tx.Exec(ctx, `INSERT INTO operation_authority_tickets(ticket_digest,tenant_id,org_id,session_digest,principal_id,membership_id,scope,context_version) VALUES($1,$2,$3,$4,NULLIF($5,'')::uuid,NULLIF($6,'')::uuid,$7::jsonb,$8)`, identityTokenDigest(raw), current.TenantID, current.OrgID, digest, current.PrincipalID, current.MembershipID, encoded, func() int64 {
+	epoch, err := s.admissionEpoch(ctx, tx, scope.TenantID)
+	if err != nil {
+		return "", err
+	}
+	if scope.AttemptID != "" {
+		if fixed, ok := canonicalEpoch(scope.TenantLiveEpoch); !ok || fixed != *epoch {
+			return "", errAttemptAuthorizationRevoked
+		}
+		if err = s.fenceAttemptEpoch(ctx, tx, scope); err != nil {
+			return "", err
+		}
+	}
+	_, err = tx.Exec(ctx, `INSERT INTO operation_authority_tickets(ticket_digest,tenant_id,org_id,session_digest,principal_id,membership_id,scope,context_version,tenant_live_epoch) VALUES($1,$2,$3,$4,NULLIF($5,'')::uuid,NULLIF($6,'')::uuid,$7::jsonb,$8,$9)`, identityTokenDigest(raw), current.TenantID, current.OrgID, digest, current.PrincipalID, current.MembershipID, encoded, func() int64 {
 		p, _ := current.CommandAuthority()
 		v, _ := strconv.ParseInt(p.ContextVersion, 10, 64)
 		return v
-	}())
+	}(), epoch)
 	if err != nil {
 		return "", err
 	}
@@ -309,6 +321,10 @@ func (s *Store) resolveOperationTicket(ctx context.Context, scope model.Delegate
 			return accounts.User{}, err
 		}
 		fullScope, _ := json.Marshal(scope)
+		var admittedEpoch *int64
+		if err = tx.QueryRow(ctx, `SELECT tenant_ticket_epoch($1,$2::jsonb,$3)`, identityTokenDigest(scope.OperationTicket), fullScope, s.sel.Mode != "production").Scan(&admittedEpoch); err != nil || admittedEpoch == nil {
+			return accounts.User{}, errAttemptAuthorizationRevoked
+		}
 		var sourceDigest, revision string
 		var version int64
 		var role *string
@@ -321,7 +337,7 @@ func (s *Store) resolveOperationTicket(ctx context.Context, scope model.Delegate
 		}
 		encoded, _ := json.Marshal(stableOperation(scope))
 		digest := identityTokenDigest(scope.OperationTicket)
-		_, err = tx.Exec(ctx, `INSERT INTO operation_authority_tickets(ticket_digest,tenant_id,org_id,session_digest,principal_id,membership_id,scope,context_version,expires_at) VALUES($1,$2,$3,$4,$5::uuid,$6::uuid,$7::jsonb,(SELECT context_version FROM intake_authority_tickets WHERE ticket_digest=$1),(SELECT expires_at FROM intake_authority_tickets WHERE ticket_digest=$1)) ON CONFLICT(ticket_digest) DO NOTHING`, digest, scope.TenantID, scope.OrgID, sessionDigest, principal, membership, encoded)
+		_, err = tx.Exec(ctx, `INSERT INTO operation_authority_tickets(ticket_digest,tenant_id,org_id,session_digest,principal_id,membership_id,scope,context_version,expires_at,tenant_live_epoch) VALUES($1,$2,$3,$4,$5::uuid,$6::uuid,$7::jsonb,(SELECT context_version FROM intake_authority_tickets WHERE ticket_digest=$1),(SELECT expires_at FROM intake_authority_tickets WHERE ticket_digest=$1),(SELECT tenant_live_epoch FROM intake_authority_tickets WHERE ticket_digest=$1)) ON CONFLICT(ticket_digest) DO NOTHING`, digest, scope.TenantID, scope.OrgID, sessionDigest, principal, membership, encoded)
 		if err != nil {
 			return accounts.User{}, err
 		}

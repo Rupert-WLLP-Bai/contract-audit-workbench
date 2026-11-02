@@ -14,6 +14,7 @@ import (
 
 	"contractaudit/internal/access"
 	"contractaudit/internal/accounts"
+	"contractaudit/internal/config"
 	"contractaudit/internal/model"
 	"github.com/jackc/pgx/v5"
 )
@@ -191,13 +192,20 @@ func (s *Store) reserveModelCall(ctx context.Context, caller string, scope model
 			return ModelCallLease{}, ErrModelScopeUnavailable
 		}
 	}
-	if err := authorizeModelScope(ctx, tx, caller, scope, current); err != nil {
+	if err := authorizeModelScope(ctx, tx, caller, scope, s.sel.Mode != config.ModeProduction, current); err != nil {
 		return ModelCallLease{}, err
 	}
 	if providerIdentity != nil && (scope.Kind == "execution" || scope.Kind == "experience_distill" || (scope.Kind == "document" && (scope.JobID != "" || scope.Action == "embedded_prepare_parse"))) {
 		if err := authorizeFrozenModelConfiguration(ctx, tx, scope, *providerIdentity); err != nil {
 			return ModelCallLease{}, err
 		}
+	}
+	providerID := ""
+	if providerIdentity != nil {
+		providerID = *providerIdentity
+	}
+	if _, err := tx.Exec(ctx, `SELECT set_config('app.model_provider_identity',$1,true)`, providerID); err != nil {
+		return ModelCallLease{}, err
 	}
 	id, err := newID("ml_")
 	if err != nil {
@@ -218,6 +226,10 @@ func (s *Store) reserveModelCall(ctx context.Context, caller string, scope model
 		int64(math.Ceil(float64(limits.LeaseDuration)/float64(time.Millisecond))),
 	).Scan(&reserved); err != nil {
 		var state interface{ SQLState() string }
+		if errors.As(err, &state) && state.SQLState() == "P7M03" {
+			s.Telemetry().RecordQuotaRejection("model_money_budget")
+			return ModelCallLease{}, ErrModelBudgetExceeded
+		}
 		if scope.Kind == "experience_distill" && errors.As(err, &state) && state.SQLState() == "P7M01" {
 			return ModelCallLease{}, ErrModelScopeUnavailable
 		}
@@ -230,7 +242,7 @@ func (s *Store) reserveModelCall(ctx context.Context, caller string, scope model
 		s.Telemetry().RecordQuotaRejection("model_budget")
 		return ModelCallLease{}, ErrModelBudgetExceeded
 	}
-	if err := authorizeModelScope(ctx, tx, caller, scope, current); err != nil {
+	if err := authorizeModelScope(ctx, tx, caller, scope, s.sel.Mode != config.ModeProduction, current); err != nil {
 		return ModelCallLease{}, err
 	}
 	if scope.Action == "embedded_prepare_parse" {
@@ -249,6 +261,9 @@ func (s *Store) reserveModelCall(ctx context.Context, caller string, scope model
 // second result is rejected. A zero-token usage remains unknown and is charged
 // at the reserved upper bound unless pre-dispatch failure is proven.
 func (s *Store) FinishModelCall(ctx context.Context, lease ModelCallLease, result ModelCallResult) error {
+	if ctx == nil {
+		return errors.New("model call context is invalid")
+	}
 	ctx = context.WithValue(ctx, commandProofKey{}, struct{}{}) // already-incurred machine accounting, not new human admission
 	ctx = model.WithDelegatedScope(ctx, model.DelegatedScope{})
 	if ctx == nil || lease.ID == "" || result.Status != "completed" && result.Status != "failed" ||
@@ -359,9 +374,45 @@ func authorizeFrozenModelConfiguration(ctx context.Context, tx pgx.Tx, scope mod
 	return nil
 }
 
-func authorizeModelScope(ctx context.Context, tx pgx.Tx, caller string, scope model.DelegatedScope, resolved ...accounts.User) error {
+func authorizeModelScope(ctx context.Context, tx pgx.Tx, caller string, scope model.DelegatedScope, allowLocalDemo bool, resolved ...accounts.User) error {
 	if (caller == "worker" && scope.Kind != "execution" && scope.Kind != "experience_distill") || (caller == "document" && scope.Kind != "document") ||
 		(caller != "worker" && caller != "document") || scope.TenantID == "" || scope.OrgID == "" || scope.CaseID == "" || scope.ActorID == "" {
+		return ErrModelScopeUnavailable
+	}
+	var sendAllowed bool
+	var expectedEpoch any
+	if scope.JobID != "" {
+		var epoch *int64
+		if err := tx.QueryRow(ctx, `SELECT tenant_live_epoch FROM worker_jobs WHERE id=$1 AND tenant_id=$2 AND org_id=$3 AND case_id=$4 AND actor_id=$5 AND worker_id=$6 AND generation=$7 AND state='running' AND lease_until>clock_timestamp()`, scope.JobID, scope.TenantID, scope.OrgID, scope.CaseID, scope.ActorID, scope.WorkerID, scope.Generation).Scan(&epoch); err != nil || epoch == nil {
+			return ErrModelScopeUnavailable
+		}
+		expectedEpoch = *epoch
+	} else if scope.AttemptID != "" {
+		epoch, ok := canonicalEpoch(scope.TenantLiveEpoch)
+		if !ok {
+			return ErrModelScopeUnavailable
+		}
+		expectedEpoch = epoch
+		var match bool
+		if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM review_attempts a JOIN review_runs r ON r.id=a.run_id AND r.tenant_id=a.tenant_id AND r.org_id=a.org_id WHERE a.tenant_id=$1 AND a.org_id=$2 AND r.case_id=$3 AND a.run_id=$4 AND a.id=$5 AND a.actor_id=$6 AND a.tenant_live_epoch=$7)`, scope.TenantID, scope.OrgID, scope.CaseID, scope.RunID, scope.AttemptID, scope.ActorID, epoch).Scan(&match); err != nil || !match {
+			return ErrModelScopeUnavailable
+		}
+	} else {
+		if scope.OperationTicket == "" && allowLocalDemo && (scope.TenantID == "local-demo" || scope.TenantID == "local-demo-2") {
+			expectedEpoch = int64(0)
+		} else {
+			encoded, err := json.Marshal(scope)
+			if err != nil {
+				return ErrModelScopeUnavailable
+			}
+			var epoch *int64
+			if err := tx.QueryRow(ctx, `SELECT tenant_ticket_epoch($1,$2::jsonb,$3)`, identityTokenDigest(scope.OperationTicket), encoded, allowLocalDemo).Scan(&epoch); err != nil || epoch == nil {
+				return ErrModelScopeUnavailable
+			}
+			expectedEpoch = *epoch
+		}
+	}
+	if err := tx.QueryRow(ctx, `SELECT tenant_model_send_fence($1,$2,$3)`, scope.TenantID, expectedEpoch, allowLocalDemo).Scan(&sendAllowed); err != nil || !sendAllowed {
 		return ErrModelScopeUnavailable
 	}
 	var caseItem Case
@@ -377,9 +428,9 @@ func authorizeModelScope(ctx context.Context, tx pgx.Tx, caller string, scope mo
 			JOIN cases c ON c.id=j.case_id AND c.tenant_id=j.tenant_id AND c.org_id=j.org_id
 			WHERE j.id=$1 AND j.kind='experience_distill' AND j.worker_id=$2 AND j.generation=$3
 			AND j.tenant_id=$4 AND j.org_id=$5 AND j.case_id=$6 AND j.actor_id=$7
-			AND j.state='running' AND j.lease_until>clock_timestamp() AND i.actor_id=j.actor_id
+			AND j.state='running' AND j.lease_until>clock_timestamp() AND tenant_runtime_fence(j.tenant_id,j.tenant_live_epoch,$9) AND i.actor_id=j.actor_id
 			AND i.tenant_id=j.tenant_id AND i.org_id=j.org_id AND i.case_id=j.case_id AND i.input_sha256=$8`,
-			scope.JobID, scope.WorkerID, scope.Generation, scope.TenantID, scope.OrgID, scope.CaseID, scope.ActorID, scope.InputSHA256).
+			scope.JobID, scope.WorkerID, scope.Generation, scope.TenantID, scope.OrgID, scope.CaseID, scope.ActorID, scope.InputSHA256, allowLocalDemo).
 			Scan(&caseItem.ID, &caseItem.TenantID, &caseItem.OwnerOrgID, &caseItem.OwnerID, &memberJSON)
 		if err != nil {
 			return ErrModelScopeUnavailable
@@ -396,12 +447,13 @@ func authorizeModelScope(ctx context.Context, tx pgx.Tx, caller string, scope mo
 			JOIN cases c ON c.id=j.case_id
 			WHERE j.id=$1 AND j.worker_id=$2 AND j.generation=$3 AND j.tenant_id=$4 AND j.org_id=$5 AND j.case_id=$6
 			AND j.run_id=$7 AND j.attempt_id=$8 AND j.actor_id=$9 AND j.state='running' AND j.lease_until>clock_timestamp()
+			AND tenant_runtime_fence(j.tenant_id,j.tenant_live_epoch,$10) AND a.tenant_live_epoch=j.tenant_live_epoch
 			AND r.case_id=j.case_id AND r.state='running' AND a.actor_id=j.actor_id AND a.state IN ('accepted','running')`
-		args := []any{scope.JobID, scope.WorkerID, scope.Generation, scope.TenantID, scope.OrgID, scope.CaseID, scope.RunID, scope.AttemptID, scope.ActorID}
+		args := []any{scope.JobID, scope.WorkerID, scope.Generation, scope.TenantID, scope.OrgID, scope.CaseID, scope.RunID, scope.AttemptID, scope.ActorID, allowLocalDemo}
 		if caller == "document" {
 			query += ` AND EXISTS (SELECT 1 FROM review_attempt_parse_selections p
 				JOIN documents d ON d.id=p.document_id AND d.case_id=c.id AND d.tenant_id=c.tenant_id AND d.org_id=c.org_id
-				WHERE p.attempt_id=a.id AND p.run_id=r.id AND p.document_id=$10 AND p.parsed_document_id=$11)`
+				WHERE p.attempt_id=a.id AND p.run_id=r.id AND p.document_id=$11 AND p.parsed_document_id=$12)`
 			args = append(args, scope.DocumentID, scope.ParseSelectionID)
 		}
 		if err := tx.QueryRow(ctx, query, args...).Scan(&caseItem.ID, &caseItem.TenantID, &caseItem.OwnerOrgID, &caseItem.OwnerID, &memberJSON); err != nil {
@@ -495,7 +547,7 @@ func (s *Store) ReauthorizeModelScope(ctx context.Context, caller string, scope 
 	if err := setLocalScope(ctx, tx, dbScope{ActorID: "model-gateway", Role: "model", TenantID: scope.TenantID, OrgID: scope.OrgID}); err != nil {
 		return err
 	}
-	if err := authorizeModelScope(ctx, tx, caller, scope, current); err != nil {
+	if err := authorizeModelScope(ctx, tx, caller, scope, s.sel.Mode != config.ModeProduction, current); err != nil {
 		return err
 	}
 	return tx.Commit(ctx)
@@ -506,7 +558,7 @@ func (s *Store) authorizeModelScope(ctx context.Context, tx pgx.Tx, caller strin
 	if err != nil {
 		return ErrModelScopeUnavailable
 	}
-	return authorizeModelScope(ctx, tx, caller, scope, u)
+	return authorizeModelScope(ctx, tx, caller, scope, s.sel.Mode != config.ModeProduction, u)
 }
 
 // Only model ledger reservation and reauthorization may use an OCR child proof

@@ -22,7 +22,7 @@ import (
 // proposal must keep attempt identities, frozen evidence, audit hashes,
 // authorization and replay available throughout migration and recovery.
 
-const jobSelectSQL = `SELECT id, tenant_id, org_id, case_id, COALESCE(run_id,''), COALESCE(attempt_id,''), actor_id, kind, state, generation, worker_id, lease_until, heartbeat_at, created_at, updated_at FROM worker_jobs`
+const jobSelectSQL = `SELECT id, tenant_id, org_id, case_id, COALESCE(run_id,''), COALESCE(attempt_id,''), actor_id, kind, state, generation, tenant_live_epoch, worker_id, lease_until, heartbeat_at, created_at, updated_at FROM worker_jobs`
 
 func scanJobs(rows pgx.Rows) ([]Job, error) {
 	defer rows.Close()
@@ -31,7 +31,7 @@ func scanJobs(rows pgx.Rows) ([]Job, error) {
 		var item Job
 		var lease, heartbeat pgtype.Timestamptz
 		if err := rows.Scan(&item.ID, &item.TenantID, &item.OrgID, &item.CaseID, &item.RunID, &item.AttemptID, &item.ActorID,
-			&item.Kind, &item.State, &item.Generation, &item.WorkerID, &lease, &heartbeat, &item.CreatedAt, &item.UpdatedAt); err != nil {
+			&item.Kind, &item.State, &item.Generation, &item.TenantLiveEpoch, &item.WorkerID, &lease, &heartbeat, &item.CreatedAt, &item.UpdatedAt); err != nil {
 			return nil, err
 		}
 		if lease.Valid {

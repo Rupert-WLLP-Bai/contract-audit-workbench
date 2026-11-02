@@ -475,6 +475,10 @@ func snapshotJSON(snap store.RunSnapshot) map[string]any {
 	out := map[string]any{
 		"document_ids": ids, "rule_set_hash": snap.RuleSetHash, "playbook_hash": snap.PlaybookHash,
 		"model_ref": nilString(snap.ModelRef), "comparator_ref": nilString(snap.ComparatorRef),
+		"adopted_tenant_config": nil,
+	}
+	if snap.AdoptedTenantConfigVersionID != "" && snap.AdoptedTenantConfigDigest != "" {
+		out["adopted_tenant_config"] = map[string]string{"version_id": snap.AdoptedTenantConfigVersionID, "digest": snap.AdoptedTenantConfigDigest}
 	}
 	if snap.ReviewScope != nil {
 		out["review_scope"] = snap.ReviewScope

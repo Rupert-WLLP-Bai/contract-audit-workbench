@@ -156,6 +156,9 @@ func withFrozenGovernance(current, frozen RunSnapshot) RunSnapshot {
 	if isSingleContractSnapshot(frozen) {
 		current = applyReviewScope(current, ReviewScopeSingleContract)
 	}
+	current.InputHashVersion = frozen.InputHashVersion
+	current.AdoptedTenantConfigVersionID = frozen.AdoptedTenantConfigVersionID
+	current.AdoptedTenantConfigDigest = frozen.AdoptedTenantConfigDigest
 	current.RulePackCompilerRef = frozen.RulePackCompilerRef
 	current.RulePackID = frozen.RulePackID
 	current.RulePackVersion = frozen.RulePackVersion
@@ -254,7 +257,8 @@ func sameRunRulePackIdentity(a, b RunSnapshot) bool {
 func sameRunConfiguration(a, b RunSnapshot) bool {
 	parserConfigurationMatches := a.ParserConfigurationID == "" || b.ParserConfigurationID == "" || a.ParserConfigurationID == b.ParserConfigurationID
 	compilerIdentityMatches := a.RulePackCompilerRef == "" || b.RulePackCompilerRef == "" || a.RulePackCompilerRef == b.RulePackCompilerRef
-	return a.RuleSetHash == b.RuleSetHash && a.PlaybookHash == b.PlaybookHash &&
+	return inputHashVersion(a) == inputHashVersion(b) && a.AdoptedTenantConfigVersionID == b.AdoptedTenantConfigVersionID && a.AdoptedTenantConfigDigest == b.AdoptedTenantConfigDigest &&
+		a.RuleSetHash == b.RuleSetHash && a.PlaybookHash == b.PlaybookHash &&
 		a.ModelRef == b.ModelRef && a.ModelConfigurationID == b.ModelConfigurationID &&
 		a.ComparatorRef == b.ComparatorRef && parserConfigurationMatches && compilerIdentityMatches &&
 		sameRunRulePackIdentity(a, b) && samePlannerConfiguration(a, b) &&
@@ -360,11 +364,14 @@ func sealSnapshot(st *state, runID string, input RunSnapshot) error {
 		RulePackCompilerRef: frozen.RulePackCompilerRef, RulePackID: frozen.RulePackID,
 		RulePackVersion: frozen.RulePackVersion, RulePackHash: frozen.RulePackHash,
 		RulePackDigest: frozen.RulePackDigest, RulePackSnapshot: append([]byte(nil), input.RulePackSnapshot...),
-		CloudPolicySnapshot:    append(json.RawMessage(nil), input.CloudPolicySnapshot...),
-		CloudPolicyDigest:      input.CloudPolicyDigest,
-		GovernedKnowledge:      knowledge,
-		PlannerConfigurationID: frozen.PlannerConfigurationID,
-		PlannerConfiguration:   append(json.RawMessage(nil), input.PlannerConfiguration...),
+		CloudPolicySnapshot:          append(json.RawMessage(nil), input.CloudPolicySnapshot...),
+		CloudPolicyDigest:            input.CloudPolicyDigest,
+		GovernedKnowledge:            knowledge,
+		PlannerConfigurationID:       frozen.PlannerConfigurationID,
+		PlannerConfiguration:         append(json.RawMessage(nil), input.PlannerConfiguration...),
+		InputHashVersion:             input.InputHashVersion,
+		AdoptedTenantConfigVersionID: input.AdoptedTenantConfigVersionID,
+		AdoptedTenantConfigDigest:    input.AdoptedTenantConfigDigest,
 	})
 	return nil
 }

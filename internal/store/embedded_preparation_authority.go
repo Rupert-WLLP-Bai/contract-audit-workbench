@@ -41,6 +41,10 @@ func (s *Store) validEmbeddedAuthorityState(st state, scope model.DelegatedScope
 		return false
 	}
 	a, r := st.Attempts[0], st.Runs[0]
+	epoch, validEpoch := canonicalEpoch(scope.TenantLiveEpoch)
+	if !validEpoch || a.TenantLiveEpoch == nil || *a.TenantLiveEpoch != epoch {
+		return false
+	}
 	if a.ID != scope.AttemptID || a.RunID != scope.RunID || a.ActorID != scope.ActorID || r.ID != scope.RunID || r.CaseID != scope.CaseID || !attemptActive(a.State) || !attemptActive(r.State) {
 		return false
 	}
@@ -113,6 +117,10 @@ func (s *Store) prepareEmbeddedAuthority(ctx context.Context, user accounts.User
 	if err != nil || len(st.Attempts) != 1 {
 		return model.DelegatedScope{}, errAttemptAuthorizationRevoked
 	}
+	if st.Attempts[0].TenantLiveEpoch == nil {
+		return model.DelegatedScope{}, errAttemptAuthorizationRevoked
+	}
+	scope.TenantLiveEpoch = strconv.FormatInt(*st.Attempts[0].TenantLiveEpoch, 10)
 	if st.Attempts[0].HistoryKind == "frozen" {
 		if len(st.AttemptInputs) != 1 {
 			return model.DelegatedScope{}, errAttemptAuthorizationRevoked
@@ -189,6 +197,9 @@ func (s *Store) createPromotedEmbeddedTicket(ctx context.Context, user accounts.
 	if err = setLocalScope(ctx, tx, userScope(current)); err != nil {
 		return "", err
 	}
+	if err = s.fenceAttemptEpoch(ctx, tx, original); err != nil {
+		return "", err
+	}
 	parentDigest := identityTokenDigest(original.OperationTicket)
 	var digest string
 	var boundVersion int64
@@ -198,8 +209,8 @@ func (s *Store) createPromotedEmbeddedTicket(ctx context.Context, user accounts.
 	if err != nil || digest != proof.digest || boundVersion != version || json.Unmarshal(parentBytes, &saved) != nil || saved != stableOperation(original) {
 		return "", errAttemptAuthorizationRevoked
 	}
-	tag, err := tx.Exec(ctx, `INSERT INTO operation_authority_tickets(ticket_digest,tenant_id,org_id,session_digest,principal_id,membership_id,scope,context_version,expires_at)
- SELECT $1,tenant_id,org_id,session_digest,principal_id,membership_id,$2::jsonb,context_version,LEAST(expires_at,statement_timestamp()+interval '5 minutes') FROM operation_authority_tickets WHERE ticket_digest=$3 AND tenant_id=$4 AND org_id=$5 AND session_digest=$6 AND context_version=$7 AND expires_at>clock_timestamp()`, identityTokenDigest(raw), encoded, parentDigest, original.TenantID, original.OrgID, proof.digest, version)
+	tag, err := tx.Exec(ctx, `INSERT INTO operation_authority_tickets(ticket_digest,tenant_id,org_id,session_digest,principal_id,membership_id,scope,context_version,expires_at,tenant_live_epoch)
+ SELECT $1,tenant_id,org_id,session_digest,principal_id,membership_id,$2::jsonb,context_version,LEAST(expires_at,statement_timestamp()+interval '5 minutes'),tenant_live_epoch FROM operation_authority_tickets WHERE ticket_digest=$3 AND tenant_id=$4 AND org_id=$5 AND session_digest=$6 AND context_version=$7 AND expires_at>clock_timestamp()`, identityTokenDigest(raw), encoded, parentDigest, original.TenantID, original.OrgID, proof.digest, version)
 	if err != nil || tag.RowsAffected() != 1 {
 		return "", errAttemptAuthorizationRevoked
 	}

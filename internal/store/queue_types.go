@@ -17,6 +17,7 @@ type Job struct {
 	Kind             string     `json:"kind"`
 	State            string     `json:"state"`
 	Generation       int64      `json:"generation"`
+	TenantLiveEpoch  *int64     `json:"tenant_live_epoch"`
 	WorkerID         string     `json:"worker_id,omitempty"`
 	LeaseUntil       *time.Time `json:"lease_until,omitempty"`
 	Heartbeat        *time.Time `json:"heartbeat_at,omitempty"`
@@ -47,24 +48,25 @@ type JobAcceptance struct {
 
 // JobClaim carries the fencing generation assigned by PostgreSQL.
 type JobClaim struct {
-	JobID         string
-	TenantID      string
-	OrgID         string
-	CaseID        string
-	RunID         string
-	AttemptID     string
-	ActorID       string
-	PrincipalID   string
-	MembershipID  string
-	Kind          string
-	WorkerID      string
-	Generation    int64
-	LeaseUntil    time.Time
-	stopReason    string
-	deadline      time.Time
-	reclaimed     bool
-	metricWait    time.Duration
-	metricStarted time.Time
+	JobID           string
+	TenantID        string
+	OrgID           string
+	CaseID          string
+	RunID           string
+	AttemptID       string
+	ActorID         string
+	PrincipalID     string
+	MembershipID    string
+	Kind            string
+	WorkerID        string
+	Generation      int64
+	TenantLiveEpoch int64
+	LeaseUntil      time.Time
+	stopReason      string
+	deadline        time.Time
+	reclaimed       bool
+	metricWait      time.Duration
+	metricStarted   time.Time
 }
 
 func (claim JobClaim) scope() dbScope {

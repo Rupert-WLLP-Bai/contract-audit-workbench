@@ -329,6 +329,7 @@ func (st state) clone() (state, error) {
 		if i >= len(st.Attempts) {
 			break
 		}
+		out.Attempts[i].TenantLiveEpoch = st.Attempts[i].TenantLiveEpoch
 		out.Attempts[i].RulePackSnapshot = append(json.RawMessage(nil), st.Attempts[i].RulePackSnapshot...)
 		out.Attempts[i].RulePackHash = st.Attempts[i].RulePackHash
 		out.Attempts[i].RulePackCompilerRef = st.Attempts[i].RulePackCompilerRef
@@ -345,6 +346,9 @@ func (st state) clone() (state, error) {
 		}
 		out.Snapshots[i].RulePackSnapshot = append([]byte(nil), st.Snapshots[i].RulePackSnapshot...)
 		out.Snapshots[i].PlannerConfiguration = append(json.RawMessage(nil), st.Snapshots[i].PlannerConfiguration...)
+		out.Snapshots[i].AdoptedTenantConfigVersionID = st.Snapshots[i].AdoptedTenantConfigVersionID
+		out.Snapshots[i].AdoptedTenantConfigDigest = st.Snapshots[i].AdoptedTenantConfigDigest
+		out.Snapshots[i].InputHashVersion = st.Snapshots[i].InputHashVersion
 	}
 	// JSON encodes UTC instants with a Z suffix. When the process timezone is
 	// UTC, decoding may attach time.Local instead of time.UTC; normalize rows
@@ -406,6 +410,7 @@ type Run struct {
 
 // Attempt is one immutable execution identity within a run.
 type Attempt struct {
+	TenantLiveEpoch        *int64               `json:"-"`
 	ID                     string               `json:"id"`
 	RunID                  string               `json:"run_id"`
 	ActorID                string               `json:"actor_id,omitempty"`
@@ -634,9 +639,12 @@ type RunSnapshot struct {
 	CloudPolicyDigest   string          `json:"cloud_policy_digest,omitempty"`
 	// GovernedKnowledge is the server-resolved acceptance snapshot. Older runs
 	// omit it entirely, preserving their historical frozen input identity.
-	GovernedKnowledge      *ReviewKnowledgeSnapshot `json:"governed_knowledge,omitempty"`
-	PlannerConfigurationID string                   `json:"planner_configuration_id,omitempty"`
-	PlannerConfiguration   json.RawMessage          `json:"-"`
+	GovernedKnowledge            *ReviewKnowledgeSnapshot `json:"governed_knowledge,omitempty"`
+	PlannerConfigurationID       string                   `json:"planner_configuration_id,omitempty"`
+	PlannerConfiguration         json.RawMessage          `json:"-"`
+	InputHashVersion             int                      `json:"-"`
+	AdoptedTenantConfigVersionID string                   `json:"-"`
+	AdoptedTenantConfigDigest    string                   `json:"-"`
 }
 
 // AuditRecord is one append-only business event. It is not the SSE notice.

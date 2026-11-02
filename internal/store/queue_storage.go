@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"time"
 
+	"contractaudit/internal/config"
+	"contractaudit/internal/fault"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 )
@@ -42,19 +44,51 @@ func loadOutbox(ctx context.Context, q queryer) ([]OutboxRecord, error) {
 	return out, rows.Err()
 }
 
-func syncJobs(ctx context.Context, tx pgx.Tx, items []Job) error {
+func syncJobs(ctx context.Context, tx pgx.Tx, items []Job, allowLocalDemo ...bool) error {
+	allowDemo := true // Direct embedded/test callers retain the local fixture path.
+	if len(allowLocalDemo) != 0 {
+		allowDemo = allowLocalDemo[0]
+	}
 	for _, item := range items {
+		liveEpoch := item.TenantLiveEpoch
+		if liveEpoch == nil {
+			var exists bool
+			if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM worker_jobs WHERE id=$1)`, item.ID).Scan(&exists); err != nil {
+				return err
+			}
+			if exists {
+				if err := tx.QueryRow(ctx, `SELECT tenant_live_epoch FROM worker_jobs WHERE id=$1 AND tenant_id=$2 AND org_id=$3`, item.ID, item.TenantID, item.OrgID).Scan(&liveEpoch); err != nil || liveEpoch == nil {
+					return errLeaseLost
+				}
+			}
+			if !exists {
+				var status string
+				var epoch int64
+				if err := tx.QueryRow(ctx, `SELECT status,live_epoch FROM tenant_runtime_control($1,$2)`, item.TenantID, allowDemo).Scan(&status, &epoch); err != nil {
+					return fmt.Errorf("read tenant runtime control for admission: %w", err)
+				}
+				if status != "active" {
+					return fault.New(409, "tenant_inactive", "租户已暂停，不能接收新任务")
+				}
+				liveEpoch = &epoch
+			}
+		}
+		var live bool
+		if err := tx.QueryRow(ctx, `SELECT tenant_runtime_fence($1,$2,$3)`, item.TenantID, liveEpoch, allowDemo).Scan(&live); err != nil || !live {
+			return errLeaseLost
+		}
 		tag, err := tx.Exec(ctx, `INSERT INTO worker_jobs
-			(id, tenant_id, org_id, case_id, run_id, attempt_id, actor_id, kind, state, generation, worker_id, lease_until, heartbeat_at, created_at, updated_at)
-			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+			(id, tenant_id, org_id, case_id, run_id, attempt_id, actor_id, kind, state, generation, tenant_live_epoch, worker_id, lease_until, heartbeat_at, created_at, updated_at)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
 			ON CONFLICT (id) DO UPDATE SET state=EXCLUDED.state, generation=EXCLUDED.generation, worker_id=EXCLUDED.worker_id,
 			lease_until=EXCLUDED.lease_until, heartbeat_at=EXCLUDED.heartbeat_at, updated_at=EXCLUDED.updated_at
 			WHERE worker_jobs.generation=EXCLUDED.generation AND worker_jobs.worker_id IS NOT DISTINCT FROM EXCLUDED.worker_id
+			AND worker_jobs.tenant_live_epoch=EXCLUDED.tenant_live_epoch AND tenant_runtime_fence(worker_jobs.tenant_id,worker_jobs.tenant_live_epoch,$17)
 			AND worker_jobs.tenant_id=EXCLUDED.tenant_id AND worker_jobs.org_id=EXCLUDED.org_id
 			AND worker_jobs.case_id=EXCLUDED.case_id AND worker_jobs.run_id IS NOT DISTINCT FROM EXCLUDED.run_id
 			AND worker_jobs.attempt_id IS NOT DISTINCT FROM EXCLUDED.attempt_id AND worker_jobs.actor_id=EXCLUDED.actor_id`,
 			item.ID, item.TenantID, item.OrgID, item.CaseID, item.RunID, item.AttemptID, item.ActorID, item.Kind, item.State,
-			item.Generation, item.WorkerID, item.LeaseUntil, item.Heartbeat, item.CreatedAt, item.UpdatedAt)
+			item.Generation, liveEpoch, item.WorkerID, item.LeaseUntil, item.Heartbeat, item.CreatedAt, item.UpdatedAt, allowDemo)
 		if err != nil {
 			return err
 		}
@@ -163,7 +197,8 @@ func (s *Store) ClaimNextJob(ctx context.Context, workerID string, lease time.Du
 	// which takes the queue advisory lock and locks tenant rows even when no
 	// work exists. The scheduler predicates stay authoritative — a missed
 	// pre-check only costs one claim attempt, never a lost job.
-	if work, err := s.hasClaimableJob(ctx, workerID); err != nil {
+	allowDemo := s.sel.Mode != config.ModeProduction
+	if work, err := s.hasClaimableJob(ctx, workerID, allowDemo); err != nil {
 		return JobClaim{}, err
 	} else if !work {
 		return JobClaim{}, pgx.ErrNoRows
@@ -176,7 +211,7 @@ func (s *Store) ClaimNextJob(ctx context.Context, workerID string, lease time.Du
 	if err := setLocalQueueScope(ctx, tx, workerID); err != nil {
 		return JobClaim{}, err
 	}
-	claim, err := claimScheduledJob(ctx, tx, workerID, lease, s.executionQueuePolicy())
+	claim, err := claimScheduledJob(ctx, tx, workerID, lease, s.executionQueuePolicy(), allowDemo)
 	if errors.Is(err, pgx.ErrNoRows) {
 		if commitErr := tx.Commit(ctx); commitErr != nil {
 			return JobClaim{}, commitErr
@@ -215,8 +250,8 @@ func (s *Store) HeartbeatJob(ctx context.Context, claim JobClaim, lease time.Dur
 	err = tx.QueryRow(ctx, `UPDATE worker_jobs SET
 		ready_at=clock_timestamp()+($7::bigint*interval '1 microsecond')+greatest(ready_at-lease_until,interval '0'),
 		lease_until=clock_timestamp()+($7::bigint*interval '1 microsecond'), heartbeat_at=clock_timestamp(), updated_at=$8
-		WHERE id=$1 AND tenant_id=$2 AND org_id=$3 AND attempt_id IS NOT DISTINCT FROM NULLIF($4,'') AND worker_id=$5 AND generation=$6 AND state='running' AND lease_until > clock_timestamp()
-		RETURNING lease_until`, claim.JobID, claim.TenantID, claim.OrgID, claim.AttemptID, claim.WorkerID, claim.Generation, lease.Microseconds(), stamp()).Scan(&expiry)
+		WHERE id=$1 AND tenant_id=$2 AND org_id=$3 AND attempt_id IS NOT DISTINCT FROM NULLIF($4,'') AND worker_id=$5 AND generation=$6 AND tenant_live_epoch=$9 AND state='running' AND lease_until > clock_timestamp()
+		AND tenant_runtime_fence(tenant_id,tenant_live_epoch,$10) RETURNING lease_until`, claim.JobID, claim.TenantID, claim.OrgID, claim.AttemptID, claim.WorkerID, claim.Generation, lease.Microseconds(), stamp(), claim.TenantLiveEpoch, s.sel.Mode != config.ModeProduction).Scan(&expiry)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return JobClaim{}, errLeaseLost
 	}
@@ -321,8 +356,9 @@ func (s *Store) finishClaim(ctx context.Context, claim JobClaim, state string) e
 		return err
 	}
 	tag, err := tx.Exec(ctx, `UPDATE worker_jobs SET state=$7, lease_until=NULL, updated_at=$8
-		WHERE id=$1 AND tenant_id=$2 AND org_id=$3 AND attempt_id IS NOT DISTINCT FROM NULLIF($4,'') AND worker_id=$5 AND generation=$6 AND state='running' AND lease_until > clock_timestamp()`,
-		claim.JobID, claim.TenantID, claim.OrgID, claim.AttemptID, claim.WorkerID, claim.Generation, state, stamp())
+		WHERE id=$1 AND tenant_id=$2 AND org_id=$3 AND attempt_id IS NOT DISTINCT FROM NULLIF($4,'') AND worker_id=$5 AND generation=$6 AND tenant_live_epoch=$9 AND state='running' AND lease_until > clock_timestamp()
+		AND tenant_runtime_fence(tenant_id,tenant_live_epoch,$10)`,
+		claim.JobID, claim.TenantID, claim.OrgID, claim.AttemptID, claim.WorkerID, claim.Generation, state, stamp(), claim.TenantLiveEpoch, s.sel.Mode != config.ModeProduction)
 	if err != nil {
 		return err
 	}

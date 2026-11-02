@@ -7,6 +7,7 @@ import (
 
 	"contractaudit/internal/access"
 	"contractaudit/internal/accounts"
+	"contractaudit/internal/config"
 	"contractaudit/internal/fault"
 	"github.com/jackc/pgx/v5"
 )
@@ -36,12 +37,12 @@ type attemptOutcome struct {
 // reproducing it in SQL.
 func loadAttemptOutputScope(ctx context.Context, tx pgx.Tx, runID, attemptID string) (state, error) {
 	var scope state
-	row := tx.QueryRow(ctx, `SELECT id, run_id, ordinal, retry_of_attempt_id, state, accepted_at, started_at, finished_at, input_hash, output_hash, error_code, history_kind, actor_id, rule_pack_snapshot, rule_pack_hash, rule_pack_snapshot_digest, rule_pack_compiler_ref, rule_pack_id, rule_pack_version, rule_pack_pointer_revision, planner_configuration_id, planner_configuration
+	row := tx.QueryRow(ctx, `SELECT id, run_id, ordinal, retry_of_attempt_id, state, accepted_at, started_at, finished_at, input_hash, output_hash, error_code, history_kind, actor_id, rule_pack_snapshot, rule_pack_hash, rule_pack_snapshot_digest, rule_pack_compiler_ref, rule_pack_id, rule_pack_version, rule_pack_pointer_revision, planner_configuration_id, planner_configuration, tenant_live_epoch
 		FROM review_attempts WHERE id=$1 AND run_id=$2`, attemptID, runID)
 	var attempt Attempt
 	var plannerPayload []byte
 	if err := row.Scan(&attempt.ID, &attempt.RunID, &attempt.Ordinal, &attempt.RetryOfAttemptID, &attempt.State, &attempt.AcceptedAt, &attempt.StartedAt, &attempt.FinishedAt, &attempt.InputHash, &attempt.OutputHash, &attempt.ErrorCode, &attempt.HistoryKind, &attempt.ActorID, &attempt.RulePackSnapshot, &attempt.RulePackHash, &attempt.RulePackSnapshotDigest, &attempt.RulePackCompilerRef,
-		&attempt.RulePackID, &attempt.RulePackVersion, &attempt.RulePackPointerRevision, &attempt.PlannerConfigurationID, &plannerPayload); err != nil {
+		&attempt.RulePackID, &attempt.RulePackVersion, &attempt.RulePackPointerRevision, &attempt.PlannerConfigurationID, &plannerPayload, &attempt.TenantLiveEpoch); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return state{}, errAttemptMissing
 		}
@@ -338,8 +339,10 @@ func (s *Store) requireLiveClaim(ctx context.Context, tx pgx.Tx, claim JobClaim,
 	if err := tx.QueryRow(ctx, `SELECT id FROM worker_jobs
 		WHERE id=$1 AND tenant_id=$2 AND org_id=$3 AND case_id=$4 AND run_id=$5 AND attempt_id=$6
 			AND worker_id=$7 AND generation=$8 AND state='running' AND lease_until > clock_timestamp()
+			AND tenant_live_epoch=$10 AND tenant_runtime_fence(tenant_id,tenant_live_epoch,$9)
+			AND EXISTS (SELECT 1 FROM review_attempts a WHERE a.id=worker_jobs.attempt_id AND a.run_id=worker_jobs.run_id AND a.tenant_id=worker_jobs.tenant_id AND a.org_id=worker_jobs.org_id AND a.tenant_live_epoch=worker_jobs.tenant_live_epoch)
 		FOR UPDATE`,
-		claim.JobID, claim.TenantID, claim.OrgID, claim.CaseID, runID, attemptID, claim.WorkerID, claim.Generation).Scan(&jobID); err != nil {
+		claim.JobID, claim.TenantID, claim.OrgID, claim.CaseID, runID, attemptID, claim.WorkerID, claim.Generation, s.sel.Mode != config.ModeProduction, claim.TenantLiveEpoch).Scan(&jobID); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return errLeaseLost
 		}

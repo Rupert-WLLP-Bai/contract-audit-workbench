@@ -728,6 +728,7 @@ export interface RunSnapshot {
   model_ref: string | null;
   review_scope?: ReviewScopeIdentity;
   comparator_ref: string | null;
+  adopted_tenant_config?: { version_id: string; digest: string } | null;
 }
 
 export interface ConstraintEvaluation {

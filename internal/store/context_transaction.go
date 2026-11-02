@@ -68,7 +68,7 @@ func (s *Store) beginFencedContextTx(ctx context.Context, options pgx.TxOptions)
 		return tx, nil
 	}
 	user, _ := ctx.Value(commandUserKey{}).(accounts.User)
-	f := &contextTx{Tx: tx, proof: proof, user: user}
+	f := &contextTx{Tx: tx, proof: proof, user: user, store: s}
 	if err = f.recheck(ctx); err != nil {
 		_ = tx.Rollback(ctx)
 		return nil, err
@@ -107,6 +107,7 @@ type contextTx struct {
 	pgx.Tx
 	proof commandProof
 	user  accounts.User
+	store *Store
 }
 
 func (t *contextTx) recheck(ctx context.Context) error {
@@ -115,8 +116,25 @@ func (t *contextTx) recheck(ctx context.Context) error {
 		if json.Unmarshal(t.proof.operation, &scope) != nil {
 			return fault.Forbidden("执行授权范围无效")
 		}
-		_, err := t.Tx.Exec(ctx, `SELECT tenant_operation_fence($1::jsonb,$2,$3)`, t.proof.operation, identityTokenDigest(scope.OperationTicket), t.proof.revision)
-		return contextError(err)
+		if _, err := t.Tx.Exec(ctx, `SELECT tenant_operation_fence($1::jsonb,$2,$3)`, t.proof.operation, identityTokenDigest(scope.OperationTicket), t.proof.revision); err != nil {
+			return contextError(err)
+		}
+		// The operation proof has now been authenticated. Install its exact scope
+		// before ordinary RLS-protected epoch reads, including the first recheck.
+		if _, err := t.Tx.Exec(ctx, `SELECT set_config('app.tenant_id',$1,true),set_config('app.org_id',$2,true)`, scope.TenantID, scope.OrgID); err != nil {
+			return err
+		}
+		if scope.JobID != "" {
+			return t.store.fenceJobEpoch(ctx, t.Tx, scope)
+		}
+		if scope.AttemptID != "" {
+			return t.store.fenceAttemptEpoch(ctx, t.Tx, scope)
+		}
+		var ticketEpoch *int64
+		if err := t.Tx.QueryRow(ctx, `SELECT tenant_ticket_epoch($1,$2::jsonb,$3)`, identityTokenDigest(scope.OperationTicket), t.proof.operation, t.store.sel.Mode != "production").Scan(&ticketEpoch); err != nil || ticketEpoch == nil {
+			return errAttemptAuthorizationRevoked
+		}
+		return nil
 	}
 	version, err := strconv.ParseInt(t.proof.version, 10, 64)
 	if err != nil || version < 1 {
@@ -176,7 +194,7 @@ func (t *contextTx) Begin(ctx context.Context) (pgx.Tx, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &contextTx{Tx: nested, proof: t.proof, user: t.user}, nil
+	return &contextTx{Tx: nested, proof: t.proof, user: t.user, store: t.store}, nil
 }
 
 // All human SQL is checked, not just text beginning with INSERT: writable CTEs
