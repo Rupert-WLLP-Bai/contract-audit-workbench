@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: builds conservative dependency explanations for incremental review. This release never reuses a business result. Plan entries named "reuse_candidate" are predictions only: the full result remains the single source of… Related `reviewimpact` operations include New, Plan, validateRequest, buildPlan.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-29
+// Updated: 2026-10-30
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 // Package reviewimpact builds conservative dependency explanations for
 // incremental review.
 //

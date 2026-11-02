@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: intakeContinuationRow contains only the operation, its original request, archive fact, and the case fields required by the existing access policy. Related `store` operations include scanIntakeContinuation, caseIntakeArchived, requestIdentity, intakeActionFlags.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-31
+// Updated: 2026-11-02
+// Revision: r2
+// Copyright: See LICENSE
+// End file metadata.
+
 package store
 
 import (

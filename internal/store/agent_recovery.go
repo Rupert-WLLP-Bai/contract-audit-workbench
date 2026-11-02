@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: applyPriorAttemptRecovery restores only evidence the store actually holds: prior execution-event count, elapsed time, and failed tool calls from the previous attempt's persisted… Related `store` operations include applyPriorAttemptRecovery, priorAttemptUsage, priorFailureObservations, priorMinimumEvents.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-28
+// Updated: 2026-11-02
+// Revision: r2
+// Copyright: See LICENSE
+// End file metadata.
+
 package store
 
 import (

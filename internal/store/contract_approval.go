@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: PublishWorkflowTemplate appends one immutable template version and points new submissions at it. Re-publishing the exact same version is a no-op; reusing a version string with… Related `store` operations include PublishWorkflowTemplate, loadWorkflowTemplateVersion, ReplaceWorkflowRoleBindings, normalizeWorkflowRoleBindings.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-01
+// Updated: 2026-11-02
+// Revision: r2
+// Copyright: See LICENSE
+// End file metadata.
+
 package store
 
 import (
