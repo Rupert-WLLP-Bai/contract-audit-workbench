@@ -1,0 +1,933 @@
+{
+  "version": 1,
+  "schema_version": 34,
+  "relations": [
+    {
+      "name": "activity",
+      "classification": "TENANT_DATA",
+      "tenant_column": true,
+      "force_rls": true
+    },
+    {
+      "name": "advisory_judgments",
+      "classification": "TENANT_DATA",
+      "tenant_column": true,
+      "force_rls": true
+    },
+    {
+      "name": "audit_events",
+      "classification": "TENANT_DATA",
+      "tenant_column": true,
+      "force_rls": true
+    },
+    {
+      "name": "business_archives",
+      "classification": "TENANT_DATA",
+      "tenant_column": true,
+      "force_rls": true
+    },
+    {
+      "name": "business_audit_events",
+      "classification": "TENANT_DATA",
+      "tenant_column": true,
+      "force_rls": true
+    },
+    {
+      "name": "business_case_profiles",
+      "classification": "TENANT_DATA",
+      "tenant_column": true,
+      "force_rls": true
+    },
+    {
+      "name": "business_case_relations",
+      "classification": "TENANT_DATA",
+      "tenant_column": true,
+      "force_rls": true
+    },
+    {
+      "name": "business_generations",
+      "classification": "TENANT_DATA",
+      "tenant_column": true,
+      "force_rls": true
+    },
+    {
+      "name": "business_knowledge",
+      "classification": "TENANT_DATA",
+      "tenant_column": true,
+      "force_rls": true
+    },
+    {
+      "name": "business_remediation_revisions",
+      "classification": "TENANT_DATA",
+      "tenant_column": true,
+      "force_rls": true
+    },
+    {
+      "name": "business_remediations",
+      "classification": "TENANT_DATA",
+      "tenant_column": true,
+      "force_rls": true
+    },
+    {
+      "name": "business_reports",
+      "classification": "TENANT_DATA",
+      "tenant_column": true,
+      "force_rls": true
+    },
+    {
+      "name": "business_run_events",
+      "classification": "TENANT_DATA",
+      "tenant_column": true,
+      "force_rls": true
+    },
+    {
+      "name": "business_workbench_audit",
+      "classification": "TENANT_DATA",
+      "tenant_column": true,
+      "force_rls": true
+    },
+    {
+      "name": "business_workbench_tasks",
+      "classification": "TENANT_DATA",
+      "tenant_column": true,
+      "force_rls": true
+    },
+    {
+      "name": "case_contract_chains",
+      "classification": "TENANT_DATA",
+      "tenant_column": true,
+      "force_rls": true
+    },
+    {
+      "name": "case_intake_archives",
+      "classification": "TENANT_DATA",
+      "tenant_column": true,
+      "force_rls": true
+    },
+    {
+      "name": "case_intake_operations",
+      "classification": "TENANT_DATA",
+      "tenant_column": true,
+      "force_rls": true
+    },
+    {
+      "name": "case_intake_requests",
+      "classification": "TENANT_DATA",
+      "tenant_column": true,
+      "force_rls": true
+    },
+    {
+      "name": "case_legal_applicability_fact_versions",
+      "classification": "TENANT_DATA",
+      "tenant_column": true,
+      "force_rls": true
+    },
+    {
+      "name": "case_legal_applicability_facts",
+      "classification": "TENANT_DATA",
+      "tenant_column": true,
+      "force_rls": true
+    },
+    {
+      "name": "case_subject_role_versions",
+      "classification": "TENANT_DATA",
+      "tenant_column": true,
+      "force_rls": true
+    },
+    {
+      "name": "case_subject_roles",
+      "classification": "TENANT_DATA",
+      "tenant_column": true,
+      "force_rls": true
+    },
+    {
+      "name": "cases",
+      "classification": "TENANT_DATA",
+      "tenant_column": true,
+      "force_rls": true
+    },
+    {
+      "name": "clm_approval_decisions",
+      "classification": "TENANT_DATA",
+      "tenant_column": true,
+      "force_rls": true
+    },
+    {
+      "name": "clm_approval_rounds",
+      "classification": "TENANT_DATA",
+      "tenant_column": true,
+      "force_rls": true
+    },
+    {
+      "name": "clm_approval_task_assignments",
+      "classification": "TENANT_DATA",
+      "tenant_column": true,
+      "force_rls": true
+    },
+    {
+      "name": "clm_approval_task_materials",
+      "classification": "TENANT_DATA",
+      "tenant_column": true,
+      "force_rls": true
+    },
+    {
+      "name": "clm_approval_task_transfers",
+      "classification": "TENANT_DATA",
+      "tenant_column": true,
+      "force_rls": true
+    },
+    {
+      "name": "clm_approval_tasks",
+      "classification": "TENANT_DATA",
+      "tenant_column": true,
+      "force_rls": true
+    },
+    {
+      "name": "clm_business_events",
+      "classification": "TENANT_DATA",
+      "tenant_column": true,
+      "force_rls": true
+    },
+    {
+      "name": "clm_contract_acceptance_defects",
+      "classification": "TENANT_DATA",
+      "tenant_column": true,
+      "force_rls": true
+    },
+    {
+      "name": "clm_contract_acceptance_rectifications",
+      "classification": "TENANT_DATA",
+      "tenant_column": true,
+      "force_rls": true
+    },
+    {
+      "name": "clm_contract_acceptances",
+      "classification": "TENANT_DATA",
+      "tenant_column": true,
+      "force_rls": true
+    },
+    {
+      "name": "clm_contract_asset_handovers",
+      "classification": "TENANT_DATA",
+      "tenant_column": true,
+      "force_rls": true
+    },
+    {
+      "name": "clm_contract_asset_receipts",
+      "classification": "TENANT_DATA",
+      "tenant_column": true,
+      "force_rls": true
+    },
+    {
+      "name": "clm_contract_audit_bindings",
+      "classification": "TENANT_DATA",
+      "tenant_column": true,
+      "force_rls": true
+    },
+    {
+      "name": "clm_contract_cases",
+      "classification": "TENANT_DATA",
+      "tenant_column": true,
+      "force_rls": true
+    },
+    {
+      "name": "clm_contract_deliveries",
+      "classification": "TENANT_DATA",
+      "tenant_column": true,
+      "force_rls": true
+    },
+    {
+      "name": "clm_contract_drafts",
+      "classification": "TENANT_DATA",
+      "tenant_column": true,
+      "force_rls": true
+    },
+    {
+      "name": "clm_contract_exports",
+      "classification": "TENANT_DATA",
+      "tenant_column": true,
+      "force_rls": true
+    },
+    {
+      "name": "clm_contract_payment_eligibility_checks",
+      "classification": "TENANT_DATA",
+      "tenant_column": true,
+      "force_rls": true
+    },
+    {
+      "name": "clm_contract_payment_receipts",
+      "classification": "TENANT_DATA",
+      "tenant_column": true,
+      "force_rls": true
+    },
+    {
+      "name": "clm_contract_rectifications",
+      "classification": "TENANT_DATA",
+      "tenant_column": true,
+      "force_rls": true
+    },
+    {
+      "name": "clm_contract_revision_asset_plans",
+      "classification": "TENANT_DATA",
+      "tenant_column": true,
+      "force_rls": true
+    },
+    {
+      "name": "clm_contract_revision_items",
+      "classification": "TENANT_DATA",
+      "tenant_column": true,
+      "force_rls": true
+    },
+    {
+      "name": "clm_contract_revisions",
+      "classification": "TENANT_DATA",
+      "tenant_column": true,
+      "force_rls": true
+    },
+    {
+      "name": "clm_contract_saved_views",
+      "classification": "TENANT_DATA",
+      "tenant_column": true,
+      "force_rls": true
+    },
+    {
+      "name": "clm_contract_signing_registrations",
+      "classification": "TENANT_DATA",
+      "tenant_column": true,
+      "force_rls": true
+    },
+    {
+      "name": "clm_contract_source_observations",
+      "classification": "TENANT_DATA",
+      "tenant_column": true,
+      "force_rls": true
+    },
+    {
+      "name": "clm_contract_supplements",
+      "classification": "TENANT_DATA",
+      "tenant_column": true,
+      "force_rls": true
+    },
+    {
+      "name": "clm_contract_version_materials",
+      "classification": "TENANT_DATA",
+      "tenant_column": true,
+      "force_rls": true
+    },
+    {
+      "name": "clm_contract_version_seals",
+      "classification": "TENANT_DATA",
+      "tenant_column": true,
+      "force_rls": true
+    },
+    {
+      "name": "clm_contract_write_receipts",
+      "classification": "TENANT_DATA",
+      "tenant_column": true,
+      "force_rls": true
+    },
+    {
+      "name": "clm_contracts",
+      "classification": "TENANT_DATA",
+      "tenant_column": true,
+      "force_rls": true
+    },
+    {
+      "name": "clm_legacy_imports",
+      "classification": "TENANT_DATA",
+      "tenant_column": true,
+      "force_rls": true
+    },
+    {
+      "name": "clm_outbox_delivery",
+      "classification": "QUEUE_CONTROL",
+      "tenant_column": true,
+      "force_rls": true,
+      "exception": "tenant-scoped service transaction; object authorization is a separate application check"
+    },
+    {
+      "name": "clm_workflow_role_bindings",
+      "classification": "TENANT_DATA",
+      "tenant_column": true,
+      "force_rls": true
+    },
+    {
+      "name": "clm_workflow_roles",
+      "classification": "TENANT_DATA",
+      "tenant_column": true,
+      "force_rls": true
+    },
+    {
+      "name": "clm_workflow_template_nodes",
+      "classification": "TENANT_DATA",
+      "tenant_column": true,
+      "force_rls": true
+    },
+    {
+      "name": "clm_workflow_template_pointers",
+      "classification": "TENANT_DATA",
+      "tenant_column": true,
+      "force_rls": true
+    },
+    {
+      "name": "clm_workflow_templates",
+      "classification": "TENANT_DATA",
+      "tenant_column": true,
+      "force_rls": true
+    },
+    {
+      "name": "constraint_evaluations",
+      "classification": "TENANT_DATA",
+      "tenant_column": true,
+      "force_rls": true
+    },
+    {
+      "name": "core_write_receipts",
+      "classification": "TENANT_DATA",
+      "tenant_column": true,
+      "force_rls": true
+    },
+    {
+      "name": "decisions",
+      "classification": "TENANT_DATA",
+      "tenant_column": true,
+      "force_rls": true
+    },
+    {
+      "name": "document_activity",
+      "classification": "TENANT_DATA",
+      "tenant_column": true,
+      "force_rls": true
+    },
+    {
+      "name": "document_upload_idempotency",
+      "classification": "TENANT_DATA",
+      "tenant_column": true,
+      "force_rls": true
+    },
+    {
+      "name": "documents",
+      "classification": "TENANT_DATA",
+      "tenant_column": true,
+      "force_rls": true
+    },
+    {
+      "name": "evidence_receipts",
+      "classification": "TENANT_DATA",
+      "tenant_column": true,
+      "force_rls": true
+    },
+    {
+      "name": "evidence_request_events",
+      "classification": "TENANT_DATA",
+      "tenant_column": true,
+      "force_rls": true
+    },
+    {
+      "name": "evidence_requests",
+      "classification": "TENANT_DATA",
+      "tenant_column": true,
+      "force_rls": true
+    },
+    {
+      "name": "execution_activity",
+      "classification": "TENANT_DATA",
+      "tenant_column": true,
+      "force_rls": true
+    },
+    {
+      "name": "execution_agent_reviews",
+      "classification": "TENANT_DATA",
+      "tenant_column": true,
+      "force_rls": true
+    },
+    {
+      "name": "execution_events",
+      "classification": "TENANT_DATA",
+      "tenant_column": true,
+      "force_rls": true
+    },
+    {
+      "name": "execution_queue_cursor",
+      "classification": "QUEUE_CONTROL",
+      "tenant_column": true,
+      "force_rls": true,
+      "exception": "setLocalQueueScope worker-only metadata claim"
+    },
+    {
+      "name": "execution_queue_policies",
+      "classification": "QUEUE_CONTROL",
+      "tenant_column": true,
+      "force_rls": true,
+      "exception": "setLocalQueueScope worker-only metadata claim"
+    },
+    {
+      "name": "execution_queue_tenants",
+      "classification": "QUEUE_CONTROL",
+      "tenant_column": true,
+      "force_rls": true,
+      "exception": "setLocalQueueScope worker-only metadata claim"
+    },
+    {
+      "name": "execution_write_receipts",
+      "classification": "TENANT_DATA",
+      "tenant_column": true,
+      "force_rls": true
+    },
+    {
+      "name": "experience_candidate_versions",
+      "classification": "TENANT_DATA",
+      "tenant_column": true,
+      "force_rls": true
+    },
+    {
+      "name": "experience_distill_failures",
+      "classification": "TENANT_DATA",
+      "tenant_column": true,
+      "force_rls": true
+    },
+    {
+      "name": "experience_distill_inputs",
+      "classification": "TENANT_DATA",
+      "tenant_column": true,
+      "force_rls": true
+    },
+    {
+      "name": "experience_distill_results",
+      "classification": "TENANT_DATA",
+      "tenant_column": true,
+      "force_rls": true
+    },
+    {
+      "name": "experience_feedback",
+      "classification": "TENANT_DATA",
+      "tenant_column": true,
+      "force_rls": true
+    },
+    {
+      "name": "experience_finding_usage",
+      "classification": "TENANT_DATA",
+      "tenant_column": true,
+      "force_rls": true
+    },
+    {
+      "name": "findings",
+      "classification": "TENANT_DATA",
+      "tenant_column": true,
+      "force_rls": true
+    },
+    {
+      "name": "governed_knowledge_history",
+      "classification": "TENANT_DATA",
+      "tenant_column": true,
+      "force_rls": true
+    },
+    {
+      "name": "governed_knowledge_idempotency",
+      "classification": "TENANT_DATA",
+      "tenant_column": true,
+      "force_rls": true
+    },
+    {
+      "name": "governed_knowledge_pointers",
+      "classification": "TENANT_DATA",
+      "tenant_column": true,
+      "force_rls": true
+    },
+    {
+      "name": "governed_knowledge_state",
+      "classification": "TENANT_DATA",
+      "tenant_column": true,
+      "force_rls": true
+    },
+    {
+      "name": "governed_knowledge_versions",
+      "classification": "TENANT_DATA",
+      "tenant_column": true,
+      "force_rls": true
+    },
+    {
+      "name": "governed_policy_rule_bindings",
+      "classification": "TENANT_DATA",
+      "tenant_column": true,
+      "force_rls": true
+    },
+    {
+      "name": "idempotency",
+      "classification": "TENANT_DATA",
+      "tenant_column": true,
+      "force_rls": true
+    },
+    {
+      "name": "identity_jurisdictions",
+      "classification": "AUTH_CONTROL",
+      "tenant_column": false,
+      "force_rls": true,
+      "exception": "Global jurisdiction directory metadata. FORCE RLS with AUTH_FENCE_OWNER-only identity_owner_all policy (USING/WITH CHECK true); ordinary services have no direct table access."
+    },
+    {
+      "name": "identity_memberships",
+      "classification": "AUTH_CONTROL",
+      "tenant_column": true,
+      "force_rls": true,
+      "exception": "Tenant membership authority with composite tenant/org reference, unique membership/principal/tenant/org identity; FORCE RLS with AUTH_FENCE_OWNER-only identity_owner_all policy."
+    },
+    {
+      "name": "identity_org_units",
+      "classification": "AUTH_CONTROL",
+      "tenant_column": true,
+      "force_rls": true,
+      "exception": "Tenant/org identity hierarchy. Composite tenant/org primary and parent references; FORCE RLS with AUTH_FENCE_OWNER-only identity_owner_all policy."
+    },
+    {
+      "name": "identity_pending_auth",
+      "classification": "AUTH_CONTROL",
+      "tenant_column": false,
+      "force_rls": true,
+      "exception": "Short-lived pending login challenge state. FORCE RLS with AUTH_FENCE_OWNER-only identity_owner_all policy; no tenant key by design."
+    },
+    {
+      "name": "identity_principals",
+      "classification": "AUTH_CONTROL",
+      "tenant_column": false,
+      "force_rls": true,
+      "exception": "Global principal directory binding actor_id to unique issuer/subject; FORCE RLS with AUTH_FENCE_OWNER-only identity_owner_all policy."
+    },
+    {
+      "name": "identity_support_events",
+      "classification": "AUTH_CONTROL",
+      "tenant_column": true,
+      "force_rls": true,
+      "exception": "Support authorization audit/control events; FORCE RLS and AUTH_FENCE_OWNER-only support_owner USING/WITH CHECK true; unique grant/revision/action sequence."
+    },
+    {
+      "name": "identity_support_grants",
+      "classification": "AUTH_CONTROL",
+      "tenant_column": true,
+      "force_rls": true,
+      "exception": "Cross-tenant support authorization control record, not ordinary tenant business data. Composite FK binds tenant/org/case; FORCE RLS and AUTH_FENCE_OWNER-only support_owner USING/WITH CHECK true; action constrained to case.read."
+    },
+    {
+      "name": "identity_tenants",
+      "classification": "AUTH_CONTROL",
+      "tenant_column": true,
+      "force_rls": true,
+      "exception": "Global tenant directory/control metadata, not tenant business rows. FORCE RLS with AUTH_FENCE_OWNER-only identity_owner_all policy."
+    },
+    {
+      "name": "intake_authority_tickets",
+      "classification": "AUTH_CONTROL",
+      "tenant_column": true,
+      "force_rls": true,
+      "exception": "Short-lived upload admission ticket bound to session, tenant/org/case, operation and body digest. FORCE RLS with tenant_boundary USING/WITH CHECK tenant_id=current_setting(app.tenant_id,true), plus owner-only SELECT for redemption."
+    },
+    {
+      "name": "legal_source_captures",
+      "classification": "TENANT_DATA",
+      "tenant_column": true,
+      "force_rls": true
+    },
+    {
+      "name": "llm_endpoint_settings",
+      "classification": "PLATFORM_CONTROL",
+      "tenant_column": false,
+      "force_rls": false,
+      "exception": "platform or migrator control path; no tenant business authorization implied"
+    },
+    {
+      "name": "manual_finding_records",
+      "classification": "TENANT_DATA",
+      "tenant_column": true,
+      "force_rls": true
+    },
+    {
+      "name": "material_entities",
+      "classification": "TENANT_DATA",
+      "tenant_column": true,
+      "force_rls": true
+    },
+    {
+      "name": "material_versions",
+      "classification": "TENANT_DATA",
+      "tenant_column": true,
+      "force_rls": true
+    },
+    {
+      "name": "model_call_leases",
+      "classification": "TENANT_DATA",
+      "tenant_column": true,
+      "force_rls": true
+    },
+    {
+      "name": "model_usage",
+      "classification": "TENANT_DATA",
+      "tenant_column": true,
+      "force_rls": true
+    },
+    {
+      "name": "operation_authority_tickets",
+      "classification": "AUTH_CONTROL",
+      "tenant_column": true,
+      "force_rls": true,
+      "exception": "Short-lived operation ticket bound by composite membership/principal/tenant/org FK; FORCE RLS with tenant_boundary using tenant scope and narrow AUTH_FENCE_OWNER read for context fences."
+    },
+    {
+      "name": "operator_external_collection_claims",
+      "classification": "TENANT_DATA",
+      "tenant_column": true,
+      "force_rls": true
+    },
+    {
+      "name": "operator_external_observations",
+      "classification": "TENANT_DATA",
+      "tenant_column": true,
+      "force_rls": true
+    },
+    {
+      "name": "operator_external_snapshot_sets",
+      "classification": "TENANT_DATA",
+      "tenant_column": true,
+      "force_rls": true
+    },
+    {
+      "name": "operator_fulfillment_checks",
+      "classification": "TENANT_DATA",
+      "tenant_column": true,
+      "force_rls": true
+    },
+    {
+      "name": "operator_fulfillment_evaluation_objects",
+      "classification": "TENANT_DATA",
+      "tenant_column": true,
+      "force_rls": true
+    },
+    {
+      "name": "operator_fulfillment_evaluations",
+      "classification": "TENANT_DATA",
+      "tenant_column": true,
+      "force_rls": true
+    },
+    {
+      "name": "operator_impact_plans",
+      "classification": "TENANT_DATA",
+      "tenant_column": true,
+      "force_rls": true
+    },
+    {
+      "name": "operator_mapping_change_decisions",
+      "classification": "TENANT_DATA",
+      "tenant_column": true,
+      "force_rls": true
+    },
+    {
+      "name": "operator_mapping_change_requests",
+      "classification": "TENANT_DATA",
+      "tenant_column": true,
+      "force_rls": true
+    },
+    {
+      "name": "operator_mapping_lineages",
+      "classification": "TENANT_DATA",
+      "tenant_column": true,
+      "force_rls": true
+    },
+    {
+      "name": "operator_object_bindings",
+      "classification": "TENANT_DATA",
+      "tenant_column": true,
+      "force_rls": true
+    },
+    {
+      "name": "outbox_events",
+      "classification": "QUEUE_CONTROL",
+      "tenant_column": true,
+      "force_rls": true,
+      "exception": "setLocalQueueScope worker-only metadata claim"
+    },
+    {
+      "name": "parsed_documents",
+      "classification": "TENANT_DATA",
+      "tenant_column": true,
+      "force_rls": true
+    },
+    {
+      "name": "review_attempt_inputs",
+      "classification": "TENANT_DATA",
+      "tenant_column": true,
+      "force_rls": true
+    },
+    {
+      "name": "review_attempt_parse_selections",
+      "classification": "TENANT_DATA",
+      "tenant_column": true,
+      "force_rls": true
+    },
+    {
+      "name": "review_attempts",
+      "classification": "TENANT_DATA",
+      "tenant_column": true,
+      "force_rls": true
+    },
+    {
+      "name": "review_rulepack_inputs",
+      "classification": "TENANT_DATA",
+      "tenant_column": true,
+      "force_rls": true
+    },
+    {
+      "name": "review_run_snapshots",
+      "classification": "TENANT_DATA",
+      "tenant_column": true,
+      "force_rls": true
+    },
+    {
+      "name": "review_runs",
+      "classification": "TENANT_DATA",
+      "tenant_column": true,
+      "force_rls": true
+    },
+    {
+      "name": "rule_pack_history",
+      "classification": "TENANT_DATA",
+      "tenant_column": true,
+      "force_rls": true
+    },
+    {
+      "name": "rule_pack_idempotency",
+      "classification": "TENANT_DATA",
+      "tenant_column": true,
+      "force_rls": true
+    },
+    {
+      "name": "rule_pack_pointers",
+      "classification": "TENANT_DATA",
+      "tenant_column": true,
+      "force_rls": true
+    },
+    {
+      "name": "rule_pack_shadow_reports",
+      "classification": "TENANT_DATA",
+      "tenant_column": true,
+      "force_rls": true
+    },
+    {
+      "name": "rule_pack_versions",
+      "classification": "TENANT_DATA",
+      "tenant_column": true,
+      "force_rls": true
+    },
+    {
+      "name": "run_events",
+      "classification": "TENANT_DATA",
+      "tenant_column": true,
+      "force_rls": true
+    },
+    {
+      "name": "schema_migrations",
+      "classification": "PLATFORM_CONTROL",
+      "tenant_column": false,
+      "force_rls": false,
+      "exception": "platform or migrator control path; no tenant business authorization implied"
+    },
+    {
+      "name": "service_database_roles",
+      "classification": "PLATFORM_CONTROL",
+      "tenant_column": false,
+      "force_rls": false,
+      "exception": "platform or migrator control path; no tenant business authorization implied"
+    },
+    {
+      "name": "service_object_contract_associations",
+      "classification": "TENANT_DATA",
+      "tenant_column": true,
+      "force_rls": true
+    },
+    {
+      "name": "service_object_mutation_receipts",
+      "classification": "TENANT_DATA",
+      "tenant_column": true,
+      "force_rls": true
+    },
+    {
+      "name": "service_object_versions",
+      "classification": "TENANT_DATA",
+      "tenant_column": true,
+      "force_rls": true
+    },
+    {
+      "name": "service_objects",
+      "classification": "TENANT_DATA",
+      "tenant_column": true,
+      "force_rls": true
+    },
+    {
+      "name": "sessions",
+      "classification": "AUTH_CONTROL",
+      "tenant_column": true,
+      "force_rls": true,
+      "exception": "exact token-only identity lookup via setLocalSessionScope"
+    },
+    {
+      "name": "subject_change_decisions",
+      "classification": "TENANT_DATA",
+      "tenant_column": true,
+      "force_rls": true
+    },
+    {
+      "name": "subject_change_requests",
+      "classification": "TENANT_DATA",
+      "tenant_column": true,
+      "force_rls": true
+    },
+    {
+      "name": "subject_current_identifier_claims",
+      "classification": "TENANT_DATA",
+      "tenant_column": true,
+      "force_rls": true
+    },
+    {
+      "name": "subject_source_snapshots",
+      "classification": "TENANT_DATA",
+      "tenant_column": true,
+      "force_rls": true
+    },
+    {
+      "name": "subject_versions",
+      "classification": "TENANT_DATA",
+      "tenant_column": true,
+      "force_rls": true
+    },
+    {
+      "name": "subject_write_idempotency",
+      "classification": "TENANT_DATA",
+      "tenant_column": true,
+      "force_rls": true
+    },
+    {
+      "name": "subjects",
+      "classification": "TENANT_DATA",
+      "tenant_column": true,
+      "force_rls": true
+    },
+    {
+      "name": "tool_call_ledger",
+      "classification": "TENANT_DATA",
+      "tenant_column": true,
+      "force_rls": true
+    },
+    {
+      "name": "worker_claim_identities",
+      "classification": "AUTH_CONTROL",
+      "tenant_column": true,
+      "force_rls": true,
+      "exception": "Immutable job-to-membership identity binding. FORCE RLS with tenant_boundary plus AUTH_FENCE_OWNER SELECT/INSERT policies limited to required columns."
+    },
+    {
+      "name": "worker_jobs",
+      "classification": "QUEUE_CONTROL",
+      "tenant_column": true,
+      "force_rls": true,
+      "exception": "setLocalQueueScope worker-only metadata claim"
+    }
+  ]
+}

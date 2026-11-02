@@ -273,13 +273,22 @@ func newStorePool(ctx context.Context, dsn, schema string, application bool) (*p
 	if application {
 		applyRuntimeTimeoutDefaults(cfg.ConnConfig.RuntimeParams)
 	}
+	// Application connections start without business authority in every mode.
+	// Only the dedicated offline migration connection keeps the frozen legacy
+	// bootstrap defaults; token and queue entrypoints install their own scope.
+	tenant, org, actor, role := "", "", "", "unscoped"
+	if !application {
+		tenant, org, actor, role = accounts.LocalDemoTenant, "demo-org", "system", "api"
+	}
 	cfg.AfterConnect = func(ctx context.Context, conn *pgx.Conn) error {
 		_, err := conn.Exec(ctx, `SELECT
 			set_config('search_path', $1, false),
 			set_config('app.tenant_id', $2, false),
 			set_config('app.org_id', $3, false),
-			set_config('app.actor_id', 'system', false),
-			set_config('app.actor_role', 'api', false)`, schema, accounts.LocalDemoTenant, "demo-org")
+			set_config('app.actor_id', $4, false),
+			set_config('app.actor_role', $5, false),
+            set_config('app.session_token','',false),set_config('app.worker_id','',false),set_config('app.job_id','',false),set_config('app.job_generation','',false),
+            set_config('app.command_digest','',false),set_config('app.command_version','',false)`, schema, tenant, org, actor, role)
 		return err
 	}
 	return pgxpool.NewWithConfig(ctx, cfg)
@@ -388,6 +397,10 @@ func openApplicationStore(dir string, sel config.Selection, schema string) (*Sto
 		return nil, err
 	}
 	if err := checkSchemaCompatibility(ctx, pool); err != nil {
+		pool.Close()
+		return nil, err
+	}
+	if err := checkTableIsolationCatalog(ctx, pool, schema); err != nil {
 		pool.Close()
 		return nil, err
 	}
