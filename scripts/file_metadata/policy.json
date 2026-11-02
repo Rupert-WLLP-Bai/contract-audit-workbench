@@ -267,5 +267,11 @@
     "125": "Implement validation of exact tracked-file coverage, schema, header mirror, exceptions, dates, and revision transitions."
   },
   "rule_precedence": "Exact path rules override generated/third-party/frozen file classes, which override extension classes; each manifest record must match the narrowest applicable rule.",
-  "manifest_follow_up": "Issue #124 applies eligible headers and refreshes this same canonical manifest for newly tracked paths; it does not create a competing inventory."
+  "manifest_follow_up": "Issue #124 applies eligible headers and refreshes this same canonical manifest for newly tracked paths; it does not create a competing inventory.",
+  "reviewed_bootstrap": {
+    "version": 1,
+    "legacy_baseline": "561c6c260622d8d817eae9b877299fda206b85b7",
+    "anchor": "77d516c40142b049cea7957d0010e938d4f9d515",
+    "mode": "exact-reviewed-transition"
+  }
 }
