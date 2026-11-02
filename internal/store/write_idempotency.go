@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: The advisory key also serializes a first insertion, for which SELECT FOR UPDATE has no row to lock. It is taken inside the effect transaction. Related `store` operations include optionalIdempotencyKey, lockWriteReceipt, loadWriteReceipt, insertWriteReceipt.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-31
+// Updated: 2026-11-02
+// Revision: r2
+// Copyright: See LICENSE
+// End file metadata.
+
 package store
 
 import (

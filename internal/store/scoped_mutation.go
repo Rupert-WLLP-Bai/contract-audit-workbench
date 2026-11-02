@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: loadScopedAttemptState loads only the records a durable attempt mutation can touch: the case, run, run snapshot, attempt, that attempt's execution events, findings and… Related `store` operations include loadScopedAttemptState, scopedAttemptMutation, scopedGovernedAttemptMutation, scopedAttemptMutationWithGovernance.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-25
+// Updated: 2026-11-02
+// Revision: r2
+// Copyright: See LICENSE
+// End file metadata.
+
 package store
 
 import (

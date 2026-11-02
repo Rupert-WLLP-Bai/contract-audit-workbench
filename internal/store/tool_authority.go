@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: ErrToolScopeUnavailable reports that the job context a tool call presented is not, or is no longer, backed by the current durable job claim. Related `store` operations include toolScopeRefusal, UseToolEvidenceReader, toolEvidenceReader, AuthorizeToolResolution.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-25
+// Updated: 2026-11-02
+// Revision: r2
+// Copyright: See LICENSE
+// End file metadata.
+
 package store
 
 import (

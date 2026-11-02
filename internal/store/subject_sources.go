@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: ConfigureSubjectSourceManifest installs an explicit, server-owned, versioned controlled dataset. The caller must load this from deployment configuration; a missing configuration… Related `store` operations include ConfigureSubjectSourceManifest, configureSubjectSourceFromEnvironment, configuredSubjectSource, ListConfiguredSubjectSources.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-31
+// Updated: 2026-11-02
+// Revision: r2
+// Copyright: See LICENSE
+// End file metadata.
+
 package store
 
 import (

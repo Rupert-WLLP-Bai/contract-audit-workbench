@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: PartyContextItem freezes the subject and binding version used by one review. Synthetic verification provenance is carried explicitly so reports cannot collapse it into an official… Related `store` operations include applySubjectPatch, parseCaseSubjectRolePatch, userAssertedClaim, invalidateSubjectIdentityVerification.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-31
+// Updated: 2026-10-31
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package store
 
 import (
