@@ -286,11 +286,13 @@ func TestValue(t *testing.T) { if Value != 1 { t.Fatal(Value) } }
         plan = self.plan(check_fast.Change(
             "M", "internal/store/session_lifecycle.go"))
         self.assertTrue(plan.database)
-        self.assertEqual(len(plan.database_tests), 1)
-        target = plan.database_tests[0]
-        self.assertEqual(target.package, "./internal/store")
+        targets = {target.package: target for target in plan.database_tests}
+        self.assertEqual(set(targets), {"./internal/store", "./internal/httpapi"})
+        target = targets["./internal/store"]
         self.assertEqual(target.tests, tuple(sorted(check_fast.SESSION_TESTS)))
         self.assertNotIn("TestLoginOriginalAndRetryStayInPostgres", target.tests)
+        self.assertEqual(set(targets["./internal/httpapi"].tests),
+                         set(check_fast.TENANT_IDENTITY_HTTP_TESTS))
 
     def test_tenant_identity_paths_select_core_and_oidc_postgres_cases(self):
         paths = tuple(sorted(check_fast.TENANT_AUTHORITY_CORE_PATHS)) + (
@@ -310,16 +312,17 @@ func TestValue(t *testing.T) { if Value != 1 { t.Fatal(Value) } }
                                  check_fast._is_budget(path))
                 checks = check_fast._build_checks(
                     plan, self.root, sys.executable,
-                    self.root.parent / "offline-migrator-check-output")
+                    self.root.parent / "tenant-identity-check-output")
                 store_checks = [check for check in checks
                                 if check.name.startswith("database-fixed-point")
                                 and check.command[-1] == "./internal/store"]
                 self.assertEqual(len(store_checks), 1)
-                self.assertIn(check_fast.OFFLINE_MIGRATOR_BOOTSTRAP_TESTS[0],
-                              store_checks[0].expected_tests)
+                self.assertEqual(set(store_checks[0].expected_tests),
+                                 set(targets["./internal/store"].tests))
                 pattern = store_checks[0].command[
                     store_checks[0].command.index("-run") + 1]
-                self.assertIn(check_fast.OFFLINE_MIGRATOR_BOOTSTRAP_TESTS[0], pattern)
+                for name in check_fast.TENANT_IDENTITY_TESTS:
+                    self.assertIn(name, pattern)
                 self.assertIn("./internal/bootstrap", targets)
                 self.assertEqual(set(targets["./internal/bootstrap"].tests),
                                  set(check_fast.TENANT_AUTHORITY_BOOTSTRAP_TESTS))
@@ -488,7 +491,9 @@ func TestValue(t *testing.T) { if Value != 1 { t.Fatal(Value) } }
         self.assertEqual(set(targets),
                          {"./internal/store", "./internal/bootstrap", "./internal/httpapi"})
         self.assertEqual(set(targets["./internal/store"].tests),
-                         set(check_fast.TENANT_IDENTITY_TESTS))
+                         set(check_fast.TENANT_IDENTITY_TESTS)
+                         | set(check_fast.OFFLINE_MIGRATOR_BOOTSTRAP_TESTS)
+                         | set(check_fast.CONTEXT_FENCE_TESTS))
         self.assertEqual(set(targets["./internal/bootstrap"].tests),
                          set(check_fast.TENANT_AUTHORITY_BOOTSTRAP_TESTS))
         self.assertEqual(set(targets["./internal/httpapi"].tests),
@@ -525,6 +530,19 @@ func TestValue(t *testing.T) { if Value != 1 { t.Fatal(Value) } }
                 self.assertEqual(targets["./internal/store"].needs_model,
                                  check_fast._is_budget(path))
 
+                checks = check_fast._build_checks(
+                    plan, self.root, sys.executable,
+                    self.root.parent / "offline-migrator-check-output")
+                store_checks = [check for check in checks
+                                if check.name.startswith("database-fixed-point")
+                                and check.command[-1] == "./internal/store"]
+                self.assertEqual(len(store_checks), 1)
+                self.assertIn(check_fast.OFFLINE_MIGRATOR_BOOTSTRAP_TESTS[0],
+                              store_checks[0].expected_tests)
+                pattern = store_checks[0].command[
+                    store_checks[0].command.index("-run") + 1]
+                self.assertIn(check_fast.OFFLINE_MIGRATOR_BOOTSTRAP_TESTS[0], pattern)
+
         budget_plan = self.plan(check_fast.Change(
             "M", "internal/modelgateway/budget.go"))
         budget_targets = {target.package: target for target in budget_plan.database_tests}
@@ -535,9 +553,16 @@ func TestValue(t *testing.T) { if Value != 1 { t.Fatal(Value) } }
     def test_budget_change_requires_model_role(self):
         plan = self.plan(check_fast.Change("M", "internal/store/model_budget.go"))
         self.assertTrue(plan.database)
-        self.assertTrue(plan.database_tests[0].needs_model)
-        self.assertEqual(plan.database_tests[0].tests,
-                         tuple(sorted(check_fast.BUDGET_TESTS)))
+        targets = {target.package: target for target in plan.database_tests}
+        self.assertEqual(set(targets), {"./internal/store", "./internal/bootstrap"})
+        self.assertTrue(targets["./internal/store"].needs_model)
+        self.assertEqual(set(targets["./internal/store"].tests),
+                         set(check_fast.BUDGET_TESTS)
+                         | set(check_fast.TENANT_IDENTITY_TESTS)
+                         | set(check_fast.CONTEXT_FENCE_TESTS))
+        self.assertEqual(set(targets["./internal/bootstrap"].tests),
+                         set(check_fast.TENANT_AUTHORITY_BOOTSTRAP_TESTS))
+        self.assertFalse(targets["./internal/bootstrap"].needs_model)
 
     def test_python_migration_selects_database_and_go_toolchain(self):
         plan = self.plan(check_fast.Change("M", "scripts/migrate_schema.py"))
@@ -583,7 +608,8 @@ func TestValue(t *testing.T) { if Value != 1 { t.Fatal(Value) } }
             with self.subTest(path=path):
                 plan = self.plan(check_fast.Change("M", path))
                 self.assertTrue(plan.database)
-                payment_target = plan.database_tests[0]
+                targets = {target.package: target for target in plan.database_tests}
+                payment_target = targets["./internal/store"]
                 self.assertEqual(payment_target.package, "./internal/store")
                 self.assertIn("contract-payment", payment_target.reasons)
                 self.assertIn(target, payment_target.tests)
@@ -613,7 +639,8 @@ func TestValue(t *testing.T) { if Value != 1 { t.Fatal(Value) } }
             with self.subTest(path=path):
                 plan = self.plan(check_fast.Change("M", path))
                 self.assertTrue(plan.database)
-                asset_target = plan.database_tests[0]
+                targets = {target.package: target for target in plan.database_tests}
+                asset_target = targets["./internal/store"]
                 self.assertEqual(asset_target.package, "./internal/store")
                 self.assertIn("contract-asset", asset_target.reasons)
                 self.assertIn(target, asset_target.tests)
@@ -651,8 +678,19 @@ func TestValue(t *testing.T) { if Value != 1 { t.Fatal(Value) } }
             with self.subTest(path=path):
                 plan = self.plan(check_fast.Change("M", path))
                 self.assertTrue(plan.database)
-                self.assertEqual(len(plan.database_tests), 1)
-                pg_target = plan.database_tests[0]
+                pg_targets = {target.package: target for target in plan.database_tests}
+                expected_packages = {"./internal/store"}
+                if path in {
+                        "internal/store/migrations.go",
+                        "internal/store/service_roles.go",
+                        "internal/httpapi/server.go",
+                        "internal/httpapi/services.go",
+                        "cmd/server/main.go",
+                        "cmd/server/main_test.go"}:
+                    expected_packages.update({"./internal/bootstrap", "./internal/httpapi"})
+                self.assertEqual(set(pg_targets), expected_packages)
+                self.assertEqual(len(plan.database_tests), len(expected_packages))
+                pg_target = pg_targets["./internal/store"]
                 self.assertEqual(pg_target.package, "./internal/store")
                 self.assertIn("contract-source", pg_target.reasons)
                 for target in targets:
@@ -700,18 +738,24 @@ func TestValue(t *testing.T) { if Value != 1 { t.Fatal(Value) } }
         plan = self.plan(*(check_fast.Change("M", path) for path in paths))
         self.assertTrue(plan.database)
         targets = {target.package: target for target in plan.database_tests}
-        self.assertEqual(set(targets), {"./internal/store", "./internal/clmoutbox"})
+        self.assertEqual(set(targets),
+                         {"./internal/store", "./internal/clmoutbox",
+                          "./internal/bootstrap", "./internal/httpapi"})
         for test in check_fast.CLM_OUTBOX_STORE_TESTS:
             self.assertIn(test, targets["./internal/store"].tests)
         self.assertEqual(targets["./internal/clmoutbox"].tests,
                          tuple(sorted(check_fast.CLM_OUTBOX_RELAY_TESTS)))
+        self.assertEqual(set(targets["./internal/bootstrap"].tests),
+                         set(check_fast.TENANT_AUTHORITY_BOOTSTRAP_TESTS))
+        self.assertEqual(set(targets["./internal/httpapi"].tests),
+                         set(check_fast.TENANT_IDENTITY_HTTP_TESTS))
         self.assertFalse(any(target.needs_model for target in targets.values()))
 
         checks = check_fast._build_checks(
             plan, self.root, sys.executable, self.root.parent / "check-output")
         db_checks = [check for check in checks if check.name.startswith("database-fixed-point")]
-        self.assertEqual(len(db_checks), 2)
-        self.assertEqual(len({check.name for check in db_checks}), 2)
+        self.assertEqual(len(db_checks), 4)
+        self.assertEqual(len({check.name for check in db_checks}), 4)
         for check in db_checks:
             package = check.command[-1]
             self.assertIn(package, targets)
@@ -720,7 +764,8 @@ func TestValue(t *testing.T) { if Value != 1 { t.Fatal(Value) } }
             self.assertIn("-run", check.command)
         self.assertEqual(
             {check.command[-1] for check in db_checks},
-            {"./internal/store", "./internal/clmoutbox"},
+            {"./internal/store", "./internal/clmoutbox",
+             "./internal/bootstrap", "./internal/httpapi"},
         )
 
     def test_clm_outbox_scope_unions_existing_source_payment_and_asset_checks(self):
@@ -855,7 +900,10 @@ class CliBoundaryTests(unittest.TestCase):
             "\"Imports\":[\"contractaudit/internal/store\"]}' "
             "'{\"ImportPath\":\"contractaudit/internal/advisorycontract\","
             "\"Name\":\"advisorycontract\",\"GoFiles\":[\"contract.go\"],"
-            "\"Imports\":[\"time\"]}'\n"
+            "\"Imports\":[\"time\"]}' "
+            "'{\"ImportPath\":\"contractaudit/internal/coreauthority\","
+            "\"Name\":\"coreauthority\",\"GoFiles\":[\"transport.go\"],"
+            "\"Imports\":[\"net/http\",\"time\"]}'\n"
             "  exit 0\nfi\n"
             "for argument in \"$@\"; do\n"
             "  if [ \"$argument\" = \"-json\" ]; then exit 1; fi\n"
