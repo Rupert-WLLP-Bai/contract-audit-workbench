@@ -19,6 +19,7 @@
       "docs/architecture/advisory.md",
       "docs/architecture/execution.md",
       "docs/architecture/overview.md",
+      "docs/engineering/community-guide.md",
       "docs/engineering/local-development.md",
       "docs/engineering/verification.md",
       "docs/glossary/concepts.json",
@@ -30,7 +31,9 @@
       "docs/operations/external-evidence.md",
       "docs/operations/integrations.md",
       "docs/operations/k3d.md",
+      "docs/operations/multi-company-operations.md",
       "docs/operations/ocr-mineru.md",
+      "docs/operations/tenant-restore.md",
       "docs/product/capabilities.md",
       "docs/product/workflow.md",
       "e2e/tenant_recovery_browser_test.go",
@@ -979,12 +982,12 @@
         "value": "2026-11-02",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "a68af8616865296e4b63ff5811c9ae2ab8702025",
+          "commit": "ee65d02be6a9c20c687620540d1de2cb53e4f3e2",
           "path": "README.md",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r2",
+      "revision": "r3",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -7230,6 +7233,54 @@
       "handling": "header-and-manifest",
       "header_state": "pending-header-application"
     },
+    "docs/engineering/community-guide.md": {
+      "purpose": "Explains the current case review workflow and supported extension points, connecting user permissions, verifiable citations and contribution rules without claiming environment acceptance.",
+      "authors": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321",
+          "role": "project-author",
+          "source": "Issue #115 project author instruction; not inferred from Git commit identity."
+        }
+      ],
+      "maintainers": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321"
+        }
+      ],
+      "created": {
+        "value": "2026-11-02",
+        "source": {
+          "kind": "git-first-introduction",
+          "commit": "848ae6153ef4575a055e2a734632df9c1a6bab6e",
+          "path": "docs/engineering/community-guide.md",
+          "reason": "first available Git introduction; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "updated": {
+        "value": "2026-11-02",
+        "source": {
+          "kind": "git-last-content-change",
+          "commit": "5293f859012d9f28c5ad93c2a48c7732e94f9475",
+          "path": "docs/engineering/community-guide.md",
+          "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "revision": "r1",
+      "copyright": [
+        {
+          "holder": "Bai Junhao",
+          "notice": "See LICENSE",
+          "source": "LICENSE defines the first-party Project Materials and identifies Bai Junhao as rights holder; applied only to content owned or controlled by him.",
+          "verbatim": false
+        }
+      ],
+      "handling": "header-and-manifest",
+      "header_state": "pending-header-application"
+    },
     "docs/engineering/contributing.md": {
       "purpose": "Sets the contributor procedure for short-lived fix/feat branches, issue-scoped commits, file ownership during shared-checkout work, evidence labels, and the fast-check cadence.",
       "authors": [
@@ -7306,13 +7357,15 @@
         }
       },
       "updated": {
-        "value": "unknown",
+        "value": "2026-11-02",
         "source": {
-          "kind": "unknown",
-          "reason": "Explicit policy addition to the 561c6c2 inventory snapshot; no tracked content history exists yet."
+          "kind": "git-last-content-change",
+          "commit": "f2cf01e4e18267f90f760427171a6810b2ee3aa8",
+          "path": "docs/engineering/file-metadata.md",
+          "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r1",
+      "revision": "r2",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -7672,15 +7725,15 @@
         }
       },
       "updated": {
-        "value": "2026-11-01",
+        "value": "2026-11-02",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "50f7dbde567f98a6163c73a880e7e6fad79b0d89",
+          "commit": "848ae6153ef4575a055e2a734632df9c1a6bab6e",
           "path": "docs/index.md",
-          "reason": "file introduction created its initial content; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+          "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r1",
+      "revision": "r2",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -7932,6 +7985,54 @@
       "handling": "header-and-manifest",
       "header_state": "pending-header-application"
     },
+    "docs/operations/multi-company-operations.md": {
+      "purpose": "Documents membership-bound tenant operations, support grants, versioned configuration, model budget settlement and operator prerequisites while preserving server authority and recovery state distinctions.",
+      "authors": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321",
+          "role": "project-author",
+          "source": "Issue #115 project author instruction; not inferred from Git commit identity."
+        }
+      ],
+      "maintainers": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321"
+        }
+      ],
+      "created": {
+        "value": "2026-11-02",
+        "source": {
+          "kind": "git-first-introduction",
+          "commit": "9072bd02426662a010f382b6a1c8160897eb7ff2",
+          "path": "docs/operations/multi-company-operations.md",
+          "reason": "first available Git introduction; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "updated": {
+        "value": "2026-11-02",
+        "source": {
+          "kind": "git-last-content-change",
+          "commit": "9072bd02426662a010f382b6a1c8160897eb7ff2",
+          "path": "docs/operations/multi-company-operations.md",
+          "reason": "file introduction created its initial content; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "revision": "r1",
+      "copyright": [
+        {
+          "holder": "Bai Junhao",
+          "notice": "See LICENSE",
+          "source": "LICENSE defines the first-party Project Materials and identifies Bai Junhao as rights holder; applied only to content owned or controlled by him.",
+          "verbatim": false
+        }
+      ],
+      "handling": "header-and-manifest",
+      "header_state": "pending-header-application"
+    },
     "docs/operations/ocr-mineru.md": {
       "purpose": "说明“本地 MinerU OCR”的操作或技术边界：MinerU 4.x 可作为本机 OCR 服务选项。以下命令来自当前 README 与实际工具入口；模型权重放在仓外。示例适用于已配置 NVIDIA CUDA 的 Linux/WSL 主机，不是通用硬件性能承诺。",
       "authors": [
@@ -7974,6 +8075,54 @@
           "holder": "Bai Junhao",
           "notice": "See LICENSE",
           "source": "LICENSE identifies Bai Junhao as rights holder for project-owned materials; applied only to content owned or controlled by him.",
+          "verbatim": false
+        }
+      ],
+      "handling": "header-and-manifest",
+      "header_state": "pending-header-application"
+    },
+    "docs/operations/tenant-restore.md": {
+      "purpose": "Describes supported backup tools, tenant lifecycle fences, evidence requirements and production recovery prerequisites without equating local fixtures with completed tenant restoration.",
+      "authors": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321",
+          "role": "project-author",
+          "source": "Issue #115 project author instruction; not inferred from Git commit identity."
+        }
+      ],
+      "maintainers": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321"
+        }
+      ],
+      "created": {
+        "value": "2026-11-02",
+        "source": {
+          "kind": "git-first-introduction",
+          "commit": "9072bd02426662a010f382b6a1c8160897eb7ff2",
+          "path": "docs/operations/tenant-restore.md",
+          "reason": "first available Git introduction; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "updated": {
+        "value": "2026-11-02",
+        "source": {
+          "kind": "git-last-content-change",
+          "commit": "9072bd02426662a010f382b6a1c8160897eb7ff2",
+          "path": "docs/operations/tenant-restore.md",
+          "reason": "file introduction created its initial content; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "revision": "r1",
+      "copyright": [
+        {
+          "holder": "Bai Junhao",
+          "notice": "See LICENSE",
+          "source": "LICENSE defines the first-party Project Materials and identifies Bai Junhao as rights holder; applied only to content owned or controlled by him.",
           "verbatim": false
         }
       ],
@@ -48567,7 +48716,7 @@
           "reason": "The manifest cannot embed the commit/blob identity of its own current update; retain this exact-path self-reference exception."
         }
       },
-      "revision": "r2",
+      "revision": "r3",
       "copyright": [
         {
           "holder": "Bai Junhao",
