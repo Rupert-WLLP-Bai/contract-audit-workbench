@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: EvidenceRequestSchemaSQL must be migrated after workbench, review and document tables and forbid_append_only. Core owns these tables; migration must also force tenant RLS and… Related `store` operations include evidenceRequestKey, evidenceRequestRole, evidenceRequestHash, evidenceRequestWritable.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-28
+// Updated: 2026-11-02
+// Revision: r2
+// Copyright: See LICENSE
+// End file metadata.
+
 package store
 
 import (

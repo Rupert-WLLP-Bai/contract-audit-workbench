@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Freezing a draft appends one immutable clm_contract_revisions row. The draft stays editable so a later freeze can create the next version; frozen rows, their material summaries… Related `store` operations include FreezeContractVersion, loadContractDraftBytes, frozenMaterialsFromReferences, ListContractVersions.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-01
+// Updated: 2026-11-02
+// Revision: r2
+// Copyright: See LICENSE
+// End file metadata.
+
 package store
 
 import (

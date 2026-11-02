@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Version diffs are computed from two immutable revision snapshots plus the frozen restricted-field fingerprints. Unrestricted values are compared from the stored snapshot;… Related `store` operations include DiffContractVersions, loadVersionComparisonState, mergeMaterialFields, diffFrozenFields.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-01
+// Updated: 2026-11-02
+// Revision: r2
+// Copyright: See LICENSE
+// End file metadata.
+
 package store
 
 import (

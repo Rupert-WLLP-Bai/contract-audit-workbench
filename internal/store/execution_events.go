@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: errExecutionEventScope reports that an execution event was offered without the current durable claim, attempt or run binding. Related `store` operations include appendExecutionEventFenced, patchExecutionEventProjection.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-25
+// Updated: 2026-11-02
+// Revision: r2
+// Copyright: See LICENSE
+// End file metadata.
+
 package store
 
 import (

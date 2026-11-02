@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Retention is unchanged: PostgreSQL keeps all terminal jobs, delivered notifications, execution events and audit records. Before considering an archive or partition, measure table… Related `store` operations include scanJobs, loadWriteHistory, jobAcceptanceForRun, snapshotReportState.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-31
+// Updated: 2026-11-02
+// Revision: r2
+// Copyright: See LICENSE
+// End file metadata.
+
 package store
 
 import (

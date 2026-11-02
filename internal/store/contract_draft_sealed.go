@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Restricted supplier fields (docs/04 敏感级别 restricted) are sealed with an independent CLM data key before any persistence. Plaintext never enters JSONB, receipts, logs or error… Related `store` operations include clmDataKeyBytes, clmDataKey, sealCLMValue, unsealCLMValue.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-01
+// Updated: 2026-11-02
+// Revision: r2
+// Copyright: See LICENSE
+// End file metadata.
+
 package store
 
 import (
