@@ -58,7 +58,8 @@ func (s *Store) resolveOperationAuthority(ctx context.Context, scope model.Deleg
 	if scope.TenantID == "" || scope.OrgID == "" || scope.CaseID == "" || scope.ActorID == "" ||
 		(caller != "worker" && caller != "document" && caller != "model") ||
 		(caller == "document" && scope.Kind != "document") ||
-		(caller == "worker" && scope.Kind != "execution" && scope.Kind != "experience_distill") {
+		(caller == "worker" && scope.Kind != "execution" && scope.Kind != "experience_distill") ||
+		(caller == "model" && scope.Kind != "execution" && scope.Kind != "document" && scope.Kind != "experience_distill") {
 		return accounts.User{}, errAttemptAuthorizationRevoked
 	}
 	if scope.JobID == "" {

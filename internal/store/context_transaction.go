@@ -5,6 +5,7 @@ import (
 	"contractaudit/internal/accounts"
 	"contractaudit/internal/model"
 	"encoding/json"
+	"reflect"
 	"strconv"
 
 	"contractaudit/internal/fault"
@@ -15,6 +16,16 @@ import (
 // beginContextTx is the common Store transaction seam. Machine facts with no
 // human admission remain independent; human commands carry a private proof.
 func (s *Store) beginContextTx(ctx context.Context, options pgx.TxOptions) (pgx.Tx, error) {
+	// Preparation authority is not a general command capability. Its writes
+	// must go through a dedicated, narrowly scoped preparation transaction.
+	if scope, ok := model.DelegatedScopeFromContext(ctx); ok && scope.Kind == "execution_prepare" && options.AccessMode != pgx.ReadOnly {
+		return nil, fault.Forbidden("准备授权不能用于通用写入")
+	}
+	return s.beginFencedContextTx(ctx, options)
+}
+
+// beginFencedContextTx is private to the two policy-checked entry points.
+func (s *Store) beginFencedContextTx(ctx context.Context, options pgx.TxOptions) (pgx.Tx, error) {
 	if _, ok := contextProof(ctx); !ok && options.AccessMode != pgx.ReadOnly {
 		if scope, delegated := model.DelegatedScopeFromContext(ctx); delegated && scope.Kind != "" {
 			user, err := s.operationUser(ctx, scope)
@@ -46,6 +57,33 @@ func (s *Store) beginContextTx(ctx context.Context, options pgx.TxOptions) (pgx.
 		return nil, err
 	}
 	return f, nil
+}
+
+// beginPreparationTx resolves the real principal and requires an operation proof
+// for this exact scope. A context value alone never grants write authority.
+func (s *Store) beginPreparationTx(ctx context.Context, scope model.DelegatedScope) (pgx.Tx, error) {
+	attached, ok := model.DelegatedScopeFromContext(ctx)
+	claim, claimed := s.claimForAttempt(scope.AttemptID)
+	if !ok || !reflect.DeepEqual(attached, scope) || !claimed || !s.validEmbeddedPreparationScope(scope, claim) {
+		return nil, fault.Forbidden("准备授权范围无效")
+	}
+	user, err := s.operationUser(ctx, scope)
+	if err != nil {
+		return nil, err
+	}
+	if user.ID != scope.ActorID || user.TenantID != scope.TenantID || user.OrgID != scope.OrgID {
+		return nil, fault.Forbidden("准备授权身份不匹配")
+	}
+	ctx = commandContext(ctx, user)
+	proof, ok := contextProof(ctx)
+	if !ok || len(proof.operation) == 0 {
+		return nil, fault.Forbidden("缺少准备操作授权")
+	}
+	var proven model.DelegatedScope
+	if json.Unmarshal(proof.operation, &proven) != nil || !reflect.DeepEqual(proven, scope) {
+		return nil, fault.Forbidden("准备操作授权范围不匹配")
+	}
+	return s.beginFencedContextTx(ctx, pgx.TxOptions{})
 }
 
 type contextTx struct {
