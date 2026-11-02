@@ -14,6 +14,7 @@ import (
 	"contractaudit/internal/accounts"
 	"contractaudit/internal/fault"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
@@ -162,13 +163,18 @@ func (s *Store) ConsumePendingMembership(ctx context.Context, token, membershipI
 	}
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
+	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted})
+	if err != nil {
+		return accounts.OIDCLoginResult{}, err
+	}
+	defer tx.Rollback(ctx)
 	var result accounts.OIDCLoginResult
 	var principalID, actorID, issuer, subject, tenantID, tenantName, orgID, orgName, role string
 	var membership string
 	var jurisdictionID *string
 	var grantsJSON []byte
 	var principalRevision, tenantRevision, membershipRevision int64
-	err = s.pool.QueryRow(ctx, `SELECT principal_id,actor_id,issuer,subject,membership_id,tenant_id,tenant_name,jurisdiction_id,
+	err = tx.QueryRow(ctx, `SELECT principal_id,actor_id,issuer,subject,membership_id,tenant_id,tenant_name,jurisdiction_id,
 		org_unit_id,org_unit_name,role_code,grants,principal_revision,tenant_revision,membership_revision
 		FROM tenant_identity_consume_pending($1,$2::uuid,$3,$4,$5)`, digest, membershipID,
 		sessionTokenDigest(sessionRaw), audience, time.Now().UTC().Add(7*24*time.Hour).Format(time.RFC3339Nano)).Scan(
@@ -188,11 +194,14 @@ func (s *Store) ConsumePendingMembership(ctx context.Context, token, membershipI
 	result.SessionToken = sessionRaw
 	result.User = accounts.MembershipUser(actorID, profile.DisplayName, role, tenantID, orgID, issuer, subject, grants)
 	result.User.PrincipalID, result.User.MembershipID = principalID, membership
-	current, _, err := s.AuthenticateSession(ctx, result.SessionToken)
+	_, current, err := s.sessionFromDigestTx(ctx, tx, sessionTokenDigest(sessionRaw))
 	if err != nil {
 		return accounts.OIDCLoginResult{}, err
 	}
 	result.User = current
+	if err := tx.Commit(ctx); err != nil {
+		return accounts.OIDCLoginResult{}, err
+	}
 	return result, nil
 }
 

@@ -227,6 +227,22 @@ func (s *Store) sessionFromDigest(ctx context.Context, digest string) (session, 
 		return session{}, accounts.User{}, err
 	}
 	defer tx.Rollback(ctx)
+	current, user, err := s.sessionFromDigestTx(ctx, tx, digest)
+	if err != nil {
+		return session{}, accounts.User{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return session{}, accounts.User{}, err
+	}
+	return current, user, nil
+}
+
+// sessionFromDigestTx performs the same live identity and context checks in
+// the caller's transaction. The caller retains the identity lock until commit.
+func (s *Store) sessionFromDigestTx(ctx context.Context, tx pgx.Tx, digest string) (session, accounts.User, error) {
+	if len(digest) != 71 || !strings.HasPrefix(digest, "sha256:") {
+		return session{}, accounts.User{}, fault.Unauthenticated("登录已失效或账号密码不正确")
+	}
 	if err := setLocalSessionScope(ctx, tx, digest); err != nil {
 		return session{}, accounts.User{}, err
 	}
@@ -321,8 +337,5 @@ func (s *Store) sessionFromDigest(ctx context.Context, digest string) (session, 
 		}
 	}
 	user = accounts.WithCommandAuthority(user, accounts.CommandAuthority{SessionDigest: digest, ContextVersion: metadata.ActiveContext.ContextVersion, Revision: metadata.AuthorityRevision, CSRFToken: metadata.CSRFToken, TenantName: metadata.ActiveContext.TenantName, OrgName: metadata.ActiveContext.OrgName})
-	if err := tx.Commit(ctx); err != nil {
-		return session{}, accounts.User{}, err
-	}
 	return current, user, nil
 }
