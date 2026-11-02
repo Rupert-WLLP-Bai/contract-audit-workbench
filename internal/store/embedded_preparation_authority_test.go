@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestPreparationSelectionDigest(t *testing.T) {
@@ -200,5 +201,114 @@ func TestPreparationMintAndPromotePG(t *testing.T) {
 	}
 	if _, err = s.ResolveOperationAuthority(ctx, promoted, "model"); err != nil {
 		t.Fatalf("resolve frozen authority: %v", err)
+	}
+}
+
+func TestPreparationPromotionRejectsParentExpiredWhileLockedPG(t *testing.T) {
+	fixture, ok := newDurableFixture(t)
+	if !ok {
+		t.Fatal("PG fixture unavailable")
+	}
+	ctx := context.Background()
+	s := fixture.environment.harness
+	for _, table := range []string{"worker_claim_identities", "outbox_events", "worker_jobs"} {
+		column := "job_id"
+		if table == "worker_jobs" {
+			column = "id"
+		}
+		if _, err := s.pool.Exec(ctx, "DELETE FROM "+table+" WHERE "+column+"=$1", fixture.jobID); err != nil {
+			t.Fatal(err)
+		}
+	}
+	item := Case{ID: fixture.caseID, TenantID: fixture.actor.TenantID, OwnerOrgID: fixture.actor.OrgID}
+	parent, err := s.prepareEmbeddedAuthority(ctx, fixture.actor, item, fixture.runID, fixture.attemptID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	st, err := s.embeddedAuthorityState(ctx, fixture.actor, parent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	docs := make([]FrozenDocument, 0, len(st.AttemptParseSelections))
+	for _, sel := range st.AttemptParseSelections {
+		doc, docOK := st.documentByIdentity(sel.DocumentID, sel.OriginalDigest)
+		parsed, parsedOK := st.parsedByID(sel.ParsedDocumentID)
+		if !docOK || !parsedOK {
+			t.Fatal("fixture missing selected artifact")
+		}
+		frozen := frozenFromParsed(doc, parsed)
+		bindFrozenMaterialIdentity(st, &frozen)
+		docs = append(docs, frozen)
+	}
+	hash, err := frozenInputHash(st.Snapshots[0], docs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	encoded, err := json.Marshal(docs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = s.pool.Exec(ctx, `INSERT INTO review_attempt_inputs(attempt_id,run_id,input_hash,frozen_at,documents) VALUES($1,$2,$3,$4,$5)`, fixture.attemptID, fixture.runID, hash, stamp(), string(encoded)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = s.pool.Exec(ctx, `UPDATE review_attempts SET input_hash=$1,history_kind='frozen' WHERE id=$2`, hash, fixture.attemptID); err != nil {
+		t.Fatal(err)
+	}
+	parentDigest := identityTokenDigest(parent.OperationTicket)
+	var expires time.Time
+	if err = s.pool.QueryRow(ctx, `UPDATE operation_authority_tickets SET expires_at=clock_timestamp()+interval '3 seconds' WHERE ticket_digest=$1 RETURNING expires_at`, parentDigest).Scan(&expires); err != nil {
+		t.Fatal(err)
+	}
+	lock, err := s.pool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer lock.Rollback(ctx)
+	var pid int
+	if err = lock.QueryRow(ctx, `SELECT pg_backend_pid()`).Scan(&pid); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = lock.Exec(ctx, `SELECT ticket_digest FROM operation_authority_tickets WHERE ticket_digest=$1 FOR UPDATE`, parentDigest); err != nil {
+		t.Fatal(err)
+	}
+	result := make(chan error, 1)
+	go func() {
+		_, err := s.promoteEmbeddedAuthority(context.Background(), fixture.actor, parent)
+		result <- err
+	}()
+	deadline := time.Now().Add(2 * time.Second)
+	blocked := false
+	for time.Now().Before(deadline) {
+		if err = s.pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM pg_stat_activity WHERE $1=ANY(pg_blocking_pids(pid)) AND query LIKE '%FOR SHARE%')`, pid).Scan(&blocked); err != nil {
+			t.Fatal(err)
+		}
+		if blocked {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if !blocked {
+		t.Fatal("promotion did not wait on parent ticket lock")
+	}
+	if delay := time.Until(expires) + 150*time.Millisecond; delay > 0 {
+		time.Sleep(delay)
+	}
+	if err = lock.Commit(ctx); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case err = <-result:
+		if err == nil {
+			t.Fatal("expired parent minted review ticket")
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("promotion did not finish")
+	}
+	var issued int
+	if err = s.pool.QueryRow(ctx, `SELECT count(*) FROM operation_authority_tickets WHERE tenant_id=$1 AND scope->>'kind'='execution' AND scope->>'attempt_id'=$2`, parent.TenantID, parent.AttemptID).Scan(&issued); err != nil {
+		t.Fatal(err)
+	}
+	if issued != 0 {
+		t.Fatalf("issued %d execution tickets", issued)
 	}
 }

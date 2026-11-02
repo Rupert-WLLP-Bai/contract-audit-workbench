@@ -438,7 +438,7 @@ func (c *Client) postChat(ctx context.Context, modelID string, content any, maxT
 func (c *Client) postChatMessages(ctx context.Context, modelID string, messages []chatMessage, maxTokens int, reasoningEffort string) (result chatCompletion, retErr error) {
 	if scope, ok := DelegatedScopeFromContext(ctx); ok {
 		transcription, _ := ctx.Value(transcriptionCallKey{}).(bool)
-		if scope.Kind == "execution_prepare" || (scope.Action == "embedded_review" && scope.AdmissionRevision != "" && !c.cfg.Gateway) || (scope.Action == "embedded_prepare_parse" && (scope.Kind != "document" || !transcription || !c.cfg.Gateway)) {
+		if (scope.Kind == "document" && !c.cfg.Gateway && (scope.OperationTicket != "" || scope.JobID != "" || scope.AdmissionRevision != "")) || scope.Kind == "execution_prepare" || (scope.Action == "embedded_review" && scope.AdmissionRevision != "" && !c.cfg.Gateway) || (scope.Action == "embedded_prepare_parse" && (scope.Kind != "document" || !transcription || !c.cfg.Gateway)) {
 			return chatCompletion{}, fmt.Errorf("%w: delegated preparation scope cannot use this model call", ErrRequest)
 		}
 	}

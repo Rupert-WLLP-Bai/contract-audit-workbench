@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/hex"
 	"encoding/json"
+	"strconv"
 
 	"contractaudit/internal/accounts"
 	"contractaudit/internal/model"
@@ -136,25 +137,6 @@ func (s *Store) promoteEmbeddedAuthority(ctx context.Context, user accounts.User
 	if err != nil || s.serviceOwner != "" || (s.sel.Mode != "development" && s.sel.Mode != "test") || original.Kind != "execution_prepare" || original.Action != "embedded_prepare" || original.OperationTicket == "" || original.AdmissionRevision != proof.revision || original.ActorID != user.ID || original.TenantID != user.TenantID {
 		return model.DelegatedScope{}, errAttemptAuthorizationRevoked
 	}
-	// The original ticket's exact scope and session remain mandatory after freeze.
-	tx, err := s.beginContextTx(ctx, pgx.TxOptions{AccessMode: pgx.ReadOnly})
-	if err != nil {
-		return model.DelegatedScope{}, err
-	}
-	defer tx.Rollback(ctx)
-	if err = setLocalScope(ctx, tx, userScope(user)); err != nil {
-		return model.DelegatedScope{}, err
-	}
-	var digest string
-	var encoded []byte
-	err = tx.QueryRow(ctx, `SELECT session_digest,scope FROM operation_authority_tickets WHERE ticket_digest=$1 AND tenant_id=$2 AND expires_at>clock_timestamp()`, identityTokenDigest(original.OperationTicket), original.TenantID).Scan(&digest, &encoded)
-	var saved model.DelegatedScope
-	if err != nil || digest != proof.digest || json.Unmarshal(encoded, &saved) != nil || saved != stableOperation(original) {
-		return model.DelegatedScope{}, errAttemptAuthorizationRevoked
-	}
-	if err = tx.Commit(ctx); err != nil {
-		return model.DelegatedScope{}, err
-	}
 	st, err := s.embeddedAuthorityState(ctx, user, original)
 	if err != nil || preparationSelectionHash(st.parseSelectionsForAttempt(original.AttemptID)) != original.InputSHA256 || len(st.AttemptInputs) != 1 {
 		return model.DelegatedScope{}, errAttemptAuthorizationRevoked
@@ -164,12 +146,71 @@ func (s *Store) promoteEmbeddedAuthority(ctx context.Context, user accounts.User
 	if !s.validEmbeddedAuthorityState(st, next) {
 		return model.DelegatedScope{}, errAttemptAuthorizationRevoked
 	}
-	ticket, err := s.CreateOperationTicket(ctx, user, next)
+	ticket, err := s.createPromotedEmbeddedTicket(ctx, user, proof, original, next)
 	if err != nil || ticket == "" {
 		return model.DelegatedScope{}, errAttemptAuthorizationRevoked
 	}
 	next.OperationTicket = ticket
 	return next, nil
+}
+
+// createPromotedEmbeddedTicket holds the original ticket's row lock through
+// insertion and rechecks its lifetime immediately before commit. The new
+// ticket cannot outlive the parent even if expiry races with transaction commit.
+func (s *Store) createPromotedEmbeddedTicket(ctx context.Context, user accounts.User, proof commandProof, original, next model.DelegatedScope) (string, error) {
+	_, current, err := s.sessionFromDigest(ctx, proof.digest)
+	if err != nil || current.ID != user.ID || current.PrincipalID != user.PrincipalID || current.MembershipID != user.MembershipID {
+		return "", errAttemptAuthorizationRevoked
+	}
+	currentProof, ok := current.CommandAuthority()
+	if !ok || currentProof.ContextVersion != proof.version || currentProof.Revision != proof.revision || next.AdmissionRevision != proof.revision {
+		return "", errAttemptAuthorizationRevoked
+	}
+	if err = s.validateNonJobOperation(ctx, current, next); err != nil {
+		return "", errAttemptAuthorizationRevoked
+	}
+	raw, err := randomIdentityToken("op_")
+	if err != nil {
+		return "", err
+	}
+	encoded, err := json.Marshal(stableOperation(next))
+	if err != nil {
+		return "", err
+	}
+	version, err := strconv.ParseInt(proof.version, 10, 64)
+	if err != nil || version < 1 {
+		return "", errAttemptAuthorizationRevoked
+	}
+	tx, err := s.beginContextTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return "", err
+	}
+	defer tx.Rollback(ctx)
+	if err = setLocalScope(ctx, tx, userScope(current)); err != nil {
+		return "", err
+	}
+	parentDigest := identityTokenDigest(original.OperationTicket)
+	var digest string
+	var boundVersion int64
+	var parentBytes []byte
+	err = tx.QueryRow(ctx, `SELECT session_digest,context_version,scope FROM operation_authority_tickets WHERE ticket_digest=$1 AND tenant_id=$2 AND org_id=$3 FOR SHARE`, parentDigest, original.TenantID, original.OrgID).Scan(&digest, &boundVersion, &parentBytes)
+	var saved model.DelegatedScope
+	if err != nil || digest != proof.digest || boundVersion != version || json.Unmarshal(parentBytes, &saved) != nil || saved != stableOperation(original) {
+		return "", errAttemptAuthorizationRevoked
+	}
+	tag, err := tx.Exec(ctx, `INSERT INTO operation_authority_tickets(ticket_digest,tenant_id,org_id,session_digest,principal_id,membership_id,scope,context_version,expires_at)
+ SELECT $1,tenant_id,org_id,session_digest,principal_id,membership_id,$2::jsonb,context_version,LEAST(expires_at,statement_timestamp()+interval '5 minutes') FROM operation_authority_tickets WHERE ticket_digest=$3 AND tenant_id=$4 AND org_id=$5 AND session_digest=$6 AND context_version=$7 AND expires_at>clock_timestamp()`, identityTokenDigest(raw), encoded, parentDigest, original.TenantID, original.OrgID, proof.digest, version)
+	if err != nil || tag.RowsAffected() != 1 {
+		return "", errAttemptAuthorizationRevoked
+	}
+	var live bool
+	if err = tx.QueryRow(ctx, `SELECT expires_at>clock_timestamp() FROM operation_authority_tickets WHERE ticket_digest=$1 AND tenant_id=$2`, parentDigest, original.TenantID).Scan(&live); err != nil || !live {
+		return "", errAttemptAuthorizationRevoked
+	}
+	if err = tx.Commit(ctx); err != nil {
+		return "", err
+	}
+	return raw, nil
 }
 
 // These checks use the already scoped, immutable rows in the same read transaction.

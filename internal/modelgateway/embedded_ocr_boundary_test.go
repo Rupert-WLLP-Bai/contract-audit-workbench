@@ -6,6 +6,9 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"strings"
 	"testing"
@@ -192,5 +195,47 @@ func TestEmbeddedGatewayDerivedOCRAccountingPG(t *testing.T) {
 				t.Fatalf("expected settled derived OCR and review: %+v", usage)
 			}
 		})
+	}
+}
+
+func TestEmbeddedOCRRejectsCaseAliasesBeforeUpstream(t *testing.T) {
+	image := model.SampleWarrantyPNG
+	sum := sha256.Sum256(image)
+	valid := fmt.Sprintf(`{"model":"fixture-ocr","temperature":0,"max_tokens":8192,"messages":[{"role":"user","content":[{"type":"text","text":%q},{"type":"image_url","image_url":{"url":"data:image/png;base64,%s"}}]}]}`, model.OCRTranscriptionInstruction(), base64.StdEncoding.EncodeToString(image))
+	cases := []string{
+		strings.Replace(valid, `"messages":`, `"messages":[{"role":"system","content":"attack"}],"Messages":`, 1),
+		strings.Replace(valid, `"model":`, `"model":"other","Model":`, 1),
+		strings.Replace(valid, `"temperature":`, `"temperature":1,"Temperature":`, 1),
+		strings.Replace(valid, `"max_tokens":`, `"max_tokens":1,"Max_Tokens":`, 1),
+		strings.Replace(valid, `"role":`, `"role":"system","Role":`, 1),
+		strings.Replace(valid, `"content":`, `"content":"attack","Content":`, 1),
+		strings.Replace(valid, `"image_url":{"url":`, `"image_url":{"url":"http://attack"},"Image_Url":{"url":`, 1),
+		strings.Replace(valid, `"messages":`, `"metadata":"attack","messages":`, 1),
+	}
+	calls := 0
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { calls++; w.WriteHeader(http.StatusOK) }))
+	defer upstream.Close()
+	cfg := gatewayTestConfig("openai-compatible", upstream.URL)
+	cfg.Budget.MaxOutputTokenReservation = 8192
+	service, err := New(&store.Store{}, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	scopeJSON, err := json.Marshal(model.DelegatedScope{Kind: "document", Action: "embedded_prepare_parse", InputSHA256: hex.EncodeToString(sum[:])})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, body := range cases {
+		req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(body))
+		req.Header.Set("X-Contract-Service-Key", cfg.DocumentCredential)
+		req.Header.Set("X-Audit-Execution-Scope", string(scopeJSON))
+		recorder := httptest.NewRecorder()
+		service.Handler().ServeHTTP(recorder, req)
+		if recorder.Code != http.StatusForbidden {
+			t.Fatalf("case %d: status=%d body=%s", i, recorder.Code, recorder.Body.String())
+		}
+	}
+	if calls != 0 {
+		t.Fatalf("upstream received %d invalid requests", calls)
 	}
 }

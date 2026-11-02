@@ -1191,7 +1191,7 @@ func (c *circuitBreaker) record(probe circuitProbe, success, failure bool, now t
 // validEmbeddedOCRRequest accepts only the client's fixed one-image OCR form.
 // The image bytes must be exactly the selected original, not another image.
 func validEmbeddedOCRRequest(body []byte, originalDigest string) bool {
-	if !uniqueJSONKeys(body) {
+	if !uniqueJSONKeys(body) || !canonicalOCRKeys(body) {
 		return false
 	}
 	var v struct {
@@ -1289,4 +1289,46 @@ func embeddedOCRPayloadDigest(scope model.DelegatedScope) string {
 		return scope.OCRPayloadSHA256
 	}
 	return scope.InputSHA256
+}
+
+// canonicalOCRKeys rejects encoding/json's case-insensitive struct aliases at
+// every object level before the original request bytes can be forwarded.
+func canonicalOCRKeys(raw []byte) bool {
+	exact := func(raw []byte, keys ...string) (map[string]json.RawMessage, bool) {
+		var object map[string]json.RawMessage
+		if json.Unmarshal(raw, &object) != nil || len(object) != len(keys) {
+			return nil, false
+		}
+		for _, key := range keys {
+			if _, ok := object[key]; !ok {
+				return nil, false
+			}
+		}
+		return object, true
+	}
+	top, ok := exact(raw, "model", "temperature", "max_tokens", "messages")
+	if !ok {
+		return false
+	}
+	var messages []json.RawMessage
+	if json.Unmarshal(top["messages"], &messages) != nil || len(messages) != 1 {
+		return false
+	}
+	message, ok := exact(messages[0], "role", "content")
+	if !ok {
+		return false
+	}
+	var content []json.RawMessage
+	if json.Unmarshal(message["content"], &content) != nil || len(content) != 2 {
+		return false
+	}
+	if _, ok = exact(content[0], "type", "text"); !ok {
+		return false
+	}
+	image, ok := exact(content[1], "type", "image_url")
+	if !ok {
+		return false
+	}
+	_, ok = exact(image["image_url"], "url")
+	return ok
 }
