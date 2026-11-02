@@ -1,6 +1,12 @@
 # File metadata policy
 
-This policy defines per-file purpose, authorship, project maintenance, dates, revision, and handling rules. The canonical manifest records the complete fixed-baseline path set and content-derived purposes; #124 applies eligible source headers and refreshes the same manifest for new tracked paths, while #125 enforces coverage and consistency.
+This policy defines per-file purpose, authorship, project maintenance, dates, revision, and handling rules. The canonical manifest records the fixed-baseline path set and content-derived purposes. #124/#125 establish header and coverage policy; use the CLI capabilities and maintenance procedure below when preparing or checking changes.
+
+## Current inventory and compatibility fields
+
+The first strict initialization snapshot (#164) contains 1,429 manifest records and 1,261 physical source headers; subsequent tracked additions update those totals. These totals describe different things: the manifest also records files that must remain manifest-only, so their difference is not a count of missing headers. The authoritative header result comes from inspecting the candidate files and running the physical-mirror checks in the trusted BASE-bound gate. Initial bootstrap requires the fixed BASE on the candidate first-parent chain and an exact metadata-only change; if main advances, replay the reviewed net changes from the new main baseline. Treat `header_state: "pending-header-application"` as a retained compatibility label in manifest records; it does not by itself prove that a physical header is absent or required. Resolve status from file bytes, the policy handling mode, and the gate result.
+
+The manifest and its policy/schema remain the inventory and classification sources. The gate runs the five verifier modules from the actual target BASE Git blobs, including when candidate tooling changes. The schema, policy top-level fields and existing classes stay fixed; a new manifest-only class may name only new, previously unclassified exact paths that exist in the candidate and its manifest. Classification rules are not the file inventory: removing or renaming a file must remove its stale manifest entry and preserve verified identity evidence as applicable. The CLI is primarily read-only: `manifest_tool.py plan|report` validates or reports a fixed subject, and `gate_adapter.py check` checks an explicit BASE and candidate SHA. `plan-apply` produces an exact-path insertion plan for an absent header or an already exact mirror; it refuses to replace a different existing mirror. `apply` writes only when given the reviewed plan hash and explicit `--apply`. These commands do not automatically write or regenerate the manifest inventory. Update manifest records through a separately reviewed inventory change, then rerun the fixed-SHA checks.
 
 ## Canonical record
 
@@ -59,8 +65,9 @@ Place the block where it preserves parser and tool requirements:
 
 ## Maintenance procedure
 
-1. Enumerate the current tracked paths with `git ls-files -z`; do not include ignored files or local build output.
-2. For each path, inspect content, history (following renames), parser directives, generator ownership, fixture/frozen status, and existing notices before writing its purpose or metadata.
-3. Select the narrowest handling rule. Preserve existing attribution and exact bytes where required. For any exception, store the exact path, policy rule, and reason in the manifest record.
-4. Add or update the native header only for eligible files. Keep `created` and `updated` evidence independent of the metadata edit. Increment `revision` only for content changes outside the metadata block.
-5. Validate the completed inventory against the schema and compare its paths exactly with `git ls-files`. A future checker (#125) owns automated enforcement; until then, report incomplete inventory as `NOT_RUN`, never as full coverage.
+1. Fix the trusted BASE and candidate SHA. Enumerate the candidate tracked paths; do not include ignored files or local build output.
+2. For each path, inspect content, rename-aware history, parser directives, generator ownership, fixture/frozen status, and existing notices before changing its record or header.
+3. Select the narrowest handling rule. Preserve attribution and protected bytes. Record each exception against its exact path, policy rule, and reason.
+4. Compare physical headers with their manifest mirrors under the trusted BASE-bound gate. The compatibility value `pending-header-application` is not the verdict. Use the policy handling mode and physical-mirror check to determine whether a header is expected, present, and consistent.
+5. For an absent header, create an exact-path `plan-apply` plan against fixed BASE and candidate SHAs; review the paths, original bytes/mode and plan hash, then use `apply --apply` explicitly. A changed existing mirror requires a separately reviewed refresh plan that preserves all body bytes and Git modes and binds the original/output hashes to the fixed subject. These operations do not author or regenerate inventory records. Prepare manifest updates separately, retaining unchanged BASE evidence, incrementing revisions only for body/mode changes, and recording committed source evidence before final validation.
+6. Run `gate_adapter.py check` with the actual trusted BASE SHA and fixed candidate SHA, then report the status and evidence. The check validates the candidate registry, physical header mirrors, and tracked-path coverage as implemented. Preserve its exact result; do not infer PASS from record totals or a dry-run plan.
