@@ -1,3 +1,13 @@
+<!-- File metadata (manifest mirror): -->
+<!-- Purpose: Describes supported backup tools, tenant lifecycle fences, evidence requirements and production recovery prerequisites without equating local fixtures with completed tenant restoration. -->
+<!-- Author: Bai Junhao <baijunhao@cq.chinamobile.com> -->
+<!-- Contact: +86 13617696321 -->
+<!-- Created: 2026-11-02 -->
+<!-- Updated: 2026-11-02 -->
+<!-- Revision: r1 -->
+<!-- Copyright: See LICENSE -->
+<!-- End file metadata. -->
+
 # 备份、恢复与租户生命周期边界
 
 本文说明当前源码中的本地/测试恢复工具、租户状态控制和租户数据恢复前置条件。它不是生产恢复 SOP，也不证明目标环境已部署或演练通过。生产升级、回退、租户数据恢复和跨故障域恢复的现场验收均为 **NOT_RUN**；缺少获批隔离环境或权威备份材料时为 **BLOCKED**。

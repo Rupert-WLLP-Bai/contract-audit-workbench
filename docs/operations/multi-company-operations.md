@@ -1,3 +1,13 @@
+<!-- File metadata (manifest mirror): -->
+<!-- Purpose: Documents membership-bound tenant operations, support grants, versioned configuration, model budget settlement and operator prerequisites while preserving server authority and recovery state distinctions. -->
+<!-- Author: Bai Junhao <baijunhao@cq.chinamobile.com> -->
+<!-- Contact: +86 13617696321 -->
+<!-- Created: 2026-11-02 -->
+<!-- Updated: 2026-11-02 -->
+<!-- Revision: r1 -->
+<!-- Copyright: See LICENSE -->
+<!-- End file metadata. -->
+
 # 多租户身份与运营支持
 
 本页说明身份接入、工作上下文、案件只读支援、租户预算与生命周期操作。服务端根据已验证身份和有效 membership 解析租户、组织、角色及授权范围。租户是身份与隔离边界，组织是租户内的组织单元；展示名称、ID、URL 或请求字段不能授予访问权。术语沿用 [`glossary/concepts.json`](../glossary/concepts.json) 的租户概念和本手册的多公司范围，不另建术语表。

@@ -1,3 +1,13 @@
+<!-- File metadata (manifest mirror): -->
+<!-- Purpose: Explains the current case review workflow and supported extension points, connecting user permissions, verifiable citations and contribution rules without claiming environment acceptance. -->
+<!-- Author: Bai Junhao <baijunhao@cq.chinamobile.com> -->
+<!-- Contact: +86 13617696321 -->
+<!-- Created: 2026-11-02 -->
+<!-- Updated: 2026-11-02 -->
+<!-- Revision: r1 -->
+<!-- Copyright: See LICENSE -->
+<!-- End file metadata. -->
+
 # 用户上手与扩展指南
 
 本指南说明如何完成一次案件审查、如何通过现有规则包和只读连接器扩展能力，以及如何参与上游贡献。实际入口和权限以部署配置、当前账号及服务端返回为准。
