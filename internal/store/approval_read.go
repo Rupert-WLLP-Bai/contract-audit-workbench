@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Contract approval read models for the workbench. They consume the round, task, assignment and decision tables owned by the sequential approval command (migrations 0023/0024).… Related `store` operations include summary, projection, normalizeApprovalInboxView, approvalInboxLimit.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-01
+// Updated: 2026-11-02
+// Revision: r2
+// Copyright: See LICENSE
+// End file metadata.
+
 package store
 
 import (

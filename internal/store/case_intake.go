@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: CaseIntakeUploader performs the one initial primary-contract upload for an intake operation. The Document service owns this mutation; Core never writes document rows itself in a… Related `store` operations include PendingBody, NewDirectCaseIntakeUploader, UploadPrimaryContract, normalizeCaseIntakeInput.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-31
+// Updated: 2026-11-02
+// Revision: r2
+// Copyright: See LICENSE
+// End file metadata.
+
 package store
 
 import (

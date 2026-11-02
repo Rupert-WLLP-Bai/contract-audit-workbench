@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: AuthorityGate is supplied only by the persisted review snapshot reader. A normative rule cannot run its comparator unless every normative source has an exact frozen gate with an… Related `rulepack` operations include Execute, ExecuteLegacyFrozen, execute, validateExecutionRequest.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-25
+// Updated: 2026-10-31
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package rulepack
 
 import (

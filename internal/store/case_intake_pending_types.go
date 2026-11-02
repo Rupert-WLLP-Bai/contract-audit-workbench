@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: CaseIntakeRequestIdentity is the original normalized command identity needed to reselect a file on another device. It contains no file bytes or credentials. The stored request… Related `store` operations include CaseIntakeRequestIdentity, PendingCaseIntake, PendingCaseIntakesPage, CaseIntakeContinuation.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-31
+// Updated: 2026-10-31
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package store
 
 // CaseIntakeRequestIdentity is the original normalized command identity needed
