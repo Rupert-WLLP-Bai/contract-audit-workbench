@@ -12,6 +12,7 @@ import (
 
 	"contractaudit/internal/access"
 	"contractaudit/internal/accounts"
+	"github.com/jackc/pgx/v5"
 )
 
 // This single database scenario covers source-bound human transcription,
@@ -111,9 +112,20 @@ func TestContractSigningRequiresHumanSourceAttestationAndApprovedRevision(t *tes
 		t.Fatalf("idempotent replay: %+v err=%v", replayed, err)
 	}
 	var registrations int
-	if err := fixture.core.pool.QueryRow(ctx, `SELECT count(*) FROM clm_contract_signing_registrations
+	countTx, err := fixture.core.pool.BeginTx(ctx, pgx.TxOptions{AccessMode: pgx.ReadOnly})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rollbackCLM(countTx)
+	if err := setLocalScope(ctx, countTx, userScope(fixture.admin)); err != nil {
+		t.Fatal(err)
+	}
+	if err := countTx.QueryRow(ctx, `SELECT count(*) FROM clm_contract_signing_registrations
 		WHERE tenant_id=$1 AND contract_id=$2`, fixture.admin.TenantID, contractID).Scan(&registrations); err != nil || registrations != 1 {
 		t.Fatalf("registration count=%d err=%v", registrations, err)
+	}
+	if err := countTx.Commit(ctx); err != nil {
+		t.Fatal(err)
 	}
 	if _, err := fixture.environment.harness.pool.Exec(ctx, `UPDATE clm_contract_signing_registrations
 		SET comparison_result='rewritten' WHERE tenant_id=$1 AND contract_id=$2`, fixture.admin.TenantID, contractID); err == nil || !strings.Contains(err.Error(), "append-only") {

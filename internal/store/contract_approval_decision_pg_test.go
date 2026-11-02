@@ -331,13 +331,24 @@ func TestExternalLegacyActiveApprovalRejectsNewDecisionButKeepsReceiptReplay(t *
 			beforeDecisionCount, afterDecisionCount, beforeEventCount, afterEventCount, beforeOutboxCount, afterOutboxCount)
 	}
 	var taskState, roundState string
-	if err := fixture.core.pool.QueryRow(ctx, `SELECT task.state,round.state FROM clm_approval_tasks task
+	stateTx, err := fixture.core.pool.BeginTx(ctx, pgx.TxOptions{AccessMode: pgx.ReadOnly})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rollbackCLM(stateTx)
+	if err := setLocalScope(ctx, stateTx, userScope(fixture.admin)); err != nil {
+		t.Fatal(err)
+	}
+	if err := stateTx.QueryRow(ctx, `SELECT task.state,round.state FROM clm_approval_tasks task
 		JOIN clm_approval_rounds round ON round.tenant_id=task.tenant_id AND round.contract_id=task.contract_id AND round.approval_round_id=task.approval_round_id
 		WHERE task.tenant_id=$1 AND task.approval_task_id=$2`, accounts.Tenant(fixture.admin), second.ApprovalTaskID).Scan(&taskState, &roundState); err != nil {
 		t.Fatal(err)
 	}
 	if taskState != "active" || roundState != "in_review" {
 		t.Fatalf("legacy external approval history changed after rejected write: task=%s round=%s", taskState, roundState)
+	}
+	if err := stateTx.Commit(ctx); err != nil {
+		t.Fatal(err)
 	}
 }
 
