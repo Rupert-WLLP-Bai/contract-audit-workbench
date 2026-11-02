@@ -52,9 +52,9 @@ GRANT SELECT (tenant_id,org_unit_id,status) ON {{SCHEMA}}.identity_org_units TO 
 GRANT SELECT,INSERT,UPDATE ON {{SCHEMA}}.tenant_provision_operations,{{SCHEMA}}.tenant_provision_operation_steps TO {{AUTH_FENCE_OWNER}};
 GRANT SELECT (tenant_id,lease_id,money_cost_state) ON {{SCHEMA}}.model_usage TO {{AUTH_FENCE_OWNER}};
 GRANT SELECT (tenant_id,lease_id,event_kind,amount_minor) ON {{SCHEMA}}.model_money_ledger TO {{AUTH_FENCE_OWNER}};
-CREATE POLICY tenant_lifecycle_cost_read ON {{SCHEMA}}.model_usage TO {{AUTH_FENCE_OWNER}}
+CREATE POLICY tenant_lifecycle_cost_read ON {{SCHEMA}}.model_usage FOR SELECT TO {{AUTH_FENCE_OWNER}}
     USING (tenant_id=current_setting('app.lifecycle_cost_tenant',true));
-CREATE POLICY tenant_lifecycle_cost_read ON {{SCHEMA}}.model_money_ledger TO {{AUTH_FENCE_OWNER}}
+CREATE POLICY tenant_lifecycle_cost_read ON {{SCHEMA}}.model_money_ledger FOR SELECT TO {{AUTH_FENCE_OWNER}}
     USING (tenant_id=current_setting('app.lifecycle_cost_tenant',true));
 GRANT USAGE,CREATE ON SCHEMA {{SCHEMA}} TO {{AUTH_FENCE_OWNER}};
 SET LOCAL ROLE {{AUTH_FENCE_OWNER}};
@@ -197,6 +197,9 @@ BEGIN
     WHERE operation_id=v_id AND step_name=v_step;
    v_status:='provision_failed';
  ELSIF p_state='reconciled' THEN
+   IF NOT EXISTS(SELECT 1 FROM {{SCHEMA}}.tenant_provision_operation_steps WHERE operation_id=v_id AND step_name=v_step AND state='external_unknown') THEN
+     RAISE EXCEPTION 'only an unknown external result can be reconciled' USING ERRCODE='P7T05';
+   END IF;
    IF p_reconciliation NOT IN ('confirmed_complete','confirmed_not_applied','requires_operator') THEN RAISE EXCEPTION 'reconciliation decision required' USING ERRCODE='22023'; END IF;
    IF p_reconciliation='requires_operator' THEN
      UPDATE {{SCHEMA}}.tenant_provision_operation_steps SET state='external_unknown',receipt_sha256=NULL,reconciliation=p_reconciliation,revision=revision+1,updated_at=clock_timestamp()
@@ -216,7 +219,7 @@ BEGIN
      RAISE EXCEPTION 'unknown external result requires reconciliation' USING ERRCODE='P7T05';
    END IF;
    IF v_step='identity' THEN
-     IF NOT EXISTS(SELECT 1 FROM {{SCHEMA}}.tenant_provision_operation_steps WHERE operation_id=v_id AND step_name='identity' AND state='pending') THEN RAISE EXCEPTION 'identity step is not pending' USING ERRCODE='P7T05'; END IF;
+     IF NOT EXISTS(SELECT 1 FROM {{SCHEMA}}.tenant_provision_operation_steps WHERE operation_id=v_id AND step_name='identity' AND (state='pending' OR (state='external_unknown' AND p_reconciliation='confirmed_complete'))) THEN RAISE EXCEPTION 'identity step is not pending' USING ERRCODE='P7T05'; END IF;
      v_next:='tenant_config';
    ELSIF v_step='tenant_config' THEN
      IF NOT EXISTS(SELECT 1 FROM {{SCHEMA}}.tenant_provision_operation_steps WHERE operation_id=v_id AND step_name='identity' AND state='complete') THEN RAISE EXCEPTION 'identity step must complete first' USING ERRCODE='P7T05'; END IF;
@@ -256,3 +259,4 @@ $fn$;
 
 REVOKE ALL ON FUNCTION {{SCHEMA}}.tenant_provision_operation_json(uuid),{{SCHEMA}}.tenant_provision_operation_start(text,text,jsonb,text,text),{{SCHEMA}}.tenant_provision_operations_list(text,text,integer),{{SCHEMA}}.tenant_provision_operation_read(text,text),{{SCHEMA}}.tenant_provision_operation_advance(text,text,bigint,text,text,text,text) FROM PUBLIC;
 RESET ROLE;
+REVOKE CREATE ON SCHEMA {{SCHEMA}} FROM {{AUTH_FENCE_OWNER}};

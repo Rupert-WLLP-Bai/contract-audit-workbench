@@ -320,10 +320,9 @@ func importIdentityDirectoryRows(ctx context.Context, tx pgx.Tx, schema string, 
 	}
 	for _, item := range document.Tenants {
 		if _, err := tx.Exec(ctx, `INSERT INTO `+schema+`.identity_tenants(tenant_id,display_name,jurisdiction_id,status)
-			VALUES($1,$2,$3,$4) ON CONFLICT(tenant_id) DO UPDATE SET display_name=EXCLUDED.display_name,jurisdiction_id=EXCLUDED.jurisdiction_id,status=EXCLUDED.status,
-			live_epoch=identity_tenants.live_epoch+CASE WHEN identity_tenants.status IS DISTINCT FROM EXCLUDED.status THEN 1 ELSE 0 END,
-			revision=CASE WHEN identity_tenants.display_name IS DISTINCT FROM EXCLUDED.display_name OR identity_tenants.jurisdiction_id IS DISTINCT FROM EXCLUDED.jurisdiction_id OR identity_tenants.status IS DISTINCT FROM EXCLUDED.status THEN identity_tenants.revision+1 ELSE identity_tenants.revision END,
-			updated_at=CASE WHEN identity_tenants.display_name IS DISTINCT FROM EXCLUDED.display_name OR identity_tenants.jurisdiction_id IS DISTINCT FROM EXCLUDED.jurisdiction_id OR identity_tenants.status IS DISTINCT FROM EXCLUDED.status THEN clock_timestamp() ELSE identity_tenants.updated_at END`, item.ID, item.DisplayName, item.JurisdictionID, item.Status); err != nil {
+			VALUES($1,$2,$3,$4) ON CONFLICT(tenant_id) DO UPDATE SET display_name=EXCLUDED.display_name,jurisdiction_id=EXCLUDED.jurisdiction_id,
+			revision=CASE WHEN identity_tenants.display_name IS DISTINCT FROM EXCLUDED.display_name OR identity_tenants.jurisdiction_id IS DISTINCT FROM EXCLUDED.jurisdiction_id THEN identity_tenants.revision+1 ELSE identity_tenants.revision END,
+			updated_at=CASE WHEN identity_tenants.display_name IS DISTINCT FROM EXCLUDED.display_name OR identity_tenants.jurisdiction_id IS DISTINCT FROM EXCLUDED.jurisdiction_id THEN clock_timestamp() ELSE identity_tenants.updated_at END`, item.ID, item.DisplayName, item.JurisdictionID, item.Status); err != nil {
 			return fmt.Errorf("import explicit tenant %q: %w", item.ID, err)
 		}
 	}

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Alert, Button, Card, Descriptions, Form, Input, Modal, Select, Space, Table, Tag, type TableProps } from "antd";
-import { captureCommandContext, errorMessage, isForbidden, isUnauthenticated } from "../api/http";
+import { ApiError, captureCommandContext, errorMessage, invalidateSessionIdentity, isForbidden, isUnauthenticated } from "../api/http";
 import { clearPendingMutationKey, idempotencyActorScope, pendingMutationKey } from "../api/idempotency";
 import type { Actor } from "../api/types";
 import {
@@ -16,7 +16,7 @@ import {
   type TenantProvisionOperation,
   type TenantProvisionStepInput,
 } from "../api/tenant-provisioning";
-import { useSession } from "../api/queries";
+import { clearIdentityQueries, queryKeys, revalidateSessionContext, useSession } from "../api/queries";
 import { PageStatus } from "../components/page-status";
 import "./tenant-lifecycle-page.css";
 
@@ -39,6 +39,25 @@ const RECONCILIATION_OPTIONS: { value: ProvisionReconciliation; label: string }[
   { value: "requires_operator", label: "结果仍需平台人员处理" },
 ];
 
+function isContextStale(error: unknown): boolean {
+  return (error instanceof ApiError && error.code === "context_stale") ||
+    (error instanceof DOMException && error.name === "AbortError");
+}
+
+function hasApiCode(error: unknown, code: string): boolean {
+  return error instanceof ApiError && error.code === code;
+}
+
+async function refreshAdminContext(queryClient: ReturnType<typeof useQueryClient>): Promise<void> {
+  try {
+    await revalidateSessionContext(queryClient, "admin");
+  } catch {
+    invalidateSessionIdentity();
+    clearIdentityQueries(queryClient);
+    await queryClient.resetQueries({ queryKey: queryKeys.sessionFor("admin") });
+  }
+}
+
 type OperationForm = Omit<TenantProvisionInput, "idempotency_key">;
 function OperationCreator({ actor, onCreated }: { actor: Actor; onCreated: (operation: TenantProvisionOperation) => void }) {
   const [form] = Form.useForm<OperationForm>();
@@ -54,7 +73,14 @@ function OperationCreator({ actor, onCreated }: { actor: Actor; onCreated: (oper
       clearPendingMutationKey(variables.storageKey);
       await queryClient.invalidateQueries({ queryKey: ["tenant-provision-operations", "platform"] });
     },
-    onError: (error) => setNotice(errorMessage(error)),
+    onError: async (error, variables) => {
+      setNotice(errorMessage(error));
+      if (isContextStale(error)) {
+        clearPendingMutationKey(variables.storageKey);
+        form.resetFields();
+        await refreshAdminContext(queryClient);
+      }
+    },
   });
   const onFinish = (values: OperationForm) => {
     setNotice(null);
@@ -82,6 +108,10 @@ function OperationCreator({ actor, onCreated }: { actor: Actor; onCreated: (oper
           create.mutate({ input: { ...payload, idempotency_key: pending.key }, context: commandContext, storageKey: pending.storageKey });
         } catch (error) {
           setNotice(errorMessage(error));
+          if (isContextStale(error)) {
+            form.resetFields();
+            await refreshAdminContext(queryClient);
+          }
           throw error;
         } finally {
           setPreparing(false);
@@ -118,7 +148,7 @@ function OperationCreator({ actor, onCreated }: { actor: Actor; onCreated: (oper
 }
 function OperationDetail({ operationId, enabled, actor }: { operationId: string | null; enabled: boolean; actor: NonNullable<ReturnType<typeof useSession>["data"]> }) {
   const queryClient = useQueryClient();
-  const [reconciliation, setReconciliation] = useState<ProvisionReconciliation>("confirmed_complete");
+  const [reconciliation, setReconciliation] = useState<ProvisionReconciliation | "">("");
   const [receipt, setReceipt] = useState("");
   const [notice, setNotice] = useState<string | null>(null);
   const detail = useTenantProvisionOperation(operationId, enabled);
@@ -131,9 +161,26 @@ function OperationDetail({ operationId, enabled, actor }: { operationId: string 
       await queryClient.setQueryData(["tenant-provision-operation", result.operation.operation_id], result.operation);
       await queryClient.invalidateQueries({ queryKey: ["tenant-provision-operations", "platform"] });
     },
-    onError: (error) => setNotice(errorMessage(error)),
+    onError: async (error) => {
+      setNotice(errorMessage(error));
+      const staleContext = isContextStale(error);
+      if (staleContext || hasApiCode(error, "tenant_operation_revision_conflict")) {
+        setReceipt("");
+        setReconciliation("");
+        if (staleContext) await refreshAdminContext(queryClient);
+        await Promise.all([
+          detail.refetch(),
+          queryClient.invalidateQueries({ queryKey: ["tenant-provision-operations", "platform"] }),
+        ]);
+      }
+    },
   });
   const operation = detail.data;
+  useEffect(() => {
+    setReceipt("");
+    setReconciliation("");
+    setNotice(null);
+  }, [operationId, operation?.revision]);
   const currentStep = operation?.steps.find((step) => step.name === operation.current_step);
   const submit = (state: TenantProvisionStepInput["state"], reconcile: TenantProvisionStepInput["reconciliation"] = "") => {
     if (!operation) return;
@@ -147,12 +194,19 @@ function OperationDetail({ operationId, enabled, actor }: { operationId: string 
       setNotice("回执 SHA-256 必须是 64 位小写十六进制字符串。");
       return;
     }
-    const commandContext = captureCommandContext(actor);
-    mutation.mutate({
-      operation,
-      input: { expected_revision: operation.revision, state, receipt_sha256: normalizedReceipt || null, reconciliation: reconcile },
-      context: commandContext,
-    });
+    try {
+      const commandContext = captureCommandContext(actor);
+      mutation.mutate({
+        operation,
+        input: { expected_revision: operation.revision, state, receipt_sha256: normalizedReceipt || null, reconciliation: reconcile },
+        context: commandContext,
+      });
+    } catch (error) {
+      setReceipt("");
+      setReconciliation("");
+      setNotice(errorMessage(error));
+      if (isContextStale(error)) void refreshAdminContext(queryClient);
+    }
   };
   if (!operationId) return <Card className="lifecycle-detail-empty"><p>选择一条操作查看步骤回执和当前 revision。</p></Card>;
   if (detail.isLoading) return <Card loading title="操作详情" />;
@@ -193,9 +247,9 @@ function OperationDetail({ operationId, enabled, actor }: { operationId: string 
     {operation.status === "provision_failed" ? <Alert className="lifecycle-alert" type="error" showIcon message="当前操作已终止" description="失败操作不能重放。修复前置问题并重新核对租户状态后，需登记新的显式操作；当前记录和回执会保留。" /> : operation.status !== "completed" ? <section className="lifecycle-step-editor" aria-label="记录当前步骤">
       <h3>记录当前步骤：{STEP_LABEL[operation.current_step]}</h3>
       {currentStep?.state === "external_unknown" || operation.reconciliation_required ? <>
-        <label>人工核对结论<Select value={reconciliation} onChange={setReconciliation} options={RECONCILIATION_OPTIONS} /></label>
+        <label>人工核对结论<Select value={reconciliation || undefined} placeholder="请选择核对结论" onChange={setReconciliation} options={RECONCILIATION_OPTIONS} /></label>
         <label>外部核对回执 SHA-256（必填）<Input value={receipt} onChange={(event) => setReceipt(event.target.value)} autoComplete="off" /></label>
-        <Button type="primary" disabled={mutation.isPending} onClick={() => recordConfirmed("reconciled", reconciliation)}>提交核对结果</Button>
+        <Button type="primary" disabled={mutation.isPending || reconciliation === ""} onClick={() => recordConfirmed("reconciled", reconciliation)}>提交核对结果</Button>
       </> : <>
         <label>步骤回执 SHA-256（完成/核对时必填）<Input value={receipt} onChange={(event) => setReceipt(event.target.value)} autoComplete="off" /></label>
         <Space wrap>
