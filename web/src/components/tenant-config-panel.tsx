@@ -68,6 +68,10 @@ function shortDigest(value: string): string {
   return `${value.slice(0, 12)}…`;
 }
 
+function isApiErrorCode(error: unknown, code: string): boolean {
+  return typeof error === "object" && error !== null && "code" in error && error.code === code;
+}
+
 export function TenantConfigPanel({ actor }: { actor: Actor }) {
   const queryClient = useQueryClient();
   const query = useTenantConfig(actor.tenant_id, actor.role === "admin" && actor.audience === "admin");
@@ -105,9 +109,13 @@ export function TenantConfigPanel({ actor }: { actor: Actor }) {
     mutationFn: (input: { revision: string; selection: TenantConfigSelection; context: CommandContext }) =>
       previewTenantConfig(input.revision, input.selection, input.context),
     onSuccess: (value, input) => setPreview({ revision: input.revision, selectionKey: JSON.stringify(input.selection), value }),
-    onError: (cause) => {
+    onError: async (cause) => {
       setPreview(null);
-      if (cause instanceof Error && "code" in cause && cause.code === "config_revision_conflict") void query.refetch();
+      if (isApiErrorCode(cause, "config_revision_conflict") || isApiErrorCode(cause, "context_stale")) {
+        if (isApiErrorCode(cause, "context_stale")) await queryClient.invalidateQueries({ queryKey: ["session", "admin"] });
+        const refreshed = await query.refetch();
+        if (refreshed.data) setSelection(initialSelection(refreshed.data));
+      }
     },
   });
   const adoptionMutation = useMutation({
@@ -121,9 +129,13 @@ export function TenantConfigPanel({ actor }: { actor: Actor }) {
         queryClient.invalidateQueries({ queryKey: ["tenant-operations", "admin"] }),
       ]);
     },
-    onError: (cause) => {
+    onError: async (cause) => {
       setPreview(null);
-      if (cause instanceof Error && "code" in cause && cause.code === "config_revision_conflict") void query.refetch();
+      if (isApiErrorCode(cause, "config_revision_conflict") || isApiErrorCode(cause, "context_stale")) {
+        if (isApiErrorCode(cause, "context_stale")) await queryClient.invalidateQueries({ queryKey: ["session", "admin"] });
+        const refreshed = await query.refetch();
+        if (refreshed.data) setSelection(initialSelection(refreshed.data));
+      }
     },
   });
   const liveMutation = useMutation({
@@ -137,8 +149,11 @@ export function TenantConfigPanel({ actor }: { actor: Actor }) {
         queryClient.invalidateQueries({ queryKey: ["tenant-operations", "admin"] }),
       ]);
     },
-    onError: (cause) => {
-      if (cause instanceof Error && "code" in cause && cause.code === "live_control_revision_conflict") void query.refetch();
+    onError: async (cause) => {
+      if (isApiErrorCode(cause, "live_control_revision_conflict") || isApiErrorCode(cause, "context_stale")) {
+        if (isApiErrorCode(cause, "context_stale")) await queryClient.invalidateQueries({ queryKey: ["session", "admin"] });
+        await query.refetch();
+      }
     },
   });
 
