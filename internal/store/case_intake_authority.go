@@ -187,16 +187,8 @@ func (s *Store) ResolveDocumentIntakeTicket(ctx context.Context, ticket, bodySHA
 		!accounts.CanCreate(user.Role) || !accounts.CanUpload(user.Role) {
 		return DocumentIntakeAuthority{}, fault.Unauthenticated("建案授权已失效")
 	}
-	if err := s.authorizeCurrentIntakeTicketCase(ctx, user, authority); err != nil {
+	if err := s.authorizeCurrentIntakeTicketCase(ctx, user, authority, digest); err != nil {
 		return DocumentIntakeAuthority{}, err
-	}
-	var captured *int64
-	if err = s.pool.QueryRow(ctx, `SELECT context_version FROM intake_authority_tickets WHERE ticket_digest=$1`, identityTokenDigest(ticket)).Scan(&captured); err != nil || captured == nil {
-		return DocumentIntakeAuthority{}, fault.Forbidden("建案上传上下文不可用")
-	}
-	proof, ok := user.CommandAuthority()
-	if !ok || strconv.FormatInt(*captured, 10) != proof.ContextVersion {
-		return DocumentIntakeAuthority{}, fault.New(409, "context_stale", "建案上传上下文已变更")
 	}
 	authority.TenantID, authority.Role, authority.Issuer, authority.Subject = tenantID, user.Role, user.Issuer, user.Subject
 	authority.PrincipalID, authority.MembershipID = user.PrincipalID, user.MembershipID
@@ -204,7 +196,7 @@ func (s *Store) ResolveDocumentIntakeTicket(ctx context.Context, ticket, bodySHA
 	return authority, nil
 }
 
-func (s *Store) authorizeCurrentIntakeTicketCase(ctx context.Context, user accounts.User, authority DocumentIntakeAuthority) error {
+func (s *Store) authorizeCurrentIntakeTicketCase(ctx context.Context, user accounts.User, authority DocumentIntakeAuthority, ticketDigest string) error {
 	ctx = commandContext(ctx, user)
 	tx, err := s.beginContextTx(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted, AccessMode: pgx.ReadOnly})
 	if err != nil {
@@ -228,6 +220,16 @@ func (s *Store) authorizeCurrentIntakeTicketCase(ctx context.Context, user accou
 	if err != nil || (status != caseIntakePendingStatus && status != caseIntakeCompletedStatus) || uploadKey != authority.UploadKey || archivedAt != nil ||
 		json.Unmarshal([]byte(members), &item.MemberIDs) != nil || !authorizeCase(item, user, access.Manage) {
 		return fault.Forbidden("当前身份无权继续此建案上传")
+	}
+	// Ticket rows remain tenant protected; reuse this verified user's scoped
+	// read transaction rather than a connection without business authority.
+	var captured *int64
+	if err = tx.QueryRow(ctx, `SELECT context_version FROM intake_authority_tickets WHERE ticket_digest=$1 AND tenant_id=$2`, ticketDigest, accounts.Tenant(user)).Scan(&captured); err != nil || captured == nil {
+		return fault.Forbidden("建案上传上下文不可用")
+	}
+	proof, ok := user.CommandAuthority()
+	if !ok || strconv.FormatInt(*captured, 10) != proof.ContextVersion {
+		return fault.New(409, "context_stale", "建案上传上下文已变更")
 	}
 	return tx.Commit(ctx)
 }
