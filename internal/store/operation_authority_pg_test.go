@@ -143,8 +143,19 @@ func assertCrossOrganizationMembershipScope(t *testing.T, ctx context.Context, a
 	if err = pool.QueryRow(ctx, `SELECT current_user,rolsuper,rolbypassrls FROM pg_roles WHERE rolname=current_user`).Scan(&actor, &super, &bypass); err != nil || actor != role || super || bypass {
 		t.Fatal("cross-org binder not ordinary Execution")
 	}
-	if _, err = pool.Exec(ctx, `SELECT tenant_identity_bind_admission($1,'cross-org-job')`, sessionTokenDigest(login.SessionToken)); err != nil {
+	bindTx, err := pool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer bindTx.Rollback(ctx)
+	if err = setLocalScope(ctx, bindTx, userScope(login.User)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = bindTx.Exec(ctx, `SELECT tenant_identity_bind_admission($1,'cross-org-job')`, sessionTokenDigest(login.SessionToken)); err != nil {
 		t.Fatalf("authorized cross-org admission rejected: %v", err)
+	}
+	if err = bindTx.Commit(ctx); err != nil {
+		t.Fatal(err)
 	}
 	scope := model.DelegatedScope{Kind: "execution", TenantID: user.TenantID, OrgID: user.OrgID, CaseID: "case-a", ActorID: user.ID, JobID: "cross-org-job", WorkerID: "cross-org-worker", Generation: 1, RunID: runID, AttemptID: "cross-org-attempt"}
 	resolved, err := core.ResolveOperationAuthority(ctx, scope, "model")
