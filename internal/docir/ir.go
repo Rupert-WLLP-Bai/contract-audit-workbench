@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: builds a structured text view of a UTF-8 file. Offsets are Unicode code points into NormalizedText. The digest covers that text, not the original file bytes. A form feed is an observed page break and is left out of the… Related `docir` operations include Build, buildText, pageMarker, attachTables.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-25
+// Updated: 2026-10-30
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 // Package docir builds a structured text view of a UTF-8 file.
 // Offsets are Unicode code points into NormalizedText. The digest covers that
 // text, not the original file bytes. A form feed is an observed page break and

@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: ValidateID checks the identifier shape shared by the capability pack, observation and impact-plan schemas. Related `auditext` operations include ValidateID, ValidateVersion, ValidateQuantity, Validate.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-29
+// Updated: 2026-10-31
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package auditext
 
 import (

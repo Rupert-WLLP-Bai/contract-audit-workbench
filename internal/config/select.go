@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: selects one of the three PostgreSQL databases. APP_ENV development (default) | test | production DEV_DATABASE_URL default postgres://contractaudit:contractaudit@127.0.0.1:5432/contract_audit_dev?sslmode=disable… Related `config` operations include URL, FromProcess, Select, databaseEnvironments.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-25
+// Updated: 2026-10-30
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 // Package config selects one of the three PostgreSQL databases.
 //
 //	APP_ENV            development (default) | test | production

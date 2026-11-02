@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Exercises the `docir_test` package behavior through TestBuildEmptyInputPinned, TestBuildNormalizationPinned, TestBuildFormFeedPinned, TestBuildTablePinned, TestBuildTableVariantsPinned; these checks pin observable state, error handling, or wire/database compatibility for this module. Test cases include rule only keeps paragraph kind, empty cells skip columns, first cell starts at column zero, invalid rule character keeps its row.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-30
+// Updated: 2026-10-30
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package docir_test
 
 // Characterization tests for the document IR surface. They pin offsets,

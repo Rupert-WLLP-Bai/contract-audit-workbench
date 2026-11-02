@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: A validation owns its counters and consumes only its private reference map. The request and its frozen selection record are never modified. Related `agentflow` operations include validateSelectionRecord, validShape, validInitialKnowledgeTrace, optionalKnowledgeDigest.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-30
+// Updated: 2026-10-30
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package agentflow
 
 import (

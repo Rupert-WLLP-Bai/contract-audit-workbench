@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: defines the versioned DTOs shared by the operator audit extension modules. It is deliberately independent of HTTP and storage. AuthorizedScope is not an authorization mechanism. Consumers must construct it from the… Related `auditext` operations include Valid, FieldByName, EffectiveAt, UnmarshalJSON.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-29
+// Updated: 2026-10-31
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 // Package auditext defines the versioned DTOs shared by the operator audit
 // extension modules. It is deliberately independent of HTTP and storage.
 //

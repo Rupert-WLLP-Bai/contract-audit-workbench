@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Exercises the `auditext` package behavior through TestValidateIDPinned, TestValidateVersionPinned, TestValidateQuantityPinned, TestAuthorizedScopeValidatePinned, TestPackRefValidatePinned; these checks pin observable state, error handling, or wire/database compatibility for this module.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-30
+// Updated: 2026-10-30
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package auditext
 
 // Characterization tests for the auditext validation surface. They pin the

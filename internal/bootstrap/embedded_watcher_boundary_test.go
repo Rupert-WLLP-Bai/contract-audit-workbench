@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: 实现 `offlineWatcherStore`, `LLMEndpoint`, `UseModels`, `HasDatabase` 等单进程服务装配与集成入口，连接已配置的服务组件和权限边界。
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-02
+// Updated: 2026-11-02
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package bootstrap
 
 import (

@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: SingleContractTools exposes only the published single-contract rule to the planner. The wider baseline tools are intentionally unavailable in this scope. Related `agentflow` operations include SingleContractTools, Spec, Execute.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-31
+// Updated: 2026-10-31
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package agentflow
 
 import (
