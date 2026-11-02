@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Configures Vite development/build and API proxy behavior; the settings are consumed by the web toolchain and stay separate from product runtime configuration.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-25
+// Updated: 2026-10-25
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 
