@@ -355,7 +355,7 @@ func replayCLMWriteReceipt(ctx context.Context, tx pgx.Tx, current accounts.User
 
 // projectReceiptDetail restores the stored sealed response for the current
 // caller: plaintext restricted fields only while manage authority holds.
-func projectReceiptDetail(receipt clmWriteReceipt, current accounts.User, record clmContractRecord) (ContractDetail, error) {
+func projectReceiptDetail(ctx context.Context, receipt clmWriteReceipt, current accounts.User, record clmContractRecord) (ContractDetail, error) {
 	var stored ContractDetail
 	if err := unmarshalStoredDraft(receipt.Response, &stored); err != nil {
 		return ContractDetail{}, err
@@ -363,7 +363,7 @@ func projectReceiptDetail(receipt clmWriteReceipt, current accounts.User, record
 	if stored.Draft == nil {
 		return stored, nil
 	}
-	plaintext, err := unsealStoredDraft(marshalDraftContent(stored.Draft))
+	plaintext, err := unsealStoredDraftBound(ctx, marshalDraftContent(stored.Draft), record.TenantID, record.ContractID)
 	if err != nil {
 		return ContractDetail{}, err
 	}
@@ -490,10 +490,6 @@ func (s *Store) CreateContractDraft(ctx context.Context, user accounts.User, inp
 	if err := validateDraftAmounts(&input.Draft, contractmoney.StageDraft); err != nil {
 		return ContractDetail{}, err
 	}
-	_, sealedBytes, _, err := sealDraftContent(input.Draft)
-	if err != nil {
-		return ContractDetail{}, err
-	}
 	digest, err := clmRequestDigest(clmRouteCreateDraft, "POST", "/api/contracts", input.ExpectedRowVersion, input)
 	if err != nil {
 		return ContractDetail{}, err
@@ -515,7 +511,7 @@ func (s *Store) CreateContractDraft(ctx context.Context, user accounts.User, inp
 		if err != nil {
 			return ContractDetail{}, err
 		}
-		detail, err := projectReceiptDetail(receipt, current, record)
+		detail, err := projectReceiptDetail(ctx, receipt, current, record)
 		if err != nil {
 			return ContractDetail{}, err
 		}
@@ -525,6 +521,10 @@ func (s *Store) CreateContractDraft(ctx context.Context, user accounts.User, inp
 		return detail, nil
 	}
 	contractID, err := newContractUUID()
+	if err != nil {
+		return ContractDetail{}, err
+	}
+	_, sealedBytes, _, err := sealDraftContentBound(ctx, input.Draft, accounts.Tenant(current), contractID)
 	if err != nil {
 		return ContractDetail{}, err
 	}
@@ -566,7 +566,7 @@ func (s *Store) CreateContractDraft(ctx context.Context, user accounts.User, inp
 		return ContractDetail{}, err
 	}
 	detail := sealedDetail
-	plaintext, err := unsealStoredDraft(sealedBytes)
+	plaintext, err := unsealStoredDraftBound(ctx, sealedBytes, record.TenantID, record.ContractID)
 	if err != nil {
 		return ContractDetail{}, err
 	}
@@ -780,7 +780,7 @@ func (s *Store) buildContractDetail(ctx context.Context, tx pgx.Tx, record clmCo
 	if contentBytes == nil {
 		return detail, nil, nil
 	}
-	plaintext, err := unsealStoredDraft(contentBytes)
+	plaintext, err := unsealStoredDraftBound(ctx, contentBytes, record.TenantID, record.ContractID)
 	if err != nil {
 		return ContractDetail{}, nil, err
 	}
@@ -872,10 +872,6 @@ func (s *Store) ReplaceContractDraft(ctx context.Context, user accounts.User, in
 	if err := validateDraftAmounts(&input.Draft, contractmoney.StageDraft); err != nil {
 		return ContractDetail{}, err
 	}
-	_, sealedBytes, _, err := sealDraftContent(input.Draft)
-	if err != nil {
-		return ContractDetail{}, err
-	}
 	digest, err := clmRequestDigest(clmRouteReplaceDraft, "PUT", "/api/contracts/"+id+"/draft", input.ExpectedRowVersion, input)
 	if err != nil {
 		return ContractDetail{}, err
@@ -897,7 +893,7 @@ func (s *Store) ReplaceContractDraft(ctx context.Context, user accounts.User, in
 		if err != nil {
 			return ContractDetail{}, err
 		}
-		detail, err := projectReceiptDetail(receipt, current, record)
+		detail, err := projectReceiptDetail(ctx, receipt, current, record)
 		if err != nil {
 			return ContractDetail{}, err
 		}
@@ -936,6 +932,10 @@ func (s *Store) ReplaceContractDraft(ctx context.Context, user accounts.User, in
 	}
 	if inReview {
 		return ContractDetail{}, fault.Conflict("合同已有进行中的会签轮次，不能修改草稿")
+	}
+	_, sealedBytes, _, err := sealDraftContentBound(ctx, input.Draft, record.TenantID, record.ContractID)
+	if err != nil {
+		return ContractDetail{}, err
 	}
 	var updatedRowVersion int64
 	err = tx.QueryRow(ctx, `UPDATE clm_contracts SET row_version=row_version+1, updated_at=clock_timestamp()
@@ -977,7 +977,7 @@ func (s *Store) ReplaceContractDraft(ctx context.Context, user accounts.User, in
 		return ContractDetail{}, err
 	}
 	detail := sealedDetail
-	plaintext, err := unsealStoredDraft(sealedBytes)
+	plaintext, err := unsealStoredDraftBound(ctx, sealedBytes, record.TenantID, record.ContractID)
 	if err != nil {
 		return ContractDetail{}, err
 	}
@@ -1068,7 +1068,7 @@ func (s *Store) ImportLegacySignedContract(ctx context.Context, user accounts.Us
 		if err != nil {
 			return ContractDetail{}, err
 		}
-		detail, err := projectReceiptDetail(receipt, current, record)
+		detail, err := projectReceiptDetail(ctx, receipt, current, record)
 		if err != nil {
 			return ContractDetail{}, err
 		}
@@ -1092,21 +1092,21 @@ func (s *Store) ImportLegacySignedContract(ctx context.Context, user accounts.Us
 	if _, err := resolveContractReferences(ctx, tx, current, sourceCase, &input.Snapshot, referenceModeImport); err != nil {
 		return ContractDetail{}, err
 	}
-	_, sealedSnapshot, _, err := sealDraftContent(input.Snapshot)
+	historical, err := s.resolveHistoricalMaterials(ctx, tx, current, input.HistoricalApprovalMaterials)
+	if err != nil {
+		return ContractDetail{}, err
+	}
+	contractID, err := newContractUUID()
+	if err != nil {
+		return ContractDetail{}, err
+	}
+	_, sealedSnapshot, _, err := sealDraftContentBound(ctx, input.Snapshot, accounts.Tenant(current), contractID)
 	if err != nil {
 		return ContractDetail{}, err
 	}
 	// The revision stores jsonb, not the raw Go bytes. Digest the exact
 	// canonical text the row will return so later reads can verify it.
 	sealedSnapshot, err = canonicalStoredJSON(ctx, tx, sealedSnapshot)
-	if err != nil {
-		return ContractDetail{}, err
-	}
-	historical, err := s.resolveHistoricalMaterials(ctx, tx, current, input.HistoricalApprovalMaterials)
-	if err != nil {
-		return ContractDetail{}, err
-	}
-	contractID, err := newContractUUID()
 	if err != nil {
 		return ContractDetail{}, err
 	}
@@ -1223,7 +1223,7 @@ func (s *Store) ImportLegacySignedContract(ctx context.Context, user accounts.Us
 		return ContractDetail{}, err
 	}
 	detail := sealedDetail
-	plaintext, err := unsealStoredDraft(sealedSnapshot)
+	plaintext, err := unsealStoredDraftBound(ctx, sealedSnapshot, record.TenantID, record.ContractID)
 	if err != nil {
 		return ContractDetail{}, err
 	}
