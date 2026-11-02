@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "schema_version": 36,
+  "schema_version": 37,
   "relations": [
     {
       "name": "activity",
@@ -659,6 +659,25 @@
       "force_rls": true
     },
     {
+      "name": "model_money_ledger",
+      "classification": "TENANT_DATA",
+      "tenant_column": true,
+      "force_rls": true
+    },
+    {
+      "name": "model_money_limits",
+      "classification": "TENANT_DATA",
+      "tenant_column": true,
+      "force_rls": true
+    },
+    {
+      "name": "model_price_snapshots",
+      "classification": "PLATFORM_CONTROL",
+      "tenant_column": false,
+      "force_rls": false,
+      "exception": "Immutable trusted price snapshots; write only through allowlisted platform operator control path."
+    },
+    {
       "name": "model_usage",
       "classification": "TENANT_DATA",
       "tenant_column": true,
@@ -910,13 +929,13 @@
       "force_rls": true
     },
     {
-      "name": "tool_call_ledger",
+      "name": "tenant_config_versions",
       "classification": "TENANT_DATA",
       "tenant_column": true,
       "force_rls": true
     },
     {
-      "name": "tenant_config_versions",
+      "name": "tool_call_ledger",
       "classification": "TENANT_DATA",
       "tenant_column": true,
       "force_rls": true
