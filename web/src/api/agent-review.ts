@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Parses agent-review event and result projections, validating planner limits, evidence references and structured tool/model output before the review UI consumes them.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-25
+// Updated: 2026-10-30
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 import { enumValue, responseReader } from "./respond";
 import type {
   AgentPlannerMode,

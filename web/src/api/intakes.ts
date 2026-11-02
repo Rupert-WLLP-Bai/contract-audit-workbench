@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Creates and resumes homepage primary-contract intake, parses continuation receipts and archives; the server fixes initial material role/purpose and owns idempotent completion.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-31
+// Updated: 2026-10-31
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 import { requestJson } from "./http";
 import { responseReader } from "./respond";
 

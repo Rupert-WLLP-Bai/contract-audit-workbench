@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Checks the web behavior for “session UI rejects bad credentials, navigates home/cases, logs out and drops private state”; representative assertions cover session UI rejects bad credentials, navigates home/cases, logs out and drops private state, client/admin audiences, anonymous reads, malformed requests and Origin guards stay isolated, case membership grants only the named case and viewer writes remain forbidden. It protects the rendered/API state expected by this component without starting the full browser journey.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-25
+// Updated: 2026-10-31
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 import { test, expect, operations, apiURL, webURL, portalURL, body, login, uiLogin, createCase, upload, record, rows } from "./helpers";
 import { parseActor, parseSettings } from "../../src/api/parse";
 

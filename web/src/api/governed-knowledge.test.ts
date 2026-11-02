@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Checks the web behavior for “governed knowledge API”; representative assertions cover reads exact escaped versions and rejects mismatched version or preview identities, sends content and commands with their actual revisions, reason, digest and idempotency key, preserves server error status, code, retryability and details. It protects the rendered/API state expected by this component without starting the full browser journey.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-28
+// Updated: 2026-10-28
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ApiError, setSessionIdentity } from "./http";
 import { commandGovernedKnowledge, createGovernedKnowledge, getGovernedKnowledge, previewGovernedPolicy, type KnowledgeCommand, type KnowledgeVersion } from "./governed-knowledge";

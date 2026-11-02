@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Builds encoded same-origin API paths from validated identifiers so caller-supplied IDs cannot alter route structure.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-25
+// Updated: 2026-11-02
+// Revision: r2
+// Copyright: See LICENSE
+// End file metadata.
+
 /** Assumed HTTP paths. See web/API.md. Identifiers are encoded so they stay one path segment. */
 
 function id(value: string): string {

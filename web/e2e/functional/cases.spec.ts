@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Checks the web behavior for “case UI creates, searches, filters, sorts and opens a real case”; representative assertions cover case UI creates, searches, filters, sorts and opens a real case, material UI uploads TXT and MD, exact originals, reparse and superseded versions. It protects the rendered/API state expected by this component without starting the full browser journey.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-25
+// Updated: 2026-10-25
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 import { test, expect, operations, apiURL, webURL, body, uiLogin, detail } from "./helpers";
 import { parseCaseList } from "../../src/api/parse";
 

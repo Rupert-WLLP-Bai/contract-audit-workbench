@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Runs the configured client against the server-sent-event stream using separate admin/viewer identities; checks stream continuation and closed-state behavior, then writes only external run artifacts/screenshots.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-25
+// Updated: 2026-10-31
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 import { chromiumExecutable } from "./chromium";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";

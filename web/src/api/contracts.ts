@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Defines contract registration and resumable-draft models, parses masked restricted fields and source/material references, and submits full-replacement drafts without treating client values as authoritative.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-01
+// Updated: 2026-11-02
+// Revision: r2
+// Copyright: See LICENSE
+// End file metadata.
+
 import { ApiError, assertCommandContextCurrent, errorFromResponse, jsonInit, requestJson, type CommandContext } from "./http";
 import { responseReader } from "./respond";
 import type { WireSchemas } from "./wire.generated";

@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Drives the configured C1-B browser journey from its delivery dataset: signs in, registers materials, selects the frozen rule pack and runs the case review while collecting diagnostic evidence.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-25
+// Updated: 2026-10-31
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 import { chromiumExecutable } from "./chromium";
 import { C1B_BUSINESS_AT_UTC, C1B_BUSINESS_TIME_ZONE, enterC1BBusinessAt } from "./c1b-clock";
 import { parseReviewWorkspace } from "../src/api/parse";

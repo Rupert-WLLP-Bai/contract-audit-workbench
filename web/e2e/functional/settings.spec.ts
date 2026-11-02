@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Checks the web behavior for “admin settings keeps the header and side rail pinned while the endpoint modal locks the page”; representative assertions cover admin settings keeps the header and side rail pinned while the endpoint modal locks the page. It protects the rendered/API state expected by this component without starting the full browser journey.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-30
+// Updated: 2026-10-30
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 import { test, expect, adminURL, uiLogin } from "./helpers";
 
 test("admin settings keeps the header and side rail pinned while the endpoint modal locks the page", async ({ page }) => {

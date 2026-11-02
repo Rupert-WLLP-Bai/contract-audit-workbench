@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Checks the web behavior for “UI generation, remediation revision, frozen reports and read-only archive preserve prior review”; representative assertions cover UI generation, remediation revision, frozen reports and read-only archive preserve prior review, maintenance read-only preserves history and rejects business mutations. It protects the rendered/API state expected by this component without starting the full browser journey.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-25
+// Updated: 2026-10-31
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 import { test, expect, operations, apiURL, webURL, body, login, uiLogin, createCase, upload, startReview, waitWorkspace, assertAnchors, evaluation, fixture, record, rows, detail } from "./helpers";
 import { parseTemplateList, parseGenerationRecord } from "../../src/api/parse";
 import { reviewChoiceKey } from "../../src/domain/workflow";

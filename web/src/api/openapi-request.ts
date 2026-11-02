@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Derives stable UI input keys and request-body controls from OpenAPI operation, parameter location and schema; does not issue or authorize requests.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-25
+// Updated: 2026-10-30
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 import {
   resolveOpenApiReference,
   type OpenApiOperation,

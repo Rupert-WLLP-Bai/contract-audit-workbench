@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Configures Playwright OIDC browser-test projects and runtime settings; the settings are consumed by the web toolchain and stay separate from product runtime configuration.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-25
+// Updated: 2026-10-25
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 import { defineConfig } from "playwright/test";
 
 export default defineConfig({

@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Checks the web behavior for “material API contract”; representative assertions cover sends an explicit add intent and parses the server material/version identity, sends only a chosen material and current-document CAS target for replacement, confirms an explicit selection using the live route and selection version in the body. It protects the rendered/API state expected by this component without starting the full browser journey.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-31
+// Updated: 2026-10-31
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { confirmLegacyMaterialSelection, createGeneration, uploadDocument } from "./endpoints";
 

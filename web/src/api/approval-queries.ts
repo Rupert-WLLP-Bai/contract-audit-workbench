@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Defines cache keys and query/mutation hooks for approval inboxes, frozen round details and append-only decisions; sends decisions through the approval API and renders server-owned status.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-01
+// Updated: 2026-11-01
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 import {
   useInfiniteQuery,
   useMutation,
