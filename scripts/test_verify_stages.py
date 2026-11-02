@@ -1,3 +1,13 @@
+# File metadata (manifest mirror):
+# Purpose: Regression checks for test_all_without_browser_skips_browser_checks, test_all_with_browser_includes_browser_checks, test_specific_stage_selects_only_its_checks, test_browser_stage_runs_without_the_browser_flag, test_version_probes_run_only_in_all; they assert the deployment, parser, or repository-policy contract that the corresponding implementation must preserve.
+# Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+# Contact: +86 13617696321
+# Created: 2026-10-28
+# Updated: 2026-10-31
+# Revision: r1
+# Copyright: See LICENSE
+# End file metadata.
+
 """Tests for verify.py stage selection, evidence cleanup, and CI diagnostics."""
 from contextlib import redirect_stderr, redirect_stdout
 from io import StringIO

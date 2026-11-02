@@ -1,3 +1,13 @@
+# File metadata (manifest mirror):
+# Purpose: 验证 test_tree_and_index_preserve_spaces_unicode_newlines_links_modes_and_bytes, test_raw_diff_reports_rename_delete_add_without_splitting_paths, test_provenance_follows_verified_rename_and_uses_synthetic_utc_dates, test_fixed_subject_ignores_later_head_edits_rename_and_delete 等场景，覆盖该模块的授权、错误或数据边界。
+# Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+# Contact: +86 13617696321
+# Created: 2026-11-02
+# Updated: 2026-11-02
+# Revision: r1
+# Copyright: See LICENSE
+# End file metadata.
+
 import os
 from pathlib import Path
 import subprocess

@@ -1,3 +1,13 @@
+# File metadata (manifest mirror):
+# Purpose: 验证 test_real_manifest_is_valid_under_current_strict_schema, test_real_schema_not_condition_rejects_unknown_with_nonunknown_source, test_supported_schema_semantics_not_ref_siblings_and_false, test_unknown_keyword_and_invalid_schema_shape_fail_closed 等场景，覆盖该模块的授权、错误或数据边界。
+# Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+# Contact: +86 13617696321
+# Created: 2026-11-02
+# Updated: 2026-11-02
+# Revision: r1
+# Copyright: See LICENSE
+# End file metadata.
+
 """Targeted safety fixtures for manifest validation (source checkout is read-only)."""
 import json
 import os

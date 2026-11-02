@@ -1,3 +1,13 @@
+# File metadata (manifest mirror):
+# Purpose: 验证 test_exact_four_bridge_additions_only, test_purpose_requires_exact_source_path_mode_and_oid, test_new_record_requires_explicit_authorship_and_rights, test_header_only_oid_change_keeps_revision_and_chmod_increments 等场景，覆盖该模块的授权、错误或数据边界。
+# Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+# Contact: +86 13617696321
+# Created: 2026-11-02
+# Updated: 2026-11-02
+# Revision: r1
+# Copyright: See LICENSE
+# End file metadata.
+
 """Small guards for the explicit bootstrap bridge and purpose reuse."""
 from pathlib import Path
 import sys
