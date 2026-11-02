@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: 实现 `Config`, `New`, `URL`, `HTTPClient` 等具体接口与边界逻辑，供 internal/testsupport/oidcfixture 的调用方使用。
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-02
+// Updated: 2026-11-02
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 // Package oidcfixture provides a loopback OIDC authorization-code issuer for tests.
 // It validates client, redirect URI, state/nonce presence, PKCE, one-time code
 // use and RS256/JWKS signatures. It never creates application sessions.

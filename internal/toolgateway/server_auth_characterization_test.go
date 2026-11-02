@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Exercises the `toolgateway` package behavior through TestAuthenticationFailureAndBackendPriorityRemainExact, TestAuthenticationCredentialBoundaryPrecedence, TestOriginAndResponseMediaValidationKeepTheirOrder, TestToolListRequiresAnExplicitReadGrant; these checks pin observable state, error handling, or wire/database compatibility for this module. Test cases include backend availability precedes missing credentials, malformed authorization is not bypassed by a valid cookie, store unauthorized details are replaced with the public message, duplicate session cookies do not fall back to a valid bearer.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-30
+// Updated: 2026-11-02
+// Revision: r2
+// Copyright: See LICENSE
+// End file metadata.
+
 package toolgateway
 
 import (

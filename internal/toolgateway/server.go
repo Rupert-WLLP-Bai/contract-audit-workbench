@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Implements the read-only tool-gateway HTTP/MCP server: validates request size, caller identity and allowed evidence scope before dispatching reads, and rejects mutation or out-of-scope tool calls.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-25
+// Updated: 2026-11-02
+// Revision: r2
+// Copyright: See LICENSE
+// End file metadata.
+
 package toolgateway
 
 import (
