@@ -135,6 +135,7 @@ class BootstrapGuards(unittest.TestCase):
             return TreeEntry(path,path.encode(),'100644','blob',oid,b'fixture')
         paths={'docs-site/bun.lock','docs-site/docusaurus.config.js','docs-site/sidebars.js',
                'docs/engineering/file-metadata.md','web/public/huangjueshu-competition-logo.png',
+               'testdata/legalnorm/fixture.html',
                *GLOSSARY_VIEWS_RULE['paths'], *LITERAL_MARKER_RULE['paths'],
                'internal/store/migrations/0027_contract_signing.sql','internal/store/migrations/0028_contract_fulfillment.sql',
                'internal/store/migrations/0029_contract_payments.sql','internal/store/migrations/0030_contract_assets.sql',
@@ -147,6 +148,14 @@ class BootstrapGuards(unittest.TestCase):
         for path in paths:
             want = 'generated-manifest-only' if path in GLOSSARY_VIEWS_RULE['paths'] else 'manifest-only'
             self.assertEqual(policy.classify(path)['handling'],want)
+        protected = policy.classify('testdata/legalnorm/fixture.html')
+        self.assertEqual(protected['id'], 'frozen-test-fixtures')
+        self.assertEqual(protected['handling'], 'manifest-only')
+        self.assertEqual(policy.classify('testdata/legalnorm/other.html')['handling'], 'header-and-manifest')
+        with self.assertRaises(MetadataError):
+            insert_header(b'<html>fixture</html>', {}, style=STYLES['html'],
+                          handling=protected['handling'], file_kind='html', mode='100644')
+        self.assertIn('testdata/legalnorm/fixture.html', delta['added_existing_class_paths'])
         self.assertEqual(policy.classify('docs/glossary/other.md')['handling'], 'header-and-manifest')
         self.assertIsNone(policy.classify('docs-site/unknown.js'))
         self.assertIsNone(policy.classify('internal/store/migrations/0033_unreviewed.sql'))
@@ -159,6 +168,7 @@ class BootstrapGuards(unittest.TestCase):
             anchor_policy=json.load(stream)
         all_paths={'docs-site/bun.lock','docs-site/docusaurus.config.js','docs-site/sidebars.js',
                    'docs/engineering/file-metadata.md','web/public/huangjueshu-competition-logo.png',
+               'testdata/legalnorm/fixture.html',
                *GLOSSARY_VIEWS_RULE['paths'], *LITERAL_MARKER_RULE['paths'],
                    'internal/store/migrations/0027_contract_signing.sql',
                    'internal/store/migrations/0028_contract_fulfillment.sql',

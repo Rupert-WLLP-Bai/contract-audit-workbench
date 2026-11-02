@@ -7,6 +7,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 
 import check_fast
 
@@ -200,8 +201,9 @@ func TestValue(t *testing.T) { if Value != 1 { t.Fatal(Value) } }
             "M", "web/src/features/review/manual-findings/manual-findings-panel.tsx"))
         self.assertTrue(ui_only.web)
         self.assertFalse(ui_only.docs_build)
-        checks = check_fast._build_checks(
-            ui_only, self.root, sys.executable, self.root.parent / "check-output")
+        with patch.object(check_fast, "_resolve_binary", return_value="/fixture/bin/bun"):
+            checks = check_fast._build_checks(
+                ui_only, self.root, sys.executable, self.root.parent / "check-output")
         self.assertEqual([check.name for check in checks],
                          ["ui-terminology", "web-typecheck"])
 
