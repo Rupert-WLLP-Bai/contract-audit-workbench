@@ -155,6 +155,7 @@ def prepare_policy_delta(anchor_policy, policy_blob_oid, anchor_tree, subject_tr
     extra_paths = {
         'docs-site/docusaurus.config.js', 'docs-site/sidebars.js',
         'docs/engineering/file-metadata.md', 'web/public/huangjueshu-competition-logo.png',
+        'testdata/legalnorm/fixture.html',
         *GLOSSARY_VIEWS_RULE['paths'], *LITERAL_MARKER_RULE['paths'],
     }
     docker_paths=sorted(path for path in set(anchor_tree)|set(subject_tree)
@@ -162,6 +163,8 @@ def prepare_policy_delta(anchor_policy, policy_blob_oid, anchor_tree, subject_tr
     migrations = sorted(path for path in subject_tree
                         if re.fullmatch(r'internal/store/migrations/[0-9]{4}_[^/]+\.sql', path)
                         and path not in anchor_policy['file_classes'][next(i for i, x in enumerate(anchor_policy['file_classes']) if x['id']=='sql-migrations')].get('paths', []))
+    fixture_class = next(x for x in classes if x['id']=='frozen-test-fixtures')
+    fixture_class['paths'] = sorted(set(fixture_class.get('paths', [])) | {'testdata/legalnorm/fixture.html'})
     lock_class = next(x for x in classes if x['id']=='lock-and-module-integrity')
     lock_class['paths'] = sorted(set(lock_class.get('paths', [])) | {'docs-site/bun.lock'})
     migration_class = next(x for x in classes if x['id']=='sql-migrations')
@@ -207,7 +210,7 @@ def prepare_policy_delta(anchor_policy, policy_blob_oid, anchor_tree, subject_tr
            'scope':'explicit candidate policy delta; not represented as unchanged anchor policy',
            'added_exact_classes':added_classes,
            'added_exact_paths':records,
-           'added_existing_class_paths':['docs-site/bun.lock',*migrations],
+           'added_existing_class_paths':['docs-site/bun.lock','testdata/legalnorm/fixture.html',*migrations],
            'unchanged_anchor_policy_fields':'all except the exact path additions listed above'}
     return candidate,delta
 
