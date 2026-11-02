@@ -7,6 +7,7 @@ import (
 
 	"contractaudit/internal/access"
 	"contractaudit/internal/accounts"
+	"contractaudit/internal/config"
 	"contractaudit/internal/fault"
 	"github.com/jackc/pgx/v5"
 )

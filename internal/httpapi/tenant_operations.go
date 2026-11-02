@@ -10,6 +10,15 @@ import (
 	"contractaudit/internal/systemhealth"
 )
 
+func unavailableTenantCost(now time.Time) tenantCostView {
+	day := now.Format("2006-01-02")
+	month := now.Format("2006-01")
+	return tenantCostView{
+		Currency: "USD", MinorUnitScale: 6, Timezone: "UTC",
+		Day: tenantCostWindowView{PeriodKey: day}, Month: tenantCostWindowView{PeriodKey: month},
+	}
+}
+
 type tenantOperationsView struct {
 	SchemaVersion       string                                 `json:"schema_version"`
 	TenantID            string                                 `json:"tenant_id"`
@@ -20,6 +29,24 @@ type tenantOperationsView struct {
 	Usage               store.TenantModelUsage                 `json:"usage"`
 	TenantControl       tenantControlView                      `json:"tenant_control"`
 	ExecutionQueue      executionQueueView                     `json:"execution_queue"`
+	Cost                tenantCostView                         `json:"cost"`
+}
+
+type tenantCostWindowView struct {
+	PeriodKey        string  `json:"period_key"`
+	LimitMinor       *string `json:"limit_minor"`
+	ReservedMinor    *string `json:"reserved_minor"`
+	SettledMinor     *string `json:"settled_minor"`
+	UnknownHoldMinor *string `json:"unknown_hold_minor"`
+	Known            bool    `json:"known"`
+}
+
+type tenantCostView struct {
+	Currency       string               `json:"currency"`
+	MinorUnitScale int                  `json:"minor_unit_scale"`
+	Timezone       string               `json:"timezone"`
+	Day            tenantCostWindowView `json:"day"`
+	Month          tenantCostWindowView `json:"month"`
 }
 
 type tenantControlView struct {
@@ -47,19 +74,24 @@ func (h *handler) tenantOperations(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
+	observedAt, err := time.Parse(time.RFC3339Nano, usage.ObservedAt)
+	if err != nil {
+		observedAt = time.Now().UTC()
+	}
 	runtime, err := h.store.ReadTenantRuntimeControl(r.Context(), user.TenantID)
 	if err != nil {
 		writeErr(w, err)
 		return
 	}
 	out := tenantOperationsView{
-		SchemaVersion: "tenant-operations/v2", TenantID: user.TenantID,
+		SchemaVersion: "tenant-operations/v3", TenantID: user.TenantID,
 		Directory: directory, LoginRateLimitScope: "process",
 		BudgetState: "unconfigured", Usage: usage,
 		TenantControl: tenantControlView{Status: runtime.Status, LiveEpoch: runtime.LiveEpoch},
 		ExecutionQueue: executionQueueView{PolicyHash: runtime.PolicyHash, PolicyVersion: runtime.PolicyVersion,
 			TenantWeight: runtime.TenantWeight, TenantInFlightLimit: runtime.InFlightLimit,
 			TenantPendingLimit: runtime.PendingLimit, TenantLive: runtime.TenantLive},
+		Cost: unavailableTenantCost(observedAt.UTC()),
 	}
 	if h.modelBudgetGateway != "" {
 		out.BudgetState = "unavailable"

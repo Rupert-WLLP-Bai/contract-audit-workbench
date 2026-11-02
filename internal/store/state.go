@@ -634,9 +634,11 @@ type RunSnapshot struct {
 	CloudPolicyDigest   string          `json:"cloud_policy_digest,omitempty"`
 	// GovernedKnowledge is the server-resolved acceptance snapshot. Older runs
 	// omit it entirely, preserving their historical frozen input identity.
-	GovernedKnowledge      *ReviewKnowledgeSnapshot `json:"governed_knowledge,omitempty"`
-	PlannerConfigurationID string                   `json:"planner_configuration_id,omitempty"`
-	PlannerConfiguration   json.RawMessage          `json:"-"`
+	GovernedKnowledge            *ReviewKnowledgeSnapshot `json:"governed_knowledge,omitempty"`
+	PlannerConfigurationID       string                   `json:"planner_configuration_id,omitempty"`
+	PlannerConfiguration         json.RawMessage          `json:"-"`
+	AdoptedTenantConfigVersionID string                   `json:"-"`
+	AdoptedTenantConfigDigest    string                   `json:"-"`
 }
 
 // AuditRecord is one append-only business event. It is not the SSE notice.

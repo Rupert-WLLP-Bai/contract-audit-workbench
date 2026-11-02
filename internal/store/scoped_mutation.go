@@ -118,13 +118,13 @@ func (s *Store) loadScopedAttemptState(ctx context.Context, tx pgx.Tx, claim Job
 	var snapshot RunSnapshot
 	var documentIDs, parsedDocumentIDs string
 	var packSnapshot, plannerPayload, policySnapshot, knowledge, partyContext, serviceObjectContext []byte
-	if err := tx.QueryRow(ctx, `SELECT run_id, document_ids, rule_set_hash, playbook_hash, model_ref, comparator_ref, model_configuration_id, parsed_document_ids, parse_selection_hash, parser_configuration_id, rule_pack_compiler_ref, rule_pack_id, rule_pack_version, rule_pack_hash, rule_pack_digest, rule_pack_snapshot, planner_configuration_id, planner_configuration, cloud_policy_snapshot, cloud_policy_digest, governed_knowledge, party_context, party_context_hash, service_object_context, service_object_context_hash
+	if err := tx.QueryRow(ctx, `SELECT run_id, document_ids, rule_set_hash, playbook_hash, model_ref, comparator_ref, model_configuration_id, parsed_document_ids, parse_selection_hash, parser_configuration_id, rule_pack_compiler_ref, rule_pack_id, rule_pack_version, rule_pack_hash, rule_pack_digest, rule_pack_snapshot, planner_configuration_id, planner_configuration, cloud_policy_snapshot, cloud_policy_digest, governed_knowledge, party_context, party_context_hash, service_object_context, service_object_context_hash, adopted_tenant_config_version_id, adopted_tenant_config_digest
 		FROM review_run_snapshots WHERE run_id=$1`, runID).
 		Scan(&snapshot.RunID, &documentIDs, &snapshot.RuleSetHash, &snapshot.PlaybookHash, &snapshot.ModelRef, &snapshot.ComparatorRef,
 			&snapshot.ModelConfigurationID, &parsedDocumentIDs, &snapshot.ParseSelectionHash, &snapshot.ParserConfigurationID, &snapshot.RulePackCompilerRef,
 			&snapshot.RulePackID, &snapshot.RulePackVersion, &snapshot.RulePackHash, &snapshot.RulePackDigest, &packSnapshot, &snapshot.PlannerConfigurationID, &plannerPayload,
 			&policySnapshot, &snapshot.CloudPolicyDigest, &knowledge, &partyContext, &snapshot.PartyContextHash,
-			&serviceObjectContext, &snapshot.ServiceObjectContextHash); err != nil {
+			&serviceObjectContext, &snapshot.ServiceObjectContextHash, &snapshot.AdoptedTenantConfigVersionID, &snapshot.AdoptedTenantConfigDigest); err != nil {
 		if !errors.Is(err, pgx.ErrNoRows) {
 			return state{}, err
 		}
@@ -316,6 +316,9 @@ func (s *Store) scopedAttemptMutationWithTx(ctx context.Context, runID, attemptI
 		return err
 	}
 	if err := fn(tx, &next); err != nil {
+		return err
+	}
+	if err := s.freezeTenantConfigSnapshot(ctx, tx, previous, &next); err != nil {
 		return err
 	}
 	old, changed, err := stateDelta(previous, next)
@@ -684,6 +687,9 @@ func (s *Store) scopedCaseWrite(ctx context.Context, user accounts.User, caseID,
 		return err
 	}
 	if err := fn(&next); err != nil {
+		return err
+	}
+	if err := s.freezeTenantConfigSnapshot(ctx, tx, previous, &next); err != nil {
 		return err
 	}
 	old, changed, err := stateDelta(previous, next)
