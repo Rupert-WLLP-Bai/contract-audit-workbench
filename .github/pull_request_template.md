@@ -17,6 +17,8 @@
 - Issue #3（可选）：
 - 文档、概念或文件说明变更：
 
+<!-- 分支使用 fix/<issue>-<slug>、feat/<issue>-<slug> 或 refactor/<issue>-<slug>。新业务入口放在领域模块；如向 internal/store 新增业务逻辑，链接先行 ADR，说明数据、事务、授权边界及迁移路径。存量接口渐进迁移，缺陷修复/迁移适配保持语义。 -->
+
 ## Evidence
 
 <!-- 记录实际运行的局部检查、源码 SHA、命令或工作流链接及范围。每项只填真实状态：PASS / FAIL / BLOCKED / NOT_RUN / NOT_APPLICABLE。未执行写 NOT_RUN；不要把固定候选验收提前承诺为通过。 -->
