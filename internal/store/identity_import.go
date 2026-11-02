@@ -163,8 +163,35 @@ func validateIdentityCrosswalk(document IdentityCrosswalk) error {
 			return errors.New("identity crosswalk membership effective_until must follow effective_from")
 		}
 		for _, grant := range item.Grants {
+			if grant.Role == "jurisdiction_operator" {
+				if grant.Scope != "jurisdiction" || !nonblank(grant.JurisdictionID) || len(grant.TenantIDs) == 0 || len(grant.Metrics) == 0 ||
+					grant.OrgID != "" || grant.CaseID != "" || len(grant.ResolvedOrgIDs) != 0 {
+					return errors.New("jurisdiction metric grant must name one jurisdiction, explicit tenants, and metrics")
+				}
+				seenTenants := map[string]struct{}{}
+				for _, tenantID := range grant.TenantIDs {
+					if !nonblank(tenantID) {
+						return errors.New("jurisdiction metric grant contains an invalid tenant")
+					}
+					if _, ok := seenTenants[tenantID]; ok {
+						return errors.New("jurisdiction metric grant repeats a tenant")
+					}
+					seenTenants[tenantID] = struct{}{}
+				}
+				seenMetrics := map[string]struct{}{}
+				for _, metric := range grant.Metrics {
+					if !oneOf(metric, "cases", "runs", "attempts", "money", "quota", "shared_pool") {
+						return errors.New("jurisdiction metric grant contains an unknown metric")
+					}
+					if _, ok := seenMetrics[metric]; ok {
+						return errors.New("jurisdiction metric grant repeats a metric")
+					}
+					seenMetrics[metric] = struct{}{}
+				}
+				continue
+			}
 			if !oneOf(grant.Role, "case_owner", "reviewer", "viewer", "exporter") ||
-				!oneOf(grant.Scope, "self", "case", "org", "org_subtree", "tenant") {
+				!oneOf(grant.Scope, "self", "case", "org", "org_subtree", "tenant") || grant.JurisdictionID != "" || len(grant.TenantIDs) != 0 || len(grant.Metrics) != 0 {
 				return errors.New("identity crosswalk has an unknown role or grant scope")
 			}
 			switch grant.Scope {

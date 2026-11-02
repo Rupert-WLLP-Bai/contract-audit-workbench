@@ -91,6 +91,25 @@ func (s *Store) ValidateServiceDatabaseRole(ctx context.Context, service string)
 	if err := s.pool.QueryRow(ctx, `SELECT service FROM service_database_roles WHERE role_name=current_user`).Scan(&configured); err != nil || configured != service {
 		return errors.New("database role is not bound to this service; run the independent migration job")
 	}
+	var database, schema string
+	if err := s.pool.QueryRow(ctx, `SELECT current_database(),current_schema()`).Scan(&database, &schema); err != nil || database == "" || schema == "" {
+		return errors.New("cannot resolve runtime tenant identity owner scope")
+	}
+	identityOwner := tenantIdentityOwnerName(database, schema)
+	var ownerLogin, ownerSuper, ownerBypass bool
+	if err := s.pool.QueryRow(ctx, `SELECT rolcanlogin,rolsuper,rolbypassrls FROM pg_roles WHERE rolname=$1`, identityOwner).Scan(&ownerLogin, &ownerSuper, &ownerBypass); err != nil || ownerLogin || ownerSuper || ownerBypass {
+		return errors.New("tenant identity owner must remain a NOLOGIN non-superuser without BYPASSRLS")
+	}
+	var privilegedOwnerMembership bool
+	if err := s.pool.QueryRow(ctx, `SELECT pg_has_role(current_user,$1,'MEMBER') OR EXISTS (
+		SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+		WHERE n.nspname=$2 AND c.relname=ANY($3::text[]) AND c.relowner=(SELECT oid FROM pg_roles WHERE rolname=current_user))`,
+		identityOwner, schema, []string{"model_call_leases", "model_usage", "model_money_ledger", "tenant_operations_projection_dirty", "tenant_operations_projection_snapshots"}).Scan(&privilegedOwnerMembership); err != nil || privilegedOwnerMembership {
+		return errors.New("runtime service cannot own scoped accounting or operations data or join the tenant identity owner")
+	}
+	if err := s.validateScopedTenantBoundaries(ctx, schema); err != nil {
+		return err
+	}
 	tables := serviceOwnedTables[service]
 	if len(tables) == 0 {
 		return errors.New("database role has no declared table ownership")
@@ -108,6 +127,40 @@ func (s *Store) ValidateServiceDatabaseRole(ctx context.Context, service string)
 	}
 	if uncovered != 0 {
 		return errors.New("service owned tables are missing tenant row level security")
+	}
+	return nil
+}
+
+func (s *Store) validateScopedTenantBoundaries(ctx context.Context, schema string) error {
+	rows, err := s.pool.Query(ctx, `SELECT c.relname,c.relrowsecurity,c.relforcerowsecurity,
+		pg_get_expr(p.polqual,p.polrelid),pg_get_expr(p.polwithcheck,p.polrelid)
+		FROM unnest($1::text[]) AS scoped(name)
+		LEFT JOIN pg_class c ON c.relname=scoped.name AND c.relnamespace=$2::regnamespace
+		LEFT JOIN pg_policy p ON p.polrelid=c.oid AND p.polname='tenant_boundary'`,
+		[]string{"model_call_leases", "model_usage", "model_money_ledger"}, schema)
+	if err != nil {
+		return errors.New("cannot verify bounded accounting tenant policies")
+	}
+	defer rows.Close()
+	normalize := func(expr string) string {
+		return strings.NewReplacer("::text", "", "(", "", ")", "", " ", "", "'", "", "\n", "", "\t", "").Replace(expr)
+	}
+	const expected = "tenant_id=current_settingapp.tenant_id,true"
+	seen := map[string]bool{}
+	for rows.Next() {
+		var name string
+		var enabled, forced bool
+		var using, check *string
+		if err := rows.Scan(&name, &enabled, &forced, &using, &check); err != nil {
+			return errors.New("cannot read bounded accounting tenant policies")
+		}
+		if !enabled || !forced || using == nil || check == nil || normalize(*using) != expected || normalize(*check) != expected {
+			return fmt.Errorf("accounting relation %q lacks the primary tenant USING/WITH CHECK boundary", name)
+		}
+		seen[name] = true
+	}
+	if err := rows.Err(); err != nil || len(seen) != 3 {
+		return errors.New("accounting relations are missing their primary tenant policies")
 	}
 	return nil
 }
@@ -485,6 +538,9 @@ func MigrateServiceRoles(ctx context.Context) error {
 		if _, err := tx.Exec(ctx, `GRANT EXECUTE ON FUNCTION `+pgx.Identifier{schema}.Sanitize()+`.`+fn+` TO `+pgx.Identifier{coreRoleName}.Sanitize()); err != nil {
 			return fmt.Errorf("cannot grant Core tenant lifecycle function %s: %w", fn, err)
 		}
+	}
+	if _, err := tx.Exec(ctx, `GRANT EXECUTE ON FUNCTION `+pgx.Identifier{schema}.Sanitize()+`.tenant_jurisdiction_operations(text,uuid,uuid,date,date) TO `+pgx.Identifier{coreRoleName}.Sanitize()); err != nil {
+		return fmt.Errorf("cannot grant Core jurisdiction aggregate function: %w", err)
 	}
 	for _, role := range configuredRoles {
 		if _, err := tx.Exec(ctx, `GRANT EXECUTE ON FUNCTION `+pgx.Identifier{schema}.Sanitize()+`.tenant_context_fence(text,bigint,text,uuid,uuid), `+pgx.Identifier{schema}.Sanitize()+`.tenant_operation_fence(jsonb,text,text) TO `+pgx.Identifier{role}.Sanitize()); err != nil {
