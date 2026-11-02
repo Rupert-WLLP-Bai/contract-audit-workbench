@@ -11,9 +11,9 @@ HERE=Path(__file__).resolve().parent
 sys.path.insert(0,str(HERE))
 from legacy_bootstrap import (BootstrapError, ALLOWED_BRIDGE_ADDITIONS, verify_bridge_trees,
     match_purpose, _window_revision, _same_earliest_created, _verify_created,
-    prepare_policy_delta, _validate_bootstrap_record, _exception_for, _record_new, GLOSSARY_VIEWS_RULE)
+    prepare_policy_delta, _validate_bootstrap_record, _exception_for, _record_new, GLOSSARY_VIEWS_RULE, LITERAL_MARKER_RULE)
 from git_inventory import GitRepo, TreeEntry
-from metadata_core import STYLES, insert_header
+from metadata_core import STYLES, MetadataError, insert_header, metadata_body
 import manifest_tool as mt
 
 class BootstrapGuards(unittest.TestCase):
@@ -77,6 +77,19 @@ class BootstrapGuards(unittest.TestCase):
             with self.assertRaisesRegex(mt.ManifestError, 'generator provenance mismatch'):
                 mt.validate_record(path, rec, policy)
 
+    def test_literal_marker_exception_is_exact_and_keeps_other_python_strict(self):
+        policy_data = json.loads((HERE / 'testdata' / 'anchor-policy.json').read_text())
+        policy_data['file_classes'].insert(0, LITERAL_MARKER_RULE)
+        policy = mt.Policy(policy_data)
+        for path in LITERAL_MARKER_RULE['paths']:
+            with self.subTest(path=path):
+                self.assertEqual(policy.classify(path)['handling'], 'manifest-only')
+        other = policy.classify('scripts/file_metadata/test_other.py')
+        self.assertEqual(other['handling'], 'header-and-manifest')
+        with self.assertRaises(MetadataError):
+            metadata_body(b'# File metadata (manifest mirror):\nmalformed\n', STYLES['hash'],
+                          other['handling'], file_kind='python', mode='100644')
+
     def test_header_only_oid_change_keeps_revision_and_chmod_increments(self):
         path='fixture.py'; body=b'print("fixture")\n'
         rec={'purpose':'Fixture script prints one fixed value.','authors':[{'name':'Bai Junhao','email':'baijunhao@cq.chinamobile.com','contact':'+86 13617696321'}],
@@ -122,7 +135,7 @@ class BootstrapGuards(unittest.TestCase):
             return TreeEntry(path,path.encode(),'100644','blob',oid,b'fixture')
         paths={'docs-site/bun.lock','docs-site/docusaurus.config.js','docs-site/sidebars.js',
                'docs/engineering/file-metadata.md','web/public/huangjueshu-competition-logo.png',
-               *GLOSSARY_VIEWS_RULE['paths'],
+               *GLOSSARY_VIEWS_RULE['paths'], *LITERAL_MARKER_RULE['paths'],
                'internal/store/migrations/0027_contract_signing.sql','internal/store/migrations/0028_contract_fulfillment.sql',
                'internal/store/migrations/0029_contract_payments.sql','internal/store/migrations/0030_contract_assets.sql',
                'internal/store/migrations/0031_contract_source_observations.sql','internal/store/migrations/0032_clm_outbox_metrics.sql',
@@ -146,7 +159,7 @@ class BootstrapGuards(unittest.TestCase):
             anchor_policy=json.load(stream)
         all_paths={'docs-site/bun.lock','docs-site/docusaurus.config.js','docs-site/sidebars.js',
                    'docs/engineering/file-metadata.md','web/public/huangjueshu-competition-logo.png',
-               *GLOSSARY_VIEWS_RULE['paths'],
+               *GLOSSARY_VIEWS_RULE['paths'], *LITERAL_MARKER_RULE['paths'],
                    'internal/store/migrations/0027_contract_signing.sql',
                    'internal/store/migrations/0028_contract_fulfillment.sql',
                    'internal/store/migrations/0029_contract_payments.sql',

@@ -298,7 +298,10 @@ def _validate_foundation_delta(base_policy: dict, candidate_policy: dict,
         if class_id in old_by_id:
             continue
         paths = rule.get("paths")
-        if rule == lb.GLOSSARY_VIEWS_RULE:
+        if class_id in {lb.GLOSSARY_VIEWS_RULE['id'], lb.LITERAL_MARKER_RULE['id']}:
+            expected_rule = lb.GLOSSARY_VIEWS_RULE if class_id == lb.GLOSSARY_VIEWS_RULE['id'] else lb.LITERAL_MARKER_RULE
+            if rule != expected_rule:
+                raise GateError("foundation may add only literal classes matching the exact reviewed rule")
             continue
         if (not isinstance(paths, list) or not paths or "patterns" in rule or
                 not set(paths) <= FOUNDATION_TOOL_PATHS or

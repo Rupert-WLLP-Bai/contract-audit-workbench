@@ -99,6 +99,16 @@
       "notes": "Preserve //go:build, // +build, generated-code markers, and existing copyright comments."
     },
     {
+      "id": "bootstrap-literal-marker-python",
+      "paths": [
+        "scripts/file_metadata/metadata_core.py",
+        "scripts/file_metadata/test_gate_adapter.py",
+        "scripts/file_metadata/test_metadata_core.py"
+      ],
+      "handling": "manifest-only",
+      "reason": "These exact Python files contain literal metadata-marker definitions or test examples; preserve their raw bytes."
+    },
+    {
       "id": "python-source",
       "patterns": [
         "**/*.py"

@@ -522,6 +522,19 @@ class GateAdapterFixture(unittest.TestCase):
         with self.assertRaisesRegex(ga.GateError, 'foundation may add only literal classes'):
             ga._validate_foundation_delta(base, candidate, self.schema, self.schema)
 
+    def test_foundation_literal_marker_catalog_is_exact(self):
+        base = json.loads(json.dumps(self.policy))
+        base['file_classes'] = [x for x in base['file_classes'] if x['id'] != lb.LITERAL_MARKER_RULE['id']]
+        candidate = json.loads(json.dumps(base))
+        candidate['file_classes'].insert(0, json.loads(json.dumps(lb.LITERAL_MARKER_RULE)))
+        ga._validate_foundation_delta(base, candidate, self.schema, self.schema)
+        candidate['file_classes'][0]['paths'].append('scripts/file_metadata/other.py')
+        with self.assertRaisesRegex(ga.GateError, 'exact reviewed rule'):
+            ga._validate_foundation_delta(base, candidate, self.schema, self.schema)
+        candidate['file_classes'][0]['paths'] = ['scripts/file_metadata/metadata_core.py']
+        with self.assertRaisesRegex(ga.GateError, 'exact reviewed rule'):
+            ga._validate_foundation_delta(base, candidate, self.schema, self.schema)
+
     def test_legacy_transition_rejects_schema_constraint_weakening(self):
         with self.assertRaisesRegex(ga.GateError, 'schema changed constraints outside additive reviewed enum values'):
             self.prepare_legacy_foundation(weaken_schema=True)
