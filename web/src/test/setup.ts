@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Installs Testing Library DOM matchers, raises async UI wait time to five seconds for coverage runs, and cleans rendered React trees after every Vitest case.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-25
+// Updated: 2026-10-28
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 import * as matchers from "@testing-library/jest-dom/matchers";
 import { configure, cleanup } from "@testing-library/react";
 import { afterEach, expect } from "vitest";

@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Routes the selected case workbench module to its task or knowledge panel, preserving actor assignment, case scope and task revision from the server API.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-25
+// Updated: 2026-10-31
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 import { Tabs, Table } from "antd";
 import { Flex } from "antd";
 import { Select } from "antd";
