@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: RuleShadowSamples returns bounded recent identities only after current case read and review authorization. It never returns case text or frozen facts. Related `store` operations include shadowTransaction, shadowCandidate, shadowScopeMatches, RuleShadowSamples.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-31
+// Updated: 2026-11-02
+// Revision: r2
+// Copyright: See LICENSE
+// End file metadata.
+
 package store
 
 import (

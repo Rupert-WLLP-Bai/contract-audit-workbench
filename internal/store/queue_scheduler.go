@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: claimScheduledJob runs under the deployment queue lock. The job lease itself reserves one execution slot; expired leases cannot renew or commit results. Related `store` operations include claimScheduledJob, hasClaimableJob, queueRetryDelay.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-25
+// Updated: 2026-11-02
+// Revision: r2
+// Copyright: See LICENSE
+// End file metadata.
+
 package store
 
 import (

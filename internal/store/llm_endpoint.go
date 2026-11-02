@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: LLMEndpointSettings is the single platform-level model endpoint configured by the admin surface. The provider credential stays sealed in SecretCiphertext and is never part of the… Related `store` operations include HasAPIKey, Active, LLMEndpoint, SaveLLMEndpoint.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-30
+// Updated: 2026-11-02
+// Revision: r2
+// Copyright: See LICENSE
+// End file metadata.
+
 package store
 
 import (

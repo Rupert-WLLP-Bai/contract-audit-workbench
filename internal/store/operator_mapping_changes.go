@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: OperatorMappingHead is only the stable lineage identity and current pointers. The binding payload remains in immutable operator_object_bindings rows. Related `store` operations include PlanOperatorMappingChange, operatorMappingApprovedDigest, canonicalOperatorMappingState, operatorMappingDigest.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-31
+// Updated: 2026-10-31
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package store
 
 import (
