@@ -1,4 +1,4 @@
-"""Explicit one-time legacy-to-canonical manifest bootstrap (external draft only).
+"""Plan the explicit, reviewed legacy-to-canonical metadata bootstrap.
 
 Reads only fixed Git objects and writes dry-run artifacts outside the source tree.
 """

@@ -1,7 +1,7 @@
-"""Fixed-base adapter draft for FILE metadata review and explicit header application.
+"""Fixed-base FILE metadata verification and explicit header application.
 
-This external prototype is not wired into check_fast.py. It trusts only the
-actual target BASE's canonical manifest Git blob and treats uncommitted source
+The fast gate loads its verifier from the actual target BASE. It trusts the
+BASE's canonical manifest Git blob and treats uncommitted source
 body changes as non-verifiable, never as a metadata-only PASS.
 """
 from __future__ import annotations

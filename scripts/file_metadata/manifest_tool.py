@@ -1,4 +1,4 @@
-"""Read-only manifest inventory/validation prototype for FILE-01/02.
+"""Read-only FILE metadata manifest inventory and validation.
 
 No command in this module writes to the target repository. Schema validation is
 closed over a declared keyword set and rejects unsupported keywords.
