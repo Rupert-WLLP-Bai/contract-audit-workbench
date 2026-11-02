@@ -49,7 +49,8 @@ class ManifestPrototypeTests(unittest.TestCase):
         for path in ('README.md', 'internal/store/migrations/0001_legacy_core.sql',
                      'internal/documentparse/docx_symbol.go', 'web/src/api/wire.generated.ts'):
             mt.validate_record(path, self.manifest['files'][path], self.policy)
-        docker = self.manifest['files']['deploy/app/Dockerfile']
+        docker = json.loads(json.dumps(self.manifest['files']['deploy/app/Dockerfile']))
+        docker['handling'] = 'header-and-manifest'
         self.assertEqual(self.policy.classify('deploy/app/Dockerfile')['handling'], 'manifest-only')
         with self.assertRaisesRegex(mt.ManifestError, 'handling differs from policy'):
             mt.validate_record('deploy/app/Dockerfile', docker, self.policy)
@@ -127,7 +128,7 @@ class ManifestPrototypeTests(unittest.TestCase):
             def record(path, purpose, created, updated, handling='header-and-manifest', state='pending-header-application', exception=None):
                 r = json.loads(json.dumps(self.manifest['files']['README.md']))
                 r.update({'purpose': purpose, 'created': created, 'updated': updated,
-                          'handling': handling, 'header_state': state})
+                          'handling': handling, 'header_state': state, 'revision': 'r1'})
                 if exception is not None: r['exception'] = exception
                 return r
             unknown = {'value': 'unknown', 'source': {'kind': 'unknown', 'reason': 'Fixture commit identity not available until after the commit is created.'}}

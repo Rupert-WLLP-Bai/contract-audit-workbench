@@ -39,6 +39,11 @@ class GateAdapterFixture(unittest.TestCase):
                          'scripts/file_metadata/schema.json', 'docs/engineering/file-metadata.md',
                          'scripts/check_fast.py')
         }
+        # Fixture revisions belong to its synthetic history, independently of
+        # how often the source repository's canonical inventory was refreshed.
+        cls.file_rec['revision'] = 'r1'
+        for record in cls.registry_records.values():
+            record['revision'] = 'r1'
 
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(prefix='file-meta-gate-fixture-')
@@ -146,8 +151,9 @@ class GateAdapterFixture(unittest.TestCase):
         docs_record = manifest['files']['docs/engineering/file-metadata.md']
         docs_rule = self.policy_obj.classify('docs/engineering/file-metadata.md')
         docs_kind, docs_style, _ = mt._native(docs_rule, 'docs/engineering/file-metadata.md')
-        docs.write_bytes(insert_header(docs.read_bytes(), docs_record, style=docs_style,
-            handling=docs_rule['handling'], file_kind=docs_kind, mode='100644'))
+        if docs_rule['handling'] == 'header-and-manifest':
+            docs.write_bytes(insert_header(docs.read_bytes(), docs_record, style=docs_style,
+                handling=docs_rule['handling'], file_kind=docs_kind, mode='100644'))
         (meta / 'manifest.json').write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + '\n')
 
     def empty_manifest(self):
