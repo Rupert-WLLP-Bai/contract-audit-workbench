@@ -78,6 +78,32 @@ func (h *handler) actorForAudience(w http.ResponseWriter, r *http.Request, audie
 	return user, true
 }
 
+// reauthenticateDownload bypasses the request cache immediately before a file
+// is sent. The original session and context must still identify the same actor;
+// the returned user carries freshly resolved roles and grants.
+func (h *handler) reauthenticateDownload(r *http.Request, original accounts.User) (accounts.User, error) {
+	cached, ok := r.Context().Value(authenticatedRequestKey{}).(authenticatedRequest)
+	if !ok || cached.audience != "client" || cached.token == "" || audienceCookieValue(r, cached.audience) != cached.token {
+		return accounts.User{}, fault.New(http.StatusUnauthorized, "session_invalid", "会话已失效")
+	}
+	oldProof, oldOK := original.CommandAuthority()
+	if !oldOK || oldProof.SessionDigest == "" || oldProof.ContextVersion == "" {
+		return accounts.User{}, fault.New(http.StatusUnauthorized, "session_invalid", "会话上下文不可用")
+	}
+	current, audience, err := h.authenticateSession(r.Context(), cached.token)
+	if err != nil {
+		return accounts.User{}, err
+	}
+	newProof, newOK := current.CommandAuthority()
+	if !newOK || !current.Enabled || audience != cached.audience ||
+		current.ID != original.ID || current.PrincipalID != original.PrincipalID || current.MembershipID != original.MembershipID ||
+		current.TenantID != original.TenantID || current.OrgID != original.OrgID || current.Issuer != original.Issuer || current.Subject != original.Subject ||
+		newProof.SessionDigest != oldProof.SessionDigest || newProof.ContextVersion != oldProof.ContextVersion {
+		return accounts.User{}, fault.New(http.StatusForbidden, "access_denied", "下载期间会话或工作上下文已变更")
+	}
+	return current, nil
+}
+
 func (h *handler) authenticateSession(ctx context.Context, token string) (accounts.User, string, error) {
 	if h.sessionAuthority != nil {
 		return h.sessionAuthority.AuthenticateSession(ctx, token)

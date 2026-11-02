@@ -135,7 +135,25 @@ func (h *handler) downloadEvidenceBundle(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	// Access may have changed while original bytes and the PDF were produced.
-	latest, err := h.store.EvidenceBundleDataForReport(r.Context(), user, caseID, reportID)
+	current, err := h.reauthenticateDownload(r, user)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	// Support authority is never carried over as a cached proof. Resolve the
+	// exact grant again against the fresh session before any final case read.
+	if proof, ok := user.CommandAuthority(); ok && proof.SupportID != "" {
+		grant, err := h.store.ReadSupportCase(r.Context(), current, proof.SupportID)
+		if err != nil {
+			writeErr(w, err)
+			return
+		}
+		if grant.CaseID != caseID || grant.TenantID != current.TenantID {
+			writeErr(w, fault.Forbidden("支援授权不可用"))
+			return
+		}
+	}
+	latest, err := h.store.EvidenceBundleDataForReport(r.Context(), current, caseID, reportID)
 	if err != nil {
 		writeErr(w, err)
 		return
