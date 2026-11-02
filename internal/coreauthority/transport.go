@@ -52,9 +52,11 @@ func NewTransport(origin, path, caFile, appEnv string, allowInsecureDev bool, ti
 	parsed.Path = path
 	parsed.RawPath = ""
 	client := &http.Client{
-		Timeout: timeout,
+		Timeout:   timeout,
 		Transport: &http.Transport{Proxy: nil, TLSClientConfig: &tls.Config{MinVersion: tls.VersionTLS12, RootCAs: roots}},
-		CheckRedirect: func(_ *http.Request, _ []*http.Request) error { return errors.New("Core authority redirects are not followed") },
+		CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
+			return errors.New("Core authority redirects are not followed")
+		},
 	}
 	return parsed.String(), client, nil
 }
