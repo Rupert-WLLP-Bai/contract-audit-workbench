@@ -213,6 +213,38 @@ class GateAdapterFixture(unittest.TestCase):
         with self.assertRaisesRegex(ga.GateError, 'downgrades or changes'):
             self.run_check()
 
+    def test_initialized_policy_allows_only_new_literal_manifest_paths(self):
+        base = json.loads(json.dumps(self.policy))
+        candidate = json.loads(json.dumps(base))
+        rule = {'id': 'new-csv', 'paths': ['docs/architecture/store-ownership.csv'],
+                'handling': 'manifest-only', 'reason': 'CSV has no comment syntax.'}
+        candidate['file_classes'].append(rule)
+        base_tree = {'scripts/check.py': None}
+        candidate_tree = {**base_tree, rule['paths'][0]: None}
+        ga._validate_initialized_policy_delta(base, candidate, base_tree, candidate_tree)
+        with self.assertRaises(ga.GateError):
+            ga._validate_initialized_policy_delta(base, candidate, base_tree, base_tree)
+        for path in ('scripts/check.py', 'docs/**/*.csv', 'web/e2e/fixtures/new.py', '../escape.csv'):
+            altered = json.loads(json.dumps(candidate))
+            altered['file_classes'][-1]['paths'] = [path]
+            with self.subTest(path=path), self.assertRaises(ga.GateError):
+                ga._validate_initialized_policy_delta(base, altered, base_tree, {**candidate_tree, path: None})
+        altered = json.loads(json.dumps(candidate))
+        altered['file_classes'][0]['handling'] = 'header-and-manifest'
+        with self.assertRaises(ga.GateError):
+            ga._validate_initialized_policy_delta(base, altered, base_tree, candidate_tree)
+        altered = json.loads(json.dumps(candidate))
+        altered['revision']['format'] = 'anything'
+        with self.assertRaises(ga.GateError):
+            ga._validate_initialized_policy_delta(base, altered, base_tree, candidate_tree)
+
+    def test_initialized_schema_is_fixed(self):
+        schema = json.loads(self.schema_path.read_text())
+        schema['$defs']['record']['properties']['purpose'].pop('minLength', None)
+        self.schema_path.write_text(json.dumps(schema, ensure_ascii=False, indent=2) + '\n')
+        with self.assertRaisesRegex(ga.GateError, 'schema'):
+            self.run_check()
+
     def test_check_requires_full_fixed_sha_and_rejects_untracked_scope_gap(self):
         with self.assertRaisesRegex(ga.GateError, 'full lowercase Git commit SHA'):
             ga.check(self.repo, 'HEAD', self.subject_sha,
