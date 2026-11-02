@@ -83,6 +83,12 @@ func TestDistributedMembershipAdmissionAndModelSettlement(t *testing.T) {
 	request.Header.Set("Content-Type", "application/json")
 	request.Header.Set("Origin", server.URL)
 	request.Header.Set("X-Contract-Service-Key", edge)
+	sessionContext, err := store.UserSessionContext(user)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request.Header.Set("X-Context-Version", sessionContext.ActiveContext.ContextVersion)
+	request.Header.Set("X-CSRF-Token", sessionContext.CSRFToken)
 	request.AddCookie(&http.Cookie{Name: "session", Value: login.SessionToken})
 	response, err := server.Client().Do(request)
 	if err != nil {

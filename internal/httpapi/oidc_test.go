@@ -140,15 +140,11 @@ func TestOIDCAuthorizationCodeHTTPFlowsUseAudienceBoundPostgresSessions(t *testi
 			t.Fatalf("admin session used as client session status=%d, want %d", got, http.StatusForbidden)
 		}
 
-		if got := fixture.request(t, client, http.MethodDelete, "/api/session?audience=admin", nil).status; got != http.StatusNoContent {
-			t.Fatalf("admin logout status=%d, want %d", got, http.StatusNoContent)
-		}
+		fixture.logoutSession(t, client, identity.AudienceAdmin)
 		fixture.assertSession(t, client, "/api/session?audience=admin", http.StatusUnauthorized, "", "")
 		fixture.assertSession(t, client, "/api/session", http.StatusOK, "oidc-client", identity.AudienceClient)
 
-		if got := fixture.request(t, client, http.MethodDelete, "/api/session", nil).status; got != http.StatusNoContent {
-			t.Fatalf("client logout status=%d, want %d", got, http.StatusNoContent)
-		}
+		fixture.logoutSession(t, client, identity.AudienceClient)
 		fixture.assertSession(t, client, "/api/session", http.StatusUnauthorized, "", "")
 	})
 }
@@ -535,6 +531,38 @@ func (f *oidcHTTPFixture) assertSession(t *testing.T, client *http.Client, path 
 	}
 	if body.Actor.ID != actorID || body.Audience != audience {
 		t.Fatalf("GET %s returned actor=%q audience=%q, want actor=%q audience=%q", path, body.Actor.ID, body.Audience, actorID, audience)
+	}
+}
+
+func (f *oidcHTTPFixture) logoutSession(t *testing.T, client *http.Client, audience string) {
+	t.Helper()
+	path := "/api/session?audience=" + url.QueryEscape(audience)
+	session := f.request(t, client, http.MethodGet, path, nil)
+	if session.status != http.StatusOK {
+		t.Fatalf("read logout session audience=%q status=%d: %s", audience, session.status, session.body)
+	}
+	var metadata struct {
+		store.SessionContext
+		Audience string `json:"audience"`
+	}
+	if err := json.Unmarshal(session.body, &metadata); err != nil || metadata.Audience != audience || !store.ValidContextVersion(metadata.ActiveContext.ContextVersion) || metadata.CSRFToken == "" {
+		t.Fatalf("invalid logout session context audience=%q: %v", audience, err)
+	}
+	request, err := http.NewRequest(http.MethodDelete, f.base+path, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request.Header.Set("Origin", f.base)
+	request.Header.Set("X-Context-Version", metadata.ActiveContext.ContextVersion)
+	request.Header.Set("X-CSRF-Token", metadata.CSRFToken)
+	response, err := client.Do(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusNoContent {
+		body, _ := io.ReadAll(io.LimitReader(response.Body, 4096))
+		t.Fatalf("logout audience=%q status=%d, want %d: %s", audience, response.StatusCode, http.StatusNoContent, body)
 	}
 }
 

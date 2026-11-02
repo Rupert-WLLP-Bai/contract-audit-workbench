@@ -217,11 +217,21 @@ func (env *serviceEnvironment) open(t *testing.T, role string) *bootstrap.Runtim
 
 func (env *serviceEnvironment) reviewClaim(t *testing.T, ocrDraft bool) (string, store.JobAcceptance, store.JobClaim, store.PrepareDocumentRequest) {
 	t.Helper()
+	sessionToken, err := env.core.Store.EstablishSession(env.actor, "client")
+	if err != nil {
+		t.Fatal(err)
+	}
+	actor, audience, err := env.core.Store.AuthenticateSession(env.ctx, sessionToken)
+	if err != nil || audience != "client" || actor.ID != env.actor.ID {
+		t.Fatalf("authenticate review admission session: audience=%q err=%v", audience, err)
+	}
+	env.actor = actor
+	ctx := store.WithAdmissionSessionToken(env.ctx, sessionToken)
 	caseID, err := env.core.Store.CreateCase(env.actor, "Document service boundary", "procurement_ict")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := env.document.Store.AddDocument(context.Background(), env.actor, caseID, "procurement", "purchase.txt", "text/plain", []byte("采购文件要求质保期为36个月。")); err != nil {
+	if _, err := env.document.Store.AddDocument(ctx, env.actor, caseID, "procurement", "purchase.txt", "text/plain", []byte("采购文件要求质保期为36个月。")); err != nil {
 		t.Fatal(err)
 	}
 	var imageBytes bytes.Buffer
@@ -232,15 +242,11 @@ func (env *serviceEnvironment) reviewClaim(t *testing.T, ocrDraft bool) (string,
 	if !ocrDraft {
 		filename, media, body = "draft.txt", "text/plain", []byte("合同约定质保期为36个月。")
 	}
-	docID, err := env.document.Store.AddDocument(context.Background(), env.actor, caseID, "draft_contract", filename, media, body)
+	docID, err := env.document.Store.AddDocument(ctx, env.actor, caseID, "draft_contract", filename, media, body)
 	if err != nil {
 		t.Fatal(err)
 	}
-	sessionToken, err := env.core.Store.EstablishSession(env.actor, "client")
-	if err != nil {
-		t.Fatal(err)
-	}
-	accepted, err := env.execution.Store.StartReviewAsync(store.WithAdmissionSessionToken(env.ctx, sessionToken), env.actor, caseID)
+	accepted, err := env.execution.Store.StartReviewAsync(ctx, env.actor, caseID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -298,6 +304,12 @@ func TestDistributedDocumentIntakeRedeemsCoreTicket(t *testing.T) {
 	request.Header.Set("Content-Type", writer.FormDataContentType())
 	request.Header.Set("Idempotency-Key", "cross-process-ticket")
 	request.Header.Set("Origin", api.URL)
+	sessionContext, err := env.core.Store.SessionContext(env.ctx, token)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request.Header.Set("X-Context-Version", sessionContext.ActiveContext.ContextVersion)
+	request.Header.Set("X-CSRF-Token", sessionContext.CSRFToken)
 	request.AddCookie(&http.Cookie{Name: "session", Value: token})
 	response, err := api.Client().Do(request)
 	if err != nil {
