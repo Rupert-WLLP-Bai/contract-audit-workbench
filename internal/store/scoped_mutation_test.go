@@ -14,7 +14,23 @@ import (
 	"contractaudit/internal/accounts"
 	"contractaudit/internal/config"
 	"contractaudit/internal/fault"
+	"contractaudit/internal/model"
 )
+
+// Keep independent test consumers on the same Core authority path as services.
+type durableTestOperationAuthority struct{ core *Store }
+
+func (a durableTestOperationAuthority) ResolveOperation(ctx context.Context, scope model.DelegatedScope) (accounts.User, error) {
+	caller := "worker"
+	if scope.Kind == "document" {
+		caller = "document"
+	}
+	return a.core.ResolveOperationAuthority(ctx, scope, caller)
+}
+
+func (a durableTestOperationAuthority) IssueOperationTicket(ctx context.Context, digest, expected string, scope model.DelegatedScope) (string, error) {
+	return a.core.IssueOperationTicketFromDigest(ctx, digest, expected, scope)
+}
 
 type durableRoleEnvironment struct {
 	harness   *Store
@@ -159,6 +175,16 @@ func newDurableCaseFixture(t *testing.T) (durableCaseFixture, bool) {
 	if !found {
 		t.Fatal("demo admin missing")
 	}
+	sessionToken, err := core.EstablishSession(admin, "client")
+	if err != nil {
+		t.Fatalf("establish case fixture session: %v", err)
+	}
+	admin, audience, err := core.AuthenticateSession(context.Background(), sessionToken)
+	if err != nil || audience != "client" || admin.ID != "demo-admin" {
+		t.Fatalf("authenticate case fixture session: audience=%q err=%v", audience, err)
+	}
+	ctx := WithAdmissionSessionToken(context.Background(), sessionToken)
+	document.UseOperationAuthority(durableTestOperationAuthority{core: core})
 	caseID, err := core.CreateCase(admin, "独立服务审查", "procurement_ict")
 	if err != nil {
 		t.Fatalf("core case creation failed: %v", err)
@@ -167,7 +193,7 @@ func newDurableCaseFixture(t *testing.T) (durableCaseFixture, bool) {
 		{"procurement", "采购文件要求质保36个月。合同总价为100万元。"},
 		{"draft_contract", "拟签合同约定质保24个月。合同总价为120万元。"},
 	} {
-		if _, err := document.AddDocument(context.Background(), admin, caseID, item.role, item.role+".txt", "text/plain", []byte(item.body)); err != nil {
+		if _, err := document.AddDocument(ctx, admin, caseID, item.role, item.role+".txt", "text/plain", []byte(item.body)); err != nil {
 			t.Fatalf("document service write failed for %s: %v", item.role, err)
 		}
 	}
@@ -212,9 +238,20 @@ func newDurableFixtureAs(t *testing.T, actor accounts.User) (durableFixture, boo
 			t.Fatalf("core membership setup failed: %v", err)
 		}
 	}
+	sessionToken, err := setup.core.EstablishSession(actor, "client")
+	if err != nil {
+		t.Fatalf("establish durable admission session: %v", err)
+	}
+	actorID := actor.ID
+	actor, audience, err := setup.core.AuthenticateSession(context.Background(), sessionToken)
+	if err != nil || audience != "client" || actor.ID != actorID {
+		t.Fatalf("authenticate durable admission session: audience=%q err=%v", audience, err)
+	}
+	authority := durableTestOperationAuthority{core: setup.core}
+	execution.UseOperationAuthority(authority)
 	execution.UseDocumentPreparer(setup.document)
 	execution.UseModels(&frozenOCRModel{})
-	accepted, err := execution.StartReviewAsync(context.Background(), actor, setup.caseID)
+	accepted, err := execution.StartReviewAsync(WithAdmissionSessionToken(context.Background(), sessionToken), actor, setup.caseID)
 	if err != nil {
 		t.Fatalf("durable acceptance failed: %v", err)
 	}

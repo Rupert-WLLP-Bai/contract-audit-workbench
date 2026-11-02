@@ -17,6 +17,7 @@ func TestStaleGenerationCompletionIsRejected(t *testing.T) {
 		t.Skip("TEST_DATABASE_URL and MIGRATOR_DATABASE_URL are required for isolated durable role checks")
 	}
 	takeoverStore := fixture.environment.openRole(t, "execution")
+	takeoverStore.UseOperationAuthority(durableTestOperationAuthority{core: fixture.core})
 	takeoverStore.UseDocumentPreparer(fixture.document)
 	takeoverStore.UseModels(&frozenOCRModel{})
 	versionBefore := durableAttemptVersion(t, fixture.execution, fixture.claim)
