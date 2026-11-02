@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Lists rule-pack versions and lifecycle states for the admin audience, linking to drafts, published detail and creation flows without treating shadow results as active rules.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-25
+// Updated: 2026-10-28
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 import { FileProtectOutlined } from "@ant-design/icons";
 import { Select } from "antd";
 import { Button, Input, Table, type TableProps } from "antd";

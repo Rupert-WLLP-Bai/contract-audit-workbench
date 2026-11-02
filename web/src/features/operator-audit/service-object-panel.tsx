@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Renders the operator-audit service object panel extension from its typed case/run projections and explicit feature flags; any command uses the draft extension client and remains disabled unless the server and deployment enable that surface.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-31
+// Updated: 2026-10-31
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { useSearchParams } from "react-router";

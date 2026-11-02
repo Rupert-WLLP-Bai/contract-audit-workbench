@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Maps operator-audit relation, availability and machine-status values to display labels/tones while preserving unknown values as unknown.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-29
+// Updated: 2026-10-30
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 /** Display vocabulary for the operator-audit panels. Unknown stays unknown. */
 
 import { formatDateTime, type StatusTone } from "../../domain/review";

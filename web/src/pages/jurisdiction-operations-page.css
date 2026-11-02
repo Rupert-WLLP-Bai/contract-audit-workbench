@@ -1,3 +1,13 @@
+/* File metadata (manifest mirror): */
+/* Purpose: 为文档站主题提供 .jurisdiction-operations-page .page-head, .jurisdiction-summary, .jurisdiction-summary .ant-statistic 等布局与颜色样式。 */
+/* Author: Bai Junhao <baijunhao@cq.chinamobile.com> */
+/* Contact: +86 13617696321 */
+/* Created: 2026-11-02 */
+/* Updated: 2026-11-02 */
+/* Revision: r1 */
+/* Copyright: See LICENSE */
+/* End file metadata. */
+
 @layer components {
   .jurisdiction-operations-page .page-head { margin-bottom: var(--space-4); }
   .jurisdiction-summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 190px), 1fr)); gap: var(--space-4); margin-bottom: var(--space-5); }

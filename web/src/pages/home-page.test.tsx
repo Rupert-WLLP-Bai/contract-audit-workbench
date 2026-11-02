@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Checks the web behavior for “HomePage snapshot consumers, HomePage persistent task workflow”; representative assertions cover uses server metrics, mutually exclusive business states and explicit risk levels, fetches each selected period and updates the displayed snapshot, renders a zero risk denominator without claiming any risk percentage. It protects the rendered/API state expected by this component without starting the full browser journey.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-25
+// Updated: 2026-10-31
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 import {
   cleanup,
   fireEvent,

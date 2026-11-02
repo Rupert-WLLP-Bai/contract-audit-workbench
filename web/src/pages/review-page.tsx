@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Loads the selected run and immutable attempt into the review workspace, including findings, evidence citations, event stream and manual decisions; client rendering does not turn model advice into confirmed findings.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-25
+// Updated: 2026-11-02
+// Revision: r2
+// Copyright: See LICENSE
+// End file metadata.
+
 import { Button } from "antd";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useSearchParams } from "react-router";

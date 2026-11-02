@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Creates and edits contract registrations and resumable drafts from the selected case; restricted party fields remain masked by server projections and writes use the server’s current draft revision.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-01
+// Updated: 2026-11-02
+// Revision: r2
+// Copyright: See LICENSE
+// End file metadata.
+
 import { Alert, Button, Empty, Input, InputNumber, Modal, Select, Table, Tag } from "antd";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";

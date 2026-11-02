@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Searches case-relevant legal knowledge with URL-backed filters and opens exact article/version content; admin imports use governance endpoints while company-source catalogs remain read-only.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-31
+// Updated: 2026-10-31
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 import { Alert, Button, Input, Table, type TableProps } from "antd";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState, type FormEvent } from "react";

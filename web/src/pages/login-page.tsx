@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Starts the configured client or admin audience login and returns through the server-validated OIDC flow; credentials and callback state are not stored by the page.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-25
+// Updated: 2026-10-31
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 import { useState, type FormEvent } from "react";
 import { Button, Input } from "antd";
 import { Navigate, useLocation, useNavigate } from "react-router";

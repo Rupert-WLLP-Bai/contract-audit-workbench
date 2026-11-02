@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Resolves the selected case and comparison target, then routes into a side-by-side comparison of persisted review runs without creating a new review.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-28
+// Updated: 2026-10-30
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 import { Button, Input, Table, type TableColumnsType } from "antd";
 import { useState } from "react";
 import { Link } from "react-router";

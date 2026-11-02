@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Lists cases and persisted review runs visible to the actor, selects the newest eligible run/attempt by explicit identity and opens its frozen workspace.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-25
+// Updated: 2026-10-30
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 import { Button, Table, type TableColumnsType } from "antd";
 import { errorMessage } from "../api/http";
 import { useWorkbench } from "../api/queries";
