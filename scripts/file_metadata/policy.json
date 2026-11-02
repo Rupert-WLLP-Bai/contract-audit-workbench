@@ -353,6 +353,14 @@
       ],
       "handling": "preserve-notice-and-manifest",
       "reason": "The file contains a Unicode Consortium source URL and verbatim copyright/disclaimer. Preserve the entire existing notice and record upstream authorship separately from project maintenance."
+    },
+    {
+      "id": "store-ownership-inventory",
+      "paths": [
+        "docs/architecture/store-ownership.csv"
+      ],
+      "handling": "manifest-only",
+      "reason": "Exact generated architecture CSV preserves parser columns; its pinned source and generator are recorded in the manifest."
     }
   ],
   "unclassified_file_policy": "Do not infer a comment syntax or purpose. Add a reviewed class or path rule before the complete inventory is accepted.",

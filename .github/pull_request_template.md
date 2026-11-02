@@ -3,8 +3,8 @@
 <!-- Author: Bai Junhao <baijunhao@cq.chinamobile.com> -->
 <!-- Contact: +86 13617696321 -->
 <!-- Created: 2026-10-31 -->
-<!-- Updated: 2026-11-01 -->
-<!-- Revision: r1 -->
+<!-- Updated: 2026-11-02 -->
+<!-- Revision: r2 -->
 <!-- Copyright: See LICENSE -->
 <!-- End file metadata. -->
 
@@ -16,6 +16,8 @@
 - Issue #2（可选）：
 - Issue #3（可选）：
 - 文档、概念或文件说明变更：
+
+<!-- 分支使用 fix/<issue>-<slug>、feat/<issue>-<slug> 或 refactor/<issue>-<slug>。新业务入口放在领域模块；如向 internal/store 新增业务逻辑，链接先行 ADR，说明数据、事务、授权边界及迁移路径。存量接口渐进迁移，缺陷修复/迁移适配保持语义。 -->
 
 ## Evidence
 

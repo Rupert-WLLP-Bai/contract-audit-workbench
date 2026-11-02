@@ -3,8 +3,8 @@
 <!-- Author: Bai Junhao <baijunhao@cq.chinamobile.com> -->
 <!-- Contact: +86 13617696321 -->
 <!-- Created: 2026-11-01 -->
-<!-- Updated: 2026-11-01 -->
-<!-- Revision: r1 -->
+<!-- Updated: 2026-11-02 -->
+<!-- Revision: r2 -->
 <!-- Copyright: See LICENSE -->
 <!-- End file metadata. -->
 
@@ -56,3 +56,8 @@ Client、Admin 和 Portal 使用 React、TypeScript、Ant Design 与 TanStack Qu
 | `internal/apidocs/openapi.json` | HTTP wire 契约；前端类型由 `scripts/generate_openapi_types.py` 生成 |
 
 目录结构与日常入口见[本地开发](../engineering/local-development.md)。
+
+
+## 领域与 Store 渐进迁移
+
+[领域边界 ADR](domain-boundaries.md) 固化数据归属、事务与依赖方向；[Store 方法清单](store-ownership.csv) 记录固定源码的调用、SQL 与测试线索。存量接口按实际命令逐步适配，UNKNOWN 需继续裁定；目录变化不能重写冻结证据、历史决定或 schema。
