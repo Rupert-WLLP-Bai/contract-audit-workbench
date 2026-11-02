@@ -13042,12 +13042,12 @@
         }
       },
       "updated": {
-        "value": "2026-11-01",
+        "value": "2026-11-02",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "85b967aff3c499236b047483521087eba693f812",
+          "commit": "a665a79cfa514af2400ad13a89c7f0bacbdc6400",
           "path": "internal/clmoutbox/relay_pg_test.go",
-          "reason": "file introduction created its initial content; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+          "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
       "revision": "r1",
@@ -38945,14 +38945,15 @@
         }
       },
       "updated": {
-        "value": "2026-10-31",
+        "value": "2026-11-02",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "50ac130dbcd63159ba3a9dd60942d61e06e03f93",
-          "reason": "Most recent available content-changing commit in the fixed HEAD history; pure rename events with unchanged blob IDs are excluded. UTC date comes from the commit committer timestamp. Metadata headers have not yet been applied."
+          "commit": "a665a79cfa514af2400ad13a89c7f0bacbdc6400",
+          "path": "internal/store/model_budget_test.go",
+          "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r1",
+      "revision": "r2",
       "copyright": [
         {
           "holder": "Bai Junhao",
