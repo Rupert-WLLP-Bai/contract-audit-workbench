@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: decodeGovernedKnowledge accepts only the canonical bytes and digest produced by the resolver. A nil column denotes a historical, pre-governance run. Related `store` operations include decodeGovernedKnowledge, copyGovernedKnowledge, validateGovernedAttemptSnapshot, sameKnowledgeSnapshotIdentity.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-28
+// Updated: 2026-11-02
+// Revision: r2
+// Copyright: See LICENSE
+// End file metadata.
+
 package store
 
 import (

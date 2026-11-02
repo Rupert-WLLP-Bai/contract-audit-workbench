@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: ExperienceDistillationStatus links an authorized task to its accepted draft. A completed task is never represented as an approved or published version. Related `store` operations include GetExperienceDistillation.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-28
+// Updated: 2026-11-02
+// Revision: r2
+// Copyright: See LICENSE
+// End file metadata.
+
 package store
 
 import (

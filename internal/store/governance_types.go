@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Governance lifecycle states mirror rulepack.State. A version is a separately persisted content revision; its manifest bytes and lifecycle attestations are immutable once published. Related `store` operations include RulePackVersion, RulePackPointer, RulePackHistoryEntry, GovernanceInput.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-25
+// Updated: 2026-10-25
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package store
 
 import "contractaudit/internal/accounts"

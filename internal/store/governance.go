@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: trustedAdmin resolves the verified admin identity and refuses any caller whose session role is not the trusted platform admin role. Tenant and org always come from the directory… Related `store` operations include trustedAdmin, governanceScope, parseGovernedManifest, summary.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-25
+// Updated: 2026-10-25
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package store
 
 import (

@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Contract ledger reads the existing aggregate and its sealed content without adding a second projection table. Every row is authorized through the same case-scope policy as the… Related `store` operations include normalizeLedgerText, ledgerAmountScaled, normalizeLedgerAmount, normalizeLedgerDate.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-01
+// Updated: 2026-11-02
+// Revision: r2
+// Copyright: See LICENSE
+// End file metadata.
+
 package store
 
 import (
