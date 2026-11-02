@@ -17,7 +17,7 @@ type Job struct {
 	Kind             string     `json:"kind"`
 	State            string     `json:"state"`
 	Generation       int64      `json:"generation"`
-	TenantLiveEpoch  int64      `json:"tenant_live_epoch"`
+	TenantLiveEpoch  *int64     `json:"tenant_live_epoch"`
 	WorkerID         string     `json:"worker_id,omitempty"`
 	LeaseUntil       *time.Time `json:"lease_until,omitempty"`
 	Heartbeat        *time.Time `json:"heartbeat_at,omitempty"`

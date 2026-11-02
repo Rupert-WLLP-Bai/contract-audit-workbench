@@ -299,6 +299,11 @@ func (s *Store) scopedAttemptMutationInternal(ctx context.Context, runID, attemp
 	if err := setLocalScope(ctx, tx, claim.scope()); err != nil {
 		return err
 	}
+	if claim.JobID == "" {
+		if scope, ok := model.DelegatedScopeFromContext(ctx); !ok || s.fenceAttemptEpoch(ctx, tx, scope) != nil {
+			return errAttemptAuthorizationRevoked
+		}
+	}
 	if err := scopedCaseLock(ctx, tx, claim.CaseID); err != nil {
 		return err
 	}

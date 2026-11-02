@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"slices"
 	"sort"
+	"strconv"
 	"sync"
 	"time"
 
@@ -475,6 +476,11 @@ func (s *Store) startReview(ctx context.Context, user accounts.User, caseID, bus
 		if err := sealSnapshot(st, runID, signature); err != nil {
 			return err
 		}
+		epoch, err := s.admissionEpoch(ctx, acceptanceTx, currentCase.TenantID)
+		if err != nil {
+			return err
+		}
+		attempt.TenantLiveEpoch = epoch
 		// The accepted attempt carries the exact frozen pack bytes and planner
 		// configuration, so the worker never resolves latest.
 		attempt.ReviewScope = signature.ReviewScope
@@ -500,7 +506,7 @@ func (s *Store) startReview(ctx context.Context, user accounts.User, caseID, bus
 			if err != nil {
 				return err
 			}
-			st.Jobs = append(st.Jobs, Job{ID: jobID, TenantID: caseItem.TenantID, OrgID: caseItem.OwnerOrgID, CaseID: caseID, RunID: runID, AttemptID: attemptID, ActorID: user.ID, PrincipalID: user.PrincipalID, MembershipID: user.MembershipID, IdentityCaptured: true, Kind: "review", State: "queued", CreatedAt: acceptedAt, UpdatedAt: acceptedAt})
+			st.Jobs = append(st.Jobs, Job{ID: jobID, TenantID: caseItem.TenantID, OrgID: caseItem.OwnerOrgID, CaseID: caseID, RunID: runID, AttemptID: attemptID, ActorID: user.ID, PrincipalID: user.PrincipalID, MembershipID: user.MembershipID, IdentityCaptured: true, Kind: "review", State: "queued", TenantLiveEpoch: epoch, CreatedAt: acceptedAt, UpdatedAt: acceptedAt})
 			st.Outbox = append(st.Outbox, OutboxRecord{ID: outboxID, JobID: jobID, TenantID: caseItem.TenantID, OrgID: caseItem.OwnerOrgID, CaseID: caseID, EventType: "review.accepted", Payload: string(payload), State: "pending", CreatedAt: acceptedAt})
 		}
 		for _, selection := range selections {
@@ -737,9 +743,14 @@ func (s *Store) retry(ctx context.Context, user accounts.User, caseID, runID str
 			}
 			reserved = true
 		}
+		epoch, err := s.admissionEpoch(ctx, retryTx, currentCase.TenantID)
+		if err != nil {
+			return err
+		}
 		retryOf := last.ID
 		attempt := Attempt{
-			ID: attemptID, RunID: runID, Ordinal: last.Ordinal + 1, ActorID: user.ID, RetryOfAttemptID: &retryOf,
+			TenantLiveEpoch: epoch,
+			ID:              attemptID, RunID: runID, Ordinal: last.Ordinal + 1, ActorID: user.ID, RetryOfAttemptID: &retryOf,
 			State: "accepted", AcceptedAt: acceptedAt, HistoryKind: "frozen",
 			RulePackSnapshot: append([]byte(nil), last.RulePackSnapshot...), RulePackHash: last.RulePackHash,
 			RulePackSnapshotDigest: last.RulePackSnapshotDigest, RulePackCompilerRef: last.RulePackCompilerRef,
@@ -771,7 +782,7 @@ func (s *Store) retry(ctx context.Context, user accounts.User, caseID, runID str
 			if err != nil {
 				return err
 			}
-			st.Jobs = append(st.Jobs, Job{ID: jobID, TenantID: caseItem.TenantID, OrgID: caseItem.OwnerOrgID, CaseID: caseID, RunID: runID, AttemptID: attemptID, ActorID: user.ID, PrincipalID: user.PrincipalID, MembershipID: user.MembershipID, IdentityCaptured: true, Kind: "review", State: "queued", CreatedAt: acceptedAt, UpdatedAt: acceptedAt})
+			st.Jobs = append(st.Jobs, Job{ID: jobID, TenantID: caseItem.TenantID, OrgID: caseItem.OwnerOrgID, CaseID: caseID, RunID: runID, AttemptID: attemptID, ActorID: user.ID, PrincipalID: user.PrincipalID, MembershipID: user.MembershipID, IdentityCaptured: true, Kind: "review", State: "queued", TenantLiveEpoch: epoch, CreatedAt: acceptedAt, UpdatedAt: acceptedAt})
 			st.Outbox = append(st.Outbox, OutboxRecord{ID: outboxID, JobID: jobID, TenantID: caseItem.TenantID, OrgID: caseItem.OwnerOrgID, CaseID: caseID, EventType: "review.accepted", Payload: string(payload), State: "pending", CreatedAt: acceptedAt})
 		}
 		for i := range st.Runs {
@@ -992,6 +1003,11 @@ func (s *Store) launchAttempt(ctx context.Context, runID, attemptID string, mode
 			return err
 		}
 	} else {
+		st, err := s.embeddedAuthorityState(ctx, user, scope)
+		if err != nil || len(st.Attempts) != 1 || st.Attempts[0].TenantLiveEpoch == nil {
+			return errAttemptAuthorizationRevoked
+		}
+		scope.TenantLiveEpoch = strconv.FormatInt(*st.Attempts[0].TenantLiveEpoch, 10)
 		ticket, err := s.issueOperationTicket(ctx, user, scope)
 		if err != nil {
 			return err

@@ -50,13 +50,32 @@ func syncJobs(ctx context.Context, tx pgx.Tx, items []Job, allowLocalDemo ...boo
 		allowDemo = allowLocalDemo[0]
 	}
 	for _, item := range items {
-		var tenantStatus string
-		var liveEpoch int64
-		if err := tx.QueryRow(ctx, `SELECT status,live_epoch FROM tenant_runtime_control($1,$2)`, item.TenantID, allowDemo).Scan(&tenantStatus, &liveEpoch); err != nil {
-			return fmt.Errorf("read tenant runtime control for admission: %w", err)
+		liveEpoch := item.TenantLiveEpoch
+		if liveEpoch == nil {
+			var exists bool
+			if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM worker_jobs WHERE id=$1)`, item.ID).Scan(&exists); err != nil {
+				return err
+			}
+			if exists {
+				if err := tx.QueryRow(ctx, `SELECT tenant_live_epoch FROM worker_jobs WHERE id=$1 AND tenant_id=$2 AND org_id=$3`, item.ID, item.TenantID, item.OrgID).Scan(&liveEpoch); err != nil || liveEpoch == nil {
+					return errLeaseLost
+				}
+			}
+			if !exists {
+				var status string
+				var epoch int64
+				if err := tx.QueryRow(ctx, `SELECT status,live_epoch FROM tenant_runtime_control($1,$2)`, item.TenantID, allowDemo).Scan(&status, &epoch); err != nil {
+					return fmt.Errorf("read tenant runtime control for admission: %w", err)
+				}
+				if status != "active" {
+					return fault.New(409, "tenant_inactive", "租户已暂停，不能接收新任务")
+				}
+				liveEpoch = &epoch
+			}
 		}
-		if tenantStatus != "active" {
-			return fault.New(409, "tenant_inactive", "租户已暂停，不能接收新任务")
+		var live bool
+		if err := tx.QueryRow(ctx, `SELECT tenant_runtime_fence($1,$2,$3)`, item.TenantID, liveEpoch, allowDemo).Scan(&live); err != nil || !live {
+			return errLeaseLost
 		}
 		tag, err := tx.Exec(ctx, `INSERT INTO worker_jobs
 			(id, tenant_id, org_id, case_id, run_id, attempt_id, actor_id, kind, state, generation, tenant_live_epoch, worker_id, lease_until, heartbeat_at, created_at, updated_at)

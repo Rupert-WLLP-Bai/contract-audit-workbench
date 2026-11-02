@@ -477,11 +477,11 @@ func MigrateServiceRoles(ctx context.Context) error {
 		}
 	}
 	for _, role := range configuredRoles {
-		if _, err := tx.Exec(ctx, `GRANT EXECUTE ON FUNCTION `+pgx.Identifier{schema}.Sanitize()+`.tenant_context_fence(text,bigint,text,uuid,uuid), `+pgx.Identifier{schema}.Sanitize()+`.tenant_operation_fence(jsonb,text,text) TO `+pgx.Identifier{role}.Sanitize()); err != nil {
+		if _, err := tx.Exec(ctx, `GRANT EXECUTE ON FUNCTION `+pgx.Identifier{schema}.Sanitize()+`.tenant_context_fence(text,bigint,text,uuid,uuid), `+pgx.Identifier{schema}.Sanitize()+`.tenant_operation_fence(jsonb,text,text), `+pgx.Identifier{schema}.Sanitize()+`.tenant_ticket_epoch(text,jsonb,boolean) TO `+pgx.Identifier{role}.Sanitize()); err != nil {
 			return err
 		}
 	}
-	for _, role := range []string{coreRoleName, executionRoleName, modelRoleName} {
+	for _, role := range configuredRoles {
 		if role == "" {
 			continue
 		}

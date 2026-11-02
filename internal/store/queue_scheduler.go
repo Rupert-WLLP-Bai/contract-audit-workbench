@@ -43,7 +43,7 @@ func claimScheduledJob(ctx context.Context, tx pgx.Tx, worker string, lease time
 		var deficit int
 		err := tx.QueryRow(ctx, `SELECT t.tenant_id,t.deficit FROM execution_queue_tenants t
 			WHERE EXISTS (SELECT 1 FROM worker_jobs j WHERE j.tenant_id=t.tenant_id AND
-				tenant_runtime_fence(j.tenant_id,j.tenant_live_epoch,$3) AND
+				tenant_runtime_fence(j.tenant_id,j.tenant_live_epoch,$3) AND (j.kind<>'review' OR EXISTS (SELECT 1 FROM review_attempts a WHERE a.tenant_id=j.tenant_id AND a.org_id=j.org_id AND a.run_id=j.run_id AND a.id=j.attempt_id AND a.tenant_live_epoch=j.tenant_live_epoch)) AND
 				((j.state='queued' AND j.ready_at<=clock_timestamp()) OR
 				(j.state='running' AND j.lease_until<=clock_timestamp() AND (j.ready_at<=clock_timestamp() OR j.deadline_at<=clock_timestamp()))))
 			AND (SELECT count(*) FROM worker_jobs a WHERE a.tenant_id=t.tenant_id AND a.state='running' AND a.lease_until>clock_timestamp())<$2
@@ -60,7 +60,7 @@ func claimScheduledJob(ctx context.Context, tx pgx.Tx, worker string, lease time
 		err = tx.QueryRow(ctx, `SELECT id,tenant_id,org_id,case_id,COALESCE(run_id,''),COALESCE(attempt_id,''),actor_id,kind,state='running',claim_count,max_claims,deadline_at,deadline_at<=clock_timestamp(),created_at,
 			tenant_live_epoch,
 			CASE WHEN state='queued' THEN ready_at ELSE GREATEST(lease_until,LEAST(ready_at,deadline_at)) END
-			FROM worker_jobs WHERE tenant_id=$1 AND tenant_runtime_fence(tenant_id,tenant_live_epoch,$2) AND
+			FROM worker_jobs j WHERE tenant_id=$1 AND tenant_runtime_fence(tenant_id,tenant_live_epoch,$2) AND (j.kind<>'review' OR EXISTS (SELECT 1 FROM review_attempts a WHERE a.tenant_id=j.tenant_id AND a.org_id=j.org_id AND a.run_id=j.run_id AND a.id=j.attempt_id AND a.tenant_live_epoch=j.tenant_live_epoch)) AND
 			((state='queued' AND ready_at<=clock_timestamp()) OR
 			(state='running' AND lease_until<=clock_timestamp() AND (ready_at<=clock_timestamp() OR deadline_at<=clock_timestamp())))
 			ORDER BY created_at,id LIMIT 1 FOR UPDATE SKIP LOCKED`, tenant, allowDemo).Scan(

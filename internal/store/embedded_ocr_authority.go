@@ -35,7 +35,7 @@ func (s *Store) validateEmbeddedOCRScope(ctx context.Context, u accounts.User, c
 	var raw []byte
 	err = tx.QueryRow(ctx, `SELECT session_digest,context_version,scope FROM operation_authority_tickets WHERE ticket_digest=$1 AND tenant_id=$2 AND expires_at>clock_timestamp()`, child.ParentTicketDigest, child.TenantID).Scan(&digest, &version, &raw)
 	var parent model.DelegatedScope
-	if err != nil || digest != p.SessionDigest || strconv.FormatInt(version, 10) != p.ContextVersion || json.Unmarshal(raw, &parent) != nil || parent.Kind != "execution_prepare" || parent.Action != "embedded_prepare" || parent.AdmissionRevision != child.AdmissionRevision || parent.TenantID != child.TenantID || parent.OrgID != child.OrgID || parent.CaseID != child.CaseID || parent.ActorID != child.ActorID || parent.RunID != child.RunID || parent.AttemptID != child.AttemptID || parent.JobID != "" {
+	if err != nil || digest != p.SessionDigest || strconv.FormatInt(version, 10) != p.ContextVersion || json.Unmarshal(raw, &parent) != nil || parent.Kind != "execution_prepare" || parent.Action != "embedded_prepare" || parent.AdmissionRevision != child.AdmissionRevision || parent.TenantLiveEpoch != child.TenantLiveEpoch || parent.TenantID != child.TenantID || parent.OrgID != child.OrgID || parent.CaseID != child.CaseID || parent.ActorID != child.ActorID || parent.RunID != child.RunID || parent.AttemptID != child.AttemptID || parent.JobID != "" {
 		return errAttemptAuthorizationRevoked
 	}
 	st, err := s.loadScopedAttemptState(model.WithDelegatedScope(ctx, model.DelegatedScope{}), tx, JobClaim{TenantID: child.TenantID, OrgID: child.OrgID, CaseID: child.CaseID}, child.RunID, child.AttemptID)
@@ -102,7 +102,7 @@ func (s *Store) mintEmbeddedOCRPayload(ctx context.Context, user accounts.User, 
 	if _, err = s.ResolveOperationAuthority(ctx, parent, "worker"); err != nil {
 		return model.DelegatedScope{}, errAttemptAuthorizationRevoked
 	}
-	child := model.DelegatedScope{Kind: "document", Action: "embedded_prepare_parse", TenantID: parent.TenantID, OrgID: parent.OrgID, CaseID: parent.CaseID, ActorID: parent.ActorID, RunID: parent.RunID, AttemptID: parent.AttemptID, DocumentID: doc.ID, InputSHA256: doc.Digest, ParseSelectionID: selection.ParsedDocumentID, ParseSelectionSHA256: parseSelectionFingerprint(selection), ParseConfigSHA256: selection.ConfigHash, ParentTicketDigest: identityTokenDigest(parent.OperationTicket), AdmissionRevision: proof.revision}
+	child := model.DelegatedScope{TenantLiveEpoch: parent.TenantLiveEpoch, Kind: "document", Action: "embedded_prepare_parse", TenantID: parent.TenantID, OrgID: parent.OrgID, CaseID: parent.CaseID, ActorID: parent.ActorID, RunID: parent.RunID, AttemptID: parent.AttemptID, DocumentID: doc.ID, InputSHA256: doc.Digest, ParseSelectionID: selection.ParsedDocumentID, ParseSelectionSHA256: parseSelectionFingerprint(selection), ParseConfigSHA256: selection.ConfigHash, ParentTicketDigest: identityTokenDigest(parent.OperationTicket), AdmissionRevision: proof.revision}
 	if payload != nil {
 		child.OCRPayloadSHA256 = digestBytes(payload)
 		child.OCRPage = source.Page
@@ -127,8 +127,20 @@ func (s *Store) mintEmbeddedOCRPayload(ctx context.Context, user accounts.User, 
 	if err = setLocalScope(ctx, tx, userScope(user)); err != nil {
 		return model.DelegatedScope{}, err
 	}
-	tag, err := tx.Exec(ctx, `INSERT INTO operation_authority_tickets(ticket_digest,tenant_id,org_id,session_digest,principal_id,membership_id,scope,context_version,expires_at)
- SELECT $1,tenant_id,org_id,session_digest,principal_id,membership_id,$2::jsonb,context_version,LEAST(expires_at,statement_timestamp()+interval '5 minutes') FROM operation_authority_tickets WHERE ticket_digest=$3 AND tenant_id=$4 AND session_digest=$5 AND context_version=$6 AND expires_at>clock_timestamp()`, identityTokenDigest(raw), encoded, child.ParentTicketDigest, child.TenantID, proof.digest, proof.version)
+	if err = s.fenceAttemptEpoch(ctx, tx, parent); err != nil {
+		return model.DelegatedScope{}, err
+	}
+	var parentScope []byte
+	var parentLive bool
+	if err = tx.QueryRow(ctx, `SELECT scope, expires_at>clock_timestamp() FROM operation_authority_tickets WHERE ticket_digest=$1 AND tenant_id=$2 AND org_id=$3 FOR SHARE`, child.ParentTicketDigest, parent.TenantID, parent.OrgID).Scan(&parentScope, &parentLive); err != nil || !parentLive {
+		return model.DelegatedScope{}, errAttemptAuthorizationRevoked
+	}
+	var saved model.DelegatedScope
+	if json.Unmarshal(parentScope, &saved) != nil || saved != stableOperation(parent) {
+		return model.DelegatedScope{}, errAttemptAuthorizationRevoked
+	}
+	tag, err := tx.Exec(ctx, `INSERT INTO operation_authority_tickets(ticket_digest,tenant_id,org_id,session_digest,principal_id,membership_id,scope,context_version,expires_at,tenant_live_epoch)
+ SELECT $1,tenant_id,org_id,session_digest,principal_id,membership_id,$2::jsonb,context_version,LEAST(expires_at,statement_timestamp()+interval '5 minutes'),tenant_live_epoch FROM operation_authority_tickets WHERE ticket_digest=$3 AND tenant_id=$4 AND session_digest=$5 AND context_version=$6 AND expires_at>clock_timestamp()`, identityTokenDigest(raw), encoded, child.ParentTicketDigest, child.TenantID, proof.digest, proof.version)
 	if err != nil || tag.RowsAffected() != 1 {
 		return model.DelegatedScope{}, errAttemptAuthorizationRevoked
 	}

@@ -329,6 +329,7 @@ func (st state) clone() (state, error) {
 		if i >= len(st.Attempts) {
 			break
 		}
+		out.Attempts[i].TenantLiveEpoch = st.Attempts[i].TenantLiveEpoch
 		out.Attempts[i].RulePackSnapshot = append(json.RawMessage(nil), st.Attempts[i].RulePackSnapshot...)
 		out.Attempts[i].RulePackHash = st.Attempts[i].RulePackHash
 		out.Attempts[i].RulePackCompilerRef = st.Attempts[i].RulePackCompilerRef
@@ -406,6 +407,7 @@ type Run struct {
 
 // Attempt is one immutable execution identity within a run.
 type Attempt struct {
+	TenantLiveEpoch        *int64               `json:"-"`
 	ID                     string               `json:"id"`
 	RunID                  string               `json:"run_id"`
 	ActorID                string               `json:"actor_id,omitempty"`

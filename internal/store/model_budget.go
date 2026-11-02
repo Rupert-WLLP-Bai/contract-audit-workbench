@@ -377,7 +377,39 @@ func authorizeModelScope(ctx context.Context, tx pgx.Tx, caller string, scope mo
 		return ErrModelScopeUnavailable
 	}
 	var sendAllowed bool
-	if err := tx.QueryRow(ctx, `SELECT tenant_model_send_fence($1,COALESCE((SELECT live_epoch FROM tenant_runtime_control($1,$2)),-1),$2)`, scope.TenantID, allowLocalDemo).Scan(&sendAllowed); err != nil || !sendAllowed {
+	var expectedEpoch any
+	if scope.JobID != "" {
+		var epoch *int64
+		if err := tx.QueryRow(ctx, `SELECT tenant_live_epoch FROM worker_jobs WHERE id=$1 AND tenant_id=$2 AND org_id=$3 AND case_id=$4 AND actor_id=$5 AND worker_id=$6 AND generation=$7 AND state='running' AND lease_until>clock_timestamp()`, scope.JobID, scope.TenantID, scope.OrgID, scope.CaseID, scope.ActorID, scope.WorkerID, scope.Generation).Scan(&epoch); err != nil || epoch == nil {
+			return ErrModelScopeUnavailable
+		}
+		expectedEpoch = *epoch
+	} else if scope.AttemptID != "" {
+		epoch, ok := canonicalEpoch(scope.TenantLiveEpoch)
+		if !ok {
+			return ErrModelScopeUnavailable
+		}
+		expectedEpoch = epoch
+		var match bool
+		if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM review_attempts a JOIN review_runs r ON r.id=a.run_id AND r.tenant_id=a.tenant_id AND r.org_id=a.org_id WHERE a.tenant_id=$1 AND a.org_id=$2 AND r.case_id=$3 AND a.run_id=$4 AND a.id=$5 AND a.actor_id=$6 AND a.tenant_live_epoch=$7)`, scope.TenantID, scope.OrgID, scope.CaseID, scope.RunID, scope.AttemptID, scope.ActorID, epoch).Scan(&match); err != nil || !match {
+			return ErrModelScopeUnavailable
+		}
+	} else {
+		if scope.OperationTicket == "" && allowLocalDemo && (scope.TenantID == "local-demo" || scope.TenantID == "local-demo-2") {
+			expectedEpoch = int64(0)
+		} else {
+			encoded, err := json.Marshal(scope)
+			if err != nil {
+				return ErrModelScopeUnavailable
+			}
+			var epoch *int64
+			if err := tx.QueryRow(ctx, `SELECT tenant_ticket_epoch($1,$2::jsonb,$3)`, identityTokenDigest(scope.OperationTicket), encoded, allowLocalDemo).Scan(&epoch); err != nil || epoch == nil {
+				return ErrModelScopeUnavailable
+			}
+			expectedEpoch = *epoch
+		}
+	}
+	if err := tx.QueryRow(ctx, `SELECT tenant_model_send_fence($1,$2,$3)`, scope.TenantID, expectedEpoch, allowLocalDemo).Scan(&sendAllowed); err != nil || !sendAllowed {
 		return ErrModelScopeUnavailable
 	}
 	var caseItem Case
@@ -412,7 +444,7 @@ func authorizeModelScope(ctx context.Context, tx pgx.Tx, caller string, scope mo
 			JOIN cases c ON c.id=j.case_id
 			WHERE j.id=$1 AND j.worker_id=$2 AND j.generation=$3 AND j.tenant_id=$4 AND j.org_id=$5 AND j.case_id=$6
 			AND j.run_id=$7 AND j.attempt_id=$8 AND j.actor_id=$9 AND j.state='running' AND j.lease_until>clock_timestamp()
-			AND tenant_runtime_fence(j.tenant_id,j.tenant_live_epoch,$10)
+			AND tenant_runtime_fence(j.tenant_id,j.tenant_live_epoch,$10) AND a.tenant_live_epoch=j.tenant_live_epoch
 			AND r.case_id=j.case_id AND r.state='running' AND a.actor_id=j.actor_id AND a.state IN ('accepted','running')`
 		args := []any{scope.JobID, scope.WorkerID, scope.Generation, scope.TenantID, scope.OrgID, scope.CaseID, scope.RunID, scope.AttemptID, scope.ActorID, allowLocalDemo}
 		if caller == "document" {

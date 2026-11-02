@@ -69,8 +69,9 @@ func TestPreparationAuthoritySelectionAndFrozenInput(t *testing.T) {
 	frozen := frozenFromParsed(doc, parsed)
 	snapshot := RunSnapshot{RunID: "run", DocumentIDs: []string{"doc"}, ParsedDocumentIDs: []string{"parsed"}, ParseSelectionHash: selectionHash([]FrozenDocument{frozen}), ParserConfigurationID: frozenConfigHash([]FrozenDocument{frozen})}
 	selection := AttemptParseSelection{AttemptID: "attempt", RunID: "run", DocumentID: doc.ID, OriginalDigest: digest, ParsedDocumentID: parsed.ID, SelectionOrder: 1, ParserID: parsed.ParserID, ParserVersion: parsed.ParserVersion, ConfigHash: parsed.ConfigHash, NormalizationVersion: parsed.NormalizationVersion}
-	st := state{Runs: []Run{{ID: "run", CaseID: "case", State: "running"}}, Attempts: []Attempt{{ID: "attempt", RunID: "run", ActorID: "actor", State: "running", HistoryKind: "preparing"}}, Documents: []Document{doc}, Snapshots: []RunSnapshot{snapshot}, AttemptParseSelections: []AttemptParseSelection{selection}}
-	scope := model.DelegatedScope{Kind: "execution_prepare", CaseID: "case", ActorID: "actor", RunID: "run", AttemptID: "attempt", InputSHA256: preparationSelectionHash([]AttemptParseSelection{selection})}
+	epoch := int64(0)
+	st := state{Runs: []Run{{ID: "run", CaseID: "case", State: "running"}}, Attempts: []Attempt{{ID: "attempt", RunID: "run", ActorID: "actor", State: "running", HistoryKind: "preparing", TenantLiveEpoch: &epoch}}, Documents: []Document{doc}, Snapshots: []RunSnapshot{snapshot}, AttemptParseSelections: []AttemptParseSelection{selection}}
+	scope := model.DelegatedScope{Kind: "execution_prepare", TenantLiveEpoch: "0", CaseID: "case", ActorID: "actor", RunID: "run", AttemptID: "attempt", InputSHA256: preparationSelectionHash([]AttemptParseSelection{selection})}
 	var store Store
 	if !store.validEmbeddedAuthorityState(st, scope) {
 		t.Fatal("complete preparing state rejected")

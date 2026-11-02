@@ -9,6 +9,7 @@ import (
 	"contractaudit/internal/access"
 	"contractaudit/internal/accounts"
 	"contractaudit/internal/fault"
+	"contractaudit/internal/model"
 
 	"github.com/jackc/pgx/v5"
 )
@@ -150,11 +151,15 @@ func (s *Store) CreateDocumentIntakeTicket(ctx context.Context, user accounts.Us
 	if json.Unmarshal(requestJSON, &identity) != nil || identity.FileSHA256 != bodyHash || !authorizeCase(item, current, access.Manage) {
 		return "", fault.Forbidden("当前身份无权继续此建案上传")
 	}
+	epoch, err := s.admissionEpoch(ctx, tx, accounts.Tenant(current))
+	if err != nil {
+		return "", err
+	}
 	if _, err := tx.Exec(ctx, `INSERT INTO intake_authority_tickets
-		(ticket_digest,tenant_id,operation_id,session_digest,principal_id,membership_id,actor_id,org_id,case_id,upload_key,filename,media_type,body_sha256,action,expires_at,context_version)
-		VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,'create_primary_contract',clock_timestamp()+interval '2 minutes',$14)`,
+		(ticket_digest,tenant_id,operation_id,session_digest,principal_id,membership_id,actor_id,org_id,case_id,upload_key,filename,media_type,body_sha256,action,expires_at,context_version,tenant_live_epoch)
+		VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,'create_primary_contract',clock_timestamp()+interval '2 minutes',$14,$15)`,
 		ticketDigest, accounts.Tenant(current), operationID, sessionDigest, storedSession.PrincipalID, storedSession.MembershipID,
-		current.ID, current.OrgID, caseID, uploadKey, identity.FileName, identity.MediaType, bodyHash, contextVersion); err != nil {
+		current.ID, current.OrgID, caseID, uploadKey, identity.FileName, identity.MediaType, bodyHash, contextVersion, epoch); err != nil {
 		return "", err
 	}
 	if err := tx.Commit(ctx); err != nil {
@@ -198,7 +203,7 @@ func (s *Store) ResolveDocumentIntakeTicket(ctx context.Context, ticket, bodySHA
 
 func (s *Store) authorizeCurrentIntakeTicketCase(ctx context.Context, user accounts.User, authority DocumentIntakeAuthority, ticketDigest string) error {
 	ctx = commandContext(ctx, user)
-	tx, err := s.beginContextTx(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted, AccessMode: pgx.ReadOnly})
+	tx, err := s.beginContextTx(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted})
 	if err != nil {
 		return err
 	}
@@ -220,6 +225,14 @@ func (s *Store) authorizeCurrentIntakeTicketCase(ctx context.Context, user accou
 	if err != nil || (status != caseIntakePendingStatus && status != caseIntakeCompletedStatus) || uploadKey != authority.UploadKey || archivedAt != nil ||
 		json.Unmarshal([]byte(members), &item.MemberIDs) != nil || !authorizeCase(item, user, access.Manage) {
 		return fault.Forbidden("当前身份无权继续此建案上传")
+	}
+	scope, err := json.Marshal(model.DelegatedScope{Kind: "document", Action: "intake_parse", TenantID: accounts.Tenant(user), OrgID: authority.OrgID, CaseID: authority.CaseID, ActorID: authority.ActorID, InputSHA256: authority.BodySHA256})
+	if err != nil {
+		return err
+	}
+	var epoch *int64
+	if err = tx.QueryRow(ctx, `SELECT tenant_ticket_epoch($1,$2::jsonb,$3)`, ticketDigest, scope, s.sel.Mode != "production").Scan(&epoch); err != nil || epoch == nil {
+		return fault.Forbidden("建案上传授权已失效")
 	}
 	// Ticket rows remain tenant protected; reuse this verified user's scoped
 	// read transaction rather than a connection without business authority.

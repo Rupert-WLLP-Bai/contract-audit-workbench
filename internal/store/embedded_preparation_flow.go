@@ -91,6 +91,9 @@ func (s *Store) settleExpiredEmbeddedPreparation(ctx context.Context, scope mode
 	if err = setLocalScope(ctx, tx, claim.scope()); err != nil {
 		return err
 	}
+	if err = s.fenceAttemptEpoch(ctx, tx, scope); err != nil {
+		return err
+	}
 	if err = scopedCaseLock(ctx, tx, claim.CaseID); err != nil {
 		return err
 	}
