@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: LegalAuthorityReference is an exact, authored citation attached to a rule. It carries shape and identity only; store validation proves the referenced governed article and capture,… Related `rulepack` operations include normalizeRuleLegalAuthorities, normalizeLegalAuthorityReference, normalizeLegalInterval, normalizeLegalQuoteSpan.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-31
+// Updated: 2026-10-31
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package rulepack
 
 import (

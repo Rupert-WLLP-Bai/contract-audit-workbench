@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: AuthenticateSession resolves identity and audience from one authoritative PostgreSQL read. A caller must start a new read for each HTTP request. Related `store` operations include Login, EstablishSession, AuthenticateSession, SessionAudience.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-25
+// Updated: 2026-11-02
+// Revision: r2
+// Copyright: See LICENSE
+// End file metadata.
+
 package store
 
 import (

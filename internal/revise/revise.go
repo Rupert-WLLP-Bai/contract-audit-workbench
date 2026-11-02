@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: compares one run's constraints with the previous run. A match is the constraint identity plus each verified quote and value. Model prose is not an input. Related `revise` operations include Classify, Matches, identity.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-25
+// Updated: 2026-10-25
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 // Package revise compares one run's constraints with the previous run.
 // A match is the constraint identity plus each verified quote and value.
 // Model prose is not an input.

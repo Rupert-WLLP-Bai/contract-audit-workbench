@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: holds the lifecycle wiring shared by the service entrypoints: signal-scoped contexts, graceful HTTP shutdown and the environment fallback rule. Related `process` operations include Main, SignalContext, Serve, Env.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-30
+// Updated: 2026-10-31
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 // Package process holds the lifecycle wiring shared by the service
 // entrypoints: signal-scoped contexts, graceful HTTP shutdown and the
 // environment fallback rule.

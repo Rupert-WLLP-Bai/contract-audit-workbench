@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Exercises the `rulepack` package behavior through TestLegalAuthorityReferenceNormalizesAndDeepClones, TestLegalAuthorityOptionalFieldPreservesHistoricalManifestBytesAndHash, TestLegalAuthorityReferenceRejectsMalformedStructure; these checks pin observable state, error handling, or wire/database compatibility for this module. Test cases include no matching normative source.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-31
+// Updated: 2026-10-31
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package rulepack
 
 import (

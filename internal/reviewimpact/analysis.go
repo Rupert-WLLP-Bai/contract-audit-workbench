@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Higher causes take precedence regardless of check or map iteration order. Fact-set changes deliberately outrank other unknown dependencies. Related `reviewimpact` operations include reason, addChange, force, inputs.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-30
+// Updated: 2026-10-30
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package reviewimpact
 
 import "contractaudit/internal/auditext"

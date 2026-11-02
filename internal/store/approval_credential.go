@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: ApprovalCredentialClaims is the non-secret projection returned with a credential. The token itself is the only bearer value; these claims tell the page which task, revision and… Related `store` operations include loadApprovalRevisionScope, IssueApprovalCredential, verifyApprovalCredential, loadApprovalRound.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-01
+// Updated: 2026-11-02
+// Revision: r2
+// Copyright: See LICENSE
+// End file metadata.
+
 package store
 
 import (
