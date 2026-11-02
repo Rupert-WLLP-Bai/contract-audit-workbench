@@ -172,6 +172,13 @@ func (s *Store) reserveModelCall(ctx context.Context, caller string, scope model
 	if err := setModelLedgerIdentity(ctx, tx, scope.Kind, scope.JobID, scope.Generation, scope.InputSHA256); err != nil {
 		return ModelCallLease{}, err
 	}
+	providerID := ""
+	if providerIdentity != nil {
+		providerID = *providerIdentity
+	}
+	if _, err := tx.Exec(ctx, `SELECT set_config('app.model_provider_identity',$1,true)`, providerID); err != nil {
+		return ModelCallLease{}, err
+	}
 	if scope.Kind == "experience_distill" {
 		if caller != "worker" || scope.TenantID == "" || scope.OrgID == "" || scope.CaseID == "" || scope.ActorID == "" ||
 			scope.JobID == "" || scope.WorkerID == "" || scope.Generation <= 0 || scope.RunID != "" || scope.AttemptID != "" || len(scope.InputSHA256) != 64 {
@@ -219,6 +226,10 @@ func (s *Store) reserveModelCall(ctx context.Context, caller string, scope model
 		int64(math.Ceil(float64(limits.LeaseDuration)/float64(time.Millisecond))),
 	).Scan(&reserved); err != nil {
 		var state interface{ SQLState() string }
+		if errors.As(err, &state) && state.SQLState() == "P7M03" {
+			s.Telemetry().RecordQuotaRejection("model_money_budget")
+			return ModelCallLease{}, ErrModelBudgetExceeded
+		}
 		if scope.Kind == "experience_distill" && errors.As(err, &state) && state.SQLState() == "P7M01" {
 			return ModelCallLease{}, ErrModelScopeUnavailable
 		}

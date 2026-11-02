@@ -518,6 +518,12 @@ func (s *Service) settleAndRespondChatAttempt(w http.ResponseWriter, ctx context
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "model usage could not be recorded", "code": "model_usage_unavailable"})
 		return false
 	}
+	// A sent request with no provider usage is financially unknown. Starting a
+	// blind retry would create another billable physical call while retaining
+	// the first call's conservative money hold.
+	if !preDispatch && usage == nil {
+		retryable = false
+	}
 	return s.respondToChatAttempt(w, ctx, request, probe, attempt, response, status, requestErr, retryable)
 }
 
