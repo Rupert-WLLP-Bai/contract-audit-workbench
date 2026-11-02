@@ -228,8 +228,16 @@ def _validate_bootstrap_record(path, rec, policy):
         exc=rec.get('exception', {})
         if exc.get('rule_id')!=rule['id'] or exc.get('source')!=path:
             raise mt.ManifestError(f'{path}: exact unknown-author/rights exception missing')
-        return
     mt.validate_record(path,rec,policy)
+
+def _validate_candidate_records(records, policy):
+    failures = []
+    for path, rec in records.items():
+        try:
+            _validate_bootstrap_record(path, rec, policy)
+        except mt.ManifestError as exc:
+            failures.append({'path':path, 'reason':str(exc)})
+    return failures
 
 def _record_new(path, entry, proposal, policy, repo, subject_sha, schema):
     purpose = proposal.get("purpose")
@@ -400,7 +408,6 @@ def bootstrap(repo_path, legacy_sha, anchor_sha, subject_sha, purpose_data):
                     mt._verify_recorded_updated(g, path, rec, entry, target_commit=subject_resolved,
                         rule=rule, kind=kind, style=style)
                 _refresh_handling_fields(path, rec, rule)
-                _validate_bootstrap_record(path, rec, p)
             except (GitInventoryError, mt.ManifestError, MetadataError) as exc:
                 failures.append({'path':path,'reason':str(exc)})
                 # Keep the path visible in coverage even when validation fails.
@@ -437,6 +444,7 @@ def bootstrap(repo_path, legacy_sha, anchor_sha, subject_sha, purpose_data):
         failures.append({'path':mt.MANIFEST_PATH,'reason':'canonical self record unavailable for revision refresh'})
     try: mt.validate_schema(candidate, schema)
     except mt.ManifestError as exc: failures.append({'path':'<candidate-schema>','reason':str(exc)})
+    failures.extend(_validate_candidate_records(candidate_files, p))
     if missing or stale: failures.append({'path':'<candidate-coverage>','reason':f'missing={missing[:20]} stale={stale[:20]}'})
     status = 'PASS' if not failures and not missing and not stale else 'FAIL'
     report = {

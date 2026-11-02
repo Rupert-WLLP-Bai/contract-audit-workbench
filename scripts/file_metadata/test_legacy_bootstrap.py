@@ -11,7 +11,7 @@ HERE=Path(__file__).resolve().parent
 sys.path.insert(0,str(HERE))
 from legacy_bootstrap import (BootstrapError, ALLOWED_BRIDGE_ADDITIONS, verify_bridge_trees,
     match_purpose, _window_revision, _same_earliest_created, _verify_created,
-    prepare_policy_delta, _validate_bootstrap_record, _exception_for, _record_new, GLOSSARY_VIEWS_RULE, LITERAL_MARKER_RULE)
+    prepare_policy_delta, _validate_bootstrap_record, _validate_candidate_records, _exception_for, _record_new, GLOSSARY_VIEWS_RULE, LITERAL_MARKER_RULE)
 from git_inventory import GitRepo, TreeEntry
 from metadata_core import STYLES, MetadataError, insert_header, metadata_body
 import manifest_tool as mt
@@ -184,12 +184,20 @@ class BootstrapGuards(unittest.TestCase):
         policy=mt.Policy(candidate)
         path='web/public/huangjueshu-competition-logo.png'
         rule=policy.classify(path)
-        good={'authors':[{'name':'unknown','role':'unknown'}],
-              'maintainers':[{'name':'Bai Junhao','email':'baijunhao@cq.chinamobile.com'}],
-              'copyright':[{'holder':'unknown'}],
-              'exception':_exception_for(path,rule)}
+        schema = mt.load_json(HERE.parents[1] / 'scripts/file_metadata/schema.json')
+        evidence = SimpleNamespace(value='unknown', source={'kind':'unknown', 'reason':'No traceable history exists for this fixture.'})
+        repo = SimpleNamespace(path_provenance=lambda *args, **kwargs: SimpleNamespace(created=evidence, updated=evidence))
+        proposal = {'purpose':'Logo asset identifies the competition in the web application.',
+                    'authors':[{'name':'unknown','role':'unknown','source':'Author source is not established for this asset.'}],
+                    'copyright':[{'holder':'unknown','notice':'No per-file declaration was found; ownership is not inferred.',
+                                  'source':'Asset metadata inspection requires rights-source follow-up.'}]}
+        good = _record_new(path, None, proposal, policy, repo, 'a'*40, schema)
         _validate_bootstrap_record(path,good,policy)
         forged=dict(good,authors=[{'name':'Bai Junhao','role':'project-author'}])
         with self.assertRaises(mt.ManifestError): _validate_bootstrap_record(path,forged,policy)
+        invalid = dict(good, purpose='short')
+        failures = _validate_candidate_records({path: invalid}, policy)
+        self.assertTrue(failures)
+        self.assertEqual(failures[0]['path'], path)
 
 if __name__=='__main__': unittest.main(verbosity=2)
