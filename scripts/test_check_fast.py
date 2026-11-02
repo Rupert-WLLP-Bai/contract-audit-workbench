@@ -292,6 +292,214 @@ func TestValue(t *testing.T) { if Value != 1 { t.Fatal(Value) } }
         self.assertEqual(target.tests, tuple(sorted(check_fast.SESSION_TESTS)))
         self.assertNotIn("TestLoginOriginalAndRetryStayInPostgres", target.tests)
 
+    def test_tenant_identity_paths_select_core_and_oidc_postgres_cases(self):
+        paths = tuple(sorted(check_fast.TENANT_AUTHORITY_CORE_PATHS)) + (
+            "internal/coreauthority/transport.go",
+            "internal/operationauthority/client.go",
+            "internal/operationauthority/client_test.go",
+        )
+        for path in paths:
+            with self.subTest(path=path):
+                plan = self.plan(check_fast.Change("M", path))
+                targets = {target.package: target for target in plan.database_tests}
+                self.assertTrue(plan.database)
+                self.assertIn("./internal/store", targets)
+                self.assertTrue(set(check_fast.TENANT_IDENTITY_TESTS).issubset(
+                    targets["./internal/store"].tests))
+                self.assertEqual(targets["./internal/store"].needs_model,
+                                 check_fast._is_budget(path))
+                checks = check_fast._build_checks(
+                    plan, self.root, sys.executable,
+                    self.root.parent / "offline-migrator-check-output")
+                store_checks = [check for check in checks
+                                if check.name.startswith("database-fixed-point")
+                                and check.command[-1] == "./internal/store"]
+                self.assertEqual(len(store_checks), 1)
+                self.assertIn(check_fast.OFFLINE_MIGRATOR_BOOTSTRAP_TESTS[0],
+                              store_checks[0].expected_tests)
+                pattern = store_checks[0].command[
+                    store_checks[0].command.index("-run") + 1]
+                self.assertIn(check_fast.OFFLINE_MIGRATOR_BOOTSTRAP_TESTS[0], pattern)
+                self.assertIn("./internal/bootstrap", targets)
+                self.assertEqual(set(targets["./internal/bootstrap"].tests),
+                                 set(check_fast.TENANT_AUTHORITY_BOOTSTRAP_TESTS))
+                if check_fast._is_case_intake_authority(path):
+                    self.assertTrue(set(check_fast.CASE_INTAKE_AUTHORITY_TESTS).issubset(
+                        targets["./internal/store"].tests))
+
+        http_paths = (
+            "internal/accounts/accounts.go",
+            "internal/identity/manager.go",
+            "internal/httpapi/oidc.go",
+            "internal/httpapi/oidc_test.go",
+            "internal/httpapi/session_audience.go",
+            "internal/httpapi/server.go",
+            "internal/httpapi/services.go",
+            "internal/store/tenant_identity.go",
+            "internal/store/migrations/0033_tenant_membership.sql",
+            "internal/store/service_roles.go",
+            "internal/store/identity_import.go",
+            "internal/store/identity_import_test.go",
+        )
+        for path in http_paths:
+            with self.subTest(http_path=path):
+                plan = self.plan(check_fast.Change("M", path))
+                targets = {target.package: target for target in plan.database_tests}
+                self.assertIn("./internal/httpapi", targets)
+                self.assertEqual(
+                    set(targets["./internal/httpapi"].tests),
+                    set(check_fast.TENANT_IDENTITY_HTTP_TESTS))
+                self.assertIn("./internal/store", targets)
+                self.assertTrue(set(check_fast.TENANT_IDENTITY_TESTS).issubset(
+                    targets["./internal/store"].tests))
+
+    def test_tenant_authority_session_and_model_paths_select_required_suites(self):
+        paths = (
+            "internal/store/tool_authority.go",
+            "internal/store/pg.go",
+            "internal/modelgateway/service.go",
+            "internal/modelgateway/jev.go",
+        )
+        for path in paths:
+            with self.subTest(path=path):
+                plan = self.plan(check_fast.Change("M", path))
+                targets = {target.package: target for target in plan.database_tests}
+                self.assertTrue(plan.database)
+                self.assertEqual(set(targets), {"./internal/store", "./internal/bootstrap"}
+                                 | ({"./internal/httpapi"} if path.endswith("/pg.go") else set()))
+                store_tests = set(targets["./internal/store"].tests)
+                self.assertTrue(set(check_fast.TENANT_IDENTITY_TESTS).issubset(
+                    store_tests))
+                self.assertEqual(set(targets["./internal/bootstrap"].tests),
+                                 set(check_fast.TENANT_AUTHORITY_BOOTSTRAP_TESTS))
+                self.assertEqual(targets["./internal/store"].needs_model,
+                                 check_fast._is_budget(path))
+                if path.endswith("/pg.go"):
+                    self.assertEqual(set(targets["./internal/httpapi"].tests),
+                                     set(check_fast.TENANT_IDENTITY_HTTP_TESTS))
+                self.assertFalse(any(target.needs_model for target in targets.values()))
+
+    def test_tenant_identity_rule_unions_auth_session_clm_and_both_outbox_packages(self):
+        paths = (
+            "internal/accounts/accounts.go",
+            "internal/identity/manager.go",
+            "internal/httpapi/oidc.go",
+            "internal/httpapi/session_audience.go",
+            "internal/store/tenant_identity.go",
+            "internal/store/session_lifecycle.go",
+            "internal/store/contract_payments.go",
+            "internal/store/contract_assets.go",
+            "internal/store/contract_sources.go",
+            "internal/store/clm_outbox.go",
+            "internal/clmoutbox/relay.go",
+        )
+        plan = self.plan(*(check_fast.Change("M", path) for path in paths))
+        targets = {target.package: target for target in plan.database_tests}
+        self.assertEqual(set(targets),
+                         {"./internal/store", "./internal/httpapi", "./internal/bootstrap",
+                          "./internal/clmoutbox"})
+        store_tests = set(targets["./internal/store"].tests)
+        for selected in (
+                check_fast.AUTH_TESTS,
+                check_fast.SESSION_TESTS,
+                check_fast.TENANT_IDENTITY_TESTS,
+                check_fast.CONTRACT_PAYMENT_TESTS,
+                check_fast.CONTRACT_ASSET_TESTS,
+                check_fast.CONTRACT_SOURCE_TESTS,
+                check_fast.CLM_OUTBOX_STORE_TESTS):
+            self.assertTrue(set(selected).issubset(store_tests), selected)
+        self.assertTrue(set(check_fast.TENANT_AUTHORITY_BOOTSTRAP_TESTS).issubset(
+            targets["./internal/bootstrap"].tests))
+        self.assertEqual(set(targets["./internal/httpapi"].tests),
+                         set(check_fast.TENANT_IDENTITY_HTTP_TESTS))
+        self.assertIn(check_fast.CLM_OUTBOX_RELAY_TESTS[0],
+                      targets["./internal/clmoutbox"].tests)
+        self.assertFalse(any(target.needs_model for target in targets.values()))
+
+    def test_tenant_identity_database_rule_does_not_spread_to_ui_docs_or_nats(self):
+        for path in ("web/src/pages/contracts-page.tsx", "docs/guide.md",
+                     "internal/outboxrelay/jetstream.go", "deploy/nats/jetstream.yaml"):
+            with self.subTest(path=path):
+                plan = self.plan(check_fast.Change("M", path))
+                self.assertFalse(plan.database)
+                self.assertEqual(plan.database_tests, ())
+
+    def test_membership_authority_bootstrap_test_file_selects_required_pg_tests(self):
+        plan = self.plan(check_fast.Change(
+            "M", "internal/bootstrap/membership_authority_integration_test.go"))
+        targets = {target.package: target for target in plan.database_tests}
+        self.assertEqual(set(targets), {"./internal/store", "./internal/bootstrap"})
+        self.assertEqual(set(targets["./internal/store"].tests),
+                         set(check_fast.TENANT_IDENTITY_TESTS))
+        self.assertEqual(set(targets["./internal/bootstrap"].tests),
+                         set(check_fast.TENANT_AUTHORITY_BOOTSTRAP_TESTS))
+
+        checks = check_fast._build_checks(
+            plan, self.root, sys.executable, self.root.parent / "membership-check-output")
+        checks_by_package = {check.command[-1]: check for check in checks
+                             if check.name.startswith("database-fixed-point")}
+        self.assertEqual(set(checks_by_package), set(targets))
+        for package, check in checks_by_package.items():
+            self.assertEqual(set(check.expected_tests), set(targets[package].tests))
+            self.assertIn("-run", check.command)
+            pattern = check.command[check.command.index("-run") + 1]
+            self.assertNotEqual(pattern, "^$")
+            if package == "./internal/bootstrap":
+                self.assertIn("TestDistributedMembershipAdmissionAndModelSettlement", pattern)
+
+    def test_identity_db_provisioner_script_selects_go_and_required_pg_targets(self):
+        plan = self.plan(check_fast.Change("M", "scripts/provision_test_db.sh"))
+        targets = {target.package: target for target in plan.database_tests}
+        self.assertTrue(plan.database)
+        self.assertTrue(plan.go)
+        self.assertFalse(plan.python)
+        self.assertEqual(set(targets),
+                         {"./internal/store", "./internal/bootstrap", "./internal/httpapi"})
+        self.assertEqual(set(targets["./internal/store"].tests),
+                         set(check_fast.TENANT_IDENTITY_TESTS))
+        self.assertEqual(set(targets["./internal/bootstrap"].tests),
+                         set(check_fast.TENANT_AUTHORITY_BOOTSTRAP_TESTS))
+        self.assertEqual(set(targets["./internal/httpapi"].tests),
+                         set(check_fast.TENANT_IDENTITY_HTTP_TESTS))
+        self.assertFalse(any(target.needs_model for target in targets.values()))
+
+        checks = check_fast._build_checks(
+            plan, self.root, sys.executable, self.root.parent / "provision-check-output")
+        db_checks = {check.command[-1]: check for check in checks
+                     if check.name.startswith("database-fixed-point")}
+        self.assertEqual(set(db_checks), set(targets))
+        for package, check in db_checks.items():
+            self.assertEqual(set(check.expected_tests), set(targets[package].tests))
+            self.assertIn("-run", check.command)
+
+    def test_offline_migrator_bootstrap_paths_select_fresh_and_legacy_pg_case(self):
+        paths = (
+            "internal/store/offline_migrator_provision.go",
+            "internal/store/offline_migrator_provision_pg_test.go",
+            "cmd/migrate/main.go",
+            "scripts/provision_test_db.sh",
+            "internal/store/clm_role_provision.go",
+            "internal/store/tenant_identity_role_provision.go",
+        )
+        for path in paths:
+            with self.subTest(path=path):
+                plan = self.plan(check_fast.Change("M", path))
+                targets = {target.package: target for target in plan.database_tests}
+                self.assertTrue(plan.go)
+                self.assertTrue(plan.database)
+                self.assertIn("./internal/store", targets)
+                self.assertIn(check_fast.OFFLINE_MIGRATOR_BOOTSTRAP_TESTS[0],
+                              targets["./internal/store"].tests)
+                self.assertEqual(targets["./internal/store"].needs_model,
+                                 check_fast._is_budget(path))
+
+        budget_plan = self.plan(check_fast.Change(
+            "M", "internal/modelgateway/budget.go"))
+        budget_targets = {target.package: target for target in budget_plan.database_tests}
+        self.assertTrue(budget_targets["./internal/store"].needs_model)
+        self.assertEqual(budget_targets["./internal/store"].tests,
+                         check_fast.BUDGET_TESTS)
+
     def test_budget_change_requires_model_role(self):
         plan = self.plan(check_fast.Change("M", "internal/store/model_budget.go"))
         self.assertTrue(plan.database)

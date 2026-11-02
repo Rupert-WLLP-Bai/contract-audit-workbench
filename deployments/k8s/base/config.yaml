@@ -22,6 +22,15 @@ data:
   EXECUTION_URL: http://audit-execution:8083
   TOOL_URLS: http://tool-gateway:8085
   DOCUMENT_SERVICE_URL: http://document-service:8082
+  # Replace with the HTTPS Core callback origin provided by the delivery
+  # platform's existing TLS route. The base remains intentionally nondeployable
+  # until this operator placeholder is replaced with a trusted hostname.
+  CORE_AUTHORITY_URL: https://REPLACE-ME-CORE-AUTH-ENDPOINT
+  # Optional container path to an operator-provided PEM CA bundle. Empty uses
+  # the container's system trust; any custom bundle must be mounted by the
+  # environment-specific operator overlay at the exact configured path.
+  CORE_AUTHORITY_CA_FILE: ""
+  CORE_AUTHORITY_ALLOW_INSECURE_DEV: "false"
   CORE_SERVICE_URL: http://core-api:8081
   MODEL_GATEWAY_URL: http://model-gateway:8084/v1
   TOOL_GATEWAY_URL: http://tool-gateway:8085

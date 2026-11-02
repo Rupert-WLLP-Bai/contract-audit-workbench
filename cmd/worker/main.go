@@ -54,6 +54,7 @@ type workerRuntimeConfig struct {
 	heartbeat time.Duration
 	poll      time.Duration
 	relay     outboxrelay.Config
+	authority workerClaimAuthority
 }
 
 func main() {
@@ -110,7 +111,11 @@ func workerRuntimeConfigFromEnv() (workerRuntimeConfig, error) {
 	if err != nil {
 		return workerRuntimeConfig{}, err
 	}
-	return workerRuntimeConfig{lease: lease, heartbeat: heartbeat, poll: poll, relay: relay}, nil
+	authority, err := workerClaimAuthorityFromEnv()
+	if err != nil {
+		return workerRuntimeConfig{}, err
+	}
+	return workerRuntimeConfig{lease: lease, heartbeat: heartbeat, poll: poll, relay: relay, authority: authority}, nil
 }
 
 func serveWorker(runCtx context.Context, abort context.CancelFunc, app *bootstrap.Runtime, healthAddr, workerID string, config workerRuntimeConfig) error {
@@ -157,7 +162,7 @@ func serveWorker(runCtx context.Context, abort context.CancelFunc, app *bootstra
 	}()
 
 	log.Printf("worker %s claiming jobs from %s", workerID, app.Selection.Database.Name)
-	claimErr := claimJobs(runCtx, app.Store, workerID, config.lease, config.heartbeat, config.poll, wake)
+	claimErr := claimJobsWithAuthority(runCtx, app.Store, workerID, config.lease, config.heartbeat, config.poll, wake, config.authority)
 	stopHealth()
 
 	if healthErr := <-healthFailed; healthErr != nil {
@@ -177,6 +182,10 @@ func serveWorker(runCtx context.Context, abort context.CancelFunc, app *bootstra
 // the process; configuration and constraint errors still stop the worker so an
 // operator sees them.
 func claimJobs(ctx context.Context, st *store.Store, workerID string, lease, heartbeat, poll time.Duration, wake <-chan struct{}) error {
+	return claimJobsWithAuthority(ctx, st, workerID, lease, heartbeat, poll, wake, nil)
+}
+
+func claimJobsWithAuthority(ctx context.Context, st *store.Store, workerID string, lease, heartbeat, poll time.Duration, wake <-chan struct{}, authority workerClaimAuthority) error {
 	retry := time.Duration(0)
 	for {
 		claim, claimed, err := claimNextJob(ctx, st, workerID, lease, poll, wake)
@@ -196,6 +205,11 @@ func claimJobs(ctx context.Context, st *store.Store, workerID string, lease, hea
 		retry = 0
 		if !claimed {
 			continue
+		}
+		if authority != nil && claim.Kind != "experience_distill" {
+			if err := authority.Resolve(ctx, claim); err != nil {
+				return fmt.Errorf("worker refused an unverified claim before execution: %w", err)
+			}
 		}
 		if err := processClaim(ctx, st, claim, lease, heartbeat); err != nil {
 			return err

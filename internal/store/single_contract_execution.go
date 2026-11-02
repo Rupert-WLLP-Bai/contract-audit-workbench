@@ -35,7 +35,7 @@ func (s *Store) executeSingleContractPrecheck(parent, ctx context.Context, runID
 					return err
 				}
 				if isGovernedReviewCase(item) {
-					actor, err := authorizeAttemptExecution(state, runID, attemptID)
+					actor, err := s.authorizeAttemptExecution(state, runID, attemptID)
 					if err != nil {
 						return err
 					}

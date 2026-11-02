@@ -472,9 +472,25 @@ func (s *Service) runChatAttempt(w http.ResponseWriter, ctx context.Context, req
 		writeJSON(w, http.StatusConflict, map[string]string{"error": "model configuration no longer matches the configured endpoint", "code": "model_configuration_changed"})
 		return false
 	}
+	if !s.authorizeReservedDispatch(w, ctx, request.caller, request.scope, lease) {
+		return false
+	}
 	response, status, usage, requestErr, retryable, preDispatch := s.dispatchUpstream(ctx, request.upstream, request.requestedModel, request.body)
 	modelStatus, errorCode := chatAttemptResult(requestErr, status)
 	return s.settleAndRespondChatAttempt(w, ctx, request, probe, attempt, lease, response, status, usage, requestErr, retryable, preDispatch, modelStatus, errorCode)
+}
+
+// Recheck immediately before sending; settlement of an already sent call remains independent.
+func (s *Service) authorizeReservedDispatch(w http.ResponseWriter, ctx context.Context, caller string, scope model.DelegatedScope, lease store.ModelCallLease) bool {
+	if err := s.store.ReauthorizeModelScope(ctx, caller, scope); err != nil {
+		if finishErr := s.finishChatAttempt(lease, "failed", "model_scope_unavailable", nil, true); finishErr != nil {
+			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "model usage could not be recorded", "code": "model_usage_unavailable"})
+			return false
+		}
+		writeChatReauthorizationError(w, err)
+		return false
+	}
+	return true
 }
 
 func (s *Service) reserveChatAttempt(w http.ResponseWriter, ctx context.Context, request chatRequest, attempt int) (store.ModelCallLease, bool) {

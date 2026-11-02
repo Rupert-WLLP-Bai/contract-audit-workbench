@@ -66,6 +66,12 @@ func (s *Store) Close() error {
 	s.closing = true
 	s.executionMu.Unlock()
 	s.executionWG.Wait()
+	if closer, ok := s.operationAuthority.(interface{ CloseIdleConnections() }); ok {
+		closer.CloseIdleConnections()
+	}
+	s.claimMu.Lock()
+	s.operationContexts = nil
+	s.claimMu.Unlock()
 	s.closeTelemetry()
 	var err error
 	if s.dropSchema && s.schema != "" && s.schema != "public" {

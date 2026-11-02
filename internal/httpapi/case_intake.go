@@ -60,11 +60,21 @@ func (h *handler) createIntake(w http.ResponseWriter, r *http.Request) {
 		writeIntakeOperation(w, operation, http.StatusAccepted)
 		return
 	}
-	result, uploadErr := h.intakeUploader.UploadPrimaryContract(r.Context(), operation.CaseID, store.PrimaryContractUploadRequest{
-		ActorID: user.ID, TenantID: accounts.Tenant(user), OrgID: user.OrgID,
+	uploadRequest := store.PrimaryContractUploadRequest{
+		ActorID: user.ID, TenantID: accounts.Tenant(user), OrgID: user.OrgID, User: user,
 		Filename: upload.filename, MediaType: upload.mediaType, Body: upload.body,
 		IdempotencyKey: operation.UploadKey,
-	})
+	}
+	if _, direct := h.intakeUploader.(store.DirectCaseIntakeUploader); !direct {
+		ticket, ticketErr := h.store.CreateDocumentIntakeTicket(r.Context(), user, audienceCookieValue(r, "client"),
+			operation.OperationID, operation.CaseID, operation.UploadKey, upload.body)
+		if ticketErr != nil {
+			writeIntakeError(w, ticketErr)
+			return
+		}
+		uploadRequest.AuthorityTicket = ticket
+	}
+	result, uploadErr := h.intakeUploader.UploadPrimaryContract(r.Context(), operation.CaseID, uploadRequest)
 	if uploadErr == nil {
 		completed, completeErr := h.store.CompleteCaseIntake(r.Context(), user, operation.OperationID, result)
 		if completeErr == nil && completed.Status == "completed" {

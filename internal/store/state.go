@@ -19,6 +19,7 @@ import (
 	"contractaudit/internal/docir"
 	"contractaudit/internal/docversion"
 	"contractaudit/internal/execution"
+	"contractaudit/internal/model"
 	"contractaudit/internal/telemetry"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -39,6 +40,8 @@ type Store struct {
 	running                map[string]func()
 	claimMu                sync.Mutex
 	claims                 map[string]JobClaim
+	operationAuthority     OperationAuthorityResolver
+	operationContexts      map[string]model.DelegatedScope
 	dir                    string
 	st                     state
 	modelsMu               sync.RWMutex
@@ -658,14 +661,16 @@ type Idem struct {
 }
 
 type session struct {
-	Token     string `json:"token"`
-	ActorID   string `json:"actor_id"`
-	Issuer    string `json:"issuer"`
-	Subject   string `json:"subject"`
-	TenantID  string `json:"tenant_id"`
-	OrgID     string `json:"org_id"`
-	Audience  string `json:"audience"`
-	ExpiresAt string `json:"expires_at"`
+	Token        string  `json:"token"`
+	ActorID      string  `json:"actor_id"`
+	Issuer       string  `json:"issuer"`
+	Subject      string  `json:"subject"`
+	TenantID     string  `json:"tenant_id"`
+	OrgID        string  `json:"org_id"`
+	Audience     string  `json:"audience"`
+	ExpiresAt    string  `json:"expires_at"`
+	PrincipalID  *string `json:"principal_id,omitempty"`
+	MembershipID *string `json:"membership_id,omitempty"`
 }
 
 // Interpreted is a document plus a verified immutable parse artifact.

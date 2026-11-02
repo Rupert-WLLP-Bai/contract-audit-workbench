@@ -104,7 +104,7 @@ func sameKnowledgeSnapshotIdentity(a, b *ReviewKnowledgeSnapshot) bool {
 // revalidateGovernedAttemptTx runs only with the schema lock followed by the
 // case and attempt locks. It derives actor, case, and frozen snapshot from the
 // database, not from a caller-supplied tenant or snapshot.
-func revalidateGovernedAttemptTx(ctx context.Context, tx pgx.Tx, runID, attemptID, caseID string) error {
+func (s *Store) revalidateGovernedAttemptTx(ctx context.Context, tx pgx.Tx, runID, attemptID, caseID string) error {
 	var actorID, storedCase string
 	var raw []byte
 	err := tx.QueryRow(ctx, `SELECT a.actor_id, r.case_id, s.governed_knowledge
@@ -120,7 +120,12 @@ func revalidateGovernedAttemptTx(ctx context.Context, tx pgx.Tx, runID, attemptI
 	if storedCase != caseID {
 		return errExecutionEventScope
 	}
-	actor, ok := accounts.ByID(actorID)
+	actor, err := s.authorityForAttempt(ctx, runID, attemptID)
+	ok := err == nil
+	if !ok {
+		actor, ok = accounts.ByID(actorID)
+		ok = ok && actor.Issuer == "" && actor.Subject == ""
+	}
 	if !ok || !actor.Enabled || !accounts.CanStart(actor.Role) {
 		return errAttemptAuthorizationRevoked
 	}
@@ -156,7 +161,7 @@ func (s *Store) updateAuthorizedGovernedExecution(ctx context.Context, runID, at
 	}
 	if hasClaim && claim.RunID == runID && claim.AttemptID == attemptID {
 		return s.scopedGovernedAttemptMutation(ctx, runID, attemptID, func(st *state) error {
-			if _, err := authorizeAttemptExecution(*st, runID, attemptID); err != nil {
+			if _, err := s.authorizeAttemptExecution(*st, runID, attemptID); err != nil {
 				return err
 			}
 			return fn(st)
@@ -174,7 +179,12 @@ func (s *Store) updateAuthorizedGovernedExecution(ctx context.Context, runID, at
 	if !ok || attempt.RunID != runID {
 		return errAttemptMissing
 	}
-	actor, ok := accounts.ByID(attempt.ActorID)
+	actor, err := s.authorityForAttempt(ctx, runID, attemptID)
+	ok = err == nil
+	if !ok {
+		actor, ok = accounts.ByID(attempt.ActorID)
+		ok = ok && actor.Issuer == "" && actor.Subject == ""
+	}
 	if !ok || !actor.Enabled {
 		return errAttemptAuthorizationRevoked
 	}
@@ -185,9 +195,9 @@ func (s *Store) updateAuthorizedGovernedExecution(ctx context.Context, runID, at
 	}
 	defer s.mu.Unlock()
 	return s.updateStateWith(ctx, scope, attemptID, func(tx pgx.Tx) error {
-		return revalidateGovernedAttemptTx(ctx, tx, runID, attemptID, run.CaseID)
+		return s.revalidateGovernedAttemptTx(ctx, tx, runID, attemptID, run.CaseID)
 	}, func(st *state) error {
-		if _, err := authorizeAttemptExecution(*st, runID, attemptID); err != nil {
+		if _, err := s.authorizeAttemptExecution(*st, runID, attemptID); err != nil {
 			return err
 		}
 		return fn(st)

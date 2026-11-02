@@ -13,16 +13,59 @@ import (
 
 // User is a directory entry the API can name.
 type User struct {
-	ID          string         `json:"id"`
-	DisplayName string         `json:"display_name"`
-	Role        string         `json:"role"`
-	TenantID    string         `json:"tenant_id"`
-	OrgID       string         `json:"org_id"`
-	Enabled     bool           `json:"enabled"`
-	Grants      []access.Grant `json:"grants"`
-	Issuer      string         `json:"issuer,omitempty"`
-	Subject     string         `json:"subject,omitempty"`
+	ID                 string         `json:"id"`
+	DisplayName        string         `json:"display_name"`
+	Role               string         `json:"role"`
+	TenantID           string         `json:"tenant_id"`
+	OrgID              string         `json:"org_id"`
+	Enabled            bool           `json:"enabled"`
+	Grants             []access.Grant `json:"grants"`
+	Issuer             string         `json:"issuer,omitempty"`
+	Subject            string         `json:"subject,omitempty"`
+	PrincipalID        string         `json:"-"`
+	MembershipID       string         `json:"-"`
+	resolvedMembership bool
 }
+
+// MembershipChoice is the minimum displayable server-resolved tenant choice
+// returned while an OIDC login is pending. It is never accepted as authority.
+type MembershipChoice struct {
+	ID           string `json:"id"`
+	TenantID     string `json:"tenant_id"`
+	TenantName   string `json:"tenant_name"`
+	Jurisdiction string `json:"jurisdiction_id,omitempty"`
+	OrgID        string `json:"org_id"`
+	OrgName      string `json:"org_name"`
+	Role         string `json:"role"`
+}
+
+// OIDCLoginResult carries either a newly established bearer session or a
+// short-lived opaque pending token and the choices authorized by PostgreSQL.
+type OIDCLoginResult struct {
+	SessionToken string
+	PendingToken string
+	User         User
+	Choices      []MembershipChoice
+}
+
+// MembershipUser constructs the request projection from a persisted tenant
+// membership. It is intentionally not JSON-visible: only trusted Store code
+// should mark a user as having passed the database membership resolver.
+func MembershipUser(id, displayName, role, tenantID, orgID, issuer, subject string, grants []access.Grant) User {
+	user := User{
+		ID: id, DisplayName: displayName, Role: role, TenantID: tenantID, OrgID: orgID,
+		Enabled: true, Issuer: issuer, Subject: subject, resolvedMembership: true,
+	}
+	user.Grants = append([]access.Grant(nil), grants...)
+	for i := range user.Grants {
+		user.Grants[i].ResolvedOrgIDs = append([]string(nil), user.Grants[i].ResolvedOrgIDs...)
+	}
+	return user
+}
+
+// HasResolvedMembership identifies a trusted Store projection. It is a
+// process-local marker, not a claim accepted from JSON or a browser request.
+func (user User) HasResolvedMembership() bool { return user.resolvedMembership }
 
 // hash is a fixed, pre-computed bcrypt digest of the account's demonstration
 // password (cost bcrypt.DefaultCost). The literals are legal salted test

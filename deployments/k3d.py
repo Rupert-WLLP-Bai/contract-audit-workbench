@@ -11,7 +11,7 @@ import secrets
 import shutil
 import subprocess
 import sys
-from urllib.parse import quote
+from urllib.parse import quote, urlsplit
 
 ROOT = Path(__file__).resolve().parents[1]
 PROFILE = os.environ.get("CAW_K3D_PROFILE", "light").strip().lower()
@@ -78,6 +78,34 @@ DEFAULT_ARTIFACT_DIR = "k3d-full" if FULL else "k3d"
 ARTIFACTS = Path(os.environ.get("CAW_K3D_ARTIFACT_DIR", str(DELIVERY / DEFAULT_ARTIFACT_DIR))).expanduser().resolve()
 KUBECONFIG = ARTIFACTS / "kubeconfig"
 SECRETS = ARTIFACTS / "secrets.json"
+SERVICE_TOKEN_KEYS = (
+    "GATEWAY_CORE_TOKEN", "GATEWAY_DOCUMENT_TOKEN", "GATEWAY_EXECUTION_TOKEN", "GATEWAY_TOOL_TOKEN",
+    "WORKER_DOCUMENT_TOKEN", "WORKER_MODEL_TOKEN", "WORKER_TOOL_TOKEN", "WORKER_CORE_TOKEN",
+    "CORE_DOCUMENT_TOKEN", "DOCUMENT_MODEL_TOKEN", "TOOL_CORE_AUTHORITY_TOKEN", "CORE_MODEL_AUTHORITY_TOKEN",
+)
+
+
+def validate_service_tokens(values: dict[str, str]) -> None:
+    seen: dict[str, str] = {}
+    for key in SERVICE_TOKEN_KEYS:
+        value = values.get(key)
+        if not isinstance(value, str) or len(value) < 32:
+            raise RuntimeError(f"private credentials require a distinct token of at least 32 characters: {key}")
+        previous = seen.get(value)
+        if previous:
+            raise RuntimeError(f"private service credentials must be distinct: {previous} and {key}")
+        seen[value] = key
+    admin = urlsplit(str(values.get("AUTH_ADMIN_DATABASE_URL", "")))
+    migrator = urlsplit(str(values.get("MIGRATOR_DATABASE_URL", "")))
+    prod_migrator = urlsplit(str(values.get("PROD_DATABASE_URL", "")))
+    if (admin.scheme not in {"postgres", "postgresql"} or not admin.hostname or not admin.username or not admin.password or
+            migrator.scheme not in {"postgres", "postgresql"} or not migrator.hostname or not migrator.username or not migrator.password or
+            prod_migrator.scheme not in {"postgres", "postgresql"} or not prod_migrator.hostname or not prod_migrator.username or not prod_migrator.password or
+            admin.path != migrator.path or admin.hostname != migrator.hostname or (admin.port or 5432) != (migrator.port or 5432) or
+            admin.username == migrator.username or migrator.username != "audit_offline_migrator" or
+            prod_migrator.username != "audit_offline_migrator" or prod_migrator.path != "/contract_audit_prod" or
+            prod_migrator.hostname != migrator.hostname or (prod_migrator.port or 5432) != (migrator.port or 5432)):
+        raise RuntimeError("AUTH_ADMIN_DATABASE_URL and MIGRATOR_DATABASE_URL must be distinct private logins for the same database; migrator must use audit_offline_migrator")
 
 
 def run(command: list[str], *, check: bool = True, timeout: int = 300) -> subprocess.CompletedProcess[str]:
@@ -121,14 +149,38 @@ def ensure_secrets() -> dict[str, str]:
                     "WORKER_TOOL_TOKEN", "DOCUMENT_MODEL_TOKEN"}
         if not isinstance(values, dict) or required - values.keys():
             raise RuntimeError(f"private credentials file is incomplete; left untouched: {SECRETS}")
-        if "DEV_DATABASE_URL" not in values or "WORKER_CORE_TOKEN" not in values or \
-                "CORE_DOCUMENT_TOKEN" not in values or "LLM_CONFIG_KEY" not in values or \
-                "CLM_DATA_KEY" not in values:
-            values.setdefault("DEV_DATABASE_URL", values["MIGRATOR_DATABASE_URL"])
+        needs_upgrade = ("DEV_DATABASE_URL" not in values or "WORKER_CORE_TOKEN" not in values or
+                         "CORE_DOCUMENT_TOKEN" not in values or "TOOL_CORE_AUTHORITY_TOKEN" not in values or
+                         "CORE_MODEL_AUTHORITY_TOKEN" not in values or "AUTH_ADMIN_DATABASE_URL" not in values or
+                         "PROD_DATABASE_URL" not in values or
+                         "LLM_CONFIG_KEY" not in values or "CLM_DATA_KEY" not in values or
+                         urlsplit(str(values.get("MIGRATOR_DATABASE_URL", ""))).username != "audit_offline_migrator" or
+                         urlsplit(str(values.get("PROD_DATABASE_URL", ""))).username != "audit_offline_migrator")
+        if needs_upgrade:
+            previous_migrator = values["MIGRATOR_DATABASE_URL"]
+            values.setdefault("AUTH_ADMIN_DATABASE_URL", previous_migrator)
+            if urlsplit(previous_migrator).username != "audit_offline_migrator":
+                old = urlsplit(previous_migrator)
+                password = secrets.token_urlsafe(48)
+                credentials = f"audit_offline_migrator:{quote(password, safe='')}@{old.hostname}:{old.port or 5432}"
+                new_migrator = old._replace(netloc=credentials).geturl()
+                values["MIGRATOR_DATABASE_URL"] = new_migrator
+                values["DEV_DATABASE_URL"] = new_migrator
+                values["PROD_DATABASE_URL"] = old._replace(netloc=credentials, path="/contract_audit_prod").geturl()
+            else:
+                values.setdefault("DEV_DATABASE_URL", previous_migrator)
+            offline = urlsplit(values["MIGRATOR_DATABASE_URL"])
+            values["PROD_DATABASE_URL"] = offline._replace(path="/contract_audit_prod").geturl()
             values.setdefault("WORKER_CORE_TOKEN", secrets.token_urlsafe(48))
             values.setdefault("CORE_DOCUMENT_TOKEN", secrets.token_urlsafe(48))
+            values.setdefault("TOOL_CORE_AUTHORITY_TOKEN", secrets.token_urlsafe(48))
+            values.setdefault("CORE_MODEL_AUTHORITY_TOKEN", secrets.token_urlsafe(48))
+            values.setdefault("PROD_DATABASE_URL",
+                              f"postgres://contractaudit:{quote(values['POSTGRES_PASSWORD'], safe='')}@db:5432/contract_audit_prod?sslmode=disable")
             values.setdefault("LLM_CONFIG_KEY", base64.b64encode(secrets.token_bytes(32)).decode("ascii"))
             values.setdefault("CLM_DATA_KEY", base64.b64encode(secrets.token_bytes(32)).decode("ascii"))
+        validate_service_tokens(values)
+        if needs_upgrade:
             temporary = SECRETS.with_suffix(".tmp")
             descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
             with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
@@ -155,13 +207,21 @@ def ensure_secrets() -> dict[str, str]:
                       ("TOOL_DATABASE_URL", "tool_gateway")):
         password = secrets.token_hex(32)
         values[key] = f"postgres://{role}:{quote(password, safe='')}@db:5432/contract_audit_dev?sslmode=disable"
+    offline_password = quote(secrets.token_urlsafe(48), safe="")
     values["MIGRATOR_DATABASE_URL"] = (
-        f"postgres://contractaudit:{quote(postgres_password, safe='')}@db:5432/contract_audit_dev?sslmode=disable"
+        f"postgres://audit_offline_migrator:{offline_password}@db:5432/contract_audit_dev?sslmode=disable"
     )
     values["DEV_DATABASE_URL"] = values["MIGRATOR_DATABASE_URL"]
-    for key in ("GATEWAY_CORE_TOKEN", "GATEWAY_DOCUMENT_TOKEN", "GATEWAY_EXECUTION_TOKEN", "GATEWAY_TOOL_TOKEN",
-                "WORKER_DOCUMENT_TOKEN", "WORKER_MODEL_TOKEN", "WORKER_TOOL_TOKEN", "WORKER_CORE_TOKEN", "CORE_DOCUMENT_TOKEN", "DOCUMENT_MODEL_TOKEN"):
+    # The superuser DSN is consumed only by short-lived offline provisioning.
+    values["AUTH_ADMIN_DATABASE_URL"] = (
+        f"postgres://contractaudit:{quote(postgres_password, safe='')}@db:5432/contract_audit_dev?sslmode=disable"
+    )
+    values["PROD_DATABASE_URL"] = (
+        f"postgres://audit_offline_migrator:{offline_password}@db:5432/contract_audit_prod?sslmode=disable"
+    )
+    for key in SERVICE_TOKEN_KEYS:
         values[key] = secrets.token_urlsafe(48)
+    validate_service_tokens(values)
     descriptor = os.open(SECRETS, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
     with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
         json.dump(values, stream, sort_keys=True)
@@ -421,10 +481,12 @@ def deploy() -> None:
     apply_private_secret("contract-audit-postgres", ("POSTGRES_PASSWORD",))
     apply_private_secret("contract-audit-db-urls", ("CORE_DATABASE_URL", "DOCUMENT_DATABASE_URL",
                                                       "EXECUTION_DATABASE_URL", "MODEL_DATABASE_URL",
-                                                      "TOOL_DATABASE_URL", "MIGRATOR_DATABASE_URL", "DEV_DATABASE_URL"))
+                                                      "TOOL_DATABASE_URL", "MIGRATOR_DATABASE_URL", "DEV_DATABASE_URL",
+                                                      "AUTH_ADMIN_DATABASE_URL", "PROD_DATABASE_URL"))
     apply_private_secret("contract-audit-service-tokens", (
         "GATEWAY_CORE_TOKEN", "GATEWAY_DOCUMENT_TOKEN", "GATEWAY_EXECUTION_TOKEN", "GATEWAY_TOOL_TOKEN",
-        "WORKER_DOCUMENT_TOKEN", "WORKER_MODEL_TOKEN", "WORKER_TOOL_TOKEN", "WORKER_CORE_TOKEN", "CORE_DOCUMENT_TOKEN", "DOCUMENT_MODEL_TOKEN"))
+        "WORKER_DOCUMENT_TOKEN", "WORKER_MODEL_TOKEN", "WORKER_TOOL_TOKEN", "WORKER_CORE_TOKEN",
+        "CORE_DOCUMENT_TOKEN", "DOCUMENT_MODEL_TOKEN", "TOOL_CORE_AUTHORITY_TOKEN", "CORE_MODEL_AUTHORITY_TOKEN"))
     apply_private_secret("contract-audit-rustfs", ("RUSTFS_ACCESS_KEY", "RUSTFS_SECRET_KEY"))
     apply_private_secret("contract-audit-model", ("LLM_API_KEY", "LLM_CONFIG_KEY"))
     apply_private_secret("contract-audit-clm", ("CLM_DATA_KEY",))

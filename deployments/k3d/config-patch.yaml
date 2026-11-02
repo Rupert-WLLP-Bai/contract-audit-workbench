@@ -16,6 +16,9 @@ data:
   EXECUTION_URL: http://audit-execution:8083
   TOOL_URLS: http://tool-gateway:8085
   DOCUMENT_SERVICE_URL: http://document-service:8082
+  CORE_AUTHORITY_URL: http://core-api:8081
+  CORE_AUTHORITY_ALLOW_INSECURE_DEV: "true"
+  CORE_AUTHORITY_CA_FILE: ""
   MODEL_GATEWAY_URL: http://model-gateway:8084/v1
   TOOL_GATEWAY_URL: http://tool-gateway:8085
   NATS_URL: nats://nats:4222

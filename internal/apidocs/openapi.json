@@ -2003,7 +2003,7 @@
           "会话"
         ],
         "summary": "OIDC 授权码回调",
-        "description": "校验 state Cookie 与 code；未知 issuer/subject 或过期 state 拒绝。成功后建立相应 audience 的会话并 302 回到入口。",
+        "description": "校验 state Cookie 与 code；身份/租户/组织/角色/授权只由数据库精确成员映射解析。单一有效成员关系建立相应 audience 会话并 303 回入口；多个有效成员关系写入短期 HttpOnly pending Cookie 并 303 到同源 membership 选择页。目录角色、租户或 grants 不构成授权。",
         "parameters": [
           {
             "name": "code",
@@ -2031,8 +2031,8 @@
           }
         ],
         "responses": {
-          "302": {
-            "description": "回到 client/admin 入口"
+          "303": {
+            "description": "单成员登录回到 client/admin；多成员登录设置短期 pending Cookie 后跳转到对应 membership 选择页"
           },
           "401": {
             "$ref": "#/components/responses/Error401"
@@ -2040,6 +2040,33 @@
           "503": {
             "$ref": "#/components/responses/Error503"
           }
+        }
+      }
+    },
+    "/api/auth/oidc/memberships": {
+      "get": {
+        "operationId": "listPendingMemberships",
+        "tags": ["会话"],
+        "summary": "读取待选的当前成员关系",
+        "description": "仅使用短期 HttpOnly pending Cookie；audience 必须匹配该 challenge。返回最小显示字段，不创建会话，不泄露其他主体或目录。",
+        "parameters": [{"name":"audience","in":"query","required":true,"schema":{"type":"string","enum":["client","admin"]}}],
+        "responses": {
+          "200": {"description":"当前可用成员选择。","content":{"application/json":{"schema":{"$ref":"#/components/schemas/PendingMembershipList"}}}},
+          "401": {"$ref":"#/components/responses/Error401"},
+          "503": {"$ref":"#/components/responses/Error503"}
+        }
+      },
+      "post": {
+        "operationId": "selectPendingMembership",
+        "tags": ["会话"],
+        "summary": "显式选择成员关系并创建会话",
+        "description": "需要同源 Origin、短期 pending Cookie 和当前有效成员关系。membership_id 只是选择提示；服务端在同一数据库操作中复核主体、audience、租户/组织状态并一次性消费 challenge。成功设置 audience 会话 Cookie 并返回 204；浏览器随后导航到对应工作台入口。",
+        "requestBody": {"required":true,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/PendingMembershipSelectionRequest"}}}},
+        "responses": {
+          "204": {"description":"成员关系已复核并创建 HttpOnly 会话 Cookie。"},
+          "400": {"$ref":"#/components/responses/Error422"},
+          "401": {"$ref":"#/components/responses/Error401"},
+          "403": {"$ref":"#/components/responses/Error403"}
         }
       }
     },
@@ -4384,6 +4411,9 @@
       }
     },
     "schemas": {
+      "MembershipChoice": {"type":"object","additionalProperties":false,"required":["id","tenant_id","tenant_name","org_id","org_name","role"],"properties":{"id":{"type":"string","format":"uuid"},"tenant_id":{"type":"string"},"tenant_name":{"type":"string"},"jurisdiction_id":{"type":"string"},"org_id":{"type":"string"},"org_name":{"type":"string"},"role":{"type":"string"}}},
+      "PendingMembershipList": {"type":"object","additionalProperties":false,"required":["memberships"],"properties":{"memberships":{"type":"array","items":{"$ref":"#/components/schemas/MembershipChoice"}}}},
+      "PendingMembershipSelectionRequest": {"type":"object","additionalProperties":false,"required":["membership_id","audience"],"properties":{"membership_id":{"type":"string","format":"uuid"},"audience":{"type":"string","enum":["client","admin"]}}},
       "ContractAuditGateReason": {"type":"object","additionalProperties":false,"required":["code"],"properties":{"code":{"type":"string","enum":["submitted_material_missing","attempt_input_missing","attempt_input_hash_mismatch","attempt_not_completed","attempt_partial","model_failure","run_not_completed","run_failure","attempt_document_identity_missing","foreign_document","document_digest_mismatch","attempt_document_not_ready","attempt_omits_submitted_material","finding_without_anchor","anchor_not_located","anchor_document_not_in_attempt","anchor_quote_missing","anchor_digest_mismatch","anchor_parse_mismatch"]},"detail":{"type":"string"}}},
       "ContractAuditBindRequest": {"type":"object","additionalProperties":false,"required":["review_run_id","review_attempt_id","expected_row_version"],"properties":{"review_run_id":{"type":"string","minLength":1},"review_attempt_id":{"type":"string","minLength":1},"expected_row_version":{"type":"integer","minimum":1}}},
       "ContractAuditBinding": {"type":"object","additionalProperties":false,"required":["binding_id","contract_revision_id","review_run_id","review_attempt_id","attempt_input_hash","snapshot_digest","materials_digest","run_state","attempt_state","gate_state","gate_reasons","finding_count","verified_finding_count","model_failure","bound_by","bound_at"],"properties":{"binding_id":{"type":"string","format":"uuid"},"contract_revision_id":{"type":"string","format":"uuid"},"review_run_id":{"type":"string"},"review_attempt_id":{"type":"string"},"attempt_input_hash":{"type":"string"},"snapshot_digest":{"type":"string","pattern":"^[a-f0-9]{64}$"},"materials_digest":{"type":"string","pattern":"^[a-f0-9]{64}$"},"run_state":{"type":"string"},"attempt_state":{"type":"string"},"gate_state":{"type":"string","enum":["blocked","needs_human"]},"gate_reasons":{"type":"array","items":{"$ref":"#/components/schemas/ContractAuditGateReason"}},"finding_count":{"type":"integer","minimum":0},"verified_finding_count":{"type":"integer","minimum":0},"model_failure":{"type":"boolean"},"bound_by":{"type":"string"},"bound_at":{"type":"string","format":"date-time"}}},

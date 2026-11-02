@@ -11,6 +11,8 @@ export const paths = {
     audience === "admin" ? "/api/session?audience=admin" : "/api/session",
   oidcLogin: (audience: "client" | "admin") =>
     `/api/auth/oidc/login?audience=${id(audience)}`,
+  oidcMemberships: (audience: "client" | "admin") =>
+    `/api/auth/oidc/memberships?audience=${id(audience)}`,
   cases: "/api/cases",
   case: (caseId: string) => `/api/cases/${id(caseId)}`,
   caseReviewReadiness: (caseId: string, businessAt = "") => {

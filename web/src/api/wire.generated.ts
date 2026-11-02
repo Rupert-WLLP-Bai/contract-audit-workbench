@@ -75,9 +75,12 @@ export interface WireSchemas {
   "MaterialRef": { "material_id": string; "material_version_id": string; "purpose": "draft" | "signed_contract" | "supporting" | "acceptance" | "payment" | "other"; "sha256": string; };
   "MaterialSelectionProjection": { "candidate_document_ids": Array<string>; "document_ids": Array<string>; "primary_material_id": string | null; "status": "pending_confirmation" | "confirmed" | "not_applicable"; "version": number; };
   "MaterialVersionProjection": { "created_at": string; "document_id": string; "material_id": string; "previous_document_id": string | null; "version": number; };
+  "MembershipChoice": { "id": string; "jurisdiction_id"?: string; "org_id": string; "org_name": string; "role": string; "tenant_id": string; "tenant_name": string; };
   "PartyRef": { "binding_id"?: string; "name_snapshot": string; "party_id": string; "reference_snapshot"?: WireSchemas["PartyReferenceSnapshot"]; "role": "buyer" | "supplier" | "guarantor" | "consortium_member" | "other"; };
   "PartyReferenceSnapshot": { "binding_id": string; "binding_state": "active" | "inactive" | "pending_confirmation"; "binding_version": number; "captured_at": string; "case_role": "customer" | "supplier" | "contractor" | "service_provider" | "other"; "display_name": string; "subject_id": string; "subject_payload_hash": string; "subject_version": number; "verification_state": string; };
   "PaymentCondition": { "due_rule"?: WireSchemas["DueRule"]; "evidence_requirements"?: Array<string>; "policy_ref"?: string; "type": "signed_contract" | "all_goods_accepted" | "partial_acceptance" | "service_period_verified" | "custom_policy"; };
+  "PendingMembershipList": { "memberships": Array<WireSchemas["MembershipChoice"]>; };
+  "PendingMembershipSelectionRequest": { "audience": "client" | "admin"; "membership_id": string; };
   "ProcurementRef": { "package_id": string; "result_id": string; "snapshot_ref": string; "source_snapshot"?: WireSchemas["ProcurementSourceSnapshot"]; "system": string; };
   "ProcurementSourceSnapshot": { "captured_at": string; "material_id": string; "material_role": "procurement" | "award"; "material_version": number; "material_version_id": string; "package_id": string; "result_id": string; "sha256": string; "snapshot_ref": string; "system": string; };
   "RemediationInput": { "assignee_id"?: string; "attempt_id": string; "due_at"?: string; "finding_ids": Array<string>; "measure": string; "run_id": string; };

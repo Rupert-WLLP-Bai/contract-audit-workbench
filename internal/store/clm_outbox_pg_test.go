@@ -53,11 +53,14 @@ func TestCLMMaintenanceRoleNonSuperuserBootstrapAndRerun(t *testing.T) {
 		t.Fatalf("connect isolated database cleanup identity: %v", err)
 	}
 	ownerRole := clmMaintenanceRoleName(testConfig.Database, schema)
+	authOwnerRole := tenantIdentityOwnerName(testConfig.Database, schema)
 	defer func() {
 		quotedSchema := pgx.Identifier{schema}.Sanitize()
 		_, _ = admin.Exec(context.Background(), `DROP SCHEMA IF EXISTS `+quotedSchema+` CASCADE`)
 		_, _ = admin.Exec(context.Background(), `REVOKE `+pgx.Identifier{ownerRole}.Sanitize()+` FROM `+pgx.Identifier{migratorRole}.Sanitize())
 		_, _ = admin.Exec(context.Background(), `DROP ROLE IF EXISTS `+pgx.Identifier{ownerRole}.Sanitize())
+		_, _ = admin.Exec(context.Background(), `REVOKE `+pgx.Identifier{authOwnerRole}.Sanitize()+` FROM `+pgx.Identifier{migratorRole}.Sanitize())
+		_, _ = admin.Exec(context.Background(), `DROP ROLE IF EXISTS `+pgx.Identifier{authOwnerRole}.Sanitize())
 		_, _ = admin.Exec(context.Background(), `DROP ROLE IF EXISTS `+pgx.Identifier{migratorRole}.Sanitize())
 		admin.Close(context.Background())
 	}()
@@ -79,6 +82,12 @@ func TestCLMMaintenanceRoleNonSuperuserBootstrapAndRerun(t *testing.T) {
 	}
 	if err := ProvisionCLMMaintenanceRole(ctx, testDSN, migratorDSN, schema); err != nil {
 		t.Fatalf("repeat CLM owner provisioning should validate the exact existing setup: %v", err)
+	}
+	if err := ProvisionTenantIdentityOwner(ctx, testDSN, migratorDSN, schema); err != nil {
+		t.Fatalf("pre-provision isolated AUTH_FENCE owner using the production helper: %v", err)
+	}
+	if err := ProvisionTenantIdentityOwner(ctx, testDSN, migratorDSN, schema); err != nil {
+		t.Fatalf("repeat AUTH_FENCE owner provisioning should validate the exact existing setup: %v", err)
 	}
 	migrationPoolConfig, err := parsePoolConfig(testDSN, defaultMigratorPoolMaxConns)
 	if err != nil {

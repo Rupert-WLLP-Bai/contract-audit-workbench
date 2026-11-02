@@ -177,7 +177,7 @@ func (s *Store) reserveModelCall(ctx context.Context, caller string, scope model
 			return ModelCallLease{}, ErrModelScopeUnavailable
 		}
 	}
-	if err := authorizeModelScope(ctx, tx, caller, scope); err != nil {
+	if err := s.authorizeModelScope(ctx, tx, caller, scope); err != nil {
 		return ModelCallLease{}, err
 	}
 	if providerIdentity != nil && (scope.Kind == "execution" || scope.Kind == "experience_distill" || (scope.Kind == "document" && scope.JobID != "")) {
@@ -216,7 +216,7 @@ func (s *Store) reserveModelCall(ctx context.Context, caller string, scope model
 		s.Telemetry().RecordQuotaRejection("model_budget")
 		return ModelCallLease{}, ErrModelBudgetExceeded
 	}
-	if err := authorizeModelScope(ctx, tx, caller, scope); err != nil {
+	if err := s.authorizeModelScope(ctx, tx, caller, scope); err != nil {
 		return ModelCallLease{}, err
 	}
 	if err := tx.Commit(ctx); err != nil {
@@ -338,7 +338,7 @@ func authorizeFrozenModelConfiguration(ctx context.Context, tx pgx.Tx, scope mod
 	return nil
 }
 
-func authorizeModelScope(ctx context.Context, tx pgx.Tx, caller string, scope model.DelegatedScope) error {
+func authorizeModelScope(ctx context.Context, tx pgx.Tx, caller string, scope model.DelegatedScope, resolved ...accounts.User) error {
 	if (caller == "worker" && scope.Kind != "execution" && scope.Kind != "experience_distill") || (caller == "document" && scope.Kind != "document") ||
 		(caller != "worker" && caller != "document") || scope.TenantID == "" || scope.OrgID == "" || scope.CaseID == "" || scope.ActorID == "" {
 		return ErrModelScopeUnavailable
@@ -390,12 +390,19 @@ func authorizeModelScope(ctx context.Context, tx pgx.Tx, caller string, scope mo
 		if caller != "document" || scope.DocumentID == "" || scope.RunID != "" || scope.AttemptID != "" {
 			return ErrModelScopeUnavailable
 		}
-		if err := tx.QueryRow(ctx, `SELECT c.id,c.tenant_id,c.org_id,c.owner_id,c.member_ids
+
+		if len(resolved) == 1 && (scope.Action == "intake_parse" || scope.Action == "upload_parse") {
+			if err := tx.QueryRow(ctx, `SELECT id,tenant_id,org_id,owner_id,member_ids FROM cases WHERE id=$1 AND tenant_id=$2 AND org_id=$3`, scope.CaseID, scope.TenantID, scope.OrgID).Scan(&caseItem.ID, &caseItem.TenantID, &caseItem.OwnerOrgID, &caseItem.OwnerID, &memberJSON); err != nil {
+				return ErrModelScopeUnavailable
+			}
+		} else {
+			if err := tx.QueryRow(ctx, `SELECT c.id,c.tenant_id,c.org_id,c.owner_id,c.member_ids
 			FROM cases c JOIN documents d ON d.case_id=c.id
 			WHERE c.id=$1 AND c.tenant_id=$2 AND c.org_id=$3 AND d.id=$4 AND d.tenant_id=c.tenant_id AND d.org_id=c.org_id`,
-			scope.CaseID, scope.TenantID, scope.OrgID, scope.DocumentID).
-			Scan(&caseItem.ID, &caseItem.TenantID, &caseItem.OwnerOrgID, &caseItem.OwnerID, &memberJSON); err != nil {
-			return ErrModelScopeUnavailable
+				scope.CaseID, scope.TenantID, scope.OrgID, scope.DocumentID).
+				Scan(&caseItem.ID, &caseItem.TenantID, &caseItem.OwnerOrgID, &caseItem.OwnerID, &memberJSON); err != nil {
+				return ErrModelScopeUnavailable
+			}
 		}
 	}
 	if caseItem.TenantID != scope.TenantID || caseItem.OwnerOrgID != scope.OrgID || caseItem.ID != scope.CaseID {
@@ -405,6 +412,13 @@ func authorizeModelScope(ctx context.Context, tx pgx.Tx, caller string, scope mo
 		return ErrModelScopeUnavailable
 	}
 	user, err := trustedUser(accounts.User{ID: scope.ActorID})
+	if len(resolved) == 1 {
+		user = resolved[0]
+		err = nil
+		if user.ID != scope.ActorID {
+			err = ErrModelScopeUnavailable
+		}
+	}
 	if err != nil || accounts.Tenant(user) != scope.TenantID {
 		return ErrModelScopeUnavailable
 	}
@@ -436,8 +450,16 @@ func (s *Store) ReauthorizeModelScope(ctx context.Context, caller string, scope 
 	if err := setLocalScope(ctx, tx, dbScope{ActorID: "model-gateway", Role: "model", TenantID: scope.TenantID, OrgID: scope.OrgID}); err != nil {
 		return err
 	}
-	if err := authorizeModelScope(ctx, tx, caller, scope); err != nil {
+	if err := s.authorizeModelScope(ctx, tx, caller, scope); err != nil {
 		return err
 	}
 	return tx.Commit(ctx)
+}
+
+func (s *Store) authorizeModelScope(ctx context.Context, tx pgx.Tx, caller string, scope model.DelegatedScope) error {
+	u, err := s.operationUser(ctx, scope)
+	if err != nil {
+		return ErrModelScopeUnavailable
+	}
+	return authorizeModelScope(ctx, tx, caller, scope, u)
 }

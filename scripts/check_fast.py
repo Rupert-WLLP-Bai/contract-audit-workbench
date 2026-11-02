@@ -62,6 +62,29 @@ SESSION_TESTS = ("TestConcurrentLogoutCannotBeResurrectedByCaseWrite",
 TENANT_TESTS = ("TestCrossOrganizationGenerationPreservesCaseIdentity",
                 "TestGovernanceCrossTenantIsolation",
                 "TestMaterialTablesEnforceTenantRLSAndAppendOnlyServiceOwnership")
+TENANT_IDENTITY_TESTS = (
+    "TestTenantIdentityResolverAndPendingMembershipCoreRole",
+    "TestTenantIdentityNonSuperMigratorProvisioningAndMigration",
+)
+TENANT_IDENTITY_HTTP_TESTS = (
+    "TestOIDCAuthorizationCodeHTTPFlowsUseAudienceBoundPostgresSessions",
+    "TestOIDCAuthorizationCodeSeparatesClientAndAdminOrigins",
+    "TestOIDCPendingMembershipHTTPChoiceIsSameOriginAndOneTime",
+)
+TENANT_AUTHORITY_BOOTSTRAP_TESTS = (
+    "TestDistributedDocumentIntakeRedeemsCoreTicket",
+    "TestToolGatewaySessionAuthorityPreservesDatabaseMembershipOverHTTP",
+    "TestToolGatewayClaimAuthorityRechecksLiveFrozenJobThroughCoreHTTP",
+    "TestDelegatedPreparationRejectsForgedClaimFieldsAndRevokedReview",
+    "TestDistributedMembershipAdmissionAndModelSettlement",
+)
+OFFLINE_MIGRATOR_BOOTSTRAP_TESTS = (
+    "TestOfflineMigratorFreshAndControlledLegacyBootstrap",
+)
+CASE_INTAKE_AUTHORITY_TESTS = (
+    "TestCaseIntakePendingOwnerResumeArchiveAndReceiptPostgres",
+    "TestCaseIntakePendingLegacyAndCurrentCaseAuthorityPostgres",
+)
 MIGRATION_TESTS = ("TestEvaluationProvenanceMigrationPreservesHistoricalRows",
                    "TestContractAggregateMigrationBoundaries")
 BUDGET_TESTS = ("TestModelBudgetRoleIsolationAndFunctionPrivileges",)
@@ -252,6 +275,144 @@ def _is_tenant(path: str) -> bool:
                 "legal_applicability"))
 
 
+TENANT_AUTHORITY_CORE_PATHS = frozenset({
+    "scripts/provision_test_db.sh",
+    "cmd/auditexecution/main.go",
+    "cmd/documentservice/main.go",
+    "cmd/identity-import/main.go",
+    "cmd/migrate/main.go",
+    "cmd/modelgateway/main.go",
+    "cmd/server/main.go",
+    "cmd/server/main_test.go",
+    "cmd/toolgateway/main.go",
+    "cmd/toolgateway/main_test.go",
+    "cmd/worker/main.go",
+    "cmd/worker/authority.go",
+    "cmd/worker/authority_test.go",
+    "internal/accounts/accounts.go",
+    "internal/bootstrap/runtime.go",
+    "internal/bootstrap/services.go",
+    "internal/bootstrap/membership_authority_integration_test.go",
+    "internal/bootstrap/services_integration_test.go",
+    "internal/documentclient/intake.go",
+    "internal/documentservice/intake_upload.go",
+    "internal/documentservice/intake_upload_test.go",
+    "internal/documentservice/intake_authority_client.go",
+    "internal/documentservice/intake_authority_client_test.go",
+    "internal/documentservice/service.go",
+    "internal/identity/manager.go",
+    "internal/model/scope.go",
+    "internal/httpapi/case_intake.go",
+    "internal/httpapi/claim_authority.go",
+    "internal/httpapi/core_session_resolver.go",
+    "internal/httpapi/document_intake_authority.go",
+    "internal/httpapi/document_intake_authority_test.go",
+    "internal/httpapi/operation_authority.go",
+    "internal/httpapi/oidc.go",
+    "internal/httpapi/oidc_test.go",
+    "internal/httpapi/server.go",
+    "internal/httpapi/services.go",
+    "internal/httpapi/session_authority.go",
+    "internal/httpapi/session_authority_test.go",
+    "internal/httpapi/session_audience.go",
+    "internal/store/admission_session_context.go",
+    "internal/store/agent_review.go",
+    "internal/store/attempt_finalize.go",
+    "internal/store/authorization.go",
+    "internal/store/case_intake.go",
+    "internal/store/case_intake_authority.go",
+    "internal/store/case_intake_pending.go",
+    "internal/store/cases.go",
+    "internal/store/document_prepare.go",
+    "internal/store/execution.go",
+    "internal/store/experience_distill.go",
+    "internal/store/experience_distill_worker.go",
+    "internal/store/identity_import.go",
+    "internal/store/identity_import_test.go",
+    "internal/store/knowledge_acceptance.go",
+    "internal/store/migrations.go",
+    "internal/store/migrations/0033_tenant_membership.sql",
+    "internal/store/model_budget.go",
+    "internal/store/operation_authority.go",
+    "internal/store/operation_authority_pg_test.go",
+    "internal/store/queue_storage.go",
+    "internal/store/queue_types.go",
+    "internal/store/rulepack_shadow_input.go",
+    "internal/store/runtime_authorization.go",
+    "internal/store/scoped_mutation.go",
+    "internal/store/service_roles.go",
+    "internal/store/session_security.go",
+    "internal/store/session_lifecycle_test.go",
+    "internal/store/single_contract_execution.go",
+    "internal/store/state.go",
+    "internal/store/telecom_agent_review.go",
+    "internal/store/telecom_runtime.go",
+    "internal/store/tenant_identity.go",
+    "internal/store/tenant_identity_pg_test.go",
+    "internal/store/tenant_identity_role_provision.go",
+    "internal/store/tool_authority.go",
+    "internal/store/pg.go",
+    "internal/modelgateway/service.go",
+    "internal/modelgateway/jev.go",
+    "internal/store/worker_claim_authority.go",
+    "internal/toolgateway/core_claim.go",
+    "internal/toolgateway/core_claim_test.go",
+    "internal/toolgateway/core_session.go",
+    "internal/toolgateway/core_session_test.go",
+    "internal/toolgateway/server.go",
+})
+
+
+def _is_tenant_identity(path: str) -> bool:
+    return (path in TENANT_AUTHORITY_CORE_PATHS or
+            path.startswith(("internal/coreauthority/", "internal/operationauthority/")) or
+            path.startswith("internal/store/tenant_identity"))
+
+
+def _is_tenant_authority_bootstrap(path: str) -> bool:
+    return _is_tenant_identity(path)
+
+
+def _is_case_intake_authority(path: str) -> bool:
+    return path in {
+        "internal/httpapi/case_intake.go",
+        "internal/store/case_intake.go",
+        "internal/store/case_intake_authority.go",
+        "internal/store/case_intake_pending.go",
+        "internal/store/case_intake_pending_test.go",
+    }
+
+
+def _is_tenant_identity_http(path: str) -> bool:
+    return path in {
+        "scripts/provision_test_db.sh",
+        "cmd/server/main.go",
+        "cmd/server/main_test.go",
+        "cmd/identity-import/main.go",
+        "internal/accounts/accounts.go",
+        "internal/identity/manager.go",
+        "internal/httpapi/oidc.go",
+        "internal/httpapi/oidc_test.go",
+        "internal/httpapi/server.go",
+        "internal/httpapi/services.go",
+        "internal/httpapi/session_audience.go",
+        "internal/store/authorization.go",
+        "internal/store/cases.go",
+        "internal/store/migrations.go",
+        "internal/store/migrations/0033_tenant_membership.sql",
+        "internal/store/service_roles.go",
+        "internal/store/identity_import.go",
+        "internal/store/identity_import_test.go",
+        "internal/store/session_lifecycle.go",
+        "internal/store/session_security.go",
+        "internal/store/state.go",
+        "internal/store/tenant_identity.go",
+        "internal/store/tenant_identity_pg_test.go",
+        "internal/store/tenant_identity_role_provision.go",
+        "internal/store/pg.go",
+    }
+
+
 def _is_migration(path: str) -> bool:
     if path.startswith("internal/store/") and "schema" in _stem(path):
         return True
@@ -371,6 +532,20 @@ def _is_clm_outbox_relay(path: str) -> bool:
     return path.startswith("internal/clmoutbox/")
 
 
+def _is_offline_migrator_bootstrap(path: str) -> bool:
+    return path in {
+        "cmd/migrate/main.go",
+        "scripts/provision_test_db.sh",
+        "internal/store/offline_migrator_provision.go",
+        "internal/store/offline_migrator_provision_pg_test.go",
+        "internal/store/migrations.go",
+        "internal/store/service_roles.go",
+        "internal/store/clm_role_provision.go",
+        "internal/store/tenant_identity_role_provision.go",
+        "internal/store/migrations/0033_tenant_membership.sql",
+    }
+
+
 def _is_clm_outbox_core(path: str) -> bool:
     if path.startswith("internal/store/") and any(
         token in _stem(path) for token in ("clm_outbox", "clm_metrics")
@@ -397,6 +572,14 @@ SENSITIVE_RULES = (
     SensitiveRule("auth", _is_auth, AUTH_TESTS),
     SensitiveRule("session", _is_session, SESSION_TESTS),
     SensitiveRule("tenant", _is_tenant, TENANT_TESTS),
+    SensitiveRule("tenant-identity-core", _is_tenant_identity,
+                  TENANT_IDENTITY_TESTS),
+    SensitiveRule("tenant-identity-http", _is_tenant_identity_http,
+                  TENANT_IDENTITY_HTTP_TESTS, package="./internal/httpapi"),
+    SensitiveRule("tenant-authority-bootstrap", _is_tenant_authority_bootstrap,
+                  TENANT_AUTHORITY_BOOTSTRAP_TESTS, package="./internal/bootstrap"),
+    SensitiveRule("case-intake-authority", _is_case_intake_authority,
+                  CASE_INTAKE_AUTHORITY_TESTS),
     SensitiveRule("migration", _is_migration, MIGRATION_TESTS),
     SensitiveRule("budget", _is_budget, BUDGET_TESTS, needs_model=True),
     SensitiveRule("lease", _is_lease, LEASE_TESTS),
@@ -410,6 +593,8 @@ SENSITIVE_RULES = (
     SensitiveRule("clm-outbox-core", _is_clm_outbox_core, CLM_OUTBOX_STORE_TESTS),
     SensitiveRule("clm-outbox-relay", _is_clm_outbox_relay,
                   CLM_OUTBOX_RELAY_TESTS, package="./internal/clmoutbox"),
+    SensitiveRule("offline-migrator-bootstrap", _is_offline_migrator_bootstrap,
+                  OFFLINE_MIGRATOR_BOOTSTRAP_TESTS),
 )
 
 

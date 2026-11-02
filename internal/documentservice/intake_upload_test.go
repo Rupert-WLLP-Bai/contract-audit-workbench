@@ -2,17 +2,23 @@ package documentservice
 
 import (
 	"bytes"
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"io"
 	"mime"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"net/textproto"
+	"strings"
 	"sync"
 	"testing"
 	"time"
 
+	"contractaudit/internal/access"
 	"contractaudit/internal/accounts"
 	"contractaudit/internal/store"
 )
@@ -22,7 +28,19 @@ const (
 	testDocumentIntakeKey = "test-document-intake-credential-0001"
 )
 
-func newIntakeUploadFixture(t *testing.T) (*store.Store, string, *httptest.Server) {
+type staticIntakeAuthority struct {
+	entries map[string]store.DocumentIntakeAuthority
+}
+
+func (resolver *staticIntakeAuthority) Resolve(_ context.Context, ticket, digest string) (store.DocumentIntakeAuthority, error) {
+	authority, ok := resolver.entries[ticket]
+	if !ok || authority.BodySHA256 != digest {
+		return store.DocumentIntakeAuthority{}, errors.New("ticket authority mismatch")
+	}
+	return authority, nil
+}
+
+func newIntakeUploadFixture(t *testing.T) (*store.Store, string, *staticIntakeAuthority, *httptest.Server) {
 	t.Helper()
 	st, err := store.OpenTest(t.TempDir(), "")
 	if err != nil {
@@ -37,24 +55,37 @@ func newIntakeUploadFixture(t *testing.T) (*store.Store, string, *httptest.Serve
 	if err != nil {
 		t.Fatal(err)
 	}
+	resolver := &staticIntakeAuthority{entries: map[string]store.DocumentIntakeAuthority{}}
 	service, err := New(st, Config{
 		WorkerCredential: testDocumentWorkerKey, IntakeCredential: testDocumentIntakeKey,
 		CPUConcurrency: 2, OCRConcurrency: 1, QueueCapacity: 8, ParseTimeout: 15 * time.Second,
+		intakeAuthority: resolver,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	server := httptest.NewServer(service.Handler(http.NotFoundHandler()))
 	t.Cleanup(server.Close)
-	return st, caseID, server
+	return st, caseID, resolver, server
 }
 
-func intakeUploadPayload(t *testing.T, actor, tenant, org, caseID, key, filename string, content []byte) (string, []byte) {
+func registerIntakeAuthority(resolver *staticIntakeAuthority, ticket, actor, tenant, org, caseID, key, filename, content string, role string) {
+	digest := sha256.Sum256([]byte(content))
+	resolver.entries[ticket] = store.DocumentIntakeAuthority{
+		ActorID: actor, TenantID: tenant, OrgID: org, Role: role,
+		Issuer: "https://identity.example/test", Subject: actor, CaseID: caseID,
+		OperationID: "intake-test", UploadKey: key, Filename: filename, MediaType: "text/plain",
+		BodySHA256: hex.EncodeToString(digest[:]), Action: "create_primary_contract",
+		Grants: []access.Grant{{Role: "case_owner", Scope: "case", CaseID: caseID}},
+	}
+}
+
+func intakeUploadPayload(t *testing.T, ticket, caseID, filename string, content []byte) (string, []byte) {
 	t.Helper()
 	var payload bytes.Buffer
 	writer := multipart.NewWriter(&payload)
 	for name, value := range map[string]string{
-		"actor_id": actor, "tenant_id": tenant, "org_id": org, "case_id": caseID, "idempotency_key": key,
+		"authority_ticket": ticket, "case_id": caseID,
 	} {
 		if err := writer.WriteField(name, value); err != nil {
 			t.Fatal(err)
@@ -109,10 +140,12 @@ func decodeDocumentUpload(t *testing.T, body []byte) store.DocumentUploadResult 
 }
 
 func TestDocumentIntakeUploadAuthenticatesActorAndReplays(t *testing.T) {
-	st, caseID, server := newIntakeUploadFixture(t)
+	st, caseID, resolver, server := newIntakeUploadFixture(t)
 	client := &http.Client{Timeout: 10 * time.Second}
-	contentType, payload := intakeUploadPayload(t, "demo-admin", accounts.LocalDemoTenant, "demo-org", caseID,
-		"internal-intake-replay", "main.txt", []byte("内部上传主合同。"))
+	ticket := "iat_" + strings.Repeat("a", 64)
+	content := []byte("内部上传主合同。")
+	registerIntakeAuthority(resolver, ticket, "demo-admin", accounts.LocalDemoTenant, "demo-org", caseID, "internal-intake-replay", "main.txt", string(content), "admin")
+	contentType, payload := intakeUploadPayload(t, ticket, caseID, "main.txt", content)
 	status, body := postInternalIntake(client, server.URL, testDocumentIntakeKey, contentType, payload)
 	if status != http.StatusCreated {
 		t.Fatalf("internal intake upload status=%d body=%s", status, body)
@@ -130,11 +163,10 @@ func TestDocumentIntakeUploadAuthenticatesActorAndReplays(t *testing.T) {
 		t.Fatalf("internal intake replay drifted: first=%+v replay=%+v", first, replay)
 	}
 
-	changedType, changedPayload := intakeUploadPayload(t, "demo-admin", accounts.LocalDemoTenant, "demo-org", caseID,
-		"internal-intake-replay", "main.txt", []byte("不同字节。"))
+	changedType, changedPayload := intakeUploadPayload(t, ticket, caseID, "main.txt", []byte("不同字节。"))
 	status, body = postInternalIntake(client, server.URL, testDocumentIntakeKey, changedType, changedPayload)
-	if status != http.StatusConflict {
-		t.Fatalf("changed internal intake payload status=%d body=%s", status, body)
+	if status != http.StatusForbidden {
+		t.Fatalf("changed internal intake payload was not rejected by ticket binding: status=%d body=%s", status, body)
 	}
 	status, body = postInternalIntake(client, server.URL, testDocumentWorkerKey, contentType, payload)
 	if status != http.StatusUnauthorized {
@@ -144,16 +176,20 @@ func TestDocumentIntakeUploadAuthenticatesActorAndReplays(t *testing.T) {
 	if status != http.StatusUnauthorized {
 		t.Fatalf("wrong internal intake credential status=%d body=%s", status, body)
 	}
-	viewerType, viewerPayload := intakeUploadPayload(t, "demo-viewer", accounts.LocalDemoTenant, "demo-org", caseID,
-		"internal-intake-viewer", "viewer.txt", []byte("只读角色不能上传。"))
+	viewerTicket := "iat_" + strings.Repeat("b", 64)
+	viewerContent := "只读角色不能上传。"
+	registerIntakeAuthority(resolver, viewerTicket, "demo-viewer", accounts.LocalDemoTenant, "demo-org", caseID, "internal-intake-viewer", "viewer.txt", viewerContent, "viewer")
+	viewerType, viewerPayload := intakeUploadPayload(t, viewerTicket, caseID, "viewer.txt", []byte(viewerContent))
 	status, body = postInternalIntake(client, server.URL, testDocumentIntakeKey, viewerType, viewerPayload)
 	if status != http.StatusForbidden {
 		t.Fatalf("viewer internal intake upload status=%d body=%s", status, body)
 	}
-	foreignType, foreignPayload := intakeUploadPayload(t, "demo-admin", accounts.LocalDemoTenant2, "demo-org-2", caseID,
-		"internal-intake-foreign", "foreign.txt", []byte("跨租户断言。"))
+	foreignTicket := "iat_" + strings.Repeat("c", 64)
+	foreignContent := "跨租户断言。"
+	registerIntakeAuthority(resolver, foreignTicket, "demo-admin", accounts.LocalDemoTenant2, "demo-org-2", caseID, "internal-intake-foreign", "foreign.txt", foreignContent, "admin")
+	foreignType, foreignPayload := intakeUploadPayload(t, foreignTicket, caseID, "foreign.txt", []byte(foreignContent))
 	status, body = postInternalIntake(client, server.URL, testDocumentIntakeKey, foreignType, foreignPayload)
-	if status != http.StatusForbidden {
+	if status != http.StatusNotFound {
 		t.Fatalf("foreign tenant assertion status=%d body=%s", status, body)
 	}
 	admin, _ := accounts.ByID("demo-admin")
@@ -167,10 +203,12 @@ func TestDocumentIntakeUploadAuthenticatesActorAndReplays(t *testing.T) {
 }
 
 func TestDocumentIntakeUploadConcurrentSameKeyCreatesOneMaterial(t *testing.T) {
-	st, caseID, server := newIntakeUploadFixture(t)
+	st, caseID, resolver, server := newIntakeUploadFixture(t)
 	client := &http.Client{Timeout: 20 * time.Second}
-	contentType, payload := intakeUploadPayload(t, "demo-admin", accounts.LocalDemoTenant, "demo-org", caseID,
-		"internal-intake-concurrent", "concurrent.txt", []byte("并发内部上传主合同。"))
+	ticket := "iat_" + strings.Repeat("d", 64)
+	content := []byte("并发内部上传主合同。")
+	registerIntakeAuthority(resolver, ticket, "demo-admin", accounts.LocalDemoTenant, "demo-org", caseID, "internal-intake-concurrent", "concurrent.txt", string(content), "admin")
+	contentType, payload := intakeUploadPayload(t, ticket, caseID, "concurrent.txt", content)
 	const workers = 4
 	results := make(chan struct {
 		status int

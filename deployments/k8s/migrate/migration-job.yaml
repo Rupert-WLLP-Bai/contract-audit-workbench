@@ -24,6 +24,79 @@ spec:
         runAsUser: 10001
         runAsGroup: 10001
         seccompProfile: {type: RuntimeDefault}
+      initContainers:
+        - name: offline-migrator-provision
+          image: contract-audit-backend:release
+          imagePullPolicy: IfNotPresent
+          args: ["/app/migrate", "provision-offline-migrator"]
+          envFrom: [{configMapRef: {name: contract-audit-runtime}}]
+          env:
+            - {name: AUTH_ADMIN_DATABASE_URL, valueFrom: {secretKeyRef: {name: contract-audit-db-urls, key: AUTH_ADMIN_DATABASE_URL}}}
+            - {name: MIGRATOR_DATABASE_URL, valueFrom: {secretKeyRef: {name: contract-audit-db-urls, key: MIGRATOR_DATABASE_URL}}}
+            - {name: CORE_DATABASE_URL, valueFrom: {secretKeyRef: {name: contract-audit-db-urls, key: CORE_DATABASE_URL}}}
+            - {name: DOCUMENT_DATABASE_URL, valueFrom: {secretKeyRef: {name: contract-audit-db-urls, key: DOCUMENT_DATABASE_URL}}}
+            - {name: EXECUTION_DATABASE_URL, valueFrom: {secretKeyRef: {name: contract-audit-db-urls, key: EXECUTION_DATABASE_URL}}}
+            - {name: MODEL_DATABASE_URL, valueFrom: {secretKeyRef: {name: contract-audit-db-urls, key: MODEL_DATABASE_URL}}}
+            - {name: TOOL_DATABASE_URL, valueFrom: {secretKeyRef: {name: contract-audit-db-urls, key: TOOL_DATABASE_URL}}}
+            - {name: DEV_DATABASE_URL, valueFrom: {secretKeyRef: {name: contract-audit-db-urls, key: DEV_DATABASE_URL, optional: true}}}
+            - {name: TEST_DATABASE_URL, valueFrom: {secretKeyRef: {name: contract-audit-db-urls, key: TEST_DATABASE_URL, optional: true}}}
+            - {name: PROD_DATABASE_URL, valueFrom: {secretKeyRef: {name: contract-audit-db-urls, key: PROD_DATABASE_URL}}}
+          resources:
+            requests: {cpu: 100m, memory: 128Mi}
+            limits: {cpu: "1", memory: 512Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          volumeMounts: [{name: tmp, mountPath: /tmp}]
+        - name: clm-owner-provision
+          image: contract-audit-backend:release
+          imagePullPolicy: IfNotPresent
+          args: ["/app/migrate", "provision-clm-maintenance"]
+          envFrom: [{configMapRef: {name: contract-audit-runtime}}]
+          env:
+            - {name: CLM_ADMIN_DATABASE_URL, valueFrom: {secretKeyRef: {name: contract-audit-db-urls, key: AUTH_ADMIN_DATABASE_URL}}}
+            - {name: MIGRATOR_DATABASE_URL, valueFrom: {secretKeyRef: {name: contract-audit-db-urls, key: MIGRATOR_DATABASE_URL}}}
+            - {name: CORE_DATABASE_URL, valueFrom: {secretKeyRef: {name: contract-audit-db-urls, key: CORE_DATABASE_URL}}}
+            - {name: DOCUMENT_DATABASE_URL, valueFrom: {secretKeyRef: {name: contract-audit-db-urls, key: DOCUMENT_DATABASE_URL}}}
+            - {name: EXECUTION_DATABASE_URL, valueFrom: {secretKeyRef: {name: contract-audit-db-urls, key: EXECUTION_DATABASE_URL}}}
+            - {name: MODEL_DATABASE_URL, valueFrom: {secretKeyRef: {name: contract-audit-db-urls, key: MODEL_DATABASE_URL}}}
+            - {name: TOOL_DATABASE_URL, valueFrom: {secretKeyRef: {name: contract-audit-db-urls, key: TOOL_DATABASE_URL}}}
+            - {name: DEV_DATABASE_URL, valueFrom: {secretKeyRef: {name: contract-audit-db-urls, key: DEV_DATABASE_URL, optional: true}}}
+            - {name: TEST_DATABASE_URL, valueFrom: {secretKeyRef: {name: contract-audit-db-urls, key: TEST_DATABASE_URL, optional: true}}}
+            - {name: PROD_DATABASE_URL, valueFrom: {secretKeyRef: {name: contract-audit-db-urls, key: PROD_DATABASE_URL}}}
+          resources:
+            requests: {cpu: 100m, memory: 128Mi}
+            limits: {cpu: "1", memory: 512Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          volumeMounts: [{name: tmp, mountPath: /tmp}]
+        - name: auth-owner-provision
+          image: contract-audit-backend:release
+          imagePullPolicy: IfNotPresent
+          args: ["/app/migrate", "provision-tenant-identity"]
+          envFrom: [{configMapRef: {name: contract-audit-runtime}}]
+          env:
+            - {name: AUTH_ADMIN_DATABASE_URL, valueFrom: {secretKeyRef: {name: contract-audit-db-urls, key: AUTH_ADMIN_DATABASE_URL}}}
+            - {name: MIGRATOR_DATABASE_URL, valueFrom: {secretKeyRef: {name: contract-audit-db-urls, key: MIGRATOR_DATABASE_URL}}}
+            - {name: CORE_DATABASE_URL, valueFrom: {secretKeyRef: {name: contract-audit-db-urls, key: CORE_DATABASE_URL}}}
+            - {name: DOCUMENT_DATABASE_URL, valueFrom: {secretKeyRef: {name: contract-audit-db-urls, key: DOCUMENT_DATABASE_URL}}}
+            - {name: EXECUTION_DATABASE_URL, valueFrom: {secretKeyRef: {name: contract-audit-db-urls, key: EXECUTION_DATABASE_URL}}}
+            - {name: MODEL_DATABASE_URL, valueFrom: {secretKeyRef: {name: contract-audit-db-urls, key: MODEL_DATABASE_URL}}}
+            - {name: TOOL_DATABASE_URL, valueFrom: {secretKeyRef: {name: contract-audit-db-urls, key: TOOL_DATABASE_URL}}}
+            - {name: DEV_DATABASE_URL, valueFrom: {secretKeyRef: {name: contract-audit-db-urls, key: DEV_DATABASE_URL, optional: true}}}
+            - {name: TEST_DATABASE_URL, valueFrom: {secretKeyRef: {name: contract-audit-db-urls, key: TEST_DATABASE_URL, optional: true}}}
+            - {name: PROD_DATABASE_URL, valueFrom: {secretKeyRef: {name: contract-audit-db-urls, key: PROD_DATABASE_URL}}}
+          resources:
+            requests: {cpu: 100m, memory: 128Mi}
+            limits: {cpu: "1", memory: 512Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          volumeMounts: [{name: tmp, mountPath: /tmp}]
       containers:
         - name: migrate
           image: contract-audit-backend:release
@@ -45,6 +118,10 @@ spec:
               valueFrom: {secretKeyRef: {name: contract-audit-db-urls, key: TOOL_DATABASE_URL}}
             - name: MIGRATOR_DATABASE_URL
               valueFrom: {secretKeyRef: {name: contract-audit-db-urls, key: MIGRATOR_DATABASE_URL}}
+            - name: TEST_DATABASE_URL
+              valueFrom: {secretKeyRef: {name: contract-audit-db-urls, key: TEST_DATABASE_URL, optional: true}}
+            - name: PROD_DATABASE_URL
+              valueFrom: {secretKeyRef: {name: contract-audit-db-urls, key: PROD_DATABASE_URL}}
           resources:
             requests: {cpu: 250m, memory: 256Mi}
             limits: {cpu: "1", memory: 1Gi}

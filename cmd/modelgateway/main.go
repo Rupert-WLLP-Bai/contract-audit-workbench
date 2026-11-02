@@ -15,8 +15,11 @@
 package main
 
 import (
+	"errors"
 	"log"
 	"net/http"
+	"os"
+	"strings"
 	"time"
 
 	"contractaudit/internal/bootstrap"
@@ -34,6 +37,9 @@ func main() {
 }
 
 func run() error {
+	if len(strings.TrimSpace(os.Getenv("CORE_MODEL_AUTHORITY_TOKEN"))) < 32 {
+		return errors.New("CORE_MODEL_AUTHORITY_TOKEN is required for the budget/authority Model gateway, including fixture-provider mode")
+	}
 	ctx, stop := process.SignalContext()
 	defer stop()
 

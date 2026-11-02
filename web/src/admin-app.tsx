@@ -45,6 +45,11 @@ const GovernedKnowledgeDetailPage = lazy(() =>
     default: module.GovernedKnowledgeDetailPage,
   })),
 );
+const PendingMembershipPage = lazy(() =>
+  import("./pages/pending-membership-page").then((module) => ({
+    default: module.PendingMembershipPage,
+  })),
+);
 
 export function AdminApp() {
   return (
@@ -52,6 +57,7 @@ export function AdminApp() {
       fallback={<PageStatus kind="loading" title="正在加载管理工作台" />}
     >
       <Routes>
+        <Route path="/admin/login/membership" element={<PendingMembershipPage audience="admin" />} />
         <Route path="/admin/login" element={<LoginPage audience="admin" />} />
         <Route
           element={<SessionGate audience="admin" loginPath="/admin/login" />}

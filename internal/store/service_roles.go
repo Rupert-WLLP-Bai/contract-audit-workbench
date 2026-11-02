@@ -18,7 +18,7 @@ const serviceRoleSchemaSQL = `CREATE TABLE IF NOT EXISTS service_database_roles 
 )`
 
 var serviceOwnedTables = map[string][]string{
-	"core":      {"sessions", "cases", "case_intake_operations", "case_intake_requests", "case_intake_archives", "decisions", "idempotency", "activity", "business_remediations", "business_remediation_revisions", "business_reports", "business_archives", "business_run_events", "business_audit_events", "business_case_profiles", "business_workbench_tasks", "business_case_relations", "business_knowledge", "business_workbench_audit", "rule_pack_versions", "rule_pack_pointers", "rule_pack_history", "rule_pack_idempotency", "experience_feedback", "experience_candidate_versions", "governed_knowledge_versions", "governed_knowledge_state", "governed_knowledge_pointers", "governed_knowledge_history", "governed_knowledge_idempotency", "governed_policy_rule_bindings", "legal_source_captures", "evidence_requests", "evidence_receipts", "evidence_request_events", "operator_object_bindings", "operator_external_snapshot_sets", "operator_external_collection_claims", "operator_external_observations", "operator_fulfillment_evaluations", "operator_fulfillment_checks", "operator_fulfillment_evaluation_objects", "operator_impact_plans", "operator_mapping_lineages", "operator_mapping_change_requests", "operator_mapping_change_decisions", "service_objects", "service_object_versions", "service_object_contract_associations", "service_object_mutation_receipts", "subjects", "subject_versions", "subject_current_identifier_claims", "case_subject_roles", "case_subject_role_versions", "subject_change_requests", "subject_change_decisions", "subject_write_idempotency", "subject_source_snapshots", "case_legal_applicability_facts", "case_legal_applicability_fact_versions", "core_write_receipts", "manual_finding_records", "rule_pack_shadow_reports", "experience_finding_usage", "clm_contracts", "clm_contract_revisions", "clm_contract_cases", "clm_approval_rounds", "clm_business_events", "clm_outbox_delivery", "clm_contract_drafts", "clm_contract_write_receipts", "clm_legacy_imports", "clm_contract_saved_views", "clm_contract_exports", "clm_contract_version_materials", "clm_contract_version_seals", "clm_workflow_templates", "clm_workflow_template_nodes", "clm_workflow_template_pointers", "clm_workflow_roles", "clm_workflow_role_bindings", "clm_approval_tasks", "clm_approval_task_assignments", "clm_approval_task_materials", "clm_approval_decisions", "clm_approval_task_transfers", "clm_contract_audit_bindings", "clm_contract_signing_registrations", "clm_contract_supplements", "clm_contract_revision_items", "clm_contract_deliveries", "clm_contract_acceptances", "clm_contract_acceptance_defects", "clm_contract_rectifications", "clm_contract_acceptance_rectifications", "clm_contract_payment_eligibility_checks", "clm_contract_payment_receipts", "clm_contract_revision_asset_plans", "clm_contract_asset_handovers", "clm_contract_asset_receipts", "clm_contract_source_observations"},
+	"core":      {"sessions", "cases", "case_intake_operations", "case_intake_requests", "case_intake_archives", "intake_authority_tickets", "operation_authority_tickets", "worker_claim_identities", "decisions", "idempotency", "activity", "business_remediations", "business_remediation_revisions", "business_reports", "business_archives", "business_run_events", "business_audit_events", "business_case_profiles", "business_workbench_tasks", "business_case_relations", "business_knowledge", "business_workbench_audit", "rule_pack_versions", "rule_pack_pointers", "rule_pack_history", "rule_pack_idempotency", "experience_feedback", "experience_candidate_versions", "governed_knowledge_versions", "governed_knowledge_state", "governed_knowledge_pointers", "governed_knowledge_history", "governed_knowledge_idempotency", "governed_policy_rule_bindings", "legal_source_captures", "evidence_requests", "evidence_receipts", "evidence_request_events", "operator_object_bindings", "operator_external_snapshot_sets", "operator_external_collection_claims", "operator_external_observations", "operator_fulfillment_evaluations", "operator_fulfillment_checks", "operator_fulfillment_evaluation_objects", "operator_impact_plans", "operator_mapping_lineages", "operator_mapping_change_requests", "operator_mapping_change_decisions", "service_objects", "service_object_versions", "service_object_contract_associations", "service_object_mutation_receipts", "subjects", "subject_versions", "subject_current_identifier_claims", "case_subject_roles", "case_subject_role_versions", "subject_change_requests", "subject_change_decisions", "subject_write_idempotency", "subject_source_snapshots", "case_legal_applicability_facts", "case_legal_applicability_fact_versions", "core_write_receipts", "manual_finding_records", "rule_pack_shadow_reports", "experience_finding_usage", "clm_contracts", "clm_contract_revisions", "clm_contract_cases", "clm_approval_rounds", "clm_business_events", "clm_outbox_delivery", "clm_contract_drafts", "clm_contract_write_receipts", "clm_legacy_imports", "clm_contract_saved_views", "clm_contract_exports", "clm_contract_version_materials", "clm_contract_version_seals", "clm_workflow_templates", "clm_workflow_template_nodes", "clm_workflow_template_pointers", "clm_workflow_roles", "clm_workflow_role_bindings", "clm_approval_tasks", "clm_approval_task_assignments", "clm_approval_task_materials", "clm_approval_decisions", "clm_approval_task_transfers", "clm_contract_audit_bindings", "clm_contract_signing_registrations", "clm_contract_supplements", "clm_contract_revision_items", "clm_contract_deliveries", "clm_contract_acceptances", "clm_contract_acceptance_defects", "clm_contract_rectifications", "clm_contract_acceptance_rectifications", "clm_contract_payment_eligibility_checks", "clm_contract_payment_receipts", "clm_contract_revision_asset_plans", "clm_contract_asset_handovers", "clm_contract_asset_receipts", "clm_contract_source_observations"},
 	"document":  {"documents", "parsed_documents", "business_generations", "document_activity", "case_contract_chains", "material_entities", "material_versions", "document_upload_idempotency"},
 	"execution": {"review_runs", "review_attempts", "review_attempt_inputs", "review_attempt_parse_selections", "execution_events", "findings", "constraint_evaluations", "run_events", "review_run_snapshots", "audit_events", "worker_jobs", "outbox_events", "execution_activity", "execution_queue_policies", "execution_queue_cursor", "execution_queue_tenants", "execution_agent_reviews", "advisory_judgments", "experience_distill_inputs", "experience_distill_results", "experience_distill_failures", "execution_write_receipts", "review_rulepack_inputs"},
 	"model":     {"model_call_leases", "model_usage"},
@@ -75,6 +75,15 @@ func ownedTable(owner, table string) bool {
 }
 
 func (s *Store) ValidateServiceDatabaseRole(ctx context.Context, service string) error {
+	cfg, err := pgx.ParseConfig(s.sel.DSN)
+	if err != nil {
+		return errors.New("runtime service DSN invalid")
+	}
+	var sessionUser, currentUser string
+	var super, bypass, createRole, createDB bool
+	if err = s.pool.QueryRow(ctx, `SELECT session_user,current_user,rolsuper,rolbypassrls,rolcreaterole,rolcreatedb FROM pg_roles WHERE rolname=current_user`).Scan(&sessionUser, &currentUser, &super, &bypass, &createRole, &createDB); err != nil || sessionUser != cfg.User || currentUser != cfg.User || super || bypass || createRole || createDB {
+		return errors.New("runtime service must use its actual dedicated non-superuser non-BYPASSRLS login")
+	}
 	if service == "worker" {
 		service = "execution"
 	}
@@ -179,7 +188,8 @@ func MigrateServiceRoles(ctx context.Context) error {
 		return errors.New("cannot inspect legacy model accounting relation")
 	}
 
-	var coreRoleName string
+	var coreRoleName, executionRoleName string
+	configuredRoles := make([]string, 0, len(serviceOwnedTables))
 	for _, service := range []string{"core", "document", "execution", "model", "tool"} {
 		key := strings.ToUpper(service) + "_DATABASE_URL"
 		raw := strings.TrimSpace(os.Getenv(key))
@@ -196,6 +206,7 @@ func MigrateServiceRoles(ctx context.Context) error {
 			return err
 		}
 		quotedRole := pgx.Identifier{cfg.User}.Sanitize()
+		configuredRoles = append(configuredRoles, cfg.User)
 		if exists {
 			var bound string
 			if err := tx.QueryRow(ctx, `SELECT service FROM service_database_roles WHERE role_name=$1`, cfg.User).Scan(&bound); err != nil {
@@ -219,6 +230,10 @@ func MigrateServiceRoles(ctx context.Context) error {
 		var runtimeMember bool
 		if err := tx.QueryRow(ctx, `SELECT pg_has_role($1,$2,'MEMBER')`, cfg.User, maintenanceRole).Scan(&runtimeMember); err != nil || runtimeMember {
 			return fmt.Errorf("refusing runtime role %q with CLM maintenance membership", cfg.User)
+		}
+		identityOwner := tenantIdentityOwnerName(selection.Database.Name, schema)
+		if err := tx.QueryRow(ctx, `SELECT pg_has_role($1,$2,'MEMBER')`, cfg.User, identityOwner).Scan(&runtimeMember); err != nil || runtimeMember {
+			return fmt.Errorf("refusing runtime role %q with tenant identity owner membership", cfg.User)
 		}
 		password := "'" + strings.ReplaceAll(cfg.Password, "'", "''") + "'"
 		if _, err := tx.Exec(ctx, `ALTER ROLE `+quotedRole+` PASSWORD `+password); err != nil {
@@ -244,7 +259,7 @@ func MigrateServiceRoles(ctx context.Context) error {
 			if service != "model" {
 				privileges := "INSERT,UPDATE,DELETE"
 				switch table {
-				case "case_intake_requests", "case_intake_archives":
+				case "case_intake_requests", "case_intake_archives", "worker_claim_identities":
 					privileges = "INSERT"
 				case "clm_contract_revisions", "clm_contract_version_materials", "clm_contract_version_seals",
 					"clm_contract_cases", "clm_business_events", "clm_contract_write_receipts", "clm_legacy_imports", "clm_contract_exports",
@@ -258,6 +273,8 @@ func MigrateServiceRoles(ctx context.Context) error {
 				case "clm_contracts", "clm_contract_drafts", "clm_approval_rounds",
 					"clm_workflow_template_pointers", "clm_workflow_roles", "clm_approval_tasks":
 					privileges = "INSERT,UPDATE"
+				case "operation_authority_tickets":
+					privileges = "INSERT"
 				case "clm_outbox_delivery":
 					privileges = "INSERT"
 				case "experience_feedback", "experience_candidate_versions", "experience_distill_inputs", "experience_distill_results", "experience_distill_failures", "advisory_judgments", "governed_knowledge_versions", "governed_knowledge_history", "legal_source_captures", "evidence_receipts", "evidence_request_events", "material_versions", "document_upload_idempotency", "subject_versions", "case_subject_role_versions", "subject_change_requests", "subject_change_decisions", "subject_write_idempotency", "subject_source_snapshots", "case_legal_applicability_fact_versions", "core_write_receipts", "execution_write_receipts", "manual_finding_records", "review_rulepack_inputs", "rule_pack_shadow_reports", "experience_finding_usage":
@@ -331,6 +348,9 @@ func MigrateServiceRoles(ctx context.Context) error {
 				return fmt.Errorf("cannot restore schema migrator after CLM grants: %w", err)
 			}
 		}
+		if service == "execution" {
+			executionRoleName = cfg.User
+		}
 		if service == "model" {
 			// Cross-tenant accounting is available only through the atomic budget
 			// functions; the model role has no direct write access to these tables.
@@ -370,6 +390,69 @@ func MigrateServiceRoles(ctx context.Context) error {
 			}
 		}
 	}
+	identityTables := []string{"identity_jurisdictions", "identity_tenants", "identity_org_units", "identity_principals", "identity_memberships", "identity_pending_auth"}
+	for _, table := range identityTables {
+		qualified := pgx.Identifier{schema, table}.Sanitize()
+		for _, role := range configuredRoles {
+			if _, err := tx.Exec(ctx, `REVOKE ALL ON TABLE `+qualified+` FROM `+pgx.Identifier{role}.Sanitize()); err != nil {
+				return fmt.Errorf("cannot remove direct %s access from service role %q", table, role)
+			}
+		}
+	}
+	workerClaimIdentityTable := pgx.Identifier{schema, "worker_claim_identities"}.Sanitize()
+	for _, role := range configuredRoles {
+		if role == coreRoleName {
+			continue
+		}
+		if _, err := tx.Exec(ctx, `REVOKE ALL PRIVILEGES ON TABLE `+workerClaimIdentityTable+` FROM `+pgx.Identifier{role}.Sanitize()); err != nil {
+			return fmt.Errorf("cannot restrict worker claim identity access from service role %q", role)
+		}
+	}
+	intakeTicketTable := pgx.Identifier{schema, "intake_authority_tickets"}.Sanitize()
+	for _, role := range configuredRoles {
+		if _, err := tx.Exec(ctx, `REVOKE ALL ON TABLE `+intakeTicketTable+` FROM `+pgx.Identifier{role}.Sanitize()); err != nil {
+			return fmt.Errorf("cannot restrict intake authority ticket access from service role %q", role)
+		}
+	}
+	if _, err := tx.Exec(ctx, `GRANT SELECT (ticket_digest,tenant_id,operation_id,session_digest,principal_id,membership_id,actor_id,org_id,case_id,upload_key,filename,media_type,body_sha256,action,expires_at), INSERT (ticket_digest,tenant_id,operation_id,session_digest,principal_id,membership_id,actor_id,org_id,case_id,upload_key,filename,media_type,body_sha256,action,expires_at) ON TABLE `+intakeTicketTable+` TO `+pgx.Identifier{coreRoleName}.Sanitize()); err != nil {
+		return fmt.Errorf("cannot grant Core scoped intake authority ticket access: %w", err)
+	}
+	operationTicketTable := pgx.Identifier{schema, "operation_authority_tickets"}.Sanitize()
+	for _, role := range configuredRoles {
+		if _, err := tx.Exec(ctx, `REVOKE ALL ON TABLE `+operationTicketTable+` FROM `+pgx.Identifier{role}.Sanitize()); err != nil {
+			return errors.New("cannot restrict operation authority tickets")
+		}
+	}
+	if _, err := tx.Exec(ctx, `GRANT SELECT,INSERT ON TABLE `+operationTicketTable+` TO `+pgx.Identifier{coreRoleName}.Sanitize()); err != nil {
+		return errors.New("cannot grant Core operation ticket ownership")
+	}
+	identityOwner := tenantIdentityOwnerName(selection.Database.Name, schema)
+	identityFunctions := []string{
+		"tenant_identity_oidc_login(text,text,text,text,text,text)",
+		"tenant_identity_list_pending(text,text)",
+		"tenant_identity_consume_pending(text,uuid,text,text,text)",
+		"tenant_identity_session_user(text)",
+		"tenant_identity_intake_ticket(text)",
+		"tenant_identity_claim_user(text,text,text,text,bigint,text,text,text,text)",
+		"tenant_identity_bind_admission(text,text)",
+	}
+	if _, err := tx.Exec(ctx, `SET LOCAL ROLE `+pgx.Identifier{identityOwner}.Sanitize()); err != nil {
+		return fmt.Errorf("migrator cannot assume the bounded tenant identity owner: %w", err)
+	}
+	for _, fn := range identityFunctions {
+		if _, err := tx.Exec(ctx, `GRANT EXECUTE ON FUNCTION `+pgx.Identifier{schema}.Sanitize()+`.`+fn+` TO `+pgx.Identifier{coreRoleName}.Sanitize()); err != nil {
+			return fmt.Errorf("cannot grant Core tenant identity function %s: %w", fn, err)
+		}
+	}
+	if executionRoleName == "" {
+		return errors.New("execution database role is not configured for review admission binding")
+	}
+	if _, err := tx.Exec(ctx, `GRANT EXECUTE ON FUNCTION `+pgx.Identifier{schema}.Sanitize()+`.tenant_identity_bind_admission(text,text) TO `+pgx.Identifier{executionRoleName}.Sanitize()); err != nil {
+		return fmt.Errorf("cannot grant Execution the narrow review admission binder: %w", err)
+	}
+	if _, err := tx.Exec(ctx, `RESET ROLE`); err != nil {
+		return err
+	}
 	var clmFunctionGrantUnsafe bool
 	if err := tx.QueryRow(ctx, `WITH expected AS (
 		SELECT to_regprocedure(format('%I.clm_outbox_claim(integer,bigint)',$1::text))::oid AS oid UNION ALL
@@ -391,6 +474,35 @@ func MigrateServiceRoles(ctx context.Context) error {
 	}
 	if clmFunctionGrantUnsafe {
 		return errors.New("CLM maintenance functions have PUBLIC or unexpected runtime grants")
+	}
+	var identityFunctionACLUnsafe bool
+	if err := tx.QueryRow(ctx, `WITH expected AS (
+		SELECT to_regprocedure(format('%I.tenant_identity_oidc_login(text,text,text,text,text,text)',$1::text))::oid AS oid UNION ALL
+		SELECT to_regprocedure(format('%I.tenant_identity_list_pending(text,text)',$1::text))::oid UNION ALL
+		SELECT to_regprocedure(format('%I.tenant_identity_consume_pending(text,uuid,text,text,text)',$1::text))::oid UNION ALL
+		SELECT to_regprocedure(format('%I.tenant_identity_session_user(text)',$1::text))::oid
+		UNION ALL SELECT to_regprocedure(format('%I.tenant_identity_intake_ticket(text)',$1::text))::oid
+		UNION ALL SELECT to_regprocedure(format('%I.tenant_identity_claim_user(text,text,text,text,bigint,text,text,text,text)',$1::text))::oid
+		UNION ALL SELECT to_regprocedure(format('%I.tenant_identity_bind_admission(text,text)',$1::text))::oid
+	), function_acl AS (
+		SELECT function.oid,acl.grantee,acl.privilege_type
+		FROM expected JOIN pg_proc function ON function.oid=expected.oid
+		CROSS JOIN LATERAL aclexplode(COALESCE(function.proacl,acldefault('f',function.proowner))) acl
+	)
+	SELECT (SELECT count(*) FROM expected WHERE oid IS NOT NULL)<>7
+		OR EXISTS (SELECT 1 FROM function_acl WHERE grantee=0 OR grantee NOT IN
+			((SELECT oid FROM pg_roles WHERE rolname=$2::text),(SELECT oid FROM pg_roles WHERE rolname=$3::text),(SELECT oid FROM pg_roles WHERE rolname=$4::text)))
+		OR EXISTS (SELECT 1 FROM function_acl WHERE function_acl.oid<>to_regprocedure(format('%I.tenant_identity_bind_admission(text,text)',$1::text))
+			AND grantee=(SELECT oid FROM pg_roles WHERE rolname=$4::text))
+		OR EXISTS (SELECT 1 FROM function_acl WHERE grantee=(SELECT oid FROM pg_roles WHERE rolname=$2::text)
+			AND privilege_type<>'EXECUTE')
+		OR EXISTS (SELECT 1 FROM expected WHERE oid IS NOT NULL AND NOT has_function_privilege($3::text,oid,'EXECUTE'))
+		OR NOT has_function_privilege($4::text,to_regprocedure(format('%I.tenant_identity_bind_admission(text,text)',$1::text)),'EXECUTE')`,
+		schema, identityOwner, coreRoleName, executionRoleName).Scan(&identityFunctionACLUnsafe); err != nil {
+		return fmt.Errorf("cannot verify Core-only tenant identity function grants: %w", err)
+	}
+	if identityFunctionACLUnsafe {
+		return errors.New("tenant identity functions have PUBLIC or unexpected service grants")
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return errors.New("service role migration did not commit")

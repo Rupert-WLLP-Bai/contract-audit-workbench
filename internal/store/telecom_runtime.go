@@ -254,7 +254,7 @@ func (s *Store) cloudPolicyForReview(ctx context.Context, caseItem Case, runID, 
 	if !ok || !isCloudServicesCase(currentCase) {
 		return model.CloudPolicy{}, errors.New("cloud review case scope changed")
 	}
-	actor, err := authorizeAttemptExecution(st, runID, attemptID)
+	actor, err := s.authorizeAttemptExecution(st, runID, attemptID)
 	if err != nil {
 		return model.CloudPolicy{}, err
 	}
@@ -356,7 +356,7 @@ func (s *Store) authorizeTelecomStage(ctx context.Context, runID, attemptID stri
 	if !ok || !isGovernedReviewCase(item) {
 		return Case{}, access.Principal{}, access.Resource{}, errors.New("governed review case scope changed")
 	}
-	principal, resource, err := trustedTelecomReviewIdentity(st, runID, attemptID, item)
+	principal, resource, err := s.trustedTelecomReviewIdentity(st, runID, attemptID, item)
 	return item, principal, resource, err
 }
 
@@ -420,7 +420,7 @@ func (s *Store) executeTelecomAttempt(parent, ctx context.Context, runID, attemp
 				if frozen.RunID != runID || frozen.GovernedKnowledge == nil {
 					return errors.New("frozen governed review snapshot is unavailable")
 				}
-				actor, err := authorizeAttemptExecution(stored, runID, attemptID)
+				actor, err := s.authorizeAttemptExecution(stored, runID, attemptID)
 				if err != nil {
 					return err
 				}
@@ -859,8 +859,8 @@ func (s *Store) executeTelecomAttempt(parent, ctx context.Context, runID, attemp
 	_ = s.finishAttemptAfterExecution(parent, ctx, runID, attemptID, terminalState, partialReason, errorCode)
 }
 
-func trustedTelecomReviewIdentity(st state, runID, attemptID string, caseItem Case) (access.Principal, access.Resource, error) {
-	user, err := authorizeAttemptExecution(st, runID, attemptID)
+func (s *Store) trustedTelecomReviewIdentity(st state, runID, attemptID string, caseItem Case) (access.Principal, access.Resource, error) {
+	user, err := s.authorizeAttemptExecution(st, runID, attemptID)
 	if err != nil {
 		return access.Principal{}, access.Resource{}, err
 	}
@@ -936,7 +936,7 @@ func (s *Store) freezeTelecomRulePack(ctx context.Context, runID, attemptID, com
 		if !ok || !isTelecomDedicatedLineCase(caseItem) {
 			return errors.New("telecom RulePack case scope changed")
 		}
-		if _, _, err := trustedTelecomReviewIdentity(*st, run.ID, attemptID, caseItem); err != nil {
+		if _, _, err := s.trustedTelecomReviewIdentity(*st, run.ID, attemptID, caseItem); err != nil {
 			return err
 		}
 		if attempt.RulePackCompilerRef != "" || len(attempt.RulePackSnapshot) > 0 || attempt.RulePackHash != "" || attempt.RulePackSnapshotDigest != "" {
@@ -1331,7 +1331,7 @@ func (s *Store) persistTelecomOutput(ctx context.Context, runID, attemptID strin
 		if !ok || !isGovernedReviewCase(currentCase) {
 			return errors.New("governed persistence case scope changed")
 		}
-		if _, _, err := trustedTelecomReviewIdentity(*st, runID, attemptID, currentCase); err != nil {
+		if _, _, err := s.trustedTelecomReviewIdentity(*st, runID, attemptID, currentCase); err != nil {
 			return err
 		}
 		if isCloudServicesCase(currentCase) {
@@ -1545,7 +1545,7 @@ func (s *Store) runTelecomModelReview(ctx context.Context, runID, attemptID stri
 				if !ok {
 					return errors.New("telecom model case is unavailable")
 				}
-				if _, _, err := trustedTelecomReviewIdentity(*next, runID, attemptID, currentCase); err != nil {
+				if _, _, err := s.trustedTelecomReviewIdentity(*next, runID, attemptID, currentCase); err != nil {
 					return err
 				}
 				if isCloudServicesCase(currentCase) {

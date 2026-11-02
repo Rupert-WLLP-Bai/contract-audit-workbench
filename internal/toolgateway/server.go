@@ -699,6 +699,18 @@ func bindAuthenticatedUser(user accounts.User) (accounts.User, *rpcFailure) {
 	if !ok || !current.Enabled || current.ID != user.ID {
 		return accounts.User{}, unauthorizedFailure()
 	}
+	if user.HasResolvedMembership() {
+		// PostgreSQL supplied the tenant membership and grants. The directory is
+		// only an additional identity/enabled check; it must not replace that
+		// authoritative projection with its legacy tenant and role fields.
+		if current.Issuer != user.Issuer || current.Subject != user.Subject || user.Issuer == "" || user.Subject == "" {
+			return accounts.User{}, unauthorizedFailure()
+		}
+		if accounts.Tenant(user) == "" {
+			return accounts.User{}, unauthorizedFailure()
+		}
+		return user, nil
+	}
 	if user.TenantID != "" && user.TenantID != current.TenantID {
 		return accounts.User{}, unauthorizedFailure()
 	}

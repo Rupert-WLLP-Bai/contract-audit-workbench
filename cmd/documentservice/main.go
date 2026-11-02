@@ -52,6 +52,9 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	if serviceConfig.CoreAuthorityURL == "" {
+		return errors.New("CORE_AUTHORITY_URL (or compatibility CORE_SERVICE_URL) is required for authenticated intake authority")
+	}
 	service, err := documentservice.New(app.Store, serviceConfig)
 	if err != nil {
 		return err
@@ -63,8 +66,12 @@ func run() error {
 	// browser's Origin unchanged, so this hop needs the same allowlist as the
 	// gateway: otherwise every browser write through the edge is refused as an
 	// untrusted origin even though the edge accepted it.
+	sessionResolver, err := httpapi.NewCoreSessionResolver(serviceConfig.CoreAuthorityURL, serviceConfig.CoreAuthorityCAFile, serviceConfig.AppEnv, serviceConfig.AllowInsecureDev, 5*time.Second)
+	if err != nil {
+		return err
+	}
 	public, err := httpapi.ServiceHandler(app.Store, httpapi.Options{
-		CORSOrigins: origins(), Models: app.Models, Durable: app.Durable, SecureCookies: app.SecureCookies,
+		CORSOrigins: origins(), Models: app.Models, Durable: app.Durable, SecureCookies: app.SecureCookies, SessionAuthorityResolver: sessionResolver,
 	}, "document", strings.TrimSpace(os.Getenv("GATEWAY_ROLE_TOKEN")))
 	if err != nil {
 		return err

@@ -115,7 +115,7 @@ func (s *Store) SyncAgentReviewRecord(ctx context.Context, claim JobClaim, recor
 	if err := s.reauthorizeAttempt(ctx, tx, claim.RunID, claim.AttemptID); err != nil {
 		return err
 	}
-	if err := revalidateGovernedAttemptTx(ctx, tx, claim.RunID, claim.AttemptID, claim.CaseID); err != nil {
+	if err := s.revalidateGovernedAttemptTx(ctx, tx, claim.RunID, claim.AttemptID, claim.CaseID); err != nil {
 		return err
 	}
 	var inputHash string

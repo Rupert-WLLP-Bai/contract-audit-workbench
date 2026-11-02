@@ -28,7 +28,7 @@ type clmRoleQueryer interface {
 // The running application accepts only this explicitly reviewed version range.
 const (
 	schemaMinCompatibleVersion = 31
-	schemaMaxCompatibleVersion = 32
+	schemaMaxCompatibleVersion = 33
 )
 
 //go:embed migrations/*.sql
@@ -208,10 +208,105 @@ func migrate(ctx context.Context, pool *pgxpool.Pool, schema string) error {
 		}
 	}
 	for _, migration := range catalog[applied:] {
+		if migration.version == 33 {
+			if err := ensureTenantIdentityOwner(ctx, conn, schema); err != nil {
+				return fmt.Errorf("pre-provision tenant identity owner: %w", err)
+			}
+		}
 		if err := applyMigration(ctx, conn, schema, migration, !exists); err != nil {
 			return fmt.Errorf("apply schema migration %04d_%s: %w", migration.version, migration.name, err)
 		}
 		exists = true
+	}
+	return nil
+}
+
+func tenantIdentityOwnerName(database, schema string) string {
+	digest := md5.Sum([]byte(database + ":" + schema))
+	return fmt.Sprintf("caw_auth_fence_%x", digest[:])
+}
+
+func tenantIdentityOwnerBinding(database, schema string) string {
+	return "contractaudit:tenant-identity-owner:v1:" + database + ":" + schema
+}
+
+func ensureTenantIdentityOwner(ctx context.Context, conn *pgxpool.Conn, schema string) error {
+	var database, migrator string
+	if err := conn.QueryRow(ctx, `SELECT current_database(),current_user`).Scan(&database, &migrator); err != nil {
+		return err
+	}
+	role := tenantIdentityOwnerName(database, schema)
+	if !identRE.MatchString(migrator) || migrator == role {
+		return errors.New("migration identity cannot be the tenant identity owner")
+	}
+	var exists bool
+	if err := conn.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname=$1)`, role).Scan(&exists); err != nil {
+		return err
+	}
+	quotedRole := pgx.Identifier{role}.Sanitize()
+	if !exists {
+		var isSuperuser bool
+		if err := conn.QueryRow(ctx, `SELECT rolsuper FROM pg_roles WHERE rolname=$1`, migrator).Scan(&isSuperuser); err != nil {
+			return err
+		}
+		if !isSuperuser {
+			return fmt.Errorf("tenant identity owner %q is missing for database %q schema %q; run `cmd/migrate provision-tenant-identity` with AUTH_ADMIN_DATABASE_URL and MIGRATOR_DATABASE_URL before migration", role, database, schema)
+		}
+		if _, err := conn.Exec(ctx, `CREATE ROLE `+quotedRole+` NOLOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION`); err != nil {
+			return fmt.Errorf("cannot create tenant identity owner: %w", err)
+		}
+		if _, err := conn.Exec(ctx, `REVOKE `+quotedRole+` FROM `+pgx.Identifier{migrator}.Sanitize()); err != nil {
+			return fmt.Errorf("cannot remove implicit tenant identity owner membership: %w", err)
+		}
+		binding := tenantIdentityOwnerBinding(database, schema)
+		if _, err := conn.Exec(ctx, `COMMENT ON ROLE `+quotedRole+` IS '`+strings.ReplaceAll(binding, "'", "''")+`'`); err != nil {
+			return fmt.Errorf("cannot bind tenant identity owner to database and schema: %w", err)
+		}
+	} else {
+		var binding string
+		if err := conn.QueryRow(ctx, `SELECT shobj_description(oid,'pg_authid') FROM pg_roles WHERE rolname=$1`, role).Scan(&binding); err != nil || binding != tenantIdentityOwnerBinding(database, schema) {
+			return errors.New("existing tenant identity owner is not bound to this database schema")
+		}
+	}
+	var safe bool
+	if err := conn.QueryRow(ctx, `SELECT NOT rolcanlogin AND NOT rolsuper AND NOT rolbypassrls AND NOT rolcreatedb
+		AND NOT rolcreaterole AND NOT rolinherit AND NOT rolreplication FROM pg_roles WHERE rolname=$1`, role).Scan(&safe); err != nil || !safe {
+		return errors.New("tenant identity owner has unsafe role attributes")
+	}
+	var memberCount int
+	var migratorOnly, setOnly bool
+	if err := conn.QueryRow(ctx, `SELECT count(*),
+		COALESCE(bool_and(member_role.rolname=$2),false),
+		COALESCE(bool_or(member_role.rolname=$2 AND m.admin_option=false AND m.inherit_option=false AND m.set_option=true),false)
+		FROM pg_auth_members m JOIN pg_roles target ON target.oid=m.roleid
+		JOIN pg_roles member_role ON member_role.oid=m.member WHERE target.rolname=$1`, role, migrator).Scan(&memberCount, &migratorOnly, &setOnly); err != nil {
+		return fmt.Errorf("inspect tenant identity owner membership: %w", err)
+	}
+	if memberCount == 0 {
+		var isSuperuser bool
+		if err := conn.QueryRow(ctx, `SELECT rolsuper FROM pg_roles WHERE rolname=$1`, migrator).Scan(&isSuperuser); err != nil {
+			return err
+		}
+		if !isSuperuser {
+			return errors.New("tenant identity owner is not pre-provisioned for this migrator")
+		}
+		if _, err := conn.Exec(ctx, `GRANT `+quotedRole+` TO `+pgx.Identifier{migrator}.Sanitize()+` WITH ADMIN FALSE, INHERIT FALSE, SET TRUE`); err != nil {
+			return fmt.Errorf("cannot grant bounded tenant identity owner SET membership: %w", err)
+		}
+		memberCount, migratorOnly, setOnly = 1, true, true
+	}
+	if memberCount != 1 || !migratorOnly || !setOnly {
+		return errors.New("tenant identity owner membership must be SET-only for this migrator")
+	}
+	var ownerHasMembership bool
+	if err := conn.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM pg_auth_members WHERE member=$1::regrole)`, role).Scan(&ownerHasMembership); err != nil {
+		return err
+	}
+	if ownerHasMembership {
+		return errors.New("tenant identity owner must not inherit other roles")
+	}
+	if err := verifyTenantIdentityOwnerPrivileges(ctx, conn, database, schema, role); err != nil {
+		return err
 	}
 	return nil
 }
@@ -506,9 +601,23 @@ func executeMigrationSQL(ctx context.Context, tx pgx.Tx, schema, source string) 
 		}
 		ownerRole = pgx.Identifier{clmMaintenanceRoleName(database, schema)}.Sanitize()
 	}
+	authFenceRole := ""
+	authFenceLiteral := ""
+	if strings.Contains(source, "{{AUTH_FENCE_OWNER}}") {
+		var database string
+		if err := tx.QueryRow(ctx, `SELECT current_database()`).Scan(&database); err != nil {
+			return fmt.Errorf("resolve tenant identity owner: %w", err)
+		}
+		name := tenantIdentityOwnerName(database, schema)
+		authFenceRole = pgx.Identifier{name}.Sanitize()
+		authFenceLiteral = "'" + strings.ReplaceAll(name, "'", "''") + "'"
+	}
 	sql := strings.NewReplacer(
 		"{{SCHEMA}}", quotedSchema,
 		"{{CLM_OWNER}}", ownerRole,
+		"{{AUTH_FENCE_OWNER}}", authFenceRole,
+		"{{AUTH_FENCE_OWNER_LITERAL}}", authFenceLiteral,
+		"{{IDENTITY_LOCK_KEY}}", strings.ReplaceAll(schema+":tenant-identity", "'", "''"),
 		"{{LOCK_KEY}}", key+":model-budget:global",
 		"{{QUEUE_LOCK_KEY}}", key+":execution-queue",
 	).Replace(source)

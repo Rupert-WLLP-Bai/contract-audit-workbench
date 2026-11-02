@@ -24,22 +24,57 @@ type Config struct {
 	WorkerCredential string
 	// IntakeCredential authenticates Core's dedicated intake upload entry.
 	IntakeCredential string
-	CPUConcurrency   int
-	OCRConcurrency   int
-	QueueCapacity    int
-	ParseTimeout     time.Duration
+	// CoreAuthorityURL is the trusted Core authority endpoint. Remote HTTP is
+	// refused; HTTP is permitted only for the explicit bounded development origins.
+	CoreAuthorityURL    string
+	CoreAuthorityCAFile string
+	AllowInsecureDev    bool
+	AppEnv              string
+	intakeAuthority     intakeAuthorityResolver
+	CPUConcurrency      int
+	OCRConcurrency      int
+	QueueCapacity       int
+	ParseTimeout        time.Duration
 }
 
 // FromEnv reads the document service's internal worker/intake credentials and
 // bounded parse capacity settings.
 func FromEnv() (Config, error) {
+	appEnvRaw := strings.TrimSpace(os.Getenv("APP_ENV"))
 	config := Config{
-		WorkerCredential: strings.TrimSpace(os.Getenv("WORKER_DOCUMENT_TOKEN")),
-		IntakeCredential: strings.TrimSpace(os.Getenv("CORE_DOCUMENT_TOKEN")),
-		CPUConcurrency:   4,
-		OCRConcurrency:   1,
-		QueueCapacity:    32,
-		ParseTimeout:     2 * time.Minute,
+		WorkerCredential:    strings.TrimSpace(os.Getenv("WORKER_DOCUMENT_TOKEN")),
+		IntakeCredential:    strings.TrimSpace(os.Getenv("CORE_DOCUMENT_TOKEN")),
+		CoreAuthorityURL:    strings.TrimSpace(os.Getenv("CORE_AUTHORITY_URL")),
+		CoreAuthorityCAFile: strings.TrimSpace(os.Getenv("CORE_AUTHORITY_CA_FILE")),
+		AppEnv:              strings.ToLower(strings.TrimSpace(os.Getenv("APP_ENV"))),
+		CPUConcurrency:      4,
+		OCRConcurrency:      1,
+		QueueCapacity:       32,
+		ParseTimeout:        2 * time.Minute,
+	}
+	if config.CoreAuthorityURL == "" {
+		config.CoreAuthorityURL = strings.TrimSpace(os.Getenv("CORE_SERVICE_URL"))
+	}
+	if config.AppEnv == "" {
+		config.AppEnv = "development"
+	}
+	switch config.AppEnv {
+	case "development", "dev", "test", "production":
+	default:
+		return Config{}, errors.New("APP_ENV is invalid for Document intake authority")
+	}
+	if raw := strings.TrimSpace(os.Getenv("CORE_AUTHORITY_ALLOW_INSECURE_DEV")); raw != "" {
+		value, err := strconv.ParseBool(raw)
+		if err != nil {
+			return Config{}, errors.New("CORE_AUTHORITY_ALLOW_INSECURE_DEV must be true or false")
+		}
+		config.AllowInsecureDev = value
+		if value && appEnvRaw == "" {
+			return Config{}, errors.New("CORE_AUTHORITY_ALLOW_INSECURE_DEV requires APP_ENV=development or test")
+		}
+	}
+	if config.AllowInsecureDev && config.AppEnv != "development" && config.AppEnv != "dev" && config.AppEnv != "test" {
+		return Config{}, errors.New("CORE_AUTHORITY_ALLOW_INSECURE_DEV is permitted only in development or test")
 	}
 	for name, destination := range map[string]*int{
 		"DOCUMENT_CPU_CONCURRENCY": &config.CPUConcurrency,
@@ -84,11 +119,12 @@ func parseDocumentTimeout(raw string) (time.Duration, error) {
 // Service owns the public Document routes and authenticated delegated prepare
 // endpoint for the Worker.
 type Service struct {
-	store  *store.Store
-	config Config
-	queue  chan struct{}
-	cpu    chan struct{}
-	ocr    chan struct{}
+	store           *store.Store
+	config          Config
+	intakeAuthority intakeAuthorityResolver
+	queue           chan struct{}
+	cpu             chan struct{}
+	ocr             chan struct{}
 }
 
 func New(st *store.Store, config Config) (*Service, error) {
@@ -96,10 +132,20 @@ func New(st *store.Store, config Config) (*Service, error) {
 		config.CPUConcurrency < 1 || config.OCRConcurrency < 1 || config.QueueCapacity < 1 || config.ParseTimeout <= 0 {
 		return nil, errors.New("document service requires a Store, distinct private worker and intake credentials, and positive bounded capacities")
 	}
-	return &Service{
+	service := &Service{
 		store: st, config: config, queue: make(chan struct{}, config.QueueCapacity),
 		cpu: make(chan struct{}, config.CPUConcurrency), ocr: make(chan struct{}, config.OCRConcurrency),
-	}, nil
+		intakeAuthority: config.intakeAuthority,
+	}
+	if strings.TrimSpace(config.CoreAuthorityURL) != "" {
+		client, err := newCoreIntakeAuthorityClient(config.CoreAuthorityURL, config.CoreAuthorityCAFile,
+			config.AllowInsecureDev, config.AppEnv, config.IntakeCredential, 15*time.Second)
+		if err != nil {
+			return nil, err
+		}
+		service.intakeAuthority = client
+	}
+	return service, nil
 }
 
 type publicServiceContextKey struct{}

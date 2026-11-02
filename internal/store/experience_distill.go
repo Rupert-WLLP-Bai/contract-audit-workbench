@@ -407,6 +407,15 @@ func (s *Store) RequestExperienceDistillation(ctx context.Context, user accounts
 	if strings.TrimSpace(accepted) == "" {
 		return ExperienceDistillReceipt{}, errors.New("experience task admission returned no identity")
 	}
+	if current.HasResolvedMembership() {
+		if _, err := tx.Exec(ctx, `SELECT tenant_identity_bind_admission($1,$2)`, admissionSessionDigest(ctx), accepted); err != nil {
+			return ExperienceDistillReceipt{}, err
+		}
+	} else {
+		if _, err := tx.Exec(ctx, `INSERT INTO worker_claim_identities(tenant_id,job_id,org_id,case_id,run_id,attempt_id,actor_id) VALUES($1,$2,$3,$4,'','',$5)`, item.TenantID, accepted, item.OwnerOrgID, item.ID, current.ID); err != nil {
+			return ExperienceDistillReceipt{}, err
+		}
+	}
 	if err := tx.Commit(ctx); err != nil {
 		return ExperienceDistillReceipt{}, err
 	}

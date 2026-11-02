@@ -58,7 +58,7 @@ func (s *Store) runTelecomAgentReview(ctx context.Context, runID, attemptID stri
 	if err != nil {
 		return true, err
 	}
-	actor, err := authorizeAttemptExecution(st, runID, attemptID)
+	actor, err := s.authorizeAttemptExecution(st, runID, attemptID)
 	if err != nil || actor.ID != principal.UserID {
 		if err == nil {
 			err = errAttemptAuthorizationRevoked
@@ -320,7 +320,7 @@ func (s *Store) authorizeAgentReviewStage(ctx context.Context, runID, attemptID 
 	if !ok || !isGovernedReviewCase(caseItem) {
 		return Case{}, access.Principal{}, access.Resource{}, errAgentReviewScopeChanged
 	}
-	user, err := authorizeAttemptExecution(st, runID, attemptID)
+	user, err := s.authorizeAttemptExecution(st, runID, attemptID)
 	if err != nil {
 		return Case{}, access.Principal{}, access.Resource{}, err
 	}
@@ -350,7 +350,7 @@ func (s *Store) agentPlannerAuthority(ctx context.Context, runID, attemptID stri
 	if err != nil {
 		return accounts.User{}, nil, err
 	}
-	actor, err := authorizeAttemptExecution(st, runID, attemptID)
+	actor, err := s.authorizeAttemptExecution(st, runID, attemptID)
 	if err != nil {
 		return accounts.User{}, nil, err
 	}

@@ -272,11 +272,14 @@ func options(app *bootstrap.Runtime, cors []string) httpapi.Options {
 		SystemHealth: systemhealth.FromEnv(app.Store.Ready, app.Selection.Database.URL()),
 		CORSOrigins:  cors, Models: app.Models, OIDC: app.OIDC,
 		Durable: app.Durable, SecureCookies: app.SecureCookies,
-		ExperienceWorkerCredential: strings.TrimSpace(os.Getenv("WORKER_CORE_TOKEN")),
-		OperatorAuditEnabled:       enabled,
-		CapabilityPacks:            registry,
-		ExternalConnectors:         connectors,
-		ExternalConnectorInfo:      catalog,
+		ExperienceWorkerCredential:   strings.TrimSpace(os.Getenv("WORKER_CORE_TOKEN")),
+		DocumentIntakeCredential:     strings.TrimSpace(os.Getenv("CORE_DOCUMENT_TOKEN")),
+		ToolClaimAuthorityCredential: strings.TrimSpace(os.Getenv("TOOL_CORE_AUTHORITY_TOKEN")),
+		ModelAuthorityCredential:     strings.TrimSpace(os.Getenv("CORE_MODEL_AUTHORITY_TOKEN")),
+		OperatorAuditEnabled:         enabled,
+		CapabilityPacks:              registry,
+		ExternalConnectors:           connectors,
+		ExternalConnectorInfo:        catalog,
 	}
 }
 

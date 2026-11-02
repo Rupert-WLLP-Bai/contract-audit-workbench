@@ -6,6 +6,7 @@ import (
 
 	"contractaudit/internal/accounts"
 	"contractaudit/internal/fault"
+	"contractaudit/internal/store"
 )
 
 func validAudience(raw string) (string, error) {
@@ -54,7 +55,7 @@ func (h *handler) actorForAudience(w http.ResponseWriter, r *http.Request, audie
 		cached.audience == audience && cached.token == token {
 		return cached.user, true
 	}
-	user, actual, err := h.store.AuthenticateSession(r.Context(), token)
+	user, actual, err := h.authenticateSession(r.Context(), token)
 	if err != nil {
 		writeErr(w, err)
 		return accounts.User{}, false
@@ -68,7 +69,15 @@ func (h *handler) actorForAudience(w http.ResponseWriter, r *http.Request, audie
 	*r = *r.WithContext(context.WithValue(r.Context(), authenticatedRequestKey{}, authenticatedRequest{
 		user: user, audience: audience, token: token,
 	}))
+	*r = *r.WithContext(store.WithAdmissionSessionToken(r.Context(), audienceCookieValue(r, audience)))
 	return user, true
+}
+
+func (h *handler) authenticateSession(ctx context.Context, token string) (accounts.User, string, error) {
+	if h.sessionAuthority != nil {
+		return h.sessionAuthority.AuthenticateSession(ctx, token)
+	}
+	return h.store.AuthenticateSession(ctx, token)
 }
 
 func (h *handler) adminSettings(w http.ResponseWriter, r *http.Request) {

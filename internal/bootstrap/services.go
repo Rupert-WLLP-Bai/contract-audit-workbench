@@ -16,6 +16,7 @@ import (
 	"contractaudit/internal/experienceclient"
 	"contractaudit/internal/jev"
 	"contractaudit/internal/model"
+	"contractaudit/internal/operationauthority"
 	"contractaudit/internal/store"
 	"contractaudit/internal/toolclient"
 )
@@ -221,4 +222,42 @@ func (r toolEvidenceReader) FrozenEvidence(ctx context.Context, in store.ToolEvi
 		CaseID: in.CaseID, RunID: in.RunID, AttemptID: in.AttemptID,
 		CapabilityID: in.CapabilityID, Deadline: in.Deadline,
 	})
+}
+
+func configureOperationAuthority(st *store.Store, service string) error {
+	key := map[string]string{"worker": "WORKER_CORE_TOKEN", "document": "CORE_DOCUMENT_TOKEN", "model": "CORE_MODEL_AUTHORITY_TOKEN"}[service]
+	if key == "" {
+		return nil
+	}
+	origin := strings.TrimSpace(os.Getenv("CORE_AUTHORITY_URL"))
+	secret := strings.TrimSpace(os.Getenv(key))
+	if origin == "" && secret == "" {
+		return nil
+	} // explicitly unconfigured isolated fixtures cannot authorize enterprise work
+	for _, other := range []string{"GATEWAY_CORE_TOKEN", "GATEWAY_TOOL_TOKEN", "GATEWAY_DOCUMENT_TOKEN", "GATEWAY_EXECUTION_TOKEN", "GATEWAY_ROLE_TOKEN", "WORKER_DOCUMENT_TOKEN", "WORKER_MODEL_TOKEN", "WORKER_TOOL_TOKEN", "WORKER_CORE_TOKEN", "CORE_DOCUMENT_TOKEN", "DOCUMENT_MODEL_TOKEN", "TOOL_CORE_AUTHORITY_TOKEN", "CORE_MODEL_AUTHORITY_TOKEN"} {
+		if other != key && secret != "" && secret == strings.TrimSpace(os.Getenv(other)) {
+			return errors.New("operation authority credential must be pair-specific")
+		}
+	}
+	insecure := false
+	switch os.Getenv("CORE_AUTHORITY_ALLOW_INSECURE_DEV") {
+	case "", "false":
+	case "true":
+		insecure = true
+	default:
+		return errors.New("CORE_AUTHORITY_ALLOW_INSECURE_DEV must be true or false")
+	}
+	mode := os.Getenv("APP_ENV")
+	if mode == "" {
+		mode = "development"
+		if insecure {
+			return errors.New("explicit APP_ENV required for insecure authority")
+		}
+	}
+	client, err := operationauthority.NewOperationClient(origin, service, secret, os.Getenv("CORE_AUTHORITY_CA_FILE"), mode, insecure)
+	if err != nil {
+		return err
+	}
+	st.UseOperationAuthority(client)
+	return nil
 }

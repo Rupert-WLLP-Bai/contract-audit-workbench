@@ -303,7 +303,7 @@ func (s *Store) scopedAttemptMutationWithTx(ctx context.Context, runID, attemptI
 		return err
 	}
 	if governance {
-		if err := revalidateGovernedAttemptTx(ctx, tx, runID, attemptID, claim.CaseID); err != nil {
+		if err := s.revalidateGovernedAttemptTx(ctx, tx, runID, attemptID, claim.CaseID); err != nil {
 			return err
 		}
 	}

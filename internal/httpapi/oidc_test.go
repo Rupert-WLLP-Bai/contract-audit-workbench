@@ -9,6 +9,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"io"
 	"math/big"
 	"net"
@@ -23,10 +24,12 @@ import (
 	"testing"
 	"time"
 
+	"contractaudit/internal/access"
 	"contractaudit/internal/accounts"
 	"contractaudit/internal/httpapi"
 	"contractaudit/internal/identity"
 	"contractaudit/internal/store"
+	"github.com/jackc/pgx/v5"
 )
 
 func TestOIDCAuthorizationCodeHTTPFlowsUseAudienceBoundPostgresSessions(t *testing.T) {
@@ -176,6 +179,66 @@ func TestOIDCAuthorizationCodeSeparatesClientAndAdminOrigins(t *testing.T) {
 	fixture.assertSession(t, client, "/api/session", http.StatusOK, "oidc-client", identity.AudienceClient)
 }
 
+func TestOIDCPendingMembershipHTTPChoiceIsSameOriginAndOneTime(t *testing.T) {
+	fixture := newOIDCHTTPFixture(t, false)
+	client := fixture.newClient(t)
+	fixture.issuer.setNextClaims("multi-subject", "")
+	flow := fixture.startFlow(t, client, identity.AudienceClient)
+	callback := fixture.request(t, client, http.MethodGet, flow.callbackURL, nil)
+	if callback.status != http.StatusSeeOther || callback.header.Get("Location") != "/login/membership" {
+		t.Fatalf("multi-membership callback status=%d location=%q", callback.status, callback.header.Get("Location"))
+	}
+	var pendingCookie *http.Cookie
+	for _, cookie := range callback.cookies {
+		if cookie.Name == "oidc_pending" {
+			pendingCookie = cookie
+		}
+	}
+	if pendingCookie == nil || pendingCookie.Value == "" || !pendingCookie.HttpOnly || pendingCookie.Path != "/api/auth/oidc/memberships" || pendingCookie.SameSite != http.SameSiteStrictMode {
+		t.Fatalf("callback did not issue a protected pending cookie: %+v", pendingCookie)
+	}
+
+	listed := fixture.request(t, client, http.MethodGet, "/api/auth/oidc/memberships?audience=client", nil)
+	if listed.status != http.StatusOK {
+		t.Fatalf("pending list status=%d body=%s", listed.status, listed.body)
+	}
+	var choices struct {
+		Memberships []struct {
+			ID       string `json:"id"`
+			TenantID string `json:"tenant_id"`
+		} `json:"memberships"`
+	}
+	if err := json.Unmarshal(listed.body, &choices); err != nil || len(choices.Memberships) != 2 {
+		t.Fatalf("pending membership list=%s err=%v", listed.body, err)
+	}
+
+	body, _ := json.Marshal(map[string]string{"membership_id": choices.Memberships[0].ID, "audience": "client"})
+	wrongOrigin, err := fixture.requestBody(t, client, http.MethodPost, "/api/auth/oidc/memberships", body, pendingCookie, "https://attacker.example")
+	if err != nil || wrongOrigin.status != http.StatusForbidden {
+		t.Fatalf("cross-origin membership choice status=%d err=%v", wrongOrigin.status, err)
+	}
+	selected, err := fixture.requestBody(t, client, http.MethodPost, "/api/auth/oidc/memberships", body, pendingCookie, "")
+	if err != nil || selected.status != http.StatusNoContent || len(selected.body) != 0 {
+		t.Fatalf("membership selection status=%d body=%s err=%v", selected.status, selected.body, err)
+	}
+	fixture.assertSession(t, client, "/api/session", http.StatusOK, "oidc-multi", identity.AudienceClient)
+	if _, err := fixture.requestBody(t, client, http.MethodPost, "/api/auth/oidc/memberships", body, pendingCookie, ""); err != nil {
+		t.Fatal(err)
+	} else if replay := fixture.request(t, client, http.MethodGet, "/api/auth/oidc/memberships?audience=client", pendingCookie); replay.status != http.StatusUnauthorized {
+		t.Fatalf("consumed pending challenge remained usable: status=%d", replay.status)
+	} else {
+		cleared := false
+		for _, cookie := range replay.cookies {
+			if cookie.Name == "oidc_pending" && cookie.MaxAge < 0 {
+				cleared = true
+			}
+		}
+		if !cleared {
+			t.Fatal("invalid or consumed pending challenge did not clear its browser cookie")
+		}
+	}
+}
+
 type oidcHTTPFixture struct {
 	base      string
 	adminBase string
@@ -196,6 +259,10 @@ type oidcHTTPFlow struct {
 
 func newOIDCHTTPFixture(t *testing.T, separateOrigins bool) *oidcHTTPFixture {
 	t.Helper()
+	testDSN := strings.TrimSpace(os.Getenv("TEST_DATABASE_URL"))
+	if testDSN == "" {
+		t.Skip("TEST_DATABASE_URL is required for PostgreSQL-backed OIDC membership flows")
+	}
 
 	key, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
@@ -237,6 +304,11 @@ func newOIDCHTTPFixture(t *testing.T, separateOrigins bool) *oidcHTTPFixture {
 			TenantID: "tenant-oidc", OrgID: "org-oidc", Enabled: true,
 			Issuer: issuer.server.URL, Subject: "admin-subject",
 		},
+		{
+			ID: "oidc-multi", DisplayName: "OIDC Multi", Role: "admin",
+			TenantID: "directory-stale-multi", OrgID: "directory-stale-multi", Enabled: true,
+			Issuer: issuer.server.URL, Subject: "multi-subject",
+		},
 	}
 	directoryPath := filepath.Join(t.TempDir(), "identity-directory.json")
 	directoryJSON, err := json.Marshal(struct {
@@ -257,9 +329,52 @@ func newOIDCHTTPFixture(t *testing.T, separateOrigins bool) *oidcHTTPFixture {
 		}
 	})
 
-	st, err := store.OpenTest(t.TempDir(), "")
+	st, err := store.OpenTest(t.TempDir(), testDSN)
 	if err != nil {
 		t.Fatal(err)
+	}
+	adminConfig, err := pgx.ParseConfig(testDSN)
+	if err != nil {
+		t.Fatal(err)
+	}
+	document := store.IdentityCrosswalk{
+		Version: 1,
+		Tenants: []store.IdentityTenantMap{
+			{ID: "oidc-tenant-client", DisplayName: "Client tenant", Status: "active"},
+			{ID: "oidc-tenant-admin", DisplayName: "Admin tenant", Status: "active"},
+			{ID: "oidc-tenant-multi-a", DisplayName: "Multi tenant A", Status: "active"},
+			{ID: "oidc-tenant-multi-b", DisplayName: "Multi tenant B", Status: "active"},
+		},
+		OrgUnits: []store.IdentityOrgUnitMap{
+			{TenantID: "oidc-tenant-client", ID: "org-client", DisplayName: "Client org", Status: "active"},
+			{TenantID: "oidc-tenant-admin", ID: "org-admin", DisplayName: "Admin org", Status: "active"},
+			{TenantID: "oidc-tenant-multi-a", ID: "org-multi-a", DisplayName: "Multi org A", Status: "active"},
+			{TenantID: "oidc-tenant-multi-b", ID: "org-multi-b", DisplayName: "Multi org B", Status: "active"},
+		},
+	}
+	for i, user := range users {
+		principalID := fmt.Sprintf("30000000-0000-4000-8000-%012d", i+1)
+		document.Principals = append(document.Principals, store.IdentityPrincipalMap{ID: principalID, ActorID: user.ID, Issuer: user.Issuer, Subject: user.Subject, Status: "active"})
+		tenantIDs, orgIDs := []string{"oidc-tenant-client"}, []string{"org-client"}
+		if user.ID == "oidc-admin" {
+			tenantIDs, orgIDs = []string{"oidc-tenant-admin"}, []string{"org-admin"}
+		} else if user.ID == "oidc-multi" {
+			tenantIDs, orgIDs = []string{"oidc-tenant-multi-a", "oidc-tenant-multi-b"}, []string{"org-multi-a", "org-multi-b"}
+		}
+		for j := range tenantIDs {
+			roleCode := "reviewer"
+			if user.ID == "oidc-admin" {
+				roleCode = "admin"
+			}
+			document.Memberships = append(document.Memberships, store.IdentityMembershipMap{
+				ID: fmt.Sprintf("40000000-0000-4000-8000-%012d", (i+1)*10+j+1), ActorID: user.ID,
+				TenantID: tenantIDs[j], OrgUnitID: orgIDs[j], RoleCode: roleCode,
+				Grants: []access.Grant{{Role: "reviewer", Scope: "tenant"}}, Status: "active",
+			})
+		}
+	}
+	if _, err := store.ImportIdentityCrosswalk(context.Background(), testDSN, st.SchemaName(), adminConfig.Database, document, true); err != nil {
+		t.Fatalf("seed explicit OIDC membership crosswalk: %v", err)
 	}
 	t.Cleanup(func() {
 		if err := st.Close(); err != nil {
@@ -324,6 +439,15 @@ func (f *oidcHTTPFixture) newBareClient() *http.Client {
 
 func (f *oidcHTTPFixture) request(t *testing.T, client *http.Client, method, path string, cookie *http.Cookie) oidcHTTPResponse {
 	t.Helper()
+	response, err := f.requestBody(t, client, method, path, nil, cookie, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return response
+}
+
+func (f *oidcHTTPFixture) requestBody(t *testing.T, client *http.Client, method, path string, body []byte, cookie *http.Cookie, origin string) (oidcHTTPResponse, error) {
+	t.Helper()
 	baseURL, err := url.Parse(f.base)
 	if err != nil {
 		t.Fatal(err)
@@ -332,19 +456,25 @@ func (f *oidcHTTPFixture) request(t *testing.T, client *http.Client, method, pat
 	if err != nil {
 		t.Fatal(err)
 	}
-	request, err := http.NewRequest(method, target.String(), nil)
+	request, err := http.NewRequest(method, target.String(), bytes.NewReader(body))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if method != http.MethodGet && method != http.MethodHead {
-		request.Header.Set("Origin", target.Scheme+"://"+target.Host)
+		if origin == "" {
+			origin = target.Scheme + "://" + target.Host
+		}
+		request.Header.Set("Origin", origin)
+		if body != nil {
+			request.Header.Set("Content-Type", "application/json")
+		}
 	}
 	if cookie != nil {
 		request.AddCookie(cookie)
 	}
 	response, err := client.Do(request)
 	if err != nil {
-		t.Fatalf("%s %s: %v", method, path, err)
+		return oidcHTTPResponse{}, fmt.Errorf("%s %s: %w", method, path, err)
 	}
 	body, readErr := io.ReadAll(response.Body)
 	closeErr := response.Body.Close()
@@ -357,7 +487,7 @@ func (f *oidcHTTPFixture) request(t *testing.T, client *http.Client, method, pat
 	return oidcHTTPResponse{
 		status: response.StatusCode, header: response.Header.Clone(),
 		cookies: response.Cookies(), body: body,
-	}
+	}, nil
 }
 
 func (f *oidcHTTPFixture) startFlow(t *testing.T, client *http.Client, audience string) oidcHTTPFlow {

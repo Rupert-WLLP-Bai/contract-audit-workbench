@@ -391,6 +391,9 @@ func (s *Service) completeSystemOne(w http.ResponseWriter, ctx context.Context, 
 }
 
 func (s *Service) executeReservedSystemOne(w http.ResponseWriter, ctx context.Context, caller string, request systemOneRequest, probe circuitProbe, lease store.ModelCallLease) {
+	if !s.authorizeReservedDispatch(w, ctx, caller, request.scope, lease) {
+		return
+	}
 	response, usage, requestErr := s.dispatchJev(ctx, request.state, request.questions)
 	if err := s.settleSystemOne(lease, usage, requestErr); err != nil {
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "advisory usage could not be recorded", "code": "jev_usage_unavailable"})

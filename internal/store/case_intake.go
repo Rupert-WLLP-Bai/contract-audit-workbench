@@ -37,13 +37,15 @@ type CaseIntakeUploader interface {
 // upload Core requests from Document. Identity comes from the current trusted
 // session and is revalidated by Document before it commits.
 type PrimaryContractUploadRequest struct {
-	ActorID        string
-	TenantID       string
-	OrgID          string
-	Filename       string
-	MediaType      string
-	Body           []byte
-	IdempotencyKey string
+	ActorID         string
+	TenantID        string
+	OrgID           string
+	AuthorityTicket string
+	User            accounts.User
+	Filename        string
+	MediaType       string
+	Body            []byte
+	IdempotencyKey  string
 }
 
 // CaseIntakeInput is one idempotent home-page intake request.
@@ -122,7 +124,12 @@ func (uploader DirectCaseIntakeUploader) UploadPrimaryContract(ctx context.Conte
 	if uploader.store == nil {
 		return DocumentUploadResult{}, errors.New("direct intake uploader has no store")
 	}
-	user := accounts.User{ID: request.ActorID, TenantID: request.TenantID, OrgID: request.OrgID}
+	user := request.User
+	if user.ID == "" {
+		// Compatibility for direct embedded callers; distributed uploads never
+		// serialize or trust these identity selectors.
+		user = accounts.User{ID: request.ActorID, TenantID: request.TenantID, OrgID: request.OrgID}
+	}
 	return uploader.store.UploadMaterial(ctx, user, caseID, "draft_contract", request.Filename, request.MediaType, request.Body,
 		MaterialUploadOptions{Intent: "add", Purpose: "primary_contract", IdempotencyKey: request.IdempotencyKey})
 }

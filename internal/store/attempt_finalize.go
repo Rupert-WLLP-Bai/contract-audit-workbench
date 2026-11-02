@@ -272,7 +272,17 @@ func (s *Store) reauthorizeAttempt(ctx context.Context, tx pgx.Tx, runID, attemp
 	if err := json.Unmarshal([]byte(memberJSON), &members); err != nil {
 		return errAttemptAuthorizationRevoked
 	}
-	user, err := trustedUser(accounts.User{ID: actorID})
+	user, err := s.authorityForAttempt(ctx, runID, attemptID)
+	if err != nil {
+		profile, ok := accounts.ByID(actorID)
+		if ok && profile.Issuer == "" && profile.Subject == "" {
+			user = profile
+			err = nil
+		}
+	}
+	if user.ID != actorID {
+		return errAttemptAuthorizationRevoked
+	}
 	if err != nil {
 		return errAttemptAuthorizationRevoked
 	}

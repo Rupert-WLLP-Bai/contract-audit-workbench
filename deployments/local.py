@@ -75,6 +75,33 @@ def database_target_key() -> str:
 	except KeyError as error:
 		raise ValueError("EV02_DATABASE_TARGET must be development or test") from error
 
+
+def application_database_slot(infra: dict[str, str]) -> str:
+	mode = infra.get("APP_ENV", "development").strip().lower() or "development"
+	if mode in {"development", "dev"}:
+		return "DEV_DATABASE_URL"
+	if mode == "test":
+		return "TEST_DATABASE_URL"
+	if mode == "production":
+		return "PROD_DATABASE_URL"
+	raise ValueError("APP_ENV must be development, test, or production for migration database selection")
+
+
+def application_database_name(infra: dict[str, str]) -> str:
+	slot = application_database_slot(infra)
+	if slot in {"DEV_DATABASE_URL", "TEST_DATABASE_URL"}:
+		name = database_name(infra, slot)
+		prefix = "contract_audit_dev" if slot == "DEV_DATABASE_URL" else "contract_audit_test"
+		if name != prefix and not re.fullmatch(re.escape(prefix) + r"_[a-f0-9]{8}", name):
+			raise ValueError(f"{slot} must select its matching isolated local database")
+		return name
+	prod_dsn = urlsplit(infra.get(slot, ""))
+	name = prod_dsn.path.lstrip("/")
+	if (prod_dsn.scheme not in {"postgres", "postgresql"} or not prod_dsn.hostname or
+			not prod_dsn.username or not prod_dsn.password or name != "contract_audit_prod"):
+		raise ValueError("APP_ENV=production requires a private PROD_DATABASE_URL naming contract_audit_prod")
+	return name
+
 def read_env(path: Path) -> dict[str, str]:
     values: dict[str, str] = {}
     for number, raw in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
@@ -88,6 +115,41 @@ def read_env(path: Path) -> dict[str, str]:
             raise ValueError(f"Duplicate environment key {key} in {path}")
         values[key] = value
     return values
+
+
+def _atomic_update_env(path: Path, updates: dict[str, str]) -> None:
+	"""Replace only named private profile values without rotating other secrets."""
+	original = path.read_bytes()
+	lines = original.decode("utf-8").splitlines()
+	seen: set[str] = set()
+	result: list[str] = []
+	for raw in lines:
+		stripped = raw.strip()
+		key, separator, _ = stripped.partition("=")
+		if separator and key in updates:
+			result.append(f"{key}={updates[key]}")
+			seen.add(key)
+		else:
+			result.append(raw)
+	for key, value in updates.items():
+		if key not in seen:
+			result.append(f"{key}={value}")
+	temporary = path.with_name(path.name + f".{os.getpid()}.tmp")
+	if path.read_bytes() != original:
+		raise RuntimeError(f"{path} changed during the private migrator profile upgrade; no update was applied")
+	fd = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+	try:
+		with os.fdopen(fd, "w", encoding="utf-8") as stream:
+			stream.write("\n".join(result) + "\n")
+			stream.flush()
+			os.fsync(stream.fileno())
+		if path.read_bytes() != original:
+			raise RuntimeError(f"{path} changed during the private migrator profile upgrade; no update was applied")
+		os.replace(temporary, path)
+		os.chmod(path, 0o600)
+	finally:
+		if temporary.exists():
+			temporary.unlink()
 
 
 def infrastructure_report_path(action: str) -> Path:
@@ -137,7 +199,9 @@ def compose_prefix(distributed_env_path: Path | None = None) -> list[str]:
 
 def generated_values(infra: dict[str, str]) -> dict[str, str]:
 	postgres_password = infra["POSTGRES_PASSWORD"]
-	database = database_name(infra, database_target_key())
+	database = application_database_name(infra)
+	selected_slot = application_database_slot(infra)
+	migrator_dsn = _dsn("audit_offline_migrator", database, secrets.token_urlsafe(48))
 	edge_port = infra.get("EDGE_PORT", "8080")
 	client_port = infra.get("CLIENT_PORT", "18080")
 	admin_port = infra.get("ADMIN_PORT", "18081")
@@ -148,7 +212,12 @@ def generated_values(infra: dict[str, str]) -> dict[str, str]:
 		"EXECUTION_DATABASE_URL": _dsn("audit_execution", database, secrets.token_hex(32)),
 		"MODEL_DATABASE_URL": _dsn("model_gateway", database, secrets.token_hex(32)),
 		"TOOL_DATABASE_URL": _dsn("tool_gateway", database, secrets.token_hex(32)),
-		"MIGRATOR_DATABASE_URL": _dsn("contractaudit", database, postgres_password),
+		"MIGRATOR_DATABASE_URL": migrator_dsn,
+		"DEV_DATABASE_URL": migrator_dsn if selected_slot == "DEV_DATABASE_URL" else "",
+		"TEST_DATABASE_URL": migrator_dsn if selected_slot == "TEST_DATABASE_URL" else "",
+		"PROD_DATABASE_URL": migrator_dsn if selected_slot == "PROD_DATABASE_URL" else "",
+		# Superuser identity is used only by short-lived offline provisioning.
+		"AUTH_ADMIN_DATABASE_URL": _dsn("contractaudit", database, postgres_password),
 		"GATEWAY_CORE_TOKEN": secrets.token_urlsafe(48),
 		"GATEWAY_DOCUMENT_TOKEN": secrets.token_urlsafe(48),
 		"GATEWAY_EXECUTION_TOKEN": secrets.token_urlsafe(48),
@@ -158,6 +227,8 @@ def generated_values(infra: dict[str, str]) -> dict[str, str]:
 		"WORKER_TOOL_TOKEN": secrets.token_urlsafe(48),
 		"WORKER_CORE_TOKEN": secrets.token_urlsafe(48),
 		"CORE_DOCUMENT_TOKEN": secrets.token_urlsafe(48),
+		"TOOL_CORE_AUTHORITY_TOKEN": secrets.token_urlsafe(48),
+		"CORE_MODEL_AUTHORITY_TOKEN": secrets.token_urlsafe(48),
 		"DOCUMENT_MODEL_TOKEN": secrets.token_urlsafe(48),
 		"CORE_URLS": "http://core-api:8081",
 		"DOCUMENT_URL": "http://document-service:8082",
@@ -165,6 +236,9 @@ def generated_values(infra: dict[str, str]) -> dict[str, str]:
 		"TOOL_URLS": "http://tool-gateway:8085",
 		"DOCUMENT_SERVICE_URL": "http://document-service:8082",
 		"CORE_SERVICE_URL": "http://core-api:8081",
+		"CORE_AUTHORITY_URL": _core_authority_url(infra),
+		"CORE_AUTHORITY_CA_FILE": infra.get("CORE_AUTHORITY_CA_FILE", "").strip(),
+		"CORE_AUTHORITY_ALLOW_INSECURE_DEV": _core_authority_dev_flag(infra),
 		"MODEL_GATEWAY_URL": "http://model-gateway:8084/v1",
 		"NATS_URL": "nats://nats:4222",
 		"LLM_BASE_URL": _container_model_url(infra.get("LLM_BASE_URL", "http://127.0.0.1:3425/v1")),
@@ -191,7 +265,91 @@ def _container_model_url(value: str) -> str:
     return value
 
 
+def _core_authority_url(infra: dict[str, str]) -> str:
+	app_env = infra.get("APP_ENV", "development").strip().lower() or "development"
+	if app_env in {"development", "dev", "test"}:
+		return "http://core-api:8081"
+	return infra.get("CORE_AUTHORITY_URL", "https://REPLACE-ME-CORE-AUTH-ENDPOINT").strip()
+
+
+def _core_authority_dev_flag(infra: dict[str, str]) -> str:
+	app_env = infra.get("APP_ENV", "development").strip().lower() or "development"
+	return "true" if app_env in {"development", "dev", "test"} else "false"
+
+
+def validate_core_authority(values: dict[str, str]) -> None:
+	app_env = values.get("APP_ENV", "development").strip().lower() or "development"
+	if app_env not in {"development", "dev", "test", "production"}:
+		raise ValueError("APP_ENV must be development, dev, test, or production for Core authority callback")
+	raw_flag = values.get("CORE_AUTHORITY_ALLOW_INSECURE_DEV", "false").strip()
+	if raw_flag not in {"true", "false"}:
+		raise ValueError("CORE_AUTHORITY_ALLOW_INSECURE_DEV must be true or false")
+	allow_dev = raw_flag == "true"
+	if allow_dev and app_env == "production":
+		raise ValueError("CORE_AUTHORITY_ALLOW_INSECURE_DEV is forbidden in production")
+	endpoint = values.get("CORE_AUTHORITY_URL", "").strip()
+	try:
+		parsed = urlsplit(endpoint)
+		port = parsed.port
+		if (parsed.scheme not in {"http", "https"} or not parsed.hostname or parsed.username is not None or
+				parsed.password is not None or parsed.query or parsed.fragment or parsed.path not in {"", "/"}):
+			raise ValueError("invalid URL")
+	except ValueError as error:
+		raise ValueError("CORE_AUTHORITY_URL must be an absolute origin without credentials, path, query, or fragment") from error
+	host = parsed.hostname.lower().rstrip(".")
+	if (host.startswith("replace-me") or host in {"example.com", "example.net", "example.org"} or
+			host.endswith((".example.com", ".example.net", ".example.org")) or ".example." in host):
+		raise ValueError("CORE_AUTHORITY_URL still contains an operator placeholder")
+	ca_file = values.get("CORE_AUTHORITY_CA_FILE", "").strip()
+	if ca_file:
+		ca_path = Path(ca_file).expanduser()
+		if (not ca_path.is_absolute() or not ca_path.is_file() or not os.access(ca_path, os.R_OK) or
+				ca_path.stat().st_size == 0):
+			raise ValueError("CORE_AUTHORITY_CA_FILE must be a readable, nonempty absolute PEM path mounted at the same container path")
+	if parsed.scheme == "https":
+		return
+	if not allow_dev or app_env not in {"development", "dev", "test"}:
+		raise ValueError("Core authority callback requires HTTPS outside the explicit development profile")
+	if host == "core-api" and port == 8081:
+		return
+	if port is not None and (host == "localhost" or host in {"127.0.0.1", "::1"}):
+		return
+	raise ValueError("development HTTP callback is limited to http://core-api:8081 or explicit loopback origins")
+
+
 def validate_experience_delivery(values: dict[str, str]) -> None:
+	validate_core_authority(values)
+	auth_admin_dsn = urlsplit(values.get("AUTH_ADMIN_DATABASE_URL", "").strip())
+	migrator_dsn = urlsplit(values.get("MIGRATOR_DATABASE_URL", "").strip())
+	if (auth_admin_dsn.scheme not in {"postgres", "postgresql"} or not auth_admin_dsn.hostname or
+			not auth_admin_dsn.username or not auth_admin_dsn.password or
+			migrator_dsn.scheme not in {"postgres", "postgresql"} or not migrator_dsn.hostname or
+			not migrator_dsn.username or not migrator_dsn.password):
+		raise ValueError("AUTH_ADMIN_DATABASE_URL and MIGRATOR_DATABASE_URL must be configured privately")
+	if (auth_admin_dsn.path != migrator_dsn.path or auth_admin_dsn.hostname != migrator_dsn.hostname or
+			(auth_admin_dsn.port or 5432) != (migrator_dsn.port or 5432) or
+			auth_admin_dsn.username == migrator_dsn.username or migrator_dsn.username != "audit_offline_migrator"):
+		raise ValueError("AUTH_ADMIN_DATABASE_URL must be a distinct login for the same local database as MIGRATOR_DATABASE_URL")
+	authority_credential = values.get("TOOL_CORE_AUTHORITY_TOKEN", "").strip()
+	if len(authority_credential) < 32:
+		raise ValueError("TOOL_CORE_AUTHORITY_TOKEN must contain at least 32 characters")
+	for name in (
+		"GATEWAY_CORE_TOKEN", "GATEWAY_DOCUMENT_TOKEN", "GATEWAY_EXECUTION_TOKEN", "GATEWAY_TOOL_TOKEN",
+		"WORKER_DOCUMENT_TOKEN", "WORKER_MODEL_TOKEN", "WORKER_TOOL_TOKEN", "WORKER_CORE_TOKEN",
+		"CORE_DOCUMENT_TOKEN", "DOCUMENT_MODEL_TOKEN",
+	):
+		if authority_credential == values.get(name, "").strip():
+			raise ValueError(f"TOOL_CORE_AUTHORITY_TOKEN must differ from {name}")
+	model_authority_credential = values.get("CORE_MODEL_AUTHORITY_TOKEN", "").strip()
+	if len(model_authority_credential) < 32:
+		raise ValueError("CORE_MODEL_AUTHORITY_TOKEN must contain at least 32 characters")
+	for name in (
+		"GATEWAY_CORE_TOKEN", "GATEWAY_DOCUMENT_TOKEN", "GATEWAY_EXECUTION_TOKEN", "GATEWAY_TOOL_TOKEN",
+		"WORKER_DOCUMENT_TOKEN", "WORKER_MODEL_TOKEN", "WORKER_TOOL_TOKEN", "WORKER_CORE_TOKEN",
+		"CORE_DOCUMENT_TOKEN", "DOCUMENT_MODEL_TOKEN", "TOOL_CORE_AUTHORITY_TOKEN",
+	):
+		if model_authority_credential == values.get(name, "").strip():
+			raise ValueError(f"CORE_MODEL_AUTHORITY_TOKEN must differ from {name}")
 	endpoint = values.get("CORE_SERVICE_URL", "").strip()
 	credential = values.get("WORKER_CORE_TOKEN", "").strip()
 	try:
@@ -216,19 +374,55 @@ def ensure_private_environment() -> dict[str, str]:
 	expected = generated_values(infra)
 	if DISTRIBUTED_ENV_PATH.exists():
 		current = read_env(DISTRIBUTED_ENV_PATH)
-		missing = sorted(set(expected) - current.keys())
-		# Existing profiles are never rewritten; missing delivery settings must be added manually.
-		if missing:
+		missing = set(expected) - current.keys()
+		allowed_upgrade_keys = {
+			"AUTH_ADMIN_DATABASE_URL", "CORE_AUTHORITY_URL", "CORE_AUTHORITY_CA_FILE",
+			"CORE_AUTHORITY_ALLOW_INSECURE_DEV", "CORE_MODEL_AUTHORITY_TOKEN",
+			"TOOL_CORE_AUTHORITY_TOKEN", "DEV_DATABASE_URL", "TEST_DATABASE_URL", "PROD_DATABASE_URL",
+		}
+		unexpected_missing = sorted(missing - allowed_upgrade_keys)
+		if unexpected_missing:
 			raise RuntimeError(
-				f"{DISTRIBUTED_ENV_PATH} already exists and is missing keys {', '.join(missing)}; "
+				f"{DISTRIBUTED_ENV_PATH} already exists and is missing unsupported keys {', '.join(unexpected_missing)}; "
 				"it was left untouched. Add those values manually or keep a separate copy before regenerating."
 			)
 		if DISTRIBUTED_ENV_PATH.stat().st_mode & 0o077:
 			raise RuntimeError(f"{DISTRIBUTED_ENV_PATH} must have mode 0600")
-		expected_database = database_name(infra, database_target_key())
-		for key in ("CORE_DATABASE_URL", "DOCUMENT_DATABASE_URL", "EXECUTION_DATABASE_URL", "MODEL_DATABASE_URL", "TOOL_DATABASE_URL", "MIGRATOR_DATABASE_URL"):
-			if urlsplit(current[key]).path.lstrip("/") != expected_database:
-				raise RuntimeError(f"{DISTRIBUTED_ENV_PATH} targets a different database than selected {database_target_key()}; select a matching profile file")
+		expected_database = application_database_name(infra)
+		for key in ("CORE_DATABASE_URL", "DOCUMENT_DATABASE_URL", "EXECUTION_DATABASE_URL", "MODEL_DATABASE_URL", "TOOL_DATABASE_URL", "MIGRATOR_DATABASE_URL", "AUTH_ADMIN_DATABASE_URL"):
+			if key in current and urlsplit(current[key]).path.lstrip("/") != expected_database:
+				raise RuntimeError(f"{DISTRIBUTED_ENV_PATH} targets a different database than selected APP_ENV; select a matching profile file")
+		selected = application_database_slot(infra)
+		current_migrator = urlsplit(current["MIGRATOR_DATABASE_URL"])
+		if "AUTH_ADMIN_DATABASE_URL" in missing and current_migrator.username == "audit_offline_migrator":
+			raise RuntimeError(f"{DISTRIBUTED_ENV_PATH} is missing AUTH_ADMIN_DATABASE_URL and its legacy administrator DSN cannot be inferred safely")
+		new_migrator = (current["MIGRATOR_DATABASE_URL"] if current_migrator.username == "audit_offline_migrator"
+					else expected["MIGRATOR_DATABASE_URL"])
+		updates: dict[str, str] = {}
+		for key in missing:
+			if key == "AUTH_ADMIN_DATABASE_URL":
+				updates[key] = current["MIGRATOR_DATABASE_URL"]
+			elif key in {"DEV_DATABASE_URL", "TEST_DATABASE_URL", "PROD_DATABASE_URL"}:
+				updates[key] = new_migrator if key == selected else expected[key]
+			else:
+				updates[key] = expected[key]
+		if current_migrator.username != "audit_offline_migrator":
+			updates["MIGRATOR_DATABASE_URL"] = new_migrator
+			updates[selected] = new_migrator
+		elif current.get(selected, new_migrator) != new_migrator:
+			raise RuntimeError(f"{DISTRIBUTED_ENV_PATH} must route {selected} to the dedicated offline migrator")
+		for slot in {"DEV_DATABASE_URL", "TEST_DATABASE_URL", "PROD_DATABASE_URL"} - {selected}:
+			if slot in current and current[slot] != expected[slot]:
+				raise RuntimeError(f"{DISTRIBUTED_ENV_PATH} has an inconsistent {slot} selection for APP_ENV; it was left unchanged")
+		if updates:
+			_atomic_update_env(DISTRIBUTED_ENV_PATH, updates)
+			current.update(updates)
+		for slot in ("DEV_DATABASE_URL", "TEST_DATABASE_URL", "PROD_DATABASE_URL"):
+			if slot == selected:
+				if current.get(slot) != current["MIGRATOR_DATABASE_URL"]:
+					raise RuntimeError(f"{DISTRIBUTED_ENV_PATH} must route {selected} to the dedicated offline migrator")
+			elif current.get(slot, "") != expected[slot]:
+				raise RuntimeError(f"{DISTRIBUTED_ENV_PATH} has an inconsistent {slot} selection for APP_ENV; it was left unchanged")
 		for key in ("EDGE_PORT", "CLIENT_PORT", "ADMIN_PORT", "PORTAL_PORT", "CORS_ORIGIN"):
 			if current[key] != expected[key]:
 				raise RuntimeError(f"{DISTRIBUTED_ENV_PATH} has a {key} value that does not match {ENV_PATH}")
@@ -496,6 +690,10 @@ def start_apps(fixture: bool, offline_images: bool, planner_mode: str | None) ->
 			 "--verify", "--report", verification_report], quiet=True)
 	up_options = ["--no-build", "--pull", "never"] if offline_images else ["--build"]
 	migration_options = ["--pull", "never"] if offline_images else ["--build"]
+	# Create/validate a dedicated non-super migration login, then provision
+	# maintenance owners before ordinary migrations. Admin DSN is one-shot only.
+	for service in ("migrate-offline-migrator", "migrate-clm-owner", "migrate-auth-owner"):
+		run(compose_prefix() + ["--profile", "migration", "run", "--rm", *migration_options, service], timeout=900)
 	run(compose_prefix() + ["--profile", "migration", "run", "--rm", *migration_options, "migrate"], timeout=900)
 	profile = "model-fixture" if fixture else "real-model"
 	model_service = "model-gateway-fixture" if fixture else "model-gateway"

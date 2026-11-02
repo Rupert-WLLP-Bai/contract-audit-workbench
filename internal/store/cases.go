@@ -519,7 +519,23 @@ func (s *Store) UploadMaterial(ctx context.Context, user accounts.User, caseID, 
 		if err != nil {
 			return DocumentUploadResult{}, err
 		}
-		interpreted := s.interpretUnpersistedWithModels(ctx, document, models)
+		parseCtx := ctx
+		ticket := operationTicket(ctx)
+		action := "intake_parse"
+		scope := model.DelegatedScope{Kind: "document", TenantID: document.TenantID, OrgID: document.OrgID, CaseID: document.CaseID, ActorID: currentUser.ID, DocumentID: document.ID, InputSHA256: document.Digest}
+		if ticket == "" {
+			action = "upload_parse"
+			scope.Action = action
+			var ticketErr error
+			ticket, ticketErr = s.issueOperationTicket(ctx, currentUser, scope)
+			if ticketErr != nil {
+				return DocumentUploadResult{}, ticketErr
+			}
+		}
+		scope.Action = action
+		scope.OperationTicket = ticket
+		parseCtx = model.WithDelegatedScope(ctx, modelScope(scope, models))
+		interpreted := s.interpretUnpersistedWithModels(parseCtx, document, models)
 		if contextErr := ctx.Err(); contextErr != nil {
 			interpreted = Interpreted{Document: document, ParseError: contextErr.Error(), FromOCR: interpreted.FromOCR}
 		}
@@ -687,10 +703,13 @@ func (s *Store) Reparse(ctx context.Context, user accounts.User, caseID, docID s
 		if doc.ID != docID {
 			continue
 		}
-		parseCtx := model.WithDelegatedScope(ctx, modelScope(model.DelegatedScope{
-			Kind: "document", TenantID: doc.TenantID, OrgID: doc.OrgID,
-			CaseID: doc.CaseID, ActorID: currentUser.ID, DocumentID: doc.ID,
-		}, s.currentModels()))
+		scope := model.DelegatedScope{Kind: "document", Action: "reparse", TenantID: doc.TenantID, OrgID: doc.OrgID, CaseID: doc.CaseID, ActorID: currentUser.ID, DocumentID: doc.ID, InputSHA256: doc.Digest}
+		ticket, err := s.issueOperationTicket(ctx, currentUser, scope)
+		if err != nil {
+			return err
+		}
+		scope.OperationTicket = ticket
+		parseCtx := model.WithDelegatedScope(ctx, modelScope(scope, s.currentModels()))
 		parsed, err := s.ensureParsed(parseCtx, currentUser, doc, true)
 		if err != nil {
 			return err

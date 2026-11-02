@@ -46,6 +46,11 @@ const LoginPage = lazy(() =>
     default: module.LoginPage,
   })),
 );
+const PendingMembershipPage = lazy(() =>
+  import("./pages/pending-membership-page").then((module) => ({
+    default: module.PendingMembershipPage,
+  })),
+);
 const NotFoundPage = lazy(() =>
   import("./pages/not-found-page").then((module) => ({
     default: module.NotFoundPage,
@@ -112,6 +117,7 @@ export function App() {
   return (
     <Suspense fallback={<PageStatus kind="loading" title="正在加载页面" />}>
       <Routes>
+        <Route path="/login/membership" element={<PendingMembershipPage audience="client" />} />
         <Route path="/login" element={<LoginPage />} />
         <Route element={<SessionGate />}>
           <Route element={<AppShell />}>

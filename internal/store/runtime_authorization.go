@@ -15,7 +15,7 @@ var errAttemptAuthorizationRevoked = errors.New("attempt authorization was revok
 
 // authorizeAttemptExecution resolves current grants for the frozen initiating actor.
 // It applies to active execution; historical reads use their requesting user's grants.
-func authorizeAttemptExecution(st state, runID, attemptID string) (accounts.User, error) {
+func authorizeAttemptExecution(st state, runID, attemptID string, resolved ...accounts.User) (accounts.User, error) {
 	attempt, ok := st.attemptByID(attemptID)
 	if !ok || attempt.RunID != runID || !attemptActive(attempt.State) {
 		return accounts.User{}, errAttemptAuthorizationRevoked
@@ -31,6 +31,10 @@ func authorizeAttemptExecution(st state, runID, attemptID string) (accounts.User
 		}
 	}
 	user, ok := accounts.ByID(actorID)
+	if len(resolved) == 1 {
+		user = resolved[0]
+		ok = user.ID == actorID
+	}
 	if !ok || !user.Enabled || !accounts.CanStart(user.Role) {
 		return accounts.User{}, errAttemptAuthorizationRevoked
 	}
@@ -49,7 +53,7 @@ func authorizeAttemptExecution(st state, runID, attemptID string) (accounts.User
 
 func (s *Store) updateAuthorizedExecution(ctx context.Context, runID, attemptID string, fn func(*state) error) error {
 	return s.updateExecutionContext(ctx, attemptID, func(st *state) error {
-		if _, err := authorizeAttemptExecution(*st, runID, attemptID); err != nil {
+		if _, err := s.authorizeAttemptExecution(*st, runID, attemptID); err != nil {
 			return err
 		}
 		return fn(st)
@@ -123,4 +127,8 @@ func (s *Store) updateSubjectCasesAs(ctx context.Context, user accounts.User, su
 // write or a late model event for the same attempt: both take the same row lock.
 func (s *Store) updateCaseAttemptAs(user accounts.User, caseID, attemptID string, fn func(*state) error) error {
 	return s.scopedCaseWrite(context.Background(), user, caseID, attemptID, "", true, false, nil, fn)
+}
+
+func (s *Store) updateCaseAsWithContext(ctx context.Context, user accounts.User, caseID string, hook func(pgx.Tx) error, fn func(*state) error) error {
+	return s.scopedCaseWrite(ctx, user, caseID, "", "", true, true, hook, fn)
 }

@@ -14,6 +14,30 @@ import (
 	"contractaudit/internal/store"
 )
 
+func TestSessionResolverFromEnvRequiresBoundedAuthorityTransport(t *testing.T) {
+	for _, name := range []string{"CORE_AUTHORITY_URL", "CORE_AUTHORITY_CA_FILE", "CORE_AUTHORITY_ALLOW_INSECURE_DEV", "APP_ENV"} {
+		t.Setenv(name, "")
+	}
+	if _, err := sessionResolverFromEnv(); err == nil {
+		t.Fatal("missing Core authority URL was accepted")
+	}
+	t.Setenv("APP_ENV", "test")
+	t.Setenv("CORE_AUTHORITY_URL", "http://127.0.0.1:8081")
+	t.Setenv("CORE_AUTHORITY_ALLOW_INSECURE_DEV", "true")
+	if _, err := sessionResolverFromEnv(); err != nil {
+		t.Fatalf("explicit bounded test authority was rejected: %v", err)
+	}
+	t.Setenv("APP_ENV", "production")
+	if _, err := sessionResolverFromEnv(); err == nil {
+		t.Fatal("development HTTP authority was accepted in production")
+	}
+	t.Setenv("CORE_AUTHORITY_ALLOW_INSECURE_DEV", "false")
+	t.Setenv("CORE_AUTHORITY_URL", "https://core.example")
+	if _, err := sessionResolverFromEnv(); err != nil {
+		t.Fatalf("secure HTTPS authority was rejected: %v", err)
+	}
+}
+
 const (
 	edgeCredential   = "edge-credential-0123456789-abcdef"
 	workerCredential = "worker-credential-0123456789-abcdef"

@@ -96,6 +96,9 @@ func openConfigured(ctx context.Context, includeOIDC bool, service string) (*Run
 	if err := ctx.Err(); err != nil {
 		return closeOnFailure(err)
 	}
+	if err := configureOperationAuthority(st, service); err != nil {
+		return closeOnFailure(err)
+	}
 	models, revision, err := wireRuntimeStore(ctx, st, settings, service)
 	if err != nil {
 		return closeOnFailure(err)

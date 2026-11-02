@@ -31,7 +31,11 @@ type experienceDistillWork struct {
 // loadExperienceDistillWork checks the live claim and the applicant's current
 // access before exposing any source or ancestor content to the model.
 func (s *Store) loadExperienceDistillWork(ctx context.Context, claim JobClaim) (experienceDistillWork, error) {
-	tx, current, item, err := s.beginExperienceCase(ctx, accounts.User{ID: claim.ActorID, TenantID: claim.TenantID}, claim.CaseID, access.Review)
+	actor, resolveErr := s.distillClaimUser(ctx, claim)
+	if resolveErr != nil {
+		return experienceDistillWork{}, resolveErr
+	}
+	tx, current, item, err := s.beginExperienceCase(ctx, actor, claim.CaseID, access.Review)
 	if err != nil {
 		return experienceDistillWork{}, err
 	}
@@ -82,7 +86,11 @@ func (s *Store) loadExperienceDistillWork(ctx context.Context, claim JobClaim) (
 }
 
 func (s *Store) persistExperienceDistillResult(ctx context.Context, claim JobClaim, work experienceDistillWork, result []byte, modelRef string) (string, error) {
-	tx, current, item, err := s.beginExperienceCase(ctx, accounts.User{ID: claim.ActorID, TenantID: claim.TenantID}, claim.CaseID, access.Review)
+	actor, resolveErr := s.distillClaimUser(ctx, claim)
+	if resolveErr != nil {
+		return "", resolveErr
+	}
+	tx, current, item, err := s.beginExperienceCase(ctx, actor, claim.CaseID, access.Review)
 	if err != nil {
 		return "", err
 	}
@@ -132,7 +140,11 @@ type experienceDistillRecovery struct {
 // Serialize receipt discovery against Core's result lock and against claim
 // changes. A later generation reuses the exact durable result, not a new call.
 func (s *Store) recoverExperienceDistill(ctx context.Context, claim JobClaim, work experienceDistillWork) (experienceDistillRecovery, error) {
-	tx, current, item, err := s.beginExperienceCase(ctx, accounts.User{ID: claim.ActorID, TenantID: claim.TenantID}, claim.CaseID, access.Review)
+	actor, resolveErr := s.distillClaimUser(ctx, claim)
+	if resolveErr != nil {
+		return experienceDistillRecovery{}, resolveErr
+	}
+	tx, current, item, err := s.beginExperienceCase(ctx, actor, claim.CaseID, access.Review)
 	if err != nil {
 		return experienceDistillRecovery{}, err
 	}
@@ -382,4 +394,23 @@ func (s *Store) runExperienceDistill(ctx context.Context, claim JobClaim) error 
 		return fmt.Errorf("experience result delivery outcome is unresolved: %w", errors.Join(err, lookupErr))
 	}
 	return s.finishClaim(ctx, claim, "completed")
+}
+
+func (s *Store) distillClaimUser(ctx context.Context, claim JobClaim) (accounts.User, error) {
+	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{AccessMode: pgx.ReadOnly})
+	if err != nil {
+		return accounts.User{}, err
+	}
+	defer tx.Rollback(ctx)
+	if err = setLocalScope(ctx, tx, claim.scope()); err != nil {
+		return accounts.User{}, err
+	}
+	var hash string
+	if err = tx.QueryRow(ctx, `SELECT input_sha256 FROM experience_distill_inputs WHERE job_id=$1 AND tenant_id=$2 AND org_id=$3 AND case_id=$4 AND actor_id=$5`, claim.JobID, claim.TenantID, claim.OrgID, claim.CaseID, claim.ActorID).Scan(&hash); err != nil {
+		return accounts.User{}, err
+	}
+	if err = tx.Commit(ctx); err != nil {
+		return accounts.User{}, err
+	}
+	return s.operationUser(ctx, model.DelegatedScope{Kind: "experience_distill", TenantID: claim.TenantID, OrgID: claim.OrgID, CaseID: claim.CaseID, ActorID: claim.ActorID, JobID: claim.JobID, WorkerID: claim.WorkerID, Generation: claim.Generation, InputSHA256: hash})
 }

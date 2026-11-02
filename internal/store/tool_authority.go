@@ -10,6 +10,7 @@ import (
 
 	"contractaudit/internal/access"
 	"contractaudit/internal/accounts"
+	"contractaudit/internal/model"
 	"github.com/jackc/pgx/v5"
 )
 
@@ -176,7 +177,7 @@ func (s *Store) AuthorizeToolResolution(ctx context.Context, request ToolInvocat
 	if err := json.Unmarshal([]byte(memberJSON), &memberIDs); err != nil {
 		return ToolAuthority{}, toolScopeRefusal("case_members_unreadable")
 	}
-	user, err := trustedUser(accounts.User{ID: actorID})
+	user, err := s.operationUser(ctx, model.DelegatedScope{Kind: "execution", TenantID: request.TenantID, OrgID: request.OrgID, CaseID: request.CaseID, ActorID: actorID, JobID: request.JobID, WorkerID: request.WorkerID, Generation: request.Generation, RunID: request.RunID, AttemptID: request.AttemptID})
 	if err != nil {
 		return ToolAuthority{}, toolScopeRefusal("actor_untrusted")
 	}

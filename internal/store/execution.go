@@ -387,7 +387,7 @@ func (s *Store) startReview(ctx context.Context, user accounts.User, caseID, bus
 		receiptResult = reviewWriteReceipt{Acceptance: accepted, Durable: durable}
 		return insertWriteReceipt(ctx, acceptanceTx, executionWriteReceipts, user, item, route, key, digest, receiptResult)
 	}
-	err = s.updateCaseAsWith(user, caseID, hook, func(st *state) error {
+	err = s.updateCaseAsWithContext(ctx, user, caseID, hook, func(st *state) error {
 		user, err = trustedUser(user)
 		if err != nil {
 			return err
@@ -490,7 +490,7 @@ func (s *Store) startReview(ctx context.Context, user accounts.User, caseID, bus
 			if err != nil {
 				return err
 			}
-			st.Jobs = append(st.Jobs, Job{ID: jobID, TenantID: caseItem.TenantID, OrgID: caseItem.OwnerOrgID, CaseID: caseID, RunID: runID, AttemptID: attemptID, ActorID: user.ID, Kind: "review", State: "queued", CreatedAt: acceptedAt, UpdatedAt: acceptedAt})
+			st.Jobs = append(st.Jobs, Job{ID: jobID, TenantID: caseItem.TenantID, OrgID: caseItem.OwnerOrgID, CaseID: caseID, RunID: runID, AttemptID: attemptID, ActorID: user.ID, PrincipalID: user.PrincipalID, MembershipID: user.MembershipID, IdentityCaptured: true, Kind: "review", State: "queued", CreatedAt: acceptedAt, UpdatedAt: acceptedAt})
 			st.Outbox = append(st.Outbox, OutboxRecord{ID: outboxID, JobID: jobID, TenantID: caseItem.TenantID, OrgID: caseItem.OwnerOrgID, CaseID: caseID, EventType: "review.accepted", Payload: string(payload), State: "pending", CreatedAt: acceptedAt})
 		}
 		for _, selection := range selections {
@@ -530,7 +530,10 @@ func (s *Store) startReview(ctx context.Context, user accounts.User, caseID, bus
 		return runID, err
 	}
 	if !durable {
-		s.launchAttempt(runID, attemptID, models, executionCase, user.ID)
+		if err := s.launchAttempt(ctx, runID, attemptID, models, executionCase, user); err != nil {
+			s.releaseExecution()
+			return "", err
+		}
 	}
 	return runID, nil
 }
@@ -617,7 +620,7 @@ func (s *Store) retry(ctx context.Context, user accounts.User, caseID, runID str
 	created := false
 	var executionCase Case
 	var retryTx pgx.Tx
-	err = s.updateCaseAsWith(user, caseID, func(tx pgx.Tx) error {
+	err = s.updateCaseAsWithContext(ctx, user, caseID, func(tx pgx.Tx) error {
 		// The locked callback below re-reads the live attempt state and then
 		// validates the frozen object dependencies on this same transaction, so
 		// an active duplicate and a real retry cannot race each other.
@@ -755,7 +758,7 @@ func (s *Store) retry(ctx context.Context, user accounts.User, caseID, runID str
 			if err != nil {
 				return err
 			}
-			st.Jobs = append(st.Jobs, Job{ID: jobID, TenantID: caseItem.TenantID, OrgID: caseItem.OwnerOrgID, CaseID: caseID, RunID: runID, AttemptID: attemptID, ActorID: user.ID, Kind: "review", State: "queued", CreatedAt: acceptedAt, UpdatedAt: acceptedAt})
+			st.Jobs = append(st.Jobs, Job{ID: jobID, TenantID: caseItem.TenantID, OrgID: caseItem.OwnerOrgID, CaseID: caseID, RunID: runID, AttemptID: attemptID, ActorID: user.ID, PrincipalID: user.PrincipalID, MembershipID: user.MembershipID, IdentityCaptured: true, Kind: "review", State: "queued", CreatedAt: acceptedAt, UpdatedAt: acceptedAt})
 			st.Outbox = append(st.Outbox, OutboxRecord{ID: outboxID, JobID: jobID, TenantID: caseItem.TenantID, OrgID: caseItem.OwnerOrgID, CaseID: caseID, EventType: "review.accepted", Payload: string(payload), State: "pending", CreatedAt: acceptedAt})
 		}
 		for i := range st.Runs {
@@ -785,7 +788,10 @@ func (s *Store) retry(ctx context.Context, user accounts.User, caseID, runID str
 		return err
 	}
 	if !durable {
-		s.launchAttempt(runID, attemptID, models, executionCase, user.ID)
+		if err := s.launchAttempt(ctx, runID, attemptID, models, executionCase, user); err != nil {
+			s.releaseExecution()
+			return err
+		}
 	}
 	return nil
 }
@@ -960,7 +966,20 @@ func (s *Store) releaseExecution() {
 	s.executionWG.Done()
 }
 
-func (s *Store) launchAttempt(runID, attemptID string, models Models, caseItem Case, actorID string) {
+func (s *Store) launchAttempt(ctx context.Context, runID, attemptID string, models Models, caseItem Case, user accounts.User) error {
+	actorID := user.ID
+	scope := model.DelegatedScope{Kind: "execution", Action: "embedded_review", TenantID: caseItem.TenantID, OrgID: caseItem.OwnerOrgID, CaseID: caseItem.ID, ActorID: actorID, RunID: runID, AttemptID: attemptID}
+	ticket, err := s.issueOperationTicket(ctx, user, scope)
+	if err != nil {
+		return err
+	}
+	scope.OperationTicket = ticket
+	s.claimMu.Lock()
+	if s.operationContexts == nil {
+		s.operationContexts = map[string]model.DelegatedScope{}
+	}
+	s.operationContexts[attemptID] = scope
+	s.claimMu.Unlock()
 	claim, hasClaim := s.claimForAttempt(attemptID)
 	installedClaim := false
 	if !hasClaim {
@@ -976,8 +995,9 @@ func (s *Store) launchAttempt(runID, attemptID string, models Models, caseItem C
 		if installedClaim {
 			defer s.clearClaim(claim)
 		}
-		s.executeAttempt(runID, attemptID, models)
+		s.executeAttemptContext(model.WithDelegatedScope(context.Background(), scope), runID, attemptID, models)
 	}()
+	return nil
 }
 
 func (s *Store) executeAttempt(runID, attemptID string, models Models) {
@@ -1427,7 +1447,7 @@ func (s *Store) prepareAttempt(ctx context.Context, runID, attemptID string, mod
 	input := AttemptInput{AttemptID: attemptID, RunID: runID, InputHash: inputHash, FrozenAt: stamp(), Documents: frozen}
 	if err := s.updateExecutionContext(ctx, attemptID, func(next *state) error {
 		if s.telecomAttempt(*next, runID) {
-			if _, err := authorizeAttemptExecution(*next, runID, attemptID); err != nil {
+			if _, err := s.authorizeAttemptExecution(*next, runID, attemptID); err != nil {
 				return err
 			}
 		}
@@ -1660,7 +1680,7 @@ func (s *Store) finishAttempt(ctx context.Context, runID, attemptID, stateName, 
 			return errAttemptTerminal
 		}
 		if s.telecomAttempt(*st, runID) {
-			if _, err := authorizeAttemptExecution(*st, runID, attemptID); errors.Is(err, errAttemptAuthorizationRevoked) {
+			if _, err := s.authorizeAttemptExecution(*st, runID, attemptID); errors.Is(err, errAttemptAuthorizationRevoked) {
 				stateName, partialReason, errorCode = "cancelled", "", "authorization_revoked"
 			} else if err != nil {
 				return err

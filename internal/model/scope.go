@@ -6,19 +6,22 @@ import "context"
 // The gateway authenticates the calling service separately and checks these IDs
 // against current PostgreSQL authority before forwarding a request.
 type DelegatedScope struct {
-	Kind             string `json:"kind"`
-	TenantID         string `json:"tenant_id"`
-	OrgID            string `json:"org_id"`
-	CaseID           string `json:"case_id"`
-	ActorID          string `json:"actor_id"`
-	DocumentID       string `json:"document_id,omitempty"`
-	JobID            string `json:"job_id,omitempty"`
-	RunID            string `json:"run_id,omitempty"`
-	AttemptID        string `json:"attempt_id,omitempty"`
-	WorkerID         string `json:"worker_id,omitempty"`
-	Generation       int64  `json:"generation,omitempty"`
-	InputSHA256      string `json:"input_sha256,omitempty"`
-	ParseSelectionID string `json:"parse_selection_id,omitempty"`
+	Action               string `json:"action,omitempty"`
+	OperationTicket      string `json:"operation_ticket,omitempty"`
+	Kind                 string `json:"kind"`
+	TenantID             string `json:"tenant_id"`
+	OrgID                string `json:"org_id"`
+	CaseID               string `json:"case_id"`
+	ActorID              string `json:"actor_id"`
+	DocumentID           string `json:"document_id,omitempty"`
+	JobID                string `json:"job_id,omitempty"`
+	RunID                string `json:"run_id,omitempty"`
+	AttemptID            string `json:"attempt_id,omitempty"`
+	WorkerID             string `json:"worker_id,omitempty"`
+	Generation           int64  `json:"generation,omitempty"`
+	InputSHA256          string `json:"input_sha256,omitempty"`
+	ParseSelectionSHA256 string `json:"parse_selection_sha256,omitempty"`
+	ParseSelectionID     string `json:"parse_selection_id,omitempty"`
 	// ConfigurationID is the frozen model configuration identity of the
 	// operation. The gateway must dispatch to the provider that identity names,
 	// never to a newer endpoint that happens to serve the same model id.

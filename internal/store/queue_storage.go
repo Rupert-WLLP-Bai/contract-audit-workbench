@@ -49,7 +49,10 @@ func syncJobs(ctx context.Context, tx pgx.Tx, items []Job) error {
 			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
 			ON CONFLICT (id) DO UPDATE SET state=EXCLUDED.state, generation=EXCLUDED.generation, worker_id=EXCLUDED.worker_id,
 			lease_until=EXCLUDED.lease_until, heartbeat_at=EXCLUDED.heartbeat_at, updated_at=EXCLUDED.updated_at
-			WHERE worker_jobs.generation=EXCLUDED.generation AND worker_jobs.worker_id IS NOT DISTINCT FROM EXCLUDED.worker_id`,
+			WHERE worker_jobs.generation=EXCLUDED.generation AND worker_jobs.worker_id IS NOT DISTINCT FROM EXCLUDED.worker_id
+			AND worker_jobs.tenant_id=EXCLUDED.tenant_id AND worker_jobs.org_id=EXCLUDED.org_id
+			AND worker_jobs.case_id=EXCLUDED.case_id AND worker_jobs.run_id IS NOT DISTINCT FROM EXCLUDED.run_id
+			AND worker_jobs.attempt_id IS NOT DISTINCT FROM EXCLUDED.attempt_id AND worker_jobs.actor_id=EXCLUDED.actor_id`,
 			item.ID, item.TenantID, item.OrgID, item.CaseID, item.RunID, item.AttemptID, item.ActorID, item.Kind, item.State,
 			item.Generation, item.WorkerID, item.LeaseUntil, item.Heartbeat, item.CreatedAt, item.UpdatedAt)
 		if err != nil {
@@ -62,6 +65,38 @@ func syncJobs(ctx context.Context, tx pgx.Tx, items []Job) error {
 		// authoritative row instead of silently reporting success.
 		if tag.RowsAffected() != 1 {
 			return fmt.Errorf("%w: worker job %q generation or worker identity changed", errLeaseLost, item.ID)
+		}
+		if item.IdentityCaptured {
+			if (item.PrincipalID == "") != (item.MembershipID == "") || item.RunID == "" || item.AttemptID == "" {
+				return errors.New("job membership binding is incomplete")
+			}
+			if item.PrincipalID != "" || admissionSessionDigest(ctx) != "" {
+				digest := admissionSessionDigest(ctx)
+				if digest == "" {
+					return errors.New("enterprise review admission requires the authenticated session context")
+				}
+				if _, err := tx.Exec(ctx, `SELECT tenant_identity_bind_admission($1,$2)`, digest, item.ID); err != nil {
+					return fmt.Errorf("bind review job to current membership: %w", err)
+				}
+				continue
+			}
+			_, err := tx.Exec(ctx, `INSERT INTO worker_claim_identities
+				(tenant_id,job_id,org_id,case_id,run_id,attempt_id,actor_id,principal_id,membership_id)
+				VALUES($1,$2,$3,$4,$5,$6,$7,NULLIF($8,'')::uuid,NULLIF($9,'')::uuid) ON CONFLICT(tenant_id,job_id) DO NOTHING`,
+				item.TenantID, item.ID, item.OrgID, item.CaseID, item.RunID, item.AttemptID, item.ActorID, item.PrincipalID, item.MembershipID)
+			if err != nil {
+				return err
+			}
+			var identical bool
+			if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM worker_claim_identities WHERE tenant_id=$1 AND job_id=$2
+				AND org_id=$3 AND case_id=$4 AND run_id=$5 AND attempt_id=$6 AND actor_id=$7
+				AND principal_id IS NOT DISTINCT FROM NULLIF($8,'')::uuid AND membership_id IS NOT DISTINCT FROM NULLIF($9,'')::uuid)`, item.TenantID, item.ID, item.OrgID,
+				item.CaseID, item.RunID, item.AttemptID, item.ActorID, item.PrincipalID, item.MembershipID).Scan(&identical); err != nil {
+				return err
+			}
+			if !identical {
+				return fmt.Errorf("job %q identity binding conflicts with its immutable record", item.ID)
+			}
 		}
 	}
 	return nil
@@ -112,6 +147,7 @@ func (s *Store) clearClaim(claim JobClaim) {
 	s.claimMu.Lock()
 	if current, ok := s.claims[claim.AttemptID]; ok && current.Generation == claim.Generation && current.WorkerID == claim.WorkerID {
 		delete(s.claims, claim.AttemptID)
+		delete(s.operationContexts, claim.AttemptID)
 	}
 	s.claimMu.Unlock()
 }

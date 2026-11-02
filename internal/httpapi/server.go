@@ -35,17 +35,23 @@ const (
 
 // Options configures the HTTP surface.
 type Options struct {
-	SystemHealth               systemhealth.Reader
-	CORSOrigins                []string
-	Models                     *model.Client
-	OIDC                       *identity.Manager
-	Durable                    bool
-	SecureCookies              bool
-	ExperienceWorkerCredential string
-	PaymentReceiptSources      []PaymentReceiptSourceCredential
-	AssetReceiptSources        []AssetReceiptSourceCredential
-	ContractSourceCredentials  []ContractSourceCredential
-	experienceDeliveryEnabled  bool
+	SystemHealth                 systemhealth.Reader
+	CORSOrigins                  []string
+	Models                       *model.Client
+	OIDC                         *identity.Manager
+	Durable                      bool
+	SecureCookies                bool
+	ExperienceWorkerCredential   string
+	DocumentIntakeCredential     string
+	ToolClaimAuthorityCredential string
+	ModelAuthorityCredential     string
+	PaymentReceiptSources        []PaymentReceiptSourceCredential
+	AssetReceiptSources          []AssetReceiptSourceCredential
+	ContractSourceCredentials    []ContractSourceCredential
+	SessionAuthorityResolver     interface {
+		AuthenticateSession(context.Context, string) (accounts.User, string, error)
+	}
+	experienceDeliveryEnabled bool
 
 	// IntakeUploader is the authenticated Document upload entry used by the
 	// atomic home-page intake flow. A nil uploader keeps newly created
@@ -71,7 +77,7 @@ func Handler(st *store.Store, opt Options) http.Handler {
 	if opt.SystemHealth == nil {
 		opt.SystemHealth = systemhealth.New(systemhealth.Config{DatabaseReady: st.Ready})
 	}
-	h := &handler{store: st, loginCounter: newLoginCounter(), cors: opt.CORSOrigins, models: opt.Models, oidc: opt.OIDC, durable: opt.Durable, secureCookies: opt.SecureCookies, systemHealth: opt.SystemHealth, experienceDeliveryEnabled: opt.experienceDeliveryEnabled, operatorAuditEnabled: opt.OperatorAuditEnabled, capabilityPacks: opt.CapabilityPacks, externalConnectors: opt.ExternalConnectors, externalConnectorInfo: opt.ExternalConnectorInfo, intakeUploader: opt.IntakeUploader, contractAuditBindingsEnabled: opt.ContractAuditBindingsEnabled, contractSources: opt.ContractSourceCredentials, eventStreams: make(chan struct{}, maxEventStreams), eventWakeups: newEventWakeups()}
+	h := &handler{store: st, sessionAuthority: opt.SessionAuthorityResolver, loginCounter: newLoginCounter(), cors: opt.CORSOrigins, models: opt.Models, oidc: opt.OIDC, durable: opt.Durable, secureCookies: opt.SecureCookies, systemHealth: opt.SystemHealth, experienceDeliveryEnabled: opt.experienceDeliveryEnabled, operatorAuditEnabled: opt.OperatorAuditEnabled, capabilityPacks: opt.CapabilityPacks, externalConnectors: opt.ExternalConnectors, externalConnectorInfo: opt.ExternalConnectorInfo, intakeUploader: opt.IntakeUploader, contractAuditBindingsEnabled: opt.ContractAuditBindingsEnabled, contractSources: opt.ContractSourceCredentials, eventStreams: make(chan struct{}, maxEventStreams), eventWakeups: newEventWakeups()}
 	h.modelBudgetGateway = systemhealth.ModelGatewayBaseURLFromEnv()
 	mux := http.NewServeMux()
 	// Every binary in this repository serves the same probe surface so a manifest
@@ -121,6 +127,8 @@ func Handler(st *store.Store, opt Options) http.Handler {
 	registerContractApprovalReadRoutes(mux, h)
 	mux.HandleFunc("GET /api/auth/oidc/login", h.oidcLogin)
 	mux.HandleFunc("GET /api/auth/oidc/callback", h.oidcCallback)
+	mux.HandleFunc("GET /api/auth/oidc/memberships", h.pendingMemberships)
+	mux.HandleFunc("POST /api/auth/oidc/memberships", h.selectPendingMembership)
 	mux.HandleFunc("GET /api/templates", h.templates)
 	mux.HandleFunc("GET /api/capability-packs", h.listCapabilityPacks)
 	mux.HandleFunc("GET /api/workbench", h.workbench)
@@ -207,9 +215,12 @@ func Handler(st *store.Store, opt Options) http.Handler {
 }
 
 type handler struct {
-	systemHealth                 systemhealth.Reader
-	modelBudgetGateway           string
-	store                        *store.Store
+	systemHealth       systemhealth.Reader
+	modelBudgetGateway string
+	store              *store.Store
+	sessionAuthority   interface {
+		AuthenticateSession(context.Context, string) (accounts.User, string, error)
+	}
 	cors                         []string
 	models                       *model.Client
 	oidc                         *identity.Manager
@@ -599,6 +610,9 @@ func (h *handler) startReview(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ctx := store.WithReviewIdempotency(r.Context(), key)
+	if token := audienceCookieValue(r, "client"); token != "" {
+		ctx = store.WithAdmissionSessionToken(ctx, token)
+	}
 	if h.durable {
 		var accepted store.JobAcceptance
 		var err error
@@ -668,8 +682,12 @@ func (h *handler) retry(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
+	ctx := r.Context()
+	if token := audienceCookieValue(r, "client"); token != "" {
+		ctx = store.WithAdmissionSessionToken(ctx, token)
+	}
 	if h.durable {
-		accepted, err := h.store.RetryAsync(r.Context(), user, r.PathValue("caseID"), r.PathValue("runID"))
+		accepted, err := h.store.RetryAsync(ctx, user, r.PathValue("caseID"), r.PathValue("runID"))
 		if err != nil {
 			writeErr(w, err)
 			return
@@ -678,7 +696,7 @@ func (h *handler) retry(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	runID := r.PathValue("runID")
-	if err := h.store.Retry(r.Context(), user, r.PathValue("caseID"), runID); err != nil {
+	if err := h.store.Retry(ctx, user, r.PathValue("caseID"), runID); err != nil {
 		writeErr(w, err)
 		return
 	}
@@ -823,7 +841,7 @@ func writeEventBatch(w http.ResponseWriter, items []store.Event) bool {
 }
 
 func (h *handler) pollEventBatch(w http.ResponseWriter, user accounts.User, r *http.Request, after int) (int, error) {
-	current, audience, err := h.store.AuthenticateSession(r.Context(), audienceCookieValue(r, "client"))
+	current, audience, err := h.authenticateSession(r.Context(), audienceCookieValue(r, "client"))
 	if err != nil {
 		return after, err
 	}

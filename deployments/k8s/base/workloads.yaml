@@ -144,6 +144,10 @@ spec:
               valueFrom: {secretKeyRef: {name: contract-audit-service-tokens, key: WORKER_CORE_TOKEN}}
             - name: CORE_DOCUMENT_TOKEN
               valueFrom: {secretKeyRef: {name: contract-audit-service-tokens, key: CORE_DOCUMENT_TOKEN}}
+            - name: TOOL_CORE_AUTHORITY_TOKEN
+              valueFrom: {secretKeyRef: {name: contract-audit-service-tokens, key: TOOL_CORE_AUTHORITY_TOKEN}}
+            - name: CORE_MODEL_AUTHORITY_TOKEN
+              valueFrom: {secretKeyRef: {name: contract-audit-service-tokens, key: CORE_MODEL_AUTHORITY_TOKEN}}
             # Seals admin-managed LLM credentials. Optional: absent leaves the
             # endpoint registry readable but refuses saving or probing secrets.
             - name: LLM_CONFIG_KEY
@@ -272,8 +276,12 @@ spec:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
             capabilities: {drop: [ALL]}
-          volumeMounts: [{name: tmp, mountPath: /tmp}]
-      volumes: [{name: tmp, emptyDir: {sizeLimit: 256Mi}}]
+          volumeMounts:
+            - {name: tmp, mountPath: /tmp}
+            - {name: core-authority-ca, mountPath: /run/contract-audit/core-authority-ca, readOnly: true}
+      volumes:
+        - {name: tmp, emptyDir: {sizeLimit: 256Mi}}
+        - {name: core-authority-ca, configMap: {name: contract-audit-core-authority-ca, optional: true}}
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -355,8 +363,12 @@ spec:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
             capabilities: {drop: [ALL]}
-          volumeMounts: [{name: tmp, mountPath: /tmp}]
-      volumes: [{name: tmp, emptyDir: {sizeLimit: 64Mi}}]
+          volumeMounts:
+            - {name: tmp, mountPath: /tmp}
+            - {name: core-authority-ca, mountPath: /run/contract-audit/core-authority-ca, readOnly: true}
+      volumes:
+        - {name: tmp, emptyDir: {sizeLimit: 64Mi}}
+        - {name: core-authority-ca, configMap: {name: contract-audit-core-authority-ca, optional: true}}
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -450,8 +462,12 @@ spec:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
             capabilities: {drop: [ALL]}
-          volumeMounts: [{name: tmp, mountPath: /tmp}]
-      volumes: [{name: tmp, emptyDir: {sizeLimit: 128Mi}}]
+          volumeMounts:
+            - {name: tmp, mountPath: /tmp}
+            - {name: core-authority-ca, mountPath: /run/contract-audit/core-authority-ca, readOnly: true}
+      volumes:
+        - {name: tmp, emptyDir: {sizeLimit: 128Mi}}
+        - {name: core-authority-ca, configMap: {name: contract-audit-core-authority-ca, optional: true}}
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -523,6 +539,8 @@ spec:
               valueFrom: {secretKeyRef: {name: contract-audit-service-tokens, key: WORKER_MODEL_TOKEN}}
             - name: DOCUMENT_MODEL_TOKEN
               valueFrom: {secretKeyRef: {name: contract-audit-service-tokens, key: DOCUMENT_MODEL_TOKEN}}
+            - name: CORE_MODEL_AUTHORITY_TOKEN
+              valueFrom: {secretKeyRef: {name: contract-audit-service-tokens, key: CORE_MODEL_AUTHORITY_TOKEN}}
           startupProbe:
             httpGet: {path: /health/live, port: http}
             periodSeconds: 10
@@ -544,8 +562,12 @@ spec:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
             capabilities: {drop: [ALL]}
-          volumeMounts: [{name: tmp, mountPath: /tmp}]
-      volumes: [{name: tmp, emptyDir: {sizeLimit: 64Mi}}]
+          volumeMounts:
+            - {name: tmp, mountPath: /tmp}
+            - {name: core-authority-ca, mountPath: /run/contract-audit/core-authority-ca, readOnly: true}
+      volumes:
+        - {name: tmp, emptyDir: {sizeLimit: 64Mi}}
+        - {name: core-authority-ca, configMap: {name: contract-audit-core-authority-ca, optional: true}}
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -608,6 +630,8 @@ spec:
               valueFrom: {secretKeyRef: {name: contract-audit-service-tokens, key: GATEWAY_TOOL_TOKEN}}
             - name: WORKER_TOOL_TOKEN
               valueFrom: {secretKeyRef: {name: contract-audit-service-tokens, key: WORKER_TOOL_TOKEN}}
+            - name: TOOL_CORE_AUTHORITY_TOKEN
+              valueFrom: {secretKeyRef: {name: contract-audit-service-tokens, key: TOOL_CORE_AUTHORITY_TOKEN}}
           startupProbe:
             httpGet: {path: /health, port: http}
             periodSeconds: 10
@@ -629,8 +653,12 @@ spec:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
             capabilities: {drop: [ALL]}
-          volumeMounts: [{name: tmp, mountPath: /tmp}]
-      volumes: [{name: tmp, emptyDir: {sizeLimit: 64Mi}}]
+          volumeMounts:
+            - {name: tmp, mountPath: /tmp}
+            - {name: core-authority-ca, mountPath: /run/contract-audit/core-authority-ca, readOnly: true}
+      volumes:
+        - {name: tmp, emptyDir: {sizeLimit: 64Mi}}
+        - {name: core-authority-ca, configMap: {name: contract-audit-core-authority-ca, optional: true}}
 ---
 apiVersion: apps/v1
 kind: Deployment

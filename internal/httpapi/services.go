@@ -29,7 +29,71 @@ func ServiceHandler(st *store.Store, opt Options, role, credential string) (http
 	if err := validateContractSources(role, credential, &opt); err != nil {
 		return nil, err
 	}
+	if err := validateDocumentIntakeAuthority(role, credential, opt); err != nil {
+		return nil, err
+	}
+	if err := validateToolClaimAuthority(role, credential, opt); err != nil {
+		return nil, err
+	}
+	if secret := opt.ModelAuthorityCredential; secret != "" {
+		if role != "core" || len(secret) < 32 || strings.TrimSpace(secret) != secret || secret == credential || secret == opt.ExperienceWorkerCredential || secret == opt.ToolClaimAuthorityCredential || secret == opt.DocumentIntakeCredential {
+			return nil, errors.New("Model authority requires a distinct private Core/Model credential")
+		}
+		for _, source := range opt.PaymentReceiptSources {
+			if secret == source.Secret {
+				return nil, errors.New("Model authority credential must be action-specific")
+			}
+		}
+		for _, source := range opt.AssetReceiptSources {
+			if secret == source.Secret {
+				return nil, errors.New("Model authority credential must be action-specific")
+			}
+		}
+		for _, source := range opt.ContractSourceCredentials {
+			if secret == source.Secret {
+				return nil, errors.New("Model authority credential must be action-specific")
+			}
+		}
+	}
 	return buildServiceHandler(st, opt, role, credential), nil
+}
+
+func validateDocumentIntakeAuthority(role, gatewayCredential string, opt Options) error {
+	if opt.DocumentIntakeCredential == "" {
+		return nil
+	}
+	if role != "core" || len(opt.DocumentIntakeCredential) < 32 ||
+		opt.DocumentIntakeCredential == gatewayCredential || opt.DocumentIntakeCredential == opt.ExperienceWorkerCredential {
+		return errors.New("Document intake authority requires a private Core-only credential distinct from gateway and worker credentials")
+	}
+	return nil
+}
+
+func validateToolClaimAuthority(role, gatewayCredential string, opt Options) error {
+	secret := opt.ToolClaimAuthorityCredential
+	if secret == "" {
+		return nil
+	}
+	if role != "core" || len(secret) < 32 || strings.TrimSpace(secret) != secret ||
+		secret == gatewayCredential || secret == opt.ExperienceWorkerCredential || secret == opt.DocumentIntakeCredential {
+		return errors.New("Tool claim authority requires a private Core-only credential distinct from every service credential")
+	}
+	for _, source := range opt.PaymentReceiptSources {
+		if secret == source.Secret {
+			return errors.New("Tool claim authority credential must be action-specific")
+		}
+	}
+	for _, source := range opt.AssetReceiptSources {
+		if secret == source.Secret {
+			return errors.New("Tool claim authority credential must be action-specific")
+		}
+	}
+	for _, source := range opt.ContractSourceCredentials {
+		if secret == source.Secret {
+			return errors.New("Tool claim authority credential must be action-specific")
+		}
+	}
+	return nil
 }
 
 func validateAssetReceiptSources(role, gatewayCredential string, opt *Options) error {
@@ -118,6 +182,28 @@ func buildServiceHandler(st *store.Store, opt Options, role, credential string) 
 	MountHealth(mux, st.Ready)
 	if opt.experienceDeliveryEnabled {
 		mux.HandleFunc("/internal/v1/experience-results", experienceResultHandler(st, opt.ExperienceWorkerCredential))
+	}
+	if role == "core" && opt.DocumentIntakeCredential != "" {
+		mux.HandleFunc("/internal/v1/document/intake-authority", documentIntakeAuthorityHandler(st, opt.DocumentIntakeCredential))
+	}
+	if role == "core" {
+		mux.HandleFunc("/internal/v1/session-authority", coreSessionAuthorityHandler(st))
+		mux.HandleFunc("/internal/v1/session-operation-ticket", sessionOperationTicketHandler(st))
+		if opt.DocumentIntakeCredential != "" {
+			mux.HandleFunc("/internal/v1/document/operation-ticket", documentOperationTicketHandler(st, opt.DocumentIntakeCredential))
+		}
+		for _, entry := range []struct{ caller, secret string }{{"worker", opt.ExperienceWorkerCredential}, {"document", opt.DocumentIntakeCredential}, {"model", opt.ModelAuthorityCredential}} {
+			if entry.secret != "" {
+				mux.HandleFunc("/internal/v1/"+entry.caller+"/operation-authority", operationAuthorityHandler(st, entry.secret, entry.caller))
+			}
+		}
+
+		if opt.ExperienceWorkerCredential != "" {
+			mux.HandleFunc("/internal/v1/worker/claim-authority", claimAuthorityHandler(st, opt.ExperienceWorkerCredential, "worker_start"))
+		}
+		if opt.ToolClaimAuthorityCredential != "" {
+			mux.HandleFunc("/internal/v1/tool/claim-authority", claimAuthorityHandler(st, opt.ToolClaimAuthorityCredential, "tool_read"))
+		}
 	}
 	if len(opt.PaymentReceiptSources) > 0 {
 		mux.Handle("/internal/v1/payment-receipts", paymentReceiptHandler(st, opt.PaymentReceiptSources))
@@ -253,7 +339,7 @@ func routeOwned(role string, methods routeMethodSet, parts []string) bool {
 		return adminRoute(role, methods, parts)
 	}
 	if parts[0] == "auth" {
-		return role == "core" && methods.read && oidcRoute(parts)
+		return role == "core" && oidcRoute(parts, methods)
 	}
 	if parts[0] == "approval-tasks" {
 		return role == "core" && approvalTaskRoute(methods, parts)
@@ -401,8 +487,11 @@ func knowledgeRoute(parts []string) bool {
 	return len(parts) == 2 || len(parts) == 4 && parts[2] == "versions"
 }
 
-func oidcRoute(parts []string) bool {
-	return len(parts) == 3 && parts[1] == "oidc" && (parts[2] == "login" || parts[2] == "callback")
+func oidcRoute(parts []string, methods routeMethodSet) bool {
+	if len(parts) == 3 && parts[1] == "oidc" && (parts[2] == "login" || parts[2] == "callback") {
+		return methods.read
+	}
+	return len(parts) == 3 && parts[1] == "oidc" && parts[2] == "memberships" && (methods.read || methods.post)
 }
 
 func adminRoute(role string, m routeMethodSet, parts []string) bool {
