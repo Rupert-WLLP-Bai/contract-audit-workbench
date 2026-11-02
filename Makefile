@@ -1,4 +1,4 @@
-.PHONY: help setup db-up db-down dev worker tool-gateway migrate web web-client web-admin web-portal test-unit check-fast verify acceptance browser-distributed test-live evaluate browser-install infra-up infra-down infra-smoke app-bootstrap app-config app-preflight app-images-offline apps-up apps-up-fixture apps-down agent-demo rule-shadow decision-baseline decision-baseline-jev generate-openapi
+.PHONY: help setup db-up db-down dev worker tool-gateway migrate web web-client web-admin web-portal test-unit check-fast verify acceptance browser-distributed test-live evaluate browser-install infra-up infra-down infra-smoke app-bootstrap app-config app-preflight app-images-offline apps-up apps-up-fixture apps-down agent-demo rule-shadow decision-baseline decision-baseline-jev generate-openapi check-openapi-generated
 PYTHON ?= python3
 GO ?= go
 BUN ?= bun
@@ -90,6 +90,10 @@ migrate:
 generate-openapi:
 	$(GO) generate ./internal/apidocs
 	$(PYTHON) scripts/generate_openapi_types.py
+
+check-openapi-generated:
+	$(GO) run ./cmd/openapi-gen --check
+	$(PYTHON) scripts/generate_openapi_types.py --check
 
 web-client:
 	cd web && $(BUN) run build:client
