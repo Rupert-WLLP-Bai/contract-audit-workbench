@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: imageTokenBudget is an operator-supplied contract for one provider and OCR model. An unset contract retains byte-based reservations for every request. Related `modelgateway` operations include imageTokenBudgetFromEnv, validate, inputUpperBound, canonicalSingleImageOCR.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-31
+// Updated: 2026-10-31
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package modelgateway
 
 import (

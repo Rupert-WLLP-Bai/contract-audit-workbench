@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: LoadSupplementalCapture builds an assertion-bearing import from the frozen external assets. Source bytes, registry bytes and every complete article are verified by the same… Related `legalnorm` operations include LoadSupplementalCapture.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-31
+// Updated: 2026-10-31
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package legalnorm
 
 import (

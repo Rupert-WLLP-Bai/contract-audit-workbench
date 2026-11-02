@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: ConfigurationID identifies configured request behavior, excluding credentials. It cannot attest a provider's unreported checkpoint or hardware revision. Related `model` operations include ConfigurationID, ProviderEndpoint, configurationID, providerEndpointOf.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-25
+// Updated: 2026-10-31
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package model
 
 import (

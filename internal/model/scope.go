@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: DelegatedScope identifies the current operation that is allowed to use a model. The gateway authenticates the calling service separately and checks these IDs against current… Related `model` operations include WithDelegatedScope, DelegatedScopeFromContext.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-25
+// Updated: 2026-11-02
+// Revision: r2
+// Copyright: See LICENSE
+// End file metadata.
+
 package model
 
 import "context"

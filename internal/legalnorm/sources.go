@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Selects a read-only legal-source adapter for a frozen source snapshot, normalizes the captured article text and maps article spans without fetching or silently updating authority content.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-31
+// Updated: 2026-10-31
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package legalnorm
 
 import "fmt"

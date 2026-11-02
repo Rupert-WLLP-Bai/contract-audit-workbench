@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: VerifyCapture selects a registered source edition, verifies the raw and registry response identities, and checks asserted articles against the versioned extraction. New source… Related `legalnorm` operations include VerifyCapture, verifyCaptureWithAdapter, validateCaptureMetadata, validateDateRange.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-31
+// Updated: 2026-10-31
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package legalnorm
 
 import (

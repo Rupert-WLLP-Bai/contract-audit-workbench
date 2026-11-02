@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: calls the local OpenAI-compatible endpoint. It does not invent a completion when the server refuses or returns text that is not a warranty finding. Related `model` operations include FromEnv, GatewayID, New, NewWithHTTPClient.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-25
+// Updated: 2026-11-02
+// Revision: r2
+// Copyright: See LICENSE
+// End file metadata.
+
 // Package model calls the local OpenAI-compatible endpoint.
 // It does not invent a completion when the server refuses or returns text
 // that is not a warranty finding.

@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: calls TypeSafe's hosted Jev System One endpoint. Jev returns typed, calibrated answers to bounded questions about state the caller supplies. This package exposes one choice question and batched Noul questions, and… Related `jev` operations include Validate, normalized, New, Model.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-28
+// Updated: 2026-10-30
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 // Package jev calls TypeSafe's hosted Jev System One endpoint.
 //
 // Jev returns typed, calibrated answers to bounded questions about state the
