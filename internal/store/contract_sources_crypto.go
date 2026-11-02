@@ -1,15 +1,22 @@
 package store
 
 import (
-	"crypto/rand"
+	"context"
+	"crypto/aes"
+	"crypto/cipher"
 	"encoding/base64"
 	"encoding/binary"
 	"errors"
-	"fmt"
 	"strings"
+
+	"contractaudit/internal/clmenvelope"
 )
 
-const clmSourceObservationCipherPrefix = "clmsrc1:"
+const (
+	clmSourceObservationCipherPrefix = "clmsrc1:"
+	clmSourceObservationPurpose      = "contract.source.observation"
+	clmSourceObservationField        = "source.raw_body"
+)
 
 func clmSourceObservationAAD(tenantID, sourceID, eventID, observationID string) ([]byte, error) {
 	fields := []string{"clm-source-observation-v1", tenantID, sourceID, eventID, observationID}
@@ -30,43 +37,80 @@ func clmSourceObservationAAD(tenantID, sourceID, eventID, observationID string) 
 	return out, nil
 }
 
-func sealCLMSourceObservation(raw []byte, tenantID, sourceID, eventID, observationID string) (string, error) {
-	aad, err := clmSourceObservationAAD(tenantID, sourceID, eventID, observationID)
-	if err != nil {
-		return "", err
-	}
-	aeadCipher, err := clmDataKey()
-	if err != nil {
-		return "", err
-	}
-	nonce := make([]byte, aeadCipher.NonceSize())
-	if _, err := rand.Read(nonce); err != nil {
-		return "", fmt.Errorf("generate source observation nonce: %w", err)
-	}
-	sealed := aeadCipher.Seal(nonce, nonce, raw, aad)
-	return clmSourceObservationCipherPrefix + base64.RawURLEncoding.EncodeToString(sealed), nil
+func clmSourceObservationBinding(tenantID, sourceID, eventID, observationID string) clmenvelope.Binding {
+	// Source/event identifiers are included in the object identity so ciphertext
+	// cannot be transplanted to another captured observation.
+	return clmenvelope.Binding{TenantID: tenantID, ObjectID: sourceID + ":" + eventID + ":" + observationID,
+		Field: clmSourceObservationField, Purpose: clmSourceObservationPurpose, Epoch: clmDataEpoch}
 }
 
-func unsealCLMSourceObservation(ciphertext, tenantID, sourceID, eventID, observationID string) ([]byte, error) {
+func sealCLMSourceObservation(ctx context.Context, raw []byte, tenantID, sourceID, eventID, observationID string) (string, error) {
+	if _, err := clmSourceObservationAAD(tenantID, sourceID, eventID, observationID); err != nil {
+		return "", err
+	}
+	provider, err := clmProvider(tenantID)
+	if err != nil {
+		return "", err
+	}
+	sealed, err := clmenvelope.Seal(ctx, provider, clmSourceObservationBinding(tenantID, sourceID, eventID, observationID), raw)
+	if err != nil {
+		return "", errCLMKeyUnavailable
+	}
+	return sealed, nil
+}
+
+// unsealCLMSourceObservation supports the legacy clmsrc1 format only for
+// already-persisted captures. New writes always use the tenant/object/field
+// bound clmv2 envelope above.
+func unsealCLMSourceObservation(ctx context.Context, ciphertext, tenantID, sourceID, eventID, observationID string) ([]byte, error) {
+	provider, err := clmProvider(tenantID)
+	if err != nil {
+		return nil, err
+	}
+	if strings.HasPrefix(ciphertext, clmenvelope.PrefixV2) {
+		plain, err := clmenvelope.Open(ctx, provider, clmSourceObservationBinding(tenantID, sourceID, eventID, observationID), ciphertext)
+		if err != nil {
+			return nil, errCLMStoredValue
+		}
+		return plain, nil
+	}
 	if !strings.HasPrefix(ciphertext, clmSourceObservationCipherPrefix) {
 		return nil, errors.New("source observation ciphertext has an unknown format")
 	}
+	ref, err := clmLegacyRef()
+	if err != nil {
+		return nil, errCLMKeyUnavailable
+	}
+	key, err := provider.ResolveLegacy(ctx, tenantID, clmPurpose, ref)
+	if err != nil || key.Ref != ref || len(key.Material) != 32 {
+		return nil, errCLMKeyUnavailable
+	}
+	defer wipeSourceKey(key.Material)
+	block, err := aes.NewCipher(key.Material)
+	if err != nil {
+		return nil, errCLMKeyUnavailable
+	}
+	aeadCipher, err := cipher.NewGCM(block)
+	if err != nil {
+		return nil, errCLMKeyUnavailable
+	}
 	aad, err := clmSourceObservationAAD(tenantID, sourceID, eventID, observationID)
 	if err != nil {
 		return nil, err
 	}
-	aeadCipher, err := clmDataKey()
-	if err != nil {
-		return nil, err
-	}
-	sealed, err := base64.RawURLEncoding.DecodeString(strings.TrimPrefix(ciphertext, clmSourceObservationCipherPrefix))
+	sealed, err := base64.RawURLEncoding.Strict().DecodeString(strings.TrimPrefix(ciphertext, clmSourceObservationCipherPrefix))
 	if err != nil || len(sealed) < aeadCipher.NonceSize()+aeadCipher.Overhead() {
 		return nil, errors.New("source observation ciphertext is malformed")
 	}
-	nonce, encrypted := sealed[:aeadCipher.NonceSize()], sealed[aeadCipher.NonceSize():]
-	plaintext, err := aeadCipher.Open(nil, nonce, encrypted, aad)
+	plain, err := aeadCipher.Open(nil, sealed[:aeadCipher.NonceSize()], sealed[aeadCipher.NonceSize():], aad)
 	if err != nil {
 		return nil, errors.New("source observation ciphertext authentication failed")
 	}
-	return plaintext, nil
+	return plain, nil
+}
+
+func wipeSourceKey(raw []byte) {
+	for i := range raw {
+		raw[i] = 0
+	}
 }

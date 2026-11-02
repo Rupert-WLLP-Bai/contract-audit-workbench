@@ -250,7 +250,7 @@ func (s *Store) RecordExternalContractObservation(ctx context.Context, authority
 	if err != nil {
 		return ContractSourceObservationResult{}, err
 	}
-	ciphertext, err := sealCLMSourceObservation(input.RawBody, authority.TenantID, authority.SourceID, input.EventID, observationID)
+	ciphertext, err := sealCLMSourceObservation(ctx, input.RawBody, authority.TenantID, authority.SourceID, input.EventID, observationID)
 	if err != nil {
 		return ContractSourceObservationResult{}, err
 	}
