@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Implements the isolated operator-audit draft client for additive extension endpoints, parsing response fields while delegating transport and errors to the shared HTTP layer; it does not modify shared APIs or authorize writes.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-29
+// Updated: 2026-10-31
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 /**
  * Injected client for the draft operator-audit endpoints.
  *

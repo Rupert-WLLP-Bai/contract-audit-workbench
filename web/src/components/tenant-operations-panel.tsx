@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Renders TenantOperationsPanel, the tenant operations panel workbench UI, from the selected case/workspace projection and the module’s query/state inputs; it displays server-derived state and does not establish business authorization or evidence validity.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-01
+// Updated: 2026-11-02
+// Revision: r2
+// Copyright: See LICENSE
+// End file metadata.
+
 import { Button, Table, type TableProps } from "antd";
 import { errorMessage } from "../api/http";
 import { useTenantOperations, type TenantCostWindow } from "../api/tenant-operations";

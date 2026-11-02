@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Checks the web behavior for “case filters, findings and decisions”; representative assertions cover matches title text and keeps an unknown filter on all, treats pending decisions as needing a person even if the run state lags, filters undecided items and prefers them when the url has no selection. It protects the rendered/API state expected by this component without starting the full browser journey.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-25
+// Updated: 2026-10-31
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 import type { CaseSummary, Finding } from "../api/types";
 import {
   filterCases,

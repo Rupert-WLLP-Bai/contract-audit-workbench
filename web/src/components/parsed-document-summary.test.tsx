@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Checks the web behavior for “parsed document summary”; representative assertions cover shows the frozen parse identities and digests for a ready parse, exports the parse identity as data attributes for audit checks, marks a failed parse and missing optional digests. It protects the rendered/API state expected by this component without starting the full browser journey.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-30
+// Updated: 2026-10-30
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 import { screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import type { DocumentVersion, ParsedDocumentMetadata } from "../api/types";

@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Checks the web behavior for “operator audit feature flags”; representative assertions cover defaults every extension surface to off, keeps the demo profile explicit and reuse disabled, never imports test fixtures from a production module. It protects the rendered/API state expected by this component without starting the full browser journey.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-29
+// Updated: 2026-10-29
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 import { describe, expect, it } from "vitest";
 import {
   DEFAULT_OPERATOR_AUDIT_FLAGS,

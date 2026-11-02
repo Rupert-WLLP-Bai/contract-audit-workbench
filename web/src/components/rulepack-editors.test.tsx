@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Checks the web behavior for “RulePack editable row focus, RulePackManifestEditor structured edits”; representative assertions cover uses null outside SLA and an explicit empty array for monthly SLA, keeps rule and authority inputs focused while their values change, keeps sample source and fact inputs focused while their IDs change. It protects the rendered/API state expected by this component without starting the full browser journey.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-25
+// Updated: 2026-10-31
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 import { useState, type ReactElement } from "react";
 import {
   cleanup,

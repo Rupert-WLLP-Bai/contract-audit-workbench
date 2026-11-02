@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Creates frozen quote selections only when case, document, parsed-version and scope identities agree; verifies the selected quote against exact source text before highlighting.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-31
+// Updated: 2026-10-31
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 import type { ReviewDocument, TextOffset } from "../api/types";
 import { sliceByCodePoints, type CodePointTextIndex } from "./text";
 

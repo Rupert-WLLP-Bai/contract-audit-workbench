@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Checks the web behavior for “review workspace, review workspace lifecycle”; representative assertions cover reports absent execution without inventing stages or proof, shows both sources on request and does not treat the model claim as verified, keeps citation identities hidden and does not claim the finding was verified. It protects the rendered/API state expected by this component without starting the full browser journey.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-25
+// Updated: 2026-11-01
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 import { useState, type ComponentProps } from "react";
 import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
