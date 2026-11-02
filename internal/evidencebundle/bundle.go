@@ -26,6 +26,8 @@ import (
 
 const (
 	Schema             = "contract-audit-evidence/v1"
+	SchemaV1           = Schema
+	SchemaV2           = "contract-audit-evidence/v2"
 	OriginalsIndexPath = "originals/index.json"
 	DecisionsPath      = "history/decisions.json"
 	ManifestPath       = "manifest.json"
@@ -52,6 +54,8 @@ type Identity struct {
 	HistoryCutoff          string          `json:"history_cutoff"`
 	Decisions              []HistoryRecord `json:"decisions"`
 	ManualFindings         []HistoryRecord `json:"manual_findings"`
+	// TenantID is signed in v2 and absent in legacy v1; never infer it.
+	TenantID string `json:"tenant_id,omitempty"`
 }
 
 // HistoryRecord names a selected append-only row and its creation time.
@@ -202,10 +206,19 @@ func validHash(value string) bool {
 // Go's encoding/json representation. Entries are sorted by path; the manifest
 // and signature are fixed container metadata rather than self-referential entries.
 func Write(ctx context.Context, dst io.Writer, id Identity, sources []Source, key ed25519.PrivateKey) error {
+	return writeVersion(ctx, dst, id, sources, key, SchemaV1)
+}
+
+// WriteV2 signs an explicit tenant assertion. Online authorization remains the caller's responsibility.
+func WriteV2(ctx context.Context, dst io.Writer, id Identity, sources []Source, key ed25519.PrivateKey) error {
+	return writeVersion(ctx, dst, id, sources, key, SchemaV2)
+}
+
+func writeVersion(ctx context.Context, dst io.Writer, id Identity, sources []Source, key ed25519.PrivateKey, schema string) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	if len(key) != ed25519.PrivateKeySize || !validIdentity(id) {
+	if len(key) != ed25519.PrivateKeySize || !validIdentity(id) || !validTenantSchema(schema, id.TenantID) {
 		return errors.New("invalid evidence signing key or identity")
 	}
 	if len(sources) > maxEntries {
@@ -218,7 +231,7 @@ func Write(ctx context.Context, dst io.Writer, id Identity, sources []Source, ke
 	}
 	ordered := append([]Source(nil), sources...)
 	sort.Slice(ordered, func(i, j int) bool { return ordered[i].Path < ordered[j].Path })
-	manifest := Manifest{Schema: Schema, Identity: id, SignatureAlgorithm: "Ed25519", PublicKey: base64.StdEncoding.EncodeToString(der), PublicKeySHA256: digest(der), Entries: make([]Entry, 0, len(ordered))}
+	manifest := Manifest{Schema: schema, Identity: id, SignatureAlgorithm: "Ed25519", PublicKey: base64.StdEncoding.EncodeToString(der), PublicKeySHA256: digest(der), Entries: make([]Entry, 0, len(ordered))}
 	seen := make(map[string]bool, len(ordered))
 	for _, source := range ordered {
 		if !allowedPath(source.Path) || seen[source.Path] {
@@ -346,7 +359,7 @@ func Verify(r io.ReaderAt, size int64, trustedKey ed25519.PublicKey, trustedFing
 	if err != nil || !bytes.Equal(canonical, manifestBytes) {
 		return empty, errors.New("manifest is not canonical JSON")
 	}
-	if manifest.Schema != Schema || manifest.SignatureAlgorithm != "Ed25519" || !validIdentity(manifest.Identity) {
+	if !validTenantSchema(manifest.Schema, manifest.Identity.TenantID) || manifest.SignatureAlgorithm != "Ed25519" || !validIdentity(manifest.Identity) {
 		return empty, errors.New("unsupported or invalid evidence manifest")
 	}
 	der, err := base64.StdEncoding.Strict().DecodeString(manifest.PublicKey)
