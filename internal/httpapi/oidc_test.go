@@ -3,24 +3,16 @@ package httpapi_test
 import (
 	"bytes"
 	"context"
-	"crypto"
-	"crypto/rand"
-	"crypto/rsa"
-	"crypto/sha256"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
-	"math/big"
 	"net"
 	"net/http"
 	"net/http/cookiejar"
-	"net/http/httptest"
 	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
@@ -29,6 +21,7 @@ import (
 	"contractaudit/internal/httpapi"
 	"contractaudit/internal/identity"
 	"contractaudit/internal/store"
+	"contractaudit/internal/testsupport/oidcfixture"
 	"github.com/jackc/pgx/v5"
 )
 
@@ -62,7 +55,7 @@ func TestOIDCAuthorizationCodeHTTPFlowsUseAudienceBoundPostgresSessions(t *testi
 
 	t.Run("an unknown subject cannot create a session", func(t *testing.T) {
 		client := fixture.newClient(t)
-		fixture.issuer.setNextClaims("subject-outside-directory", "")
+		fixture.issuer.SetNextClaims("subject-outside-directory", "")
 		flow := fixture.startFlow(t, client, identity.AudienceClient)
 
 		response := fixture.request(t, client, http.MethodGet, flow.callbackURL, nil)
@@ -76,7 +69,7 @@ func TestOIDCAuthorizationCodeHTTPFlowsUseAudienceBoundPostgresSessions(t *testi
 
 	t.Run("an ID token for an unconfigured audience cannot create a session", func(t *testing.T) {
 		client := fixture.newClient(t)
-		fixture.issuer.setNextClaims("", "unconfigured-client")
+		fixture.issuer.SetNextClaims("", "unconfigured-client")
 		flow := fixture.startFlow(t, client, identity.AudienceClient)
 
 		response := fixture.request(t, client, http.MethodGet, flow.callbackURL, nil)
@@ -178,7 +171,7 @@ func TestOIDCAuthorizationCodeSeparatesClientAndAdminOrigins(t *testing.T) {
 func TestOIDCPendingMembershipHTTPChoiceIsSameOriginAndOneTime(t *testing.T) {
 	fixture := newOIDCHTTPFixture(t, false)
 	client := fixture.newClient(t)
-	fixture.issuer.setNextClaims("multi-subject", "")
+	fixture.issuer.SetNextClaims("multi-subject", "")
 	flow := fixture.startFlow(t, client, identity.AudienceClient)
 	callback := fixture.request(t, client, http.MethodGet, flow.callbackURL, nil)
 	if callback.status != http.StatusSeeOther || callback.header.Get("Location") != "/login/membership" {
@@ -238,7 +231,7 @@ func TestOIDCPendingMembershipHTTPChoiceIsSameOriginAndOneTime(t *testing.T) {
 type oidcHTTPFixture struct {
 	base      string
 	adminBase string
-	issuer    *localOIDCIssuer
+	issuer    *oidcfixture.Provider
 }
 
 type oidcHTTPResponse struct {
@@ -260,50 +253,34 @@ func newOIDCHTTPFixture(t *testing.T, separateOrigins bool) *oidcHTTPFixture {
 		t.Skip("TEST_DATABASE_URL is required for PostgreSQL-backed OIDC membership flows")
 	}
 
-	key, err := rsa.GenerateKey(rand.Reader, 2048)
-	if err != nil {
-		t.Fatal(err)
-	}
-	issuer := &localOIDCIssuer{
-		key: key, keyID: "local-test-key", codes: make(map[string]localOIDCCode),
-	}
-	issuer.server = httptest.NewServer(http.HandlerFunc(issuer.serveHTTP))
-	t.Cleanup(issuer.server.Close)
-	issuer.client = &http.Client{
-		Timeout: 5 * time.Second,
-		CheckRedirect: func(*http.Request, []*http.Request) error {
-			return http.ErrUseLastResponse
-		},
-	}
-
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = listener.Close() })
 	base := "http://" + listener.Addr().String()
-	issuer.expectedRedirectURL = base + "/api/auth/oidc/callback"
 	adminBase := base
 	if separateOrigins {
 		adminBase = strings.Replace(base, "127.0.0.1", "localhost", 1)
 	}
-	issuer.expectedAdminRedirectURL = adminBase + "/api/auth/oidc/callback"
+
+	issuer := oidcfixture.New(t, oidcfixture.Config{ClientRedirectURL: base + "/api/auth/oidc/callback", AdminRedirectURL: adminBase + "/api/auth/oidc/callback"})
 
 	users := []accounts.User{
 		{
 			ID: "oidc-client", DisplayName: "OIDC Client", Role: "reviewer",
 			TenantID: "tenant-oidc", OrgID: "org-oidc", Enabled: true,
-			Issuer: issuer.server.URL, Subject: "client-subject",
+			Issuer: issuer.URL(), Subject: "client-subject",
 		},
 		{
 			ID: "oidc-admin", DisplayName: "OIDC Admin", Role: "admin",
 			TenantID: "tenant-oidc", OrgID: "org-oidc", Enabled: true,
-			Issuer: issuer.server.URL, Subject: "admin-subject",
+			Issuer: issuer.URL(), Subject: "admin-subject",
 		},
 		{
 			ID: "oidc-multi", DisplayName: "OIDC Multi", Role: "admin",
 			TenantID: "directory-stale-multi", OrgID: "directory-stale-multi", Enabled: true,
-			Issuer: issuer.server.URL, Subject: "multi-subject",
+			Issuer: issuer.URL(), Subject: "multi-subject",
 		},
 	}
 	directoryPath := filepath.Join(t.TempDir(), "identity-directory.json")
@@ -379,13 +356,13 @@ func newOIDCHTTPFixture(t *testing.T, separateOrigins bool) *oidcHTTPFixture {
 	})
 
 	manager, err := identity.NewManager(identity.Config{
-		Issuer:   issuer.server.URL,
+		Issuer:   issuer.URL(),
 		ClientID: "oidc-client-id", ClientSecret: "oidc-client-secret",
 		AdminClientID: "oidc-admin-client-id", AdminClientSecret: "oidc-admin-client-secret",
-		RedirectURL:        issuer.expectedRedirectURL,
-		AdminRedirectURL:   issuer.expectedAdminRedirectURL,
+		RedirectURL:        base + "/api/auth/oidc/callback",
+		AdminRedirectURL:   adminBase + "/api/auth/oidc/callback",
 		StateEncryptionKey: bytes.Repeat([]byte{0x42}, 32),
-		HTTPClient:         issuer.server.Client(),
+		HTTPClient:         issuer.HTTPClient(),
 	}, accounts.BySubject, st)
 	if err != nil {
 		t.Fatal(err)
@@ -494,7 +471,7 @@ func (f *oidcHTTPFixture) startFlow(t *testing.T, client *http.Client, audience 
 	}
 	authorizationURL := response.header.Get("Location")
 	parsedAuthorizationURL, err := url.Parse(authorizationURL)
-	if err != nil || parsedAuthorizationURL.Host != strings.TrimPrefix(f.issuer.server.URL, "http://") || parsedAuthorizationURL.Path != "/authorize" {
+	if err != nil || parsedAuthorizationURL.Host != strings.TrimPrefix(f.issuer.URL(), "http://") || parsedAuthorizationURL.Path != "/authorize" {
 		t.Fatalf("login did not redirect to the local issuer authorization endpoint: %q (%v)", authorizationURL, err)
 	}
 	var stateCookie *http.Cookie
@@ -507,7 +484,7 @@ func (f *oidcHTTPFixture) startFlow(t *testing.T, client *http.Client, audience 
 	if stateCookie == nil || stateCookie.Value == "" || !stateCookie.HttpOnly || stateCookie.Path != "/api/auth/oidc" || stateCookie.SameSite != http.SameSiteLaxMode {
 		t.Fatalf("login did not set a protected OIDC state cookie: %+v", stateCookie)
 	}
-	callbackURL := f.issuer.authorize(t, authorizationURL)
+	callbackURL := f.issuer.Authorize(t, authorizationURL)
 	return oidcHTTPFlow{callbackURL: callbackURL, stateCookie: stateCookie}
 }
 
@@ -593,200 +570,4 @@ func assertOIDCStateCookieCleared(t *testing.T, response oidcHTTPResponse) {
 		}
 	}
 	t.Fatal("OIDC callback did not clear its state cookie")
-}
-
-type localOIDCIssuer struct {
-	server                   *httptest.Server
-	client                   *http.Client
-	key                      *rsa.PrivateKey
-	keyID                    string
-	expectedRedirectURL      string
-	expectedAdminRedirectURL string
-	mu                       sync.Mutex
-	nextCode                 int
-	nextSubject              string
-	nextTokenAudience        string
-	codes                    map[string]localOIDCCode
-}
-
-type localOIDCCode struct {
-	clientID      string
-	redirectURL   string
-	nonce         string
-	codeChallenge string
-	subject       string
-	tokenAudience string
-	used          bool
-}
-
-func (p *localOIDCIssuer) setNextClaims(subject, audience string) {
-	p.mu.Lock()
-	p.nextSubject = subject
-	p.nextTokenAudience = audience
-	p.mu.Unlock()
-}
-
-func (p *localOIDCIssuer) authorize(t *testing.T, authorizationURL string) string {
-	t.Helper()
-	request, err := http.NewRequest(http.MethodGet, authorizationURL, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	response, err := p.client.Do(request)
-	if err != nil {
-		t.Fatalf("request local issuer authorization endpoint: %v", err)
-	}
-	_, readErr := io.Copy(io.Discard, response.Body)
-	closeErr := response.Body.Close()
-	if readErr != nil || closeErr != nil {
-		t.Fatalf("read local issuer authorization response: read=%v close=%v", readErr, closeErr)
-	}
-	if response.StatusCode != http.StatusFound {
-		t.Fatalf("local issuer authorization status=%d, want %d", response.StatusCode, http.StatusFound)
-	}
-	return response.Header.Get("Location")
-}
-
-func (p *localOIDCIssuer) serveHTTP(w http.ResponseWriter, r *http.Request) {
-	switch r.URL.Path {
-	case "/.well-known/openid-configuration":
-		writeOIDCTestJSON(w, map[string]string{
-			"issuer": p.server.URL, "authorization_endpoint": p.server.URL + "/authorize",
-			"token_endpoint": p.server.URL + "/token", "jwks_uri": p.server.URL + "/jwks",
-		})
-	case "/authorize":
-		p.authorizeRequest(w, r)
-	case "/token":
-		p.tokenRequest(w, r)
-	case "/jwks":
-		p.jwks(w)
-	default:
-		http.NotFound(w, r)
-	}
-}
-
-func (p *localOIDCIssuer) authorizeRequest(w http.ResponseWriter, r *http.Request) {
-	query := r.URL.Query()
-	clientID := query.Get("client_id")
-	expectedRedirect := p.expectedRedirectURL
-	if clientID == "oidc-admin-client-id" {
-		expectedRedirect = p.expectedAdminRedirectURL
-	}
-	if r.Method != http.MethodGet || (clientID != "oidc-client-id" && clientID != "oidc-admin-client-id") ||
-		query.Get("response_type") != "code" || query.Get("redirect_uri") != expectedRedirect ||
-		query.Get("state") == "" || query.Get("nonce") == "" || query.Get("code_challenge_method") != "S256" ||
-		query.Get("code_challenge") == "" || !strings.Contains(" "+query.Get("scope")+" ", " openid ") {
-		http.Error(w, "invalid authorization request", http.StatusBadRequest)
-		return
-	}
-
-	p.mu.Lock()
-	p.nextCode++
-	code := "local-code-" + big.NewInt(int64(p.nextCode)).String()
-	subject := "client-subject"
-	if clientID == "oidc-admin-client-id" {
-		subject = "admin-subject"
-	}
-	audience := clientID
-	if p.nextSubject != "" {
-		subject = p.nextSubject
-	}
-	if p.nextTokenAudience != "" {
-		audience = p.nextTokenAudience
-	}
-	p.nextSubject, p.nextTokenAudience = "", ""
-	p.codes[code] = localOIDCCode{
-		clientID: clientID, redirectURL: query.Get("redirect_uri"), nonce: query.Get("nonce"),
-		codeChallenge: query.Get("code_challenge"), subject: subject, tokenAudience: audience,
-	}
-	p.mu.Unlock()
-
-	callback, err := url.Parse(query.Get("redirect_uri"))
-	if err != nil {
-		http.Error(w, "invalid redirect URI", http.StatusBadRequest)
-		return
-	}
-	callbackQuery := callback.Query()
-	callbackQuery.Set("code", code)
-	callbackQuery.Set("state", query.Get("state"))
-	callback.RawQuery = callbackQuery.Encode()
-	http.Redirect(w, r, callback.String(), http.StatusFound)
-}
-
-func (p *localOIDCIssuer) tokenRequest(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost || r.ParseForm() != nil || r.PostForm.Get("grant_type") != "authorization_code" {
-		http.Error(w, "invalid token request", http.StatusBadRequest)
-		return
-	}
-	code := r.PostForm.Get("code")
-	p.mu.Lock()
-	authorization, exists := p.codes[code]
-	clientSecret := ""
-	switch r.PostForm.Get("client_id") {
-	case "oidc-client-id":
-		clientSecret = "oidc-client-secret"
-	case "oidc-admin-client-id":
-		clientSecret = "oidc-admin-client-secret"
-	}
-	verifier := r.PostForm.Get("code_verifier")
-	challenge := sha256.Sum256([]byte(verifier))
-	valid := exists && !authorization.used && clientSecret != "" &&
-		authorization.clientID == r.PostForm.Get("client_id") &&
-		r.PostForm.Get("client_secret") == clientSecret &&
-		r.PostForm.Get("redirect_uri") == authorization.redirectURL && verifier != "" &&
-		base64.RawURLEncoding.EncodeToString(challenge[:]) == authorization.codeChallenge
-	if valid {
-		authorization.used = true
-		p.codes[code] = authorization
-	}
-	p.mu.Unlock()
-	if !valid {
-		http.Error(w, "authorization code rejected", http.StatusBadRequest)
-		return
-	}
-
-	idToken, err := p.signIDToken(authorization)
-	if err != nil {
-		http.Error(w, "could not sign ID token", http.StatusInternalServerError)
-		return
-	}
-	writeOIDCTestJSON(w, map[string]string{"id_token": idToken})
-}
-
-func (p *localOIDCIssuer) jwks(w http.ResponseWriter) {
-	exponent := big.NewInt(int64(p.key.E)).Bytes()
-	writeOIDCTestJSON(w, map[string]any{
-		"keys": []map[string]string{{
-			"kty": "RSA", "kid": p.keyID, "use": "sig", "alg": "RS256",
-			"n": base64.RawURLEncoding.EncodeToString(p.key.N.Bytes()),
-			"e": base64.RawURLEncoding.EncodeToString(exponent),
-		}},
-	})
-}
-
-func (p *localOIDCIssuer) signIDToken(authorization localOIDCCode) (string, error) {
-	header, err := json.Marshal(map[string]string{"alg": "RS256", "kid": p.keyID, "typ": "JWT"})
-	if err != nil {
-		return "", err
-	}
-	now := time.Now().UTC()
-	claims, err := json.Marshal(map[string]any{
-		"iss": p.server.URL, "sub": authorization.subject, "aud": authorization.tokenAudience,
-		"exp": now.Add(5 * time.Minute).Unix(), "iat": now.Unix(), "nonce": authorization.nonce,
-	})
-	if err != nil {
-		return "", err
-	}
-	unsigned := base64.RawURLEncoding.EncodeToString(header) + "." + base64.RawURLEncoding.EncodeToString(claims)
-	digest := sha256.Sum256([]byte(unsigned))
-	signature, err := rsa.SignPKCS1v15(rand.Reader, p.key, crypto.SHA256, digest[:])
-	if err != nil {
-		return "", err
-	}
-	return unsigned + "." + base64.RawURLEncoding.EncodeToString(signature), nil
-}
-
-func writeOIDCTestJSON(w http.ResponseWriter, value any) {
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(value)
 }
