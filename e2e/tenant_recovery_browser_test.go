@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"sort"
 	"strings"
 	"syscall"
@@ -183,25 +184,40 @@ func verifyTenantRecoveryEvidence(t *testing.T, dsn, schema, evidencePath string
 	}
 	defer conn.Close(context.Background())
 	qualified := pgx.Identifier{schema}.Sanitize()
-	query := `SELECT a.id, a.history_kind, a.state, a.input_hash, i.input_hash, i.documents
-		FROM ` + qualified + `.review_runs r
+	// The verifier uses the test DSN, which may or may not bypass RLS. Set the
+	// tenant explicitly and still constrain every join and the expected org.
+	if _, err := conn.Exec(context.Background(), `SELECT set_config('app.tenant_id',$1,false), set_config('app.org_id',$2,false)`, evidence.TenantID, "smoke-org-b"); err != nil {
+		t.Fatalf("set PostgreSQL verification scope: %v", err)
+	}
+	var caseCount, staleCount int
+	if err := conn.QueryRow(context.Background(), `SELECT count(*) FILTER (WHERE id=ANY($1::text[])), count(*) FILTER (WHERE title=$2)
+		FROM `+qualified+`.cases WHERE tenant_id=$3 AND org_id=$4`, []string{evidence.HomeIntakeCaseID, evidence.LegacyCaseID}, "陈旧表单不得写入", evidence.TenantID, "smoke-org-b").Scan(&caseCount, &staleCount); err != nil {
+		t.Fatalf("query scoped case evidence: %v", err)
+	}
+	if caseCount != 2 || staleCount != 0 {
+		t.Fatalf("tenant B case evidence: cases=%d stale commands=%d", caseCount, staleCount)
+	}
+	query := `SELECT a.id, a.ordinal, COALESCE(a.retry_of_attempt_id,''), a.history_kind, a.state, COALESCE(a.input_hash,''), COALESCE(a.output_hash,''), i.input_hash, i.documents
+		FROM ` + qualified + `.cases c
+		JOIN ` + qualified + `.review_runs r ON r.tenant_id=c.tenant_id AND r.org_id=c.org_id AND r.case_id=c.id
 		JOIN ` + qualified + `.review_attempts a ON a.tenant_id=r.tenant_id AND a.org_id=r.org_id AND a.run_id=r.id
 		JOIN ` + qualified + `.review_attempt_inputs i ON i.tenant_id=a.tenant_id AND i.org_id=a.org_id AND i.run_id=a.run_id AND i.attempt_id=a.id
-		WHERE r.id=$1 AND r.case_id=$2 AND r.tenant_id=$3 AND a.id=ANY($4::text[])
+		WHERE r.id=$1 AND c.id=$2 AND c.tenant_id=$3 AND c.org_id=$4 AND a.id=ANY($5::text[])
 		ORDER BY a.ordinal`
-	rows, err := conn.Query(context.Background(), query, evidence.RunID, evidence.LegacyCaseID, evidence.TenantID, []string{evidence.Attempts.First.ID, evidence.Attempts.Retry.ID})
+	rows, err := conn.Query(context.Background(), query, evidence.RunID, evidence.LegacyCaseID, evidence.TenantID, "smoke-org-b", []string{evidence.Attempts.First.ID, evidence.Attempts.Retry.ID})
 	if err != nil {
 		t.Fatalf("query frozen attempt hashes from scoped PostgreSQL schema: %v", err)
 	}
 	defer rows.Close()
 	type frozenRow struct {
-		id, history, state, attemptHash, inputHash string
-		inputJSON                                  []byte
+		id, retryOf, history, state, attemptHash, outputHash, inputHash string
+		ordinal                                                         int
+		inputJSON                                                       []byte
 	}
 	found := make([]frozenRow, 0, 2)
 	for rows.Next() {
 		var item frozenRow
-		if err := rows.Scan(&item.id, &item.history, &item.state, &item.attemptHash, &item.inputHash, &item.inputJSON); err != nil {
+		if err := rows.Scan(&item.id, &item.ordinal, &item.retryOf, &item.history, &item.state, &item.attemptHash, &item.outputHash, &item.inputHash, &item.inputJSON); err != nil {
 			t.Fatalf("scan frozen attempt from PostgreSQL: %v", err)
 		}
 		found = append(found, item)
@@ -214,16 +230,19 @@ func verifyTenantRecoveryEvidence(t *testing.T, dsn, schema, evidencePath string
 	}
 	wantIDs := []string{evidence.Attempts.First.ID, evidence.Attempts.Retry.ID}
 	wantParseIDs := append([]string(nil), evidence.Attempts.First.ParsedDocumentIDs...)
+	var firstDocuments []store.FrozenDocument
 	for index, item := range found {
-		if item.id != wantIDs[index] || item.history != "frozen" || !terminalAttemptState(item.state) || item.attemptHash == "" || item.inputHash == "" || item.attemptHash != item.inputHash {
+		wantRetryOf := ""
+		if index == 1 {
+			wantRetryOf = wantIDs[0]
+		}
+		if item.id != wantIDs[index] || item.ordinal != index+1 || item.retryOf != wantRetryOf || item.history != "frozen" || !terminalAttemptState(item.state) || item.attemptHash == "" || item.outputHash == "" || item.inputHash == "" || item.attemptHash != item.inputHash {
 			t.Fatalf("PostgreSQL frozen attempt hash/state mismatch: %+v", item)
 		}
 		if index > 0 && item.inputHash != found[0].inputHash {
 			t.Fatalf("retry changed the immutable input hash: first=%s retry=%s", found[0].inputHash, item.inputHash)
 		}
-		var docs []struct {
-			ParsedDocumentID string `json:"parsed_document_id"`
-		}
+		var docs []store.FrozenDocument
 		if err := json.Unmarshal(item.inputJSON, &docs); err != nil {
 			t.Fatalf("decode frozen input documents for %s: %v", item.id, err)
 		}
@@ -235,6 +254,11 @@ func verifyTenantRecoveryEvidence(t *testing.T, dsn, schema, evidencePath string
 		}
 		if !equalSorted(parseIDs, wantParseIDs) {
 			t.Fatalf("PostgreSQL frozen document parses for %s differ from browser evidence: got=%v want=%v", item.id, parseIDs, wantParseIDs)
+		}
+		if index == 0 {
+			firstDocuments = docs
+		} else if !reflect.DeepEqual(firstDocuments, docs) {
+			t.Fatal("retry changed the frozen input documents")
 		}
 	}
 	t.Logf("PostgreSQL confirms two frozen attempts retain one input hash and parsed identities for tenant=%s case=%s run=%s", evidence.TenantID, evidence.LegacyCaseID, evidence.RunID)

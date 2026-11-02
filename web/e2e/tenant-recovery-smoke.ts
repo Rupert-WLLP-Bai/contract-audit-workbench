@@ -131,6 +131,7 @@ try {
   }
   const legacyCaseID = (JSON.parse(legacyCase.body) as { id?: string }).id;
   if (!legacyCaseID) throw new Error("legacy case creation response has no id");
+  if (legacyCaseID === homeCaseID) throw new Error("ENT intake and legacy procurement case unexpectedly share an id");
   await page.goto(`${web}/cases/${legacyCaseID}`);
   await page.getByLabel("材料角色").waitFor();
   await addMaterial("采购文件", "purchase.txt", "采购文件要求质保36个月。合同总价100万元。");
@@ -145,6 +146,7 @@ try {
   if (!routeMatch) throw new Error(`review route missing: ${route.pathname}`);
   const caseID = routeMatch[1]!;
   const runID = routeMatch[2]!;
+  if (caseID !== legacyCaseID) throw new Error(`legacy review opened case ${caseID}, expected ${legacyCaseID}`);
   const readWorkspace = (attempt?: string) =>
     page.evaluate(async ({ caseID, runID, attempt }) => {
       const query = attempt ? `?attempt_id=${encodeURIComponent(attempt)}` : "";
@@ -308,10 +310,10 @@ async function addMaterial(role: string, name: string, text: string): Promise<vo
   });
   await page.getByRole("button", { name: "新增材料" }).click();
   await page.locator('p[role="status"][data-document-id]').filter({ hasText: "材料已登记" }).waitFor();
-  await page.waitForFunction((filename) => {
-    const document = [...window.document.querySelectorAll(".document-list li")].find((item) => item.textContent?.includes(filename));
-    return Boolean(document?.querySelector('[data-status="ready"]'));
-  }, name);
+  await page.locator(".document-list li")
+    .filter({ hasText: name })
+    .locator('[data-status="ready"]')
+    .waitFor({ timeout: 30_000 });
 }
 
 function required(name: string): string {
