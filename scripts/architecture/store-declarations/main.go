@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Enumerates production Store type, constant and variable declarations with relative source locations so ownership review includes declarations beyond receiver methods.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-02
+// Updated: 2026-11-02
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package main
 
 import (

@@ -1,10 +1,10 @@
 <!-- File metadata (manifest mirror): -->
-<!-- Purpose: Sets the contributor procedure for short-lived fix/feat branches, issue-scoped commits, file ownership during shared-checkout work, evidence labels, and the fast-check cadence. -->
+<!-- Purpose: Defines short-lived issue branches, refactor conventions, Store entry restrictions, shared-checkout ownership and evidence requirements for the scoped contribution workflow. -->
 <!-- Author: Bai Junhao <baijunhao@cq.chinamobile.com> -->
 <!-- Contact: +86 13617696321 -->
 <!-- Created: 2026-11-01 -->
 <!-- Updated: 2026-11-02 -->
-<!-- Revision: r2 -->
+<!-- Revision: r3 -->
 <!-- Copyright: See LICENSE -->
 <!-- End file metadata. -->
 

@@ -1,3 +1,13 @@
+# File metadata (manifest mirror):
+# Purpose: Combines parsed Store declarations, SQL migration references and candidate test calls into an explicit method inventory while retaining unknown ownership and external evidence maps.
+# Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+# Contact: +86 13617696321
+# Created: 2026-11-02
+# Updated: 2026-11-02
+# Revision: r1
+# Copyright: See LICENSE
+# End file metadata.
+
 import csv,json,re,collections,pathlib
 import argparse
 parser=argparse.ArgumentParser()

@@ -1,3 +1,13 @@
+<!-- File metadata (manifest mirror): -->
+<!-- Purpose: Defines accepted domain data ownership, shared transaction requirements and dependency directions while distinguishing existing Store placement from future incremental migration. -->
+<!-- Author: Bai Junhao <baijunhao@cq.chinamobile.com> -->
+<!-- Contact: +86 13617696321 -->
+<!-- Created: 2026-11-02 -->
+<!-- Updated: 2026-11-02 -->
+<!-- Revision: r1 -->
+<!-- Copyright: See LICENSE -->
+<!-- End file metadata. -->
+
 # ADR：领域边界与现有持久化边界
 
 状态：采纳。所有权清单固定于源码 `9040a61f8410fef46c06106f5874d2b9a6fe1c21`（迁移 0001–0039）；集成基线 f3c3272 的 Go 输入与该快照逐文件一致。目标约束用于后续渐进迁移，不表示运行结构已迁移。采用 14 个领域作为职责边界，而不是将蓝图目录逐一新建或把现有 `Store` 按文件名搬迁。Core、Document、Execution、Worker 是部署服务，不能直接等同领域。DTO 字段数量本身不是数据库宽表错误的证据。

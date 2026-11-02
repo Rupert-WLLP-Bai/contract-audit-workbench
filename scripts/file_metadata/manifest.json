@@ -17,8 +17,10 @@
       "docs-site/sidebars.js",
       "docs-site/src/css/custom.css",
       "docs/architecture/advisory.md",
+      "docs/architecture/domain-boundaries.md",
       "docs/architecture/execution.md",
       "docs/architecture/overview.md",
+      "docs/architecture/store-ownership.csv",
       "docs/engineering/community-guide.md",
       "docs/engineering/local-development.md",
       "docs/engineering/verification.md",
@@ -175,6 +177,7 @@
       "internal/toolgateway/core_session_test.go",
       "scripts/architecture/architecture.json",
       "scripts/architecture/architecture.schema.json",
+      "scripts/architecture/build_inventory.py",
       "scripts/architecture/check_architecture.py",
       "scripts/architecture/fixtures/allowed.json",
       "scripts/architecture/fixtures/forbidden_advisorycontract_import.json",
@@ -183,6 +186,11 @@
       "scripts/architecture/fixtures/missing_advisorycontract.json",
       "scripts/architecture/fixtures/missing_package.json",
       "scripts/architecture/fixtures/zero_advisorycontract.json",
+      "scripts/architecture/generate_store_ownership.py",
+      "scripts/architecture/refine.py",
+      "scripts/architecture/store-call-resolver/main.go",
+      "scripts/architecture/store-declarations/main.go",
+      "scripts/architecture/store-ownership-extractor/main.go",
       "scripts/architecture/test_check_architecture.py",
       "scripts/check_docs.py",
       "scripts/check_glossary.py",
@@ -545,14 +553,15 @@
         }
       },
       "updated": {
-        "value": "2026-11-01",
+        "value": "2026-11-02",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "0421831c5ca86fdf56ea6d32939da4f825f08c3d",
-          "reason": "Most recent available content-changing commit in the fixed HEAD history; pure rename events with unchanged blob IDs are excluded. UTC date comes from the commit committer timestamp. Metadata headers have not yet been applied."
+          "commit": "fcf994d1a32fb862ee21b9de1e4ecf1eba2466d8",
+          "path": ".github/pull_request_template.md",
+          "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r1",
+      "revision": "r2",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -783,14 +792,15 @@
         }
       },
       "updated": {
-        "value": "2026-11-01",
+        "value": "2026-11-02",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "0421831c5ca86fdf56ea6d32939da4f825f08c3d",
-          "reason": "Most recent available content-changing commit in the fixed HEAD history; pure rename events with unchanged blob IDs are excluded. UTC date comes from the commit committer timestamp. Metadata headers have not yet been applied."
+          "commit": "fcf994d1a32fb862ee21b9de1e4ecf1eba2466d8",
+          "path": "AGENTS.md",
+          "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r1",
+      "revision": "r2",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -7137,6 +7147,54 @@
       "handling": "header-and-manifest",
       "header_state": "pending-header-application"
     },
+    "docs/architecture/domain-boundaries.md": {
+      "purpose": "Defines accepted domain data ownership, shared transaction requirements and dependency directions while distinguishing existing Store placement from future incremental migration.",
+      "authors": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321",
+          "role": "project-author",
+          "source": "Issue #115 project author instruction; not inferred from Git commit identity."
+        }
+      ],
+      "maintainers": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321"
+        }
+      ],
+      "created": {
+        "value": "2026-11-02",
+        "source": {
+          "kind": "git-first-introduction",
+          "commit": "f812ccb7eefaf7a66694c7a25cd74025d54abd7f",
+          "path": "docs/architecture/domain-boundaries.md",
+          "reason": "first available Git introduction; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "updated": {
+        "value": "2026-11-02",
+        "source": {
+          "kind": "git-last-content-change",
+          "commit": "f812ccb7eefaf7a66694c7a25cd74025d54abd7f",
+          "path": "docs/architecture/domain-boundaries.md",
+          "reason": "file introduction created its initial content; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "revision": "r1",
+      "copyright": [
+        {
+          "holder": "Bai Junhao",
+          "notice": "See LICENSE",
+          "source": "LICENSE defines the first-party Project Materials and identifies Bai Junhao as rights holder; applied only to content owned or controlled by him.",
+          "verbatim": false
+        }
+      ],
+      "handling": "header-and-manifest",
+      "header_state": "pending-header-application"
+    },
     "docs/architecture/execution.md": {
       "purpose": "说明“独立服务与异步执行”的操作或技术边界：本地默认可用 `cmd/server` 单进程运行。独立模式将外部流量交给 Gateway，再按职责转发到 Core、Document 和 Execution。Worker 领取 PostgreSQL 任务并调用 Document、Model Gateway 与只读 Tool Gateway。",
       "authors": [
@@ -7213,15 +7271,15 @@
         }
       },
       "updated": {
-        "value": "2026-11-01",
+        "value": "2026-11-02",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "50f7dbde567f98a6163c73a880e7e6fad79b0d89",
+          "commit": "f812ccb7eefaf7a66694c7a25cd74025d54abd7f",
           "path": "docs/architecture/overview.md",
-          "reason": "file introduction created its initial content; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+          "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r1",
+      "revision": "r2",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -7232,6 +7290,67 @@
       ],
       "handling": "header-and-manifest",
       "header_state": "pending-header-application"
+    },
+    "docs/architecture/store-ownership.csv": {
+      "purpose": "Records each Store receiver method with fixed source identity, evidence-based domain or explicit uncertainty, table matches, callers, test leads and observed legacy writer paths.",
+      "authors": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321",
+          "role": "project-author",
+          "source": "Issue #115 project author instruction; not inferred from Git commit identity."
+        }
+      ],
+      "maintainers": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321"
+        }
+      ],
+      "created": {
+        "value": "2026-11-02",
+        "source": {
+          "kind": "git-first-introduction",
+          "commit": "ebb11789535a1346b64895d6c58576cdb31c52ff",
+          "path": "docs/architecture/store-ownership.csv",
+          "reason": "first available Git introduction; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "updated": {
+        "value": "2026-11-02",
+        "source": {
+          "kind": "git-last-content-change",
+          "commit": "ebb11789535a1346b64895d6c58576cdb31c52ff",
+          "path": "docs/architecture/store-ownership.csv",
+          "reason": "file introduction created its initial content; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "revision": "r1",
+      "copyright": [
+        {
+          "holder": "Bai Junhao",
+          "notice": "See LICENSE",
+          "source": "LICENSE defines the first-party Project Materials and identifies Bai Junhao as rights holder; applied only to content owned or controlled by him.",
+          "verbatim": false
+        }
+      ],
+      "handling": "manifest-only",
+      "header_state": "manifest-only",
+      "generator": {
+        "tool": "scripts/architecture/generate_store_ownership.py",
+        "inputs": [
+          "internal/store",
+          "go.mod",
+          "go.sum"
+        ]
+      },
+      "exception": {
+        "source": "docs/architecture/store-ownership.csv",
+        "rule_id": "store-ownership-inventory",
+        "reason": "This exact generated CSV must retain its parser columns; generator output and pinned Git source are recorded separately from runtime or test evidence."
+      }
     },
     "docs/engineering/community-guide.md": {
       "purpose": "Explains the current case review workflow and supported extension points, connecting user permissions, verifiable citations and contribution rules without claiming environment acceptance.",
@@ -7282,7 +7401,7 @@
       "header_state": "pending-header-application"
     },
     "docs/engineering/contributing.md": {
-      "purpose": "Sets the contributor procedure for short-lived fix/feat branches, issue-scoped commits, file ownership during shared-checkout work, evidence labels, and the fast-check cadence.",
+      "purpose": "Defines short-lived issue branches, refactor conventions, Store entry restrictions, shared-checkout ownership and evidence requirements for the scoped contribution workflow.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -7312,12 +7431,12 @@
         "value": "2026-11-02",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "1e238ffb1ac59089d50dd35882a0ffe3507be1cf",
+          "commit": "fcf994d1a32fb862ee21b9de1e4ecf1eba2466d8",
           "path": "docs/engineering/contributing.md",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r2",
+      "revision": "r3",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -47617,6 +47736,54 @@
         "reason": "scripts/architecture/architecture.schema.json: Strict JSON is consumed as structured data and has no safe comment syntax; keep the exact data contract."
       }
     },
+    "scripts/architecture/build_inventory.py": {
+      "purpose": "Combines parsed Store declarations, SQL migration references and candidate test calls into an explicit method inventory while retaining unknown ownership and external evidence maps.",
+      "authors": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321",
+          "role": "project-author",
+          "source": "Issue #115 project author instruction; not inferred from Git commit identity."
+        }
+      ],
+      "maintainers": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321"
+        }
+      ],
+      "created": {
+        "value": "2026-11-02",
+        "source": {
+          "kind": "git-first-introduction",
+          "commit": "ebb11789535a1346b64895d6c58576cdb31c52ff",
+          "path": "scripts/architecture/build_inventory.py",
+          "reason": "first available Git introduction; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "updated": {
+        "value": "2026-11-02",
+        "source": {
+          "kind": "git-last-content-change",
+          "commit": "ebb11789535a1346b64895d6c58576cdb31c52ff",
+          "path": "scripts/architecture/build_inventory.py",
+          "reason": "file introduction created its initial content; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "revision": "r1",
+      "copyright": [
+        {
+          "holder": "Bai Junhao",
+          "notice": "See LICENSE",
+          "source": "LICENSE defines the first-party Project Materials and identifies Bai Junhao as rights holder; applied only to content owned or controlled by him.",
+          "verbatim": false
+        }
+      ],
+      "handling": "header-and-manifest",
+      "header_state": "pending-header-application"
+    },
     "scripts/architecture/check_architecture.py": {
       "purpose": "读取命名 Go 包依赖策略并对照 go list imports，报告允许边、违规边及未声明包。",
       "authors": [
@@ -48014,6 +48181,246 @@
         "source": "scripts/architecture/fixtures/zero_advisorycontract.json",
         "reason": "scripts/architecture/fixtures/zero_advisorycontract.json: Strict JSON is consumed as structured data and has no safe comment syntax; keep the exact data contract."
       }
+    },
+    "scripts/architecture/generate_store_ownership.py": {
+      "purpose": "Builds a fixed Git source snapshot in temporary storage, runs ownership analysis and writes reproducible review artifacts to an explicitly external empty output directory.",
+      "authors": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321",
+          "role": "project-author",
+          "source": "Issue #115 project author instruction; not inferred from Git commit identity."
+        }
+      ],
+      "maintainers": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321"
+        }
+      ],
+      "created": {
+        "value": "2026-11-02",
+        "source": {
+          "kind": "git-first-introduction",
+          "commit": "ebb11789535a1346b64895d6c58576cdb31c52ff",
+          "path": "scripts/architecture/generate_store_ownership.py",
+          "reason": "first available Git introduction; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "updated": {
+        "value": "2026-11-02",
+        "source": {
+          "kind": "git-last-content-change",
+          "commit": "ebb11789535a1346b64895d6c58576cdb31c52ff",
+          "path": "scripts/architecture/generate_store_ownership.py",
+          "reason": "file introduction created its initial content; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "revision": "r1",
+      "copyright": [
+        {
+          "holder": "Bai Junhao",
+          "notice": "See LICENSE",
+          "source": "LICENSE defines the first-party Project Materials and identifies Bai Junhao as rights holder; applied only to content owned or controlled by him.",
+          "verbatim": false
+        }
+      ],
+      "handling": "header-and-manifest",
+      "header_state": "pending-header-application"
+    },
+    "scripts/architecture/refine.py": {
+      "purpose": "Refines the method inventory with typed production call paths, catalog coverage, characterization leads and fixed source identity without treating static observations as runtime proof.",
+      "authors": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321",
+          "role": "project-author",
+          "source": "Issue #115 project author instruction; not inferred from Git commit identity."
+        }
+      ],
+      "maintainers": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321"
+        }
+      ],
+      "created": {
+        "value": "2026-11-02",
+        "source": {
+          "kind": "git-first-introduction",
+          "commit": "ebb11789535a1346b64895d6c58576cdb31c52ff",
+          "path": "scripts/architecture/refine.py",
+          "reason": "first available Git introduction; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "updated": {
+        "value": "2026-11-02",
+        "source": {
+          "kind": "git-last-content-change",
+          "commit": "ebb11789535a1346b64895d6c58576cdb31c52ff",
+          "path": "scripts/architecture/refine.py",
+          "reason": "file introduction created its initial content; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "revision": "r1",
+      "copyright": [
+        {
+          "holder": "Bai Junhao",
+          "notice": "See LICENSE",
+          "source": "LICENSE defines the first-party Project Materials and identifies Bai Junhao as rights holder; applied only to content owned or controlled by him.",
+          "verbatim": false
+        }
+      ],
+      "handling": "header-and-manifest",
+      "header_state": "pending-header-application"
+    },
+    "scripts/architecture/store-call-resolver/main.go": {
+      "purpose": "Resolves default-build repository call expressions with Go type information and exported dependencies, emitting caller edges and errors for external ownership analysis.",
+      "authors": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321",
+          "role": "project-author",
+          "source": "Issue #115 project author instruction; not inferred from Git commit identity."
+        }
+      ],
+      "maintainers": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321"
+        }
+      ],
+      "created": {
+        "value": "2026-11-02",
+        "source": {
+          "kind": "git-first-introduction",
+          "commit": "ebb11789535a1346b64895d6c58576cdb31c52ff",
+          "path": "scripts/architecture/store-call-resolver/main.go",
+          "reason": "first available Git introduction; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "updated": {
+        "value": "2026-11-02",
+        "source": {
+          "kind": "git-last-content-change",
+          "commit": "ebb11789535a1346b64895d6c58576cdb31c52ff",
+          "path": "scripts/architecture/store-call-resolver/main.go",
+          "reason": "file introduction created its initial content; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "revision": "r1",
+      "copyright": [
+        {
+          "holder": "Bai Junhao",
+          "notice": "See LICENSE",
+          "source": "LICENSE defines the first-party Project Materials and identifies Bai Junhao as rights holder; applied only to content owned or controlled by him.",
+          "verbatim": false
+        }
+      ],
+      "handling": "header-and-manifest",
+      "header_state": "pending-header-application"
+    },
+    "scripts/architecture/store-declarations/main.go": {
+      "purpose": "Enumerates production Store type, constant and variable declarations with relative source locations so ownership review includes declarations beyond receiver methods.",
+      "authors": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321",
+          "role": "project-author",
+          "source": "Issue #115 project author instruction; not inferred from Git commit identity."
+        }
+      ],
+      "maintainers": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321"
+        }
+      ],
+      "created": {
+        "value": "2026-11-02",
+        "source": {
+          "kind": "git-first-introduction",
+          "commit": "ebb11789535a1346b64895d6c58576cdb31c52ff",
+          "path": "scripts/architecture/store-declarations/main.go",
+          "reason": "first available Git introduction; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "updated": {
+        "value": "2026-11-02",
+        "source": {
+          "kind": "git-last-content-change",
+          "commit": "ebb11789535a1346b64895d6c58576cdb31c52ff",
+          "path": "scripts/architecture/store-declarations/main.go",
+          "reason": "file introduction created its initial content; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "revision": "r1",
+      "copyright": [
+        {
+          "holder": "Bai Junhao",
+          "notice": "See LICENSE",
+          "source": "LICENSE defines the first-party Project Materials and identifies Bai Junhao as rights holder; applied only to content owned or controlled by him.",
+          "verbatim": false
+        }
+      ],
+      "handling": "header-and-manifest",
+      "header_state": "pending-header-application"
+    },
+    "scripts/architecture/store-ownership-extractor/main.go": {
+      "purpose": "Parses Store production functions, receiver methods and test call expressions with source locations and string literals, reporting syntax errors rather than guessing ownership.",
+      "authors": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321",
+          "role": "project-author",
+          "source": "Issue #115 project author instruction; not inferred from Git commit identity."
+        }
+      ],
+      "maintainers": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321"
+        }
+      ],
+      "created": {
+        "value": "2026-11-02",
+        "source": {
+          "kind": "git-first-introduction",
+          "commit": "ebb11789535a1346b64895d6c58576cdb31c52ff",
+          "path": "scripts/architecture/store-ownership-extractor/main.go",
+          "reason": "first available Git introduction; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "updated": {
+        "value": "2026-11-02",
+        "source": {
+          "kind": "git-last-content-change",
+          "commit": "ebb11789535a1346b64895d6c58576cdb31c52ff",
+          "path": "scripts/architecture/store-ownership-extractor/main.go",
+          "reason": "file introduction created its initial content; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "revision": "r1",
+      "copyright": [
+        {
+          "holder": "Bai Junhao",
+          "notice": "See LICENSE",
+          "source": "LICENSE defines the first-party Project Materials and identifies Bai Junhao as rights holder; applied only to content owned or controlled by him.",
+          "verbatim": false
+        }
+      ],
+      "handling": "header-and-manifest",
+      "header_state": "pending-header-application"
     },
     "scripts/architecture/test_check_architecture.py": {
       "purpose": "验证 test_all_policies_pass_and_store_direct_import_is_allowed, test_gateway_forbids_both_direct_orchestration_edges, test_neutral_contract_allows_time_but_rejects_nonallowlisted_imports, test_missing_or_empty_named_target_is_blocked 等场景，覆盖该模块的授权、错误或数据边界。",
@@ -48716,7 +49123,7 @@
           "reason": "The manifest cannot embed the commit/blob identity of its own current update; retain this exact-path self-reference exception."
         }
       },
-      "revision": "r4",
+      "revision": "r5",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -48865,12 +49272,12 @@
         "value": "2026-11-02",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "1e238ffb1ac59089d50dd35882a0ffe3507be1cf",
+          "commit": "ebb11789535a1346b64895d6c58576cdb31c52ff",
           "path": "scripts/file_metadata/policy.json",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r2",
+      "revision": "r3",
       "copyright": [
         {
           "holder": "Bai Junhao",

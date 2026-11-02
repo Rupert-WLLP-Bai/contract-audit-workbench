@@ -1,4 +1,14 @@
 #!/usr/bin/env python3
+# File metadata (manifest mirror):
+# Purpose: Builds a fixed Git source snapshot in temporary storage, runs ownership analysis and writes reproducible review artifacts to an explicitly external empty output directory.
+# Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+# Contact: +86 13617696321
+# Created: 2026-11-02
+# Updated: 2026-11-02
+# Revision: r1
+# Copyright: See LICENSE
+# End file metadata.
+
 """Reproduce the store ownership inventory from an immutable Git commit."""
 import argparse
 import json

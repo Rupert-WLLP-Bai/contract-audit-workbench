@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Parses Store production functions, receiver methods and test call expressions with source locations and string literals, reporting syntax errors rather than guessing ownership.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-02
+// Updated: 2026-11-02
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package main
 
 import (

@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Resolves default-build repository call expressions with Go type information and exported dependencies, emitting caller edges and errors for external ownership analysis.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-02
+// Updated: 2026-11-02
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package main
 
 import (

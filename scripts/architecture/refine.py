@@ -1,3 +1,13 @@
+# File metadata (manifest mirror):
+# Purpose: Refines the method inventory with typed production call paths, catalog coverage, characterization leads and fixed source identity without treating static observations as runtime proof.
+# Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+# Contact: +86 13617696321
+# Created: 2026-11-02
+# Updated: 2026-11-02
+# Revision: r1
+# Copyright: See LICENSE
+# End file metadata.
+
 import csv,json,re,collections,pathlib
 import argparse
 parser=argparse.ArgumentParser()
