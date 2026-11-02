@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Command eval runs offline gold regression checks without PostgreSQL or an LLM. go run ./cmd/eval -out artifacts/evaluation.json Exit codes: 0=all checks passed (or explicit -report-only), 1=gold mismatch or… Related `main` operations include main, run, loadEvalDataset, writeEvalOutput.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-25
+// Updated: 2026-10-30
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 // Command eval runs offline gold regression checks without PostgreSQL or an LLM.
 //
 //	go run ./cmd/eval -out artifacts/evaluation.json

@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: builds and evaluates the default-on Jev suggestion layer. Jev only reranks optional governed knowledge. It never selects the candidate set, changes a deterministic score, removes a required policy, or writes an audit… Related `advisory` operations include BandFor, validThresholds, validProbability, BandRank.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-28
+// Updated: 2026-10-30
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 // Package advisory builds and evaluates the default-on Jev suggestion layer.
 //
 // Jev only reranks optional governed knowledge. It never selects the candidate

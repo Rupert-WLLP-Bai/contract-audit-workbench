@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: DirectoryStatusSnapshot describes this process's effective trusted directory. The verification interval applies to local lookups, not mount propagation. Related `accounts` operations include DirectoryStatus, directoryStatusTime.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-01
+// Updated: 2026-11-01
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package accounts
 
 import "time"

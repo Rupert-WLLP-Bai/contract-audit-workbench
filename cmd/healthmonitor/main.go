@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: telemetryExporter builds the OTLP exporter for this monitor's HTTP boundary. It is nil, and the boundary still logs and recovers, when no collector is configured. Related `main` operations include telemetryExporter, main.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-25
+// Updated: 2026-10-31
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package main
 
 import (

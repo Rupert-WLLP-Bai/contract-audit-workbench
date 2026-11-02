@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Command worker runs the independently deployed audit worker. The worker owns the execution database identity through the execution service role and claims persistent review jobs from PostgreSQL. It holds the model… Related `main` operations include main, run, workerRuntimeConfigFromEnv, serveWorker.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-25
+// Updated: 2026-11-02
+// Revision: r2
+// Copyright: See LICENSE
+// End file metadata.
+
 // Command worker runs the independently deployed audit worker.
 //
 // The worker owns the execution database identity through the execution

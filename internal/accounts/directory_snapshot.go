@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: 实现 `UserDirectorySnapshot`, `LookupUserSnapshot`, `directoryStatusLocked` 等具体接口与边界逻辑，供 internal/accounts 的调用方使用。
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-01
+// Updated: 2026-11-01
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package accounts
 
 import "time"

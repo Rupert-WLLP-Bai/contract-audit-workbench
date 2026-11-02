@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: jevShadow supplies a comparison route only. The mandatory rules execute in the next Eino node even when this call is denied, unavailable or cancelled. The hosted Jev endpoint… Related `main` operations include jevShadow.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-28
+// Updated: 2026-10-28
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package main
 
 import (

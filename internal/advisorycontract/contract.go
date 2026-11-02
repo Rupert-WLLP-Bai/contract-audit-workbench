@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Package advisorycontract contains stable Advisory values shared by orchestration and the model gateway.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-01
+// Updated: 2026-11-01
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 // Package advisorycontract contains stable Advisory values shared by
 // orchestration and the model gateway. Configuration policy and persisted
 // Advisory records remain owned by agentflow.

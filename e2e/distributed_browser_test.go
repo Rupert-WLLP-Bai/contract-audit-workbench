@@ -1,5 +1,15 @@
 //go:build browser && distributed
 
+// File metadata (manifest mirror):
+// Purpose: Exercises the `e2e_test` package behavior through TestBrowserDistributedClientArtifact, TestBrowserDistributedArtifactsRoutes; these checks pin observable state, error handling, or wire/database compatibility for this module.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-25
+// Updated: 2026-10-25
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 // Independent distributed browser acceptance entry (B-4).
 //
 // "Distributed" means the running product stack reached through the Edge

@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Exercises the `e2e` package behavior through TestOperatorSecurityConnectorRequestBoundary, TestOperatorSecurityConnectorFailureMapping, TestOperatorSecurityTenantAndRevocation, TestOperatorSecurityInjectionText; these checks pin observable state, error handling, or wire/database compatibility for this module. Test cases include connector id is fixed by configuration, invalid scope is rejected, base url cannot smuggle credentials or schemes, 403 does not leak a snapshot.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-29
+// Updated: 2026-10-29
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package e2e
 
 // Black-box security tests for the read-only OSS connector and the
