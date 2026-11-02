@@ -1,10 +1,10 @@
 # File metadata (manifest mirror):
-# Purpose: Fixed-base adapter draft for FILE metadata review and explicit header application.
+# Purpose: Validates file metadata against a trusted target-base inventory and immutable source history while planning explicit hash-bound header insertion without changing protected content.
 # Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 # Contact: +86 13617696321
 # Created: 2026-11-02
 # Updated: 2026-11-02
-# Revision: r1
+# Revision: r2
 # Copyright: See LICENSE
 # End file metadata.
 
@@ -19,6 +19,7 @@ from __future__ import annotations
 import argparse
 from dataclasses import asdict
 from datetime import datetime, timezone
+from functools import lru_cache
 import hashlib
 import json
 import os
@@ -410,6 +411,32 @@ def _renames(repo: GitRepo, base_sha: str, subject_sha: str) -> dict[str, str]:
             if change.status.startswith("R") and change.old_path and change.new_path}
 
 
+class _WindowHistory:
+    """Lazily retain parsed changes; do not read older commits after a path ends."""
+    def __init__(self, repo: GitRepo, base_sha: str, subject_sha: str):
+        self.repo = repo
+        self.commits = repo.run("rev-list", "--first-parent", f"{base_sha}..{subject_sha}").splitlines()
+        self.changes: list[tuple] = []
+
+    def __iter__(self):
+        for index, raw_commit in enumerate(self.commits):
+            if index == len(self.changes):
+                commit = raw_commit.decode("ascii")
+                parents = self.repo.run("rev-list", "--parents", "-n", "1", commit).split()
+                if len(parents) < 2:
+                    changes = parse_raw_changes(self.repo.run("diff-tree", "--root", "--no-commit-id", "-r", "--raw", "-z", "-M", "--no-abbrev", commit, "--"))
+                else:
+                    changes = self.repo.diff(parents[1].decode("ascii"), commit)
+                self.changes.append(tuple(changes))
+            yield self.changes[index]
+
+
+@lru_cache(maxsize=4)
+def _window_history(repo: GitRepo, base_sha: str, subject_sha: str) -> _WindowHistory:
+    """Cache only immutable first-parent Git changes for this repo and SHA window."""
+    return _WindowHistory(repo, base_sha, subject_sha)
+
+
 def _window_identity_origin(repo: GitRepo, base_sha: str, subject_sha: str,
                             candidate_path: str, *, base_on_first_parent: bool) -> str | None:
     """Walk NUL-parsed first-parent changes backward to the BASE identity.
@@ -422,14 +449,7 @@ def _window_identity_origin(repo: GitRepo, base_sha: str, subject_sha: str,
     if not base_on_first_parent:
         raise GateError("unsupported identity lineage: target BASE is not on candidate SUBJECT first-parent chain")
     current = candidate_path.encode("utf-8", "strict")
-    commits = repo.run("rev-list", "--first-parent", f"{base_sha}..{subject_sha}").splitlines()
-    for raw_commit in commits:
-        commit = raw_commit.decode("ascii")
-        parents = repo.run("rev-list", "--parents", "-n", "1", commit).split()
-        if len(parents) < 2:
-            changes = parse_raw_changes(repo.run("diff-tree", "--root", "--no-commit-id", "-r", "--raw", "-z", "-M", "--no-abbrev", commit, "--"))
-        else:
-            changes = repo.diff(parents[1].decode("ascii"), commit)
+    for changes in _window_history(repo, base_sha, subject_sha):
         change = next((item for item in changes if item.new_path == current or
                        item.old_path == current), None)
         if change is None:

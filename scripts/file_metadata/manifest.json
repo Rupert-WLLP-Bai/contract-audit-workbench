@@ -643,12 +643,12 @@
         "value": "2026-11-02",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "a68af8616865296e4b63ff5811c9ae2ab8702025",
+          "commit": "6db61ab9cdef31db144c87917e9f546384868693",
           "path": ".github/workflows/quality.yml",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r2",
+      "revision": "r3",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -48539,7 +48539,7 @@
       "header_state": "pending-header-application"
     },
     "scripts/file_metadata/gate_adapter.py": {
-      "purpose": "Fixed-base adapter draft for FILE metadata review and explicit header application.",
+      "purpose": "Validates file metadata against a trusted target-base inventory and immutable source history while planning explicit hash-bound header insertion without changing protected content.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -48569,12 +48569,12 @@
         "value": "2026-11-02",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "d5a7749e716c35cc86722e597e72fc8dc76b4000",
+          "commit": "6a579e3e5867061f25a4e16fada614d849125111",
           "path": "scripts/file_metadata/gate_adapter.py",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r1",
+      "revision": "r2",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -48716,7 +48716,7 @@
           "reason": "The manifest cannot embed the commit/blob identity of its own current update; retain this exact-path self-reference exception."
         }
       },
-      "revision": "r3",
+      "revision": "r4",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -48969,12 +48969,12 @@
         "value": "2026-11-02",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "d5a7749e716c35cc86722e597e72fc8dc76b4000",
+          "commit": "6a579e3e5867061f25a4e16fada614d849125111",
           "path": "scripts/file_metadata/test_gate_adapter.py",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r1",
+      "revision": "r2",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -50360,14 +50360,15 @@
         }
       },
       "updated": {
-        "value": "2026-10-31",
+        "value": "2026-11-02",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "7e53ed3c139fd7c833b6acad41655245636fb4c2",
-          "reason": "Most recent available content-changing commit in the fixed HEAD history; pure rename events with unchanged blob IDs are excluded. UTC date comes from the commit committer timestamp. Metadata headers have not yet been applied."
+          "commit": "6db61ab9cdef31db144c87917e9f546384868693",
+          "path": "scripts/test_verify_stages.py",
+          "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r1",
+      "revision": "r2",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -50460,14 +50461,15 @@
         }
       },
       "updated": {
-        "value": "2026-10-31",
+        "value": "2026-11-02",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "7e53ed3c139fd7c833b6acad41655245636fb4c2",
-          "reason": "Most recent available content-changing commit in the fixed HEAD history; pure rename events with unchanged blob IDs are excluded. UTC date comes from the commit committer timestamp. Metadata headers have not yet been applied."
+          "commit": "6db61ab9cdef31db144c87917e9f546384868693",
+          "path": "scripts/verify.py",
+          "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r1",
+      "revision": "r2",
       "copyright": [
         {
           "holder": "Bai Junhao",

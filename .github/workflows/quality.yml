@@ -4,7 +4,7 @@
 # Contact: +86 13617696321
 # Created: 2026-10-25
 # Updated: 2026-11-02
-# Revision: r2
+# Revision: r3
 # Copyright: See LICENSE
 # End file metadata.
 
@@ -244,7 +244,7 @@ jobs:
     name: browser acceptance
     needs: [prepare, static]
     runs-on: ubuntu-24.04
-    timeout-minutes: 25
+    timeout-minutes: 60
     services:
       postgres:
         image: postgres:18.6-bookworm@sha256:5c4783a8cc3f0074912164f94dfa1be4e043438f0f707cf968d7af9a0d31a2c8
@@ -261,6 +261,10 @@ jobs:
       TEST_DATABASE_URL: postgres://contractaudit:contractaudit@127.0.0.1:5432/contract_audit_test?sslmode=disable
       MIGRATOR_DATABASE_URL: postgres://contractaudit:contractaudit@127.0.0.1:5432/contract_audit_test?sslmode=disable
       MODEL_DATABASE_URL: postgres://contract_audit_model:contractaudit@127.0.0.1:5432/contract_audit_test?sslmode=disable
+      CAW_DELIVERY_DIR: ${{ runner.temp }}/caw-delivery
+      LEGALNORM_ASSET_DIR: ${{ runner.temp }}/caw-legal-test-assets/legal-sources
+      LEGALNORM_SUPPLEMENTAL_ASSET_DIR: ${{ runner.temp }}/caw-legal-test-assets/legal-sources
+      LEGALNORM_CANONICAL_MANIFEST: ${{ runner.temp }}/caw-legal-test-assets/p4-canonical-articles-v2.json
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -293,6 +297,16 @@ jobs:
           PGUSER: contractaudit
           PGPASSWORD: contractaudit
         run: bash scripts/provision_test_db.sh
+      - name: Test legal asset preparation
+        run: python3 scripts/test_fetch_legal_test_assets.py
+      - name: Prepare pinned legal test assets
+        env:
+          CAW_LEGAL_TEST_ARCHIVE_XZ_01: ${{ vars.CAW_LEGAL_TEST_ARCHIVE_XZ_01 }}
+          CAW_LEGAL_TEST_ARCHIVE_XZ_02: ${{ vars.CAW_LEGAL_TEST_ARCHIVE_XZ_02 }}
+          CAW_LEGAL_TEST_ARCHIVE_XZ_03: ${{ vars.CAW_LEGAL_TEST_ARCHIVE_XZ_03 }}
+          CAW_LEGAL_TEST_ARCHIVE_XZ_04: ${{ vars.CAW_LEGAL_TEST_ARCHIVE_XZ_04 }}
+          CAW_LEGAL_TEST_ARCHIVE_XZ_05: ${{ vars.CAW_LEGAL_TEST_ARCHIVE_XZ_05 }}
+        run: python3 scripts/fetch_legal_test_assets.py --destination "$RUNNER_TEMP/caw-legal-test-assets"
       - name: Browser gate
         run: python3 scripts/verify.py --stage browser
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
@@ -303,6 +317,7 @@ jobs:
             artifacts/verification-browser.json
             artifacts/logs/
             artifacts/screenshots/
+            ${{ runner.temp }}/caw-delivery/
           if-no-files-found: warn
           retention-days: 14
 

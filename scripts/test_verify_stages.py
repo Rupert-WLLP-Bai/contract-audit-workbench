@@ -3,8 +3,8 @@
 # Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 # Contact: +86 13617696321
 # Created: 2026-10-28
-# Updated: 2026-10-31
-# Revision: r1
+# Updated: 2026-11-02
+# Revision: r2
 # Copyright: See LICENSE
 # End file metadata.
 
@@ -394,6 +394,50 @@ class StepSummaryTests(unittest.TestCase):
             verify.write_step_summary({"stage": "all", "checks": [], "passed": True})
 
 
+class MainReportIdentityTests(unittest.TestCase):
+    def run_main(self, *, identity_values, prepare_error=None):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary) / "source"
+            root.mkdir()
+            output = Path(temporary) / "delivery" / "verification"
+            reports = []
+
+            def capture_report(report):
+                reports.append(json.loads(json.dumps(report)))
+
+            check = verify.Check("browser-fixture", "browser", ("true",), cwd=root,
+                                 timeout=5, continue_on_failure=True)
+            with patch.object(verify, "ROOT", root), \
+                    patch.object(verify, "OUT", output), \
+                    patch.object(verify, "OUT_IS_EXTERNAL", True), \
+                    patch.object(verify, "build_checks", return_value=(check,)), \
+                    patch.object(verify, "source_identity", side_effect=identity_values), \
+                    patch.object(verify, "prepare_browser", side_effect=prepare_error), \
+                    patch.object(verify, "save_report", side_effect=capture_report), \
+                    patch.object(verify, "write_step_summary"), \
+                    patch("sys.argv", ["verify.py", "--stage", "browser"]), \
+                    redirect_stdout(StringIO()), redirect_stderr(StringIO()):
+                result = verify.main()
+            return result, reports[-1]
+
+    def test_browser_identity_change_marks_completed_browser_stage_failed(self):
+        result, report = self.run_main(identity_values=[{"digest": "before"}, {"digest": "after"}])
+        self.assertEqual(result, 1)
+        self.assertFalse(report["passed"])
+        self.assertEqual(report["browser"], "FAIL")
+        self.assertEqual(report["checks"][0]["status"], "PASS")
+
+    def test_browser_prepare_failure_keeps_browser_not_run(self):
+        result, report = self.run_main(
+            identity_values=[{"digest": "before"}],
+            prepare_error=RuntimeError("browser preparation unavailable"),
+        )
+        self.assertEqual(result, 1)
+        self.assertFalse(report["passed"])
+        self.assertTrue(report["browser"].startswith("NOT_RUN"))
+        self.assertEqual(report["checks"][0]["status"], "NOT_RUN")
+
+
 class ReportPathTests(unittest.TestCase):
     def test_all_keeps_legacy_report_name(self):
         self.assertEqual(verify.report_path("all").name, "verification.json")
@@ -437,26 +481,59 @@ class RegistryTests(unittest.TestCase):
             "browser-telecom": "browser",
             "browser-telecom-compatible": "browser",
             "browser-telecom-insufficient": "browser",
+            "browser-d3-subject": "browser",
+            "browser-object-history": "browser",
         }
         self.assertEqual({name: check.stage
                           for name, check in self.checks.items()}, expected)
+
+    def test_browser_delivery_directory_respects_config_and_runner_temp(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "source"
+            configured = Path(tmp) / "configured-delivery"
+            runner_temp = Path(tmp) / "runner-temp"
+            root.mkdir()
+            runner_temp.mkdir()
+            explicit = verify.browser_delivery_directory(root, {"CAW_DELIVERY_DIR": str(configured)})
+            self.assertEqual(explicit, configured.resolve())
+            self.assertTrue(explicit.is_dir())
+            fallback = verify.browser_delivery_directory(root, {"RUNNER_TEMP": str(runner_temp)})
+            self.assertEqual(fallback, (runner_temp / "caw-delivery").resolve())
+            self.assertTrue(fallback.is_dir())
+            with self.assertRaisesRegex(RuntimeError, "outside the source checkout"):
+                verify.browser_delivery_directory(root, {"CAW_DELIVERY_DIR": str(root / "artifacts")})
 
     def test_browser_checks_continue_after_failure(self):
         self.assertTrue(self.checks["browser-warranty"].continue_on_failure)
         self.assertTrue(self.checks["browser-telecom"].continue_on_failure)
         self.assertTrue(self.checks["browser-telecom-compatible"].continue_on_failure)
         self.assertTrue(self.checks["browser-telecom-insufficient"].continue_on_failure)
+        self.assertTrue(self.checks["browser-d3-subject"].continue_on_failure)
+        self.assertTrue(self.checks["browser-object-history"].continue_on_failure)
 
     def test_browser_checks_are_split(self):
         names = [name for name, check in self.checks.items()
                  if check.stage == "browser"]
         self.assertEqual(names, ["web-c1b-clock-tests", "browser-warranty", "browser-telecom",
-                                 "browser-telecom-compatible", "browser-telecom-insufficient"])
+                                 "browser-telecom-compatible", "browser-telecom-insufficient",
+                                 "browser-d3-subject", "browser-object-history"])
 
     def test_jsonl_checks_keep_raw_log(self):
         for name in ("go-tests", "browser-warranty", "browser-telecom",
-                     "browser-telecom-compatible", "browser-telecom-insufficient"):
+                     "browser-telecom-compatible", "browser-telecom-insufficient",
+                     "browser-d3-subject", "browser-object-history"):
             self.assertTrue(self.checks[name].jsonl)
+
+    def test_all_six_browser_journeys_are_release_only_and_no_skip_checked(self):
+        names = ("browser-warranty", "browser-telecom", "browser-telecom-compatible",
+                 "browser-telecom-insufficient", "browser-d3-subject", "browser-object-history")
+        for name in names:
+            check = self.checks[name]
+            self.assertEqual(check.stage, "browser")
+            self.assertTrue(verify.selected_check(check, "browser", False))
+            self.assertFalse(verify.selected_check(check, "all", False))
+            self.assertTrue(check.jsonl)
+            self.assertIsNotNone(check.validate)
 
     def test_evidence_validators_are_attached(self):
         for name in ("go-tests", "web-tests", "agent-demo", "rule-shadow"):
