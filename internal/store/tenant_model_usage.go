@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: TenantModelUsage uses the same rolling window, release exclusions, and conservative charges as model_budget_reserve. An expired un-settled lease still reserves its window tokens,… Related `store` operations include ReadTenantModelUsage.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-01
+// Updated: 2026-11-02
+// Revision: r2
+// Copyright: See LICENSE
+// End file metadata.
+
 package store
 
 import (

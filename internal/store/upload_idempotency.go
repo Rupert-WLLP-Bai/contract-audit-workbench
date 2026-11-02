@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: readUploadReceipt holds the case lock through current authorization and the receipt read, so a revoked member cannot recover a previously accepted upload. Related `store` operations include readUploadReceipt.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-31
+// Updated: 2026-11-02
+// Revision: r2
+// Copyright: See LICENSE
+// End file metadata.
+
 package store
 
 import (

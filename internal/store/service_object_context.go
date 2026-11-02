@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: ServiceObjectReviewContext is a deterministic, bounded projection of every recognized contract object and every registered service object at one business instant. It deliberately… Related `store` operations include validateServiceObjectReviewContext, encodeServiceObjectReviewContext, decodeServiceObjectReviewContext, canonicalServiceObjectReviewContext.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-31
+// Updated: 2026-10-31
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package store
 
 import (

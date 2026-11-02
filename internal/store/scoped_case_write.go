@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: loadScopedCaseWriteState extends the existing bounded case scope with the review and business rows read by the ordinary case mutation callbacks. Related `store` operations include loadScopedCaseWriteState, scopedCreateCaseWrite.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-31
+// Updated: 2026-11-02
+// Revision: r2
+// Copyright: See LICENSE
+// End file metadata.
+
 package store
 
 import (

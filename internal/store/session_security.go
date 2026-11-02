@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: sessionLegacyCleanupSQL removes only tokens produced by the old newID("s") implementation. Stop old application instances before migrating: their sessions cannot be used after the… Related `store` operations include newSessionToken, sessionTokenDigest.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-31
+// Updated: 2026-10-31
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package store
 
 import (
