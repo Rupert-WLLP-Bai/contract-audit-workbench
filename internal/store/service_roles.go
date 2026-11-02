@@ -188,7 +188,7 @@ func MigrateServiceRoles(ctx context.Context) error {
 		return errors.New("cannot inspect legacy model accounting relation")
 	}
 
-	var coreRoleName, executionRoleName string
+	var coreRoleName, executionRoleName, modelRoleName string
 	configuredRoles := make([]string, 0, len(serviceOwnedTables))
 	for _, service := range []string{"core", "document", "execution", "model", "tool"} {
 		key := strings.ToUpper(service) + "_DATABASE_URL"
@@ -359,6 +359,9 @@ func MigrateServiceRoles(ctx context.Context) error {
 			executionRoleName = cfg.User
 		}
 		if service == "model" {
+			modelRoleName = cfg.User
+		}
+		if service == "model" {
 			// Cross-tenant accounting is available only through the atomic budget
 			// functions; the model role has no direct write access to these tables.
 			functions := []string{
@@ -465,6 +468,14 @@ func MigrateServiceRoles(ctx context.Context) error {
 	for _, role := range configuredRoles {
 		if _, err := tx.Exec(ctx, `GRANT EXECUTE ON FUNCTION `+pgx.Identifier{schema}.Sanitize()+`.tenant_context_fence(text,bigint,text,uuid,uuid), `+pgx.Identifier{schema}.Sanitize()+`.tenant_operation_fence(jsonb,text,text) TO `+pgx.Identifier{role}.Sanitize()); err != nil {
 			return err
+		}
+	}
+	for _, role := range []string{coreRoleName, executionRoleName, modelRoleName} {
+		if role == "" {
+			continue
+		}
+		if _, err := tx.Exec(ctx, `GRANT EXECUTE ON FUNCTION `+pgx.Identifier{schema}.Sanitize()+`.tenant_runtime_control(text,boolean), `+pgx.Identifier{schema}.Sanitize()+`.tenant_runtime_fence(text,bigint,boolean) TO `+pgx.Identifier{role}.Sanitize()); err != nil {
+			return fmt.Errorf("cannot grant tenant runtime fence to service role %q: %w", role, err)
 		}
 	}
 	if _, err := tx.Exec(ctx, `RESET ROLE`); err != nil {

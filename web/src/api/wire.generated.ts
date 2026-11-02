@@ -55,6 +55,7 @@ export interface WireSchemas {
   "CreateReportRequest": { "attempt_id": string; "run_id": string; };
   "Decision": { "action": string; "actor": string; "decided_at": string; "id": string; "new_disposition": string; "old_disposition": string; "reason": string; };
   "DecisionRequest": { "action": "confirm_risk" | "false_positive" | "insufficient_evidence" | "accept_residual"; "expected_version": number; "reason": string; };
+  "DirectoryStatusSnapshot": { "checked_at": string; "last_good_revision": string; "loaded_at": string; "local_verification_interval_ms": number; "mode": "local_demo" | "enterprise"; "refresh_error_code": string; "revision": string; "state": "local_demo" | "ready" | "unavailable"; };
   "DraftAcceptancePlan": { "criteria"?: string; "description"?: string; "item_ids"?: Array<string>; "planned_date"?: string; "sequence": number; };
   "DraftAssetPlan": { "asset_plan_id": string; "brand"?: string; "code"?: string; "custodian_user_id"?: string; "department_code"?: string; "department_name"?: string; "item_id"?: string; "manufacturer"?: string; "name"?: string; "origin"?: string; "quantity"?: string; "remark"?: string; "specification"?: string; "unit_price"?: string; };
   "DraftBuyer": { "contact_name"?: string; "contact_phone"?: string; "purchasing_unit"?: WireSchemas["UnitRef"]; };
@@ -80,6 +81,8 @@ export interface WireSchemas {
   "MaterialSelectionProjection": { "candidate_document_ids": Array<string>; "document_ids": Array<string>; "primary_material_id": string | null; "status": "pending_confirmation" | "confirmed" | "not_applicable"; "version": number; };
   "MaterialVersionProjection": { "created_at": string; "document_id": string; "material_id": string; "previous_document_id": string | null; "version": number; };
   "MembershipChoice": { "id": string; "jurisdiction_id"?: string; "org_id": string; "org_name": string; "role": string; "tenant_id": string; "tenant_name": string; };
+  "ModelBudgetCapacity": { "calls_per_minute": number; "max_in_flight": number; "tokens_per_minute": number; };
+  "ModelBudgetGatewayStatus": { "global": WireSchemas["ModelBudgetCapacity"]; "mode": string; "revision": string; "schema_version": "model-budget/v1"; "tenant": WireSchemas["ModelBudgetCapacity"]; "window_seconds": 60; };
   "PartyRef": { "binding_id"?: string; "name_snapshot": string; "party_id": string; "reference_snapshot"?: WireSchemas["PartyReferenceSnapshot"]; "role": "buyer" | "supplier" | "guarantor" | "consortium_member" | "other"; };
   "PartyReferenceSnapshot": { "binding_id": string; "binding_state": "active" | "inactive" | "pending_confirmation"; "binding_version": number; "captured_at": string; "case_role": "customer" | "supplier" | "contractor" | "service_provider" | "other"; "display_name": string; "subject_id": string; "subject_payload_hash": string; "subject_version": number; "verification_state": string; };
   "PaymentCondition": { "due_rule"?: WireSchemas["DueRule"]; "evidence_requirements"?: Array<string>; "policy_ref"?: string; "type": "signed_contract" | "all_goods_accepted" | "partial_acceptance" | "service_period_verified" | "custom_policy"; };
@@ -98,6 +101,10 @@ export interface WireSchemas {
   "SupportGrantCommand": { "expected_revision": string; };
   "SupportGrantList": { "grants": Array<WireSchemas["SupportGrant"]>; };
   "SupportGrantRequest": { "actions": Array<"case.read">; "expires_at": string; "principal_id": string; "reason": string; };
+  "TenantExecutionQueue": { "policy_hash": string; "policy_version": string; "tenant_in_flight_limit": number; "tenant_live": boolean; "tenant_pending_limit": number; "tenant_weight": number; };
+  "TenantModelUsage": { "active_calls": number; "charged_tokens": number; "observed_at": string; "reserved_tokens": number; "unknown_usage_calls": number; "window_calls": number; "window_seconds": 60; "window_start": string; };
+  "TenantOperations": { "budget": (WireSchemas["ModelBudgetGatewayStatus"]) | (null); "budget_state": "ready" | "unconfigured" | "unavailable"; "directory": WireSchemas["DirectoryStatusSnapshot"]; "execution_queue": WireSchemas["TenantExecutionQueue"]; "login_rate_limit_scope": "process"; "schema_version": "tenant-operations/v2"; "tenant_control": WireSchemas["TenantRuntimeControl"]; "tenant_id": string; "usage": WireSchemas["TenantModelUsage"]; };
+  "TenantRuntimeControl": { "live_epoch": string; "status": "active" | "suspended" | "closed"; };
   "TextOffset": { "end": number; "start": number; };
   "UnitRef": { "id": string; "name": string; };
   "WorkbenchTask": { "assignee_id": string; "case_id": string; "created_at": string; "created_by": string | null; "due_at": string | null; "finding_id": string | null; "id": string; "kind": "review" | "decision" | "remediation" | "general"; "priority": "high" | "medium" | "low"; "status": "open" | "in_progress" | "completed"; "title": string; "updated_at": string; "version": number; };

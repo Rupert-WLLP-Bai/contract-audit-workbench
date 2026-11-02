@@ -14,6 +14,7 @@ import (
 
 	"contractaudit/internal/access"
 	"contractaudit/internal/accounts"
+	"contractaudit/internal/config"
 	"contractaudit/internal/model"
 	"github.com/jackc/pgx/v5"
 )
@@ -191,7 +192,7 @@ func (s *Store) reserveModelCall(ctx context.Context, caller string, scope model
 			return ModelCallLease{}, ErrModelScopeUnavailable
 		}
 	}
-	if err := authorizeModelScope(ctx, tx, caller, scope, current); err != nil {
+	if err := authorizeModelScope(ctx, tx, caller, scope, s.sel.Mode != config.ModeProduction, current); err != nil {
 		return ModelCallLease{}, err
 	}
 	if providerIdentity != nil && (scope.Kind == "execution" || scope.Kind == "experience_distill" || (scope.Kind == "document" && (scope.JobID != "" || scope.Action == "embedded_prepare_parse"))) {
@@ -230,7 +231,7 @@ func (s *Store) reserveModelCall(ctx context.Context, caller string, scope model
 		s.Telemetry().RecordQuotaRejection("model_budget")
 		return ModelCallLease{}, ErrModelBudgetExceeded
 	}
-	if err := authorizeModelScope(ctx, tx, caller, scope, current); err != nil {
+	if err := authorizeModelScope(ctx, tx, caller, scope, s.sel.Mode != config.ModeProduction, current); err != nil {
 		return ModelCallLease{}, err
 	}
 	if scope.Action == "embedded_prepare_parse" {
@@ -359,7 +360,7 @@ func authorizeFrozenModelConfiguration(ctx context.Context, tx pgx.Tx, scope mod
 	return nil
 }
 
-func authorizeModelScope(ctx context.Context, tx pgx.Tx, caller string, scope model.DelegatedScope, resolved ...accounts.User) error {
+func authorizeModelScope(ctx context.Context, tx pgx.Tx, caller string, scope model.DelegatedScope, allowLocalDemo bool, resolved ...accounts.User) error {
 	if (caller == "worker" && scope.Kind != "execution" && scope.Kind != "experience_distill") || (caller == "document" && scope.Kind != "document") ||
 		(caller != "worker" && caller != "document") || scope.TenantID == "" || scope.OrgID == "" || scope.CaseID == "" || scope.ActorID == "" {
 		return ErrModelScopeUnavailable
@@ -377,9 +378,9 @@ func authorizeModelScope(ctx context.Context, tx pgx.Tx, caller string, scope mo
 			JOIN cases c ON c.id=j.case_id AND c.tenant_id=j.tenant_id AND c.org_id=j.org_id
 			WHERE j.id=$1 AND j.kind='experience_distill' AND j.worker_id=$2 AND j.generation=$3
 			AND j.tenant_id=$4 AND j.org_id=$5 AND j.case_id=$6 AND j.actor_id=$7
-			AND j.state='running' AND j.lease_until>clock_timestamp() AND i.actor_id=j.actor_id
+			AND j.state='running' AND j.lease_until>clock_timestamp() AND tenant_runtime_fence(j.tenant_id,j.tenant_live_epoch,$9) AND i.actor_id=j.actor_id
 			AND i.tenant_id=j.tenant_id AND i.org_id=j.org_id AND i.case_id=j.case_id AND i.input_sha256=$8`,
-			scope.JobID, scope.WorkerID, scope.Generation, scope.TenantID, scope.OrgID, scope.CaseID, scope.ActorID, scope.InputSHA256).
+			scope.JobID, scope.WorkerID, scope.Generation, scope.TenantID, scope.OrgID, scope.CaseID, scope.ActorID, scope.InputSHA256, allowLocalDemo).
 			Scan(&caseItem.ID, &caseItem.TenantID, &caseItem.OwnerOrgID, &caseItem.OwnerID, &memberJSON)
 		if err != nil {
 			return ErrModelScopeUnavailable
@@ -396,12 +397,13 @@ func authorizeModelScope(ctx context.Context, tx pgx.Tx, caller string, scope mo
 			JOIN cases c ON c.id=j.case_id
 			WHERE j.id=$1 AND j.worker_id=$2 AND j.generation=$3 AND j.tenant_id=$4 AND j.org_id=$5 AND j.case_id=$6
 			AND j.run_id=$7 AND j.attempt_id=$8 AND j.actor_id=$9 AND j.state='running' AND j.lease_until>clock_timestamp()
+			AND tenant_runtime_fence(j.tenant_id,j.tenant_live_epoch,$10)
 			AND r.case_id=j.case_id AND r.state='running' AND a.actor_id=j.actor_id AND a.state IN ('accepted','running')`
-		args := []any{scope.JobID, scope.WorkerID, scope.Generation, scope.TenantID, scope.OrgID, scope.CaseID, scope.RunID, scope.AttemptID, scope.ActorID}
+		args := []any{scope.JobID, scope.WorkerID, scope.Generation, scope.TenantID, scope.OrgID, scope.CaseID, scope.RunID, scope.AttemptID, scope.ActorID, allowLocalDemo}
 		if caller == "document" {
 			query += ` AND EXISTS (SELECT 1 FROM review_attempt_parse_selections p
 				JOIN documents d ON d.id=p.document_id AND d.case_id=c.id AND d.tenant_id=c.tenant_id AND d.org_id=c.org_id
-				WHERE p.attempt_id=a.id AND p.run_id=r.id AND p.document_id=$10 AND p.parsed_document_id=$11)`
+				WHERE p.attempt_id=a.id AND p.run_id=r.id AND p.document_id=$11 AND p.parsed_document_id=$12)`
 			args = append(args, scope.DocumentID, scope.ParseSelectionID)
 		}
 		if err := tx.QueryRow(ctx, query, args...).Scan(&caseItem.ID, &caseItem.TenantID, &caseItem.OwnerOrgID, &caseItem.OwnerID, &memberJSON); err != nil {
@@ -495,7 +497,7 @@ func (s *Store) ReauthorizeModelScope(ctx context.Context, caller string, scope 
 	if err := setLocalScope(ctx, tx, dbScope{ActorID: "model-gateway", Role: "model", TenantID: scope.TenantID, OrgID: scope.OrgID}); err != nil {
 		return err
 	}
-	if err := authorizeModelScope(ctx, tx, caller, scope, current); err != nil {
+	if err := authorizeModelScope(ctx, tx, caller, scope, s.sel.Mode != config.ModeProduction, current); err != nil {
 		return err
 	}
 	return tx.Commit(ctx)
@@ -506,7 +508,7 @@ func (s *Store) authorizeModelScope(ctx context.Context, tx pgx.Tx, caller strin
 	if err != nil {
 		return ErrModelScopeUnavailable
 	}
-	return authorizeModelScope(ctx, tx, caller, scope, u)
+	return authorizeModelScope(ctx, tx, caller, scope, s.sel.Mode != config.ModeProduction, u)
 }
 
 // Only model ledger reservation and reauthorization may use an OCR child proof

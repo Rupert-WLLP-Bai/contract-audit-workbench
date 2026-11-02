@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "schema_version": 34,
+  "schema_version": 35,
   "relations": [
     {
       "name": "activity",

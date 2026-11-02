@@ -10,7 +10,11 @@ import (
 
 // claimScheduledJob runs under the deployment queue lock. The job lease itself
 // reserves one execution slot; expired leases cannot renew or commit results.
-func claimScheduledJob(ctx context.Context, tx pgx.Tx, worker string, lease time.Duration, cfg *queueConfiguration) (JobClaim, error) {
+func claimScheduledJob(ctx context.Context, tx pgx.Tx, worker string, lease time.Duration, cfg *queueConfiguration, allowLocalDemo ...bool) (JobClaim, error) {
+	allowDemo := true
+	if len(allowLocalDemo) != 0 {
+		allowDemo = allowLocalDemo[0]
+	}
 	cursor, err := lockQueue(ctx, tx, cfg)
 	if err != nil {
 		return JobClaim{}, err
@@ -39,11 +43,12 @@ func claimScheduledJob(ctx context.Context, tx pgx.Tx, worker string, lease time
 		var deficit int
 		err := tx.QueryRow(ctx, `SELECT t.tenant_id,t.deficit FROM execution_queue_tenants t
 			WHERE EXISTS (SELECT 1 FROM worker_jobs j WHERE j.tenant_id=t.tenant_id AND
+				tenant_runtime_fence(j.tenant_id,j.tenant_live_epoch,$3) AND
 				((j.state='queued' AND j.ready_at<=clock_timestamp()) OR
 				(j.state='running' AND j.lease_until<=clock_timestamp() AND (j.ready_at<=clock_timestamp() OR j.deadline_at<=clock_timestamp()))))
 			AND (SELECT count(*) FROM worker_jobs a WHERE a.tenant_id=t.tenant_id AND a.state='running' AND a.lease_until>clock_timestamp())<$2
 			ORDER BY CASE WHEN t.tenant_id=$1 AND t.deficit>0 THEN 0 WHEN t.tenant_id>$1 THEN 1 ELSE 2 END,t.tenant_id
-			LIMIT 1 FOR UPDATE OF t SKIP LOCKED`, cursor, cfg.TenantInFlight).Scan(&tenant, &deficit)
+			LIMIT 1 FOR UPDATE OF t SKIP LOCKED`, cursor, cfg.TenantInFlight, allowDemo).Scan(&tenant, &deficit)
 		if err != nil {
 			return JobClaim{}, err
 		}
@@ -53,13 +58,14 @@ func claimScheduledJob(ctx context.Context, tx pgx.Tx, worker string, lease time
 		var eligibleAt, claimedAt time.Time
 		var createdAt string
 		err = tx.QueryRow(ctx, `SELECT id,tenant_id,org_id,case_id,COALESCE(run_id,''),COALESCE(attempt_id,''),actor_id,kind,state='running',claim_count,max_claims,deadline_at,deadline_at<=clock_timestamp(),created_at,
+			tenant_live_epoch,
 			CASE WHEN state='queued' THEN ready_at ELSE GREATEST(lease_until,LEAST(ready_at,deadline_at)) END
-			FROM worker_jobs WHERE tenant_id=$1 AND
+			FROM worker_jobs WHERE tenant_id=$1 AND tenant_runtime_fence(tenant_id,tenant_live_epoch,$2) AND
 			((state='queued' AND ready_at<=clock_timestamp()) OR
 			(state='running' AND lease_until<=clock_timestamp() AND (ready_at<=clock_timestamp() OR deadline_at<=clock_timestamp())))
-			ORDER BY created_at,id LIMIT 1 FOR UPDATE SKIP LOCKED`, tenant).Scan(
+			ORDER BY created_at,id LIMIT 1 FOR UPDATE SKIP LOCKED`, tenant, allowDemo).Scan(
 			&claim.JobID, &claim.TenantID, &claim.OrgID, &claim.CaseID, &claim.RunID, &claim.AttemptID, &claim.ActorID, &claim.Kind, &claim.reclaimed,
-			&count, &maxClaims, &claim.deadline, &expired, &createdAt, &eligibleAt)
+			&count, &maxClaims, &claim.deadline, &expired, &createdAt, &claim.TenantLiveEpoch, &eligibleAt)
 		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 			return JobClaim{}, err
 		}
@@ -94,7 +100,7 @@ func claimScheduledJob(ctx context.Context, tx pgx.Tx, worker string, lease time
 		err = tx.QueryRow(ctx, `UPDATE worker_jobs SET state='running',generation=generation+1,claim_count=claim_count+1,worker_id=$2,
 			lease_until=clock_timestamp()+($3::bigint*interval '1 microsecond'),heartbeat_at=clock_timestamp(),
 			ready_at=clock_timestamp()+(($3::bigint+$4::bigint)*interval '1 microsecond'),updated_at=$5
-			WHERE id=$1 RETURNING generation,lease_until,clock_timestamp()`, claim.JobID, worker, lease.Microseconds(), delay.Microseconds(), stamp()).Scan(&claim.Generation, &claim.LeaseUntil, &claimedAt)
+			WHERE id=$1 AND tenant_live_epoch=$6 AND tenant_runtime_fence(tenant_id,tenant_live_epoch,$7) RETURNING generation,lease_until,clock_timestamp()`, claim.JobID, worker, lease.Microseconds(), delay.Microseconds(), stamp(), claim.TenantLiveEpoch, allowDemo).Scan(&claim.Generation, &claim.LeaseUntil, &claimedAt)
 		if err != nil {
 			return JobClaim{}, err
 		}
@@ -124,7 +130,11 @@ func claimScheduledJob(ctx context.Context, tx pgx.Tx, worker string, lease time
 // scheduler's own predicates stay authoritative: a true result can still end in
 // no claim, and a false result cannot hide claimable work because it uses the
 // same job-level eligibility.
-func (s *Store) hasClaimableJob(ctx context.Context, workerID string) (bool, error) {
+func (s *Store) hasClaimableJob(ctx context.Context, workerID string, allowLocalDemo ...bool) (bool, error) {
+	allowDemo := true
+	if len(allowLocalDemo) != 0 {
+		allowDemo = allowLocalDemo[0]
+	}
 	tx, err := s.beginContextTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return false, err
@@ -134,9 +144,9 @@ func (s *Store) hasClaimableJob(ctx context.Context, workerID string) (bool, err
 		return false, err
 	}
 	var exists bool
-	if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM worker_jobs WHERE
-		(state='queued' AND ready_at<=clock_timestamp()) OR
-		(state='running' AND lease_until<=clock_timestamp() AND (ready_at<=clock_timestamp() OR deadline_at<=clock_timestamp())))`).Scan(&exists); err != nil {
+	if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM worker_jobs WHERE tenant_runtime_fence(tenant_id,tenant_live_epoch,$1) AND
+		((state='queued' AND ready_at<=clock_timestamp()) OR
+		(state='running' AND lease_until<=clock_timestamp() AND (ready_at<=clock_timestamp() OR deadline_at<=clock_timestamp()))))`, allowDemo).Scan(&exists); err != nil {
 		return false, err
 	}
 	if err := tx.Commit(ctx); err != nil {
