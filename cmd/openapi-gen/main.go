@@ -3,6 +3,8 @@
 package main
 
 import (
+	"bytes"
+	"flag"
 	"fmt"
 	"go/ast"
 	"go/parser"
@@ -16,13 +18,15 @@ import (
 )
 
 func main() {
-	if err := generate(); err != nil {
+	check := flag.Bool("check", false, "fail if generated OpenAPI JSON is stale")
+	flag.Parse()
+	if err := generate(*check); err != nil {
 		_, _ = os.Stderr.WriteString("openapi-gen: " + err.Error() + "\n")
 		os.Exit(1)
 	}
 }
 
-func generate() error {
+func generate(check bool) error {
 	root, err := repositoryRoot()
 	if err != nil {
 		return err
@@ -34,7 +38,18 @@ func generate() error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(filepath.Join(root, "internal/apidocs/openapi.json"), data, 0o644)
+	target := filepath.Join(root, "internal/apidocs/openapi.json")
+	if check {
+		current, err := os.ReadFile(target)
+		if err != nil {
+			return err
+		}
+		if !bytes.Equal(current, data) {
+			return fmt.Errorf("%s is stale; run make generate-openapi", filepath.Join("internal", "apidocs", "openapi.json"))
+		}
+		return nil
+	}
+	return os.WriteFile(target, data, 0o644)
 }
 
 func repositoryRoot() (string, error) {
@@ -62,7 +77,7 @@ func checkRegisteredRoutes(root string) error {
 		if walkErr != nil {
 			return walkErr
 		}
-		if entry.IsDir() || !strings.HasSuffix(path, ".go") {
+		if entry.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
 			return nil
 		}
 		file, err := parser.ParseFile(token.NewFileSet(), path, nil, 0)
@@ -70,7 +85,24 @@ func checkRegisteredRoutes(root string) error {
 			return err
 		}
 		ast.Inspect(file, func(node ast.Node) bool {
-			lit, ok := node.(*ast.BasicLit)
+			var literal ast.Expr
+			switch value := node.(type) {
+			case *ast.CallExpr:
+				selector, ok := value.Fun.(*ast.SelectorExpr)
+				if ok && (selector.Sel.Name == "HandleFunc" || selector.Sel.Name == "Handle") && len(value.Args) > 0 {
+					literal = value.Args[0]
+				}
+			case *ast.CompositeLit:
+				ident, ok := value.Type.(*ast.Ident)
+				if ok && ident.Name == "routeBinding" && len(value.Elts) > 0 {
+					if kv, ok := value.Elts[0].(*ast.KeyValueExpr); ok {
+						literal = kv.Value
+					} else {
+						literal = value.Elts[0]
+					}
+				}
+			}
+			lit, ok := literal.(*ast.BasicLit)
 			if !ok || lit.Kind != token.STRING {
 				return true
 			}
@@ -79,13 +111,9 @@ func checkRegisteredRoutes(root string) error {
 				return true
 			}
 			parts := strings.Fields(value)
-			if len(parts) == 2 && strings.HasPrefix(parts[1], "/") {
-				switch parts[0] {
-				case "GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD", "TRACE":
-					registered[parts[0]+" "+parts[1]] = true
-				}
+			if len(parts) == 2 && strings.HasPrefix(parts[1], "/") && isHTTPMethod(parts[0]) {
+				registered[parts[0]+" "+parts[1]] = true
 			} else if len(parts) == 1 && strings.HasPrefix(parts[0], "/") {
-				// Plain paths are ServeMux registrations that accept all methods.
 				registered["* "+parts[0]] = true
 			}
 			return true
@@ -113,5 +141,45 @@ func checkRegisteredRoutes(root string) error {
 			}
 		}
 	}
+	covered := map[string]bool{}
+	for path, item := range apidocs.SourceContract().Paths {
+		for _, present := range []struct {
+			method string
+			yes    bool
+		}{{"GET", item.Get != nil}, {"POST", item.Post != nil}, {"PUT", item.Put != nil}, {"PATCH", item.Patch != nil}, {"DELETE", item.Delete != nil}, {"HEAD", item.Head != nil}, {"OPTIONS", item.Options != nil}, {"TRACE", item.Trace != nil}} {
+			if present.yes {
+				covered[present.method+" "+path] = true
+			}
+		}
+	}
+	for route := range registered {
+		method, path, _ := strings.Cut(route, " ")
+		if !strings.HasPrefix(path, "/api/") {
+			continue
+		} // health and internal prefix dispatch are checked only document-to-registration.
+		if method == "*" {
+			found := false
+			for candidate := range covered {
+				_, p, _ := strings.Cut(candidate, " ")
+				if p == path {
+					found = true
+					break
+				}
+			}
+			if !found {
+				return fmt.Errorf("public route %s has no OpenAPI operation", path)
+			}
+		} else if !covered[route] {
+			return fmt.Errorf("public route %s has no OpenAPI operation", route)
+		}
+	}
 	return nil
+}
+
+func isHTTPMethod(method string) bool {
+	switch method {
+	case "GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD", "TRACE":
+		return true
+	}
+	return false
 }
