@@ -512,6 +512,16 @@ class GateAdapterFixture(unittest.TestCase):
         with self.assertRaisesRegex(ga.GateError, 'cannot remove or weaken an existing file class'):
             self.prepare_legacy_foundation(weaken_policy=True)
 
+    def test_foundation_accepts_only_exact_glossary_generated_catalog(self):
+        base = json.loads(json.dumps(self.policy_data)) if hasattr(self, 'policy_data') else json.loads(json.dumps(self.policy))
+        base['file_classes'] = [x for x in base['file_classes'] if x['id'] != lb.GLOSSARY_VIEWS_RULE['id']]
+        candidate = json.loads(json.dumps(base))
+        candidate['file_classes'].insert(0, json.loads(json.dumps(lb.GLOSSARY_VIEWS_RULE)))
+        ga._validate_foundation_delta(base, candidate, self.schema, self.schema)
+        candidate['file_classes'][0]['inputs'] = ['other.json']
+        with self.assertRaisesRegex(ga.GateError, 'foundation may add only literal classes'):
+            ga._validate_foundation_delta(base, candidate, self.schema, self.schema)
+
     def test_legacy_transition_rejects_schema_constraint_weakening(self):
         with self.assertRaisesRegex(ga.GateError, 'schema changed constraints outside additive reviewed enum values'):
             self.prepare_legacy_foundation(weaken_schema=True)

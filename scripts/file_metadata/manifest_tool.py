@@ -332,10 +332,12 @@ def validate_record(path, rec, policy):
         if (not isinstance(exc, dict) or exc.get("path", path) != path or exc.get("source") != path
                 or exc.get("rule_id") != rule["id"] or len(exc.get("reason", "")) < 12):
             raise ManifestError(f"{path}: exact path-specific exception missing")
-    if rule["id"] == "generated-wire-types":
-        gen = rec.get("generator", {})
-        if gen.get("tool") != "scripts/generate_openapi_types.py" or gen.get("inputs") != ["internal/apidocs/openapi.json"]:
-            raise ManifestError(f"{path}: generator provenance mismatch")
+    expected_generators = {
+        "generated-wire-types": {"tool": "scripts/generate_openapi_types.py", "inputs": ["internal/apidocs/openapi.json"]},
+        "generated-glossary-views": {"tool": "scripts/check_glossary.py --write-views", "inputs": ["docs/glossary/concepts.json"]},
+    }
+    if rule["id"] in expected_generators and rec.get("generator") != expected_generators[rule["id"]]:
+        raise ManifestError(f"{path}: generator provenance mismatch")
     if rule["handling"] == "header-and-manifest":
         ext = path.rsplit("/", 1)[-1]
         kind = "go" if ext.endswith(".go") else "python" if ext.endswith(".py") else "typescript" if ext.endswith((".ts", ".tsx")) else "shell" if ext.endswith(".sh") else "html" if ext.endswith((".html", ".md")) else "css" if ext.endswith(".css") else "hash-config"

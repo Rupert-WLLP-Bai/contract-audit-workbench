@@ -298,6 +298,8 @@ def _validate_foundation_delta(base_policy: dict, candidate_policy: dict,
         if class_id in old_by_id:
             continue
         paths = rule.get("paths")
+        if rule == lb.GLOSSARY_VIEWS_RULE:
+            continue
         if (not isinstance(paths, list) or not paths or "patterns" in rule or
                 not set(paths) <= FOUNDATION_TOOL_PATHS or
                 rule.get("handling") not in SUPPORTED_HANDLING):

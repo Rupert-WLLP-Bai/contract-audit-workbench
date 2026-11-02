@@ -11,7 +11,7 @@ HERE=Path(__file__).resolve().parent
 sys.path.insert(0,str(HERE))
 from legacy_bootstrap import (BootstrapError, ALLOWED_BRIDGE_ADDITIONS, verify_bridge_trees,
     match_purpose, _window_revision, _same_earliest_created, _verify_created,
-    prepare_policy_delta, _validate_bootstrap_record, _exception_for, _record_new)
+    prepare_policy_delta, _validate_bootstrap_record, _exception_for, _record_new, GLOSSARY_VIEWS_RULE)
 from git_inventory import GitRepo, TreeEntry
 from metadata_core import STYLES, insert_header
 import manifest_tool as mt
@@ -58,6 +58,25 @@ class BootstrapGuards(unittest.TestCase):
         self.assertEqual(rec['authors'][0]['name'], 'unknown')
         self.assertEqual(rec['copyright'][0]['holder'], 'unknown')
 
+    def test_glossary_generated_record_preserves_exact_tool_and_source(self):
+        policy_data = json.loads((HERE / 'testdata' / 'anchor-policy.json').read_text())
+        policy_data['file_classes'].insert(0, GLOSSARY_VIEWS_RULE)
+        policy = mt.Policy(policy_data)
+        schema = mt.load_json(HERE.parents[1] / 'scripts/file_metadata/schema.json')
+        evidence = SimpleNamespace(value='unknown', source={'kind':'unknown', 'reason':'No traceable history exists for this fixture.'})
+        repo = SimpleNamespace(path_provenance=lambda *args, **kwargs: SimpleNamespace(created=evidence, updated=evidence))
+        proposal = {'purpose':'Derived glossary reading view presents the canonical concept data.',
+                    'authors':[{'name':'unknown','role':'unknown','source':'Source not established for this fixture.'}],
+                    'copyright':[{'holder':'unknown','notice':'unknown','source':'Rights not established for this fixture.'}]}
+        for path in GLOSSARY_VIEWS_RULE['paths']:
+            rec = _record_new(path, None, proposal, policy, repo, 'a'*40, schema)
+            self.assertEqual(rec['handling'], 'generated-manifest-only')
+            self.assertEqual(rec['generator'], {'tool':'scripts/check_glossary.py --write-views', 'inputs':['docs/glossary/concepts.json']})
+            mt.validate_record(path, rec, policy)
+            rec['generator']['inputs'] = ['other.json']
+            with self.assertRaisesRegex(mt.ManifestError, 'generator provenance mismatch'):
+                mt.validate_record(path, rec, policy)
+
     def test_header_only_oid_change_keeps_revision_and_chmod_increments(self):
         path='fixture.py'; body=b'print("fixture")\n'
         rec={'purpose':'Fixture script prints one fixed value.','authors':[{'name':'Bai Junhao','email':'baijunhao@cq.chinamobile.com','contact':'+86 13617696321'}],
@@ -103,6 +122,7 @@ class BootstrapGuards(unittest.TestCase):
             return TreeEntry(path,path.encode(),'100644','blob',oid,b'fixture')
         paths={'docs-site/bun.lock','docs-site/docusaurus.config.js','docs-site/sidebars.js',
                'docs/engineering/file-metadata.md','web/public/huangjueshu-competition-logo.png',
+               *GLOSSARY_VIEWS_RULE['paths'],
                'internal/store/migrations/0027_contract_signing.sql','internal/store/migrations/0028_contract_fulfillment.sql',
                'internal/store/migrations/0029_contract_payments.sql','internal/store/migrations/0030_contract_assets.sql',
                'internal/store/migrations/0031_contract_source_observations.sql','internal/store/migrations/0032_clm_outbox_metrics.sql',
@@ -111,7 +131,10 @@ class BootstrapGuards(unittest.TestCase):
         subject={p:entry(p) for p in paths}
         candidate,delta=prepare_policy_delta(anchor_policy,'f'*40,anchor,subject)
         policy=mt.Policy(candidate)
-        for path in paths: self.assertEqual(policy.classify(path)['handling'],'manifest-only')
+        for path in paths:
+            want = 'generated-manifest-only' if path in GLOSSARY_VIEWS_RULE['paths'] else 'manifest-only'
+            self.assertEqual(policy.classify(path)['handling'],want)
+        self.assertEqual(policy.classify('docs/glossary/other.md')['handling'], 'header-and-manifest')
         self.assertIsNone(policy.classify('docs-site/unknown.js'))
         self.assertIsNone(policy.classify('internal/store/migrations/0033_unreviewed.sql'))
         self.assertEqual(delta['source_anchor_policy_blob_oid'],'f'*40)
@@ -123,6 +146,7 @@ class BootstrapGuards(unittest.TestCase):
             anchor_policy=json.load(stream)
         all_paths={'docs-site/bun.lock','docs-site/docusaurus.config.js','docs-site/sidebars.js',
                    'docs/engineering/file-metadata.md','web/public/huangjueshu-competition-logo.png',
+               *GLOSSARY_VIEWS_RULE['paths'],
                    'internal/store/migrations/0027_contract_signing.sql',
                    'internal/store/migrations/0028_contract_fulfillment.sql',
                    'internal/store/migrations/0029_contract_payments.sql',
