@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"image"
 	"image/png"
 	"io"
@@ -39,6 +40,90 @@ import (
 
 const documentWorkerKey = "document-worker-test-private-key-1234567890"
 
+// Preserve real responses while retaining only safe failure-boundary metadata.
+type intakeDiagnostics struct {
+	mu     sync.Mutex
+	events []string
+}
+
+func (d *intakeDiagnostics) record(event string) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.events = append(d.events, event)
+}
+
+func (d *intakeDiagnostics) snapshot() []string {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return append([]string(nil), d.events...)
+}
+
+func (d *intakeDiagnostics) observe(next http.Handler) http.Handler {
+	if d == nil {
+		return next
+	}
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		boundary := map[string]string{
+			"/internal/v1/document/intake-authority":    "core_intake_authority",
+			"/internal/v1/document/operation-authority": "core_document_operation",
+			"/internal/v1/intake-uploads":               "document_upload",
+		}[r.URL.Path]
+		if boundary == "" {
+			next.ServeHTTP(w, r)
+			return
+		}
+		response := httptest.NewRecorder()
+		next.ServeHTTP(response, r)
+		code := "none"
+		if response.Code >= http.StatusBadRequest {
+			var failure struct {
+				Code  string          `json:"code"`
+				Error json.RawMessage `json:"error"`
+			}
+			var nested struct {
+				Code string `json:"code"`
+			}
+			_ = json.Unmarshal(response.Body.Bytes(), &failure)
+			_ = json.Unmarshal(failure.Error, &nested)
+			code = failure.Code
+			if code == "" {
+				code = nested.Code
+			}
+			if code == "" || len(code) > 64 || strings.Trim(code, "abcdefghijklmnopqrstuvwxyz0123456789_") != "" {
+				code = "unclassified"
+			}
+		}
+		d.record(fmt.Sprintf("%s status=%d code=%s", boundary, response.Code, code))
+		for key, values := range response.Header() {
+			w.Header()[key] = append([]string(nil), values...)
+		}
+		w.WriteHeader(response.Code)
+		_, _ = w.Write(response.Body.Bytes())
+	})
+}
+
+type observedIntakeUploader struct {
+	delegate store.CaseIntakeUploader
+	trace    *intakeDiagnostics
+}
+
+func (u observedIntakeUploader) UploadPrimaryContract(ctx context.Context, caseID string, request store.PrimaryContractUploadRequest) (store.DocumentUploadResult, error) {
+	result, err := u.delegate.UploadPrimaryContract(ctx, caseID, request)
+	category := "succeeded"
+	if err != nil {
+		category = "client_error"
+		if strings.HasPrefix(err.Error(), "document intake upload returned HTTP ") {
+			category = "http_error"
+		} else if strings.HasPrefix(err.Error(), "decode document intake upload response:") {
+			category = "response_decode_error"
+		} else if strings.HasPrefix(err.Error(), "document intake upload request failed:") {
+			category = "transport_error"
+		}
+	}
+	u.trace.record("core_upload_client category=" + category)
+	return result, err
+}
+
 type serviceEnvironment struct {
 	ctx                               context.Context
 	db                                *pgx.Conn
@@ -52,8 +137,12 @@ type serviceEnvironment struct {
 	intakeUploader                    store.CaseIntakeUploader
 }
 
-func newServiceEnvironment(t *testing.T, upstream http.Handler) *serviceEnvironment {
+func newServiceEnvironment(t *testing.T, upstream http.Handler, diagnostics ...*intakeDiagnostics) *serviceEnvironment {
 	t.Helper()
+	var trace *intakeDiagnostics
+	if len(diagnostics) > 0 {
+		trace = diagnostics[0]
+	}
 	base, migrator := os.Getenv("TEST_DATABASE_URL"), os.Getenv("MIGRATOR_DATABASE_URL")
 	if base == "" || migrator == "" {
 		t.Skip("isolated PostgreSQL and migrator are required")
@@ -147,7 +236,7 @@ func newServiceEnvironment(t *testing.T, upstream http.Handler) *serviceEnvironm
 	if err != nil {
 		t.Fatal(err)
 	}
-	coreAuthorityServer := httptest.NewServer(coreAuthorityHandler)
+	coreAuthorityServer := httptest.NewServer(trace.observe(coreAuthorityHandler))
 	t.Cleanup(coreAuthorityServer.Close)
 	env.coreAuthorityURL = coreAuthorityServer.URL
 	t.Setenv("CORE_AUTHORITY_URL", coreAuthorityServer.URL)
@@ -166,7 +255,7 @@ func newServiceEnvironment(t *testing.T, upstream http.Handler) *serviceEnvironm
 	if err != nil {
 		t.Fatal(err)
 	}
-	server := httptest.NewServer(document.Handler(http.NotFoundHandler()))
+	server := httptest.NewServer(trace.observe(document.Handler(http.NotFoundHandler())))
 	t.Cleanup(server.Close)
 	env.documentURL = server.URL
 	t.Setenv("DOCUMENT_SERVICE_URL", server.URL)
@@ -272,12 +361,14 @@ func (env *serviceEnvironment) reviewClaim(t *testing.T, ocrDraft bool) (string,
 }
 
 func TestDistributedDocumentIntakeRedeemsCoreTicket(t *testing.T) {
-	env := newServiceEnvironment(t, http.NotFoundHandler())
+	trace := &intakeDiagnostics{}
+	env := newServiceEnvironment(t, http.NotFoundHandler(), trace)
 	token, err := env.core.Store.EstablishSession(env.actor, "client")
 	if err != nil {
 		t.Fatal(err)
 	}
-	api := httptest.NewServer(httpapi.Handler(env.core.Store, httpapi.Options{IntakeUploader: env.intakeUploader}))
+	uploader := observedIntakeUploader{delegate: env.intakeUploader, trace: trace}
+	api := httptest.NewServer(httpapi.Handler(env.core.Store, httpapi.Options{IntakeUploader: uploader}))
 	defer api.Close()
 	var payload bytes.Buffer
 	writer := multipart.NewWriter(&payload)
@@ -321,7 +412,7 @@ func TestDistributedDocumentIntakeRedeemsCoreTicket(t *testing.T) {
 		t.Fatal(err)
 	}
 	if response.StatusCode != http.StatusCreated {
-		t.Fatalf("distributed intake status=%d body=%s", response.StatusCode, body)
+		t.Fatalf("distributed intake status=%d boundaries=%v", response.StatusCode, trace.snapshot())
 	}
 	var receipt struct {
 		OperationID string `json:"operation_id"`
@@ -331,7 +422,7 @@ func TestDistributedDocumentIntakeRedeemsCoreTicket(t *testing.T) {
 		MaterialID  string `json:"material_id"`
 	}
 	if err := json.Unmarshal(body, &receipt); err != nil || receipt.State != "completed" || receipt.DocumentID == "" || receipt.MaterialID == "" {
-		t.Fatalf("distributed intake receipt=%+v err=%v body=%s", receipt, err, body)
+		t.Fatalf("distributed intake completed receipt invalid: decode_failed=%t boundaries=%v", err != nil, trace.snapshot())
 	}
 	operation, err := env.core.Store.GetCaseIntake(env.ctx, env.actor, receipt.OperationID)
 	if err != nil || operation.Status != "completed" || operation.CaseID != receipt.CaseID {
