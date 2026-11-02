@@ -432,6 +432,12 @@ func TestModelBudgetRoleIsolationAndFunctionPrivileges(t *testing.T) {
 		t.Fatal(err)
 	}
 	for i, tenantID := range tenantIDs {
+		// Projection triggers require a registered tenant before business rows.
+		if _, err := insertTx.Exec(ctx, `INSERT INTO identity_tenants(tenant_id,display_name,status)
+			VALUES ($1,'Budget role isolation tenant','active')`, tenantID); err != nil {
+			_ = insertTx.Rollback(ctx)
+			t.Fatal(err)
+		}
 		if err := setLocalScope(ctx, insertTx, dbScope{ActorID: "budget-role-test", Role: "api", TenantID: tenantID, OrgID: "budget-role-org"}); err != nil {
 			_ = insertTx.Rollback(ctx)
 			t.Fatal(err)
