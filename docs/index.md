@@ -22,6 +22,7 @@
 - [本地开发](engineering/local-development.md)
 - [检查与验收](engineering/verification.md)
 - [贡献与协作](engineering/contributing.md)
+- [用户上手与扩展指南](engineering/community-guide.md)
 
 ## 架构
 
@@ -32,6 +33,8 @@
 ## 运维
 
 - [部署模式](operations/deployment.md)
+- [多租户身份与运营支持](operations/multi-company-operations.md)
+- [备份、恢复与租户生命周期边界](operations/tenant-restore.md)
 - [本地 k3d 演练](operations/k3d.md)
 - [MinerU 本地 OCR](operations/ocr-mineru.md)
 - [真实语料联调](operations/integrations.md)

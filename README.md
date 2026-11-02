@@ -16,7 +16,7 @@
 
 系统支持案件材料准备、冻结审查尝试、版本化规则和知识、人工决定、整改复核与报告。模型输出只是建议；引用必须与本次尝试冻结原文相匹配。租户、组织、角色和案件范围由服务端校验。工具网关只读，外部系统写回须经人工授权。
 
-合同、不可变版本、案件关联、草稿、存量导入来源及部分顺序会签记录已有实现。PR [#144](https://github.com/Rupert-WLLP-Bai/contract-audit-workbench/pull/144) 已合入 main `1a9eae0`，增加本地付款条件核验、可信付款回执、固定资产移交与独立可信 ERP 回执记录；系统不发起银行转账或写回外部系统。当前兼容 schema 范围与迁移目录由 [`internal/store/migrations.go`](internal/store/migrations.go) 管理；应用连接会按 [`internal/store/pg.go`](internal/store/pg.go) 校验已应用迁移账本，启动不自动迁移。`/ready` 只检查服务自身数据库连接（见 [`internal/httpapi/health.go`](internal/httpapi/health.go)）。Schema 是存储兼容边界，不是产品版本。PR #144 的 `pr-fast-gate` 为 `PASS`，但目标环境部署、完整候选验收仍为 `NOT_RUN`。真实 finance/ERP 来源接入仍为 `BLOCKED`；本地资格核验和可信事实模型不代表外部系统已连接。
+合同、冻结审查、人工决定、规则治理和履约事实已有相应源码实现。功能状态以对应源码为准；迁移目录与兼容范围由 [`internal/store/migrations.go`](internal/store/migrations.go) 管理。应用连接会校验迁移账本，启动不自动迁移。Schema 是存储兼容边界，不是产品版本。目标环境部署、真实身份/外部系统接入、生产恢复和完整候选验收按实际证据记为 `NOT_RUN` 或 `BLOCKED`；源码能力不代表已部署或验收。
 
 ## 最短本地启动
 
@@ -60,7 +60,7 @@ API 默认在 `http://127.0.0.1:8080`，前端在 `http://127.0.0.1:5173`。配�
 - [贡献与协作](docs/engineering/contributing.md)
 - [许可与贡献](docs/engineering/licensing.md)
 
-根目录 `LICENSE` 文件标识为 `LicenseRef-CAW-NC-1.0.0`，版权标记为 Bai Junhao © 2026，文件注明日期 2026-11-01。文件所述许可仅覆盖约定的非商业用途；组织运营、商业部署、托管服务、独立发布或分发衍生版本须另行取得书面许可。文件允许公开 GitHub Fork 用于修改、测试并向上游提交 PR，该例外不授予商业使用、生产部署或站外分发权。第三方材料保留各自许可；本项目不宣称为 OSI 开源。许可及贡献条款以根目录 [LICENSE](LICENSE) 为准。详见[许可与贡献说明](docs/engineering/licensing.md)。
+本项目自有材料采用根目录 `LICENSE` 中的 Contract Audit Workbench Noncommercial Source-Available License 1.0.0（`LicenseRef-CAW-NC-1.0.0`），生效日期为 2026-11-01；这是限制性源码许可，不是 OSI 开源许可。许可范围、公开 GitHub Fork 例外、贡献授权和第三方材料边界详见根目录 [LICENSE](LICENSE) 与[许可与贡献说明](docs/engineering/licensing.md)。
 
 ## 源码边界
 
