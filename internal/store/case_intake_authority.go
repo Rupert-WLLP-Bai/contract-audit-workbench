@@ -54,6 +54,13 @@ func (s *Store) CreateDocumentIntakeTicket(ctx context.Context, user accounts.Us
 	ticketDigest := identityTokenDigest(ticket)
 	bodyHash := caseIntakeDigest(body)
 	sessionDigest := sessionTokenDigest(sessionToken)
+	proof, hasProof := contextProof(ctx)
+	contextVersion, versionErr := strconv.ParseInt(proof.version, 10, 64)
+	if !hasProof || proof.digest != sessionDigest || versionErr != nil || contextVersion < 1 || strconv.FormatInt(contextVersion, 10) != proof.version {
+		return "", fault.Unauthenticated("建案授权已失效")
+	}
+	// Keep the command's original version while rebuilding its user projection.
+	// beginContextTx rechecks this exact session proof through the final commit.
 	tx, err := s.beginContextTx(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted})
 	if err != nil {
 		return "", err
@@ -147,11 +154,7 @@ func (s *Store) CreateDocumentIntakeTicket(ctx context.Context, user accounts.Us
 		(ticket_digest,tenant_id,operation_id,session_digest,principal_id,membership_id,actor_id,org_id,case_id,upload_key,filename,media_type,body_sha256,action,expires_at,context_version)
 		VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,'create_primary_contract',clock_timestamp()+interval '2 minutes',$14)`,
 		ticketDigest, accounts.Tenant(current), operationID, sessionDigest, storedSession.PrincipalID, storedSession.MembershipID,
-		current.ID, current.OrgID, caseID, uploadKey, identity.FileName, identity.MediaType, bodyHash, func() int64 {
-			p, _ := current.CommandAuthority()
-			v, _ := strconv.ParseInt(p.ContextVersion, 10, 64)
-			return v
-		}()); err != nil {
+		current.ID, current.OrgID, caseID, uploadKey, identity.FileName, identity.MediaType, bodyHash, contextVersion); err != nil {
 		return "", err
 	}
 	if err := tx.Commit(ctx); err != nil {
