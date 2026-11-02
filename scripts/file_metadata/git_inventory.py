@@ -12,7 +12,7 @@ import re
 import subprocess
 from typing import Iterable
 
-from metadata_core import CommentStyle, content_changed, metadata_body
+from metadata_core import CommentStyle, MetadataError, content_changed, metadata_body
 
 MANIFEST_SELF_PATH = "scripts/file_metadata/manifest.json"
 SHA_RE = re.compile(rb"^[0-9a-f]{40,64}$")
@@ -257,19 +257,29 @@ class GitRepo:
             if after_path is None:
                 continue
             self._verify_path_blob(commit, after_path, change.new_oid, change.new_mode)
-            before_bytes = (
-                change.old_oid.encode("ascii") if change.old_mode == "160000"
-                else self.blob(change.old_oid) if change.old_mode != "000000"
-                else b""
-            )
-            after_bytes = (
-                change.new_oid.encode("ascii") if change.new_mode == "160000"
-                else self.blob(change.new_oid)
-            )
-            if _history_body_changed(before_bytes, after_bytes, change.old_mode, change.new_mode,
-                                     style, handling, file_kind):
-                if updated is None:
-                    updated = _git_evidence(timestamp, commit, after_path, "git-last-content-change", "latest traceable body-changing commit")
+            # Once the newest body change is known (or explicitly unknown),
+            # older commits only establish identity and creation. Parsing their
+            # bodies cannot change that conclusion and can be ambiguous.
+            if updated is None:
+                before_bytes = (
+                    change.old_oid.encode("ascii") if change.old_mode == "160000"
+                    else self.blob(change.old_oid) if change.old_mode != "000000"
+                    else b""
+                )
+                after_bytes = (
+                    change.new_oid.encode("ascii") if change.new_mode == "160000"
+                    else self.blob(change.new_oid)
+                )
+                try:
+                    changed = _history_body_changed(before_bytes, after_bytes, change.old_mode, change.new_mode,
+                                                    style, handling, file_kind)
+                except MetadataError as exc:
+                    updated = unknown_evidence(
+                        f"Cannot verify the latest content change for {path!r}: metadata parsing is ambiguous "
+                        f"at commit {commit} and its first-parent comparison ({exc}).")
+                else:
+                    if changed:
+                        updated = _git_evidence(timestamp, commit, after_path, "git-last-content-change", "latest traceable body-changing commit")
             if change.status.startswith("R"):
                 if change.old_path is None:
                     raise GitInventoryError("rename record is missing its old path")

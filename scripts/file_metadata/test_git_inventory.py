@@ -12,7 +12,7 @@ from git_inventory import (
     new_path_revision,
     revision_for_window,
 )
-from metadata_core import STYLES, insert_header
+from metadata_core import START, STYLES, insert_header
 
 
 def git(repo: Path, *args: str, env=None) -> bytes:
@@ -248,6 +248,33 @@ class GitInventoryTests(unittest.TestCase):
             evidence = GitRepo(repo).path_provenance("script.sh", subject=header_commit, style=STYLES["hash"], handling="header-and-manifest", file_kind="shell")
             self.assertEqual(evidence.created.source["commit"], first)
             self.assertEqual(evidence.updated.source["commit"], first)
+
+    def test_ambiguous_older_body_preserves_created_and_never_invents_updated(self):
+        with tempfile.TemporaryDirectory(prefix="file-meta-ambiguous-history-") as tmp:
+            repo = Path(tmp)
+            init_repo(repo)
+            path = repo / "fixture.py"
+            path.write_bytes(b"value = 1\n")
+            created = commit(repo, "initial source", "2026-02-01T00:00:00Z")
+            path.write_bytes(b"# " + START + b"\ninvalid fixture body\n")
+            commit(repo, "ambiguous historical source", "2026-02-02T00:00:00Z")
+            path.write_bytes(b"value = 2\n")
+            ambiguous = commit(repo, "restore ordinary source", "2026-02-03T00:00:00Z")
+            g = GitRepo(repo)
+            uncertain = g.path_provenance("fixture.py", subject=ambiguous, style=STYLES["hash"],
+                                          handling="header-and-manifest", file_kind="python")
+            self.assertEqual(uncertain.created.source["commit"], created)
+            self.assertEqual(uncertain.updated.value, "unknown")
+            self.assertEqual(uncertain.updated.source["kind"], "unknown")
+            self.assertIn(ambiguous, uncertain.updated.source["reason"])
+            self.assertIn("ambiguous", uncertain.updated.source["reason"])
+            path.write_bytes(b"value = 3\n")
+            latest = commit(repo, "later unambiguous body change", "2026-02-04T00:00:00Z")
+            known = g.path_provenance("fixture.py", subject=latest, style=STYLES["hash"],
+                                      handling="header-and-manifest", file_kind="python")
+            self.assertEqual(known.created.source["commit"], created)
+            self.assertEqual(known.updated.source["commit"], latest)
+            self.assertEqual(known.updated.value, "2026-02-04")
 
     def test_non_utf8_path_fails_with_reversible_hex_diagnostic(self):
         with tempfile.TemporaryDirectory(prefix="file-meta-nonutf-") as tmp:

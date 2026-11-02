@@ -87,7 +87,7 @@ class BootstrapGuards(unittest.TestCase):
         other = policy.classify('scripts/file_metadata/test_other.py')
         self.assertEqual(other['handling'], 'header-and-manifest')
         with self.assertRaises(MetadataError):
-            metadata_body(b'# File metadata (manifest mirror):\nmalformed\n', STYLES['hash'],
+            metadata_body(b'# File metadata ' + b'(manifest mirror):\nmalformed\n', STYLES['hash'],
                           other['handling'], file_kind='python', mode='100644')
 
     def test_header_only_oid_change_keeps_revision_and_chmod_increments(self):
