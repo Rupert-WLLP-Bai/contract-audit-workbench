@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: These are research cues from the archived supplemental article manifest, not adjudicated conditions and not substitutes for RulePack fact gates. Keeping them in the governed… Related `store` operations include supplementalLegalSummary.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-31
+// Updated: 2026-10-31
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package store
 
 import "fmt"

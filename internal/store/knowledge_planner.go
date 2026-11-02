@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: governedPlannerKnowledge operates only on the copied, reauthorized acceptance snapshot and the verified frozen review inputs. It never fetches newer versions. advisoryOutcome is… Related `store` operations include governedPlannerKnowledge, governedPlannerKnowledgeWithAdvisory, plannerKnowledgeReference, governedWords.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-28
+// Updated: 2026-10-28
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package store
 
 import (

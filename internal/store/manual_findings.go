@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: ManualFinding is a human-authored, append-only observation. It is separate from a frozen attempt's machine findings and from human decision history. Related `store` operations include validateManualFindingInput, scanManualFinding, manualFindingReplay, CreateManualFinding.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-31
+// Updated: 2026-11-02
+// Revision: r2
+// Copyright: See LICENSE
+// End file metadata.
+
 package store
 
 import (

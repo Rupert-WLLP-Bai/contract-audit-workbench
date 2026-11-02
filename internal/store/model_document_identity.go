@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: authorizeFrozenDocumentConfiguration reconstructs the accepted parse identity from the persisted selection and the provider chosen by the gateway. The caller's identity is… Related `store` operations include authorizeFrozenDocumentConfiguration.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-30
+// Updated: 2026-10-30
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package store
 
 import (

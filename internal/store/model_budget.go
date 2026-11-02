@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: ReserveModelCall validates the delegated identity and reserves one physical call, its conservative token upper bound, and global and tenant quotas in one PostgreSQL transaction. Related `store` operations include ReserveModelCall, ReserveModelChatCall, reserveModelCall, FinishModelCall.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-25
+// Updated: 2026-11-02
+// Revision: r2
+// Copyright: See LICENSE
+// End file metadata.
+
 package store
 
 import (
