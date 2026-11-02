@@ -464,6 +464,9 @@ func MigrateServiceRoles(ctx context.Context) error {
 	if executionRoleName == "" {
 		return errors.New("execution database role is not configured for review admission binding")
 	}
+	if _, err := tx.Exec(ctx, `GRANT EXECUTE ON FUNCTION `+pgx.Identifier{schema}.Sanitize()+`.tenant_config_control(text) TO `+pgx.Identifier{executionRoleName}.Sanitize()); err != nil {
+		return fmt.Errorf("cannot grant execution tenant config read: %w", err)
+	}
 	if _, err := tx.Exec(ctx, `GRANT EXECUTE ON FUNCTION `+pgx.Identifier{schema}.Sanitize()+`.tenant_review_job_epoch_matches(text) TO `+pgx.Identifier{executionRoleName}.Sanitize()); err != nil {
 		return fmt.Errorf("cannot grant review job epoch verifier: %w", err)
 	}
