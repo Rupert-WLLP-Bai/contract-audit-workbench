@@ -108,5 +108,5 @@ BEGIN
 END $fn$;
 
 REVOKE ALL ON FUNCTION {{SCHEMA}}.tenant_config_control(text),{{SCHEMA}}.tenant_config_adopt(text,bigint,text,text,text),{{SCHEMA}}.tenant_model_send_set(text,bigint,boolean,text),{{SCHEMA}}.tenant_model_send_fence(text,bigint,boolean) FROM PUBLIC;
-REVOKE CREATE ON SCHEMA {{SCHEMA}} FROM {{AUTH_FENCE_OWNER}};
 RESET ROLE;
+REVOKE CREATE ON SCHEMA {{SCHEMA}} FROM {{AUTH_FENCE_OWNER}};
