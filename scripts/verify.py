@@ -23,6 +23,7 @@ import signal
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
 from dataclasses import dataclass
 from typing import Callable
@@ -264,6 +265,26 @@ def clean_outputs(paths):
             shutil.rmtree(path)
         else:
             path.unlink(missing_ok=True)
+
+
+def browser_delivery_directory(root, environ):
+    configured = str(environ.get("CAW_DELIVERY_DIR", "")).strip()
+    if configured:
+        delivery = Path(configured).expanduser()
+    else:
+        runner_temp = str(environ.get("RUNNER_TEMP", "")).strip()
+        base = Path(runner_temp).expanduser() if runner_temp else Path(tempfile.gettempdir())
+        delivery = base / "caw-delivery"
+    delivery = delivery.resolve()
+    source_root = Path(root).resolve()
+    try:
+        delivery.relative_to(source_root)
+    except ValueError:
+        pass
+    else:
+        raise RuntimeError("browser delivery directory must be outside the source checkout")
+    delivery.mkdir(parents=True, exist_ok=True)
+    return delivery
 
 
 def selected_check(check, stage, browser):
@@ -509,6 +530,16 @@ def build_checks(go, bun):
                "./e2e", "-run", "^TestBrowserTelecomC1BInsufficientScenario$"),
               timeout=360, jsonl=True, continue_on_failure=True,
               validate=lambda path: validate_go_test_results(path.read_text())),
+        Check("browser-d3-subject", "browser",
+              (go, "test", "-tags", "browser", "-count=1", "-json", "-timeout=210s",
+               "./e2e", "-run", "^TestBrowserD3SubjectControlledSourceSOD$"),
+              timeout=240, jsonl=True, continue_on_failure=True,
+              validate=lambda path: validate_go_test_results(path.read_text())),
+        Check("browser-object-history", "browser",
+              (go, "test", "-tags", "browser", "-count=1", "-json", "-timeout=630s",
+               "./e2e", "-run", "^TestBrowserObjectHistory$"),
+              timeout=660, jsonl=True, continue_on_failure=True,
+              validate=lambda path: validate_go_test_results(path.read_text())),
     )
 
 
@@ -632,6 +663,7 @@ def main():
     failures = []
     try:
         if browser_selected:
+            env["CAW_DELIVERY_DIR"] = str(browser_delivery_directory(ROOT, env))
             prepare_browser(env)
         for check in selected:
             executed.add(check.name)
@@ -640,15 +672,17 @@ def main():
                     raise RuntimeError(
                         f"{check.name} failed; see artifacts/logs/{check.name}.txt")
                 failures.append(check.name)
-        report["browser"] = ("PASS" if browser_selected else
-                             "NOT_RUN: use make acceptance for release gate")
         if failures:
             report["browser"] = "FAIL"
             raise RuntimeError(
                 f"{', '.join(failures)} failed; see artifacts/logs/")
         if source_identity(ROOT) != report["source_identity"]:
+            if browser_selected:
+                report["browser"] = "FAIL"
             raise RuntimeError(
                 "Executable source changed during verification; rerun on a stable tree.")
+        report["browser"] = ("PASS" if browser_selected else
+                             "NOT_RUN: use make acceptance for release gate")
         report["passed"] = True
         print("PASS: deterministic acceptance"
               + (" including Chromium" if browser_selected else ""))
