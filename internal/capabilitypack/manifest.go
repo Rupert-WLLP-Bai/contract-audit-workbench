@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: parses and registers declarative audit capability manifests. A manifest may only reference capabilities, connectors and comparators that the host has already registered; it never contains or loads executable code,… Related `capabilitypack` operations include Parse, checkRequiredJSONFields, requiredManifestObject, requireFields.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-29
+// Updated: 2026-10-31
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 // Package capabilitypack parses and registers declarative audit capability
 // manifests. A manifest may only reference capabilities, connectors and
 // comparators that the host has already registered; it never contains or loads

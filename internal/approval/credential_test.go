@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Exercises the `approval_test` package behavior through TestIssueAndVerifyBindsIdentityTimeRoleVersionAndDigest, TestVerifyRejectsPayloadTamperingAndForeignKeys, TestValidateClaimsRejectsIncompleteOrOverlongBindings, TestKeyringFromEnvIsOffByDefaultAndFailsClosed; these checks pin observable state, error handling, or wire/database compatibility for this module.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-01
+// Updated: 2026-11-01
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package approval_test
 
 import (

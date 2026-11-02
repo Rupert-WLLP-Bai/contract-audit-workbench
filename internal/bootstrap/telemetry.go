@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: InstanceID is the stable process identity used by telemetry and structured logs. It is exported so service entrypoints label their logs with the same identity their OTLP resource… Related `bootstrap` operations include InstanceID, telemetryInstanceID, HTTPExporter, configuredTelemetry.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-25
+// Updated: 2026-10-31
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package bootstrap
 
 import (

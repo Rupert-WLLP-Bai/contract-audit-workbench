@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: 登记租户生命周期、成员上下文与辖区运营路由的 OpenAPI request/response 类型映射，供 OpenAPI 生成器读取。
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-02
+// Updated: 2026-11-02
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package apidocs
 
 import "encoding/json"

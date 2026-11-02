@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: SourceFactTools compares a finite set of explicit fields across the frozen procurement/award, draft-contract, and (when supplied) acceptance sources. It never queries an external… Related `agentflow` operations include SourceFactTools, Spec, Execute, validateSourceFactInput.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-25
+// Updated: 2026-10-30
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package agentflow
 
 import (

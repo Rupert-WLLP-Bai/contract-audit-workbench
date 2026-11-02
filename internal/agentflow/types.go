@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: provides a bounded Eino composition for operator audit planning. It is a C0 component, not the legacy HTTP application's runtime. Related `agentflow` operations include Domains, validDomain, TextHash, NewEvidence.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-25
+// Updated: 2026-10-30
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 // Package agentflow provides a bounded Eino composition for operator audit
 // planning. It is a C0 component, not the legacy HTTP application's runtime.
 package agentflow

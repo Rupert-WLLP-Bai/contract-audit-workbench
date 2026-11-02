@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: applyStoredLLMEndpoint merges the platform endpoint with the deployment identity. Worker and document clients keep the gateway URL and caller credential; only their upstream… Related `bootstrap` operations include applyStoredLLMEndpoint, newModelClient, loadStoredLLMEndpoint, watchStoredLLMEndpoint.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-30
+// Updated: 2026-11-02
+// Revision: r2
+// Copyright: See LICENSE
+// End file metadata.
+
 package bootstrap
 
 import (

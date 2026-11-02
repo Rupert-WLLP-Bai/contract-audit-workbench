@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: defines the bounded, suggestion-only choice contract shared by shadow backends. The deterministic rule engine remains authoritative: this package never emits a relation, removes a rule, or changes a rule's evidence. It… Related `decision` operations include DisabledResult.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-25
+// Updated: 2026-10-28
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 // Package decision defines the bounded, suggestion-only choice contract shared
 // by shadow backends. The deterministic rule engine remains authoritative: this
 // package never emits a relation, removes a rule, or changes a rule's evidence.

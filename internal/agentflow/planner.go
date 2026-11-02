@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: FixedChainPlanner selects the first registered tool for every requested gap. It is the non-model baseline used to compare deterministic and model plans. Related `agentflow` operations include Name, Plan, appendScopePlanCalls, firstToolForGap.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-25
+// Updated: 2026-10-30
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package agentflow
 
 import (

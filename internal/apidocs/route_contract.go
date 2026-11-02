@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Maintains typed route metadata used to generate the public OpenAPI document.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-02
+// Updated: 2026-11-02
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 // Maintained route metadata for OpenAPI generation. Operation fields are typed Go values.
 package apidocs
 

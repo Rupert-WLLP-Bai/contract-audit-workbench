@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: is the append-only review record. A snapshot is the immutable input of one run. An event hash covers the previous hash, so a changed actor or a skipped sequence fails verification. Related `audit` operations include Append, completeEvent, continuesChain, Verify.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-25
+// Updated: 2026-10-31
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 // Package audit is the append-only review record.
 // A snapshot is the immutable input of one run. An event hash covers the
 // previous hash, so a changed actor or a skipped sequence fails verification.
