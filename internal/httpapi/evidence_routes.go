@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: registerEvidenceRoutes mounts the case-bound evidence request workflow. Related `httpapi` operations include registerEvidenceRoutes, createEvidenceRequest, listEvidenceRequests, getEvidenceRequest.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-28
+// Updated: 2026-10-30
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package httpapi
 
 import (

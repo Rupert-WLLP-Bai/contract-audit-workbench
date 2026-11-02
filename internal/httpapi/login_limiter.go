@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Local username/password logins are throttled in the process that answers them. Counting stays bounded so hostile traffic can neither grow memory nor lock an account forever: each… Related `httpapi` operations include newLoginCounter, loginSource, loginKey, allowed.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-31
+// Updated: 2026-10-31
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package httpapi
 
 import (

@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: CLM contract routes are registered by the shared server wiring. The gateway supports PUT for full replacement, so draft replacement uses PUT /api/contracts/{contractID}/draft; the… Related `httpapi` operations include registerContractDraftRoutes, requiredIdempotencyKey, contractLedgerQueryValue, contractLedgerOptionalString.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-01
+// Updated: 2026-11-02
+// Revision: r2
+// Copyright: See LICENSE
+// End file metadata.
+
 package httpapi
 
 import (
