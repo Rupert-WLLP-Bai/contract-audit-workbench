@@ -1,4 +1,14 @@
 #!/usr/bin/env python3
+# File metadata (manifest mirror):
+# Purpose: 按有界 UI 范围检查 Manual Findings 文案中的概念混淆，并提供可审阅的术语建议。
+# Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+# Contact: +86 13617696321
+# Created: 2026-11-01
+# Updated: 2026-11-01
+# Revision: r1
+# Copyright: See LICENSE
+# End file metadata.
+
 """Check the bounded Manual Findings UI terminology pilot against the glossary."""
 from __future__ import annotations
 

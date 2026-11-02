@@ -1,4 +1,14 @@
 #!/usr/bin/env python3
+# File metadata (manifest mirror):
+# Purpose: D2-7a real OIDC harness: an isolated Keycloak provider for either a throwaway application validation or a synthetic local C2 host identity setup. This module’s command-line arguments and return artifacts define its operational boundary.
+# Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+# Contact: +86 13617696321
+# Created: 2026-10-25
+# Updated: 2026-10-31
+# Revision: r1
+# Copyright: See LICENSE
+# End file metadata.
+
 """D2-7a real OIDC harness: an isolated Keycloak provider for either a
 throwaway application validation or a synthetic local C2 host identity setup.
 

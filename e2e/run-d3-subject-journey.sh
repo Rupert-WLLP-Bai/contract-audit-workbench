@@ -1,4 +1,14 @@
 #!/usr/bin/env bash
+# File metadata (manifest mirror):
+# Purpose: Runs the D3 subject journey Go browser test with a recorded exit status, before/after source identities, and complete output stored under CAW_DELIVERY_DIR; it refuses an in-repository evidence directory.
+# Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+# Contact: +86 13617696321
+# Created: 2026-10-31
+# Updated: 2026-10-31
+# Revision: r1
+# Copyright: See LICENSE
+# End file metadata.
+
 # Capture the outer Go test's real exit status as well as its complete output.
 set -uo pipefail
 umask 077

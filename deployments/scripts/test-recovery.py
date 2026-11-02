@@ -1,4 +1,14 @@
 #!/usr/bin/env python3
+# File metadata (manifest mirror):
+# Purpose: Isolated CNPG PITR and versioned-original recovery drill (test only). This module’s command-line arguments and return artifacts define its operational boundary.
+# Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+# Contact: +86 13617696321
+# Created: 2026-10-31
+# Updated: 2026-10-31
+# Revision: r1
+# Copyright: See LICENSE
+# End file metadata.
+
 """Isolated CNPG PITR and versioned-original recovery drill (test only).
 
 Requires Python 3, kubectl, AWS CLI v2, CNPG with the Barman Cloud plugin, a

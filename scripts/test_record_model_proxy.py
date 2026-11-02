@@ -1,3 +1,13 @@
+# File metadata (manifest mirror):
+# Purpose: Regression checks for test_forwarding_records_exact_bodies_and_no_headers, test_truncated_upstream_response_is_recorded_as_interrupted; they assert the deployment, parser, or repository-policy contract that the corresponding implementation must preserve.
+# Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+# Contact: +86 13617696321
+# Created: 2026-10-27
+# Updated: 2026-10-27
+# Revision: r1
+# Copyright: See LICENSE
+# End file metadata.
+
 import http.client
 import http.server
 import json

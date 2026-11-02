@@ -1,3 +1,13 @@
+# File metadata (manifest mirror):
+# Purpose: NUL-safe Git snapshots and conservative per-path provenance for FILE metadata.
+# Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+# Contact: +86 13617696321
+# Created: 2026-11-02
+# Updated: 2026-11-02
+# Revision: r1
+# Copyright: See LICENSE
+# End file metadata.
+
 """NUL-safe Git snapshots and conservative per-path provenance for FILE metadata.
 
 This is an external #124/#125 draft module. It does not touch the repository or

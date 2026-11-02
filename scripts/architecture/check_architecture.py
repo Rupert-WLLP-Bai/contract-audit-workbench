@@ -1,4 +1,14 @@
 #!/usr/bin/env python3
+# File metadata (manifest mirror):
+# Purpose: 读取命名 Go 包依赖策略并对照 go list imports，报告允许边、违规边及未声明包。
+# Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+# Contact: +86 13617696321
+# Created: 2026-11-01
+# Updated: 2026-11-02
+# Revision: r1
+# Copyright: See LICENSE
+# End file metadata.
+
 """Check named Go package direct-import policies against go list."""
 from __future__ import annotations
 

@@ -1,3 +1,13 @@
+# File metadata (manifest mirror):
+# Purpose: Regression checks for test_denied_or_wrong_scope_never_observes_cache_existence, test_unpassed_immutable_gate_prevents_lookup_even_when_authorized, test_revocation_between_lookup_and_return_refuses_reference, test_each_identity_change_partitions_keys_and_rejects_stale_entry, test_partial_or_corrupt_artifact_cannot_become_hit; they assert the deployment, parser, or repository-policy contract that the corresponding implementation must preserve.
+# Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+# Contact: +86 13617696321
+# Created: 2026-10-25
+# Updated: 2026-10-25
+# Revision: r1
+# Copyright: See LICENSE
+# End file metadata.
+
 import dataclasses
 import unittest
 

@@ -1,3 +1,13 @@
+# File metadata (manifest mirror):
+# Purpose: Regression checks for test_manifest_rejects_traversal_and_digest_mismatch, test_cli_requires_recorder_before_creating_a_run, test_pending_parsed_once_and_review_evidence_retained, test_precheck_accepts_designed_partial_frozen_attempt, test_precheck_rejects_unfinished_attempt; they assert the deployment, parser, or repository-policy contract that the corresponding implementation must preserve.
+# Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+# Contact: +86 13617696321
+# Created: 2026-10-27
+# Updated: 2026-10-31
+# Revision: r1
+# Copyright: See LICENSE
+# End file metadata.
+
 import hashlib
 import json
 import os

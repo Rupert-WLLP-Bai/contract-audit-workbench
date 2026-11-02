@@ -1,4 +1,14 @@
 #!/usr/bin/env python3
+# File metadata (manifest mirror):
+# Purpose: Builds the nine Go command binaries offline with the host toolchain, adds them to an already-cached runtime base image, labels source/base digests and writes packaging evidence. It refuses to pull a missing base image, keeping this path separate from the Docker Hub image build.
+# Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+# Contact: +86 13617696321
+# Created: 2026-10-25
+# Updated: 2026-10-25
+# Revision: r1
+# Copyright: See LICENSE
+# End file metadata.
+
 """Package the host-built backend binaries into a locally cached base image.
 
 The default Dockerfile needs `golang:1.26.7-bookworm`, `oven/bun:1.4.3` and
