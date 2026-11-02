@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Checks the web behavior for “AgentReview Inspector, AgentReview Inspector tones and missing details”; representative assertions cover explains supported expressions and keeps unknown capabilities unresolved, explains approval validity and shows each cited authority and contract date, marks compatible completed capability results good only with verified located evidence. It protects the rendered/API state expected by this component without starting the full browser journey.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-25
+// Updated: 2026-10-30
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 import { screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { MemoryRouter } from "react-router";

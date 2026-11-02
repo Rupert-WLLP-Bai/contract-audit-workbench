@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Fetches and parses tenant usage, capacity and budget counters from the server; tenant identity is taken from session scope, not a client argument.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-01
+// Updated: 2026-11-02
+// Revision: r2
+// Copyright: See LICENSE
+// End file metadata.
+
 import { useQuery } from "@tanstack/react-query";
 import { requestJson } from "./http";
 import { enumValue, responseReader } from "./respond";

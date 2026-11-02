@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: 实现 `ContractAcceptance`, `ContractAcceptanceList`, `ContractDeliveryList`, `ContractDetail` 等界面组件或状态处理，呈现服务端返回的业务数据并提交受控用户操作。
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-01
+// Updated: 2026-11-01
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 import { Alert, Button, Input, Select, Tag } from "antd";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {

@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Provides strict response/object/enum readers and typed invalid-response failures shared by API adapters; it never invents defaults for malformed required data.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-30
+// Updated: 2026-10-30
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 import { ApiError } from "./http";
 
 /**

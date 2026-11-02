@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Checks the web behavior for “experience feedback panel, experience feedback storage and source guards”; representative assertions cover requires a real decision, a frozen parse, an explicit quote, and submit permission, distinguishes duplicate business labels without exposing source IDs, submits the chosen real quote with Unicode code-point offsets and displays the actual candidate. It protects the rendered/API state expected by this component without starting the full browser journey.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-28
+// Updated: 2026-10-31
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 import { cleanup, fireEvent, render as renderRaw, screen, waitFor } from "@testing-library/react";
 import { StyleProvider } from "@ant-design/cssinjs";
 import { ConfigProvider } from "antd";
