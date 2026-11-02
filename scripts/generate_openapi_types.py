@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate the frontend's HTTP wire types from internal/apidocs/openapi.json.
+"""Generate the frontend's HTTP wire types from generated OpenAPI JSON.
 
 The default roots are the schemas currently consumed by the frontend. References
 are included transitively; --all also checks every component schema. --check
@@ -7,9 +7,10 @@ compares the deterministic output without writing it. No third-party package is
 required. Types do not enforce format, length, pattern or numeric constraints;
 the existing response readers and the server remain responsible for validation.
 
-Run `python3 scripts/generate_openapi_types.py` after editing the contract, or
-add `--check` to fail on drift. `--all --output PATH` can inspect all component
-schemas without replacing the default frontend-only generated file.
+The editable source is the typed Go contract in internal/apidocs. Run
+`make generate-openapi` to emit the embedded JSON and then these wire types.
+`--check` fails on frontend type drift. `--all --output PATH` can inspect all
+component schemas without replacing the default frontend-only generated file.
 """
 
 import argparse
@@ -48,6 +49,10 @@ ROOTS = (
     "TenantConfigDiff", "TenantConfigValidationError", "TenantConfigPreview", "TenantConfigAdoptionRequest",
     "TenantConfigAdoptionResult", "TenantLiveControlRequest", "TenantLiveControlResult", "TenantOperations",
     "AdoptedTenantConfigIdentity", "BusinessSnapshot",
+    "TenantMoneyWindow", "TenantMoneyPolicy", "TenantMoneyPolicyInput",
+    "PlatformModelPriceInput", "PlatformModelMoneyPolicyInput",
+    "PlatformModelMoneyPolicyResult", "PlatformModelMoneyPolicyView",
+    "TenantMoneyAdjustmentInput", "TenantMoneyAdjustmentResult",
 )
 # Runtime parsers consume these exact enum values, rather than maintaining a
 # second list that could drift from the generated type.
