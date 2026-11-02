@@ -1194,9 +1194,10 @@ func (s *Store) LoadContractExportForDownload(ctx context.Context, user accounts
 	return ContractExportDownload{ExportID: normalized, Format: format, Columns: normalizedColumns, Rows: rows, ExpiresAt: expiresAt}, nil
 }
 
-// ReauthorizeContractExportDownload re-resolves the directory identity after
-// the CSV is rendered and before any byte is sent. A revoked or changed
-// identity is answered as the same 404 as an unknown export.
+// ReauthorizeContractExportDownload is a legacy identity-only check. It does
+// not recheck export ownership or contract scope and must not be used as the
+// download authorization boundary; callers must reload with
+// LoadContractExportForDownload after rendering and before sending bytes.
 func ReauthorizeContractExportDownload(user accounts.User) error {
 	if _, err := trustedUser(user); err != nil {
 		return fault.NotFound("没有找到对应的导出")

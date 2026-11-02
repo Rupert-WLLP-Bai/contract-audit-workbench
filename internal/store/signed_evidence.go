@@ -41,6 +41,7 @@ type EvidenceOriginal struct {
 }
 
 type EvidenceBundleData struct {
+	TenantID        string
 	Record          ReportRecord
 	ReportJSON      []byte
 	CaseTitle       string
@@ -143,7 +144,7 @@ func (s *Store) EvidenceBundleDataForReport(ctx context.Context, user accounts.U
 			return out, fault.Conflict("报告的决定历史与当前追加记录不一致")
 		}
 	}
-	return EvidenceBundleData{Record: record, ReportJSON: reportJSON, CaseTitle: report.Case.Title,
+	return EvidenceBundleData{TenantID: accounts.Tenant(current), Record: record, ReportJSON: reportJSON, CaseTitle: report.Case.Title,
 		Findings: report.Findings, Evaluations: report.Evaluations, FrozenDecisions: report.Decisions,
 		Decisions: decisions, ManualFindings: manual, Originals: originals, HistoryCutoff: cutoff.UTC()}, nil
 }

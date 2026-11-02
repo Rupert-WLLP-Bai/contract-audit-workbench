@@ -191,7 +191,9 @@ func (h *handler) downloadContractExport(w http.ResponseWriter, r *http.Request)
 		writeErr(w, err)
 		return
 	}
-	if err := store.ReauthorizeContractExportDownload(user); err != nil {
+	// Re-resolve the principal and every frozen contract permission after CSV
+	// rendering, immediately before returning any bytes.
+	if _, err := h.store.LoadContractExportForDownload(r.Context(), user, download.ExportID); err != nil {
 		writeErr(w, err)
 		return
 	}
