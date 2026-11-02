@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: registerLegalKnowledgeRoutes is called by the core route registry. The admin governance list route should dispatch kind=legal to adminLegalKnowledgeSearch so existing no-filter… Related `httpapi` operations include registerLegalKnowledgeRoutes, getFrozenLegalAuthority, recordLegalApplicabilityFact, resolveLegalApplicabilityFacts.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-31
+// Updated: 2026-10-31
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package httpapi
 
 import (

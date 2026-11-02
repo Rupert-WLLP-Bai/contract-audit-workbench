@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Handles service-object registry and version routes, including listing, creation, detail, preview and associations; derives tenant/admin access from the authenticated request and delegates durable state to PostgreSQL.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-31
+// Updated: 2026-10-31
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package httpapi
 
 import (

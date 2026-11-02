@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Builds a signed evidence PDF from a cutoff-bounded audit history and frozen original files; excludes later writes, verifies the selected evidence identity and returns the downloadable bundle.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-31
+// Updated: 2026-11-02
+// Revision: r2
+// Copyright: See LICENSE
+// End file metadata.
+
 package httpapi
 
 import (

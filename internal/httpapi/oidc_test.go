@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Exercises the `httpapi_test` package behavior through TestOIDCAuthorizationCodeHTTPFlowsUseAudienceBoundPostgresSessions, TestOIDCAuthorizationCodeSeparatesClientAndAdminOrigins; these checks pin observable state, error handling, or wire/database compatibility for this module. Test cases include a callback cannot combine state from one flow with another flow cookie, an unknown subject cannot create a session, an ID token for an unconfigured audience cannot create a session, client and admin authorization codes create isolated revocable sessions.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-25
+// Updated: 2026-11-02
+// Revision: r2
+// Copyright: See LICENSE
+// End file metadata.
+
 package httpapi_test
 
 import (
