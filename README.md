@@ -60,7 +60,7 @@ API 默认在 `http://127.0.0.1:8080`，前端在 `http://127.0.0.1:5173`。配�
 - [贡献与协作](docs/engineering/contributing.md)
 - [许可与贡献](docs/engineering/licensing.md)
 
-本项目自有材料采用根目录 `LICENSE` 中的 Contract Audit Workbench Noncommercial Source-Available License 1.0.0（`LicenseRef-CAW-NC-1.0.0`），生效日期为 2026-11-01；这是限制性源码许可，不是 OSI 开源许可。许可范围、公开 GitHub Fork 例外、贡献授权和第三方材料边界详见根目录 [LICENSE](LICENSE) 与[许可与贡献说明](docs/engineering/licensing.md)。
+根目录 `LICENSE` 文件标识为 `LicenseRef-CAW-NC-1.0.0`，版权标记为 Bai Junhao © 2026，文件注明日期 2026-11-01。文件所述许可仅覆盖约定的非商业用途；组织运营、商业部署、托管服务、独立发布或分发衍生版本须另行取得书面许可。文件允许公开 GitHub Fork 用于修改、测试并向上游提交 PR，该例外不授予商业使用、生产部署或站外分发权。第三方材料保留各自许可；本项目不宣称为 OSI 开源。许可及贡献条款以根目录 [LICENSE](LICENSE) 为准。详见[许可与贡献说明](docs/engineering/licensing.md)。
 
 ## 源码边界
 
