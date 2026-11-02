@@ -98,6 +98,12 @@ jobs:
 
       - name: Prepare pinned legal test assets
         if: steps.plan.outputs.legal_assets == 'true'
+        env:
+          CAW_LEGAL_TEST_ARCHIVE_XZ_01: ${{ vars.CAW_LEGAL_TEST_ARCHIVE_XZ_01 }}
+          CAW_LEGAL_TEST_ARCHIVE_XZ_02: ${{ vars.CAW_LEGAL_TEST_ARCHIVE_XZ_02 }}
+          CAW_LEGAL_TEST_ARCHIVE_XZ_03: ${{ vars.CAW_LEGAL_TEST_ARCHIVE_XZ_03 }}
+          CAW_LEGAL_TEST_ARCHIVE_XZ_04: ${{ vars.CAW_LEGAL_TEST_ARCHIVE_XZ_04 }}
+          CAW_LEGAL_TEST_ARCHIVE_XZ_05: ${{ vars.CAW_LEGAL_TEST_ARCHIVE_XZ_05 }}
         run: |
           set -euo pipefail
           python3 scripts/fetch_legal_test_assets.py --destination "$RUNNER_TEMP/caw-legal-fast"

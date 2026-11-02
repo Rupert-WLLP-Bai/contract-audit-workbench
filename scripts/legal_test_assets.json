@@ -1,8 +1,12 @@
 {
   "schema_version": "legal-test-assets/v1",
-  "release_url": "https://github.com/Rupert-WLLP-Bai/contract-audit-workbench/releases/download/legal-test-assets-20261101-v2/legal-test-assets-20261101-v2.tar.gz",
-  "archive_sha256": "89f68bef3bbbb9d0cb5db2685b330e55fa187b4158e587dfe8dc769b80000ac2",
-  "archive_size_bytes": 232146,
+  "source": {
+    "kind": "repository_variables",
+    "variable_prefix": "CAW_LEGAL_TEST_ARCHIVE_XZ_",
+    "chunk_count": 5
+  },
+  "archive_sha256": "be2a8cd326f68054029561b2ea0a88ee922e421b1ee273acc91be8a834b45ad0",
+  "archive_size_bytes": 133660,
   "files": [
     {
       "path": "legal-sources/articles.json",

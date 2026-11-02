@@ -35,14 +35,15 @@ bun run build
 需要固定法律来源测试资产时，先在仓外准备：
 
 ```bash
-python3 scripts/fetch_legal_test_assets.py --destination ../contract-audit-delivery/legal-test-assets-20261101-v2
+CAW_LEGAL_ARCHIVE=/path/to/legal-test-assets-20261101-v2.tar.xz
+python3 scripts/fetch_legal_test_assets.py --archive "$CAW_LEGAL_ARCHIVE" --destination ../contract-audit-delivery/legal-test-assets-20261101-v2
 export CAW_LEGAL_TEST_ROOT="$(realpath ../contract-audit-delivery/legal-test-assets-20261101-v2)"
 export LEGALNORM_ASSET_DIR="$CAW_LEGAL_TEST_ROOT/legal-sources"
 export LEGALNORM_SUPPLEMENTAL_ASSET_DIR="$CAW_LEGAL_TEST_ROOT/legal-sources"
 export LEGALNORM_CANONICAL_MANIFEST="$CAW_LEGAL_TEST_ROOT/p4-canonical-articles-v2.json"
 ```
 
-脚本校验归档与文件 SHA-256；固定原始快照只支持可重复测试，不证明法律当前持续有效。CI 会按需准备测试资产，它们不是应用发布内容。
+脚本校验归档与每个文件的 SHA-256；`--archive`（或 `CAW_LEGAL_TEST_ARCHIVE`）用于本地指定受大小限制的普通归档文件。CI 从仓库变量 `CAW_LEGAL_TEST_ARCHIVE_XZ_01` 至 `_05` 重组同一固定归档；这些变量只在准备素材的步骤传入，不写入日志，也不用于传递秘密。源码仓只保留文件大小与摘要清单，不保存归档或解出的法律素材。固定原始快照只支持可重复测试，不证明法律当前持续有效。CI 会按需准备测试资产，它们不是应用发布内容。
 
 官方登记效力可离线或在线只读核对：
 

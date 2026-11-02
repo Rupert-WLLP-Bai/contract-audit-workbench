@@ -2,6 +2,8 @@
 """Fetch and verify the immutable public legal-source fixture bundle."""
 
 import argparse
+import base64
+import binascii
 import hashlib
 import io
 import json
@@ -13,6 +15,7 @@ import sys
 import tarfile
 import tempfile
 import urllib.request
+from urllib.parse import urlsplit
 
 
 CONFIG_PATH = Path(__file__).with_name("legal_test_assets.json")
@@ -40,8 +43,33 @@ def validate_config(config):
     if not isinstance(config, dict) or config.get("schema_version") != "legal-test-assets/v1":
         raise AssetError("unsupported legal asset manifest")
     url = config.get("release_url")
-    if not isinstance(url, str) or not url.startswith("https://github.com/"):
-        raise AssetError("asset release URL must be a pinned GitHub HTTPS URL")
+    source = config.get("source")
+    if (url is None) == (source is None):
+        raise AssetError("asset manifest must declare exactly one archive source")
+    if url is not None:
+        try:
+            parsed = urlsplit(url)
+        except (TypeError, ValueError) as exc:
+            raise AssetError("asset release URL must be a pinned GitHub HTTPS URL") from exc
+        if (
+            parsed.scheme != "https"
+            or parsed.netloc != "github.com"
+            or not parsed.path
+        ):
+            raise AssetError("asset release URL must be a pinned GitHub HTTPS URL")
+    else:
+        if not isinstance(source, dict) or source.get("kind") != "repository_variables":
+            raise AssetError("unsupported legal asset archive source")
+        prefix = source.get("variable_prefix")
+        chunks = source.get("chunk_count")
+        if (
+            not isinstance(prefix, str)
+            or re.fullmatch(r"CAW_LEGAL_TEST_ARCHIVE_[A-Z0-9_]+_", prefix) is None
+            or type(chunks) is not int
+            or chunks < 1
+            or chunks > 16
+        ):
+            raise AssetError("invalid legal asset repository-variable source")
     if not _is_sha256(config.get("archive_sha256")):
         raise AssetError("asset archive SHA256 is invalid")
     size = config.get("archive_size_bytes")
@@ -89,6 +117,50 @@ def _read_download(url):
         raise AssetError(f"failed to download pinned legal assets: {exc}") from exc
     if len(data) > MAX_ARCHIVE_BYTES:
         raise AssetError("downloaded legal asset archive exceeds size limit")
+    return data
+
+
+def _read_local_archive(path):
+    archive_path = Path(path)
+    if archive_path.is_symlink() or not archive_path.is_file():
+        raise AssetError("local legal asset archive must be a regular non-symlink file")
+    try:
+        if archive_path.stat().st_size > MAX_ARCHIVE_BYTES:
+            raise AssetError("local legal asset archive exceeds size limit")
+        with archive_path.open("rb") as archive_file:
+            data = archive_file.read(MAX_ARCHIVE_BYTES + 1)
+    except OSError as exc:
+        raise AssetError(f"cannot read local legal asset archive: {exc}") from exc
+    if len(data) > MAX_ARCHIVE_BYTES:
+        raise AssetError("local legal asset archive exceeds size limit")
+    return data
+
+
+def _read_repository_variable_archive(source, environ, expected_size):
+    prefix = source["variable_prefix"]
+    chunks = []
+    for index in range(1, source["chunk_count"] + 1):
+        name = f"{prefix}{index:02d}"
+        value = environ.get(name)
+        if not isinstance(value, str) or not value:
+            raise AssetError(f"missing legal asset repository variable: {name}")
+        if (
+            len(value) > 48 * 1024
+            or re.fullmatch(r"[A-Za-z0-9+/]*={0,2}", value) is None
+            or len(value) % 4 != 0
+        ):
+            raise AssetError(f"invalid base64 legal asset repository variable: {name}")
+        chunks.append(value)
+    encoded = "".join(chunks)
+    expected_encoded_size = ((expected_size + 2) // 3) * 4
+    if len(encoded) != expected_encoded_size:
+        raise AssetError("legal asset repository variables have an unexpected encoded size")
+    try:
+        data = base64.b64decode(encoded, validate=True)
+    except (binascii.Error, ValueError) as exc:
+        raise AssetError("legal asset repository variables are not valid base64") from exc
+    if len(data) != expected_size or len(data) > MAX_ARCHIVE_BYTES:
+        raise AssetError("repository-variable legal asset archive size mismatch")
     return data
 
 
@@ -141,9 +213,9 @@ def _extract_verified(archive, destination, config):
     expected_names = set(files) | expected_dirs
     actual_names = set()
     try:
-        bundle = tarfile.open(fileobj=io.BytesIO(archive), mode="r:gz")
+        bundle = tarfile.open(fileobj=io.BytesIO(archive), mode="r:*")
     except (tarfile.TarError, OSError) as exc:
-        raise AssetError(f"legal asset archive is not a valid gzip tar: {exc}") from exc
+        raise AssetError(f"legal asset archive is not a valid compressed tar: {exc}") from exc
     with bundle:
         members = bundle.getmembers()
         for member in members:
@@ -185,13 +257,23 @@ def _extract_verified(archive, destination, config):
                 output.write(data)
 
 
-def prepare_assets(destination, config=CONFIG_PATH, downloader=None):
+def prepare_assets(destination, config=CONFIG_PATH, downloader=None, archive_path=None, environ=None):
     config = load_config(config)
     destination = Path(destination)
     if destination.exists() or destination.is_symlink():
         _validate_directory(destination, config)
         return destination
-    archive = (downloader or _read_download)(config["release_url"])
+    local_archive = archive_path or os.environ.get("CAW_LEGAL_TEST_ARCHIVE")
+    if local_archive:
+        archive = _read_local_archive(local_archive)
+    elif "source" in config:
+        archive = _read_repository_variable_archive(
+            config["source"],
+            os.environ if environ is None else environ,
+            config["archive_size_bytes"],
+        )
+    else:
+        archive = (downloader or _read_download)(config["release_url"])
     if not isinstance(archive, bytes):
         raise AssetError("asset downloader did not return bytes")
     if len(archive) != config["archive_size_bytes"] or len(archive) > MAX_ARCHIVE_BYTES:
@@ -222,9 +304,14 @@ def main(argv=None):
         help="directory under which the pinned legal-sources tree is installed",
     )
     parser.add_argument("--manifest", default=str(CONFIG_PATH), help=argparse.SUPPRESS)
+    parser.add_argument(
+        "--archive",
+        default=None,
+        help="use a local archive file instead of the configured CI source",
+    )
     args = parser.parse_args(argv)
     try:
-        target = prepare_assets(args.destination, args.manifest)
+        target = prepare_assets(args.destination, args.manifest, archive_path=args.archive)
     except AssetError as exc:
         print(f"legal test assets: {exc}", file=sys.stderr)
         return 1
