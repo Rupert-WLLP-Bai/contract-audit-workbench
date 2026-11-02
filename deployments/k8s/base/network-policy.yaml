@@ -1,3 +1,13 @@
+# File metadata (manifest mirror):
+# Purpose: Kubernetes resource bundle for otlp-collector-egress, gateway, core-api, document-service, audit-execution, audit-worker; it declares NetworkPolicy resources and their deployment/RBAC/service boundaries for the named local cluster profile.
+# Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+# Contact: +86 13617696321
+# Created: 2026-10-25
+# Updated: 2026-11-01
+# Revision: r1
+# Copyright: See LICENSE
+# End file metadata.
+
 # Per-role least-privilege network access for the application workloads in
 # this namespace. Rules are evaluated on pod addresses and container ports
 # (post-ClusterIP DNAT), so service ports such as client:80 never appear here.

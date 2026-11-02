@@ -1,3 +1,13 @@
+# File metadata (manifest mirror):
+# Purpose: Compose profile for otel-collector, tempo, prometheus, grafana; service ports, dependencies, and health checks provide the local infrastructure inputs consumed by the repository startup targets.
+# Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+# Contact: +86 13617696321
+# Created: 2026-10-25
+# Updated: 2026-10-25
+# Revision: r1
+# Copyright: See LICENSE
+# End file metadata.
+
 # Observability overlay. Compose interpolates every file it loads, including
 # services that belong to a profile, so this file stays out of the default
 # stack. Enable it with the application files and the otel profile:

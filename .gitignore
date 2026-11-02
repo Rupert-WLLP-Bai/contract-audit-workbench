@@ -1,3 +1,13 @@
+# File metadata (manifest mirror):
+# Purpose: Sets repository-wide exclusions for private credentials, dependencies, caches, generated output, and external source materials, while narrowly allowing reviewed docs and small regression fixtures.
+# Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+# Contact: +86 13617696321
+# Created: 2026-10-25
+# Updated: 2026-11-01
+# Revision: r1
+# Copyright: See LICENSE
+# End file metadata.
+
 # Private configuration and credentials
 .env
 .env.*

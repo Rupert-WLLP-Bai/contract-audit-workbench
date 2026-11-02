@@ -1,3 +1,13 @@
+# File metadata (manifest mirror):
+# Purpose: Kubernetes resource bundle for gateway, core-api, document-service, audit-execution, audit-worker, model-gateway; it declares PodDisruptionBudget resources and their deployment/RBAC/service boundaries for the named local cluster profile.
+# Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+# Contact: +86 13617696321
+# Created: 2026-10-25
+# Updated: 2026-10-25
+# Revision: r1
+# Copyright: See LICENSE
+# End file metadata.
+
 apiVersion: policy/v1
 kind: PodDisruptionBudget
 metadata:

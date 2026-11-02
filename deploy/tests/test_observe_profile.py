@@ -1,3 +1,13 @@
+# File metadata (manifest mirror):
+# Purpose: Regression checks for test_collector_keeps_debug_and_adds_query_exporters, test_observation_backends_and_query_routes_are_isolated_from_default_stack, test_enabled_observation_services_start_for_real_and_fixture_models, test_enabled_observation_services_use_offline_image_policy, test_enabled_observation_services_stop_with_applications; they assert the deployment, parser, or repository-policy contract that the corresponding implementation must preserve.
+# Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+# Contact: +86 13617696321
+# Created: 2026-10-25
+# Updated: 2026-11-02
+# Revision: r2
+# Copyright: See LICENSE
+# End file metadata.
+
 """Exercise the optional observation configuration and application lifecycle."""
 import importlib.util
 import json

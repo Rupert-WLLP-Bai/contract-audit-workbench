@@ -1,3 +1,13 @@
+# File metadata (manifest mirror):
+# Purpose: Compose profile for db, rustfs, rustfs-init, s3-smoke, identity-db, keycloak; service ports, dependencies, and health checks provide the local infrastructure inputs consumed by the repository startup targets.
+# Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+# Contact: +86 13617696321
+# Created: 2026-10-25
+# Updated: 2026-10-25
+# Revision: r1
+# Copyright: See LICENSE
+# End file metadata.
+
 # Local development infrastructure only. The Go API is intentionally not scaled here.
 # First: python3 deploy/scripts/infra.py bootstrap
 name: contract-audit-local

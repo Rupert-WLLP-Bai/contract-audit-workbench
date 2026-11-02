@@ -1,3 +1,13 @@
+# File metadata (manifest mirror):
+# Purpose: Kustomize assembly for the bootstrap layer; it composes ../../k8s/base/namespace.yaml, ../../k8s/base/security-accounts.yaml, ../../k8s/base/config.yaml, ../platform.yaml into the deployable manifest without duplicating those resources.
+# Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+# Contact: +86 13617696321
+# Created: 2026-10-25
+# Updated: 2026-10-25
+# Revision: r1
+# Copyright: See LICENSE
+# End file metadata.
+
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 namespace: contract-audit

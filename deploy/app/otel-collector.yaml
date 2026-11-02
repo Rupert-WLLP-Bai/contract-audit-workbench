@@ -1,3 +1,13 @@
+# File metadata (manifest mirror):
+# Purpose: Routes local OTLP traces to Tempo and metrics to the Prometheus scrape exporter; logs remain container stdout, and this verification-only collector is not a production backend configuration.
+# Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+# Contact: +86 13617696321
+# Created: 2026-10-25
+# Updated: 2026-10-31
+# Revision: r1
+# Copyright: See LICENSE
+# End file metadata.
+
 # OTLP collector for the optional observation profile (compose otel profile and
 # the k3d observe overlay mount this same file). This is the local verification
 # stack, not a production telemetry deployment.

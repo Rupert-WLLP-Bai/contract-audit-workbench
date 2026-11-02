@@ -1,3 +1,13 @@
+# File metadata (manifest mirror):
+# Purpose: Kustomize assembly for the migrate layer; it composes migration-job.yaml into the deployable manifest without duplicating those resources.
+# Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+# Contact: +86 13617696321
+# Created: 2026-10-25
+# Updated: 2026-10-31
+# Revision: r1
+# Copyright: See LICENSE
+# End file metadata.
+
 # Source template for the one-shot schema and service-role migration.
 # For a release, use deployments/scripts/migrate-k8s.sh <candidate-lock.json>;
 # deployments/scripts/release-k8s.py renders this template with the candidate's

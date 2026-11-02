@@ -1,4 +1,14 @@
 #!/bin/sh
+# File metadata (manifest mirror):
+# Purpose: Waits for the configured local S3 endpoint with bounded retries, creates the configured bucket if absent, and verifies authentication; requires S3_ENDPOINT, S3_BUCKET, and AWS credentials, and reports that application integration remains pending.
+# Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+# Contact: +86 13617696321
+# Created: 2026-10-25
+# Updated: 2026-10-25
+# Revision: r1
+# Copyright: See LICENSE
+# End file metadata.
+
 set -eu
 : "${S3_ENDPOINT:?}" "${S3_BUCKET:?}" "${AWS_ACCESS_KEY_ID:?}" "${AWS_SECRET_ACCESS_KEY:?}"
 aws_local() {

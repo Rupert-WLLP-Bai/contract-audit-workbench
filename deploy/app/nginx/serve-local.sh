@@ -1,4 +1,14 @@
 #!/usr/bin/env bash
+# File metadata (manifest mirror):
+# Purpose: Starts and stops isolated local nginx containers for the client, admin, and portal release artifacts; it validates unique ownership labels and output-directory identities so a stop request removes only containers created by this run.
+# Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+# Contact: +86 13617696321
+# Created: 2026-10-25
+# Updated: 2026-10-25
+# Revision: r1
+# Copyright: See LICENSE
+# End file metadata.
+
 # Serve the three built Vite release artifacts with the delivery nginx site
 # configs for a local (non-compose) run.
 #

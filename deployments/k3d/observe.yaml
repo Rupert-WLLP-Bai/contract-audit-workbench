@@ -1,3 +1,13 @@
+# File metadata (manifest mirror):
+# Purpose: Kubernetes resource bundle for otel-collector, tempo, prometheus, grafana; it declares Service, Deployment resources and their deployment/RBAC/service boundaries for the named local cluster profile.
+# Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+# Contact: +86 13617696321
+# Created: 2026-10-28
+# Updated: 2026-10-28
+# Revision: r1
+# Copyright: See LICENSE
+# End file metadata.
+
 # Local observability for the full profile. The Collector accepts OTLP/HTTP,
 # exports traces to Tempo and metrics to its Prometheus endpoint; Prometheus
 # scrapes that endpoint and Grafana reads both. This is a local verification

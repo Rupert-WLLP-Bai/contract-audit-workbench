@@ -1,3 +1,13 @@
+# File metadata (manifest mirror):
+# Purpose: Scrapes the local OpenTelemetry Collector every 15 seconds and documents the metric semantics/availability rules so queue/outbox/pool observations are not misread as tenant-level or zero-valued data.
+# Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+# Contact: +86 13617696321
+# Created: 2026-10-25
+# Updated: 2026-11-01
+# Revision: r2
+# Copyright: See LICENSE
+# End file metadata.
+
 global:
   scrape_interval: 15s
 scrape_configs:

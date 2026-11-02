@@ -1,3 +1,13 @@
+# File metadata (manifest mirror):
+# Purpose: GitHub Actions workflow “release-candidate” wires the prepare, candidate, manifests, release-gate jobs to its configured trigger; these gates own only the checks stated in the workflow.
+# Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+# Contact: +86 13617696321
+# Created: 2026-10-31
+# Updated: 2026-10-31
+# Revision: r1
+# Copyright: See LICENSE
+# End file metadata.
+
 name: release-candidate
 
 # Explicit manual release-candidate entry: image packaging, SBOM, vulnerability

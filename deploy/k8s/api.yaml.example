@@ -1,3 +1,13 @@
+# File metadata (manifest mirror):
+# Purpose: Example local environment or deployment input listing ; it documents variable names/default-safe placeholders while real secrets remain untracked and deployment-specific.
+# Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+# Contact: +86 13617696321
+# Created: 2026-10-25
+# Updated: 2026-10-25
+# Revision: r1
+# Copyright: See LICENSE
+# End file metadata.
+
 # TARGET ONLY. C2 authorization/transactions/sessions/object storage gates must pass first.
 # The repository's current full-state Store MUST NOT be run with multiple writers.
 # This inert template is not referenced by kustomization and creates zero application Pods.

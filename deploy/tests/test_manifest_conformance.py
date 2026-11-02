@@ -1,3 +1,13 @@
+# File metadata (manifest mirror):
+# Purpose: Regression checks for test_self_test_accepts_baseline_and_rejects_all_injected_defects; they assert the deployment, parser, or repository-policy contract that the corresponding implementation must preserve.
+# Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+# Contact: +86 13617696321
+# Created: 2026-10-25
+# Updated: 2026-10-25
+# Revision: r1
+# Copyright: See LICENSE
+# End file metadata.
+
 """Exercise manifest self-tests using the same isolated copies as the CLI."""
 from pathlib import Path
 import subprocess
