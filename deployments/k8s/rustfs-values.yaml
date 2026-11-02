@@ -1,3 +1,13 @@
+# File metadata (manifest mirror):
+# Purpose: Configures four distributed RustFS replicas with four drives per node, persistent data/log sizing, an existing secret, and cluster-internal S3/console services; external ingress stays disabled.
+# Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+# Contact: +86 13617696321
+# Created: 2026-10-25
+# Updated: 2026-10-25
+# Revision: r1
+# Copyright: See LICENSE
+# End file metadata.
+
 image:
   rustfs:
     repository: rustfs/rustfs

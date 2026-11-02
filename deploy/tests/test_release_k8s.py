@@ -1,3 +1,13 @@
+# File metadata (manifest mirror):
+# Purpose: Regression checks for test_lock_requires_all_registry_manifest_digests_and_evidence_for_window, test_real_templates_bind_document_and_migration_to_same_backend_digest, test_deploy_rejects_a_different_completed_migration_before_apply, test_latest_incomplete_failed_or_ambiguous_migration_blocks_release, test_exact_history_and_declared_window_allow_specific_revision; they assert the deployment, parser, or repository-policy contract that the corresponding implementation must preserve.
+# Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+# Contact: +86 13617696321
+# Created: 2026-10-31
+# Updated: 2026-11-02
+# Revision: r2
+# Copyright: See LICENSE
+# End file metadata.
+
 """Regression cases for the release-lock and rollback contract.
 
 All image references and Kubernetes objects in this file are synthetic. No

@@ -1,3 +1,13 @@
+# File metadata (manifest mirror):
+# Purpose: Regression checks for test_generates_distinct_secrets_and_consistent_urls, test_custom_profile_uses_private_unique_resources, test_existing_config_is_preserved, test_unsafe_existing_config_is_rejected_without_overwrite, test_port_mismatch_and_collision_are_rejected; they assert the deployment, parser, or repository-policy contract that the corresponding implementation must preserve.
+# Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+# Contact: +86 13617696321
+# Created: 2026-10-25
+# Updated: 2026-10-25
+# Revision: r1
+# Copyright: See LICENSE
+# End file metadata.
+
 """Exercise safe local bootstrap and configuration rejection before Docker runs."""
 import importlib.util
 from pathlib import Path

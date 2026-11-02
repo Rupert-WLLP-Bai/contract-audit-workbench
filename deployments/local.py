@@ -1,4 +1,14 @@
 #!/usr/bin/env python3
+# File metadata (manifest mirror):
+# Purpose: Bootstrap private distributed settings and operate the local Compose profile. This module’s command-line arguments and return artifacts define its operational boundary.
+# Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+# Contact: +86 13617696321
+# Created: 2026-10-25
+# Updated: 2026-11-02
+# Revision: r2
+# Copyright: See LICENSE
+# End file metadata.
+
 """Bootstrap private distributed settings and operate the local Compose profile."""
 from __future__ import annotations
 

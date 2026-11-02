@@ -1,3 +1,13 @@
+# File metadata (manifest mirror):
+# Purpose: Patches the one-machine five-node k3d gateway profile to expose pod identity and full trace sampling for local distributed/failover observation; it does not claim physical high availability.
+# Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+# Contact: +86 13617696321
+# Created: 2026-10-28
+# Updated: 2026-10-31
+# Revision: r1
+# Copyright: See LICENSE
+# End file metadata.
+
 # Full local profile: one control-plane node and four agents, with the
 # critical services spread across agents. This is still one machine; it proves
 # scheduling, replica failover and instance identity, not physical HA.

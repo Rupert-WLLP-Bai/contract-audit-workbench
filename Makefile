@@ -1,3 +1,13 @@
+# File metadata (manifest mirror):
+# Purpose: Provides the repository command interface for setup, local lifecycle, verification, and deployment targets including .PHONY, help, setup, db-up, db-down, infra-up, infra-down, infra-smoke; it delegates implementation to the owned scripts and Make dependencies.
+# Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+# Contact: +86 13617696321
+# Created: 2026-10-25
+# Updated: 2026-11-02
+# Revision: r2
+# Copyright: See LICENSE
+# End file metadata.
+
 .PHONY: help setup db-up db-down dev worker tool-gateway migrate web web-client web-admin web-portal test-unit check-fast verify acceptance browser-distributed test-live evaluate browser-install infra-up infra-down infra-smoke app-bootstrap app-config app-preflight app-images-offline apps-up apps-up-fixture apps-down agent-demo rule-shadow decision-baseline decision-baseline-jev generate-openapi check-openapi-generated
 PYTHON ?= python3
 GO ?= go

@@ -1,4 +1,14 @@
 #!/usr/bin/env python3
+# File metadata (manifest mirror):
+# Purpose: Bounded local load measurement for the three frozen telecom scenarios (D2-7e). This module’s command-line arguments and return artifacts define its operational boundary.
+# Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+# Contact: +86 13617696321
+# Created: 2026-10-25
+# Updated: 2026-10-28
+# Revision: r1
+# Copyright: See LICENSE
+# End file metadata.
+
 """Bounded local load measurement for the three frozen telecom scenarios (D2-7e).
 
 Approved shape:
