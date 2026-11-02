@@ -5,6 +5,7 @@ import { useLLMEndpoint, useSession, useSettings } from "../api/queries";
 import { PageStatus } from "../components/page-status";
 import { TenantOperationsPanel } from "../components/tenant-operations-panel";
 import { TenantConfigPanel } from "../components/tenant-config-panel";
+import { TenantCostPolicyPanel } from "../components/tenant-cost-policy-panel";
 import {
   LLMEndpointPanel,
   LLMModelSelection,
@@ -138,7 +139,7 @@ export function SettingsPage({
         <Statistic title="最长等待" value={oldestWait} />
         <Statistic title="用户" value={data.users.length} />
       </section>
-      {isAdmin && session.data ? <><TenantOperationsPanel /><TenantConfigPanel actor={session.data} /></> : null}
+      {isAdmin && session.data ? <><TenantOperationsPanel /><TenantCostPolicyPanel actor={session.data} /><TenantConfigPanel actor={session.data} /></> : null}
       <div className="settings-grid">
         <section
           className="settings-panel"
