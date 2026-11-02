@@ -78,6 +78,9 @@ BEGIN
 END
 $fn$;
 REVOKE ALL ON FUNCTION {{SCHEMA}}.tenant_operations_mark_dirty() FROM PUBLIC;
+-- PostgreSQL checks function EXECUTE when the migrator creates each trigger.
+-- The temporary grant is removed by the function owner after trigger creation.
+GRANT EXECUTE ON FUNCTION {{SCHEMA}}.tenant_operations_mark_dirty() TO SESSION_USER;
 RESET ROLE;
 
 CREATE TRIGGER tenant_ops_projection_dirty AFTER INSERT OR UPDATE OR DELETE ON {{SCHEMA}}.cases FOR EACH ROW EXECUTE FUNCTION {{SCHEMA}}.tenant_operations_mark_dirty();
@@ -91,6 +94,7 @@ SELECT tenant_id,1,0,clock_timestamp() FROM {{SCHEMA}}.identity_tenants ON CONFL
 CREATE TRIGGER tenant_ops_projection_dirty AFTER INSERT OR UPDATE OR DELETE ON {{SCHEMA}}.identity_tenants FOR EACH ROW EXECUTE FUNCTION {{SCHEMA}}.tenant_operations_mark_dirty();
 
 SET LOCAL ROLE {{AUTH_FENCE_OWNER}};
+REVOKE EXECUTE ON FUNCTION {{SCHEMA}}.tenant_operations_mark_dirty() FROM SESSION_USER;
 CREATE FUNCTION {{SCHEMA}}.tenant_jurisdiction_operations(p_actor text,p_principal uuid,p_membership uuid,p_from date,p_to date)
 RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,pg_temp AS $fn$
 DECLARE v_scope_count integer; v_tenant record; v_observed timestamptz:=statement_timestamp(); v_snapshot text:=pg_current_snapshot()::text;
