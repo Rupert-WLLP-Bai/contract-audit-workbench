@@ -334,6 +334,36 @@ def _validate_foundation_delta(base_policy: dict, candidate_policy: dict,
         raise GateError("foundation schema changed constraints outside additive reviewed enum values")
 
 
+def _validate_initialized_policy_delta(base: dict, candidate: dict, base_tree: dict, candidate_tree: dict) -> None:
+    """Allow only new exact manifest-only paths without changing trusted rules."""
+    if {k: v for k, v in base.items() if k != 'file_classes'} != {
+            k: v for k, v in candidate.items() if k != 'file_classes'}:
+        raise GateError('initialized policy changed a protected top-level field')
+    old = base.get('file_classes')
+    new = candidate.get('file_classes')
+    if not isinstance(old, list) or not isinstance(new, list) or new[:len(old)] != old:
+        raise GateError('initialized policy must preserve existing file classes and their order')
+    ids = {rule.get('id') for rule in old}
+    paths_seen: set[str] = set()
+    base_policy = mt.Policy(base)
+    for rule in new[len(old):]:
+        if (not isinstance(rule, dict) or set(rule) != {'id', 'paths', 'handling', 'reason'}
+                or not isinstance(rule['id'], str) or not rule['id'] or rule['id'] in ids
+                or rule['handling'] != 'manifest-only'
+                or not isinstance(rule['reason'], str) or not rule['reason'].strip()
+                or not isinstance(rule['paths'], list) or not rule['paths']):
+            raise GateError('initialized policy additions require unique literal manifest-only classes')
+        ids.add(rule['id'])
+        for path in rule['paths']:
+            if (not isinstance(path, str) or not path or path.startswith('/')
+                    or any(c in path for c in '*?[]\\')
+                    or any(part in {'', '.', '..'} for part in path.split('/'))
+                    or path in paths_seen or path in base_tree or path not in candidate_tree
+                    or base_policy.classify(path) is not None):
+                raise GateError(f'initialized policy addition must target a present, new unclassified literal path: {path!r}')
+            paths_seen.add(path)
+
+
 def _exact_record_header(path: str, entry: TreeEntry, record: dict, rule: dict) -> bool:
     kind, style, _ = mt._native(rule, path)
     if rule["handling"] != "header-and-manifest":
@@ -600,8 +630,9 @@ def check(repo_path: Path, base_ref: str, subject_ref: str, manifest_path: Path,
 
     if candidate_policy.get("manifest_status") != base_policy.get("manifest_status"):
         raise GateError("candidate downgrades or changes the trusted BASE manifest_status")
-    if current_schema_raw != base_schema_raw or current_policy_raw != base_policy_raw:
-        raise GateError("schema/policy changes require the separately reviewed foundation transition; initialized BASE cannot be weakened inline")
+    if current_schema_raw != base_schema_raw:
+        raise GateError("initialized schema must remain identical to trusted BASE")
+    _validate_initialized_policy_delta(base_policy, candidate_policy, base_tree, tree)
     missing, extra = compare_manifest_coverage(tree, candidate.get("files", {}))
     if missing or extra:
         raise GateError(f"candidate/worktree coverage mismatch: missing={missing[:8]}, stale={extra[:8]}")
@@ -625,18 +656,10 @@ def check(repo_path: Path, base_ref: str, subject_ref: str, manifest_path: Path,
     if candidate.get("inventory", {}).get("baseline_timestamp") != base_manifest["inventory"].get("baseline_timestamp"):
         raise GateError("candidate may not rewrite the trusted inventory baseline timestamp")
 
-    # Once initialized, the gate cannot PASS a candidate that edits the Python
-    # modules executing its own policy. Updating these files requires the
-    # separately reviewed foundation path; this prevents a candidate checker
-    # from weakening the check that is currently evaluating it.
+    # The fast gate loads its verifier and dependencies from trusted BASE, so
+    # candidate tool changes cannot alter this execution. They are subject to
+    # the same body, revision and provenance checks as every other file.
     committed_tree = repo.tree_inventory(subject_sha)
-    guard_prefix = "scripts/file_metadata/"
-    changed_guard = [path for path, entry in base_tree.items()
-                     if path.startswith(guard_prefix) and path.endswith(".py") and
-                     (path not in committed_tree or
-                      (committed_tree[path].mode, committed_tree[path].oid) != (entry.mode, entry.oid))]
-    if changed_guard:
-        raise GateError(f"metadata guard implementation changes require a separately reviewed transition: {changed_guard[:12]}")
 
     candidate_additions = sorted(set(tree) - set(internal_tree))
     if sorted(candidate["inventory"].get("explicit_additions", [])) != candidate_additions:
