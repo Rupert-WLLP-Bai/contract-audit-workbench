@@ -154,6 +154,7 @@ def ensure_secrets() -> dict[str, str]:
                          "CORE_MODEL_AUTHORITY_TOKEN" not in values or "AUTH_ADMIN_DATABASE_URL" not in values or
                          "PROD_DATABASE_URL" not in values or
                          "LLM_CONFIG_KEY" not in values or "CLM_DATA_KEY" not in values or
+                         "CONTEXT_SWITCH_ENABLED" not in values or
                          urlsplit(str(values.get("MIGRATOR_DATABASE_URL", ""))).username != "audit_offline_migrator" or
                          urlsplit(str(values.get("PROD_DATABASE_URL", ""))).username != "audit_offline_migrator")
         if needs_upgrade:
@@ -179,6 +180,7 @@ def ensure_secrets() -> dict[str, str]:
                               f"postgres://contractaudit:{quote(values['POSTGRES_PASSWORD'], safe='')}@db:5432/contract_audit_prod?sslmode=disable")
             values.setdefault("LLM_CONFIG_KEY", base64.b64encode(secrets.token_bytes(32)).decode("ascii"))
             values.setdefault("CLM_DATA_KEY", base64.b64encode(secrets.token_bytes(32)).decode("ascii"))
+            values.setdefault("CONTEXT_SWITCH_ENABLED", "false")
         validate_service_tokens(values)
         if needs_upgrade:
             temporary = SECRETS.with_suffix(".tmp")
@@ -201,6 +203,7 @@ def ensure_secrets() -> dict[str, str]:
         "LLM_CONFIG_KEY": base64.b64encode(secrets.token_bytes(32)).decode("ascii"),
         # Seals contract restricted supplier fields; a distinct 32-byte key.
         "CLM_DATA_KEY": base64.b64encode(secrets.token_bytes(32)).decode("ascii"),
+        "CONTEXT_SWITCH_ENABLED": "false",
     }
     for key, role in (("CORE_DATABASE_URL", "core_api"), ("DOCUMENT_DATABASE_URL", "document_service"),
                       ("EXECUTION_DATABASE_URL", "audit_execution"), ("MODEL_DATABASE_URL", "model_gateway"),
@@ -469,6 +472,23 @@ def apply_runtime_origin_override() -> None:
         raise RuntimeError(f"failed applying runtime origin override: {applied.stderr.strip()}")
 
 
+def apply_context_switch_override() -> None:
+    values = ensure_secrets()
+    raw = os.environ.get("CONTEXT_SWITCH_ENABLED", str(values.get("CONTEXT_SWITCH_ENABLED", "false"))).strip()
+    if not raw:
+        raw = "false"
+    true_values = {"1", "t", "T", "TRUE", "true", "True"}
+    false_values = {"0", "f", "F", "FALSE", "false", "False"}
+    if raw not in true_values | false_values:
+        raise RuntimeError("CONTEXT_SWITCH_ENABLED must be a valid boolean")
+    patch = {"data": {"CONTEXT_SWITCH_ENABLED": "true" if raw in true_values else "false"}}
+    applied = run(["kubectl", "--kubeconfig", str(KUBECONFIG), "-n", NAMESPACE, "patch",
+                   "configmap", "contract-audit-core-runtime", "--type", "merge", "-p", json.dumps(patch)],
+                  check=False)
+    if applied.returncode:
+        raise RuntimeError(f"failed applying Core context-switch configuration: {applied.stderr.strip()}")
+
+
 def deploy() -> None:
     if not cluster_exists():
         raise RuntimeError(f"cluster {CLUSTER} does not exist; run 'up' first")
@@ -494,6 +514,7 @@ def deploy() -> None:
     apply_phase("bootstrap")
     if (CLIENT_PORT, ADMIN_PORT, PORTAL_PORT) != DEFAULT_UI_PORTS:
         apply_runtime_origin_override()
+    apply_context_switch_override()
     wait_platform()
     kubectl("delete", "job/contract-audit-migrate", "-n", NAMESPACE, "--ignore-not-found=true", check=False)
     apply_phase("migrate")

@@ -336,6 +336,66 @@ def check_core_authority_config(root: Path, mode: str) -> None:
         fail("k3d development profile must use the exact bounded Core authority HTTP exception")
 
 
+def check_context_switch_config(root: Path) -> None:
+    """The switch/support affordance is configured only at Core's boundary."""
+    required_default = "false"
+    env_example = (root / ".env.example").read_text(encoding="utf-8")
+    if "CONTEXT_SWITCH_ENABLED=false" not in env_example.splitlines():
+        fail(".env.example must keep CONTEXT_SWITCH_ENABLED=false by default")
+
+    config_docs = read_yaml_all(root / "deployments/k8s/base/config.yaml")
+    shared = next((doc.get("data", {}) for doc in config_docs if doc.get("kind") == "ConfigMap" and
+                   doc.get("metadata", {}).get("name") == "contract-audit-runtime"), {})
+    if "CONTEXT_SWITCH_ENABLED" in shared:
+        fail("CONTEXT_SWITCH_ENABLED must not be added to the shared runtime ConfigMap")
+    core_runtime = next((doc.get("data", {}) for doc in config_docs if doc.get("kind") == "ConfigMap" and
+                         doc.get("metadata", {}).get("name") == "contract-audit-core-runtime"), None)
+    if not isinstance(core_runtime, dict) or core_runtime.get("CONTEXT_SWITCH_ENABLED") != required_default:
+        fail("Kubernetes Core runtime ConfigMap must default CONTEXT_SWITCH_ENABLED=false")
+
+    workloads = read_yaml_all(root / "deployments/k8s/base/workloads.yaml")
+    core = next((obj for obj in workloads if obj.get("kind") == "Deployment" and
+                 obj.get("metadata", {}).get("name") == "core-api"), None)
+    core_containers = ((core or {}).get("spec", {}).get("template", {}).get("spec", {}).get("containers", []))
+    core_bindings = [entry for container in core_containers for entry in container.get("env", [])
+                     if entry.get("name") == "CONTEXT_SWITCH_ENABLED"]
+    if len(core_bindings) != 1:
+        fail("Kubernetes Core must receive exactly one CONTEXT_SWITCH_ENABLED binding")
+    elif ((core_bindings[0].get("valueFrom", {}).get("configMapKeyRef", {}).get("name") !=
+           "contract-audit-core-runtime") or
+          (core_bindings[0].get("valueFrom", {}).get("configMapKeyRef", {}).get("key") !=
+           "CONTEXT_SWITCH_ENABLED")):
+        fail("Kubernetes Core must read CONTEXT_SWITCH_ENABLED from its dedicated ConfigMap")
+    for obj in workloads:
+        if obj.get("kind") != "Deployment" or obj.get("metadata", {}).get("name") == "core-api":
+            continue
+        containers = obj.get("spec", {}).get("template", {}).get("spec", {}).get("containers", [])
+        if any(entry.get("name") == "CONTEXT_SWITCH_ENABLED" for container in containers
+               for entry in container.get("env", [])):
+            fail(f"Kubernetes {obj.get('metadata', {}).get('name')} must not receive CONTEXT_SWITCH_ENABLED")
+
+    compose = read_compose(root / "compose.app.yaml").get("services", {})
+    expected = "${CONTEXT_SWITCH_ENABLED:-false}"
+    core_env = compose_environment((compose.get("core-api") or {}).get("environment"))
+    if core_env.get("CONTEXT_SWITCH_ENABLED") != expected:
+        fail("Compose core-api must default CONTEXT_SWITCH_ENABLED to false")
+    for name, service in compose.items():
+        if name == "core-api":
+            continue
+        if "CONTEXT_SWITCH_ENABLED" in compose_environment(service.get("environment")):
+            fail(f"Compose {name} must not receive CONTEXT_SWITCH_ENABLED")
+
+    k3d_docs = read_yaml_all(root / "deployments/k3d/config-patch.yaml")
+    k3d_shared = next((doc.get("data", {}) for doc in k3d_docs if doc.get("kind") == "ConfigMap" and
+                       doc.get("metadata", {}).get("name") == "contract-audit-runtime"), {})
+    k3d_core = next((doc.get("data", {}) for doc in k3d_docs if doc.get("kind") == "ConfigMap" and
+                     doc.get("metadata", {}).get("name") == "contract-audit-core-runtime"), None)
+    if "CONTEXT_SWITCH_ENABLED" in k3d_shared:
+        fail("k3d CONTEXT_SWITCH_ENABLED must not be added to the shared runtime ConfigMap")
+    if not isinstance(k3d_core, dict) or k3d_core.get("CONTEXT_SWITCH_ENABLED") != required_default:
+        fail("k3d Core runtime ConfigMap must default CONTEXT_SWITCH_ENABLED=false")
+
+
 def check_experience_kubernetes(name: str, role: str, container: dict, env: dict[str, object], runtime: dict[str, object]) -> None:
     if role not in {"core", "worker"}:
         return
@@ -805,7 +865,8 @@ def check_compose(root: Path, entrypoints: set[str], roles: set[str], dsn_keys: 
 
 def source_evidence(root: Path) -> tuple[str, int]:
     inputs = (
-        "deployments/k8s", "deployments/local.py", "deployments/scripts/manifest-conformance.py",
+        ".env.example", "deployments/k8s", "deployments/k3d.py", "deployments/k3d/config-patch.yaml",
+        "deployments/local.py", "deployments/scripts/manifest-conformance.py",
         "deploy/app/Dockerfile", "deploy/app/nginx", "compose.app.yaml", "compose.observe.yaml", "deployments/compose.identity.yaml", "Makefile",
         "internal/bootstrap/services.go", "internal/bootstrap/runtime.go", "internal/httpapi/health.go",
         "internal/apidocs/openapi.json",
@@ -834,6 +895,7 @@ def run_checks(root: Path, mode: str = "template") -> int:
     check_kustomize(root, entrypoints, roles, dsn_keys, probes)
     check_compose(root, entrypoints, roles, dsn_keys, probes)
     check_core_authority_config(root, mode)
+    check_context_switch_config(root)
     digest, files = source_evidence(root)
     print(f"evidence: source-digest sha256:{digest} over {files} deployment/source files")
     notes.append("production prerequisite: an audited identity directory must be mounted before APP_ENV=production starts")
@@ -856,7 +918,7 @@ def run_checks(root: Path, mode: str = "template") -> int:
 
 
 SUBTREE = (
-    "deployments", "deploy", "cmd", "internal/bootstrap", "internal/httpapi/health.go",
+    ".env.example", "deployments", "deploy", "cmd", "internal/bootstrap", "internal/httpapi/health.go",
     "internal/apidocs/openapi.json", "compose.app.yaml", "compose.observe.yaml", "Makefile",
 )
 

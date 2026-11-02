@@ -82,6 +82,15 @@ data:
 apiVersion: v1
 kind: ConfigMap
 metadata:
+  name: contract-audit-core-runtime
+  labels:
+    app.kubernetes.io/part-of: contract-audit
+data:
+  CONTEXT_SWITCH_ENABLED: "false"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
   name: contract-audit-web-proxy
   labels:
     app.kubernetes.io/part-of: contract-audit

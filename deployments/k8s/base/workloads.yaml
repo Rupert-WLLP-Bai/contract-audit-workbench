@@ -134,6 +134,8 @@ spec:
           env:
             - name: SERVICE_ROLE
               value: core
+            - name: CONTEXT_SWITCH_ENABLED
+              valueFrom: {configMapKeyRef: {name: contract-audit-core-runtime, key: CONTEXT_SWITCH_ENABLED}}
             - name: CORE_DATABASE_URL
               valueFrom: {secretKeyRef: {name: contract-audit-db-urls, key: CORE_DATABASE_URL}}
             - name: ADDR

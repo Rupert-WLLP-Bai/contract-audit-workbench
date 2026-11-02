@@ -206,6 +206,10 @@ def generated_values(infra: dict[str, str]) -> dict[str, str]:
 	client_port = infra.get("CLIENT_PORT", "18080")
 	admin_port = infra.get("ADMIN_PORT", "18081")
 	portal_port = infra.get("PORTAL_PORT", "18082")
+	context_switch_raw = infra.get("CONTEXT_SWITCH_ENABLED", "false").strip() or "false"
+	if context_switch_raw not in {"1", "t", "T", "TRUE", "true", "True", "0", "f", "F", "FALSE", "false", "False"}:
+		raise ValueError("CONTEXT_SWITCH_ENABLED must be a valid boolean")
+	context_switch_enabled = "true" if context_switch_raw in {"1", "t", "T", "TRUE", "true", "True"} else "false"
 	values: dict[str, str] = {
 		"CORE_DATABASE_URL": _dsn("core_api", database, secrets.token_hex(32)),
 		"DOCUMENT_DATABASE_URL": _dsn("document_service", database, secrets.token_hex(32)),
@@ -239,6 +243,7 @@ def generated_values(infra: dict[str, str]) -> dict[str, str]:
 		"CORE_AUTHORITY_URL": _core_authority_url(infra),
 		"CORE_AUTHORITY_CA_FILE": infra.get("CORE_AUTHORITY_CA_FILE", "").strip(),
 		"CORE_AUTHORITY_ALLOW_INSECURE_DEV": _core_authority_dev_flag(infra),
+		"CONTEXT_SWITCH_ENABLED": context_switch_enabled,
 		"MODEL_GATEWAY_URL": "http://model-gateway:8084/v1",
 		"NATS_URL": "nats://nats:4222",
 		"LLM_BASE_URL": _container_model_url(infra.get("LLM_BASE_URL", "http://127.0.0.1:3425/v1")),
@@ -379,6 +384,7 @@ def ensure_private_environment() -> dict[str, str]:
 			"AUTH_ADMIN_DATABASE_URL", "CORE_AUTHORITY_URL", "CORE_AUTHORITY_CA_FILE",
 			"CORE_AUTHORITY_ALLOW_INSECURE_DEV", "CORE_MODEL_AUTHORITY_TOKEN",
 			"TOOL_CORE_AUTHORITY_TOKEN", "DEV_DATABASE_URL", "TEST_DATABASE_URL", "PROD_DATABASE_URL",
+			"CONTEXT_SWITCH_ENABLED",
 		}
 		unexpected_missing = sorted(missing - allowed_upgrade_keys)
 		if unexpected_missing:

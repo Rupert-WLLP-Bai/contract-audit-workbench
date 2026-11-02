@@ -77,6 +77,12 @@ APP_ENV=<target> DATABASE_SCHEMA=<application_schema> \
 
 命令输出 source SHA-256、模式（dry-run/apply）与变更计数，须随变更审批记录保存；数据库冲突或身份不一致会拒绝整批事务。不能使用 Core 运行凭据调用导入，不能把配置 fixture 或 dry-run 结果当作生产组织授权已落库的证据。真实 crosswalk 仍需目标授权方提供并审阅。
 
+## 上下文切换功能开关
+
+`CONTEXT_SWITCH_ENABLED` 由 Core 读取，默认 `false`；缺失或空值保持关闭，非法布尔值会使 Core 启动失败。生产基础模板明确关闭，只有经过审批的目标环境才可显式设为 `true`。Compose 只把它传给 `core-api`；Kubernetes 使用独立的 `contract-audit-core-runtime` ConfigMap，只有 Core Deployment 引用此键。K3d 默认关闭；本地未来验收可显式运行 `CONTEXT_SWITCH_ENABLED=true python3 deployments/k3d.py deploy`，Compose 联调可运行 `CONTEXT_SWITCH_ENABLED=true make apps-up`。
+
+关闭开关仅关闭上下文切换和 support 命令的入口，不会停用会话撤销、上下文版本校验、CSRF 或写入 fence；开启开关也不绕过迁移/schema/fence 前置条件。既有 `.env.distributed` profile 缺少此键时，部署 helper 从 `.env` 中显式值补齐，未设或空值默认 `false`；k3d 私有 `secrets.json` 缺键升级为 `false`。这些升级保留已有凭据，不因开关变更轮换密钥。此配置只是 Core 功能门控，不是租户授权或已完成验收的证明。
+
 ## 本地 Compose
 
 `make apps-up` 通过 `deployments/local.py` 和 `compose.app.yaml` 迁移数据库并启动 Gateway、Core、Document、Execution、Worker、Model/Tool Gateway 以及三个前端站点。先完成[本地开发](../engineering/local-development.md)中的基础设施和私有配置步骤，并确认容器能够访问模型端点。容器内 `127.0.0.1` 指向容器自身；模型服务若在宿主机运行，应配置容器可达地址。

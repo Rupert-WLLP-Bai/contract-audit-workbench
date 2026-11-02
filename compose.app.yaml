@@ -141,6 +141,7 @@ services:
       CORE_DATABASE_URL: ${CORE_DATABASE_URL:?Run make app-bootstrap}
       DATABASE_SCHEMA: ${DATABASE_SCHEMA:-public}
       APP_READ_ONLY: ${APP_READ_ONLY:-false}
+      CONTEXT_SWITCH_ENABLED: ${CONTEXT_SWITCH_ENABLED:-false}
       EXECUTION_QUEUE_POLICY: ${EXECUTION_QUEUE_POLICY:-}
       ADDR: 0.0.0.0:8081
       DATA_DIR: /var/lib/contract-audit

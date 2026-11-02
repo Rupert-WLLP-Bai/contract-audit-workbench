@@ -244,6 +244,13 @@ class ExperienceDeliveryProfileTests(unittest.TestCase):
             self.addCleanup(item.stop)
         self.values = local.generated_values(self.infrastructure)
 
+    def test_context_switch_defaults_false_and_accepts_explicit_boolean_only(self):
+        self.assertEqual(self.values["CONTEXT_SWITCH_ENABLED"], "false")
+        enabled = local.generated_values({**self.infrastructure, "CONTEXT_SWITCH_ENABLED": "TRUE"})
+        self.assertEqual(enabled["CONTEXT_SWITCH_ENABLED"], "true")
+        with self.assertRaisesRegex(ValueError, "CONTEXT_SWITCH_ENABLED must be a valid boolean"):
+            local.generated_values({**self.infrastructure, "CONTEXT_SWITCH_ENABLED": "enabled"})
+
     def write_profile(self, values):
         self.distributed_env.write_text(
             "".join(f"{key}={value}\n" for key, value in values.items()), encoding="utf-8"
@@ -414,6 +421,17 @@ class ExecutionAuthorityDeploymentTests(unittest.TestCase):
             self.set_runtime_ca_path(config_path, "/run/contract-audit/core-authority-ca/ca.pem")
             self.assertEqual(self.check_root(root), [])
 
+    def test_context_switch_is_core_only_and_defaults_closed(self):
+        conformance.failures.clear()
+        conformance.check_context_switch_config(ROOT)
+        self.assertEqual(conformance.failures, [])
+        compose = yaml.safe_load((ROOT / "compose.app.yaml").read_text())["services"]
+        self.assertEqual(conformance.compose_environment(compose["core-api"]["environment"])["CONTEXT_SWITCH_ENABLED"],
+                         "${CONTEXT_SWITCH_ENABLED:-false}")
+        for name, service in compose.items():
+            if name != "core-api":
+                self.assertNotIn("CONTEXT_SWITCH_ENABLED", conformance.compose_environment(service.get("environment")))
+
     def test_execution_never_receives_tool_only_service_token(self):
         conformance.failures.clear()
         conformance.check_tool_authority_compose(
@@ -535,11 +553,60 @@ class K3dCredentialUpgradeTests(unittest.TestCase):
             self.assertIn("audit_offline_migrator", upgraded["MIGRATOR_DATABASE_URL"])
             self.assertEqual(urlsplit(upgraded["PROD_DATABASE_URL"]).username, "audit_offline_migrator")
             self.assertIn("/contract_audit_prod?", upgraded["PROD_DATABASE_URL"])
+            self.assertEqual(upgraded["CONTEXT_SWITCH_ENABLED"], "false")
             for key, value in before.items():
                 if key not in {"MIGRATOR_DATABASE_URL", "DEV_DATABASE_URL"}:
                     self.assertEqual(upgraded[key], value)
             self.assertGreaterEqual(len(upgraded["CORE_MODEL_AUTHORITY_TOKEN"]), 32)
             self.assertNotIn(upgraded["CORE_MODEL_AUTHORITY_TOKEN"], set(before.values()))
             self.assertEqual(secrets_path.stat().st_mode & 0o777, 0o600)
+
+    def test_context_switch_profile_upgrade_defaults_false_and_explicit_k3d_opt_in(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            artifacts = Path(temporary)
+            secrets_path = artifacts / "secrets.json"
+            values = {
+                "POSTGRES_PASSWORD": "p" * 64,
+                "RUSTFS_ACCESS_KEY": "a" * 32,
+                "RUSTFS_SECRET_KEY": "s" * 48,
+                "LLM_API_KEY": "l" * 48,
+                "CORE_DATABASE_URL": "postgres://core:pw@db:5432/contract_audit_dev",
+                "DOCUMENT_DATABASE_URL": "postgres://doc:pw@db:5432/contract_audit_dev",
+                "EXECUTION_DATABASE_URL": "postgres://exec:pw@db:5432/contract_audit_dev",
+                "MODEL_DATABASE_URL": "postgres://model:pw@db:5432/contract_audit_dev",
+                "TOOL_DATABASE_URL": "postgres://tool:pw@db:5432/contract_audit_dev",
+                "MIGRATOR_DATABASE_URL": "postgres://audit_offline_migrator:pw@db:5432/contract_audit_dev",
+                "DEV_DATABASE_URL": "postgres://audit_offline_migrator:pw@db:5432/contract_audit_dev",
+                "AUTH_ADMIN_DATABASE_URL": "postgres://contractaudit:pw@db:5432/contract_audit_dev",
+                "PROD_DATABASE_URL": "postgres://audit_offline_migrator:pw@db:5432/contract_audit_prod",
+                "LLM_CONFIG_KEY": "Y2" * 32,
+                "CLM_DATA_KEY": "Y2" * 32,
+            }
+            for key in k3d.SERVICE_TOKEN_KEYS:
+                values[key] = "token-" + key + "-" + "x" * 40
+            before = dict(values)
+            secrets_path.write_text(json.dumps(values), encoding="utf-8")
+            secrets_path.chmod(0o600)
+            with patch.object(k3d, "ARTIFACTS", artifacts), patch.object(k3d, "SECRETS", secrets_path):
+                upgraded = k3d.ensure_secrets()
+            self.assertEqual(upgraded["CONTEXT_SWITCH_ENABLED"], "false")
+            for key, value in before.items():
+                self.assertEqual(upgraded[key], value)
+
+        result = subprocess.CompletedProcess([], 0, stdout="", stderr="")
+        with patch.object(k3d, "ensure_secrets", return_value={"CONTEXT_SWITCH_ENABLED": "false"}), \
+             patch.dict(k3d.os.environ, {"CONTEXT_SWITCH_ENABLED": "true"}), \
+             patch.object(k3d, "run", return_value=result) as mocked_run:
+            k3d.apply_context_switch_override()
+        self.assertIn("contract-audit-core-runtime", mocked_run.call_args.args[0])
+        self.assertIn('"CONTEXT_SWITCH_ENABLED": "true"', mocked_run.call_args.args[0][-1])
+
+    def test_explicit_empty_context_switch_override_keeps_k3d_disabled(self):
+        result = subprocess.CompletedProcess([], 0, stdout="", stderr="")
+        with patch.object(k3d, "ensure_secrets", return_value={"CONTEXT_SWITCH_ENABLED": "true"}), \
+             patch.dict(k3d.os.environ, {"CONTEXT_SWITCH_ENABLED": ""}), \
+             patch.object(k3d, "run", return_value=result) as mocked_run:
+            k3d.apply_context_switch_override()
+        self.assertIn('"CONTEXT_SWITCH_ENABLED": "false"', mocked_run.call_args.args[0][-1])
 if __name__ == "__main__":
     unittest.main()

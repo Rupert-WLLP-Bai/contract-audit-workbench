@@ -54,3 +54,10 @@ data:
   AGENT_PLANNER_MAX_EVIDENCE_BYTES: "2097152"
   OTEL_EXPORTER_OTLP_ENDPOINT: ""
   MINERU_URL: ""
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: contract-audit-core-runtime
+data:
+  CONTEXT_SWITCH_ENABLED: "false"
