@@ -527,8 +527,23 @@ def check(repo_path: Path, base_ref: str, subject_ref: str, manifest_path: Path,
             raise GateError("legacy foundation must preserve the trusted canonical manifest bytes exactly")
         if not candidate.get("files"):
             raise GateError("legacy transition cannot clear the canonical manifest")
-        for path, rec in candidate["files"].items():
-            mt.validate_record(path, rec, policy_obj)
+        # The canonical legacy blob was reviewed before today's semantic
+        # classifier existed. Defer only discrepancies already present under
+        # the fixed anchor policy, and identify every affected path; any new
+        # discrepancy introduced by the candidate policy still fails closed.
+        anchor_policy = mt.Policy(_json_bytes(_base_blob(repo, LEGACY_CANONICAL_ANCHOR, POLICY_PATH)[0], "reviewed anchor policy"))
+        deferred_records = []
+        for path, rec in sorted(candidate["files"].items()):
+            try:
+                mt.validate_record(path, rec, policy_obj)
+            except mt.ManifestError as candidate_error:
+                try:
+                    mt.validate_record(path, rec, anchor_policy)
+                except mt.ManifestError as anchor_error:
+                    if str(anchor_error) == str(candidate_error):
+                        deferred_records.append({"path": path, "reason": str(candidate_error)})
+                        continue
+                raise GateError(f"{path}: candidate introduces a new legacy record inconsistency: {candidate_error}") from candidate_error
         committed_tree = repo.tree_inventory(subject_sha)
         # Candidate must retain every governance object that already existed in
         # BASE, and introduce the complete fixed foundation tool set.
@@ -571,6 +586,7 @@ def check(repo_path: Path, base_ref: str, subject_ref: str, manifest_path: Path,
             "base_legacy_stale": legacy_drift["base_stale"],
             "legacy_historical_renames": legacy_drift["historical_renames"],
             "legacy_bridge_evidence": legacy_drift["bridge_evidence"],
+            "deferred_legacy_record_validation": deferred_records,
             "candidate_registry_missing": candidate_missing, "candidate_registry_stale": candidate_stale,
             "missing": candidate_missing, "stale": candidate_stale,
             "candidate_additions": added_or_dirty, "candidate_deletions": deleted_committed,

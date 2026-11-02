@@ -333,7 +333,7 @@ class GateAdapterFixture(unittest.TestCase):
         self.assertEqual(stat.S_IMODE(second.stat().st_mode), 0o666)
 
     def prepare_legacy_foundation(self, *, delete_candidate=(), empty_candidate=(), weaken_policy=False,
-                                 weaken_schema=False, prune_legacy=False):
+                                 weaken_schema=False, prune_legacy=False, inherited_mismatch=False):
         old_legacy_marker = ga.LEGACY_INVENTORY_BASELINE
         old_anchor_marker = ga.LEGACY_CANONICAL_ANCHOR
         old_count = ga.LEGACY_BASE_TRACKED_COUNT
@@ -355,6 +355,12 @@ class GateAdapterFixture(unittest.TestCase):
         self.policy_path.write_text(json.dumps(policy, ensure_ascii=False, indent=2) + '\n')
         manifest = json.loads(self.manifest_path.read_text())
         manifest['inventory']['baseline_head'] = self.legacy_sha
+        if inherited_mismatch:
+            record = manifest['files']['scripts/check.py']
+            record['handling'] = 'manifest-only'
+            record['header_state'] = 'manifest-only'
+            record['exception'] = {'rule_id': 'strict-json', 'source': 'scripts/check.py',
+                                   'reason': 'Inherited fixture classification pending explicit reconciliation.'}
         self.manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + '\n')
         self.source_path.write_bytes(b'print("root")\n')
         self.git('add', '.')
@@ -424,6 +430,16 @@ class GateAdapterFixture(unittest.TestCase):
         self.assertTrue(new_tools <= set(result['candidate_registry_missing']))
         self.assertIn('scripts/check_fast.py', self.source_manifest['files'])
         self.assertTrue(new_tools <= set(result['candidate_additions']))
+
+    def test_legacy_foundation_reports_inherited_semantic_mismatch_as_not_run(self):
+        result = self.prepare_legacy_foundation(inherited_mismatch=True)
+        self.assertEqual(result['status'], 'NOT_RUN')
+        self.assertEqual(result['full_metadata_enforcement'], 'NOT_RUN')
+        self.assertIn({'path':'scripts/check.py', 'reason':'scripts/check.py: handling differs from policy'},
+                      result['deferred_legacy_record_validation'])
+        # The immutable canonical legacy blob must still be retained exactly.
+        self.assertEqual(self.manifest_path.read_bytes(),
+                         subprocess.check_output(['git','-C',str(self.repo),'show',self.base_sha+':'+ga.MANIFEST_PATH]))
 
     def test_legacy_transition_uses_reachable_anchor_after_off_main_object_pruned(self):
         result = self.prepare_legacy_foundation(prune_legacy=True)
