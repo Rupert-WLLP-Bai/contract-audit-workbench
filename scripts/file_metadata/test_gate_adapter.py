@@ -616,6 +616,48 @@ class GateAdapterFixture(unittest.TestCase):
         updated = result['inherited_base_fields']
         self.assertTrue(any(x['path'] == 'scripts/check.py' and x['field'] == 'updated' for x in updated))
 
+    def test_identity_window_stops_before_older_commits_for_new_path(self):
+        new_file = self.repo / 'scripts/new_identity.py'
+        new_file.write_text('print("new identity")\n')
+        self.git('add', '-A')
+        self.commit('add latest identity')
+        subject = self.head()
+        repo = GitRepo(self.repo)
+        with mock.patch.object(repo, 'run', wraps=repo.run) as calls:
+            self.assertIsNone(ga._window_identity_origin(repo, self.base_sha, subject,
+                'scripts/new_identity.py', base_on_first_parent=True))
+        parent_reads = [call.args for call in calls.call_args_list
+                        if call.args[:2] == ('rev-list', '--parents')]
+        self.assertEqual(len(parent_reads), 1)
+        self.assertEqual(parent_reads[0][-1], subject)
+
+    def test_identity_window_reuses_git_history_across_paths(self):
+        moved = self.repo / 'scripts/moved.py'
+        self.source_path.rename(moved)
+        self.git('add', '-A')
+        self.commit('rename source')
+        fast = self.repo / 'scripts/check_fast.py'
+        original = fast.read_bytes()
+        fast.unlink()
+        self.git('add', '-A')
+        self.commit('delete second identity')
+        fast.write_bytes(original)
+        self.git('add', '-A')
+        self.commit('recreate second identity')
+        subject = self.head()
+        repo = GitRepo(self.repo)
+        with mock.patch.object(repo, 'run', wraps=repo.run) as calls:
+            self.assertEqual(ga._window_identity_origin(repo, self.base_sha, subject,
+                'scripts/moved.py', base_on_first_parent=True), 'scripts/check.py')
+            first_count = calls.call_count
+            self.assertIsNone(ga._window_identity_origin(repo, self.base_sha, subject,
+                'scripts/check_fast.py', base_on_first_parent=True))
+            self.assertEqual(ga._window_identity_origin(repo, self.base_sha, subject,
+                'scripts/file_metadata/schema.json', base_on_first_parent=True),
+                'scripts/file_metadata/schema.json')
+            self.assertEqual(calls.call_count, first_count,
+                f'expected one history scan, got {calls.call_count} Git calls versus {first_count} for one path')
+
     def test_deleted_and_recreated_same_path_cannot_inherit_created(self):
         old_record = json.loads(json.dumps(self.record))
         self.source_path.unlink()
