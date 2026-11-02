@@ -1,10 +1,10 @@
 # File metadata (manifest mirror):
-# Purpose: 验证 test_all_policies_pass_and_store_direct_import_is_allowed, test_gateway_forbids_both_direct_orchestration_edges, test_neutral_contract_allows_time_but_rejects_nonallowlisted_imports, test_missing_or_empty_named_target_is_blocked 等场景，覆盖该模块的授权、错误或数据边界。
+# Purpose: Pins named policy compatibility, new Store import rejection, domain subpackage boundaries and monotonic baseline behavior through deterministic architecture fixtures.
 # Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 # Contact: +86 13617696321
 # Created: 2026-11-01
 # Updated: 2026-11-02
-# Revision: r1
+# Revision: r2
 # Copyright: See LICENSE
 # End file metadata.
 
