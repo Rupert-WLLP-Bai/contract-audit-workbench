@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: DirectProvider is used only by single-process local development and the synthetic evaluation command. A deployed worker must use GatewayProvider so every call is budgeted and… Related `advisory` operations include NewDirectProvider, ProviderIdentity, AskNouls, NewGatewayProvider.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-28
+// Updated: 2026-10-28
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package advisory
 
 import (

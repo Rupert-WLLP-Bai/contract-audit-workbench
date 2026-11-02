@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Exercises the `main` package behavior through TestOriginsPreservesDefaultsAndConfiguredValues, TestWaitRelayWaitsForBackgroundPublisher, TestWaitRelayTreatsCancellationAsNormalShutdown, TestWaitRelaySurfacesUnexpectedFailure, TestWaitRelayBoundsAnUnresponsiveRelay; these checks pin observable state, error handling, or wire/database compatibility for this module. Test cases include configured role mismatch, private gateway credential required, invalid outbox setting is reported, listener failure is returned.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-28
+// Updated: 2026-10-31
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package main
 
 import (

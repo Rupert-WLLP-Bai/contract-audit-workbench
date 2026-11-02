@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: resolves trusted directory identities and local demonstration logins. Enterprise bindings are operator-managed; browser claims never select tenant or grants. Related `accounts` operations include ValidateEnvironment, init, seed, seedIn.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-25
+// Updated: 2026-11-02
+// Revision: r2
+// Copyright: See LICENSE
+// End file metadata.
+
 // Package accounts resolves trusted directory identities and local demonstration logins.
 // Enterprise bindings are operator-managed; browser claims never select tenant or grants.
 package accounts

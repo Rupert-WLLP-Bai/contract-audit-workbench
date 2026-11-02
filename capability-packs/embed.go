@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: embeds the declarative manifests shipped with the host. The files are data only: no scripts, SQL or executable code are loaded. Related `capabilitypacks` operations include Manifests.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-29
+// Updated: 2026-10-29
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 // Package capabilitypacks embeds the declarative manifests shipped with the
 // host. The files are data only: no scripts, SQL or executable code are loaded.
 package capabilitypacks

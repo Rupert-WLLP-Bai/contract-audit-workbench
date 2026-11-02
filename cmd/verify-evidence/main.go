@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Command verify-evidence verifies a signed evidence ZIP without contacting the application. The trusted key or its independently obtained fingerprint is mandatory; a key embedded in the archive is never trusted on its… Related `main` operations include main, run.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-31
+// Updated: 2026-11-02
+// Revision: r2
+// Copyright: See LICENSE
+// End file metadata.
+
 // Command verify-evidence verifies a signed evidence ZIP without contacting the
 // application. The trusted key or its independently obtained fingerprint is
 // mandatory; a key embedded in the archive is never trusted on its own.

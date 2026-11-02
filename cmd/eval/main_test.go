@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Exercises the `main` package behavior through TestCLIProducesVerifiedReport, TestCLIUsesAnExternalDatasetFile, TestMainUsesCLIExitCodes, TestCLIMismatchFailsUnlessExplicitlyReportOnly, TestCLIInputAndOutputErrorsFail; these checks pin observable state, error handling, or wire/database compatibility for this module. Test cases include writes a report and exits successfully, preserves the invalid flag exit code.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-25
+// Updated: 2026-10-30
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package main
 
 import (

@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Command documentservice runs the independently deployed document service. The process owns the document database identity. It serves the public document operations the edge gateway routes to it, and it exposes the… Related `main` operations include main, run, origins.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-25
+// Updated: 2026-11-02
+// Revision: r2
+// Copyright: See LICENSE
+// End file metadata.
+
 // Command documentservice runs the independently deployed document service.
 //
 // The process owns the document database identity. It serves the public

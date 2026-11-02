@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Guard every requested read before any call in the plan executes. The model may name only references actually delivered in this round and bounded body spans. Related `agentflow` operations include validateKnowledgeReads, knowledgeReadConfigurationValid, validKnowledgeReadRequest, executeKnowledgeReads.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-28
+// Updated: 2026-10-30
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package agentflow
 
 import (

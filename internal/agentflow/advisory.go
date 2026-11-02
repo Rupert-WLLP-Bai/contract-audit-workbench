@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: AdvisoryConfiguration is the frozen identity of the default-on suggestion layer. It never grants authority: the worker only uses it to rerank optional governed knowledge, and… Related `agentflow` operations include ResolveAdvisoryConfiguration, advisoryMode, resolveAdvisoryEgress, resolveAdvisoryProvider.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-28
+// Updated: 2026-11-01
+// Revision: r2
+// Copyright: See LICENSE
+// End file metadata.
+
 package agentflow
 
 import (
