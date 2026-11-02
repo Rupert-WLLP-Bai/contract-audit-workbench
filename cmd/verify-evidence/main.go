@@ -21,12 +21,19 @@ func main() {
 }
 
 func run() error {
-	var keyFile, fingerprint string
+	var keyFile, fingerprint, expectedTenant string
 	flag.StringVar(&keyFile, "public-key", "", "trusted Ed25519 PKIX public key PEM file")
 	flag.StringVar(&fingerprint, "fingerprint", "", "trusted lowercase SHA-256 fingerprint of the DER SubjectPublicKeyInfo")
+	flag.StringVar(&expectedTenant, "expected-tenant", "", "require exact signed v2 tenant (offline assertion, not authorization)")
 	flag.Parse()
+	expectTenant := false
+	flag.Visit(func(f *flag.Flag) {
+		if f.Name == "expected-tenant" {
+			expectTenant = true
+		}
+	})
 	if flag.NArg() != 1 || keyFile == "" && fingerprint == "" {
-		return errors.New("usage: verify-evidence [-public-key trusted.pem] [-fingerprint sha256] bundle.zip; at least one trust option is required")
+		return errors.New("usage: verify-evidence [-public-key trusted.pem] [-fingerprint sha256] [--expected-tenant tenant] bundle.zip; at least one trust option is required")
 	}
 	var trusted []byte
 	if keyFile != "" {
@@ -45,14 +52,28 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	manifest, err := evidencebundle.Verify(file, info.Size(), trusted, fingerprint)
+	var manifest evidencebundle.Manifest
+	if expectTenant {
+		manifest, err = evidencebundle.VerifyForTenant(file, info.Size(), trusted, fingerprint, expectedTenant)
+	} else {
+		manifest, err = evidencebundle.Verify(file, info.Size(), trusted, fingerprint)
+	}
 	if err != nil {
 		return err
 	}
 	return json.NewEncoder(os.Stdout).Encode(struct {
-		Status      string                  `json:"status"`
-		Identity    evidencebundle.Identity `json:"identity"`
-		Fingerprint string                  `json:"public_key_spki_sha256"`
-		Entries     int                     `json:"verified_entries"`
-	}{Status: "verified", Identity: manifest.Identity, Fingerprint: manifest.PublicKeySHA256, Entries: len(manifest.Entries)})
+		Status       string                  `json:"status"`
+		Schema       string                  `json:"schema"`
+		TenantStatus string                  `json:"tenant_status"`
+		Identity     evidencebundle.Identity `json:"identity"`
+		Fingerprint  string                  `json:"public_key_spki_sha256"`
+		Entries      int                     `json:"verified_entries"`
+	}{Status: "verified", Schema: manifest.Schema, TenantStatus: tenantStatus(manifest), Identity: manifest.Identity, Fingerprint: manifest.PublicKeySHA256, Entries: len(manifest.Entries)})
+}
+
+func tenantStatus(manifest evidencebundle.Manifest) string {
+	if manifest.Schema == evidencebundle.SchemaV2 {
+		return "signed"
+	}
+	return "unknown"
 }
