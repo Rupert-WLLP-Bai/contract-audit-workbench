@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Exercises object-history flows against configured case and legal-source fixtures, creating successive draft/source revisions and checking that associations remain pinned to their original versions.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-31
+// Updated: 2026-10-31
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 import assert from "node:assert/strict";
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";

@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Contract drafts, receipts and legacy imports are owned by the core service. They never enter the legacy loadState/clone writer and never nest an old schema write inside a contract… Related `store` operations include validateCLMIdempotencyKey, bindLocalDemoContractGrant, authorizeContract, scopedContractLock.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-01
+// Updated: 2026-11-02
+// Revision: r2
+// Copyright: See LICENSE
+// End file metadata.
+
 package store
 
 import (

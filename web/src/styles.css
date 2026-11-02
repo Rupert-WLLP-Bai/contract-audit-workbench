@@ -1,3 +1,13 @@
+/* File metadata (manifest mirror): */
+/* Purpose: Defines visual tokens and component/page rules, including Hallmark · built: the project · redesign: restyle…, :root, @layer reset, a; the stylesheet is imported by the web shell and carries no application state. */
+/* Author: Bai Junhao <baijunhao@cq.chinamobile.com> */
+/* Contact: +86 13617696321 */
+/* Created: 2026-10-25 */
+/* Updated: 2026-10-31 */
+/* Revision: r1 */
+/* Copyright: See LICENSE */
+/* End file metadata. */
+
 /* Hallmark · built: the project · redesign: restyle · theme: charcoal-blue · genre: modern-minimal · scope: app · surface: absolute · shape: app screen · nav: black grouped menu with icons · footer: none · copy: verbatim */
 /* Hallmark · pre-emit critique: preserve the evidence workspace and use blue for actions, selection and information while retaining semantic status colors */
 /* Hallmark · waive 37 · two family tokens and two size tokens are counted as four families · the workbench uses one UI face with Chinese fallbacks and monospace only for identifiers, hashes and measurements */

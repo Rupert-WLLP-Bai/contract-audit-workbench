@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Checks the web behavior for “Complex document parsing with real HTTP, model and browser”; representative assertions cover DOCX merged/nested tables preserve exact text, visible revisions, emoji and page-free evidence, A corrupt PDF is retained as missing evidence and never becomes a compatible review. It protects the rendered/API state expected by this component without starting the full browser journey.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-25
+// Updated: 2026-10-25
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 import {
   test, expect, apiURL, webURL, body, login, createCase, upload, fixture,
   detail, waitWorkspace, assertAnchors, evaluation, operations, startReview,

@@ -1,3 +1,13 @@
+<!-- File metadata (manifest mirror): -->
+<!-- Purpose: 说明“本地 MinerU OCR”的操作或技术边界：MinerU 4.x 可作为本机 OCR 服务选项。以下命令来自当前 README 与实际工具入口；模型权重放在仓外。示例适用于已配置 NVIDIA CUDA 的 Linux/WSL 主机，不是通用硬件性能承诺。 -->
+<!-- Author: Bai Junhao <baijunhao@cq.chinamobile.com> -->
+<!-- Contact: +86 13617696321 -->
+<!-- Created: 2026-11-01 -->
+<!-- Updated: 2026-11-01 -->
+<!-- Revision: r1 -->
+<!-- Copyright: See LICENSE -->
+<!-- End file metadata. -->
+
 # 本地 MinerU OCR
 
 MinerU 4.x 可作为本机 OCR 服务选项。以下命令来自当前 README 与实际工具入口；模型权重放在仓外。示例适用于已配置 NVIDIA CUDA 的 Linux/WSL 主机，不是通用硬件性能承诺。

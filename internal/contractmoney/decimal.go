@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: implements the exact decimal money semantics of the contract domain: fixed-precision decimal strings, ROUND_HALF_UP arithmetic, and the settlement identities that submit and freeze must reconcile. The precision table,… Related `contractmoney` operations include Error, Parse, scanDecimal, exceedsOne.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-01
+// Updated: 2026-11-01
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 // Package contractmoney implements the exact decimal money semantics of the
 // contract domain: fixed-precision decimal strings, ROUND_HALF_UP arithmetic,
 // and the settlement identities that submit and freeze must reconcile. The

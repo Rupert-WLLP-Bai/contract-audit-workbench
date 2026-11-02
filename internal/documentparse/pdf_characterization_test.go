@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Exercises the `documentparse` package behavior through TestPDFPageCountPinned, TestPDFCheckPageSizesPinned, TestPDFImagePagesPinned, TestPDFReadableTextPinned, TestPDFBoundedOutputWritePinned; these checks pin observable state, error handling, or wire/database compatibility for this module. Test cases include repeated image on one page, canceled context, empty body, missing magic.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-30
+// Updated: 2026-10-31
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package documentparse
 
 // Characterization tests for the PDF adapter. The metadata, page-size and

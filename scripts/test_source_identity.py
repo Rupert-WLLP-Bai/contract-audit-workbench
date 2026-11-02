@@ -1,3 +1,13 @@
+# File metadata (manifest mirror):
+# Purpose: Regression checks for test_digest_is_deterministic_and_lists_deployment_inputs, test_changed_capability_pack_changes_digest, test_changed_deployment_script_changes_digest, test_changed_deployment_manifest_changes_digest, test_build_cache_and_dependency_artifacts_do_not_change_digest; they assert the deployment, parser, or repository-policy contract that the corresponding implementation must preserve.
+# Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+# Contact: +86 13617696321
+# Created: 2026-10-25
+# Updated: 2026-10-31
+# Revision: r1
+# Copyright: See LICENSE
+# End file metadata.
+
 """The source identity manifest must cover executable delivery inputs, deterministically.
 
 The deployment tree holds executable delivery inputs (local bootstrap and test

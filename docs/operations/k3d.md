@@ -1,3 +1,13 @@
+<!-- File metadata (manifest mirror): -->
+<!-- Purpose: 说明“本地 k3d 演练”的操作或技术边界：`deployments/k3d.py` 在一台主机上创建独立的 k3d 集群和 kubeconfig，不切换当前默认 Kubernetes context。私有凭据和验收产物保存在仓外。 -->
+<!-- Author: Bai Junhao <baijunhao@cq.chinamobile.com> -->
+<!-- Contact: +86 13617696321 -->
+<!-- Created: 2026-11-01 -->
+<!-- Updated: 2026-11-01 -->
+<!-- Revision: r1 -->
+<!-- Copyright: See LICENSE -->
+<!-- End file metadata. -->
+
 # 本地 k3d 演练
 
 `deployments/k3d.py` 在一台主机上创建独立的 k3d 集群和 kubeconfig，不切换当前默认 Kubernetes context。私有凭据和验收产物保存在仓外。

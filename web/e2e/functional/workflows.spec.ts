@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Checks the web behavior for “experience feedback, distillation and candidate review”; representative assertions cover experience feedback, distillation and candidate review, governed knowledge lifecycle through the admin UI, evidence request, receipt, later review and verification. It protects the rendered/API state expected by this component without starting the full browser journey.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-28
+// Updated: 2026-10-31
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 /**
  * Runs against the fixture stack. The review planner and experience-distillation
  * gateway are deterministic test doubles: these tests verify workflow and

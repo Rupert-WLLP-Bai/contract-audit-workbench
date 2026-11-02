@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Derives selectable run/attempt choices from persisted review history and keys a choice by both IDs so the UI cannot switch to a different frozen attempt implicitly.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-25
+// Updated: 2026-10-28
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 import type {
   ExecutionAttempt,
   ReviewHistoryEntry,

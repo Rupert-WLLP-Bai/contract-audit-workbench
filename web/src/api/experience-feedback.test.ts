@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Checks the web behavior for “experience feedback API”; representative assertions cover sends exact source identities and code-point evidence with an idempotency key, does not accept a response for another decision, an invalid span, or different content, accepts a trimmed reason and rejects every source identity drift. It protects the rendered/API state expected by this component without starting the full browser journey.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-28
+// Updated: 2026-10-30
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "./http";
 import {

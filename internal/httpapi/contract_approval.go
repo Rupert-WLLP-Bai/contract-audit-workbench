@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: CLM-07 routes: a manager submits the frozen current revision, while platform administrators publish versioned templates and replace role bindings. Templates and bindings are… Related `httpapi` operations include submitContractApproval, decideApprovalTask, issueApprovalCredential, transferApprovalTask.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-01
+// Updated: 2026-11-01
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package httpapi
 
 import (

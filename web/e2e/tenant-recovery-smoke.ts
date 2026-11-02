@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: 实现 `SessionContext`, `web`, `out`, `screenshots` 等前端类型或模块导出，供对应功能调用。
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-02
+// Updated: 2026-11-02
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 import { mkdir, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { chromium } from "playwright";

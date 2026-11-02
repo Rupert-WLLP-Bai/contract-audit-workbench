@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Exercises the `externalread` package behavior through TestConfiguredBandwidthKeepsDecimalGrammarAndByteLimit, TestFirstConfiguredCharacteristicControlsParsingAndSourcePointer, TestReadSkipsUnrelatedCharacteristicBeforeConfiguredValue, TestReadKeepsInvalidRecordIDOutOfRejectedObservation, TestReadRejectsUpdatedAtWithNonStringJSONType; these checks pin observable state, error handling, or wire/database compatibility for this module. Test cases include invalid first duplicate remains missing, first valid duplicate keeps its own pointer, maximum payload reference prefix, one byte response limit.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-30
+// Updated: 2026-10-30
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package externalread
 
 import (

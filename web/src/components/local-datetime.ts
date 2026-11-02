@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Converts browser-local datetime input strings to/from UTC instants for fields whose business meaning follows the operator’s local timezone.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-30
+// Updated: 2026-10-30
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 /**
  * `<input type="datetime-local">` speaks local wall time while the API accepts
  * RFC 3339 UTC instants. Forms convert through these two functions so an

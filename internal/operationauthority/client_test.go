@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: 实现 `TestOperationAuthorityRestoresOnlyExactAuthenticatedProjection` 等 Core 操作授权投影与客户端调用，校验内部票据和主体上下文。
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-02
+// Updated: 2026-11-02
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package operationauthority
 
 import (

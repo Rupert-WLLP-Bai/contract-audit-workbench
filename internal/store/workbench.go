@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: EqualFold uses Unicode simple folds, so equivalent numbers must share a lock even where PostgreSQL lower() does not match Go's case folding. Related `store` operations include validTaskKind, validTaskStatus, validTaskPriority, UpdateCaseProfile.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-25
+// Updated: 2026-11-02
+// Revision: r2
+// Copyright: See LICENSE
+// End file metadata.
+
 package store
 
 import (

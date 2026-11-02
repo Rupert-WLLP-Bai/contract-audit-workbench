@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: calls the read-only tool gateway for one durable worker claim. The caller is a worker, never a browser: it presents its current job claim and a service-pair credential instead of a session token. The gateway resolves… Related `toolclient` operations include New, isHTTPOrHTTPS, FrozenEvidence, encodeCurrentClaim.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-25
+// Updated: 2026-10-31
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 // Package toolclient calls the read-only tool gateway for one durable worker
 // claim.
 //

@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Reads DOCX styles.xml and document defaults to resolve inherited run/paragraph visibility; identifies hidden and special text so extraction can omit non-visible content consistently.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-25
+// Updated: 2026-10-30
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package documentparse
 
 import "fmt"

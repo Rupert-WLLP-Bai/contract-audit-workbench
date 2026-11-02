@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Checks the web behavior for “business agent review statuses and edge cases, business agent review”; representative assertions cover keeps a missing status neutral but attention-toned, keeps scope-only domains and missing capabilities unknown, distinguishes gap resolution states and missing gap details. It protects the rendered/API state expected by this component without starting the full browser journey.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-28
+// Updated: 2026-10-30
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 import { screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { parseBusinessAgentReview } from "../api/business-agent-review";

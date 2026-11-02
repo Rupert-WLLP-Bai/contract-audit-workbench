@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: BrowserOrigins returns the explicitly configured browser origins and, in development or test only, the local Vite origins. Production has no implicit browser origins; an empty or… Related `config` operations include BrowserOrigins.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-31
+// Updated: 2026-10-31
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package config
 
 import "strings"

@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: RulePackSuiteResult is a synthetic run pinned to persisted versions. No case content or lifecycle state is modified by a run. Related `store` operations include TestRulePackSuite, fixtureGovernancePack.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-31
+// Updated: 2026-11-02
+// Revision: r2
+// Copyright: See LICENSE
+// End file metadata.
+
 package store
 
 import (

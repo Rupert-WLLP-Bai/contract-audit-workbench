@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Provides admin-only model endpoint and system configuration views; credentials are never exposed in the client workbench and server authorization controls settings access.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-25
+// Updated: 2026-11-02
+// Revision: r2
+// Copyright: See LICENSE
+// End file metadata.
+
 import { useState } from "react";
 import { errorMessage } from "../api/http";
 import { Button, Statistic, Table, type TableProps } from "antd";

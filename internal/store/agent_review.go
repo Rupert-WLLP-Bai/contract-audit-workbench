@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: AgentReviewRecord is one terminal agent-flow projection persisted for a live claim. It is Execution-owned: the durable worker writes it before the terminal transition and every… Related `store` operations include validate, SyncAgentReviewRecord, AgentReviewForAttempt, agentReviewDigestForOutput.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-25
+// Updated: 2026-11-02
+// Revision: r2
+// Copyright: See LICENSE
+// End file metadata.
+
 package store
 
 import (

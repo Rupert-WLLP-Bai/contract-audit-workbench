@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Loads case workbench profiles, tasks and relations from PostgreSQL under tenant and case scope; assembles one consistent projection without making client-visible identifiers authoritative.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-25
+// Updated: 2026-10-31
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package store
 
 import (

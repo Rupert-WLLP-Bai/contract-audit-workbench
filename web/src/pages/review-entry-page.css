@@ -1,3 +1,13 @@
+/* File metadata (manifest mirror): */
+/* Purpose: Defines visual tokens and component/page rules, including Hallmark · built: the project · redesign: restyle…, .review-entry-page .page-head, .review-entry-page .page-head h1, .review-entry-summary; the stylesheet is imported by the web shell and carries no application state. */
+/* Author: Bai Junhao <baijunhao@cq.chinamobile.com> */
+/* Contact: +86 13617696321 */
+/* Created: 2026-10-25 */
+/* Updated: 2026-10-28 */
+/* Revision: r1 */
+/* Copyright: See LICENSE */
+/* End file metadata. */
+
 /* Hallmark · built: the project · redesign: restyle · theme: ant-monochrome (by request) · genre: modern-minimal · scope: app · surface: absolute · shape: app screen · nav: black grouped menu · footer: none */
 /* Hallmark · pre-emit critique: summary figures stay transparent while the contract ledger is a white surface with aligned, wrappable columns */
 .review-entry-page {

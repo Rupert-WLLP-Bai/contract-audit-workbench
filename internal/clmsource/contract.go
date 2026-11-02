@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: 实现 `AuthorityMode`, `Action`, `AllowsLocalAction`, `SourceKind` 等具体接口与边界逻辑，供 internal/clmsource 的调用方使用。
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-01
+// Updated: 2026-11-01
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 // Package clmsource contains the small, dependency-free CLM external-source
 // contract. It describes source capabilities and pure authority/version rules;
 // it does not authenticate callers, authorize tenants or contracts, persist

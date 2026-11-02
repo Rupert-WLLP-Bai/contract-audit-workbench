@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Maps approval round, task and action states to labels/tones so approval histories are displayed consistently with the server projection.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-01
+// Updated: 2026-11-01
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 import type { StatusTone } from "./review";
 
 export const APPROVAL_NODE_LABELS: Record<string, string> = {

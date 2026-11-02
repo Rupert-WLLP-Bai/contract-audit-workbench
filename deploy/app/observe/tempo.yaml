@@ -1,3 +1,13 @@
+# File metadata (manifest mirror):
+# Purpose: Configures local Tempo OTLP receivers on gRPC/HTTP, a 3200 query port, a 7-day block retention, and filesystem WAL/block storage for the optional tracing profile.
+# Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+# Contact: +86 13617696321
+# Created: 2026-10-25
+# Updated: 2026-10-25
+# Revision: r1
+# Copyright: See LICENSE
+# End file metadata.
+
 stream_over_http_enabled: true
 server:
   http_listen_port: 3200

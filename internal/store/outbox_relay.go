@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: ErrOutboxClaimLost reports that the relay no longer holds the claim it tries to acknowledge or release: another relay took the event over after the lease expired, or the claim… Related `store` operations include ClaimOutbox, AckOutbox, ReleaseOutbox, validOutboxReason.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-25
+// Updated: 2026-11-02
+// Revision: r2
+// Copyright: See LICENSE
+// End file metadata.
+
 package store
 
 import (

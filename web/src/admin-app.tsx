@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Defines the admin route tree and lazy-loads settings, health, rule-pack and governed-knowledge pages behind the admin session gate.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-25
+// Updated: 2026-11-02
+// Revision: r2
+// Copyright: See LICENSE
+// End file metadata.
+
 import { lazy, Suspense } from "react";
 import { Navigate, Route, Routes } from "react-router";
 import { AdminShell } from "./components/admin-shell";

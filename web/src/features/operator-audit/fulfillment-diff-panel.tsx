@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Renders the operator-audit fulfillment diff panel extension from its typed case/run projections and explicit feature flags; any command uses the draft extension client and remains disabled unless the server and deployment enable that surface.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-29
+// Updated: 2026-10-29
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 import { Button, Card } from "antd";
 import { PageStatus } from "../../components/page-status";
 import { StatusText } from "../../components/status-text";

@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Composes client and admin route trees, session gates and shared application shells; route visibility follows the authenticated server audience and API session state.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-25
+// Updated: 2026-11-02
+// Revision: r2
+// Copyright: See LICENSE
+// End file metadata.
+
 import { lazy, Suspense } from "react";
 import { Route, Routes, useLocation, useSearchParams } from "react-router";
 import { AppShell } from "./components/app-shell";

@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Governance routes are Core-owned admin surface. Every handler resolves the trusted admin session first: tenant and actor are server-bound, never taken from the request body, and… Related `httpapi` operations include listRulePacks, createRulePack, getRulePackVersion, editRulePackVersion.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-25
+// Updated: 2026-10-31
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package httpapi
 
 import (

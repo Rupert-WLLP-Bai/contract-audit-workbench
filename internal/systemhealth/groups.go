@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: replicaExpectation is the desired replica count for one logical service and where that number came from. A zero desired count with source "unavailable" means the collector has no… Related `systemhealth` operations include catalogExpectations, mergeExpectations, buildGroups, add.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-28
+// Updated: 2026-10-30
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package systemhealth
 
 import "fmt"

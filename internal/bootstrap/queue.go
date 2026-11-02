@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Reads EXECUTION_QUEUE_POLICY, returns store.DefaultQueuePolicy when unset, and otherwise accepts exactly one strict JSON object up to 32 KiB; malformed, oversized, unknown-field or trailing-value input is rejected.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-25
+// Updated: 2026-10-25
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package bootstrap
 
 import (

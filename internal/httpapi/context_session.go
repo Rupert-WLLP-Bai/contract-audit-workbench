@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: 注册并处理 `sessionJSON`, `listSessionContexts`, `switchSessionContext`, `contextCommands` 等 Core HTTP 路由或会话命令，完成请求解析、服务端授权与响应映射。
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-02
+// Updated: 2026-11-02
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package httpapi
 
 import (

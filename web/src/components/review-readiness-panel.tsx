@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Renders ReviewReadinessPanel, the review readiness panel workbench UI, from the selected case/workspace projection and the module’s query/state inputs; it displays server-derived state and does not establish business authorization or evidence validity.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-31
+// Updated: 2026-11-01
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 import { Button, Radio } from "antd";
 import type { ReviewReadiness, ReviewReadinessBlocker, ReviewScope } from "../api/review-readiness";
 import { errorMessage } from "../api/http";

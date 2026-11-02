@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Loads the repository OpenAPI contract, groups routes and schemas for browsing, and sends optional same-origin requests from the API explorer using the documented parameters and session.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-25
+// Updated: 2026-11-02
+// Revision: r2
+// Copyright: See LICENSE
+// End file metadata.
+
 import { SearchOutlined } from "@ant-design/icons";
 import { Menu, Tabs } from "antd";
 import { Collapse } from "antd";

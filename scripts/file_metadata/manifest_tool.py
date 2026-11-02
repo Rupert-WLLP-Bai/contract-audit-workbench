@@ -1,3 +1,13 @@
+# File metadata (manifest mirror):
+# Purpose: Read-only manifest inventory/validation prototype for FILE-01/02.
+# Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+# Contact: +86 13617696321
+# Created: 2026-11-02
+# Updated: 2026-11-02
+# Revision: r1
+# Copyright: See LICENSE
+# End file metadata.
+
 """Read-only FILE metadata manifest inventory and validation.
 
 No command in this module writes to the target repository. Schema validation is

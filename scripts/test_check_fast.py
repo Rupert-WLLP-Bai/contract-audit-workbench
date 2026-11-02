@@ -1,3 +1,13 @@
+# File metadata (manifest mirror):
+# Purpose: Regression checks for test_rename_spaces_and_deletion_are_preserved, test_incomplete_record_is_rejected, test_go_change_selects_format_compile_and_unit, test_shared_package_change_expands_compile, test_shared_package_without_tests_widens_unit_scope; they assert the deployment, parser, or repository-policy contract that the corresponding implementation must preserve.
+# Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+# Contact: +86 13617696321
+# Created: 2026-10-31
+# Updated: 2026-11-02
+# Revision: r2
+# Copyright: See LICENSE
+# End file metadata.
+
 """Selection and failure-boundary tests for the shared fast-check CLI."""
 import json
 import os

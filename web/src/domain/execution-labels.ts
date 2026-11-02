@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Formats review phase/event/status labels, elapsed duration and token counts for the execution timeline; unknown event values remain visible as unknown.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-30
+// Updated: 2026-10-30
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 const PHASE_LABELS: Record<string, string> = {
   acceptance: "受理",
   audit_review_execution_v1: "审查执行",

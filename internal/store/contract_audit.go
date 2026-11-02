@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Binding an audit result never copies or rewrites a review. It appends one immutable fact that cites an existing run/attempt/frozen input and the exact frozen contract revision.… Related `store` operations include has, add, assessAuditEvidence, loadAuditRunAttempt.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-01
+// Updated: 2026-11-02
+// Revision: r2
+// Copyright: See LICENSE
+// End file metadata.
+
 package store
 
 import (

@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Checks the web behavior for “subject identity labels”; representative assertions cover keeps synthetic controlled verification distinct from ordinary verified status, uses case-role vocabulary without changing domain values. It protects the rendered/API state expected by this component without starting the full browser journey.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-31
+// Updated: 2026-10-31
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 import { subjectBindingStateLabel, subjectRoleLabel, subjectVerificationLabel } from "./subjects";
 
 describe("subject identity labels", () => {

@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Builds and parses operator-audit service-object registry, preview, history and association requests using encoded IDs and revision-bound server responses.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-31
+// Updated: 2026-10-31
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 import { jsonInit, requestJson } from "../../api/http";
 import { responseReader } from "../../api/respond";
 

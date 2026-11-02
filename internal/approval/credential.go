@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: implements the short-lived, internally signed identity credential an approver presents with one approval decision. It is an internal confirmation capability: the token proves that this server bound a subject, tenant,… Related `approval` operations include NewKeyring, KeyringFromEnv, Issue, Verify.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-01
+// Updated: 2026-11-01
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 // Package approval implements the short-lived, internally signed identity
 // credential an approver presents with one approval decision. It is an
 // internal confirmation capability: the token proves that this server bound a

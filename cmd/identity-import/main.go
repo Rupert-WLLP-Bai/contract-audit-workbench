@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: 提供离线 identity crosswalk 命令入口，严格解析输入并输出 dry-run 摘要；只有显式 --apply 才提交经授权的导入。
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-02
+// Updated: 2026-11-02
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package main
 
 import (

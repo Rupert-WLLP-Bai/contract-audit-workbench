@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: 从 typed Go API contracts 和已登记 routes 生成嵌入的 OpenAPI JSON，并以 --check 比较生成结果。
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-02
+// Updated: 2026-11-02
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 // Command openapi-gen emits the embedded OpenAPI artifact from the typed Go
 // contract. The checked-in JSON is generated output, never the edit source.
 package main

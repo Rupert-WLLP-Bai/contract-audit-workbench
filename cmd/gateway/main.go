@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Command gateway runs the edge reverse proxy. It holds no database identity and no business authority: it routes each operation to the one service that owns it, strips every internal header a caller could have forged,… Related `main` operations include main, run.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-25
+// Updated: 2026-10-31
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 // Command gateway runs the edge reverse proxy.
 //
 // It holds no database identity and no business authority: it routes each

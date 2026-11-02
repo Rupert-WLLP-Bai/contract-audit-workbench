@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Seals and opens short-lived OIDC state cookies with authenticated encryption and fixed purpose binding; rejects tampering, expiry and payloads outside the login callback flow.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-25
+// Updated: 2026-10-30
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package identity
 
 import (

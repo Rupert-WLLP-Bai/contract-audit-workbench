@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: RulePack revisions consume committed evaluations; absence of a finding alone never proves resolution. Both the rule identity and object set must be unique. Related `store` operations include compareRulePackRevisions, revisionFindingEvaluation, revisionMatchingEvaluation.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-25
+// Updated: 2026-10-25
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package store
 
 import "contractaudit/internal/revise"

@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: ExperienceUsageInput identifies one finding and one exact frozen experience. ExpectedAction is a reviewer's stated direction, not a model conclusion. Related `store` operations include validExperienceUsageIdentity, experienceUsageHash, loadExperienceUsageReview, usageSelection.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-31
+// Updated: 2026-11-02
+// Revision: r2
+// Copyright: See LICENSE
+// End file metadata.
+
 package store
 
 import (

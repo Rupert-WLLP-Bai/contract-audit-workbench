@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: ExperienceDistillRequest identifies a feedback and, optionally, the exact existing candidate revision to extend. Tenant and applicant are server-bound. Related `store` operations include UseExperienceResultAcceptor, AcceptExperienceResult, experiencePolicyContext, validateExperiencePolicyContext.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-28
+// Updated: 2026-11-02
+// Revision: r2
+// Copyright: See LICENSE
+// End file metadata.
+
 package store
 
 import (

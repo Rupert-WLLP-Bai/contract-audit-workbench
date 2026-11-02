@@ -1,3 +1,13 @@
+# File metadata (manifest mirror):
+# Purpose: Fixed-base adapter draft for FILE metadata review and explicit header application.
+# Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+# Contact: +86 13617696321
+# Created: 2026-11-02
+# Updated: 2026-11-02
+# Revision: r1
+# Copyright: See LICENSE
+# End file metadata.
+
 """Fixed-base FILE metadata verification and explicit header application.
 
 The fast gate loads its verifier from the actual target BASE. It trusts the

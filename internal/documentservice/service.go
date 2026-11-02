@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Config bounds independent parse and OCR work plus the total number of active and waiting requests. Related `documentservice` operations include FromEnv, readBoundedEnvInt, parseDocumentTimeout, New.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-25
+// Updated: 2026-11-02
+// Revision: r2
+// Copyright: See LICENSE
+// End file metadata.
+
 package documentservice
 
 import (

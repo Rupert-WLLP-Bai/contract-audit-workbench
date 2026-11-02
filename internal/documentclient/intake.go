@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: IntakeUploader calls the document service's dedicated authenticated intake upload entry. It is a separate client from the read-only DocumentPreparer; the worker preparation… Related `documentclient` operations include NewIntakeUploader, UploadPrimaryContract, validateIntakeUploadRequest, validIntakeUploadID.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-31
+// Updated: 2026-11-02
+// Revision: r2
+// Copyright: See LICENSE
+// End file metadata.
+
 package documentclient
 
 import (

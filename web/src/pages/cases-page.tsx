@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Lists and searches the cases visible to the current session, with server-backed filtering, sorting and pagination before opening a case workspace.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-25
+// Updated: 2026-10-31
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 import { Select } from "antd";
 import { Button, Input, Modal, Pagination } from "antd";
 import { useId, useLayoutEffect, useState, type FormEvent } from "react";

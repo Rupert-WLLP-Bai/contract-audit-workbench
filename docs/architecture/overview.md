@@ -1,3 +1,13 @@
+<!-- File metadata (manifest mirror): -->
+<!-- Purpose: 说明“架构概览”的操作或技术边界：系统由 Client、Admin 和 Portal 三个前端入口与 Go 服务组成。单进程开发入口是 `cmd/server`；独立部署由 Gateway、Core、Document、Execution、Worker、Model Gateway 和 Tool Gateway 组成。服务间职责和运行方式见[部署模式](../operations/deployment.md)。 -->
+<!-- Author: Bai Junhao <baijunhao@cq.chinamobile.com> -->
+<!-- Contact: +86 13617696321 -->
+<!-- Created: 2026-11-01 -->
+<!-- Updated: 2026-11-01 -->
+<!-- Revision: r1 -->
+<!-- Copyright: See LICENSE -->
+<!-- End file metadata. -->
+
 # 架构概览
 
 系统由 Client、Admin 和 Portal 三个前端入口与 Go 服务组成。单进程开发入口是 `cmd/server`；独立部署由 Gateway、Core、Document、Execution、Worker、Model Gateway 和 Tool Gateway 组成。服务间职责和运行方式见[部署模式](../operations/deployment.md)。

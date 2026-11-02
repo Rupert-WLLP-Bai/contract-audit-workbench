@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Checks the web behavior for “subject API response parsing”; representative assertions cover consumes backend-marshaled P2 directory, snapshot, verification and pinned-parse fixtures, preserves exact legacy profile text and case role versions, accepts only the known masked claim and server principal shape. It protects the rendered/API state expected by this component without starting the full browser journey.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-31
+// Updated: 2026-10-31
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import {

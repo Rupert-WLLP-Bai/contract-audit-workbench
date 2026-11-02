@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Collects functional Playwright case results, failures, console/network observations, and artifact references into the run report without embedding application business data.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-25
+// Updated: 2026-10-25
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 import type { FullConfig, FullResult, Reporter, Suite, TestCase, TestResult } from "playwright/types/testReporter";
 import { readFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";

@@ -1,3 +1,13 @@
+# File metadata (manifest mirror):
+# Purpose: Compose profile for health-monitor, nats, gateway, core-api, document-service, audit-execution, audit-worker, model-gateway, model-gateway-fixture, tool-gateway, client, admin, portal, migrate; service ports, dependencies, and health checks provide the local infrastructure inputs consumed by the repository startup targets.
+# Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+# Contact: +86 13617696321
+# Created: 2026-10-25
+# Updated: 2026-11-02
+# Revision: r2
+# Copyright: See LICENSE
+# End file metadata.
+
 x-backend-build: &backend-build
   context: .
   dockerfile: deploy/app/Dockerfile

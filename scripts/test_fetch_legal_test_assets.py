@@ -1,3 +1,13 @@
+# File metadata (manifest mirror):
+# Purpose: Regression checks for test_download_extracts_exact_original_bytes, test_existing_valid_directory_is_reused_without_download, test_corrupt_archive_digest_is_rejected, test_member_bytes_must_match_pinned_file_digest, test_path_traversal_member_is_rejected_before_writing; they assert the deployment, parser, or repository-policy contract that the corresponding implementation must preserve.
+# Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+# Contact: +86 13617696321
+# Created: 2026-10-31
+# Updated: 2026-10-31
+# Revision: r1
+# Copyright: See LICENSE
+# End file metadata.
+
 import hashlib
 import io
 import json

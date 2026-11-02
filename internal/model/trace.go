@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: buildModelCallTrace records bounded request and response previews plus the exact digests and byte counts of the full bodies. Images and over-budget text are omitted; the flags and… Related `model` operations include buildModelCallTrace, traceRequestMessages, traceContent, truncateTraceString.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-30
+// Updated: 2026-10-31
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package model
 
 import (

@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Checks the web behavior for “OpenAPI contract parsing, OpenAPI reference resolution”; representative assertions cover parses the documented contract envelope and operation defaults, falls back to the generated key for operation identity and summarises it, merges path-level parameters with operation overrides and parses examples. It protects the rendered/API state expected by this component without starting the full browser journey.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-30
+// Updated: 2026-10-30
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 import { describe, expect, it } from "vitest";
 import { parseOpenApiContract, resolveOpenApiReference } from "./openapi";
 

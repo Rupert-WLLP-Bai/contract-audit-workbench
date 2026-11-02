@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Validates editable rule-pack drafts locally, checking required capabilities, effective dates and field relationships before the server performs authoritative publication validation.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-25
+// Updated: 2026-10-28
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 import type { RulePackManifestInput } from "../api/rulepacks";
 
 const REQUIRED_RULE_CAPABILITIES: Record<string, true> = {

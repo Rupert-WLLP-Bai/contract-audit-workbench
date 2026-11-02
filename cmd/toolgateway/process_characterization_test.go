@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Exercises the `main` package behavior through TestRunRejectsInvalidServiceCredentials, TestRunServesLivenessCorsAndCallerResponsesThenStops; these checks pin observable state, error handling, or wire/database compatibility for this module. Test cases include short edge credential, short worker credential, worker and edge credentials differ.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-30
+// Updated: 2026-10-30
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package main
 
 import (

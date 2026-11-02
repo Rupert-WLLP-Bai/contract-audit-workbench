@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Checks the web behavior for “http client”; representative assertions cover reads the error envelope and keeps conflict details, turns a network failure into a retryable error and sends the session cookie, rejects a knowledge response for a different requested version. It protects the rendered/API state expected by this component without starting the full browser journey.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-25
+// Updated: 2026-11-02
+// Revision: r2
+// Copyright: See LICENSE
+// End file metadata.
+
 import { getKnowledge, getReviewDiagnostics, startReview, submitDecision } from "./endpoints";
 import {
   ApiError,

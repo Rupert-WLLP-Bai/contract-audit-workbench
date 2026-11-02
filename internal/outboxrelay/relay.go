@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: publishes committed outbox rows to a JetStream broker and prompts idle workers. PostgreSQL stays the only authority. The relay claims rows through the existing outbox API, publishes each row with its stable id as the… Related `outboxrelay` operations include FromEnv, defaultRelayOwner, applyBoundedInteger, applyDurations.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-25
+// Updated: 2026-10-31
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 // Package outboxrelay publishes committed outbox rows to a JetStream broker and
 // prompts idle workers.
 //

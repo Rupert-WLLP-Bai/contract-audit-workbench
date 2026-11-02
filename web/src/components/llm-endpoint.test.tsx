@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Checks the web behavior for “LLM endpoint settings”; representative assertions cover probes the typed credential and saves it only in the request body, does not carry a stored credential to a different endpoint, selects role models from the saved catalog with the current revision. It protects the rendered/API state expected by this component without starting the full browser journey.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-30
+// Updated: 2026-10-30
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 import { useState } from "react";
 import {
   cleanup,

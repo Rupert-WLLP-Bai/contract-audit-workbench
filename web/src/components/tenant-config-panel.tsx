@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: 实现 `CommandContext`, `TenantConfigPreview`, `TenantConfigRef`, `TenantConfigSelection` 等界面组件或状态处理，呈现服务端返回的业务数据并提交受控用户操作。
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-02
+// Updated: 2026-11-02
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 import { useEffect, useMemo, useState } from "react";
 import { Alert, Button, Select, Table, Tag, type TableProps } from "antd";
 import { useMutation, useQueryClient } from "@tanstack/react-query";

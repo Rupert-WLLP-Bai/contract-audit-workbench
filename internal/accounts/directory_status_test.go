@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Exercises the `accounts` package behavior through TestDirectoryStatusConfigurationReset, TestDirectoryRevisionDetectsSameStatChanges, TestDirectoryFailureRevokesAndRecovers, TestConfigureCurrentDirectoryFailureRevokes, TestDirectoryRemovalRevokesAndRecovers; these checks pin observable state, error handling, or wire/database compatibility for this module.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-01
+// Updated: 2026-11-01
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package accounts
 
 import (

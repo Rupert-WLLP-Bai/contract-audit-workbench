@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Validates append-only workbench profile and task histories, including parent/revision links and legal state transitions, before the store accepts a write.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-30
+// Updated: 2026-10-30
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package store
 
 import (

@@ -1,3 +1,13 @@
+# File metadata (manifest mirror):
+# Purpose: 验证 test_actual_panel_source_passes, test_definite_attempt_and_approval_confusions_fail, test_explicit_boundary_and_uncertain_wording_are_not_failures, test_actual_missing_attempt_slot_cannot_be_renamed_to_approval_round 等场景，覆盖该模块的授权、错误或数据边界。
+# Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+# Contact: +86 13617696321
+# Created: 2026-11-01
+# Updated: 2026-11-01
+# Revision: r1
+# Copyright: See LICENSE
+# End file metadata.
+
 import copy
 import json
 from pathlib import Path

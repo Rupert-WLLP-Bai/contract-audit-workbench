@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Parses the public business-agent review projection into typed scope, capability, domain, gap and evidence values; malformed required fields fail instead of being interpreted as findings.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-28
+// Updated: 2026-10-30
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 import { responseReader } from "./respond";
 
 export interface BusinessAgentScope {

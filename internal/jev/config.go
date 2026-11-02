@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: FromEnv reads the optional TypeSafe Jev provider configuration. An empty TYPESAFE_API_KEY leaves the provider unconfigured; the base URL and model fall back to the documented… Related `jev` operations include FromEnv, State.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-28
+// Updated: 2026-10-30
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package jev
 
 import (

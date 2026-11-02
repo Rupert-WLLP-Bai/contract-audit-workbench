@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: registerContractCitationRoutes mounts the read-only reader for one verified business-agent citation. The route is Execution-owned: it resolves the frozen attempt input and its… Related `httpapi` operations include registerContractCitationRoutes, getFrozenContractCitation, contractCitation, contractCitationJSON.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-31
+// Updated: 2026-10-31
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package httpapi
 
 import (

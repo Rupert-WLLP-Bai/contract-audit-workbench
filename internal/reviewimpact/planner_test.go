@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Exercises the `reviewimpact_test` package behavior through TestPlanNoChangesKeepsReuseCandidate, TestPlanExternalFieldChangeRecomputesOnlyDependencyClosure, TestPlanFieldPresenceChangeRecomputes, TestPlanContractFactChangeForcesFull, TestPlanFactAddedOrRemovedForcesFull; these checks pin observable state, error handling, or wire/database compatibility for this module. Test cases include added, removed, base-incomplete, target-incomplete.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-29
+// Updated: 2026-10-29
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package reviewimpact_test
 
 import (

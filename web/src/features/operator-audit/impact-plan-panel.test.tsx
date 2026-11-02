@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Checks the web behavior for “impact plan panel”; representative assertions cover is off by default, labels a reuse candidate as expected-only and never as already skipped, shows the full fallback when dependencies are incomplete. It protects the rendered/API state expected by this component without starting the full browser journey.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-29
+// Updated: 2026-10-29
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 import { screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { DEMO_OPERATOR_AUDIT_FLAGS } from "./feature-flags";

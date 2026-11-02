@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Maps subject roles, binding states and verification outcomes to user-facing labels while leaving unknown server values explicit.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-31
+// Updated: 2026-10-31
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 import type { SubjectBindingState, SubjectRole, SubjectVerificationScope, SubjectVerificationState } from "../api/types";
 
 export function subjectRoleLabel(role: SubjectRole): string {

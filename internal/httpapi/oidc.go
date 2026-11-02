@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Starts OIDC login and validates callbacks using one-time state, issuer and nonce checks; only redirects to validated same-origin destinations and establishes the audience-specific session after identity verification.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-25
+// Updated: 2026-11-02
+// Revision: r2
+// Copyright: See LICENSE
+// End file metadata.
+
 package httpapi
 
 import (

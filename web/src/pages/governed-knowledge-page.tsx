@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Provides admin list, draft creation and version-detail routes for governed knowledge lifecycle; scope, content revision and submit/approve/publish actions are checked by the governance API.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-28
+// Updated: 2026-11-02
+// Revision: r2
+// Copyright: See LICENSE
+// End file metadata.
+
 import { Button, Checkbox, Input, Select, Table, type TableProps } from "antd";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState, type FormEvent, type RefObject } from "react";

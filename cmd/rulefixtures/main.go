@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: rulefixtures runs synthetic, versioned author samples with the typed engine. Related `main` operations include loadPack, run, main.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-31
+// Updated: 2026-10-31
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 // rulefixtures runs synthetic, versioned author samples with the typed engine.
 package main
 

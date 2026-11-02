@@ -1,3 +1,13 @@
+<!-- File metadata (manifest mirror): -->
+<!-- Purpose: Explains the project’s restricted noncommercial source-available terms, GitHub contribution exception, contributor rights grant, and separation of first-party from third-party materials. -->
+<!-- Author: Bai Junhao <baijunhao@cq.chinamobile.com> -->
+<!-- Contact: +86 13617696321 -->
+<!-- Created: 2026-11-01 -->
+<!-- Updated: 2026-11-01 -->
+<!-- Revision: r1 -->
+<!-- Copyright: See LICENSE -->
+<!-- End file metadata. -->
+
 # 许可与贡献
 
 项目自有材料采用根目录 `LICENSE` 中的 Contract Audit Workbench Noncommercial Source-Available License 1.0.0，标识为 `LicenseRef-CAW-NC-1.0.0`，生效日期为 2026-11-01。著作权主体为 Bai Junhao。该许可是项目专用的限制性源码许可，不是 OSI 开源许可。

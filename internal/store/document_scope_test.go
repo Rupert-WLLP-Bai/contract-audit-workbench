@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Exercises the `store` package behavior through TestCrossOrganizationGenerationPreservesCaseIdentity, TestMaterialTablesEnforceTenantRLSAndAppendOnlyServiceOwnership; these checks pin observable state, error handling, or wire/database compatibility for this module. Test cases include agent review and report follow authorized case organization, frozen tool authority follows current cross-organization grant, document role cannot update or delete material versions, append-only trigger rejects .
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-25
+// Updated: 2026-11-02
+// Revision: r2
+// Copyright: See LICENSE
+// End file metadata.
+
 package store
 
 import (

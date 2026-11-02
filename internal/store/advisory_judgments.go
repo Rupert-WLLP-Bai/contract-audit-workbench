@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: storeAdvisoryEvaluator owns the per-run cache. A successful judgment is persisted before the planner sees its bands; persistence failure is an error that forces deterministic… Related `store` operations include Error, Unwrap, advisoryErrorCode, validate.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-28
+// Updated: 2026-11-02
+// Revision: r2
+// Copyright: See LICENSE
+// End file metadata.
+
 package store
 
 import (

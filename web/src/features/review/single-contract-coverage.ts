@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Implements the web single contract coverage module used by its importing routes, transforming the named domain/API inputs into the module output while leaving persisted business state and access decisions to the server.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-01
+// Updated: 2026-11-01
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 import type { ReviewScopeIdentity } from "../../api/review-readiness";
 import type { ReviewWorkspace } from "../../api/types";
 

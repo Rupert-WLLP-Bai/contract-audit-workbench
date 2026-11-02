@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Converts between local Asia/Shanghai datetime input strings and UTC instants using the fixed Beijing offset required by the contract business-time fields.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-31
+// Updated: 2026-10-31
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 const BEIJING_OFFSET_MINUTES = 8 * 60;
 
 export function toBeijingInputValue(value: string): string {

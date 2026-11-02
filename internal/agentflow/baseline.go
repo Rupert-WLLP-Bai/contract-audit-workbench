@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: BaselineCapability names the exact limited comparator family, not the entire domain. The application must resolve this typed identifier; Question is only display context and… Related `agentflow` operations include BaselineCapability, BaselineTools, Spec, Execute.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-25
+// Updated: 2026-10-30
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package agentflow
 
 import (

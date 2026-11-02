@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Metric dimensions are a closed projection of server-owned execution stages and Eino component kinds. The original metadata remains on the trace; new stages must be deliberately… Related `telemetry` operations include metricPhase, metricNodeKind, metricStatus.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-31
+// Updated: 2026-10-31
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package telemetry
 
 // Metric dimensions are a closed projection of server-owned execution stages

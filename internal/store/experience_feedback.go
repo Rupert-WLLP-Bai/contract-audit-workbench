@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: ExperienceFeedbackSchemaSQL is registered by the migrator after the existing review tables and forbid_append_only function. Core owns both new tables; registration must also… Related `store` operations include experienceIdentity, validateExperienceFeedbackInput, beginExperienceCase, feedbackRequestHash.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-28
+// Updated: 2026-11-02
+// Revision: r2
+// Copyright: See LICENSE
+// End file metadata.
+
 package store
 
 import (

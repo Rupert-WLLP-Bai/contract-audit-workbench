@@ -1,3 +1,13 @@
+# File metadata (manifest mirror):
+# Purpose: Regression checks for test_release_routes_check_three_sites_and_gateway, test_missing_asset_marker_or_wrong_redirect_fails, test_git_source_selection_excludes_private_and_ignored_runtime_files; they assert the deployment, parser, or repository-policy contract that the corresponding implementation must preserve.
+# Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+# Contact: +86 13617696321
+# Created: 2026-10-31
+# Updated: 2026-10-31
+# Revision: r1
+# Copyright: See LICENSE
+# End file metadata.
+
 """Local behavior checks for the P0 source and route acceptance helper."""
 import tempfile
 import threading

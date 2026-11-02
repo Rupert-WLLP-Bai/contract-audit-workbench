@@ -1,3 +1,13 @@
+# File metadata (manifest mirror):
+# Purpose: Regression checks for test_duplicate_instrumentation_does_not_inflate_denominator, test_empty_or_corrupt_reports_fail_closed, test_required_package_and_low_web_are_rejected, test_missing_noncritical_backend_and_unimported_page_fail_scope, test_unexpected_scope_also_fails; they assert the deployment, parser, or repository-policy contract that the corresponding implementation must preserve.
+# Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+# Contact: +86 13617696321
+# Created: 2026-10-25
+# Updated: 2026-10-25
+# Revision: r1
+# Copyright: See LICENSE
+# End file metadata.
+
 """The gate itself must reject missing evidence and low coverage."""
 import unittest
 import json

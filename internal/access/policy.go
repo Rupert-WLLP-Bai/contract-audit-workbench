@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: defines a pure, deny-by-default case authorization policy. C0 consumers must supply trusted server-resolved claims; this package is not wired into the legacy HTTP application and is not an authentication service. Related `access` operations include Check, identityValid, grantActive, grantScopeMatches.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-25
+// Updated: 2026-11-02
+// Revision: r2
+// Copyright: See LICENSE
+// End file metadata.
+
 // Package access defines a pure, deny-by-default case authorization policy.
 // C0 consumers must supply trusted server-resolved claims; this package is not
 // wired into the legacy HTTP application and is not an authentication service.

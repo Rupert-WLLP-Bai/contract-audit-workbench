@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Subscribes to review progress through the authenticated event stream, coalesces progress refreshes, reconnects within a bounded retry policy and reports terminal states to the active workspace.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-25
+// Updated: 2026-10-31
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 import { useEffect, useState } from "react";
 import {
   isActiveAttemptState,

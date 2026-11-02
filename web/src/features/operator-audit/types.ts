@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Defines the narrow client view models for the operator-audit draft contract, retaining unknown/null server states so panels do not overstate unavailable external evidence.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-29
+// Updated: 2026-10-31
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 /**
  * Local view models for the operator-audit extension (D line).
  *

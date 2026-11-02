@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: agentdemo executes synthetic control-regression scenarios without a database or a real model. Expected denials count as passing assertions, not successful business audits. Related `main` operations include Name, Plan, loadDataset, decodeStrict.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-25
+// Updated: 2026-10-25
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 // agentdemo executes synthetic control-regression scenarios without a database
 // or a real model. Expected denials count as passing assertions, not successful
 // business audits.

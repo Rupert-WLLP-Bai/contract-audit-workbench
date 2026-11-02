@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: EvidenceManualFinding is the append-only manual finding as observed by the export transaction. It remains separate from the original report findings. Related `store` operations include EvidenceBundleDataForReport, evidenceHumanHistory, verifyEvidenceReportReferences, evidenceReferenceMatches.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-31
+// Updated: 2026-11-02
+// Revision: r2
+// Copyright: See LICENSE
+// End file metadata.
+
 package store
 
 import (

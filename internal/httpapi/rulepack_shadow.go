@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Exposes admin-only rule-pack shadow sample and report routes; records candidate evaluations separately from published rule decisions and never changes the active rule pack.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-31
+// Updated: 2026-10-31
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package httpapi
 
 import (

@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: ruleshadow runs a synthetic Eino decision experiment independently of case HTTP. Related `main` operations include digest, readJSON, run, main.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-25
+// Updated: 2026-10-28
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 // ruleshadow runs a synthetic Eino decision experiment independently of case HTTP.
 package main
 

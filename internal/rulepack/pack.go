@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: strictly parses immutable rule manifests and evaluates typed, evidence-bound facts with deterministic comparators. Related `rulepack` operations include Parse, Hash, Manifest, Validate.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-25
+// Updated: 2026-10-31
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 // Package rulepack strictly parses immutable rule manifests and evaluates typed,
 // evidence-bound facts with deterministic comparators.
 

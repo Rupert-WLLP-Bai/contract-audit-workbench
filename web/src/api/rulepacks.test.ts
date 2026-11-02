@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Checks the web behavior for “RulePack API parsers”; representative assertions cover preserves non-SLA null exclusions and rejects missing SLA arrays or invalid elements, keeps every optional required-fact field when present and omits them otherwise, round-trips exact legal citations while keeping old rules free of the optional field. It protects the rendered/API state expected by this component without starting the full browser journey.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-25
+// Updated: 2026-10-31
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { RulePackManifestInput } from "./rulepacks";
 import {

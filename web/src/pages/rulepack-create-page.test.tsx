@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Checks the web behavior for “RulePackCreatePage”; representative assertions cover copies a published version into an editable draft without carrying its lifecycle, waits for trusted admin identity before exposing the draft, stops an invalid draft locally and links the error to its input. It protects the rendered/API state expected by this component without starting the full browser journey.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-25
+// Updated: 2026-10-28
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 import {
   cleanup,
   fireEvent,

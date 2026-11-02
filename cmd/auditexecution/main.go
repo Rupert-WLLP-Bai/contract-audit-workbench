@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Command auditexecution runs the independently deployed execution service. The process owns the execution database identity and accepts review runs, retries, cancellations, and finding decisions. In durable mode it… Related `main` operations include main, run, waitRelay, origins.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-25
+// Updated: 2026-11-02
+// Revision: r2
+// Copyright: See LICENSE
+// End file metadata.
+
 // Command auditexecution runs the independently deployed execution service.
 //
 // The process owns the execution database identity and accepts review runs,
