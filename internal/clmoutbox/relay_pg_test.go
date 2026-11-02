@@ -1,9 +1,11 @@
 package clmoutbox
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/url"
@@ -15,6 +17,7 @@ import (
 	"time"
 
 	"contractaudit/internal/accounts"
+	"contractaudit/internal/clmenvelope"
 	"contractaudit/internal/clmoutbox/consumer"
 	"contractaudit/internal/config"
 	"contractaudit/internal/outboxrelay"
@@ -101,15 +104,23 @@ func TestCLMOutboxRelayRetryConsumerRefreshDoesNotChangeBusinessFacts(t *testing
 	}
 	assertOrdinaryRole(t, roleDSNs["core"], schema)
 
-	rawKey := make([]byte, 32)
-	for i := range rawKey {
-		rawKey[i] = byte(i + 11)
-	}
-	t.Setenv("CLM_DATA_KEY", base64.StdEncoding.EncodeToString(rawKey))
 	admin, ok := accounts.ByID("demo-admin")
 	if !ok {
 		t.Fatal("demo-admin fixture identity is unavailable")
 	}
+	const restrictedPurpose = "contract.supplier.restricted"
+	localKeys, err := json.Marshal(clmenvelope.LocalKeyConfig{Version: 1, Keys: []clmenvelope.LocalKeyEntry{
+		{TenantID: admin.TenantID, Purpose: restrictedPurpose, Kind: clmenvelope.WrapKey,
+			Ref: clmenvelope.KeyRef{ID: "relay-test-wrap", Version: 1}, MaterialBase64: base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{0x6b}, 32)), Active: true},
+		{TenantID: admin.TenantID, Purpose: restrictedPurpose, Kind: clmenvelope.FingerprintKey,
+			Ref: clmenvelope.KeyRef{ID: "relay-test-fingerprint", Version: 1}, MaterialBase64: base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{0x6c}, 32)), Active: true},
+	}})
+	if err != nil {
+		t.Fatalf("marshal explicit CLM envelope keys: %v", err)
+	}
+	t.Setenv("CLM_ENVELOPE_KEYS", string(localKeys))
+	// This fixture creates no legacy ciphertext and must not select a legacy key.
+	t.Setenv("CLM_LEGACY_DATA_KEY_REF", "")
 	caseID, err := core.CreateCase(admin, "CLM outbox relay fixture", "procurement_ict")
 	if err != nil {
 		t.Fatalf("create fixture case through Core: %v", err)
