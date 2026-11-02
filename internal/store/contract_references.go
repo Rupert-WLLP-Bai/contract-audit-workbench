@@ -135,7 +135,7 @@ func (s *Store) CheckContractReferences(ctx context.Context, user accounts.User,
 	if err != nil {
 		return ContractReferenceCheck{}, err
 	}
-	plaintext, err := unsealStoredDraft(contentBytes)
+	plaintext, err := unsealStoredDraftBound(ctx, contentBytes, record.TenantID, record.ContractID)
 	if err != nil {
 		return ContractReferenceCheck{}, err
 	}

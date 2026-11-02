@@ -600,7 +600,7 @@ func sourceVersionBaseline(ctx context.Context, tx pgx.Tx, tenantID, sourceID, e
 }
 
 func appendExternalContractRevision(ctx context.Context, tx pgx.Tx, authority ContractSourceAuthority, input ContractSourceObservationInput, record clmContractRecord, snapshot DraftContent) (*string, error) {
-	_, sealed, _, err := sealDraftContent(snapshot)
+	_, sealed, _, err := sealDraftContentBound(ctx, snapshot, authority.TenantID, record.ContractID)
 	if err != nil {
 		return nil, err
 	}
