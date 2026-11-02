@@ -250,7 +250,7 @@ func (s *Store) RecordExternalContractObservation(ctx context.Context, authority
 	if err != nil {
 		return ContractSourceObservationResult{}, err
 	}
-	ciphertext, err := sealCLMSourceObservation(input.RawBody, authority.TenantID, authority.SourceID, input.EventID, observationID)
+	ciphertext, err := sealCLMSourceObservation(ctx, input.RawBody, authority.TenantID, authority.SourceID, input.EventID, observationID)
 	if err != nil {
 		return ContractSourceObservationResult{}, err
 	}
@@ -600,7 +600,7 @@ func sourceVersionBaseline(ctx context.Context, tx pgx.Tx, tenantID, sourceID, e
 }
 
 func appendExternalContractRevision(ctx context.Context, tx pgx.Tx, authority ContractSourceAuthority, input ContractSourceObservationInput, record clmContractRecord, snapshot DraftContent) (*string, error) {
-	_, sealed, _, err := sealDraftContent(snapshot)
+	_, sealed, _, err := sealDraftContentBound(ctx, snapshot, authority.TenantID, record.ContractID)
 	if err != nil {
 		return nil, err
 	}

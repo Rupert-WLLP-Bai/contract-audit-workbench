@@ -568,7 +568,7 @@ func (s *Store) verifyFrozenDraftForSubmission(ctx context.Context, tx pgx.Tx, c
 	if sha256Bytes(frozen.Snapshot) != seal.SnapshotDigest {
 		return fault.Conflict("冻结版本摘要与封印不一致")
 	}
-	frozenPlaintext, err := unsealStoredDraft(frozen.Snapshot)
+	frozenPlaintext, err := unsealStoredDraftBound(ctx, frozen.Snapshot, accounts.Tenant(current), contractID)
 	if err != nil {
 		return err
 	}
@@ -582,7 +582,7 @@ func (s *Store) verifyFrozenDraftForSubmission(ctx context.Context, tx pgx.Tx, c
 	if err != nil {
 		return err
 	}
-	draftPlaintext, err := unsealStoredDraft(draftBytes)
+	draftPlaintext, err := unsealStoredDraftBound(ctx, draftBytes, accounts.Tenant(current), contractID)
 	if err != nil {
 		return err
 	}
@@ -608,7 +608,7 @@ func (s *Store) verifyFrozenDraftForSubmission(ctx context.Context, tx pgx.Tx, c
 		if materialsDigest != seal.MaterialsDigest {
 			return fault.Conflict("合同材料在冻结后已变化，请重新冻结版本后再送审")
 		}
-		fingerprints, err := computeRestrictedFingerprints(&candidate)
+		fingerprints, err := computeRestrictedFingerprintsBound(ctx, &candidate, clmFieldBinding(accounts.Tenant(current), contractID, "supplier.payee_name"), &seal.RestrictedFingerprints)
 		if err != nil {
 			return err
 		}

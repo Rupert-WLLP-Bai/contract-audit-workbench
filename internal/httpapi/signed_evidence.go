@@ -115,7 +115,7 @@ func (h *handler) downloadEvidenceBundle(w http.ResponseWriter, r *http.Request)
 	}
 	defer os.Remove(tmp.Name())
 	defer tmp.Close()
-	if err := evidencebundle.Write(r.Context(), tmp, identity, sources, key); err != nil {
+	if err := evidencebundle.WriteV2(r.Context(), tmp, identity, sources, key); err != nil {
 		if r.Context().Err() != nil {
 			return
 		}
@@ -135,12 +135,30 @@ func (h *handler) downloadEvidenceBundle(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	// Access may have changed while original bytes and the PDF were produced.
-	latest, _, err := h.store.ReadReport(user, caseID, reportID, "json")
+	current, err := h.reauthenticateDownload(r, user)
 	if err != nil {
 		writeErr(w, err)
 		return
 	}
-	if latest != data.Record {
+	// Support authority is never carried over as a cached proof. Resolve the
+	// exact grant again against the fresh session before any final case read.
+	if proof, ok := user.CommandAuthority(); ok && proof.SupportID != "" {
+		grant, err := h.store.ReadSupportCase(r.Context(), current, proof.SupportID)
+		if err != nil {
+			writeErr(w, err)
+			return
+		}
+		if grant.CaseID != caseID || grant.TenantID != current.TenantID {
+			writeErr(w, fault.Forbidden("支援授权不可用"))
+			return
+		}
+	}
+	latest, err := h.store.EvidenceBundleDataForReport(r.Context(), current, caseID, reportID)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	if latest.Record != data.Record || latest.TenantID != data.TenantID {
 		writeErr(w, fault.Conflict("报告身份在导出期间发生变化"))
 		return
 	}
@@ -155,7 +173,7 @@ func (h *handler) downloadEvidenceBundle(w http.ResponseWriter, r *http.Request)
 
 func evidenceIdentity(caseID string, data store.EvidenceBundleData) (evidencebundle.Identity, error) {
 	cutoff := data.HistoryCutoff.UTC().Format(time.RFC3339Nano)
-	identity := evidencebundle.Identity{CaseID: caseID, ReportID: data.Record.ID, ReportVersion: data.Record.Version,
+	identity := evidencebundle.Identity{CaseID: caseID, TenantID: data.TenantID, ReportID: data.Record.ID, ReportVersion: data.Record.Version,
 		RunID: data.Record.RunID, AttemptID: data.Record.AttemptID, InputSHA256: data.Record.InputHash,
 		OutputSHA256: data.Record.OutputHash, DecisionSnapshotSHA256: data.Record.DecisionSnapshotHash,
 		ExportedAt: time.Now().UTC().Format(time.RFC3339Nano), HistoryCutoff: cutoff, Decisions: make([]evidencebundle.HistoryRecord, 0, len(data.Decisions)),

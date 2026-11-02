@@ -324,7 +324,8 @@ func diffRestrictedFields(hasBaseline bool, before, after *contractVersionSeal) 
 			continue
 		}
 		beforeSet, afterSet := before.RestrictedFingerprints, after.RestrictedFingerprints
-		if beforeSet.Algorithm != clmRestrictedFingerprintAlgorithm || afterSet.Algorithm != clmRestrictedFingerprintAlgorithm {
+		if beforeSet.Algorithm != afterSet.Algorithm ||
+			(beforeSet.Algorithm != clmRestrictedFingerprintAlgorithm && beforeSet.Algorithm != clmLegacyRestrictedFingerprintAlgorithm) {
 			change.Reason = "fingerprint_algorithm_unsupported"
 			changes = append(changes, change)
 			continue
@@ -337,7 +338,13 @@ func diffRestrictedFields(hasBaseline bool, before, after *contractVersionSeal) 
 			continue
 		}
 		if beforeField.Present && afterField.Present {
-			if beforeSet.KeyID == "" || afterSet.KeyID == "" || beforeSet.KeyID != afterSet.KeyID {
+			keysMatch := false
+			if beforeSet.Algorithm == clmLegacyRestrictedFingerprintAlgorithm {
+				keysMatch = beforeSet.KeyID != "" && beforeSet.KeyID == afterSet.KeyID
+			} else {
+				keysMatch = beforeSet.KeyRef != nil && afterSet.KeyRef != nil && *beforeSet.KeyRef == *afterSet.KeyRef
+			}
+			if !keysMatch {
 				change.Reason = "fingerprint_key_changed"
 				changes = append(changes, change)
 				continue

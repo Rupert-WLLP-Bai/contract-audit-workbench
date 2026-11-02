@@ -378,7 +378,8 @@ func TestContractDraftRestrictedFieldFailsWithoutKey(t *testing.T) {
 	ctx := context.Background()
 	admin := fixture.admin
 
-	t.Setenv("CLM_DATA_KEY", "")
+	t.Setenv(clmEnvelopeKeysEnv, "")
+	t.Setenv(clmLegacyRefEnv, "")
 
 	_, err := fixture.core.CreateContractDraft(ctx, admin, sampleCreateInput("no-key-restricted-01"))
 	assertFaultStatus(t, err, 503, "restricted draft without configured key")

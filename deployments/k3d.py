@@ -155,6 +155,7 @@ def ensure_secrets() -> dict[str, str]:
                          "PROD_DATABASE_URL" not in values or
                          "LLM_CONFIG_KEY" not in values or "CLM_DATA_KEY" not in values or
                          "CONTEXT_SWITCH_ENABLED" not in values or
+                         "CLM_ENVELOPE_KEYS" not in values or "CLM_LEGACY_DATA_KEY_REF" not in values or
                          urlsplit(str(values.get("MIGRATOR_DATABASE_URL", ""))).username != "audit_offline_migrator" or
                          urlsplit(str(values.get("PROD_DATABASE_URL", ""))).username != "audit_offline_migrator")
         if needs_upgrade:
@@ -180,6 +181,8 @@ def ensure_secrets() -> dict[str, str]:
                               f"postgres://contractaudit:{quote(values['POSTGRES_PASSWORD'], safe='')}@db:5432/contract_audit_prod?sslmode=disable")
             values.setdefault("LLM_CONFIG_KEY", base64.b64encode(secrets.token_bytes(32)).decode("ascii"))
             values.setdefault("CLM_DATA_KEY", base64.b64encode(secrets.token_bytes(32)).decode("ascii"))
+            values.setdefault("CLM_ENVELOPE_KEYS", "")
+            values.setdefault("CLM_LEGACY_DATA_KEY_REF", "")
             values.setdefault("CONTEXT_SWITCH_ENABLED", "false")
         validate_service_tokens(values)
         if needs_upgrade:
@@ -201,8 +204,10 @@ def ensure_secrets() -> dict[str, str]:
         "LLM_API_KEY": secrets.token_urlsafe(48),
         # Seals admin-managed provider credentials; exactly 32 bytes, base64 encoded.
         "LLM_CONFIG_KEY": base64.b64encode(secrets.token_bytes(32)).decode("ascii"),
-        # Seals contract restricted supplier fields; a distinct 32-byte key.
+        # Retain the scalar for older builds; versioned keys remain explicit.
         "CLM_DATA_KEY": base64.b64encode(secrets.token_bytes(32)).decode("ascii"),
+        "CLM_ENVELOPE_KEYS": "",
+        "CLM_LEGACY_DATA_KEY_REF": "",
         "CONTEXT_SWITCH_ENABLED": "false",
     }
     for key, role in (("CORE_DATABASE_URL", "core_api"), ("DOCUMENT_DATABASE_URL", "document_service"),
@@ -509,7 +514,7 @@ def deploy() -> None:
         "CORE_DOCUMENT_TOKEN", "DOCUMENT_MODEL_TOKEN", "TOOL_CORE_AUTHORITY_TOKEN", "CORE_MODEL_AUTHORITY_TOKEN"))
     apply_private_secret("contract-audit-rustfs", ("RUSTFS_ACCESS_KEY", "RUSTFS_SECRET_KEY"))
     apply_private_secret("contract-audit-model", ("LLM_API_KEY", "LLM_CONFIG_KEY"))
-    apply_private_secret("contract-audit-clm", ("CLM_DATA_KEY",))
+    apply_private_secret("contract-audit-clm", ("CLM_DATA_KEY", "CLM_ENVELOPE_KEYS", "CLM_LEGACY_DATA_KEY_REF"))
     kubectl("delete", "job/rustfs-bucket-init", "-n", NAMESPACE, "--ignore-not-found=true", check=False)
     apply_phase("bootstrap")
     if (CLIENT_PORT, ADMIN_PORT, PORTAL_PORT) != DEFAULT_UI_PORTS:

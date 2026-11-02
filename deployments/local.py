@@ -244,6 +244,8 @@ def generated_values(infra: dict[str, str]) -> dict[str, str]:
 		"CORE_AUTHORITY_CA_FILE": infra.get("CORE_AUTHORITY_CA_FILE", "").strip(),
 		"CORE_AUTHORITY_ALLOW_INSECURE_DEV": _core_authority_dev_flag(infra),
 		"CONTEXT_SWITCH_ENABLED": context_switch_enabled,
+		"CLM_ENVELOPE_KEYS": infra.get("CLM_ENVELOPE_KEYS", ""),
+		"CLM_LEGACY_DATA_KEY_REF": infra.get("CLM_LEGACY_DATA_KEY_REF", "").strip(),
 		"MODEL_GATEWAY_URL": "http://model-gateway:8084/v1",
 		"NATS_URL": "nats://nats:4222",
 		"LLM_BASE_URL": _container_model_url(infra.get("LLM_BASE_URL", "http://127.0.0.1:3425/v1")),
@@ -384,7 +386,7 @@ def ensure_private_environment() -> dict[str, str]:
 			"AUTH_ADMIN_DATABASE_URL", "CORE_AUTHORITY_URL", "CORE_AUTHORITY_CA_FILE",
 			"CORE_AUTHORITY_ALLOW_INSECURE_DEV", "CORE_MODEL_AUTHORITY_TOKEN",
 			"TOOL_CORE_AUTHORITY_TOKEN", "DEV_DATABASE_URL", "TEST_DATABASE_URL", "PROD_DATABASE_URL",
-			"CONTEXT_SWITCH_ENABLED",
+			"CONTEXT_SWITCH_ENABLED", "CLM_ENVELOPE_KEYS", "CLM_LEGACY_DATA_KEY_REF",
 		}
 		unexpected_missing = sorted(missing - allowed_upgrade_keys)
 		if unexpected_missing:
@@ -451,7 +453,7 @@ def _sensitive_values() -> list[str]:
         if not path.is_file():
             continue
         for key, value in read_env(path).items():
-            if any(marker in key for marker in ("PASSWORD", "SECRET", "TOKEN", "API_KEY", "STATE_KEY", "DATABASE_URL", "ACCESS_KEY")):
+            if any(marker in key for marker in ("PASSWORD", "SECRET", "TOKEN", "API_KEY", "STATE_KEY", "DATABASE_URL", "ACCESS_KEY", "ENVELOPE_KEYS", "DATA_KEY_REF")):
                 if value:
                     sensitive.add(value)
     return sorted(sensitive, key=len, reverse=True)

@@ -199,7 +199,7 @@ func (s *Store) FreezeContractVersion(ctx context.Context, user accounts.User, i
 	// draft row. The strict #80 resolver is the single validator for subject
 	// bindings, anchored-case material references and procurement snapshots;
 	// this path must not grow a second, divergent set of checks.
-	plaintext, err := unsealDraftForFreeze(contentBytes)
+	plaintext, err := unsealDraftForFreezeBound(ctx, contentBytes, record.TenantID, record.ContractID)
 	if err != nil {
 		return FreezeContractVersionResult{}, err
 	}
@@ -225,7 +225,7 @@ func (s *Store) FreezeContractVersion(ctx context.Context, user accounts.User, i
 	if err != nil {
 		return FreezeContractVersionResult{}, err
 	}
-	_, sealedSnapshot, _, err := sealDraftContent(plaintext)
+	_, sealedSnapshot, _, err := sealDraftContentBound(ctx, plaintext, record.TenantID, record.ContractID)
 	if err != nil {
 		return FreezeContractVersionResult{}, err
 	}
@@ -237,7 +237,7 @@ func (s *Store) FreezeContractVersion(ctx context.Context, user accounts.User, i
 	if err != nil {
 		return FreezeContractVersionResult{}, err
 	}
-	fingerprints, err := computeRestrictedFingerprints(&plaintext)
+	fingerprints, err := computeRestrictedFingerprintsBound(ctx, &plaintext, clmFieldBinding(record.TenantID, record.ContractID, "supplier.payee_name"), nil)
 	if err != nil {
 		return FreezeContractVersionResult{}, err
 	}
@@ -562,7 +562,7 @@ func (s *Store) LoadContractVersion(ctx context.Context, user accounts.User, con
 			CaseID: material.CaseID, CaseOrgID: material.CaseOrgID,
 		})
 	}
-	plaintext, err := unsealStoredDraft(frozen.Snapshot)
+	plaintext, err := unsealStoredDraftBound(ctx, frozen.Snapshot, record.TenantID, record.ContractID)
 	if err != nil {
 		return ContractVersionDetail{}, err
 	}

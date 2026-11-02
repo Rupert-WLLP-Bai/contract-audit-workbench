@@ -296,7 +296,7 @@ func compareSignedTerms(ctx context.Context, tx pgx.Tx, current accounts.User, r
 		return ContractSigningCheckResult{}, err
 	}
 	fields := diffFrozenFields(signingComparableFields(baseline), signingComparableFields(signed))
-	signedFingerprints, err := computeRestrictedFingerprints(&signed)
+	signedFingerprints, err := computeRestrictedFingerprintsBound(ctx, &signed, clmFieldBinding(record.TenantID, record.ContractID, "supplier.payee_name"), &seal.RestrictedFingerprints)
 	if err != nil {
 		return ContractSigningCheckResult{}, err
 	}
@@ -471,10 +471,6 @@ func (s *Store) RegisterContractSigning(ctx context.Context, user accounts.User,
 	if err != nil {
 		return ContractSigningRegistration{}, err
 	}
-	_, sealedTerms, _, err := sealDraftContent(input.SignedContent)
-	if err != nil {
-		return ContractSigningRegistration{}, err
-	}
 	tx, current, err := s.beginCLMWrite(ctx, user, "只读模式下不能登记签署合同", nil)
 	if err != nil {
 		return ContractSigningRegistration{}, err
@@ -567,6 +563,10 @@ func (s *Store) RegisterContractSigning(ctx context.Context, user accounts.User,
 	}
 	if input.ManualComparison.SignedMaterialDigest != evidence.Digest {
 		return ContractSigningRegistration{}, fault.Conflict("人工核对确认中的原件摘要与授权材料版本不一致")
+	}
+	_, sealedTerms, _, err := sealDraftContentBound(ctx, input.SignedContent, record.TenantID, record.ContractID)
+	if err != nil {
+		return ContractSigningRegistration{}, err
 	}
 	sealedTerms, err = canonicalStoredJSON(ctx, tx, sealedTerms)
 	if err != nil {
@@ -824,10 +824,6 @@ func (s *Store) CreateContractSupplement(ctx context.Context, user accounts.User
 	if err := validateDraftAmounts(&input.Draft, contractmoney.StageDraft); err != nil {
 		return ContractSupplementResult{}, err
 	}
-	_, sealedDraft, _, err := sealDraftContent(input.Draft)
-	if err != nil {
-		return ContractSupplementResult{}, err
-	}
 	digest, err := clmRequestDigest(clmRouteCreateSupplement, "POST", "/api/contracts/"+parentID+"/supplements", input.ExpectedRowVersion, input)
 	if err != nil {
 		return ContractSupplementResult{}, err
@@ -876,7 +872,7 @@ func (s *Store) CreateContractSupplement(ctx context.Context, user accounts.User
 		if marshalErr != nil {
 			return ContractSupplementResult{}, marshalErr
 		}
-		result.Contract, err = projectReceiptDetail(clmWriteReceipt{Response: storedDetail}, current, child)
+		result.Contract, err = projectReceiptDetail(ctx, clmWriteReceipt{Response: storedDetail}, current, child)
 		if err != nil {
 			return ContractSupplementResult{}, err
 		}
@@ -921,6 +917,10 @@ func (s *Store) CreateContractSupplement(ctx context.Context, user accounts.User
 	if err != nil {
 		return ContractSupplementResult{}, err
 	}
+	_, sealedDraft, _, err := sealDraftContentBound(ctx, input.Draft, accounts.Tenant(current), supplementID)
+	if err != nil {
+		return ContractSupplementResult{}, err
+	}
 	if _, err := tx.Exec(ctx, `INSERT INTO clm_contracts (tenant_id,contract_id,owner_org_id,authority_mode,contract_number,lifecycle_state,row_version,created_by)
 		VALUES ($1,$2,$3,'native',$4,'draft',1,$5)`, accounts.Tenant(current), supplementID, parent.OwnerOrgID,
 		optionalTextOrPointer(input.Draft.Contract.Number), current.ID); err != nil {
@@ -956,7 +956,7 @@ func (s *Store) CreateContractSupplement(ctx context.Context, user accounts.User
 		return ContractSupplementResult{}, err
 	}
 	detail := ContractDetail{Summary: clmSummary(record, name, amount, currency), AllowedCommands: clmDraftCommands(record, true), Warnings: []string{}}
-	plaintext, err := unsealStoredDraft(sealedDraft)
+	plaintext, err := unsealStoredDraftBound(ctx, sealedDraft, accounts.Tenant(current), supplementID)
 	if err != nil {
 		return ContractSupplementResult{}, err
 	}
