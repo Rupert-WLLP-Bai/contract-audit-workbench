@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: FromEnv reads an explicit real-provider or local-only deterministic fixture profile. The fixture has no token-usage fields and cannot start in production. Related `modelgateway` operations include FromEnv, applyEnvIntOverrides, applyEnvInt64Overrides, applyEnvDurationOverrides.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-25
+// Updated: 2026-11-02
+// Revision: r2
+// Copyright: See LICENSE
+// End file metadata.
+
 package modelgateway
 
 import (

@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: provides private, path-style S3-compatible object storage. Related `objectstore` operations include New, Put, Get, validateOperation.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-25
+// Updated: 2026-10-30
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 // Package objectstore provides private, path-style S3-compatible object storage.
 package objectstore
 

@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: upstreamConfig is the provider identity a single gateway call is pinned to. Revision 0 means the deployment environment; stored rows start at 1. Related `modelgateway` operations include staticUpstream, allows, upstreamFor, loadStoredUpstream.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-30
+// Updated: 2026-10-30
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package modelgateway
 
 import (

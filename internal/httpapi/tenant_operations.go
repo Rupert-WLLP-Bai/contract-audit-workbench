@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Returns tenant-scoped usage, budget and capacity projections for the authenticated organization; the API does not accept a client-selected tenant as authority.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-01
+// Updated: 2026-11-02
+// Revision: r2
+// Copyright: See LICENSE
+// End file metadata.
+
 package httpapi
 
 import (

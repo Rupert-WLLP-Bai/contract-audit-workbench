@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: VerifiedBaseline combines parser verification with the fixed provenance of each registered official capture. VerifyCapture alone proves only that the supplied bytes and client… Related `legalnorm` operations include VerifyBaseline.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-31
+// Updated: 2026-10-31
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package legalnorm
 
 import "fmt"

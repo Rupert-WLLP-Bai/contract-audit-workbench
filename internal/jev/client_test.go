@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Exercises the `jev` package behavior through TestNewValidatesConfiguration, TestChooseSendsBoundedChoiceRequest, TestChooseUsesMaximumProbabilityWithoutReportedConfidence, TestChooseRejectsInvalidInputBeforeNetwork, TestChooseRejectsUnusableResponses; these checks pin observable state, error handling, or wire/database compatibility for this module. Test cases include timeout, cancellation.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-28
+// Updated: 2026-10-30
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package jev
 
 import (

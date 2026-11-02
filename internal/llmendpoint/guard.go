@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: guard.go is the outbound boundary for operator-configured model endpoints. The endpoint URL is platform control data typed by an administrator, but the addresses it names must not become a tunnel into the deployment… Related `llmendpoint` operations include allowedHosts, hostAllowlisted, forbiddenIPReason, cgnatAddress.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-31
+// Updated: 2026-10-31
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 // guard.go is the outbound boundary for operator-configured model endpoints.
 //
 // The endpoint URL is platform control data typed by an administrator, but the

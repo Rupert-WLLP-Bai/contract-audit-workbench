@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: verifies captured official normative sources without a database dependency. It derives article text from raw response bytes and rejects client-supplied article text that differs from that extraction. Related `legalnorm` operations include NormalizeWhitespace.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-31
+// Updated: 2026-10-31
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 // Package legalnorm verifies captured official normative sources without a
 // database dependency. It derives article text from raw response bytes and
 // rejects client-supplied article text that differs from that extraction.

@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: 实现 `TestEmbeddedOCRRequestRequiresFixedPromptAndOriginalBytes`, `embeddedDualCaller`, `Name`, `OCRName` 等具体接口与边界逻辑，供 internal/modelgateway 的调用方使用。
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-02
+// Updated: 2026-11-02
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package modelgateway
 
 import (
