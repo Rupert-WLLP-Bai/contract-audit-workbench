@@ -273,10 +273,6 @@ func assertExecutionAdmissionBinding(t *testing.T, ctx context.Context, admin *S
 		VALUES($1,$2,'accepted',$3,$3,$4,$5)`, runID, caseID, now, user.TenantID, user.OrgID); err != nil {
 		t.Fatalf("seed accepted admission run: %v", err)
 	}
-	if _, err := admin.pool.Exec(ctx, `INSERT INTO review_attempts(id,run_id,ordinal,state,accepted_at,history_kind,actor_id,tenant_id,org_id,input_hash)
-		VALUES($1,$2,1,'accepted',$3,'frozen',$4,$5,$6,'frozen-input-digest')`, attemptID, runID, now, user.ID, user.TenantID, user.OrgID); err != nil {
-		t.Fatalf("seed frozen admission attempt: %v", err)
-	}
 	executionDSN, executionRole := tenantIdentityTestExecution(t, ctx, admin)
 	executionPool, err := newStorePool(ctx, executionDSN, admin.schema, true)
 	if err != nil {
@@ -299,9 +295,18 @@ func assertExecutionAdmissionBinding(t *testing.T, ctx context.Context, admin *S
 	if err := setLocalScope(ctx, tx, userScope(user)); err != nil {
 		t.Fatal(err)
 	}
+	var tenantStatus string
+	var epoch int64
+	if err := tx.QueryRow(ctx, `SELECT status,live_epoch FROM tenant_runtime_control($1,false)`, user.TenantID).Scan(&tenantStatus, &epoch); err != nil || tenantStatus != "active" {
+		t.Fatalf("lock active admission epoch: status=%q err=%v", tenantStatus, err)
+	}
+	if _, err := tx.Exec(ctx, `INSERT INTO review_attempts(id,run_id,ordinal,state,accepted_at,history_kind,actor_id,tenant_id,org_id,input_hash,tenant_live_epoch)
+		VALUES($1,$2,1,'accepted',$3,'frozen',$4,$5,$6,'frozen-input-digest',$7)`, attemptID, runID, now, user.ID, user.TenantID, user.OrgID, epoch); err != nil {
+		t.Fatalf("seed epoch-bound admission attempt: %v", err)
+	}
 	job := Job{ID: jobID, TenantID: user.TenantID, OrgID: user.OrgID, CaseID: caseID, RunID: runID, AttemptID: attemptID,
 		ActorID: user.ID, PrincipalID: user.PrincipalID, MembershipID: user.MembershipID, IdentityCaptured: true,
-		Kind: "review", State: "queued", CreatedAt: now, UpdatedAt: now}
+		Kind: "review", State: "queued", TenantLiveEpoch: &epoch, CreatedAt: now, UpdatedAt: now}
 	if err := syncJobs(WithAdmissionSessionToken(ctx, sessionToken), tx, []Job{job}); err != nil {
 		t.Fatalf("Execution did not bind the admitted job to its live session: %v", err)
 	}
@@ -346,6 +351,12 @@ func tenantIdentityTestExecution(t *testing.T, ctx context.Context, admin *Store
 		t.Fatal(err)
 	}
 	if _, err := admin.pool.Exec(ctx, `GRANT INSERT,UPDATE,SELECT ON `+schema+`.worker_jobs TO `+quotedRole); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := admin.pool.Exec(ctx, `GRANT INSERT,UPDATE,SELECT ON `+schema+`.review_attempts TO `+quotedRole); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := admin.pool.Exec(ctx, `GRANT EXECUTE ON FUNCTION `+schema+`.tenant_runtime_control(text,boolean), `+schema+`.tenant_runtime_fence(text,bigint,boolean) TO `+quotedRole); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := admin.pool.Exec(ctx, `GRANT EXECUTE ON FUNCTION `+schema+`.tenant_identity_bind_admission(text,text) TO `+quotedRole); err != nil {
@@ -491,6 +502,7 @@ func tenantIdentityTestCore(t *testing.T, ctx context.Context, st *Store) (strin
 		"tenant_identity_list_pending(text,text)",
 		"tenant_identity_consume_pending(text,uuid,text,text,text)",
 		"tenant_identity_session_user(text)",
+		"tenant_runtime_control(text,boolean)", "tenant_runtime_fence(text,bigint,boolean)", "tenant_ticket_epoch(text,jsonb,boolean)",
 		"tenant_context_info(text)", "tenant_context_fence(text,bigint,text,uuid,uuid)", "tenant_context_switch(text,bigint,text,uuid)", "tenant_context_list(text)", "tenant_support_list(text)", "tenant_support_validate(text,uuid)", "tenant_support_command(text,bigint,text,text,uuid,text,uuid,text[],text,timestamp with time zone,bigint)", "tenant_support_read(text,bigint,text,uuid)", "tenant_operation_info(jsonb,text)", "tenant_operation_fence(jsonb,text,text)",
 	} {
 		if _, err := st.pool.Exec(ctx, `GRANT EXECUTE ON FUNCTION `+schema+`.`+function+` TO `+quotedRole); err != nil {

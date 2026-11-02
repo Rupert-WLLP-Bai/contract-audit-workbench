@@ -92,5 +92,5 @@ BEGIN
 END $fn$;
 REVOKE ALL ON FUNCTION {{SCHEMA}}.tenant_ticket_epoch(text,jsonb,boolean) FROM PUBLIC;
 REVOKE ALL ON FUNCTION {{SCHEMA}}.tenant_runtime_control(text,boolean),{{SCHEMA}}.tenant_runtime_fence(text,bigint,boolean) FROM PUBLIC;
-REVOKE CREATE ON SCHEMA {{SCHEMA}} FROM {{AUTH_FENCE_OWNER}};
 RESET ROLE;
+REVOKE CREATE ON SCHEMA {{SCHEMA}} FROM {{AUTH_FENCE_OWNER}};
