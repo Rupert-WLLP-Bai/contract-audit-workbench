@@ -1,3 +1,13 @@
+# File metadata (manifest mirror):
+# Purpose: GitHub Actions workflow “deterministic-quality” wires the prepare, static, go, web, coverage, browser, quality-gate jobs to its configured trigger; these gates own only the checks stated in the workflow.
+# Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+# Contact: +86 13617696321
+# Created: 2026-10-25
+# Updated: 2026-11-02
+# Revision: r2
+# Copyright: See LICENSE
+# End file metadata.
+
 name: deterministic-quality
 
 # Actions are pinned to full commit SHAs (resolved from the official tags);

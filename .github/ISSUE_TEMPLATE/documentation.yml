@@ -1,3 +1,13 @@
+# File metadata (manifest mirror):
+# Purpose: GitHub Issue Form “文档与术语”: 登记文档、术语或文件说明维护. It collects 问题与目标, 范围与排除项, 依赖, 文件所有权, 验收条件, 最小验证, 回退, 文档、概念与文件说明影响 and applies the initial labels documentation, 阶段/待实现, 验收/NOT_RUN; the selected area label is added after submission.
+# Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+# Contact: +86 13617696321
+# Created: 2026-11-01
+# Updated: 2026-11-01
+# Revision: r1
+# Copyright: See LICENSE
+# End file metadata.
+
 name: 文档与术语
 description: 登记文档、术语或文件说明维护
 title: "[DOCS] "

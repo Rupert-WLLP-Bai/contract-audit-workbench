@@ -1,3 +1,13 @@
+# File metadata (manifest mirror):
+# Purpose: Kubernetes resource bundle for contract-audit-test, contract-audit-test-backups, contract-audit-test-db; it declares Namespace, ObjectStore, Cluster resources and their deployment/RBAC/service boundaries for the named local cluster profile.
+# Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+# Contact: +86 13617696321
+# Created: 2026-10-25
+# Updated: 2026-10-31
+# Revision: r1
+# Copyright: See LICENSE
+# End file metadata.
+
 apiVersion: v1
 kind: Namespace
 metadata:

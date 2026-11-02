@@ -1,4 +1,14 @@
 #!/usr/bin/env python3
+# File metadata (manifest mirror):
+# Purpose: Run the frozen distributed journey through the edge against an isolated stack. This module’s command-line arguments and return artifacts define its operational boundary.
+# Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+# Contact: +86 13617696321
+# Created: 2026-10-25
+# Updated: 2026-10-31
+# Revision: r1
+# Copyright: See LICENSE
+# End file metadata.
+
 """Run the frozen distributed journey through the edge against an isolated stack.
 
 The script never talks to PostgreSQL directly for business writes: every business
