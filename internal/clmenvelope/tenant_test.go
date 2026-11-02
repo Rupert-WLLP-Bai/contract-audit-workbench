@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: 实现 `testEnvelopeProvider`, `TestV2EnvelopeRoundTripAndRejectsTenantOrObjectMismatch`, `TestRewrapPreservesFrozenDataCiphertext`, `TestOpenLegacyReadsFrozenV1Bytes` 等密文封装、读取或密钥版本操作，绑定租户、对象和用途。
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-02
+// Updated: 2026-11-02
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package clmenvelope
 
 import (

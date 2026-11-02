@@ -2,7 +2,7 @@
   "policy_version": 1,
   "canonical_manifest": "scripts/file_metadata/manifest.json",
   "schema": "scripts/file_metadata/schema.json",
-  "manifest_status": "populated-from-issue-115-baseline",
+  "manifest_status": "initialized-from-reviewed-legacy-bootstrap",
   "manifest_scope": "one entry per current Git-tracked path, including files handled without an embedded header",
   "project_identity": {
     "author": {
@@ -81,6 +81,60 @@
     ]
   },
   "file_classes": [
+    {
+      "id": "dockerfile-parser-directives",
+      "paths": [
+        "deploy/app/Dockerfile",
+        "deploy/app/Dockerfile.pdf-runtime"
+      ],
+      "handling": "manifest-only",
+      "reason": "Exact Dockerfiles stay registry-only so # syntax/# escape remain at byte zero."
+    },
+    {
+      "id": "bootstrap-registry-js",
+      "paths": [
+        "docs-site/docusaurus.config.js",
+        "docs-site/sidebars.js"
+      ],
+      "handling": "manifest-only",
+      "reason": "Exact-path tool-consumed JavaScript configuration retained as registry-only until parser directives and consumer position are reviewed."
+    },
+    {
+      "id": "bootstrap-registry-markdown",
+      "paths": [
+        "docs/engineering/file-metadata.md"
+      ],
+      "handling": "manifest-only",
+      "reason": "This exact document contains literal marker examples; compare original bytes and do not interpret examples as a metadata block."
+    },
+    {
+      "id": "unknown-author-rights",
+      "paths": [
+        "web/public/huangjueshu-competition-logo.png"
+      ],
+      "handling": "manifest-only",
+      "reason": "Author and rights are unknown for this exact competition image; preserve unknown attribution and Bai Junhao as maintainer only."
+    },
+    {
+      "id": "bootstrap-applied-migration",
+      "paths": [
+        "internal/store/migrations/0027_contract_signing.sql",
+        "internal/store/migrations/0028_contract_fulfillment.sql",
+        "internal/store/migrations/0029_contract_payments.sql",
+        "internal/store/migrations/0030_contract_assets.sql",
+        "internal/store/migrations/0031_contract_source_observations.sql",
+        "internal/store/migrations/0032_clm_outbox_metrics.sql",
+        "internal/store/migrations/0033_tenant_membership.sql",
+        "internal/store/migrations/0034_session_context_fence.sql",
+        "internal/store/migrations/0035_tenant_runtime_fence.sql",
+        "internal/store/migrations/0036_tenant_configuration.sql",
+        "internal/store/migrations/0037_model_money_ledger.sql",
+        "internal/store/migrations/0038_tenant_provision_operations.sql",
+        "internal/store/migrations/0039_jurisdiction_operations_projection.sql"
+      ],
+      "handling": "manifest-only",
+      "reason": "These exact versioned migrations are protected as immutable applied-history entries for the fixed subject."
+    },
     {
       "id": "license-text",
       "paths": [
@@ -186,6 +240,7 @@
     {
       "id": "lock-and-module-integrity",
       "paths": [
+        "docs-site/bun.lock",
         "go.mod",
         "go.sum",
         "web/bun.lock"
@@ -221,7 +276,20 @@
         "internal/store/migrations/0023_contract_approval_routing.sql",
         "internal/store/migrations/0024_approval_decisions.sql",
         "internal/store/migrations/0025_contract_audit_binding.sql",
-        "internal/store/migrations/0026_approval_credentials.sql"
+        "internal/store/migrations/0026_approval_credentials.sql",
+        "internal/store/migrations/0027_contract_signing.sql",
+        "internal/store/migrations/0028_contract_fulfillment.sql",
+        "internal/store/migrations/0029_contract_payments.sql",
+        "internal/store/migrations/0030_contract_assets.sql",
+        "internal/store/migrations/0031_contract_source_observations.sql",
+        "internal/store/migrations/0032_clm_outbox_metrics.sql",
+        "internal/store/migrations/0033_tenant_membership.sql",
+        "internal/store/migrations/0034_session_context_fence.sql",
+        "internal/store/migrations/0035_tenant_runtime_fence.sql",
+        "internal/store/migrations/0036_tenant_configuration.sql",
+        "internal/store/migrations/0037_model_money_ledger.sql",
+        "internal/store/migrations/0038_tenant_provision_operations.sql",
+        "internal/store/migrations/0039_jurisdiction_operations_projection.sql"
       ],
       "handling": "manifest-only",
       "reason": "Historical migration bytes are subject to application and integrity checks; metadata must not alter them."
@@ -233,7 +301,10 @@
         "web/e2e/fixtures/**"
       ],
       "handling": "manifest-only",
-      "reason": "Fixture bytes are regression inputs or expected outputs; record each exact path and its test purpose in the manifest."
+      "reason": "Fixture bytes are regression inputs or expected outputs; record each exact path and its test purpose in the manifest.",
+      "paths": [
+        "testdata/legalnorm/fixture.html"
+      ]
     },
     {
       "id": "binary-assets",
