@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: implements deterministic, evidence-bound fulfillment checks for the operator audit extension. The dedicated-line configured-bandwidth check compares a contract minimum held in a frozen evaluation input with one… Related `fulfillment` operations include New, Evaluate, evaluationFinished, validateEvaluationRequest.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-29
+// Updated: 2026-10-31
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 // Package fulfillment implements deterministic, evidence-bound fulfillment
 // checks for the operator audit extension.
 //

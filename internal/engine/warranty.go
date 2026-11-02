@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: is the MVP cross-file rule: warranty months stated in the materials. It does not call a model and it does not copy the archived rule catalogue. Related `engine` operations include ir, Evaluate, warrantyEvidence, absentWarranty.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-25
+// Updated: 2026-10-30
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 // Package engine is the MVP cross-file rule: warranty months stated in the materials.
 // It does not call a model and it does not copy the archived rule catalogue.
 package engine

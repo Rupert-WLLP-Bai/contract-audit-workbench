@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: ParsePDF extracts native text and transcribes every image-bearing or textless page using a real complete-page rendering. Page numbers come from Poppler; the adapter never… Related `documentparse` operations include ParsePDF, pdfValidateInput, pdfWorkspace, pdfInspectPages.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-25
+// Updated: 2026-11-02
+// Revision: r2
+// Copyright: See LICENSE
+// End file metadata.
+
 package documentparse
 
 import (

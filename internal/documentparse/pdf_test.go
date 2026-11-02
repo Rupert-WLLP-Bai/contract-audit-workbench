@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Exercises the `documentparse` package behavior through TestPDFNativeExecutableExtraction, TestPDFSinglePageHasObservedPageOne, TestPDFScannedAndMixedPagesUseRenderedPNG, TestPDFImageInventoryAggregateLimit, TestPDFFailsWithoutPartialReadyProduct; these checks pin observable state, error handling, or wire/database compatibility for this module. Test cases include missing executable, bounded process output, running process cancellation.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-25
+// Updated: 2026-10-31
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package documentparse
 
 import (

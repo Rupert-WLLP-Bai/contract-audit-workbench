@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: noIntervalFrom/noIntervalUntil form a fixed, empty sentinel interval for observations without a source-declared validity interval. It cannot cover a real business instant, so it… Related `externalread` operations include parseRecord, parseRecordID, parseRecordVersion, parseRecordUpdatedAt.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-29
+// Updated: 2026-10-30
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package externalread
 
 import (

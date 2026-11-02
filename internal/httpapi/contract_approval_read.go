@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Read-only approval workbench routes. The write command for a decision is registered by the approval command module; these routes never mutate a round or a decision. Related `httpapi` operations include registerContractApprovalReadRoutes, approvalReadQueryLimit, listApprovalInbox, getApprovalTask.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-01
+// Updated: 2026-11-01
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package httpapi
 
 import (

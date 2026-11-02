@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: createIntake implements POST /api/intakes. Core creates the operation and case in one short transaction, then delegates the primary-contract upload to Document before… Related `httpapi` operations include createIntake, getIntake, getIntakeByKey, listPendingIntakes.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-31
+// Updated: 2026-11-02
+// Revision: r2
+// Copyright: See LICENSE
+// End file metadata.
+
 package httpapi
 
 import (

@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: defines the signed, independently verifiable evidence container. A signature authenticates the canonical manifest and the manifest authenticates every other entry, including the PDF and original documents. Related `evidencebundle` operations include PrivateKeyFromFile, PublicKeyFromFile, digest, PublicKeyFingerprint.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-31
+// Updated: 2026-11-02
+// Revision: r2
+// Copyright: See LICENSE
+// End file metadata.
+
 // Package evidencebundle defines the signed, independently verifiable evidence
 // container. A signature authenticates the canonical manifest and the manifest
 // authenticates every other entry, including the PDF and original documents.

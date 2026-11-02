@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: implements the edge reverse proxy in front of the independently deployed services. The gateway is deliberately thin: it is not an authorization authority and it repeats no business logic. It chooses an owning service… Related `gateway` operations include FromEnv, loadGatewayEnv, loadPositiveUploadLimit, loadPositiveInts.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-25
+// Updated: 2026-10-31
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 // Package gateway implements the edge reverse proxy in front of the
 // independently deployed services.
 //

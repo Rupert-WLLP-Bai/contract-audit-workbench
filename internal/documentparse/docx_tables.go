@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Walks DOCX table cells and grid spans, preserving cell order and merged-column placement while emitting visible table text for bounded document parsing.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-25
+// Updated: 2026-10-30
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package documentparse
 
 import (
