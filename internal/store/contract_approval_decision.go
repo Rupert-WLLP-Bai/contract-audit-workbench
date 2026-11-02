@@ -86,6 +86,7 @@ type clmApprovalTaskRecord struct {
 // before the round and task row locks; two concurrent decisions therefore
 // produce one success and one 409, never two answers for the same node.
 func (s *Store) DecideApprovalTask(ctx context.Context, user accounts.User, input DecideApprovalTaskInput) (ApprovalDecisionResult, error) {
+	ctx = commandContext(ctx, user)
 	taskID, err := normalizeContractUUID(input.TaskID)
 	if err != nil {
 		return ApprovalDecisionResult{}, err

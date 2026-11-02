@@ -25,6 +25,7 @@ type User struct {
 	PrincipalID        string         `json:"-"`
 	MembershipID       string         `json:"-"`
 	resolvedMembership bool
+	commandAuthority   *CommandAuthority
 }
 
 // MembershipChoice is the minimum displayable server-resolved tenant choice
@@ -199,3 +200,22 @@ func CanStart(role string) bool {
 	return role == "admin" || role == "clerk" || role == "reviewer"
 }
 func CanDecide(role string) bool { return role == "admin" || role == "reviewer" }
+
+// CommandAuthority is process-private authority resolved from an opaque session.
+// It is never JSON input/output or a directory configuration field.
+type CommandAuthority struct {
+	SessionDigest, ContextVersion, Revision, SupportID string
+	CSRFToken, TenantName, OrgName                     string
+	OperationScope                                     []byte
+}
+
+func WithCommandAuthority(user User, proof CommandAuthority) User {
+	user.commandAuthority = &proof
+	return user
+}
+func (user User) CommandAuthority() (CommandAuthority, bool) {
+	if user.commandAuthority == nil {
+		return CommandAuthority{}, false
+	}
+	return *user.commandAuthority, true
+}

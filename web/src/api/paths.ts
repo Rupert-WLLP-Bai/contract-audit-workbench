@@ -9,6 +9,14 @@ export const paths = {
   adminSession: "/api/session?audience=admin",
   sessionFor: (audience: "client" | "admin") =>
     audience === "admin" ? "/api/session?audience=admin" : "/api/session",
+  contexts: (audience: "client" | "admin") => `/api/auth/contexts?audience=${audience}`,
+  switchContext: (audience: "client" | "admin") => `/api/auth/contexts/switch?audience=${audience}`,
+  supportGrants: "/api/support-grants",
+  caseSupportGrants: (caseId: string) => `/api/cases/${id(caseId)}/support-grants`,
+  supportGrant: (grantId: string) => `/api/support-grants/${id(grantId)}`,
+  supportGrantApprove: (grantId: string) => `/api/support-grants/${id(grantId)}/approve`,
+  supportGrantRevoke: (grantId: string) => `/api/support-grants/${id(grantId)}/revoke`,
+  supportGrantCase: (grantId: string) => `/api/support-grants/${id(grantId)}/case`,
   oidcLogin: (audience: "client" | "admin") =>
     `/api/auth/oidc/login?audience=${id(audience)}`,
   oidcMemberships: (audience: "client" | "admin") =>

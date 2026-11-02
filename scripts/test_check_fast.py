@@ -386,6 +386,9 @@ func TestValue(t *testing.T) { if Value != 1 { t.Fatal(Value) } }
             "internal/httpapi/oidc.go",
             "internal/httpapi/session_audience.go",
             "internal/store/tenant_identity.go",
+            "internal/store/identity_import.go",
+            "internal/store/context_transaction.go",
+            "internal/store/context_support.go",
             "internal/store/session_lifecycle.go",
             "internal/store/contract_payments.go",
             "internal/store/contract_assets.go",
@@ -403,6 +406,7 @@ func TestValue(t *testing.T) { if Value != 1 { t.Fatal(Value) } }
                 check_fast.AUTH_TESTS,
                 check_fast.SESSION_TESTS,
                 check_fast.TENANT_IDENTITY_TESTS,
+                check_fast.CONTEXT_FENCE_TESTS,
                 check_fast.CONTRACT_PAYMENT_TESTS,
                 check_fast.CONTRACT_ASSET_TESTS,
                 check_fast.CONTRACT_SOURCE_TESTS,
@@ -415,6 +419,34 @@ func TestValue(t *testing.T) { if Value != 1 { t.Fatal(Value) } }
         self.assertIn(check_fast.CLM_OUTBOX_RELAY_TESTS[0],
                       targets["./internal/clmoutbox"].tests)
         self.assertFalse(any(target.needs_model for target in targets.values()))
+
+    def test_context_fence_sources_select_the_frozen_store_postgres_case(self):
+        self.assertTrue(check_fast.CONTEXT_FENCE_PATHS)
+        for path in sorted(check_fast.CONTEXT_FENCE_PATHS):
+            with self.subTest(path=path):
+                self.assertTrue((check_fast.REPO_ROOT / path).is_file())
+                plan = self.plan(check_fast.Change("M", path))
+                targets = {target.package: target for target in plan.database_tests}
+                self.assertTrue(plan.database)
+                self.assertIn("./internal/store", targets)
+                self.assertTrue(set(check_fast.CONTEXT_FENCE_TESTS).issubset(
+                    targets["./internal/store"].tests))
+
+        plan = self.plan(check_fast.Change("M", "internal/httpapi/context_session.go"))
+        self.assertEqual({target.package for target in plan.database_tests}, {"./internal/store"})
+        checks = check_fast._build_checks(
+            plan, self.root, sys.executable, self.root.parent / "context-fence-check-output")
+        store_checks = [check for check in checks
+                        if check.name.startswith("database-fixed-point")
+                        and check.command[-1] == "./internal/store"]
+        self.assertEqual(len(store_checks), 1)
+        self.assertTrue(set(check_fast.CONTEXT_FENCE_TESTS).issubset(
+            store_checks[0].expected_tests))
+        self.assertTrue(set(check_fast.SESSION_TESTS).issubset(
+            store_checks[0].expected_tests))
+        pattern = store_checks[0].command[store_checks[0].command.index("-run") + 1]
+        for name in check_fast.CONTEXT_FENCE_TESTS:
+            self.assertIn(name, pattern)
 
     def test_tenant_identity_database_rule_does_not_spread_to_ui_docs_or_nats(self):
         for path in ("web/src/pages/contracts-page.tsx", "docs/guide.md",

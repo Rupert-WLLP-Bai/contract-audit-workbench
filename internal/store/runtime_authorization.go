@@ -92,6 +92,7 @@ func (s *Store) updateCaseAs(user accounts.User, caseID string, fn func(*state) 
 }
 
 func (s *Store) updateCaseAsContext(ctx context.Context, user accounts.User, caseID string, fn func(*state) error) error {
+	ctx = commandContext(ctx, user)
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -112,6 +113,7 @@ func (s *Store) updateCaseAsContext(ctx context.Context, user accounts.User, cas
 // subject locks before sorted case locks. Subject corrections use it when one
 // immutable subject version fans out to active bindings in several cases.
 func (s *Store) updateSubjectCasesAs(ctx context.Context, user accounts.User, subjectIDs, caseIDs []string, fn func(*state) error) error {
+	ctx = commandContext(ctx, user)
 	current, err := trustedUser(user)
 	if err != nil {
 		return err
@@ -130,5 +132,6 @@ func (s *Store) updateCaseAttemptAs(user accounts.User, caseID, attemptID string
 }
 
 func (s *Store) updateCaseAsWithContext(ctx context.Context, user accounts.User, caseID string, hook func(pgx.Tx) error, fn func(*state) error) error {
+	ctx = commandContext(ctx, user)
 	return s.scopedCaseWrite(ctx, user, caseID, "", "", true, true, hook, fn)
 }

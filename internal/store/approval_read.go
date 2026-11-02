@@ -701,6 +701,7 @@ func approvalRowKey(view string, row approvalInboxRow) (time.Time, string) {
 }
 
 func (s *Store) ListApprovalInbox(ctx context.Context, user accounts.User, query ApprovalInboxQuery) (ApprovalInboxPage, error) {
+	ctx = commandContext(ctx, user)
 	view, err := normalizeApprovalInboxView(query.View)
 	if err != nil {
 		return ApprovalInboxPage{}, err
@@ -968,6 +969,7 @@ func (s *Store) attachApprovalRevisionDiff(ctx context.Context, user accounts.Us
 // visible contract reader can inspect a historical task; action hints are
 // limited to the live assignee.
 func (s *Store) GetApprovalTask(ctx context.Context, user accounts.User, taskID string) (ApprovalTaskReadDetail, error) {
+	ctx = commandContext(ctx, user)
 	id, err := normalizeContractUUID(taskID)
 	if err != nil {
 		return ApprovalTaskReadDetail{}, err
@@ -1045,6 +1047,7 @@ func loadApprovalTaskMaterials(ctx context.Context, tx pgx.Tx, tenantID, contrac
 
 // GetContractApprovalRound returns one visible contract's historical round.
 func (s *Store) GetContractApprovalRound(ctx context.Context, user accounts.User, contractID, roundID string) (ApprovalRoundReadDetail, error) {
+	ctx = commandContext(ctx, user)
 	contract, err := normalizeContractUUID(contractID)
 	if err != nil {
 		return ApprovalRoundReadDetail{}, err
@@ -1085,6 +1088,7 @@ func (s *Store) GetContractApprovalRound(ctx context.Context, user accounts.User
 // descending round-number order. New rounds are inserted above the cursor, so
 // walking older pages never duplicates or skips a stored round.
 func (s *Store) ListContractApprovalRounds(ctx context.Context, user accounts.User, contractID, cursor string, limit int) (ApprovalRoundHistoryPage, error) {
+	ctx = commandContext(ctx, user)
 	contract, err := normalizeContractUUID(contractID)
 	if err != nil {
 		return ApprovalRoundHistoryPage{}, err

@@ -1,6 +1,8 @@
 import { getKnowledge, getReviewDiagnostics, startReview, submitDecision } from "./endpoints";
 import {
   ApiError,
+  bindIdempotencyCommandContext,
+  captureCommandContext,
   errorFromResponse,
   errorMessage,
   isConflict,
@@ -102,6 +104,7 @@ describe("http client", () => {
   });
 
   it("submits the chosen governed instant and omits it for ungoverned starts", async () => {
+    setSessionIdentity({ id: "reviewer", role: "reviewer", active_context: { context_version: "1" }, csrf_token: "csrf" });
     const fetchMock = mockFetch(async () => jsonResponse(202, { id: "r1", attempt_id: "a1" }));
     installFetch(fetchMock);
     await startReview("case", { business_at: "2026-10-21T08:00:00.000Z" });
@@ -384,7 +387,34 @@ describe("http client", () => {
     setSessionIdentity(null);
   });
 
+  it("rejects a delayed idempotent dispatch after a version-1 identity switch", async () => {
+    const actorA = {
+      id: "actor-a", role: "clerk", audience: "client", tenant_id: "tenant-a", org_id: "org-a",
+      principal_id: "principal-a", active_context: { context_version: "1" }, csrf_token: "csrf-a",
+    };
+    const actorB = {
+      ...actorA, id: "actor-b", tenant_id: "tenant-b", org_id: "org-b", principal_id: "principal-b", csrf_token: "csrf-b",
+    };
+    setSessionIdentity(actorA);
+    const originalContext = captureCommandContext(actorA);
+    const key = "delayed-command-key";
+    bindIdempotencyCommandContext(key, originalContext);
+
+    const fetchMock = mockFetch(async () => jsonResponse(200, { ok: true }));
+    installFetch(fetchMock);
+    setSessionIdentity(actorB);
+
+    await expect(requestJson(
+      "/api/cases/case-1/materials",
+      { method: "POST", headers: { "Idempotency-Key": key }, body: "{\"old\":true}" },
+      (value) => value,
+    )).rejects.toMatchObject({ name: "AbortError" });
+    expect(fetchMock).not.toHaveBeenCalled();
+    setSessionIdentity(null);
+  });
+
   it("posts a decision with the expected version and an idempotency key", async () => {
+    setSessionIdentity({ id: "reviewer", role: "reviewer", active_context: { context_version: "1" }, csrf_token: "csrf" });
     const fetchMock = mockFetch(
       async () => new Response(null, { status: 204 }),
     );

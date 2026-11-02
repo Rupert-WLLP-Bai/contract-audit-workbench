@@ -6,24 +6,11 @@ import (
 
 	"contractaudit/internal/access"
 	"contractaudit/internal/accounts"
+	"contractaudit/internal/operationauthority"
 	"contractaudit/internal/store"
 )
 
-type coreSessionAuthorityResponse struct {
-	Audience        string         `json:"audience"`
-	MembershipBound bool           `json:"membership_bound"`
-	ActorID         string         `json:"actor_id"`
-	DisplayName     string         `json:"display_name"`
-	Role            string         `json:"role"`
-	TenantID        string         `json:"tenant_id"`
-	OrgID           string         `json:"org_id"`
-	Enabled         bool           `json:"enabled"`
-	Issuer          string         `json:"issuer,omitempty"`
-	Subject         string         `json:"subject,omitempty"`
-	PrincipalID     string         `json:"principal_id,omitempty"`
-	MembershipID    string         `json:"membership_id,omitempty"`
-	Grants          []access.Grant `json:"grants"`
-}
+type coreSessionAuthorityResponse = operationauthority.SessionProjection
 
 func coreSessionAuthorityHandler(st *store.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -57,6 +44,14 @@ func coreSessionAuthorityHandler(st *store.Store) http.HandlerFunc {
 			PrincipalID: user.PrincipalID, MembershipID: user.MembershipID,
 		}
 		response.Grants = append([]access.Grant(nil), user.Grants...)
+		if proof, ok := user.CommandAuthority(); ok {
+			response.ContextVersion = proof.ContextVersion
+			response.CSRFToken = proof.CSRFToken
+			response.AuthorityRevision = proof.Revision
+			response.TenantName = proof.TenantName
+			response.OrgName = proof.OrgName
+		}
+
 		writeJSON(w, http.StatusOK, response)
 	}
 }

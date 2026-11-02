@@ -120,7 +120,12 @@ func (s *Store) revalidateGovernedAttemptTx(ctx context.Context, tx pgx.Tx, runI
 	if storedCase != caseID {
 		return errExecutionEventScope
 	}
-	actor, err := s.authorityForAttempt(ctx, runID, attemptID)
+	var actor accounts.User
+	if fenced, ok := tx.(*contextTx); ok && fenced.user.ID != "" {
+		actor = fenced.user
+	} else {
+		actor, err = s.authorityForAttempt(ctx, runID, attemptID)
+	}
 	ok := err == nil
 	if !ok {
 		actor, ok = accounts.ByID(actorID)

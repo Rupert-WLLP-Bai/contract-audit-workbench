@@ -22,12 +22,17 @@ const clerk: Actor = {
   tenant_id: "tenant-a",
   org_id: "org-a",
   audience: "client",
+  principal_id: "principal-user-clerk",
+  active_context: { membership_id: "membership-a", tenant_id: "tenant-a", tenant_name: "租户A", org_id: "org-a", org_name: "组织A", context_version: "1" },
+  csrf_token: "test-csrf",
+  context_switch_enabled: false,
 };
 
 const otherTenant: Actor = {
   ...clerk,
   tenant_id: "tenant-b",
   org_id: "org-b",
+  active_context: { membership_id: "membership-b", tenant_id: "tenant-b", tenant_name: "租户B", org_id: "org-b", org_name: "组织B", context_version: "2" },
 };
 
 const reviewer: Actor = {

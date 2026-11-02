@@ -32,7 +32,8 @@ import type {
   SubjectSourceDirectory,
 } from "./types";
 import type { WireSchemas } from "./wire.generated";
-import { ApiError, jsonInit, requestJson } from "./http";
+import { ApiError, jsonInit, requestJson, type CommandContext } from "./http";
+import { newIdempotencyKey } from "./idempotency";
 import {
   parseAcceptedReview,
   parseActor,
@@ -52,6 +53,7 @@ import {
   parseTemplateList,
   parseMaterialSelectionProjection,
   parseUploadDocumentResult,
+  parseContextList,
 } from "./parse";
 import {
   parseCaseProfile,
@@ -112,6 +114,28 @@ export function logout(audience: SessionAudience = "client") {
     paths.sessionFor(audience),
     { method: "DELETE" },
     parseEmpty,
+  );
+}
+
+export function getContextChoices(audience: SessionAudience, signal?: AbortSignal) {
+  return requestJson(paths.contexts(audience), { method: "GET", signal }, parseContextList);
+}
+
+export function switchContext(
+  audience: SessionAudience,
+  membershipId: string,
+  context: CommandContext,
+) {
+  return requestJson(
+    paths.switchContext(audience),
+    {
+      ...jsonInit("POST", {
+        membership_id: membershipId,
+        expected_context_version: context.contextVersion,
+      }),
+      commandContext: context,
+    },
+    parseActor,
   );
 }
 
@@ -530,7 +554,7 @@ export function submitDecision(
         reason: input.reason,
         expected_version: input.expectedVersion,
       } satisfies WireSchemas["DecisionRequest"],
-      { "Idempotency-Key": crypto.randomUUID() },
+      { "Idempotency-Key": newIdempotencyKey() },
     ),
     parseEmpty,
   );

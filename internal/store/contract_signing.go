@@ -327,6 +327,7 @@ func compareSignedTerms(ctx context.Context, tx pgx.Tx, current accounts.User, r
 }
 
 func (s *Store) CheckContractSigning(ctx context.Context, user accounts.User, input ContractSigningCheckInput) (ContractSigningCheckResult, error) {
+	ctx = commandContext(ctx, user)
 	id, err := normalizeContractUUID(input.ContractID)
 	if err != nil {
 		return ContractSigningCheckResult{}, err
@@ -361,7 +362,7 @@ func (s *Store) CheckContractSigning(ctx context.Context, user accounts.User, in
 	if err != nil {
 		return ContractSigningCheckResult{}, err
 	}
-	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted, AccessMode: pgx.ReadOnly})
+	tx, err := s.beginContextTx(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted, AccessMode: pgx.ReadOnly})
 	if err != nil {
 		return ContractSigningCheckResult{}, err
 	}
@@ -457,6 +458,7 @@ func (s *Store) CheckContractSigning(ctx context.Context, user accounts.User, in
 }
 
 func (s *Store) RegisterContractSigning(ctx context.Context, user accounts.User, input ContractSigningRegistrationInput) (ContractSigningRegistration, error) {
+	ctx = commandContext(ctx, user)
 	id, err := normalizeContractUUID(input.ContractID)
 	if err != nil {
 		return ContractSigningRegistration{}, err
@@ -696,6 +698,7 @@ func nullableString(value string) any {
 }
 
 func (s *Store) ListContractSigningRegistrations(ctx context.Context, user accounts.User, contractID string) (ContractSigningRegistrationList, error) {
+	ctx = commandContext(ctx, user)
 	id, err := normalizeContractUUID(contractID)
 	if err != nil {
 		return ContractSigningRegistrationList{}, err
@@ -707,7 +710,7 @@ func (s *Store) ListContractSigningRegistrations(ctx context.Context, user accou
 	if err != nil {
 		return ContractSigningRegistrationList{}, err
 	}
-	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted, AccessMode: pgx.ReadOnly})
+	tx, err := s.beginContextTx(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted, AccessMode: pgx.ReadOnly})
 	if err != nil {
 		return ContractSigningRegistrationList{}, err
 	}
@@ -792,6 +795,7 @@ func requireSigningCaseRead(ctx context.Context, tx pgx.Tx, current accounts.Use
 }
 
 func (s *Store) CreateContractSupplement(ctx context.Context, user accounts.User, input CreateContractSupplementInput) (ContractSupplementResult, error) {
+	ctx = commandContext(ctx, user)
 	parentID, err := normalizeContractUUID(input.ParentContractID)
 	if err != nil {
 		return ContractSupplementResult{}, err
@@ -977,6 +981,7 @@ func (s *Store) CreateContractSupplement(ctx context.Context, user accounts.User
 }
 
 func (s *Store) ListContractSupplements(ctx context.Context, user accounts.User, contractID string) (ContractSupplementList, error) {
+	ctx = commandContext(ctx, user)
 	id, err := normalizeContractUUID(contractID)
 	if err != nil {
 		return ContractSupplementList{}, err
@@ -988,7 +993,7 @@ func (s *Store) ListContractSupplements(ctx context.Context, user accounts.User,
 	if err != nil {
 		return ContractSupplementList{}, err
 	}
-	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted, AccessMode: pgx.ReadOnly})
+	tx, err := s.beginContextTx(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted, AccessMode: pgx.ReadOnly})
 	if err != nil {
 		return ContractSupplementList{}, err
 	}
@@ -1058,6 +1063,7 @@ func (s *Store) ListContractSupplements(ctx context.Context, user accounts.User,
 }
 
 func (s *Store) loadContractSigningSummary(ctx context.Context, tx pgx.Tx, current accounts.User, record clmContractRecord) (*ContractSigningRegistration, error) {
+	ctx = commandContext(ctx, current)
 	var item ContractSigningRegistration
 	var parties []byte
 	var approvalID *string

@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/jackc/pgx/v5"
 	"slices"
 	"strings"
 	"time"
@@ -122,10 +123,12 @@ func ocrConfigurationHash(parserID, parserVersion, normalizationVersion, modelId
 }
 
 func (s *Store) ensureParsed(ctx context.Context, user accounts.User, doc Document, force bool) (ParsedDocument, error) {
+	ctx = commandContext(ctx, user)
 	return s.ensureParsedWithModels(ctx, user, doc, force, s.currentModels())
 }
 
 func (s *Store) ensureParsedWithModels(ctx context.Context, user accounts.User, doc Document, force bool, models Models) (ParsedDocument, error) {
+	ctx = commandContext(ctx, user)
 	if err := s.acquireParseLock(ctx); err != nil {
 		return ParsedDocument{}, err
 	}
@@ -356,7 +359,7 @@ func (s *Store) verifyParsedRecordContext(ctx context.Context, p ParsedDocument,
 	if err := verifyParsed(p, doc); err != nil {
 		return err
 	}
-	tx, err := s.pool.Begin(ctx)
+	tx, err := s.beginContextTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return err
 	}

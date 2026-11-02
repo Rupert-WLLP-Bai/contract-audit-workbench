@@ -24,7 +24,7 @@ func TestOperationAuthorityRestoresOnlyExactAuthenticatedProjection(t *testing.T
 			w.WriteHeader(400)
 			return
 		}
-		p := Projection{Scope: received, MembershipBound: true, PrincipalID: "principal-a", MembershipID: "membership-a", User: accounts.User{ID: "actor-a", Enabled: true, Role: "reviewer", TenantID: "tenant-a", OrgID: "org-a", Issuer: "https://issuer.invalid", Subject: "subject-a", PrincipalID: "principal-a", MembershipID: "membership-a"}}
+		p := Projection{AuthorityRevision: "current-authority-revision", Scope: received, MembershipBound: true, PrincipalID: "principal-a", MembershipID: "membership-a", User: accounts.User{ID: "actor-a", Enabled: true, Role: "reviewer", TenantID: "tenant-a", OrgID: "org-a", Issuer: "https://issuer.invalid", Subject: "subject-a", PrincipalID: "principal-a", MembershipID: "membership-a"}}
 		switch mode {
 		case "other scope":
 			p.Scope.Generation++

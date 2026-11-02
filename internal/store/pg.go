@@ -454,7 +454,7 @@ func (s *Store) initializeKnownTenants(ctx context.Context, recoverAttempts bool
 }
 
 func (s *Store) load(ctx context.Context, scope dbScope) error {
-	tx, err := s.pool.Begin(ctx)
+	tx, err := s.beginContextTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return err
 	}
@@ -623,7 +623,11 @@ func (s *Store) updateStateWith(ctx context.Context, scope dbScope, attemptID st
 // cases take the schema lock first, then sorted subject locks, then sorted case
 // locks before loading or changing state.
 func (s *Store) updateStateWithLocks(ctx context.Context, scope dbScope, attemptID string, subjectIDs, caseIDs []string, hook func(pgx.Tx) error, fn func(*state) error) error {
-	tx, err := s.pool.Begin(ctx)
+	if scope.command != nil {
+		p := scope.command
+		ctx = context.WithValue(ctx, commandProofKey{}, commandProof{digest: p.SessionDigest, version: p.ContextVersion, revision: p.Revision, support: p.SupportID, operation: append([]byte(nil), p.OperationScope...)})
+	}
+	tx, err := s.beginContextTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return err
 	}
@@ -675,6 +679,10 @@ func (s *Store) updateStateWithLocks(ctx context.Context, scope dbScope, attempt
 		}
 	}
 	previous, err := loadState(ctx, tx, true)
+	if fenced, ok := tx.(*contextTx); ok && fenced.user.ID != "" {
+		u := fenced.user
+		previous.authorityUser = &u
+	}
 	if err != nil {
 		return err
 	}
@@ -699,6 +707,7 @@ func (s *Store) updateStateWithLocks(ctx context.Context, scope dbScope, attempt
 	if err != nil {
 		return err
 	}
+	next.authorityUser = previous.authorityUser
 	if err := fn(&next); err != nil {
 		return err
 	}

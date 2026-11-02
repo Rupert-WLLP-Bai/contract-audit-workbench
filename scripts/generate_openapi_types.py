@@ -22,6 +22,8 @@ ROOT = Path(__file__).resolve().parent.parent
 SCHEMA = ROOT / "internal/apidocs/openapi.json"
 OUTPUT = ROOT / "web/src/api/wire.generated.ts"
 ROOTS = (
+    "SupportGrant", "SupportGrantList", "SupportGrantRequest", "SupportGrantCommand", "SupportCaseView",
+    "Session", "ActiveContext", "ContextList", "ContextSwitchRequest",
 	"MembershipChoice", "PendingMembershipList", "PendingMembershipSelectionRequest",
 	"Activity", "ArchiveRequest", "CaseProfile", "CaseProfileInput", "CaseRelationInput",
 	"ContractAcceptance", "ContractAcceptanceDefect", "ContractAcceptanceDefectInput", "ContractAcceptanceList", "ContractAcceptanceRequest",

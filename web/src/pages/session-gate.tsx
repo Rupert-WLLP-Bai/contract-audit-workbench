@@ -10,6 +10,7 @@ import {
 import { clearIdentityQueries, queryKeys, useSession } from "../api/queries";
 import type { SessionAudience } from "../api/types";
 import { PageStatus } from "../components/page-status";
+import { clearAllDecisionDrafts } from "../hooks/decision-drafts";
 
 export function SessionGate({
   audience = "client",
@@ -26,6 +27,7 @@ export function SessionGate({
   useLayoutEffect(() => {
     if (!actor) return;
     if (setSessionIdentity(actor)) {
+      clearAllDecisionDrafts();
       clearIdentityQueries(queryClient);
       queryClient.setQueryData(queryKeys.sessionFor(audience), actor);
     }
@@ -70,7 +72,7 @@ export function SessionGate({
   }
   return (
     <Outlet
-      key={`${actor?.audience ?? ""}\u0000${actor?.id ?? ""}\u0000${actor?.role ?? ""}\u0000${actor?.tenant_id ?? ""}\u0000${actor?.org_id ?? ""}`}
+      key={`${actor?.audience ?? ""}\u0000${actor?.id ?? ""}\u0000${actor?.role ?? ""}\u0000${actor?.tenant_id ?? ""}\u0000${actor?.org_id ?? ""}\u0000${actor?.active_context?.context_version ?? ""}\u0000${actor?.csrf_token ?? ""}`}
     />
   );
 }

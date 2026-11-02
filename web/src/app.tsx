@@ -16,6 +16,8 @@ const CaseDetailPage = lazy(() =>
     default: module.CaseDetailPage,
   })),
 );
+const SupportGrantsPage = lazy(() => import("./pages/support-grant-pages").then((module) => ({ default: module.SupportGrantsPage })));
+const SupportGrantCasePage = lazy(() => import("./pages/support-grant-pages").then((module) => ({ default: module.SupportGrantCasePage })));
 const SubjectsPage = lazy(() =>
   import("./pages/subjects-page").then((module) => ({ default: module.SubjectsPage })),
 );
@@ -127,6 +129,8 @@ export function App() {
             <Route path="/contracts" element={<ContractsPage />} />
             <Route path="/workbench/approvals" element={<ApprovalTasksPage />} />
             <Route path="/cases/:caseId" element={<CaseDetailPage />} />
+            <Route path="/support" element={<SupportGrantsPage />} />
+            <Route path="/support-grants/:grantId" element={<SupportGrantCasePage />} />
             <Route path="/cases/:caseId/legal-knowledge" element={<LegalKnowledgePage />} />
             <Route path="/subjects" element={<SubjectsPage />} />
             <Route path="/subjects/:subjectId" element={<SubjectDetailPage />} />

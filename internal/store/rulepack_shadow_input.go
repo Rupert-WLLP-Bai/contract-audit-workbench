@@ -62,7 +62,7 @@ func (s *Store) freezeAttemptRuleRequest(ctx context.Context, runID, attemptID s
 	if durable && claim.JobID != "" && (claim.RunID != runID || claim.AttemptID != attemptID || claim.CaseID != item.ID || claim.ActorID != actor.ID) {
 		return rulepack.Request{}, errors.New("rule input claim identity mismatch")
 	}
-	tx, err := s.pool.Begin(ctx)
+	tx, err := s.beginContextTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return rulepack.Request{}, err
 	}

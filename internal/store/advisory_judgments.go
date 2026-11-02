@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"contractaudit/internal/model"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -269,7 +270,7 @@ func advisoryJudgmentID(runID, feature, frozenInputSHA256, snapshotSHA256, reque
 }
 
 func (e *storeAdvisoryEvaluator) load(ctx context.Context, judgmentID string) (advisory.KnowledgeResult, bool, error) {
-	tx, err := e.store.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
+	tx, err := e.store.beginContextTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
 	if err != nil {
 		return advisory.KnowledgeResult{}, false, err
 	}
@@ -298,6 +299,9 @@ func (e *storeAdvisoryEvaluator) load(ctx context.Context, judgmentID string) (a
 }
 
 func (e *storeAdvisoryEvaluator) save(ctx context.Context, judgment advisoryJudgment) error {
+	if scope, ok := model.DelegatedScopeFromContext(ctx); !ok || scope.Kind == "" {
+		ctx = withExecutionClaim(ctx, e.claim)
+	}
 	if err := judgment.validate(); err != nil {
 		return err
 	}
@@ -305,7 +309,7 @@ func (e *storeAdvisoryEvaluator) save(ctx context.Context, judgment advisoryJudg
 		judgment.RunID != e.claim.RunID || judgment.AttemptID != e.claim.AttemptID {
 		return errors.New("advisory judgment identity does not match its claim")
 	}
-	tx, err := e.store.pool.Begin(ctx)
+	tx, err := e.store.beginContextTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return err
 	}

@@ -11,9 +11,11 @@ import (
 	"strings"
 	"time"
 
-	"contractaudit/internal/access"
 	"contractaudit/internal/accounts"
 	"contractaudit/internal/coreauthority"
+	"contractaudit/internal/fault"
+	"contractaudit/internal/operationauthority"
+	"contractaudit/internal/store"
 )
 
 type CoreSessionResolver interface {
@@ -25,21 +27,7 @@ type coreSessionResolver struct {
 	client   *http.Client
 }
 
-type sessionAuthorityProjection struct {
-	Audience        string         `json:"audience"`
-	MembershipBound bool           `json:"membership_bound"`
-	ActorID         string         `json:"actor_id"`
-	DisplayName     string         `json:"display_name"`
-	Role            string         `json:"role"`
-	TenantID        string         `json:"tenant_id"`
-	OrgID           string         `json:"org_id"`
-	Enabled         bool           `json:"enabled"`
-	Issuer          string         `json:"issuer,omitempty"`
-	Subject         string         `json:"subject,omitempty"`
-	PrincipalID     string         `json:"principal_id,omitempty"`
-	MembershipID    string         `json:"membership_id,omitempty"`
-	Grants          []access.Grant `json:"grants"`
-}
+type sessionAuthorityProjection = operationauthority.SessionProjection
 
 func NewCoreSessionResolver(origin, caFile, appEnv string, allowInsecureDev bool, timeout time.Duration) (CoreSessionResolver, error) {
 	endpoint, client, err := coreauthority.NewTransport(origin, "/internal/v1/session-authority", caFile, appEnv, allowInsecureDev, timeout)
@@ -65,6 +53,9 @@ func (resolver *coreSessionResolver) AuthenticateSession(ctx context.Context, to
 	}
 	defer response.Body.Close()
 	if response.StatusCode != http.StatusOK {
+		if response.StatusCode == 401 {
+			return accounts.User{}, "", fault.New(401, "session_invalid", "会话已失效")
+		}
 		return accounts.User{}, "", fmt.Errorf("Core session authority returned HTTP %d", response.StatusCode)
 	}
 	body, err := io.ReadAll(io.LimitReader(response.Body, (64<<10)+1))
@@ -95,6 +86,17 @@ func (resolver *coreSessionResolver) AuthenticateSession(ctx context.Context, to
 			return accounts.User{}, "", errors.New("unbound Core session projection contains enterprise identity fields")
 		}
 		user = accounts.User{ID: projection.ActorID, DisplayName: projection.DisplayName, Role: projection.Role, TenantID: projection.TenantID, OrgID: projection.OrgID, Enabled: true, Grants: projection.Grants}
+	}
+	if projection.ContextVersion != "" {
+		if !store.ValidContextVersion(projection.ContextVersion) || projection.CSRFToken == "" || projection.AuthorityRevision == "" {
+			return accounts.User{}, "", errors.New("Core session context metadata unavailable")
+		}
+		user = store.BindCommandUser(user, token, projection.ContextVersion, projection.AuthorityRevision)
+		proof, _ := user.CommandAuthority()
+		proof.CSRFToken = projection.CSRFToken
+		proof.TenantName = projection.TenantName
+		proof.OrgName = projection.OrgName
+		user = accounts.WithCommandAuthority(user, proof)
 	}
 	return user, projection.Audience, nil
 }

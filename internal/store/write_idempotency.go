@@ -113,10 +113,11 @@ func validateWriteReceiptTarget(ctx context.Context, tx pgx.Tx, table string, it
 // case lock; old receipts never confer access to a revoked case. It is only an
 // early replay path: the effect transaction checks again after its own locks.
 func (s *Store) readWriteReceipt(ctx context.Context, user accounts.User, table, route, key, digest string, action access.Action) (writeReceipt, bool, error) {
+	ctx = commandContext(ctx, user)
 	if key == "" {
 		return writeReceipt{}, false, nil
 	}
-	tx, err := s.pool.Begin(ctx)
+	tx, err := s.beginContextTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return writeReceipt{}, false, err
 	}

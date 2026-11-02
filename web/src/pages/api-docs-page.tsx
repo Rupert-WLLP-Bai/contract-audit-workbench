@@ -31,6 +31,7 @@ import {
   buildApiRequest,
   type ApiRequestBodyField,
 } from "../api/openapi-request";
+import { assertCommandContextCurrent, captureCommandContext } from "../api/http";
 import { useSession } from "../api/queries";
 import { CircuitMark } from "../components/circuit-mark";
 import "./api-docs.css";
@@ -486,6 +487,7 @@ function ApiExplorer({
   async function submitRequest(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!operation) return;
+    const commandContext = captureCommandContext();
     const request = buildApiRequest({
       operation,
       values: parameterValues,
@@ -505,11 +507,20 @@ function ApiExplorer({
     controller.current = nextController;
     setSending(true);
     try {
+      const init = { ...request.request.init };
+      const headers = new Headers(init.headers);
+      const method = (init.method ?? "GET").toUpperCase();
+      if (!["GET", "HEAD", "OPTIONS"].includes(method)) {
+        headers.set("X-Context-Version", commandContext.contextVersion);
+        headers.set("X-CSRF-Token", commandContext.csrfToken);
+      }
       const httpResponse = await fetch(request.request.url, {
-        ...request.request.init,
+        ...init,
+        headers: Object.fromEntries(headers.entries()),
         signal: nextController.signal,
       });
       const rawBody = await httpResponse.text();
+      assertCommandContextCurrent(commandContext);
       setResponse({
         kind: "http",
         status: httpResponse.status,

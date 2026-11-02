@@ -74,7 +74,7 @@ func parseQueuePGTime(value string) (time.Time, bool) {
 }
 
 func (s *Store) beginRuntimeQueueRead(ctx context.Context, workerID string) (pgx.Tx, error) {
-	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
+	tx, err := s.beginContextTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
 	if err != nil {
 		return nil, err
 	}

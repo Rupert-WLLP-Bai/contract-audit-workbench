@@ -14,6 +14,7 @@ export interface IntakeContinuationScope {
   actor_id: string;
   tenant_id: string;
   org_id: string;
+  context_version: string;
 }
 
 
@@ -79,6 +80,7 @@ export function scopeOf(actor: Actor): IntakeContinuationScope {
     actor_id: actor.id,
     tenant_id: actor.tenant_id,
     org_id: actor.org_id,
+    context_version: actor.active_context?.context_version ?? "legacy",
   };
 }
 
@@ -92,6 +94,7 @@ export function scopeMatches(
     scope.actor_id === current.actor_id &&
     scope.tenant_id === current.tenant_id &&
     scope.org_id === current.org_id
+    && scope.context_version === current.context_version
   );
 }
 
@@ -99,7 +102,7 @@ async function storageKey(
   scope: IntakeContinuationScope,
 ): Promise<string> {
   const fingerprint = await idempotencyFingerprint(
-    [scope.audience, scope.tenant_id, scope.org_id, scope.actor_id].join(
+    [scope.audience, scope.tenant_id, scope.org_id, scope.actor_id, scope.context_version].join(
       "\u0000",
     ),
   );
@@ -230,11 +233,12 @@ export function parseIntakeContinuation(
   const actorId = textField(scope.actor_id);
   const tenantId = textField(scope.tenant_id);
   const orgId = textField(scope.org_id);
+  const contextVersion = textField(scope.context_version);
   if (
     audience === null ||
     actorId === null ||
     tenantId === null ||
-    orgId === null
+    orgId === null || contextVersion === null
   )
     return null;
   const parsedScope: IntakeContinuationScope = {
@@ -242,6 +246,7 @@ export function parseIntakeContinuation(
     actor_id: actorId,
     tenant_id: tenantId,
     org_id: orgId,
+    context_version: contextVersion,
   };
   if (!scopeMatches(parsedScope, actor)) return null;
   const idempotencyKey = textField(value.idempotency_key);

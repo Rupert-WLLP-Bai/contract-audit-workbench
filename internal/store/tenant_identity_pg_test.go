@@ -487,6 +487,7 @@ func tenantIdentityTestCore(t *testing.T, ctx context.Context, st *Store) (strin
 		"tenant_identity_list_pending(text,text)",
 		"tenant_identity_consume_pending(text,uuid,text,text,text)",
 		"tenant_identity_session_user(text)",
+		"tenant_context_info(text)", "tenant_context_fence(text,bigint,text,uuid,uuid)", "tenant_context_switch(text,bigint,text,uuid)", "tenant_context_list(text)", "tenant_support_list(text)", "tenant_support_validate(text,uuid)", "tenant_support_command(text,bigint,text,text,uuid,text,uuid,text[],text,timestamp with time zone,bigint)", "tenant_support_read(text,bigint,text,uuid)", "tenant_operation_info(jsonb,text)", "tenant_operation_fence(jsonb,text,text)",
 	} {
 		if _, err := st.pool.Exec(ctx, `GRANT EXECUTE ON FUNCTION `+schema+`.`+function+` TO `+quotedRole); err != nil {
 			t.Fatal(err)

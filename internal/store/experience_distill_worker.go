@@ -236,7 +236,7 @@ func experienceModelOutcomeUnknownTx(ctx context.Context, tx pgx.Tx, claim JobCl
 // If input loading fails, a previously persisted result makes the delivery
 // outcome potentially ambiguous and must not be reported as a failed job.
 func (s *Store) experienceResultPersisted(ctx context.Context, claim JobClaim) (bool, bool, error) {
-	tx, err := s.pool.Begin(ctx)
+	tx, err := s.beginContextTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return false, false, err
 	}
@@ -270,7 +270,7 @@ func (s *Store) experienceResultPersisted(ctx context.Context, claim JobClaim) (
 }
 
 func (s *Store) recordExperienceFailure(ctx context.Context, claim JobClaim, code string) error {
-	tx, err := s.pool.Begin(ctx)
+	tx, err := s.beginContextTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return err
 	}
@@ -397,7 +397,7 @@ func (s *Store) runExperienceDistill(ctx context.Context, claim JobClaim) error 
 }
 
 func (s *Store) distillClaimUser(ctx context.Context, claim JobClaim) (accounts.User, error) {
-	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{AccessMode: pgx.ReadOnly})
+	tx, err := s.beginContextTx(ctx, pgx.TxOptions{AccessMode: pgx.ReadOnly})
 	if err != nil {
 		return accounts.User{}, err
 	}

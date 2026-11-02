@@ -79,7 +79,7 @@ func (s *Store) SyncAgentReviewRecord(ctx context.Context, claim JobClaim, recor
 		return errors.New("agent review record hash does not match its payload")
 	}
 
-	tx, err := s.pool.Begin(ctx)
+	tx, err := s.beginContextTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return err
 	}
@@ -174,6 +174,7 @@ func (s *Store) SyncAgentReviewRecord(ctx context.Context, claim JobClaim, recor
 // never projected. It first checks the caller's case grant, then reads using the
 // authorized case's owner organization under the tenant RLS policy.
 func (s *Store) AgentReviewForAttempt(ctx context.Context, user accounts.User, caseID, runID, attemptID string) (json.RawMessage, bool, error) {
+	ctx = commandContext(ctx, user)
 	if ctx == nil {
 		return nil, false, errors.New("agent review context is nil")
 	}
@@ -191,7 +192,7 @@ func (s *Store) AgentReviewForAttempt(ctx context.Context, user accounts.User, c
 	if caseItem.TenantID != accounts.Tenant(current) {
 		return nil, false, errors.New("agent review case tenant does not match the trusted user")
 	}
-	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
+	tx, err := s.beginContextTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
 	if err != nil {
 		return nil, false, err
 	}

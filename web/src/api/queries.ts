@@ -7,7 +7,7 @@ import {
   type QueryClient,
 } from "@tanstack/react-query";
 import * as api from "./endpoints";
-import { isForbidden, isUnauthenticated, setSessionIdentity } from "./http";
+import { assertCommandContextCurrent, captureCommandContext, invalidateSessionIdentity, isForbidden, isUnauthenticated, setSessionIdentity } from "./http";
 import { clearPendingMutationKey, idempotencyActorScope, newIdempotencyKey, pendingMutationKey } from "./idempotency";
 import {
   createContractSavedView,
@@ -51,6 +51,7 @@ import type {
   SubjectSourceVerificationInput,
 } from "./types";
 import { isActiveAttemptState } from "../domain/review";
+import { clearAllDecisionDrafts } from "../hooks/decision-drafts";
 import type { RulePackManifestInput, RulePackTestInput } from "./rulepacks";
 
 export const queryKeys = {
@@ -117,7 +118,9 @@ export const queryKeys = {
 async function keyedMutation<T>(client: QueryClient, operation: string, target: string, input: unknown, send: (key: string) => Promise<T>): Promise<T> {
   const actor = client.getQueryData<Actor>(queryKeys.session);
   if (!actor) throw new Error("登录状态不可用，请刷新后重试");
-  const pending = await pendingMutationKey(operation, idempotencyActorScope(actor), target, input);
+  const commandContext = captureCommandContext(actor);
+  const pending = await pendingMutationKey(operation, idempotencyActorScope(actor), target, input, commandContext);
+  assertCommandContextCurrent(commandContext);
   const result = await send(pending.key);
   try {
     clearPendingMutationKey(pending.storageKey);
@@ -141,6 +144,57 @@ export function useSession(audience: SessionAudience = "client") {
     queryFn: ({ signal }) => api.getSession(audience, signal),
     staleTime: 60_000,
     retry: false,
+  });
+}
+
+export function useContextChoices(audience: SessionAudience) {
+  return useQuery({
+    queryKey: ["auth", "contexts", audience],
+    queryFn: ({ signal }) => api.getContextChoices(audience, signal),
+    staleTime: 0,
+    retry: false,
+  });
+}
+
+export async function revalidateSessionContext(queryClient: QueryClient, audience: SessionAudience): Promise<Actor> {
+  const session = await api.getSession(audience);
+  setSessionIdentity(session);
+  clearIdentityQueries(queryClient);
+  queryClient.setQueryData(queryKeys.sessionFor(audience), session);
+  return session;
+}
+
+export function useSwitchContext(audience: SessionAudience) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ membershipId, context }: { membershipId: string; context: ReturnType<typeof captureCommandContext> }) => {
+      const actor = queryClient.getQueryData<Actor>(queryKeys.sessionFor(audience));
+      if (!actor || !actor.context_switch_enabled) throw new Error("当前会话未启用上下文切换");
+      assertCommandContextCurrent(context);
+      return api.switchContext(audience, membershipId, context);
+    },
+    onMutate: async ({ context }) => {
+      assertCommandContextCurrent(context);
+      clearAllDecisionDrafts();
+      await queryClient.cancelQueries();
+      clearIdentityQueries(queryClient);
+    },
+    onSuccess: (session) => {
+      setSessionIdentity(session);
+      clearIdentityQueries(queryClient);
+      queryClient.setQueryData(queryKeys.sessionFor(audience), session);
+      queryClient.setQueryData(["auth", "contexts", audience], undefined);
+      window.dispatchEvent(new Event("caw:context-broadcast"));
+    },
+    onError: async () => {
+      try {
+        await revalidateSessionContext(queryClient, audience);
+      } catch {
+        invalidateSessionIdentity();
+        clearIdentityQueries(queryClient);
+        await queryClient.resetQueries({ queryKey: queryKeys.sessionFor(audience) });
+      }
+    },
   });
 }
 

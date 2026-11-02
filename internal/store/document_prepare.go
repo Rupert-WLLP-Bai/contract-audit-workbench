@@ -46,6 +46,7 @@ func (s *Store) UseDocumentPreparer(preparer DocumentPreparer) {
 }
 
 type documentPrepareAuthority struct {
+	User      accounts.User
 	Document  Document
 	Selection AttemptParseSelection
 	Claim     JobClaim
@@ -126,7 +127,7 @@ WHERE j.id=$1 AND j.worker_id=$2 AND j.generation=$3 AND j.state='running' AND j
 	AND j.tenant_id=$8 AND j.org_id=$9`
 
 func (s *Store) loadDocumentPrepareAuthority(ctx context.Context, request PrepareDocumentRequest) (documentPrepareAuthority, error) {
-	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted, AccessMode: pgx.ReadOnly})
+	tx, err := s.beginContextTx(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted, AccessMode: pgx.ReadOnly})
 	if err != nil {
 		return documentPrepareAuthority{}, err
 	}
@@ -199,7 +200,7 @@ func scanDocumentPrepareAuthority(ctx context.Context, q interface {
 		return documentPrepareAuthority{}, errors.New("current case review grant is unavailable")
 	}
 	claim.Kind = jobKind
-	authority := documentPrepareAuthority{Document: document, Selection: selection, Claim: claim}
+	authority := documentPrepareAuthority{User: user, Document: document, Selection: selection, Claim: claim}
 	if parsedID.Valid {
 		parsed, err := parsePayload(parsedPayload.String)
 		if err != nil || !parsedOrder.Valid || parsed.ID != parsedID.String || parsed.SelectionOrder != parsedOrder.Int64 ||
@@ -230,7 +231,13 @@ func (s *Store) persistPreparedParsedDocument(ctx context.Context, request Prepa
 	if err := verifyParsed(parsed, Document{ID: parsed.DocumentID, Digest: parsed.OriginalDigest}); err != nil {
 		return ParsedDocument{}, err
 	}
-	tx, err := s.pool.Begin(ctx)
+	initial, err := s.loadDocumentPrepareAuthority(ctx, request)
+	if err != nil {
+		return ParsedDocument{}, err
+	}
+	ctx = commandContext(ctx, initial.User)
+	frozenResolver := func(context.Context, model.DelegatedScope) (accounts.User, error) { return initial.User, nil }
+	tx, err := s.beginContextTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return ParsedDocument{}, err
 	}
@@ -242,7 +249,7 @@ func (s *Store) persistPreparedParsedDocument(ctx context.Context, request Prepa
 	// their rows with FOR SHARE (which requires UPDATE privileges). Only the
 	// immutable parse artifact is written here. Revalidate the live claim before
 	// commit below and again before returning; the worker fences result adoption.
-	authority, err := scanDocumentPrepareAuthority(ctx, tx, documentPrepareAuthoritySQL, request, s.operationUser)
+	authority, err := scanDocumentPrepareAuthority(ctx, tx, documentPrepareAuthoritySQL, request, frozenResolver)
 	if err != nil {
 		return ParsedDocument{}, err
 	}
@@ -278,7 +285,7 @@ func (s *Store) persistPreparedParsedDocument(ctx context.Context, request Prepa
 		normalized, irDigest, parsed.ArtifactDigest, parsed.CreatedAt, parsed.Status, payload); err != nil {
 		return ParsedDocument{}, err
 	}
-	winnerAuthority, err := scanDocumentPrepareAuthority(ctx, tx, documentPrepareAuthoritySQL, request, s.operationUser)
+	winnerAuthority, err := scanDocumentPrepareAuthority(ctx, tx, documentPrepareAuthoritySQL, request, frozenResolver)
 	if err != nil || winnerAuthority.Parsed == nil {
 		return ParsedDocument{}, errors.New("parsed document commit could not be verified")
 	}

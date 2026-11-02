@@ -151,7 +151,19 @@ func verifyTenantIdentityOwnerPrivileges(ctx context.Context, q clmRoleQueryer, 
 			to_regprocedure(format('%I.tenant_identity_session_user(text)',$3))::oid,
 			to_regprocedure(format('%I.tenant_identity_intake_ticket(text)',$3))::oid,
 			to_regprocedure(format('%I.tenant_identity_claim_user(text,text,text,text,bigint,text,text,text,text)',$3))::oid,
-			to_regprocedure(format('%I.tenant_identity_bind_admission(text,text)',$3))::oid
+			to_regprocedure(format('%I.tenant_identity_bind_admission(text,text)',$3))::oid,
+to_regprocedure(format('%I.tenant_context_info(text)',$3))::oid,
+to_regprocedure(format('%I.tenant_context_fence(text,bigint,text,uuid,uuid)',$3))::oid,
+to_regprocedure(format('%I.tenant_context_switch(text,bigint,text,uuid)',$3))::oid,
+to_regprocedure(format('%I.tenant_context_list(text)',$3))::oid,
+to_regprocedure(format('%I.tenant_support_can_manage(text,text)',$3))::oid,
+to_regprocedure(format('%I.tenant_support_json(uuid)',$3))::oid,
+to_regprocedure(format('%I.tenant_support_list(text)',$3))::oid,
+to_regprocedure(format('%I.tenant_support_command(text,bigint,text,text,uuid,text,uuid,text[],text,timestamp with time zone,bigint)',$3))::oid,
+to_regprocedure(format('%I.tenant_support_read(text,bigint,text,uuid)',$3))::oid,
+to_regprocedure(format('%I.tenant_support_validate(text,uuid)',$3))::oid,
+to_regprocedure(format('%I.tenant_operation_info(jsonb,text)',$3))::oid,
+to_regprocedure(format('%I.tenant_operation_fence(jsonb,text,text)',$3))::oid
 		]) AS oid
 	), owner_objects AS (
 		SELECT class.classid,class.objid,class.objsubid,namespace.nspname
@@ -217,6 +229,7 @@ func verifyTenantIdentityOwnerPrivileges(ctx context.Context, q clmRoleQueryer, 
 			('review_attempts','run_id','SELECT'),('review_attempts','id','SELECT'),
 			('review_attempts','history_kind','SELECT'),('review_attempts','state','SELECT'),('review_attempts','input_hash','SELECT')
 		) AS item(table_name,column_name,privilege_type)
+ UNION ALL SELECT * FROM (VALUES ('cases','id','UPDATE'),('cases','title','SELECT'),('cases','contract_type','SELECT'),('cases','business_status','SELECT'),('cases','created_at','SELECT'),('cases','updated_at','SELECT'),('identity_tenants','revision','UPDATE'),('identity_memberships','revision','UPDATE'),('sessions','context_version','SELECT'),('sessions','csrf_token','SELECT'),('sessions','context_version','UPDATE'),('sessions','tenant_id','UPDATE'),('sessions','org_id','UPDATE'),('sessions','membership_id','UPDATE'),('worker_claim_identities','session_digest','SELECT'),('worker_claim_identities','context_version','SELECT'),('worker_claim_identities','session_digest','UPDATE'),('worker_claim_identities','context_version','UPDATE'),('operation_authority_tickets',NULL::text,'SELECT'),('operation_authority_tickets','context_version','UPDATE'),('intake_authority_tickets','context_version','SELECT'),('intake_authority_tickets','context_version','UPDATE'),('identity_support_grants',NULL::text,'SELECT'),('identity_support_grants',NULL::text,'INSERT'),('identity_support_grants','status','UPDATE'),('identity_support_grants','approved_by','UPDATE'),('identity_support_grants','revision','UPDATE'),('identity_support_events',NULL::text,'SELECT'),('identity_support_events',NULL::text,'INSERT')) AS additions(table_name,column_name,privilege_type) WHERE EXISTS(SELECT 1 FROM pg_attribute WHERE attrelid=to_regclass(format('%I.sessions',$2::text)) AND attname='context_version' AND NOT attisdropped)
 	), actual AS (
 		SELECT namespace.nspname AS schema_name,relation.relname AS table_name,NULL::text AS column_name,acl.privilege_type,acl.is_grantable
 		FROM pg_class relation JOIN pg_namespace namespace ON namespace.oid=relation.relnamespace
@@ -253,6 +266,7 @@ func verifyTenantIdentityOwnerPrivileges(ctx context.Context, q clmRoleQueryer, 
 			('review_runs','run_identity_claim_owner_read'),
 			('review_attempts','attempt_identity_claim_owner_read')
 		) AS item(table_name,policy_name)
+ UNION ALL SELECT 'cases','case_context_owner_lock' WHERE EXISTS(SELECT 1 FROM pg_attribute WHERE attrelid=to_regclass(format('%I.sessions',$2::text)) AND attname='context_version' AND NOT attisdropped)
 	), actual AS (
 		SELECT relation.relname AS table_name,policy.polname AS policy_name,policy.polcmd,policy.polroles,
 			pg_get_expr(policy.polqual,policy.polrelid) AS using_expr,pg_get_expr(policy.polwithcheck,policy.polrelid) AS check_expr
@@ -267,8 +281,9 @@ func verifyTenantIdentityOwnerPrivileges(ctx context.Context, q clmRoleQueryer, 
 			AND actual.polroles=ARRAY[target.role_oid]
 			AND ((expected.policy_name='worker_claim_identity_owner_read' AND actual.polcmd='r' AND actual.using_expr='true' AND actual.check_expr IS NULL)
 			 OR (expected.policy_name='worker_claim_identity_owner_insert' AND actual.polcmd='a' AND actual.using_expr IS NULL AND actual.check_expr='true')
-			 OR (expected.policy_name<>'worker_claim_identity_owner_read' AND expected.policy_name<>'worker_claim_identity_owner_insert' AND actual.polcmd='r' AND actual.using_expr='true' AND actual.check_expr IS NULL))))
-		OR (SELECT count(*) FROM actual)<>CASE WHEN to_regclass(format('%I.worker_claim_identities',$2)) IS NULL THEN 0 ELSE 6 END
+			 OR (expected.policy_name='case_context_owner_lock' AND actual.polcmd='w' AND actual.using_expr='true' AND actual.check_expr='false')
+ OR (expected.policy_name<>'worker_claim_identity_owner_read' AND expected.policy_name<>'worker_claim_identity_owner_insert' AND expected.policy_name<>'case_context_owner_lock' AND actual.polcmd='r' AND actual.using_expr='true' AND actual.check_expr IS NULL))))
+		OR (SELECT count(*) FROM actual)<>CASE WHEN to_regclass(format('%I.worker_claim_identities',$2)) IS NULL THEN 0 ELSE 6+CASE WHEN EXISTS(SELECT 1 FROM pg_attribute WHERE attrelid=to_regclass(format('%I.sessions',$2::text)) AND attname='context_version' AND NOT attisdropped) THEN 1 ELSE 0 END END
 		OR EXISTS(SELECT 1 FROM (VALUES ('worker_claim_identities'),('worker_jobs'),('cases'),('review_runs'),('review_attempts')) AS tables(table_name)
 			JOIN pg_class relation ON relation.relname=tables.table_name
 			JOIN pg_namespace namespace ON namespace.oid=relation.relnamespace AND namespace.nspname=$2

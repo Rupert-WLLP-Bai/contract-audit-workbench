@@ -95,13 +95,14 @@ type RuleShadowEnvelope struct {
 }
 
 func (s *Store) shadowTransaction(ctx context.Context, admin accounts.User, write bool) (pgx.Tx, error) {
+	ctx = commandContext(ctx, admin)
 	if ctx == nil {
 		return nil, fault.Invalid("请求上下文无效")
 	}
 	if write && s.ReadOnly() {
 		return nil, fault.New(503, "read_only", "只读模式下不能保存影子报告")
 	}
-	tx, err := s.pool.Begin(ctx)
+	tx, err := s.beginContextTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return nil, err
 	}
@@ -156,6 +157,7 @@ func shadowScopeMatches(rules []rulepack.Rule, item Case) bool {
 // RuleShadowSamples returns bounded recent identities only after current case
 // read and review authorization. It never returns case text or frozen facts.
 func (s *Store) RuleShadowSamples(ctx context.Context, user accounts.User, packID, version string) ([]RuleShadowSampleOption, error) {
+	ctx = commandContext(ctx, user)
 	admin, err := trustedAdmin(user)
 	if err != nil {
 		return nil, err
@@ -276,6 +278,7 @@ func shadowFailure(result *RuleShadowSampleResult, code, message string) {
 }
 
 func (s *Store) replayShadowSample(ctx context.Context, tx pgx.Tx, admin accounts.User, candidate *rulepack.Pack, ref RuleShadowSampleRef) RuleShadowSampleResult {
+	ctx = commandContext(ctx, admin)
 	result := RuleShadowSampleResult{RuleShadowSampleRef: ref, Changes: []RuleShadowChange{}}
 	item, err := loadKnowledgeCase(ctx, tx, admin, ref.CaseID)
 	if err != nil || !authorizeCase(item, admin, access.Review) {
@@ -489,6 +492,7 @@ func compareShadowResults(base, candidate rulepack.Manifest, before, after rulep
 // CreateRuleShadowReport appends a hash-bound report; it never adopts results,
 // records a human decision, approves content or moves an active pointer.
 func (s *Store) CreateRuleShadowReport(ctx context.Context, user accounts.User, input RuleShadowInput) (RuleShadowEnvelope, error) {
+	ctx = commandContext(ctx, user)
 	admin, err := trustedAdmin(user)
 	if err != nil {
 		return RuleShadowEnvelope{}, err
@@ -638,6 +642,7 @@ func authorizeShadowReport(ctx context.Context, tx pgx.Tx, admin accounts.User, 
 }
 
 func (s *Store) RuleShadowReports(ctx context.Context, user accounts.User, packID, version, reportID string) ([]RuleShadowEnvelope, error) {
+	ctx = commandContext(ctx, user)
 	admin, err := trustedAdmin(user)
 	if err != nil {
 		return nil, err

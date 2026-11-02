@@ -17,6 +17,7 @@ import (
 // GetReviewReadiness projects both published review scopes without creating an
 // attempt. StartReview revalidates authorization and dependencies at acceptance.
 func (s *Store) GetReviewReadiness(ctx context.Context, user accounts.User, caseID, businessAt string) (ReviewReadiness, error) {
+	ctx = commandContext(ctx, user)
 	if ctx == nil {
 		return ReviewReadiness{}, fault.Invalid("准备清单读取需要请求上下文")
 	}

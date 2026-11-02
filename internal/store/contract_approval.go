@@ -20,6 +20,7 @@ import (
 // submissions at it. Re-publishing the exact same version is a no-op; reusing
 // a version string with different content is a conflict, never an overwrite.
 func (s *Store) PublishWorkflowTemplate(ctx context.Context, user accounts.User, input PublishWorkflowTemplateInput) (WorkflowTemplateSummary, error) {
+	ctx = commandContext(ctx, user)
 	if !s.HasDatabase() {
 		return WorkflowTemplateSummary{}, fault.New(503, "database_unavailable", "服务数据库不可用")
 	}
@@ -139,6 +140,7 @@ func loadWorkflowTemplateVersion(ctx context.Context, tx pgx.Tx, tenantID, templ
 // lets an operator detect that another administrator changed the role after
 // reading it. In-flight rounds are unaffected because they own a snapshot.
 func (s *Store) ReplaceWorkflowRoleBindings(ctx context.Context, user accounts.User, input ReplaceWorkflowRoleInput) (WorkflowRoleSummary, error) {
+	ctx = commandContext(ctx, user)
 	if !s.HasDatabase() {
 		return WorkflowRoleSummary{}, fault.New(503, "database_unavailable", "服务数据库不可用")
 	}
@@ -312,6 +314,7 @@ func loadWorkflowRoleBindings(ctx context.Context, tx pgx.Tx, tenantID string) (
 // #81 seal before creating the round, so a changed draft can never be reviewed
 // under an older frozen version.
 func (s *Store) SubmitContractApproval(ctx context.Context, user accounts.User, input SubmitContractApprovalInput) (SubmitContractApprovalResult, error) {
+	ctx = commandContext(ctx, user)
 	id, err := normalizeContractUUID(input.ContractID)
 	if err != nil {
 		return SubmitContractApprovalResult{}, err

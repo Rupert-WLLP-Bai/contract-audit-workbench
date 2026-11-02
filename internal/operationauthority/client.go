@@ -19,11 +19,12 @@ import (
 // Projection is accepted only over the configured authority channel. It is not
 // a public User input and its scope must equal the operation being authorized.
 type Projection struct {
-	Scope           model.DelegatedScope `json:"scope"`
-	User            accounts.User        `json:"user"`
-	PrincipalID     string               `json:"principal_id,omitempty"`
-	MembershipID    string               `json:"membership_id,omitempty"`
-	MembershipBound bool                 `json:"membership_bound"`
+	AuthorityRevision string               `json:"authority_revision,omitempty"`
+	Scope             model.DelegatedScope `json:"scope"`
+	User              accounts.User        `json:"user"`
+	PrincipalID       string               `json:"principal_id,omitempty"`
+	MembershipID      string               `json:"membership_id,omitempty"`
+	MembershipBound   bool                 `json:"membership_bound"`
 }
 
 type OperationClient struct {
@@ -71,6 +72,9 @@ func (c *OperationClient) ResolveOperation(ctx context.Context, scope model.Dele
 	if d.Decode(&p) != nil || d.Decode(new(any)) != io.EOF || !reflect.DeepEqual(p.Scope, scope) {
 		return accounts.User{}, errors.New("operation authority scope mismatch")
 	}
+	if p.AuthorityRevision == "" {
+		return accounts.User{}, errors.New("operation admission context metadata unavailable")
+	}
 	u := p.User
 	u.PrincipalID = p.PrincipalID
 	u.MembershipID = p.MembershipID
@@ -88,14 +92,19 @@ func (c *OperationClient) ResolveOperation(ctx context.Context, scope model.Dele
 	} else if u.PrincipalID != "" || u.MembershipID != "" || u.Issuer != "" || u.Subject != "" {
 		return accounts.User{}, errors.New("unbound operation authority contains enterprise identity")
 	}
+	if p.AuthorityRevision != "" {
+		encoded, _ := json.Marshal(scope)
+		u = accounts.WithCommandAuthority(u, accounts.CommandAuthority{Revision: p.AuthorityRevision, OperationScope: encoded})
+	}
 	return u, nil
 }
 
-func (c *OperationClient) IssueOperationTicket(ctx context.Context, digest string, scope model.DelegatedScope) (string, error) {
+func (c *OperationClient) IssueOperationTicket(ctx context.Context, digest string, version string, scope model.DelegatedScope) (string, error) {
 	body, err := json.Marshal(struct {
-		Digest string               `json:"session_digest"`
-		Scope  model.DelegatedScope `json:"scope"`
-	}{digest, scope})
+		Digest  string               `json:"session_digest"`
+		Version string               `json:"context_version"`
+		Scope   model.DelegatedScope `json:"scope"`
+	}{digest, version, scope})
 	if err != nil {
 		return "", err
 	}

@@ -679,6 +679,7 @@ func validateFrozenLegalAuthorityCapturesTx(ctx context.Context, tx pgx.Tx, tena
 // accepted run and attempt. It does not consult current rule pointers, current
 // facts, or latest captures, so later changes cannot rewrite old citations.
 func (s *Store) ReadFrozenLegalAuthority(ctx context.Context, user accounts.User, caseID, runID, attemptID, citationID string) (FrozenLegalAuthority, error) {
+	ctx = commandContext(ctx, user)
 	if ctx == nil || s == nil || s.pool == nil {
 		return FrozenLegalAuthority{}, fault.New(503, "governance_unavailable", "制度数据库不可用")
 	}
@@ -690,7 +691,7 @@ func (s *Store) ReadFrozenLegalAuthority(ctx context.Context, user accounts.User
 	if err != nil {
 		return FrozenLegalAuthority{}, err
 	}
-	tx, err := s.pool.Begin(ctx)
+	tx, err := s.beginContextTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return FrozenLegalAuthority{}, err
 	}

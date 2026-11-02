@@ -239,6 +239,36 @@ func ImportIdentityCrosswalk(ctx context.Context, adminDSN, schema, expectedData
 			return IdentityImportSummary{}, fmt.Errorf("identity crosswalk cannot activate disabled directory actor %q", item.ActorID)
 		}
 	}
+	// Identity mutation uses the same tenant -> membership order as commands.
+	// Include every existing membership of touched principals and organizations,
+	// not only rows explicitly repeated in this import document.
+	tenantIDs := []string{}
+	principalIDs := []string{}
+	for _, v := range document.Tenants {
+		tenantIDs = append(tenantIDs, v.ID)
+	}
+	for _, v := range document.OrgUnits {
+		tenantIDs = append(tenantIDs, v.TenantID)
+	}
+	for _, v := range document.Memberships {
+		tenantIDs = append(tenantIDs, v.TenantID)
+		principalIDs = append(principalIDs, v.ActorID)
+	}
+	for _, v := range document.Principals {
+		principalIDs = append(principalIDs, v.ActorID)
+	}
+	if _, err := tx.Exec(ctx, `SELECT t.tenant_id FROM `+qualifiedSchema+`.identity_tenants t WHERE t.tenant_id=ANY($1::text[]) OR t.tenant_id IN(SELECT m.tenant_id FROM `+qualifiedSchema+`.identity_memberships m JOIN `+qualifiedSchema+`.identity_principals p USING(principal_id) WHERE p.actor_id=ANY($2::text[])) ORDER BY t.tenant_id FOR UPDATE`, tenantIDs, principalIDs); err != nil {
+		return IdentityImportSummary{}, err
+	}
+	if _, err := tx.Exec(ctx, `SELECT m.membership_id FROM `+qualifiedSchema+`.identity_memberships m JOIN `+qualifiedSchema+`.identity_principals p USING(principal_id) WHERE m.tenant_id=ANY($1::text[]) OR p.actor_id=ANY($2::text[]) ORDER BY m.membership_id FOR UPDATE OF m`, tenantIDs, principalIDs); err != nil {
+		return IdentityImportSummary{}, err
+	}
+	// Touch the locked tenant tuples even for principal/org-only changes. A
+	// waiting Repeatable Read writer must see an MVCC update conflict rather
+	// than continuing with an older principal/org snapshot.
+	if _, err := tx.Exec(ctx, `UPDATE `+qualifiedSchema+`.identity_tenants t SET revision=t.revision WHERE t.tenant_id=ANY($1::text[]) OR t.tenant_id IN(SELECT m.tenant_id FROM `+qualifiedSchema+`.identity_memberships m JOIN `+qualifiedSchema+`.identity_principals p USING(principal_id) WHERE p.actor_id=ANY($2::text[]))`, tenantIDs, principalIDs); err != nil {
+		return IdentityImportSummary{}, err
+	}
 	if err := importIdentityDirectoryRows(ctx, tx, qualifiedSchema, document); err != nil {
 		return IdentityImportSummary{}, err
 	}

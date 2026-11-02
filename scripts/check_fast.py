@@ -113,6 +113,9 @@ CLM_OUTBOX_STORE_TESTS = (
 CLM_OUTBOX_RELAY_TESTS = (
     "TestCLMOutboxRelayRetryConsumerRefreshDoesNotChangeBusinessFacts",
 )
+CONTEXT_FENCE_TESTS = (
+    "TestSessionContextSwitchSupportExpiryAndWriteFence",
+)
 
 
 class FastError(RuntimeError):
@@ -546,6 +549,102 @@ def _is_offline_migrator_bootstrap(path: str) -> bool:
     }
 
 
+# These Store files call the shared human-command transaction seam or own the
+# identity/session proof that it consumes. Keep this exact set in sync with the
+# reviewed beginContextTx caller inventory; a new human-write caller must route
+# the context-fence PostgreSQL case as part of its change.
+CONTEXT_FENCE_PATHS = frozenset({
+    "cmd/server/main.go",
+    "internal/accounts/accounts.go",
+    "internal/httpapi/context_session.go",
+    "internal/httpapi/context_support.go",
+    "internal/httpapi/core_session_resolver.go",
+    "internal/httpapi/operation_authority.go",
+    "internal/httpapi/server.go",
+    "internal/httpapi/services.go",
+    "internal/httpapi/session_authority.go",
+    "internal/httpapi/session_audience.go",
+    "internal/operationauthority/client.go",
+    "internal/operationauthority/session.go",
+    "internal/toolgateway/core_session.go",
+    "internal/toolgateway/server.go",
+    "internal/store/agent_review.go",
+    "internal/store/attempt_finalize.go",
+    "internal/store/case_intake.go",
+    "internal/store/case_intake_authority.go",
+    "internal/store/case_intake_pending.go",
+    "internal/store/cases.go",
+    "internal/store/context_fence_pg_test.go",
+    "internal/store/context_session.go",
+    "internal/store/context_support.go",
+    "internal/store/context_transaction.go",
+    "internal/store/contract_assets.go",
+    "internal/store/contract_audit.go",
+    "internal/store/contract_draft.go",
+    "internal/store/contract_fulfillment.go",
+    "internal/store/contract_ledger.go",
+    "internal/store/contract_payments.go",
+    "internal/store/contract_references.go",
+    "internal/store/contract_signing.go",
+    "internal/store/contract_sources.go",
+    "internal/store/contract_version.go",
+    "internal/store/contract_version_diff.go",
+    "internal/store/document_prepare.go",
+    "internal/store/execution.go",
+    "internal/store/execution_events.go",
+    "internal/store/experience_distill.go",
+    "internal/store/experience_distill_worker.go",
+    "internal/store/experience_feedback.go",
+    "internal/store/experience_metrics.go",
+    "internal/store/experience_usage.go",
+    "internal/store/governance_sample.go",
+    "internal/store/history_reads.go",
+    "internal/store/identity_import.go",
+    "internal/store/knowledge_governance.go",
+    "internal/store/legal_applicability.go",
+    "internal/store/legal_applicability_history.go",
+    "internal/store/legal_knowledge.go",
+    "internal/store/legal_review_snapshot.go",
+    "internal/store/llm_endpoint.go",
+    "internal/store/model_budget.go",
+    "internal/store/operation_authority.go",
+    "internal/store/operator_audit.go",
+    "internal/store/outbox_relay.go",
+    "internal/store/parsing.go",
+    "internal/store/pg.go",
+    "internal/store/queue_scheduler.go",
+    "internal/store/queue_storage.go",
+    "internal/store/reviews.go",
+    "internal/store/rulepack_shadow.go",
+    "internal/store/rulepack_shadow_input.go",
+    "internal/store/runtime_metrics.go",
+    "internal/store/scoped_case_write.go",
+    "internal/store/scoped_mutation.go",
+    "internal/store/scoped_read.go",
+    "internal/store/service_objects_store.go",
+    "internal/store/tenant_identity.go",
+    "internal/store/tenant_identity_role_provision.go",
+    "internal/store/tenant_model_usage.go",
+    "internal/store/tool_authority.go",
+    "internal/store/tool_budget.go",
+    "internal/store/transaction.go",
+    "internal/store/upload_idempotency.go",
+    "internal/store/workbench.go",
+    "internal/store/write_idempotency.go",
+    "internal/store/authorization.go",
+    "internal/store/migrations.go",
+    "internal/store/migrations/0034_session_context_fence.sql",
+    "internal/store/service_roles.go",
+    "internal/store/session_lifecycle_test.go",
+    "internal/store/state.go",
+    "scripts/provision_test_db.sh",
+})
+
+
+def _is_context_fence(path: str) -> bool:
+    return path in CONTEXT_FENCE_PATHS
+
+
 def _is_clm_outbox_core(path: str) -> bool:
     if path.startswith("internal/store/") and any(
         token in _stem(path) for token in ("clm_outbox", "clm_metrics")
@@ -595,6 +694,8 @@ SENSITIVE_RULES = (
                   CLM_OUTBOX_RELAY_TESTS, package="./internal/clmoutbox"),
     SensitiveRule("offline-migrator-bootstrap", _is_offline_migrator_bootstrap,
                   OFFLINE_MIGRATOR_BOOTSTRAP_TESTS),
+    SensitiveRule("tenant-context-fence", _is_context_fence,
+                  CONTEXT_FENCE_TESTS),
 )
 
 

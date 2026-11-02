@@ -405,6 +405,7 @@ type contractLedgerRow struct {
 }
 
 func (s *Store) beginContractLedgerRead(ctx context.Context, user accounts.User) (pgx.Tx, accounts.User, error) {
+	ctx = commandContext(ctx, user)
 	if !s.HasDatabase() {
 		return nil, accounts.User{}, fault.New(503, "database_unavailable", "服务数据库不可用")
 	}
@@ -412,7 +413,7 @@ func (s *Store) beginContractLedgerRead(ctx context.Context, user accounts.User)
 	if err != nil {
 		return nil, accounts.User{}, err
 	}
-	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
+	tx, err := s.beginContextTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
 	if err != nil {
 		return nil, accounts.User{}, err
 	}
@@ -582,6 +583,7 @@ func queryContractLedgerRows(ctx context.Context, tx pgx.Tx, tenant string, filt
 // ListContractLedger returns one authorized keyset page. SQL narrows by the
 // validated filter and the case-scope policy authorizes every returned row.
 func (s *Store) ListContractLedger(ctx context.Context, user accounts.User, query ContractLedgerQuery) (ContractLedgerPage, error) {
+	ctx = commandContext(ctx, user)
 	limit := query.Limit
 	if limit == 0 {
 		limit = contractLedgerDefaultLimit
@@ -655,6 +657,7 @@ func (s *Store) ListContractLedger(ctx context.Context, user accounts.User, quer
 
 // ListContractSavedViews returns only the caller's own personal views.
 func (s *Store) ListContractSavedViews(ctx context.Context, user accounts.User) ([]ContractSavedView, error) {
+	ctx = commandContext(ctx, user)
 	tx, current, err := s.beginContractLedgerRead(ctx, user)
 	if err != nil {
 		return nil, err
@@ -737,6 +740,7 @@ func normalizeContractSavedViewInput(name string, filter *ContractLedgerFilter, 
 // CreateContractSavedView stores one personal view. The owner and tenant come
 // only from the authenticated session.
 func (s *Store) CreateContractSavedView(ctx context.Context, user accounts.User, input ContractSavedViewInput) (ContractSavedView, error) {
+	ctx = commandContext(ctx, user)
 	name, columns, err := normalizeContractSavedViewInput(input.Name, &input.Filter, input.Columns)
 	if err != nil {
 		return ContractSavedView{}, err
@@ -780,6 +784,7 @@ func (s *Store) CreateContractSavedView(ctx context.Context, user accounts.User,
 // ReplaceContractSavedView replaces one personal view under optimistic
 // concurrency.
 func (s *Store) ReplaceContractSavedView(ctx context.Context, user accounts.User, input ContractSavedViewUpdateInput) (ContractSavedView, error) {
+	ctx = commandContext(ctx, user)
 	viewID, err := normalizeContractUUID(input.ViewID)
 	if err != nil {
 		return ContractSavedView{}, err
@@ -829,6 +834,7 @@ func (s *Store) ReplaceContractSavedView(ctx context.Context, user accounts.User
 // DeleteContractSavedView removes one personal view under optimistic
 // concurrency. Preferences are not audit facts, so a hard delete is allowed.
 func (s *Store) DeleteContractSavedView(ctx context.Context, user accounts.User, viewID string, expectedRowVersion int64) error {
+	ctx = commandContext(ctx, user)
 	normalized, err := normalizeContractUUID(viewID)
 	if err != nil {
 		return err
@@ -860,6 +866,7 @@ func (s *Store) DeleteContractSavedView(ctx context.Context, user accounts.User,
 // stale expected_row_version (409). Both mutation paths share the same miss
 // handling because ownership is rechecked in the WHERE clause.
 func (s *Store) savedViewMutationMiss(ctx context.Context, tx pgx.Tx, current accounts.User, viewID string) error {
+	ctx = commandContext(ctx, current)
 	var liveVersion int64
 	err := tx.QueryRow(ctx, `SELECT row_version FROM clm_contract_saved_views
 		WHERE tenant_id=$1 AND view_id=$2 AND owner_user_id=$3`,
@@ -923,6 +930,7 @@ func ledgerStringValue(value *string) string {
 // records the authorization snapshot used at creation. The same idempotency
 // key replays the original export metadata.
 func (s *Store) CreateContractExport(ctx context.Context, user accounts.User, input ContractExportInput) (ContractExport, error) {
+	ctx = commandContext(ctx, user)
 	if err := validateCLMIdempotencyKey(input.IdempotencyKey); err != nil {
 		return ContractExport{}, err
 	}
@@ -1107,6 +1115,7 @@ func collectContractExportRows(ctx context.Context, tx pgx.Tx, current accounts.
 // Any lost Read/Export permission, identity change, foreign owner or expiry is
 // answered as the same 404.
 func (s *Store) LoadContractExportForDownload(ctx context.Context, user accounts.User, exportID string) (ContractExportDownload, error) {
+	ctx = commandContext(ctx, user)
 	normalized, err := normalizeContractUUID(exportID)
 	if err != nil {
 		return ContractExportDownload{}, err

@@ -33,6 +33,10 @@ const actor: Actor = {
   tenant_id: "tenant-1",
   org_id: "demo-org",
   audience: "client",
+  principal_id: "principal-1",
+  active_context: { membership_id: "membership-1", tenant_id: "tenant-1", tenant_name: "租户一", org_id: "demo-org", org_name: "演示组织", context_version: "1" },
+  csrf_token: "test-csrf",
+  context_switch_enabled: false,
 };
 
 function LocationEcho() {

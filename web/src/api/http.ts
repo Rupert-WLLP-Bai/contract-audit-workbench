@@ -21,6 +21,114 @@ export class ApiError extends Error {
 }
 let sessionIdentity: string | null = null;
 let sessionEpoch = 0;
+export interface CommandContext {
+  contextVersion: string;
+  csrfToken: string;
+  identity: string;
+  epoch: number;
+}
+let activeCommandContext: CommandContext | null = null;
+type IdempotencyBinding = { context: CommandContext } | { invalidated: true };
+type IdempotencyContextLookup =
+  | { status: "bound"; context: CommandContext }
+  | { status: "invalidated" }
+  | { status: "unknown" };
+const MAX_IDEMPOTENCY_BINDINGS = 2048;
+const idempotencyContexts = new Map<string, IdempotencyBinding>();
+
+function saveIdempotencyBinding(key: string, binding: IdempotencyBinding): void {
+  idempotencyContexts.delete(key);
+  idempotencyContexts.set(key, binding);
+  while (idempotencyContexts.size > MAX_IDEMPOTENCY_BINDINGS) {
+    const oldest = idempotencyContexts.keys().next().value;
+    if (oldest === undefined) break;
+    idempotencyContexts.delete(oldest);
+  }
+}
+
+function invalidateIdempotencyBindings(): void {
+  for (const key of [...idempotencyContexts.keys()])
+    saveIdempotencyBinding(key, { invalidated: true });
+}
+
+export function sessionIdentityFor(actor: {
+  id: string;
+  role: string;
+  audience?: string;
+  tenant_id?: string;
+  org_id?: string;
+  principal_id?: string | null;
+  active_context?: { context_version: string };
+  csrf_token?: string;
+}): string {
+  return `${actor.audience ?? "client"}\u0000${actor.id}\u0000${actor.role}\u0000${actor.tenant_id ?? ""}\u0000${actor.org_id ?? ""}\u0000${actor.principal_id ?? ""}\u0000${actor.active_context?.context_version ?? ""}\u0000${actor.csrf_token ?? ""}`;
+}
+
+export function captureCommandContext(actor?: {
+  id: string;
+  role: string;
+  audience?: string;
+  tenant_id?: string;
+  org_id?: string;
+  principal_id?: string | null;
+  active_context?: { context_version: string };
+  csrf_token?: string;
+}): CommandContext {
+  const requestedIdentity = actor ? sessionIdentityFor(actor) : null;
+  if (requestedIdentity && requestedIdentity !== sessionIdentity)
+    throw new DOMException("Session changed", "AbortError");
+  const snapshot = activeCommandContext;
+  if (!snapshot) throw new Error("登录上下文不可用，请刷新后重试");
+  if (requestedIdentity && requestedIdentity !== snapshot.identity)
+    throw new DOMException("Context changed", "AbortError");
+  return { ...snapshot };
+}
+
+export function captureCommandContextIfAvailable(): CommandContext | null {
+  return activeCommandContext ? { ...activeCommandContext } : null;
+}
+
+export function isCommandContextVersionCurrent(contextVersion: string): boolean {
+  return activeCommandContext?.contextVersion === contextVersion;
+}
+
+export function isSessionIdentityCurrent(identity: string): boolean {
+  return identity !== "" && identity === sessionIdentity && activeCommandContext?.identity === identity;
+}
+
+export function assertCommandContextCurrent(context: CommandContext): void {
+  if (
+    context.epoch !== sessionEpoch ||
+    context.contextVersion !== activeCommandContext?.contextVersion ||
+    context.csrfToken !== activeCommandContext?.csrfToken ||
+    context.identity !== sessionIdentity ||
+    context.identity !== activeCommandContext?.identity
+  ) throw new DOMException("Context changed", "AbortError");
+}
+
+export function bindIdempotencyCommandContext(key: string, context: CommandContext): void {
+  assertCommandContextCurrent(context);
+  saveIdempotencyBinding(key, { context: { ...context } });
+}
+
+export function idempotencyCommandContext(key: string | null): IdempotencyContextLookup {
+  if (!key) return { status: "unknown" };
+  const binding = idempotencyContexts.get(key);
+  if (!binding) return { status: "unknown" };
+  if ("invalidated" in binding) return { status: "invalidated" };
+  return { status: "bound", context: { ...binding.context } };
+}
+
+export function clearIdempotencyCommandContext(key: string): void {
+  idempotencyContexts.delete(key);
+}
+
+export function invalidateSessionIdentity(): void {
+  sessionIdentity = null;
+  sessionEpoch += 1;
+  activeCommandContext = null;
+  invalidateIdempotencyBindings();
+}
 
 export function setSessionIdentity(
   actor: {
@@ -29,15 +137,29 @@ export function setSessionIdentity(
     audience?: string;
     tenant_id?: string;
     org_id?: string;
+    active_context?: { context_version: string };
+    csrf_token?: string;
+    principal_id?: string | null;
   } | null,
 ): boolean {
-  const nextIdentity =
-    actor === null
-      ? null
-      : `${actor.audience ?? "client"}\u0000${actor.id}\u0000${actor.role}\u0000${actor.tenant_id ?? ""}\u0000${actor.org_id ?? ""}`;
-  if (sessionIdentity === nextIdentity) return false;
+  const nextIdentity = actor === null ? null : sessionIdentityFor(actor);
+  if (sessionIdentity === nextIdentity) {
+    if (actor?.active_context && actor.csrf_token) {
+      activeCommandContext = {
+        contextVersion: actor.active_context.context_version,
+        csrfToken: actor.csrf_token,
+        identity: nextIdentity ?? "",
+        epoch: sessionEpoch,
+      };
+    }
+    return false;
+  }
+  invalidateIdempotencyBindings();
   sessionIdentity = nextIdentity;
   sessionEpoch += 1;
+  activeCommandContext = actor?.active_context && actor.csrf_token
+    ? { contextVersion: actor.active_context.context_version, csrfToken: actor.csrf_token, identity: nextIdentity ?? "", epoch: sessionEpoch }
+    : null;
   return true;
 }
 
@@ -222,13 +344,48 @@ async function readJsonResponse<T>(
 
 export async function requestJson<T>(
   path: string,
-  init: RequestInit,
+  init: RequestInit & { commandContext?: CommandContext },
   parse: (value: unknown) => T,
 ): Promise<T> {
   const requestEpoch = sessionEpoch;
   const isSessionRequest =
     path === "/api/session" || path.startsWith("/api/session?");
-  const response = await fetchResponse(path, init);
+  const method = (init.method ?? "GET").toUpperCase();
+  const isWrite = !["GET", "HEAD", "OPTIONS"].includes(method);
+  const isPreSessionProof =
+    (path === "/api/session" && method === "POST") ||
+    path === "/api/auth/oidc/memberships" ||
+    path.startsWith("/api/auth/oidc/memberships?");
+  const headers = new Headers(init.headers);
+  const idempotencyKey = headers.get("Idempotency-Key");
+  const idempotencyBinding = idempotencyCommandContext(idempotencyKey);
+  let commandContext: CommandContext | null;
+  if (isWrite && !isPreSessionProof && idempotencyKey !== null) {
+    if (idempotencyBinding.status === "invalidated" ||
+      (idempotencyBinding.status === "unknown" && !init.commandContext))
+      throw new DOMException("Idempotency command context is unavailable", "AbortError");
+    if (
+      idempotencyBinding.status === "bound" && init.commandContext && (
+        init.commandContext.identity !== idempotencyBinding.context.identity ||
+        init.commandContext.epoch !== idempotencyBinding.context.epoch ||
+        init.commandContext.contextVersion !== idempotencyBinding.context.contextVersion ||
+        init.commandContext.csrfToken !== idempotencyBinding.context.csrfToken
+      )
+    ) throw new DOMException("Idempotency command context changed", "AbortError");
+    commandContext = init.commandContext ?? (idempotencyBinding.status === "bound" ? idempotencyBinding.context : null);
+  } else {
+    commandContext = init.commandContext ?? (isWrite && !isPreSessionProof ? captureCommandContext() : null);
+  }
+  if (commandContext) assertCommandContextCurrent(commandContext);
+  if (commandContext) {
+    headers.set("X-Context-Version", commandContext.contextVersion);
+    if (!isPreSessionProof) headers.set("X-CSRF-Token", commandContext.csrfToken);
+  }
+  const { commandContext: _commandContext, ...requestInit } = init;
+  const response = await fetchResponse(path, {
+    ...requestInit,
+    headers: Object.fromEntries(headers.entries()),
+  });
   assertSessionEpoch(requestEpoch, isSessionRequest);
   if (!response.ok) throw await errorFromResponse(response);
   return readJsonResponse(response, parse, requestEpoch, isSessionRequest);

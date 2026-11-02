@@ -339,6 +339,7 @@ func (s *Store) ProposeOperatorMappingChange(ctx context.Context, user accounts.
 }
 
 func (s *Store) GetOperatorMappingChange(ctx context.Context, user accounts.User, caseID, requestID string) (OperatorMappingChangeRequest, *OperatorMappingChangeDecision, error) {
+	ctx = commandContext(ctx, user)
 	current, err := trustedUser(user)
 	if err != nil {
 		return OperatorMappingChangeRequest{}, nil, err

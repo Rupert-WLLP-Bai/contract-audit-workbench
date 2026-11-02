@@ -2,12 +2,16 @@
 // Do not edit. Runtime readers and the server validate constraints that TypeScript cannot express.
 type WireRecursiveSchema0 = (string) | (number) | (boolean) | (null) | (Array<WireRecursiveSchema0>) | ({ [key: string]: WireRecursiveSchema0; });
 export interface WireSchemas {
+  "ActiveContext": { "context_version": string; "membership_id": (string) | null; "org_id": string; "org_name": string; "tenant_id": string; "tenant_name": string; };
   "Activity": { "at": string; "id": string; "summary": string; };
+  "Actor": { "display_name": string; "id": string; "org_id": string; "role": "admin" | "reviewer" | "clerk" | "viewer"; "tenant_id": string; };
   "ArchiveRequest": { "reason": string; "report_id": string; };
   "Attribute": { "name": string; "unit"?: string; "value": string; };
   "CaseProfile": { "case_id": string; "contract_category": string; "customer": string; "due_at": string | null; "number": string; "owner_id": string; "supplier": string; "updated_at": string; "version": number; };
   "CaseProfileInput": { "contract_category": string; "customer": string; "due_at": string | null; "expected_version": number; "number": string; "owner_id": string; "supplier": string; };
   "CaseRelationInput": { "reason": string; "related_case_id": string; };
+  "ContextList": { "context_switch_enabled": boolean; "memberships": Array<WireSchemas["MembershipChoice"]>; };
+  "ContextSwitchRequest": { "expected_context_version": string; "membership_id": string; };
   "ContractAcceptance": { "acceptance_id": string; "acceptance_plan_sequence"?: number; "accepted_quantity": string; "actual_at": string; "contract_id": string; "contract_revision_id": string; "defects": Array<WireSchemas["ContractAcceptanceDefect"]>; "delivery_id": string; "evidence": Array<WireSchemas["ContractVersionMaterial"]>; "evidence_redacted"?: boolean; "failed_quantity": string; "inspector_note": string; "item_id": string; "item_name": string; "quantity": string; "recorded_at": string; "recorded_by": string; "rectification_ids"?: Array<string>; "rectifications": Array<WireSchemas["ContractRectification"]>; "reinspection_of"?: string; "result": "passed" | "partial" | "failed"; "scope_end": string; "scope_start": string; "standard": string; "unit": string; };
   "ContractAcceptanceDefect": { "defect_id": string; "description": string; "failed_quantity": string; "prior_defect_id"?: string; "recorded_at": string; "recorded_by": string; "remediation_due": string; "responsible": string; };
   "ContractAcceptanceDefectInput": { "description": string; "failed_quantity": string; "prior_defect_id"?: string; "remediation_due": string; "responsible": string; };
@@ -86,8 +90,14 @@ export interface WireSchemas {
   "RemediationInput": { "assignee_id"?: string; "attempt_id": string; "due_at"?: string; "finding_ids": Array<string>; "measure": string; "run_id": string; };
   "RemediationSubmitInput": { "document_ids": Array<string>; "expected_version": number; "reason": string; };
   "RemediationVerifyInput": { "attempt_id": string; "expected_version": number; "reason": string; "run_id": string; };
+  "Session": { "active_context": WireSchemas["ActiveContext"]; "actor": WireSchemas["Actor"]; "audience": "client" | "admin"; "context_switch_enabled": boolean; "csrf_token": string; "principal_id": (string) | null; };
   "SigningJSONValue": WireRecursiveSchema0;
   "SourceRef": { "id": string; "source_version": string; "system": string; };
+  "SupportCaseView": { "business_status": string; "case_id": string; "contract_type": string; "created_at": string; "grant_id": string; "org_id": string; "read_only": true; "tenant_id": string; "title": string; "updated_at": string; };
+  "SupportGrant": { "actions": Array<"case.read">; "approved_by": (string) | null; "case_id": string; "created_by": string; "expires_at": string; "id": string; "org_id": string; "principal_id": string; "reason": string; "revision": string; "status": "pending" | "approved" | "revoked" | "expired"; "tenant_id": string; };
+  "SupportGrantCommand": { "expected_revision": string; };
+  "SupportGrantList": { "grants": Array<WireSchemas["SupportGrant"]>; };
+  "SupportGrantRequest": { "actions": Array<"case.read">; "expires_at": string; "principal_id": string; "reason": string; };
   "TextOffset": { "end": number; "start": number; };
   "UnitRef": { "id": string; "name": string; };
   "WorkbenchTask": { "assignee_id": string; "case_id": string; "created_at": string; "created_by": string | null; "due_at": string | null; "finding_id": string | null; "id": string; "kind": "review" | "decision" | "remediation" | "general"; "priority": "high" | "medium" | "low"; "status": "open" | "in_progress" | "completed"; "title": string; "updated_at": string; "version": number; };

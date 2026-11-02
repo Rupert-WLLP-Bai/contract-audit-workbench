@@ -44,6 +44,7 @@ type legalApplicabilityHistoryCursor struct {
 }
 
 func (s *Store) ListLegalApplicabilityFactHistory(ctx context.Context, user accounts.User, caseID, dimension string, input LegalApplicabilityHistoryInput) (LegalApplicabilityFactHistory, error) {
+	ctx = commandContext(ctx, user)
 	if err := s.legalReady(false); err != nil {
 		return LegalApplicabilityFactHistory{}, err
 	}
@@ -73,7 +74,7 @@ func (s *Store) ListLegalApplicabilityFactHistory(ctx context.Context, user acco
 	if len(input.Cursor) > 2048 {
 		return LegalApplicabilityFactHistory{}, fault.Invalid("法律适用事实历史cursor无效")
 	}
-	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
+	tx, err := s.beginContextTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
 	if err != nil {
 		return LegalApplicabilityFactHistory{}, err
 	}

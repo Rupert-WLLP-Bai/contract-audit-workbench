@@ -107,7 +107,7 @@ func (s *Store) AuthorizeToolResolution(ctx context.Context, request ToolInvocat
 		request.Generation <= 0 || request.CaseID == "" || request.RunID == "" || request.AttemptID == "" {
 		return ToolAuthority{}, toolScopeRefusal("request_incomplete")
 	}
-	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted, AccessMode: pgx.ReadOnly})
+	tx, err := s.beginContextTx(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted, AccessMode: pgx.ReadOnly})
 	if err != nil {
 		return ToolAuthority{}, err
 	}

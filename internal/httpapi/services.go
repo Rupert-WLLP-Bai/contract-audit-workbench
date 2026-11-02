@@ -341,6 +341,9 @@ func routeOwned(role string, methods routeMethodSet, parts []string) bool {
 	if parts[0] == "auth" {
 		return role == "core" && oidcRoute(parts, methods)
 	}
+	if parts[0] == "support-grants" {
+		return role == "core" && (len(parts) == 1 && methods.read || len(parts) == 3 && (parts[2] == "case" && methods.read || (parts[2] == "approve" || parts[2] == "revoke") && methods.post))
+	}
 	if parts[0] == "approval-tasks" {
 		return role == "core" && approvalTaskRoute(methods, parts)
 	}
@@ -488,6 +491,12 @@ func knowledgeRoute(parts []string) bool {
 }
 
 func oidcRoute(parts []string, methods routeMethodSet) bool {
+	if len(parts) == 2 && parts[1] == "contexts" {
+		return methods.read
+	}
+	if len(parts) == 3 && parts[1] == "contexts" && parts[2] == "switch" {
+		return methods.post
+	}
 	if len(parts) == 3 && parts[1] == "oidc" && (parts[2] == "login" || parts[2] == "callback") {
 		return methods.read
 	}
@@ -614,7 +623,7 @@ var caseRouteHandlers = map[string]caseRouteHandler{
 	"external-collection-jobs": operatorCollectionRoute,
 	"external-snapshots":       coreReadRoute, "fulfillment-evaluations": fulfillmentRoute,
 	"generations": documentPostRoute, "reviews": reviewRoute,
-	"members": corePostRoute, "archive": corePostRoute,
+	"members": corePostRoute, "archive": corePostRoute, "support-grants": corePostRoute,
 	"remediations": remediationRoute, "reports": reportRoute,
 }
 

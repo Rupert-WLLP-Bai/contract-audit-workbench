@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/jackc/pgx/v5"
 	"strings"
 	"time"
 )
@@ -46,7 +47,7 @@ func (s *Store) ClaimOutbox(ctx context.Context, owner string, limit int, lease 
 	if lease > outboxMaxLease {
 		lease = outboxMaxLease
 	}
-	tx, err := s.pool.Begin(ctx)
+	tx, err := s.beginContextTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return nil, err
 	}
@@ -107,7 +108,7 @@ func (s *Store) AckOutbox(ctx context.Context, claim OutboxClaim) error {
 	if ctx == nil || claim.Event.ID == "" || strings.TrimSpace(claim.Owner) == "" || claim.Token <= 0 {
 		return errors.New("outbox claim is invalid")
 	}
-	tx, err := s.pool.Begin(ctx)
+	tx, err := s.beginContextTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return err
 	}
@@ -143,7 +144,7 @@ func (s *Store) ReleaseOutbox(ctx context.Context, claim OutboxClaim, reasonCode
 	if retryAfter > outboxMaxRetryWait {
 		retryAfter = outboxMaxRetryWait
 	}
-	tx, err := s.pool.Begin(ctx)
+	tx, err := s.beginContextTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return err
 	}

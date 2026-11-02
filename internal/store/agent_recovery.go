@@ -15,6 +15,7 @@ import (
 // reconstructed because the projection does not retain their findings; those
 // gaps stay open and are re-executed instead of being trusted by inference.
 func (s *Store) applyPriorAttemptRecovery(ctx context.Context, st state, actor accounts.User, caseItem Case, attempt Attempt, tools []agentflow.Tool, request *agentflow.Request) error {
+	ctx = commandContext(ctx, actor)
 	if attempt.RetryOfAttemptID == nil || attempt.InputHash == nil {
 		return nil
 	}

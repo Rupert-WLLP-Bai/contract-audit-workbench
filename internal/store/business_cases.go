@@ -23,6 +23,7 @@ func (s *Store) CreateCaseWithBusiness(user accounts.User, title, contractType, 
 // CreateCaseWithBusinessContext records an optional request key in the same
 // transaction as the case and its creation activity.
 func (s *Store) CreateCaseWithBusinessContext(ctx context.Context, user accounts.User, title, contractType, businessLine, scenario, key string) (string, error) {
+	ctx = commandContext(ctx, user)
 	if err := ctx.Err(); err != nil {
 		return "", err
 	}
@@ -262,10 +263,12 @@ func appendBusinessCaseActivity(st *state, item Case, businessLine, activityID, 
 // Generate carries the authenticated request deadline through original
 // storage and initial text parsing.
 func (s *Store) Generate(ctx context.Context, user accounts.User, caseID, templateID string, fields map[string]string) (GenerationRecord, error) {
+	ctx = commandContext(ctx, user)
 	return s.GenerateWithOptions(ctx, user, caseID, templateID, fields, MaterialUploadOptions{})
 }
 
 func (s *Store) GenerateWithOptions(ctx context.Context, user accounts.User, caseID, templateID string, fields map[string]string, options MaterialUploadOptions) (GenerationRecord, error) {
+	ctx = commandContext(ctx, user)
 	currentUser, caseItem, body, err := s.prepareBusinessGeneration(ctx, user, caseID, templateID, fields)
 	if err != nil {
 		return GenerationRecord{}, err
@@ -374,6 +377,7 @@ type preparedBusinessGeneration struct {
 }
 
 func (s *Store) prepareBusinessGeneration(ctx context.Context, user accounts.User, caseID, templateID string, fields map[string]string) (accounts.User, Case, []byte, error) {
+	ctx = commandContext(ctx, user)
 	current, item, err := s.documentWriteCase(ctx, user, caseID, access.Review)
 	if err != nil {
 		return accounts.User{}, Case{}, nil, err

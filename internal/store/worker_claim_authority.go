@@ -4,9 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"reflect"
 
 	"contractaudit/internal/access"
 	"contractaudit/internal/accounts"
+	"contractaudit/internal/model"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -74,6 +76,25 @@ func (s *Store) ResolveWorkerClaimAuthority(ctx context.Context, request ToolInv
 	if !authorizeCase(caseItem, user, access.Read) {
 		return ToolAuthority{}, toolScopeRefusal("case_grant_missing")
 	}
+	scope := model.DelegatedScope{Kind: "execution", TenantID: request.TenantID, OrgID: request.OrgID, CaseID: request.CaseID, ActorID: user.ID, JobID: request.JobID, WorkerID: request.WorkerID, Generation: request.Generation, RunID: request.RunID, AttemptID: request.AttemptID}
+	if request.RunID == "" {
+		scope.Kind = "experience_distill"
+	}
+	encoded, _ := json.Marshal(scope)
+	var digest, revision string
+	var version int64
+	var currentRole *string
+	var currentGrants []byte
+	if err = s.pool.QueryRow(ctx, `SELECT session_digest,context_version,authority_revision,role_code,grants FROM tenant_operation_info($1::jsonb,'')`, encoded).Scan(&digest, &version, &revision, &currentRole, &currentGrants); err != nil {
+		return ToolAuthority{}, contextError(err)
+	}
+	if user.HasResolvedMembership() {
+		var grants []access.Grant
+		if currentRole == nil || *currentRole != user.Role || json.Unmarshal(currentGrants, &grants) != nil || !reflect.DeepEqual(user.Grants, grants) {
+			return ToolAuthority{}, toolScopeRefusal("membership_revision_changed")
+		}
+	}
+	user = accounts.WithCommandAuthority(user, accounts.CommandAuthority{Revision: revision, OperationScope: encoded})
 	return ToolAuthority{User: user, TenantID: tenantID, OrgID: orgID, CaseID: request.CaseID,
 		RunID: request.RunID, AttemptID: request.AttemptID, JobID: request.JobID}, nil
 }

@@ -157,6 +157,7 @@ func validateExperienceFeedbackInput(input *ExperienceFeedbackInput) error {
 // beginExperienceCase takes the same case lock as membership and review writers,
 // then resolves the case and current grants inside the transaction.
 func (s *Store) beginExperienceCase(ctx context.Context, user accounts.User, caseID string, action access.Action) (pgx.Tx, accounts.User, Case, error) {
+	ctx = commandContext(ctx, user)
 	if ctx == nil {
 		return nil, accounts.User{}, Case{}, errors.New("feedback context is nil")
 	}
@@ -167,7 +168,7 @@ func (s *Store) beginExperienceCase(ctx context.Context, user accounts.User, cas
 	if !experienceIdentity(caseID) {
 		return nil, accounts.User{}, Case{}, fault.NotFound("没有找到对应记录")
 	}
-	tx, err := s.pool.Begin(ctx)
+	tx, err := s.beginContextTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return nil, accounts.User{}, Case{}, err
 	}
@@ -244,6 +245,7 @@ const feedbackSelectColumns = `feedback_id,tenant_id,org_id,case_id,run_id,attem
 // human decision and the frozen review untouched. A repeated key returns the
 // original receipt only for the same canonical request and current case grant.
 func (s *Store) SubmitExperienceFeedback(ctx context.Context, user accounts.User, input ExperienceFeedbackInput) (ExperienceFeedback, error) {
+	ctx = commandContext(ctx, user)
 	if s.ReadOnly() {
 		return ExperienceFeedback{}, fault.New(503, "read_only", "只读模式下不能提交反馈")
 	}
@@ -354,6 +356,7 @@ func (s *Store) SubmitExperienceFeedback(ctx context.Context, user accounts.User
 // GetExperienceFeedback rechecks the requester's current authority over the
 // source case; knowing a feedback ID or sharing its tenant is insufficient.
 func (s *Store) GetExperienceFeedback(ctx context.Context, user accounts.User, caseID, feedbackID string) (ExperienceFeedback, error) {
+	ctx = commandContext(ctx, user)
 	tx, _, item, err := s.beginExperienceCase(ctx, user, caseID, access.Read)
 	if err != nil {
 		return ExperienceFeedback{}, err
@@ -682,6 +685,7 @@ func authorizeExperienceAncestorsWithCaseLocks(ctx context.Context, tx pgx.Tx, c
 // under the real job/generation lease. The caller supplies only the exact
 // delivery identity; it cannot submit model content or claim a lease.
 func (s *Store) AcceptExperienceCandidate(ctx context.Context, user accounts.User, caseID, feedbackID, jobID string, generation int64, inputSHA256, resultSHA256 string) (ExperienceCandidate, error) {
+	ctx = commandContext(ctx, user)
 	if s.ReadOnly() {
 		return ExperienceCandidate{}, fault.New(503, "read_only", "只读模式下不能接纳经验候选")
 	}
@@ -832,6 +836,7 @@ func (s *Store) AcceptExperienceCandidate(ctx context.Context, user accounts.Use
 // GetExperienceCandidate requires the exact version and current access to its
 // source and all ancestor sources. Approval and publication are separate.
 func (s *Store) GetExperienceCandidate(ctx context.Context, user accounts.User, caseID, candidateID, versionID string) (ExperienceCandidate, error) {
+	ctx = commandContext(ctx, user)
 	tx, current, item, err := s.beginExperienceCase(ctx, user, caseID, access.Read)
 	if err != nil {
 		return ExperienceCandidate{}, err

@@ -32,7 +32,11 @@ func operationAuthorityHandler(st *store.Store, credential, caller string) http.
 			w.WriteHeader(http.StatusForbidden)
 			return
 		}
-		writeJSON(w, http.StatusOK, operationauthority.Projection{Scope: scope, User: u, MembershipBound: u.HasResolvedMembership(), PrincipalID: u.PrincipalID, MembershipID: u.MembershipID})
+		revision := ""
+		if proof, ok := u.CommandAuthority(); ok {
+			revision = proof.Revision
+		}
+		writeJSON(w, http.StatusOK, operationauthority.Projection{AuthorityRevision: revision, Scope: scope, User: u, MembershipBound: u.HasResolvedMembership(), PrincipalID: u.PrincipalID, MembershipID: u.MembershipID})
 	}
 }
 
@@ -109,8 +113,9 @@ func documentOperationTicketHandler(st *store.Store, credential string) http.Han
 			return
 		}
 		var in struct {
-			Digest string               `json:"session_digest"`
-			Scope  model.DelegatedScope `json:"scope"`
+			Digest  string               `json:"session_digest"`
+			Version string               `json:"context_version"`
+			Scope   model.DelegatedScope `json:"scope"`
 		}
 		d := json.NewDecoder(http.MaxBytesReader(w, r.Body, 16384))
 		d.DisallowUnknownFields()
@@ -118,7 +123,7 @@ func documentOperationTicketHandler(st *store.Store, credential string) http.Han
 			w.WriteHeader(400)
 			return
 		}
-		ticket, err := st.IssueOperationTicketFromDigest(r.Context(), in.Digest, in.Scope)
+		ticket, err := st.IssueOperationTicketFromDigest(r.Context(), in.Digest, in.Version, in.Scope)
 		if err != nil {
 			w.WriteHeader(403)
 			return

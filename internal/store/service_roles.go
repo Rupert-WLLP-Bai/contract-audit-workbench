@@ -231,6 +231,13 @@ func MigrateServiceRoles(ctx context.Context) error {
 		if err := tx.QueryRow(ctx, `SELECT pg_has_role($1,$2,'MEMBER')`, cfg.User, maintenanceRole).Scan(&runtimeMember); err != nil || runtimeMember {
 			return fmt.Errorf("refusing runtime role %q with CLM maintenance membership", cfg.User)
 		}
+		for _, role := range configuredRoles {
+			for _, table := range []string{"identity_support_grants", "identity_support_events"} {
+				if _, err := tx.Exec(ctx, `REVOKE ALL ON `+pgx.Identifier{schema, table}.Sanitize()+` FROM `+pgx.Identifier{role}.Sanitize()); err != nil {
+					return err
+				}
+			}
+		}
 		identityOwner := tenantIdentityOwnerName(selection.Database.Name, schema)
 		if err := tx.QueryRow(ctx, `SELECT pg_has_role($1,$2,'MEMBER')`, cfg.User, identityOwner).Scan(&runtimeMember); err != nil || runtimeMember {
 			return fmt.Errorf("refusing runtime role %q with tenant identity owner membership", cfg.User)
@@ -414,7 +421,7 @@ func MigrateServiceRoles(ctx context.Context) error {
 			return fmt.Errorf("cannot restrict intake authority ticket access from service role %q", role)
 		}
 	}
-	if _, err := tx.Exec(ctx, `GRANT SELECT (ticket_digest,tenant_id,operation_id,session_digest,principal_id,membership_id,actor_id,org_id,case_id,upload_key,filename,media_type,body_sha256,action,expires_at), INSERT (ticket_digest,tenant_id,operation_id,session_digest,principal_id,membership_id,actor_id,org_id,case_id,upload_key,filename,media_type,body_sha256,action,expires_at) ON TABLE `+intakeTicketTable+` TO `+pgx.Identifier{coreRoleName}.Sanitize()); err != nil {
+	if _, err := tx.Exec(ctx, `GRANT SELECT (ticket_digest,tenant_id,operation_id,session_digest,principal_id,membership_id,actor_id,org_id,case_id,upload_key,filename,media_type,body_sha256,action,expires_at,context_version), INSERT (ticket_digest,tenant_id,operation_id,session_digest,principal_id,membership_id,actor_id,org_id,case_id,upload_key,filename,media_type,body_sha256,action,expires_at,context_version) ON TABLE `+intakeTicketTable+` TO `+pgx.Identifier{coreRoleName}.Sanitize()); err != nil {
 		return fmt.Errorf("cannot grant Core scoped intake authority ticket access: %w", err)
 	}
 	operationTicketTable := pgx.Identifier{schema, "operation_authority_tickets"}.Sanitize()
@@ -450,7 +457,20 @@ func MigrateServiceRoles(ctx context.Context) error {
 	if _, err := tx.Exec(ctx, `GRANT EXECUTE ON FUNCTION `+pgx.Identifier{schema}.Sanitize()+`.tenant_identity_bind_admission(text,text) TO `+pgx.Identifier{executionRoleName}.Sanitize()); err != nil {
 		return fmt.Errorf("cannot grant Execution the narrow review admission binder: %w", err)
 	}
+	for _, fn := range []string{"tenant_context_info(text)", "tenant_context_switch(text,bigint,text,uuid)", "tenant_context_list(text)", "tenant_operation_info(jsonb,text)", "tenant_support_validate(text,uuid)", "tenant_support_list(text)", "tenant_support_command(text,bigint,text,text,uuid,text,uuid,text[],text,timestamp with time zone,bigint)", "tenant_support_read(text,bigint,text,uuid)"} {
+		if _, err := tx.Exec(ctx, `GRANT EXECUTE ON FUNCTION `+pgx.Identifier{schema}.Sanitize()+`.`+fn+` TO `+pgx.Identifier{coreRoleName}.Sanitize()); err != nil {
+			return err
+		}
+	}
+	for _, role := range configuredRoles {
+		if _, err := tx.Exec(ctx, `GRANT EXECUTE ON FUNCTION `+pgx.Identifier{schema}.Sanitize()+`.tenant_context_fence(text,bigint,text,uuid,uuid), `+pgx.Identifier{schema}.Sanitize()+`.tenant_operation_fence(jsonb,text,text) TO `+pgx.Identifier{role}.Sanitize()); err != nil {
+			return err
+		}
+	}
 	if _, err := tx.Exec(ctx, `RESET ROLE`); err != nil {
+		return err
+	}
+	if err := verifyContextFunctionACL(ctx, tx, schema, identityOwner, coreRoleName, configuredRoles); err != nil {
 		return err
 	}
 	var clmFunctionGrantUnsafe bool

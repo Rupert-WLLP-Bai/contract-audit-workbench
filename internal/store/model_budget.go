@@ -146,7 +146,12 @@ func (s *Store) reserveModelCall(ctx context.Context, caller string, scope model
 		inputUpperBound > limits.MaxInputTokenReservation || outputUpperBound > limits.MaxOutputTokenReservation || inputUpperBound > math.MaxInt64-outputUpperBound || limits.LeaseDuration <= 0 {
 		return ModelCallLease{}, errors.New("model budget configuration or token reservation is invalid")
 	}
-	tx, err := s.pool.Begin(ctx)
+	current, err := s.operationUser(ctx, scope)
+	if err != nil {
+		return ModelCallLease{}, ErrModelScopeUnavailable
+	}
+	ctx = commandContext(ctx, current)
+	tx, err := s.beginContextTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return ModelCallLease{}, err
 	}
@@ -177,7 +182,7 @@ func (s *Store) reserveModelCall(ctx context.Context, caller string, scope model
 			return ModelCallLease{}, ErrModelScopeUnavailable
 		}
 	}
-	if err := s.authorizeModelScope(ctx, tx, caller, scope); err != nil {
+	if err := authorizeModelScope(ctx, tx, caller, scope, current); err != nil {
 		return ModelCallLease{}, err
 	}
 	if providerIdentity != nil && (scope.Kind == "execution" || scope.Kind == "experience_distill" || (scope.Kind == "document" && scope.JobID != "")) {
@@ -216,7 +221,7 @@ func (s *Store) reserveModelCall(ctx context.Context, caller string, scope model
 		s.Telemetry().RecordQuotaRejection("model_budget")
 		return ModelCallLease{}, ErrModelBudgetExceeded
 	}
-	if err := s.authorizeModelScope(ctx, tx, caller, scope); err != nil {
+	if err := authorizeModelScope(ctx, tx, caller, scope, current); err != nil {
 		return ModelCallLease{}, err
 	}
 	if err := tx.Commit(ctx); err != nil {
@@ -230,6 +235,8 @@ func (s *Store) reserveModelCall(ctx context.Context, caller string, scope model
 // second result is rejected. A zero-token usage remains unknown and is charged
 // at the reserved upper bound unless pre-dispatch failure is proven.
 func (s *Store) FinishModelCall(ctx context.Context, lease ModelCallLease, result ModelCallResult) error {
+	ctx = context.WithValue(ctx, commandProofKey{}, struct{}{}) // already-incurred machine accounting, not new human admission
+	ctx = model.WithDelegatedScope(ctx, model.DelegatedScope{})
 	if ctx == nil || lease.ID == "" || result.Status != "completed" && result.Status != "failed" ||
 		result.PreDispatchFailure && (result.Status != "failed" || result.Usage != nil) {
 		return errors.New("model call result is invalid")
@@ -272,7 +279,7 @@ func (s *Store) FinishModelCall(ctx context.Context, lease ModelCallLease, resul
 	}
 	fingerprintSum := sha256.Sum256(fingerprintPayload)
 	fingerprint := hex.EncodeToString(fingerprintSum[:])
-	tx, err := s.pool.Begin(ctx)
+	tx, err := s.beginContextTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return err
 	}
@@ -442,7 +449,12 @@ func setModelLedgerIdentity(ctx context.Context, tx pgx.Tx, purpose, jobID strin
 // ReauthorizeModelScope checks current case permission and, for durable jobs,
 // the live lease. It is called only after the actual model charge is settled.
 func (s *Store) ReauthorizeModelScope(ctx context.Context, caller string, scope model.DelegatedScope) error {
-	tx, err := s.pool.Begin(ctx)
+	current, err := s.operationUser(ctx, scope)
+	if err != nil {
+		return ErrModelScopeUnavailable
+	}
+	ctx = commandContext(ctx, current)
+	tx, err := s.beginContextTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return err
 	}
@@ -450,7 +462,7 @@ func (s *Store) ReauthorizeModelScope(ctx context.Context, caller string, scope 
 	if err := setLocalScope(ctx, tx, dbScope{ActorID: "model-gateway", Role: "model", TenantID: scope.TenantID, OrgID: scope.OrgID}); err != nil {
 		return err
 	}
-	if err := s.authorizeModelScope(ctx, tx, caller, scope); err != nil {
+	if err := authorizeModelScope(ctx, tx, caller, scope, current); err != nil {
 		return err
 	}
 	return tx.Commit(ctx)

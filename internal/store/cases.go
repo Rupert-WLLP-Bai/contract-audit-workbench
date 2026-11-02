@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"github.com/jackc/pgx/v5"
+	"strconv"
 	"strings"
 	"time"
 
@@ -46,8 +48,8 @@ func (s *Store) EstablishSession(user accounts.User, audience string) (string, e
 	// transaction key, the tenant/actor authority comes from the trusted
 	// identity, and no other entity is touched. The in-memory projection contains
 	// the digest only; general persistence does not write sessions.
-	ctx := context.Background()
-	tx, err := s.pool.Begin(ctx)
+	ctx := commandContext(context.Background(), user)
+	tx, err := s.beginContextTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return "", err
 	}
@@ -91,23 +93,33 @@ func (s *Store) Logout(token string) error {
 	if token == "" {
 		return nil
 	}
-	digest := sessionTokenDigest(token)
-	ctx := context.Background()
-	tx, err := s.pool.Begin(ctx)
+	user, _, err := s.AuthenticateSession(context.Background(), token)
+	if err != nil {
+		return nil
+	}
+	return s.LogoutContext(commandContext(context.Background(), user), token)
+}
+func (s *Store) LogoutContext(ctx context.Context, token string) error {
+	proof, ok := contextProof(ctx)
+	if !ok || proof.digest != sessionTokenDigest(token) {
+		return fault.New(401, "session_invalid", "会话上下文不可用")
+	}
+	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead})
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback(ctx)
-	if err := setLocalSessionScope(ctx, tx, digest); err != nil {
-		return err
+	version, _ := strconv.ParseInt(proof.version, 10, 64)
+	if _, err = tx.Exec(ctx, `SELECT tenant_context_fence($1,$2,$3,NULL,NULL)`, proof.digest, version, proof.revision); err != nil {
+		return contextError(err)
 	}
-	if _, err := tx.Exec(ctx, `DELETE FROM sessions WHERE token=$1`, digest); err != nil {
-		return err
+	if _, err = tx.Exec(ctx, `DELETE FROM sessions WHERE token=$1`, proof.digest); err != nil {
+		return contextError(err)
 	}
-	if err := tx.Commit(ctx); err != nil {
-		return err
+	if err = tx.Commit(ctx); err != nil {
+		return contextError(err)
 	}
-	s.patchSessionProjection(session{Token: digest}, true)
+	s.patchSessionProjection(session{Token: proof.digest}, true)
 	return nil
 }
 
@@ -157,8 +169,8 @@ func (s *Store) CreateCase(user accounts.User, title, contractType string) (stri
 		return "", err
 	}
 	activity := Activity{ID: act, CaseID: id, At: now, Summary: "创建了案件"}
-	ctx := context.Background()
-	tx, err := s.pool.Begin(ctx)
+	ctx := commandContext(context.Background(), user)
+	tx, err := s.beginContextTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return "", err
 	}
@@ -448,16 +460,19 @@ func (s *Store) GetCase(user accounts.User, caseID string) (CaseDetail, error) {
 // AddDocument stores an upload and carries the caller deadline through
 // object access and initial deterministic parsing.
 func (s *Store) AddDocument(ctx context.Context, user accounts.User, caseID, role, filename, media string, body []byte) (string, error) {
+	ctx = commandContext(ctx, user)
 	result, err := s.UploadMaterial(ctx, user, caseID, role, filename, media, body, MaterialUploadOptions{})
 	return result.DocumentID, err
 }
 
 func (s *Store) AddDocumentWithOptions(ctx context.Context, user accounts.User, caseID, role, filename, media string, body []byte, options MaterialUploadOptions) (string, error) {
+	ctx = commandContext(ctx, user)
 	result, err := s.UploadMaterial(ctx, user, caseID, role, filename, media, body, options)
 	return result.DocumentID, err
 }
 
 func (s *Store) UploadMaterial(ctx context.Context, user accounts.User, caseID, role, filename, media string, body []byte, options MaterialUploadOptions) (DocumentUploadResult, error) {
+	ctx = commandContext(ctx, user)
 	currentUser, caseItem, err := s.documentWriteCase(ctx, user, caseID, access.Manage)
 	if err != nil {
 		return DocumentUploadResult{}, err
@@ -511,6 +526,14 @@ func (s *Store) UploadMaterial(ctx context.Context, user accounts.User, caseID, 
 		ID: id, TenantID: caseItem.TenantID, OrgID: caseItem.OwnerOrgID, CaseID: caseID,
 		Role: role, Filename: filename, MediaType: media,
 		Digest: digest, Size: version.Size(), Origin: "upload", StorageBackend: s.objectBackend(), CreatedAt: now,
+	}
+	if ticket := operationTicket(ctx); ticket != "" {
+		admitted, resolveErr := s.operationUser(ctx, model.DelegatedScope{Kind: "document", Action: "intake_parse", TenantID: document.TenantID, OrgID: document.OrgID, CaseID: document.CaseID, ActorID: currentUser.ID, DocumentID: document.ID, InputSHA256: document.Digest, OperationTicket: ticket})
+		if resolveErr != nil {
+			return DocumentUploadResult{}, resolveErr
+		}
+		currentUser = admitted
+		ctx = commandContext(ctx, admitted)
 	}
 	var initialParse *ParsedDocument
 	if DocumentParseKind(filename, media) != "ocr" {
@@ -688,6 +711,7 @@ func (s *Store) UploadMaterial(ctx context.Context, user accounts.User, caseID, 
 // Reparse appends a new parse selection and makes cancellation visible
 // to the actual parser while retaining failed parser output as history.
 func (s *Store) Reparse(ctx context.Context, user accounts.User, caseID, docID string) error {
+	ctx = commandContext(ctx, user)
 	currentUser, _, err := s.documentWriteCase(ctx, user, caseID, access.Manage)
 	if err != nil {
 		return err
@@ -732,6 +756,7 @@ func (s *Store) Original(user accounts.User, caseID, docID string) (Document, []
 // OriginalContext preserves current case authorization while allowing a
 // disconnected export to cancel an in-flight object read.
 func (s *Store) OriginalContext(ctx context.Context, user accounts.User, caseID, docID string) (Document, []byte, error) {
+	ctx = commandContext(ctx, user)
 	st, err := s.snapshotCaseOriginal(ctx, user, caseID, docID)
 	if err != nil {
 		return Document{}, nil, err

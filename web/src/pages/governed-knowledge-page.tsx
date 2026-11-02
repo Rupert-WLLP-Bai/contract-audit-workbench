@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState, type FormEvent, type RefObject } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router";
 import { ApiError, errorMessage, isConflict, isForbidden, statusLabel } from "../api/http";
+import { newIdempotencyKey } from "../api/idempotency";
 import {
   commandGovernedKnowledge, createGovernedKnowledge, getGovernedKnowledge, getKnowledgeHistory,
   listGovernedKnowledge, previewGovernedPolicy,
@@ -159,7 +160,7 @@ async function submitCreate(
   const content = contentForCreate(draft);
   const identity = JSON.stringify(content);
   let key = keys.get(identity);
-  if (!key) { key = crypto.randomUUID(); keys.set(identity, key); }
+  if (!key) { key = newIdempotencyKey(); keys.set(identity, key); }
   try {
     const created = await create.mutateAsync({ content, key });
     keys.delete(identity);
@@ -407,7 +408,7 @@ function ActionSection({ version, action, detailKey, detail, command }: {
     if (detail.isFetching || command.isPending) return;
     const submitError = actionSubmitError(action, reason, crossCaseApproval, crossCaseReviewed);
     if (submitError) { setActionError(submitError); return; }
-    void run({ key: crypto.randomUUID(), command: { action: action as KnowledgeAction, expected_revision: version.revision, expected_content_sha256: version.ref.content_sha256, expected_pointer_revision: version.pointer_revision, reason: reason.trim(), cross_case_reviewed: crossCaseReviewed } });
+    void run({ key: newIdempotencyKey(), command: { action: action as KnowledgeAction, expected_revision: version.revision, expected_content_sha256: version.ref.content_sha256, expected_pointer_revision: version.pointer_revision, reason: reason.trim(), cross_case_reviewed: crossCaseReviewed } });
   }
   return <section className="rulepack-editor-section" aria-labelledby="knowledge-action-heading">
     <h2 id="knowledge-action-heading">治理操作</h2><p>操作基于当前内容摘要、修订和生效指针修订；权限、依赖和最终状态由服务端核验。</p>

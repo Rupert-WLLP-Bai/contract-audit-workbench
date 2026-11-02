@@ -39,7 +39,7 @@ func (s *Store) TestRulePackSuite(user accounts.User, input RulePackTestInput) (
 	}
 	var result RulePackSuiteResult
 	err = s.updateAdminAs(admin, func(tx pgx.Tx) error {
-		ctx := context.Background()
+		ctx := commandContext(context.Background(), user)
 		tenant := accounts.Tenant(admin)
 		if err := lockGovernancePack(ctx, tx, tenant, input.PackID); err != nil {
 			return err

@@ -108,6 +108,7 @@ type frozenVersionMaterial struct {
 // no legacyAmountsKnown gate on this path, so an amount-unknown snapshot can
 // never become a reconciled frozen version.
 func (s *Store) FreezeContractVersion(ctx context.Context, user accounts.User, input FreezeContractVersionInput) (FreezeContractVersionResult, error) {
+	ctx = commandContext(ctx, user)
 	id, err := normalizeContractUUID(input.ContractID)
 	if err != nil {
 		return FreezeContractVersionResult{}, err
@@ -399,6 +400,7 @@ func frozenMaterialsFromReferences(anchor Case, refs []ContractMaterialReference
 // ListContractVersions returns the frozen revision ledger of one visible
 // contract. It never unseals a snapshot and never returns restricted values.
 func (s *Store) ListContractVersions(ctx context.Context, user accounts.User, contractID string) (ContractVersionList, error) {
+	ctx = commandContext(ctx, user)
 	id, err := normalizeContractUUID(contractID)
 	if err != nil {
 		return ContractVersionList{}, err
@@ -410,7 +412,7 @@ func (s *Store) ListContractVersions(ctx context.Context, user accounts.User, co
 	if err != nil {
 		return ContractVersionList{}, err
 	}
-	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted, AccessMode: pgx.ReadOnly})
+	tx, err := s.beginContextTx(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted, AccessMode: pgx.ReadOnly})
 	if err != nil {
 		return ContractVersionList{}, err
 	}
@@ -477,6 +479,7 @@ func (s *Store) ListContractVersions(ctx context.Context, user accounts.User, co
 // Restricted fields reveal only while the caller holds manage authority; every
 // other reader gets the same fixed mask as the editable detail.
 func (s *Store) LoadContractVersion(ctx context.Context, user accounts.User, contractID, revisionID string) (ContractVersionDetail, error) {
+	ctx = commandContext(ctx, user)
 	id, err := normalizeContractUUID(contractID)
 	if err != nil {
 		return ContractVersionDetail{}, err
@@ -492,7 +495,7 @@ func (s *Store) LoadContractVersion(ctx context.Context, user accounts.User, con
 	if err != nil {
 		return ContractVersionDetail{}, err
 	}
-	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted, AccessMode: pgx.ReadOnly})
+	tx, err := s.beginContextTx(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted, AccessMode: pgx.ReadOnly})
 	if err != nil {
 		return ContractVersionDetail{}, err
 	}

@@ -13,7 +13,15 @@ export interface Actor {
   tenant_id: string;
   org_id: string;
   audience: SessionAudience;
+  principal_id: string | null;
+  active_context: WireSchemas["ActiveContext"];
+  csrf_token: string;
+  context_switch_enabled: boolean;
 }
+
+export type MembershipChoice = WireSchemas["MembershipChoice"];
+export type ContextSwitchRequest = WireSchemas["ContextSwitchRequest"];
+export type ContextList = WireSchemas["ContextList"];
 
 export interface ReviewRunSummary {
   id: string;

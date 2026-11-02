@@ -37,11 +37,13 @@ func (s *Store) CreateReport(user accounts.User, caseID, runID, attemptID string
 // object-integrity and agent-review reads when the HTTP request is gone while
 // keeping the existing CreateReport signature for internal and test callers.
 func (s *Store) CreateReportContext(ctx context.Context, user accounts.User, caseID, runID, attemptID string) (ReportRecord, error) {
+	ctx = commandContext(ctx, user)
 	return s.CreateReportWithIdempotency(ctx, user, caseID, runID, attemptID, "")
 }
 
 // CreateReportWithIdempotency commits the optional receipt with the frozen report.
 func (s *Store) CreateReportWithIdempotency(ctx context.Context, user accounts.User, caseID, runID, attemptID, key string) (ReportRecord, error) {
+	ctx = commandContext(ctx, user)
 	if err := ctx.Err(); err != nil {
 		return ReportRecord{}, err
 	}

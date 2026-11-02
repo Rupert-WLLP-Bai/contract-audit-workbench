@@ -1012,12 +1012,12 @@ describe("response parser boundary values", () => {
 
   it("accepts both documented session audiences", () => {
     const client = parseActor({
-      id: "u1",
-      tenant_id: "t1",
-      org_id: "o1",
-      role: "",
-      display_name: "",
+      actor: { id: "u1", tenant_id: "t1", org_id: "o1", role: "", display_name: "" },
       audience: "client",
+      active_context: { membership_id: "m1", tenant_id: "t1", tenant_name: "租户一", org_id: "o1", org_name: "组织一", context_version: "1" },
+      csrf_token: "csrf-client",
+      principal_id: "principal-u1",
+      context_switch_enabled: false,
     });
     expect(client).toMatchObject({
       id: "u1",
@@ -1027,10 +1027,12 @@ describe("response parser boundary values", () => {
     });
     expect(
       parseActor({
-        id: "u2",
-        tenant_id: "t1",
-        org_id: "o1",
+        actor: { id: "u2", tenant_id: "t1", org_id: "o1" },
         audience: "admin",
+        active_context: { membership_id: "m2", tenant_id: "t1", tenant_name: "租户一", org_id: "o1", org_name: "组织一", context_version: "2" },
+        csrf_token: "csrf-admin",
+        principal_id: "principal-u2",
+        context_switch_enabled: false,
       }),
     ).toMatchObject({ id: "u2", audience: "admin" });
   });

@@ -32,7 +32,7 @@ func (s *Store) appendExecutionEventFenced(ctx context.Context, runID, attemptID
 	if !claimMatchesExecutionScope(ctx, claim) {
 		return errLeaseLost
 	}
-	tx, err := s.pool.Begin(ctx)
+	tx, err := s.beginContextTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return err
 	}

@@ -32,6 +32,7 @@ func (s *Store) SchemaName() string {
 // the database in the same transaction that creates a single-membership
 // session or a multi-membership pending challenge.
 func (s *Store) ResolveVerifiedOIDC(ctx context.Context, profile accounts.User, audience string) (accounts.OIDCLoginResult, error) {
+	ctx = commandContext(ctx, profile)
 	if s == nil || s.pool == nil || !profile.Enabled || profile.Issuer == "" || profile.Subject == "" ||
 		(audience != "client" && audience != "admin") {
 		return accounts.OIDCLoginResult{}, fault.Unauthenticated("登录身份不可用")
@@ -96,6 +97,13 @@ func (s *Store) ResolveVerifiedOIDC(ctx context.Context, profile accounts.User, 
 	latestProfile, found := accounts.BySubject(profile.Issuer, profile.Subject)
 	if !found || !latestProfile.Enabled || latestProfile.ID != profile.ID {
 		return accounts.OIDCLoginResult{}, fault.Unauthenticated("目录身份已停用或映射已变更")
+	}
+	if result.SessionToken != "" {
+		current, _, err := s.AuthenticateSession(ctx, result.SessionToken)
+		if err != nil {
+			return accounts.OIDCLoginResult{}, err
+		}
+		result.User = current
 	}
 	return result, nil
 }
@@ -180,6 +188,11 @@ func (s *Store) ConsumePendingMembership(ctx context.Context, token, membershipI
 	result.SessionToken = sessionRaw
 	result.User = accounts.MembershipUser(actorID, profile.DisplayName, role, tenantID, orgID, issuer, subject, grants)
 	result.User.PrincipalID, result.User.MembershipID = principalID, membership
+	current, _, err := s.AuthenticateSession(ctx, result.SessionToken)
+	if err != nil {
+		return accounts.OIDCLoginResult{}, err
+	}
+	result.User = current
 	return result, nil
 }
 

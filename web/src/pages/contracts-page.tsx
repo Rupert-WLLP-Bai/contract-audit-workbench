@@ -1,7 +1,7 @@
 import { Alert, Button, Empty, Input, InputNumber, Modal, Select, Table, Tag } from "antd";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ApiError, errorMessage } from "../api/http";
+import { ApiError, assertCommandContextCurrent, captureCommandContext, errorMessage } from "../api/http";
 import {
   CONTRACT_LEDGER_COLUMNS,
   CONTRACT_LEDGER_DEFAULT_COLUMNS,
@@ -529,6 +529,7 @@ export function ContractsPage() {
 
   async function exportLedger() {
     if (actor === null || exporting) return;
+    const commandContext = captureCommandContext(actor);
     setExporting(true);
     setExportMessage(null);
     try {
@@ -544,8 +545,9 @@ export function ContractsPage() {
         ledgerColumns,
         pending.key,
       );
-      const blob = await downloadContractExport(created.export_id);
+      const blob = await downloadContractExport(created.export_id, commandContext);
       clearPendingMutationKey(pending.storageKey);
+      assertCommandContextCurrent(commandContext);
       saveDownload(blob, `contracts-${created.export_id}.csv`);
       setExportMessage(
         created.replayed

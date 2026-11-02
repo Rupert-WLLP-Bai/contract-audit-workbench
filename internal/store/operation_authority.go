@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"reflect"
+	"strconv"
 	"strings"
 
 	"contractaudit/internal/access"
@@ -36,7 +37,7 @@ func (s *Store) operationUser(ctx context.Context, scope model.DelegatedScope) (
 	// Demo identities are available only in non-production stores. The ordinary
 	// SQL lease/case checks still run at each caller; enterprise work never falls
 	// back to the directory when its authority channel is missing.
-	if s.sel.Mode != "production" {
+	if s.dropSchema && s.serviceOwner == "" && s.sel.Mode != "production" {
 		u, ok := accounts.ByID(scope.ActorID)
 		if ok && u.Enabled && u.Issuer == "" && u.Subject == "" && (u.TenantID == accounts.LocalDemoTenant || u.TenantID == accounts.LocalDemoTenant2) && u.TenantID == scope.TenantID && u.OrgID == scope.OrgID {
 			return u, nil
@@ -46,10 +47,14 @@ func (s *Store) operationUser(ctx context.Context, scope model.DelegatedScope) (
 		return accounts.User{}, errAttemptAuthorizationRevoked
 	}
 
-	return s.ResolveOperationAuthority(ctx, scope, "worker")
+	caller := "worker"
+	if scope.Kind == "document" {
+		caller = "document"
+	}
+	return s.ResolveOperationAuthority(ctx, scope, caller)
 }
 
-func (s *Store) ResolveOperationAuthority(ctx context.Context, scope model.DelegatedScope, caller string) (accounts.User, error) {
+func (s *Store) resolveOperationAuthority(ctx context.Context, scope model.DelegatedScope, caller string) (accounts.User, error) {
 	if scope.TenantID == "" || scope.OrgID == "" || scope.CaseID == "" || scope.ActorID == "" ||
 		(caller != "worker" && caller != "document" && caller != "model") ||
 		(caller == "document" && scope.Kind != "document") ||
@@ -71,7 +76,7 @@ func (s *Store) ResolveOperationAuthority(ctx context.Context, scope model.Deleg
 	if !accounts.CanStart(u.Role) {
 		return accounts.User{}, errAttemptAuthorizationRevoked
 	}
-	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{AccessMode: pgx.ReadOnly})
+	tx, err := s.beginContextTx(ctx, pgx.TxOptions{AccessMode: pgx.ReadOnly})
 	if err != nil {
 		return accounts.User{}, err
 	}
@@ -128,13 +133,19 @@ func (s *Store) ResolveOperationAuthority(ctx context.Context, scope model.Deleg
 // CreateOperationTicket is a Core-only, exact-session admission operation. It
 // cannot create an actor-only capability or a durable job credential.
 func (s *Store) CreateOperationTicket(ctx context.Context, user accounts.User, scope model.DelegatedScope) (string, error) {
+	ctx = commandContext(ctx, user)
 	if s.serviceOwner != "" && s.serviceOwner != "core" {
 		return "", errors.New("only Core can issue operation tickets")
 	}
 	if !user.HasResolvedMembership() {
-		return "", nil
+		if _, ok := user.CommandAuthority(); !ok && s.serviceOwner == "" {
+			return "", nil
+		}
 	}
 	digest := admissionSessionDigest(ctx)
+	if p, ok := contextProof(ctx); ok && digest == "" {
+		digest = p.digest
+	}
 	if digest == "" {
 		return "", errAttemptAuthorizationRevoked
 	}
@@ -153,7 +164,7 @@ func (s *Store) CreateOperationTicket(ctx context.Context, user accounts.User, s
 	if err != nil {
 		return "", err
 	}
-	tx, err := s.pool.Begin(ctx)
+	tx, err := s.beginContextTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return "", err
 	}
@@ -161,7 +172,11 @@ func (s *Store) CreateOperationTicket(ctx context.Context, user accounts.User, s
 	if err = setLocalScope(ctx, tx, userScope(current)); err != nil {
 		return "", err
 	}
-	_, err = tx.Exec(ctx, `INSERT INTO operation_authority_tickets(ticket_digest,tenant_id,org_id,session_digest,principal_id,membership_id,scope) VALUES($1,$2,$3,$4,$5::uuid,$6::uuid,$7::jsonb)`, identityTokenDigest(raw), current.TenantID, current.OrgID, digest, current.PrincipalID, current.MembershipID, encoded)
+	_, err = tx.Exec(ctx, `INSERT INTO operation_authority_tickets(ticket_digest,tenant_id,org_id,session_digest,principal_id,membership_id,scope,context_version) VALUES($1,$2,$3,$4,NULLIF($5,'')::uuid,NULLIF($6,'')::uuid,$7::jsonb,$8)`, identityTokenDigest(raw), current.TenantID, current.OrgID, digest, current.PrincipalID, current.MembershipID, encoded, func() int64 {
+		p, _ := current.CommandAuthority()
+		v, _ := strconv.ParseInt(p.ContextVersion, 10, 64)
+		return v
+	}())
 	if err != nil {
 		return "", err
 	}
@@ -169,6 +184,7 @@ func (s *Store) CreateOperationTicket(ctx context.Context, user accounts.User, s
 }
 
 func (s *Store) validateNonJobOperation(ctx context.Context, u accounts.User, scope model.DelegatedScope) error {
+	ctx = commandContext(ctx, u)
 	if scope.JobID != "" || scope.WorkerID != "" || scope.Generation != 0 || scope.ParseSelectionID != "" || scope.ParseSelectionSHA256 != "" || scope.ActorID != u.ID || scope.TenantID != u.TenantID || scope.OrgID == "" {
 		return errAttemptAuthorizationRevoked
 	}
@@ -186,7 +202,7 @@ func (s *Store) validateNonJobOperation(ctx context.Context, u accounts.User, sc
 	default:
 		return errAttemptAuthorizationRevoked
 	}
-	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{AccessMode: pgx.ReadOnly})
+	tx, err := s.beginContextTx(ctx, pgx.TxOptions{AccessMode: pgx.ReadOnly})
 	if err != nil {
 		return err
 	}
@@ -216,6 +232,9 @@ func (s *Store) validateNonJobOperation(ctx context.Context, u accounts.User, sc
 
 func (s *Store) resolveOperationTicket(ctx context.Context, scope model.DelegatedScope) (accounts.User, error) {
 	if scope.OperationTicket == "" {
+		if !s.dropSchema {
+			return accounts.User{}, errAttemptAuthorizationRevoked
+		}
 		u, ok := accounts.ByID(scope.ActorID)
 		if ok && u.Enabled && u.Issuer == "" && u.Subject == "" && u.TenantID == scope.TenantID && u.OrgID == scope.OrgID {
 			return u, s.validateNonJobOperation(ctx, u, scope)
@@ -248,7 +267,7 @@ func (s *Store) resolveOperationTicket(ctx context.Context, scope model.Delegate
 		if err != nil {
 			return accounts.User{}, errAttemptAuthorizationRevoked
 		}
-		tx, err := s.pool.Begin(ctx)
+		tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{})
 		if err != nil {
 			return accounts.User{}, err
 		}
@@ -256,9 +275,20 @@ func (s *Store) resolveOperationTicket(ctx context.Context, scope model.Delegate
 		if err = setLocalScope(ctx, tx, userScope(u)); err != nil {
 			return accounts.User{}, err
 		}
+		fullScope, _ := json.Marshal(scope)
+		var sourceDigest, revision string
+		var version int64
+		var role *string
+		var grants []byte
+		if err = tx.QueryRow(ctx, `SELECT session_digest,context_version,authority_revision,role_code,grants FROM tenant_operation_info($1::jsonb,$2)`, fullScope, identityTokenDigest(scope.OperationTicket)).Scan(&sourceDigest, &version, &revision, &role, &grants); err != nil {
+			return accounts.User{}, contextError(err)
+		}
+		if _, err = tx.Exec(ctx, `SELECT tenant_context_fence($1,$2,$3,NULL,NULL)`, sourceDigest, version, revision); err != nil {
+			return accounts.User{}, contextError(err)
+		}
 		encoded, _ := json.Marshal(stableOperation(scope))
 		digest := identityTokenDigest(scope.OperationTicket)
-		_, err = tx.Exec(ctx, `INSERT INTO operation_authority_tickets(ticket_digest,tenant_id,org_id,session_digest,principal_id,membership_id,scope) VALUES($1,$2,$3,$4,$5::uuid,$6::uuid,$7::jsonb) ON CONFLICT(ticket_digest) DO NOTHING`, digest, scope.TenantID, scope.OrgID, sessionDigest, principal, membership, encoded)
+		_, err = tx.Exec(ctx, `INSERT INTO operation_authority_tickets(ticket_digest,tenant_id,org_id,session_digest,principal_id,membership_id,scope,context_version,expires_at) VALUES($1,$2,$3,$4,$5::uuid,$6::uuid,$7::jsonb,(SELECT context_version FROM intake_authority_tickets WHERE ticket_digest=$1),(SELECT expires_at FROM intake_authority_tickets WHERE ticket_digest=$1)) ON CONFLICT(ticket_digest) DO NOTHING`, digest, scope.TenantID, scope.OrgID, sessionDigest, principal, membership, encoded)
 		if err != nil {
 			return accounts.User{}, err
 		}
@@ -268,9 +298,12 @@ func (s *Store) resolveOperationTicket(ctx context.Context, scope model.Delegate
 		if err != nil || json.Unmarshal(raw, &saved) != nil || !reflect.DeepEqual(saved, stableOperation(scope)) {
 			return accounts.User{}, errAttemptAuthorizationRevoked
 		}
+		if _, err = tx.Exec(ctx, `SELECT tenant_operation_fence($1::jsonb,$2,$3)`, fullScope, digest, revision); err != nil {
+			return accounts.User{}, contextError(err)
+		}
 		return u, tx.Commit(ctx)
 	}
-	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{AccessMode: pgx.ReadOnly})
+	tx, err := s.beginContextTx(ctx, pgx.TxOptions{AccessMode: pgx.ReadOnly})
 	if err != nil {
 		return accounts.User{}, err
 	}
@@ -326,6 +359,9 @@ func (s *Store) authorityForAttempt(ctx context.Context, runID, attemptID string
 }
 
 func (s *Store) authorizeAttemptExecution(st state, runID, attemptID string) (accounts.User, error) {
+	if st.authorityUser != nil {
+		return authorizeAttemptExecution(st, runID, attemptID, *st.authorityUser)
+	}
 	u, err := s.authorityForAttempt(context.Background(), runID, attemptID)
 	if err != nil {
 		attempt, ok := st.attemptByID(attemptID)
@@ -342,25 +378,68 @@ func (s *Store) authorizeAttemptExecution(st state, runID, attemptID string) (ac
 }
 
 type operationTicketIssuer interface {
-	IssueOperationTicket(context.Context, string, model.DelegatedScope) (string, error)
+	IssueOperationTicket(context.Context, string, string, model.DelegatedScope) (string, error)
 }
 
 func (s *Store) issueOperationTicket(ctx context.Context, user accounts.User, scope model.DelegatedScope) (string, error) {
+	ctx = commandContext(ctx, user)
 	if !user.HasResolvedMembership() {
-		return "", nil
+		if _, ok := user.CommandAuthority(); !ok && s.serviceOwner == "" {
+			return "", nil
+		}
 	}
 	if issuer, ok := s.operationAuthority.(operationTicketIssuer); ok {
-		return issuer.IssueOperationTicket(ctx, admissionSessionDigest(ctx), scope)
+		p, ok := contextProof(ctx)
+		if !ok {
+			return "", errAttemptAuthorizationRevoked
+		}
+		return issuer.IssueOperationTicket(ctx, p.digest, p.version, scope)
 	}
 	return s.CreateOperationTicket(ctx, user, scope)
 }
-func (s *Store) IssueOperationTicketFromDigest(ctx context.Context, digest string, scope model.DelegatedScope) (string, error) {
+func (s *Store) IssueOperationTicketFromDigest(ctx context.Context, digest string, expected string, scope model.DelegatedScope) (string, error) {
 	_, u, err := s.sessionFromDigest(ctx, digest)
 	if err != nil {
 		return "", err
+	}
+	proof, ok := u.CommandAuthority()
+	if !ok || proof.ContextVersion != expected {
+		return "", errAttemptAuthorizationRevoked
 	}
 	if scope.Kind != "document" || (scope.Action != "reparse" && scope.Action != "upload_parse") {
 		return "", errAttemptAuthorizationRevoked
 	}
 	return s.CreateOperationTicket(context.WithValue(ctx, admissionSessionContextKey{}, digest), u, scope)
+}
+
+func (s *Store) ResolveOperationAuthority(ctx context.Context, scope model.DelegatedScope, caller string) (accounts.User, error) {
+	user, err := s.resolveOperationAuthority(ctx, scope, caller)
+	if err != nil {
+		return user, err
+	}
+	if scope.JobID == "" && scope.OperationTicket == "" && s.serviceOwner == "" && user.Issuer == "" {
+		return user, nil
+	}
+	encoded, _ := json.Marshal(scope)
+	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{AccessMode: pgx.ReadOnly})
+	if err != nil {
+		return accounts.User{}, err
+	}
+	defer tx.Rollback(ctx)
+	var digest, revision string
+	var version int64
+	var role *string
+	var grants []byte
+	err = tx.QueryRow(ctx, `SELECT session_digest,context_version,authority_revision,role_code,grants FROM tenant_operation_info($1::jsonb,$2)`, encoded, identityTokenDigest(scope.OperationTicket)).Scan(&digest, &version, &revision, &role, &grants)
+	if err != nil {
+		return accounts.User{}, contextError(err)
+	}
+	if user.HasResolvedMembership() {
+		var current []access.Grant
+		if role == nil || *role != user.Role || json.Unmarshal(grants, &current) != nil || !reflect.DeepEqual(current, user.Grants) {
+			return accounts.User{}, errAttemptAuthorizationRevoked
+		}
+	}
+	user = accounts.WithCommandAuthority(user, accounts.CommandAuthority{Revision: revision, OperationScope: encoded})
+	return user, tx.Commit(ctx)
 }

@@ -54,7 +54,7 @@ func (s *Store) AcceptExperienceResult(ctx context.Context, delivery ExperienceR
 	if ctx == nil || !experienceIdentity(delivery.TenantID) || !experienceIdentity(delivery.JobID) || delivery.Generation < 1 {
 		return fault.Invalid("经验提炼结果的编号无效")
 	}
-	tx, err := s.pool.Begin(ctx)
+	tx, err := s.beginContextTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return err
 	}
@@ -264,6 +264,7 @@ func validateExperienceCandidateSource(ctx context.Context, tx pgx.Tx, item Case
 // RequestExperienceDistillation atomically enqueues a bounded independent job
 // and its notification after checking the source and all previous source cases.
 func (s *Store) RequestExperienceDistillation(ctx context.Context, user accounts.User, input ExperienceDistillRequest) (ExperienceDistillReceipt, error) {
+	ctx = commandContext(ctx, user)
 	if s.ReadOnly() {
 		return ExperienceDistillReceipt{}, fault.New(503, "read_only", "只读模式下不能提炼经验")
 	}

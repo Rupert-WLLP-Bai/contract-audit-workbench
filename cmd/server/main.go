@@ -41,6 +41,11 @@ func main() {
 }
 
 func run() error {
+	if raw := strings.TrimSpace(os.Getenv("CONTEXT_SWITCH_ENABLED")); raw != "" {
+		if _, err := strconv.ParseBool(raw); err != nil {
+			return errors.New("CONTEXT_SWITCH_ENABLED must be true or false")
+		}
+	}
 	ctx, stop := process.SignalContext()
 	defer stop()
 	switch role := strings.TrimSpace(os.Getenv("SERVICE_ROLE")); role {
@@ -272,6 +277,7 @@ func options(app *bootstrap.Runtime, cors []string) httpapi.Options {
 		SystemHealth: systemhealth.FromEnv(app.Store.Ready, app.Selection.Database.URL()),
 		CORSOrigins:  cors, Models: app.Models, OIDC: app.OIDC,
 		Durable: app.Durable, SecureCookies: app.SecureCookies,
+		ContextSwitchEnabled:         strings.EqualFold(strings.TrimSpace(os.Getenv("CONTEXT_SWITCH_ENABLED")), "true") || strings.TrimSpace(os.Getenv("CONTEXT_SWITCH_ENABLED")) == "1" || strings.TrimSpace(os.Getenv("CONTEXT_SWITCH_ENABLED")) == "t" || strings.TrimSpace(os.Getenv("CONTEXT_SWITCH_ENABLED")) == "T",
 		ExperienceWorkerCredential:   strings.TrimSpace(os.Getenv("WORKER_CORE_TOKEN")),
 		DocumentIntakeCredential:     strings.TrimSpace(os.Getenv("CORE_DOCUMENT_TOKEN")),
 		ToolClaimAuthorityCredential: strings.TrimSpace(os.Getenv("TOOL_CORE_AUTHORITY_TOKEN")),

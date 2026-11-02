@@ -48,6 +48,8 @@ import type {
   MaterialSelectionProjection,
   MaterialVersionProjection,
   UploadDocumentResult,
+  MembershipChoice,
+  ContextList,
 } from "./types";
 import { parseFrozenLegalReviewProjection } from "./legal-citations";
 import { isRecord } from "./guards";
@@ -867,6 +869,9 @@ export function parseActor(value: unknown): Actor {
   const actor = isRecord(record.actor) ? record.actor : record;
   const audience = requiredString(record, "audience");
   if (audience !== "client" && audience !== "admin") fail("会话 audience 无效");
+  const active = recordOf(record.active_context, "active_context");
+  const contextVersion = requiredString(active, "context_version");
+  if (!/^[1-9][0-9]*$/.test(contextVersion)) fail("会话 context_version 无效");
   return {
     id: requiredString(actor, "id"),
     display_name:
@@ -875,6 +880,39 @@ export function parseActor(value: unknown): Actor {
     tenant_id: requiredString(actor, "tenant_id"),
     org_id: requiredString(actor, "org_id"),
     audience,
+    principal_id: requiredNullableString(record, "principal_id"),
+    active_context: {
+      membership_id: active.membership_id == null ? null : requiredString(active, "membership_id"),
+      tenant_id: requiredString(active, "tenant_id"),
+      tenant_name: requiredString(active, "tenant_name"),
+      org_id: requiredString(active, "org_id"),
+      org_name: requiredString(active, "org_name"),
+      context_version: contextVersion,
+    },
+    csrf_token: requiredString(record, "csrf_token"),
+    context_switch_enabled: requiredBoolean(record, "context_switch_enabled"),
+  };
+}
+
+export function parseMembershipChoice(value: unknown): MembershipChoice {
+  const row = recordOf(value, "membership");
+  return {
+    id: requiredString(row, "id"),
+    tenant_id: requiredString(row, "tenant_id"),
+    tenant_name: requiredString(row, "tenant_name"),
+    org_id: requiredString(row, "org_id"),
+    org_name: requiredString(row, "org_name"),
+    role: requiredString(row, "role"),
+    ...(typeof row.jurisdiction_id === "string" ? { jurisdiction_id: row.jurisdiction_id } : {}),
+  };
+}
+
+export function parseContextList(value: unknown): ContextList {
+  const row = recordOf(value, "contexts");
+  if (!Array.isArray(row.memberships)) fail("contexts 缺少 memberships");
+  return {
+    context_switch_enabled: requiredBoolean(row, "context_switch_enabled"),
+    memberships: row.memberships.map(parseMembershipChoice),
   };
 }
 

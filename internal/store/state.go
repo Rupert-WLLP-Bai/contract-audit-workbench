@@ -84,6 +84,7 @@ func (s *Store) ReadOnly() bool {
 func (s *Store) HasDatabase() bool { return s != nil && s.pool != nil }
 
 type state struct {
+	authorityUser           *accounts.User
 	Sessions                []session                  `json:"sessions"`
 	Cases                   []Case                     `json:"cases"`
 	Documents               []Document                 `json:"documents"`
@@ -349,6 +350,7 @@ func (st state) clone() (state, error) {
 	// UTC, decoding may attach time.Local instead of time.UTC; normalize rows
 	// before reflect-based delta checks so a clone cannot appear to mutate them.
 	canonicalizeLoadedRows(&out)
+	out.authorityUser = st.authorityUser
 	out.normalize()
 	return out, nil
 }

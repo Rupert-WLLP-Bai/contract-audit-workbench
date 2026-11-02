@@ -350,6 +350,7 @@ func loadAuditFindingEvidence(ctx context.Context, tx pgx.Tx, runID, attemptID, 
 // snapshot. The contract row_version CAS makes a concurrent freeze observable
 // instead of binding a stale submitted version.
 func (s *Store) BindContractAudit(ctx context.Context, user accounts.User, input BindContractAuditInput) (ContractAuditBinding, error) {
+	ctx = commandContext(ctx, user)
 	contractID, err := normalizeContractUUID(input.ContractID)
 	if err != nil {
 		return ContractAuditBinding{}, err
@@ -581,6 +582,7 @@ func scanContractAuditBinding(row pgx.Row) (ContractAuditBinding, error) {
 // LoadContractAuditBindings returns the append-only binding history for one
 // frozen revision. It is a read-only lookup and re-checks contract read scope.
 func (s *Store) LoadContractAuditBindings(ctx context.Context, user accounts.User, contractID, revisionID string) (ContractAuditBindingList, error) {
+	ctx = commandContext(ctx, user)
 	if !s.HasDatabase() {
 		return ContractAuditBindingList{}, fault.New(503, "database_unavailable", "服务数据库不可用")
 	}
@@ -601,7 +603,7 @@ func (s *Store) LoadContractAuditBindings(ctx context.Context, user accounts.Use
 	if err != nil {
 		return ContractAuditBindingList{}, err
 	}
-	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted, AccessMode: pgx.ReadOnly})
+	tx, err := s.beginContextTx(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted, AccessMode: pgx.ReadOnly})
 	if err != nil {
 		return ContractAuditBindingList{}, err
 	}

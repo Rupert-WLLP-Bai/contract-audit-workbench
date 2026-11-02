@@ -176,6 +176,7 @@ func (s *Store) experienceUsageReady(ctx context.Context) error {
 // ListExperienceUsageOptions exposes only exact candidates from the stored
 // snapshot, after checking current target, source and ancestor permissions.
 func (s *Store) ListExperienceUsageOptions(ctx context.Context, user accounts.User, input ExperienceUsageInput) (ExperienceUsageOptions, error) {
+	ctx = commandContext(ctx, user)
 	out := ExperienceUsageOptions{Items: []ExperienceUsageOption{}}
 	if err := s.experienceUsageReady(ctx); err != nil {
 		return out, err
@@ -187,7 +188,7 @@ func (s *Store) ListExperienceUsageOptions(ctx context.Context, user accounts.Us
 	if err != nil {
 		return out, err
 	}
-	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
+	tx, err := s.beginContextTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
 	if err != nil {
 		return out, err
 	}
@@ -254,6 +255,7 @@ func (s *Store) ListExperienceUsageOptions(ctx context.Context, user accounts.Us
 // RecordExperienceUsage records an explicit reference before any decision. A
 // repeat of the same actor and statement returns the original immutable row.
 func (s *Store) RecordExperienceUsage(ctx context.Context, user accounts.User, input ExperienceUsageInput) (ExperienceUsage, error) {
+	ctx = commandContext(ctx, user)
 	if err := s.experienceUsageReady(ctx); err != nil {
 		return ExperienceUsage{}, err
 	}
@@ -272,7 +274,7 @@ func (s *Store) RecordExperienceUsage(ctx context.Context, user accounts.User, i
 	if !accounts.CanDecide(current.Role) {
 		return ExperienceUsage{}, fault.Forbidden("当前角色不能登记经验使用")
 	}
-	tx, err := s.pool.Begin(ctx)
+	tx, err := s.beginContextTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return ExperienceUsage{}, err
 	}

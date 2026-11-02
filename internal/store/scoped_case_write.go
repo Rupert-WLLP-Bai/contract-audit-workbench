@@ -100,6 +100,7 @@ func (s *Store) loadScopedCaseWriteState(ctx context.Context, tx pgx.Tx, caseID,
 // scopedCreateCaseWrite locks a newly allocated case, or the case returned by a
 // receipt lookup, and commits creation and any receipt in the same transaction.
 func (s *Store) scopedCreateCaseWrite(ctx context.Context, user accounts.User, caseID string, lookup func(pgx.Tx) (string, error), fn func(*state) error) error {
+	ctx = commandContext(ctx, user)
 	if ctx == nil {
 		return errors.New("case creation context is nil")
 	}
@@ -113,7 +114,7 @@ func (s *Store) scopedCreateCaseWrite(ctx context.Context, user accounts.User, c
 	if caseID == "" {
 		return errors.New("case creation requires an identity")
 	}
-	tx, err := s.pool.Begin(ctx)
+	tx, err := s.beginContextTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return err
 	}

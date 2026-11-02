@@ -764,7 +764,7 @@ func (s *Store) CreateGovernedKnowledge(user accounts.User, input CreateGoverned
 	}
 	var out GovernedKnowledgeVersion
 	err = s.updateAdminAs(admin, func(tx pgx.Tx) error {
-		ctx := context.Background()
+		ctx := commandContext(context.Background(), user)
 		request := struct {
 			Action  string                   `json:"action"`
 			Content GovernedKnowledgeContent `json:"content"`
@@ -1433,7 +1433,7 @@ func (s *Store) PreviewGovernedPolicy(user accounts.User, knowledgeID, versionID
 	}
 	var preview GovernedPolicyPreview
 	err = s.readKnowledgeAs(admin, func(tx pgx.Tx) error {
-		ctx := context.Background()
+		ctx := commandContext(context.Background(), user)
 		version, _, _, _, err := loadGovernedKnowledge(ctx, tx, accounts.Tenant(admin), knowledgeID, versionID)
 		if err != nil {
 			return err
@@ -1521,7 +1521,7 @@ func (s *Store) GovernedKnowledgeCommand(user accounts.User, input GovernedKnowl
 	}
 	var out GovernedKnowledgeVersion
 	err = s.updateAdminAs(admin, func(tx pgx.Tx) error {
-		ctx := context.Background()
+		ctx := commandContext(context.Background(), user)
 		var inner error
 		out, inner = knowledgeIdempotency(ctx, tx, admin, input.IdempotencyKey, input, func() (GovernedKnowledgeVersion, error) {
 			if !validResourceID(input.KnowledgeID) || !validKnowledgeHash(input.VersionID) || !validKnowledgeHash(input.ExpectedContentSHA256) ||
@@ -1663,8 +1663,8 @@ func (s *Store) GovernedKnowledgeCommand(user accounts.User, input GovernedKnowl
 }
 
 func (s *Store) readKnowledgeAs(admin accounts.User, fn func(pgx.Tx) error) error {
-	ctx := context.Background()
-	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
+	ctx := commandContext(context.Background(), admin)
+	tx, err := s.beginContextTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
 	if err != nil {
 		return err
 	}
@@ -1705,7 +1705,7 @@ func (s *Store) ListGovernedKnowledgeVersions(user accounts.User) ([]GovernedKno
 	}
 	out := []GovernedKnowledgeSummary{}
 	err = s.readKnowledgeAs(admin, func(tx pgx.Tx) error {
-		ctx := context.Background()
+		ctx := commandContext(context.Background(), user)
 		const batchSize = 128
 		tenant := accounts.Tenant(admin)
 		lastKnowledge, lastVersion := "", ""
@@ -1769,7 +1769,7 @@ func (s *Store) ListGovernedKnowledgeHistory(user accounts.User, knowledgeID str
 	}
 	var out []GovernedKnowledgeHistoryEntry
 	err = s.readKnowledgeAs(admin, func(tx pgx.Tx) error {
-		ctx := context.Background()
+		ctx := commandContext(context.Background(), user)
 		rows, err := tx.Query(ctx, `SELECT seq,version_id,action,revision,pointer_revision,actor_id,reason,content_sha256,previous_version_id,previous_active,resulting_version_id,resulting_active,occurred_at
 			FROM governed_knowledge_history WHERE tenant_id=$1 AND knowledge_id=$2 ORDER BY seq`, accounts.Tenant(admin), knowledgeID)
 		if err != nil {
@@ -2156,6 +2156,7 @@ func resolveGovernedKnowledgeWithCaseLocks(ctx context.Context, tx pgx.Tx, user 
 // ResolveGovernedKnowledge resolves for a real authorized case and explicit
 // business time. Acceptance must use resolveGovernedKnowledgeTx instead.
 func (s *Store) ResolveGovernedKnowledge(ctx context.Context, user accounts.User, caseID, businessAt string, optionalLimit int) (ReviewKnowledgeSnapshot, error) {
+	ctx = commandContext(ctx, user)
 	if ctx == nil {
 		return ReviewKnowledgeSnapshot{}, fault.Invalid("解析上下文无效")
 	}
@@ -2163,7 +2164,7 @@ func (s *Store) ResolveGovernedKnowledge(ctx context.Context, user accounts.User
 	if err != nil {
 		return ReviewKnowledgeSnapshot{}, err
 	}
-	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
+	tx, err := s.beginContextTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
 	if err != nil {
 		return ReviewKnowledgeSnapshot{}, err
 	}
@@ -2312,6 +2313,7 @@ func ValidateFrozenGovernedKnowledgeSnapshotTx(ctx context.Context, tx pgx.Tx, u
 // ValidateFrozenGovernedKnowledgeSnapshot validates one consistent database
 // snapshot for worker stages that do not already hold the acceptance tx.
 func (s *Store) ValidateFrozenGovernedKnowledgeSnapshot(ctx context.Context, user accounts.User, caseID string, frozen ReviewKnowledgeSnapshot) error {
+	ctx = commandContext(ctx, user)
 	if ctx == nil || s == nil || s.pool == nil {
 		return fault.New(503, "governance_unavailable", "制度数据库不可用")
 	}
@@ -2319,7 +2321,7 @@ func (s *Store) ValidateFrozenGovernedKnowledgeSnapshot(ctx context.Context, use
 	if err != nil {
 		return err
 	}
-	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
+	tx, err := s.beginContextTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
 	if err != nil {
 		return err
 	}
@@ -2340,6 +2342,7 @@ func (s *Store) ValidateFrozenGovernedKnowledgeSnapshot(ctx context.Context, use
 // currently selected dependencies. Use it to decide whether a new review can
 // reuse the prior run, not to adopt work already accepted into an attempt.
 func (s *Store) RevalidateGovernedKnowledgeSnapshot(ctx context.Context, user accounts.User, caseID string, frozen ReviewKnowledgeSnapshot) error {
+	ctx = commandContext(ctx, user)
 	if ctx == nil {
 		return fault.Invalid("解析上下文无效")
 	}
@@ -2347,7 +2350,7 @@ func (s *Store) RevalidateGovernedKnowledgeSnapshot(ctx context.Context, user ac
 	if err != nil {
 		return err
 	}
-	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
+	tx, err := s.beginContextTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
 	if err != nil {
 		return err
 	}
@@ -2389,6 +2392,7 @@ type GovernedKnowledgeReviewContent struct {
 // source. Revalidation checks current target and, when required, source and
 // ancestor access along with withdrawal under the same transaction.
 func (s *Store) ReadFrozenGovernedKnowledge(ctx context.Context, user accounts.User, caseID string, frozen ReviewKnowledgeSnapshot, ref KnowledgeRef) (GovernedKnowledgeReviewContent, error) {
+	ctx = commandContext(ctx, user)
 	if ctx == nil {
 		return GovernedKnowledgeReviewContent{}, fault.Invalid("解析上下文无效")
 	}
@@ -2396,7 +2400,7 @@ func (s *Store) ReadFrozenGovernedKnowledge(ctx context.Context, user accounts.U
 	if err != nil {
 		return GovernedKnowledgeReviewContent{}, err
 	}
-	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
+	tx, err := s.beginContextTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
 	if err != nil {
 		return GovernedKnowledgeReviewContent{}, err
 	}

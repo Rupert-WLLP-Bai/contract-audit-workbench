@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"reflect"
 	"strings"
 	"time"
 
@@ -33,6 +34,9 @@ func trustedUser(user accounts.User) (accounts.User, error) {
 		(user.Subject != "" && user.Subject != current.Subject) {
 		return accounts.User{}, fault.Unauthenticated("登录身份已变更")
 	}
+	if proof, ok := user.CommandAuthority(); ok {
+		current = accounts.WithCommandAuthority(current, proof)
+	}
 	return current, nil
 }
 
@@ -41,6 +45,7 @@ func (s *Store) snapshotAs(user accounts.User) (state, error) {
 }
 
 func (s *Store) snapshotAsContext(ctx context.Context, user accounts.User) (state, error) {
+	ctx = commandContext(ctx, user)
 	if err := ctx.Err(); err != nil {
 		return state{}, err
 	}
@@ -120,7 +125,11 @@ func (s *Store) snapshotScopedClaim(ctx context.Context, scope dbScope, claim *J
 }
 
 func userScope(user accounts.User) dbScope {
-	return dbScope{ActorID: user.ID, TenantID: user.TenantID, OrgID: user.OrgID, Role: "api"}
+	scope := dbScope{ActorID: user.ID, TenantID: user.TenantID, OrgID: user.OrgID, Role: "api"}
+	if proof, ok := user.CommandAuthority(); ok {
+		scope.command = &proof
+	}
+	return scope
 }
 
 func (s *Store) updateAs(user accounts.User, fn func(*state) error) error {
@@ -128,6 +137,7 @@ func (s *Store) updateAs(user accounts.User, fn func(*state) error) error {
 }
 
 func (s *Store) updateAsContext(ctx context.Context, user accounts.User, fn func(*state) error) error {
+	ctx = commandContext(ctx, user)
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -288,6 +298,20 @@ func (s *Store) sessionFromDigest(ctx context.Context, digest string) (session, 
 	if err := validateAudienceUser(user, current.Audience); err != nil {
 		return session{}, accounts.User{}, err
 	}
+	metadata, err := s.sessionContextTx(ctx, tx, digest)
+	if err != nil {
+		return session{}, accounts.User{}, err
+	}
+	if metadata.actor != user.ID || metadata.ActiveContext.TenantID != user.TenantID || metadata.ActiveContext.OrgID != user.OrgID {
+		return session{}, accounts.User{}, fault.New(401, "session_invalid", "会话上下文已变更")
+	}
+	if user.HasResolvedMembership() {
+		var grants []access.Grant
+		if metadata.role == nil || *metadata.role != user.Role || json.Unmarshal(metadata.grants, &grants) != nil || !reflect.DeepEqual(grants, user.Grants) {
+			return session{}, accounts.User{}, fault.New(401, "session_invalid", "成员授权已变更")
+		}
+	}
+	user = accounts.WithCommandAuthority(user, accounts.CommandAuthority{SessionDigest: digest, ContextVersion: metadata.ActiveContext.ContextVersion, Revision: metadata.AuthorityRevision, CSRFToken: metadata.CSRFToken, TenantName: metadata.ActiveContext.TenantName, OrgName: metadata.ActiveContext.OrgName})
 	if err := tx.Commit(ctx); err != nil {
 		return session{}, accounts.User{}, err
 	}

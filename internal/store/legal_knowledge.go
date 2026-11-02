@@ -541,6 +541,7 @@ func loadLegalSourceCaptureTx(ctx context.Context, tx pgx.Tx, tenant, captureID 
 }
 
 func (s *Store) GetLegalSourceCapture(ctx context.Context, user accounts.User, captureID string) (LegalSourceCapture, error) {
+	ctx = commandContext(ctx, user)
 	admin, err := trustedAdmin(user)
 	if err != nil {
 		return LegalSourceCapture{}, err
@@ -558,6 +559,7 @@ func (s *Store) GetLegalSourceCapture(ctx context.Context, user accounts.User, c
 }
 
 func (s *Store) GetLegalSourceCaptureForCase(ctx context.Context, user accounts.User, caseID, captureID string) (LegalSourceCapture, error) {
+	ctx = commandContext(ctx, user)
 	current, err := trustedUser(user)
 	if err != nil {
 		return LegalSourceCapture{}, err
@@ -586,6 +588,7 @@ func (s *Store) GetLegalSourceCaptureForCase(ctx context.Context, user accounts.
 }
 
 func (s *Store) readLegalAdmin(ctx context.Context, admin accounts.User, fn func(pgx.Tx) error) error {
+	ctx = commandContext(ctx, admin)
 	if err := s.legalReady(false); err != nil {
 		return err
 	}
@@ -595,7 +598,7 @@ func (s *Store) readLegalAdmin(ctx context.Context, admin accounts.User, fn func
 	if s.serviceOwner != "" && s.serviceOwner != "core" {
 		return fault.Forbidden("当前服务不能读取法律知识")
 	}
-	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
+	tx, err := s.beginContextTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
 	if err != nil {
 		return err
 	}
@@ -613,6 +616,7 @@ func (s *Store) readLegalAdmin(ctx context.Context, admin accounts.User, fn func
 }
 
 func (s *Store) readLegalUser(ctx context.Context, user accounts.User, fn func(pgx.Tx) error) error {
+	ctx = commandContext(ctx, user)
 	if err := s.legalReady(false); err != nil {
 		return err
 	}
@@ -622,7 +626,7 @@ func (s *Store) readLegalUser(ctx context.Context, user accounts.User, fn func(p
 	if s.serviceOwner != "" && s.serviceOwner != "core" {
 		return fault.Forbidden("当前服务不能读取法律知识")
 	}
-	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
+	tx, err := s.beginContextTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
 	if err != nil {
 		return err
 	}
@@ -640,6 +644,7 @@ func (s *Store) readLegalUser(ctx context.Context, user accounts.User, fn func(p
 }
 
 func (s *Store) SearchLegalKnowledgeAdmin(ctx context.Context, user accounts.User, filter LegalSearch) (LegalKnowledgePage, error) {
+	ctx = commandContext(ctx, user)
 	admin, err := trustedAdmin(user)
 	if err != nil {
 		return LegalKnowledgePage{}, err
@@ -654,6 +659,7 @@ func (s *Store) SearchLegalKnowledgeAdmin(ctx context.Context, user accounts.Use
 }
 
 func (s *Store) SearchLegalKnowledgeForCase(ctx context.Context, user accounts.User, caseID string, filter LegalSearch) (LegalKnowledgePage, error) {
+	ctx = commandContext(ctx, user)
 	current, err := trustedUser(user)
 	if err != nil {
 		return LegalKnowledgePage{}, err
@@ -674,6 +680,7 @@ func (s *Store) SearchLegalKnowledgeForCase(ctx context.Context, user accounts.U
 }
 
 func (s *Store) GetLegalKnowledgeForCase(ctx context.Context, user accounts.User, caseID, knowledgeID, versionID string) (GovernedKnowledgeVersion, error) {
+	ctx = commandContext(ctx, user)
 	current, err := trustedUser(user)
 	if err != nil {
 		return GovernedKnowledgeVersion{}, err
@@ -826,6 +833,7 @@ func decodeLegalCursor(cursor string) (string, string, error) {
 }
 
 func (s *Store) ImportLegalSource(ctx context.Context, user accounts.User, input LegalSourceImportInput) (LegalSourceImportResult, error) {
+	ctx = commandContext(ctx, user)
 	admin, err := trustedAdmin(user)
 	if err != nil {
 		return LegalSourceImportResult{}, err
@@ -1012,6 +1020,7 @@ func (s *Store) ImportLegalSource(ctx context.Context, user accounts.User, input
 }
 
 func (s *Store) legalImportReplay(ctx context.Context, admin accounts.User, key, requestDigest string) (LegalSourceImportResult, bool, error) {
+	ctx = commandContext(ctx, admin)
 	var result LegalSourceImportResult
 	found := false
 	err := s.readLegalAdmin(ctx, admin, func(tx pgx.Tx) error {
@@ -1039,6 +1048,7 @@ func (s *Store) legalImportReplay(ctx context.Context, admin accounts.User, key,
 }
 
 func (s *Store) legalAdminWrite(ctx context.Context, admin accounts.User, fn func(pgx.Tx) (LegalSourceImportResult, error)) (LegalSourceImportResult, error) {
+	ctx = commandContext(ctx, admin)
 	if err := s.legalReady(true); err != nil {
 		return LegalSourceImportResult{}, err
 	}
@@ -1047,7 +1057,7 @@ func (s *Store) legalAdminWrite(ctx context.Context, admin accounts.User, fn fun
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{})
+	tx, err := s.beginContextTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return LegalSourceImportResult{}, err
 	}

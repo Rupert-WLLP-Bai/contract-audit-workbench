@@ -168,7 +168,7 @@ func (s *Store) ClaimNextJob(ctx context.Context, workerID string, lease time.Du
 	} else if !work {
 		return JobClaim{}, pgx.ErrNoRows
 	}
-	tx, err := s.pool.Begin(ctx)
+	tx, err := s.beginContextTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return JobClaim{}, err
 	}
@@ -199,10 +199,11 @@ func (s *Store) ClaimNextJob(ctx context.Context, workerID string, lease time.Du
 }
 
 func (s *Store) HeartbeatJob(ctx context.Context, claim JobClaim, lease time.Duration) (JobClaim, error) {
+	ctx = machineFactContext(ctx)
 	if lease <= 0 {
 		return JobClaim{}, errors.New("positive lease is required")
 	}
-	tx, err := s.pool.Begin(ctx)
+	tx, err := s.beginContextTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return JobClaim{}, err
 	}
@@ -307,10 +308,11 @@ func (s *Store) RunClaimedJob(ctx context.Context, claim JobClaim) error {
 }
 
 func (s *Store) finishClaim(ctx context.Context, claim JobClaim, state string) error {
+	ctx = machineFactContext(ctx)
 	if state != "completed" && state != "partial" && state != "failed" && state != "cancelled" {
 		return errors.New("invalid terminal job state")
 	}
-	tx, err := s.pool.Begin(ctx)
+	tx, err := s.beginContextTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return err
 	}

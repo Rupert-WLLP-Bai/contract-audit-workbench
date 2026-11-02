@@ -297,6 +297,7 @@ func legalApplicabilityBasisProvided(raw json.RawMessage) (bool, error) {
 // caller supplies a CAS version and idempotency key; evidence timestamps and
 // current-state valid_from are always derived by the server.
 func (s *Store) RecordLegalApplicabilityFact(ctx context.Context, user accounts.User, caseID string, input LegalApplicabilityFactInput) (LegalApplicabilityFactVersion, error) {
+	ctx = commandContext(ctx, user)
 	if err := s.legalReady(true); err != nil {
 		return LegalApplicabilityFactVersion{}, err
 	}
@@ -321,7 +322,7 @@ func (s *Store) RecordLegalApplicabilityFact(ctx context.Context, user accounts.
 	// ReadCommitted gives each statement a fresh snapshot after the shared
 	// schema/case advisory locks, so a waiter sees the winning idempotent write
 	// or CAS head instead of retaining a pre-lock Serializable snapshot.
-	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted})
+	tx, err := s.beginContextTx(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted})
 	if err != nil {
 		return LegalApplicabilityFactVersion{}, err
 	}
@@ -583,6 +584,7 @@ func loadLegalApplicabilityVersion(ctx context.Context, tx pgx.Tx, tenantID, org
 // ResolveLegalApplicabilityFacts returns selected immutable versions alongside
 // a separate resolution projection. Omitted times share one server UTC instant.
 func (s *Store) ResolveLegalApplicabilityFacts(ctx context.Context, user accounts.User, caseID string, input LegalApplicabilityResolutionInput) (LegalApplicabilityFactSet, error) {
+	ctx = commandContext(ctx, user)
 	if err := s.legalReady(false); err != nil {
 		return LegalApplicabilityFactSet{}, err
 	}
@@ -614,7 +616,7 @@ func (s *Store) ResolveLegalApplicabilityFacts(ctx context.Context, user account
 	if factCutoffAt.After(now) {
 		return LegalApplicabilityFactSet{}, fault.Invalid("证据截止时间必须不晚于当前时间")
 	}
-	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
+	tx, err := s.beginContextTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
 	if err != nil {
 		return LegalApplicabilityFactSet{}, err
 	}

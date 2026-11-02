@@ -530,6 +530,7 @@ func parseRevisionItemMetadata(snapshot []byte) (map[string]revisionItemInfo, er
 }
 
 func (s *Store) CreateContractDelivery(ctx context.Context, user accounts.User, input ContractDeliveryInput) (ContractDelivery, error) {
+	ctx = commandContext(ctx, user)
 	contractID, err := normalizeContractUUID(input.ContractID)
 	if err != nil {
 		return ContractDelivery{}, err
@@ -706,6 +707,7 @@ func (s *Store) CreateContractDelivery(ctx context.Context, user accounts.User, 
 }
 
 func (s *Store) ListContractDeliveries(ctx context.Context, user accounts.User, contractID string) (ContractDeliveryList, error) {
+	ctx = commandContext(ctx, user)
 	id, err := normalizeContractUUID(contractID)
 	if err != nil {
 		return ContractDeliveryList{}, err
@@ -717,7 +719,7 @@ func (s *Store) ListContractDeliveries(ctx context.Context, user accounts.User, 
 	if err != nil {
 		return ContractDeliveryList{}, err
 	}
-	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
+	tx, err := s.beginContextTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
 	if err != nil {
 		return ContractDeliveryList{}, err
 	}
@@ -848,6 +850,7 @@ func loadFulfillmentSummary(ctx context.Context, tx pgx.Tx, tenantID, contractID
 }
 
 func (s *Store) CreateContractAcceptance(ctx context.Context, user accounts.User, input ContractAcceptanceInput) (ContractAcceptance, error) {
+	ctx = commandContext(ctx, user)
 	contractID, err := normalizeContractUUID(input.ContractID)
 	if err != nil {
 		return ContractAcceptance{}, err
@@ -1279,6 +1282,7 @@ func validateRectificationsForRetest(ctx context.Context, tx pgx.Tx, tenantID, c
 }
 
 func (s *Store) RecordContractRectification(ctx context.Context, user accounts.User, input ContractRectificationInput) (ContractRectification, error) {
+	ctx = commandContext(ctx, user)
 	contractID, err := normalizeContractUUID(input.ContractID)
 	if err != nil {
 		return ContractRectification{}, err
@@ -1410,6 +1414,7 @@ func (s *Store) RecordContractRectification(ctx context.Context, user accounts.U
 }
 
 func (s *Store) ListContractAcceptances(ctx context.Context, user accounts.User, contractID string) (ContractAcceptanceList, error) {
+	ctx = commandContext(ctx, user)
 	id, err := normalizeContractUUID(contractID)
 	if err != nil {
 		return ContractAcceptanceList{}, err
@@ -1421,7 +1426,7 @@ func (s *Store) ListContractAcceptances(ctx context.Context, user accounts.User,
 	if err != nil {
 		return ContractAcceptanceList{}, err
 	}
-	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
+	tx, err := s.beginContextTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
 	if err != nil {
 		return ContractAcceptanceList{}, err
 	}

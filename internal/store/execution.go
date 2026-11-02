@@ -39,6 +39,7 @@ var (
 // StartReview retains the existing ungoverned entry point. Governed cases must
 // use StartReviewAt with the business instant being reviewed.
 func (s *Store) StartReview(ctx context.Context, user accounts.User, caseID string) (string, error) {
+	ctx = commandContext(ctx, user)
 	return s.startReview(ctx, user, caseID, "", "", false)
 }
 
@@ -46,6 +47,7 @@ func (s *Store) StartReview(ctx context.Context, user accounts.User, caseID stri
 // zone. The caller supplies the time relevant to the contract; the store derives
 // tenant, organization, actor and all knowledge identities from trusted state.
 func (s *Store) StartReviewAt(ctx context.Context, user accounts.User, caseID, businessAt string) (string, error) {
+	ctx = commandContext(ctx, user)
 	return s.StartReviewAtWithEvidenceCutoff(ctx, user, caseID, businessAt, "")
 }
 
@@ -53,6 +55,7 @@ func (s *Store) StartReviewAt(ctx context.Context, user accounts.User, caseID, b
 // in addition to the business instant. The accepted snapshot records whether
 // the cutoff was explicit or sampled by the server.
 func (s *Store) StartReviewAtWithEvidenceCutoff(ctx context.Context, user accounts.User, caseID, businessAt, evidenceCutoffAt string) (string, error) {
+	ctx = commandContext(ctx, user)
 	if _, err := knowledgeTime(businessAt); err != nil {
 		return "", err
 	}
@@ -66,6 +69,7 @@ func (s *Store) StartReviewAtWithEvidenceCutoff(ctx context.Context, user accoun
 // StartReviewScope accepts an explicit review scope while keeping the legacy
 // empty scope and business-time behavior for existing clients.
 func (s *Store) StartReviewScope(ctx context.Context, user accounts.User, caseID, businessAt, evidenceCutoffAt, scope string) (string, error) {
+	ctx = commandContext(ctx, user)
 	if businessAt != "" {
 		if _, err := knowledgeTime(businessAt); err != nil {
 			return "", err
@@ -79,6 +83,7 @@ func (s *Store) StartReviewScope(ctx context.Context, user accounts.User, caseID
 }
 
 func (s *Store) StartReviewAsyncScope(ctx context.Context, user accounts.User, caseID, businessAt, evidenceCutoffAt, scope string) (JobAcceptance, error) {
+	ctx = commandContext(ctx, user)
 	if businessAt != "" {
 		if _, err := knowledgeTime(businessAt); err != nil {
 			return JobAcceptance{}, err
@@ -92,15 +97,18 @@ func (s *Store) StartReviewAsyncScope(ctx context.Context, user accounts.User, c
 }
 
 func (s *Store) StartReviewAsync(ctx context.Context, user accounts.User, caseID string) (JobAcceptance, error) {
+	ctx = commandContext(ctx, user)
 	return s.startReviewAsync(ctx, user, caseID, "", "")
 }
 
 // StartReviewAsyncAt is the durable counterpart of StartReviewAt.
 func (s *Store) StartReviewAsyncAt(ctx context.Context, user accounts.User, caseID, businessAt string) (JobAcceptance, error) {
+	ctx = commandContext(ctx, user)
 	return s.StartReviewAsyncAtWithEvidenceCutoff(ctx, user, caseID, businessAt, "")
 }
 
 func (s *Store) StartReviewAsyncAtWithEvidenceCutoff(ctx context.Context, user accounts.User, caseID, businessAt, evidenceCutoffAt string) (JobAcceptance, error) {
+	ctx = commandContext(ctx, user)
 	if _, err := knowledgeTime(businessAt); err != nil {
 		return JobAcceptance{}, err
 	}
@@ -112,6 +120,7 @@ func (s *Store) StartReviewAsyncAtWithEvidenceCutoff(ctx context.Context, user a
 }
 
 func (s *Store) startReviewAsync(ctx context.Context, user accounts.User, caseID, businessAt, evidenceCutoffAt string, scope ...string) (JobAcceptance, error) {
+	ctx = commandContext(ctx, user)
 	runID, err := s.startReview(ctx, user, caseID, businessAt, evidenceCutoffAt, true, scope...)
 	if err != nil {
 		return JobAcceptance{}, err
@@ -123,6 +132,7 @@ func (s *Store) startReviewAsync(ctx context.Context, user accounts.User, caseID
 }
 
 func (s *Store) startReview(ctx context.Context, user accounts.User, caseID, businessAt, evidenceCutoffAt string, durable bool, requestedScope ...string) (string, error) {
+	ctx = commandContext(ctx, user)
 	if err := ctx.Err(); err != nil {
 		return "", err
 	}
@@ -539,10 +549,12 @@ func (s *Store) startReview(ctx context.Context, user accounts.User, caseID, bus
 }
 
 func (s *Store) Retry(ctx context.Context, user accounts.User, caseID, runID string) error {
+	ctx = commandContext(ctx, user)
 	return s.retry(ctx, user, caseID, runID, false)
 }
 
 func (s *Store) RetryAsync(ctx context.Context, user accounts.User, caseID, runID string) (JobAcceptance, error) {
+	ctx = commandContext(ctx, user)
 	if err := s.retry(ctx, user, caseID, runID, true); err != nil {
 		return JobAcceptance{}, err
 	}
@@ -550,6 +562,7 @@ func (s *Store) RetryAsync(ctx context.Context, user accounts.User, caseID, runI
 }
 
 func (s *Store) retry(ctx context.Context, user accounts.User, caseID, runID string, durable bool) error {
+	ctx = commandContext(ctx, user)
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -797,6 +810,7 @@ func (s *Store) retry(ctx context.Context, user accounts.User, caseID, runID str
 }
 
 func (s *Store) CancelReview(ctx context.Context, user accounts.User, caseID, runID string) error {
+	ctx = commandContext(ctx, user)
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -967,6 +981,7 @@ func (s *Store) releaseExecution() {
 }
 
 func (s *Store) launchAttempt(ctx context.Context, runID, attemptID string, models Models, caseItem Case, user accounts.User) error {
+	ctx = commandContext(ctx, user)
 	actorID := user.ID
 	scope := model.DelegatedScope{Kind: "execution", Action: "embedded_review", TenantID: caseItem.TenantID, OrgID: caseItem.OwnerOrgID, CaseID: caseItem.ID, ActorID: actorID, RunID: runID, AttemptID: attemptID}
 	ticket, err := s.issueOperationTicket(ctx, user, scope)
@@ -1938,7 +1953,7 @@ func (s *Store) persistLateModelEvent(ctx context.Context, attemptID string, eve
 	if s.serviceOwner != "" || claim.JobID != "" {
 		return s.persistLateModelEventNarrow(ctx, attemptID, event)
 	}
-	tx, err := s.pool.Begin(ctx)
+	tx, err := s.beginContextTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return err
 	}
@@ -2042,7 +2057,7 @@ func (s *Store) persistLateModelEventNarrow(ctx context.Context, attemptID strin
 		return errAttemptTerminal
 	}
 	event.AttemptID = attemptID
-	tx, err := s.pool.Begin(ctx)
+	tx, err := s.beginContextTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return err
 	}
@@ -2435,7 +2450,7 @@ func (s *Store) agentReviewDigestForContext(ctx context.Context, tenantID, orgID
 	if s == nil || s.pool == nil || attemptID == "" || tenantID == "" || orgID == "" {
 		return "", nil
 	}
-	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{AccessMode: pgx.ReadOnly})
+	tx, err := s.beginContextTx(ctx, pgx.TxOptions{AccessMode: pgx.ReadOnly})
 	if err != nil {
 		return "", err
 	}

@@ -102,7 +102,7 @@ func (s *Store) UpdateCaseProfile(user accounts.User, caseID string, input CaseP
 		ContractCategory: input.ContractCategory, OwnerID: input.OwnerID, DueAt: dueAt, Version: version, UpdatedAt: now}
 	record := caseProfileRecord{Profile: profile, TenantID: item.TenantID, OrgID: item.OwnerOrgID}
 	if err := s.scopedCaseWrite(context.Background(), current, caseID, "", "", true, false, func(tx pgx.Tx) error {
-		ctx := context.Background()
+		ctx := commandContext(context.Background(), user)
 		if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended(current_schema() || ':profile-number:' || jsonb_build_array($1::text,$2::text)::text,0))`, current.TenantID, foldedProfileNumber(input.Number)); err != nil {
 			return err
 		}
@@ -588,8 +588,8 @@ func (s *Store) GetKnowledgeVersion(user accounts.User, knowledgeID, versionID s
 // knowledgeFamily reads only the requested tenant and knowledge family, while
 // preserving the original sequence order used to break equal creation times.
 func (s *Store) knowledgeFamily(user accounts.User, knowledgeID string) ([]Knowledge, error) {
-	ctx := context.Background()
-	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{AccessMode: pgx.ReadOnly})
+	ctx := commandContext(context.Background(), user)
+	tx, err := s.beginContextTx(ctx, pgx.TxOptions{AccessMode: pgx.ReadOnly})
 	if err != nil {
 		return nil, err
 	}
@@ -748,6 +748,7 @@ func relationPairKey(left, right Case) string {
 }
 
 func (s *Store) WorkbenchSnapshot(ctx context.Context, user accounts.User, period string, model WorkbenchModel) (WorkbenchSnapshot, error) {
+	ctx = commandContext(ctx, user)
 	if period != "day" && period != "week" && period != "month" {
 		return WorkbenchSnapshot{}, fault.Invalid("工作台周期只能是day、week或month")
 	}
@@ -1134,6 +1135,7 @@ func workbenchAuditEvents(st state, visible map[string]Case, tenantID string) []
 }
 
 func (s *Store) workbenchTools(ctx context.Context, user accounts.User, visible map[string]Case) ([]WorkbenchTool, error) {
+	ctx = commandContext(ctx, user)
 	caseIDs := make([]string, 0, len(visible))
 	for id := range visible {
 		caseIDs = append(caseIDs, id)
@@ -1141,7 +1143,7 @@ func (s *Store) workbenchTools(ctx context.Context, user accounts.User, visible 
 	if len(caseIDs) == 0 {
 		return []WorkbenchTool{}, nil
 	}
-	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
+	tx, err := s.beginContextTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
 	if err != nil {
 		return nil, err
 	}

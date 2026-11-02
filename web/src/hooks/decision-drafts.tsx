@@ -32,6 +32,9 @@ export type BatchDecisionDraftHandle = BatchDecisionDraft & {
 
 export type DecisionDraftScope = {
   userId: string;
+  tenantId?: string;
+  orgId?: string;
+  contextVersion?: string;
   caseId: string;
   runId: string;
   attemptId: string | null;
@@ -63,6 +66,9 @@ export function decisionDraftKey(
 ): string {
   return [
     scope.userId,
+    scope.contextVersion ?? "",
+    scope.tenantId ?? "",
+    scope.orgId ?? "",
     scope.caseId,
     scope.runId,
     scope.attemptId ?? "",
@@ -70,8 +76,8 @@ export function decisionDraftKey(
   ].join(DECISION_DRAFT_FIELD_SEPARATOR);
 }
 
-export function decisionDraftUserPrefix(userId: string): string {
-  return `${userId}${DECISION_DRAFT_FIELD_SEPARATOR}`;
+export function decisionDraftUserPrefix(userId: string, contextVersion?: string): string {
+  return `${userId}${DECISION_DRAFT_FIELD_SEPARATOR}${contextVersion ?? ""}${DECISION_DRAFT_FIELD_SEPARATOR}`;
 }
 
 export function writeDecisionDraft(

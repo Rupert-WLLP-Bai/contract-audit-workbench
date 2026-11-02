@@ -124,7 +124,7 @@ func (s *Store) finishAttemptNarrow(ctx context.Context, runID, attemptID, state
 	if !claimMatchesExecutionScope(ctx, claim) {
 		return errLeaseLost
 	}
-	tx, err := s.pool.Begin(ctx)
+	tx, err := s.beginContextTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return err
 	}
@@ -272,7 +272,13 @@ func (s *Store) reauthorizeAttempt(ctx context.Context, tx pgx.Tx, runID, attemp
 	if err := json.Unmarshal([]byte(memberJSON), &members); err != nil {
 		return errAttemptAuthorizationRevoked
 	}
-	user, err := s.authorityForAttempt(ctx, runID, attemptID)
+	var user accounts.User
+	var err error
+	if fenced, ok := tx.(*contextTx); ok && fenced.user.ID != "" {
+		user = fenced.user
+	} else {
+		user, err = s.authorityForAttempt(ctx, runID, attemptID)
+	}
 	if err != nil {
 		profile, ok := accounts.ByID(actorID)
 		if ok && profile.Issuer == "" && profile.Subject == "" {
@@ -412,11 +418,12 @@ func (s *Store) patchAttemptOutcomeProjection(ctx context.Context, outcome attem
 // the case lock, the run/attempt binding is read fresh, and any durable job row
 // for the attempt loses its lease. No local worker claim is required.
 func (s *Store) cancelAttemptNarrow(ctx context.Context, user accounts.User, caseID, runID, attemptID string) error {
+	ctx = commandContext(ctx, user)
 	current, err := trustedUser(user)
 	if err != nil {
 		return err
 	}
-	tx, err := s.pool.Begin(ctx)
+	tx, err := s.beginContextTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return err
 	}

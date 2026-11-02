@@ -88,6 +88,7 @@ func (s *Store) LLMEndpoint(ctx context.Context) (LLMEndpointSettings, bool, err
 // SaveLLMEndpoint replaces the platform endpoint. Only an admin session may
 // call it, and the whole row is rewritten in one transaction.
 func (s *Store) SaveLLMEndpoint(ctx context.Context, user accounts.User, input LLMEndpointInput) (LLMEndpointSettings, error) {
+	ctx = commandContext(ctx, user)
 	if !s.HasDatabase() {
 		return LLMEndpointSettings{}, errors.New("LLM endpoint settings require PostgreSQL")
 	}
@@ -104,7 +105,7 @@ func (s *Store) SaveLLMEndpoint(ctx context.Context, user accounts.User, input L
 	if err != nil {
 		return LLMEndpointSettings{}, fault.Invalid("模型列表无法保存")
 	}
-	tx, err := s.pool.Begin(ctx)
+	tx, err := s.beginContextTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return LLMEndpointSettings{}, err
 	}
@@ -164,6 +165,7 @@ func (s *Store) SaveLLMEndpoint(ctx context.Context, user accounts.User, input L
 // SaveLLMModelSelection selects the review and image-transcription models from
 // the already saved catalog. It never changes the endpoint or credential.
 func (s *Store) SaveLLMModelSelection(ctx context.Context, user accounts.User, reviewModel, ocrModel string, expectedRevision *int64) (LLMEndpointSettings, error) {
+	ctx = commandContext(ctx, user)
 	if !s.HasDatabase() {
 		return LLMEndpointSettings{}, errors.New("LLM endpoint settings require PostgreSQL")
 	}
@@ -178,7 +180,7 @@ func (s *Store) SaveLLMModelSelection(ctx context.Context, user accounts.User, r
 	if reviewModel == "" || ocrModel == "" {
 		return LLMEndpointSettings{}, fault.Invalid("请同时选择审查模型和图片转写模型")
 	}
-	tx, err := s.pool.Begin(ctx)
+	tx, err := s.beginContextTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return LLMEndpointSettings{}, err
 	}

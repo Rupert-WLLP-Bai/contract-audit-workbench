@@ -29,6 +29,7 @@ type ToolCallRequest struct {
 // ReserveToolCall atomically checks the current authorization and shared PG
 // budgets before recording one consumed tool invocation.
 func (s *Store) ReserveToolCall(ctx context.Context, user accounts.User, in ToolCallRequest) (string, error) {
+	ctx = commandContext(ctx, user)
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -52,7 +53,7 @@ func (s *Store) ReserveToolCall(ctx context.Context, user accounts.User, in Tool
 		return "", fault.Invalid("工具能力不适用于此类案件")
 	}
 
-	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted, AccessMode: pgx.ReadWrite})
+	tx, err := s.beginContextTx(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted, AccessMode: pgx.ReadWrite})
 	if err != nil {
 		return "", err
 	}
@@ -111,6 +112,7 @@ func (s *Store) ReserveToolCall(ctx context.Context, user accounts.User, in Tool
 // FinishToolCall terminally updates a reservation once, after rechecking the
 // caller's current case access and the same frozen run/attempt binding.
 func (s *Store) FinishToolCall(ctx context.Context, user accounts.User, callID, status string, outputBytes int64) error {
+	ctx = commandContext(ctx, user)
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -136,7 +138,7 @@ func (s *Store) FinishToolCall(ctx context.Context, user accounts.User, callID, 
 	if err != nil {
 		return err
 	}
-	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted, AccessMode: pgx.ReadWrite})
+	tx, err := s.beginContextTx(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted, AccessMode: pgx.ReadWrite})
 	if err != nil {
 		return err
 	}

@@ -1,6 +1,6 @@
 import { Button, Checkbox, Select, Upload } from "antd";
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { ApiError, errorMessage } from "../api/http";
+import { ApiError, assertCommandContextCurrent, bindIdempotencyCommandContext, captureCommandContext, errorMessage } from "../api/http";
 import { fileSha256, idempotencyFingerprint, newIdempotencyKey } from "../api/idempotency";
 import {
   useConfirmLegacyMaterialSelection,
@@ -144,15 +144,18 @@ export function MaterialCollectionPanel({ caseDetail, canWrite, actorId }: Props
       setUploadPreparationError("单个文件不能超过 32 MiB，请选择较小的文件。");
       return;
     }
+    const commandContext = captureCommandContext();
     setHashingFile(true);
     setUploadPreparationError(null);
     try {
       const target = targetMaterials.find((material) => material.material_id === effectiveTargetMaterialId);
       const purpose = fixedPurpose(role, attachmentPurpose);
       const contentDigest = await fileSha256(file);
-      const signature = JSON.stringify({ actorId, file: { name: file.name, size: file.size, lastModified: file.lastModified, type: file.type, contentDigest }, role, purpose, intent, material_id: target?.material_id, document_id: target?.current_document_id });
+      assertCommandContextCurrent(commandContext);
+      const signature = JSON.stringify({ actorId, sessionIdentity: commandContext.identity, file: { name: file.name, size: file.size, lastModified: file.lastModified, type: file.type, contentDigest }, role, purpose, intent, material_id: target?.material_id, document_id: target?.current_document_id });
       const fingerprint = await idempotencyFingerprint(signature);
-      const storageKey = `caw:upload-idempotency:${caseDetail.id}:${actorId}:${fingerprint}`;
+      assertCommandContextCurrent(commandContext);
+      const storageKey = `caw:upload-idempotency:${caseDetail.id}:${actorId}:${commandContext.contextVersion}:${fingerprint}`;
       const retry = uploadRetry.current;
       const idempotencyKey = retry?.file === file && retry.signature === signature
         ? retry.key
@@ -161,6 +164,7 @@ export function MaterialCollectionPanel({ caseDetail, canWrite, actorId }: Props
           : sessionStorage.getItem(storageKey) ?? newIdempotencyKey();
       uploadRetry.current = { file, signature, key: idempotencyKey };
       sessionStorage.setItem(storageKey, idempotencyKey);
+      bindIdempotencyCommandContext(idempotencyKey, commandContext);
       upload.mutate(
         {
           file,

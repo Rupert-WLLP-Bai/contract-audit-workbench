@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"encoding/json"
+	"strconv"
 	"time"
 
 	"contractaudit/internal/access"
@@ -38,6 +39,7 @@ type DocumentIntakeAuthority struct {
 // presented current session and exact upload bytes. The raw ticket is returned
 // once; only its SHA-256 digest is persisted.
 func (s *Store) CreateDocumentIntakeTicket(ctx context.Context, user accounts.User, sessionToken string, operationID, caseID, uploadKey string, body []byte) (string, error) {
+	ctx = commandContext(ctx, user)
 	current, err := trustedUser(user)
 	if err != nil || sessionToken == "" || operationID == "" || caseID == "" || uploadKey == "" {
 		return "", fault.Unauthenticated("建案授权已失效")
@@ -52,7 +54,7 @@ func (s *Store) CreateDocumentIntakeTicket(ctx context.Context, user accounts.Us
 	ticketDigest := identityTokenDigest(ticket)
 	bodyHash := caseIntakeDigest(body)
 	sessionDigest := sessionTokenDigest(sessionToken)
-	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted})
+	tx, err := s.beginContextTx(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted})
 	if err != nil {
 		return "", err
 	}
@@ -142,10 +144,14 @@ func (s *Store) CreateDocumentIntakeTicket(ctx context.Context, user accounts.Us
 		return "", fault.Forbidden("当前身份无权继续此建案上传")
 	}
 	if _, err := tx.Exec(ctx, `INSERT INTO intake_authority_tickets
-		(ticket_digest,tenant_id,operation_id,session_digest,principal_id,membership_id,actor_id,org_id,case_id,upload_key,filename,media_type,body_sha256,action,expires_at)
-		VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,'create_primary_contract',clock_timestamp()+interval '2 minutes')`,
+		(ticket_digest,tenant_id,operation_id,session_digest,principal_id,membership_id,actor_id,org_id,case_id,upload_key,filename,media_type,body_sha256,action,expires_at,context_version)
+		VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,'create_primary_contract',clock_timestamp()+interval '2 minutes',$14)`,
 		ticketDigest, accounts.Tenant(current), operationID, sessionDigest, storedSession.PrincipalID, storedSession.MembershipID,
-		current.ID, current.OrgID, caseID, uploadKey, identity.FileName, identity.MediaType, bodyHash); err != nil {
+		current.ID, current.OrgID, caseID, uploadKey, identity.FileName, identity.MediaType, bodyHash, func() int64 {
+			p, _ := current.CommandAuthority()
+			v, _ := strconv.ParseInt(p.ContextVersion, 10, 64)
+			return v
+		}()); err != nil {
 		return "", err
 	}
 	if err := tx.Commit(ctx); err != nil {
@@ -181,6 +187,14 @@ func (s *Store) ResolveDocumentIntakeTicket(ctx context.Context, ticket, bodySHA
 	if err := s.authorizeCurrentIntakeTicketCase(ctx, user, authority); err != nil {
 		return DocumentIntakeAuthority{}, err
 	}
+	var captured *int64
+	if err = s.pool.QueryRow(ctx, `SELECT context_version FROM intake_authority_tickets WHERE ticket_digest=$1`, identityTokenDigest(ticket)).Scan(&captured); err != nil || captured == nil {
+		return DocumentIntakeAuthority{}, fault.Forbidden("建案上传上下文不可用")
+	}
+	proof, ok := user.CommandAuthority()
+	if !ok || strconv.FormatInt(*captured, 10) != proof.ContextVersion {
+		return DocumentIntakeAuthority{}, fault.New(409, "context_stale", "建案上传上下文已变更")
+	}
 	authority.TenantID, authority.Role, authority.Issuer, authority.Subject = tenantID, user.Role, user.Issuer, user.Subject
 	authority.PrincipalID, authority.MembershipID = user.PrincipalID, user.MembershipID
 	authority.Grants, authority.Action = user.Grants, action
@@ -188,7 +202,8 @@ func (s *Store) ResolveDocumentIntakeTicket(ctx context.Context, ticket, bodySHA
 }
 
 func (s *Store) authorizeCurrentIntakeTicketCase(ctx context.Context, user accounts.User, authority DocumentIntakeAuthority) error {
-	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted, AccessMode: pgx.ReadOnly})
+	ctx = commandContext(ctx, user)
+	tx, err := s.beginContextTx(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted, AccessMode: pgx.ReadOnly})
 	if err != nil {
 		return err
 	}

@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"errors"
 	"net/http"
 
 	"contractaudit/internal/accounts"
@@ -57,6 +58,10 @@ func (h *handler) actorForAudience(w http.ResponseWriter, r *http.Request, audie
 	}
 	user, actual, err := h.authenticateSession(r.Context(), token)
 	if err != nil {
+		var failure *fault.Error
+		if errors.As(err, &failure) && failure.Status == 401 {
+			err = fault.New(401, "session_invalid", "会话已失效")
+		}
 		writeErr(w, err)
 		return accounts.User{}, false
 	}
