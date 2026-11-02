@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Checks the web behavior for “legal knowledge API”; representative assertions cover parses the Go wire fixtures and keeps legal knowledge review explicitly unrun, uses case context, sends exact article and business-time filters, and loads the company status read-only, dispatches admin queries through existing governance with kind=legal and imports with stable idempotency headers. It protects the rendered/API state expected by this component without starting the full browser journey.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-31
+// Updated: 2026-10-31
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";

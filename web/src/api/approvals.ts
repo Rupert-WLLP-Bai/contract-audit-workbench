@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Defines typed contract-approval projections and validates round, task and decision-action values; preserves the frozen-round and append-only-decision boundary.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-01
+// Updated: 2026-11-01
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 import { ApiError, jsonInit, requestJson } from "./http";
 import { enumValue, responseReader } from "./respond";
 

@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Checks the web behavior for “real Keycloak viewer cannot establish Admin session and forged callback stays rejected”; representative assertions cover real Keycloak viewer cannot establish Admin session and forged callback stays rejected. It protects the rendered/API state expected by this component without starting the full browser journey.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-25
+// Updated: 2026-10-31
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 import { test, expect } from "playwright/test";
 import { parseActor } from "../../src/api/parse";
 

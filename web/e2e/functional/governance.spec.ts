@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Checks the web behavior for “Admin governs drafts with preserved CAS edits, located sample facts and frozen v1/v2 review reports”; representative assertions cover Admin governs drafts with preserved CAS edits, located sample facts and frozen v1/v2 review reports, governance rejects anonymous/client writes, forged tenant/lifecycle and nonadmin Admin login. It protects the rendered/API state expected by this component without starting the full browser journey.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-25
+// Updated: 2026-10-25
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 import {
   test, expect, operations, apiURL, adminURL, body, login, uiLogin,
   createCase, upload, startReview, waitWorkspace, evaluation, assertAnchors,

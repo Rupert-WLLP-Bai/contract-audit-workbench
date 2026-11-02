@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Parses frozen legal authorities, article spans, applicability conditions and review projections against their stored identities; missing source evidence remains explicit.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-31
+// Updated: 2026-10-31
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 import { paths } from "./paths";
 import { requestJson } from "./http";
 import { responseReader } from "./respond";

@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Checks the web behavior for “parseEvidenceRequest, evidence workflow responses”; representative assertions cover reads a request sourced from an evaluation, reads a request sourced from a gap and absent optional references, defaults optional evaluation fields and empty object references. It protects the rendered/API state expected by this component without starting the full browser journey.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-30
+// Updated: 2026-10-30
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 import { describe, expect, it } from "vitest";
 import {
   createEvidenceReceipt,

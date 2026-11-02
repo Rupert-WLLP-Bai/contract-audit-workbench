@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Checks the web behavior for “apiParameterInputKey, apiRequestBodyMode”; representative assertions cover namespaces parameter values by operation, location and name, returns no fields for bodies that are not form bodies, returns no fields for a text body that declares properties. It protects the rendered/API state expected by this component without starting the full browser journey.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-30
+// Updated: 2026-10-30
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 import { spawn } from "node:child_process";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";

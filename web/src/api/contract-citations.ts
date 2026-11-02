@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Parses and fetches frozen contract citations, checking digest, material identity and Unicode quote offsets so a citation is shown only when it matches its immutable source.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-31
+// Updated: 2026-10-31
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 import { paths } from "./paths";
 import { requestJson } from "./http";
 import { responseReader } from "./respond";

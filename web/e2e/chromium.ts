@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Resolves the browser executable from CHROMIUM_BIN, Playwright-managed Chromium or conventional system paths, with an actionable failure when none is installed.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-28
+// Updated: 2026-10-28
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 import { existsSync } from "node:fs";
 import { chromium } from "playwright";
 

@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Owns the same-origin HTTP transport, session identity cache invalidation, API error decoding and conservative retry classification; it does not grant authorization.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-25
+// Updated: 2026-11-02
+// Revision: r2
+// Copyright: See LICENSE
+// End file metadata.
+
 export class ApiError extends Error {
   readonly status: number;
   readonly code: string;
