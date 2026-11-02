@@ -11,6 +11,7 @@ import {
   LogoutOutlined,
   SafetyCertificateOutlined,
   SettingOutlined,
+  TeamOutlined,
 } from "@ant-design/icons";
 import type { Actor } from "../api/types";
 import { ContextSwitcher } from "./context-switcher";
@@ -31,6 +32,8 @@ function versionedRouteTitle(
 }
 
 function adminBreadcrumb(pathname: string): string {
+  if (pathname.startsWith("/admin/tenant-lifecycle")) return "租户生命周期";
+  if (pathname.startsWith("/admin/jurisdiction-operations")) return "辖区运营统计";
   if (pathname.startsWith("/admin/infrastructure")) return "基础设施与中间件";
   if (pathname.startsWith("/admin/governed-knowledge"))
     return versionedRouteTitle(pathname, {
@@ -47,6 +50,8 @@ function adminBreadcrumb(pathname: string): string {
 }
 
 function adminMenuKey(pathname: string): string {
+  if (pathname.startsWith("/admin/tenant-lifecycle")) return "/admin/tenant-lifecycle";
+  if (pathname.startsWith("/admin/jurisdiction-operations")) return "/admin/jurisdiction-operations";
   if (pathname.startsWith("/admin/infrastructure")) return "/admin/infrastructure";
   if (pathname.startsWith("/admin/governed-knowledge"))
     return "/admin/governed-knowledge";
@@ -81,6 +86,23 @@ const ADMIN_MENU_ITEMS = [
         label: (
           <NavLink to="/admin/infrastructure">基础设施与中间件</NavLink>
         ),
+      },
+    ],
+  },
+  {
+    key: "tenant-operations",
+    type: "group" as const,
+    label: "租户运营",
+    children: [
+      {
+        key: "/admin/tenant-lifecycle",
+        icon: <TeamOutlined />,
+        label: <NavLink to="/admin/tenant-lifecycle">租户生命周期</NavLink>,
+      },
+      {
+        key: "/admin/jurisdiction-operations",
+        icon: <ApiOutlined />,
+        label: <NavLink to="/admin/jurisdiction-operations">辖区运营统计</NavLink>,
       },
     ],
   },

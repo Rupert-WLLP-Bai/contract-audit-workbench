@@ -1,0 +1,20 @@
+@layer components {
+  .jurisdiction-operations-page .page-head { margin-bottom: var(--space-4); }
+  .jurisdiction-summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 190px), 1fr)); gap: var(--space-4); margin-bottom: var(--space-5); }
+  .jurisdiction-summary .ant-statistic { padding: var(--space-3) var(--space-4); background: transparent; }
+  .jurisdiction-projection-card,
+  .jurisdiction-filter-card,
+  .jurisdiction-operations-card { margin-bottom: var(--space-5); background: var(--surface-raised); }
+  .jurisdiction-alert { margin-bottom: var(--space-4); }
+  .jurisdiction-projection-card code,
+  .jurisdiction-operations-card code { overflow-wrap: anywhere; }
+  .jurisdiction-filter-card label { display: inline-flex; align-items: center; gap: var(--space-2); }
+  .jurisdiction-filter-card .ant-input { width: 160px; }
+  .jurisdiction-operations-card .ant-table { background: var(--surface-raised); }
+  .jurisdiction-operations-card .ant-table-thead > tr > th { white-space: nowrap; }
+  .jurisdiction-total-row > td { font-weight: 600; background: var(--surface-subtle); }
+  @media (max-width: 640px) {
+    .jurisdiction-filter-card label { width: 100%; justify-content: space-between; }
+    .jurisdiction-filter-card .ant-input { flex: 1; width: auto; }
+  }
+}
