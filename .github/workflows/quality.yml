@@ -117,6 +117,12 @@ jobs:
       - name: Test legal asset preparation
         run: python3 scripts/test_fetch_legal_test_assets.py
       - name: Prepare pinned legal test assets
+        env:
+          CAW_LEGAL_TEST_ARCHIVE_XZ_01: ${{ vars.CAW_LEGAL_TEST_ARCHIVE_XZ_01 }}
+          CAW_LEGAL_TEST_ARCHIVE_XZ_02: ${{ vars.CAW_LEGAL_TEST_ARCHIVE_XZ_02 }}
+          CAW_LEGAL_TEST_ARCHIVE_XZ_03: ${{ vars.CAW_LEGAL_TEST_ARCHIVE_XZ_03 }}
+          CAW_LEGAL_TEST_ARCHIVE_XZ_04: ${{ vars.CAW_LEGAL_TEST_ARCHIVE_XZ_04 }}
+          CAW_LEGAL_TEST_ARCHIVE_XZ_05: ${{ vars.CAW_LEGAL_TEST_ARCHIVE_XZ_05 }}
         run: python3 scripts/fetch_legal_test_assets.py --destination "$RUNNER_TEMP/caw-legal-test-assets"
       - name: Go gate
         env:
