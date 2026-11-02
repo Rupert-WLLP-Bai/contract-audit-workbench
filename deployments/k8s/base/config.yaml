@@ -87,6 +87,8 @@ metadata:
     app.kubernetes.io/part-of: contract-audit
 data:
   CONTEXT_SWITCH_ENABLED: "false"
+  CAW_PLATFORM_OPERATOR_ACTORS: ""
+  CAW_PLATFORM_OPERATOR_DATABASE_PRINCIPALS: ""
 ---
 apiVersion: v1
 kind: ConfigMap

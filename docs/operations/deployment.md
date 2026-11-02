@@ -81,6 +81,8 @@ APP_ENV=<target> DATABASE_SCHEMA=<application_schema> \
 
 `CONTEXT_SWITCH_ENABLED` 由 Core 读取，默认 `false`；缺失或空值保持关闭，非法布尔值会使 Core 启动失败。生产基础模板明确关闭，只有经过审批的目标环境才可显式设为 `true`。Compose 只把它传给 `core-api`；Kubernetes 使用独立的 `contract-audit-core-runtime` ConfigMap，只有 Core Deployment 引用此键。K3d 默认关闭；本地未来验收可显式运行 `CONTEXT_SWITCH_ENABLED=true python3 deployments/k3d.py deploy`，Compose 联调可运行 `CONTEXT_SWITCH_ENABLED=true make apps-up`。
 
+平台运营操作还要求 `CAW_PLATFORM_OPERATOR_ACTORS` 与 `CAW_PLATFORM_OPERATOR_DATABASE_PRINCIPALS` 双白名单同时匹配：前者填写精确 actor ID，后者填写 Core 实际数据库 login；普通租户管理员不会自动成为平台运营者。两项默认空值。身份 crosswalk 仅用于新 tenant 初始化 status；已有 tenant 的 status/live epoch 由租户生命周期操作维护。
+
 关闭开关仅关闭上下文切换和 support 命令的入口，不会停用会话撤销、上下文版本校验、CSRF 或写入 fence；开启开关也不绕过迁移/schema/fence 前置条件。既有 `.env.distributed` profile 缺少此键时，部署 helper 从 `.env` 中显式值补齐，未设或空值默认 `false`；k3d 私有 `secrets.json` 缺键升级为 `false`。这些升级保留已有凭据，不因开关变更轮换密钥。此配置只是 Core 功能门控，不是租户授权或已完成验收的证明。
 
 ## CLM 版本密钥配置
