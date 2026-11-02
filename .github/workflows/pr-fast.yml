@@ -31,6 +31,7 @@ jobs:
       - name: Checkout pull request with full base history
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
+          ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
 
       - name: Plan scoped checks
@@ -148,7 +149,59 @@ jobs:
       - name: Run scoped fast checks
         env:
           CAW_DOCS_PREVIEW_DIR: ${{ runner.temp }}/caw-docs-preview
+          CAW_METADATA_EXTERNAL_GUARD: "1"
         run: python3 scripts/check_fast.py --base "$BASE_SHA"
+
+      - name: Verify file metadata from fixed target branch tools
+        env:
+          SUBJECT_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          python3 - <<'PY'
+          import json, os, pathlib, subprocess, sys, tempfile
+          base, subject = os.environ['BASE_SHA'], os.environ['SUBJECT_SHA']
+          def git(*args):
+              return subprocess.check_output(['git', *args])
+          if git('rev-parse', 'HEAD').decode().strip() != subject:
+              raise SystemExit('checkout does not match the fixed PR head')
+          names = ['metadata_core', 'git_inventory', 'manifest_tool', 'legacy_bootstrap', 'gate_adapter']
+          paths = ['scripts/file_metadata/'+name+'.py' for name in names]
+          entries = {}
+          for row in git('ls-tree', '-z', base, '--', *paths).split(b'\0'):
+              if row:
+                  fields, path = row.split(b'\t', 1)
+                  entries[path.decode()] = fields.decode().split()
+          if not entries:
+              policy = json.loads(git('show', base+':scripts/file_metadata/policy.json'))
+              manifest = json.loads(git('show', base+':scripts/file_metadata/manifest.json'))
+              if policy.get('manifest_status') != 'populated-from-issue-115-baseline' or not manifest.get('files'):
+                  raise SystemExit('BASE lacks a trusted metadata verifier and a recognized legacy registry')
+              result = {'status':'NOT_RUN', 'mode':'fixed-base-foundation', 'base':base, 'subject':subject,
+                        'reason':'Target BASE has no verifier yet; candidate code cannot attest initialization.'}
+              accepted = True
+          else:
+              if set(entries) != set(paths):
+                  raise SystemExit('BASE metadata verifier is incomplete')
+              directory = pathlib.Path(tempfile.mkdtemp(prefix='caw-metadata-base-', dir=os.environ['RUNNER_TEMP']))
+              for path, (mode, kind, oid) in entries.items():
+                  if mode not in ('100644','100755') or kind != 'blob':
+                      raise SystemExit('BASE metadata verifier has an unsupported file mode')
+                  raw = git('cat-file', 'blob', oid)
+                  if not raw:
+                      raise SystemExit('BASE metadata verifier contains an empty module')
+                  (directory / pathlib.PurePosixPath(path).name).write_bytes(raw)
+              run = subprocess.run([sys.executable, str(directory/'gate_adapter.py'), 'check',
+                                    '--repo', os.getcwd(), '--base', base, '--subject', subject],
+                                   text=True, stdout=subprocess.PIPE, check=False)
+              result = json.loads(run.stdout)
+              accepted = (run.returncode == 0 and result.get('status') == 'PASS' or
+                          run.returncode == 3 and result.get('status') == 'NOT_RUN')
+          target = pathlib.Path(os.environ['RUNNER_TEMP'])/'caw-fast'/'file-metadata-base-guard.json'
+          target.parent.mkdir(parents=True, exist_ok=True)
+          target.write_text(json.dumps(result, ensure_ascii=False, indent=2)+'\n')
+          print(json.dumps({key:result[key] for key in ('status','mode','base','subject','reason') if key in result}, ensure_ascii=False))
+          if not accepted:
+              raise SystemExit('fixed-BASE metadata verification failed')
+          PY
 
       - name: Upload documentation preview
         if: steps.plan.outputs.docs_build == 'true' && success()
