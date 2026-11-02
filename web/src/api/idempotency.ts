@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Creates random mutation keys and scopes pending keys to actor, target and payload fingerprint so retries reuse only an identical in-flight write.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-31
+// Updated: 2026-11-02
+// Revision: r2
+// Copyright: See LICENSE
+// End file metadata.
+
 import {
   assertCommandContextCurrent,
   bindIdempotencyCommandContext,

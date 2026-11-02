@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Reads a captured Chromium DevTools Protocol request body from the event when available, otherwise retrieves it from the matching target session; reports unavailable bodies instead of guessing.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-31
+// Updated: 2026-10-31
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 export interface CDPRequestPostDataInput {
   requestId?: string;
   sessionId?: string;

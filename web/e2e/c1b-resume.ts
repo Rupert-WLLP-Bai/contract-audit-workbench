@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Resumes an existing case from configured E2E identifiers, waits for parsed materials and review completion, then verifies the persisted report and its run/attempt links.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-25
+// Updated: 2026-10-31
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 import { chromiumExecutable } from "./chromium";
 import { parseReviewWorkspace } from "../src/api/parse";
 import type { ConstraintEvaluation, ReviewWorkspace } from "../src/api/types";

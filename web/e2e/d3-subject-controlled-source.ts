@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Runs the D3 two-case subject-controlled-source browser scenario using configured case/source identities and records console, page, HTTP-error and failure-page diagnostics.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-31
+// Updated: 2026-10-31
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 import assert from "node:assert/strict";
 import { realpath, writeFile } from "node:fs/promises";
 import { join, relative, sep } from "node:path";

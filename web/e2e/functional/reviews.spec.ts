@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Checks the web behavior for “real model review retains deterministic relations, exact anchors, manual decision CAS and SSE resume”; representative assertions cover real model review retains deterministic relations, exact anchors, manual decision CAS and SSE resume, durable cancellation and retry append attempts while freezing original inputs and errors, missing live planner model rejects acceptance while preserving ready materials. It protects the rendered/API state expected by this component without starting the full browser journey.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-25
+// Updated: 2026-10-31
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 import { test, expect, operations, apiURL, webURL, body, login, uiLogin, createCase, upload, startReview, waitWorkspace, warrantyCase, assertAnchors, evaluation, record, rows } from "./helpers";
 import { parseReviewWorkspace } from "../../src/api/parse";
 

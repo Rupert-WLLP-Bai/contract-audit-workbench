@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Captures readiness, page-state, keyboard-accessibility, and cross-site evidence for the client/admin/portal at configured viewports; writes a manifest under the external run-output directory.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-25
+// Updated: 2026-10-28
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 import { chromiumExecutable } from "./chromium";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";

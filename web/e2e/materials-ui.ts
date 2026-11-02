@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Automates material upload, primary-material replacement and version selection through visible workbench controls, returning server-assigned material/version identities.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-31
+// Updated: 2026-10-31
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 import { readCDPRequestPostData } from "./cdp-request-post-data";
 import { chooseAntOption, clickAntOptionByAttribute } from "./c1b-select";
 import assert from "node:assert/strict";

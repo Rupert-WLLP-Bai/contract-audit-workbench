@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Checks the web behavior for “CDP request body capture”; representative assertions cover uses the event body when present without another CDP call, retrieves a base64 body using the captured request and target session, fails closed when the request body cannot be retrieved. It protects the rendered/API state expected by this component without starting the full browser journey.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-31
+// Updated: 2026-10-31
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 import { describe, expect, test } from "bun:test";
 import { readCDPRequestPostData } from "./cdp-request-post-data";
 

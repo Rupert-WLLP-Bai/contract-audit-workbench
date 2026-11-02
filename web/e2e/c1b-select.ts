@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Selects and verifies Ant Design controlled dropdown values in browser journeys, waiting for the selected label to be applied instead of assuming a click succeeded.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-31
+// Updated: 2026-10-31
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 import assert from "node:assert/strict";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";

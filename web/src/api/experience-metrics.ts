@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Loads and validates governed experience outcome samples and aggregate metrics for a selected knowledge reference; values remain server-reported statistics.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-31
+// Updated: 2026-10-31
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 import { requestJson } from "./http";
 import { enumValue, responseReader } from "./respond";
 import type { KnowledgeRef } from "./governed-knowledge";

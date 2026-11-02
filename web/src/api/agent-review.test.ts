@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Checks the web behavior for “AgentReview API parser, AgentReview boundary values”; representative assertions cover reads finite runtime statuses and preserves unrecorded historical round IDs, parses runtime tool events, returned observations and frozen knowledge reads, preserves the runtime planner round on events. It protects the rendered/API state expected by this component without starting the full browser journey.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-25
+// Updated: 2026-10-30
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 import { describe, expect, it } from "vitest";
 import { parseAgentReview } from "./agent-review";
 

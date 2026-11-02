@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Provides real-API browser test helpers using the configured client/admin/workbench URLs, including authenticated requests, response parsing and row extraction for functional specs.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-25
+// Updated: 2026-10-25
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 import { test, expect, type APIRequestContext, type APIResponse, type Page } from "playwright/test";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";

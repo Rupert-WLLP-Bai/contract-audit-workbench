@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Converts the fixed C1-B business instant between UTC and Asia/Shanghai input fields so browser scenarios assert the same contract business time on every host.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-31
+// Updated: 2026-10-31
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 import assert from "node:assert/strict";
 import type { Page } from "playwright";
 
