@@ -1,3 +1,13 @@
+/* File metadata (manifest mirror): */
+/* Purpose: Defines visual tokens and component/page rules, including .review-diff, .review-diff-columns, .review-diff-side, .review-diff-side h4; the stylesheet is imported by the web shell and carries no application state. */
+/* Author: Bai Junhao <baijunhao@cq.chinamobile.com> */
+/* Contact: +86 13617696321 */
+/* Created: 2026-10-31 */
+/* Updated: 2026-10-31 */
+/* Revision: r1 */
+/* Copyright: See LICENSE */
+/* End file metadata. */
+
 .review-diff {
   min-width: 0;
   margin-block: var(--space-4);

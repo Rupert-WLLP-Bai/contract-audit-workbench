@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Supplies synthetic-only operator-audit capability packs, bindings, observations and impact plans for tests/demo panels; production components do not import these fixtures.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-29
+// Updated: 2026-10-29
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 /**
  * Test-only fixtures for the operator-audit panels.
  *

@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Renders the operator-audit external evidence gate extension from its typed case/run projections and explicit feature flags; any command uses the draft extension client and remains disabled unless the server and deployment enable that surface.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-30
+// Updated: 2026-10-30
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 import type { ReactNode } from "react";
 import {
   DEFAULT_OPERATOR_AUDIT_FLAGS,

@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Defines operator-audit extension flags with all surfaces off by default; panel mounting remains conditional so disabled deployments gain no write controls.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-29
+// Updated: 2026-10-29
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 /**
  * Feature switches for the operator-audit extension.
  *

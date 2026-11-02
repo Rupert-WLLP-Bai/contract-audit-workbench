@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Builds material/version selection options and converts browser UTF-16 positions to code-point ranges used by frozen parsed-text citations.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-31
+// Updated: 2026-10-31
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 import type { CaseDetail } from "../api/types";
 
 export interface RuneSpan {

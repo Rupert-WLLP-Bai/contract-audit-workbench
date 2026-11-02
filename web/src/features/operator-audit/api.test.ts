@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Checks the web behavior for “operator audit API client”; representative assertions cover loads the capability pack catalog from the draft path, posts an explicitly confirmed binding with an idempotency key, refuses to send a write without an idempotency key. It protects the rendered/API state expected by this component without starting the full browser journey.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-29
+// Updated: 2026-10-31
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "../../api/http";
 import {
