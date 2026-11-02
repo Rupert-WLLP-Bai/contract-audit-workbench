@@ -19,8 +19,26 @@ class RepositoryPolicyTest(unittest.TestCase):
         self.assertFalse(repository_policy.is_ignored(ROOT, "AGENTS.md"))
         self.assertFalse(repository_policy.is_ignored(ROOT, "README.md"))
         for relative in (
+            "CHANGELOG.md",
+            "CONTRIBUTING.md",
+            "docs/index.md",
+            "docs/architecture/overview.md",
+            "docs/engineering/guide.md",
+            "docs/glossary/terms.md",
+            "docs/operations/restore.md",
+            "docs/product/workflow.md",
+            ".github/pull_request_template.md",
+            "docs-site/README.md",
+        ):
+            self.assertFalse(repository_policy.is_ignored(ROOT, relative), relative)
+        for relative in (
             "ROADMAP.md",
             "docs/design.md",
+            "docs/research/notes.md",
+            "docs/prompts/review.md",
+            "docs/samples/batch.md",
+            "docs/reports/result.md",
+            "docs/screenshots/capture.md",
             "prompts/00-baseline-and-repository-policy.md",
             "presentation/deck.pptx",
             "screenshots/demo.png",
@@ -37,8 +55,17 @@ class RepositoryPolicyTest(unittest.TestCase):
             "AGENTS.md",
             "README.md",
             "internal/store/revision.go",
-            "docs/plan.md",
-            "prompts/START-CURSOR.md",
+            "docs/engineering/guide.md",
+            "docs/glossary/concepts.json",
+            "docs/index.md",
+            "docs/design.md",
+            "docs/research/notes.md",
+            "docs/prompts/START-CURSOR.md",
+            "docs/samples/batch.md",
+            "docs/reports/result.md",
+            "docs/screenshots/capture.md",
+            ".github/pull_request_template.md",
+            "docs-site/README.md",
             "web/src/app.tsx",
             "internal/model/testdata/warranty36.png",
             "notes/screenshot.png",
@@ -78,6 +105,10 @@ class RepositoryPolicyTest(unittest.TestCase):
         (root / "AGENTS.md").write_text("agents\n", encoding="utf-8")
         (root / "docs").mkdir()
         (root / "docs" / "design.md").write_text("ignored delivery material\n", encoding="utf-8")
+        handbook = root / "docs" / "engineering"
+        handbook.mkdir(parents=True)
+        (handbook / "community-guide.md").write_text("curated handbook\n", encoding="utf-8")
+        (root / "docs" / "index.md").write_text("handbook index\n", encoding="utf-8")
         (root / "node_modules").mkdir()
         (root / "node_modules" / "dependency.md").write_text("ignored dependency\n", encoding="utf-8")
 
@@ -108,6 +139,9 @@ class RepositoryPolicyTest(unittest.TestCase):
             self._write_source_tree(root)
             with mock.patch.dict(os.environ, {"PATH": str(Path(tmp) / "no-git")}):
                 self.assertEqual(repository_policy.violations(root), [])
+                self.assertFalse(repository_policy.is_ignored(root, "docs/engineering/community-guide.md"))
+                self.assertFalse(repository_policy.is_ignored(root, "docs/index.md"))
+                self.assertTrue(repository_policy.is_ignored(root, "docs/design.md"))
 
     def test_source_tree_without_git_still_rejects_unignored_delivery_files(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -188,18 +222,25 @@ class RepositoryPolicyTest(unittest.TestCase):
             design = root / "docs"
             design.mkdir()
             (design / "design.md").write_text("forced design\n", encoding="utf-8")
+            handbook = design / "engineering"
+            handbook.mkdir()
+            (handbook / "community-guide.md").write_text("curated handbook\n", encoding="utf-8")
+            (design / "index.md").write_text("handbook index\n", encoding="utf-8")
             fixture = root / "internal" / "documentparse" / "testdata" / "pdf"
             fixture.mkdir(parents=True)
             (fixture / "ok.pdf").write_bytes(b"%PDF-1.4\n")
             (fixture / "huge.pdf").write_bytes(b"x" * (repository_policy.FIXTURE_MAX_BYTES + 1))
             subprocess.run(
                 ["git", "add", "-f", "README.md", "AGENTS.md", "docs/design.md",
+                 "docs/engineering/community-guide.md", "docs/index.md",
                  "internal/documentparse/testdata/pdf/ok.pdf",
                  "internal/documentparse/testdata/pdf/huge.pdf"],
                 cwd=root, check=True, capture_output=True,
             )
             found = repository_policy.violations(root)
             self.assertTrue(any("docs/design.md" in item for item in found), found)
+            self.assertFalse(any("docs/engineering/community-guide.md" in item for item in found), found)
+            self.assertFalse(any("docs/index.md" in item for item in found), found)
             self.assertTrue(any("public.md" in item for item in found), found)
             self.assertTrue(any("huge.pdf" in item and "exceeds" in item for item in found), found)
             self.assertFalse(any("ok.pdf" in item for item in found), found)

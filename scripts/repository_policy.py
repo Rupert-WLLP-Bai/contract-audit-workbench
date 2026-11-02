@@ -5,7 +5,11 @@ import re
 import subprocess
 
 REQUIRED_MARKDOWN = {"README.md", "AGENTS.md"}
-FORBIDDEN_ROOTS = {"docs", "demos", "presentation", "materials", "references", "screenshots"}
+ROOT_MARKDOWN_ALLOWLIST = REQUIRED_MARKDOWN | {"CHANGELOG.md", "CONTRIBUTING.md"}
+HANDBOOK_DIRS = {"architecture", "engineering", "glossary", "operations", "product"}
+FORBIDDEN_ROOTS = {"demos", "presentation", "materials", "references", "screenshots"}
+FORBIDDEN_DOC_DIRS = {"docs/research", "docs/prompts", "docs/samples", "docs/reports", "docs/screenshots"}
+HANDBOOK_DATA = {"docs/glossary/concepts.json", "docs/architecture/store-ownership.csv"}
 BULK_SUFFIXES = {
     ".pdf", ".doc", ".docx", ".ppt", ".pptx", ".xls", ".xlsx",
     ".png", ".jpg", ".jpeg", ".webp", ".gif", ".mp4", ".mov", ".wav",
@@ -134,12 +138,27 @@ def violations(root):
     return found
 
 
+def _markdown_allowed(relative):
+    """Keep Markdown only in the root/docs handbooks and exact maintenance pages."""
+    if relative in ROOT_MARKDOWN_ALLOWLIST:
+        return True
+    if relative in {"docs/index.md", ".github/pull_request_template.md", "docs-site/README.md"}:
+        return True
+    parts = Path(relative).parts
+    return len(parts) >= 3 and parts[0] == "docs" and parts[1] in HANDBOOK_DIRS
+
+
 def _append_path_violations(root, relative, found):
     path = Path(relative)
-    if path.suffix.lower() == ".md" and relative not in REQUIRED_MARKDOWN:
+    if path.suffix.lower() == ".md" and not _markdown_allowed(relative):
         found.append(f"markdown is outside the source allowlist: {relative}")
     if path.parts and path.parts[0] in FORBIDDEN_ROOTS:
         found.append(f"delivery material is in the source tree: {relative}")
+    if path.parts and path.parts[0] == "docs":
+        if any(relative == prefix or relative.startswith(prefix + "/") for prefix in FORBIDDEN_DOC_DIRS):
+            found.append(f"delivery material is in the source tree: {relative}")
+        elif path.suffix.lower() != ".md" and relative not in HANDBOOK_DATA:
+            found.append(f"docs content is outside the handbook allowlist: {relative}")
     if path.suffix.lower() not in BULK_SUFFIXES:
         return
     if path.as_posix() in RUNTIME_ASSETS:
