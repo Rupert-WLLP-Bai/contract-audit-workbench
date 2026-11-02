@@ -15,6 +15,15 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
+// An empty outer slice grants nothing in either representation. Non-empty
+// grants retain exact ordering, scope, expiry and nested-slice comparisons.
+func sameMembershipGrants(left, right []access.Grant) bool {
+	if len(left) == 0 && len(right) == 0 {
+		return true
+	}
+	return reflect.DeepEqual(left, right)
+}
+
 func trustedUser(user accounts.User) (accounts.User, error) {
 	if user.HasResolvedMembership() {
 		if user.ID == "" || !user.Enabled || user.TenantID == "" || user.OrgID == "" || user.Role == "" ||
@@ -307,7 +316,7 @@ func (s *Store) sessionFromDigest(ctx context.Context, digest string) (session, 
 	}
 	if user.HasResolvedMembership() {
 		var grants []access.Grant
-		if metadata.role == nil || *metadata.role != user.Role || json.Unmarshal(metadata.grants, &grants) != nil || !reflect.DeepEqual(grants, user.Grants) {
+		if metadata.role == nil || *metadata.role != user.Role || json.Unmarshal(metadata.grants, &grants) != nil || !sameMembershipGrants(grants, user.Grants) {
 			return session{}, accounts.User{}, fault.New(401, "session_invalid", "成员授权已变更")
 		}
 	}

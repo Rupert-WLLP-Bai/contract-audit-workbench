@@ -443,7 +443,7 @@ func (s *Store) ResolveOperationAuthority(ctx context.Context, scope model.Deleg
 	}
 	if user.HasResolvedMembership() {
 		var current []access.Grant
-		if role == nil || *role != user.Role || json.Unmarshal(grants, &current) != nil || !reflect.DeepEqual(current, user.Grants) {
+		if role == nil || *role != user.Role || json.Unmarshal(grants, &current) != nil || !sameMembershipGrants(current, user.Grants) {
 			return accounts.User{}, errAttemptAuthorizationRevoked
 		}
 	}

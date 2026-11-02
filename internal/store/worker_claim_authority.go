@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"reflect"
 
 	"contractaudit/internal/access"
 	"contractaudit/internal/accounts"
@@ -90,7 +89,7 @@ func (s *Store) ResolveWorkerClaimAuthority(ctx context.Context, request ToolInv
 	}
 	if user.HasResolvedMembership() {
 		var grants []access.Grant
-		if currentRole == nil || *currentRole != user.Role || json.Unmarshal(currentGrants, &grants) != nil || !reflect.DeepEqual(user.Grants, grants) {
+		if currentRole == nil || *currentRole != user.Role || json.Unmarshal(currentGrants, &grants) != nil || !sameMembershipGrants(user.Grants, grants) {
 			return ToolAuthority{}, toolScopeRefusal("membership_revision_changed")
 		}
 	}
