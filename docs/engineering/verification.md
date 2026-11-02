@@ -1,3 +1,13 @@
+<!-- File metadata (manifest mirror): -->
+<!-- Purpose: 说明“检查与验收”的操作或技术边界：所有结果应记录实际源码 SHA、命令、范围和状态。只使用 `PASS`、`FAIL`、`BLOCKED`、`NOT_RUN`、`NOT_APPLICABLE`；未运行项目标为 `NOT_RUN`。一次局部结果不能拼成完整回归 PASS。 -->
+<!-- Author: Bai Junhao <baijunhao@cq.chinamobile.com> -->
+<!-- Contact: +86 13617696321 -->
+<!-- Created: 2026-11-01 -->
+<!-- Updated: 2026-11-02 -->
+<!-- Revision: r1 -->
+<!-- Copyright: See LICENSE -->
+<!-- End file metadata. -->
+
 # 检查与验收
 
 所有结果应记录实际源码 SHA、命令、范围和状态。只使用 `PASS`、`FAIL`、`BLOCKED`、`NOT_RUN`、`NOT_APPLICABLE`；未运行项目标为 `NOT_RUN`。一次局部结果不能拼成完整回归 PASS。

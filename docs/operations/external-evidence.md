@@ -1,3 +1,13 @@
+<!-- File metadata (manifest mirror): -->
+<!-- Purpose: 说明“外部证据与核验”的操作或技术边界：签名证据包需要 Ed25519 PKCS#8 私钥 `EVIDENCE_SIGNING_KEY_FILE` 和包含合同文字的 CJK TrueType 字体 `EVIDENCE_PDF_FONT_FILE`。由部署方管理密钥和字体；Compose 以只读方式挂载到 Document 服务。Kubernetes 可使用 `deployments/k8s/optional/evidence-export.yaml`，先配置其 Secret 和字体 PVC。 -->
+<!-- Author: Bai Junhao <baijunhao@cq.chinamobile.com> -->
+<!-- Contact: +86 13617696321 -->
+<!-- Created: 2026-11-01 -->
+<!-- Updated: 2026-11-02 -->
+<!-- Revision: r1 -->
+<!-- Copyright: See LICENSE -->
+<!-- End file metadata. -->
+
 # 外部证据与核验
 
 ## 签名证据包

@@ -1,3 +1,13 @@
+<!-- File metadata (manifest mirror): -->
+<!-- Purpose: 说明“Changelog”的操作或技术边界：行为变更仅在有实际 PR 或发布依据时记录。数据库 schema 号不是产品版本；未发布改动不记为已发布版本。 -->
+<!-- Author: Bai Junhao <baijunhao@cq.chinamobile.com> -->
+<!-- Contact: +86 13617696321 -->
+<!-- Created: 2026-11-01 -->
+<!-- Updated: 2026-11-01 -->
+<!-- Revision: r1 -->
+<!-- Copyright: See LICENSE -->
+<!-- End file metadata. -->
+
 # Changelog
 
 行为变更仅在有实际 PR 或发布依据时记录。数据库 schema 号不是产品版本；未发布改动不记为已发布版本。
