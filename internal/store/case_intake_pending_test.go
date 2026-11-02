@@ -158,7 +158,17 @@ func TestCaseIntakePendingOwnerResumeArchiveAndReceiptPostgres(t *testing.T) {
 	}
 	// The document service has already accepted this upload; delay Core's
 	// completion until after the personal archive has committed.
-	upload, err := NewDirectCaseIntakeUploader(document).UploadPrimaryContract(ctx, first.CaseID, PrimaryContractUploadRequest{
+	sessionToken, err := core.EstablishSession(owner, "client")
+	if err != nil {
+		t.Fatalf("establish pending intake upload session: %v", err)
+	}
+	uploadUser, audience, err := core.AuthenticateSession(ctx, sessionToken)
+	if err != nil || audience != "client" || uploadUser.ID != owner.ID {
+		t.Fatalf("authenticate pending intake upload session: audience=%q err=%v", audience, err)
+	}
+	document.UseOperationAuthority(durableTestOperationAuthority{core: core})
+	upload, err := NewDirectCaseIntakeUploader(document).UploadPrimaryContract(WithAdmissionSessionToken(ctx, sessionToken), first.CaseID, PrimaryContractUploadRequest{
+		User:    uploadUser,
 		ActorID: owner.ID, TenantID: owner.TenantID, OrgID: owner.OrgID, Filename: identity.FileName,
 		MediaType: identity.MediaType, Body: firstInput.Body, IdempotencyKey: resumed.UploadKey,
 	})

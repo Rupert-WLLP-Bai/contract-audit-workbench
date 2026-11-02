@@ -237,7 +237,11 @@ func TestTenantIdentityResolverAndPendingMembershipCoreRole(t *testing.T) {
 	if err != nil {
 		t.Fatalf("establish ticket-bound session: %v", err)
 	}
-	ticket, err := st.CreateDocumentIntakeTicket(ctx, demoAdmin, sessionToken, operation.OperationID, operation.CaseID, operation.UploadKey, fileBytes)
+	ticketUser, audience, err := st.AuthenticateSession(ctx, sessionToken)
+	if err != nil || audience != "client" || ticketUser.ID != demoAdmin.ID {
+		t.Fatalf("authenticate ticket-bound session: audience=%q err=%v", audience, err)
+	}
+	ticket, err := st.CreateDocumentIntakeTicket(ctx, ticketUser, sessionToken, operation.OperationID, operation.CaseID, operation.UploadKey, fileBytes)
 	if err != nil {
 		t.Fatalf("create Document intake ticket: %v", err)
 	}

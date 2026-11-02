@@ -69,7 +69,12 @@ func assertOperationAuthorityScopes(t *testing.T, ctx context.Context, admin *St
 		_, _ = admin.pool.Exec(ctx, `UPDATE identity_memberships SET grants=$1::jsonb,status='active',role_code=$3 WHERE membership_id=$2::uuid`, oldGrants, user.MembershipID, user.Role)
 	}()
 	scope = model.DelegatedScope{Kind: "document", Action: "upload_parse", TenantID: user.TenantID, OrgID: user.OrgID, CaseID: "case-a", ActorID: user.ID, DocumentID: "future-upload-document", InputSHA256: strings.Repeat("a", 64)}
-	ticket, err := core.CreateOperationTicket(WithAdmissionSessionToken(ctx, sessionToken), user, scope)
+	// This is a new command after the controlled membership change above.
+	ticketUser, audience, err := core.AuthenticateSession(ctx, sessionToken)
+	if err != nil || audience != "client" || ticketUser.ID != user.ID {
+		t.Fatalf("authenticate updated upload command: audience=%q err=%v", audience, err)
+	}
+	ticket, err := core.CreateOperationTicket(WithAdmissionSessionToken(ctx, sessionToken), ticketUser, scope)
 	if err != nil || ticket == "" {
 		t.Fatalf("exact session upload operation ticket: %v", err)
 	}
