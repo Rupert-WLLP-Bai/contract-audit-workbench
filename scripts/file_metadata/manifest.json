@@ -7264,9 +7264,9 @@
         "value": "2026-11-02",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "848ae6153ef4575a055e2a734632df9c1a6bab6e",
+          "commit": "5293f859012d9f28c5ad93c2a48c7732e94f9475",
           "path": "docs/engineering/community-guide.md",
-          "reason": "file introduction created its initial content; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+          "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
       "revision": "r1",
