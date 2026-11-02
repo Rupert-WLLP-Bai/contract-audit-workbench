@@ -4,7 +4,7 @@
 <!-- Contact: +86 13617696321 -->
 <!-- Created: 2026-11-02 -->
 <!-- Updated: 2026-11-02 -->
-<!-- Revision: r1 -->
+<!-- Revision: r2 -->
 <!-- Copyright: See LICENSE -->
 <!-- End file metadata. -->
 
@@ -88,3 +88,12 @@ python3 scripts/architecture/generate_store_ownership.py \
 ```
 
 工具从固定提交创建临时 Git archive，拒绝仓内或非空输出目录；仅分析默认 Go 构建，解析失败会退出非零。生成脚本身份须随源码一并审阅，只有经审查的 CSV 回填到本目录，其余原始数据保留仓外。
+
+
+## 架构守卫与渐进登记
+
+活动配置 `scripts/architecture/architecture.json` 使用 schema v3，检查器、schema 和配置需一起升级。v2 只用于读取旧目标基线，不能将活动配置降回 v2 关闭新规则。原有三个命名导入策略保持不变。
+
+新增 `internal/` 业务包立即禁止直接依赖 Store；现有十个直接依赖包按精确名称列为存量豁免。豁免只能缩减，目标 BASE 已移除的项不能重新加入。领域登记的 app、transport、postgres 路径覆盖其子包，登记路径不得重叠；transport 走本域 app，跨域 PostgreSQL 适配器依赖被拒绝。
+
+领域登记初始为空，在首个实际切片迁移时登记真实 Go package。已登记领域和角色路径对照实际目标 BASE 只能扩展，不能静默删除或改派；目标分支前进时读取该固定 SHA 的配置比较，并记录双方 merge-base。缺少可靠基线会阻断检查。检查器读取默认 Go 构建的生产直接导入；测试导入与运行时授权仍分别由测试和服务端边界负责。

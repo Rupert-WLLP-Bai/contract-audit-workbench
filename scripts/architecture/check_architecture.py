@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 # File metadata (manifest mirror):
-# Purpose: 读取命名 Go 包依赖策略并对照 go list imports，报告允许边、违规边及未声明包。
+# Purpose: Checks default-build Go production imports against named policies and monotonic target-base registrations, rejecting new Store dependencies and invalid registered adapter directions.
 # Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 # Contact: +86 13617696321
 # Created: 2026-11-01
 # Updated: 2026-11-02
-# Revision: r1
+# Revision: r2
 # Copyright: See LICENSE
 # End file metadata.
 
@@ -15,6 +15,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import platform
 import re
 import shlex
@@ -28,7 +29,7 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 CONFIG_PATH = SCRIPT_DIR / "architecture.json"
 SCHEMA_PATH = SCRIPT_DIR / "architecture.schema.json"
 SUPPORTED_SCHEMA_CANONICAL_SHA256 = (
-    "64165b4698a4bc84f8fe8bfaef82f3f125cf5be5ebc1b3cf18a7326929f60c15"
+    "977287ff43a8f8f9681f1def9cedc34ae084ae4d357cd1cdc7cc036de960c9d2"
 )
 REQUIRED_POLICY_RULES = {
     "contractmoney-pure-domain": {
@@ -110,12 +111,12 @@ def _string_list(value: object, label: str) -> list[str]:
 
 
 def validate_config(config: object) -> dict:
-    if not isinstance(config, dict) or set(config) != {
+    if not isinstance(config, dict) or set(config) != ({
         "$schema", "schema_version", "module", "policies"
-    }:
-        raise Blocked("architecture.json must match the version 2 configuration shape")
-    if config["$schema"] != "./architecture.schema.json" or config["schema_version"] != 2:
-        raise Blocked("architecture.json must use architecture.schema.json and schema_version=2")
+    } | ({"ratchet"} if config.get("schema_version") == 3 else set())):
+        raise Blocked("architecture.json must match the version 2 or 3 configuration shape")
+    if config["$schema"] != "./architecture.schema.json" or config["schema_version"] not in (2, 3):
+        raise Blocked("architecture.json must use architecture.schema.json and schema_version 2 or 3")
     module = config["module"]
     if (not isinstance(module, str) or module != "contractaudit" or any(char.isspace() for char in module)
             or module.startswith("/") or module.endswith("/") or "\\" in module
@@ -187,15 +188,55 @@ def validate_config(config: object) -> dict:
                             else "forbidden_direct_imports")
             if set(check[import_field]) != required[import_field]:
                 raise Blocked(f"{policy_id}.{check_id}: required import boundary changed")
+    if config["schema_version"] == 3:
+        validate_ratchet(config["ratchet"])
     return config
+
+
+LEGACY_STORE_IMPORTERS = frozenset({
+    "internal/apidocs/contracts", "internal/bootstrap", "internal/clmoutbox",
+    "internal/documentclient", "internal/documentservice", "internal/experienceclient",
+    "internal/httpapi", "internal/modelgateway", "internal/outboxrelay", "internal/toolgateway",
+})
+
+
+def validate_ratchet(ratchet: object) -> None:
+    if not isinstance(ratchet, dict) or set(ratchet) != {"legacy_store_importers", "domains"}:
+        raise Blocked("invalid ratchet configuration")
+    legacy = ratchet["legacy_store_importers"]
+    if (not isinstance(legacy, list) or any(not isinstance(path, str) for path in legacy)
+            or len(legacy) != len(set(legacy)) or not set(legacy) <= LEGACY_STORE_IMPORTERS):
+        raise Blocked("legacy store importers must be a unique subset of the reviewed list")
+    domains = ratchet["domains"]
+    if not isinstance(domains, list):
+        raise Blocked("domains must be an array")
+    ids, paths = set(), set()
+    for domain in domains:
+        if not isinstance(domain, dict) or set(domain) != {"id", "app", "transport", "postgres"}:
+            raise Blocked("invalid domain registration")
+        ident = domain["id"]
+        if not isinstance(ident, str) or not re.fullmatch(r"[a-z][a-z0-9-]*", ident) or ident in ids:
+            raise Blocked("invalid or duplicate domain id")
+        ids.add(ident)
+        for role in ("app", "transport", "postgres"):
+            values = domain[role]
+            if not isinstance(values, list):
+                raise Blocked("domain roles must be arrays")
+            for value in values:
+                path = _canonical_package(value, "domain package")
+                if (not path.startswith("internal/") or any(
+                        path == prior or path.startswith(prior + "/") or prior.startswith(path + "/")
+                        for prior in paths)):
+                    raise Blocked("domain role paths must be disjoint internal prefixes")
+                paths.add(path)
 
 
 def validate_schema_contract(schema: object) -> dict:
     """Accept only the canonical supported schema, not arbitrary JSON Schema."""
     if (not isinstance(schema, dict) or
             schema.get("$schema") != "https://json-schema.org/draft/2020-12/schema" or
-            schema.get("x-caw-config-version") != 2):
-        raise Blocked("architecture.schema.json is missing the version 2 schema contract")
+            schema.get("x-caw-config-version") != 3):
+        raise Blocked("architecture.schema.json is missing the version 3 schema contract")
     canonical = json.dumps(schema, ensure_ascii=False, sort_keys=True,
                            separators=(",", ":")).encode("utf-8")
     if hashlib.sha256(canonical).hexdigest() != SUPPORTED_SCHEMA_CANONICAL_SHA256:
@@ -205,7 +246,7 @@ def validate_schema_contract(schema: object) -> dict:
     if not isinstance(properties, dict) or not isinstance(definitions, dict):
         raise Blocked("architecture.schema.json is incomplete")
     if (properties.get("$schema", {}).get("const") != "./architecture.schema.json" or
-            properties.get("schema_version", {}).get("const") != 2 or
+            properties.get("schema_version", {}).get("enum") != [2, 3] or
             properties.get("module", {}).get("type") != "string" or
             properties.get("policies", {}).get("type") != "array" or
             properties.get("policies", {}).get("items", {}).get("$ref") != "#/$defs/policy"):
@@ -235,6 +276,8 @@ def load_config() -> tuple[dict, str, str]:
         raw = CONFIG_PATH.read_bytes()
         schema_raw = SCHEMA_PATH.read_bytes()
         config = validate_config(json.loads(raw))
+        if config["schema_version"] != 3:
+            raise Blocked("active configuration must use schema_version=3")
         schema = validate_schema_contract(json.loads(schema_raw))
     except (OSError, json.JSONDecodeError) as exc:
         raise Blocked(f"Cannot read architecture config/schema: {exc}") from exc
@@ -356,6 +399,8 @@ def inspect_policies(records: list[dict], config: dict, report: dict) -> None:
             "FAIL" if any(item["forbidden_imports"] for item in policy_report["checks"])
             else "PASS"
         )
+    if config["schema_version"] == 3:
+        inspect_ratchet(records, config, report)
     first = report["policy_results"][0]["checks"][0]
     # Keep the v1 inspection fields at top-level for existing evidence readers.
     report["inspection"] = {
@@ -364,6 +409,53 @@ def inspect_policies(records: list[dict], config: dict, report: dict) -> None:
             "forbidden_imports", "excluded_go_list_fields",
         )
     }
+
+
+def inspect_ratchet(records: list[dict], config: dict, report: dict) -> None:
+    module = config["module"] + "/"
+    legacy = set(config["ratchet"]["legacy_store_importers"])
+    domains = config["ratchet"]["domains"]
+    owners = {module + path: (domain["id"], role) for domain in domains
+              for role in ("app", "transport", "postgres") for path in domain[role]}
+    def owner_for(path: str):
+        matches = [(root, value) for root, value in owners.items()
+                   if path == root or path.startswith(root + "/")]
+        return max(matches, key=lambda item: len(item[0]))[1] if matches else None
+
+    seen = set()
+    for record in records:
+        name = record.get("ImportPath")
+        if not isinstance(name, str) or name in seen:
+            raise Blocked("duplicate or invalid GoList package")
+        seen.add(name)
+        if not name.startswith(module + "internal/"):
+            continue
+        imports = record.get("Imports", [])
+        if not isinstance(imports, list) or any(not isinstance(item, str) or not item for item in imports):
+            raise Blocked(f"{name}: invalid production imports")
+        for target in imports:
+            rule = None
+            if target == module + "internal/store" or target.startswith(module + "internal/store/"):
+                if name[len(module):] not in legacy:
+                    rule = "store-no-new-business-import"
+            owner = owner_for(name)
+            target_owner = owner_for(target)
+            if owner and target_owner and owner[0] != target_owner[0] and target_owner[1] == "postgres":
+                rule = "cross-domain-postgres"
+            if owner and owner[1] == "transport":
+                if target in {"database/sql", "github.com/jackc/pgx/v5"} or target.startswith("github.com/jackc/pgx/v5/"):
+                    rule = "transport-no-sql"
+                elif target_owner and (target_owner[0] != owner[0] or target_owner[1] != "app"):
+                    rule = "transport-to-app"
+            if rule:
+                report["violations"].append({"policy_id": "domain-ratchet", "check_id": rule,
+                                             "rule": rule, "from": name, "to": target})
+    missing = set(owners) - seen
+    if missing:
+        raise Blocked(f"registered domain packages missing from GoList: {sorted(missing)}")
+    report["ratchet"] = {"status": "FAIL" if any(v["policy_id"] == "domain-ratchet" for v in report["violations"]) else "PASS",
+                         "store_guard": "active for all internal packages except exact legacy importers",
+                         "registered_domain_count": len(domains)}
 
 
 def inspect_go_environment(repo: Path) -> dict:
@@ -392,11 +484,43 @@ def _configured_checks(config: dict) -> list[dict]:
     return [check for policy in config["policies"] for check in policy["checks"]]
 
 
-def inspect_repo(repo_arg: str, config: dict, report: dict) -> None:
+def validate_base_ratchet(base: dict, candidate: dict) -> None:
+    validate_config(base)
+    if base["schema_version"] == 2:
+        return
+    if not set(candidate["ratchet"]["legacy_store_importers"]) <= set(base["ratchet"]["legacy_store_importers"]):
+        raise Blocked("BASE legacy store exemptions cannot be reintroduced")
+    current = {d["id"]: d for d in candidate["ratchet"]["domains"]}
+    for domain in base["ratchet"]["domains"]:
+        newer = current.get(domain["id"])
+        if newer is None or any(not set(domain[role]) <= set(newer[role])
+                                for role in ("app", "transport", "postgres")):
+            raise Blocked(f"BASE domain registrations removed or reassigned: {domain['id']}")
+
+
+def load_base_ratchet(repo: Path, base_ref: str, candidate: dict) -> tuple[str, str]:
+    sha = run_command(["git", "rev-parse", "--verify", base_ref + "^{commit}"], repo).strip()
+    if not re.fullmatch(r"[0-9a-f]{40,64}", sha):
+        raise Blocked("BASE did not resolve to a full commit SHA")
+    merge_base = run_command(["git", "merge-base", sha, "HEAD"], repo).strip()
+    if not re.fullmatch(r"[0-9a-f]{40,64}", merge_base):
+        raise Blocked("BASE and HEAD do not have a verifiable merge-base")
+    try:
+        base = json.loads(run_command(["git", "show", sha + ":scripts/architecture/architecture.json"], repo))
+    except (json.JSONDecodeError, UnicodeError) as exc:
+        raise Blocked(f"BASE architecture config is invalid: {exc}") from exc
+    validate_base_ratchet(base, candidate)
+    return sha, merge_base
+
+
+def inspect_repo(repo_arg: str, config: dict, report: dict, base_ref: str) -> None:
     repo = Path(repo_arg).expanduser().absolute()
     if not repo.is_dir():
         raise Blocked("Repository path is not a directory")
     report["source"]["repository_path"] = str(repo)
+    base_sha, merge_base = load_base_ratchet(repo, base_ref, config)
+    report["source"]["base_sha"] = base_sha
+    report["source"]["merge_base_sha"] = merge_base
     source_sha = run_command(["git", "rev-parse", "HEAD"], repo).strip()
     if not source_sha:
         raise Blocked("Repository source SHA could not be determined")
@@ -417,7 +541,7 @@ def inspect_repo(repo_arg: str, config: dict, report: dict) -> None:
         "build_tags_from_GOFLAGS": environment["build_tags"],
     }
     packages = [check["package"] for check in _configured_checks(config)]
-    argv = ["go", "list", "-json", *["./" + path for path in packages]]
+    argv = ["go", "list", "-json", *( ["./..."] if config["schema_version"] == 3 else ["./" + path for path in packages])]
     report["environment"]["go_list_command"] = argv
     raw = run_command(argv, repo)
     inspect_policies(decode_go_list(raw), config, report)
@@ -465,6 +589,7 @@ def main() -> int:
     source = parser.add_mutually_exclusive_group(required=True)
     source.add_argument("--repo", help="Local Git checkout; runs go list for all configured packages")
     source.add_argument("--fixture", help="Synthetic go list JSON; never runs Git or Go")
+    parser.add_argument("--base", default=None, help="Trusted target BASE commit/ref for the ratchet")
     parser.add_argument("--out", help="Write JSON report here; otherwise print to stdout")
     args = parser.parse_args()
     fixture_mode = args.fixture is not None
@@ -488,7 +613,7 @@ def main() -> int:
             "go_commands_executed": False,
         },
         "scope": {
-            "target": "all configured package checks",
+            "target": "all internal packages for store ratchet and registered domain packages",
             "imports": "direct production Imports only",
             "test_imports_included": False,
             "transitive_dependencies_included": False,
@@ -523,7 +648,8 @@ def main() -> int:
         if fixture_mode:
             inspect_fixture(args.fixture, config, report)
         else:
-            inspect_repo(args.repo, config, report)
+            base_ref = args.base or os.environ.get("CAW_FAST_BASE") or os.environ.get("BASE_SHA") or "origin/main"
+            inspect_repo(args.repo, config, report, base_ref)
         if report["violations"]:
             report["status"] = "FAIL"
         else:

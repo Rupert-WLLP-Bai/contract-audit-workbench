@@ -214,7 +214,12 @@ class GateAdapterFixture(unittest.TestCase):
             self.run_check()
 
     def test_initialized_policy_allows_only_new_literal_manifest_paths(self):
-        base = json.loads(json.dumps(self.policy))
+        # Keep the unclassified-path premise independent of project additions.
+        base = {'file_classes': [{'id': 'fixture-protected-paths',
+                                 'paths': ['scripts/check.py', 'web/e2e/fixtures/new.py'],
+                                 'handling': 'manifest-only',
+                                 'reason': 'The fixture preserves two reviewed registry-only files.'}],
+                'revision': {'format': 'rN'}}
         candidate = json.loads(json.dumps(base))
         rule = {'id': 'new-csv', 'paths': ['docs/architecture/store-ownership.csv'],
                 'handling': 'manifest-only', 'reason': 'CSV has no comment syntax.'}

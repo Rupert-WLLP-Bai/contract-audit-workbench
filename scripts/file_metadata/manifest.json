@@ -7178,12 +7178,12 @@
         "value": "2026-11-02",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "f812ccb7eefaf7a66694c7a25cd74025d54abd7f",
+          "commit": "ac8084d801cae350b57032b348f1e272ce72ed66",
           "path": "docs/architecture/domain-boundaries.md",
-          "reason": "file introduction created its initial content; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+          "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r1",
+      "revision": "r2",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -47631,7 +47631,7 @@
       }
     },
     "scripts/architecture/architecture.json": {
-      "purpose": "声明 Go 包之间允许的直接依赖策略，供 architecture checker 校验。",
+      "purpose": "Declares named import boundaries, shrinking legacy Store exemptions and registered domain roles that the architecture guard compares with the fixed target baseline.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -47661,12 +47661,12 @@
         "value": "2026-11-02",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "a68af8616865296e4b63ff5811c9ae2ab8702025",
+          "commit": "ac8084d801cae350b57032b348f1e272ce72ed66",
           "path": "scripts/architecture/architecture.json",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r1",
+      "revision": "r2",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -47684,7 +47684,7 @@
       }
     },
     "scripts/architecture/architecture.schema.json": {
-      "purpose": "Defines supported dependency-policy versions, required fields, and validation constraints for the architecture checker.",
+      "purpose": "Defines the version three architecture configuration shape, exact package registrations and legacy exemption arrays while retaining historical version two configuration readability.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -47711,15 +47711,15 @@
         }
       },
       "updated": {
-        "value": "2026-11-01",
+        "value": "2026-11-02",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "81519bf1fcdcdedf4199f2449890f99590c15b6a",
+          "commit": "ac8084d801cae350b57032b348f1e272ce72ed66",
           "path": "scripts/architecture/architecture.schema.json",
-          "reason": "file introduction created its initial content; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+          "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r1",
+      "revision": "r2",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -47785,7 +47785,7 @@
       "header_state": "pending-header-application"
     },
     "scripts/architecture/check_architecture.py": {
-      "purpose": "读取命名 Go 包依赖策略并对照 go list imports，报告允许边、违规边及未声明包。",
+      "purpose": "Checks default-build Go production imports against named policies and monotonic target-base registrations, rejecting new Store dependencies and invalid registered adapter directions.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -47815,12 +47815,12 @@
         "value": "2026-11-02",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "a68af8616865296e4b63ff5811c9ae2ab8702025",
+          "commit": "ac8084d801cae350b57032b348f1e272ce72ed66",
           "path": "scripts/architecture/check_architecture.py",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r1",
+      "revision": "r2",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -48423,7 +48423,7 @@
       "header_state": "pending-header-application"
     },
     "scripts/architecture/test_check_architecture.py": {
-      "purpose": "验证 test_all_policies_pass_and_store_direct_import_is_allowed, test_gateway_forbids_both_direct_orchestration_edges, test_neutral_contract_allows_time_but_rejects_nonallowlisted_imports, test_missing_or_empty_named_target_is_blocked 等场景，覆盖该模块的授权、错误或数据边界。",
+      "purpose": "Pins named policy compatibility, new Store import rejection, domain subpackage boundaries and monotonic baseline behavior through deterministic architecture fixtures.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -48453,12 +48453,12 @@
         "value": "2026-11-02",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "a68af8616865296e4b63ff5811c9ae2ab8702025",
+          "commit": "ac8084d801cae350b57032b348f1e272ce72ed66",
           "path": "scripts/architecture/test_check_architecture.py",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r1",
+      "revision": "r2",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -48643,12 +48643,12 @@
         "value": "2026-11-02",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "1e238ffb1ac59089d50dd35882a0ffe3507be1cf",
+          "commit": "ac8084d801cae350b57032b348f1e272ce72ed66",
           "path": "scripts/check_fast.py",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r2",
+      "revision": "r3",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -49123,7 +49123,7 @@
           "reason": "The manifest cannot embed the commit/blob identity of its own current update; retain this exact-path self-reference exception."
         }
       },
-      "revision": "r5",
+      "revision": "r6",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -49376,12 +49376,12 @@
         "value": "2026-11-02",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "6a579e3e5867061f25a4e16fada614d849125111",
+          "commit": "a4b6b6a1e6b33503ef5552976f2e8860eb303676",
           "path": "scripts/file_metadata/test_gate_adapter.py",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r2",
+      "revision": "r3",
       "copyright": [
         {
           "holder": "Bai Junhao",

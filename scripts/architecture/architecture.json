@@ -1,6 +1,6 @@
 {
   "$schema": "./architecture.schema.json",
-  "schema_version": 2,
+  "schema_version": 3,
   "module": "contractaudit",
   "policies": [
     {
@@ -66,5 +66,20 @@
         }
       ]
     }
-  ]
+  ],
+  "ratchet": {
+    "legacy_store_importers": [
+      "internal/apidocs/contracts",
+      "internal/bootstrap",
+      "internal/clmoutbox",
+      "internal/documentclient",
+      "internal/documentservice",
+      "internal/experienceclient",
+      "internal/httpapi",
+      "internal/modelgateway",
+      "internal/outboxrelay",
+      "internal/toolgateway"
+    ],
+    "domains": []
+  }
 }

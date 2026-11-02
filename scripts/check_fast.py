@@ -5,7 +5,7 @@
 # Contact: +86 13617696321
 # Created: 2026-10-31
 # Updated: 2026-11-02
-# Revision: r2
+# Revision: r3
 # Copyright: See LICENSE
 # End file metadata.
 
@@ -1085,7 +1085,7 @@ def _check_env(database: bool = False) -> dict[str, str]:
     return env
 
 
-def _build_checks(plan: Plan, root: Path, python: str, out: Path) -> list[FastCheck]:
+def _build_checks(plan: Plan, root: Path, python: str, out: Path, base: str | None = None) -> list[FastCheck]:
     checks: list[FastCheck] = []
     env = _check_env()
     if plan.architecture:
@@ -1093,7 +1093,7 @@ def _build_checks(plan: Plan, root: Path, python: str, out: Path) -> list[FastCh
         checks.append(FastCheck(
             "architecture-dependencies",
             (python, "scripts/architecture/check_architecture.py", "--repo",
-             str(root), "--out", str(out / "architecture-check.json")),
+             str(root), *( ("--base", base) if base else () ), "--out", str(out / "architecture-check.json")),
             cwd=root, env=env, timeout=120))
     if plan.ui_terminology:
         checks.append(FastCheck(
@@ -1541,7 +1541,7 @@ def run_checks(root: Path, plan: Plan, base: str, merge_base: str,
         return 1
 
     try:
-        checks = _build_checks(plan, root, python, out)
+        checks = _build_checks(plan, root, python, out, metadata_base)
         if os.environ.get("CAW_METADATA_EXTERNAL_GUARD") == "1":
             checks.append(FastCheck(
                 "file-metadata", cwd=root, kind="not-run", required=False,

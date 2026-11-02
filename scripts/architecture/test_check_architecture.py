@@ -1,10 +1,10 @@
 # File metadata (manifest mirror):
-# Purpose: 验证 test_all_policies_pass_and_store_direct_import_is_allowed, test_gateway_forbids_both_direct_orchestration_edges, test_neutral_contract_allows_time_but_rejects_nonallowlisted_imports, test_missing_or_empty_named_target_is_blocked 等场景，覆盖该模块的授权、错误或数据边界。
+# Purpose: Pins named policy compatibility, new Store import rejection, domain subpackage boundaries and monotonic baseline behavior through deterministic architecture fixtures.
 # Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 # Contact: +86 13617696321
 # Created: 2026-11-01
 # Updated: 2026-11-02
-# Revision: r1
+# Revision: r2
 # Copyright: See LICENSE
 # End file metadata.
 
@@ -174,6 +174,140 @@ class NamedPolicyTests(unittest.TestCase):
             mutate(schema)
             with self.assertRaisesRegex(guard.Blocked, "fixed structure"):
                 guard.validate_schema_contract(schema)
+
+    def test_v2_config_remains_readable(self):
+        old = copy.deepcopy(self.config)
+        old["schema_version"] = 2
+        del old["ratchet"]
+        guard.validate_config(old)
+
+    def test_new_package_store_ratchet_and_exact_legacy_exception(self):
+        records = self.records() + [{"ImportPath": "contractaudit/internal/newbusiness", "GoFiles": ["x.go"], "Imports": ["contractaudit/internal/store"]}]
+        report = self.inspect(records)
+        self.assertEqual([(v["check_id"], v["from"]) for v in report["violations"]], [("store-no-new-business-import", "contractaudit/internal/newbusiness")])
+        records[-1]["Imports"] = ["fmt"]
+        self.assertEqual(self.inspect(records)["violations"], [])
+        self.assertEqual(self.inspect(records)["ratchet"]["store_guard"], "active for all internal packages except exact legacy importers")
+
+    def test_registered_domains_enforce_both_postgres_directions_and_transport(self):
+        self.config["ratchet"]["domains"] = [
+            {"id": "alpha", "app": ["internal/alpha/app"], "transport": ["internal/alpha/transport"], "postgres": ["internal/alpha/postgres"]},
+            {"id": "beta", "app": ["internal/beta/app"], "transport": ["internal/beta/transport"], "postgres": ["internal/beta/postgres"]},
+        ]
+        guard.validate_config(self.config)
+        records = self.records() + [{"ImportPath": "contractaudit/" + path, "GoFiles": ["x.go"], "Imports": []} for domain in self.config["ratchet"]["domains"] for role in ("app", "transport", "postgres") for path in domain[role]]
+        by_name = {r["ImportPath"]: r for r in records}
+        by_name["contractaudit/internal/alpha/postgres"]["Imports"] = ["contractaudit/internal/beta/postgres/query"]
+        by_name["contractaudit/internal/beta/postgres"]["Imports"] = ["contractaudit/internal/alpha/postgres"]
+        by_name["contractaudit/internal/alpha/transport"]["Imports"] = ["contractaudit/internal/alpha/app", "database/sql"]
+        report = self.inspect(records)
+        self.assertEqual([v["check_id"] for v in report["violations"]].count("cross-domain-postgres"), 2)
+        self.assertIn("transport-no-sql", [v["check_id"] for v in report["violations"]])
+        by_name["contractaudit/internal/alpha/postgres"]["Imports"] = []
+        by_name["contractaudit/internal/beta/postgres"]["Imports"] = []
+        by_name["contractaudit/internal/alpha/transport"]["Imports"] = ["contractaudit/internal/alpha/app"]
+        self.assertEqual(self.inspect(records)["violations"], [])
+        by_name["contractaudit/internal/alpha/transport"]["Imports"] = ["contractaudit/internal/beta/app"]
+        self.assertEqual(self.inspect(records)["violations"][0]["check_id"], "transport-to-app")
+
+    def test_ratchet_cannot_expand_legacy_exemptions(self):
+        self.config["ratchet"]["legacy_store_importers"].append("internal/newbusiness")
+        with self.assertRaises(guard.Blocked):
+            guard.validate_config(self.config)
+
+    def test_active_config_cannot_downgrade_to_v2(self):
+        old = copy.deepcopy(self.config)
+        old["schema_version"] = 2
+        del old["ratchet"]
+        with tempfile.TemporaryDirectory() as temporary:
+            config = Path(temporary) / "architecture.json"
+            config.write_text(json.dumps(old))
+            with patch.object(guard, "CONFIG_PATH", config), self.assertRaisesRegex(guard.Blocked, "active configuration"):
+                guard.load_config()
+
+    def test_registered_prefixes_are_monotonic_and_disjoint(self):
+        base = copy.deepcopy(self.config)
+        base["ratchet"]["domains"] = [{"id": "alpha", "app": ["internal/alpha/app"], "transport": ["internal/alpha/transport"], "postgres": ["internal/alpha/postgres"]}]
+        candidate = copy.deepcopy(base)
+        guard.validate_base_ratchet(base, candidate)
+        candidate["ratchet"]["domains"][0]["app"].clear()
+        with self.assertRaises(guard.Blocked):
+            guard.validate_base_ratchet(base, candidate)
+        candidate = copy.deepcopy(base)
+        candidate["ratchet"]["domains"][0]["app"].clear()
+        candidate["ratchet"]["domains"][0]["postgres"].append("internal/alpha/app")
+        with self.assertRaises(guard.Blocked):
+            guard.validate_base_ratchet(base, candidate)
+        candidate = copy.deepcopy(base)
+        candidate["ratchet"]["domains"].append({"id": "beta", "app": ["internal/alpha/app/sub"], "transport": [], "postgres": []})
+        with self.assertRaisesRegex(guard.Blocked, "disjoint"):
+            guard.validate_config(candidate)
+        legacy = copy.deepcopy(self.config)
+        legacy["schema_version"] = 2
+        del legacy["ratchet"]
+        guard.validate_base_ratchet(legacy, base)
+        with patch.object(guard, "run_command", side_effect=guard.Blocked("missing BASE")):
+            with self.assertRaisesRegex(guard.Blocked, "missing BASE"):
+                guard.load_base_ratchet(Path("/unused"), "origin/main", base)
+
+    def test_legacy_exemptions_can_shrink_to_empty(self):
+        base = copy.deepcopy(self.config)
+        candidate = copy.deepcopy(base)
+        candidate["ratchet"]["legacy_store_importers"] = []
+        guard.validate_config(candidate)
+        guard.validate_base_ratchet(base, candidate)
+        report = {"policy_results": [], "violations": []}
+        guard.inspect_policies(self.records(), candidate, report)
+        self.assertTrue(any(v["from"] == "contractaudit/internal/modelgateway" and
+                            v["check_id"] == "store-no-new-business-import"
+                            for v in report["violations"]))
+
+    def test_removed_legacy_exemption_cannot_be_reintroduced(self):
+        base = copy.deepcopy(self.config)
+        base["ratchet"]["legacy_store_importers"].remove("internal/modelgateway")
+        candidate = copy.deepcopy(self.config)
+        with self.assertRaisesRegex(guard.Blocked, "cannot be reintroduced"):
+            guard.validate_base_ratchet(base, candidate)
+
+    def test_diverged_base_uses_target_registry_not_merge_base(self):
+        base = copy.deepcopy(self.config)
+        base["ratchet"]["domains"] = [{"id": "alpha", "app": ["internal/alpha/app"], "transport": [], "postgres": []}]
+        candidate = copy.deepcopy(base)
+        base_sha, merge_sha = "a" * 40, "b" * 40
+        def git_output(argv, cwd):
+            if argv[1] == "rev-parse":
+                return base_sha + "\n"
+            if argv[1] == "merge-base":
+                self.assertEqual(argv[2:], [base_sha, "HEAD"])
+                return merge_sha + "\n"
+            if argv[1] == "show":
+                self.assertEqual(argv[2], base_sha + ":scripts/architecture/architecture.json")
+                return json.dumps(base)
+            self.fail(f"unexpected command {argv}")
+        with patch.object(guard, "run_command", side_effect=git_output):
+            self.assertEqual(guard.load_base_ratchet(Path("/unused"), "target", candidate), (base_sha, merge_sha))
+            candidate["ratchet"]["domains"] = []
+            with self.assertRaisesRegex(guard.Blocked, "removed or reassigned"):
+                guard.load_base_ratchet(Path("/unused"), "target", candidate)
+
+    def test_prefix_ownership_applies_to_importer_and_target_subpackages(self):
+        self.config["ratchet"]["domains"] = [
+            {"id": "alpha", "app": ["internal/alpha/app"], "transport": ["internal/alpha/transport"], "postgres": ["internal/alpha/postgres"]},
+            {"id": "beta", "app": ["internal/beta/app"], "transport": ["internal/beta/transport"], "postgres": ["internal/beta/postgres"]},
+        ]
+        records = self.records() + [{"ImportPath": "contractaudit/" + path, "GoFiles": ["x.go"], "Imports": []} for d in self.config["ratchet"]["domains"] for role in ("app", "transport", "postgres") for path in d[role]]
+        records += [
+            {"ImportPath": "contractaudit/internal/alpha/postgres/sub", "Imports": ["contractaudit/internal/beta/postgres/sub"]},
+            {"ImportPath": "contractaudit/internal/beta/postgres/sub", "Imports": ["contractaudit/internal/alpha/postgres/sub"]},
+            {"ImportPath": "contractaudit/internal/alpha/transport/http", "Imports": ["contractaudit/internal/beta/app/sub"]},
+        ]
+        found = self.inspect(records)["violations"]
+        self.assertEqual([v["check_id"] for v in found].count("cross-domain-postgres"), 2)
+        self.assertEqual([v["check_id"] for v in found].count("transport-to-app"), 1)
+        records[-1]["Imports"] = ["contractaudit/internal/alpha/app/sub"]
+        records[-2]["Imports"] = []
+        records[-3]["Imports"] = []
+        self.assertEqual(self.inspect(records)["violations"], [])
 
     def test_cli_returns_blocked_for_removed_policy_and_unsupported_schema_change(self):
         with tempfile.TemporaryDirectory() as temporary:
