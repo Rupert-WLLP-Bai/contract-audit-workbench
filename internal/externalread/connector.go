@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: implements the authorized, read-only Mock OSS connector. The connector performs exactly one GET against a deployment-configured base URL. Callers supply an object identifier, never a URL, method, header or credential.… Related `externalread` operations include New, configuredReadTiming, validateConnectorIdentity, allowedObjectSet.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-29
+// Updated: 2026-10-30
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 // Package externalread implements the authorized, read-only Mock OSS connector.
 //
 // The connector performs exactly one GET against a deployment-configured base

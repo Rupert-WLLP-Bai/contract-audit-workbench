@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: intakeUpload is the document-owned, authenticated internal entry Core calls after its intake transaction commits. It re-resolves the asserted trusted actor and rechecks current… Related `documentservice` operations include intakeUpload, internalIntakeField, writeIntakeUploadFailure.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-31
+// Updated: 2026-11-02
+// Revision: r2
+// Copyright: See LICENSE
+// End file metadata.
+
 package documentservice
 
 import (

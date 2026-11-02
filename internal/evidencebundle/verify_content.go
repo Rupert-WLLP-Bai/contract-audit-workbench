@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Checks evidence-bundle entry hashes, frozen history and original-document bytes against the signed manifest; rejects missing, substituted or extra content during independent bundle verification.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-31
+// Updated: 2026-10-31
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package evidencebundle
 
 import (

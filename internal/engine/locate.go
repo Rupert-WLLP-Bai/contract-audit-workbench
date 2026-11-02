@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: absence distinguishes an unobserved rule from a comparison with no readable source. not_applicable means this bounded parser found no supported clause; it is never a legal… Related `engine` operations include bindSpan, readyIDs, failedDocs, missingAnchors.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-25
+// Updated: 2026-10-30
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package engine
 
 import (

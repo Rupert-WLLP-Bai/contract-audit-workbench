@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: simpleField reads the cached result of a w:fldSimple field. Pagination instructions only cache a page or section number, which is a layout artifact and never contract text. Related `documentparse` operations include paragraph, inline, inlineContent, inlineContainerContent.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-25
+// Updated: 2026-11-02
+// Revision: r2
+// Copyright: See LICENSE
+// End file metadata.
+
 package documentparse
 
 import (

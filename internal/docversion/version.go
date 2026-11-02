@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: identifies an immutable snapshot of an original file. The content digest is SHA-256 over the original bytes. A hash of normalized or parsed text is a different value and is not produced here. Related `docversion` operations include String, Hash, ParseDigest, New.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-25
+// Updated: 2026-10-25
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 // Package docversion identifies an immutable snapshot of an original file.
 //
 // The content digest is SHA-256 over the original bytes. A hash of normalized
