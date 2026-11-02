@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Backend is the minimal trusted store boundary required by the gateway. The concrete PostgreSQL Store implements it directly. Related `toolgateway` operations include NewHandler.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-25
+// Updated: 2026-10-31
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package toolgateway
 
 import (

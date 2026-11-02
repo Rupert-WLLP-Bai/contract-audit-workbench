@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: KubernetesConfigFromEnv enables observation only when the service environment identifies an in-cluster API. It never reads a kubeconfig or external credentials. Related `systemhealth` operations include KubernetesConfigFromEnv, initialize, inClusterAPIURL, readKubernetesToken.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-25
+// Updated: 2026-10-30
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package systemhealth
 
 import (

@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: DeclaredCompilerRef pins the bounded fact extraction and authority checks for data-declared business scopes. It is frozen separately from the RulePack. Related `telecom` operations include ValidateDeclaredPack, declaredComparatorIndex, declaredScope, declaredExtractionRequest.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-31
+// Updated: 2026-10-31
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package telecom
 
 import (

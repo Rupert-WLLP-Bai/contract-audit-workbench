@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: logStoreFailure keeps the raw storage error in the server log and never in the client response, so an operator can see the SQLSTATE behind a 500 without the caller learning… Related `toolgateway` operations include parseToolArguments, decodeToolArgumentFields, parseToolSelection, requiredToolArgument.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-25
+// Updated: 2026-10-30
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package toolgateway
 
 import (

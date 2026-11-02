@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: The HTTP boundary is uniform across every process in this repository: one middleware layer that assigns a bounded request identity, parses and republishes W3C trace context,… Related `telemetry` operations include BoundaryFromContext, Traceparent, HTTPBoundary, boundaryFor.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-31
+// Updated: 2026-10-31
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package telemetry
 
 import (

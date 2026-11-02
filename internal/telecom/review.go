@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: extracts a bounded, explicit telecom contract vocabulary and compiles contractual thresholds into versioned RulePack comparisons. Related `telecom` operations include IsSyntheticCompiler, rulesFor, taxBasis, numeric.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-25
+// Updated: 2026-10-31
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 // Package telecom extracts a bounded, explicit telecom contract vocabulary and
 // compiles contractual thresholds into versioned RulePack comparisons.
 package telecom
