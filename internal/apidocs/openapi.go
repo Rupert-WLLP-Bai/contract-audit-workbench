@@ -1,6 +1,8 @@
 // Package apidocs serves the versioned contract for the implemented HTTP API.
 package apidocs
 
+//go:generate go run ../../cmd/openapi-gen
+
 import (
 	"bytes"
 	_ "embed"
