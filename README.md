@@ -1,3 +1,13 @@
+<!-- File metadata (manifest mirror): -->
+<!-- Purpose: Explains the product’s service boundaries, local setup, operating profiles, API/runtime behavior, and phase-based verification contract; the tables and commands are the operator-facing index into the current source tree. -->
+<!-- Author: Bai Junhao <baijunhao@cq.chinamobile.com> -->
+<!-- Contact: +86 13617696321 -->
+<!-- Created: 2026-10-25 -->
+<!-- Updated: 2026-11-02 -->
+<!-- Revision: r2 -->
+<!-- Copyright: See LICENSE -->
+<!-- End file metadata. -->
+
 # 合同智能审计工作台
 
 基于 Go 和 React 的合同审计工作台，用于组织合同材料、执行规则核对、查看带原文引用的模型建议，并记录人工复核、整改与复审。业务工作台当前展示“第一届黄桷树 AI 智能体开发大赛”标题及赛事 Logo。
