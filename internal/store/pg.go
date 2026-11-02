@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: OpenTest opens an isolated schema in the test database. A DSN whose database name is the development or production database is refused before any connection is made. Related `store` operations include OpenTest, Reopen, Close, RewriteAudit.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-25
+// Updated: 2026-11-02
+// Revision: r2
+// Copyright: See LICENSE
+// End file metadata.
+
 package store
 
 import (

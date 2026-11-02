@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: ReviewReadiness is a read-only projection of the current case inputs. Its revision is a concurrency hint; callers must still use the normal acceptance endpoint, which re-resolves… Related `store` operations include evaluateReviewReadiness, readinessBlocker, reviewReadinessRevision.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-31
+// Updated: 2026-10-31
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package store
 
 import (

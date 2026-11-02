@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: LegalApplicabilityFactHistory contains immutable authored records, not a business-time projection. current_version is the server-authoritative CAS head and can differ from the… Related `store` operations include ListLegalApplicabilityFactHistory, encodeLegalApplicabilityHistoryCursor, decodeLegalApplicabilityHistoryCursor.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-31
+// Updated: 2026-11-02
+// Revision: r2
+// Copyright: See LICENSE
+// End file metadata.
+
 package store
 
 import (
