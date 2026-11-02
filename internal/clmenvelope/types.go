@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: 实现 `KeyKind`, `KeyRef`, `Binding`, `Key` 等密文封装、读取或密钥版本操作，绑定租户、对象和用途。
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-02
+// Updated: 2026-11-02
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 // Package clmenvelope implements versioned CLM field encryption. It supplies
 // cryptographic binding, not actor authentication or database authorization.
 package clmenvelope
