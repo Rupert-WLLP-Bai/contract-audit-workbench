@@ -45,17 +45,17 @@ GRANT SELECT (tenant_id,id,run_id,state,finished_at) ON {{SCHEMA}}.review_attemp
 GRANT SELECT (tenant_id,lease_id,event_kind,amount_minor,period_day) ON {{SCHEMA}}.model_money_ledger TO {{AUTH_FENCE_OWNER}};
 GRANT SELECT (tenant_id,lease_id,money_cost_state,money_cost_minor,money_period_day,reserved_at,occurred_at,reserved_input_tokens,reserved_output_tokens,input_tokens,output_tokens,total_tokens) ON {{SCHEMA}}.model_usage TO {{AUTH_FENCE_OWNER}};
 GRANT SELECT (tenant_id,lease_id,reserved_input_tokens,reserved_output_tokens,acquired_at) ON {{SCHEMA}}.model_call_leases TO {{AUTH_FENCE_OWNER}};
-CREATE POLICY tenant_ops_aggregate_read ON {{SCHEMA}}.cases TO {{AUTH_FENCE_OWNER}}
+CREATE POLICY tenant_ops_aggregate_read ON {{SCHEMA}}.cases FOR SELECT TO {{AUTH_FENCE_OWNER}}
     USING (tenant_id=current_setting('app.operations_tenant',true));
-CREATE POLICY tenant_ops_aggregate_read ON {{SCHEMA}}.review_runs TO {{AUTH_FENCE_OWNER}}
+CREATE POLICY tenant_ops_aggregate_read ON {{SCHEMA}}.review_runs FOR SELECT TO {{AUTH_FENCE_OWNER}}
     USING (tenant_id=current_setting('app.operations_tenant',true));
-CREATE POLICY tenant_ops_aggregate_read ON {{SCHEMA}}.review_attempts TO {{AUTH_FENCE_OWNER}}
+CREATE POLICY tenant_ops_aggregate_read ON {{SCHEMA}}.review_attempts FOR SELECT TO {{AUTH_FENCE_OWNER}}
     USING (tenant_id=current_setting('app.operations_tenant',true));
-CREATE POLICY tenant_ops_aggregate_read ON {{SCHEMA}}.model_call_leases TO {{AUTH_FENCE_OWNER}}
+CREATE POLICY tenant_ops_aggregate_read ON {{SCHEMA}}.model_call_leases FOR SELECT TO {{AUTH_FENCE_OWNER}}
     USING (tenant_id=current_setting('app.operations_tenant',true));
-CREATE POLICY tenant_ops_aggregate_read ON {{SCHEMA}}.model_money_ledger TO {{AUTH_FENCE_OWNER}}
+CREATE POLICY tenant_ops_aggregate_read ON {{SCHEMA}}.model_money_ledger FOR SELECT TO {{AUTH_FENCE_OWNER}}
     USING (tenant_id=current_setting('app.operations_tenant',true));
-CREATE POLICY tenant_ops_aggregate_read ON {{SCHEMA}}.model_usage TO {{AUTH_FENCE_OWNER}}
+CREATE POLICY tenant_ops_aggregate_read ON {{SCHEMA}}.model_usage FOR SELECT TO {{AUTH_FENCE_OWNER}}
     USING (tenant_id=current_setting('app.operations_tenant',true));
 GRANT SELECT,INSERT,UPDATE ON {{SCHEMA}}.tenant_operations_projection_dirty,{{SCHEMA}}.tenant_operations_projection_snapshots TO {{AUTH_FENCE_OWNER}};
 GRANT USAGE,CREATE ON SCHEMA {{SCHEMA}} TO {{AUTH_FENCE_OWNER}};
@@ -66,6 +66,7 @@ LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,pg_temp AS $fn$
 DECLARE v_tenant text;
 BEGIN
  IF TG_OP='DELETE' THEN v_tenant:=OLD.tenant_id; ELSE v_tenant:=NEW.tenant_id; END IF;
+ IF v_tenant IN ('local-demo','local-demo-2') AND NOT EXISTS (SELECT 1 FROM {{SCHEMA}}.identity_tenants t WHERE t.tenant_id=v_tenant) THEN RETURN NULL; END IF;
  IF v_tenant IS NOT NULL AND v_tenant<>'' THEN
    INSERT INTO {{SCHEMA}}.tenant_operations_projection_dirty(tenant_id,generation,projected_generation,dirty_since)
      VALUES(v_tenant,1,0,clock_timestamp())
@@ -203,7 +204,7 @@ BEGIN
      AND jsonb_typeof(g->'metrics')='array' AND jsonb_array_length(g->'metrics')>0
  ), allowed_tenants AS (
    SELECT t.tenant_id,t.display_name,t.status,t.jurisdiction_id,
-     ARRAY(SELECT DISTINCT metric.value FROM scoped_grants sg CROSS JOIN LATERAL unnest(sg.metrics) AS metric(value) WHERE sg.tenant_id=t.tenant_id) AS metrics
+     ARRAY(SELECT DISTINCT metric.value FROM scoped_grants sg CROSS JOIN LATERAL unnest(sg.metrics) AS metric(value) WHERE sg.tenant_id=t.tenant_id AND sg.jurisdiction_id=t.jurisdiction_id) AS metrics
    FROM {{SCHEMA}}.identity_tenants t
    JOIN {{SCHEMA}}.identity_jurisdictions j ON j.jurisdiction_id=t.jurisdiction_id AND j.status='active'
    WHERE EXISTS(SELECT 1 FROM scoped_grants sg WHERE sg.tenant_id=t.tenant_id AND sg.jurisdiction_id=t.jurisdiction_id)
@@ -249,3 +250,6 @@ BEGIN
 END
 $fn$;
 REVOKE ALL ON FUNCTION {{SCHEMA}}.tenant_jurisdiction_operations(text,uuid,uuid,date,date) FROM PUBLIC;
+
+RESET ROLE;
+REVOKE CREATE ON SCHEMA {{SCHEMA}} FROM {{AUTH_FENCE_OWNER}};

@@ -172,6 +172,13 @@ to_regprocedure(format('%I.tenant_operation_fence(jsonb,text,text)',$3))::oid
 			,to_regprocedure(format('%I.tenant_config_adopt(text,bigint,text,text,text)',$3))::oid
 			,to_regprocedure(format('%I.tenant_model_send_set(text,bigint,boolean,text)',$3))::oid
 			,to_regprocedure(format('%I.tenant_model_send_fence(text,bigint,boolean)',$3))::oid
+			,to_regprocedure(format('%I.tenant_provision_operation_json(uuid)',$3))::oid
+			,to_regprocedure(format('%I.tenant_provision_operation_start(text,text,jsonb,text,text)',$3))::oid
+			,to_regprocedure(format('%I.tenant_provision_operations_list(text,text,integer)',$3))::oid
+			,to_regprocedure(format('%I.tenant_provision_operation_read(text,text)',$3))::oid
+			,to_regprocedure(format('%I.tenant_provision_operation_advance(text,text,bigint,text,text,text,text)',$3))::oid
+			,to_regprocedure(format('%I.tenant_operations_mark_dirty()',$3))::oid
+			,to_regprocedure(format('%I.tenant_jurisdiction_operations(text,uuid,uuid,date,date)',$3))::oid
 		]) AS oid
 	), owner_objects AS (
 		SELECT class.classid,class.objid,class.objsubid,namespace.nspname
@@ -241,6 +248,21 @@ to_regprocedure(format('%I.tenant_operation_fence(jsonb,text,text)',$3))::oid
 		) AS item(table_name,column_name,privilege_type)
  UNION ALL SELECT * FROM (VALUES ('cases','id','UPDATE'),('cases','title','SELECT'),('cases','contract_type','SELECT'),('cases','business_status','SELECT'),('cases','created_at','SELECT'),('cases','updated_at','SELECT'),('identity_tenants','revision','UPDATE'),('identity_tenants','config_revision','UPDATE'),('identity_tenants','config_version_id','UPDATE'),('identity_tenants','config_digest','UPDATE'),('identity_tenants','config_adopted_at','UPDATE'),('identity_tenants','config_adopted_by','UPDATE'),('identity_tenants','model_sends_enabled','UPDATE'),('identity_tenants','model_sends_revision','UPDATE'),('identity_tenants','model_sends_updated_at','UPDATE'),('identity_memberships','revision','UPDATE'),('sessions','context_version','SELECT'),('sessions','csrf_token','SELECT'),('sessions','context_version','UPDATE'),('sessions','tenant_id','UPDATE'),('sessions','org_id','UPDATE'),('sessions','membership_id','UPDATE'),('worker_claim_identities','session_digest','SELECT'),('worker_claim_identities','context_version','SELECT'),('worker_claim_identities','session_digest','UPDATE'),('worker_claim_identities','context_version','UPDATE'),('operation_authority_tickets',NULL::text,'SELECT'),('operation_authority_tickets','context_version','UPDATE'),('intake_authority_tickets','context_version','SELECT'),('intake_authority_tickets','context_version','UPDATE'),('identity_support_grants',NULL::text,'SELECT'),('identity_support_grants',NULL::text,'INSERT'),('identity_support_grants','status','UPDATE'),('identity_support_grants','approved_by','UPDATE'),('identity_support_grants','revision','UPDATE'),('identity_support_events',NULL::text,'SELECT'),('identity_support_events',NULL::text,'INSERT')) AS additions(table_name,column_name,privilege_type) WHERE EXISTS(SELECT 1 FROM pg_attribute WHERE attrelid=to_regclass(format('%I.sessions',$2::text)) AND attname='context_version' AND NOT attisdropped)
 	 UNION ALL SELECT * FROM (VALUES ('identity_tenants','live_epoch','SELECT'),('operation_authority_tickets','tenant_live_epoch','SELECT'),('intake_authority_tickets','tenant_live_epoch','SELECT'),('worker_jobs','tenant_live_epoch','SELECT'),('review_attempts','tenant_live_epoch','SELECT')) AS epoch_permissions(table_name,column_name,privilege_type) WHERE EXISTS(SELECT 1 FROM pg_attribute WHERE attrelid=to_regclass(format('%I.identity_tenants',$2::text)) AND attname='live_epoch' AND NOT attisdropped)
+ UNION ALL SELECT * FROM (VALUES
+  ('identity_tenants','status','UPDATE'),('identity_tenants','live_epoch','UPDATE'),('identity_tenants','updated_at','UPDATE'),
+  ('tenant_provision_operations',NULL::text,'SELECT'),('tenant_provision_operations',NULL::text,'INSERT'),('tenant_provision_operations',NULL::text,'UPDATE'),
+  ('tenant_provision_operation_steps',NULL::text,'SELECT'),('tenant_provision_operation_steps',NULL::text,'INSERT'),('tenant_provision_operation_steps',NULL::text,'UPDATE'),
+  ('model_usage','tenant_id','SELECT'),('model_usage','lease_id','SELECT'),('model_usage','money_cost_state','SELECT'),
+  ('model_money_ledger','tenant_id','SELECT'),('model_money_ledger','lease_id','SELECT'),('model_money_ledger','event_kind','SELECT'),('model_money_ledger','amount_minor','SELECT')
+ ) AS lifecycle_permissions(table_name,column_name,privilege_type) WHERE to_regclass(format('%I.tenant_provision_operations',$2::text)) IS NOT NULL
+ UNION ALL SELECT * FROM (VALUES
+  ('tenant_operations_projection_dirty',NULL::text,'SELECT'),('tenant_operations_projection_dirty',NULL::text,'INSERT'),('tenant_operations_projection_dirty',NULL::text,'UPDATE'),
+  ('tenant_operations_projection_snapshots',NULL::text,'SELECT'),('tenant_operations_projection_snapshots',NULL::text,'INSERT'),('tenant_operations_projection_snapshots',NULL::text,'UPDATE'),
+  ('review_runs','created_at','SELECT'),('review_runs','updated_at','SELECT'),('review_attempts','finished_at','SELECT'),
+  ('model_money_ledger','period_day','SELECT'),('model_usage','money_cost_minor','SELECT'),('model_usage','money_period_day','SELECT'),
+  ('model_usage','reserved_at','SELECT'),('model_usage','occurred_at','SELECT'),('model_usage','reserved_input_tokens','SELECT'),('model_usage','reserved_output_tokens','SELECT'),('model_usage','input_tokens','SELECT'),('model_usage','output_tokens','SELECT'),('model_usage','total_tokens','SELECT'),
+  ('model_call_leases','tenant_id','SELECT'),('model_call_leases','lease_id','SELECT'),('model_call_leases','reserved_input_tokens','SELECT'),('model_call_leases','reserved_output_tokens','SELECT'),('model_call_leases','acquired_at','SELECT')
+ ) AS operations_permissions(table_name,column_name,privilege_type) WHERE to_regclass(format('%I.tenant_operations_projection_dirty',$2::text)) IS NOT NULL
 	), actual AS (
 		SELECT namespace.nspname AS schema_name,relation.relname AS table_name,NULL::text AS column_name,acl.privilege_type,acl.is_grantable
 		FROM pg_class relation JOIN pg_namespace namespace ON namespace.oid=relation.relnamespace
@@ -278,6 +300,8 @@ to_regprocedure(format('%I.tenant_operation_fence(jsonb,text,text)',$3))::oid
 			('review_attempts','attempt_identity_claim_owner_read')
 		) AS item(table_name,policy_name)
  UNION ALL SELECT 'cases','case_context_owner_lock' WHERE EXISTS(SELECT 1 FROM pg_attribute WHERE attrelid=to_regclass(format('%I.sessions',$2::text)) AND attname='context_version' AND NOT attisdropped)
+ UNION ALL SELECT * FROM (VALUES ('tenant_provision_operations','tenant_provision_operations_owner'),('tenant_provision_operation_steps','tenant_provision_steps_owner'),('model_usage','tenant_lifecycle_cost_read'),('model_money_ledger','tenant_lifecycle_cost_read')) AS lifecycle_policies(table_name,policy_name) WHERE to_regclass(format('%I.tenant_provision_operations',$2::text)) IS NOT NULL
+ UNION ALL SELECT * FROM (VALUES ('tenant_operations_projection_dirty','tenant_ops_projection_owner'),('tenant_operations_projection_snapshots','tenant_ops_projection_owner'),('cases','tenant_ops_aggregate_read'),('review_runs','tenant_ops_aggregate_read'),('review_attempts','tenant_ops_aggregate_read'),('model_call_leases','tenant_ops_aggregate_read'),('model_usage','tenant_ops_aggregate_read'),('model_money_ledger','tenant_ops_aggregate_read')) AS operations_policies(table_name,policy_name) WHERE to_regclass(format('%I.tenant_operations_projection_dirty',$2::text)) IS NOT NULL
 	), actual AS (
 		SELECT relation.relname AS table_name,policy.polname AS policy_name,policy.polcmd,policy.polroles,
 			pg_get_expr(policy.polqual,policy.polrelid) AS using_expr,pg_get_expr(policy.polwithcheck,policy.polrelid) AS check_expr
@@ -285,7 +309,7 @@ to_regprocedure(format('%I.tenant_operation_fence(jsonb,text,text)',$3))::oid
 		JOIN pg_namespace namespace ON namespace.oid=relation.relnamespace
 		CROSS JOIN target
 		WHERE namespace.nspname=$2 AND target.role_oid=ANY(policy.polroles)
-			AND relation.relname IN ('worker_claim_identities','worker_jobs','cases','review_runs','review_attempts')
+			AND relation.relname IN ('worker_claim_identities','worker_jobs','cases','review_runs','review_attempts','tenant_provision_operations','tenant_provision_operation_steps','model_usage','model_money_ledger','model_call_leases','tenant_operations_projection_dirty','tenant_operations_projection_snapshots')
 	)
 	SELECT EXISTS(SELECT 1 FROM expected WHERE to_regclass(format('%I.worker_claim_identities',$2)) IS NOT NULL AND NOT EXISTS(
 		SELECT 1 FROM actual,target WHERE actual.table_name=expected.table_name AND actual.policy_name=expected.policy_name
@@ -293,9 +317,11 @@ to_regprocedure(format('%I.tenant_operation_fence(jsonb,text,text)',$3))::oid
 			AND ((expected.policy_name='worker_claim_identity_owner_read' AND actual.polcmd='r' AND actual.using_expr='true' AND actual.check_expr IS NULL)
 			 OR (expected.policy_name='worker_claim_identity_owner_insert' AND actual.polcmd='a' AND actual.using_expr IS NULL AND actual.check_expr='true')
 			 OR (expected.policy_name='case_context_owner_lock' AND actual.polcmd='w' AND actual.using_expr='true' AND actual.check_expr='false')
- OR (expected.policy_name<>'worker_claim_identity_owner_read' AND expected.policy_name<>'worker_claim_identity_owner_insert' AND expected.policy_name<>'case_context_owner_lock' AND actual.polcmd='r' AND actual.using_expr='true' AND actual.check_expr IS NULL))))
-		OR (SELECT count(*) FROM actual)<>CASE WHEN to_regclass(format('%I.worker_claim_identities',$2)) IS NULL THEN 0 ELSE 6+CASE WHEN EXISTS(SELECT 1 FROM pg_attribute WHERE attrelid=to_regclass(format('%I.sessions',$2::text)) AND attname='context_version' AND NOT attisdropped) THEN 1 ELSE 0 END END
-		OR EXISTS(SELECT 1 FROM (VALUES ('worker_claim_identities'),('worker_jobs'),('cases'),('review_runs'),('review_attempts')) AS tables(table_name)
+ OR (expected.policy_name IN ('tenant_provision_operations_owner','tenant_provision_steps_owner','tenant_ops_projection_owner') AND actual.polcmd='*' AND actual.using_expr='true' AND actual.check_expr='true')
+ OR (expected.policy_name IN ('tenant_lifecycle_cost_read','tenant_ops_aggregate_read') AND actual.polcmd='r' AND actual.check_expr IS NULL AND replace(regexp_replace(actual.using_expr,'[[:space:]()]','','g'),'::text','') = 'tenant_id=current_setting'||quote_literal(CASE WHEN expected.policy_name='tenant_lifecycle_cost_read' THEN 'app.lifecycle_cost_tenant' ELSE 'app.operations_tenant' END)||',true')
+ OR (expected.policy_name IN ('worker_identity_claim_owner_read','case_identity_claim_owner_read','run_identity_claim_owner_read','attempt_identity_claim_owner_read') AND actual.polcmd='r' AND actual.using_expr='true' AND actual.check_expr IS NULL))))
+		OR (SELECT count(*) FROM actual)<>(SELECT count(*) FROM expected WHERE to_regclass(format('%I.worker_claim_identities',$2)) IS NOT NULL)
+		OR EXISTS(SELECT 1 FROM (VALUES ('worker_claim_identities'),('worker_jobs'),('cases'),('review_runs'),('review_attempts'),('tenant_provision_operations'),('tenant_provision_operation_steps'),('model_usage'),('model_money_ledger'),('model_call_leases'),('tenant_operations_projection_dirty'),('tenant_operations_projection_snapshots')) AS tables(table_name)
 			JOIN pg_class relation ON relation.relname=tables.table_name
 			JOIN pg_namespace namespace ON namespace.oid=relation.relnamespace AND namespace.nspname=$2
 			WHERE NOT relation.relrowsecurity OR NOT relation.relforcerowsecurity)`, role, schema).Scan(&policyUnsafe)
