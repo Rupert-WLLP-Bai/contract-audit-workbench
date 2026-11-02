@@ -311,10 +311,11 @@ func (s *Store) resolveOperationTicket(ctx context.Context, scope model.Delegate
 	if err = setLocalScope(ctx, tx, dbScope{ActorID: "operation-authority", Role: "api", TenantID: scope.TenantID, OrgID: scope.OrgID}); err != nil {
 		return accounts.User{}, err
 	}
-	var digest, principal, membership string
+	var digest string
+	var principal, membership *string
 	var encoded []byte
-	err = tx.QueryRow(ctx, `SELECT session_digest,principal_id,membership_id,scope FROM operation_authority_tickets WHERE ticket_digest=$1 AND tenant_id=$2 AND expires_at>clock_timestamp()`, identityTokenDigest(scope.OperationTicket), scope.TenantID).Scan(&digest, &principal, &membership, &encoded)
-	if err != nil {
+	err = tx.QueryRow(ctx, `SELECT session_digest,principal_id::text,membership_id::text,scope FROM operation_authority_tickets WHERE ticket_digest=$1 AND tenant_id=$2 AND expires_at>clock_timestamp()`, identityTokenDigest(scope.OperationTicket), scope.TenantID).Scan(&digest, &principal, &membership, &encoded)
+	if err != nil || (principal == nil) != (membership == nil) {
 		return accounts.User{}, errAttemptAuthorizationRevoked
 	}
 	var saved model.DelegatedScope
@@ -325,7 +326,13 @@ func (s *Store) resolveOperationTicket(ctx context.Context, scope model.Delegate
 		return accounts.User{}, err
 	}
 	_, u, err := s.sessionFromDigest(ctx, digest)
-	if err != nil || u.PrincipalID != principal || u.MembershipID != membership {
+	// Locally issued sessions have no membership IDs; enterprise tickets must
+	// still match both IDs from the exact live session.
+	expectedPrincipal, expectedMembership := "", ""
+	if principal != nil {
+		expectedPrincipal, expectedMembership = *principal, *membership
+	}
+	if err != nil || u.PrincipalID != expectedPrincipal || u.MembershipID != expectedMembership {
 		return accounts.User{}, errAttemptAuthorizationRevoked
 	}
 	return u, s.validateNonJobOperation(ctx, u, scope)
