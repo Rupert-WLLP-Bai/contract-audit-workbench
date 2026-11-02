@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Appends subject-change proposals and decisions, lists case-scoped history and returns decision summaries using transaction-bound authorization and revision checks.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-31
+// Updated: 2026-11-02
+// Revision: r2
+// Copyright: See LICENSE
+// End file metadata.
+
 package store
 
 import (

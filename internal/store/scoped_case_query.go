@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: queryCaseRows lets the existing row decoders serve both startup's complete load and case mutations. Each caller supplies its own fixed case predicate. Related `store` operations include queryCaseRows, decodeScopedParsedRows.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-31
+// Updated: 2026-10-31
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package store
 
 import (

@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: validateCloudPolicyBindings requires a frozen, published policy source for every mandatory cloud rule. The identity uses the display version in the RulePack and the… Related `store` operations include capabilitiesForCase, capabilitiesForSnapshot, isTelecomDedicatedLineCase, isCloudServicesCase.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-25
+// Updated: 2026-11-02
+// Revision: r2
+// Copyright: See LICENSE
+// End file metadata.
+
 package store
 
 import (

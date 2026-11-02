@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: executeSingleContractPrecheck uses only the frozen primary contract. Governance dependencies are still resolved at admission and revalidated for execution; the full governed… Related `store` operations include executeSingleContractPrecheck.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-31
+// Updated: 2026-11-02
+// Revision: r2
+// Copyright: See LICENSE
+// End file metadata.
+
 package store
 
 import (
