@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Provides test-only React/Ant Design rendering, a stub operator-audit client and deferred promises for isolated extension-panel tests.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-29
+// Updated: 2026-10-29
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 /** Test-only renderer and client stub for the operator-audit panels. */
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";

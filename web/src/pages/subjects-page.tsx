@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Lists subjects visible to the case and opens case-scoped subject details, verification and binding history; case roles and permissions come from server projections.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-31
+// Updated: 2026-11-02
+// Revision: r2
+// Copyright: See LICENSE
+// End file metadata.
+
 import { Alert, Button, Card, Empty, Form, Input, Space, Table, Typography } from "antd";
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router";

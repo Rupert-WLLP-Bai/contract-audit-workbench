@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Compares two selected frozen review runs and their primary contract/material snapshots, showing matching and changed findings with source identities rather than recomputing outcomes.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-25
+// Updated: 2026-10-30
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 import { Tabs } from "antd";
 import { Collapse } from "antd";
 import { Select } from "antd";

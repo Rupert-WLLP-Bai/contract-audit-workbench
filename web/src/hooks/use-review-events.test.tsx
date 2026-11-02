@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Checks the web behavior for “review event stream”; representative assertions cover connects with credentials and forwards sequenced events, closes the superseded stream and subscribes again when the session scope changes, reports a terminal refused connect instead of a reconnecting stream. It protects the rendered/API state expected by this component without starting the full browser journey.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-25
+// Updated: 2026-10-31
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 import { act, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { useReviewEvents, type ReviewEventBatch } from "./use-review-events";
