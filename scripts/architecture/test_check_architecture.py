@@ -35,6 +35,21 @@ class NamedPolicyTests(unittest.TestCase):
                 ],
             },
             {
+                "ImportPath": "contractaudit/internal/coreauthority",
+                "GoFiles": ["transport.go"],
+                "Imports": [
+                    "crypto/tls",
+                    "crypto/x509",
+                    "errors",
+                    "net",
+                    "net/http",
+                    "net/url",
+                    "os",
+                    "strings",
+                    "time",
+                ],
+            },
+            {
                 "ImportPath": "contractaudit/internal/advisorycontract",
                 "GoFiles": ["contract.go"],
                 "Imports": contract_imports or ["time"],
