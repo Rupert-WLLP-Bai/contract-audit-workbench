@@ -11454,6 +11454,91 @@
         ],
         "additionalProperties": false
       },
+      "JurisdictionOperationsSummary": {
+        "type": "object",
+        "properties": {
+          "jurisdiction_id": {
+            "type": "string"
+          },
+          "tenants": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TenantOperationsSummary"
+            }
+          },
+          "totals": {
+            "$ref": "#/components/schemas/OperationsMetricSummary"
+          }
+        },
+        "required": [
+          "jurisdiction_id",
+          "tenants",
+          "totals"
+        ]
+      },
+      "JurisdictionOperationsView": {
+        "type": "object",
+        "properties": {
+          "built_at": {
+            "type": "string",
+            "nullable": true
+          },
+          "dirty_since": {
+            "type": "string",
+            "nullable": true
+          },
+          "from_date": {
+            "type": "string"
+          },
+          "jurisdictions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/JurisdictionOperationsSummary"
+            }
+          },
+          "observed_at": {
+            "type": "string"
+          },
+          "projection_age_seconds": {
+            "type": "integer",
+            "nullable": true
+          },
+          "projection_state": {
+            "type": "string"
+          },
+          "schema_version": {
+            "type": "string"
+          },
+          "source_snapshot_token": {
+            "type": "string",
+            "nullable": true
+          },
+          "to_date": {
+            "type": "string"
+          },
+          "watermark": {
+            "type": "string",
+            "nullable": true
+          },
+          "watermark_kind": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "schema_version",
+          "observed_at",
+          "watermark_kind",
+          "watermark",
+          "projection_state",
+          "source_snapshot_token",
+          "built_at",
+          "dirty_since",
+          "projection_age_seconds",
+          "from_date",
+          "to_date",
+          "jurisdictions"
+        ]
+      },
       "Knowledge": {
         "type": "object",
         "properties": {
@@ -12491,6 +12576,119 @@
           "info",
           "paths",
           "components"
+        ]
+      },
+      "OperationsCostView": {
+        "type": "object",
+        "properties": {
+          "currency": {
+            "type": "string"
+          },
+          "known": {
+            "type": "boolean"
+          },
+          "minor_unit_scale": {
+            "type": "integer"
+          },
+          "settled_minor": {
+            "type": "string",
+            "nullable": true
+          },
+          "unknown_hold_minor": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "currency",
+          "minor_unit_scale",
+          "known",
+          "settled_minor",
+          "unknown_hold_minor"
+        ]
+      },
+      "OperationsMetricSummary": {
+        "type": "object",
+        "properties": {
+          "attempts_completed": {
+            "type": "string",
+            "nullable": true
+          },
+          "cases_created": {
+            "type": "string",
+            "nullable": true
+          },
+          "logical_quota": {
+            "$ref": "#/components/schemas/OperationsQuotaView",
+            "nullable": true
+          },
+          "money": {
+            "$ref": "#/components/schemas/OperationsCostView",
+            "nullable": true
+          },
+          "runs_completed": {
+            "type": "string",
+            "nullable": true
+          },
+          "shared_pool": {
+            "$ref": "#/components/schemas/OperationsPoolView",
+            "nullable": true
+          }
+        },
+        "required": [
+          "cases_created",
+          "runs_completed",
+          "attempts_completed",
+          "money",
+          "logical_quota",
+          "shared_pool"
+        ]
+      },
+      "OperationsPoolView": {
+        "type": "object",
+        "properties": {
+          "attribution": {
+            "type": "string"
+          },
+          "capacity": {
+            "type": "string",
+            "nullable": true
+          },
+          "in_use": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "attribution",
+          "capacity",
+          "in_use"
+        ]
+      },
+      "OperationsQuotaView": {
+        "type": "object",
+        "properties": {
+          "calls": {
+            "type": "string",
+            "nullable": true
+          },
+          "period_basis": {
+            "type": "string"
+          },
+          "reserved_tokens": {
+            "type": "string",
+            "nullable": true
+          },
+          "unknown_usage_calls": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "period_basis",
+          "calls",
+          "reserved_tokens",
+          "unknown_usage_calls"
         ]
       },
       "OperatorCollectionJob": {
@@ -19444,6 +19642,213 @@
         ],
         "additionalProperties": false
       },
+      "TenantOperationsSummary": {
+        "type": "object",
+        "properties": {
+          "metrics": {
+            "$ref": "#/components/schemas/OperationsMetricSummary"
+          },
+          "status": {
+            "type": "string"
+          },
+          "tenant_id": {
+            "type": "string"
+          },
+          "tenant_name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "tenant_id",
+          "tenant_name",
+          "status",
+          "metrics"
+        ]
+      },
+      "TenantProvisionInput": {
+        "type": "object",
+        "properties": {
+          "admin_org_unit_id": {
+            "type": "string"
+          },
+          "admin_org_unit_name": {
+            "type": "string"
+          },
+          "admin_principal_id": {
+            "type": "string"
+          },
+          "idempotency_key": {
+            "type": "string"
+          },
+          "jurisdiction_id": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "tenant_config_version": {
+            "type": "string"
+          },
+          "tenant_id": {
+            "type": "string"
+          },
+          "tenant_name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "idempotency_key",
+          "kind",
+          "tenant_id",
+          "tenant_name",
+          "jurisdiction_id",
+          "admin_principal_id",
+          "admin_org_unit_id",
+          "admin_org_unit_name",
+          "tenant_config_version"
+        ]
+      },
+      "TenantProvisionOperation": {
+        "type": "object",
+        "properties": {
+          "created_at": {
+            "type": "string"
+          },
+          "current_step": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "operation_id": {
+            "type": "string"
+          },
+          "payload_sha256": {
+            "type": "string"
+          },
+          "reconciliation_required": {
+            "type": "boolean"
+          },
+          "revision": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "steps": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TenantProvisionStepView"
+            }
+          },
+          "tenant_id": {
+            "type": "string"
+          },
+          "updated_at": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "operation_id",
+          "tenant_id",
+          "kind",
+          "status",
+          "current_step",
+          "payload_sha256",
+          "revision",
+          "reconciliation_required",
+          "steps",
+          "created_at",
+          "updated_at"
+        ]
+      },
+      "TenantProvisionOperationResult": {
+        "type": "object",
+        "properties": {
+          "operation": {
+            "$ref": "#/components/schemas/TenantProvisionOperation"
+          },
+          "schema_version": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "schema_version",
+          "operation"
+        ]
+      },
+      "TenantProvisionOperationsView": {
+        "type": "object",
+        "properties": {
+          "next_cursor": {
+            "type": "string",
+            "nullable": true
+          },
+          "operations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TenantProvisionOperation"
+            }
+          },
+          "schema_version": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "schema_version",
+          "operations",
+          "next_cursor"
+        ]
+      },
+      "TenantProvisionStepInput": {
+        "type": "object",
+        "properties": {
+          "expected_revision": {
+            "type": "string"
+          },
+          "receipt_sha256": {
+            "type": "string",
+            "nullable": true
+          },
+          "reconciliation": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "expected_revision",
+          "state",
+          "receipt_sha256",
+          "reconciliation"
+        ]
+      },
+      "TenantProvisionStepView": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "receipt_sha256": {
+            "type": "string",
+            "nullable": true
+          },
+          "state": {
+            "type": "string"
+          },
+          "updated_at": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "name",
+          "state",
+          "receipt_sha256",
+          "updated_at"
+        ]
+      },
       "TenantRuntimeControl": {
         "type": "object",
         "properties": {
@@ -21661,6 +22066,52 @@
         ]
       }
     },
+    "/api/admin/jurisdiction/operations": {
+      "get": {
+        "operationId": "readJurisdictionOperations",
+        "tags": [
+          "系统"
+        ],
+        "summary": "读取辖区级运营汇总",
+        "parameters": [
+          {
+            "name": "from_date",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          },
+          {
+            "name": "to_date",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "辖区与租户范围的汇总投影",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JurisdictionOperationsView"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "adminSessionCookie": []
+          }
+        ]
+      }
+    },
     "/api/admin/legal-sources/imports": {
       "post": {
         "operationId": "importLegalSource",
@@ -22114,7 +22565,12 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "adminSessionCookie": []
+          }
+        ]
       },
       "put": {
         "operationId": "putPlatformModelMoneyPolicy",
@@ -22143,7 +22599,182 @@
               }
             }
           }
+        },
+        "security": [
+          {
+            "adminSessionCookie": []
+          }
+        ]
+      }
+    },
+    "/api/admin/platform/tenant-provision-operations": {
+      "get": {
+        "operationId": "listTenantProvisionOperations",
+        "tags": [
+          "系统"
+        ],
+        "summary": "分页读取租户开通与恢复操作",
+        "parameters": [
+          {
+            "name": "cursor",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "当前平台租户操作页",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TenantProvisionOperationsView"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "adminSessionCookie": []
+          }
+        ]
+      },
+      "post": {
+        "operationId": "startTenantProvisionOperation",
+        "tags": [
+          "系统"
+        ],
+        "summary": "提交幂等的租户开通或恢复操作",
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TenantProvisionInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "操作已受理",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TenantProvisionOperationResult"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "adminSessionCookie": []
+          }
+        ]
+      }
+    },
+    "/api/admin/platform/tenant-provision-operations/{operationID}": {
+      "parameters": [
+        {
+          "name": "operationID",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
         }
+      ],
+      "get": {
+        "operationId": "readTenantProvisionOperation",
+        "tags": [
+          "系统"
+        ],
+        "summary": "读取租户开通或恢复操作及步骤回执",
+        "responses": {
+          "200": {
+            "description": "操作当前状态",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TenantProvisionOperationResult"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "adminSessionCookie": []
+          }
+        ]
+      }
+    },
+    "/api/admin/platform/tenant-provision-operations/{operationID}/step": {
+      "parameters": [
+        {
+          "name": "operationID",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "post": {
+        "operationId": "advanceTenantProvisionOperation",
+        "tags": [
+          "系统"
+        ],
+        "summary": "追加租户操作步骤回执",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TenantProvisionStepInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "操作步骤已记录",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TenantProvisionOperationResult"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "adminSessionCookie": []
+          }
+        ]
       }
     },
     "/api/admin/rulepacks": {
@@ -23677,7 +24308,12 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "adminSessionCookie": []
+          }
+        ]
       }
     },
     "/api/admin/tenant-cost-policy": {
@@ -23698,7 +24334,12 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "adminSessionCookie": []
+          }
+        ]
       },
       "put": {
         "operationId": "putTenantCostPolicy",
@@ -23727,7 +24368,12 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "adminSessionCookie": []
+          }
+        ]
       }
     },
     "/api/admin/tenant-operations": {
