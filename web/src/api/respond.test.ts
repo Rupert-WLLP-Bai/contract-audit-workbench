@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Checks the web behavior for “invalidResponse, enumValue”; representative assertions cover throws one non-retryable invalid-response error with the given status, returns a member or null without throwing, binds the family message and status into every invalid error. It protects the rendered/API state expected by this component without starting the full browser journey.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-30
+// Updated: 2026-10-30
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 import { describe, expect, it } from "vitest";
 import { ApiError } from "./http";
 import { enumValue, invalidResponse, responseReader } from "./respond";

@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Renders ExperienceMetricsPanel, the experience metrics panel workbench UI, from the selected case/workspace projection and the module’s query/state inputs; it displays server-derived state and does not establish business authorization or evidence validity.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-31
+// Updated: 2026-10-31
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 import { Button, Table, type TableProps } from "antd";
 import { useQuery } from "@tanstack/react-query";
 import { getExperienceMetrics, type ExperienceMetricsSample, type ExperienceOutcome } from "../api/experience-metrics";

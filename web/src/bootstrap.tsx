@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Mounts the web application into the root DOM element and configures its Ant Design theme/tokens and API session identity before React renders routes.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-25
+// Updated: 2026-11-02
+// Revision: r2
+// Copyright: See LICENSE
+// End file metadata.
+
 import { App as AntdApp, ConfigProvider, type ThemeConfig } from "antd";
 import { StyleProvider } from "@ant-design/cssinjs";
 import zhCN from "antd/locale/zh_CN";

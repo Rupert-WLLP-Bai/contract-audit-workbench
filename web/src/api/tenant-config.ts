@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: 声明 `TenantConfigRef`, `TenantConfigAdopted`, `TenantConfigSelection`, `TenantConfigView` 等 API 类型、解析器或请求函数，校验服务端响应并封装受控调用。
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-02
+// Updated: 2026-11-02
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 import { useQuery } from "@tanstack/react-query";
 import { paths } from "./paths";
 import { jsonInit, requestJson, type CommandContext } from "./http";
