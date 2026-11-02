@@ -42,7 +42,7 @@ def commit(root: Path, message: str) -> str:
 
 def script_env(**overrides):
     env = dict(os.environ)
-    for name in ("CAW_FAST_BASE", "CAW_FAST_OUT", "CAW_DELIVERY_DIR",
+    for name in ("CAW_FAST_BASE", "CAW_FAST_OUT", "CAW_DELIVERY_DIR", "CAW_METADATA_EXTERNAL_GUARD",
                  "GITHUB_ACTIONS", "TEST_DATABASE_URL", "MIGRATOR_DATABASE_URL",
                  "MODEL_DATABASE_URL", "GIT_DIR", "GIT_INDEX_FILE",
                  "GIT_WORK_TREE"):
