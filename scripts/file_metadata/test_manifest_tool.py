@@ -87,6 +87,16 @@ class ManifestPrototypeTests(unittest.TestCase):
         with self.assertRaisesRegex(mt.ManifestError, 'project author'):
             mt.validate_record('README.md', rec, self.policy)
 
+    def test_unknown_rights_preserve_descriptive_notice_and_require_source(self):
+        rec = json.loads(json.dumps(self.manifest['files']['README.md']))
+        notice = 'No per-file copyright or license declaration was found; project ownership is not inferred.'
+        rec['copyright'] = [{'holder':'unknown', 'notice':notice, 'source':'Asset metadata inspection requires rights-source follow-up.'}]
+        mt.validate_record('README.md', rec, self.policy)
+        self.assertEqual(rec['copyright'][0]['notice'], notice)
+        rec['copyright'][0]['source'] = ''
+        with self.assertRaisesRegex(mt.ManifestError, 'copyright requires'):
+            mt.validate_record('README.md', rec, self.policy)
+
     def test_unknown_date_requires_reason(self):
         rec = json.loads(json.dumps(self.manifest['files']['README.md']))
         rec['created'] = {'value': 'unknown', 'source': {'kind': 'unknown', 'reason': ''}}

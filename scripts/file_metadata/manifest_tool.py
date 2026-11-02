@@ -305,7 +305,7 @@ def validate_record(path, rec, policy):
     if not (valid_project or unknown or upstream):
         raise ManifestError(f"{path}: author requires reviewed attribution or explicit unknown evidence")
     rights = rec.get("copyright", [])
-    if not rights or any(len(c.get("source", "").strip()) < 8 or (c.get("holder") == "unknown" and c.get("notice") != "unknown") for c in rights):
+    if not rights or any(len(c.get("source", "").strip()) < 8 or (c.get("holder") == "unknown" and not c.get("notice", "").strip()) for c in rights):
         raise ManifestError(f"{path}: copyright requires an explicit source or unknown reason")
     if not rec.get("maintainers") or not any(m.get("name") == "Bai Junhao" and m.get("email") == "baijunhao@cq.chinamobile.com" for m in rec["maintainers"]):
         raise ManifestError(f"{path}: project maintainer missing")
