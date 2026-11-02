@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: 20%预付款, 预付款百分之20, 预付款20%, 验收通过后支付70%, 质保期满10%. Related `engine` operations include EvaluatePaymentSum, EvaluatePaymentCondition, finishGroups, sumReason.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-25
+// Updated: 2026-10-25
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package engine
 
 import (

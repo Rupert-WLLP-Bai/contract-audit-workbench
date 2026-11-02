@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: renders the readable PDF that is authenticated as an entry in an evidence bundle. It embeds the configured Unicode TrueType font. Related `evidencepdf` operations include Render, cleanText, writeText.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-31
+// Updated: 2026-10-31
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 // Package evidencepdf renders the readable PDF that is authenticated as an
 // entry in an evidence bundle. It embeds the configured Unicode TrueType font.
 package evidencepdf
