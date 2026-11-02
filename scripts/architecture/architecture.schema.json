@@ -1,18 +1,39 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Architecture direct-import policies",
-  "x-caw-config-version": 2,
+  "x-caw-config-version": 3,
   "type": "object",
   "additionalProperties": false,
-  "required": ["$schema", "schema_version", "module", "policies"],
+  "required": [
+    "$schema",
+    "schema_version",
+    "module",
+    "policies"
+  ],
   "properties": {
-    "$schema": { "const": "./architecture.schema.json" },
-    "schema_version": { "const": 2 },
-    "module": { "type": "string", "minLength": 1, "pattern": "^[^\\s/]+(?:/[^\\s/]+)*$" },
+    "$schema": {
+      "const": "./architecture.schema.json"
+    },
+    "schema_version": {
+      "enum": [
+        2,
+        3
+      ]
+    },
+    "module": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[^\\s/]+(?:/[^\\s/]+)*$"
+    },
     "policies": {
       "type": "array",
       "minItems": 1,
-      "items": { "$ref": "#/$defs/policy" }
+      "items": {
+        "$ref": "#/$defs/policy"
+      }
+    },
+    "ratchet": {
+      "$ref": "#/$defs/ratchet"
     }
   },
   "$defs": {
@@ -33,54 +54,175 @@
     "policy": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["id", "checks"],
+      "required": [
+        "id",
+        "checks"
+      ],
       "properties": {
-        "id": { "$ref": "#/$defs/identifier" },
-        "description": { "type": "string" },
+        "id": {
+          "$ref": "#/$defs/identifier"
+        },
+        "description": {
+          "type": "string"
+        },
         "checks": {
           "type": "array",
           "minItems": 1,
-          "items": { "$ref": "#/$defs/check" }
+          "items": {
+            "$ref": "#/$defs/check"
+          }
         }
       }
     },
     "check": {
       "oneOf": [
-        { "$ref": "#/$defs/allowlistCheck" },
-        { "$ref": "#/$defs/forbidCheck" }
+        {
+          "$ref": "#/$defs/allowlistCheck"
+        },
+        {
+          "$ref": "#/$defs/forbidCheck"
+        }
       ]
     },
     "allowlistCheck": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["id", "package", "mode", "allowed_direct_imports"],
+      "required": [
+        "id",
+        "package",
+        "mode",
+        "allowed_direct_imports"
+      ],
       "properties": {
-        "id": { "$ref": "#/$defs/identifier" },
-        "package": { "$ref": "#/$defs/packagePath" },
-        "mode": { "const": "allowlist" },
+        "id": {
+          "$ref": "#/$defs/identifier"
+        },
+        "package": {
+          "$ref": "#/$defs/packagePath"
+        },
+        "mode": {
+          "const": "allowlist"
+        },
         "allowed_direct_imports": {
           "type": "array",
           "minItems": 1,
           "uniqueItems": true,
-          "items": { "$ref": "#/$defs/importPath" }
+          "items": {
+            "$ref": "#/$defs/importPath"
+          }
         }
       }
     },
     "forbidCheck": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["id", "package", "mode", "forbidden_direct_imports"],
+      "required": [
+        "id",
+        "package",
+        "mode",
+        "forbidden_direct_imports"
+      ],
       "properties": {
-        "id": { "$ref": "#/$defs/identifier" },
-        "package": { "$ref": "#/$defs/packagePath" },
-        "mode": { "const": "forbid" },
+        "id": {
+          "$ref": "#/$defs/identifier"
+        },
+        "package": {
+          "$ref": "#/$defs/packagePath"
+        },
+        "mode": {
+          "const": "forbid"
+        },
         "forbidden_direct_imports": {
           "type": "array",
           "minItems": 1,
           "uniqueItems": true,
-          "items": { "$ref": "#/$defs/packagePath" }
+          "items": {
+            "$ref": "#/$defs/packagePath"
+          }
+        }
+      }
+    },
+    "ratchet": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "legacy_store_importers",
+        "domains"
+      ],
+      "properties": {
+        "legacy_store_importers": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/packagePath"
+          }
+        },
+        "domains": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/domain"
+          }
+        }
+      }
+    },
+    "domain": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "app",
+        "transport",
+        "postgres"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/identifier"
+        },
+        "app": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/packagePath"
+          }
+        },
+        "transport": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/packagePath"
+          }
+        },
+        "postgres": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/packagePath"
+          }
         }
       }
     }
-  }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "schema_version": {
+            "const": 3
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "ratchet"
+        ]
+      },
+      "else": {
+        "not": {
+          "required": [
+            "ratchet"
+          ]
+        }
+      }
+    }
+  ]
 }
