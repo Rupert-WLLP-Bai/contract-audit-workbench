@@ -346,6 +346,9 @@ func (st state) clone() (state, error) {
 		}
 		out.Snapshots[i].RulePackSnapshot = append([]byte(nil), st.Snapshots[i].RulePackSnapshot...)
 		out.Snapshots[i].PlannerConfiguration = append(json.RawMessage(nil), st.Snapshots[i].PlannerConfiguration...)
+		out.Snapshots[i].AdoptedTenantConfigVersionID = st.Snapshots[i].AdoptedTenantConfigVersionID
+		out.Snapshots[i].AdoptedTenantConfigDigest = st.Snapshots[i].AdoptedTenantConfigDigest
+		out.Snapshots[i].InputHashVersion = st.Snapshots[i].InputHashVersion
 	}
 	// JSON encodes UTC instants with a Z suffix. When the process timezone is
 	// UTC, decoding may attach time.Local instead of time.UTC; normalize rows
@@ -639,6 +642,7 @@ type RunSnapshot struct {
 	GovernedKnowledge            *ReviewKnowledgeSnapshot `json:"governed_knowledge,omitempty"`
 	PlannerConfigurationID       string                   `json:"planner_configuration_id,omitempty"`
 	PlannerConfiguration         json.RawMessage          `json:"-"`
+	InputHashVersion             int                      `json:"-"`
 	AdoptedTenantConfigVersionID string                   `json:"-"`
 	AdoptedTenantConfigDigest    string                   `json:"-"`
 }

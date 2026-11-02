@@ -93,7 +93,7 @@ func experiencePolicyContext(ctx context.Context, tx pgx.Tx, item Case, feedback
 		s.rule_pack_id,s.rule_pack_version,s.rule_pack_hash,s.rule_pack_digest,s.rule_pack_compiler_ref,s.rule_pack_snapshot,s.governed_knowledge,
 		s.document_ids,s.parsed_document_ids,s.rule_set_hash,s.playbook_hash,s.model_ref,s.comparator_ref,s.model_configuration_id,
 		s.parse_selection_hash,s.parser_configuration_id,s.planner_configuration_id,s.planner_configuration,s.cloud_policy_snapshot,s.cloud_policy_digest,
-		s.party_context,s.party_context_hash,s.service_object_context,s.service_object_context_hash,i.documents
+		s.party_context,s.party_context_hash,s.service_object_context,s.service_object_context_hash,s.adopted_tenant_config_version_id,s.adopted_tenant_config_digest,s.input_hash_version,i.documents
 		FROM review_runs r
 		JOIN review_attempts a ON a.tenant_id=r.tenant_id AND a.org_id=r.org_id AND a.run_id=r.id
 		JOIN review_attempt_inputs i ON i.tenant_id=a.tenant_id AND i.org_id=a.org_id AND i.run_id=a.run_id AND i.attempt_id=a.id AND i.input_hash=a.input_hash
@@ -107,7 +107,7 @@ func experiencePolicyContext(ctx context.Context, tx pgx.Tx, item Case, feedback
 			&snapshot.RuleSetHash, &snapshot.PlaybookHash, &snapshot.ModelRef, &snapshot.ComparatorRef, &snapshot.ModelConfigurationID,
 			&snapshot.ParseSelectionHash, &snapshot.ParserConfigurationID, &snapshot.PlannerConfigurationID, &plannerPayload,
 			&cloudPolicy, &snapshot.CloudPolicyDigest, &partyContext, &partyContextHash,
-			&serviceObjectContext, &serviceObjectContextHash, &documentsJSON)
+			&serviceObjectContext, &serviceObjectContextHash, &snapshot.AdoptedTenantConfigVersionID, &snapshot.AdoptedTenantConfigDigest, &snapshot.InputHashVersion, &documentsJSON)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return ExperienceDistillPolicyContext{}, fault.Conflict("反馈来源缺少已保存的审查执行记录")
 	}

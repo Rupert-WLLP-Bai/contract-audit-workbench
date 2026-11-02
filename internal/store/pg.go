@@ -1149,13 +1149,13 @@ func syncSnapshots(ctx context.Context, tx pgx.Tx, items []RunSnapshot) error {
 		if err != nil {
 			return err
 		}
-		if _, err := tx.Exec(ctx, `INSERT INTO review_run_snapshots (run_id, document_ids, rule_set_hash, playbook_hash, model_ref, comparator_ref, model_configuration_id, parsed_document_ids, parse_selection_hash, parser_configuration_id, rule_pack_compiler_ref, rule_pack_id, rule_pack_version, rule_pack_hash, rule_pack_digest, rule_pack_snapshot, planner_configuration_id, planner_configuration, cloud_policy_snapshot, cloud_policy_digest, governed_knowledge, party_context, party_context_hash, service_object_context, service_object_context_hash, adopted_tenant_config_version_id, adopted_tenant_config_digest) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27)`,
+		if _, err := tx.Exec(ctx, `INSERT INTO review_run_snapshots (run_id, document_ids, rule_set_hash, playbook_hash, model_ref, comparator_ref, model_configuration_id, parsed_document_ids, parse_selection_hash, parser_configuration_id, rule_pack_compiler_ref, rule_pack_id, rule_pack_version, rule_pack_hash, rule_pack_digest, rule_pack_snapshot, planner_configuration_id, planner_configuration, cloud_policy_snapshot, cloud_policy_digest, governed_knowledge, party_context, party_context_hash, service_object_context, service_object_context_hash, adopted_tenant_config_version_id, adopted_tenant_config_digest, input_hash_version) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28)`,
 			item.RunID, raw, item.RuleSetHash, item.PlaybookHash, item.ModelRef, item.ComparatorRef, item.ModelConfigurationID,
 			parsedRaw, item.ParseSelectionHash, item.ParserConfigurationID, item.RulePackCompilerRef,
 			item.RulePackID, item.RulePackVersion, item.RulePackHash, item.RulePackDigest,
 			[]byte(item.RulePackSnapshot), item.PlannerConfigurationID, plannerPayloadValue(item.PlannerConfiguration),
 			[]byte(item.CloudPolicySnapshot), item.CloudPolicyDigest, knowledge, partyContext, item.PartyContextHash,
-			serviceObjectContext, item.ServiceObjectContextHash, item.AdoptedTenantConfigVersionID, item.AdoptedTenantConfigDigest); err != nil {
+			serviceObjectContext, item.ServiceObjectContextHash, item.AdoptedTenantConfigVersionID, item.AdoptedTenantConfigDigest, inputHashVersion(item)); err != nil {
 			return err
 		}
 	}
@@ -1590,7 +1590,7 @@ func loadIdempotency(ctx context.Context, q queryer) ([]Idem, error) {
 }
 
 func loadSnapshots(ctx context.Context, q queryer, caseID ...string) ([]RunSnapshot, error) {
-	rows, err := queryCaseRows(ctx, q, `SELECT run_id, document_ids, rule_set_hash, playbook_hash, model_ref, comparator_ref, model_configuration_id, parsed_document_ids, parse_selection_hash, parser_configuration_id, rule_pack_compiler_ref, rule_pack_id, rule_pack_version, rule_pack_hash, rule_pack_digest, rule_pack_snapshot, planner_configuration_id, planner_configuration, cloud_policy_snapshot, cloud_policy_digest, governed_knowledge, party_context, party_context_hash, service_object_context, service_object_context_hash, adopted_tenant_config_version_id, adopted_tenant_config_digest FROM review_run_snapshots`, `run_id IN (SELECT id FROM review_runs WHERE case_id=$1)`, ` ORDER BY run_id`, caseID...)
+	rows, err := queryCaseRows(ctx, q, `SELECT run_id, document_ids, rule_set_hash, playbook_hash, model_ref, comparator_ref, model_configuration_id, parsed_document_ids, parse_selection_hash, parser_configuration_id, rule_pack_compiler_ref, rule_pack_id, rule_pack_version, rule_pack_hash, rule_pack_digest, rule_pack_snapshot, planner_configuration_id, planner_configuration, cloud_policy_snapshot, cloud_policy_digest, governed_knowledge, party_context, party_context_hash, service_object_context, service_object_context_hash, adopted_tenant_config_version_id, adopted_tenant_config_digest, input_hash_version FROM review_run_snapshots`, `run_id IN (SELECT id FROM review_runs WHERE case_id=$1)`, ` ORDER BY run_id`, caseID...)
 	if err != nil {
 		return nil, err
 	}
@@ -1604,7 +1604,7 @@ func loadSnapshots(ctx context.Context, q queryer, caseID ...string) ([]RunSnaps
 			&item.ComparatorRef, &item.ModelConfigurationID, &parsedRaw, &item.ParseSelectionHash, &item.ParserConfigurationID, &item.RulePackCompilerRef,
 			&item.RulePackID, &item.RulePackVersion, &item.RulePackHash, &item.RulePackDigest, &snapshot, &item.PlannerConfigurationID, &plannerPayload,
 			&policySnapshot, &item.CloudPolicyDigest, &knowledge, &partyContext, &item.PartyContextHash,
-			&serviceObjectContext, &item.ServiceObjectContextHash, &item.AdoptedTenantConfigVersionID, &item.AdoptedTenantConfigDigest); err != nil {
+			&serviceObjectContext, &item.ServiceObjectContextHash, &item.AdoptedTenantConfigVersionID, &item.AdoptedTenantConfigDigest, &item.InputHashVersion); err != nil {
 			return nil, err
 		}
 		if err := json.Unmarshal([]byte(raw), &item.DocumentIDs); err != nil {

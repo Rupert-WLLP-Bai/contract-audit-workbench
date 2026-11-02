@@ -429,6 +429,15 @@ func (s *Store) startReview(ctx context.Context, user accounts.User, caseID, bus
 		if err != nil {
 			return err
 		}
+		configVersion, configDigest, err := s.acceptedTenantConfig(ctx, acceptanceTx, currentCase.TenantID)
+		if err != nil {
+			return err
+		}
+		signature.AdoptedTenantConfigVersionID, signature.AdoptedTenantConfigDigest = configVersion, configDigest
+		signature.InputHashVersion = 1
+		if configVersion != "" {
+			signature.InputHashVersion = 2
+		}
 		if materialSelectionPending(*st, caseID) || !sameDocumentSet(documentIDs(selectedMaterialDocuments(*st, caseID)), reviewDocumentIDs) || !parsedSelectionCurrent(*st, frozenDocs) {
 			return fault.Conflict("所选的材料解析版本刚被更新，请重新发起审查")
 		}
@@ -2458,15 +2467,40 @@ func interpretedFromFrozen(frozen []FrozenDocument) []Interpreted {
 	return out
 }
 
+func inputHashVersion(snapshot RunSnapshot) int {
+	if snapshot.InputHashVersion == 0 {
+		return 1
+	}
+	return snapshot.InputHashVersion
+}
+
 func frozenInputHash(snapshot RunSnapshot, docs []FrozenDocument) (string, error) {
 	snapshot = scopeSnapshot(snapshot)
 	snapshot.RunID = ""
 	sort.Strings(snapshot.DocumentIDs)
 	sort.Strings(snapshot.ParsedDocumentIDs)
-	raw, err := json.Marshal(struct {
-		Snapshot  RunSnapshot      `json:"snapshot"`
-		Documents []FrozenDocument `json:"documents"`
-	}{Snapshot: snapshot, Documents: docs})
+	var raw []byte
+	var err error
+	switch inputHashVersion(snapshot) {
+	case 1:
+		raw, err = json.Marshal(struct {
+			Snapshot  RunSnapshot      `json:"snapshot"`
+			Documents []FrozenDocument `json:"documents"`
+		}{Snapshot: snapshot, Documents: docs})
+	case 2:
+		if snapshot.AdoptedTenantConfigVersionID == "" || !validPreparationHash(snapshot.AdoptedTenantConfigDigest) {
+			return "", errors.New("invalid adopted tenant config for frozen input")
+		}
+		raw, err = json.Marshal(struct {
+			Domain          string           `json:"domain"`
+			ConfigVersionID string           `json:"config_version_id"`
+			ConfigDigest    string           `json:"config_digest"`
+			Snapshot        RunSnapshot      `json:"snapshot"`
+			Documents       []FrozenDocument `json:"documents"`
+		}{Domain: "review-frozen-input/v2", ConfigVersionID: snapshot.AdoptedTenantConfigVersionID, ConfigDigest: snapshot.AdoptedTenantConfigDigest, Snapshot: snapshot, Documents: docs})
+	default:
+		return "", errors.New("unsupported frozen input hash version")
+	}
 	if err != nil {
 		return "", err
 	}

@@ -33,11 +33,13 @@ CREATE INDEX tenant_config_versions_latest ON {{SCHEMA}}.tenant_config_versions(
 
 ALTER TABLE {{SCHEMA}}.review_run_snapshots
     ADD COLUMN adopted_tenant_config_version_id text NOT NULL DEFAULT '',
-    ADD COLUMN adopted_tenant_config_digest text NOT NULL DEFAULT '';
+    ADD COLUMN adopted_tenant_config_digest text NOT NULL DEFAULT '',
+    ADD COLUMN input_hash_version smallint NOT NULL DEFAULT 1 CHECK (input_hash_version IN (1,2));
 ALTER TABLE {{SCHEMA}}.review_run_snapshots
     ADD CONSTRAINT review_run_snapshots_tenant_config_pair CHECK
-      ((adopted_tenant_config_version_id='' AND adopted_tenant_config_digest='') OR
-       (adopted_tenant_config_version_id<>'' AND adopted_tenant_config_digest ~ '^[0-9a-f]{64}$'));
+      (((adopted_tenant_config_version_id='' AND adopted_tenant_config_digest='') OR
+       (adopted_tenant_config_version_id<>'' AND adopted_tenant_config_digest ~ '^[0-9a-f]{64}$')) AND
+      (input_hash_version=1 OR adopted_tenant_config_version_id<>''));
 
 GRANT SELECT (tenant_id,status,live_epoch,config_revision,config_version_id,config_digest,config_adopted_at,config_adopted_by,model_sends_enabled,model_sends_revision,model_sends_updated_at)
     ON {{SCHEMA}}.identity_tenants TO {{AUTH_FENCE_OWNER}};

@@ -487,39 +487,58 @@ func tenantConfigFunctionError(err error, code string) error {
 	return err
 }
 
+// acceptedTenantConfig resolves and locks the adoption on the same transaction
+// that decides whether the run can be reused and writes its new snapshot.
+func (s *Store) acceptedTenantConfig(ctx context.Context, tx pgx.Tx, tenantID string) (string, string, error) {
+	var versionID, digest string
+	err := tx.QueryRow(ctx, `SELECT COALESCE(version_id,''),digest FROM tenant_config_control($1)`, tenantID).Scan(&versionID, &digest)
+	if errors.Is(err, pgx.ErrNoRows) && s.sel.Mode != "production" && (tenantID == accounts.LocalDemoTenant || tenantID == accounts.LocalDemoTenant2) {
+		return "", "", nil
+	}
+	if err != nil {
+		return "", "", err
+	}
+	if (versionID == "") != (digest == "") || (versionID != "" && !validPreparationHash(digest)) {
+		return "", "", errors.New("invalid adopted tenant config identity")
+	}
+	return versionID, digest, nil
+}
+
 func (s *Store) freezeTenantConfigSnapshot(ctx context.Context, tx pgx.Tx, previous state, next *state) error {
 	oldRuns := make(map[string]bool, len(previous.Snapshots))
 	for _, snapshot := range previous.Snapshots {
 		oldRuns[snapshot.RunID] = true
 	}
 	for i := range next.Snapshots {
-		if oldRuns[next.Snapshots[i].RunID] {
+		snapshot := &next.Snapshots[i]
+		if oldRuns[snapshot.RunID] {
 			continue
 		}
 		var caseID string
 		for _, run := range next.Runs {
-			if run.ID == next.Snapshots[i].RunID {
+			if run.ID == snapshot.RunID {
 				caseID = run.CaseID
 				break
 			}
 		}
-		if caseID == "" {
-			return errors.New("tenant config freeze has no run identity")
-		}
-		caseItem, ok := next.caseByID(caseID)
-		if !ok || caseItem.TenantID == "" {
+		item, ok := next.caseByID(caseID)
+		if !ok || item.TenantID == "" {
 			return errors.New("tenant config freeze has no tenant identity")
 		}
-		var versionID, digest string
-		err := tx.QueryRow(ctx, `SELECT COALESCE(version_id,''),digest FROM tenant_config_control($1)`, caseItem.TenantID).Scan(&versionID, &digest)
-		if errors.Is(err, pgx.ErrNoRows) {
-			continue
-		}
+		versionID, digest, err := s.acceptedTenantConfig(ctx, tx, item.TenantID)
 		if err != nil {
 			return err
 		}
-		if versionID != "" {
-			next.Snapshots[i].AdoptedTenantConfigVersionID, next.Snapshots[i].AdoptedTenantConfigDigest = versionID, digest
+		// Older direct snapshot constructors have not chosen a version yet.
+		if snapshot.InputHashVersion == 0 {
+			snapshot.AdoptedTenantConfigVersionID, snapshot.AdoptedTenantConfigDigest = versionID, digest
+			snapshot.InputHashVersion = 1
+			if versionID != "" {
+				snapshot.InputHashVersion = 2
+			}
+		}
+		if snapshot.AdoptedTenantConfigVersionID != versionID || snapshot.AdoptedTenantConfigDigest != digest || (versionID != "" && snapshot.InputHashVersion != 2) || (versionID == "" && snapshot.InputHashVersion != 1) {
+			return errors.New("tenant config changed during review admission")
 		}
 	}
 	return nil
