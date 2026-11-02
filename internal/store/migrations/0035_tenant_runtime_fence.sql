@@ -31,7 +31,7 @@ CREATE INDEX worker_jobs_tenant_live_claim
     ON {{SCHEMA}}.worker_jobs (tenant_id, tenant_live_epoch, state, ready_at);
 
 GRANT SELECT (tenant_id,status,live_epoch) ON {{SCHEMA}}.identity_tenants TO {{AUTH_FENCE_OWNER}};
-GRANT SELECT (tenant_live_epoch) ON {{SCHEMA}}.intake_authority_tickets, {{SCHEMA}}.operation_authority_tickets TO {{AUTH_FENCE_OWNER}};
+GRANT SELECT (tenant_live_epoch) ON {{SCHEMA}}.intake_authority_tickets, {{SCHEMA}}.operation_authority_tickets, {{SCHEMA}}.worker_jobs, {{SCHEMA}}.review_attempts TO {{AUTH_FENCE_OWNER}};
 GRANT USAGE,CREATE ON SCHEMA {{SCHEMA}} TO {{AUTH_FENCE_OWNER}};
 SET LOCAL ROLE {{AUTH_FENCE_OWNER}};
 
@@ -59,6 +59,19 @@ BEGIN
   FROM {{SCHEMA}}.tenant_runtime_control(p_tenant_id,p_allow_local_demo) control;
  RETURN FOUND AND actual_status='active' AND actual_epoch=p_live_epoch;
 END $fn$;
+-- Queue discovery runs without a tenant GUC. Return only an equality result,
+-- never a tenant row or attempt data, through the existing bounded owner.
+CREATE FUNCTION {{SCHEMA}}.tenant_review_job_epoch_matches(p_job_id text)
+RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,pg_temp AS $fn$
+ SELECT EXISTS (
+  SELECT 1 FROM {{SCHEMA}}.worker_jobs j
+  JOIN {{SCHEMA}}.review_runs r ON r.tenant_id=j.tenant_id AND r.org_id=j.org_id AND r.case_id=j.case_id AND r.id=j.run_id
+  JOIN {{SCHEMA}}.review_attempts a ON a.tenant_id=r.tenant_id AND a.org_id=r.org_id AND a.run_id=r.id AND a.id=j.attempt_id
+  WHERE j.id=p_job_id AND j.kind='review' AND j.tenant_live_epoch IS NOT NULL AND a.tenant_live_epoch=j.tenant_live_epoch
+ );
+$fn$;
+REVOKE ALL ON FUNCTION {{SCHEMA}}.tenant_review_job_epoch_matches(text) FROM PUBLIC;
+
 -- Read only the epoch bound to an exact unexpired operation ticket. Intake
 -- tickets retain their original epoch when promoted to an operation ticket.
 CREATE FUNCTION {{SCHEMA}}.tenant_ticket_epoch(p_ticket text,p_scope jsonb,p_allow_local_demo boolean)

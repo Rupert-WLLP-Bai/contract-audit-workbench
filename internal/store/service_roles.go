@@ -431,7 +431,7 @@ func MigrateServiceRoles(ctx context.Context) error {
 			return fmt.Errorf("cannot restrict intake authority ticket access from service role %q", role)
 		}
 	}
-	if _, err := tx.Exec(ctx, `GRANT SELECT (ticket_digest,tenant_id,operation_id,session_digest,principal_id,membership_id,actor_id,org_id,case_id,upload_key,filename,media_type,body_sha256,action,expires_at,context_version), INSERT (ticket_digest,tenant_id,operation_id,session_digest,principal_id,membership_id,actor_id,org_id,case_id,upload_key,filename,media_type,body_sha256,action,expires_at,context_version) ON TABLE `+intakeTicketTable+` TO `+pgx.Identifier{coreRoleName}.Sanitize()); err != nil {
+	if _, err := tx.Exec(ctx, `GRANT SELECT (ticket_digest,tenant_id,operation_id,session_digest,principal_id,membership_id,actor_id,org_id,case_id,upload_key,filename,media_type,body_sha256,action,expires_at,context_version,tenant_live_epoch), INSERT (ticket_digest,tenant_id,operation_id,session_digest,principal_id,membership_id,actor_id,org_id,case_id,upload_key,filename,media_type,body_sha256,action,expires_at,context_version,tenant_live_epoch) ON TABLE `+intakeTicketTable+` TO `+pgx.Identifier{coreRoleName}.Sanitize()); err != nil {
 		return fmt.Errorf("cannot grant Core scoped intake authority ticket access: %w", err)
 	}
 	operationTicketTable := pgx.Identifier{schema, "operation_authority_tickets"}.Sanitize()
@@ -463,6 +463,9 @@ func MigrateServiceRoles(ctx context.Context) error {
 	}
 	if executionRoleName == "" {
 		return errors.New("execution database role is not configured for review admission binding")
+	}
+	if _, err := tx.Exec(ctx, `GRANT EXECUTE ON FUNCTION `+pgx.Identifier{schema}.Sanitize()+`.tenant_review_job_epoch_matches(text) TO `+pgx.Identifier{executionRoleName}.Sanitize()); err != nil {
+		return fmt.Errorf("cannot grant review job epoch verifier: %w", err)
 	}
 	if _, err := tx.Exec(ctx, `GRANT EXECUTE ON FUNCTION `+pgx.Identifier{schema}.Sanitize()+`.tenant_identity_bind_admission(text,text) TO `+pgx.Identifier{executionRoleName}.Sanitize()); err != nil {
 		return fmt.Errorf("cannot grant Execution the narrow review admission binder: %w", err)

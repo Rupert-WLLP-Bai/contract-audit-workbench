@@ -425,6 +425,10 @@ func (s *Store) startReview(ctx context.Context, user accounts.User, caseID, bus
 			return nil
 		}
 		executionCase = *currentCase
+		epoch, err := s.admissionEpoch(ctx, acceptanceTx, currentCase.TenantID)
+		if err != nil {
+			return err
+		}
 		signature, err = withPartyContext(*st, caseID, signature)
 		if err != nil {
 			return err
@@ -451,6 +455,9 @@ func (s *Store) startReview(ctx context.Context, user accounts.User, caseID, bus
 		if run, ok := st.latestRun(caseID); ok {
 			previous := st.snapshotOf(run.ID)
 			reusable := sameRunSignature(previous, signature) && sameRunCompilerIdentity(previous, signature)
+			if latest, ok := st.latestAttempt(run.ID); ok && attemptActive(latest.State) && (latest.TenantLiveEpoch == nil || *latest.TenantLiveEpoch != *epoch) {
+				reusable = false
+			}
 			if reusable && durable {
 				if err := acceptanceTx.QueryRow(ctx, `SELECT EXISTS (
 					SELECT 1 FROM review_attempts a JOIN worker_jobs j ON j.attempt_id=a.id
@@ -483,10 +490,6 @@ func (s *Store) startReview(ctx context.Context, user accounts.User, caseID, bus
 		now := acceptedAt
 		st.Runs = append(st.Runs, Run{ID: runID, CaseID: caseID, State: "accepted", ModelRef: signature.ModelRef, CreatedAt: now, UpdatedAt: now})
 		if err := sealSnapshot(st, runID, signature); err != nil {
-			return err
-		}
-		epoch, err := s.admissionEpoch(ctx, acceptanceTx, currentCase.TenantID)
-		if err != nil {
 			return err
 		}
 		attempt.TenantLiveEpoch = epoch
@@ -697,8 +700,15 @@ func (s *Store) retry(ctx context.Context, user accounts.User, caseID, runID str
 		if !ok {
 			return fault.Conflict("较早的审查没有保存当时使用的输入，无法安全重试；请发起新的审查")
 		}
-		if attemptActive(last.State) {
+		epoch, err := s.admissionEpoch(ctx, retryTx, currentCase.TenantID)
+		if err != nil {
+			return err
+		}
+		if attemptActive(last.State) && last.TenantLiveEpoch != nil && *last.TenantLiveEpoch == *epoch {
 			return nil
+		}
+		if attemptActive(last.State) && last.HistoryKind != "frozen" {
+			return fault.Conflict("原审查未冻结输入，请发起新的审查")
 		}
 		frozenInput, ok := st.attemptInput(last.ID)
 		if !ok || last.HistoryKind != "frozen" || !frozenInputMatchesSnapshot(frozen, frozenInput.Documents) ||
@@ -751,10 +761,6 @@ func (s *Store) retry(ctx context.Context, user accounts.User, caseID, runID str
 				return &fault.Error{Status: 503, Code: "execution_capacity", Message: "审查执行容量已满，请稍后重试", Retryable: true}
 			}
 			reserved = true
-		}
-		epoch, err := s.admissionEpoch(ctx, retryTx, currentCase.TenantID)
-		if err != nil {
-			return err
 		}
 		retryOf := last.ID
 		attempt := Attempt{
