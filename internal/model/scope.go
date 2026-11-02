@@ -6,6 +6,7 @@ import "context"
 // The gateway authenticates the calling service separately and checks these IDs
 // against current PostgreSQL authority before forwarding a request.
 type DelegatedScope struct {
+	AdmissionRevision    string `json:"admission_revision,omitempty"`
 	Action               string `json:"action,omitempty"`
 	OperationTicket      string `json:"operation_ticket,omitempty"`
 	Kind                 string `json:"kind"`

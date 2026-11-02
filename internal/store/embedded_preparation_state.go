@@ -19,7 +19,7 @@ func (s *Store) validEmbeddedPreparationScope(scope model.DelegatedScope, claim 
 	return (s.sel.Mode == config.ModeDevelopment || s.sel.Mode == config.ModeTest) && s.serviceOwner == "" &&
 		scope.Kind == "execution_prepare" && scope.Action == "embedded_prepare" && scope.OperationTicket != "" &&
 		scope.TenantID != "" && scope.OrgID != "" && scope.CaseID != "" && scope.ActorID != "" && scope.RunID != "" && scope.AttemptID != "" &&
-		scope.JobID == "" && scope.WorkerID == "" && scope.Generation == 0 && scope.DocumentID == "" && scope.InputSHA256 == "" && scope.ParseSelectionSHA256 == "" && scope.ParseSelectionID == "" && scope.ConfigurationID == "" && scope.ProviderURL == "" &&
+		scope.JobID == "" && scope.WorkerID == "" && scope.Generation == 0 && scope.DocumentID == "" && validPreparationHash(scope.InputSHA256) && scope.AdmissionRevision != "" && scope.ParseSelectionSHA256 == "" && scope.ParseSelectionID == "" && scope.ConfigurationID == "" && scope.ProviderURL == "" &&
 		claim.JobID == "" && claim.WorkerID == "" && claim.Generation == 0 && scope.TenantID == claim.TenantID && scope.OrgID == claim.OrgID && scope.CaseID == claim.CaseID && scope.ActorID == claim.ActorID && scope.RunID == claim.RunID && scope.AttemptID == claim.AttemptID
 }
 

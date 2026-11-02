@@ -37,7 +37,7 @@ func (s *Store) operationUser(ctx context.Context, scope model.DelegatedScope) (
 	// Demo identities are available only in non-production stores. The ordinary
 	// SQL lease/case checks still run at each caller; enterprise work never falls
 	// back to the directory when its authority channel is missing.
-	if s.dropSchema && s.serviceOwner == "" && s.sel.Mode != "production" {
+	if scope.Kind != "execution_prepare" && scope.AdmissionRevision == "" && s.dropSchema && s.serviceOwner == "" && s.sel.Mode != "production" {
 		u, ok := accounts.ByID(scope.ActorID)
 		if ok && u.Enabled && u.Issuer == "" && u.Subject == "" && (u.TenantID == accounts.LocalDemoTenant || u.TenantID == accounts.LocalDemoTenant2) && u.TenantID == scope.TenantID && u.OrgID == scope.OrgID {
 			return u, nil
@@ -58,8 +58,11 @@ func (s *Store) resolveOperationAuthority(ctx context.Context, scope model.Deleg
 	if scope.TenantID == "" || scope.OrgID == "" || scope.CaseID == "" || scope.ActorID == "" ||
 		(caller != "worker" && caller != "document" && caller != "model") ||
 		(caller == "document" && scope.Kind != "document") ||
-		(caller == "worker" && scope.Kind != "execution" && scope.Kind != "experience_distill") ||
+		(caller == "worker" && scope.Kind != "execution" && scope.Kind != "execution_prepare" && scope.Kind != "experience_distill") ||
 		(caller == "model" && scope.Kind != "execution" && scope.Kind != "document" && scope.Kind != "experience_distill") {
+		return accounts.User{}, errAttemptAuthorizationRevoked
+	}
+	if scope.Kind == "execution_prepare" && (scope.JobID != "" || scope.Action != "embedded_prepare" || s.serviceOwner != "" || (s.sel.Mode != "development" && s.sel.Mode != "test")) {
 		return accounts.User{}, errAttemptAuthorizationRevoked
 	}
 	if scope.JobID == "" {
@@ -154,6 +157,13 @@ func (s *Store) CreateOperationTicket(ctx context.Context, user accounts.User, s
 	if err != nil || current.ID != user.ID || current.PrincipalID != user.PrincipalID || current.MembershipID != user.MembershipID {
 		return "", errAttemptAuthorizationRevoked
 	}
+	if scope.AdmissionRevision != "" {
+		p, ok := contextProof(ctx)
+		cp, currentOK := current.CommandAuthority()
+		if !ok || !currentOK || p.digest != digest || p.version != cp.ContextVersion || p.revision != cp.Revision || scope.AdmissionRevision != p.revision {
+			return "", errAttemptAuthorizationRevoked
+		}
+	}
 	if err = s.validateNonJobOperation(ctx, current, scope); err != nil {
 		return "", err
 	}
@@ -193,11 +203,13 @@ func (s *Store) validateNonJobOperation(ctx context.Context, u accounts.User, sc
 	if scope.Kind == "document" && !accounts.CanUpload(u.Role) {
 		return errAttemptAuthorizationRevoked
 	}
-	if scope.Kind == "execution" && !accounts.CanStart(u.Role) {
+	if (scope.Kind == "execution" || scope.Kind == "execution_prepare") && !accounts.CanStart(u.Role) {
 		return errAttemptAuthorizationRevoked
 	}
 	switch {
 	case scope.Kind == "document" && (scope.Action == "reparse" || scope.Action == "upload_parse") && scope.DocumentID != "" && scope.RunID == "" && scope.AttemptID == "":
+	case scope.Kind == "execution_prepare" && scope.Action == "embedded_prepare" && scope.RunID != "" && scope.AttemptID != "" && scope.DocumentID == "" && validPreparationHash(scope.InputSHA256) && scope.AdmissionRevision != "" && s.serviceOwner == "" && (s.sel.Mode == "development" || s.sel.Mode == "test"):
+		action = access.Review
 	case scope.Kind == "execution" && scope.Action == "embedded_review" && scope.RunID != "" && scope.AttemptID != "" && scope.DocumentID == "":
 		action = access.Review
 	default:
@@ -223,7 +235,21 @@ func (s *Store) validateNonJobOperation(ctx context.Context, u accounts.User, sc
 	} else if scope.Kind == "document" {
 		err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM documents WHERE id=$1 AND tenant_id=$2 AND org_id=$3 AND case_id=$4 AND digest=$5)`, scope.DocumentID, scope.TenantID, scope.OrgID, scope.CaseID, scope.InputSHA256).Scan(&valid)
 	} else {
-		err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM review_attempts a JOIN review_runs r ON r.id=a.run_id AND r.tenant_id=a.tenant_id AND r.org_id=a.org_id WHERE a.id=$1 AND r.id=$2 AND r.case_id=$3 AND a.actor_id=$4 AND a.history_kind='frozen' AND a.input_hash IS NOT NULL AND a.state IN ('accepted','running') AND r.state IN ('accepted','running'))`, scope.AttemptID, scope.RunID, scope.CaseID, u.ID).Scan(&valid)
+		if scope.AdmissionRevision != "" {
+			var hasJob bool
+			err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM worker_jobs WHERE tenant_id=$1 AND org_id=$2 AND run_id=$3 AND attempt_id=$4)`, scope.TenantID, scope.OrgID, scope.RunID, scope.AttemptID).Scan(&hasJob)
+			if err != nil || hasJob {
+				return errAttemptAuthorizationRevoked
+			}
+		}
+		var loaded state
+		loaded, err = s.loadScopedAttemptState(model.WithDelegatedScope(ctx, model.DelegatedScope{}), tx, JobClaim{TenantID: scope.TenantID, OrgID: scope.OrgID, CaseID: scope.CaseID}, scope.RunID, scope.AttemptID)
+		if err == nil && len(loaded.Snapshots) == 1 {
+			err = loadPreparationMaterials(ctx, tx, &loaded, JobClaim{TenantID: scope.TenantID, OrgID: scope.OrgID, CaseID: scope.CaseID}, loaded.Snapshots[0].DocumentIDs)
+		}
+		if err == nil {
+			valid = s.validEmbeddedAuthorityState(loaded, scope)
+		}
 	}
 	if err != nil || !valid {
 		return errAttemptAuthorizationRevoked
@@ -233,7 +259,7 @@ func (s *Store) validateNonJobOperation(ctx context.Context, u accounts.User, sc
 
 func (s *Store) resolveOperationTicket(ctx context.Context, scope model.DelegatedScope) (accounts.User, error) {
 	if scope.OperationTicket == "" {
-		if !s.dropSchema {
+		if !s.dropSchema || scope.Kind == "execution_prepare" || scope.AdmissionRevision != "" {
 			return accounts.User{}, errAttemptAuthorizationRevoked
 		}
 		u, ok := accounts.ByID(scope.ActorID)
@@ -441,6 +467,9 @@ func (s *Store) ResolveOperationAuthority(ctx context.Context, scope model.Deleg
 	err = tx.QueryRow(ctx, `SELECT session_digest,context_version,authority_revision,role_code,grants FROM tenant_operation_info($1::jsonb,$2)`, encoded, identityTokenDigest(scope.OperationTicket)).Scan(&digest, &version, &revision, &role, &grants)
 	if err != nil {
 		return accounts.User{}, contextError(err)
+	}
+	if scope.AdmissionRevision != "" && revision != scope.AdmissionRevision {
+		return accounts.User{}, errAttemptAuthorizationRevoked
 	}
 	if user.HasResolvedMembership() {
 		var current []access.Grant

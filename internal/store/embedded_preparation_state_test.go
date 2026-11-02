@@ -69,11 +69,11 @@ func TestPreparationGenericTransactionDenied(t *testing.T) {
 func TestPreparationScopeExact(t *testing.T) {
 	s := Store{sel: config.Selection{Mode: config.ModeDevelopment}}
 	claim := JobClaim{TenantID: "t", OrgID: "o", CaseID: "c", ActorID: "u", RunID: "r", AttemptID: "a"}
-	scope := model.DelegatedScope{Kind: "execution_prepare", Action: "embedded_prepare", OperationTicket: "ticket", TenantID: "t", OrgID: "o", CaseID: "c", ActorID: "u", RunID: "r", AttemptID: "a"}
+	scope := model.DelegatedScope{Kind: "execution_prepare", Action: "embedded_prepare", OperationTicket: "ticket", AdmissionRevision: "revision", InputSHA256: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", TenantID: "t", OrgID: "o", CaseID: "c", ActorID: "u", RunID: "r", AttemptID: "a"}
 	if !s.validEmbeddedPreparationScope(scope, claim) {
 		t.Fatal("valid scope rejected")
 	}
-	for _, mutate := range []func(*model.DelegatedScope){func(v *model.DelegatedScope) { v.JobID = "j" }, func(v *model.DelegatedScope) { v.AttemptID = "other" }, func(v *model.DelegatedScope) { v.ConfigurationID = "model" }, func(v *model.DelegatedScope) { v.OperationTicket = "" }} {
+	for _, mutate := range []func(*model.DelegatedScope){func(v *model.DelegatedScope) { v.JobID = "j" }, func(v *model.DelegatedScope) { v.AttemptID = "other" }, func(v *model.DelegatedScope) { v.ConfigurationID = "model" }, func(v *model.DelegatedScope) { v.OperationTicket = "" }, func(v *model.DelegatedScope) { v.InputSHA256 = "" }, func(v *model.DelegatedScope) { v.AdmissionRevision = "" }} {
 		bad := scope
 		mutate(&bad)
 		if s.validEmbeddedPreparationScope(bad, claim) {
@@ -125,7 +125,7 @@ func TestPreparationDeltaFreezesSelectedArtifact(t *testing.T) {
 
 func TestPreparationContractScopeModes(t *testing.T) {
 	claim := JobClaim{TenantID: "t", OrgID: "o", CaseID: "c", ActorID: "u", RunID: "r", AttemptID: "a"}
-	scope := model.DelegatedScope{Kind: "execution_prepare", Action: "embedded_prepare", OperationTicket: "ticket", TenantID: "t", OrgID: "o", CaseID: "c", ActorID: "u", RunID: "r", AttemptID: "a"}
+	scope := model.DelegatedScope{Kind: "execution_prepare", Action: "embedded_prepare", OperationTicket: "ticket", AdmissionRevision: "revision", InputSHA256: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", TenantID: "t", OrgID: "o", CaseID: "c", ActorID: "u", RunID: "r", AttemptID: "a"}
 	for _, mode := range []string{config.ModeDevelopment, config.ModeTest} {
 		s := Store{sel: config.Selection{Mode: mode}}
 		if !s.validEmbeddedPreparationScope(scope, claim) {
