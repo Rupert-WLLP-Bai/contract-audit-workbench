@@ -32,6 +32,18 @@ func TestDurableReviewFreezesServiceObjectContextAndRejectsChangedRetryAfterReop
 	core := env.openRole(t, "core")
 	document := env.openRole(t, "document")
 	execution := env.openRole(t, "execution")
+	sessionToken, err := core.EstablishSession(admin, "client")
+	if err != nil {
+		t.Fatalf("establish service-object admission session: %v", err)
+	}
+	admin, audience, err := core.AuthenticateSession(ctx, sessionToken)
+	if err != nil || audience != "client" || admin.ID != "demo-admin" {
+		t.Fatalf("authenticate service-object admission session: audience=%q err=%v", audience, err)
+	}
+	ctx = WithAdmissionSessionToken(ctx, sessionToken)
+	authority := durableTestOperationAuthority{core: core}
+	document.UseOperationAuthority(authority)
+	execution.UseOperationAuthority(authority)
 	pack := publishSyntheticAcceptancePack(t, core, admin)
 	publishSyntheticAcceptancePolicy(t, core, admin, pack)
 	caseID, err := core.CreateCaseWithBusiness(admin, "服务对象审查快照", "service", "ENT", "telecom_dedicated_line")
@@ -90,6 +102,7 @@ func TestDurableReviewFreezesServiceObjectContextAndRejectsChangedRetryAfterReop
 		}
 	}
 	execution = env.openRole(t, "execution")
+	execution.UseOperationAuthority(authority)
 	reopenedState, err := execution.snapshotScoped(ctx, userScope(admin))
 	if err != nil {
 		t.Fatalf("reload accepted review after reopen: %v", err)

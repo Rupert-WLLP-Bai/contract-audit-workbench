@@ -42,6 +42,10 @@ function actor(role: string, audience: SessionAudience): Actor {
     tenant_id: "tenant-1",
     org_id: "org-1",
     audience,
+    principal_id: "principal-user-1",
+    active_context: { membership_id: "membership-1", tenant_id: "tenant-1", tenant_name: "租户一", org_id: "org-1", org_name: "组织一", context_version: "1" },
+    csrf_token: "test-csrf",
+    context_switch_enabled: false,
   };
 }
 

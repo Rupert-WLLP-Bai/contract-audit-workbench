@@ -23,6 +23,7 @@ import { EvidenceSLADashboard } from "../components/evidence-sla-dashboard";
 import { RemediationPanel } from "../components/remediation-panel";
 import { TemplateGenerationPanel } from "../components/template-generation-panel";
 import { StatusText } from "../components/status-text";
+import { CaseSupportGrantPanel } from "./support-grant-pages";
 import {
   businessStatusLabel,
   contractTypeLabel,
@@ -217,6 +218,7 @@ export function CaseDetailPage() {
         onRefreshHistory={() => void history.refetch()}
         onStartReview={onStartReview}
       />
+      <CaseSupportGrantPanel caseId={item.id} />
       {requiresBusinessAt ? (
         <label className="field" id="review-business-time">
           审查业务时间（北京时间）

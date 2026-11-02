@@ -71,20 +71,11 @@ func (c *IntakeUploader) UploadPrimaryContract(ctx context.Context, caseID strin
 	}
 	var payload bytes.Buffer
 	writer := multipart.NewWriter(&payload)
-	if err := writer.WriteField("actor_id", request.ActorID); err != nil {
-		return store.DocumentUploadResult{}, fmt.Errorf("encode intake actor: %w", err)
-	}
-	if err := writer.WriteField("tenant_id", request.TenantID); err != nil {
-		return store.DocumentUploadResult{}, fmt.Errorf("encode intake tenant: %w", err)
-	}
-	if err := writer.WriteField("org_id", request.OrgID); err != nil {
-		return store.DocumentUploadResult{}, fmt.Errorf("encode intake organization: %w", err)
-	}
 	if err := writer.WriteField("case_id", caseID); err != nil {
 		return store.DocumentUploadResult{}, fmt.Errorf("encode intake case: %w", err)
 	}
-	if err := writer.WriteField("idempotency_key", request.IdempotencyKey); err != nil {
-		return store.DocumentUploadResult{}, fmt.Errorf("encode intake idempotency key: %w", err)
+	if err := writer.WriteField("authority_ticket", request.AuthorityTicket); err != nil {
+		return store.DocumentUploadResult{}, fmt.Errorf("encode intake authority ticket: %w", err)
 	}
 	disposition := mime.FormatMediaType("form-data", map[string]string{"name": "file", "filename": request.Filename})
 	if disposition == "" {
@@ -147,23 +138,14 @@ func (c *IntakeUploader) UploadPrimaryContract(ctx context.Context, caseID strin
 }
 
 func validateIntakeUploadRequest(caseID string, request store.PrimaryContractUploadRequest) error {
-	if !validIntakeUploadID(request.ActorID) || request.TenantID == "" || request.OrgID == "" || !validIntakeUploadID(caseID) {
-		return errors.New("document intake upload identity is incomplete")
+	if !validIntakeUploadID(caseID) || len(request.AuthorityTicket) != 68 || !strings.HasPrefix(request.AuthorityTicket, "iat_") {
+		return errors.New("document intake upload authority is incomplete")
 	}
 	if request.Filename == "" || strings.ContainsAny(request.Filename, "\r\n\x00") {
 		return errors.New("document intake upload filename is invalid")
 	}
 	if len(request.Body) > maxIntakeUploadBytes {
 		return errors.New("document intake upload file exceeds 32 MiB")
-	}
-	if key := request.IdempotencyKey; len(key) < 1 || len(key) > 200 {
-		return errors.New("document intake upload idempotency key is invalid")
-	} else {
-		for _, char := range key {
-			if char < 0x21 || char > 0x7e {
-				return errors.New("document intake upload idempotency key is invalid")
-			}
-		}
 	}
 	if strings.ContainsAny(request.MediaType, "\r\n") {
 		return errors.New("document intake upload media type is invalid")

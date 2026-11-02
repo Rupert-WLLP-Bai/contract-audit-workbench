@@ -227,6 +227,7 @@ func clmCreatorGate(current accounts.User) error {
 }
 
 func (s *Store) beginCLMWrite(ctx context.Context, user accounts.User, readOnlyMessage string, gate func(accounts.User) error) (pgx.Tx, accounts.User, error) {
+	ctx = commandContext(ctx, user)
 	return s.beginCLMWriteIsolated(ctx, user, readOnlyMessage, gate, pgx.TxOptions{})
 }
 
@@ -235,6 +236,7 @@ func (s *Store) beginCLMWrite(ctx context.Context, user accounts.User, readOnlyM
 // batches: ReadCommitted would let concurrent writes produce a row set that
 // never existed at any single instant.
 func (s *Store) beginCLMWriteIsolated(ctx context.Context, user accounts.User, readOnlyMessage string, gate func(accounts.User) error, options pgx.TxOptions) (pgx.Tx, accounts.User, error) {
+	ctx = commandContext(ctx, user)
 	if s.pool == nil {
 		return nil, accounts.User{}, fault.New(503, "database_unavailable", "服务数据库不可用")
 	}
@@ -250,7 +252,7 @@ func (s *Store) beginCLMWriteIsolated(ctx context.Context, user accounts.User, r
 			return nil, accounts.User{}, err
 		}
 	}
-	tx, err := s.pool.BeginTx(ctx, options)
+	tx, err := s.beginContextTx(ctx, options)
 	if err != nil {
 		return nil, accounts.User{}, err
 	}
@@ -471,6 +473,7 @@ func loadCLMCase(ctx context.Context, tx pgx.Tx, current accounts.User, orgID, c
 // incomplete; only formats are enforced. Creation carries expected_row_version
 // 0 and stores an idempotent receipt for replay.
 func (s *Store) CreateContractDraft(ctx context.Context, user accounts.User, input CreateContractDraftInput) (ContractDetail, error) {
+	ctx = commandContext(ctx, user)
 	if input.ExpectedRowVersion != 0 {
 		return ContractDetail{}, fault.Invalid("创建合同草稿必须携带 expected_row_version=0")
 	}
@@ -622,6 +625,7 @@ func sealedDraftOf(sealedBytes []byte) *DraftContent {
 // LoadContractDetail returns one visible contract with its resumable draft.
 // Invisible and unknown contracts answer identically.
 func (s *Store) LoadContractDetail(ctx context.Context, user accounts.User, contractID string) (ContractDetail, error) {
+	ctx = commandContext(ctx, user)
 	if !s.HasDatabase() {
 		return ContractDetail{}, fault.New(503, "database_unavailable", "服务数据库不可用")
 	}
@@ -633,7 +637,7 @@ func (s *Store) LoadContractDetail(ctx context.Context, user accounts.User, cont
 	if err != nil {
 		return ContractDetail{}, err
 	}
-	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted, AccessMode: pgx.ReadOnly})
+	tx, err := s.beginContextTx(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted, AccessMode: pgx.ReadOnly})
 	if err != nil {
 		return ContractDetail{}, err
 	}
@@ -664,6 +668,7 @@ func (s *Store) LoadContractDetail(ctx context.Context, user accounts.User, cont
 // buildContractDetail assembles the projected detail. It returns the caller
 // projection only; receipt storage reuses the sealed bytes separately.
 func (s *Store) buildContractDetail(ctx context.Context, tx pgx.Tx, record clmContractRecord, current accounts.User) (ContractDetail, []byte, error) {
+	ctx = commandContext(ctx, current)
 	var contentBytes []byte
 	var updatedAt *time.Time
 	if record.CurrentRevisionID != nil && record.LifecycleState != "draft" {
@@ -786,6 +791,7 @@ func (s *Store) buildContractDetail(ctx context.Context, tx pgx.Tx, record clmCo
 // ListMyContractDrafts returns only the caller's own active native drafts, for
 // recovery after an interruption. The full ledger belongs to a later milestone.
 func (s *Store) ListMyContractDrafts(ctx context.Context, user accounts.User, limit int) ([]ContractDraftSummary, error) {
+	ctx = commandContext(ctx, user)
 	if !s.HasDatabase() {
 		return nil, fault.New(503, "database_unavailable", "服务数据库不可用")
 	}
@@ -799,7 +805,7 @@ func (s *Store) ListMyContractDrafts(ctx context.Context, user accounts.User, li
 	if err != nil {
 		return nil, err
 	}
-	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted, AccessMode: pgx.ReadOnly})
+	tx, err := s.beginContextTx(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted, AccessMode: pgx.ReadOnly})
 	if err != nil {
 		return nil, err
 	}
@@ -848,6 +854,7 @@ func (s *Store) ListMyContractDrafts(ctx context.Context, user accounts.User, li
 // carries expected_row_version against the contract aggregate; any concurrent
 // change answers 409 and the client must re-read and confirm.
 func (s *Store) ReplaceContractDraft(ctx context.Context, user accounts.User, input ReplaceContractDraftInput) (ContractDetail, error) {
+	ctx = commandContext(ctx, user)
 	id, err := normalizeContractUUID(input.ContractID)
 	if err != nil {
 		return ContractDetail{}, err
@@ -986,6 +993,7 @@ func (s *Store) ReplaceContractDraft(ctx context.Context, user accounts.User, in
 // append-only provenance record. Unknown approval history stays unknown; no
 // local rounds or signatures are fabricated.
 func (s *Store) ImportLegacySignedContract(ctx context.Context, user accounts.User, input LegacyImportInput) (ContractDetail, error) {
+	ctx = commandContext(ctx, user)
 	if input.ExpectedRowVersion != 0 {
 		return ContractDetail{}, fault.Invalid("存量导入必须携带 expected_row_version=0")
 	}
@@ -1260,6 +1268,7 @@ type resolvedHistoricalMaterial struct {
 }
 
 func (s *Store) resolveHistoricalMaterials(ctx context.Context, tx pgx.Tx, current accounts.User, refs []MaterialRef) ([]resolvedHistoricalMaterial, error) {
+	ctx = commandContext(ctx, current)
 	resolved := make([]resolvedHistoricalMaterial, 0, len(refs))
 	for _, ref := range refs {
 		version, err := resolveMaterialVersion(ctx, tx, accounts.Tenant(current), ref)

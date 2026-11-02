@@ -20,6 +20,7 @@ import {
   type ExperienceFeedbackInput,
 } from "../api/experience-feedback";
 import { ApiError, errorMessage } from "../api/http";
+import { newIdempotencyKey } from "../api/idempotency";
 import type { Finding, HumanDecision, ReviewDocument } from "../api/types";
 import { DECISION_ACTIONS, decisionLabel, formatDateTime, roleLabel } from "../domain/review";
 import { sliceByCodePoints } from "../domain/text";
@@ -39,6 +40,7 @@ export interface ExperienceFeedbackPanelProps {
   canSubmit: boolean;
   quoteSelection?: FrozenQuoteSelection | null;
   quoteScope?: FrozenQuoteScope | null;
+  contextScope?: string;
 }
 
 type SavedTracking = { feedbackId: string; jobId: string | null; distillKey: string | null };
@@ -89,7 +91,7 @@ function displayTextOf(source: ReviewDocument | undefined): string {
 }
 
 function storageKey(props: ExperienceFeedbackPanelProps): string {
-  return `experience-feedback:${JSON.stringify([props.caseId, props.runId, props.attemptId, props.finding?.id ?? null])}`;
+  return `experience-feedback:${JSON.stringify([props.contextScope ?? "", props.caseId, props.runId, props.attemptId, props.finding?.id ?? null])}`;
 }
 
 function trackingText(value: unknown): string | null {
@@ -821,7 +823,7 @@ function distillationKey(
   newOperation: boolean,
   current: string | null,
 ): string {
-  return newOperation || !current ? crypto.randomUUID() : current;
+  return newOperation || !current ? newIdempotencyKey() : current;
 }
 
 function restoredJobId(manualJobId: string): string | null {
@@ -1033,7 +1035,7 @@ async function runSubmit(ctx: FeedbackActionContext, event: FormEvent<HTMLFormEl
     evidence_refs: [ctx.chosenEvidence!.evidence],
   };
   const body = JSON.stringify(input);
-  if (ctx.feedbackOperation.current?.body !== body) ctx.feedbackOperation.current = { body, key: crypto.randomUUID() };
+  if (ctx.feedbackOperation.current?.body !== body) ctx.feedbackOperation.current = { body, key: newIdempotencyKey() };
   ctx.setPending(true);
   ctx.setSubmitError(null);
   ctx.setRecoveryError(null);

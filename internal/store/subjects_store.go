@@ -123,6 +123,7 @@ type SubjectCaseLinkProjection struct {
 }
 
 func (s *Store) CreateUnboundSubject(ctx context.Context, user accounts.User, input SubjectCreateInput, key string) (CreateSubjectResult, bool, error) {
+	ctx = commandContext(ctx, user)
 	if err := ctx.Err(); err != nil {
 		return CreateSubjectResult{}, false, err
 	}
@@ -166,6 +167,7 @@ func (s *Store) CreateUnboundSubject(ctx context.Context, user accounts.User, in
 }
 
 func (s *Store) CreateCaseSubject(ctx context.Context, user accounts.User, caseID string, input CaseSubjectCreateInput, key string) (CreateCaseSubjectResult, bool, error) {
+	ctx = commandContext(ctx, user)
 	if err := ctx.Err(); err != nil {
 		return CreateCaseSubjectResult{}, false, err
 	}
@@ -256,6 +258,7 @@ func (s *Store) CreateCaseSubject(ctx context.Context, user accounts.User, caseI
 }
 
 func (s *Store) BindExistingSubject(ctx context.Context, user accounts.User, caseID string, input BindExistingSubjectInput, key string) (BindExistingSubjectResult, bool, error) {
+	ctx = commandContext(ctx, user)
 	if err := ctx.Err(); err != nil {
 		return BindExistingSubjectResult{}, false, err
 	}
@@ -313,6 +316,7 @@ func (s *Store) BindExistingSubject(ctx context.Context, user accounts.User, cas
 }
 
 func (s *Store) ListCaseSubjects(ctx context.Context, user accounts.User, caseID string) (CaseSubjectListProjection, error) {
+	ctx = commandContext(ctx, user)
 	if err := ctx.Err(); err != nil {
 		return CaseSubjectListProjection{}, err
 	}
@@ -341,6 +345,7 @@ func caseSubjectCanManage(caseItem Case, user accounts.User, readOnly bool) bool
 }
 
 func (s *Store) GetSubjectDetail(ctx context.Context, user accounts.User, subjectID string) (SubjectDetailResult, error) {
+	ctx = commandContext(ctx, user)
 	if err := ctx.Err(); err != nil {
 		return SubjectDetailResult{}, err
 	}
@@ -361,6 +366,7 @@ func (s *Store) GetSubjectDetail(ctx context.Context, user accounts.User, subjec
 }
 
 func (s *Store) GetSubjectHistory(ctx context.Context, user accounts.User, subjectID string) (SubjectHistoryResult, error) {
+	ctx = commandContext(ctx, user)
 	if err := ctx.Err(); err != nil {
 		return SubjectHistoryResult{}, err
 	}
@@ -392,6 +398,7 @@ func (s *Store) GetSubjectHistory(ctx context.Context, user accounts.User, subje
 }
 
 func (s *Store) ListSubjectCaseLinks(ctx context.Context, user accounts.User, subjectID, cursor string, limit int) (SubjectCaseLinksResult, error) {
+	ctx = commandContext(ctx, user)
 	if err := ctx.Err(); err != nil {
 		return SubjectCaseLinksResult{}, err
 	}
@@ -455,6 +462,7 @@ func (s *Store) ListSubjectCaseLinks(ctx context.Context, user accounts.User, su
 }
 
 func (s *Store) ListSubjects(ctx context.Context, user accounts.User, caseID, query, cursor string, limit int) (SubjectListResult, error) {
+	ctx = commandContext(ctx, user)
 	if err := ctx.Err(); err != nil {
 		return SubjectListResult{}, err
 	}

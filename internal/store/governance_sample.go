@@ -220,8 +220,8 @@ func (s *Store) updateAdminAs(admin accounts.User, fn func(pgx.Tx) error) error 
 	scope := governanceScope(admin)
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	ctx := context.Background()
-	tx, err := s.pool.Begin(ctx)
+	ctx := commandContext(context.Background(), admin)
+	tx, err := s.beginContextTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return err
 	}

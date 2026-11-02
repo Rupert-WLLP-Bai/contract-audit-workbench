@@ -312,7 +312,38 @@ def single_container(template: dict, expected_name: str) -> dict:
 
 
 def migration_container(template: dict) -> dict:
-    container = single_container(template, "migrate")
+    spec = template.get("spec", {})
+    init = spec.get("initContainers") or []
+    expected = [
+        ("offline-migrator-provision", "provision-offline-migrator"),
+        ("clm-owner-provision", "provision-clm-maintenance"),
+        ("auth-owner-provision", "provision-tenant-identity"),
+    ]
+    require(isinstance(init, list) and [(item.get("name"), item.get("args")) for item in init] ==
+            [(name, ["/app/migrate", command]) for name, command in expected],
+            "migration Job must provision offline migrator, CLM owner, and AUTH_FENCE owner in order")
+    for provision in init:
+        provision_env = {item.get("name"): item for item in provision.get("env", [])}
+        admin_key = "CLM_ADMIN_DATABASE_URL" if provision.get("name") == "clm-owner-provision" else "AUTH_ADMIN_DATABASE_URL"
+        for key in (admin_key, "MIGRATOR_DATABASE_URL"):
+            source = provision_env.get(key, {}).get("valueFrom", {}).get("secretKeyRef", {})
+            secret_key = "AUTH_ADMIN_DATABASE_URL" if key == "CLM_ADMIN_DATABASE_URL" else key
+            require(source.get("name") == "contract-audit-db-urls" and source.get("key") == secret_key and
+                    not source.get("optional", False),
+                    f"{provision.get('name')} must use the required private {key} secret")
+        for key in ("CORE_DATABASE_URL", "DOCUMENT_DATABASE_URL", "EXECUTION_DATABASE_URL", "MODEL_DATABASE_URL", "TOOL_DATABASE_URL"):
+            source = provision_env.get(key, {}).get("valueFrom", {}).get("secretKeyRef", {})
+            require(source.get("name") == "contract-audit-db-urls" and source.get("key") == key and
+                    not source.get("optional", False), f"{provision.get('name')} must use required {key} secret")
+    containers = spec.get("containers")
+    require(isinstance(containers, list) and len(containers) == 1 and containers[0].get("name") == "migrate",
+            "expected exactly one ordinary migration container named migrate")
+    container = containers[0]
+    require(all(provision.get("image") == container.get("image") for provision in init),
+            "all provisioning and ordinary migration steps must use the same locked backend image")
+    ordinary_env = {item.get("name") for item in container.get("env", [])}
+    require("AUTH_ADMIN_DATABASE_URL" not in ordinary_env and "CLM_ADMIN_DATABASE_URL" not in ordinary_env,
+            "ordinary migration container must never receive an admin database URL")
     require(not container.get("command") and container.get("args") == ["/app/migrate"],
             "migration Job must run the backend image's /app/migrate entrypoint")
     role_flags = [item for item in container.get("env", []) if item.get("name") == "SERVICE_DATABASE_ROLES"]
@@ -347,7 +378,12 @@ def rendered_objects(mode: str, lock: dict) -> list[dict]:
             annotate(template, lock)
             container = migration_container(template)
             require(container.get("image") == "contract-audit-backend:release", "unexpected migration image template")
+            require(all(item.get("image") == "contract-audit-backend:release"
+                        for item in template["spec"]["initContainers"]),
+                    "unexpected provisioning image template")
             container["image"] = lock["images"]["backend"]
+            for item in template["spec"]["initContainers"]:
+                item["image"] = lock["images"]["backend"]
         if mode != "migration" and obj.get("kind") == "Deployment":
             name = meta.get("name")
             require(name in DEPLOYMENTS and name not in seen, f"unexpected or duplicate Deployment {name}")

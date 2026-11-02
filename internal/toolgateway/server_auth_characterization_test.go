@@ -286,6 +286,48 @@ func configureToolListIdentity(t *testing.T, backend *gatewayFakeStore, grants [
 	backend.user = user
 }
 
+func TestBindAuthenticatedUserPreservesDatabaseMembership(t *testing.T) {
+	directoryUser := accounts.User{
+		ID: "membership-user", DisplayName: "Directory label", Role: "viewer",
+		TenantID: "directory-tenant", OrgID: "directory-org", Enabled: true,
+		Issuer: "https://identity.example/realm/membership", Subject: "subject-1",
+		Grants: []access.Grant{{Role: "viewer", Scope: "tenant"}},
+	}
+	body, err := json.Marshal(struct {
+		Users []accounts.User `json:"users"`
+	}{Users: []accounts.User{directoryUser}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(t.TempDir(), "directory.json")
+	if err := os.WriteFile(path, body, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := accounts.ConfigureDirectory(path); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = accounts.ConfigureDirectory("") })
+
+	want := accounts.MembershipUser("membership-user", "Resolved label", "clerk", "db-tenant", "db-org",
+		directoryUser.Issuer, directoryUser.Subject, []access.Grant{{Role: "case_owner", Scope: "case", CaseID: "case-db"}})
+	got, failure := bindAuthenticatedUser(want)
+	if failure != nil {
+		t.Fatalf("bind resolved membership: %+v", failure)
+	}
+	if got.TenantID != "db-tenant" || got.OrgID != "db-org" || got.Role != "clerk" || !got.HasResolvedMembership() {
+		t.Fatalf("database membership projection was replaced: %+v", got)
+	}
+	if len(got.Grants) != 1 || got.Grants[0].CaseID != "case-db" {
+		t.Fatalf("database grants were replaced: %+v", got.Grants)
+	}
+
+	wrongSubject := accounts.MembershipUser("membership-user", "Resolved label", "clerk", "db-tenant", "db-org",
+		directoryUser.Issuer, "different-subject", nil)
+	if _, failure := bindAuthenticatedUser(wrongSubject); failure == nil {
+		t.Fatal("directory subject mismatch was accepted")
+	}
+}
+
 func assertToolGatewayFailure(t *testing.T, response *httptest.ResponseRecorder, status, code int, message string) {
 	t.Helper()
 	var envelope struct {

@@ -37,13 +37,15 @@ type CaseIntakeUploader interface {
 // upload Core requests from Document. Identity comes from the current trusted
 // session and is revalidated by Document before it commits.
 type PrimaryContractUploadRequest struct {
-	ActorID        string
-	TenantID       string
-	OrgID          string
-	Filename       string
-	MediaType      string
-	Body           []byte
-	IdempotencyKey string
+	ActorID         string
+	TenantID        string
+	OrgID           string
+	AuthorityTicket string
+	User            accounts.User
+	Filename        string
+	MediaType       string
+	Body            []byte
+	IdempotencyKey  string
 }
 
 // CaseIntakeInput is one idempotent home-page intake request.
@@ -122,7 +124,12 @@ func (uploader DirectCaseIntakeUploader) UploadPrimaryContract(ctx context.Conte
 	if uploader.store == nil {
 		return DocumentUploadResult{}, errors.New("direct intake uploader has no store")
 	}
-	user := accounts.User{ID: request.ActorID, TenantID: request.TenantID, OrgID: request.OrgID}
+	user := request.User
+	if user.ID == "" {
+		// Compatibility for direct embedded callers; distributed uploads never
+		// serialize or trust these identity selectors.
+		user = accounts.User{ID: request.ActorID, TenantID: request.TenantID, OrgID: request.OrgID}
+	}
 	return uploader.store.UploadMaterial(ctx, user, caseID, "draft_contract", request.Filename, request.MediaType, request.Body,
 		MaterialUploadOptions{Intent: "add", Purpose: "primary_contract", IdempotencyKey: request.IdempotencyKey})
 }
@@ -200,6 +207,7 @@ func caseIntakeDigest(body []byte) string {
 // and creation activity, or returns the existing operation for the same
 // tenant+actor+key. The transaction commits before any Document/object I/O.
 func (s *Store) BeginCaseIntake(ctx context.Context, user accounts.User, input CaseIntakeInput) (CaseIntakeOperation, error) {
+	ctx = commandContext(ctx, user)
 	if s.ReadOnly() {
 		return CaseIntakeOperation{}, fault.New(503, "read_only", "只读模式下不能创建案件")
 	}
@@ -370,11 +378,12 @@ func (record caseIntakeRecord) operation() (CaseIntakeOperation, error) {
 }
 
 func (s *Store) readCaseIntake(ctx context.Context, user accounts.User, load func(context.Context, pgx.Tx, accounts.User) (caseIntakeRecord, error)) (CaseIntakeOperation, error) {
+	ctx = commandContext(ctx, user)
 	current, err := trustedUser(user)
 	if err != nil {
 		return CaseIntakeOperation{}, err
 	}
-	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
+	tx, err := s.beginContextTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
 	if err != nil {
 		return CaseIntakeOperation{}, err
 	}
@@ -418,6 +427,7 @@ func (s *Store) readCaseIntake(ctx context.Context, user accounts.User, load fun
 // GetCaseIntake returns one operation by ID and rechecks the current actor's
 // case read access before exposing the frozen response.
 func (s *Store) GetCaseIntake(ctx context.Context, user accounts.User, operationID string) (CaseIntakeOperation, error) {
+	ctx = commandContext(ctx, user)
 	if !validCaseIntakeID(operationID) {
 		return CaseIntakeOperation{}, fault.NotFound("建案操作不存在")
 	}
@@ -429,6 +439,7 @@ func (s *Store) GetCaseIntake(ctx context.Context, user accounts.User, operation
 // GetCaseIntakeByKey recovers the current trusted tenant+actor operation for an
 // idempotency key without re-uploading the file.
 func (s *Store) GetCaseIntakeByKey(ctx context.Context, user accounts.User, key string) (CaseIntakeOperation, error) {
+	ctx = commandContext(ctx, user)
 	if err := validateIdempotencyKey(key); err != nil {
 		return CaseIntakeOperation{}, fault.Invalid(err.Error())
 	}
@@ -440,6 +451,7 @@ func (s *Store) GetCaseIntakeByKey(ctx context.Context, user accounts.User, key 
 // CompleteCaseIntake conditionally freezes the exact public 201 response once.
 // A retry after completion returns the frozen bytes; it never re-encodes them.
 func (s *Store) CompleteCaseIntake(ctx context.Context, user accounts.User, operationID string, upload DocumentUploadResult) (CaseIntakeOperation, error) {
+	ctx = commandContext(ctx, user)
 	if s.ReadOnly() {
 		return CaseIntakeOperation{}, fault.New(503, "read_only", "只读模式下不能完成建案上传")
 	}

@@ -132,6 +132,7 @@ type ServiceObjectAssociationPreview struct {
 // contract association is a separate explicit confirmation against a frozen
 // review attempt.
 func (s *Store) CreateServiceObject(ctx context.Context, user accounts.User, caseID string, input ServiceObjectCreateInput, key string) (ServiceObjectMutationResult, bool, error) {
+	ctx = commandContext(ctx, user)
 	var empty ServiceObjectMutationResult
 	caseID = strings.TrimSpace(caseID)
 	if err := s.requireServiceObjectCoreWritable(ctx); err != nil {
@@ -225,6 +226,7 @@ func (s *Store) CreateServiceObject(ctx context.Context, user accounts.User, cas
 }
 
 func (s *Store) ListServiceObjects(ctx context.Context, user accounts.User, caseID, cursor string, limit int) (ServiceObjectListResult, error) {
+	ctx = commandContext(ctx, user)
 	caseID = strings.TrimSpace(caseID)
 	limit, err := serviceObjectPageLimit(limit)
 	if err != nil {
@@ -300,6 +302,7 @@ func (s *Store) ListServiceObjects(ctx context.Context, user accounts.User, case
 }
 
 func (s *Store) GetServiceObjectHistory(ctx context.Context, user accounts.User, caseID, objectID string) (ServiceObjectIdentityHistory, error) {
+	ctx = commandContext(ctx, user)
 	caseID = strings.TrimSpace(caseID)
 	current, caseItem, tx, err := s.serviceObjectReadTx(ctx, user, caseID)
 	if err != nil {
@@ -327,6 +330,7 @@ func (s *Store) GetServiceObjectHistory(ctx context.Context, user accounts.User,
 }
 
 func (s *Store) GetServiceObject(ctx context.Context, user accounts.User, caseID, objectID string) (ServiceObjectDetail, error) {
+	ctx = commandContext(ctx, user)
 	caseID, objectID = strings.TrimSpace(caseID), strings.TrimSpace(objectID)
 	current, caseItem, tx, err := s.serviceObjectReadTx(ctx, user, caseID)
 	if err != nil {
@@ -381,6 +385,7 @@ func (s *Store) GetServiceObject(ctx context.Context, user accounts.User, caseID
 }
 
 func (s *Store) ListServiceObjectVersions(ctx context.Context, user accounts.User, caseID, objectID, cursor string, limit int) (ServiceObjectVersionPage, error) {
+	ctx = commandContext(ctx, user)
 	limit, err := serviceObjectPageLimit(limit)
 	if err != nil {
 		return ServiceObjectVersionPage{}, err
@@ -439,6 +444,7 @@ func (s *Store) ListServiceObjectVersions(ctx context.Context, user accounts.Use
 }
 
 func (s *Store) GetServiceObjectVersion(ctx context.Context, user accounts.User, caseID, objectID string, version int) (ServiceObjectVersion, error) {
+	ctx = commandContext(ctx, user)
 	if version < 1 {
 		return ServiceObjectVersion{}, fault.Invalid("服务对象版本无效")
 	}
@@ -462,6 +468,7 @@ func (s *Store) GetServiceObjectVersion(ctx context.Context, user accounts.User,
 }
 
 func (s *Store) ListServiceObjectAssociations(ctx context.Context, user accounts.User, caseID, objectID, cursor string, limit int) (ServiceObjectAssociationPage, error) {
+	ctx = commandContext(ctx, user)
 	limit, err := serviceObjectPageLimit(limit)
 	if err != nil {
 		return ServiceObjectAssociationPage{}, err
@@ -520,6 +527,7 @@ func (s *Store) ListServiceObjectAssociations(ctx context.Context, user accounts
 }
 
 func (s *Store) GetServiceObjectAssociation(ctx context.Context, user accounts.User, caseID, objectID string, associationVersion int) (ServiceObjectContractAssociation, error) {
+	ctx = commandContext(ctx, user)
 	if associationVersion < 1 {
 		return ServiceObjectContractAssociation{}, fault.Invalid("服务对象关联版本无效")
 	}
@@ -543,6 +551,7 @@ func (s *Store) GetServiceObjectAssociation(ctx context.Context, user accounts.U
 }
 
 func (s *Store) PreviewServiceObjectAssociation(ctx context.Context, user accounts.User, caseID, objectID string, input ServiceObjectAssociationPreviewInput) (ServiceObjectAssociationPreview, error) {
+	ctx = commandContext(ctx, user)
 	caseID = strings.TrimSpace(caseID)
 	current, caseItem, tx, err := s.serviceObjectReadTx(ctx, user, caseID)
 	if err != nil {
@@ -568,6 +577,7 @@ func (s *Store) PreviewServiceObjectAssociation(ctx context.Context, user accoun
 }
 
 func (s *Store) ConfirmServiceObjectAssociation(ctx context.Context, user accounts.User, caseID, objectID, key string, input ServiceObjectAssociationConfirmInput) (ServiceObjectMutationResult, bool, error) {
+	ctx = commandContext(ctx, user)
 	var empty ServiceObjectMutationResult
 	caseID = strings.TrimSpace(caseID)
 	if err := s.requireServiceObjectCoreWritable(ctx); err != nil {
@@ -888,6 +898,7 @@ func operatorSupplementCandidates(caseItem Case, input AttemptInput) ([]operator
 }
 
 func (s *Store) serviceObjectMutationTx(ctx context.Context, user accounts.User, caseID string) (accounts.User, Case, pgx.Tx, error) {
+	ctx = commandContext(ctx, user)
 	if ctx == nil {
 		return accounts.User{}, Case{}, nil, fault.Invalid("服务对象写入需要请求上下文")
 	}
@@ -899,7 +910,7 @@ func (s *Store) serviceObjectMutationTx(ctx context.Context, user accounts.User,
 	if caseID == "" {
 		return accounts.User{}, Case{}, nil, fault.NotFound("没有找到对应案件")
 	}
-	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted})
+	tx, err := s.beginContextTx(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted})
 	if err != nil {
 		return accounts.User{}, Case{}, nil, err
 	}
@@ -932,6 +943,7 @@ func (s *Store) serviceObjectMutationTx(ctx context.Context, user accounts.User,
 }
 
 func (s *Store) serviceObjectReadTx(ctx context.Context, user accounts.User, caseID string) (accounts.User, Case, pgx.Tx, error) {
+	ctx = commandContext(ctx, user)
 	if ctx == nil {
 		return accounts.User{}, Case{}, nil, fault.Invalid("服务对象读取需要请求上下文")
 	}
@@ -940,7 +952,7 @@ func (s *Store) serviceObjectReadTx(ctx context.Context, user accounts.User, cas
 		return accounts.User{}, Case{}, nil, err
 	}
 	caseID = strings.TrimSpace(caseID)
-	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
+	tx, err := s.beginContextTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
 	if err != nil {
 		return accounts.User{}, Case{}, nil, err
 	}
@@ -1402,6 +1414,7 @@ func serviceObjectBasisRefs(refs []ServiceObjectFactRef) (json.RawMessage, error
 }
 
 func (s *Store) serviceObjectReadState(ctx context.Context, user accounts.User, caseID string) (accounts.User, Case, state, error) {
+	ctx = commandContext(ctx, user)
 	current, caseItem, tx, err := s.serviceObjectReadTx(ctx, user, caseID)
 	if err != nil {
 		return accounts.User{}, Case{}, state{}, err

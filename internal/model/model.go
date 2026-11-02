@@ -320,7 +320,16 @@ func plannerMessage(completion chatCompletion) *schema.Message {
 }
 
 // Transcribe sends one PNG or JPEG to the vision model.
+// OCRTranscriptionInstruction is the fixed prompt accepted for scoped OCR.
+func OCRTranscriptionInstruction() string { return transcriptionInstruction }
+
+type transcriptionCallKey struct{}
+
 func (c *Client) Transcribe(ctx context.Context, media string, body []byte) (string, error) {
+	if ctx == nil {
+		return "", fmt.Errorf("%w: missing context", ErrRequest)
+	}
+	ctx = context.WithValue(ctx, transcriptionCallKey{}, true)
 	if len(body) == 0 {
 		return "", fmt.Errorf("%w: empty image", ErrUnusable)
 	}
@@ -427,6 +436,12 @@ func (c *Client) postChat(ctx context.Context, modelID string, content any, maxT
 }
 
 func (c *Client) postChatMessages(ctx context.Context, modelID string, messages []chatMessage, maxTokens int, reasoningEffort string) (result chatCompletion, retErr error) {
+	if scope, ok := DelegatedScopeFromContext(ctx); ok {
+		transcription, _ := ctx.Value(transcriptionCallKey{}).(bool)
+		if (scope.Kind == "document" && !c.cfg.Gateway && (scope.OperationTicket != "" || scope.JobID != "" || scope.AdmissionRevision != "")) || scope.Kind == "execution_prepare" || (scope.Action == "embedded_review" && scope.AdmissionRevision != "" && !c.cfg.Gateway) || (scope.Action == "embedded_prepare_parse" && (scope.Kind != "document" || !transcription || !c.cfg.Gateway)) {
+			return chatCompletion{}, fmt.Errorf("%w: delegated preparation scope cannot use this model call", ErrRequest)
+		}
+	}
 	req, payload, err := c.newChatRequest(ctx, modelID, messages, maxTokens, reasoningEffort)
 	if err != nil {
 		return chatCompletion{}, err
@@ -721,6 +736,9 @@ func modelCallErrorCode(err error) string {
 }
 
 func (c *Client) list(ctx context.Context) ([]string, error) {
+	if scope, ok := DelegatedScopeFromContext(ctx); ok && (scope.Kind == "execution_prepare" || scope.Action == "embedded_prepare_parse") {
+		return nil, fmt.Errorf("%w: preparation scope cannot list models", ErrRequest)
+	}
 	if c.cfg.BaseURL == "" {
 		return nil, fmt.Errorf("%w: model is not configured", ErrRequest)
 	}

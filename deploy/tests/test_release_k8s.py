@@ -41,9 +41,17 @@ def make_job(lock, timestamp, status="Complete"):
         "metadata": {"name": RELEASE.job_name(lock), "creationTimestamp": timestamp,
                      "annotations": deepcopy(annotations)},
         "spec": {"template": {"metadata": {"annotations": deepcopy(annotations)},
-                              "spec": {"containers": [{"name": "migrate", "image": lock["images"]["backend"],
-                                                        "args": ["/app/migrate"],
-                                                        "env": [{"name": "SERVICE_DATABASE_ROLES", "value": "true"}]}]}}},
+                              "spec": {"initContainers": [
+                                                          {"name": "offline-migrator-provision", "image": lock["images"]["backend"], "args": ["/app/migrate", "provision-offline-migrator"], "env": [
+                                                              *[{"name": key, "valueFrom": {"secretKeyRef": {"name": "contract-audit-db-urls", "key": key}}} for key in ("AUTH_ADMIN_DATABASE_URL", "MIGRATOR_DATABASE_URL", "CORE_DATABASE_URL", "DOCUMENT_DATABASE_URL", "EXECUTION_DATABASE_URL", "MODEL_DATABASE_URL", "TOOL_DATABASE_URL")]]},
+                                                          {"name": "clm-owner-provision", "image": lock["images"]["backend"], "args": ["/app/migrate", "provision-clm-maintenance"], "env": [
+                                                              {"name": "CLM_ADMIN_DATABASE_URL", "valueFrom": {"secretKeyRef": {"name": "contract-audit-db-urls", "key": "AUTH_ADMIN_DATABASE_URL"}}},
+                                                              *[{"name": key, "valueFrom": {"secretKeyRef": {"name": "contract-audit-db-urls", "key": key}}} for key in ("MIGRATOR_DATABASE_URL", "CORE_DATABASE_URL", "DOCUMENT_DATABASE_URL", "EXECUTION_DATABASE_URL", "MODEL_DATABASE_URL", "TOOL_DATABASE_URL")]]},
+                                                          {"name": "auth-owner-provision", "image": lock["images"]["backend"], "args": ["/app/migrate", "provision-tenant-identity"], "env": [
+                                                              *[{"name": key, "valueFrom": {"secretKeyRef": {"name": "contract-audit-db-urls", "key": key}}} for key in ("AUTH_ADMIN_DATABASE_URL", "MIGRATOR_DATABASE_URL", "CORE_DATABASE_URL", "DOCUMENT_DATABASE_URL", "EXECUTION_DATABASE_URL", "MODEL_DATABASE_URL", "TOOL_DATABASE_URL")]]}],
+                                       "containers": [{"name": "migrate", "image": lock["images"]["backend"],
+                                                       "args": ["/app/migrate"],
+                                                       "env": [{"name": "SERVICE_DATABASE_ROLES", "value": "true"}]}]}}},
         "status": {"conditions": [{"type": status, "status": "True"}]},
     }
 
@@ -123,7 +131,20 @@ class ReleaseTests(unittest.TestCase):
             self.assertEqual(obj["spec"]["template"]["metadata"]["annotations"][RELEASE.LOCK_ANNOTATION],
                              RELEASE.lock_id(self.old))
         self.assertEqual(job["spec"]["template"]["spec"]["containers"][0]["image"], self.old["images"]["backend"])
+        self.assertTrue(all(item["image"] == self.old["images"]["backend"] for item in job["spec"]["template"]["spec"]["initContainers"]))
         self.assertEqual(job["metadata"]["name"], RELEASE.job_name(self.old))
+
+    def test_migration_job_requires_isolated_auth_owner_preprovision(self):
+        template = make_job(self.old, "2026-01-01T00:00:00Z")["spec"]["template"]
+        template["spec"]["initContainers"] = []
+        with self.assertRaisesRegex(ValueError, "offline migrator"):
+            RELEASE.migration_container(template)
+
+    def test_migration_job_never_passes_admin_dsn_to_resident_migrator(self):
+        template = make_job(self.old, "2026-01-01T00:00:00Z")["spec"]["template"]
+        template["spec"]["containers"][0]["env"].append({"name": "AUTH_ADMIN_DATABASE_URL"})
+        with self.assertRaisesRegex(ValueError, "never receive an admin database URL"):
+            RELEASE.migration_container(template)
 
     def test_deploy_rejects_a_different_completed_migration_before_apply(self):
         previous = RELEASE.migration_record(self.jobs[0])

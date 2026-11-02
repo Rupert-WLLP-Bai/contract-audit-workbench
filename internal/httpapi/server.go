@@ -35,17 +35,24 @@ const (
 
 // Options configures the HTTP surface.
 type Options struct {
-	SystemHealth               systemhealth.Reader
-	CORSOrigins                []string
-	Models                     *model.Client
-	OIDC                       *identity.Manager
-	Durable                    bool
-	SecureCookies              bool
-	ExperienceWorkerCredential string
-	PaymentReceiptSources      []PaymentReceiptSourceCredential
-	AssetReceiptSources        []AssetReceiptSourceCredential
-	ContractSourceCredentials  []ContractSourceCredential
-	experienceDeliveryEnabled  bool
+	SystemHealth                 systemhealth.Reader
+	CORSOrigins                  []string
+	Models                       *model.Client
+	OIDC                         *identity.Manager
+	Durable                      bool
+	SecureCookies                bool
+	ContextSwitchEnabled         bool
+	ExperienceWorkerCredential   string
+	DocumentIntakeCredential     string
+	ToolClaimAuthorityCredential string
+	ModelAuthorityCredential     string
+	PaymentReceiptSources        []PaymentReceiptSourceCredential
+	AssetReceiptSources          []AssetReceiptSourceCredential
+	ContractSourceCredentials    []ContractSourceCredential
+	SessionAuthorityResolver     interface {
+		AuthenticateSession(context.Context, string) (accounts.User, string, error)
+	}
+	experienceDeliveryEnabled bool
 
 	// IntakeUploader is the authenticated Document upload entry used by the
 	// atomic home-page intake flow. A nil uploader keeps newly created
@@ -71,7 +78,7 @@ func Handler(st *store.Store, opt Options) http.Handler {
 	if opt.SystemHealth == nil {
 		opt.SystemHealth = systemhealth.New(systemhealth.Config{DatabaseReady: st.Ready})
 	}
-	h := &handler{store: st, loginCounter: newLoginCounter(), cors: opt.CORSOrigins, models: opt.Models, oidc: opt.OIDC, durable: opt.Durable, secureCookies: opt.SecureCookies, systemHealth: opt.SystemHealth, experienceDeliveryEnabled: opt.experienceDeliveryEnabled, operatorAuditEnabled: opt.OperatorAuditEnabled, capabilityPacks: opt.CapabilityPacks, externalConnectors: opt.ExternalConnectors, externalConnectorInfo: opt.ExternalConnectorInfo, intakeUploader: opt.IntakeUploader, contractAuditBindingsEnabled: opt.ContractAuditBindingsEnabled, contractSources: opt.ContractSourceCredentials, eventStreams: make(chan struct{}, maxEventStreams), eventWakeups: newEventWakeups()}
+	h := &handler{contextSwitchEnabled: opt.ContextSwitchEnabled, store: st, sessionAuthority: opt.SessionAuthorityResolver, loginCounter: newLoginCounter(), cors: opt.CORSOrigins, models: opt.Models, oidc: opt.OIDC, durable: opt.Durable, secureCookies: opt.SecureCookies, systemHealth: opt.SystemHealth, experienceDeliveryEnabled: opt.experienceDeliveryEnabled, operatorAuditEnabled: opt.OperatorAuditEnabled, capabilityPacks: opt.CapabilityPacks, externalConnectors: opt.ExternalConnectors, externalConnectorInfo: opt.ExternalConnectorInfo, intakeUploader: opt.IntakeUploader, contractAuditBindingsEnabled: opt.ContractAuditBindingsEnabled, contractSources: opt.ContractSourceCredentials, eventStreams: make(chan struct{}, maxEventStreams), eventWakeups: newEventWakeups()}
 	h.modelBudgetGateway = systemhealth.ModelGatewayBaseURLFromEnv()
 	mux := http.NewServeMux()
 	// Every binary in this repository serves the same probe surface so a manifest
@@ -81,6 +88,13 @@ func Handler(st *store.Store, opt Options) http.Handler {
 	mux.HandleFunc("GET /openapi.json", apidocs.Serve)
 	mux.HandleFunc("POST /api/session", h.login)
 	mux.HandleFunc("GET /api/session", h.session)
+	mux.HandleFunc("GET /api/auth/contexts", h.listSessionContexts)
+	mux.HandleFunc("POST /api/auth/contexts/switch", h.switchSessionContext)
+	mux.HandleFunc("GET /api/support-grants", h.listSupportGrants)
+	mux.HandleFunc("POST /api/cases/{caseID}/support-grants", h.requestSupportGrant)
+	mux.HandleFunc("POST /api/support-grants/{grantID}/approve", h.changeSupportGrant("approve"))
+	mux.HandleFunc("POST /api/support-grants/{grantID}/revoke", h.changeSupportGrant("revoke"))
+	mux.HandleFunc("GET /api/support-grants/{grantID}/case", h.readSupportCase)
 	mux.HandleFunc("DELETE /api/session", h.logout)
 	mux.HandleFunc("GET /api/settings", h.settings)
 	mux.HandleFunc("GET /api/admin/settings", h.adminSettings)
@@ -121,6 +135,8 @@ func Handler(st *store.Store, opt Options) http.Handler {
 	registerContractApprovalReadRoutes(mux, h)
 	mux.HandleFunc("GET /api/auth/oidc/login", h.oidcLogin)
 	mux.HandleFunc("GET /api/auth/oidc/callback", h.oidcCallback)
+	mux.HandleFunc("GET /api/auth/oidc/memberships", h.pendingMemberships)
+	mux.HandleFunc("POST /api/auth/oidc/memberships", h.selectPendingMembership)
 	mux.HandleFunc("GET /api/templates", h.templates)
 	mux.HandleFunc("GET /api/capability-packs", h.listCapabilityPacks)
 	mux.HandleFunc("GET /api/workbench", h.workbench)
@@ -203,18 +219,22 @@ func Handler(st *store.Store, opt Options) http.Handler {
 	mux.HandleFunc("POST /api/cases/{caseID}/reviews/{runID}/cancel", h.cancelReview)
 	mux.HandleFunc("POST /api/cases/{caseID}/reviews/{runID}/findings/{findingID}/decisions", h.decide)
 	mux.HandleFunc("GET /api/cases/{caseID}/reviews/{runID}/events", h.events)
-	return cors(opt.CORSOrigins, opt.SecureCookies, mux)
+	return cors(opt.CORSOrigins, opt.SecureCookies, h.contextCommands(mux))
 }
 
 type handler struct {
-	systemHealth                 systemhealth.Reader
-	modelBudgetGateway           string
-	store                        *store.Store
+	systemHealth       systemhealth.Reader
+	modelBudgetGateway string
+	store              *store.Store
+	sessionAuthority   interface {
+		AuthenticateSession(context.Context, string) (accounts.User, string, error)
+	}
 	cors                         []string
 	models                       *model.Client
 	oidc                         *identity.Manager
 	durable                      bool
 	secureCookies                bool
+	contextSwitchEnabled         bool
 	experienceDeliveryEnabled    bool
 	operatorAuditEnabled         bool
 	capabilityPacks              *capabilitypack.Registry
@@ -229,6 +249,7 @@ type handler struct {
 }
 
 func (h *handler) login(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
 	var body struct {
 		Username string `json:"username"`
 		Password string `json:"password"`
@@ -282,10 +303,21 @@ func (h *handler) login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.setSessionCookie(w, r, token, audience, 7*24*3600)
-	writeJSON(w, http.StatusOK, map[string]any{"actor": actorJSON(user), "audience": audience})
+	user, _, err = h.authenticateSession(r.Context(), token)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	result, err := h.sessionJSON(user, audience)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, result)
 }
 
 func (h *handler) session(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
 	audience, err := validAudience(r.URL.Query().Get("audience"))
 	if err != nil {
 		writeErr(w, err)
@@ -295,7 +327,12 @@ func (h *handler) session(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"actor": actorJSON(user), "audience": audience})
+	result, err := h.sessionJSON(user, audience)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, result)
 }
 
 func (h *handler) logout(w http.ResponseWriter, r *http.Request) {
@@ -304,7 +341,7 @@ func (h *handler) logout(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
-	if err := h.store.Logout(audienceCookieValue(r, audience)); err != nil {
+	if err := h.store.LogoutContext(r.Context(), audienceCookieValue(r, audience)); err != nil {
 		writeErr(w, err)
 		return
 	}
@@ -599,6 +636,9 @@ func (h *handler) startReview(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ctx := store.WithReviewIdempotency(r.Context(), key)
+	if token := audienceCookieValue(r, "client"); token != "" {
+		ctx = store.WithAdmissionSessionToken(ctx, token)
+	}
 	if h.durable {
 		var accepted store.JobAcceptance
 		var err error
@@ -668,8 +708,12 @@ func (h *handler) retry(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
+	ctx := r.Context()
+	if token := audienceCookieValue(r, "client"); token != "" {
+		ctx = store.WithAdmissionSessionToken(ctx, token)
+	}
 	if h.durable {
-		accepted, err := h.store.RetryAsync(r.Context(), user, r.PathValue("caseID"), r.PathValue("runID"))
+		accepted, err := h.store.RetryAsync(ctx, user, r.PathValue("caseID"), r.PathValue("runID"))
 		if err != nil {
 			writeErr(w, err)
 			return
@@ -678,7 +722,7 @@ func (h *handler) retry(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	runID := r.PathValue("runID")
-	if err := h.store.Retry(r.Context(), user, r.PathValue("caseID"), runID); err != nil {
+	if err := h.store.Retry(ctx, user, r.PathValue("caseID"), runID); err != nil {
 		writeErr(w, err)
 		return
 	}
@@ -823,13 +867,18 @@ func writeEventBatch(w http.ResponseWriter, items []store.Event) bool {
 }
 
 func (h *handler) pollEventBatch(w http.ResponseWriter, user accounts.User, r *http.Request, after int) (int, error) {
-	current, audience, err := h.store.AuthenticateSession(r.Context(), audienceCookieValue(r, "client"))
+	current, audience, err := h.authenticateSession(r.Context(), audienceCookieValue(r, "client"))
 	if err != nil {
 		return after, err
 	}
 	if audience != "client" || current.ID != user.ID || current.TenantID != user.TenantID ||
 		current.OrgID != user.OrgID || current.Issuer != user.Issuer || current.Subject != user.Subject {
 		return after, fault.Unauthenticated("登录身份已变更")
+	}
+	oldProof, oldOK := user.CommandAuthority()
+	newProof, newOK := current.CommandAuthority()
+	if !oldOK || !newOK || oldProof.ContextVersion != newProof.ContextVersion || oldProof.Revision != newProof.Revision {
+		return after, fault.New(401, "session_invalid", "事件连接上下文已变更")
 	}
 	items, err := h.store.EventsAfterContext(r.Context(), current, r.PathValue("caseID"), r.PathValue("runID"), after)
 	if err != nil {
@@ -941,13 +990,21 @@ func cors(origins []string, secureCookies bool, next http.Handler) http.Handler 
 		}
 		unsafe := r.Method != http.MethodGet && r.Method != http.MethodHead
 		if unsafe && (len(values) > 0 && !allowed || len(values) == 0 && !originlessWriteAllowed(r, trusted)) {
+			if _, e := r.Cookie(sessionCookie); e == nil {
+				writeErr(w, fault.New(403, "csrf_invalid", "命令来源校验无效"))
+				return
+			}
+			if _, e := r.Cookie("admin_session"); e == nil {
+				writeErr(w, fault.New(403, "csrf_invalid", "命令来源校验无效"))
+				return
+			}
 			writeErr(w, fault.Forbidden("请求来源不在允许列表内"))
 			return
 		}
 		if allowed {
 			w.Header().Set("Access-Control-Allow-Origin", values[0])
 			w.Header().Set("Access-Control-Allow-Credentials", "true")
-			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Idempotency-Key, Last-Event-ID")
+			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Idempotency-Key, Last-Event-ID, X-Context-Version, X-CSRF-Token")
 			w.Header().Set("Access-Control-Allow-Methods", "GET, HEAD, POST, PUT, DELETE, OPTIONS")
 		}
 		if r.Method == http.MethodOptions {

@@ -66,6 +66,12 @@ func (s *Store) Close() error {
 	s.closing = true
 	s.executionMu.Unlock()
 	s.executionWG.Wait()
+	if closer, ok := s.operationAuthority.(interface{ CloseIdleConnections() }); ok {
+		closer.CloseIdleConnections()
+	}
+	s.claimMu.Lock()
+	s.operationContexts = nil
+	s.claimMu.Unlock()
 	s.closeTelemetry()
 	var err error
 	if s.dropSchema && s.schema != "" && s.schema != "public" {
@@ -267,13 +273,22 @@ func newStorePool(ctx context.Context, dsn, schema string, application bool) (*p
 	if application {
 		applyRuntimeTimeoutDefaults(cfg.ConnConfig.RuntimeParams)
 	}
+	// Application connections start without business authority in every mode.
+	// Only the dedicated offline migration connection keeps the frozen legacy
+	// bootstrap defaults; token and queue entrypoints install their own scope.
+	tenant, org, actor, role := "", "", "", "unscoped"
+	if !application {
+		tenant, org, actor, role = accounts.LocalDemoTenant, "demo-org", "system", "api"
+	}
 	cfg.AfterConnect = func(ctx context.Context, conn *pgx.Conn) error {
 		_, err := conn.Exec(ctx, `SELECT
 			set_config('search_path', $1, false),
 			set_config('app.tenant_id', $2, false),
 			set_config('app.org_id', $3, false),
-			set_config('app.actor_id', 'system', false),
-			set_config('app.actor_role', 'api', false)`, schema, accounts.LocalDemoTenant, "demo-org")
+			set_config('app.actor_id', $4, false),
+			set_config('app.actor_role', $5, false),
+            set_config('app.session_token','',false),set_config('app.worker_id','',false),set_config('app.job_id','',false),set_config('app.job_generation','',false),
+            set_config('app.command_digest','',false),set_config('app.command_version','',false)`, schema, tenant, org, actor, role)
 		return err
 	}
 	return pgxpool.NewWithConfig(ctx, cfg)
@@ -385,6 +400,10 @@ func openApplicationStore(dir string, sel config.Selection, schema string) (*Sto
 		pool.Close()
 		return nil, err
 	}
+	if err := checkTableIsolationCatalog(ctx, pool, schema); err != nil {
+		pool.Close()
+		return nil, err
+	}
 	s := &Store{
 		dir: dir, sel: sel, schema: schema, pool: pool,
 		executionSlots: make(chan struct{}, maxConcurrentReviews), running: make(map[string]func()), claims: make(map[string]JobClaim),
@@ -448,7 +467,7 @@ func (s *Store) initializeKnownTenants(ctx context.Context, recoverAttempts bool
 }
 
 func (s *Store) load(ctx context.Context, scope dbScope) error {
-	tx, err := s.pool.Begin(ctx)
+	tx, err := s.beginContextTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return err
 	}
@@ -617,7 +636,11 @@ func (s *Store) updateStateWith(ctx context.Context, scope dbScope, attemptID st
 // cases take the schema lock first, then sorted subject locks, then sorted case
 // locks before loading or changing state.
 func (s *Store) updateStateWithLocks(ctx context.Context, scope dbScope, attemptID string, subjectIDs, caseIDs []string, hook func(pgx.Tx) error, fn func(*state) error) error {
-	tx, err := s.pool.Begin(ctx)
+	if scope.command != nil {
+		p := scope.command
+		ctx = context.WithValue(ctx, commandProofKey{}, commandProof{digest: p.SessionDigest, version: p.ContextVersion, revision: p.Revision, support: p.SupportID, operation: append([]byte(nil), p.OperationScope...)})
+	}
+	tx, err := s.beginContextTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return err
 	}
@@ -669,6 +692,10 @@ func (s *Store) updateStateWithLocks(ctx context.Context, scope dbScope, attempt
 		}
 	}
 	previous, err := loadState(ctx, tx, true)
+	if fenced, ok := tx.(*contextTx); ok && fenced.user.ID != "" {
+		u := fenced.user
+		previous.authorityUser = &u
+	}
 	if err != nil {
 		return err
 	}
@@ -693,6 +720,7 @@ func (s *Store) updateStateWithLocks(ctx context.Context, scope dbScope, attempt
 	if err != nil {
 		return err
 	}
+	next.authorityUser = previous.authorityUser
 	if err := fn(&next); err != nil {
 		return err
 	}

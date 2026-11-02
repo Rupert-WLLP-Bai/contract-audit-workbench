@@ -56,6 +56,10 @@ type SessionStore interface {
 	SessionAudience(string) (string, error)
 }
 
+type membershipSessionStore interface {
+	ResolveVerifiedOIDC(context.Context, accounts.User, string) (accounts.OIDCLoginResult, error)
+}
+
 // Manager performs OIDC authorization-code flows and establishes trusted sessions.
 type Manager struct {
 	config   Config
@@ -222,6 +226,48 @@ func (m *Manager) Complete(ctx context.Context, code, returnedState, stateCookie
 		return "", "", ErrAuthentication
 	}
 	return token, payload.Audience, nil
+}
+
+// CompleteWithMembership verifies OIDC as usual, then delegates every
+// tenant/org/role/grant decision to the durable database membership resolver.
+// It is the only completion method used by the production HTTP callback.
+func (m *Manager) CompleteWithMembership(ctx context.Context, code, returnedState, stateCookie string) (accounts.OIDCLoginResult, string, error) {
+	if !m.completeRequestPresent(code, returnedState, stateCookie) {
+		return accounts.OIDCLoginResult{}, "", ErrAuthentication
+	}
+	payload, ok := m.authenticatedState(stateCookie, returnedState)
+	if !ok {
+		return accounts.OIDCLoginResult{}, "", ErrAuthentication
+	}
+	store, ok := m.sessions.(membershipSessionStore)
+	if !ok {
+		return accounts.OIDCLoginResult{}, "", ErrAuthentication
+	}
+	clientID, clientSecret, err := m.clientCredentials(payload.Audience)
+	if err != nil {
+		return accounts.OIDCLoginResult{}, "", ErrAuthentication
+	}
+	metadata, err := m.discover(ctx)
+	if err != nil {
+		return accounts.OIDCLoginResult{}, "", ErrAuthentication
+	}
+	idToken, err := m.exchangeCode(ctx, metadata, clientID, clientSecret, code, payload.Verifier, m.redirectURL(payload.Audience))
+	if err != nil {
+		return accounts.OIDCLoginResult{}, "", ErrAuthentication
+	}
+	claims, err := m.verifyIDToken(ctx, metadata, idToken, clientID, payload.Nonce)
+	if err != nil {
+		return accounts.OIDCLoginResult{}, "", ErrAuthentication
+	}
+	profile, found := m.lookup(claims.Issuer, claims.Subject)
+	if !found || !profile.Enabled || profile.Issuer != claims.Issuer || profile.Subject != claims.Subject {
+		return accounts.OIDCLoginResult{}, "", ErrAuthentication
+	}
+	result, err := store.ResolveVerifiedOIDC(ctx, profile, payload.Audience)
+	if err != nil || (result.SessionToken == "") == (result.PendingToken == "") {
+		return accounts.OIDCLoginResult{}, "", ErrAuthentication
+	}
+	return result, payload.Audience, nil
 }
 
 func (m *Manager) completeRequestPresent(code, returnedState, stateCookie string) bool {

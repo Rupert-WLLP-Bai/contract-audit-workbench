@@ -1,4 +1,4 @@
-import { ApiError, errorFromResponse, jsonInit, requestJson } from "./http";
+import { ApiError, assertCommandContextCurrent, errorFromResponse, jsonInit, requestJson, type CommandContext } from "./http";
 import { responseReader } from "./respond";
 import type { WireSchemas } from "./wire.generated";
 
@@ -1556,7 +1556,8 @@ export function createContractExport(
 }
 
 /** Downloads are byte streams, not JSON, so they bypass requestJson. */
-export async function downloadContractExport(exportId: string): Promise<Blob> {
+export async function downloadContractExport(exportId: string, commandContext: CommandContext): Promise<Blob> {
+  assertCommandContextCurrent(commandContext);
   let response: Response;
   try {
     response = await fetch(
@@ -1565,13 +1566,20 @@ export async function downloadContractExport(exportId: string): Promise<Blob> {
         method: "GET",
         credentials: "include",
         cache: "no-store",
-        headers: { Accept: "text/csv" },
+        headers: {
+          Accept: "text/csv",
+          "X-Context-Version": commandContext.contextVersion,
+          "X-CSRF-Token": commandContext.csrfToken,
+        },
       },
     );
   } catch (error) {
     if (error instanceof Error && error.name === "AbortError") throw error;
     throw new ApiError("无法连接审查服务", 0, "network", true, null);
   }
+  assertCommandContextCurrent(commandContext);
   if (!response.ok) throw await errorFromResponse(response);
-  return response.blob();
+  const blob = await response.blob();
+  assertCommandContextCurrent(commandContext);
+  return blob;
 }

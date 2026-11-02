@@ -3,9 +3,15 @@ import { useEffect, useId, useRef, useState, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router";
 import {
   ApiError,
+  assertCommandContextCurrent,
+  captureCommandContext,
+  bindIdempotencyCommandContext,
   errorMessage,
   isConflict,
   isForbidden,
+  isCommandContextVersionCurrent,
+  isSessionIdentityCurrent,
+  sessionIdentityFor,
   isUnauthenticated,
 } from "../api/http";
 import { fileSha256, newIdempotencyKey } from "../api/idempotency";
@@ -179,7 +185,7 @@ export function IntakePrimaryContract({
   const actorKey =
     actor === null
       ? ""
-      : [actor.audience, actor.tenant_id, actor.org_id, actor.id].join(
+      : [actor.audience, actor.tenant_id, actor.org_id, actor.id, actor.active_context?.context_version ?? ""].join(
           "\u0000",
         );
   const canCreate =
@@ -189,6 +195,9 @@ export function IntakePrimaryContract({
   selectedOperationRef.current = selectedOperationId;
   const actorKeyRef = useRef(actorKey);
   actorKeyRef.current = actorKey;
+  const actorSessionIdentity = actor ? sessionIdentityFor(actor) : "";
+  const actorSessionIdentityRef = useRef(actorSessionIdentity);
+  actorSessionIdentityRef.current = actorSessionIdentity;
   const activeContinuationKeyRef = useRef<string | null>(null);
   const activeAccess =
     draft?.receipt.operation_id == null
@@ -209,7 +218,10 @@ export function IntakePrimaryContract({
           continuation.scope.tenant_id,
           continuation.scope.org_id,
           continuation.scope.actor_id,
+          continuation.scope.context_version,
         ].join("\u0000") &&
+      (continuation.scope.context_version === "legacy" || isCommandContextVersionCurrent(continuation.scope.context_version)) &&
+      isSessionIdentityCurrent(actorSessionIdentityRef.current) &&
       activeContinuationKeyRef.current === continuation.idempotency_key
     );
   }
@@ -396,6 +408,7 @@ export function IntakePrimaryContract({
     if (actor === null || !canCreate || busy !== null || submitting.current)
       return;
     const actorKeyAtSubmit = actorKey;
+    const commandContext = captureCommandContext(actor);
     const titleProblem = validateCaseTitle(title);
     setTitleError(titleProblem);
     if (titleProblem !== null) return;
@@ -418,6 +431,7 @@ export function IntakePrimaryContract({
       let sha256: string;
       try {
         sha256 = await fileSha256(file);
+        assertCommandContextCurrent(commandContext);
         if (actorKeyRef.current !== actorKeyAtSubmit) return;
       } catch {
         setBusy(null);
@@ -444,6 +458,7 @@ export function IntakePrimaryContract({
       if (actorKeyRef.current !== actorKeyAtSubmit) return;
       try {
         await writeIntakeContinuation(continuation);
+        assertCommandContextCurrent(commandContext);
       } catch (error) {
         setBusy(null);
         setFormError(
@@ -456,7 +471,7 @@ export function IntakePrimaryContract({
       if (actorKeyRef.current !== actorKeyAtSubmit) return;
       setDraft(continuation);
       activeContinuationKeyRef.current = continuation.idempotency_key;
-      await postContinuation(continuation, file);
+      await postContinuation(continuation, file, commandContext);
     } finally {
       submitting.current = false;
     }
@@ -465,8 +480,11 @@ export function IntakePrimaryContract({
   async function postContinuation(
     continuation: IntakeContinuation,
     chosen: File,
+    commandContext: ReturnType<typeof captureCommandContext>,
   ) {
     if (!isCurrentContinuation(continuation)) return;
+    assertCommandContextCurrent(commandContext);
+    bindIdempotencyCommandContext(continuation.idempotency_key, commandContext);
     setBusy("uploading");
     setProblem(null);
     setConflict(null);
@@ -480,6 +498,7 @@ export function IntakePrimaryContract({
             type: continuation.request.media_type,
           });
     try {
+      assertCommandContextCurrent(commandContext);
       const result = await createIntake(
         {
           title: continuation.request.title,
@@ -491,6 +510,7 @@ export function IntakePrimaryContract({
         continuation.idempotency_key,
       );
       if (!isCurrentContinuation(continuation)) return;
+      assertCommandContextCurrent(commandContext);
       let next = withReceipt(continuation, result);
       if (result.state === "upload_pending") {
         try {
@@ -716,7 +736,7 @@ export function IntakePrimaryContract({
     reportError: (message: string | null) => void,
   ) {
     const current = draft;
-    if (current === null || busy !== null || submitting.current) return;
+    if (current === null || actor === null || busy !== null || submitting.current) return;
     const allowed =
       current.receipt.state === "upload_pending"
         ? canResumeCurrent
@@ -726,6 +746,7 @@ export function IntakePrimaryContract({
       return;
     }
     const actorKeyAtStart = actorKey;
+    const commandContext = captureCommandContext(actor);
     if (chosen.size > INTAKE_MAX_FILE_BYTES) {
       reportError("主合同文件不能超过 32 MiB");
       return;
@@ -740,6 +761,7 @@ export function IntakePrimaryContract({
       let sha256: string;
       try {
         sha256 = await fileSha256(chosen);
+        assertCommandContextCurrent(commandContext);
         if (
           actorKeyRef.current !== actorKeyAtStart ||
           !isCurrentContinuation(current)
@@ -758,7 +780,7 @@ export function IntakePrimaryContract({
         setConflict({ message: mismatch, existing: null, origin: "client" });
         return;
       }
-      await postContinuation(current, chosen);
+      await postContinuation(current, chosen, commandContext);
     } finally {
       submitting.current = false;
     }

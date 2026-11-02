@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, type FormEvent, type SyntheticEvent } from
 import { Link, useNavigate, useSearchParams } from "react-router";
 import type { BusinessAgentCapability, BusinessAgentGap, BusinessAgentReview } from "../api/business-agent-review";
 import { getCase, getReview, getSession, getWorkbench } from "../api/endpoints";
+import { assertCommandContextCurrent, captureCommandContext } from "../api/http";
 import { clearPendingMutationKey, fileSha256, idempotencyActorScope, newIdempotencyKey, pendingMutationKey } from "../api/idempotency";
 import {
   createEvidenceReceipt,
@@ -62,7 +63,7 @@ function useOperationKeys() {
     const identity = JSON.stringify([operation, input]);
     const existing = keys.current.get(identity);
     if (existing) return existing;
-    const key = crypto.randomUUID();
+    const key = newIdempotencyKey();
     keys.current.set(identity, key);
     return key;
   };
@@ -1451,9 +1452,12 @@ function RequestCard({
   const upload = useMutation({
     mutationFn: async ({ selectedFile, selectedRole }: { selectedFile: File; selectedRole: string }) => {
       if (!context.actor) throw new Error("登录状态不可用，请刷新后重试");
+      const commandContext = captureCommandContext(context.actor);
       const payload = { role: selectedRole, name: selectedFile.name, type: selectedFile.type, size: selectedFile.size, sha256: await fileSha256(selectedFile) };
-      const pending = await pendingMutationKey("evidence.upload", idempotencyActorScope(context.actor), caseId, payload);
-      const result = await uploadEvidenceDocument(caseId, selectedFile, selectedRole, pending.key);
+      assertCommandContextCurrent(commandContext);
+      const pending = await pendingMutationKey("evidence.upload", idempotencyActorScope(context.actor), caseId, payload, commandContext);
+      assertCommandContextCurrent(commandContext);
+      const result = await uploadEvidenceDocument(caseId, selectedFile, selectedRole, pending.key, commandContext);
       try {
         clearPendingMutationKey(pending.storageKey);
       } catch {

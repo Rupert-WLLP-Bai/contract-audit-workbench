@@ -673,7 +673,9 @@ func insertLegacyTelecomReportAttempt(t *testing.T, st *Store, user accounts.Use
 		st.releaseExecution()
 		t.Fatal(err)
 	}
-	st.launchAttempt(runID, attemptID, st.models, caseItem, user.ID)
+	if err := st.launchAttempt(context.Background(), runID, attemptID, st.models, caseItem, user); err != nil {
+		t.Fatal(err)
+	}
 	return runID
 }
 

@@ -11,7 +11,7 @@ import { useCreateSubject, useSubject, useSubjectCaseLinks, useSubjectHistory, u
 import type { SubjectSummary } from "../api/types";
 import { formatDateTime } from "../domain/review";
 import { subjectVerificationLabel } from "../domain/subjects";
-import { clearPendingMutationKey, pendingMutationKey } from "../api/idempotency";
+import { clearPendingMutationKey, idempotencyActorScope, pendingMutationKey } from "../api/idempotency";
 
 function verificationTone(state: SubjectSummary["verification_state"]): "good" | "attention" | "neutral" {
   if (state === "verified") return "good";
@@ -43,12 +43,7 @@ export function SubjectsPage() {
     setFormNote(null);
     try {
       const input = subjectCreateInput(values);
-      const pending = await pendingMutationKey("subject.create", {
-        actorId: actor.id,
-        tenantId: actor.tenant_id,
-        orgId: actor.org_id,
-        audience: actor.audience,
-      }, "unbound", input);
+      const pending = await pendingMutationKey("subject.create", idempotencyActorScope(actor), "unbound", input);
       const result = await create.mutateAsync({ subject: input, idempotencyKey: pending.key });
       setCreated(result);
       form.resetFields();

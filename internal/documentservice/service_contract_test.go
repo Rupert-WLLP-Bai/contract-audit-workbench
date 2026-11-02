@@ -17,7 +17,8 @@ import (
 func TestFromEnvRejectsUnsafeParseBounds(t *testing.T) {
 	for _, name := range []string{
 		"WORKER_DOCUMENT_TOKEN", "CORE_DOCUMENT_TOKEN", "DOCUMENT_CPU_CONCURRENCY", "DOCUMENT_OCR_CONCURRENCY",
-		"DOCUMENT_QUEUE_CAPACITY", "DOCUMENT_PARSE_TIMEOUT",
+		"DOCUMENT_QUEUE_CAPACITY", "DOCUMENT_PARSE_TIMEOUT", "CORE_AUTHORITY_URL", "CORE_AUTHORITY_CA_FILE",
+		"CORE_AUTHORITY_ALLOW_INSECURE_DEV", "CORE_SERVICE_URL", "APP_ENV",
 	} {
 		t.Setenv(name, "")
 	}
@@ -54,7 +55,8 @@ func TestFromEnvRejectsUnsafeParseBounds(t *testing.T) {
 func TestFromEnvDefaultsAndAcceptsInclusiveBounds(t *testing.T) {
 	for _, name := range []string{
 		"WORKER_DOCUMENT_TOKEN", "CORE_DOCUMENT_TOKEN", "DOCUMENT_CPU_CONCURRENCY", "DOCUMENT_OCR_CONCURRENCY",
-		"DOCUMENT_QUEUE_CAPACITY", "DOCUMENT_PARSE_TIMEOUT",
+		"DOCUMENT_QUEUE_CAPACITY", "DOCUMENT_PARSE_TIMEOUT", "CORE_AUTHORITY_URL", "CORE_AUTHORITY_CA_FILE",
+		"CORE_AUTHORITY_ALLOW_INSECURE_DEV", "CORE_SERVICE_URL", "APP_ENV",
 	} {
 		t.Setenv(name, "")
 	}
@@ -93,6 +95,36 @@ func TestFromEnvDefaultsAndAcceptsInclusiveBounds(t *testing.T) {
 				t.Fatalf("FromEnv = %+v, %v; requested %s=%s", got, err, tc.name, tc.value)
 			}
 		})
+	}
+}
+
+func TestFromEnvDocumentCoreCallbackTransportPolicy(t *testing.T) {
+	for _, name := range []string{"CORE_AUTHORITY_URL", "CORE_AUTHORITY_CA_FILE", "CORE_AUTHORITY_ALLOW_INSECURE_DEV", "CORE_SERVICE_URL", "APP_ENV"} {
+		t.Setenv(name, "")
+	}
+	t.Setenv("CORE_AUTHORITY_URL", "https://core.private.example")
+	t.Setenv("CORE_AUTHORITY_CA_FILE", "/run/certs/core-ca.pem")
+	t.Setenv("CORE_SERVICE_URL", "http://worker-core:8081")
+	cfg, err := FromEnv()
+	if err != nil || cfg.CoreAuthorityURL != "https://core.private.example" || cfg.CoreAuthorityCAFile != "/run/certs/core-ca.pem" {
+		t.Fatalf("dedicated callback config=%+v err=%v", cfg, err)
+	}
+	t.Setenv("CORE_AUTHORITY_URL", "")
+	cfg, err = FromEnv()
+	if err != nil || cfg.CoreAuthorityURL != "http://worker-core:8081" {
+		t.Fatalf("compatibility fallback config=%+v err=%v", cfg, err)
+	}
+	t.Setenv("CORE_AUTHORITY_ALLOW_INSECURE_DEV", "true")
+	if _, err := FromEnv(); err == nil {
+		t.Fatal("insecure callback mode without explicit APP_ENV was accepted")
+	}
+	t.Setenv("APP_ENV", "production")
+	if _, err := FromEnv(); err == nil {
+		t.Fatal("production insecure callback mode was accepted")
+	}
+	t.Setenv("CORE_AUTHORITY_ALLOW_INSECURE_DEV", "perhaps")
+	if _, err := FromEnv(); err == nil {
+		t.Fatal("invalid insecure callback flag was accepted")
 	}
 }
 

@@ -24,6 +24,7 @@ type TenantModelUsage struct {
 }
 
 func (s *Store) ReadTenantModelUsage(ctx context.Context, user accounts.User) (TenantModelUsage, error) {
+	ctx = commandContext(ctx, user)
 	current, err := trustedUser(user)
 	if err != nil {
 		return TenantModelUsage{}, err
@@ -34,7 +35,7 @@ func (s *Store) ReadTenantModelUsage(ctx context.Context, user accounts.User) (T
 	if !s.HasDatabase() {
 		return TenantModelUsage{}, fault.New(503, "model_usage_unavailable", "模型用量账本不可用")
 	}
-	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{AccessMode: pgx.ReadOnly})
+	tx, err := s.beginContextTx(ctx, pgx.TxOptions{AccessMode: pgx.ReadOnly})
 	if err != nil {
 		return TenantModelUsage{}, err
 	}

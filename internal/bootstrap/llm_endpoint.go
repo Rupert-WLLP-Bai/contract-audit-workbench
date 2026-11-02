@@ -120,7 +120,15 @@ func watchStoredLLMEndpoint(ctx context.Context, st llmEndpointStore, service st
 				config = applyStoredLLMEndpoint(base, service, settings)
 				storedDirect = !base.Gateway && config != base
 			}
-			st.UseModels(newModelClient(config, storedDirect))
+			if service == "" && !base.Gateway && found && settings.Active() {
+				// Keep the offline client; a stored provider cannot bypass the
+				// gateway and its document/worker accounting boundaries.
+				revision = next
+				log.Printf("LLM endpoint revision %d not applied: embedded model gateway is not configured", revision)
+				continue
+			}
+			models := newModelClient(config, storedDirect)
+			st.UseModels(embeddedModelsFor(config, service, models))
 			revision = next
 			log.Printf("applied LLM endpoint revision %d (active=%t)", revision, found && settings.Active())
 		}

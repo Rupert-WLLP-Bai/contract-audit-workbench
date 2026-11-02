@@ -39,6 +39,7 @@ var (
 // StartReview retains the existing ungoverned entry point. Governed cases must
 // use StartReviewAt with the business instant being reviewed.
 func (s *Store) StartReview(ctx context.Context, user accounts.User, caseID string) (string, error) {
+	ctx = commandContext(ctx, user)
 	return s.startReview(ctx, user, caseID, "", "", false)
 }
 
@@ -46,6 +47,7 @@ func (s *Store) StartReview(ctx context.Context, user accounts.User, caseID stri
 // zone. The caller supplies the time relevant to the contract; the store derives
 // tenant, organization, actor and all knowledge identities from trusted state.
 func (s *Store) StartReviewAt(ctx context.Context, user accounts.User, caseID, businessAt string) (string, error) {
+	ctx = commandContext(ctx, user)
 	return s.StartReviewAtWithEvidenceCutoff(ctx, user, caseID, businessAt, "")
 }
 
@@ -53,6 +55,7 @@ func (s *Store) StartReviewAt(ctx context.Context, user accounts.User, caseID, b
 // in addition to the business instant. The accepted snapshot records whether
 // the cutoff was explicit or sampled by the server.
 func (s *Store) StartReviewAtWithEvidenceCutoff(ctx context.Context, user accounts.User, caseID, businessAt, evidenceCutoffAt string) (string, error) {
+	ctx = commandContext(ctx, user)
 	if _, err := knowledgeTime(businessAt); err != nil {
 		return "", err
 	}
@@ -66,6 +69,7 @@ func (s *Store) StartReviewAtWithEvidenceCutoff(ctx context.Context, user accoun
 // StartReviewScope accepts an explicit review scope while keeping the legacy
 // empty scope and business-time behavior for existing clients.
 func (s *Store) StartReviewScope(ctx context.Context, user accounts.User, caseID, businessAt, evidenceCutoffAt, scope string) (string, error) {
+	ctx = commandContext(ctx, user)
 	if businessAt != "" {
 		if _, err := knowledgeTime(businessAt); err != nil {
 			return "", err
@@ -79,6 +83,7 @@ func (s *Store) StartReviewScope(ctx context.Context, user accounts.User, caseID
 }
 
 func (s *Store) StartReviewAsyncScope(ctx context.Context, user accounts.User, caseID, businessAt, evidenceCutoffAt, scope string) (JobAcceptance, error) {
+	ctx = commandContext(ctx, user)
 	if businessAt != "" {
 		if _, err := knowledgeTime(businessAt); err != nil {
 			return JobAcceptance{}, err
@@ -92,15 +97,18 @@ func (s *Store) StartReviewAsyncScope(ctx context.Context, user accounts.User, c
 }
 
 func (s *Store) StartReviewAsync(ctx context.Context, user accounts.User, caseID string) (JobAcceptance, error) {
+	ctx = commandContext(ctx, user)
 	return s.startReviewAsync(ctx, user, caseID, "", "")
 }
 
 // StartReviewAsyncAt is the durable counterpart of StartReviewAt.
 func (s *Store) StartReviewAsyncAt(ctx context.Context, user accounts.User, caseID, businessAt string) (JobAcceptance, error) {
+	ctx = commandContext(ctx, user)
 	return s.StartReviewAsyncAtWithEvidenceCutoff(ctx, user, caseID, businessAt, "")
 }
 
 func (s *Store) StartReviewAsyncAtWithEvidenceCutoff(ctx context.Context, user accounts.User, caseID, businessAt, evidenceCutoffAt string) (JobAcceptance, error) {
+	ctx = commandContext(ctx, user)
 	if _, err := knowledgeTime(businessAt); err != nil {
 		return JobAcceptance{}, err
 	}
@@ -112,6 +120,7 @@ func (s *Store) StartReviewAsyncAtWithEvidenceCutoff(ctx context.Context, user a
 }
 
 func (s *Store) startReviewAsync(ctx context.Context, user accounts.User, caseID, businessAt, evidenceCutoffAt string, scope ...string) (JobAcceptance, error) {
+	ctx = commandContext(ctx, user)
 	runID, err := s.startReview(ctx, user, caseID, businessAt, evidenceCutoffAt, true, scope...)
 	if err != nil {
 		return JobAcceptance{}, err
@@ -123,6 +132,7 @@ func (s *Store) startReviewAsync(ctx context.Context, user accounts.User, caseID
 }
 
 func (s *Store) startReview(ctx context.Context, user accounts.User, caseID, businessAt, evidenceCutoffAt string, durable bool, requestedScope ...string) (string, error) {
+	ctx = commandContext(ctx, user)
 	if err := ctx.Err(); err != nil {
 		return "", err
 	}
@@ -387,7 +397,7 @@ func (s *Store) startReview(ctx context.Context, user accounts.User, caseID, bus
 		receiptResult = reviewWriteReceipt{Acceptance: accepted, Durable: durable}
 		return insertWriteReceipt(ctx, acceptanceTx, executionWriteReceipts, user, item, route, key, digest, receiptResult)
 	}
-	err = s.updateCaseAsWith(user, caseID, hook, func(st *state) error {
+	err = s.updateCaseAsWithContext(ctx, user, caseID, hook, func(st *state) error {
 		user, err = trustedUser(user)
 		if err != nil {
 			return err
@@ -490,7 +500,7 @@ func (s *Store) startReview(ctx context.Context, user accounts.User, caseID, bus
 			if err != nil {
 				return err
 			}
-			st.Jobs = append(st.Jobs, Job{ID: jobID, TenantID: caseItem.TenantID, OrgID: caseItem.OwnerOrgID, CaseID: caseID, RunID: runID, AttemptID: attemptID, ActorID: user.ID, Kind: "review", State: "queued", CreatedAt: acceptedAt, UpdatedAt: acceptedAt})
+			st.Jobs = append(st.Jobs, Job{ID: jobID, TenantID: caseItem.TenantID, OrgID: caseItem.OwnerOrgID, CaseID: caseID, RunID: runID, AttemptID: attemptID, ActorID: user.ID, PrincipalID: user.PrincipalID, MembershipID: user.MembershipID, IdentityCaptured: true, Kind: "review", State: "queued", CreatedAt: acceptedAt, UpdatedAt: acceptedAt})
 			st.Outbox = append(st.Outbox, OutboxRecord{ID: outboxID, JobID: jobID, TenantID: caseItem.TenantID, OrgID: caseItem.OwnerOrgID, CaseID: caseID, EventType: "review.accepted", Payload: string(payload), State: "pending", CreatedAt: acceptedAt})
 		}
 		for _, selection := range selections {
@@ -530,16 +540,21 @@ func (s *Store) startReview(ctx context.Context, user accounts.User, caseID, bus
 		return runID, err
 	}
 	if !durable {
-		s.launchAttempt(runID, attemptID, models, executionCase, user.ID)
+		if err := s.launchAttempt(ctx, runID, attemptID, models, executionCase, user); err != nil {
+			s.releaseExecution()
+			return "", err
+		}
 	}
 	return runID, nil
 }
 
 func (s *Store) Retry(ctx context.Context, user accounts.User, caseID, runID string) error {
+	ctx = commandContext(ctx, user)
 	return s.retry(ctx, user, caseID, runID, false)
 }
 
 func (s *Store) RetryAsync(ctx context.Context, user accounts.User, caseID, runID string) (JobAcceptance, error) {
+	ctx = commandContext(ctx, user)
 	if err := s.retry(ctx, user, caseID, runID, true); err != nil {
 		return JobAcceptance{}, err
 	}
@@ -547,6 +562,7 @@ func (s *Store) RetryAsync(ctx context.Context, user accounts.User, caseID, runI
 }
 
 func (s *Store) retry(ctx context.Context, user accounts.User, caseID, runID string, durable bool) error {
+	ctx = commandContext(ctx, user)
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -617,7 +633,7 @@ func (s *Store) retry(ctx context.Context, user accounts.User, caseID, runID str
 	created := false
 	var executionCase Case
 	var retryTx pgx.Tx
-	err = s.updateCaseAsWith(user, caseID, func(tx pgx.Tx) error {
+	err = s.updateCaseAsWithContext(ctx, user, caseID, func(tx pgx.Tx) error {
 		// The locked callback below re-reads the live attempt state and then
 		// validates the frozen object dependencies on this same transaction, so
 		// an active duplicate and a real retry cannot race each other.
@@ -755,7 +771,7 @@ func (s *Store) retry(ctx context.Context, user accounts.User, caseID, runID str
 			if err != nil {
 				return err
 			}
-			st.Jobs = append(st.Jobs, Job{ID: jobID, TenantID: caseItem.TenantID, OrgID: caseItem.OwnerOrgID, CaseID: caseID, RunID: runID, AttemptID: attemptID, ActorID: user.ID, Kind: "review", State: "queued", CreatedAt: acceptedAt, UpdatedAt: acceptedAt})
+			st.Jobs = append(st.Jobs, Job{ID: jobID, TenantID: caseItem.TenantID, OrgID: caseItem.OwnerOrgID, CaseID: caseID, RunID: runID, AttemptID: attemptID, ActorID: user.ID, PrincipalID: user.PrincipalID, MembershipID: user.MembershipID, IdentityCaptured: true, Kind: "review", State: "queued", CreatedAt: acceptedAt, UpdatedAt: acceptedAt})
 			st.Outbox = append(st.Outbox, OutboxRecord{ID: outboxID, JobID: jobID, TenantID: caseItem.TenantID, OrgID: caseItem.OwnerOrgID, CaseID: caseID, EventType: "review.accepted", Payload: string(payload), State: "pending", CreatedAt: acceptedAt})
 		}
 		for i := range st.Runs {
@@ -785,12 +801,16 @@ func (s *Store) retry(ctx context.Context, user accounts.User, caseID, runID str
 		return err
 	}
 	if !durable {
-		s.launchAttempt(runID, attemptID, models, executionCase, user.ID)
+		if err := s.launchAttempt(ctx, runID, attemptID, models, executionCase, user); err != nil {
+			s.releaseExecution()
+			return err
+		}
 	}
 	return nil
 }
 
 func (s *Store) CancelReview(ctx context.Context, user accounts.User, caseID, runID string) error {
+	ctx = commandContext(ctx, user)
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -960,7 +980,30 @@ func (s *Store) releaseExecution() {
 	s.executionWG.Done()
 }
 
-func (s *Store) launchAttempt(runID, attemptID string, models Models, caseItem Case, actorID string) {
+func (s *Store) launchAttempt(ctx context.Context, runID, attemptID string, models Models, caseItem Case, user accounts.User) error {
+	ctx = commandContext(ctx, user)
+	actorID := user.ID
+	scope := model.DelegatedScope{Kind: "execution", Action: "embedded_review", TenantID: caseItem.TenantID, OrgID: caseItem.OwnerOrgID, CaseID: caseItem.ID, ActorID: actorID, RunID: runID, AttemptID: attemptID}
+	_, admitted := user.CommandAuthority()
+	if admitted {
+		var err error
+		scope, err = s.prepareEmbeddedAuthority(ctx, user, caseItem, runID, attemptID)
+		if err != nil {
+			return err
+		}
+	} else {
+		ticket, err := s.issueOperationTicket(ctx, user, scope)
+		if err != nil {
+			return err
+		}
+		scope.OperationTicket = ticket
+	}
+	s.claimMu.Lock()
+	if s.operationContexts == nil {
+		s.operationContexts = map[string]model.DelegatedScope{}
+	}
+	s.operationContexts[attemptID] = scope
+	s.claimMu.Unlock()
 	claim, hasClaim := s.claimForAttempt(attemptID)
 	installedClaim := false
 	if !hasClaim {
@@ -976,8 +1019,9 @@ func (s *Store) launchAttempt(runID, attemptID string, models Models, caseItem C
 		if installedClaim {
 			defer s.clearClaim(claim)
 		}
-		s.executeAttempt(runID, attemptID, models)
+		s.executeAttemptContext(model.WithDelegatedScope(withEmbeddedAdmission(context.Background(), user, admitted), scope), runID, attemptID, models)
 	}()
+	return nil
 }
 
 func (s *Store) executeAttempt(runID, attemptID string, models Models) {
@@ -988,7 +1032,7 @@ func (s *Store) executeAttemptContext(parent context.Context, runID, attemptID s
 	ctx, cancel := context.WithTimeout(parent, reviewExecutionLimit)
 	defer cancel()
 	scope, bound := model.DelegatedScopeFromContext(ctx)
-	if !bound || scope.Kind != "execution" {
+	if !bound || (scope.Kind != "execution" && scope.Kind != "execution_prepare") {
 		if claim, ok := s.claimForAttempt(attemptID); ok {
 			ctx = withExecutionClaim(ctx, claim)
 			scope, bound = model.DelegatedScopeFromContext(ctx)
@@ -1008,8 +1052,20 @@ func (s *Store) executeAttemptContext(parent context.Context, runID, attemptID s
 
 	recorder := attemptRecorder{store: s, attemptID: attemptID, failure: &recorderFailure{}}
 	if err := s.markAttemptStarted(ctx, runID, attemptID); err != nil {
-		_ = s.finishAttemptAfterExecution(parent, ctx, runID, attemptID, "failed", "", "execution_persistence_failed")
+		if scope.Kind == "execution_prepare" {
+			s.settleEmbeddedPreparation(parent, ctx, runID, attemptID, err)
+		} else {
+			_ = s.finishAttemptAfterExecution(parent, ctx, runID, attemptID, "failed", "", "execution_persistence_failed")
+		}
 		return
+	}
+	if scope.Kind == "execution_prepare" {
+		var err error
+		ctx, err = s.prepareAndPromoteEmbedded(ctx, scope, models)
+		if err != nil {
+			s.settleEmbeddedPreparation(parent, model.WithDelegatedScope(ctx, scope), runID, attemptID, err)
+			return
+		}
 	}
 	initial, err := s.snapshotForAttemptMetadataContext(ctx, attemptID)
 	if err != nil {
@@ -1235,7 +1291,11 @@ func (s *Store) markAttemptStarted(ctx context.Context, runID, attemptID string)
 			return markAttemptStartedInState(next, runID, attemptID, &generation, occurred, recorded)
 		})
 	}
-	return s.scopedAttemptMutationWithTx(ctx, runID, attemptID, false, func(tx pgx.Tx, next *state) error {
+	allowPreparation := false
+	if scope, ok := model.DelegatedScopeFromContext(ctx); ok && scope.Kind == "execution_prepare" {
+		allowPreparation = true
+	}
+	return s.scopedAttemptMutationInternal(ctx, runID, attemptID, false, allowPreparation, func(tx pgx.Tx, next *state) error {
 		occurred, recorded, err := attemptStartTimestamps(ctx, tx)
 		if err != nil {
 			return err
@@ -1392,7 +1452,35 @@ func (s *Store) prepareAttempt(ctx context.Context, runID, attemptID string, mod
 				selection.NormalizationVersion != docir.NormalizationVersion {
 				return nil, errors.New("pinned parser configuration is unavailable")
 			}
-			interpreted := s.interpretUnpersistedWithModels(ctx, doc, models)
+			parseCtx, parseModels := ctx, models
+			var ocrChild model.DelegatedScope
+			if scope, ok := model.DelegatedScopeFromContext(ctx); ok && scope.Kind == "execution_prepare" {
+				switch fileKind(doc.Filename, doc.MediaType) {
+				case kindImage:
+					user, ok := ctx.Value(embeddedAdmissionKey{}).(accounts.User)
+					if !ok {
+						return nil, errAttemptAuthorizationRevoked
+					}
+					child, err := s.mintEmbeddedOCRAuthority(ctx, user, scope, doc, selection)
+					if err != nil {
+						return nil, err
+					}
+					ocrChild = child
+					parseCtx = model.WithDelegatedScope(ctx, modelScope(child, models))
+				case kindPDF, kindDOCX:
+					user, ok := ctx.Value(embeddedAdmissionKey{}).(accounts.User)
+					if !ok {
+						return nil, errAttemptAuthorizationRevoked
+					}
+					parseCtx = s.withEmbeddedDerivedOCR(ctx, user, scope, doc, selection, models)
+				}
+			}
+			interpreted := s.interpretUnpersistedWithModels(parseCtx, doc, parseModels)
+			if ocrChild.Action != "" {
+				if _, err := s.ResolveOperationAuthority(ctx, ocrChild, "document"); err != nil {
+					return nil, errAttemptAuthorizationRevoked
+				}
+			}
 			var err error
 			parsed, err = makeParsedWithSelection(doc, interpreted, selection)
 			if err != nil {
@@ -1408,7 +1496,12 @@ func (s *Store) prepareAttempt(ctx context.Context, runID, attemptID string, mod
 			return nil, errors.New("pinned parse selection differs from its artifact")
 		}
 		if exists {
-			if err := s.verifyParsedRecordContext(ctx, parsed, doc); err != nil {
+			scope, preparing := model.DelegatedScopeFromContext(ctx)
+			if preparing && scope.Kind == "execution_prepare" {
+				if err := verifyParsed(parsed, doc); err != nil {
+					return nil, fmt.Errorf("attempt parsed artifact integrity check failed: %w", err)
+				}
+			} else if err := s.verifyParsedRecordContext(ctx, parsed, doc); err != nil {
 				return nil, fmt.Errorf("attempt parsed artifact integrity check failed: %w", err)
 			}
 		} else if err := verifyParsed(parsed, doc); err != nil {
@@ -1427,7 +1520,7 @@ func (s *Store) prepareAttempt(ctx context.Context, runID, attemptID string, mod
 	input := AttemptInput{AttemptID: attemptID, RunID: runID, InputHash: inputHash, FrozenAt: stamp(), Documents: frozen}
 	if err := s.updateExecutionContext(ctx, attemptID, func(next *state) error {
 		if s.telecomAttempt(*next, runID) {
-			if _, err := authorizeAttemptExecution(*next, runID, attemptID); err != nil {
+			if _, err := s.authorizeAttemptExecution(*next, runID, attemptID); err != nil {
 				return err
 			}
 		}
@@ -1480,6 +1573,9 @@ func (s *Store) prepareAttempt(ctx context.Context, runID, attemptID string, mod
 		return appendAudit(next, runID, "system", "attempt_input_frozen", []string{attemptID})
 	}); err != nil {
 		return nil, err
+	}
+	if scope, ok := model.DelegatedScopeFromContext(ctx); ok && scope.Kind == "execution_prepare" {
+		return interpretedFromFrozen(frozen), nil
 	}
 	latest, err := s.snapshotForAttemptContext(ctx, attemptID)
 	if err != nil {
@@ -1660,7 +1756,7 @@ func (s *Store) finishAttempt(ctx context.Context, runID, attemptID, stateName, 
 			return errAttemptTerminal
 		}
 		if s.telecomAttempt(*st, runID) {
-			if _, err := authorizeAttemptExecution(*st, runID, attemptID); errors.Is(err, errAttemptAuthorizationRevoked) {
+			if _, err := s.authorizeAttemptExecution(*st, runID, attemptID); errors.Is(err, errAttemptAuthorizationRevoked) {
 				stateName, partialReason, errorCode = "cancelled", "", "authorization_revoked"
 			} else if err != nil {
 				return err
@@ -1918,7 +2014,7 @@ func (s *Store) persistLateModelEvent(ctx context.Context, attemptID string, eve
 	if s.serviceOwner != "" || claim.JobID != "" {
 		return s.persistLateModelEventNarrow(ctx, attemptID, event)
 	}
-	tx, err := s.pool.Begin(ctx)
+	tx, err := s.beginContextTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return err
 	}
@@ -2022,7 +2118,7 @@ func (s *Store) persistLateModelEventNarrow(ctx context.Context, attemptID strin
 		return errAttemptTerminal
 	}
 	event.AttemptID = attemptID
-	tx, err := s.pool.Begin(ctx)
+	tx, err := s.beginContextTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return err
 	}
@@ -2415,7 +2511,7 @@ func (s *Store) agentReviewDigestForContext(ctx context.Context, tenantID, orgID
 	if s == nil || s.pool == nil || attemptID == "" || tenantID == "" || orgID == "" {
 		return "", nil
 	}
-	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{AccessMode: pgx.ReadOnly})
+	tx, err := s.beginContextTx(ctx, pgx.TxOptions{AccessMode: pgx.ReadOnly})
 	if err != nil {
 		return "", err
 	}

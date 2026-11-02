@@ -85,6 +85,7 @@ type ContractPaymentSummary struct {
 }
 
 func (s *Store) CheckContractPaymentEligibility(ctx context.Context, user accounts.User, in ContractPaymentEligibilityInput) (ContractPaymentEligibility, error) {
+	ctx = commandContext(ctx, user)
 	var result ContractPaymentEligibility
 	if !s.HasDatabase() {
 		return result, fault.New(503, "database_unavailable", "服务数据库不可用")
@@ -329,7 +330,7 @@ func (s *Store) RecordTrustedContractPaymentReceipt(ctx context.Context, source 
 	}
 	sum := sha256.Sum256(bytes)
 	digest := hex.EncodeToString(sum[:])
-	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{})
+	tx, err := s.beginContextTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return result, false, err
 	}
@@ -452,6 +453,7 @@ func scopedPaymentEventLock(ctx context.Context, tx pgx.Tx, tenant, source, even
 }
 
 func (s *Store) ListContractPayments(ctx context.Context, user accounts.User, contractID string) ([]ContractPaymentSummary, error) {
+	ctx = commandContext(ctx, user)
 	var out []ContractPaymentSummary
 	if !s.HasDatabase() {
 		return nil, fault.New(503, "database_unavailable", "服务数据库不可用")
@@ -464,7 +466,7 @@ func (s *Store) ListContractPayments(ctx context.Context, user accounts.User, co
 	if err != nil {
 		return nil, err
 	}
-	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted, AccessMode: pgx.ReadOnly})
+	tx, err := s.beginContextTx(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted, AccessMode: pgx.ReadOnly})
 	if err != nil {
 		return nil, err
 	}

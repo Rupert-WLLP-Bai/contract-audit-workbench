@@ -350,8 +350,8 @@ func (s *Store) DecisionsFor(user accounts.User, findingID string) ([]Decision, 
 	if err != nil {
 		return nil, err
 	}
-	ctx := context.Background()
-	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted, AccessMode: pgx.ReadOnly})
+	ctx := commandContext(context.Background(), user)
+	tx, err := s.beginContextTx(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted, AccessMode: pgx.ReadOnly})
 	if err != nil {
 		return nil, err
 	}
@@ -410,11 +410,12 @@ func (s *Store) DecisionsFor(user accounts.User, findingID string) ([]Decision, 
 // EventsAfterContext rechecks the case grant and run binding before reading
 // only events after the caller's cursor, in one tenant-scoped snapshot.
 func (s *Store) EventsAfterContext(ctx context.Context, user accounts.User, caseID, runID string, after int) ([]Event, error) {
+	ctx = commandContext(ctx, user)
 	current, err := trustedUser(user)
 	if err != nil {
 		return nil, err
 	}
-	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
+	tx, err := s.beginContextTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
 	if err != nil {
 		return nil, err
 	}

@@ -2,6 +2,8 @@ package documentservice
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"io"
 	"net/http"
@@ -52,34 +54,18 @@ func (s *Service) intakeUpload(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "intake file is required"})
 		return
 	}
-	actorID, ok := internalIntakeField(r, "actor_id")
-	if !ok || actorID == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "intake actor is required"})
-		return
-	}
-	tenantID, ok := internalIntakeField(r, "tenant_id")
-	if !ok || tenantID == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "intake tenant is required"})
-		return
-	}
-	orgID, ok := internalIntakeField(r, "org_id")
-	if !ok || orgID == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "intake organization is required"})
-		return
-	}
 	caseID, ok := internalIntakeField(r, "case_id")
 	if !ok || caseID == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "intake case is required"})
 		return
 	}
-	idempotencyKey, ok := internalIntakeField(r, "idempotency_key")
-	if !ok || idempotencyKey == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "intake idempotency key is required"})
+	ticket, ok := internalIntakeField(r, "authority_ticket")
+	if !ok || ticket == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "intake authority is required"})
 		return
 	}
-	directoryUser, ok := accounts.ByID(actorID)
-	if !ok || !directoryUser.Enabled || directoryUser.TenantID != tenantID || directoryUser.OrgID != orgID {
-		writeJSON(w, http.StatusForbidden, map[string]string{"error": "current trusted intake actor is unavailable"})
+	if s.intakeAuthority == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "trusted Core intake authority is unavailable"})
 		return
 	}
 	file, err := files[0].Open()
@@ -109,15 +95,33 @@ func (s *Service) intakeUpload(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	media := http.DetectContentType(body)
-	user := accounts.User{ID: actorID, TenantID: tenantID, OrgID: orgID}
+	if s.intakeAuthority == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "trusted Core intake authority is unavailable"})
+		return
+	}
+	bodyDigest := sha256.Sum256(body)
+	bodySHA256 := hex.EncodeToString(bodyDigest[:])
+	authority, err := s.intakeAuthority.Resolve(r.Context(), ticket, bodySHA256)
+	if err != nil || authority.CaseID != caseID || authority.Filename != filename ||
+		authority.BodySHA256 != bodySHA256 || authority.Action != "create_primary_contract" ||
+		files[0].Header.Get("Content-Type") != authority.MediaType {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "current trusted intake authority is unavailable"})
+		return
+	}
+	user := accounts.MembershipUser(authority.ActorID, "", authority.Role, authority.TenantID, authority.OrgID,
+		authority.Issuer, authority.Subject, authority.Grants)
+	user.PrincipalID, user.MembershipID = authority.PrincipalID, authority.MembershipID
+	if authority.PrincipalID == "" {
+		user = accounts.User{ID: authority.ActorID, Role: authority.Role, TenantID: authority.TenantID, OrgID: authority.OrgID, Enabled: true, Grants: authority.Grants}
+	}
+	media := authority.MediaType
 	var result store.DocumentUploadResult
-	err = s.withPublicParse(r.Context(), func(ctx context.Context) (string, error) {
+	err = s.withPublicParse(store.WithOperationTicket(r.Context(), ticket), func(ctx context.Context) (string, error) {
 		return s.store.DocumentUploadKind(ctx, user, caseID, filename, media)
 	}, func(ctx context.Context) error {
 		var uploadErr error
 		result, uploadErr = s.store.UploadMaterial(ctx, user, caseID, "draft_contract", filename, media, body,
-			store.MaterialUploadOptions{Intent: "add", Purpose: "primary_contract", IdempotencyKey: idempotencyKey})
+			store.MaterialUploadOptions{Intent: "add", Purpose: "primary_contract", IdempotencyKey: authority.UploadKey})
 		return uploadErr
 	})
 	if err != nil {

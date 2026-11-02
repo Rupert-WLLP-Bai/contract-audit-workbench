@@ -125,7 +125,7 @@ func claimScheduledJob(ctx context.Context, tx pgx.Tx, worker string, lease time
 // no claim, and a false result cannot hide claimable work because it uses the
 // same job-level eligibility.
 func (s *Store) hasClaimableJob(ctx context.Context, workerID string) (bool, error) {
-	tx, err := s.pool.Begin(ctx)
+	tx, err := s.beginContextTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return false, err
 	}

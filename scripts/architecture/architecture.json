@@ -43,6 +43,28 @@
           ]
         }
       ]
+    },
+    {
+      "id": "core-authority-transport-boundary",
+      "description": "Keep authenticated Core authority HTTP transport as a leaf package with no application-store dependency.",
+      "checks": [
+        {
+          "id": "coreauthority-stdlib-only",
+          "package": "internal/coreauthority",
+          "mode": "allowlist",
+          "allowed_direct_imports": [
+            "crypto/tls",
+            "crypto/x509",
+            "errors",
+            "net",
+            "net/http",
+            "net/url",
+            "os",
+            "strings",
+            "time"
+          ]
+        }
+      ]
     }
   ]
 }

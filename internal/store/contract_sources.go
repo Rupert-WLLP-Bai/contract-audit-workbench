@@ -157,7 +157,7 @@ func (s *Store) RecordExternalContractObservation(ctx context.Context, authority
 	rawDigestBytes := sha256.Sum256(input.RawBody)
 	rawDigest := hex.EncodeToString(rawDigestBytes[:])
 
-	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{})
+	tx, err := s.beginContextTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return ContractSourceObservationResult{}, err
 	}

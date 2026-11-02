@@ -16,6 +16,8 @@ const CaseDetailPage = lazy(() =>
     default: module.CaseDetailPage,
   })),
 );
+const SupportGrantsPage = lazy(() => import("./pages/support-grant-pages").then((module) => ({ default: module.SupportGrantsPage })));
+const SupportGrantCasePage = lazy(() => import("./pages/support-grant-pages").then((module) => ({ default: module.SupportGrantCasePage })));
 const SubjectsPage = lazy(() =>
   import("./pages/subjects-page").then((module) => ({ default: module.SubjectsPage })),
 );
@@ -44,6 +46,11 @@ const ApprovalTasksPage = lazy(() =>
 const LoginPage = lazy(() =>
   import("./pages/login-page").then((module) => ({
     default: module.LoginPage,
+  })),
+);
+const PendingMembershipPage = lazy(() =>
+  import("./pages/pending-membership-page").then((module) => ({
+    default: module.PendingMembershipPage,
   })),
 );
 const NotFoundPage = lazy(() =>
@@ -112,6 +119,7 @@ export function App() {
   return (
     <Suspense fallback={<PageStatus kind="loading" title="正在加载页面" />}>
       <Routes>
+        <Route path="/login/membership" element={<PendingMembershipPage audience="client" />} />
         <Route path="/login" element={<LoginPage />} />
         <Route element={<SessionGate />}>
           <Route element={<AppShell />}>
@@ -121,6 +129,8 @@ export function App() {
             <Route path="/contracts" element={<ContractsPage />} />
             <Route path="/workbench/approvals" element={<ApprovalTasksPage />} />
             <Route path="/cases/:caseId" element={<CaseDetailPage />} />
+            <Route path="/support" element={<SupportGrantsPage />} />
+            <Route path="/support-grants/:grantId" element={<SupportGrantCasePage />} />
             <Route path="/cases/:caseId/legal-knowledge" element={<LegalKnowledgePage />} />
             <Route path="/subjects" element={<SubjectsPage />} />
             <Route path="/subjects/:subjectId" element={<SubjectDetailPage />} />

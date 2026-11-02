@@ -226,7 +226,7 @@ func pdfOCRPage(ctx context.Context, path string, page int, ocr OCR) (string, er
 	if err != nil {
 		return "", err
 	}
-	transcript, err := ocr(ctx, "image/png", pngBody)
+	transcript, err := ocr(withOCRSource(ctx, OCRSource{Kind: "pdf", Page: page}), "image/png", pngBody)
 	if err != nil {
 		return "", fmt.Errorf("transcribing PDF page %d: %w", page, err)
 	}

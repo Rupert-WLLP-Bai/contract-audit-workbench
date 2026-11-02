@@ -57,8 +57,13 @@ func run() error {
 	// gateway. The edge forwards the browser's Origin unchanged, so this hop
 	// needs the same allowlist as the gateway or every browser write to a
 	// review route is refused as an untrusted origin.
+	resolver, err := coreSessionResolverFromEnv()
+	if err != nil {
+		return err
+	}
 	service, err := httpapi.ServiceHandler(app.Store, httpapi.Options{
 		CORSOrigins: origins(), Models: app.Models, Durable: app.Durable, SecureCookies: app.SecureCookies,
+		SessionAuthorityResolver: resolver,
 	}, "execution", strings.TrimSpace(os.Getenv("GATEWAY_ROLE_TOKEN")))
 	if err != nil {
 		return err
@@ -106,6 +111,12 @@ func run() error {
 	serveErr := process.Serve(ctx, server, shutdownTimeout)
 	stopRelay()
 	return errors.Join(serveErr, waitRelay(relayDone, shutdownTimeout))
+}
+
+func coreSessionResolverFromEnv() (httpapi.CoreSessionResolver, error) {
+	allowInsecure := strings.TrimSpace(os.Getenv("CORE_AUTHORITY_ALLOW_INSECURE_DEV")) == "true"
+	return httpapi.NewCoreSessionResolver(strings.TrimSpace(os.Getenv("CORE_AUTHORITY_URL")),
+		strings.TrimSpace(os.Getenv("CORE_AUTHORITY_CA_FILE")), strings.TrimSpace(os.Getenv("APP_ENV")), allowInsecure, 5*time.Second)
 }
 
 // waitRelay bounds how long shutdown waits for the background publisher. The

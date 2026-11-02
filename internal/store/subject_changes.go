@@ -151,6 +151,7 @@ type bindingAfterPayload struct {
 }
 
 func (s *Store) ProposeSubjectChange(ctx context.Context, user accounts.User, caseID string, input SubjectChangeCreateInput, key string) (SubjectChangeCreateResult, bool, error) {
+	ctx = commandContext(ctx, user)
 	if err := ctx.Err(); err != nil {
 		return SubjectChangeCreateResult{}, false, err
 	}
@@ -298,6 +299,7 @@ func (s *Store) ProposeSubjectChange(ctx context.Context, user accounts.User, ca
 }
 
 func (s *Store) ListSubjectChanges(ctx context.Context, user accounts.User, caseID, cursor string, limit int) (SubjectChangeListResult, error) {
+	ctx = commandContext(ctx, user)
 	if err := ctx.Err(); err != nil {
 		return SubjectChangeListResult{}, err
 	}
@@ -355,6 +357,7 @@ func paginateSubjectChangeSummaries(items []SubjectChangeSummary, cursor string,
 }
 
 func (s *Store) GetSubjectChange(ctx context.Context, user accounts.User, caseID, requestID string) (SubjectChangeDetailResult, error) {
+	ctx = commandContext(ctx, user)
 	if err := ctx.Err(); err != nil {
 		return SubjectChangeDetailResult{}, err
 	}
@@ -387,6 +390,7 @@ func (s *Store) GetSubjectChange(ctx context.Context, user accounts.User, caseID
 }
 
 func (s *Store) GetSubjectChangeImpact(ctx context.Context, user accounts.User, caseID, requestID string) (SubjectChangeImpactResult, error) {
+	ctx = commandContext(ctx, user)
 	if err := ctx.Err(); err != nil {
 		return SubjectChangeImpactResult{}, err
 	}
@@ -406,6 +410,7 @@ func (s *Store) GetSubjectChangeImpact(ctx context.Context, user accounts.User, 
 }
 
 func (s *Store) DecideSubjectChange(ctx context.Context, user accounts.User, caseID, requestID string, input SubjectChangeDecisionInput, key string) (SubjectChangeDecisionResult, bool, error) {
+	ctx = commandContext(ctx, user)
 	if err := ctx.Err(); err != nil {
 		return SubjectChangeDecisionResult{}, false, err
 	}

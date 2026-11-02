@@ -44,7 +44,17 @@ func (f frozenRuleRequest) bind(request rulepack.Request) rulepack.Request {
 // A recovered worker reuses the first captured bytes; it cannot silently change
 // facts or the evaluation time after a previous generation got this far.
 func (s *Store) freezeAttemptRuleRequest(ctx context.Context, runID, attemptID string, item Case, request rulepack.Request) (rulepack.Request, error) {
-	actor, err := trustedUser(accounts.User{ID: request.Principal.UserID})
+	actor, err := s.authorityForAttempt(ctx, runID, attemptID)
+	if err != nil {
+		profile, ok := accounts.ByID(request.Principal.UserID)
+		if ok && profile.Issuer == "" && profile.Subject == "" {
+			actor = profile
+			err = nil
+		}
+	}
+	if actor.ID != request.Principal.UserID {
+		return rulepack.Request{}, errAttemptAuthorizationRevoked
+	}
 	if err != nil {
 		return rulepack.Request{}, err
 	}
@@ -52,7 +62,7 @@ func (s *Store) freezeAttemptRuleRequest(ctx context.Context, runID, attemptID s
 	if durable && claim.JobID != "" && (claim.RunID != runID || claim.AttemptID != attemptID || claim.CaseID != item.ID || claim.ActorID != actor.ID) {
 		return rulepack.Request{}, errors.New("rule input claim identity mismatch")
 	}
-	tx, err := s.pool.Begin(ctx)
+	tx, err := s.beginContextTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return rulepack.Request{}, err
 	}
@@ -88,7 +98,7 @@ func (s *Store) freezeAttemptRuleRequest(ctx context.Context, runID, attemptID s
 	if err := s.reauthorizeAttempt(ctx, tx, runID, attemptID); err != nil {
 		return rulepack.Request{}, err
 	}
-	if err := revalidateGovernedAttemptTx(ctx, tx, runID, attemptID, item.ID); err != nil {
+	if err := s.revalidateGovernedAttemptTx(ctx, tx, runID, attemptID, item.ID); err != nil {
 		return rulepack.Request{}, err
 	}
 	identity := JobClaim{TenantID: item.TenantID, OrgID: item.OwnerOrgID, CaseID: item.ID}
@@ -152,7 +162,7 @@ func (s *Store) freezeAttemptRuleRequest(ctx context.Context, runID, attemptID s
 	if err := s.reauthorizeAttempt(ctx, tx, runID, attemptID); err != nil {
 		return rulepack.Request{}, err
 	}
-	if err := revalidateGovernedAttemptTx(ctx, tx, runID, attemptID, item.ID); err != nil {
+	if err := s.revalidateGovernedAttemptTx(ctx, tx, runID, attemptID, item.ID); err != nil {
 		return rulepack.Request{}, err
 	}
 	if durable && claim.JobID != "" {

@@ -1,6 +1,6 @@
 import { useLocation, useNavigate, NavLink, Outlet } from "react-router";
+import { useState } from "react";
 import { useLogout, useSession } from "../api/queries";
-import { organizationName } from "../domain/organization";
 import { actorRoleLabel } from "../domain/review";
 import { PageStatus } from "./page-status";
 import { CircuitMark } from "./circuit-mark";
@@ -13,6 +13,7 @@ import {
   SettingOutlined,
 } from "@ant-design/icons";
 import type { Actor } from "../api/types";
+import { ContextSwitcher } from "./context-switcher";
 
 type VersionedRouteTitles = {
   create: string;
@@ -89,10 +90,12 @@ function AdminTopbar({
   actor,
   logoutPending,
   onLogout,
+  onContextTransition,
 }: {
   actor: Actor | undefined;
   logoutPending: boolean;
   onLogout: () => void;
+  onContextTransition: (pending: boolean) => void;
 }) {
   return (
     <Layout.Header className="topbar admin-topbar">
@@ -104,12 +107,7 @@ function AdminTopbar({
           <strong>合同智能审计工作台</strong>
         </span>
       </NavLink>
-      <span className="organization-badge" title={actor?.org_id}>
-        <span className="organization-badge-label">组织：</span>
-        <span className="organization-badge-value">
-          {organizationName(actor?.org_id)}
-        </span>
-      </span>
+      <ContextSwitcher actor={actor} audience="admin" onTransition={onContextTransition} />
       <p className="disclaimer">此工作区不授予案件正文访问权限。</p>
       <div className="who" aria-label="当前管理身份">
         {actor ? (
@@ -171,6 +169,7 @@ export function AdminShell() {
   const navigate = useNavigate();
   const { pathname } = useLocation();
   const actor = session.data;
+  const [contextTransition, setContextTransition] = useState(false);
 
   if (actor && actor.role !== "admin") {
     return (
@@ -195,6 +194,7 @@ export function AdminShell() {
             void navigate("/admin/login", { replace: true });
           });
         }}
+        onContextTransition={setContextTransition}
       />
       <Layout className="frame" hasSider>
         <AdminSidebar pathname={pathname} />
@@ -204,7 +204,9 @@ export function AdminShell() {
             items={[{ title: "管理" }, { title: adminBreadcrumb(pathname) }]}
           />
           <main id="main" tabIndex={-1}>
-            <Outlet />
+            {contextTransition ? (
+              <PageStatus kind="loading" title="正在确认新的工作上下文" />
+            ) : <Outlet />}
           </main>
         </Layout.Content>
       </Layout>

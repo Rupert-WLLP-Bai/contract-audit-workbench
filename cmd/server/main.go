@@ -41,6 +41,11 @@ func main() {
 }
 
 func run() error {
+	if raw := strings.TrimSpace(os.Getenv("CONTEXT_SWITCH_ENABLED")); raw != "" {
+		if _, err := strconv.ParseBool(raw); err != nil {
+			return errors.New("CONTEXT_SWITCH_ENABLED must be true or false")
+		}
+	}
 	ctx, stop := process.SignalContext()
 	defer stop()
 	switch role := strings.TrimSpace(os.Getenv("SERVICE_ROLE")); role {
@@ -77,7 +82,15 @@ func serveLegacy(ctx context.Context) error {
 	logStartup(app)
 	apiOptions := options(app, origins())
 	apiOptions.IntakeUploader = store.NewDirectCaseIntakeUploader(app.Store)
-	return listen(ctx, app.Boundary("core", httpapi.Handler(app.Store, apiOptions)))
+	var otherCredentials []string
+	for _, key := range []string{"WORKER_MODEL_TOKEN", "DOCUMENT_MODEL_TOKEN", "GATEWAY_CORE_TOKEN", "GATEWAY_TOOL_TOKEN", "GATEWAY_DOCUMENT_TOKEN", "GATEWAY_EXECUTION_TOKEN", "GATEWAY_ROLE_TOKEN", "WORKER_DOCUMENT_TOKEN", "WORKER_TOOL_TOKEN", "WORKER_CORE_TOKEN", "CORE_DOCUMENT_TOKEN", "TOOL_CORE_AUTHORITY_TOKEN"} {
+		otherCredentials = append(otherCredentials, strings.TrimSpace(os.Getenv(key)))
+	}
+	handler, err := httpapi.DevelopmentHandler(app.Store, apiOptions, app.Selection.Mode, otherCredentials...)
+	if err != nil {
+		return err
+	}
+	return listen(ctx, app.Boundary("core", handler))
 }
 
 func serveCore(ctx context.Context) error {
@@ -272,11 +285,15 @@ func options(app *bootstrap.Runtime, cors []string) httpapi.Options {
 		SystemHealth: systemhealth.FromEnv(app.Store.Ready, app.Selection.Database.URL()),
 		CORSOrigins:  cors, Models: app.Models, OIDC: app.OIDC,
 		Durable: app.Durable, SecureCookies: app.SecureCookies,
-		ExperienceWorkerCredential: strings.TrimSpace(os.Getenv("WORKER_CORE_TOKEN")),
-		OperatorAuditEnabled:       enabled,
-		CapabilityPacks:            registry,
-		ExternalConnectors:         connectors,
-		ExternalConnectorInfo:      catalog,
+		ContextSwitchEnabled:         strings.EqualFold(strings.TrimSpace(os.Getenv("CONTEXT_SWITCH_ENABLED")), "true") || strings.TrimSpace(os.Getenv("CONTEXT_SWITCH_ENABLED")) == "1" || strings.TrimSpace(os.Getenv("CONTEXT_SWITCH_ENABLED")) == "t" || strings.TrimSpace(os.Getenv("CONTEXT_SWITCH_ENABLED")) == "T",
+		ExperienceWorkerCredential:   strings.TrimSpace(os.Getenv("WORKER_CORE_TOKEN")),
+		DocumentIntakeCredential:     strings.TrimSpace(os.Getenv("CORE_DOCUMENT_TOKEN")),
+		ToolClaimAuthorityCredential: strings.TrimSpace(os.Getenv("TOOL_CORE_AUTHORITY_TOKEN")),
+		ModelAuthorityCredential:     strings.TrimSpace(os.Getenv("CORE_MODEL_AUTHORITY_TOKEN")),
+		OperatorAuditEnabled:         enabled,
+		CapabilityPacks:              registry,
+		ExternalConnectors:           connectors,
+		ExternalConnectorInfo:        catalog,
 	}
 }
 

@@ -96,6 +96,7 @@ func loadApprovalRevisionScope(ctx context.Context, tx pgx.Tx, tenantID, contrac
 // frozen revision and both row versions into a short-lived token. Every fact is
 // resolved server-side; the request carries only the task id.
 func (s *Store) IssueApprovalCredential(ctx context.Context, user accounts.User, taskID string) (ApprovalCredentialResult, error) {
+	ctx = commandContext(ctx, user)
 	id, err := normalizeContractUUID(taskID)
 	if err != nil {
 		return ApprovalCredentialResult{}, err
@@ -239,6 +240,7 @@ func loadApprovalRound(ctx context.Context, tx pgx.Tx, tenantID, contractID, rou
 // the new approver. The original task and frozen routing snapshot are not
 // rewritten. A second transfer of the same task conflicts.
 func (s *Store) TransferApprovalTask(ctx context.Context, user accounts.User, input TransferApprovalTaskInput) (TransferApprovalTaskResult, error) {
+	ctx = commandContext(ctx, user)
 	taskID, err := normalizeContractUUID(input.TaskID)
 	if err != nil {
 		return TransferApprovalTaskResult{}, err

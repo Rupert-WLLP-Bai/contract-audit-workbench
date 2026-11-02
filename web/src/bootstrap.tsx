@@ -5,7 +5,9 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { StrictMode, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import { createBrowserRouter, RouterProvider } from "react-router";
-import { queryRetryDelay, shouldRetryQuery } from "./api/http";
+import { invalidateSessionIdentity, queryRetryDelay, shouldRetryQuery } from "./api/http";
+import { clearIdentityQueries } from "./api/queries";
+import { installContextInvalidation } from "./api/context-sync";
 import "./styles.css";
 
 const rootStyle = getComputedStyle(document.documentElement);
@@ -91,6 +93,12 @@ const queryClient = new QueryClient({
       retry: false,
     },
   },
+});
+
+installContextInvalidation(() => {
+  invalidateSessionIdentity();
+  clearIdentityQueries(queryClient);
+  void queryClient.resetQueries({ queryKey: ["session"] });
 });
 
 function rootElement(): HTMLElement {

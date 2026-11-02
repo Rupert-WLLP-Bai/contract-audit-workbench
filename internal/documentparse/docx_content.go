@@ -575,7 +575,7 @@ func (p *docxParser) imageText(target string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	text, err := p.ocr(p.pkg.ctx, media, body)
+	text, err := p.ocr(withOCRSource(p.pkg.ctx, OCRSource{Kind: "docx", Part: target}), media, body)
 	if err != nil {
 		return "", fmt.Errorf("DOCX: embedded image OCR failed: %w", err)
 	}

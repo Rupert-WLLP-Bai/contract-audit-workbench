@@ -35,6 +35,21 @@ class NamedPolicyTests(unittest.TestCase):
                 ],
             },
             {
+                "ImportPath": "contractaudit/internal/coreauthority",
+                "GoFiles": ["transport.go"],
+                "Imports": [
+                    "crypto/tls",
+                    "crypto/x509",
+                    "errors",
+                    "net",
+                    "net/http",
+                    "net/url",
+                    "os",
+                    "strings",
+                    "time",
+                ],
+            },
+            {
                 "ImportPath": "contractaudit/internal/advisorycontract",
                 "GoFiles": ["contract.go"],
                 "Imports": contract_imports or ["time"],
@@ -48,8 +63,13 @@ class NamedPolicyTests(unittest.TestCase):
 
     def test_all_policies_pass_and_store_direct_import_is_allowed(self):
         report = self.inspect(self.records())
+        self.assertEqual([row["id"] for row in report["policy_results"]], [
+            "contractmoney-pure-domain",
+            "advisory-contract-boundary",
+            "core-authority-transport-boundary",
+        ])
         self.assertEqual([row["status"] for row in report["policy_results"]],
-                         ["PASS", "PASS"])
+                         ["PASS", "PASS", "PASS"])
         gateway = report["policy_results"][1]["checks"][0]
         self.assertIn("contractaudit/internal/store",
                       gateway["direct_production_imports"])

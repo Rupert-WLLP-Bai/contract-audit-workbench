@@ -258,6 +258,7 @@ func (s *Store) operatorReady(write bool) error {
 // operatorCaseState resolves the current trusted user, case snapshot and
 // authorization. It is called before a read and again before final persistence.
 func (s *Store) operatorCaseState(ctx context.Context, user accounts.User, caseID string, action access.Action) (accounts.User, state, Case, access.Principal, access.Resource, error) {
+	ctx = commandContext(ctx, user)
 	current, err := trustedUser(user)
 	if err != nil {
 		return accounts.User{}, state{}, Case{}, access.Principal{}, access.Resource{}, err
@@ -296,6 +297,7 @@ func operatorGrantVersion(item Case, user accounts.User) string {
 }
 
 func (s *Store) withOperatorTx(ctx context.Context, user accounts.User, caseID string, write bool, fn func(pgx.Tx) error) error {
+	ctx = commandContext(ctx, user)
 	if err := s.operatorReady(write); err != nil {
 		return err
 	}
@@ -307,7 +309,7 @@ func (s *Store) withOperatorTx(ctx context.Context, user accounts.User, caseID s
 	scope.CaseID = caseID
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	tx, err := s.pool.Begin(ctx)
+	tx, err := s.beginContextTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return err
 	}
@@ -343,6 +345,7 @@ func operatorValidTimestamp(value time.Time) bool { return !value.IsZero() }
 // CreateOperatorObjectBinding records one explicit human mapping. The binding
 // version is the binding id, so every version is unique and immutable.
 func (s *Store) CreateOperatorObjectBinding(ctx context.Context, user accounts.User, caseID string, input OperatorObjectBindingInput, idempotencyKey string) (OperatorObjectBinding, error) {
+	ctx = commandContext(ctx, user)
 	key := strings.TrimSpace(idempotencyKey)
 	if key == "" {
 		return OperatorObjectBinding{}, fault.Invalid("缺少幂等键")
@@ -500,6 +503,7 @@ func (s *Store) CreateOperatorObjectBinding(ctx context.Context, user accounts.U
 // normalized observation as an immutable snapshot set. Collection is separate
 // from evaluation acceptance: a failed read is not a conclusion.
 func (s *Store) CollectOperatorExternalSnapshot(ctx context.Context, user accounts.User, caseID, bindingVersion string, businessAt time.Time, connectorID, externalObjectID string, connector auditext.ReadConnector, idempotencyKey string) (OperatorSnapshotSet, error) {
+	ctx = commandContext(ctx, user)
 	key := strings.TrimSpace(idempotencyKey)
 	if key == "" {
 		return OperatorSnapshotSet{}, fault.Invalid("缺少幂等键")
@@ -811,6 +815,7 @@ func (s *Store) CollectOperatorExternalSnapshot(ctx context.Context, user accoun
 }
 
 func (s *Store) releaseOperatorCollectionLease(ctx context.Context, user accounts.User, tenantID, orgID, caseID, actorID, key string, generation int64, owner string) error {
+	ctx = commandContext(ctx, user)
 	return s.withOperatorTx(ctx, user, caseID, true, func(tx pgx.Tx) error {
 		_, err := tx.Exec(ctx, `UPDATE operator_external_collection_claims SET status='retryable',lease_owner=NULL,
 			lease_until=NULL,updated_at=clock_timestamp() WHERE tenant_id=$1 AND org_id=$2 AND case_id=$3 AND actor_id=$4
@@ -821,6 +826,7 @@ func (s *Store) releaseOperatorCollectionLease(ctx context.Context, user account
 }
 
 func (s *Store) operatorReadBinding(ctx context.Context, user accounts.User, caseID, bindingVersion string) (OperatorObjectBinding, error) {
+	ctx = commandContext(ctx, user)
 	var out OperatorObjectBinding
 	err := s.withOperatorTx(ctx, user, caseID, false, func(tx pgx.Tx) error {
 		return tx.QueryRow(ctx, `SELECT case_id,binding_id,binding_version,status,contract_object,external_object,
@@ -841,6 +847,7 @@ func (s *Store) operatorReadBinding(ctx context.Context, user accounts.User, cas
 }
 
 func (s *Store) ListOperatorExternalSnapshots(ctx context.Context, user accounts.User, caseID string) ([]OperatorSnapshotSet, error) {
+	ctx = commandContext(ctx, user)
 	if err := s.operatorReady(false); err != nil {
 		return nil, err
 	}
@@ -889,6 +896,7 @@ func (s *Store) ListOperatorExternalSnapshots(ctx context.Context, user accounts
 // deterministic evaluator and persists the result. It never uses a model output
 // as a conclusion and never appends material to an old review attempt.
 func (s *Store) CreateOperatorFulfillmentEvaluation(ctx context.Context, user accounts.User, caseID string, input OperatorEvaluationInput, pack capabilitypack.Manifest, evaluator auditext.Evaluator, idempotencyKey string) (OperatorEvaluation, error) {
+	ctx = commandContext(ctx, user)
 	key := strings.TrimSpace(idempotencyKey)
 	if key == "" {
 		return OperatorEvaluation{}, fault.Invalid("缺少幂等键")
@@ -1184,6 +1192,7 @@ func (s *Store) CreateOperatorFulfillmentEvaluation(ctx context.Context, user ac
 }
 
 func (s *Store) GetOperatorFulfillmentEvaluation(ctx context.Context, user accounts.User, caseID, evaluationID string) (OperatorEvaluation, error) {
+	ctx = commandContext(ctx, user)
 	if err := s.operatorReady(false); err != nil {
 		return OperatorEvaluation{}, err
 	}
@@ -1203,6 +1212,7 @@ func (s *Store) GetOperatorFulfillmentEvaluation(ctx context.Context, user accou
 }
 
 func (s *Store) GetOperatorImpactPlan(ctx context.Context, user accounts.User, caseID, evaluationID string, mode auditext.ImpactMode, planner auditext.ImpactPlanner) (auditext.ImpactPlan, error) {
+	ctx = commandContext(ctx, user)
 	if err := s.operatorReady(false); err != nil {
 		return auditext.ImpactPlan{}, err
 	}
@@ -1531,6 +1541,7 @@ func loadOperatorSnapshotSetByKey(ctx context.Context, tx pgx.Tx, tenantID, orgI
 }
 
 func (s *Store) GetOperatorCollectionJob(ctx context.Context, user accounts.User, caseID, key string) (OperatorCollectionJob, error) {
+	ctx = commandContext(ctx, user)
 	key = strings.TrimSpace(key)
 	if err := validateIdempotencyKey(key); err != nil {
 		return OperatorCollectionJob{}, err
@@ -1543,6 +1554,7 @@ func (s *Store) GetOperatorCollectionJob(ctx context.Context, user accounts.User
 // Idempotency-Key remains a POST-only recovery credential and is never exposed
 // in the path.
 func (s *Store) GetOperatorCollectionJobByID(ctx context.Context, user accounts.User, caseID, collectionID string) (OperatorCollectionJob, error) {
+	ctx = commandContext(ctx, user)
 	collectionID = strings.TrimSpace(collectionID)
 	if !validOperatorCollectionID(collectionID) {
 		return OperatorCollectionJob{}, fault.NotFound("没有找到采集请求")
@@ -1563,6 +1575,7 @@ func validOperatorCollectionID(value string) bool {
 }
 
 func (s *Store) getOperatorCollectionJob(ctx context.Context, user accounts.User, caseID, selector string, byKey bool) (OperatorCollectionJob, error) {
+	ctx = commandContext(ctx, user)
 	var out OperatorCollectionJob
 	permission := access.Read
 	if byKey {
@@ -1634,6 +1647,7 @@ func (s *Store) getOperatorCollectionJob(ctx context.Context, user accounts.User
 }
 
 func (s *Store) operatorReadSnapshotSet(ctx context.Context, user accounts.User, caseID, snapshotSetID string) (OperatorSnapshotSet, error) {
+	ctx = commandContext(ctx, user)
 	var out OperatorSnapshotSet
 	err := s.withOperatorTx(ctx, user, caseID, false, func(tx pgx.Tx) error {
 		var err error

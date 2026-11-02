@@ -12,6 +12,13 @@ spec:
       volumes:
         - name: local-data
           emptyDir: {sizeLimit: 512Mi}
+      initContainers:
+        - name: offline-migrator-provision
+          image: contract-audit-backend:local
+        - name: clm-owner-provision
+          image: contract-audit-backend:local
+        - name: auth-owner-provision
+          image: contract-audit-backend:local
       containers:
         - name: migrate
           image: contract-audit-backend:local

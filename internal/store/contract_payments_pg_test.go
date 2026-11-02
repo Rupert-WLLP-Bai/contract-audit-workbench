@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"testing"
 	"time"
+
+	"github.com/jackc/pgx/v5"
 )
 
 // This one focused PostgreSQL path proves prepayment eligibility, a tail
@@ -41,7 +43,7 @@ func TestContractPaymentEligibilityAndTrustedReceiptFacts(t *testing.T) {
 	}
 	var contractVersion int64
 	for index, task := range submitted.Tasks {
-		actor := approvalTestUser(t, "demo-reviewer")
+		actor := approvalTestUser(t, "demo-reviewer", fixture.core)
 		if task.Final {
 			actor = fixture.admin
 		}
@@ -131,22 +133,36 @@ func TestContractPaymentEligibilityAndTrustedReceiptFacts(t *testing.T) {
 	if err != nil || summary[0].NetPaid != "0.00" || summary[0].State != "unpaid" {
 		t.Fatalf("fully reversed net projection: %+v err=%v", summary, err)
 	}
-	var facts, events, outbox int
-	if err = fixture.core.pool.QueryRow(ctx, `SELECT count(*) FROM clm_contract_payment_receipts WHERE tenant_id=$1 AND contract_id=$2`, fixture.admin.TenantID, contractID).Scan(&facts); err != nil {
-		t.Fatal(err)
+	readPaymentState := func() (facts, events, outbox int, rowVersion int64) {
+		t.Helper()
+		tx, err := fixture.core.pool.BeginTx(ctx, pgx.TxOptions{AccessMode: pgx.ReadOnly})
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer rollbackCLM(tx)
+		if err := setLocalScope(ctx, tx, userScope(fixture.admin)); err != nil {
+			t.Fatal(err)
+		}
+		if err := tx.QueryRow(ctx, `SELECT count(*) FROM clm_contract_payment_receipts WHERE tenant_id=$1 AND contract_id=$2`, fixture.admin.TenantID, contractID).Scan(&facts); err != nil {
+			t.Fatal(err)
+		}
+		if err := tx.QueryRow(ctx, `SELECT count(*) FROM clm_business_events WHERE tenant_id=$1 AND contract_id=$2 AND event_type=$3`, fixture.admin.TenantID, contractID, clmEventPaymentReceipt).Scan(&events); err != nil {
+			t.Fatal(err)
+		}
+		if err := tx.QueryRow(ctx, `SELECT count(*) FROM clm_outbox_delivery WHERE tenant_id=$1 AND event_id IN (SELECT event_id FROM clm_business_events WHERE tenant_id=$1 AND contract_id=$2 AND event_type=$3)`, fixture.admin.TenantID, contractID, clmEventPaymentReceipt).Scan(&outbox); err != nil {
+			t.Fatal(err)
+		}
+		if err := tx.QueryRow(ctx, `SELECT row_version FROM clm_contracts WHERE tenant_id=$1 AND contract_id=$2`, fixture.admin.TenantID, contractID).Scan(&rowVersion); err != nil {
+			t.Fatal(err)
+		}
+		if err := tx.Commit(ctx); err != nil {
+			t.Fatal(err)
+		}
+		return
 	}
-	if err = fixture.core.pool.QueryRow(ctx, `SELECT count(*) FROM clm_business_events WHERE tenant_id=$1 AND contract_id=$2 AND event_type=$3`, fixture.admin.TenantID, contractID, clmEventPaymentReceipt).Scan(&events); err != nil {
-		t.Fatal(err)
-	}
-	if err = fixture.core.pool.QueryRow(ctx, `SELECT count(*) FROM clm_outbox_delivery WHERE tenant_id=$1 AND event_id IN (SELECT event_id FROM clm_business_events WHERE tenant_id=$1 AND contract_id=$2 AND event_type=$3)`, fixture.admin.TenantID, contractID, clmEventPaymentReceipt).Scan(&outbox); err != nil {
-		t.Fatal(err)
-	}
+	facts, events, outbox, rowVersion := readPaymentState()
 	if facts != 3 || events != 3 || outbox != 3 {
 		t.Fatalf("receipt/reversal and event/outbox count facts=%d events=%d outbox=%d", facts, events, outbox)
-	}
-	rowVersion := registered.RowVersion
-	if err = fixture.core.pool.QueryRow(ctx, `SELECT row_version FROM clm_contracts WHERE tenant_id=$1 AND contract_id=$2`, fixture.admin.TenantID, contractID).Scan(&rowVersion); err != nil {
-		t.Fatal(err)
 	}
 	beforeVersion := rowVersion
 	if err = fixture.core.UseServiceOwner("worker"); err != nil {
@@ -167,20 +183,9 @@ func TestContractPaymentEligibilityAndTrustedReceiptFacts(t *testing.T) {
 	if err != nil || len(readonlySummary) != 3 || readonlySummary[0].State != "unpaid" {
 		t.Fatalf("read-only store must allow authorized history reads: %+v err=%v", readonlySummary, err)
 	}
-	if err = fixture.core.pool.QueryRow(ctx, `SELECT row_version FROM clm_contracts WHERE tenant_id=$1 AND contract_id=$2`, fixture.admin.TenantID, contractID).Scan(&rowVersion); err != nil {
-		t.Fatal(err)
-	}
+	facts, events, outbox, rowVersion = readPaymentState()
 	if rowVersion != beforeVersion {
 		t.Fatalf("rejected readonly receipt changed contract version: %d -> %d", beforeVersion, rowVersion)
-	}
-	if err = fixture.core.pool.QueryRow(ctx, `SELECT count(*) FROM clm_contract_payment_receipts WHERE tenant_id=$1 AND contract_id=$2`, fixture.admin.TenantID, contractID).Scan(&facts); err != nil {
-		t.Fatal(err)
-	}
-	if err = fixture.core.pool.QueryRow(ctx, `SELECT count(*) FROM clm_business_events WHERE tenant_id=$1 AND contract_id=$2 AND event_type=$3`, fixture.admin.TenantID, contractID, clmEventPaymentReceipt).Scan(&events); err != nil {
-		t.Fatal(err)
-	}
-	if err = fixture.core.pool.QueryRow(ctx, `SELECT count(*) FROM clm_outbox_delivery WHERE tenant_id=$1 AND event_id IN (SELECT event_id FROM clm_business_events WHERE tenant_id=$1 AND contract_id=$2 AND event_type=$3)`, fixture.admin.TenantID, contractID, clmEventPaymentReceipt).Scan(&outbox); err != nil {
-		t.Fatal(err)
 	}
 	if facts != beforeFacts || events != beforeEvents || outbox != beforeOutbox {
 		t.Fatalf("rejected readonly receipt changed facts/events/outbox: %d/%d/%d -> %d/%d/%d", beforeFacts, beforeEvents, beforeOutbox, facts, events, outbox)

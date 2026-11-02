@@ -100,6 +100,7 @@ type resolvedSubjectBinding struct {
 // for native drafts, which have no clm_contract_cases link yet; an imported
 // contract must use its linked case.
 func (s *Store) CheckContractReferences(ctx context.Context, user accounts.User, contractID, caseID string) (ContractReferenceCheck, error) {
+	ctx = commandContext(ctx, user)
 	if !s.HasDatabase() {
 		return ContractReferenceCheck{}, fault.New(503, "database_unavailable", "服务数据库不可用")
 	}
@@ -111,7 +112,7 @@ func (s *Store) CheckContractReferences(ctx context.Context, user accounts.User,
 	if err != nil {
 		return ContractReferenceCheck{}, err
 	}
-	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted, AccessMode: pgx.ReadOnly})
+	tx, err := s.beginContextTx(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted, AccessMode: pgx.ReadOnly})
 	if err != nil {
 		return ContractReferenceCheck{}, err
 	}

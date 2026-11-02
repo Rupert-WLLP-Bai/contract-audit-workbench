@@ -44,6 +44,7 @@ type ExperienceMetrics struct {
 // digests. The source and all its ancestors are authorized first; each target
 // case is checked before its record contributes to either counts or samples.
 func (s *Store) ExperienceMetricsForVersion(ctx context.Context, user accounts.User, knowledgeID, versionID string) (ExperienceMetrics, error) {
+	ctx = commandContext(ctx, user)
 	out := ExperienceMetrics{Samples: []ExperienceMetricsSample{}}
 	if err := s.experienceUsageReady(ctx); err != nil {
 		return out, err
@@ -55,7 +56,7 @@ func (s *Store) ExperienceMetricsForVersion(ctx context.Context, user accounts.U
 	if !validResourceID(knowledgeID) || !validKnowledgeHash(versionID) {
 		return out, fault.NotFound("没有找到对应经验版本")
 	}
-	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
+	tx, err := s.beginContextTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
 	if err != nil {
 		return out, err
 	}

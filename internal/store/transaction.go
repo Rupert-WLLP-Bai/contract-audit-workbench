@@ -13,11 +13,13 @@ import (
 	"strings"
 	"time"
 
+	"contractaudit/internal/accounts"
 	"contractaudit/internal/rulepack"
 	"github.com/jackc/pgx/v5"
 )
 
 type dbScope struct {
+	command      *accounts.CommandAuthority
 	ActorID      string
 	TenantID     string
 	OrgID        string

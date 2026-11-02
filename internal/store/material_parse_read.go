@@ -84,6 +84,7 @@ func authorizePinnedMaterialRead(ctx context.Context, s *Store, user accounts.Us
 }
 
 func (s *Store) ListMaterialVersionParses(ctx context.Context, user accounts.User, caseID, materialID string, version int) (MaterialParseListResult, error) {
+	ctx = commandContext(ctx, user)
 	current, st, err := authorizePinnedMaterialRead(ctx, s, user, caseID)
 	if err != nil {
 		return MaterialParseListResult{}, err
@@ -111,6 +112,7 @@ func (s *Store) ListMaterialVersionParses(ctx context.Context, user accounts.Use
 }
 
 func (s *Store) GetMaterialVersionParsedChunk(ctx context.Context, user accounts.User, caseID, materialID string, version int, parsedID string, offset, limit int) (MaterialParsedChunk, error) {
+	ctx = commandContext(ctx, user)
 	current, st, err := authorizePinnedMaterialRead(ctx, s, user, caseID)
 	if err != nil {
 		return MaterialParsedChunk{}, err

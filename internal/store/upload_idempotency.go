@@ -14,7 +14,8 @@ import (
 // readUploadReceipt holds the case lock through current authorization and the
 // receipt read, so a revoked member cannot recover a previously accepted upload.
 func (s *Store) readUploadReceipt(ctx context.Context, user accounts.User, caseID, key string, digest [32]byte) (DocumentUploadResult, bool, error) {
-	tx, err := s.pool.Begin(ctx)
+	ctx = commandContext(ctx, user)
+	tx, err := s.beginContextTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return DocumentUploadResult{}, false, err
 	}

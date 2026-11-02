@@ -13,8 +13,29 @@ import (
 
 	"contractaudit/internal/access"
 	"contractaudit/internal/accounts"
+	"contractaudit/internal/model"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 )
+
+type crossOrgToolAuthority struct{ core *Store }
+
+func (a crossOrgToolAuthority) ResolveOperation(ctx context.Context, scope model.DelegatedScope) (accounts.User, error) {
+	authority, err := a.core.ResolveWorkerClaimAuthority(ctx, ToolInvocationContext{
+		TenantID: scope.TenantID, OrgID: scope.OrgID, CaseID: scope.CaseID,
+		JobID: scope.JobID, WorkerID: scope.WorkerID, Generation: scope.Generation,
+		RunID: scope.RunID, AttemptID: scope.AttemptID,
+	}, "tool_read")
+	if err != nil {
+		return accounts.User{}, err
+	}
+	encoded, err := json.Marshal(scope)
+	proof, ok := authority.User.CommandAuthority()
+	if err != nil || !ok || authority.User.ID != scope.ActorID || !bytes.Equal(proof.OperationScope, encoded) {
+		return accounts.User{}, ErrToolScopeUnavailable
+	}
+	return authority.User, nil
+}
 
 func TestCrossOrganizationGenerationPreservesCaseIdentity(t *testing.T) {
 	environment, ok := newDurableRoleEnvironment(t)
@@ -41,6 +62,46 @@ func TestCrossOrganizationGenerationPreservesCaseIdentity(t *testing.T) {
 			t.Error(err)
 		}
 	})
+	adminConfig, err := pgx.ParseConfig(os.Getenv("TEST_DATABASE_URL"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	crosswalk := IdentityCrosswalk{
+		Version: 1,
+		Tenants: []IdentityTenantMap{{ID: owner.TenantID, DisplayName: "Shared tenant", Status: "active"}},
+		OrgUnits: []IdentityOrgUnitMap{
+			{TenantID: owner.TenantID, ID: owner.OrgID, DisplayName: "Sales branch", Status: "active"},
+			{TenantID: owner.TenantID, ID: collaborator.OrgID, DisplayName: "Central office", Status: "active"},
+		},
+		Principals: []IdentityPrincipalMap{
+			{ID: "a1111111-1111-4111-8111-111111111111", ActorID: owner.ID, Issuer: owner.Issuer, Subject: owner.Subject, Status: "active"},
+			{ID: "a2222222-2222-4222-8222-222222222222", ActorID: collaborator.ID, Issuer: collaborator.Issuer, Subject: collaborator.Subject, Status: "active"},
+			{ID: "a3333333-3333-4333-8333-333333333333", ActorID: governanceAdmin.ID, Issuer: governanceAdmin.Issuer, Subject: governanceAdmin.Subject, Status: "active"},
+		},
+		Memberships: []IdentityMembershipMap{
+			{ID: "b1111111-1111-4111-8111-111111111111", ActorID: owner.ID, TenantID: owner.TenantID, OrgUnitID: owner.OrgID, RoleCode: owner.Role, Grants: owner.Grants, Status: "active"},
+			{ID: "b2222222-2222-4222-8222-222222222222", ActorID: collaborator.ID, TenantID: collaborator.TenantID, OrgUnitID: collaborator.OrgID, RoleCode: collaborator.Role, Grants: collaborator.Grants, Status: "active"},
+			{ID: "b3333333-3333-4333-8333-333333333333", ActorID: governanceAdmin.ID, TenantID: governanceAdmin.TenantID, OrgUnitID: governanceAdmin.OrgID, RoleCode: governanceAdmin.Role, Grants: []access.Grant{}, Status: "active"},
+		},
+	}
+	applyCrosswalk := func(t *testing.T) {
+		t.Helper()
+		if _, err := ImportIdentityCrosswalk(context.Background(), adminConfig.ConnString(), environment.harness.schema, adminConfig.Database, crosswalk, true); err != nil {
+			t.Fatalf("apply cross-organization membership mapping: %v", err)
+		}
+	}
+	applyCrosswalk(t)
+	login := func(profile accounts.User) accounts.OIDCLoginResult {
+		result, err := core.ResolveVerifiedOIDC(context.Background(), profile, "client")
+		if err != nil || result.SessionToken == "" || !result.User.HasResolvedMembership() || result.User.ID != profile.ID || result.User.TenantID != profile.TenantID || result.User.OrgID != profile.OrgID || result.User.Role != profile.Role || !sameMembershipGrants(result.User.Grants, profile.Grants) {
+			t.Fatalf("authenticate cross-organization actor %s: %v", profile.ID, err)
+		}
+		return result
+	}
+	ownerLogin, collaboratorLogin, governanceLogin := login(owner), login(collaborator), login(governanceAdmin)
+	owner, collaborator, governanceAdmin = ownerLogin.User, collaboratorLogin.User, governanceLogin.User
+	authorityAdapter := durableTestOperationAuthority{core: core}
+	document.UseOperationAuthority(authorityAdapter)
 	pack := publishSyntheticAcceptancePack(t, core, governanceAdmin)
 	publishSyntheticAcceptancePolicy(t, core, governanceAdmin, pack)
 	caseID, err := core.CreateCaseWithBusiness(owner, "跨部门专线生成", "service", "ENT", "telecom_dedicated_line")
@@ -84,6 +145,7 @@ func TestCrossOrganizationGenerationPreservesCaseIdentity(t *testing.T) {
 	t.Run("agent review and report follow authorized case organization", func(t *testing.T) {
 		t.Setenv("AGENT_PLANNER_MODE", "deterministic")
 		execution := environment.openRole(t, "execution")
+		execution.UseOperationAuthority(authorityAdapter)
 		execution.UseDocumentPreparer(document)
 		execution.UseModels(&frozenOCRModel{})
 		reviewCaseID, err := core.CreateCaseWithBusiness(owner, "跨部门审查报告", "service", "ENT", "telecom_dedicated_line")
@@ -100,7 +162,7 @@ func TestCrossOrganizationGenerationPreservesCaseIdentity(t *testing.T) {
 		}
 		workerContext, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
-		accepted, err := execution.StartReviewAsyncAt(workerContext, collaborator, reviewCaseID, acceptanceBusinessTime)
+		accepted, err := execution.StartReviewAsyncAt(WithAdmissionSessionToken(workerContext, collaboratorLogin.SessionToken), collaborator, reviewCaseID, acceptanceBusinessTime)
 		if err != nil {
 			t.Fatalf("accept cross-organization review: %v", err)
 		}
@@ -140,37 +202,40 @@ func TestCrossOrganizationGenerationPreservesCaseIdentity(t *testing.T) {
 		if !bytes.Equal(envelope.AgentReviewBytes, payload) || envelope.AgentReviewSHA256 != sha256Bytes(payload) || envelope.OutputHash != report.OutputHash {
 			t.Fatalf("report did not preserve the case-owned AgentReview and its output identity: digest=%q payload_digest=%q", envelope.AgentReviewSHA256, sha256Bytes(payload))
 		}
-		revoked := collaborator
-		revoked.Grants = nil
-		revokedBody, err := json.Marshal(map[string]any{"users": []accounts.User{owner, revoked, governanceAdmin}})
-		if err != nil {
-			t.Fatal(err)
-		}
+		originalGrants := crosswalk.Memberships[1].Grants
 		t.Cleanup(func() {
-			if err := os.WriteFile(path, body, 0600); err != nil {
-				t.Errorf("restore cross-organization directory grant: %v", err)
-			}
+			crosswalk.Memberships[1].Grants = originalGrants
+			applyCrosswalk(t)
 		})
-		if err := os.WriteFile(path, revokedBody, 0600); err != nil {
-			t.Fatal(err)
+		crosswalk.Memberships[1].Grants = []access.Grant{}
+		applyCrosswalk(t)
+		revokedCollaborator, audience, err := core.AuthenticateSession(context.Background(), collaboratorLogin.SessionToken)
+		if err != nil || audience != "client" || revokedCollaborator.ID != collaborator.ID || len(revokedCollaborator.Grants) != 0 {
+			t.Fatalf("authenticate collaborator's new request after grant revocation: audience=%q err=%v", audience, err)
 		}
-		if _, _, err := core.AgentReviewForAttempt(context.Background(), collaborator, reviewCaseID, claim.RunID, claim.AttemptID); err == nil {
+		if _, _, err := core.AgentReviewForAttempt(context.Background(), revokedCollaborator, reviewCaseID, claim.RunID, claim.AttemptID); err == nil {
 			t.Fatal("revoked cross-organization grant still authorized AgentReview reads")
 		}
-		if _, _, err := core.ReadReport(collaborator, reviewCaseID, report.ID, "json"); err == nil {
+		if _, _, err := core.ReadReport(revokedCollaborator, reviewCaseID, report.ID, "json"); err == nil {
 			t.Fatal("revoked cross-organization grant still authorized report reads")
 		}
 	})
 	t.Run("frozen tool authority follows current cross-organization grant", func(t *testing.T) {
+		collaborator, audience, err := core.AuthenticateSession(context.Background(), collaboratorLogin.SessionToken)
+		if err != nil || audience != "client" || collaborator.ID != collaboratorLogin.User.ID || len(collaborator.Grants) != 1 {
+			t.Fatalf("authenticate collaborator's new command after restored grant: audience=%q err=%v", audience, err)
+		}
 		if _, err := document.AddDocument(context.Background(), owner, caseID, "procurement", "purchase.txt", "text/plain", []byte("电路 LINE-001：最低保障带宽 100 Mbit/s。")); err != nil {
 			t.Fatalf("add cross-organization review baseline: %v", err)
 		}
 		execution, tool := environment.openRole(t, "execution"), environment.openRole(t, "tool")
+		execution.UseOperationAuthority(authorityAdapter)
+		tool.UseOperationAuthority(crossOrgToolAuthority{core: core})
 		execution.UseDocumentPreparer(document)
 		gate := newHeldReviewModel(1)
 		execution.UseModels(gate)
 		workerContext, stop := context.WithTimeout(context.Background(), 20*time.Second)
-		accepted, err := execution.StartReviewAsyncAt(workerContext, collaborator, caseID, acceptanceBusinessTime)
+		accepted, err := execution.StartReviewAsyncAt(WithAdmissionSessionToken(workerContext, collaboratorLogin.SessionToken), collaborator, caseID, acceptanceBusinessTime)
 		if err != nil {
 			stop()
 			t.Fatalf("accept authorized cross-organization review: %v", err)
@@ -209,14 +274,8 @@ func TestCrossOrganizationGenerationPreservesCaseIdentity(t *testing.T) {
 		if _, err := tool.AuthorizeToolResolution(workerContext, forged); !errors.Is(err, ErrToolScopeUnavailable) {
 			t.Fatalf("actor home organization replaced the authoritative case organization: %v", err)
 		}
-		collaborator.Grants = nil
-		revoked, err := json.Marshal(map[string]any{"users": []accounts.User{owner, collaborator, governanceAdmin}})
-		if err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(path, revoked, 0600); err != nil {
-			t.Fatal(err)
-		}
+		crosswalk.Memberships[1].Grants = []access.Grant{}
+		applyCrosswalk(t)
 		if _, err := tool.AuthorizeToolResolution(workerContext, request); !errors.Is(err, ErrToolScopeUnavailable) {
 			t.Fatalf("revoked cross-organization grant still authorized frozen tool evidence: %v", err)
 		}
@@ -235,6 +294,15 @@ func TestMaterialTablesEnforceTenantRLSAndAppendOnlyServiceOwnership(t *testing.
 	core := env.openRole(t, "core")
 	document := env.openRole(t, "document")
 	execution := env.openRole(t, "execution")
+	sessionToken, err := core.EstablishSession(admin, "client")
+	if err != nil {
+		t.Fatalf("establish material ownership session: %v", err)
+	}
+	admin, audience, err := core.AuthenticateSession(context.Background(), sessionToken)
+	if err != nil || audience != "client" || admin.ID != "demo-admin" {
+		t.Fatalf("authenticate material ownership session: audience=%q err=%v", audience, err)
+	}
+	document.UseOperationAuthority(durableTestOperationAuthority{core: core})
 	caseID, err := core.CreateCase(admin, "材料角色与租户隔离", "procurement_ict")
 	if err != nil {
 		t.Fatal(err)

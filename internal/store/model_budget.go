@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"math"
+	"reflect"
 	"strconv"
 	"strings"
 	"time"
@@ -146,7 +147,20 @@ func (s *Store) reserveModelCall(ctx context.Context, caller string, scope model
 		inputUpperBound > limits.MaxInputTokenReservation || outputUpperBound > limits.MaxOutputTokenReservation || inputUpperBound > math.MaxInt64-outputUpperBound || limits.LeaseDuration <= 0 {
 		return ModelCallLease{}, errors.New("model budget configuration or token reservation is invalid")
 	}
-	tx, err := s.pool.Begin(ctx)
+	if scope.Action == "embedded_prepare_parse" && providerIdentity == nil {
+		return ModelCallLease{}, ErrModelScopeUnavailable
+	}
+	current, err := s.operationUser(ctx, scope)
+	if err != nil {
+		return ModelCallLease{}, ErrModelScopeUnavailable
+	}
+	ctx = commandContext(ctx, current)
+	var tx pgx.Tx
+	if scope.Action == "embedded_prepare_parse" {
+		tx, err = s.beginEmbeddedOCRBudgetTx(ctx, scope)
+	} else {
+		tx, err = s.beginContextTx(ctx, pgx.TxOptions{})
+	}
 	if err != nil {
 		return ModelCallLease{}, err
 	}
@@ -177,10 +191,10 @@ func (s *Store) reserveModelCall(ctx context.Context, caller string, scope model
 			return ModelCallLease{}, ErrModelScopeUnavailable
 		}
 	}
-	if err := authorizeModelScope(ctx, tx, caller, scope); err != nil {
+	if err := authorizeModelScope(ctx, tx, caller, scope, current); err != nil {
 		return ModelCallLease{}, err
 	}
-	if providerIdentity != nil && (scope.Kind == "execution" || scope.Kind == "experience_distill" || (scope.Kind == "document" && scope.JobID != "")) {
+	if providerIdentity != nil && (scope.Kind == "execution" || scope.Kind == "experience_distill" || (scope.Kind == "document" && (scope.JobID != "" || scope.Action == "embedded_prepare_parse"))) {
 		if err := authorizeFrozenModelConfiguration(ctx, tx, scope, *providerIdentity); err != nil {
 			return ModelCallLease{}, err
 		}
@@ -216,8 +230,13 @@ func (s *Store) reserveModelCall(ctx context.Context, caller string, scope model
 		s.Telemetry().RecordQuotaRejection("model_budget")
 		return ModelCallLease{}, ErrModelBudgetExceeded
 	}
-	if err := authorizeModelScope(ctx, tx, caller, scope); err != nil {
+	if err := authorizeModelScope(ctx, tx, caller, scope, current); err != nil {
 		return ModelCallLease{}, err
+	}
+	if scope.Action == "embedded_prepare_parse" {
+		if _, err := s.operationUser(ctx, scope); err != nil {
+			return ModelCallLease{}, ErrModelScopeUnavailable
+		}
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return ModelCallLease{}, err
@@ -230,6 +249,8 @@ func (s *Store) reserveModelCall(ctx context.Context, caller string, scope model
 // second result is rejected. A zero-token usage remains unknown and is charged
 // at the reserved upper bound unless pre-dispatch failure is proven.
 func (s *Store) FinishModelCall(ctx context.Context, lease ModelCallLease, result ModelCallResult) error {
+	ctx = context.WithValue(ctx, commandProofKey{}, struct{}{}) // already-incurred machine accounting, not new human admission
+	ctx = model.WithDelegatedScope(ctx, model.DelegatedScope{})
 	if ctx == nil || lease.ID == "" || result.Status != "completed" && result.Status != "failed" ||
 		result.PreDispatchFailure && (result.Status != "failed" || result.Usage != nil) {
 		return errors.New("model call result is invalid")
@@ -272,7 +293,7 @@ func (s *Store) FinishModelCall(ctx context.Context, lease ModelCallLease, resul
 	}
 	fingerprintSum := sha256.Sum256(fingerprintPayload)
 	fingerprint := hex.EncodeToString(fingerprintSum[:])
-	tx, err := s.pool.Begin(ctx)
+	tx, err := s.beginContextTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return err
 	}
@@ -338,7 +359,7 @@ func authorizeFrozenModelConfiguration(ctx context.Context, tx pgx.Tx, scope mod
 	return nil
 }
 
-func authorizeModelScope(ctx context.Context, tx pgx.Tx, caller string, scope model.DelegatedScope) error {
+func authorizeModelScope(ctx context.Context, tx pgx.Tx, caller string, scope model.DelegatedScope, resolved ...accounts.User) error {
 	if (caller == "worker" && scope.Kind != "execution" && scope.Kind != "experience_distill") || (caller == "document" && scope.Kind != "document") ||
 		(caller != "worker" && caller != "document") || scope.TenantID == "" || scope.OrgID == "" || scope.CaseID == "" || scope.ActorID == "" {
 		return ErrModelScopeUnavailable
@@ -386,16 +407,37 @@ func authorizeModelScope(ctx context.Context, tx pgx.Tx, caller string, scope mo
 		if err := tx.QueryRow(ctx, query, args...).Scan(&caseItem.ID, &caseItem.TenantID, &caseItem.OwnerOrgID, &caseItem.OwnerID, &memberJSON); err != nil {
 			return ErrModelScopeUnavailable
 		}
+	} else if scope.Action == "embedded_review" && scope.Kind == "execution" && caller == "worker" && scope.AdmissionRevision != "" {
+		if !validPreparationHash(scope.InputSHA256) || scope.OperationTicket == "" || scope.RunID == "" || scope.AttemptID == "" || scope.DocumentID != "" {
+			return ErrModelScopeUnavailable
+		}
+		if err := tx.QueryRow(ctx, `SELECT c.id,c.tenant_id,c.org_id,c.owner_id,c.member_ids FROM cases c JOIN review_runs r ON r.case_id=c.id AND r.tenant_id=c.tenant_id AND r.org_id=c.org_id JOIN review_attempts a ON a.run_id=r.id AND a.tenant_id=r.tenant_id AND a.org_id=r.org_id JOIN review_attempt_inputs i ON i.attempt_id=a.id AND i.run_id=r.id WHERE c.id=$1 AND c.tenant_id=$2 AND c.org_id=$3 AND r.id=$4 AND a.id=$5 AND a.actor_id=$6 AND a.history_kind='frozen' AND a.input_hash=$7 AND i.input_hash=$7 AND a.state IN ('accepted','running') AND r.state IN ('accepted','running')`, scope.CaseID, scope.TenantID, scope.OrgID, scope.RunID, scope.AttemptID, scope.ActorID, scope.InputSHA256).Scan(&caseItem.ID, &caseItem.TenantID, &caseItem.OwnerOrgID, &caseItem.OwnerID, &memberJSON); err != nil {
+			return ErrModelScopeUnavailable
+		}
+	} else if scope.Action == "embedded_prepare_parse" && scope.Kind == "document" && caller == "document" && scope.AdmissionRevision != "" {
+		if scope.OperationTicket == "" || scope.ParentTicketDigest == "" || scope.DocumentID == "" || scope.ParseSelectionID == "" || !validPreparationHash(scope.InputSHA256) {
+			return ErrModelScopeUnavailable
+		}
+		if err := tx.QueryRow(ctx, `SELECT c.id,c.tenant_id,c.org_id,c.owner_id,c.member_ids FROM cases c JOIN review_runs r ON r.case_id=c.id AND r.tenant_id=c.tenant_id AND r.org_id=c.org_id JOIN review_attempts a ON a.run_id=r.id AND a.tenant_id=r.tenant_id AND a.org_id=r.org_id JOIN review_attempt_parse_selections p ON p.attempt_id=a.id AND p.run_id=r.id JOIN documents d ON d.id=p.document_id AND d.case_id=c.id AND d.tenant_id=c.tenant_id AND d.org_id=c.org_id AND d.digest=p.original_digest WHERE c.id=$1 AND c.tenant_id=$2 AND c.org_id=$3 AND r.id=$4 AND a.id=$5 AND a.actor_id=$6 AND a.history_kind='preparing' AND a.state IN ('accepted','running') AND r.state IN ('accepted','running') AND p.document_id=$7 AND p.parsed_document_id=$8 AND p.original_digest=$9 AND p.config_hash=$10`, scope.CaseID, scope.TenantID, scope.OrgID, scope.RunID, scope.AttemptID, scope.ActorID, scope.DocumentID, scope.ParseSelectionID, scope.InputSHA256, scope.ParseConfigSHA256).Scan(&caseItem.ID, &caseItem.TenantID, &caseItem.OwnerOrgID, &caseItem.OwnerID, &memberJSON); err != nil {
+			return ErrModelScopeUnavailable
+		}
 	} else {
 		if caller != "document" || scope.DocumentID == "" || scope.RunID != "" || scope.AttemptID != "" {
 			return ErrModelScopeUnavailable
 		}
-		if err := tx.QueryRow(ctx, `SELECT c.id,c.tenant_id,c.org_id,c.owner_id,c.member_ids
+
+		if len(resolved) == 1 && (scope.Action == "intake_parse" || scope.Action == "upload_parse") {
+			if err := tx.QueryRow(ctx, `SELECT id,tenant_id,org_id,owner_id,member_ids FROM cases WHERE id=$1 AND tenant_id=$2 AND org_id=$3`, scope.CaseID, scope.TenantID, scope.OrgID).Scan(&caseItem.ID, &caseItem.TenantID, &caseItem.OwnerOrgID, &caseItem.OwnerID, &memberJSON); err != nil {
+				return ErrModelScopeUnavailable
+			}
+		} else {
+			if err := tx.QueryRow(ctx, `SELECT c.id,c.tenant_id,c.org_id,c.owner_id,c.member_ids
 			FROM cases c JOIN documents d ON d.case_id=c.id
 			WHERE c.id=$1 AND c.tenant_id=$2 AND c.org_id=$3 AND d.id=$4 AND d.tenant_id=c.tenant_id AND d.org_id=c.org_id`,
-			scope.CaseID, scope.TenantID, scope.OrgID, scope.DocumentID).
-			Scan(&caseItem.ID, &caseItem.TenantID, &caseItem.OwnerOrgID, &caseItem.OwnerID, &memberJSON); err != nil {
-			return ErrModelScopeUnavailable
+				scope.CaseID, scope.TenantID, scope.OrgID, scope.DocumentID).
+				Scan(&caseItem.ID, &caseItem.TenantID, &caseItem.OwnerOrgID, &caseItem.OwnerID, &memberJSON); err != nil {
+				return ErrModelScopeUnavailable
+			}
 		}
 	}
 	if caseItem.TenantID != scope.TenantID || caseItem.OwnerOrgID != scope.OrgID || caseItem.ID != scope.CaseID {
@@ -405,11 +447,18 @@ func authorizeModelScope(ctx context.Context, tx pgx.Tx, caller string, scope mo
 		return ErrModelScopeUnavailable
 	}
 	user, err := trustedUser(accounts.User{ID: scope.ActorID})
+	if len(resolved) == 1 {
+		user = resolved[0]
+		err = nil
+		if user.ID != scope.ActorID {
+			err = ErrModelScopeUnavailable
+		}
+	}
 	if err != nil || accounts.Tenant(user) != scope.TenantID {
 		return ErrModelScopeUnavailable
 	}
 	action := access.Review
-	if scope.JobID == "" {
+	if scope.JobID == "" && scope.Action != "embedded_review" && scope.Action != "embedded_prepare_parse" {
 		action = access.Manage
 	}
 	if !authorizeCase(caseItem, user, action) {
@@ -428,7 +477,17 @@ func setModelLedgerIdentity(ctx context.Context, tx pgx.Tx, purpose, jobID strin
 // ReauthorizeModelScope checks current case permission and, for durable jobs,
 // the live lease. It is called only after the actual model charge is settled.
 func (s *Store) ReauthorizeModelScope(ctx context.Context, caller string, scope model.DelegatedScope) error {
-	tx, err := s.pool.Begin(ctx)
+	current, err := s.operationUser(ctx, scope)
+	if err != nil {
+		return ErrModelScopeUnavailable
+	}
+	ctx = commandContext(ctx, current)
+	var tx pgx.Tx
+	if scope.Action == "embedded_prepare_parse" {
+		tx, err = s.beginEmbeddedOCRBudgetTx(ctx, scope)
+	} else {
+		tx, err = s.beginContextTx(ctx, pgx.TxOptions{})
+	}
 	if err != nil {
 		return err
 	}
@@ -436,8 +495,33 @@ func (s *Store) ReauthorizeModelScope(ctx context.Context, caller string, scope 
 	if err := setLocalScope(ctx, tx, dbScope{ActorID: "model-gateway", Role: "model", TenantID: scope.TenantID, OrgID: scope.OrgID}); err != nil {
 		return err
 	}
-	if err := authorizeModelScope(ctx, tx, caller, scope); err != nil {
+	if err := authorizeModelScope(ctx, tx, caller, scope, current); err != nil {
 		return err
 	}
 	return tx.Commit(ctx)
+}
+
+func (s *Store) authorizeModelScope(ctx context.Context, tx pgx.Tx, caller string, scope model.DelegatedScope) error {
+	u, err := s.operationUser(ctx, scope)
+	if err != nil {
+		return ErrModelScopeUnavailable
+	}
+	return authorizeModelScope(ctx, tx, caller, scope, u)
+}
+
+// Only model ledger reservation and reauthorization may use an OCR child proof
+// for a write transaction; generic domain writers reject it.
+func (s *Store) beginEmbeddedOCRBudgetTx(ctx context.Context, scope model.DelegatedScope) (pgx.Tx, error) {
+	if scope.Kind != "document" || scope.Action != "embedded_prepare_parse" || scope.OperationTicket == "" {
+		return nil, ErrModelScopeUnavailable
+	}
+	proof, ok := contextProof(ctx)
+	if !ok || len(proof.operation) == 0 {
+		return nil, ErrModelScopeUnavailable
+	}
+	var proven model.DelegatedScope
+	if json.Unmarshal(proof.operation, &proven) != nil || !reflect.DeepEqual(proven, scope) {
+		return nil, ErrModelScopeUnavailable
+	}
+	return s.beginFencedContextTx(ctx, pgx.TxOptions{})
 }

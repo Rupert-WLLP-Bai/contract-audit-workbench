@@ -58,6 +58,7 @@ type EvidenceBundleData struct {
 // rule identities. Current append-only human rows are a separate snapshot,
 // never a replacement for the report's own frozen decisions.
 func (s *Store) EvidenceBundleDataForReport(ctx context.Context, user accounts.User, caseID, reportID string) (EvidenceBundleData, error) {
+	ctx = commandContext(ctx, user)
 	var out EvidenceBundleData
 	if err := ctx.Err(); err != nil {
 		return out, err
@@ -152,6 +153,7 @@ func (s *Store) EvidenceBundleDataForReport(ctx context.Context, user accounts.U
 // lock and RLS scope come from beginExperienceCase. A record committed after the
 // statement's snapshot is not asserted to be present, regardless of its timestamp.
 func (s *Store) evidenceHumanHistory(ctx context.Context, user accounts.User, caseID, runID, attemptID string, documents []FrozenDocument) (time.Time, []Decision, []EvidenceManualFinding, error) {
+	ctx = commandContext(ctx, user)
 	tx, current, item, err := s.beginExperienceCase(ctx, user, caseID, access.Export)
 	if err != nil {
 		return time.Time{}, nil, nil, err

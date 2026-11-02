@@ -16,6 +16,16 @@ import (
 	"contractaudit/internal/store"
 )
 
+type reopenedCoreAuthority struct{ core *store.Store }
+
+func (a reopenedCoreAuthority) ResolveOperation(ctx context.Context, scope model.DelegatedScope) (accounts.User, error) {
+	caller := "worker"
+	if scope.Kind == "document" {
+		caller = "document"
+	}
+	return a.core.ResolveOperationAuthority(ctx, scope, caller)
+}
+
 func mustDecisionsFor(t *testing.T, st *store.Store, user accounts.User, findingID string) []store.Decision {
 	t.Helper()
 	decisions, err := st.DecisionsFor(user, findingID)
@@ -75,13 +85,22 @@ func TestLoginOriginalAndRetryStayInPostgres(t *testing.T) {
 		t.Fatal("session survived logout")
 	}
 
-	admin := mustUser("demo-admin")
+	commandToken, err := held.EstablishSession(mustUser("demo-admin"), "client")
+	if err != nil {
+		t.Fatal(err)
+	}
+	admin, audience, err := held.AuthenticateSession(context.Background(), commandToken)
+	if err != nil || audience != "client" || admin.ID != "demo-admin" {
+		t.Fatalf("authenticate new command session after logout: audience=%q err=%v", audience, err)
+	}
+	ctx := store.WithAdmissionSessionToken(context.Background(), commandToken)
+	held.UseOperationAuthority(reopenedCoreAuthority{core: held})
 	caseID, err := held.CreateCase(admin, "登录与重试", "procurement_ict")
 	if err != nil {
 		t.Fatal(err)
 	}
 	body := []byte("采购文件要求质保36个月。")
-	docID, err := held.AddDocument(context.Background(), admin, caseID, "procurement", "purchase.txt", "text/plain", body)
+	docID, err := held.AddDocument(ctx, admin, caseID, "procurement", "purchase.txt", "text/plain", body)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -105,15 +124,15 @@ func TestLoginOriginalAndRetryStayInPostgres(t *testing.T) {
 	if _, err := held.GetCase(mustUser("demo-reviewer"), caseID); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := held.AddDocument(context.Background(), admin, caseID, "draft_contract", "draft.txt", "text/plain", []byte("拟签合同约定质保24个月。")); err != nil {
+	if _, err := held.AddDocument(ctx, admin, caseID, "draft_contract", "draft.txt", "text/plain", []byte("拟签合同约定质保24个月。")); err != nil {
 		t.Fatal(err)
 	}
-	if err := held.Reparse(context.Background(), admin, caseID, docID); err != nil {
+	if err := held.Reparse(ctx, admin, caseID, docID); err != nil {
 		t.Fatal(err)
 	}
 
 	held.UseModels(badModels{})
-	runID, err := held.StartReview(context.Background(), admin, caseID)
+	runID, err := held.StartReview(ctx, admin, caseID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -125,10 +144,10 @@ func TestLoginOriginalAndRetryStayInPostgres(t *testing.T) {
 		t.Fatalf("snapshot %+v", ws.Snapshot)
 	}
 	held.UseModels(scriptModels{})
-	if err := held.Retry(context.Background(), admin, caseID, runID); err == nil {
+	if err := held.Retry(ctx, admin, caseID, runID); err == nil {
 		t.Fatal("a different model overwrote a frozen run")
 	}
-	newID, err := held.StartReview(context.Background(), admin, caseID)
+	newID, err := held.StartReview(ctx, admin, caseID)
 	if err != nil || newID == runID {
 		t.Fatalf("changed model needs a new run: %s %v", newID, err)
 	}
@@ -136,7 +155,7 @@ func TestLoginOriginalAndRetryStayInPostgres(t *testing.T) {
 	if ws.View.State != "awaiting_human" || ws.Snapshot.RuleSetHash != engine.RuleSetHash() || len(ws.Snapshot.DocumentIDs) != 2 {
 		t.Fatalf("retried %+v snapshot %+v", ws.View, ws.Snapshot)
 	}
-	if err := held.Retry(context.Background(), admin, caseID, newID); err != nil {
+	if err := held.Retry(ctx, admin, caseID, newID); err != nil {
 		t.Fatal(err)
 	}
 	ws = awaitReview(t, held, admin, caseID, newID)
@@ -150,7 +169,7 @@ func TestLoginOriginalAndRetryStayInPostgres(t *testing.T) {
 	if !foundRetry {
 		t.Fatalf("retry audit missing: %+v", ws.Audit)
 	}
-	events, err := held.EventsAfterContext(context.Background(), admin, caseID, newID, 0)
+	events, err := held.EventsAfterContext(ctx, admin, caseID, newID, 0)
 	if err != nil || len(events) == 0 || events[0].Type == "" {
 		t.Fatalf("events %+v %v", events, err)
 	}

@@ -290,6 +290,10 @@ func (s *Service) readSystemOneRequest(w http.ResponseWriter, r *http.Request) (
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "delegated model scope is missing", "code": "jev_scope_missing"})
 		return systemOneRequest{}, false
 	}
+	if scope.Kind == "execution_prepare" || scope.Action == "embedded_prepare_parse" {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "preparation scope cannot use advisory models", "code": "model_scope_unavailable"})
+		return systemOneRequest{}, false
+	}
 	if int64(len(body)) > s.config.Budget.MaxInputTokenReservation || s.jev.MaxOutputTokens > s.config.Budget.MaxOutputTokenReservation {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "advisory token bound exceeds the configured reservation", "code": "jev_token_bound_exceeded"})
 		return systemOneRequest{}, false
@@ -391,6 +395,9 @@ func (s *Service) completeSystemOne(w http.ResponseWriter, ctx context.Context, 
 }
 
 func (s *Service) executeReservedSystemOne(w http.ResponseWriter, ctx context.Context, caller string, request systemOneRequest, probe circuitProbe, lease store.ModelCallLease) {
+	if !s.authorizeReservedDispatch(w, ctx, caller, request.scope, lease) {
+		return
+	}
 	response, usage, requestErr := s.dispatchJev(ctx, request.state, request.questions)
 	if err := s.settleSystemOne(lease, usage, requestErr); err != nil {
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "advisory usage could not be recorded", "code": "jev_usage_unavailable"})

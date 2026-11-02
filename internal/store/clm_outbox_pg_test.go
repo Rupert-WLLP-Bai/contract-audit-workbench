@@ -53,16 +53,19 @@ func TestCLMMaintenanceRoleNonSuperuserBootstrapAndRerun(t *testing.T) {
 		t.Fatalf("connect isolated database cleanup identity: %v", err)
 	}
 	ownerRole := clmMaintenanceRoleName(testConfig.Database, schema)
+	authOwnerRole := tenantIdentityOwnerName(testConfig.Database, schema)
 	defer func() {
 		quotedSchema := pgx.Identifier{schema}.Sanitize()
 		_, _ = admin.Exec(context.Background(), `DROP SCHEMA IF EXISTS `+quotedSchema+` CASCADE`)
 		_, _ = admin.Exec(context.Background(), `REVOKE `+pgx.Identifier{ownerRole}.Sanitize()+` FROM `+pgx.Identifier{migratorRole}.Sanitize())
 		_, _ = admin.Exec(context.Background(), `DROP ROLE IF EXISTS `+pgx.Identifier{ownerRole}.Sanitize())
+		_, _ = admin.Exec(context.Background(), `REVOKE `+pgx.Identifier{authOwnerRole}.Sanitize()+` FROM `+pgx.Identifier{migratorRole}.Sanitize())
+		_, _ = admin.Exec(context.Background(), `DROP ROLE IF EXISTS `+pgx.Identifier{authOwnerRole}.Sanitize())
 		_, _ = admin.Exec(context.Background(), `DROP ROLE IF EXISTS `+pgx.Identifier{migratorRole}.Sanitize())
 		admin.Close(context.Background())
 	}()
 
-	if _, err := admin.Exec(ctx, `CREATE ROLE `+pgx.Identifier{migratorRole}.Sanitize()+` LOGIN PASSWORD '`+migratorPassword+`' NOSUPERUSER NOBYPASSRLS NOCREATEDB CREATEROLE`); err != nil {
+	if _, err := admin.Exec(ctx, `CREATE ROLE `+pgx.Identifier{migratorRole}.Sanitize()+` LOGIN PASSWORD '`+migratorPassword+`' NOSUPERUSER NOBYPASSRLS NOCREATEDB CREATEROLE NOINHERIT`); err != nil {
 		t.Fatalf("create test-local non-superuser migrator: %v", err)
 	}
 	if _, err := admin.Exec(ctx, `CREATE SCHEMA `+pgx.Identifier{schema}.Sanitize()+` AUTHORIZATION `+pgx.Identifier{migratorRole}.Sanitize()); err != nil {
@@ -80,6 +83,12 @@ func TestCLMMaintenanceRoleNonSuperuserBootstrapAndRerun(t *testing.T) {
 	if err := ProvisionCLMMaintenanceRole(ctx, testDSN, migratorDSN, schema); err != nil {
 		t.Fatalf("repeat CLM owner provisioning should validate the exact existing setup: %v", err)
 	}
+	if err := ProvisionTenantIdentityOwner(ctx, testDSN, migratorDSN, schema); err != nil {
+		t.Fatalf("pre-provision isolated AUTH_FENCE owner using the production helper: %v", err)
+	}
+	if err := ProvisionTenantIdentityOwner(ctx, testDSN, migratorDSN, schema); err != nil {
+		t.Fatalf("repeat AUTH_FENCE owner provisioning should validate the exact existing setup: %v", err)
+	}
 	migrationPoolConfig, err := parsePoolConfig(testDSN, defaultMigratorPoolMaxConns)
 	if err != nil {
 		t.Fatal(err)
@@ -96,14 +105,14 @@ func TestCLMMaintenanceRoleNonSuperuserBootstrapAndRerun(t *testing.T) {
 	}
 	defer migrator.Close()
 	var sessionUser, currentUser string
-	var superuser, bypassRLS, createDB, createRole, replication, databaseCreate bool
-	if err := migrator.QueryRow(ctx, `SELECT session_user,current_user,rolsuper,rolbypassrls,rolcreatedb,rolcreaterole,rolreplication,
+	var superuser, bypassRLS, createDB, createRole, inherit, replication, databaseCreate bool
+	if err := migrator.QueryRow(ctx, `SELECT session_user,current_user,rolsuper,rolbypassrls,rolcreatedb,rolcreaterole,rolinherit,rolreplication,
 		has_database_privilege(current_user,current_database(),'CREATE')
-		FROM pg_roles WHERE rolname=current_user`).Scan(&sessionUser, &currentUser, &superuser, &bypassRLS, &createDB, &createRole, &replication, &databaseCreate); err != nil {
+		FROM pg_roles WHERE rolname=current_user`).Scan(&sessionUser, &currentUser, &superuser, &bypassRLS, &createDB, &createRole, &inherit, &replication, &databaseCreate); err != nil {
 		t.Fatal(err)
 	}
-	if sessionUser != migratorRole || currentUser != migratorRole || superuser || bypassRLS || createDB || !createRole || replication || databaseCreate {
-		t.Fatalf("migration did not use the expected bounded non-superuser session identity: session=%q current=%q superuser=%v bypassrls=%v createdb=%v createrole=%v replication=%v database_create=%v", sessionUser, currentUser, superuser, bypassRLS, createDB, createRole, replication, databaseCreate)
+	if sessionUser != migratorRole || currentUser != migratorRole || superuser || bypassRLS || createDB || !createRole || inherit || replication || databaseCreate {
+		t.Fatalf("migration did not use the expected bounded non-superuser session identity: session=%q current=%q superuser=%v bypassrls=%v createdb=%v createrole=%v inherit=%v replication=%v database_create=%v", sessionUser, currentUser, superuser, bypassRLS, createDB, createRole, inherit, replication, databaseCreate)
 	}
 	var inheritedAdmin bool
 	if err := migrator.QueryRow(ctx, `SELECT pg_has_role(current_user,$1,'MEMBER')`, testConfig.User).Scan(&inheritedAdmin); err != nil || inheritedAdmin {

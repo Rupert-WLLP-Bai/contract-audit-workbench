@@ -13,6 +13,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -53,9 +54,18 @@ func run() error {
 	if workerCredential == credential {
 		return errors.New("WORKER_TOOL_TOKEN must differ from GATEWAY_ROLE_TOKEN")
 	}
+	resolver, err := sessionResolverFromEnv()
+	if err != nil {
+		return err
+	}
+	claimResolver, err := claimResolverFromEnv()
+	if err != nil {
+		return err
+	}
+	backend := toolgateway.WithCoreClaimResolver(toolgateway.WithCoreSessionResolver(app.Store, resolver), claimResolver)
 
 	mux := http.NewServeMux()
-	mux.Handle("/mcp", mcpHandler(app.Store, configuredOrigins(), credential, workerCredential))
+	mux.Handle("/mcp", mcpHandler(backend, configuredOrigins(), credential, workerCredential))
 	httpapi.MountHealth(mux, func(ctx context.Context) error { return app.Store.Ready(ctx) })
 
 	addr := process.Env("ADDR", "127.0.0.1:8090")
@@ -72,6 +82,55 @@ func run() error {
 		MaxHeaderBytes: 1 << 20,
 	}
 	return process.Serve(ctx, server, shutdownTimeout)
+}
+
+func sessionResolverFromEnv() (toolgateway.SessionResolver, error) {
+	origin, caFile, allowInsecure, appEnv, err := coreAuthorityEnv()
+	if err != nil {
+		return nil, err
+	}
+	return toolgateway.NewCoreSessionResolver(origin, caFile, allowInsecure, appEnv, 5*time.Second)
+}
+
+func claimResolverFromEnv() (toolgateway.CoreClaimResolver, error) {
+	origin, caFile, allowInsecure, appEnv, err := coreAuthorityEnv()
+	if err != nil {
+		return nil, err
+	}
+	token := strings.TrimSpace(os.Getenv("TOOL_CORE_AUTHORITY_TOKEN"))
+	if len(token) < 32 {
+		return nil, errors.New("TOOL_CORE_AUTHORITY_TOKEN must contain at least 32 bytes")
+	}
+	for _, name := range []string{"GATEWAY_ROLE_TOKEN", "WORKER_TOOL_TOKEN", "WORKER_CORE_TOKEN", "CORE_DOCUMENT_TOKEN"} {
+		other := strings.TrimSpace(os.Getenv(name))
+		if len(other) > 0 && subtle.ConstantTimeCompare([]byte(token), []byte(other)) == 1 {
+			return nil, errors.New("TOOL_CORE_AUTHORITY_TOKEN must be distinct from other service credentials")
+		}
+	}
+	return toolgateway.NewCoreClaimResolver(origin, caFile, allowInsecure, appEnv, token, 5*time.Second)
+}
+
+func coreAuthorityEnv() (string, string, bool, string, error) {
+	origin := strings.TrimSpace(os.Getenv("CORE_AUTHORITY_URL"))
+	if origin == "" {
+		return "", "", false, "", errors.New("CORE_AUTHORITY_URL is required for trusted Core authority resolution")
+	}
+	appEnv := strings.ToLower(strings.TrimSpace(os.Getenv("APP_ENV")))
+	if appEnv == "" {
+		appEnv = "development"
+	}
+	allowInsecure := false
+	if raw := strings.TrimSpace(os.Getenv("CORE_AUTHORITY_ALLOW_INSECURE_DEV")); raw != "" {
+		parsed, err := strconv.ParseBool(raw)
+		if err != nil {
+			return "", "", false, "", errors.New("CORE_AUTHORITY_ALLOW_INSECURE_DEV must be true or false")
+		}
+		allowInsecure = parsed
+		if allowInsecure && strings.TrimSpace(os.Getenv("APP_ENV")) == "" {
+			return "", "", false, "", errors.New("CORE_AUTHORITY_ALLOW_INSECURE_DEV requires explicit APP_ENV=development or test")
+		}
+	}
+	return origin, strings.TrimSpace(os.Getenv("CORE_AUTHORITY_CA_FILE")), allowInsecure, appEnv, nil
 }
 
 // mcpHandler assembles the MCP endpoint: caller authentication first, then the

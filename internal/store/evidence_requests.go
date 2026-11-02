@@ -480,6 +480,7 @@ func evidenceResolvedGap(review agentflow.AgentReview, gap agentflow.GapReport) 
 // CreateEvidenceRequest binds an existing task and an actually missing frozen
 // check. The request's deadline and assignee are copied from that task.
 func (s *Store) CreateEvidenceRequest(ctx context.Context, user accounts.User, caseID string, input EvidenceRequestInput) (EvidenceRequest, error) {
+	ctx = commandContext(ctx, user)
 	if err := evidenceRequestWritable(s); err != nil {
 		return EvidenceRequest{}, err
 	}
@@ -600,6 +601,7 @@ func (s *Store) CreateEvidenceRequest(ctx context.Context, user accounts.User, c
 }
 
 func (s *Store) GetEvidenceRequest(ctx context.Context, user accounts.User, caseID, requestID string) (EvidenceRequest, error) {
+	ctx = commandContext(ctx, user)
 	if !experienceIdentity(requestID) {
 		return EvidenceRequest{}, fault.NotFound("没有找到对应补充材料请求")
 	}
@@ -619,6 +621,7 @@ func (s *Store) GetEvidenceRequest(ctx context.Context, user accounts.User, case
 }
 
 func (s *Store) ListEvidenceRequests(ctx context.Context, user accounts.User, caseID string) ([]EvidenceRequest, error) {
+	ctx = commandContext(ctx, user)
 	tx, _, item, err := s.beginExperienceCase(ctx, user, caseID, access.Read)
 	if err != nil {
 		return nil, err
@@ -681,6 +684,7 @@ func updateEvidenceRequest(ctx context.Context, tx pgx.Tx, item Case, previous i
 // Neither makes the request verified. The current task assignee or a case
 // manager may submit, subject to current case review access.
 func (s *Store) SubmitEvidenceReceipt(ctx context.Context, user accounts.User, caseID, requestID string, input EvidenceReceiptInput) (EvidenceRequest, EvidenceReceipt, error) {
+	ctx = commandContext(ctx, user)
 	if err := evidenceRequestWritable(s); err != nil {
 		return EvidenceRequest{}, EvidenceReceipt{}, err
 	}
@@ -936,6 +940,7 @@ func observedGapReceipt(request EvidenceRequest, receipt EvidenceReceipt, input 
 // receipt as evidence for that check. Unknown, insufficient, missing or
 // unlinked observations remain unresolved.
 func (s *Store) VerifyEvidenceRequest(ctx context.Context, user accounts.User, caseID, requestID string, input EvidenceRequestVerifyInput) (EvidenceRequest, error) {
+	ctx = commandContext(ctx, user)
 	if err := evidenceRequestWritable(s); err != nil {
 		return EvidenceRequest{}, err
 	}
@@ -1129,6 +1134,7 @@ func (s *Store) VerifyEvidenceRequest(ctx context.Context, user accounts.User, c
 // ListEvidenceRequestHistory includes the original request and every receipt or
 // human verification snapshot; no subsequent review mutates prior history.
 func (s *Store) ListEvidenceRequestHistory(ctx context.Context, user accounts.User, caseID, requestID string) ([]EvidenceRequestEvent, error) {
+	ctx = commandContext(ctx, user)
 	if !experienceIdentity(requestID) {
 		return nil, fault.NotFound("没有找到对应补充材料请求")
 	}

@@ -70,6 +70,7 @@ type ContractVersionDiff struct {
 // revision 1. Both absent therefore answer "what changed in the latest frozen
 // version".
 func (s *Store) DiffContractVersions(ctx context.Context, user accounts.User, contractID, fromRevisionID, toRevisionID string) (ContractVersionDiff, error) {
+	ctx = commandContext(ctx, user)
 	id, err := normalizeContractUUID(contractID)
 	if err != nil {
 		return ContractVersionDiff{}, err
@@ -91,7 +92,7 @@ func (s *Store) DiffContractVersions(ctx context.Context, user accounts.User, co
 	if err != nil {
 		return ContractVersionDiff{}, err
 	}
-	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted, AccessMode: pgx.ReadOnly})
+	tx, err := s.beginContextTx(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted, AccessMode: pgx.ReadOnly})
 	if err != nil {
 		return ContractVersionDiff{}, err
 	}

@@ -35,7 +35,7 @@ func TestContractFulfillmentPartialAcceptanceAndLinearRetest(t *testing.T) {
 	}
 	var rowVersion int64 // Contract version; approval commands use the round version.
 	for index, task := range submitted.Tasks {
-		actor := approvalTestUser(t, "demo-reviewer")
+		actor := approvalTestUser(t, "demo-reviewer", fixture.core)
 		if task.Final {
 			actor = fixture.admin
 		}

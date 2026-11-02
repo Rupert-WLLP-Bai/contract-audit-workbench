@@ -46,6 +46,7 @@ func (s *Store) UseDocumentPreparer(preparer DocumentPreparer) {
 }
 
 type documentPrepareAuthority struct {
+	User      accounts.User
 	Document  Document
 	Selection AttemptParseSelection
 	Claim     JobClaim
@@ -83,7 +84,7 @@ func (s *Store) PrepareAttemptDocument(ctx context.Context, request PrepareDocum
 		CaseID: authority.Claim.CaseID, ActorID: authority.Claim.ActorID, DocumentID: authority.Document.ID,
 		JobID: authority.Claim.JobID, RunID: authority.Claim.RunID, AttemptID: authority.Claim.AttemptID,
 		WorkerID: authority.Claim.WorkerID, Generation: authority.Claim.Generation,
-		ParseSelectionID: request.Selection.ParsedDocumentID,
+		ParseSelectionID: request.Selection.ParsedDocumentID, ParseSelectionSHA256: parseSelectionFingerprint(request.Selection),
 	}, models))
 	interpreted := s.interpretUnpersistedWithModels(scope, authority.Document, models)
 	parsed, err := makeParsedWithSelection(authority.Document, interpreted, request.Selection)
@@ -107,7 +108,7 @@ func (s *Store) PrepareAttemptDocument(ctx context.Context, request PrepareDocum
 }
 
 const documentPrepareAuthoritySQL = `SELECT
-	j.tenant_id, j.org_id, j.case_id, j.run_id, j.attempt_id, j.actor_id, j.kind, j.state, j.generation, j.worker_id,
+	j.id,j.tenant_id, j.org_id, j.case_id, j.run_id, j.attempt_id, j.actor_id, j.kind, j.state, j.generation, j.worker_id,
 	r.case_id, r.state,
 	a.run_id, a.state, a.actor_id,
 	c.tenant_id, c.org_id, c.owner_id, c.member_ids,
@@ -126,7 +127,7 @@ WHERE j.id=$1 AND j.worker_id=$2 AND j.generation=$3 AND j.state='running' AND j
 	AND j.tenant_id=$8 AND j.org_id=$9`
 
 func (s *Store) loadDocumentPrepareAuthority(ctx context.Context, request PrepareDocumentRequest) (documentPrepareAuthority, error) {
-	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted, AccessMode: pgx.ReadOnly})
+	tx, err := s.beginContextTx(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted, AccessMode: pgx.ReadOnly})
 	if err != nil {
 		return documentPrepareAuthority{}, err
 	}
@@ -134,7 +135,7 @@ func (s *Store) loadDocumentPrepareAuthority(ctx context.Context, request Prepar
 	if err := setLocalScope(ctx, tx, documentPrepareLookupScope(request)); err != nil {
 		return documentPrepareAuthority{}, err
 	}
-	authority, err := scanDocumentPrepareAuthority(ctx, tx, documentPrepareAuthoritySQL, request)
+	authority, err := scanDocumentPrepareAuthority(ctx, tx, documentPrepareAuthoritySQL, request, s.operationUser)
 	if err != nil {
 		return documentPrepareAuthority{}, err
 	}
@@ -151,7 +152,7 @@ func documentPrepareLookupScope(request PrepareDocumentRequest) dbScope {
 
 func scanDocumentPrepareAuthority(ctx context.Context, q interface {
 	QueryRow(context.Context, string, ...any) pgx.Row
-}, query string, request PrepareDocumentRequest) (documentPrepareAuthority, error) {
+}, query string, request PrepareDocumentRequest, resolvers ...func(context.Context, model.DelegatedScope) (accounts.User, error)) (documentPrepareAuthority, error) {
 	var claim JobClaim
 	var jobKind, jobState, runCaseID, runState, attemptRunID, attemptState, attemptActorID string
 	var caseTenantID, caseOrgID, caseOwnerID, memberIDs string
@@ -165,7 +166,7 @@ func scanDocumentPrepareAuthority(ctx context.Context, q interface {
 		request.JobID, request.WorkerID, request.Generation, request.RunID, request.AttemptID,
 		request.DocumentID, request.Selection.ParsedDocumentID, request.TenantID, request.OrgID,
 	).Scan(
-		&claim.TenantID, &claim.OrgID, &claim.CaseID, &claim.RunID, &claim.AttemptID, &claim.ActorID, &jobKind, &jobState, &claim.Generation, &claim.WorkerID,
+		&claim.JobID, &claim.TenantID, &claim.OrgID, &claim.CaseID, &claim.RunID, &claim.AttemptID, &claim.ActorID, &jobKind, &jobState, &claim.Generation, &claim.WorkerID,
 		&runCaseID, &runState, &attemptRunID, &attemptState, &attemptActorID,
 		&caseTenantID, &caseOrgID, &caseOwnerID, &memberIDs,
 		&document.ID, &document.TenantID, &document.OrgID, &document.CaseID, &document.Role, &document.Filename, &document.MediaType, &document.Digest, &document.Size, &document.Origin, &document.StorageBackend, &document.CreatedAt,
@@ -189,11 +190,17 @@ func scanDocumentPrepareAuthority(ctx context.Context, q interface {
 	}
 	caseItem := Case{ID: claim.CaseID, TenantID: caseTenantID, OwnerOrgID: caseOrgID, OwnerID: caseOwnerID, MemberIDs: caseItemMembers}
 	user, err := trustedUser(accounts.User{ID: claim.ActorID})
-	if err != nil || accounts.Tenant(user) != claim.TenantID || caseTenantID != claim.TenantID || caseOrgID != claim.OrgID || !authorizeCase(caseItem, user, access.Review) {
+	if len(resolvers) == 1 {
+		user, err = resolvers[0](ctx, model.DelegatedScope{Kind: "document", TenantID: claim.TenantID, OrgID: claim.OrgID, CaseID: claim.CaseID, ActorID: claim.ActorID, JobID: claim.JobID, WorkerID: claim.WorkerID, Generation: claim.Generation, RunID: claim.RunID, AttemptID: claim.AttemptID, DocumentID: request.DocumentID, ParseSelectionID: request.Selection.ParsedDocumentID, ParseSelectionSHA256: parseSelectionFingerprint(request.Selection)})
+	}
+	if err != nil {
+		return documentPrepareAuthority{}, errors.Join(errors.New("current case review grant is unavailable"), err)
+	}
+	if accounts.Tenant(user) != claim.TenantID || caseTenantID != claim.TenantID || caseOrgID != claim.OrgID || !authorizeCase(caseItem, user, access.Review) {
 		return documentPrepareAuthority{}, errors.New("current case review grant is unavailable")
 	}
 	claim.Kind = jobKind
-	authority := documentPrepareAuthority{Document: document, Selection: selection, Claim: claim}
+	authority := documentPrepareAuthority{User: user, Document: document, Selection: selection, Claim: claim}
 	if parsedID.Valid {
 		parsed, err := parsePayload(parsedPayload.String)
 		if err != nil || !parsedOrder.Valid || parsed.ID != parsedID.String || parsed.SelectionOrder != parsedOrder.Int64 ||
@@ -224,7 +231,13 @@ func (s *Store) persistPreparedParsedDocument(ctx context.Context, request Prepa
 	if err := verifyParsed(parsed, Document{ID: parsed.DocumentID, Digest: parsed.OriginalDigest}); err != nil {
 		return ParsedDocument{}, err
 	}
-	tx, err := s.pool.Begin(ctx)
+	initial, err := s.loadDocumentPrepareAuthority(ctx, request)
+	if err != nil {
+		return ParsedDocument{}, err
+	}
+	ctx = commandContext(ctx, initial.User)
+	frozenResolver := func(context.Context, model.DelegatedScope) (accounts.User, error) { return initial.User, nil }
+	tx, err := s.beginContextTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return ParsedDocument{}, err
 	}
@@ -236,7 +249,7 @@ func (s *Store) persistPreparedParsedDocument(ctx context.Context, request Prepa
 	// their rows with FOR SHARE (which requires UPDATE privileges). Only the
 	// immutable parse artifact is written here. Revalidate the live claim before
 	// commit below and again before returning; the worker fences result adoption.
-	authority, err := scanDocumentPrepareAuthority(ctx, tx, documentPrepareAuthoritySQL, request)
+	authority, err := scanDocumentPrepareAuthority(ctx, tx, documentPrepareAuthoritySQL, request, frozenResolver)
 	if err != nil {
 		return ParsedDocument{}, err
 	}
@@ -272,7 +285,7 @@ func (s *Store) persistPreparedParsedDocument(ctx context.Context, request Prepa
 		normalized, irDigest, parsed.ArtifactDigest, parsed.CreatedAt, parsed.Status, payload); err != nil {
 		return ParsedDocument{}, err
 	}
-	winnerAuthority, err := scanDocumentPrepareAuthority(ctx, tx, documentPrepareAuthoritySQL, request)
+	winnerAuthority, err := scanDocumentPrepareAuthority(ctx, tx, documentPrepareAuthoritySQL, request, frozenResolver)
 	if err != nil || winnerAuthority.Parsed == nil {
 		return ParsedDocument{}, errors.New("parsed document commit could not be verified")
 	}
@@ -341,4 +354,9 @@ func (s *Store) DocumentReady(ctx context.Context) error {
 		return nil
 	}
 	return err
+}
+
+func parseSelectionFingerprint(selection AttemptParseSelection) string {
+	raw, _ := json.Marshal(selection)
+	return sha256Bytes(raw)
 }

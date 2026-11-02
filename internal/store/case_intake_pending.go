@@ -164,6 +164,7 @@ func encodePendingIntakeCursor(current accounts.User, createdAt time.Time, opera
 // ListPendingCaseIntakes uses bounded keyset reads, applying the same current
 // case policy used by the other case APIs before any row reaches the caller.
 func (s *Store) ListPendingCaseIntakes(ctx context.Context, user accounts.User, limit int, cursor string) (PendingCaseIntakesPage, error) {
+	ctx = commandContext(ctx, user)
 	if limit == 0 {
 		limit = 10
 	}
@@ -178,7 +179,7 @@ func (s *Store) ListPendingCaseIntakes(ctx context.Context, user accounts.User, 
 	if err != nil {
 		return PendingCaseIntakesPage{}, err
 	}
-	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
+	tx, err := s.beginContextTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
 	if err != nil {
 		return PendingCaseIntakesPage{}, err
 	}
@@ -275,6 +276,7 @@ func loadOwnedIntakeContinuation(ctx context.Context, tx pgx.Tx, current account
 // GetCaseIntakeContinuation releases the original replay identity only to its
 // owner, after current case access and the stored request digest are checked.
 func (s *Store) GetCaseIntakeContinuation(ctx context.Context, user accounts.User, operationID string) (CaseIntakeContinuation, error) {
+	ctx = commandContext(ctx, user)
 	current, err := trustedUser(user)
 	if err != nil {
 		return CaseIntakeContinuation{}, err
@@ -282,7 +284,7 @@ func (s *Store) GetCaseIntakeContinuation(ctx context.Context, user accounts.Use
 	if !validCaseIntakeID(operationID) {
 		return CaseIntakeContinuation{}, fault.NotFound("建案操作不存在")
 	}
-	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
+	tx, err := s.beginContextTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
 	if err != nil {
 		return CaseIntakeContinuation{}, err
 	}
@@ -318,6 +320,7 @@ func (s *Store) GetCaseIntakeContinuation(ctx context.Context, user accounts.Use
 // new attempts and completion against the archive without cancelling an upload
 // that has already passed BeginCaseIntake.
 func (s *Store) ArchiveCaseIntake(ctx context.Context, user accounts.User, operationID string) (CaseIntakeArchiveResult, error) {
+	ctx = commandContext(ctx, user)
 	current, err := trustedUser(user)
 	if err != nil {
 		return CaseIntakeArchiveResult{}, err
@@ -325,7 +328,7 @@ func (s *Store) ArchiveCaseIntake(ctx context.Context, user accounts.User, opera
 	if !validCaseIntakeID(operationID) {
 		return CaseIntakeArchiveResult{}, fault.NotFound("建案操作不存在")
 	}
-	tx, err := s.pool.Begin(ctx)
+	tx, err := s.beginContextTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return CaseIntakeArchiveResult{}, err
 	}

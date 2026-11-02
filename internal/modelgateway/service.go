@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"crypto/subtle"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -439,6 +440,10 @@ func (s *Service) readChatRequest(w http.ResponseWriter, r *http.Request, caller
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "model upstream configuration is unavailable", "code": "model_upstream_unavailable"})
 		return chatRequest{}, false
 	}
+	if scope.Kind == "execution_prepare" || (scope.Action == "embedded_prepare_parse" && (caller != "document" || scope.Kind != "document" || model.GatewayID(requestedModel) != model.GatewayID(upstream.OCRModel) || !validEmbeddedOCRRequest(body, embeddedOCRPayloadDigest(scope)))) {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "scope is restricted to selected document OCR", "code": "model_scope_unavailable"})
+		return chatRequest{}, false
+	}
 	if !upstream.allows(requestedModel) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "requested model is not configured", "code": "model_not_configured"})
 		return chatRequest{}, false
@@ -472,9 +477,25 @@ func (s *Service) runChatAttempt(w http.ResponseWriter, ctx context.Context, req
 		writeJSON(w, http.StatusConflict, map[string]string{"error": "model configuration no longer matches the configured endpoint", "code": "model_configuration_changed"})
 		return false
 	}
+	if !s.authorizeReservedDispatch(w, ctx, request.caller, request.scope, lease) {
+		return false
+	}
 	response, status, usage, requestErr, retryable, preDispatch := s.dispatchUpstream(ctx, request.upstream, request.requestedModel, request.body)
 	modelStatus, errorCode := chatAttemptResult(requestErr, status)
 	return s.settleAndRespondChatAttempt(w, ctx, request, probe, attempt, lease, response, status, usage, requestErr, retryable, preDispatch, modelStatus, errorCode)
+}
+
+// Recheck immediately before sending; settlement of an already sent call remains independent.
+func (s *Service) authorizeReservedDispatch(w http.ResponseWriter, ctx context.Context, caller string, scope model.DelegatedScope, lease store.ModelCallLease) bool {
+	if err := s.store.ReauthorizeModelScope(ctx, caller, scope); err != nil {
+		if finishErr := s.finishChatAttempt(lease, "failed", "model_scope_unavailable", nil, true); finishErr != nil {
+			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "model usage could not be recorded", "code": "model_usage_unavailable"})
+			return false
+		}
+		writeChatReauthorizationError(w, err)
+		return false
+	}
+	return true
 }
 
 func (s *Service) reserveChatAttempt(w http.ResponseWriter, ctx context.Context, request chatRequest, attempt int) (store.ModelCallLease, bool) {
@@ -1165,4 +1186,149 @@ func (c *circuitBreaker) record(probe circuitProbe, success, failure bool, now t
 			c.probing = 0
 		}
 	}
+}
+
+// validEmbeddedOCRRequest accepts only the client's fixed one-image OCR form.
+// The image bytes must be exactly the selected original, not another image.
+func validEmbeddedOCRRequest(body []byte, originalDigest string) bool {
+	if !uniqueJSONKeys(body) || !canonicalOCRKeys(body) {
+		return false
+	}
+	var v struct {
+		Model       string  `json:"model"`
+		Temperature float64 `json:"temperature"`
+		MaxTokens   int     `json:"max_tokens"`
+		Messages    []struct {
+			Role    string `json:"role"`
+			Content []struct {
+				Type     string `json:"type"`
+				Text     string `json:"text,omitempty"`
+				ImageURL *struct {
+					URL string `json:"url"`
+				} `json:"image_url,omitempty"`
+			} `json:"content"`
+		} `json:"messages"`
+	}
+	d := json.NewDecoder(bytes.NewReader(body))
+	d.DisallowUnknownFields()
+	if d.Decode(&v) != nil || d.Decode(new(any)) != io.EOF || v.Model == "" || v.Temperature != 0 || v.MaxTokens != 8192 || len(v.Messages) != 1 || v.Messages[0].Role != "user" || len(v.Messages[0].Content) != 2 {
+		return false
+	}
+	first, second := v.Messages[0].Content[0], v.Messages[0].Content[1]
+	if first.Type != "text" || first.Text != model.OCRTranscriptionInstruction() || first.ImageURL != nil || second.Type != "image_url" || second.Text != "" || second.ImageURL == nil {
+		return false
+	}
+	url := second.ImageURL.URL
+	const png = "data:image/png;base64,"
+	const jpeg = "data:image/jpeg;base64,"
+	media := ""
+	if strings.HasPrefix(url, png) {
+		url, media = strings.TrimPrefix(url, png), "image/png"
+	} else if strings.HasPrefix(url, jpeg) {
+		url, media = strings.TrimPrefix(url, jpeg), "image/jpeg"
+	} else {
+		return false
+	}
+	raw, err := base64.StdEncoding.Strict().DecodeString(url)
+	if err != nil || len(raw) == 0 || http.DetectContentType(raw) != media {
+		return false
+	}
+	sum := sha256.Sum256(raw)
+	return hex.EncodeToString(sum[:]) == originalDigest
+}
+
+func uniqueJSONKeys(raw []byte) bool {
+	d := json.NewDecoder(bytes.NewReader(raw))
+	d.UseNumber()
+	var value func() bool
+	value = func() bool {
+		token, err := d.Token()
+		if err != nil {
+			return false
+		}
+		delim, ok := token.(json.Delim)
+		if !ok {
+			return true
+		}
+		switch delim {
+		case '{':
+			seen := map[string]bool{}
+			for d.More() {
+				key, err := d.Token()
+				if err != nil {
+					return false
+				}
+				k, ok := key.(string)
+				if !ok || seen[k] {
+					return false
+				}
+				seen[k] = true
+				if !value() {
+					return false
+				}
+			}
+			end, err := d.Token()
+			return err == nil && end == json.Delim('}')
+		case '[':
+			for d.More() {
+				if !value() {
+					return false
+				}
+			}
+			end, err := d.Token()
+			return err == nil && end == json.Delim(']')
+		default:
+			return false
+		}
+	}
+	return value() && func() bool { _, err := d.Token(); return err == io.EOF }()
+}
+
+func embeddedOCRPayloadDigest(scope model.DelegatedScope) string {
+	if scope.OCRPayloadSHA256 != "" {
+		return scope.OCRPayloadSHA256
+	}
+	return scope.InputSHA256
+}
+
+// canonicalOCRKeys rejects encoding/json's case-insensitive struct aliases at
+// every object level before the original request bytes can be forwarded.
+func canonicalOCRKeys(raw []byte) bool {
+	exact := func(raw []byte, keys ...string) (map[string]json.RawMessage, bool) {
+		var object map[string]json.RawMessage
+		if json.Unmarshal(raw, &object) != nil || len(object) != len(keys) {
+			return nil, false
+		}
+		for _, key := range keys {
+			if _, ok := object[key]; !ok {
+				return nil, false
+			}
+		}
+		return object, true
+	}
+	top, ok := exact(raw, "model", "temperature", "max_tokens", "messages")
+	if !ok {
+		return false
+	}
+	var messages []json.RawMessage
+	if json.Unmarshal(top["messages"], &messages) != nil || len(messages) != 1 {
+		return false
+	}
+	message, ok := exact(messages[0], "role", "content")
+	if !ok {
+		return false
+	}
+	var content []json.RawMessage
+	if json.Unmarshal(message["content"], &content) != nil || len(content) != 2 {
+		return false
+	}
+	if _, ok = exact(content[0], "type", "text"); !ok {
+		return false
+	}
+	image, ok := exact(content[1], "type", "image_url")
+	if !ok {
+		return false
+	}
+	_, ok = exact(image["image_url"], "url")
+	return ok
 }

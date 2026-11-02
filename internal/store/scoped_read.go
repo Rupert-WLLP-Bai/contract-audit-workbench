@@ -39,11 +39,12 @@ func readRows(tx pgx.Tx, predicate string, args ...any) queryer {
 // current case grant before any case contents are fetched. The repeatable-read
 // transaction keeps the authorization and the resulting projection consistent.
 func (s *Store) beginCaseRead(ctx context.Context, user accounts.User, caseID string) (pgx.Tx, accounts.User, Case, error) {
+	ctx = commandContext(ctx, user)
 	current, err := trustedUser(user)
 	if err != nil {
 		return nil, accounts.User{}, Case{}, err
 	}
-	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
+	tx, err := s.beginContextTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
 	if err != nil {
 		return nil, accounts.User{}, Case{}, err
 	}
@@ -231,11 +232,12 @@ func loadCaseSummaries(ctx context.Context, tx pgx.Tx, cases []Case, withStatus 
 }
 
 func (s *Store) snapshotCaseList(ctx context.Context, user accounts.User) (state, error) {
+	ctx = commandContext(ctx, user)
 	current, err := trustedUser(user)
 	if err != nil {
 		return state{}, err
 	}
-	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
+	tx, err := s.beginContextTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
 	if err != nil {
 		return state{}, err
 	}
@@ -264,6 +266,7 @@ func (s *Store) snapshotCaseList(ctx context.Context, user accounts.User) (state
 }
 
 func (s *Store) snapshotCaseDetail(ctx context.Context, user accounts.User, caseID string) (state, error) {
+	ctx = commandContext(ctx, user)
 	tx, _, item, err := s.beginCaseRead(ctx, user, caseID)
 	if err != nil {
 		return state{}, err
@@ -360,7 +363,7 @@ func interpretLoaded(st state, docs []Document) []Interpreted {
 // need to prepare or verify evidence.
 func (s *Store) readAttemptState(ctx context.Context, claim JobClaim, withInput bool) (state, error) {
 	scope, attemptID := claim.scope(), claim.AttemptID
-	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
+	tx, err := s.beginContextTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
 	if err != nil {
 		return state{}, err
 	}
@@ -531,6 +534,7 @@ func loadInputMetadata(ctx context.Context, tx pgx.Tx, attemptIDs, excludeIDs []
 // snapshotWorkspace loads the selected attempt and the previous run needed for
 // comparison. Other attempts contribute only selector and usage metadata.
 func (s *Store) snapshotWorkspace(ctx context.Context, user accounts.User, caseID, runID, selectedID string) (state, error) {
+	ctx = commandContext(ctx, user)
 	tx, _, item, err := s.beginCaseRead(ctx, user, caseID)
 	if err != nil {
 		return state{}, err
@@ -684,6 +688,7 @@ func (s *Store) snapshotWorkspace(ctx context.Context, user accounts.User, caseI
 }
 
 func (s *Store) snapshotCaseOriginal(ctx context.Context, user accounts.User, caseID, docID string) (state, error) {
+	ctx = commandContext(ctx, user)
 	tx, _, item, err := s.beginCaseRead(ctx, user, caseID)
 	if err != nil {
 		return state{}, err
@@ -700,6 +705,7 @@ func (s *Store) snapshotCaseOriginal(ctx context.Context, user accounts.User, ca
 }
 
 func (s *Store) snapshotCaseReport(ctx context.Context, user accounts.User, caseID, reportID string) (state, error) {
+	ctx = commandContext(ctx, user)
 	tx, current, item, err := s.beginCaseRead(ctx, user, caseID)
 	if err != nil {
 		return state{}, err
@@ -746,11 +752,12 @@ func loadReadinessCaseState(ctx context.Context, tx pgx.Tx, item Case) (state, e
 // snapshotWorkbench assembles the dashboard from authorized case metadata.
 // Frozen review text, report bodies and parsed payloads are not transferred.
 func (s *Store) snapshotWorkbench(ctx context.Context, user accounts.User) (state, error) {
+	ctx = commandContext(ctx, user)
 	current, err := trustedUser(user)
 	if err != nil {
 		return state{}, err
 	}
-	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
+	tx, err := s.beginContextTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
 	if err != nil {
 		return state{}, err
 	}

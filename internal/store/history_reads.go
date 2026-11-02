@@ -118,6 +118,7 @@ func loadWriteHistory(ctx context.Context, tx pgx.Tx, st *state, caseIDs []strin
 // jobAcceptanceForRun also finds a job that finished between acceptance and
 // this read. It never scans terminal jobs belonging to other attempts.
 func (s *Store) jobAcceptanceForRun(ctx context.Context, user accounts.User, caseID, runID, missingAttempt, missingJob string) (JobAcceptance, error) {
+	ctx = commandContext(ctx, user)
 	tx, _, _, err := s.beginCaseRead(ctx, user, caseID)
 	if err != nil {
 		return JobAcceptance{}, err
@@ -147,11 +148,12 @@ func (s *Store) jobAcceptanceForRun(ctx context.Context, user accounts.User, cas
 // snapshotReportState keeps the selected attempt's immutable event timeline in
 // the same repeatable-read snapshot used to freeze a report.
 func (s *Store) snapshotReportState(ctx context.Context, user accounts.User, caseID, runID, attemptID string) (state, error) {
+	ctx = commandContext(ctx, user)
 	current, err := trustedUser(user)
 	if err != nil {
 		return state{}, err
 	}
-	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
+	tx, err := s.beginContextTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
 	if err != nil {
 		return state{}, err
 	}
@@ -190,7 +192,8 @@ func (s *Store) snapshotReportState(ctx context.Context, user accounts.User, cas
 // operationalHistoryCounts computes the existing tenant-scoped counters in SQL
 // without materializing every historical event or its trace payload.
 func (s *Store) operationalHistoryCounts(ctx context.Context, user accounts.User) (map[string]any, error) {
-	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
+	ctx = commandContext(ctx, user)
+	tx, err := s.beginContextTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
 	if err != nil {
 		return nil, err
 	}

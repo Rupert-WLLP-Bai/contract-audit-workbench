@@ -198,6 +198,7 @@ func validatePrimaryMaterialMutation(st *state, caseID, intent string, target *M
 }
 
 func (s *Store) MaterialIdentity(ctx context.Context, user accounts.User, caseID, documentID string) (string, int, error) {
+	ctx = commandContext(ctx, user)
 	current, _, err := s.documentWriteCase(ctx, user, caseID, access.Manage)
 	if err != nil {
 		return "", 0, err
@@ -305,6 +306,7 @@ func bindFrozenMaterialIdentity(st state, frozen *FrozenDocument) {
 }
 
 func (s *Store) ConfirmMaterialSelection(ctx context.Context, user accounts.User, caseID string, expectedVersion int64, documentIDs []string) error {
+	ctx = commandContext(ctx, user)
 	current, caseItem, err := s.documentWriteCase(ctx, user, caseID, access.Manage)
 	if err != nil {
 		return err

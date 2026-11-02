@@ -405,12 +405,14 @@ func TestLogStartupReportsInstanceDatabaseAndModels(t *testing.T) {
 func TestOptionsPreservesRuntimeFlagsAndKeepsAuditDefaultOff(t *testing.T) {
 	t.Setenv("OPERATOR_AUDIT_ENABLED", "")
 	t.Setenv("WORKER_CORE_TOKEN", " worker-token ")
+	t.Setenv("TOOL_CORE_AUTHORITY_TOKEN", strings.Repeat("t", 40))
 	app := &bootstrap.Runtime{
 		Models: model.New(model.Config{ChatModel: "review-v7"}), Durable: true, SecureCookies: true,
 		Selection: config.Selection{Mode: config.ModeTest, Database: config.Identity{Name: "audit_test", Host: "localhost", Port: "5432"}},
 	}
 	got := options(app, []string{"https://app.example"})
-	if got.Models != app.Models || !got.Durable || !got.SecureCookies || got.ExperienceWorkerCredential != "worker-token" {
+	if got.Models != app.Models || !got.Durable || !got.SecureCookies || got.ExperienceWorkerCredential != "worker-token" ||
+		got.ToolClaimAuthorityCredential != strings.Repeat("t", 40) {
 		t.Fatalf("runtime options lost configured values: %+v", got)
 	}
 	if !reflect.DeepEqual(got.CORSOrigins, []string{"https://app.example"}) || got.SystemHealth == nil {
@@ -579,7 +581,7 @@ func configureServerCommandEnvironment(t *testing.T) {
 		"DATA_DIR", "ADDR", "DATABASE_SCHEMA", "IDENTITY_DIRECTORY_FILE", "CORS_ORIGIN",
 		"OPERATOR_AUDIT_ENABLED", "EXTERNAL_EVIDENCE_MODE", "EXTERNAL_EVIDENCE_CONNECTOR_ID", "EXTERNAL_EVIDENCE_SOURCE_SYSTEM",
 		"EXTERNAL_EVIDENCE_BASE_URL", "EXTERNAL_EVIDENCE_ALLOWED_OBJECTS", "EXTERNAL_EVIDENCE_PAYLOAD_PREFIX", "EXTERNAL_EVIDENCE_FIXTURE_FILE",
-		"GATEWAY_ROLE_TOKEN", "WORKER_CORE_TOKEN", "MODEL_GATEWAY_URL", "DOCUMENT_SERVICE_URL", "WORKER_DOCUMENT_TOKEN", "CORE_DOCUMENT_TOKEN",
+		"GATEWAY_ROLE_TOKEN", "WORKER_CORE_TOKEN", "TOOL_CORE_AUTHORITY_TOKEN", "MODEL_GATEWAY_URL", "DOCUMENT_SERVICE_URL", "WORKER_DOCUMENT_TOKEN", "CORE_DOCUMENT_TOKEN",
 		"TOOL_GATEWAY_URL", "WORKER_TOOL_TOKEN", "WORKER_MODEL_TOKEN", "DOCUMENT_MODEL_TOKEN", "LLM_BASE_URL", "LLM_MODEL", "OCR_MODEL",
 		"DEV_DATABASE_URL", "PROD_DATABASE_URL", "CORE_DATABASE_URL", "DOCUMENT_DATABASE_URL",
 		"EXECUTION_DATABASE_URL", "MODEL_DATABASE_URL", "TOOL_DATABASE_URL", "OTEL_EXPORTER_OTLP_ENDPOINT", "S3_ENDPOINT",
@@ -595,6 +597,7 @@ func configureServerCommandEnvironment(t *testing.T) {
 	t.Setenv("DATA_DIR", t.TempDir())
 	t.Setenv("GATEWAY_ROLE_TOKEN", strings.Repeat("g", 40))
 	t.Setenv("WORKER_CORE_TOKEN", strings.Repeat("c", 40))
+	t.Setenv("TOOL_CORE_AUTHORITY_TOKEN", strings.Repeat("t", 40))
 	t.Setenv("DOCUMENT_SERVICE_URL", "http://127.0.0.1:1")
 	t.Setenv("CORE_DOCUMENT_TOKEN", strings.Repeat("i", 40))
 	t.Setenv("LLM_BASE_URL", "http://127.0.0.1:1/v1")

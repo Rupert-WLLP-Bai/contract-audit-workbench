@@ -4,6 +4,7 @@ import { Button } from "antd";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Link, useParams } from "react-router";
 import { ApiError, errorMessage, isConflict, isForbidden } from "../api/http";
+import { newIdempotencyKey } from "../api/idempotency";
 import {
   useApproveRulePack,
   useDisableRulePack,
@@ -135,7 +136,7 @@ export function RulePackDetailPage() {
   function keyFor(identity: string): string {
     const existing = operationKeys.current.get(identity);
     if (existing) return existing;
-    const key = crypto.randomUUID();
+    const key = newIdempotencyKey();
     operationKeys.current.set(identity, key);
     return key;
   }

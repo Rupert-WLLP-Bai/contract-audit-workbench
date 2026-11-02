@@ -23,6 +23,7 @@ type ExperienceDistillationStatus struct {
 }
 
 func (s *Store) GetExperienceDistillation(ctx context.Context, user accounts.User, caseID, feedbackID, jobID string) (ExperienceDistillationStatus, error) {
+	ctx = commandContext(ctx, user)
 	if !experienceIdentity(feedbackID) || !experienceIdentity(jobID) {
 		return ExperienceDistillationStatus{}, fault.Invalid("经验提炼任务编号无效")
 	}

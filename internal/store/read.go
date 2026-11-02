@@ -16,6 +16,7 @@ import (
 // documentWriteCase resolves the caller and writable case before document work
 // enters a parser capacity gate. Mutations still authorize again when committing.
 func (s *Store) documentWriteCase(ctx context.Context, user accounts.User, caseID string, action access.Action) (accounts.User, Case, error) {
+	ctx = commandContext(ctx, user)
 	if ctx == nil {
 		return accounts.User{}, Case{}, fault.Invalid("文档操作上下文无效")
 	}
@@ -47,6 +48,7 @@ func (s *Store) documentWriteCase(ctx context.Context, user accounts.User, caseI
 // selecting capacity for the upload's initial parse. Images stay pending until
 // an explicit reparse or delegated review preparation.
 func (s *Store) DocumentUploadKind(ctx context.Context, user accounts.User, caseID, filename, media string) (string, error) {
+	ctx = commandContext(ctx, user)
 	if _, _, err := s.documentWriteCase(ctx, user, caseID, access.Manage); err != nil {
 		return "", err
 	}
@@ -60,6 +62,7 @@ func (s *Store) DocumentUploadKind(ctx context.Context, user accounts.User, case
 // GenerationParseKind checks current review authority and the supported
 // business scope before selecting CPU parser capacity for the generated draft.
 func (s *Store) GenerationParseKind(ctx context.Context, user accounts.User, caseID string) (string, error) {
+	ctx = commandContext(ctx, user)
 	_, item, err := s.documentWriteCase(ctx, user, caseID, access.Review)
 	if err != nil {
 		return "", err
@@ -73,6 +76,7 @@ func (s *Store) GenerationParseKind(ctx context.Context, user accounts.User, cas
 // DocumentParseKindContext resolves parser capacity only after checking the
 // same upload authority and case-management access required by reparse.
 func (s *Store) DocumentParseKindContext(ctx context.Context, user accounts.User, caseID, docID string) (string, error) {
+	ctx = commandContext(ctx, user)
 	if ctx == nil {
 		return "", fault.Invalid("解析类型上下文无效")
 	}

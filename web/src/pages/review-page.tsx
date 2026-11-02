@@ -5,6 +5,10 @@ import { useQueryClient } from "@tanstack/react-query";
 import {
   errorMessage,
   isConflict,
+  assertCommandContextCurrent,
+  captureCommandContext,
+  sessionIdentityFor,
+  type CommandContext,
   isForbidden,
   isUnauthenticated,
 } from "../api/http";
@@ -85,6 +89,19 @@ export function ReviewPage() {
   const cancel = useCancelReview(caseId, runId);
   const decide = useSubmitDecision(caseId, runId);
   const queryClient = useQueryClient();
+  const streamSessionIdentity = session.data ? sessionIdentityFor(session.data) : null;
+  const [streamCommandContext, setStreamCommandContext] = useState<CommandContext | null>(null);
+  useEffect(() => {
+    if (!session.data) {
+      setStreamCommandContext(null);
+      return;
+    }
+    try {
+      setStreamCommandContext(captureCommandContext(session.data));
+    } catch {
+      setStreamCommandContext(null);
+    }
+  }, [session.data]);
   const layout = useReviewLayout();
   const [conflictMessage, setConflictMessage] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -111,6 +128,9 @@ export function ReviewPage() {
       session.data
         ? {
             userId: session.data.id,
+            tenantId: session.data.active_context?.tenant_id,
+            orgId: session.data.active_context?.org_id,
+            contextVersion: session.data.active_context?.context_version,
             caseId,
             runId,
             attemptId: selectedAttempt?.id ?? null,
@@ -121,7 +141,7 @@ export function ReviewPage() {
   const decisionDraftsDirty = useDecisionDraftsDirty(
     session.data === undefined
       ? null
-      : decisionDraftUserPrefix(session.data.id),
+      : decisionDraftUserPrefix(session.data.id, session.data.active_context?.context_version),
   );
   const latestAttempt = execution
     ? execution.attempts.reduce(
@@ -193,6 +213,8 @@ export function ReviewPage() {
                 : "当前审查状态不允许提交审查判断。";
   const refresh = useCallback(
     (batch: ReviewEventBatch) => {
+      if (!streamCommandContext) return Promise.resolve();
+      try { assertCommandContextCurrent(streamCommandContext); } catch { return Promise.resolve(); }
       const requests = [
         queryClient.invalidateQueries({
           queryKey: queryKeys.review(caseId, runId, selectedAttemptId),
@@ -212,12 +234,14 @@ export function ReviewPage() {
       }
       return Promise.all(requests).then(() => undefined);
     },
-    [caseId, queryClient, runId, selectedAttemptId],
+    [caseId, queryClient, runId, selectedAttemptId, streamCommandContext],
   );
 
   // Reconcile persisted state after recovery; a manually created EventSource
   // starts without the previous Last-Event-ID.
   const reconcileAfterReconnect = useCallback(() => {
+    if (!streamCommandContext) return;
+    try { assertCommandContextCurrent(streamCommandContext); } catch { return; }
     void queryClient.invalidateQueries({
       queryKey: queryKeys.review(caseId, runId, selectedAttemptId),
       exact: true,
@@ -226,7 +250,7 @@ export function ReviewPage() {
       queryKey: queryKeys.case(caseId),
       exact: true,
     });
-  }, [caseId, queryClient, runId, selectedAttemptId]);
+  }, [caseId, queryClient, runId, selectedAttemptId, streamCommandContext]);
 
   const streamScope = session.data
     ? JSON.stringify([
@@ -235,9 +259,13 @@ export function ReviewPage() {
         session.data.role,
         session.data.tenant_id,
         session.data.org_id,
+        session.data.active_context?.context_version,
+        streamCommandContext?.epoch ?? null,
       ])
     : null;
-  const streamActive = review.isSuccess && latestRun && selectedAttemptIsLatest;
+  const streamContextMatchesSession = session.data !== undefined &&
+    streamCommandContext?.identity === streamSessionIdentity;
+  const streamActive = review.isSuccess && latestRun && selectedAttemptIsLatest && streamContextMatchesSession;
   const streamStatus = useReviewEvents(
     paths.reviewEvents(caseId, runId),
     streamActive,
@@ -537,7 +565,7 @@ export function ReviewPage() {
         <ReviewDiff
           caseId={caseId}
           latestRunId={caseDetail.data?.latest_run?.id ?? runId}
-          actorScope={JSON.stringify([session.data.id, session.data.tenant_id, session.data.org_id, session.data.role, session.data.audience])}
+          actorScope={JSON.stringify([session.data.id, session.data.active_context?.tenant_id, session.data.active_context?.org_id, session.data.role, session.data.audience, session.data.active_context?.context_version])}
         />
       ) : null}
       <DecisionDraftScopeProvider scope={decisionDraftScope}>
@@ -657,6 +685,7 @@ export function ReviewPage() {
         finding={review.data.findings.find((item) => item.id === selectedId) ?? null}
         documents={review.data.documents}
         canSubmit={roleCanDecide && selectedAttempt?.history_kind === "frozen"}
+        contextScope={streamCommandContext?.contextVersion}
         quoteScope={quoteScope}
         quoteSelection={quoteSelection}
       />

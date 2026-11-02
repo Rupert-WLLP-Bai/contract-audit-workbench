@@ -7,7 +7,7 @@ import {
   type FormEvent,
   type RefObject,
 } from "react";
-import { ApiError, errorMessage } from "../api/http";
+import { ApiError, assertCommandContextCurrent, bindIdempotencyCommandContext, captureCommandContext, errorMessage } from "../api/http";
 import { idempotencyFingerprint, newIdempotencyKey } from "../api/idempotency";
 import { useCreateGeneration, useTemplates } from "../api/queries";
 import type {
@@ -366,13 +366,16 @@ function TemplateGenerationBody({
         ? { material_id: target.material_id, replaces_document_id: target.current_document_id }
         : {}),
     } as const;
+    const commandContext = captureCommandContext();
     setIsPreparing(true);
     setPreparationError(null);
     try {
-      const fingerprint = await idempotencyFingerprint(JSON.stringify(input));
-      const storageKey = `caw:generation-idempotency:${caseId}:${actorId}:${fingerprint}`;
+      const fingerprint = await idempotencyFingerprint(JSON.stringify({ input, sessionIdentity: commandContext.identity }));
+      assertCommandContextCurrent(commandContext);
+      const storageKey = `caw:generation-idempotency:${caseId}:${actorId}:${commandContext.contextVersion}:${fingerprint}`;
       const idempotencyKey = sessionStorage.getItem(storageKey) ?? newIdempotencyKey();
       sessionStorage.setItem(storageKey, idempotencyKey);
+      bindIdempotencyCommandContext(idempotencyKey, commandContext);
       generate.mutate(
         { input, idempotencyKey },
         {

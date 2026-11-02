@@ -16,9 +16,11 @@ class FixtureModelRoutingTests(unittest.TestCase):
         commands = []
         environment_at_start = []
 
-        def record_run(command, **_kwargs):
+        def record_run(command, **kwargs):
             commands.append(command)
             environment_at_start.append(local.os.environ.get("MODEL_GATEWAY_URL"))
+            if len(commands) == 5:
+                self.assertNotIn("CORE_MODEL_AUTHORITY_TOKEN", kwargs.get("environment", {}))
 
         with (
             patch.dict(local.os.environ, {"MODEL_GATEWAY_URL": "http://model-gateway:8084/v1"}, clear=True),
@@ -28,9 +30,12 @@ class FixtureModelRoutingTests(unittest.TestCase):
         ):
             local.start_apps(fixture=True, offline_images=False, planner_mode=None)
 
-        self.assertEqual(len(commands), 2)
-        app_start = commands[1]
-        self.assertEqual(environment_at_start, [local.FIXTURE_MODEL_GATEWAY_URL] * 2)
+        self.assertEqual(len(commands), 5)
+        self.assertEqual([command[-1] for command in commands[:4]], [
+            "migrate-offline-migrator", "migrate-clm-owner", "migrate-auth-owner", "migrate",
+        ])
+        app_start = commands[4]
+        self.assertEqual(environment_at_start, [local.FIXTURE_MODEL_GATEWAY_URL] * 5)
         self.assertIn("--profile", app_start)
         profile_index = app_start.index("--profile")
         self.assertEqual(app_start[profile_index + 1], "model-fixture")

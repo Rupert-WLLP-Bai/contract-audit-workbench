@@ -133,6 +133,7 @@ type frozenContractAssetPlan struct {
 }
 
 func (s *Store) CreateContractAssetHandover(ctx context.Context, user accounts.User, input ContractAssetHandoverInput) (ContractAssetHandover, error) {
+	ctx = commandContext(ctx, user)
 	if !s.HasDatabase() {
 		return ContractAssetHandover{}, fault.New(503, "database_unavailable", "服务数据库不可用")
 	}
@@ -456,7 +457,7 @@ func (s *Store) RecordTrustedContractAssetReceipt(ctx context.Context, source Co
 	}
 	sum := sha256.Sum256(body)
 	digest := hex.EncodeToString(sum[:])
-	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{})
+	tx, err := s.beginContextTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return result, false, err
 	}
@@ -566,6 +567,7 @@ func (s *Store) RecordTrustedContractAssetReceipt(ctx context.Context, source Co
 }
 
 func (s *Store) ListContractAssets(ctx context.Context, user accounts.User, contractID string) (ContractAssetList, error) {
+	ctx = commandContext(ctx, user)
 	var out ContractAssetList
 	if !s.HasDatabase() {
 		return out, fault.New(503, "database_unavailable", "服务数据库不可用")
@@ -578,7 +580,7 @@ func (s *Store) ListContractAssets(ctx context.Context, user accounts.User, cont
 	if err != nil {
 		return out, err
 	}
-	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted, AccessMode: pgx.ReadOnly})
+	tx, err := s.beginContextTx(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted, AccessMode: pgx.ReadOnly})
 	if err != nil {
 		return out, err
 	}

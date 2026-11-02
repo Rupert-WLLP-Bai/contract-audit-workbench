@@ -17,6 +17,10 @@ const actor: Actor = {
   tenant_id: "tenant-a",
   org_id: "org-a",
   audience: "client",
+  principal_id: "principal-clerk-1",
+  active_context: { membership_id: "membership-1", tenant_id: "tenant-a", tenant_name: "租户A", org_id: "org-a", org_name: "组织A", context_version: "1" },
+  csrf_token: "test-csrf",
+  context_switch_enabled: false,
 };
 
 function pendingItem(

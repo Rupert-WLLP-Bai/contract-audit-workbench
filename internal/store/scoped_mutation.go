@@ -10,6 +10,7 @@ import (
 	"contractaudit/internal/accounts"
 	"contractaudit/internal/execution"
 	"contractaudit/internal/fault"
+	"contractaudit/internal/model"
 	"github.com/jackc/pgx/v5"
 )
 
@@ -219,6 +220,12 @@ func (s *Store) loadScopedAttemptState(ctx context.Context, tx pgx.Tx, claim Job
 		return state{}, err
 	}
 
+	if delegated, ok := model.DelegatedScopeFromContext(ctx); ok && delegated.Kind == "execution_prepare" {
+		if err := loadPreparationMaterials(ctx, tx, &out, claim, snapshot.DocumentIDs); err != nil {
+			return state{}, err
+		}
+	}
+
 	parsedRows, err := tx.Query(ctx, `SELECT parsed.id, parsed.selection_order, parsed.document_id, parsed.original_digest, parsed.parser_id, parsed.parser_version, parsed.config_hash, parsed.normalization_version, parsed.normalized_digest, parsed.ir_digest, parsed.artifact_digest, parsed.created_at, parsed.status, parsed.payload
 		FROM review_attempt_parse_selections AS selection
 		JOIN parsed_documents AS parsed ON parsed.id=selection.parsed_document_id
@@ -230,6 +237,10 @@ func (s *Store) loadScopedAttemptState(ctx context.Context, tx pgx.Tx, claim Job
 	if err != nil {
 		return state{}, err
 	}
+	if fenced, ok := tx.(*contextTx); ok && fenced.user.ID != "" {
+		u := fenced.user
+		out.authorityUser = &u
+	}
 	return out, nil
 }
 
@@ -239,7 +250,7 @@ func (s *Store) loadScopedAttemptState(ctx context.Context, tx pgx.Tx, claim Job
 // persists the changed owned rows through the existing delta/persist path inside
 // the caller's transaction, and then patches only the slices the scope contains.
 func (s *Store) scopedAttemptMutation(ctx context.Context, runID, attemptID string, fn func(*state) error) error {
-	return s.scopedAttemptMutationWithGovernance(ctx, runID, attemptID, false, fn)
+	return s.scopedAttemptMutationInternal(ctx, runID, attemptID, false, true, func(_ pgx.Tx, st *state) error { return fn(st) })
 }
 
 func (s *Store) scopedGovernedAttemptMutation(ctx context.Context, runID, attemptID string, fn func(*state) error) error {
@@ -253,6 +264,10 @@ func (s *Store) scopedAttemptMutationWithGovernance(ctx context.Context, runID, 
 }
 
 func (s *Store) scopedAttemptMutationWithTx(ctx context.Context, runID, attemptID string, governance bool, fn func(pgx.Tx, *state) error) error {
+	return s.scopedAttemptMutationInternal(ctx, runID, attemptID, governance, false, fn)
+}
+
+func (s *Store) scopedAttemptMutationInternal(ctx context.Context, runID, attemptID string, governance, allowPreparation bool, fn func(pgx.Tx, *state) error) error {
 	claim, ok := s.claimForAttempt(attemptID)
 	if !ok || claim.CaseID == "" || claim.AttemptID != attemptID || claim.RunID != runID {
 		return errExecutionEventScope
@@ -260,7 +275,18 @@ func (s *Store) scopedAttemptMutationWithTx(ctx context.Context, runID, attemptI
 	if !claimMatchesExecutionScope(ctx, claim) {
 		return errLeaseLost
 	}
-	tx, err := s.pool.Begin(ctx)
+	scope, preparing := model.DelegatedScopeFromContext(ctx)
+	preparing = preparing && scope.Kind == "execution_prepare"
+	var tx pgx.Tx
+	var err error
+	if preparing {
+		if !allowPreparation || governance || !s.validEmbeddedPreparationScope(scope, claim) {
+			return errExecutionEventScope
+		}
+		tx, err = s.beginPreparationTx(ctx, scope)
+	} else {
+		tx, err = s.beginContextTx(ctx, pgx.TxOptions{})
+	}
 	if err != nil {
 		return err
 	}
@@ -303,9 +329,13 @@ func (s *Store) scopedAttemptMutationWithTx(ctx context.Context, runID, attemptI
 		return err
 	}
 	if governance {
-		if err := revalidateGovernedAttemptTx(ctx, tx, runID, attemptID, claim.CaseID); err != nil {
+		if err := s.revalidateGovernedAttemptTx(ctx, tx, runID, attemptID, claim.CaseID); err != nil {
 			return err
 		}
+	}
+	if preparing {
+		canonicalizeLoadedRows(&previous)
+		previous.normalize()
 	}
 	next, err := previous.clone()
 	if err != nil {
@@ -313,6 +343,11 @@ func (s *Store) scopedAttemptMutationWithTx(ctx context.Context, runID, attemptI
 	}
 	if err := fn(tx, &next); err != nil {
 		return err
+	}
+	if preparing {
+		if err := validateEmbeddedPreparationDelta(previous, next, runID, attemptID); err != nil {
+			return err
+		}
 	}
 	old, changed, err := stateDelta(previous, next)
 	if err != nil {
@@ -570,6 +605,10 @@ func (s *Store) loadScopedCaseState(ctx context.Context, tx pgx.Tx, caseID strin
 	out.SubjectChangeDecisions = subjectState.SubjectChangeDecisions
 	out.SubjectSourceSnapshots = subjectState.SubjectSourceSnapshots
 	canonicalizeLoadedRows(&out)
+	if fenced, ok := tx.(*contextTx); ok && fenced.user.ID != "" {
+		u := fenced.user
+		out.authorityUser = &u
+	}
 	return out, nil
 }
 
@@ -578,12 +617,14 @@ func (s *Store) loadScopedCaseState(ctx context.Context, tx pgx.Tx, caseID strin
 // writer, and a projection patch limited to the bounded slices. The transaction
 // scope comes from the trusted caller, exactly like the whole-state writer's.
 func (s *Store) scopedCaseMutation(ctx context.Context, user accounts.User, caseID string, fn func(*state) error) error {
+	ctx = commandContext(ctx, user)
 	return s.scopedCaseWrite(ctx, user, caseID, "", "", false, false, nil, fn)
 }
 
 // scopedCaseWrite optionally includes the case's review and business state and
 // preserves the governance, decision-key and attempt fences when required.
 func (s *Store) scopedCaseWrite(ctx context.Context, user accounts.User, caseID, attemptID, decisionKey string, full, governance bool, hook func(pgx.Tx) error, fn func(*state) error) (result error) {
+	ctx = commandContext(ctx, user)
 	if ctx == nil {
 		return errors.New("case mutation context is nil")
 	}
@@ -599,7 +640,7 @@ func (s *Store) scopedCaseWrite(ctx context.Context, user accounts.User, caseID,
 	if err != nil {
 		return err
 	}
-	tx, err := s.pool.Begin(ctx)
+	tx, err := s.beginContextTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return err
 	}

@@ -16,6 +16,7 @@ import (
 	"contractaudit/internal/experienceclient"
 	"contractaudit/internal/jev"
 	"contractaudit/internal/model"
+	"contractaudit/internal/operationauthority"
 	"contractaudit/internal/store"
 	"contractaudit/internal/toolclient"
 )
@@ -75,7 +76,29 @@ func serviceSelection(role string) (config.Selection, error) {
 // otherwise the two would derive different run signatures for the same run.
 func serviceModelConfig(role string) (model.Config, error) {
 	cfg := model.FromEnv()
-	if role == "" || role == "model" {
+	if role == "" {
+		gateway := strings.TrimRight(strings.TrimSpace(os.Getenv("MODEL_GATEWAY_URL")), "/")
+		worker := strings.TrimSpace(os.Getenv("WORKER_MODEL_TOKEN"))
+		document := strings.TrimSpace(os.Getenv("DOCUMENT_MODEL_TOKEN"))
+		if gateway == "" && worker == "" && document == "" {
+			if strings.TrimSpace(os.Getenv("LLM_BASE_URL")) != "" || strings.TrimSpace(os.Getenv("LLM_API_KEY")) != "" {
+				return model.Config{}, errors.New("embedded model calls require MODEL_GATEWAY_URL, WORKER_MODEL_TOKEN, DOCUMENT_MODEL_TOKEN and CORE_MODEL_AUTHORITY_TOKEN; start the existing model gateway or use offline mode")
+			}
+			return cfg, nil
+		}
+		authority := strings.TrimSpace(os.Getenv("CORE_MODEL_AUTHORITY_TOKEN"))
+		if gateway == "" || len(worker) < 32 || len(document) < 32 || worker == document || len(authority) < 32 {
+			return model.Config{}, errors.New("embedded model gateway requires MODEL_GATEWAY_URL and distinct WORKER_MODEL_TOKEN, DOCUMENT_MODEL_TOKEN and CORE_MODEL_AUTHORITY_TOKEN credentials of at least 32 characters")
+		}
+		for _, key := range []string{"WORKER_MODEL_TOKEN", "DOCUMENT_MODEL_TOKEN", "GATEWAY_CORE_TOKEN", "GATEWAY_TOOL_TOKEN", "GATEWAY_DOCUMENT_TOKEN", "GATEWAY_EXECUTION_TOKEN", "GATEWAY_ROLE_TOKEN", "WORKER_DOCUMENT_TOKEN", "WORKER_TOOL_TOKEN", "WORKER_CORE_TOKEN", "CORE_DOCUMENT_TOKEN", "TOOL_CORE_AUTHORITY_TOKEN"} {
+			if other := strings.TrimSpace(os.Getenv(key)); other != "" && other == authority {
+				return model.Config{}, errors.New("CORE_MODEL_AUTHORITY_TOKEN must be distinct from other service credentials")
+			}
+		}
+		cfg.ProviderURL, cfg.BaseURL, cfg.APIKey, cfg.Gateway = cfg.BaseURL, gateway, worker, true
+		return cfg, nil
+	}
+	if role == "model" {
 		return cfg, nil
 	}
 	cfg.APIKey = ""
@@ -221,4 +244,42 @@ func (r toolEvidenceReader) FrozenEvidence(ctx context.Context, in store.ToolEvi
 		CaseID: in.CaseID, RunID: in.RunID, AttemptID: in.AttemptID,
 		CapabilityID: in.CapabilityID, Deadline: in.Deadline,
 	})
+}
+
+func configureOperationAuthority(st *store.Store, service string) error {
+	key := map[string]string{"worker": "WORKER_CORE_TOKEN", "document": "CORE_DOCUMENT_TOKEN", "model": "CORE_MODEL_AUTHORITY_TOKEN"}[service]
+	if key == "" {
+		return nil
+	}
+	origin := strings.TrimSpace(os.Getenv("CORE_AUTHORITY_URL"))
+	secret := strings.TrimSpace(os.Getenv(key))
+	if origin == "" && secret == "" {
+		return nil
+	} // explicitly unconfigured isolated fixtures cannot authorize enterprise work
+	for _, other := range []string{"GATEWAY_CORE_TOKEN", "GATEWAY_TOOL_TOKEN", "GATEWAY_DOCUMENT_TOKEN", "GATEWAY_EXECUTION_TOKEN", "GATEWAY_ROLE_TOKEN", "WORKER_DOCUMENT_TOKEN", "WORKER_MODEL_TOKEN", "WORKER_TOOL_TOKEN", "WORKER_CORE_TOKEN", "CORE_DOCUMENT_TOKEN", "DOCUMENT_MODEL_TOKEN", "TOOL_CORE_AUTHORITY_TOKEN", "CORE_MODEL_AUTHORITY_TOKEN"} {
+		if other != key && secret != "" && secret == strings.TrimSpace(os.Getenv(other)) {
+			return errors.New("operation authority credential must be pair-specific")
+		}
+	}
+	insecure := false
+	switch os.Getenv("CORE_AUTHORITY_ALLOW_INSECURE_DEV") {
+	case "", "false":
+	case "true":
+		insecure = true
+	default:
+		return errors.New("CORE_AUTHORITY_ALLOW_INSECURE_DEV must be true or false")
+	}
+	mode := os.Getenv("APP_ENV")
+	if mode == "" {
+		mode = "development"
+		if insecure {
+			return errors.New("explicit APP_ENV required for insecure authority")
+		}
+	}
+	client, err := operationauthority.NewOperationClient(origin, service, secret, os.Getenv("CORE_AUTHORITY_CA_FILE"), mode, insecure)
+	if err != nil {
+		return err
+	}
+	st.UseOperationAuthority(client)
+	return nil
 }

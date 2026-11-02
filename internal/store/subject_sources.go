@@ -127,6 +127,7 @@ func (s *Store) configuredSubjectSource() *SubjectSourceManifest {
 }
 
 func (s *Store) ListConfiguredSubjectSources(ctx context.Context, user accounts.User, caseID string) (SubjectSourceDirectoryResult, error) {
+	ctx = commandContext(ctx, user)
 	if err := ctx.Err(); err != nil {
 		return SubjectSourceDirectoryResult{}, err
 	}
@@ -155,6 +156,7 @@ func (s *Store) ListConfiguredSubjectSources(ctx context.Context, user accounts.
 }
 
 func (s *Store) CreateSubjectSourceSnapshot(ctx context.Context, user accounts.User, caseID string, input SubjectSourceSnapshotCreateInput, key string) (SubjectSourceSnapshotResult, bool, error) {
+	ctx = commandContext(ctx, user)
 	if err := ctx.Err(); err != nil {
 		return SubjectSourceSnapshotResult{}, false, err
 	}
@@ -252,6 +254,7 @@ func subjectSourceSnapshotResult(item SubjectSourceSnapshot) (SubjectSourceSnaps
 }
 
 func (s *Store) ListSubjectSourceSnapshots(ctx context.Context, user accounts.User, caseID, cursor string, limit int) (SubjectSourceSnapshotListResult, error) {
+	ctx = commandContext(ctx, user)
 	if err := ctx.Err(); err != nil {
 		return SubjectSourceSnapshotListResult{}, err
 	}
@@ -312,6 +315,7 @@ func (s *Store) ListSubjectSourceSnapshots(ctx context.Context, user accounts.Us
 }
 
 func (s *Store) GetSubjectSourceSnapshot(ctx context.Context, user accounts.User, caseID, snapshotID string) (SubjectSourceSnapshotDetail, error) {
+	ctx = commandContext(ctx, user)
 	if err := ctx.Err(); err != nil {
 		return SubjectSourceSnapshotDetail{}, err
 	}
@@ -343,6 +347,7 @@ func (s *Store) GetSubjectSourceSnapshot(ctx context.Context, user accounts.User
 }
 
 func (s *Store) VerifySubjectFromControlledSource(ctx context.Context, user accounts.User, caseID, snapshotID string, input SubjectSourceVerifyInput, key string) (SubjectSourceVerifyResult, bool, error) {
+	ctx = commandContext(ctx, user)
 	if err := ctx.Err(); err != nil {
 		return SubjectSourceVerifyResult{}, false, err
 	}

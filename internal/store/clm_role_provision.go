@@ -81,7 +81,7 @@ func ProvisionCLMMaintenanceRole(ctx context.Context, adminDSN, migratorDSN, sch
 	}
 	var migratorOK bool
 	if err := tx.QueryRow(ctx, `SELECT role.rolcanlogin AND NOT role.rolsuper AND NOT role.rolbypassrls
-		AND NOT role.rolcreatedb AND role.rolcreaterole AND NOT role.rolreplication
+		AND NOT role.rolcreatedb AND role.rolcreaterole AND NOT role.rolinherit AND NOT role.rolreplication
 		FROM pg_roles role WHERE role.rolname=$1`, migratorConfig.User).Scan(&migratorOK); err != nil || !migratorOK {
 		return errors.New("CLM offline migrator must be a dedicated login without superuser, bypass-RLS, create-database, replication, or inherited role membership")
 	}
@@ -129,21 +129,14 @@ func ProvisionCLMMaintenanceRole(ctx context.Context, adminDSN, migratorDSN, sch
 	var memberCount int
 	var exactMembership bool
 	var ownerIsMember bool
-	var migratorHasOtherMemberships bool
 	if err := tx.QueryRow(ctx, `SELECT count(*),COALESCE(bool_and(member.rolname=$2 AND NOT membership.admin_option
 		AND NOT membership.inherit_option AND membership.set_option),false)
 		FROM pg_auth_members membership JOIN pg_roles owner_role ON owner_role.oid=membership.roleid
 		JOIN pg_roles member ON member.oid=membership.member WHERE owner_role.rolname=$1`, role, migratorConfig.User).Scan(&memberCount, &exactMembership); err != nil {
 		return err
 	}
-	if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM pg_auth_members membership
-		JOIN pg_roles member ON member.oid=membership.member JOIN pg_roles granted_role ON granted_role.oid=membership.roleid
-		WHERE member.rolname=$1 AND NOT (granted_role.rolname=$2 AND NOT membership.admin_option
-		AND NOT membership.inherit_option AND membership.set_option))`, migratorConfig.User, role).Scan(&migratorHasOtherMemberships); err != nil {
+	if err := verifyOfflineMigratorMemberships(ctx, tx, database, schema, migratorConfig.User); err != nil {
 		return err
-	}
-	if migratorHasOtherMemberships {
-		return errors.New("CLM offline migrator has extra role memberships; pre-provisioning refuses to remove or normalize them")
 	}
 	if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM pg_auth_members WHERE member=$1::regrole)`, role).Scan(&ownerIsMember); err != nil {
 		return err

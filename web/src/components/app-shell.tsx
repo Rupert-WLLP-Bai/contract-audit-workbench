@@ -9,7 +9,6 @@ import {
   type NavigateFunction,
 } from "react-router";
 import { useCaseDetail, useLogout, useSession } from "../api/queries";
-import { organizationName } from "../domain/organization";
 import { actorRoleLabel } from "../domain/review";
 import { Avatar, Breadcrumb, Button, Input, Layout, Menu } from "antd";
 import {
@@ -31,6 +30,8 @@ import {
 import type { ReactNode } from "react";
 import type { Actor } from "../api/types";
 import { CompetitionIdentity } from "./competition-identity";
+import { ContextSwitcher } from "./context-switcher";
+import { PageStatus } from "./page-status";
 type NavLinkItem = {
   to: string;
   label: string;
@@ -58,6 +59,7 @@ const NAV_GROUPS: {
     label: "业务管理",
     links: [
       { to: "/cases", label: "案件管理", icon: "case", end: true },
+      { to: "/support", label: "案件支援访问", icon: "support" },
       { to: "/contracts", label: "合同登记", icon: "contracts", end: true },
       { to: "/workbench/approvals", label: "合同会签", icon: "contracts" },
       { to: "/subjects", label: "主体台账", icon: "subjects" },
@@ -108,6 +110,7 @@ const NAV_ICONS: Record<string, ReactNode> = {
   compare: <FileTextOutlined />,
   rules: <SafetyCertificateOutlined />,
   case: <FileTextOutlined />,
+  support: <SafetyCertificateOutlined />,
   contracts: <ContainerOutlined />,
   subjects: <TeamOutlined />,
   tasks: <CheckSquareOutlined />,
@@ -315,6 +318,7 @@ function AppTopbar({
   onSearchChange,
   onSearchSubmit,
   onLogout,
+  onContextTransition,
 }: {
   actor: Actor | undefined;
   search: string;
@@ -322,6 +326,7 @@ function AppTopbar({
   onSearchChange: (value: string) => void;
   onSearchSubmit: (event: FormEvent<HTMLFormElement>) => void;
   onLogout: () => void;
+  onContextTransition: (pending: boolean) => void;
 }) {
   return (
     <Layout.Header className="topbar">
@@ -332,12 +337,7 @@ function AppTopbar({
       >
         <CompetitionIdentity />
       </Link>
-      <span className="organization-badge" title={actor?.org_id}>
-        <span className="organization-badge-label">组织：</span>
-        <span className="organization-badge-value">
-          {organizationName(actor?.org_id)}
-        </span>
-      </span>
+      <ContextSwitcher actor={actor} audience="client" onTransition={onContextTransition} />
       <form className="global-search" role="search" onSubmit={onSearchSubmit}>
         <label className="sr-only" htmlFor="global-case-search">
           全局搜索案件
@@ -454,6 +454,7 @@ export function AppShell() {
   }, []);
   const [collapsed, setCollapsed] = useState(false);
   const [search, setSearch] = useState("");
+  const [contextTransition, setContextTransition] = useState(false);
   const caseId = caseIdOf(location.pathname);
   const caseDetail = useCaseDetail(caseId);
   useEffect(() => {
@@ -495,6 +496,7 @@ export function AppShell() {
             void navigate("/login", { replace: true, state: { from: location.pathname + location.search + location.hash } });
           });
         }}
+        onContextTransition={setContextTransition}
       />
       <Layout className="frame" hasSider>
         <AppSidebar
@@ -507,7 +509,9 @@ export function AppShell() {
         <Layout.Content className="content-column">
           <BreadcrumbItems crumbs={breadcrumbs} />
           <main id="main" tabIndex={-1}>
-            <Outlet />
+            {contextTransition ? (
+              <PageStatus kind="loading" title="正在确认新的工作上下文" />
+            ) : <Outlet />}
           </main>
         </Layout.Content>
       </Layout>

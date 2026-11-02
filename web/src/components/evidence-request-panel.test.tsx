@@ -18,7 +18,7 @@ const beijingAt = new Intl.DateTimeFormat("zh-CN", {
   timeZone: "Asia/Shanghai",
 }).format(new Date(at));
 const clients: QueryClient[] = [];
-const actor: Actor = { id: "owner", display_name: "审查人", role: "admin", tenant_id: "tenant", org_id: "org", audience: "client" };
+const actor: Actor = { id: "owner", display_name: "审查人", role: "admin", tenant_id: "tenant", org_id: "org", audience: "client", principal_id: "principal-owner", active_context: { membership_id: "member", tenant_id: "tenant", tenant_name: "租户", org_id: "org", org_name: "组织", context_version: "1" }, csrf_token: "test-csrf", context_switch_enabled: false };
 const document: ReviewDocument = {
   id: "doc-2", role: "draft_contract", filename: "补充合同.txt", media_type: "text/plain", digest: "digest",
   size: 20, parse_status: "ready", parse_error: null, created_at: at, parsed_document: null,

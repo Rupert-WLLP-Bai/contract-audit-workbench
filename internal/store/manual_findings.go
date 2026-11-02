@@ -92,6 +92,7 @@ func manualFindingReplay(ctx context.Context, tx pgx.Tx, tenantID, actorID, key,
 // CreateManualFinding verifies the exact attempt's input and parse selection
 // inside the case authorization transaction, then appends one record.
 func (s *Store) CreateManualFinding(ctx context.Context, user accounts.User, input ManualFindingInput) (ManualFinding, error) {
+	ctx = commandContext(ctx, user)
 	if s.serviceOwner != "" && s.serviceOwner != "core" {
 		return ManualFinding{}, fault.Forbidden("当前服务不能记录人工发现")
 	}
@@ -201,6 +202,7 @@ func (s *Store) CreateManualFinding(ctx context.Context, user accounts.User, inp
 // ListManualFindings returns only records from the exact requested attempt and
 // rechecks current case-read permission; possession of an ID grants no access.
 func (s *Store) ListManualFindings(ctx context.Context, user accounts.User, caseID, runID, attemptID string) ([]ManualFinding, error) {
+	ctx = commandContext(ctx, user)
 	if !experienceIdentity(runID) || !experienceIdentity(attemptID) {
 		return nil, fault.NotFound("没有找到对应执行记录")
 	}

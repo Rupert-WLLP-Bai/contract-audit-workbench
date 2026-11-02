@@ -44,6 +44,16 @@ REQUIRED_POLICY_RULES = {
             "allowed_direct_imports": {"time"},
         },
     },
+    "core-authority-transport-boundary": {
+        "coreauthority-stdlib-only": {
+            "package": "internal/coreauthority",
+            "mode": "allowlist",
+            "allowed_direct_imports": {
+                "crypto/tls", "crypto/x509", "errors", "net", "net/http",
+                "net/url", "os", "strings", "time",
+            },
+        },
+    },
 }
 
 
