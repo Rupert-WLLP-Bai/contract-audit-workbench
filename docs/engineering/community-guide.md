@@ -14,7 +14,7 @@
 
 - 第一次开发环境启动见[本地开发](local-development.md)。
 - 产品能力与边界见[能力与边界](../product/capabilities.md)和[案件审查工作流](../product/workflow.md)。
-- 贡献流程见[贡献与协作](contributing.md)，许可信息见[许可与贡献](licensing.md)和仓库根目录 [`LICENSE`](../../LICENSE)。
+- 贡献流程见[贡献与协作](contributing.md)，许可信息见[许可与贡献](licensing.md)和仓库根目录 [`LICENSE`](https://github.com/Rupert-WLLP-Bai/contract-audit-workbench/blob/main/LICENSE)。
 
 ## 当前源码与可用入口
 
@@ -102,4 +102,4 @@ HTTP 契约以 Go 中的类型与路由声明为源。`make generate-openapi` �
 
 ## 许可与分发
 
-许可状态、适用范围和分发条件以根目录 [`LICENSE`](../../LICENSE) 及专门许可 Issue 的结论为准；不要仅据文件日期声称许可已生效或属于 OSI 开源许可。第三方材料仍适用各自条款；不要提交无权提供的素材、真实合同或数据。
+许可状态、适用范围和分发条件以根目录 [`LICENSE`](https://github.com/Rupert-WLLP-Bai/contract-audit-workbench/blob/main/LICENSE) 及专门许可 Issue 的结论为准；不要仅据文件日期声称许可已生效或属于 OSI 开源许可。第三方材料仍适用各自条款；不要提交无权提供的素材、真实合同或数据。
