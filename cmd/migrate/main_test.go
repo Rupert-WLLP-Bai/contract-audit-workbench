@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Exercises the `main` package behavior through TestRunPreservesOptionalServiceRoleMigration, TestMigrateMainReportsStartupFailureAndExits; these checks pin observable state, error handling, or wire/database compatibility for this module. Test cases include unset setting migrates schema without provisioning roles, false setting migrates schema without provisioning roles, true setting provisions the dedicated service roles, other settings keep the migration error.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-30
+// Updated: 2026-10-30
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package main
 
 import (

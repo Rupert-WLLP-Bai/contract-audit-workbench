@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Validates ranked knowledge advisories against candidate identity, scope, evidence citations and frozen knowledge reads before review planning can use them; compares candidates deterministically and rejects unsupported or mismatched advisory claims.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-30
+// Updated: 2026-10-30
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package agentflow
 
 import (

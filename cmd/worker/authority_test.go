@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: 提供 `TestCoreWorkerClaimAuthoritySendsOnlyClaimTupleAndChecksProjection`, `newWorkerTestTransport` 等命令入口与参数处理，执行对应的离线导入、服务授权或工具工作流。
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-02
+// Updated: 2026-11-02
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package main
 
 import (

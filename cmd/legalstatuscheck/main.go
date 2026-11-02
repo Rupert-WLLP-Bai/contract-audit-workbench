@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Command legalstatuscheck compares official registry responses with the status evidence pinned in the normative source registry. Two modes exist: -offline: -asset-dir <dir> reads already captured responses -online:… Related `main` operations include main, run, selectEditions, readCandidate.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-31
+// Updated: 2026-10-31
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 // Command legalstatuscheck compares official registry responses with the
 // status evidence pinned in the normative source registry.
 //

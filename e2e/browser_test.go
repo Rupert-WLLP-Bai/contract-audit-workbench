@@ -1,5 +1,15 @@
 //go:build browser
 
+// File metadata (manifest mirror):
+// Purpose: Exercises the `e2e_test` package behavior through TestBrowserWarrantyConflictAndConfirm; these checks pin observable state, error handling, or wire/database compatibility for this module.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-25
+// Updated: 2026-10-31
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package e2e_test
 
 import (

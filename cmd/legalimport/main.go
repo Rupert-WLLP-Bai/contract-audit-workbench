@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Command legalimport submits the three archived supplemental sources through the existing authenticated legal-source import endpoint. It never publishes the resulting draft articles. See the external legal-source… Related `main` operations include main, run, importSource.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-31
+// Updated: 2026-10-31
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 // Command legalimport submits the three archived supplemental sources through
 // the existing authenticated legal-source import endpoint. It never publishes
 // the resulting draft articles. See the external legal-source delivery notes.

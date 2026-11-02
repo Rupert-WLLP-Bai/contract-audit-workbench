@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Command toolgateway runs the independently deployed, read-only tool gateway. The process owns the tool database identity. It serves the MCP profile at /mcp, which the edge gateway reaches with GATEWAY_ROLE_TOKEN, and it… Related `main` operations include main, run, mcpHandler, requireCaller.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-25
+// Updated: 2026-11-02
+// Revision: r2
+// Copyright: See LICENSE
+// End file metadata.
+
 // Command toolgateway runs the independently deployed, read-only tool gateway.
 //
 // The process owns the tool database identity. It serves the MCP profile at

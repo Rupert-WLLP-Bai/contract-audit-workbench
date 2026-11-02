@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: BuildKnowledgeRequest turns deterministic optional candidates into one bounded, minimized System One batch. It never receives contract text: the scope, gap labels and governed… Related `advisory` operations include BuildKnowledgeRequest, validKnowledgeConfiguration, selectCandidates, buildQuestions.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-28
+// Updated: 2026-10-30
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package advisory
 
 import (
