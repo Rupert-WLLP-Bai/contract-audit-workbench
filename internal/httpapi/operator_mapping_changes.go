@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Previews, proposes, reads and decides service-object mapping changes through authenticated admin routes; validates CAS revisions and evidence references while leaving approval and persistence to the server-side store.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-31
+// Updated: 2026-10-31
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package httpapi
 
 import (

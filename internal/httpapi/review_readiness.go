@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Returns a case-scoped readiness projection for the selected review inputs, including missing or incompatible dependencies; it reports prerequisites and does not start or certify a review.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-31
+// Updated: 2026-10-31
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package httpapi
 
 import (

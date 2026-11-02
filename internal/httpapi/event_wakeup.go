@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: eventWakeups shares a broadcast subscription between this handler's streams. Notifications are hints only; event contents and authorization come from PG. Related `httpapi` operations include newEventWakeups, subscribe, startLocked, run.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-31
+// Updated: 2026-10-31
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package httpapi
 
 import (

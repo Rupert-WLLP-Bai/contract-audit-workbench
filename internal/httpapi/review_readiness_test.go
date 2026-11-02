@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Exercises the `httpapi_test` package behavior through TestReviewReadinessListsCurrentMaterialsAndPreservesLegacyTimePolicy; these checks pin observable state, error handling, or wire/database compatibility for this module.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-31
+// Updated: 2026-10-31
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package httpapi_test
 
 import (

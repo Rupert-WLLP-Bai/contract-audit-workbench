@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Serves case-scoped experience-usage option, recording and metrics endpoints; checks the authenticated actor and evidence identity before appending usage or returning aggregated results.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-31
+// Updated: 2026-10-31
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package httpapi
 
 import (

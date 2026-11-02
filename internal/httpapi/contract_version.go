@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Contract version routes freeze a native draft into an immutable revision and expose the frozen ledger plus the field-level diff. Freezing does not by itself start an approval… Related `httpapi` operations include registerContractVersionRoutes, freezeContractVersion, listContractVersions, getContractVersion.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-01
+// Updated: 2026-11-01
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package httpapi
 
 import (

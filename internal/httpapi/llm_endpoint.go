@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: llmStatusTimeout bounds the stored endpoint health check, matching the default model client request timeout. Related `httpapi` operations include llmEndpointJSON, emptyLLMEndpointView, llmEndpoint, probeLLMEndpoint.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-30
+// Updated: 2026-10-31
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package httpapi
 
 import (

@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Resolves the session audience and actor from validated session state, applies audience-specific cookie attributes and keeps client/admin identity scopes separate.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-25
+// Updated: 2026-11-02
+// Revision: r2
+// Copyright: See LICENSE
+// End file metadata.
+
 package httpapi
 
 import (
