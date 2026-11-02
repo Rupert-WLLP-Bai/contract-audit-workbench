@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Renders LLMEndpointPanel, the llm endpoint workbench UI, from the selected case/workspace projection and the module’s query/state inputs; writes are sent through the existing API and remain subject to server authorization.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-30
+// Updated: 2026-10-30
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { Button, Checkbox, Input, Modal, Select } from "antd";
 import { errorMessage } from "../api/http";

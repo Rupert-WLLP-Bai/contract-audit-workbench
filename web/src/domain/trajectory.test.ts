@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Checks the web behavior for “buildTrajectory”; representative assertions cover merges stages, model traces, tool returns and knowledge reads in time order, shows deterministic checks that never opened a span, states when model output and timestamps were not recorded. It protects the rendered/API state expected by this component without starting the full browser journey.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-30
+// Updated: 2026-10-30
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 import { describe, expect, it } from "vitest";
 import { parseAgentReview } from "../api/agent-review";
 import type {

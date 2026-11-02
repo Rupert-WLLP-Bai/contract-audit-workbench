@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Checks the web behavior for “capability pack panel”; representative assertions cover is off by default and does not query the server, lists pack versions, scenarios and status without hiding synthetic data, shows loading first and an explicit empty catalogue afterwards. It protects the rendered/API state expected by this component without starting the full browser journey.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-29
+// Updated: 2026-10-29
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 import { act, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";

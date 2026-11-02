@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Exposes the controlled fact values accepted by legal-applicability forms and API validation; rejects unrecognized fields instead of creating free-form authority.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-31
+// Updated: 2026-10-31
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 /** Controlled values used by the fact-entry form and its API boundary parser. */
 export const legalApplicabilityControlledValues: Record<
   string,

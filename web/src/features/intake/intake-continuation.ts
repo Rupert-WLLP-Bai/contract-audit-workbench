@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Persists only actor/tenant/audience-scoped intake continuation identity, file digest, idempotency key and server receipt; contract bytes, cookies and credentials remain outside browser storage.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-31
+// Updated: 2026-11-02
+// Revision: r2
+// Copyright: See LICENSE
+// End file metadata.
+
 import { isRecord } from "../../api/guards";
 import { idempotencyFingerprint } from "../../api/idempotency";
 import { INTAKE_MAX_FILE_BYTES, type IntakeRequestIdentity, type IntakeResult, type IntakeState, type ServerIntakeContinuation } from "../../api/intakes";

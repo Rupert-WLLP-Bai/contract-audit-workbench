@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Classifies evidence requests as outstanding, due or overdue from status and RFC3339 deadlines, and resolves the first registered receipt without altering request history.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-31
+// Updated: 2026-10-31
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 import type {
   EvidenceReceipt,
   EvidenceRequest,

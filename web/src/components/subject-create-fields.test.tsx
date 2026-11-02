@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Checks the web behavior for “subject create input”; representative assertions cover sends asserted identity claims without client verification fields, keeps a missing code optional and rejects format-only values that are not complete. It protects the rendered/API state expected by this component without starting the full browser journey.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-31
+// Updated: 2026-10-31
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 import { subjectCreateInput } from "./subject-create-fields";
 
 describe("subject create input", () => {

@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Checks the web behavior for “fulfillment diff panel”; representative assertions cover is off by default, shows contract value, configured value and units side by side, keeps document and external-snapshot evidence in separate columns. It protects the rendered/API state expected by this component without starting the full browser journey.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-29
+// Updated: 2026-10-29
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 import { screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { DEMO_OPERATOR_AUDIT_FLAGS } from "./feature-flags";
