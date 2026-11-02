@@ -23501,7 +23501,7 @@
             "$ref": "#/components/responses/Error403"
           },
           "500": {
-            "$ref": "/components/responses/Error500"
+            "$ref": "#/components/responses/Error500"
           }
         },
         "security": [
@@ -23543,13 +23543,13 @@
             "$ref": "#/components/responses/Error401"
           },
           "403": {
-            "$ref": "/components/responses/Error403"
+            "$ref": "#/components/responses/Error403"
           },
           "409": {
-            "$ref": "/components/responses/Error409"
+            "$ref": "#/components/responses/Error409"
           },
           "422": {
-            "$ref": "/components/responses/Error422"
+            "$ref": "#/components/responses/Error422"
           }
         },
         "security": [
@@ -23591,10 +23591,10 @@
             "$ref": "#/components/responses/Error401"
           },
           "403": {
-            "$ref": "/components/responses/Error403"
+            "$ref": "#/components/responses/Error403"
           },
           "409": {
-            "$ref": "/components/responses/Error409"
+            "$ref": "#/components/responses/Error409"
           }
         },
         "security": [
