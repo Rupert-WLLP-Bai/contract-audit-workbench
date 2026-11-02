@@ -1,11 +1,35 @@
 import { Button, Table, type TableProps } from "antd";
 import { errorMessage } from "../api/http";
-import { useTenantOperations } from "../api/tenant-operations";
+import { useTenantOperations, type TenantCostWindow } from "../api/tenant-operations";
 import "./tenant-operations-panel.css";
 
 type BudgetRow = { key: string; label: string; used: number; limit: number | null; globalLimit: number | null };
 const tenantStatusLabel = { active: "启用", suspended: "已暂停", closed: "已关闭" } as const;
 const tenantStatusTone = { active: "good", suspended: "attention", closed: "danger" } as const;
+function formatUsdMinor(value: string): string {
+  const amount = BigInt(value);
+  const whole = (amount / 1_000_000n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  const fraction = (amount % 1_000_000n).toString().padStart(6, "0");
+  return `USD ${whole}.${fraction}`;
+}
+
+function CostWindowFacts({ label, window }: { label: string; window: TenantCostWindow }) {
+  return (
+    <section className="tenant-cost-window" aria-label={`${label}预算`}>
+      <h3>{label} · {window.period_key} UTC</h3>
+      <dl>
+        <div><dt>预算上限</dt><dd>{window.limit_minor === null ? "未设限" : formatUsdMinor(window.limit_minor)}</dd></div>
+        <div><dt>已结算金额</dt><dd>{formatUsdMinor(window.settled_minor)}</dd></div>
+        <div><dt>预留金额</dt><dd>{formatUsdMinor(window.reserved_minor)}</dd></div>
+        <div><dt>其中未知实际费用的预留</dt><dd>{formatUsdMinor(window.unknown_hold_minor)}</dd></div>
+        <div data-tone={window.known ? "good" : "attention"}>
+          <dt>实际费用记录</dt><dd>{window.known ? "已知" : "含未知项"}</dd>
+        </div>
+      </dl>
+    </section>
+  );
+}
+
 const columns: TableProps<BudgetRow>["columns"] = [
   { title: "指标", dataIndex: "label", rowScope: "row" },
   { title: "当前租户用量", dataIndex: "used", render: (value: number) => value.toLocaleString() },
@@ -62,6 +86,14 @@ export function TenantOperationsPanel() {
             { key: "tokens", label: "最近 60 秒预算 token", used: data.usage.charged_tokens + data.usage.reserved_tokens, limit: data.budget?.tenant.tokens_per_minute ?? null, globalLimit: data.budget?.global.tokens_per_minute ?? null },
           ]}
         />
+        <section className="tenant-cost-summary" aria-label="租户日月费用与预算">
+          <h3>日 / 月预算与费用（USD，UTC）</h3>
+          <p>金额使用精确微美元整数换算显示。未知实际费用不会按零处理；“未知实际费用的预留”单独列出，它是预留金额，不是已发生费用。</p>
+          <div className="tenant-cost-periods">
+            <CostWindowFacts label="日" window={data.cost.day} />
+            <CostWindowFacts label="月" window={data.cost.month} />
+          </div>
+        </section>
         <p>预算 token 包含已结算计费与在途预留；最近 60 秒有 {data.usage.unknown_usage_calls.toLocaleString()} 次调用未报告实际用量，按保守上限计费。明确未发出的调用已释放预算。</p>
         <p>全局预算同时约束所有租户。本页余量是当前租户的观测快照，受理以服务端账本为准；超配额返回 HTTP 429。</p>
       </> : null}

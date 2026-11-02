@@ -84,6 +84,14 @@ function EvidenceSection({
 }) {
   return (
     <>
+      <dl>
+        <dt>本次运行采用的租户配置</dt>
+        <dd>
+          {snapshot?.adopted_tenant_config
+            ? <><code>{snapshot.adopted_tenant_config.version_id}</code> · SHA-256 <code>{snapshot.adopted_tenant_config.digest}</code></>
+            : "历史未记录 / 未知"}
+        </dd>
+      </dl>
       {snapshot && showDiagnostics ? (
         <SnapshotDetails snapshot={snapshot} />
       ) : snapshot ? (
