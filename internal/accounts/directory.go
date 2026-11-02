@@ -58,6 +58,8 @@ func demoIdentity(id, name, role string) User {
 func copyUser(user User) User {
 	user.Grants = append([]access.Grant(nil), user.Grants...)
 	for i := range user.Grants {
+		user.Grants[i].TenantIDs = append([]string(nil), user.Grants[i].TenantIDs...)
+		user.Grants[i].Metrics = append([]string(nil), user.Grants[i].Metrics...)
 		user.Grants[i].ResolvedOrgIDs = append([]string(nil), user.Grants[i].ResolvedOrgIDs...)
 	}
 	return user

@@ -114,6 +114,7 @@ func Handler(st *store.Store, opt Options) http.Handler {
 	mux.HandleFunc("POST /api/admin/platform/tenant-provision-operations", h.startPlatformTenantProvisionOperation)
 	mux.HandleFunc("GET /api/admin/platform/tenant-provision-operations/{operationID}", h.readPlatformTenantProvisionOperation)
 	mux.HandleFunc("POST /api/admin/platform/tenant-provision-operations/{operationID}/step", h.advancePlatformTenantProvisionOperation)
+	mux.HandleFunc("GET /api/admin/jurisdiction/operations", h.jurisdictionOperations)
 	mux.HandleFunc("POST /api/admin/tenant-config/preview", h.previewTenantConfig)
 	mux.HandleFunc("PUT /api/admin/tenant-config/adoption", h.adoptTenantConfig)
 	mux.HandleFunc("PUT /api/admin/tenant-config/live-control", h.setTenantLiveControl)
