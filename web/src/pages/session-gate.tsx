@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Waits for the authenticated audience/session query before rendering protected routes, redirects unauthenticated users to login and clears private route state when identity expires.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-25
+// Updated: 2026-11-02
+// Revision: r2
+// Copyright: See LICENSE
+// End file metadata.
+
 import { useLayoutEffect } from "react";
 import { Button } from "antd";
 import { useQueryClient } from "@tanstack/react-query";

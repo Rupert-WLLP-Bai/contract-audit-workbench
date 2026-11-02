@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Keeps stable idempotency keys per identical operator-audit operation and payload during a mounted session so retries cannot accidentally become new writes.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-29
+// Updated: 2026-11-02
+// Revision: r2
+// Copyright: See LICENSE
+// End file metadata.
+
 import { useRef } from "react";
 import { newIdempotencyKey } from "../../api/idempotency";
 

@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Shows the operator-audit extension only when enabled by the server/deployment flags, then composes versioned service-object, evidence and impact views; no extension write path is offered while disabled.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-29
+// Updated: 2026-10-31
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 import { useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Alert, Button, Card, Input, Select, Space } from "antd";

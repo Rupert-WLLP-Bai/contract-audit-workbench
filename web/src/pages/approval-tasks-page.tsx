@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Shows the authenticated actor’s contract-approval inbox by todo/done/initiated view, loads frozen round/task details and submits only the server-provided decision actions with revision/idempotency context.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-01
+// Updated: 2026-11-01
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 import {
   Alert,
   Button,

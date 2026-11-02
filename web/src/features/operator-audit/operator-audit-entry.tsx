@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Adds a link into the operator-audit extension only when the server enables it for the current run; disabled deployments render no extension write surface.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-29
+// Updated: 2026-10-29
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 import { Link } from "react-router";
 import { useSettings } from "../../api/queries";
 

@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Loads evidence requests across authorized cases and presents receipt status and due/overdue timing from the server projection; it does not infer that unreceived evidence was supplied.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-31
+// Updated: 2026-10-31
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 import { Button } from "antd";
 import { errorMessage } from "../api/http";
 import { useCases } from "../api/queries";

@@ -1,3 +1,13 @@
+/* File metadata (manifest mirror): */
+/* Purpose: Defines visual tokens and component/page rules, including Hallmark · built: the project · redesign: full ·…, .health-page :focus-visible, .health-page .page-head, .health-page .page-head h1; the stylesheet is imported by the web shell and carries no application state. */
+/* Author: Bai Junhao <baijunhao@cq.chinamobile.com> */
+/* Contact: +86 13617696321 */
+/* Created: 2026-10-25 */
+/* Updated: 2026-10-28 */
+/* Revision: r1 */
+/* Copyright: See LICENSE */
+/* End file metadata. */
+
 /* Hallmark · built: the project · redesign: full · theme: charcoal-blue · genre: modern-minimal · scope: app · surface: absolute · shape: service inventory · nav: black grouped menu · footer: none */
 /* Hallmark · pre-emit critique: group live observations by purpose and keep status, target, and detail readable without overlapping adjacent services */
 /* Hallmark · waive 26b · service buttons, inputs and selects receive active and disabled states from Ant Design · the service inventory uses the shared component states instead of defining another set */

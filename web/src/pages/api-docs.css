@@ -1,3 +1,13 @@
+/* File metadata (manifest mirror): */
+/* Purpose: Defines visual tokens and component/page rules, including Monochrome developer documentation. Paper ground,…, .api-docs-page *, .api-docs-page *::before,…, .api-docs-page ::selection, .api-docs-page :focus-visible; the stylesheet is imported by the web shell and carries no application state. */
+/* Author: Bai Junhao <baijunhao@cq.chinamobile.com> */
+/* Contact: +86 13617696321 */
+/* Created: 2026-10-25 */
+/* Updated: 2026-10-30 */
+/* Revision: r1 */
+/* Copyright: See LICENSE */
+/* End file metadata. */
+
 /* Monochrome developer documentation. Paper ground, ink hairlines, one black accent. */
 .api-docs-page {
   --api-paper: #f4f3ef;

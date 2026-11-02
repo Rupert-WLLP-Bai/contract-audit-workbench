@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Renders ManualFindingsPanel, the manual findings panel workbench UI, from the selected case/workspace projection and the module’s query/state inputs; writes are sent through the existing API and remain subject to server authorization.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-31
+// Updated: 2026-11-01
+// Revision: r2
+// Copyright: See LICENSE
+// End file metadata.
+
 import { Button, Input, Select } from "antd";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState, type FormEvent } from "react";

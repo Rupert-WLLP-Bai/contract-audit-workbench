@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Presents server-derived case/workflow summaries and starts primary-contract intake through the explicit upload flow; displayed counts and risk summaries are not recalculated from hidden client data.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-25
+// Updated: 2026-10-31
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 import {
   CheckSquareOutlined,
   ClockCircleOutlined,

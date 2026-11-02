@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Creates an editable rule-pack draft from an existing published version, validates form input for feedback and submits with server revision/lifecycle checks.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-25
+// Updated: 2026-10-28
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 import { Button } from "antd";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router";
