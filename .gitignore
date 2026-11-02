@@ -65,11 +65,23 @@ infra-*.json
 !/CHANGELOG.md
 !/CONTRIBUTING.md
 !/.github/pull_request_template.md
-# Curated long-lived handbook sources and the standalone reader package.
+# Curated long-lived handbook sources only.
 !/docs/
-!/docs/**/*.md
+!/docs/index.md
+!/docs/architecture/
+!/docs/architecture/**/*.md
+!/docs/engineering/
+!/docs/engineering/**/*.md
+!/docs/glossary/
+!/docs/glossary/**/*.md
 !/docs/glossary/concepts.json
-# Original research, prompts, samples and run evidence remain external.
+!/docs/operations/
+!/docs/operations/**/*.md
+!/docs/product/
+!/docs/product/**/*.md
+# Original design material, research, prompts, samples and run evidence stay external.
+/docs/design.md
+/docs/design/
 /docs/research/
 /docs/prompts/
 /docs/samples/
