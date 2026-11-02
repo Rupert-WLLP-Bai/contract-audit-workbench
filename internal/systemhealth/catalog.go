@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: catalog lists expected deployment services, including optional profiles. New Compose services discovered from Docker are retained even before being named. Related `systemhealth` operations include catalog, optional.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-25
+// Updated: 2026-10-28
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package systemhealth
 
 // catalog lists expected deployment services, including optional profiles. New
