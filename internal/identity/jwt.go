@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Parses and verifies OIDC ID tokens against trusted issuer keys, signature, issuer, audience and time claims before exposing a typed authenticated identity; malformed or untrusted tokens fail closed.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-25
+// Updated: 2026-10-30
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package identity
 
 import (

@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: validates and probes an operator-supplied, OpenAI-compatible model endpoint and seals its provider credential. The endpoint is platform control data, not case data. It never contains a human decision, and the provider… Related `llmendpoint` operations include Active, Normalize, NormalizeBaseURL, normalizeModels.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-30
+// Updated: 2026-10-31
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 // Package llmendpoint validates and probes an operator-supplied,
 // OpenAI-compatible model endpoint and seals its provider credential.
 //

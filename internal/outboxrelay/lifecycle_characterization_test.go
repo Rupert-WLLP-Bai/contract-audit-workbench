@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Exercises the `outboxrelay` package behavior through TestRelayRunStopsWithItsContextAndSurvivesStepFailures, TestServeBoundsReconnectsAndClosesEveryBroker, TestJetStreamDialRejectsUnusableBrokers, TestJetStreamBrokerRefusesUnstableMessageIDsAndClosesSafely, TestWakeupHelpersFailClosedWhenDisabled; these checks pin observable state, error handling, or wire/database compatibility for this module. Test cases include already cancelled, step failure does not stop the loop, step context error ends the run, successful step then cancellation.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-30
+// Updated: 2026-10-30
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package outboxrelay
 
 import (
