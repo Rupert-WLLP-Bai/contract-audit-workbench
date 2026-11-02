@@ -662,7 +662,8 @@
       "name": "model_money_ledger",
       "classification": "TENANT_DATA",
       "tenant_column": true,
-      "force_rls": true
+      "force_rls": true,
+      "exception": "AUTH_FENCE_OWNER reads only tenant_id/lease_id/event_kind/amount_minor for one operation-bound tenant to block lifecycle completion while unknown-cost holds remain."
     },
     {
       "name": "model_money_limits",
@@ -681,7 +682,8 @@
       "name": "model_usage",
       "classification": "TENANT_DATA",
       "tenant_column": true,
-      "force_rls": true
+      "force_rls": true,
+      "exception": "AUTH_FENCE_OWNER reads only tenant_id/lease_id/money_cost_state for one operation-bound tenant to check unknown-cost holds."
     },
     {
       "name": "operation_authority_tickets",
@@ -933,6 +935,20 @@
       "classification": "TENANT_DATA",
       "tenant_column": true,
       "force_rls": true
+    },
+    {
+      "name": "tenant_provision_operation_steps",
+      "classification": "AUTH_CONTROL",
+      "tenant_column": false,
+      "force_rls": true,
+      "exception": "Append/update step receipts for tenant lifecycle operations; FORCE RLS with AUTH_FENCE_OWNER-only access through the bounded operator workflow functions."
+    },
+    {
+      "name": "tenant_provision_operations",
+      "classification": "AUTH_CONTROL",
+      "tenant_column": true,
+      "force_rls": true,
+      "exception": "Platform-controlled durable tenant lifecycle workflow; FORCE RLS with AUTH_FENCE_OWNER-only access through allowlisted operator functions."
     },
     {
       "name": "tool_call_ledger",
