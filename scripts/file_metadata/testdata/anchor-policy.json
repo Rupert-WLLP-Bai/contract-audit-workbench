@@ -1,0 +1,271 @@
+{
+  "policy_version": 1,
+  "canonical_manifest": "scripts/file_metadata/manifest.json",
+  "schema": "scripts/file_metadata/schema.json",
+  "manifest_status": "populated-from-issue-115-baseline",
+  "manifest_scope": "one entry per current Git-tracked path, including files handled without an embedded header",
+  "project_identity": {
+    "author": {
+      "name": "Bai Junhao",
+      "email": "baijunhao@cq.chinamobile.com",
+      "contact": "+86 13617696321"
+    },
+    "maintainer": {
+      "name": "Bai Junhao",
+      "email": "baijunhao@cq.chinamobile.com",
+      "contact": "+86 13617696321"
+    },
+    "project_copyright_reference": "See LICENSE",
+    "spdx_identifier": null,
+    "license_approval_assumption": false
+  },
+  "dates": {
+    "format": "YYYY-MM-DD",
+    "timezone": "UTC",
+    "created": "earliest traceable Git content-introduction date, following rename history; otherwise unknown with reason",
+    "updated": "latest traceable content-change date after excluding the metadata block; otherwise unknown with reason",
+    "git_timestamp_field": "committer date, converted to UTC calendar date",
+    "metadata_only_change_updates_date": false,
+    "provenance_required": [
+      "source kind",
+      "full commit SHA when known",
+      "reason or limitation"
+    ]
+  },
+  "revision": {
+    "format": "rN",
+    "baseline": "r1 at initial metadata inventory",
+    "increment_when": "content outside the metadata block changes",
+    "do_not_increment_when": "only metadata fields or the metadata block change",
+    "independent_of": [
+      "product version",
+      "API version",
+      "database schema version",
+      "package version",
+      "commit count"
+    ]
+  },
+  "manifest_record_requirements": {
+    "purpose": "file-specific responsibility, important input/output, and applicable boundary",
+    "authors_and_maintainers_are_separate": true,
+    "project_author_exact": "Bai Junhao <baijunhao@cq.chinamobile.com>; +86 13617696321",
+    "third_party_attribution": "preserve upstream author, copyright and license notices verbatim; add Bai Junhao only as project maintainer",
+    "rights_reference": "See LICENSE; do not infer SPDX or OSI approval",
+    "exception_reason_is_path_specific": true,
+    "generated_files_record_generator_and_inputs": true
+  },
+  "header": {
+    "manifest_is_authoritative": true,
+    "header_is_human_readable_mirror": true,
+    "fields_in_order": [
+      "Purpose",
+      "Author",
+      "Contact",
+      "Created",
+      "Updated",
+      "Revision",
+      "Copyright"
+    ],
+    "metadata_only_changes_are_excluded_from_content_history": true,
+    "native_comment_syntax_and_parser_directives_must_be_preserved": true,
+    "start_marker": "File metadata (manifest mirror):",
+    "end_marker": "End file metadata.",
+    "labels_in_order": [
+      "Purpose",
+      "Author",
+      "Contact",
+      "Created",
+      "Updated",
+      "Revision",
+      "Copyright"
+    ]
+  },
+  "file_classes": [
+    {
+      "id": "license-text",
+      "paths": [
+        "LICENSE"
+      ],
+      "handling": "manifest-only",
+      "reason": "Preserve the operative license language and its own copyright notice; keep repository metadata out of the legal text."
+    },
+    {
+      "id": "go-source",
+      "patterns": [
+        "**/*.go"
+      ],
+      "handling": "header-and-manifest",
+      "syntax": "Go line comments before package; after build constraints and required blank line",
+      "notes": "Preserve //go:build, // +build, generated-code markers, and existing copyright comments."
+    },
+    {
+      "id": "python-source",
+      "patterns": [
+        "**/*.py"
+      ],
+      "handling": "header-and-manifest",
+      "syntax": "Python # comments after shebang and encoding cookie"
+    },
+    {
+      "id": "typescript-source",
+      "patterns": [
+        "**/*.ts",
+        "**/*.tsx"
+      ],
+      "handling": "header-and-manifest",
+      "syntax": "JavaScript/TypeScript line comments before imports and after directives"
+    },
+    {
+      "id": "shell-source",
+      "patterns": [
+        "**/*.sh"
+      ],
+      "handling": "header-and-manifest",
+      "syntax": "Shell # comments after the shebang"
+    },
+    {
+      "id": "css-source",
+      "patterns": [
+        "**/*.css"
+      ],
+      "handling": "header-and-manifest",
+      "syntax": "CSS block comment before rules"
+    },
+    {
+      "id": "html-markdown",
+      "patterns": [
+        "**/*.html",
+        "**/*.md"
+      ],
+      "handling": "header-and-manifest",
+      "syntax": "HTML comment before document content"
+    },
+    {
+      "id": "comment-capable-config",
+      "patterns": [
+        "**/*.yaml",
+        "**/*.yml",
+        "**/*.toml",
+        "**/*.conf",
+        "**/*.example",
+        "Makefile",
+        "**/Dockerfile",
+        "**/Dockerfile.*"
+      ],
+      "handling": "header-and-manifest",
+      "syntax": "Native # comments only when accepted before content by the actual consumer",
+      "notes": "If a tool or parser rejects a leading comment, use manifest-only and record the exact path-specific reason."
+    },
+    {
+      "id": "repository-dotfiles",
+      "patterns": [
+        "**/.gitignore",
+        "**/.gitattributes"
+      ],
+      "handling": "header-and-manifest",
+      "syntax": "Native # comments; keep metadata block after required format/version declarations if any"
+    },
+    {
+      "id": "strict-json",
+      "patterns": [
+        "**/*.json"
+      ],
+      "handling": "manifest-only",
+      "reason": "JSON has no comment syntax; preserve strict JSON and public/schema contract bytes."
+    },
+    {
+      "id": "lock-and-module-integrity",
+      "paths": [
+        "go.mod",
+        "go.sum",
+        "web/bun.lock"
+      ],
+      "handling": "manifest-only",
+      "reason": "Tool-owned module and lock formats must remain in their native form; do not insert metadata comments or fields."
+    },
+    {
+      "id": "sql-migrations",
+      "paths": [
+        "internal/store/migrations/0001_legacy_core.sql",
+        "internal/store/migrations/0002_material_history.sql",
+        "internal/store/migrations/0003_service_objects.sql",
+        "internal/store/migrations/0004_subject_history.sql",
+        "internal/store/migrations/0005_legal_applicability.sql",
+        "internal/store/migrations/0006_model_budget_functions.sql",
+        "internal/store/migrations/0007_experience_functions.sql",
+        "internal/store/migrations/0008_session_token_cleanup.sql",
+        "internal/store/migrations/0009_case_intake_operations.sql",
+        "internal/store/migrations/0010_model_budget_window_indexes.sql",
+        "internal/store/migrations/0011_attempt_output_indexes.sql",
+        "internal/store/migrations/0012_operator_evaluation_objects.sql",
+        "internal/store/migrations/0013_write_idempotency.sql",
+        "internal/store/migrations/0014_manual_findings.sql",
+        "internal/store/migrations/0015_rule_shadow_reports.sql",
+        "internal/store/migrations/0016_experience_finding_usage.sql",
+        "internal/store/migrations/0017_intake_continuation.sql",
+        "internal/store/migrations/0018_contract_aggregate.sql",
+        "internal/store/migrations/0019_contract_drafts.sql",
+        "internal/store/migrations/0020_budget_attempt_read_indexes.sql",
+        "internal/store/migrations/0021_contract_ledger.sql",
+        "internal/store/migrations/0022_contract_version_freeze.sql",
+        "internal/store/migrations/0023_contract_approval_routing.sql",
+        "internal/store/migrations/0024_approval_decisions.sql",
+        "internal/store/migrations/0025_contract_audit_binding.sql",
+        "internal/store/migrations/0026_approval_credentials.sql"
+      ],
+      "handling": "manifest-only",
+      "reason": "Historical migration bytes are subject to application and integrity checks; metadata must not alter them."
+    },
+    {
+      "id": "frozen-test-fixtures",
+      "patterns": [
+        "**/testdata/**",
+        "web/e2e/fixtures/**"
+      ],
+      "handling": "manifest-only",
+      "reason": "Fixture bytes are regression inputs or expected outputs; record each exact path and its test purpose in the manifest."
+    },
+    {
+      "id": "binary-assets",
+      "patterns": [
+        "**/*.pdf",
+        "**/*.docx",
+        "**/*.png",
+        "**/*.jpg",
+        "**/*.jpeg",
+        "**/*.webp",
+        "**/*.gif",
+        "**/*.svg"
+      ],
+      "handling": "manifest-only",
+      "reason": "Do not modify payload or embedded metadata; record each asset's source, purpose, and rights evidence."
+    },
+    {
+      "id": "generated-wire-types",
+      "paths": [
+        "web/src/api/wire.generated.ts"
+      ],
+      "handling": "generated-manifest-only",
+      "generator": "scripts/generate_openapi_types.py",
+      "inputs": [
+        "internal/apidocs/openapi.json"
+      ],
+      "reason": "The generated file is verified against its generator output; a manual header would be overwritten or cause drift."
+    },
+    {
+      "id": "third-party-derived-source",
+      "paths": [
+        "internal/documentparse/docx_symbol.go"
+      ],
+      "handling": "preserve-notice-and-manifest",
+      "reason": "The file contains a Unicode Consortium source URL and verbatim copyright/disclaimer. Preserve the entire existing notice and record upstream authorship separately from project maintenance."
+    }
+  ],
+  "unclassified_file_policy": "Do not infer a comment syntax or purpose. Add a reviewed class or path rule before the complete inventory is accepted.",
+  "future_issues": {
+    "124": "Apply eligible metadata headers and refresh the canonical manifest after reconciling new tracked paths.",
+    "125": "Implement validation of exact tracked-file coverage, schema, header mirror, exceptions, dates, and revision transitions."
+  },
+  "rule_precedence": "Exact path rules override generated/third-party/frozen file classes, which override extension classes; each manifest record must match the narrowest applicable rule.",
+  "manifest_follow_up": "Issue #124 applies eligible headers and refreshes this same canonical manifest for newly tracked paths; it does not create a competing inventory."
+}

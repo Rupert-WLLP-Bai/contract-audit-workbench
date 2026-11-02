@@ -42,7 +42,7 @@ def commit(root: Path, message: str) -> str:
 
 def script_env(**overrides):
     env = dict(os.environ)
-    for name in ("CAW_FAST_BASE", "CAW_FAST_OUT", "CAW_DELIVERY_DIR",
+    for name in ("CAW_FAST_BASE", "CAW_FAST_OUT", "CAW_DELIVERY_DIR", "CAW_METADATA_EXTERNAL_GUARD",
                  "GITHUB_ACTIONS", "TEST_DATABASE_URL", "MIGRATOR_DATABASE_URL",
                  "MODEL_DATABASE_URL", "GIT_DIR", "GIT_INDEX_FILE",
                  "GIT_WORK_TREE"):
@@ -800,6 +800,63 @@ func TestValue(t *testing.T) { if Value != 1 { t.Fatal(Value) } }
 
 
 class CliBoundaryTests(unittest.TestCase):
+    def metadata_fixture_tools(self, gate: str):
+        for module in ("metadata_core", "git_inventory", "manifest_tool", "legacy_bootstrap"):
+            write(self.root, f"scripts/file_metadata/{module}.py", "# isolated fixture module\n")
+        write(self.root, "scripts/file_metadata/gate_adapter.py", gate)
+
+    def run_metadata_fixture(self, base: str, subject: str):
+        out = Path(self.temporary.name) / "metadata-out"
+        (out / "logs").mkdir(parents=True, exist_ok=True)
+        return check_fast.execute_check(check_fast.FastCheck(
+            "file-metadata", (sys.executable,), cwd=self.root, kind="metadata-gate",
+            metadata_base=base, metadata_subject=subject), out / "logs", self.root)
+
+    def test_metadata_runs_base_blobs_instead_of_modified_candidate(self):
+        self.metadata_fixture_tools(
+            'import json,sys; print(json.dumps({"status":"NOT_RUN","mode":"base-fixture"})); sys.exit(3)\n')
+        base = commit(self.root, "trusted metadata fixture")
+        marker = Path(self.temporary.name) / "candidate-executed"
+        write(self.root, "scripts/file_metadata/gate_adapter.py",
+              f'from pathlib import Path\nPath({str(marker)!r}).write_text("unsafe")\n')
+        subject = commit(self.root, "untrusted candidate verifier")
+        result = self.run_metadata_fixture(base, subject)
+        self.assertEqual(result.status, "NOT_RUN")
+        self.assertEqual(result.evidence["verifier_source"], "trusted-base")
+        self.assertFalse(marker.exists())
+
+    def test_metadata_foundation_cannot_self_report_pass(self):
+        write(self.root, "scripts/file_metadata/policy.json",
+              json.dumps({"manifest_status":"populated-from-issue-115-baseline"}))
+        base = commit(self.root, "legacy metadata policy")
+        self.metadata_fixture_tools('import json\nprint(json.dumps({"status":"PASS"}))\n')
+        subject = commit(self.root, "candidate claims initialized")
+        result = self.run_metadata_fixture(base, subject)
+        self.assertEqual(result.status, "FAIL")
+        self.assertEqual(result.evidence["verifier_source"], "foundation-candidate")
+
+    def test_metadata_partial_base_tools_fail_closed(self):
+        write(self.root, "scripts/file_metadata/gate_adapter.py", "# incomplete verifier\n")
+        base = commit(self.root, "partial metadata tools")
+        result = self.run_metadata_fixture(base, base)
+        self.assertEqual(result.status, "FAIL")
+        self.assertIn("missing or incomplete", result.reason)
+
+    def test_metadata_status_and_exit_code_must_agree(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            for status, code, expected in (("PASS", 0, "PASS"),
+                                           ("NOT_RUN", 3, "NOT_RUN"),
+                                           ("PASS", 3, "FAIL"),
+                                           ("NOT_RUN", 0, "FAIL")):
+                with self.subTest(status=status, code=code):
+                    command = (sys.executable, "-c",
+                               f'import json,sys; print(json.dumps({{"status": {status!r}}})); sys.exit({code})')
+                    result = check_fast.execute_check(check_fast.FastCheck(
+                        "metadata-contract", command, cwd=root, kind="metadata-gate"),
+                        root / "logs", root)
+                    self.assertEqual(result.status, expected)
+
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
         self.addCleanup(self.temporary.cleanup)
@@ -1010,6 +1067,17 @@ func TestValue(t *testing.T) { if Value != 2 { t.Fatal(Value) } }
         # unit tests keeps an explicit go-unit NOT_RUN in the report instead of
         # dropping the stage silently; it does not fabricate a failure.
         write(self.root, "cmd/tool/main.go", "package main\n\nfunc main() {}\n")
+        # This fixture isolates fast-gate orchestration; metadata validation
+        # itself has dedicated temporary-Git integration tests.
+        write(self.root, "scripts/file_metadata/gate_adapter.py",
+              'import json, sys\n'
+              'print(json.dumps({"status": "NOT_RUN", "mode": "fixture-legacy", '
+              '"base": sys.argv[sys.argv.index("--base")+1], '
+              '"subject": sys.argv[sys.argv.index("--subject")+1], '
+              '"reason": "fixture baseline has no initialized metadata"}))\n'
+              'sys.exit(3)\n')
+        for module in ("metadata_core", "git_inventory", "manifest_tool", "legacy_bootstrap"):
+            write(self.root, f"scripts/file_metadata/{module}.py", "# orchestration fixture module\n")
         new_base = commit(self.root, "add tool without unit tests")
         write(self.root, "internal/leaf/leaf.go", "package leaf\n")
         binaries, marker = self.fake_binaries()
@@ -1026,6 +1094,10 @@ func TestValue(t *testing.T) { if Value != 2 { t.Fatal(Value) } }
         self.assertEqual(checks["go-unit"]["status"], "NOT_RUN")
         self.assertIn("no database-safe", checks["go-unit"]["reason"])
         self.assertEqual(checks["go-unit"]["command"], "")
+        self.assertEqual(checks["file-metadata"]["status"], "NOT_RUN")
+        self.assertEqual(checks["file-metadata"]["evidence"]["base"], new_base)
+        self.assertEqual(checks["file-metadata"]["evidence"]["subject"],
+                         git(self.root, "rev-parse", "HEAD").stdout.strip())
 
     def test_output_inside_repository_is_rejected(self):
         write(self.root, "internal/leaf/leaf.go", "package leaf\n")

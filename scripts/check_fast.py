@@ -27,6 +27,7 @@ import shutil
 import signal
 import subprocess
 import sys
+import tempfile
 import time
 import tokenize
 from typing import Callable, Iterable
@@ -187,6 +188,7 @@ class Plan:
             "go": self.go,
             "web": self.web,
             "python": self.python,
+            "file_metadata": True,
             "database": self.database,
             "poppler": self.poppler,
             "legal_assets": self.legal_assets,
@@ -220,6 +222,8 @@ class FastCheck:
     expected_tests: tuple[str, ...] = ()
     required: bool = True
     note: str = ""
+    metadata_base: str = ""
+    metadata_subject: str = ""
 
 
 @dataclass(frozen=True)
@@ -1274,6 +1278,49 @@ def _safe_log_name(name: str) -> str:
     return re.sub(r"[^A-Za-z0-9_.-]+", "__", name)
 
 
+def _metadata_command(check: FastCheck, logs: Path, root: Path) -> tuple[tuple[str, ...], str]:
+    paths = tuple(f"scripts/file_metadata/{name}.py" for name in
+                  ("metadata_core", "git_inventory", "manifest_tool",
+                   "legacy_bootstrap", "gate_adapter"))
+
+    def inventory(ref: str) -> dict[str, tuple[str, str, str]]:
+        rows = _git(root, "ls-tree", "-z", ref, "--", *paths)
+        entries = {}
+        for row in rows.split(b"\0"):
+            if not row:
+                continue
+            fields, path = row.split(b"\t", 1)
+            mode, kind, oid = fields.decode("ascii").split()
+            entries[path.decode("utf-8")] = (mode, kind, oid)
+        return entries
+
+    ref, source = check.metadata_base, "trusted-base"
+    entries = inventory(ref)
+    if not entries:
+        try:
+            policy = json.loads(_git(root, "show", f"{ref}:scripts/file_metadata/policy.json"))
+        except (ValueError, FastError) as error:
+            raise FastError("metadata BASE has no verifiable foundation policy") from error
+        if policy.get("manifest_status") != "populated-from-issue-115-baseline":
+            raise FastError("metadata BASE without trusted tools is not an approved legacy foundation")
+        ref, source = check.metadata_subject, "foundation-candidate"
+        entries = inventory(ref)
+    if set(entries) != set(paths):
+        raise FastError("metadata verifier tool set is missing or incomplete")
+    directory = Path(tempfile.mkdtemp(prefix="metadata-verifier-", dir=logs.parent))
+    for path, (mode, kind, oid) in entries.items():
+        if mode not in {"100644", "100755"} or kind != "blob":
+            raise FastError(f"metadata verifier is not a regular Git file: {path}")
+        content = _git(root, "cat-file", "blob", oid)
+        if not content:
+            raise FastError(f"metadata verifier is empty: {path}")
+        (directory / PurePosixPath(path).name).write_bytes(content)
+    command = (check.command[0], str(directory / "gate_adapter.py"), "check",
+               "--repo", str(root), "--base", check.metadata_base,
+               "--subject", check.metadata_subject)
+    return command, source
+
+
 def execute_check(check: FastCheck, logs: Path, root: Path) -> CheckResult:
     started = time.monotonic()
     log_path = logs / (_safe_log_name(check.name) + ".log")
@@ -1297,13 +1344,45 @@ def execute_check(check: FastCheck, logs: Path, root: Path) -> CheckResult:
             output = "Python syntax OK: " + ", ".join(checked)
         _write_text(log_path, output)
     else:
-        command_text = " ".join(shlex.quote(part) for part in check.command)
-        returncode, output, error = _run_process(check.command, check.cwd,
+        command, metadata_source = check.command, ""
+        if check.kind == "metadata-gate" and check.metadata_base:
+            try:
+                command, metadata_source = _metadata_command(check, logs, root)
+            except (FastError, OSError, ValueError) as error:
+                reason = str(error)
+                _write_text(log_path, reason)
+                return CheckResult(check.name, "FAIL", round(time.monotonic() - started, 3),
+                                   command_text, str(log_path), reason)
+        command_text = " ".join(shlex.quote(part) for part in command)
+        returncode, output, error = _run_process(command, check.cwd,
                                                 check.env or _base_env(),
                                                 check.timeout)
         raw_path = logs / (_safe_log_name(check.name) +
                            (".jsonl" if check.kind == "json" else ".log"))
-        if check.kind == "json":
+        if check.kind == "metadata-gate":
+            _write_text(raw_path, output)
+            try:
+                payload = json.loads(output)
+                gate_status = payload.get("status")
+                evidence = {key: payload[key] for key in
+                            ("status", "mode", "reason", "base", "subject")
+                            if key in payload}
+                if metadata_source:
+                    evidence["verifier_source"] = metadata_source
+                if gate_status == "NOT_RUN" and returncode == 3:
+                    status = "NOT_RUN"
+                    reason = str(payload.get("reason", "metadata history enforcement is not initialized"))
+                elif gate_status == "PASS" and metadata_source == "foundation-candidate":
+                    status, reason = "FAIL", "foundation candidate cannot self-attest initialized metadata enforcement"
+                elif gate_status == "PASS" and returncode == 0:
+                    status = "PASS"
+                else:
+                    status = "FAIL"
+                    reason = str(payload.get("error", payload.get("reason", f"metadata gate exited {returncode}")))
+            except (json.JSONDecodeError, AttributeError, TypeError):
+                status, reason = "FAIL", error or "metadata gate returned invalid JSON"
+            _write_text(log_path, output or reason)
+        elif check.kind == "json":
             _write_text(raw_path, output)
             rows, display = _parse_go_json(output)
             evidence = _go_test_evidence(rows)
@@ -1426,7 +1505,8 @@ def _print_summary(plan: Plan, report: dict, out: Path) -> None:
 
 
 def run_checks(root: Path, plan: Plan, base: str, merge_base: str,
-               out: Path, python: str) -> int:
+               out: Path, python: str, metadata_base: str,
+               metadata_subject: str) -> int:
     _ensure_outside_repo(root, out)
     logs = out / "logs"
     logs.mkdir(parents=True, exist_ok=True)
@@ -1439,6 +1519,10 @@ def run_checks(root: Path, plan: Plan, base: str, merge_base: str,
             "database-fixed-point", "NOT_RUN", 0.0, "",
             str(logs / "database-fixed-point.log"), reason,
             {"missing_env": missing_database}).payload())
+        report["checks"].append(CheckResult(
+            "file-metadata", "NOT_RUN", 0.0, "",
+            str(logs / "file-metadata.log"),
+            "metadata gate not run because required database checks are blocked").payload())
         _write_text(logs / "database-fixed-point.log", reason)
         report["finished_at"] = datetime.now(timezone.utc).isoformat()
         _write_report(out, report)
@@ -1448,6 +1532,15 @@ def run_checks(root: Path, plan: Plan, base: str, merge_base: str,
 
     try:
         checks = _build_checks(plan, root, python, out)
+        if os.environ.get("CAW_METADATA_EXTERNAL_GUARD") == "1":
+            checks.append(FastCheck(
+                "file-metadata", cwd=root, kind="not-run", required=False,
+                note="delegated to the workflow's independent fixed-BASE metadata guard"))
+        else:
+            checks.append(FastCheck(
+                "file-metadata", (python,), cwd=root, env=_check_env(),
+                timeout=300, kind="metadata-gate", required=False,
+                metadata_base=metadata_base, metadata_subject=metadata_subject))
     except FastError as error:
         report["error"] = str(error)
         report["finished_at"] = datetime.now(timezone.utc).isoformat()
@@ -1516,6 +1609,8 @@ def main(argv: list[str] | None = None) -> int:
     base = args.base or os.environ.get("CAW_FAST_BASE") or DEFAULT_BASE
     try:
         changes, merge_base = collect_changes(root, base)
+        metadata_base = _git(root, "rev-parse", "--verify", f"{base}^{{commit}}").decode().strip()
+        metadata_subject = _git(root, "rev-parse", "--verify", "HEAD^{commit}").decode().strip()
         plan = build_plan(root, changes)
         if args.github_output:
             _write_github_output(args.github_output, plan)
@@ -1524,7 +1619,8 @@ def main(argv: list[str] | None = None) -> int:
                              separators=(",", ":")))
             return 0
         out = Path(args.out).expanduser().resolve() if args.out else _default_out(root)
-        return run_checks(root, plan, base, merge_base, out, sys.executable)
+        return run_checks(root, plan, base, merge_base, out, sys.executable,
+                          metadata_base, metadata_subject)
     except FastError as error:
         print(f"check_fast: {error}", file=sys.stderr)
         return 2

@@ -1,4 +1,4 @@
-// Code generated from the migrated OpenAPI contract schemas. DO NOT EDIT.
+// Package contracts maintains the Go schemas used to generate OpenAPI.
 package contracts
 
 import "reflect"

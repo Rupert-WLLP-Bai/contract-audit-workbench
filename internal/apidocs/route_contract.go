@@ -1,4 +1,4 @@
-// Code generated from the migrated route metadata. Operation fields are typed Go values.
+// Maintained route metadata for OpenAPI generation. Operation fields are typed Go values.
 package apidocs
 
 import "encoding/json"
