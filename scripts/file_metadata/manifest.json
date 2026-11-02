@@ -49376,12 +49376,12 @@
         "value": "2026-11-02",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "6a579e3e5867061f25a4e16fada614d849125111",
+          "commit": "a4b6b6a1e6b33503ef5552976f2e8860eb303676",
           "path": "scripts/file_metadata/test_gate_adapter.py",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r2",
+      "revision": "r3",
       "copyright": [
         {
           "holder": "Bai Junhao",
