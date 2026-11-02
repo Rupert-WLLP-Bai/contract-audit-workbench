@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: loadExperienceDistillWork checks the live claim and the applicant's current access before exposing any source or ancestor content to the model. Related `store` operations include loadExperienceDistillWork, persistExperienceDistillResult, recoverExperienceDistill, experienceModelOutcomeUnknownTx.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-28
+// Updated: 2026-11-02
+// Revision: r2
+// Copyright: See LICENSE
+// End file metadata.
+
 package store
 
 import (

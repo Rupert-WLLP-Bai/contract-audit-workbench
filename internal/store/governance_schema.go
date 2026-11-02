@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Governance tables are Core-owned. The core service writes the lifecycle and the active pointer; the execution and worker roles only SELECT the published version an acceptance… Related `store` operations include governanceSchemaSQL.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-25
+// Updated: 2026-10-25
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package store
 
 // Governance tables are Core-owned. The core service writes the lifecycle and

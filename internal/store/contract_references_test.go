@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Exercises the `store` package behavior through TestSanitizeDraftReferencesStripsServerManagedSnapshots, TestCaseRoleAllowsContractRole, TestProcurementMaterialRole, TestContractOriginalPathReusesDocumentEndpoint, TestValidateDraftContentChecksBindingHint; these checks pin observable state, error handling, or wire/database compatibility for this module.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-01
+// Updated: 2026-11-01
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package store
 
 import (
