@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Renders ContractReferencesPanel, the contract references panel workbench UI, from the selected case/workspace projection and the module’s query/state inputs; it displays server-derived state and does not establish business authorization or evidence validity.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-01
+// Updated: 2026-11-01
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 import { Alert, Button, Select, Tag } from "antd";
 import { useState } from "react";
 import {

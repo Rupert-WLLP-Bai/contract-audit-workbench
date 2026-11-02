@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Checks the web behavior for “subject API endpoints”; representative assertions cover reads authorized-only subject summaries and case role plus legacy profile, creates and binds subjects with explicit CAS fields and required idempotency keys, adopts legacy labels only with exact profile CAS and sends correction CAS internally. It protects the rendered/API state expected by this component without starting the full browser journey.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-31
+// Updated: 2026-10-31
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 import {
   bindExistingSubject,
   createSubjectSourceSnapshot,

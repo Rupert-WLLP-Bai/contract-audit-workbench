@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Renders ExperienceFeedbackPanel, the experience feedback panel workbench UI, from caller-supplied ExperienceFeedbackPanelProps data and the module’s query/state inputs; writes are sent through the existing API and remain subject to server authorization.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-28
+// Updated: 2026-11-02
+// Revision: r2
+// Copyright: See LICENSE
+// End file metadata.
+
 import { Button, Card, Input, Select } from "antd";
 import {
   useEffect,
