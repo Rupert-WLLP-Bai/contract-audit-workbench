@@ -3,6 +3,21 @@ import { requestJson } from "./http";
 import { enumValue, responseReader } from "./respond";
 
 export type BudgetCapacity = { max_in_flight: number; calls_per_minute: number; tokens_per_minute: number };
+export type TenantCostWindow = {
+  period_key: string;
+  limit_minor: string | null;
+  reserved_minor: string;
+  settled_minor: string;
+  unknown_hold_minor: string;
+  known: boolean;
+};
+export type TenantCost = {
+  currency: "USD";
+  minor_unit_scale: 6;
+  timezone: "UTC";
+  day: TenantCostWindow;
+  month: TenantCostWindow;
+};
 export type TenantOperations = {
   tenant_id: string;
   directory: {
@@ -30,6 +45,7 @@ export type TenantOperations = {
   login_rate_limit_scope: "process";
   budget_state: "ready" | "unavailable" | "unconfigured";
   budget: { revision: string; mode: string; tenant: BudgetCapacity; global: BudgetCapacity } | null;
+  cost: TenantCost;
   usage: {
     observed_at: string;
     window_start: string;
@@ -59,13 +75,33 @@ function timestamp(value: unknown, path: string, optional = false): string {
   const result = text(value, path);
   return (optional && result === "") || (result !== "" && Number.isFinite(Date.parse(result))) ? result : invalid(path);
 }
+function amount(value: unknown, path: string, nullable = false): string | null {
+  if (nullable && value === null) return null;
+  const result = text(value, path);
+  return /^(0|[1-9][0-9]*)$/.test(result) ? result : invalid(path);
+}
+function costWindow(value: unknown, path: string, periodPattern: RegExp): TenantCostWindow {
+  const item = object(value, path);
+  const periodKey = text(item.period_key, `${path}.period_key`);
+  if (!periodPattern.test(periodKey)) return invalid(`${path}.period_key`);
+  return {
+    period_key: periodKey,
+    limit_minor: amount(item.limit_minor, `${path}.limit_minor`, true),
+    reserved_minor: amount(item.reserved_minor, `${path}.reserved_minor`)!,
+    settled_minor: amount(item.settled_minor, `${path}.settled_minor`)!,
+    unknown_hold_minor: amount(item.unknown_hold_minor, `${path}.unknown_hold_minor`)!,
+    known: bool(item.known, `${path}.known`),
+  };
+}
 export function parseTenantOperations(value: unknown): TenantOperations {
   const item = object(value, "operations");
-  if (item.schema_version !== "tenant-operations/v2" || item.login_rate_limit_scope !== "process") return invalid("operations.schema");
+  if (item.schema_version !== "tenant-operations/v3" || item.login_rate_limit_scope !== "process") return invalid("operations.schema");
   const directory = object(item.directory, "directory");
   const tenantControl = object(item.tenant_control, "tenant_control");
   const executionQueue = object(item.execution_queue, "execution_queue");
   const usage = object(item.usage, "usage");
+  const cost = object(item.cost, "cost");
+  if (cost.currency !== "USD" || cost.minor_unit_scale !== 6 || cost.timezone !== "UTC") return invalid("cost.unit");
   const budgetState = enumValue(item.budget_state, ["ready", "unavailable", "unconfigured"] as const) ?? invalid("budget_state");
   let budget: TenantOperations["budget"] = null;
   if (budgetState === "ready") {
@@ -91,6 +127,11 @@ export function parseTenantOperations(value: unknown): TenantOperations {
       tenant_live: bool(executionQueue.tenant_live, "execution_queue.tenant_live"),
     },
     login_rate_limit_scope: "process", budget_state: budgetState, budget,
+    cost: {
+      currency: "USD", minor_unit_scale: 6, timezone: "UTC",
+      day: costWindow(cost.day, "cost.day", /^\d{4}-\d{2}-\d{2}$/),
+      month: costWindow(cost.month, "cost.month", /^\d{4}-\d{2}$/),
+    },
     directory: {
       mode: enumValue(directory.mode, ["local_demo", "enterprise"] as const) ?? invalid("directory.mode"),
       state: enumValue(directory.state, ["local_demo", "ready", "unavailable"] as const) ?? invalid("directory.state"),
@@ -117,6 +158,7 @@ export function parseTenantOperations(value: unknown): TenantOperations {
       result.execution_queue.tenant_in_flight_limit > 1024 ||
       result.execution_queue.tenant_pending_limit < result.execution_queue.tenant_in_flight_limit ||
       result.execution_queue.tenant_pending_limit > 100_000 ||
+      result.execution_queue.tenant_live !== (result.tenant_control.status === "active") ||
       result.usage.window_seconds !== 60 || result.usage.unknown_usage_calls > result.usage.window_calls ||
       (result.directory.state === "ready" && (result.directory.mode !== "enterprise" || !result.directory.revision)) ||
       (result.directory.state !== "ready" && result.directory.revision !== "")) return invalid("operations.identity_or_window");

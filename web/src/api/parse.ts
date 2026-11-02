@@ -820,6 +820,15 @@ export function parseReviewWorkspace(value: unknown): ReviewWorkspace {
 
 function parseSnapshot(value: unknown): RunSnapshot | null {
   if (!isRecord(value)) return null;
+  let adoptedTenantConfig: RunSnapshot["adopted_tenant_config"] | undefined;
+  if (value.adopted_tenant_config === null) adoptedTenantConfig = null;
+  if (value.adopted_tenant_config !== undefined && value.adopted_tenant_config !== null) {
+    if (!isRecord(value.adopted_tenant_config)) fail("运行配置快照格式错误");
+    const versionId = requiredString(value.adopted_tenant_config, "version_id");
+    const digest = requiredString(value.adopted_tenant_config, "digest");
+    if (!versionId || !/^[0-9a-f]{64}$/.test(digest)) fail("运行配置快照格式错误");
+    adoptedTenantConfig = { version_id: versionId, digest };
+  }
   return {
     document_ids: Array.isArray(value.document_ids)
       ? value.document_ids.filter((id): id is string => typeof id === "string")
@@ -830,6 +839,7 @@ function parseSnapshot(value: unknown): RunSnapshot | null {
     model_ref: optionalString(value, "model_ref"),
     review_scope: parseReviewScope(value.review_scope),
     comparator_ref: optionalString(value, "comparator_ref"),
+    ...(adoptedTenantConfig === undefined ? {} : { adopted_tenant_config: adoptedTenantConfig }),
   };
 }
 

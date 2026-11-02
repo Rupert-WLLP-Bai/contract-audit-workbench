@@ -17,6 +17,10 @@ export const paths = {
   supportGrantApprove: (grantId: string) => `/api/support-grants/${id(grantId)}/approve`,
   supportGrantRevoke: (grantId: string) => `/api/support-grants/${id(grantId)}/revoke`,
   supportGrantCase: (grantId: string) => `/api/support-grants/${id(grantId)}/case`,
+  tenantConfig: "/api/admin/tenant-config",
+  tenantConfigPreview: "/api/admin/tenant-config/preview",
+  tenantConfigAdoption: "/api/admin/tenant-config/adoption",
+  tenantConfigLiveControl: "/api/admin/tenant-config/live-control",
   oidcLogin: (audience: "client" | "admin") =>
     `/api/auth/oidc/login?audience=${id(audience)}`,
   oidcMemberships: (audience: "client" | "admin") =>
