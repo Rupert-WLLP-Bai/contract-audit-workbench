@@ -10,6 +10,16 @@ const SystemHealthPage = lazy(() =>
     default: module.SystemHealthPage,
   })),
 );
+const TenantLifecyclePage = lazy(() =>
+  import("./pages/tenant-lifecycle-page").then((module) => ({
+    default: module.TenantLifecyclePage,
+  })),
+);
+const JurisdictionOperationsPage = lazy(() =>
+  import("./pages/jurisdiction-operations-page").then((module) => ({
+    default: module.JurisdictionOperationsPage,
+  })),
+);
 const SettingsPage = lazy(() =>
   import("./pages/settings-page").then((module) => ({
     default: module.SettingsPage,
@@ -76,6 +86,8 @@ export function AdminApp() {
               path="/admin/settings"
               element={<SettingsPage audience="admin" />}
             />
+            <Route path="/admin/tenant-lifecycle" element={<TenantLifecyclePage />} />
+            <Route path="/admin/jurisdiction-operations" element={<JurisdictionOperationsPage />} />
             <Route path="/admin/rulepacks" element={<RulePacksPage />} />
             <Route
               path="/admin/rulepacks/new"

@@ -244,6 +244,8 @@ def generated_values(infra: dict[str, str]) -> dict[str, str]:
 		"CORE_AUTHORITY_CA_FILE": infra.get("CORE_AUTHORITY_CA_FILE", "").strip(),
 		"CORE_AUTHORITY_ALLOW_INSECURE_DEV": _core_authority_dev_flag(infra),
 		"CONTEXT_SWITCH_ENABLED": context_switch_enabled,
+		"CAW_PLATFORM_OPERATOR_ACTORS": infra.get("CAW_PLATFORM_OPERATOR_ACTORS", "").strip(),
+		"CAW_PLATFORM_OPERATOR_DATABASE_PRINCIPALS": infra.get("CAW_PLATFORM_OPERATOR_DATABASE_PRINCIPALS", "").strip(),
 		"CLM_ENVELOPE_KEYS": infra.get("CLM_ENVELOPE_KEYS", ""),
 		"CLM_LEGACY_DATA_KEY_REF": infra.get("CLM_LEGACY_DATA_KEY_REF", "").strip(),
 		"MODEL_GATEWAY_URL": "http://model-gateway:8084/v1",
@@ -386,7 +388,8 @@ def ensure_private_environment() -> dict[str, str]:
 			"AUTH_ADMIN_DATABASE_URL", "CORE_AUTHORITY_URL", "CORE_AUTHORITY_CA_FILE",
 			"CORE_AUTHORITY_ALLOW_INSECURE_DEV", "CORE_MODEL_AUTHORITY_TOKEN",
 			"TOOL_CORE_AUTHORITY_TOKEN", "DEV_DATABASE_URL", "TEST_DATABASE_URL", "PROD_DATABASE_URL",
-			"CONTEXT_SWITCH_ENABLED", "CLM_ENVELOPE_KEYS", "CLM_LEGACY_DATA_KEY_REF",
+			"CONTEXT_SWITCH_ENABLED", "CAW_PLATFORM_OPERATOR_ACTORS",
+			"CAW_PLATFORM_OPERATOR_DATABASE_PRINCIPALS", "CLM_ENVELOPE_KEYS", "CLM_LEGACY_DATA_KEY_REF",
 		}
 		unexpected_missing = sorted(missing - allowed_upgrade_keys)
 		if unexpected_missing:

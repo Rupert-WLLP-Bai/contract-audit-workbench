@@ -76,6 +76,8 @@ export interface WireSchemas {
   "ExperienceEvidenceView": { "document_id": string; "end": number; "parsed_document_id": string; "quote": string; "start": number; };
   "ExperienceFeedbackRequest": { "attempt_id": string; "case_id"?: string; "decision_id": string; "evidence_refs": Array<WireSchemas["ExperienceEvidenceRef"]>; "finding_id": string; "idempotency_key"?: string; "reason": string; "run_id": string; };
   "FindingCounts": { "conflict": number; "insufficient": number; "total": number; "undecided": number; };
+  "JurisdictionOperationsSummary": { "jurisdiction_id": string; "tenants": Array<WireSchemas["TenantOperationsSummary"]>; "totals": WireSchemas["OperationsMetricSummary"]; [key: string]: unknown; };
+  "JurisdictionOperationsView": { "built_at": (string) | null; "dirty_since": (string) | null; "from_date": string; "jurisdictions": Array<WireSchemas["JurisdictionOperationsSummary"]>; "observed_at": string; "projection_age_seconds": (number) | null; "projection_state": string; "schema_version": string; "source_snapshot_token": (string) | null; "to_date": string; "watermark": (string) | null; "watermark_kind": string; [key: string]: unknown; };
   "KnowledgeInput": { "body": string; "effective_at"?: string | null; "id"?: string; "source_type": "synthetic_policy" | "reference"; "title": string; "version": string; };
   "LLMModelSelectionInput": { "expected_revision"?: number; "ocr_model": string; "review_model": string; };
   "ManualSigningComparison": { "confirmed": true; "contract_revision_id": string; "scope": "all_structured_business_fields_and_restricted_fields"; "signed_material_digest": string; };
@@ -86,6 +88,10 @@ export interface WireSchemas {
   "MembershipChoice": { "id": string; "jurisdiction_id"?: string; "org_id": string; "org_name": string; "role": string; "tenant_id": string; "tenant_name": string; };
   "ModelBudgetCapacity": { "calls_per_minute": number; "max_in_flight": number; "tokens_per_minute": number; };
   "ModelBudgetGatewayStatus": { "global": WireSchemas["ModelBudgetCapacity"]; "mode": string; "revision": string; "schema_version": "model-budget/v1"; "tenant": WireSchemas["ModelBudgetCapacity"]; "window_seconds": 60; };
+  "OperationsCostView": { "currency": string; "known": boolean; "minor_unit_scale": number; "settled_minor": (string) | null; "unknown_hold_minor": (string) | null; [key: string]: unknown; };
+  "OperationsMetricSummary": { "attempts_completed": (string) | null; "cases_created": (string) | null; "logical_quota": (WireSchemas["OperationsQuotaView"]) | null; "money": (WireSchemas["OperationsCostView"]) | null; "runs_completed": (string) | null; "shared_pool": (WireSchemas["OperationsPoolView"]) | null; [key: string]: unknown; };
+  "OperationsPoolView": { "attribution": string; "capacity": (string) | null; "in_use": (string) | null; [key: string]: unknown; };
+  "OperationsQuotaView": { "calls": (string) | null; "period_basis": string; "reserved_tokens": (string) | null; "unknown_usage_calls": (string) | null; [key: string]: unknown; };
   "PartyRef": { "binding_id"?: string; "name_snapshot": string; "party_id": string; "reference_snapshot"?: WireSchemas["PartyReferenceSnapshot"]; "role": "buyer" | "supplier" | "guarantor" | "consortium_member" | "other"; };
   "PartyReferenceSnapshot": { "binding_id": string; "binding_state": "active" | "inactive" | "pending_confirmation"; "binding_version": number; "captured_at": string; "case_role": "customer" | "supplier" | "contractor" | "service_provider" | "other"; "display_name": string; "subject_id": string; "subject_payload_hash": string; "subject_version": number; "verification_state": string; };
   "PaymentCondition": { "due_rule"?: WireSchemas["DueRule"]; "evidence_requirements"?: Array<string>; "policy_ref"?: string; "type": "signed_contract" | "all_goods_accepted" | "partial_acceptance" | "service_period_verified" | "custom_policy"; };
@@ -133,6 +139,13 @@ export interface WireSchemas {
   "TenantMoneyPolicyInput": { "day_limit_minor": (string) | null; "expected_revision": string; "month_limit_minor": (string) | null; };
   "TenantMoneyWindow": { "exposure_minor": string; "limit_minor": (string) | null; "period_key": string; "reserved_minor": string; "settled_minor": string; "unknown_hold_minor": string; };
   "TenantOperations": { "budget": (WireSchemas["ModelBudgetGatewayStatus"]) | (null); "budget_state": "ready" | "unconfigured" | "unavailable"; "cost": WireSchemas["TenantCost"]; "directory": WireSchemas["DirectoryStatusSnapshot"]; "execution_queue": WireSchemas["TenantExecutionQueue"]; "login_rate_limit_scope": "process"; "schema_version": "tenant-operations/v3"; "tenant_control": WireSchemas["TenantRuntimeControl"]; "tenant_id": string; "usage": WireSchemas["TenantModelUsage"]; };
+  "TenantOperationsSummary": { "metrics": WireSchemas["OperationsMetricSummary"]; "status": string; "tenant_id": string; "tenant_name": string; [key: string]: unknown; };
+  "TenantProvisionInput": { "admin_org_unit_id": string; "admin_org_unit_name": string; "admin_principal_id": string; "idempotency_key": string; "jurisdiction_id": string; "kind": string; "tenant_config_version": string; "tenant_id": string; "tenant_name": string; [key: string]: unknown; };
+  "TenantProvisionOperation": { "created_at": string; "current_step": string; "kind": string; "operation_id": string; "payload_sha256": string; "reconciliation_required": boolean; "revision": string; "status": string; "steps": Array<WireSchemas["TenantProvisionStepView"]>; "tenant_id": string; "updated_at": string; [key: string]: unknown; };
+  "TenantProvisionOperationResult": { "operation": WireSchemas["TenantProvisionOperation"]; "schema_version": string; [key: string]: unknown; };
+  "TenantProvisionOperationsView": { "next_cursor": (string) | null; "operations": Array<WireSchemas["TenantProvisionOperation"]>; "schema_version": string; [key: string]: unknown; };
+  "TenantProvisionStepInput": { "expected_revision": string; "receipt_sha256": (string) | null; "reconciliation": string; "state": string; [key: string]: unknown; };
+  "TenantProvisionStepView": { "name": string; "receipt_sha256": (string) | null; "state": string; "updated_at": (string) | null; [key: string]: unknown; };
   "TenantRuntimeControl": { "live_epoch": string; "status": "active" | "suspended" | "closed"; };
   "TextOffset": { "end": number; "start": number; };
   "UnitRef": { "id": string; "name": string; };

@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "schema_version": 37,
+  "schema_version": 39,
   "relations": [
     {
       "name": "activity",
@@ -656,13 +656,15 @@
       "name": "model_call_leases",
       "classification": "TENANT_DATA",
       "tenant_column": true,
-      "force_rls": true
+      "force_rls": true,
+      "exception": "AUTH_FENCE_OWNER reads only tenant_id, lease_id, reserved_input_tokens, reserved_output_tokens, and acquired_at for one explicitly granted tenant aggregate; FORCE RLS is additionally scoped by operations_tenant."
     },
     {
       "name": "model_money_ledger",
       "classification": "TENANT_DATA",
       "tenant_column": true,
-      "force_rls": true
+      "force_rls": true,
+      "exception": "AUTH_FENCE_OWNER reads only tenant_id, lease_id, event_kind, amount_minor, and period_day for one current-tenant lifecycle hold check or one explicitly granted tenant aggregate; FORCE RLS is additionally scoped by lifecycle_cost_tenant or operations_tenant."
     },
     {
       "name": "model_money_limits",
@@ -681,7 +683,8 @@
       "name": "model_usage",
       "classification": "TENANT_DATA",
       "tenant_column": true,
-      "force_rls": true
+      "force_rls": true,
+      "exception": "AUTH_FENCE_OWNER reads only tenant_id, lease_id, money_cost_state, money_cost_minor, money_period_day, reserved_at, occurred_at, reserved_input_tokens, reserved_output_tokens, input_tokens, output_tokens, and total_tokens for lifecycle hold checks or explicit tenant aggregates; FORCE RLS is additionally scoped by lifecycle_cost_tenant or operations_tenant."
     },
     {
       "name": "operation_authority_tickets",
@@ -933,6 +936,34 @@
       "classification": "TENANT_DATA",
       "tenant_column": true,
       "force_rls": true
+    },
+    {
+      "name": "tenant_operations_projection_dirty",
+      "classification": "AUTH_CONTROL",
+      "tenant_column": true,
+      "force_rls": true,
+      "exception": "Dirty-generation markers for jurisdiction aggregate projections; FORCE RLS with AUTH_FENCE_OWNER-only access through the scoped aggregate function."
+    },
+    {
+      "name": "tenant_operations_projection_snapshots",
+      "classification": "AUTH_CONTROL",
+      "tenant_column": true,
+      "force_rls": true,
+      "exception": "Replacement snapshots for jurisdiction aggregate metrics; FORCE RLS with AUTH_FENCE_OWNER-only access through the scoped aggregate function."
+    },
+    {
+      "name": "tenant_provision_operation_steps",
+      "classification": "AUTH_CONTROL",
+      "tenant_column": false,
+      "force_rls": true,
+      "exception": "Append/update step receipts for tenant lifecycle operations; FORCE RLS with AUTH_FENCE_OWNER-only access through the bounded operator workflow functions."
+    },
+    {
+      "name": "tenant_provision_operations",
+      "classification": "AUTH_CONTROL",
+      "tenant_column": true,
+      "force_rls": true,
+      "exception": "Platform-controlled durable tenant lifecycle workflow; FORCE RLS with AUTH_FENCE_OWNER-only access through allowlisted operator functions."
     },
     {
       "name": "tool_call_ledger",

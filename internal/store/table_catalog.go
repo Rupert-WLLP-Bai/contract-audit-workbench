@@ -33,6 +33,12 @@ type isolationCatalog struct {
 	Relations     []isolationRelation `json:"relations"`
 }
 
+var boundedTenantDataExceptions = map[string]string{
+	"model_call_leases":  "AUTH_FENCE_OWNER reads only tenant_id, lease_id, reserved_input_tokens, reserved_output_tokens, and acquired_at for one explicitly granted tenant aggregate; FORCE RLS is additionally scoped by operations_tenant.",
+	"model_money_ledger": "AUTH_FENCE_OWNER reads only tenant_id, lease_id, event_kind, amount_minor, and period_day for one current-tenant lifecycle hold check or one explicitly granted tenant aggregate; FORCE RLS is additionally scoped by lifecycle_cost_tenant or operations_tenant.",
+	"model_usage":        "AUTH_FENCE_OWNER reads only tenant_id, lease_id, money_cost_state, money_cost_minor, money_period_day, reserved_at, occurred_at, reserved_input_tokens, reserved_output_tokens, input_tokens, output_tokens, and total_tokens for lifecycle hold checks or explicit tenant aggregates; FORCE RLS is additionally scoped by lifecycle_cost_tenant or operations_tenant.",
+}
+
 type isolationQueryer interface {
 	Query(context.Context, string, ...any) (pgx.Rows, error)
 	QueryRow(context.Context, string, ...any) pgx.Row
@@ -65,8 +71,12 @@ func readIsolationCatalog() (map[string]isolationRelation, error) {
 		}
 		switch entry.Classification {
 		case "TENANT_DATA":
-			if !entry.TenantColumn || !entry.ForceRLS || entry.Exception != "" {
+			if !entry.TenantColumn || !entry.ForceRLS {
 				return nil, fmt.Errorf("tenant relation %q lacks its mandatory tenant/FORCE boundary", entry.Name)
+			}
+			approvedException, hasApprovedException := boundedTenantDataExceptions[entry.Name]
+			if (hasApprovedException && entry.Exception != approvedException) || (!hasApprovedException && entry.Exception != "") {
+				return nil, fmt.Errorf("tenant relation %q has an unapproved scoped-owner exception", entry.Name)
 			}
 		case "AUTH_CONTROL", "QUEUE_CONTROL":
 			if !entry.ForceRLS || strings.TrimSpace(entry.Exception) == "" {

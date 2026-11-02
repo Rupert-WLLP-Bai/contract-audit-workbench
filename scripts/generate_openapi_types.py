@@ -53,6 +53,9 @@ ROOTS = (
     "PlatformModelPriceInput", "PlatformModelMoneyPolicyInput",
     "PlatformModelMoneyPolicyResult", "PlatformModelMoneyPolicyView",
     "TenantMoneyAdjustmentInput", "TenantMoneyAdjustmentResult",
+    "TenantProvisionOperationsView", "TenantProvisionOperationResult",
+    "TenantProvisionInput", "TenantProvisionStepInput",
+    "JurisdictionOperationsView",
 )
 # Runtime parsers consume these exact enum values, rather than maintaining a
 # second list that could drift from the generated type.

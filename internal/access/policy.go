@@ -22,6 +22,9 @@ type Grant struct {
 	Scope          string    `json:"scope"`
 	OrgID          string    `json:"org_id,omitempty"`
 	CaseID         string    `json:"case_id,omitempty"`
+	JurisdictionID string    `json:"jurisdiction_id,omitempty"`
+	TenantIDs      []string  `json:"tenant_ids,omitempty"`
+	Metrics        []string  `json:"metrics,omitempty"`
 	ResolvedOrgIDs []string  `json:"resolved_org_ids,omitempty"`
 	ExpiresAt      time.Time `json:"expires_at,omitempty"`
 }

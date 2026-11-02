@@ -155,6 +155,8 @@ def ensure_secrets() -> dict[str, str]:
                          "PROD_DATABASE_URL" not in values or
                          "LLM_CONFIG_KEY" not in values or "CLM_DATA_KEY" not in values or
                          "CONTEXT_SWITCH_ENABLED" not in values or
+                         "CAW_PLATFORM_OPERATOR_ACTORS" not in values or
+                         "CAW_PLATFORM_OPERATOR_DATABASE_PRINCIPALS" not in values or
                          "CLM_ENVELOPE_KEYS" not in values or "CLM_LEGACY_DATA_KEY_REF" not in values or
                          urlsplit(str(values.get("MIGRATOR_DATABASE_URL", ""))).username != "audit_offline_migrator" or
                          urlsplit(str(values.get("PROD_DATABASE_URL", ""))).username != "audit_offline_migrator")
@@ -184,6 +186,8 @@ def ensure_secrets() -> dict[str, str]:
             values.setdefault("CLM_ENVELOPE_KEYS", "")
             values.setdefault("CLM_LEGACY_DATA_KEY_REF", "")
             values.setdefault("CONTEXT_SWITCH_ENABLED", "false")
+            values.setdefault("CAW_PLATFORM_OPERATOR_ACTORS", "")
+            values.setdefault("CAW_PLATFORM_OPERATOR_DATABASE_PRINCIPALS", "")
         validate_service_tokens(values)
         if needs_upgrade:
             temporary = SECRETS.with_suffix(".tmp")
@@ -209,6 +213,8 @@ def ensure_secrets() -> dict[str, str]:
         "CLM_ENVELOPE_KEYS": "",
         "CLM_LEGACY_DATA_KEY_REF": "",
         "CONTEXT_SWITCH_ENABLED": "false",
+        "CAW_PLATFORM_OPERATOR_ACTORS": "",
+        "CAW_PLATFORM_OPERATOR_DATABASE_PRINCIPALS": "",
     }
     for key, role in (("CORE_DATABASE_URL", "core_api"), ("DOCUMENT_DATABASE_URL", "document_service"),
                       ("EXECUTION_DATABASE_URL", "audit_execution"), ("MODEL_DATABASE_URL", "model_gateway"),
@@ -486,7 +492,14 @@ def apply_context_switch_override() -> None:
     false_values = {"0", "f", "F", "FALSE", "false", "False"}
     if raw not in true_values | false_values:
         raise RuntimeError("CONTEXT_SWITCH_ENABLED must be a valid boolean")
-    patch = {"data": {"CONTEXT_SWITCH_ENABLED": "true" if raw in true_values else "false"}}
+    patch = {"data": {
+        "CONTEXT_SWITCH_ENABLED": "true" if raw in true_values else "false",
+        "CAW_PLATFORM_OPERATOR_ACTORS": os.environ.get(
+            "CAW_PLATFORM_OPERATOR_ACTORS", str(values.get("CAW_PLATFORM_OPERATOR_ACTORS", ""))),
+        "CAW_PLATFORM_OPERATOR_DATABASE_PRINCIPALS": os.environ.get(
+            "CAW_PLATFORM_OPERATOR_DATABASE_PRINCIPALS",
+            str(values.get("CAW_PLATFORM_OPERATOR_DATABASE_PRINCIPALS", ""))),
+    }}
     applied = run(["kubectl", "--kubeconfig", str(KUBECONFIG), "-n", NAMESPACE, "patch",
                    "configmap", "contract-audit-core-runtime", "--type", "merge", "-p", json.dumps(patch)],
                   check=False)

@@ -4521,7 +4521,7 @@ var SchemaRules = map[string]string{
 }
 
 func Types() map[string]reflect.Type {
-	return map[string]reflect.Type{
+	types := map[string]reflect.Type{
 		"SupportGrant":                           reflect.TypeOf((*SupportGrant)(nil)).Elem(),
 		"SupportGrantList":                       reflect.TypeOf((*SupportGrantList)(nil)).Elem(),
 		"SupportGrantRequest":                    reflect.TypeOf((*SupportGrantRequest)(nil)).Elem(),
@@ -4955,4 +4955,18 @@ func Types() map[string]reflect.Type {
 		"TenantMoneyAdjustmentInput":             reflect.TypeOf((*TenantMoneyAdjustmentInput)(nil)).Elem(),
 		"TenantMoneyAdjustmentResult":            reflect.TypeOf((*TenantMoneyAdjustmentResult)(nil)).Elem(),
 	}
+	types["TenantProvisionOperation"] = reflect.TypeOf((*TenantProvisionOperation)(nil)).Elem()
+	types["TenantProvisionStepView"] = reflect.TypeOf((*TenantProvisionStepView)(nil)).Elem()
+	types["TenantProvisionOperationsView"] = reflect.TypeOf((*TenantProvisionOperationsView)(nil)).Elem()
+	types["TenantProvisionInput"] = reflect.TypeOf((*TenantProvisionInput)(nil)).Elem()
+	types["TenantProvisionOperationResult"] = reflect.TypeOf((*TenantProvisionOperationResult)(nil)).Elem()
+	types["TenantProvisionStepInput"] = reflect.TypeOf((*TenantProvisionStepInput)(nil)).Elem()
+	types["JurisdictionOperationsView"] = reflect.TypeOf((*JurisdictionOperationsView)(nil)).Elem()
+	types["JurisdictionOperationsSummary"] = reflect.TypeOf((*JurisdictionOperationsSummary)(nil)).Elem()
+	types["TenantOperationsSummary"] = reflect.TypeOf((*TenantOperationsSummary)(nil)).Elem()
+	types["OperationsMetricSummary"] = reflect.TypeOf((*OperationsMetricSummary)(nil)).Elem()
+	types["OperationsCostView"] = reflect.TypeOf((*OperationsCostView)(nil)).Elem()
+	types["OperationsQuotaView"] = reflect.TypeOf((*OperationsQuotaView)(nil)).Elem()
+	types["OperationsPoolView"] = reflect.TypeOf((*OperationsPoolView)(nil)).Elem()
+	return types
 }

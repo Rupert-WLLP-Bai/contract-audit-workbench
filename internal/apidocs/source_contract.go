@@ -370,9 +370,11 @@ func schemaFor(typ reflect.Type, root bool) (map[string]any, error) {
 		pointer = true
 		typ = typ.Elem()
 	}
-	if typ.PkgPath() == reflect.TypeOf(contracts.SupportGrant{}).PkgPath() && typ.Name() != "" && !root {
-		if _, isComponent := contracts.Types()[typ.Name()]; isComponent {
-			return map[string]any{"$ref": "#/components/schemas/" + typ.Name()}, nil
+	if typ.Name() != "" && !root {
+		for name, componentType := range contracts.Types() {
+			if componentType == typ {
+				return map[string]any{"$ref": "#/components/schemas/" + name}, nil
+			}
 		}
 	}
 	_ = pointer // Nullability is preserved by the field's OpenAPI tag.
@@ -408,6 +410,9 @@ func schemaFor(typ reflect.Type, root bool) (map[string]any, error) {
 				for key, item := range annotations {
 					child[key] = item
 				}
+			}
+			if contracts.NullableFields[typ.Name()+"."+field.Name] {
+				child["nullable"] = true
 			}
 			if raw := field.Tag.Get("openapi_union"); raw != "" {
 				var union map[string]json.RawMessage
