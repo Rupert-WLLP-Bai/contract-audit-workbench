@@ -58,7 +58,6 @@ const KINDS = ["provision", "deactivate", "reactivate"] as const;
 const STATUSES = ["pending", "in_progress", "reconciliation_required", "provision_failed", "completed"] as const;
 const STEP_NAMES = ["identity", "tenant_config", "runtime_ready", "drain", "usage_reconcile", "completed"] as const;
 const STEP_STATES = ["pending", "complete", "external_unknown", "failed", "reconciled"] as const;
-const RECONCILIATIONS = ["confirmed_complete", "confirmed_not_applied", "requires_operator"] as const;
 function canonicalRevision(value: unknown, path: string): string {
   const result = text(value, path);
   return /^(0|[1-9][0-9]*)$/.test(result) ? result : invalid(path);
