@@ -298,10 +298,23 @@ func Fingerprint(ctx context.Context, p KeyProvider, b Binding, plaintext []byte
 		return FingerprintValue{}, ErrInvalidEnvelope
 	}
 	key, err := p.Current(ctx, b.TenantID, b.Purpose, FingerprintKey)
-	if err != nil || !validRef(key.Ref) || len(key.Material) != 32 {
+	return fingerprintWithKey(b, plaintext, key, key.Ref, err)
+}
+
+// FingerprintAt computes a v2 fingerprint with a previously frozen key reference.
+func FingerprintAt(ctx context.Context, p KeyProvider, b Binding, ref KeyRef, plaintext []byte) (FingerprintValue, error) {
+	if ctx == nil || ctx.Err() != nil || p == nil || !validBinding(b) || !validRef(ref) || len(plaintext) > MaxPlaintextBytes {
+		return FingerprintValue{}, ErrInvalidEnvelope
+	}
+	key, err := p.Resolve(ctx, b.TenantID, b.Purpose, FingerprintKey, ref)
+	return fingerprintWithKey(b, plaintext, key, ref, err)
+}
+
+func fingerprintWithKey(b Binding, plaintext []byte, key Key, ref KeyRef, keyErr error) (FingerprintValue, error) {
+	defer wipe(key.Material)
+	if keyErr != nil || key.Ref != ref || !validRef(key.Ref) || len(key.Material) != 32 {
 		return FingerprintValue{}, ErrKeyUnavailable
 	}
-	defer wipe(key.Material)
 	mac := hmac.New(sha256.New, key.Material)
 	mac.Write([]byte(FingerprintAlgorithm + "\x00"))
 	mac.Write(bindingAAD(b))

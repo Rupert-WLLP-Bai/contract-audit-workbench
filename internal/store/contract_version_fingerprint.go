@@ -137,6 +137,30 @@ func computeRestrictedFingerprintsBound(ctx context.Context, draft *DraftContent
 			}
 		}
 	}
+	var frozenRef *clmenvelope.KeyRef
+	if baseline != nil && baseline.Algorithm == clmRestrictedFingerprintAlgorithm {
+		for _, state := range baseline.Fields {
+			if state.Present {
+				if baseline.KeyRef == nil {
+					return clmRestrictedFingerprintSet{}, errCLMKeyUnavailable
+				}
+				ref := *baseline.KeyRef
+				frozenRef = &ref
+				break
+			}
+		}
+	}
+	if !present && frozenRef != nil {
+		provider, err := clmProvider(binding.TenantID)
+		if err != nil {
+			return clmRestrictedFingerprintSet{}, err
+		}
+		checkBinding := binding
+		checkBinding.Field = clmRestrictedFieldPaths[0]
+		if _, err := clmenvelope.FingerprintAt(ctx, provider, checkBinding, *frozenRef, nil); err != nil {
+			return clmRestrictedFingerprintSet{}, errCLMKeyUnavailable
+		}
+	}
 	if !present {
 		for _, path := range clmRestrictedFieldPaths {
 			set.Fields[path] = clmRestrictedFingerprintState{Present: false}
@@ -155,7 +179,12 @@ func computeRestrictedFingerprintsBound(ctx context.Context, draft *DraftContent
 		}
 		fieldBinding := binding
 		fieldBinding.Field = path
-		fingerprint, err := clmenvelope.Fingerprint(ctx, provider, fieldBinding, []byte(value))
+		var fingerprint clmenvelope.FingerprintValue
+		if frozenRef != nil {
+			fingerprint, err = clmenvelope.FingerprintAt(ctx, provider, fieldBinding, *frozenRef, []byte(value))
+		} else {
+			fingerprint, err = clmenvelope.Fingerprint(ctx, provider, fieldBinding, []byte(value))
+		}
 		if err != nil {
 			return clmRestrictedFingerprintSet{}, errCLMKeyUnavailable
 		}

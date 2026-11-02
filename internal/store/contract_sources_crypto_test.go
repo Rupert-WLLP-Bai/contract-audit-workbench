@@ -2,17 +2,19 @@ package store
 
 import (
 	"bytes"
+	"context"
 	"testing"
 )
 
 func TestCLMSourceObservationCipherBindsObjectContext(t *testing.T) {
 	testCLMDataKey(t)
+	ctx := context.Background()
 	raw := []byte(`{"bank_account":"6222020200001234567"}`)
-	ciphertext, err := sealCLMSourceObservation(raw, "tenant-a", "erp-a", "event-a", "observation-a")
+	ciphertext, err := sealCLMSourceObservation(ctx, raw, "tenant-a", "erp-a", "event-a", "observation-a")
 	if err != nil {
 		t.Fatal(err)
 	}
-	opened, err := unsealCLMSourceObservation(ciphertext, "tenant-a", "erp-a", "event-a", "observation-a")
+	opened, err := unsealCLMSourceObservation(ctx, ciphertext, "tenant-a", "erp-a", "event-a", "observation-a")
 	if err != nil || !bytes.Equal(opened, raw) {
 		t.Fatalf("round trip mismatch: %q err=%v", opened, err)
 	}
@@ -22,12 +24,12 @@ func TestCLMSourceObservationCipherBindsObjectContext(t *testing.T) {
 		{"tenant-a", "erp-a", "event-b", "observation-a"},
 		{"tenant-a", "erp-a", "event-a", "observation-b"},
 	} {
-		if _, err := unsealCLMSourceObservation(ciphertext, context[0], context[1], context[2], context[3]); err == nil {
+		if _, err := unsealCLMSourceObservation(ctx, ciphertext, context[0], context[1], context[2], context[3]); err == nil {
 			t.Fatalf("ciphertext opened under mismatched context %q", context)
 		}
 	}
 	t.Setenv("CLM_DATA_KEY", "")
-	if _, err := sealCLMSourceObservation(raw, "tenant-a", "erp-a", "event-a", "observation-a"); err == nil {
+	if _, err := sealCLMSourceObservation(ctx, raw, "tenant-a", "erp-a", "event-a", "observation-a"); err == nil {
 		t.Fatal("missing data key must refuse source payload persistence")
 	}
 }
