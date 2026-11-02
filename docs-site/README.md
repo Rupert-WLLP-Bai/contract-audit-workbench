@@ -1,3 +1,13 @@
+<!-- File metadata (manifest mirror): -->
+<!-- Purpose: 说明“文档站预览”的操作或技术边界：此包只负责把仓库根目录的 `docs/` 手册渲染为本地阅读站点；请直接编辑 `docs/`，不要在 `docs-site/` 复制或维护第二份手册。 -->
+<!-- Author: Bai Junhao <baijunhao@cq.chinamobile.com> -->
+<!-- Contact: +86 13617696321 -->
+<!-- Created: 2026-11-01 -->
+<!-- Updated: 2026-11-01 -->
+<!-- Revision: r1 -->
+<!-- Copyright: See LICENSE -->
+<!-- End file metadata. -->
+
 # 文档站预览
 
 此包只负责把仓库根目录的 `docs/` 手册渲染为本地阅读站点；请直接编辑 `docs/`，不要在 `docs-site/` 复制或维护第二份手册。

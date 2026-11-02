@@ -1,3 +1,13 @@
+<!-- File metadata (manifest mirror): -->
+<!-- Purpose: Defines repository boundaries, business invariants, implementation phases, verification cadence, and shared-checkout ownership rules that govern agent work. -->
+<!-- Author: Bai Junhao <baijunhao@cq.chinamobile.com> -->
+<!-- Contact: +86 13617696321 -->
+<!-- Created: 2026-10-25 -->
+<!-- Updated: 2026-11-01 -->
+<!-- Revision: r1 -->
+<!-- Copyright: See LICENSE -->
+<!-- End file metadata. -->
+
 # 合同智能审计工作台 Agent 约束
 
 以当前仓库代码为准。不要按旧仓库的缺失清单重复建设已经存在的案件、证据冻结、规则包、人工决定、整改、报告、RLS、模型预算、任务租约或 Outbox。

@@ -1,3 +1,13 @@
+<!-- File metadata (manifest mirror): -->
+<!-- Purpose: 说明“独立服务与异步执行”的操作或技术边界：本地默认可用 `cmd/server` 单进程运行。独立模式将外部流量交给 Gateway，再按职责转发到 Core、Document 和 Execution。Worker 领取 PostgreSQL 任务并调用 Document、Model Gateway 与只读 Tool Gateway。 -->
+<!-- Author: Bai Junhao <baijunhao@cq.chinamobile.com> -->
+<!-- Contact: +86 13617696321 -->
+<!-- Created: 2026-11-01 -->
+<!-- Updated: 2026-11-01 -->
+<!-- Revision: r1 -->
+<!-- Copyright: See LICENSE -->
+<!-- End file metadata. -->
+
 # 独立服务与异步执行
 
 本地默认可用 `cmd/server` 单进程运行。独立模式将外部流量交给 Gateway，再按职责转发到 Core、Document 和 Execution。Worker 领取 PostgreSQL 任务并调用 Document、Model Gateway 与只读 Tool Gateway。

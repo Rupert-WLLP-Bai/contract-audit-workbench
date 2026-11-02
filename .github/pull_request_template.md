@@ -1,3 +1,13 @@
+<!-- File metadata (manifest mirror): -->
+<!-- Purpose: Guides PR authors to state changed behavior and each related Issue, record actual local-check states including NOT_RUN, list Closes/Refs per Issue, and explain merge danger and rollback. -->
+<!-- Author: Bai Junhao <baijunhao@cq.chinamobile.com> -->
+<!-- Contact: +86 13617696321 -->
+<!-- Created: 2026-10-31 -->
+<!-- Updated: 2026-11-01 -->
+<!-- Revision: r1 -->
+<!-- Copyright: See LICENSE -->
+<!-- End file metadata. -->
+
 ## Summary
 
 <!-- 写明具体问题、触发条件、修改后的行为及文档/概念/文件说明影响。一个 PR 可处理同域 2–3 个 Issue；逐项列出编号和完成范围。 -->

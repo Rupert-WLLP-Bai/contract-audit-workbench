@@ -1,3 +1,13 @@
+<!-- File metadata (manifest mirror): -->
+<!-- Purpose: 说明“真实语料联调”的操作或技术边界：真实合同、记录器输出和结果清单都放在仓外交付目录。不要将合同原件、模型正文或可识别个人/机构的信息提交到源码仓。 -->
+<!-- Author: Bai Junhao <baijunhao@cq.chinamobile.com> -->
+<!-- Contact: +86 13617696321 -->
+<!-- Created: 2026-11-01 -->
+<!-- Updated: 2026-11-01 -->
+<!-- Revision: r1 -->
+<!-- Copyright: See LICENSE -->
+<!-- End file metadata. -->
+
 # 真实语料联调
 
 真实合同、记录器输出和结果清单都放在仓外交付目录。不要将合同原件、模型正文或可识别个人/机构的信息提交到源码仓。
