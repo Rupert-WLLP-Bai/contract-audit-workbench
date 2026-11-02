@@ -1,3 +1,13 @@
+# File metadata (manifest mirror):
+# Purpose: Excludes frontend-local node_modules, build output, Vite cache, and developer-specific *.local settings from the web package while leaving source and checked-in fixtures visible to Git.
+# Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+# Contact: +86 13617696321
+# Created: 2026-10-25
+# Updated: 2026-10-25
+# Revision: r1
+# Copyright: See LICENSE
+# End file metadata.
+
 node_modules
 dist
 .vite

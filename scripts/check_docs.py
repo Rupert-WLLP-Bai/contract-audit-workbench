@@ -1,4 +1,14 @@
 #!/usr/bin/env python3
+# File metadata (manifest mirror):
+# Purpose: 检查 docs 手册中的本地 Markdown 链接，并核对 glossary 两个阅读视图与 concepts.json 一致。
+# Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+# Contact: +86 13617696321
+# Created: 2026-11-01
+# Updated: 2026-11-01
+# Revision: r1
+# Copyright: See LICENSE
+# End file metadata.
+
 """Check handbook-local Markdown links and the canonical glossary views."""
 
 from __future__ import annotations

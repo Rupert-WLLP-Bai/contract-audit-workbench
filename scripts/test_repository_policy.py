@@ -1,3 +1,13 @@
+# File metadata (manifest mirror):
+# Purpose: Regression checks for test_agents_and_readme_stay_while_delivery_files_stay_out, test_matcher_agrees_with_git, test_runtime_logo_is_bounded_without_allowing_other_bulk_assets, test_current_tree_has_no_policy_violations, test_source_archive_runs_matcher_and_tree_policy_without_git_metadata; they assert the deployment, parser, or repository-policy contract that the corresponding implementation must preserve.
+# Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+# Contact: +86 13617696321
+# Created: 2026-10-25
+# Updated: 2026-11-02
+# Revision: r2
+# Copyright: See LICENSE
+# End file metadata.
+
 """The source tree must keep AGENTS.md and keep delivery material out."""
 import os
 import shutil

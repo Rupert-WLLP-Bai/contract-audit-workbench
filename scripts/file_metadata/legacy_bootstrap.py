@@ -1,3 +1,13 @@
+# File metadata (manifest mirror):
+# Purpose: Explicit one-time legacy-to-canonical manifest bootstrap (external draft only).
+# Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+# Contact: +86 13617696321
+# Created: 2026-11-02
+# Updated: 2026-11-02
+# Revision: r1
+# Copyright: See LICENSE
+# End file metadata.
+
 """Plan the explicit, reviewed legacy-to-canonical metadata bootstrap.
 
 Reads only fixed Git objects and writes dry-run artifacts outside the source tree.
