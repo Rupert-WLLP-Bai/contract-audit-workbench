@@ -48818,9 +48818,9 @@
         "value": "2026-11-02",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "1e238ffb1ac59089d50dd35882a0ffe3507be1cf",
+          "commit": "2b9568068d9c8d613f832674a3895e329a69dbbe",
           "path": "scripts/file_metadata/test_gate_adapter.py",
-          "reason": "file introduction created its initial content; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+          "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
       "revision": "r1",
@@ -48967,7 +48967,7 @@
         "value": "2026-11-02",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "34d4b6cb187cdcf2b7e03c4ae7e31eaced8cff99",
+          "commit": "2b9568068d9c8d613f832674a3895e329a69dbbe",
           "path": "scripts/file_metadata/test_manifest_tool.py",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
