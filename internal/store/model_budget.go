@@ -365,6 +365,10 @@ func authorizeModelScope(ctx context.Context, tx pgx.Tx, caller string, scope mo
 		(caller != "worker" && caller != "document") || scope.TenantID == "" || scope.OrgID == "" || scope.CaseID == "" || scope.ActorID == "" {
 		return ErrModelScopeUnavailable
 	}
+	var sendAllowed bool
+	if err := tx.QueryRow(ctx, `SELECT tenant_model_send_fence($1,COALESCE((SELECT live_epoch FROM tenant_runtime_control($1,$2)),-1),$2)`, scope.TenantID, allowLocalDemo).Scan(&sendAllowed); err != nil || !sendAllowed {
+		return ErrModelScopeUnavailable
+	}
 	var caseItem Case
 	var memberJSON string
 	if scope.Kind == "experience_distill" {

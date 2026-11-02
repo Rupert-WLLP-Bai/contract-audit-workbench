@@ -42,7 +42,12 @@ ROOTS = (
     "MaterialSelectionProjection", "MaterialVersionProjection", "RemediationInput",
     "RemediationSubmitInput", "RemediationVerifyInput", "TextOffset", "WorkbenchTask",
     "WorkbenchTaskInput", "WorkbenchTaskUpdateInput",
-    "TenantRuntimeControl", "TenantExecutionQueue", "TenantOperations",
+    "TenantRuntimeControl", "TenantExecutionQueue", "TenantCostWindow", "TenantCost",
+    "TenantConfigRef", "TenantConfigCatalogEntry", "TenantModelCatalogEntry", "TenantCredentialRef",
+    "TenantConfigSelection", "AdoptedTenantConfig", "TenantConfigView", "TenantConfigPreviewRequest",
+    "TenantConfigDiff", "TenantConfigValidationError", "TenantConfigPreview", "TenantConfigAdoptionRequest",
+    "TenantConfigAdoptionResult", "TenantLiveControlRequest", "TenantLiveControlResult", "TenantOperations",
+    "AdoptedTenantConfigIdentity", "BusinessSnapshot",
 )
 # Runtime parsers consume these exact enum values, rather than maintaining a
 # second list that could drift from the generated type.

@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "schema_version": 35,
+  "schema_version": 36,
   "relations": [
     {
       "name": "activity",
@@ -911,6 +911,12 @@
     },
     {
       "name": "tool_call_ledger",
+      "classification": "TENANT_DATA",
+      "tenant_column": true,
+      "force_rls": true
+    },
+    {
+      "name": "tenant_config_versions",
       "classification": "TENANT_DATA",
       "tenant_column": true,
       "force_rls": true
