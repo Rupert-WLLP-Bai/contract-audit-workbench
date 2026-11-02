@@ -682,7 +682,8 @@ func (s *Store) updateStateWithLocks(ctx context.Context, scope dbScope, attempt
 		expectedAttemptVersion = &attemptVersion
 		if scope.JobID != "" {
 			var jobID string
-			err := tx.QueryRow(ctx, `SELECT id FROM worker_jobs WHERE id=$1 AND tenant_id=$2 AND org_id=$3 AND attempt_id=$4 AND worker_id=$5 AND generation=$6 AND state='running' AND lease_until > clock_timestamp() FOR UPDATE`, scope.JobID, scope.TenantID, scope.OrgID, attemptID, scope.WorkerID, scope.Generation).Scan(&jobID)
+			err := tx.QueryRow(ctx, `SELECT id FROM worker_jobs WHERE id=$1 AND tenant_id=$2 AND org_id=$3 AND attempt_id=$4 AND worker_id=$5 AND generation=$6 AND state='running' AND lease_until > clock_timestamp()
+				AND tenant_runtime_fence(tenant_id,tenant_live_epoch,$7) FOR UPDATE`, scope.JobID, scope.TenantID, scope.OrgID, attemptID, scope.WorkerID, scope.Generation, s.sel.Mode != config.ModeProduction).Scan(&jobID)
 			if errors.Is(err, pgx.ErrNoRows) {
 				return errLeaseLost
 			}
@@ -761,7 +762,7 @@ func (s *Store) persist(ctx context.Context, tx pgx.Tx, previous, next state, ex
 	if err := syncAudits(ctx, tx, changed.Audits, s.serviceOwner); err != nil {
 		return err
 	}
-	if err := syncJobs(ctx, tx, changed.Jobs); err != nil {
+	if err := syncJobs(ctx, tx, changed.Jobs, s.sel.Mode != config.ModeProduction); err != nil {
 		return err
 	}
 	if err := s.admitNewJobs(ctx, tx, old.Jobs, changed.Jobs); err != nil {

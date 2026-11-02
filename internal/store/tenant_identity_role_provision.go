@@ -164,6 +164,8 @@ to_regprocedure(format('%I.tenant_support_read(text,bigint,text,uuid)',$3))::oid
 to_regprocedure(format('%I.tenant_support_validate(text,uuid)',$3))::oid,
 to_regprocedure(format('%I.tenant_operation_info(jsonb,text)',$3))::oid,
 to_regprocedure(format('%I.tenant_operation_fence(jsonb,text,text)',$3))::oid
+			,to_regprocedure(format('%I.tenant_runtime_control(text,boolean)',$3))::oid
+			,to_regprocedure(format('%I.tenant_runtime_fence(text,bigint,boolean)',$3))::oid
 		]) AS oid
 	), owner_objects AS (
 		SELECT class.classid,class.objid,class.objsubid,namespace.nspname

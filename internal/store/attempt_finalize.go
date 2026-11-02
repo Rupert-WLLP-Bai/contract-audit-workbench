@@ -338,8 +338,9 @@ func (s *Store) requireLiveClaim(ctx context.Context, tx pgx.Tx, claim JobClaim,
 	if err := tx.QueryRow(ctx, `SELECT id FROM worker_jobs
 		WHERE id=$1 AND tenant_id=$2 AND org_id=$3 AND case_id=$4 AND run_id=$5 AND attempt_id=$6
 			AND worker_id=$7 AND generation=$8 AND state='running' AND lease_until > clock_timestamp()
+			AND tenant_runtime_fence(tenant_id,tenant_live_epoch,$9)
 		FOR UPDATE`,
-		claim.JobID, claim.TenantID, claim.OrgID, claim.CaseID, runID, attemptID, claim.WorkerID, claim.Generation).Scan(&jobID); err != nil {
+		claim.JobID, claim.TenantID, claim.OrgID, claim.CaseID, runID, attemptID, claim.WorkerID, claim.Generation, s.sel.Mode != config.ModeProduction).Scan(&jobID); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return errLeaseLost
 		}
