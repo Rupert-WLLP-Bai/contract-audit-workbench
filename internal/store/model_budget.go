@@ -172,13 +172,6 @@ func (s *Store) reserveModelCall(ctx context.Context, caller string, scope model
 	if err := setModelLedgerIdentity(ctx, tx, scope.Kind, scope.JobID, scope.Generation, scope.InputSHA256); err != nil {
 		return ModelCallLease{}, err
 	}
-	providerID := ""
-	if providerIdentity != nil {
-		providerID = *providerIdentity
-	}
-	if _, err := tx.Exec(ctx, `SELECT set_config('app.model_provider_identity',$1,true)`, providerID); err != nil {
-		return ModelCallLease{}, err
-	}
 	if scope.Kind == "experience_distill" {
 		if caller != "worker" || scope.TenantID == "" || scope.OrgID == "" || scope.CaseID == "" || scope.ActorID == "" ||
 			scope.JobID == "" || scope.WorkerID == "" || scope.Generation <= 0 || scope.RunID != "" || scope.AttemptID != "" || len(scope.InputSHA256) != 64 {
@@ -206,6 +199,13 @@ func (s *Store) reserveModelCall(ctx context.Context, caller string, scope model
 		if err := authorizeFrozenModelConfiguration(ctx, tx, scope, *providerIdentity); err != nil {
 			return ModelCallLease{}, err
 		}
+	}
+	providerID := ""
+	if providerIdentity != nil {
+		providerID = *providerIdentity
+	}
+	if _, err := tx.Exec(ctx, `SELECT set_config('app.model_provider_identity',$1,true)`, providerID); err != nil {
+		return ModelCallLease{}, err
 	}
 	id, err := newID("ml_")
 	if err != nil {
@@ -261,6 +261,9 @@ func (s *Store) reserveModelCall(ctx context.Context, caller string, scope model
 // second result is rejected. A zero-token usage remains unknown and is charged
 // at the reserved upper bound unless pre-dispatch failure is proven.
 func (s *Store) FinishModelCall(ctx context.Context, lease ModelCallLease, result ModelCallResult) error {
+	if ctx == nil {
+		return errors.New("model call context is invalid")
+	}
 	ctx = context.WithValue(ctx, commandProofKey{}, struct{}{}) // already-incurred machine accounting, not new human admission
 	ctx = model.WithDelegatedScope(ctx, model.DelegatedScope{})
 	if ctx == nil || lease.ID == "" || result.Status != "completed" && result.Status != "failed" ||

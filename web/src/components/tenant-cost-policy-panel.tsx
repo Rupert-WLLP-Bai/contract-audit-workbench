@@ -6,6 +6,10 @@ import { updateTenantCostCaps, useTenantCostPolicy, type TenantCostPolicy } from
 import type { Actor } from "../api/types";
 import "./tenant-cost-policy-panel.css";
 
+function isApiErrorCode(error: unknown, code: string): boolean {
+  return typeof error === "object" && error !== null && "code" in error && error.code === code;
+}
+
 type CapRow = { key: string; label: string; amount: string | null };
 function formatUsdMicro(value: string | null): string {
   if (value === null) return "未设置";
@@ -72,7 +76,17 @@ export function TenantCostPolicyPanel({ actor }: { actor: Actor }) {
       await queryClient.setQueryData(["tenant-cost-policy", next.tenant_id], next);
       await queryClient.invalidateQueries({ queryKey: ["tenant-operations", "admin"] });
     },
-    onError: (error) => setNotice(errorMessage(error)),
+    onError: async (error) => {
+      setNotice(errorMessage(error));
+      if (isApiErrorCode(error, "money_policy_revision_conflict") || isApiErrorCode(error, "context_stale")) {
+        if (isApiErrorCode(error, "context_stale")) await queryClient.invalidateQueries({ queryKey: ["session", "admin"] });
+        const refreshed = await query.refetch();
+        if (refreshed.data) {
+          setDay(toUsdInput(refreshed.data.day_limit_minor));
+          setMonth(toUsdInput(refreshed.data.month_limit_minor));
+        }
+      }
+    },
   });
   if (!allowed) return null;
   if (query.isLoading) return <section className="tenant-cost-policy-panel"><h2>模型费用限额</h2><p role="status">正在加载费用政策…</p></section>;

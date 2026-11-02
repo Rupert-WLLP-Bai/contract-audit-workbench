@@ -6,7 +6,8 @@ import "./tenant-operations-panel.css";
 type BudgetRow = { key: string; label: string; used: number; limit: number | null; globalLimit: number | null };
 const tenantStatusLabel = { active: "启用", suspended: "已暂停", closed: "已关闭" } as const;
 const tenantStatusTone = { active: "good", suspended: "attention", closed: "danger" } as const;
-function formatUsdMinor(value: string): string {
+function formatUsdMinor(value: string | null): string {
+  if (value === null) return "未确认";
   const amount = BigInt(value);
   const whole = (amount / 1_000_000n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
   const fraction = (amount % 1_000_000n).toString().padStart(6, "0");

@@ -6,9 +6,9 @@ export type BudgetCapacity = { max_in_flight: number; calls_per_minute: number; 
 export type TenantCostWindow = {
   period_key: string;
   limit_minor: string | null;
-  reserved_minor: string;
-  settled_minor: string;
-  unknown_hold_minor: string;
+  reserved_minor: string | null;
+  settled_minor: string | null;
+  unknown_hold_minor: string | null;
   known: boolean;
 };
 export type TenantCost = {
@@ -87,9 +87,9 @@ function costWindow(value: unknown, path: string, periodPattern: RegExp): Tenant
   return {
     period_key: periodKey,
     limit_minor: amount(item.limit_minor, `${path}.limit_minor`, true),
-    reserved_minor: amount(item.reserved_minor, `${path}.reserved_minor`)!,
-    settled_minor: amount(item.settled_minor, `${path}.settled_minor`)!,
-    unknown_hold_minor: amount(item.unknown_hold_minor, `${path}.unknown_hold_minor`)!,
+    reserved_minor: amount(item.reserved_minor, `${path}.reserved_minor`, true),
+    settled_minor: amount(item.settled_minor, `${path}.settled_minor`, true),
+    unknown_hold_minor: amount(item.unknown_hold_minor, `${path}.unknown_hold_minor`, true),
     known: bool(item.known, `${path}.known`),
   };
 }

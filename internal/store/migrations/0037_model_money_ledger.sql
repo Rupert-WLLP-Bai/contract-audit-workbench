@@ -165,13 +165,14 @@ BEGIN
       FROM {{SCHEMA}}.model_money_ledger l LEFT JOIN {{SCHEMA}}.model_price_snapshots p ON p.snapshot_id=l.price_snapshot_id
       WHERE l.tenant_id=NEW.tenant_id AND l.lease_id=NEW.lease_id AND l.event_kind='reserve' LIMIT 1;
     IF FOUND THEN NEW.money_reserved_minor:=v_reserved; NEW.money_price_snapshot_id:=v_snapshot; NEW.money_provider_config_id:=v_provider; NEW.money_period_day:=v_period_day; NEW.money_period_month:=v_period_month; END IF;
-    NEW.money_cost_state:='unknown_hold'; RETURN NEW;
+    NEW.money_cost_state:=CASE WHEN v_reserved IS NULL THEN 'unconfigured' ELSE 'unknown_hold' END; RETURN NEW;
   END IF;
   v_day:=v_lease.money_period_day; v_month:=v_lease.money_period_month;
   NEW.money_period_day:=v_day; NEW.money_period_month:=v_month;
   NEW.money_reserved_minor:=v_lease.money_reserved_minor;
   NEW.money_price_snapshot_id:=v_lease.money_price_snapshot_id;
   NEW.money_provider_config_id:=v_lease.money_provider_config_id;
+  IF v_lease.money_reserved_minor IS NULL THEN v_state:='unconfigured'; END IF;
   IF NEW.budget_released THEN
     v_state:='pre_dispatch_free'; v_cost:=0;
     IF v_lease.money_reserved_minor IS NOT NULL THEN
@@ -245,6 +246,15 @@ BEGIN
 END $function$;
 REVOKE ALL ON FUNCTION {{SCHEMA}}.model_money_global_control() FROM PUBLIC;
 
+-- Expose only price availability for the server-selected provider and models.
+CREATE FUNCTION {{SCHEMA}}.model_money_price_known(p_provider text,p_chat text,p_ocr text)
+RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,pg_temp AS $function$
+ SELECT p_provider<>'' AND p_chat<>'' AND p_ocr<>''
+    AND EXISTS(SELECT 1 FROM {{SCHEMA}}.model_price_snapshots p WHERE p.provider_config_id=p_provider AND p.model_ref=p_chat)
+    AND EXISTS(SELECT 1 FROM {{SCHEMA}}.model_price_snapshots p WHERE p.provider_config_id=p_provider AND p.model_ref=p_ocr);
+$function$;
+REVOKE ALL ON FUNCTION {{SCHEMA}}.model_money_price_known(text,text,text) FROM PUBLIC;
+
 CREATE OR REPLACE FUNCTION {{SCHEMA}}.model_money_adjust_tenant(
   p_tenant text,p_lease text,p_kind text,p_amount numeric,p_key text,p_digest text,p_reason text,p_actor text)
 RETURNS text LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,pg_temp AS $function$
@@ -288,7 +298,7 @@ BEGIN
           VALUES('mme_'||md5(v_event||':estimate'),p_tenant,p_lease,'estimated_cost',v_day,v_month,'USD',6,-v_estimated,NULL,'reconcile-estimate:'||p_key,p_digest,'reverse estimate replaced by trusted billed cost');
       END IF;
       INSERT INTO {{SCHEMA}}.model_money_ledger(event_id,tenant_id,lease_id,event_kind,period_day,period_month,currency,minor_unit_scale,amount_minor,source_event_id,payload_sha256,reason)
-        VALUES('mmo_'||md5(v_event||':observed'),p_tenant,p_lease,'observed_cost',v_day,v_month,'USD',6,p_amount,p_key,p_digest,'trusted billing evidence');
+        VALUES('mmo_'||md5(v_event||':observed'),p_tenant,p_lease,'observed_cost',v_day,v_month,'USD',6,p_amount,p_key,p_digest,'trusted billing evidence') RETURNING event_id INTO v_event;
     ELSE
       v_delta:=p_amount-v_observed;
       INSERT INTO {{SCHEMA}}.model_money_ledger(event_id,tenant_id,lease_id,event_kind,period_day,period_month,currency,minor_unit_scale,amount_minor,source_event_id,payload_sha256,reason)

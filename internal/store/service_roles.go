@@ -336,6 +336,7 @@ func MigrateServiceRoles(ctx context.Context) error {
 				"model_money_publish_price(text,text,text,numeric,numeric,text,text)",
 				"model_money_publish_global(bigint,numeric,numeric,text)",
 				"model_money_global_control()",
+				"model_money_price_known(text,text,text)",
 				"model_money_adjust_tenant(text,text,text,numeric,text,text,text,text)",
 			}
 			for _, fn := range functions {

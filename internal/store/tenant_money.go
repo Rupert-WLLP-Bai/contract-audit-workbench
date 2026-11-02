@@ -14,6 +14,7 @@ import (
 
 	"contractaudit/internal/accounts"
 	"contractaudit/internal/fault"
+	"contractaudit/internal/model"
 	"github.com/jackc/pgx/v5"
 )
 
@@ -121,8 +122,32 @@ func (s *Store) ReadTenantMoneyPolicy(ctx context.Context, user accounts.User) (
 		out.Revision = strconv.FormatInt(revision, 10)
 		out.DayLimit = dayLimit
 		out.MonthLimit = monthLimit
+		out.Configured = dayLimit != nil || monthLimit != nil
 	} else if !errors.Is(err, pgx.ErrNoRows) {
 		return TenantMoneyPolicy{}, err
+	}
+	// A known state requires prices for both models of the currently active,
+	// server-selected endpoint. A price for an unrelated provider is not enough.
+	var endpoint LLMEndpointSettings
+	var modelIDs []byte
+	err = tx.QueryRow(ctx, `SELECT protocol,base_url,models,review_model,ocr_model FROM llm_endpoint_settings WHERE id='active'`).Scan(&endpoint.Protocol, &endpoint.BaseURL, &modelIDs, &endpoint.ReviewModel, &endpoint.OCRModel)
+	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		return TenantMoneyPolicy{}, err
+	}
+	if err == nil {
+		if err := json.Unmarshal(modelIDs, &endpoint.Models); err != nil {
+			return TenantMoneyPolicy{}, err
+		}
+		if endpoint.Active() {
+			var known bool
+			provider := model.ConfigurationIDFor(endpoint.BaseURL, endpoint.ReviewModel, endpoint.OCRModel)
+			if err := tx.QueryRow(ctx, `SELECT model_money_price_known($1,$2,$3)`, provider, endpoint.ReviewModel, endpoint.OCRModel).Scan(&known); err != nil {
+				return TenantMoneyPolicy{}, err
+			}
+			if known {
+				out.PriceState = "known"
+			}
+		}
 	}
 	var dayReserved, daySettled, dayUnknown, dayExposure string
 	if err := tx.QueryRow(ctx, `SELECT
