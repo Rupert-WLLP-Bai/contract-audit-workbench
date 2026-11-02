@@ -1,7 +1,7 @@
 package store
 
 import (
-	"encoding/base64"
+	"context"
 	"encoding/json"
 	"errors"
 	"sort"
@@ -178,23 +178,23 @@ func TestDiffFrozenFieldsLocatesAmountTerms(t *testing.T) {
 func TestComputeRestrictedFingerprintsIsStableAndKeyBound(t *testing.T) {
 	testCLMDataKey(t)
 	draft := freezeCompleteDraft()
-	first, err := computeRestrictedFingerprints(&draft)
+	first, err := computeRestrictedFingerprintsBound(context.Background(), &draft, clmFieldBinding(testCLMTenant, testCLMObject, "supplier.bank_account"), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	second, err := computeRestrictedFingerprints(&draft)
+	second, err := computeRestrictedFingerprintsBound(context.Background(), &draft, clmFieldBinding(testCLMTenant, testCLMObject, "supplier.bank_account"), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if first.KeyID == "" {
-		t.Fatal("present restricted fields must record a key id")
+	if first.KeyRef == nil {
+		t.Fatal("present restricted fields must record a key reference")
 	}
 	if first.Fields["supplier.bank_account"] != second.Fields["supplier.bank_account"] {
 		t.Fatal("same plaintext under the same key must fingerprint identically")
 	}
 	changed := freezeCompleteDraft()
 	changed.Supplier.BankAccount = "6222000000000002"
-	third, err := computeRestrictedFingerprints(&changed)
+	third, err := computeRestrictedFingerprintsBound(context.Background(), &changed, clmFieldBinding(testCLMTenant, testCLMObject, "supplier.bank_account"), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -202,32 +202,29 @@ func TestComputeRestrictedFingerprintsIsStableAndKeyBound(t *testing.T) {
 		t.Fatal("different plaintext must fingerprint differently")
 	}
 
-	raw := make([]byte, 32)
-	for i := range raw {
-		raw[i] = byte(200 - i)
-	}
-	t.Setenv("CLM_DATA_KEY", base64KeyForTest(raw))
-	otherKey, err := computeRestrictedFingerprints(&draft)
+	configureCLMTestKeys(t, 0x31, 0x7f)
+	otherKey, err := computeRestrictedFingerprintsBound(context.Background(), &draft, clmFieldBinding(testCLMTenant, testCLMObject, "supplier.bank_account"), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if otherKey.KeyID == first.KeyID {
-		t.Fatal("rotating CLM_DATA_KEY must change the fingerprint key id")
+	if otherKey.KeyRef == nil || *otherKey.KeyRef == *first.KeyRef {
+		t.Fatal("rotating the fingerprint key must change the key reference")
 	}
 	if otherKey.Fields["supplier.bank_account"].Digest == first.Fields["supplier.bank_account"].Digest {
-		t.Fatal("rotating CLM_DATA_KEY must change the deterministic fingerprint")
+		t.Fatal("rotating the fingerprint key must change the deterministic fingerprint")
 	}
 }
 
 func TestComputeRestrictedFingerprintsWithoutValuesNeedsNoKey(t *testing.T) {
-	t.Setenv("CLM_DATA_KEY", "")
+	t.Setenv(clmEnvelopeKeysEnv, "")
+	t.Setenv(clmLegacyRefEnv, "")
 	draft := DraftContent{Contract: &ContractBasics{Name: "无受限字段"}}
-	set, err := computeRestrictedFingerprints(&draft)
+	set, err := computeRestrictedFingerprintsBound(context.Background(), &draft, clmFieldBinding(testCLMTenant, testCLMObject, "supplier.bank_account"), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if set.KeyID != "" {
-		t.Fatalf("absent restricted fields must not invent a key id: %q", set.KeyID)
+	if set.KeyRef != nil {
+		t.Fatalf("absent restricted fields must not invent a key reference: %+v", set.KeyRef)
 	}
 	for _, path := range clmRestrictedFieldPaths {
 		if set.Fields[path].Present {
@@ -239,14 +236,14 @@ func TestComputeRestrictedFingerprintsWithoutValuesNeedsNoKey(t *testing.T) {
 func TestDiffRestrictedFieldsReportsOnlyChanged(t *testing.T) {
 	testCLMDataKey(t)
 	draft := freezeCompleteDraft()
-	first, err := computeRestrictedFingerprints(&draft)
+	first, err := computeRestrictedFingerprintsBound(context.Background(), &draft, clmFieldBinding(testCLMTenant, testCLMObject, "supplier.bank_account"), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	second := first
 	changedDraft := freezeCompleteDraft()
 	changedDraft.Supplier.BankAccount = "6222000000000002"
-	second, err = computeRestrictedFingerprints(&changedDraft)
+	second, err = computeRestrictedFingerprintsBound(context.Background(), &changedDraft, clmFieldBinding(testCLMTenant, testCLMObject, "supplier.bank_account"), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -292,7 +289,7 @@ func TestDiffRestrictedFieldsReportsOnlyChanged(t *testing.T) {
 func TestParseRestrictedFingerprintsRejectsMalformedSeal(t *testing.T) {
 	testCLMDataKey(t)
 	draft := freezeCompleteDraft()
-	set, err := computeRestrictedFingerprints(&draft)
+	set, err := computeRestrictedFingerprintsBound(context.Background(), &draft, clmFieldBinding(testCLMTenant, testCLMObject, "supplier.bank_account"), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -324,8 +321,4 @@ func sortedFieldPaths(fields map[string]any) []string {
 	}
 	sort.Strings(paths)
 	return paths
-}
-
-func base64KeyForTest(raw []byte) string {
-	return base64.StdEncoding.EncodeToString(raw)
 }

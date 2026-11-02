@@ -1,21 +1,47 @@
 package store
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"strings"
 	"testing"
+
+	"contractaudit/internal/clmenvelope"
 )
 
 const testRestrictedBankAccount = "6222020200001234567"
 
+const testCLMTenant = "local-demo"
+const testCLMObject = "test-contract"
+
+func configureCLMTestKeys(t *testing.T, wrapByte, fingerprintByte byte) {
+	t.Helper()
+	wrap, fingerprint, legacy := make([]byte, 32), make([]byte, 32), make([]byte, 32)
+	for i := range wrap {
+		wrap[i], fingerprint[i], legacy[i] = wrapByte, fingerprintByte, byte(i)
+	}
+	var entries []clmenvelope.LocalKeyEntry
+	// These are explicit synthetic test tenants, each with its own key scope.
+	for _, tenant := range []string{"local-demo", "local-demo-2", "tenant-a", "tenant-b"} {
+		for _, purpose := range []string{clmPurpose, clmSourceObservationPurpose} {
+			entries = append(entries,
+				clmenvelope.LocalKeyEntry{TenantID: tenant, Purpose: purpose, Kind: clmenvelope.WrapKey, Ref: clmenvelope.KeyRef{ID: "test-wrap", Version: 1}, MaterialBase64: base64.StdEncoding.EncodeToString(wrap), Active: true},
+				clmenvelope.LocalKeyEntry{TenantID: tenant, Purpose: purpose, Kind: clmenvelope.FingerprintKey, Ref: clmenvelope.KeyRef{ID: "test-fingerprint", Version: uint64(fingerprintByte)}, MaterialBase64: base64.StdEncoding.EncodeToString(fingerprint), Active: true},
+				clmenvelope.LocalKeyEntry{TenantID: tenant, Purpose: purpose, Kind: clmenvelope.LegacyDataKey, Ref: clmenvelope.KeyRef{ID: "test-legacy", Version: 1}, MaterialBase64: base64.StdEncoding.EncodeToString(legacy)},
+			)
+		}
+	}
+	raw, err := json.Marshal(clmenvelope.LocalKeyConfig{Version: 1, Keys: entries})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv(clmEnvelopeKeysEnv, string(raw))
+	t.Setenv(clmLegacyRefEnv, "test-legacy:1")
+}
 func testCLMDataKey(t *testing.T) {
 	t.Helper()
-	raw := make([]byte, 32)
-	for i := range raw {
-		raw[i] = byte(i + 1)
-	}
-	t.Setenv("CLM_DATA_KEY", base64.StdEncoding.EncodeToString(raw))
+	configureCLMTestKeys(t, 0x31, 0x42)
 }
 
 func sampleDraftContent() DraftContent {
@@ -95,12 +121,14 @@ func TestValidateDraftContentTrimsNameAndNumber(t *testing.T) {
 }
 
 func TestSealDraftContentRequiresExplicitKey(t *testing.T) {
-	t.Setenv("CLM_DATA_KEY", "")
-	if _, _, _, err := sealDraftContent(sampleDraftContent()); err == nil {
+	t.Setenv("CLM_DATA_KEY", base64.StdEncoding.EncodeToString(make([]byte, 32))) // obsolete global must not act as a fallback
+	t.Setenv(clmEnvelopeKeysEnv, "")
+	t.Setenv(clmLegacyRefEnv, "")
+	if _, _, _, err := sealDraftContentBound(context.Background(), sampleDraftContent(), testCLMTenant, testCLMObject); err == nil {
 		t.Fatal("restricted fields without a configured key must fail explicitly")
 	}
 	plain := DraftContent{Contract: &ContractBasics{Name: "无敏感字段"}}
-	if _, _, _, err := sealDraftContent(plain); err != nil {
+	if _, _, _, err := sealDraftContentBound(context.Background(), plain, testCLMTenant, testCLMObject); err != nil {
 		t.Fatalf("content without restricted fields must not need the key: %v", err)
 	}
 }
@@ -108,7 +136,7 @@ func TestSealDraftContentRequiresExplicitKey(t *testing.T) {
 func TestSealDraftContentRoundTrip(t *testing.T) {
 	testCLMDataKey(t)
 	draft := sampleDraftContent()
-	sealed, encoded, digest, err := sealDraftContent(draft)
+	sealed, encoded, digest, err := sealDraftContentBound(context.Background(), draft, testCLMTenant, testCLMObject)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -119,13 +147,13 @@ func TestSealDraftContentRoundTrip(t *testing.T) {
 	if strings.Contains(encodedText, testRestrictedBankAccount) {
 		t.Fatal("sealed bytes contain the plaintext bank account")
 	}
-	if !strings.HasPrefix(sealed.Supplier.BankAccount, "clmv1:") {
+	if !strings.HasPrefix(sealed.Supplier.BankAccount, clmenvelope.PrefixV2) {
 		t.Fatalf("sealed value %q", sealed.Supplier.BankAccount)
 	}
 	if draft.Supplier.BankAccount != testRestrictedBankAccount {
 		t.Fatal("sealing must not mutate the input draft")
 	}
-	restored, err := unsealStoredDraft(encoded)
+	restored, err := unsealStoredDraftBound(context.Background(), encoded, testCLMTenant, testCLMObject)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -139,7 +167,7 @@ func TestSealDraftContentRoundTrip(t *testing.T) {
 
 func TestSealRejectsPersistedPlaintextAndWrongKey(t *testing.T) {
 	testCLMDataKey(t)
-	sealed, _, _, err := sealDraftContent(sampleDraftContent())
+	sealed, _, _, err := sealDraftContentBound(context.Background(), sampleDraftContent(), testCLMTenant, testCLMObject)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -150,27 +178,23 @@ func TestSealRejectsPersistedPlaintextAndWrongKey(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := unsealStoredDraft(raw); err == nil {
+	if _, err := unsealStoredDraftBound(context.Background(), raw, testCLMTenant, testCLMObject); err == nil {
 		t.Fatal("persisted plaintext in a restricted field must be rejected")
 	}
 
-	other := make([]byte, 32)
-	for i := range other {
-		other[i] = byte(255 - i)
-	}
-	t.Setenv("CLM_DATA_KEY", base64.StdEncoding.EncodeToString(other))
-	if _, err := unsealStoredDraft(mustJSON(t, sealed)); err == nil {
+	configureCLMTestKeys(t, 0x7f, 0x42)
+	if _, err := unsealStoredDraftBound(context.Background(), mustJSON(t, sealed), testCLMTenant, testCLMObject); err == nil {
 		t.Fatal("a different configured key must not decrypt stored values")
 	}
 }
 
 func TestProjectDraftForViewerMasksRestrictedFields(t *testing.T) {
 	testCLMDataKey(t)
-	sealed, _, _, err := sealDraftContent(sampleDraftContent())
+	sealed, _, _, err := sealDraftContentBound(context.Background(), sampleDraftContent(), testCLMTenant, testCLMObject)
 	if err != nil {
 		t.Fatal(err)
 	}
-	plaintext, err := unsealStoredDraft(mustJSON(t, sealed))
+	plaintext, err := unsealStoredDraftBound(context.Background(), mustJSON(t, sealed), testCLMTenant, testCLMObject)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -266,7 +290,7 @@ func TestContractDraftCommandsFollowManageAuthority(t *testing.T) {
 
 func TestDraftSummaryFactsIgnoreRestrictedFields(t *testing.T) {
 	testCLMDataKey(t)
-	_, encoded, _, err := sealDraftContent(sampleDraftContent())
+	_, encoded, _, err := sealDraftContentBound(context.Background(), sampleDraftContent(), testCLMTenant, testCLMObject)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -308,11 +332,11 @@ func TestAmountDomainFieldsSurviveSealing(t *testing.T) {
 	if err := validateDraftContent(&draft); err != nil {
 		t.Fatalf("amount-domain draft must stay valid: %v", err)
 	}
-	sealed, encoded, _, err := sealDraftContent(draft)
+	sealed, encoded, _, err := sealDraftContentBound(context.Background(), draft, testCLMTenant, testCLMObject)
 	if err != nil {
 		t.Fatal(err)
 	}
-	restored, err := unsealStoredDraft(encoded)
+	restored, err := unsealStoredDraftBound(context.Background(), encoded, testCLMTenant, testCLMObject)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -344,5 +368,18 @@ func TestAmountDomainFieldsSurviveSealing(t *testing.T) {
 	badYear.Funding[0].FundingYear = new(0)
 	if err := validateDraftContent(&badYear); err == nil {
 		t.Fatal("funding year 0 must be rejected")
+	}
+}
+
+func TestUnsealDraftLegacyVectorRequiresExplicitRef(t *testing.T) {
+	testCLMDataKey(t)
+	const frozen = "clmv1:AAECAwQFBgcICQoLK2exeqac4mnoMuP52IoMCOf24V2VFzvJaFLfM8C61I8hoseQ1RmJ"
+	got, err := unsealCLMValue(context.Background(), testCLMTenant, testCLMObject, "supplier.bank_account", frozen)
+	if err != nil || got != "legacy restricted field" {
+		t.Fatalf("legacy vector mismatch: %q %v", got, err)
+	}
+	t.Setenv(clmLegacyRefEnv, "")
+	if _, err := unsealCLMValue(context.Background(), testCLMTenant, testCLMObject, "supplier.bank_account", frozen); err == nil {
+		t.Fatal("legacy value opened without an explicit historical reference")
 	}
 }

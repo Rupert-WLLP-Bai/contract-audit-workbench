@@ -83,6 +83,14 @@ APP_ENV=<target> DATABASE_SCHEMA=<application_schema> \
 
 关闭开关仅关闭上下文切换和 support 命令的入口，不会停用会话撤销、上下文版本校验、CSRF 或写入 fence；开启开关也不绕过迁移/schema/fence 前置条件。既有 `.env.distributed` profile 缺少此键时，部署 helper 从 `.env` 中显式值补齐，未设或空值默认 `false`；k3d 私有 `secrets.json` 缺键升级为 `false`。这些升级保留已有凭据，不因开关变更轮换密钥。此配置只是 Core 功能门控，不是租户授权或已完成验收的证明。
 
+## CLM 版本密钥配置
+
+当前源码使用 `CLM_ENVELOPE_KEYS` 的严格配置 JSON（`version: 1`），格式见[密钥配置类型](../../internal/clmenvelope/provider.go)。`keys` 中每个条目填写 `tenant_id`、`purpose`、`kind`、`ref`（`id` 与 `version`）、`material_base64` 和 `active`。供应商受限字段用途为 `contract.supplier.restricted`，外部来源观察正文用途为 `contract.source.observation`。`wrap` 和 `fingerprint` 分别配置独立的 32 字节密钥及版本；每个启用的 tenant/purpose/key kind 最多只能有一个 `active` 条目。JSON 从受控密钥管理注入私有环境文件或 Kubernetes Secret。`make app-config` 会把 `.env` 中这两个 CLM 配置项补入私有 `.env.distributed`，既有 profile 缺项时也只按显式输入补入，不生成或派生它们。
+
+新写入使用带 tenant/object/field/purpose/epoch 绑定的 v2 envelope。旧 `clmv1:` 值没有对象绑定；只有 `CLM_ENVELOPE_KEYS` 中精确的 `legacy_data` 条目和显式 `CLM_LEGACY_DATA_KEY_REF=<id>:<version>` 才能读取。读取不会自动重封或回写旧值；旧 key 版本应按受控恢复/回滚政策保留。`CLM_DATA_KEY` 是早期单 key 配置，当前 `clmProvider` 不读取它，也不会据此推导 wrap/fingerprint/legacy key；单独设置它不能启用当前版本化加密。不要删除仍为旧版本回滚或经批准恢复所需的历史 key。
+
+Compose 只向 Core API 传递 `CLM_ENVELOPE_KEYS` 和 `CLM_LEGACY_DATA_KEY_REF`。Kubernetes 使用 `contract-audit-clm` Secret，Core workload 只挂载这两个值及旧版 `CLM_DATA_KEY`。本地 k3d `secrets.json` 中这两个新字段默认为空且可由操作者受控填写；工具不会自动创建或变换密钥。缺少所需的 wrap、fingerprint 或 legacy key 配置时，相关受限字段操作或旧值读取会失败关闭，不得用空密钥或未验证回退替代。
+
 ## 本地 Compose
 
 `make apps-up` 通过 `deployments/local.py` 和 `compose.app.yaml` 迁移数据库并启动 Gateway、Core、Document、Execution、Worker、Model/Tool Gateway 以及三个前端站点。先完成[本地开发](../engineering/local-development.md)中的基础设施和私有配置步骤，并确认容器能够访问模型端点。容器内 `127.0.0.1` 指向容器自身；模型服务若在宿主机运行，应配置容器可达地址。

@@ -7,16 +7,25 @@ import (
 	"io"
 	"net/http"
 	"testing"
+
+	"contractaudit/internal/clmenvelope"
 )
 
-// clmTestDataKey is one fixed 32-byte test key. Every CLM test in this
-// package uses the same value so the store's cached AEAD never disagrees
-// with the environment inside one test binary.
-var clmTestDataKey = base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{0x6b}, 32))
-
+// Each entry belongs to the explicit synthetic tenant and purpose used here.
 func clmDraftAPI(t *testing.T) *testAPI {
 	t.Helper()
-	t.Setenv("CLM_DATA_KEY", clmTestDataKey)
+	const purpose = "contract.supplier.restricted"
+	entries := []clmenvelope.LocalKeyEntry{
+		{TenantID: "local-demo", Purpose: purpose, Kind: clmenvelope.WrapKey, Ref: clmenvelope.KeyRef{ID: "http-wrap", Version: 1}, MaterialBase64: base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{0x6b}, 32)), Active: true},
+		{TenantID: "local-demo", Purpose: purpose, Kind: clmenvelope.FingerprintKey, Ref: clmenvelope.KeyRef{ID: "http-fingerprint", Version: 1}, MaterialBase64: base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{0x6c}, 32)), Active: true},
+		{TenantID: "local-demo", Purpose: purpose, Kind: clmenvelope.LegacyDataKey, Ref: clmenvelope.KeyRef{ID: "http-legacy", Version: 1}, MaterialBase64: base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{0x6d}, 32))},
+	}
+	raw, err := json.Marshal(clmenvelope.LocalKeyConfig{Version: 1, Keys: entries})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("CLM_ENVELOPE_KEYS", string(raw))
+	t.Setenv("CLM_LEGACY_DATA_KEY_REF", "http-legacy:1")
 	return newAPI(t)
 }
 
@@ -228,24 +237,40 @@ func TestContractDraftHTTPRestrictedFieldRoundTrip(t *testing.T) {
 }
 
 // TestContractDraftHTTPMissingDataKey pins the explicit failure mode: with no
-// CLM_DATA_KEY configured, restricted-field writes are refused instead of
+// CLM_ENVELOPE_KEYS configured, restricted-field writes are refused instead of
 // storing plaintext.
 func TestContractDraftHTTPMissingDataKey(t *testing.T) {
-	t.Setenv("CLM_DATA_KEY", "")
+	t.Setenv("CLM_DATA_KEY", base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{0x7e}, 32))) // obsolete global is not a fallback
+	t.Setenv("CLM_ENVELOPE_KEYS", "")
+	t.Setenv("CLM_LEGACY_DATA_KEY_REF", "")
 	api := newAPI(t)
 	api.login(t, "demo-clerk", "clerk-demo")
+	status, session := clmJSONRequest(t, api, http.MethodGet, "/api/session", nil, nil)
+	if status != http.StatusOK {
+		t.Fatalf("read original command context: %d %v", status, session)
+	}
+	active, ok := session["active_context"].(map[string]any)
+	if !ok {
+		t.Fatalf("session has no active context: %v", session)
+	}
+	commandHeaders := func(key string) map[string]string {
+		headers := clmHeaders(key)
+		headers["X-Context-Version"], _ = active["context_version"].(string)
+		headers["X-CSRF-Token"], _ = session["csrf_token"].(string)
+		return headers
+	}
 
 	payload := clmCreatePayload("缺密钥草稿")
 	payload["draft"].(map[string]any)["supplier"] = map[string]any{
 		"name": "示例供应商", "bank_account": "6222020200001234567",
 	}
-	status, body := clmJSONRequest(t, api, http.MethodPost, "/api/contracts", clmHeaders("no-key-http-0001"), payload)
+	status, body := clmJSONRequest(t, api, http.MethodPost, "/api/contracts", commandHeaders("no-key-http-0001"), payload)
 	if status != http.StatusServiceUnavailable {
 		t.Fatalf("restricted create without key: %d %v", status, body)
 	}
 
 	plain := clmCreatePayload("无敏感字段")
-	status, created := clmJSONRequest(t, api, http.MethodPost, "/api/contracts", clmHeaders("no-key-plain-001"), plain)
+	status, created := clmJSONRequest(t, api, http.MethodPost, "/api/contracts", commandHeaders("no-key-plain-001"), plain)
 	if status != http.StatusCreated {
 		t.Fatalf("unrestricted create without key: %d %v", status, created)
 	}

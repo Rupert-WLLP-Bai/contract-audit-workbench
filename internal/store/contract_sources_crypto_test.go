@@ -28,7 +28,8 @@ func TestCLMSourceObservationCipherBindsObjectContext(t *testing.T) {
 			t.Fatalf("ciphertext opened under mismatched context %q", context)
 		}
 	}
-	t.Setenv("CLM_DATA_KEY", "")
+	t.Setenv(clmEnvelopeKeysEnv, "")
+	t.Setenv(clmLegacyRefEnv, "")
 	if _, err := sealCLMSourceObservation(ctx, raw, "tenant-a", "erp-a", "event-a", "observation-a"); err == nil {
 		t.Fatal("missing data key must refuse source payload persistence")
 	}

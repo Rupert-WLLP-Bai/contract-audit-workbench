@@ -15,13 +15,11 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-// Restricted supplier fields (docs/04 敏感级别 restricted) are sealed with an
-// independent CLM data key before any persistence. Plaintext never enters
-// JSONB, receipts, logs or error messages. The key is read from CLM_DATA_KEY
-// (base64 of exactly 32 bytes); it is deliberately separate from every other
-// configuration secret, and LLM_CONFIG_KEY must never be reused here. Without
-// a usable key, operations whose content carries restricted fields fail
-// explicitly instead of falling back to a derived or empty key.
+// Restricted supplier fields are encrypted before persistence. CLM_ENVELOPE_KEYS
+// supplies explicit tenant- and purpose-scoped wrapping, fingerprint and legacy
+// read keys; CLM_LEGACY_DATA_KEY_REF identifies the historical key when reading
+// v1 values. Missing keys fail closed, and plaintext never enters stored JSON.
+
 const (
 	clmEnvelopeKeysEnv = "CLM_ENVELOPE_KEYS"
 	clmLegacyRefEnv    = "CLM_LEGACY_DATA_KEY_REF"
