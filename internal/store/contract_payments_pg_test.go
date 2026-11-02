@@ -41,7 +41,7 @@ func TestContractPaymentEligibilityAndTrustedReceiptFacts(t *testing.T) {
 	}
 	var contractVersion int64
 	for index, task := range submitted.Tasks {
-		actor := approvalTestUser(t, "demo-reviewer")
+		actor := approvalTestUser(t, "demo-reviewer", fixture.core)
 		if task.Final {
 			actor = fixture.admin
 		}

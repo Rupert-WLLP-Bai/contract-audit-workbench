@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"contractaudit/internal/access"
 	"contractaudit/internal/accounts"
 )
 
@@ -40,7 +41,7 @@ func TestContractSigningRequiresHumanSourceAttestationAndApprovedRevision(t *tes
 	}
 	var rowVersion int64 // Contract version; approval commands use the round version.
 	for index, task := range submitted.Tasks {
-		actor := approvalTestUser(t, "demo-reviewer")
+		actor := approvalTestUser(t, "demo-reviewer", fixture.core)
 		if task.Final {
 			actor = fixture.admin
 		}
@@ -132,12 +133,29 @@ func TestContractSigningRequiresHumanSourceAttestationAndApprovedRevision(t *tes
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = accounts.ConfigureDirectory("") })
+	authenticateNewAdminCommand := func() {
+		t.Helper()
+		current, audience, err := fixture.core.AuthenticateSession(ctx, fixture.sessionToken)
+		if err != nil || audience != "client" || current.ID != fixture.admin.ID || current.MembershipID != fixture.admin.MembershipID {
+			t.Fatalf("authenticate new signing command after membership change: audience=%q err=%v", audience, err)
+		}
+		fixture.admin = current
+	}
+	contractGrant := []access.Grant{{Role: "case_owner", Scope: "case", CaseID: contractID}}
+	adminMembership := approvalIdentityCrosswalk().Memberships[0]
+	adminMembership.Grants = contractGrant
+	importApprovalIdentity(t, fixture.core, IdentityCrosswalk{
+		Version: 1,
+		Principals: []IdentityPrincipalMap{{ID: "c5555555-5555-4555-8555-555555555555", ActorID: "signing-reader",
+			Issuer: "signing-test", Subject: "reader", Status: "active"}},
+		Memberships: []IdentityMembershipMap{adminMembership,
+			{ID: "d5555555-5555-4555-8555-555555555555", ActorID: "signing-reader", TenantID: fixture.admin.TenantID,
+				OrgUnitID: fixture.admin.OrgID, RoleCode: "reviewer", Grants: contractGrant, Status: "active"}},
+	})
+	authenticateNewAdminCommand()
 	_, err = fixture.core.RegisterContractSigning(ctx, fixture.admin, input)
 	assertFaultStatus(t, err, 404, "receipt replay after source-case grant revocation")
-	reader, ok := accounts.ByID("signing-reader")
-	if !ok {
-		t.Fatal("test reader missing")
-	}
+	reader := approvalTestUser(t, "signing-reader", fixture.core)
 	detail, err := fixture.core.LoadContractDetail(ctx, reader, contractID)
 	if err != nil || detail.SigningRegistration != nil {
 		t.Fatalf("case-revoked detail leaked signed material: %+v err=%v", detail.SigningRegistration, err)
@@ -150,6 +168,8 @@ func TestContractSigningRequiresHumanSourceAttestationAndApprovedRevision(t *tes
 	// A returned round on the exact revision remains a negative approval fact;
 	// it cannot fall through to the legacy unknown-history branch.
 	approvalDecisionTestDirectory(t)
+	importApprovalIdentity(t, fixture.core, approvalIdentityCrosswalk())
+	authenticateNewAdminCommand()
 	negative, err := fixture.core.CreateContractDraft(ctx, fixture.admin, CreateContractDraftInput{
 		ExpectedRowVersion: 0, AuthorityMode: "native", Draft: freezeCompleteDraft(), IdempotencyKey: "signing-negative-draft",
 	})
@@ -169,7 +189,7 @@ func TestContractSigningRequiresHumanSourceAttestationAndApprovedRevision(t *tes
 	if err != nil {
 		t.Fatal(err)
 	}
-	returned, err := fixture.core.DecideApprovalTask(ctx, approvalTestUser(t, "demo-reviewer"), DecideApprovalTaskInput{
+	returned, err := fixture.core.DecideApprovalTask(ctx, approvalTestUser(t, "demo-reviewer", fixture.core), DecideApprovalTaskInput{
 		TaskID: negativeRound.Tasks[0].ApprovalTaskID, Decision: clmDecisionReturn,
 		ExpectedRoundRowVersion: negativeRound.Round.RowVersion, IdempotencyKey: "signing-negative-return", Comment: "审批不通过，需补充依据",
 	})

@@ -8,7 +8,9 @@ import (
 	"strings"
 	"testing"
 
+	"contractaudit/internal/access"
 	"contractaudit/internal/accounts"
+	"github.com/jackc/pgx/v5"
 )
 
 // CLM-08 durable checks. They require TEST_DATABASE_URL and
@@ -40,13 +42,58 @@ func approvalDecisionTestDirectory(t *testing.T) {
 	t.Cleanup(func() { _ = accounts.ConfigureDirectory("") })
 }
 
+func approvalIdentityCrosswalk() IdentityCrosswalk {
+	return IdentityCrosswalk{
+		Version:  1,
+		Tenants:  []IdentityTenantMap{{ID: "local-demo", DisplayName: "Approval tenant", Status: "active"}},
+		OrgUnits: []IdentityOrgUnitMap{{TenantID: "local-demo", ID: "demo-org", DisplayName: "Approval organization", Status: "active"}},
+		Principals: []IdentityPrincipalMap{
+			{ID: "c1111111-1111-4111-8111-111111111111", ActorID: "demo-admin", Issuer: "directory-demo", Subject: "admin-demo", Status: "active"},
+			{ID: "c2222222-2222-4222-8222-222222222222", ActorID: "demo-reviewer", Issuer: "directory-demo", Subject: "reviewer-demo", Status: "active"},
+			{ID: "c3333333-3333-4333-8333-333333333333", ActorID: "demo-reviewer-2", Issuer: "directory-demo", Subject: "reviewer-demo-2", Status: "active"},
+			{ID: "c4444444-4444-4444-8444-444444444444", ActorID: "demo-viewer", Issuer: "directory-demo", Subject: "viewer-demo", Status: "active"},
+		},
+		Memberships: []IdentityMembershipMap{
+			{ID: "d1111111-1111-4111-8111-111111111111", ActorID: "demo-admin", TenantID: "local-demo", OrgUnitID: "demo-org", RoleCode: "admin", Grants: []access.Grant{{Role: "case_owner", Scope: "tenant"}}, Status: "active"},
+			{ID: "d2222222-2222-4222-8222-222222222222", ActorID: "demo-reviewer", TenantID: "local-demo", OrgUnitID: "demo-org", RoleCode: "reviewer", Grants: []access.Grant{{Role: "reviewer", Scope: "tenant"}}, Status: "active"},
+			{ID: "d3333333-3333-4333-8333-333333333333", ActorID: "demo-reviewer-2", TenantID: "local-demo", OrgUnitID: "demo-org", RoleCode: "reviewer", Grants: []access.Grant{{Role: "reviewer", Scope: "tenant"}}, Status: "active"},
+			{ID: "d4444444-4444-4444-8444-444444444444", ActorID: "demo-viewer", TenantID: "local-demo", OrgUnitID: "demo-org", RoleCode: "viewer", Grants: []access.Grant{{Role: "viewer", Scope: "tenant"}}, Status: "active"},
+		},
+	}
+}
+
+func importApprovalIdentity(t *testing.T, core *Store, crosswalk IdentityCrosswalk) {
+	t.Helper()
+	adminConfig, err := pgx.ParseConfig(os.Getenv("TEST_DATABASE_URL"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ImportIdentityCrosswalk(context.Background(), adminConfig.ConnString(), core.schema, adminConfig.Database, crosswalk, true); err != nil {
+		t.Fatalf("apply approval identity mapping: %v", err)
+	}
+}
+
+func initializeApprovalSession(t *testing.T, core *Store, profile accounts.User) (accounts.User, string) {
+	t.Helper()
+	importApprovalIdentity(t, core, approvalIdentityCrosswalk())
+	result, err := core.ResolveVerifiedOIDC(context.Background(), profile, "client")
+	if err != nil || result.SessionToken == "" || !result.User.HasResolvedMembership() || result.User.ID != profile.ID || result.User.TenantID != profile.TenantID || result.User.OrgID != profile.OrgID || result.User.Role != profile.Role {
+		t.Fatalf("authenticate approval fixture administrator: %v", err)
+	}
+	return result.User, result.SessionToken
+}
+
 func newApprovalDecisionEnv(t *testing.T) (durableCaseFixture, PublishWorkflowTemplateInput) {
 	t.Helper()
 	if strings.TrimSpace(os.Getenv("TEST_DATABASE_URL")) == "" || strings.TrimSpace(os.Getenv("MIGRATOR_DATABASE_URL")) == "" {
 		t.Skip("TEST_DATABASE_URL and MIGRATOR_DATABASE_URL are required for approval decision checks")
 	}
 	approvalDecisionTestDirectory(t)
-	fixture, _ := newContractDraftTestEnv(t)
+	fixture, ok := newDurableCaseFixture(t, initializeApprovalSession)
+	if !ok {
+		t.Fatal("isolated approval environment unavailable")
+	}
+	testCLMDataKey(t)
 	template := validApprovalTemplate()
 	if _, err := fixture.core.PublishWorkflowTemplate(context.Background(), fixture.admin, template); err != nil {
 		t.Fatalf("publish template: %v", err)
@@ -80,11 +127,18 @@ func submitApprovalForDecisionTest(t *testing.T, fixture durableCaseFixture, key
 	return contractID, result
 }
 
-func approvalTestUser(t *testing.T, id string) accounts.User {
+func approvalTestUser(t *testing.T, id string, core ...*Store) accounts.User {
 	t.Helper()
 	user, ok := accounts.ByID(id)
 	if !ok {
 		t.Fatalf("directory user %s missing", id)
+	}
+	if len(core) > 0 {
+		result, err := core[0].ResolveVerifiedOIDC(context.Background(), user, "client")
+		if err != nil || result.SessionToken == "" || !result.User.HasResolvedMembership() || result.User.ID != id || result.User.TenantID != user.TenantID || result.User.OrgID != user.OrgID || result.User.Role != user.Role {
+			t.Fatalf("authenticate approval actor %s: %v", id, err)
+		}
+		return result.User
 	}
 	return user
 }
@@ -95,7 +149,7 @@ func TestSequentialApprovalDecisionsAdvanceAndCompleteRound(t *testing.T) {
 	contractID, submitted := submitApprovalForDecisionTest(t, fixture, "decision-submit-0001")
 	roundVersion := submitted.Round.RowVersion
 	for i, task := range submitted.Tasks {
-		actor := approvalTestUser(t, "demo-reviewer")
+		actor := approvalTestUser(t, "demo-reviewer", fixture.core)
 		if task.Final {
 			actor = fixture.admin
 		}
@@ -157,8 +211,8 @@ func TestApprovalDecisionRejectsStaleVersionAndWrongActor(t *testing.T) {
 	fixture, _ := newApprovalDecisionEnv(t)
 	ctx := context.Background()
 	_, submitted := submitApprovalForDecisionTest(t, fixture, "decision-submit-0002")
-	reviewer := approvalTestUser(t, "demo-reviewer")
-	viewer := approvalTestUser(t, "demo-viewer")
+	reviewer := approvalTestUser(t, "demo-reviewer", fixture.core)
+	viewer := approvalTestUser(t, "demo-viewer", fixture.core)
 	first, second, third := submitted.Tasks[0], submitted.Tasks[1], submitted.Tasks[2]
 
 	// A future node cannot be decided before it becomes active.
@@ -203,7 +257,7 @@ func TestExternalLegacyActiveApprovalRejectsNewDecisionButKeepsReceiptReplay(t *
 	fixture, _ := newApprovalDecisionEnv(t)
 	ctx := context.Background()
 	contractID, submitted := submitApprovalForDecisionTest(t, fixture, "decision-external-legacy-submit")
-	reviewer := approvalTestUser(t, "demo-reviewer")
+	reviewer := approvalTestUser(t, "demo-reviewer", fixture.core)
 	first, second := submitted.Tasks[0], submitted.Tasks[1]
 	firstResult, err := fixture.core.DecideApprovalTask(ctx, reviewer, DecideApprovalTaskInput{
 		TaskID: first.ApprovalTaskID, Decision: clmDecisionApprove,
@@ -291,7 +345,7 @@ func TestApprovalDecisionIdempotencyAndReturnCancelsRemainingTasks(t *testing.T)
 	fixture, _ := newApprovalDecisionEnv(t)
 	ctx := context.Background()
 	contractID, submitted := submitApprovalForDecisionTest(t, fixture, "decision-submit-0003")
-	reviewer := approvalTestUser(t, "demo-reviewer")
+	reviewer := approvalTestUser(t, "demo-reviewer", fixture.core)
 	first, second := submitted.Tasks[0], submitted.Tasks[1]
 
 	replayed, err := fixture.core.DecideApprovalTask(ctx, reviewer, DecideApprovalTaskInput{
@@ -371,7 +425,7 @@ func TestConcurrentApprovalDecisionsCommitExactlyOnce(t *testing.T) {
 	fixture, _ := newApprovalDecisionEnv(t)
 	ctx := context.Background()
 	contractID, submitted := submitApprovalForDecisionTest(t, fixture, "decision-race-submit")
-	reviewer := approvalTestUser(t, "demo-reviewer")
+	reviewer := approvalTestUser(t, "demo-reviewer", fixture.core)
 	type outcome struct {
 		result ApprovalDecisionResult
 		err    error

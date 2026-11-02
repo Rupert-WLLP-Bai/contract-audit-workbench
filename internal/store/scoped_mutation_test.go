@@ -155,15 +155,16 @@ func (env *durableRoleEnvironment) openRole(t *testing.T, role string) *Store {
 
 // durableCaseFixture uses the real Core and Document owners for case setup.
 type durableCaseFixture struct {
-	environment *durableRoleEnvironment
-	core        *Store
-	document    *Store
-	admin       accounts.User
-	caseID      string
-	dir         string
+	environment  *durableRoleEnvironment
+	core         *Store
+	document     *Store
+	admin        accounts.User
+	caseID       string
+	dir          string
+	sessionToken string
 }
 
-func newDurableCaseFixture(t *testing.T) (durableCaseFixture, bool) {
+func newDurableCaseFixture(t *testing.T, initializeSession ...func(*testing.T, *Store, accounts.User) (accounts.User, string)) (durableCaseFixture, bool) {
 	t.Helper()
 	environment, ok := newDurableRoleEnvironment(t)
 	if !ok {
@@ -175,13 +176,20 @@ func newDurableCaseFixture(t *testing.T) (durableCaseFixture, bool) {
 	if !found {
 		t.Fatal("demo admin missing")
 	}
-	sessionToken, err := core.EstablishSession(admin, "client")
-	if err != nil {
-		t.Fatalf("establish case fixture session: %v", err)
-	}
-	admin, audience, err := core.AuthenticateSession(context.Background(), sessionToken)
-	if err != nil || audience != "client" || admin.ID != "demo-admin" {
-		t.Fatalf("authenticate case fixture session: audience=%q err=%v", audience, err)
+	var sessionToken string
+	if len(initializeSession) > 0 {
+		admin, sessionToken = initializeSession[0](t, core, admin)
+	} else {
+		var err error
+		sessionToken, err = core.EstablishSession(admin, "client")
+		if err != nil {
+			t.Fatalf("establish case fixture session: %v", err)
+		}
+		var audience string
+		admin, audience, err = core.AuthenticateSession(context.Background(), sessionToken)
+		if err != nil || audience != "client" || admin.ID != "demo-admin" {
+			t.Fatalf("authenticate case fixture session: audience=%q err=%v", audience, err)
+		}
 	}
 	ctx := WithAdmissionSessionToken(context.Background(), sessionToken)
 	document.UseOperationAuthority(durableTestOperationAuthority{core: core})
@@ -197,7 +205,7 @@ func newDurableCaseFixture(t *testing.T) (durableCaseFixture, bool) {
 			t.Fatalf("document service write failed for %s: %v", item.role, err)
 		}
 	}
-	return durableCaseFixture{environment: environment, core: core, document: document, admin: admin, caseID: caseID, dir: environment.dir}, true
+	return durableCaseFixture{environment: environment, core: core, document: document, admin: admin, caseID: caseID, dir: environment.dir, sessionToken: sessionToken}, true
 }
 
 // durableFixture is the real independent-service fixture: Core owns the case,
