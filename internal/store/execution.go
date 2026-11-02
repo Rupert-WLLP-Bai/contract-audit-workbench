@@ -984,11 +984,20 @@ func (s *Store) launchAttempt(ctx context.Context, runID, attemptID string, mode
 	ctx = commandContext(ctx, user)
 	actorID := user.ID
 	scope := model.DelegatedScope{Kind: "execution", Action: "embedded_review", TenantID: caseItem.TenantID, OrgID: caseItem.OwnerOrgID, CaseID: caseItem.ID, ActorID: actorID, RunID: runID, AttemptID: attemptID}
-	ticket, err := s.issueOperationTicket(ctx, user, scope)
-	if err != nil {
-		return err
+	_, admitted := user.CommandAuthority()
+	if admitted {
+		var err error
+		scope, err = s.prepareEmbeddedAuthority(ctx, user, caseItem, runID, attemptID)
+		if err != nil {
+			return err
+		}
+	} else {
+		ticket, err := s.issueOperationTicket(ctx, user, scope)
+		if err != nil {
+			return err
+		}
+		scope.OperationTicket = ticket
 	}
-	scope.OperationTicket = ticket
 	s.claimMu.Lock()
 	if s.operationContexts == nil {
 		s.operationContexts = map[string]model.DelegatedScope{}
@@ -1010,7 +1019,7 @@ func (s *Store) launchAttempt(ctx context.Context, runID, attemptID string, mode
 		if installedClaim {
 			defer s.clearClaim(claim)
 		}
-		s.executeAttemptContext(model.WithDelegatedScope(context.Background(), scope), runID, attemptID, models)
+		s.executeAttemptContext(model.WithDelegatedScope(withEmbeddedAdmission(context.Background(), user, admitted), scope), runID, attemptID, models)
 	}()
 	return nil
 }
@@ -1023,7 +1032,7 @@ func (s *Store) executeAttemptContext(parent context.Context, runID, attemptID s
 	ctx, cancel := context.WithTimeout(parent, reviewExecutionLimit)
 	defer cancel()
 	scope, bound := model.DelegatedScopeFromContext(ctx)
-	if !bound || scope.Kind != "execution" {
+	if !bound || (scope.Kind != "execution" && scope.Kind != "execution_prepare") {
 		if claim, ok := s.claimForAttempt(attemptID); ok {
 			ctx = withExecutionClaim(ctx, claim)
 			scope, bound = model.DelegatedScopeFromContext(ctx)
@@ -1043,8 +1052,20 @@ func (s *Store) executeAttemptContext(parent context.Context, runID, attemptID s
 
 	recorder := attemptRecorder{store: s, attemptID: attemptID, failure: &recorderFailure{}}
 	if err := s.markAttemptStarted(ctx, runID, attemptID); err != nil {
-		_ = s.finishAttemptAfterExecution(parent, ctx, runID, attemptID, "failed", "", "execution_persistence_failed")
+		if scope.Kind == "execution_prepare" {
+			s.settleEmbeddedPreparation(parent, ctx, runID, attemptID, err)
+		} else {
+			_ = s.finishAttemptAfterExecution(parent, ctx, runID, attemptID, "failed", "", "execution_persistence_failed")
+		}
 		return
+	}
+	if scope.Kind == "execution_prepare" {
+		var err error
+		ctx, err = s.prepareAndPromoteEmbedded(ctx, scope, models)
+		if err != nil {
+			s.settleEmbeddedPreparation(parent, model.WithDelegatedScope(ctx, scope), runID, attemptID, err)
+			return
+		}
 	}
 	initial, err := s.snapshotForAttemptMetadataContext(ctx, attemptID)
 	if err != nil {
@@ -1270,7 +1291,11 @@ func (s *Store) markAttemptStarted(ctx context.Context, runID, attemptID string)
 			return markAttemptStartedInState(next, runID, attemptID, &generation, occurred, recorded)
 		})
 	}
-	return s.scopedAttemptMutationWithTx(ctx, runID, attemptID, false, func(tx pgx.Tx, next *state) error {
+	allowPreparation := false
+	if scope, ok := model.DelegatedScopeFromContext(ctx); ok && scope.Kind == "execution_prepare" {
+		allowPreparation = true
+	}
+	return s.scopedAttemptMutationInternal(ctx, runID, attemptID, false, allowPreparation, func(tx pgx.Tx, next *state) error {
 		occurred, recorded, err := attemptStartTimestamps(ctx, tx)
 		if err != nil {
 			return err
@@ -1422,6 +1447,9 @@ func (s *Store) prepareAttempt(ctx context.Context, runID, attemptID string, mod
 		}
 		parsed, exists := st.parsedByID(selection.ParsedDocumentID)
 		if !exists {
+			if scope, ok := model.DelegatedScopeFromContext(ctx); ok && scope.Kind == "execution_prepare" {
+				return nil, errors.New("preparation requires an existing selected parse artifact")
+			}
 			parserID, parserVersion, configHash := parserConfigurationFor(doc, models)
 			if parserID != selection.ParserID || parserVersion != selection.ParserVersion || configHash != selection.ConfigHash ||
 				selection.NormalizationVersion != docir.NormalizationVersion {
@@ -1443,7 +1471,12 @@ func (s *Store) prepareAttempt(ctx context.Context, runID, attemptID string, mod
 			return nil, errors.New("pinned parse selection differs from its artifact")
 		}
 		if exists {
-			if err := s.verifyParsedRecordContext(ctx, parsed, doc); err != nil {
+			scope, preparing := model.DelegatedScopeFromContext(ctx)
+			if preparing && scope.Kind == "execution_prepare" {
+				if err := verifyParsed(parsed, doc); err != nil {
+					return nil, fmt.Errorf("attempt parsed artifact integrity check failed: %w", err)
+				}
+			} else if err := s.verifyParsedRecordContext(ctx, parsed, doc); err != nil {
 				return nil, fmt.Errorf("attempt parsed artifact integrity check failed: %w", err)
 			}
 		} else if err := verifyParsed(parsed, doc); err != nil {
@@ -1515,6 +1548,9 @@ func (s *Store) prepareAttempt(ctx context.Context, runID, attemptID string, mod
 		return appendAudit(next, runID, "system", "attempt_input_frozen", []string{attemptID})
 	}); err != nil {
 		return nil, err
+	}
+	if scope, ok := model.DelegatedScopeFromContext(ctx); ok && scope.Kind == "execution_prepare" {
+		return interpretedFromFrozen(frozen), nil
 	}
 	latest, err := s.snapshotForAttemptContext(ctx, attemptID)
 	if err != nil {
