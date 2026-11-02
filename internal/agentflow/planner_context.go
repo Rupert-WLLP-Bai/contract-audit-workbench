@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: The caller is responsible for authorization, publication, applicability and withdrawal checks on the frozen list. This validation only checks its shape and revalidates supplied… Related `agentflow` operations include validatePlannerContext, validPlannerContextCounts, validateKnowledgeReferences, validKnowledgeReference.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-28
+// Updated: 2026-10-30
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package agentflow
 
 import (

@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: 实现 `MetricsRefresher`, `Run` 等具体接口与边界逻辑，供 internal/clmoutbox/consumer 的调用方使用。
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-01
+// Updated: 2026-11-01
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 // Package consumer refreshes the process-local projection of PostgreSQL's
 // global CLM scalar metrics. Broker notifications are coalesced hints only.
 package consumer

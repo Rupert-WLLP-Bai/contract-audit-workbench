@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: assembles shared API, worker, and tool-gateway dependencies. Related `bootstrap` operations include Boundary, Open, openConfigured, startupContextReady.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-25
+// Updated: 2026-11-02
+// Revision: r2
+// Copyright: See LICENSE
+// End file metadata.
+
 // Package bootstrap assembles shared API, worker, and tool-gateway dependencies.
 package bootstrap
 

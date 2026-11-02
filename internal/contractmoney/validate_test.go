@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Exercises the `contractmoney` package behavior through TestFixedTotalScenarioIsValid, TestAdvanceRecalculationIsValid, TestAdvanceClassificationViolations, TestRatioRemainderAttribution, TestDecimalRejectionsByPath; these checks pin observable state, error handling, or wire/database compatibility for this module. Test cases include advance folded on top breaks the classification, non-advance period must carry zero, advance added into the unit amount breaks the period identity, last period absorbs the remainder.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-01
+// Updated: 2026-11-01
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package contractmoney
 
 import "testing"

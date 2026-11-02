@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: RegistryConfig lists the host-registered references a manifest may use. The lists are copied; later caller mutation does not change the registry. Related `capabilitypack` operations include NewRegistry, referenceSet, Register, checkReferences.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-29
+// Updated: 2026-10-30
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package capabilitypack
 
 import (

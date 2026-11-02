@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: serves the versioned contract for the implemented HTTP API. Related `apidocs` operations include Document, Serve.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-25
+// Updated: 2026-11-02
+// Revision: r2
+// Copyright: See LICENSE
+// End file metadata.
+
 // Package apidocs serves the versioned contract for the implemented HTTP API.
 package apidocs
 

@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Money controls are admin-audience endpoints, not general session routes.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-02
+// Updated: 2026-11-02
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package apidocs
 
 // Money controls are admin-audience endpoints, not general session routes.

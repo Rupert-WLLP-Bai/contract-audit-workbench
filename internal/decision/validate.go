@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: ValidInput applies the bounded shape checks shared by shadow backends. It does not check authorization; callers must still call access.Check with the resolved principal and… Related `decision` operations include ValidInput, validInputReferences, validInputState, validCandidates.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-10-28
+// Updated: 2026-10-30
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package decision
 
 import (
