@@ -18,8 +18,25 @@ import (
 func (s *Store) beginContextTx(ctx context.Context, options pgx.TxOptions) (pgx.Tx, error) {
 	// Preparation authority is not a general command capability. Its writes
 	// must go through a dedicated, narrowly scoped preparation transaction.
-	if scope, ok := model.DelegatedScopeFromContext(ctx); ok && scope.Kind == "execution_prepare" && options.AccessMode != pgx.ReadOnly {
+	if scope, ok := model.DelegatedScopeFromContext(ctx); ok && (scope.Kind == "execution_prepare" || scope.Action == "embedded_prepare_parse") && options.AccessMode != pgx.ReadOnly {
 		return nil, fault.Forbidden("准备授权不能用于通用写入")
+	}
+	if options.AccessMode != pgx.ReadOnly {
+		if _, ok := contextProof(ctx); !ok {
+			if scope, delegated := model.DelegatedScopeFromContext(ctx); delegated && scope.Kind != "" {
+				user, err := s.operationUser(ctx, scope)
+				if err != nil {
+					return nil, err
+				}
+				ctx = commandContext(ctx, user)
+			}
+		}
+		if proof, ok := contextProof(ctx); ok && len(proof.operation) != 0 {
+			var scope model.DelegatedScope
+			if json.Unmarshal(proof.operation, &scope) != nil || scope.Kind == "" || scope.Kind == "execution_prepare" || scope.Action == "embedded_prepare_parse" {
+				return nil, fault.Forbidden("准备授权不能用于通用写入")
+			}
+		}
 	}
 	return s.beginFencedContextTx(ctx, options)
 }

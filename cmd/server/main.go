@@ -82,7 +82,15 @@ func serveLegacy(ctx context.Context) error {
 	logStartup(app)
 	apiOptions := options(app, origins())
 	apiOptions.IntakeUploader = store.NewDirectCaseIntakeUploader(app.Store)
-	return listen(ctx, app.Boundary("core", httpapi.Handler(app.Store, apiOptions)))
+	var otherCredentials []string
+	for _, key := range []string{"WORKER_MODEL_TOKEN", "DOCUMENT_MODEL_TOKEN", "GATEWAY_CORE_TOKEN", "GATEWAY_TOOL_TOKEN", "GATEWAY_DOCUMENT_TOKEN", "GATEWAY_EXECUTION_TOKEN", "GATEWAY_ROLE_TOKEN", "WORKER_DOCUMENT_TOKEN", "WORKER_TOOL_TOKEN", "WORKER_CORE_TOKEN", "CORE_DOCUMENT_TOKEN", "TOOL_CORE_AUTHORITY_TOKEN"} {
+		otherCredentials = append(otherCredentials, strings.TrimSpace(os.Getenv(key)))
+	}
+	handler, err := httpapi.DevelopmentHandler(app.Store, apiOptions, app.Selection.Mode, otherCredentials...)
+	if err != nil {
+		return err
+	}
+	return listen(ctx, app.Boundary("core", handler))
 }
 
 func serveCore(ctx context.Context) error {

@@ -120,7 +120,8 @@ func watchStoredLLMEndpoint(ctx context.Context, st llmEndpointStore, service st
 				config = applyStoredLLMEndpoint(base, service, settings)
 				storedDirect = !base.Gateway && config != base
 			}
-			st.UseModels(newModelClient(config, storedDirect))
+			models := newModelClient(config, storedDirect)
+			st.UseModels(embeddedModelsFor(config, service, models))
 			revision = next
 			log.Printf("applied LLM endpoint revision %d (active=%t)", revision, found && settings.Active())
 		}

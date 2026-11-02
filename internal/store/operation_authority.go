@@ -137,6 +137,9 @@ func (s *Store) resolveOperationAuthority(ctx context.Context, scope model.Deleg
 // CreateOperationTicket is a Core-only, exact-session admission operation. It
 // cannot create an actor-only capability or a durable job credential.
 func (s *Store) CreateOperationTicket(ctx context.Context, user accounts.User, scope model.DelegatedScope) (string, error) {
+	if scope.Action == "embedded_prepare_parse" {
+		return "", errAttemptAuthorizationRevoked
+	}
 	ctx = commandContext(ctx, user)
 	if s.serviceOwner != "" && s.serviceOwner != "core" {
 		return "", errors.New("only Core can issue operation tickets")
@@ -195,6 +198,9 @@ func (s *Store) CreateOperationTicket(ctx context.Context, user accounts.User, s
 }
 
 func (s *Store) validateNonJobOperation(ctx context.Context, u accounts.User, scope model.DelegatedScope) error {
+	if scope.Kind == "document" && scope.Action == "embedded_prepare_parse" {
+		return s.validateEmbeddedOCRScope(ctx, u, scope)
+	}
 	ctx = commandContext(ctx, u)
 	if scope.JobID != "" || scope.WorkerID != "" || scope.Generation != 0 || scope.ParseSelectionID != "" || scope.ParseSelectionSHA256 != "" || scope.ActorID != u.ID || scope.TenantID != u.TenantID || scope.OrgID == "" {
 		return errAttemptAuthorizationRevoked

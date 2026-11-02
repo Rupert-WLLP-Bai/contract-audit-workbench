@@ -527,7 +527,9 @@ func (s *Store) interpretUnpersistedWithModels(ctx context.Context, doc Document
 		return interpreted
 	case kindPDF, kindDOCX:
 		var ocr documentparse.OCR
-		if models != nil {
+		if callback, ok := ctx.Value(embeddedOCRCallbackKey{}).(documentparse.OCR); ok {
+			ocr = callback
+		} else if models != nil {
 			ocr = func(ctx context.Context, media string, body []byte) (string, error) {
 				return transcribe(ctx, models, Document{MediaType: media}, body)
 			}

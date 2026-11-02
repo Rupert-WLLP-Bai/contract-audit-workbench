@@ -6,9 +6,13 @@ import (
 	"reflect"
 
 	"contractaudit/internal/accounts"
+	"contractaudit/internal/documentparse"
 	"contractaudit/internal/model"
 	"github.com/jackc/pgx/v5"
 )
+
+// Only the in-process preparation pipeline installs this parser callback.
+type embeddedOCRCallbackKey struct{}
 
 type embeddedAdmissionKey struct{}
 
@@ -144,4 +148,26 @@ func (s *Store) settleExpiredEmbeddedPreparation(ctx context.Context, scope mode
 	locked = false
 	s.patchStateProjection(ctx, previous, old, changed)
 	return nil
+}
+
+// This callback is installed only around parsing of the verified original. The
+// parser supplies page/part identity in a private context immediately after it
+// renders or extracts the bytes; callers cannot submit page metadata to mint.
+func (s *Store) withEmbeddedDerivedOCR(ctx context.Context, user accounts.User, parent model.DelegatedScope, doc Document, sel AttemptParseSelection, models Models) context.Context {
+	callback := documentparse.OCR(func(pageCtx context.Context, media string, body []byte) (string, error) {
+		child, err := s.mintEmbeddedOCRPayload(pageCtx, user, parent, doc, sel, body)
+		if err != nil {
+			return "", err
+		}
+		childCtx := model.WithDelegatedScope(pageCtx, modelScope(child, models))
+		text, err := transcribe(childCtx, models, Document{MediaType: media}, body)
+		if err != nil {
+			return "", err
+		}
+		if _, err = s.ResolveOperationAuthority(pageCtx, child, "document"); err != nil {
+			return "", errAttemptAuthorizationRevoked
+		}
+		return text, nil
+	})
+	return context.WithValue(ctx, embeddedOCRCallbackKey{}, callback)
 }

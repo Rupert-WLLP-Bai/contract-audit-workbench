@@ -76,7 +76,29 @@ func serviceSelection(role string) (config.Selection, error) {
 // otherwise the two would derive different run signatures for the same run.
 func serviceModelConfig(role string) (model.Config, error) {
 	cfg := model.FromEnv()
-	if role == "" || role == "model" {
+	if role == "" {
+		gateway := strings.TrimRight(strings.TrimSpace(os.Getenv("MODEL_GATEWAY_URL")), "/")
+		worker := strings.TrimSpace(os.Getenv("WORKER_MODEL_TOKEN"))
+		document := strings.TrimSpace(os.Getenv("DOCUMENT_MODEL_TOKEN"))
+		if gateway == "" && worker == "" && document == "" {
+			if strings.TrimSpace(os.Getenv("LLM_BASE_URL")) != "" || strings.TrimSpace(os.Getenv("LLM_API_KEY")) != "" {
+				return model.Config{}, errors.New("embedded model calls require MODEL_GATEWAY_URL, WORKER_MODEL_TOKEN, DOCUMENT_MODEL_TOKEN and CORE_MODEL_AUTHORITY_TOKEN; start the existing model gateway or use offline mode")
+			}
+			return cfg, nil
+		}
+		authority := strings.TrimSpace(os.Getenv("CORE_MODEL_AUTHORITY_TOKEN"))
+		if gateway == "" || len(worker) < 32 || len(document) < 32 || worker == document || len(authority) < 32 {
+			return model.Config{}, errors.New("embedded model gateway requires MODEL_GATEWAY_URL and distinct WORKER_MODEL_TOKEN, DOCUMENT_MODEL_TOKEN and CORE_MODEL_AUTHORITY_TOKEN credentials of at least 32 characters")
+		}
+		for _, key := range []string{"WORKER_MODEL_TOKEN", "DOCUMENT_MODEL_TOKEN", "GATEWAY_CORE_TOKEN", "GATEWAY_TOOL_TOKEN", "GATEWAY_DOCUMENT_TOKEN", "GATEWAY_EXECUTION_TOKEN", "GATEWAY_ROLE_TOKEN", "WORKER_DOCUMENT_TOKEN", "WORKER_TOOL_TOKEN", "WORKER_CORE_TOKEN", "CORE_DOCUMENT_TOKEN", "TOOL_CORE_AUTHORITY_TOKEN"} {
+			if other := strings.TrimSpace(os.Getenv(key)); other != "" && other == authority {
+				return model.Config{}, errors.New("CORE_MODEL_AUTHORITY_TOKEN must be distinct from other service credentials")
+			}
+		}
+		cfg.ProviderURL, cfg.BaseURL, cfg.APIKey, cfg.Gateway = cfg.BaseURL, gateway, worker, true
+		return cfg, nil
+	}
+	if role == "model" {
 		return cfg, nil
 	}
 	cfg.APIKey = ""

@@ -37,6 +37,8 @@ make web
 
 API 默认在 `http://127.0.0.1:8080`，前端在 `http://127.0.0.1:5173`。配置和演示账号见[本地开发手册](docs/engineering/local-development.md)。
 
+单进程离线启动不要求模型网关。真实模型审查需要现有预算网关、独立的模型数据库角色 `MODEL_DATABASE_URL`，以及 `MODEL_GATEWAY_URL`、`WORKER_MODEL_TOKEN`、`DOCUMENT_MODEL_TOKEN` 和 `CORE_MODEL_AUTHORITY_TOKEN`；凭据必须彼此不同。模型网关以 `CORE_AUTHORITY_URL` 回连单进程 API 的私有授权接口；开发环境使用回环 HTTP 时须显式设置 `CORE_AUTHORITY_ALLOW_INSECURE_DEV=true`。缺少网关配置或只设置直连模型端点时，启动会给出错误。
+
 ## 文档
 
 - [文档入口](docs/index.md)：产品、工程、运维、架构与术语

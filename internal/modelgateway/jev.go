@@ -290,6 +290,10 @@ func (s *Service) readSystemOneRequest(w http.ResponseWriter, r *http.Request) (
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "delegated model scope is missing", "code": "jev_scope_missing"})
 		return systemOneRequest{}, false
 	}
+	if scope.Kind == "execution_prepare" || scope.Action == "embedded_prepare_parse" {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "preparation scope cannot use advisory models", "code": "model_scope_unavailable"})
+		return systemOneRequest{}, false
+	}
 	if int64(len(body)) > s.config.Budget.MaxInputTokenReservation || s.jev.MaxOutputTokens > s.config.Budget.MaxOutputTokenReservation {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "advisory token bound exceeds the configured reservation", "code": "jev_token_bound_exceeded"})
 		return systemOneRequest{}, false

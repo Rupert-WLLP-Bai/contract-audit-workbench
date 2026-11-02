@@ -1447,15 +1447,40 @@ func (s *Store) prepareAttempt(ctx context.Context, runID, attemptID string, mod
 		}
 		parsed, exists := st.parsedByID(selection.ParsedDocumentID)
 		if !exists {
-			if scope, ok := model.DelegatedScopeFromContext(ctx); ok && scope.Kind == "execution_prepare" {
-				return nil, errors.New("preparation requires an existing selected parse artifact")
-			}
 			parserID, parserVersion, configHash := parserConfigurationFor(doc, models)
 			if parserID != selection.ParserID || parserVersion != selection.ParserVersion || configHash != selection.ConfigHash ||
 				selection.NormalizationVersion != docir.NormalizationVersion {
 				return nil, errors.New("pinned parser configuration is unavailable")
 			}
-			interpreted := s.interpretUnpersistedWithModels(ctx, doc, models)
+			parseCtx, parseModels := ctx, models
+			var ocrChild model.DelegatedScope
+			if scope, ok := model.DelegatedScopeFromContext(ctx); ok && scope.Kind == "execution_prepare" {
+				switch fileKind(doc.Filename, doc.MediaType) {
+				case kindImage:
+					user, ok := ctx.Value(embeddedAdmissionKey{}).(accounts.User)
+					if !ok {
+						return nil, errAttemptAuthorizationRevoked
+					}
+					child, err := s.mintEmbeddedOCRAuthority(ctx, user, scope, doc, selection)
+					if err != nil {
+						return nil, err
+					}
+					ocrChild = child
+					parseCtx = model.WithDelegatedScope(ctx, modelScope(child, models))
+				case kindPDF, kindDOCX:
+					user, ok := ctx.Value(embeddedAdmissionKey{}).(accounts.User)
+					if !ok {
+						return nil, errAttemptAuthorizationRevoked
+					}
+					parseCtx = s.withEmbeddedDerivedOCR(ctx, user, scope, doc, selection, models)
+				}
+			}
+			interpreted := s.interpretUnpersistedWithModels(parseCtx, doc, parseModels)
+			if ocrChild.Action != "" {
+				if _, err := s.ResolveOperationAuthority(ctx, ocrChild, "document"); err != nil {
+					return nil, errAttemptAuthorizationRevoked
+				}
+			}
 			var err error
 			parsed, err = makeParsedWithSelection(doc, interpreted, selection)
 			if err != nil {

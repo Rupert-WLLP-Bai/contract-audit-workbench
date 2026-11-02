@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"strings"
@@ -305,8 +306,14 @@ func wireRuntimeStore(ctx context.Context, st *store.Store, settings runtimeSett
 	// The stored endpoint overrides the deployment identity before the client
 	// is built, so the configuration id a review freezes is the configured one.
 	config, revision, storedDirect := configuredLLMEndpoint(ctx, st, settings, service)
+	if service == "" && storedDirect && !settings.readOnly {
+		return nil, 0, errors.New("active embedded model endpoint requires MODEL_GATEWAY_URL, WORKER_MODEL_TOKEN, DOCUMENT_MODEL_TOKEN and CORE_MODEL_AUTHORITY_TOKEN")
+	}
+	if service == "" && !config.Gateway && !settings.readOnly {
+		log.Print("embedded offline mode: authenticated review model calls require MODEL_GATEWAY_URL, WORKER_MODEL_TOKEN, DOCUMENT_MODEL_TOKEN and CORE_MODEL_AUTHORITY_TOKEN")
+	}
 	models := newModelClient(config, storedDirect)
-	st.UseModels(models)
+	st.UseModels(embeddedModelsFor(config, service, models))
 	if provider := configuredAdvisoryProvider(service, models); provider != nil {
 		st.UseAdvisory(provider)
 	}

@@ -6,6 +6,11 @@ import "context"
 // The gateway authenticates the calling service separately and checks these IDs
 // against current PostgreSQL authority before forwarding a request.
 type DelegatedScope struct {
+	OCRPayloadSHA256     string `json:"ocr_payload_sha256,omitempty"`
+	OCRPage              int    `json:"ocr_page,omitempty"`
+	OCRPart              string `json:"ocr_part,omitempty"`
+	ParentTicketDigest   string `json:"parent_ticket_digest,omitempty"`
+	ParseConfigSHA256    string `json:"parse_config_sha256,omitempty"`
 	AdmissionRevision    string `json:"admission_revision,omitempty"`
 	Action               string `json:"action,omitempty"`
 	OperationTicket      string `json:"operation_ticket,omitempty"`

@@ -17,3 +17,21 @@ type Result struct {
 
 const PDFVersion = "pdf-poppler-v1"
 const DOCXVersion = "ooxml-docx-v2"
+
+// OCRSource identifies a page or embedded image emitted by a trusted parser.
+// Only this package can attach it to the callback context.
+type OCRSource struct {
+	Kind string
+	Page int
+	Part string
+}
+type ocrSourceKey struct{}
+
+func OCRSourceFromContext(ctx context.Context) (OCRSource, bool) {
+	source, ok := ctx.Value(ocrSourceKey{}).(OCRSource)
+	return source, ok
+}
+
+func withOCRSource(ctx context.Context, source OCRSource) context.Context {
+	return context.WithValue(ctx, ocrSourceKey{}, source)
+}
