@@ -62,11 +62,13 @@
       "internal/clmenvelope/types.go",
       "internal/clmoutbox/consumer/cache.go",
       "internal/clmoutbox/consumer/cache_test.go",
+      "internal/clmoutbox/postgres/delivery.go",
       "internal/clmoutbox/relay.go",
       "internal/clmoutbox/relay_pg_test.go",
       "internal/clmoutbox/relay_test.go",
       "internal/clmsource/contract.go",
       "internal/clmsource/contract_test.go",
+      "internal/contract/postgres/events.go",
       "internal/coreauthority/transport.go",
       "internal/documentclient/intake_test.go",
       "internal/documentparse/ocr_source_test.go",
@@ -106,7 +108,9 @@
       "internal/operationauthority/errors.go",
       "internal/operationauthority/revocation_protocol_test.go",
       "internal/operationauthority/session.go",
+      "internal/platform/postgres/transaction.go",
       "internal/store/admission_session_context.go",
+      "internal/store/approval_atomicity_test.go",
       "internal/store/case_intake_authority.go",
       "internal/store/clm_metrics.go",
       "internal/store/clm_outbox.go",
@@ -13253,6 +13257,54 @@
       "handling": "header-and-manifest",
       "header_state": "pending-header-application"
     },
+    "internal/clmoutbox/postgres/delivery.go": {
+      "purpose": "Enqueues Platform-owned contract event delivery records in the caller-owned transaction without changing business event ownership or transaction lifetime.",
+      "authors": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321",
+          "role": "project-author",
+          "source": "Issue #115 project author instruction; not inferred from Git commit identity."
+        }
+      ],
+      "maintainers": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321"
+        }
+      ],
+      "created": {
+        "value": "2026-11-03",
+        "source": {
+          "kind": "git-first-introduction",
+          "commit": "56c660ab4f5b73a82270795c9184e8df7d3cad29",
+          "path": "internal/clmoutbox/postgres/delivery.go",
+          "reason": "first available Git introduction; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "updated": {
+        "value": "2026-11-03",
+        "source": {
+          "kind": "git-last-content-change",
+          "commit": "56c660ab4f5b73a82270795c9184e8df7d3cad29",
+          "path": "internal/clmoutbox/postgres/delivery.go",
+          "reason": "file introduction created its initial content; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "revision": "r1",
+      "copyright": [
+        {
+          "holder": "Bai Junhao",
+          "notice": "See LICENSE",
+          "source": "LICENSE defines the first-party Project Materials and identifies Bai Junhao as rights holder; applied only to content owned or controlled by him.",
+          "verbatim": false
+        }
+      ],
+      "handling": "header-and-manifest",
+      "header_state": "pending-header-application"
+    },
     "internal/clmoutbox/relay.go": {
       "purpose": "实现 `Store`, `MetricsRefresher`, `Broker`, `Dialer` 等具体接口与边界逻辑，供 internal/clmoutbox 的调用方使用。",
       "authors": [
@@ -14385,6 +14437,54 @@
           "kind": "git-last-content-change",
           "commit": "0d82b02b299acb8119e92f75331724bfca9e21d1",
           "reason": "Most recent available content-changing commit in the fixed HEAD history; pure rename events with unchanged blob IDs are excluded. UTC date comes from the commit committer timestamp. Metadata headers have not yet been applied."
+        }
+      },
+      "revision": "r1",
+      "copyright": [
+        {
+          "holder": "Bai Junhao",
+          "notice": "See LICENSE",
+          "source": "LICENSE defines the first-party Project Materials and identifies Bai Junhao as rights holder; applied only to content owned or controlled by him.",
+          "verbatim": false
+        }
+      ],
+      "handling": "header-and-manifest",
+      "header_state": "pending-header-application"
+    },
+    "internal/contract/postgres/events.go": {
+      "purpose": "Appends Contract-owned aggregate business events through the existing authorized transaction shared with related business and Outbox writes.",
+      "authors": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321",
+          "role": "project-author",
+          "source": "Issue #115 project author instruction; not inferred from Git commit identity."
+        }
+      ],
+      "maintainers": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321"
+        }
+      ],
+      "created": {
+        "value": "2026-11-03",
+        "source": {
+          "kind": "git-first-introduction",
+          "commit": "56c660ab4f5b73a82270795c9184e8df7d3cad29",
+          "path": "internal/contract/postgres/events.go",
+          "reason": "first available Git introduction; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "updated": {
+        "value": "2026-11-03",
+        "source": {
+          "kind": "git-last-content-change",
+          "commit": "56c660ab4f5b73a82270795c9184e8df7d3cad29",
+          "path": "internal/contract/postgres/events.go",
+          "reason": "file introduction created its initial content; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
       "revision": "r1",
@@ -28231,6 +28331,54 @@
       "handling": "header-and-manifest",
       "header_state": "pending-header-application"
     },
+    "internal/platform/postgres/transaction.go": {
+      "purpose": "Provides a non-owning SQL executor for trusted PostgreSQL adapters while preserving the original transaction wrapper, scope, authority fences and caller-owned commit or rollback.",
+      "authors": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321",
+          "role": "project-author",
+          "source": "Issue #115 project author instruction; not inferred from Git commit identity."
+        }
+      ],
+      "maintainers": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321"
+        }
+      ],
+      "created": {
+        "value": "2026-11-03",
+        "source": {
+          "kind": "git-first-introduction",
+          "commit": "56c660ab4f5b73a82270795c9184e8df7d3cad29",
+          "path": "internal/platform/postgres/transaction.go",
+          "reason": "first available Git introduction; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "updated": {
+        "value": "2026-11-03",
+        "source": {
+          "kind": "git-last-content-change",
+          "commit": "56c660ab4f5b73a82270795c9184e8df7d3cad29",
+          "path": "internal/platform/postgres/transaction.go",
+          "reason": "file introduction created its initial content; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "revision": "r1",
+      "copyright": [
+        {
+          "holder": "Bai Junhao",
+          "notice": "See LICENSE",
+          "source": "LICENSE defines the first-party Project Materials and identifies Bai Junhao as rights holder; applied only to content owned or controlled by him.",
+          "verbatim": false
+        }
+      ],
+      "handling": "header-and-manifest",
+      "header_state": "pending-header-application"
+    },
     "internal/process/process.go": {
       "purpose": "holds the lifecycle wiring shared by the service entrypoints: signal-scoped contexts, graceful HTTP shutdown and the environment fallback rule. Related `process` operations include Main, SignalContext, Serve, Env.",
       "authors": [
@@ -29886,6 +30034,54 @@
           "kind": "git-last-content-change",
           "commit": "dea4ca14a86678b38ab2b052c3eec3ecbed63589",
           "reason": "Most recent available content-changing commit in the fixed HEAD history; pure rename events with unchanged blob IDs are excluded. UTC date comes from the commit committer timestamp. Metadata headers have not yet been applied."
+        }
+      },
+      "revision": "r1",
+      "copyright": [
+        {
+          "holder": "Bai Junhao",
+          "notice": "See LICENSE",
+          "source": "LICENSE defines the first-party Project Materials and identifies Bai Junhao as rights holder; applied only to content owned or controlled by him.",
+          "verbatim": false
+        }
+      ],
+      "handling": "header-and-manifest",
+      "header_state": "pending-header-application"
+    },
+    "internal/store/approval_atomicity_test.go": {
+      "purpose": "Verifies real approval command rollback and commit across Contract events and Outbox, transaction-local scope cleanup, restricted service roles and cross-tenant RLS rejection.",
+      "authors": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321",
+          "role": "project-author",
+          "source": "Issue #115 project author instruction; not inferred from Git commit identity."
+        }
+      ],
+      "maintainers": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321"
+        }
+      ],
+      "created": {
+        "value": "2026-11-03",
+        "source": {
+          "kind": "git-first-introduction",
+          "commit": "56c660ab4f5b73a82270795c9184e8df7d3cad29",
+          "path": "internal/store/approval_atomicity_test.go",
+          "reason": "first available Git introduction; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "updated": {
+        "value": "2026-11-03",
+        "source": {
+          "kind": "git-last-content-change",
+          "commit": "56c660ab4f5b73a82270795c9184e8df7d3cad29",
+          "path": "internal/store/approval_atomicity_test.go",
+          "reason": "file introduction created its initial content; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
       "revision": "r1",
@@ -31689,15 +31885,15 @@
         }
       },
       "updated": {
-        "value": "2026-11-02",
+        "value": "2026-11-03",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "9b5405101dd05b6ca85389fdf9e097bc0e33e7a6",
+          "commit": "56c660ab4f5b73a82270795c9184e8df7d3cad29",
           "path": "internal/store/contract_approval.go",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r2",
+      "revision": "r3",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -42193,12 +42389,12 @@
         "value": "2026-11-03",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "406bf64745912c1aa6d89697902fb413e432b860",
+          "commit": "56c660ab4f5b73a82270795c9184e8df7d3cad29",
           "path": "internal/store/scoped_mutation_test.go",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r3",
+      "revision": "r4",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -47978,15 +48174,15 @@
         }
       },
       "updated": {
-        "value": "2026-11-02",
+        "value": "2026-11-03",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "ac8084d801cae350b57032b348f1e272ce72ed66",
+          "commit": "56c660ab4f5b73a82270795c9184e8df7d3cad29",
           "path": "scripts/architecture/architecture.json",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r2",
+      "revision": "r3",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -49443,7 +49639,7 @@
           "reason": "The manifest cannot embed the commit/blob identity of its own current update; retain this exact-path self-reference exception."
         }
       },
-      "revision": "r13",
+      "revision": "r14",
       "copyright": [
         {
           "holder": "Bai Junhao",

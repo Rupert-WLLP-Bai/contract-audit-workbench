@@ -80,6 +80,25 @@
       "internal/outboxrelay",
       "internal/toolgateway"
     ],
-    "domains": []
+    "domains": [
+      {
+        "id": "contract",
+        "app": [],
+        "transport": [],
+        "postgres": [
+          "internal/contract/postgres"
+        ]
+      },
+      {
+        "id": "platform",
+        "app": [
+          "internal/platform/postgres"
+        ],
+        "transport": [],
+        "postgres": [
+          "internal/clmoutbox/postgres"
+        ]
+      }
+    ]
   }
 }
