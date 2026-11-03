@@ -21,6 +21,37 @@ import (
 	"contractaudit/internal/apidocs"
 )
 
+func TestWorkflowConfigurationRequiresAdminSession(t *testing.T) {
+	var spec struct {
+		Paths map[string]json.RawMessage `json:"paths"`
+	}
+	if err := json.Unmarshal(apidocs.Document(), &spec); err != nil {
+		t.Fatal(err)
+	}
+	for path, method := range map[string]string{
+		"/api/admin/contract-workflow/templates":        "post",
+		"/api/admin/contract-workflow/roles/{roleCode}": "put",
+	} {
+		var item map[string]json.RawMessage
+		if err := json.Unmarshal(spec.Paths[path], &item); err != nil {
+			t.Fatalf("decode %s: %v", path, err)
+		}
+		var operation struct {
+			Security []map[string][]string `json:"security"`
+		}
+		if err := json.Unmarshal(item[method], &operation); err != nil {
+			t.Fatalf("decode %s %s: %v", method, path, err)
+		}
+		requirements := operation.Security
+		if len(requirements) != 1 || len(requirements[0]) != 1 {
+			t.Fatalf("%s %s must require only an admin session: %v", method, path, requirements)
+		}
+		if _, ok := requirements[0]["adminSessionCookie"]; !ok {
+			t.Fatalf("%s %s must require adminSessionCookie: %v", method, path, requirements)
+		}
+	}
+}
+
 func TestContractIsValidJSONWithInternalReferences(t *testing.T) {
 	var spec map[string]any
 	if err := json.Unmarshal(apidocs.Document(), &spec); err != nil {
