@@ -9,6 +9,7 @@
 // End file metadata.
 
 import { chromiumExecutable } from "./chromium";
+import { browserSessionCommandHeaders } from "./command-context";
 import { C1B_BUSINESS_AT_UTC, C1B_BUSINESS_TIME_ZONE, enterC1BBusinessAt } from "./c1b-clock";
 import { parseReviewWorkspace } from "../src/api/parse";
 import { readFrozenGovernance } from "./c1b-frozen-governance";
@@ -307,7 +308,7 @@ try {
     assert.deepEqual(afterArchiveBytes.html, reportBytes.html, `${scenario.id} archive changed frozen HTML bytes`);
 
     const deniedWrite = await page.request.post(`${web}/api/cases/${caseID}/generations`, {
-      headers: { Origin: new URL(web).origin },
+      headers: { Origin: new URL(web).origin, ...await browserSessionCommandHeaders(page.request, web) },
       data: { template_id: dataset.template_id, fields: scenario.fields },
     });
     assert.equal(deniedWrite.status(), 409, `${scenario.id} archived case accepted a new generation`);
@@ -495,7 +496,7 @@ async function finishExistingScenario(
   assert.deepEqual(afterArchiveBytes.html, reportBytes.html, "compatible archive changed frozen HTML bytes");
 
   const deniedWrite = await currentPage.request.post(`${web}/api/cases/${detail.id}/generations`, {
-    headers: { Origin: new URL(web).origin },
+    headers: { Origin: new URL(web).origin, ...await browserSessionCommandHeaders(currentPage.request, web) },
     data: { template_id: dataset.template_id, fields: scenario.fields },
   });
   assert.equal(deniedWrite.status(), 409, "archived compatible case accepted a new generation");
@@ -572,7 +573,7 @@ async function finishExistingInsufficientScenario(
   assert.deepEqual(afterArchiveBytes.html, reportBytes.html, "insufficient archive changed frozen HTML bytes");
 
   const deniedWrite = await currentPage.request.post(`${web}/api/cases/${initialDetail.id}/generations`, {
-    headers: { Origin: new URL(web).origin },
+    headers: { Origin: new URL(web).origin, ...await browserSessionCommandHeaders(currentPage.request, web) },
     data: { template_id: dataset.template_id, fields: scenario.fields },
   });
   assert.equal(deniedWrite.status(), 409, "archived insufficient case accepted a new generation");

@@ -9,6 +9,7 @@
 // End file metadata.
 
 import { chromiumExecutable } from "./chromium";
+import { browserSessionCommandHeaders } from "./command-context";
 import { C1B_BUSINESS_AT_UTC, C1B_BUSINESS_TIME_ZONE, enterC1BBusinessAt } from "./c1b-clock";
 import { parseReviewWorkspace } from "../src/api/parse";
 import type { ConstraintEvaluation, ReviewDiagnostics as ReviewDiagnosticsDTO, ReviewWorkspace } from "../src/api/types";
@@ -621,7 +622,7 @@ try {
   assert.ok(archived.archived_at, "archive timestamp was not retained");
 
   const deniedWrite = await page.request.post(`${web}/api/cases/${caseID}/generations`, {
-    headers: { Origin: new URL(web).origin },
+    headers: { Origin: new URL(web).origin, ...await browserSessionCommandHeaders(page.request, web) },
     data: { template_id: dataset.template_id, fields: scenario.fields },
   });
   assert.equal(deniedWrite.status(), 409, "archived case accepted a new generation");
