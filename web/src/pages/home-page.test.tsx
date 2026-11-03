@@ -373,8 +373,18 @@ afterEach(() => {
 
 describe("HomePage snapshot consumers", () => {
   it("uses server metrics, mutually exclusive business states and explicit risk levels", async () => {
-    open();
+    const service = new HomeService();
+    open(service);
     await screen.findByRole("heading", { name: "你好，周审查" });
+
+    const caseWork = screen.getByRole("region", { name: "按案件处理" });
+    expect(within(caseWork).getByText(/确认质保条款.*处理中/)).toBeInTheDocument();
+    expect(within(caseWork).getAllByText(/截止/).length).toBeGreaterThan(0);
+    expect(within(caseWork).getByRole("link", { name: "专线采购合同" })).toHaveAttribute(
+      "href",
+      "/cases/case-1",
+    );
+    expect(within(caseWork).getByText(/实际下一步及可执行动作以案件页服务端信息为准/)).toBeInTheDocument();
 
     expect(
       within(screen.getByLabelText("工作台摘要"))
@@ -422,6 +432,54 @@ describe("HomePage snapshot consumers", () => {
     expect(
       within(audit[1]!).getByRole("link", { name: "case/old" }),
     ).toHaveAttribute("href", "/cases/case%2Fold");
+  });
+
+  it("shows a profile deadline without describing the case as high risk", async () => {
+    const service = new HomeService();
+    service.data.cases = [
+      caseRecord({
+        id: "case-due-only",
+        title: "仅有案件期限",
+        profile: {
+          case_id: "case-due-only",
+          contract_category: "采购",
+          customer: "客户",
+          due_at: "2026-11-20T00:00:00Z",
+          number: "C-1",
+          owner_id: "me",
+          supplier: "供应商",
+          updated_at: at,
+          version: 1,
+        },
+      }),
+    ];
+    service.data.tasks = [];
+    service.data.remediations = [];
+    open(service);
+
+    const caseWork = await screen.findByRole("region", { name: "按案件处理" });
+    const dueOnlyCase = within(caseWork)
+      .getByRole("link", { name: "仅有案件期限" })
+      .closest("li");
+    expect(dueOnlyCase).toHaveTextContent("案件期限");
+    expect(dueOnlyCase).not.toHaveTextContent("高风险");
+  });
+
+  it("shows a scoped empty state and labels unknown severity as unknown", async () => {
+    const empty = new HomeService();
+    empty.data.cases = [];
+    empty.data.tasks = [];
+    empty.data.remediations = [];
+    open(empty);
+    expect(await screen.findByText("当前可见快照中没有符合筛选的案件。")).toBeInTheDocument();
+    cleanup();
+
+    const unknown = new HomeService();
+    unknown.data.cases[0]!.severity = "future_state";
+    open(unknown);
+    const caseWork = await screen.findByRole("region", { name: "按案件处理" });
+    expect(await within(caseWork).findByText("风险级别未知")).toBeInTheDocument();
+    expect(within(caseWork).queryByText(/future_state/)).not.toBeInTheDocument();
   });
 
   it("fetches each selected period and updates the displayed snapshot", async () => {
