@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-10-25
-// Revision: r1
+// Updated: 2026-11-03
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -82,6 +82,23 @@ func TestWorkbenchRoutesExposeCASCreatorsRelationsAndPlatformAudit(t *testing.T)
 	if status != http.StatusOK || len(snapshot["profiles"].([]any)) != 1 || len(snapshot["tasks"].([]any)) != 1 ||
 		len(snapshot["relations"].([]any)) != 1 || len(snapshot["knowledge"].([]any)) != 1 {
 		t.Fatalf("workbench snapshot: status=%d body=%v", status, snapshot)
+	}
+	if _, exists := snapshot["tasks"].([]any)[0].(map[string]any)["can_complete"]; exists {
+		t.Fatal("legacy snapshot unexpectedly contains task capability")
+	}
+	for _, raw := range snapshot["cases"].([]any) {
+		if _, exists := raw.(map[string]any)["can_create_task"]; exists {
+			t.Fatal("legacy snapshot unexpectedly contains case capability")
+		}
+	}
+	status, extended := api.do(t, http.MethodGet, "/api/workbench?period=week&task_capabilities=1", nil)
+	if status != http.StatusOK || extended["tasks"].([]any)[0].(map[string]any)["can_complete"] != true {
+		t.Fatalf("extended snapshot: status=%d body=%v", status, extended)
+	}
+	for _, raw := range extended["cases"].([]any) {
+		if raw.(map[string]any)["can_create_task"] != true {
+			t.Fatalf("missing case capability: %v", raw)
+		}
 	}
 	platformAuditFound := false
 	for _, raw := range snapshot["audit"].([]any) {

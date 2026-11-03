@@ -4,7 +4,7 @@
 // Contact: +86 13617696321
 // Created: 2026-11-02
 // Updated: 2026-11-03
-// Revision: r3
+// Revision: r4
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -2535,6 +2535,22 @@ type WorkbenchTask struct {
 	Created_at  string `json:"created_at" openapi:"{\"type\":\"string\",\"format\":\"date-time\"}"`
 	Updated_at  string `json:"updated_at" openapi:"{\"type\":\"string\",\"format\":\"date-time\"}"`
 }
+type WorkbenchSnapshotTask struct {
+	Id           string `json:"id" openapi:"{\"type\":\"string\"}"`
+	Case_id      string `json:"case_id" openapi:"{\"type\":\"string\"}"`
+	Title        string `json:"title" openapi:"{\"type\":\"string\"}"`
+	Kind         string `json:"kind" openapi:"{\"type\":\"string\",\"enum\":[\"review\",\"decision\",\"remediation\",\"general\"]}"`
+	Assignee_id  string `json:"assignee_id" openapi:"{\"type\":\"string\"}"`
+	Due_at       any    `json:"due_at" openapi:"{\"type\":[\"string\",\"null\"],\"format\":\"date-time\"}"`
+	Status       string `json:"status" openapi:"{\"type\":\"string\",\"enum\":[\"open\",\"in_progress\",\"completed\"]}"`
+	Priority     string `json:"priority" openapi:"{\"type\":\"string\",\"enum\":[\"high\",\"medium\",\"low\"]}"`
+	Finding_id   any    `json:"finding_id" openapi:"{\"type\":[\"string\",\"null\"]}"`
+	Created_by   any    `json:"created_by" openapi:"{\"type\":[\"string\",\"null\"]}"`
+	Version      int64  `json:"version" openapi:"{\"type\":\"integer\",\"minimum\":0}"`
+	Created_at   string `json:"created_at" openapi:"{\"type\":\"string\",\"format\":\"date-time\"}"`
+	Updated_at   string `json:"updated_at" openapi:"{\"type\":\"string\",\"format\":\"date-time\"}"`
+	Can_complete bool   `json:"can_complete,omitempty" openapi:"{\"type\":\"boolean\"}"`
+}
 type WorkbenchTaskInput struct {
 	Title            string `json:"title" openapi:"{\"type\":\"string\"}"`
 	Kind             string `json:"kind" openapi:"{\"type\":\"string\",\"enum\":[\"review\",\"decision\",\"remediation\",\"general\"]}"`
@@ -2640,26 +2656,27 @@ type WorkbenchAudit struct {
 	Summary    string `json:"summary" openapi:"{\"type\":\"string\"}"`
 }
 type Workbench struct {
-	Schema_version string                 `json:"schema_version" openapi:"{\"type\":\"string\",\"const\":\"workbench/v1\"}"`
-	Generated_at   string                 `json:"generated_at" openapi:"{\"type\":\"string\",\"format\":\"date-time\"}"`
-	Period         string                 `json:"period" openapi:"{\"type\":\"string\",\"enum\":[\"day\",\"week\",\"month\"]}"`
-	Dashboard      WorkbenchDashboard     `json:"dashboard" openapi:"{\"$ref\":\"#/components/schemas/WorkbenchDashboard\"}"`
-	Cases          []WorkbenchCase        `json:"cases" openapi:"{\"type\":\"array\"}" openapi_items:"{\"$ref\":\"#/components/schemas/WorkbenchCase\"}"`
-	Profiles       []CaseProfile          `json:"profiles" openapi:"{\"type\":\"array\"}" openapi_items:"{\"$ref\":\"#/components/schemas/CaseProfile\"}"`
-	Tasks          []WorkbenchTask        `json:"tasks" openapi:"{\"type\":\"array\"}" openapi_items:"{\"$ref\":\"#/components/schemas/WorkbenchTask\"}"`
-	Relations      []CaseRelation         `json:"relations" openapi:"{\"type\":\"array\"}" openapi_items:"{\"$ref\":\"#/components/schemas/CaseRelation\"}"`
-	Knowledge      []Knowledge            `json:"knowledge" openapi:"{\"type\":\"array\"}" openapi_items:"{\"$ref\":\"#/components/schemas/Knowledge\"}"`
-	Members        []WorkbenchMember      `json:"members" openapi:"{\"type\":\"array\"}" openapi_items:"{\"$ref\":\"#/components/schemas/WorkbenchMember\"}"`
-	Remediations   []WorkbenchRemediation `json:"remediations" openapi:"{\"type\":\"array\"}" openapi_items:"{\"$ref\":\"#/components/schemas/WorkbenchRemediation\"}"`
-	Reports        []WorkbenchReport      `json:"reports" openapi:"{\"type\":\"array\"}" openapi_items:"{\"$ref\":\"#/components/schemas/WorkbenchReport\"}"`
-	Documents      []WorkbenchDocument    `json:"documents" openapi:"{\"type\":\"array\"}" openapi_items:"{\"$ref\":\"#/components/schemas/WorkbenchDocument\"}"`
-	Runs           []WorkbenchRun         `json:"runs" openapi:"{\"type\":\"array\"}" openapi_items:"{\"$ref\":\"#/components/schemas/WorkbenchRun\"}"`
-	Audit          []WorkbenchAudit       `json:"audit" openapi:"{\"type\":\"array\"}" openapi_items:"{\"$ref\":\"#/components/schemas/WorkbenchAudit\"}"`
-	Templates      []Template             `json:"templates" openapi:"{\"type\":\"array\"}" openapi_items:"{\"$ref\":\"#/components/schemas/Template\"}"`
-	Tools          []WorkbenchTool        `json:"tools" openapi:"{\"type\":\"array\"}" openapi_items:"{\"$ref\":\"#/components/schemas/WorkbenchTool\"}"`
-	Model          WorkbenchModel         `json:"model" openapi:"{\"$ref\":\"#/components/schemas/WorkbenchModel\"}"`
+	Schema_version string                  `json:"schema_version" openapi:"{\"type\":\"string\",\"const\":\"workbench/v1\"}"`
+	Generated_at   string                  `json:"generated_at" openapi:"{\"type\":\"string\",\"format\":\"date-time\"}"`
+	Period         string                  `json:"period" openapi:"{\"type\":\"string\",\"enum\":[\"day\",\"week\",\"month\"]}"`
+	Dashboard      WorkbenchDashboard      `json:"dashboard" openapi:"{\"$ref\":\"#/components/schemas/WorkbenchDashboard\"}"`
+	Cases          []WorkbenchCase         `json:"cases" openapi:"{\"type\":\"array\"}" openapi_items:"{\"$ref\":\"#/components/schemas/WorkbenchCase\"}"`
+	Profiles       []CaseProfile           `json:"profiles" openapi:"{\"type\":\"array\"}" openapi_items:"{\"$ref\":\"#/components/schemas/CaseProfile\"}"`
+	Tasks          []WorkbenchSnapshotTask `json:"tasks" openapi:"{\"type\":\"array\"}" openapi_items:"{\"$ref\":\"#/components/schemas/WorkbenchSnapshotTask\"}"`
+	Relations      []CaseRelation          `json:"relations" openapi:"{\"type\":\"array\"}" openapi_items:"{\"$ref\":\"#/components/schemas/CaseRelation\"}"`
+	Knowledge      []Knowledge             `json:"knowledge" openapi:"{\"type\":\"array\"}" openapi_items:"{\"$ref\":\"#/components/schemas/Knowledge\"}"`
+	Members        []WorkbenchMember       `json:"members" openapi:"{\"type\":\"array\"}" openapi_items:"{\"$ref\":\"#/components/schemas/WorkbenchMember\"}"`
+	Remediations   []WorkbenchRemediation  `json:"remediations" openapi:"{\"type\":\"array\"}" openapi_items:"{\"$ref\":\"#/components/schemas/WorkbenchRemediation\"}"`
+	Reports        []WorkbenchReport       `json:"reports" openapi:"{\"type\":\"array\"}" openapi_items:"{\"$ref\":\"#/components/schemas/WorkbenchReport\"}"`
+	Documents      []WorkbenchDocument     `json:"documents" openapi:"{\"type\":\"array\"}" openapi_items:"{\"$ref\":\"#/components/schemas/WorkbenchDocument\"}"`
+	Runs           []WorkbenchRun          `json:"runs" openapi:"{\"type\":\"array\"}" openapi_items:"{\"$ref\":\"#/components/schemas/WorkbenchRun\"}"`
+	Audit          []WorkbenchAudit        `json:"audit" openapi:"{\"type\":\"array\"}" openapi_items:"{\"$ref\":\"#/components/schemas/WorkbenchAudit\"}"`
+	Templates      []Template              `json:"templates" openapi:"{\"type\":\"array\"}" openapi_items:"{\"$ref\":\"#/components/schemas/Template\"}"`
+	Tools          []WorkbenchTool         `json:"tools" openapi:"{\"type\":\"array\"}" openapi_items:"{\"$ref\":\"#/components/schemas/WorkbenchTool\"}"`
+	Model          WorkbenchModel          `json:"model" openapi:"{\"$ref\":\"#/components/schemas/WorkbenchModel\"}"`
 }
 type WorkbenchCase struct {
+	Can_create_task   bool   `json:"can_create_task,omitempty" openapi:"{\"type\":\"boolean\"}"`
 	Id                string `json:"id" openapi:"{\"type\":\"string\"}"`
 	Title             string `json:"title" openapi:"{\"type\":\"string\"}"`
 	Contract_type     string `json:"contract_type" openapi:"{\"type\":\"string\"}"`
@@ -4370,6 +4387,7 @@ var SchemaRules = map[string]string{
 	"CaseProfile":                            "{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"case_id\",\"number\",\"customer\",\"supplier\",\"contract_category\",\"owner_id\",\"due_at\",\"version\",\"updated_at\"]}",
 	"CaseProfileInput":                       "{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"number\",\"customer\",\"supplier\",\"contract_category\",\"owner_id\",\"due_at\",\"expected_version\"]}",
 	"WorkbenchTask":                          "{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"id\",\"case_id\",\"title\",\"kind\",\"assignee_id\",\"due_at\",\"status\",\"priority\",\"finding_id\",\"created_by\",\"version\",\"created_at\",\"updated_at\"]}",
+	"WorkbenchSnapshotTask":                  "{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"id\",\"case_id\",\"title\",\"kind\",\"assignee_id\",\"due_at\",\"status\",\"priority\",\"finding_id\",\"created_by\",\"version\",\"created_at\",\"updated_at\"]}",
 	"WorkbenchTaskInput":                     "{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"title\",\"kind\",\"assignee_id\",\"due_at\",\"status\",\"priority\",\"finding_id\"]}",
 	"WorkbenchTaskUpdateInput":               "{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"title\",\"kind\",\"assignee_id\",\"due_at\",\"status\",\"priority\",\"finding_id\",\"expected_version\"]}",
 	"CaseRelation":                           "{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"id\",\"case_id\",\"related_case_id\",\"reason\",\"created_by\",\"created_at\"]}",
@@ -4807,6 +4825,7 @@ func Types() map[string]reflect.Type {
 		"CaseProfile":                            reflect.TypeOf((*CaseProfile)(nil)).Elem(),
 		"CaseProfileInput":                       reflect.TypeOf((*CaseProfileInput)(nil)).Elem(),
 		"WorkbenchTask":                          reflect.TypeOf((*WorkbenchTask)(nil)).Elem(),
+		"WorkbenchSnapshotTask":                  reflect.TypeOf((*WorkbenchSnapshotTask)(nil)).Elem(),
 		"WorkbenchTaskInput":                     reflect.TypeOf((*WorkbenchTaskInput)(nil)).Elem(),
 		"WorkbenchTaskUpdateInput":               reflect.TypeOf((*WorkbenchTaskUpdateInput)(nil)).Elem(),
 		"CaseRelation":                           reflect.TypeOf((*CaseRelation)(nil)).Elem(),

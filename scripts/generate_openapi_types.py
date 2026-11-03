@@ -5,7 +5,7 @@
 # Contact: +86 13617696321
 # Created: 2026-10-31
 # Updated: 2026-11-03
-# Revision: r3
+# Revision: r4
 # Copyright: See LICENSE
 # End file metadata.
 
@@ -52,7 +52,7 @@ ROOTS = (
     "FindingCounts", "KnowledgeInput", "LLMModelSelectionInput", "MaterialProjection",
     "MaterialSelectionProjection", "MaterialVersionProjection", "RemediationInput",
     "RemediationSubmitInput", "RemediationVerifyInput", "TextOffset", "WorkbenchTask",
-    "WorkbenchTaskInput", "WorkbenchTaskUpdateInput",
+    "WorkbenchTaskInput", "WorkbenchTaskUpdateInput", "WorkbenchSnapshotTask", "WorkbenchCase",
     "TenantRuntimeControl", "TenantExecutionQueue", "TenantCostWindow", "TenantCost",
     "TenantConfigRef", "TenantConfigCatalogEntry", "TenantModelCatalogEntry", "TenantCredentialRef",
     "TenantConfigSelection", "AdoptedTenantConfig", "TenantConfigView", "TenantConfigPreviewRequest",

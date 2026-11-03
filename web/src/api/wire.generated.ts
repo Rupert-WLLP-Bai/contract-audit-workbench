@@ -108,6 +108,7 @@ export interface WireSchemas {
   "RemediationSubmitInput": { "document_ids": Array<string>; "expected_version": number; "reason": string; };
   "RemediationVerifyInput": { "attempt_id": string; "expected_version": number; "reason": string; "run_id": string; };
   "ReviewScopeIdentity": { "id": "single_contract_precheck"; "rule_set_hash": string; "rule_set_id": string; "rule_set_version": string; };
+  "RunSummary": { "id": string; "state": string; "updated_at": string; };
   "Session": { "active_context": WireSchemas["ActiveContext"]; "actor": WireSchemas["Actor"]; "audience": "client" | "admin"; "context_switch_enabled": boolean; "csrf_token": string; "principal_id": (string) | null; };
   "SigningJSONValue": WireRecursiveSchema0;
   "SourceRef": { "id": string; "source_version": string; "system": string; };
@@ -150,6 +151,8 @@ export interface WireSchemas {
   "TenantRuntimeControl": { "live_epoch": string; "status": "active" | "suspended" | "closed"; };
   "TextOffset": { "end": number; "start": number; };
   "UnitRef": { "id": string; "name": string; };
+  "WorkbenchCase": { "archived_at": (string) | (null); "business_line": string; "business_status": string; "can_create_task"?: boolean; "contract_type": string; "document_count": number; "id": string; "latest_run": (WireSchemas["RunSummary"]) | (null); "pending_decisions": number; "profile": (WireSchemas["CaseProfile"]) | (null); "progress": number | null; "scenario": string; "severity": string | null; "title": string; "updated_at": string; };
+  "WorkbenchSnapshotTask": { "assignee_id": string; "can_complete"?: boolean; "case_id": string; "created_at": string; "created_by": string | null; "due_at": string | null; "finding_id": string | null; "id": string; "kind": "review" | "decision" | "remediation" | "general"; "priority": "high" | "medium" | "low"; "status": "open" | "in_progress" | "completed"; "title": string; "updated_at": string; "version": number; };
   "WorkbenchTask": { "assignee_id": string; "case_id": string; "created_at": string; "created_by": string | null; "due_at": string | null; "finding_id": string | null; "id": string; "kind": "review" | "decision" | "remediation" | "general"; "priority": "high" | "medium" | "low"; "status": "open" | "in_progress" | "completed"; "title": string; "updated_at": string; "version": number; };
   "WorkbenchTaskInput": { "assignee_id": string; "due_at": string | null; "expected_version"?: 0; "finding_id": string | null; "kind": "review" | "decision" | "remediation" | "general"; "priority": "high" | "medium" | "low"; "status": "open" | "in_progress" | "completed"; "title": string; };
   "WorkbenchTaskUpdateInput": { "assignee_id": string; "due_at": string | null; "expected_version": number; "finding_id": string | null; "kind": "review" | "decision" | "remediation" | "general"; "priority": "high" | "medium" | "low"; "status": "open" | "in_progress" | "completed"; "title": string; };

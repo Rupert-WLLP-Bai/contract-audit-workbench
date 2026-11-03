@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-10-31
-// Revision: r1
+// Updated: 2026-11-03
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -315,6 +315,7 @@ type WorkbenchAudit struct {
 }
 
 type WorkbenchCase struct {
+	CanCreateTask    *bool        `json:"can_create_task,omitempty"`
 	ID               string       `json:"id"`
 	Title            string       `json:"title"`
 	ContractType     string       `json:"contract_type"`
@@ -420,25 +421,31 @@ type WorkbenchTool struct {
 	LastStatus   *string  `json:"last_status"`
 }
 
+// WorkbenchSnapshotTask adds snapshot-time authority without changing persisted tasks.
+type WorkbenchSnapshotTask struct {
+	WorkbenchTask
+	CanComplete *bool `json:"can_complete,omitempty"`
+}
+
 type WorkbenchSnapshot struct {
-	SchemaVersion string                 `json:"schema_version"`
-	GeneratedAt   string                 `json:"generated_at"`
-	Period        string                 `json:"period"`
-	Dashboard     WorkbenchDashboard     `json:"dashboard"`
-	Cases         []WorkbenchCase        `json:"cases"`
-	Profiles      []CaseProfile          `json:"profiles"`
-	Tasks         []WorkbenchTask        `json:"tasks"`
-	Relations     []CaseRelation         `json:"relations"`
-	Knowledge     []KnowledgeView        `json:"knowledge"`
-	Members       []Actor                `json:"members"`
-	Remediations  []WorkbenchRemediation `json:"remediations"`
-	Reports       []WorkbenchReport      `json:"reports"`
-	Documents     []WorkbenchDocument    `json:"documents"`
-	Runs          []WorkbenchRun         `json:"runs"`
-	Audit         []WorkbenchAudit       `json:"audit"`
-	Templates     []Template             `json:"templates"`
-	Model         WorkbenchModel         `json:"model"`
-	Tools         []WorkbenchTool        `json:"tools"`
+	SchemaVersion string                  `json:"schema_version"`
+	GeneratedAt   string                  `json:"generated_at"`
+	Period        string                  `json:"period"`
+	Dashboard     WorkbenchDashboard      `json:"dashboard"`
+	Cases         []WorkbenchCase         `json:"cases"`
+	Profiles      []CaseProfile           `json:"profiles"`
+	Tasks         []WorkbenchSnapshotTask `json:"tasks"`
+	Relations     []CaseRelation          `json:"relations"`
+	Knowledge     []KnowledgeView         `json:"knowledge"`
+	Members       []Actor                 `json:"members"`
+	Remediations  []WorkbenchRemediation  `json:"remediations"`
+	Reports       []WorkbenchReport       `json:"reports"`
+	Documents     []WorkbenchDocument     `json:"documents"`
+	Runs          []WorkbenchRun          `json:"runs"`
+	Audit         []WorkbenchAudit        `json:"audit"`
+	Templates     []Template              `json:"templates"`
+	Model         WorkbenchModel          `json:"model"`
+	Tools         []WorkbenchTool         `json:"tools"`
 }
 
 type Actor struct {

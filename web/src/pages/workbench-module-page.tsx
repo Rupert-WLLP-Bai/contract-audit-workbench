@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-10-31
-// Revision: r1
+// Updated: 2026-11-03
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -12,7 +12,7 @@ import { Tabs, Table } from "antd";
 import { Flex } from "antd";
 import { Select } from "antd";
 import { Input, Button } from "antd";
-import { useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { Navigate, useParams, useSearchParams } from "react-router";
 import { errorMessage } from "../api/http";
 import { paths } from "../api/paths";
@@ -28,7 +28,6 @@ import type {
   Knowledge,
   KnowledgeInput,
   WorkbenchSnapshot,
-  WorkbenchTask,
 } from "../api/types";
 import { PageStatus } from "../components/page-status";
 import { StatusText } from "../components/status-text";
@@ -130,7 +129,7 @@ type ModuleRecord = {
   runId: string | null;
   href: string | null;
   panels: Record<string, DetailPanel>;
-  task: WorkbenchTask | null;
+  task: WorkbenchSnapshot["tasks"][number] | null;
 };
 
 const STATUS_LABELS: Record<string, string> = {
@@ -914,17 +913,21 @@ function statusTone(status: string): "good" | "attention" | "bad" | "neutral" {
 function TaskCreateForm({
   snapshot,
   onCreated,
+  canCreateTask,
 }: {
   snapshot: WorkbenchSnapshot;
   onCreated: () => void;
+  canCreateTask: boolean;
 }) {
   const [caseId, setCaseId] = useState("");
   const [title, setTitle] = useState("");
   const [assigneeId, setAssigneeId] = useState("");
   const [dueDate, setDueDate] = useState("");
   const create = useCreateWorkbenchTask(caseId);
+  const creatableCases = snapshot.cases.filter((item) => item.can_create_task === true);
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (!canCreateTask || !creatableCases.some((item) => item.id === caseId)) return;
     create.mutate(
       {
         title: title.trim(),
@@ -955,7 +958,7 @@ function TaskCreateForm({
           onChange={(selectedValue) => setCaseId(selectedValue)}
           options={[
             { value: "", label: "选择案件" },
-            ...snapshot.cases.map((item) => ({
+            ...creatableCases.map((item) => ({
               value: String(item.id),
               label: String(item.title ?? ""),
             })),
@@ -999,14 +1002,14 @@ function TaskCreateForm({
         />
       </label>
       {create.isError ? <p role="alert">{errorMessage(create.error)}</p> : null}
-      <Button
+      {canCreateTask ? <Button
         aria-label={String(create.isPending ? "正在保存" : "保存任务")}
         type="primary"
         htmlType="submit"
-        disabled={create.isPending || caseId === "" || assigneeId === ""}
+        disabled={create.isPending || !creatableCases.some((item) => item.id === caseId) || assigneeId === ""}
       >
         {create.isPending ? "正在保存" : "保存任务"}
-      </Button>
+      </Button> : null}
     </form>
   );
 }
@@ -1133,8 +1136,44 @@ function WorkbenchModule({ module }: { module: WorkbenchModuleKey }) {
   const [updatedTaskId, setUpdatedTaskId] = useState("");
   const [searchParams, setSearchParams] = useSearchParams();
   const session = useSession();
-  const query = useWorkbench("week");
+  const actorScope = session.data
+    ? [session.data.audience, session.data.tenant_id, session.data.org_id, session.data.id, session.data.role, session.data.active_context?.context_version ?? ""].join("\u0000")
+    : "";
+  const query = useWorkbench("week", actorScope);
   const updateTask = useUpdateWorkbenchTask();
+  const hasCachedModuleData = Boolean(session.data && query.data);
+  const moduleRevalidating =
+    hasCachedModuleData && (session.isFetching || query.isFetching);
+  const moduleRevalidationFailed =
+    hasCachedModuleData &&
+    !session.isFetching &&
+    !query.isFetching &&
+    (session.isError || query.isError);
+  const taskCapabilitySnapshotFresh =
+    session.isSuccess &&
+    !session.isFetching &&
+    !session.isError &&
+    query.isSuccess &&
+    !query.isFetching &&
+    !query.isError;
+  const hasCreatableCase = query.data?.cases.some((item) => item.can_create_task === true) === true;
+  const canCreateTask = module === "tasks" && taskCapabilitySnapshotFresh && hasCreatableCase;
+  const taskCapabilityRevalidating =
+    module === "tasks" &&
+    hasCachedModuleData &&
+    (session.isFetching || query.isFetching || session.isError || query.isError);
+  useEffect(() => {
+    if (module === "tasks" && taskCapabilitySnapshotFresh && !hasCreatableCase)
+      setCreateOpen(false);
+  }, [module, taskCapabilitySnapshotFresh, hasCreatableCase]);
+  const actorScopeRef = useRef(actorScope);
+  useEffect(() => {
+    if (actorScopeRef.current === actorScope) return;
+    actorScopeRef.current = actorScope;
+    setSelectedId("");
+    setUpdatedTaskId("");
+    setCreateOpen(false);
+  }, [actorScope]);
   const availableSnapshot = query.isError ? undefined : query.data;
   const allRecords = useMemo(
     () =>
@@ -1212,14 +1251,23 @@ function WorkbenchModule({ module }: { module: WorkbenchModuleKey }) {
   );
   const refresh = () => void query.refetch();
 
-  if (query.isLoading)
+  if ((session.isLoading || query.isLoading) && !hasCachedModuleData)
     return (
       <PageStatus
         kind="loading"
         title={`正在加载${WORKBENCH_MODULES[module].title}`}
       />
     );
-  if (query.isError || !query.data)
+  if ((session.isError || !session.data) && !hasCachedModuleData)
+    return (
+      <PageStatus
+        kind="error"
+        title={`${WORKBENCH_MODULES[module].title}身份没有加载`}
+        detail={errorMessage(session.error)}
+        action={<Button type="primary" htmlType="button" onClick={() => void session.refetch()}>重试</Button>}
+      />
+    );
+  if ((query.isError || !query.data) && !hasCachedModuleData)
     return (
       <PageStatus
         kind="error"
@@ -1238,6 +1286,22 @@ function WorkbenchModule({ module }: { module: WorkbenchModuleKey }) {
       />
     );
   const snapshot = query.data;
+  if (!snapshot)
+    return (
+      <PageStatus
+        kind="error"
+        title={`${WORKBENCH_MODULES[module].title}没有加载`}
+        detail={errorMessage(query.error)}
+        action={<Button type="primary" htmlType="button" onClick={refresh}>重试</Button>}
+      />
+    );
+  const canCompleteTasks =
+    session.isSuccess &&
+    !session.isFetching &&
+    !session.isError &&
+    query.isSuccess &&
+    !query.isFetching &&
+    !query.isError;
 
   const selectedTask = selected?.task ?? null;
   const currentPanel =
@@ -1254,7 +1318,6 @@ function WorkbenchModule({ module }: { module: WorkbenchModuleKey }) {
       : snapshot.period === "week"
         ? "本周"
         : "本月";
-  const canCreateTask = module === "tasks";
   const canCreateKnowledge = module === "knowledge";
   const emptyMessage =
     module === "knowledge" && tab === "检索测试" && queryText === ""
@@ -1273,7 +1336,8 @@ function WorkbenchModule({ module }: { module: WorkbenchModuleKey }) {
     }
   }
 
-  function completeTask(task: WorkbenchTask) {
+  function completeTask(task: WorkbenchSnapshot["tasks"][number]) {
+    if (!canCompleteTasks || task.can_complete !== true || task.status === "completed") return;
     setUpdatedTaskId(task.id);
     updateTask.mutate(
       {
@@ -1329,6 +1393,13 @@ function WorkbenchModule({ module }: { module: WorkbenchModuleKey }) {
     );
 
   return (
+    <>
+    <div
+      hidden={moduleRevalidating || moduleRevalidationFailed}
+      inert={moduleRevalidating || moduleRevalidationFailed}
+      aria-hidden={moduleRevalidating || moduleRevalidationFailed}
+      style={{ display: moduleRevalidating || moduleRevalidationFailed ? "none" : undefined }}
+    >
     <section className="page module-page">
       <header className="page-head module-page-head">
         <div>
@@ -1343,9 +1414,10 @@ function WorkbenchModule({ module }: { module: WorkbenchModuleKey }) {
         </div>
         <div className="module-actions">{headerAction}</div>
       </header>
-      {createOpen && canCreateTask ? (
+      {createOpen && (canCreateTask || taskCapabilityRevalidating) ? (
         <TaskCreateForm
           snapshot={snapshot}
+          canCreateTask={canCreateTask}
           onCreated={() => setCreateOpen(false)}
         />
       ) : null}
@@ -1600,7 +1672,10 @@ function WorkbenchModule({ module }: { module: WorkbenchModuleKey }) {
               ) : (
                 <p className="module-empty">当前数据没有返回该分类的明细。</p>
               )}
-              {selectedTask && selectedTask.status !== "completed" ? (
+              {selectedTask &&
+              selectedTask.status !== "completed" &&
+              selectedTask.can_complete === true &&
+              canCompleteTasks ? (
                 <Button
                   aria-label={String(
                     updatedTaskId === selectedTask.id
@@ -1639,5 +1714,18 @@ function WorkbenchModule({ module }: { module: WorkbenchModuleKey }) {
         </aside>
       </div>
     </section>
+    </div>
+    {moduleRevalidating ? (
+      <PageStatus kind="loading" title={`正在加载${WORKBENCH_MODULES[module].title}`} />
+    ) : null}
+    {moduleRevalidationFailed ? (
+      <PageStatus
+        kind="error"
+        title={session.isError ? `${WORKBENCH_MODULES[module].title}身份没有加载` : `${WORKBENCH_MODULES[module].title}没有加载`}
+        detail={errorMessage(session.isError ? session.error : query.error)}
+        action={<Button type="primary" htmlType="button" onClick={() => void (session.isError ? session.refetch() : query.refetch())}>重试</Button>}
+      />
+    ) : null}
+    </>
   );
 }

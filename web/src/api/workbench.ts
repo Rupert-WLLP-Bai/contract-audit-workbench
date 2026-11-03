@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-10-31
-// Revision: r1
+// Updated: 2026-11-03
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -148,6 +148,13 @@ function task(value: unknown): WorkbenchTask {
   };
 }
 
+function snapshotTask(value: unknown): WorkbenchTask & { can_complete: boolean } {
+  const record = object(value, "任务");
+  if (record.can_complete !== undefined && typeof record.can_complete !== "boolean")
+    return invalid("任务 can_complete 不是布尔值");
+  return { ...task(value), can_complete: record.can_complete ?? false };
+}
+
 function relation(value: unknown): CaseRelation {
   const record = object(value, "案件关联");
   return {
@@ -212,6 +219,8 @@ function isCaseProgress(value: unknown): boolean {
 
 function workbenchCase(value: unknown): WorkbenchCase {
   const record = object(value, "案件");
+  if (record.can_create_task !== undefined && typeof record.can_create_task !== "boolean")
+    return invalid("案件 can_create_task 不是布尔值");
   if (!hasCaseEnvelope(record))
     return invalid("案件缺少profile、severity、progress或latest_run");
   const severity = nullableString(record, "severity");
@@ -220,6 +229,7 @@ function workbenchCase(value: unknown): WorkbenchCase {
   const parsed = parseCaseSummary(value);
   return {
     ...parsed,
+    can_create_task: record.can_create_task ?? false,
     profile: record.profile === null ? null : profile(record.profile),
     severity,
     progress: progress as number | null,
@@ -416,7 +426,7 @@ export function parseWorkbenchSnapshot(
     dashboard: dashboard(record.dashboard),
     cases: array(record, "cases", workbenchCase),
     profiles: array(record, "profiles", profile),
-    tasks: array(record, "tasks", task),
+    tasks: array(record, "tasks", snapshotTask),
     relations: array(record, "relations", relation),
     knowledge: array(record, "knowledge", knowledge),
     members: array(record, "members", member),

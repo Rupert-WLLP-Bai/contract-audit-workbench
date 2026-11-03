@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-10-31
-// Revision: r1
+// Updated: 2026-11-03
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -43,7 +43,7 @@ const referenceVersion = "3".repeat(64);
 const clients: QueryClient[] = [];
 type User = ReturnType<typeof userEvent.setup>;
 
-function task(overrides: Partial<WorkbenchTask> = {}): WorkbenchTask {
+function task(overrides: Partial<WorkbenchTask> & { can_complete?: boolean } = {}): WorkbenchTask & { can_complete?: boolean } {
   return {
     id: "task/assigned",
     case_id: "case/alpha",
@@ -58,6 +58,7 @@ function task(overrides: Partial<WorkbenchTask> = {}): WorkbenchTask {
     created_by: "reviewer-2",
     created_at: at,
     updated_at: at,
+    can_complete: true,
     ...overrides,
   };
 }
@@ -183,6 +184,7 @@ function snapshot(): WorkbenchSnapshot {
         scenario: "telecom_dedicated_line",
         business_status: "active",
         archived_at: null,
+        can_create_task: true,
         severity: "high",
         progress: 80,
         profile: {
@@ -478,6 +480,12 @@ class WorkbenchService {
   requests: { key: string; body: unknown }[] = [];
   failures = new Map<string, { status: number; message: string }[]>();
   taskVersions = new Map<string, number>();
+  unsupportedTaskCapabilities = false;
+  revokeTaskCapabilityOnFailure = false;
+  unsupportedTaskCreationCapabilities = false;
+  revokeTaskCreationCapabilityOnFailure = false;
+  snapshotGate: ReturnType<typeof Promise.withResolvers<void>> | null = null;
+  sessionGate: ReturnType<typeof Promise.withResolvers<void>> | null = null;
   knowledgeResponses = new Map<string, unknown>();
   pendingKnowledge = new Map<string, Promise<Response>>();
 
@@ -499,7 +507,17 @@ class WorkbenchService {
       typeof init?.body === "string" ? JSON.parse(init.body) : null;
     this.requests.push({ key, body });
     const failure = this.failures.get(key)?.shift();
-    if (failure)
+    if (failure) {
+      if (this.revokeTaskCreationCapabilityOnFailure && method === "POST") {
+        const caseId = decodeURIComponent(new URL(path, "http://workbench.test").pathname.split("/").at(3) ?? "");
+        const caseToRevoke = this.snapshot.cases.find((item) => item.id === caseId);
+        if (caseToRevoke) caseToRevoke.can_create_task = false;
+      }
+      if (this.revokeTaskCapabilityOnFailure && method === "PUT") {
+        const taskId = decodeURIComponent(new URL(path, "http://workbench.test").pathname.split("/").at(-1) ?? "");
+        const taskToRevoke = this.snapshot.tasks.find((item) => item.id === taskId);
+        if (taskToRevoke) taskToRevoke.can_complete = false;
+      }
       return json(
         {
           error: {
@@ -510,6 +528,9 @@ class WorkbenchService {
         },
         failure.status,
       );
+    }
+    if (key === "GET /api/session" && this.sessionGate)
+      await this.sessionGate.promise;
     if (key === "GET /api/session")
       return json({
         audience: "client",
@@ -520,8 +541,25 @@ class WorkbenchService {
           tenant_id: "tenant-public",
           org_id: "org-alpha",
         },
+        active_context: {
+          membership_id: "member-reviewer-1",
+          tenant_id: "tenant-public",
+          tenant_name: "公开租户",
+          org_id: "org-alpha",
+          org_name: "甲组织",
+          context_version: "1",
+        },
+        principal_id: "principal-reviewer-1",
+        csrf_token: "test-csrf",
+        context_switch_enabled: false,
       });
-    if (key === "GET /api/workbench?period=week")
+    if (key.startsWith("GET /api/workbench?period=week") && this.snapshotGate)
+      await this.snapshotGate.promise;
+    if (key.startsWith("GET /api/workbench?period=week") && this.unsupportedTaskCapabilities && key.includes("task_capabilities=1"))
+      return json({ error: { message: "旧工作台不支持任务 capability" } }, 422);
+    if (key.startsWith("GET /api/workbench?period=week") && this.unsupportedTaskCreationCapabilities && key.includes("task_capabilities=1"))
+      return json({ error: { message: "旧工作台不支持案件创建 capability" } }, 422);
+    if (key.startsWith("GET /api/workbench?period=week"))
       return json(this.responseSnapshot ?? this.snapshot);
     if (key === "GET /api/settings")
       return json({
@@ -642,6 +680,16 @@ function open(
   service = new WorkbenchService(),
   search = "",
 ) {
+  setSessionIdentity({
+    id: service.actorId,
+    role: "reviewer",
+    audience: "client",
+    tenant_id: "tenant-public",
+    org_id: "org-alpha",
+    principal_id: "principal-reviewer-1",
+    active_context: { context_version: "1" },
+    csrf_token: "test-csrf",
+  });
   vi.stubGlobal("fetch", vi.fn(service.handle));
   const client = new QueryClient({
     defaultOptions: {
@@ -706,6 +754,194 @@ afterEach(() => {
 });
 
 describe("workbench tasks", () => {
+  it("hides cached module records during session revalidation", async () => {
+    const service = new WorkbenchService();
+    const { client } = open("tasks", service);
+    const rows = await list("审查任务");
+    expect(await rows.findByRole("row", { name: /核实付款依据/ })).toBeInTheDocument();
+    service.sessionGate = Promise.withResolvers<void>();
+    const revalidation = client.invalidateQueries({ queryKey: queryKeys.session, exact: true });
+
+    expect(await screen.findByRole("heading", { name: "正在加载审查任务" })).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "审查任务记录" })).not.toBeInTheDocument();
+    const hiddenModule = window.document.querySelector(".module-page")?.parentElement;
+    expect(hiddenModule).toHaveAttribute("hidden");
+    expect(hiddenModule).toHaveAttribute("inert");
+    expect(hiddenModule).toHaveStyle({ display: "none" });
+    expect(screen.queryByRole("button", { name: "标记任务完成" })).not.toBeInTheDocument();
+    service.sessionGate.resolve();
+    service.sessionGate = null;
+    await revalidation;
+    const refreshedRows = await list("审查任务");
+    expect(await refreshedRows.findByRole("row", { name: /核实付款依据/ })).toBeInTheDocument();
+  });
+
+  it("hides cached module records during snapshot revalidation", async () => {
+    const service = new WorkbenchService();
+    const { client } = open("tasks", service);
+    const rows = await list("审查任务");
+    expect(await rows.findByRole("row", { name: /核实付款依据/ })).toBeInTheDocument();
+    service.snapshotGate = Promise.withResolvers<void>();
+    const refresh = client.invalidateQueries({ queryKey: queryKeys.workbenchPrefix });
+
+    expect(await screen.findByRole("heading", { name: "正在加载审查任务" })).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "审查任务记录" })).not.toBeInTheDocument();
+    const hiddenModule = window.document.querySelector(".module-page")?.parentElement;
+    expect(hiddenModule).toHaveAttribute("hidden");
+    expect(hiddenModule).toHaveAttribute("inert");
+    expect(hiddenModule).toHaveStyle({ display: "none" });
+    expect(screen.queryByRole("button", { name: "标记任务完成" })).not.toBeInTheDocument();
+    service.snapshotGate.resolve();
+    service.snapshotGate = null;
+    await refresh;
+    const refreshedRows = await list("审查任务");
+    expect(await refreshedRows.findByRole("row", { name: /核实付款依据/ })).toBeInTheDocument();
+  });
+
+  it.each([
+    ["authorized case", true, false, true],
+    ["denied case", false, false, false],
+    ["missing field", undefined, false, false],
+    ["legacy server", undefined, true, false],
+  ])("offers task creation only when a case grants it (%s)", async (_label, canCreate, unsupported, visible) => {
+    const service = new WorkbenchService();
+    service.unsupportedTaskCreationCapabilities = unsupported;
+    if (canCreate === undefined) delete service.snapshot.cases[0]!.can_create_task;
+    else service.snapshot.cases[0]!.can_create_task = canCreate;
+    open("tasks", service);
+    await list("审查任务");
+
+    if (visible) {
+      expect(screen.getByRole("button", { name: "分派任务" })).toBeInTheDocument();
+    } else {
+      expect(screen.queryByRole("button", { name: "分派任务" })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "新增知识" })).not.toBeInTheDocument();
+    }
+  });
+
+  it("offers only authorized cases in the task creation form", async () => {
+    const { user } = open("tasks");
+    await list("审查任务");
+    await user.click(screen.getByRole("button", { name: "分派任务" }));
+    await user.click(screen.getByRole("combobox", { name: "关联案件" }));
+
+    expect(screen.getByRole("option", { name: "专线采购案件" })).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: "未启动案件" })).not.toBeInTheDocument();
+  });
+
+  it("preserves the knowledge creation entry without task capability", async () => {
+    const service = new WorkbenchService();
+    for (const item of service.snapshot.cases) item.can_create_task = false;
+    open("knowledge", service);
+    expect(await screen.findByRole("button", { name: "新增知识" })).toBeInTheDocument();
+  });
+
+  it("clears the task form and selected case after an identity context switch", async () => {
+    const service = new WorkbenchService();
+    const { user, client } = open("tasks", service);
+    await list("审查任务");
+    await user.click(screen.getByRole("button", { name: "分派任务" }));
+    await chooseOption(user, screen.getByRole("combobox", { name: "关联案件" }), "专线采购案件");
+    await user.type(screen.getByRole("textbox", { name: "任务名称" }), "旧身份任务");
+
+    service.snapshot.cases[0]!.can_create_task = false;
+    service.snapshotGate = Promise.withResolvers<void>();
+    client.setQueryData(queryKeys.session, {
+      id: service.actorId,
+      display_name: "审查员甲",
+      role: "viewer",
+      tenant_id: "tenant-public",
+      org_id: "org-alpha",
+      audience: "client",
+      active_context: {
+        membership_id: "member-reviewer-1",
+        tenant_id: "tenant-public",
+        tenant_name: "公开租户",
+        org_id: "org-alpha",
+        org_name: "甲组织",
+        context_version: "2",
+      },
+      principal_id: "principal-reviewer-1",
+      csrf_token: "test-csrf",
+      context_switch_enabled: false,
+    });
+
+    expect(await screen.findByRole("heading", { name: "正在加载审查任务" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "分派任务" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("textbox", { name: "任务名称" })).not.toBeInTheDocument();
+    service.snapshotGate.resolve();
+    service.snapshotGate = null;
+    await waitFor(() => expect(screen.getByRole("heading", { name: /审查任务/ })).toBeInTheDocument());
+    expect(screen.queryByRole("button", { name: "分派任务" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("textbox", { name: "任务名称" })).not.toBeInTheDocument();
+  });
+
+  it("refreshes task creation capability after a refusal and closes the revoked form", async () => {
+    const service = new WorkbenchService();
+    service.revokeTaskCreationCapabilityOnFailure = true;
+    service.fail(
+      "POST /api/cases/case%2Falpha/tasks",
+      403,
+      "任务创建权限已撤销",
+    );
+    const { user } = open("tasks", service);
+    await list("审查任务");
+    await user.click(screen.getByRole("button", { name: "分派任务" }));
+    await chooseOption(user, screen.getByRole("combobox", { name: "关联案件" }), "专线采购案件");
+    await chooseOption(user, screen.getByRole("combobox", { name: "责任人" }), "审查员甲，reviewer");
+    await user.type(screen.getByRole("textbox", { name: "任务名称" }), "授权外任务");
+    await user.click(screen.getByRole("button", { name: "保存任务" }));
+
+    await waitFor(() => expect(screen.queryByRole("button", { name: "分派任务" })).not.toBeInTheDocument());
+    expect(screen.queryByRole("textbox", { name: "任务名称" })).not.toBeInTheDocument();
+    expect(service.requests.filter((request) => request.key === "GET /api/session")).toHaveLength(2);
+    expect(service.requests.filter((request) => request.key.includes("GET /api/workbench?period=week"))).toHaveLength(2);
+  });
+
+  it.each([
+    ["explicit denial", false, false],
+    ["missing field", undefined, false],
+    ["legacy server fallback", true, true],
+  ])("hides task completion without an affirmative capability (%s)", async (_name, canComplete, unsupported) => {
+    const service = new WorkbenchService();
+    service.unsupportedTaskCapabilities = unsupported;
+    if (canComplete === undefined) delete service.snapshot.tasks[0]!.can_complete;
+    else service.snapshot.tasks[0]!.can_complete = canComplete;
+    open("tasks", service);
+    const rows = await list("审查任务");
+
+    expect(rows.getByRole("button", { name: /核实付款依据/ })).toBeInTheDocument();
+    expect(details().getByRole("link", { name: "打开关联记录" })).toHaveAttribute(
+      "href",
+      "/cases/case%2Falpha/reviews/run%2Fcurrent",
+    );
+    expect(details().queryByRole("button", { name: "标记任务完成" })).not.toBeInTheDocument();
+  });
+
+  it("refreshes the session and workbench after a completion refusal", async () => {
+    const service = new WorkbenchService();
+    service.revokeTaskCapabilityOnFailure = true;
+    service.fail(
+      "PUT /api/cases/case%2Falpha/tasks/task%2Fassigned",
+      403,
+      "任务完成权限已撤销",
+    );
+    const { user } = open("tasks", service);
+    await list("审查任务");
+    expect(details().getByRole("button", { name: "标记任务完成" })).toBeInTheDocument();
+    await user.click(details().getByRole("button", { name: "标记任务完成" }));
+
+    expect(await screen.findByRole("alert")).toBeInTheDocument();
+    expect(service.requests.map((request) => request.key)).toContain("PUT /api/cases/case%2Falpha/tasks/task%2Fassigned");
+    expect(service.snapshot.tasks.find((item) => item.id === "task/assigned")?.can_complete).toBe(false);
+    expect(service.requests.filter((request) => request.key.includes("GET /api/workbench?period=week"))).toHaveLength(2);
+    await waitFor(() =>
+      expect(details().queryByRole("button", { name: "标记任务完成" })).not.toBeInTheDocument(),
+    );
+    expect(service.requests.filter((request) => request.key === "GET /api/session")).toHaveLength(2);
+    expect(service.requests.filter((request) => request.key.includes("GET /api/workbench?period=week"))).toHaveLength(2);
+  });
+
   it("uses assignee and creator IDs for task tabs and resolves authorized case details", async () => {
     const { user } = open("tasks");
     const rows = await list("审查任务");
@@ -723,6 +959,7 @@ describe("workbench tasks", () => {
     expectField("责任人", "审查员甲");
     expectField("优先级", "high");
     expectField("版本", "7");
+    expect(details().getByRole("button", { name: "标记任务完成" })).toBeInTheDocument();
     expect(
       details().getByRole("link", { name: "打开关联记录" }),
     ).toHaveAttribute("href", "/cases/case%2Falpha/reviews/run%2Fcurrent");
@@ -847,6 +1084,7 @@ describe("workbench tasks", () => {
   it("retains task input after an authorization failure and accepts a task without a deadline", async () => {
     const service = new WorkbenchService();
     service.snapshot.tasks = [];
+    service.snapshot.cases.find((item) => item.id === "case-empty")!.can_create_task = true;
     service.fail(
       "POST /api/cases/case-empty/tasks",
       403,
@@ -1809,7 +2047,7 @@ describe("workbench snapshot boundaries", () => {
   it("retries an unavailable snapshot and renders only the authorized response", async () => {
     const service = new WorkbenchService();
     service.fail(
-      "GET /api/workbench?period=week",
+      "GET /api/workbench?period=week&task_capabilities=1",
       503,
       "持久业务快照暂时不可用",
     );
@@ -1838,7 +2076,7 @@ describe("workbench snapshot boundaries", () => {
     );
     expect(
       service.requests.filter(
-        (item) => item.key === "GET /api/workbench?period=week",
+        (item) => item.key === "GET /api/workbench?period=week&task_capabilities=1",
       ),
     ).toHaveLength(2);
   });
@@ -1846,7 +2084,7 @@ describe("workbench snapshot boundaries", () => {
   it("shows a server denial without exposing any cached fixture records", async () => {
     const service = new WorkbenchService();
     service.fail(
-      "GET /api/workbench?period=week",
+      "GET /api/workbench?period=week&task_capabilities=1",
       403,
       "没有读取工作台快照的权限",
     );

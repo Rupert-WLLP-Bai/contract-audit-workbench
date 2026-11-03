@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-02
-// Revision: r2
+// Updated: 2026-11-03
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -1382,6 +1382,7 @@ export interface WorkbenchMember {
 }
 
 export interface WorkbenchCase extends CaseSummary {
+  can_create_task?: WireSchemas["WorkbenchCase"]["can_create_task"];
   profile: CaseProfile | null;
   severity: string | null;
   progress: number | null;
@@ -1447,7 +1448,7 @@ export interface WorkbenchSnapshot {
   dashboard: WorkbenchDashboard;
   cases: WorkbenchCase[];
   profiles: CaseProfile[];
-  tasks: WorkbenchTask[];
+  tasks: WireSchemas["WorkbenchSnapshotTask"][];
   relations: CaseRelation[];
   knowledge: Knowledge[];
   members: WorkbenchMember[];

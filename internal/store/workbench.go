@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-02
-// Revision: r2
+// Updated: 2026-11-03
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -757,7 +757,7 @@ func relationPairKey(left, right Case) string {
 	return hex.EncodeToString(digest[:])
 }
 
-func (s *Store) WorkbenchSnapshot(ctx context.Context, user accounts.User, period string, model WorkbenchModel) (WorkbenchSnapshot, error) {
+func (s *Store) WorkbenchSnapshot(ctx context.Context, user accounts.User, period string, model WorkbenchModel, taskCapabilities ...bool) (WorkbenchSnapshot, error) {
 	ctx = commandContext(ctx, user)
 	if period != "day" && period != "week" && period != "month" {
 		return WorkbenchSnapshot{}, fault.Invalid("工作台周期只能是day、week或month")
@@ -784,7 +784,7 @@ func (s *Store) WorkbenchSnapshot(ctx context.Context, user accounts.User, perio
 	}
 	out := WorkbenchSnapshot{
 		SchemaVersion: "workbench/v1", GeneratedAt: now.Format(time.RFC3339Nano), Period: period,
-		Cases: []WorkbenchCase{}, Profiles: []CaseProfile{}, Tasks: []WorkbenchTask{}, Relations: []CaseRelation{},
+		Cases: []WorkbenchCase{}, Profiles: []CaseProfile{}, Tasks: []WorkbenchSnapshotTask{}, Relations: []CaseRelation{},
 		Knowledge: []KnowledgeView{}, Members: []Actor{}, Remediations: []WorkbenchRemediation{}, Reports: []WorkbenchReport{},
 		Documents: []WorkbenchDocument{}, Runs: []WorkbenchRun{}, Audit: []WorkbenchAudit{}, Templates: s.Templates(),
 		Model: model, Tools: []WorkbenchTool{},
@@ -801,7 +801,12 @@ func (s *Store) WorkbenchSnapshot(ctx context.Context, user accounts.User, perio
 	}
 	for _, task := range st.Tasks {
 		if item, ok := visible[task.Task.CaseID]; ok && task.TenantID == current.TenantID && task.OrgID == item.OwnerOrgID {
-			out.Tasks = append(out.Tasks, task.Task)
+			projected := WorkbenchSnapshotTask{WorkbenchTask: task.Task}
+			if len(taskCapabilities) > 0 && taskCapabilities[0] {
+				canComplete := task.Task.Status != "completed" && !s.ReadOnly() && businessWritable(item) == nil && authorizeCase(item, current, access.Manage) && validateTaskReferences(st, item, task.Task, current) == nil
+				projected.CanComplete = &canComplete
+			}
+			out.Tasks = append(out.Tasks, projected)
 		}
 	}
 	for _, relation := range st.Relations {
@@ -830,12 +835,17 @@ func (s *Store) WorkbenchSnapshot(ctx context.Context, user accounts.User, perio
 		}
 		severity := caseLatestSeverity(st, caseItem)
 		progress := caseTaskProgress(out.Tasks, caseItem.ID)
-		out.Cases = append(out.Cases, WorkbenchCase{
+		caseProjection := WorkbenchCase{
 			ID: caseItem.ID, Title: caseItem.Title, ContractType: caseItem.ContractType, BusinessLine: caseItem.BusinessLine,
 			Scenario: caseItem.Scenario, BusinessStatus: caseItem.BusinessStatus, ArchivedAt: caseItem.ArchivedAt,
 			DocumentCount: summary.DocumentCount, PendingDecisions: summary.Pending, LatestRun: latest, UpdatedAt: caseItem.UpdatedAt,
 			Profile: profilePointer(profilesByCase[caseItem.ID]), Severity: severity, Progress: progress,
-		})
+		}
+		if len(taskCapabilities) > 0 && taskCapabilities[0] {
+			canCreate := !s.ReadOnly() && businessWritable(caseItem) == nil && authorizeCase(caseItem, current, access.Manage)
+			caseProjection.CanCreateTask = &canCreate
+		}
+		out.Cases = append(out.Cases, caseProjection)
 		out.Documents = append(out.Documents, workbenchDocumentsForCase(st, caseItem)...)
 	}
 	for _, remediation := range st.Remediations {
@@ -1026,7 +1036,7 @@ func caseLatestSeverity(st state, item Case) *string {
 	return &best
 }
 
-func caseTaskProgress(tasks []WorkbenchTask, caseID string) *float64 {
+func caseTaskProgress(tasks []WorkbenchSnapshotTask, caseID string) *float64 {
 	total, completed := 0, 0
 	for _, task := range tasks {
 		if task.CaseID == caseID {

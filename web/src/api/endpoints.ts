@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-02
-// Revision: r2
+// Updated: 2026-11-03
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -614,12 +614,17 @@ export function saveLLMModels(input: LLMModelSelectionInput) {
     parseLLMEndpoint,
   );
 }
-export function getWorkbench(period: WorkbenchPeriod, signal?: AbortSignal) {
-  return requestJson(
-    paths.workbench(period),
-    { method: "GET", signal },
-    (value) => parseWorkbenchSnapshot(value, period),
-  );
+export async function getWorkbench(period: WorkbenchPeriod, signal?: AbortSignal) {
+  const path = paths.workbench(period);
+  try {
+    return await requestJson(`${path}&task_capabilities=1`, { method: "GET", signal },
+      (value) => parseWorkbenchSnapshot(value, period));
+  } catch (error) {
+    if (!(error instanceof ApiError) || error.status !== 422 || signal?.aborted) throw error;
+    const snapshot = await requestJson(path, { method: "GET", signal },
+      (value) => parseWorkbenchSnapshot(value, period));
+    return { ...snapshot, cases: snapshot.cases.map((item) => ({ ...item, can_create_task: false })), tasks: snapshot.tasks.map((task) => ({ ...task, can_complete: false })) };
+  }
 }
 
 export function updateCaseProfile(caseId: string, input: CaseProfileInput) {

@@ -20240,7 +20240,7 @@
           "tasks": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/WorkbenchTask"
+              "$ref": "#/components/schemas/WorkbenchSnapshotTask"
             }
           },
           "templates": {
@@ -20344,6 +20344,9 @@
           },
           "business_status": {
             "type": "string"
+          },
+          "can_create_task": {
+            "type": "boolean"
           },
           "contract_type": {
             "type": "string"
@@ -20870,6 +20873,98 @@
           "started_at",
           "finished_at",
           "usage"
+        ],
+        "additionalProperties": false
+      },
+      "WorkbenchSnapshotTask": {
+        "type": "object",
+        "properties": {
+          "assignee_id": {
+            "type": "string"
+          },
+          "can_complete": {
+            "type": "boolean"
+          },
+          "case_id": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "created_by": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "due_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "finding_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "review",
+              "decision",
+              "remediation",
+              "general"
+            ]
+          },
+          "priority": {
+            "type": "string",
+            "enum": [
+              "high",
+              "medium",
+              "low"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "open",
+              "in_progress",
+              "completed"
+            ]
+          },
+          "title": {
+            "type": "string"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "id",
+          "case_id",
+          "title",
+          "kind",
+          "assignee_id",
+          "due_at",
+          "status",
+          "priority",
+          "finding_id",
+          "created_by",
+          "version",
+          "created_at",
+          "updated_at"
         ],
         "additionalProperties": false
       },
@@ -37527,6 +37622,17 @@
                 "day",
                 "week",
                 "month"
+              ]
+            }
+          },
+          {
+            "name": "task_capabilities",
+            "in": "query",
+            "description": "Set to 1 to request snapshot task completion capabilities; omitted by default for compatibility.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "1"
               ]
             }
           }

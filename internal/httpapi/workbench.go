@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-10-30
-// Revision: r1
+// Updated: 2026-11-03
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -26,7 +26,8 @@ func (h *handler) workbench(w http.ResponseWriter, r *http.Request) {
 	}
 	query := r.URL.Query()
 	periods, exists := query["period"]
-	if len(query) != 1 || !exists || len(periods) != 1 {
+	capabilities, requested := query["task_capabilities"]
+	if !exists || len(periods) != 1 || len(query) != 1 && len(query) != 2 || requested && (len(capabilities) != 1 || capabilities[0] != "1") || len(query) == 2 && !requested {
 		writeErr(w, fault.Invalid("工作台请求需要唯一的period参数"))
 		return
 	}
@@ -39,11 +40,12 @@ func (h *handler) workbench(w http.ResponseWriter, r *http.Request) {
 			model.Label = "审查模型已配置：" + model.Name
 		}
 	}
-	item, err := h.store.WorkbenchSnapshot(r.Context(), user, periods[0], model)
+	item, err := h.store.WorkbenchSnapshot(r.Context(), user, periods[0], model, requested)
 	if err != nil {
 		writeErr(w, err)
 		return
 	}
+	w.Header().Set("Cache-Control", "private, no-store")
 	writeJSON(w, http.StatusOK, item)
 }
 

@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-31
-// Updated: 2026-10-31
-// Revision: r1
+// Updated: 2026-11-03
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -36,6 +36,7 @@ interface Props {
   onRefreshReadiness: () => void;
   onRefreshHistory: () => void;
   onStartReview: () => void;
+  suppressWriteAction?: boolean;
 }
 
 type ActionKind =
@@ -579,13 +580,20 @@ export function CaseNextStep(props: Props) {
   const plan = planFor(props);
   const { actorRole } = props;
   const action = plan.action;
-  const actionProps = { className: "case-next-step-button", "aria-label": action.label, type: "primary" as const, htmlType: "button" as const, loading: action.loading, disabled: action.disabled };
+  const actionProps = { className: "case-next-step-button", "aria-label": props.suppressWriteAction && action.kind === "start" ? "打开案件继续" : action.label, type: "primary" as const, htmlType: "button" as const, loading: action.loading, disabled: action.disabled };
+  const actionHref = props.suppressWriteAction && action.href?.startsWith("#")
+    ? "/cases/" + encodeURIComponent(props.caseDetail.id) + action.href
+    : action.href;
 
   let mainAction;
   if (action.kind === "link") {
-    mainAction = <Button {...actionProps} href={action.href}>{action.label}</Button>;
+    mainAction = <Button {...actionProps} href={actionHref}>{action.label}</Button>;
   } else if (action.kind === "start") {
-    mainAction = <Button {...actionProps} onClick={props.onStartReview}>{action.label}</Button>;
+    mainAction = props.suppressWriteAction ? (
+      <Button {...actionProps} href={`/cases/${encodeURIComponent(props.caseDetail.id)}#case-next-step-title`}>
+        打开案件继续
+      </Button>
+    ) : <Button {...actionProps} onClick={props.onStartReview}>{action.label}</Button>;
   } else if (action.kind === "refresh-session") {
     mainAction = <Button {...actionProps} onClick={props.onRetrySession}>{action.label}</Button>;
   } else if (action.kind === "refresh-readiness") {
