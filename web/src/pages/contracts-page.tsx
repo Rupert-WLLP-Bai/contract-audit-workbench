@@ -112,7 +112,7 @@ const CONTRACT_STATE_OPTIONS = [
 ];
 
 const WORKFLOW_STATE_OPTIONS = [
-  { value: "not_started", label: "未开始会签" },
+  { value: "not_started", label: "当前无进行中会签" },
   { value: "in_review", label: "会签中" },
 ];
 
