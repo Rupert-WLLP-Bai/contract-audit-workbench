@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Verifies real approval command rollback and commit across Contract events and Outbox, transaction-local scope cleanup, restricted service roles and cross-tenant RLS rejection.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-03
+// Updated: 2026-11-03
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package store
 
 import (

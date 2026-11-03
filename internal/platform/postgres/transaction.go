@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Provides a non-owning SQL executor for trusted PostgreSQL adapters while preserving the original transaction wrapper, scope, authority fences and caller-owned commit or rollback.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-03
+// Updated: 2026-11-03
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 // Package postgres defines a non-owning SQL handle for transaction-aware adapters.
 package postgres
 
