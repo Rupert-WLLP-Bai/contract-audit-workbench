@@ -100,11 +100,12 @@ describe("workbench task parsing", () => {
   it("falls back to a read-only legacy snapshot only after 422", async () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(new Response("{}", { status: 422 }))
-      .mockResolvedValueOnce(new Response(JSON.stringify(snapshot({ tasks: [{ ...task, can_complete: true }] })), { status: 200 }));
+      .mockResolvedValueOnce(new Response(JSON.stringify(snapshot({ cases: [{ ...workbenchCase, can_create_task: true }], tasks: [{ ...task, can_complete: true }] })), { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
     try {
       const result = await getWorkbench("week");
       expect(result.tasks[0]?.can_complete).toBe(false);
+      expect(result.cases[0]?.can_create_task).toBe(false);
       expect(String(fetchMock.mock.calls[0]?.[0])).toContain("task_capabilities=1");
       expect(String(fetchMock.mock.calls[1]?.[0])).not.toContain("task_capabilities");
     } finally { vi.unstubAllGlobals(); }
@@ -168,6 +169,12 @@ describe("workbench task parsing", () => {
 });
 
 describe("workbench case parsing", () => {
+  it("defaults missing creation capability to false and rejects non-booleans", () => {
+    const read = (value: unknown) => parseWorkbenchSnapshot(snapshot({ cases: [value] }), "week").cases[0];
+    expect(read(workbenchCase)).toMatchObject({ can_create_task: false });
+    expect(read({ ...workbenchCase, can_create_task: true })).toMatchObject({ can_create_task: true });
+    expect(() => read({ ...workbenchCase, can_create_task: "true" })).toThrow();
+  });
   it("reads profile, severity and progress when present", () => {
     const snapshotValue = snapshot({
       cases: [

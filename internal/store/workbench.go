@@ -835,12 +835,17 @@ func (s *Store) WorkbenchSnapshot(ctx context.Context, user accounts.User, perio
 		}
 		severity := caseLatestSeverity(st, caseItem)
 		progress := caseTaskProgress(out.Tasks, caseItem.ID)
-		out.Cases = append(out.Cases, WorkbenchCase{
+		caseProjection := WorkbenchCase{
 			ID: caseItem.ID, Title: caseItem.Title, ContractType: caseItem.ContractType, BusinessLine: caseItem.BusinessLine,
 			Scenario: caseItem.Scenario, BusinessStatus: caseItem.BusinessStatus, ArchivedAt: caseItem.ArchivedAt,
 			DocumentCount: summary.DocumentCount, PendingDecisions: summary.Pending, LatestRun: latest, UpdatedAt: caseItem.UpdatedAt,
 			Profile: profilePointer(profilesByCase[caseItem.ID]), Severity: severity, Progress: progress,
-		})
+		}
+		if len(taskCapabilities) > 0 && taskCapabilities[0] {
+			canCreate := !s.ReadOnly() && businessWritable(caseItem) == nil && authorizeCase(caseItem, current, access.Manage)
+			caseProjection.CanCreateTask = &canCreate
+		}
+		out.Cases = append(out.Cases, caseProjection)
 		out.Documents = append(out.Documents, workbenchDocumentsForCase(st, caseItem)...)
 	}
 	for _, remediation := range st.Remediations {

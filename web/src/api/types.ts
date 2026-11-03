@@ -1382,6 +1382,7 @@ export interface WorkbenchMember {
 }
 
 export interface WorkbenchCase extends CaseSummary {
+  can_create_task?: WireSchemas["WorkbenchCase"]["can_create_task"];
   profile: CaseProfile | null;
   severity: string | null;
   progress: number | null;

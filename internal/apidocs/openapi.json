@@ -20345,6 +20345,9 @@
           "business_status": {
             "type": "string"
           },
+          "can_create_task": {
+            "type": "boolean"
+          },
           "contract_type": {
             "type": "string"
           },

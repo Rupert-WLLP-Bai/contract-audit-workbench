@@ -328,6 +328,59 @@ func TestWorkbenchTaskAuthorizationReferencesAndOptimisticUpdates(t *testing.T) 
 	}
 }
 
+func TestWorkbenchSnapshotTaskCreationAuthority(t *testing.T) {
+	st, _ := openExecutionStore(t)
+	actors := workbenchBoundaryDirectory(t)
+	caseID := workbenchBoundaryCase(t, st, actors.owner, "创建任务权限")
+	if err := st.AddMember(actors.owner, caseID, actors.viewer.ID); err != nil {
+		t.Fatal(err)
+	}
+	check := func(actor accounts.User, count int, allowed bool) {
+		t.Helper()
+		snapshot, err := st.WorkbenchSnapshot(context.Background(), actor, "week", WorkbenchModel{}, true)
+		if err != nil || len(snapshot.Cases) != count {
+			t.Fatalf("cases=%+v err=%v", snapshot.Cases, err)
+		}
+		if count > 0 && (snapshot.Cases[0].CanCreateTask == nil || *snapshot.Cases[0].CanCreateTask != allowed) {
+			t.Fatalf("capability=%v want=%v", snapshot.Cases[0].CanCreateTask, allowed)
+		}
+	}
+	check(actors.owner, 1, true)
+	check(actors.viewer, 1, false)
+	check(actors.foreign, 0, false)
+	workbenchBoundaryGrant(t, actors.clerk.ID, caseID)
+	check(actors.clerk, 1, true)
+	before := workbenchBoundaryState(t, st, actors.owner)
+	users := accounts.List()
+	for i := range users {
+		if users[i].ID == actors.clerk.ID {
+			users[i].Grants = []access.Grant{{Role: "case_owner", Scope: "self"}}
+		}
+	}
+	body, err := json.Marshal(map[string]any{"users": users})
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(t.TempDir(), "revoked-creation-directory.json")
+	if err := os.WriteFile(path, body, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := accounts.ConfigureDirectory(path); err != nil {
+		t.Fatal(err)
+	}
+	check(actors.clerk, 0, false)
+	_, err = st.CreateWorkbenchTask(actors.clerk, caseID, WorkbenchTaskInput{Title: "撤权后不得创建", Kind: "general", AssigneeID: actors.owner.ID, Status: "open", Priority: "medium"})
+	workbenchBoundaryFault(t, err, 404, "not_found")
+	workbenchBoundaryUnchanged(t, st, actors.owner, before)
+	st.UseReadOnly(true)
+	check(actors.owner, 1, false)
+	st.UseReadOnly(false)
+	if _, err := st.pool.Exec(context.Background(), `UPDATE cases SET business_status=$2, archived_at=$3, entity_version=entity_version+1 WHERE id=$1`, caseID, "archived", "2026-10-01T00:00:00Z"); err != nil {
+		t.Fatal(err)
+	}
+	check(actors.owner, 1, false)
+}
+
 func TestWorkbenchSnapshotTaskCompletionAuthority(t *testing.T) {
 	st, _ := openExecutionStore(t)
 	actors := workbenchBoundaryDirectory(t)

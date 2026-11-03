@@ -2676,6 +2676,7 @@ type Workbench struct {
 	Model          WorkbenchModel          `json:"model" openapi:"{\"$ref\":\"#/components/schemas/WorkbenchModel\"}"`
 }
 type WorkbenchCase struct {
+	Can_create_task   bool   `json:"can_create_task,omitempty" openapi:"{\"type\":\"boolean\"}"`
 	Id                string `json:"id" openapi:"{\"type\":\"string\"}"`
 	Title             string `json:"title" openapi:"{\"type\":\"string\"}"`
 	Contract_type     string `json:"contract_type" openapi:"{\"type\":\"string\"}"`

@@ -86,9 +86,19 @@ func TestWorkbenchRoutesExposeCASCreatorsRelationsAndPlatformAudit(t *testing.T)
 	if _, exists := snapshot["tasks"].([]any)[0].(map[string]any)["can_complete"]; exists {
 		t.Fatal("legacy snapshot unexpectedly contains task capability")
 	}
+	for _, raw := range snapshot["cases"].([]any) {
+		if _, exists := raw.(map[string]any)["can_create_task"]; exists {
+			t.Fatal("legacy snapshot unexpectedly contains case capability")
+		}
+	}
 	status, extended := api.do(t, http.MethodGet, "/api/workbench?period=week&task_capabilities=1", nil)
 	if status != http.StatusOK || extended["tasks"].([]any)[0].(map[string]any)["can_complete"] != true {
 		t.Fatalf("extended snapshot: status=%d body=%v", status, extended)
+	}
+	for _, raw := range extended["cases"].([]any) {
+		if raw.(map[string]any)["can_create_task"] != true {
+			t.Fatalf("missing case capability: %v", raw)
+		}
 	}
 	platformAuditFound := false
 	for _, raw := range snapshot["audit"].([]any) {

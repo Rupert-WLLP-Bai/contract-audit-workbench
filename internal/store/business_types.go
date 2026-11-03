@@ -315,6 +315,7 @@ type WorkbenchAudit struct {
 }
 
 type WorkbenchCase struct {
+	CanCreateTask    *bool        `json:"can_create_task,omitempty"`
 	ID               string       `json:"id"`
 	Title            string       `json:"title"`
 	ContractType     string       `json:"contract_type"`

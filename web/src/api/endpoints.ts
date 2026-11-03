@@ -623,7 +623,7 @@ export async function getWorkbench(period: WorkbenchPeriod, signal?: AbortSignal
     if (!(error instanceof ApiError) || error.status !== 422 || signal?.aborted) throw error;
     const snapshot = await requestJson(path, { method: "GET", signal },
       (value) => parseWorkbenchSnapshot(value, period));
-    return { ...snapshot, tasks: snapshot.tasks.map((task) => ({ ...task, can_complete: false })) };
+    return { ...snapshot, cases: snapshot.cases.map((item) => ({ ...item, can_create_task: false })), tasks: snapshot.tasks.map((task) => ({ ...task, can_complete: false })) };
   }
 }
 

@@ -219,6 +219,8 @@ function isCaseProgress(value: unknown): boolean {
 
 function workbenchCase(value: unknown): WorkbenchCase {
   const record = object(value, "案件");
+  if (record.can_create_task !== undefined && typeof record.can_create_task !== "boolean")
+    return invalid("案件 can_create_task 不是布尔值");
   if (!hasCaseEnvelope(record))
     return invalid("案件缺少profile、severity、progress或latest_run");
   const severity = nullableString(record, "severity");
@@ -227,6 +229,7 @@ function workbenchCase(value: unknown): WorkbenchCase {
   const parsed = parseCaseSummary(value);
   return {
     ...parsed,
+    can_create_task: record.can_create_task ?? false,
     profile: record.profile === null ? null : profile(record.profile),
     severity,
     progress: progress as number | null,
