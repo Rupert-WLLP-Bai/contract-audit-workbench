@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-31
-// Updated: 2026-10-31
-// Revision: r1
+// Updated: 2026-11-03
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -88,15 +88,16 @@ type intakeHTTPResult struct {
 	err    error
 }
 
-func postIntakeBytes(client *http.Client, base, key, contentType string, payload []byte) intakeHTTPResult {
-	request, err := http.NewRequest(http.MethodPost, base+"/api/intakes", bytes.NewReader(payload))
+func postIntakeBytes(api *testAPI, key, contentType string, payload []byte) intakeHTTPResult {
+	request, err := http.NewRequest(http.MethodPost, api.base+"/api/intakes", bytes.NewReader(payload))
 	if err != nil {
 		return intakeHTTPResult{err: err}
 	}
 	request.Header.Set("Origin", request.URL.Scheme+"://"+request.URL.Host)
+	api.addSessionProof(request)
 	request.Header.Set("Content-Type", contentType)
 	request.Header.Set("Idempotency-Key", key)
-	response, err := client.Do(request)
+	response, err := api.client.Do(request)
 	if err != nil {
 		return intakeHTTPResult{err: err}
 	}
@@ -127,7 +128,7 @@ func TestCaseIntakeHTTPFreezesAndReplaysExactReceipt(t *testing.T) {
 	api.login(t, "demo-admin", "admin-demo")
 	contentType, payload := intakeForm(t, intakeFields("端到端主合同接收"), "main.txt", []byte("主合同第一版。"))
 	const key = "http-intake-freeze-1"
-	first := postIntakeBytes(api.client, api.base, key, contentType, payload)
+	first := postIntakeBytes(api, key, contentType, payload)
 	if first.err != nil || first.status != http.StatusCreated {
 		t.Fatalf("first intake status=%d err=%v body=%s", first.status, first.err, first.body)
 	}
@@ -147,7 +148,7 @@ func TestCaseIntakeHTTPFreezesAndReplaysExactReceipt(t *testing.T) {
 		t.Fatalf("completed receipt identifiers are not stable prefixes: %+v", receipt)
 	}
 
-	replay := postIntakeBytes(api.client, api.base, key, contentType, payload)
+	replay := postIntakeBytes(api, key, contentType, payload)
 	if replay.err != nil || replay.status != http.StatusCreated || !bytes.Equal(replay.body, first.body) {
 		t.Fatalf("same-key replay did not return the frozen 201 bytes: status=%d err=%v body=%s", replay.status, replay.err, replay.body)
 	}
@@ -169,12 +170,12 @@ func TestCaseIntakeHTTPFreezesAndReplaysExactReceipt(t *testing.T) {
 	}
 
 	changedFileType, changedFilePayload := intakeForm(t, intakeFields("端到端主合同接收"), "main.txt", []byte("换了内容。"))
-	changedFile := postIntakeBytes(api.client, api.base, key, changedFileType, changedFilePayload)
+	changedFile := postIntakeBytes(api, key, changedFileType, changedFilePayload)
 	if changedFile.err != nil || changedFile.status != http.StatusConflict {
 		t.Fatalf("changed file under the same key status=%d err=%v body=%s", changedFile.status, changedFile.err, changedFile.body)
 	}
 	changedMetadataType, changedMetadataPayload := intakeForm(t, intakeFields("改了标题"), "main.txt", []byte("主合同第一版。"))
-	changedMetadata := postIntakeBytes(api.client, api.base, key, changedMetadataType, changedMetadataPayload)
+	changedMetadata := postIntakeBytes(api, key, changedMetadataType, changedMetadataPayload)
 	if changedMetadata.err != nil || changedMetadata.status != http.StatusConflict {
 		t.Fatalf("changed metadata under the same key status=%d err=%v body=%s", changedMetadata.status, changedMetadata.err, changedMetadata.body)
 	}
@@ -202,7 +203,7 @@ func TestCaseIntakeHTTPConcurrentSameKeyCreatesOneCaseAndPrimary(t *testing.T) {
 		group.Add(1)
 		go func() {
 			defer group.Done()
-			results <- postIntakeBytes(api.client, api.base, key, contentType, payload)
+			results <- postIntakeBytes(api, key, contentType, payload)
 		}()
 	}
 	group.Wait()
@@ -267,7 +268,7 @@ func TestCaseIntakeHTTPRecoversLostResponseWithoutAnotherCase(t *testing.T) {
 	pendingAPI.login(t, "demo-admin", "admin-demo")
 	contentType, payload := intakeForm(t, intakeFields("丢响应后恢复"), "lost.txt", []byte("上传已提交但响应丢失。"))
 	const key = "http-intake-lost-response-1"
-	lost := postIntakeBytes(pendingAPI.client, pendingAPI.base, key, contentType, payload)
+	lost := postIntakeBytes(pendingAPI, key, contentType, payload)
 	if lost.err != nil || lost.status != http.StatusAccepted {
 		t.Fatalf("lost-response intake status=%d err=%v body=%s", lost.status, lost.err, lost.body)
 	}
@@ -284,7 +285,7 @@ func TestCaseIntakeHTTPRecoversLostResponseWithoutAnotherCase(t *testing.T) {
 
 	retryAPI := newIntakeAPI(t, st, store.NewDirectCaseIntakeUploader(st))
 	retryAPI.login(t, "demo-admin", "admin-demo")
-	retried := postIntakeBytes(retryAPI.client, retryAPI.base, key, contentType, payload)
+	retried := postIntakeBytes(retryAPI, key, contentType, payload)
 	if retried.err != nil || retried.status != http.StatusCreated {
 		t.Fatalf("retry after lost response status=%d err=%v body=%s", retried.status, retried.err, retried.body)
 	}
@@ -321,7 +322,7 @@ func TestCaseIntakeHTTPRechecksIdentityAndPermission(t *testing.T) {
 	api.login(t, "demo-admin", "admin-demo")
 	contentType, payload := intakeForm(t, intakeFields("权限复核建案"), "auth.txt", []byte("只允许当前经办继续读取。"))
 	const key = "http-intake-auth-1"
-	created := postIntakeBytes(api.client, api.base, key, contentType, payload)
+	created := postIntakeBytes(api, key, contentType, payload)
 	if created.err != nil || created.status != http.StatusCreated {
 		t.Fatalf("create status=%d err=%v body=%s", created.status, created.err, created.body)
 	}
@@ -347,13 +348,13 @@ func TestCaseIntakeHTTPRechecksIdentityAndPermission(t *testing.T) {
 
 	api.login(t, "demo-viewer", "viewer-demo")
 	viewerType, viewerPayload := intakeForm(t, intakeFields("只读角色不能建案"), "viewer.txt", []byte("不应创建。"))
-	viewer := postIntakeBytes(api.client, api.base, "http-intake-auth-viewer", viewerType, viewerPayload)
+	viewer := postIntakeBytes(api, "http-intake-auth-viewer", viewerType, viewerPayload)
 	if viewer.err != nil || viewer.status != http.StatusForbidden {
 		t.Fatalf("viewer create status=%d err=%v body=%s", viewer.status, viewer.err, viewer.body)
 	}
 
 	api.login(t, "demo-admin", "admin-demo")
-	missingKey := postIntakeBytes(api.client, api.base, "", contentType, payload)
+	missingKey := postIntakeBytes(api, "", contentType, payload)
 	if missingKey.err != nil || missingKey.status != http.StatusUnprocessableEntity {
 		t.Fatalf("missing idempotency key status=%d err=%v body=%s", missingKey.status, missingKey.err, missingKey.body)
 	}
@@ -362,6 +363,7 @@ func TestCaseIntakeHTTPRechecksIdentityAndPermission(t *testing.T) {
 		t.Fatal(err)
 	}
 	request.Header.Set("Origin", request.URL.Scheme+"://"+request.URL.Host)
+	api.addSessionProof(request)
 	request.Header.Set("Content-Type", contentType)
 	request.Header.Add("Idempotency-Key", key)
 	request.Header.Add("Idempotency-Key", key)
@@ -377,14 +379,14 @@ func TestCaseIntakeHTTPRechecksIdentityAndPermission(t *testing.T) {
 	intentType, intentPayload := intakeForm(t, map[string]string{
 		"title": "错误意图", "contract_type": "service", "business_line": "ENT", "scenario": "cloud_services", "intent": "replace",
 	}, "intent.txt", []byte("不应创建。"))
-	wrongIntent := postIntakeBytes(api.client, api.base, "http-intake-auth-intent", intentType, intentPayload)
+	wrongIntent := postIntakeBytes(api, "http-intake-auth-intent", intentType, intentPayload)
 	if wrongIntent.err != nil || wrongIntent.status != http.StatusUnprocessableEntity {
 		t.Fatalf("non-fixed intent status=%d err=%v body=%s", wrongIntent.status, wrongIntent.err, wrongIntent.body)
 	}
 
 	st.UseReadOnly(true)
 	readOnlyType, readOnlyPayload := intakeForm(t, intakeFields("只读模式建案"), "readonly.txt", []byte("不应创建。"))
-	readOnly := postIntakeBytes(api.client, api.base, "http-intake-auth-readonly", readOnlyType, readOnlyPayload)
+	readOnly := postIntakeBytes(api, "http-intake-auth-readonly", readOnlyType, readOnlyPayload)
 	if readOnly.err != nil || readOnly.status != http.StatusServiceUnavailable {
 		t.Fatalf("read-only create status=%d err=%v body=%s", readOnly.status, readOnly.err, readOnly.body)
 	}
@@ -401,8 +403,8 @@ func TestCaseIntakeHTTPResumesAcrossSessionsAndArchivesPersonalPending(t *testin
 	firstFile := []byte("第一份原始主合同。")
 	firstType, firstPayload := intakeForm(t, intakeFields("跨设备第一项"), "first.txt", firstFile)
 	secondType, secondPayload := intakeForm(t, intakeFields("跨设备第二项"), "second.txt", []byte("第二份原始主合同。"))
-	first := postIntakeBytes(firstDevice.client, firstDevice.base, "multi-device-first", firstType, firstPayload)
-	second := postIntakeBytes(firstDevice.client, firstDevice.base, "multi-device-second", secondType, secondPayload)
+	first := postIntakeBytes(firstDevice, "multi-device-first", firstType, firstPayload)
+	second := postIntakeBytes(firstDevice, "multi-device-second", secondType, secondPayload)
 	if first.err != nil || second.err != nil || first.status != http.StatusAccepted || second.status != http.StatusAccepted {
 		t.Fatalf("create pending first=%+v second=%+v", first, second)
 	}
@@ -453,11 +455,11 @@ func TestCaseIntakeHTTPResumesAcrossSessionsAndArchivesPersonalPending(t *testin
 		t.Fatalf("restored another request: %+v", continuation)
 	}
 	wrongType, wrongPayload := intakeForm(t, intakeFields("跨设备第一项"), "first.txt", []byte("内容已发生变化。"))
-	wrong := postIntakeBytes(secondDevice.client, secondDevice.base, *continuation.IdempotencyKey, wrongType, wrongPayload)
+	wrong := postIntakeBytes(secondDevice, *continuation.IdempotencyKey, wrongType, wrongPayload)
 	if wrong.err != nil || wrong.status != http.StatusConflict {
 		t.Fatalf("different file resumed old command: status=%d err=%v body=%s", wrong.status, wrong.err, wrong.body)
 	}
-	completed := postIntakeBytes(secondDevice.client, secondDevice.base, *continuation.IdempotencyKey, firstType, firstPayload)
+	completed := postIntakeBytes(secondDevice, *continuation.IdempotencyKey, firstType, firstPayload)
 	if completed.err != nil || completed.status != http.StatusCreated || requiredString(t, intakeJSON(t, completed.body), "case_id") != firstCase {
 		t.Fatalf("resume created another case: status=%d err=%v body=%s", completed.status, completed.err, completed.body)
 	}
@@ -473,7 +475,7 @@ func TestCaseIntakeHTTPResumesAcrossSessionsAndArchivesPersonalPending(t *testin
 	if status != http.StatusConflict || !bytes.Contains(body, []byte(`"code":"intake_archived"`)) {
 		t.Fatalf("archived command advertised pending retry: status=%d body=%s", status, body)
 	}
-	retried := postIntakeBytes(secondDevice.client, secondDevice.base, "multi-device-second", secondType, secondPayload)
+	retried := postIntakeBytes(secondDevice, "multi-device-second", secondType, secondPayload)
 	if retried.err != nil || retried.status != http.StatusConflict {
 		t.Fatalf("archived command restarted: status=%d err=%v body=%s", retried.status, retried.err, retried.body)
 	}
