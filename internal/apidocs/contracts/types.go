@@ -3070,13 +3070,14 @@ type Run struct {
 	Failure_message any    `json:"failure_message" openapi:"{\"anyOf\":[{\"type\":\"string\"},{\"type\":\"null\"}]}"`
 }
 type Snapshot struct {
-	Document_ids       []string            `json:"document_ids" openapi:"{\"type\":\"array\"}" openapi_items:"{\"type\":\"string\"}"`
-	Rule_set_hash      string              `json:"rule_set_hash" openapi:"{\"type\":\"string\"}"`
-	Playbook_hash      string              `json:"playbook_hash" openapi:"{\"type\":\"string\"}"`
-	Model_ref          any                 `json:"model_ref" openapi:"{\"anyOf\":[{\"type\":\"string\"},{\"type\":\"null\"}]}"`
-	Comparator_ref     any                 `json:"comparator_ref" openapi:"{\"anyOf\":[{\"type\":\"string\"},{\"type\":\"null\"}]}"`
-	Review_scope       ReviewScopeIdentity `json:"review_scope,omitempty" openapi:"{\"$ref\":\"#/components/schemas/ReviewScopeIdentity\"}"`
-	Governed_knowledge any                 `json:"governed_knowledge" openapi:"{\"anyOf\":[{\"$ref\":\"#/components/schemas/ReviewKnowledgeSnapshot\"},{\"type\":\"null\"}]}"`
+	Adopted_tenant_config any                 `json:"adopted_tenant_config" openapi:"{\"anyOf\":[{\"$ref\":\"#/components/schemas/AdoptedTenantConfigIdentity\"},{\"type\":\"null\"}],\"description\":\"该次新运行实际冻结的租户配置版本；历史未记录时为null，不从当前配置推断。\"}"`
+	Document_ids          []string            `json:"document_ids" openapi:"{\"type\":\"array\"}" openapi_items:"{\"type\":\"string\"}"`
+	Rule_set_hash         string              `json:"rule_set_hash" openapi:"{\"type\":\"string\"}"`
+	Playbook_hash         string              `json:"playbook_hash" openapi:"{\"type\":\"string\"}"`
+	Model_ref             any                 `json:"model_ref" openapi:"{\"anyOf\":[{\"type\":\"string\"},{\"type\":\"null\"}]}"`
+	Comparator_ref        any                 `json:"comparator_ref" openapi:"{\"anyOf\":[{\"type\":\"string\"},{\"type\":\"null\"}]}"`
+	Review_scope          ReviewScopeIdentity `json:"review_scope,omitempty" openapi:"{\"$ref\":\"#/components/schemas/ReviewScopeIdentity\"}"`
+	Governed_knowledge    any                 `json:"governed_knowledge" openapi:"{\"anyOf\":[{\"$ref\":\"#/components/schemas/ReviewKnowledgeSnapshot\"},{\"type\":\"null\"}]}"`
 }
 type Evaluation struct {
 	Id            string   `json:"id" openapi:"{\"type\":\"string\"}"`

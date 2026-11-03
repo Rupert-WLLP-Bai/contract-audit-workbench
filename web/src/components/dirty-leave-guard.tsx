@@ -43,7 +43,7 @@ export function DirtyLeaveGuard({
       cancelText="留在本页"
       closable={false}
       keyboard={false}
-      maskClosable={false}
+      mask={{ closable: false }}
       okButtonProps={{ danger: true }}
       okText="离开"
       onCancel={() => {

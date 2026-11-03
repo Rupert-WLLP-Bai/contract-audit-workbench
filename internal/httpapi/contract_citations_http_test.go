@@ -78,7 +78,7 @@ func TestContractCitationHTTPRefusesWithoutAnAgentRecord(t *testing.T) {
 	raw, readErr := io.ReadAll(response.Body)
 	response.Body.Close()
 	if readErr != nil || response.StatusCode != http.StatusUnauthorized ||
-		!strings.Contains(string(raw), "unauthenticated") {
+		!strings.Contains(string(raw), "session_invalid") {
 		t.Fatalf("anonymous citation read was not refused: HTTP %d body=%s err=%v", response.StatusCode, raw, readErr)
 	}
 }

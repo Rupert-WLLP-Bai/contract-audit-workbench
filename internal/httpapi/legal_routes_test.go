@@ -27,6 +27,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -819,6 +820,50 @@ func readLegalHTTPBytes(t *testing.T, path string) []byte {
 	return raw
 }
 
+// Proofs are captured only from successful login responses and never refreshed.
+type routeSessionProof struct{ version, csrf string }
+type routeProofTransport struct {
+	mu     sync.RWMutex
+	proofs map[string]routeSessionProof
+}
+
+func (tr *routeProofTransport) remember(t *testing.T, result map[string]any) {
+	t.Helper()
+	active, ok := result["active_context"].(map[string]any)
+	if !ok {
+		t.Fatal("login has no active context")
+	}
+	version, _ := active["context_version"].(string)
+	csrf, _ := result["csrf_token"].(string)
+	audience, _ := result["audience"].(string)
+	if version == "" || csrf == "" || (audience != "client" && audience != "admin") {
+		t.Fatal("login missing session proof")
+	}
+	tr.mu.Lock()
+	defer tr.mu.Unlock()
+	if tr.proofs == nil {
+		tr.proofs = make(map[string]routeSessionProof)
+	}
+	tr.proofs[audience] = routeSessionProof{version, csrf}
+}
+func (tr *routeProofTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	copy := req.Clone(req.Context())
+	if copy.Method != http.MethodGet && copy.Method != http.MethodHead && copy.Method != http.MethodOptions {
+		audience := "client"
+		if strings.HasPrefix(copy.URL.Path, "/api/admin/") || copy.URL.Query().Get("audience") == "admin" {
+			audience = "admin"
+		}
+		tr.mu.RLock()
+		p := tr.proofs[audience]
+		tr.mu.RUnlock()
+		if p.version != "" {
+			copy.Header.Set("X-Context-Version", p.version)
+			copy.Header.Set("X-CSRF-Token", p.csrf)
+		}
+	}
+	return http.DefaultTransport.RoundTrip(copy)
+}
+
 func legalRouteLogin(t *testing.T, base, username, password, audience string) *http.Client {
 	t.Helper()
 	jar, err := cookiejar.New(nil)
@@ -832,6 +877,13 @@ func legalRouteLogin(t *testing.T, base, username, password, audience string) *h
 	if response.StatusCode != http.StatusOK {
 		t.Fatalf("login %s/%s: HTTP %d", username, audience, response.StatusCode)
 	}
+	var body map[string]any
+	if err := json.NewDecoder(response.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	proof := &routeProofTransport{}
+	proof.remember(t, body)
+	client.Transport = proof
 	return client
 }
 

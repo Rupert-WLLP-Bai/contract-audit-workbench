@@ -56,6 +56,15 @@ func TestCookieWritesRequireTrustedOriginBehindProxy(t *testing.T) {
 	if login.Code != http.StatusOK {
 		t.Fatalf("login: status=%d body=%s", login.Code, login.Body.String())
 	}
+	var proof struct {
+		ActiveContext struct {
+			Version string `json:"context_version"`
+		} `json:"active_context"`
+		CSRF string `json:"csrf_token"`
+	}
+	if err := json.Unmarshal(login.Body.Bytes(), &proof); err != nil || proof.ActiveContext.Version == "" || proof.CSRF == "" {
+		t.Fatalf("login proof: %v", err)
+	}
 	var session *http.Cookie
 	for _, cookie := range login.Result().Cookies() {
 		if cookie.Name == "session" {
@@ -87,6 +96,8 @@ func TestCookieWritesRequireTrustedOriginBehindProxy(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			req := httptest.NewRequest(http.MethodPost, "http://core.internal/api/cases", strings.NewReader(`{"title":"Origin regression","contract_type":"procurement_ict"}`))
 			req.AddCookie(session)
+			req.Header.Set("X-Context-Version", proof.ActiveContext.Version)
+			req.Header.Set("X-CSRF-Token", proof.CSRF)
 			for _, origin := range tc.origins {
 				req.Header.Add("Origin", origin)
 			}

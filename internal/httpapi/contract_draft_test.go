@@ -54,6 +54,7 @@ func clmJSONRequest(t *testing.T, api *testAPI, method, path string, headers map
 		t.Fatal(err)
 	}
 	req.Header.Set("Origin", api.base)
+	api.addSessionProof(req)
 	if payload != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}

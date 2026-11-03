@@ -268,7 +268,7 @@ func workspaceJSON(decisions map[string][]store.Decision, ws store.Workspace) ma
 	out := map[string]any{
 		"run": run, "documents": docs, "findings": findings, "evaluations": evals,
 		"review_attempts": attempts, "agent_review": review,
-		"snapshot":        map[string]any{"document_ids": ws.Snapshot.DocumentIDs, "business_at": snapshotBusinessAt(&ws.Snapshot)},
+		"snapshot":        map[string]any{"document_ids": ws.Snapshot.DocumentIDs, "business_at": snapshotBusinessAt(&ws.Snapshot), "adopted_tenant_config": nil},
 		"business_events": businessAuditJSON(ws.Audit),
 		// Older clients require these fields even though the detailed records are
 		// only available from the separately authorized diagnostic endpoint.
@@ -276,6 +276,9 @@ func workspaceJSON(decisions map[string][]store.Decision, ws store.Workspace) ma
 		"previous_run_id":            nilString(ws.PreviousRunID),
 		"revision_comparison_reason": nilString(ws.RevisionComparisonReason),
 		"revisions":                  revisionsJSON(ws.Revisions, byID),
+	}
+	if ws.Snapshot.AdoptedTenantConfigVersionID != "" && ws.Snapshot.AdoptedTenantConfigDigest != "" {
+		out["snapshot"].(map[string]any)["adopted_tenant_config"] = map[string]string{"version_id": ws.Snapshot.AdoptedTenantConfigVersionID, "digest": ws.Snapshot.AdoptedTenantConfigDigest}
 	}
 	if ws.Snapshot.ReviewScope != nil {
 		out["snapshot"].(map[string]any)["review_scope"] = ws.Snapshot.ReviewScope
