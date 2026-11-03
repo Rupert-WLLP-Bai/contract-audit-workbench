@@ -13,14 +13,25 @@
 package httpapi_test
 
 import (
+	"bytes"
+	"context"
+	"contractaudit/internal/httpapi"
+	"contractaudit/internal/modelgateway"
+	"contractaudit/internal/store"
 	"encoding/json"
+	"errors"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"net/http"
+	"net/http/cookiejar"
+	"net/http/httptest"
 	"net/url"
 	"os"
 	"strconv"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"contractaudit/internal/model"
 )
@@ -28,11 +39,30 @@ import (
 func TestLiveReviewAndOCR(t *testing.T) {
 	// Only the explicit live build tag enables this test. Respect the operator's
 	// endpoint and model configuration; never probe an unrelated hard-coded port.
+	if strings.TrimSpace(os.Getenv("LLM_MODEL")) == "" || strings.TrimSpace(os.Getenv("OCR_MODEL")) == "" {
+		t.Fatal("live acceptance requires explicit LLM_MODEL and OCR_MODEL")
+	}
+	t.Setenv("APP_ENV", "test")
+	t.Setenv("AGENT_PLANNER_MODE", "live")
+	t.Setenv("AGENT_PLANNER_TIMEOUT", "90s")
 	cfg := model.FromEnv()
 	seen := &statusCapture{base: http.DefaultTransport}
-	client := model.New(cfg).WithTransport(seen)
-	api := newAPIWith(t, client, client)
+	api, schema := newLiveAPI(t, cfg, seen)
 	api.login(t, "demo-admin", "admin-demo")
+	status, session := api.do(t, http.MethodGet, "/api/session", nil)
+	if status != http.StatusOK {
+		t.Fatalf("read original live session: %d %v", status, session)
+	}
+	active, ok := session["active_context"].(map[string]any)
+	if !ok {
+		t.Fatal("live session omitted its original active context")
+	}
+	version, _ := active["context_version"].(string)
+	csrf, _ := session["csrf_token"].(string)
+	if version == "" || csrf == "" {
+		t.Fatal("live session omitted command proof headers")
+	}
+	api.client.Transport = liveCommandHeaders{version: version, csrf: csrf}
 
 	status, settings := api.do(t, http.MethodGet, "/api/settings", nil)
 	if status != http.StatusOK {
@@ -53,24 +83,32 @@ func TestLiveReviewAndOCR(t *testing.T) {
 		}
 	}
 
-	_, created := api.do(t, http.MethodPost, "/api/cases", map[string]any{
+	status, created := api.do(t, http.MethodPost, "/api/cases", map[string]any{
 		"title": "实机质保", "contract_type": "procurement_ict",
 	})
+	if status != http.StatusCreated {
+		t.Fatalf("create live text case: %d %v", status, created)
+	}
 	caseID := created["id"].(string)
 	api.upload(t, caseID, "procurement", "purchase.txt", "text/plain", []byte("采购文件要求质保36个月。"))
 	api.upload(t, caseID, "draft_contract", "draft.txt", "text/plain", []byte("拟签合同约定质保24个月。"))
-	status, review := api.do(t, http.MethodPost, "/api/cases/"+caseID+"/reviews", map[string]any{})
-	if status != http.StatusCreated {
+	status, review := liveStartReview(t, api, "/api/cases/"+caseID+"/reviews")
+	if status != http.StatusAccepted {
 		t.Fatalf("review %d %v", status, review)
 	}
-	_, ws := api.do(t, http.MethodGet, "/api/cases/"+caseID+"/reviews/"+review["id"].(string), nil)
+	ws := liveWaitReview(t, api, "/api/cases/"+caseID+"/reviews/"+review["id"].(string))
+	diagnostics := api.reviewDiagnostics(t, "/api/cases/"+caseID+"/reviews/"+review["id"].(string))
+	snapshot, _ := diagnostics["snapshot"].(map[string]any)
+	execution, _ := diagnostics["execution"].(map[string]any)
+	attempt, _ := execution["attempt"].(map[string]any)
+	t.Logf("live diagnostics model=%v attempt_error=%v partial=%v calls=%v", snapshot["model_ref"], attempt["error_code"], ws["run"].(map[string]any)["partial_reason"], seen.snapshot())
 	run := ws["run"].(map[string]any)
 	t.Logf("chat run state=%v model_ref=%v failure=%v", run["state"], run["model_ref"], run["failure_message"])
 	if run["state"] == "failed" || run["state"] == "partial" {
 		t.Fatalf("live review failed: %v", run["failure_message"])
 	}
-	if run["model_ref"] != cfg.ChatModel {
-		t.Fatalf("model_ref %+v", run["model_ref"])
+	if snapshot["model_ref"] != cfg.ChatModel {
+		t.Fatalf("model_ref %+v", snapshot["model_ref"])
 	}
 	findings := ws["findings"].([]any)
 	if len(findings) != 1 {
@@ -93,17 +131,20 @@ func TestLiveReviewAndOCR(t *testing.T) {
 		t.Fatal("model quotes were not located in the texts")
 	}
 
-	_, created = api.do(t, http.MethodPost, "/api/cases", map[string]any{
+	status, created = api.do(t, http.MethodPost, "/api/cases", map[string]any{
 		"title": "实机图片", "contract_type": "procurement_ict",
 	})
+	if status != http.StatusCreated {
+		t.Fatalf("create live OCR case: %d %v", status, created)
+	}
 	imageCase := created["id"].(string)
 	imageID := api.upload(t, imageCase, "procurement", "scan.png", "image/png", model.SampleWarrantyPNG)
 	api.upload(t, imageCase, "draft_contract", "draft.txt", "text/plain", []byte("拟签合同约定质保12个月。"))
-	status, review = api.do(t, http.MethodPost, "/api/cases/"+imageCase+"/reviews", map[string]any{})
-	if status != http.StatusCreated {
+	status, review = liveStartReview(t, api, "/api/cases/"+imageCase+"/reviews")
+	if status != http.StatusAccepted {
 		t.Fatalf("ocr review %d %v", status, review)
 	}
-	_, ws = api.do(t, http.MethodGet, "/api/cases/"+imageCase+"/reviews/"+review["id"].(string), nil)
+	ws = liveWaitReview(t, api, "/api/cases/"+imageCase+"/reviews/"+review["id"].(string))
 	run = ws["run"].(map[string]any)
 	var ocrText string
 	for _, item := range ws["documents"].([]any) {
@@ -130,10 +171,10 @@ func TestLiveReviewAndOCR(t *testing.T) {
 	}
 
 	for _, line := range seen.snapshot() {
-		t.Logf("upstream %s", line)
+		t.Logf("gateway %s", line)
 	}
 	var chatOK, listOK bool
-	endpoint, err := url.Parse(cfg.BaseURL)
+	endpoint, err := url.Parse("http://gateway.invalid/v1")
 	if err != nil {
 		t.Fatal("invalid configured model endpoint")
 	}
@@ -147,8 +188,9 @@ func TestLiveReviewAndOCR(t *testing.T) {
 		}
 	}
 	if !listOK || !chatOK {
-		t.Fatalf("upstream calls %v", seen.snapshot())
+		t.Fatalf("gateway calls %v", seen.snapshot())
 	}
+	liveAccounting(t, schema, caseID, imageCase, cfg.ChatModel, cfg.OCRModel)
 }
 
 func truncate(value any) string {
@@ -164,6 +206,19 @@ type statusCapture struct {
 	base  http.RoundTripper
 	mu    sync.Mutex
 	lines []string
+}
+
+// Preserve the accepted session proof rather than fabricating identity or
+// automatically refreshing a rejected command onto a different context.
+type liveCommandHeaders struct{ version, csrf string }
+
+func (h liveCommandHeaders) RoundTrip(req *http.Request) (*http.Response, error) {
+	copy := req.Clone(req.Context())
+	if copy.Method != http.MethodGet && copy.Method != http.MethodHead && copy.Method != http.MethodOptions {
+		copy.Header.Set("X-Context-Version", h.version)
+		copy.Header.Set("X-CSRF-Token", h.csrf)
+	}
+	return http.DefaultTransport.RoundTrip(copy)
 }
 
 func (c *statusCapture) RoundTrip(req *http.Request) (*http.Response, error) {
@@ -188,4 +243,190 @@ func (c *statusCapture) snapshot() []string {
 	out := make([]string, len(c.lines))
 	copy(out, c.lines)
 	return out
+}
+
+func newLiveAPI(t *testing.T, cfg model.Config, seen *statusCapture) (*testAPI, string) {
+	t.Helper()
+	dsn := strings.TrimSpace(os.Getenv("TEST_DATABASE_URL"))
+	if dsn == "" {
+		t.Fatal("TEST_DATABASE_URL required for isolated live accounting")
+	}
+	st, err := store.OpenTest(t.TempDir(), dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	schema := st.SchemaName()
+	t.Cleanup(func() {
+		if err := st.Close(); err != nil {
+			t.Error(err)
+		}
+	})
+	docs, err := st.Reopen()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := docs.Close(); err != nil {
+			t.Error(err)
+		}
+	})
+	gatewayCfg, err := modelgateway.FromEnv()
+	if err != nil {
+		t.Fatal(err)
+	}
+	gatewayCfg.Mode = "openai-compatible"
+	gatewayCfg.UpstreamBaseURL, gatewayCfg.UpstreamAPIKey = cfg.BaseURL, cfg.APIKey
+	gatewayCfg.ChatModel, gatewayCfg.OCRModel = cfg.ChatModel, cfg.OCRModel
+	gatewayCfg.WorkerCredential = strings.Repeat("functional-worker-", 3)
+	gatewayCfg.DocumentCredential = strings.Repeat("functional-document-", 3)
+	gatewayCfg.Budget.MaxInputTokenReservation = 1 << 20
+	gatewayCfg.Budget.GlobalTokensPerMinute = 32 << 20
+	gatewayCfg.Budget.TenantTokensPerMinute = 16 << 20
+	gatewayCfg.Retries = 0
+	gateway, err := modelgateway.New(st, gatewayCfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := httptest.NewServer(gateway.Handler())
+	t.Cleanup(server.Close)
+	workerCfg := cfg
+	workerCfg.BaseURL, workerCfg.ProviderURL = server.URL+"/v1", cfg.BaseURL
+	workerCfg.Gateway, workerCfg.APIKey = true, gatewayCfg.WorkerCredential
+	worker := model.New(workerCfg).WithTransport(seen)
+	docCfg := workerCfg
+	docCfg.APIKey = gatewayCfg.DocumentCredential
+	docModels := model.New(docCfg).WithTransport(seen)
+	st.UseModels(worker)
+	docs.UseModels(docModels)
+	st.UseDocumentPreparer(docs)
+	coreHandler := httpapi.Handler(st, httpapi.Options{Models: worker, Durable: true})
+	docHandler := httpapi.Handler(docs, httpapi.Options{Models: docModels, Durable: true})
+	apiServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.Contains(r.URL.Path, "/documents") || strings.HasSuffix(r.URL.Path, "/generations") {
+			docHandler.ServeHTTP(w, r)
+			return
+		}
+		coreHandler.ServeHTTP(w, r)
+	}))
+	t.Cleanup(apiServer.Close)
+	jar, err := cookiejar.New(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, stop := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		ticker := time.NewTicker(100 * time.Millisecond)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+			}
+			claim, err := st.ClaimNextJob(ctx, "http-live-worker", 3*time.Minute)
+			if errors.Is(err, pgx.ErrNoRows) {
+				continue
+			}
+			if err != nil {
+				if ctx.Err() == nil {
+					t.Logf("claim live job: %v", err)
+				}
+				continue
+			}
+			if err := st.RunClaimedJob(ctx, claim); err != nil && ctx.Err() == nil {
+				t.Logf("live job %s: %v", claim.JobID, err)
+			}
+		}
+	}()
+	t.Cleanup(func() { stop(); <-done })
+	return &testAPI{base: apiServer.URL, client: &http.Client{Jar: jar}}, schema
+}
+
+func liveStartReview(t *testing.T, api *testAPI, path string) (int, map[string]any) {
+	t.Helper()
+	status, raw := api.bytes(t, http.MethodPost, path, bytes.NewBufferString("{}"), "application/json")
+	var result map[string]any
+	if err := json.Unmarshal(raw, &result); err != nil {
+		t.Fatalf("start live review %d: %s", status, raw)
+	}
+	return status, result
+}
+
+func liveWaitReview(t *testing.T, api *testAPI, path string) map[string]any {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Minute)
+	var last map[string]any
+	for time.Now().Before(deadline) {
+		ws, err := api.workspaceWithin(t, path, deadline)
+		if err != nil {
+			t.Fatalf("read live workspace: %v", err)
+		}
+		last = ws
+		state := reviewState(ws)
+		if state == "failed" || state == "partial" {
+			t.Fatalf("live review %s: %v", state, ws["run"])
+		}
+		diagnostics := api.reviewDiagnostics(t, path)
+		execution, _ := diagnostics["execution"].(map[string]any)
+		attempt, _ := execution["attempt"].(map[string]any)
+		switch attempt["state"] {
+		case "completed":
+			return ws
+		case "failed", "partial", "cancelled":
+			t.Fatalf("live attempt %v: %v", attempt["state"], attempt)
+		}
+		time.Sleep(500 * time.Millisecond)
+	}
+	t.Fatalf("live review timed out after 5 minutes: %s; last=%v", path, last["run"])
+	return nil
+}
+
+func liveAccounting(t *testing.T, schema, textCase, imageCase, chatModel, ocrModel string) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	pool, err := pgxpool.New(ctx, os.Getenv("TEST_DATABASE_URL"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pool.Close()
+	qualified := pgx.Identifier{schema}.Sanitize()
+	rows, err := pool.Query(ctx, `SELECT caller_identity,model_ref,call_status,error_code,COALESCE(usage_source,''),charged_tokens,budget_released FROM `+qualified+`.model_usage WHERE case_id IN ($1,$2) ORDER BY occurred_at`, textCase, imageCase)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for rows.Next() {
+		var caller, modelRef, status, errorCode, source string
+		var charged *int64
+		var released bool
+		if err := rows.Scan(&caller, &modelRef, &status, &errorCode, &source, &charged, &released); err != nil {
+			t.Fatal(err)
+		}
+		var chargedValue any
+		if charged != nil {
+			chargedValue = *charged
+		}
+		t.Logf("live ledger caller=%s model=%s status=%s error=%s usage=%s charged=%v released=%t", caller, modelRef, status, errorCode, source, chargedValue, released)
+	}
+	rows.Close()
+	for _, check := range []struct{ caseID, caller, model string }{
+		{textCase, "worker", model.GatewayID(chatModel)},
+		// Frozen attempt preparation is executed under the worker claim.
+		{imageCase, "worker", model.GatewayID(ocrModel)},
+		{imageCase, "worker", model.GatewayID(chatModel)},
+	} {
+		var count int
+		err := pool.QueryRow(ctx, `SELECT count(*) FROM `+qualified+`.model_usage WHERE case_id=$1 AND caller_identity=$2 AND model_ref=$3 AND call_status='completed' AND error_code='' AND charged_tokens IS NOT NULL`, check.caseID, check.caller, check.model).Scan(&count)
+		if err != nil || count == 0 {
+			t.Fatalf("settled live %s model %s for case %s: count=%d err=%v", check.caller, check.model, check.caseID, count, err)
+		}
+	}
+	var leases int
+	err = pool.QueryRow(ctx, `SELECT count(*) FROM `+qualified+`.model_call_leases WHERE case_id IN ($1,$2)`, textCase, imageCase).Scan(&leases)
+	if err != nil || leases != 0 {
+		t.Fatalf("live reservations not settled: leases=%d err=%v", leases, err)
+	}
+	t.Logf("live gateway accounting settled for text and OCR cases")
 }
