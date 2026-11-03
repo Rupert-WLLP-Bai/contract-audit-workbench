@@ -18,6 +18,7 @@ import {
   useNavigationType,
 } from "react-router";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { Actor } from "../api/types";
 import { renderWithAntd as render } from "../test/antd";
 import { AppShell } from "./app-shell";
@@ -26,12 +27,16 @@ const mocks = vi.hoisted(() => ({
   useSession: vi.fn(),
   useLogout: vi.fn(),
   useCaseDetail: vi.fn(),
+  useContextChoices: vi.fn(),
+  useSwitchContext: vi.fn(),
 }));
 
 vi.mock("../api/queries", () => ({
   useSession: mocks.useSession,
   useLogout: mocks.useLogout,
   useCaseDetail: mocks.useCaseDetail,
+  useContextChoices: mocks.useContextChoices,
+  useSwitchContext: mocks.useSwitchContext,
 }));
 
 const mutateAsync = vi.fn<() => Promise<void>>();
@@ -61,16 +66,19 @@ function LocationEcho() {
 }
 
 function renderShell(path = "/") {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(
-    <MemoryRouter initialEntries={[path]}>
-      <Routes>
-        <Route path="/login" element={<LocationEcho />} />
-        <Route element={<AppShell />}>
-          <Route path="/cases" element={<LocationEcho />} />
-          <Route path="*" element={<p>页面内容</p>} />
-        </Route>
-      </Routes>
-    </MemoryRouter>,
+    <QueryClientProvider client={client}>
+      <MemoryRouter initialEntries={[path]}>
+        <Routes>
+          <Route path="/login" element={<LocationEcho />} />
+          <Route element={<AppShell />}>
+            <Route path="/cases" element={<LocationEcho />} />
+            <Route path="*" element={<p>页面内容</p>} />
+          </Route>
+        </Routes>
+      </MemoryRouter>
+    </QueryClientProvider>,
   );
 }
 
@@ -87,6 +95,8 @@ beforeEach(() => {
     mutateAsync,
   });
   mocks.useCaseDetail.mockReturnValue({ data: { title: "案件甲" } });
+  mocks.useContextChoices.mockReturnValue({ data: { context_switch_enabled: false, memberships: [] } });
+  mocks.useSwitchContext.mockReturnValue({ isPending: false, mutateAsync: vi.fn() });
   mutateAsync.mockReset();
   mutateAsync.mockResolvedValue(undefined);
 });
@@ -104,7 +114,7 @@ describe("app shell", () => {
     expect(within(who).getByText("审查员甲")).toBeInTheDocument();
     expect(within(who).getByText("审查员")).toBeInTheDocument();
     expect(within(who).getByText("审")).toHaveClass("ant-avatar-string");
-    expect(screen.getByText("两江新区分公司")).toBeInTheDocument();
+    expect(screen.getByText("租户一")).toBeInTheDocument();
     expect(screen.getByText("页面内容")).toBeInTheDocument();
     expect(screen.getByText("跳到主要内容")).toBeInTheDocument();
   });
@@ -113,7 +123,7 @@ describe("app shell", () => {
     mocks.useSession.mockReturnValue({ data: undefined });
     renderShell();
     expect(screen.getByText("身份未知")).toBeInTheDocument();
-    expect(screen.getByText("正在确认")).toBeInTheDocument();
+    expect(screen.queryByText("租户一")).not.toBeInTheDocument();
   });
 
   it.each([

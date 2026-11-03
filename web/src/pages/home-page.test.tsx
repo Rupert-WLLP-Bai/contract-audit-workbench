@@ -213,6 +213,28 @@ function snapshot(): WorkbenchSnapshot {
   };
 }
 
+const session = {
+  audience: "client",
+  actor: {
+    id: "me",
+    display_name: "周审查",
+    role: "reviewer",
+    tenant_id: "tenant",
+    org_id: "org",
+  },
+  active_context: {
+    membership_id: "membership-me",
+    tenant_id: "tenant",
+    tenant_name: "租户",
+    org_id: "org",
+    org_name: "组织",
+    context_version: "1",
+  },
+  principal_id: "principal-me",
+  csrf_token: "test-csrf",
+  context_switch_enabled: false,
+};
+
 class HomeService {
   data = snapshot();
   requests: { method: string; path: string; body: unknown }[] = [];
@@ -233,8 +255,7 @@ class HomeService {
     const body: unknown =
       typeof init?.body === "string" ? JSON.parse(init.body) : null;
     this.requests.push({ method, path: `${url.pathname}${url.search}`, body });
-    if (url.pathname === "/api/session")
-      return json({ audience: "client", actor: this.data.members[0] });
+    if (url.pathname === "/api/session") return json(session);
     if (url.pathname === "/api/intakes/pending")
       return json({ items: [], next_cursor: null });
     if (url.pathname === "/api/workbench") {
@@ -311,6 +332,16 @@ class HomeService {
 }
 
 function open(service = new HomeService()) {
+  setSessionIdentity({
+    id: session.actor.id,
+    role: session.actor.role,
+    audience: session.audience,
+    tenant_id: session.actor.tenant_id,
+    org_id: session.actor.org_id,
+    principal_id: session.principal_id,
+    active_context: session.active_context,
+    csrf_token: session.csrf_token,
+  });
   vi.stubGlobal("fetch", vi.fn(service.fetch));
   const client = new QueryClient({
     defaultOptions: {

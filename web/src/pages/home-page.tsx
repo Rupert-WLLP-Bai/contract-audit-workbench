@@ -154,25 +154,14 @@ function ProgressList({
 }
 
 function CircuitStrip({
-  openCount,
   nodes,
 }: {
-  openCount: number;
   nodes: readonly { label: string; count: number; tone: "info" | "pending" | "success" }[];
 }) {
   return (
     <section className="circuit-panel" aria-label="审查链路">
       <div className="circuit-head">
         <h2>审查链路</h2>
-        <span
-          className={
-            openCount > 0
-              ? "circuit-open"
-              : "circuit-open circuit-open-closed"
-          }
-        >
-          {openCount > 0 ? `开路口 ${openCount}` : "链路闭合"}
-        </span>
       </div>
       <ol className="circuit">
         {nodes.map((node) => (
@@ -346,13 +335,6 @@ export function HomePage() {
   const cases = [...data.cases].sort((left, right) =>
     right.updated_at.localeCompare(left.updated_at),
   );
-  const openCircuits = cases.filter(
-    (item) =>
-      item.latest_run !== null &&
-      ["failed", "interrupted", "cancelled", "partial"].includes(
-        item.latest_run.state,
-      ),
-  ).length;
   const circuitNodes = [
     { label: "材料", count: dashboard.visible_cases, tone: "info" },
     { label: "待审查", count: dashboard.pending_review_cases, tone: "pending" },
@@ -539,7 +521,7 @@ export function HomePage() {
         </div>
       </header>
 
-      <CircuitStrip openCount={openCircuits} nodes={circuitNodes} />
+      <CircuitStrip nodes={circuitNodes} />
 
       <dl className="home-metrics" aria-label="工作台摘要">
         {metrics.map((metric) => (

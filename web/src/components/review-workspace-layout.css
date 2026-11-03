@@ -1,0 +1,93 @@
+.review-workspace-view-switch {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-block: var(--space-3);
+}
+
+.review-secondary-section {
+  margin: var(--space-3) var(--space-4);
+  border: 1px solid var(--border-default);
+  background: var(--surface-raised);
+}
+
+.review-secondary-section > summary {
+  padding: var(--space-3) var(--space-4);
+  cursor: pointer;
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.review-secondary-section > summary:focus-visible {
+  outline: 2px solid var(--action-primary);
+  outline-offset: -2px;
+}
+
+.review-workspace-view-switch [aria-pressed="true"] {
+  color: var(--text-primary);
+  border-color: var(--action-primary);
+  background: var(--surface-subtle);
+}
+
+.review-workspace-layout.workspace-view-context {
+  grid-template-columns: minmax(240px, 300px) minmax(0, 1fr);
+}
+
+.review-workspace-layout.workspace-view-context .col-findings,
+.review-workspace-layout.workspace-view-context .workspace-resize-handle {
+  display: none;
+}
+
+.review-workspace-layout.workspace-view-context .col-nav {
+  grid-column: 1;
+  height: calc(100dvh - 300px);
+  min-height: 360px;
+}
+
+.review-workspace-layout.workspace-view-context .col-doc {
+  grid-column: 2;
+  height: calc(100dvh - 300px);
+  min-height: 360px;
+}
+
+.review-workspace-layout.workspace-view-evidence {
+  grid-template-columns: minmax(0, 1fr) 12px minmax(300px, var(--finding-column-width, 360px));
+}
+
+.review-workspace-layout.workspace-view-evidence .col-nav {
+  display: none;
+}
+
+.review-workspace-layout.workspace-view-evidence .workspace-resize-handle {
+  display: flex;
+  grid-column: 2;
+}
+
+.review-workspace-layout.workspace-view-evidence .col-doc {
+  grid-column: 1;
+  height: calc(100dvh - 300px);
+  min-height: 360px;
+}
+
+.review-workspace-layout.workspace-view-evidence .col-findings {
+  grid-column: 3;
+  height: calc(100dvh - 300px);
+  min-height: 360px;
+}
+
+@media (max-width: 700px) {
+  .review-workspace-layout.workspace-view-context,
+  .review-workspace-layout.workspace-view-evidence {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .review-workspace-layout.workspace-view-context .col-doc,
+  .review-workspace-layout.workspace-view-evidence .col-findings {
+    grid-column: 1;
+    border-top: 1px solid var(--border-default);
+  }
+
+  .review-workspace-layout.workspace-view-evidence .workspace-resize-handle {
+    display: none;
+  }
+}

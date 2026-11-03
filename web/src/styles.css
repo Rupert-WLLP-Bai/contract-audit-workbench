@@ -403,7 +403,15 @@
     top: var(--header-height);
     height: calc(100vh - var(--header-height));
     min-height: 240px;
+    overflow: hidden;
+  }
+  .sidenav .ant-layout-sider-children {
+    height: 100%;
+    overflow-x: hidden;
     overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
+    scrollbar-color: var(--surface-rail-line) var(--surface-rail);
   }
   .nav-label {
     min-width: 0;
@@ -2618,11 +2626,6 @@
     font-weight: 600;
     color: var(--text-primary);
   }
-  .circuit-open {
-    color: var(--state-conflict);
-    font-family: var(--font-mono);
-    font-size: 12px;
-  }
   .circuit {
     display: grid;
     grid-template-columns: repeat(5, minmax(0, 1fr));
@@ -3876,9 +3879,6 @@
   .app--api-docs .content-column {
     min-width: 0;
     overflow: hidden;
-  }
-  .circuit-open-closed {
-    color: var(--state-compatible);
   }
   .health-page > .ant-card {
     border: 0;

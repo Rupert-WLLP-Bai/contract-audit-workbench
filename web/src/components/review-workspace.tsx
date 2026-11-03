@@ -37,6 +37,7 @@ import { BusinessAgentReviewView } from "./business-agent-review";
 import { TrajectoryView } from "./trajectory-view";
 import { SingleContractScopeCoverage } from "./single-contract-scope-coverage";
 import { StatusText } from "./status-text";
+import "./review-workspace-layout.css";
 
 const STREAM_LABEL: Record<StreamStatus, string> = {
   connecting: "正在连接运行状态",
@@ -527,6 +528,7 @@ export function ReviewWorkspaceView({
   const { run } = workspace;
   const { selected, attempts } = attemptsOf(workspace);
   const [findingColumnWidth, setFindingColumnWidth] = useState(360);
+  const [workspaceView, setWorkspaceView] = useState<"context" | "evidence">("evidence");
   const gridStyle = {
     "--finding-column-width": `${findingColumnWidth}px`,
   } as CSSProperties;
@@ -546,7 +548,23 @@ export function ReviewWorkspaceView({
       />
       <SingleContractScopeCoverage mode="workspace" workspace={workspace} />
       <RunCallouts run={run} />
-      <div className={`workspace-grid layout-${layout}`} style={gridStyle}>
+      <div className="review-workspace-view-switch" role="group" aria-label="工作区视图">
+        <Button
+          htmlType="button"
+          aria-pressed={workspaceView === "context"}
+          onClick={() => setWorkspaceView("context")}
+        >
+          案件与材料
+        </Button>
+        <Button
+          htmlType="button"
+          aria-pressed={workspaceView === "evidence"}
+          onClick={() => setWorkspaceView("evidence")}
+        >
+          原文与风险发现
+        </Button>
+      </div>
+      <div className={`workspace-grid review-workspace-layout workspace-view-${workspaceView} layout-${layout}`} style={gridStyle}>
         <DocumentStage
           key={`${run.id}:${workspace.review_attempts?.attempt.id ?? "legacy"}`}
           documents={workspace.documents}
@@ -555,7 +573,10 @@ export function ReviewWorkspaceView({
           }
           findings={workspace.findings}
           selectedFindingId={selectedId}
-          onSelectFinding={onSelect}
+          onSelectFinding={(findingId) => {
+            onSelect(findingId);
+            setWorkspaceView("evidence");
+          }}
           layout={layout}
           showDiagnostics={showDiagnostics}
           caseContext={caseContext}
