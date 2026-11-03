@@ -1,4 +1,14 @@
 #!/usr/bin/env python3
+# File metadata (manifest mirror):
+# Purpose: Checks recursive test discovery, module isolation, skipped and expected failures, empty selections and timeout diagnostics using disposable Python test fixtures.
+# Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+# Contact: +86 13617696321
+# Created: 2026-11-03
+# Updated: 2026-11-03
+# Revision: r1
+# Copyright: See LICENSE
+# End file metadata.
+
 """Tests for the external Python unittest runner candidate."""
 from __future__ import annotations
 

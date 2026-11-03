@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 # File metadata (manifest mirror):
-# Purpose: Scoped fast checks for pull requests. This module’s command-line arguments and return artifacts define its operational boundary.
+# Purpose: Selects scoped code, architecture and workflow checks from actual Git differences, prepares required toolchains and rejects missing or skipped execution evidence.
 # Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 # Contact: +86 13617696321
 # Created: 2026-10-31
-# Updated: 2026-11-02
-# Revision: r3
+# Updated: 2026-11-03
+# Revision: r4
 # Copyright: See LICENSE
 # End file metadata.
 

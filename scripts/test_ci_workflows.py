@@ -1,3 +1,13 @@
+# File metadata (manifest mirror):
+# Purpose: Uses the pinned workflow syntax checker to validate repository workflows and reject invalid runner context references before GitHub can fail without creating jobs.
+# Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+# Contact: +86 13617696321
+# Created: 2026-11-03
+# Updated: 2026-11-03
+# Revision: r1
+# Copyright: See LICENSE
+# End file metadata.
+
 """Check the executable workflow syntax, including expression context availability."""
 from pathlib import Path
 import shutil

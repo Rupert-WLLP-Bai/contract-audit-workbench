@@ -1,4 +1,14 @@
 #!/usr/bin/env python3
+# File metadata (manifest mirror):
+# Purpose: Discovers required Python test files recursively, executes each in an isolated bounded process and records native unittest evidence without accepting skipped or missing tests.
+# Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+# Contact: +86 13617696321
+# Created: 2026-11-03
+# Updated: 2026-11-03
+# Revision: r1
+# Copyright: See LICENSE
+# End file metadata.
+
 """Run each discovered unittest file in its own interpreter and emit JSON evidence."""
 from __future__ import annotations
 

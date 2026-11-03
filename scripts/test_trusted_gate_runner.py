@@ -1,3 +1,13 @@
+# File metadata (manifest mirror):
+# Purpose: Proves fixed-base controllers execute against the subject root while candidate noops, missing dependencies, dirty checkouts and conflicting identity arguments cannot silently pass.
+# Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+# Contact: +86 13617696321
+# Created: 2026-11-03
+# Updated: 2026-11-03
+# Revision: r1
+# Copyright: See LICENSE
+# End file metadata.
+
 import os
 from pathlib import Path
 import subprocess

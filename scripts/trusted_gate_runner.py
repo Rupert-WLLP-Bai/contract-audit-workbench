@@ -1,4 +1,14 @@
 #!/usr/bin/env python3
+# File metadata (manifest mirror):
+# Purpose: Loads fixed target-base gate controllers and dependencies from Git blobs while binding their execution paths to a clean subject checkout and preserving controller exit results.
+# Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+# Contact: +86 13617696321
+# Created: 2026-11-03
+# Updated: 2026-11-03
+# Revision: r1
+# Copyright: See LICENSE
+# End file metadata.
+
 """Run a fixed BASE gate controller against a clean, fixed subject checkout.
 
 This protects controller selection against accidental candidate changes. It is
