@@ -485,6 +485,7 @@ class WorkbenchService {
   unsupportedTaskCreationCapabilities = false;
   revokeTaskCreationCapabilityOnFailure = false;
   snapshotGate: ReturnType<typeof Promise.withResolvers<void>> | null = null;
+  sessionGate: ReturnType<typeof Promise.withResolvers<void>> | null = null;
   knowledgeResponses = new Map<string, unknown>();
   pendingKnowledge = new Map<string, Promise<Response>>();
 
@@ -528,6 +529,8 @@ class WorkbenchService {
         failure.status,
       );
     }
+    if (key === "GET /api/session" && this.sessionGate)
+      await this.sessionGate.promise;
     if (key === "GET /api/session")
       return json({
         audience: "client",
@@ -751,6 +754,50 @@ afterEach(() => {
 });
 
 describe("workbench tasks", () => {
+  it("hides cached module records during session revalidation", async () => {
+    const service = new WorkbenchService();
+    const { client } = open("tasks", service);
+    const rows = await list("审查任务");
+    expect(await rows.findByRole("row", { name: /核实付款依据/ })).toBeInTheDocument();
+    service.sessionGate = Promise.withResolvers<void>();
+    const revalidation = client.invalidateQueries({ queryKey: queryKeys.session, exact: true });
+
+    expect(await screen.findByRole("heading", { name: "正在加载审查任务" })).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "审查任务记录" })).not.toBeInTheDocument();
+    const hiddenModule = window.document.querySelector(".module-page")?.parentElement;
+    expect(hiddenModule).toHaveAttribute("hidden");
+    expect(hiddenModule).toHaveAttribute("inert");
+    expect(hiddenModule).toHaveStyle({ display: "none" });
+    expect(screen.queryByRole("button", { name: "标记任务完成" })).not.toBeInTheDocument();
+    service.sessionGate.resolve();
+    service.sessionGate = null;
+    await revalidation;
+    const refreshedRows = await list("审查任务");
+    expect(await refreshedRows.findByRole("row", { name: /核实付款依据/ })).toBeInTheDocument();
+  });
+
+  it("hides cached module records during snapshot revalidation", async () => {
+    const service = new WorkbenchService();
+    const { client } = open("tasks", service);
+    const rows = await list("审查任务");
+    expect(await rows.findByRole("row", { name: /核实付款依据/ })).toBeInTheDocument();
+    service.snapshotGate = Promise.withResolvers<void>();
+    const refresh = client.invalidateQueries({ queryKey: queryKeys.workbenchPrefix });
+
+    expect(await screen.findByRole("heading", { name: "正在加载审查任务" })).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "审查任务记录" })).not.toBeInTheDocument();
+    const hiddenModule = window.document.querySelector(".module-page")?.parentElement;
+    expect(hiddenModule).toHaveAttribute("hidden");
+    expect(hiddenModule).toHaveAttribute("inert");
+    expect(hiddenModule).toHaveStyle({ display: "none" });
+    expect(screen.queryByRole("button", { name: "标记任务完成" })).not.toBeInTheDocument();
+    service.snapshotGate.resolve();
+    service.snapshotGate = null;
+    await refresh;
+    const refreshedRows = await list("审查任务");
+    expect(await refreshedRows.findByRole("row", { name: /核实付款依据/ })).toBeInTheDocument();
+  });
+
   it.each([
     ["authorized case", true, false, true],
     ["denied case", false, false, false],

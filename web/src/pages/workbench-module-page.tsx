@@ -1141,6 +1141,14 @@ function WorkbenchModule({ module }: { module: WorkbenchModuleKey }) {
     : "";
   const query = useWorkbench("week", actorScope);
   const updateTask = useUpdateWorkbenchTask();
+  const hasCachedModuleData = Boolean(session.data && query.data);
+  const moduleRevalidating =
+    hasCachedModuleData && (session.isFetching || query.isFetching);
+  const moduleRevalidationFailed =
+    hasCachedModuleData &&
+    !session.isFetching &&
+    !query.isFetching &&
+    (session.isError || query.isError);
   const taskCapabilitySnapshotFresh =
     session.isSuccess &&
     !session.isFetching &&
@@ -1152,7 +1160,8 @@ function WorkbenchModule({ module }: { module: WorkbenchModuleKey }) {
   const canCreateTask = module === "tasks" && taskCapabilitySnapshotFresh && hasCreatableCase;
   const taskCapabilityRevalidating =
     module === "tasks" &&
-    (session.isLoading || session.isFetching || query.isLoading || query.isFetching);
+    hasCachedModuleData &&
+    (session.isFetching || query.isFetching || session.isError || query.isError);
   useEffect(() => {
     if (module === "tasks" && taskCapabilitySnapshotFresh && !hasCreatableCase)
       setCreateOpen(false);
@@ -1242,18 +1251,14 @@ function WorkbenchModule({ module }: { module: WorkbenchModuleKey }) {
   );
   const refresh = () => void query.refetch();
 
-  if (
-    session.isLoading ||
-    query.isLoading ||
-    ((session.isFetching || query.isFetching) && (!session.data || !query.data))
-  )
+  if ((session.isLoading || query.isLoading) && !hasCachedModuleData)
     return (
       <PageStatus
         kind="loading"
         title={`正在加载${WORKBENCH_MODULES[module].title}`}
       />
     );
-  if (session.isError || !session.data)
+  if ((session.isError || !session.data) && !hasCachedModuleData)
     return (
       <PageStatus
         kind="error"
@@ -1262,7 +1267,7 @@ function WorkbenchModule({ module }: { module: WorkbenchModuleKey }) {
         action={<Button type="primary" htmlType="button" onClick={() => void session.refetch()}>重试</Button>}
       />
     );
-  if (query.isError || !query.data)
+  if ((query.isError || !query.data) && !hasCachedModuleData)
     return (
       <PageStatus
         kind="error"
@@ -1281,6 +1286,15 @@ function WorkbenchModule({ module }: { module: WorkbenchModuleKey }) {
       />
     );
   const snapshot = query.data;
+  if (!snapshot)
+    return (
+      <PageStatus
+        kind="error"
+        title={`${WORKBENCH_MODULES[module].title}没有加载`}
+        detail={errorMessage(query.error)}
+        action={<Button type="primary" htmlType="button" onClick={refresh}>重试</Button>}
+      />
+    );
   const canCompleteTasks =
     session.isSuccess &&
     !session.isFetching &&
@@ -1379,6 +1393,13 @@ function WorkbenchModule({ module }: { module: WorkbenchModuleKey }) {
     );
 
   return (
+    <>
+    <div
+      hidden={moduleRevalidating || moduleRevalidationFailed}
+      inert={moduleRevalidating || moduleRevalidationFailed}
+      aria-hidden={moduleRevalidating || moduleRevalidationFailed}
+      style={{ display: moduleRevalidating || moduleRevalidationFailed ? "none" : undefined }}
+    >
     <section className="page module-page">
       <header className="page-head module-page-head">
         <div>
@@ -1693,5 +1714,18 @@ function WorkbenchModule({ module }: { module: WorkbenchModuleKey }) {
         </aside>
       </div>
     </section>
+    </div>
+    {moduleRevalidating ? (
+      <PageStatus kind="loading" title={`正在加载${WORKBENCH_MODULES[module].title}`} />
+    ) : null}
+    {moduleRevalidationFailed ? (
+      <PageStatus
+        kind="error"
+        title={session.isError ? `${WORKBENCH_MODULES[module].title}身份没有加载` : `${WORKBENCH_MODULES[module].title}没有加载`}
+        detail={errorMessage(session.isError ? session.error : query.error)}
+        action={<Button type="primary" htmlType="button" onClick={() => void (session.isError ? session.refetch() : query.refetch())}>重试</Button>}
+      />
+    ) : null}
+    </>
   );
 }

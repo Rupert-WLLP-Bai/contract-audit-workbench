@@ -934,6 +934,27 @@ describe("HomePage snapshot consumers", () => {
     await revalidation;
     expect(await screen.findByRole("heading", { name: "你好，周审查" })).toBeInTheDocument();
   });
+
+  it("hides the cached workbench while its snapshot is being refreshed", async () => {
+    const service = new HomeService();
+    const { client } = open(service);
+    await screen.findByRole("heading", { name: "你好，周审查" });
+    expect(screen.getByRole("region", { name: "按案件处理" })).toBeInTheDocument();
+    expect(within(taskPanel()).getAllByRole("button", { name: "标记完成" }).length).toBeGreaterThan(0);
+
+    service.snapshotGate = Promise.withResolvers<void>();
+    const refresh = client.invalidateQueries({ queryKey: ["workbench"] });
+    expect(await screen.findByRole("heading", { name: "正在加载工作台" })).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "按案件处理" })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("工作台摘要")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "新建任务" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "标记完成" })).not.toBeInTheDocument();
+
+    service.snapshotGate.resolve();
+    service.snapshotGate = null;
+    await refresh;
+    expect(await screen.findByRole("heading", { name: "你好，周审查" })).toBeInTheDocument();
+  });
 });
 
 describe("HomePage persistent task workflow", () => {
