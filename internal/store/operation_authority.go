@@ -82,8 +82,11 @@ func (s *Store) resolveOperationAuthority(ctx context.Context, scope model.Deleg
 		return accounts.User{}, errAttemptAuthorizationRevoked
 	}
 	phase := "worker_start"
-	authority, err := s.ResolveWorkerClaimAuthority(ctx, ToolInvocationContext{TenantID: scope.TenantID, OrgID: scope.OrgID, JobID: scope.JobID, WorkerID: scope.WorkerID, Generation: scope.Generation, CaseID: scope.CaseID, RunID: scope.RunID, AttemptID: scope.AttemptID}, phase)
-	if err != nil || authority.User.ID != scope.ActorID {
+	authority, err := s.resolveWorkerClaimAuthority(ctx, ToolInvocationContext{TenantID: scope.TenantID, OrgID: scope.OrgID, JobID: scope.JobID, WorkerID: scope.WorkerID, Generation: scope.Generation, CaseID: scope.CaseID, RunID: scope.RunID, AttemptID: scope.AttemptID}, phase, scope.ActorID)
+	if err != nil {
+		return accounts.User{}, err
+	}
+	if authority.User.ID != scope.ActorID {
 		return accounts.User{}, errAttemptAuthorizationRevoked
 	}
 	u := authority.User
@@ -100,7 +103,10 @@ func (s *Store) resolveOperationAuthority(ctx context.Context, scope model.Deleg
 	}
 	if scope.Kind != "experience_distill" && (caller == "model" || scope.Kind == "document") {
 		var running bool
-		if err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM review_runs r JOIN review_attempts a ON a.run_id=r.id AND a.tenant_id=r.tenant_id AND a.org_id=r.org_id WHERE r.id=$1 AND a.id=$2 AND r.state='running' AND a.state IN ('accepted','running'))`, scope.RunID, scope.AttemptID).Scan(&running); err != nil || !running {
+		if err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM review_runs r JOIN review_attempts a ON a.run_id=r.id AND a.tenant_id=r.tenant_id AND a.org_id=r.org_id WHERE r.id=$1 AND a.id=$2 AND r.state='running' AND a.state IN ('accepted','running'))`, scope.RunID, scope.AttemptID).Scan(&running); err != nil {
+			return accounts.User{}, err
+		}
+		if !running {
 			return accounts.User{}, errAttemptAuthorizationRevoked
 		}
 	}
@@ -132,13 +138,28 @@ func (s *Store) resolveOperationAuthority(ctx context.Context, scope model.Deleg
 	default:
 		return accounts.User{}, errAttemptAuthorizationRevoked
 	}
-	if err != nil || !matches {
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return accounts.User{}, errAttemptAuthorizationRevoked
+		}
+		return accounts.User{}, err
+	}
+	if !matches {
 		return accounts.User{}, errAttemptAuthorizationRevoked
 	}
 	var item Case
 	var members []byte
 	err = tx.QueryRow(ctx, `SELECT id,tenant_id,org_id,owner_id,member_ids FROM cases WHERE id=$1 AND tenant_id=$2 AND org_id=$3 AND archived_at IS NULL`, scope.CaseID, scope.TenantID, scope.OrgID).Scan(&item.ID, &item.TenantID, &item.OwnerOrgID, &item.OwnerID, &members)
-	if err != nil || json.Unmarshal(members, &item.MemberIDs) != nil || !authorizeCase(item, u, access.Review) {
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return accounts.User{}, errAttemptAuthorizationRevoked
+		}
+		return accounts.User{}, err
+	}
+	if err := json.Unmarshal(members, &item.MemberIDs); err != nil {
+		return accounts.User{}, err
+	}
+	if !authorizeCase(item, u, access.Review) {
 		return accounts.User{}, errAttemptAuthorizationRevoked
 	}
 	return u, tx.Commit(ctx)
@@ -511,4 +532,9 @@ func (s *Store) ResolveOperationAuthority(ctx context.Context, scope model.Deleg
 	}
 	user = accounts.WithCommandAuthority(user, accounts.CommandAuthority{Revision: revision, OperationScope: encoded})
 	return user, tx.Commit(ctx)
+}
+
+// IsOperationAuthorityRefusal classifies protocol/scope denial without claiming revocation.
+func IsOperationAuthorityRefusal(err error) bool {
+	return errors.Is(err, errAttemptAuthorizationRevoked) || errors.Is(err, ErrToolScopeUnavailable)
 }

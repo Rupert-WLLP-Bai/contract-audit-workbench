@@ -777,17 +777,11 @@ func TestDurableArchiveBlocksWritesAndKeepsReportReadable(t *testing.T) {
 }
 
 func TestDurableRevokedActorIsCancelledWithoutPublishing(t *testing.T) {
-	actor, found := accounts.ByID("demo-reviewer")
-	if !found {
-		t.Fatal("demo reviewer missing")
-	}
-	fixture, ok := newDurableFixtureAs(t, actor)
-	if !ok {
-		t.Skip("TEST_DATABASE_URL and MIGRATOR_DATABASE_URL are required for isolated durable role checks")
-	}
+	// Admit the attempt using the actual enterprise membership, then revoke
+	// that same actor in the same enterprise directory mode.
+	fixture := NewRevokedFinalizeFixture(t).fixture
+	actor := fixture.actor
 	actor.Enabled = false
-	actor.Issuer = "test-issuer"
-	actor.Subject = "revoked-reviewer"
 	body, err := json.Marshal(struct {
 		Users []accounts.User `json:"users"`
 	}{Users: []accounts.User{actor}})

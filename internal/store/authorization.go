@@ -198,6 +198,12 @@ func authorizeCase(item Case, user accounts.User, action access.Action) bool {
 	if err != nil {
 		return false
 	}
+	return authorizeCaseTrusted(item, current, action)
+}
+
+// authorizeCaseTrusted evaluates only the already-resolved principal. Callers
+// must establish its authority before invoking this pure case decision.
+func authorizeCaseTrusted(item Case, current accounts.User, action access.Action) bool {
 	principal := bindLocalDemoCaseGrant(item, current, accounts.Principal(current))
 	resource := access.Resource{TenantID: item.TenantID, CaseID: item.ID, OrgID: item.OwnerOrgID, OwnerID: item.OwnerID}
 	return access.Check(action, principal, resource, time.Now().UTC()).Allowed

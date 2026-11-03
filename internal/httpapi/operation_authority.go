@@ -39,7 +39,15 @@ func operationAuthorityHandler(st *store.Store, credential, caller string) http.
 		}
 		u, err := st.ResolveOperationAuthority(r.Context(), scope, caller)
 		if err != nil {
-			w.WriteHeader(http.StatusForbidden)
+			if errors.Is(err, operationauthority.ErrConfirmedRevocation) {
+				writeJSON(w, http.StatusForbidden, map[string]string{"code": operationauthority.ConfirmedRevocationCode})
+				return
+			}
+			if store.IsOperationAuthorityRefusal(err) {
+				w.WriteHeader(http.StatusForbidden)
+				return
+			}
+			w.WriteHeader(http.StatusServiceUnavailable)
 			return
 		}
 		revision := ""

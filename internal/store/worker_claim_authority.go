@@ -18,6 +18,7 @@ import (
 	"contractaudit/internal/access"
 	"contractaudit/internal/accounts"
 	"contractaudit/internal/model"
+	"contractaudit/internal/operationauthority"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -27,6 +28,10 @@ import (
 // review job and proves that identity can read the exact case. Callers choose a
 // fixed phase; request data cannot weaken the SQL status checks.
 func (s *Store) ResolveWorkerClaimAuthority(ctx context.Context, request ToolInvocationContext, phase string) (ToolAuthority, error) {
+	return s.resolveWorkerClaimAuthority(ctx, request, phase, "")
+}
+
+func (s *Store) resolveWorkerClaimAuthority(ctx context.Context, request ToolInvocationContext, phase, expectedActor string) (ToolAuthority, error) {
 	if s == nil || s.pool == nil || phase != "worker_start" && phase != "tool_read" ||
 		request.TenantID == "" || request.OrgID == "" || request.JobID == "" || request.WorkerID == "" ||
 		request.Generation <= 0 || request.CaseID == "" || (request.RunID == "") != (request.AttemptID == "") {
@@ -50,8 +55,19 @@ func (s *Store) ResolveWorkerClaimAuthority(ctx context.Context, request ToolInv
 	if !actorID.Valid || tenantID != request.TenantID || orgID != request.OrgID {
 		return ToolAuthority{}, toolScopeRefusal("claim_identity_mismatch")
 	}
-	profile, exists := accounts.ByID(actorID.String)
-	if !exists || !profile.Enabled {
+	directory := accounts.LookupUserSnapshot(actorID.String)
+	if directory.Status.State != "ready" && directory.Status.State != "local_demo" {
+		return ToolAuthority{}, errors.New("trusted directory unavailable")
+	}
+	profile, exists := directory.User, directory.Found
+	if !exists {
+		// An enterprise claim cannot be judged against local demo identities,
+		// nor a local claim against a different enterprise directory.
+		modeMatches := principalID.Valid && membershipID.Valid && directory.Status.Mode == "enterprise" ||
+			!principalID.Valid && !membershipID.Valid && directory.Status.Mode == "local_demo"
+		if modeMatches && expectedActor != "" && actorID.String == expectedActor {
+			return ToolAuthority{}, operationauthority.ErrConfirmedRevocation
+		}
 		return ToolAuthority{}, toolScopeRefusal("actor_untrusted")
 	}
 	var user accounts.User

@@ -12,16 +12,16 @@ package store
 
 import (
 	"context"
-	"errors"
 
 	"contractaudit/internal/access"
 	"contractaudit/internal/accounts"
 	"contractaudit/internal/fault"
+	"contractaudit/internal/operationauthority"
 
 	"github.com/jackc/pgx/v5"
 )
 
-var errAttemptAuthorizationRevoked = errors.New("attempt authorization was revoked")
+var errAttemptAuthorizationRevoked = operationauthority.ErrDenied
 
 // authorizeAttemptExecution resolves current grants for the frozen initiating actor.
 // It applies to active execution; historical reads use their requesting user's grants.
