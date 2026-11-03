@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-31
-// Updated: 2026-11-02
-// Revision: r2
+// Updated: 2026-11-03
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -505,6 +505,9 @@ func (s *Store) CompleteCaseIntake(ctx context.Context, user accounts.User, oper
 		}
 		if record.Status != caseIntakePendingStatus {
 			return errors.New("case intake operation has an unknown status")
+		}
+		if record.ActorID != current.ID {
+			return fault.NotFound("建案操作不存在")
 		}
 		if !authorizeCase(item, current, access.Manage) {
 			return fault.Forbidden("当前身份无权完成建案上传")
