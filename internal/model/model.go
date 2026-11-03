@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-02
-// Revision: r2
+// Updated: 2026-11-03
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -435,7 +435,7 @@ func validateReportedWarranty(out Warranty, claim string, hasDisposition bool) e
 	if claim == "" || utf8.RuneCountInString(claim) > 1000 {
 		return fmt.Errorf("%w: claim", ErrUnusable)
 	}
-	if !hasDisposition || len(out.Quotes) == 0 {
+	if !hasDisposition || (len(out.Quotes) == 0 && !(out.Relation == "insufficient" && out.Disposition == "insufficient_evidence")) {
 		return fmt.Errorf("%w: finding", ErrUnusable)
 	}
 	return nil

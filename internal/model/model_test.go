@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-10-28
-// Revision: r1
+// Updated: 2026-11-03
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -45,12 +45,23 @@ func TestParseWarrantyRejectsMalformedOutput(t *testing.T) {
 		`{"claim":"有冲突","relation":"maybe","disposition":"confirm_risk","quotes":[{"document_id":"a","quote":"质保36个月"}]}`,
 		`{"claim":"有冲突","relation":"conflict","disposition":"shrug","quotes":[{"document_id":"a","quote":"质保36个月"}]}`,
 		`{"claim":"有冲突","relation":"conflict","disposition":"confirm_risk","quotes":[]}`,
+		`{"claim":"缺少质保","relation":"insufficient","disposition":"confirm_risk","quotes":[]}`,
 	}
 	for _, raw := range cases {
 		_, err := ParseWarranty(raw)
 		if !errors.Is(err, ErrUnusable) {
 			t.Fatalf("%q: %v", raw, err)
 		}
+	}
+}
+
+func TestParseWarrantyAcceptsInsufficientWithoutQuotes(t *testing.T) {
+	got, err := ParseWarranty(`{"claim":"缺少质保条款","relation":"insufficient","disposition":"insufficient_evidence","quotes":[]}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Relation != "insufficient" || got.Disposition != "insufficient_evidence" || len(got.Quotes) != 0 {
+		t.Fatalf("unexpected finding: %+v", got)
 	}
 }
 

@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-10-25
-// Revision: r1
+// Updated: 2026-11-03
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -16,7 +16,38 @@ import (
 
 	"contractaudit/internal/docir"
 	"contractaudit/internal/engine"
+	"contractaudit/internal/model"
 )
+
+func TestParsedInsufficientWarrantyPreservesMissingEvidence(t *testing.T) {
+	proposal, err := model.ParseWarranty(`{"claim":"未发现质保期限","relation":"insufficient","disposition":"insufficient_evidence","quotes":[]}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tests := []struct {
+		name, first, second, relation string
+		findings                      int
+	}{
+		{"absent", "交付设备。", "设备验收。", engine.RelNotApplicable, 1},
+		{"conflict", "质保36个月。", "质保24个月。", engine.RelConflict, 1},
+		{"compatible", "质保36个月。", "质保36个月。", engine.RelCompatible, 0},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			docs := []engine.Source{{ID: "a", ParseStatus: "ready", Text: tt.first}, {ID: "b", ParseStatus: "ready", Text: tt.second}}
+			ev, drafts, err := engine.AcceptWarranty(docs, engine.Proposal{Claim: proposal.Claim, Relation: proposal.Relation, Disposition: proposal.Disposition})
+			if err != nil || ev.Relation != tt.relation || len(drafts) != tt.findings {
+				t.Fatalf("eval=%+v drafts=%+v err=%v", ev, drafts, err)
+			}
+			if tt.name == "absent" && (drafts[0].Relation != engine.RelInsufficient || drafts[0].Disposition != "insufficient_evidence" || drafts[0].UnverifiedReason == "" || len(drafts[0].Anchors) != 0) {
+				t.Fatalf("missing evidence: %+v", drafts[0])
+			}
+			if tt.name == "conflict" && drafts[0].Relation != engine.RelConflict {
+				t.Fatalf("conflict overwritten: %+v", drafts[0])
+			}
+		})
+	}
+}
 
 func TestWarrantyConflict(t *testing.T) {
 	docs := []engine.Source{
