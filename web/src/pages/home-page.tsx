@@ -4,7 +4,7 @@
 // Contact: +86 13617696321
 // Created: 2026-10-25
 // Updated: 2026-11-03
-// Revision: r2
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -54,6 +54,22 @@ const BUSINESS_STATUS_LABELS: Record<string, string> = {
 function progressColor(status: string): string {
   if (status === "archived") return "var(--state-compatible)";
   return status === "active" ? "var(--action-primary)" : "var(--state-neutral)";
+}
+
+function taskStatusLabel(status: string): string {
+  if (status === "open") return "待处理";
+  if (status === "in_progress") return "处理中";
+  return "状态未知";
+}
+
+function remediationStatusLabel(status: string): string {
+  const labels: Record<string, string> = {
+    open: "待整改",
+    submitted: "待复审",
+    closed: "已关闭",
+    reopened: "重新打开",
+  };
+  return labels[status] ?? "状态未知";
 }
 
 function ProgressDonut({
@@ -274,6 +290,12 @@ export function HomePage() {
     if (intakeActorScopeRef.current === intakeActorScope) return;
     intakeActorScopeRef.current = intakeActorScope;
     setSelectedIntake(null);
+    setTaskCaseId("");
+    setTaskTitle("");
+    setTaskAssignee("");
+    setTaskDue("");
+    setShowTaskForm(false);
+    setTaskFilter("mine");
   }, [intakeActorScope]);
   const createTask = useCreateWorkbenchTask(taskCaseId);
   const updateTask = useUpdateWorkbenchTask();
@@ -409,6 +431,25 @@ export function HomePage() {
   const remediations = [...data.remediations]
     .sort((left, right) => right.updated_at.localeCompare(left.updated_at))
     .slice(0, 5);
+  const caseWork = cases
+    .map((item) => ({
+      item,
+      tasks: data.tasks.filter(
+        (task) => task.case_id === item.id && task.status !== "completed",
+      ),
+      remediations: data.remediations.filter(
+        (remediation) =>
+          remediation.case_id === item.id && remediation.status !== "closed",
+      ),
+    }))
+    .filter(({ item, tasks: caseTasks, remediations: caseRemediations }) =>
+      caseTasks.length > 0 ||
+      caseRemediations.length > 0 ||
+      item.profile?.due_at != null ||
+      item.severity === "high" ||
+      item.severity === "critical",
+    )
+    .slice(0, 8);
 
   function completeTask(task: WorkbenchTask) {
     updateTask.mutate({
@@ -540,6 +581,52 @@ export function HomePage() {
           </div>
         ))}
       </dl>
+
+      <section className="home-panel home-case-work" aria-labelledby="home-case-work-title">
+        <header className="home-panel-head">
+          <div className="home-section-title">
+            <span aria-hidden="true" />
+            <h2 id="home-case-work-title">按案件处理</h2>
+          </div>
+          <span className="home-panel-meta">按案件更新时间排序，最多显示 8 个案件</span>
+        </header>
+        {caseWork.length === 0 ? (
+          <p className="home-empty">当前可见快照中没有符合筛选的案件。</p>
+        ) : (
+          <ul className="home-case-work-list">
+            {caseWork.map(({ item, tasks: caseTasks, remediations: caseRemediations }) => (
+              <li key={item.id}>
+                <div className="home-case-work-heading">
+                  <Link to={caseHref(item.id, null)}>{item.title}</Link>
+                  <span className="home-case-work-id">{item.id}</span>
+                </div>
+                <div className="home-case-work-details">
+                  {item.severity ? (
+                    <StatusText tone={item.severity === "high" || item.severity === "critical" ? "bad" : item.severity === "medium" ? "attention" : "neutral"}>
+                      {item.severity === "high" || item.severity === "critical" ? "高风险" : item.severity === "medium" ? "中风险" : item.severity === "low" ? "低风险" : item.severity === "info" ? "提示" : item.severity === "unrated" ? "未分级" : "风险级别未知"}
+                    </StatusText>
+                  ) : null}
+                  {item.profile?.due_at ? <span>案件期限 · {formatDateTime(item.profile.due_at)}</span> : null}
+                  {caseTasks.map((task) => (
+                    <Link key={task.id} to={caseHref(item.id, null)}>
+                      {task.title} · {taskStatusLabel(task.status)}
+                      {task.due_at ? ` · 截止 ${formatDateTime(task.due_at)}` : " · 未设期限"}
+                    </Link>
+                  ))}
+                  {caseRemediations.map((remediation) => (
+                    <Link key={remediation.id} to={caseHref(item.id, remediation.run_id)}>
+                      整改：{remediation.measure} · {remediationStatusLabel(remediation.status)} · 截止 {formatDateTime(remediation.due_at)}
+                    </Link>
+                  ))}
+                  {caseTasks.length === 0 && caseRemediations.length === 0 && (item.severity === "high" || item.severity === "critical") ? <span>打开案件查看风险详情</span> : null}
+                </div>
+                <Link className="home-case-work-open" to={caseHref(item.id, null)}>打开案件</Link>
+              </li>
+            ))}
+          </ul>
+        )}
+        <p className="home-case-work-note">此处展示工作台快照中的任务、整改和风险级别；案件实际下一步及可执行动作以案件页服务端信息为准。</p>
+      </section>
 
       <IntakePendingList
         key={intakeActorScope}
