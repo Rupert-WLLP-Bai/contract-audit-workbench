@@ -181,7 +181,7 @@ func TestBrowserD3SubjectControlledSourceSOD(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { stopGroup(vite) })
-	waitHTTP(t, webURL+"/")
+	waitViteReady(t, webURL)
 	ctx, cancel := context.WithTimeout(context.Background(), 180*time.Second)
 	defer cancel()
 	env := append(os.Environ(),

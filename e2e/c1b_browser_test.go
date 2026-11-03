@@ -88,7 +88,7 @@ func runBrowserTelecomC1B(t *testing.T, journey, scenario string) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { stopGroup(vite) })
-	waitHTTP(t, webURL+"/")
+	waitViteReady(t, webURL)
 
 	dataset, err := filepath.Abs(filepath.Join("..", "testdata", "telecom-c1b-v1.json"))
 	if err != nil {
