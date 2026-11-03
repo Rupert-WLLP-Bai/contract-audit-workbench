@@ -21718,7 +21718,12 @@
           "503": {
             "$ref": "#/components/responses/Error503"
           }
-        }
+        },
+        "security": [
+          {
+            "adminSessionCookie": []
+          }
+        ]
       }
     },
     "/api/admin/contract-workflow/templates": {
@@ -21800,7 +21805,12 @@
           "503": {
             "$ref": "#/components/responses/Error503"
           }
-        }
+        },
+        "security": [
+          {
+            "adminSessionCookie": []
+          }
+        ]
       }
     },
     "/api/admin/governed-knowledge": {

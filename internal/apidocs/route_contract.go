@@ -4,7 +4,7 @@
 // Contact: +86 13617696321
 // Created: 2026-11-02
 // Updated: 2026-11-03
-// Revision: r2
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -209,4 +209,15 @@ var sourceResponses = map[string]Response{
 	"Error422": Response{Description: "输入不满足当前契约", Content: map[string]MediaType{"application/json": MediaType{Schema: Schema{Ref: "#/components/schemas/Error"}}}},
 	"Error500": Response{Description: "服务端失败", Content: map[string]MediaType{"application/json": MediaType{Schema: Schema{Ref: "#/components/schemas/Error"}}}},
 	"Error503": Response{Description: "业务只读返回 code=read_only，容量不足返回 code=execution_capacity，关联案件忙返回 code=case_busy；经验结果接收未配置返回 code=experience_delivery_unavailable。服务不可用的请求未受理。", Content: map[string]MediaType{"application/json": MediaType{Schema: Schema{Ref: "#/components/schemas/Error"}}}},
+}
+
+// Workflow configuration requires the same administrator session as the
+// command-context middleware and the workflow handlers.
+func init() {
+	template := sourcePaths["/api/admin/contract-workflow/templates"]
+	template.Post.Security = []SecurityRequirement{{"adminSessionCookie": {}}}
+	sourcePaths["/api/admin/contract-workflow/templates"] = template
+	roles := sourcePaths["/api/admin/contract-workflow/roles/{roleCode}"]
+	roles.Put.Security = []SecurityRequirement{{"adminSessionCookie": {}}}
+	sourcePaths["/api/admin/contract-workflow/roles/{roleCode}"] = roles
 }

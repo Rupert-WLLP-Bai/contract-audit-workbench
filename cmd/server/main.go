@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-02
-// Revision: r2
+// Updated: 2026-11-03
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -301,6 +301,7 @@ func options(app *bootstrap.Runtime, cors []string) httpapi.Options {
 		ToolClaimAuthorityCredential: strings.TrimSpace(os.Getenv("TOOL_CORE_AUTHORITY_TOKEN")),
 		ModelAuthorityCredential:     strings.TrimSpace(os.Getenv("CORE_MODEL_AUTHORITY_TOKEN")),
 		OperatorAuditEnabled:         enabled,
+		ContractAuditBindingsEnabled: contractAuditBindingsEnabled(),
 		CapabilityPacks:              registry,
 		ExternalConnectors:           connectors,
 		ExternalConnectorInfo:        catalog,

@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-01
-// Updated: 2026-11-01
-// Revision: r1
+// Updated: 2026-11-03
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -84,13 +84,13 @@ func (h *handler) transferApprovalTask(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *handler) publishWorkflowTemplate(w http.ResponseWriter, r *http.Request) {
-	serveClientJSONCommand(h, w, r, http.StatusCreated, func(user accounts.User, req *http.Request, body store.PublishWorkflowTemplateInput) (any, error) {
+	serveGovernanceJSONCommand(h, w, r, http.StatusCreated, func(user accounts.User, req *http.Request, body store.PublishWorkflowTemplateInput) (any, error) {
 		return h.store.PublishWorkflowTemplate(req.Context(), user, body)
 	})
 }
 
 func (h *handler) replaceWorkflowRoleBindings(w http.ResponseWriter, r *http.Request) {
-	serveClientJSONCommand(h, w, r, http.StatusOK, func(user accounts.User, req *http.Request, body store.ReplaceWorkflowRoleInput) (any, error) {
+	serveGovernanceJSONCommand(h, w, r, http.StatusOK, func(user accounts.User, req *http.Request, body store.ReplaceWorkflowRoleInput) (any, error) {
 		body.RoleCode = req.PathValue("roleCode")
 		return h.store.ReplaceWorkflowRoleBindings(req.Context(), user, body)
 	})
