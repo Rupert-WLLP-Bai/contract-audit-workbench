@@ -4,7 +4,7 @@
 // Contact: +86 13617696321
 // Created: 2026-11-03
 // Updated: 2026-11-03
-// Revision: r1
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -12,6 +12,7 @@ package store_test
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -28,7 +29,7 @@ import (
 )
 
 func TestRevokedFinalizeRealCoreHTTPAndExecutionRole(t *testing.T) {
-	for _, scenario := range []string{"confirmed_revocation", "core_unavailable", "directory_unavailable", "directory_mode_change", "directory_default_scope_changed"} {
+	for _, scenario := range []string{"confirmed_revocation", "core_unavailable", "directory_unavailable", "directory_mode_change", "directory_default_scope_changed", "expired_lease_with_core_unavailable"} {
 		t.Run(scenario, func(t *testing.T) {
 			f := store.NewRevokedFinalizeFixture(t)
 			workerKey, gatewayKey := strings.Repeat("w", 40), strings.Repeat("g", 40)
@@ -50,6 +51,25 @@ func TestRevokedFinalizeRealCoreHTTPAndExecutionRole(t *testing.T) {
 				t.Fatal(err)
 			}
 			f.Execution().UseOperationAuthority(client)
+			if scenario == "expired_lease_with_core_unavailable" {
+				f.ExpireClaim(t)
+				before := f.Snapshot(t)
+				unavailable.Store(true)
+				if err := f.Finalize(); !errors.Is(err, store.ErrLeaseLost) {
+					t.Fatalf("unavailable Core hid the expired lease: %v", err)
+				}
+				if after := f.Snapshot(t); !reflect.DeepEqual(before, after) {
+					t.Fatalf("expired claim changed state while Core was unavailable: before=%+v after=%+v", before, after)
+				}
+				unavailable.Store(false)
+				if err := f.Finalize(); !errors.Is(err, store.ErrLeaseLost) {
+					t.Fatalf("recovered Core hid the expired lease: %v", err)
+				}
+				if after := f.Snapshot(t); !reflect.DeepEqual(before, after) {
+					t.Fatalf("expired claim changed state after Core recovered: before=%+v after=%+v", before, after)
+				}
+				return
+			}
 			before := f.Snapshot(t)
 			initialUsers := accounts.List()
 			if scenario == "directory_default_scope_changed" {
@@ -103,8 +123,8 @@ func TestRevokedFinalizeRealCoreHTTPAndExecutionRole(t *testing.T) {
 			}
 			if scenario == "core_unavailable" {
 				unavailable.Store(true)
-				if err := f.Finalize(); err == nil {
-					t.Fatal("unavailable Core allowed terminal transition")
+				if err := f.Finalize(); err == nil || errors.Is(err, store.ErrLeaseLost) {
+					t.Fatalf("unavailable Core must preserve the active lease and refuse the transition: %v", err)
 				}
 				if after := f.Snapshot(t); !reflect.DeepEqual(before, after) {
 					t.Fatalf("unavailable Core changed attempt: before=%+v after=%+v", before, after)

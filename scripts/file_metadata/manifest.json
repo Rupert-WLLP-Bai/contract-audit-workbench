@@ -30367,12 +30367,12 @@
         "value": "2026-11-03",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "406bf64745912c1aa6d89697902fb413e432b860",
+          "commit": "e15bd931ed7297b405933f97c2461c342f7af440",
           "path": "internal/store/attempt_finalize.go",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r3",
+      "revision": "r4",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -35088,12 +35088,12 @@
         "value": "2026-11-03",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "406bf64745912c1aa6d89697902fb413e432b860",
+          "commit": "e15bd931ed7297b405933f97c2461c342f7af440",
           "path": "internal/store/export_test.go",
-          "reason": "file introduction created its initial content; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+          "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r1",
+      "revision": "r2",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -41866,12 +41866,12 @@
         "value": "2026-11-03",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "406bf64745912c1aa6d89697902fb413e432b860",
+          "commit": "e15bd931ed7297b405933f97c2461c342f7af440",
           "path": "internal/store/revoked_finalize_http_external_test.go",
-          "reason": "file introduction created its initial content; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+          "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r1",
+      "revision": "r2",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -49642,7 +49642,7 @@
           "reason": "The manifest cannot embed the commit/blob identity of its own current update; retain this exact-path self-reference exception."
         }
       },
-      "revision": "r15",
+      "revision": "r16",
       "copyright": [
         {
           "holder": "Bai Junhao",
