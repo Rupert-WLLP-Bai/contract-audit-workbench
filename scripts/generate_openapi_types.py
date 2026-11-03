@@ -4,8 +4,8 @@
 # Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 # Contact: +86 13617696321
 # Created: 2026-10-31
-# Updated: 2026-11-02
-# Revision: r2
+# Updated: 2026-11-03
+# Revision: r3
 # Copyright: See LICENSE
 # End file metadata.
 
@@ -38,7 +38,7 @@ ROOTS = (
 	"MembershipChoice", "PendingMembershipList", "PendingMembershipSelectionRequest",
 	"Activity", "ArchiveRequest", "CaseProfile", "CaseProfileInput", "CaseRelationInput",
 	"ContractAcceptance", "ContractAcceptanceDefect", "ContractAcceptanceDefectInput", "ContractAcceptanceList", "ContractAcceptanceRequest",
-	"ContractSourceCapability",
+	"ContractSourceCapability", "ContractLifecycleOverview",
 	"ContractDelivery", "ContractDeliveryList", "ContractDeliveryRequest", "ContractFulfillmentItemSummary", "ContractRectification", "ContractRectificationRequest",
     "ContractPaymentEligibilityRequest", "ContractPaymentEligibility", "ContractPaymentReceiptRequest", "ContractPaymentReceipt", "ContractPaymentSummary",
     "ContractAssetList", "ContractAssetPlanSummary", "ContractAssetHandover", "ContractAssetReceipt",

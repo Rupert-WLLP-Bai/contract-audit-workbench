@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-01
-// Updated: 2026-11-02
-// Revision: r1
+// Updated: 2026-11-03
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -200,4 +200,8 @@ func TestContractPaymentEligibilityAndTrustedReceiptFacts(t *testing.T) {
 	if facts != beforeFacts || events != beforeEvents || outbox != beforeOutbox {
 		t.Fatalf("rejected readonly receipt changed facts/events/outbox: %d/%d/%d -> %d/%d/%d", beforeFacts, beforeEvents, beforeOutbox, facts, events, outbox)
 	}
+	fixture.core.UseReadOnly(false)
+	t.Run("LifecycleOverviewSingleSnapshotConcurrentReceipt", func(t *testing.T) {
+		assertLifecycleSnapshotUnderConcurrentReceipt(t, fixture, contractID, frozen.Version.ContractRevisionID, source)
+	})
 }

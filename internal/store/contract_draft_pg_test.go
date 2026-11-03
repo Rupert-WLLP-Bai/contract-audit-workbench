@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-01
-// Updated: 2026-11-02
-// Revision: r2
+// Updated: 2026-11-03
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -171,7 +171,15 @@ func TestContractDraftTenantAndGrantBoundaries(t *testing.T) {
 	}
 	contractID := detail.Summary.ContractID
 
+	t.Run("LifecycleOverviewDraftUnknown", func(t *testing.T) {
+		overview := assertLifecycleMatchesExisting(t, fixture, contractID)
+		if overview.Plans != nil || overview.Completeness.Plans != "unknown" || overview.Contract.CurrentRevisionID != nil {
+			t.Fatalf("draft plans must be unknown: %+v", overview)
+		}
+	})
 	otherTenant, _ := accounts.ByID("demo-tenant2-admin")
+	_, err = recovery.ContractLifecycleOverview(ctx, otherTenant, contractID)
+	assertFaultStatus(t, err, 404, "lifecycle cross-tenant read")
 	_, err = recovery.LoadContractDetail(ctx, otherTenant, contractID)
 	assertFaultStatus(t, err, 404, "cross-tenant read")
 	_, err = fixture.core.ReplaceContractDraft(ctx, otherTenant, ReplaceContractDraftInput{
@@ -185,6 +193,8 @@ func TestContractDraftTenantAndGrantBoundaries(t *testing.T) {
 	assertFaultStatus(t, err, 404, "same-tenant other-org read")
 
 	nonOwner, _ := accounts.ByID("demo-clerk")
+	_, err = fixture.core.ContractLifecycleOverview(ctx, nonOwner, contractID)
+	assertFaultStatus(t, err, 404, "lifecycle non-owner read")
 	_, err = fixture.core.LoadContractDetail(ctx, nonOwner, contractID)
 	assertFaultStatus(t, err, 404, "same-tenant non-creator read")
 	_, err = fixture.core.ReplaceContractDraft(ctx, nonOwner, ReplaceContractDraftInput{

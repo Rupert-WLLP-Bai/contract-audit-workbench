@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-02
-// Revision: r2
+// Updated: 2026-11-03
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -466,6 +466,8 @@ func contractDraftRoute(role string, methods routeMethodSet, parts []string) boo
 		case "signing-checks":
 			return methods.post
 		case "payments":
+			return methods.read
+		case "lifecycle-overview":
 			return methods.read
 		case "assets":
 			return methods.read

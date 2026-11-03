@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-01
-// Updated: 2026-11-02
-// Revision: r1
+// Updated: 2026-11-03
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -15,6 +15,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 )
@@ -136,6 +137,9 @@ func TestContractAssetHandoverAndERPReceiptFacts(t *testing.T) {
 	if err != nil || len(assets.Items) != 2 || len(assets.Items[0].Handovers) == 0 || assets.Items[0].Handovers[0].BookingStatus != "booked" {
 		t.Fatalf("authorized asset projection after source receipt: %+v err=%v", assets, err)
 	}
+	t.Run("LifecycleOverviewAssetFacts", func(t *testing.T) {
+		assertLifecycleMatchesExisting(t, fixture, contractID)
+	})
 	_, _, crossTenantErr := fixture.core.RecordTrustedContractAssetReceipt(ctx, ContractAssetSource{TenantID: "different-tenant", SourceID: "foreign-asset-source", KeyID: "foreign-asset-key"}, ContractAssetReceiptInput{ContractID: contractID, HandoverID: first.HandoverID, EventID: "foreign-event", EventType: "receipt", AssetCode: "ERP-FOREIGN", Quantity: "1", Unit: "台", OccurredAt: time.Now().UTC()})
 	assertFaultStatus(t, crossTenantErr, 404, "cross-tenant asset source cannot resolve handover")
 
@@ -184,6 +188,32 @@ func TestContractAssetHandoverAndERPReceiptFacts(t *testing.T) {
 	if len(unknownFixedAsset.Items[0].Handovers) != 1 || unknownFixedAsset.Items[0].Handovers[0].BookingStatus != "booked" {
 		t.Fatalf("null legacy fixed-asset flag must preserve handover and ERP history: %+v", unknownFixedAsset.Items[0])
 	}
+	t.Run("LifecycleOverviewMalformedAssetPlanUnknown", func(t *testing.T) {
+		overview := assertLifecycleMatchesExisting(t, fixture, contractID)
+		if overview.Completeness.Plans != "unknown" || overview.Plans != nil {
+			t.Fatalf("malformed legacy plan must remain unknown: %+v", overview)
+		}
+	})
+	t.Run("LifecycleOverviewRejectsUnidentifiedLegacyPlanEntries", func(t *testing.T) {
+		for _, snapshot := range []string{
+			`{"contract":{"currency":"CNY"},"delivery_plans":[null]}`,
+			`{"contract":{"currency":"CNY"},"delivery_plans":[{}]}`,
+			`{"contract":{"currency":"CNY"},"assets":[{}]}`,
+			`{"contract":{"currency":"CNY"},"payments":[null]}`,
+		} {
+			rewriteAssetRevisionSnapshotForTest(t, fixture, contractID, revisionID, snapshot)
+			overview, err := fixture.core.ContractLifecycleOverview(ctx, fixture.admin, contractID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if overview.Plans != nil || overview.Completeness.Plans != "unknown" {
+				t.Fatalf("unidentified plan invented: %+v", overview)
+			}
+			if strings.Contains(snapshot, `"payments"`) && (overview.Payments != nil || overview.Completeness.Payments != "unknown") {
+				t.Fatalf("unidentified payment plan invented a summary: %+v", overview)
+			}
+		}
+	})
 }
 
 func rewriteAssetRevisionSnapshotForTest(t *testing.T, fixture durableCaseFixture, contractID, revisionID, snapshot string) {

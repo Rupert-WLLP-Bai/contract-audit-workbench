@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-01
-// Updated: 2026-11-02
-// Revision: r2
+// Updated: 2026-11-03
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -31,6 +31,8 @@ export type ContractAssetList = WireSchemas["ContractAssetList"];
 export type ContractAssetHandover = WireSchemas["ContractAssetHandover"];
 export type ContractAssetHandoverRequest = WireSchemas["ContractAssetHandoverRequest"];
 export type ContractSourceCapability = WireSchemas["ContractSourceCapability"];
+
+export type ContractLifecycleOverview = WireSchemas["ContractLifecycleOverview"];
 
 /**
  * Contract registration and resumable drafts.
@@ -976,6 +978,67 @@ export async function listContractSigningRegistrations(
     { method: "GET", signal },
     (value) => array(object(value, "contract_signing_registrations").items, "contract_signing_registrations.items", (entry) => object(entry, "contract_signing_registration") as unknown as ContractSigningRegistration),
   );
+}
+
+export function getContractLifecycleOverview(contractId: string, signal?: AbortSignal): Promise<ContractLifecycleOverview> {
+  return requestJson(`${CONTRACTS_PATH}/${encodeURIComponent(contractId)}/lifecycle-overview`, { method: "GET", signal }, (value) => {
+    const row = record(value, "contract_lifecycle_overview",
+      ["contract", "observed_at", "completeness", "source_observed_at", "plans", "deliveries", "acceptances", "payments", "assets"]);
+    const contract = record(row.contract, "contract_lifecycle_overview.contract",
+      ["contract_id", "current_revision_id", "row_version", "authority_mode"]);
+    const contractResponseId = text(contract.contract_id, "contract_lifecycle_overview.contract.contract_id");
+    if (contractResponseId.toLowerCase() !== contractId.toLowerCase())
+      throw new Error("合同生命周期响应与请求的合同不一致");
+    const rowVersion = integer(contract.row_version, "contract_lifecycle_overview.contract.row_version", 1);
+    const revisionId = nullableText(contract.current_revision_id, "contract_lifecycle_overview.contract.current_revision_id");
+    const keys = ["plans", "deliveries", "acceptances", "payments", "assets", "disputes", "warranty", "other_obligations"] as const;
+    const completenessRow = record(row.completeness, "contract_lifecycle_overview.completeness", keys);
+    const completeness = Object.fromEntries(keys.map((key) => {
+      const state = text(completenessRow[key], `contract_lifecycle_overview.completeness.${key}`);
+      if (state !== "known" && state !== "unknown" && state !== "not_applicable")
+        throw new Error(`合同响应中的 completeness.${key} 无法识别`);
+      return [key, state];
+    })) as ContractLifecycleOverview["completeness"];
+    const sourceTimes = record(row.source_observed_at, "contract_lifecycle_overview.source_observed_at", ["finance", "erp", "contract_recorded_at"]);
+    const plansRow = row.plans === null ? null : record(row.plans, "contract_lifecycle_overview.plans", ["delivery_plans", "acceptance_plans", "payments", "assets"]);
+    const nullablePlanArray = (value: unknown, path: string) => {
+      if (value === null) return null;
+      if (!Array.isArray(value)) throw new Error(`合同响应中的 ${path} 无法识别`);
+      value.forEach((entry, index) => object(entry, `${path}[${index}]`));
+      return value;
+    };
+    const dateTime = (value: unknown, path: string): string => {
+      const parsed = text(value, path);
+      if (!/^\d{4}-\d{2}-\d{2}T.*(?:Z|[+-]\d{2}:\d{2})$/.test(parsed) || Number.isNaN(Date.parse(parsed)))
+        throw new Error(`合同响应中的 ${path} 不是 RFC3339 时间`);
+      return parsed;
+    };
+    const nullableDateTime = (value: unknown, path: string) => value === null ? null : dateTime(value, path);
+    const observedAt = dateTime(row.observed_at, "contract_lifecycle_overview.observed_at");
+    const deliveries = object(row.deliveries, "contract_lifecycle_overview.deliveries") as unknown as ContractDeliveryList;
+    const acceptances = object(row.acceptances, "contract_lifecycle_overview.acceptances") as unknown as ContractAcceptanceList;
+    const assets = object(row.assets, "contract_lifecycle_overview.assets") as unknown as ContractAssetList;
+    if (deliveries.row_version !== rowVersion || acceptances.row_version !== rowVersion || assets.row_version !== rowVersion ||
+      !deliveries.items.every((entry) => entry.contract_id === contractResponseId) ||
+      !acceptances.items.every((entry) => entry.contract_id === contractResponseId) || assets.contract_id !== contractResponseId)
+      throw new Error("合同生命周期响应中的事实与合同版本不一致");
+    const payments = row.payments === null ? null : array(row.payments, "contract_lifecycle_overview.payments", parseContractPaymentSummary);
+    if (payments?.some((entry) => entry.contract_id !== contractResponseId))
+      throw new Error("合同生命周期响应中的付款事实与合同不一致");
+    return {
+      contract: { contract_id: contractResponseId, current_revision_id: revisionId, row_version: rowVersion, authority_mode: text(contract.authority_mode, "contract_lifecycle_overview.contract.authority_mode") },
+      observed_at: observedAt,
+      completeness,
+      source_observed_at: { contract_recorded_at: nullableDateTime(sourceTimes.contract_recorded_at, "contract_lifecycle_overview.source_observed_at.contract_recorded_at"), finance: nullableDateTime(sourceTimes.finance, "contract_lifecycle_overview.source_observed_at.finance"), erp: nullableDateTime(sourceTimes.erp, "contract_lifecycle_overview.source_observed_at.erp") },
+      plans: plansRow === null ? null : {
+        delivery_plans: nullablePlanArray(plansRow.delivery_plans, "plans.delivery_plans"),
+        acceptance_plans: nullablePlanArray(plansRow.acceptance_plans, "plans.acceptance_plans"),
+        payments: nullablePlanArray(plansRow.payments, "plans.payments"),
+        assets: nullablePlanArray(plansRow.assets, "plans.assets"),
+      },
+      deliveries, acceptances, payments, assets,
+    };
+  });
 }
 
 export function listContractDeliveries(contractId: string, signal?: AbortSignal): Promise<ContractDeliveryList> {

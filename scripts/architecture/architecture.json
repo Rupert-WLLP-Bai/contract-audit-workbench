@@ -83,7 +83,9 @@
     "domains": [
       {
         "id": "contract",
-        "app": [],
+        "app": [
+          "internal/contract/lifecycle"
+        ],
         "transport": [],
         "postgres": [
           "internal/contract/postgres"

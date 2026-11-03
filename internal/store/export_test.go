@@ -4,7 +4,7 @@
 // Contact: +86 13617696321
 // Created: 2026-11-03
 // Updated: 2026-11-03
-// Revision: r2
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -76,3 +76,28 @@ func (f *RevokedFinalizeFixture) State(t *testing.T) (string, string, string, in
 	}
 	return attempt.State, run.State, code, len(state.findingsForAttempt(f.fixture.runID, f.fixture.attemptID)), len(state.evaluationsForAttempt(f.fixture.runID, f.fixture.attemptID))
 }
+
+// LifecycleHTTPFixture shares the real signed delivery fixture with the
+// external HTTP regression without exporting production capabilities.
+type LifecycleHTTPFixture struct {
+	core       *Store
+	token      string
+	contractID string
+}
+
+func NewLifecycleHTTPFixture(t *testing.T) *LifecycleHTTPFixture {
+	t.Helper()
+	fixture, contractID, frozen, material, delivery := newFulfillmentDeliveryFixture(t)
+	_, err := fixture.core.CreateContractAcceptance(context.Background(), fixture.admin, ContractAcceptanceInput{
+		ContractID: contractID, ExpectedRowVersion: deliveryRowVersion(t, fixture, contractID), ContractRevisionID: frozen.Version.ContractRevisionID,
+		DeliveryID: delivery.DeliveryID, ScopeStart: "0", ScopeEnd: "10", AcceptedQuantity: "10",
+		ActualAt: "2026-11-02T11:00:00Z", Standard: "按冻结技术标准验收", Evidence: []MaterialRef{material}, IdempotencyKey: "lifecycle-http-acceptance",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return &LifecycleHTTPFixture{core: fixture.core, token: fixture.sessionToken, contractID: contractID}
+}
+func (f *LifecycleHTTPFixture) Core() *Store         { return f.core }
+func (f *LifecycleHTTPFixture) SessionToken() string { return f.token }
+func (f *LifecycleHTTPFixture) ContractID() string   { return f.contractID }

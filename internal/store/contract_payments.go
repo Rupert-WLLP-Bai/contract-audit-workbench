@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-01
-// Updated: 2026-11-02
-// Revision: r1
+// Updated: 2026-11-03
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -464,7 +464,6 @@ func scopedPaymentEventLock(ctx context.Context, tx pgx.Tx, tenant, source, even
 
 func (s *Store) ListContractPayments(ctx context.Context, user accounts.User, contractID string) ([]ContractPaymentSummary, error) {
 	ctx = commandContext(ctx, user)
-	var out []ContractPaymentSummary
 	if !s.HasDatabase() {
 		return nil, fault.New(503, "database_unavailable", "服务数据库不可用")
 	}
@@ -491,6 +490,18 @@ func (s *Store) ListContractPayments(ctx context.Context, user accounts.User, co
 	if !authorizeContractRead(ctx, tx, record, current) {
 		return nil, fault.NotFound("没有找到对应记录")
 	}
+	result, err := loadContractPaymentsTx(ctx, tx, current, record, id)
+	if err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+func loadContractPaymentsTx(ctx context.Context, tx pgx.Tx, current accounts.User, record clmContractRecord, id string) ([]ContractPaymentSummary, error) {
+	var out []ContractPaymentSummary
 	revisions, err := tx.Query(ctx, `SELECT contract_revision_id::text,snapshot FROM clm_contract_revisions WHERE tenant_id=$1 AND contract_id=$2 ORDER BY revision_number DESC`, record.TenantID, record.ContractID)
 	if err != nil {
 		return nil, err
@@ -514,7 +525,14 @@ func (s *Store) ListContractPayments(ctx context.Context, user accounts.User, co
 	}
 	revisions.Close()
 	for _, frozen := range snapshots {
-		var draft DraftContent
+		// Payment projection does not depend on unrelated legacy asset or
+		// supplier fields in the same frozen document.
+		var draft struct {
+			Contract *struct {
+				Currency string `json:"currency"`
+			} `json:"contract"`
+			Payments []DraftPaymentPlan `json:"payments"`
+		}
 		if err = json.Unmarshal(frozen.snapshot, &draft); err != nil {
 			return nil, err
 		}
@@ -574,12 +592,8 @@ func (s *Store) ListContractPayments(ctx context.Context, user accounts.User, co
 			out = append(out, item)
 		}
 	}
-	if err = tx.Commit(ctx); err != nil {
-		return nil, err
-	}
 	return out, nil
 }
-
 func boundedVisibleText(value string, max int) bool {
 	if value == "" || len(value) > max || strings.TrimSpace(value) != value {
 		return false

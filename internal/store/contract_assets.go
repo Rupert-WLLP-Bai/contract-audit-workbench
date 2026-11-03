@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-01
-// Updated: 2026-11-02
-// Revision: r1
+// Updated: 2026-11-03
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -578,33 +578,44 @@ func (s *Store) RecordTrustedContractAssetReceipt(ctx context.Context, source Co
 
 func (s *Store) ListContractAssets(ctx context.Context, user accounts.User, contractID string) (ContractAssetList, error) {
 	ctx = commandContext(ctx, user)
-	var out ContractAssetList
 	if !s.HasDatabase() {
-		return out, fault.New(503, "database_unavailable", "服务数据库不可用")
+		return ContractAssetList{}, fault.New(503, "database_unavailable", "服务数据库不可用")
 	}
 	id, err := normalizeContractUUID(contractID)
 	if err != nil {
-		return out, err
+		return ContractAssetList{}, err
 	}
 	current, err := trustedUser(user)
 	if err != nil {
-		return out, err
+		return ContractAssetList{}, err
 	}
 	tx, err := s.beginContextTx(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted, AccessMode: pgx.ReadOnly})
 	if err != nil {
-		return out, err
+		return ContractAssetList{}, err
 	}
 	defer rollbackCLM(tx)
 	if err = setLocalScope(ctx, tx, userScope(current)); err != nil {
-		return out, err
+		return ContractAssetList{}, err
 	}
 	record, err := loadCLMContract(ctx, tx, accounts.Tenant(current), id)
 	if err != nil {
-		return out, err
+		return ContractAssetList{}, err
 	}
 	if !authorizeContractRead(ctx, tx, record, current) {
-		return out, fault.NotFound("没有找到对应记录")
+		return ContractAssetList{}, fault.NotFound("没有找到对应记录")
 	}
+	result, err := loadContractAssetsTx(ctx, tx, current, record, id)
+	if err != nil {
+		return ContractAssetList{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return ContractAssetList{}, err
+	}
+	return result, nil
+}
+
+func loadContractAssetsTx(ctx context.Context, tx pgx.Tx, current accounts.User, record clmContractRecord, id string) (ContractAssetList, error) {
+	var out ContractAssetList
 	out = ContractAssetList{ContractID: record.ContractID, RowVersion: record.RowVersion, FixedAssetStatus: "unknown", Items: []ContractAssetPlanSummary{}}
 	rows, err := tx.Query(ctx, `SELECT contract_revision_id::text,snapshot FROM clm_contract_revisions WHERE tenant_id=$1 AND contract_id=$2 ORDER BY revision_number DESC`, record.TenantID, record.ContractID)
 	if err != nil {
@@ -690,9 +701,6 @@ func (s *Store) ListContractAssets(ctx context.Context, user accounts.User, cont
 			item.Handovers = hs
 			out.Items = append(out.Items, item)
 		}
-	}
-	if err = tx.Commit(ctx); err != nil {
-		return ContractAssetList{}, err
 	}
 	return out, nil
 }

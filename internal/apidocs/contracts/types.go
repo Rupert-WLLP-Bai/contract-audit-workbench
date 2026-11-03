@@ -4,7 +4,7 @@
 // Contact: +86 13617696321
 // Created: 2026-11-02
 // Updated: 2026-11-03
-// Revision: r2
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -571,6 +571,8 @@ type ContractFulfillmentItemSummary struct {
 	Unallocated_quantity          string `json:"unallocated_quantity" openapi:"{\"type\":\"string\"}"`
 	Pending_reinspection_quantity string `json:"pending_reinspection_quantity" openapi:"{\"type\":\"string\"}"`
 }
+type ContractLifecycleOverview struct{}
+
 type ContractDeliveryList struct {
 	Items       []ContractDelivery               `json:"items" openapi:"{\"type\":\"array\"}" openapi_items:"{\"$ref\":\"#/components/schemas/ContractDelivery\"}"`
 	Summary     []ContractFulfillmentItemSummary `json:"summary" openapi:"{\"type\":\"array\"}" openapi_items:"{\"$ref\":\"#/components/schemas/ContractFulfillmentItemSummary\"}"`
@@ -4158,6 +4160,7 @@ var SchemaRules = map[string]string{
 	"ContractDeliveryRequest":                "{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"expected_row_version\",\"contract_revision_id\",\"item_id\",\"batch_reference\",\"quantity\",\"actual_at\",\"location\",\"evidence\"]}",
 	"ContractDelivery":                       "{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"delivery_id\",\"contract_id\",\"contract_revision_id\",\"item_id\",\"item_name\",\"batch_reference\",\"quantity\",\"unit\",\"actual_at\",\"location\",\"description\",\"evidence\",\"recorded_by\",\"recorded_at\"]}",
 	"ContractFulfillmentItemSummary":         "{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"contract_revision_id\",\"item_id\",\"item_name\",\"delivered_quantity\",\"qualified_quantity\",\"unallocated_quantity\",\"pending_reinspection_quantity\"]}",
+	"ContractLifecycleOverview":              "{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"contract\",\"observed_at\",\"completeness\",\"source_observed_at\",\"plans\",\"deliveries\",\"acceptances\",\"payments\",\"assets\"],\"properties\":{\"contract\":{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"contract_id\",\"current_revision_id\",\"row_version\",\"authority_mode\"],\"properties\":{\"contract_id\":{\"type\":\"string\",\"format\":\"uuid\"},\"current_revision_id\":{\"type\":[\"string\",\"null\"],\"format\":\"uuid\"},\"row_version\":{\"type\":\"integer\"},\"authority_mode\":{\"type\":\"string\"}}},\"observed_at\":{\"type\":\"string\",\"format\":\"date-time\"},\"completeness\":{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"plans\",\"deliveries\",\"acceptances\",\"payments\",\"assets\",\"disputes\",\"warranty\",\"other_obligations\"],\"properties\":{\"plans\":{\"type\":\"string\",\"enum\":[\"known\",\"unknown\",\"not_applicable\"]},\"deliveries\":{\"type\":\"string\",\"enum\":[\"known\",\"unknown\",\"not_applicable\"]},\"acceptances\":{\"type\":\"string\",\"enum\":[\"known\",\"unknown\",\"not_applicable\"]},\"payments\":{\"type\":\"string\",\"enum\":[\"known\",\"unknown\",\"not_applicable\"]},\"assets\":{\"type\":\"string\",\"enum\":[\"known\",\"unknown\",\"not_applicable\"]},\"disputes\":{\"type\":\"string\",\"enum\":[\"known\",\"unknown\",\"not_applicable\"]},\"warranty\":{\"type\":\"string\",\"enum\":[\"known\",\"unknown\",\"not_applicable\"]},\"other_obligations\":{\"type\":\"string\",\"enum\":[\"known\",\"unknown\",\"not_applicable\"]}}},\"source_observed_at\":{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"finance\",\"erp\",\"contract_recorded_at\"],\"properties\":{\"finance\":{\"type\":[\"string\",\"null\"],\"format\":\"date-time\"},\"erp\":{\"type\":[\"string\",\"null\"],\"format\":\"date-time\"},\"contract_recorded_at\":{\"type\":[\"string\",\"null\"],\"format\":\"date-time\",\"description\":\"最后一次合同来源观察或导入在本系统的记录时间；不是外部业务发生时间，不证明当前版本被再次确认。\"}}},\"plans\":{\"type\":[\"object\",\"null\"],\"additionalProperties\":false,\"required\":[\"delivery_plans\",\"acceptance_plans\",\"payments\",\"assets\"],\"properties\":{\"delivery_plans\":{\"type\":[\"array\",\"null\"],\"items\":{\"$ref\":\"#/components/schemas/DraftDeliveryPlan\"}},\"acceptance_plans\":{\"type\":[\"array\",\"null\"],\"items\":{\"$ref\":\"#/components/schemas/DraftAcceptancePlan\"}},\"payments\":{\"type\":[\"array\",\"null\"],\"items\":{\"$ref\":\"#/components/schemas/DraftPaymentPlan\"}},\"assets\":{\"type\":[\"array\",\"null\"],\"items\":{\"$ref\":\"#/components/schemas/DraftAssetPlan\"}}}},\"deliveries\":{\"$ref\":\"#/components/schemas/ContractDeliveryList\"},\"acceptances\":{\"$ref\":\"#/components/schemas/ContractAcceptanceList\"},\"payments\":{\"type\":[\"array\",\"null\"],\"items\":{\"$ref\":\"#/components/schemas/ContractPaymentSummary\"}},\"assets\":{\"$ref\":\"#/components/schemas/ContractAssetList\"}}}",
 	"ContractDeliveryList":                   "{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"items\",\"summary\",\"row_version\"]}",
 	"ContractAcceptanceDefectInput":          "{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"description\",\"responsible\",\"remediation_due\",\"failed_quantity\"]}",
 	"ContractAcceptanceDefect":               "{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"defect_id\",\"description\",\"responsible\",\"remediation_due\",\"failed_quantity\",\"recorded_by\",\"recorded_at\"]}",
@@ -4594,6 +4597,7 @@ func Types() map[string]reflect.Type {
 		"ContractDeliveryRequest":                reflect.TypeOf((*ContractDeliveryRequest)(nil)).Elem(),
 		"ContractDelivery":                       reflect.TypeOf((*ContractDelivery)(nil)).Elem(),
 		"ContractFulfillmentItemSummary":         reflect.TypeOf((*ContractFulfillmentItemSummary)(nil)).Elem(),
+		"ContractLifecycleOverview":              reflect.TypeOf((*ContractLifecycleOverview)(nil)).Elem(),
 		"ContractDeliveryList":                   reflect.TypeOf((*ContractDeliveryList)(nil)).Elem(),
 		"ContractAcceptanceDefectInput":          reflect.TypeOf((*ContractAcceptanceDefectInput)(nil)).Elem(),
 		"ContractAcceptanceDefect":               reflect.TypeOf((*ContractAcceptanceDefect)(nil)).Elem(),

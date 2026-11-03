@@ -3,12 +3,13 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-01
-// Updated: 2026-11-02
-// Revision: r2
+// Updated: 2026-11-03
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
 import { Alert, Button, Empty, Input, InputNumber, Modal, Select, Table, Tag } from "antd";
+import { actorReadContextKey } from "../domain/actor-read-context";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApiError, assertCommandContextCurrent, captureCommandContext, errorMessage } from "../api/http";
@@ -84,17 +85,8 @@ function optionalText(value: string): string | undefined {
   return trimmed === "" ? undefined : trimmed;
 }
 
-function actorScope(actor: Actor | null): string {
-  return actor === null
-    ? ""
-    : [actor.audience, actor.tenant_id, actor.org_id, actor.id].join("\u0000");
-}
-
-function fullActorScope(actor: Actor | null): string {
-  return actor === null
-    ? ""
-    : [actor.audience, actor.tenant_id, actor.org_id, actor.id, actor.role].join("\u0000");
-}
+function actorScope(actor: Actor | null): string { return actorReadContextKey(actor); }
+function fullActorScope(actor: Actor | null): string { return actorReadContextKey(actor); }
 
 function emptyItem(): DraftItem {
   return { item_id: newId() };
