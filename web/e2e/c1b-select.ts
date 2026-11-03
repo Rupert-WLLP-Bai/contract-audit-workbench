@@ -4,7 +4,7 @@
 // Contact: +86 13617696321
 // Created: 2026-10-31
 // Updated: 2026-11-03
-// Revision: r2
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -41,35 +41,24 @@ function cssQuoted(value: string): string {
   return `"${value.replaceAll("\\", "\\\\").replaceAll('"', '\\"').replaceAll("\n", "\\a ")}"`;
 }
 
-async function controlledDropdown(page: Page, select: Locator): Promise<Locator> {
+async function controlledDropdown(page: Page, select: Locator, deadline = Date.now() + 5000): Promise<Locator> {
+  const remaining = () => {
+    const milliseconds = deadline - Date.now();
+    if (milliseconds <= 0) throw new Error("Ant Design controlled popup did not open within the option match window");
+    return milliseconds;
+  };
   let controls = (await select.getAttribute("aria-controls"))?.trim() ?? "";
   if ((await select.getAttribute("aria-expanded")) !== "true") await select.click();
   controls = (await select.getAttribute("aria-controls"))?.trim() ?? controls;
   assert.ok(controls, "Ant Design combobox omitted its controlled popup ID");
-  // The controlled listbox is Ant Design's hidden accessibility node. Its
-  // nearest popup also contains the visible option rows.
+  // Ant Design keeps a zero-size listbox for accessibility inside the portal.
+  // Follow its ID to the corresponding popup, not a page-wide transition popup.
   const listbox = page.locator(`[id=${cssQuoted(controls)}][role="listbox"]`);
   const dropdown = listbox.locator("xpath=ancestor::*[contains(concat(' ', normalize-space(@class), ' '), ' ant-select-dropdown ')][1]");
-  try {
-    await page.waitForFunction((listboxID) => {
-      const controlledListbox = document.getElementById(listboxID);
-      if (!controlledListbox || controlledListbox.getAttribute("role") !== "listbox") return false;
-      const popup = controlledListbox.closest(".ant-select-dropdown");
-      if (!popup) return false;
-      const popupStyle = getComputedStyle(popup);
-      const popupRect = popup.getBoundingClientRect();
-      if (popupStyle.display === "none" || popupStyle.visibility === "hidden" || popupRect.width <= 0 || popupRect.height <= 0) return false;
-      return Array.from(popup.querySelectorAll<HTMLElement>(".ant-select-item-option")).some((option) => {
-        const style = getComputedStyle(option);
-        const rect = option.getBoundingClientRect();
-        return style.display !== "none" && style.visibility !== "hidden" && rect.width > 0 && rect.height > 0;
-      });
-    }, controls, { timeout: 5000 });
-  } catch {
-    assert.fail(`Ant Design popup for aria-controls=${controls} did not render a visible option`);
-  }
+  await listbox.waitFor({ state: "attached", timeout: remaining() });
   assert.equal(await listbox.count(), 1, `aria-controls=${controls} did not identify one listbox`);
   assert.equal(await dropdown.count(), 1, `aria-controls=${controls} was not inside one Ant Design popup`);
+  await dropdown.waitFor({ state: "visible", timeout: remaining() });
   return dropdown;
 }
 
@@ -112,19 +101,27 @@ export async function chooseAntOption(page: Page, select: Locator, matches: (lab
   let labels: string[] = [];
   for (let attempt = 0; attempt < 5; attempt++) {
     if (matches(await selectedAntLabel(select))) return;
+    const deadline = Date.now() + 5000;
     let dropdown: Locator;
     try {
-      dropdown = await controlledDropdown(page, select);
+      dropdown = await controlledDropdown(page, select, deadline);
     } catch (error) {
       await captureAntSelectFailure(page, labels);
       throw error;
     }
     const options = dropdown.locator(".ant-select-item-option:visible");
-    const measured = await options.evaluateAll((elements) => elements.map((element) => ({
-      label: element.getAttribute("title") ?? element.getAttribute("aria-label") ?? element.textContent?.trim() ?? "",
-    })));
-    labels = measured.map((option) => option.label);
-    const targetLabels = measured.filter((option) => matches(option.label)).map((option) => option.label);
+    let targetLabels: string[] = [];
+    while (Date.now() < deadline) {
+      const measured = await options.evaluateAll((elements) => elements.map((element) => ({
+        label: element.getAttribute("title") ?? element.getAttribute("aria-label") ?? element.textContent?.trim() ?? "",
+      })));
+      labels = measured.map((option) => option.label);
+      targetLabels = measured.filter((option) => matches(option.label)).map((option) => option.label);
+      assert.ok(targetLabels.length <= 1, `Ant Design popup has multiple visible options matching the requested label: ${JSON.stringify(labels)}`);
+      if (targetLabels.length === 1) break;
+      const remaining = deadline - Date.now();
+      if (remaining > 0) await Bun.sleep(Math.min(50, remaining));
+    }
     if (targetLabels.length !== 1) break;
     await clickExactOption(dropdown, targetLabels[0]!);
     if (await selectionApplied(select, matches)) return;
