@@ -4,7 +4,7 @@
 # Contact: +86 13617696321
 # Created: 2026-11-03
 # Updated: 2026-11-03
-# Revision: r1
+# Revision: r2
 # Copyright: See LICENSE
 # End file metadata.
 
@@ -68,6 +68,9 @@ class TrustedRunnerTests(unittest.TestCase):
         self.assertNotEqual(p.returncode, 0)
     def test_identity_arguments_cannot_be_overridden(self):
         p = self.run_gate('fast', '--base', self.subject)
+        self.assertNotEqual(p.returncode, 0)
+        self.assertIn('reserved', p.stderr)
+        p = self.run_gate('fast', '--root', str(self.repo.parent))
         self.assertNotEqual(p.returncode, 0)
         self.assertIn('reserved', p.stderr)
         p = self.run_gate('architecture', '--fixture', 'anything')

@@ -5,7 +5,7 @@
 # Contact: +86 13617696321
 # Created: 2026-11-03
 # Updated: 2026-11-03
-# Revision: r1
+# Revision: r2
 # Copyright: See LICENSE
 # End file metadata.
 
@@ -74,7 +74,7 @@ def execute(repo, base, subject, mode, arguments):
     os.environ['CAW_TRUSTED_GATE_SUBJECT'] = subject
     if arguments and arguments[0] == '--':
         arguments = arguments[1:]
-    reserved = {'--base'} if mode == 'fast' else ({'--base', '--repo', '--fixture'} if mode == 'architecture' else set())
+    reserved = {'--base', '--root'} if mode == 'fast' else ({'--base', '--repo', '--fixture'} if mode == 'architecture' else set())
     if any(arg.split('=', 1)[0] in reserved for arg in arguments):
         raise RuntimeError('controller identity arguments are reserved by the runner')
     if mode == 'fast':

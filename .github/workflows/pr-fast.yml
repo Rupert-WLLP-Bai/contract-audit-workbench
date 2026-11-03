@@ -4,7 +4,7 @@
 # Contact: +86 13617696321
 # Created: 2026-10-31
 # Updated: 2026-11-03
-# Revision: r3
+# Revision: r4
 # Copyright: See LICENSE
 # End file metadata.
 
@@ -34,6 +34,7 @@ jobs:
     timeout-minutes: 30
     env:
       BASE_SHA: ${{ github.event.pull_request.base.sha }}
+      SUBJECT_SHA: ${{ github.event.pull_request.head.sha }}
       TEST_DATABASE_URL: postgres://contractaudit:contractaudit@127.0.0.1:5432/contract_audit_test?sslmode=disable
       MIGRATOR_DATABASE_URL: postgres://contractaudit:contractaudit@127.0.0.1:5432/contract_audit_test?sslmode=disable
       MODEL_DATABASE_URL: postgres://contract_audit_model:contractaudit@127.0.0.1:5432/contract_audit_test?sslmode=disable
@@ -43,12 +44,16 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
+          persist-credentials: false
+
+      - name: Load gate controller from the fixed target baseline
+        run: git show "$BASE_SHA:scripts/trusted_gate_runner.py" > "$RUNNER_TEMP/trusted-gate-runner.py"
 
       - name: Plan scoped checks
         id: plan
         run: >-
-          python3 scripts/check_fast.py
-          --base "$BASE_SHA"
+          python3 "$RUNNER_TEMP/trusted-gate-runner.py" fast
+          --repo "$GITHUB_WORKSPACE" --base "$BASE_SHA" --subject "$SUBJECT_SHA" --
           --plan
           --github-output "$GITHUB_OUTPUT"
 
@@ -164,9 +169,14 @@ jobs:
         env:
           CAW_DOCS_PREVIEW_DIR: ${{ runner.temp }}/caw-docs-preview
           CAW_METADATA_EXTERNAL_GUARD: "1"
-        run: python3 scripts/check_fast.py --base "$BASE_SHA"
+        run: python3 "$RUNNER_TEMP/trusted-gate-runner.py" fast --repo "$GITHUB_WORKSPACE" --base "$BASE_SHA" --subject "$SUBJECT_SHA" --
+
+      - name: Verify architecture with the fixed target controller
+        if: steps.plan.outputs.architecture == 'true'
+        run: python3 "$RUNNER_TEMP/trusted-gate-runner.py" architecture --repo "$GITHUB_WORKSPACE" --base "$BASE_SHA" --subject "$SUBJECT_SHA" -- --out "$RUNNER_TEMP/caw-fast/architecture-base-guard.json"
 
       - name: Verify file metadata from fixed target branch tools
+        if: always()
         env:
           SUBJECT_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
@@ -205,8 +215,11 @@ jobs:
                   (directory / pathlib.PurePosixPath(path).name).write_bytes(raw)
               run = subprocess.run([sys.executable, str(directory/'gate_adapter.py'), 'check',
                                     '--repo', os.getcwd(), '--base', base, '--subject', subject],
-                                   text=True, stdout=subprocess.PIPE, check=False)
-              result = json.loads(run.stdout)
+                                   text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
+              try:
+                  result = json.loads(run.stdout)
+              except json.JSONDecodeError:
+                  result = {'status':'FAIL', 'mode':'trusted-base', 'error':run.stderr.strip() or 'metadata guard emitted no JSON'}
               accepted = (run.returncode == 0 and result.get('status') == 'PASS' or
                           run.returncode == 3 and result.get('status') == 'NOT_RUN')
           target = pathlib.Path(os.environ['RUNNER_TEMP'])/'caw-fast'/'file-metadata-base-guard.json'

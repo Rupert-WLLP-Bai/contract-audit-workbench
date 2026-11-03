@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-10-31
-// Revision: r1
+// Updated: 2026-11-03
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -436,9 +436,35 @@ func TestWaitReviewPollsUntilTerminalWithoutBusyWaiting(t *testing.T) {
 	}
 }
 
+type sessionProof struct {
+	version string
+	csrf    string
+}
+
 type testAPI struct {
-	base   string
-	client *http.Client
+	base    string
+	client  *http.Client
+	proofMu sync.RWMutex
+	proofs  map[string]sessionProof
+}
+
+// addSessionProof uses the proof issued at login for this request's audience.
+// It deliberately does not refresh or retry stale commands.
+func (a *testAPI) addSessionProof(req *http.Request) {
+	if req.Method == http.MethodGet || req.Method == http.MethodHead || req.Method == http.MethodOptions {
+		return
+	}
+	audience := "client"
+	if strings.HasPrefix(req.URL.Path, "/api/admin/") || req.URL.Query().Get("audience") == "admin" {
+		audience = "admin"
+	}
+	a.proofMu.RLock()
+	proof := a.proofs[audience]
+	a.proofMu.RUnlock()
+	if proof.version != "" {
+		req.Header.Set("X-Context-Version", proof.version)
+		req.Header.Set("X-CSRF-Token", proof.csrf)
+	}
 }
 
 func newAPI(t *testing.T) *testAPI {
@@ -609,6 +635,7 @@ func (a *testAPI) uploadRequest(t *testing.T, caseID, role, name, media string, 
 		t.Fatal(err)
 	}
 	req.Header.Set("Origin", a.base)
+	a.addSessionProof(req)
 	req.Header.Set("Content-Type", w.FormDataContentType())
 	if idempotencyKey != "" {
 		req.Header.Set("Idempotency-Key", idempotencyKey)
@@ -649,6 +676,24 @@ func (a *testAPI) do(t *testing.T, method, path string, payload any) (int, map[s
 	var out map[string]any
 	if err := json.Unmarshal(raw, &out); err != nil {
 		t.Fatalf("json %d %s", status, raw)
+	}
+	if method == http.MethodPost && path == "/api/session" && status == http.StatusOK {
+		active, ok := out["active_context"].(map[string]any)
+		if !ok {
+			t.Fatalf("login missing active context: %v", out)
+		}
+		version, _ := active["context_version"].(string)
+		csrf, _ := out["csrf_token"].(string)
+		audience, _ := out["audience"].(string)
+		if version == "" || csrf == "" || (audience != "client" && audience != "admin") {
+			t.Fatalf("login missing session proof: %v", out)
+		}
+		a.proofMu.Lock()
+		if a.proofs == nil {
+			a.proofs = make(map[string]sessionProof)
+		}
+		a.proofs[audience] = sessionProof{version: version, csrf: csrf}
+		a.proofMu.Unlock()
 	}
 	if method == http.MethodPost && status >= 200 && status < 300 &&
 		(strings.HasSuffix(path, "/reviews") || strings.HasSuffix(path, "/retry")) {
@@ -831,6 +876,7 @@ func (a *testAPI) send(t *testing.T, method, path string, payload any, idem stri
 		t.Fatal(err)
 	}
 	req.Header.Set("Origin", a.base)
+	a.addSessionProof(req)
 	req.Header.Set("Content-Type", "application/json")
 	if idem != "" {
 		req.Header.Set("Idempotency-Key", idem)
@@ -861,6 +907,7 @@ func (a *testAPI) bytes(t *testing.T, method, path string, body io.Reader, conte
 		t.Fatal(err)
 	}
 	req.Header.Set("Origin", a.base)
+	a.addSessionProof(req)
 	if contentType != "" && method != http.MethodGet {
 		req.Header.Set("Content-Type", contentType)
 	}

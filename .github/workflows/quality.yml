@@ -4,7 +4,7 @@
 # Contact: +86 13617696321
 # Created: 2026-10-25
 # Updated: 2026-11-03
-# Revision: r4
+# Revision: r5
 # Copyright: See LICENSE
 # End file metadata.
 
@@ -47,6 +47,7 @@ jobs:
         with:
           ref: ${{ inputs.ref || github.sha }}
           fetch-depth: 0
+          persist-credentials: false
       - name: Pin the exact commit verified by every stage
         id: resolve
         env:
@@ -69,6 +70,7 @@ jobs:
         with:
           ref: ${{ needs.prepare.outputs.sha }}
           fetch-depth: 0
+          persist-credentials: false
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
           go-version-file: go.mod
@@ -97,6 +99,7 @@ jobs:
         with:
           ref: ${{ needs.prepare.outputs.sha }}
           fetch-depth: 0
+          persist-credentials: false
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
           go-version-file: go.mod
@@ -114,8 +117,23 @@ jobs:
         run: bun install --frozen-lockfile
       - name: Install pinned workflow syntax checker
         run: go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
+      - name: Load fixed BASE gate controller
+        env:
+          TRUSTED_BASE: ${{ needs.prepare.outputs.base_sha }}
+        run: git show "$TRUSTED_BASE:scripts/trusted_gate_runner.py" > "$RUNNER_TEMP/trusted-gate-runner.py"
+      - name: Independently execute BASE Python and architecture gates
+        env:
+          TRUSTED_BASE: ${{ needs.prepare.outputs.base_sha }}
+          TRUSTED_SUBJECT: ${{ needs.prepare.outputs.sha }}
+        run: |
+          git show "$TRUSTED_BASE:scripts/run_python_tests.py" > "$RUNNER_TEMP/base-python-gate.py"
+          python3 "$RUNNER_TEMP/base-python-gate.py" --root scripts --root deploy/tests --root deployments/scripts --json-out "$RUNNER_TEMP/base-python-report.json"
+          python3 "$RUNNER_TEMP/trusted-gate-runner.py" architecture --repo "$GITHUB_WORKSPACE" --base "$TRUSTED_BASE" --subject "$TRUSTED_SUBJECT" -- --out "$RUNNER_TEMP/base-architecture-report.json"
       - name: Static gate
-        run: python3 scripts/verify.py --stage static
+        env:
+          CAW_CI_BASE_SHA: ${{ needs.prepare.outputs.base_sha }}
+          CAW_CI_SUBJECT_SHA: ${{ needs.prepare.outputs.sha }}
+        run: python3 "$RUNNER_TEMP/trusted-gate-runner.py" quality --repo "$GITHUB_WORKSPACE" --base "$CAW_CI_BASE_SHA" --subject "$CAW_CI_SUBJECT_SHA" -- --stage static
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         if: always()
         with:
@@ -123,6 +141,8 @@ jobs:
           path: |
             artifacts/verification-static.json
             artifacts/logs/
+            ${{ runner.temp }}/base-python-report.json
+            ${{ runner.temp }}/base-architecture-report.json
           if-no-files-found: warn
           retention-days: 14
 
@@ -153,6 +173,7 @@ jobs:
         with:
           ref: ${{ needs.prepare.outputs.sha }}
           fetch-depth: 0
+          persist-credentials: false
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
           go-version-file: go.mod
@@ -185,12 +206,18 @@ jobs:
           CAW_LEGAL_TEST_ARCHIVE_XZ_04: ${{ vars.CAW_LEGAL_TEST_ARCHIVE_XZ_04 }}
           CAW_LEGAL_TEST_ARCHIVE_XZ_05: ${{ vars.CAW_LEGAL_TEST_ARCHIVE_XZ_05 }}
         run: python3 scripts/fetch_legal_test_assets.py --destination "$RUNNER_TEMP/caw-legal-test-assets"
+      - name: Load fixed BASE gate controller
+        env:
+          TRUSTED_BASE: ${{ needs.prepare.outputs.base_sha }}
+        run: git show "$TRUSTED_BASE:scripts/trusted_gate_runner.py" > "$RUNNER_TEMP/trusted-gate-runner.py"
       - name: Go gate
         env:
           LEGALNORM_ASSET_DIR: ${{ runner.temp }}/caw-legal-test-assets/legal-sources
           LEGALNORM_SUPPLEMENTAL_ASSET_DIR: ${{ runner.temp }}/caw-legal-test-assets/legal-sources
           LEGALNORM_CANONICAL_MANIFEST: ${{ runner.temp }}/caw-legal-test-assets/p4-canonical-articles-v2.json
-        run: python3 scripts/verify.py --stage go
+          CAW_CI_BASE_SHA: ${{ needs.prepare.outputs.base_sha }}
+          CAW_CI_SUBJECT_SHA: ${{ needs.prepare.outputs.sha }}
+        run: python3 "$RUNNER_TEMP/trusted-gate-runner.py" quality --repo "$GITHUB_WORKSPACE" --base "$CAW_CI_BASE_SHA" --subject "$CAW_CI_SUBJECT_SHA" -- --stage go
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         if: always()
         with:
@@ -222,6 +249,7 @@ jobs:
         with:
           ref: ${{ needs.prepare.outputs.sha }}
           fetch-depth: 0
+          persist-credentials: false
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: '24'
@@ -231,8 +259,15 @@ jobs:
       - name: Install web dependencies
         working-directory: web
         run: bun install --frozen-lockfile
+      - name: Load fixed BASE gate controller
+        env:
+          TRUSTED_BASE: ${{ needs.prepare.outputs.base_sha }}
+        run: git show "$TRUSTED_BASE:scripts/trusted_gate_runner.py" > "$RUNNER_TEMP/trusted-gate-runner.py"
       - name: Web gate
-        run: python3 scripts/verify.py --stage web
+        env:
+          CAW_CI_BASE_SHA: ${{ needs.prepare.outputs.base_sha }}
+          CAW_CI_SUBJECT_SHA: ${{ needs.prepare.outputs.sha }}
+        run: python3 "$RUNNER_TEMP/trusted-gate-runner.py" quality --repo "$GITHUB_WORKSPACE" --base "$CAW_CI_BASE_SHA" --subject "$CAW_CI_SUBJECT_SHA" -- --stage web
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         if: always()
         with:
@@ -264,6 +299,7 @@ jobs:
         with:
           ref: ${{ needs.prepare.outputs.sha }}
           fetch-depth: 0
+          persist-credentials: false
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
           go-version-file: go.mod
@@ -282,8 +318,15 @@ jobs:
         run: |
           test -s artifacts/go-coverage.out
           test -s web/coverage/coverage-summary.json
+      - name: Load fixed BASE gate controller
+        env:
+          TRUSTED_BASE: ${{ needs.prepare.outputs.base_sha }}
+        run: git show "$TRUSTED_BASE:scripts/trusted_gate_runner.py" > "$RUNNER_TEMP/trusted-gate-runner.py"
       - name: Coverage gate
-        run: python3 scripts/verify.py --stage coverage
+        env:
+          CAW_CI_BASE_SHA: ${{ needs.prepare.outputs.base_sha }}
+          CAW_CI_SUBJECT_SHA: ${{ needs.prepare.outputs.sha }}
+        run: python3 "$RUNNER_TEMP/trusted-gate-runner.py" quality --repo "$GITHUB_WORKSPACE" --base "$CAW_CI_BASE_SHA" --subject "$CAW_CI_SUBJECT_SHA" -- --stage coverage
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         if: always()
         with:
@@ -322,6 +365,7 @@ jobs:
         with:
           ref: ${{ needs.prepare.outputs.sha }}
           fetch-depth: 0
+          persist-credentials: false
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
           go-version-file: go.mod
@@ -360,13 +404,19 @@ jobs:
           CAW_LEGAL_TEST_ARCHIVE_XZ_04: ${{ vars.CAW_LEGAL_TEST_ARCHIVE_XZ_04 }}
           CAW_LEGAL_TEST_ARCHIVE_XZ_05: ${{ vars.CAW_LEGAL_TEST_ARCHIVE_XZ_05 }}
         run: python3 scripts/fetch_legal_test_assets.py --destination "$RUNNER_TEMP/caw-legal-test-assets"
+      - name: Load fixed BASE gate controller
+        env:
+          TRUSTED_BASE: ${{ needs.prepare.outputs.base_sha }}
+        run: git show "$TRUSTED_BASE:scripts/trusted_gate_runner.py" > "$RUNNER_TEMP/trusted-gate-runner.py"
       - name: Browser gate
         env:
           CAW_DELIVERY_DIR: ${{ runner.temp }}/caw-delivery
           LEGALNORM_ASSET_DIR: ${{ runner.temp }}/caw-legal-test-assets/legal-sources
           LEGALNORM_SUPPLEMENTAL_ASSET_DIR: ${{ runner.temp }}/caw-legal-test-assets/legal-sources
           LEGALNORM_CANONICAL_MANIFEST: ${{ runner.temp }}/caw-legal-test-assets/p4-canonical-articles-v2.json
-        run: python3 scripts/verify.py --stage browser
+          CAW_CI_BASE_SHA: ${{ needs.prepare.outputs.base_sha }}
+          CAW_CI_SUBJECT_SHA: ${{ needs.prepare.outputs.sha }}
+        run: python3 "$RUNNER_TEMP/trusted-gate-runner.py" quality --repo "$GITHUB_WORKSPACE" --base "$CAW_CI_BASE_SHA" --subject "$CAW_CI_SUBJECT_SHA" -- --stage browser
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         if: always()
         with:
