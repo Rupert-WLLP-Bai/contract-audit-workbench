@@ -22,6 +22,7 @@ import (
 	"errors"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"io"
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
@@ -97,6 +98,7 @@ func TestLiveReviewAndOCR(t *testing.T) {
 		t.Fatalf("review %d %v", status, review)
 	}
 	ws := liveWaitReview(t, api, "/api/cases/"+caseID+"/reviews/"+review["id"].(string))
+	seen.rememberFrozenTexts(ws)
 	diagnostics := api.reviewDiagnostics(t, "/api/cases/"+caseID+"/reviews/"+review["id"].(string))
 	snapshot, _ := diagnostics["snapshot"].(map[string]any)
 	execution, _ := diagnostics["execution"].(map[string]any)
@@ -128,7 +130,7 @@ func TestLiveReviewAndOCR(t *testing.T) {
 		}
 	}
 	if located == 0 {
-		t.Fatal("model quotes were not located in the texts")
+		t.Fatal("rule evidence was not located in the texts")
 	}
 
 	status, created = api.do(t, http.MethodPost, "/api/cases", map[string]any{
@@ -145,6 +147,7 @@ func TestLiveReviewAndOCR(t *testing.T) {
 		t.Fatalf("ocr review %d %v", status, review)
 	}
 	ws = liveWaitReview(t, api, "/api/cases/"+imageCase+"/reviews/"+review["id"].(string))
+	seen.rememberFrozenTexts(ws)
 	run = ws["run"].(map[string]any)
 	var ocrText string
 	for _, item := range ws["documents"].([]any) {
@@ -191,6 +194,7 @@ func TestLiveReviewAndOCR(t *testing.T) {
 		t.Fatalf("gateway calls %v", seen.snapshot())
 	}
 	liveAccounting(t, schema, caseID, imageCase, cfg.ChatModel, cfg.OCRModel)
+	seen.requireFrozenModelQuotes(t, cfg.ChatModel)
 }
 
 func truncate(value any) string {
@@ -203,9 +207,12 @@ func truncate(value any) string {
 }
 
 type statusCapture struct {
-	base  http.RoundTripper
-	mu    sync.Mutex
-	lines []string
+	base          http.RoundTripper
+	mu            sync.Mutex
+	lines         []string
+	quotes        [][]model.Quote
+	chatResponses int
+	frozenTexts   []map[string]string
 }
 
 // Preserve the accepted session proof rather than fabricating identity or
@@ -227,6 +234,40 @@ func (c *statusCapture) RoundTrip(req *http.Request) (*http.Response, error) {
 		base = http.DefaultTransport
 	}
 	res, err := base.RoundTrip(req)
+	if err == nil && res != nil && res.StatusCode == http.StatusOK && req.Method == http.MethodPost && req.GetBody != nil {
+		body, bodyErr := req.GetBody()
+		if bodyErr == nil {
+			var request struct {
+				Model string `json:"model"`
+			}
+			_ = json.NewDecoder(body).Decode(&request)
+			body.Close()
+			if request.Model == model.GatewayID(os.Getenv("LLM_MODEL")) {
+				raw, readErr := io.ReadAll(res.Body)
+				res.Body.Close()
+				res.Body = io.NopCloser(bytes.NewReader(raw))
+				if readErr != nil {
+					return res, readErr
+				}
+				var response struct {
+					Choices []struct {
+						Message struct {
+							Content string `json:"content"`
+						} `json:"message"`
+					} `json:"choices"`
+				}
+				if json.Unmarshal(raw, &response) == nil && len(response.Choices) > 0 {
+					answer, parseErr := model.ParseWarranty(response.Choices[0].Message.Content)
+					if parseErr == nil {
+						c.mu.Lock()
+						c.chatResponses++
+						c.quotes = append(c.quotes, answer.Quotes)
+						c.mu.Unlock()
+					}
+				}
+			}
+		}
+	}
 	code := 0
 	if res != nil {
 		code = res.StatusCode
@@ -235,6 +276,39 @@ func (c *statusCapture) RoundTrip(req *http.Request) (*http.Response, error) {
 	c.lines = append(c.lines, req.Method+" "+req.URL.Path+" "+strconv.Itoa(code))
 	c.mu.Unlock()
 	return res, err
+}
+
+func (c *statusCapture) rememberFrozenTexts(workspace map[string]any) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	texts := make(map[string]string)
+	for _, raw := range workspace["documents"].([]any) {
+		doc := raw.(map[string]any)
+		id, _ := doc["id"].(string)
+		text, _ := doc["text"].(string)
+		texts[id] = text
+	}
+	c.frozenTexts = append(c.frozenTexts, texts)
+}
+
+func (c *statusCapture) requireFrozenModelQuotes(t *testing.T, requested string) {
+	t.Helper()
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.chatResponses != 2 || len(c.frozenTexts) != 2 {
+		t.Fatal("live model responses omitted verifiable quotes")
+	}
+	for i, quotes := range c.quotes {
+		if len(quotes) == 0 {
+			t.Fatal("live model response contained no quotes")
+		}
+		for _, q := range quotes {
+			if q.Quote == "" || !strings.Contains(c.frozenTexts[i][q.DocumentID], q.Quote) {
+				t.Fatalf("model quote does not match its frozen document %s", q.DocumentID)
+			}
+		}
+	}
+	t.Logf("verified model quotes for both frozen attempts with %s", requested)
 }
 
 func (c *statusCapture) snapshot() []string {
