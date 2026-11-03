@@ -11,6 +11,7 @@
 package httpapi_test
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/cookiejar"
@@ -25,6 +26,7 @@ import (
 	"contractaudit/internal/accounts"
 	"contractaudit/internal/httpapi"
 	"contractaudit/internal/store"
+	"github.com/jackc/pgx/v5"
 )
 
 func TestReviewDiagnosticsRequiresRoleAndCurrentCaseAccess(t *testing.T) {
@@ -122,14 +124,14 @@ func TestReviewDiagnosticsRequiresRoleAndCurrentCaseAccess(t *testing.T) {
 	}
 }
 
-func TestReviewDiagnosticsRechecksDirectoryGrantsAndRole(t *testing.T) {
+func TestReviewDiagnosticsRechecksMembershipGrantsAndRole(t *testing.T) {
 	user := accounts.User{
 		ID: "diagnostic-admin", DisplayName: "Diagnostic Admin", Role: "admin", Enabled: true,
 		TenantID: "diagnostic-tenant", OrgID: "diagnostic-org", Issuer: "https://identity.example.test", Subject: "diagnostic-admin",
 		Grants: []access.Grant{{Role: "case_owner", Scope: "self"}},
 	}
 	directory := filepath.Join(t.TempDir(), "directory.json")
-	writeDirectory := func(user accounts.User) {
+	writeDirectory := func() {
 		t.Helper()
 		content, err := json.Marshal(struct {
 			Users []accounts.User `json:"users"`
@@ -141,7 +143,7 @@ func TestReviewDiagnosticsRechecksDirectoryGrantsAndRole(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	writeDirectory(user)
+	writeDirectory()
 	if err := accounts.ConfigureDirectory(directory); err != nil {
 		t.Fatal(err)
 	}
@@ -150,15 +152,43 @@ func TestReviewDiagnosticsRechecksDirectoryGrantsAndRole(t *testing.T) {
 			t.Errorf("restore identity directory: %v", err)
 		}
 	})
-	st, err := store.OpenTest(t.TempDir(), "")
+	testDSN := strings.TrimSpace(os.Getenv("TEST_DATABASE_URL"))
+	if testDSN == "" {
+		t.Skip("TEST_DATABASE_URL is required for membership-backed diagnostics")
+	}
+	config, err := pgx.ParseConfig(testDSN)
+	if err != nil {
+		t.Fatal(err)
+	}
+	st, err := store.OpenTest(t.TempDir(), testDSN)
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = st.Close() })
 	st.UseModels(scriptModels{})
-	token, err := st.EstablishSession(user, "client")
-	if err != nil {
-		t.Fatal(err)
+	crosswalk := store.IdentityCrosswalk{
+		Version:     1,
+		Tenants:     []store.IdentityTenantMap{{ID: user.TenantID, DisplayName: "Diagnostic tenant", Status: "active"}},
+		OrgUnits:    []store.IdentityOrgUnitMap{{TenantID: user.TenantID, ID: user.OrgID, DisplayName: "Diagnostic org", Status: "active"}},
+		Principals:  []store.IdentityPrincipalMap{{ID: "30000000-0000-4000-8000-000000000001", ActorID: user.ID, Issuer: user.Issuer, Subject: user.Subject, Status: "active"}},
+		Memberships: []store.IdentityMembershipMap{{ID: "40000000-0000-4000-8000-000000000001", ActorID: user.ID, TenantID: user.TenantID, OrgUnitID: user.OrgID, RoleCode: "admin", Grants: []access.Grant{{Role: "case_owner", Scope: "self"}}, Status: "active"}},
+	}
+	applyMembership := func() {
+		t.Helper()
+		if _, err := store.ImportIdentityCrosswalk(context.Background(), testDSN, st.SchemaName(), config.Database, crosswalk, true); err != nil {
+			t.Fatalf("apply diagnostic membership: %v", err)
+		}
+	}
+	applyMembership()
+	// Resolve the verified issuer/subject through the same database membership
+	// path used by OIDC, then keep the resulting session and original proof.
+	login, err := st.ResolveVerifiedOIDC(context.Background(), user, "client")
+	if err != nil || login.SessionToken == "" {
+		t.Fatalf("resolve diagnostic membership: %v", err)
+	}
+	metadata, err := store.UserSessionContext(login.User)
+	if err != nil || metadata.ActiveContext.ContextVersion == "" || metadata.CSRFToken == "" {
+		t.Fatalf("diagnostic session proof: %v", err)
 	}
 	server := httptest.NewServer(httpapi.Handler(st, httpapi.Options{}))
 	t.Cleanup(server.Close)
@@ -170,22 +200,22 @@ func TestReviewDiagnosticsRechecksDirectoryGrantsAndRole(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	jar.SetCookies(baseURL, []*http.Cookie{{Name: "session", Value: token, Path: "/"}})
-	api := &testAPI{base: server.URL, client: &http.Client{Jar: jar}}
+	jar.SetCookies(baseURL, []*http.Cookie{{Name: "session", Value: login.SessionToken, Path: "/"}})
+	api := &testAPI{base: server.URL, client: &http.Client{Jar: jar}, proofs: map[string]sessionProof{"client": {version: metadata.ActiveContext.ContextVersion, csrf: metadata.CSRFToken}}}
 	caseID, runID, _ := createDiagnosticsReview(t, api, "可撤销授权")
 	path := "/api/cases/" + caseID + "/reviews/" + runID + "/diagnostics"
 	if status, _ := api.do(t, http.MethodGet, path, nil); status != http.StatusOK {
 		t.Fatalf("initial authorized diagnostic read: %d", status)
 	}
 
-	user.Grants = nil
-	writeDirectory(user)
+	crosswalk.Memberships[0].Grants = []access.Grant{}
+	applyMembership()
 	if status, _ := api.do(t, http.MethodGet, path, nil); status != http.StatusNotFound {
 		t.Fatalf("revoked case grant remained valid for the existing session: %d", status)
 	}
-	user.Role = "viewer"
-	user.Grants = []access.Grant{{Role: "viewer", Scope: "self"}}
-	writeDirectory(user)
+	crosswalk.Memberships[0].RoleCode = "viewer"
+	crosswalk.Memberships[0].Grants = []access.Grant{{Role: "viewer", Scope: "self"}}
+	applyMembership()
 	if status, _ := api.do(t, http.MethodGet, "/api/cases/"+caseID+"/reviews/"+runID, nil); status != http.StatusOK {
 		t.Fatalf("viewer with restored case grant cannot read business workspace: %d", status)
 	}
@@ -193,7 +223,7 @@ func TestReviewDiagnosticsRechecksDirectoryGrantsAndRole(t *testing.T) {
 		t.Fatalf("role change was not enforced for the existing session: %d", status)
 	}
 	user.Enabled = false
-	writeDirectory(user)
+	writeDirectory()
 	if status, _ := api.do(t, http.MethodGet, path, nil); status != http.StatusUnauthorized {
 		t.Fatalf("disabled identity retained diagnostic access: %d", status)
 	}
