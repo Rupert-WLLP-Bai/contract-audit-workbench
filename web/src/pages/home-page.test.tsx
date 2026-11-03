@@ -246,6 +246,7 @@ class HomeService {
   snapshotFailures: number[] = [];
   capabilityUnsupported = false;
   completionFailures: number[] = [];
+  sessionGate: ReturnType<typeof Promise.withResolvers<void>> | null = null;
   caseDetail: CaseDetail | null = null;
   readinessResponse: unknown = null;
   readinessFailure: number | null = null;
@@ -265,7 +266,10 @@ class HomeService {
     const body: unknown =
       typeof init?.body === "string" ? JSON.parse(init.body) : null;
     this.requests.push({ method, path: `${url.pathname}${url.search}`, body });
-    if (url.pathname === "/api/session") return json(session);
+    if (url.pathname === "/api/session") {
+      if (this.sessionGate) await this.sessionGate.promise;
+      return json(session);
+    }
     if (url.pathname === "/api/intakes/pending")
       return json({ items: [], next_cursor: null });
     if (url.pathname === "/api/workbench") {
@@ -897,6 +901,29 @@ describe("HomePage snapshot consumers", () => {
         (request) => request.path === "/api/workbench?period=week&task_capabilities=1",
       ),
     ).toHaveLength(2);
+  });
+
+  it("hides the cached workbench while the session is being revalidated", async () => {
+    const service = new HomeService();
+    const { client } = open(service);
+    await screen.findByRole("heading", { name: "你好，周审查" });
+    expect(screen.getByRole("region", { name: "按案件处理" })).toBeInTheDocument();
+    expect(within(taskPanel()).getByRole("button", { name: "新建任务" })).toBeInTheDocument();
+    expect(within(taskPanel()).getAllByRole("button", { name: "标记完成" }).length).toBeGreaterThan(0);
+
+    service.sessionGate = Promise.withResolvers<void>();
+    const revalidation = client.invalidateQueries({ queryKey: ["session", "client"], exact: true });
+
+    expect(await screen.findByRole("heading", { name: "正在加载工作台" })).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "按案件处理" })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("工作台摘要")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "新建任务" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "标记完成" })).not.toBeInTheDocument();
+
+    service.sessionGate.resolve();
+    service.sessionGate = null;
+    await revalidation;
+    expect(await screen.findByRole("heading", { name: "你好，周审查" })).toBeInTheDocument();
   });
 });
 

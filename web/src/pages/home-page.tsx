@@ -338,7 +338,7 @@ export function HomePage() {
     [snapshot.data?.members],
   );
 
-  if (session.isLoading || snapshot.isLoading)
+  if (session.isLoading || session.isFetching || snapshot.isLoading)
     return <PageStatus kind="loading" title="正在加载工作台" />;
   if (session.isError || !session.data) {
     return (
