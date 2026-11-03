@@ -51064,12 +51064,12 @@
         "value": "2026-11-03",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "141dbead488730482897c87293fb00469ef03f49",
+          "commit": "8771fc7f5f542bdb34524ebce2329a343111e3a4",
           "path": "scripts/test_check_fast.py",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r3",
+      "revision": "r4",
       "copyright": [
         {
           "holder": "Bai Junhao",
