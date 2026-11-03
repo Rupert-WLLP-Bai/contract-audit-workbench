@@ -68302,7 +68302,7 @@
         "value": "2026-11-03",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "d62bcb401bde6265f0eaa01aef814d219601369e",
+          "commit": "85a8ad35ff461025a3b73676aaa1ca0941f6fe20",
           "path": "web/src/pages/home-page.css",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
