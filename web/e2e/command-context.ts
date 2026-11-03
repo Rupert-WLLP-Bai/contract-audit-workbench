@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Reads the current authenticated browser session context and CSRF proof once for positive setup commands while preserving rejected and stale-session failures.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-03
+// Updated: 2026-11-03
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 import assert from "node:assert/strict";
 import type { APIRequestContext } from "playwright";
 
