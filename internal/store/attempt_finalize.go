@@ -147,6 +147,24 @@ func (s *Store) finishAttemptNarrow(ctx context.Context, runID, attemptID, state
 		tx, err = s.beginContextTx(ctx, pgx.TxOptions{})
 	}
 	if err != nil {
+		// Core may report an ordinary refusal or a transport failure before its
+		// identity query can distinguish an expired claim. Inspect the original
+		// database claim in a rollback-only transaction; this never authorizes a
+		// terminal transition or substitutes another worker/context.
+		checkTx, checkErr := s.pool.BeginTx(ctx, pgx.TxOptions{})
+		if checkErr != nil {
+			return errors.Join(err, checkErr)
+		}
+		defer rollbackCLM(checkTx)
+		if checkErr = setLocalScope(ctx, checkTx, claim.scope()); checkErr != nil {
+			return errors.Join(err, checkErr)
+		}
+		if checkErr = s.requireLiveClaim(ctx, checkTx, claim, runID, attemptID); checkErr != nil {
+			if errors.Is(checkErr, errLeaseLost) {
+				return errLeaseLost
+			}
+			return errors.Join(err, checkErr)
+		}
 		return err
 	}
 	defer tx.Rollback(ctx)

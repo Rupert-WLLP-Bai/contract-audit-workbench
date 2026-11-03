@@ -48,6 +48,10 @@ func NewRevokedFinalizeFixture(t *testing.T) *RevokedFinalizeFixture {
 func (f *RevokedFinalizeFixture) Core() *Store         { return f.fixture.core }
 func (f *RevokedFinalizeFixture) Execution() *Store    { return f.fixture.execution }
 func (f *RevokedFinalizeFixture) Actor() accounts.User { return f.fixture.actor }
+func (f *RevokedFinalizeFixture) ExpireClaim(t *testing.T) {
+	t.Helper()
+	expireDurableClaim(t, f.fixture)
+}
 func (f *RevokedFinalizeFixture) Snapshot(t *testing.T) any {
 	return durableMutationSnapshot(t, f.fixture, f.fixture.claim)
 }
