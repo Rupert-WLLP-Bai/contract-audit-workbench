@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-31
-// Updated: 2026-10-31
-// Revision: r1
+// Updated: 2026-11-03
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -59,6 +59,7 @@ func TestServiceObjectHTTPPostgresFrozenAssociationLifecycle(t *testing.T) {
 		t.Fatal(err)
 	}
 	documentStore.UseModels(serviceObjectHTTPModels{})
+	documentStore.UseOperationAuthority(serviceObjectCoreAuthority{core: st})
 	executionStore, err := st.Reopen()
 	if err != nil {
 		t.Fatalf("reopen isolated execution service store: %v", err)
@@ -68,6 +69,7 @@ func TestServiceObjectHTTPPostgresFrozenAssociationLifecycle(t *testing.T) {
 		t.Fatal(err)
 	}
 	executionStore.UseModels(serviceObjectHTTPModels{})
+	executionStore.UseOperationAuthority(serviceObjectCoreAuthority{core: st})
 	executionStore.UseDocumentPreparer(documentStore)
 	operatorCatalog, err := capabilitypack.NewRegistry(capabilitypack.RegistryConfig{})
 	if err != nil {
@@ -416,6 +418,19 @@ func TestServiceObjectHTTPPostgresFrozenAssociationLifecycle(t *testing.T) {
 	t.Logf("PostgreSQL service-object HTTP lifecycle committed and reread: case=%s run=%s attempt=%s object=%s identity_versions=2 associations=2", caseID, runID, attemptID, objectID)
 }
 
+type serviceObjectCoreAuthority struct{ core *store.Store }
+
+func (a serviceObjectCoreAuthority) ResolveOperation(ctx context.Context, scope model.DelegatedScope) (accounts.User, error) {
+	caller := "worker"
+	if scope.Kind == "document" {
+		caller = "document"
+	}
+	return a.core.ResolveOperationAuthority(ctx, scope, caller)
+}
+func (a serviceObjectCoreAuthority) IssueOperationTicket(ctx context.Context, digest, version string, scope model.DelegatedScope) (string, error) {
+	return a.core.IssueOperationTicketFromDigest(ctx, digest, version, scope)
+}
+
 type serviceObjectHTTPModels struct{}
 
 type serviceObjectHTTPConnector struct{}
@@ -452,7 +467,7 @@ func serviceObjectHTTPClient(t *testing.T, base string) *http.Client {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return &http.Client{Jar: jar}
+	return &http.Client{Jar: jar, Transport: &routeProofTransport{}}
 }
 
 func serviceObjectHTTPLogin(t *testing.T, client *http.Client, base, username, password string) {
@@ -461,6 +476,7 @@ func serviceObjectHTTPLogin(t *testing.T, client *http.Client, base, username, p
 	if status != http.StatusOK || payload["actor"] == nil {
 		t.Fatalf("client login %s failed: HTTP %d: %v", username, status, payload)
 	}
+	client.Transport.(*routeProofTransport).remember(t, payload)
 }
 
 func serviceObjectHTTPLoginAudience(t *testing.T, client *http.Client, base, username, password, audience string) {
@@ -471,6 +487,7 @@ func serviceObjectHTTPLoginAudience(t *testing.T, client *http.Client, base, use
 	if status != http.StatusOK || payload["actor"] == nil {
 		t.Fatalf("login %s with audience %s failed: HTTP %d: %v", username, audience, status, payload)
 	}
+	client.Transport.(*routeProofTransport).remember(t, payload)
 }
 
 func serviceObjectHTTPPublishRulePack(t *testing.T, client *http.Client, base string) {

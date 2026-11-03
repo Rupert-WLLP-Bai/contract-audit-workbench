@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-31
-// Updated: 2026-10-31
-// Revision: r1
+// Updated: 2026-11-03
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -78,7 +78,7 @@ func TestContractCitationHTTPRefusesWithoutAnAgentRecord(t *testing.T) {
 	raw, readErr := io.ReadAll(response.Body)
 	response.Body.Close()
 	if readErr != nil || response.StatusCode != http.StatusUnauthorized ||
-		!strings.Contains(string(raw), "unauthenticated") {
+		!strings.Contains(string(raw), "session_invalid") {
 		t.Fatalf("anonymous citation read was not refused: HTTP %d body=%s err=%v", response.StatusCode, raw, readErr)
 	}
 }

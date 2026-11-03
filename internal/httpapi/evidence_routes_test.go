@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-28
-// Updated: 2026-10-31
-// Revision: r1
+// Updated: 2026-11-03
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -56,7 +56,7 @@ func requireEvidenceHTTPError(t *testing.T, status, expected int, body map[strin
 		t.Fatalf("HTTP status = %d, want %d: %v", status, expected, body)
 	}
 	errorBody, ok := body["error"].(map[string]any)
-	codes := map[int]string{http.StatusUnauthorized: "unauthenticated", http.StatusForbidden: "forbidden",
+	codes := map[int]string{http.StatusUnauthorized: "session_invalid", http.StatusForbidden: "forbidden",
 		http.StatusNotFound: "not_found", http.StatusConflict: "conflict", http.StatusUnprocessableEntity: "invalid"}
 	message, hasMessage := errorBody["message"].(string)
 	if !ok || errorBody["code"] != codes[expected] || !hasMessage || message == "" {

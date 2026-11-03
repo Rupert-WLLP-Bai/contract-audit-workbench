@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-01
-// Updated: 2026-11-02
-// Revision: r2
+// Updated: 2026-11-03
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -54,6 +54,7 @@ func clmJSONRequest(t *testing.T, api *testAPI, method, path string, headers map
 		t.Fatal(err)
 	}
 	req.Header.Set("Origin", api.base)
+	api.addSessionProof(req)
 	if payload != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}

@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-31
-// Updated: 2026-10-31
-// Revision: r1
+// Updated: 2026-11-03
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -15,6 +15,7 @@ import { fileURLToPath } from "node:url";
 import { chromium, type Browser, type BrowserContext, type Locator, type Page } from "playwright";
 import { chromiumExecutable } from "./chromium";
 import { chooseAntOption } from "./c1b-select";
+import { browserSessionCommandHeaders } from "./command-context";
 
 const web = required("E2E_WEB").replace(/\/$/, "");
 const caseA = required("E2E_D3_CASE_A");
@@ -262,8 +263,9 @@ async function run(): Promise<void> {
 
     // Membership is fixture setup: there is no case-member editor in the UI.
     // Keep Origin explicit for the cookie-authenticated write after #29.
+    const grantHeaders = await browserSessionCommandHeaders(adminLogin.context.request, web);
     const grant = await adminLogin.context.request.post(`${web}/api/cases/${encodeURIComponent(caseB)}/members`, {
-      headers: { Origin: web }, data: { actor_id: "demo-reviewer" },
+      headers: { Origin: web, ...grantHeaders }, data: { actor_id: "demo-reviewer" },
     });
     assert.equal(grant.status(), 200, "could not prepare the second synthetic case grant");
     await reviewer.goto(sourceChangeURL);

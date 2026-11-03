@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-31
-// Updated: 2026-10-31
-// Revision: r1
+// Updated: 2026-11-03
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -43,7 +43,7 @@ export function DirtyLeaveGuard({
       cancelText="留在本页"
       closable={false}
       keyboard={false}
-      maskClosable={false}
+      mask={{ closable: false }}
       okButtonProps={{ danger: true }}
       okText="离开"
       onCancel={() => {

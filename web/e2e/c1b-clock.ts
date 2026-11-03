@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-31
-// Updated: 2026-10-31
-// Revision: r1
+// Updated: 2026-11-03
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -39,7 +39,7 @@ export function c1bBusinessAtInput(timeZone = C1B_BUSINESS_TIME_ZONE): string {
 export async function enterC1BBusinessAt(page: Page): Promise<void> {
   const actualTimeZone = await page.evaluate(() => Intl.DateTimeFormat().resolvedOptions().timeZone);
   assert.equal(actualTimeZone, C1B_BUSINESS_TIME_ZONE, "C1-B browser timezone is not pinned to Asia/Shanghai");
-  const input = page.getByLabel("审查业务时间（本地时区）", { exact: true });
+  const input = page.getByLabel("审查业务时间（北京时间）", { exact: true });
   await input.fill(c1bBusinessAtInput());
   const submittedInstant = await input.evaluate((element) => new Date((element as HTMLInputElement).value).toISOString());
   assert.equal(submittedInstant, C1B_BUSINESS_AT_UTC, "C1-B business time did not resolve to its frozen UTC instant");

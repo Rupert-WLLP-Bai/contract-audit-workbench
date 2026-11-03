@@ -18220,6 +18220,17 @@
       "Snapshot": {
         "type": "object",
         "properties": {
+          "adopted_tenant_config": {
+            "description": "该次新运行实际冻结的租户配置版本；历史未记录时为null，不从当前配置推断。",
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AdoptedTenantConfigIdentity"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "comparator_ref": {
             "anyOf": [
               {

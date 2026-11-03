@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-10-28
-// Revision: r1
+// Updated: 2026-11-03
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -14,6 +14,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"net/http/cookiejar"
 	"net/http/httptest"
 	"reflect"
 	"strings"
@@ -21,7 +22,10 @@ import (
 	"testing"
 	"time"
 
+	"contractaudit/internal/httpapi"
 	"contractaudit/internal/model"
+	"contractaudit/internal/modelgateway"
+	"contractaudit/internal/store"
 )
 
 type heldReviewModel struct {
@@ -165,7 +169,34 @@ func TestIncompleteProviderUsageSurvivesHTTPRetry(t *testing.T) {
 		_, _ = w.Write([]byte(`{"model":"observed-synthetic-model","usage":{"prompt_tokens":77,"completion_tokens":9,"total_tokens":86},"choices":[{"finish_reason":"length","message":{"content":"incomplete"}}]}`))
 	}))
 	defer upstream.Close()
-	api := newAPIWith(t, model.New(model.Config{BaseURL: upstream.URL + "/v1", ChatModel: "synthetic-usage-model"}), nil)
+	st, err := store.OpenTest(t.TempDir(), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	cfg, err := modelgateway.FromEnv()
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg.Mode, cfg.UpstreamBaseURL, cfg.UpstreamAPIKey = "openai-compatible", upstream.URL+"/v1", "fixture-upstream"
+	cfg.ChatModel, cfg.OCRModel = "synthetic-usage-model", "synthetic-ocr-model"
+	cfg.WorkerCredential, cfg.DocumentCredential = strings.Repeat("usage-worker-", 4), strings.Repeat("usage-document-", 4)
+	cfg.Retries = 0
+	gateway, err := modelgateway.New(st, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	proxy := httptest.NewServer(gateway.Handler())
+	t.Cleanup(proxy.Close)
+	models := model.New(model.Config{BaseURL: proxy.URL + "/v1", ProviderURL: cfg.UpstreamBaseURL, Gateway: true, APIKey: cfg.WorkerCredential, ChatModel: cfg.ChatModel, OCRModel: cfg.OCRModel})
+	st.UseModels(models)
+	server := httptest.NewServer(httpapi.Handler(st, httpapi.Options{}))
+	t.Cleanup(server.Close)
+	jar, err := cookiejar.New(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	api := &testAPI{base: server.URL, client: &http.Client{Jar: jar}}
 	api.login(t, "demo-admin", "admin-demo")
 	_, created := api.do(t, http.MethodPost, "/api/cases", map[string]any{"title": "失败调用计费来源", "contract_type": "procurement_ict"})
 	caseID := created["id"].(string)

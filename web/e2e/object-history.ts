@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-31
-// Updated: 2026-10-31
-// Revision: r1
+// Updated: 2026-11-03
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -13,6 +13,7 @@ import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { chromium, type Browser, type Page } from "playwright";
 import { chromiumExecutable } from "./chromium";
+import { browserSessionCommandHeaders } from "./command-context";
 import { chooseAntOption, clickAntOptionByAttribute, selectedAntLabel } from "./c1b-select";
 import { replacePrimaryMaterial, selectMaterialOption, uploadNewMaterial } from "./materials-ui";
 import { parseReviewWorkspace } from "../src/api/parse";
@@ -296,7 +297,10 @@ async function run(): Promise<void> {
   await current.waitForURL(/\/cases\/[^/]+$/);
   caseID = new URL(current.url()).pathname.split("/").at(-1) ?? "";
   assert.ok(caseID);
-  const member = await current.request.post(`${web}/api/cases/${caseID}/members`, { headers: { Origin: web }, data: { actor_id: "demo-reviewer" } });
+  const memberHeaders = await browserSessionCommandHeaders(current.request, web);
+  const member = await current.request.post(`${web}/api/cases/${caseID}/members`, {
+    headers: { Origin: web, ...memberHeaders }, data: { actor_id: "demo-reviewer" },
+  });
   assert.equal(member.status(), 200, "independent reviewer could not be added to this synthetic case");
   const primary = await uploadNewMaterial(current, { role: "draft_contract", filename: "合同-A.txt", text: draftA });
   const purchase = await uploadNewMaterial(current, { role: "procurement", filename: "采购依据.txt", text: procurement });

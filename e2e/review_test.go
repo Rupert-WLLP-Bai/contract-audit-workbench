@@ -4,7 +4,7 @@
 // Contact: +86 13617696321
 // Created: 2026-10-25
 // Updated: 2026-11-03
-// Revision: r2
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -124,7 +124,7 @@ func TestProcurementWarrantyConflictAndConfirm(t *testing.T) {
 	}
 	publicSnapshot, ok := ws["snapshot"].(map[string]any)
 	_, hasBusinessAt := publicSnapshot["business_at"]
-	if !ok || len(publicSnapshot) != 2 || !hasBusinessAt || publicSnapshot["business_at"] != nil {
+	if !ok || len(publicSnapshot) != 3 || !hasBusinessAt || publicSnapshot["business_at"] != nil || publicSnapshot["adopted_tenant_config"] != nil {
 		t.Fatalf("business snapshot exposed unexpected fields: %+v", ws["snapshot"])
 	}
 	ids, ok := publicSnapshot["document_ids"].([]any)

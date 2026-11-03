@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-28
-// Updated: 2026-10-28
-// Revision: r1
+// Updated: 2026-11-03
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -259,5 +259,26 @@ func assertNoDiagnosticKeys(t *testing.T, value any) {
 		for _, child := range item {
 			assertNoDiagnosticKeys(t, child)
 		}
+	}
+}
+
+func TestBusinessSnapshotIncludesOnlyFrozenConfigIdentity(t *testing.T) {
+	ws := store.Workspace{Snapshot: store.RunSnapshot{DocumentIDs: []string{"doc-1"}, ModelRef: "private-model", RuleSetHash: "private-rule"}}
+	legacy := workspaceJSON(nil, ws)["snapshot"].(map[string]any)
+	if value, ok := legacy["adopted_tenant_config"]; !ok || value != nil {
+		t.Fatalf("legacy config identity: %v", legacy)
+	}
+	ws.Snapshot.AdoptedTenantConfigVersionID = "version-1"
+	ws.Snapshot.AdoptedTenantConfigDigest = strings.Repeat("a", 64)
+	result := workspaceJSON(nil, ws)["snapshot"].(map[string]any)
+	want := map[string]string{"version_id": "version-1", "digest": strings.Repeat("a", 64)}
+	if !reflect.DeepEqual(result["adopted_tenant_config"], want) {
+		t.Fatalf("frozen config identity: %v", result)
+	}
+	if _, ok := result["model_ref"]; ok {
+		t.Fatalf("model details leaked: %v", result)
+	}
+	if _, ok := result["rule_set_hash"]; ok {
+		t.Fatalf("rule details leaked: %v", result)
 	}
 }
