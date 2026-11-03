@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-02
-// Revision: r2
+// Updated: 2026-11-03
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -656,69 +656,75 @@ export function ReviewPage() {
         />
       </DecisionDraftScopeProvider>
       <DirtyLeaveGuard dirty={decisionDraftsDirty} />
-      <ManualFindingsPanel
-        key={`${caseId}:${runId}:${selectedAttempt?.id ?? "none"}:${session.data?.tenant_id ?? ""}:${session.data?.org_id ?? ""}:${session.data?.id ?? ""}:${session.data?.role ?? ""}`}
-        caseId={caseId}
-        runId={runId}
-        attemptId={selectedAttempt?.id ?? null}
-        isFrozenAttempt={selectedAttempt?.history_kind === "frozen"}
-        parsedDocumentIds={selectedAttempt?.parsed_document_ids ?? []}
-        selection={quoteSelection}
-        documents={review.data.documents}
-        actor={session.data ?? null}
-        canCreate={caseDetailReady && !caseArchived && roleCanDecide && selectedAttempt?.history_kind === "frozen"}
-      />
-      <EvidenceSLADashboard
-        mode="reminder"
-        cases={[{ id: caseId, title: caseDetail.data?.title ?? caseId }]}
-      />
-      <EvidenceRequestPanel
-        caseId={caseId}
-        runId={runId}
-        attemptId={selectedAttempt?.id ?? null}
-        canManage={caseDetailReady && !caseArchived && roleCanManageRun}
-        evaluations={review.data.evaluations ?? []}
-        agentReview={review.data.agent_review ?? null}
-        documents={caseDetail.data?.documents ?? []}
-        quoteScope={quoteScope}
-        quoteSelection={quoteSelection}
-      />
-      <OperatorAuditEntry
-        caseId={caseId}
-        runId={runId}
-        attemptId={selectedAttempt?.id ?? null}
-      />
-      <ExperienceFeedbackPanel
-        caseId={caseId}
-        runId={runId}
-        attemptId={selectedAttempt?.id ?? null}
-        finding={review.data.findings.find((item) => item.id === selectedId) ?? null}
-        documents={review.data.documents}
-        canSubmit={roleCanDecide && selectedAttempt?.history_kind === "frozen"}
-        contextScope={streamCommandContext?.contextVersion}
-        quoteScope={quoteScope}
-        quoteSelection={quoteSelection}
-      />
-      <ExperienceUsagePanel
-        caseId={caseId}
-        runId={runId}
-        attemptId={selectedAttempt?.history_kind === "frozen" ? selectedAttempt.id : null}
-        findingId={selectedId}
-        canDecide={canDecide}
-      />
-      <RunProvenance workspace={workspace} showDiagnostics={diagnosticData !== null} />
-      <FrozenLegalAuthorities
-        key={`${caseId}:${runId}:${selectedAttempt?.id ?? "none"}`}
-        caseId={caseId}
-        runId={runId}
-        attemptId={selectedAttempt?.id ?? null}
-        projection={review.data.legal_authorities}
-      />
-      <AuditProjection
-        runId={review.data.run.id}
-        events={diagnosticData?.audit_events ?? review.data.business_events ?? []}
-        showDiagnostics={diagnosticData !== null}
-      />
+      <details className="review-secondary-section">
+        <summary>补充材料与人工处理</summary>
+        <ManualFindingsPanel
+          key={`${caseId}:${runId}:${selectedAttempt?.id ?? "none"}:${session.data?.tenant_id ?? ""}:${session.data?.org_id ?? ""}:${session.data?.id ?? ""}:${session.data?.role ?? ""}`}
+          caseId={caseId}
+          runId={runId}
+          attemptId={selectedAttempt?.id ?? null}
+          isFrozenAttempt={selectedAttempt?.history_kind === "frozen"}
+          parsedDocumentIds={selectedAttempt?.parsed_document_ids ?? []}
+          selection={quoteSelection}
+          documents={review.data.documents}
+          actor={session.data ?? null}
+          canCreate={caseDetailReady && !caseArchived && roleCanDecide && selectedAttempt?.history_kind === "frozen"}
+        />
+        <EvidenceSLADashboard
+          mode="reminder"
+          cases={[{ id: caseId, title: caseDetail.data?.title ?? caseId }]}
+        />
+        <EvidenceRequestPanel
+          caseId={caseId}
+          runId={runId}
+          attemptId={selectedAttempt?.id ?? null}
+          canManage={caseDetailReady && !caseArchived && roleCanManageRun}
+          evaluations={review.data.evaluations ?? []}
+          agentReview={review.data.agent_review ?? null}
+          documents={caseDetail.data?.documents ?? []}
+          quoteScope={quoteScope}
+          quoteSelection={quoteSelection}
+        />
+        <OperatorAuditEntry
+          caseId={caseId}
+          runId={runId}
+          attemptId={selectedAttempt?.id ?? null}
+        />
+      </details>
+      <details className="review-secondary-section">
+        <summary>经验、审查依据与历史</summary>
+        <ExperienceFeedbackPanel
+          caseId={caseId}
+          runId={runId}
+          attemptId={selectedAttempt?.id ?? null}
+          finding={review.data.findings.find((item) => item.id === selectedId) ?? null}
+          documents={review.data.documents}
+          canSubmit={roleCanDecide && selectedAttempt?.history_kind === "frozen"}
+          contextScope={streamCommandContext?.contextVersion}
+          quoteScope={quoteScope}
+          quoteSelection={quoteSelection}
+        />
+        <ExperienceUsagePanel
+          caseId={caseId}
+          runId={runId}
+          attemptId={selectedAttempt?.history_kind === "frozen" ? selectedAttempt.id : null}
+          findingId={selectedId}
+          canDecide={canDecide}
+        />
+        <RunProvenance workspace={workspace} showDiagnostics={diagnosticData !== null} />
+        <FrozenLegalAuthorities
+          key={`${caseId}:${runId}:${selectedAttempt?.id ?? "none"}`}
+          caseId={caseId}
+          runId={runId}
+          attemptId={selectedAttempt?.id ?? null}
+          projection={review.data.legal_authorities}
+        />
+        <AuditProjection
+          runId={review.data.run.id}
+          events={diagnosticData?.audit_events ?? review.data.business_events ?? []}
+          showDiagnostics={diagnosticData !== null}
+        />
+      </details>
       {currentDiagnosticScope !== null && diagnosticScope === currentDiagnosticScope && diagnostics.isError ? (
         <p role="status">审查诊断不可用：{errorMessage(diagnostics.error)}</p>
       ) : null}

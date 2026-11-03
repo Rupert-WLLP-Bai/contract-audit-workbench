@@ -4,7 +4,7 @@
 // Contact: +86 13617696321
 // Created: 2026-11-01
 // Updated: 2026-11-03
-// Revision: r3
+// Revision: r4
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -112,7 +112,7 @@ const CONTRACT_STATE_OPTIONS = [
 ];
 
 const WORKFLOW_STATE_OPTIONS = [
-  { value: "not_started", label: "未开始会签" },
+  { value: "not_started", label: "当前无进行中会签" },
   { value: "in_review", label: "会签中" },
 ];
 
