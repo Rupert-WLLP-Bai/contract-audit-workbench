@@ -888,6 +888,13 @@ class CliBoundaryTests(unittest.TestCase):
         self.root.mkdir()
         shutil.copytree(SCRIPT.parent / "architecture",
                         self.root / "scripts/architecture")
+        # This sandbox exercises fast-gate orchestration using a synthetic Go
+        # graph, not the production domain registry. Establish its own empty
+        # registry before the base commit so both sides have the same policy.
+        architecture = self.root / "scripts/architecture/architecture.json"
+        config = json.loads(architecture.read_text(encoding="utf-8"))
+        config["ratchet"]["domains"] = []
+        architecture.write_text(json.dumps(config, indent=2) + "\n", encoding="utf-8")
         git(self.root, "init", "-b", "main")
         git(self.root, "config", "user.name", "Fast Check Test")
         git(self.root, "config", "user.email", "fast-check@example.test")
