@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-02
-// Updated: 2026-11-02
-// Revision: r1
+// Updated: 2026-11-03
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -39,7 +39,15 @@ func operationAuthorityHandler(st *store.Store, credential, caller string) http.
 		}
 		u, err := st.ResolveOperationAuthority(r.Context(), scope, caller)
 		if err != nil {
-			w.WriteHeader(http.StatusForbidden)
+			if errors.Is(err, operationauthority.ErrConfirmedRevocation) {
+				writeJSON(w, http.StatusForbidden, map[string]string{"code": operationauthority.ConfirmedRevocationCode})
+				return
+			}
+			if store.IsOperationAuthorityRefusal(err) {
+				w.WriteHeader(http.StatusForbidden)
+				return
+			}
+			w.WriteHeader(http.StatusServiceUnavailable)
 			return
 		}
 		revision := ""

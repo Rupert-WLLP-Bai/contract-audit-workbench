@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-02
-// Updated: 2026-11-02
-// Revision: r1
+// Updated: 2026-11-03
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -70,7 +70,16 @@ func (c *OperationClient) ResolveOperation(ctx context.Context, scope model.Dele
 	}
 	defer response.Body.Close()
 	if response.StatusCode != http.StatusOK {
-		return accounts.User{}, errors.New("operation authority refused")
+		if response.StatusCode == http.StatusForbidden {
+			var refusal struct {
+				Code string `json:"code"`
+			}
+			raw, readErr := io.ReadAll(io.LimitReader(response.Body, 4097))
+			if readErr == nil && len(raw) <= 4096 && json.Unmarshal(raw, &refusal) == nil && refusal.Code == ConfirmedRevocationCode {
+				return accounts.User{}, ErrConfirmedRevocation
+			}
+		}
+		return accounts.User{}, errors.New("operation authority unavailable or refused")
 	}
 	raw, err := io.ReadAll(io.LimitReader(response.Body, 65537))
 	if err != nil || len(raw) > 65536 {

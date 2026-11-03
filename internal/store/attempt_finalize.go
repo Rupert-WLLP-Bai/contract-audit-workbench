@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-11-02
-// Revision: r2
+// Updated: 2026-11-03
+// Revision: r3
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -19,6 +19,7 @@ import (
 	"contractaudit/internal/accounts"
 	"contractaudit/internal/config"
 	"contractaudit/internal/fault"
+	"contractaudit/internal/operationauthority"
 	"github.com/jackc/pgx/v5"
 )
 
@@ -136,6 +137,15 @@ func (s *Store) finishAttemptNarrow(ctx context.Context, runID, attemptID, state
 		return errLeaseLost
 	}
 	tx, err := s.beginContextTx(ctx, pgx.TxOptions{})
+	machineCancellation := false
+	if errors.Is(err, operationauthority.ErrConfirmedRevocation) && executionScopeRequiresClaim(ctx) {
+		// A revoked actor may only settle this exact already-claimed job as a
+		// machine cancellation. Never remove the proof for a general writer.
+		ctx = machineFactContext(ctx)
+		stateName, partialReason, errorCode = "cancelled", "", "authorization_revoked"
+		machineCancellation = true
+		tx, err = s.beginContextTx(ctx, pgx.TxOptions{})
+	}
 	if err != nil {
 		return err
 	}
@@ -167,14 +177,10 @@ func (s *Store) finishAttemptNarrow(ctx context.Context, runID, attemptID, state
 	// case grant under the same locks, so a membership revocation or archive that
 	// committed before this transition refuses it (parity with the old
 	// authorizeAttemptExecution path inside updateAuthorizedExecution).
-	if err := s.reauthorizeAttempt(ctx, tx, runID, attemptID); err != nil {
-		if !errors.Is(err, errAttemptAuthorizationRevoked) {
+	if !machineCancellation {
+		if err := s.reauthorizeAttempt(ctx, tx, runID, attemptID); err != nil {
 			return err
 		}
-		// Parity with the whole-state writer: a revoked attempt is still
-		// finalized, as cancelled with an explicit reason, instead of being left
-		// running with a live claim.
-		stateName, partialReason, errorCode = "cancelled", "", "authorization_revoked"
 	}
 	scope, err := loadAttemptOutputScope(ctx, tx, runID, attemptID)
 	if err != nil {
@@ -255,6 +261,13 @@ func (s *Store) finishAttemptNarrow(ctx context.Context, runID, attemptID, state
 		return err
 	}
 	outcome.RunEvents = append(outcome.RunEvents, runEvent)
+	if machineCancellation {
+		// The raw machine transaction has no contextTx commit fence. Check the
+		// same claim and tenant epoch again immediately before committing.
+		if err := s.requireLiveClaim(ctx, tx, claim, runID, attemptID); err != nil {
+			return err
+		}
+	}
 	if err := tx.Commit(ctx); err != nil {
 		return err
 	}
@@ -281,7 +294,7 @@ func (s *Store) reauthorizeAttempt(ctx context.Context, tx pgx.Tx, runID, attemp
 	}
 	var members []string
 	if err := json.Unmarshal([]byte(memberJSON), &members); err != nil {
-		return errAttemptAuthorizationRevoked
+		return err
 	}
 	var user accounts.User
 	var err error
@@ -291,25 +304,39 @@ func (s *Store) reauthorizeAttempt(ctx context.Context, tx pgx.Tx, runID, attemp
 		user, err = s.authorityForAttempt(ctx, runID, attemptID)
 	}
 	if err != nil {
-		profile, ok := accounts.ByID(actorID)
-		if ok && profile.Issuer == "" && profile.Subject == "" {
-			user = profile
-			err = nil
-		}
+		return err
 	}
 	if user.ID != actorID {
-		return errAttemptAuthorizationRevoked
+		return errors.New("attempt authority identity mismatch")
 	}
-	if err != nil {
-		return errAttemptAuthorizationRevoked
+	directory := accounts.LookupUserSnapshot(actorID)
+	if directory.Status.State != "ready" && directory.Status.State != "local_demo" {
+		return errors.New("trusted directory unavailable")
+	}
+	// Do not treat a concurrent identity change as confirmed revocation here.
+	// The caller's fenced identity and this one locked directory snapshot must
+	// agree; ordinary mismatches fail without a machine cancellation.
+	if !directory.Found {
+		return errors.New("attempt principal unavailable")
+	}
+	profile := directory.User
+	if user.HasResolvedMembership() {
+		if directory.Status.Mode != "enterprise" || profile.ID != user.ID || profile.Issuer != user.Issuer || profile.Subject != user.Subject {
+			return errors.New("attempt principal changed")
+		}
+	} else {
+		if directory.Status.Mode != "local_demo" || profile.ID != user.ID || profile.TenantID != user.TenantID || profile.OrgID != user.OrgID || profile.Role != user.Role || profile.Issuer != user.Issuer || profile.Subject != user.Subject {
+			return errors.New("attempt principal changed")
+		}
+		user = profile
 	}
 	caseItem := Case{ID: caseID, TenantID: caseTenant, OwnerOrgID: caseOrg, OwnerID: caseOwnerID, MemberIDs: members,
 		BusinessStatus: businessStatus, ArchivedAt: archivedAt}
 	if err := businessWritable(caseItem); err != nil {
-		return errAttemptAuthorizationRevoked
+		return errors.New("attempt case is unavailable for finalization")
 	}
-	if !authorizeCase(caseItem, user, access.Review) {
-		return errAttemptAuthorizationRevoked
+	if !authorizeCaseTrusted(caseItem, user, access.Review) {
+		return errors.New("attempt case authorization refused")
 	}
 	return nil
 }
