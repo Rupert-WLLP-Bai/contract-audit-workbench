@@ -17,6 +17,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"os"
 	"strings"
@@ -170,6 +171,20 @@ func configureToolGatewayEnvironment(t *testing.T) {
 	t.Setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "")
 	t.Setenv("GATEWAY_ROLE_TOKEN", edgeCredential)
 	t.Setenv("WORKER_TOOL_TOKEN", workerCredential)
+	t.Setenv("TOOL_CORE_AUTHORITY_TOKEN", strings.Repeat("a", 40))
+	authority := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/internal/v1/session-authority":
+			w.WriteHeader(http.StatusUnauthorized)
+		case "/internal/v1/tool/claim-authority":
+			w.WriteHeader(http.StatusNotFound)
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	t.Cleanup(authority.Close)
+	t.Setenv("CORE_AUTHORITY_URL", authority.URL)
+	t.Setenv("CORE_AUTHORITY_ALLOW_INSECURE_DEV", "true")
 	t.Setenv("CORS_ORIGIN", "")
 	t.Setenv("ADDR", "")
 }

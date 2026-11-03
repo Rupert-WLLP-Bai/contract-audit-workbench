@@ -42,6 +42,8 @@ func TestFullPublicQueueStillChecksAuthority(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	f.captureProof(t, viewer)
+	f.captureProof(t, clerk)
 	for _, item := range []struct {
 		name, token, path, contentType string
 		body                           []byte

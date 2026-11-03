@@ -138,6 +138,21 @@ func (o *blockingObjectStore) releaseGet() {
 	o.once.Do(func() { close(o.release) })
 }
 
+// Delegate to the real Core authorization and ticket checks.
+type capacityCoreAuthority struct{ core *store.Store }
+
+func (a capacityCoreAuthority) ResolveOperation(ctx context.Context, scope model.DelegatedScope) (accounts.User, error) {
+	caller := "worker"
+	if scope.Kind == "document" {
+		caller = "document"
+	}
+	return a.core.ResolveOperationAuthority(ctx, scope, caller)
+}
+
+func (a capacityCoreAuthority) IssueOperationTicket(ctx context.Context, digest, version string, scope model.DelegatedScope) (string, error) {
+	return a.core.IssueOperationTicketFromDigest(ctx, digest, version, scope)
+}
+
 type serviceFixture struct {
 	core       *store.Store
 	document   *store.Store
@@ -147,6 +162,8 @@ type serviceFixture struct {
 	model      *capacityModel
 	server     *httptest.Server
 	httpClient *http.Client
+	proofMu    sync.RWMutex
+	proofs     map[string]store.SessionContext
 }
 
 type httpResult struct {
@@ -212,6 +229,7 @@ func newServiceFixture(t *testing.T, queueCapacity int, parseTimeout time.Durati
 		t.Fatal(err)
 	}
 	document.UseModels(model)
+	document.UseOperationAuthority(capacityCoreAuthority{core: core})
 
 	worker, err := core.Reopen()
 	if err != nil {
@@ -226,12 +244,27 @@ func newServiceFixture(t *testing.T, queueCapacity int, parseTimeout time.Durati
 		t.Fatal(err)
 	}
 	worker.UseModels(model)
+	worker.UseOperationAuthority(capacityCoreAuthority{core: core})
 
 	server, client := serveFixture(t, document, queueCapacity, parseTimeout)
-	return &serviceFixture{
+	f := &serviceFixture{
 		core: core, document: document, worker: worker, admin: admin, token: token,
-		model: model, server: server, httpClient: client,
+		model: model, server: server, httpClient: client, proofs: make(map[string]store.SessionContext),
 	}
+	f.captureProof(t, token)
+	return f
+}
+
+// Capture the proof once per login; requests never refresh or retry it.
+func (f *serviceFixture) captureProof(t *testing.T, token string) {
+	t.Helper()
+	proof, err := f.core.SessionContext(context.Background(), token)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.proofMu.Lock()
+	f.proofs[token] = proof
+	f.proofMu.Unlock()
 }
 
 func serveFixture(t *testing.T, document *store.Store, queueCapacity int, parseTimeout time.Duration) (*httptest.Server, *http.Client) {
@@ -352,6 +385,13 @@ func (f *serviceFixture) doAs(token, method, path, contentType string, body []by
 		return httpResult{err: err}
 	}
 	req.Header.Set("Origin", f.server.URL)
+	f.proofMu.RLock()
+	proof, ok := f.proofs[token]
+	f.proofMu.RUnlock()
+	if ok {
+		req.Header.Set("X-Context-Version", proof.ActiveContext.ContextVersion)
+		req.Header.Set("X-CSRF-Token", proof.CSRFToken)
+	}
 	if contentType != "" {
 		req.Header.Set("Content-Type", contentType)
 	}
@@ -737,6 +777,8 @@ func TestUnauthorizedPublicRequestsRejectBeforeCPUAndFreeCapacity(t *testing.T) 
 		t.Fatalf("authenticate upload-capable user: user=%+v err=%v", clerk, err)
 	}
 
+	f.captureProof(t, viewerToken)
+	f.captureProof(t, clerkToken)
 	viewerType, viewerBody := multipartUploadPayload(t, "attachment", "viewer.txt", "text/plain", []byte("not authorized"))
 	clerkType, clerkBody := multipartUploadPayload(t, "attachment", "clerk.txt", "text/plain", []byte("no case grant"))
 	responses := make(chan struct {

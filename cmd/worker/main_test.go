@@ -32,6 +32,7 @@ import (
 	"contractaudit/internal/accounts"
 	"contractaudit/internal/bootstrap"
 	"contractaudit/internal/documentservice"
+	"contractaudit/internal/httpapi"
 	"contractaudit/internal/model"
 	"contractaudit/internal/store"
 	"github.com/jackc/pgx/v5"
@@ -472,6 +473,11 @@ func configureWorkerProcessEnvironment(t *testing.T) {
 	t.Setenv("APP_READ_ONLY", "false")
 	t.Setenv("COOKIE_SECURE", "false")
 	t.Setenv("SERVICE_ROLE", "")
+	t.Setenv("CORE_AUTHORITY_URL", "http://127.0.0.1:1")
+	t.Setenv("CORE_AUTHORITY_ALLOW_INSECURE_DEV", "true")
+	t.Setenv("WORKER_CORE_TOKEN", strings.Repeat("c", 40))
+	t.Setenv("GATEWAY_ROLE_TOKEN", strings.Repeat("g", 40))
+	t.Setenv("CORE_DOCUMENT_TOKEN", strings.Repeat("i", 40))
 	t.Setenv("DATA_DIR", t.TempDir())
 	t.Setenv("IDENTITY_DIRECTORY_FILE", "")
 	t.Setenv("S3_ENDPOINT", "")
@@ -503,6 +509,7 @@ type workerCommandEnvironment struct {
 	roles     []string
 	modelHTTP *httptest.Server
 	docHTTP   *httptest.Server
+	coreHTTP  *httptest.Server
 	runtimes  []*bootstrap.Runtime
 	core      *bootstrap.Runtime
 	document  *bootstrap.Runtime
@@ -567,6 +574,16 @@ func newWorkerCommandEnvironment(t *testing.T, modelHandler http.Handler) *worke
 		t.Fatal("worker test actor is unavailable")
 	}
 	env.core = env.open(t, "core")
+	coreService, err := httpapi.ServiceHandler(env.core.Store, httpapi.Options{
+		Durable: true, ExperienceWorkerCredential: os.Getenv("WORKER_CORE_TOKEN"),
+		DocumentIntakeCredential: os.Getenv("CORE_DOCUMENT_TOKEN"),
+	}, "core", os.Getenv("GATEWAY_ROLE_TOKEN"))
+	if err != nil {
+		t.Fatalf("create Core test authority service (%T)", err)
+	}
+	env.coreHTTP = httptest.NewServer(coreService)
+	t.Setenv("CORE_AUTHORITY_URL", env.coreHTTP.URL)
+	t.Setenv("CORE_SERVICE_URL", env.coreHTTP.URL)
 	env.document = env.open(t, "document")
 	env.execution = env.open(t, "execution")
 	service, err := documentservice.New(env.document.Store, documentservice.Config{WorkerCredential: os.Getenv("WORKER_DOCUMENT_TOKEN"), IntakeCredential: "core-intake-test-private-credential-0000000000", CPUConcurrency: 1, OCRConcurrency: 1, QueueCapacity: 4, ParseTimeout: 5 * time.Second})
@@ -597,6 +614,9 @@ func (env *workerCommandEnvironment) close(migratorDSN string) {
 	if env.docHTTP != nil {
 		env.docHTTP.Close()
 	}
+	if env.coreHTTP != nil {
+		env.coreHTTP.Close()
+	}
 	if env.modelHTTP != nil {
 		env.modelHTTP.Close()
 	}
@@ -622,7 +642,16 @@ func (env *workerCommandEnvironment) close(migratorDSN string) {
 
 func (env *workerCommandEnvironment) createReview(t *testing.T) store.JobAcceptance {
 	t.Helper()
-	caseID, err := env.core.Store.CreateCase(env.actor, "Worker lifecycle test", "procurement_ict")
+	token, err := env.core.Store.EstablishSession(env.actor, "client")
+	if err != nil {
+		t.Fatalf("establish worker test admission session (%T)", err)
+	}
+	actor, _, err := env.core.Store.AuthenticateSession(env.ctx, token)
+	if err != nil {
+		t.Fatalf("resolve worker test admission session (%T)", err)
+	}
+	ctx := store.WithAdmissionSessionToken(env.ctx, token)
+	caseID, err := env.core.Store.CreateCase(actor, "Worker lifecycle test", "procurement_ict")
 	if err != nil {
 		t.Fatalf("create worker test case (%T)", err)
 	}
@@ -630,11 +659,11 @@ func (env *workerCommandEnvironment) createReview(t *testing.T) store.JobAccepta
 		{"procurement", "requirements.txt", "采购文件要求质保期为36个月。"},
 		{"draft_contract", "draft.txt", "拟签合同约定质保期为24个月。"},
 	} {
-		if _, err := env.document.Store.AddDocument(env.ctx, env.actor, caseID, document.role, document.filename, "text/plain", []byte(document.body)); err != nil {
+		if _, err := env.document.Store.AddDocument(ctx, actor, caseID, document.role, document.filename, "text/plain", []byte(document.body)); err != nil {
 			t.Fatalf("add worker test document (%T)", err)
 		}
 	}
-	accepted, err := env.execution.Store.StartReviewAsync(env.ctx, env.actor, caseID)
+	accepted, err := env.execution.Store.StartReviewAsync(ctx, actor, caseID)
 	if err != nil {
 		t.Fatalf("accept worker test review (%T)", err)
 	}

@@ -199,6 +199,11 @@ func TestDocumentIntakeUploadAuthenticatesActorAndReplays(t *testing.T) {
 	registerIntakeAuthority(resolver, foreignTicket, "demo-admin", accounts.LocalDemoTenant2, "demo-org-2", caseID, "internal-intake-foreign", "foreign.txt", foreignContent, "admin")
 	foreignType, foreignPayload := intakeUploadPayload(t, foreignTicket, caseID, "foreign.txt", []byte(foreignContent))
 	status, body = postInternalIntake(client, server.URL, testDocumentIntakeKey, foreignType, foreignPayload)
+	if status != http.StatusUnauthorized {
+		t.Fatalf("forged tenant identity status=%d body=%s", status, body)
+	}
+	registerIntakeAuthority(resolver, foreignTicket, "demo-tenant2-admin", accounts.LocalDemoTenant2, "demo-org-2", caseID, "internal-intake-foreign", "foreign.txt", foreignContent, "admin")
+	status, body = postInternalIntake(client, server.URL, testDocumentIntakeKey, foreignType, foreignPayload)
 	if status != http.StatusNotFound {
 		t.Fatalf("foreign tenant assertion status=%d body=%s", status, body)
 	}

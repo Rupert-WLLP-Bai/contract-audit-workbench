@@ -168,6 +168,8 @@ func configureExecutionCommandEnvironment(t *testing.T) {
 	t.Setenv("APP_READ_ONLY", "false")
 	t.Setenv("COOKIE_SECURE", "false")
 	t.Setenv("SERVICE_ROLE", "")
+	t.Setenv("CORE_AUTHORITY_URL", "http://127.0.0.1:1")
+	t.Setenv("CORE_AUTHORITY_ALLOW_INSECURE_DEV", "true")
 	t.Setenv("DATA_DIR", t.TempDir())
 	t.Setenv("IDENTITY_DIRECTORY_FILE", "")
 	t.Setenv("S3_ENDPOINT", "")
