@@ -26,6 +26,10 @@ import (
 // beginContextTx is the common Store transaction seam. Machine facts with no
 // human admission remain independent; human commands carry a private proof.
 func (s *Store) beginContextTx(ctx context.Context, options pgx.TxOptions) (pgx.Tx, error) {
+	return s.beginContextTxWithCaseFence(ctx, options, false)
+}
+
+func (s *Store) beginContextTxWithCaseFence(ctx context.Context, options pgx.TxOptions, caseFence bool) (pgx.Tx, error) {
 	// Preparation authority is not a general command capability. Its writes
 	// must go through a dedicated, narrowly scoped preparation transaction.
 	if scope, ok := model.DelegatedScopeFromContext(ctx); ok && (scope.Kind == "execution_prepare" || scope.Action == "embedded_prepare_parse") && options.AccessMode != pgx.ReadOnly {
@@ -48,11 +52,15 @@ func (s *Store) beginContextTx(ctx context.Context, options pgx.TxOptions) (pgx.
 			}
 		}
 	}
-	return s.beginFencedContextTx(ctx, options)
+	return s.beginFencedContextTxMode(ctx, options, caseFence)
 }
 
 // beginFencedContextTx is private to the two policy-checked entry points.
 func (s *Store) beginFencedContextTx(ctx context.Context, options pgx.TxOptions) (pgx.Tx, error) {
+	return s.beginFencedContextTxMode(ctx, options, false)
+}
+
+func (s *Store) beginFencedContextTxMode(ctx context.Context, options pgx.TxOptions, caseFence bool) (pgx.Tx, error) {
 	if _, ok := contextProof(ctx); !ok && options.AccessMode != pgx.ReadOnly {
 		if scope, delegated := model.DelegatedScopeFromContext(ctx); delegated && scope.Kind != "" {
 			user, err := s.operationUser(ctx, scope)
@@ -78,7 +86,7 @@ func (s *Store) beginFencedContextTx(ctx context.Context, options pgx.TxOptions)
 		return tx, nil
 	}
 	user, _ := ctx.Value(commandUserKey{}).(accounts.User)
-	f := &contextTx{Tx: tx, proof: proof, user: user, store: s}
+	f := &contextTx{Tx: tx, proof: proof, user: user, store: s, caseFence: caseFence && len(proof.operation) == 0 && proof.support == ""}
 	if err = f.recheck(ctx); err != nil {
 		_ = tx.Rollback(ctx)
 		return nil, err
@@ -115,9 +123,10 @@ func (s *Store) beginPreparationTx(ctx context.Context, scope model.DelegatedSco
 
 type contextTx struct {
 	pgx.Tx
-	proof commandProof
-	user  accounts.User
-	store *Store
+	proof     commandProof
+	user      accounts.User
+	store     *Store
+	caseFence bool
 }
 
 func (t *contextTx) recheck(ctx context.Context) error {
@@ -154,7 +163,11 @@ func (t *contextTx) recheck(ctx context.Context) error {
 	if t.proof.support != "" {
 		support = t.proof.support
 	}
-	_, err = t.Tx.Exec(ctx, `SELECT tenant_context_fence($1,$2,$3,NULL,$4::uuid)`, t.proof.digest, version, t.proof.revision, support)
+	if t.caseFence && support == nil {
+		_, err = t.Tx.Exec(ctx, `SELECT tenant_case_context_fence($1,$2,$3)`, t.proof.digest, version, t.proof.revision)
+	} else {
+		_, err = t.Tx.Exec(ctx, `SELECT tenant_context_fence($1,$2,$3,NULL,$4::uuid)`, t.proof.digest, version, t.proof.revision, support)
+	}
 	if err != nil {
 		return contextError(err)
 	}
@@ -204,7 +217,7 @@ func (t *contextTx) Begin(ctx context.Context) (pgx.Tx, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &contextTx{Tx: nested, proof: t.proof, user: t.user, store: t.store}, nil
+	return &contextTx{Tx: nested, proof: t.proof, user: t.user, store: t.store, caseFence: t.caseFence}, nil
 }
 
 // All human SQL is checked, not just text beginning with INSERT: writable CTEs

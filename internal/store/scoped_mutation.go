@@ -636,12 +636,16 @@ func (s *Store) loadScopedCaseState(ctx context.Context, tx pgx.Tx, caseID strin
 // scope comes from the trusted caller, exactly like the whole-state writer's.
 func (s *Store) scopedCaseMutation(ctx context.Context, user accounts.User, caseID string, fn func(*state) error) error {
 	ctx = commandContext(ctx, user)
-	return s.scopedCaseWrite(ctx, user, caseID, "", "", false, false, nil, fn)
+	return s.scopedCaseWriteMode(ctx, user, caseID, "", "", false, false, nil, fn, true)
 }
 
 // scopedCaseWrite optionally includes the case's review and business state and
 // preserves the governance, decision-key and attempt fences when required.
 func (s *Store) scopedCaseWrite(ctx context.Context, user accounts.User, caseID, attemptID, decisionKey string, full, governance bool, hook func(pgx.Tx) error, fn func(*state) error) (result error) {
+	return s.scopedCaseWriteMode(ctx, user, caseID, attemptID, decisionKey, full, governance, hook, fn, false)
+}
+
+func (s *Store) scopedCaseWriteMode(ctx context.Context, user accounts.User, caseID, attemptID, decisionKey string, full, governance bool, hook func(pgx.Tx) error, fn func(*state) error, caseFence bool) (result error) {
 	ctx = commandContext(ctx, user)
 	if ctx == nil {
 		return errors.New("case mutation context is nil")
@@ -658,7 +662,7 @@ func (s *Store) scopedCaseWrite(ctx context.Context, user accounts.User, caseID,
 	if err != nil {
 		return err
 	}
-	tx, err := s.beginContextTx(ctx, pgx.TxOptions{})
+	tx, err := s.beginContextTxWithCaseFence(ctx, pgx.TxOptions{}, caseFence)
 	if err != nil {
 		return err
 	}
