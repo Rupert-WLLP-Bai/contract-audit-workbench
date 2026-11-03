@@ -162,10 +162,12 @@ func TestValue(t *testing.T) { if Value != 1 { t.Fatal(Value) } }
         self.assertTrue(plan.web)
         self.assertTrue(plan.web_build)
 
-    def test_docs_and_public_assets_are_not_compiled(self):
+    def test_public_assets_require_web_build_without_go(self):
         plan = self.plan(check_fast.Change("M", "README.md"),
                          check_fast.Change("M", "web/public/logo.png"))
-        self.assertFalse(plan.go or plan.web or plan.python or plan.database)
+        self.assertFalse(plan.go or plan.python or plan.database)
+        self.assertTrue(plan.web)
+        self.assertTrue(plan.web_build)
 
     def test_python_module_selects_only_related_tests(self):
         plan = self.plan(check_fast.Change("M", "scripts/tool.py"))
@@ -274,6 +276,16 @@ func TestValue(t *testing.T) { if Value != 1 { t.Fatal(Value) } }
         removed = self.plan(check_fast.Change("D", "internal/contractmoney/old file.go"))
         self.assertTrue(moved.architecture)
         self.assertTrue(removed.architecture)
+
+    def test_every_internal_go_package_triggers_architecture(self):
+        for path in ('internal/coreauthority/transport.go', 'internal/newbusiness/new.go'):
+            with self.subTest(path=path):
+                self.assertTrue(self.plan(check_fast.Change('M', path)).architecture)
+
+    def test_wire_python_test_prepares_the_typescript_consumers(self):
+        with patch.object(check_fast, 'python_tests_for', return_value=['scripts/test_generate_openapi_types.py']):
+            plan = self.plan(check_fast.Change('M', 'scripts/generate_openapi_types.py'))
+        self.assertTrue(plan.web)
 
     def test_deleted_go_file_keeps_format_and_compile_scope(self):
         plan = self.plan(check_fast.Change("D", "internal/leaf/leaf.go"))
@@ -923,7 +935,7 @@ class CliBoundaryTests(unittest.TestCase):
         self.assertEqual(appended[0], "keep=1")
         self.assertEqual(appended[1:], ["go=true", "web=true", "python=true",
                                         "database=false", "docs_build=false",
-                                        "architecture=false", "ui_terminology=false",
+                                        "architecture=true", "ui_terminology=false", "workflow=false",
                                         "poppler=false",
                                         "legal_assets=false"])
 
@@ -1093,6 +1105,7 @@ func TestValue(t *testing.T) { if Value != 2 { t.Fatal(Value) } }
         new_base = commit(self.root, "add tool without unit tests")
         write(self.root, "internal/leaf/leaf.go", "package leaf\n")
         binaries, marker = self.fake_binaries()
+        self.fake_go_with_unit_failure(binaries / "go")
         out = Path(self.temporary.name) / "fast-out"
         env = script_env(PATH=str(binaries) + os.pathsep + os.environ["PATH"],
                          FAKE_MARKER=str(marker))
@@ -1119,6 +1132,17 @@ func TestValue(t *testing.T) { if Value != 2 { t.Fatal(Value) } }
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("inside the repository", result.stderr)
         self.assertFalse((self.root / "fast-out").exists())
+
+
+class RequiredPythonEvidenceTests(unittest.TestCase):
+    def test_skip_and_expected_failure_cannot_count_as_pass(self):
+        for summary in ('OK (skipped=1)', 'OK (expected failures=1)'):
+            with self.subTest(summary=summary):
+                _, error = check_fast._unittest_evidence('Ran 1 test in 0.001s\n\n' + summary + '\n')
+                self.assertTrue(error)
+
+    def test_missing_success_summary_is_not_evidence(self):
+        self.assertTrue(check_fast._unittest_evidence('Ran 1 test in 0.001s\n')[1])
 
 
 if __name__ == "__main__":

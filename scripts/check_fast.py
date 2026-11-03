@@ -46,7 +46,7 @@ from go_test_scope import discover_unit_test_packages, unit_test_environment
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_BASE = "origin/main"
 PLAN_KEYS = ("go", "web", "python", "database", "docs_build", "architecture",
-             "ui_terminology")
+             "ui_terminology", "workflow")
 GITHUB_KEYS = PLAN_KEYS + ("poppler", "legal_assets")
 POPPLER_TEST_PACKAGES = frozenset({"./internal/documentparse"})
 LEGAL_ASSET_TEST_PACKAGES = frozenset({"./internal/httpapi", "./internal/legalnorm"})
@@ -183,6 +183,7 @@ class Plan:
     docs_build: bool = False
     architecture: bool = False
     ui_terminology: bool = False
+    workflow: bool = False
     go_build_all: bool = False
     web_build: bool = False
     go_format_files: list[str] = field(default_factory=list)
@@ -205,6 +206,7 @@ class Plan:
             "docs_build": self.docs_build,
             "architecture": self.architecture,
             "ui_terminology": self.ui_terminology,
+            "workflow": self.workflow,
             "go_compile": "all" if self.go_build_all else "affected",
             "go_build_all": self.go_build_all,
             "go_format_files": list(self.go_format_files),
@@ -827,9 +829,9 @@ def _web_relevant(path: str) -> bool:
     if not path.startswith("web/"):
         return False
     relative = path[len("web/"):]
-    if not relative or relative.startswith(("dist/", "node_modules/", "public/")):
+    if not relative or relative.startswith(("dist/", "node_modules/")):
         return False
-    if relative.startswith(("src/", "e2e/")):
+    if relative.startswith(("src/", "e2e/", "public/")):
         return True
     return PurePosixPath(relative).name in WEB_BUILD_FILES or \
         PurePosixPath(relative).suffix in WEB_SOURCE_SUFFIXES
@@ -840,7 +842,7 @@ def _web_build_config(path: str) -> bool:
         return False
     relative = path[len("web/"):]
     name = PurePosixPath(relative).name
-    return name in WEB_BUILD_FILES or name.startswith(("tsconfig", "vite.config",
+    return relative.startswith("public/") or name in WEB_BUILD_FILES or name.startswith(("tsconfig", "vite.config",
                                                        "vitest.config"))
 
 
@@ -851,6 +853,8 @@ def _docs_build_relevant(path: str) -> bool:
 
 
 def _architecture_relevant(path: str) -> bool:
+    if path.startswith("internal/") and path.endswith(".go"):
+        return True
     if path.startswith(("scripts/architecture/", "internal/contractmoney/",
                         "internal/modelgateway/", "internal/agentflow/",
                         "internal/advisorycontract/", "internal/advisory/")):
@@ -968,6 +972,8 @@ def build_plan(root: Path, changes: Iterable[Change]) -> Plan:
 
     for change in changes:
         for path in change.affected_paths():
+            if path.startswith('.github/workflows/') and path.endswith(('.yml', '.yaml')):
+                plan.workflow = True
             if path.endswith(".go"):
                 plan.go = True
                 package_dir = _go_package_dir(path)
@@ -1029,6 +1035,11 @@ def build_plan(root: Path, changes: Iterable[Change]) -> Plan:
     changed_python = sorted({path for change in changes
                              for path in change.affected_paths() if path.endswith(".py")})
     plan.python_tests = python_tests_for(root, changed_python)
+    if 'scripts/test_generate_openapi_types.py' in plan.python_tests:
+        plan.web = True
+        plan.reasons.add('wire-typescript-consumers')
+    if 'scripts/test_ci_workflows.py' in plan.python_tests:
+        plan.workflow = True
     plan.database_tests = _database_targets(changes)
     plan.database = bool(plan.database_tests)
     if plan.database:
@@ -1088,6 +1099,10 @@ def _check_env(database: bool = False) -> dict[str, str]:
 def _build_checks(plan: Plan, root: Path, python: str, out: Path, base: str | None = None) -> list[FastCheck]:
     checks: list[FastCheck] = []
     env = _check_env()
+    if plan.workflow:
+        checks.append(FastCheck('workflow-syntax',
+                                (_resolve_binary('actionlint'), '-shellcheck=', '-pyflakes='),
+                                cwd=root, env=env, timeout=120))
     if plan.architecture:
         _ensure_outside_repo(root, out)
         checks.append(FastCheck(
@@ -1254,12 +1269,21 @@ def _go_test_evidence(rows: Iterable[dict]) -> dict:
 
 
 def _unittest_evidence(output: str) -> tuple[int, str]:
-    match = re.search(r"(?m)^Ran (\d+) tests? in ", output)
-    if not match:
+    matches = list(re.finditer(r"(?m)^Ran (\d+) tests? in ", output))
+    if not matches:
         return 0, "unittest did not report an executed test count"
-    count = int(match.group(1))
+    count = int(matches[-1].group(1))
     if count == 0:
         return 0, "unittest executed no tests"
+    summaries = re.findall(r"(?m)^OK(?: \(([^\n]*)\))?\s*$", output)
+    if not summaries:
+        return count, "unittest did not report a successful result"
+    skipped = re.search(r'\bskipped=(\d+)', summaries[-1])
+    if skipped and int(skipped.group(1)):
+        return count - int(skipped.group(1)), 'unittest skipped required tests: ' + skipped.group(1)
+    expected = re.search(r'\bexpected failures=(\d+)', summaries[-1])
+    if expected and int(expected.group(1)):
+        return count, 'unittest contains expected failures: ' + expected.group(1)
     return count, ""
 
 
@@ -1426,7 +1450,7 @@ def execute_check(check: FastCheck, logs: Path, root: Path) -> CheckResult:
                 count, problem = _unittest_evidence(output)
                 evidence = {"tests": count}
                 if problem:
-                    status, reason = "FAIL", problem
+                    status, reason = ("NOT_RUN" if problem.startswith('unittest skipped') else "FAIL"), problem
     return CheckResult(check.name, status, round(time.monotonic() - started, 3),
                        command_text, str(log_path), reason, evidence)
 
