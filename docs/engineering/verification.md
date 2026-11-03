@@ -69,3 +69,13 @@ go run ./cmd/legalstatuscheck -capture-dir /tmp/legal-status-<ts>
 完整 `static`、`go`、`web`、`coverage`、`browser` 五阶段由 GitHub Actions 的 `workflow_dispatch` 执行。入口固定目标 SHA；五个阶段全部 `success` 才是完整 PASS。`skipped`、`cancelled`、失败和未运行阶段都不能算完整通过。普通 `main` 推送不自动执行完整五阶段。
 
 Phase 0–3 只做受影响局部检查。完整 race、coverage、浏览器、真实模型/OCR、容量、故障和恢复矩阵集中在固定候选窗口。检查失败后只重跑相关范围，避免重复已取得的同范围证据。
+
+## 工作流启动与完整验收
+
+修改工作流后先用固定版本 `actionlint` 检查表达式所在位置；例如 `runner.temp` 可以用于 step 的 `env`，不能用于 job 级 `env`。PR 快检查的 `workflow` 计划标志会准备并执行语法检查，避免其它门禁通过但完整工作流根本无法创建任务。
+
+完整入口的 `validation_only=true` 只运行固定 SHA 解析和工作流语法任务；五阶段与最终完整质量门禁保持跳过，结果是完整验收 `NOT_RUN`。默认值为 false，完整质量仍要求准备、语法与 static/go/web/coverage/browser 全部成功。启动验证和完整运行使用不同并发组，互不取消。
+
+完整 static 阶段按文件独立进程递归发现 Python 测试，包含架构和元信息子目录。空范围、跳过、预期失败或失败都不能成为 PASS；需要 TypeScript 的 Python 用例会准备真实 web 工具链。实际架构守卫读取已固定的目标 BASE 配置与完整 Git 历史。
+
+确定性五阶段使用受控模型夹具；显式真实模型检查单独记录实际请求、模型身份和退出码。不同文本/OCR模型通过私密测试环境的 `LLM_MODEL`、`OCR_MODEL`、`LLM_BASE_URL` 指定，不能用模型目录 GET 成功代替真实调用，也不能把两类结果拼成未执行的整体验收。

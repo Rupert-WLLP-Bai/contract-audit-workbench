@@ -460,6 +460,8 @@ class RegistryTests(unittest.TestCase):
             "quality-tests": "static",
             "infra-tests": "static",
             "fault-harness-tests": "static",
+            "workflow-syntax": "static",
+            "architecture-dependencies": "static",
             "format": "static",
             "modules": "static",
             "vet": "static",
