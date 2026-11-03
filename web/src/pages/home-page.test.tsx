@@ -22,6 +22,7 @@ import { MemoryRouter } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { setSessionIdentity } from "../api/http";
 import type {
+  CaseDetail,
   WorkbenchCase,
   WorkbenchDashboard,
   WorkbenchPeriod,
@@ -242,6 +243,12 @@ class HomeService {
     Record<WorkbenchPeriod, Partial<WorkbenchDashboard>>
   > = {};
   snapshotFailures: number[] = [];
+  caseDetail: CaseDetail | null = null;
+  readinessResponse: unknown = null;
+  readinessFailure: number | null = null;
+  readinessGate: ReturnType<typeof Promise.withResolvers<void>> | null = null;
+  caseDetailGate: ReturnType<typeof Promise.withResolvers<void>> | null = null;
+  reviewGate: ReturnType<typeof Promise.withResolvers<void>> | null = null;
   createFailures: number[] = [];
   snapshotGate: ReturnType<typeof Promise.withResolvers<void>> | null = null;
   completionGate: ReturnType<typeof Promise.withResolvers<void>> | null = null;
@@ -274,6 +281,19 @@ class HomeService {
       });
     }
     const parts = url.pathname.split("/");
+    if (parts[2] === "cases" && parts.length === 4 && method === "GET") {
+      if (this.caseDetailGate) await this.caseDetailGate.promise;
+      return this.caseDetail ? json(this.caseDetail) : json({ error: { message: "未匹配的请求" } }, 404);
+    }
+    if (parts[2] === "cases" && parts[4] === "review-readiness" && method === "GET") {
+      if (this.readinessGate) await this.readinessGate.promise;
+      if (this.readinessFailure) return json({ error: { message: "准备状态不可用" } }, this.readinessFailure);
+      return json(this.readinessResponse);
+    }
+    if (parts[2] === "cases" && parts[4] === "reviews" && method === "GET") {
+      if (this.reviewGate) await this.reviewGate.promise;
+      return json({ error: { message: "审查历史已撤权" } }, 403);
+    }
     if (parts[4] === "tasks" && method === "POST") {
       const failure = this.createFailures.shift();
       if (failure)
@@ -357,7 +377,56 @@ function open(service = new HomeService()) {
       </MemoryRouter>
     </QueryClientProvider>,
   );
-  return { service, user: userEvent.setup() };
+  return { service, client, user: userEvent.setup() };
+}
+
+function caseDetail(caseId = "case-1", updatedAt = at): CaseDetail {
+  return {
+    id: caseId,
+    title: "专线采购合同",
+    contract_type: "procurement_ict",
+    created_at: at,
+    updated_at: updatedAt,
+    documents: [],
+    materials: [],
+    material_versions: [],
+    material_selection: { version: 1, status: "not_applicable", document_ids: [], candidate_document_ids: [], primary_material_id: null },
+    latest_run: null,
+    finding_counts: null,
+    activity: [],
+    revision_pending: false,
+    configuration_pending: false,
+    subject_context_changed_after_latest_run: false,
+    members: [],
+    business_line: "ENT",
+    scenario: "telecom_dedicated_line",
+    business_status: "active",
+    generations: [],
+    remediations: [],
+    reports: [],
+    archives: [],
+    archived_at: null,
+  };
+}
+
+function readiness(blocker = "required_materials_missing", message = "缺少主合同") {
+  return {
+    case_id: "case-1",
+    revision: "a".repeat(64),
+    business_at: null,
+    can_start: false,
+    material_selection_version: 1,
+    materials: [],
+    scopes: [{
+      id: "full_review",
+      status: "blocked",
+      can_start: false,
+      rule_pack: null,
+      rule_set: null,
+      checks: [],
+      blockers: [{ code: blocker, status: "blocked", message, missing_dependencies: [], next_action: "补齐后重试" }],
+    }],
+  };
 }
 
 function taskPanel() {
@@ -463,6 +532,185 @@ describe("HomePage snapshot consumers", () => {
       .closest("li");
     expect(dueOnlyCase).toHaveTextContent("案件期限");
     expect(dueOnlyCase).not.toHaveTextContent("高风险");
+  });
+
+  it("loads next-step details only for the case the user expands and keeps write actions out of the workbench", async () => {
+    const service = new HomeService();
+    const { user } = open(service);
+    const caseWork = await screen.findByRole("region", { name: "按案件处理" });
+
+    expect(service.requests.filter((request) => request.path.includes("/review-readiness"))).toHaveLength(0);
+    const targetCase = within(caseWork).getByRole("link", { name: "专线采购合同" }).closest("li");
+    expect(targetCase).not.toBeNull();
+    await user.click(within(targetCase!).getByRole("button", { name: "查看实际下一步" }));
+
+    await screen.findByRole("heading", { name: "案件下一步不可用" });
+    expect(service.requests.filter((request) => request.path === "/api/cases/case-1")).toHaveLength(1);
+    expect(service.requests.filter((request) => request.path.includes("/review-readiness"))).toHaveLength(0);
+    expect(screen.queryByRole("button", { name: "开始审查" })).not.toBeInTheDocument();
+  });
+
+  it("shows server readiness links with the selected case route", async () => {
+    const service = new HomeService();
+    service.caseDetail = caseDetail();
+    service.readinessResponse = readiness();
+    const { user } = open(service);
+    const caseWork = await screen.findByRole("region", { name: "按案件处理" });
+    const targetCase = within(caseWork).getByRole("link", { name: "专线采购合同" }).closest("li");
+
+    await user.click(within(targetCase!).getByRole("button", { name: "查看实际下一步" }));
+
+    const continueLink = await screen.findByRole("link", { name: "转到材料集合" });
+    expect(continueLink).toHaveAttribute("href", "/cases/case-1#case-materials");
+    expect(service.requests.filter((request) => request.path === "/api/cases/case-1")).toHaveLength(1);
+    expect(service.requests.filter((request) => request.path.startsWith("/api/cases/case-1/review-readiness"))).toHaveLength(1);
+  });
+
+  it("fails closed when the case detail response belongs to another case", async () => {
+    const service = new HomeService();
+    service.caseDetail = caseDetail("case-2");
+    service.caseDetail.latest_run = { id: "wrong-run", state: "completed", updated_at: at };
+    service.readinessResponse = readiness();
+    const { user } = open(service);
+    const caseWork = await screen.findByRole("region", { name: "按案件处理" });
+    const targetCase = within(caseWork).getByRole("link", { name: "专线采购合同" }).closest("li");
+
+    await user.click(within(targetCase!).getByRole("button", { name: "查看实际下一步" }));
+
+    expect(await screen.findByRole("heading", { name: "案件身份不匹配" })).toBeInTheDocument();
+    expect(service.requests.filter((request) => request.path.startsWith("/api/cases/case-1/review-readiness"))).toHaveLength(0);
+    expect(service.requests.filter((request) => request.path === "/api/cases/case-1/reviews/wrong-run")).toHaveLength(0);
+  });
+
+  it("refreshes readiness when case material identity changes and does not keep the previous projection while loading", async () => {
+    const service = new HomeService();
+    const originalCase = caseDetail();
+    originalCase.documents = [{
+      id: "doc-1",
+      role: "primary_contract",
+      filename: "contract.pdf",
+      media_type: "application/pdf",
+      digest: "b".repeat(64),
+      size: 1,
+      parse_status: "pending",
+      parse_error: null,
+      created_at: at,
+      parsed_document: null,
+    }];
+    service.caseDetail = originalCase;
+    service.readinessResponse = readiness("required_materials_missing", "旧材料缺项");
+    const { user, client } = open(service);
+    const caseWork = await screen.findByRole("region", { name: "按案件处理" });
+    const targetCase = within(caseWork).getByRole("link", { name: "专线采购合同" }).closest("li");
+    await user.click(within(targetCase!).getByRole("button", { name: "查看实际下一步" }));
+    expect(await screen.findByText("旧材料缺项")).toBeInTheDocument();
+
+    service.caseDetail = {
+      ...originalCase,
+      material_selection: { ...originalCase.material_selection!, version: 2 },
+      documents: originalCase.documents.map((document) => ({ ...document, parse_status: "completed" })),
+    };
+    service.readinessResponse = readiness("required_materials_missing", "新材料缺项");
+    service.caseDetailGate = Promise.withResolvers<void>();
+    service.readinessGate = Promise.withResolvers<void>();
+    const invalidation = client.invalidateQueries({ queryKey: ["cases", "case-1"], exact: true });
+    await screen.findByRole("heading", { name: "正在读取案件下一步" });
+    expect(screen.queryByText("旧材料缺项")).not.toBeInTheDocument();
+    service.caseDetailGate.resolve();
+    service.caseDetailGate = null;
+    await invalidation;
+
+    await screen.findByRole("heading", { name: "等待服务端返回最新准备清单" });
+    expect(screen.queryByText("旧材料缺项")).not.toBeInTheDocument();
+    expect(service.requests.filter((request) => request.path.startsWith("/api/cases/case-1/review-readiness"))).toHaveLength(2);
+    service.readinessGate.resolve();
+    service.readinessGate = null;
+    expect(await screen.findByText("新材料缺项")).toBeInTheDocument();
+  });
+
+  it("clears a previously ready state when readiness is revoked", async () => {
+    const service = new HomeService();
+    service.caseDetail = caseDetail();
+    const ready = readiness();
+    ready.can_start = true;
+    ready.scopes[0]!.status = "ready";
+    ready.scopes[0]!.can_start = true;
+    ready.scopes[0]!.blockers = [];
+    service.readinessResponse = ready;
+    const { user, client } = open(service);
+    const caseWork = await screen.findByRole("region", { name: "按案件处理" });
+    const targetCase = within(caseWork).getByRole("link", { name: "专线采购合同" }).closest("li");
+    await user.click(within(targetCase!).getByRole("button", { name: "查看实际下一步" }));
+    await screen.findByRole("heading", { name: "可以开始首次审查" });
+    const continueLink = screen.getByRole("link", { name: "打开案件继续" });
+    expect(continueLink).toHaveAttribute("href", "/cases/case-1#case-next-step-title");
+    expect(screen.queryByRole("link", { name: "开始审查" })).not.toBeInTheDocument();
+
+    service.readinessFailure = 403;
+    await client.invalidateQueries({ queryKey: ["cases", "case-1", "review-readiness"] });
+
+    expect(await screen.findByRole("heading", { name: "无法确认是否可以开始审查" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "可以开始首次审查" })).not.toBeInTheDocument();
+  });
+
+  it("drops the selected next step when role or active context version changes", async () => {
+    const service = new HomeService();
+    service.caseDetail = caseDetail();
+    service.readinessResponse = readiness();
+    const { user, client } = open(service);
+    const caseWork = await screen.findByRole("region", { name: "按案件处理" });
+    const targetCase = within(caseWork).getByRole("link", { name: "专线采购合同" }).closest("li");
+    await user.click(within(targetCase!).getByRole("button", { name: "查看实际下一步" }));
+    expect(await screen.findByText("缺少主合同")).toBeInTheDocument();
+
+    client.setQueryData(["session", "client"], {
+      ...session,
+      actor: {
+        ...session.actor,
+        role: "viewer",
+      },
+      active_context: { ...session.active_context, context_version: "2" },
+    });
+
+    expect(await within(targetCase!).findByRole("button", { name: "查看实际下一步" })).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByText("缺少主合同")).not.toBeInTheDocument();
+  });
+
+  it("hides cached remediation history while it is revalidated and after revocation", async () => {
+    const service = new HomeService();
+    const detail = caseDetail();
+    detail.latest_run = { id: "run-1", state: "completed", updated_at: at };
+    detail.finding_counts = { conflict: 0, insufficient: 0, total: 1, undecided: 0 };
+    detail.remediations = [{
+      id: "remediation-1",
+      case_id: "case-1",
+      run_id: "run-1",
+      attempt_id: "attempt-1",
+      finding_ids: ["finding-1"],
+      assignee_id: "me",
+      due_at: at,
+      measure: "补充整改材料",
+      status: "submitted",
+      version: 1,
+      document_ids: [],
+      reason: "",
+      verification_run_id: null,
+      verification_attempt_id: null,
+      created_at: at,
+      updated_at: at,
+    }];
+    service.caseDetail = detail;
+    service.reviewGate = Promise.withResolvers<void>();
+    const { user, client } = open(service);
+    client.setQueryData(["cases", "case-1", "review-history", "run-1"], []);
+    const caseWork = await screen.findByRole("region", { name: "按案件处理" });
+    const targetCase = within(caseWork).getByRole("link", { name: "专线采购合同" }).closest("li");
+    await user.click(within(targetCase!).getByRole("button", { name: "查看实际下一步" }));
+
+    expect(await screen.findByRole("heading", { name: "等待审查与执行历史" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "经办已提交修改稿，等待复核" })).not.toBeInTheDocument();
+    service.reviewGate.resolve();
+    expect(await screen.findByRole("heading", { name: "审查历史没有加载" })).toBeInTheDocument();
   });
 
   it("shows a scoped empty state and labels unknown severity as unknown", async () => {

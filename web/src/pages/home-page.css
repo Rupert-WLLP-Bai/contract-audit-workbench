@@ -238,6 +238,17 @@
   font-size: 12px;
   white-space: nowrap;
 }
+.home-case-work-next-step {
+  grid-column: 1;
+  grid-row: 3;
+  align-self: center;
+  justify-self: start;
+  white-space: nowrap;
+}
+.home-case-work-list > li > .case-next-step {
+  grid-column: 1 / -1;
+  width: 100%;
+}
 .home-case-work-note {
   margin: 12px 0 0;
   color: var(--text-secondary, var(--text-secondary));
@@ -637,6 +648,12 @@
 @media (max-width: 960px) {
   .home-case-work-list {
     grid-template-columns: minmax(0, 1fr);
+  }
+  .home-case-work-list > li > .home-case-work-next-step,
+  .home-case-work-list > li > .home-case-work-open {
+    grid-column: 1 / -1;
+    grid-row: auto;
+    justify-self: start;
   }
   .home-content-grid {
     grid-template-columns: minmax(0, 1fr);

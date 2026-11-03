@@ -32,6 +32,7 @@ import { IntakePrimaryContract } from "../components/intake-primary-contract";
 import { IntakePendingList } from "../components/intake-pending-list";
 import type { IntakeContinuationSelection } from "../features/intake/intake-continuation";
 import { StatusText } from "../components/status-text";
+import { WorkbenchCaseNextStep } from "../components/workbench-case-next-step";
 import {
   caseHref,
   formatDateTime,
@@ -275,16 +276,33 @@ export function HomePage() {
     actorScope: string;
     selection: IntakeContinuationSelection;
   } | null>(null);
+  const [selectedNextStep, setSelectedNextStep] = useState<{
+    actorScope: string;
+    caseId: string;
+  } | null>(null);
   const snapshot = useWorkbench(period);
   const session = useSession();
   const actor = session.data ?? null;
   const intakeActorScope = actor
     ? [actor.audience, actor.tenant_id, actor.org_id, actor.id].join("\u0000")
     : "";
+  const nextStepActorScope = actor
+    ? [actor.audience, actor.tenant_id, actor.org_id, actor.id, actor.role, actor.active_context?.context_version ?? ""].join("\u0000")
+    : "";
   const activeIntakeSelection =
     selectedIntake?.actorScope === intakeActorScope
       ? selectedIntake.selection
       : null;
+  const activeNextStepCaseId =
+    selectedNextStep?.actorScope === nextStepActorScope
+      ? selectedNextStep.caseId
+      : null;
+  const nextStepActorScopeRef = useRef(nextStepActorScope);
+  useEffect(() => {
+    if (nextStepActorScopeRef.current === nextStepActorScope) return;
+    nextStepActorScopeRef.current = nextStepActorScope;
+    setSelectedNextStep(null);
+  }, [nextStepActorScope]);
   const intakeActorScopeRef = useRef(intakeActorScope);
   useEffect(() => {
     if (intakeActorScopeRef.current === intakeActorScope) return;
@@ -296,6 +314,7 @@ export function HomePage() {
     setTaskDue("");
     setShowTaskForm(false);
     setTaskFilter("mine");
+    setSelectedNextStep(null);
   }, [intakeActorScope]);
   const createTask = useCreateWorkbenchTask(taskCaseId);
   const updateTask = useUpdateWorkbenchTask();
@@ -620,6 +639,21 @@ export function HomePage() {
                   ))}
                   {caseTasks.length === 0 && caseRemediations.length === 0 && (item.severity === "high" || item.severity === "critical") ? <span>打开案件查看风险详情</span> : null}
                 </div>
+                <Button
+                  className="home-case-work-next-step"
+                  htmlType="button"
+                  aria-expanded={activeNextStepCaseId === item.id}
+                  onClick={() => setSelectedNextStep((current) =>
+                    current?.actorScope === nextStepActorScope && current.caseId === item.id
+                      ? null
+                      : { actorScope: nextStepActorScope, caseId: item.id },
+                  )}
+                >
+                  {activeNextStepCaseId === item.id ? "收起实际下一步" : "查看实际下一步"}
+                </Button>
+                {activeNextStepCaseId === item.id ? (
+                  <WorkbenchCaseNextStep key={`${nextStepActorScope}:${item.id}`} caseId={item.id} />
+                ) : null}
                 <Link className="home-case-work-open" to={caseHref(item.id, null)}>打开案件</Link>
               </li>
             ))}
