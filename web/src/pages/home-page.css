@@ -191,6 +191,7 @@
 .home-case-work-list > li {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
+  align-content: start;
   align-items: start;
   gap: 8px 16px;
   padding: 14px 0;
