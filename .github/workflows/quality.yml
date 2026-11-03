@@ -189,6 +189,21 @@ jobs:
           command -v pdfimages
           command -v pdftoppm
           test -d /usr/share/poppler/cMap
+      - name: Size isolated PostgreSQL lock capacity
+        env:
+          TEST_PG_CONTAINER: ${{ job.services.postgres.id }}
+        run: |
+          set -euo pipefail
+          docker exec "$TEST_PG_CONTAINER" psql -U contractaudit -d postgres -c "ALTER SYSTEM SET max_locks_per_transaction = '512'"
+          docker restart "$TEST_PG_CONTAINER"
+          for attempt in $(seq 1 60); do
+            if docker exec "$TEST_PG_CONTAINER" pg_isready -U contractaudit -d postgres >/dev/null 2>&1; then
+              exit 0
+            fi
+            sleep 1
+          done
+          docker logs "$TEST_PG_CONTAINER"
+          exit 1
       - name: Provision test database role
         env:
           PGHOST: 127.0.0.1
@@ -387,6 +402,21 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y postgresql-client
           bun x playwright install --with-deps chromium
+      - name: Size isolated PostgreSQL lock capacity
+        env:
+          TEST_PG_CONTAINER: ${{ job.services.postgres.id }}
+        run: |
+          set -euo pipefail
+          docker exec "$TEST_PG_CONTAINER" psql -U contractaudit -d postgres -c "ALTER SYSTEM SET max_locks_per_transaction = '512'"
+          docker restart "$TEST_PG_CONTAINER"
+          for attempt in $(seq 1 60); do
+            if docker exec "$TEST_PG_CONTAINER" pg_isready -U contractaudit -d postgres >/dev/null 2>&1; then
+              exit 0
+            fi
+            sleep 1
+          done
+          docker logs "$TEST_PG_CONTAINER"
+          exit 1
       - name: Provision test database role
         env:
           PGHOST: 127.0.0.1
