@@ -5,8 +5,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-31
-// Updated: 2026-10-31
-// Revision: r1
+// Updated: 2026-11-03
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -181,7 +181,7 @@ func TestBrowserD3SubjectControlledSourceSOD(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { stopGroup(vite) })
-	waitHTTP(t, webURL+"/")
+	waitViteReady(t, webURL)
 	ctx, cancel := context.WithTimeout(context.Background(), 180*time.Second)
 	defer cancel()
 	env := append(os.Environ(),

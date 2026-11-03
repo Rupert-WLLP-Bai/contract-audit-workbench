@@ -5,8 +5,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-10-31
-// Revision: r1
+// Updated: 2026-11-03
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -15,6 +15,7 @@ package e2e_test
 import (
 	"context"
 	"errors"
+	"io"
 	"net"
 	"net/http"
 	"os"
@@ -176,6 +177,55 @@ func waitHTTP(t *testing.T, url string) {
 		time.Sleep(200 * time.Millisecond)
 	}
 	t.Fatalf("server did not answer %s", url)
+}
+
+// waitViteReady validates the route module used by browser journeys, not only
+// the HTML shell. This exposes Vite transform/optimizer failures before the
+// browser starts and shares the existing startup deadline.
+func waitViteReady(t *testing.T, baseURL string) {
+	t.Helper()
+	baseURL = strings.TrimRight(baseURL, "/")
+	client := &http.Client{Timeout: 5 * time.Second}
+	deadline := time.Now().Add(20 * time.Second)
+	ctx, cancel := context.WithDeadline(context.Background(), deadline)
+	defer cancel()
+	get := func(path string) (*http.Response, error) {
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, baseURL+path, nil)
+		if err != nil {
+			return nil, err
+		}
+		return client.Do(req)
+	}
+	var rootStatus, moduleStatus int
+	var contentType string
+	var lastErr error
+	for time.Now().Before(deadline) {
+		root, err := get("/")
+		if err != nil {
+			lastErr = err
+		} else {
+			rootStatus = root.StatusCode
+			root.Body.Close()
+			if rootStatus == http.StatusOK {
+				module, moduleErr := get("/src/pages/case-detail-page.tsx")
+				if moduleErr != nil {
+					lastErr = moduleErr
+				} else {
+					moduleStatus = module.StatusCode
+					contentType = module.Header.Get("Content-Type")
+					_, bodyErr := io.Copy(io.Discard, module.Body)
+					module.Body.Close()
+					if bodyErr != nil {
+						lastErr = bodyErr
+					} else if moduleStatus == http.StatusOK && strings.Contains(strings.ToLower(contentType), "javascript") {
+						return
+					}
+				}
+			}
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+	t.Fatalf("Vite app module was not ready: root=%d module=%d content-type=%q error=%v", rootStatus, moduleStatus, contentType, lastErr)
 }
 
 func stopGroup(cmd *exec.Cmd) {
