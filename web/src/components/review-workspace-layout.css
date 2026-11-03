@@ -1,3 +1,13 @@
+/* File metadata (manifest mirror): */
+/* Purpose: Styles the task-focused review views and collapsible secondary controls while preserving readable source and finding panes at desktop and narrow widths. */
+/* Author: Bai Junhao <baijunhao@cq.chinamobile.com> */
+/* Contact: +86 13617696321 */
+/* Created: 2026-11-03 */
+/* Updated: 2026-11-03 */
+/* Revision: r1 */
+/* Copyright: See LICENSE */
+/* End file metadata. */
+
 .review-workspace-view-switch {
   display: flex;
   flex-wrap: wrap;
