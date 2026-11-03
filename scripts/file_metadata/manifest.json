@@ -67894,12 +67894,12 @@
         "value": "2026-11-03",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "817fe4f5fe33915075e2ccfa1413384fc994a394",
+          "commit": "f0359764cb52a2af05749d32c81a8583f9cf9ae2",
           "path": "web/src/pages/contracts-page.tsx",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r3",
+      "revision": "r4",
       "copyright": [
         {
           "holder": "Bai Junhao",
