@@ -213,7 +213,7 @@ function objectFor(evaluation: Evaluation, id: string): ObjectResult {
 }
 async function exactBoundary(target: Page, body: Record<string, unknown>, objectID: string, cutoff: string, key: string): Promise<ObjectResult> {
   const response = await target.request.post(`${web}/api/cases/${caseID}/fulfillment-evaluations`, {
-    headers: { "Idempotency-Key": key, Origin: web }, data: { ...body, evidence_cutoff_at: cutoff, scope: { kind: "explicit_subset", service_object_ids: [objectID] } },
+    headers: { "Idempotency-Key": key, Origin: web, ...await browserSessionCommandHeaders(target.request, web) }, data: { ...body, evidence_cutoff_at: cutoff, scope: { kind: "explicit_subset", service_object_ids: [objectID] } },
   });
   assert.equal(response.status(), 201, `boundary ${key} failed: ${await response.text()}`);
   const result = await response.json() as Evaluation;
@@ -254,15 +254,16 @@ async function publishLaterLegalVersion(browserInstance: Browser): Promise<Knowl
   try {
     const login = await admin.request.post(`${web}/api/session`, { data: { username: "demo-admin", password: "admin-demo", audience: "admin" } });
     assert.equal(login.status(), 200, "admin session for the explicit knowledge update failed");
+    const headers = { Origin: web, ...await browserSessionCommandHeaders(admin.request, web, "admin") };
     const content: unknown = JSON.parse(await readFile(updatePath, "utf8"));
-    const created = await admin.request.post(`${web}/api/admin/governed-knowledge`, { headers: { Origin: web }, data: { content, idempotency_key: "object-history-later-create" } });
+    const created = await admin.request.post(`${web}/api/admin/governed-knowledge`, { headers, data: { content, idempotency_key: "object-history-later-create" } });
     assert.equal(created.status(), 201, `create later legal version: ${await created.text()}`);
     let version = await created.json() as KnowledgeVersion;
     const ref = version.ref;
     assert.ok(ref.knowledge_id && ref.version_id && ref.content_sha256);
     for (const action of ["submit", "validate", "approve", "publish"]) {
       const response = await admin.request.post(`${web}/api/admin/governed-knowledge/${encodeURIComponent(ref.knowledge_id)}/versions/${encodeURIComponent(ref.version_id)}/commands`, {
-        headers: { Origin: web },
+        headers,
         data: { action, expected_revision: version.revision, expected_content_sha256: ref.content_sha256, expected_pointer_revision: version.pointer_revision,
           reason: "浏览器旅程中的后续知识版本", cross_case_reviewed: true, idempotency_key: `object-history-later-${action}` },
       });

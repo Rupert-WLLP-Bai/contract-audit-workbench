@@ -21,8 +21,11 @@ type SessionResponse = {
 export async function browserSessionCommandHeaders(
   request: APIRequestContext,
   baseURL: string,
+  audience: "client" | "admin" = "client",
 ): Promise<Record<string, string>> {
-  const response = await request.get(new URL("/api/session", baseURL).toString());
+  const url = new URL("/api/session", baseURL);
+  if (audience === "admin") url.searchParams.set("audience", audience);
+  const response = await request.get(url.toString());
   assert.equal(response.status(), 200, `current browser session returned HTTP ${response.status()}`);
   const session = await response.json() as SessionResponse;
   const version = session.active_context?.context_version;
