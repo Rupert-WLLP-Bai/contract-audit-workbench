@@ -8,7 +8,8 @@
 // Copyright: See LICENSE
 // End file metadata.
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import { getWorkbench } from "./endpoints";
 import {
   parseCaseProfile,
   parseCaseRelation,
@@ -96,6 +97,33 @@ function snapshot(overrides: Record<string, unknown> = {}) {
 }
 
 describe("workbench task parsing", () => {
+  it("falls back to a read-only legacy snapshot only after 422", async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response("{}", { status: 422 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(snapshot({ tasks: [{ ...task, can_complete: true }] })), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    try {
+      const result = await getWorkbench("week");
+      expect(result.tasks[0]?.can_complete).toBe(false);
+      expect(String(fetchMock.mock.calls[0]?.[0])).toContain("task_capabilities=1");
+      expect(String(fetchMock.mock.calls[1]?.[0])).not.toContain("task_capabilities");
+    } finally { vi.unstubAllGlobals(); }
+  });
+
+  it.each([401, 403])("does not retry a %s response", async (status) => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response("{}", { status }));
+    vi.stubGlobal("fetch", fetchMock);
+    try {
+      await expect(getWorkbench("week")).rejects.toMatchObject({ status });
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    } finally { vi.unstubAllGlobals(); }
+  });
+  it("defaults missing snapshot task permission to false and rejects non-booleans", () => {
+    const read = (value: unknown) => parseWorkbenchSnapshot(snapshot({ tasks: [value] }), "week").tasks[0];
+    expect(read(task)).toMatchObject({ can_complete: false });
+    expect(read({ ...task, can_complete: true })).toMatchObject({ can_complete: true });
+    expect(() => read({ ...task, can_complete: "true" })).toThrow();
+  });
   it("reads every documented task field and keeps nulls distinct", () => {
     expect(parseWorkbenchTask(task)).toEqual(task);
     expect(

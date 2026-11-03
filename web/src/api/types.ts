@@ -1447,7 +1447,7 @@ export interface WorkbenchSnapshot {
   dashboard: WorkbenchDashboard;
   cases: WorkbenchCase[];
   profiles: CaseProfile[];
-  tasks: WorkbenchTask[];
+  tasks: WireSchemas["WorkbenchSnapshotTask"][];
   relations: CaseRelation[];
   knowledge: Knowledge[];
   members: WorkbenchMember[];

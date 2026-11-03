@@ -614,12 +614,17 @@ export function saveLLMModels(input: LLMModelSelectionInput) {
     parseLLMEndpoint,
   );
 }
-export function getWorkbench(period: WorkbenchPeriod, signal?: AbortSignal) {
-  return requestJson(
-    paths.workbench(period),
-    { method: "GET", signal },
-    (value) => parseWorkbenchSnapshot(value, period),
-  );
+export async function getWorkbench(period: WorkbenchPeriod, signal?: AbortSignal) {
+  const path = paths.workbench(period);
+  try {
+    return await requestJson(`${path}&task_capabilities=1`, { method: "GET", signal },
+      (value) => parseWorkbenchSnapshot(value, period));
+  } catch (error) {
+    if (!(error instanceof ApiError) || error.status !== 422 || signal?.aborted) throw error;
+    const snapshot = await requestJson(path, { method: "GET", signal },
+      (value) => parseWorkbenchSnapshot(value, period));
+    return { ...snapshot, tasks: snapshot.tasks.map((task) => ({ ...task, can_complete: false })) };
+  }
 }
 
 export function updateCaseProfile(caseId: string, input: CaseProfileInput) {

@@ -52,7 +52,7 @@ ROOTS = (
     "FindingCounts", "KnowledgeInput", "LLMModelSelectionInput", "MaterialProjection",
     "MaterialSelectionProjection", "MaterialVersionProjection", "RemediationInput",
     "RemediationSubmitInput", "RemediationVerifyInput", "TextOffset", "WorkbenchTask",
-    "WorkbenchTaskInput", "WorkbenchTaskUpdateInput",
+    "WorkbenchTaskInput", "WorkbenchTaskUpdateInput", "WorkbenchSnapshotTask",
     "TenantRuntimeControl", "TenantExecutionQueue", "TenantCostWindow", "TenantCost",
     "TenantConfigRef", "TenantConfigCatalogEntry", "TenantModelCatalogEntry", "TenantCredentialRef",
     "TenantConfigSelection", "AdoptedTenantConfig", "TenantConfigView", "TenantConfigPreviewRequest",

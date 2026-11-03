@@ -328,6 +328,151 @@ func TestWorkbenchTaskAuthorizationReferencesAndOptimisticUpdates(t *testing.T) 
 	}
 }
 
+func TestWorkbenchSnapshotTaskCompletionAuthority(t *testing.T) {
+	st, _ := openExecutionStore(t)
+	actors := workbenchBoundaryDirectory(t)
+	caseID := workbenchBoundaryCase(t, st, actors.owner, "任务权限")
+	if err := st.AddMember(actors.owner, caseID, actors.viewer.ID); err != nil {
+		t.Fatal(err)
+	}
+	input := WorkbenchTaskInput{Title: "任务", Kind: "general", AssigneeID: actors.owner.ID, Status: "open", Priority: "medium"}
+	task, err := st.CreateWorkbenchTask(actors.owner, caseID, input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	check := func(actor accounts.User, wantCount int, allowed bool) {
+		t.Helper()
+		snapshot, err := st.WorkbenchSnapshot(context.Background(), actor, "week", WorkbenchModel{}, true)
+		if err != nil || len(snapshot.Tasks) != wantCount {
+			t.Fatalf("snapshot tasks=%+v err=%v", snapshot.Tasks, err)
+		}
+		if wantCount > 0 && (snapshot.Tasks[0].CanComplete == nil || *snapshot.Tasks[0].CanComplete != allowed) {
+			t.Fatalf("permission=%v want %v", snapshot.Tasks[0].CanComplete, allowed)
+		}
+	}
+	check(actors.owner, 1, true)
+	check(actors.viewer, 1, false)
+	check(actors.foreign, 0, false)
+	st.UseReadOnly(true)
+	check(actors.owner, 1, false)
+	st.UseReadOnly(false)
+	workbenchBoundaryGrant(t, actors.clerk.ID, caseID)
+	check(actors.clerk, 1, true)
+	users := accounts.List()
+	for i := range users {
+		if users[i].ID == actors.clerk.ID {
+			users[i].Grants = []access.Grant{{Role: "case_owner", Scope: "self"}}
+		}
+	}
+	body, err := json.Marshal(map[string]any{"users": users})
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(t.TempDir(), "revoked-directory.json")
+	if err := os.WriteFile(path, body, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := accounts.ConfigureDirectory(path); err != nil {
+		t.Fatal(err)
+	}
+	check(actors.clerk, 0, false)
+	input.ExpectedVersion, input.Status = task.Version, "completed"
+	_, err = st.UpdateWorkbenchTask(actors.clerk, caseID, task.ID, input)
+	workbenchBoundaryFault(t, err, 404, "not_found")
+	check(actors.owner, 1, true)
+	if _, err := st.UpdateWorkbenchTask(actors.owner, caseID, task.ID, input); err != nil {
+		t.Fatal(err)
+	}
+	check(actors.owner, 1, false)
+	input.ExpectedVersion, input.Status = task.Version+1, "open"
+	if _, err := st.UpdateWorkbenchTask(actors.owner, caseID, task.ID, input); err != nil {
+		t.Fatal(err)
+	}
+	check(actors.owner, 1, true)
+	if _, err := st.pool.Exec(context.Background(), `UPDATE cases SET business_status=$2, archived_at=$3, entity_version=entity_version+1 WHERE id=$1`, caseID, "archived", "2026-10-01T00:00:00Z"); err != nil {
+		t.Fatal(err)
+	}
+	check(actors.owner, 1, false)
+}
+
+func TestWorkbenchSnapshotRejectsInvalidTaskReferences(t *testing.T) {
+	st, _ := openExecutionStore(t)
+	actors := workbenchBoundaryDirectory(t)
+	caseID := workbenchBoundaryCase(t, st, actors.owner, "任务引用")
+	if err := st.AddMember(actors.owner, caseID, actors.viewer.ID); err != nil {
+		t.Fatal(err)
+	}
+	input := WorkbenchTaskInput{Title: "任务", Kind: "general", AssigneeID: actors.viewer.ID, Status: "open", Priority: "medium"}
+	task, err := st.CreateWorkbenchTask(actors.owner, caseID, input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	check := func(want bool) {
+		t.Helper()
+		snapshot, err := st.WorkbenchSnapshot(context.Background(), actors.owner, "week", WorkbenchModel{}, true)
+		if err != nil || len(snapshot.Tasks) != 1 || (snapshot.Tasks[0].CanComplete == nil || *snapshot.Tasks[0].CanComplete != want) {
+			t.Fatalf("tasks=%+v err=%v want=%v", snapshot.Tasks, err, want)
+		}
+	}
+	check(true)
+	users := accounts.List()
+	for i := range users {
+		if users[i].ID == actors.viewer.ID {
+			users[i].Enabled = false
+		}
+	}
+	body, err := json.Marshal(map[string]any{"users": users})
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(t.TempDir(), "disabled-assignee.json")
+	if err := os.WriteFile(path, body, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := accounts.ConfigureDirectory(path); err != nil {
+		t.Fatal(err)
+	}
+	check(false)
+	input.ExpectedVersion, input.Status = task.Version, "completed"
+	_, err = st.UpdateWorkbenchTask(actors.owner, caseID, task.ID, input)
+	workbenchBoundaryFault(t, err, 422, "invalid")
+	for i := range users {
+		if users[i].ID == actors.viewer.ID {
+			users[i].Enabled = true
+		}
+	}
+	body, err = json.Marshal(map[string]any{"users": users})
+	if err != nil {
+		t.Fatal(err)
+	}
+	path = filepath.Join(t.TempDir(), "enabled-assignee.json")
+	if err := os.WriteFile(path, body, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := accounts.ConfigureDirectory(path); err != nil {
+		t.Fatal(err)
+	}
+	check(true)
+	if _, err := st.pool.Exec(context.Background(), `UPDATE cases SET member_ids='[]', entity_version=entity_version+1 WHERE id=$1`, caseID); err != nil {
+		t.Fatal(err)
+	}
+	check(false)
+	_, err = st.UpdateWorkbenchTask(actors.owner, caseID, task.ID, input)
+	workbenchBoundaryFault(t, err, 422, "invalid")
+	if err := st.AddMember(actors.owner, caseID, actors.viewer.ID); err != nil {
+		t.Fatal(err)
+	}
+	check(true)
+	if _, err := st.pool.Exec(context.Background(), `UPDATE business_workbench_tasks SET version=version+1, record_json=jsonb_set(jsonb_set(record_json, '{finding_id}', '"missing-finding"'::jsonb), '{version}', to_jsonb(version+1)) WHERE id=$1`, task.ID); err != nil {
+		t.Fatal(err)
+	}
+	check(false)
+	input.ExpectedVersion = task.Version + 1
+	input.FindingID = stringPointer("missing-finding")
+	_, err = st.UpdateWorkbenchTask(actors.owner, caseID, task.ID, input)
+	workbenchBoundaryFault(t, err, 422, "invalid")
+}
+
 func workbenchBoundaryGrant(t *testing.T, userID, caseID string) {
 	t.Helper()
 	users := accounts.List()
@@ -623,7 +768,7 @@ func TestWorkbenchKnowledgeVersionsAreImmutableIdempotentAndTenantScoped(t *test
 		if err != nil || !reflect.DeepEqual(got, want) {
 			t.Fatalf("tenant knowledge selection leaked another tenant: actor=%s got=%+v err=%v", actor.ID, got, err)
 		}
-		snapshot, err := st.WorkbenchSnapshot(context.Background(), actor, "week", WorkbenchModel{})
+		snapshot, err := st.WorkbenchSnapshot(context.Background(), actor, "week", WorkbenchModel{}, true)
 		if err != nil {
 			t.Fatal(err)
 		}

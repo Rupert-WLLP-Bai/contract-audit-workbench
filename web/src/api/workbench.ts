@@ -148,6 +148,13 @@ function task(value: unknown): WorkbenchTask {
   };
 }
 
+function snapshotTask(value: unknown): WorkbenchTask & { can_complete: boolean } {
+  const record = object(value, "任务");
+  if (record.can_complete !== undefined && typeof record.can_complete !== "boolean")
+    return invalid("任务 can_complete 不是布尔值");
+  return { ...task(value), can_complete: record.can_complete ?? false };
+}
+
 function relation(value: unknown): CaseRelation {
   const record = object(value, "案件关联");
   return {
@@ -416,7 +423,7 @@ export function parseWorkbenchSnapshot(
     dashboard: dashboard(record.dashboard),
     cases: array(record, "cases", workbenchCase),
     profiles: array(record, "profiles", profile),
-    tasks: array(record, "tasks", task),
+    tasks: array(record, "tasks", snapshotTask),
     relations: array(record, "relations", relation),
     knowledge: array(record, "knowledge", knowledge),
     members: array(record, "members", member),
