@@ -4,7 +4,7 @@
 // Contact: +86 13617696321
 // Created: 2026-10-25
 // Updated: 2026-11-03
-// Revision: r3
+// Revision: r4
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -50,6 +50,12 @@ var SampleWarrantyPNG []byte
 // ErrUnusable means the server answered, but the text is not a warranty finding
 // or a transcription.
 var ErrUnusable = errors.New("unusable model output")
+
+var (
+	errProviderRefusal   = errors.New("provider refusal")
+	errResponseTruncated = errors.New("response truncated")
+	errContentFiltered   = errors.New("content filtered")
+)
 
 // ErrRequest means the endpoint did not return a completion.
 var ErrRequest = errors.New("model request failed")
@@ -712,6 +718,16 @@ func (c *Client) completeChatResponse(completion chatCompletion, parsed chatResp
 	// Keep the provider content on the completion before any parse check so a
 	// rejected but inspectable response still reaches the bounded trace.
 	completion.Content = responseContent
+	var refusal string
+	if json.Unmarshal(parsed.Choices[0].Message.Refusal, &refusal) == nil && strings.TrimSpace(refusal) != "" {
+		return completion, fmt.Errorf("%w: %w", ErrUnusable, errProviderRefusal)
+	}
+	switch parsed.Choices[0].FinishReason {
+	case "length":
+		return completion, fmt.Errorf("%w: %w", ErrUnusable, errResponseTruncated)
+	case "content_filter":
+		return completion, fmt.Errorf("%w: %w", ErrUnusable, errContentFiltered)
+	}
 	if strings.TrimSpace(responseContent) == "" {
 		return completion, fmt.Errorf("%w: empty content", ErrUnusable)
 	}
@@ -738,6 +754,12 @@ func modelCallErrorCode(err error) string {
 		return "cancelled"
 	case errors.Is(err, ErrRequest):
 		return "request_failed"
+	case errors.Is(err, errProviderRefusal):
+		return "provider_refusal"
+	case errors.Is(err, errResponseTruncated):
+		return "response_truncated"
+	case errors.Is(err, errContentFiltered):
+		return "content_filtered"
 	case errors.Is(err, ErrUnusable):
 		return "invalid_response"
 	default:
@@ -920,7 +942,8 @@ type chatResponse struct {
 	Choices []struct {
 		FinishReason string `json:"finish_reason"`
 		Message      struct {
-			Content string `json:"content"`
+			Content string          `json:"content"`
+			Refusal json.RawMessage `json:"refusal"`
 		} `json:"message"`
 	} `json:"choices"`
 	Error *struct {

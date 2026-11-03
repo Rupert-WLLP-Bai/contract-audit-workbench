@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-10-30
-// Revision: r1
+// Updated: 2026-11-03
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -132,5 +132,50 @@ func TestWarrantyObservationIdentifiesTimeoutAndUnknownUsage(t *testing.T) {
 	}
 	if calls[0].Trace == nil || calls[0].Trace.RequestBytes == 0 || calls[0].Trace.ResponseBytes != 0 || calls[0].Trace.Status != "failed" {
 		t.Fatalf("timeout trace was not bounded or honest: %+v", calls[0].Trace)
+	}
+}
+
+func TestProviderResponseDiagnostics(t *testing.T) {
+	for _, tc := range []struct{ name, body, code string }{
+		{"refusal", `{"usage":{"prompt_tokens":7,"completion_tokens":2},"choices":[{"finish_reason":"stop","message":{"content":null,"refusal":"declined"}}]}`, "provider_refusal"},
+		{"refusal with content", `{"choices":[{"finish_reason":"stop","message":{"content":"answer","refusal":"declined"}}]}`, "provider_refusal"},
+		{"truncated empty", `{"usage":{"prompt_tokens":7,"completion_tokens":2},"choices":[{"finish_reason":"length","message":{"content":""}}]}`, "response_truncated"},
+		{"filtered empty", `{"choices":[{"finish_reason":"content_filter","message":{"content":null}}]}`, "content_filtered"},
+		{"unknown finish", `{"choices":[{"finish_reason":"tool_calls","message":{"content":"text"}}]}`, "invalid_response"},
+		{"malformed envelope", `not-json`, "invalid_response"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			client := New(Config{BaseURL: "http://model.example", ChatModel: "model"})
+			client.WithTransport(roundTripFunc(func(*http.Request) (*http.Response, error) { return response(200, tc.body), nil }))
+			sink := &observationSink{}
+			_, err := client.Warranty(WithCallObserver(context.Background(), sink), nil)
+			if !errors.Is(err, ErrUnusable) {
+				t.Fatalf("error = %v", err)
+			}
+			calls := sink.snapshot()
+			if len(calls) != 1 || calls[0].ErrorCode != tc.code || calls[0].Trace == nil || calls[0].Trace.ErrorCode != tc.code {
+				t.Fatalf("observation = %+v, want %s", calls, tc.code)
+			}
+			if tc.name == "refusal" || tc.name == "truncated empty" {
+				usage := calls[0].Usage
+				if usage == nil || usage.InputTokens == nil || *usage.InputTokens != 7 || usage.OutputTokens == nil || *usage.OutputTokens != 2 {
+					t.Fatalf("provider usage lost: %+v", usage)
+				}
+			}
+		})
+	}
+}
+
+func TestUnknownRefusalShapesPreserveContent(t *testing.T) {
+	for _, refusal := range []string{`null`, `false`, `{"reason":"unknown"}`} {
+		body := `{"choices":[{"finish_reason":"stop","message":{"content":"normal transcription","refusal":` + refusal + `}}]}`
+		client := New(Config{BaseURL: "http://model.example", OCRModel: "model"})
+		client.WithTransport(roundTripFunc(func(*http.Request) (*http.Response, error) { return response(200, body), nil }))
+		sink := &observationSink{}
+		text, err := client.Transcribe(WithCallObserver(context.Background(), sink), "image/png", []byte("image"))
+		calls := sink.snapshot()
+		if err != nil || text != "normal transcription" || len(calls) != 1 || calls[0].Trace == nil || calls[0].Trace.ResponseText != text {
+			t.Fatalf("text %q error %v observation %+v", text, err, calls)
+		}
 	}
 }
