@@ -20,6 +20,7 @@ import (
 	"testing"
 	"time"
 
+	"contractaudit/internal/access"
 	"contractaudit/internal/accounts"
 	"contractaudit/internal/fault"
 )
@@ -185,6 +186,18 @@ func TestCaseIntakePendingOwnerResumeArchiveAndReceiptPostgres(t *testing.T) {
 	if err != nil {
 		t.Fatalf("document upload before archive: %v", err)
 	}
+	// Case management does not let a different actor complete the owner's
+	// pending intake, even when that actor can read and manage the case.
+	caseState, err := core.snapshotCaseDetail(ctx, admin, first.CaseID)
+	if err != nil {
+		t.Fatalf("load case for admin authority check: %v", err)
+	}
+	caseItem, err := core.visibleCase(&caseState, admin, first.CaseID)
+	if err != nil || !authorizeCase(caseItem, admin, access.Manage) {
+		t.Fatalf("admin must have current case Manage authority: %v", err)
+	}
+	_, err = core.CompleteCaseIntake(ctx, admin, first.OperationID, upload)
+	requireIntakeFault(t, err, 404, "not_found")
 	type archiveAnswer struct {
 		result CaseIntakeArchiveResult
 		err    error
@@ -232,6 +245,10 @@ func TestCaseIntakePendingOwnerResumeArchiveAndReceiptPostgres(t *testing.T) {
 	byID, err := core.GetCaseIntake(ctx, owner, first.OperationID)
 	if err != nil || !bytes.Equal(byID.ReceiptBody, completed.ReceiptBody) {
 		t.Fatalf("completed receipt changed on ID lookup: %+v %v", byID, err)
+	}
+	memberReceipt, err := core.GetCaseIntake(ctx, member, first.OperationID)
+	if err != nil || !bytes.Equal(memberReceipt.ReceiptBody, completed.ReceiptBody) {
+		t.Fatalf("case member could not read original completed receipt: %+v %v", memberReceipt, err)
 	}
 	byKey, err := core.GetCaseIntakeByKey(ctx, owner, firstInput.IdempotencyKey)
 	if err != nil || !bytes.Equal(byKey.ReceiptBody, completed.ReceiptBody) {
