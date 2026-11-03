@@ -467,6 +467,8 @@ func contractDraftRoute(role string, methods routeMethodSet, parts []string) boo
 			return methods.post
 		case "payments":
 			return methods.read
+		case "lifecycle-overview":
+			return methods.read
 		case "assets":
 			return methods.read
 		case "asset-handovers":

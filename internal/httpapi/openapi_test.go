@@ -111,6 +111,16 @@ func TestOpenAPITracksAllRegisteredRoutesAndJSONFields(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// These public registrations and support handler factory are maintained in
+	// separate files. Internal receipt handlers are not mounted on the portal mux.
+	var extraRoutes []*ast.File
+	for _, name := range []string{"contract_fulfillment.go", "contract_payments.go", "contract_assets.go", "contract_signing.go", "contract_sources.go", "context_support.go"} {
+		parsed, parseErr := parser.ParseFile(token.NewFileSet(), name, nil, 0)
+		if parseErr != nil {
+			t.Fatal(parseErr)
+		}
+		extraRoutes = append(extraRoutes, parsed)
+	}
 	storePackages, err := parser.ParseDir(token.NewFileSet(), "../store", func(info os.FileInfo) bool { return !strings.HasSuffix(info.Name(), "_test.go") }, 0)
 	if err != nil {
 		t.Fatal(err)
@@ -133,7 +143,7 @@ func TestOpenAPITracksAllRegisteredRoutesAndJSONFields(t *testing.T) {
 		}
 		return route
 	}
-	for _, parsed := range []*ast.File{file, health, governance, evidence, legalRoutes, contractCitations, manualFindings, ruleShadow, contractDraft, contractVersion, contractApprovalRead, contractAudit} {
+	for _, parsed := range append([]*ast.File{file, health, governance, evidence, legalRoutes, contractCitations, manualFindings, ruleShadow, contractDraft, contractVersion, contractApprovalRead, contractAudit}, extraRoutes...) {
 		// Route coverage reads the declarations the server mounts. Both forms
 		// are accepted: an explicit HandleFunc, and the shared mountRoutes whose
 		// variadic argument is a list of literal routeBinding entries. A
@@ -180,9 +190,175 @@ func TestOpenAPITracksAllRegisteredRoutesAndJSONFields(t *testing.T) {
 			if !ok || literal.Kind != token.STRING {
 				t.Fatal("route coverage check needs a literal route pattern")
 			}
-			register(routeLiteral(literal), handlerName(call.Args[1]))
+			route := routeLiteral(literal)
+			name := handlerName(call.Args[1])
+			// Only the two explicitly bound public support commands may use this
+			// factory. Unknown expressions still fail the named-handler check.
+			if factory, ok := call.Args[1].(*ast.CallExpr); ok && len(factory.Args) == 1 {
+				if sel, ok := factory.Fun.(*ast.SelectorExpr); ok && sel.Sel.Name == "changeSupportGrant" {
+					if receiver, ok := sel.X.(*ast.Ident); ok && receiver.Name == "h" {
+						if action, ok := factory.Args[0].(*ast.BasicLit); ok && action.Kind == token.STRING {
+							value := routeLiteral(action)
+							if (value == "approve" || value == "revoke") && route == "POST /api/support-grants/{grantID}/"+value {
+								name = sel.Sel.Name
+							}
+						}
+					}
+				}
+			}
+			register(route, name)
 			return true
 		})
+	}
+	// Declared internal endpoints are separately mounted on the service mux. Their mux
+	// patterns have no method, so derive POST only after checking the actual
+	// factory and its method guard. Other service RPCs are outside this check.
+	serviceFile, err := parser.ParseFile(token.NewFileSet(), "services.go", nil, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	receipts := map[string]struct{ factory, option string }{
+		"/internal/v1/payment-receipts":             {"paymentReceiptHandler", "PaymentReceiptSources"},
+		"/internal/v1/asset-receipts":               {"assetReceiptHandler", "AssetReceiptSources"},
+		"/internal/v1/contract-source-observations": {"contractSourceObservationHandler", "ContractSourceCredentials"},
+	}
+	seenReceipts := map[string]bool{}
+	for path, expected := range receipts {
+		guarded := false
+		for _, source := range extraRoutes {
+			for _, decl := range source.Decls {
+				fn, ok := decl.(*ast.FuncDecl)
+				if !ok || fn.Name.Name != expected.factory || fn.Body == nil {
+					continue
+				}
+				for _, stmt := range fn.Body.List {
+					ret, ok := stmt.(*ast.ReturnStmt)
+					if !ok || len(ret.Results) != 1 {
+						continue
+					}
+					wrap, ok := ret.Results[0].(*ast.CallExpr)
+					if !ok || len(wrap.Args) != 1 {
+						continue
+					}
+					selector, ok := wrap.Fun.(*ast.SelectorExpr)
+					if !ok || selector.Sel.Name != "HandlerFunc" {
+						continue
+					}
+					pkg, ok := selector.X.(*ast.Ident)
+					if !ok || pkg.Name != "http" {
+						continue
+					}
+					callback, ok := wrap.Args[0].(*ast.FuncLit)
+					if !ok {
+						continue
+					}
+					for _, statement := range callback.Body.List {
+						condition, ok := statement.(*ast.IfStmt)
+						if !ok || condition.Else != nil {
+							continue
+						}
+						comparison, ok := condition.Cond.(*ast.BinaryExpr)
+						if !ok || comparison.Op != token.NEQ {
+							continue
+						}
+						left, lok := comparison.X.(*ast.SelectorExpr)
+						right, rok := comparison.Y.(*ast.SelectorExpr)
+						if !lok || !rok {
+							continue
+						}
+						lx, lok := left.X.(*ast.Ident)
+						rx, rok := right.X.(*ast.Ident)
+						if !lok || !rok || lx.Name != "r" || left.Sel.Name != "Method" || rx.Name != "http" || right.Sel.Name != "MethodPost" {
+							continue
+						}
+						if len(condition.Body.List) < 2 {
+							continue
+						}
+						last := condition.Body.List[len(condition.Body.List)-1]
+						if ret, ok := last.(*ast.ReturnStmt); !ok || len(ret.Results) != 0 {
+							continue
+						}
+						for _, inner := range condition.Body.List[:len(condition.Body.List)-1] {
+							expr, ok := inner.(*ast.ExprStmt)
+							if !ok {
+								continue
+							}
+							call, ok := expr.X.(*ast.CallExpr)
+							if !ok || len(call.Args) != 1 {
+								continue
+							}
+							method, ok := call.Fun.(*ast.SelectorExpr)
+							if !ok || method.Sel.Name != "WriteHeader" {
+								continue
+							}
+							w, ok := method.X.(*ast.Ident)
+							status, sok := call.Args[0].(*ast.SelectorExpr)
+							if !ok || w.Name != "w" || !sok {
+								continue
+							}
+							statusPkg, ok := status.X.(*ast.Ident)
+							if ok && statusPkg.Name == "http" && status.Sel.Name == "StatusMethodNotAllowed" {
+								guarded = true
+							}
+						}
+					}
+				}
+			}
+		}
+		if !guarded {
+			t.Fatalf("%s lacks its POST method guard", expected.factory)
+		}
+		ast.Inspect(serviceFile, func(node ast.Node) bool {
+			call, ok := node.(*ast.CallExpr)
+			if !ok || len(call.Args) != 2 {
+				return true
+			}
+			method, ok := call.Fun.(*ast.SelectorExpr)
+			if !ok || method.Sel.Name != "Handle" {
+				return true
+			}
+			mux, ok := method.X.(*ast.Ident)
+			if !ok || mux.Name != "mux" {
+				return true
+			}
+			literal, literalOK := call.Args[0].(*ast.BasicLit)
+			actualPath := ""
+			if literalOK && literal.Kind == token.STRING {
+				actualPath = routeLiteral(literal)
+			}
+			factory, factoryOK := call.Args[1].(*ast.CallExpr)
+			name := ""
+			if factoryOK {
+				if id, ok := factory.Fun.(*ast.Ident); ok {
+					name = id.Name
+				}
+			}
+			if actualPath != path && name != expected.factory {
+				return true
+			}
+			if actualPath != path || name != expected.factory || len(factory.Args) != 2 {
+				t.Fatalf("invalid %s registration", path)
+			}
+			storeArg, ok := factory.Args[0].(*ast.Ident)
+			option, optionOK := factory.Args[1].(*ast.SelectorExpr)
+			if !ok || storeArg.Name != "st" || !optionOK || option.Sel.Name != expected.option {
+				t.Fatalf("invalid %s factory arguments", path)
+			}
+			opt, ok := option.X.(*ast.Ident)
+			if !ok || opt.Name != "opt" || seenReceipts[path] {
+				t.Fatalf("invalid or duplicate %s registration", path)
+			}
+			seenReceipts[path] = true
+			key := http.MethodPost + " " + actualPath
+			if _, exists := routes[key]; exists {
+				t.Fatalf("duplicate registered route: %s", key)
+			}
+			routes[key] = name
+			return true
+		})
+		if !seenReceipts[path] {
+			t.Fatalf("missing %s registration", path)
+		}
 	}
 	schemas := spec["components"].(map[string]any)["schemas"].(map[string]any)
 	jsonFields := map[string][]string{}
@@ -204,6 +380,40 @@ func TestOpenAPITracksAllRegisteredRoutesAndJSONFields(t *testing.T) {
 			}
 		}
 	}
+	// Resolve named request DTOs defined anywhere in the HTTP package.
+	localPackages, err := parser.ParseDir(token.NewFileSet(), ".", func(info os.FileInfo) bool { return !strings.HasSuffix(info.Name(), "_test.go") }, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	localTypes := map[string]*ast.StructType{}
+	for _, source := range localPackages["httpapi"].Files {
+		for _, decl := range source.Decls {
+			gen, ok := decl.(*ast.GenDecl)
+			if !ok {
+				continue
+			}
+			for _, spec := range gen.Specs {
+				typ, ok := spec.(*ast.TypeSpec)
+				if !ok {
+					continue
+				}
+				if body, ok := typ.Type.(*ast.StructType); ok {
+					localTypes[typ.Name.Name] = body
+				}
+			}
+		}
+	}
+	requestStruct := func(expr ast.Expr) *ast.StructType {
+		switch typ := expr.(type) {
+		case *ast.Ident:
+			return localTypes[typ.Name]
+		case *ast.SelectorExpr:
+			if pkg, ok := typ.X.(*ast.Ident); ok && pkg.Name == "store" {
+				return types[typ.Sel.Name]
+			}
+		}
+		return nil
+	}
 	fieldsFor := func(body *ast.StructType) []string {
 		fields := []string{}
 		for _, field := range body.Fields.List {
@@ -215,7 +425,10 @@ func TestOpenAPITracksAllRegisteredRoutesAndJSONFields(t *testing.T) {
 				t.Fatal(err)
 			}
 			name := strings.Split(reflect.StructTag(tag).Get("json"), ",")[0]
-			if name == "" || name == "-" {
+			if name == "-" {
+				continue // server-supplied path/header fields are not decoded from JSON
+			}
+			if name == "" {
 				t.Fatal("request body field lacks JSON name")
 			}
 			fields = append(fields, name)
@@ -223,7 +436,7 @@ func TestOpenAPITracksAllRegisteredRoutesAndJSONFields(t *testing.T) {
 		sort.Strings(fields)
 		return fields
 	}
-	for _, parsed := range []*ast.File{file, governance, evidence, workbench, business, manualFindings, ruleShadow} {
+	for _, parsed := range append([]*ast.File{file, governance, evidence, workbench, business, manualFindings, ruleShadow}, extraRoutes...) {
 		for _, decl := range parsed.Decls {
 			fn, ok := decl.(*ast.FuncDecl)
 			if !ok {
@@ -243,15 +456,24 @@ func TestOpenAPITracksAllRegisteredRoutesAndJSONFields(t *testing.T) {
 						name, _ = fun.X.(*ast.Ident)
 					}
 					if name != nil && (name.Name == "serveClientJSONCommand" || name.Name == "serveGovernanceJSONCommand") {
-						typ, ok := requestType.(*ast.SelectorExpr)
-						if !ok {
-							t.Fatal("command request type must be an explicit named store struct")
+						// Generic inference takes the request type from the callback's body
+						// parameter. Fail closed if neither form is explicit.
+						if requestType == nil && len(call.Args) > 0 {
+							if callback, ok := call.Args[len(call.Args)-1].(*ast.FuncLit); ok {
+								for _, field := range callback.Type.Params.List {
+									for _, param := range field.Names {
+										if param.Name == "body" {
+											requestType = field.Type
+										}
+									}
+								}
+							}
 						}
-						pkg, ok := typ.X.(*ast.Ident)
-						if !ok || pkg.Name != "store" || types[typ.Sel.Name] == nil {
-							t.Fatal("command request type must be a known store struct")
+						body := requestStruct(requestType)
+						if body == nil {
+							t.Fatal("command request type must be an explicit known local or store struct")
 						}
-						jsonFields[fn.Name.Name] = fieldsFor(types[typ.Sel.Name])
+						jsonFields[fn.Name.Name] = fieldsFor(body)
 					}
 				}
 				value, ok := node.(*ast.ValueSpec)
@@ -260,15 +482,10 @@ func TestOpenAPITracksAllRegisteredRoutesAndJSONFields(t *testing.T) {
 				}
 				body, ok := value.Type.(*ast.StructType)
 				if !ok {
-					typ, ok := value.Type.(*ast.SelectorExpr)
-					if !ok {
-						t.Fatal("body declaration must use an inline or named store struct")
+					body = requestStruct(value.Type)
+					if body == nil {
+						t.Fatal("body declaration must use an inline or known local or store struct")
 					}
-					pkg, ok := typ.X.(*ast.Ident)
-					if !ok || pkg.Name != "store" || types[typ.Sel.Name] == nil {
-						t.Fatal("body declaration must use a known store struct")
-					}
-					body = types[typ.Sel.Name]
 				}
 				jsonFields[fn.Name.Name] = fieldsFor(body)
 				return true

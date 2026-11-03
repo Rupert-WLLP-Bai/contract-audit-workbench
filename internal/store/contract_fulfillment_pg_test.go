@@ -23,7 +23,8 @@ import (
 
 // This focused durable scenario covers explicit pending ranges, append-only
 // defects/rectification and the cumulative acceptance quantity contract.
-func TestContractFulfillmentPartialAcceptanceAndLinearRetest(t *testing.T) {
+func newFulfillmentDeliveryFixture(t *testing.T) (durableCaseFixture, string, FreezeContractVersionResult, MaterialRef, ContractDelivery) {
+	t.Helper()
 	fixture, _ := newApprovalDecisionEnv(t)
 	testCLMDataKey(t)
 	ctx := context.Background()
@@ -85,6 +86,12 @@ func TestContractFulfillmentPartialAcceptanceAndLinearRetest(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	return fixture, contractID, frozen, baseMaterial, delivery
+}
+
+func TestContractFulfillmentPartialAcceptanceAndLinearRetest(t *testing.T) {
+	fixture, contractID, frozen, baseMaterial, delivery := newFulfillmentDeliveryFixture(t)
+	ctx := context.Background()
 	assertFaultStatus(t, func() error {
 		_, err := fixture.core.CreateContractAcceptance(ctx, fixture.admin, ContractAcceptanceInput{
 			ContractID: contractID, ExpectedRowVersion: deliveryRowVersion(t, fixture, contractID), ContractRevisionID: frozen.Version.ContractRevisionID,
@@ -193,6 +200,10 @@ func TestContractFulfillmentPartialAcceptanceAndLinearRetest(t *testing.T) {
 		})
 		return err
 	}(), 409, "a failed fact has at most one direct retest")
+	t.Run("LifecycleOverviewFulfillmentAndMaterialACL", func(t *testing.T) {
+		assertLifecycleMatchesExisting(t, fixture, contractID)
+		assertLifecycleMaterialRevocation(t, fixture, contractID)
+	})
 }
 
 func deliveryRowVersion(t *testing.T, fixture durableCaseFixture, contractID string) int64 {

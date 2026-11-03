@@ -744,6 +744,17 @@ func (s *Store) ListContractDeliveries(ctx context.Context, user accounts.User, 
 	if !authorizeContractRead(ctx, tx, record, current) {
 		return ContractDeliveryList{}, fault.NotFound("没有找到对应记录")
 	}
+	result, err := loadContractDeliveriesTx(ctx, tx, current, record, id)
+	if err != nil {
+		return ContractDeliveryList{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return ContractDeliveryList{}, err
+	}
+	return result, nil
+}
+
+func loadContractDeliveriesTx(ctx context.Context, tx pgx.Tx, current accounts.User, record clmContractRecord, id string) (ContractDeliveryList, error) {
 	rows, err := tx.Query(ctx, `SELECT delivery.delivery_id::text,delivery.contract_revision_id::text,delivery.delivery_plan_sequence,
 		delivery.item_id::text,delivery.batch_reference,delivery.quantity::text,delivery.unit,delivery.actual_at,
 		delivery.location,delivery.description,delivery.evidence_snapshot,delivery.recorded_by,delivery.recorded_at
@@ -774,6 +785,7 @@ func (s *Store) ListContractDeliveries(ctx context.Context, user accounts.User, 
 	nameCache := map[string]map[string]revisionItemInfo{}
 	for _, row := range loaded {
 		item, evidenceRaw := row.item, row.evidence
+		item.ContractID = record.ContractID
 		if _, ok := nameCache[item.ContractRevisionID]; !ok {
 			names, err := parseRevisionItemNames(ctx, tx, record.TenantID, id, item.ContractRevisionID)
 			if err != nil {
@@ -795,12 +807,8 @@ func (s *Store) ListContractDeliveries(ctx context.Context, user accounts.User, 
 	if err != nil {
 		return ContractDeliveryList{}, err
 	}
-	if err := tx.Commit(ctx); err != nil {
-		return ContractDeliveryList{}, err
-	}
 	return ContractDeliveryList{Items: items, Summary: summary, RowVersion: record.RowVersion}, nil
 }
-
 func loadFulfillmentSummary(ctx context.Context, tx pgx.Tx, tenantID, contractID string) ([]ContractFulfillmentItemSummary, error) {
 	rows, err := tx.Query(ctx, `WITH delivered AS (
 		SELECT tenant_id,contract_id,contract_revision_id,item_id,sum(quantity) AS quantity
@@ -1451,6 +1459,17 @@ func (s *Store) ListContractAcceptances(ctx context.Context, user accounts.User,
 	if !authorizeContractRead(ctx, tx, record, current) {
 		return ContractAcceptanceList{}, fault.NotFound("没有找到对应记录")
 	}
+	result, err := loadContractAcceptancesTx(ctx, tx, current, record, id)
+	if err != nil {
+		return ContractAcceptanceList{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return ContractAcceptanceList{}, err
+	}
+	return result, nil
+}
+
+func loadContractAcceptancesTx(ctx context.Context, tx pgx.Tx, current accounts.User, record clmContractRecord, id string) (ContractAcceptanceList, error) {
 	rows, err := tx.Query(ctx, `SELECT acceptance.acceptance_id::text,acceptance.contract_revision_id::text,acceptance.delivery_id::text,acceptance.item_id::text,
 		acceptance.acceptance_plan_sequence,acceptance.scope_start::text,acceptance.scope_end::text,acceptance.accepted_quantity::text,
 		acceptance.result,COALESCE(acceptance.reinspection_of::text,''),acceptance.actual_at,acceptance.standard,acceptance.inspector_note,
@@ -1482,6 +1501,7 @@ func (s *Store) ListContractAcceptances(ctx context.Context, user accounts.User,
 	namesCache := map[string]map[string]revisionItemInfo{}
 	for _, row := range loaded {
 		item, evidenceRaw := row.item, row.evidence
+		item.ContractID = record.ContractID
 		quantity := new(big.Rat)
 		start, _ := new(big.Rat).SetString(item.ScopeStart)
 		end, _ := new(big.Rat).SetString(item.ScopeEnd)
@@ -1522,12 +1542,8 @@ func (s *Store) ListContractAcceptances(ctx context.Context, user accounts.User,
 	if err != nil {
 		return ContractAcceptanceList{}, err
 	}
-	if err := tx.Commit(ctx); err != nil {
-		return ContractAcceptanceList{}, err
-	}
 	return ContractAcceptanceList{Items: items, Summary: summary, RowVersion: record.RowVersion}, nil
 }
-
 func loadAcceptanceDefects(ctx context.Context, tx pgx.Tx, tenantID, contractID, acceptanceID string) ([]ContractAcceptanceDefect, error) {
 	rows, err := tx.Query(ctx, `SELECT defect_id::text,COALESCE(prior_defect_id::text,''),description,responsible,remediation_due::text,failed_quantity::text,recorded_by,recorded_at
 		FROM clm_contract_acceptance_defects WHERE tenant_id=$1 AND contract_id=$2 AND acceptance_id=$3 ORDER BY defect_id`, tenantID, contractID, acceptanceID)

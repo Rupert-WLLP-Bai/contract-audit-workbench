@@ -5795,6 +5795,238 @@
         ],
         "additionalProperties": false
       },
+      "ContractLifecycleOverview": {
+        "type": "object",
+        "properties": {
+          "acceptances": {
+            "$ref": "#/components/schemas/ContractAcceptanceList"
+          },
+          "assets": {
+            "$ref": "#/components/schemas/ContractAssetList"
+          },
+          "completeness": {
+            "type": "object",
+            "properties": {
+              "acceptances": {
+                "type": "string",
+                "enum": [
+                  "known",
+                  "unknown",
+                  "not_applicable"
+                ]
+              },
+              "assets": {
+                "type": "string",
+                "enum": [
+                  "known",
+                  "unknown",
+                  "not_applicable"
+                ]
+              },
+              "deliveries": {
+                "type": "string",
+                "enum": [
+                  "known",
+                  "unknown",
+                  "not_applicable"
+                ]
+              },
+              "disputes": {
+                "type": "string",
+                "enum": [
+                  "known",
+                  "unknown",
+                  "not_applicable"
+                ]
+              },
+              "other_obligations": {
+                "type": "string",
+                "enum": [
+                  "known",
+                  "unknown",
+                  "not_applicable"
+                ]
+              },
+              "payments": {
+                "type": "string",
+                "enum": [
+                  "known",
+                  "unknown",
+                  "not_applicable"
+                ]
+              },
+              "plans": {
+                "type": "string",
+                "enum": [
+                  "known",
+                  "unknown",
+                  "not_applicable"
+                ]
+              },
+              "warranty": {
+                "type": "string",
+                "enum": [
+                  "known",
+                  "unknown",
+                  "not_applicable"
+                ]
+              }
+            },
+            "required": [
+              "plans",
+              "deliveries",
+              "acceptances",
+              "payments",
+              "assets",
+              "disputes",
+              "warranty",
+              "other_obligations"
+            ],
+            "additionalProperties": false
+          },
+          "contract": {
+            "type": "object",
+            "properties": {
+              "authority_mode": {
+                "type": "string"
+              },
+              "contract_id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "current_revision_id": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "uuid"
+              },
+              "row_version": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "contract_id",
+              "current_revision_id",
+              "row_version",
+              "authority_mode"
+            ],
+            "additionalProperties": false
+          },
+          "deliveries": {
+            "$ref": "#/components/schemas/ContractDeliveryList"
+          },
+          "observed_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "payments": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/ContractPaymentSummary"
+            }
+          },
+          "plans": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "acceptance_plans": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "$ref": "#/components/schemas/DraftAcceptancePlan"
+                }
+              },
+              "assets": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "$ref": "#/components/schemas/DraftAssetPlan"
+                }
+              },
+              "delivery_plans": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "$ref": "#/components/schemas/DraftDeliveryPlan"
+                }
+              },
+              "payments": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "$ref": "#/components/schemas/DraftPaymentPlan"
+                }
+              }
+            },
+            "required": [
+              "delivery_plans",
+              "acceptance_plans",
+              "payments",
+              "assets"
+            ],
+            "additionalProperties": false
+          },
+          "source_observed_at": {
+            "type": "object",
+            "properties": {
+              "contract_recorded_at": {
+                "description": "最后一次合同来源观察或导入在本系统的记录时间；不是外部业务发生时间，不证明当前版本被再次确认。",
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "date-time"
+              },
+              "erp": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "date-time"
+              },
+              "finance": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "date-time"
+              }
+            },
+            "required": [
+              "finance",
+              "erp",
+              "contract_recorded_at"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "contract",
+          "observed_at",
+          "completeness",
+          "source_observed_at",
+          "plans",
+          "deliveries",
+          "acceptances",
+          "payments",
+          "assets"
+        ],
+        "additionalProperties": false
+      },
       "ContractMaterialReference": {
         "type": "object",
         "properties": {
@@ -34577,6 +34809,51 @@
                 }
               }
             }
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        }
+      }
+    },
+    "/api/contracts/{contractID}/lifecycle-overview": {
+      "parameters": [
+        {
+          "name": "contractID",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "get": {
+        "operationId": "getContractLifecycleOverview",
+        "tags": [
+          "合同"
+        ],
+        "summary": "读取合同生命周期一致性概览",
+        "description": "同一只读可重复读事务内的授权事实；known 表示本库读取成功，不表示义务完成。外部观察时间未知；不推断逾期或闭合。",
+        "responses": {
+          "200": {
+            "description": "版本、观察时间、计划和可见事实",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContractLifecycleOverview"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
           },
           "503": {
             "$ref": "#/components/responses/Error503"

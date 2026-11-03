@@ -200,4 +200,8 @@ func TestContractPaymentEligibilityAndTrustedReceiptFacts(t *testing.T) {
 	if facts != beforeFacts || events != beforeEvents || outbox != beforeOutbox {
 		t.Fatalf("rejected readonly receipt changed facts/events/outbox: %d/%d/%d -> %d/%d/%d", beforeFacts, beforeEvents, beforeOutbox, facts, events, outbox)
 	}
+	fixture.core.UseReadOnly(false)
+	t.Run("LifecycleOverviewSingleSnapshotConcurrentReceipt", func(t *testing.T) {
+		assertLifecycleSnapshotUnderConcurrentReceipt(t, fixture, contractID, frozen.Version.ContractRevisionID, source)
+	})
 }

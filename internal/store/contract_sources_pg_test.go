@@ -120,9 +120,21 @@ func TestExternalContractSourceObservationOrderingAndAuthorization(t *testing.T)
 	if err != nil || detail.Summary.ContractState != "external_observed" || detail.SourceObservedState != "pending_at_source" || detail.SourceObservationDisposition != "unknown" || detail.CurrentRevisionID == nil || *detail.CurrentRevisionID != *third.ContractRevisionID {
 		t.Fatalf("external detail must separate observed source state from local workflow: %+v err=%v", detail, err)
 	}
+	t.Run("LifecycleOverviewExternalUnknown", func(t *testing.T) {
+		overview := assertLifecycleMatchesExisting(t, fixture, first.ContractID)
+		if overview.SourceObservedAt.ContractRecordedAt == nil {
+			t.Fatal("known contract source recording time was lost")
+		}
+		if overview.Contract.AuthorityMode != "external" || overview.Plans != nil || overview.Completeness.Plans != "unknown" {
+			t.Fatalf("external plans must remain unknown: %+v", overview)
+		}
+	})
 	viewer, ok := accounts.ByID("demo-viewer")
 	if !ok {
 		t.Fatal("demo-viewer missing")
+	}
+	if _, err := core.ContractLifecycleOverview(ctx, viewer, first.ContractID); faultStatus(err) != 404 {
+		t.Fatalf("unlinked viewer read external lifecycle: %v", err)
 	}
 	if _, err := core.LoadContractDetail(ctx, viewer, first.ContractID); faultStatus(err) != 404 {
 		t.Fatalf("unlinked viewer must not see external contract metadata: %v", err)

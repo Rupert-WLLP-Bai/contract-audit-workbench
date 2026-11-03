@@ -38,7 +38,7 @@ ROOTS = (
 	"MembershipChoice", "PendingMembershipList", "PendingMembershipSelectionRequest",
 	"Activity", "ArchiveRequest", "CaseProfile", "CaseProfileInput", "CaseRelationInput",
 	"ContractAcceptance", "ContractAcceptanceDefect", "ContractAcceptanceDefectInput", "ContractAcceptanceList", "ContractAcceptanceRequest",
-	"ContractSourceCapability",
+	"ContractSourceCapability", "ContractLifecycleOverview",
 	"ContractDelivery", "ContractDeliveryList", "ContractDeliveryRequest", "ContractFulfillmentItemSummary", "ContractRectification", "ContractRectificationRequest",
     "ContractPaymentEligibilityRequest", "ContractPaymentEligibility", "ContractPaymentReceiptRequest", "ContractPaymentReceipt", "ContractPaymentSummary",
     "ContractAssetList", "ContractAssetPlanSummary", "ContractAssetHandover", "ContractAssetReceipt",
