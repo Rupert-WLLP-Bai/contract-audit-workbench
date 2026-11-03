@@ -4,8 +4,8 @@
 # Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 # Contact: +86 13617696321
 # Created: 2026-10-25
-# Updated: 2026-11-02
-# Revision: r2
+# Updated: 2026-11-03
+# Revision: r3
 # Copyright: See LICENSE
 # End file metadata.
 
@@ -460,11 +460,16 @@ def build_checks(go, bun):
         Check("bun-version", "all", (bun, "--version")),
         Check("node-version", "all", ("node", "--version")),
         Check("quality-tests", "static",
-              (sys.executable, "-m", "unittest", "discover", "-s", "scripts", "-p", "test_*.py")),
+              (sys.executable, "scripts/run_python_tests.py", "--root", "scripts")),
         Check("infra-tests", "static",
-              (sys.executable, "-m", "unittest", "discover", "-s", "deploy/tests", "-v")),
+              (sys.executable, "scripts/run_python_tests.py", "--root", "deploy/tests")),
         Check("fault-harness-tests", "static",
-              (sys.executable, "-m", "unittest", "deployments.scripts.test_fault_test_local")),
+              (sys.executable, "scripts/run_python_tests.py", "--root", "deployments/scripts")),
+        Check("workflow-syntax", "static", ('actionlint', '-shellcheck=', '-pyflakes=')),
+        Check("architecture-dependencies", "static",
+              (sys.executable, "scripts/architecture/check_architecture.py", "--repo", str(ROOT),
+               "--base", os.environ.get("CAW_FAST_BASE") or os.environ.get("BASE_SHA") or "origin/main",
+               "--out", str(OUT / "architecture-check.json"))),
         Check("format", "static", (sys.executable, "scripts/check_format.py")),
         Check("modules", "static", (go, "mod", "verify")),
         Check("vet", "static", (go, "vet", "./...")),

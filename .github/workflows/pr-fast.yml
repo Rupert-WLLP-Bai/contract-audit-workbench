@@ -3,8 +3,8 @@
 # Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 # Contact: +86 13617696321
 # Created: 2026-10-31
-# Updated: 2026-11-02
-# Revision: r2
+# Updated: 2026-11-03
+# Revision: r3
 # Copyright: See LICENSE
 # End file metadata.
 
@@ -53,11 +53,15 @@ jobs:
           --github-output "$GITHUB_OUTPUT"
 
       - name: Set up Go
-        if: steps.plan.outputs.go == 'true' || steps.plan.outputs.architecture == 'true'
+        if: steps.plan.outputs.go == 'true' || steps.plan.outputs.architecture == 'true' || steps.plan.outputs.workflow == 'true'
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
           go-version-file: go.mod
           cache: true
+
+      - name: Install pinned workflow syntax checker
+        if: steps.plan.outputs.workflow == 'true'
+        run: go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
 
       - name: Download Go modules
         if: steps.plan.outputs.go == 'true' || steps.plan.outputs.architecture == 'true'

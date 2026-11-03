@@ -206,8 +206,13 @@
       "scripts/file_metadata/test_manifest_tool.py",
       "scripts/file_metadata/test_metadata_core.py",
       "scripts/file_metadata/testdata/anchor-policy.json",
+      "scripts/run_python_tests.py",
+      "scripts/test_ci_workflows.py",
       "scripts/test_generate_openapi_types.py",
+      "scripts/test_run_python_tests.py",
+      "scripts/test_trusted_gate_runner.py",
       "scripts/test_ui_terminology.py",
+      "scripts/trusted_gate_runner.py",
       "scripts/ui-terminology/policy.json",
       "web/e2e/tenant-recovery-smoke.ts",
       "web/src/api/context-sync.ts",
@@ -601,15 +606,15 @@
         }
       },
       "updated": {
-        "value": "2026-11-02",
+        "value": "2026-11-03",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "1e238ffb1ac59089d50dd35882a0ffe3507be1cf",
+          "commit": "141dbead488730482897c87293fb00469ef03f49",
           "path": ".github/workflows/pr-fast.yml",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r2",
+      "revision": "r3",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -649,15 +654,15 @@
         }
       },
       "updated": {
-        "value": "2026-11-02",
+        "value": "2026-11-03",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "6db61ab9cdef31db144c87917e9f546384868693",
+          "commit": "fd2842ec2017322c6a28557450c7a1733b4f831f",
           "path": ".github/workflows/quality.yml",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r3",
+      "revision": "r4",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -7625,15 +7630,15 @@
         }
       },
       "updated": {
-        "value": "2026-11-02",
+        "value": "2026-11-03",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "a68af8616865296e4b63ff5811c9ae2ab8702025",
+          "commit": "fd2842ec2017322c6a28557450c7a1733b4f831f",
           "path": "docs/engineering/verification.md",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r1",
+      "revision": "r2",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -8607,14 +8612,15 @@
         }
       },
       "updated": {
-        "value": "2026-10-25",
+        "value": "2026-11-03",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "fd5be1c3a71282a9115a7c38648923eb1a6d4074",
-          "reason": "Most recent available content-changing commit in the fixed HEAD history; pure rename events with unchanged blob IDs are excluded. UTC date comes from the commit committer timestamp. Metadata headers have not yet been applied."
+          "commit": "c180ebfe2a758144344eefe96ae96df2a5cb0432",
+          "path": "e2e/functional_live_test.go",
+          "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r1",
+      "revision": "r2",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -48613,7 +48619,7 @@
       "header_state": "pending-header-application"
     },
     "scripts/check_fast.py": {
-      "purpose": "Scoped fast checks for pull requests. This module’s command-line arguments and return artifacts define its operational boundary.",
+      "purpose": "Selects scoped code, architecture and workflow checks from actual Git differences, prepares required toolchains and rejects missing or skipped execution evidence.",
       "authors": [
         {
           "name": "Bai Junhao",
@@ -48640,15 +48646,15 @@
         }
       },
       "updated": {
-        "value": "2026-11-02",
+        "value": "2026-11-03",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "ac8084d801cae350b57032b348f1e272ce72ed66",
+          "commit": "141dbead488730482897c87293fb00469ef03f49",
           "path": "scripts/check_fast.py",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r3",
+      "revision": "r4",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -49123,7 +49129,7 @@
           "reason": "The manifest cannot embed the commit/blob identity of its own current update; retain this exact-path self-reference exception."
         }
       },
-      "revision": "r6",
+      "revision": "r7",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -50030,6 +50036,54 @@
       "handling": "header-and-manifest",
       "header_state": "pending-header-application"
     },
+    "scripts/run_python_tests.py": {
+      "purpose": "Discovers required Python test files recursively, executes each in an isolated bounded process and records native unittest evidence without accepting skipped or missing tests.",
+      "authors": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321",
+          "role": "project-author",
+          "source": "Issue #115 project author instruction; not inferred from Git commit identity."
+        }
+      ],
+      "maintainers": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321"
+        }
+      ],
+      "created": {
+        "value": "2026-11-03",
+        "source": {
+          "kind": "git-first-introduction",
+          "commit": "fd2842ec2017322c6a28557450c7a1733b4f831f",
+          "path": "scripts/run_python_tests.py",
+          "reason": "first available Git introduction; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "updated": {
+        "value": "2026-11-03",
+        "source": {
+          "kind": "git-last-content-change",
+          "commit": "fd2842ec2017322c6a28557450c7a1733b4f831f",
+          "path": "scripts/run_python_tests.py",
+          "reason": "file introduction created its initial content; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "revision": "r1",
+      "copyright": [
+        {
+          "holder": "Bai Junhao",
+          "notice": "See LICENSE",
+          "source": "LICENSE defines the first-party Project Materials and identifies Bai Junhao as rights holder; applied only to content owned or controlled by him.",
+          "verbatim": false
+        }
+      ],
+      "handling": "header-and-manifest",
+      "header_state": "pending-header-application"
+    },
     "scripts/run_real_corpus.py": {
       "purpose": "Run a real, externally stored contract corpus through the authenticated API. This module’s command-line arguments and return artifacts define its operational boundary.",
       "authors": [
@@ -50246,15 +50300,63 @@
         }
       },
       "updated": {
-        "value": "2026-11-02",
+        "value": "2026-11-03",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "b03e0e246a5329bd58aa723f991518a0730c7553",
+          "commit": "141dbead488730482897c87293fb00469ef03f49",
           "path": "scripts/test_check_fast.py",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r2",
+      "revision": "r3",
+      "copyright": [
+        {
+          "holder": "Bai Junhao",
+          "notice": "See LICENSE",
+          "source": "LICENSE defines the first-party Project Materials and identifies Bai Junhao as rights holder; applied only to content owned or controlled by him.",
+          "verbatim": false
+        }
+      ],
+      "handling": "header-and-manifest",
+      "header_state": "pending-header-application"
+    },
+    "scripts/test_ci_workflows.py": {
+      "purpose": "Uses the pinned workflow syntax checker to validate repository workflows and reject invalid runner context references before GitHub can fail without creating jobs.",
+      "authors": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321",
+          "role": "project-author",
+          "source": "Issue #115 project author instruction; not inferred from Git commit identity."
+        }
+      ],
+      "maintainers": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321"
+        }
+      ],
+      "created": {
+        "value": "2026-11-03",
+        "source": {
+          "kind": "git-first-introduction",
+          "commit": "141dbead488730482897c87293fb00469ef03f49",
+          "path": "scripts/test_ci_workflows.py",
+          "reason": "first available Git introduction; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "updated": {
+        "value": "2026-11-03",
+        "source": {
+          "kind": "git-last-content-change",
+          "commit": "141dbead488730482897c87293fb00469ef03f49",
+          "path": "scripts/test_ci_workflows.py",
+          "reason": "file introduction created its initial content; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "revision": "r1",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -50597,6 +50699,54 @@
       "handling": "header-and-manifest",
       "header_state": "pending-header-application"
     },
+    "scripts/test_run_python_tests.py": {
+      "purpose": "Checks recursive test discovery, module isolation, skipped and expected failures, empty selections and timeout diagnostics using disposable Python test fixtures.",
+      "authors": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321",
+          "role": "project-author",
+          "source": "Issue #115 project author instruction; not inferred from Git commit identity."
+        }
+      ],
+      "maintainers": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321"
+        }
+      ],
+      "created": {
+        "value": "2026-11-03",
+        "source": {
+          "kind": "git-first-introduction",
+          "commit": "fd2842ec2017322c6a28557450c7a1733b4f831f",
+          "path": "scripts/test_run_python_tests.py",
+          "reason": "first available Git introduction; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "updated": {
+        "value": "2026-11-03",
+        "source": {
+          "kind": "git-last-content-change",
+          "commit": "fd2842ec2017322c6a28557450c7a1733b4f831f",
+          "path": "scripts/test_run_python_tests.py",
+          "reason": "file introduction created its initial content; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "revision": "r1",
+      "copyright": [
+        {
+          "holder": "Bai Junhao",
+          "notice": "See LICENSE",
+          "source": "LICENSE defines the first-party Project Materials and identifies Bai Junhao as rights holder; applied only to content owned or controlled by him.",
+          "verbatim": false
+        }
+      ],
+      "handling": "header-and-manifest",
+      "header_state": "pending-header-application"
+    },
     "scripts/test_run_real_corpus.py": {
       "purpose": "Regression checks for test_manifest_rejects_traversal_and_digest_mismatch, test_cli_requires_recorder_before_creating_a_run, test_pending_parsed_once_and_review_evidence_retained, test_precheck_accepts_designed_partial_frozen_attempt, test_precheck_rejects_unfinished_attempt; they assert the deployment, parser, or repository-policy contract that the corresponding implementation must preserve.",
       "authors": [
@@ -50691,6 +50841,54 @@
       "handling": "header-and-manifest",
       "header_state": "pending-header-application"
     },
+    "scripts/test_trusted_gate_runner.py": {
+      "purpose": "Proves fixed-base controllers execute against the subject root while candidate noops, missing dependencies, dirty checkouts and conflicting identity arguments cannot silently pass.",
+      "authors": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321",
+          "role": "project-author",
+          "source": "Issue #115 project author instruction; not inferred from Git commit identity."
+        }
+      ],
+      "maintainers": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321"
+        }
+      ],
+      "created": {
+        "value": "2026-11-03",
+        "source": {
+          "kind": "git-first-introduction",
+          "commit": "20ec89299ca4bf2aaee38d6d06a8d6c1db6ec2e6",
+          "path": "scripts/test_trusted_gate_runner.py",
+          "reason": "first available Git introduction; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "updated": {
+        "value": "2026-11-03",
+        "source": {
+          "kind": "git-last-content-change",
+          "commit": "20ec89299ca4bf2aaee38d6d06a8d6c1db6ec2e6",
+          "path": "scripts/test_trusted_gate_runner.py",
+          "reason": "file introduction created its initial content; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "revision": "r1",
+      "copyright": [
+        {
+          "holder": "Bai Junhao",
+          "notice": "See LICENSE",
+          "source": "LICENSE defines the first-party Project Materials and identifies Bai Junhao as rights holder; applied only to content owned or controlled by him.",
+          "verbatim": false
+        }
+      ],
+      "handling": "header-and-manifest",
+      "header_state": "pending-header-application"
+    },
     "scripts/test_ui_terminology.py": {
       "purpose": "验证 test_actual_panel_source_passes, test_definite_attempt_and_approval_confusions_fail, test_explicit_boundary_and_uncertain_wording_are_not_failures, test_actual_missing_attempt_slot_cannot_be_renamed_to_approval_round 等场景，覆盖该模块的授权、错误或数据边界。",
       "authors": [
@@ -50767,15 +50965,63 @@
         }
       },
       "updated": {
-        "value": "2026-11-02",
+        "value": "2026-11-03",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "6db61ab9cdef31db144c87917e9f546384868693",
+          "commit": "fd2842ec2017322c6a28557450c7a1733b4f831f",
           "path": "scripts/test_verify_stages.py",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r2",
+      "revision": "r3",
+      "copyright": [
+        {
+          "holder": "Bai Junhao",
+          "notice": "See LICENSE",
+          "source": "LICENSE defines the first-party Project Materials and identifies Bai Junhao as rights holder; applied only to content owned or controlled by him.",
+          "verbatim": false
+        }
+      ],
+      "handling": "header-and-manifest",
+      "header_state": "pending-header-application"
+    },
+    "scripts/trusted_gate_runner.py": {
+      "purpose": "Loads fixed target-base gate controllers and dependencies from Git blobs while binding their execution paths to a clean subject checkout and preserving controller exit results.",
+      "authors": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321",
+          "role": "project-author",
+          "source": "Issue #115 project author instruction; not inferred from Git commit identity."
+        }
+      ],
+      "maintainers": [
+        {
+          "name": "Bai Junhao",
+          "email": "baijunhao@cq.chinamobile.com",
+          "contact": "+86 13617696321"
+        }
+      ],
+      "created": {
+        "value": "2026-11-03",
+        "source": {
+          "kind": "git-first-introduction",
+          "commit": "20ec89299ca4bf2aaee38d6d06a8d6c1db6ec2e6",
+          "path": "scripts/trusted_gate_runner.py",
+          "reason": "first available Git introduction; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "updated": {
+        "value": "2026-11-03",
+        "source": {
+          "kind": "git-last-content-change",
+          "commit": "20ec89299ca4bf2aaee38d6d06a8d6c1db6ec2e6",
+          "path": "scripts/trusted_gate_runner.py",
+          "reason": "file introduction created its initial content; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
+        }
+      },
+      "revision": "r1",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -50868,15 +51114,15 @@
         }
       },
       "updated": {
-        "value": "2026-11-02",
+        "value": "2026-11-03",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "6db61ab9cdef31db144c87917e9f546384868693",
+          "commit": "fd2842ec2017322c6a28557450c7a1733b4f831f",
           "path": "scripts/verify.py",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r2",
+      "revision": "r3",
       "copyright": [
         {
           "holder": "Bai Junhao",

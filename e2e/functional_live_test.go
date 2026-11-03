@@ -5,8 +5,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-10-25
-// Revision: r1
+// Updated: 2026-11-03
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -42,8 +42,8 @@ func TestBrowserFunctionalLive(t *testing.T) {
 	t.Setenv("AGENT_PLANNER_MODE", "live")
 	t.Setenv("AGENT_PLANNER_TIMEOUT", "90s")
 	cfg := model.FromEnv()
-	if cfg.ChatModel != "codex/gpt-6-luna" || cfg.OCRModel != cfg.ChatModel {
-		t.Fatal("functional live acceptance requires codex/gpt-6-luna for chat and OCR")
+	if strings.TrimSpace(os.Getenv("LLM_MODEL")) == "" || strings.TrimSpace(os.Getenv("OCR_MODEL")) == "" {
+		t.Fatal("functional live acceptance requires explicit LLM_MODEL and OCR_MODEL")
 	}
 	st, err := store.OpenTest(t.TempDir(), "")
 	if err != nil {
