@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-02
-// Updated: 2026-11-02
-// Revision: r1
+// Updated: 2026-11-03
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -164,6 +164,7 @@ func verifyTenantIdentityOwnerPrivileges(ctx context.Context, q clmRoleQueryer, 
 			to_regprocedure(format('%I.tenant_identity_bind_admission(text,text)',$3))::oid,
 to_regprocedure(format('%I.tenant_context_info(text)',$3))::oid,
 to_regprocedure(format('%I.tenant_context_fence(text,bigint,text,uuid,uuid)',$3))::oid,
+to_regprocedure(format('%I.tenant_case_context_fence(text,bigint,text)',$3))::oid,
 to_regprocedure(format('%I.tenant_context_switch(text,bigint,text,uuid)',$3))::oid,
 to_regprocedure(format('%I.tenant_context_list(text)',$3))::oid,
 to_regprocedure(format('%I.tenant_support_can_manage(text,text)',$3))::oid,

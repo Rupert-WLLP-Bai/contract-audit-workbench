@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-31
-// Updated: 2026-10-31
-// Revision: r1
+// Updated: 2026-11-03
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -501,5 +501,56 @@ func TestCaseWriteDoesNotBlockOtherCaseOrDiscardProjection(t *testing.T) {
 		if err != nil || !slices.Contains(detail.Case.MemberIDs, memberID) {
 			t.Fatalf("case %q did not retain its committed member: detail=%+v err=%v", caseID, detail, err)
 		}
+	}
+}
+
+func TestCaseWriteFenceSerializesLogout(t *testing.T) {
+	fixture, ok := newDurableCaseFixture(t)
+	if !ok {
+		t.Skip("isolated PostgreSQL is required")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	entered, release := make(chan struct{}), make(chan struct{})
+	var once sync.Once
+	unblock := func() { once.Do(func() { close(release) }) }
+	defer unblock()
+	writeDone := make(chan error, 1)
+	go func() {
+		writeDone <- fixture.core.scopedCaseMutation(ctx, fixture.admin, fixture.caseID, func(st *state) error {
+			for i := range st.Cases {
+				if st.Cases[i].ID == fixture.caseID {
+					st.Cases[i].Title = "write before logout"
+				}
+			}
+			close(entered)
+			<-release
+			return nil
+		})
+	}()
+	select {
+	case <-entered:
+	case err := <-writeDone:
+		t.Fatalf("case write failed before fence: %v", err)
+	case <-ctx.Done():
+		t.Fatal(ctx.Err())
+	}
+	logoutDone := make(chan error, 1)
+	go func() { logoutDone <- fixture.core.Logout(fixture.sessionToken) }()
+	waitContextSQLLock(t, ctx, fixture.environment.harness, fixture.core.pool.Config().ConnConfig.User)
+	select {
+	case err := <-logoutDone:
+		t.Fatalf("logout passed an in-flight case fence: %v", err)
+	default:
+	}
+	unblock()
+	if err := <-writeDone; err != nil {
+		t.Fatalf("case write failed: %v", err)
+	}
+	if err := <-logoutDone; err != nil {
+		t.Fatalf("logout failed: %v", err)
+	}
+	if err := fixture.core.AddMember(fixture.admin, fixture.caseID, "demo-reviewer"); err == nil {
+		t.Fatal("revoked session authorized a case write")
 	}
 }

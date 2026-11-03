@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-11-02
-// Updated: 2026-11-02
-// Revision: r1
+// Updated: 2026-11-03
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -192,6 +192,9 @@ func TestSessionContextSwitchSupportExpiryAndWriteFence(t *testing.T) {
 	if _, err = core.CreateCase(a, "stale command", "procurement_ict"); err == nil {
 		t.Fatal("old context wrote after switch")
 	}
+	if err = core.scopedCaseMutation(ctx, a, caseID, func(*state) error { return nil }); err == nil {
+		t.Fatal("old context entered case mutation after switch")
+	}
 	if err = core.SwitchSessionContext(ctx, tokenA, "1", member[0]); err == nil {
 		t.Fatal("old switch CAS accepted")
 	}
@@ -300,17 +303,89 @@ func TestSessionContextSwitchSupportExpiryAndWriteFence(t *testing.T) {
 	if _, err = admin.pool.Exec(ctx, `UPDATE `+pgx.Identifier{admin.schema, "identity_memberships"}.Sanitize()+` SET effective_until=NULL,revision=revision+1 WHERE membership_id=$1`, member[0]); err != nil {
 		t.Fatal(err)
 	}
+	// The shared case fence must also recheck after actual SQL lock waiting.
+	if _, err = admin.pool.Exec(ctx, `UPDATE `+pgx.Identifier{admin.schema, "identity_memberships"}.Sanitize()+` SET effective_until=clock_timestamp()+interval '1500 milliseconds',revision=revision+1 WHERE membership_id=$1`, member[0]); err != nil {
+		t.Fatal(err)
+	}
+	a, _, err = core.AuthenticateSession(ctx, tokenA)
+	if err != nil {
+		t.Fatal(err)
+	}
+	blocker, err = admin.pool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer blocker.Rollback(ctx)
+	if _, err = blocker.Exec(ctx, `LOCK TABLE `+pgx.Identifier{admin.schema, "cases"}.Sanitize()+` IN SHARE MODE`); err != nil {
+		t.Fatal(err)
+	}
+	caseDone := make(chan error, 1)
+	go func() {
+		caseDone <- core.scopedCaseMutation(ctx, a, caseID, func(st *state) error {
+			for i := range st.Cases {
+				if st.Cases[i].ID == caseID {
+					st.Cases[i].Title = "must roll back after case lock wait"
+				}
+			}
+			return nil
+		})
+	}()
+	waitContextSQLLock(t, ctx, admin, coreRole)
+	time.Sleep(1600 * time.Millisecond)
+	if err = blocker.Rollback(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if err = <-caseDone; err == nil {
+		t.Fatal("case write committed after authorization expired during SQL lock wait")
+	}
+	var waitedTitle string
+	if err = admin.pool.QueryRow(ctx, `SELECT title FROM `+pgx.Identifier{admin.schema, "cases"}.Sanitize()+` WHERE id=$1`, caseID).Scan(&waitedTitle); err != nil || waitedTitle == "must roll back after case lock wait" {
+		t.Fatalf("expired case write left its update: title=%q err=%v", waitedTitle, err)
+	}
+	if _, err = admin.pool.Exec(ctx, `UPDATE `+pgx.Identifier{admin.schema, "identity_memberships"}.Sanitize()+` SET effective_until=NULL,revision=revision+1 WHERE membership_id=$1`, member[0]); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = admin.pool.Exec(ctx, `UPDATE `+pgx.Identifier{admin.schema, "identity_memberships"}.Sanitize()+` SET effective_until=clock_timestamp()+interval '1500 milliseconds',revision=revision+1 WHERE membership_id=$1`, member[0]); err != nil {
+		t.Fatal(err)
+	}
+	a, _, err = core.AuthenticateSession(ctx, tokenA)
+	if err != nil {
+		t.Fatal(err)
+	}
+	caseTx, err := core.beginContextTxWithCaseFence(commandContext(ctx, a), pgx.TxOptions{}, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer caseTx.Rollback(ctx)
+	if err = setLocalScope(ctx, caseTx, userScope(a)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = caseTx.Exec(ctx, `UPDATE cases SET title='must roll back after expiry' WHERE id=$1`, caseID); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(1600 * time.Millisecond)
+	if err = caseTx.Commit(ctx); err == nil {
+		t.Fatal("expired case fence committed a business update")
+	}
+	var title string
+	if err = admin.pool.QueryRow(ctx, `SELECT title FROM `+pgx.Identifier{admin.schema, "cases"}.Sanitize()+` WHERE id=$1`, caseID).Scan(&title); err != nil || title == "must roll back after expiry" {
+		t.Fatalf("expired case fence left its update: title=%q err=%v", title, err)
+	}
+	if _, err = admin.pool.Exec(ctx, `UPDATE `+pgx.Identifier{admin.schema, "identity_memberships"}.Sanitize()+` SET effective_until=NULL,revision=revision+1 WHERE membership_id=$1`, member[0]); err != nil {
+		t.Fatal(err)
+	}
 	barrier := pgx.Identifier{admin.schema, "context_import_barrier"}.Sanitize()
 	if _, err = admin.pool.Exec(ctx, `CREATE FUNCTION `+barrier+`() RETURNS trigger LANGUAGE plpgsql AS $barrier$ BEGIN PERFORM pg_advisory_xact_lock(hashtextextended(TG_TABLE_SCHEMA||':context-import-barrier',0));RETURN NEW;END $barrier$;
  CREATE TRIGGER context_principal_barrier BEFORE UPDATE ON `+pgx.Identifier{admin.schema, "identity_principals"}.Sanitize()+` FOR EACH ROW WHEN (NEW.status='disabled') EXECUTE FUNCTION `+barrier+`();
- CREATE TRIGGER context_org_barrier BEFORE UPDATE ON `+pgx.Identifier{admin.schema, "identity_org_units"}.Sanitize()+` FOR EACH ROW WHEN (NEW.status='inactive') EXECUTE FUNCTION `+barrier+`()`); err != nil {
+ CREATE TRIGGER context_org_barrier BEFORE UPDATE ON `+pgx.Identifier{admin.schema, "identity_org_units"}.Sanitize()+` FOR EACH ROW WHEN (NEW.status='inactive') EXECUTE FUNCTION `+barrier+`();
+ CREATE TRIGGER context_membership_barrier BEFORE UPDATE ON `+pgx.Identifier{admin.schema, "identity_memberships"}.Sanitize()+` FOR EACH ROW WHEN (NEW.status='revoked') EXECUTE FUNCTION `+barrier+`()`); err != nil {
 		t.Fatal(err)
 	}
 	adminConfig, err := pgx.ParseConfig(dsn)
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, kind := range []string{"principal", "org"} {
+	for _, kind := range []string{"principal", "org", "membership"} {
 		a, _, err = core.AuthenticateSession(ctx, tokenA)
 		if err != nil {
 			t.Fatal(err)
@@ -322,11 +397,16 @@ func TestSessionContextSwitchSupportExpiryAndWriteFence(t *testing.T) {
 			restore.Principals = []IdentityPrincipalMap{item}
 			item.Status = "disabled"
 			patch.Principals = []IdentityPrincipalMap{item}
-		} else {
+		} else if kind == "org" {
 			item := doc.OrgUnits[0]
 			restore.OrgUnits = []IdentityOrgUnitMap{item}
 			item.Status = "inactive"
 			patch.OrgUnits = []IdentityOrgUnitMap{item}
+		} else {
+			item := doc.Memberships[0]
+			restore.Memberships = []IdentityMembershipMap{item}
+			item.Status = "revoked"
+			patch.Memberships = []IdentityMembershipMap{item}
 		}
 		lock, e := admin.pool.Begin(ctx)
 		if e != nil {
@@ -339,6 +419,7 @@ func TestSessionContextSwitchSupportExpiryAndWriteFence(t *testing.T) {
 		go func() { _, e := ImportIdentityCrosswalk(ctx, dsn, admin.schema, database, patch, true); imported <- e }()
 		waitContextSQLLock(t, ctx, admin, adminConfig.User)
 		observed := make(chan error, 1)
+		caseObserved := make(chan error, 1)
 		go func() {
 			tx, e := core.beginContextTx(commandContext(ctx, a), pgx.TxOptions{IsoLevel: pgx.RepeatableRead})
 			if tx != nil {
@@ -346,7 +427,27 @@ func TestSessionContextSwitchSupportExpiryAndWriteFence(t *testing.T) {
 			}
 			observed <- e
 		}()
-		waitContextSQLLock(t, ctx, admin, coreRole)
+		go func() {
+			tx, e := core.beginContextTxWithCaseFence(commandContext(ctx, a), pgx.TxOptions{IsoLevel: pgx.RepeatableRead}, true)
+			if tx != nil {
+				_ = tx.Rollback(ctx)
+			}
+			caseObserved <- e
+		}()
+		deadline := time.Now().Add(3 * time.Second)
+		for {
+			var waiting int
+			if e = admin.pool.QueryRow(ctx, `SELECT count(*) FROM pg_stat_activity WHERE usename=$1 AND wait_event_type='Lock'`, coreRole).Scan(&waiting); e != nil {
+				t.Fatal(e)
+			}
+			if waiting >= 2 {
+				break
+			}
+			if time.Now().After(deadline) {
+				t.Fatal("both ordinary and case fences did not wait for the identity import")
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
 		_ = lock.Rollback(ctx)
 		if e = <-imported; e != nil {
 			t.Fatal(e)
@@ -355,6 +456,10 @@ func TestSessionContextSwitchSupportExpiryAndWriteFence(t *testing.T) {
 		var denied *fault.Error
 		if !errors.As(e, &denied) || denied.Code != "context_stale" {
 			t.Fatalf("%s import did not invalidate waiting ordinary RR snapshot: %v", kind, e)
+		}
+		e = <-caseObserved
+		if !errors.As(e, &denied) || denied.Code != "context_stale" {
+			t.Fatalf("%s import did not invalidate waiting case fence: %v", kind, e)
 		}
 		if _, e = ImportIdentityCrosswalk(ctx, dsn, admin.schema, database, restore, true); e != nil {
 			t.Fatal(e)
