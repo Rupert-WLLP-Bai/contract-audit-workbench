@@ -1,12 +1,12 @@
 //go:build live
 
 // File metadata (manifest mirror):
-// Purpose: Exercises the `httpapi_test` package behavior through TestLiveReviewAndOCR; these checks pin observable state, error handling, or wire/database compatibility for this module.
+// Purpose: Validates explicitly configured live text and OCR models through isolated PostgreSQL, original session proof, durable jobs and the production model gateway with settled usage and no remaining leases.
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-10-25
-// Revision: r1
+// Updated: 2026-11-03
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
