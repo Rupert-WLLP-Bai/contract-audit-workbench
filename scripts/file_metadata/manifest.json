@@ -19850,14 +19850,15 @@
         }
       },
       "updated": {
-        "value": "2026-10-31",
+        "value": "2026-11-03",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "53d5c6db35ca90341452ef1084149ad08b7f0ee3",
-          "reason": "Most recent available content-changing commit in the fixed HEAD history; pure rename events with unchanged blob IDs are excluded. UTC date comes from the commit committer timestamp. Metadata headers have not yet been applied."
+          "commit": "a9ded4aea039f12aae6e15a00b99b61726312cfb",
+          "path": "internal/httpapi/case_intake_test.go",
+          "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r1",
+      "revision": "r2",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -49948,7 +49949,7 @@
           "reason": "The manifest cannot embed the commit/blob identity of its own current update; retain this exact-path self-reference exception."
         }
       },
-      "revision": "r22",
+      "revision": "r23",
       "copyright": [
         {
           "holder": "Bai Junhao",
