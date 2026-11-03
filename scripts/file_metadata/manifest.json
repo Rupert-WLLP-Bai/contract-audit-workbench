@@ -17920,12 +17920,12 @@
         "value": "2026-11-03",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "1676b95579f7114506b31125a4ab91e5bb23f084",
+          "commit": "8089c94a51a4c7c7dbdabe7aa2c4c7594928b676",
           "path": "internal/engine/accept.go",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r2",
+      "revision": "r3",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -18626,12 +18626,12 @@
         "value": "2026-11-03",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "1676b95579f7114506b31125a4ab91e5bb23f084",
+          "commit": "8089c94a51a4c7c7dbdabe7aa2c4c7594928b676",
           "path": "internal/engine/warranty_test.go",
           "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r2",
+      "revision": "r3",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -49947,7 +49947,7 @@
           "reason": "The manifest cannot embed the commit/blob identity of its own current update; retain this exact-path self-reference exception."
         }
       },
-      "revision": "r20",
+      "revision": "r21",
       "copyright": [
         {
           "holder": "Bai Junhao",
