@@ -529,6 +529,21 @@ export function ReviewWorkspaceView({
   const { selected, attempts } = attemptsOf(workspace);
   const [findingColumnWidth, setFindingColumnWidth] = useState(360);
   const [workspaceView, setWorkspaceView] = useState<"context" | "evidence">("evidence");
+  const evidenceViewButton = useRef<HTMLButtonElement>(null);
+  const focusEvidenceAfterSwitch = useRef(false);
+  useEffect(() => {
+    if (workspaceView === "evidence" && focusEvidenceAfterSwitch.current) {
+      focusEvidenceAfterSwitch.current = false;
+      evidenceViewButton.current?.focus();
+    }
+  }, [workspaceView]);
+  function selectFinding(findingId: string) {
+    onSelect(findingId);
+    if (workspaceView !== "evidence") {
+      focusEvidenceAfterSwitch.current = true;
+      setWorkspaceView("evidence");
+    }
+  }
   const gridStyle = {
     "--finding-column-width": `${findingColumnWidth}px`,
   } as CSSProperties;
@@ -557,6 +572,7 @@ export function ReviewWorkspaceView({
           案件与材料
         </Button>
         <Button
+          ref={evidenceViewButton}
           htmlType="button"
           aria-pressed={workspaceView === "evidence"}
           onClick={() => setWorkspaceView("evidence")}
@@ -573,10 +589,7 @@ export function ReviewWorkspaceView({
           }
           findings={workspace.findings}
           selectedFindingId={selectedId}
-          onSelectFinding={(findingId) => {
-            onSelect(findingId);
-            setWorkspaceView("evidence");
-          }}
+          onSelectFinding={selectFinding}
           layout={layout}
           showDiagnostics={showDiagnostics}
           caseContext={caseContext}
@@ -597,7 +610,7 @@ export function ReviewWorkspaceView({
           evaluations={workspace.evaluations ?? []}
           documents={workspace.documents}
           selectedId={selectedId}
-          onSelect={onSelect}
+          onSelect={selectFinding}
           showDiagnostics={showDiagnostics}
           pending={pending}
           canDecide={canDecide}
@@ -626,7 +639,7 @@ export function ReviewWorkspaceView({
           findings={workspace.findings}
           evaluations={workspace.evaluations ?? []}
           selectedFindingId={selectedId}
-          onSelectFinding={onSelect}
+          onSelectFinding={selectFinding}
           onSelectAttempt={onSelectAttempt}
           canCancel={canCancel}
           cancelling={cancelling}
