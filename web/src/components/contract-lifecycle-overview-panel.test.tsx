@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Verifies single-request lifecycle rendering, unknown values, access loss, version mismatch and stale-response isolation across account and authorization-context changes.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-03
+// Updated: 2026-11-03
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 import { act, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ContractDetail, ContractLifecycleOverview } from "../api/contracts";

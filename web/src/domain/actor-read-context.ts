@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Builds read cache identities from the effective account, tenant, principal, membership and context version without including CSRF credentials.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-03
+// Updated: 2026-11-03
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 import type { Actor } from "../api/types";
 
 // Read caches follow the effective authorization context without storing CSRF.

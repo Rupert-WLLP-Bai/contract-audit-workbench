@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Coordinates one authorized read-only repeatable-read contract lifecycle snapshot through the existing private loaders under the documented transitional boundary.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-03
+// Updated: 2026-11-03
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package store
 
 import (

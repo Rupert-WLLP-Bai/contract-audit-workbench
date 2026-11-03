@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Reads nonempty lifecycle delivery and acceptance facts through the real Core HTTP service, gateway credential and original session to verify their contract correlation.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-03
+// Updated: 2026-11-03
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package store_test
 
 import (

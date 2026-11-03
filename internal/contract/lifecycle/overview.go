@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Defines the contract lifecycle read projection, version identity, observed times and explicit availability states without deciding completion or changing source facts.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-03
+// Updated: 2026-11-03
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package lifecycle
 
 import "time"

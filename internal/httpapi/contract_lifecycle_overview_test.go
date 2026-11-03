@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Checks the real lifecycle HTTP response, OpenAPI null unions, private caching and contract read authorization using an authenticated draft fixture.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-03
+// Updated: 2026-11-03
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package httpapi_test
 
 import (
