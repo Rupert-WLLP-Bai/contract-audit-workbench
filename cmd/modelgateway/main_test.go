@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-30
-// Updated: 2026-10-30
-// Revision: r1
+// Updated: 2026-11-03
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -109,6 +109,9 @@ func configureModelGatewayEnvironment(t *testing.T) {
 func configureModelGatewayService(t *testing.T) {
 	t.Helper()
 	t.Setenv("SERVICE_ROLE", "")
+	t.Setenv("CORE_AUTHORITY_URL", "http://127.0.0.1:1")
+	t.Setenv("CORE_AUTHORITY_ALLOW_INSECURE_DEV", "true")
+	t.Setenv("CORE_MODEL_AUTHORITY_TOKEN", strings.Repeat("a", 40))
 	t.Setenv("MODEL_GATEWAY_MODE", "fixture")
 	t.Setenv("MODEL_GATEWAY_FIXTURE_OCR_CONTENT", "fixture OCR evidence")
 	t.Setenv("LLM_MODEL", "fixture-chat")

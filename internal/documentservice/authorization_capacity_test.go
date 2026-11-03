@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-28
-// Updated: 2026-10-28
-// Revision: r1
+// Updated: 2026-11-03
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -42,6 +42,8 @@ func TestFullPublicQueueStillChecksAuthority(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	f.captureProof(t, viewer)
+	f.captureProof(t, clerk)
 	for _, item := range []struct {
 		name, token, path, contentType string
 		body                           []byte

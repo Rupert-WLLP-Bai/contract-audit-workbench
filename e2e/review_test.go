@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-10-31
-// Revision: r1
+// Updated: 2026-11-03
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -53,6 +53,8 @@ func TestProcurementWarrantyConflictAndConfirm(t *testing.T) {
 	if status != http.StatusOK || login["actor"].(map[string]any)["id"] != "demo-admin" {
 		t.Fatalf("login %d %v", status, login)
 	}
+	active := login["active_context"].(map[string]any)
+	client.Transport = acceptedSessionProof{version: active["context_version"].(string), csrf: login["csrf_token"].(string)}
 	status, created := do(t, client, srv.URL, http.MethodPost, "/api/cases", map[string]any{
 		"title": "采购质保核对", "contract_type": "procurement_ict",
 	}, "")
@@ -121,7 +123,8 @@ func TestProcurementWarrantyConflictAndConfirm(t *testing.T) {
 		}
 	}
 	publicSnapshot, ok := ws["snapshot"].(map[string]any)
-	if !ok || len(publicSnapshot) != 1 {
+	_, hasBusinessAt := publicSnapshot["business_at"]
+	if !ok || len(publicSnapshot) != 2 || !hasBusinessAt || publicSnapshot["business_at"] != nil {
 		t.Fatalf("business snapshot exposed unexpected fields: %+v", ws["snapshot"])
 	}
 	ids, ok := publicSnapshot["document_ids"].([]any)
@@ -208,6 +211,17 @@ func TestProcurementWarrantyConflictAndConfirm(t *testing.T) {
 		!reflect.DeepEqual(afterDiagnostics["snapshot"], snap) {
 		t.Fatalf("diagnostic snapshot changed after decision and document revision: %d %v", status, afterDiagnostics)
 	}
+}
+
+type acceptedSessionProof struct{ version, csrf string }
+
+func (p acceptedSessionProof) RoundTrip(req *http.Request) (*http.Response, error) {
+	copy := req.Clone(req.Context())
+	if req.Method != http.MethodGet && req.Method != http.MethodHead && req.Method != http.MethodOptions {
+		copy.Header.Set("X-Context-Version", p.version)
+		copy.Header.Set("X-CSRF-Token", p.csrf)
+	}
+	return http.DefaultTransport.RoundTrip(copy)
 }
 
 func do(t *testing.T, client *http.Client, base, method, path string, payload any, idem string) (int, map[string]any) {

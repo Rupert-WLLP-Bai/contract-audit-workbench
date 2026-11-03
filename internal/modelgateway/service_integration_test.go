@@ -3,8 +3,8 @@
 // Author: Bai Junhao <baijunhao@cq.chinamobile.com>
 // Contact: +86 13617696321
 // Created: 2026-10-25
-// Updated: 2026-10-31
-// Revision: r1
+// Updated: 2026-11-03
+// Revision: r2
 // Copyright: See LICENSE
 // End file metadata.
 
@@ -12,7 +12,6 @@ package modelgateway
 
 import (
 	"context"
-	"crypto/rand"
 	"encoding/json"
 	"errors"
 	"io"
@@ -58,33 +57,17 @@ func openGatewayTestStore(t *testing.T) (*store.Store, accounts.User) {
 	if dsn == "" {
 		t.Skip("TEST_DATABASE_URL is required for model gateway PostgreSQL scenarios")
 	}
-	schema := "it_gateway_" + strings.ToLower(rand.Text())
 	t.Setenv("APP_ENV", "test")
-	t.Setenv("DATABASE_SCHEMA", schema)
-	var st *store.Store
-	t.Cleanup(func() {
-		if st != nil {
-			if err := st.Close(); err != nil {
-				t.Errorf("close isolated model gateway schema: %v", err)
-			}
-		}
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-		pool, err := pgxpool.New(ctx, dsn)
-		if err != nil {
-			t.Errorf("connect to clean isolated gateway schema: %v", err)
-			return
-		}
-		defer pool.Close()
-		if _, err := pool.Exec(ctx, "DROP SCHEMA IF EXISTS "+pgx.Identifier{schema}.Sanitize()+" CASCADE"); err != nil {
-			t.Errorf("drop isolated gateway schema: %v", err)
-		}
-	})
-	var err error
-	st, err = store.Open(t.TempDir())
+	st, err := store.OpenTest(t.TempDir(), dsn)
 	if err != nil {
 		t.Fatalf("open isolated model gateway schema: %v", err)
 	}
+	t.Setenv("DATABASE_SCHEMA", st.SchemaName())
+	t.Cleanup(func() {
+		if err := st.Close(); err != nil {
+			t.Errorf("close isolated model gateway schema: %v", err)
+		}
+	})
 	admin, ok := accounts.ByID("demo-admin")
 	if !ok {
 		t.Fatal("demo admin is unavailable")
@@ -217,7 +200,7 @@ func readGatewayAccounting(t *testing.T, caseID string) ([]gatewayUsageRow, int)
 	t.Helper()
 	dsn := strings.TrimSpace(os.Getenv("TEST_DATABASE_URL"))
 	schema := os.Getenv("DATABASE_SCHEMA")
-	if dsn == "" || !strings.HasPrefix(schema, "it_gateway_") {
+	if dsn == "" || !strings.HasPrefix(schema, "it_") {
 		t.Fatal("gateway accounting requires its fixture's isolated test schema")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
@@ -280,7 +263,7 @@ func expireGatewayJobClaim(t *testing.T, claim store.JobClaim) {
 	t.Helper()
 	dsn := strings.TrimSpace(os.Getenv("TEST_DATABASE_URL"))
 	schema := os.Getenv("DATABASE_SCHEMA")
-	if dsn == "" || !strings.HasPrefix(schema, "it_gateway_") {
+	if dsn == "" || !strings.HasPrefix(schema, "it_") {
 		t.Fatal("gateway claim expiry requires its fixture's isolated test schema")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
