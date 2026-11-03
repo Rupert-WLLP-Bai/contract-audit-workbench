@@ -435,7 +435,7 @@ func validateReportedWarranty(out Warranty, claim string, hasDisposition bool) e
 	if claim == "" || utf8.RuneCountInString(claim) > 1000 {
 		return fmt.Errorf("%w: claim", ErrUnusable)
 	}
-	if !hasDisposition || len(out.Quotes) == 0 {
+	if !hasDisposition || (len(out.Quotes) == 0 && !(out.Relation == "insufficient" && out.Disposition == "insufficient_evidence")) {
 		return fmt.Errorf("%w: finding", ErrUnusable)
 	}
 	return nil

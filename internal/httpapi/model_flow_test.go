@@ -81,6 +81,40 @@ func TestMalformedModelOutputRetainsRulesAsPartialRun(t *testing.T) {
 	}
 }
 
+func TestInsufficientModelOutputWithoutQuotesRemainsUnverified(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		content := `{"claim":"未发现质保期限","relation":"insufficient","disposition":"insufficient_evidence","quotes":[]}`
+		_ = json.NewEncoder(w).Encode(map[string]any{"choices": []any{map[string]any{"message": map[string]any{"content": content}}}})
+	}))
+	defer upstream.Close()
+	client := model.New(model.Config{BaseURL: upstream.URL + "/v1", ChatModel: model.DefaultChatModel, OCRModel: model.DefaultOCRModel, Gateway: true, APIKey: "test-gateway-credential"})
+	api := newAPIWith(t, client, nil)
+	api.login(t, "demo-admin", "admin-demo")
+	_, created := api.do(t, http.MethodPost, "/api/cases", map[string]any{"title": "质保缺证", "contract_type": "procurement_ict"})
+	caseID := created["id"].(string)
+	api.upload(t, caseID, "procurement", "a.txt", "text/plain", []byte("采购设备。"))
+	api.upload(t, caseID, "draft_contract", "b.txt", "text/plain", []byte("设备验收。"))
+	status, review := api.do(t, http.MethodPost, "/api/cases/"+caseID+"/reviews", map[string]any{})
+	if status != http.StatusCreated {
+		t.Fatalf("start %d %v", status, review)
+	}
+	_, ws := api.do(t, http.MethodGet, "/api/cases/"+caseID+"/reviews/"+review["id"].(string), nil)
+	run := ws["run"].(map[string]any)
+	if run["state"] != "awaiting_human" {
+		t.Fatalf("run %+v", run)
+	}
+	findings := ws["findings"].([]any)
+	if len(findings) != 1 {
+		t.Fatalf("findings %+v", findings)
+	}
+	finding := findings[0].(map[string]any)
+	evidence, _ := finding["evidence"].([]any)
+	reason, _ := finding["unverified_reason"].(string)
+	if finding["origin"] != "model" || finding["relation"] != "insufficient" || finding["disposition_suggestion"] != "insufficient_evidence" || reason == "" || len(evidence) != 0 {
+		t.Fatalf("finding %+v", finding)
+	}
+}
+
 func TestImageOCRFeedsReview(t *testing.T) {
 	var chatModel, ocrModel string
 	var sawImageURL bool

@@ -58,6 +58,11 @@ func AcceptWarranty(docs []Source, proposal Proposal) (Evaluation, []Draft, erro
 		return Evaluation{}, nil, err
 	}
 	eval := Evaluate(docs)
+	if eval.Relation == RelNotApplicable && relation == RelInsufficient && warrantyDisposition(proposal.Disposition) == "insufficient_evidence" && len(proposal.Quotes) == 0 {
+		return eval, []Draft{{Domain: "warranty", Origin: "model", Relation: RelInsufficient,
+			Claim:       "未找到可比对的质保月数，需要人工核对材料是否缺少质保依据。",
+			Disposition: "insufficient_evidence", UnverifiedReason: "模型提示证据不足，尚无可定位的原文支持。"}}, nil
+	}
 	if eval.Relation != RelConflict && eval.Relation != RelInsufficient {
 		return eval, nil, nil
 	}
