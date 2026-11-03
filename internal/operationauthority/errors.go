@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Defines the distinction between ordinary authority refusal and Core-confirmed revocation of the principal bound to an active claim.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-03
+// Updated: 2026-11-03
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package operationauthority
 
 import (

@@ -1,3 +1,13 @@
+// File metadata (manifest mirror):
+// Purpose: Checks that only the explicit authenticated Core revocation response authorizes cancellation while protocol and transport failures remain recoverable.
+// Author: Bai Junhao <baijunhao@cq.chinamobile.com>
+// Contact: +86 13617696321
+// Created: 2026-11-03
+// Updated: 2026-11-03
+// Revision: r1
+// Copyright: See LICENSE
+// End file metadata.
+
 package operationauthority
 
 import (
