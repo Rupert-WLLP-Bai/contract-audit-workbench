@@ -302,22 +302,34 @@ func newDurableTelecomFixture(t *testing.T) (durableFixture, bool) {
 	if !found {
 		t.Fatal("demo admin missing")
 	}
+	sessionToken, err := core.EstablishSession(admin, "client")
+	if err != nil {
+		t.Fatalf("establish telecom fixture session: %v", err)
+	}
+	admin, audience, err := core.AuthenticateSession(context.Background(), sessionToken)
+	if err != nil || audience != "client" || admin.ID != "demo-admin" {
+		t.Fatalf("authenticate telecom fixture session: audience=%q err=%v", audience, err)
+	}
+	ctx := WithAdmissionSessionToken(context.Background(), sessionToken)
+	authority := durableTestOperationAuthority{core: core}
+	document.UseOperationAuthority(authority)
 	pack := publishSyntheticAcceptancePack(t, core, admin)
 	publishSyntheticAcceptancePolicy(t, core, admin, pack)
 	caseID, err := core.CreateCaseWithBusiness(admin, "隔离的电信报告归档", "service", "ENT", "telecom_dedicated_line")
 	if err != nil {
 		t.Fatalf("core service could not create the telecom case: %v", err)
 	}
-	if _, err := document.Generate(context.Background(), admin, caseID, telecomTemplateID, validTelecomTemplateFields()); err != nil {
+	if _, err := document.Generate(ctx, admin, caseID, telecomTemplateID, validTelecomTemplateFields()); err != nil {
 		t.Fatalf("document service could not generate the draft contract: %v", err)
 	}
-	if _, err := document.AddDocument(context.Background(), admin, caseID, "procurement", "purchase.txt", "text/plain", []byte("采购文件未提供任何合同阈值或审批依据。")); err != nil {
+	if _, err := document.AddDocument(ctx, admin, caseID, "procurement", "purchase.txt", "text/plain", []byte("采购文件未提供任何合同阈值或审批依据。")); err != nil {
 		t.Fatalf("document service could not add the procurement source: %v", err)
 	}
 	execution := environment.openRole(t, "execution")
+	execution.UseOperationAuthority(authority)
 	execution.UseDocumentPreparer(document)
 	execution.UseModels(&frozenOCRModel{})
-	accepted, err := execution.StartReviewAsyncAt(context.Background(), admin, caseID, acceptanceBusinessTime)
+	accepted, err := execution.StartReviewAsyncAt(ctx, admin, caseID, acceptanceBusinessTime)
 	if err != nil {
 		t.Fatalf("durable telecom acceptance failed: %v", err)
 	}

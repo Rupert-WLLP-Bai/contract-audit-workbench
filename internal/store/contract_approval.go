@@ -20,8 +20,11 @@ import (
 
 	"contractaudit/internal/access"
 	"contractaudit/internal/accounts"
+	outboxpg "contractaudit/internal/clmoutbox/postgres"
+	contractpg "contractaudit/internal/contract/postgres"
 	"contractaudit/internal/contractmoney"
 	"contractaudit/internal/fault"
+	platformpg "contractaudit/internal/platform/postgres"
 
 	"github.com/jackc/pgx/v5"
 )
@@ -687,13 +690,12 @@ func insertCLMApprovalEvent(ctx context.Context, tx pgx.Tx, tenantID, contractID
 	if err != nil {
 		return err
 	}
-	if _, err := tx.Exec(ctx, `INSERT INTO clm_business_events
-		(tenant_id,event_id,contract_id,aggregate_version,event_type,schema_version,payload)
-		VALUES ($1,$2,$3,$4,$5,1,$6::jsonb)`,
-		tenantID, eventID, contractID, aggregateVersion, eventType, string(body)); err != nil {
+	handle := platformpg.Bind(tx)
+	if err := contractpg.Append(ctx, handle, contractpg.BusinessEvent{
+		TenantID: tenantID, EventID: eventID, ContractID: contractID,
+		AggregateVersion: aggregateVersion, EventType: eventType, Payload: body,
+	}); err != nil {
 		return err
 	}
-	_, err = tx.Exec(ctx, `INSERT INTO clm_outbox_delivery (tenant_id,event_id) VALUES ($1,$2)`,
-		tenantID, eventID)
-	return err
+	return outboxpg.Enqueue(ctx, handle, tenantID, eventID)
 }
