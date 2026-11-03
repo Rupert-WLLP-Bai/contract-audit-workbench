@@ -12,7 +12,7 @@ import { Tabs, Table } from "antd";
 import { Flex } from "antd";
 import { Select } from "antd";
 import { Input, Button } from "antd";
-import { useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { Navigate, useParams, useSearchParams } from "react-router";
 import { errorMessage } from "../api/http";
 import { paths } from "../api/paths";
@@ -28,7 +28,6 @@ import type {
   Knowledge,
   KnowledgeInput,
   WorkbenchSnapshot,
-  WorkbenchTask,
 } from "../api/types";
 import { PageStatus } from "../components/page-status";
 import { StatusText } from "../components/status-text";
@@ -130,7 +129,7 @@ type ModuleRecord = {
   runId: string | null;
   href: string | null;
   panels: Record<string, DetailPanel>;
-  task: WorkbenchTask | null;
+  task: WorkbenchSnapshot["tasks"][number] | null;
 };
 
 const STATUS_LABELS: Record<string, string> = {
@@ -1133,8 +1132,19 @@ function WorkbenchModule({ module }: { module: WorkbenchModuleKey }) {
   const [updatedTaskId, setUpdatedTaskId] = useState("");
   const [searchParams, setSearchParams] = useSearchParams();
   const session = useSession();
-  const query = useWorkbench("week");
+  const actorScope = session.data
+    ? [session.data.audience, session.data.tenant_id, session.data.org_id, session.data.id, session.data.role, session.data.active_context?.context_version ?? ""].join("\u0000")
+    : "";
+  const query = useWorkbench("week", actorScope);
   const updateTask = useUpdateWorkbenchTask();
+  const actorScopeRef = useRef(actorScope);
+  useEffect(() => {
+    if (actorScopeRef.current === actorScope) return;
+    actorScopeRef.current = actorScope;
+    setSelectedId("");
+    setUpdatedTaskId("");
+    setCreateOpen(false);
+  }, [actorScope]);
   const availableSnapshot = query.isError ? undefined : query.data;
   const allRecords = useMemo(
     () =>
@@ -1212,11 +1222,20 @@ function WorkbenchModule({ module }: { module: WorkbenchModuleKey }) {
   );
   const refresh = () => void query.refetch();
 
-  if (query.isLoading)
+  if (session.isLoading || session.isFetching || query.isLoading)
     return (
       <PageStatus
         kind="loading"
         title={`正在加载${WORKBENCH_MODULES[module].title}`}
+      />
+    );
+  if (session.isError || !session.data)
+    return (
+      <PageStatus
+        kind="error"
+        title={`${WORKBENCH_MODULES[module].title}身份没有加载`}
+        detail={errorMessage(session.error)}
+        action={<Button type="primary" htmlType="button" onClick={() => void session.refetch()}>重试</Button>}
       />
     );
   if (query.isError || !query.data)
@@ -1238,6 +1257,13 @@ function WorkbenchModule({ module }: { module: WorkbenchModuleKey }) {
       />
     );
   const snapshot = query.data;
+  const canCompleteTasks =
+    session.isSuccess &&
+    !session.isFetching &&
+    !session.isError &&
+    query.isSuccess &&
+    !query.isFetching &&
+    !query.isError;
 
   const selectedTask = selected?.task ?? null;
   const currentPanel =
@@ -1273,7 +1299,8 @@ function WorkbenchModule({ module }: { module: WorkbenchModuleKey }) {
     }
   }
 
-  function completeTask(task: WorkbenchTask) {
+  function completeTask(task: WorkbenchSnapshot["tasks"][number]) {
+    if (!canCompleteTasks || task.can_complete !== true || task.status === "completed") return;
     setUpdatedTaskId(task.id);
     updateTask.mutate(
       {
@@ -1600,7 +1627,10 @@ function WorkbenchModule({ module }: { module: WorkbenchModuleKey }) {
               ) : (
                 <p className="module-empty">当前数据没有返回该分类的明细。</p>
               )}
-              {selectedTask && selectedTask.status !== "completed" ? (
+              {selectedTask &&
+              selectedTask.status !== "completed" &&
+              selectedTask.can_complete === true &&
+              canCompleteTasks ? (
                 <Button
                   aria-label={String(
                     updatedTaskId === selectedTask.id

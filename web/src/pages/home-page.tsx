@@ -26,7 +26,7 @@ import {
   useUpdateWorkbenchTask,
   useWorkbench,
 } from "../api/queries";
-import type { WorkbenchPeriod, WorkbenchTask } from "../api/types";
+import type { WorkbenchPeriod, WorkbenchSnapshot } from "../api/types";
 import { PageStatus } from "../components/page-status";
 import { IntakePrimaryContract } from "../components/intake-primary-contract";
 import { IntakePendingList } from "../components/intake-pending-list";
@@ -206,12 +206,14 @@ function TaskRow({
   task,
   caseTitle,
   assignee,
+  canComplete,
   pending,
   onComplete,
 }: {
-  task: WorkbenchTask;
+  task: WorkbenchSnapshot["tasks"][number];
   caseTitle: string;
   assignee: string;
+  canComplete: boolean;
   pending: boolean;
   onComplete: () => void;
 }) {
@@ -247,7 +249,7 @@ function TaskRow({
       </div>
       {task.status === "completed" ? (
         <span className="home-task-complete">已完成</span>
-      ) : (
+      ) : task.can_complete === true && canComplete ? (
         <Button
           aria-label={String(pending ? "正在保存" : "标记完成")}
           className="home-task-complete"
@@ -257,7 +259,7 @@ function TaskRow({
         >
           {pending ? "正在保存" : "标记完成"}
         </Button>
-      )}
+      ) : null}
     </li>
   );
 }
@@ -280,14 +282,14 @@ export function HomePage() {
     actorScope: string;
     caseId: string;
   } | null>(null);
-  const snapshot = useWorkbench(period);
   const session = useSession();
   const actor = session.data ?? null;
-  const intakeActorScope = actor
-    ? [actor.audience, actor.tenant_id, actor.org_id, actor.id].join("\u0000")
-    : "";
   const nextStepActorScope = actor
     ? [actor.audience, actor.tenant_id, actor.org_id, actor.id, actor.role, actor.active_context?.context_version ?? ""].join("\u0000")
+    : "";
+  const snapshot = useWorkbench(period, nextStepActorScope);
+  const intakeActorScope = actor
+    ? [actor.audience, actor.tenant_id, actor.org_id, actor.id].join("\u0000")
     : "";
   const activeIntakeSelection =
     selectedIntake?.actorScope === intakeActorScope
@@ -336,8 +338,27 @@ export function HomePage() {
     [snapshot.data?.members],
   );
 
-  if (snapshot.isLoading)
+  if (session.isLoading || snapshot.isLoading)
     return <PageStatus kind="loading" title="正在加载工作台" />;
+  if (session.isError || !session.data) {
+    return (
+      <PageStatus
+        kind="error"
+        title="当前身份没有加载"
+        detail={errorMessage(session.error)}
+        action={
+          <Button
+            aria-label="重新读取身份"
+            type="primary"
+            htmlType="button"
+            onClick={() => void session.refetch()}
+          >
+            重新读取身份
+          </Button>
+        }
+      />
+    );
+  }
   if (snapshot.isError || !snapshot.data) {
     return (
       <PageStatus
@@ -358,6 +379,13 @@ export function HomePage() {
     );
   }
 
+  const canCompleteTasks =
+    session.isSuccess &&
+    !session.isFetching &&
+    !session.isError &&
+    snapshot.isSuccess &&
+    !snapshot.isFetching &&
+    !snapshot.isError;
   const data = snapshot.data;
   const dashboard = data.dashboard;
   const allTasks = [...data.tasks].sort((left, right) =>
@@ -451,6 +479,7 @@ export function HomePage() {
     .sort((left, right) => right.updated_at.localeCompare(left.updated_at))
     .slice(0, 5);
   const caseWork = cases
+    .slice(0, 8)
     .map((item) => ({
       item,
       tasks: data.tasks.filter(
@@ -460,17 +489,10 @@ export function HomePage() {
         (remediation) =>
           remediation.case_id === item.id && remediation.status !== "closed",
       ),
-    }))
-    .filter(({ item, tasks: caseTasks, remediations: caseRemediations }) =>
-      caseTasks.length > 0 ||
-      caseRemediations.length > 0 ||
-      item.profile?.due_at != null ||
-      item.severity === "high" ||
-      item.severity === "critical",
-    )
-    .slice(0, 8);
+    }));
 
-  function completeTask(task: WorkbenchTask) {
+  function completeTask(task: WorkbenchSnapshot["tasks"][number]) {
+    if (!canCompleteTasks || task.can_complete !== true || task.status === "completed") return;
     updateTask.mutate({
       caseId: task.case_id,
       taskId: task.id,
@@ -610,7 +632,7 @@ export function HomePage() {
           <span className="home-panel-meta">按案件更新时间排序，最多显示 8 个案件</span>
         </header>
         {caseWork.length === 0 ? (
-          <p className="home-empty">当前可见快照中没有符合筛选的案件。</p>
+          <p className="home-empty">当前无可见案件。</p>
         ) : (
           <ul className="home-case-work-list">
             {caseWork.map(({ item, tasks: caseTasks, remediations: caseRemediations }) => (
@@ -808,6 +830,7 @@ export function HomePage() {
                   task={task}
                   caseTitle={caseTitles.get(task.case_id) ?? task.case_id}
                   assignee={members.get(task.assignee_id) ?? task.assignee_id}
+                  canComplete={canCompleteTasks}
                   onComplete={() => completeTask(task)}
                   pending={
                     updateTask.isPending &&

@@ -103,7 +103,10 @@ export const queryKeys = {
     ["admin", "rulepacks", "detail", packId, version] as const,
   rulePackHistory: (packId: string) =>
     ["admin", "rulepacks", "history", packId] as const,
-  workbench: (period: WorkbenchPeriod) => ["workbench", period] as const,
+  workbench: (period: WorkbenchPeriod, actorScope?: string) =>
+    actorScope === undefined
+      ? (["workbench", period] as const)
+      : (["workbench", period, actorScope] as const),
   workbenchPrefix: ["workbench"] as const,
   subjectsPrefix: ["subjects"] as const,
   subjects: (query: string, cursor: string | null, caseId?: string) =>
@@ -240,10 +243,11 @@ export function useCases() {
     queryFn: ({ signal }) => api.listCases(signal),
   });
 }
-export function useWorkbench(period: WorkbenchPeriod = "week") {
+export function useWorkbench(period: WorkbenchPeriod = "week", actorScope?: string) {
   return useQuery({
-    queryKey: queryKeys.workbench(period),
+    queryKey: queryKeys.workbench(period, actorScope),
     queryFn: ({ signal }) => api.getWorkbench(period, signal),
+    enabled: actorScope === undefined || actorScope !== "",
     staleTime: 30_000,
   });
 }
@@ -418,6 +422,12 @@ export function useUpdateWorkbenchTask() {
     }) => api.updateWorkbenchTask(input.caseId, input.taskId, input.update),
     onSuccess: (_task, input) =>
       invalidateCaseViews(queryClient, input.caseId, { workbench: true }),
+    onError: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.workbenchPrefix }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.session }),
+      ]);
+    },
   });
 }
 

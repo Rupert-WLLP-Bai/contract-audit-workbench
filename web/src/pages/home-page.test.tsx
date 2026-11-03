@@ -43,7 +43,7 @@ function json(value: unknown, status = 200) {
   });
 }
 
-function task(overrides: Partial<WorkbenchTask> = {}): WorkbenchTask {
+function task(overrides: Partial<WorkbenchTask> & { can_complete?: boolean } = {}): WorkbenchTask & { can_complete?: boolean } {
   return {
     id: "task-mine",
     case_id: "case-1",
@@ -58,6 +58,7 @@ function task(overrides: Partial<WorkbenchTask> = {}): WorkbenchTask {
     created_at: at,
     created_by: "me",
     updated_at: at,
+    can_complete: true,
     ...overrides,
   };
 }
@@ -243,6 +244,8 @@ class HomeService {
     Record<WorkbenchPeriod, Partial<WorkbenchDashboard>>
   > = {};
   snapshotFailures: number[] = [];
+  capabilityUnsupported = false;
+  completionFailures: number[] = [];
   caseDetail: CaseDetail | null = null;
   readinessResponse: unknown = null;
   readinessFailure: number | null = null;
@@ -267,6 +270,8 @@ class HomeService {
       return json({ items: [], next_cursor: null });
     if (url.pathname === "/api/workbench") {
       if (this.snapshotGate) await this.snapshotGate.promise;
+      if (url.searchParams.has("task_capabilities") && this.capabilityUnsupported)
+        return json({ error: { message: "旧服务不支持任务能力字段" } }, 422);
       const failure = this.snapshotFailures.shift();
       if (failure)
         return json(
@@ -319,6 +324,12 @@ class HomeService {
     }
     if (parts[4] === "tasks" && method === "PUT") {
       if (this.completionGate) await this.completionGate.promise;
+      const failure = this.completionFailures.shift();
+      if (failure) {
+        const taskToRevoke = this.data.tasks.find((item) => item.id === decodeURIComponent(parts[5]!));
+        if (taskToRevoke) taskToRevoke.can_complete = false;
+        return json({ error: { message: "任务完成权限已变化" } }, failure);
+      }
       const index = this.data.tasks.findIndex(
         (item) => item.id === decodeURIComponent(parts[5]!),
       );
@@ -534,6 +545,23 @@ describe("HomePage snapshot consumers", () => {
     expect(dueOnlyCase).not.toHaveTextContent("高风险");
   });
 
+  it("keeps an unreviewed case with no task or deadline available for next-step review", async () => {
+    const service = new HomeService();
+    service.data.cases = [caseRecord({ title: "尚未审查且无期限" })];
+    service.data.tasks = [];
+    service.data.remediations = [];
+    service.caseDetail = { ...caseDetail(), title: "尚未审查且无期限" };
+    service.readinessResponse = readiness();
+    const { user } = open(service);
+
+    const caseWork = await screen.findByRole("region", { name: "按案件处理" });
+    const caseRow = within(caseWork).getByRole("link", { name: "尚未审查且无期限" }).closest("li");
+    expect(caseRow).not.toHaveTextContent("尚未审查且无期限 ·");
+    expect(within(caseRow!).getByRole("button", { name: "查看实际下一步" })).toBeInTheDocument();
+    await user.click(within(caseRow!).getByRole("button", { name: "查看实际下一步" }));
+    expect(await within(caseRow!).findByText("缺少主合同")).toBeInTheDocument();
+  });
+
   it("loads next-step details only for the case the user expands and keeps write actions out of the workbench", async () => {
     const service = new HomeService();
     const { user } = open(service);
@@ -663,16 +691,24 @@ describe("HomePage snapshot consumers", () => {
     await user.click(within(targetCase!).getByRole("button", { name: "查看实际下一步" }));
     expect(await screen.findByText("缺少主合同")).toBeInTheDocument();
 
+    service.snapshotGate = Promise.withResolvers<void>();
     client.setQueryData(["session", "client"], {
-      ...session,
-      actor: {
-        ...session.actor,
-        role: "viewer",
-      },
+      ...session.actor,
+      audience: session.audience,
+      role: "viewer",
       active_context: { ...session.active_context, context_version: "2" },
+      principal_id: session.principal_id,
+      csrf_token: session.csrf_token,
+      context_switch_enabled: session.context_switch_enabled,
     });
 
-    expect(await within(targetCase!).findByRole("button", { name: "查看实际下一步" })).toHaveAttribute("aria-expanded", "false");
+    expect(await screen.findByRole("heading", { name: "正在加载工作台" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "标记完成" })).not.toBeInTheDocument();
+    service.snapshotGate.resolve();
+    service.snapshotGate = null;
+    await waitFor(() =>
+      expect(screen.queryByRole("heading", { name: "正在加载工作台" })).not.toBeInTheDocument(),
+    );
     expect(screen.queryByText("缺少主合同")).not.toBeInTheDocument();
   });
 
@@ -719,7 +755,7 @@ describe("HomePage snapshot consumers", () => {
     empty.data.tasks = [];
     empty.data.remediations = [];
     open(empty);
-    expect(await screen.findByText("当前可见快照中没有符合筛选的案件。")).toBeInTheDocument();
+    expect(await screen.findByText("当前无可见案件。")).toBeInTheDocument();
     cleanup();
 
     const unknown = new HomeService();
@@ -780,9 +816,9 @@ describe("HomePage snapshot consumers", () => {
         .map((request) => request.path)
         .slice(0, 3),
     ).toEqual([
-      "/api/workbench?period=week",
-      "/api/workbench?period=day",
-      "/api/workbench?period=month",
+      "/api/workbench?period=week&task_capabilities=1",
+      "/api/workbench?period=day&task_capabilities=1",
+      "/api/workbench?period=month&task_capabilities=1",
     ]);
   });
 
@@ -858,13 +894,96 @@ describe("HomePage snapshot consumers", () => {
     ).toBeInTheDocument();
     expect(
       service.requests.filter(
-        (request) => request.path === "/api/workbench?period=week",
+        (request) => request.path === "/api/workbench?period=week&task_capabilities=1",
       ),
     ).toHaveLength(2);
   });
 });
 
 describe("HomePage persistent task workflow", () => {
+  it.each([
+    ["granted", true, false, true],
+    ["denied", false, false, false],
+    ["missing", undefined, false, false],
+    ["unsupported server", undefined, true, false],
+  ])("shows completion only when the server snapshot grants it (%s)", async (_label, canComplete, unsupported, visible) => {
+    const service = new HomeService();
+    service.capabilityUnsupported = unsupported;
+    const targetTask = task();
+    if (canComplete === undefined) delete targetTask.can_complete;
+    else targetTask.can_complete = canComplete;
+    service.data.tasks = [targetTask];
+    service.data.cases = [caseRecord()];
+    service.data.members = [];
+    open(service);
+    await screen.findByRole("heading", { name: "你好，周审查" });
+    const panel = within(taskPanel());
+    expect(panel.getByRole("link", { name: "确认质保条款" })).toHaveAttribute("href", "/cases/case-1");
+    if (visible) {
+      expect(panel.getByRole("button", { name: "标记完成" })).toBeInTheDocument();
+    } else {
+      expect(panel.queryByRole("button", { name: "标记完成" })).not.toBeInTheDocument();
+    }
+  });
+
+  it("refreshes authorization after a completion refusal and hides the revoked action", async () => {
+    const service = new HomeService();
+    service.completionFailures = [403];
+    service.data.tasks = [task()];
+    service.data.cases = [caseRecord()];
+    const { user } = open(service);
+    await screen.findByRole("heading", { name: "你好，周审查" });
+    const workbenchReadsBeforeCompletion = service.requests.filter((request) => request.path.startsWith("/api/workbench")).length;
+    await user.click(within(taskPanel()).getByRole("button", { name: "标记完成" }));
+
+    expect(await screen.findByText("任务完成权限已变化")).toBeInTheDocument();
+    await waitFor(() => expect(within(taskPanel()).queryByRole("button", { name: "标记完成" })).not.toBeInTheDocument());
+    expect(service.requests.filter((request) => request.path.startsWith("/api/workbench"))).toHaveLength(workbenchReadsBeforeCompletion + 1);
+    expect(service.requests.filter((request) => request.path === "/api/session")).toHaveLength(2);
+  });
+
+  it("does not reuse a granted action when authorization snapshot refresh fails", async () => {
+    const service = new HomeService();
+    service.completionFailures = [409];
+    service.data.tasks = [task()];
+    service.data.cases = [caseRecord()];
+    const { user } = open(service);
+    await screen.findByRole("heading", { name: "你好，周审查" });
+    service.snapshotFailures.push(503);
+    await user.click(within(taskPanel()).getByRole("button", { name: "标记完成" }));
+
+    expect(await screen.findByRole("heading", { name: "工作台数据没有加载" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "标记完成" })).not.toBeInTheDocument();
+  });
+
+  it("does not carry completion capability across an identity or context switch", async () => {
+    const service = new HomeService();
+    service.data.tasks = [task()];
+    service.data.cases = [caseRecord()];
+    const { client } = open(service);
+    await screen.findByRole("heading", { name: "你好，周审查" });
+    expect(within(taskPanel()).getByRole("button", { name: "标记完成" })).toBeInTheDocument();
+
+    service.data.tasks[0]!.can_complete = false;
+    service.snapshotGate = Promise.withResolvers<void>();
+    client.setQueryData(["session", "client"], {
+      ...session.actor,
+      audience: session.audience,
+      role: "viewer",
+      active_context: { ...session.active_context, context_version: "2" },
+      principal_id: session.principal_id,
+      csrf_token: session.csrf_token,
+      context_switch_enabled: session.context_switch_enabled,
+    });
+
+    expect(await screen.findByRole("heading", { name: "正在加载工作台" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "标记完成" })).not.toBeInTheDocument();
+    service.snapshotGate.resolve();
+    service.snapshotGate = null;
+    await screen.findByRole("heading", { name: "你好，周审查" });
+    expect(screen.queryByRole("button", { name: "标记完成" })).not.toBeInTheDocument();
+  });
+
   it("filters by the signed-in assignee and completion, and orders deadlines before undated tasks", async () => {
     const { user } = open();
     await screen.findByRole("heading", { name: "你好，周审查" });
@@ -961,7 +1080,7 @@ describe("HomePage persistent task workflow", () => {
       });
       expect(
         service.requests.filter(
-          (request) => request.path === "/api/workbench?period=week",
+          (request) => request.path === "/api/workbench?period=week&task_capabilities=1",
         ),
       ).toHaveLength(2);
       await user.click(screen.getByRole("button", { name: "新建任务" }));

@@ -43,7 +43,7 @@ const referenceVersion = "3".repeat(64);
 const clients: QueryClient[] = [];
 type User = ReturnType<typeof userEvent.setup>;
 
-function task(overrides: Partial<WorkbenchTask> = {}): WorkbenchTask {
+function task(overrides: Partial<WorkbenchTask> & { can_complete?: boolean } = {}): WorkbenchTask & { can_complete?: boolean } {
   return {
     id: "task/assigned",
     case_id: "case/alpha",
@@ -58,6 +58,7 @@ function task(overrides: Partial<WorkbenchTask> = {}): WorkbenchTask {
     created_by: "reviewer-2",
     created_at: at,
     updated_at: at,
+    can_complete: true,
     ...overrides,
   };
 }
@@ -478,6 +479,8 @@ class WorkbenchService {
   requests: { key: string; body: unknown }[] = [];
   failures = new Map<string, { status: number; message: string }[]>();
   taskVersions = new Map<string, number>();
+  unsupportedTaskCapabilities = false;
+  revokeTaskCapabilityOnFailure = false;
   knowledgeResponses = new Map<string, unknown>();
   pendingKnowledge = new Map<string, Promise<Response>>();
 
@@ -499,7 +502,12 @@ class WorkbenchService {
       typeof init?.body === "string" ? JSON.parse(init.body) : null;
     this.requests.push({ key, body });
     const failure = this.failures.get(key)?.shift();
-    if (failure)
+    if (failure) {
+      if (this.revokeTaskCapabilityOnFailure && method === "PUT") {
+        const taskId = decodeURIComponent(new URL(path, "http://workbench.test").pathname.split("/").at(-1) ?? "");
+        const taskToRevoke = this.snapshot.tasks.find((item) => item.id === taskId);
+        if (taskToRevoke) taskToRevoke.can_complete = false;
+      }
       return json(
         {
           error: {
@@ -510,6 +518,7 @@ class WorkbenchService {
         },
         failure.status,
       );
+    }
     if (key === "GET /api/session")
       return json({
         audience: "client",
@@ -520,8 +529,21 @@ class WorkbenchService {
           tenant_id: "tenant-public",
           org_id: "org-alpha",
         },
+        active_context: {
+          membership_id: "member-reviewer-1",
+          tenant_id: "tenant-public",
+          tenant_name: "公开租户",
+          org_id: "org-alpha",
+          org_name: "甲组织",
+          context_version: "1",
+        },
+        principal_id: "principal-reviewer-1",
+        csrf_token: "test-csrf",
+        context_switch_enabled: false,
       });
-    if (key === "GET /api/workbench?period=week")
+    if (key.startsWith("GET /api/workbench?period=week") && this.unsupportedTaskCapabilities && key.includes("task_capabilities=1"))
+      return json({ error: { message: "旧工作台不支持任务 capability" } }, 422);
+    if (key.startsWith("GET /api/workbench?period=week"))
       return json(this.responseSnapshot ?? this.snapshot);
     if (key === "GET /api/settings")
       return json({
@@ -642,6 +664,16 @@ function open(
   service = new WorkbenchService(),
   search = "",
 ) {
+  setSessionIdentity({
+    id: service.actorId,
+    role: "reviewer",
+    audience: "client",
+    tenant_id: "tenant-public",
+    org_id: "org-alpha",
+    principal_id: "principal-reviewer-1",
+    active_context: { context_version: "1" },
+    csrf_token: "test-csrf",
+  });
   vi.stubGlobal("fetch", vi.fn(service.handle));
   const client = new QueryClient({
     defaultOptions: {
@@ -706,6 +738,50 @@ afterEach(() => {
 });
 
 describe("workbench tasks", () => {
+  it.each([
+    ["explicit denial", false, false],
+    ["missing field", undefined, false],
+    ["legacy server fallback", true, true],
+  ])("hides task completion without an affirmative capability (%s)", async (_name, canComplete, unsupported) => {
+    const service = new WorkbenchService();
+    service.unsupportedTaskCapabilities = unsupported;
+    if (canComplete === undefined) delete service.snapshot.tasks[0]!.can_complete;
+    else service.snapshot.tasks[0]!.can_complete = canComplete;
+    open("tasks", service);
+    const rows = await list("审查任务");
+
+    expect(rows.getByRole("button", { name: /核实付款依据/ })).toBeInTheDocument();
+    expect(details().getByRole("link", { name: "打开关联记录" })).toHaveAttribute(
+      "href",
+      "/cases/case%2Falpha/reviews/run%2Fcurrent",
+    );
+    expect(details().queryByRole("button", { name: "标记任务完成" })).not.toBeInTheDocument();
+  });
+
+  it("refreshes the session and workbench after a completion refusal", async () => {
+    const service = new WorkbenchService();
+    service.revokeTaskCapabilityOnFailure = true;
+    service.fail(
+      "PUT /api/cases/case%2Falpha/tasks/task%2Fassigned",
+      403,
+      "任务完成权限已撤销",
+    );
+    const { user } = open("tasks", service);
+    await list("审查任务");
+    expect(details().getByRole("button", { name: "标记任务完成" })).toBeInTheDocument();
+    await user.click(details().getByRole("button", { name: "标记任务完成" }));
+
+    expect(await screen.findByRole("alert")).toBeInTheDocument();
+    expect(service.requests.map((request) => request.key)).toContain("PUT /api/cases/case%2Falpha/tasks/task%2Fassigned");
+    expect(service.snapshot.tasks.find((item) => item.id === "task/assigned")?.can_complete).toBe(false);
+    expect(service.requests.filter((request) => request.key.includes("GET /api/workbench?period=week"))).toHaveLength(2);
+    await waitFor(() =>
+      expect(details().queryByRole("button", { name: "标记任务完成" })).not.toBeInTheDocument(),
+    );
+    expect(service.requests.filter((request) => request.key === "GET /api/session")).toHaveLength(2);
+    expect(service.requests.filter((request) => request.key.includes("GET /api/workbench?period=week"))).toHaveLength(2);
+  });
+
   it("uses assignee and creator IDs for task tabs and resolves authorized case details", async () => {
     const { user } = open("tasks");
     const rows = await list("审查任务");
@@ -723,6 +799,7 @@ describe("workbench tasks", () => {
     expectField("责任人", "审查员甲");
     expectField("优先级", "high");
     expectField("版本", "7");
+    expect(details().getByRole("button", { name: "标记任务完成" })).toBeInTheDocument();
     expect(
       details().getByRole("link", { name: "打开关联记录" }),
     ).toHaveAttribute("href", "/cases/case%2Falpha/reviews/run%2Fcurrent");
@@ -1809,7 +1886,7 @@ describe("workbench snapshot boundaries", () => {
   it("retries an unavailable snapshot and renders only the authorized response", async () => {
     const service = new WorkbenchService();
     service.fail(
-      "GET /api/workbench?period=week",
+      "GET /api/workbench?period=week&task_capabilities=1",
       503,
       "持久业务快照暂时不可用",
     );
@@ -1838,7 +1915,7 @@ describe("workbench snapshot boundaries", () => {
     );
     expect(
       service.requests.filter(
-        (item) => item.key === "GET /api/workbench?period=week",
+        (item) => item.key === "GET /api/workbench?period=week&task_capabilities=1",
       ),
     ).toHaveLength(2);
   });
@@ -1846,7 +1923,7 @@ describe("workbench snapshot boundaries", () => {
   it("shows a server denial without exposing any cached fixture records", async () => {
     const service = new WorkbenchService();
     service.fail(
-      "GET /api/workbench?period=week",
+      "GET /api/workbench?period=week&task_capabilities=1",
       403,
       "没有读取工作台快照的权限",
     );
