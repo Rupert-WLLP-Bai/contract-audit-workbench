@@ -301,6 +301,7 @@ func options(app *bootstrap.Runtime, cors []string) httpapi.Options {
 		ToolClaimAuthorityCredential: strings.TrimSpace(os.Getenv("TOOL_CORE_AUTHORITY_TOKEN")),
 		ModelAuthorityCredential:     strings.TrimSpace(os.Getenv("CORE_MODEL_AUTHORITY_TOKEN")),
 		OperatorAuditEnabled:         enabled,
+		ContractAuditBindingsEnabled: contractAuditBindingsEnabled(),
 		CapabilityPacks:              registry,
 		ExternalConnectors:           connectors,
 		ExternalConnectorInfo:        catalog,

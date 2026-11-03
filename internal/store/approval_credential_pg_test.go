@@ -14,12 +14,30 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
 	"contractaudit/internal/approval"
 	"contractaudit/internal/fault"
 )
+
+func TestApplicationStoreLoadsApprovalCredentialKeyring(t *testing.T) {
+	t.Setenv("CAW_APPROVAL_CREDENTIAL_KEY", "")
+	env, ok := newDurableRoleEnvironment(t)
+	if !ok {
+		t.Skip("TEST_DATABASE_URL and MIGRATOR_DATABASE_URL are required")
+	}
+	withoutKey := env.openRole(t, "core")
+	if withoutKey.approvalKeyring != nil {
+		t.Fatal("approval credentials must stay disabled without a key")
+	}
+	t.Setenv("CAW_APPROVAL_CREDENTIAL_KEY", strings.Repeat("k", 32))
+	withKey := env.openRole(t, "core")
+	if withKey.approvalKeyring == nil {
+		t.Fatal("the application store did not load the configured approval credential key")
+	}
+}
 
 // CLM-11 durable checks: a decision may only be recorded with a credential
 // bound to the same subject, task, revision, snapshot and row versions, and a

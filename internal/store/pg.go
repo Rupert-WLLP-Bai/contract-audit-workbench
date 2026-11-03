@@ -418,6 +418,12 @@ func openApplicationStore(dir string, sel config.Selection, schema string) (*Sto
 		dir: dir, sel: sel, schema: schema, pool: pool,
 		executionSlots: make(chan struct{}, maxConcurrentReviews), running: make(map[string]func()), claims: make(map[string]JobClaim),
 	}
+	keyring, err := approval.KeyringFromEnv()
+	if err != nil {
+		pool.Close()
+		return nil, err
+	}
+	s.approvalKeyring = keyring
 	if err := configureSubjectSourceFromEnvironment(s); err != nil {
 		pool.Close()
 		return nil, err

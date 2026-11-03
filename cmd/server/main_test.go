@@ -414,6 +414,7 @@ func TestLogStartupReportsInstanceDatabaseAndModels(t *testing.T) {
 
 func TestOptionsPreservesRuntimeFlagsAndKeepsAuditDefaultOff(t *testing.T) {
 	t.Setenv("OPERATOR_AUDIT_ENABLED", "")
+	t.Setenv("CONTRACT_AUDIT_BINDINGS_ENABLED", "")
 	t.Setenv("WORKER_CORE_TOKEN", " worker-token ")
 	t.Setenv("TOOL_CORE_AUTHORITY_TOKEN", strings.Repeat("t", 40))
 	app := &bootstrap.Runtime{
@@ -430,6 +431,17 @@ func TestOptionsPreservesRuntimeFlagsAndKeepsAuditDefaultOff(t *testing.T) {
 	}
 	if got.OperatorAuditEnabled || got.CapabilityPacks != nil || got.ExternalConnectors != nil || got.ExternalConnectorInfo != nil {
 		t.Fatalf("operator audit was enabled without its explicit switch: %+v", got)
+	}
+	if got.ContractAuditBindingsEnabled {
+		t.Fatal("contract audit bindings must be disabled by default")
+	}
+	t.Setenv("CONTRACT_AUDIT_BINDINGS_ENABLED", "true")
+	if !options(app, nil).ContractAuditBindingsEnabled {
+		t.Fatal("explicit contract audit bindings switch was not propagated")
+	}
+	t.Setenv("CONTRACT_AUDIT_BINDINGS_ENABLED", "invalid")
+	if options(app, nil).ContractAuditBindingsEnabled {
+		t.Fatal("invalid contract audit bindings switch must remain disabled")
 	}
 }
 
