@@ -58,10 +58,12 @@ func AcceptWarranty(docs []Source, proposal Proposal) (Evaluation, []Draft, erro
 		return Evaluation{}, nil, err
 	}
 	eval := Evaluate(docs)
-	if eval.Relation == RelNotApplicable && relation == RelInsufficient && warrantyDisposition(proposal.Disposition) == "insufficient_evidence" && len(proposal.Quotes) == 0 {
-		return eval, []Draft{{Domain: "warranty", Origin: "model", Relation: RelInsufficient,
+	if eval.Relation == RelNotApplicable && relation == RelInsufficient && warrantyDisposition(proposal.Disposition) == "insufficient_evidence" {
+		draft := Draft{Domain: "warranty", Origin: "model", Relation: RelInsufficient,
 			Claim:       "未找到可比对的质保月数，需要人工核对材料是否缺少质保依据。",
-			Disposition: "insufficient_evidence", UnverifiedReason: "模型提示证据不足，尚无可定位的原文支持。"}}, nil
+			Disposition: "insufficient_evidence", UnverifiedReason: "模型提示证据不足，引用定位不能证明条款缺失，需人工核对。"}
+		appendInsufficientQuotes(&draft, docs, proposal.Quotes)
+		return eval, []Draft{draft}, nil
 	}
 	if eval.Relation != RelConflict && eval.Relation != RelInsufficient {
 		return eval, nil, nil
@@ -80,6 +82,33 @@ func AcceptWarranty(docs []Source, proposal Proposal) (Evaluation, []Draft, erro
 	}
 	draft.UnverifiedReason = strings.Join(notes, "")
 	return eval, []Draft{draft}, nil
+}
+
+func appendInsufficientQuotes(draft *Draft, docs []Source, quotes []QuoteRef) {
+	byID := make(map[string]Source, len(docs))
+	for _, doc := range docs {
+		byID[doc.ID] = doc
+	}
+	seen := make(map[string]bool)
+	for _, quote := range quotes {
+		id, text := strings.TrimSpace(quote.DocumentID), strings.TrimSpace(quote.Quote)
+		key := id + "\n" + text
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		doc, ok := byID[id]
+		if !ok || doc.ParseStatus != "ready" {
+			draft.Anchors = append(draft.Anchors, Anchor{DocumentID: id, Quote: text, Status: "unlocatable", Reason: "引用没有对应到可读取的案件材料，不能编造坐标。"})
+			continue
+		}
+		bound := docir.Locate(doc.ir(), text)
+		if bound.Status != docir.StatusLocated {
+			draft.Anchors = append(draft.Anchors, unlocatableQuote(doc, text, bound.Reason))
+			continue
+		}
+		draft.Anchors = append(draft.Anchors, Anchor{DocumentID: id, Quote: text, Status: "located", Start: bound.Start, End: bound.End, Page: bound.Page, ElementID: bound.ElementID})
+	}
 }
 
 func validateProposalQuotes(quotes []QuoteRef) error {

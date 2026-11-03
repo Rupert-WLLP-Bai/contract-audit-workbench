@@ -49,6 +49,50 @@ func TestParsedInsufficientWarrantyPreservesMissingEvidence(t *testing.T) {
 	}
 }
 
+func TestInsufficientWarrantyQuotesAreLocatedWithoutConfirmingClaim(t *testing.T) {
+	docs := []engine.Source{{ID: "a", ParseStatus: "ready", Text: "采购设备。"}, {ID: "b", ParseStatus: "ready", Text: "设备验收。"}}
+	for _, tc := range []struct{ name, documentID, quote, status string }{
+		{"located", "b", "设备验收。", "located"}, {"unlocatable", "b", "不存在的质保条款", "unlocatable"},
+		{"unknown document", "unknown", "设备验收。", "unlocatable"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			raw := `{"claim":"未发现质保期限","relation":"insufficient","disposition":"insufficient_evidence","quotes":[{"document_id":"a","quote":"采购设备。"},{"document_id":"` + tc.documentID + `","quote":"` + tc.quote + `"}]}`
+			parsed, err := model.ParseWarranty(raw)
+			if err != nil {
+				t.Fatal(err)
+			}
+			quotes := make([]engine.QuoteRef, len(parsed.Quotes))
+			for i, q := range parsed.Quotes {
+				quotes[i] = engine.QuoteRef{DocumentID: q.DocumentID, Quote: q.Quote}
+			}
+			ev, drafts, err := engine.AcceptWarranty(docs, engine.Proposal{Relation: parsed.Relation, Disposition: parsed.Disposition, Quotes: quotes})
+			if err != nil || ev.Relation != engine.RelNotApplicable || len(drafts) != 1 {
+				t.Fatalf("eval=%+v drafts=%+v err=%v", ev, drafts, err)
+			}
+			draft := drafts[0]
+			if draft.Relation != engine.RelInsufficient || draft.Disposition != "insufficient_evidence" || draft.UnverifiedReason == "" || len(draft.Anchors) != 2 {
+				t.Fatalf("draft %+v", draft)
+			}
+			if draft.Anchors[0].Status != "located" || draft.Anchors[1].Status != tc.status {
+				t.Fatalf("anchors %+v", draft.Anchors)
+			}
+			for _, a := range draft.Anchors {
+				if a.Status == "located" {
+					text := docs[0].Text
+					if a.DocumentID == "b" {
+						text = docs[1].Text
+					}
+					if slice, ok := docir.Slice(text, a.Start, a.End); !ok || slice != a.Quote {
+						t.Fatalf("invalid anchor %+v", a)
+					}
+				} else if a.Start != 0 || a.End != 0 {
+					t.Fatalf("invented coordinates %+v", a)
+				}
+			}
+		})
+	}
+}
+
 func TestWarrantyConflict(t *testing.T) {
 	docs := []engine.Source{
 		{ID: "a", Role: "procurement", ParseStatus: "ready", Text: "采购文件要求质保36个月。"},
