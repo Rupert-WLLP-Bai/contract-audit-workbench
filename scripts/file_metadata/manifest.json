@@ -21062,14 +21062,15 @@
         }
       },
       "updated": {
-        "value": "2026-10-28",
+        "value": "2026-11-03",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "dea4ca14a86678b38ab2b052c3eec3ecbed63589",
-          "reason": "Most recent available content-changing commit in the fixed HEAD history; pure rename events with unchanged blob IDs are excluded. UTC date comes from the commit committer timestamp. Metadata headers have not yet been applied."
+          "commit": "9f6977f0ef278f3d44d306d86eab21617dc012b7",
+          "path": "internal/httpapi/diagnostics_routes_test.go",
+          "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r1",
+      "revision": "r2",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -49148,7 +49149,7 @@
           "reason": "The manifest cannot embed the commit/blob identity of its own current update; retain this exact-path self-reference exception."
         }
       },
-      "revision": "r10",
+      "revision": "r11",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -53648,14 +53649,15 @@
         }
       },
       "updated": {
-        "value": "2026-10-31",
+        "value": "2026-11-03",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "50ac130dbcd63159ba3a9dd60942d61e06e03f93",
-          "reason": "Most recent available content-changing commit in the fixed HEAD history; pure rename events with unchanged blob IDs are excluded. UTC date comes from the commit committer timestamp. Metadata headers have not yet been applied."
+          "commit": "fa1c7721cd178a7906490957456257bdf5421880",
+          "path": "web/e2e/c1b-journey.ts",
+          "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r1",
+      "revision": "r2",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -53742,14 +53744,15 @@
         }
       },
       "updated": {
-        "value": "2026-10-31",
+        "value": "2026-11-03",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "50ac130dbcd63159ba3a9dd60942d61e06e03f93",
-          "reason": "Most recent available content-changing commit in the fixed HEAD history; pure rename events with unchanged blob IDs are excluded. UTC date comes from the commit committer timestamp. Metadata headers have not yet been applied."
+          "commit": "fa1c7721cd178a7906490957456257bdf5421880",
+          "path": "web/e2e/c1b-scenarios.ts",
+          "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r1",
+      "revision": "r2",
       "copyright": [
         {
           "holder": "Bai Junhao",
@@ -53789,14 +53792,15 @@
         }
       },
       "updated": {
-        "value": "2026-10-31",
+        "value": "2026-11-03",
         "source": {
           "kind": "git-last-content-change",
-          "commit": "50ac130dbcd63159ba3a9dd60942d61e06e03f93",
-          "reason": "Most recent available content-changing commit in the fixed HEAD history; pure rename events with unchanged blob IDs are excluded. UTC date comes from the commit committer timestamp. Metadata headers have not yet been applied."
+          "commit": "fa1c7721cd178a7906490957456257bdf5421880",
+          "path": "web/e2e/c1b-select.ts",
+          "reason": "latest traceable body-changing commit; date is the Git committer timestamp converted to a UTC calendar date, not an asserted authoring date."
         }
       },
-      "revision": "r1",
+      "revision": "r2",
       "copyright": [
         {
           "holder": "Bai Junhao",
