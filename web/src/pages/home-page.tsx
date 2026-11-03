@@ -288,6 +288,24 @@ export function HomePage() {
     ? [actor.audience, actor.tenant_id, actor.org_id, actor.id, actor.role, actor.active_context?.context_version ?? ""].join("\u0000")
     : "";
   const snapshot = useWorkbench(period, nextStepActorScope);
+  const creatableCases = (snapshot.data?.cases ?? []).filter(
+    (item) => item.can_create_task === true,
+  );
+  const canCreateTasks =
+    session.isSuccess &&
+    !session.isFetching &&
+    !session.isError &&
+    snapshot.isSuccess &&
+    !snapshot.isFetching &&
+    !snapshot.isError &&
+    creatableCases.length > 0;
+  const taskCapabilitySnapshotFresh =
+    session.isSuccess &&
+    !session.isFetching &&
+    !session.isError &&
+    snapshot.isSuccess &&
+    !snapshot.isFetching &&
+    !snapshot.isError;
   const intakeActorScope = actor
     ? [actor.audience, actor.tenant_id, actor.org_id, actor.id].join("\u0000")
     : "";
@@ -304,6 +322,11 @@ export function HomePage() {
     if (nextStepActorScopeRef.current === nextStepActorScope) return;
     nextStepActorScopeRef.current = nextStepActorScope;
     setSelectedNextStep(null);
+    setTaskCaseId("");
+    setTaskTitle("");
+    setTaskAssignee("");
+    setTaskDue("");
+    setShowTaskForm(false);
   }, [nextStepActorScope]);
   const intakeActorScopeRef = useRef(intakeActorScope);
   useEffect(() => {
@@ -320,6 +343,18 @@ export function HomePage() {
   }, [intakeActorScope]);
   const createTask = useCreateWorkbenchTask(taskCaseId);
   const updateTask = useUpdateWorkbenchTask();
+  useEffect(() => {
+    if (!taskCapabilitySnapshotFresh) return;
+    if (taskCaseId && !creatableCases.some((item) => item.id === taskCaseId))
+      setTaskCaseId("");
+    if (showTaskForm && creatableCases.length === 0) {
+      setShowTaskForm(false);
+      setTaskCaseId("");
+      setTaskTitle("");
+      setTaskAssignee("");
+      setTaskDue("");
+    }
+  }, [taskCapabilitySnapshotFresh, creatableCases, taskCaseId, showTaskForm]);
   const caseTitles = useMemo(
     () =>
       new Map(
@@ -511,6 +546,7 @@ export function HomePage() {
 
   function submitTask(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (!canCreateTasks || !creatableCases.some((item) => item.id === taskCaseId)) return;
     createTask.mutate(
       {
         title: taskTitle.trim(),
@@ -720,14 +756,16 @@ export function HomePage() {
               <h2 id="home-tasks-title">任务与待办</h2>
               <strong className="home-figure-badge">{activeTaskCount}</strong>
             </div>
-            <Button
-              aria-label={String(showTaskForm ? "收起" : "新建任务")}
-              type="text"
-              htmlType="button"
-              onClick={() => setShowTaskForm((current) => !current)}
-            >
-              {showTaskForm ? "收起" : "新建任务"}
-            </Button>
+            {canCreateTasks ? (
+              <Button
+                aria-label={String(showTaskForm ? "收起" : "新建任务")}
+                type="text"
+                htmlType="button"
+                onClick={() => setShowTaskForm((current) => !current)}
+              >
+                {showTaskForm ? "收起" : "新建任务"}
+              </Button>
+            ) : null}
           </header>
           <Tabs
             activeKey={taskFilter}
@@ -744,7 +782,7 @@ export function HomePage() {
               },
             ]}
           />
-          {showTaskForm ? (
+          {showTaskForm && canCreateTasks ? (
             <form className="home-task-form" onSubmit={submitTask}>
               <label>
                 关联案件
@@ -754,7 +792,7 @@ export function HomePage() {
                   onChange={(selectedValue) => setTaskCaseId(selectedValue)}
                   options={[
                     { value: "", label: "请选择" },
-                    ...data.cases.map((item) => ({
+                    ...creatableCases.map((item) => ({
                       value: String(item.id),
                       label: String(item.title ?? ""),
                     })),
@@ -797,9 +835,6 @@ export function HomePage() {
                   onChange={(event) => setTaskDue(event.target.value)}
                 />
               </label>
-              {createTask.isError ? (
-                <p role="alert">{errorMessage(createTask.error)}</p>
-              ) : null}
               <Button
                 aria-label={String(
                   createTask.isPending ? "正在保存" : "创建并保存任务",
@@ -808,13 +843,18 @@ export function HomePage() {
                 htmlType="submit"
                 disabled={
                   createTask.isPending ||
-                  taskCaseId === "" ||
+                  !creatableCases.some((item) => item.id === taskCaseId) ||
                   taskAssignee === ""
                 }
               >
                 {createTask.isPending ? "正在保存" : "创建并保存任务"}
               </Button>
             </form>
+          ) : null}
+          {createTask.isError ? (
+            <p className="home-inline-error" role="alert">
+              {errorMessage(createTask.error)}
+            </p>
           ) : null}
           {tasks.length === 0 ? (
             <p className="home-empty" role="status">

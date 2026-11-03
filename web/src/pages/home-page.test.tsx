@@ -78,6 +78,7 @@ function caseRecord(overrides: Partial<WorkbenchCase> = {}): WorkbenchCase {
     business_line: "ENT",
     scenario: "telecom_dedicated_line",
     business_status: "active",
+    can_create_task: true,
     ...overrides,
   };
 }
@@ -118,6 +119,7 @@ function snapshot(): WorkbenchSnapshot {
         business_line: "",
         scenario: "",
         latest_run: { id: "run old", state: "completed", updated_at: at },
+        can_create_task: false,
       }),
     ],
     tasks: [
@@ -246,6 +248,7 @@ class HomeService {
   snapshotFailures: number[] = [];
   capabilityUnsupported = false;
   completionFailures: number[] = [];
+  revokeCreateCapabilityOnFailure = false;
   sessionGate: ReturnType<typeof Promise.withResolvers<void>> | null = null;
   caseDetail: CaseDetail | null = null;
   readinessResponse: unknown = null;
@@ -305,6 +308,12 @@ class HomeService {
     }
     if (parts[4] === "tasks" && method === "POST") {
       const failure = this.createFailures.shift();
+      if (failure)
+        if (this.revokeCreateCapabilityOnFailure) {
+          const caseId = decodeURIComponent(parts[3]!);
+          const targetCase = this.data.cases.find((item) => item.id === caseId);
+          if (targetCase) targetCase.can_create_task = false;
+        }
       if (failure)
         return json(
           {
@@ -928,6 +937,127 @@ describe("HomePage snapshot consumers", () => {
 });
 
 describe("HomePage persistent task workflow", () => {
+  it.each([
+    ["authorized case", true, false, true],
+    ["denied case", false, false, false],
+    ["missing field", undefined, false, false],
+    ["legacy service", undefined, true, false],
+  ])("offers task creation only for authorized cases (%s)", async (_label, canCreate, unsupported, visible) => {
+    const service = new HomeService();
+    service.capabilityUnsupported = unsupported;
+    if (canCreate === undefined) {
+      for (const item of service.data.cases) delete item.can_create_task;
+    } else if (!canCreate) {
+      for (const item of service.data.cases) item.can_create_task = false;
+    } else {
+      service.data.cases[0]!.can_create_task = true;
+    }
+    const { user } = open(service);
+    await screen.findByRole("heading", { name: "你好，周审查" });
+
+    if (!visible) {
+      expect(screen.queryByRole("button", { name: "新建任务" })).not.toBeInTheDocument();
+      expect(screen.queryByRole("combobox", { name: "关联案件" })).not.toBeInTheDocument();
+      return;
+    }
+
+    await user.click(screen.getByRole("button", { name: "新建任务" }));
+    await user.click(screen.getByRole("combobox", { name: "关联案件" }));
+    expect(screen.getByRole("option", { name: "专线采购合同" })).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: "设备维保合同" })).not.toBeInTheDocument();
+  });
+
+  it("refreshes task creation capability after a refusal and closes the revoked form", async () => {
+    const service = new HomeService();
+    service.createFailures = [403];
+    service.revokeCreateCapabilityOnFailure = true;
+    const { user } = open(service);
+    await screen.findByRole("heading", { name: "你好，周审查" });
+    await user.click(screen.getByRole("button", { name: "新建任务" }));
+    await chooseOption(user, screen.getByRole("combobox", { name: "关联案件" }), "专线采购合同");
+    await chooseOption(user, screen.getByRole("combobox", { name: "责任人" }), "周审查，reviewer");
+    await user.type(screen.getByRole("textbox", { name: "任务名称" }), "受限任务");
+    await user.click(screen.getByRole("button", { name: "创建并保存任务" }));
+
+    expect(await screen.findByText("无法保存任务，请检查分派权限")).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByRole("button", { name: "新建任务" })).not.toBeInTheDocument());
+    expect(screen.queryByRole("combobox", { name: "关联案件" })).not.toBeInTheDocument();
+    expect(service.requests.filter((request) => request.path.startsWith("/api/workbench"))).toHaveLength(2);
+    expect(service.requests.filter((request) => request.path === "/api/session")).toHaveLength(2);
+  });
+
+  it("clears the selected task case when the active identity context changes", async () => {
+    const service = new HomeService();
+    const { user, client } = open(service);
+    await screen.findByRole("heading", { name: "你好，周审查" });
+    await user.click(screen.getByRole("button", { name: "新建任务" }));
+    await chooseOption(user, screen.getByRole("combobox", { name: "关联案件" }), "专线采购合同");
+    await user.type(screen.getByRole("textbox", { name: "任务名称" }), "旧上下文任务");
+
+    service.snapshotGate = Promise.withResolvers<void>();
+    client.setQueryData(["session", "client"], {
+      ...session.actor,
+      audience: session.audience,
+      role: "viewer",
+      active_context: { ...session.active_context, context_version: "2" },
+      principal_id: session.principal_id,
+      csrf_token: session.csrf_token,
+      context_switch_enabled: session.context_switch_enabled,
+    });
+
+    expect(await screen.findByRole("heading", { name: "正在加载工作台" })).toBeInTheDocument();
+    expect(screen.queryByRole("combobox", { name: "关联案件" })).not.toBeInTheDocument();
+    service.snapshotGate.resolve();
+    service.snapshotGate = null;
+    await screen.findByRole("heading", { name: "你好，周审查" });
+    expect(screen.queryByRole("combobox", { name: "关联案件" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("textbox", { name: "任务名称" })).not.toBeInTheDocument();
+  });
+
+  it.each([
+    ["authorized", true, false, true],
+    ["denied", false, false, false],
+    ["missing capability", undefined, false, false],
+    ["legacy server", undefined, true, false],
+  ])("offers task creation only for an affirmative case capability (%s)", async (_label, canCreate, unsupported, visible) => {
+    const service = new HomeService();
+    service.capabilityUnsupported = unsupported;
+    if (canCreate === undefined) delete service.data.cases[0]!.can_create_task;
+    else service.data.cases[0]!.can_create_task = canCreate;
+    const { user } = open(service);
+    await screen.findByRole("heading", { name: "你好，周审查" });
+    if (visible) {
+      expect(screen.getByRole("button", { name: "新建任务" })).toBeInTheDocument();
+      await user.click(screen.getByRole("button", { name: "新建任务" }));
+      const caseSelect = screen.getByRole("combobox", { name: "关联案件" });
+      await user.click(caseSelect);
+      expect(screen.getByRole("option", { name: "专线采购合同" })).toBeInTheDocument();
+      expect(screen.queryByRole("option", { name: "设备维保合同" })).not.toBeInTheDocument();
+    } else {
+      expect(screen.queryByRole("button", { name: "新建任务" })).not.toBeInTheDocument();
+      expect(screen.queryByRole("combobox", { name: "关联案件" })).not.toBeInTheDocument();
+    }
+  });
+
+  it("refreshes capabilities and clears task creation after the selected case is revoked", async () => {
+    const service = new HomeService();
+    service.createFailures = [403];
+    service.revokeCreateCapabilityOnFailure = true;
+    const { user } = open(service);
+    await screen.findByRole("heading", { name: "你好，周审查" });
+    await user.click(screen.getByRole("button", { name: "新建任务" }));
+    await chooseOption(user, screen.getByRole("combobox", { name: "关联案件" }), "专线采购合同");
+    await chooseOption(user, screen.getByRole("combobox", { name: "责任人" }), "周审查，reviewer");
+    await user.type(screen.getByRole("textbox", { name: "任务名称" }), "受限任务");
+    await user.click(screen.getByRole("button", { name: "创建并保存任务" }));
+
+    expect(await screen.findByText("无法保存任务，请检查分派权限")).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByRole("button", { name: "新建任务" })).not.toBeInTheDocument());
+    expect(screen.queryByRole("combobox", { name: "关联案件" })).not.toBeInTheDocument();
+    expect(service.requests.filter((request) => request.path.startsWith("/api/workbench"))).toHaveLength(2);
+    expect(service.requests.filter((request) => request.path === "/api/session")).toHaveLength(2);
+  });
+
   it.each([
     ["granted", true, false, true],
     ["denied", false, false, false],

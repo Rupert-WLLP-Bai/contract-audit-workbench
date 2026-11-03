@@ -409,6 +409,12 @@ export function useCreateWorkbenchTask(caseId: string) {
       api.createWorkbenchTask(caseId, input),
     onSuccess: () =>
       invalidateCaseViews(queryClient, caseId, { workbench: true }),
+    onError: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.workbenchPrefix }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.session }),
+      ]);
+    },
   });
 }
 

@@ -913,17 +913,21 @@ function statusTone(status: string): "good" | "attention" | "bad" | "neutral" {
 function TaskCreateForm({
   snapshot,
   onCreated,
+  canCreateTask,
 }: {
   snapshot: WorkbenchSnapshot;
   onCreated: () => void;
+  canCreateTask: boolean;
 }) {
   const [caseId, setCaseId] = useState("");
   const [title, setTitle] = useState("");
   const [assigneeId, setAssigneeId] = useState("");
   const [dueDate, setDueDate] = useState("");
   const create = useCreateWorkbenchTask(caseId);
+  const creatableCases = snapshot.cases.filter((item) => item.can_create_task === true);
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (!canCreateTask || !creatableCases.some((item) => item.id === caseId)) return;
     create.mutate(
       {
         title: title.trim(),
@@ -954,7 +958,7 @@ function TaskCreateForm({
           onChange={(selectedValue) => setCaseId(selectedValue)}
           options={[
             { value: "", label: "选择案件" },
-            ...snapshot.cases.map((item) => ({
+            ...creatableCases.map((item) => ({
               value: String(item.id),
               label: String(item.title ?? ""),
             })),
@@ -998,14 +1002,14 @@ function TaskCreateForm({
         />
       </label>
       {create.isError ? <p role="alert">{errorMessage(create.error)}</p> : null}
-      <Button
+      {canCreateTask ? <Button
         aria-label={String(create.isPending ? "正在保存" : "保存任务")}
         type="primary"
         htmlType="submit"
-        disabled={create.isPending || caseId === "" || assigneeId === ""}
+        disabled={create.isPending || !creatableCases.some((item) => item.id === caseId) || assigneeId === ""}
       >
         {create.isPending ? "正在保存" : "保存任务"}
-      </Button>
+      </Button> : null}
     </form>
   );
 }
@@ -1137,6 +1141,22 @@ function WorkbenchModule({ module }: { module: WorkbenchModuleKey }) {
     : "";
   const query = useWorkbench("week", actorScope);
   const updateTask = useUpdateWorkbenchTask();
+  const taskCapabilitySnapshotFresh =
+    session.isSuccess &&
+    !session.isFetching &&
+    !session.isError &&
+    query.isSuccess &&
+    !query.isFetching &&
+    !query.isError;
+  const hasCreatableCase = query.data?.cases.some((item) => item.can_create_task === true) === true;
+  const canCreateTask = module === "tasks" && taskCapabilitySnapshotFresh && hasCreatableCase;
+  const taskCapabilityRevalidating =
+    module === "tasks" &&
+    (session.isLoading || session.isFetching || query.isLoading || query.isFetching);
+  useEffect(() => {
+    if (module === "tasks" && taskCapabilitySnapshotFresh && !hasCreatableCase)
+      setCreateOpen(false);
+  }, [module, taskCapabilitySnapshotFresh, hasCreatableCase]);
   const actorScopeRef = useRef(actorScope);
   useEffect(() => {
     if (actorScopeRef.current === actorScope) return;
@@ -1222,7 +1242,11 @@ function WorkbenchModule({ module }: { module: WorkbenchModuleKey }) {
   );
   const refresh = () => void query.refetch();
 
-  if (session.isLoading || session.isFetching || query.isLoading)
+  if (
+    session.isLoading ||
+    query.isLoading ||
+    ((session.isFetching || query.isFetching) && (!session.data || !query.data))
+  )
     return (
       <PageStatus
         kind="loading"
@@ -1280,7 +1304,6 @@ function WorkbenchModule({ module }: { module: WorkbenchModuleKey }) {
       : snapshot.period === "week"
         ? "本周"
         : "本月";
-  const canCreateTask = module === "tasks";
   const canCreateKnowledge = module === "knowledge";
   const emptyMessage =
     module === "knowledge" && tab === "检索测试" && queryText === ""
@@ -1370,9 +1393,10 @@ function WorkbenchModule({ module }: { module: WorkbenchModuleKey }) {
         </div>
         <div className="module-actions">{headerAction}</div>
       </header>
-      {createOpen && canCreateTask ? (
+      {createOpen && (canCreateTask || taskCapabilityRevalidating) ? (
         <TaskCreateForm
           snapshot={snapshot}
+          canCreateTask={canCreateTask}
           onCreated={() => setCreateOpen(false)}
         />
       ) : null}
